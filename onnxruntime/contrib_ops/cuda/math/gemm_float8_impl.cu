@@ -255,7 +255,7 @@ onnxruntime::Status GemmFloat8_Impl::CudaCompute(
   // The workspace should be allocated once from OpKernelContext assuming
   // only one cuda function is running at a time (which is not necessarily true with H100).
   // size_t type_size = std::max(std::max(TypeSize(dtypes[0]), TypeSize(dtypes[1])), std::max(std::max(TypeSize(dtypes[2]), TypeSize(dtypes[3])), TypeSize(dtypes[4])));
-  size_t workspaceSize = 0; // std::max((size_t)1 << 20, (std::min((size_t)(1 << 24), (size_t)std::max(K * M, K * N) * type_size) + 16));  // suggested fixed value 24Mb
+  size_t workspaceSize = 33554432; // std::max((size_t)1 << 20, (std::min((size_t)(1 << 24), (size_t)std::max(K * M, K * N) * type_size) + 16));  // suggested fixed value 24Mb
   // workspaceSize -= workspaceSize % 16;
   cublasLtMatmulPreferenceSetAttribute(preference, CUBLASLT_MATMUL_PREF_MAX_WORKSPACE_BYTES, &workspaceSize, sizeof(workspaceSize));
 

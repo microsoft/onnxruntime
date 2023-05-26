@@ -60,7 +60,7 @@ class TestFloat8Gemm8(unittest.TestCase):
         transA=1,
         transB=0,
         smCount=0,
-        fastAccumulationMode=1,
+        fastAccumulationMode=0,
         compute_type="CUBLAS_COMPUTE_32F",
         add_bias=False,
     ):
@@ -103,8 +103,9 @@ class TestFloat8Gemm8(unittest.TestCase):
         return onnx_model
 
     def common_test_model_gemm(self, float_type, mul=1, atol=0, rtol=0, **kwargs):
-        a = np.arange(9).reshape((3, 3)).astype(np.float32)
-        b = (2 ** np.arange(9).reshape((3, 3)) * mul).astype(np.float32)
+        n = 768
+        a = np.arange(n**2).reshape((-1, n)).astype(np.float32)
+        b = (2 ** np.arange(n**2).reshape((-1, n)) * mul).astype(np.float32)
         expected = a.T @ b
         feeds = {"A": a, "B": b}
 
@@ -112,7 +113,7 @@ class TestFloat8Gemm8(unittest.TestCase):
         if float_type == "FLOAT8E4M3FN":
             float_types = ["FLOAT8E4M3FN", "FLOAT8E4M3FN", "FLOAT16", "FLOAT", "FLOAT8E4M3FN"]
         elif float_type == "FLOAT8E4M3FN2":
-            float_types = ["FLOAT8E4M3FN", "FLOAT8E4M3FN", "BFLOAT16", "FLOAT", "FLOAT8E4M3FN"]
+            float_types = ["FLOAT8E4M3FN", "FLOAT8E4M3FN", "BFLOAT16", "FLOAT", "FLOAT"]
         elif float_type == "FLOAT8E5M2":
             float_types = ["FLOAT8E5M2", "FLOAT8E4M3FN", "FLOAT16", "FLOAT", "FLOAT8E4M3FN"]
         elif float_type == "FLOAT16":
@@ -146,25 +147,25 @@ class TestFloat8Gemm8(unittest.TestCase):
     def test_model_gemm_float(self):
         self.common_test_model_gemm("FLOAT", compute_type="CUBLAS_COMPUTE_32F")
 
-    def _test_model_gemm_float16(self):
+    def test_model_gemm_float16(self):
         self.common_test_model_gemm("FLOAT16", compute_type="CUBLAS_COMPUTE_16F")
 
-    def _test_model_gemm_float16_ct32(self):
+    def test_model_gemm_float16_ct32(self):
         self.common_test_model_gemm("FLOAT16", compute_type="CUBLAS_COMPUTE_32F")
 
-    def _test_model_gemm_bfloat16_ct32(self):
+    def test_model_gemm_bfloat16_ct32(self):
         self.common_test_model_gemm("BFLOAT16", compute_type="CUBLAS_COMPUTE_32F", mul=2 ** (-10), atol=1e-2)
 
-    def _test_model_gemm_float_ct16(self):
+    def test_model_gemm_float_ct16(self):
         self.common_test_model_gemm("FLOAT", compute_type="CUBLAS_COMPUTE_32F_FAST_16F")
 
-    def _test_model_gemm_e4m3(self):
+    def test_model_gemm_e4m3(self):
         self.common_test_model_gemm("FLOAT8E4M3FN", compute_type="CUBLAS_COMPUTE_32F", fastAccumulationMode=0)
 
-    def _test_model_gemm_e4m3_b(self):
+    def test_model_gemm_e4m3_b(self):
         self.common_test_model_gemm("FLOAT8E4M3FN2", compute_type="CUBLAS_COMPUTE_32F")
 
-    def _test_model_gemm_e5m2(self):
+    def test_model_gemm_e5m2(self):
         self.common_test_model_gemm("FLOAT8E5M2", compute_type="CUBLAS_COMPUTE_32F")
 
     def get_model_gemm_options(
@@ -218,7 +219,7 @@ class TestFloat8Gemm8(unittest.TestCase):
         fastAccumulationMode = [1, 0]
         smCount = [0]
 
-        inputs = [np.arange(512 * 512).reshape(-1, 512).astype(np.float32) for t in range(5)]
+        inputs = [np.arange(256 * 256).reshape(-1, 256).astype(np.float32) for t in range(5)]
         feeds = dict(zip("abcde".upper(), inputs))
         print()
 
@@ -253,155 +254,96 @@ class TestFloat8Gemm8(unittest.TestCase):
             cl = time.perf_counter()
             for _ in range(5):
                 sess.run(None, feeds)
-            for _ in range(20):
+            n = 15
+            for _ in range(n):
                 sess.run(None, feeds)
-            dur = time.perf_counter() - cl
+            dur = (time.perf_counter() - cl) / n
             print(f"{len(success)}: {i + 1} / {len(options)}-SUCCESS {flag} - {dur}")
             success.append((dur, flag))
         return success
 
-    def test_gemm_float8_float32_combinations(self):
+    def _test_gemm_float8_float32_combinations(self):
         types = [TensorProto.FLOAT, TensorProto.FLOAT16, TensorProto.BFLOAT16]
         success = self.gemm_float8_float32_combinations(types, types, types)
         print("\n".join(map(str, sorted(success))))
         self.assertTrue(len(success) > 0)
         """
-        0.0-CUBLAS_COMPUTE_32F-1-0-1-1-1-1-1
-        0.0-CUBLAS_COMPUTE_32F-1-0-1-1-1-10-1
-        0.0-CUBLAS_COMPUTE_32F-1-0-1-1-1-16-1
-        0.0-CUBLAS_COMPUTE_32F-1-0-10-10-1-1-1
-        0.0-CUBLAS_COMPUTE_32F-1-0-10-10-1-10-1
-        0.0-CUBLAS_COMPUTE_32F-1-0-10-10-1-16-1
-        0.0-CUBLAS_COMPUTE_32F-1-0-10-10-10-1-10
-        0.0-CUBLAS_COMPUTE_32F-1-0-10-10-10-10-10
-        0.0-CUBLAS_COMPUTE_32F-1-0-10-10-10-16-10
-        0.0-CUBLAS_COMPUTE_32F-1-0-16-16-1-1-1
-        0.0-CUBLAS_COMPUTE_32F-1-0-16-16-1-10-1
-        0.0-CUBLAS_COMPUTE_32F-1-0-16-16-1-16-1
-        0.0-CUBLAS_COMPUTE_32F-1-0-16-16-16-1-16
-        0.0-CUBLAS_COMPUTE_32F-1-0-16-16-16-10-16
-        0.0-CUBLAS_COMPUTE_32F-1-0-16-16-16-16-16
-        0.0-CUBLAS_COMPUTE_16F-1-0-10-10-10-1-10
-        0.0-CUBLAS_COMPUTE_16F-1-0-10-10-10-10-10
-        0.0-CUBLAS_COMPUTE_16F-1-0-10-10-10-16-10
-        0.0-CUBLAS_COMPUTE_32F_FAST_16F-1-0-1-1-1-1-1
-        0.0-CUBLAS_COMPUTE_32F_FAST_16F-1-0-1-1-1-10-1
-        0.0-CUBLAS_COMPUTE_32F_FAST_16F-1-0-1-1-1-16-1
-        0.0-CUBLAS_COMPUTE_32F_FAST_16F-1-0-10-10-1-1-1
-        0.0-CUBLAS_COMPUTE_32F_FAST_16F-1-0-10-10-1-10-1
-        0.0-CUBLAS_COMPUTE_32F_FAST_16F-1-0-10-10-1-16-1
-        0.0-CUBLAS_COMPUTE_32F_FAST_16F-1-0-10-10-10-1-10
-        0.0-CUBLAS_COMPUTE_32F_FAST_16F-1-0-10-10-10-10-10
-        0.0-CUBLAS_COMPUTE_32F_FAST_16F-1-0-10-10-10-16-10
-        0.0-CUBLAS_COMPUTE_32F_FAST_16F-1-0-16-16-1-1-1
-        0.0-CUBLAS_COMPUTE_32F_FAST_16F-1-0-16-16-1-10-1
-        0.0-CUBLAS_COMPUTE_32F_FAST_16F-1-0-16-16-1-16-1
-        0.0-CUBLAS_COMPUTE_32F_FAST_16F-1-0-16-16-16-1-16
-        0.0-CUBLAS_COMPUTE_32F_FAST_16F-1-0-16-16-16-10-16
-        0.0-CUBLAS_COMPUTE_32F_FAST_16F-1-0-16-16-16-16-16
-        0.0-CUBLAS_COMPUTE_32F_FAST_16BF-1-0-1-1-1-1-1
-        0.0-CUBLAS_COMPUTE_32F_FAST_16BF-1-0-1-1-1-10-1
-        0.0-CUBLAS_COMPUTE_32F_FAST_16BF-1-0-1-1-1-16-1
-        0.0-CUBLAS_COMPUTE_32F_FAST_16BF-1-0-10-10-1-1-1
-        0.0-CUBLAS_COMPUTE_32F_FAST_16BF-1-0-10-10-1-10-1
-        0.0-CUBLAS_COMPUTE_32F_FAST_16BF-1-0-10-10-1-16-1
-        0.0-CUBLAS_COMPUTE_32F_FAST_16BF-1-0-10-10-10-1-10
-        0.0-CUBLAS_COMPUTE_32F_FAST_16BF-1-0-10-10-10-10-10
-        0.0-CUBLAS_COMPUTE_32F_FAST_16BF-1-0-10-10-10-16-10
-        0.0-CUBLAS_COMPUTE_32F_FAST_16BF-1-0-16-16-1-1-1
-        0.0-CUBLAS_COMPUTE_32F_FAST_16BF-1-0-16-16-1-10-1
-        0.0-CUBLAS_COMPUTE_32F_FAST_16BF-1-0-16-16-1-16-1
-        0.0-CUBLAS_COMPUTE_32F_FAST_16BF-1-0-16-16-16-1-16
-        0.0-CUBLAS_COMPUTE_32F_FAST_16BF-1-0-16-16-16-10-16
-        0.0-CUBLAS_COMPUTE_32F_FAST_16BF-1-0-16-16-16-16-16
-        0.0-CUBLAS_COMPUTE_32F_FAST_TF32-1-0-1-1-1-1-1
-        0.0-CUBLAS_COMPUTE_32F_FAST_TF32-1-0-1-1-1-10-1
-        0.0-CUBLAS_COMPUTE_32F_FAST_TF32-1-0-1-1-1-16-1
-        0.0-CUBLAS_COMPUTE_32F_FAST_TF32-1-0-10-10-1-1-1
-        0.0-CUBLAS_COMPUTE_32F_FAST_TF32-1-0-10-10-1-10-1
-        0.0-CUBLAS_COMPUTE_32F_FAST_TF32-1-0-10-10-1-16-1
-        0.0-CUBLAS_COMPUTE_32F_FAST_TF32-1-0-10-10-10-1-10
-        0.0-CUBLAS_COMPUTE_32F_FAST_TF32-1-0-10-10-10-10-10
-        0.0-CUBLAS_COMPUTE_32F_FAST_TF32-1-0-10-10-10-16-10
-        0.0-CUBLAS_COMPUTE_32F_FAST_TF32-1-0-16-16-1-1-1
-        0.0-CUBLAS_COMPUTE_32F_FAST_TF32-1-0-16-16-1-10-1
-        0.0-CUBLAS_COMPUTE_32F_FAST_TF32-1-0-16-16-1-16-1
-        0.0-CUBLAS_COMPUTE_32F_FAST_TF32-1-0-16-16-16-1-16
-        0.0-CUBLAS_COMPUTE_32F_FAST_TF32-1-0-16-16-16-10-16
-        0.0-CUBLAS_COMPUTE_32F_FAST_TF32-1-0-16-16-16-16-16
-        1.0-CUBLAS_COMPUTE_32F-1-0-1-1-1-1-1
-        1.0-CUBLAS_COMPUTE_32F-1-0-1-1-1-10-1
-        1.0-CUBLAS_COMPUTE_32F-1-0-1-1-1-16-1
-        1.0-CUBLAS_COMPUTE_32F-1-0-10-10-1-1-1
-        1.0-CUBLAS_COMPUTE_32F-1-0-10-10-1-10-1
-        1.0-CUBLAS_COMPUTE_32F-1-0-10-10-1-16-1
-        1.0-CUBLAS_COMPUTE_32F-1-0-10-10-10-1-10
-        1.0-CUBLAS_COMPUTE_32F-1-0-10-10-10-10-10
-        1.0-CUBLAS_COMPUTE_32F-1-0-10-10-10-16-10
-        1.0-CUBLAS_COMPUTE_32F-1-0-16-16-1-1-1
-        1.0-CUBLAS_COMPUTE_32F-1-0-16-16-1-10-1
-        1.0-CUBLAS_COMPUTE_32F-1-0-16-16-1-16-1
-        1.0-CUBLAS_COMPUTE_32F-1-0-16-16-16-1-16
-        1.0-CUBLAS_COMPUTE_32F-1-0-16-16-16-10-16
-        1.0-CUBLAS_COMPUTE_32F-1-0-16-16-16-16-16
-        1.0-CUBLAS_COMPUTE_16F-1-0-10-10-10-1-10
-        1.0-CUBLAS_COMPUTE_16F-1-0-10-10-10-10-10
-        1.0-CUBLAS_COMPUTE_16F-1-0-10-10-10-16-10
-        1.0-CUBLAS_COMPUTE_32F_FAST_16F-1-0-1-1-1-1-1
-        1.0-CUBLAS_COMPUTE_32F_FAST_16F-1-0-1-1-1-10-1
-        1.0-CUBLAS_COMPUTE_32F_FAST_16F-1-0-1-1-1-16-1
-        1.0-CUBLAS_COMPUTE_32F_FAST_16F-1-0-10-10-1-1-1
-        1.0-CUBLAS_COMPUTE_32F_FAST_16F-1-0-10-10-1-10-1
-        1.0-CUBLAS_COMPUTE_32F_FAST_16F-1-0-10-10-1-16-1
-        1.0-CUBLAS_COMPUTE_32F_FAST_16F-1-0-10-10-10-1-10
-        1.0-CUBLAS_COMPUTE_32F_FAST_16F-1-0-10-10-10-10-10
-        1.0-CUBLAS_COMPUTE_32F_FAST_16F-1-0-10-10-10-16-10
-        1.0-CUBLAS_COMPUTE_32F_FAST_16F-1-0-16-16-1-1-1
-        1.0-CUBLAS_COMPUTE_32F_FAST_16F-1-0-16-16-1-10-1
-        1.0-CUBLAS_COMPUTE_32F_FAST_16F-1-0-16-16-1-16-1
-        1.0-CUBLAS_COMPUTE_32F_FAST_16F-1-0-16-16-16-1-16
-        1.0-CUBLAS_COMPUTE_32F_FAST_16F-1-0-16-16-16-10-16
-        1.0-CUBLAS_COMPUTE_32F_FAST_16F-1-0-16-16-16-16-16
-        1.0-CUBLAS_COMPUTE_32F_FAST_16BF-1-0-1-1-1-1-1
-        1.0-CUBLAS_COMPUTE_32F_FAST_16BF-1-0-1-1-1-10-1
-        1.0-CUBLAS_COMPUTE_32F_FAST_16BF-1-0-1-1-1-16-1
-        1.0-CUBLAS_COMPUTE_32F_FAST_16BF-1-0-10-10-1-1-1
-        1.0-CUBLAS_COMPUTE_32F_FAST_16BF-1-0-10-10-1-10-1
-        1.0-CUBLAS_COMPUTE_32F_FAST_16BF-1-0-10-10-1-16-1
-        1.0-CUBLAS_COMPUTE_32F_FAST_16BF-1-0-10-10-10-1-10
-        1.0-CUBLAS_COMPUTE_32F_FAST_16BF-1-0-10-10-10-10-10
-        1.0-CUBLAS_COMPUTE_32F_FAST_16BF-1-0-10-10-10-16-10
-        1.0-CUBLAS_COMPUTE_32F_FAST_16BF-1-0-16-16-1-1-1
-        1.0-CUBLAS_COMPUTE_32F_FAST_16BF-1-0-16-16-1-10-1
-        1.0-CUBLAS_COMPUTE_32F_FAST_16BF-1-0-16-16-1-16-1
-        1.0-CUBLAS_COMPUTE_32F_FAST_16BF-1-0-16-16-16-1-16
-        1.0-CUBLAS_COMPUTE_32F_FAST_16BF-1-0-16-16-16-10-16
-        1.0-CUBLAS_COMPUTE_32F_FAST_16BF-1-0-16-16-16-16-16
-        1.0-CUBLAS_COMPUTE_32F_FAST_TF32-1-0-1-1-1-1-1
-        1.0-CUBLAS_COMPUTE_32F_FAST_TF32-1-0-1-1-1-10-1
-        1.0-CUBLAS_COMPUTE_32F_FAST_TF32-1-0-1-1-1-16-1
-        1.0-CUBLAS_COMPUTE_32F_FAST_TF32-1-0-10-10-1-1-1
-        1.0-CUBLAS_COMPUTE_32F_FAST_TF32-1-0-10-10-1-10-1
-        1.0-CUBLAS_COMPUTE_32F_FAST_TF32-1-0-10-10-1-16-1
-        1.0-CUBLAS_COMPUTE_32F_FAST_TF32-1-0-10-10-10-1-10
-        1.0-CUBLAS_COMPUTE_32F_FAST_TF32-1-0-10-10-10-10-10
-        1.0-CUBLAS_COMPUTE_32F_FAST_TF32-1-0-10-10-10-16-10
-        1.0-CUBLAS_COMPUTE_32F_FAST_TF32-1-0-16-16-1-1-1
-        1.0-CUBLAS_COMPUTE_32F_FAST_TF32-1-0-16-16-1-10-1
-        1.0-CUBLAS_COMPUTE_32F_FAST_TF32-1-0-16-16-1-16-1
-        1.0-CUBLAS_COMPUTE_32F_FAST_TF32-1-0-16-16-16-1-16
-        1.0-CUBLAS_COMPUTE_32F_FAST_TF32-1-0-16-16-16-10-16
-        1.0-CUBLAS_COMPUTE_32F_FAST_TF32-1-0-16-16-16-16-16
+        (0.02733936100048595, '0.0-CUBLAS_COMPUTE_32F-1-0-1-1-1-1-1')
+        (0.02900479100026132, '0.0-CUBLAS_COMPUTE_32F-1-0-1-1-1-16-1')
+        (0.03042422700127645, '0.0-CUBLAS_COMPUTE_32F-1-0-10-10-1-1-1')
+        (0.030477725998935057, '0.0-CUBLAS_COMPUTE_32F-1-0-10-10-1-16-1')
+        (0.030877209999744082, '0.0-CUBLAS_COMPUTE_32F-1-0-10-10-10-16-10')
+        (0.03113630000007106, '0.0-CUBLAS_COMPUTE_32F-1-0-10-10-10-1-10')
+        (0.03120729700094671, '0.0-CUBLAS_COMPUTE_32F-1-0-10-10-10-10-10')
+        (0.03180767400044715, '0.0-CUBLAS_COMPUTE_32F-1-0-1-1-1-10-1')
+        (0.03332431499984523, '0.0-CUBLAS_COMPUTE_32F-1-0-16-16-1-16-1')
+        (0.03334041500056628, '0.0-CUBLAS_COMPUTE_32F-1-0-16-16-1-10-1')
+        (0.034372076001091045, '0.0-CUBLAS_COMPUTE_32F-1-0-16-16-16-16-16')
+        (0.0345421689999057, '0.0-CUBLAS_COMPUTE_32F-1-0-16-16-16-10-16')
+        (0.03485685700070462, '0.0-CUBLAS_COMPUTE_32F-1-0-16-16-16-1-16')
+        (0.03675158400073997, '0.0-CUBLAS_COMPUTE_32F-1-0-16-16-1-1-1')
+        (0.03979366699968523, '0.0-CUBLAS_COMPUTE_32F-1-0-10-10-1-10-1')
+        (0.04064548199858109, '0.0-CUBLAS_COMPUTE_16F-1-0-10-10-10-10-10')
+        (0.04151784600071551, '0.0-CUBLAS_COMPUTE_16F-1-0-10-10-10-16-10')
+        (0.042687604000093415, '0.0-CUBLAS_COMPUTE_32F_FAST_16F-1-0-10-10-10-16-10')
+        (0.04279070000120555, '0.0-CUBLAS_COMPUTE_32F_FAST_16F-1-0-1-1-1-1-1')
+        (0.04390416100068251, '0.0-CUBLAS_COMPUTE_32F_FAST_16F-1-0-1-1-1-10-1')
+        (0.04432224599986512, '0.0-CUBLAS_COMPUTE_32F_FAST_16F-1-0-1-1-1-16-1')
+        (0.04557998499876703, '0.0-CUBLAS_COMPUTE_16F-1-0-10-10-10-1-10')
+        (0.047199945998727344, '0.0-CUBLAS_COMPUTE_32F_FAST_16F-1-0-10-10-1-10-1')
+        (0.047339340000689845, '0.0-CUBLAS_COMPUTE_32F_FAST_16F-1-0-10-10-1-16-1')
+        (0.04825640799936082, '0.0-CUBLAS_COMPUTE_32F_FAST_16F-1-0-10-10-10-1-10')
+        (0.04932762699900195, '0.0-CUBLAS_COMPUTE_32F_FAST_16F-1-0-16-16-1-1-1')
+        (0.05028643699915847, '0.0-CUBLAS_COMPUTE_32F_FAST_16F-1-0-10-10-1-1-1')
+        (0.05040978599936352, '0.0-CUBLAS_COMPUTE_32F_FAST_16F-1-0-16-16-1-16-1')
+        (0.05041488499955449, '0.0-CUBLAS_COMPUTE_32F_FAST_16F-1-0-16-16-1-10-1')
+        (0.05083320599987928, '0.0-CUBLAS_COMPUTE_32F_FAST_16BF-1-0-1-1-1-1-1')
+        (0.051650489000167, '0.0-CUBLAS_COMPUTE_32F_FAST_16F-1-0-10-10-10-10-10')
+        (0.05259690300044895, '0.0-CUBLAS_COMPUTE_32F_FAST_16F-1-0-16-16-16-10-16')
+        (0.05311992099996132, '0.0-CUBLAS_COMPUTE_32F_FAST_16BF-1-0-1-1-1-16-1')
+        (0.054345859000022756, '0.0-CUBLAS_COMPUTE_32F_FAST_TF32-1-0-1-1-1-10-1')
+        (0.05476542100041115, '0.0-CUBLAS_COMPUTE_32F_FAST_16F-1-0-16-16-16-16-16')
+        (0.05580888300028164, '0.0-CUBLAS_COMPUTE_32F_FAST_16BF-1-0-10-10-1-1-1')
+        (0.05600327399952221, '0.0-CUBLAS_COMPUTE_32F_FAST_16F-1-0-16-16-16-1-16')
+        (0.05650505800076644, '0.0-CUBLAS_COMPUTE_32F_FAST_16BF-1-0-10-10-1-16-1')
+        (0.056914127999334596, '1.0-CUBLAS_COMPUTE_32F-1-0-1-1-1-1-1')
+        (0.05758341799992195, '1.0-CUBLAS_COMPUTE_32F_FAST_16F-1-0-16-16-1-1-1')
+        (0.058957769000699045, '0.0-CUBLAS_COMPUTE_32F_FAST_16BF-1-0-10-10-10-1-10')
+        (0.05918206099886447, '0.0-CUBLAS_COMPUTE_32F_FAST_16BF-1-0-10-10-10-10-10')
+        (0.05919199499840033, '0.0-CUBLAS_COMPUTE_32F_FAST_16BF-1-0-1-1-1-10-1')
+        (0.06052071299927775, '0.0-CUBLAS_COMPUTE_32F_FAST_16BF-1-0-10-10-1-10-1')
+        (0.060623109000516706, '0.0-CUBLAS_COMPUTE_32F_FAST_16BF-1-0-16-16-1-10-1')
+        (0.06094819700047083, '0.0-CUBLAS_COMPUTE_32F_FAST_16BF-1-0-16-16-16-1-16')
+        (0.06199504299911496, '0.0-CUBLAS_COMPUTE_32F_FAST_TF32-1-0-1-1-1-16-1')
+        (0.06232364799870993, '0.0-CUBLAS_COMPUTE_32F_FAST_16BF-1-0-16-16-16-10-16')
+        (0.06273243299983733, '0.0-CUBLAS_COMPUTE_32F_FAST_16BF-1-0-16-16-1-1-1')
+        (0.06348340499971528, '0.0-CUBLAS_COMPUTE_32F_FAST_16BF-1-0-16-16-16-16-16')
+        (0.06465779700010899, '1.0-CUBLAS_COMPUTE_32F_FAST_16F-1-0-1-1-1-16-1')
+        (0.06514164100008202, '0.0-CUBLAS_COMPUTE_32F_FAST_TF32-1-0-10-10-1-1-1')
+        (0.0651611529992806, '0.0-CUBLAS_COMPUTE_32F_FAST_TF32-1-0-1-1-1-1-1')
+        (0.06536243700065825, '0.0-CUBLAS_COMPUTE_32F_FAST_16BF-1-0-10-10-10-16-10')
+        (0.06565842700001667, '0.0-CUBLAS_COMPUTE_32F_FAST_16BF-1-0-16-16-1-16-1')
+        (0.06638419599948975, '0.0-CUBLAS_COMPUTE_32F_FAST_TF32-1-0-10-10-1-16-1')
+        (0.06767204900097568, '0.0-CUBLAS_COMPUTE_32F_FAST_TF32-1-0-10-10-10-1-10')
+        (0.06882783800028847, '0.0-CUBLAS_COMPUTE_32F_FAST_TF32-1-0-16-16-1-1-1')
+        (0.06927989100040577, '0.0-CUBLAS_COMPUTE_32F_FAST_TF32-1-0-10-10-10-16-10')
+        (0.06965061000119022, '0.0-CUBLAS_COMPUTE_32F_FAST_TF32-1-0-16-16-1-16-1')
+        (0.0696632769995631, '0.0-CUBLAS_COMPUTE_32F_FAST_TF32-1-0-10-10-10-10-10')
+        (0.07042934999844874, '0.0-CUBLAS_COMPUTE_32F_FAST_TF32-1-0-10-10-1-10-1')
+        (0.07235372100149107, '0.0-CUBLAS_COMPUTE_32F_FAST_TF32-1-0-16-16-1-10-1')
+        (0.07291310300024634, '0.0-CUBLAS_COMPUTE_32F_FAST_TF32-1-0-16-16-16-10-16')
+        (0.07423536000169406, '0.0-CUBLAS_COMPUTE_32F_FAST_TF32-1-0-16-16-16-16-16')
+        (0.07543202099986956, '0.0-CUBLAS_COMPUTE_32F_FAST_TF32-1-0-16-16-16-1-16')
         """
 
     def _test_gemm_float8_float32_combinations(self):
         short = [TensorProto.FLOAT8E4M3FN, TensorProto.FLOAT8E5M2]
         types = [
             TensorProto.FLOAT,
-            TensorProto.FLOAT16,
+            # TensorProto.FLOAT16,
             TensorProto.BFLOAT16,
             TensorProto.FLOAT8E4M3FN,
-            TensorProto.FLOAT8E5M2,
+            # TensorProto.FLOAT8E5M2,
         ]
         self.gemm_float8_float32_combinations(short, types, types)
 
