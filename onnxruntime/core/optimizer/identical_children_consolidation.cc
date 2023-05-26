@@ -61,7 +61,7 @@ std::vector<std::vector<NodeIndex>> IdenticalChildrenConsolidation::DivideIdenti
 }
 
 string_view IdenticalChildrenConsolidation::IdentityBuilder(const Graph& graph, const Node& node) const {
-  static std::string identity = "";
+  static std::string identity;
   for (const auto* input_def : node.InputDefs()) {
     if (input_def->Exists() && !input_def->Name().empty()) {
       auto name = input_def->Name();
