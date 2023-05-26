@@ -208,7 +208,7 @@ class TimestampLogitsProcessor : public ILogitsProcessor<T> {
 
       // Find timestamp tokens
       int timestamp_last = -1;
-      for (auto& it = sequence.rbegin(); it != sequence.rend(); it++) {
+      for (auto it = sequence.rbegin(); it != sequence.rend(); it++) {
         if (*it >= beg_token_id_) {
           timestamp_last = *it;
           break;

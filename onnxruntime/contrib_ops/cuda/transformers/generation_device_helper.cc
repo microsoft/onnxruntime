@@ -459,7 +459,7 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
                                          cudaMemcpyDeviceToHost,
                                          cuda_stream));
     constexpr int max_initial_timestamp_index = 50;
-    onnxruntime::contrib::transformers::TimestampLogitsProcessor::TimestampLogitsProcessor<float> time_logit_processor(parameters->eos_token_id, max_initial_timestamp_index);
+    onnxruntime::contrib::transformers::TimestampLogitsProcessor<float> time_logit_processor(parameters->eos_token_id, max_initial_timestamp_index);
     onnxruntime::contrib::transformers::NextTokenScores<float> next_token_scores_timestamp({cpu_state->next_token_scores, batch_beam_size, vocab_size});
 
     CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(cuda_stream));
