@@ -60,8 +60,8 @@ std::vector<std::vector<NodeIndex>> IdenticalChildrenConsolidation::DivideIdenti
   return groups;
 }
 
-string_view IdenticalChildrenConsolidation::IdentityBuilder(const Graph& graph, const Node& node) const {
-  static std::string identity;
+const std::string& IdenticalChildrenConsolidation::IdentityBuilder(const Graph& graph, const Node& node) const {
+  std::string identity;
   for (const auto* input_def : node.InputDefs()) {
     if (input_def->Exists() && !input_def->Name().empty()) {
       auto name = input_def->Name();
