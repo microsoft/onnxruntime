@@ -67,6 +67,10 @@ are in composable kernels. The scale and add logic is performed via Acc0ElementO
 | BSNH | BLNH*| BLNH^| -      | -     | -         | -        | MHA basic
 | BSNH | BNLH*| BNLH^| -      | -     | -         | -        | MHA cross, pass_past_in_kv = true
 | BSNH | -    | -    | -      | -     | BNLH *    | BNLH ^   | MHA cross, pass_past_in_kv = false
+| BSNH | BLNH | BLNH | -      | -     | BNTH *    | BNTH ^   | MHA cross, past_present_share_buffer = false
+| BSNH | BNLH | BNLH | -      | -     | BNTH *    | BNTH ^   | MHA cross, past_present_share_buffer = false
+| BSNH | BLNH | BLNH | -      | -     | BNMH *    | BNMH ^   | MHA cross, past_present_share_buffer = true
+| BSNH | BNLH | BNLH | -      | -     | BNMH *    | BNMH ^   | MHA cross, past_present_share_buffer = true
 | BSNH | BLNH | BLNH | BNPH   | BNPH  | BNTH *    | BNTH ^   | MHA self, past_present_share_buffer = false
 | BSNH | BNLH | BNLH | BNPH   | BNPH  | BNTH *    | BNTH ^   | MHA self, past_present_share_buffer = false
 | BSNH | BLNH | BLNH | BNMH   | BNMH  | BNMH *    | BNMH ^   | MHA self, past_present_share_buffer = true
@@ -229,6 +233,10 @@ std::tuple<const HipT*, const HipT*, const HipT*> ConvertToOffsetedBufferViews(
               reinterpret_cast<const HipT*>(present),
               reinterpret_cast<const HipT*>(present) + offset};
     }
+    case BSNH_BLNH_BLNH_NONE_NONE_BNTH_BNTH:
+    case BSNH_BNLH_BNLH_NONE_NONE_BNTH_BNTH:
+    case BSNH_BLNH_BLNH_NONE_NONE_BNMH_BNMH:
+    case BSNH_BNLH_BNLH_NONE_NONE_BNMH_BNMH:
     case BSNH_BLNH_BLNH_BNPH_BNPH_BNTH_BNTH:
     case BSNH_BNLH_BNLH_BNPH_BNPH_BNTH_BNTH:
     case BSNH_BLNH_BLNH_BNMH_BNMH_BNMH_BNMH:
@@ -276,6 +284,8 @@ inline std::tuple<Strides, Strides, Strides> GetQkvStrides(const RocmAttentionPa
             Strides::BSNHMemory(B, L, N, Hv),
         };
       }
+    case BSNH_BLNH_BLNH_NONE_NONE_BNTH_BNTH:
+    case BSNH_BNLH_BNLH_NONE_NONE_BNTH_BNTH:
     case BSNH_BLNH_BLNH_BNPH_BNPH_BNTH_BNTH:
     case BSNH_BNLH_BNLH_BNPH_BNPH_BNTH_BNTH:
       return {
@@ -283,6 +293,8 @@ inline std::tuple<Strides, Strides, Strides> GetQkvStrides(const RocmAttentionPa
           Strides::BNSHMemory(B, N, T, H),
           Strides::BNSHMemory(B, N, T, Hv),
       };
+    case BSNH_BLNH_BLNH_NONE_NONE_BNMH_BNMH:
+    case BSNH_BNLH_BNLH_NONE_NONE_BNMH_BNMH:
     case BSNH_BLNH_BLNH_BNMH_BNMH_BNMH_BNMH:
     case BSNH_BNLH_BNLH_BNMH_BNMH_BNMH_BNMH:
       return {
@@ -544,6 +556,10 @@ class GemmSoftmaxGemmPermuteTunableOp : public tunable::TunableOp<GemmSoftmaxGem
       case BSNH_BNLH_BNLH_BNMH_BNMH_BNMH_BNMH:
       case BSNH_BLNH_BLNH_NONE_NONE_NONE_NONE:
       case BSNH_BNLH_BNLH_NONE_NONE_NONE_NONE:
+      case BSNH_BLNH_BLNH_NONE_NONE_BNTH_BNTH:
+      case BSNH_BNLH_BNLH_NONE_NONE_BNTH_BNTH:
+      case BSNH_BLNH_BLNH_NONE_NONE_BNMH_BNMH:
+      case BSNH_BNLH_BNLH_NONE_NONE_BNMH_BNMH:
       case BSNH_BLN2H_NONE_NONE_NONE_NONE_NONE:
       case BLN3H_NONE_NONE_NONE_NONE_NONE_NONE:
         return true;

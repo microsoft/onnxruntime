@@ -110,13 +110,13 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
     Strides past_src_strides;
     const HipT* past_key_src;
     const HipT* past_value_src;
-    HipT* past_key_dst;
-    HipT* past_value_dst;
+    HipT* past_key_dst{};
+    HipT* past_value_dst{};
 
     int4 add_shape;
     Strides add_src_strides;
-    const HipT* add_key_src;
-    const HipT* add_value_src;
+    const HipT* add_key_src =reinterpret_cast<const HipT*>(key->DataRaw());
+    const HipT* add_value_src = reinterpret_cast<const HipT*>(value->DataRaw());
     HipT* add_key_dst;
     HipT* add_value_dst;
 
@@ -136,21 +136,27 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
       } else if (attn.mode == BSNH_BNLH_BNLH_BNPH_BNPH_BNTH_BNTH) {
         add_src_strides = Strides::BNSHMemory(attn.batch_size, attn.num_heads, attn.kv_sequence_length, attn.head_size);
       }
+    } else if (attn.mode == BSNH_BLNH_BLNH_NONE_NONE_BNTH_BNTH ||
+               attn.mode == BSNH_BNLH_BNLH_NONE_NONE_BNTH_BNTH) {
+      dst_strides = Strides::BNSHMemory(attn.batch_size, attn.num_heads, attn.total_sequence_length, attn.head_size);
 
-      add_key_src = reinterpret_cast<const HipT*>(key->DataRaw());
-      add_value_src = reinterpret_cast<const HipT*>(value->DataRaw());
-    } else if (attn.mode == BSNH_BLNH_BLNH_BNMH_BNMH_BNMH_BNMH ||
-               attn.mode == BSNH_BNLH_BNLH_BNMH_BNMH_BNMH_BNMH) {
-      dst_strides = Strides::BNSHMemory(attn.batch_size, attn.num_heads, attn.max_sequence_length, attn.head_size);
-
-      if (attn.mode == BSNH_BLNH_BLNH_BNMH_BNMH_BNMH_BNMH) {
+      if (attn.mode == BSNH_BLNH_BLNH_NONE_NONE_BNTH_BNTH) {
         add_src_strides = Strides::BSNHMemory(attn.batch_size, attn.kv_sequence_length, attn.num_heads, attn.head_size);
-      } else if (attn.mode == BSNH_BNLH_BNLH_BNMH_BNMH_BNMH_BNMH) {
+      } else if (attn.mode == BSNH_BNLH_BNLH_NONE_NONE_BNTH_BNTH) {
         add_src_strides = Strides::BNSHMemory(attn.batch_size, attn.num_heads, attn.kv_sequence_length, attn.head_size);
       }
+    } else if (
+        attn.mode == BSNH_BLNH_BLNH_NONE_NONE_BNMH_BNMH ||
+        attn.mode == BSNH_BNLH_BNLH_NONE_NONE_BNMH_BNMH ||
+        attn.mode == BSNH_BLNH_BLNH_BNMH_BNMH_BNMH_BNMH ||
+        attn.mode == BSNH_BNLH_BNLH_BNMH_BNMH_BNMH_BNMH) {
+      dst_strides = Strides::BNSHMemory(attn.batch_size, attn.num_heads, attn.max_sequence_length, attn.head_size);
 
-      add_key_src = reinterpret_cast<const HipT*>(key->DataRaw());
-      add_value_src = reinterpret_cast<const HipT*>(value->DataRaw());
+      if (attn.mode == BSNH_BLNH_BLNH_NONE_NONE_BNMH_BNMH || attn.mode == BSNH_BLNH_BLNH_BNMH_BNMH_BNMH_BNMH) {
+        add_src_strides = Strides::BSNHMemory(attn.batch_size, attn.kv_sequence_length, attn.num_heads, attn.head_size);
+      } else if (attn.mode == BSNH_BNLH_BNLH_NONE_NONE_BNMH_BNMH || attn.mode == BSNH_BNLH_BNLH_BNMH_BNMH_BNMH_BNMH) {
+        add_src_strides = Strides::BNSHMemory(attn.batch_size, attn.num_heads, attn.kv_sequence_length, attn.head_size);
+      }
     } else {
       return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
                              "past present concatenation  is not implemented for attention mode ", attn.mode);
