@@ -112,16 +112,6 @@ NS_ASSUME_NONNULL_BEGIN
   XCTAssertEqualObjects(value, @"hello");
 }
 
-//- (void)testSaveCheckPoint {
-////  NSError* error = nil;
-////  ORTCheckpoint* checkpoint = [ORTCheckpoint loadCheckpointFromPath:[self getCheckpointPath] error:&error];
-////  XCTAssertNotNil(checkpoint);
-////  NSString* path = [self createTempDirectory];
-////  BOOL result = [checkpoint saveCheckpointToPath:path withOptimizerState:NO error:&error];
-////  [self deleteTempDirectory:path];
-////  ORTAssertBoolResultSuccessful(result, error);
-//}
-
 - (void)tearDown {
   _ortEnv = nil;
 
