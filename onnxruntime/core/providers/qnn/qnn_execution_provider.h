@@ -66,7 +66,6 @@ class QNNExecutionProvider : public IExecutionProvider {
   qnn::HtpPerformanceMode htp_performance_mode_ = qnn::HtpPerformanceMode::kHtpDefault;
   std::unique_ptr<qnn::QnnBackendManager> qnn_backend_manager_;
   std::unordered_map<std::string, std::unique_ptr<qnn::QnnModel>> qnn_models_;
-  AllocatorPtr cpu_allocator_;
   uint32_t rpc_control_latency_ = 0;
   bool context_cache_enabled_ = false;
   std::string context_cache_path_ = "";

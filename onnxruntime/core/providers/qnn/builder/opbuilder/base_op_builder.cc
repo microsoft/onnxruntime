@@ -258,11 +258,11 @@ Status BaseOpBuilder::ProcessOutputs(QnnModelWrapper& qnn_model_wrapper,
 Status BaseOpBuilder::TransposeInitializer(const QnnModelWrapper& qnn_model_wrapper,
                                            const onnx::TensorProto& initializer,
                                            const std::vector<size_t>& perm,
-                                           const AllocatorPtr& cpu_allocator,
                                            std::vector<uint8_t>& transposed_data) const {
   const DataTypeImpl* tensor_dtype = DataTypeImpl::TensorTypeFromONNXEnum(initializer.data_type())->GetElementType();
   const auto tensor_shape_dims = onnxruntime::utils::GetTensorShapeFromTensorProto(initializer);
   TensorShape tensor_shape{tensor_shape_dims};
+  AllocatorPtr cpu_allocator = std::make_shared<CPUAllocator>();
   Tensor in_tensor = Tensor(tensor_dtype, tensor_shape, cpu_allocator);
 
   auto rank = perm.size();
