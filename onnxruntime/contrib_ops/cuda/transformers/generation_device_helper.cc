@@ -432,7 +432,9 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
   BufferUniquePtr sequences_buffer;
   int current_sequence_length = sequences->GetSequenceLength();
   bool run_ngram = parameters->no_repeat_ngram_size > 0 && current_sequence_length >= parameters->no_repeat_ngram_size;
-  if (parameters->repetition_penalty != 1.0f || run_ngram) {
+  bool gen_timestamp = parameters->model_type == onnxruntime::contrib::transformers::IGenerationParameters::kModelTypeWhisper &&
+                       parameters->logits_processor == onnxruntime::contrib::transformers::IGenerationParameters::kLogitsProcessorTypeWhisper;
+  if (parameters->repetition_penalty != 1.0f || run_ngram || gen_timestamp) {
     size_t bytes = SafeInt<size_t>(sizeof(int32_t)) * batch_beam_size * parameters->max_length;
     void* data = allocator->Alloc(bytes);
     BufferUniquePtr temp_buffer(data, BufferDeleter(allocator));
@@ -458,8 +460,7 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
       current_sequence_length,
       parameters->repetition_penalty,
       parameters->no_repeat_ngram_size,
-      parameters->model_type == onnxruntime::contrib::transformers::IGenerationParameters::kModelTypeWhisper &&
-          parameters->logits_processor == onnxruntime::contrib::transformers::IGenerationParameters::kLogitsProcessorTypeWhisper,
+      gen_timestamp,
       parameters->eos_token_id,
       cuda_stream);
 
@@ -712,7 +713,9 @@ Status GreedySearchProcessLogits(
   // Copy sequences to device only when repetition penalty or no repeat ngram is used in kernel
   BufferUniquePtr sequences_buffer;
   int current_sequence_length = sequences->GetSequenceLength();
-  if (parameters->repetition_penalty != 1.0f) {
+  bool gen_timestamp = parameters->model_type == onnxruntime::contrib::transformers::IGenerationParameters::kModelTypeWhisper &&
+                       parameters->logits_processor == onnxruntime::contrib::transformers::IGenerationParameters::kLogitsProcessorTypeWhisper;
+  if (parameters->repetition_penalty != 1.0f || gen_timestamp) {
     size_t bytes = SafeInt<size_t>(sizeof(int32_t)) * batch_beam_size * parameters->max_length;
     void* data = allocator->Alloc(bytes);
     BufferUniquePtr temp_buffer(data, BufferDeleter(allocator));
@@ -752,8 +755,7 @@ Status GreedySearchProcessLogits(
       current_sequence_length,
       parameters->repetition_penalty,
       parameters->no_repeat_ngram_size,
-      parameters->model_type == onnxruntime::contrib::transformers::IGenerationParameters::kModelTypeWhisper &&
-          parameters->logits_processor == onnxruntime::contrib::transformers::IGenerationParameters::kLogitsProcessorTypeWhisper,
+      gen_timestamp,
       parameters->eos_token_id,
       cuda_stream);
 

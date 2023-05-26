@@ -80,8 +80,8 @@ __global__ void LogitsProcessKernel(
     int current_sequence_length,
     float repetition_penalty,
     int no_repeat_ngram_size,
-    bool gen_timestamp = false,
-    int eos_token_id = -1) {
+    bool gen_timestamp,
+    int eos_token_id) {
   int index = blockIdx.x * blockDim.x + threadIdx.x;
   if (index < total_elements) {
     int batch_beam_index = index / padded_vocab_size;
@@ -181,7 +181,6 @@ __global__ void LogitsProcessKernel(
             break;
           }
         }
-
         // Suppress notimestamps and solm tokens
         if (word_id == not_token_id_ || word_id == solm_token_id_) {
           next_token_scores[index] = cub::FpLimits<T>::Lowest();
@@ -196,7 +195,7 @@ __global__ void LogitsProcessKernel(
 
         // Timestamps should be in pair except the first one
         const bool last_was_timestamp = current_sequence_length > 0 && current_sequence[current_sequence_length - 1] >= beg_token_id_;
-        const bool penultimate_was_timestamp = current_sequence_length <= sample_begin || current_sequence[current_sequence_length - 2] >= beg_token_id_;
+        const bool penultimate_was_timestamp = current_sequence_length <= sample_begin || (current_sequence_length >= 2 && current_sequence[current_sequence_length - 2] >= beg_token_id_);
         if (last_was_timestamp) {
           if (penultimate_was_timestamp) {
             // If timestamps show up in pair, or it's the first timestamp, no more timestamp is generated
@@ -210,6 +209,61 @@ __global__ void LogitsProcessKernel(
             }
           }
         }
+
+        // Find timestamp tokens
+        bool has_timestamp = false;
+        int timestamp_last = beg_token_id_;
+
+        for (int seq_idx = current_sequence_length - 1; seq_idx >= 0; seq_idx--) {
+          if (current_sequence[seq_idx] >= beg_token_id_) {
+            has_timestamp = true;
+            timestamp_last = current_sequence[seq_idx];
+          }
+        }
+
+        // Timestamps will not decrease
+        if (has_timestamp) {
+          if (!last_was_timestamp || penultimate_was_timestamp) {
+            // For paired timestamp at the end, next timestamp must be greater
+            timestamp_last++;
+          }
+
+          if (word_id >= beg_token_id_ && word_id < timestamp_last) {
+            next_token_scores[index] = std::numeric_limits<T>::lowest();
+          }
+        }
+
+        if (current_sequence_length == sample_begin) {
+          constexpr int max_initial_timestamp_index = 50;
+          const int last_allowed = beg_token_id_ + max_initial_timestamp_index;
+          if (word_id > last_allowed) {
+            next_token_scores[word_id] = std::numeric_limits<T>::lowest();
+          }
+        }
+
+        /*
+        // Caculate logsumexp on timestamps
+        float timestamp_logprob = std::numeric_limits<T>::lowest();
+        {
+          float logsumexp = 0.0f;
+          const float logprob_max = *std::max_element(beam_token_scores.begin() + beg_token_id_, beam_token_scores.end());
+          for (int j = beg_token_id_; j < vocab_size; ++j) {
+            if (beam_token_scores[j] > std::numeric_limits<T>::lowest()) {
+              logsumexp += expf(beam_token_scores[j] - logprob_max);
+            }
+          }
+          if (logsumexp > 0.0f) {
+            timestamp_logprob = logf(logsumexp) + logprob_max;
+          }
+        }
+
+        const float max_text_token_logprob = *std::max_element(beam_token_scores.begin(), beam_token_scores.begin() + beg_token_id_);
+        if (timestamp_logprob > max_text_token_logprob) {
+          for (int j = 0; j < beg_token_id_; ++j) {
+            beam_token_scores[j] = std::numeric_limits<T>::lowest();
+          }
+        }
+        */
       }
     }
   }
@@ -255,7 +309,9 @@ void LaunchLogitsProcessKernel(
       max_sequence_length,
       current_sequence_length,
       repetition_penalty,
-      no_repeat_ngram_size);
+      no_repeat_ngram_size,
+      gen_timestamp,
+      eos_token_id);
 }
 
 // Instantiation
