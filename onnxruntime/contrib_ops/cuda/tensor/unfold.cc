@@ -11,6 +11,7 @@
 using namespace onnxruntime::common;
 
 namespace onnxruntime {
+namespace contrib {
 namespace cuda {
 
 ONNX_OPERATOR_KERNEL_EX(
@@ -44,10 +45,11 @@ Status UnfoldTensor::ComputeInternal(OpKernelContext* ctx) const {
   cudaStream_t stream = this->Stream(ctx);
   const cudaDeviceProp& device_prop = this->GetDeviceProp();
   size_t element_size = input_tensor.DataType()->Size();
-  return onnxruntime::contrib::cuda::LaunchUnfoldTensor(
+  return LaunchUnfoldTensor(
       stream, device_prop, element_size, input_tensor.DataRaw(), output_tensor->MutableDataRaw(),
-      leading_dims, tailing_dims, input_dims[dim], size_, step_);
+      leading_dims, input_dims[dim], tailing_dims, size_, step_);
 }
 
 }  // namespace cuda
+}  // namespace contrib
 }  // namespace onnxruntime
