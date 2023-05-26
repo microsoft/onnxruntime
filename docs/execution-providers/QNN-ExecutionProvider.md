@@ -30,7 +30,7 @@ ONNX Runtime QNN Execution Provider has been built and tested with QNN 2.10.x an
 
 ## Build
 For build instructions, please see the [BUILD page](../build/eps.md#qnn).
-[Prebuilt NuGet package](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.QNN)
+[prebuilt NuGet package](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.QNN)
 
 ## Configuration Options
 The QNN Execution Provider supports a number of configuration options. The `provider_option_keys`, `provider_options_values` enable different options for the application. Each `provider_options_keys` accepts values as shown below:
