@@ -1011,6 +1011,24 @@ TEST(PadOpTest, ConstantPadAxesTest3) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kNnapiExecutionProvider});
 }
 
+TEST(PadOpTest, ConstantPadAxesTest4) {
+  OpTester test("Pad", 18);
+  test.AddAttribute("mode", "constant");
+  test.AddInput<float>("data", {1, 2, 2, 2},
+                       {1.0f, 1.0f,
+                        1.0f, 1.0f,
+                        1.0f, 1.0f,
+                        1.0f, 1.0f});
+  test.AddInput<int64_t>("pads", {8}, {0, 0, 0, 1, 0, 0, 0, 1}, true /* pads_is_initializer */);
+  test.AddInput<float>("value", {1}, {0.0f}, true /* value_is_initializer */);
+  test.AddOutput<float>("output", {1, 2, 2, 4},
+                        {0.0f, 1.0f, 1.0f, 0.0f,
+                         0.0f, 1.0f, 1.0f, 0.0f,
+                         0.0f, 1.0f, 1.0f, 0.0f,
+                         0.0f, 1.0f, 1.0f, 0.0f});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kNnapiExecutionProvider});
+}
+
 TEST(PadOpTest, ConstantPadAxesOutOfOrder) {
   // Specified out of order axes values
   OpTester test("Pad", 18);

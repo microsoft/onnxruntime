@@ -438,7 +438,6 @@ if __name__ == "__main__":
     group.add_argument("--scale", type=float, default=None, help="default to 1.0/sqrt(head_size)")
     group.add_argument(
         "--qkv_format",
-        type=lambda name: getattr(ke.qkv_format, name),
         default="Q_K_V_BNSH",
         choices=[
             "Q_K_V_BNSH",  # non-packed, permuted
@@ -462,6 +461,6 @@ if __name__ == "__main__":
             args.biased,
             args.mask_dim,
             args.scale,
-            args.qkv_format,
+            getattr(ke.qkv_format, args.qkv_format),
             sort=args.sort,
         )

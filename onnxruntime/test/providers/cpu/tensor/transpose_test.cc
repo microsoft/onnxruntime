@@ -755,6 +755,32 @@ TEST(TransposeOpTest, Transpose3DImpl) {
   }
 }
 
+static void TestTransposeMLFloat16(
+    const std::vector<int64_t>& perm,
+    const std::vector<int64_t>& x_dims,
+    const std::vector<int64_t>& y_dims,
+    double error_tolerance = 1e-4) {
+  CompareOpTester test{"Transpose"};
+
+  RandomValueGenerator random{};
+  const auto X_data = random.Uniform<float>(x_dims, -10.0, 10.0);
+  std::vector<MLFloat16> X_data_f16 = FloatsToMLFloat16s(X_data);
+  const auto Y_data = FillZeros<float>(y_dims);
+  std::vector<MLFloat16> Y_data_f16 = FloatsToMLFloat16s(Y_data);
+
+  test.AddAttribute("perm", perm);
+  test.AddInput("X", x_dims, X_data_f16);
+  test.AddOutput("Y", y_dims, Y_data_f16);
+
+  test.CompareWithCPU(kGpuExecutionProvider, error_tolerance);
+}
+
+TEST(TransposeOpTest, TransposeBigMLFloat16) {  // Exercises CanUse_cublasTransposeHelper_MLFloat16 (cuda 65535 grid dimension limit)
+  const std::vector<int64_t> X_dims{1, 1449, 1449, 3};
+  const std::vector<int64_t> perm{0, 3, 1, 2};
+  const std::vector<int64_t> Y_dims{1, 1449, 1449, 3};
+  TestTransposeMLFloat16(perm, X_dims, Y_dims);
+}
 #endif
 
 }  // namespace test

@@ -149,7 +149,7 @@ AllocatorPtr CUDAExecutionProvider::CreateCudaAllocator(OrtDevice::DeviceId devi
         device_id,
         true,
         {default_memory_arena_cfg ? *default_memory_arena_cfg
-                                  : OrtArenaCfg(gpu_mem_limit, static_cast<int>(arena_extend_strategy), -1, -1, -1)},
+                                  : OrtArenaCfg(gpu_mem_limit, static_cast<int>(arena_extend_strategy), -1, -1, -1, -1L)},
         // make it stream aware
         true,
         // enable cross stream sharing?
