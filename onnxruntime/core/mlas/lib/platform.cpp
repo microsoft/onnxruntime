@@ -435,6 +435,7 @@ Return Value:
 #if defined(MLAS_TARGET_ARM64)
 
     this->GemmU8X8Dispatch = &MlasGemmU8X8DispatchNeon;
+    this->GemmS8S8Dispatch = &MlasGemmU8X8DispatchNeon;
     this->SymmQgemmDispatch = &MlasSymmQgemmS8DispatchNeon;
     this->ConvSymU8S8Dispatch = &MlasConvSymU8DispatchNeon;
     this->ConvSymS8S8Dispatch = &MlasConvSymS8DispatchNeon;
@@ -455,6 +456,7 @@ Return Value:
 
     if (HasDotProductInstructions) {
         this->GemmU8X8Dispatch = &MlasGemmU8X8DispatchUdot;
+        this->GemmS8S8Dispatch = &MlasGemmS8S8DispatchSdot;
         this->SymmQgemmDispatch = &MlasSymmQgemmS8DispatchSdot;
         this->ConvSymU8S8Dispatch = &MlasConvSymU8DispatchDot;
         this->ConvSymS8S8Dispatch = &MlasConvSymS8DispatchDot;
