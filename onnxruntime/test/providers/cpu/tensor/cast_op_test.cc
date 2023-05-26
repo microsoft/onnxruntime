@@ -32,7 +32,7 @@ int GetMinRequiredCudaComputeCapability<BFloat16>() {
   return 800;
 }
 
-#if !defined(DISABLE_FLOAT8_TYPE)
+#if !defined(DISABLE_FLOAT8_TYPES)
 
 template <>
 int GetMinRequiredCudaComputeCapability<Float8E4M3FN>() {
