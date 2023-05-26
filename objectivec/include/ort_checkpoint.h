@@ -47,7 +47,7 @@ NS_ASSUME_NONNULL_BEGIN
  * Adds a int property to this checkpoint.
  *
  * @param name The name of the property.
- * @param value The value of the property.
+ * @param intValue The value of the property.
  * @param error Optional error information set if an error occurs.
  * @return Whether the property was added successfully.
  */
@@ -59,7 +59,7 @@ NS_ASSUME_NONNULL_BEGIN
  * Adds a float property to this checkpoint.
  *
  * @param name The name of the property.
- * @param value The value of the property.
+ * @param floatValue The value of the property.
  * @param error Optional error information set if an error occurs.
  * @return Whether the property was added successfully.
  */
@@ -71,7 +71,7 @@ NS_ASSUME_NONNULL_BEGIN
  * Adds a string property to this checkpoint.
  *
  * @param name The name of the property.
- * @param value The value of the property.
+ * @param stringValue The value of the property.
  * @param error Optional error information set if an error occurs.
  * @return Whether the property was added successfully.
  */
