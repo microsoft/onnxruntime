@@ -64,10 +64,12 @@ cudaDataType_t ToCudaDataType(int32_t element_type) {
       return CUDA_R_16F;
     case ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16:
       return CUDA_R_16BF;
+#if !defined(DISABLE_FLOAT8_TYPES)
     case ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E4M3FN:
       return CUDA_R_8F_E4M3;
     case ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E5M2:
       return CUDA_R_8F_E5M2;
+#endif
     default:
       ORT_THROW("Unexpected element_type=", element_type, ".");
   }
@@ -81,9 +83,11 @@ int32_t TypeSize(int32_t element_type) {
     case ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16:
     case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16:
       return 2;
+#if !defined(DISABLE_FLOAT8_TYPES)
     case ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E4M3FN:
     case ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E5M2:
       return 1;
+#endif
     default:
       ORT_THROW("Unexpected element_type=", element_type, ".");
   }
