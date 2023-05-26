@@ -56,10 +56,21 @@ BasicBackend::BasicBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
         exe_network_ = global_context_.ie_core.LoadNetwork(ie_cnn_network_, remote_context_, subgraph_context_.subgraph_name);
         LOGS_DEFAULT(INFO) << log_tag << "Loaded model to the plugin";
       } else {
+#if defined(OPENVINO_2023_0)
+        if (subgraph_context.precision != InferenceEngine::Precision::FP16) {
+          const std::string model = model_proto.SerializeAsString();
+          exe_network_ = global_context_.ie_core.LoadNetwork(model, hw_target, device_config, subgraph_context_.subgraph_name);
+          LOGS_DEFAULT(INFO) << log_tag << "Loaded model to the plugin";
+        } else {
+          ie_cnn_network_ = CreateOVModel(model_proto, global_context_, subgraph_context_, const_outputs_map_);
+          exe_network_ = global_context_.ie_core.LoadNetwork(ie_cnn_network_, hw_target, device_config, subgraph_context_.subgraph_name);
+          LOGS_DEFAULT(INFO) << log_tag << "Loaded model to the plugin";
+        }
+#else
         ie_cnn_network_ = CreateOVModel(model_proto, global_context_, subgraph_context_, const_outputs_map_);
         exe_network_ = global_context_.ie_core.LoadNetwork(ie_cnn_network_, hw_target, device_config, subgraph_context_.subgraph_name);
         LOGS_DEFAULT(INFO) << log_tag << "Loaded model to the plugin";
-      }
+#endif
 #else
 #if defined(OPENVINO_2023_0)
       if (subgraph_context.precision != InferenceEngine::Precision::FP16 && global_context_.enable_dynamic_shapes == false) {
