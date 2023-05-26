@@ -6,7 +6,7 @@ import {conv, parseConvAttributes} from './ops/conv';
 import {gemm, parseGemmAttributes} from './ops/gemm';
 import {matMul} from './ops/matmul';
 import * as pool from './ops/pool';
-import {parseReduceAttributes, reduceMax, reduceMean, reduceMin, reduceProd, reduceSum, reduceLogSum, reduceSumSquare} from './ops/reduce';
+import {parseReduceAttributes, reduceLogSum, reduceMax, reduceMean, reduceMin, reduceProd, reduceSum, reduceSumSquare} from './ops/reduce';
 import {parseTransposeAttributes, transpose} from './ops/transpose';
 import * as unaryOps from './ops/unary-op';
 import {ComputeContext} from './types';
