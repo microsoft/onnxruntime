@@ -61,67 +61,66 @@ std::vector<std::vector<NodeIndex>> IdenticalChildrenConsolidation::DivideIdenti
 }
 
 std::string IdenticalChildrenConsolidation::IdentityBuilder(const Graph& graph, const Node& node) {
-  std::stringstream identity;
+  std::ostringstream identity;
   for (const auto* input_def : node.InputDefs()) {
     if (input_def->Exists() && !input_def->Name().empty()) {
       auto name = input_def->Name();
       if (graph_utils::NodeArgIsConstant(graph, *input_def)) {
         if (optimizer_utils::IsScalar(*input_def)) {
           const auto* data = graph_utils::GetConstantInitializer(graph, name);
-          identity<<(constant_prefix);
+          identity << (constant_prefix);
           Initializer value{*data, graph.ModelPath()};
           switch (static_cast<TensorProto::DataType>(data->data_type())) {
             case TensorProto::DataType::TensorProto_DataType_INT8:
-              identity<<(std::to_string(value.data<int8_t>()[0]));
+              identity << (std::to_string(value.data<int8_t>()[0]));
               break;
             case TensorProto::DataType::TensorProto_DataType_INT16:
-              identity<<(std::to_string(value.data<int16_t>()[0]));
+              identity << (std::to_string(value.data<int16_t>()[0]));
               break;
             case TensorProto::DataType::TensorProto_DataType_INT32:
-              identity<<(std::to_string(value.data<int32_t>()[0]));
+              identity << (std::to_string(value.data<int32_t>()[0]));
               break;
             case TensorProto::DataType::TensorProto_DataType_UINT8:
-              identity<<(std::to_string(value.data<uint8_t>()[0]));
+              identity << (std::to_string(value.data<uint8_t>()[0]));
               break;
             case TensorProto::DataType::TensorProto_DataType_UINT16:
-              identity<<(std::to_string(value.data<uint16_t>()[0]));
+              identity << (std::to_string(value.data<uint16_t>()[0]));
               break;
             case TensorProto::DataType::TensorProto_DataType_BOOL:
-              identity<<(std::to_string(value.data<bool>()[0]));
+              identity << (std::to_string(value.data<bool>()[0]));
               break;
             case TensorProto::DataType::TensorProto_DataType_INT64:
-              identity<<(std::to_string(value.data<int64_t>()[0]));
+              identity << (std::to_string(value.data<int64_t>()[0]));
               break;
             case TensorProto::DataType::TensorProto_DataType_UINT32:
-              identity<<(std::to_string(value.data<uint32_t>()[0]));
+              identity << (std::to_string(value.data<uint32_t>()[0]));
               break;
             case TensorProto::DataType::TensorProto_DataType_UINT64:
-              identity<<(std::to_string(value.data<uint64_t>()[0]));
+              identity << (std::to_string(value.data<uint64_t>()[0]));
               break;
             case TensorProto::DataType::TensorProto_DataType_FLOAT:
-              identity<<(std::to_string(value.data<float>()[0]));
+              identity << (std::to_string(value.data<float>()[0]));
               break;
             case TensorProto::DataType::TensorProto_DataType_DOUBLE:
-              identity<<(std::to_string(value.data<double>()[0]));
+              identity << (std::to_string(value.data<double>()[0]));
               break;
             case TensorProto::DataType::TensorProto_DataType_STRING:
-              identity<<(value.data<std::string>()[0]);
+              identity << (value.data<std::string>()[0]);
               break;
             default:
               break;
           }
         } else {
           // TODO: handle non-scalar constant inputs, using checksum or something else
-          return std::string {ignore_identity};
-
+          return std::string{ignore_identity};
         }
       } else {
-        identity<<(name);
+        identity << (name);
       }
     } else {
-      return std::string {ignore_identity};
+      return std::string{ignore_identity};
     }
-    identity<<("####");
+    identity << ("####");
   }
 
   return identity.str();
