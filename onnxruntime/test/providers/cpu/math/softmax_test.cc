@@ -122,8 +122,6 @@ TEST(SoftmaxOperator, LargeNumber) {
   std::vector<int64_t> dimensions = {2, 4};
 
   RunTest(x_vals, expected_vals, dimensions);
-
-  // test 4D
 }
 
 // np.random.seed(123)   # Use a seed so we can replicate the input and expected values here and in python
