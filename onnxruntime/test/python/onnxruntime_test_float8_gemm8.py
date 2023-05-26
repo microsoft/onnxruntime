@@ -3,6 +3,7 @@
 # pylint: disable=C0116,W0212,R1720,C0103,C0114
 
 import unittest
+from itertools import product
 
 import numpy as np
 from numpy.testing import assert_allclose
@@ -168,10 +169,10 @@ class TestFloat8Gemm8(unittest.TestCase):
                                smCount, alpha=1.0, beta=0.0, transA=1, transB=0):
         proto_type = getattr(TensorProto, float_name)
 
-        a = make_tensor_value_info("A", TensorProto.FLOAT, [None, None])
-        b = make_tensor_value_info("B", TensorProto.FLOAT, [None, None])
-        c = None if not add_bias else make_tensor_value_info("C", TensorProto.FLOAT, [None, None])
-        d = make_tensor_value_info("D", TensorProto.FLOAT, [None, None])
+        a = make_tensor_value_info("A", TensorProto.FLOAT, [3, 3])
+        b = make_tensor_value_info("B", TensorProto.FLOAT, [3, 3])
+        c = None if not add_bias else make_tensor_value_info("C", TensorProto.FLOAT, [3, 3])
+        d = make_tensor_value_info("D", TensorProto.FLOAT, [3, 3])
 
         nodes = [
             make_node("Cast", ["A"], ["Af"], to=proto_type),
@@ -199,6 +200,18 @@ class TestFloat8Gemm8(unittest.TestCase):
         beta = [0.0, 1.0]
         computeType = ["CUBLAS_COMPUTE_16F", "CUBLAS_COMPUTE_32F", "CUBLAS_COMPUTE_32F_FAST_16F", "CUBLAS_COMPUTE_32F_FAST_16BF", "CUBLAS_COMPUTE_32F_FAST_TF32"]
         fastAccumulationMode = [0, 1]
+        smCount=[0]
+
+        inps = [np.arange(9).reshape(3,3).astype(np.float32) for t in range(5)]
+        feeds = ...
+
+
+        for t1, t2, t3, t4, t5, b, ct, fa,sm in product(types, types, types, types, types, beta, computeType, fastAccumulationMode, smCount):
+            onx = self.get_model_gemm_options([t1, t2, t3, t4, t5], beta=b, computeType=ct, fastAccumulationMode=fa, smCount=sm)
+            s = onx.SerializeToString()
+            try:
+                sess = InferenceSession(s, providers=["CPUExecutionProvider"])
+            except 
 
 
 if __name__ == "__main__":
