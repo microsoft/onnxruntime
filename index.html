@@ -16,14 +16,21 @@
 	<meta http-equiv="X-UA-Compatible" content="IE=edge" />
 	<title>ONNX Runtime | Home</title>
 	<link rel="icon" href="./images/ONNXRuntime-Favicon.png" type="image/gif" sizes="16x16" />
+	<!-- Imports -->
+	<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/4.6.2/css/bootstrap.min.css"
+		integrity="sha512-rt/SrQ4UNIaGfDyEXZtNcyWvQeOq0QLygHluFQcSjaGB04IxWhal71tKuzP6K8eYXYB6vJV4pHkXcmFGGQ1/0w=="
+		crossorigin="anonymous" referrerpolicy="no-referrer" />
+	<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"
+		integrity="sha512-iecdLmaskl7CVkqkXNQ/ZH/XLlvWZOJyj7Yy7tcenmpD1ypASozpmT/E0iPtmFIB46ZmdtAc9eNBvH0H/ZpiBw=="
+		crossorigin="anonymous" referrerpolicy="no-referrer" />
+	<link rel="stylesheet"
+		href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/atom-one-light.min.css"
+		integrity="sha512-o5v54Kh5PH0dgnf9ei0L+vMRsbm5fvIvnR/XkrZZjN4mqdaeH7PW66tumBoQVIaKNVrLCZiBEfHzRY4JJSMK/Q=="
+		crossorigin="anonymous" referrerpolicy="no-referrer" />
+	<!-- Local Files -->
 	<link rel="stylesheet" href="css/fonts.css" />
-
-	<link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css" />
-	<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.3.0/css/all.min.css" />
 	<link rel="stylesheet" href="css/custom.css?v1.6" />
 	<link rel="stylesheet" href="css/responsive.css?v1.6" />
-	<!-- Syntax highlighting -->
-	<link rel="stylesheet" href="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/styles/atom-one-light.min.css" />
 </head>
 
 <body>
@@ -559,7 +566,7 @@ Console.WriteLine(outputs[0].AsTensor<float>()[0]);</code>
 								aria-hidden="true">
 								<div class="row ml-0">
 									<div class="col">
-										
+
 										<div class="row r-wrap mb-1 mb-md-0 mr-0">
 											<div class="col-md-3 r-heading">
 												<h3 id="ot_selectScenario">Scenario</h3>
@@ -571,8 +578,8 @@ Console.WriteLine(outputs[0].AsTensor<float>()[0]);</code>
 												id="ot_listbox-4" aria-labelledby="ot_selectScenario"
 												aria-describedby="ot_decriptionScenario">
 												<div class="row ot_scenario">
-													<div class="col r-option version" role="option"
-														tabindex="0" aria-selected="true" id="ot_large_model">
+													<div class="col r-option version" role="option" tabindex="0"
+														aria-selected="true" id="ot_large_model">
 														<span><abbr>Large Model Training</abbr></span>
 													</div>
 													<div class="col r-option version" role="option" tabindex="-1"
@@ -658,8 +665,8 @@ Console.WriteLine(outputs[0].AsTensor<float>()[0]);</code>
 												id="ot_listbox-4" aria-labelledby="ot_selectHardwareAcceleration"
 												aria-describedby="ot_decriptionHardwareAcceleration">
 												<div class="row ot_hardwareAcceleration">
-													<div class="col r-option version" role="option"
-														tabindex="0" aria-selected="true" id="ot_CUDA">
+													<div class="col r-option version" role="option" tabindex="0"
+														aria-selected="true" id="ot_CUDA">
 														<span><abbr>CUDA</abbr></span>
 													</div>
 													<div class="col r-option version" role="option" tabindex="-1"
@@ -1020,18 +1027,26 @@ Console.WriteLine(outputs[0].AsTensor<float>()[0]);</code>
 		<span class="fa fa-angle-up p-1"></span>
 	</a>
 
-	<script src="https://www.w3schools.com/lib/w3.js"></script>
-	<script>
-		w3.includeHTML();
-	</script>
-	<script src="https://code.jquery.com/jquery-3.4.1.min.js"></script>
-	<script src="https://maxcdn.bootstrapcdn.com/bootstrap/4.3.1/js/bootstrap.min.js"></script>
-	<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/highlight.min.js"></script>
-	<script>
-		hljs.highlightAll();
-	</script>
-	<script src="./js/custom.js?v1.6"></script>
-	<script src="./js/script.js?v1.6"></script>
+
 </body>
+<!-- Imports -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.7.0/jquery.min.js"
+	integrity="sha512-3gJwYpMe3QewGELv8k/BX9vcqhryRdzRMxVfq6ngyWXwo03GFEzjsUm8Q7RZcHPHksttq7/GFoxjCVUjkjvPdw=="
+	crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/4.6.2/js/bootstrap.min.js"
+	integrity="sha512-7rusk8kGPFynZWu26OKbTeI+QPoYchtxsmPeBqkHIEXJxeun4yJ4ISYe7C6sz9wdxeE1Gk3VxsIWgCZTc+vX3g=="
+	crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/highlight.min.js"
+	integrity="sha512-rdhY3cbXURo13l/WU9VlaRyaIYeJ/KBakckXIvJNAQde8DgpOmE+eZf7ha4vdqVjTtwQt69bD2wH2LXob/LB7Q=="
+	crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+<!-- Local Files -->
+<script src="./js/w3.js"></script>
+<script src="./js/custom.js?v1.6"></script>
+<script src="./js/script.js?v1.6"></script>
+
+<script>
+	w3.includeHTML();
+	hljs.highlightAll();
+</script>
 
 </html>
