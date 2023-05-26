@@ -97,6 +97,9 @@ struct BeamSearchCpuState : IBeamSearchCpuState {
       topk_tokens = AllocateBuffer<int32_t>(allocator, topk_tokens_buffer_, 2 * static_cast<size_t>(batch_beam_size_));
       topk_indices = AllocateBuffer<int32_t>(allocator, topk_indices_buffer_, 2 * static_cast<size_t>(batch_beam_size_));
       final_beam_scores = AllocateBuffer<float>(allocator, final_beam_scores_buffer_, batch_beam_size_);
+
+      size_t next_token_size = SafeInt<size_t>(batch_beam_size_) * parameters.vocab_size;
+      next_token_scores = AllocateBuffer<float>(allocator, next_token_scores_buffer_, next_token_size);
     }
   }
 
@@ -130,6 +133,7 @@ struct BeamSearchCpuState : IBeamSearchCpuState {
   BufferUniquePtr topk_tokens_buffer_;
   BufferUniquePtr topk_indices_buffer_;
   BufferUniquePtr sequences_space_buffer_;
+  BufferUniquePtr next_token_scores_buffer_;
 };
 
 // Base class of beam search implementation that is common for GPT-2, T5, and Whisper.
