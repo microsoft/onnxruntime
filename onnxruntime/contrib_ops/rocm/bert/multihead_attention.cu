@@ -63,7 +63,7 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
               "bias, key_padding_mask and attention cache is not supported");
 
   auto& device_prop = GetDeviceProp();
-  AttentionParameters attn;
+  RocmAttentionParameters attn;
   ORT_RETURN_IF_ERROR(
       multihead_attention_helper::CheckInputs<Tensor>(
           query, key, value, bias,
@@ -71,7 +71,7 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
           past_key, past_value, /*past_seq_len=*/nullptr,
           &attn,
           num_heads_, mask_filter_value_, scale_,
-          false, device_prop.maxThreadsPerBlock));
+          false, false, device_prop.maxThreadsPerBlock));
   // TODO: support more qkv formats
   ORT_ENFORCE(attn.qkv_format == Q_KV_BSNH_BSN2H || attn.qkv_format == QKV_BSN3H, "Got ", attn.qkv_format);
 
@@ -95,6 +95,13 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
   // TODO: Add support for attention cache
   ORT_ENFORCE(present_key == nullptr && present_value == nullptr, "attention cache is not supported");
 
+  ORT_RETURN_IF_ERROR(ClassifyAttentionMode(
+      Node().OpType(), &attn,
+      /*qkv=*/{query, key, value},
+      /*past=*/{past_key, past_value},
+      /*present=*/{present_key, present_value}));
+
+
   using HipT = typename ToHipType<T>::MappedType;
   using AttentionTunableOp = GemmSoftmaxGemmPermuteTunableOp<HipT>;
   auto workspace_bytes = AttentionTunableOp::GetWorkspaceNumBytes(&attn);
@@ -107,7 +114,7 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
   params.attention = &attn;
   params.device_prop = &device_prop;
   params.scale = scale_ == 0 ? 1.0f / sqrt(attn.head_size) : scale_;
-  std::tie(params.q_buffer, params.k_buffer, params.v_buffer) = GetQkvBuffers<HipT>(
+  std::tie(params.q_buffer, params.k_buffer, params.v_buffer) = ConvertToOffsetedBufferViews<HipT>(
       &attn,
       query->DataRaw(),
       key == nullptr ? nullptr : key->DataRaw(),

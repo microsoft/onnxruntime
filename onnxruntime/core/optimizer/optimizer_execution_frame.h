@@ -26,14 +26,12 @@ class OptimizerExecutionFrame final : public IExecutionFrame {
          const InitializedTensorSet& initialized_tensor_set,
          const Path& model_path,
          const IExecutionProvider& execution_provider,
-         const std::function<bool(const std::string&)>& is_sparse_initializer_func,
-         std::map<OrtDevice, AllocatorPtr>& allocators);
+         const std::function<bool(const std::string&)>& is_sparse_initializer_func);
     Info(const std::vector<const Node*>& nodes,
          const std::unordered_map<std::string, OrtValue>& initialized_tensor_set,
          const Path& model_path,
          const IExecutionProvider& execution_provider,
-         const std::function<bool(const std::string&)>& is_sparse_initializer_func,
-         std::map<OrtDevice, AllocatorPtr>& allocators);
+         const std::function<bool(const std::string&)>& is_sparse_initializer_func);
     ~Info() = default;
 
     const AllocatorPtr& GetAllocator() const {
@@ -66,7 +64,6 @@ class OptimizerExecutionFrame final : public IExecutionFrame {
     }
 
    private:
-    const OrtMemType mem_type_{OrtMemTypeDefault};
     AllocatorPtr allocator_ptr_;
     DataTransferManager data_transfer_mgr_;
     // MLValues for optimizer

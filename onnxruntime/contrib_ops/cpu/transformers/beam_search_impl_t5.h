@@ -11,7 +11,6 @@
 
 namespace onnxruntime {
 namespace contrib {
-
 namespace transformers {
 
 // Beam search implementation for T5 model.
@@ -99,7 +98,9 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
   auto status = Status::OK();
 
   const BeamSearchParameters* parameters = this->parameters_;
-  ORT_ENFORCE(parameters->sequence_length == 1);
+  if (parameters->model_type == IGenerationParameters::kModelTypeT5) {
+    ORT_ENFORCE(parameters->sequence_length == 1);
+  }
 
   // Allocate output tensors.
   int64_t sequences_dims[] = {parameters->batch_size, parameters->num_return_sequences, parameters->max_length};
@@ -136,6 +137,7 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
                                this->IsCuda()};
 
   IAllocatorUniquePtr<char> buffer;
+
   OrtValue decoder_input_ids;  // Tensor in CPU, and it will be used to initialize sequence in cpu_state
   ORT_RETURN_IF_ERROR(this->encoder_subgraph_.CreateInitialFeeds(
       encoder_input_ids,
@@ -252,6 +254,11 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
 
     if (decoder_subgraph_.has_decoder_masked_attention_) {
       size_t offset = static_cast<size_t>(decoder_subgraph_.GetFirstPastInputIndex());
+      // Need to check cross attention's past key tensor size, suppose all layers cross attention key size are same
+      auto first_cross_attention_key = decoder_feeds[offset + 2 * static_cast<size_t>(decoder_subgraph_.num_layers)].GetMutable<Tensor>();
+      auto cross_attention_past_key_sz = first_cross_attention_key->Shape().Size();
+      beam_state.EnsurePastStateReorderStagingBuffer(this->temp_space_allocator_, cross_attention_past_key_sz);
+
       // Here we only need to reorder the past key for self-attention and cross-attention.
       for (size_t i = 0; i < 2 * static_cast<size_t>(decoder_subgraph_.num_layers); ++i) {
         ORT_RETURN_IF_ERROR(reorder_past_state_func_(cuda_device_prop_,

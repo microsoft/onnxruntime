@@ -197,3 +197,18 @@ static const char* const kOrtSessionOptionsConfigIntraOpThreadAffinities = "sess
 //   3) after the L1 transformers are applied to the updated graph.
 // The model will be saved to filename post_layout_transform_step_<step_number>.onnx.
 static const char* const kDebugLayoutTransformation = "session.debug_layout_transformation";
+
+// Graph nodes that are not supported by the execution providers (EPs) explicitly added to the session are
+// assigned (i.e., "fallback") to the CPU EP by default.
+//
+// This option allows the user to disable the fallback of unsupported graph nodes to the CPU EP.
+// If this option is set to "1", session creation will fail if the execution providers other than the CPU EP cannot
+// fully support all of the nodes in the graph.
+//
+// It is invalid to set this option and explicitly add the CPU EP to the session. In this case, session creation
+// will also fail with an error.
+//
+// Option values:
+// - "0": CPU EP fallback is not disabled. [DEFAULT]
+// - "1": CPU EP fallback is disabled.
+static const char* const kOrtSessionOptionsDisableCPUEPFallback = "session.disable_cpu_ep_fallback";

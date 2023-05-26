@@ -188,6 +188,8 @@ namespace Dml
         m_readbackHeap = std::make_unique<ReadbackHeap>(m_d3d12Device.Get(), m_context);
 
         CreateDmlKernelRegistry(&m_kernelRegistry, &m_internalRegInfoMap);
+
+        m_lastUploadFlushTime = std::chrono::steady_clock::now();
     }
 
     std::vector<onnxruntime::AllocatorPtr> ExecutionProviderImpl::CreatePreferredAllocators() {
@@ -446,6 +448,7 @@ namespace Dml
             const auto dstState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS; // GPU resources are always kept in UAV state
 
             m_uploadHeap->BeginUploadToGpu(dstData, dstOffset, dstState, AsByteSpan(srcData, dataSizeInBytes));
+            FlushUploadsIfReady();
         }
         else if (!src->IsCpuData() && dst->IsCpuData())
         {
@@ -565,10 +568,21 @@ namespace Dml
         assert(!m_closed);
 
         m_uploadHeap->BeginUploadToGpu(dstData, 0, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, AsByteSpan(srcData, static_cast<size_t>(srcDataSize)));
+        FlushUploadsIfReady();
 
         return S_OK;
         }
         ORT_CATCH_RETURN
+    }
+
+    void ExecutionProviderImpl::FlushUploadsIfReady() const
+    {
+        // Periodically flush uploads to make sure the GPU is not idle for too long
+        if (std::chrono::steady_clock::now() - m_lastUploadFlushTime > m_batchFlushInterval)
+        {
+            Flush();
+            m_lastUploadFlushTime = std::chrono::steady_clock::now();
+        }
     }
 
     uint32_t ExecutionProviderImpl::GetSupportedDeviceDataTypeMask() const

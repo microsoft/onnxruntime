@@ -1314,7 +1314,7 @@ class TestInferenceSession(unittest.TestCase):
         # Create and register an arena based allocator
 
         # To create an OrtArenaCfg using non-default parameters, use one of below templates:
-        # ort_arena_cfg = onnxrt.OrtArenaCfg(0, -1, -1, -1) - Note: doesn't expose initial_growth_chunk_size_bytes option
+        # ort_arena_cfg = onnxrt.OrtArenaCfg(0, -1, -1, -1) - Note: doesn't expose initial_growth_chunk_size_bytes/max_power_of_two_extend_bytes option
         # ort_arena_cfg = onnxrt.OrtArenaCfg({"max_mem": -1, ""arena_extend_strategy": 1, etc..})
         ort_memory_info = onnxrt.OrtMemoryInfo(
             "Cpu",
@@ -1482,6 +1482,8 @@ class TestInferenceSession(unittest.TestCase):
                     self.assertEqual(allocator.max_dead_bytes_per_chunk, val)
                 elif key == "initial_growth_chunk_size_bytes":
                     self.assertEqual(allocator.initial_growth_chunk_size_bytes, val)
+                elif key == "max_power_of_two_extend_bytes":
+                    self.assertEqual(allocator.max_power_of_two_extend_bytes, val)
                 else:
                     raise ValueError("Invalid OrtArenaCfg option: " + key)
 
@@ -1502,6 +1504,18 @@ class TestInferenceSession(unittest.TestCase):
             "initial_chunk_size_bytes": 8,
             "max_dead_bytes_per_chunk": 4,
             "initial_growth_chunk_size_bytes": 2,
+        }
+        ort_arena_cfg_kvp = onnxrt.OrtArenaCfg(expected_kvp_allocator)
+        verify_allocator(ort_arena_cfg_kvp, expected_kvp_allocator)
+
+        # Verify key-value pair initialization
+        expected_kvp_allocator = {
+            "max_mem": 32,
+            "arena_extend_strategy": 11,
+            "initial_chunk_size_bytes": 18,
+            "max_dead_bytes_per_chunk": 14,
+            "initial_growth_chunk_size_bytes": 12,
+            "max_power_of_two_extend_bytes": 17,
         }
         ort_arena_cfg_kvp = onnxrt.OrtArenaCfg(expected_kvp_allocator)
         verify_allocator(ort_arena_cfg_kvp, expected_kvp_allocator)

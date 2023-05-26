@@ -74,7 +74,7 @@ class _LoggingOptions:
             raise TypeError(f"Expected log_level of type LogLevel, got {type(log_level)}.")
 
     @property
-    def log_level(self):
+    def log_level(self) -> LogLevel:
         return self._log_level
 
 

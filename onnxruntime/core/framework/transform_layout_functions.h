@@ -22,6 +22,6 @@ using DebugGraphFn = std::function<void(const Graph&)>;
 // It is optionally provided to graph partitioning by InferenceSession (core/session),
 // and used in layout transformation (core/optimizers/transpose_optimizer)
 using TransformLayoutFunction = std::function<Status(Graph& graph, bool& modified, IExecutionProvider& current_ep,
-                                                     AllocatorPtr allocator, const DebugGraphFn& debug_graph_fn)>;
+                                                     const DebugGraphFn& debug_graph_fn)>;
 }  // namespace layout_transformer
 }  // namespace onnxruntime

@@ -552,9 +552,8 @@ TEST_F(GraphTransformationTests, ConstantFolding) {
   std::unique_ptr<CPUExecutionProvider> e =
       std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
-  std::map<OrtDevice, AllocatorPtr> allocators{{OrtDevice(), e->CreatePreferredAllocators()[0]}};
   ASSERT_STATUS_OK(graph_transformation_mgr.Register(
-      std::make_unique<ConstantFolding>(*e.get(), false /*skip_dequantize_linear*/, allocators), TransformerLevel::Level1));
+      std::make_unique<ConstantFolding>(*e.get(), false /*skip_dequantize_linear*/), TransformerLevel::Level1));
 
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
 
@@ -572,9 +571,8 @@ TEST_F(GraphTransformationTests, ConstantFoldingNodesOnDifferentEP) {
   std::unique_ptr<CPUExecutionProvider> e =
       std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
-  std::map<OrtDevice, AllocatorPtr> allocators{{OrtDevice(), e->CreatePreferredAllocators()[0]}};
   ASSERT_STATUS_OK(graph_transformation_mgr.Register(
-      std::make_unique<ConstantFolding>(*e.get(), false /*skip_dequantize_linear*/, allocators), TransformerLevel::Level1));
+      std::make_unique<ConstantFolding>(*e.get(), false /*skip_dequantize_linear*/), TransformerLevel::Level1));
 
   // assign all nodes to CUDA. the constant folding should override this to perform the constant folding on cpu
   for (auto& node : graph.Nodes()) {
@@ -655,9 +653,8 @@ TEST_F(GraphTransformationTests, ConstantFoldingSubgraph) {
   std::unique_ptr<CPUExecutionProvider> e =
       std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
-  std::map<OrtDevice, AllocatorPtr> allocators{{OrtDevice(), e->CreatePreferredAllocators()[0]}};
   ASSERT_STATUS_OK(graph_transformation_mgr.Register(
-      std::make_unique<ConstantFolding>(*e.get(), false /*skip_dequantize_linear*/, allocators), TransformerLevel::Level1));
+      std::make_unique<ConstantFolding>(*e.get(), false /*skip_dequantize_linear*/), TransformerLevel::Level1));
 
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
 
@@ -682,11 +679,9 @@ TEST_F(GraphTransformationTests, ConstantFoldingWithShapeToInitializer) {
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
   std::unique_ptr<CPUExecutionProvider> e =
       std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
-  std::map<OrtDevice, AllocatorPtr> allocators{{OrtDevice(), e->CreatePreferredAllocators()[0]}};
   ASSERT_STATUS_OK(graph_transformation_mgr.Register(
       std::make_unique<ConstantFolding>(*e.get(),
                                         false /*skip_dequantize_linear*/,
-                                        allocators,
                                         compatible_eps,
                                         excluded_initializers),
       TransformerLevel::Level1));
@@ -713,11 +708,9 @@ TEST_F(GraphTransformationTests, ConstantFoldingWithScalarShapeToInitializer) {
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
   std::unique_ptr<CPUExecutionProvider> e =
       std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
-  std::map<OrtDevice, AllocatorPtr> allocators{{OrtDevice(), e->CreatePreferredAllocators()[0]}};
   ASSERT_STATUS_OK(graph_transformation_mgr.Register(
       std::make_unique<ConstantFolding>(*e.get(),
                                         false /*skip_dequantize_linear*/,
-                                        allocators,
                                         compatible_eps),
       TransformerLevel::Level1));
 
@@ -744,11 +737,9 @@ TEST_F(GraphTransformationTests, ConstantFoldingForOpsWithMissingOptionalInputs)
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
   std::unique_ptr<CPUExecutionProvider> e =
       std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
-  std::map<OrtDevice, AllocatorPtr> allocators{{OrtDevice(), e->CreatePreferredAllocators()[0]}};
   ASSERT_STATUS_OK(graph_transformation_mgr.Register(
       std::make_unique<ConstantFolding>(*e.get(),
                                         false /*skip_dequantize_linear*/,
-                                        allocators,
                                         compatible_eps),
       TransformerLevel::Level1));
 
@@ -769,8 +760,7 @@ static void VerifyConstantFoldingWithDequantizeLinear(const std::unordered_map<s
 
   bool has_constant_folding = false;
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
-  std::map<OrtDevice, AllocatorPtr> allocators{{OrtDevice(), e->CreatePreferredAllocators()[0]}};
-  auto transformers = optimizer_utils::GenerateTransformers(TransformerLevel::Level1, session_options, *e.get(), allocators, {});
+  auto transformers = optimizer_utils::GenerateTransformers(TransformerLevel::Level1, session_options, *e.get(), {});
   for (auto& transformer : transformers) {
     if (transformer->Name() == "ConstantFolding") {
       ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::move(transformer), TransformerLevel::Level1));
@@ -878,9 +868,8 @@ TEST_F(GraphTransformationTests, ConstantFolding_RemoveDanglingInputNodesToConst
   std::unique_ptr<CPUExecutionProvider> e =
       std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
-  std::map<OrtDevice, AllocatorPtr> allocators{{OrtDevice(), e->CreatePreferredAllocators()[0]}};
   ASSERT_STATUS_OK(graph_transformation_mgr.Register(
-      std::make_unique<ConstantFolding>(*e.get(), false /*skip_dequantize_linear*/, allocators), TransformerLevel::Level1));
+      std::make_unique<ConstantFolding>(*e.get(), false /*skip_dequantize_linear*/), TransformerLevel::Level1));
 
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
 
@@ -901,9 +890,8 @@ TEST_F(GraphTransformationTests, ConstantFoldingAShapeNodeDeepInTheGraph) {
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
   std::unique_ptr<CPUExecutionProvider> e =
       std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
-  std::map<OrtDevice, AllocatorPtr> allocators{{OrtDevice(), e->CreatePreferredAllocators()[0]}};
   ASSERT_STATUS_OK(graph_transformation_mgr.Register(
-      std::make_unique<ConstantFolding>(*e.get(), false /*skip_dequantize_linear*/, allocators), TransformerLevel::Level1));
+      std::make_unique<ConstantFolding>(*e.get(), false /*skip_dequantize_linear*/), TransformerLevel::Level1));
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
 
   op_to_count = CountOpsInGraph(graph);
@@ -3644,8 +3632,7 @@ static void VerifyGeluApproximation(bool is_enabled, SessionOptions& session_opt
       std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
 
   bool has_gelu_approximation = false;
-  std::map<OrtDevice, AllocatorPtr> allocators;
-  auto transformers = optimizer_utils::GenerateTransformers(TransformerLevel::Level2, session_options, *e.get(), allocators, {});
+  auto transformers = optimizer_utils::GenerateTransformers(TransformerLevel::Level2, session_options, *e.get(), {});
   for (auto& transformer : transformers) {
     if (transformer->Name() == "GeluApproximation") {
       has_gelu_approximation = true;
@@ -3660,8 +3647,7 @@ TEST_F(GraphTransformationTests, DoubleQDQRemover_SessionOptionConfig) {
   auto verify_session_config = [&](bool is_enabled, SessionOptions& session_option) {
     std::unique_ptr<CPUExecutionProvider> cpu_ep = std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
     bool has_double_qdq_remover = false;
-    std::map<OrtDevice, AllocatorPtr> allocators;
-    auto transformers = optimizer_utils::GenerateTransformers(TransformerLevel::Level1, session_option, *cpu_ep.get(), allocators, {});
+    auto transformers = optimizer_utils::GenerateTransformers(TransformerLevel::Level1, session_option, *cpu_ep.get(), {});
     for (auto& transformer : transformers) {
       if (transformer->Name() == "DoubleQDQPairsRemover") {
         has_double_qdq_remover = true;

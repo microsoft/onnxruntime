@@ -76,6 +76,7 @@ stages:
     runTests: false
     buildJava: false
     buildNodejs: false
+    ort_build_pool_name: onnxruntime-Win-CPU-2019
 
 - template: win-ci.yml
   parameters:
@@ -354,7 +355,7 @@ stages:
 
 - template: ../nuget/templates/test_win.yml
   parameters:
-    AgentPool : 'Win-CPU-2021'
+    AgentPool : 'onnxruntime-Win-CPU-2022'
     Skipx86Tests : false
     NugetPackageName : 'Microsoft.ML.OnnxRuntime.Training'
     ArtifactSuffix: 'Training-CPU'

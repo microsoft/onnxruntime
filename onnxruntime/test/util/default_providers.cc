@@ -224,7 +224,7 @@ std::unique_ptr<IExecutionProvider> DefaultQnnExecutionProvider() {
   backend_path = "./QnnCpu.dll";
 #endif
   provider_options_map["backend_path"] = backend_path;
-  return QNNProviderFactoryCreator::Create(provider_options_map)->CreateProvider();
+  return QNNProviderFactoryCreator::Create(provider_options_map, nullptr)->CreateProvider();
 #else
   return nullptr;
 #endif
@@ -232,7 +232,7 @@ std::unique_ptr<IExecutionProvider> DefaultQnnExecutionProvider() {
 
 std::unique_ptr<IExecutionProvider> QnnExecutionProviderWithOptions(const ProviderOptions& options) {
 #ifdef USE_QNN
-  return QNNProviderFactoryCreator::Create(options)->CreateProvider();
+  return QNNProviderFactoryCreator::Create(options, nullptr)->CreateProvider();
 #else
   ORT_UNUSED_PARAMETER(options);
   return nullptr;

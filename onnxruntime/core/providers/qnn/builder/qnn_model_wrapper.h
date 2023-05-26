@@ -33,7 +33,8 @@ class QnnModelWrapper {
         backend_handle_(backend_handle),
         input_index_map_(input_index_map),
         output_index_map_(output_index_map),
-        initializer_lookup_(initializer_lookup) {}
+        initializer_lookup_(initializer_lookup) {
+  }
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(QnnModelWrapper);
 
   ~QnnModelWrapper() = default;

@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+import {Env} from 'onnxruntime-common';
+
 import {OrtWasmModule} from '../binding/ort-wasm';
 import {getTensorElementSize} from '../wasm-common';
 
@@ -93,11 +95,15 @@ class ComputeContextImpl implements ComputeContext {
   }
 }
 
-export const init = async(module: OrtWasmModule): Promise<void> => {
+export const init = async(module: OrtWasmModule, env: Env): Promise<void> => {
   const init = module.jsepInit;
   if (init && navigator.gpu) {
+    if (!env.wasm.simd) {
+      throw new Error(
+          'Not supported for WebGPU=ON and SIMD=OFF. Please set `env.wasm.simd` to true when using WebGPU EP');
+    }
     const backend = new WebGpuBackend();
-    await backend.initialize();
+    await backend.initialize(env);
 
     init(
         // backend

@@ -1446,6 +1446,7 @@ std::vector<AllocatorPtr> CANNExecutionProvider::CreatePreferredAllocators() {
                                                     static_cast<int>(info_.arena_extend_strategy),
                                                     -1,
                                                     -1,
+                                                    -1,
                                                     -1)},
       true,
       false);

@@ -10,7 +10,6 @@
 #include "core/common/inlined_containers.h"
 #include "core/framework/session_options.h"
 #include "core/optimizer/graph_transformer.h"
-#include "core/framework/allocator.h"
 
 #if !defined(ORT_MINIMAL_BUILD)
 #include "core/optimizer/rule_based_graph_transformer.h"
@@ -50,7 +49,6 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
     TransformerLevel level,
     const SessionOptions& session_options,
     const IExecutionProvider& execution_provider /*required by constant folding*/,
-    std::map<OrtDevice, AllocatorPtr>& allocators,
     const InlinedHashSet<std::string>& rules_and_transformers_to_disable = {});
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
@@ -80,7 +78,6 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformersForMinimalB
     const SessionOptions& session_options,
     const SatApplyContextVariant& apply_context,
     const IExecutionProvider& cpu_execution_provider,
-    const AllocatorPtr& cpu_allocator,
     const InlinedHashSet<std::string>& rules_and_transformers_to_disable = {});
 
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)

@@ -101,6 +101,8 @@ jobs:
   # To view the UTs disabled from this CI - see https://github.com/microsoft/onnxruntime/pull/11945 for examples
 
   - script: |-
+      # Do not output ##vso[] commands with `set -x` or they may be parsed again and include a trailing quote.
+      set +x
       echo "Tests will run using HIP_VISIBLES_DEVICES=$HIP_VISIBLE_DEVICES"
       video_gid=$(getent group | awk '/video/ {split($0,a,":"); print(a[3])}')
       echo "Found video_gid=$video_gid; attempting to set as pipeline variable"

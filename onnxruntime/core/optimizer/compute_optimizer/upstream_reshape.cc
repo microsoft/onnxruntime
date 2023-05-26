@@ -264,6 +264,11 @@ std::optional<ReshapeInfo> UpStreamReshapeGraphTransformer::IsSupportedForUpstre
     return std::nullopt;
   }
 
+  // If the first dim of Reshape output don't have dim_value or dim_param, we can't do the optimization.
+  if (!(reshape_out_shape->dim(0).has_dim_value() || reshape_out_shape->dim(0).has_dim_param())) {
+    return std::nullopt;
+  }
+
   return ReshapeInfo(graph, &node, true);
 }
 

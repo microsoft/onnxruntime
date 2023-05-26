@@ -282,9 +282,8 @@ TEST(CseTests, MergeConstants) {
   std::unique_ptr<CPUExecutionProvider> e = std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
   ASSERT_TRUE(
       graph_transformation_mgr.Register(std::make_unique<CommonSubexpressionElimination>(), TransformerLevel::Level1).IsOK());
-  std::map<OrtDevice, AllocatorPtr> allocators{{OrtDevice(), e->CreatePreferredAllocators()[0]}};
   ASSERT_TRUE(
-      graph_transformation_mgr.Register(std::make_unique<ConstantFolding>(*e.get(), false /*skip_dequantize_linear*/, allocators), TransformerLevel::Level1).IsOK());
+      graph_transformation_mgr.Register(std::make_unique<ConstantFolding>(*e.get(), false /*skip_dequantize_linear*/), TransformerLevel::Level1).IsOK());
   ASSERT_TRUE(
       graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, DefaultLoggingManager().DefaultLogger()).IsOK());
 

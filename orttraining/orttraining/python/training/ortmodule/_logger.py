@@ -4,10 +4,12 @@
 # --------------------------------------------------------------------------
 
 import io
+import logging
 import sys
 import warnings
 from contextlib import contextmanager
 from enum import IntEnum
+from typing import Dict, List
 
 from onnxruntime.capi._pybind_state import Severity
 
@@ -57,11 +59,18 @@ def suppress_os_stream_output(suppress_stdout=True, suppress_stderr=True, log_le
             )
 
 
-def ortmodule_loglevel_to_onnxruntime_c_loglevel(loglevel):
-    return {
-        LogLevel.VERBOSE: Severity.VERBOSE,
-        LogLevel.INFO: Severity.INFO,
-        LogLevel.WARNING: Severity.WARNING,
-        LogLevel.ERROR: Severity.ERROR,
-        LogLevel.FATAL: Severity.FATAL,
-    }.get(loglevel, Severity.WARNING)
+ORTMODULE_LOG_LEVEL_MAP: Dict[LogLevel, List[int]] = {
+    LogLevel.VERBOSE: [Severity.VERBOSE, logging.DEBUG],
+    LogLevel.INFO: [Severity.INFO, logging.INFO],
+    LogLevel.WARNING: [Severity.WARNING, logging.WARNING],
+    LogLevel.ERROR: [Severity.ERROR, logging.ERROR],
+    LogLevel.FATAL: [Severity.FATAL, logging.FATAL],
+}
+
+
+def ortmodule_loglevel_to_onnxruntime_c_loglevel(loglevel: LogLevel) -> int:
+    return ORTMODULE_LOG_LEVEL_MAP.get(loglevel, [Severity.WARNING, logging.WARNING])[0]
+
+
+def ortmodule_loglevel_to_python_loglevel(loglevel: LogLevel) -> int:
+    return ORTMODULE_LOG_LEVEL_MAP.get(loglevel, [Severity.WARNING, logging.WARNING])[1]
