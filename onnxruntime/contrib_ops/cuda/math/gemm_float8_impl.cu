@@ -155,25 +155,40 @@ onnxruntime::Status GemmFloat8_Impl::CudaCompute(
   cudaDataType_t a_type = ToCudaDataType(dtypes[0]);
   cudaDataType_t b_type = ToCudaDataType(dtypes[1]);
   cudaDataType_t c_type = ToCudaDataType(dtypes[2]);
+  cudaDataType_t d_type = ToCudaDataType(dtypes[4]);
   cudaDataType_t bias_type;
-  bool gemm_float8;
+  // bool gemm_float8;
   if (a_type == CUDA_R_8F_E4M3 || b_type == CUDA_R_8F_E4M3 || a_type == CUDA_R_8F_E5M2 || b_type == CUDA_R_8F_E5M2) {
     bias_type = c_type == CUDA_R_16F ? CUDA_R_16F : CUDA_R_16BF;
-    gemm_float8 = true;
+    // gemm_float8 = true;
   }
   else {
     bias_type = c_type;
-    gemm_float8 = false;
+    // gemm_float8 = false;
   }
   CUBLAS_RETURN_IF_ERROR(cublasLtMatrixLayoutCreate(&Adesc, a_type, trans_A_ ? M : K, trans_A_ ? K : M, lda));
   CUBLAS_RETURN_IF_ERROR(cublasLtMatrixLayoutCreate(&Bdesc, b_type, trans_B_ ? K : N, trans_B_ ? N : K, ldb));
   CUBLAS_RETURN_IF_ERROR(cublasLtMatrixLayoutCreate(&Cdesc, c_type, M, N, ldd));
-  CUBLAS_RETURN_IF_ERROR(cublasLtMatrixLayoutCreate(&Ddesc, ToCudaDataType(dtypes[4]), M, N, ldd));
+  CUBLAS_RETURN_IF_ERROR(cublasLtMatrixLayoutCreate(&Ddesc, d_type, M, N, ldd));
 
   CUBLAS_RETURN_IF_ERROR(cublasLtMatrixLayoutSetAttribute(Adesc, CUBLASLT_MATRIX_LAYOUT_ORDER, &matrixOrder, sizeof(matrixOrder)));
   CUBLAS_RETURN_IF_ERROR(cublasLtMatrixLayoutSetAttribute(Bdesc, CUBLASLT_MATRIX_LAYOUT_ORDER, &matrixOrder, sizeof(matrixOrder)));
   CUBLAS_RETURN_IF_ERROR(cublasLtMatrixLayoutSetAttribute(Cdesc, CUBLASLT_MATRIX_LAYOUT_ORDER, &matrixOrder, sizeof(matrixOrder)));
   CUBLAS_RETURN_IF_ERROR(cublasLtMatrixLayoutSetAttribute(Ddesc, CUBLASLT_MATRIX_LAYOUT_ORDER, &matrixOrder, sizeof(matrixOrder)));
+
+  /*
+  float scale_value = 1;
+  if (gemm_float8) {
+    CUBLAS_RETURN_IF_ERROR(cublasLtMatmulDescSetAttribute(operationDesc,
+                                                          CUBLASLT_MATMUL_DESC_A_SCALE_POINTER,
+                                                          &scale_value,
+                                                          sizeof(scale_value)));
+    CUBLAS_RETURN_IF_ERROR(cublasLtMatmulDescSetAttribute(operationDesc,
+                                                          CUBLASLT_MATMUL_DESC_B_SCALE_POINTER,
+                                                          &scale_value,
+                                                          sizeof(scale_value)));    
+  }
+  */
 
   // CUDA_R_32F is the scale type for the time being since it is not used.
   // https://docs.nvidia.com/cuda/cublas/index.html?highlight=cublasLtMatmulDescCreate#cublasltmatmuldesccreate
@@ -184,9 +199,22 @@ onnxruntime::Status GemmFloat8_Impl::CudaCompute(
   cublasLtMatmulDescSetAttribute(operationDesc, CUBLASLT_MATMUL_DESC_TRANSB, &transb, sizeof(transb));
   const int8_t ifast_accumulation_mode = fast_accumulation_mode_ ? 0 : 1;
   cublasLtMatmulDescSetAttribute(operationDesc, CUBLASLT_MATMUL_DESC_FAST_ACCUM, &ifast_accumulation_mode, sizeof(ifast_accumulation_mode));
-  if (gemm_float8) {
+  if (has_C) {
     cublasLtMatmulDescSetAttribute(operationDesc, CUBLASLT_MATMUL_DESC_BIAS_DATA_TYPE, &bias_type, sizeof(bias_type));
   }
+
+  /*
+  if (d_type == CUDA_R_8F_E4M3 || d_type == CUDA_R_8F_E5M2) {
+      CUBLAS_RETURN_IF_ERROR(cublasLtMatmulDescSetAttribute(operationDesc,
+                                                            CUBLASLT_MATMUL_DESC_D_SCALE_POINTER,
+                                                            &scale_value,
+                                                            sizeof(scale_value)));
+      CUBLAS_RETURN_IF_ERROR(cublasLtMatmulDescSetAttribute(operationDesc,
+                                                            CUBLASLT_MATMUL_DESC_AMAX_D_POINTER,
+                                                            &scale_value,
+                                                            sizeof(scale_value)));
+  }
+  */
 
   /*
   // TODO add inputs for the scales.
@@ -222,8 +250,9 @@ onnxruntime::Status GemmFloat8_Impl::CudaCompute(
   // See https://docs.nvidia.com/cuda/cublas/index.html?highlight=cublasLtMatmulPreferenceAttributes_t#cublasltmatmulpreferenceattributes-t
   // The workspace should be allocated once from OpKernelContext assuming
   // only one cuda function is running at a time (which is not necessarily true with H100).
-  size_t type_size = std::max(std::max(TypeSize(dtypes[0]), TypeSize(dtypes[1])), std::max(std::max(TypeSize(dtypes[2]), TypeSize(dtypes[3])), TypeSize(dtypes[4])));
-  size_t workspaceSize = (std::min((size_t)(1 << 24), (size_t)std::max(K * M, K * N) * type_size) + 16) % 16;  // suggested fixed value 24Mb
+  // size_t type_size = std::max(std::max(TypeSize(dtypes[0]), TypeSize(dtypes[1])), std::max(std::max(TypeSize(dtypes[2]), TypeSize(dtypes[3])), TypeSize(dtypes[4])));
+  size_t workspaceSize = 0; // std::max((size_t)1 << 20, (std::min((size_t)(1 << 24), (size_t)std::max(K * M, K * N) * type_size) + 16));  // suggested fixed value 24Mb
+  // workspaceSize -= workspaceSize % 16;
   cublasLtMatmulPreferenceSetAttribute(preference, CUBLASLT_MATMUL_PREF_MAX_WORKSPACE_BYTES, &workspaceSize, sizeof(workspaceSize));
 
   // https://docs.nvidia.com/cuda/cublas/index.html?highlight=cublasLtMatmulAlgoGetHeuristic#cublasltmatmulalgogetheuristic
@@ -234,6 +263,7 @@ onnxruntime::Status GemmFloat8_Impl::CudaCompute(
   ORT_ENFORCE(returnedResults > 0 && cuda_status == CUBLAS_STATUS_SUCCESS,
               "Unable to find any suitable algorithm due to ", cublasGetErrorEnum(cuda_status),
               ", preference=", preference, ", returnedResults=", returnedResults,
+              ", alpha=", alpha_, ", beta=", beta_,
               ", A_type=", CudaDataTypeToString(ToCudaDataType(dtypes[0])),
               ", B_type=", CudaDataTypeToString(ToCudaDataType(dtypes[1])),
               ", C_type=", CudaDataTypeToString(ToCudaDataType(dtypes[2])),
@@ -249,7 +279,9 @@ onnxruntime::Status GemmFloat8_Impl::CudaCompute(
               ", workspaceSize=", workspaceSize, ". Check NVDIDIA documentation to see what combination is valid: ",
               "https://docs.nvidia.com/cuda/cublas/index.html?highlight=cublasLtMatmulAlgoGetHeuristic#cublasltmatmulalgogetheuristic.");
   void* workspace = nullptr;
-  CUDA_CALL_THROW(cudaMalloc((void**)&workspace, workspaceSize));
+  if (workspaceSize > 0) {
+    CUDA_CALL_THROW(cudaMalloc((void**)&workspace, workspaceSize));
+  }
   // https://docs.nvidia.com/cuda/cublas/index.html?highlight=cublasLtMatmul#cublasltmatmul
   cublasLtMatmul(handle,
                  operationDesc,
@@ -267,7 +299,9 @@ onnxruntime::Status GemmFloat8_Impl::CudaCompute(
                  workspace,             /* workspace */
                  workspaceSize,
                  stream); /* stream */
-  cudaFree(workspace);
+  if (workspaceSize > 0) {
+    cudaFree(workspace);
+  }
 
   cublasLtMatmulPreferenceDestroy(preference);
   cublasLtMatrixLayoutDestroy(Ddesc);

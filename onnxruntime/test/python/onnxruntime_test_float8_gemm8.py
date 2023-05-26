@@ -56,9 +56,9 @@ class TestFloat8Gemm8(unittest.TestCase):
         beta=0.0,
         transA=1,
         transB=0,
-        sm_count=0,
+        smCount=0,
         fastAccumulationMode=1,
-        compute_type="CUBLAS_COMPUTE_16F",
+        compute_type="CUBLAS_COMPUTE_32F",
         add_bias=False,
     ):
         proto_type = [getattr(TensorProto, float_name) for float_name in float_types]
@@ -82,7 +82,7 @@ class TestFloat8Gemm8(unittest.TestCase):
                 domain="com.microsoft",
                 transA=transA,
                 transB=transB,
-                smCount=sm_count,
+                smCount=smCount,
                 fastAccumulationMode=fastAccumulationMode,
                 alpha=alpha,
                 beta=beta,
@@ -99,7 +99,7 @@ class TestFloat8Gemm8(unittest.TestCase):
         check_model(onnx_model)
         return onnx_model
 
-    def common_test_model_gemm(self, float_type, compute_type="CUBLAS_COMPUTE_16F", mul=1, atol=0, rtol=0):
+    def common_test_model_gemm(self, float_type, mul=1, atol=0, rtol=0, **kwargs):
         a = np.arange(9).reshape((3, 3)).astype(np.float32)
         b = (2 ** np.arange(9).reshape((3, 3)) * mul).astype(np.float32)
         expected = a.T @ b
@@ -108,6 +108,8 @@ class TestFloat8Gemm8(unittest.TestCase):
         onnx_model = self.get_model_gemm("FLOAT")
         if float_type == "FLOAT8E4M3FN":
             float_types = ["FLOAT8E4M3FN", "FLOAT8E4M3FN", "FLOAT16", "FLOAT", "FLOAT8E4M3FN"]
+        elif float_type == "FLOAT8E4M3FN2":
+            float_types = ["FLOAT8E4M3FN", "FLOAT8E4M3FN", "BFLOAT16", "FLOAT", "FLOAT8E4M3FN"]
         elif float_type == "FLOAT8E5M2":
             float_types = ["FLOAT8E5M2", "FLOAT8E4M3FN", "FLOAT16", "FLOAT", "FLOAT8E4M3FN"]
         elif float_type == "FLOAT16":
@@ -128,7 +130,7 @@ class TestFloat8Gemm8(unittest.TestCase):
             self.assertEqual(expected.shape, y.shape)
             self.assertEqual(expected.dtype, y.dtype)
 
-        onnx_model_f8 = self.get_model_gemm_float8(float_types, compute_type=compute_type)
+        onnx_model_f8 = self.get_model_gemm_float8(float_types, **kwargs)
         ref8 = self.InferenceSession(
             onnx_model_f8.SerializeToString(), providers=["CUDAExecutionProvider", "CPUExecutionProvider"]
         )
@@ -139,25 +141,28 @@ class TestFloat8Gemm8(unittest.TestCase):
             self.assertEqual(expected.dtype, y.dtype)
 
     def test_model_gemm_float(self):
-        self.common_test_model_gemm("FLOAT", "CUBLAS_COMPUTE_32F")
+        self.common_test_model_gemm("FLOAT", compute_type="CUBLAS_COMPUTE_32F")
 
     def test_model_gemm_float16(self):
-        self.common_test_model_gemm("FLOAT16", "CUBLAS_COMPUTE_16F")
+        self.common_test_model_gemm("FLOAT16", compute_type="CUBLAS_COMPUTE_16F")
 
     def test_model_gemm_float16_ct32(self):
-        self.common_test_model_gemm("FLOAT16", "CUBLAS_COMPUTE_32F")
+        self.common_test_model_gemm("FLOAT16", compute_type="CUBLAS_COMPUTE_32F")
 
     def test_model_gemm_bfloat16_ct32(self):
-        self.common_test_model_gemm("BFLOAT16", "CUBLAS_COMPUTE_32F", mul=2**(-10), atol=1e-2)
+        self.common_test_model_gemm("BFLOAT16", compute_type="CUBLAS_COMPUTE_32F", mul=2**(-10), atol=1e-2)
 
     def test_model_gemm_float_ct16(self):
-        self.common_test_model_gemm("FLOAT", "CUBLAS_COMPUTE_32F_FAST_16F")
+        self.common_test_model_gemm("FLOAT", compute_type="CUBLAS_COMPUTE_32F_FAST_16F")
 
     def test_model_gemm_e4m3(self):
-        self.common_test_model_gemm("FLOAT8E4M3FN", "CUBLAS_COMPUTE_32F")
+        self.common_test_model_gemm("FLOAT8E4M3FN", compute_type="CUBLAS_COMPUTE_32F", fastAccumulationMode=0)
+
+    def test_model_gemm_e4m3_b(self):
+        self.common_test_model_gemm("FLOAT8E4M3FN2", compute_type="CUBLAS_COMPUTE_32F")
 
     def test_model_gemm_e5m2(self):
-        self.common_test_model_gemm("FLOAT8E5M2", "CUBLAS_COMPUTE_32F")
+        self.common_test_model_gemm("FLOAT8E5M2", compute_type="CUBLAS_COMPUTE_32F")
 
 
 if __name__ == "__main__":
