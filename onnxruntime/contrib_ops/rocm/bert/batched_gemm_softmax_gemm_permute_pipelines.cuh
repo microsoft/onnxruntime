@@ -358,6 +358,7 @@ struct GemmSoftmaxGemmPermuteParams : onnxruntime::rocm::tunable::OpParams {
         "_Hv", attention->v_head_size,
         bias_buffer != nullptr ? "_B" : "_NB",
         "_M", mask_index_dims.size(),
+        "_QKV", attention->qkv_format,
         "_MODE", attention->mode);
   }
 
