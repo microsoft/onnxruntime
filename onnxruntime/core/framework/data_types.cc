@@ -714,20 +714,20 @@ ORT_REGISTER_SEQ(VectorMapInt64ToFloat);
 
 #else
 
-#define ORT_REGISTER_OPTIONAL_ORT_TYPE(ORT_TYPE)        \
-  ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, int32_t);        \
-  ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, float);          \
-  ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, bool);           \
-  ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, std::string);    \
-  ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, int8_t);         \
-  ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, uint8_t);        \
-  ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, uint16_t);       \
-  ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, int16_t);        \
-  ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, int64_t);        \
-  ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, double);         \
-  ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, uint32_t);       \
-  ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, uint64_t);       \
-  ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, MLFloat16);      \
+#define ORT_REGISTER_OPTIONAL_ORT_TYPE(ORT_TYPE)     \
+  ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, int32_t);     \
+  ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, float);       \
+  ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, bool);        \
+  ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, std::string); \
+  ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, int8_t);      \
+  ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, uint8_t);     \
+  ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, uint16_t);    \
+  ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, int16_t);     \
+  ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, int64_t);     \
+  ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, double);      \
+  ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, uint32_t);    \
+  ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, uint64_t);    \
+  ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, MLFloat16);   \
   ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, BFloat16);
 
 #endif
@@ -883,20 +883,20 @@ void RegisterAllProtos(const std::function<void(MLDataType)>& reg_fn) {
 
 #else
 
-#define REGISTER_OPTIONAL_PROTO_ORT_TYPE(ORT_TYPE, reg_fn)   \
-  REGISTER_OPTIONAL_PROTO(ORT_TYPE, int32_t, reg_fn);        \
-  REGISTER_OPTIONAL_PROTO(ORT_TYPE, float, reg_fn);          \
-  REGISTER_OPTIONAL_PROTO(ORT_TYPE, bool, reg_fn);           \
-  REGISTER_OPTIONAL_PROTO(ORT_TYPE, std::string, reg_fn);    \
-  REGISTER_OPTIONAL_PROTO(ORT_TYPE, int8_t, reg_fn);         \
-  REGISTER_OPTIONAL_PROTO(ORT_TYPE, uint8_t, reg_fn);        \
-  REGISTER_OPTIONAL_PROTO(ORT_TYPE, uint16_t, reg_fn);       \
-  REGISTER_OPTIONAL_PROTO(ORT_TYPE, int16_t, reg_fn);        \
-  REGISTER_OPTIONAL_PROTO(ORT_TYPE, int64_t, reg_fn);        \
-  REGISTER_OPTIONAL_PROTO(ORT_TYPE, double, reg_fn);         \
-  REGISTER_OPTIONAL_PROTO(ORT_TYPE, uint32_t, reg_fn);       \
-  REGISTER_OPTIONAL_PROTO(ORT_TYPE, uint64_t, reg_fn);       \
-  REGISTER_OPTIONAL_PROTO(ORT_TYPE, MLFloat16, reg_fn);      \
+#define REGISTER_OPTIONAL_PROTO_ORT_TYPE(ORT_TYPE, reg_fn) \
+  REGISTER_OPTIONAL_PROTO(ORT_TYPE, int32_t, reg_fn);      \
+  REGISTER_OPTIONAL_PROTO(ORT_TYPE, float, reg_fn);        \
+  REGISTER_OPTIONAL_PROTO(ORT_TYPE, bool, reg_fn);         \
+  REGISTER_OPTIONAL_PROTO(ORT_TYPE, std::string, reg_fn);  \
+  REGISTER_OPTIONAL_PROTO(ORT_TYPE, int8_t, reg_fn);       \
+  REGISTER_OPTIONAL_PROTO(ORT_TYPE, uint8_t, reg_fn);      \
+  REGISTER_OPTIONAL_PROTO(ORT_TYPE, uint16_t, reg_fn);     \
+  REGISTER_OPTIONAL_PROTO(ORT_TYPE, int16_t, reg_fn);      \
+  REGISTER_OPTIONAL_PROTO(ORT_TYPE, int64_t, reg_fn);      \
+  REGISTER_OPTIONAL_PROTO(ORT_TYPE, double, reg_fn);       \
+  REGISTER_OPTIONAL_PROTO(ORT_TYPE, uint32_t, reg_fn);     \
+  REGISTER_OPTIONAL_PROTO(ORT_TYPE, uint64_t, reg_fn);     \
+  REGISTER_OPTIONAL_PROTO(ORT_TYPE, MLFloat16, reg_fn);    \
   REGISTER_OPTIONAL_PROTO(ORT_TYPE, BFloat16, reg_fn);
 
 #endif
