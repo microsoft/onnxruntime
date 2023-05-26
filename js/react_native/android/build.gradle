@@ -66,6 +66,9 @@ def checkIfOrtExtensionsEnabled() {
 
 boolean ortExtensionsEnabled = checkIfOrtExtensionsEnabled()
 
+def REACT_NATIVE_VERSION = ['node', '--print', "JSON.parse(require('fs').readFileSync(require.resolve('react-native/package.json'), 'utf-8')).version"].execute(null, rootDir).text.trim()
+def REACT_NATIVE_MINOR_VERSION = REACT_NATIVE_VERSION.split("\\.")[1].toInteger()
+
 android {
   compileSdkVersion getExtOrIntegerDefault('compileSdkVersion')
   buildToolsVersion getExtOrDefault('buildToolsVersion')
@@ -78,7 +81,12 @@ android {
     externalNativeBuild {
       cmake {
         cppFlags "-O2 -frtti -fexceptions -Wall -Wno-unused-variable -fstack-protector-all"
-        arguments "-DNODE_MODULES_DIR=${nodeModules}"
+        if (REACT_NATIVE_MINOR_VERSION >= 71) {
+          // fabricjni required c++_shared
+          arguments "-DANDROID_STL=c++_shared", "-DNODE_MODULES_DIR=${nodeModules}", "-DORT_EXTENSIONS_ENABLED=${ortExtensionsEnabled}"
+        } else {
+          arguments "-DNODE_MODULES_DIR=${nodeModules}", "-DORT_EXTENSIONS_ENABLED=${ortExtensionsEnabled}"
+        }
         abiFilters (*reactNativeArchitectures())
       }
     }
@@ -209,8 +217,6 @@ repositories {
     dir 'libs'
   }
 }
-
-def REACT_NATIVE_VERSION = new File(['node', '--print', "JSON.parse(require('fs').readFileSync(require.resolve('react-native/package.json'), 'utf-8')).version"].execute(null, rootDir).text.trim())
 
 dependencies {
   api "com.facebook.react:react-native:" + REACT_NATIVE_VERSION
