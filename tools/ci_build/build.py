@@ -1665,6 +1665,11 @@ def run_android_tests(args, source_dir, build_dir, config, cwd):
 
 
 def run_ios_tests(args, source_dir, config, cwd):
+    simulator_device_name = subprocess.check_output(
+        ["bash", os.path.join(source_dir, "tools", "ci_build", "github", "apple", "get_simulator_device_name.sh")],
+        text=True,
+    )
+
     xc_test_schemes = [
         "onnxruntime_test_all_xc",
     ]
@@ -1687,7 +1692,7 @@ def run_ios_tests(args, source_dir, config, cwd):
                 "-scheme",
                 xc_test_scheme,
                 "-destination",
-                "platform=iOS Simulator,OS=latest,name=iPhone SE (3rd generation)",
+                f"platform=iOS Simulator,OS=latest,name={simulator_device_name}",
             ],
             cwd=cwd,
         )
