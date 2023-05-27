@@ -364,6 +364,7 @@ static NSDictionary *executionModeTable = @{@"sequential" : @(ORT_SEQUENTIAL), @
     delete sessionInfo;
     sessionInfo = nullptr;
   }
+  blobManager = nullptr;
 }
 
 @end
