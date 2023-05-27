@@ -86,11 +86,21 @@ export const binding = Onnxruntime as Binding.InferenceSession;
 OnnxruntimeJSIHelper.install();
 
 declare global {
-  function jsiOnnxruntimeStoreArrayBuffer(buffer: ArrayBuffer): JSIBlob;
-  function jsiOnnxruntimeResolveArrayBuffer(blob: JSIBlob): ArrayBuffer;
+  var jsiOnnxruntimeStoreArrayBuffer: ((buffer: ArrayBuffer) => JSIBlob) | undefined;
+  var jsiOnnxruntimeResolveArrayBuffer: ((blob: JSIBlob) => ArrayBuffer) | undefined;
 }
 
 export const jsiHelper = {
-  storeArrayBuffer: globalThis.jsiOnnxruntimeStoreArrayBuffer,
-  resolveArrayBuffer: globalThis.jsiOnnxruntimeResolveArrayBuffer
+  storeArrayBuffer: globalThis.jsiOnnxruntimeStoreArrayBuffer ||
+    (() => {
+      throw new Error('jsiOnnxruntimeStoreArrayBuffer is not found, please make sure OnnxruntimeJSIHelper installation is successful.');
+    }),
+  resolveArrayBuffer: globalThis.jsiOnnxruntimeResolveArrayBuffer ||
+    (() => {
+      throw new Error('jsiOnnxruntimeResolveArrayBuffer is not found, please make sure OnnxruntimeJSIHelper installation is successful.');
+    }),
 }
+
+// Remove global functions after installation
+delete globalThis.jsiOnnxruntimeStoreArrayBuffer;
+delete globalThis.jsiOnnxruntimeResolveArrayBuffer;
