@@ -245,6 +245,7 @@ public class OnnxruntimeModule extends ReactContextBaseJavaModule implements Lif
     long startTime = System.currentTimeMillis();
     Map<String, OnnxTensor> feed = new HashMap<>();
     Iterator<String> iterator = ortSession.getInputNames().iterator();
+    Result result = null;
     try {
       while (iterator.hasNext()) {
         String inputName = iterator.next();
@@ -282,7 +283,6 @@ public class OnnxruntimeModule extends ReactContextBaseJavaModule implements Lif
       Log.d("Duration", "createInputTensor: " + duration);
 
       startTime = System.currentTimeMillis();
-      Result result = null;
       if (requestedOutputs != null) {
         result = ortSession.run(feed, requestedOutputs, runOptions);
       } else {
@@ -300,6 +300,9 @@ public class OnnxruntimeModule extends ReactContextBaseJavaModule implements Lif
 
     } finally {
       OnnxValue.close(feed);
+      if (result != null) {
+        result.close();
+      }
     }
   }
 
