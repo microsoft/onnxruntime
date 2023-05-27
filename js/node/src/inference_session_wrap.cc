@@ -15,7 +15,7 @@ Ort::Env *InferenceSessionWrap::ortEnv;
 
 Napi::Object InferenceSessionWrap::Init(Napi::Env env, Napi::Object exports) {
 #ifdef _WIN32
-  LoadDirectMLDll();
+  LoadDirectMLDll(env);
 #endif
   // create ONNX runtime env
   Ort::InitApi();

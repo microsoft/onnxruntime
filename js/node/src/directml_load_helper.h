@@ -2,5 +2,5 @@
 // Licensed under the MIT License.
 
 #ifdef _WIN32
-void LoadDirectMLDll();
+void LoadDirectMLDll(Napi::Env env);
 #endif
