@@ -81,6 +81,9 @@ class CANNExecutionProvider : public IExecutionProvider {
     return CANNExecutionProviderInfo::ToProviderOptions(info_);
   }
 
+  static AllocatorPtr CreateCannAllocator(OrtDevice::DeviceId device_id, size_t npu_mem_limit,
+                                          ArenaExtendStrategy arena_extend_strategy,
+                                          OrtArenaCfg* arena_cfg);
   void RegisterAllocator(AllocatorManager& allocator_manager) override;
 
   void RegisterStreamHandlers(IStreamCommandHandleRegistry& stream_handle_registry) const override;

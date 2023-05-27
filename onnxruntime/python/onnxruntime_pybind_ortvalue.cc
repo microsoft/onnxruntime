@@ -69,6 +69,19 @@ void addOrtValueMethods(pybind11::module& m) {
           "Can't allocate memory on the CUDA device using this package of OnnxRuntime. "
           "Please use the CUDA package of OnnxRuntime to use this feature.");
 #endif
+        } else if (device.Type() == OrtDevice::NPU) {
+#ifdef USE_CANN
+          if (!IsCannDeviceIdValid(logging::LoggingManager::DefaultLogger(), device.Id())) {
+            throw std::runtime_error("The provided device id doesn't match any available NPUs on the machine.");
+          }
+
+          CreateGenericMLValue(nullptr, GetCannAllocator(device.Id()), "", array_on_cpu, ml_value.get(),
+                               true, false, CpuToCannMemCpy);
+#else
+      throw std::runtime_error(
+          "Can't allocate memory on the CANN device using this package of OnnxRuntime. "
+          "Please use the CANN package of OnnxRuntime to use this feature.");
+#endif
         } else {
           throw std::runtime_error("Unsupported device: Cannot place the OrtValue on this device");
         }
@@ -276,6 +289,8 @@ void addOrtValueMethods(pybind11::module& m) {
         GetPyObjFromTensor(ml_value->Get<Tensor>(), obj, nullptr, GetCudaToHostMemCpyFunction());
 #elif USE_ROCM
   GetPyObjFromTensor(ml_value->Get<Tensor>(), obj, nullptr, GetRocmToHostMemCpyFunction());
+#elif USE_CANN
+  GetPyObjFromTensor(ml_value->Get<Tensor>(), obj, nullptr, GetCannToHostMemCpyFunction());
 #else
   GetPyObjFromTensor(ml_value->Get<Tensor>(), obj, nullptr, nullptr);
 #endif

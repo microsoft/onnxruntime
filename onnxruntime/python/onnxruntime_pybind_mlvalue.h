@@ -74,6 +74,20 @@ std::unique_ptr<IDataTransfer> GetGPUDataTransfer();
 
 #endif
 
+#ifdef USE_CANN
+
+void CpuToCannMemCpy(void* dst, const void* src, size_t num_bytes);
+
+void CannToCpuMemCpy(void* dst, const void* src, size_t num_bytes);
+
+const std::unordered_map<OrtDevice::DeviceType, MemCpyFunc>* GetCannToHostMemCpyFunction();
+
+bool IsCannDeviceIdValid(const onnxruntime::logging::Logger& logger, int id);
+
+AllocatorPtr GetCannAllocator(OrtDevice::DeviceId id);
+
+#endif
+
 #ifdef USE_ROCM
 
 bool IsRocmDeviceIdValid(const onnxruntime::logging::Logger& logger, int id);
