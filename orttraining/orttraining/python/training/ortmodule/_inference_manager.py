@@ -152,7 +152,7 @@ class InferenceManager(GraphExecutionManager):
                 # Assert that the input and model device match
                 _utils._check_same_device(self._device, "Input argument to forward", *inputs)
 
-            prepared_input_list, _, _ = _io._combine_input_buffers_initializers(
+            prepared_input_list, _, _, _ = _io._combine_input_buffers_initializers(
                 self._graph_initializers,
                 self._graph_info.user_input_names,
                 self._input_info,

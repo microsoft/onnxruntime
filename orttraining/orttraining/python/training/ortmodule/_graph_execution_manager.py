@@ -553,7 +553,7 @@ class GraphExecutionManager(GraphExecutionInterface):
                     inputs, kwargs
                 )
 
-                _, embed_sparsity_results, label_sparsity_results = _io._combine_input_buffers_initializers(
+                _, embed_sparsity_results, label_sparsity_results, _ = _io._combine_input_buffers_initializers(
                     self._graph_initializers,
                     self._graph_builder.get_graph_info().user_input_names,
                     self._input_info,

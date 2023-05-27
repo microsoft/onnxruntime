@@ -401,8 +401,13 @@ struct ShapeAndTypeKeyedStat {
     }
 
     std::ostringstream oss;
+    size_t i = 0;
     for (auto& kv : tensor_representations_str_to_freq_map) {
-      oss << "{" << kv.first << "} X " << kv.second << ", ";
+      // if (i != 0) {
+      //   oss << "\n";
+      // }
+      oss << "{" << kv.first << "} X " << kv.second << ",";
+      i += 1;
     }
 
     return oss.str();
@@ -434,15 +439,15 @@ struct ShapeAndTypeKeyedStat {
     body.clear();
     body.push_back({"Tensor shape and type string representation",
                     "Total count",
-                    "Unreused count",
-                    "Reused count",
+                    "Unreused",
+                    // "Reused count",
                     "Break down by producer-consumer pattern"});
 
     for (size_t i = 0; i < keys_names.size(); ++i) {
       body.push_back({keys_names[i],
                       std::to_string(tensor_representations[i].size()),
                       std::to_string(unreused_resued_counts[i].first),
-                      std::to_string(unreused_resued_counts[i].second),
+                      // std::to_string(unreused_resued_counts[i].second),
                       GroupTensorRepresentation(tensor_representations[i])});
       // oss << std::setw(20) << keys_names[i] << std::setw(10) << tensor_representations[i].size() << std::setw(200);
       // oss << GroupTensorRepresentation(tensor_representations[i]) << "\n";
@@ -483,9 +488,7 @@ Status SymbolizeMemoryPeak(const GraphViewer& graph_viewer,
                                                      node_index_to_its_order_in_topological_sort_map,
                                                      logger));
 
-  //   GraphViewer graph_viewer(graph);
   const auto& node_ids = graph_viewer.GetNodesInTopologicalOrder(onnxruntime::ExecutionOrder::PRIORITY_BASED);
-  // std::unordered_map<std::string, ShapeAndTypeStat> symbol_map;
 
   ShapeAndTypeKeyedStat stked_stat;
   for (int i = 0; i < static_cast<int>(node_ids.size()); ++i) {
@@ -510,40 +513,11 @@ Status SymbolizeMemoryPeak(const GraphViewer& graph_viewer,
 
       std::string shape_and_type_key = tensor_representation.GetShapeAndType().Normalize();
 
-      // const ONNX_NAMESPACE::TensorProto_DataType element_type =
-      //     static_cast<ONNX_NAMESPACE::TensorProto_DataType>(cast_output->TypeAsProto()->tensor_type().elem_type());
-      // auto symbol_tuple = TensorShapeProtoToString(p_output_arg->Shape(), p_output_arg->TypeAsProto()->tensor_type().elem_type());
-
       stked_stat.AddStat(shape_and_type_key, tensor_representation);
     }
   }
 
   stked_stat.Summarize(body);
-
-  // LOGS(logger, WARNING) << "SymbolizeMemoryPeak summary: \n"
-  //                       << stked_stat.ToString();
-
-  // std::unordered_map<std::string, int64_t> str_symbol_accumulator;
-  // std::unordered_map<std::string, std::unordered_map<std::string, int64_t>> str_symbol_ops;
-  // for (auto it = symbol_map.begin(); it != symbol_map.end(); ++it) {
-  //   if (str_symbol_accumulator.find(it->second.symbol) == str_symbol_accumulator.end()) {
-  //     str_symbol_accumulator[it->second.symbol] = 0;
-  //     str_symbol_ops[it->second.symbol] = {};
-  //   }
-  //   str_symbol_accumulator[it->second.symbol] += it->second.frequencey * it->second.factor;
-  //   for (auto& kv : it->second.ops) {
-  //     str_symbol_ops[it->second.symbol][kv.first] += kv.second;
-  //   }
-  // }
-
-  // for (auto& kv : str_symbol_accumulator) {
-  //   LOGS(logger, WARNING) << "Symbol: " << kv.first << " Accumulator: " << kv.second;
-  //   std::ostringstream oss;
-  //   for (auto& kv2 : str_symbol_ops[kv.first]) {
-  //     oss << kv2.first << "(" << kv2.second << "),";
-  //   }
-  //   LOGS(logger, WARNING) << "Source: " << oss.str();
-  // }
 
   return Status::OK();
 }  // namespace training

@@ -11,7 +11,7 @@ import torch
 
 from onnxruntime.capi import _pybind_state as C
 from onnxruntime.capi.onnxruntime_inference_collection import get_ort_device_type
-
+from onnxruntime.tools.symbolic_shape_infer import SymbolicShapeInference
 from . import _are_deterministic_algorithms_enabled, _io, _logger, _use_deterministic_algorithms, _utils
 from ._execution_agent import TrainingAgent
 from ._fallback import ORTModuleFallbackException, _FallbackManager, _FallbackPolicy
@@ -135,7 +135,7 @@ class TrainingManager(GraphExecutionManager):
                 for idx in self._graph_info.output_grad_indices_non_differentiable:
                     ctx.mark_non_differentiable(user_outputs[idx])
 
-                self._rt_inspector.memory_ob.inspect_memory("fw_ends")
+
                 return user_outputs
 
             @staticmethod
@@ -292,7 +292,7 @@ class TrainingManager(GraphExecutionManager):
 
             self._gradient_accumulation_manager.maybe_update_cache_before_run()
             self._rt_inspector.memory_ob.inspect_memory("fw_starts")
-            prepared_input_list, _, _ = _io._combine_input_buffers_initializers(
+            prepared_input_list, _, _, input_map = _io._combine_input_buffers_initializers(
                 self._graph_initializers,
                 self._graph_info.user_input_names,
                 self._input_info,
@@ -303,9 +303,139 @@ class TrainingManager(GraphExecutionManager):
                 self._rt_inspector,
             )
 
+            fw_result = self._forward_class.apply(*prepared_input_list)
+
+
+
+
+            self._rt_inspector.memory_ob.inspect_memory("fw_ends")
+
+
+            rank = 0
+            if torch.distributed.is_initialized():
+                rank = torch.distributed.get_rank()
+
+            if rank == 0:
+                from prettytable import PrettyTable
+
+                from sympy.parsing.sympy_parser import parse_expr
+                from sympy import Symbol
+
+                computable_symbol_expr = 0
+                unknown_symbol_expr = 0
+
+                subs_values = {}
+                for input_name, dynamic_axes in self._input_info.dynamic_axes.items():
+                    if input_name in input_map:
+                        # subs_values[Symbol(input_name)] = input_map[input_name][]
+                        for dim_idx, dim_name in dynamic_axes.items():
+                            subs_values[Symbol(dim_name)] = input_map[input_name].size()[dim_idx]
+
+                print(subs_values)
+                class bcolors:
+                    HEADER = '\033[95m'
+                    OKBLUE = '\033[94m'
+                    OKCYAN = '\033[96m'
+                    OKGREEN = '\033[92m'
+                    WARNING = '\033[93m'
+                    FAIL = '\033[91m'
+                    ENDC = '\033[0m'
+                    BOLD = '\033[1m'
+                    UNDERLINE = '\033[4m'
+                other_states = []
+
+                index = 0
+                computed_total = 0
+
+                def sortFn(value):
+                    return int(value[1])
+
+                body_raw_data = self._memory_peak_symbols[1:]
+                body_raw_data.sort(key=sortFn, reverse=True)
+
+                for row in body_raw_data:
+                    # wrapped_value_lines = wrap(str(row[4]) or '', VAL_WRAP_WIDTH) or ['']
+                    # table1.add_row([row[0], row[1], row[2], row[3], wrapped_value_lines[0]])
+                    # for subseq in wrapped_value_lines[1:]:
+                    #     table1.add_row(['', '', '', '', subseq])
+
+                    expr = parse_expr('(' + row[0] + ') * ' + str(row[2]))
+                    r = expr.evalf(subs=subs_values)
+                    computed_state = ""
+                    computed_val = None
+                    if r.is_number:
+                        computed_total += float(r)
+                        computed_state = u'\u2713' #.encode('utf8')
+                        computed_val = r
+                        computable_symbol_expr += expr
+                    else:
+                        unknown_symbol_expr += expr
+                        computed_state = u'\u274c' #.encode('utf8')
+
+                    other_states.append([row[0], f"{row[1]}({bcolors.OKCYAN}{row[2]}{bcolors.ENDC})", computed_val if computed_val else "", "", row[3]])
+                    index += 1
+
+                for state in other_states:
+                    if state[2] is not "":
+                        state[3] = "{:.1f}%".format(float(state[2]) / float(computed_total) * 100)
+                        state[2] = "{:.0f}MiB".format(float(state[2]) / float(1024) / float(1024))
+                    else:
+                        state[3] =  u'\u274c'
+
+                from textwrap import wrap
+                VAL_WRAP_WIDTH = 80
+
+
+
+                h = self._memory_peak_symbols[0]
+                header = [h[0], f"Count({bcolors.OKCYAN}NotResued{bcolors.ENDC})", f"{bcolors.OKCYAN}Computable{bcolors.ENDC}", h[3]]
+
+                table1 = PrettyTable(header)
+                title = "Summary of Memory (MiB) - {}Resident: {:.0f}{}, " \
+                        "{}FWDelta: {:.0f}{}, " \
+                        "{}Computable: {:.0f}{}, " \
+                        "{}FWDelta-Computable: {:.0f}{}".format(
+                            bcolors.OKGREEN,
+                            float(self._rt_inspector.memory_ob._fw_start_cur_step) / float(1024) / float(1024),
+                            bcolors.ENDC,
+                            bcolors.OKGREEN,
+                            float(self._rt_inspector.memory_ob._fw_end_start_delta) / float(1024) / float(1024),
+                            bcolors.ENDC,
+                            bcolors.OKCYAN,
+                            float(computed_total) / float(1024) / float(1024),
+                            bcolors.ENDC,
+                            bcolors.OKCYAN,
+                            float(self._rt_inspector.memory_ob._fw_end_start_delta - computed_total) / float(1024) / float(1024),
+                            bcolors.ENDC
+                        )
+
+                table1.title = title
+                table1.align[h[0]] = "l"
+                table1.align[h[3]] = "l"
+
+
+
+                for r in other_states:
+                    wrapped_value0_lines = wrap(str(r[0]) or '', 40) or ['']
+                    wrapped_value_lines = wrap(str(r[4]) or '', VAL_WRAP_WIDTH) or ['']
+                    table1.add_row(['\n'.join(wrapped_value0_lines),
+                                    r[1],
+                                    "{}{}({}){}".format(bcolors.OKCYAN, r[2], r[3], bcolors.ENDC) if r[2] != "" else u'\u274c',
+                                    '\n'.join(wrapped_value_lines)])
+                    # for subseq in wrapped_value_lines[1:]:
+                    #     table1.add_row(['', '', '', '', subseq])
+
+                print(table1)
+                print("Symbol Expression: ", computable_symbol_expr + unknown_symbol_expr)
+                print("\t - Unknown Symbol Expression: ", unknown_symbol_expr)
+                print("\t - Computable Symbol Expression: ", computable_symbol_expr)
+                # print("{}Total Computable Memory: {:.0f}MiB {}", bcolors.WARNING, float(computed_total) / float(1024) / float(1024), bcolors.ENDC)
+                # print("{}Estimation Absolute Error: {:.0f}MiB (FW End/Start Delta - Total Computable Memory) {}", bcolors.WARNING, float(self._rt_inspector.memory_ob._fw_end_start_delta - computed_total) / float(1024) / float(1024), bcolors.ENDC)
+
+
             return _io.unflatten_user_output(
                 self._module_output_schema,
-                self._forward_class.apply(*prepared_input_list),
+                fw_result,
             )
         except ORTModuleFallbackException as e:
             # Exceptions subject to fallback are handled here
@@ -328,6 +458,12 @@ class TrainingManager(GraphExecutionManager):
 
         super()._build_graph(graph_transformer_config)
         self._onnx_models.optimized_model = onnx.load_model_from_string(self._graph_builder.get_gradient_model())
+
+        if self._run_symbolic_shape_infer:
+            self._onnx_models.optimized_model = SymbolicShapeInference.infer_shapes(
+                self._onnx_models.optimized_model, auto_merge=True, guess_output_rank=True
+            )
+
         self._onnx_models.optimized_pre_grad_model = onnx.load_model_from_string(
             self._graph_builder.get_forward_model()
         )
@@ -403,6 +539,7 @@ class TrainingManager(GraphExecutionManager):
         )
 
         self._memory_peak_symbols = self._execution_agent.symbolize_memory_peak()
+        # self._graph_input_symbolic_dims = self._execution_agent.get_graph_input_dymbolic_dims()
 
     def _reinitialize_graph_builder(self, input_info: _InputInfo):
         """Return true if the module graph builder was reinitialized"""
