@@ -102,7 +102,7 @@ RCT_EXPORT_METHOD(dispose
                   : (RCTPromiseResolveBlock)resolve rejecter
                   : (RCTPromiseRejectBlock)reject) {
   @try {
-    [self disposeImpl:key];
+    [self dispose:key];
     resolve(nil);
   } @catch (...) {
     reject(@"onnxruntime", @"failed to dispose session", nil);
@@ -220,7 +220,7 @@ RCT_EXPORT_METHOD(run
  *
  * @param key a session key returned from loadModel()
  */
-- (void)disposeImpl:(NSString *)key {
+- (void)dispose:(NSString *)key {
   NSValue *value = [sessionMap objectForKey:key];
   if (value == nil) {
     NSException *exception = [NSException exceptionWithName:@"onnxruntime"
@@ -228,6 +228,7 @@ RCT_EXPORT_METHOD(run
                                                    userInfo:nil];
     @throw exception;
   }
+  [sessionMap removeObjectForKey:key];
   SessionInfo *sessionInfo = (SessionInfo *)[value pointerValue];
   delete sessionInfo;
   sessionInfo = nullptr;
@@ -375,7 +376,7 @@ static NSDictionary *executionModeTable = @{@"sequential" : @(ORT_SEQUENTIAL), @
 - (void)dealloc {
   NSEnumerator *iterator = [sessionMap keyEnumerator];
   while (NSString *key = [iterator nextObject]) {
-    [self disposeImpl:key];
+    [self dispose:key];
   }
 }
 

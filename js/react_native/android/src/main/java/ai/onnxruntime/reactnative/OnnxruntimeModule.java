@@ -217,7 +217,7 @@ public class OnnxruntimeModule extends ReactContextBaseJavaModule implements Lif
    *
    * @param key a session key representing the session given at loadModel()
    */
-  private void dispose(String key) throws OrtException {
+  public void dispose(String key) throws OrtException {
     OrtSession ortSession = sessionMap.get(key);
     if (ortSession != null) {
       ortSession.close();
