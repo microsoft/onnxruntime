@@ -29,7 +29,7 @@ jobs:
       #   -[XnnpackEP TestConvTranspose_qdq]
       #   -[XnnpackEP TestQDQConvS8S8_per_channel]
       parameters:
-        xcodeVersion: "13.4.1"
+        xcodeVersion: "13.1"
 
     - template: templates/mac-build-step-with-cache.yml
       parameters:
