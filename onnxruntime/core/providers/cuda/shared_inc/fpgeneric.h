@@ -185,13 +185,7 @@ inline cublasStatus_t cublasGemmBatchedHelper(cublasHandle_t handle,
                                               const float* beta,
                                               float* Carray[], int ldc,
                                               int batch_count,
-                                              const cudaDeviceProp& prop) {
-#if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
-  onnxruntime::cuda::CublasMathModeSetter math_mode_setter(prop, handle, CUBLAS_TF32_TENSOR_OP_MATH);
-#else
-  ORT_UNUSED_PARAMETER(prop);
-#endif
-
+                                              const cudaDeviceProp&) {
   return cublasSgemmBatched(handle,
                             transa,
                             transb,
