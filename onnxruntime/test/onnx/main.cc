@@ -666,6 +666,8 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
             ORT_TSTR("bernoulli_double"),
             ORT_TSTR("bernoulli_seed")};
 
+#if defined(ENABLE_ONNX_FLOAT8_TESTS)
+
     // float 8 types are not supported by any language.
     static const ORTCHAR_T* float8_tests[] = {
         ORT_TSTR("cast_FLOAT16_to_FLOAT8E4M3FN"),
@@ -714,6 +716,8 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
         ORT_TSTR("dequantizelinear_e5m2"),
         ORT_TSTR("quantizelinear_e4m3fn"),
         ORT_TSTR("quantizelinear_e5m2")};
+
+#endif
 
     static const ORTCHAR_T* cuda_flaky_tests[] = {
         ORT_TSTR("fp16_inception_v1"),
@@ -764,7 +768,9 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
         ORT_TSTR("sce_none_weights_expanded")};
 
     std::unordered_set<std::basic_string<ORTCHAR_T>> all_disabled_tests(std::begin(immutable_broken_tests), std::end(immutable_broken_tests));
+#if defined(ENABLE_ONNX_FLOAT8_TESTS)
     all_disabled_tests.insert(std::begin(float8_tests), std::end(float8_tests));
+#endif
 
     if (enable_cuda) {
       all_disabled_tests.insert(std::begin(cuda_flaky_tests), std::end(cuda_flaky_tests));
