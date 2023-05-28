@@ -1770,18 +1770,6 @@ ORT_API_STATUS_IMPL(OrtApis::CreateCUDAProviderOptions, _Outptr_ OrtCUDAProvider
   API_IMPL_BEGIN
 #ifdef USE_CUDA
   auto options = std::make_unique<OrtCUDAProviderOptionsV2>();
-  options->device_id = 0;
-  options->cudnn_conv_algo_search = OrtCudnnConvAlgoSearch::OrtCudnnConvAlgoSearchExhaustive;
-  options->gpu_mem_limit = std::numeric_limits<size_t>::max();
-  options->arena_extend_strategy = static_cast<onnxruntime::ArenaExtendStrategy>(0);
-  options->do_copy_in_default_stream = 1;
-  options->has_user_compute_stream = 0;
-  options->user_compute_stream = nullptr;
-  options->default_memory_arena_cfg = nullptr;
-  options->cudnn_conv_use_max_workspace = 1;
-  options->enable_cuda_graph = 0;
-  options->cudnn_conv1d_pad_to_nc1d = 0;
-  options->enable_skip_layer_norm_strict_mode = 0;
   *out = options.release();
   return nullptr;
 #else

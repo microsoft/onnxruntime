@@ -52,7 +52,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* past_seq_len = context->Input<Tensor>(kPastSequenceLengthInputIndex);
 
   auto& device_prop = GetDeviceProp();
-  AttentionParameters attn;
+  RocmAttentionParameters attn;
   ORT_RETURN_IF_ERROR(CheckInputs(input->Shape(),
                                   weights->Shape(),
                                   bias->Shape(),
@@ -63,7 +63,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
                                   device_prop.maxThreadsPerBlock,
                                   past_seq_len));
   ORT_ENFORCE(attn.sequence_length == attn.kv_sequence_length);  // self attention
-  ORT_ENFORCE(attn.qkv_format == Q_K_V_BNSH);  // non-packed, permuted
+  ORT_ENFORCE(attn.qkv_format == Q_K_V_BNSH);                    // non-packed, permuted
 
   TensorShapeVector output_shape(3);
   output_shape[0] = static_cast<int64_t>(attn.batch_size);
@@ -85,6 +85,13 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   using QkvProjectGeneric = GemmPermuteGenericPipeline<HipT>;
   using AttentionGeneric = GemmSoftmaxGemmPermuteGenericPipeline<HipT>;
   using AttentionTunableOp = GemmSoftmaxGemmPermuteTunableOp<HipT>;
+
+  ORT_RETURN_IF_ERROR(ClassifyAttentionMode(
+      Node().OpType(), &attn, /*qkv=*/{}, /*past=*/{past}, /*present=*/{present}));
+  // TODO: support QFMT_KFMT_VFMT_NONE_NONE_2BNMH_NONE and QFMT_KFMT_VFMT_2BNMH_NONE_2BNMH_NONE
+  ORT_ENFORCE(attn.mode == QFMT_KFMT_VFMT_NONE_NONE_NONE_NONE ||
+              attn.mode == QFMT_KFMT_VFMT_NONE_NONE_2BNTH_NONE ||
+              attn.mode == QFMT_KFMT_VFMT_2BNPH_NONE_2BNTH_NONE);
 
   size_t qkv_project_output_bytes = QkvProjectGeneric::GetOutputNumBytes(&attn);
   size_t shared_workspace_bytes = std::max(QkvProjectGeneric::GetWorkspaceNumBytes(&attn),
