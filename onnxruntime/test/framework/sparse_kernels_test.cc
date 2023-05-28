@@ -1815,7 +1815,8 @@ TEST(SparseTensorConversionTests, BlockSparse) {
     ASSERT_EQ(data_blocks.size(), data_span.size());
     ASSERT_TRUE(std::equal(data_blocks.cbegin(), data_blocks.cend(), data_span.begin(), data_span.end()));
 
-    const auto& indices = own_buffer_tensor.AsBlockSparse().Indices();
+    auto block_sparse = own_buffer_tensor.AsBlockSparse();
+    const auto& indices = block_sparse.Indices();
     ASSERT_EQ(indices_shape, indices.Shape());
     auto indices_span = indices.DataAsSpan<int32_t>();
     ASSERT_TRUE(std::equal(blocksparse_indices.cbegin(), blocksparse_indices.cend(),
@@ -1834,7 +1835,8 @@ TEST(SparseTensorConversionTests, BlockSparse) {
     ASSERT_EQ(data_blocks.size(), data_span.size());
     ASSERT_TRUE(std::equal(data_blocks.cbegin(), data_blocks.cend(), data_span.begin(), data_span.end()));
 
-    const auto& indices = user_buffer_tensor.AsBlockSparse().Indices();
+    auto block_sparse = user_buffer_tensor.AsBlockSparse();
+    const auto& indices = block_sparse.Indices();
     ASSERT_EQ(indices_shape, indices.Shape());
     auto indices_span = indices.DataAsSpan<int32_t>();
     ASSERT_TRUE(std::equal(blocksparse_indices.cbegin(), blocksparse_indices.cend(),
@@ -1855,7 +1857,8 @@ TEST(SparseTensorConversionTests, BlockSparse) {
     ASSERT_EQ(expected_span.size(), data_span.size());
     ASSERT_TRUE(std::equal(expected_span.begin(), expected_span.end(), data_span.begin(), data_span.end()));
 
-    const auto& indices = own_buffer_tensor.AsBlockSparse().Indices();
+    auto block_sparse = own_buffer_tensor.AsBlockSparse();
+    const auto& indices = block_sparse.Indices();
     ASSERT_EQ(indices_shape, indices.Shape());
     auto indices_span = indices.DataAsSpan<int32_t>();
     ASSERT_TRUE(std::equal(blocksparse_indices.cbegin(), blocksparse_indices.cend(),
