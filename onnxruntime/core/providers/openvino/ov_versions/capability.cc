@@ -41,7 +41,6 @@ GetCapability::GetCapability(const GraphViewer& graph_viewer_param, std::string 
 std::vector<std::unique_ptr<ComputeCapability>> GetCapability::Execute() {
   std::vector<std::unique_ptr<ComputeCapability>> result;
 
-
   // This is a list of initializers that nGraph considers as constants. Example weights, reshape shape etc.
   std::unordered_set<std::string> ng_required_initializers;
 

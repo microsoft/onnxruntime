@@ -2,8 +2,9 @@
 # Licensed under the MIT License
 
 import os
-import sys
 import site
+import sys
+
 
 def add_openvino_libs_to_path() -> None:
     """Adds OpenVINO libraries to the PATH environment variable on Windows."""
@@ -23,14 +24,12 @@ def add_openvino_libs_to_path() -> None:
             if openvino_libs_installer:
                 openvino_libs.extend(openvino_libs_installer.split(";"))
             else:
-                sys.exit("Error: Please set the OPENVINO_LIB_PATHS environment variable. "
-                         "If you use an install package, please, run setupvars.bat")
+                sys.exit(
+                    "Error: Please set the OPENVINO_LIB_PATHS environment variable. "
+                    "If you use an install package, please, run setupvars.bat"
+                )
         for lib in openvino_libs:
             lib_path = os.path.join(os.path.dirname(__file__), lib)
             if os.path.isdir(lib_path):
-                # On Windows, with Python >= 3.8, DLLs are no longer imported from the PATH.
-                if (3, 8) <= sys.version_info:
-                    os.environ["PATH"] = os.path.abspath(lib_path) + ";" + os.environ["PATH"]
-                    os.add_dll_directory(os.path.abspath(lib_path))
-                else:
-                    os.environ["PATH"] = os.path.abspath(lib_path) + ";" + os.environ["PATH"]
+                os.environ["PATH"] = os.path.abspath(lib_path) + ";" + os.environ["PATH"]
+                os.add_dll_directory(os.path.abspath(lib_path))
