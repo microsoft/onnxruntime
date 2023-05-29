@@ -26,7 +26,8 @@ class TransposeOptimizer : public GraphTransformer {
   // The second phase of optimization may swap a DequantizeLinear -> Transpose back, so multiple runs would
   // keep swapping the order of the nodes in the first and second phases, leading to always returning true for
   // modified.
-  // see https://github.com/microsoft/onnxruntime/blob/e3a2d5cca8bcefe064f83d57e46ea51ddb2b16e8/onnxruntime/core/optimizer/transpose_optimizer/transpose_optimizer.cc#L1917-L1921
+  // See onnxruntime/core/optimizer/transpose_optimization/onnx_transpose_optimization.cc:OptimizeImpl for details
+  // on the second pass.
   bool ShouldOnlyApplyOnce() const override { return true; }
 };
 

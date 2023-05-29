@@ -4,7 +4,6 @@
 #include "core/optimizer/layer_norm_fusion.h"
 #include "core/graph/graph_utils.h"
 #include "core/optimizer/utils.h"
-#include "core/optimizer/transpose_optimizer/optimizer_api.h"
 #include "float.h"
 #include <algorithm>
 #include <deque>
