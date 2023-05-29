@@ -36,3 +36,4 @@ GradientCheckerTest.AddGrad
 GradientCheckerTest.SubGrad
 GradientCheckerTest.MulGrad
 GradientCheckerTest.DivGrad
+BeamSearchTest.*
