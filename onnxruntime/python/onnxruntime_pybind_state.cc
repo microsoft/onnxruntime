@@ -151,7 +151,11 @@ const char* GetDeviceName(const OrtDevice& device) {
     case OrtDevice::FPGA:
       return "FPGA";
     case OrtDevice::NPU:
+#ifdef USE_CANN
       return CANN;
+#else
+      return "NPU";
+#endif
     default:
       ORT_THROW("Unknown device type: ", device.Type());
   }
