@@ -261,7 +261,7 @@ class TunableOp {
       WarmUp(candidate, params);
 
       auto approx_duration = Profile(candidate, params, approx_num_iter);
-      int tuning_iter = std::max(1, int(std::min(double(max_tuning_iter), ((ctx->GetMaxTuningDurationMs() - 1) / approx_duration + 1))));
+      int tuning_iter = std::max(1, int(std::min(double(max_tuning_iter), ctx->GetMaxTuningDurationMs() / approx_duration)));
 
       LOGS_DEFAULT(VERBOSE) << "FindFastestImpl run instance " << op_sig << '(' << param_sig << ") id=" << i << " " << tuning_iter << " times.";
 

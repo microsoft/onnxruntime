@@ -32,7 +32,6 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <string.h>
-#include <limits>
 
 /** \brief The API version defined in this header
  *
