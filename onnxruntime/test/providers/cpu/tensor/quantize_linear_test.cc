@@ -411,6 +411,8 @@ TEST(QuantizeLinearOpTest, Per_Channel_Axis_neg) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT doesn't support support UINT8 for quantization
 }
 
+#if !defined(DISABLE_FLOAT8_TYPES)
+
 template <typename InT, typename OutT>
 void DequantizeLinearOp19Test() {
   OpTester test("DequantizeLinear", 19);
@@ -488,6 +490,8 @@ TEST(QuantizeLinearOpTest, Float8) {
   if (enable_cpu)
     QuantizeLinearOp19Test<float, Float8E5M2FNUZ>(false);
 }
+
+#endif
 
 }  // namespace test
 }  // namespace onnxruntime

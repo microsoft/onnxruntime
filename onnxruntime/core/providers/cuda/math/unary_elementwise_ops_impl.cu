@@ -129,6 +129,7 @@ struct OP_Cast {
     ORT_THROW("Cast from " #InT " to " #OutT " must define saturate."); \
   }
 
+#if !defined(DISABLE_FLOAT8_TYPES)
 
 #define IMPL_CAST_IMPL_FROM(T)      \
   IMPL_CAST_IMPL(T, half)     \
@@ -149,6 +150,25 @@ struct OP_Cast {
   IMPL_CAST_IMPL_THROW(T, Float8E4M3FNUZ) \
   IMPL_CAST_IMPL_THROW(T, Float8E5M2FNUZ)
 
+#else
+
+#define IMPL_CAST_IMPL_FROM(T)      \
+  IMPL_CAST_IMPL(T, half)     \
+  IMPL_CAST_IMPL(T, float)    \
+  IMPL_CAST_IMPL(T, double)   \
+  IMPL_CAST_IMPL(T, int8_t)   \
+  IMPL_CAST_IMPL(T, int16_t)  \
+  IMPL_CAST_IMPL(T, int32_t)  \
+  IMPL_CAST_IMPL(T, int64_t)  \
+  IMPL_CAST_IMPL(T, uint8_t)  \
+  IMPL_CAST_IMPL(T, uint16_t) \
+  IMPL_CAST_IMPL(T, uint32_t) \
+  IMPL_CAST_IMPL(T, uint64_t) \
+  IMPL_CAST_IMPL(T, bool)     \
+  IMPL_CAST_IMPL(T, BFloat16)
+
+#endif
+
 IMPL_CAST_IMPL_FROM(half)
 IMPL_CAST_IMPL_FROM(float)
 IMPL_CAST_IMPL_FROM(double)
@@ -162,8 +182,10 @@ IMPL_CAST_IMPL_FROM(uint32_t)
 IMPL_CAST_IMPL_FROM(uint64_t)
 IMPL_CAST_IMPL_FROM(bool)
 IMPL_CAST_IMPL_FROM(BFloat16)
+#if !defined(DISABLE_FLOAT8_TYPES)
 IMPL_CAST_IMPL_FROM(Float8E4M3FN)
 IMPL_CAST_IMPL_FROM(Float8E5M2)
+#endif
 
 template <typename InT, typename OutT>
 struct OP_CastSat {
@@ -233,8 +255,11 @@ struct OP_CastNoSat {
 
 #endif
 
+#if !defined(DISABLE_FLOAT8_TYPES)
+
 OP_CAST(Float8E4M3FN, __NV_E4M3)
 OP_CAST(Float8E5M2, __NV_E5M2)
+
 
 #define EXPLICIT_IMPL_CASTSAT(InT, OutT) \
   void Explicit_Impl_CastSat(cudaStream_t stream, const InT* input_data, OutT* output_data, size_t count, bool saturate) { \
@@ -250,8 +275,13 @@ EXPLICIT_IMPL_CASTSAT(half, Float8E4M3FN)
 EXPLICIT_IMPL_CASTSAT(float, Float8E5M2)
 EXPLICIT_IMPL_CASTSAT(half, Float8E5M2)
 
+// TODO: enable bfloat16 in another PR.
+/*
+EXPLICIT_IMPL_CASTSAT(__nv_bfloat16, Float8E4M3FN)
+EXPLICIT_IMPL_CASTSAT(__nv_bfloat16, Float8E5M2)
+*/
 
-
+#endif
 
 }  // namespace cuda
 }  // namespace onnxruntime

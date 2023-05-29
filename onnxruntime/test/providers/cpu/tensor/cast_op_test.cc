@@ -32,6 +32,8 @@ int GetMinRequiredCudaComputeCapability<BFloat16>() {
   return 800;
 }
 
+#if !defined(DISABLE_FLOAT8_TYPES)
+
 template <>
 int GetMinRequiredCudaComputeCapability<Float8E4M3FN>() {
   return 800;
@@ -41,6 +43,8 @@ template <>
 int GetMinRequiredCudaComputeCapability<Float8E5M2>() {
   return 800;
 }
+
+#endif
 
 enum Saturate { True,
                 False,
@@ -208,6 +212,8 @@ TEST(CastOpTest, ToString) {
   TestCastOp(gsl::make_span(int_16_input), gsl::make_span(int_string_data), shape);
 }
 
+#if !defined(DISABLE_FLOAT8_TYPES)
+
 template <typename F8>
 void CastOpTestFloat8(Saturate saturate) {
   ASSERT_NE(saturate, Saturate::None);
@@ -267,6 +273,8 @@ TEST(CastOpTest, ToFloat8E5M2FNUZ) {
     CastOpTestFloat8<Float8E5M2FNUZ>(Saturate::False);
   }
 }
+
+#endif
 
 }  // namespace test
 }  // namespace onnxruntime

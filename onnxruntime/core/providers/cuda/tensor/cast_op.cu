@@ -21,6 +21,8 @@ struct CastSat;
 template <typename OutT, typename InT>
 struct CastNoSat;
 
+#if !defined(DISABLE_FLOAT8_TYPES)
+
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 11080
 
 template <>
@@ -139,6 +141,8 @@ struct CastSat<Float8E5M2, half> {
 
 #endif
 
+#endif
+
 template <int NumThreadsPerBlock, int NumElementsPerThread, typename OutT, typename InT>
 __global__ void CastKernelStd(const InT* input, OutT* output, CUDA_LONG N, CastStd<OutT, InT> cast) {
   CUDA_LONG id = NumElementsPerThread * NumThreadsPerBlock * blockIdx.x + threadIdx.x;
@@ -166,6 +170,8 @@ Status CudaCastStd(cudaStream_t stream, const InT* input, OutT* output, size_t n
       );
   return Status::OK();
 }
+
+#if !defined(DISABLE_FLOAT8_TYPES)
 
 template <int NumThreadsPerBlock, int NumElementsPerThread, typename OutT, typename InT>
 __global__ void CastKernelSat(const InT* input, OutT* output, CUDA_LONG N, CastSat<OutT, InT> cast, bool saturate) {
@@ -198,13 +204,17 @@ Status CudaCastSat(cudaStream_t stream, const InT* input, OutT* output, size_t n
 
 template Status CudaCastStd<float, Float8E4M3FN>(cudaStream_t stream, const Float8E4M3FN* input, float* output, size_t num_of_element);
 template Status CudaCastStd<half, Float8E4M3FN>(cudaStream_t stream, const Float8E4M3FN* input, half* output, size_t num_of_element);
+
 template Status CudaCastSat<Float8E4M3FN, float>(cudaStream_t stream, const float* input, Float8E4M3FN* output, size_t num_of_element, bool saturate);
 template Status CudaCastSat<Float8E4M3FN, half>(cudaStream_t stream, const half* input, Float8E4M3FN* output, size_t num_of_element, bool saturate);
 
 template Status CudaCastStd<float, Float8E5M2>(cudaStream_t stream, const Float8E5M2* input, float* output, size_t num_of_element);
 template Status CudaCastStd<half, Float8E5M2>(cudaStream_t stream, const Float8E5M2* input, half* output, size_t num_of_element);
+
 template Status CudaCastSat<Float8E5M2, float>(cudaStream_t stream, const float* input, Float8E5M2* output, size_t num_of_element, bool saturate);
 template Status CudaCastSat<Float8E5M2, half>(cudaStream_t stream, const half* input, Float8E5M2* output, size_t num_of_element, bool saturate);
+
+#endif
 
 }  // namespace cuda
 }  // namespace onnxruntime

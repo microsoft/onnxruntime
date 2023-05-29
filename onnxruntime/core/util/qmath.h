@@ -111,7 +111,11 @@ void GetQuantizationParameter(const float* data, int64_t num_of_elements, float&
  */
 
 template <typename OutputType>
+#if !defined(DISABLE_FLOAT8_TYPES)
 typename std::enable_if<!boost::mp11::mp_contains<element_type_lists::AllFloat8, OutputType>::value, void>::type
+#else
+void
+#endif
 ParQuantizeLinearStd(const float* Input,
                      OutputType* Output,
                      size_t N,
@@ -127,6 +131,8 @@ ParQuantizeLinearStd(const float* Input,
     MlasQuantizeLinear(&(Input[begin_idx]), &(Output[begin_idx]), end_idx - begin_idx, Scale, ZeroPoint);
   });
 }
+
+#if !defined(DISABLE_FLOAT8_TYPES)
 
 template <typename OutputFloat8Type>
 typename std::enable_if<boost::mp11::mp_contains<element_type_lists::AllFloat8, OutputFloat8Type>::value, void>::type
@@ -148,5 +154,7 @@ ParQuantizeLinearSat(const float* Input,
     }
   });
 }
+
+#endif
 
 }  // namespace onnxruntime

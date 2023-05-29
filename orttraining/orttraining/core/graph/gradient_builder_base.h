@@ -269,6 +269,8 @@ class GradientBuilderBase {
       return ConstantScalarNode(BFloat16(value), {1}, arg_name);
     }
 
+#if !defined(DISABLE_FLOAT8_TYPES)
+
     if (elem_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E4M3FN) {
       return ConstantScalarNode(Float8E4M3FN(value, true), {1}, arg_name);
     }
@@ -285,6 +287,8 @@ class GradientBuilderBase {
       return ConstantScalarNode(Float8E5M2FNUZ(value, true), {1}, arg_name);
     }
 
+#endif
+
     return ConstantScalarNode(value, {1}, arg_name);
   }
 
@@ -296,6 +300,8 @@ class GradientBuilderBase {
     if (elem_type == ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16) {
       return ScalarTensorProto(BFloat16(value), {1});
     }
+
+#if !defined(DISABLE_FLOAT8_TYPES)
 
     if (elem_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E4M3FN) {
       return ScalarTensorProto(Float8E4M3FN(value, true), {1});
@@ -312,6 +318,8 @@ class GradientBuilderBase {
     if (elem_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E5M2FNUZ) {
       return ScalarTensorProto(Float8E5M2FNUZ(value, true), {1});
     }
+
+#endif
 
     return ScalarTensorProto(value, {1});
   }

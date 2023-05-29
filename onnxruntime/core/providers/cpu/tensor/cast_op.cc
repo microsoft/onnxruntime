@@ -32,7 +32,7 @@ namespace op_kernel_type_control {
 // we're using one set of types for all opsets of Cast
 ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPE_LIST_ALL_OPSETS(
     kCpuExecutionProvider, kOnnxDomain, Cast, Input, 0,
-    element_type_lists::AllIR9);
+    element_type_lists::AllIRv9);
 
 ORT_SPECIFY_OP_KERNEL_ARG_REQUIRED_TYPES_ALL_OPSETS(
     kCpuExecutionProvider, kOnnxDomain, Cast, Input, 0,
@@ -40,7 +40,7 @@ ORT_SPECIFY_OP_KERNEL_ARG_REQUIRED_TYPES_ALL_OPSETS(
 
 ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPE_LIST_ALL_OPSETS(
     kCpuExecutionProvider, kOnnxDomain, Cast, Output, 0,
-    element_type_lists::AllIR9);
+    element_type_lists::AllIRv9);
 
 ORT_SPECIFY_OP_KERNEL_ARG_REQUIRED_TYPES_ALL_OPSETS(
     kCpuExecutionProvider, kOnnxDomain, Cast, Output, 0,
@@ -56,8 +56,10 @@ using EnabledDstTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST_ALL_OPSETS(kCpuExecu
 template <typename T>
 using IsOrtFloat16Type = boost::mp11::mp_contains<TypeList<BFloat16, MLFloat16>, T>;
 
+#if !defined(DISABLE_FLOAT8_TYPES)
 template <typename T>
 using IsOrtFloat8Type = boost::mp11::mp_contains<element_type_lists::AllFloat8, T>;
+#endif
 
 // string cast helpers
 // Note: when C++17 is available, use <charconv> functions
@@ -114,7 +116,11 @@ CastToString(const SrcType& input, std::string& output) {
 }
 
 template <typename SrcType>
+#if !defined(DISABLE_FLOAT8_TYPES)
 typename std::enable_if<IsOrtFloat16Type<SrcType>::value || IsOrtFloat8Type<SrcType>::value, void>::type
+#else
+typename std::enable_if<IsOrtFloat16Type<SrcType>::value>::type
+#endif
 CastToString(const SrcType& input, std::string& output) {
   CastToString(static_cast<float>(input), output);
 }
@@ -144,7 +150,11 @@ CastFromString(const std::string& input, DstType& output) {
 }
 
 template <typename DstType>
+#if !defined(DISABLE_FLOAT8_TYPES)
 typename std::enable_if<IsOrtFloat16Type<DstType>::value || IsOrtFloat8Type<DstType>::value, void>::type
+#else
+typename std::enable_if<IsOrtFloat16Type<DstType>::value, void>::type
+#endif
 CastFromString(const std::string& input, DstType& output) {
   float intermediate;
   CastFromString(input, intermediate);
@@ -210,6 +220,8 @@ struct TensorCaster<std::string, DstType> {
   }
 };
 
+#if !defined(DISABLE_FLOAT8_TYPES)
+
 // tensor X -> float 8
 template <typename SrcType, typename DstType, typename Enable = void>
 struct TensorCasterNoSat {
@@ -237,6 +249,8 @@ struct TensorCasterNoSat<std::string, DstType> {
     }
   }
 };
+
+#endif
 
 #if defined(_M_AMD64) && !defined(_M_ARM64EC)
 // specializations to use optimized and Windows x64-specific
@@ -296,12 +310,18 @@ class Cast final : public OpKernel {
     to_ = gsl::narrow_cast<ONNX_NAMESPACE::TensorProto_DataType>(to);
 
     int64_t saturate = info.GetAttrOrDefault("saturate", int64_t{1});
+#if !defined(DISABLE_FLOAT8_TYPES)
     if (saturate == 0 && (to != ONNX_NAMESPACE::TensorProto::FLOAT8E4M3FN &&
                           to != ONNX_NAMESPACE::TensorProto::FLOAT8E4M3FNUZ &&
                           to != ONNX_NAMESPACE::TensorProto::FLOAT8E5M2 &&
                           to != ONNX_NAMESPACE::TensorProto::FLOAT8E5M2FNUZ)) {
       ORT_THROW("Attribute saturate is only used for cast to float 8 types.");
     }
+#else
+    if (saturate == 0) {
+      ORT_THROW("Attribute saturate is only used for cast to float 8 types.");
+    }
+#endif
     saturate_ = saturate == 1;
   }
 
@@ -319,12 +339,16 @@ struct Dispatcher {
   }
 };
 
+#if !defined(DISABLE_FLOAT8_TYPES)
+
 template <typename TSrc, typename TDst>
 struct DispatcherNoSat {
   void operator()(const OpKernelContext& context, const TensorShape& shape, const Tensor& src, Tensor& dst) {
     TensorCasterNoSat<TSrc, TDst>{}.Cast(context, shape, src, dst);
   }
 };
+
+#endif
 
 template <typename TSrc>
 struct SrcDispatcher {
@@ -336,6 +360,8 @@ struct SrcDispatcher {
     dispatcher.template InvokeWithLeadingTemplateArgs<Dispatcher, TypeList<TSrc>>(context, shape, src, dst);
   }
 };
+
+#if !defined(DISABLE_FLOAT8_TYPES)
 
 template <typename TSrc>
 struct SrcDispatcherNoSat {
@@ -349,6 +375,8 @@ struct SrcDispatcherNoSat {
     dispatcher.template InvokeWithLeadingTemplateArgs<DispatcherNoSat, TypeList<TSrc>>(context, shape, src, dst);
   }
 };
+
+#endif
 
 Status Cast::Compute(OpKernelContext* context) const {
   const Tensor* X = context->Input<Tensor>(0);
@@ -367,9 +395,12 @@ Status Cast::Compute(OpKernelContext* context) const {
     return Status::OK();
   }
 
+#if !defined(DISABLE_FLOAT8_TYPES)
   if (saturate_) {
+#endif
     utils::MLTypeCallDispatcherFromTypeList<EnabledSrcTypes> dispatcher{from};
     dispatcher.Invoke<SrcDispatcher>(to_, *context, shape, *X, *Y);
+#if !defined(DISABLE_FLOAT8_TYPES)
   } else if (to_ == ONNX_NAMESPACE::TensorProto::FLOAT8E4M3FN ||
              to_ == ONNX_NAMESPACE::TensorProto::FLOAT8E4M3FNUZ ||
              to_ == ONNX_NAMESPACE::TensorProto::FLOAT8E5M2 ||
@@ -377,6 +408,7 @@ Status Cast::Compute(OpKernelContext* context) const {
     utils::MLTypeCallDispatcherFromTypeList<EnabledSrcTypes> dispatcher{from};
     dispatcher.Invoke<SrcDispatcherNoSat>(to_, *context, shape, *X, *Y);
   }
+#endif
 
   return Status::OK();
 }

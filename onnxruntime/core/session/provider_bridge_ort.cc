@@ -639,10 +639,13 @@ struct ProviderHostImpl : ProviderHost {
   MLDataType DataTypeImpl__GetType_BFloat16() override { return DataTypeImpl::GetType<BFloat16>(); }
   MLDataType DataTypeImpl__GetType_MLFloat16() override { return DataTypeImpl::GetType<MLFloat16>(); }
   MLDataType DataTypeImpl__GetType_string() override { return DataTypeImpl::GetType<std::string>(); }
+
+#if !defined(DISABLE_FLOAT8_TYPES)
   MLDataType DataTypeImpl__GetType_Float8E4M3FN() override { return DataTypeImpl::GetType<Float8E4M3FN>(); }
   MLDataType DataTypeImpl__GetType_Float8E4M3FNUZ() override { return DataTypeImpl::GetType<Float8E4M3FNUZ>(); }
   MLDataType DataTypeImpl__GetType_Float8E5M2() override { return DataTypeImpl::GetType<Float8E5M2>(); }
   MLDataType DataTypeImpl__GetType_Float8E5M2FNUZ() override { return DataTypeImpl::GetType<Float8E5M2FNUZ>(); }
+#endif
 
   MLDataType DataTypeImpl__GetTensorType_bool() override { return DataTypeImpl::GetTensorType<bool>(); }
   MLDataType DataTypeImpl__GetTensorType_int8() override { return DataTypeImpl::GetTensorType<int8_t>(); }
@@ -657,10 +660,13 @@ struct ProviderHostImpl : ProviderHost {
   MLDataType DataTypeImpl__GetTensorType_double() override { return DataTypeImpl::GetTensorType<double>(); }
   MLDataType DataTypeImpl__GetTensorType_BFloat16() override { return DataTypeImpl::GetTensorType<BFloat16>(); }
   MLDataType DataTypeImpl__GetTensorType_MLFloat16() override { return DataTypeImpl::GetTensorType<MLFloat16>(); }
+
+#if !defined(DISABLE_FLOAT8_TYPES)
   MLDataType DataTypeImpl__GetTensorType_Float8E4M3FN() override { return DataTypeImpl::GetTensorType<Float8E4M3FN>(); }
   MLDataType DataTypeImpl__GetTensorType_Float8E4M3FNUZ() override { return DataTypeImpl::GetTensorType<Float8E4M3FNUZ>(); }
   MLDataType DataTypeImpl__GetTensorType_Float8E5M2() override { return DataTypeImpl::GetTensorType<Float8E5M2>(); }
   MLDataType DataTypeImpl__GetTensorType_Float8E5M2FNUZ() override { return DataTypeImpl::GetTensorType<Float8E5M2FNUZ>(); }
+#endif
 
 #if !defined(DISABLE_SPARSE_TENSORS)
   MLDataType DataTypeImpl__GetSparseTensorType_bool() override { return DataTypeImpl::GetSparseTensorType<bool>(); }
@@ -677,10 +683,12 @@ struct ProviderHostImpl : ProviderHost {
   MLDataType DataTypeImpl__GetSparseTensorType_string() override { return DataTypeImpl::GetSparseTensorType<std::string>(); }
   MLDataType DataTypeImpl__GetSparseTensorType_BFloat16() override { return DataTypeImpl::GetSparseTensorType<BFloat16>(); }
   MLDataType DataTypeImpl__GetSparseTensorType_MLFloat16() override { return DataTypeImpl::GetSparseTensorType<MLFloat16>(); }
+#if !defined(DISABLE_FLOAT8_TYPES)
   MLDataType DataTypeImpl__GetSparseTensorType_Float8E4M3FN() override { return DataTypeImpl::GetSparseTensorType<Float8E4M3FN>(); }
   MLDataType DataTypeImpl__GetSparseTensorType_Float8E4M3FNUZ() override { return DataTypeImpl::GetSparseTensorType<Float8E4M3FNUZ>(); }
   MLDataType DataTypeImpl__GetSparseTensorType_Float8E5M2() override { return DataTypeImpl::GetSparseTensorType<Float8E5M2>(); }
   MLDataType DataTypeImpl__GetSparseTensorType_Float8E5M2FNUZ() override { return DataTypeImpl::GetSparseTensorType<Float8E5M2FNUZ>(); }
+#endif
 #endif
 
   const char* DataTypeImpl__ToString(MLDataType type) override { return DataTypeImpl::ToString(type); }
@@ -961,10 +969,13 @@ struct ProviderHostImpl : ProviderHost {
   double* Tensor__MutableData_double(Tensor* p) override { return p->MutableData<double>(); }
   BFloat16* Tensor__MutableData_BFloat16(Tensor* p) override { return p->MutableData<BFloat16>(); }
   MLFloat16* Tensor__MutableData_MLFloat16(Tensor* p) override { return p->MutableData<MLFloat16>(); }
+
+#if !defined(DISABLE_FLOAT8_TYPES)
   Float8E4M3FN* Tensor__MutableData_Float8E4M3FN(Tensor* p) override { return p->MutableData<Float8E4M3FN>(); }
   Float8E4M3FNUZ* Tensor__MutableData_Float8E4M3FNUZ(Tensor* p) override { return p->MutableData<Float8E4M3FNUZ>(); }
   Float8E5M2* Tensor__MutableData_Float8E5M2(Tensor* p) override { return p->MutableData<Float8E5M2>(); }
   Float8E5M2FNUZ* Tensor__MutableData_Float8E5M2FNUZ(Tensor* p) override { return p->MutableData<Float8E5M2FNUZ>(); }
+#endif
 
   const bool* Tensor__Data_bool(const Tensor* p) override { return p->Data<bool>(); }
   const int8_t* Tensor__Data_int8(const Tensor* p) override { return p->Data<int8_t>(); }
@@ -979,10 +990,13 @@ struct ProviderHostImpl : ProviderHost {
   const double* Tensor__Data_double(const Tensor* p) override { return p->Data<double>(); }
   const BFloat16* Tensor__Data_BFloat16(const Tensor* p) override { return p->Data<BFloat16>(); }
   const MLFloat16* Tensor__Data_MLFloat16(const Tensor* p) override { return p->Data<MLFloat16>(); }
+
+#if !defined(DISABLE_FLOAT8_TYPES)
   const Float8E4M3FN* Tensor__Data_Float8E4M3FN(const Tensor* p) override { return p->Data<Float8E4M3FN>(); }
   const Float8E4M3FNUZ* Tensor__Data_Float8E4M3FNUZ(const Tensor* p) override { return p->Data<Float8E4M3FNUZ>(); }
   const Float8E5M2* Tensor__Data_Float8E5M2(const Tensor* p) override { return p->Data<Float8E5M2>(); }
   const Float8E5M2FNUZ* Tensor__Data_Float8E5M2FNUZ(const Tensor* p) override { return p->Data<Float8E5M2FNUZ>(); }
+#endif
 
   gsl::span<const int64_t> Tensor__DataAsSpan_int64(const Tensor* p) override { return p->DataAsSpan<int64_t>(); }
 
@@ -1005,10 +1019,13 @@ struct ProviderHostImpl : ProviderHost {
   bool Tensor__IsDataType_MLFloat16(const Tensor* p) noexcept override { return p->IsDataType<MLFloat16>(); }
   bool Tensor__IsDataType_BFloat16(const Tensor* p) noexcept override { return p->IsDataType<BFloat16>(); }
   bool Tensor__IsDataTypeString(const Tensor* p) noexcept override { return p->IsDataTypeString(); }
+
+#if !defined(DISABLE_FLOAT8_TYPES)
   bool Tensor__IsDataType_Float8E4M3FN(const Tensor* p) noexcept override { return p->IsDataType<Float8E4M3FN>(); }
   bool Tensor__IsDataType_Float8E4M3FNUZ(const Tensor* p) noexcept override { return p->IsDataType<Float8E4M3FNUZ>(); }
   bool Tensor__IsDataType_Float8E5M2(const Tensor* p) noexcept override { return p->IsDataType<Float8E5M2>(); }
   bool Tensor__IsDataType_Float8E5M2FNUZ(const Tensor* p) noexcept override { return p->IsDataType<Float8E5M2FNUZ>(); }
+#endif
 
   const TensorShape& Tensor__Shape(const Tensor* p) override { return p->Shape(); }
   void Tensor__Reshape(Tensor* p, const TensorShape& new_shape) override { return p->Reshape(new_shape); }
@@ -1818,18 +1835,6 @@ ORT_API_STATUS_IMPL(OrtApis::CreateCUDAProviderOptions, _Outptr_ OrtCUDAProvider
   API_IMPL_BEGIN
 #ifdef USE_CUDA
   auto options = std::make_unique<OrtCUDAProviderOptionsV2>();
-  options->device_id = 0;
-  options->cudnn_conv_algo_search = OrtCudnnConvAlgoSearch::OrtCudnnConvAlgoSearchExhaustive;
-  options->gpu_mem_limit = std::numeric_limits<size_t>::max();
-  options->arena_extend_strategy = static_cast<onnxruntime::ArenaExtendStrategy>(0);
-  options->do_copy_in_default_stream = 1;
-  options->has_user_compute_stream = 0;
-  options->user_compute_stream = nullptr;
-  options->default_memory_arena_cfg = nullptr;
-  options->cudnn_conv_use_max_workspace = 1;
-  options->enable_cuda_graph = 0;
-  options->cudnn_conv1d_pad_to_nc1d = 0;
-  options->enable_skip_layer_norm_strict_mode = 0;
   *out = options.release();
   return nullptr;
 #else

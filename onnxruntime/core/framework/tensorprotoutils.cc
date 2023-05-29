@@ -60,10 +60,12 @@ namespace ONNX_NAMESPACE {
 // Provide template specializations for onnxruntime-specific types.
 TO_TENSOR_ORT_TYPE(MLFloat16)
 TO_TENSOR_ORT_TYPE(BFloat16)
+#if !defined(DISABLE_FLOAT8_TYPES)
 TO_TENSOR_ORT_TYPE(Float8E4M3FN)
 TO_TENSOR_ORT_TYPE(Float8E4M3FNUZ)
 TO_TENSOR_ORT_TYPE(Float8E5M2)
 TO_TENSOR_ORT_TYPE(Float8E5M2FNUZ)
+#endif
 
 bool operator==(const ONNX_NAMESPACE::TensorShapeProto_Dimension& l,
                 const ONNX_NAMESPACE::TensorShapeProto_Dimension& r) {
@@ -228,10 +230,13 @@ INSTANTIATE_UNPACK_EXTERNAL_TENSOR(uint32_t)
 INSTANTIATE_UNPACK_EXTERNAL_TENSOR(bool)
 INSTANTIATE_UNPACK_EXTERNAL_TENSOR(MLFloat16)
 INSTANTIATE_UNPACK_EXTERNAL_TENSOR(BFloat16)
+
+#if !defined(DISABLE_FLOAT8_TYPES)
 INSTANTIATE_UNPACK_EXTERNAL_TENSOR(Float8E4M3FN)
 INSTANTIATE_UNPACK_EXTERNAL_TENSOR(Float8E4M3FNUZ)
 INSTANTIATE_UNPACK_EXTERNAL_TENSOR(Float8E5M2)
 INSTANTIATE_UNPACK_EXTERNAL_TENSOR(Float8E5M2FNUZ)
+#endif
 
 template <>
 Status UnpackTensorWithExternalData(const ONNX_NAMESPACE::TensorProto& /*tensor*/,
@@ -406,6 +411,8 @@ Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_d
   return Status::OK();
 }
 
+#if !defined(DISABLE_FLOAT8_TYPES)
+
 // UnpackTensor<Float8E4M3FN>
 template <>
 Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_data, size_t raw_data_len,
@@ -511,7 +518,7 @@ Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_d
   return Status::OK();
 }
 
-// UnpackTensor<Float8E5M2>
+// UnpackTensor<Float8E5M2FNUZ>
 template <>
 Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_data, size_t raw_data_len,
                     /*out*/ Float8E5M2FNUZ* p_data, size_t expected_size) {
@@ -545,6 +552,8 @@ Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_d
 
   return Status::OK();
 }
+
+#endif
 
 // UnpackTensor from raw data, external data or the type specific data field.
 // Uses the model path to construct the full path for loading external data. In case when model_path is empty
@@ -588,10 +597,13 @@ INSTANTIATE_UNPACK_TENSOR(bool)
 INSTANTIATE_UNPACK_TENSOR(MLFloat16)
 INSTANTIATE_UNPACK_TENSOR(BFloat16)
 INSTANTIATE_UNPACK_TENSOR(std::string)
+
+#if !defined(DISABLE_FLOAT8_TYPES)
 INSTANTIATE_UNPACK_TENSOR(Float8E4M3FN)
 INSTANTIATE_UNPACK_TENSOR(Float8E4M3FNUZ)
 INSTANTIATE_UNPACK_TENSOR(Float8E5M2)
 INSTANTIATE_UNPACK_TENSOR(Float8E5M2FNUZ)
+#endif
 
 #define CASE_PROTO_TRACE(X, Y)                                                                     \
   case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_##X:                             \
@@ -627,10 +639,12 @@ common::Status GetSizeInBytesFromTensorProto(const ONNX_NAMESPACE::TensorProto& 
     CASE_PROTO_TRACE(FLOAT16, MLFloat16);
     CASE_PROTO_TRACE(BFLOAT16, BFloat16);
     CASE_PROTO_TRACE(STRING, std::string);
+#if !defined(DISABLE_FLOAT8_TYPES)
     CASE_PROTO_TRACE(FLOAT8E4M3FN, Float8E4M3FN);
     CASE_PROTO_TRACE(FLOAT8E4M3FNUZ, Float8E4M3FNUZ);
     CASE_PROTO_TRACE(FLOAT8E5M2, Float8E5M2);
     CASE_PROTO_TRACE(FLOAT8E5M2FNUZ, Float8E5M2FNUZ);
+#endif
     default:
       return common::Status(common::ONNXRUNTIME, common::NOT_IMPLEMENTED);
   }
@@ -865,10 +879,12 @@ Status TensorProtoToTensor(const Env& env, const ORTCHAR_T* model_path,
     CASE_PROTO(UINT64, uint64_t);
     CASE_PROTO(FLOAT16, MLFloat16);
     CASE_PROTO(BFLOAT16, BFloat16);
+#if !defined(DISABLE_FLOAT8_TYPES)
     CASE_PROTO(FLOAT8E4M3FN, Float8E4M3FN);
     CASE_PROTO(FLOAT8E4M3FNUZ, Float8E4M3FNUZ);
     CASE_PROTO(FLOAT8E5M2, Float8E5M2);
     CASE_PROTO(FLOAT8E5M2FNUZ, Float8E5M2FNUZ);
+#endif
     case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_STRING:
       ORT_RETURN_IF_ERROR(UnpackTensor<std::string>(tensor_proto, raw_data, raw_data_len,
                                                     static_cast<std::string*>(preallocated),
@@ -944,10 +960,12 @@ ONNXTensorElementDataType CApiElementTypeFromProtoType(int type) {
     CASE_TYPE(COMPLEX64)
     CASE_TYPE(COMPLEX128)
     CASE_TYPE(BFLOAT16)
+#if !defined(DISABLE_FLOAT8_TYPES)
     CASE_TYPE(FLOAT8E4M3FN)
     CASE_TYPE(FLOAT8E4M3FNUZ)
     CASE_TYPE(FLOAT8E5M2)
     CASE_TYPE(FLOAT8E5M2FNUZ)
+#endif
     default:
       return ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
   }
@@ -1491,10 +1509,12 @@ Status UnpackInitializerData(const onnx::TensorProto& initializer,
     CASE_UNPACK(UINT64, uint64_t, uint64_data_size);
     CASE_UNPACK(FLOAT16, onnxruntime::MLFloat16, int32_data_size);
     CASE_UNPACK(BFLOAT16, onnxruntime::BFloat16, int32_data_size);
+#if !defined(DISABLE_FLOAT8_TYPES)
     CASE_UNPACK(FLOAT8E4M3FN, onnxruntime::Float8E4M3FN, int32_data_size);
     CASE_UNPACK(FLOAT8E4M3FNUZ, onnxruntime::Float8E4M3FNUZ, int32_data_size);
     CASE_UNPACK(FLOAT8E5M2, onnxruntime::Float8E5M2, int32_data_size);
     CASE_UNPACK(FLOAT8E5M2FNUZ, onnxruntime::Float8E5M2FNUZ, int32_data_size);
+#endif
     default:
       break;
   }

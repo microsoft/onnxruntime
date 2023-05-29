@@ -344,6 +344,8 @@ TEST(FunctionTest, AttrWithDefault) {
   Check(code, "x", {1.0, 2.0, 3.0}, "y", {5.0, 7.0, 9.0});
 }
 
+#if !defined(DISABLE_FLOAT8_TYPES)
+
 // Attribute 'saturate' was introduced in opset 19, ir_version=9.
 // The test checks the parser gets it right and returns the expected results.
 TEST(FunctionTest, AttrSaturate) {
@@ -407,6 +409,8 @@ TEST(FunctionTest, AttrSaturateNan) {
 
   Check(code, "x", {1.0, 2.0, 1e6}, "y", {243.0, 245.0, 2000241});  // std::numeric_limits<float>::quiet_NaN()});
 }
+
+#endif
 
 // Test use of constants inside sub-graphs, which are promoted to initializers by ORT.
 TEST(FunctionTest, NestedConstant) {

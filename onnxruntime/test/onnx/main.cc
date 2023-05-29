@@ -764,8 +764,6 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
         ORT_TSTR("sce_none_weights_expanded")};
 
     std::unordered_set<std::basic_string<ORTCHAR_T>> all_disabled_tests(std::begin(immutable_broken_tests), std::end(immutable_broken_tests));
-    all_disabled_tests.insert(std::begin(float8_tests), std::end(float8_tests));
-
     if (enable_cuda) {
       all_disabled_tests.insert(std::begin(cuda_flaky_tests), std::end(cuda_flaky_tests));
     }
@@ -776,9 +774,11 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
       // these models run but disabled tests to keep memory utilization low
       // This will be removed after LRU implementation
       all_disabled_tests.insert(std::begin(dnnl_disabled_tests), std::end(dnnl_disabled_tests));
+      all_disabled_tests.insert(std::begin(float8_tests), std::end(float8_tests));
     }
     if (enable_qnn) {
       all_disabled_tests.insert(std::begin(qnn_disabled_tests), std::end(qnn_disabled_tests));
+      all_disabled_tests.insert(std::begin(float8_tests), std::end(float8_tests));
     }
 #if !defined(__amd64__) && !defined(_M_AMD64)
     // out of memory

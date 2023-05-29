@@ -76,10 +76,12 @@ static void PrepareForQDQ(const TensorShape& input_shape,
 REGISTER_DEQUANTIZELINEAR(int8_t)
 REGISTER_DEQUANTIZELINEAR(uint8_t)
 REGISTER_DEQUANTIZELINEAR(int32_t)
+#if !defined(DISABLE_FLOAT8_TYPES)
 REGISTER_DEQUANTIZELINEAR(Float8E4M3FN)
 REGISTER_DEQUANTIZELINEAR(Float8E4M3FNUZ)
 REGISTER_DEQUANTIZELINEAR(Float8E5M2)
 REGISTER_DEQUANTIZELINEAR(Float8E5M2FNUZ)
+#endif
 REGISTER_DEQUANTIZELINEAR_VERSIONED(int8_t)
 REGISTER_DEQUANTIZELINEAR_VERSIONED(uint8_t)
 REGISTER_DEQUANTIZELINEAR_VERSIONED(int32_t)
@@ -98,6 +100,8 @@ struct DequantizeLinearApply {
     }
   }
 };
+
+#if !defined(DISABLE_FLOAT8_TYPES)
 
 #define DEQUANTIZE_LINEAR_APPLY_FLOAT8(T)                                                                                      \
   template <typename OutT>                                                                                                     \
@@ -119,6 +123,8 @@ DEQUANTIZE_LINEAR_APPLY_FLOAT8(Float8E4M3FNUZ)
 DEQUANTIZE_LINEAR_APPLY_FLOAT8(Float8E5M2)
 DEQUANTIZE_LINEAR_APPLY_FLOAT8(Float8E5M2FNUZ)
 
+#endif
+
 // formula is Y = (X - ZeroPoint) * Scale
 template <typename T>
 Status DequantizeLinear<T>::Compute(OpKernelContext* ctx) const {
@@ -136,6 +142,8 @@ Status DequantizeLinear<T>::Compute(OpKernelContext* ctx) const {
   PrepareForQDQ(x.Shape(), x_scale, x_zero_point, axis_, N, broadcast_dim, block_size);
 
   const T* zero_point = x_zero_point ? x_zero_point->Data<T>() : nullptr;
+
+#if !defined(DISABLE_FLOAT8_TYPES)
   if constexpr (boost::mp11::mp_contains<boost::mp11::mp_append<element_type_lists::AllFloat8,
                                                                 TypeList<int32_t>>,
                                          T>::value) {
@@ -145,6 +153,7 @@ Status DequantizeLinear<T>::Compute(OpKernelContext* ctx) const {
                                 [](T zp) { return zp == T{0}; }),
                 "DequantizeLinear with type int32 or float8 should have no zero point or all zero points should be 0");
   }
+#endif
 
   const auto to = x_scale.GetElementType();
   const T* input = x.Data<T>();
@@ -201,10 +210,12 @@ Status DequantizeLinear<T>::Compute(OpKernelContext* ctx) const {
 REGISTER_QUANTIZELINEAR(int8_t)
 REGISTER_QUANTIZELINEAR(uint8_t)
 
+#if !defined(DISABLE_FLOAT8_TYPES)
 REGISTER_QUANTIZELINEAR(Float8E4M3FN)
 REGISTER_QUANTIZELINEAR(Float8E4M3FNUZ)
 REGISTER_QUANTIZELINEAR(Float8E5M2)
 REGISTER_QUANTIZELINEAR(Float8E5M2FNUZ)
+#endif
 
 REGISTER_QUANTIZELINEAR_VERSIONED(int8_t)
 REGISTER_QUANTIZELINEAR_VERSIONED(uint8_t)
@@ -218,12 +229,16 @@ void ParQuantizeLinear(const float* Input,
                        const OutputType* ZeroPoint,
                        bool saturate,
                        concurrency::ThreadPool* thread_pool) {
+#if !defined(DISABLE_FLOAT8_TYPES)
   if constexpr (!boost::mp11::mp_contains<element_type_lists::AllFloat8, OutputType>::value) {
+#endif
     ORT_UNUSED_PARAMETER(saturate);
     ParQuantizeLinearStd(Input, Output, N, Scale, ZeroPoint != nullptr ? ZeroPoint[bd] : (OutputType)0, thread_pool);
+#if !defined(DISABLE_FLOAT8_TYPES)
   } else {
     ParQuantizeLinearSat(Input, Output, N, Scale, ZeroPoint != nullptr ? ZeroPoint[bd] : OutputType(static_cast<float>(0), true), saturate, thread_pool);
   }
+#endif
 }
 
 // formula is Y = X / Scale + ZeroPoint
