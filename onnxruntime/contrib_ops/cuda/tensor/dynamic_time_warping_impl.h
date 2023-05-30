@@ -8,14 +8,7 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-size_t GetDynamicTimeWarpingBufferSize(size_t batch, size_t rows, size_t cols, size_t& max_index_len) {
-  max_index_len = rows + cols + 1;
-  size_t cost_buffer_size = static_cast<size_t>((rows + 1) * (cols + 1));
-  return batch * max_index_len * 2 * sizeof(int32_t) + // two index arrays
-         sizeof(int64_t) + // final index array length
-         batch* cost_buffer_size * sizeof(float) + // cost buffer
-         batch* cost_buffer_size * sizeof(int8_t); // trace buffer
-}
+size_t GetDynamicTimeWarpingBufferSize(size_t batch, size_t rows, size_t cols, size_t& max_index_len);
 
 Status LaunchDynamicTimeWarping(
     cudaStream_t stream,
