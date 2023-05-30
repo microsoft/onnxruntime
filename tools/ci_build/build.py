@@ -1668,7 +1668,7 @@ def run_ios_tests(args, source_dir, config, cwd):
     simulator_device_name = subprocess.check_output(
         ["bash", os.path.join(source_dir, "tools", "ci_build", "github", "apple", "get_simulator_device_name.sh")],
         text=True,
-    )
+    ).strip()
 
     xc_test_schemes = [
         "onnxruntime_test_all_xc",

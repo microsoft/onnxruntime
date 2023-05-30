@@ -117,7 +117,7 @@ def _test_ios_packages(args):
             simulator_device_name = subprocess.check_output(
                 ["bash", str(REPO_DIR / "tools" / "ci_build" / "github" / "apple" / "get_simulator_device_name.sh")],
                 text=True,
-            )
+            ).strip()
 
             subprocess.run(
                 [
