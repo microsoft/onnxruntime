@@ -46,9 +46,7 @@ jobs:
 
   - template: use-android-ndk.yml
 
-  - script: |
-      npm install -g appcenter-cli@2.13.7
-    displayName: "Install appcenter CLI"
+  - template: install-appcenter.yml
 
   - script: |
       python3 $(Build.SourcesDirectory)/tools/python/run_android_emulator.py \
