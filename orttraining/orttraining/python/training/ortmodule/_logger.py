@@ -64,3 +64,15 @@ def ortmodule_loglevel_to_onnxruntime_c_loglevel(loglevel: LogLevel) -> int:
 
 def ortmodule_loglevel_to_python_loglevel(loglevel: LogLevel) -> int:
     return ORTMODULE_LOG_LEVEL_MAP.get(loglevel, [Severity.WARNING, logging.WARNING])[1]
+
+
+class LogColor:
+    HEADER = "\033[95m"
+    BLUE = "\033[94m"
+    CYAN = "\033[96m"
+    GREEN = "\033[92m"
+    WARNING = "\033[93m"
+    RED = "\033[91m"
+    ENDC = "\033[0m"
+    BOLD = "\033[1m"
+    UNDERLINE = "\033[4m"

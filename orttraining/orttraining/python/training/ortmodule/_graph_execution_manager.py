@@ -209,6 +209,26 @@ class GraphExecutionManager(GraphExecutionInterface):
         # Load ATen operator executor extension.
         load_aten_op_executor_cpp_extension()
 
+        self._feature_map: List[List[str]] = [
+            ["ATen Executor", "ON", "Dispatch ATen operators to ORT's ATen executor"],
+            [
+                "Cast Propagation",
+                "ON" if self._propagate_cast_ops_level > 0 else "OFF",
+                f"Level {self._propagate_cast_ops_level} enabled",
+            ],
+            ["Custom Function", "ON", "Support custom torch.autograd.Function export and execution"],
+            [
+                "Compute Optimizer",
+                "ON" if self._enable_compute_optimizer else "OFF",
+                "Enable/Disable with env ORTMODULE_ENABLE_COMPUTE_OPTIMIZER=1/0",
+            ],
+            [
+                "Memory Optimizer",
+                "ON" if self._enable_memory_optimizer else "OFF",
+                "Enable with env ORTMODULE_MEMORY_OPT_CONFIG=<config>",
+            ],
+        ]
+
     def _get_torch_gpu_allocator_function_addresses(self):
         if self._use_external_gpu_allocator and torch.cuda.is_available():
             # CPP extension to get torch GPU allocator's alloc and free function addresses
@@ -542,7 +562,10 @@ class GraphExecutionManager(GraphExecutionInterface):
            enable sparsity-based optimization.
 
         """
-
+        sparse_opt_status = "ON" if self._enable_sparse_optimizer else "OFF"
+        self._feature_map.append(
+            ["Sparsity Optimizer", sparse_opt_status, "Enable/Disable with env ORTMODULE_ENABLE_SPARSE_OPTIMIZER=1/0"]
+        )
         # Enable data sparsity inspection if sparse optimizer is ON or user wants to print input density.
         if self._enable_sparse_optimizer or self._print_input_density:
             self._rt_inspector.enable_input_inspector(
@@ -569,10 +592,20 @@ class GraphExecutionManager(GraphExecutionInterface):
                 if len(label_sparsity_results) > 0:
                     graph_transformer_config.sparse_label_input_names = label_sparsity_results
                     self._logger.info("Label sparsity based optimization is on for %s", label_sparsity_results)
+                    self._feature_map.append(
+                        ["  - Label Sparsity", sparse_opt_status, "Label inputs: " + str(label_sparsity_results)]
+                    )
 
                 if len(embed_sparsity_results) > 0:
                     graph_transformer_config.sparse_embedding_input_names = embed_sparsity_results
                     self._logger.info("Embedding sparsity based optimization is on for %s", embed_sparsity_results)
+                    self._feature_map.append(
+                        [
+                            "  - Embedding Sparsity",
+                            sparse_opt_status,
+                            "Embedding inputs: " + str(embed_sparsity_results),
+                        ]
+                    )
 
             # If users don't want to print input density, disable the input density observer to avoid overhead
             # when looping through inputs during training.
@@ -587,32 +620,27 @@ class GraphExecutionManager(GraphExecutionInterface):
         if rank != 0:
             return
 
-        fallback_status = "ON" if self._fallback_manager.policy is not _FallbackPolicy.FALLBACK_DISABLE else "OFF"
-        cast_propagation_status = "ON" if self._propagate_cast_ops_level > 0 else "OFF"
-        compute_opt_status = "ON" if self._enable_compute_optimizer else "OFF"
-        sparse_opt_status = "ON" if self._enable_sparse_optimizer else "OFF"
-        memory_opt_status = "ON" if self._enable_memory_optimizer else "OFF"
-        feature_map: List[List[str]] = [
-            ["ATen Executor", "ON", "Dispatch ATen operators to ORT's ATen executor"],
-            ["Auto Fallback", fallback_status, "Fallback to PyTorch when encountering unsupported ops"],
-            ["Cast Propagation", cast_propagation_status, f"Level {self._propagate_cast_ops_level} enabled"],
-            ["Custom Function", "ON", "Support custom torch.autograd.Function export and execution"],
-            ["Compute Optimizer", compute_opt_status, "Enable/Disable with env ORTMODULE_ENABLE_COMPUTE_OPTIMIZER=1/0"],
-            ["Sparse Optimizer", sparse_opt_status, "Enable/Disable with env ORTMODULE_ENABLE_SPARSE_OPTIMIZER=1/0"],
-            ["Memory Optimizer", memory_opt_status, "Enable with env ORTMODULE_MEMORY_OPT_CONFIG=<config>"],
-        ]
+        self._feature_map.append(
+            [
+                "Auto Fallback",
+                "ON" if self._fallback_manager.policy is not _FallbackPolicy.FALLBACK_DISABLE else "OFF",
+                "Fallback to PyTorch when encountering unsupported ops",
+            ]
+        )
 
         mode = "training" if self._export_mode == torch.onnx.TrainingMode.TRAINING else "inference"
+        mode = f"{_logger.LogColor.UNDERLINE}{mode}{_logger.LogColor.ENDC}"
 
-        stat = "\n\n***** ONNX Runtime (ORTModule) is accelerating your model *****\n\n"
-        stat += f"ORTModule is enabled with following features ON/OFF for [{mode}] mode:\n"
-        for feature_tuple in feature_map:
-            stat += "{:1}\t{:<20}:\t{:<4}:\t{:<80}\n".format("", feature_tuple[0], feature_tuple[1], feature_tuple[2])
+        stat = f"\n\n{_logger.LogColor.HEADER}***** ONNX Runtime (ORTModule) is accelerating your model *****{_logger.LogColor.ENDC}\n\n"
+        stat += f"ORTModule is enabled with following features ON/OFF for [{mode}] mode:\n\n"
+        for feature_tuple in self._feature_map:
+            stat += f"{feature_tuple[0]:<20}:\t{feature_tuple[1]:<10}:\t{feature_tuple[2]:<80}\n"
 
         # If anything was captured in fo, raise a single user warning letting users know that there was
-        # some warning or error that was raised
-        stat += "\nThere were one or more warnings or errors raised while exporting the PyTorch model.\n"
-        stat += "Please enable INFO level logging with DebugOptions to view all warnings and errors.\n\n"
-        stat += "****************************************************************\n\n"
+        # any warning or error that was raised
+        stat += f"\n{_logger.LogColor.WARNING}There were one or more warnings or errors raised while exporting the PyTorch model.\n"
+        stat += f"Please enable INFO level logging with DebugOptions to view all warnings and errors.{_logger.LogColor.ENDC}\n\n"
+        stat += f"Versions: ONNX Runtime - {onnxruntime.__version__}, ONNX - {onnx.__version__} \n\n"
+        stat += f"{_logger.LogColor.HEADER}****************************************************************{_logger.LogColor.ENDC}\n\n"
 
         self._logger.warning(stat)

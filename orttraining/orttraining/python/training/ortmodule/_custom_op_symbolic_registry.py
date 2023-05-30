@@ -42,8 +42,7 @@ def pytorch_type_to_onnx(scalar_type: str) -> torch.onnx.TensorProtoDataType:
 
 
 def wrap_custom_export_function(original_func: Callable) -> Callable:
-    """
-    This function is to wrap the custom export function to make sure it can be used by different versions of PyTorch.
+    """This function is to wrap the custom export function to make sure it can be used by different versions of PyTorch.
 
     Args:
         original_func: The original custom export function.
