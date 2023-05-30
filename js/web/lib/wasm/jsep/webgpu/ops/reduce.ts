@@ -39,7 +39,7 @@ const createReduceProgramInfo =
       const axes = ShapeUtil.normalizeAxes(attributes.axes, inputs[0].dims.length);
       const ops = reduceOp(inputs, axes);
       const inputIndicesHelper = createIndicesHelper('input', inputShape);
-      const initInputIdx = (ops[1] === '') ? '' : `let inputIdx = ${inputIndicesHelper.i2oExpression('inputIndices')};`
+      const initInputIdx = (ops[1] === '') ? '' : `let inputIdx = ${inputIndicesHelper.i2oExpression('inputIndices')};`;
       let reduceOps = `
           let inputIdx = ${inputIndicesHelper.i2oExpression('inputIndices')};
           ${ops[2]};`;
@@ -146,7 +146,6 @@ export const reduceMean = (context: ComputeContext, attributes: ReduceAttributes
   };
   context.compute(createReduceProgramInfoLoader(context.inputs, 'ReduceMean', attributes, reduceOp));
 };
-
 
 export const reduceMin = (context: ComputeContext, attributes: ReduceAttributes): void => {
   validateInputs(context.inputs);
