@@ -208,7 +208,8 @@ static void RunModelTestWithPath(const ORTCHAR_T* ort_model_path, const char* gr
   auto input_shape = session.GetInputTypeInfo(0).GetTensorTypeAndShapeInfo().GetShape();
   input_shape[0] = 1;
 
-  RandomValueGenerator generator;
+  constexpr RandomValueGenerator::RandomSeedType random_seed{3};
+  RandomValueGenerator generator{random_seed};
   TensorShape input_shape_x{input_shape};
   std::vector<float> input_x = generator.Uniform<float>(input_shape_x.GetDims(),
                                                         -64, 64);
