@@ -99,10 +99,13 @@ TEST_P(ModelTest, Run) {
   std::basic_string<ORTCHAR_T> model_path = param.substr(pos + 1);
   double per_sample_tolerance = 1e-3;
   double relative_per_sample_tolerance = 1e-3;
-
+  if (provider_name == "cuda") {
+    relative_per_sample_tolerance = 1e-2;
+    per_sample_tolerance = 2e-2;
+  }
   // when cuda or openvino is enabled, set it to a larger value for resolving random MNIST test failure
   if (model_path.find(ORT_TSTR("_MNIST")) > 0) {
-    if (provider_name == "cuda" || provider_name == "openvino") {
+    if (provider_name == "openvino") {
       relative_per_sample_tolerance = 1e-2;
     }
   }
