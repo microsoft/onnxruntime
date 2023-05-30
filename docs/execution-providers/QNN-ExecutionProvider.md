@@ -38,7 +38,7 @@ The QNN Execution Provider supports a number of configuration options. The `prov
 |`provider_options_values` for `provider_options_keys = "backend_path"`|Description|
 |---|-----|
 |'libQnnCpu.so' or 'QnnCpu.dll'|Enable CPU backend. Useful for integration testing. CPU backend is a reference implementation of QNN operators|
-|'libQnnHtp.do' or 'QnnHtp.dll'|Enable Htp backend. Offloads compute to NPU.|
+|'libQnnHtp.so' or 'QnnHtp.dll'|Enable Htp backend. Offloads compute to NPU.|
 
 |`provider_options_values` for `provider_options_keys = "profiling_level"`|Description|
 |---|---|
