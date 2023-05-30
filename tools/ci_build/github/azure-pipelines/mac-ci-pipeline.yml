@@ -3,5 +3,5 @@ stages:
   parameters:
     AllowReleasedOpsetOnly: 0
     BuildForAllArchs: false
-    AdditionalBuildFlags: --build_objc --enable_language_interop_ops --build_wheel
+    AdditionalBuildFlags: --build_objc --enable_language_interop_ops --build_wheel --use_xnnpack
     WithCache: true
