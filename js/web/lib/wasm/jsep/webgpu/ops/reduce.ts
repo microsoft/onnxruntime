@@ -107,9 +107,7 @@ const createReduceProgramInfoLoader =
 
 export const reduceSum = (context: ComputeContext, attributes: ReduceAttributes): void => {
   validateInputs(context.inputs);
-  const reduceOp: ReduceOp = (inputs: TensorView[], axes: number[]): string[] => {
-    return ['value = 0.0;', '', 'value += _A[inputIdx];', ''];
-  };
+  const reduceOp: ReduceOp = (): string[] => ['value = 0.0;', '', 'value += _A[inputIdx];', ''];
   context.compute(createReduceProgramInfoLoader(context.inputs, 'ReduceSum', attributes, reduceOp));
 };
 
@@ -172,7 +170,8 @@ export const reduceLogSum = (context: ComputeContext, attributes: ReduceAttribut
 
 export const reduceSumSquare = (context: ComputeContext, attributes: ReduceAttributes): void => {
   validateInputs(context.inputs);
-  const reduceOp: ReduceOp = (): string[] => ['float t; value = 0.0;', '', 't = _A[inputIdx]; value += t * t;', ''];
+  const reduceOp: ReduceOp =
+      (): string[] => ['var t = f32(0); value = 0.0;', '', 't = _A[inputIdx]; value += t * t;', ''];
   context.compute(createReduceProgramInfoLoader(context.inputs, 'ReduceSumSquare', attributes, reduceOp));
 };
 
