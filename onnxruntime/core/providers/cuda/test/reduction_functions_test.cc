@@ -1,11 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#ifndef AAA
+#ifndef NDEBUG
 
 #include <memory>
-#include <random>
-#include "gsl/gsl"
 
 #include "core/common/optional.h"
 #include "core/providers/cuda/reduction/reduction_functions.h"
@@ -13,6 +11,8 @@
 #include "core/common/type_utils.h"
 #include "test/util/test_random_seed.cc"
 #include "test/common/random_generator_base.h"
+
+using onnxruntime::test::RandomValueGeneratorBase;
 
 namespace onnxruntime {
 
@@ -51,7 +51,7 @@ void TestReduceRowToScalarApis(int size, float relative_error_tolerance = 1e-4f)
   float expected_output_square_sum = 0;
   float expected_output_mean = 0;
   const std::vector<int64_t> shape = {size};
-  onnxruntime::test::RandomValueGeneratorBase random_value_generator{};
+  RandomValueGeneratorBase random_value_generator{};
   const auto input = random_value_generator.Uniform<float>(shape, 0.1f, 1.0f);
   for (const auto input_value : input) {
     expected_output_sum += input_value;
@@ -108,7 +108,7 @@ void TestReduceRowsToRow(int m, int n, bool reset_initial_output, float relative
   auto debug_info = MakeString("m: ", m, ", n:", n, ", reset_initial_output: ", reset_initial_output);
 
   const TensorShape shape{m, n};
-  onnxruntime::test::RandomValueGeneratorBase random{};
+  RandomValueGeneratorBase random{};
   const auto values = random.Uniform<float>(shape.GetDims(), 1.0f, 10.0f);
   const auto initial_value = reset_initial_output ? 0.0f : 5.0f;
   const std::vector<float> expected_row =
@@ -160,7 +160,7 @@ void TestReduceColumnsToColumn(int m, int n, float relative_error_tolerance = 1e
   auto debug_info = MakeString("m: ", m, ", n:", n);
 
   const TensorShape shape{m, n};
-  onnxruntime::test::RandomValueGeneratorBase random{};
+  RandomValueGeneratorBase random{};
   const auto values = random.Uniform<float>(shape.GetDims(), 1.0f, 10.0f);
   const auto expected_column = ExpectedReduceMatrixColumnsOutput(m, n, values);
 
@@ -227,7 +227,7 @@ void ReductionFunctionsTest_BufferOffsets() {
   auto d_output = AllocateDeviceMemory<double>(m);
   auto d_buffer = AllocateDeviceMemory<char>(buffer_size_in_bytes);
 
-  onnxruntime::test::RandomValueGeneratorBase random{};
+  RandomValueGeneratorBase random{};
   const float relative_error_tolerance = 1e-4f;
 
   for (size_t buffer_offset = 1; buffer_offset <= max_buffer_offset; ++buffer_offset) {
@@ -263,7 +263,7 @@ void ReductionFunctionsTest_InvalidBufferSize() {
   auto d_output = AllocateDeviceMemory<float>(m);
   auto d_buffer = AllocateDeviceMemory<char>(buffer_size_in_bytes);
 
-  onnxruntime::test::RandomValueGeneratorBase random{};
+  RandomValueGeneratorBase random{};
   const auto input = random.Uniform<float>(shape.GetDims(), 1.0, 10.0);
   cudaMemcpy(d_input.get(), input.data(), m * n * sizeof(float), cudaMemcpyHostToDevice);
 

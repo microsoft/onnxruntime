@@ -1,4 +1,4 @@
-#ifndef AAA
+#ifndef NDEBUG
 
 #include "contrib_ops/cuda/transformers/beam_search_topk.h"
 #include "core/providers/cuda/shared_inc/cuda_call.h"

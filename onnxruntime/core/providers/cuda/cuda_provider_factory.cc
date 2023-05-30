@@ -16,7 +16,7 @@
 #include "core/providers/cuda/cuda_allocator.h"
 #include "core/providers/cuda/gpu_data_transfer.h"
 #include "core/providers/cuda/math/unary_elementwise_ops_impl.h"
-#ifndef AAA
+#ifndef NDEBUG
 #include "core/providers/cuda/test/all_tests.h"
 #endif
 
@@ -184,7 +184,7 @@ struct ProviderInfo_CUDA_Impl final : ProviderInfo_CUDA {
     return CUDAExecutionProvider::CreateCudaAllocator(device_id, gpu_mem_limit, arena_extend_strategy, external_allocator_info, default_memory_arena_cfg);
   }
 
-#ifndef AAA
+#ifndef NDEBUG
   bool TestAll() override {
     // TestAll is the entry point of CUDA EP's insternal tests.
     // Those internal tests are not directly callable from onnxruntime_test_all

@@ -1,4 +1,4 @@
-#ifndef AAA
+#ifndef NDEBUG
 
 #include "contrib_ops/cuda/transformers/greedy_search_top_one.h"
 #include "core/providers/cuda/shared_inc/cuda_call.h"

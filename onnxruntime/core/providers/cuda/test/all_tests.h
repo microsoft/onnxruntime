@@ -1,6 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
-#ifndef AAA
+#ifndef NDEBUG
 namespace onnxruntime {
 namespace cuda {
 namespace test {
