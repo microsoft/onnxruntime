@@ -41,7 +41,6 @@ bool PreShapeNodeElimination::SatisfyCondition(const Graph& graph, const Node& n
 
   // Check if the current node is Transpose and the next node is Shape
   if (op_type == "Transpose") {
-
     // Check if the dimensions of the input to Transpose are the same
     const auto& transpose_input_shape = node.InputDefs()[0]->Shape();
 
