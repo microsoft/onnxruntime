@@ -34,7 +34,7 @@ UpStreamGatherGraphTransformer::UpStreamGatherGraphTransformer(
 
       {GetFullQualifiedOpName("Cast", kOnnxDomain),
        OpPassThroughConfig<UpStreamGatherOperatorActorBase>(std::make_shared<SimplePointwiseGatherActor<true>>(),
-                                                            opset_13_9_6_1)},
+                                                            opset_19_13_9_6_1)},
       {GetFullQualifiedOpName("Div", kOnnxDomain),
        OpPassThroughConfig<UpStreamGatherOperatorActorBase>(std::make_shared<SimplePointwiseGatherActor<true>>(),
                                                             opset_14_13_7_6_1)},
@@ -53,7 +53,7 @@ UpStreamGatherGraphTransformer::UpStreamGatherGraphTransformer(
                                                             opset_13_9_1)},
       {GetFullQualifiedOpName("Reshape", kOnnxDomain),
        OpPassThroughConfig<UpStreamGatherOperatorActorBase>(std::make_shared<ReshapeGatherActor>(),
-                                                            opset_14_13_5_1)},
+                                                            opset_19_14_13_5_1)},
       {GetFullQualifiedOpName("Softmax", kOnnxDomain),
        OpPassThroughConfig<UpStreamGatherOperatorActorBase>(std::make_shared<SoftmaxGatherActor>(),
                                                             opset_13_11_1)},

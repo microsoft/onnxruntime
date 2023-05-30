@@ -61,6 +61,11 @@ enum TensorDataType : int32 {
   COMPLEX64 = 14,
   COMPLEX128 = 15,
   BFLOAT16 = 16,
+  // Float 8 types. See https://onnx.ai/onnx/technical/float8.html.
+  FLOAT8E4M3FN = 17,
+  FLOAT8E4M3FNUZ = 18,
+  FLOAT8E5M2 = 19,
+  FLOAT8E5M2FNUZ = 20,
 }
 
 table TensorTypeAndShape {
@@ -303,7 +308,6 @@ table KernelTypeStrResolver {
 table InferenceSession {
   // This is the ORT format model version
   // The version number is defined as kOrtModelVersion in <repo root>/onnxruntime/core/flatbuffers/ort_format_version.h
-  // Please update it when there is a change to this schema which will break the compatibilities
   ort_version:string;
 
   model:Model;

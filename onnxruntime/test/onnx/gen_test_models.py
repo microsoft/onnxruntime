@@ -84,7 +84,7 @@ def generate_size_op_test(type, X, test_folder):
     # Create the graph (GraphProto)
     graph_def = helper.make_graph([node_def], "test-model", [X_INFO], [Y], [tensor_x])
     # Create the model (ModelProto)
-    model_def = helper.make_model(graph_def, producer_name="onnx-example")
+    model_def = helper.make_model(graph_def, producer_name="onnx-example", opset_imports=[helper.make_opsetid("", 18)])
     final_model = infer_shapes(model_def)
     onnx.save(final_model, os.path.join(test_folder, "model.onnx"))
     expected_output_array = np.int64(X.size)

@@ -86,14 +86,15 @@ def apply_filters(filters, category):
 
 def load_jsonc(basename: str):
     """Returns a deserialized object from the JSONC file in testdata/<basename>."""
-    with open(
-        os.path.join(
-            os.path.dirname(os.path.realpath(__file__)),
-            "testdata",
-            basename,
-        ),
-        encoding="utf-8",
-    ) as f:  # pylint: disable=invalid-name
+    filename = os.path.join(
+        os.path.dirname(os.path.realpath(__file__)),
+        "testdata",
+        basename,
+    )
+    if not os.path.exists(filename):
+        raise FileNotFoundError(f"File not found {filename!r}.")
+
+    with open(filename, encoding="utf-8") as f:  # pylint: disable=invalid-name
         lines = f.readlines()
     lines = [x.split("//")[0] for x in lines]
     return json.loads("\n".join(lines))

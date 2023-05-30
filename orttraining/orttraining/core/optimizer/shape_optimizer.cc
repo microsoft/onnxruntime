@@ -65,7 +65,7 @@ bool CanShapeNodeBeReplacedWithConstant(const Node& shape_node, const TensorShap
   int64_t data_rank = static_cast<int64_t>(dim_values.size());
   int64_t start = 0;
   int64_t end = data_rank;  // end is exclusive
-  if (graph_utils::IsSupportedOptypeVersionAndDomain(shape_node, "Shape", {15})) {
+  if (graph_utils::IsSupportedOptypeVersionAndDomain(shape_node, "Shape", {15, 19})) {
     // Opset-15 Shape supports slicing using a 'start' and 'end' attribute
     const auto& shape_attributes = shape_node.GetAttributes();
     for (const auto& attr : shape_attributes) {
@@ -248,7 +248,7 @@ Status ShapeOptimizer::ApplyImpl(Graph& graph, bool& modified, int graph_level, 
       continue;
     }
 
-    if (!graph_utils::IsSupportedOptypeVersionAndDomain(*node, "Shape", {1, 13, 15})) {
+    if (!graph_utils::IsSupportedOptypeVersionAndDomain(*node, "Shape", {1, 13, 15, 19})) {
       continue;
     }
 

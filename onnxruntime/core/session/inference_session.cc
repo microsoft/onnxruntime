@@ -886,10 +886,13 @@ common::Status InferenceSession::Load() {
 #endif
     const bool strict_shape_type_inference = session_options_.config_options.GetConfigOrDefault(
                                                  kOrtSessionOptionsConfigStrictShapeTypeInference, "0") == "1";
+    const bool allow_released_opsets_only = session_options_.config_options.GetConfigOrDefault(
+                                                kOrtSessionOptionsConfigStrictAllowReleasedOpsetsOnly, "1") == "1";
+
     // Pass on ownership of the parsed ModelProto to the Model instance (its job here is done by this stage)
     return Model::Load(std::move(this->model_proto_), model_location_, model,
                        HasLocalSchema() ? &custom_schema_registries_ : nullptr, *session_logger_,
-                       ModelOptions(true, strict_shape_type_inference));
+                       ModelOptions(allow_released_opsets_only, strict_shape_type_inference));
   };
 
   return LoadWithLoader(loader, "model_loading_from_saved_proto");

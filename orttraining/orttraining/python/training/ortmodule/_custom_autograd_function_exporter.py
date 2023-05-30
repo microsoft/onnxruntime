@@ -40,6 +40,11 @@ _CAST_PYTORCH_TO_ONNX = {
     "ComplexFloat": torch.onnx.TensorProtoDataType.COMPLEX64,
     "ComplexDouble": torch.onnx.TensorProtoDataType.COMPLEX128,
     "BFloat16": torch.onnx.TensorProtoDataType.BFLOAT16,
+    # Not yet defined in torch.
+    # "Float8E4M3FN": torch.onnx.TensorProtoDataType.FLOAT8E4M3FN,
+    # "Float8E4M3FNUZ": torch.onnx.TensorProtoDataType.FLOAT8E4M3FNUZ,
+    # "Float8E5M2": torch.onnx.TensorProtoDataType.FLOAT8E5M2,
+    # "Float8E5M2FNUZ": torch.onnx.TensorProtoDataType.FLOAT8E5M2FNUZ,
     "Undefined": torch.onnx.TensorProtoDataType.UNDEFINED,
 }
 

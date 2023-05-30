@@ -282,7 +282,7 @@ Status Environment::Initialize(std::unique_ptr<logging::LoggingManager> logging_
     // These ops are internal-only, so register outside of onnx
     static std::vector<std::string> all_fixed_size_types = []() {
       std::vector<std::string> all_types;
-      std::vector<std::string> all_tensor_types = OpSchema::all_tensor_types_with_bfloat();
+      std::vector<std::string> all_tensor_types = OpSchema::all_tensor_types_ir9();
       std::vector<std::string> all_sequence_types = OpSchema::all_tensor_sequence_types();
       all_types.insert(all_types.end(), all_tensor_types.begin(), all_tensor_types.end());
       all_types.insert(all_types.end(), all_sequence_types.begin(), all_sequence_types.end());
