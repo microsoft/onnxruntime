@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #import <Foundation/Foundation.h>
+#include <stdint.h>
 
 NS_ASSUME_NONNULL_BEGIN
 
@@ -11,6 +12,8 @@ NS_ASSUME_NONNULL_BEGIN
  * This class holds the entire training session state that includes model parameters,
  * their gradients, optimizer parameters, and user properties. The ORTTrainingSession leverages the
  * ORTCheckpointState by accessing and updating the contained training state.
+ *
+ * Available since v1.16.0.
  *
  * @note Note that the training session created with a checkpoint state uses this state to store the entire training
  * state (including model parameters, its gradients, the optimizer states and the properties). The ORTTraingSession
@@ -34,8 +37,8 @@ NS_ASSUME_NONNULL_BEGIN
 /**
  * Saves a checkpoint to directory on disk.
  *
- * @param checkpoint The checkpoint to save.
  * @param path The path to the checkpoint directory.
+ * @param includeOptimizerState Flag to indicate whether to save the optimizer state or not.
  * @param error Optional error information set if an error occurs.
  * @return Whether the checkpoint was saved successfully.
  */
@@ -44,48 +47,48 @@ NS_ASSUME_NONNULL_BEGIN
                        error:(NSError**)error;
 
 /**
- * Adds a int property to this checkpoint.
+ * Adds an int property to this checkpoint.
  *
  * @param name The name of the property.
- * @param intValue The value of the property.
+ * @param value The value of the property.
  * @param error Optional error information set if an error occurs.
  * @return Whether the property was added successfully.
  */
-- (BOOL)addPropertyWithName:(NSString*)name
-                   intValue:(int64_t)value
-                      error:(NSError**)error;
+- (BOOL)addIntPropertyWithName:(NSString*)name
+                         value:(int64_t)value
+                         error:(NSError**)error;
 
 /**
  * Adds a float property to this checkpoint.
  *
  * @param name The name of the property.
- * @param floatValue The value of the property.
+ * @param value The value of the property.
  * @param error Optional error information set if an error occurs.
  * @return Whether the property was added successfully.
  */
-- (BOOL)addPropertyWithName:(NSString*)name
-                 floatValue:(float)value
-                      error:(NSError**)error;
+- (BOOL)addFloatPropertyWithName:(NSString*)name
+                           value:(float)value
+                           error:(NSError**)error;
 
 /**
  * Adds a string property to this checkpoint.
  *
  * @param name The name of the property.
- * @param stringValue The value of the property.
+ * @param value The value of the property.
  * @param error Optional error information set if an error occurs.
  * @return Whether the property was added successfully.
  */
 
-- (BOOL)addPropertyWithName:(NSString*)name
-                stringValue:(NSString*)value
-                      error:(NSError**)error;
+- (BOOL)addStringPropertyWithName:(NSString*)name
+                            value:(NSString*)value
+                            error:(NSError**)error;
 
 /**
- * Gets a int property from this checkpoint.
+ * Gets an int property from this checkpoint.
  *
  * @param name The name of the property.
  * @param error Optional error information set if an error occurs.
- * @return The value of the property.
+ * @return The value of the property or 0 if an error occurs.
  */
 - (int64_t)getIntPropertyWithName:(NSString*)name
                             error:(NSError**)error __attribute__((swift_error(nonnull_error)));
@@ -95,7 +98,7 @@ NS_ASSUME_NONNULL_BEGIN
  *
  * @param name The name of the property.
  * @param error Optional error information set if an error occurs.
- * @return The value of the property.
+ * @return The value of the property or 0.0f if an error occurs.
  */
 - (float)getFloatPropertyWithName:(NSString*)name
                             error:(NSError**)error __attribute__((swift_error(nonnull_error)));

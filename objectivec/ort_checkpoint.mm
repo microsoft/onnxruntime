@@ -45,9 +45,9 @@ NS_ASSUME_NONNULL_BEGIN
   ORT_OBJC_API_IMPL_CATCH_RETURNING_BOOL(error)
 }
 
-- (BOOL)addPropertyWithName:(NSString*)name
-                   intValue:(int64_t)value
-                      error:(NSError**)error {
+- (BOOL)addIntPropertyWithName:(NSString*)name
+                         value:(int64_t)value
+                         error:(NSError**)error {
   try {
     [self CXXAPIOrtCheckpoint].AddProperty(name.UTF8String, value);
     return YES;
@@ -55,9 +55,9 @@ NS_ASSUME_NONNULL_BEGIN
   ORT_OBJC_API_IMPL_CATCH_RETURNING_BOOL(error)
 }
 
-- (BOOL)addPropertyWithName:(NSString*)name
-                 floatValue:(float)value
-                      error:(NSError**)error {
+- (BOOL)addFloatPropertyWithName:(NSString*)name
+                           value:(float)value
+                           error:(NSError**)error {
   try {
     [self CXXAPIOrtCheckpoint].AddProperty(name.UTF8String, value);
     return YES;
@@ -65,9 +65,9 @@ NS_ASSUME_NONNULL_BEGIN
   ORT_OBJC_API_IMPL_CATCH_RETURNING_BOOL(error)
 }
 
-- (BOOL)addPropertyWithName:(NSString*)name
-                stringValue:(NSString*)value
-                      error:(NSError**)error {
+- (BOOL)addStringPropertyWithName:(NSString*)name
+                            value:(NSString*)value
+                            error:(NSError**)error {
   try {
     [self CXXAPIOrtCheckpoint].AddProperty(name.UTF8String, value.UTF8String);
     return YES;
@@ -86,7 +86,7 @@ NS_ASSUME_NONNULL_BEGIN
     return [NSString stringWithUTF8String:std::get<std::string>(value).c_str()];
   } else {
     NSString* errorMessage = [NSString stringWithFormat:@"Property '%@' is not a string.", name];
-    ORTSaveCodeAndDescriptionToError(1, errorMessage, error);
+    ORTSaveCodeAndDescriptionToError(ORT_INVALID_ARGUMENT, errorMessage, error);
     return nil;
   }
 }
@@ -102,7 +102,7 @@ NS_ASSUME_NONNULL_BEGIN
     return std::get<int64_t>(value);
   } else {
     NSString* errorMessage = [NSString stringWithFormat:@"Property '%@' is not an integer.", name];
-    ORTSaveCodeAndDescriptionToError(1, errorMessage, error);
+    ORTSaveCodeAndDescriptionToError(ORT_INVALID_ARGUMENT, errorMessage, error);
     return 0;
   }
 }
@@ -112,13 +112,13 @@ NS_ASSUME_NONNULL_BEGIN
   try {
     value = [self CXXAPIOrtCheckpoint].GetProperty(name.UTF8String);
   }
-  ORT_OBJC_API_IMPL_CATCH(error, 0.0)
+  ORT_OBJC_API_IMPL_CATCH(error, 0.0f)
 
   if (std::holds_alternative<float>(value)) {
     return std::get<float>(value);
   } else {
     NSString* errorMessage = [NSString stringWithFormat:@"Property '%@' is not a float.", name];
-    ORTSaveCodeAndDescriptionToError(1, errorMessage, error);
+    ORTSaveCodeAndDescriptionToError(ORT_INVALID_ARGUMENT, errorMessage, error);
     return 0.0;
   }
 }
@@ -130,4 +130,3 @@ NS_ASSUME_NONNULL_BEGIN
 @end
 
 NS_ASSUME_NONNULL_END
-// ./build.sh --config RelWithDebInfo --build_shared_lib --parallel --use_xcode --enable_training --build_objc  --cmake_extra_defines CMAKE_OSX_ARCHITECTURES=x86_64
