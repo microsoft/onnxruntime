@@ -34,7 +34,7 @@ Status DynamicTimeWarping::ComputeInternal(OpKernelContext* ctx) const {
   size_t max_index_len = 0;
 
   size_t buffer_size_in_bytes = GetDynamicTimeWarpingBufferSize(1, rows, cols, max_index_len);
-  IAllocatorUniquePtr<int8_t> buffer = GetScratchBuffer<int8_t>(buffer_size_in_bytes, context->GetComputeStream());
+  IAllocatorUniquePtr<int8_t> buffer = GetScratchBuffer<int8_t>(buffer_size_in_bytes, ctx->GetComputeStream());
 
   size_t result_len = 0;
   ORT_RETURN_IF_ERROR(LaunchDynamicTimeWarping(
@@ -44,8 +44,8 @@ Status DynamicTimeWarping::ComputeInternal(OpKernelContext* ctx) const {
   Tensor* output_tensor = ctx->Output(0, TensorShape{2LL, SafeInt<int64_t>(result_len)});
 
   return CUDA_CALL(cudaMemcpy2DAsync(
-    output->MutableData<int32_t>(), result_len * sizeof(int32_t),
-    buffer->get() + (max_index_len - result_len), max_index_len * sizeof(int32_t),
+    output_tensor->MutableData<int32_t>(), result_len * sizeof(int32_t),
+    buffer.get() + (max_index_len - result_len), max_index_len * sizeof(int32_t),
     result_len * sizeof(int32_t), 2,
     cudaMemcpyDeviceToDevice, this->Stream(ctx)));
 }

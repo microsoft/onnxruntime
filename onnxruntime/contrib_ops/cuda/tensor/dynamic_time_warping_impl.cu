@@ -42,20 +42,20 @@ __global__ void DynamicTimeWarpingKernel(
             const float c1 = cost_buffer[cost_idx + 1]; // [r - 1, c]
             const float c2 = cost_buffer[cost_idx + cols + 1]; // [r, c - 1]
 
-            float c;
+            float cost;
             int8_t t;
             if (c0 < c1 and c0 < c2) {
-                c = c0;
+                cost = c0;
                 t = 0;
             } else if (c1 < c0 and c1 < c2) {
-                c = c1;
+                cost = c1;
                 t = 1;
             } else {
-                c = c2;
+                cost = c2;
                 t = 2;
             }
             cost_idx += ((cols + 1) + 1);
-            cost_buffer[cost_idx] = c + input[r * cols + c];
+            cost_buffer[cost_idx] = cost + input[r * cols + c];
             trace_buffer[cost_idx] = t;
         }
     }
@@ -112,6 +112,7 @@ Status LaunchDynamicTimeWarping(
   dim3 block(device_prop.maxThreadsPerBlock);
   dim3 grid_init((unsigned)SafeInt<unsigned>(rows + 1), (unsigned)SafeInt<unsigned>(batch));
   DynamicTimeWarpingInitCost<<<grid_init, block, 0, stream>>>(cost_buffer, cols+1);
+  ORT_RETURN_IF_ERROR(CUDA_CALL(cudaGetLastError()));
 
   dim3 grid(1, (unsigned)SafeInt<unsigned>(batch));
   DynamicTimeWarpingKernel<<<grid, block, 0, stream>>>(
@@ -123,8 +124,10 @@ Status LaunchDynamicTimeWarping(
     trace_buffer,
     result_buffer,
     result_len_device_buf);
+  ORT_RETURN_IF_ERROR(CUDA_CALL(cudaGetLastError()));
 
-  return CUDA_CALL(cudaMemcpy(&result_len, result_len_device_buf, sizeof(size_t), cudaMemcpyDeviceToHost, stream));
+  ORT_RETURN_IF_ERROR(CUDA_CALL(cudaMemcpyAsync(&result_len, result_len_device_buf, sizeof(size_t), cudaMemcpyDeviceToHost, stream)));
+  return CUDA_CALL(cudaGetLastError());
 }
 
 }  // namespace cuda
