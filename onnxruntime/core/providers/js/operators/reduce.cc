@@ -3,8 +3,6 @@
 
 #include "reduce.h"
 
-#include "core/providers/js/js_kernel.h"
-
 namespace onnxruntime {
 namespace js {
 
@@ -91,5 +89,7 @@ REGISTER_REDUCE_ELEMENTWISE_KERNEL(ReduceSumSquare, 18);
 REGISTER_REDUCE_ELEMENTWISE_VERSIONSED_KERNEL(ReduceLogSumExp, 1, 10);
 REGISTER_REDUCE_ELEMENTWISE_VERSIONSED_KERNEL(ReduceLogSumExp, 11, 12);
 REGISTER_REDUCE_ELEMENTWISE_VERSIONSED_KERNEL(ReduceLogSumExp, 13, 17);
-REGISTER_REDUCE_ELEMENTWISE_KERNEL(ReduceLogSumExp, 18);}  // namespace js
+REGISTER_REDUCE_ELEMENTWISE_KERNEL(ReduceLogSumExp, 18);
+
+}  // namespace js
 }  // namespace onnxruntime
