@@ -16,7 +16,7 @@
 #include "core/providers/cuda/cuda_allocator.h"
 #include "core/providers/cuda/gpu_data_transfer.h"
 #include "core/providers/cuda/math/unary_elementwise_ops_impl.h"
-#ifndef NDEBUG
+#ifndef AAA
 #include "core/providers/cuda/test/all_tests.h"
 #endif
 
@@ -184,31 +184,33 @@ struct ProviderInfo_CUDA_Impl final : ProviderInfo_CUDA {
     return CUDAExecutionProvider::CreateCudaAllocator(device_id, gpu_mem_limit, arena_extend_strategy, external_allocator_info, default_memory_arena_cfg);
   }
 
-#ifndef NDEBUG
+#ifndef AAA
   bool TestAll() override {
     // TestAll is the entry point of CUDA EP's insternal tests.
     // Those internal tests are not directly callable from onnxruntime_test_all
     // because CUDA EP is a shared library now.
 
     // This is just one test. Call other test functions below.
-    if (!onnxruntime::cuda::test::TestDeferredRelease()) {
-      return false;
-    }
+    cuda::test::TestDeferredRelease();
+    cuda::test::TestDeferredReleaseWithoutArena();
 
-    if (!onnxruntime::cuda::test::TestDeferredReleaseWithoutArena()) {
-      return false;
-    }
+    cuda::test::TestBeamSearchTopK();
+    cuda::test::TestGreedySearchTopOne();
 
-    if (!onnxruntime::cuda::test::TestBeamSearchTopK()) {
-      return false;
-    }
+    cuda::test::CudaGemmOptions_TestDefaultOptions();
+    cuda::test::CudaGemmOptions_TestCompute16F();
+    cuda::test::CudaGemmOptions_NoReducedPrecision();
+    cuda::test::CudaGemmOptions_Pedantic();
+    cuda::test::CudaGemmOptions_Compute16F_Pedantic();
+    cuda::test::CudaGemmOptions_Compute16F_NoReducedPrecision();
 
-    if (!onnxruntime::cuda::test::TestGreedySearchTopOne()) {
-      return false;
-    }
+    cuda::test::ReductionFunctionsTest_ReduceRowToScalar();
+    cuda::test::ReductionFunctionsTest_ReduceRowsToRow();
+    cuda::test::ReductionFunctionsTest_ReduceColumnsToColumn();
+    cuda::test::ReductionFunctionsTest_BufferOffsets();
+    cuda::test::ReductionFunctionsTest_InvalidBufferSize();
+    cuda::test::ReductionFunctionsTest_GetApplicableMatrixReduction();
 
-    // TODO(wechi): brings disabled tests in onnxruntime/test/providers/cuda/*
-    // back alive here.
     return true;
   }
 #endif

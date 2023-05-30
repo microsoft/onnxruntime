@@ -1,4 +1,4 @@
-#ifndef NDEBUG
+#ifndef AAA
 
 #include "contrib_ops/cuda/transformers/greedy_search_top_one.h"
 #include "core/providers/cuda/shared_inc/cuda_call.h"
@@ -40,7 +40,7 @@ void ComputeTop1Reference(const std::vector<float>& values,
   }
 }
 
-bool TestGreedySearchTopOne() {
+void TestGreedySearchTopOne() {
   int32_t batch_size = 4;
   int32_t vocab_size = 50257;
   int32_t batch_x_vocab = batch_size * vocab_size;
@@ -87,15 +87,11 @@ bool TestGreedySearchTopOne() {
   CUDA_CALL_THROW(cudaMemcpy(top_k_values_host.data(), output_score_data, batch_size * sizeof(float), cudaMemcpyDeviceToHost));
   CUDA_CALL_THROW(cudaMemcpy(top_k_token_host.data(), output_token_data, batch_size * sizeof(float), cudaMemcpyDeviceToHost));
   for (int32_t i = 0; i < batch_size; i++) {
-    if (top_k_values_ref[i] != top_k_values_host[i] ||
-        top_k_tokens_ref[i] != top_k_token_host[i]) {
-      return false;
-    }
+    ORT_ENFORCE(top_k_values_ref[i] == top_k_values_host[i] &&
+                top_k_tokens_ref[i] == top_k_token_host[i]);
   }
 
   CUDA_CALL_THROW(cudaFree(topk_data));
-
-  return true;
 }
 
 }  // namespace test

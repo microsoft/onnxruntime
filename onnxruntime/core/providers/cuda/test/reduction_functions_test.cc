@@ -1,22 +1,171 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#if 0  // TODO: Can't call these directly from external code as Cuda is now a shared library
-//#ifdef USE_CUDA
+#ifndef AAA
 
 #include <memory>
-
-#include "gtest/gtest.h"
+#include <random>
+#include "gsl/gsl"
 
 #include "core/common/optional.h"
 #include "core/providers/cuda/reduction/reduction_functions.h"
 #include "core/providers/cuda/shared_inc/cuda_utils.h"
-#include "test/common/tensor_op_test_utils.h"
-#include "test/util/include/asserts.h"
-
-using onnxruntime::test::RandomValueGenerator;
+#include "core/common/type_utils.h"
+#include "test/util/test_random_seed.cc"
 
 namespace onnxruntime {
+namespace test {
+namespace detail {
+inline int64_t SizeFromDims(gsl::span<const int64_t> dims, gsl::span<const int64_t> strides = {}) {
+  int64_t size = 1;
+  if (strides.empty()) {
+    size = std::accumulate(dims.begin(), dims.end(), static_cast<int64_t>(1), std::multiplies<int64_t>{});
+  } else {
+    ORT_ENFORCE(dims.size() == strides.size());
+    for (size_t dim = 0; dim < dims.size(); ++dim) {
+      if (dims[dim] == 0) {
+        size = 0;
+        break;
+      }
+      size += strides[dim] * (dims[dim] - 1);
+    }
+  }
+
+  ORT_ENFORCE(size >= 0);
+  return size;
+}
+}  // namespace detail
+
+class RandomValueGenerator {
+ public:
+  using RandomEngine = std::default_random_engine;
+  using RandomSeedType = RandomEngine::result_type;
+
+  explicit RandomValueGenerator(optional<RandomSeedType> seed = {})
+      : random_seed_{seed.has_value() ? *seed : static_cast<RandomSeedType>(GetTestRandomSeed())},
+        generator_{random_seed_} {
+  }
+
+  RandomSeedType GetRandomSeed() const {
+    return random_seed_;
+  }
+
+  // Random values generated are in the range [min, max).
+  template <typename TFloat>
+  typename std::enable_if<
+      std::is_floating_point<TFloat>::value,
+      std::vector<TFloat>>::type
+  Uniform(gsl::span<const int64_t> dims, TFloat min, TFloat max) {
+    std::vector<TFloat> val(detail::SizeFromDims(dims));
+    std::uniform_real_distribution<TFloat> distribution(min, max);
+    for (size_t i = 0; i < val.size(); ++i) {
+      val[i] = distribution(generator_);
+    }
+    return val;
+  }
+
+  // Random values generated are in the range [min, max).
+  template <typename TFloat16>
+  typename std::enable_if<
+      std::is_same_v<TFloat16, MLFloat16>,
+      std::vector<TFloat16>>::type
+  Uniform(gsl::span<const int64_t> dims, float min, float max) {
+    std::vector<TFloat16> val(detail::SizeFromDims(dims));
+    std::uniform_real_distribution<float> distribution(min, max);
+    for (size_t i = 0; i < val.size(); ++i) {
+      val[i] = TFloat16(math::floatToHalf(distribution(generator_)));
+    }
+    return val;
+  }
+
+  // Random values generated are in the range [min, max).
+  template <typename TInt>
+  typename std::enable_if<
+      std::is_integral<TInt>::value && !utils::IsByteType<TInt>::value,
+      std::vector<TInt>>::type
+  Uniform(gsl::span<const int64_t> dims, TInt min, TInt max) {
+    std::vector<TInt> val(detail::SizeFromDims(dims));
+    std::uniform_int_distribution<TInt> distribution(min, max - 1);
+    for (size_t i = 0; i < val.size(); ++i) {
+      val[i] = distribution(generator_);
+    }
+    return val;
+  }
+
+  template <typename TByte>
+  typename std::enable_if<
+      utils::IsByteType<TByte>::value,
+      std::vector<TByte>>::type
+  Uniform(gsl::span<const int64_t> dims, TByte min, TByte max) {
+    std::vector<TByte> val(detail::SizeFromDims(dims));
+    std::uniform_int_distribution<int32_t> distribution(min, max - 1);
+    for (size_t i = 0; i < val.size(); ++i) {
+      val[i] = static_cast<TByte>(distribution(generator_));
+    }
+    return val;
+  }
+
+  // Gaussian distribution for float
+  template <typename TFloat>
+  typename std::enable_if<
+      std::is_floating_point<TFloat>::value,
+      std::vector<TFloat>>::type
+  Gaussian(gsl::span<const int64_t> dims, TFloat mean, TFloat stddev) {
+    std::vector<TFloat> val(detail::SizeFromDims(dims));
+    std::normal_distribution<TFloat> distribution(mean, stddev);
+    for (size_t i = 0; i < val.size(); ++i) {
+      val[i] = distribution(generator_);
+    }
+    return val;
+  }
+
+  // Gaussian distribution for Integer
+  template <typename TInt>
+  typename std::enable_if<
+      std::is_integral<TInt>::value,
+      std::vector<TInt>>::type
+  Gaussian(const std::vector<int64_t>& dims, TInt mean, TInt stddev) {
+    std::vector<TInt> val(detail::SizeFromDims(dims));
+    std::normal_distribution<float> distribution(static_cast<float>(mean), static_cast<float>(stddev));
+    for (size_t i = 0; i < val.size(); ++i) {
+      val[i] = static_cast<TInt>(std::round(distribution(generator_)));
+    }
+    return val;
+  }
+
+  // Gaussian distribution for Integer and Clamp to [min, max]
+  template <typename TInt>
+  typename std::enable_if<
+      std::is_integral<TInt>::value,
+      std::vector<TInt>>::type
+  Gaussian(const std::vector<int64_t>& dims, TInt mean, TInt stddev, TInt min, TInt max) {
+    std::vector<TInt> val(detail::SizeFromDims(dims));
+    std::normal_distribution<float> distribution(static_cast<float>(mean), static_cast<float>(stddev));
+    for (size_t i = 0; i < val.size(); ++i) {
+      int64_t round_val = static_cast<int64_t>(std::round(distribution(generator_)));
+      val[i] = static_cast<TInt>(std::min<int64_t>(std::max<int64_t>(round_val, min), max));
+    }
+    return val;
+  }
+
+  template <class T>
+  inline std::vector<T> OneHot(const std::vector<int64_t>& dims, int64_t stride) {
+    std::vector<T> val(detail::SizeFromDims(dims), T(0));
+    std::uniform_int_distribution<int64_t> distribution(0, stride - 1);
+    for (size_t offset = 0; offset < val.size(); offset += stride) {
+      size_t rand_index = static_cast<size_t>(distribution(generator_));
+      val[offset + rand_index] = T(1);
+    }
+    return val;
+  }
+
+ private:
+  const RandomSeedType random_seed_;
+  RandomEngine generator_;
+};
+
+}  // namespace test
+
 namespace cuda {
 namespace test {
 
@@ -41,19 +190,18 @@ void CheckDeviceValues(size_t n, const T* d_actual, const T* expected, float rel
   cudaMemcpy(actual.data(), d_actual, n * sizeof(T), cudaMemcpyDeviceToHost);
 
   for (size_t i = 0; i < n; ++i) {
-    EXPECT_LE(std::abs(actual[i] - expected[i]) / expected[i], relative_error_tolerance)
-        << "i: " << i << ", actual[i]: " << actual[i] << ", expected[i]: " << expected[i];
+    ORT_ENFORCE(std::abs(actual[i] - expected[i]) / expected[i] < relative_error_tolerance,
+                "i: ", i, ", actual[i]: ", actual[i], ", expected[i]: ", expected[i]);
   }
 }
 
 void TestReduceRowToScalarApis(int size, float relative_error_tolerance = 1e-4f) {
-  SCOPED_TRACE(MakeString("size: ", size));
-
+  auto debug_info = MakeString("size: ", size);
   float expected_output_sum = 0;
   float expected_output_square_sum = 0;
   float expected_output_mean = 0;
   const std::vector<int64_t> shape = {size};
-  RandomValueGenerator random_value_generator{};
+  onnxruntime::test::RandomValueGenerator random_value_generator{};
   const auto input = random_value_generator.Uniform<float>(shape, 0.1f, 1.0f);
   for (const auto input_value : input) {
     expected_output_sum += input_value;
@@ -71,29 +219,35 @@ void TestReduceRowToScalarApis(int size, float relative_error_tolerance = 1e-4f)
 
   cudaMemcpy(device_input.get(), input.data(), size * sizeof(float), cudaMemcpyHostToDevice);
 
-  ASSERT_STATUS_OK(reduce_sum(
-      0,
-      device_input.get(),
-      device_output_sum.get(),
-      size,
-      buffer.get(),
-      buffer_size_in_bytes));
-  ASSERT_STATUS_OK(reduce_square_sum(
-      0,
-      device_input.get(),
-      device_output_square_sum.get(),
-      size,
-      buffer.get(),
-      buffer_size_in_bytes));
-  ASSERT_STATUS_OK(reduce_mean(
-      0,
-      device_input.get(),
-      device_output_mean.get(),
-      size,
-      buffer.get(),
-      buffer_size_in_bytes));
+  ORT_ENFORCE(reduce_sum(
+                  0,
+                  device_input.get(),
+                  device_output_sum.get(),
+                  size,
+                  buffer.get(),
+                  buffer_size_in_bytes)
+                  .IsOK(),
+              debug_info);
+  ORT_ENFORCE(reduce_square_sum(
+                  0,
+                  device_input.get(),
+                  device_output_square_sum.get(),
+                  size,
+                  buffer.get(),
+                  buffer_size_in_bytes)
+                  .IsOK(),
+              debug_info);
+  ORT_ENFORCE(reduce_mean(
+                  0,
+                  device_input.get(),
+                  device_output_mean.get(),
+                  size,
+                  buffer.get(),
+                  buffer_size_in_bytes)
+                  .IsOK(),
+              debug_info);
 
-  ASSERT_TRUE(CUDA_CALL(cudaDeviceSynchronize()));
+  ORT_ENFORCE(CUDA_CALL(cudaDeviceSynchronize()).IsOK(), debug_info);
 
   CheckDeviceValues(1, device_output_sum.get(), &expected_output_sum, relative_error_tolerance);
   CheckDeviceValues(1, device_output_square_sum.get(), &expected_output_square_sum, relative_error_tolerance);
@@ -101,10 +255,10 @@ void TestReduceRowToScalarApis(int size, float relative_error_tolerance = 1e-4f)
 }
 
 void TestReduceRowsToRow(int m, int n, bool reset_initial_output, float relative_error_tolerance = 1e-4f) {
-  SCOPED_TRACE(MakeString("m: ", m, ", n:", n, ", reset_initial_output: ", reset_initial_output));
+  auto debug_info = MakeString("m: ", m, ", n:", n, ", reset_initial_output: ", reset_initial_output);
 
   const TensorShape shape{m, n};
-  RandomValueGenerator random{};
+  onnxruntime::test::RandomValueGenerator random{};
   const auto values = random.Uniform<float>(shape.GetDims(), 1.0f, 10.0f);
   const auto initial_value = reset_initial_output ? 0.0f : 5.0f;
   const std::vector<float> expected_row =
@@ -128,12 +282,14 @@ void TestReduceRowsToRow(int m, int n, bool reset_initial_output, float relative
     Fill(0, d_out.get(), initial_value, n);
   }
 
-  ASSERT_STATUS_OK(reduce_matrix_rows(
-      0, d_in.get(), d_out.get(),
-      m, n,
-      reset_initial_output));
+  ORT_ENFORCE(reduce_matrix_rows(
+                  0, d_in.get(), d_out.get(),
+                  m, n,
+                  reset_initial_output)
+                  .IsOK(),
+              debug_info);
 
-  ASSERT_TRUE(CUDA_CALL(cudaDeviceSynchronize()));
+  ORT_ENFORCE(CUDA_CALL(cudaDeviceSynchronize()).IsOK(), debug_info);
 
   CheckDeviceValues(n, d_out.get(), expected_row.data(), relative_error_tolerance);
 }
@@ -151,10 +307,10 @@ std::vector<T> ExpectedReduceMatrixColumnsOutput(
 }
 
 void TestReduceColumnsToColumn(int m, int n, float relative_error_tolerance = 1e-4f) {
-  SCOPED_TRACE(MakeString("m: ", m, ", n:", n));
+  auto debug_info = MakeString("m: ", m, ", n:", n);
 
   const TensorShape shape{m, n};
-  RandomValueGenerator random{};
+  onnxruntime::test::RandomValueGenerator random{};
   const auto values = random.Uniform<float>(shape.GetDims(), 1.0f, 10.0f);
   const auto expected_column = ExpectedReduceMatrixColumnsOutput(m, n, values);
 
@@ -167,19 +323,21 @@ void TestReduceColumnsToColumn(int m, int n, float relative_error_tolerance = 1e
       compute_reduce_matrix_columns_buffer_size<float>(m, n);
   auto d_buffer = AllocateDeviceMemory<char>(buffer_size_in_bytes);
 
-  ASSERT_STATUS_OK(reduce_matrix_columns(
-      0,
-      d_in.get(), d_out.get(),
-      m, n,
-      d_buffer.get(), buffer_size_in_bytes));
+  ORT_ENFORCE(reduce_matrix_columns(
+                  0,
+                  d_in.get(), d_out.get(),
+                  m, n,
+                  d_buffer.get(), buffer_size_in_bytes)
+                  .IsOK(),
+              debug_info);
 
-  ASSERT_TRUE(CUDA_CALL(cudaDeviceSynchronize()));
+  ORT_ENFORCE(CUDA_CALL(cudaDeviceSynchronize()).IsOK(), debug_info);
 
   CheckDeviceValues(m, d_out.get(), expected_column.data(), relative_error_tolerance);
 }
 }  // namespace
 
-TEST(ReductionFunctionsTest, ReduceRowToScalar) {
+void ReductionFunctionsTest_ReduceRowToScalar() {
   TestReduceRowToScalarApis(3);
   TestReduceRowToScalarApis(19);
   TestReduceRowToScalarApis(123);
@@ -188,7 +346,7 @@ TEST(ReductionFunctionsTest, ReduceRowToScalar) {
   TestReduceRowToScalarApis(941736, 2e-4f);
 }
 
-TEST(ReductionFunctionsTest, ReduceRowsToRow) {
+void ReductionFunctionsTest_ReduceRowsToRow() {
   for (int m : {3, 193, 2945}) {
     for (int n : {3, 193, 2945}) {
       TestReduceRowsToRow(m, n, true);
@@ -197,7 +355,7 @@ TEST(ReductionFunctionsTest, ReduceRowsToRow) {
   }
 }
 
-TEST(ReductionFunctionsTest, ReduceColumnsToColumn) {
+void ReductionFunctionsTest_ReduceColumnsToColumn() {
   for (int m : {3, 193, 2945}) {
     for (int n : {3, 193, 2945}) {
       TestReduceColumnsToColumn(m, n);
@@ -205,9 +363,10 @@ TEST(ReductionFunctionsTest, ReduceColumnsToColumn) {
   }
 }
 
-TEST(ReductionFunctionsTest, BufferOffsets) {
+void ReductionFunctionsTest_BufferOffsets() {
   const int m = 2048;
   const int n = 1024;
+  const TensorShape shape{m, n};
 
   const size_t max_buffer_offset = 15;
 
@@ -218,30 +377,33 @@ TEST(ReductionFunctionsTest, BufferOffsets) {
   auto d_output = AllocateDeviceMemory<double>(m);
   auto d_buffer = AllocateDeviceMemory<char>(buffer_size_in_bytes);
 
-  RandomValueGenerator random{};
+  onnxruntime::test::RandomValueGenerator random{};
   const float relative_error_tolerance = 1e-4f;
 
   for (size_t buffer_offset = 1; buffer_offset <= max_buffer_offset; ++buffer_offset) {
-    SCOPED_TRACE(MakeString("buffer offset: ", buffer_offset));
+    auto debug_info = MakeString("buffer offset: ", buffer_offset);
 
-    const auto input = random.Uniform<double>({m, n}, 1.0, 10.0);
+    const auto input = random.Uniform<double>(shape.GetDims(), 1.0, 10.0);
     cudaMemcpy(d_input.get(), input.data(), m * n * sizeof(double), cudaMemcpyHostToDevice);
 
-    ASSERT_STATUS_OK(reduce_matrix_columns(
-        0,
-        d_input.get(), d_output.get(),
-        m, n,
-        d_buffer.get() + buffer_offset,
-        buffer_size_in_bytes - buffer_offset));
+    ORT_ENFORCE(reduce_matrix_columns(
+                    0,
+                    d_input.get(), d_output.get(),
+                    m, n,
+                    d_buffer.get() + buffer_offset,
+                    buffer_size_in_bytes - buffer_offset)
+                    .IsOK(),
+                debug_info);
 
     const auto expected_column = ExpectedReduceMatrixColumnsOutput(m, n, input);
     CheckDeviceValues(m, d_output.get(), expected_column.data(), relative_error_tolerance);
   }
 }
 
-TEST(ReductionFunctionsTest, InvalidBufferSize) {
+void ReductionFunctionsTest_InvalidBufferSize() {
   const int m = 2048;
   const int n = 1024;
+  const TensorShape shape{m, n};
 
   // this should be too small
   const size_t buffer_size_in_bytes =
@@ -251,35 +413,37 @@ TEST(ReductionFunctionsTest, InvalidBufferSize) {
   auto d_output = AllocateDeviceMemory<float>(m);
   auto d_buffer = AllocateDeviceMemory<char>(buffer_size_in_bytes);
 
-  RandomValueGenerator random{};
-  const auto input = random.Uniform<float>({m, n}, 1.0, 10.0);
+  onnxruntime::test::RandomValueGenerator random{};
+  const auto input = random.Uniform<float>(shape.GetDims(), 1.0, 10.0);
   cudaMemcpy(d_input.get(), input.data(), m * n * sizeof(float), cudaMemcpyHostToDevice);
 
   const auto status =
       reduce_matrix_columns(0, d_input.get(), d_output.get(), m, n, d_buffer.get(), buffer_size_in_bytes);
-  ASSERT_FALSE(status.IsOK());
+  ORT_ENFORCE(!status.IsOK());
 }
 
-TEST(ReductionFunctionsTest, GetApplicableMatrixReduction) {
+void ReductionFunctionsTest_GetApplicableMatrixReduction() {
   auto test_get_applicable_matrix_reduction =
       [](cudnnReduceTensorOp_t cudnn_op,
          const std::vector<int64_t>& dims, const std::vector<int64_t>& axes,
          ApplicableMatrixReduction expected_reduction,
          const optional<int>& expected_m = nullopt,
          const optional<int>& expected_n = nullopt) {
-        SCOPED_TRACE(MakeString(
+        auto debug_info = MakeString(
             "cudnn_op: ", cudnn_op,
             ", dims: ", TensorShape::FromExistingBuffer(dims),
-            ", axes: ", TensorShape::FromExistingBuffer(axes)));
+            ", axes: ", TensorShape::FromExistingBuffer(axes));
         int m{}, n{};
-        EXPECT_EQ(
-            static_cast<int>(get_applicable_matrix_reduction(cudnn_op, dims, axes, m, n)),
-            static_cast<int>(expected_reduction));
+        get_applicable_matrix_reduction(cudnn_op, dims, axes, m, n);
+        ORT_ENFORCE(
+            static_cast<int>(get_applicable_matrix_reduction(cudnn_op, dims, axes, m, n)) ==
+                static_cast<int>(expected_reduction),
+            debug_info);
         if (expected_m) {
-          EXPECT_EQ(m, *expected_m);
+          ORT_ENFORCE(m == *expected_m, debug_info, ":", m, " vs ", *expected_m);
         }
         if (expected_n) {
-          EXPECT_EQ(n, *expected_n);
+          ORT_ENFORCE(n == *expected_n, debug_info, ":", n, " vs ", *expected_n);
         }
       };
 
@@ -313,7 +477,7 @@ TEST(ReductionFunctionsTest, GetApplicableMatrixReduction) {
   // handle ones
   test_get_applicable_matrix_reduction(
       valid_op_type, {1, 2, 1, 1, 4, 1, 8, 1}, {0},
-      ApplicableMatrixReduction::Rows, 1, 2 * 4 * 8);
+      ApplicableMatrixReduction::Columns, 2 * 4 * 8, 1);
   test_get_applicable_matrix_reduction(
       valid_op_type, {1, 2, 1, 1, 4, 1, 8, 1}, {1},
       ApplicableMatrixReduction::Rows, 2, 4 * 8);
@@ -348,7 +512,7 @@ TEST(ReductionFunctionsTest, GetApplicableMatrixReduction) {
       ApplicableMatrixReduction::None);
   test_get_applicable_matrix_reduction(
       valid_op_type, {1, 2, 1, 1, 4, 1, 8, 1}, {3, 6},
-      ApplicableMatrixReduction::None);
+      ApplicableMatrixReduction::Columns, 2 * 4, 8);
 
   // invalid op type
   test_get_applicable_matrix_reduction(

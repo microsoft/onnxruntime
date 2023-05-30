@@ -1,4 +1,4 @@
-#ifndef NDEBUG
+#ifndef AAA
 
 #include "contrib_ops/cuda/transformers/beam_search_topk.h"
 #include "core/providers/cuda/shared_inc/cuda_call.h"
@@ -69,7 +69,7 @@ void ComputeTopKReference(const std::vector<float>& values,
   }
 }
 
-bool TestBeamSearchTopK() {
+void TestBeamSearchTopK() {
   int32_t batch_size = 4;
   int32_t beam_size = 4;
   int32_t vocab_size = 50257;
@@ -120,16 +120,12 @@ bool TestBeamSearchTopK() {
   CUDA_CALL_THROW(cudaMemcpy(top_k_token_host.data(), top_k_token, batch_size * k * 4, cudaMemcpyDeviceToHost));
   CUDA_CALL_THROW(cudaMemcpy(top_k_indices_host.data(), top_k_indices, batch_size * k * 4, cudaMemcpyDeviceToHost));
   for (int32_t i = 0; i < batch_size * k; i++) {
-    if (top_k_values_ref[i] != top_k_values_host[i] ||
-        top_k_tokens_ref[i] != top_k_token_host[i] ||
-        top_k_indices_ref[i] != top_k_indices_host[i]) {
-      return false;
-    }
+    ORT_ENFORCE(top_k_values_ref[i] == top_k_values_host[i] &&
+                top_k_tokens_ref[i] == top_k_token_host[i] &&
+                top_k_indices_ref[i] == top_k_indices_host[i]);
   }
 
   CUDA_CALL_THROW(cudaFree(cuda_buffer));
-
-  return true;
 }
 
 }  // namespace test

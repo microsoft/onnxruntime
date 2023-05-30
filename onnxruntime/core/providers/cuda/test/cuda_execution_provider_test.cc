@@ -5,7 +5,7 @@
 // extra code in the core of CUDA EP and that code may
 //  1. slow down performance critical applications and
 //  2. increase binary size of ORT.
-#ifndef NDEBUG
+#ifndef AAA
 #include <iostream>
 #include "core/providers/cuda/test/all_tests.h"
 #include "core/providers/cuda/cuda_execution_provider.h"
@@ -17,7 +17,7 @@ namespace cuda {
 namespace test {
 // TODO: Since the "DeferredRelease" has been migrated to CudaStream class,
 // we should migrate this test from CudaEP unit test to CudaStream unit test.
-bool TestDeferredRelease() {
+void TestDeferredRelease() {
   // Create CUDA EP.
   CUDAExecutionProviderInfo info;
   CUDAExecutionProvider ep(info);
@@ -46,10 +46,9 @@ bool TestDeferredRelease() {
   ORT_ENFORCE(stats.num_allocs == n_allocs);
   ORT_THROW_IF_ERROR(stream.CleanUpOnRunEnd());
   ORT_THROW_IF_ERROR(ep.OnRunEnd(true));
-  return true;
 }
 
-bool TestDeferredReleaseWithoutArena() {
+void TestDeferredReleaseWithoutArena() {
   // Create CUDA EP.
   CUDAExecutionProviderInfo info;
   CUDAExecutionProvider ep(info);
@@ -82,7 +81,6 @@ bool TestDeferredReleaseWithoutArena() {
 
   ORT_THROW_IF_ERROR(stream.CleanUpOnRunEnd());
   ORT_THROW_IF_ERROR(ep.OnRunEnd(true));
-  return true;
 }
 
 }  // namespace test
