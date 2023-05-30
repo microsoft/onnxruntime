@@ -3,7 +3,7 @@
 parameters:
 - name: appcenterVersion
   type: string
-  default: "2.17.3"
+  default: "2.13.7"
 
 steps:
 - bash: |
