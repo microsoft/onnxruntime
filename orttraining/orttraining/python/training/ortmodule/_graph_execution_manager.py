@@ -161,6 +161,7 @@ class GraphExecutionManager(GraphExecutionInterface):
         self._input_info: Optional[_InputInfo] = None
         self._module_output_schema: Optional[_ModelInputOutputSchemaType] = None
         self._warning_log_detected_during_export = False
+        self._export_duration_in_ms = 0
 
         # Device where the model is placed.
         self._device: Optional[torch.device] = _utils.get_device_from_module(module)
@@ -387,6 +388,10 @@ class GraphExecutionManager(GraphExecutionInterface):
         TODO: How to support dynamic axes? Dimensions are determined by samples
         """
         with _logger.suppress_os_stream_output(log_level=self._debug_options.logging.log_level) as suppress_output:
+            from datetime import datetime
+
+            start = datetime.now()
+
             # Setup dynamic axes for onnx model
             self._input_info = _io.parse_inputs_for_onnx_export(
                 self._module_parameters, None, input_schema, inputs, kwargs
@@ -455,6 +460,9 @@ class GraphExecutionManager(GraphExecutionInterface):
 
             if suppress_output.tell() > 0:
                 self._warning_log_detected_during_export = True
+
+            end = datetime.now()
+            self._export_duration_in_ms = (end - start).total_seconds() * 1000
 
         return exported_model
 
@@ -593,7 +601,7 @@ class GraphExecutionManager(GraphExecutionInterface):
                     graph_transformer_config.sparse_label_input_names = label_sparsity_results
                     self._logger.info("Label sparsity based optimization is on for %s", label_sparsity_results)
                     self._feature_map.append(
-                        ["  - Label Sparsity", sparse_opt_status, "Label inputs: " + str(label_sparsity_results)]
+                        [" - Label Sparsity", sparse_opt_status, "Label inputs: " + str(label_sparsity_results)]
                     )
 
                 if len(embed_sparsity_results) > 0:
@@ -601,7 +609,7 @@ class GraphExecutionManager(GraphExecutionInterface):
                     self._logger.info("Embedding sparsity based optimization is on for %s", embed_sparsity_results)
                     self._feature_map.append(
                         [
-                            "  - Embedding Sparsity",
+                            " - Embedding Sparsity",
                             sparse_opt_status,
                             "Embedding inputs: " + str(embed_sparsity_results),
                         ]
@@ -640,7 +648,8 @@ class GraphExecutionManager(GraphExecutionInterface):
         # any warning or error that was raised
         stat += f"\n{_logger.LogColor.WARNING}There were one or more warnings or errors raised while exporting the PyTorch model.\n"
         stat += f"Please enable INFO level logging with DebugOptions to view all warnings and errors.{_logger.LogColor.ENDC}\n\n"
-        stat += f"Versions: ONNX Runtime - {onnxruntime.__version__}, ONNX - {onnx.__version__} \n\n"
+        stat += f"Export duration: {self._export_duration_in_ms:.0f} milliseconds\n"
+        stat += f"Versions: ONNX Runtime - {onnxruntime.__version__}, ONNX - {onnx.__version__}\n\n"
         stat += f"{_logger.LogColor.HEADER}****************************************************************{_logger.LogColor.ENDC}\n\n"
 
         self._logger.warning(stat)
