@@ -1,7 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 #ifndef AAA
-#include "core/common/status.h"
 namespace onnxruntime {
 namespace cuda {
 namespace test {
