@@ -191,6 +191,30 @@ constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<uint64_t>() {
   return ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT64;
 }
 
+#if !defined(DISABLE_FLOAT8_TYPES)
+
+template <>
+constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<Float8E4M3FN>() {
+  return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E4M3FN;
+}
+
+template <>
+constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<Float8E4M3FNUZ>() {
+  return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E4M3FNUZ;
+}
+
+template <>
+constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<Float8E5M2>() {
+  return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E5M2;
+}
+
+template <>
+constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<Float8E5M2FNUZ>() {
+  return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E5M2FNUZ;
+}
+
+#endif
+
 int32_t ONNXTensorElementDataTypeToProtoTensorType(ONNXTensorElementDataType);
 
 #ifdef ENABLE_TRAINING_CORE

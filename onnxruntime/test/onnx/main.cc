@@ -666,6 +666,55 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
             ORT_TSTR("bernoulli_double"),
             ORT_TSTR("bernoulli_seed")};
 
+    // float 8 types are not supported by any language.
+    static const ORTCHAR_T* float8_tests[] = {
+        ORT_TSTR("cast_FLOAT16_to_FLOAT8E4M3FN"),
+        ORT_TSTR("cast_FLOAT16_to_FLOAT8E4M3FNUZ"),
+        ORT_TSTR("cast_FLOAT16_to_FLOAT8E5M2"),
+        ORT_TSTR("cast_FLOAT16_to_FLOAT8E5M2FNUZ"),
+        ORT_TSTR("cast_FLOAT8E4M3FNUZ_to_FLOAT"),
+        ORT_TSTR("cast_FLOAT8E4M3FNUZ_to_FLOAT16"),
+        ORT_TSTR("cast_FLOAT8E4M3FN_to_FLOAT"),
+        ORT_TSTR("cast_FLOAT8E4M3FN_to_FLOAT16"),
+        ORT_TSTR("cast_FLOAT8E5M2FNUZ_to_FLOAT"),
+        ORT_TSTR("cast_FLOAT8E5M2FNUZ_to_FLOAT16"),
+        ORT_TSTR("cast_FLOAT8E5M2_to_FLOAT"),
+        ORT_TSTR("cast_FLOAT8E5M2_to_FLOAT16"),
+        ORT_TSTR("cast_FLOAT_to_FLOAT8E4M3FN"),
+        ORT_TSTR("cast_FLOAT_to_FLOAT8E4M3FNUZ"),
+        ORT_TSTR("cast_FLOAT_to_FLOAT8E5M2"),
+        ORT_TSTR("cast_FLOAT_to_FLOAT8E5M2FNUZ"),
+        ORT_TSTR("cast_no_saturate_FLOAT16_to_FLOAT8E4M3FN"),
+        ORT_TSTR("cast_no_saturate_FLOAT16_to_FLOAT8E4M3FNUZ"),
+        ORT_TSTR("cast_no_saturate_FLOAT16_to_FLOAT8E5M2"),
+        ORT_TSTR("cast_no_saturate_FLOAT16_to_FLOAT8E5M2FNUZ"),
+        ORT_TSTR("cast_no_saturate_FLOAT_to_FLOAT8E4M3FN"),
+        ORT_TSTR("cast_no_saturate_FLOAT_to_FLOAT8E4M3FNUZ"),
+        ORT_TSTR("cast_no_saturate_FLOAT_to_FLOAT8E5M2"),
+        ORT_TSTR("cast_no_saturate_FLOAT_to_FLOAT8E5M2FNUZ"),
+        ORT_TSTR("castlike_FLOAT8E4M3FNUZ_to_FLOAT"),
+        ORT_TSTR("castlike_FLOAT8E4M3FNUZ_to_FLOAT_expanded"),
+        ORT_TSTR("castlike_FLOAT8E4M3FN_to_FLOAT"),
+        ORT_TSTR("castlike_FLOAT8E4M3FN_to_FLOAT_expanded"),
+        ORT_TSTR("castlike_FLOAT8E5M2FNUZ_to_FLOAT"),
+        ORT_TSTR("castlike_FLOAT8E5M2FNUZ_to_FLOAT_expanded"),
+        ORT_TSTR("castlike_FLOAT8E5M2_to_FLOAT"),
+        ORT_TSTR("castlike_FLOAT8E5M2_to_FLOAT_expanded"),
+        ORT_TSTR("castlike_FLOAT_to_BFLOAT16"),
+        ORT_TSTR("castlike_FLOAT_to_BFLOAT16_expanded"),
+        ORT_TSTR("castlike_FLOAT_to_FLOAT8E4M3FN"),
+        ORT_TSTR("castlike_FLOAT_to_FLOAT8E4M3FNUZ"),
+        ORT_TSTR("castlike_FLOAT_to_FLOAT8E4M3FNUZ_expanded"),
+        ORT_TSTR("castlike_FLOAT_to_FLOAT8E4M3FN_expanded"),
+        ORT_TSTR("castlike_FLOAT_to_FLOAT8E5M2"),
+        ORT_TSTR("castlike_FLOAT_to_FLOAT8E5M2FNUZ"),
+        ORT_TSTR("castlike_FLOAT_to_FLOAT8E5M2FNUZ_expanded"),
+        ORT_TSTR("castlike_FLOAT_to_FLOAT8E5M2_expanded"),
+        ORT_TSTR("dequantizelinear_e4m3fn"),
+        ORT_TSTR("dequantizelinear_e5m2"),
+        ORT_TSTR("quantizelinear_e4m3fn"),
+        ORT_TSTR("quantizelinear_e5m2")};
+
     static const ORTCHAR_T* cuda_flaky_tests[] = {
         ORT_TSTR("fp16_inception_v1"),
         ORT_TSTR("fp16_shufflenet"), ORT_TSTR("fp16_tiny_yolov2")};
@@ -713,6 +762,7 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
         ORT_TSTR("sce_NCd1d2d3_sum_weight_high_ii_expanded"),
         ORT_TSTR("sce_none_weights_log_prob_expanded"),
         ORT_TSTR("sce_none_weights_expanded")};
+
     std::unordered_set<std::basic_string<ORTCHAR_T>> all_disabled_tests(std::begin(immutable_broken_tests), std::end(immutable_broken_tests));
     if (enable_cuda) {
       all_disabled_tests.insert(std::begin(cuda_flaky_tests), std::end(cuda_flaky_tests));
@@ -724,9 +774,11 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
       // these models run but disabled tests to keep memory utilization low
       // This will be removed after LRU implementation
       all_disabled_tests.insert(std::begin(dnnl_disabled_tests), std::end(dnnl_disabled_tests));
+      all_disabled_tests.insert(std::begin(float8_tests), std::end(float8_tests));
     }
     if (enable_qnn) {
       all_disabled_tests.insert(std::begin(qnn_disabled_tests), std::end(qnn_disabled_tests));
+      all_disabled_tests.insert(std::begin(float8_tests), std::end(float8_tests));
     }
 #if !defined(__amd64__) && !defined(_M_AMD64)
     // out of memory

@@ -131,7 +131,7 @@ Status SimpleOpBuilder::ProcessAlphaAttributeAsInput(QnnModelWrapper& qnn_model_
     concurrency::ThreadPool* thread_pool = nullptr;
     GetQuantizationParameter(&tensor_data.alpha, num_of_elements, scale, zero_point, thread_pool);
     unpacked_data.resize(1);
-    ParQuantizeLinear(&tensor_data.alpha, unpacked_data.data(), num_of_elements, scale, zero_point, thread_pool);
+    ParQuantizeLinearStd(&tensor_data.alpha, unpacked_data.data(), num_of_elements, scale, zero_point, thread_pool);
     InitializeQuantizeParam(quantize_param, is_quantized_model, scale, static_cast<int32_t>(zero_point));
     qnn_data_type = QNN_DATATYPE_UFIXED_POINT_8;
   } else {

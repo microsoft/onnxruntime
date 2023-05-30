@@ -17,7 +17,7 @@ namespace onnxruntime {
 namespace {
 bool CanNodePropagate(const Node& node) {
   return graph_utils::IsSupportedOptypeVersionAndDomain(node, "MaxPool", {12}) ||
-         graph_utils::IsSupportedOptypeVersionAndDomain(node, "Reshape", {5, 13, 14}) ||
+         graph_utils::IsSupportedOptypeVersionAndDomain(node, "Reshape", {5, 13, 14, 19}) ||
          graph_utils::IsSupportedOptypeVersionAndDomain(node, "Transpose", {1, 13}) ||
          graph_utils::IsSupportedOptypeVersionAndDomain(node, "Squeeze", {1, 11, 13}) ||
          graph_utils::IsSupportedOptypeVersionAndDomain(node, "Unsqueeze", {1, 11, 13});
