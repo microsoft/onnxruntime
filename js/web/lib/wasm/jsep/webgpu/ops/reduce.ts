@@ -105,10 +105,31 @@ const createReduceProgramInfoLoader =
           return {...metadata, get: () => createReduceProgramInfo(metadata, inputs, attributes, reduceOp)};
         };
 
-export const reduceSum = (context: ComputeContext, attributes: ReduceAttributes): void => {
+export const reduceLogSum = (context: ComputeContext, attributes: ReduceAttributes): void => {
   validateInputs(context.inputs);
-  const reduceOp: ReduceOp = (): string[] => ['value = 0.0;', '', 'value += _A[inputIdx];', ''];
-  context.compute(createReduceProgramInfoLoader(context.inputs, 'ReduceSum', attributes, reduceOp));
+  const reduceOp: ReduceOp = (): string[] => ['value = 0.0;', '', 'value += _A[inputIdx];', 'value = log(value);'];
+  context.compute(createReduceProgramInfoLoader(context.inputs, 'ReduceLogSum', attributes, reduceOp));
+};
+
+export const reduceLogSumExp = (context: ComputeContext, attributes: ReduceAttributes): void => {
+  validateInputs(context.inputs);
+  const reduceOp: ReduceOp = (): string[] => ['value = 0.0;', '', 'value += exp(_A[inputIdx]);', 'value = log(value);'];
+  context.compute(createReduceProgramInfoLoader(context.inputs, 'ReduceLogSumExp', attributes, reduceOp));
+};
+
+export const reduceMax = (context: ComputeContext, attributes: ReduceAttributes): void => {
+  validateInputs(context.inputs);
+  const reduceOp: ReduceOp = (inputs: TensorView[], axes: number[]): string[] => {
+    const idxZero = [];
+    for (let k = 0; k < inputs[0].dims.length; k++) {
+      if (axes.indexOf(k) >= 0 || axes.length === 0) {
+        idxZero.push(`inputIndices[${k}] = 0;`);  // first element
+      }
+    }
+
+    return [`${idxZero.join('\n')}`, 'value = _A[inputIdx];', 'value = max(value, _A[inputIdx]);', ''];
+  };
+  context.compute(createReduceProgramInfoLoader(context.inputs, 'ReduceMax', attributes, reduceOp));
 };
 
 export const reduceMean = (context: ComputeContext, attributes: ReduceAttributes): void => {
@@ -126,20 +147,6 @@ export const reduceMean = (context: ComputeContext, attributes: ReduceAttributes
   context.compute(createReduceProgramInfoLoader(context.inputs, 'ReduceMean', attributes, reduceOp));
 };
 
-export const reduceMax = (context: ComputeContext, attributes: ReduceAttributes): void => {
-  validateInputs(context.inputs);
-  const reduceOp: ReduceOp = (inputs: TensorView[], axes: number[]): string[] => {
-    const idxZero = [];
-    for (let k = 0; k < inputs[0].dims.length; k++) {
-      if (axes.indexOf(k) >= 0 || axes.length === 0) {
-        idxZero.push(`inputIndices[${k}] = 0;`);  // first element
-      }
-    }
-
-    return [`${idxZero.join('\n')}`, 'value = _A[inputIdx];', 'value = max(value, _A[inputIdx]);', ''];
-  };
-  context.compute(createReduceProgramInfoLoader(context.inputs, 'ReduceMax', attributes, reduceOp));
-};
 
 export const reduceMin = (context: ComputeContext, attributes: ReduceAttributes): void => {
   validateInputs(context.inputs);
@@ -162,10 +169,10 @@ export const reduceProd = (context: ComputeContext, attributes: ReduceAttributes
   context.compute(createReduceProgramInfoLoader(context.inputs, 'ReduceProd', attributes, reduceOp));
 };
 
-export const reduceLogSum = (context: ComputeContext, attributes: ReduceAttributes): void => {
+export const reduceSum = (context: ComputeContext, attributes: ReduceAttributes): void => {
   validateInputs(context.inputs);
-  const reduceOp: ReduceOp = (): string[] => ['value = 0.0;', '', 'value += _A[inputIdx];', 'value = log(value);'];
-  context.compute(createReduceProgramInfoLoader(context.inputs, 'ReduceLogSum', attributes, reduceOp));
+  const reduceOp: ReduceOp = (): string[] => ['value = 0.0;', '', 'value += _A[inputIdx];', ''];
+  context.compute(createReduceProgramInfoLoader(context.inputs, 'ReduceSum', attributes, reduceOp));
 };
 
 export const reduceSumSquare = (context: ComputeContext, attributes: ReduceAttributes): void => {

@@ -6,7 +6,7 @@ import {conv, parseConvAttributes} from './ops/conv';
 import {gemm, parseGemmAttributes} from './ops/gemm';
 import {matMul} from './ops/matmul';
 import * as pool from './ops/pool';
-import {parseReduceAttributes, reduceLogSum, reduceMax, reduceMean, reduceMin, reduceProd, reduceSum, reduceSumSquare} from './ops/reduce';
+import {parseReduceAttributes, reduceLogSum, reduceLogSumExp, reduceMax, reduceMean, reduceMin, reduceProd, reduceSum, reduceSumSquare} from './ops/reduce';
 import {parseTransposeAttributes, transpose} from './ops/transpose';
 import * as unaryOps from './ops/unary-op';
 import {ComputeContext} from './types';
@@ -54,6 +54,7 @@ export const WEBGPU_OP_RESOLVE_RULES: Map<string, OperatorImplementation> = new 
   ['ReduceSum', [reduceSum, parseReduceAttributes]],
   ['ReduceProd', [reduceProd, parseReduceAttributes]],
   ['ReduceLogSum', [reduceLogSum, parseReduceAttributes]],
+  ['ReduceLogSumExp', [reduceLogSumExp, parseReduceAttributes]],
   ['ReduceSumSquare', [reduceSumSquare, parseReduceAttributes]],
   ['Relu', [unaryOps.relu]],
   ['Sigmoid', [unaryOps.sigmoid]],
