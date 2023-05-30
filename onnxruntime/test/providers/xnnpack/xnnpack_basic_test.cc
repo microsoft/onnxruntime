@@ -192,7 +192,8 @@ static void RunModelTest(
 
 static void RunModelTestWithPath(const ORTCHAR_T* ort_model_path, const char* graph_name,
                                  std::function<void(const Graph&)> graph_verifier = nullptr,
-                                 float abs_err_tolerance = .2f) {
+                                 float abs_err_tolerance = .2f,
+                                 const CheckFetchesFn& check_fetches_fn = {}) {
   EPVerificationParams params;
   params.ep_node_assignment = ExpectedEPNodeAssignment::Some;
   // Xnnpack has higher precision than CPU_S8S8,
@@ -219,7 +220,7 @@ static void RunModelTestWithPath(const ORTCHAR_T* ort_model_path, const char* gr
   feeds.insert(std::make_pair("input", ml_value_x));
 
   auto ep = DefaultXnnpackExecutionProvider();
-  RunAndVerifyOutputsWithEP(ort_model_path, graph_name, std::move(ep), feeds, params);
+  RunAndVerifyOutputsWithEP(ort_model_path, graph_name, std::move(ep), feeds, params, check_fetches_fn);
 }
 
 TEST(XnnpackEP, DISABLED_TestQDQConvU8U8) {  //  [ONNXRuntimeError] : 9 : NOT_IMPLEMENTED : Could not find an implementation for QuantizeLinear(19) node with name 'node_token_12'
@@ -436,7 +437,23 @@ TEST(XnnpackEP, TestConvTranspose_With_OutputShape) {
 
 TEST(XnnpackEP, TestConvTranspose_qdq) {
   const ORTCHAR_T* ort_model_path = ORT_MODEL_FOLDER "test_conv_follow_convtrans_s8.onnx";
-  RunModelTestWithPath(ort_model_path, "test_conv_follow_convtrans_s8", nullptr, 0.2f);
+
+  auto check_fetches = [](gsl::span<const OrtValue> expected, gsl::span<const OrtValue> actual) {
+    ASSERT_GE(expected.size(), size_t{1});
+    ASSERT_EQ(expected.size(), actual.size());
+    auto& expected_tensor = expected[0].Get<Tensor>();
+    auto& actual_tensor = actual[0].Get<Tensor>();
+
+    ASSERT_GE(expected_tensor.Shape().Size(), 2);
+    ASSERT_EQ(expected_tensor.Shape(), actual_tensor.Shape());
+
+    auto expected_data = expected_tensor.DataAsSpan<float>();
+    auto actual_data = actual_tensor.DataAsSpan<float>();
+    LOGS_DEFAULT(WARNING) << "expected[1]: " << expected_data[1];
+    LOGS_DEFAULT(WARNING) << "actual[1]  : " << actual_data[1];
+  };
+
+  RunModelTestWithPath(ort_model_path, "test_conv_follow_convtrans_s8", nullptr, 0.2f, check_fetches);
 }
 
 TEST(XnnpackEP, DISABLED_TestQDQConvTransposeS8S8) {  //  [ONNXRuntimeError] : 9 : NOT_IMPLEMENTED : Could not find an implementation for QuantizeLinear(19) node with name 'node_token_12'

@@ -8,6 +8,7 @@
 #include "core/framework/ort_value.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
 
+#include <functional>
 #include <memory>
 #include <string>
 #include <vector>
@@ -41,20 +42,25 @@ struct EPVerificationParams {
 // Return number of nodes in the Graph and any subgraphs that are assigned to the specified execution provider
 int CountAssignedNodes(const Graph& current_graph, const std::string& ep_type);
 
+using CheckFetchesFn = std::function<void(gsl::span<const OrtValue> expected,
+                                          gsl::span<const OrtValue> actual)>;
+
 // Run the model using the CPU EP to get expected output, comparing to the output when the 'execution_provider'
 // is enabled. requires that at least one node is assigned to 'execution_provider'
 void RunAndVerifyOutputsWithEP(const ORTCHAR_T* model_path,
                                const char* log_id,
                                std::unique_ptr<IExecutionProvider> execution_provider,
                                const NameMLValMap& feeds,
-                               const EPVerificationParams& params = EPVerificationParams());
+                               const EPVerificationParams& params = EPVerificationParams(),
+                               const CheckFetchesFn& check_fetches_fn = {});
 
 // A helper function that takes in model_data
 void RunAndVerifyOutputsWithEP(const std::string& model_data,
                                const char* log_id,
                                std::unique_ptr<IExecutionProvider> execution_provider,
                                const NameMLValMap& feeds,
-                               const EPVerificationParams& params = EPVerificationParams());
+                               const EPVerificationParams& params = EPVerificationParams(),
+                               const CheckFetchesFn& check_fetches_fn = {});
 
 // Check equality of two shapes. Can successfully complete only if rank are equal and all dimensions are equal.
 // The way we define dimension equality is that:

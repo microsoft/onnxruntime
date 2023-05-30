@@ -25,26 +25,23 @@ static void VerifyOutputs(const std::vector<std::string>& output_names,
   ASSERT_EQ(expected_fetches.size(), fetches.size());
 
   for (size_t i = 0, end = expected_fetches.size(); i < end; ++i) {
+    SCOPED_TRACE(MakeString("verifying output at index ", i, ": ", output_names[i]));
     auto& ltensor = expected_fetches[i].Get<Tensor>();
     auto& rtensor = fetches[i].Get<Tensor>();
     ASSERT_TRUE(SpanEq(ltensor.Shape().GetDims(), rtensor.Shape().GetDims()));
     auto element_type = ltensor.GetElementType();
     switch (element_type) {
       case ONNX_NAMESPACE::TensorProto_DataType_INT32:
-        EXPECT_TRUE(SpanEq(ltensor.DataAsSpan<int32_t>(), rtensor.DataAsSpan<int32_t>()))
-            << " mismatch for " << output_names[i];
+        EXPECT_TRUE(SpanEq(ltensor.DataAsSpan<int32_t>(), rtensor.DataAsSpan<int32_t>()));
         break;
       case ONNX_NAMESPACE::TensorProto_DataType_INT64:
-        EXPECT_TRUE(SpanEq(ltensor.DataAsSpan<int64_t>(), rtensor.DataAsSpan<int64_t>()))
-            << " mismatch for " << output_names[i];
+        EXPECT_TRUE(SpanEq(ltensor.DataAsSpan<int64_t>(), rtensor.DataAsSpan<int64_t>()));
         break;
       case ONNX_NAMESPACE::TensorProto_DataType_UINT8:
-        EXPECT_TRUE(SpanEq(ltensor.DataAsSpan<uint8_t>(), rtensor.DataAsSpan<uint8_t>()))
-            << " mismatch for " << output_names[i];
+        EXPECT_TRUE(SpanEq(ltensor.DataAsSpan<uint8_t>(), rtensor.DataAsSpan<uint8_t>()));
         break;
       case ONNX_NAMESPACE::TensorProto_DataType_INT8:
-        EXPECT_TRUE(SpanEq(ltensor.DataAsSpan<int8_t>(), rtensor.DataAsSpan<int8_t>()))
-            << " mismatch for " << output_names[i];
+        EXPECT_TRUE(SpanEq(ltensor.DataAsSpan<int8_t>(), rtensor.DataAsSpan<int8_t>()));
         break;
       case ONNX_NAMESPACE::TensorProto_DataType_FLOAT: {
         EXPECT_THAT(ltensor.DataAsSpan<float>(),
@@ -78,17 +75,19 @@ int CountAssignedNodes(const Graph& current_graph, const std::string& ep_type) {
 void RunAndVerifyOutputsWithEP(const ORTCHAR_T* model_path, const char* log_id,
                                std::unique_ptr<IExecutionProvider> execution_provider,
                                const NameMLValMap& feeds,
-                               const EPVerificationParams& params) {
+                               const EPVerificationParams& params,
+                               const CheckFetchesFn& check_fetches_fn) {
   // read raw data from model provided by the model_path
   std::ifstream stream(model_path, std::ios::in | std::ios::binary);
   std::string model_data((std::istreambuf_iterator<char>(stream)), std::istreambuf_iterator<char>());
-  RunAndVerifyOutputsWithEP(model_data, log_id, std::move(execution_provider), feeds, params);
+  RunAndVerifyOutputsWithEP(model_data, log_id, std::move(execution_provider), feeds, params, check_fetches_fn);
 }
 
 void RunAndVerifyOutputsWithEP(const std::string& model_data, const char* log_id,
                                std::unique_ptr<IExecutionProvider> execution_provider,
                                const NameMLValMap& feeds,
-                               const EPVerificationParams& params) {
+                               const EPVerificationParams& params,
+                               const CheckFetchesFn& check_fetches_fn) {
   SessionOptions so;
   so.session_logid = log_id;
   RunOptions run_options;
@@ -143,6 +142,10 @@ void RunAndVerifyOutputsWithEP(const std::string& model_data, const char* log_id
   std::vector<OrtValue> fetches;
   ASSERT_STATUS_OK(session_object2.Run(run_options, feeds, output_names, &fetches));
   VerifyOutputs(output_names, expected_fetches, fetches, params);
+
+  if (check_fetches_fn) {
+    check_fetches_fn(expected_fetches, fetches);
+  }
 
   if (params.graph_verifier) {
     (*params.graph_verifier)(graph2);
