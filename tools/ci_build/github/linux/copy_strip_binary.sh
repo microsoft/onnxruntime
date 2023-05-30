@@ -48,6 +48,9 @@ cp $SOURCE_DIR/include/onnxruntime/core/providers/cpu/cpu_provider_factory.h  $B
 cp $SOURCE_DIR/include/onnxruntime/core/session/onnxruntime_session_options_config_keys.h  $BINARY_DIR/$ARTIFACT_NAME/include
 cp $SOURCE_DIR/include/onnxruntime/core/session/onnxruntime_run_options_config_keys.h  $BINARY_DIR/$ARTIFACT_NAME/include
 cp $SOURCE_DIR/include/onnxruntime/core/framework/provider_options.h  $BINARY_DIR/$ARTIFACT_NAME/include
+cp $SOURCE_DIR/orttraining/orttraining/training_api/include/onnxruntime_training_c_api.h  $BINARY_DIR/$ARTIFACT_NAME/include
+cp $SOURCE_DIR/orttraining/orttraining/training_api/include/onnxruntime_training_cxx_api.h  $BINARY_DIR/$ARTIFACT_NAME/include
+cp $SOURCE_DIR/orttraining/orttraining/training_api/include/onnxruntime_training_cxx_inline.h  $BINARY_DIR/$ARTIFACT_NAME/include
 
 # copy the README, licence and TPN
 cp $SOURCE_DIR/README.md $BINARY_DIR/$ARTIFACT_NAME/README.md
