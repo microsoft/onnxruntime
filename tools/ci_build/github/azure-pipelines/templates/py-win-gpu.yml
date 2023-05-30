@@ -173,7 +173,7 @@ jobs:
       - ${{ if eq(parameters.PYTHON_VERSION, '3.8') }}:
           - task: DeleteFiles@1
             displayName: 'Delete files from $(Build.BinariesDirectory)\RelWithDebInfo'
-            condition: and (succeeded(), eq(variables['$'], '3.8'))
+            condition: succeeded()
             inputs:
               SourceFolder: '$(Build.BinariesDirectory)\RelWithDebInfo'
               Contents: |
@@ -191,7 +191,7 @@ jobs:
                 msBuildCommandline: '"C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\MSBuild\Current\Bin\amd64\msbuild.exe" "$(Build.BinariesDirectory)\RelWithDebInfo\onnxruntime.sln" /p:platform=x64 /p:configuration="RelWithDebInfo" /p:VisualStudioVersion="16.0" /m /p:PreferredToolArchitecture=x64'
               ${{else}}:
                 msBuildCommandline: '"C:\Program Files\Microsoft Visual Studio\2022\Enterprise\MSBuild\Current\Bin\amd64\msbuild.exe" "$(Build.BinariesDirectory)\RelWithDebInfo\onnxruntime.sln" /p:platform=x64 /p:configuration="RelWithDebInfo" /p:VisualStudioVersion="17.0" /m /p:PreferredToolArchitecture=x64'
-              excludedPaths: '$(Build.BinariesDirectory)#$(Build.SourcesDirectory)\cmake#C:\program files (x86)'
+              excludedPaths: '$(Build.BinariesDirectory)#$(Build.SourcesDirectory)\cmake#C:\program files (x86)#C:\Program Files'
 
           - task: TSAUpload@2
             displayName: 'TSA upload'

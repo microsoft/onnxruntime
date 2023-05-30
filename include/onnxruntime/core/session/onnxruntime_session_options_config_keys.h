@@ -165,6 +165,11 @@ static const char* const kOrtSessionOptionsConfigForceSpinningStop = "session.fo
 // May be useful to expose bugs in models.
 static const char* const kOrtSessionOptionsConfigStrictShapeTypeInference = "session.strict_shape_type_inference";
 
+// "1": every model using a more recent opset than the latest released one will fail
+// "0": the model may or may not work if onnxruntime cannot find an implementation, this option
+// is used for development purpose.
+static const char* const kOrtSessionOptionsConfigStrictAllowReleasedOpsetsOnly = "session.allow_released_opsets_only";
+
 // The file saves configuration for partitioning node among logic streams
 static const char* const kNodePartitionConfigFile = "session.node_partition_config_file";
 

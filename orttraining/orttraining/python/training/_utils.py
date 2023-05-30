@@ -134,6 +134,10 @@ def dtype_onnx_to_torch(onnx_type):
         "COMPLEX64",
         "COMPLEX128",
         "BFLOAT16",
+        "FLOAT8E4M3FN",
+        "FLOAT8E4M3FNUZ",
+        "FLOAT8E5M2",
+        "FLOAT8E5M2FNUZ",
     ]
 
     if isinstance(onnx_type, int):

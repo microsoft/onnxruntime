@@ -31,11 +31,15 @@ class QuantizeLinear final : public OpKernel {
     if (!info.GetAttr<int64_t>("axis", &axis_).IsOK()) {
       axis_ = 1;
     }
+    if (!info.GetAttr<int64_t>("saturate", &saturate_).IsOK()) {
+      saturate_ = 1;
+    }
   }
 
   Status Compute(OpKernelContext* context) const override;
 
  private:
   int64_t axis_;
+  int64_t saturate_;
 };
 }  // namespace onnxruntime

@@ -47,8 +47,8 @@ std::unique_ptr<ONNX_NAMESPACE::OpSchema> CreateSchema(
     // Due to this, a user of this style of schema must manually check whether any applicable type constraints
     // for each input or output are satisfied prior to creating a node that uses this schema
     //
-    op_schema->TypeConstraint("TAggregatedTypes", ONNX_NAMESPACE::OpSchema::all_tensor_types_with_bfloat(),
-                              "all_tensor_types_with_bfloat");
+    op_schema->TypeConstraint("TAggregatedTypes", ONNX_NAMESPACE::OpSchema::all_tensor_types_ir4(),
+                              "all_tensor_types_ir4");
   }
 
   int i = 0;
@@ -99,10 +99,10 @@ static void IOTypeConstraintHelper(const ONNX_NAMESPACE::FunctionProto& onnx_fun
   // Create an all permissive list of data types. This will be used in case of model local functions
   // when we cannot infer the type constraints from function proto body
   InlinedHashSet<std::string_view> all_types;
-  all_types.reserve(ONNX_NAMESPACE::OpSchema::all_tensor_types_with_bfloat().size() +
+  all_types.reserve(ONNX_NAMESPACE::OpSchema::all_tensor_types_ir4().size() +
                     ONNX_NAMESPACE::OpSchema::all_tensor_sequence_types().size());
-  all_types.insert(ONNX_NAMESPACE::OpSchema::all_tensor_types_with_bfloat().cbegin(),
-                   ONNX_NAMESPACE::OpSchema::all_tensor_types_with_bfloat().cend());
+  all_types.insert(ONNX_NAMESPACE::OpSchema::all_tensor_types_ir4().cbegin(),
+                   ONNX_NAMESPACE::OpSchema::all_tensor_types_ir4().cend());
   all_types.insert(ONNX_NAMESPACE::OpSchema::all_tensor_sequence_types().cbegin(),
                    ONNX_NAMESPACE::OpSchema::all_tensor_sequence_types().cend());
 
