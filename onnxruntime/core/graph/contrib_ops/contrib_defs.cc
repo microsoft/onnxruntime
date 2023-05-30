@@ -1095,7 +1095,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
       }));
 
 ONNX_MS_OPERATOR_SET_SCHEMA(
-  DynamicTimeWarpping, 1,
+  DynamicTimeWarping, 1,
   OpSchema()
       .SetDoc("return dynamic time wrapping of shape [2, x] of int32_t")
       .Input(0, "input", "input tensor, it must be 2D tensor of shape M x N", "F")
