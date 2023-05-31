@@ -23,14 +23,15 @@ class QGemm : protected GemmBase, public MatMulIntegerBase {
     const auto& b_shape = b ? b->Shape() : b_shape_;
 
     const auto* c = context->Input<Tensor>(IN_C);
-    std::unique_ptr<GemmHelper> helper;
-    ORT_RETURN_IF_ERROR(GemmHelper::Create(a->Shape(), trans_A_ != CblasNoTrans,
-                                           b_shape, trans_B_ != CblasNoTrans,
-                                           c != nullptr ? c->Shape() : TensorShape({}), helper));
+    GemmHelper helper(a->Shape(), trans_A_ != CblasNoTrans,
+                      b_shape, trans_B_ != CblasNoTrans,
+                      c != nullptr ? c->Shape() : TensorShape({}));
+    if (!helper.State().IsOK())
+      return helper.State();
 
-    ptrdiff_t M = helper->M();
-    ptrdiff_t N = helper->N();
-    ptrdiff_t K = helper->K();
+    ptrdiff_t M = helper.M();
+    ptrdiff_t N = helper.N();
+    ptrdiff_t K = helper.K();
 
     // validate scales and zero points
     const auto* a_zp = context->Input<Tensor>(IN_A_ZERO_POINT);

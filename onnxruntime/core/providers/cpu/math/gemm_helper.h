@@ -12,56 +12,46 @@ namespace onnxruntime {
 
 class GemmHelper {
  public:
-  static Status Create(const TensorShape& left, bool trans_left, const TensorShape& right, bool trans_right, const TensorShape& bias,
-                       std::unique_ptr<GemmHelper>& out) {
-    GSL_SUPPRESS(r .11)
-    out = std::unique_ptr<GemmHelper>(new GemmHelper());
+  GemmHelper(const TensorShape& left, bool trans_left, const TensorShape& right, bool trans_right, const TensorShape& bias) {
     // dimension check
-    if (left.NumDimensions() != 2 && left.NumDimensions() != 1) {
-      return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Gemm: left matrix must be 1D or 2D");
-    }
-    if (right.NumDimensions() != 2) {
-      return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Gemm: right matrix must be 2D");
-    }
+    ORT_ENFORCE(left.NumDimensions() == 2 || left.NumDimensions() == 1);
+    ORT_ENFORCE(right.NumDimensions() == 2);
 
     if (trans_left) {
-      out->M_ = left.NumDimensions() == 2 ? narrow<ptrdiff_t>(left[1]) : narrow<ptrdiff_t>(left[0]);
-      out->K_ = left.NumDimensions() == 2 ? narrow<ptrdiff_t>(left[0]) : 1;
+      M_ = left.NumDimensions() == 2 ? left[1] : left[0];
+      K_ = left.NumDimensions() == 2 ? left[0] : 1;
     } else {
-      out->M_ = left.NumDimensions() == 2 ? narrow<ptrdiff_t>(left[0]) : 1;
-      out->K_ = left.NumDimensions() == 2 ? narrow<ptrdiff_t>(left[1])
-                                          : narrow<ptrdiff_t>(left[0]);
+      M_ = left.NumDimensions() == 2 ? left[0] : 1;
+      K_ = left.NumDimensions() == 2 ? left[1] : left[0];
     }
 
     int k_dim;
     if (trans_right) {
-      out->N_ = narrow<ptrdiff_t>(right[0]);
+      N_ = right[0];
       k_dim = 1;
     } else {
-      out->N_ = narrow<ptrdiff_t>(right[1]);
+      N_ = right[1];
       k_dim = 0;
     }
 
-    if (right[k_dim] != out->K_)
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "GEMM: Dimension mismatch, W: ",
-                             right.ToString(),
-                             " K: " + std::to_string(out->K_),
-                             " N:" + std::to_string(out->N_));
+    if (right[k_dim] != K_)
+      status_ = ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                                "GEMM: Dimension mismatch, W: ",
+                                right.ToString(),
+                                " K: " + std::to_string(K_),
+                                " N:" + std::to_string(N_));
 
-    if (!IsValidBroadcast(bias, out->M_, out->N_))
-      return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Gemm: Invalid bias shape for broadcast");
+    if (!IsValidBroadcast(bias, M_, N_))
+      status_ = common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Gemm: Invalid bias shape for broadcast");
 
     // it is possible the input is empty tensor, for example the output of roipool in fast rcnn.
-    if (out->M_ < 0 || out->K_ < 0 || out->N_ < 0) {
-      return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Dims cannot be negative");
-    }
-    return Status::OK();
+    ORT_ENFORCE(M_ >= 0 && K_ > 0 && N_ >= 0);
   }
 
   ptrdiff_t M() const { return M_; }
   ptrdiff_t N() const { return N_; }
   ptrdiff_t K() const { return K_; }
+  Status State() const { return status_; }
 
  private:
   static bool IsValidBroadcast(const TensorShape& bias_shape, ptrdiff_t M, ptrdiff_t N) {
@@ -83,6 +73,7 @@ class GemmHelper {
   ptrdiff_t M_;
   ptrdiff_t K_;
   ptrdiff_t N_;
+  Status status_;
 };
 
 template <typename T>

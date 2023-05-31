@@ -67,12 +67,14 @@ Status Gemm<T>::ComputeInternal(OpKernelContext* ctx) const {
   const auto* W = ctx->Input<Tensor>(1);
   const auto* B = ctx->Input<Tensor>(2);
   // Bias could be missing. Treat as scalar 0 if that is the case.
-  std::unique_ptr<GemmHelper> helper;
-  ORT_RETURN_IF_ERROR(GemmHelper::Create(X->Shape(), trans_A_, W->Shape(), trans_B_, B != nullptr ? B->Shape() : TensorShape({})));
+  GemmHelper helper(X->Shape(), trans_A_, W->Shape(), trans_B_, B != nullptr ? B->Shape() : TensorShape({}));
 
-  ptrdiff_t M = helper->M();
-  ptrdiff_t N = helper->N();
-  ptrdiff_t K = helper->K();
+  if (!helper.State().IsOK())
+    return helper.State();
+
+  ptrdiff_t M = helper.M();
+  ptrdiff_t N = helper.N();
+  ptrdiff_t K = helper.K();
   auto* Y = ctx->Output(0, {M, N});
   HipT* out_data = reinterpret_cast<HipT*>(Y->MutableData<T>());
 
