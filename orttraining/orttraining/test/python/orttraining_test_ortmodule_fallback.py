@@ -557,7 +557,7 @@ def test_ortmodule_fallback_warn_message(is_training, persist_fallback, caplog):
     for i in range(3):
         # The run MUST fail no matter with ORT or PyTorch, so we catch the RuntimeError here in case it breaks the test.
         # Be noted, the logs will be caught by caplog.
-        with pytest.raises(RuntimeError) as error_except:
+        with pytest.raises(RuntimeError):
             ort_model(inputs)
         # For retries, the warn message will always be logged
         if not persist_fallback:
