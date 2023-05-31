@@ -219,11 +219,6 @@ class GraphExecutionManager(GraphExecutionInterface):
             ],
             ["Custom Function", "ON", "Support custom torch.autograd.Function export and execution"],
             [
-                "Compute Optimizer",
-                "ON" if self._enable_compute_optimizer else "OFF",
-                "Enable/Disable with env ORTMODULE_ENABLE_COMPUTE_OPTIMIZER=1/0",
-            ],
-            [
                 "Memory Optimizer",
                 "ON" if self._enable_memory_optimizer else "OFF",
                 "Enable with env ORTMODULE_MEMORY_OPT_CONFIG=<config>",
@@ -570,9 +565,19 @@ class GraphExecutionManager(GraphExecutionInterface):
            enable sparsity-based optimization.
 
         """
-        sparse_opt_status = "ON" if self._enable_sparse_optimizer else "OFF"
-        self._feature_map.append(
-            ["Sparsity Optimizer", sparse_opt_status, "Enable/Disable with env ORTMODULE_ENABLE_SPARSE_OPTIMIZER=1/0"]
+        self._feature_map.extend(
+            [
+                [
+                    "Compute Optimizer",
+                    "ON" if self._enable_compute_optimizer else "OFF",
+                    "Enable/Disable with env ORTMODULE_ENABLE_COMPUTE_OPTIMIZER=1/0",
+                ],
+                [
+                    " -FLOPReduction",
+                    "ON" if self._enable_compute_optimizer else "OFF",
+                    "Enable/Disable with env ORTMODULE_ENABLE_COMPUTE_OPTIMIZER=1/0",
+                ],
+            ]
         )
         # Enable data sparsity inspection if sparse optimizer is ON or user wants to print input density.
         if self._enable_sparse_optimizer or self._print_input_density:
@@ -598,20 +603,26 @@ class GraphExecutionManager(GraphExecutionInterface):
 
                 # Enable sparsity-based optimization when applicable.
                 if len(label_sparsity_results) > 0:
-                    graph_transformer_config.sparse_label_input_names = label_sparsity_results
-                    self._logger.info("Label sparsity based optimization is on for %s", label_sparsity_results)
+                    graph_transformer_config.sparse_label_input_names = list(label_sparsity_results.keys())
+                    self._logger.info("Label sparsity-based optimization is ON for %s", label_sparsity_results)
+                    sparsity_stat_str = ",".join([f"{k}:{v:.0f}%" for k, v in label_sparsity_results.items()])
                     self._feature_map.append(
-                        [" - Label Sparsity", sparse_opt_status, "Label inputs: " + str(label_sparsity_results)]
+                        [
+                            " -LabelSparsityOpt",
+                            "ON",
+                            f"Input density: {sparsity_stat_str}, switch: ORTMODULE_ENABLE_SPARSE_OPTIMIZER=1/0",
+                        ]
                     )
 
                 if len(embed_sparsity_results) > 0:
-                    graph_transformer_config.sparse_embedding_input_names = embed_sparsity_results
-                    self._logger.info("Embedding sparsity based optimization is on for %s", embed_sparsity_results)
+                    graph_transformer_config.sparse_embedding_input_names = list(embed_sparsity_results.keys())
+                    self._logger.info("Embedding sparsity-based optimization is ON for %s", embed_sparsity_results)
+                    sparsity_stat_str = ",".join([f"{k}:{v:.0f}%" for k, v in embed_sparsity_results.items()])
                     self._feature_map.append(
                         [
-                            " - Embedding Sparsity",
-                            sparse_opt_status,
-                            "Embedding inputs: " + str(embed_sparsity_results),
+                            " -EmbedSparsityOpt",
+                            "ON",
+                            f"Input density: {embed_sparsity_results}, switch: ORTMODULE_ENABLE_SPARSE_OPTIMIZER=1/0",
                         ]
                     )
 
@@ -639,7 +650,7 @@ class GraphExecutionManager(GraphExecutionInterface):
         mode = "training" if self._export_mode == torch.onnx.TrainingMode.TRAINING else "inference"
         mode = f"{_logger.LogColor.UNDERLINE}{mode}{_logger.LogColor.ENDC}"
 
-        stat = f"\n\n{_logger.LogColor.HEADER}***** ONNX Runtime (ORTModule) is accelerating your model *****{_logger.LogColor.ENDC}\n\n"
+        stat = f"\n\n{_logger.LogColor.HEADER}***** ONNX Runtime Training (ORTModule) is accelerating your model *****{_logger.LogColor.ENDC}\n\n"
         stat += f"ORTModule is enabled with following features ON/OFF for [{mode}] mode:\n\n"
         for feature_tuple in self._feature_map:
             stat += f"{feature_tuple[0]:<20}:\t{feature_tuple[1]:<10}:\t{feature_tuple[2]:<80}\n"
@@ -650,6 +661,6 @@ class GraphExecutionManager(GraphExecutionInterface):
         stat += f"Please enable INFO level logging with DebugOptions to view all warnings and errors.{_logger.LogColor.ENDC}\n\n"
         stat += f"Export duration: {self._export_duration_in_ms:.0f} milliseconds\n"
         stat += f"Versions: ONNX Runtime - {onnxruntime.__version__}, ONNX - {onnx.__version__}\n\n"
-        stat += f"{_logger.LogColor.HEADER}****************************************************************{_logger.LogColor.ENDC}\n\n"
+        stat += f"{_logger.LogColor.HEADER}************************************************************************{_logger.LogColor.ENDC}\n\n"
 
         self._logger.warning(stat)

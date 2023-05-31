@@ -7,7 +7,7 @@ import copy
 import gc
 import inspect
 import warnings
-from collections import abc
+from collections import OrderedDict, abc
 from typing import Dict, Iterator, List, Mapping, Optional, Sequence, Tuple, Union
 
 import onnx
@@ -284,8 +284,8 @@ def _combine_input_buffers_initializers(
     _expand_inputs(kwargs, flattened_kwargs_inputs)
     buffer_names_dict = {buffer_name: inp for buffer_name, inp in named_buffer}
     result = []
-    embed_sparsity_results = []
-    label_sparsity_results = []
+    embed_sparsity_results = OrderedDict()
+    label_sparsity_results = OrderedDict()
 
     for input_idx, name in enumerate(onnx_input_names):
         inp = None
@@ -318,12 +318,12 @@ def _combine_input_buffers_initializers(
             if _PrimitiveType.is_primitive_type(inp):
                 inp = _PrimitiveType.get_tensor(inp, device)
 
-            found, embedding_is_sparse, label_is_sparse = rt_inspector.inspect_input(name, inp)
+            found, embedding_density, label_density = rt_inspector.inspect_input(name, inp)
             if found:
-                if embedding_is_sparse is True:
-                    embed_sparsity_results.append(name)
-                if label_is_sparse is True:
-                    label_sparsity_results.append(name)
+                if embedding_density < 100:
+                    embed_sparsity_results[name] = embedding_density
+                if label_density < 100:
+                    label_sparsity_results[name] = label_density
             result.append(inp)
         else:
             raise wrap_exception(
