@@ -32,6 +32,7 @@ struct TensorrtExecutionProviderInfo {
   bool dump_subgraphs{false};
   bool engine_cache_enable{false};
   std::string engine_cache_path{""};
+  std::string overriding_engine_cache_name{""};
   bool engine_decryption_enable{false};
   std::string engine_decryption_lib_path{""};
   bool force_sequential_engine_build{false};

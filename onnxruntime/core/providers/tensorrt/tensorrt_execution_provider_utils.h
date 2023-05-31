@@ -95,8 +95,8 @@ bool ReadDynamicRange(const std::string file_name, const bool is_trt_calibration
   return true;
 }
 
-int GetNumProfiles(std::unordered_map<std::string, std::vector<std::vector<int64_t>>>& profile_shapes) {
-  std::unordered_map<std::string, std::vector<std::vector<int64_t>>>::iterator it;
+int GetNumProfiles(const std::unordered_map<std::string, std::vector<std::vector<int64_t>>>& profile_shapes) {
+  std::unordered_map<std::string, std::vector<std::vector<int64_t>>>::const_iterator it;
   for (it = profile_shapes.begin(); it != profile_shapes.end(); it++) {
     return static_cast<int>(it->second.size());
   }

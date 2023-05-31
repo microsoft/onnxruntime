@@ -26,6 +26,7 @@ struct OrtTensorRTProviderOptionsV2 {
   int trt_dump_subgraphs;                       // dump TRT subgraph. Default 0 = false, nonzero = true
   int trt_engine_cache_enable;                  // enable engine caching. Default 0 = false, nonzero = true
   const char* trt_engine_cache_path;            // specify engine cache path
+  const char* trt_overriding_engine_cache_name; // specify overriding engine cache name
   int trt_engine_decryption_enable;             // enable engine decryption. Default 0 = false, nonzero = true
   const char* trt_engine_decryption_lib_path;   // specify engine decryption library path
   int trt_force_sequential_engine_build;        // force building TensorRT engine sequentially. Default 0 = false, nonzero = true

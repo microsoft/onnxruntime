@@ -25,6 +25,7 @@ static const std::string kDLACore = "ORT_TENSORRT_DLA_CORE";
 static const std::string kDumpSubgraphs = "ORT_TENSORRT_DUMP_SUBGRAPHS";
 static const std::string kEngineCacheEnable = "ORT_TENSORRT_ENGINE_CACHE_ENABLE";
 static const std::string kCachePath = "ORT_TENSORRT_CACHE_PATH";
+static const std::string kOverridingEngineCacheName = "ORT_TENSORRT_OVERRIDING_ENGINE_CACHE_NAME";
 static const std::string kDecryptionEnable = "ORT_TENSORRT_ENGINE_DECRYPTION_ENABLE";
 static const std::string kDecryptionLibPath = "ORT_TENSORRT_ENGINE_DECRYPTION_LIB_PATH";
 static const std::string kForceSequentialEngineBuild = "ORT_TENSORRT_FORCE_SEQUENTIAL_ENGINE_BUILD";
@@ -194,6 +195,7 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   int auxiliary_streams_ = -1;
   std::string tactic_sources_;
   std::string cache_path_, engine_decryption_lib_path_;
+  std::string overriding_engine_cache_name_;
   std::unique_ptr<nvinfer1::IRuntime> runtime_ = nullptr;
   OrtMutex tensorrt_mu_;
   int device_id_;
@@ -224,6 +226,9 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   std::unordered_map<std::string, std::unordered_map<std::string, std::unordered_map<size_t, std::vector<std::vector<int64_t>>>>> input_shape_ranges_;
   std::unordered_map<std::string, std::vector<nvinfer1::IOptimizationProfile*>> profiles_;
 
+  bool has_explicit_profile_ = false;
+  bool has_dynamic_shape_ = false; // True if input tensor has dynamic shape and no explicit profile is specified, otherwise false.
+
   // for external stream, we need to create its cudnn/cublass handle before cuda EP enable cuda graph capture
   cudnnHandle_t external_cudnn_handle_ = nullptr;
   cublasHandle_t external_cublas_handle_ = nullptr;
@@ -243,6 +248,15 @@ class TensorrtExecutionProvider : public IExecutionProvider {
                                         const GraphViewer& graph, bool* early_termination) const;
 
   bool DetectTensorRTGraphCycles(SubGraphCollection_t& supported_nodes_vector, const GraphViewer& graph, const HashValue& model_hash, bool remove_cycles = true) const;
+
+  common::Status ConfigureEngine(nvinfer1::IBuilder* trt_builder,
+                                 nvinfer1::INetworkDefinition* trt_network,
+                                 nvinfer1::IBuilderConfig* trt_config,
+                                 std::vector<nvinfer1::IOptimizationProfile*>& trt_profiles,
+                                 std::string& trt_node_name_with_precision,
+                                 std::unordered_map<std::string, float>& dynamic_range_map,
+                                 std::unordered_map<std::string, std::unordered_map<size_t, std::vector<std::vector<int64_t>>>>& input_explicit_shape_ranges,
+                                 std::unordered_map<std::string, std::unordered_map<size_t, std::vector<std::vector<int64_t>>>>& input_implicit_shape_ranges); 
 
   /**
   Get a unique_lock object to control the concurrency behavior.

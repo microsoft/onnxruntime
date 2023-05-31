@@ -372,9 +372,9 @@ std::unique_lock<OrtMutex> TensorrtExecutionProvider::GetApiLock() const {
  */
 bool ApplyProfileShapesFromProviderOptions(std::vector<nvinfer1::IOptimizationProfile*>& trt_profiles,
                                            nvinfer1::ITensor* input,
-                                           std::unordered_map<std::string, std::vector<std::vector<int64_t>>>& profile_min_shapes,
-                                           std::unordered_map<std::string, std::vector<std::vector<int64_t>>>& profile_max_shapes,
-                                           std::unordered_map<std::string, std::vector<std::vector<int64_t>>>& profile_opt_shapes,
+                                           const std::unordered_map<std::string, std::vector<std::vector<int64_t>>>& profile_min_shapes,
+                                           const std::unordered_map<std::string, std::vector<std::vector<int64_t>>>& profile_max_shapes,
+                                           const std::unordered_map<std::string, std::vector<std::vector<int64_t>>>& profile_opt_shapes,
                                            std::unordered_map<std::string, std::unordered_map<size_t, std::vector<std::vector<int64_t>>>>& input_explicit_shape_ranges) {
   if (trt_profiles.size() == 0) {
     LOGS_DEFAULT(WARNING) << "[TensorRT EP] Number of optimization profiles should be greater than 0, but it's 0.";
@@ -408,9 +408,9 @@ bool ApplyProfileShapesFromProviderOptions(std::vector<nvinfer1::IOptimizationPr
       LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] shape size of this shape tensor is " << shape_size;
 
       for (int j = 0; j < shape_size; j++) {
-        auto min_value = profile_min_shapes[input_name][i][j];
-        auto max_value = profile_max_shapes[input_name][i][j];
-        auto opt_value = profile_opt_shapes[input_name][i][j];
+        auto min_value = profile_min_shapes.at(input_name)[i][j];
+        auto max_value = profile_max_shapes.at(input_name)[i][j];
+        auto opt_value = profile_opt_shapes.at(input_name)[i][j];
         shapes_min[j] = static_cast<int32_t>(min_value);
         shapes_max[j] = static_cast<int32_t>(max_value);
         shapes_opt[j] = static_cast<int32_t>(opt_value);
@@ -442,9 +442,9 @@ bool ApplyProfileShapesFromProviderOptions(std::vector<nvinfer1::IOptimizationPr
 
       for (int j = 0; j < nb_dims; j++) {
         if (dims.d[j] == -1) {
-          auto min_value = profile_min_shapes[input_name][i][j];
-          auto max_value = profile_max_shapes[input_name][i][j];
-          auto opt_value = profile_opt_shapes[input_name][i][j];
+          auto min_value = profile_min_shapes.at(input_name)[i][j];
+          auto max_value = profile_max_shapes.at(input_name)[i][j];
+          auto opt_value = profile_opt_shapes.at(input_name)[i][j];
           dims_min.d[j] = static_cast<int32_t>(min_value);
           dims_max.d[j] = static_cast<int32_t>(max_value);
           dims_opt.d[j] = static_cast<int32_t>(opt_value);
@@ -680,6 +680,7 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
     }
     dump_subgraphs_ = info.dump_subgraphs;
     engine_cache_enable_ = info.engine_cache_enable;
+    overriding_engine_cache_name_ = info.overriding_engine_cache_name; 
     timing_cache_enable_ = info.timing_cache_enable;
     force_timing_cache_match_ = info.force_timing_cache;
     detailed_build_log_ = info.detailed_build_log;
@@ -764,6 +765,11 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
       const std::string engine_cache_enable_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kEngineCacheEnable);
       if (!engine_cache_enable_env.empty()) {
         engine_cache_enable_ = (std::stoi(engine_cache_enable_env) == 0 ? false : true);
+      }
+
+      const std::string overriding_engine_cache_name_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kOverridingEngineCacheName);
+      if (!overriding_engine_cache_name_env.empty()) {
+        overriding_engine_cache_name_ = overriding_engine_cache_name_env;
       }
 
       const std::string timing_cache_enable_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kTimingCacheEnable);
@@ -939,6 +945,10 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
       profile_max_shapes_.clear();
       profile_opt_shapes_.clear();
     }
+  }
+
+  if ((!profile_min_shapes_.empty()) && (!profile_max_shapes_.empty()) && (!profile_opt_shapes_.empty())) {
+    has_explicit_profile_ = true;
   }
 
   LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] TensorRT provider options: "
@@ -1553,6 +1563,28 @@ bool TensorrtExecutionProvider::DetectTensorRTGraphCycles(SubGraphCollection_t& 
 std::vector<std::unique_ptr<ComputeCapability>>
 TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
                                          const IKernelLookup& /*kernel_lookup*/) const {
+
+  const int number_of_ort_nodes = graph.NumberOfNodes();
+  std::vector<size_t> nodes_vector(number_of_ort_nodes);
+  std::vector<size_t> filtered_nodes_vector;
+  std::iota(std::begin(nodes_vector), std::end(nodes_vector), 0);
+  const std::vector<NodeIndex>& node_index = graph.GetNodesInTopologicalOrder();
+
+  // Construct subgraph capability from node list
+  std::vector<std::unique_ptr<ComputeCapability>> result;
+
+  // If custom TensorRT engine plan is present, ORT TRT will directly load/run the engine at compute time. 
+  // There is no need to go through the standard way of deserializing and parsing the onnx model as well as building the engine. 
+  // Please note the constriant, assuming all nodes of the model are supported by TRT. 
+  if (!overriding_engine_cache_name_.empty()) {
+    std::unique_ptr<IndexedSubGraph> sub_graph = onnxruntime::IndexedSubGraph::Create();
+    for (const auto& index : nodes_vector) {
+      sub_graph->Nodes().push_back(node_index[index]);
+    }
+    result.push_back(ComputeCapability::Create(std::move(sub_graph)));
+    return result;
+  }
+
   // Get ModelPath
   const auto& path_string = graph.ModelPath().ToPathString();
 #ifdef _WIN32
@@ -1565,12 +1597,6 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
   HashValue model_hash = TRTGenerateId(graph);
 
   // Get supported node list from TensorRT parser
-  const int number_of_ort_nodes = graph.NumberOfNodes();
-  std::vector<size_t> nodes_vector(number_of_ort_nodes);
-  std::iota(std::begin(nodes_vector), std::end(nodes_vector), 0);
-
-  std::vector<size_t> filtered_nodes_vector;
-  const std::vector<NodeIndex>& node_index = graph.GetNodesInTopologicalOrder();
   for (const auto& index : nodes_vector) {
     const auto& node = graph.GetNode(node_index[index]);
 
@@ -1636,9 +1662,6 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
       supported_nodes_vector = consolidated_supported_nodes_vector;
     }
   }
-
-  // Construct subgraph capability from node list
-  std::vector<std::unique_ptr<ComputeCapability>> result;
 
   // Handle the case where the graph is subgraph of control flow op.
   // The purpose is to make control flow op as well as its subgraphs run on TRT.
@@ -1707,50 +1730,14 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
   return result;
 }
 
-common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
-                                                  std::vector<NodeComputeInfo>& node_compute_funcs) {
-  for (auto& fused_node_graph : fused_nodes_and_graphs) {
-    const GraphViewer& graph_body_viewer = fused_node_graph.filtered_graph;
-    const Node& fused_node = fused_node_graph.fused_node;
-    // Build map from input name to its index in input definitions
-    std::unordered_map<std::string, size_t> input_map;
-    const auto& input_defs = fused_node.InputDefs();
-    input_map.reserve(input_defs.size());
-    for (size_t i = 0, end = input_defs.size(); i < end; ++i) {
-      input_map[input_defs[i]->Name()] = i;
-    }
-
-    // Build map from output name to its index in output definitions
-    std::unordered_map<std::string, size_t> output_map;
-    const auto& output_defs = fused_node.OutputDefs();
-    output_map.reserve(output_defs.size());
-    for (size_t i = 0, end = output_defs.size(); i < end; ++i) {
-      output_map[output_defs[i]->Name()] = i;
-    }
-
-    // Reconstruct graph proto from fused node's function body
-    auto model = graph_body_viewer.CreateModel(*GetLogger());
-    auto model_proto = model->ToProto();
-    graph_body_viewer.ToProto(*model_proto->mutable_graph(), true, true);
-    model_proto->set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
-    std::string string_buf;
-    model_proto->SerializeToString(string_buf);
-
-    if (dump_subgraphs_) {
-      // Dump TensorRT subgraphs
-      std::fstream dump(fused_node.Name() + ".onnx", std::ios::out | std::ios::trunc | std::ios::binary);
-      model_proto->SerializeToOstream(dump);
-    }
-
-    TensorrtLogger& trt_logger = GetTensorrtLogger();
-    auto trt_builder = std::unique_ptr<nvinfer1::IBuilder>(nvinfer1::createInferBuilder(trt_logger));
-    const auto explicitBatch = 1U << static_cast<uint32_t>(nvinfer1::NetworkDefinitionCreationFlag::kEXPLICIT_BATCH);
-    auto trt_network = std::unique_ptr<nvinfer1::INetworkDefinition>(trt_builder->createNetworkV2(explicitBatch));
-    auto trt_config = std::unique_ptr<nvinfer1::IBuilderConfig>(trt_builder->createBuilderConfig());
-    auto trt_parser = tensorrt_ptr::unique_pointer<nvonnxparser::IParser>(nvonnxparser::createParser(*trt_network, trt_logger));
-    trt_parser->parse(string_buf.data(), string_buf.size(), model_path_);
-    trt_config->setMaxWorkspaceSize(max_workspace_size_);
-
+common::Status TensorrtExecutionProvider::ConfigureEngine(nvinfer1::IBuilder* trt_builder,
+                                                          nvinfer1::INetworkDefinition* trt_network,
+                                                          nvinfer1::IBuilderConfig* trt_config,
+                                                          std::vector<nvinfer1::IOptimizationProfile*>& trt_profiles,
+                                                          std::string& trt_node_name_with_precision,
+                                                          std::unordered_map<std::string, float>& dynamic_range_map,
+                                                          std::unordered_map<std::string, std::unordered_map<size_t, std::vector<std::vector<int64_t>>>>& input_explicit_shape_ranges,
+                                                          std::unordered_map<std::string, std::unordered_map<size_t, std::vector<std::vector<int64_t>>>>& input_implicit_shape_ranges) {
     // Force Pow + Reduce ops in layer norm to run in FP32 to avoid overflow
     if (fp16_enable_ && layer_norm_fp32_fallback_) {
       for (auto idx = 1; idx < trt_network->getNbLayers() - 1; ++idx) {
@@ -1765,12 +1752,6 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
         }
       }
     }
-
-    int num_inputs = trt_network->getNbInputs();
-    int num_outputs = trt_network->getNbOutputs();
-    std::unordered_map<std::string, size_t> input_indexes(num_inputs);
-    std::unordered_map<std::string, size_t> output_indexes(num_outputs);
-    std::unordered_map<std::string, size_t> output_types(num_outputs);
 
     /*
      * Initialize shape range for each dynamic shape input tensor:
@@ -1788,48 +1769,17 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
      *   2) As long as one of the dynamic shape input tensors has no explicitly associated profile, TRT EP will create default shape as described above,
      *      and all the profiles won't be applied and engine won't be built until EP compute time.
      */
-    bool has_dynamic_shape = false;  // True if input tensor has dynamic shape and no explicit profile is specified, otherwise false.
-    bool has_explicit_profile = false;
     bool apply_explicit_profile = false;
     int num_profiles = 0;
-    std::vector<nvinfer1::IOptimizationProfile*> trt_profiles;
 
-    // Following c++ map data structure is used to help serialize/deserialize profiles where it saves dynamic shape dimension(s) and min/max/opt values for dynamic shape input tensor.
-    //
-    // (1) Single profile case:
-    // For example, assume tensor_a has two dynamic shape dimensions: dim_0 and dim_2, and tensor_b
-    // has one dynamic shape dimension: dim_1. The data will be:
-    // {
-    //   tensor_a: {
-    //              dim_0: [[min_shape, max_shape, opt_shape]],
-    //              dim_2: [[min_shape, max_shape, opt_shape]]
-    //   },
-    //   tensor_b: {
-    //              dim_1: [[min_shape, max_shape, opt_shape]]
-    //   }
-    // }
-    //
-    // (2) Multiple profiles case:
-    // For example, assume tensor_a has one dynamic shap dimension: dim 0, and tensor_b has one dynamic shape dimension: dim_1,
-    // and both of the tensors have two profiles. The data will be:
-    // {
-    //   tensor_a: {
-    //     dim_0: [[min_shape_0, max_shape_0, opt_shape_0], [min_shape_1, max_shape_1, opt_shape_1]]
-    //   },
-    //   tensor_b: {
-    //     dim_1: [[min_shape_2, max_shape_2, opt_shape_2], [min_shape_3, max_shape_3, opt_shape_3]]
-    //   }
-    // }
-    std::unordered_map<std::string, std::unordered_map<size_t, std::vector<std::vector<int64_t>>>> input_explicit_shape_ranges;
-    std::unordered_map<std::string, std::unordered_map<size_t, std::vector<std::vector<int64_t>>>> input_implicit_shape_ranges;
-
-    if ((!profile_min_shapes_.empty()) && (!profile_max_shapes_.empty()) && (!profile_opt_shapes_.empty())) {
-      has_explicit_profile = true;
+    if (has_explicit_profile_) {
       num_profiles = GetNumProfiles(profile_min_shapes_);
       for (int i = 0; i < num_profiles; i++) {
         trt_profiles.push_back(trt_builder->createOptimizationProfile());
       }
     }
+
+    int num_inputs = trt_network->getNbInputs();
 
     // Iterate all input tensors to check dynamic shape
     for (unsigned int i = 0, end = num_inputs; i < end; ++i) {
@@ -1839,7 +1789,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
       int nb_dims = dims.nbDims;
 
       // Apply explicit optimization profiles provided by user
-      if (has_explicit_profile) {
+      if (has_explicit_profile_) {
         apply_explicit_profile = ApplyProfileShapesFromProviderOptions(trt_profiles, input, profile_min_shapes_, profile_max_shapes_, profile_opt_shapes_, input_explicit_shape_ranges);
       }
 
@@ -1851,7 +1801,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
           std::vector<int64_t> shape_vector{INT_MAX, INT_MIN, INT_MIN};
           profile_vector.push_back(shape_vector);  // only one profile needed
           input_implicit_shape_ranges[input_name][0] = profile_vector;
-          has_dynamic_shape = true;
+          has_dynamic_shape_ = true;
         } else {
           // Execution tensor
           for (int j = 0, end = nb_dims; j < end; ++j) {
@@ -1860,7 +1810,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
               std::vector<int64_t> shape_vector{INT_MAX, INT_MIN, INT_MIN};
               profile_vector.push_back(shape_vector);  // only one profile needed
               input_implicit_shape_ranges[input_name][j] = profile_vector;
-              has_dynamic_shape = true;
+              has_dynamic_shape_ = true;
             }
           }
         }
@@ -1869,10 +1819,10 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
     }
 
     // Set explicit profiles in TRT config if all dynamic shape inputs have associated profiles provided by user
-    if (has_explicit_profile) {
+    if (has_explicit_profile_) {
       // TRT EP has a constraint here.
       // Users need to specify all the dynamic shape inputs with associated profiles if they want to explicitly specify profiles through provider options.
-      if (has_dynamic_shape) {
+      if (has_dynamic_shape_) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "Users need to specify all the dynamic shape inputs with associated profiles if they want to explicitly specify profiles through provider options.");
       } else {
         for (auto trt_profile : trt_profiles) {
@@ -1882,7 +1832,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
     }
     // If no explicit profile is applied and the input has dynamic shape, TRT EP simply creates one profile by default.
     // It will later set proper min/max/opt shape values duing EP compute time.
-    else if (!has_explicit_profile && has_dynamic_shape) {
+    else if (!has_explicit_profile_ && has_dynamic_shape_) {
       trt_profiles.push_back(trt_builder->createOptimizationProfile());
     }
 
@@ -1902,7 +1852,6 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
     }
 
     // Load INT8 calibration table
-    std::unordered_map<std::string, float> dynamic_range_map;
     if (int8_enable_ && int8_calibration_cache_available_) {
       const std::string calibration_cache_path = GetCachePath(cache_path_, int8_calibration_cache_name_);
       if (!ReadDynamicRange(calibration_cache_path, int8_use_native_tensorrt_calibration_table_, dynamic_range_map)) {
@@ -1911,7 +1860,6 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
     }
 
     // Set precision flags
-    std::string trt_node_name_with_precision = fused_node.Name();
     if (fp16_enable_ && int8_enable_) {
       trt_config->setFlags(1U << static_cast<uint32_t>(nvinfer1::BuilderFlag::kFP16) | 1U << static_cast<uint32_t>(nvinfer1::BuilderFlag::kINT8));
       trt_node_name_with_precision += "_fp16_int8";
@@ -1986,6 +1934,105 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
       LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Tactic sources are limited using " << tactic_sources_;
     }
 
+    return Status::OK();
+}
+
+common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
+                                                  std::vector<NodeComputeInfo>& node_compute_funcs) {
+  for (auto& fused_node_graph : fused_nodes_and_graphs) {
+    const GraphViewer& graph_body_viewer = fused_node_graph.filtered_graph;
+    const Node& fused_node = fused_node_graph.fused_node;
+    // Build map from input name to its index in input definitions
+    std::unordered_map<std::string, size_t> input_map;
+    const auto& input_defs = fused_node.InputDefs();
+    input_map.reserve(input_defs.size());
+    for (size_t i = 0, end = input_defs.size(); i < end; ++i) {
+      input_map[input_defs[i]->Name()] = i;
+    }
+
+    // Build map from output name to its index in output definitions
+    std::unordered_map<std::string, size_t> output_map;
+    const auto& output_defs = fused_node.OutputDefs();
+    output_map.reserve(output_defs.size());
+    for (size_t i = 0, end = output_defs.size(); i < end; ++i) {
+      output_map[output_defs[i]->Name()] = i;
+    }
+
+    // Reconstruct graph proto from fused node's function body
+    auto model = graph_body_viewer.CreateModel(*GetLogger());
+    auto model_proto = model->ToProto();
+    graph_body_viewer.ToProto(*model_proto->mutable_graph(), true, true);
+    model_proto->set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
+    std::string string_buf;
+    model_proto->SerializeToString(string_buf);
+
+    if (dump_subgraphs_) {
+      // Dump TensorRT subgraphs
+      std::fstream dump(fused_node.Name() + ".onnx", std::ios::out | std::ios::trunc | std::ios::binary);
+      model_proto->SerializeToOstream(dump);
+    }
+
+    TensorrtLogger& trt_logger = GetTensorrtLogger();
+    auto trt_builder = std::unique_ptr<nvinfer1::IBuilder>(nvinfer1::createInferBuilder(trt_logger));
+    const auto explicitBatch = 1U << static_cast<uint32_t>(nvinfer1::NetworkDefinitionCreationFlag::kEXPLICIT_BATCH);
+    auto trt_network = std::unique_ptr<nvinfer1::INetworkDefinition>(trt_builder->createNetworkV2(explicitBatch));
+    auto trt_config = std::unique_ptr<nvinfer1::IBuilderConfig>(trt_builder->createBuilderConfig());
+    auto trt_parser = tensorrt_ptr::unique_pointer<nvonnxparser::IParser>(nvonnxparser::createParser(*trt_network, trt_logger));
+    trt_parser->parse(string_buf.data(), string_buf.size(), model_path_);
+    trt_config->setMaxWorkspaceSize(max_workspace_size_);
+    std::vector<nvinfer1::IOptimizationProfile*> trt_profiles;
+
+    std::string trt_node_name_with_precision = fused_node.Name();
+    std::unordered_map<std::string, float> dynamic_range_map; // for int8 dynamic range
+
+    // Following c++ map data structure is used to help serialize/deserialize profiles where it saves dynamic shape dimension(s) and min/max/opt values for dynamic shape input tensor.
+    //
+    // (1) Single profile case:
+    // For example, assume tensor_a has two dynamic shape dimensions: dim_0 and dim_2, and tensor_b
+    // has one dynamic shape dimension: dim_1. The data will be:
+    // {
+    //   tensor_a: {
+    //              dim_0: [[min_shape, max_shape, opt_shape]],
+    //              dim_2: [[min_shape, max_shape, opt_shape]]
+    //   },
+    //   tensor_b: {
+    //              dim_1: [[min_shape, max_shape, opt_shape]]
+    //   }
+    // }
+    //
+    // (2) Multiple profiles case:
+    // For example, assume tensor_a has one dynamic shap dimension: dim 0, and tensor_b has one dynamic shape dimension: dim_1,
+    // and both of the tensors have two profiles. The data will be:
+    // {
+    //   tensor_a: {
+    //     dim_0: [[min_shape_0, max_shape_0, opt_shape_0], [min_shape_1, max_shape_1, opt_shape_1]]
+    //   },
+    //   tensor_b: {
+    //     dim_1: [[min_shape_2, max_shape_2, opt_shape_2], [min_shape_3, max_shape_3, opt_shape_3]]
+    //   }
+    // }
+    std::unordered_map<std::string, std::unordered_map<size_t, std::vector<std::vector<int64_t>>>> input_explicit_shape_ranges;
+    std::unordered_map<std::string, std::unordered_map<size_t, std::vector<std::vector<int64_t>>>> input_implicit_shape_ranges;
+
+    // Configure TRT engine before build
+    auto status = ConfigureEngine(trt_builder.get(),
+                                  trt_network.get(),
+                                  trt_config.get(),
+                                  trt_profiles,
+                                  trt_node_name_with_precision,
+                                  dynamic_range_map,
+                                  input_explicit_shape_ranges,
+                                  input_implicit_shape_ranges);
+    if (status != Status::OK()) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "TensorRT EP failed to configure engine.");
+    }
+
+    int num_inputs = trt_network->getNbInputs();
+    int num_outputs = trt_network->getNbOutputs();
+    std::unordered_map<std::string, size_t> input_indexes(num_inputs);
+    std::unordered_map<std::string, size_t> output_indexes(num_outputs);
+    std::unordered_map<std::string, size_t> output_types(num_outputs);
+
     // Build TRT engine (if needed) and load TRT engine if:
     //   (1) Graph has no dynamic shape input
     //   (2) All the dynamic shape inputs have associated explicit profiles specified by user
@@ -1993,12 +2040,22 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
     // Otherwise engine will be handled at inference time.
     std::unique_ptr<nvinfer1::ICudaEngine> trt_engine;
     std::unique_ptr<nvinfer1::IExecutionContext> trt_context;
-    if (!has_dynamic_shape) {
-      const std::string cache_path = GetCachePath(cache_path_, trt_node_name_with_precision);
-      const std::string engine_cache_path = cache_path + ".engine";
-      const std::string profile_cache_path = cache_path + ".profile";
+    if (!has_dynamic_shape_) {
+      std::string cache_path = "";
+      std::string engine_cache_path = "";
+      std::string profile_cache_path = "";
       std::string timing_cache_path = "";
       bool engine_update = false;
+
+      if (overriding_engine_cache_name_.empty()) {
+        cache_path = GetCachePath(cache_path_, trt_node_name_with_precision);
+        engine_cache_path = cache_path + ".engine";
+        profile_cache_path = cache_path + ".profile";
+      } else {
+        // If overriding engine cache is present, ORT TRT deserializes it without the need to check the profile shape ragne.
+        engine_cache_path = GetCachePath(cache_path_, overriding_engine_cache_name_);
+      }
+
       if (timing_cache_enable_) {
         cudaDeviceProp prop;
         CUDA_CALL_THROW(cudaGetDeviceProperties(&prop, device_id_));
@@ -2010,7 +2067,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
 
         // If explicit profile flag is on and engine cache enable flag is on,
         // we need to compare explicit profiles and profiles used to build the engine in order to decide whether to rebuild the engine.
-        if (has_explicit_profile && engine_cache_enable_) {
+        if (has_explicit_profile_ && engine_cache_enable_) {
           engine_update = CompareProfiles(profile_cache_path, profile_min_shapes_, profile_max_shapes_, profile_opt_shapes_);
           if (engine_update) {
             LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Engine will be built";
@@ -2092,7 +2149,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
           }
           if (engine_cache_enable_) {
             // Serialize engine profile if it has explicit profiles
-            if (has_explicit_profile) {
+            if (has_explicit_profile_) {
               SerializeProfileV2(profile_cache_path, input_explicit_shape_ranges);
               LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Serialized " + profile_cache_path;
             }
