@@ -79,24 +79,10 @@ if let pod_archive_path = ProcessInfo.processInfo.environment["ORT_IOS_POD_LOCAL
     package.targets.append(Target.binaryTarget(name: "onnxruntime", path: pod_archive_path))
 
 } else {
-    // When creating the release version:
-    //   - remove the fatalError
-    //   - uncomment the package.targets.append call
-    //   - update the major/minor/patch version info in the url
-    //   - insert the checksum info from the onnxruntime-ios-packaging-pipeline CI's 'Print ORT iOS Pod checksum'
-    //     stage output (or download the pod archive artifact from the CI and run `shasum -a 256 <path to pod zip>`
-    //     to manually calculate it).
-    //     The checksum length and chars should look something like
-    //       "c89cd106ff02eb3892243acd7c4f2bd8e68c2c94f2751b5e35f98722e10c042b"
-    //
-    // package.targets.append(
-    //    Target.binaryTarget(name: "onnxruntime",
-    //                        url: "https://onnxruntimepackages.z14.web.core.windows.net/pod-archive-onnxruntime-c-<major.minor.patch>.zip",
-    //                        checksum: "Insert checksum here")
-    // )
-
-    fatalError("It is not valid to use a non-release branch from https://github.com/microsoft/onnxruntime.\n" +
-               "Please use a release branch (e.g. rel-1.15.0), or build the ONNX Runtime iOS pod archive locally " +
-               "and set the ORT_IOS_POD_LOCAL_PATH environment variable.\n" +
-               "See Package.swift for more information on using a local pod archive.")
+    // ORT 1.15.0 release
+    package.targets.append(
+       Target.binaryTarget(name: "onnxruntime",
+                           url: "https://onnxruntimepackages.z14.web.core.windows.net/pod-archive-onnxruntime-c-1.15.0.zip",
+                           checksum: "9b41412329a73d7d298b1d94ab40ae9adb65cb84f132054073bc82515b4f5f82")
+    )
 }
