@@ -73,15 +73,18 @@ stages:
           BuildId: ${{ parameters.BuildId }}
       - task: ExtractFiles@1
         inputs:
-          archiveFilePatterns: '**/*.tgz'
-          archiveFilePatterns: '$(Build.ArtifactStagingDirectory)/onnxruntime-osx-x86_64.zip'
+          archiveFilePatterns: '$(Build.ArtifactStagingDirectory)/onnxruntime-osx-x86_64.tgz'
           destinationFolder: '$(Build.ArtifactStagingDirectory)/onnxruntime-osx-x86_64'
           cleanDestinationFolder: true
+      - script:
+          for /r %i in (*) do echo %i
+        displayName: check unzipped files
       - template: win-esrp-dll.yml
         parameters:
           FolderPath: '$(Build.ArtifactStagingDirectory)/onnxruntime-osx-x86_64'
           DisplayName: 'ESRP - Sign Mac'
           DoEsrp: true
+          Pattern: '**/*.dylib'
       - task: ArchiveFiles@2
         inputs:
           rootFolderOrFile: '$(Build.ArtifactStagingDirectory)'
