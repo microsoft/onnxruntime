@@ -48,6 +48,8 @@ class OpKernelInfo : public OpNodeProtoHelper<ProtoHelperNodeContext> {
 
   bool TryGetConstantInput(int input_index, const OrtValue** constant_input_value) const;
 
+  const std::map<OrtDevice, AllocatorPtr>& GetAllocators() const { return allocators_; }
+
  private:
   ORT_DISALLOW_MOVE(OpKernelInfo);
   ORT_DISALLOW_ASSIGNMENT(OpKernelInfo);

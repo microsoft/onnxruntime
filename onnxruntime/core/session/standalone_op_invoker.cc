@@ -421,7 +421,7 @@ onnxruntime::Status CreateOp(_In_ const OrtKernelInfo* info,
   static const OrtValueNameIdxMap kEmptyNameMap;
 
   OpKernelInfo tmp_kernel_info(*node_ptr.get(), *kernel_def, *ep, kEmptyValueMap, kEmptyNameMap,
-                               kernel_info->GetDataTransferManager());
+                               kernel_info->GetDataTransferManager(), kernel_info->GetAllocators());
   std::unique_ptr<onnxruntime::OpKernel> op_kernel;
 
   auto& node_repo = NodeRepo::GetInstance();

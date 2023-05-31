@@ -991,7 +991,7 @@ std::vector<AllocatorPtr> TensorrtExecutionProvider::CreatePreferredAllocators()
             return CreateCUDAPinnedAllocator(device_id, onnxruntime::CUDA_PINNED);
           }, 0);
 
-  return std::vector<AllocatorPtr> {CreateAllocator(default_memory_info), CreateAllocator(default_memory_info)};
+  return std::vector<AllocatorPtr> {CreateAllocator(default_memory_info), CreateAllocator(pinned_allocator_info)};
 }
 
 std::unique_ptr<IDataTransfer> TensorrtExecutionProvider::GetDataTransfer() const {
