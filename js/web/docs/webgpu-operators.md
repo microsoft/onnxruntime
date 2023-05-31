@@ -41,14 +41,14 @@ Do not modify directly.*
 | Neg | ai.onnx(6-12,13+) |  |
 | Pow | ai.onnx(7-11,12,13-14,15+) |  |
 | Reciprocal | ai.onnx(6-12,13+) |  |
-| ReduceLogSum | ai.onnx(1-10,1-10,11-12,11-12,13-17,13-17,18+,18+) |  |
-| ReduceLogSumExp | ai.onnx(1-10,1-10,11-12,11-12,13-17,13-17,18+,18+) |  |
-| ReduceMax | ai.onnx(1-10,1-10,11,11,12,12,13-17,13-17,18+,18+) |  |
-| ReduceMean | ai.onnx(1-10,1-10,11-12,11-12,13-17,13-17,18+,18+) |  |
-| ReduceMin | ai.onnx(1-10,1-10,11,11,12,12,13-17,13-17,18+,18+) |  |
-| ReduceProd | ai.onnx(1-10,1-10,11-12,11-12,13-17,13-17,18+,18+) |  |
-| ReduceSum | ai.onnx(1-10,1-10,11-12,11-12,13+,13+) |  |
-| ReduceSumSquare | ai.onnx(1-10,1-10,11-12,11-12,13-17,13-17,18+,18+) |  |
+| ReduceLogSum | ai.onnx(1-10,11-12,13-17,18+) |  |
+| ReduceLogSumExp | ai.onnx(1-10,11-12,13-17,18+) |  |
+| ReduceMax | ai.onnx(1-10,11,12,13-17,18+) |  |
+| ReduceMean | ai.onnx(1-10,11-12,13-17,18+) |  |
+| ReduceMin | ai.onnx(1-10,11,12,13-17,18+) |  |
+| ReduceProd | ai.onnx(1-10,11-12,13-17,18+) |  |
+| ReduceSum | ai.onnx(1-10,11-12,13+) |  |
+| ReduceSumSquare | ai.onnx(1-10,11-12,13-17,18+) |  |
 | Relu | ai.onnx(6-12,13,14+) |  |
 | Reshape | ai.onnx(5-12,13,14+) | no GPU kernel |
 | Shape | ai.onnx(1-12,13-14,15+) | no GPU kernel; an ORT warning is generated - need to fix |
