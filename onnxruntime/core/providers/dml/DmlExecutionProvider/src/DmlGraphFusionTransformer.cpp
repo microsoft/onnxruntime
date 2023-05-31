@@ -7,6 +7,7 @@
 #include "GraphPartitioner.h"
 #include "core/framework/kernel_type_str_resolver.h"
 #include "core/framework/kernel_lookup.h"
+#include "core/optimizer/constant_sharing.h"
 #include "FusedGraphKernel.h"
 #include "MLOperatorAuthorImpl.h"
 #include "DmlGraphFusionHelper.h"
@@ -87,11 +88,23 @@ namespace Dml
                         assert(iter != initializerPartitionMap.end());
                         if (iter->second.size() > 1)
                         {
-                            if (requiredInitializerMap.find(input) != requiredInitializerMap.end())
+                            // By including non-transferrable tensors in isInitializerTransferable, it causes DML to upload and preprocess them
+                            // to duplicate locations rather than treating them as being non-constant, which is helpful for optimization.
+                            // The size threshold for this should be no smaller than that used to combine initializers in the constant
+                            // sharing transform to prevent that transform from hurting performance.
+                            // If the kernel relies on this input to be initialized, it should also be small enough to copy cheaply.
+                            const uint64_t maximumElementsForDuplicationTensor = 64;
+                            static_assert(maximumElementsForDuplicationTensor >= onnxruntime::ConstantSharing::TENSOR_ELEM_COUNT_THRESHOLD);
+
+                            uint64_t totalElementCount = 1;
+                            for (int i = 0; i < tensor->dims().size(); ++i)
                             {
-                                // The kernel relies on this input to be initialized, and it should be small enough to copy
-                                // cheaply. FusedGraphKernel only handles constant CPU inputs through transferred initializers,
-                                // rather than ORT, to avoid mismatches in policy or implementation causing failures.
+                                totalElementCount *= tensor->dims()[i];
+                            }
+
+                            if (totalElementCount <=  maximumElementsForDuplicationTensor ||
+                                requiredInitializerMap.find(input) != requiredInitializerMap.end())
+                            {
                                 isInitializerTransferable[input] = {tensor, false};
                             }
 

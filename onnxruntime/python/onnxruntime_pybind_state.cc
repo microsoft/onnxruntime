@@ -841,7 +841,7 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
 #ifdef USE_QNN
     auto cit = provider_options_map.find(type);
     return onnxruntime::QNNProviderFactoryCreator::Create(
-               cit == provider_options_map.end() ? ProviderOptions{} : cit->second)
+               cit == provider_options_map.end() ? ProviderOptions{} : cit->second, &session_options)
         ->CreateProvider();
 #endif
   } else {
@@ -1148,8 +1148,8 @@ void addObjectMethods(py::module& m, ExecutionProviderRegistrationFn ep_registra
       .def_static("default_memory", []() { return OrtDevice::MemType::DEFAULT; });
 
   py::class_<OrtArenaCfg> ort_arena_cfg_binding(m, "OrtArenaCfg");
-  // Note: Doesn't expose initial_growth_chunk_sizes_bytes option. This constructor kept for
-  // backwards compatibility, key-value pair constructor overload exposes all options
+  // Note: Doesn't expose initial_growth_chunk_sizes_bytes/max_power_of_two_extend_bytes option.
+  // This constructor kept for backwards compatibility, key-value pair constructor overload exposes all options
   // There is a global var: arena_extend_strategy, which means we can't use that var name here
   // See docs/C_API.md for details on what the following parameters mean and how to choose these values
   ort_arena_cfg_binding.def(py::init([](size_t max_mem, int arena_extend_strategy_local,
@@ -1175,6 +1175,8 @@ void addObjectMethods(py::module& m, ExecutionProviderRegistrationFn ep_registra
             ort_arena_cfg->max_dead_bytes_per_chunk = kvp.second.cast<int>();
           } else if (key == "initial_growth_chunk_size_bytes") {
             ort_arena_cfg->initial_growth_chunk_size_bytes = kvp.second.cast<int>();
+          } else if (key == "max_power_of_two_extend_bytes") {
+            ort_arena_cfg->max_power_of_two_extend_bytes = kvp.second.cast<int>();
           } else {
             ORT_THROW("Invalid OrtArenaCfg option: ", key);
           }
@@ -1185,7 +1187,8 @@ void addObjectMethods(py::module& m, ExecutionProviderRegistrationFn ep_registra
       .def_readwrite("arena_extend_strategy", &OrtArenaCfg::arena_extend_strategy)
       .def_readwrite("initial_chunk_size_bytes", &OrtArenaCfg::initial_chunk_size_bytes)
       .def_readwrite("max_dead_bytes_per_chunk", &OrtArenaCfg::max_dead_bytes_per_chunk)
-      .def_readwrite("initial_growth_chunk_size_bytes", &OrtArenaCfg::initial_growth_chunk_size_bytes);
+      .def_readwrite("initial_growth_chunk_size_bytes", &OrtArenaCfg::initial_growth_chunk_size_bytes)
+      .def_readwrite("max_power_of_two_extend_bytes", &OrtArenaCfg::max_power_of_two_extend_bytes);
 
   py::class_<OrtMemoryInfo> ort_memory_info_binding(m, "OrtMemoryInfo");
   ort_memory_info_binding.def(py::init([](const char* name, OrtAllocatorType type, int id, OrtMemType mem_type) {

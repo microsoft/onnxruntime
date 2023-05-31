@@ -20,4 +20,8 @@ class TensorDataType(object):
     COMPLEX64 = 14
     COMPLEX128 = 15
     BFLOAT16 = 16
+    FLOAT8E4M3FN = 17
+    FLOAT8E4M3FNUZ = 18
+    FLOAT8E5M2 = 19
+    FLOAT8E5M2FNUZ = 20
 

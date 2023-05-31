@@ -200,7 +200,7 @@ stages:
         BuildConfig: 'RelWithDebInfo'
         EnvSetupScript: setup_env_azure.bat
         buildArch: x64
-        additionalBuildFlags: --use_azure
+        additionalBuildFlags: --use_azure --use_lock_free_queue
         msbuildPlatform: x64
         isX86: false
         job_name_suffix: x64_release_azure

@@ -273,18 +273,6 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 
                 { "test_mul_uint8", "Could not find an implementation for Mul(14) node with name" },
 
-                { "test_cast_STRING_to_FLOAT", "Output mismatch"},
-                { "test_cast_BFLOAT16_to_FLOAT", "Output mismatch"},
-                { "test_cast_FLOAT_to_STRING", "Output strings can not be compared exactly"},
-                { "test_castlike_STRING_to_FLOAT", "Output mismatch"},
-                { "test_castlike_STRING_to_FLOAT_expanded", "Output mismatch"},
-                { "test_castlike_BFLOAT16_to_FLOAT", "Length is expected to be equal to Count (metadata and expected data mismatch) "},
-                { "test_castlike_BFLOAT16_to_FLOAT_expanded", "Length is expected to be equal to Count metadata and expected data mismatch"},
-                { "test_castlike_FLOAT_to_BFLOAT16", "Length is expected to be equal to Count. Testdata dims length do not match that of model metadata"},
-                { "test_castlike_FLOAT_to_BFLOAT16_expanded", "Length is expected to be equal to Count"},
-                { "test_castlike_FLOAT_to_STRING", "string comparison does not match due to float rounding"},
-                { "test_castlike_FLOAT_to_STRING_expanded", "string comparison does not match due to float rounding"},
-
                 { "test_bitshift_right_uint16", "Could not find an implementation for BitShift(11) nodeMeta with name ''"},
                 { "test_bitshift_left_uint16", "Could not find an implementation for BitShift(11)"},
 
@@ -337,6 +325,8 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 
                 { "test_adagrad", "ai.onnx.preview.training:Adagrad(-1) is not a registered function/op"},
                 { "test_adagrad_multiple", "ai.onnx.preview.training:Adagrad(-1) is not a registered function/op"},
+
+                { "test_zfnet512", "skip it as ZFNET-512"},
             };
 
             // The following models fails on nocontribops win CI
@@ -827,7 +817,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             return libFullPath;
         }
 
-        private void ValidateModelWithCustomOps(SessionOptions options) 
+        private void ValidateModelWithCustomOps(SessionOptions options)
         {
             string modelPath = "custom_op_test.onnx";
 

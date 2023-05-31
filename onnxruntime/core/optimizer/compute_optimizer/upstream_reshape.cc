@@ -29,7 +29,7 @@ UpStreamReshapeGraphTransformer::UpStreamReshapeGraphTransformer(
            std::make_shared<SimplePointwiseReshapeActor<true>>(), opset_1)},
       {GetFullQualifiedOpName("Cast", kOnnxDomain),
        OpPassThroughConfig<UpStreamReshapeOperatorActorBase>(
-           std::make_shared<SimplePointwiseReshapeActor<true>>(), opset_13_9_6_1)},
+           std::make_shared<SimplePointwiseReshapeActor<true>>(), opset_19_13_9_6_1)},
       {GetFullQualifiedOpName("Dropout", kOnnxDomain),
        OpPassThroughConfig<UpStreamReshapeOperatorActorBase>(
            std::make_shared<SimplePointwiseReshapeActor<true>>(), opset_13_12_10_7_6_1)},
@@ -261,6 +261,11 @@ std::optional<ReshapeInfo> UpStreamReshapeGraphTransformer::IsSupportedForUpstre
 
   if (!utils::HasDimValue(data_shape->dim(2))) {
     LOG_DEBUG_INFO(logger, "Skip Reshape node " + node.Name() + " due to the last dim size is not concrete value.");
+    return std::nullopt;
+  }
+
+  // If the first dim of Reshape output don't have dim_value or dim_param, we can't do the optimization.
+  if (!(reshape_out_shape->dim(0).has_dim_value() || reshape_out_shape->dim(0).has_dim_param())) {
     return std::nullopt;
   }
 
