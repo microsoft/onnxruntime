@@ -81,12 +81,16 @@ stages:
           archiveFilePatterns: '$(Build.ArtifactStagingDirectory)//onnxruntime-osx-x86_64-*.tgz'
           destinationFolder: '$(Build.ArtifactStagingDirectory)/onnxruntime-osx-x86_64'
           cleanDestinationFolder: true
+      - bash: |
+          find . -type f
+        workingDirectory: $(Build.ArtifactStagingDirectory)
+        displayName: check unzipped files
       - template: win-esrp-dll.yml
         parameters:
           FolderPath: '$(Build.ArtifactStagingDirectory)/onnxruntime-osx-x86_64'
           DisplayName: 'ESRP - Sign Mac'
           DoEsrp: true
-          Pattern: '**/*.dylib'
+          Pattern: '*.dylib'
       - task: ArchiveFiles@2
         inputs:
           rootFolderOrFile: '$(Build.ArtifactStagingDirectory)'
