@@ -72,7 +72,13 @@ class _SkipCheck(IntFlag):
 
 
 class GraphExecutionManager(GraphExecutionInterface):
-    def __init__(self, module: _FlattenedModule, debug_options: DebugOptions, fallback_manager: _FallbackManager):
+    def __init__(
+        self,
+        module: _FlattenedModule,
+        debug_options: DebugOptions,
+        fallback_manager: _FallbackManager,
+        logger: logging.Logger,
+    ):
         """Manages construction and execution of ONNX graphs"""
 
         super().__init__(module._original_module)
@@ -81,8 +87,7 @@ class GraphExecutionManager(GraphExecutionInterface):
         self._debug_options = debug_options
         self._fallback_manager = fallback_manager
 
-        self._logger = logging.getLogger(__name__)
-        self._logger.setLevel(_logger.ortmodule_loglevel_to_python_loglevel(self._debug_options.logging.log_level))
+        self._logger = logger
 
         # Original and flattened (transformed) output module
         self._flattened_module = module
@@ -348,7 +353,7 @@ class GraphExecutionManager(GraphExecutionInterface):
         # e.g., some sympy functions in symbolic_shape_infer will change Python's random state.
         random_states = _utils.get_random_states()
 
-        schema = _io._extract_schema({"args": copy.copy(inputs), "kwargs": copy.copy(kwargs)})
+        schema = _io._extract_schema({"args": copy.copy(inputs), "kwargs": copy.copy(kwargs)}, self._logger)
         if (
             self._onnx_models.exported_model
             and schema == self._input_info.schema
@@ -395,7 +400,9 @@ class GraphExecutionManager(GraphExecutionInterface):
                 output_names,
                 output_dynamic_axes,
                 self._module_output_schema,
-            ) = _io.parse_outputs_for_onnx_export_and_extract_schema(self._original_module, inputs, kwargs)
+            ) = _io.parse_outputs_for_onnx_export_and_extract_schema(
+                self._original_module, inputs, kwargs, self._logger
+            )
             self._input_info.dynamic_axes.update(output_dynamic_axes)
 
             # FlattenedModule needs _InputInfo to expand user input from *args to *args + **kwargs

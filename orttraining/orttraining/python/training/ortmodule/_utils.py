@@ -28,8 +28,6 @@ from ._fallback_exceptions import ORTModuleDeviceException, ORTModuleIOError, wr
 from ._torch_module_pytorch import TorchModulePytorch
 from .torch_cpp_extensions.cpu.aten_op_executor import load_aten_op_executor_cpp_extension
 
-logger = logging.getLogger(__name__)
-
 
 def get_random_states():
     r_state = random.getstate()
@@ -214,7 +212,9 @@ def _create_iobinding(io_binding, inputs, model, device: torch.device):
         io_binding.bind_output(value_info.name, device.type, device_id=device_id)
 
 
-def check_for_name_collisions_and_bind_methods_to_ortmodule(ortmodule: torch.nn.Module, user_module: torch.nn.Module):
+def check_for_name_collisions_and_bind_methods_to_ortmodule(
+    ortmodule: torch.nn.Module, user_module: torch.nn.Module, logger: logging.Logger
+):
     """Warns if there are any common attributes between the user's model and ORTModule and binds user methods to ORTModule
 
     If there are methods defined on the user's model that ORTModule does not recognize (custom methods),
@@ -344,7 +344,7 @@ def switch_backend_to_pytorch(ortmodule, pytorch_module):
     ortmodule.forward = pytorch_module.forward
 
 
-def warn_of_constant_inputs(data):
+def warn_of_constant_inputs(data, logger: logging.Logger):
     logger.info(
         f"Received input of type {type(data)} which may be treated as a constant by ORT by default."
         " Please consider moving constant arguments to the model constructor."
