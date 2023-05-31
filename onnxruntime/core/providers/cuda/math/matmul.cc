@@ -180,6 +180,11 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
   ORT_RETURN_IF_ERROR(right_arrays.CopyToGpu(ctx->GetComputeStream()));
   ORT_RETURN_IF_ERROR(output_arrays.CopyToGpu(ctx->GetComputeStream()));
 
+#if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
+  cublasMath_t mode = (device_prop.major >= 8 && helper.IsBatchedGemmAligned()) ? CUBLAS_TF32_TENSOR_OP_MATH : CUBLAS_DEFAULT_MATH;
+  CublasMathModeSetter math_mode_setter(device_prop, GetCublasHandle(ctx), mode);
+#endif
+
   // note that onnxruntime OrtValue is row major, while cublas is column major,
   // so swap left/right operands
   CUBLAS_RETURN_IF_ERROR(cublasGemmBatchedHelper(

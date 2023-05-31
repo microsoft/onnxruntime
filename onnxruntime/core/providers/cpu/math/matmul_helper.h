@@ -371,6 +371,21 @@ class MatMulComputeHelper {
     return right_zp_offsets_;
   }
 
+  static bool IsAligned(const std::vector<size_t>& offsets) {
+    constexpr size_t alignment = 16;
+    auto len = offsets.size();
+    for (size_t i = 0; i < len; i++) {
+      if ((offsets[i] % alignment) != 0) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  bool IsBatchedGemmAligned() const {
+    return IsAligned(left_offsets_) && IsAligned(right_offsets_) && IsAligned(output_offsets_);
+  }
+
   template <typename T>
   static void OffsetToArrays(T* p, const std::vector<size_t>& offsets, gsl::span<T*> arrays) {
     auto len = offsets.size();
