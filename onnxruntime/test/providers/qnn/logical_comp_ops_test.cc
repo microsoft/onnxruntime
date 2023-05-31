@@ -157,6 +157,49 @@ TEST_F(QnnHTPBackendTests, DISABLED_LogicalOpLessOrEqual4D) {
   RunQDQLogicalOpTest<uint8_t>("LessOrEqual", {1, 3, 16, 16}, ExpectedEPNodeAssignment::All, "LogicalOpLessOrEqual4D");
 }
 
+// Test for bug 44777546.
+// Tests a QDQ graph with an Equal node followed by a Cast.
+TEST_F(QnnHTPBackendTests, EqualToCast4D) {
+  ProviderOptions provider_options;
+#if defined(_WIN32)
+  provider_options["backend_path"] = "QnnHtp.dll";
+#else
+  provider_options["backend_path"] = "libQnnHtp.so";
+#endif
+
+  // Model building function that creates a QDQ graph with an Equal node followed by
+  // a Cast to float32.
+  auto build_qdq_equal_to_cast = [](ModelTestBuilder& builder) {
+    constexpr uint8_t zero_point = 0;
+    constexpr float qdq_scale = 0.0038f;
+    const std::vector<int64_t> input_shape = {1, 3, 8, 8};
+
+    auto* input0 = builder.MakeInput<float>(input_shape, -1.0f, 1.0f);
+    auto* input1 = builder.MakeInput<float>(input_shape, -1.0f, 1.0f);
+    auto* output = builder.MakeOutput();
+
+    // input -> Q -> DQ -> Op
+    auto* qdq0_output = AddQDQNodePair<uint8_t>(builder, input0, qdq_scale, zero_point);
+    auto* qdq1_output = AddQDQNodePair<uint8_t>(builder, input1, qdq_scale, zero_point);
+
+    // Equal ->
+    auto* equal_output = builder.MakeIntermediate();
+    builder.AddNode("Equal", {qdq0_output, qdq1_output}, {equal_output});
+
+    // -> Cast -> output
+    Node& cast_node = builder.AddNode("Cast", {equal_output}, {output});
+    cast_node.AddAttribute("to",
+                           static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT));
+  };
+
+  RunQnnModelTest(build_qdq_equal_to_cast,
+                  provider_options,
+                  17,  // opset
+                  ExpectedEPNodeAssignment::All,
+                  1,  // expected nodes in graph
+                  "EqualToCast4D");
+}
+
 #endif  // defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
 
 }  // namespace test
