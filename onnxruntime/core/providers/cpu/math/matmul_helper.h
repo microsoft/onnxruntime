@@ -373,7 +373,7 @@ class MatMulComputeHelper {
 
   static bool IsAligned(const std::vector<size_t>& offsets) {
     constexpr size_t alignment = 16;
-    auto len = offsets.size();
+    const auto len = offsets.size();
     for (size_t i = 0; i < len; i++) {
       if ((offsets[i] % alignment) != 0) {
         return false;
@@ -388,7 +388,7 @@ class MatMulComputeHelper {
 
   template <typename T>
   static void OffsetToArrays(T* p, const std::vector<size_t>& offsets, gsl::span<T*> arrays) {
-    auto len = offsets.size();
+    const auto len = offsets.size();
     ORT_ENFORCE(arrays.size() == len);
     for (size_t i = 0; i < len; i++) {
       arrays[i] = p + offsets[i];
@@ -397,7 +397,7 @@ class MatMulComputeHelper {
 
   template <typename T>
   static void OffsetToArrays(const T* p, const std::vector<size_t>& offsets, gsl::span<const T*> arrays) {
-    auto len = offsets.size();
+    const auto len = offsets.size();
     ORT_ENFORCE(arrays.size() == len);
     for (size_t i = 0; i < len; i++) {
       arrays[i] = p + offsets[i];
