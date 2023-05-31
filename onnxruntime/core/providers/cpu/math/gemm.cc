@@ -308,9 +308,11 @@ Status Gemm<T>::Compute(OpKernelContext* context) const {
   const auto* C = context->Input<Tensor>(2);
 
   // Bias could be missing. Treat as scalar 0 if that is the case.
-  std::unique_ptr<GemmHelper> helper;
-  ORT_RETURN_IF_ERROR(GemmHelper::Create(A->Shape(), trans_A_ != CblasNoTrans, B->Shape(), trans_B_ != CblasNoTrans,
-                                         C != nullptr ? C->Shape() : TensorShape({}), helper));
+  GemmHelper helper(A->Shape(), trans_A_ != CblasNoTrans, B->Shape(), trans_B_ != CblasNoTrans,
+                    C != nullptr ? C->Shape() : TensorShape({}));
+
+  if (!helper.State().IsOK())
+    return helper.State();
 
   ptrdiff_t M = helper.M();
   ptrdiff_t N = helper.N();
@@ -343,9 +345,11 @@ Status Gemm<MLFloat16>::Compute(OpKernelContext* context) const {
   const auto* C = context->Input<Tensor>(2);
 
   // Bias could be missing. Treat as scalar 0 if that is the case.
-  std::unique_ptr<GemmHelper> helper;
-  ORT_RETURN_IF_ERROR(GemmHelper::Create(A->Shape(), trans_A_ != CblasNoTrans, B ? B->Shape() : b_shape_, trans_B_ != CblasNoTrans,
-                                         C != nullptr ? C->Shape() : TensorShape({}), helper));
+  GemmHelper helper(A->Shape(), trans_A_ != CblasNoTrans, B->Shape(), trans_B_ != CblasNoTrans,
+                    C != nullptr ? C->Shape() : TensorShape({}));
+
+  if (!helper.State().IsOK())
+    return helper.State();
 
   ptrdiff_t M = helper.M();
   ptrdiff_t N = helper.N();
