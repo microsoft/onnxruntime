@@ -34,10 +34,8 @@ template <typename QuantType>
 GetQDQTestCaseFn BuildMatMulOpQDQTestCase(const std::vector<int64_t>& input1_shape,
                                           const std::vector<int64_t>& input2_shape) {
   return [input1_shape, input2_shape](ModelTestBuilder& builder) {
-    //float dq_scale = 0.0038f;
     float pool_output_scale = 0.0038f;
     float q_scale = 0.0038f;
-    // QuantType dq_zp = std::numeric_limits<QuantType>::max() / 2;
     QuantType pool_output_zp = std::numeric_limits<QuantType>::max() / 2;
     QuantType q_zp = std::numeric_limits<QuantType>::max() / 2;
 
