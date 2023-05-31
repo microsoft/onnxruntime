@@ -421,14 +421,14 @@ ExecutionFrame::ExecutionFrame(gsl::span<const int> feed_mlvalue_idxs, gsl::span
               // Planning of one memory type should only happen once.
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
               ORT_ENFORCE(
-                  static_activation_memory_sizes_in_byte_.find(location.name) ==
+                  static_activation_memory_sizes_in_byte_.find(location.ToString()) ==
                       static_activation_memory_sizes_in_byte_.end(),
                   "Memory type ",
-                  location.name,
+                  location.ToString(),
                   " should only appear once.");
               // static_activation_memory_in_bytes_ is max virtual memory size the planner computes.
               // Memory dynamically allocated when executing kernels is not recorded using this field.
-              static_activation_memory_sizes_in_byte_[location.name] = peak_size;
+              static_activation_memory_sizes_in_byte_[location.ToString()] = peak_size;
 #endif
               // the memory pattern buffer will leave in the whole execution.
 #ifdef ORT_ENABLE_STREAM
@@ -609,7 +609,7 @@ Status ExecutionFrame::AllocateMLValueTensorSelfOwnBufferHelper(OrtValue& ort_va
     // Dynamic activation size would be accessed by multiple threads
     // if parallel executor is used.
     std::unique_lock<std::mutex> lock(mtx_);
-    dynamic_activation_memory_sizes_in_byte_[location.name] += size;
+    dynamic_activation_memory_sizes_in_byte_[location.ToString()] += size;
     session_state_.GetMemoryProfiler()->GetMemoryInfo().SetDynamicAllocation(ort_value_index);
 #endif
   }
