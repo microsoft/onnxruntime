@@ -46,6 +46,10 @@ static void VerifyOutputs(const std::vector<std::string>& output_names,
         EXPECT_TRUE(SpanEq(ltensor.DataAsSpan<int8_t>(), rtensor.DataAsSpan<int8_t>()))
             << " mismatch for " << output_names[i];
         break;
+      case ONNX_NAMESPACE::TensorProto_DataType_BOOL:
+        EXPECT_TRUE(SpanEq(ltensor.DataAsSpan<bool>(), rtensor.DataAsSpan<bool>()))
+            << " mismatch for " << output_names[i];
+        break;
       case ONNX_NAMESPACE::TensorProto_DataType_FLOAT: {
         EXPECT_THAT(ltensor.DataAsSpan<float>(),
                     ::testing::Pointwise(::testing::FloatNear(params.fp32_abs_err), rtensor.DataAsSpan<float>()));

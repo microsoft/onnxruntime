@@ -160,6 +160,14 @@ class BatchNormalizationNodeGroupSelector : public NodeGroupSelector {
   bool int8_allowed_;
 };
 
+// 2 DQ nodes providing input -> node with bool output tensor.
+// Example: Equal, Less, Greater.
+class LogicalComparisonNodeGroupSelector : public NodeGroupSelector {
+  bool Check(const GraphViewer& graph_viewer, const Node& node,
+             const std::vector<const Node*>& dq_nodes,
+             const std::vector<const Node*>& q_nodes) const override;
+};
+
 /*
  * NodeSelector instances for use in the QDQ::SelectorActionTransformer.
  */

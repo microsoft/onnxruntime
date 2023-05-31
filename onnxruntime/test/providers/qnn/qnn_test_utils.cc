@@ -16,7 +16,7 @@ namespace test {
 
 void RunQnnModelTest(const GetTestModelFn& build_test_case, const ProviderOptions& provider_options,
                      int opset_version, ExpectedEPNodeAssignment expected_ep_assignment, int num_nodes_in_ep,
-                     const char* test_description, float fp32_abs_err) {
+                     const char* test_description, float fp32_abs_err, logging::Severity log_severity) {
   std::function<void(const Graph&)> graph_verify = [num_nodes_in_ep, test_description](const Graph& graph) -> void {
     ASSERT_EQ(graph.NumberOfNodes(), num_nodes_in_ep) << test_description;
   };
@@ -28,9 +28,12 @@ void RunQnnModelTest(const GetTestModelFn& build_test_case, const ProviderOption
   // Add kMSDomain to cover contrib op like Gelu
   const std::unordered_map<std::string, int> domain_to_version = {{"", opset_version}, {kMSDomain, 1}};
 
+  auto& logging_manager = DefaultLoggingManager();
+  logging_manager.SetDefaultLoggerSeverity(log_severity);
+
   onnxruntime::Model model(test_description, false, ModelMetaData(), PathString(),
                            IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {},
-                           DefaultLoggingManager().DefaultLogger());
+                           logging_manager.DefaultLogger());
   Graph& graph = model.MainGraph();
   ModelTestBuilder helper(graph);
   build_test_case(helper);

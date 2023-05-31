@@ -29,10 +29,12 @@ using GetTestModelFn = std::function<void(ModelTestBuilder& builder)>;
  * \param num_modes_in_ep The expected number of nodes assigned to QNN EP's partition.
  * \param test_description Description of the test for error reporting.
  * \param fp32_abs_err The acceptable error between CPU EP and QNN EP.
+ * \param log_severity The logger's minimum severity level.
  */
 void RunQnnModelTest(const GetTestModelFn& build_test_case, const ProviderOptions& provider_options,
                      int opset_version, ExpectedEPNodeAssignment expected_ep_assignment, int num_nodes_in_ep,
-                     const char* test_description, float fp32_abs_err = 1e-5f);
+                     const char* test_description, float fp32_abs_err = 1e-5f,
+                     logging::Severity log_severity = logging::Severity::kERROR);
 
 enum class BackendSupport {
   SUPPORT_UNKNOWN,
