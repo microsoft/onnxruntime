@@ -78,7 +78,7 @@ stages:
         displayName: check unzipped files
       - task: ExtractFiles@1
         inputs:
-          archiveFilePatterns: '$(Build.ArtifactStagingDirectory)/onnxruntime-osx-x86_64.tgz'
+          archiveFilePatterns: '$(Build.ArtifactStagingDirectory)//onnxruntime-osx-x86_64-*.tgz'
           destinationFolder: '$(Build.ArtifactStagingDirectory)/onnxruntime-osx-x86_64'
           cleanDestinationFolder: true
       - template: win-esrp-dll.yml
