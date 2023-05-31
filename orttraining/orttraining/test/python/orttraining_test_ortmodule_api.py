@@ -5733,6 +5733,10 @@ def test_runtime_inspector_label_and_embed_sparsity_detection(embed_is_sparse, l
     found_embed_is_sparse = False
     found_label_is_sparse = False
     for record in caplog.records:
+        print(" ---------------------------------------------------------- ")
+        print(record.getMessage())
+        print(" ---------------------------------------------------------- ")
+
         if "Label sparsity based optimization is on for" in record.getMessage():
             found_label_is_sparse = True
 
