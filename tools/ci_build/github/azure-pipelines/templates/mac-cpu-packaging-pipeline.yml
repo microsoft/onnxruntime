@@ -73,14 +73,20 @@ stages:
           BuildId: ${{ parameters.BuildId }}
 
       - ${{ if eq(parameters.BuildForAllArchs, true) }}:
-        - task: DownloadPipelineArtifact@2
-          inputs:
-            artifact: 'onnxruntime-osx-arm64'
-            targetPath: '$(Build.ArtifactStagingDirectory)'
-        - task: DownloadPipelineArtifact@2
-          inputs:
-            artifact: 'onnxruntime-osx-universal2'
-            targetPath: '$(Build.ArtifactStagingDirectory)'
+        - template: flex-downloadPipelineArtifact.yml
+          parameters:
+            StepName: 'Download Pipeline onnxruntime-osx-arm64'
+            ArtifactName: 'onnxruntime-osx-arm64'
+            TargetPath: '$(Build.ArtifactStagingDirectory)'
+            SpecificArtifact: ${{ parameters.specificArtifact }}
+            BuildId: ${{ parameters.BuildId }}
+        - template: flex-downloadPipelineArtifact.yml
+          parameters:
+            StepName: 'Download Pipeline onnxruntime-osx-universal2'
+            ArtifactName: 'onnxruntime-osx-universal2'
+            TargetPath: '$(Build.ArtifactStagingDirectory)'
+            SpecificArtifact: ${{ parameters.specificArtifact }}
+            BuildId: ${{ parameters.BuildId }}
 
       - task: PublishPipelineArtifact@1
         inputs:
