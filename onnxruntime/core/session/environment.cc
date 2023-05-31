@@ -135,6 +135,7 @@ Status Environment::CreateAndRegisterAllocator(const OrtMemoryInfo& mem_info, co
     int initial_chunk_size_bytes = -1;
     int max_dead_bytes_per_chunk = -1;
     int initial_growth_chunk_size_bytes = -1;
+    int64_t max_power_of_two_extend_bytes = -1L;
 
     // override with values from the user supplied arena_cfg object
     if (arena_cfg) {
@@ -151,10 +152,11 @@ Status Environment::CreateAndRegisterAllocator(const OrtMemoryInfo& mem_info, co
       initial_chunk_size_bytes = arena_cfg->initial_chunk_size_bytes;
       max_dead_bytes_per_chunk = arena_cfg->max_dead_bytes_per_chunk;
       initial_growth_chunk_size_bytes = arena_cfg->initial_growth_chunk_size_bytes;
+      max_power_of_two_extend_bytes = arena_cfg->max_power_of_two_extend_bytes;
     }
 
     OrtArenaCfg l_arena_cfg{max_mem, arena_extend_strategy, initial_chunk_size_bytes, max_dead_bytes_per_chunk,
-                            initial_growth_chunk_size_bytes};
+                            initial_growth_chunk_size_bytes, max_power_of_two_extend_bytes};
     AllocatorCreationInfo alloc_creation_info{
         [mem_info](int) { return std::make_unique<CPUAllocator>(mem_info); },
         0,
@@ -280,7 +282,7 @@ Status Environment::Initialize(std::unique_ptr<logging::LoggingManager> logging_
     // These ops are internal-only, so register outside of onnx
     static std::vector<std::string> all_fixed_size_types = []() {
       std::vector<std::string> all_types;
-      std::vector<std::string> all_tensor_types = OpSchema::all_tensor_types_with_bfloat();
+      std::vector<std::string> all_tensor_types = OpSchema::all_tensor_types_ir9();
       std::vector<std::string> all_sequence_types = OpSchema::all_tensor_sequence_types();
       all_types.insert(all_types.end(), all_tensor_types.begin(), all_tensor_types.end());
       all_types.insert(all_types.end(), all_sequence_types.begin(), all_sequence_types.end());

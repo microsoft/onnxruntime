@@ -896,6 +896,9 @@ def generate_build_tree(
     if not use_dev_mode(args):
         cmake_args += ["--compile-no-warning-as-error"]
 
+    # enable/disable float 8 types
+    disable_float8_types = args.use_rocm or args.android or args.minimal_build
+
     cmake_args += [
         "-Donnxruntime_RUN_ONNX_TESTS=" + ("ON" if args.enable_onnx_tests else "OFF"),
         "-Donnxruntime_GENERATE_TEST_REPORTS=ON",
@@ -993,6 +996,7 @@ def generate_build_tree(
         "-Donnxruntime_USE_WEBNN=" + ("ON" if args.use_webnn else "OFF"),
         "-Donnxruntime_USE_CANN=" + ("ON" if args.use_cann else "OFF"),
         "-Donnxruntime_USE_TRITON_KERNEL=" + ("ON" if args.use_triton_kernel else "OFF"),
+        "-Donnxruntime_DISABLE_FLOAT8_TYPES=" + ("ON" if disable_float8_types else "OFF"),
     ]
 
     # By default on Windows we currently support only cross compiling for ARM/ARM64

@@ -119,9 +119,15 @@ Status ResizeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   std::vector<int32_t> sizes;
   std::vector<float> scales_hw;
   std::vector<int32_t> sizes_hw;
+  std::vector<int32_t> axes;
+  const bool isNhwc = model_builder.GetPreferredLayout() == DataLayout::NHWC;
   if (input_defs.size() == 3) {  // Use scales.
     ORT_RETURN_IF_NOT(GetResizeScales(initializers, node, scales, logger), "Error getting resize scales");
-    scales_hw = {scales[2], scales[3]};
+    if (isNhwc) {
+      scales_hw = {scales[1], scales[2]};
+    } else {
+      scales_hw = {scales[2], scales[3]};
+    }
     options.set("scales", emscripten::val::array(scales_hw));
   } else {  // We already checked number of inputs in IsOpSupportedImpl.
     std::vector<int64_t> output_sizes;
@@ -130,12 +136,21 @@ Status ResizeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
     std::transform(output_sizes.cbegin(), output_sizes.cend(),
                    std::back_inserter(sizes),
                    [](int64_t dim) -> int32_t { return SafeInt<int32_t>(dim); });
-    sizes_hw = {sizes[1], sizes[2]};
+    if (isNhwc) {
+      sizes_hw = {sizes[1], sizes[2]};
+    } else {
+      sizes_hw = {sizes[2], sizes[3]};
+    }
     options.set("sizes", emscripten::val::array(sizes_hw));
   }
 
-  std::vector<int32_t> axes = {1, 2};
+  if (isNhwc) {
+    axes = {1, 2};
+  } else {
+    axes = {2, 3};
+  }
   options.set("axes", emscripten::val::array(axes));
+
   emscripten::val input = model_builder.GetOperand(input_defs[0]->Name());
   emscripten::val output = model_builder.GetBuilder().call<emscripten::val>("resample2d", input, options);
   model_builder.AddOperand(node.OutputDefs()[0]->Name(), std::move(output));

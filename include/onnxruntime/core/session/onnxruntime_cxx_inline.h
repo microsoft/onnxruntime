@@ -1434,16 +1434,16 @@ inline Value Value::CreateSparseTensor(OrtAllocator* allocator, const Shape& den
 }
 #endif  // !defined(DISABLE_SPARSE_TENSORS)
 
-inline Value Value::CreateMap(Value& keys, Value& values) {
+inline Value Value::CreateMap(const Value& keys, const Value& values) {
   OrtValue* out;
-  OrtValue* inputs[2] = {keys, values};
+  const OrtValue* inputs[2] = {keys, values};
   ThrowOnError(GetApi().CreateValue(inputs, 2, ONNX_TYPE_MAP, &out));
   return Value{out};
 }
 
-inline Value Value::CreateSequence(std::vector<Value>& values) {
+inline Value Value::CreateSequence(const std::vector<Value>& values) {
   OrtValue* out;
-  std::vector<OrtValue*> values_ort{values.data(), values.data() + values.size()};
+  std::vector<const OrtValue*> values_ort{values.data(), values.data() + values.size()};
   ThrowOnError(GetApi().CreateValue(values_ort.data(), values_ort.size(), ONNX_TYPE_SEQUENCE, &out));
   return Value{out};
 }

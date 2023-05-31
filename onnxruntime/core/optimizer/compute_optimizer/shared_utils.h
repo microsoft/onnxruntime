@@ -36,6 +36,8 @@ const OPSET_VERSION_LIST opset_13_9_6_1{13, 9, 6, 1};
 const OPSET_VERSION_LIST opset_14_13_5_1{14, 13, 5, 1};
 const OPSET_VERSION_LIST opset_14_13_7_6_1{14, 13, 7, 6, 1};
 const OPSET_VERSION_LIST opset_13_12_10_7_6_1{13, 12, 10, 7, 6, 1};
+const OPSET_VERSION_LIST opset_19_13_9_6_1{19, 13, 9, 6, 1};
+const OPSET_VERSION_LIST opset_19_14_13_5_1{19, 14, 13, 5, 1};
 
 /**
  * @brief Base class for all upstream operator passthrough actors.

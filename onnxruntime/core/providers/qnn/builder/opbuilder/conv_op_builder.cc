@@ -155,9 +155,9 @@ Status ConvOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
       const auto& input_tensor = qnn_model_wrapper.GetInitializerTensors().at(input_name);
       if (1 == input_i) {  // qnn Conv weight requires HWCN
         if (node_unit.OpType() == "Conv") {
-          ORT_RETURN_IF_ERROR(TransposeFromNchwToHwcn(qnn_model_wrapper, *input_tensor, qnn_model_wrapper.GetAllocator(), unpacked_tensor));
+          ORT_RETURN_IF_ERROR(TransposeFromNchwToHwcn(qnn_model_wrapper, *input_tensor, unpacked_tensor));
         } else if (node_unit.OpType() == "ConvTranspose") {
-          ORT_RETURN_IF_ERROR(TransposeFromCnhwToHwcn(qnn_model_wrapper, *input_tensor, qnn_model_wrapper.GetAllocator(), unpacked_tensor));
+          ORT_RETURN_IF_ERROR(TransposeFromCnhwToHwcn(qnn_model_wrapper, *input_tensor, unpacked_tensor));
         } else {
           ORT_THROW("Unexpected operator %s", node_unit.OpType());
         }

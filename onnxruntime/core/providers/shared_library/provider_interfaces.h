@@ -533,6 +533,13 @@ struct ProviderHost {
   virtual MLDataType DataTypeImpl__GetType_BFloat16() = 0;
   virtual MLDataType DataTypeImpl__GetType_MLFloat16() = 0;
   virtual MLDataType DataTypeImpl__GetType_string() = 0;
+#if !defined(DISABLE_FLOAT8_TYPES)
+  virtual MLDataType DataTypeImpl__GetType_Float8E4M3FN() = 0;
+  virtual MLDataType DataTypeImpl__GetType_Float8E4M3FNUZ() = 0;
+  virtual MLDataType DataTypeImpl__GetType_Float8E5M2() = 0;
+  virtual MLDataType DataTypeImpl__GetType_Float8E5M2FNUZ() = 0;
+#endif
+
   virtual MLDataType DataTypeImpl__GetTensorType_bool() = 0;
   virtual MLDataType DataTypeImpl__GetTensorType_int8() = 0;
   virtual MLDataType DataTypeImpl__GetTensorType_uint8() = 0;
@@ -546,6 +553,12 @@ struct ProviderHost {
   virtual MLDataType DataTypeImpl__GetTensorType_double() = 0;
   virtual MLDataType DataTypeImpl__GetTensorType_BFloat16() = 0;
   virtual MLDataType DataTypeImpl__GetTensorType_MLFloat16() = 0;
+#if !defined(DISABLE_FLOAT8_TYPES)
+  virtual MLDataType DataTypeImpl__GetTensorType_Float8E4M3FN() = 0;
+  virtual MLDataType DataTypeImpl__GetTensorType_Float8E4M3FNUZ() = 0;
+  virtual MLDataType DataTypeImpl__GetTensorType_Float8E5M2() = 0;
+  virtual MLDataType DataTypeImpl__GetTensorType_Float8E5M2FNUZ() = 0;
+#endif
 
 #if !defined(DISABLE_SPARSE_TENSORS)
   virtual MLDataType DataTypeImpl__GetSparseTensorType_bool() = 0;
@@ -562,6 +575,12 @@ struct ProviderHost {
   virtual MLDataType DataTypeImpl__GetSparseTensorType_string() = 0;
   virtual MLDataType DataTypeImpl__GetSparseTensorType_BFloat16() = 0;
   virtual MLDataType DataTypeImpl__GetSparseTensorType_MLFloat16() = 0;
+#if !defined(DISABLE_FLOAT8_TYPES)
+  virtual MLDataType DataTypeImpl__GetSparseTensorType_Float8E4M3FN() = 0;
+  virtual MLDataType DataTypeImpl__GetSparseTensorType_Float8E4M3FNUZ() = 0;
+  virtual MLDataType DataTypeImpl__GetSparseTensorType_Float8E5M2() = 0;
+  virtual MLDataType DataTypeImpl__GetSparseTensorType_Float8E5M2FNUZ() = 0;
+#endif
 #endif
 
   virtual const char* DataTypeImpl__ToString(MLDataType type) = 0;
@@ -571,14 +590,37 @@ struct ProviderHost {
   virtual bool DataTypeImpl__IsSparseTensorType(const DataTypeImpl* p) = 0;
 #endif
   virtual DeleteFunc DataTypeImpl__GetDeleteFunc(const DataTypeImpl* p) = 0;
+
   virtual const std::vector<MLDataType>& DataTypeImpl__AllFixedSizeTensorTypes() = 0;
+  virtual const std::vector<MLDataType>& DataTypeImpl__AllFixedSizeTensorTypesIRv4() = 0;
+  virtual const std::vector<MLDataType>& DataTypeImpl__AllFixedSizeTensorTypesIRv9() = 0;
+
   virtual const std::vector<MLDataType>& DataTypeImpl__AllTensorTypes() = 0;
+  virtual const std::vector<MLDataType>& DataTypeImpl__AllTensorTypesIRv4() = 0;
+  virtual const std::vector<MLDataType>& DataTypeImpl__AllTensorTypesIRv9() = 0;
+
   virtual const std::vector<MLDataType>& DataTypeImpl__AllIEEEFloatTensorTypes() = 0;
+
   virtual const std::vector<MLDataType>& DataTypeImpl__AllTensorAndSequenceTensorTypes() = 0;
+  virtual const std::vector<MLDataType>& DataTypeImpl__AllTensorAndSequenceTensorTypesIRv4() = 0;
+  virtual const std::vector<MLDataType>& DataTypeImpl__AllTensorAndSequenceTensorTypesIRv9() = 0;
+
   virtual const std::vector<MLDataType>& DataTypeImpl__AllOptionalAndTensorAndSequenceTensorTypes() = 0;
+  virtual const std::vector<MLDataType>& DataTypeImpl__AllOptionalAndTensorAndSequenceTensorTypesIRv4() = 0;
+  virtual const std::vector<MLDataType>& DataTypeImpl__AllOptionalAndTensorAndSequenceTensorTypesIRv9() = 0;
+
   virtual const std::vector<MLDataType>& DataTypeImpl__AllFixedSizeTensorAndSequenceTensorTypes() = 0;
+  virtual const std::vector<MLDataType>& DataTypeImpl__AllFixedSizeTensorAndSequenceTensorTypesIRv4() = 0;
+  virtual const std::vector<MLDataType>& DataTypeImpl__AllFixedSizeTensorAndSequenceTensorTypesIRv9() = 0;
+
   virtual const std::vector<MLDataType>& DataTypeImpl__AllSequenceTensorTypes() = 0;
+  virtual const std::vector<MLDataType>& DataTypeImpl__AllSequenceTensorTypesIRv4() = 0;
+  virtual const std::vector<MLDataType>& DataTypeImpl__AllSequenceTensorTypesIRv9() = 0;
+
   virtual const std::vector<MLDataType>& DataTypeImpl__AllFixedSizeSequenceTensorTypes() = 0;
+  virtual const std::vector<MLDataType>& DataTypeImpl__AllFixedSizeSequenceTensorTypesIRv4() = 0;
+  virtual const std::vector<MLDataType>& DataTypeImpl__AllFixedSizeSequenceTensorTypesIRv9() = 0;
+
   virtual size_t DataTypeImpl__Size(const DataTypeImpl* p) = 0;
   virtual const PrimitiveDataTypeBase* DataTypeImpl__AsPrimitiveDataType(const DataTypeImpl* p) = 0;
 
@@ -784,6 +826,13 @@ struct ProviderHost {
   virtual BFloat16* Tensor__MutableData_BFloat16(Tensor* p) = 0;
   virtual MLFloat16* Tensor__MutableData_MLFloat16(Tensor* p) = 0;
 
+#if !defined(DISABLE_FLOAT8_TYPES)
+  virtual Float8E4M3FN* Tensor__MutableData_Float8E4M3FN(Tensor* p) = 0;
+  virtual Float8E4M3FNUZ* Tensor__MutableData_Float8E4M3FNUZ(Tensor* p) = 0;
+  virtual Float8E5M2* Tensor__MutableData_Float8E5M2(Tensor* p) = 0;
+  virtual Float8E5M2FNUZ* Tensor__MutableData_Float8E5M2FNUZ(Tensor* p) = 0;
+#endif
+
   virtual const bool* Tensor__Data_bool(const Tensor* p) = 0;
   virtual const int8_t* Tensor__Data_int8(const Tensor* p) = 0;
   virtual const uint8_t* Tensor__Data_uint8(const Tensor* p) = 0;
@@ -797,6 +846,13 @@ struct ProviderHost {
   virtual const double* Tensor__Data_double(const Tensor* p) = 0;
   virtual const BFloat16* Tensor__Data_BFloat16(const Tensor* p) = 0;
   virtual const MLFloat16* Tensor__Data_MLFloat16(const Tensor* p) = 0;
+
+#if !defined(DISABLE_FLOAT8_TYPES)
+  virtual const Float8E4M3FN* Tensor__Data_Float8E4M3FN(const Tensor* p) = 0;
+  virtual const Float8E4M3FNUZ* Tensor__Data_Float8E4M3FNUZ(const Tensor* p) = 0;
+  virtual const Float8E5M2* Tensor__Data_Float8E5M2(const Tensor* p) = 0;
+  virtual const Float8E5M2FNUZ* Tensor__Data_Float8E5M2FNUZ(const Tensor* p) = 0;
+#endif
 
   virtual gsl::span<const int64_t> Tensor__DataAsSpan_int64(const Tensor* p) = 0;
 
@@ -821,6 +877,13 @@ struct ProviderHost {
   virtual bool Tensor__IsDataType_MLFloat16(const Tensor* p) noexcept = 0;
   virtual bool Tensor__IsDataType_BFloat16(const Tensor* p) noexcept = 0;
   virtual bool Tensor__IsDataTypeString(const Tensor* p) noexcept = 0;
+
+#if !defined(DISABLE_FLOAT8_TYPES)
+  virtual bool Tensor__IsDataType_Float8E4M3FN(const Tensor* p) noexcept = 0;
+  virtual bool Tensor__IsDataType_Float8E4M3FNUZ(const Tensor* p) noexcept = 0;
+  virtual bool Tensor__IsDataType_Float8E5M2(const Tensor* p) noexcept = 0;
+  virtual bool Tensor__IsDataType_Float8E5M2FNUZ(const Tensor* p) noexcept = 0;
+#endif
 
   virtual const TensorShape& Tensor__Shape(const Tensor* p) = 0;
   virtual void Tensor__Reshape(Tensor* p, const TensorShape& new_shape) = 0;

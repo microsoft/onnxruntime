@@ -19,7 +19,7 @@ MyExecutionProvider::MyExecutionProvider(const MyProviderInfo& info)
       [](OrtDevice::DeviceId device_id) { return std::make_unique<MyEPAllocator>(device_id); },
       device_id_,
       true,
-      {0, 1, -1, -1, -1}};
+      {0, 1, -1, -1, -1, -1L}};
   InsertAllocator(CreateAllocator(device_info));
 }
 

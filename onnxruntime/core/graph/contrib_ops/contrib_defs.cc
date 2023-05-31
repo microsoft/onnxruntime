@@ -2777,7 +2777,7 @@ This op functions in much the same was as Dropout-11 and Dropout-13 do, execpt t
               /*min_arity*/ 1)
       .Attr("operator", "Name of ATen operator.", AttributeProto::STRING)
       .Attr("overload_name", "Overload name of ATen operator.", AttributeProto::STRING, false)
-      .TypeConstraint("T", OpSchema::all_tensor_types_with_bfloat(),
+      .TypeConstraint("T", OpSchema::all_tensor_types_ir4(),
                       "Allow inputs and outputs to be any kind of tensor.");
 #endif
 
@@ -2820,7 +2820,7 @@ Having this op allows runtime to do operator re-ordering to reduce compute FLOPs
       .Output(0, "output", "Tensor of rank r.", "T", OpSchema::Single, true, 1, OpSchema::Differentiable)
       .TypeConstraint(
           "T",
-          OpSchema::all_tensor_types_with_bfloat(),
+          OpSchema::all_tensor_types_ir4(),
           "Constrain input and output types to any tensor type.")
       .TypeConstraint("Tind", {"tensor(int32)", "tensor(int64)"}, "Constrain indices to integer types")
       .TypeAndShapeInferenceFunction([](InferenceContext& ctx) {
