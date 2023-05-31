@@ -622,7 +622,7 @@ class GraphExecutionManager(GraphExecutionInterface):
                         [
                             " -EmbedSparsityOpt",
                             "ON",
-                            f"Input density: {embed_sparsity_results}, switch: ORTMODULE_ENABLE_SPARSE_OPTIMIZER=1/0",
+                            f"Input density: {sparsity_stat_str}, switch: ORTMODULE_ENABLE_SPARSE_OPTIMIZER=1/0",
                         ]
                     )
 
