@@ -72,17 +72,15 @@ stages:
           TargetPath: '$(Build.ArtifactStagingDirectory)'
           SpecificArtifact: ${{ parameters.specificArtifact }}
           BuildId: ${{ parameters.BuildId }}
-      - script:
-          for /r %i in $(Build.ArtifactStagingDirectory) do echo %i
+      - bash: |
+          find . -type f
+        workingDirectory: $(Build.ArtifactStagingDirectory)
         displayName: check unzipped files
       - task: ExtractFiles@1
         inputs:
           archiveFilePatterns: '$(Build.ArtifactStagingDirectory)/onnxruntime-osx-x86_64.tgz'
           destinationFolder: '$(Build.ArtifactStagingDirectory)/onnxruntime-osx-x86_64'
           cleanDestinationFolder: true
-      - script:
-          for /r %i in $(Build.ArtifactStagingDirectory) do echo %i
-        displayName: check unzipped files
       - template: win-esrp-dll.yml
         parameters:
           FolderPath: '$(Build.ArtifactStagingDirectory)/onnxruntime-osx-x86_64'
