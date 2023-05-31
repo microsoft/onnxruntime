@@ -46,7 +46,7 @@ Status DynamicTimeWarping::ComputeInternal(OpKernelContext* ctx) const {
 
   return CUDA_CALL(cudaMemcpy2DAsync(
     output_tensor->MutableData<int32_t>(), result_len * sizeof(int32_t),
-    buffer.get() + (max_index_len - result_len), max_index_len * sizeof(int32_t),
+    buffer.get() + ((max_index_len - result_len) * sizeof(int32_t)), max_index_len * sizeof(int32_t),
     result_len * sizeof(int32_t), 2,
     cudaMemcpyDeviceToDevice, this->Stream(ctx)));
 }
