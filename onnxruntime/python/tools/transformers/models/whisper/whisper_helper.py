@@ -230,7 +230,7 @@ class WhisperHelper:
         use_external_data_format: bool = False,
         auto_mixed_precision: bool = True,
         use_gpu: bool = False,
-        provider: str = "cuda",
+        provider: str = "cpu",
     ):
         """Optimize ONNX model with an option to convert it to use mixed precision."""
 

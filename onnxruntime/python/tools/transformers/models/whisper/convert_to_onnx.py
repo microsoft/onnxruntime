@@ -22,6 +22,7 @@ from benchmark_helper import Precision, create_onnxruntime_session, prepare_envi
 logger = logging.getLogger("")
 
 PROVIDERS = {
+    "cpu": "CPUExecutionProvider",
     "cuda": "CUDAExecutionProvider",
     "rocm": "ROCMExecutionProvider",
 }
@@ -213,9 +214,9 @@ def parse_arguments(argv=None):
         "--provider",
         required=False,
         type=str,
-        default="cuda",
+        default="cpu",
         choices=list(PROVIDERS.keys()),
-        help="Provider to benchmark. Default is CUDAExecutionProvider.",
+        help="Provider to benchmark. Default is CPUExecutionProvider.",
     )
 
     args = parser.parse_args(argv)
@@ -241,7 +242,7 @@ def export_onnx_models(
     quantize_per_channel: bool = False,
     quantize_reduce_range: bool = False,
     state_dict_path: str = "",
-    provider: str = "cuda",
+    provider: str = "cpu",
 ):
     device = torch.device("cuda:0" if use_gpu else "cpu")
 
@@ -329,7 +330,7 @@ def export_onnx_models(
         ort_session = create_onnxruntime_session(
             output_path,
             use_gpu=use_gpu,
-            provider=[PROVIDERS[provider], "CPUExecutionProvider"] if use_gpu else ["CPUExecutionProvider"],
+            provider=provider,
         )
 
         with torch.no_grad():
