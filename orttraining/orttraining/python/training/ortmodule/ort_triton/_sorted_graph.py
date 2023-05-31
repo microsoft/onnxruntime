@@ -5,7 +5,7 @@
 
 import copy
 import itertools
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Set
 
 import numpy as np
 import onnx
@@ -13,10 +13,11 @@ from onnx import GraphProto, ModelProto, NodeProto, helper
 
 from ._common import TensorInfo, TypeAndShapeInfer
 from ._decompose import DecomposeDispatch
+from ._op_config import is_elementwise_node
 from ._utils import get_attribute, to_numpy_array, topological_sort
 
 
-class SortedGraph(object):
+class SortedGraph:
     """
     This class is used to
         1. decompose complex operators into preliminary operators,
@@ -32,6 +33,13 @@ class SortedGraph(object):
         self._model: ModelProto = model
         self._graph: GraphProto = model.graph
         self._input_shapes: List[List[Any]] = input_shapes
+
+        # For elementwise graph outputs, when we group nodes to different kernels, if the target shape is different
+        # from other nodes' target shape, even it can be broadcasted, we still need to create a new kernel for it.
+        self._elementwise_graph_outputs: Set[str] = set()
+        for node in self._graph.node:
+            if is_elementwise_node(node):
+                self._elementwise_graph_outputs.update(node.output)
 
         # Topological sort the nodes in the graph.
         self._sorted_nodes: List[NodeProto] = topological_sort(
@@ -142,6 +150,10 @@ class SortedGraph(object):
     @property
     def node_arg_infos(self) -> Dict[str, TensorInfo]:
         return self._node_arg_infos
+
+    @property
+    def elementwise_graph_outputs(self) -> Set[str]:
+        return self._elementwise_graph_outputs
 
     def _decompose(self):
         dispatch = DecomposeDispatch()

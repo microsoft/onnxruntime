@@ -107,6 +107,9 @@ bool CheckAxes(const Graph& graph, const Node& node, bool single_axis, const std
   return axes_values == expected_axes_values;
 }
 
+// A partition contains connected supporting nodes.
+// When building the Partition, we keep all the dependencies and output ref counts so that to make sure
+// there is no dependency between two nodes in the partition through any node outside the partition.
 struct Partition {
   NodeVec nodes;
   NodeArgSet outputs;

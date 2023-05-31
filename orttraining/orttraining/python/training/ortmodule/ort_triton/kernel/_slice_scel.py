@@ -16,7 +16,7 @@ from .._utils import get_attribute, to_numpy_array
 
 
 @triton.jit
-def _slice_log_softmax_kernel(log_prob, logit, d: tl.constexpr, c: tl.constexpr, RBLOCK: tl.constexpr):
+def _triton_slice_log_softmax(log_prob, logit, d: tl.constexpr, c: tl.constexpr, RBLOCK: tl.constexpr):
     xoffset = tl.program_id(0)
     logit_xoffset = (xoffset // d * (d + 1) + xoffset % d) * c
     rbase = tl.arange(0, RBLOCK)
@@ -43,7 +43,7 @@ def _slice_log_softmax_kernel(log_prob, logit, d: tl.constexpr, c: tl.constexpr,
 
 
 @triton.jit
-def _slice_scel_kernel(
+def _triton_slice_scel(
     loss,
     factor,
     log_prob,
@@ -72,7 +72,7 @@ def _slice_scel_kernel(
     tl.store(factor, reduced_factor)
 
 
-def triton_slice_scel(logit, label, ignore_index):
+def slice_scel(logit, label, ignore_index):
     ignore_index_value = ignore_index.item()
     c = logit.shape[-1]
     logit_d = logit.shape[-2]
@@ -82,17 +82,17 @@ def triton_slice_scel(logit, label, ignore_index):
     log_prob = torch.empty(log_prob_shape, dtype=torch.float, device=logit.device)
     rblock = 4096 if c > 4096 else triton.next_power_of_2(c)
     num_warps = 16 if rblock >= 4096 else (8 if rblock >= 2048 else 4)
-    _slice_log_softmax_kernel[(n * d,)](log_prob, logit, d, c, num_warps=num_warps, RBLOCK=rblock)
+    _triton_slice_log_softmax[(n * d,)](log_prob, logit, d, c, num_warps=num_warps, RBLOCK=rblock)
     loss = torch.empty([], dtype=logit.dtype, device=logit.device)
     factor = torch.empty([], dtype=torch.float, device=logit.device)
     n_cols = n * d
     rblock = 1024 if n_cols > 1024 else triton.next_power_of_2(n_cols)
-    _slice_scel_kernel[(1,)](loss, factor, log_prob, label, ignore_index_value, d, c, n_cols, RBLOCK=rblock)
+    _triton_slice_scel[(1,)](loss, factor, log_prob, label, ignore_index_value, d, c, n_cols, RBLOCK=rblock)
     return loss, log_prob, factor
 
 
 @triton.jit
-def _slice_scel_backward_kernel(
+def _triton_slice_scel_backward(
     dlogit,
     dloss,
     log_prob,
@@ -119,7 +119,7 @@ def _slice_scel_backward_kernel(
 
 
 @triton.jit
-def _slice_scel_bias_backward_kernel(
+def _triton_slice_scel_bias_backward(
     dlogit,
     dloss,
     log_prob,
@@ -142,7 +142,7 @@ def _slice_scel_bias_backward_kernel(
     c_index = xindex % c
     dloss_value = tl.load(dloss).to(tl.float32)
     log_prob_row = tl.load(log_prob + nd_index * c + c_index, mask=nd_mask, other=0.0)
-    label_row = tl.load(label + nd_index + 1, mask=nd_mask, other=0.0).to(tl.int32)
+    label_row = tl.load(label + dlogit_nd_index + 1, mask=nd_mask, other=0.0).to(tl.int32)
     factor_value = tl.load(factor)
     bias_row = tl.load(bias + xindex, mask=xmask, other=0.0).to(tl.float32)
     dlogit_row = dloss_value * (tl.exp(log_prob_row) - tl.where(c_index == label_row, 1.0, 0.0)) / factor_value
@@ -150,7 +150,7 @@ def _slice_scel_bias_backward_kernel(
     tl.store(dlogit + xindex, dlogit_row, mask=xmask)
 
 
-def triton_slice_scel_backward(dloss, log_prob, label, factor, bias):
+def slice_scel_backward(dloss, log_prob, label, factor, bias):
     c = log_prob.shape[-1]
     d = log_prob.shape[-2]
     dlogit_d = d + 1
@@ -162,13 +162,16 @@ def triton_slice_scel_backward(dloss, log_prob, label, factor, bias):
     )
     n_elements = dlogit.numel() if bias is not None else log_prob.numel()
     xblock = 1024 if n_elements > 1024 else triton.next_power_of_2(n_elements)
-    grid = lambda meta: (triton.cdiv(n_elements, meta["XBLOCK"]),)
+
+    def grid(meta):
+        return (triton.cdiv(n_elements, meta["XBLOCK"]),)
+
     if bias is not None:
-        _slice_scel_bias_backward_kernel[grid](
+        _triton_slice_scel_bias_backward[grid](
             dlogit, dloss, log_prob, label, factor, bias, dlogit_d, c, n_elements, XBLOCK=xblock
         )
     else:
-        _slice_scel_backward_kernel[grid](dlogit, dloss, log_prob, label, factor, d, c, n_elements, XBLOCK=xblock)
+        _triton_slice_scel_backward[grid](dlogit, dloss, log_prob, label, factor, d, c, n_elements, XBLOCK=xblock)
     return dlogit
 
 
@@ -254,7 +257,7 @@ def transform_slice_scel(graph):
         # Weight input not supported for now, support reduction=mean only for now.
         # It's required that the output_type is same as the logit dtype because currently we cannot pass the attribute
         # value from TritonOp. We can add support of this in the future.
-        if len(node.input) > 2 and node.input[2] != "":
+        if len(node.input) > 2 and node.input[2]:
             continue
         reduction_attr = get_attribute(node, "reduction", "mean")
         if isinstance(reduction_attr, bytes):
@@ -302,7 +305,7 @@ def transform_slice_scel(graph):
                 bias_arg = sum_node.input[0] if sum_node.input[1] == slice_grad.output[0] else sum_node.input[1]
         sub_graph_nodes = [node, reshape0, slice0, reshape1, slice1, scel_grad, reshape2, slice_grad, shape_node]
         _get_shape_related_nodes(graph, slice0.output[0], sub_graph_nodes)
-        if bias_arg != "":
+        if bias_arg:
             sub_graph_nodes.append(sum_node)
         remove_nodes.extend(sub_graph_nodes)
         forward_inputs = [slice0.input[0], slice1.input[0]]
@@ -334,10 +337,10 @@ def transform_slice_scel(graph):
             "TritonOp_Slice_SCEL_" + str(idx),
             None,
             "com.microsoft",
-            func_name="triton_slice_scel",
+            func_name="slice_scel",
         )
         triton_nodes.append(triton_fw_node)
-        backward_outputs = [sum_node.output[0] if bias_arg != "" else slice_grad.output[0]]
+        backward_outputs = [sum_node.output[0] if bias_arg else slice_grad.output[0]]
         triton_bw_node = helper.make_node(
             "TritonOp",
             [scel_grad.input[0], log_prob_arg.name, slice1.input[0], factor_arg.name, bias_arg],
@@ -345,7 +348,7 @@ def transform_slice_scel(graph):
             "TritonOp_Slice_SCEL_Backward_" + str(idx),
             None,
             "com.microsoft",
-            func_name="triton_slice_scel_backward",
+            func_name="slice_scel_backward",
         )
         triton_nodes.append(triton_bw_node)
         idx += 1

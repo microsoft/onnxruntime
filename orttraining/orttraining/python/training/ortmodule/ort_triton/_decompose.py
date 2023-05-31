@@ -17,7 +17,7 @@ from onnx import GraphProto, NodeProto, TensorProto, helper
 from ._utils import get_attribute, get_reduce_info, to_numpy_type
 
 
-class DecomposeDispatch(object):
+class DecomposeDispatch:
     """
     A node does only responsible for a single computation or a type of triton ops.
     For those compound Onnx nodes, like softmax/layernorm/groupnorm, etc., we need to decompose them into a series of
@@ -25,13 +25,12 @@ class DecomposeDispatch(object):
     """
 
     def __init__(self):
-        super().__init__()
         self.count = 0
 
     def __call__(self, node: NodeProto, graph: GraphProto, **kwargs) -> List[NodeProto]:
         op_type = node.op_type
         if not hasattr(self, op_type):
-            raise NotImplementedError("Not implemented for op type: {}".format(op_type))
+            raise NotImplementedError(f"Not implemented for op type: {op_type}")
         return getattr(self, op_type)(node, graph, **kwargs)
 
     def __contains__(self, node: NodeProto) -> bool:
@@ -73,22 +72,25 @@ class DecomposeDispatch(object):
                 inputs[idx] = cast_out
         op_node, op_out = self._new_node(node_name, op_type, inputs)
         cast_node1, _ = self._new_node(node_name, "Cast", [op_out], outputs=[y], to=dtype)
-        return cast_nodes + [op_node, cast_node1]
+        return [*cast_nodes, op_node, cast_node1]
 
-    def Exp(self, node: NodeProto, graph: GraphProto, **kwargs):
+    def Exp(self, node: NodeProto, graph: GraphProto, **kwargs):  # noqa: N802
         return self._decompose_elementwise_precision(node, graph, **kwargs)
 
-    def Pow(self, node: NodeProto, graph: GraphProto, **kwargs):
+    def Pow(self, node: NodeProto, graph: GraphProto, **kwargs):  # noqa: N802
         return self._decompose_elementwise_precision(node, graph, **kwargs)
 
-    def LayerNormalization(self, node: NodeProto, graph: GraphProto, **kwargs):
+    def Sqrt(self, node: NodeProto, graph: GraphProto, **kwargs):  # noqa: N802
+        return self._decompose_elementwise_precision(node, graph, **kwargs)
+
+    def LayerNormalization(self, node: NodeProto, graph: GraphProto, **kwargs):  # noqa: N802
         node_name = node.name
         x = node.input[0]
         w = node.input[1]
         b = node.input[2]
         y = node.output[0]
-        mean = node.output[1] if len(node.output) > 1 and node.output[1] != "" else None
-        inv_std_dev = node.output[2] if len(node.output) > 2 and node.output[2] != "" else None
+        mean = node.output[1] if len(node.output) > 1 and node.output[1] else None
+        inv_std_dev = node.output[2] if len(node.output) > 2 and node.output[2] else None
         axis = get_attribute(node, "axis", -1)
         epsilon = get_attribute(node, "epsilon", 1e-05)
         xdtype, shape = self._get_dtype_and_shape(x, **kwargs)
@@ -146,7 +148,7 @@ class DecomposeDispatch(object):
             add_node1,
         ]
 
-    def LayerNormalizationGrad(self, node: NodeProto, graph: GraphProto, **kwargs):
+    def LayerNormalizationGrad(self, node: NodeProto, graph: GraphProto, **kwargs):  # noqa: N802
         node_name = node.name
         dy = node.input[0]
         x = node.input[1]
@@ -154,8 +156,8 @@ class DecomposeDispatch(object):
         mean = node.input[3]
         inv_std_dev = node.input[4]
         dx = node.output[0]
-        dw = node.output[1] if len(node.output) > 1 and node.output[1] != "" else None
-        db = node.output[2] if len(node.output) > 2 and node.output[2] != "" else None
+        dw = node.output[1] if len(node.output) > 1 and node.output[1] else None
+        db = node.output[2] if len(node.output) > 2 and node.output[2] else None
         axis = get_attribute(node, "axis", -1)
         xdtype, shape = self._get_dtype_and_shape(x, **kwargs)
         wdtype, _ = self._get_dtype_and_shape(w, **kwargs)
@@ -234,7 +236,7 @@ class DecomposeDispatch(object):
             decomposed_nodes.append(reducesum_node1)
         return decomposed_nodes
 
-    def Softmax(self, node: NodeProto, graph: GraphProto, **kwargs):
+    def Softmax(self, node: NodeProto, graph: GraphProto, **kwargs):  # noqa: N802
         node_name = node.name
         x = node.input[0]
         y = node.output[0]
@@ -252,7 +254,7 @@ class DecomposeDispatch(object):
         div_node, _ = self._new_node(node_name, "Div", [exp_out, sum_out], outputs=[y])
         return [max_node, sub_node, exp_node, sum_node, div_node]
 
-    def SoftmaxGrad_13(self, node: NodeProto, graph: GraphProto, **kwargs):
+    def SoftmaxGrad_13(self, node: NodeProto, graph: GraphProto, **kwargs):  # noqa: N802
         node_name = node.name
         dy = node.input[0]
         y = node.input[1]
@@ -321,20 +323,20 @@ class DecomposeDispatch(object):
         cast_node1, _ = self._new_node(node_name, "Cast", [reduce_out], outputs=[y], to=dtype)
         return [cast_node, reduce_node, cast_node1]
 
-    def ReduceMax(self, node: NodeProto, graph: GraphProto, **kwargs):
+    def ReduceMax(self, node: NodeProto, graph: GraphProto, **kwargs):  # noqa: N802
         return self._decompose_reduce_axes(node, graph, **kwargs)
 
-    def ReduceMin(self, node: NodeProto, graph: GraphProto, **kwargs):
+    def ReduceMin(self, node: NodeProto, graph: GraphProto, **kwargs):  # noqa: N802
         return self._decompose_reduce_axes(node, graph, **kwargs)
 
-    def ReduceSum(self, node: NodeProto, graph: GraphProto, **kwargs):
+    def ReduceSum(self, node: NodeProto, graph: GraphProto, **kwargs):  # noqa: N802
         precision_decompose_result = self._decompose_reduce_precision(node, graph, **kwargs)
         # The decompose process will be called recursively, if it's already a decomposed result, just return.
         if len(precision_decompose_result) != 1 or precision_decompose_result[0] != node:
             return precision_decompose_result
         return self._decompose_reduce_axes(node, graph, **kwargs)
 
-    def ReduceMean(self, node: NodeProto, graph: GraphProto, **kwargs):
+    def ReduceMean(self, node: NodeProto, graph: GraphProto, **kwargs):  # noqa: N802
         precision_decompose_result = self._decompose_reduce_precision(node, graph, **kwargs)
         # The decompose process will be called recursively, if it's already a decomposed result, just return.
         if len(precision_decompose_result) != 1 or precision_decompose_result[0] != node:

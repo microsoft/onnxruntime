@@ -289,7 +289,7 @@ class KernelNode(IRNode):
             self.var_map[name] = "t_" + name
         for name in self.internal_args:
             self.var_map[name] = gen_variable_name(name, "t", existing_names)
-        for constant_name in self.constants.keys():
+        for constant_name in self.constants:
             self.var_map[constant_name] = gen_variable_name(constant_name, "c", existing_names)
             if self.constants[constant_name].data is not None:
                 value = self.constants[constant_name].data

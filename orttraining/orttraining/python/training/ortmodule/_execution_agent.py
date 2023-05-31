@@ -63,7 +63,6 @@ class InferenceAgent:
         )
         set_tuning_results(self._inference_session, False)
 
-
     def io_binding(self):
         """Return an onnxruntime.IOBinding object`."""
 

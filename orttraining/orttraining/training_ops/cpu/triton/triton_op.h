@@ -23,7 +23,7 @@ class TritonOp final : public OpKernel {
   Status Compute(OpKernelContext* context) const override;
 
  private:
-  bool IsBoolOutput(size_t index) const;
+  InlinedHashSet<size_t> GetBoolOutputs(size_t output_size) const;
 
   std::string func_name_;
   int64_t onnx_key_;

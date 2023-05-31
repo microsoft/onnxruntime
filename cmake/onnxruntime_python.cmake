@@ -123,16 +123,9 @@ else()
   set(ONNXRUNTIME_SO_LINK_FLAG "-DEF:${ONNXRUNTIME_ROOT}/python/pybind.def")
 endif()
 
-if (onnxruntime_ENABLE_ATEN OR onnxruntime_ENABLE_TRITON)
-  target_include_directories(onnxruntime_pybind11_state PRIVATE ${dlpack_SOURCE_DIR}/include)
-endif()
-
 if (onnxruntime_ENABLE_ATEN)
   target_compile_definitions(onnxruntime_pybind11_state PRIVATE ENABLE_ATEN)
-endif()
-
-if (onnxruntime_ENABLE_TRITON)
-  target_compile_definitions(onnxruntime_pybind11_state PRIVATE ENABLE_TRITON)
+  target_include_directories(onnxruntime_pybind11_state PRIVATE ${dlpack_SOURCE_DIR}/include)
 endif()
 
 if (onnxruntime_ENABLE_TRAINING)

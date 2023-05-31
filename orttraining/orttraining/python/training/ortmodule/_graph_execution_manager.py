@@ -135,7 +135,7 @@ class GraphExecutionManager(GraphExecutionInterface):
         self._get_torch_gpu_allocator_function_addresses()
 
         # Enable Triton op executor if Triton is installed, backend has support and environment variable is set.
-        if ortmodule._defined_from_envvar("ORTMODULE_USE_TRITON", 0) != 0 and C.is_tritonop_on():
+        if ortmodule._defined_from_envvar("ORTMODULE_USE_TRITON", 0) != 0 and C.is_triton_enabled():
             try:
                 import triton
             except ImportError:
@@ -144,6 +144,28 @@ class GraphExecutionManager(GraphExecutionInterface):
                 from .ort_triton import register_triton_op_executor
 
                 register_triton_op_executor()
+                self._feature_map.append(
+                    [
+                        "Triton Op",
+                        "ON",
+                        f"Fuse and execute supported Ops using Triton. Triton version: {triton.__version__}",
+                    ]
+                )
+
+        tuning_results_path = ortmodule._defined_from_envvar("ORTMODULE_TUNING_RESULTS_PATH", "")
+        if ortmodule._defined_from_envvar("ORTMODULE_ENABLE_TUNING", 0) != 0:
+            desc = "Enable tunning Ops online"
+            if tuning_results_path:
+                desc += f", save tuning results to {tuning_results_path}"
+            self._feature_map.append(["Online Op Tuning", "ON", desc])
+        elif tuning_results_path:
+            self._feature_map.append(
+                [
+                    "Offline Op Tuning",
+                    "ON",
+                    f"Use offline tuning results from {tuning_results_path}",
+                ]
+            )
 
     def _get_torch_gpu_allocator_function_addresses(self):
         if self._runtime_options.use_external_gpu_allocator and torch.cuda.is_available():
@@ -211,7 +233,7 @@ class GraphExecutionManager(GraphExecutionInterface):
                 if ortmodule._defined_from_envvar("ORTMODULE_ENABLE_TUNING", 0) != 0:
                     provider_option_map["tunable_op_enable"] = "1"
                     provider_option_map["tunable_op_tuning_enable"] = "1"
-                elif ortmodule._defined_from_envvar("ORTMODULE_TUNING_RESULTS_PATH", "") != "":
+                elif ortmodule._defined_from_envvar("ORTMODULE_TUNING_RESULTS_PATH", ""):
                     provider_option_map["tunable_op_enable"] = "1"
             if self._runtime_options.use_external_gpu_allocator:
                 provider_option_map["gpu_external_alloc"] = str(self._torch_alloc)

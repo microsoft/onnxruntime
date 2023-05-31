@@ -3,7 +3,6 @@
 
 #include "core/providers/cuda/math/gemm.h"
 
-
 #include "core/providers/cpu/math/gemm_helper.h"
 #include "core/providers/cuda/shared_inc/fpgeneric.h"
 #include "core/providers/cuda/tunable/math/gemm.h"
@@ -68,6 +67,10 @@ Status Gemm<T>::ComputeInternal(OpKernelContext* ctx) const {
   int M = gsl::narrow_cast<int>(helper.M());
   int N = gsl::narrow_cast<int>(helper.N());
   int K = gsl::narrow_cast<int>(helper.K());
+
+  auto* Y = ctx->Output(0, {M, N});
+  // Bail out early if the output is going to be empty
+  if (Y->Shape().Size() == 0) return Status::OK();
 
   if (GetTuningContext()->IsTunableOpEnabled()) {
     return tunable::TunableGemm<T>(M, N, K, trans_A_, trans_B_, alpha_, B ? beta_ : 0.0f, this, ctx);

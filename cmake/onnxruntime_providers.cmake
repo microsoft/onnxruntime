@@ -204,7 +204,6 @@ if (onnxruntime_ENABLE_TRAINING_OPS AND NOT onnxruntime_ENABLE_TRAINING)
     "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/tensorboard/*.h"
     "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/torch/*.cc"
     "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/torch/*.h"
-    "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/triton/triton_op_executor.h"
     "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/triton/triton_op.cc"
     "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/triton/triton_op.h"
   )
@@ -212,7 +211,7 @@ if (onnxruntime_ENABLE_TRAINING_OPS AND NOT onnxruntime_ENABLE_TRAINING)
   list(REMOVE_ITEM onnxruntime_providers_src ${onnxruntime_cpu_full_training_only_srcs})
 endif()
 
-if (onnxruntime_ENABLE_ATEN OR onnxruntime_ENABLE_TRITON)
+if (onnxruntime_ENABLE_ATEN)
   file(GLOB_RECURSE onnxruntime_providers_dlpack_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/core/dlpack/dlpack_converter.cc"
     "${ONNXRUNTIME_ROOT}/core/dlpack/dlpack_converter.h"
@@ -236,6 +235,8 @@ if (onnxruntime_ENABLE_TRAINING)
   file(GLOB_RECURSE onnxruntime_training_framework_excude_srcs CONFIGURE_DEPENDS
       "${ORTTRAINING_SOURCE_DIR}/core/framework/torch/*.h"
       "${ORTTRAINING_SOURCE_DIR}/core/framework/torch/*.cc"
+      "${ORTTRAINING_SOURCE_DIR}/core/framework/triton/*.h"
+      "${ORTTRAINING_SOURCE_DIR}/core/framework/triton/*.cc"
   )
 
   list(REMOVE_ITEM onnxruntime_cpu_training_ops_srcs ${onnxruntime_training_framework_excude_srcs})
@@ -296,7 +297,7 @@ if (onnxruntime_ENABLE_TRAINING_OPS)
   target_include_directories(onnxruntime_providers PRIVATE ${ORTTRAINING_ROOT})
 endif()
 
-if (onnxruntime_ENABLE_ATEN OR onnxruntime_ENABLE_TRITON)
+if (onnxruntime_ENABLE_ATEN)
   # DLPack is a header-only dependency
   set(DLPACK_INCLUDE_DIR ${dlpack_SOURCE_DIR}/include)
   target_include_directories(onnxruntime_providers PRIVATE ${DLPACK_INCLUDE_DIR})
@@ -306,14 +307,10 @@ if (onnxruntime_ENABLE_ATEN)
   target_compile_definitions(onnxruntime_providers PRIVATE ENABLE_ATEN)
 endif()
 
-if (onnxruntime_ENABLE_TRITON)
-  target_compile_definitions(onnxruntime_providers PRIVATE ENABLE_TRITON)
-endif()
-
 if (onnxruntime_ENABLE_TRAINING)
   add_dependencies(onnxruntime_providers tensorboard)
   onnxruntime_add_include_to_target(onnxruntime_providers tensorboard)
-  if (onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
+  if (onnxruntime_ENABLE_TRAINING_TORCH_INTEROP OR onnxruntime_ENABLE_TRITON)
     onnxruntime_add_include_to_target(onnxruntime_providers Python::Module)
   endif()
 
@@ -506,7 +503,7 @@ if (onnxruntime_USE_CUDA)
       if (onnxruntime_ENABLE_TRAINING)
         target_link_libraries(${target} PRIVATE onnxruntime_training)
       endif()
-      if (onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
+      if (onnxruntime_ENABLE_TRAINING_TORCH_INTEROP OR onnxruntime_ENABLE_TRITON)
         onnxruntime_add_include_to_target(${target} Python::Module)
       endif()
     endif()
@@ -603,10 +600,6 @@ if (onnxruntime_USE_CUDA)
   endfunction()
   config_cuda_provider_shared_module(onnxruntime_providers_cuda_obj)
   config_cuda_provider_shared_module(onnxruntime_providers_cuda)
-
-  if (onnxruntime_ENABLE_TRITON)
-    target_compile_definitions(onnxruntime_providers_cuda PRIVATE ENABLE_TRITON)
-  endif()
 
   install(TARGETS onnxruntime_providers_cuda
           ARCHIVE  DESTINATION ${CMAKE_INSTALL_LIBDIR}
@@ -1696,10 +1689,6 @@ if (onnxruntime_USE_ROCM)
 
   if (onnxruntime_ENABLE_ATEN)
     target_compile_definitions(onnxruntime_providers_rocm PRIVATE ENABLE_ATEN)
-  endif()
-
-  if (onnxruntime_ENABLE_TRITON)
-    target_compile_definitions(onnxruntime_providers_rocm PRIVATE ENABLE_TRITON)
   endif()
 
   install(TARGETS onnxruntime_providers_rocm

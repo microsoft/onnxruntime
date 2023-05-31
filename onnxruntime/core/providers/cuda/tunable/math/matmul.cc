@@ -12,15 +12,15 @@ namespace tunable {
 template <typename T>
 MatMulParams<T>::MatMulParams(float alpha, bool trans_a, bool trans_b, bool trans_batch_a, bool trans_batch_b,
                               MatMulComputeHelper& helper, const MatMul<T>* matmul_kernel, OpKernelContext* ctx)
-    : alpha_(alpha),
+    : OpParams(matmul_kernel->GetTuningContext(), matmul_kernel->Stream(ctx)),
+      alpha_(alpha),
       trans_a_(trans_a),
       trans_b_(trans_b),
       trans_batch_a_(trans_batch_a),
       trans_batch_b_(trans_batch_b),
       helper_(helper),
       matmul_kernel_(matmul_kernel),
-      ctx_(ctx),
-      OpParams(matmul_kernel->GetTuningContext(), matmul_kernel->Stream(ctx)) {
+      ctx_(ctx) {
 #ifdef ENABLE_TRITON
   const TensorShape& shape_x = ctx->Input<Tensor>(0)->Shape();
   const TensorShape& shape_y = ctx->Input<Tensor>(1)->Shape();
@@ -62,7 +62,6 @@ common::Status DefaultMatMulOp(const MatMulParams<T>* params) {
 template <typename T>
 common::Status TritonMatMulOp(const MatMulParams<T>* params) {
   TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(!params->has_triton_support_);
-  params->ctx_->Output(0, params->helper_.OutputShape());
   InlinedHashMap<std::string, std::pair<std::string, int>> kwargs;
   if (params->trans_a_) kwargs.insert({"trans_a", {"true", ONNX_NAMESPACE::TensorProto_DataType_BOOL}});
   if (params->trans_b_) kwargs.insert({"trans_b", {"true", ONNX_NAMESPACE::TensorProto_DataType_BOOL}});

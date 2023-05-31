@@ -108,8 +108,9 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
   ORT_RETURN_IF_ERROR(
       helper.Compute(left_X->Shape(), right_X->Shape(), trans_a, trans_b, trans_batch_a_, trans_batch_b_, false));
 
+  Tensor* Y = ctx->Output(0, helper.OutputShape());
   // Bail out early if the output is going to be empty
-  if (helper.OutputShape().Size() == 0) return Status::OK();
+  if (Y->Shape().Size() == 0) return Status::OK();
 
   if (GetTuningContext()->IsTunableOpEnabled()) {
     return tunable::TunableMatMul<T>(alpha_, trans_a, trans_b, trans_batch_a_, trans_batch_b_, helper, this, ctx);

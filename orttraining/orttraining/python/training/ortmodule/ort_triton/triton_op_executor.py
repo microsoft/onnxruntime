@@ -80,6 +80,7 @@ def call_triton_by_name(func_name: str, *tensors, **kwargs):
         if isinstance(output, tuple):
             return tuple([to_dlpack(tensor) for tensor in output])
         return to_dlpack(output)
+    return None
 
 
 def call_triton_by_onnx(onnx_key: int, onnx_str: bytes, *tensors):

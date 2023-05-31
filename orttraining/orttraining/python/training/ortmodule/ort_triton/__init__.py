@@ -8,7 +8,7 @@ from functools import wraps
 
 from onnxruntime.capi import _pybind_state as _C
 
-from .kernel import *
+from .kernel import *  # noqa: F403
 from .triton_op_executor import call_triton_by_name, call_triton_by_onnx, get_config
 
 
@@ -25,7 +25,7 @@ def run_once_register_triton_op_executor(f):
             with register_triton_op_executor_wrapper.lock:
                 if not register_triton_op_executor_wrapper.has_run:
                     register_triton_op_executor_wrapper.has_run = True
-                    return f(*args, **kwargs)
+                    f(*args, **kwargs)
 
     register_triton_op_executor_wrapper.lock = threading.Lock()
     register_triton_op_executor_wrapper.has_run = False

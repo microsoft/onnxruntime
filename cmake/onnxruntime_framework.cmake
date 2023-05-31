@@ -8,12 +8,28 @@ file(GLOB_RECURSE onnxruntime_framework_srcs CONFIGURE_DEPENDS
 )
 
 if (onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
-file(GLOB_RECURSE onnxruntime_training_framework_torch_srcs CONFIGURE_DEPENDS
-    "${ORTTRAINING_SOURCE_DIR}/core/framework/torch/*.h"
-    "${ORTTRAINING_SOURCE_DIR}/core/framework/torch/*.cc"
-)
-
+  file(GLOB_RECURSE onnxruntime_training_framework_torch_srcs CONFIGURE_DEPENDS
+      "${ORTTRAINING_SOURCE_DIR}/core/framework/torch/*.h"
+      "${ORTTRAINING_SOURCE_DIR}/core/framework/torch/*.cc"
+  )
   list(APPEND onnxruntime_framework_srcs ${onnxruntime_training_framework_torch_srcs})
+  if (onnxruntime_ENABLE_TRITON)
+    file(GLOB_RECURSE onnxruntime_training_framework_triton_srcs CONFIGURE_DEPENDS
+      "${ORTTRAINING_SOURCE_DIR}/core/framework/triton/*.h"
+      "${ORTTRAINING_SOURCE_DIR}/core/framework/triton/*.cc"
+    )
+    list(APPEND onnxruntime_framework_srcs ${onnxruntime_training_framework_triton_srcs})
+  endif()
+elseif(onnxruntime_ENABLE_TRITON)
+  file(GLOB_RECURSE onnxruntime_training_framework_triton_srcs CONFIGURE_DEPENDS
+    "${ORTTRAINING_SOURCE_DIR}/core/framework/torch/dlpack_python.h"
+    "${ORTTRAINING_SOURCE_DIR}/core/framework/torch/dlpack_python.cc"
+    "${ORTTRAINING_SOURCE_DIR}/core/framework/torch/gil.h"
+    "${ORTTRAINING_SOURCE_DIR}/core/framework/torch/python_common.h"
+    "${ORTTRAINING_SOURCE_DIR}/core/framework/triton/*.h"
+    "${ORTTRAINING_SOURCE_DIR}/core/framework/triton/*.cc"
+  )
+  list(APPEND onnxruntime_framework_srcs ${onnxruntime_training_framework_triton_srcs})
 endif()
 
 if (onnxruntime_MINIMAL_BUILD)
@@ -50,7 +66,7 @@ endif()
 # Needed for the provider interface, as it includes training headers when training is enabled
 if (onnxruntime_ENABLE_TRAINING_OPS)
   target_include_directories(onnxruntime_framework PRIVATE ${ORTTRAINING_ROOT})
-  if (onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
+  if (onnxruntime_ENABLE_TRAINING_TORCH_INTEROP OR onnxruntime_ENABLE_TRITON)
     onnxruntime_add_include_to_target(onnxruntime_framework Python::Module)
     target_include_directories(onnxruntime_framework PRIVATE ${dlpack_SOURCE_DIR}/include)
   endif()
@@ -59,7 +75,7 @@ if (onnxruntime_USE_MPI)
   target_include_directories(onnxruntime_framework PUBLIC ${MPI_CXX_INCLUDE_DIRS})
 endif()
 
-if (onnxruntime_ENABLE_ATEN OR onnxruntime_ENABLE_TRITON)
+if (onnxruntime_ENABLE_ATEN)
   # DLPack is a header-only dependency
   set(DLPACK_INCLUDE_DIR ${dlpack_SOURCE_DIR}/include)
   target_include_directories(onnxruntime_framework PRIVATE ${DLPACK_INCLUDE_DIR})

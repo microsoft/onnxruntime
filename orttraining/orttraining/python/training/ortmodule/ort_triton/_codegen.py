@@ -100,7 +100,7 @@ class TritonCodegen(NodeVisitor):
             else self._get_elementwise_offset_mask(node, arg_name)
         )
 
-    def IONode(self, node: IONode, context: CodegenContext, indent: int) -> str:
+    def IONode(self, node: IONode, context: CodegenContext, indent: int) -> str:  # noqa: N802
         space_indent = " " * indent
         name = node.tensor_arg.name
         var_name = context.get_variable_name(name)
@@ -167,7 +167,9 @@ class TritonCodegen(NodeVisitor):
             f"{space_indent}def {node.name}({input_args_str}{output_args_str}{other_input_args}{blocks_str}):\n"
         )
 
-    def ElementwiseKernelNode(self, node: ElementwiseKernelNode, context: CodegenContext, indent: int) -> str:
+    def ElementwiseKernelNode(  # noqa: N802
+        self, node: ElementwiseKernelNode, context: CodegenContext, indent: int
+    ) -> str:
         src_code = self._gen_kernel_signature(node, context, indent)
         offset_calc = node.offset_calc
         indent += 4
@@ -196,7 +198,7 @@ class TritonCodegen(NodeVisitor):
             src_code += ir_node.codegen(self, context, indent)
         return src_code
 
-    def ReduceKernelNode(self, node: ReduceKernelNode, context: CodegenContext, indent: int) -> str:
+    def ReduceKernelNode(self, node: ReduceKernelNode, context: CodegenContext, indent: int) -> str:  # noqa: N802
         src_code = self._gen_kernel_signature(node, context, indent)
         offset_calc = node.offset_calc
         indent += 4
@@ -269,7 +271,7 @@ class TritonCodegen(NodeVisitor):
         "Identity": "{indent}{o0} = {i0}\n",
     }
 
-    def ComputeNode(self, node: ComputeNode, context: CodegenContext, indent: int) -> str:
+    def ComputeNode(self, node: ComputeNode, context: CodegenContext, indent: int) -> str:  # noqa: N802
         space_indent = " " * indent
         kwargs = {}
         for idx, input in enumerate(node.inputs):
@@ -303,7 +305,7 @@ class TritonCodegen(NodeVisitor):
 
         return TritonCodegen._COMPUTE_CODE_TEMPLATES[op_type].format(indent=space_indent, **kwargs)
 
-    def ReduceNode(self, node: ReduceNode, context: CodegenContext, indent: int) -> str:
+    def ReduceNode(self, node: ReduceNode, context: CodegenContext, indent: int) -> str:  # noqa: N802
         space_indent = " " * indent
         input_var_name = context.get_internal_variable_name(node.inputs[0].name)
         output_var_name = context.get_internal_variable_name(node.outputs[0].name)
@@ -316,12 +318,12 @@ class TritonCodegen(NodeVisitor):
         if len(masks) > 0:
             masks_str = " & ".join(masks)
             src_code += (
-                f"{space_indent}{input_var_name} = " f"tl.where({masks_str}, {input_var_name}, {node.default_value})\n"
+                f"{space_indent}{input_var_name} = tl.where({masks_str}, {input_var_name}, {node.default_value})\n"
             )
         src_code += f"{space_indent}{output_var_name} = {node.triton_func}({input_var_name}, axis=1)[:, None]\n"
         return src_code
 
-    def ReduceForLoopStart(self, node: ReduceForLoopStart, context: CodegenContext, indent: int) -> str:
+    def ReduceForLoopStart(self, node: ReduceForLoopStart, context: CodegenContext, indent: int) -> str:  # noqa: N802
         space_indent = " " * indent
         offset_calc = node.offset_calc
         src_code = ""
@@ -332,7 +334,7 @@ class TritonCodegen(NodeVisitor):
                 f"tl.zeros([XBLOCK, RBLOCK], tl.float32) + {reduce_node.default_value}\n"
             )
         src_code += (
-            f"{space_indent}for roffset in range(0, rnumel, RBLOCK):\n" f"{space_indent}    rindex = rbase + roffset\n"
+            f"{space_indent}for roffset in range(0, rnumel, RBLOCK):\n{space_indent}    rindex = rbase + roffset\n"
         )
         if offset_calc.requires_r_mask:
             src_code += f"{space_indent}    rmask = rindex < rnumel\n"
@@ -345,7 +347,7 @@ class TritonCodegen(NodeVisitor):
                 src_code += f"{space_indent}    r{idx} = rindex{div_str}{mod_str}\n"
         return src_code
 
-    def ReduceForLoopEnd(self, node: ReduceForLoopEnd, context: CodegenContext, indent: int) -> str:
+    def ReduceForLoopEnd(self, node: ReduceForLoopEnd, context: CodegenContext, indent: int) -> str:  # noqa: N802
         space_indent = " " * indent
         offset_calc = node.offset_calc
         masks = []
@@ -360,7 +362,7 @@ class TritonCodegen(NodeVisitor):
             output_var_name = context.get_internal_variable_name(reduce_node.outputs[0].name)
             tmp_output_var_name = "tmp_" + output_var_name
             if reduce_node.op_type == "ReduceSum":
-                if masks_str == "":
+                if not masks_str:
                     src_code += f"{space_indent}{tmp_output_var_name} = {tmp_output_var_name} + {input_var_name}\n"
                 else:
                     src_code += (
@@ -386,7 +388,7 @@ class TritonCodegen(NodeVisitor):
             )
         return src_code
 
-    def DropoutNode(self, node: DropoutNode, context: CodegenContext, indent: int) -> str:
+    def DropoutNode(self, node: DropoutNode, context: CodegenContext, indent: int) -> str:  # noqa: N802
         space_indent = " " * indent
         input_var_name = context.get_internal_variable_name(node.inputs[0].name)
         p_var_name = context.get_internal_variable_name(node.inputs[1].name)
@@ -405,7 +407,7 @@ class TritonCodegen(NodeVisitor):
             f"{space_indent}{output_var_name} = tl.where({mask_var_name}, {input_var_name} / p, 0.0)\n"
         )
 
-    def ModuleNode(self, node: ModuleNode, context: CodegenContext, indent: int) -> str:
+    def ModuleNode(self, node: ModuleNode, context: CodegenContext, indent: int) -> str:  # noqa: N802
         space_indent = " " * indent
         code = (
             f"{space_indent}import triton\n"

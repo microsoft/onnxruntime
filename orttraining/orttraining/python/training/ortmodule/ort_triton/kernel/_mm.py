@@ -270,18 +270,18 @@ def _mm_configs(dtype, m, n, k, trans_a, trans_b, alpha, func_name):
     config_strs = []
     max_bk = 1
     for bm, bn, bk, num_stages, num_warps in condidates:
-        bm = min(bm, tm)
-        bn = min(bn, tn)
-        bk = min(bk, tk)
-        if (bm, bn, bk) in config_set:
+        new_bm = min(bm, tm)
+        new_bn = min(bn, tn)
+        new_bk = min(bk, tk)
+        if (new_bm, new_bn, new_bk) in config_set:
             continue
-        config_set.add((bm, bn, bk))
-        if bk > max_bk:
-            max_bk = bk
-        num_warps = min(num_warps, bm * bn // 256)
+        config_set.add((new_bm, new_bn, new_bk))
+        if new_bk > max_bk:
+            max_bk = new_bk
+        new_num_warps = min(num_warps, new_bm * new_bn // 256)
         config_strs.append(
-            f'        triton.Config({{"BLOCK_M": {bm}, "BLOCK_N": {bn}, "BLOCK_K": {bk}, "GROUP_M": 8}}, '
-            f"num_stages={num_stages}, num_warps={num_warps}),"
+            f'        triton.Config({{"BLOCK_M": {new_bm}, "BLOCK_N": {new_bn}, "BLOCK_K": {new_bk}, "GROUP_M": 8}}, '
+            f"num_stages={num_stages}, num_warps={new_num_warps}),"
         )
     autotune_configs = "\n".join(config_strs)
     post_process = "acc" if alpha == 1.0 else f"acc * {alpha}"
@@ -401,9 +401,9 @@ def _matmul_internal(a, b, out, **kwargs):
     assert rank_a == 2 or rank_b == 2 or a.shape[:-2] == b.shape[:-2]
     batch_shape = a.shape[:-2] if rank_a >= 3 else b.shape[:-2]
     if out is None:
-        out = torch.empty(batch_shape + (m, n), dtype=a.dtype, device=a.device)
+        out = torch.empty((*batch_shape, m, n), dtype=a.dtype, device=a.device)
     else:
-        assert out.shape == batch_shape + (m, n)
+        assert out.shape == (*batch_shape, m, n)
     batch = math.prod(batch_shape)
     dtype = a.dtype
     if batch == 1 or (rank_a >= 3 and not trans_a and rank_b == 2):

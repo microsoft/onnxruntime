@@ -45,8 +45,9 @@ _REDUCTION_OPS = {
     "ReduceMin": {"versions": [13], "conditions": {"axes": "[-1]"}},
     "Softmax": {"versions": [13]},
     "SoftmaxGrad_13": {"domain": "com.microsoft", "versions": [1]},
-    "LayerNormalization": {"versions": [1]},
-    "LayerNormalizationGrad": {"domain": "com.microsoft", "versions": [1]},
+    # Disable LayerNormalization fusion for now as it's generated Triton code is inefficient compared to C++ kernel.
+    # "LayerNormalization": {"versions": [1]},
+    # "LayerNormalizationGrad": {"domain": "com.microsoft", "versions": [1]},
 }
 
 

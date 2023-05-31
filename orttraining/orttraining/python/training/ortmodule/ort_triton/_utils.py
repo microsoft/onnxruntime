@@ -30,7 +30,7 @@ def topological_sort(inputs: List[str], nodes: List[NodeProto]) -> List[NodeProt
     const_nodes = []
     non_const_nodes = []
     for node in nodes:
-        if node.name == "":
+        if not node.name:
             node.name = gen_unique_name(node.op_type)
         if node.op_type == "Constant":
             inputs.append(node.output[0])

@@ -146,10 +146,6 @@ if (onnxruntime_ENABLE_ATEN)
   target_compile_definitions(onnxruntime_graph PRIVATE ENABLE_ATEN)
 endif()
 
-if (onnxruntime_ENABLE_TRITON)
-  target_compile_definitions(onnxruntime_graph PRIVATE ENABLE_TRITON)
-endif()
-
 if (NOT onnxruntime_BUILD_SHARED_LIB)
   install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/graph  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core)
   install(TARGETS onnxruntime_graph

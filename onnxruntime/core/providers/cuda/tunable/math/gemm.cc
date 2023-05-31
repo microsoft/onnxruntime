@@ -12,17 +12,16 @@ namespace tunable {
 template <typename T>
 GemmParams<T>::GemmParams(int m, int n, int k, bool trans_a, bool trans_b, float alpha, float beta,
                           const Gemm<T>* gemm_kernel, OpKernelContext* ctx)
-    : m_(m),
-      n_(n),
-      k_(k),
+    : OpParams(gemm_kernel->GetTuningContext(), gemm_kernel->Stream(ctx)),
       trans_a_(trans_a),
       trans_b_(trans_b),
       alpha_(alpha),
       beta_(beta),
+      m_(m),
+      n_(n),
+      k_(k),
       gemm_kernel_(gemm_kernel),
-      ctx_(ctx),
-      OpParams(gemm_kernel->GetTuningContext(), gemm_kernel->Stream(ctx)) {
-  const auto* x = ctx->Input<Tensor>(0);
+      ctx_(ctx) {
   const auto* b = ctx->Input<Tensor>(2);
   bm_ = gsl::narrow_cast<int>(beta_ == 0.0f ? 0 : (b->Shape().NumDimensions() > 1 ? b->Shape()[0] : 1));
   bn_ = gsl::narrow_cast<int>(
@@ -31,6 +30,7 @@ GemmParams<T>::GemmParams(int m, int n, int k, bool trans_a, bool trans_b, float
           : (b->Shape().NumDimensions() > 1 ? b->Shape()[1] : (b->Shape().NumDimensions() > 0 ? b->Shape()[0] : 1)));
 
 #ifdef ENABLE_TRITON
+  const auto* x = ctx->Input<Tensor>(0);
   has_triton_support_ = contrib::IsTritonOpExecutorInitialized() &&
                         (std::is_same<T, MLFloat16>::value || std::is_same<T, float>::value) &&
                         x->Shape().NumDimensions() > 1;
@@ -49,7 +49,6 @@ template <typename T>
 common::Status TritonGemmOp(const GemmParams<T>* params) {
   TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(!params->has_triton_support_);
   size_t input_count = params->beta_ == 0.0f ? 2 : 3;
-  params->ctx_->Output(0, {params->m_, params->n_});
   size_t output_count = 1;
   std::string func_name = params->beta_ == 0.0f ? "triton_matmul_out" : "triton_gemm_out";
   InlinedHashMap<std::string, std::pair<std::string, int>> kwargs;

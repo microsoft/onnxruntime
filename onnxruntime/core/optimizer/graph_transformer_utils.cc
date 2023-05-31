@@ -79,7 +79,7 @@
 #endif
 #ifdef ENABLE_TRITON
 #include "orttraining/core/optimizer/triton_fusion.h"
-#include "orttraining/training_ops/cpu/triton/triton_op_executor.h"
+#include "orttraining/core/framework/triton/triton_op_executor.h"
 #endif  // ENABLE_TRITON
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
@@ -317,22 +317,23 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       }
 
 #ifdef ENABLE_TRITON
-      if (onnxruntime::contrib::TritonOpExecutor::Instance().IsInitialized()) {
+      if (training::framework::triton::TritonOpExecutor::Instance().IsInitialized()) {
         transformers.emplace_back(
-            std::make_unique<TritonFusion>(onnxruntime::contrib::TritonOpExecutor::Instance().GetConfigJson(),
+            std::make_unique<TritonFusion>(training::framework::triton::TritonOpExecutor::Instance().GetConfigJson(),
                                            InlinedHashSet<std::string_view>{onnxruntime::kCudaExecutionProvider}));
       }
 #endif  // ENABLE_TRITON
 
-      transformers.emplace_back( std::make_unique<BiasSoftmaxFusion>(cpu_cuda_rocm_eps));
+      transformers.emplace_back(std::make_unique<BiasSoftmaxFusion>(cpu_cuda_rocm_eps));
       transformers.emplace_back(std::make_unique<BiasDropoutFusion>(cuda_rocm_eps));
-#ifdef ENABLE_TRAINING_CORE
+#ifdef ENABLE_TRAINING
       transformers.emplace_back(std::make_unique<BitmaskDropoutReplacement>(cuda_rocm_eps));
       transformers.emplace_back(std::make_unique<BiasSoftmaxDropoutFusion>(cuda_rocm_eps));
       transformers.emplace_back(std::make_unique<SceLossGradBiasFusion>(cpu_cuda_rocm_eps));
 #endif
 
       transformers.emplace_back(std::make_unique<MatMulScaleFusion>(cpu_cuda_dml_rocm_eps));
+      transformers.emplace_back(std::make_unique<MatMulActivationFusion>(dml_ep));
 
 #ifdef MLAS_TARGET_AMD64_IX86
       if (avx2_precision_mode) {

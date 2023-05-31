@@ -63,7 +63,9 @@ class NodeGroup:
     # Check if shape can be broadcasted to target_shape.
     # For example, [1, 3, 1, 1] can be broadcasted to [1, 3, 5, 7].
     # and we support `keepdims = false``, so [1, 3, 5, 7] is compatible with [1, 3, 5].
-    def _compatible_shape(self, shape: List[sympy.Expr]) -> bool:
+    def _compatible_shape(self, shape: List[sympy.Expr], split_if_different: bool) -> bool:
+        if split_if_different:
+            return shape == self.target_shape
         if len(shape) > len(self.target_shape):
             return False
         shape = [sympy.Integer(1)] * (len(self.target_shape) - len(shape)) + shape
@@ -90,7 +92,7 @@ class NodeGroup:
     #     2. The target shape of a group is determined by the first node in the group.
     #       we call it dominators, and it determinate the partition strategy of X_numel/R_numel.
     #       A group can't have multiple dominators.
-    def compatible(self, node: NodeProto, reduce_axes: List[int], keep_dims: int) -> bool:
+    def compatible(self, node: NodeProto, reduce_axes: List[int], keep_dims: int, split_if_different: bool) -> bool:
         target_shape = self._get_target_shape(node)
         if is_reduction_node(node):
             # If the following nodes are all elementwise nodes on reduce output shape.
@@ -103,7 +105,7 @@ class NodeGroup:
             ) or self.target_shape != target_shape:
                 return False
             return True
-        return self._compatible_shape(target_shape)
+        return self._compatible_shape(target_shape, split_if_different)
 
     # 1. Create a new group with the reduction node.
     # 2. Add this node to the current group.
@@ -123,10 +125,17 @@ class NodeGroup:
         self.nodes_groups.append(node)
         return self
 
-    #
+    def has_reduced_elementwise_nodes(self) -> bool:
+        return not is_reduction_node(self.nodes_groups[0]) and len(self.reduced_args) > 0
+
     def dependent_nodes(self, keep_reduce_node: bool):
         node_map = dict()
         reduce_nodes = []
+        if not keep_reduce_node and self.has_reduced_elementwise_nodes():
+            for item in self.nodes_groups:
+                if not isinstance(item, NodeGroup):
+                    node_map[item.name] = item
+            return node_map, reduce_nodes
         for item in self.nodes_groups:
             if isinstance(item, NodeGroup):
                 node_map.update(item.dependent_nodes(keep_reduce_node)[0])
@@ -171,7 +180,11 @@ class NodeGroup:
         return nodes, []
 
     def try_merge(self, other) -> bool:
-        if self.target_shape != other.target_shape or self.reduce_axes != other.reduce_axes:
+        if (
+            self.target_shape != other.target_shape
+            or self.reduce_axes != other.reduce_axes
+            or self.has_reduced_elementwise_nodes() != other.has_reduced_elementwise_nodes()
+        ):
             return False
         self.nodes_groups.extend(other.nodes_groups)
         self.reduced_args.update(other.reduced_args)
@@ -262,7 +275,10 @@ class GraphLowering:
             reduce_axes = []
             if is_reduction_node(precessor):
                 keep_dims, reduce_axes = self._get_reduce_info(precessor)
-            if group.compatible(precessor, reduce_axes, keep_dims):
+            split_if_different = any(
+                output in self._sorted_graph.elementwise_graph_outputs for output in precessor.output
+            )
+            if group.compatible(precessor, reduce_axes, keep_dims, split_if_different):
                 next_group = group.add_node(precessor, reduce_axes, keep_dims)
                 dependent_nodes.update(self._process_node(precessor, precessors, next_group))
         return dependent_nodes
@@ -450,10 +466,15 @@ class GraphLowering:
             self._kernel_io_list.append(self._extract_kernel_io(nodes))
             if group.autotune_configs.requires_for_loop:
                 start = 0
-                for indices in layer_indices:
+                for layer_idx, indices in enumerate(layer_indices):
+                    need_for_loop = True
+                    if layer_idx == len(layer_indices) - 1 and group.has_reduced_elementwise_nodes():
+                        assert len(indices) == 0
+                        need_for_loop = False
                     reduce_nodes = [self._to_compute_node(nodes[idx], kernel_node.offset_calc) for idx in indices]
                     assert all(isinstance(node, ReduceNode) for node in reduce_nodes)
-                    sub_nodes.append(ReduceForLoopStart(reduce_nodes, kernel_node.offset_calc))
+                    if need_for_loop:
+                        sub_nodes.append(ReduceForLoopStart(reduce_nodes, kernel_node.offset_calc))
                     end = indices[0] if len(indices) > 0 else len(nodes)
                     for idx in range(start, end):
                         node = nodes[idx]
