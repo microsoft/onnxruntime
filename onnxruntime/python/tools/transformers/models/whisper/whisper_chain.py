@@ -24,6 +24,8 @@ def chain_model(args):
 
     config = WhisperConfig.from_pretrained(args.model_name_or_path)
 
+    all_nodes = []
+
     beam_inputs = [
         "input_features",
         "max_length",
@@ -46,14 +48,40 @@ def chain_model(args):
     else:
         beam_inputs.append("")
 
-    if args.output_cross_qk:
+    if args.collect_cross_qk:
         beam_inputs.append("cross_qk_layer_head")
     else:
         beam_inputs.append("")
 
     beam_outputs = ["sequences"]
-    if args.output_cross_qk:
+    if args.collect_cross_qk:
         beam_outputs.extend(["", "", "cross_qk"])
+
+    # beam graph inputs
+    float_data_type = TensorProto.FLOAT
+    if args.precision == Precision.FLOAT16:
+        float_data_type = TensorProto.FLOAT16
+
+    input_features = helper.make_tensor_value_info(
+        "input_features", TensorProto.FLOAT, ["batch_size", "feature_size", "sequence_length"])
+    max_length = helper.make_tensor_value_info("max_length", TensorProto.INT32, [1])
+    min_length = helper.make_tensor_value_info("min_length", TensorProto.INT32, [1])
+    num_beams = helper.make_tensor_value_info("num_beams", TensorProto.INT32, [1])
+    num_return_sequences = helper.make_tensor_value_info("num_return_sequences", TensorProto.INT32, [1])
+    length_penalty = helper.make_tensor_value_info("length_penalty", TensorProto.FLOAT, [1])
+    repetition_penalty = helper.make_tensor_value_info("repetition_penalty", TensorProto.FLOAT, [1])
+
+    if args.precision == Precision.FLOAT16:
+        cast_node1 = helper.make_node("Cast", inputs=['input_features'], outputs=['input_features_fp16'],
+                        name="input_features_cast_to_fp16", to=TensorProto.FLOAT16)
+        cast_node2 = helper.make_node("Cast", inputs=['length_penalty'], outputs=['length_penalty_fp16'],
+                        name="length_penalty_cast_to_fp16", to=TensorProto.FLOAT16)
+        cast_node3 = helper.make_node("Cast", inputs=['repetition_penalty'], outputs=['repetition_penalty_fp16'],
+                        name="repetition_penalty_cast_to_fp16", to=TensorProto.FLOAT16)
+        for index, name in enumerate(beam_inputs):
+            if name in ["input_features", "length_penalty", "repetition_penalty"]:
+                beam_inputs[index] = f"{name}_fp16"
+        all_nodes.extend([cast_node1, cast_node2, cast_node3])
 
     node = helper.make_node("BeamSearch", inputs=beam_inputs, outputs=beam_outputs, name="BeamSearch_zcode")
     node.domain = "com.microsoft"
@@ -67,23 +95,8 @@ def chain_model(args):
             helper.make_attribute("model_type", 2),
         ]
     )
-    if args.output_cross_qk:
+    if args.collect_cross_qk:
         node.attribute.extend([helper.make_attribute("decoder_output_cross_qk", 1)])
-
-    # beam graph inputs
-    float_data_type = TensorProto.FLOAT
-    if args.precision == Precision.FLOAT16:
-        float_data_type = TensorProto.FLOAT16
-
-    input_features = helper.make_tensor_value_info(
-        "input_features", float_data_type, ["batch_size", "feature_size", "sequence_length"]
-    )
-    max_length = helper.make_tensor_value_info("max_length", TensorProto.INT32, [1])
-    min_length = helper.make_tensor_value_info("min_length", TensorProto.INT32, [1])
-    num_beams = helper.make_tensor_value_info("num_beams", TensorProto.INT32, [1])
-    num_return_sequences = helper.make_tensor_value_info("num_return_sequences", TensorProto.INT32, [1])
-    length_penalty = helper.make_tensor_value_info("length_penalty", float_data_type, [1])
-    repetition_penalty = helper.make_tensor_value_info("repetition_penalty", float_data_type, [1])
 
     graph_inputs = [
         input_features,
@@ -103,7 +116,8 @@ def chain_model(args):
     if args.use_logits_processor:
         logits_processor = helper.make_tensor_value_info("logits_processor", TensorProto.INT32, [1])
         graph_inputs.append(logits_processor)
-    if args.output_cross_qk:
+
+    if args.collect_cross_qk:
         cross_qk_layer_head = helper.make_tensor_value_info(
             "cross_qk_layer_head", TensorProto.INT32, ["num_layer_head", 2]
         )
@@ -114,7 +128,7 @@ def chain_model(args):
         "sequences", TensorProto.INT32, ["batch_size", "num_return_sequences", "max_length"]
     )
     graph_outputs = [sequences]
-    if args.output_cross_qk:
+    if args.output_cross_qk or (not args.cross_qk_onnx_model):
         cross_qk = helper.make_tensor_value_info(
             "cross_qk", float_data_type, ["batch_size", "num_return_sequences", "num_layer_head", "decoded_length", "frames"]
         )
@@ -125,7 +139,7 @@ def chain_model(args):
             print("*****update whisper decoder subgraph successfully!!!*****")
         else:
             print("*****DecoderMaskedMultiHeadAttention is not applied to whisper decoder*****")
-        if hasattr(args, "output_cross_qk") and args.output_cross_qk:
+        if hasattr(args, "collect_cross_qk") and args.collect_cross_qk:
             update_decoder_subgraph_output_cross_attention(decoder_model.graph)
 
     # Initializers/opsets
@@ -140,10 +154,12 @@ def chain_model(args):
 
     opset_import = [helper.make_opsetid(domain="com.microsoft", version=1), helper.make_opsetid(domain="", version=17)]
 
-    beam_graph = helper.make_graph([node], "beam-search-test", graph_inputs, graph_outputs, initializers)
+    all_nodes.extend([node])
+    beam_graph = helper.make_graph(all_nodes, "beam-search-test", graph_inputs, graph_outputs, initializers)
     if args.cross_qk_onnx_model:
         post_qk_model = onnx.load_model(args.cross_qk_onnx_model, load_external_data=True)
         post_qk_graph = post_qk_model.graph
+        # TODO: check duplicat names
         beam_graph.initializer.extend(post_qk_graph.initializer)
         beam_graph.node.extend(post_qk_graph.node)
         beam_graph.input.extend(post_qk_graph.input[1:])
