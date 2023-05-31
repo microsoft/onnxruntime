@@ -2497,6 +2497,15 @@ TEST(MathOpTest, Equal_float) {
   test.Run();
 }
 
+TEST(MathOpTest, Equal_string) {
+  OpTester test("Equal", 19);
+  std::vector<int64_t> dims{4};
+  test.AddInput<std::string>("A", dims, {"1.0f", "0.0f", "-1.0f", "-1.0f"});
+  test.AddInput<std::string>("B", dims, {"1.0f", "1.0f", "2.0f", "-1.0f"});
+  test.AddOutput<bool>("C", dims, {true, false, false, true});
+  test.Run();
+}
+
 #if defined(USE_DNNL)
 TEST(MathOpTest, Equal_bfloat16) {
 #ifdef USE_DNNL

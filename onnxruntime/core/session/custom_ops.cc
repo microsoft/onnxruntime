@@ -21,6 +21,11 @@
 #include "core/session/inference_session.h"
 #include "core/session/ort_apis.h"
 
+#if !defined(ORT_MINIMAL_BUILD)
+static constexpr uint32_t min_ort_version_with_optional_io_support = 8;
+static constexpr uint32_t min_ort_version_with_variadic_io_support = 14;
+#endif
+
 ORT_API_STATUS_IMPL(OrtApis::KernelInfoGetAttribute_float, _In_ const OrtKernelInfo* info, _In_ const char* name, _Out_ float* out) {
   API_IMPL_BEGIN
   auto status = reinterpret_cast<const onnxruntime::OpKernelInfo*>(info)->GetAttr<float>(name, out);
@@ -467,9 +472,6 @@ KernelCreateInfo CreateKernelCreateInfo(const std::string& domain, const OrtCust
 }
 
 ONNX_NAMESPACE::OpSchema CreateSchema(const std::string& domain, const OrtCustomOp* op) {
-  constexpr uint32_t min_ort_version_with_optional_io_support = 8;
-  constexpr uint32_t min_ort_version_with_variadic_io_support = 14;
-
   const size_t input_count = op->GetInputTypeCount(op);
   const size_t output_count = op->GetOutputTypeCount(op);
   int undefined = 0;
@@ -562,7 +564,8 @@ Status IsCompatible(const ONNX_NAMESPACE::OpSchema& schema, const OrtCustomOp* o
     const auto characteristic = op->GetInputCharacteristic(op, i);
     const auto& formal_parameter = input_parameters[i];
     if (characteristic == OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_OPTIONAL) {
-      ORT_RETURN_IF_NOT(formal_parameter.GetOption() == onnx::OpSchema::FormalParameterOption::Optional,
+      ORT_RETURN_IF_NOT(op->version < min_ort_version_with_optional_io_support ||
+                            formal_parameter.GetOption() == onnx::OpSchema::FormalParameterOption::Optional,
                         "custom op schemas mismatch, expecting ", i + 1,
                         i == 0 ? "st" : (i == 1 ? "nd" : "th"),
                         " input to be of optional type");
@@ -571,7 +574,8 @@ Status IsCompatible(const ONNX_NAMESPACE::OpSchema& schema, const OrtCustomOp* o
                         "custom op schemas mismatch, expecting ", i + 1,
                         i == 0 ? "st" : (i == 1 ? "nd" : "th"),
                         " input to be of variadic type");
-      ORT_RETURN_IF_NOT(formal_parameter.GetIsHomogeneous() == (op->GetVariadicInputHomogeneity(op) != 0),
+      ORT_RETURN_IF_NOT(op->version < min_ort_version_with_variadic_io_support ||
+                            formal_parameter.GetIsHomogeneous() == (op->GetVariadicInputHomogeneity(op) != 0),
                         "custom op schemas mismatch, expecting ", i + 1,
                         i == 0 ? "st" : (i == 1 ? "nd" : "th"),
                         " input to keep same homogeneity");

@@ -4803,6 +4803,7 @@ def test_ortmodule_setattr_signals_model_changed():
     del os.environ["ORTMODULE_SKIPCHECK_POLICY"]
 
 
+@pytest.mark.skipif(Version(torch.__version__) < Version("1.13.0"), reason="PyTorch 1.12 incompatible")
 def test_ortmodule_attribute_name_collision_warning():
     class UserNet(torch.nn.Module):
         def __init__(self):
@@ -4825,10 +4826,11 @@ def test_ortmodule_attribute_name_collision_warning():
     # Please annotate treat the first argument (g) as GraphContext and use context information from the object
     # instead.')
     # TODO(bmeswani): Check with the exporter team as to what this might mean for ortmodule.
-    assert len(warning_record) == 3
+    # For ROCm EP, the log above appears twice.
+    assert len(warning_record) == 3 or len(warning_record) == 4
 
-    assert "_torch_module collides with ORTModule's attribute name." in warning_record[1].message.args[0]
-    assert "load_state_dict collides with ORTModule's attribute name." in warning_record[2].message.args[0]
+    assert "_torch_module collides with ORTModule's attribute name." in warning_record[-2].message.args[0]
+    assert "load_state_dict collides with ORTModule's attribute name." in warning_record[-1].message.args[0]
 
 
 def test_ortmodule_ortmodule_method_attribute_copy():
