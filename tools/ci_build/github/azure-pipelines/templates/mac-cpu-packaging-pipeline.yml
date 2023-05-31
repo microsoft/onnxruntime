@@ -60,33 +60,33 @@ stages:
 
 - stage: MacOS_C_API_Package_Publish
   dependsOn: MacOS_C_API_Packaging_CPU
-    - jobs:
-      - job: MacOS_C_API_Package_Publish
-        pool: Azure-Pipelines-EO-Windows2022-aiinfra
-        steps:
-        - template: flex-downloadPipelineArtifact.yml
-          parameters:
-            StepName: 'Download Pipeline onnxruntime-osx-x86_64'
-            ArtifactName: 'onnxruntime-osx-x86_64'
-            TargetPath: '$(Build.ArtifactStagingDirectory)'
-            SpecificArtifact: ${{ parameters.specificArtifact }}
-            BuildId: ${{ parameters.BuildId }}
+  jobs:
+    - job: MacOS_C_API_Package_Publish
+      pool: Azure-Pipelines-EO-Windows2022-aiinfra
+      steps:
+      - template: flex-downloadPipelineArtifact.yml
+        parameters:
+          StepName: 'Download Pipeline onnxruntime-osx-x86_64'
+          ArtifactName: 'onnxruntime-osx-x86_64'
+          TargetPath: '$(Build.ArtifactStagingDirectory)'
+          SpecificArtifact: ${{ parameters.specificArtifact }}
+          BuildId: ${{ parameters.BuildId }}
 
-        - ${{ if eq(parameters.BuildForAllArchs, true) }}:
-          - task: DownloadPipelineArtifact@2
-            inputs:
-              artifact: 'onnxruntime-osx-arm64'
-              targetPath: '$(Build.ArtifactStagingDirectory)'
-          - task: DownloadPipelineArtifact@2
-            inputs:
-              artifact: 'onnxruntime-osx-universal2'
-              targetPath: '$(Build.ArtifactStagingDirectory)'
-
-        - task: PublishPipelineArtifact@1
+      - ${{ if eq(parameters.BuildForAllArchs, true) }}:
+        - task: DownloadPipelineArtifact@2
           inputs:
+            artifact: 'onnxruntime-osx-arm64'
             targetPath: '$(Build.ArtifactStagingDirectory)'
-            artifact: 'onnxruntime-osx'
-            condition: 'succeededOrFailed()'
-        - template: component-governance-component-detection-steps.yml
-          parameters:
-            condition: 'succeeded'
+        - task: DownloadPipelineArtifact@2
+          inputs:
+            artifact: 'onnxruntime-osx-universal2'
+            targetPath: '$(Build.ArtifactStagingDirectory)'
+
+      - task: PublishPipelineArtifact@1
+        inputs:
+          targetPath: '$(Build.ArtifactStagingDirectory)'
+          artifact: 'onnxruntime-osx'
+          condition: 'succeededOrFailed()'
+      - template: component-governance-component-detection-steps.yml
+        parameters:
+          condition: 'succeeded'
