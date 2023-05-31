@@ -230,13 +230,6 @@ void OverrideTunableOpInfoByEnv(CUDAExecutionProviderInfo& info) {
     info.tunable_op.tuning_enable = *env_tunable_op_tuning_enable;
   }
 
-  if (auto env_tunable_op_max_tuning_duration_ms = onnxruntime::ParseEnvironmentVariableWithDefault<int>(
-          "ORT_CUDA_TUNABLE_OP_MAX_TUNING_DURATION_MS", 0);
-      env_tunable_op_max_tuning_duration_ms != info.tunable_op.max_tuning_duration_ms) {
-    LOGS_DEFAULT(INFO) << "ORT_CUDA_TUNABLE_OP_MAX_TUNING_DURATION_MS is set to " << env_tunable_op_max_tuning_duration_ms;
-    info.tunable_op.max_tuning_duration_ms = env_tunable_op_max_tuning_duration_ms;
-  }
-
   if (info.tunable_op.tuning_enable && !info.tunable_op.enable) {
     LOGS_DEFAULT(WARNING) << "TunableOp is enabled for tuning but is not enabled for using. This will have no effect.";
   }
