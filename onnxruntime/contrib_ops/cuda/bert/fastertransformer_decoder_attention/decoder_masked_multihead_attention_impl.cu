@@ -419,9 +419,16 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiHeadAttentio
 
   if (params.out_qk != nullptr) {
     // store cross qk before softmax, out_qk has shape [B(batchxbeam), #Head, 1, total_sequence_length]
-    T* target = ((T*)params.out_qk) + ((int64_t)bhi * tlength);
-    for (int ti = threadIdx.x; ti < params.total_sequence_length; ti += blockDim.x) {
-      target[ti] = (T)(qk_smem[ti]);
+    if (sizeof(T) == 4) {
+      float* target = ((float*)params.out_qk) + ((int64_t)bhi * tlength);
+      for (int ti = threadIdx.x; ti < params.total_sequence_length; ti += blockDim.x) {
+        target[ti] = (float)(qk_smem[ti]);
+      }
+    } else {
+      __half* target = ((__half*)params.out_qk) + ((int64_t)bhi * tlength);
+      for (int ti = threadIdx.x; ti < params.total_sequence_length; ti += blockDim.x) {
+        target[ti] = (__half)(qk_smem[ti]);
+      }
     }
   }
 
