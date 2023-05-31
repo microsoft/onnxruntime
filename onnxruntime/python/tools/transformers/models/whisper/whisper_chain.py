@@ -37,6 +37,8 @@ def chain_model(args):
 
     config = WhisperConfig.from_pretrained(args.model_name_or_path)
 
+    all_nodes = []
+
     beam_inputs = [
         "input_features_fp16" if args.precision == Precision.FLOAT16 else "input_features",
         "max_length",
@@ -61,13 +63,13 @@ def chain_model(args):
     else:
         beam_inputs.append("")
 
-    if args.output_cross_qk:
+    if args.collect_cross_qk:
         beam_inputs.append("cross_qk_layer_head")
     else:
         beam_inputs.append("")
 
     beam_outputs = ["sequences"]
-    if args.output_cross_qk:
+    if args.collect_cross_qk:
         beam_outputs.extend(["", "", "cross_qk"])
 
     input_features_cast_node, len_pen_cast_node, rep_pen_cast_node = None, None, None
@@ -106,7 +108,7 @@ def chain_model(args):
             helper.make_attribute("model_type", 2),
         ]
     )
-    if args.output_cross_qk:
+    if args.collect_cross_qk:
         node.attribute.extend([helper.make_attribute("decoder_output_cross_qk", 1)])
 
     # beam graph inputs
@@ -152,7 +154,8 @@ def chain_model(args):
     if args.use_logits_processor:
         logits_processor = helper.make_tensor_value_info("logits_processor", TensorProto.INT32, [1])
         graph_inputs.append(logits_processor)
-    if args.output_cross_qk:
+
+    if args.collect_cross_qk:
         cross_qk_layer_head = helper.make_tensor_value_info(
             "cross_qk_layer_head", TensorProto.INT32, ["num_layer_head", 2]
         )
@@ -163,7 +166,7 @@ def chain_model(args):
         "sequences", TensorProto.INT32, ["batch_size", "num_return_sequences", "max_length"]
     )
     graph_outputs = [sequences]
-    if args.output_cross_qk:
+    if args.output_cross_qk or (not args.cross_qk_onnx_model):
         cross_qk = helper.make_tensor_value_info(
             "cross_qk",
             float_data_type,
@@ -200,6 +203,7 @@ def chain_model(args):
     if args.cross_qk_onnx_model:
         post_qk_model = onnx.load_model(args.cross_qk_onnx_model, load_external_data=True)
         post_qk_graph = post_qk_model.graph
+        # TODO: check duplicat names
         beam_graph.initializer.extend(post_qk_graph.initializer)
         beam_graph.node.extend(post_qk_graph.node)
         beam_graph.input.extend(post_qk_graph.input[1:])

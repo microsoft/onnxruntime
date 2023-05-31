@@ -170,10 +170,18 @@ def parse_arguments(argv=None):
     parser.set_defaults(chain_model=True)
 
     parser.add_argument(
+        "--collect_cross_qk",
+        required=False,
+        action="store_true",
+        help="Beam search model collect stacked cross QK.",
+    )
+    parser.set_defaults(collect_cross_qk=False)
+
+    parser.add_argument(
         "--output_cross_qk",
         required=False,
         action="store_true",
-        help="Beam search model collect and output stacked cross QK.",
+        help="Beam search model output collected qk as output.",
     )
     parser.set_defaults(output_cross_qk=False)
 
@@ -184,16 +192,6 @@ def parse_arguments(argv=None):
         default=None,
         help="the model which consume cross_qk.",
     )
-    parser.set_defaults(output_cross_qk=False)
-
-    # parser.add_argument(
-    #     "--cross_qk_layer_head",
-    #     required=False,
-    #     type=int,
-    #     nargs='*',
-    #     default=[],
-    #     help="list of layer_id, head_id. So its size must be multply of 2.",
-    # )
 
     parser.add_argument(
         "--beam_output_model",
