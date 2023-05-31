@@ -20,7 +20,8 @@ ONNX_OPERATOR_KERNEL_EX(
     1,
     kCudaExecutionProvider,
     (*KernelDefBuilder::Create())
-        .TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
+        .TypeConstraint("F", DataTypeImpl::GetTensorType<float>())
+        .TypeConstraint("I", DataTypeImpl::GetTensorType<int32_t>()),
     DynamicTimeWarping);
 
 Status DynamicTimeWarping::ComputeInternal(OpKernelContext* ctx) const {

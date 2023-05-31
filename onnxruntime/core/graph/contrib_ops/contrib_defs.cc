@@ -1100,7 +1100,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
       .SetDoc("return dynamic time wrapping of shape [2, x] of int32_t")
       .Input(0, "input", "input tensor, it must be 2D tensor of shape M x N", "F")
       .Output(0, "output", "Output tensor.", "I")
-      .TypeConstraint("T", {"tensor(float)"}, "Constrain to float tensors.")
+      .TypeConstraint("F", {"tensor(float)"}, "Constrain to float tensors.")
       .TypeConstraint("I", {"tensor(int32)"}, "Constrain to integer types"));
 
 ONNX_MS_OPERATOR_SET_SCHEMA(BeamSearch, 1,
