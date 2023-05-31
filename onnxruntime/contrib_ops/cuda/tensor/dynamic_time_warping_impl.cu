@@ -64,14 +64,14 @@ __global__ void DynamicTimeWarpingKernel(
 
   //back tracing, reverse append to result buffer
   if (threadIdx.x == 0) {
-    int r = rows;
-    int c = cols;
+    int r = rows - 1;
+    int c = cols - 1;
     int pos = static_cast<int>(max_index_len); // reverse put
     while (r > 0 && c > 0) {
         --pos;
         result_buffer[pos] = r;
         result_buffer[max_index_len + pos] = c;
-        const int trace_index = r * (cols + 1) + (c + 1);
+        const int trace_index = (r + 1) * (cols + 1) + (c + 1);
         int8_t t = trace_buffer[trace_index];
         switch (t) {
         case 0: r -= 1; c -= 1; break;
