@@ -11,7 +11,7 @@ import torch
 
 from onnxruntime.capi import _pybind_state as C
 
-from . import _are_deterministic_algorithms_enabled, _io, _logger, _use_deterministic_algorithms, _utils
+from . import _are_deterministic_algorithms_enabled, _io, _use_deterministic_algorithms, _utils
 from ._execution_agent import InferenceAgent
 from ._fallback import ORTModuleFallbackException, _FallbackManager, _FallbackPolicy
 from ._graph_execution_manager import GraphExecutionManager, _RunStateInfo, _SkipCheck
@@ -92,13 +92,9 @@ class InferenceManager(GraphExecutionManager):
 
         try:
             # Issue at most one warning message about fast path
-            if (
-                self._first_skip_check_warning is True
-                and self._skip_check.is_disabled() is False
-                and self._debug_options.logging.log_level <= _logger.LogLevel.WARNING
-            ):
+            if self._first_skip_check_warning is True and self._skip_check.is_disabled() is False:
                 self._first_skip_check_warning = False
-                self._logger.info(
+                self._logger.warning(
                     "Fast path enabled - skipping checks. rebuild gradient graph: %s, execution agent recreation: %s, "
                     "device check: %s",
                     self._skip_check.is_set(_SkipCheck.SKIP_CHECK_BUILD_GRADIENT),
