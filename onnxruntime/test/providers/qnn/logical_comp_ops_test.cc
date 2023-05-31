@@ -58,7 +58,6 @@ static void RunCPULogicalOpTest(const std::string& op_type, const std::vector<in
   provider_options["backend_path"] = "QnnCpu.dll";
 #else
   provider_options["backend_path"] = "libQnnCpu.so";
-  fp32_abs_err = 1.5e-5f;  // On linux we need slightly larger tolerance.
 #endif
 
   constexpr int expected_nodes_in_partition = 1;
