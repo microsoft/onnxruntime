@@ -1,5 +1,5 @@
 parameters:
-  AgentPool: 'aiinfra-Linux-CPU'
+  AgentPool: 'onnxruntime-Ubuntu2004-AMD-CPU'
   ArtifactSuffix: ''
   NugetPackageName : ''
   StageSuffix: 'CPU'

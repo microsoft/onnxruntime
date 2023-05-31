@@ -33,7 +33,7 @@ parameters:
 - name: pool_name
   displayName: Pool name
   type: string
-  default: 'aiinfra-Linux-CPU'
+  default: 'onnxruntime-Ubuntu2004-AMD-CPU'
 
 - name: packageName
   # now we can build onnxruntime or onnxruntime-mobile for Android, need specify it here

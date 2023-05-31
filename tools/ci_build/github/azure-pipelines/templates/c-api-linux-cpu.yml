@@ -22,7 +22,7 @@ parameters:
 
 - name: PoolName
   type: string
-  default: 'aiinfra-Linux-CPU'
+  default: 'onnxruntime-Ubuntu2004-AMD-CPU'
 
 - name: ArtifactNamePrefix
   type: string
