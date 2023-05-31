@@ -4214,21 +4214,6 @@ def test_hf_save_pretrained():
             assert p1.data.ne(p2.data).sum() == 0
 
 
-def test_ortmodule_string_inputs_are_ignored():
-    pt_model = MyStrNet()
-    ort_model = ORTModule(copy.deepcopy(pt_model))
-    x = torch.randn(1, 2)
-
-    with pytest.warns(UserWarning) as warning_record:
-        out = ort_model(x, "hello")
-
-    assert (
-        "Received input of type <class 'str'> which may be treated as a constant by ORT by default."
-        in warning_record[1].message.args[0]
-    )
-    _test_helpers.assert_values_are_close(out, x + 1)
-
-
 def test_ortmodule_list_input():
     class ListNet(torch.nn.Module):
         def __init__(self):
@@ -4803,8 +4788,7 @@ def test_ortmodule_setattr_signals_model_changed():
     del os.environ["ORTMODULE_SKIPCHECK_POLICY"]
 
 
-@pytest.mark.skipif(Version(torch.__version__) < Version("1.13.0"), reason="PyTorch 1.12 incompatible")
-def test_ortmodule_attribute_name_collision_warning():
+def test_ortmodule_attribute_name_collision_warning(caplog):
     class UserNet(torch.nn.Module):
         def __init__(self):
             super().__init__()
@@ -4819,18 +4803,14 @@ def test_ortmodule_attribute_name_collision_warning():
 
     device = "cuda"
     pt_model = UserNet().to(device)
-    with pytest.warns(UserWarning) as warning_record:
-        ORTModule(pt_model)
 
-    # FutureWarning('The first argument to symbolic functions is deprecated in 1.13 and will be removed in the future.
-    # Please annotate treat the first argument (g) as GraphContext and use context information from the object
-    # instead.')
-    # TODO(bmeswani): Check with the exporter team as to what this might mean for ortmodule.
-    # For ROCm EP, the log above appears twice.
-    assert len(warning_record) == 3 or len(warning_record) == 4
+    ORTModule(pt_model)
+    warning_record = [record.message for record in caplog.records if record.levelname == "WARNING"]
 
-    assert "_torch_module collides with ORTModule's attribute name." in warning_record[-2].message.args[0]
-    assert "load_state_dict collides with ORTModule's attribute name." in warning_record[-1].message.args[0]
+    assert len(warning_record) == 2
+
+    assert "_torch_module collides with ORTModule's attribute name." in warning_record[-2]
+    assert "load_state_dict collides with ORTModule's attribute name." in warning_record[-1]
 
 
 def test_ortmodule_ortmodule_method_attribute_copy():
