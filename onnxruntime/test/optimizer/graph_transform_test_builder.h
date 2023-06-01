@@ -148,9 +148,9 @@ class ModelTestBuilder {
     ONNX_NAMESPACE::TypeProto type_proto;
     type_proto.mutable_tensor_type()->set_elem_type(utils::ToTensorProtoElementType<T>());
     if (shape != std::nullopt) {
-      type_proto.mutable_tensor_type()->mutable_shape();
+      ONNX_NAMESPACE::TensorShapeProto* shape_proto = type_proto.mutable_tensor_type()->mutable_shape();
       for (auto& d : *shape) {
-        auto dim = type_proto.mutable_tensor_type()->mutable_shape()->add_dim();
+        auto dim = shape_proto->add_dim();
         if (d != -1) {
           dim->set_dim_value(d);
         }
