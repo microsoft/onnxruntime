@@ -53,3 +53,4 @@ Do not modify directly.*
 | Tan | ai.onnx(7+) |  |
 | ThresholdedRelu | ai.onnx(10+) |  |
 | Transpose | ai.onnx(1-12,13+) | need perf optimization |
+| Unsqueeze | ai.onnx(1-10,11-12,13+) |  |
