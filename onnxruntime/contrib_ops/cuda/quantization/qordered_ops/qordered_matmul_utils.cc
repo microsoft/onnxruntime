@@ -10,7 +10,7 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-#if defined(CUDA_VERSION) && CUDA_VERSION >= 11040
+#if defined(USE_CUDA)
 
 static Status cublasLtMatMulInt8SetupAlgo(cublasLtHandle_t cublasLt_handle, cublasLtMatmulAlgo_t& algo,
                                           int algo_id, int swizzle,
@@ -121,11 +121,6 @@ Status QOrdered_MatMul(cublasLtHandle_t cublasLt_handle, cudaStream_t stream,
                        int8_t* D,
                        cublasLtOrder_t weight_order,
                        cublasLtPointerMode_t pointer_mode) {
-#if defined(CUDA_VERSION) && CUDA_VERSION < 11040
-  ORT_RETURN_IF(pointer_mode > CUBLASLT_POINTER_MODE_ALPHA_DEVICE_VECTOR_BETA_ZERO,
-                "Need CUDA 11.4.2 to support CUBLASLT_POINTER_MODE_ALPHA_DEVICE_VECTOR_BETA_HOST")
-#endif
-
   ORT_RETURN_IF(weight_order != CUBLASLT_ORDER_COL, "Weight should be ORDER_COL");
 
   const cublasOperation_t transpose_op = CUBLAS_OP_T;

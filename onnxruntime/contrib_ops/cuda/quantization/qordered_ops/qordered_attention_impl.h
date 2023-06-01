@@ -9,7 +9,7 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-#if defined(CUDA_VERSION) && CUDA_VERSION >= 11040
+#if defined(USE_CUDA)
 
 Status BuildTableForSoftmaxPowerOf(
     cudaStream_t stream, const double base, float* table);

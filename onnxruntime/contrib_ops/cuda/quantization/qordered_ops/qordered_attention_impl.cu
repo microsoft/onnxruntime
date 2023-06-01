@@ -11,7 +11,7 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-#if defined(CUDA_VERSION) && CUDA_VERSION >= 11040
+#if defined(USE_CUDA)
 
 __global__ void
 BuildTableForSoftmaxPowerOfKernel(const double base, float* table) {

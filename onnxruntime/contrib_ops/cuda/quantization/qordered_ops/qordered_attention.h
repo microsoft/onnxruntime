@@ -18,7 +18,7 @@ class QOrderedAttention final : public CudaKernel, public AttentionBase {
 
   Status ComputeInternal(OpKernelContext* context) const override;
 
-#if defined(CUDA_VERSION) && CUDA_VERSION >= 11040
+#if defined(USE_CUDA)
 
  public:
   Status PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,

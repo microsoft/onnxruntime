@@ -47,7 +47,7 @@ ONNX_OPERATOR_KERNEL_EX(
         .InputMemoryType(OrtMemTypeCPUInput, InputIds::Scale_Values_Gemm),
     QOrderedAttention);
 
-#if defined(CUDA_VERSION) && CUDA_VERSION >= 11040
+#if defined(USE_CUDA)
 
 Status QOrderedAttention::PutIntoMergedWeight(const Tensor& tensor, AllocatorPtr alloc, int qkv_index, cudaStream_t cuda_stream) {
   ++qkv_weight_const_count_;
@@ -158,7 +158,7 @@ inline void debug_print([[maybe_unused]] const T* arr,
 #endif
 
 QOrderedAttention::QOrderedAttention(const OpKernelInfo& info) : CudaKernel(info), AttentionBase(info, true) {
-#if defined(CUDA_VERSION) && CUDA_VERSION >= 11040
+#if defined(USE_CUDA)
   input_hidden_size_ = 0;
   int cuda_runtime_version = 0;
   CUDA_CALL_THROW(cudaRuntimeGetVersion(&cuda_runtime_version));
@@ -192,7 +192,7 @@ QOrderedAttention::QOrderedAttention(const OpKernelInfo& info) : CudaKernel(info
 }
 
 Status QOrderedAttention::ComputeInternal(OpKernelContext* context) const {
-#if defined(CUDA_VERSION) && CUDA_VERSION >= 11040
+#if defined(USE_CUDA)
 
   ORT_ENFORCE(qkv_bias_const_cout_ == 3 && scale_qkv_weight_const_count_ == 3 && qkv_weight_const_count_ == 3,
               "qkv gemm weight and their scales, qkv gemm bias must all be constant!");

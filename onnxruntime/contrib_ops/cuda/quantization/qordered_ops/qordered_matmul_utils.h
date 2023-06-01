@@ -13,7 +13,7 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-#if defined(CUDA_VERSION) && CUDA_VERSION >= 11040
+#if defined(USE_CUDA)
 
 class CublasLtMMAlgoMap {
  public:

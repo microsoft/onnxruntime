@@ -39,7 +39,7 @@ ONNX_OPERATOR_KERNEL_EX(
         .InputMemoryType(OrtMemTypeCPUInput, 1),  // scale_A
     DequantizeWithOrder);
 
-#if defined(CUDA_VERSION) && CUDA_VERSION >= 11040
+#if defined(USE_CUDA)
 
 void UpdateTileRequire(cublasLtOrder_t order, int64_t& row_tile, int64_t& col_tile) {
   switch (order) {
@@ -95,7 +95,7 @@ cublasLtOrder_t GetCublasLtOrderAttr(const OpKernelInfo& info, const char* order
 #endif
 
 QuantizeWithOrder::QuantizeWithOrder(const OpKernelInfo& info) : CudaKernel(info) {
-#if defined(CUDA_VERSION) && CUDA_VERSION >= 11040
+#if defined(USE_CUDA)
   int cuda_runtime_version = 0;
   CUDA_CALL_THROW(cudaRuntimeGetVersion(&cuda_runtime_version));
   ORT_ENFORCE(cuda_runtime_version >= 11040, "QOrderedMatmul need cuda runtime higher than 11.4");
@@ -114,7 +114,7 @@ QuantizeWithOrder::QuantizeWithOrder(const OpKernelInfo& info) : CudaKernel(info
 }
 
 DequantizeWithOrder::DequantizeWithOrder(const OpKernelInfo& info) : CudaKernel(info) {
-#if defined(CUDA_VERSION) && CUDA_VERSION >= 11040
+#if defined(USE_CUDA)
   int cuda_runtime_version = 0;
   CUDA_CALL_THROW(cudaRuntimeGetVersion(&cuda_runtime_version));
   ORT_ENFORCE(cuda_runtime_version >= 11040, "QOrderedMatmul need cuda runtime higher than 11.4");
@@ -139,7 +139,7 @@ DequantizeWithOrder::DequantizeWithOrder(const OpKernelInfo& info) : CudaKernel(
 }
 
 Status QuantizeWithOrder::ComputeInternal(OpKernelContext* context) const {
-#if defined(CUDA_VERSION) && CUDA_VERSION >= 11040
+#if defined(USE_CUDA)
 
   int64_t rows = 0, cols = 0, batch = 0, n = 0;
   const Tensor& input_tensor = *context->Input<Tensor>(0);
@@ -189,7 +189,7 @@ Status QuantizeWithOrder::ComputeInternal(OpKernelContext* context) const {
 }
 
 Status DequantizeWithOrder::ComputeInternal(OpKernelContext* context) const {
-#if defined(CUDA_VERSION) && CUDA_VERSION >= 11040
+#if defined(USE_CUDA)
 
   int64_t rows = 0, cols = 0, batch = 0, n = 0;
 

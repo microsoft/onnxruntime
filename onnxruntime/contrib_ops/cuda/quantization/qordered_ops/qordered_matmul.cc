@@ -33,7 +33,7 @@ ONNX_OPERATOR_KERNEL_EX(
     QOrderedMatMul);
 
 QOrderedMatMul::QOrderedMatMul(const OpKernelInfo& info) : CudaKernel(info) {
-#if defined(CUDA_VERSION) && CUDA_VERSION >= 11040
+#if defined(USE_CUDA)
   int cuda_runtime_version = 0;
   CUDA_CALL_THROW(cudaRuntimeGetVersion(&cuda_runtime_version));
   ORT_ENFORCE(cuda_runtime_version >= 11040, "QOrderedMatmul need cuda runtime higher than 11.4");
@@ -60,7 +60,7 @@ QOrderedMatMul::QOrderedMatMul(const OpKernelInfo& info) : CudaKernel(info) {
 Status QOrderedMatMul::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
                                /*out*/ bool& is_packed,
                                /*out*/ PrePackedWeights* /* prepacked_weights */) {
-#if defined(CUDA_VERSION) && CUDA_VERSION >= 11040
+#if defined(USE_CUDA)
 
   is_packed = false;
   if (order_B_ == CUBLASLT_ORDER_COL) {
@@ -118,7 +118,7 @@ Status QOrderedMatMul::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr
 }
 
 Status QOrderedMatMul::ComputeInternal(OpKernelContext* context) const {
-#if defined(CUDA_VERSION) && CUDA_VERSION >= 11040
+#if defined(USE_CUDA)
 
   ORT_ENFORCE(order_B_ == CUBLASLT_ORDER_COL, "COL32 related order processing will be implemented later!");
 

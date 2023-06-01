@@ -41,7 +41,7 @@ ONNX_OPERATOR_KERNEL_EX(
 
 QOrderedLongformerAttention::QOrderedLongformerAttention(const OpKernelInfo& info)
     : CudaKernel(info), LongformerAttentionBase(info) {
-#if defined(CUDA_VERSION) && CUDA_VERSION >= 11040
+#if defined(USE_CUDA)
 
   use_compact_memory_ = ParseEnvironmentVariableWithDefault<bool>(longformer::kUseCompactMemory, false);
   const cublasLtOrder_t InputOrders[2] = {CUBLASLT_ORDER_ROW, CUBLASLT_ORDER_COL32};
@@ -78,7 +78,7 @@ QOrderedLongformerAttention::QOrderedLongformerAttention(const OpKernelInfo& inf
 
 Status
 QOrderedLongformerAttention::ComputeInternal(OpKernelContext* context) const {
-#if defined(CUDA_VERSION) && CUDA_VERSION >= 11040
+#if defined(USE_CUDA)
 
   const Tensor* input = context->Input<Tensor>(0);
   const Tensor* weights = context->Input<Tensor>(2);
