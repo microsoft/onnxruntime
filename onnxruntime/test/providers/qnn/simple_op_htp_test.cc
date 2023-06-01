@@ -117,7 +117,7 @@ TEST_F(QnnHTPBackendTests, ContextBinaryCacheTest) {
   const std::string context_binary_file = "./qnn_context_binary_test.bin";
   provider_options["qnn_context_cache_path"] = context_binary_file;
 
-  // Runs model with DQ-> InstanceNorm -> Q and compares the outputs of the CPU and QNN EPs.
+  // Runs model with DQ-> Atan-> Q and compares the outputs of the CPU and QNN EPs.
   // 1st run will generate the Qnn context cache binary file
   RunQnnModelTest(BuildQDQSingleInputOpTestCase<uint8_t>({1, 2, 3}, "Atan", kOnnxDomain),
                   provider_options,
