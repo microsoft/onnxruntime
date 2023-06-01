@@ -73,48 +73,37 @@ NS_ASSUME_NONNULL_BEGIN
   Ort::Property value;
   try {
     value = [self CXXAPIOrtCheckpoint].GetProperty(name.UTF8String);
+    if (std::string* str = std::get_if<std::string>(&value)) {
+      return [NSString stringWithUTF8String:str->c_str()];
+    }
+    ORT_CXX_API_THROW("Property is not a string.", ORT_INVALID_ARGUMENT);
+
   }
   ORT_OBJC_API_IMPL_CATCH_RETURNING_NULLABLE(error)
-
-  if (std::holds_alternative<std::string>(value)) {
-    return [NSString stringWithUTF8String:std::get<std::string>(value).c_str()];
-  } else {
-    NSString* errorMessage = [NSString stringWithFormat:@"Property '%@' is not a string.", name];
-    ORTSaveCodeAndDescriptionToError(ORT_INVALID_ARGUMENT, errorMessage, error);
-    return nil;
-  }
 }
 
 - (int64_t)getIntPropertyWithName:(NSString*)name error:(NSError**)error {
   Ort::Property value;
   try {
     value = [self CXXAPIOrtCheckpoint].GetProperty(name.UTF8String);
+    if (int64_t* i = std::get_if<int64_t>(&value)) {
+      return *i;
+    }
+    ORT_CXX_API_THROW("Property is not an integer.", ORT_INVALID_ARGUMENT);
   }
   ORT_OBJC_API_IMPL_CATCH(error, 0)
-
-  if (std::holds_alternative<int64_t>(value)) {
-    return std::get<int64_t>(value);
-  } else {
-    NSString* errorMessage = [NSString stringWithFormat:@"Property '%@' is not an integer.", name];
-    ORTSaveCodeAndDescriptionToError(ORT_INVALID_ARGUMENT, errorMessage, error);
-    return 0;
-  }
 }
 
 - (float)getFloatPropertyWithName:(NSString*)name error:(NSError**)error {
   Ort::Property value;
   try {
     value = [self CXXAPIOrtCheckpoint].GetProperty(name.UTF8String);
+    if (float* f = std::get_if<float>(&value)) {
+      return *f;
+    }
+    ORT_CXX_API_THROW("Property is not a float.", ORT_INVALID_ARGUMENT);
   }
   ORT_OBJC_API_IMPL_CATCH(error, 0.0f)
-
-  if (std::holds_alternative<float>(value)) {
-    return std::get<float>(value);
-  } else {
-    NSString* errorMessage = [NSString stringWithFormat:@"Property '%@' is not a float.", name];
-    ORTSaveCodeAndDescriptionToError(ORT_INVALID_ARGUMENT, errorMessage, error);
-    return 0.0f;
-  }
 }
 
 - (Ort::CheckpointState&)CXXAPIOrtCheckpoint {
