@@ -16,8 +16,8 @@ NS_ASSUME_NONNULL_BEGIN
   std::optional<Ort::CheckpointState> _checkpoint;
 }
 
-- (nullable instancetype)initWithCXXAPIOrtCheckPointFromPath:(NSString*)path
-                                                       error:(NSError**)error {
+- (nullable instancetype)initWithPath:(NSString*)path
+                                error:(NSError**)error {
   if ((self = [super init]) == nil) {
     return nil;
   }
@@ -27,12 +27,6 @@ NS_ASSUME_NONNULL_BEGIN
     return self;
   }
   ORT_OBJC_API_IMPL_CATCH_RETURNING_NULLABLE(error)
-}
-
-+ (nullable instancetype)loadCheckpointFromPath:(NSString*)path
-                                          error:(NSError**)error {
-  return [[ORTCheckpoint alloc] initWithCXXAPIOrtCheckPointFromPath:path
-                                                              error:error];
 }
 
 - (BOOL)saveCheckpointToPath:(NSString*)path
@@ -119,7 +113,7 @@ NS_ASSUME_NONNULL_BEGIN
   } else {
     NSString* errorMessage = [NSString stringWithFormat:@"Property '%@' is not a float.", name];
     ORTSaveCodeAndDescriptionToError(ORT_INVALID_ARGUMENT, errorMessage, error);
-    return 0.0;
+    return 0.0f;
   }
 }
 
