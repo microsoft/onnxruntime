@@ -666,6 +666,8 @@ class FusionAttention(Fusion):
         if not self.disable_multi_head_attention_bias:
             bias_name = self.create_combined_qkv_bias(q_add, k_add, v_add, mha_node_name)
             mha_inputs.append(bias_name)
+        else:
+            mha_inputs.append("")
 
         # Add optional inputs for MHA
         if past_k and past_v and past_k in graph_input_names and past_v in graph_input_names:
