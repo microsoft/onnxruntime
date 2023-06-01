@@ -1133,11 +1133,6 @@ public class OrtSession implements AutoCloseable {
         long apiHandle, long nativeHandle, String dimensionName, long dimensionValue)
         throws OrtException;
 
-    /*
-     ORT_API2_STATUS(AddExternalInitializers, _In_ OrtSessionOptions* options,
-                 _In_reads_(input_len) const char* const* initializer_names,
-                 _In_reads_(input_len) const OrtValue* const* initializers, size_t initializers_num);
-    */
     private native void addExternalInitializers(
         long apiHandle, long nativeHandle, String[] names, long[] tensorHandles)
         throws OrtException;
