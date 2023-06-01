@@ -139,13 +139,13 @@ Status LaunchStridedCopy(cudaStream_t stream,
 }
 
 template Status LaunchStridedCopy<float>(
-    hipStream_t stream,
+    cudaStream_t stream,
     const float* in, int4 in_shape, longlong4 in_strides,
     float* out, longlong4 out_strides,
     int max_threads_per_block);
 
 template Status LaunchStridedCopy<half>(
-    hipStream_t stream,
+    cudaStream_t stream,
     const half* in, int4 in_shape, longlong4 in_strides,
     half* out, longlong4 out_strides,
     int max_threads_per_block);
