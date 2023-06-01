@@ -155,6 +155,16 @@ def chain_model(args):
         logits_processor = helper.make_tensor_value_info("logits_processor", TensorProto.INT32, [1])
         graph_inputs.append(logits_processor)
 
+    if args.use_vocab_mask:
+        vocab_mask = helper.make_tensor_value_info("vocab_mask", TensorProto.INT32, [config.vocab_size])
+        graph_inputs.append(vocab_mask)
+
+    if args.use_prefix_vocab_mask:
+        prefix_vocab_mask = helper.make_tensor_value_info(
+            "prefix_vocab_mask", TensorProto.INT32, ["batch_size", config.vocab_size]
+        )
+        graph_inputs.append(prefix_vocab_mask)
+
     if args.collect_cross_qk:
         cross_qk_layer_head = helper.make_tensor_value_info(
             "cross_qk_layer_head", TensorProto.INT32, ["num_layer_head", 2]
