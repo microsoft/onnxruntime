@@ -17,7 +17,9 @@ import java.util.Arrays;
 import ai.onnxruntime.OnnxMl.TensorProto.DataLocation;
 import org.junit.jupiter.api.Test;
 
-/** */
+/**
+ * Methods to generate test models.
+ */
 public final class ModelGenerators {
   private ModelGenerators() {}
 
