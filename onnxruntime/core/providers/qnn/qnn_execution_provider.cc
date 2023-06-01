@@ -488,8 +488,8 @@ Status QNNExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused
     } else {
       // Load and execute from Onnx model if not exit and dump the context
       ORT_RETURN_IF_ERROR(CompileFromOrtGraph(fused_nodes_and_graphs, node_compute_funcs, logger));
-      // fused_node.OpType() is generated in GetCapability, e.g QNN_[hash_id]_[id]
-      // dump fused_node.OpType() as metadata in context cache binary file, so that we can validate it in GetCapability
+      // graph_viewer.Name() is generated in GetCapability, e.g QNN_[hash_id]_[id]
+      // dump graph_viewer.Name() as metadata in context cache binary file, so that we can validate it in GetCapability
       ORT_RETURN_IF_ERROR(qnn_backend_manager_->DumpQnnContext(context_cache_pathstring,
                                                                GetFileNameFromModelPath(graph_viewer.ModelPath()),
                                                                graph_viewer.Name()));
