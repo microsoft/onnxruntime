@@ -112,6 +112,8 @@ class Attention(nn.Module):
             # can concat previous decoder key/value_states to current projected key/value_states (third "elif" case)
             # if encoder bi-directional self-attention `past_key_value` is always `None`
             past_key_value = (key_layer, value_layer)
+            print("k cache", key_layer)
+            print("v cache", value_layer)
 
         # Take the dot product between "query" and "key" to get the raw attention scores.
         attention_scores = torch.matmul(query_layer, key_layer.transpose(-1, -2))
@@ -157,6 +159,7 @@ def run_cross_attention(
     kv_sequence_length,
     key_padding_mask=None,
     has_bias=True,
+    is_decoder=False,
 ):
     seed = 123
     torch.manual_seed(seed)
@@ -164,7 +167,7 @@ def run_cross_attention(
     torch.use_deterministic_algorithms(True)
 
     device = torch.device("cuda:0")
-    mha = Attention(num_heads, hidden_dim, q_head_size, v_head_size, is_decoder=False).to(device).eval()
+    mha = Attention(num_heads, hidden_dim, q_head_size, v_head_size, is_decoder=is_decoder).to(device).eval()
     if key_padding_mask is not None:
         key_padding_mask = key_padding_mask.to(device)
     torch.nn.init.uniform_(mha.query.weight, -0.5, 0.5)
@@ -255,6 +258,7 @@ def run_self_attention(
     sequence_length,
     key_padding_mask=None,
     has_bias=True,
+    is_decoder=False,
 ):
     seed = 123
     torch.manual_seed(seed)
@@ -262,7 +266,7 @@ def run_self_attention(
     torch.use_deterministic_algorithms(True)
 
     device = torch.device("cuda:0")
-    mha = Attention(num_heads, hidden_dim, q_head_size, v_head_size, is_decoder=False).to(device).eval()
+    mha = Attention(num_heads, hidden_dim, q_head_size, v_head_size, is_decoder=is_decoder).to(device).eval()
     if key_padding_mask is not None:
         key_padding_mask = key_padding_mask.to(device)
     torch.nn.init.uniform_(mha.query.weight, -0.5, 0.5)
@@ -461,6 +465,30 @@ def run_self_batch2_headsize_32_packed_qkv():
     )
 
 
+def run_self_past_present_headsize_8_nomask_norelposbias():
+    hidden_dim = 16
+    q_head_size = 8
+    v_head_size = 8
+    num_heads = 2
+    batch_size = 2
+    # In cpp side we use sequence_length = 1, we manually split the data of the first and second token.
+    # Then we use first token related data as past and second token related data as true input.
+    sequence_length = 2
+    key_padding_mask = None
+    has_bias = True
+    run_self_attention(
+        hidden_dim,
+        q_head_size,
+        v_head_size,
+        num_heads,
+        batch_size,
+        sequence_length,
+        key_padding_mask,
+        has_bias,
+        is_decoder=True,
+    )
+
+
 def create_test_data():
     """
     Create test data used in attention_op_test_helper.cc and multihead_attention_op_test.cc
@@ -485,6 +513,9 @@ def create_test_data():
 
     print("SelfAttention_Batch2_HeadSize32_PackedQKV")
     run_self_batch2_headsize_32_packed_qkv()
+
+    print("SelfAttention_WithPastAndPresent_HeadSize8_NoMask_NoRelPosBias")
+    run_self_past_present_headsize_8_nomask_norelposbias()
 
 
 with torch.no_grad():
