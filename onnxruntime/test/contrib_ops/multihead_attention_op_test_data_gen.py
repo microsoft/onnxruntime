@@ -465,6 +465,30 @@ def run_self_batch2_headsize_32_packed_qkv():
     )
 
 
+def run_cross_diff_seqlen_headsize_8():
+    hidden_dim = 16
+    q_head_size = 8
+    v_head_size = 8
+    num_heads = 2
+    batch_size = 1
+    sequence_length = 2
+    kv_sequence_length = 4
+    key_padding_mask = None
+    has_bias = True
+    run_cross_attention(
+        hidden_dim,
+        q_head_size,
+        v_head_size,
+        num_heads,
+        batch_size,
+        sequence_length,
+        kv_sequence_length,
+        key_padding_mask,
+        has_bias,
+        is_decoder=True,
+    )
+
+
 def run_self_past_present_headsize_8_nomask_norelposbias():
     hidden_dim = 16
     q_head_size = 8
@@ -516,6 +540,9 @@ def create_test_data():
 
     print("SelfAttention_WithPastAndPresent_HeadSize8_NoMask_NoRelPosBias")
     run_self_past_present_headsize_8_nomask_norelposbias()
+
+    print("CrossAttention_DiffSequenceLengths_HeadSize8")
+    run_cross_diff_seqlen_headsize_8()
 
 
 with torch.no_grad():

@@ -68,6 +68,8 @@ void GetCrossAttentionDataWithPast(AttentionTestData& data);
 void GetSelfAttentionData_WithPast_WithRelPosBias_ForT5(AttentionTestData& data);
 
 void GetCrossAttentionData_DiffSequenceLengths(AttentionTestData& data);
+void GetCrossAttentionData_DiffSequenceLengths_HeadSize8(AttentionTestData& data);
+void GetCrossAttentionData_DiffSequenceLengths_HeadSize8_NoBias(AttentionTestData& data);
 void GetSelfAttentionData_WithPastAndPresent_NoMask_NoRelPosBias(AttentionTestData& data);
 void GetSelfAttentionData_WithPastAndPresent_HeadSize8_NoMask_NoRelPosBias(AttentionTestData& data);
 void GetSelfAttentionData_WithPastAndPresent_HeadSize8_NoMask_NoRelPosBias_NoBias(AttentionTestData& data);
