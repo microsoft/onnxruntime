@@ -1455,6 +1455,7 @@ void CANNExecutionProvider::RegisterAllocator(AllocatorManager& allocator_manage
                                                         static_cast<int>(info_.arena_extend_strategy),
                                                         -1,
                                                         -1,
+                                                        -1,
                                                         -1)},
           true,
           false);

@@ -374,7 +374,10 @@ class InferenceSession(Session):
         self._sess_options = sess_options
         self._sess_options_initial = sess_options
         self._enable_fallback = True
-        self._read_config_from_model = os.environ.get("ORT_LOAD_CONFIG_FROM_MODEL") == "1"
+        if "read_config_from_model" in kwargs:
+            self._read_config_from_model = int(kwargs["read_config_from_model"]) == 1
+        else:
+            self._read_config_from_model = os.environ.get("ORT_LOAD_CONFIG_FROM_MODEL") == "1"
 
         # internal parameters that we don't expect to be used in general so aren't documented
         disabled_optimizers = kwargs["disabled_optimizers"] if "disabled_optimizers" in kwargs else None

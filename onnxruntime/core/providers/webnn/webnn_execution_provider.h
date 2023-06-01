@@ -24,7 +24,7 @@ class WebNNExecutionProvider : public IExecutionProvider {
   GetCapability(const onnxruntime::GraphViewer& graph_viewer,
                 const IKernelLookup& /*kernel_registries*/) const override;
 
-  DataLayout GetPreferredLayout() const override { return DataLayout::NHWC; }
+  DataLayout GetPreferredLayout() const override { return preferred_layout_; }
 
   // We implement the Compile that takes FusedNodeAndGraph instances.
   FusionStyle GetFusionStyle() const override { return FusionStyle::FilteredGraphViewer; }
@@ -43,6 +43,7 @@ class WebNNExecutionProvider : public IExecutionProvider {
   emscripten::val wnn_context_ = emscripten::val::object();
   emscripten::val wnn_builder_ = emscripten::val::object();
 
+  DataLayout preferred_layout_;
   InlinedHashMap<std::string, std::unique_ptr<onnxruntime::webnn::Model>> models_;
 };
 }  // namespace onnxruntime

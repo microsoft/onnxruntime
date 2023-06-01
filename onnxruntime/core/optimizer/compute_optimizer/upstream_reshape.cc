@@ -29,7 +29,7 @@ UpStreamReshapeGraphTransformer::UpStreamReshapeGraphTransformer(
            std::make_shared<SimplePointwiseReshapeActor<true>>(), opset_1)},
       {GetFullQualifiedOpName("Cast", kOnnxDomain),
        OpPassThroughConfig<UpStreamReshapeOperatorActorBase>(
-           std::make_shared<SimplePointwiseReshapeActor<true>>(), opset_13_9_6_1)},
+           std::make_shared<SimplePointwiseReshapeActor<true>>(), opset_19_13_9_6_1)},
       {GetFullQualifiedOpName("Dropout", kOnnxDomain),
        OpPassThroughConfig<UpStreamReshapeOperatorActorBase>(
            std::make_shared<SimplePointwiseReshapeActor<true>>(), opset_13_12_10_7_6_1)},
