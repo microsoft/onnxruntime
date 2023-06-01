@@ -63,7 +63,15 @@ jobs:
     - script: |
         set -e -x
         export ORT_DEBUG_NODE_IO_DUMP_OUTPUT_DATA=1
+        export ORT_DEBUG_NODE_IO_DUMP_INPUT_DATA=1
         export ORT_DEBUG_NODE_IO_SNIPPET_THRESHOLD=0
+        export ORT_DEBUG_NODE_IO_OP_TYPE_FILTER=QLinearConv
         ./onnxruntime_test_all --gtest_filter="XnnpackEP.TestConvTranspose_qdq"
       workingDirectory: $(Build.BinariesDirectory)/mac.xnnpack/RelWithDebInfo/RelWithDebInfo
       displayName: Run test with node output dump
+
+    - publish: $(Build.BinariesDirectory)/mac.xnnpack/RelWithDebInfo/RelWithDebInfo/onnxruntime_test_all
+      artifact: onnxruntime_test_all
+
+    - publish: $(Build.BinariesDirectory)/mac.xnnpack/RelWithDebInfo/RelWithDebInfo/onnx_test_runner
+      artifact: onnx_test_runner
