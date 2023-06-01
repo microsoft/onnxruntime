@@ -25,14 +25,14 @@ NS_ASSUME_NONNULL_BEGIN
 - (instancetype)init NS_UNAVAILABLE;
 
 /**
- * Loads a checkpoint from directory on disk.
+ * Creates a checkpoint from directory on disk.
  *
  * @param path The path to the checkpoint directory.
  * @param error Optional error information set if an error occurs.
  * @return The instance, or nil if an error occurs.
  */
-+ (nullable instancetype)loadCheckpointFromPath:(NSString*)path
-                                          error:(NSError**)error;
+- (nullable instancetype)initWithPath:(NSString*)path
+                                error:(NSError**)error NS_DESIGNATED_INITIALIZER;
 
 /**
  * Saves a checkpoint to directory on disk.

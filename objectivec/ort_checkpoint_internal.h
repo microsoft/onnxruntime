@@ -11,9 +11,6 @@ NS_ASSUME_NONNULL_BEGIN
 
 - (Ort::CheckpointState&)CXXAPIOrtCheckpoint;
 
-- (nullable instancetype)initWithCXXAPIOrtCheckPointFromPath:(NSString*)path
-                                                       error:(NSError**)error NS_DESIGNATED_INITIALIZER;
-
 @end
 
 NS_ASSUME_NONNULL_END

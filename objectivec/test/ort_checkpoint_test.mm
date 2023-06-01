@@ -34,14 +34,14 @@ NS_ASSUME_NONNULL_BEGIN
 
 - (void)testLoadCheckpoint {
   NSError* error = nil;
-  ORTCheckpoint* checkpoint = [ORTCheckpoint loadCheckpointFromPath:[self getCheckpointPath] error:&error];
+  ORTCheckpoint* checkpoint = [[ORTCheckpoint alloc] initWithPath:[self getCheckpointPath] error:&error];
   ORTAssertNullableResultSuccessful(checkpoint, error);
 }
 
 - (void)testIntProperty {
   NSError* error = nil;
   // Load checkpoint
-  ORTCheckpoint* checkpoint = [ORTCheckpoint loadCheckpointFromPath:[self getCheckpointPath] error:&error];
+  ORTCheckpoint* checkpoint = [[ORTCheckpoint alloc] initWithPath:[self getCheckpointPath] error:&error];
   ORTAssertNullableResultSuccessful(checkpoint, error);
 
   // Add property
@@ -56,7 +56,7 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)testFloatProperty {
   NSError* error = nil;
   // Load checkpoint
-  ORTCheckpoint* checkpoint = [ORTCheckpoint loadCheckpointFromPath:[self getCheckpointPath] error:&error];
+  ORTCheckpoint* checkpoint = [[ORTCheckpoint alloc] initWithPath:[self getCheckpointPath] error:&error];
   ORTAssertNullableResultSuccessful(checkpoint, error);
 
   // Add property
@@ -71,7 +71,7 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)testStringProperty {
   NSError* error = nil;
   // Load checkpoint
-  ORTCheckpoint* checkpoint = [ORTCheckpoint loadCheckpointFromPath:[self getCheckpointPath] error:&error];
+  ORTCheckpoint* checkpoint = [[ORTCheckpoint alloc] initWithPath:[self getCheckpointPath] error:&error];
   ORTAssertNullableResultSuccessful(checkpoint, error);
 
   // Add property
