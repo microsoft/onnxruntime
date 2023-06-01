@@ -21,7 +21,14 @@ static GetTestModelFn BuildLogicalOpTestCase(const std::string& op_type, const s
   return [op_type, shape](ModelTestBuilder& builder) {
     auto* input0 = builder.MakeInput<float>(shape, 0.0f, 20.0f);
     auto* input1 = builder.MakeInput<float>(shape, 0.0f, 20.0f);
-    auto* output = builder.MakeOutput();
+    NodeArg* output = nullptr;
+
+    // Explicitly set output type/shape for logical comparison ops implemented as functions.
+    if (op_type == "GreaterOrEqual" || op_type == "LessOrEqual") {
+      output = builder.MakeOutput<bool>(shape);
+    } else {
+      output = builder.MakeOutput();
+    }
 
     builder.AddNode(op_type, {input0, input1}, {output});
   };
@@ -36,7 +43,14 @@ static GetTestModelFn BuildQDQLogicalOpTestCase(const std::string& op_type, cons
 
     auto* input0 = builder.MakeInput<float>(shape, -1.0f, 1.0f);
     auto* input1 = builder.MakeInput<float>(shape, -1.0f, 1.0f);
-    auto* output = builder.MakeOutput();
+    NodeArg* output = nullptr;
+
+    // Explicitly set output type/shape for logical comparison ops implemented as functions.
+    if (op_type == "GreaterOrEqual" || op_type == "LessOrEqual") {
+      output = builder.MakeOutput<bool>(shape);
+    } else {
+      output = builder.MakeOutput();
+    }
 
     // input -> Q -> DQ -> Op
     auto* qdq0_output = AddQDQNodePair<InputQType>(builder, input0, qdq_scale, zero_point);
@@ -103,11 +117,7 @@ TEST_F(QnnCPUBackendTests, LogicalOpGreater4D) {
   RunCPULogicalOpTest("Greater", {1, 3, 16, 16}, ExpectedEPNodeAssignment::All, "LogicalOpGreater4D");
 }
 
-// TODO: Add support for GreaterOrEqual.
-// According to the ONNX spec, logical operators that are implemented as
-// functions (e.g., LessOrEqual or GreaterOrEqual) do not have output type/shape inference.
-// We need to handle this uniquely.
-TEST_F(QnnCPUBackendTests, DISABLED_LogicalOpGreaterOrEqual4D) {
+TEST_F(QnnCPUBackendTests, LogicalOpGreaterOrEqual4D) {
   RunCPULogicalOpTest("GreaterOrEqual", {1, 3, 16, 16}, ExpectedEPNodeAssignment::All, "LogicalOpGreaterOrEqual4D");
 }
 
@@ -115,11 +125,7 @@ TEST_F(QnnCPUBackendTests, LogicalOpLess4D) {
   RunCPULogicalOpTest("Less", {1, 3, 16, 16}, ExpectedEPNodeAssignment::All, "LogicalOpLess4D");
 }
 
-// TODO: Add support for LessOrEqual.
-// According to the ONNX spec, logical operators that are implemented as
-// functions (e.g., LessOrEqual or GreaterOrEqual) do not have output type/shape inference.
-// We need to handle this uniquely.
-TEST_F(QnnCPUBackendTests, DISABLED_LogicalOpLessOrEqual4D) {
+TEST_F(QnnCPUBackendTests, LogicalOpLessOrEqual4D) {
   RunCPULogicalOpTest("LessOrEqual", {1, 3, 16, 16}, ExpectedEPNodeAssignment::All, "LogicalOpLessOrEqual4D");
 }
 
@@ -136,11 +142,7 @@ TEST_F(QnnHTPBackendTests, LogicalOpGreater4D) {
   RunQDQLogicalOpTest<uint8_t>("Greater", {1, 3, 16, 16}, ExpectedEPNodeAssignment::All, "LogicalOpGreater4D");
 }
 
-// TODO: Add support for GreaterOrEqual.
-// According to the ONNX spec, logical operators that are implemented as
-// functions (e.g., LessOrEqual or GreaterOrEqual) do not have output type/shape inference.
-// We need to handle this uniquely.
-TEST_F(QnnHTPBackendTests, DISABLED_LogicalOpGreaterOrEqual4D) {
+TEST_F(QnnHTPBackendTests, LogicalOpGreaterOrEqual4D) {
   RunQDQLogicalOpTest<uint8_t>("GreaterOrEqual", {1, 3, 16, 16}, ExpectedEPNodeAssignment::All, "LogicalOpGreaterOrEqual4D");
 }
 
@@ -148,11 +150,7 @@ TEST_F(QnnHTPBackendTests, LogicalOpLess4D) {
   RunQDQLogicalOpTest<uint8_t>("Less", {1, 3, 16, 16}, ExpectedEPNodeAssignment::All, "LogicalOpLess4D");
 }
 
-// TODO: Add support for LessOrEqual.
-// According to the ONNX spec, logical operators that are implemented as
-// functions (e.g., LessOrEqual or GreaterOrEqual) do not have output type/shape inference.
-// We need to handle this uniquely.
-TEST_F(QnnHTPBackendTests, DISABLED_LogicalOpLessOrEqual4D) {
+TEST_F(QnnHTPBackendTests, LogicalOpLessOrEqual4D) {
   RunQDQLogicalOpTest<uint8_t>("LessOrEqual", {1, 3, 16, 16}, ExpectedEPNodeAssignment::All, "LogicalOpLessOrEqual4D");
 }
 

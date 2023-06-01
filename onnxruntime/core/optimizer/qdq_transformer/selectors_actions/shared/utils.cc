@@ -92,7 +92,9 @@ static const OpVersionsAndSelector::OpVersionsMap GetBatchNormalizationOpVersion
 static const OpVersionsAndSelector::OpVersionsMap GetLogicalComparisonOpVersionsMap() {
   return {{"Equal", {}},
           {"Greater", {}},
-          {"Less", {}}};
+          {"GreaterOrEqual", {}},
+          {"Less", {}},
+          {"LessOrEqual", {}}};
 }
 
 /* Selector rules registration related */
