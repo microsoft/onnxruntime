@@ -2086,6 +2086,7 @@ ORT_API_STATUS_IMPL(OrtApis::CreateROCMProviderOptions, _Outptr_ OrtROCMProvider
   options->default_memory_arena_cfg = nullptr;
   options->tunable_op_enable = 0;
   options->tunable_op_tuning_enable = 0;
+  options->tunable_op_max_tuning_duration_ms = 0;
 
   *out = options.release();
   return nullptr;
