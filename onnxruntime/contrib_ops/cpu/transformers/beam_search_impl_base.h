@@ -62,6 +62,14 @@ struct BeamSearchState : IBeamSearchState<T> {
     }
   }
 
+  void EnsurePastStateReorderStagingBuffer(AllocatorPtr allocator, int64_t sz) {
+    auto current_buffer_size = this->staging_for_past_state_reorder.Shape().Size();
+    if (sz > current_buffer_size) {
+      TensorShape buffer_shape = {sz};
+      this->staging_for_past_state_reorder = Tensor(DataTypeImpl::GetType<T>(), buffer_shape, allocator);
+    }
+  }
+
  private:
   BufferUniquePtr next_token_logits_buffer_;
   BufferUniquePtr next_token_scores_buffer_;

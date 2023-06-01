@@ -541,20 +541,39 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
       std::string value(token.substr(pos + 1));
 
       if (key == "backend_path") {
-        std::set<std::string> qnn_backend_path;
         if (value.empty()) {
           ORT_THROW("Please provide the QNN backend path.");
-        } else {
-          qnn_options[key] = value;
         }
+      } else if (key == "qnn_context_cache_enable") {
+        if (value != "1") {
+          ORT_THROW("Set to 1 to enable qnn_context_cache_enable.");
+        }
+      } else if (key == "qnn_context_cache_path") {
+        // no validation
       } else if (key == "profiling_level") {
-        qnn_options[key] = value;
+        std::set<std::string> supported_profiling_level = {"off", "basic", "detailed"};
+        if (supported_profiling_level.find(value) == supported_profiling_level.end()) {
+          ORT_THROW("Supported profiling_level: off, basic, detailed");
+        }
       } else if (key == "rpc_control_latency") {
-        qnn_options[key] = value;
+        // no validation
+      } else if (key == "htp_performance_mode") {
+        std::set<std::string> supported_htp_perf_mode = {"burst", "balanced", "default", "high_performance",
+                                                         "high_power_saver", "low_balanced", "low_power_saver",
+                                                         "power_saver", "sustained_high_performance"};
+        if (supported_htp_perf_mode.find(value) == supported_htp_perf_mode.end()) {
+          std::ostringstream str_stream;
+          std::copy(supported_htp_perf_mode.begin(), supported_htp_perf_mode.end(),
+                    std::ostream_iterator<std::string>(str_stream, ","));
+          std::string str = str_stream.str();
+          ORT_THROW("Supported htp_performance_mode: " + str);
+        }
       } else {
-        ORT_THROW(R"(Wrong key type entered. Choose from options:
-['backend_path', 'profiling_level', 'rpc_control_latency'])");
+        ORT_THROW(R"(Wrong key type entered. Choose from options: ['backend_path', 'qnn_context_cache_enable', 
+'qnn_context_cache_path', 'profiling_level', 'rpc_control_latency', 'htp_performance_mode'])");
       }
+
+      qnn_options[key] = value;
     }
     session_options.AppendExecutionProvider("QNN", qnn_options);
 #else

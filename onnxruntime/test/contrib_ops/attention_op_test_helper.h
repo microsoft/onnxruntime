@@ -43,7 +43,7 @@ struct AttentionTestData {
 };
 
 // Disable some tests in Windows since prefast build might crash with large test data.
-#ifndef _MSC_VER
+#if !defined(_MSC_VER)
 // Return packed weights and bias for input projection.
 void GetAttentionWeight(std::vector<float>& weight_data, int elements = 64 * 3 * 64, int offset = 0, int step = 1);
 void GetAttentionBias(std::vector<float>& bias_data, int elements = 3 * 64, int offset = 0, int step = 1);

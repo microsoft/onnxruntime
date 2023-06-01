@@ -4,6 +4,7 @@
 #if !defined(ORT_MINIMAL_BUILD)
 
 #include <string>
+#include <filesystem>
 #include "core/graph/graph.h"
 
 #include "test/optimizer/qdq_test_utils.h"
@@ -95,10 +96,46 @@ TEST_F(QnnHTPBackendTests, TestQDQHardSwishTest) {
   RunQDQSingleInputOpTest({1, 2, 3}, "HardSwish", "TestQDQGeluTest", 14, ExpectedEPNodeAssignment::All, 1);
 }
 
-// Check that QNN compiles DQ -> HardSwish -> Q as a single unit.
+// Check that QNN compiles DQ -> Atan -> Q as a single unit.
 // Use an input of rank 3.
 TEST_F(QnnHTPBackendTests, TestQDQAtanTest) {
   RunQDQSingleInputOpTest({1, 2, 3}, "Atan", "TestQDQGeluTest", 11, ExpectedEPNodeAssignment::All, 1);
+}
+
+// Run QDQ model on HTP twice
+// 1st run will generate the Qnn context cache binary file
+// 2nd run will load and run from Qnn context cache binary file
+TEST_F(QnnHTPBackendTests, ContextBinaryCacheTest) {
+  RunQDQSingleInputOpTest({1, 2, 3}, "Atan", "TestQDQGeluTest", 11, ExpectedEPNodeAssignment::All, 1);
+  ProviderOptions provider_options;
+#if defined(_WIN32)
+  provider_options["backend_path"] = "QnnHtp.dll";
+#else
+  provider_options["backend_path"] = "libQnnHtp.so";
+#endif
+  provider_options["qnn_context_cache_enable"] = "1";
+  const std::string context_binary_file = "./qnn_context_binary_test.bin";
+  provider_options["qnn_context_cache_path"] = context_binary_file;
+
+  // Runs model with DQ-> Atan-> Q and compares the outputs of the CPU and QNN EPs.
+  // 1st run will generate the Qnn context cache binary file
+  RunQnnModelTest(BuildQDQSingleInputOpTestCase<uint8_t>({1, 2, 3}, "Atan", kOnnxDomain),
+                  provider_options,
+                  11,
+                  ExpectedEPNodeAssignment::All,
+                  1,
+                  "ContextBinaryCacheTest");
+
+  // Make sure the Qnn context cache binary file is generated
+  EXPECT_TRUE(std::filesystem::exists(context_binary_file.c_str()));
+
+  // 2nd run will load and run from Qnn context cache binary file
+  RunQnnModelTest(BuildQDQSingleInputOpTestCase<uint8_t>({1, 2, 3}, "Atan", kOnnxDomain),
+                  provider_options,
+                  11,
+                  ExpectedEPNodeAssignment::All,
+                  1,
+                  "ContextBinaryCacheTest");
 }
 
 #endif  // defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)

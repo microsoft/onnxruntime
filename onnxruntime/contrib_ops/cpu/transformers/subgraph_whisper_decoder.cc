@@ -106,9 +106,9 @@ Status WhisperDecoderSubgraph::Validate(const std::vector<const NodeArg*>& subgr
   ORT_RETURN_IF(subgraph_inputs[0]->TypeAsProto()->tensor_type().elem_type() != int32_type,
                 "decoder subgraph input 0 (input_ids) shall have int32 type");
 
-  auto float_type = subgraph_inputs[2]->TypeAsProto()->tensor_type().elem_type();
+  auto float_type = subgraph_inputs[1]->TypeAsProto()->tensor_type().elem_type();
   ORT_RETURN_IF(float_type != float32_type && float_type != float16_type,
-                "decoder subgraph input 2 (encoder_hidden_states) shall have float or float16 type");
+                "decoder subgraph input 1 (encoder_hidden_states) shall have float or float16 type");
 
   for (int i = first_past_input_index_; i < first_past_input_index_ + 4 * num_layers; i++) {
     ORT_RETURN_IF(subgraph_inputs[i]->TypeAsProto()->tensor_type().elem_type() != float_type,
@@ -202,6 +202,7 @@ Status WhisperDecoderSubgraph::CreateInitialFeeds(
   // When first_past_input_index_ == 2, the encoder_hidden_states and past states are copied from the second output
   // of encoder.
   // When first_past_input_index_ == 1, the past states are copied from the second output of encoder.
+  // TODO: MAKE IT MORE READABLE
   for (size_t j = static_cast<size_t>(3) - first_past_input_index_; j < encoder_fetches.size(); j++) {
     if (j == 1) {
       ORT_RETURN_IF(has_hidden_state_ == false, "Invalid hidden_states expension: has_hidden_state_ == false");
@@ -226,7 +227,7 @@ Status WhisperDecoderSubgraph::CreateInitialFeeds(
       decoder_feeds.push_back(expanded_hidden_states);
     } else {
       // past key/value for cross attention does not need to be initialized with max_seq_len since they are static.
-      bool use_max_seq_len = (j - first_past_input_index_) < 2 * static_cast<size_t>(num_layers);
+      bool use_max_seq_len = (j - first_past_input_index_) <= 2 * static_cast<size_t>(num_layers);
 
       OrtValue expanded_cache;
       if (is_output_float16_) {
@@ -252,7 +253,7 @@ Status WhisperDecoderSubgraph::CreateInitialFeeds(
 
   if (past_present_share_buffer_) {
     // Past sequence length feed
-    ORT_RETURN_IF_ERROR(AppendPastSequenceLength(decoder_feeds, cpu_allocator, 1));
+    ORT_RETURN_IF_ERROR(AppendPastSequenceLength(decoder_feeds, cpu_allocator, cur_len - 1));
     // Add beam search specific inputs
     if (need_cache_indir) {
       const int64_t batch_size = static_cast<int64_t>(batch_beam_size / num_beam);

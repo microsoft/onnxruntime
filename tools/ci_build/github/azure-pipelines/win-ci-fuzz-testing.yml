@@ -1,6 +1,6 @@
 jobs:
 - job: 'build'
-  pool: 'Win-CPU-2021'
+  pool: 'onnxruntime-Win-CPU-2022'
   strategy:
     maxParallel: 2
     matrix:

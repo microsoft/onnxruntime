@@ -75,7 +75,9 @@ else()
                       PREFIX rapidjson
                       SOURCE_DIR ${CMAKE_CURRENT_BINARY_DIR}/_deps/rapidjson-src
                       BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR}/_deps/rapidjson-build
-                      CMAKE_ARGS -DRAPIDJSON_BUILD_TESTS=OFF -DRAPIDJSON_BUILD_DOC=OFF -DRAPIDJSON_BUILD_EXAMPLES=OFF)
+                      CMAKE_ARGS -DRAPIDJSON_BUILD_TESTS=OFF -DRAPIDJSON_BUILD_DOC=OFF -DRAPIDJSON_BUILD_EXAMPLES=OFF
+                      INSTALL_COMMAND ""
+                      UPDATE_COMMAND "")
 
   ExternalProject_Get_Property(rapidjson source_dir)
   set(RAPIDJSON_INCLUDE_DIR ${source_dir}/include)
@@ -90,8 +92,6 @@ else()
                       CMAKE_ARGS -DCMAKE_INSTALL_PREFIX=binary -DTRITON_ENABLE_CC_HTTP=ON -DTRITON_ENABLE_ZLIB=OFF
                       INSTALL_COMMAND ""
                       UPDATE_COMMAND "")
-
-  add_dependencies(triton rapidjson)
 
 endif() #if (WIN32)
 

@@ -147,7 +147,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 #endif
 
 #if USE_ROCM
-                opt.AppendExecutionProvider_ROCM(0);
+                opt.AppendExecutionProvider_ROCm(0);
 #endif
 
 #if USE_TENSORRT
@@ -1655,9 +1655,9 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         void TestROCMAllocatorInternal(InferenceSession session)
         {
             int device_id = 0;
-            using (var info_rocm = new OrtMemoryInfo(OrtMemoryInfo.allocatorROCM, OrtAllocatorType.ArenaAllocator, device_id, OrtMemType.Default))
+            using (var info_rocm = new OrtMemoryInfo(OrtMemoryInfo.allocatorHIP, OrtAllocatorType.ArenaAllocator, device_id, OrtMemType.Default))
             {
-                Assert.Equal("Rocm", info_rocm.Name);
+                Assert.Equal("Hip", info_rocm.Name);
                 Assert.Equal(device_id, info_rocm.Id);
                 Assert.Equal(OrtAllocatorType.ArenaAllocator, info_rocm.GetAllocatorType());
                 Assert.Equal(OrtMemType.Default, info_rocm.GetMemoryType());
@@ -1690,7 +1690,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 #endif
 
 #if USE_ROCM
-                options.AppendExecutionProvider_ROCM(0);
+                options.AppendExecutionProvider_ROCm(0);
 #endif
 
                 using (var session = new InferenceSession(model, options))

@@ -101,6 +101,11 @@ void BeamSearchParameters::ParseFromInputs(OpKernelContext* context) {
     repetition_penalty = 1.0f;
   }
   ORT_ENFORCE(repetition_penalty > 0.0f, "repetition_penalty shall be greater than 0, got ", repetition_penalty);
+
+  auto* logits_processor_tensor = context->Input<Tensor>(11);
+  logits_processor = logits_processor_tensor ? static_cast<int>(*logits_processor_tensor->Data<int32_t>()) : 0;
+  ORT_ENFORCE(logits_processor >= 0,
+              "logits_processor shall be a non-negative integer, got ", logits_processor);
 }
 
 void BeamSearchParameters::SetSubgraphParameters(int vocabulary_size, int heads, int hidden_size_per_head, int layers) {

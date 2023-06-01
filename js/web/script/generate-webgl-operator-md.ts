@@ -71,7 +71,7 @@ assert.ok(opsets.length === 1 && opsets[0] === 'Onnx');
 const onnxOpset = ops.get(opsets[0])!;
 const opTypes = Array.from(onnxOpset.keys()).sort();
 
-const doc = fs.createWriteStream(path.join(__dirname, '../docs/operators.md'));
+const doc = fs.createWriteStream(path.join(__dirname, '../docs/webgl-operators.md'));
 doc.write(`## Operators Support Table${EOL}${EOL}`);
 doc.write(`The following table shows [ai.onnx](https://github.com/onnx/onnx/blob/main/docs/Operators.md)\
   operators from which onnx opset version are currently supported by ONNX Runtime Web. For example, \`4-6, 8+\` means\

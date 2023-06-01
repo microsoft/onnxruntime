@@ -88,9 +88,9 @@ jobs:
   - task: CmdLine@2
     inputs:
       script: |
-        rm -rf $(Build.BinariesDirectory)/Release/onnxruntime $(Build.BinariesDirectory)/Release/pybind11 $(Build.BinariesDirectory)/Release/_deps
+        rm -rf $(Build.BinariesDirectory)/Release/onnxruntime $(Build.BinariesDirectory)/Release/pybind11
         rm -f $(Build.BinariesDirectory)/Release/models
-        rm -rf $(Build.BinariesDirectory)/Release/_deps
+        find $(Build.BinariesDirectory)/Release/_deps -mindepth 1 ! -regex '^$(Build.BinariesDirectory)/Release/_deps/onnx-src\(/.*\)?' -delete
         cd $(Build.BinariesDirectory)/Release
         find -executable -type f > $(Build.BinariesDirectory)/Release/perms.txt
 

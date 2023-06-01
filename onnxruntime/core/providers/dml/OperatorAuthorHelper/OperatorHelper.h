@@ -687,13 +687,6 @@ public:
 
     std::vector<EdgeShapes> GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const;
 
-private:
-    static void HandleEmptyAxes(
-        /*inout*/std::vector<int32_t>& onnxAxes,
-        gsl::span<const uint32_t> inputShape,
-        bool treatEmptyAsNop
-    );
-
 protected:
     std::vector<int32_t> m_axes;
     int m_keepDims = 0; // Keep the dimensions rather than removing size 1 dimensions.
@@ -1420,6 +1413,38 @@ public:
     std::vector<EdgeShapes> GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const;
 };
 
+class MultiHeadAttentionHelper
+{
+public:
+    template <typename Info_t, typename Shape_t>
+    MultiHeadAttentionHelper(const Info_t& info, const Shape_t& shapeInfo)
+    {
+        Initialize(KernelInformationAdapter(info));
+    }
+
+    std::vector<EdgeShapes> GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const;
+
+private:
+    void Initialize(const IKernelInformationAdapter& kernelInformation);
+    uint32_t m_numHeads;
+};
+
+class AttentionHelper
+{
+public:
+    template <typename Info_t, typename Shape_t>
+    AttentionHelper(const Info_t& info, const Shape_t& shapeInfo)
+    {
+        Initialize(KernelInformationAdapter(info));
+    }
+
+    std::vector<EdgeShapes> GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const;
+
+private:
+    void Initialize(const IKernelInformationAdapter& kernelInformation);
+    std::vector<int32_t> m_qkvHiddenSizes;
+};
+
 class SkipLayerNormHelper
 {
 public:
@@ -1494,6 +1519,7 @@ using ShapeInferenceHelper_Slice13 = VersionedOpsetHelper<SliceHelper, 13>; // N
 using ShapeInferenceHelper_Pad7 = VersionedOpsetHelper<PaddingHelper, 7>;
 using ShapeInferenceHelper_Pad11 = VersionedOpsetHelper<PaddingHelper, 11>;
 using ShapeInferenceHelper_Pad13 = VersionedOpsetHelper<PaddingHelper, 13>;
+using ShapeInferenceHelper_Pad18 = VersionedOpsetHelper<PaddingHelper, 18>;
 
 using ShapeInferenceHelper_SpaceToDepth = SpaceToDepthHelper;
 using ShapeInferenceHelper_DepthToSpace = DepthToSpaceHelper;
@@ -1556,7 +1582,8 @@ using ShapeInferenceHelper_Affine = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_QuantizeLinear = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_DequantizeLinear = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_QLinearSigmoid = GetOutputShapeAsInputShapeHelper;
-using ShapeInferenceHelper_Attention = GetOutputShapeAsInputShapeHelper;
+using ShapeInferenceHelper_Attention = AttentionHelper;
+using ShapeInferenceHelper_MultiHeadAttention = MultiHeadAttentionHelper;
 using ShapeInferenceHelper_Sign = GetBroadcastedOutputShapeHelper;
 using ShapeInferenceHelper_IsNaN = GetBroadcastedOutputShapeHelper;
 using ShapeInferenceHelper_Erf = GetBroadcastedOutputShapeHelper;
@@ -1571,6 +1598,10 @@ using ShapeInferenceHelper_Mod = GetBroadcastedOutputShapeHelper;
 using ShapeInferenceHelper_BitShift= GetBroadcastedOutputShapeHelper;
 using ShapeInferenceHelper_Round = GetBroadcastedOutputShapeHelper;
 using ShapeInferenceHelper_QuickGelu = GetOutputShapeAsInputShapeHelper;
+using ShapeInferenceHelper_BitwiseAnd = GetBroadcastedOutputShapeHelper;
+using ShapeInferenceHelper_BitwiseOr = GetBroadcastedOutputShapeHelper;
+using ShapeInferenceHelper_BitwiseXor = GetBroadcastedOutputShapeHelper;
+using ShapeInferenceHelper_BitwiseNot = GetBroadcastedOutputShapeHelper;
 
 using ShapeInferenceHelper_ReduceSum = ReduceHelper;
 using ShapeInferenceHelper_ReduceMean = ReduceHelper;

@@ -126,6 +126,8 @@ struct IGenerationParameters {
   static constexpr int kModelTypeT5 = 1;
   static constexpr int kModelTypeWhisper = 2;
 
+  static constexpr int kLogitsProcessorTypeWhisper = 1;
+
   // Parameters from node attributes
   int model_type;  // 0 for GPT-2; 1 for encoder-decoder like T5; 2 for float inputs like Whisper
   int eos_token_id;
@@ -143,6 +145,7 @@ struct IGenerationParameters {
   float repetition_penalty;
   int batch_size;       // deduce from first dimension of input_ids
   int sequence_length;  // deduce from second dimension of input_ids of GPT-2 or decoder_input_ids of T5
+  int logits_processor;
 
   gsl::span<const int32_t> vocab_mask;
   gsl::span<const int32_t> prefix_vocab_mask;
