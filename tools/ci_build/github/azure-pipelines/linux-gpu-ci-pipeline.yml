@@ -6,6 +6,9 @@ resources:
     name: pypa/manylinux
     ref: aead4d751c2101e23336aa73f2380df83e7a13f3
 
+variables:
+  - template: templates/common-variables.yml
+
 jobs:
 - job: Linux_Build
   timeoutInMinutes: 120
@@ -28,7 +31,7 @@ jobs:
     parameters:
       Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_cuda11
       Context: tools/ci_build/github/linux/docker
-      DockerBuildArgs: "--network=host --build-arg POLICY=manylinux2014 --build-arg PLATFORM=x86_64 --build-arg BASEIMAGE=nvidia/cuda:11.6.2-cudnn8-devel-centos7 --build-arg DEVTOOLSET_ROOTPATH=/opt/rh/devtoolset-11/root --build-arg PREPEND_PATH=/opt/rh/devtoolset-11/root/usr/bin: --build-arg LD_LIBRARY_PATH_ARG=/opt/rh/devtoolset-11/root/usr/lib64:/opt/rh/devtoolset-11/root/usr/lib:/opt/rh/devtoolset-11/root/usr/lib64/dyninst:/opt/rh/devtoolset-11/root/usr/lib/dyninst:/usr/local/lib64 --build-arg BUILD_UID=$( id -u )"
+      DockerBuildArgs: "--network=host --build-arg POLICY=manylinux2014 --build-arg PLATFORM=x86_64 --build-arg BASEIMAGE=${{variables.common_cuda_baseimg}} --build-arg DEVTOOLSET_ROOTPATH=/opt/rh/devtoolset-11/root --build-arg PREPEND_PATH=/opt/rh/devtoolset-11/root/usr/bin: --build-arg LD_LIBRARY_PATH_ARG=/opt/rh/devtoolset-11/root/usr/lib64:/opt/rh/devtoolset-11/root/usr/lib:/opt/rh/devtoolset-11/root/usr/lib64/dyninst:/opt/rh/devtoolset-11/root/usr/lib/dyninst:/usr/local/lib64 --build-arg BUILD_UID=$( id -u )"
       Repository: onnxruntimecuda11build
 
   - task: Cache@2
@@ -73,7 +76,7 @@ jobs:
               --build_shared_lib \
               --parallel \
               --build_wheel \
-              --enable_onnx_tests --use_cuda --cuda_version=11.6 --cuda_home=/usr/local/cuda-11.6 --cudnn_home=/usr/local/cuda-11.6 \
+              --enable_onnx_tests --use_cuda --cuda_version=${{variables.common_cuda_version}} --cuda_home=/usr/local/cuda-${{variables.common_cuda_version}} --cudnn_home=/usr/local/cuda-${{variables.common_cuda_version}} \
               --enable_cuda_profiling \
               --enable_pybind --build_java \
               --use_cache \
@@ -85,9 +88,9 @@ jobs:
   - task: CmdLine@2
     inputs:
       script: |
-        rm -rf $(Build.BinariesDirectory)/Release/onnxruntime $(Build.BinariesDirectory)/Release/pybind11 $(Build.BinariesDirectory)/Release/_deps
+        rm -rf $(Build.BinariesDirectory)/Release/onnxruntime $(Build.BinariesDirectory)/Release/pybind11
         rm -f $(Build.BinariesDirectory)/Release/models
-        rm -rf $(Build.BinariesDirectory)/Release/_deps
+        find $(Build.BinariesDirectory)/Release/_deps -mindepth 1 ! -regex '^$(Build.BinariesDirectory)/Release/_deps/onnx-src\(/.*\)?' -delete
         cd $(Build.BinariesDirectory)/Release
         find -executable -type f > $(Build.BinariesDirectory)/Release/perms.txt
 
@@ -116,34 +119,42 @@ jobs:
       artifactName: 'drop-linux'
       targetPath: '$(Build.BinariesDirectory)/Release'
 
+  - checkout: self
+    clean: true
+    submodules: none
+
+  - template: templates/get-docker-image-steps.yml
+    parameters:
+      Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_cuda11
+      Context: tools/ci_build/github/linux/docker
+      DockerBuildArgs: "--network=host --build-arg POLICY=manylinux2014 --build-arg PLATFORM=x86_64 --build-arg BASEIMAGE=${{variables.common_cuda_baseimg}} --build-arg DEVTOOLSET_ROOTPATH=/opt/rh/devtoolset-11/root --build-arg PREPEND_PATH=/opt/rh/devtoolset-11/root/usr/bin: --build-arg LD_LIBRARY_PATH_ARG=/opt/rh/devtoolset-11/root/usr/lib64:/opt/rh/devtoolset-11/root/usr/lib:/opt/rh/devtoolset-11/root/usr/lib64/dyninst:/opt/rh/devtoolset-11/root/usr/lib/dyninst:/usr/local/lib64 --build-arg BUILD_UID=$( id -u )"
+      Repository: onnxruntimecuda11build
+
   - task: CmdLine@2
     inputs:
       script: |
-         set -e -x
-         # We assume the machine doesn't have gcc and python development header files
-         sudo rm -f /build /onnxruntime_src
-         sudo ln -s $(Build.SourcesDirectory) /onnxruntime_src
-         python3 -m pip uninstall -y ort-nightly-gpu ort-nightly onnxruntime onnxruntime-gpu onnxruntime-training onnxruntime-directml ort-nightly-directml onnx -qq
-         cp $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/scripts/manylinux/requirements.txt $(Build.BinariesDirectory)/requirements.txt
-         # Test ORT with the latest ONNX release.
-         sed -i "s/git+http:\/\/github\.com\/onnx\/onnx.*/onnx/" $(Build.BinariesDirectory)/requirements.txt
-         python3 -m pip install -r $(Build.BinariesDirectory)/requirements.txt
-         python3 -m pip install $(Build.BinariesDirectory)/Release/dist/*.whl
-         ln -s /data/models $(Build.BinariesDirectory)
-         cd $(Build.BinariesDirectory)/Release
-         # Restore file permissions
-         xargs -a $(Build.BinariesDirectory)/Release/perms.txt chmod a+x
-         cd $(Build.SourcesDirectory)/java
-         $(Build.SourcesDirectory)/java/gradlew "cmakeCheck" "-DcmakeBuildDir=$(Build.BinariesDirectory)/Release" "-DUSE_CUDA=1"
-         cd /tmp
-         python3 $(Build.SourcesDirectory)/tools/ci_build/build.py \
-              --build_dir $(Build.BinariesDirectory) --cmake_generator Ninja \
-              --config Release --test \
-              --skip_submodule_sync \
-              --build_shared_lib \
-              --parallel \
-              --build_wheel \
-              --enable_onnx_tests --use_cuda --cuda_version=11.6 --cuda_home=/usr/local/cuda-11.6 --cudnn_home=/usr/local/cuda-11.6 \
-              --enable_pybind --build_java --ctest_path ''
+        set -e -x
+        mkdir -p $HOME/.onnx
+        docker run --gpus all --rm \
+          --volume  $(Build.SourcesDirectory):/onnxruntime_src \
+          --volume $(Build.BinariesDirectory)/Release:/build/Release \
+          --volume /data/models:/build/models:ro \
+          --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
+          --volume /data/onnx:/data/onnx \
+          onnxruntimecuda11build \
+          /bin/bash -c "
+            set -ex; \
+            cp /onnxruntime_src/tools/ci_build/github/linux/docker/scripts/manylinux/requirements.txt /tmp/requirements.txt; \
+            sed -i \"s/git+http:\/\/github\.com\/onnx\/onnx.*/onnx/\" /tmp/requirements.txt; \
+            ln -s /opt/python/cp38-cp38/bin/python3 /tmp/python3; \
+            /tmp/python3 -m pip install -r /tmp/requirements.txt; \
+            /tmp/python3 -m pip install /build/Release/dist/*.whl; \
+            cd /build/Release && xargs -a /build/Release/perms.txt chmod a+x; \
+            cd /onnxruntime_src/java && /onnxruntime_src/java/gradlew cmakeCheck -DcmakeBuildDir=/build/Release -DUSE_CUDA=1; \
+            cd /tmp; \
+            /tmp/python3 /onnxruntime_src/tools/ci_build/build.py \
+              --build_dir /build --config Release --test --skip_submodule_sync --build_shared_lib --parallel --build_wheel --enable_onnx_tests \
+              --use_cuda --cuda_version=${{variables.common_cuda_version}} --cuda_home=/usr/local/cuda --cudnn_home=/usr/local/cuda \
+              --enable_pybind --build_java --ctest_path '' "
 
   - template: templates/clean-agent-build-directory-step.yml

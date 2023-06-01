@@ -210,6 +210,8 @@ namespace Dml
         m_cpuOutputAllocator = std::make_shared<CPUAllocator>(OrtMemType::OrtMemTypeCPUOutput);
 
         CreateDmlKernelRegistry(&m_kernelRegistry, &m_internalRegInfoMap);
+
+        m_lastUploadFlushTime = std::chrono::steady_clock::now();
     }
 
     HRESULT __stdcall ExecutionProviderImpl::GetD3DDevice(_COM_Outptr_ ID3D12Device** d3dDevice) const noexcept
@@ -447,6 +449,7 @@ namespace Dml
             const auto dstState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS; // GPU resources are always kept in UAV state
 
             m_uploadHeap->BeginUploadToGpu(dstData, dstOffset, dstState, AsByteSpan(srcData, dataSizeInBytes));
+            FlushUploadsIfReady();
         }
         else if (!src->IsCpuData() && dst->IsCpuData())
         {
@@ -566,10 +569,21 @@ namespace Dml
         assert(!m_closed);
 
         m_uploadHeap->BeginUploadToGpu(dstData, 0, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, AsByteSpan(srcData, static_cast<size_t>(srcDataSize)));
+        FlushUploadsIfReady();
 
         return S_OK;
         }
         ORT_CATCH_RETURN
+    }
+
+    void ExecutionProviderImpl::FlushUploadsIfReady() const
+    {
+        // Periodically flush uploads to make sure the GPU is not idle for too long
+        if (std::chrono::steady_clock::now() - m_lastUploadFlushTime > m_batchFlushInterval)
+        {
+            Flush();
+            m_lastUploadFlushTime = std::chrono::steady_clock::now();
+        }
     }
 
     uint32_t ExecutionProviderImpl::GetSupportedDeviceDataTypeMask() const
@@ -624,18 +638,20 @@ namespace Dml
 
     bool IsCpuOnDmlOperator(const onnxruntime::Node& node)
     {
-        auto sequence_ops = std::array<char*, 6>{
+        auto cpuOnDmlOperators = std::array<char*, 8>{
             "SequenceAt",
             "SequenceConstruct",
             "SequenceEmpty",
             "SequenceLength",
             "SequenceErase",
-            "SequenceInsert"
+            "SequenceInsert",
+            "OptionalGetElement",
+            "OptionalHasElement"
         };
 
-        for (auto& sequence_op : sequence_ops)
+        for (auto& cpuOnDmlOperator : cpuOnDmlOperators)
         {
-            if (strcmp(sequence_op, node.OpType().c_str()) == 0)
+            if (strcmp(cpuOnDmlOperator, node.OpType().c_str()) == 0)
             {
                 return true;
             }

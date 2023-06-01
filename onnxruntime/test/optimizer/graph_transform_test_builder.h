@@ -91,7 +91,8 @@ class ModelTestBuilder {
   }
 
   template <typename T>
-  NodeArg* MakeInput(const std::optional<std::vector<int64_t>>& shape) {
+  NodeArg* MakeInput(const std::optional<std::vector<int64_t>>& shape,
+                     std::optional<std::string> input_name = std::nullopt) {
     ONNX_NAMESPACE::TypeProto type_proto;
     type_proto.mutable_tensor_type()->set_elem_type(utils::ToTensorProtoElementType<T>());
     if (shape != std::nullopt) {
@@ -103,8 +104,14 @@ class ModelTestBuilder {
         }
       }
     }
-    std::string name = graph_.GenerateNodeArgName("input");
-    return &graph_.GetOrCreateNodeArg(name, &type_proto);
+
+    if (input_name == std::nullopt) {
+      std::string name = graph_.GenerateNodeArgName("input");
+      return &graph_.GetOrCreateNodeArg(name, &type_proto);
+    } else {
+      ORT_ENFORCE(graph_.GetNodeArg(*input_name) == nullptr, "Input name already exists: ", *input_name);
+      return &graph_.GetOrCreateNodeArg(*input_name, &type_proto);
+    }
   }
 
   template <typename T>

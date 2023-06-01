@@ -56,8 +56,8 @@ if (NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE "RelWithDebInfo" CACHE STRING "Choose build type: Debug Release RelWithDebInfo MinSizeRel." FORCE)
 endif()
 
-if("${CMAKE_C_COMPILER_ID}" STREQUAL "GNU" AND CMAKE_C_COMPILER_VERSION VERSION_LESS 7)
-  message(FATAL_ERROR  "GCC version must not less than 7")
+if("${CMAKE_C_COMPILER_ID}" STREQUAL "GNU" AND CMAKE_C_COMPILER_VERSION VERSION_LESS 9)
+  message(FATAL_ERROR  "GCC version must be greater than or equal to 9")
 endif()
 
 # Options
@@ -140,6 +140,7 @@ cmake_dependent_option(onnxruntime_DISABLE_CONTRIB_OPS "Disable contrib ops" OFF
 option(onnxruntime_DISABLE_ML_OPS "Disable traditional ML ops" OFF)
 option(onnxruntime_DISABLE_SPARSE_TENSORS "Disable sparse tensors data types" OFF)
 option(onnxruntime_DISABLE_OPTIONAL_TYPE "Disable optional type" OFF)
+option(onnxruntime_DISABLE_FLOAT8_TYPES "Disable float 8 types" OFF)
 option(onnxruntime_MINIMAL_BUILD "Exclude as much as possible from the build. Support ORT format models. No support for ONNX format models." OFF)
 cmake_dependent_option(onnxruntime_DISABLE_RTTI "Disable RTTI" ON "NOT onnxruntime_ENABLE_PYTHON" OFF)
 # For now onnxruntime_DISABLE_EXCEPTIONS will only work with onnxruntime_MINIMAL_BUILD, more changes (ONNX, non-CPU EP, ...) are required to run this standalone
@@ -173,8 +174,7 @@ option(onnxruntime_ENABLE_CPU_FP16_OPS "Build with advanced instruction sets" ON
 option(onnxruntime_USE_NCCL "Build with NCCL support" OFF)
 option(onnxruntime_USE_MPI "Build with MPI support" OFF)
 
-# build WebAssembly
-option(onnxruntime_BUILD_WEBASSEMBLY "Enable this option to create WebAssembly byte codes" OFF)
+# WebAssembly options
 option(onnxruntime_BUILD_WEBASSEMBLY_STATIC_LIB "Enable this option to create WebAssembly static library" OFF)
 option(onnxruntime_ENABLE_WEBASSEMBLY_THREADS "Enable this option to create WebAssembly byte codes with multi-threads support" OFF)
 option(onnxruntime_ENABLE_WEBASSEMBLY_EXCEPTION_CATCHING "Enable this option to turn on exception catching" OFF)
@@ -222,6 +222,7 @@ option(onnxruntime_ENABLE_ATEN "Enable ATen fallback" OFF)
 # composable kernel is managed automatically, unless user want to explicitly disable it, it should not be manually set
 option(onnxruntime_USE_COMPOSABLE_KERNEL "Enable composable kernel for ROCm EP" ON)
 option(onnxruntime_USE_ROCBLAS_EXTENSION_API "Enable rocblas tuning for ROCm EP" OFF)
+option(onnxruntime_USE_TRITON_KERNEL "Enable triton compiled kernel" OFF)
 option(onnxruntime_BUILD_KERNEL_EXPLORER "Build Kernel Explorer for testing and profiling GPU kernels" OFF)
 
 option(onnxruntime_BUILD_CACHE "onnxruntime build with cache" OFF)
@@ -229,6 +230,7 @@ option(onnxruntime_BUILD_CACHE "onnxruntime build with cache" OFF)
 cmake_dependent_option(MSVC_Z7_OVERRIDE "replacing /Zi and /ZI with /Z7 when using MSVC with CCache" ON "onnxruntime_BUILD_CACHE; MSVC" OFF)
 
 option(onnxruntime_USE_AZURE "Build with azure inferencing support" OFF)
+option(onnxruntime_USE_LOCK_FREE_QUEUE "Build with lock-free task queue for threadpool." OFF)
 
 # ENABLE_TRAINING includes all training functionality
 # The following 2 entry points
@@ -751,7 +753,9 @@ if (onnxruntime_USE_AZURE)
     list(APPEND ORT_PROVIDER_CMAKE_FLAGS -Donnxruntime_USE_AZURE=1)
     list(APPEND ONNXRUNTIME_PROVIDER_NAMES azure)
 endif()
-
+if (onnxruntime_USE_LOCK_FREE_QUEUE)
+    add_compile_definitions(USE_LOCK_FREE_QUEUE)
+endif()
 
 if (onnxruntime_ENABLE_LAZY_TENSOR)
   # To support LazyTensor, ORT needs to call Python function from C/C++.
@@ -792,19 +796,27 @@ function(onnxruntime_set_compile_flags target_name)
     endif()
 
     if (onnxruntime_DISABLE_SPARSE_TENSORS)
+      message(STATUS "DISABLE_SPARSE_TENSORS=ON")
       target_compile_definitions(${target_name} PRIVATE DISABLE_SPARSE_TENSORS)
     endif()
 
     if (onnxruntime_DISABLE_OPTIONAL_TYPE)
+      message(STATUS "DISABLE_OPTIONAL_TYPE=ON")
       target_compile_definitions(${target_name} PRIVATE DISABLE_OPTIONAL_TYPE)
     endif()
+
+    if (onnxruntime_DISABLE_FLOAT8_TYPES)
+      message(STATUS "DISABLE_FLOAT8_TYPES=ON")
+      target_compile_definitions(${target_name} PRIVATE DISABLE_FLOAT8_TYPES)
+    endif()
+
     if (onnxruntime_ENABLE_ATEN)
       target_compile_definitions(${target_name} PRIVATE ENABLE_ATEN)
     endif()
     set_target_properties(${target_name} PROPERTIES COMPILE_WARNING_AS_ERROR ON)
     if (onnxruntime_USE_CUDA)
       # Suppress a "conversion_function_not_usable" warning in gsl/span
-      target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--diag-suppress 554>")
+      target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcudafe \"--diag_suppress=conversion_function_not_usable\">")
     endif()
     if (MSVC)
       foreach(CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORY ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
@@ -851,7 +863,7 @@ function(onnxruntime_set_compile_flags target_name)
         target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /analyze:external->" "$<$<COMPILE_LANGUAGE:CXX,C>:/analyze:external->")
         target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /wd6385>" )
         # There are many such warnings from STL:
-        # include\list(148): warning C6011: Dereferencing NULL pointer '_Mycont'. : Lines: 146, 147, 148 
+        # include\list(148): warning C6011: Dereferencing NULL pointer '_Mycont'. : Lines: 146, 147, 148
         target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /wd6011>" )
       endif()
     else()
@@ -919,7 +931,7 @@ endfunction()
 function(onnxruntime_configure_target target_name)
   target_link_directories(${target_name} PRIVATE ${onnxruntime_LINK_DIRS})
   onnxruntime_set_compile_flags(${target_name})
-  onnxruntime_set_source_file_properties(${target_name})  
+  onnxruntime_set_source_file_properties(${target_name})
   if(WIN32 AND onnxruntime_ENABLE_STATIC_ANALYSIS AND onnxruntime_USE_CUSTOM_STATIC_ANALYSIS_RULES)
     set_target_properties(${target_name} PROPERTIES VS_USER_PROPS ${PROJECT_SOURCE_DIR}/EnableVisualStudioCodeAnalysis.props)
   endif()
@@ -968,7 +980,7 @@ function(onnxruntime_add_shared_library_module target_name)
   endif()
 
   onnxruntime_configure_target(${target_name})
-  if (MSVC AND onnxruntime_target_platform STREQUAL "x86" AND NOT onnxruntime_BUILD_WEBASSEMBLY)
+  if (MSVC AND onnxruntime_target_platform STREQUAL "x86")
     target_link_options(${target_name} PRIVATE /SAFESEH)
   endif()
 endfunction()
@@ -976,7 +988,7 @@ endfunction()
 function(onnxruntime_add_executable target_name)
   add_executable(${target_name} ${ARGN})
   onnxruntime_configure_target(${target_name})
-  if (MSVC AND onnxruntime_target_platform STREQUAL "x86" AND NOT onnxruntime_BUILD_WEBASSEMBLY)
+  if (MSVC AND onnxruntime_target_platform STREQUAL "x86")
     target_link_options(${target_name} PRIVATE /SAFESEH)
   endif()
 endfunction()
@@ -1589,7 +1601,7 @@ if (onnxruntime_BUILD_CSHARP)
   list(APPEND ONNXRUNTIME_CMAKE_FILES onnxruntime_csharp)
 endif()
 
-if (onnxruntime_BUILD_WEBASSEMBLY)
+if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
   message(STATUS "WebAssembly Build is enabled")
   list(APPEND ONNXRUNTIME_CMAKE_FILES onnxruntime_webassembly)
 

@@ -66,8 +66,16 @@ namespace Microsoft.ML.OnnxRuntime
         {
             CheckCudaExecutionProviderDLLs();
             SessionOptions options = new SessionOptions();
-            options.AppendExecutionProvider_CUDA(deviceId);
-            return options;
+            try
+            {
+                options.AppendExecutionProvider_CUDA(deviceId);
+                return options;
+            }
+            catch (Exception)
+            {
+                options.Dispose();
+                throw;
+            }
         }
 
         /// <summary>
@@ -148,9 +156,16 @@ namespace Microsoft.ML.OnnxRuntime
         public static SessionOptions MakeSessionOptionWithTvmProvider(String settings = "")
         {
             SessionOptions options = new SessionOptions();
-            options.AppendExecutionProvider_Tvm(settings);
-
-            return options;
+            try
+            {
+                options.AppendExecutionProvider_Tvm(settings);
+                return options;
+            }
+            catch (Exception)
+            {
+                options.Dispose();
+                throw;
+            }
         }
 
         /// <summary>
@@ -161,9 +176,40 @@ namespace Microsoft.ML.OnnxRuntime
         /// <returns>A SessionsOptions() object configured for execution on deviceId</returns>
         public static SessionOptions MakeSessionOptionWithRocmProvider(int deviceId = 0)
         {
+            CheckRocmExecutionProviderDLLs();
             SessionOptions options = new SessionOptions();
-            options.AppendExecutionProvider_ROCM(deviceId);
-            return options;
+            try
+            {
+                options.AppendExecutionProvider_ROCm(deviceId);
+                return options;
+            }
+            catch (Exception)
+            {
+                options.Dispose();
+                throw;
+            }
+        }
+
+        /// <summary>
+        /// A helper method to construct a SessionOptions object for ROCm execution provider.
+        /// Use only if ROCm is installed and you have the onnxruntime package specific to this Execution Provider.
+        /// </summary>
+        /// <param name="rocmProviderOptions">ROCm EP provider options</param>
+        /// <returns>A SessionsOptions() object configured for execution on provider options</returns>
+        public static SessionOptions MakeSessionOptionWithRocmProvider(OrtROCMProviderOptions rocmProviderOptions)
+        {
+            CheckRocmExecutionProviderDLLs();
+            SessionOptions options = new SessionOptions();
+            try
+            {
+                options.AppendExecutionProvider_ROCm(rocmProviderOptions);
+                return options;
+            }
+            catch (Exception)
+            {
+                options.Dispose();
+                throw;
+            }
         }
         #endregion
 
@@ -276,13 +322,27 @@ namespace Microsoft.ML.OnnxRuntime
         /// Use only if you have the onnxruntime package specific to this Execution Provider.
         /// </summary>
         /// <param name="deviceId">Device Id</param>
-        public void AppendExecutionProvider_ROCM(int deviceId = 0)
+        public void AppendExecutionProvider_ROCm(int deviceId = 0)
         {
 #if __MOBILE__
             throw new NotSupportedException("The ROCM Execution Provider is not supported in this build");
 #else
             NativeApiStatus.VerifySuccess(
                 NativeMethods.OrtSessionOptionsAppendExecutionProvider_ROCM(handle, deviceId));
+#endif
+        }
+
+        /// <summary>
+        /// Append a ROCm EP instance (based on specified configuration) to the SessionOptions instance.
+        /// Use only if you have the onnxruntime package specific to this Execution Provider.
+        /// </summary>
+        /// <param name="rocmProviderOptions">ROCm EP provider options</param>
+        public void AppendExecutionProvider_ROCm(OrtROCMProviderOptions rocmProviderOptions)
+        {
+#if __MOBILE__
+            throw new NotSupportedException("The ROCm Execution Provider is not supported in this build");
+#else
+            NativeApiStatus.VerifySuccess(NativeMethods.SessionOptionsAppendExecutionProvider_ROCM(handle, rocmProviderOptions.Handle));
 #endif
         }
 
@@ -375,10 +435,10 @@ namespace Microsoft.ML.OnnxRuntime
         /// <param name="providerOptions">Optional key/value pairs to specify execution provider options.</param>
         public void AppendExecutionProvider(string providerName, Dictionary<string, string> providerOptions = null)
         {
-            if (providerName != "SNPE" && providerName != "XNNPACK" && providerName != "QNN")
+            if (providerName != "SNPE" && providerName != "XNNPACK" && providerName != "QNN" && providerName != "AZURE")
             {
                 throw new NotSupportedException(
-                    "Only QNN, SNPE and XNNPACK execution providers can be enabled by this method.");
+                    "Only QNN, SNPE, XNNPACK and AZURE execution providers can be enabled by this method.");
             }
 
             if (providerOptions == null)
@@ -397,10 +457,10 @@ namespace Microsoft.ML.OnnxRuntime
         /// Loads a DLL named 'libraryPath' and looks for this entry point:
         ///   OrtStatus* RegisterCustomOps(OrtSessionOptions* options, const OrtApiBase* api);
         /// It then passes in the provided session options to this function along with the api base.
-        /// 
-        /// Prior to v1.15 this leaked the library handle and RegisterCustomOpLibraryV2 
-        /// was added to resolve that. 
-        /// 
+        ///
+        /// Prior to v1.15 this leaked the library handle and RegisterCustomOpLibraryV2
+        /// was added to resolve that.
+        ///
         /// From v1.15 on ONNX Runtime will manage the lifetime of the handle.
         /// </summary>
         /// <param name="libraryPath">path to the custom op library</param>
@@ -435,13 +495,13 @@ namespace Microsoft.ML.OnnxRuntime
             //   SessionOptions.RegisterCustomOpLibrary calls NativeMethods.OrtRegisterCustomOpsLibrary_V2
             //   SessionOptions.RegisterCustomOpLibraryV2 calls NativeMethods.OrtRegisterCustomOpsLibrary
             var utf8Path = NativeOnnxValueHelper.StringToZeroTerminatedUtf8(libraryPath);
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtRegisterCustomOpsLibrary(handle, utf8Path, 
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtRegisterCustomOpsLibrary(handle, utf8Path,
                                                                                     out libraryHandle));
         }
 
         /// <summary>
         /// Register the custom operators from the Microsoft.ML.OnnxRuntime.Extensions NuGet package.
-        /// A reference to Microsoft.ML.OnnxRuntime.Extensions must be manually added to your project. 
+        /// A reference to Microsoft.ML.OnnxRuntime.Extensions must be manually added to your project.
         /// </summary>
         /// <exception cref="OnnxRuntimeException">Throws if the extensions library is not found.</exception>
         public void RegisterOrtExtensions()
@@ -833,6 +893,16 @@ namespace Microsoft.ML.OnnxRuntime
             }
             return true;
         }
+
+        private static bool CheckRocmExecutionProviderDLLs()
+        {
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+            {
+                throw new NotSupportedException("ROCm Execution Provider is not currently supported on Windows.");
+            }
+            return true;
+        }
+
         #endregion
 
         #region SafeHandle

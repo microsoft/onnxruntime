@@ -49,7 +49,7 @@ function defaultTerserPluginOptions(target) {
         passes: 2
       },
       mangle: {
-        reserved: ["_scriptDir"]
+        reserved: ["_scriptDir", "startWorker"]
       }
     }
   };
@@ -111,6 +111,7 @@ function buildConfig({ filename, format, target, mode, devtool, build_defs }) {
       }]
     },
     mode,
+    node: false,
     devtool
   };
 
@@ -123,6 +124,7 @@ function buildConfig({ filename, format, target, mode, devtool, build_defs }) {
 
   if (mode === 'production') {
     config.resolve.alias['./binding/ort-wasm-threaded.js'] = './binding/ort-wasm-threaded.min.js';
+    config.resolve.alias['./binding/ort-wasm-threaded-simd.jsep.js'] = './binding/ort-wasm-threaded-simd.jsep.min.js';
     config.resolve.alias['./binding/ort-wasm-threaded.worker.js'] = './binding/ort-wasm-threaded.min.worker.js';
 
     const options = defaultTerserPluginOptions(target);
@@ -267,8 +269,9 @@ function buildTestRunnerConfig({
         type: 'asset/source'
       }]
     },
-    mode: mode,
-    devtool: devtool,
+    mode,
+    node: false,
+    devtool,
   };
 
   if (mode === 'production') {

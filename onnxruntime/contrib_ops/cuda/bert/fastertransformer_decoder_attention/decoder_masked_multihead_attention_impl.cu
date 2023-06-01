@@ -137,9 +137,9 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiHeadAttentio
 
   float qk = 0.0F;
 
-  int qkv_base_offset = params.is_mha
-                        ? bi * params.hidden_size + hi * head_size
-                        : bi * (3 * params.hidden_size) + hi * head_size;
+  int qkv_base_offset = params.is_mha && !params.is_packed_qkv
+                            ? bi * params.hidden_size + hi * head_size
+                            : bi * (3 * params.hidden_size) + hi * head_size;
 
   const size_t bi_total_seq_length = bi * params.total_sequence_length;
 
@@ -161,39 +161,18 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiHeadAttentio
     q = vec_conversion<Qk_vec_k, Qk_vec_m>(*reinterpret_cast<const Qk_vec_m*>(&reinterpret_cast<T*>(params.q)[qk_offset]));
   }
 
-  Qk_vec_k k;
-
-  if (!params.is_cross_attention) {
-    zero(k);
-
-    if (!is_masked) {
-      k = vec_conversion<Qk_vec_k, Qk_vec_m>(*reinterpret_cast<const Qk_vec_m*>(&reinterpret_cast<T*>(params.k)[qk_offset]));
-    }
-  }
+  // The offset in the bias buffer.
+  int qk_bias_offset = hi * head_size + tidx * QK_VEC_SIZE;
 
   // Trigger the loads from the Q and K bias buffers.
-  Qk_vec_k q_bias;
-  Qk_vec_k k_bias;
-  if (!params.is_mha) {
-    // The offset in the bias buffer.
-    int qk_bias_offset = hi * head_size + tidx * QK_VEC_SIZE;
+  if (params.q_bias && !is_masked) {
+    Qk_vec_k q_bias;
 
-    zero(q_bias);
+    q_bias = vec_conversion<Qk_vec_k, Qk_vec_m>(*reinterpret_cast<const Qk_vec_m*>(&reinterpret_cast<T*>(params.q_bias)[qk_bias_offset]));
 
-    if (!is_masked) {
-      q_bias = vec_conversion<Qk_vec_k, Qk_vec_m>(*reinterpret_cast<const Qk_vec_m*>(&reinterpret_cast<T*>(params.q_bias)[qk_bias_offset]));
-    }
-
-    zero(k_bias);
-
-    if (!is_masked) {
-      k_bias = vec_conversion<Qk_vec_k, Qk_vec_m>(*reinterpret_cast<const Qk_vec_m*>(&reinterpret_cast<T*>(params.k_bias)[qk_bias_offset]));
-    }
-
-    // Computes the Q/K values with bias.
     q = add_vec(q, q_bias);
-    k = add_vec(k, k_bias);
   }
+
 
   T* params_k_cache = reinterpret_cast<T*>(params.k_cache);
 
@@ -205,6 +184,22 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiHeadAttentio
   }
 
   if (!params.is_cross_attention) {
+    Qk_vec_k k;
+
+    zero(k);
+
+    if (!is_masked) {
+      k = vec_conversion<Qk_vec_k, Qk_vec_m>(*reinterpret_cast<const Qk_vec_m*>(&reinterpret_cast<T*>(params.k)[qk_offset]));
+
+      if (params.k_bias) {
+        Qk_vec_k k_bias;
+
+        k_bias = vec_conversion<Qk_vec_k, Qk_vec_m>(*reinterpret_cast<const Qk_vec_m*>(&reinterpret_cast<T*>(params.k_bias)[qk_bias_offset]));
+
+        k = add_vec(k, k_bias);
+      }
+    }
+
     if (!is_masked) {
       // Write the K values to the global memory cache.
       // NOTE: The stores are uncoalesced as we have multiple chunks of 16B spread across the memory
@@ -230,7 +225,7 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiHeadAttentio
       qk = dot<Qk_vec_acum, Qk_vec_k>(q, k);
 
       if (QK_VECS_PER_WARP <= WARP_SIZE) {
-  #pragma unroll
+#pragma unroll
         for (int mask = QK_VECS_PER_WARP / 2; mask >= 1; mask /= 2) {
           qk += __shfl_xor_sync(shfl_mask(QK_VECS_PER_WARP), qk, mask);
         }
@@ -248,9 +243,7 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiHeadAttentio
       qk *= inv_sqrt_dh;
       if (params.relative_attention_bias != nullptr) {
         qk = add_vec(qk,
-                     reinterpret_cast<T*>(params.relative_attention_bias)[hi * params.sequence_length
-                                                                             * params.total_sequence_length
-                                                                          + tlength]);
+                     reinterpret_cast<T*>(params.relative_attention_bias)[hi * params.sequence_length * params.total_sequence_length + tlength]);
       }
       qk_max = qk;
       qk_smem[tlength] = qk;
@@ -351,9 +344,7 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiHeadAttentio
     if (ti < tlength && tidx % THREADS_PER_KEY == 0) {
       if (params.relative_attention_bias != nullptr) {
         qk = add_vec(qk,
-                     reinterpret_cast<T*>(params.relative_attention_bias)[hi * params.sequence_length
-                                                                             * params.total_sequence_length
-                                                                          + ti]);
+                     reinterpret_cast<T*>(params.relative_attention_bias)[hi * params.sequence_length * params.total_sequence_length + ti]);
       }
       qk_max = fmaxf(qk_max, qk);
       qk_smem[ti] = qk;
@@ -442,7 +433,7 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiHeadAttentio
 
   // One group of threads computes the product(s) for the current timestep.
   V_vec_k v_bias;
-  if (!params.is_mha) {
+  if (params.v_bias && !params.is_cross_attention) {
     zero(v_bias);
 
     T* params_v_bias = reinterpret_cast<T*>(params.v_bias);
@@ -482,7 +473,7 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiHeadAttentio
 
     V_vec_k v;
     v = vec_conversion<V_vec_k, V_vec_m>(*reinterpret_cast<const V_vec_m*>(&reinterpret_cast<T*>(params.v)[v_offset]));
-    if (!params.is_mha) {
+    if (params.v_bias) {
       v = add_vec(v, v_bias);
     }
 

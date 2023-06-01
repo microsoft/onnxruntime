@@ -4,6 +4,7 @@
 #pragma once
 
 #include "core/framework/execution_provider.h"
+#include "core/framework/session_options.h"
 #include <string>
 #include "core/providers/qnn/builder/qnn_backend_manager.h"
 #include "core/providers/qnn/builder/qnn_model.h"
@@ -13,7 +14,7 @@ namespace onnxruntime {
 // Logical device representation.
 class QNNExecutionProvider : public IExecutionProvider {
  public:
-  explicit QNNExecutionProvider(const ProviderOptions& provider_options_map);
+  explicit QNNExecutionProvider(const ProviderOptions& provider_options_map, const SessionOptions* session_options);
   virtual ~QNNExecutionProvider() = default;
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(QNNExecutionProvider);
 
@@ -34,22 +35,7 @@ class QNNExecutionProvider : public IExecutionProvider {
   DataLayout GetPreferredLayout() const override;
 
  private:
-  void ParseProfilingLevel(std::string profiling_level_string) {
-    std::transform(profiling_level_string.begin(),
-                   profiling_level_string.end(),
-                   profiling_level_string.begin(),
-                   [](unsigned char c) { return static_cast<unsigned char>(std::tolower(c)); });
-    profiling_level_ = qnn::ProfilingLevel::OFF;
-    if (profiling_level_string == "off") {
-      profiling_level_ = qnn::ProfilingLevel::OFF;
-    } else if (profiling_level_string == "basic") {
-      profiling_level_ = qnn::ProfilingLevel::BASIC;
-    } else if (profiling_level_string == "detailed") {
-      profiling_level_ = qnn::ProfilingLevel::DETAILED;
-    } else {
-      LOGS_DEFAULT(WARNING) << "Profiling level not valid.";
-    }
-  }
+  void ParseProfilingLevel(std::string profiling_level_string);
 
   bool IsNodeSupported(qnn::QnnModelWrapper& qnn_model_wrapper, const NodeUnit& node_unit,
                        std::unordered_map<const NodeUnit*, bool>& node_unit_supported_result,
@@ -58,16 +44,32 @@ class QNNExecutionProvider : public IExecutionProvider {
   std::unordered_set<const Node*> GetSupportedNodes(const GraphViewer& graph_viewer,
                                                     const std::unordered_map<const Node*, const NodeUnit*>& node_unit_map,
                                                     const size_t node_unit_size,
+                                                    bool load_from_cached_context,
                                                     const logging::Logger& logger) const;
+
+  Status CreateComputeFunc(std::vector<NodeComputeInfo>& node_compute_funcs,
+                           const logging::Logger& logger);
+
+  Status CompileFromOrtGraph(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
+                             std::vector<NodeComputeInfo>& node_compute_funcs,
+                             const logging::Logger& logger);
+
+  bool IsContextCacheFileExists(const onnxruntime::PathString& model_pathstring,
+                                onnxruntime::PathString& context_cache_pathstring) const;
+
+  void ParseHtpPerformanceMode(std::string htp_performance_mode_string);
 
  private:
   ProviderOptions runtime_options_;
   std::string backend_path_;
-  qnn::ProfilingLevel profiling_level_;
+  qnn::ProfilingLevel profiling_level_ = qnn::ProfilingLevel::OFF;
+  qnn::HtpPerformanceMode htp_performance_mode_ = qnn::HtpPerformanceMode::kHtpDefault;
   std::unique_ptr<qnn::QnnBackendManager> qnn_backend_manager_;
   std::unordered_map<std::string, std::unique_ptr<qnn::QnnModel>> qnn_models_;
-  AllocatorPtr cpu_allocator_;
-  uint32_t rpc_control_latency_;
+  uint32_t rpc_control_latency_ = 0;
+  bool context_cache_enabled_ = false;
+  std::string context_cache_path_ = "";
+  bool disable_cpu_ep_fallback_ = false;  // True if CPU EP fallback has been disabled for this session.
 };
 
 }  // namespace onnxruntime

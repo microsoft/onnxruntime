@@ -21,7 +21,7 @@
   -->
   <PropertyGroup>
     <SelectedTargets>PreNet6</SelectedTargets>
-    <BaseTargets>netstandard1.1;netstandard2.0;netcoreapp3.1;net6.0</BaseTargets>
+    <BaseTargets>netstandard2.0;netcoreapp3.1;net6.0</BaseTargets>
   </PropertyGroup>
 
   <!-- only set the Xamarin mobile targets if we're building an ORT package,
@@ -41,6 +41,7 @@
   <!-- only set the .net6 targets if we're building an ORT package.
        we can add .net6 support to other packages later as needed -->
   <PropertyGroup Condition="('$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime' OR
+                             '$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime.Azure' OR
                              '$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime.Gpu')">
     <Net6Targets>net6.0;net6.0-android;net6.0-ios;net6.0-macos</Net6Targets>
   </PropertyGroup>
@@ -304,7 +305,7 @@
           Visible="false"
     />
     <None Include="targets\netstandard\$(PackageId).targets"
-          PackagePath="build\netstandard1.1\$(PackageId).targets;build\netstandard2.0\$(PackageId).targets"
+          PackagePath="build\netstandard2.0\$(PackageId).targets"
           Pack="true"
           Visible="false"
     />

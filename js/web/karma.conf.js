@@ -91,12 +91,12 @@ module.exports = function (config) {
     listenAddress,
     customLaunchers: {
       ChromeTest: {
-        base: 'ChromeHeadless',
+        base: 'Chrome',
         flags: ['--enable-features=SharedArrayBuffer']
       },
-      ChromePerf: {
-        base: 'Chrome',
-        flags: ['--window-size=1,1', '--enable-features=SharedArrayBuffer']
+      ChromeTestHeadless: {
+        base: 'ChromeHeadless',
+        flags: ['--enable-features=SharedArrayBuffer']
       },
       ChromeDebug: {
         debug: true,
@@ -105,19 +105,8 @@ module.exports = function (config) {
       ChromeCanaryTest: {
         base: 'ChromeCanary',
         flags: [
-          '--window-size=1,1',
           '--enable-features=SharedArrayBuffer',
-          '--enable-unsafe-webgpu',
           '--enable-experimental-web-platform-features'
-        ]
-      },
-      ChromeCanaryProfileTest: {
-        base: 'ChromeCanary',
-        flags: [
-          '--window-size=1,1',
-          '--enable-features=SharedArrayBuffer',
-          '--enable-unsafe-webgpu',
-          '--disable-dawn-features=disallow_unsafe_apis'
         ]
       },
       ChromeCanaryDebug: {
@@ -126,17 +115,23 @@ module.exports = function (config) {
         flags: [
           '--remote-debugging-port=9333',
           '--enable-features=SharedArrayBuffer',
-          '--enable-unsafe-webgpu',
           '--enable-experimental-web-platform-features'
         ]
       },
-      ChromeCanaryProfileDebug: {
+      ChromeWebGpuProfileTest: {
+        base: 'Chrome',
+        flags: [
+          '--window-size=1,1',
+          '--enable-features=SharedArrayBuffer',
+          '--disable-dawn-features=disallow_unsafe_apis'
+        ]
+      },
+      ChromeWebGpuProfileDebug: {
         debug: true,
-        base: 'ChromeCanary',
+        base: 'Chrome',
         flags: [
           '--remote-debugging-port=9333',
           '--enable-features=SharedArrayBuffer',
-          '--enable-unsafe-webgpu',
           '--disable-dawn-features=disallow_unsafe_apis',
         ]
       },

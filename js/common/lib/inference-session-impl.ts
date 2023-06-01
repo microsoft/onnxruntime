@@ -115,6 +115,10 @@ export class InferenceSession implements InferenceSessionInterface {
     return returnValue;
   }
 
+  async release(): Promise<void> {
+    return this.handler.dispose();
+  }
+
   static create(path: string, options?: SessionOptions): Promise<InferenceSessionInterface>;
   static create(buffer: ArrayBufferLike, options?: SessionOptions): Promise<InferenceSessionInterface>;
   static create(buffer: ArrayBufferLike, byteOffset: number, byteLength?: number, options?: SessionOptions):

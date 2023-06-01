@@ -131,7 +131,7 @@ struct TensorrtFuncState {
   bool detailed_build_log = false;
   bool build_heuristics_enable = false;
   bool sparsity_enable = false;
-  int builder_optimization_level = 2;
+  int builder_optimization_level = 3;
   int auxiliary_streams = -1;
   bool filter_tactic_sources = false;
   nvinfer1::TacticSources tactic_sources;
@@ -190,7 +190,7 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   bool engine_cache_enable_ = false;
   bool build_heuristics_enable_ = false;
   bool sparsity_enable_ = false;
-  int builder_optimization_level_ = 2;
+  int builder_optimization_level_ = 3;
   int auxiliary_streams_ = -1;
   std::string tactic_sources_;
   std::string cache_path_, engine_decryption_lib_path_;

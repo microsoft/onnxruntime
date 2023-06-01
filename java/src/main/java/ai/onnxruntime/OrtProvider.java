@@ -23,7 +23,8 @@ public enum OrtProvider {
   ARM_NN("ArmNNExecutionProvider"),
   ROCM("ROCMExecutionProvider"),
   CORE_ML("CoreMLExecutionProvider"),
-  XNNPACK("XnnpackExecutionProvider");
+  XNNPACK("XnnpackExecutionProvider"),
+  AZURE("AzureExecutionProvider");
 
   private static final Map<String, OrtProvider> valueMap = new HashMap<>(values().length);
 

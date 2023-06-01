@@ -946,6 +946,7 @@ class OnnxModel:
 
         sorted_node_set_len = -1
         graph_nodes = graph.node if not is_deterministic else sorted(graph.node, key=lambda x: x.name)
+
         last_node_name = None
         while len(sorted_node_set) != len(graph_nodes):
             if len(sorted_node_set) == sorted_node_set_len:
@@ -959,7 +960,8 @@ class OnnxModel:
                     sorted_nodes.append(node)
                     sorted_node_set.add(node_idx)
                     for output in node.output:
-                        deps_set.add(output)
+                        if output:
+                            deps_set.add(output)
                     continue
                 failed = False
                 for input_name in node.input:
@@ -970,7 +972,8 @@ class OnnxModel:
                     sorted_nodes.append(node)
                     sorted_node_set.add(node_idx)
                     for output in node.output:
-                        deps_set.add(output)
+                        if output:
+                            deps_set.add(output)
                 else:
                     continue
 

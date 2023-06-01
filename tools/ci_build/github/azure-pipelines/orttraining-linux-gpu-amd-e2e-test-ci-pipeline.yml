@@ -14,6 +14,8 @@ jobs:
     submodules: recursive
 
   - script: |-
+      # Do not output ##vso[] commands with `set -x` or they may be parsed again and include a trailing quote.
+      set +x
       echo "##vso[task.prependpath]/home/ciagent/conda/bin/"
       echo "##vso[task.prependpath]/home/ciagent/pkg/openmpi-4.0.5/bin/"
       echo '##vso[task.setvariable variable=LD_LIBRARY_PATH]/home/ciagent/pkg/openmpi-4.0.5/lib/'

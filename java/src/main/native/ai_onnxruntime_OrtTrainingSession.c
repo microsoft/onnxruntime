@@ -666,12 +666,6 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtTrainingSession_schedulerStep
  * Method:    exportModelForInference
  * Signature: (JJJJLjava/lang/String;[Ljava/lang/String;)V
  */
-#ifdef _MSC_VER
-#pragma warning(push)
-// C4090: 'operation' : different 'modifier' qualifiers
-// Freeing 'outputNames' erroneously triggers this warning, it is fixed in VC 2022 and can be removed when that is the baseline compiler.
-#pragma warning(disable : 4090)
-#endif  // _MSC_VER
 JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtTrainingSession_exportModelForInference
   (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong trainApiHandle, jlong nativeHandle, jstring outputPath, jlong numOutputs, jobjectArray outputNamesArr) {
   (void)jobj;  // Required JNI parameter not needed by functions which don't need to access their host object.
@@ -721,6 +715,3 @@ cleanup_array:
   free(javaOutputStrings);
   free(outputNames);
 }
-#ifdef _MSC_VER
-#pragma warning(pop)
-#endif  // _MSC_VER

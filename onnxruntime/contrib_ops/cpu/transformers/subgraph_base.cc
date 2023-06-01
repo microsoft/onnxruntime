@@ -118,7 +118,6 @@ Status Subgraph::Setup(const SessionState& session_state,
   auto& inputs = subgraph.GetInputs();
   auto& outputs = subgraph.GetOutputs();
   ORT_RETURN_IF_ERROR(Validate(inputs, outputs));
-
   return Status::OK();
 }
 

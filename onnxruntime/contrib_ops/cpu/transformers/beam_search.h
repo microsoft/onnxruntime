@@ -11,6 +11,8 @@
 #include "contrib_ops/cpu/transformers/subgraph_gpt.h"
 #include "contrib_ops/cpu/transformers/subgraph_t5_encoder.h"
 #include "contrib_ops/cpu/transformers/subgraph_t5_decoder.h"
+#include "contrib_ops/cpu/transformers/subgraph_whisper_encoder.h"
+#include "contrib_ops/cpu/transformers/subgraph_whisper_decoder.h"
 #include "contrib_ops/cpu/transformers/generation_device_helper.h"
 
 namespace onnxruntime {
@@ -115,9 +117,13 @@ class BeamSearch : public IControlFlowKernel {
   // Device specific functions for encoder-decoder model like T5
   //------------------------------------------------------------
   GenerationDeviceHelper::CreateEncoderInputsFunc create_encoder_inputs_func_;
-
   GenerationDeviceHelper::UpdateDecoderFeedsFunc<float> update_decoder_feeds_func_;
   GenerationDeviceHelper::UpdateDecoderFeedsFunc<MLFloat16> update_decoder_feeds_fp16_func_;
+
+  //------------------------------------------------------------
+  // Device specific functions for Whisper
+  //------------------------------------------------------------
+  GenerationDeviceHelper::CreateWhisperEncoderInputsFunc create_whisper_encoder_inputs_func_;
 
   GenerationDeviceHelper::ExpandBufferFunc<int32_t> expand_buffer_int32_func_;
   GenerationDeviceHelper::ExpandBufferFunc<float> expand_buffer_float_func_;
@@ -142,6 +148,10 @@ class BeamSearch : public IControlFlowKernel {
   // be used for subsequent runs.
   std::unique_ptr<T5EncoderSubgraph> t5_encoder_subgraph_;
   std::unique_ptr<T5DecoderSubgraph> t5_decoder_subgraph_;
+
+  // Relevant only for Whisper
+  std::unique_ptr<WhisperEncoderSubgraph> whisper_encoder_subgraph_;
+  std::unique_ptr<WhisperDecoderSubgraph> whisper_decoder_subgraph_;
 
   FeedsFetchesManager* encoder_feeds_fetches_manager_;
   FeedsFetchesManager* decoder_feeds_fetches_manager_;

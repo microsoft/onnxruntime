@@ -1,11 +1,6 @@
 variables:
-- name: WIN_CPU_BUILD_MACHINE_POOL_NAME  # name of a variable
-  # The public ADO project
-  ${{ if startsWith(variables['System.CollectionUri'], 'https://dev.azure.com/onnxruntime/') }}:
-    value: 'onnxruntime-Win-CPU-2019'
-  # The private ADO project
-  ${{ if or(startsWith(variables['System.CollectionUri'], 'https://dev.azure.com/aiinfra/'),startsWith(variables['System.CollectionUri'], 'https://aiinfra.visualstudio.com/')) }}:
-    value: 'Win-CPU-2021'
+- name: WIN_CPU_BUILD_MACHINE_POOL_NAME
+  value: 'onnxruntime-Win-CPU-2022'
 - name: LINUX_CPU_BUILD_MACHINE_POOL_NAME  # name of a variable
   # The public ADO project
   ${{ if startsWith(variables['System.CollectionUri'], 'https://dev.azure.com/onnxruntime/') }}:
@@ -78,7 +73,7 @@ stages:
 - stage: Mimalloc
   dependsOn: [ ]
   jobs:
-  - template: templates/win-ci-vs-2019.yml
+  - template: templates/jobs/win-ci-vs-2022-job.yml
     parameters:
       BuildConfig: 'Debug'
       EnvSetupScript: setup_env.bat
@@ -98,7 +93,7 @@ stages:
 - stage: NoAbseil
   dependsOn: [ ]
   jobs:
-  - template: templates/win-ci-vs-2019.yml
+  - template: templates/jobs/win-ci-vs-2022-job.yml
     parameters:
       BuildConfig: 'Debug'
       EnvSetupScript: setup_env.bat
@@ -118,7 +113,7 @@ stages:
 - stage: MinimalBuildWithNoExceptions
   dependsOn: [ ]
   jobs:
-  - template: templates/win-ci-vs-2019.yml
+  - template: templates/jobs/win-ci-vs-2022-job.yml
     parameters:
       BuildConfig: 'Debug'
       EnvSetupScript: setup_env.bat
@@ -138,7 +133,7 @@ stages:
 - stage: DebugNodeInputsOutputs
   dependsOn: [ ]
   jobs:
-  - template: templates/win-ci-vs-2019.yml
+  - template: templates/jobs/win-ci-vs-2022-job.yml
     parameters:
       BuildConfig: 'Debug'
       EnvSetupScript: setup_env.bat

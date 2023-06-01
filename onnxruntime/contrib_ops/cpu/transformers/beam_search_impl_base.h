@@ -13,21 +13,14 @@ namespace contrib {
 namespace transformers {
 
 template <typename T>
-struct BeamSearchState : public IBeamSearchState<T> {
-  void Init(AllocatorPtr allocator,
-            int batch_size,
-            int num_beams,
-            int vocab_size,
-            int sequence_length,
-            int max_length,
-            int num_heads,
-            int head_size,
-            int has_decoder_masked_attention,
-            bool output_scores,
-            bool use_position) {
-    size_t batch_beam_size = SafeInt<size_t>(batch_size) * num_beams;
+struct BeamSearchState : IBeamSearchState<T> {
+  BeamSearchState(const IGenerationParameters& parameters,
+                  AllocatorPtr allocator,
+                  int has_decoder_masked_attention,
+                  bool use_position) {
+    size_t batch_beam_size = SafeInt<size_t>(parameters.batch_size) * parameters.num_beams;
 
-    size_t next_token_size = SafeInt<size_t>(batch_beam_size) * vocab_size;
+    size_t next_token_size = SafeInt<size_t>(batch_beam_size) * parameters.vocab_size;
     this->next_token_logits = AllocateBuffer<T>(allocator, next_token_logits_buffer_, next_token_size);
     this->next_token_scores = AllocateBuffer<float>(allocator, next_token_scores_buffer_, next_token_size);
 
@@ -38,7 +31,7 @@ struct BeamSearchState : public IBeamSearchState<T> {
     this->next_scores = AllocateBuffer<float>(allocator, next_scores_buffer_, SafeInt<size_t>(2) * batch_beam_size);
 
     constexpr size_t max_parts_of_vocab = 128;
-    size_t topk_buffer_size = SafeInt<size_t>(batch_beam_size) * (max_parts_of_vocab + 1) * num_beams * 2 * 2;
+    size_t topk_buffer_size = SafeInt<size_t>(batch_beam_size) * (max_parts_of_vocab + 1) * parameters.num_beams * 2 * 2;
     this->topk_buffer = AllocateBuffer<float>(allocator, topk_temp_buffer_, topk_buffer_size);
 
     if (use_position) {
@@ -47,8 +40,8 @@ struct BeamSearchState : public IBeamSearchState<T> {
 
     this->beam_scores = AllocateBuffer<float>(allocator, beam_scores_buffer_, batch_beam_size);
 
-    if (output_scores) {
-      size_t elements = SafeInt<size_t>(max_length - sequence_length) * batch_size * num_beams * vocab_size;
+    if (parameters.output_scores) {
+      size_t elements = SafeInt<size_t>(parameters.max_length - parameters.sequence_length) * parameters.batch_size * parameters.num_beams * parameters.vocab_size;
       this->scores = AllocateBuffer<float>(allocator, scores_buffer_, elements);
       this->remaining_scores = this->scores;
     }
@@ -56,7 +49,7 @@ struct BeamSearchState : public IBeamSearchState<T> {
     if (has_decoder_masked_attention) {
       // We need a temp staging buffer to do the past 'K' state re-ordering that is needed
       // when using DecoderMaskedSelfAttention
-      TensorShape staging_for_past_state_reorder_buffer_shape = {static_cast<int64_t>(batch_beam_size), num_heads, max_length, head_size};
+      TensorShape staging_for_past_state_reorder_buffer_shape = {static_cast<int64_t>(batch_beam_size), parameters.num_heads, parameters.max_length, parameters.head_size};
 
       Tensor temp(DataTypeImpl::GetType<T>(), staging_for_past_state_reorder_buffer_shape, allocator);
 
@@ -66,6 +59,14 @@ struct BeamSearchState : public IBeamSearchState<T> {
       // TODO: This is a temporary work-around as BeamScorer currently only runs on CPU.
       // We can remove these kinds of work-arounds once BeamScorer runs on CUDA eventually.
       this->chosen_indices = AllocateBuffer<int32_t>(allocator, chosen_indices_buffer_, batch_beam_size);
+    }
+  }
+
+  void EnsurePastStateReorderStagingBuffer(AllocatorPtr allocator, int64_t sz) {
+    auto current_buffer_size = this->staging_for_past_state_reorder.Shape().Size();
+    if (sz > current_buffer_size) {
+      TensorShape buffer_shape = {sz};
+      this->staging_for_past_state_reorder = Tensor(DataTypeImpl::GetType<T>(), buffer_shape, allocator);
     }
   }
 
@@ -82,57 +83,50 @@ struct BeamSearchState : public IBeamSearchState<T> {
   BufferUniquePtr chosen_indices_buffer_;
 };
 
-struct BeamSearchCpuState : public IBeamSearchCpuState {
+struct BeamSearchCpuState : IBeamSearchCpuState {
   Sequences sequences;
 
-  void Init(AllocatorPtr allocator, size_t batch_beam_size, int max_length, int sequence_length, bool is_cuda) {
-    this->sequence_lengths = AllocateBuffer<int32_t>(allocator, sequence_lengths_buffer_, batch_beam_size);
+  BeamSearchCpuState(const IGenerationParameters& parameters, AllocatorPtr allocator, bool is_cuda)
+      : parameters_{parameters} {
+    sequence_lengths = AllocateBuffer<int32_t>(allocator, sequence_lengths_buffer_, batch_beam_size_);
 
-    size_t sequences_bytes = SafeInt<size_t>(2) * batch_beam_size * max_length;
-    this->sequences_space = AllocateBuffer<int32_t>(allocator, sequences_space_buffer_, sequences_bytes);
-    memset(this->sequences_space.data(), 0, this->sequences_space.size_bytes());
+    size_t sequences_bytes = SafeInt<size_t>(2) * batch_beam_size_ * parameters.max_length;
+    sequences_space = AllocateBuffer<int32_t>(allocator, sequences_space_buffer_, sequences_bytes, true /* fill */);
+    sequences.Init(sequences_space, batch_beam_size_, parameters.sequence_length, parameters.max_length);
 
     if (is_cuda) {
       // buffers used by CUDA operator but not by CPU operator.
-      this->topk_scores = AllocateBuffer<float>(allocator, topk_scores_buffer_, 2 * batch_beam_size);
-      this->topk_tokens = AllocateBuffer<int32_t>(allocator, topk_tokens_buffer_, 2 * batch_beam_size);
-      this->topk_indices = AllocateBuffer<int32_t>(allocator, topk_indices_buffer_, 2 * batch_beam_size);
-      this->final_beam_scores = AllocateBuffer<float>(allocator, final_beam_scores_buffer_, batch_beam_size);
+      topk_scores = AllocateBuffer<float>(allocator, topk_scores_buffer_, 2 * static_cast<size_t>(batch_beam_size_));
+      topk_tokens = AllocateBuffer<int32_t>(allocator, topk_tokens_buffer_, 2 * static_cast<size_t>(batch_beam_size_));
+      topk_indices = AllocateBuffer<int32_t>(allocator, topk_indices_buffer_, 2 * static_cast<size_t>(batch_beam_size_));
+      final_beam_scores = AllocateBuffer<float>(allocator, final_beam_scores_buffer_, batch_beam_size_);
     }
-
-    this->sequences.Init(this->sequences_space, static_cast<int>(batch_beam_size), sequence_length, max_length);
   }
 
-  // Copy expanded input_ids to sequences[0]
-  void SetSequence(gsl::span<const int32_t> input_ids_in_cpu,
-                   size_t batch_beam_size,
-                   int max_length,
-                   int sequence_length) {
-    gsl::span<int32_t> sequences_0 = sequences_space;
-    for (size_t i = 0; i < batch_beam_size; i++) {
-      for (int j = 0; j < sequence_length; j++) {
-        const size_t index = SafeInt<gsl::index>(i) * max_length + j;
-        sequences_0[index] = input_ids_in_cpu[SafeInt<gsl::index>(i) * sequence_length + j];
+  // Copy expanded input_ids to sequences_space
+  void SetExpandedSequence(gsl::span<const int32_t> input_ids_in_cpu) {
+    for (int i = 0; i < batch_beam_size_; i++) {
+      for (int j = 0; j < parameters_.sequence_length; j++) {
+        const size_t index = SafeInt<gsl::index>(i) * parameters_.max_length + j;
+        sequences_space[index] = input_ids_in_cpu[SafeInt<gsl::index>(i) * parameters_.sequence_length + j];
       }
     }
   }
 
-  // Copy unexpanded input_ids to sequences[0]
-  void SetSequence(gsl::span<const int32_t> input_ids_in_cpu,
-                   size_t batch_beam_size,
-                   int beam_size,
-                   int max_length,
-                   int sequence_length) {
-    gsl::span<int32_t> sequences_0 = sequences_space;
-    for (size_t i = 0; i < batch_beam_size; i++) {
-      for (int j = 0; j < sequence_length; j++) {
-        const size_t index = SafeInt<gsl::index>(i) * max_length + j;
-        sequences_0[index] = input_ids_in_cpu[SafeInt<gsl::index>(i / beam_size) * sequence_length + j];
+  // Copy unexpanded input_ids to sequences_space (only difference from SetExpandedSequence is i is divided by parameters_.num_beams
+  void SetUnexpandedSequence(gsl::span<const int32_t> input_ids_in_cpu) {
+    for (int i = 0; i < batch_beam_size_; i++) {
+      for (int j = 0; j < parameters_.sequence_length; j++) {
+        const size_t index = SafeInt<gsl::index>(i) * parameters_.max_length + j;
+        sequences_space[index] = input_ids_in_cpu[SafeInt<gsl::index>(i / parameters_.num_beams) * parameters_.sequence_length + j];
       }
     }
   }
 
  private:
+  const IGenerationParameters& parameters_;
+  const int batch_beam_size_{parameters_.batch_size * parameters_.num_beams};
+
   BufferUniquePtr final_beam_scores_buffer_;
   BufferUniquePtr sequence_lengths_buffer_;
   BufferUniquePtr topk_scores_buffer_;
@@ -141,7 +135,7 @@ struct BeamSearchCpuState : public IBeamSearchCpuState {
   BufferUniquePtr sequences_space_buffer_;
 };
 
-// Base class of beam search implementation that is common for both GPT-2 and T5.
+// Base class of beam search implementation that is common for GPT-2, T5, and Whisper.
 template <typename T>
 class BeamSearchBase : public GenerateBase {
  public:
@@ -204,14 +198,16 @@ class BeamSearchBase : public GenerateBase {
 template <typename T>
 Status BeamSearchBase<T>::CheckInputs(const OpKernelContextInternal& context) {
   // Input shapes:
-  //   input_ids  : (batch_size, sequence_length)
-  //   vocab_mask : (vocab_size) or nullptr
+  //   input_ids          : (batch_size, sequence_length)
+  //   vocab_mask         : (vocab_size) or nullptr
+  //   decoder_input_ids  : (batch_size, initial_decode_sequence_length)
   ORT_RETURN_IF_ERROR(this->CheckInputsImpl(parameters_,
-                                            context.Input<Tensor>(0),  // input_ids
-                                            context.Input<Tensor>(7),  // vocab_mask
-                                            context.Input<Tensor>(8),  // prefix_vocab_mask
-                                            context.Input<Tensor>(9),  // attention_mask
-                                            nullptr));                 // presence_mask
+                                            context.Input<Tensor>(0),     // input_ids
+                                            context.Input<Tensor>(7),     // vocab_mask
+                                            context.Input<Tensor>(8),     // prefix_vocab_mask
+                                            context.Input<Tensor>(9),     // attention_mask
+                                            nullptr,                      // presence_mask
+                                            context.Input<Tensor>(10)));  // decoder_input_ids
 
   return Status::OK();
 }

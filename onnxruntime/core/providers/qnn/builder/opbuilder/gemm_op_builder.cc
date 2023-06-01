@@ -117,7 +117,6 @@ Status GemmOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
         ORT_RETURN_IF_ERROR(TwoDimensionTranspose(qnn_model_wrapper,
                                                   input_shape,
                                                   *input_tensor,
-                                                  qnn_model_wrapper.GetAllocator(),
                                                   unpacked_tensor));
       } else {
         ORT_RETURN_IF_ERROR(qnn_model_wrapper.UnpackInitializerData(*input_tensor, unpacked_tensor));
@@ -160,7 +159,7 @@ Status GemmOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wra
                                                   bool is_quantized_model,
                                                   bool do_op_validation) const {
   ORT_RETURN_IF_ERROR(ProcessOutputs(qnn_model_wrapper, node_unit, std::move(input_names), {},
-                                     logger, is_quantized_model, do_op_validation));
+                                     logger, is_quantized_model, do_op_validation, GetQnnOpType(node_unit.OpType())));
   return Status::OK();
 }
 

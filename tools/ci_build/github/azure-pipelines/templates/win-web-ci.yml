@@ -13,7 +13,7 @@ parameters:
 
 - name: PoolName
   type: string
-  default: 'onnxruntime-Win-CPU-2019'
+  default: 'onnxruntime-Win-CPU-2022'
 
 - name: PackageName
   displayName: 'Package name'
@@ -26,7 +26,7 @@ jobs:
 
   variables:
     runCodesignValidationInjection: false
-  timeoutInMinutes: 30
+  timeoutInMinutes: 60
   workspace:
     clean: all
   steps:
@@ -62,7 +62,7 @@ jobs:
      git checkout -- js/**
      git checkout -- .gitattributes
     workingDirectory: '$(Build.SourcesDirectory)'
-    displayName: 'Testing: force EOL to lf on windows for /js/**' 
+    displayName: 'Testing: force EOL to lf on windows for /js/**'
   - task: NodeTool@0
     inputs:
       versionSpec: '16.x'
@@ -142,6 +142,7 @@ jobs:
      npm test -- --wasm-enable-proxy -b=wasm
     workingDirectory: '$(Build.SourcesDirectory)\js\web'
     displayName: 'Run ort-web tests - WebAssembly: proxy'
+    condition: and(succeeded(), eq('${{ parameters.BuildConfig }}', 'Release'))
   - script: |
       npm run test:e2e
     workingDirectory: '$(Build.SourcesDirectory)\js\web'

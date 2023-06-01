@@ -641,6 +641,11 @@ def main():
     if args.engine == "onnxruntime":
         assert args.pipeline, "--pipeline should be specified for onnxruntime engine"
 
+        if args.version in ["2.1"]:
+            # Set a flag to avoid overflow in attention, which causes black image output in SD 2.1 model
+            # This shall be done before the first inference run.
+            os.environ["ORT_DISABLE_TRT_FLASH_ATTENTION"] = "1"
+
         result = run_ort(
             sd_model,
             args.pipeline,

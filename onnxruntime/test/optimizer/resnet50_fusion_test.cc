@@ -112,6 +112,23 @@ TEST_F(ResNet50FusionTests, FuseConvAddUnitTest) {
   ASSERT_STATUS_OK(Model::Save(*p_model, "conv_add_fp16_fused.onnx"));
   ASSERT_TRUE(op_to_count["Add"] == 0);  // Add removed from graph
 }
+TEST_F(ResNet50FusionTests, FuseConvReluUnitTest) {
+  constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/conv_relu_fp16.onnx";
+  std::shared_ptr<Model> p_model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger));
+  Graph& graph = p_model->MainGraph();
+  for (auto& node : p_model->MainGraph().Nodes()) {
+    node.SetExecutionProviderType(kCpuExecutionProvider);
+  }
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["Relu"] == 1);
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<ConvActivationFusion>(), TransformerLevel::Level3));
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level3, *logger));
+  op_to_count = CountOpsInGraph(graph);
+  ASSERT_STATUS_OK(Model::Save(*p_model, "conv_relu_fp16_fused.onnx"));
+  ASSERT_TRUE(op_to_count["Relu"] == 0);  // Add removed from graph
+}
 #endif  // defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) && !defined(DISABLE_CONTRIB_OPS)
 }  // namespace test
 }  // namespace onnxruntime

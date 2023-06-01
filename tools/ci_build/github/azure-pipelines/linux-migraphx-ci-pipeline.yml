@@ -15,7 +15,7 @@ jobs:
     - name: render
       value: 109
     - name: RocmVersion
-      value: 5.4
+      value: 5.5
 
   steps:
   - checkout: self

@@ -1,3 +1,4 @@
+-r requirements.txt
 # Install onnxruntime-rocm or onnxruntime_training
 # Build onnxruntime-rocm from source
 # Directly install pre-built onnxruntime/onnxruntime-training rocm python package is not possible at the moment.

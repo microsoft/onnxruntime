@@ -6,10 +6,9 @@ import {env, InferenceSession, SessionHandler, Tensor} from 'onnxruntime-common'
 import {promisify} from 'util';
 
 import {SerializableModeldata} from './proxy-messages';
-import {createSession, createSessionAllocate, createSessionFinalize, endProfiling, initOrt, releaseSession, run} from './proxy-wrapper';
-import {logLevelStringToEnum} from './wasm-common';
+import {createSession, createSessionAllocate, createSessionFinalize, endProfiling, initializeRuntime, releaseSession, run} from './proxy-wrapper';
 
-let ortInit: boolean;
+let runtimeInitialized: boolean;
 
 export class OnnxruntimeWebAssemblySessionHandler implements SessionHandler {
   private sessionId: number;
@@ -26,9 +25,9 @@ export class OnnxruntimeWebAssemblySessionHandler implements SessionHandler {
   }
 
   async loadModel(pathOrBuffer: string|Uint8Array, options?: InferenceSession.SessionOptions): Promise<void> {
-    if (!ortInit) {
-      await initOrt(env.wasm.numThreads!, logLevelStringToEnum(env.logLevel!));
-      ortInit = true;
+    if (!runtimeInitialized) {
+      await initializeRuntime(env);
+      runtimeInitialized = true;
     }
 
     if (typeof pathOrBuffer === 'string') {

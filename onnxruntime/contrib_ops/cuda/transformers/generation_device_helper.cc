@@ -586,7 +586,7 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
 
   // TODO: Implement BeamScorer on CUDA
   beam_scorer->Process(
-      sequences,
+      *sequences,
       next_scores,
       next_tokens,
       next_indices);

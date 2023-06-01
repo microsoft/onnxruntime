@@ -140,7 +140,7 @@ export const tensorTypeToTypedArrayConstructor = (type: Tensor.Type): Float32Arr
 /**
  * Map string log level to integer value
  */
-export const logLevelStringToEnum = (logLevel: 'verbose'|'info'|'warning'|'error'|'fatal'): number => {
+export const logLevelStringToEnum = (logLevel?: 'verbose'|'info'|'warning'|'error'|'fatal'): number => {
   switch (logLevel) {
     case 'verbose':
       return 0;

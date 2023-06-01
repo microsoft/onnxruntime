@@ -22,7 +22,7 @@
 # Instructions
 
 ## CPU
-**Ubuntu 18.04, CPU, Python Bindings**
+**Ubuntu 22.04, CPU, Python Bindings**
 
 1. Update submodules
 ```

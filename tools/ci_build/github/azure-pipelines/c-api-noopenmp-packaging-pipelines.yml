@@ -28,9 +28,9 @@ parameters:
   displayName: Suffix added to pre-release package version. Only used if IsReleaseBuild is true. Denotes the type of pre-release package.
   type: string
   values:
-  - -alpha
-  - -beta
-  - -rc
+  - alpha
+  - beta
+  - rc
   - none
   default: none
 
@@ -50,6 +50,16 @@ parameters:
   type: string
   default: '0'
 
+- name: NugetPackageSuffix
+  displayName: Suffix to append to nuget package
+  type: string
+  default: 'NONE'
+
+- name: AdditionalBuildFlag
+  displayName: Build flags to append to build command
+  type: string
+  default: 'NONE'
+
 resources:
   repositories:
   - repository: onnxruntime-inference-examples # The name used to reference this repository in the checkout step
@@ -67,30 +77,34 @@ variables:
   value: ''
 
 stages:
-- stage: Set_release_version_suffix
+- stage: Setup
   jobs:
-  - job:
+  - job: Set_Variables
     steps:
     - checkout: none
     - bash: |
+        # Do not output ##vso[] commands with `set -x` or they may be parsed again and include a trailing quote.
+        set +x
         if [[ "${{ parameters.IsReleaseBuild }}" = True && "${{ parameters.PreReleaseVersionSuffixString }}" != "none"  ]]; then
-          echo "##vso[task.setvariable variable=ReleaseVersionSuffix; isoutput=true]${{ parameters.PreReleaseVersionSuffixString }}.${{ parameters.PreReleaseVersionSuffixNumber }}"
+          if [[ "${{ parameters.PreReleaseVersionSuffixNumber }}" -eq 0 ]]; then
+            echo "##vso[task.setvariable variable=ReleaseVersionSuffix;isOutput=true]-${{ parameters.PreReleaseVersionSuffixString }}"
+          else
+            echo "##vso[task.setvariable variable=ReleaseVersionSuffix;isOutput=true]-${{ parameters.PreReleaseVersionSuffixString }}.${{ parameters.PreReleaseVersionSuffixNumber }}"
+          fi
         else
-          echo "##vso[task.setvariable variable=ReleaseVersionSuffix; isoutput=true]''"
+          echo "##vso[task.setvariable variable=ReleaseVersionSuffix;isOutput=true]"
         fi
-    - bash: |
-        echo "IsReleaseBuild is: ${{ parameters.IsReleaseBuild }}"
-        echo "Pre-release version suffix is: ${{ parameters.PreReleaseVersionSuffixString }}"
-        echo "Pre-release version number is: ${{ parameters.PreReleaseVersionSuffixNumber }}"
-        echo "Release version suffix is: $(ReleaseVersionSuffix)"
+      name: Set_Release_Version_Suffix
 
 - stage: Debug
+  dependsOn: Setup
   jobs:
-  - job:
+  - job: D1
+    variables:
+      MyVar: $[stageDependencies.Setup.Set_Variables.outputs['Set_Release_Version_Suffix.ReleaseVersionSuffix']]
     steps:
     - checkout: none
-    - bash: |
-        echo "Release version suffix is: $(ReleaseVersionSuffix)"
+    - bash: echo $(MyVar)
 
 - template: templates/c-api-cpu.yml
   parameters:
@@ -98,10 +112,15 @@ stages:
     DoCompliance: ${{ parameters.DoCompliance }}
     DoEsrp: ${{ parameters.DoEsrp }}
     IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
-    ReleaseVersionSuffix: $(ReleaseVersionSuffix)
-    OrtNugetPackageId: 'Microsoft.ML.OnnxRuntime'
+    ${{ if eq(parameters.NugetPackageSuffix, 'NONE') }}:
+      OrtNugetPackageId: 'Microsoft.ML.OnnxRuntime'
+    ${{ else }}:
+      OrtNugetPackageId: 'Microsoft.ML.OnnxRuntime${{ parameters.NugetPackageSuffix }}'
     AdditionalBuildFlags: ''
-    AdditionalWinBuildFlags: '--enable_onnx_tests --enable_wcos'
+    ${{ if eq(parameters.AdditionalBuildFlag, 'NONE') }}:
+      AdditionalWinBuildFlags: '--enable_onnx_tests --enable_wcos'
+    ${{ else }}:
+      AdditionalWinBuildFlags: '--enable_onnx_tests --enable_wcos ${{parameters.AdditionalBuildFlag}}'
     BuildVariant: 'default'
     SpecificArtifact: ${{ parameters.SpecificArtifact }}
     BuildId: ${{ parameters.BuildId }}
@@ -179,7 +198,7 @@ stages:
     buildArch: x64
     msbuildPlatform: x64
     packageName: x64-cuda
-    buildparameter: --use_cuda --cuda_version=11.8 --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.8" --enable_onnx_tests --enable_wcos --build_java --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=52;60;61;70;75;80"
+    buildparameter: --use_cuda --cuda_version=11.8 --cuda_home=$(Agent.TempDirectory)\v11.8 --enable_onnx_tests --enable_wcos --build_java --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=52;60;61;70;75;80"
     runTests: ${{ parameters.RunOnnxRuntimeTests }}
     buildJava: true
     java_artifact_id: onnxruntime_gpu
@@ -195,7 +214,7 @@ stages:
     buildArch: x64
     msbuildPlatform: x64
     packageName: x64-tensorrt
-    buildparameter: --use_tensorrt --use_tensorrt_builtin_parser --tensorrt_home="C:\local\TensorRT-8.6.0.12.Windows10.x86_64.cuda-11.8" --cuda_version=11.8 --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.8"  --enable_onnx_tests --enable_wcos --build_java --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=52;60;61;70;75;80"
+    buildparameter: --use_tensorrt --tensorrt_home="C:\local\TensorRT-8.6.0.12.Windows10.x86_64.cuda-11.8" --cuda_version=11.8 --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.8"  --enable_onnx_tests --enable_wcos --build_java --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=52;60;61;70;75;80"
     runTests: ${{ parameters.RunOnnxRuntimeTests }}
     buildJava: true
     java_artifact_id: onnxruntime_gpu
@@ -212,7 +231,7 @@ stages:
   - job:
     workspace:
       clean: all
-    pool: 'Win-CPU-2021'
+    pool: 'onnxruntime-Win-CPU-2022'
 
 
     steps:
@@ -546,6 +565,7 @@ stages:
 
 - stage: NuGet_Packaging_GPU
   dependsOn:
+  - Setup
   - Windows_Packaging_gpu
   - Windows_Packaging_tensorrt
   - Linux_C_API_Packaging_GPU_x64
@@ -560,6 +580,7 @@ stages:
     pool: 'Azure-Pipelines-EO-Windows2022-aiinfra'
     variables:
       breakCodesignValidationInjection: ${{ parameters.DoEsrp }}
+      ReleaseVersionSuffix: $[stageDependencies.Setup.Set_Variables.outputs['Set_Release_Version_Suffix.ReleaseVersionSuffix']]
 
     steps:
     - checkout: self
@@ -771,7 +792,7 @@ stages:
     SpecificArtifact: ${{ parameters.specificArtifact }}
     BuildId: ${{ parameters.BuildId }}
 
-- template: nuget/templates/dml-vs-2019.yml
+- template: nuget/templates/dml-vs-2022.yml
   parameters:
     AgentPool : 'aiinfra-dml-winbuild'
     IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
@@ -794,7 +815,7 @@ stages:
      mkdir $(Build.ArtifactStagingDirectory)\testdata
      copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\custom_op_library.* $(Build.ArtifactStagingDirectory)\testdata
 
-- template: nuget/templates/dml-vs-2019.yml
+- template: nuget/templates/dml-vs-2022.yml
   parameters:
     AgentPool : 'aiinfra-dml-winbuild'
     IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
@@ -817,9 +838,9 @@ stages:
      mkdir $(Build.ArtifactStagingDirectory)\testdata
      copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\custom_op_library.* $(Build.ArtifactStagingDirectory)\testdata
 
-- template: nuget/templates/dml-vs-2019.yml
+- template: nuget/templates/dml-vs-2022.yml
   parameters:
-    AgentPool : 'Win-CPU-2021'
+    AgentPool : 'aiinfra-dml-winbuild'
     IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
     ArtifactName: 'drop-win-dml-arm64-zip'
     StageName: 'Windows_CI_GPU_DML_Dev_arm64'
@@ -840,9 +861,9 @@ stages:
      mkdir $(Build.ArtifactStagingDirectory)\testdata
      copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\custom_op_library.* $(Build.ArtifactStagingDirectory)\testdata
 
-- template: nuget/templates/dml-vs-2019.yml
+- template: nuget/templates/dml-vs-2022.yml
   parameters:
-    AgentPool : 'Win-CPU-2021'
+    AgentPool : 'onnxruntime-Win-CPU-2019'
     IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
     ArtifactName: 'drop-win-dml-arm-zip'
     StageName: 'Windows_CI_GPU_DML_Dev_arm'
