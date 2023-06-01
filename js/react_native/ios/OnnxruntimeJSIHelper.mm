@@ -24,12 +24,16 @@ RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(install)
   auto& runtime = *jsiRuntime;
 
   auto resolveArrayBuffer = jsi::Function::createFromHostFunction(runtime,
-                                                                     jsi::PropNameID::forUtf8(runtime, "resolveArrayBuffer"),
+                                                                     jsi::PropNameID::forUtf8(runtime, "jsiOnnxruntimeResolveArrayBuffer"),
                                                                      1,
                                                                      [](jsi::Runtime& runtime,
                                                                         const jsi::Value& thisArg,
                                                                         const jsi::Value* args,
                                                                         size_t count) -> jsi::Value {
+    if (count != 1) {
+      throw jsi::JSError(runtime, "jsiOnnxruntimeResolveArrayBuffer(..) expects one argument (object)!");
+    }
+
     auto data = args[0].asObject(runtime);
     auto blobId = data.getProperty(runtime, "blobId").asString(runtime).utf8(runtime);
     auto size = data.getProperty(runtime, "size").asNumber();
@@ -50,12 +54,16 @@ RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(install)
   runtime.global().setProperty(runtime, "jsiOnnxruntimeResolveArrayBuffer", resolveArrayBuffer);
 
   auto storeArrayBuffer = jsi::Function::createFromHostFunction(runtime,
-                                                                     jsi::PropNameID::forUtf8(runtime, "storeArrayBuffer"),
+                                                                     jsi::PropNameID::forUtf8(runtime, "jsiOnnxruntimeStoreArrayBuffer"),
                                                                      1,
                                                                      [](jsi::Runtime& runtime,
                                                                         const jsi::Value& thisArg,
                                                                         const jsi::Value* args,
                                                                         size_t count) -> jsi::Value {
+    if (count != 1) {
+      throw jsi::JSError(runtime, "jsiOnnxruntimeStoreArrayBuffer(..) expects one argument (object)!");
+    }
+
     auto arrayBuffer = args[0].asObject(runtime).getArrayBuffer(runtime);
     auto size = arrayBuffer.length(runtime);
     NSData* data = [NSData dataWithBytesNoCopy:arrayBuffer.data(runtime) length:size freeWhenDone:NO];
