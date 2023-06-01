@@ -72,6 +72,8 @@ jobs:
 
     - publish: $(Build.BinariesDirectory)/mac.xnnpack/RelWithDebInfo/RelWithDebInfo/onnxruntime_test_all
       artifact: onnxruntime_test_all
+      condition: succeededOrFailed()
 
     - publish: $(Build.BinariesDirectory)/mac.xnnpack/RelWithDebInfo/RelWithDebInfo/onnx_test_runner
       artifact: onnx_test_runner
+      condition: succeededOrFailed()
