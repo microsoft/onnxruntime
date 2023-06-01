@@ -3,6 +3,7 @@
 
 import * as binaryOps from './ops/binary-op';
 import {conv, parseConvAttributes} from './ops/conv';
+import {convTranspose, parseConvTransposeAttributes} from './ops/conv-transpose';
 import {gemm, parseGemmAttributes} from './ops/gemm';
 import {matMul} from './ops/matmul';
 import * as pool from './ops/pool';
@@ -30,6 +31,7 @@ export const WEBGPU_OP_RESOLVE_RULES: Map<string, OperatorImplementation> = new 
   ['ClipV10', [unaryOps.clipV10]],
   ['Clip', [unaryOps.clip]],
   ['Conv', [conv, parseConvAttributes]],
+  ['ConvTranspose', [convTranspose, parseConvAttributes]],
   ['Cos', [unaryOps.cos]],
   ['Cosh', [unaryOps.cosh]],
   ['Div', [binaryOps.div]],
