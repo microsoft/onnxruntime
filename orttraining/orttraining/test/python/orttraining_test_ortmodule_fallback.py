@@ -533,7 +533,7 @@ def test_ortmodule_fallback_onnx_model__missing_op(is_training, fallback_enabled
 
 
 @pytest.mark.parametrize("is_training,persist_fallback", list(itertools.product([True, False], repeat=2)))
-def test_ortmodule_fallback_warn_message(is_training, persist_fallback):
+def test_ortmodule_fallback_warn_message(is_training, persist_fallback, caplog):
     # is_training: True for torch.nn.Module training model, eval mode otherwise
 
     policy = "FALLBACK_UNSUPPORTED_DEVICE"
@@ -555,18 +555,35 @@ def test_ortmodule_fallback_warn_message(is_training, persist_fallback):
     inputs = torch.randn(N, D_in, device=data_device)
 
     for i in range(3):
-        with pytest.raises(RuntimeError), pytest.warns(UserWarning) as warning_record:
+        # The run MUST fail no matter with ORT or PyTorch, so we catch the RuntimeError here in case it breaks the test.
+        # Be noted, the logs will be caught by caplog.
+        with pytest.raises(RuntimeError):
             ort_model(inputs)
         # For retries, the warn message will always be logged
         if not persist_fallback:
-            assert "Fallback to PyTorch due to exception" in str(warning_record[0].message.args[0])
+            if i == 0:
+                # For the first time, run ORTModule, feature map is logged as warning
+                # And the fallback warning is logged.
+                assert len(caplog.records) == 2
+            else:
+                # For the other time, only the fallback warning is logged.
+                assert len(caplog.records) == 1
+            assert "Fallback to PyTorch due to exception" in caplog.records[-1].message
+            caplog.clear()
             continue
 
         # If `retries` is not enabled, only log the warn message once
         if i == 0:
-            assert "Fallback to PyTorch due to exception" in str(warning_record[0].message.args[0])
+            # For the first time, run ORTModule, feature map is logged as warning
+            # And the fallback warning is logged.
+            assert len(caplog.records) == 2
+            assert "Fallback to PyTorch due to exception" in caplog.records[1].message
+            caplog.clear()
         else:
-            assert warning_record.list == []
+            # For the other time, no fallback warning will be logged because
+            # we are running with PyTorch.
+            assert len(caplog.records) == 0
+            caplog.clear()
 
     del os.environ["ORTMODULE_SKIPCHECK_POLICY"]
 

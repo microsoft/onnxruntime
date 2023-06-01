@@ -4,6 +4,7 @@
 # --------------------------------------------------------------------------
 # isort: skip_file
 # Import ordering is important in this module to aviod circular dependencies
+import logging
 from ._torch_module_factory import TorchModuleFactory
 from ._torch_module_ort import TorchModuleORT
 from ._custom_op_symbolic_registry import CustomOpSymbolicRegistry
@@ -11,6 +12,7 @@ from ._custom_gradient_registry import CustomGradientRegistry
 from . import _utils
 from .debug_options import DebugOptions
 from ._fallback import _FallbackManager, _FallbackPolicy, ORTModuleFallbackException
+from ._logger import ortmodule_loglevel_to_python_loglevel
 from onnxruntime.training import ortmodule
 
 from onnxruntime.tools import pytorch_export_contrib_ops
@@ -51,9 +53,15 @@ class ORTModule(torch.nn.Module):
         if not debug_options:
             debug_options = DebugOptions()
 
+        self._logger = logging.getLogger(__name__)
+        self._logger.setLevel(ortmodule_loglevel_to_python_loglevel(debug_options.logging.log_level))
+
         # Fallback settings
         self._fallback_manager = _FallbackManager(
-            pytorch_module=module, policy=ortmodule.ORTMODULE_FALLBACK_POLICY, retry=ortmodule.ORTMODULE_FALLBACK_RETRY
+            pytorch_module=module,
+            policy=ortmodule.ORTMODULE_FALLBACK_POLICY,
+            retry=ortmodule.ORTMODULE_FALLBACK_RETRY,
+            logger=self._logger,
         )
 
         try:
@@ -63,7 +71,7 @@ class ORTModule(torch.nn.Module):
 
             super().__init__()
 
-            self._torch_module = TorchModuleFactory()(module, debug_options, self._fallback_manager)
+            self._torch_module = TorchModuleFactory()(module, debug_options, self._fallback_manager, self._logger)
 
             _utils.patch_ortmodule_forward_method(self)
 
@@ -75,7 +83,7 @@ class ORTModule(torch.nn.Module):
             # Warn user if there are name collisions between user model's and ORTModule attributes
             # And if there are custom methods defined on the user's model, copy and bind them to
             # ORTModule.
-            _utils.check_for_name_collisions_and_bind_methods_to_ortmodule(self, module)
+            _utils.check_for_name_collisions_and_bind_methods_to_ortmodule(self, module, self._logger)
 
         except ORTModuleFallbackException as e:
             # Although backend is switched to PyTorch here,
@@ -310,4 +318,13 @@ class ORTModule(torch.nn.Module):
     def __setstate__(self, state):
         self.__dict__.update(state)
 
-        _utils.reinitialize_ortmodule(self)
+        # Re-register contrib OPs
+        pytorch_export_contrib_ops.register()
+        CustomOpSymbolicRegistry.register_all()
+        CustomGradientRegistry.register_all()
+
+        # Re-initialize the ORTModule forward method
+        _utils.patch_ortmodule_forward_method(self)
+
+        # Re-bind users custom methods to ORTModule
+        _utils.check_for_name_collisions_and_bind_methods_to_ortmodule(self, self.module, self._logger)
