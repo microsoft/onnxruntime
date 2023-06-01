@@ -14,9 +14,9 @@ from torch.onnx import symbolic_helper
 from onnxruntime.capi._pybind_state import register_miscellaneous_const_input, register_torch_autograd_function
 from onnxruntime.training import ortmodule
 
-from . import _logger
-from ._custom_op_symbolic_registry import pytorch_type_to_onnx
+from ._custom_op_symbolic_registry import pytorch_type_to_onnx, wrap_custom_export_function
 from ._fallback import ORTModuleONNXModelException, wrap_exception
+from ._utils import get_runtime_pytorch_version
 
 # Some autograd.Function's shouldn't be exported as PythonOp.
 # If CheckpointFunction is exported as PythonOp, the checkpointed computation
@@ -26,41 +26,12 @@ from ._fallback import ORTModuleONNXModelException, wrap_exception
 # at all.
 BANNED_AUTOGRAD_FUNCTION_NAMES = frozenset([torch.utils.checkpoint.CheckpointFunction.__name__])
 
-# Mapping from pytorch scalar type to onnx scalar type.
-_CAST_PYTORCH_TO_ONNX = {
-    "Byte": torch.onnx.TensorProtoDataType.UINT8,
-    "Char": torch.onnx.TensorProtoDataType.INT8,
-    "Double": torch.onnx.TensorProtoDataType.DOUBLE,
-    "Float": torch.onnx.TensorProtoDataType.FLOAT,
-    "Half": torch.onnx.TensorProtoDataType.FLOAT16,
-    "Int": torch.onnx.TensorProtoDataType.INT32,
-    "Long": torch.onnx.TensorProtoDataType.INT64,
-    "Short": torch.onnx.TensorProtoDataType.INT16,
-    "Bool": torch.onnx.TensorProtoDataType.BOOL,
-    "ComplexFloat": torch.onnx.TensorProtoDataType.COMPLEX64,
-    "ComplexDouble": torch.onnx.TensorProtoDataType.COMPLEX128,
-    "BFloat16": torch.onnx.TensorProtoDataType.BFLOAT16,
-    # Not yet defined in torch.
-    # "Float8E4M3FN": torch.onnx.TensorProtoDataType.FLOAT8E4M3FN,
-    # "Float8E4M3FNUZ": torch.onnx.TensorProtoDataType.FLOAT8E4M3FNUZ,
-    # "Float8E5M2": torch.onnx.TensorProtoDataType.FLOAT8E5M2,
-    # "Float8E5M2FNUZ": torch.onnx.TensorProtoDataType.FLOAT8E5M2FNUZ,
-    "Undefined": torch.onnx.TensorProtoDataType.UNDEFINED,
-}
-
 
 def _full_name(klass):
     module = klass.__module__
     if module == "builtins":
         return klass.__qualname__  # avoid outputs like 'builtins.str'
     return module + "." + klass.__qualname__
-
-
-def pytorch_type_to_onnx(scalar_type: str) -> torch.onnx.TensorProtoDataType:  # noqa: F811
-    try:
-        return torch.onnx.JitScalarType.from_name(scalar_type).onnx_type()
-    except AttributeError:
-        return _CAST_PYTORCH_TO_ONNX[scalar_type]
 
 
 def _export_pt_1_10(g, n, *args, **kwargs):
@@ -83,8 +54,7 @@ def _export_pt_1_10(g, n, *args, **kwargs):
         inplace = kwargs["inplace"]
         # TODO move to public API once exporter team exposes that
         training_mode = None
-        runtime_pytorch_version = version.parse(torch.__version__.split("+")[0])
-        if runtime_pytorch_version >= version.parse("1.12"):
+        if get_runtime_pytorch_version() >= version.parse("1.12"):
             # FIXME: using privated modules
             from torch.onnx import _globals
 
@@ -228,22 +198,10 @@ def _export_pt_1_10(g, n, *args, **kwargs):
         raise wrap_exception(ORTModuleONNXModelException, e)  # noqa: B904
 
 
-# Starting from PyTorch 1.11, there has been a change to symbolic function signature
-# in terms of how additional context is accessed. More info at
-# https://github.com/pytorch/pytorch/blob/6b02648479d3615fa3260961e24f38dd0f22da94/torch/onnx/symbolic_helper.py#L48
-# This code can be cleaned up once support for PyTorch version < 1.11 is dropped.
-try:
-    from torch.onnx import SymbolicContext
-
-    def _export(ctx: SymbolicContext, g, *args, **kwargs):
-        n = ctx.cur_node
-        return _export_pt_1_10(g, n, *args, **kwargs)
-
-except ImportError:
-    _export = _export_pt_1_10
+_export = wrap_custom_export_function(_export_pt_1_10)
 
 
-def _post_process_after_export(exported_model, enable_custom_autograd_function, log_level):
+def _post_process_after_export(exported_model, enable_custom_autograd_function):
     if enable_custom_autograd_function:
         return _post_process_enabling_autograd_fallback(exported_model)
 
@@ -253,7 +211,7 @@ def _post_process_after_export(exported_model, enable_custom_autograd_function, 
             is_pythonop_needed = True
             break
 
-    if is_pythonop_needed and log_level <= _logger.LogLevel.WARNING:
+    if is_pythonop_needed:
         warnings.warn(
             "Detected autograd functions usage in current model, the run will fail \
                       without enabling '_enable_custom_autograd_function'. Please enable it with: \
