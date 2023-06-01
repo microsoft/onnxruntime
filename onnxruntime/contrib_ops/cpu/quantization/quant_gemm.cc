@@ -40,7 +40,7 @@ class QGemm : protected GemmBase, public MatMulIntegerBase {
     const auto* a_scale = context->Input<Tensor>(IN_A_SCALE);
     const auto* b_scale = context->Input<Tensor>(IN_B_SCALE);
     const auto* y_scale = context->Input<Tensor>(IN_Y_SCALE);
-    ORT_RETURN_IF_ERROR(CheckInputs(a_zp, b_zp, y_zp, a_scale, b_scale, y_scale, *helper));
+    ORT_RETURN_IF_ERROR(CheckInputs(a_zp, b_zp, y_zp, a_scale, b_scale, y_scale, helper));
 
     AllocatorPtr allocator;
     ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&allocator));

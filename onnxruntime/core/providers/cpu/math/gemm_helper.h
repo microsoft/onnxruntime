@@ -17,20 +17,31 @@ class GemmHelper {
     ORT_ENFORCE(left.NumDimensions() == 2 || left.NumDimensions() == 1);
     ORT_ENFORCE(right.NumDimensions() == 2);
 
+    for (size_t i = 0; i != left.NumDimensions(); ++i) {
+      ORT_ENFORCE(left[i] >= 0);
+      ORT_ENFORCE(left[i] <= std::numeric_limits<ptrdiff_t>::max());
+    }
+
+    for (size_t i = 0; i != right.NumDimensions(); ++i) {
+      ORT_ENFORCE(right[i] >= 0);
+      ORT_ENFORCE(right[i] <= std::numeric_limits<ptrdiff_t>::max());
+    }
+
     if (trans_left) {
-      M_ = left.NumDimensions() == 2 ? left[1] : left[0];
-      K_ = left.NumDimensions() == 2 ? left[0] : 1;
+      M_ = left.NumDimensions() == 2 ? static_cast<ptrdiff_t>(left[1]) : static_cast<ptrdiff_t>(left[0]);
+      K_ = left.NumDimensions() == 2 ? static_cast<ptrdiff_t>(left[0]) : 1;
     } else {
-      M_ = left.NumDimensions() == 2 ? left[0] : 1;
-      K_ = left.NumDimensions() == 2 ? left[1] : left[0];
+      M_ = left.NumDimensions() == 2 ? static_cast<ptrdiff_t>(left[0]) : 1;
+      K_ = left.NumDimensions() == 2 ? static_cast<ptrdiff_t>(left[1])
+                                     : static_cast<ptrdiff_t>(left[0]);
     }
 
     int k_dim;
     if (trans_right) {
-      N_ = right[0];
+      N_ = static_cast<ptrdiff_t>(right[0]);
       k_dim = 1;
     } else {
-      N_ = right[1];
+      N_ = static_cast<ptrdiff_t>(right[1]);
       k_dim = 0;
     }
 
