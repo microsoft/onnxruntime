@@ -39,5 +39,18 @@
     "cpplint.filters": [
         "-build/include_subdir",
         "-runtime/references"
-    ]
+    ],
+    "files.associations": {
+        "cstdlib": "cpp",
+        "chrono": "cpp",
+        "complex": "cpp",
+        "valarray": "cpp",
+        "adolcforward": "cpp",
+        "variant": "cpp",
+        "random": "cpp",
+        "system_error": "cpp",
+        "vector": "cpp",
+        "*.inc": "cpp",
+        "util": "cpp"
+    }
 }
