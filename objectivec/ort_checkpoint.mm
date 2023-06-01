@@ -77,7 +77,6 @@ NS_ASSUME_NONNULL_BEGIN
       return [NSString stringWithUTF8String:str->c_str()];
     }
     ORT_CXX_API_THROW("Property is not a string.", ORT_INVALID_ARGUMENT);
-
   }
   ORT_OBJC_API_IMPL_CATCH_RETURNING_NULLABLE(error)
 }
