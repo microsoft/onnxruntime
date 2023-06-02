@@ -133,7 +133,7 @@ Status LaunchTritonKernel(cudaStream_t stream, std::string fname,
 #ifdef USE_TRITON_KERNEL
   if (ort_triton_kernel_map.count(fname) == 0) {
     // Return unsupported status if function name not found in registry.
-    // This error status will be used by tunableOp
+    // This error status will be used by TunableOp
     std::ostringstream message_stream;
     message_stream << "Can't find ort triton kernel name: " << fname;
     std::string message = message_stream.str();
@@ -141,6 +141,8 @@ Status LaunchTritonKernel(cudaStream_t stream, std::string fname,
   }
   auto idx = ort_triton_kernel_map[fname];
   return LaunchTritonKernel(stream, idx, grid0, grid1, grid2, args, args_size);
+#else
+  return Status::OK();
 #endif
 }
 

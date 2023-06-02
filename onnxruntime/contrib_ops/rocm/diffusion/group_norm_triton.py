@@ -10,15 +10,25 @@ import triton.language as tl
 
 @triton.jit
 def group_norm_kernel(
-    X, Y, GAMMA, BETA, h, w, c, c_per_group, eps, BLOCK_SIZE: tl.constexpr, ACTIVATION_SWISH: tl.constexpr
+    input_ptr,
+    output_ptr,
+    gamma_ptr,
+    beta_ptr,
+    h,
+    w,
+    c,
+    c_per_group,
+    eps,
+    BLOCK_SIZE: tl.constexpr,
+    ACTIVATION_SWISH: tl.constexpr
 ):
     row_x = tl.program_id(0)
     row_y = tl.program_id(1)
     stride = h * w * c
-    X += row_x * stride + row_y * c_per_group
-    Y += row_x * stride + row_y * c_per_group
-    GAMMA += row_y * c_per_group
-    BETA += row_y * c_per_group
+    input_ptr += row_x * stride + row_y * c_per_group
+    output_ptr += row_x * stride + row_y * c_per_group
+    gamma_ptr += row_y * c_per_group
+    beta_ptr += row_y * c_per_group
 
     cols = tl.arange(0, BLOCK_SIZE)
     mask = cols < c_per_group
@@ -26,14 +36,14 @@ def group_norm_kernel(
     # Calculate mean and variance
     group_mean = 0.0
     for i in range(h * w):
-        x_ptr = X + i * c
+        x_ptr = input_ptr + i * c
         a = tl.load(x_ptr + cols, mask=mask, other=0.).to(tl.float32)
         group_mean += tl.sum(a, axis=0)
     group_mean /= (h * w * c_per_group)
 
     group_var = 0.0
     for i in range(h * w):
-        x_ptr = X + i * c
+        x_ptr = input_ptr + i * c
         a = tl.load(x_ptr + cols, mask=mask, other=0.).to(tl.float32)
         a = tl.where(mask, a - group_mean, 0.)
         group_var += tl.sum(a * a, axis=0)
@@ -43,10 +53,10 @@ def group_norm_kernel(
 
     # Normalize and apply linear transformation
     for i in range(h * w):  # i: h * w
-        y_ptr = Y + i * c
-        x_ptr = X + i * c
-        gamma = tl.load(GAMMA + cols, mask=mask).to(tl.float32)
-        beta = tl.load(BETA + cols, mask=mask).to(tl.float32)
+        y_ptr = output_ptr + i * c
+        x_ptr = input_ptr + i * c
+        gamma = tl.load(gamma_ptr + cols, mask=mask).to(tl.float32)
+        beta = tl.load(beta_ptr + cols, mask=mask).to(tl.float32)
         x = tl.load(x_ptr + cols, mask=mask).to(tl.float32)
         x_hat = (x - group_mean) * rstd
         y = x_hat * gamma + beta
