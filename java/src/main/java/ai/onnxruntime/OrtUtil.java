@@ -542,7 +542,8 @@ public final class OrtUtil {
           break;
         default:
           throw new IllegalStateException(
-              "Impossible to reach here, managed to cast a buffer as an incorrect type, found " + type);
+              "Impossible to reach here, managed to cast a buffer as an incorrect type, found "
+                  + type);
       }
       data.position(origPosition);
       tmp.rewind();
