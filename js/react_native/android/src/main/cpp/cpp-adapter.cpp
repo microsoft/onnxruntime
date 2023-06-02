@@ -73,14 +73,14 @@ Java_ai_onnxruntime_reactnative_OnnxruntimeJSIHelper_nativeInstall(JNIEnv *env, 
   auto instanceGlobal = env->NewGlobalRef(instance);
 
   auto resolveArrayBuffer = jsi::Function::createFromHostFunction(runtime,
-                                                                  jsi::PropNameID::forAscii(runtime, "getArrayBufferForBlob"),
+                                                                  jsi::PropNameID::forAscii(runtime, "jsiOnnxruntimeResolveArrayBuffer"),
                                                                   1,
                                                                   [=](jsi::Runtime& runtime,
                                                                     const jsi::Value& thisValue,
                                                                     const jsi::Value* arguments,
                                                                     size_t count) -> jsi::Value {
     if (count != 1) {
-      throw jsi::JSError(runtime, "resolveArrayBuffer(..) expects one argument (object)!");
+      throw jsi::JSError(runtime, "jsiOnnxruntimeResolveArrayBuffer(..) expects one argument (object)!");
     }
 
     jsi::Object data = arguments[0].asObject(runtime);
@@ -101,14 +101,14 @@ Java_ai_onnxruntime_reactnative_OnnxruntimeJSIHelper_nativeInstall(JNIEnv *env, 
   runtime.global().setProperty(runtime, "jsiOnnxruntimeResolveArrayBuffer", std::move(resolveArrayBuffer));
 
   auto storeArrayBuffer = jsi::Function::createFromHostFunction(runtime,
-                                                                jsi::PropNameID::forAscii(runtime, "storeArrayBuffer"),
+                                                                jsi::PropNameID::forAscii(runtime, "jsiOnnxruntimeStoreArrayBuffer"),
                                                                 1,
                                                                 [=](jsi::Runtime& runtime,
                                                                     const jsi::Value& thisValue,
                                                                     const jsi::Value* arguments,
                                                                     size_t count) -> jsi::Value {
     if (count != 1) {
-      throw jsi::JSError(runtime, "storeArrayBuffer(..) expects one argument (object)!");
+      throw jsi::JSError(runtime, "jsiOnnxruntimeStoreArrayBuffer(..) expects one argument (object)!");
     }
 
     auto arrayBuffer = arguments[0].asObject(runtime).getArrayBuffer(runtime);
