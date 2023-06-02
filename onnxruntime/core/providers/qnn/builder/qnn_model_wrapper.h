@@ -12,7 +12,6 @@
 #include "qnn_def.h"
 #include "core/common/logging/logging.h"
 #include "core/graph/graph_viewer.h"
-#include "core/framework/allocator.h"
 #include "core/providers/shared/node_unit/node_unit.h"
 #include "core/providers/shared/utils/utils.h"
 
@@ -27,16 +26,14 @@ class QnnModelWrapper {
                   const Qnn_BackendHandle_t& backend_handle,
                   const std::unordered_map<std::string, size_t>& input_index_map,
                   const std::unordered_map<std::string, size_t>& output_index_map,
-                  const std::unordered_set<std::string>& initializer_lookup,
-                  const onnxruntime::AllocatorPtr& cpu_allocator)
+                  const std::unordered_set<std::string>& initializer_lookup)
       : graph_viewer_(graph_viewer),
         logger_(logger),
         qnn_interface_(qnn_interface),
         backend_handle_(backend_handle),
         input_index_map_(input_index_map),
         output_index_map_(output_index_map),
-        initializer_lookup_(initializer_lookup),
-        cpu_allocator_(cpu_allocator) {
+        initializer_lookup_(initializer_lookup) {
   }
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(QnnModelWrapper);
 
@@ -106,13 +103,6 @@ class QnnModelWrapper {
 
   bool IsGraphInput(const std::string& tensor_name) const {
     return input_index_map_.find(tensor_name) != input_index_map_.end();
-  }
-
-  onnxruntime::AllocatorPtr GetAllocator() const {
-    if (cpu_allocator_ == nullptr) {
-      LOGS_DEFAULT(ERROR) << "cpu_allocator is null!";
-    }
-    return cpu_allocator_;
   }
 
   Status AddTransposeNode(NodeIndex node_index,
@@ -214,7 +204,6 @@ class QnnModelWrapper {
   const std::unordered_map<std::string, size_t>& input_index_map_;
   const std::unordered_map<std::string, size_t>& output_index_map_;
   const std::unordered_set<std::string>& initializer_lookup_;
-  onnxruntime::AllocatorPtr cpu_allocator_;
   const std::vector<uint32_t> nchw2hwcn_perm_{2, 3, 1, 0};
   const std::vector<uint32_t> cnhw2hwcn_perm_{2, 3, 0, 1};
 };  // QnnModelWrapper

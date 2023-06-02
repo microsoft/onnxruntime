@@ -40,6 +40,7 @@ namespace rocm {
 struct TunableOpInfo {
   bool enable{false};
   bool tuning_enable{false};
+  int max_tuning_duration_ms{};
 };
 }  // namespace rocm
 
@@ -76,6 +77,7 @@ struct std::hash<::onnxruntime::rocm::TunableOpInfo> {
     size_t seed_and_value{0xbc9f1d34};
     onnxruntime::HashCombine(info.enable, seed_and_value);
     onnxruntime::HashCombine(info.tuning_enable, seed_and_value);
+    onnxruntime::HashCombine(info.max_tuning_duration_ms, seed_and_value);
     return seed_and_value;
   }
 };
