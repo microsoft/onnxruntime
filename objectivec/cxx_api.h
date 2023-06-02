@@ -12,41 +12,26 @@
 
 // paths are different when building the Swift Package Manager package as the headers come from the iOS pod archive
 #ifdef SPM_BUILD
-
-#ifndef ENABLE_TRAINING_APIS
-#include "onnxruntime/onnxruntime_c_api.h"
-#include "onnxruntime/onnxruntime_cxx_api.h"
+#define HEADER_DIR "onnxruntime/"
 #else
-#include "onnxruntime/onnxruntime_training_c_api.h"
-#include "onnxruntime/onnxruntime_training_cxx_api.h"
+#define HEADER_DIR ""
 #endif
 
-#if __has_include("onnxruntime/coreml_provider_factory.h")
+#ifndef ENABLE_TRAINING_APIS
+#include HEADER_DIR "onnxruntime_c_api.h"
+#include HEADER_DIR "onnxruntime_cxx_api.h"
+#else
+#include HEADER_DIR "onnxruntime_training_c_api.h"
+#include HEADER_DIR "onnxruntime_training_cxx_api.h"
+#endif
+
+#if __has_include(HEADER_DIR "coreml_provider_factory.h")
 #define ORT_OBJC_API_COREML_EP_AVAILABLE 1
-#include "onnxruntime/coreml_provider_factory.h"
+#include HEADER_DIR "coreml_provider_factory.h"
 #else
 #define ORT_OBJC_API_COREML_EP_AVAILABLE 0
 #endif
 
-#else
-
-#ifndef ENABLE_TRAINING_APIS
-#include "onnxruntime_c_api.h"
-#include "onnxruntime_cxx_api.h"
-#else
-#include "onnxruntime_training_c_api.h"
-#include "onnxruntime_training_cxx_api.h"
-#endif
-
-#if __has_include("coreml_provider_factory.h")
-#define ORT_OBJC_API_COREML_EP_AVAILABLE 1
-#include "coreml_provider_factory.h"
-#else
-#define ORT_OBJC_API_COREML_EP_AVAILABLE 0
-
-#endif
-
-#endif
 
 #if defined(__clang__)
 #pragma clang diagnostic pop
