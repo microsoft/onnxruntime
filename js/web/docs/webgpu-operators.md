@@ -41,6 +41,8 @@ Do not modify directly.*
 | Neg | ai.onnx(6-12,13+) |  |
 | Pow | ai.onnx(7-11,12,13-14,15+) |  |
 | Reciprocal | ai.onnx(6-12,13+) |  |
+| ReduceL1 | ai.onnx(1-10,11-12,13-17,18+) |  |
+| ReduceL2 | ai.onnx(1-10,11-12,13-17,18+) |  |
 | ReduceLogSum | ai.onnx(1-10,11-12,13-17,18+) |  |
 | ReduceLogSumExp | ai.onnx(1-10,11-12,13-17,18+) |  |
 | ReduceMax | ai.onnx(1-10,11,12,13-17,18+) |  |
