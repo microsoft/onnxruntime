@@ -107,6 +107,17 @@ export interface Env {
   debug?: boolean;
 
   /**
+   * Get version of the current package.
+   */
+  versions: {
+    common: string;
+    web?: string;
+    node?: string;
+    // eslint-disable-next-line @typescript-eslint/naming-convention
+    'react-native'?: string;
+  };
+
+  /**
    * Represent a set of flags for WebAssembly
    */
   wasm: Env.WebAssemblyFlags;
