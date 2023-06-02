@@ -169,8 +169,10 @@ export declare namespace InferenceSession {
   // Backend ONNX.js: supports 'webgl'.
   interface ExecutionProviderOptionMap {
     cpu: CpuExecutionProviderOption;
+    coreml: CoreMlExecutionProviderOption;
     cuda: CudaExecutionProviderOption;
     dml: DmlExecutionProviderOption;
+    tensorrt: TensorRtExecutionProviderOption;
     wasm: WebAssemblyExecutionProviderOption;
     webgl: WebGLExecutionProviderOption;
     xnnpack: XnnpackExecutionProviderOption;
@@ -192,8 +194,16 @@ export declare namespace InferenceSession {
     readonly name: 'cuda';
     deviceId?: number;
   }
+  export interface CoreMlExecutionProviderOption extends ExecutionProviderOption {
+    readonly name: 'coreml';
+    coreMlFlags?: number;
+  }
   export interface DmlExecutionProviderOption extends ExecutionProviderOption {
     readonly name: 'dml';
+    deviceId?: number;
+  }
+  export interface TensorRtExecutionProviderOption extends ExecutionProviderOption {
+    readonly name: 'tensorrt';
     deviceId?: number;
   }
   export interface WebAssemblyExecutionProviderOption extends ExecutionProviderOption {
