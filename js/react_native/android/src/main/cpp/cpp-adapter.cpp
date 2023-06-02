@@ -1,7 +1,6 @@
 #include <jni.h>
 #include <jsi/jsi.h>
 #include <string>
-// #include <android/log.h>
 
 using namespace facebook;
 

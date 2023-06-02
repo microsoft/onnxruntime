@@ -9,7 +9,6 @@ set(CMAKE_CXX_STANDARD 17)
 file(TO_CMAKE_PATH "${NODE_MODULES_DIR}/react-native/ReactCommon/jsi/jsi/jsi.cpp" libPath)
 
 include_directories(
-        ../cpp
         "${NODE_MODULES_DIR}/react-native/React"
         "${NODE_MODULES_DIR}/react-native/React/Base"
         "${NODE_MODULES_DIR}/react-native/ReactCommon/jsi"

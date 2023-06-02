@@ -223,8 +223,6 @@ static void testCreateOutputTensorT(const std::array<T, 5> &outValues, std::func
 
   NSDictionary *outputMap = [resultMap objectForKey:@"output"];
 
-  // Log outputMap[@"dims"]
-  NSLog(@"outputMap[dims]: %@", outputMap[@"dims"]);
   // dims
   XCTAssertTrue([outputMap[@"dims"] isEqualToArray:inputTensorMap[@"dims"]]);
 
