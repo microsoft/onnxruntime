@@ -144,6 +144,8 @@ class CUDA_MS_OP_TYPED_CLASS_NAME(1, float, MatMulNBits);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, MatMulBnb4);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, MatMulBnb4);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, float, MatMulBnb4);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, QuantNbitsGemm);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, DequantizeAndUnpackWeight);
 class CUDA_MS_OP_CLASS_NAME(1, Trilu);
 class CUDA_MS_OP_CLASS_NAME(1, UnfoldTensor);
 class CUDA_MS_OP_CLASS_NAME(1, DynamicTimeWarping);
@@ -348,6 +350,8 @@ Status RegisterCudaContribKernels(KernelRegistry& kernel_registry) {
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, MatMulBnb4)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, MatMulBnb4)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, float, MatMulBnb4)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_CLASS_NAME(1, QuantNbitsGemm)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_CLASS_NAME(1, DequantizeAndUnpackWeight)>,
       BuildKernelCreateInfo<CUDA_MS_OP_CLASS_NAME(1, BiasSoftmax)>,
       BuildKernelCreateInfo<CUDA_MS_OP_CLASS_NAME(1, BiasDropout)>,
       BuildKernelCreateInfo<CUDA_MS_OP_CLASS_NAME(1, BitmaskDropout)>,
