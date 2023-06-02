@@ -269,7 +269,7 @@ void ComputeGemm(const int M,
   GetQuantizationParameter(A, M * K, a_scale, a_zero_point, thread_pool);
 
   // quantize the data
-  ParQuantizeLinear(A, quantized_A_buffer, M * K, a_scale, a_zero_point, thread_pool);
+  ParQuantizeLinearStd(A, quantized_A_buffer, M * K, a_scale, a_zero_point, thread_pool);
 
   bool b_is_signed = weights.quant_para_->is_signed;
   uint8_t b_zero_point = weights.quant_para_->zero_point ? *static_cast<const uint8_t*>(weights.quant_para_->zero_point) : 0;

@@ -92,9 +92,9 @@ Array.from(ALL_REGISTERED_OPERATORS.keys()).sort().forEach(op => {
           .sort()
           .map(
               domain => `${domain}(${
-                  opset.get(domain)!
-                      .map(ver => ver[1] ? (ver[0] === ver[1] ? `${ver[0]}` : `${ver[0]}-${ver[1]}`) : `${ver[0]}+`)
-                      .join(',')})`)
+                      [...new Set(opset.get(domain)!.map(
+                           ver => ver[1] ? (ver[0] === ver[1] ? `${ver[0]}` : `${ver[0]}-${ver[1]}`) : `${ver[0]}+`))]
+                          .join(',')})`)
           .join('; ');
   doc.write(`| ${op} | ${opsetString} | ${comments ?? ''} |${EOL}`);
 });

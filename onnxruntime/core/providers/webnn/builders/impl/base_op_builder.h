@@ -39,7 +39,7 @@ class BaseOpBuilder : public IOpBuilder {
   virtual bool HasSupportedInputsImpl(const Node& node, const logging::Logger& logger) const;
 
   virtual int GetMinSupportedOpSet(const Node& /* node */) const { return 1; }
-  virtual int GetMaxSupportedOpSet(const Node& /* node */) const { return 14; }
+  virtual int GetMaxSupportedOpSet(const Node& /* node */) const { return 19; }
 
  private:
   bool HasSupportedOpSet(const Node& node, const logging::Logger& logger) const;

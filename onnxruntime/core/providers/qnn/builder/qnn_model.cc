@@ -87,7 +87,6 @@ const NodeUnit& QnnModel::GetNodeUnit(const Node* node,
 Status QnnModel::ComposeGraph(const GraphViewer& graph_viewer,
                               const onnxruntime::Node& fused_node) {
   LOGS(logger_, VERBOSE) << "ComposeGraph Graph name: " << graph_viewer.Name();
-  const onnxruntime::AllocatorPtr& cpu_allocator = GetAllocator();
 
   // Holder for the NodeUnits in the graph, this will guarantee the NodeUnits is
   // valid throughout the lifetime of the ModelBuilder
@@ -103,7 +102,7 @@ Status QnnModel::ComposeGraph(const GraphViewer& graph_viewer,
                                                       qnn_backend_manager_->GetQnnBackendHandle(),
                                                       model_input_index_map_,
                                                       model_output_index_map_,
-                                                      initializer_inputs_, cpu_allocator);
+                                                      initializer_inputs_);
   bool rt = true;
   rt = qnn_model_wrapper.CreateQnnGraph(qnn_backend_manager_->GetQnnContext(), graph_name);
   if (!rt) {

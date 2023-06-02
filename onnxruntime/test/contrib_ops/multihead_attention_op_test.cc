@@ -452,7 +452,8 @@ static void RunMultiHeadAttentionTests(AttentionTestData& data, bool disable_cpu
   }
 }
 
-#if !defined(_MSC_VER) || defined(USE_DML)
+// Disable some tests in Windows since prefast build might crash with large test data.
+#if !defined(_MSC_VER)
 // Test fused cross attention kernel
 // It requires head_size > 32 and head_size <= 64 for T4 GPU; hidden_size == v_hidden_size.
 TEST(MultiHeadAttentionTest, CrossAttention_Batch2_HeadSize40) {

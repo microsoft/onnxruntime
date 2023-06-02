@@ -122,7 +122,7 @@ class MemoryInfo {
     bool inplace_reuse{false};
     OrtValueIndex reused_buffer{0};  // The index of the reused tensor, if no reuse, it is its own tensor.
     AllocKind alloc_kind{AllocKind::kAllocate};
-    OrtMemoryInfo location;
+    OrtDevice location;
   };
 
   struct AllocationSummary {
@@ -185,7 +185,7 @@ class MemoryInfo {
   }
 
   // Key: The map type. E.g., initializer, activation. Value: A map from the tensor index to its memory information
-  std::map<OrtMemoryInfo, std::map<MapType, MemoryInfoMap> > tensors_memory_info_map_;
+  std::map<OrtDevice, std::map<MapType, MemoryInfoMap> > tensors_memory_info_map_;
 
   // Key: The tensor index. Value: The Allocation information per tensor
   std::map<OrtValueIndex, AllocInfoPerTensor> tensor_alloc_info_map_;

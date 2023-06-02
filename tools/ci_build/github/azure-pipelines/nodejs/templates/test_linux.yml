@@ -1,5 +1,5 @@
 parameters:
-  AgentPool: 'aiinfra-Linux-CPU'
+  AgentPool: 'onnxruntime-Ubuntu2004-AMD-CPU'
   StageSuffix: ''
 stages:
 - stage: Nodejs_Test_${{ parameters.StageSuffix }}

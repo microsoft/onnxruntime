@@ -289,7 +289,7 @@ export class WebGpuBackend {
     // the underlying buffer may be changed after the async function is called. so we use a getter function to make sure
     // the buffer is up-to-date.
     const data = getTargetBuffer();
-    data.set(new Uint8Array(arrayBuffer));
+    data.set(new Uint8Array(arrayBuffer, 0, data.byteLength));
   }
 
   alloc(size: number): number {
