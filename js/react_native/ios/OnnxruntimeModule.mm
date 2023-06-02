@@ -85,9 +85,9 @@ RCT_EXPORT_METHOD(loadModel
 }
 
 /**
- * React native binding API to load a model using BASE64 encoded model data string.
+ * React native binding API to load a model using blob object that data stored in RCTBlobManager.
  *
- * @param modelData the BASE64 encoded model data string
+ * @param modelDataBlob a model data blob object
  * @param options onnxruntime session options
  * @param resolve callback for returning output back to react native js
  * @param reject callback for returning an error back to react native js

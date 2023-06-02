@@ -46,7 +46,7 @@ public class TensorHelper {
 
   /**
    * It creates an input tensor from a map passed by react native js.
-   * 'data' is blob map and the buffer is stored in BlobModule. It first resolve it and creates a tensor.
+   * 'data' is blob object and the buffer is stored in BlobModule. It first resolve it and creates a tensor.
    */
   public static OnnxTensor createInputTensor(BlobModule blobModule, ReadableMap inputTensor, OrtEnvironment ortEnvironment) throws Exception {
     // shape
@@ -82,7 +82,7 @@ public class TensorHelper {
 
   /**
    * It creates an output map from an output tensor.
-   * a data array is store in BlobModule
+   * a data array is store in BlobModule.
    */
   public static WritableMap createOutputTensor(BlobModule blobModule, OrtSession.Result result) throws Exception {
     WritableMap outputTensorMap = Arguments.createMap();
@@ -119,7 +119,7 @@ public class TensorHelper {
         }
         outputTensor.putArray("data", dataArray);
       } else {
-        // Store in BlobModule then create a blob map as data
+        // Store in BlobModule then create a blob object as data
         byte[] bufferArray = createOutputTensor(onnxTensor);
         WritableMap data = Arguments.createMap();
         data.putString("blobId", blobModule.store(bufferArray));

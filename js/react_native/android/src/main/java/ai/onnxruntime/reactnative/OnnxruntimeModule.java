@@ -97,9 +97,9 @@ public class OnnxruntimeModule extends ReactContextBaseJavaModule {
   }
 
   /**
-   * React native binding API to load a model using blob map that data stored in BlobModule.
+   * React native binding API to load a model using blob object that data stored in BlobModule.
    *
-   * @param data the blob map
+   * @param data the blob object
    * @param options onnxruntime session options
    * @param promise output returning back to react native js
    * @note the value provided to `promise` includes a key representing the session.
