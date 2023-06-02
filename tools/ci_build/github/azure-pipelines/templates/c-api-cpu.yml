@@ -780,7 +780,7 @@ stages:
 
 - template: ../nuget/templates/test_linux.yml
   parameters:
-    AgentPool : aiinfra-Linux-CPU
+    AgentPool : onnxruntime-Ubuntu2004-AMD-CPU
     NugetPackageName : 'Microsoft.ML.OnnxRuntime'
     ArtifactSuffix: 'CPU'
     SpecificArtifact: ${{ parameters.SpecificArtifact }}
@@ -798,7 +798,7 @@ stages:
 
 - template: ../nodejs/templates/test_linux.yml
   parameters:
-    AgentPool : 'aiinfra-Linux-CPU'
+    AgentPool : 'onnxruntime-Ubuntu2004-AMD-CPU'
     StageSuffix : 'Linux_CPU_x64'
 
 - template: ../nodejs/templates/test_macos.yml
@@ -852,7 +852,7 @@ stages:
   - job:
     workspace:
       clean: all
-    pool: 'aiinfra-Linux-CPU'
+    pool: 'onnxruntime-Ubuntu2004-AMD-CPU'
     variables:
     - name: runCodesignValidationInjection
       value: false

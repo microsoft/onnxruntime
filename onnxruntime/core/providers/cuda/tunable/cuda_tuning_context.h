@@ -39,6 +39,9 @@ class CudaTuningContext : public ITuningContext {
   void DisableTuning() override;
   bool IsTuningEnabled() const override;
 
+  void SetMaxTuningDurationMs(int max_duration_ms) override;
+  int GetMaxTuningDurationMs() const override;
+
   TuningResultsManager& GetTuningResultsManager() override;
   const TuningResultsManager& GetTuningResultsManager() const override;
 

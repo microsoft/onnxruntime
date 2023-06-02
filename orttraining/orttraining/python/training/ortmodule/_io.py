@@ -6,15 +6,14 @@
 import copy
 import gc
 import inspect
-import warnings
-from collections import abc
+from collections import OrderedDict, abc
+from logging import Logger
 from typing import Dict, Iterator, List, Mapping, Optional, Sequence, Tuple, Union
 
 import onnx
 import torch
 
 from ._fallback import ORTModuleIOError, ORTModuleONNXModelException, wrap_exception
-from ._logger import LogLevel, suppress_os_stream_output
 from ._runtime_inspector import RuntimeInspector
 from ._utils import warn_of_constant_inputs
 
@@ -285,8 +284,8 @@ def _combine_input_buffers_initializers(
     _expand_inputs(kwargs, flattened_kwargs_inputs)
     buffer_names_dict = {buffer_name: inp for buffer_name, inp in named_buffer}
     result = []
-    embed_sparsity_results = []
-    label_sparsity_results = []
+    embed_sparsity_results = OrderedDict()
+    label_sparsity_results = OrderedDict()
 
     for input_idx, name in enumerate(onnx_input_names):
         inp = None
@@ -319,12 +318,12 @@ def _combine_input_buffers_initializers(
             if _PrimitiveType.is_primitive_type(inp):
                 inp = _PrimitiveType.get_tensor(inp, device)
 
-            found, embedding_is_sparse, label_is_sparse = rt_inspector.inspect_input(name, inp)
+            found, embedding_density, label_density = rt_inspector.inspect_input(name, inp)
             if found:
-                if embedding_is_sparse is True:
-                    embed_sparsity_results.append(name)
-                if label_is_sparse is True:
-                    label_sparsity_results.append(name)
+                if embedding_density < 100:
+                    embed_sparsity_results[name] = embedding_density
+                if label_density < 100:
+                    label_sparsity_results[name] = label_density
             result.append(inp)
         else:
             raise wrap_exception(
@@ -405,7 +404,7 @@ def unflatten_user_output(output_schema: Optional[_ModelInputOutputSchemaType], 
     return user_output
 
 
-def _extract_schema(data: _ModelInputOutputType) -> _ModelInputOutputSchemaType:
+def _extract_schema(data: _ModelInputOutputType, logger: Logger) -> _ModelInputOutputSchemaType:
     """Extract the data schema by replacing every torch.Tensor value with _TensorStub.
 
     Depth first traversal to iterate over the data:
@@ -413,7 +412,6 @@ def _extract_schema(data: _ModelInputOutputType) -> _ModelInputOutputSchemaType:
     > Replace None/str typed data with itself
     > Recreate tensor from data for other primitive types, and replace them with a stub.
 
-    TODO(pengwa): use a unified logger and log level control.
     Examples:
         Example 1, list:
             data = [torch.tensor(1), torch.tensor(2)]
@@ -452,11 +450,11 @@ def _extract_schema(data: _ModelInputOutputType) -> _ModelInputOutputSchemaType:
     if data is None:
         return data
     elif isinstance(data, str):
-        warn_of_constant_inputs(data)
+        warn_of_constant_inputs(data, logger)
         return data
     elif _PrimitiveType.is_primitive_type(data):
         if isinstance(data, bool):
-            warn_of_constant_inputs(data)
+            warn_of_constant_inputs(data, logger)
         return _TensorStub(dtype=_PrimitiveType.get_primitive_dtype(data), shape_dims=0)
     # Depth first traversal to iterate over the data to replace every tensor with a stub
     elif isinstance(data, torch.Tensor):
@@ -467,7 +465,7 @@ def _extract_schema(data: _ModelInputOutputType) -> _ModelInputOutputSchemaType:
     stubbed_schema: Optional[_ModelInputOutputSchemaType] = None
     if isinstance(data, abc.Sequence):
         sequence_type = type(data)
-        stubbed_schema = [_extract_schema(val) for val in data]
+        stubbed_schema = [_extract_schema(val, logger) for val in data]
         try:
             # namedtuple can be created by passing the list sequence to method _make
             stubbed_schema = sequence_type._make(stubbed_schema)
@@ -476,7 +474,7 @@ def _extract_schema(data: _ModelInputOutputType) -> _ModelInputOutputSchemaType:
             stubbed_schema = sequence_type(stubbed_schema)
     elif isinstance(data, abc.Mapping):
         dict_type = type(data)
-        stubbed_schema = {key: _extract_schema(data[key]) for key in data}
+        stubbed_schema = {key: _extract_schema(data[key], logger) for key in data}
         stubbed_schema = dict_type(**stubbed_schema)
     else:
         raise wrap_exception(
@@ -714,13 +712,13 @@ def parse_inputs_for_onnx_export(
 
 
 def parse_outputs_for_onnx_export_and_extract_schema(
-    module, args: Sequence[_ModelInputOutputType], kwargs: Mapping[str, _ModelInputOutputType], log_level: LogLevel
+    module, args: Sequence[_ModelInputOutputType], kwargs: Mapping[str, _ModelInputOutputType], logger: Logger
 ):
     # Perform a forward call to grab outputs
     output_names = None
     output_dynamic_axes = None
     is_deepcopy = False
-    with torch.no_grad(), suppress_os_stream_output(log_level=log_level):
+    with torch.no_grad():
         # Deepcopy inputs, since input values may change after model run.
         sample_args_copy, sample_kwargs_copy = deepcopy_model_input(*args, **kwargs)
         try:
@@ -729,7 +727,7 @@ def parse_outputs_for_onnx_export_and_extract_schema(
             is_deepcopy = True
         except Exception:
             model_copy = module
-            warnings.warn(
+            logger.warning(
                 "This model cannot be deep copied (or pickled), "
                 "which is a required step for stateful models to be properly exported to ONNX."
                 " Compute will continue, but unexpected results may occur!"
@@ -740,7 +738,7 @@ def parse_outputs_for_onnx_export_and_extract_schema(
         # Parse the output and extract the output_names and output_dynamic_axes to be used for onnx export
         output_names, output_dynamic_axes = _parse_outputs_and_extract_names_and_dynamic_axes(sample_outputs)
 
-    output_schema = _extract_schema(sample_outputs)
+    output_schema = _extract_schema(sample_outputs, logger)
     if is_deepcopy:
         del model_copy
         gc.collect()
