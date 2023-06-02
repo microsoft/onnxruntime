@@ -24,6 +24,45 @@ std::string jstring2string(JNIEnv *env, jstring jStr) {
   return ret;
 }
 
+byte* getBytesFromBlob(JNIEnv *env, jobject instanceGlobal, const std::string& blobId, int offset, int size) {
+  if (!env) throw std::runtime_error("JNI Environment is gone!");
+
+  // get java class
+  jclass clazz = env->GetObjectClass(instanceGlobal);
+  // get method in java class
+  jmethodID getBufferJava = env->GetMethodID(clazz, "getBlobBuffer", "(Ljava/lang/String;II)[B");
+  // call method
+  auto jstring = env->NewStringUTF(blobId.c_str());
+  auto boxedBytes = (jbyteArray) env->CallObjectMethod(instanceGlobal,
+                                                        getBufferJava,
+                                                        // arguments
+                                                        jstring,
+                                                        offset,
+                                                        size);
+  env->DeleteLocalRef(jstring);
+
+  jboolean isCopy = true;
+  jbyte* bytes = env->GetByteArrayElements(boxedBytes, &isCopy);
+  env->DeleteLocalRef(boxedBytes);
+  return reinterpret_cast<byte*>(bytes);
+};
+
+std::string createBlob(JNIEnv *env, jobject instanceGlobal, byte* bytes, size_t size) {
+  if (!env) throw std::runtime_error("JNI Environment is gone!");
+
+  // get java class
+  jclass clazz = env->GetObjectClass(instanceGlobal);
+  // get method in java class
+  jmethodID getBufferJava = env->GetMethodID(clazz, "createBlob", "([B)Ljava/lang/String;");
+  // call method
+  auto byteArray = env->NewByteArray(size);
+  env->SetByteArrayRegion(byteArray, 0, size, reinterpret_cast<jbyte*>(bytes));
+  auto blobId = (jstring) env->CallObjectMethod(instanceGlobal, getBufferJava, byteArray);
+  env->DeleteLocalRef(byteArray);
+
+  return jstring2string(env, blobId);
+};
+
 extern "C"
 JNIEXPORT void JNICALL
 Java_ai_onnxruntime_reactnative_OnnxruntimeJSIHelper_nativeInstall(JNIEnv *env, jclass _, jlong jsiPtr, jobject instance) {
@@ -32,38 +71,16 @@ Java_ai_onnxruntime_reactnative_OnnxruntimeJSIHelper_nativeInstall(JNIEnv *env, 
   auto& runtime = *jsiRuntime;
 
   auto instanceGlobal = env->NewGlobalRef(instance);
-  auto getBytesFromBlob = [=](const std::string& blobId, int offset, int size) -> byte* {
-    if (!env) throw std::runtime_error("JNI Environment is gone!");
-
-    // get java class
-    jclass clazz = env->GetObjectClass(instanceGlobal);
-    // get method in java class
-    jmethodID getBufferJava = env->GetMethodID(clazz, "getBlobBuffer", "(Ljava/lang/String;II)[B");
-    // call method
-    auto jstring = env->NewStringUTF(blobId.c_str());
-    auto boxedBytes = (jbyteArray) env->CallObjectMethod(instanceGlobal,
-                                                          getBufferJava,
-                                                          // arguments
-                                                          jstring,
-                                                          offset,
-                                                          size);
-    env->DeleteLocalRef(jstring);
-
-    jboolean isCopy = true;
-    jbyte* bytes = env->GetByteArrayElements(boxedBytes, &isCopy);
-    env->DeleteLocalRef(boxedBytes);
-    return reinterpret_cast<byte*>(bytes);
-  };
 
   auto resolveArrayBuffer = jsi::Function::createFromHostFunction(runtime,
-                                                                  jsi::PropNameID::forAscii(runtime, "jsiOnnxruntimeResolveArrayBuffer"),
+                                                                  jsi::PropNameID::forAscii(runtime, "getArrayBufferForBlob"),
                                                                   1,
                                                                   [=](jsi::Runtime& runtime,
                                                                     const jsi::Value& thisValue,
                                                                     const jsi::Value* arguments,
                                                                     size_t count) -> jsi::Value {
     if (count != 1) {
-      throw jsi::JSError(runtime, "jsiOnnxruntimeResolveArrayBuffer(..) expects one argument (object)!");
+      throw jsi::JSError(runtime, "resolveArrayBuffer(..) expects one argument (object)!");
     }
 
     jsi::Object data = arguments[0].asObject(runtime);
@@ -71,7 +88,7 @@ Java_ai_onnxruntime_reactnative_OnnxruntimeJSIHelper_nativeInstall(JNIEnv *env, 
     auto offset = data.getProperty(runtime, "offset").asNumber();
     auto size = data.getProperty(runtime, "size").asNumber();
 
-    auto bytes = getBytesFromBlob(blobId.utf8(runtime), offset, size);
+    auto bytes = getBytesFromBlob(env, instanceGlobal, blobId.utf8(runtime), offset, size);
 
     size_t totalSize = size - offset;
     jsi::Function arrayBufferCtor = runtime.global().getPropertyAsFunction(runtime, "ArrayBuffer");
@@ -83,40 +100,21 @@ Java_ai_onnxruntime_reactnative_OnnxruntimeJSIHelper_nativeInstall(JNIEnv *env, 
   });
   runtime.global().setProperty(runtime, "jsiOnnxruntimeResolveArrayBuffer", std::move(resolveArrayBuffer));
 
-  auto createBlob = [=](byte* bytes, size_t size) -> std::string {
-    if (!env) throw std::runtime_error("JNI Environment is gone!");
-
-    // get java class
-    jclass clazz = env->GetObjectClass(instanceGlobal);
-    // get method in java class
-    jmethodID getBufferJava = env->GetMethodID(clazz, "createBlob", "([B)Ljava/lang/String;");
-    // call method
-    auto byteArray = env->NewByteArray(size);
-    env->SetByteArrayRegion(byteArray, 0, size, reinterpret_cast<jbyte*>(bytes));
-    auto blobId = (jstring) env->CallObjectMethod(instanceGlobal,
-                                                  getBufferJava,
-                                                  // arguments
-                                                  byteArray);
-    env->DeleteLocalRef(byteArray);
-
-    return jstring2string(env, blobId);
-  };
-
   auto storeArrayBuffer = jsi::Function::createFromHostFunction(runtime,
-                                                                jsi::PropNameID::forAscii(runtime, "jsiOnnxruntimeStoreArrayBuffer"),
+                                                                jsi::PropNameID::forAscii(runtime, "storeArrayBuffer"),
                                                                 1,
                                                                 [=](jsi::Runtime& runtime,
                                                                     const jsi::Value& thisValue,
                                                                     const jsi::Value* arguments,
                                                                     size_t count) -> jsi::Value {
     if (count != 1) {
-      throw jsi::JSError(runtime, "jsiOnnxruntimeStoreArrayBuffer(..) expects one argument (object)!");
+      throw jsi::JSError(runtime, "storeArrayBuffer(..) expects one argument (object)!");
     }
 
     auto arrayBuffer = arguments[0].asObject(runtime).getArrayBuffer(runtime);
     auto size = arrayBuffer.size(runtime);
 
-    std::string blobId = createBlob(arrayBuffer.data(runtime), size);
+    std::string blobId = createBlob(env, instanceGlobal, arrayBuffer.data(runtime), size);
 
     jsi::Object result(runtime);
     auto blobIdString = jsi::String::createFromUtf8(runtime, blobId);
