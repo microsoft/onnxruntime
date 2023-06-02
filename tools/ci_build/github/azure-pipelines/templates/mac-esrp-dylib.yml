@@ -51,7 +51,7 @@ steps:
               "parameterValue": "/tr \"http://rfc3161.gtm.corp.microsoft.com/TSS/HttpTspServer\" /td sha256"
             }
           ],
-          "toolName": "signtool.exe",
-          "toolVersion": "6.2.9304.0"
+          "toolName": "sign",
+          "toolVersion": "1.0"
         }
       ]
