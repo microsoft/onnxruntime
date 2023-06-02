@@ -307,10 +307,16 @@ class PlannerImpl {
     // If FW output tensor is consumed by BW graph, and pytorch performs an inplace operation on th returned tensor,
     // we will run into a buffer corruption problem.
     // One potential fix is returning a copy of output tensor, if it has downstream dependency
-    auto p_next_node = node.OutputNodesBegin();
-    if (p_next_node != node.OutputNodesEnd() && p_next_node->OpType() == "YieldOp") {
-      return false;
+    for (auto edge = node.OutputEdgesBegin(); edge != node.OutputEdgesEnd(); ++edge) {
+      auto& node = edge->GetNode();
+      if (node.OpType() == "YieldOp" && edge->GetSrcArgIndex() == output_arg_num) {
+        return false;
+      }
     }
+    // auto p_next_node = node.OutputNodesBegin();
+    // if (p_next_node != node.OutputNodesEnd() && p_next_node->OpType() == "YieldOp") {
+    //   return false;
+    // }
 #endif  // ENABLE_TRAINING
 
     auto p_output_arg = node.OutputDefs()[output_arg_num];
@@ -323,7 +329,11 @@ class PlannerImpl {
     const auto& alias_map = ci.kernel_def->Alias();
     auto input_args = node.InputDefs();
     for (auto& pair : alias_map) {
+      // if (node.OpType() == "SoftmaxCrossEntropyLossInternal")
+      // std::cout << ">>>>>>>>Alias check, input: " << pair.first << ", output: " << pair.second << std::endl;
       if (pair.second == output_arg_num) {
+        // if (node.OpType() == "SoftmaxCrossEntropyLossInternal")
+        //   std::cout << ">>>>>>>>Alias enter " << std::endl;
         // we _must_ reuse this input to satisfy aliasing requirement: (e.g., for reshape)
         if ((0 <= pair.first) && (static_cast<size_t>(pair.first) < input_args.size())) {
           auto p_input_arg = input_args[pair.first];
@@ -1375,7 +1385,7 @@ class PlannerImpl {
         } else if (std::find(graph_outputs.begin(), graph_outputs.end(), node_output) != graph_outputs.end()) {
           // node_output is graph's output, so we can't reuse intermediate buffer
           AllocPlan(current).alloc_kind = AllocKind::kAllocateOutput;
-
+          // std::cout << ">>>>>>>>Allocate output: " << node_output->Name() << " is graph output" << std::endl;
           // hacky perf optimization to not copy a pre-existing value to an output if this is a Loop subgraph and
           // the value is not being changed in the subgraph.
           //

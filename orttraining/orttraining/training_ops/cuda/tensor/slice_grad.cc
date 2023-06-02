@@ -52,7 +52,7 @@ Status SliceGrad::CallSliceImp(size_t element_size, size_t dimension_count, cons
                                const TArray<FastDivmod<uint64_t>>& output_strides, OpKernelContext* ctx,
                                const TensorShape& output_shape) const {
   Tensor* gradient_out_tensor = GetOutputGradientTensor(ctx);
-  std::cout << "gradient_out_tensor->SizeInBytes(): " << gradient_out_tensor->SizeInBytes() << "| " << gradient_out_tensor->DataType()->Size() * output_shape.Size() << std::endl;
+  // std::cout << "gradient_out_tensor->SizeInBytes(): " << gradient_out_tensor->SizeInBytes() << "| " << gradient_out_tensor->DataType()->Size() * output_shape.Size() << std::endl;
   CUDA_RETURN_IF_ERROR(cudaMemsetAsync(gradient_out_tensor->MutableDataRaw(), 0, gradient_out_tensor->SizeInBytes(), Stream(ctx)));
   return SliceImplGrad(Stream(ctx),
                        element_size,

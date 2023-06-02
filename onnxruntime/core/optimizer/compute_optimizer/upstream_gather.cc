@@ -345,6 +345,81 @@ std::optional<SliceInfo> IsSupportedShrunkenGather(Graph& graph, Node& node,
   return SliceInfo(graph, &node, false /*is_slice_scalar*/, "axis", axis, true);
 }
 
+bool IsSingleValue1DShape(const ONNX_NAMESPACE::TensorShapeProto* input_shape) {
+  if (input_shape == nullptr) {
+    return false;
+  }
+
+  size_t dim_size = static_cast<size_t>(input_shape->dim_size());
+  if (dim_size == 1 && utils::HasDimValue(input_shape->dim(0)) && input_shape->dim(0).dim_value() == 1) {
+    return true;
+  }
+
+  return false;
+}
+
+std::optional<SliceInfo> IsSupportedSlice(Graph& graph, Node& node,
+                                          const InlinedHashSet<std::string_view>&
+                                              compatible_execution_providers,
+                                          const logging::Logger& logger) {
+  if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "Slice", {10, 11, 13}) ||
+      !graph_utils::IsSupportedProvider(node, compatible_execution_providers)) {
+    return std::nullopt;
+  }
+
+  const NodeArg* data_input = node.InputDefs()[0];
+  const NodeArg* starts_input = node.InputDefs()[1];
+  const NodeArg* ends_input = node.InputDefs()[2];
+  const NodeArg* axes_input = node.InputDefs().size() > 3 ? node.InputDefs()[3] : nullptr;
+
+  if (data_input->Shape() == nullptr || starts_input->Shape() == nullptr || ends_input->Shape() == nullptr ||
+      axes_input->Shape() == nullptr) {
+    LOG_DEBUG_INFO(logger, "Skip Slice node " + node.Name() + " due to undefined shape.");
+    return std::nullopt;
+  }
+
+  // const NodeArg* steps_input = node.InputDefs().size() > 4 ? node.InputDefs()[4] : nullptr;
+
+  // TODO: We support with some constraints currently, can be extended further to support other cases.
+  // Support cases:
+  // 1. starts/ends/axes/steps are all single-value 1D tensors, axes=[0] and steps=[1].
+  // 2. starts/ends are single-value 1D tensors, axes/steps are not provided, (default value: axes=[0] and steps=[1]).
+  if (!IsSingleValue1DShape(starts_input->Shape()) ||
+      !IsSingleValue1DShape(ends_input->Shape()) ||
+      (axes_input && !IsSingleValue1DShape(axes_input->Shape()))
+      // ||
+      // (steps_input && !IsSingleValue1DShape(steps_input->Shape()))
+  ) {
+    return std::nullopt;
+  }
+
+  // Try to parse the value and double-check.
+  InlinedVector<int64_t> starts_values, ends_values, axes_values, steps_values;
+  if (!(optimizer_utils::AppendTensorFromInitializer(graph, *starts_input, starts_values, true) &&
+        starts_values.size() == 1)) {
+    return std::nullopt;
+  }
+  if (!(optimizer_utils::AppendTensorFromInitializer(graph, *ends_input, ends_values, true) &&
+        ends_values.size() == 1)) {
+    return std::nullopt;
+  }
+  if (axes_input && !(optimizer_utils::AppendTensorFromInitializer(graph, *axes_input, axes_values, true) &&
+                      axes_values.size() == 1)) {
+    return std::nullopt;
+  }
+
+  int axis = axes_values[0];
+  if (axis < 0)
+    axis += data_input->Shape()->dim_size();
+
+  // if (steps_input && !(optimizer_utils::AppendTensorFromInitializer(graph, *steps_input, steps_values, true) &&
+  //                      steps_values.size() == 1 && steps_values[0] == 1)) {
+  //   return std::nullopt;
+  // }
+
+  return SliceInfo(graph, &node, false /*is_slice_scalar*/, "axis", axis, true);
+}
+
 }  // namespace
 
 std::optional<SliceInfo> UpStreamGatherGraphTransformer::IsSupportedForUpstream(
@@ -357,6 +432,9 @@ std::optional<SliceInfo> UpStreamGatherGraphTransformer::IsSupportedForUpstream(
   }
   if (!gather_info.has_value()) {
     gather_info = IsSupportedShrunkenGather(graph, node, GetCompatibleExecutionProviders(), logger);
+  }
+  if (!gather_info.has_value()) {
+    gather_info = IsSupportedSlice(graph, node, GetCompatibleExecutionProviders(), logger);
   }
   return gather_info;
 }

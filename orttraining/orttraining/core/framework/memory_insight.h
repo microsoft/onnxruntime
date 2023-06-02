@@ -52,7 +52,8 @@ Status SymbolizeMemoryPeak(const GraphViewer& graph,
                            const OrtValueNameIdxMap& ortvalue_name_to_idx_map,
                            const SequentialExecutionPlan& p_seq_exec_plan,
                            const logging::Logger& logger,
-                           std::vector<std::vector<std::string>>& body);
+                           std::vector<std::vector<std::string>>& body,
+                           std::unordered_map<std::string, bool>& loss_grad_stat);
 
 }  // namespace training
 }  // namespace onnxruntime

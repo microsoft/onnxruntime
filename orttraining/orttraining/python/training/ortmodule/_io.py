@@ -287,6 +287,7 @@ def _combine_input_buffers_initializers(
     result = []
     embed_sparsity_results = []
     label_sparsity_results = []
+    input_map = {}
 
     for input_idx, name in enumerate(onnx_input_names):
         inp = None
@@ -326,6 +327,7 @@ def _combine_input_buffers_initializers(
                 if label_is_sparse is True:
                     label_sparsity_results.append(name)
             result.append(inp)
+            input_map[name] = inp
         else:
             raise wrap_exception(
                 ORTModuleONNXModelException, RuntimeError(f"Input is present in ONNX graph but not provided: {name}.")
@@ -334,7 +336,7 @@ def _combine_input_buffers_initializers(
     # params is a list of all initializers known to the onnx graph
     result.extend(params)
 
-    return result, embed_sparsity_results, label_sparsity_results
+    return result, embed_sparsity_results, label_sparsity_results, input_map
 
 
 def deepcopy_model_input(

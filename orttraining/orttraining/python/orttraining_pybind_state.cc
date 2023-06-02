@@ -697,14 +697,15 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
           throw std::runtime_error("Error in backward pass execution: " + status.ErrorMessage());
         }
       })
-      .def("symbolize_memory_peak", [](TrainingAgent* agent) -> std::vector<std::vector<std::string>> {
+      .def("symbolize_memory_peak", [](TrainingAgent* agent) -> std::tuple<std::vector<std::vector<std::string>>, std::unordered_map<std::string, bool>> {
         std::vector<std::vector<std::string>> body;
-        Status status = agent->SymbolizeMemoryPeak(body);
+        std::unordered_map<std::string, bool> loss_grad_stat;
+        Status status = agent->SymbolizeMemoryPeak(body, loss_grad_stat);
         if (!status.IsOK()) {
           throw std::runtime_error("Error in symbolize_memory_peak execution: " + status.ErrorMessage());
         }
 
-        return body;
+        return std::make_tuple(body, loss_grad_stat);
       });
 
   py::enum_<GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy>(m, "PropagateCastOpsStrategy", py::module_local(), py::arithmetic{})

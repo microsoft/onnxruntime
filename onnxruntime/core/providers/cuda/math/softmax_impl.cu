@@ -142,9 +142,13 @@ Status dispatch_blockwise_softmax_forward(cudaStream_t stream, output_t* output,
       int input_stride, int output_stride, int batch_count);
 
 SPECIALIZED_BLOCKWISE_SOFTMAX_IMPL(float, float, float)
+SPECIALIZED_BLOCKWISE_SOFTMAX_IMPL(float, float, double)
+SPECIALIZED_BLOCKWISE_SOFTMAX_IMPL(half, half, double)
 SPECIALIZED_BLOCKWISE_SOFTMAX_IMPL(half, half, float)
 SPECIALIZED_BLOCKWISE_SOFTMAX_IMPL(half, float, float)
+SPECIALIZED_BLOCKWISE_SOFTMAX_IMPL(half, float, double)
 SPECIALIZED_BLOCKWISE_SOFTMAX_IMPL(double, double, double)
 SPECIALIZED_BLOCKWISE_SOFTMAX_IMPL(BFloat16, BFloat16, float)
+SPECIALIZED_BLOCKWISE_SOFTMAX_IMPL(BFloat16, BFloat16, double)
 }  // namespace cuda
 }  // namespace onnxruntime

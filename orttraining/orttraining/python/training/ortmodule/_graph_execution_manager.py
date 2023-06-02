@@ -541,7 +541,7 @@ class GraphExecutionManager(GraphExecutionInterface):
            enable sparsity-based optimization.
 
         """
-
+        subs_values = {}
         # Enable data sparsity inspection if label sparsity optimization is enabled or user wants to print input density.
         if self._enable_sparse_optimizer or self._print_input_density:
             self._rt_inspector.enable_input_inspector(
@@ -553,7 +553,7 @@ class GraphExecutionManager(GraphExecutionInterface):
                     inputs, kwargs
                 )
 
-                _, embed_sparsity_results, label_sparsity_results = _io._combine_input_buffers_initializers(
+                _, embed_sparsity_results, label_sparsity_results, input_map = _io._combine_input_buffers_initializers(
                     self._graph_initializers,
                     self._graph_builder.get_graph_info().user_input_names,
                     self._input_info,
@@ -573,7 +573,25 @@ class GraphExecutionManager(GraphExecutionInterface):
                     graph_transformer_config.sparse_embedding_input_names = embed_sparsity_results
                     logger.info(f"Embedding sparsity based optimization is on for {embed_sparsity_results}")
 
+
+                from sympy.parsing.sympy_parser import parse_expr
+                from sympy import Symbol, solve
+
+
+
+                # subs_value_except_batch = {}
+                for input_name, dynamic_axes in self._input_info.dynamic_axes.items():
+                    if input_name in input_map:
+                        # subs_values[Symbol(input_name)] = input_map[input_name][]
+                        for dim_idx, dim_name in dynamic_axes.items():
+                            # if dim_name not in ["inputs_input_ids_dim0", "inputs_attention_mask_dim0"]:
+                            #     subs_value_except_batch[Symbol(dim_name)] = input_map[input_name].size()[dim_idx]
+                            subs_values[Symbol(dim_name)] = input_map[input_name].size()[dim_idx]
+
+
             # If users don't want to print input density, disable the input density observer to avoid overhead
             # when looping through inputs during training.
             if not self._print_input_density:
                 self._rt_inspector.disable_input_inspector()
+
+        return subs_values

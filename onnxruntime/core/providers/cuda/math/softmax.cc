@@ -34,9 +34,15 @@ Status SoftMaxComputeHelper(
         stream, Y_data, X_data, gsl::narrow_cast<int>(D), gsl::narrow_cast<int>(D), gsl::narrow_cast<int>(N));
   }
 
-  return dispatch_blockwise_softmax_forward<CudaT_IN, CudaT_OUT, AccumulationType_t<CudaT_ACCUM>, is_log_softmax>(
-      stream, Y_data, X_data, gsl::narrow_cast<int>(D), gsl::narrow_cast<int>(D), gsl::narrow_cast<int>(D),
-      gsl::narrow_cast<int>(N));
+  if (D > 250000) {
+    return dispatch_blockwise_softmax_forward<CudaT_IN, CudaT_OUT, LargeAccumulationType_t, is_log_softmax>(
+        stream, Y_data, X_data, gsl::narrow_cast<int>(D), gsl::narrow_cast<int>(D), gsl::narrow_cast<int>(D),
+        gsl::narrow_cast<int>(N));
+  } else {
+    return dispatch_blockwise_softmax_forward<CudaT_IN, CudaT_OUT, AccumulationType_t<CudaT_ACCUM>, is_log_softmax>(
+        stream, Y_data, X_data, gsl::narrow_cast<int>(D), gsl::narrow_cast<int>(D), gsl::narrow_cast<int>(D),
+        gsl::narrow_cast<int>(N));
+  }
 }
 
 #define SPECIALIZED_SOFTMAX_HELPER_IMPL(T, TOut)                                                         \

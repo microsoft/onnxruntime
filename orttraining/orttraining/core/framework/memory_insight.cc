@@ -167,6 +167,8 @@ struct TensorRepresentation {
                            node_arg_to_bw_consumer_map,
                        const NodeArg* node_arg) : p_seq_exec_plan(p_seq_exec_plan) {
     ORT_ENFORCE(node_arg != nullptr && node_arg->Exists(), "node_arg cannot be null");
+    ORT_ENFORCE(node_arg->Type() != nullptr, "node_arg->Type cannot be null", node_arg->Name());
+    ORT_ENFORCE(node_arg->Shape() != nullptr, "node_arg->Shape cannot be null", node_arg->Name());
     shape_and_type = TensorShapeAndType(*node_arg->Shape(), *node_arg->TypeAsProto());
 
     name = node_arg->Name();
@@ -401,8 +403,13 @@ struct ShapeAndTypeKeyedStat {
     }
 
     std::ostringstream oss;
+    size_t i = 0;
     for (auto& kv : tensor_representations_str_to_freq_map) {
-      oss << "{" << kv.first << "} X " << kv.second << ", ";
+      // if (i != 0) {
+      //   oss << "\n";
+      // }
+      oss << "{" << kv.first << "} X " << kv.second << ",";
+      i += 1;
     }
 
     return oss.str();
@@ -434,15 +441,15 @@ struct ShapeAndTypeKeyedStat {
     body.clear();
     body.push_back({"Tensor shape and type string representation",
                     "Total count",
-                    "Unreused count",
-                    "Reused count",
+                    "Unreused",
+                    // "Reused count",
                     "Break down by producer-consumer pattern"});
 
     for (size_t i = 0; i < keys_names.size(); ++i) {
       body.push_back({keys_names[i],
                       std::to_string(tensor_representations[i].size()),
                       std::to_string(unreused_resued_counts[i].first),
-                      std::to_string(unreused_resued_counts[i].second),
+                      // std::to_string(unreused_resued_counts[i].second),
                       GroupTensorRepresentation(tensor_representations[i])});
       // oss << std::setw(20) << keys_names[i] << std::setw(10) << tensor_representations[i].size() << std::setw(200);
       // oss << GroupTensorRepresentation(tensor_representations[i]) << "\n";
@@ -460,7 +467,8 @@ Status SymbolizeMemoryPeak(const GraphViewer& graph_viewer,
                            const OrtValueNameIdxMap& ortvalue_name_to_idx_map,
                            const SequentialExecutionPlan& p_seq_exec_plan,
                            const logging::Logger& logger,
-                           std::vector<std::vector<std::string>>& body) {
+                           std::vector<std::vector<std::string>>& body,
+                           std::unordered_map<std::string, bool>& loss_grad_stat) {
   LOGS(logger, WARNING) << "SymbolizeMemoryPeak";
 
   InlinedHashMap<std::string, std::pair<bool, bool>> fw_op_output_arg_used_map;
@@ -483,11 +491,11 @@ Status SymbolizeMemoryPeak(const GraphViewer& graph_viewer,
                                                      node_index_to_its_order_in_topological_sort_map,
                                                      logger));
 
-  //   GraphViewer graph_viewer(graph);
   const auto& node_ids = graph_viewer.GetNodesInTopologicalOrder(onnxruntime::ExecutionOrder::PRIORITY_BASED);
-  // std::unordered_map<std::string, ShapeAndTypeStat> symbol_map;
 
   ShapeAndTypeKeyedStat stked_stat;
+  loss_grad_stat.clear();
+  // ShapeAndTypeKeyedStat grad_stat;
   for (int i = 0; i < static_cast<int>(node_ids.size()); ++i) {
     const Node* p_node = graph_viewer.GetNode(node_ids[i]);
     if (p_node == nullptr) {
@@ -495,12 +503,32 @@ Status SymbolizeMemoryPeak(const GraphViewer& graph_viewer,
     }
 
     if (candidate_output_args_map.find(p_node) == candidate_output_args_map.end()) {
+      if (p_node->OpType() == "SoftmaxCrossEntropyLossInternalGrad") {
+        const NodeArg* node_arg = p_node->OutputDefs()[0];
+        if (node_arg == nullptr) {
+          continue;
+        }
+
+        ORT_ENFORCE(node_arg != nullptr && node_arg->Exists(), "node_arg cannot be null");
+        auto shape_and_type = TensorShapeAndType(*node_arg->Shape(), *node_arg->TypeAsProto());
+
+        auto name = node_arg->Name();
+        ORT_ENFORCE(!node_arg->Name().empty());
+
+        int ort_value_idx;
+        ORT_ENFORCE(ortvalue_name_to_idx_map.GetIdx(name, ort_value_idx).IsOK());
+        const auto& alloc_plan = p_seq_exec_plan.allocation_plan;
+        ORT_ENFORCE(ort_value_idx >= 0 && static_cast<size_t>(ort_value_idx) < alloc_plan.size());
+        loss_grad_stat[shape_and_type.Normalize()] = (alloc_plan[ort_value_idx].alloc_kind == AllocKind::kReuse);
+      }
       continue;
     }
 
     for (auto output_arg_index : candidate_output_args_map[p_node]) {
       const NodeArg* p_output_arg = p_node->OutputDefs()[output_arg_index];
-      if (p_output_arg == nullptr) {
+      // todo: handle unknown
+      if (p_output_arg == nullptr || !p_output_arg->Exists() || p_output_arg->Shape() == nullptr || p_output_arg->Type() == nullptr) {
+        LOGS(logger, WARNING) << "todo: " << p_output_arg->Name() << p_node->OpType() << p_node->Name();
         continue;
       }
 
@@ -510,40 +538,11 @@ Status SymbolizeMemoryPeak(const GraphViewer& graph_viewer,
 
       std::string shape_and_type_key = tensor_representation.GetShapeAndType().Normalize();
 
-      // const ONNX_NAMESPACE::TensorProto_DataType element_type =
-      //     static_cast<ONNX_NAMESPACE::TensorProto_DataType>(cast_output->TypeAsProto()->tensor_type().elem_type());
-      // auto symbol_tuple = TensorShapeProtoToString(p_output_arg->Shape(), p_output_arg->TypeAsProto()->tensor_type().elem_type());
-
       stked_stat.AddStat(shape_and_type_key, tensor_representation);
     }
   }
 
   stked_stat.Summarize(body);
-
-  // LOGS(logger, WARNING) << "SymbolizeMemoryPeak summary: \n"
-  //                       << stked_stat.ToString();
-
-  // std::unordered_map<std::string, int64_t> str_symbol_accumulator;
-  // std::unordered_map<std::string, std::unordered_map<std::string, int64_t>> str_symbol_ops;
-  // for (auto it = symbol_map.begin(); it != symbol_map.end(); ++it) {
-  //   if (str_symbol_accumulator.find(it->second.symbol) == str_symbol_accumulator.end()) {
-  //     str_symbol_accumulator[it->second.symbol] = 0;
-  //     str_symbol_ops[it->second.symbol] = {};
-  //   }
-  //   str_symbol_accumulator[it->second.symbol] += it->second.frequencey * it->second.factor;
-  //   for (auto& kv : it->second.ops) {
-  //     str_symbol_ops[it->second.symbol][kv.first] += kv.second;
-  //   }
-  // }
-
-  // for (auto& kv : str_symbol_accumulator) {
-  //   LOGS(logger, WARNING) << "Symbol: " << kv.first << " Accumulator: " << kv.second;
-  //   std::ostringstream oss;
-  //   for (auto& kv2 : str_symbol_ops[kv.first]) {
-  //     oss << kv2.first << "(" << kv2.second << "),";
-  //   }
-  //   LOGS(logger, WARNING) << "Source: " << oss.str();
-  // }
 
   return Status::OK();
 }  // namespace training

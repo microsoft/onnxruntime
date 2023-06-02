@@ -40,7 +40,8 @@ class TrainingAgent {
                                        const OrtValueCachePtr& cache, int32_t partial_graph_index);
 
   [[nodiscard]] common::Status SymbolizeMemoryPeak(
-      std::vector<std::vector<std::string>>& body);
+      std::vector<std::vector<std::string>>& body,
+      std::unordered_map<std::string, bool>& loss_grad_stat);
 
   void CreateAndInitializeFeedsFetchesManager(const SessionState& session_state,
                                               const std::vector<std::string>& feed_names,

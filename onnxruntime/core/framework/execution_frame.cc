@@ -445,17 +445,18 @@ ExecutionFrame::ExecutionFrame(gsl::span<const int> feed_mlvalue_idxs, gsl::span
 #else
               buffer = alloc->Alloc(peak_size);
 #endif
+              std::cout << "!!!!!!!!!! Allocated " << peak_size << " bytes for " << location.ToString() << std::endl;
               // handle allocator that doesn't throw
               if (buffer == nullptr) {
                 // INFO level as this may fire on every run and there may not be much a user can do
-                LOGS(session_state_.Logger(), INFO) << "Allocation of memory pattern buffer for "
-                                                    << location.ToString() << " returned nullptr";
+                LOGS(session_state_.Logger(), WARNING) << "Allocation of memory pattern buffer for "
+                                                       << location.ToString() << " returned nullptr";
               }
             }
             ORT_CATCH(const OnnxRuntimeException& ex) {
               ORT_HANDLE_EXCEPTION([&]() {
-                LOGS(session_state_.Logger(), INFO) << "Allocation of memory pattern buffer for "
-                                                    << location.ToString() << " failed. Error:" << ex.what();
+                LOGS(session_state_.Logger(), WARNING) << "Allocation of memory pattern buffer for "
+                                                       << location.ToString() << " failed. Error:" << ex.what();
               });
             }
 

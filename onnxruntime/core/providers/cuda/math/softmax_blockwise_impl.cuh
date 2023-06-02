@@ -302,14 +302,20 @@ __global__ void softmax_block_forward(outscalar_t* output, scalar_t* input, int 
 template <typename T, typename AccumT, typename OutT>
 struct LogSoftMaxForwardEpilogue {
   __device__ __forceinline__ LogSoftMaxForwardEpilogue(AccumT max_input, AccumT sum)
-      : max_input(max_input), logsum(std::log(sum)) {}
+      : max_input(max_input), logsum(std::log(sum)), sum(sum) {}
 
   __device__ __forceinline__ OutT operator()(T input) const {
+    // printf("input: %f, max_input: %f, logsum: %f, sum: %f\n",
+    //        static_cast<float>(input),
+    //        static_cast<float>(max_input),
+    //        static_cast<float>(logsum),
+    //        static_cast<float>(sum));
     return static_cast<OutT>((AccumT)input - max_input - logsum);
   }
 
   const AccumT max_input;
   const AccumT logsum;
+  const AccumT sum;
 };
 
 template <typename T, typename AccumT, typename OutT>
@@ -318,6 +324,7 @@ struct SoftMaxForwardEpilogue {
       : max_input(max_input), sum(sum) {}
 
   __device__ __forceinline__ OutT operator()(T input) const {
+    // printf("input: %f, max_input: %f, sum: %f\n", static_cast<float>(input), static_cast<float>(max_input), static_cast<float>(sum));
     return static_cast<OutT>(std::exp((AccumT)input - max_input) / sum);
   }
 

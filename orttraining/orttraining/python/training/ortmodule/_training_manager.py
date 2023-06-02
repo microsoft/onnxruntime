@@ -3,6 +3,7 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
+from collections import OrderedDict
 import warnings
 from typing import Tuple
 
@@ -11,7 +12,7 @@ import torch
 
 from onnxruntime.capi import _pybind_state as C
 from onnxruntime.capi.onnxruntime_inference_collection import get_ort_device_type
-
+from onnxruntime.tools.symbolic_shape_infer import SymbolicShapeInference
 from . import _are_deterministic_algorithms_enabled, _io, _logger, _use_deterministic_algorithms, _utils
 from ._execution_agent import TrainingAgent
 from ._fallback import ORTModuleFallbackException, _FallbackManager, _FallbackPolicy
@@ -19,7 +20,8 @@ from ._gradient_accumulation_manager import GradientAccumulationManager
 from ._graph_execution_manager import GraphExecutionManager, _RunStateInfo, _SkipCheck
 from ._io import _FlattenedModule, _InputInfo
 from .debug_options import DebugOptions
-
+import onnx
+from onnx import AttributeProto, GraphProto, TensorProto, helper, numpy_helper  # noqa: F401
 
 class TrainingManager(GraphExecutionManager):
     """Concrete instance of GraphExecutionManager that is able to manage the training model
@@ -135,7 +137,7 @@ class TrainingManager(GraphExecutionManager):
                 for idx in self._graph_info.output_grad_indices_non_differentiable:
                     ctx.mark_non_differentiable(user_outputs[idx])
 
-                self._rt_inspector.memory_ob.inspect_memory("fw_ends")
+
                 return user_outputs
 
             @staticmethod
@@ -261,10 +263,10 @@ class TrainingManager(GraphExecutionManager):
                 if build_gradient_graph:
                     graph_transformer_config = self._get_graph_transformer_config()
                     # Set the config according to input inspection.
-                    self._enable_conditional_optimizations(graph_transformer_config, inputs, kwargs)
+                    subs_values = self._enable_conditional_optimizations(graph_transformer_config, inputs, kwargs)
 
                     # Build the gradient graph
-                    self._build_graph(graph_transformer_config)
+                    self._build_graph(graph_transformer_config, subs_values)
 
             # If creating the execution agent for the first time, this skip check will not take effect.
             # It will only take effect on subsequent forward calls.
@@ -292,7 +294,7 @@ class TrainingManager(GraphExecutionManager):
 
             self._gradient_accumulation_manager.maybe_update_cache_before_run()
             self._rt_inspector.memory_ob.inspect_memory("fw_starts")
-            prepared_input_list, _, _ = _io._combine_input_buffers_initializers(
+            prepared_input_list, _, _, input_map = _io._combine_input_buffers_initializers(
                 self._graph_initializers,
                 self._graph_info.user_input_names,
                 self._input_info,
@@ -303,9 +305,182 @@ class TrainingManager(GraphExecutionManager):
                 self._rt_inspector,
             )
 
+            fw_result = self._forward_class.apply(*prepared_input_list)
+
+
+
+
+            self._rt_inspector.memory_ob.inspect_memory("fw_ends")
+
+
+            # rank = 0
+            # if torch.distributed.is_initialized():
+            #     rank = torch.distributed.get_rank()
+
+            # if rank == 0:
+            #     from prettytable import PrettyTable
+
+            #     from sympy.parsing.sympy_parser import parse_expr
+            #     from sympy import Symbol, solve
+
+            #     computable_symbol_expr = 0
+            #     unknown_symbol_expr = 0
+
+            #     subs_values = {}
+            #     subs_value_except_batch = {}
+            #     for input_name, dynamic_axes in self._input_info.dynamic_axes.items():
+            #         if input_name in input_map:
+            #             # subs_values[Symbol(input_name)] = input_map[input_name][]
+            #             for dim_idx, dim_name in dynamic_axes.items():
+            #                 if dim_name not in ["inputs_input_ids_dim0", "inputs_attention_mask_dim0"]:
+            #                     subs_value_except_batch[Symbol(dim_name)] = input_map[input_name].size()[dim_idx]
+            #                 subs_values[Symbol(dim_name)] = input_map[input_name].size()[dim_idx]
+
+
+            #     print(subs_values)
+            #     class bcolors:
+            #         HEADER = '\033[95m'
+            #         OKBLUE = '\033[94m'
+            #         OKCYAN = '\033[96m'
+            #         OKGREEN = '\033[92m'
+            #         WARNING = '\033[93m'
+            #         FAIL = '\033[91m'
+            #         ENDC = '\033[0m'
+            #         BOLD = '\033[1m'
+            #         UNDERLINE = '\033[4m'
+            #     other_states = []
+
+            #     index = 0
+            #     computed_total = 0
+
+            #     def sortFn(value):
+            #         return int(value[1])
+
+            #     body_raw_data = self._memory_peak_symbols[1:]
+            #     body_raw_data.sort(key=sortFn, reverse=True)
+
+            #     for row in body_raw_data:
+            #         # wrapped_value_lines = wrap(str(row[4]) or '', VAL_WRAP_WIDTH) or ['']
+            #         # table1.add_row([row[0], row[1], row[2], row[3], wrapped_value_lines[0]])
+            #         # for subseq in wrapped_value_lines[1:]:
+            #         #     table1.add_row(['', '', '', '', subseq])
+
+            #         expr = parse_expr('(' + row[0] + ') * ' + str(row[2]))
+            #         r = expr.evalf(subs=subs_values)
+            #         computed_state = ""
+            #         computed_val = None
+            #         if r.is_number:
+            #             computed_total += float(r)
+            #             computed_state = u'\u2713' #.encode('utf8')
+            #             computed_val = r
+            #             computable_symbol_expr += expr
+            #         else:
+            #             unknown_symbol_expr += expr
+            #             computed_state = u'\u274c' #.encode('utf8')
+
+            #         other_states.append([row[0], f"{row[1]}({bcolors.OKCYAN}{row[2]}{bcolors.ENDC})", computed_val, "", row[3], True])
+            #         index += 1
+
+            #     computed_peak_total = computed_total
+            #     computable_peak_symbol_expr = computable_symbol_expr
+            #     unknown_peak_symbol_expr = unknown_symbol_expr
+            #     for kv in self._loss_grad_symbols.items():
+            #         expr = parse_expr('(' + kv[0] + ')')
+            #         r = expr.evalf(subs=subs_values)
+
+            #         computed_val = None
+            #         if r.is_number:
+            #             if kv[1] is True:
+            #                 computed_val = 0
+            #             else:
+            #                 computed_val = r
+            #                 computable_peak_symbol_expr += expr
+            #             computed_peak_total += float(computed_val)
+            #         else:
+            #             unknown_peak_symbol_expr += expr
+
+            #         other_states.append([kv[0], f"1({bcolors.OKCYAN}{1 - int(kv[1])}{bcolors.ENDC})", computed_val, "", kv[1], False])
+
+            #     for state in other_states:
+            #         if state[2] is not None:
+            #             contribution_to_foward_total = state[2]
+            #             if state[5] is False: # foward actiation
+            #                 contribution_to_foward_total = 0
+
+
+            #             state[3] = "{:.1f}/{:.1f}%".format(float(contribution_to_foward_total) / float(computed_total) * 100, float(state[2]) / float(computed_peak_total) * 100)
+            #             state[2] = "{:.0f}MiB".format(float(state[2]) / float(1024) / float(1024))
+            #         else:
+            #             state[3] =  u'\u274c'
+
+            #     from textwrap import wrap
+            #     VAL_WRAP_WIDTH = 80
+
+
+
+            #     h = self._memory_peak_symbols[0]
+            #     header = [h[0], f"Count({bcolors.OKCYAN}NotResued{bcolors.ENDC})", f"{bcolors.OKCYAN}Computable{bcolors.ENDC}", h[3]]
+
+            #     table1 = PrettyTable(header)
+            #     title = "Summary of Memory (MiB) - {}Resident: {:.0f}{}, " \
+            #             "{}FWDelta: {:.0f}{}, " \
+            #             "{}Computable: {:.0f}/{:.0f}{}, " \
+            #             "{}FWDelta-Computable: {:.0f}/{:.0f}{}".format(
+            #                 bcolors.OKGREEN,
+            #                 float(self._rt_inspector.memory_ob._fw_start_cur_step) / float(1024) / float(1024),
+            #                 bcolors.ENDC,
+            #                 bcolors.OKGREEN,
+            #                 float(self._rt_inspector.memory_ob._fw_end_start_delta) / float(1024) / float(1024),
+            #                 bcolors.ENDC,
+            #                 bcolors.OKCYAN,
+            #                 float(computed_total) / float(1024) / float(1024),
+            #                 float(computed_peak_total) / float(1024) / float(1024),
+            #                 bcolors.ENDC,
+            #                 bcolors.OKCYAN,
+            #                 float(self._rt_inspector.memory_ob._fw_end_start_delta - computed_total) / float(1024) / float(1024),
+            #                 float(self._rt_inspector.memory_ob._fw_end_start_delta - computed_peak_total) / float(1024) / float(1024),
+            #                 bcolors.ENDC
+            #             )
+
+            #     table1.title = title
+            #     table1.align[h[0]] = "l"
+            #     table1.align[h[3]] = "l"
+
+
+
+            #     for r in other_states:
+            #         wrapped_value0_lines = wrap(str(r[0]) or '', 40) or ['']
+            #         wrapped_value_lines = wrap(str(r[4]) or '', VAL_WRAP_WIDTH) or ['']
+            #         table1.add_row(['\n'.join(wrapped_value0_lines),
+            #                         r[1],
+            #                         "{}{}({}){}".format(bcolors.OKCYAN, r[2], r[3], bcolors.ENDC) if r[2] != None else u'\u274c',
+            #                         '\n'.join(wrapped_value_lines)])
+            #         # for subseq in wrapped_value_lines[1:]:
+            #         #     table1.add_row(['', '', '', '', subseq])
+
+            #     # for kv in self._loss_grad_symbols.items():
+            #     #     table1.add_row([kv[0], "", "", kv[1]])
+
+
+            #     print(table1)
+            #     print("FWDelta Symbol Expression: ", computable_symbol_expr + unknown_symbol_expr)
+            #     print("\t - Unknown Symbol Expression: ", unknown_symbol_expr)
+            #     print("\t - Computable Symbol Expression: ", computable_symbol_expr)
+
+            #     print("Peak Symbol Expression: ", computable_peak_symbol_expr + unknown_peak_symbol_expr)
+            #     print("\t - Unknown Symbol Expression: ", unknown_peak_symbol_expr)
+            #     print("\t - Computable Symbol Expression: ", computable_peak_symbol_expr)
+            #     # print("{}Total Computable Memory: {:.0f}MiB {}", bcolors.WARNING, float(computed_total) / float(1024) / float(1024), bcolors.ENDC)
+            #     # print("{}Estimation Absolute Error: {:.0f}MiB (FW End/Start Delta - Total Computable Memory) {}", bcolors.WARNING, float(self._rt_inspector.memory_ob._fw_end_start_delta - computed_total) / float(1024) / float(1024), bcolors.ENDC)
+
+            #     # solve_exp = computable_symbol_expr + float(self._rt_inspector.memory_ob._fw_start_cur_step) - float(self._rt_inspector.memory_ob._global_free_memory)
+            #     # solve_exp = solve_exp.evalf(subs=subs_value_except_batch)
+            #     # batch = solve(solve_exp, "inputs_input_ids_dim0")
+            #     # print("solved batch size: ", batch)
+
             return _io.unflatten_user_output(
                 self._module_output_schema,
-                self._forward_class.apply(*prepared_input_list),
+                fw_result,
             )
         except ORTModuleFallbackException as e:
             # Exceptions subject to fallback are handled here
@@ -323,11 +498,108 @@ class TrainingManager(GraphExecutionManager):
         if self._fallback_manager.is_pending():
             return self._fallback_manager.fallback(self._debug_options.logging.log_level, *inputs, **kwargs)
 
-    def _build_graph(self, graph_transformer_config):
+    def _build_graph(self, graph_transformer_config, subs_values):
         """Build an optimized gradient graph using the module_graph_builder"""
 
         super()._build_graph(graph_transformer_config)
-        self._onnx_models.optimized_model = onnx.load_model_from_string(self._graph_builder.get_gradient_model())
+        optimized_model = onnx.load_model_from_string(self._graph_builder.get_gradient_model())
+
+        value_info_dict = OrderedDict()
+        for value_info in optimized_model.graph.value_info:
+            value_info_dict[value_info.name] = value_info
+
+        # initializers = OrderedDict()
+        # for tensor in optimized_model.graph.initializer:
+        #     initializers[tensor.name] = tensor
+
+        from sympy.parsing.sympy_parser import parse_expr
+        from sympy import Symbol, solve
+        # # value = onnx.numpy_helper.to_array(tensor)
+        # # return value
+
+        # for node in optimized_model.graph.node:
+        #     for node_output in node.output:
+        #         if node_output not in value_info_dict:
+        #             continue
+
+        #         output_value_info = value_info_dict[node_output]
+        #         if not output_value_info.type.HasField("tensor_type"):
+        #             continue
+
+        #         shape = output_value_info.type.tensor_type.shape
+        #         if not shape:
+        #             continue
+
+        #         need_skip = False
+        #         dims = []
+        #         for dim in shape.dim:
+        #             if dim.HasField("dim_value"):
+        #                 dims.append(dim.dim_value)
+        #             elif dim.HasField("dim_param"):
+        #                 try:
+        #                     expr = parse_expr(dim.dim_param)
+        #                     r = expr.evalf(subs=subs_values)
+        #                     if r.is_number:
+        #                         r = int(r)
+        #                     dims.append(r)
+        #                 except:
+        #                     dims.append(dim.dim_param)
+        #             else:
+        #                 need_skip = True
+        #                 break
+
+        #         if need_skip:
+        #             continue
+
+        #         optimized_model.graph.value_info.remove(value_info_dict[node_output])
+        #         optimized_model.graph.value_info.append(helper.make_tensor_value_info(node_output, output_value_info.type.tensor_type.elem_type, dims))
+        #         print("Resolved symbolic node for {}".format(node_output))
+
+
+        # for node in optimized_model.graph.node:
+        #     if node.op_type == "Reshape":
+        #         if node.input[0] in value_info_dict and node.input[1] in initializers:
+        #             value = onnx.numpy_helper.to_array(initializers[node.input[1]])
+        #             input_value_info = value_info_dict[node.input[0]]
+
+        #             if input_value_info.type.HasField("tensor_type"):
+        #                 shape = input_value_info.type.tensor_type.shape
+        #                 if shape:
+        #                     dims = []
+        #                     for dim in shape.dim:
+        #                         if dim.HasField("dim_value"):
+        #                             dims.append(dim.dim_value)
+        #                         elif dim.HasField("dim_param"):
+        #                             dims.append(dim.dim_param)
+
+        #                     if len(dims) == 3 and value.ndim == 2 and value.shape[0] == -1 and dims[2] == value.shape[1]:
+        #                         if node.output[0] in value_info_dict:
+        #                             optimized_model.graph.value_info.remove(value_info_dict[node.output[0]])
+        #                         new_output_shape = [f"{dims[0]} * {dims[1]}", dims[2]]
+        #                         optimized_model.graph.value_info.append(helper.make_tensor_value_info(node.output[0], input_value_info.type.tensor_type.elem_type, new_output_shape))
+        #                         print("handled Reshape node for {}".format(node.output[0]))
+        #                     else:
+        #                         continue
+        #                 else:
+        #                     continue
+        #             else:
+        #                 continue
+        #         else:
+        #             print("Fail to match Reshape requirements 1: ", node.input[0] in value_info_dict, node.input[1] in initializers, node.input[1])
+
+        #             # if value.rank == 2 and value.shape[0] == -1:
+        #             # value_info_dict[node.output[0]] = value_info_dict[node.input[0]]
+        #             # value_info_dict[node.output[0]].name = node.output[0]
+        #             # value_info_dict[node.output[0]].type.tensor_type.shape.dim[0].dim_param = "N"
+
+
+        self._onnx_models.optimized_model = optimized_model
+        # from .symbolic_shape_infer2 import SymbolicShapeInference2
+        # if self._run_symbolic_shape_infer:
+        #     self._onnx_models.optimized_model = SymbolicShapeInference2.infer_shapes(
+        #         self._onnx_models.optimized_model, auto_merge=True, guess_output_rank=True
+        #     )
+
         self._onnx_models.optimized_pre_grad_model = onnx.load_model_from_string(
             self._graph_builder.get_forward_model()
         )
@@ -402,7 +674,8 @@ class TrainingManager(GraphExecutionManager):
             local_device_rank,
         )
 
-        self._memory_peak_symbols = self._execution_agent.symbolize_memory_peak()
+        self._memory_peak_symbols, self._loss_grad_symbols = self._execution_agent.symbolize_memory_peak()
+        # self._graph_input_symbolic_dims = self._execution_agent.get_graph_input_dymbolic_dims()
 
     def _reinitialize_graph_builder(self, input_info: _InputInfo):
         """Return true if the module graph builder was reinitialized"""

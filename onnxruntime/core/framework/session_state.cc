@@ -587,6 +587,7 @@ Status TryResolveShape(
     if (dim.has_dim_param()) {
       auto it = symbolic_dimensions.find(dim.dim_param());
       if (it == symbolic_dimensions.end()) {
+        std::cout << "Unknown symbolic dimension, " << dim.dim_param() << ", found in memory pattern compute." << std::endl;
         return Status(ONNXRUNTIME, FAIL, "Unknown symbolic dimension, " + dim.dim_param() + ", found in memory pattern compute.");
       }
       safe_size *= it->second;
@@ -669,8 +670,8 @@ Status SessionState::GeneratePatternGroupCache(gsl::span<const OrtValue> tensor_
           resolved_shapes[ml_value_idx] = gsl::make_span(resolved_shape);
         }
       } else {
-        LOGS(logger_, INFO) << "[Static memory planning] Could not resolve shape for tensor with ML index "
-                            << ml_value_idx << ", will allocate dynamically.";
+        LOGS(logger_, WARNING) << "[Static memory planning] Could not resolve shape for tensor with ML index "
+                               << ml_value_idx << ", will allocate dynamically." ;
       }
     }
   }
@@ -723,8 +724,10 @@ Status SessionState::GeneratePatternGroupCache(gsl::span<const OrtValue> tensor_
       if (!ml_type->IsTensorType())
         continue;
 
-      if (exe_plan->allocation_plan[ml_value_idx].location.MemType() != OrtDevice::MemType::DEFAULT)  // TODO(leca): review
+      if (exe_plan->allocation_plan[ml_value_idx].location.MemType() != OrtDevice::MemType::DEFAULT) {  // TODO(leca): review
+        std::cout << "Skip due to leca's review" << std::endl;
         continue;
+      }
 
       const auto* ml_data_type = static_cast<const TensorTypeBase*>(ml_type)->GetElementType();
       size_t size = 0;

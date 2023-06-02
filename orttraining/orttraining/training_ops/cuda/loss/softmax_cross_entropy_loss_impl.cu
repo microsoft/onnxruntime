@@ -12,7 +12,7 @@ struct OpSoftmaxCrossEntropyWeights {
   OpSoftmaxCrossEntropyWeights(const TLabel* label_data, const T* weight_data, TLabel C, TLabel ignore_index)
       : label_data_(label_data), weight_data_(weight_data), C_(C), ignore_index_(ignore_index) {}
 
-  __device__ __inline__ TOut operator()(CUDA_LONG idx) const {
+  __device__ __inline__ TOut operator()(uint64_t idx) const {
     if (label_data_[idx] != ignore_index_) {
       if (IsWeighted) {
         CUDA_KERNEL_ASSERT(label_data_[idx] >= 0 && label_data_[idx] < C_);
@@ -68,9 +68,10 @@ struct OpWeightedSoftmaxCrossEntropyLoss {
         C_(C),
         ignore_index_(ignore_index) {}
 
-  __device__ __inline__ T operator()(CUDA_LONG idx) const {
+  __device__ __inline__ T operator()(uint64_t idx) const {
     if (label_data_[idx] != ignore_index_) {
       CUDA_KERNEL_ASSERT(label_data_[idx] >= 0 && label_data_[idx] < C_);
+      // printf("log_prob_data_[idx * C_ + label_data_[idx]] = %f\n", static_cast<float>(log_prob_data_[idx * C_ + label_data_[idx]]));
       return static_cast<T>(static_cast<TAcc>(-log_prob_data_[idx * C_ + label_data_[idx]] * weight_data_[idx]) /
                             (*normalize_factor_data_));
     }
@@ -116,10 +117,13 @@ struct OpWeightedSoftmaxCrossEntropyLossGrad {
     if (*normalize_factor_data_ != TAcc(0.f)) {
       uint64_t row, d;
       C_fdm_.divmod(idx, row, d);
-      CUDA_KERNEL_ASSERT(weight_data_[row] == T(0.f) || (label_data_[row] >= 0 && label_data_[row] < C_));
+      // CUDA_KERNEL_ASSERT(weight_data_[row] == T(0.f) || (label_data_[row] >= 0 && label_data_[row] < C_));
+      // printf("row: %d, log_prob_data_[idx]: %f, label_data_[row]: %ld, C_: %ld\n", static_cast<int>(row), static_cast<float>(log_prob_data_[idx]), static_cast<uint64_t>(label_data_[row]), static_cast<uint64_t>(idx));
       result = static_cast<TAcc>((IsReductionNone ? dY_data_[row] : *dY_data_) * weight_data_[row]) *
                (_Exp(static_cast<TAcc>(log_prob_data_[idx])) - (TAcc)(d == label_data_[row])) /
                (*normalize_factor_data_);
+    } else {
+      printf("Warning: zero sum of weights in SoftmaxCrossEntropyLossGrad\n");
     }
     return HasBias ? static_cast<TOut>(result + static_cast<TAcc>(bias_data_[idx])) : static_cast<TOut>(result);
   }

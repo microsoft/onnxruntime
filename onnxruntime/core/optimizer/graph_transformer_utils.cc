@@ -75,6 +75,8 @@
 #include "orttraining/core/optimizer/bitmask_dropout_replacement.h"
 #include "orttraining/core/optimizer/sce_loss_grad_bias_fusion.h"
 #include "orttraining/core/optimizer/memory_optimizer.h"
+#include "orttraining/core/optimizer/scheduler_optimizer.h"
+#include "orttraining/core/optimizer/symbolic_shape_infer.h"
 #endif
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
@@ -303,6 +305,7 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       transformers.emplace_back(std::make_unique<BitmaskDropoutReplacement>(cuda_rocm_eps));
       transformers.emplace_back(std::make_unique<BiasSoftmaxDropoutFusion>(cuda_rocm_eps));
       transformers.emplace_back(std::make_unique<SceLossGradBiasFusion>(cpu_cuda_rocm_eps));
+      transformers.emplace_back(std::make_unique<SymbolicShapeInferer>(cpu_cuda_rocm_eps));
 #endif
 
       transformers.emplace_back(std::make_unique<SkipLayerNormFusion>(cpu_cuda_dml_rocm_eps));
@@ -332,6 +335,7 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       transformers.emplace_back(std::make_unique<QDQFinalCleanupTransformer>(enable_quant_qdq_cleanup));
 
 #ifdef ENABLE_TRAINING
+      transformers.emplace_back(std::make_unique<SchedulerOptimizer>());
       // Put memory optimization transformer at last (which is done after most of fusions are done) by intention.
       // Known issue: after memory optimization is completed, if some fusion happens, it is possible that the
       // node priority got changed. This may disorder the execution order of nodes to recompute.

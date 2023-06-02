@@ -32,5 +32,7 @@ struct AccumulationType<BFloat16> {
 template <typename T>
 using AccumulationType_t = typename AccumulationType<T>::type;
 
+using LargeAccumulationType_t = double;
+
 }  // namespace cuda
 }  // namespace onnxruntime

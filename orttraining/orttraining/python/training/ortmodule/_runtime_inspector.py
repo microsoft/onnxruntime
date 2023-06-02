@@ -65,7 +65,6 @@ class RuntimeInspector:
         """Disable input density inspector."""
         self.input_density_ob = None
 
-        self.memory_ob = MemoryObserver(m)
 
 
 class InputDensityObserver:
@@ -465,10 +464,16 @@ class MemoryObserver:
         print(f"Total Trainable Params: {total_trainable_params}, Frozen Params: {untrainable_params}")
         print(f"Total Trainable Param Size: {total_trainable_param_size/1024/1024} MiB")
 
+        self._fw_end_start_delta = None
+        self._global_free_memory, total_gpu_memory = torch.cuda.mem_get_info()
+
 
 
     def inspect_memory(self, milestone_name):
         if not torch.cuda.is_available():
+            return
+
+        if self._rank != 0:
             return
 
         if self._step == 1 and milestone_name == 'fw_starts':
@@ -485,10 +490,11 @@ class MemoryObserver:
             self._fw_end_cur_step = torch.cuda.memory_allocated()
             activation_peak_memory = self._fw_end_cur_step - self._fw_start_cur_step
             global_free_memory, total_gpu_memory = torch.cuda.mem_get_info()
-            estimated_max_bsz = float(total_gpu_memory - self._fw_start_cur_step) / float(activation_peak_memory)
+            # estimated_max_bsz = float(total_gpu_memory - self._fw_start_cur_step) / float(activation_peak_memory)
+            self._fw_end_start_delta = self._fw_end_cur_step - self._fw_start_cur_step
 
         mega_bytes = 1024.0 * 1024.0
-        string = self._rank_info + ' step ' + str(self._step) + ' ' + milestone_name + ' memory (MB)'
+        string = self._rank_info + ' step ' + str(self._step) + ' ' + milestone_name + ' memory (MiB)'
         string += ' | allocated: {}'.format(
             torch.cuda.memory_allocated() / mega_bytes)
         string += ' | max allocated: {}'.format(
@@ -496,8 +502,13 @@ class MemoryObserver:
         string += ' | cached: {}'.format(torch.cuda.memory_reserved() / mega_bytes)
         string += ' | max cached: {}'.format(
             torch.cuda.max_memory_reserved() / mega_bytes)
-        string += ' | activation peak: {}'.format(activation_peak_memory / mega_bytes if activation_peak_memory else 'N/A')
-        string += ' | estimated max bsz: {}'.format(estimated_max_bsz if estimated_max_bsz else 'N/A')
+        # string += ' | activation peak: {}'.format(activation_peak_memory / mega_bytes if activation_peak_memory else 'N/A')
+        stat = torch.cuda.memory_stats()
+        # string += ' | memory_active: {}'.format(stat.get("active_bytes.all.current", 0) / mega_bytes)
+        # string += ' | memory_active_peak: {}'.format(stat.get("active_bytes.all.peak", 0) / mega_bytes)
+        string += ' | inactive_split_bytes: {}'.format(stat.get("inactive_split_bytes.all.current", 0) / mega_bytes)
+        string += ' | inactive_split_bytes_peak: {}'.format(stat.get("inactive_split_bytes.all.peak", 0) / mega_bytes)
+        # string += ' | estimated max bsz: {}'.format(estimated_max_bsz if estimated_max_bsz else 'N/A')
         print(string)
 
 

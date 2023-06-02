@@ -38,6 +38,13 @@ struct SliceInfo : public UpstreamOperatorInfoBase {
 
     if (!is_scalar_slice) {
       output_dim_on_axis = output->Shape()->dim(non_negative_axis);
+      // if (output_dim_on_axis.has_dim_value()) {
+      //   std::cout << output_dim_on_axis.dim_value() << std::endl;
+      // } else if (output_dim_on_axis.has_dim_param()) {
+      //   std::cout << output_dim_on_axis.dim_param() << std::endl;
+      // } else {
+      //   std::cout << "no dim oooooooooooooooooooooooooooooo" << std::endl;
+      // }
     }
 
     if (is_entry_node_ptr) {

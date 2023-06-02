@@ -103,7 +103,8 @@ void TrainingAgent::CreateAndInitializeFeedsFetchesManager(const SessionState& s
 }
 
 common::Status TrainingAgent::SymbolizeMemoryPeak(
-    std::vector<std::vector<std::string>>& body) {
+    std::vector<std::vector<std::string>>& body,
+    std::unordered_map<std::string, bool>& loss_grad_stat) {
   auto& session_state = inference_session_.GetSessionState();
   const GraphViewer& graph = session_state.GetGraphViewer();
   const OrtValueNameIdxMap& ortvalue_name_to_idx_map = session_state.GetOrtValueNameIdxMap();
@@ -112,7 +113,8 @@ common::Status TrainingAgent::SymbolizeMemoryPeak(
                                                     ortvalue_name_to_idx_map,
                                                     p_seq_exec_plan,
                                                     *inference_session_.GetLogger(),
-                                                    body);
+                                                    body,
+                                                    loss_grad_stat);
 }
 
 }  // namespace training
