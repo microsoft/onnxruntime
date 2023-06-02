@@ -31,7 +31,7 @@ public class OnnxruntimeJSIHelper extends ReactContextBaseJavaModule {
     if (blobModule == null) {
       blobModule = getReactApplicationContext().getNativeModule(BlobModule.class);
       if (blobModule == null) {
-        throw new RuntimeException("BlobModule is not initializeds");
+        throw new RuntimeException("BlobModule is not initialized");
       }
     }
   }
