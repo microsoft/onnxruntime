@@ -8,6 +8,10 @@ jobs:
     TODAY: $[format('{0:dd}{0:MM}{0:yyyy}', pipeline.startTime)]
   timeoutInMinutes: 150
   steps:
+    - script: |
+        sysctl machdep.cpu
+      displayName: Show CPU info
+
     - template: templates/mac-build-step-with-cache.yml
       parameters:
         WithCache: true
@@ -69,17 +73,6 @@ jobs:
         ./onnxruntime_test_all --gtest_filter="XnnpackEP.TestConvTranspose_qdq"
       workingDirectory: $(Build.BinariesDirectory)/mac.xnnpack/RelWithDebInfo/RelWithDebInfo
       displayName: Run XnnpackEP.TestConvTranspose_qdq test with node output dump
-
-    - script: |
-        set -e -x
-        export ORT_DEBUG_NODE_IO_DUMP_OUTPUT_DATA=1
-        export ORT_DEBUG_NODE_IO_DUMP_INPUT_DATA=1
-        export ORT_DEBUG_NODE_IO_SNIPPET_THRESHOLD=0
-        export ORT_DEBUG_NODE_IO_OP_TYPE_FILTER=QLinearConv
-        ./onnxruntime_test_all --gtest_filter="QLinearConvTest.*"
-      workingDirectory: $(Build.BinariesDirectory)/mac.xnnpack/RelWithDebInfo/RelWithDebInfo
-      displayName: Run QLinearConv tests with node output dump
-      condition: succeededOrFailed()
 
     - publish: $(Build.BinariesDirectory)/mac.xnnpack/RelWithDebInfo/RelWithDebInfo/onnxruntime_test_all
       artifact: onnxruntime_test_all
