@@ -50,17 +50,17 @@ struct ToByteType;
 
 template <>
 struct ToByteType<2> {
-  using T = uchar2;
+  using T = int16_t;
 };
 
 template <>
 struct ToByteType<4> {
-  using T = uint;
+  using T = int32_t;
 };
 
 template <>
 struct ToByteType<8> {
-  using T = uint2;
+  using T = int64_t;
 };
 
 template <>
