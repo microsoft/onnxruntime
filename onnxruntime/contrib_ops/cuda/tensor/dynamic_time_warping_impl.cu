@@ -13,12 +13,18 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-__global__ void DynamicTimeWarpingInitCost(float* cost_buffer, size_t cols1) {
+__global__ void DynamicTimeWarpingInitCost(float* cost_buffer, int8_t* trace_buffer, size_t cols_plus_1) {
     int r = blockIdx.x;
-    cost_buffer += cols1 * r;
-    for (size_t i = threadIdx.x; i < cols1; i += blockDim.x) {
+    cost_buffer += cols_plus_1 * r;
+    for (size_t i = threadIdx.x; i < cols_plus_1; i += blockDim.x) {
         cost_buffer[i] = FLT_MAX;
     }
+    if (r == 0) {
+      for (size_t i = threadIdx.x; i < cols_plus_1; i += blockDim.x) {
+        trace_buffer[i] = 2;
+      }
+    }
+    if (threadIdx.x == 0) trace_buffer[cols_plus_1 * r] = 1;
     if (threadIdx.x == 0 && r == 0) *cost_buffer = 0.0f;
 }
 
@@ -44,10 +50,10 @@ __global__ void DynamicTimeWarpingKernel(
 
             float cost;
             int8_t t;
-            if (c0 < c1 and c0 < c2) {
+            if (c0 < c1 && c0 < c2) {
                 cost = c0;
                 t = 0;
-            } else if (c1 < c0 and c1 < c2) {
+            } else if (c1 < c0 && c1 < c2) {
                 cost = c1;
                 t = 1;
             } else {
@@ -76,7 +82,7 @@ __global__ void DynamicTimeWarpingKernel(
         switch (t) {
         case 0: r -= 1; c -= 1; break;
         case 1: r -= 1; break;
-        case 2: c -= 1; break;
+        default: c -= 1; break;
         }
     }
     *result_len_device = max_index_len - static_cast<size_t>(pos);
@@ -111,7 +117,7 @@ Status LaunchDynamicTimeWarping(
 
   dim3 block(device_prop.maxThreadsPerBlock);
   dim3 grid_init((unsigned)SafeInt<unsigned>(rows + 1), (unsigned)SafeInt<unsigned>(batch));
-  DynamicTimeWarpingInitCost<<<grid_init, block, 0, stream>>>(cost_buffer, cols+1);
+  DynamicTimeWarpingInitCost<<<grid_init, block, 0, stream>>>(cost_buffer, trace_buffer, cols+1);
   ORT_RETURN_IF_ERROR(CUDA_CALL(cudaGetLastError()));
 
   dim3 grid(1, (unsigned)SafeInt<unsigned>(batch));
