@@ -27,27 +27,27 @@ namespace js {
           .TypeConstraint("T", DataTypeImpl::GetTensorType<int32_t>()),                   \
       ReduceOp<int32_t>);
 
-#define REGISTER_REDUCE_ELEMENTWISE_KERNEL(ReduceOp, sinceVersion)         \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                           \
-      ReduceOp,                                                            \
-      kOnnxDomain,                                                         \
-      sinceVersion,                                                        \
-      float,                                                               \
-      kJsExecutionProvider,                                                \
-      (*KernelDefBuilder::Create())                                        \
-          .TypeConstraint("T", DataTypeImpl::GetTensorType<float>())       \
-          .TypeConstraint("axes", DataTypeImpl::GetTensorType<int64_t>()), \
-      ReduceOp<float>);                                                    \
-                                                                           \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                           \
-      ReduceOp,                                                            \
-      kOnnxDomain,                                                         \
-      sinceVersion,                                                        \
-      int32_t,                                                             \
-      kJsExecutionProvider,                                                \
-      (*KernelDefBuilder::Create())                                        \
-          .TypeConstraint("T", DataTypeImpl::GetTensorType<int32_t>())     \
-          .TypeConstraint("axes", DataTypeImpl::GetTensorType<int64_t>()), \
+#define REGISTER_REDUCE_ELEMENTWISE_KERNEL(ReduceOp, sinceVersion)     \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                       \
+      ReduceOp,                                                        \
+      kOnnxDomain,                                                     \
+      sinceVersion,                                                    \
+      float,                                                           \
+      kJsExecutionProvider,                                            \
+      (*KernelDefBuilder::Create())                                    \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<float>())   \
+          .InputMemoryType(OrtMemTypeCPU, 1),                          \
+      ReduceOp<float>);                                                \
+                                                                       \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                       \
+      ReduceOp,                                                        \
+      kOnnxDomain,                                                     \
+      sinceVersion,                                                    \
+      int32_t,                                                         \
+      kJsExecutionProvider,                                            \
+      (*KernelDefBuilder::Create())                                    \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<int32_t>()) \
+          .InputMemoryType(OrtMemTypeCPU, 1),                          \
       ReduceOp<int32_t>);
 
 REGISTER_REDUCE_ELEMENTWISE_VERSIONSED_KERNEL(ReduceMean, 1, 10);
