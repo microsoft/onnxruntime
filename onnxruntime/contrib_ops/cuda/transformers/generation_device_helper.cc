@@ -189,8 +189,8 @@ Status AddToFeeds(Stream* ort_stream,
                   std::initializer_list<OrtValue> inputs,
                   std::vector<OrtValue>& feeds,
                   IAllocatorUniquePtr<char>& buffer,
-                  AllocatorPtr gpu_allocator,
-                  AllocatorPtr pinned_allocator,
+                  AllocatorPtr device_allocator,
+                  AllocatorPtr host_allocator,
                   const OrtMemoryInfo& location) {
 #ifdef ENABLE_NVTX_PROFILE
   profile::NvtxNestedRangeCreator addToFeedsRange("AddToFeeds", profile::Color::Blue);
@@ -208,7 +208,7 @@ Status AddToFeeds(Stream* ort_stream,
   ORT_ENFORCE(total_bytes > 0);
 
   cudaStream_t stream = ort_stream ? static_cast<cudaStream_t>(ort_stream->GetHandle()) : nullptr;
-  auto pinned_buffer = IAllocator::MakeUniquePtr<void>(pinned_allocator, total_bytes);
+  auto pinned_buffer = IAllocator::MakeUniquePtr<void>(host_allocator, total_bytes);
   char* pinned_data = static_cast<char*>(pinned_buffer.get());
   // Copy tensors to one pinned memory buffer (so that we only need copy to GPU once)
   char* destination = pinned_data;
@@ -235,7 +235,7 @@ Status AddToFeeds(Stream* ort_stream,
     }
   }
   if (!buffer) {
-    buffer = IAllocator::MakeUniquePtr<char>(gpu_allocator, total_bytes, false, ort_stream, WaitCudaNotificationOnDevice);
+    buffer = IAllocator::MakeUniquePtr<char>(device_allocator, total_bytes, false, ort_stream, WaitCudaNotificationOnDevice);
   }
   char* gpu_data = buffer.get();
   CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(gpu_data, pinned_data, total_bytes, cudaMemcpyHostToDevice, stream));

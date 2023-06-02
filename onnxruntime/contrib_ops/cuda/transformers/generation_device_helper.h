@@ -43,8 +43,8 @@ Status AddToFeeds(Stream* ort_stream,
                   std::initializer_list<OrtValue> inputs,
                   std::vector<OrtValue>& feeds,
                   IAllocatorUniquePtr<char>& buffer,
-                  AllocatorPtr gpu_allocator,
-                  AllocatorPtr pinned_allocator,
+                  AllocatorPtr device_allocator,
+                  AllocatorPtr host_allocator,
                   const OrtMemoryInfo& location);
 
 template <typename T>

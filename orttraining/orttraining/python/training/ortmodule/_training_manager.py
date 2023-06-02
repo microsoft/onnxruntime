@@ -3,7 +3,7 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
-import warnings
+from logging import Logger
 from typing import Tuple
 
 import onnx
@@ -12,7 +12,7 @@ import torch
 from onnxruntime.capi import _pybind_state as C
 from onnxruntime.capi.onnxruntime_inference_collection import get_ort_device_type
 
-from . import _are_deterministic_algorithms_enabled, _io, _logger, _use_deterministic_algorithms, _utils
+from . import _are_deterministic_algorithms_enabled, _io, _use_deterministic_algorithms, _utils
 from ._execution_agent import TrainingAgent
 from ._fallback import ORTModuleFallbackException, _FallbackManager, _FallbackPolicy
 from ._gradient_accumulation_manager import GradientAccumulationManager
@@ -27,8 +27,10 @@ class TrainingManager(GraphExecutionManager):
     TrainingManager is responsible for building and running the forward and backward graph of the training model.
     """
 
-    def __init__(self, model: _FlattenedModule, debug_options: DebugOptions, fallback_manager: _FallbackManager):
-        super().__init__(model, debug_options, fallback_manager)
+    def __init__(
+        self, model: _FlattenedModule, debug_options: DebugOptions, fallback_manager: _FallbackManager, logger: Logger
+    ):
+        super().__init__(model, debug_options, fallback_manager, logger)
 
         self._export_mode = torch.onnx.TrainingMode.TRAINING
         self._forward_class = self._create_autofunction_class()
@@ -215,19 +217,14 @@ class TrainingManager(GraphExecutionManager):
             return self._fallback_manager.fallback(self._debug_options.logging.log_level, *inputs, **kwargs)
 
         try:
-            if (
-                self._first_skip_check_warning is True
-                and self._skip_check.is_disabled() is False
-                and self._debug_options.logging.log_level <= _logger.LogLevel.WARNING
-            ):
+            if self._first_skip_check_warning is True and self._skip_check.is_disabled() is False:
                 # Only change this after the firs time a warning is issued.
                 self._first_skip_check_warning = False
-                warnings.warn(
-                    f"Fast path enabled - skipping checks."
-                    f" Rebuild graph: {self._skip_check.is_set(_SkipCheck.SKIP_CHECK_BUILD_GRADIENT)},"
-                    f" Execution agent: {self._skip_check.is_set(_SkipCheck.SKIP_CHECK_EXECUTION_AGENT)},"
-                    f" Device check: {self._skip_check.is_set(_SkipCheck.SKIP_CHECK_DEVICE)}",
-                    UserWarning,
+                self._logger.info(
+                    "Fast path enabled - skipping checks.Rebuild graph: %s, Execution agent: %s, Device check: %s",
+                    self._skip_check.is_set(_SkipCheck.SKIP_CHECK_BUILD_GRADIENT),
+                    self._skip_check.is_set(_SkipCheck.SKIP_CHECK_EXECUTION_AGENT),
+                    self._skip_check.is_set(_SkipCheck.SKIP_CHECK_DEVICE),
                 )
 
             # If exporting module to ONNX for the first time, this skip check will not take effect.
@@ -262,6 +259,8 @@ class TrainingManager(GraphExecutionManager):
 
                     # Build the gradient graph
                     self._build_graph(graph_transformer_config)
+
+                    self._log_feature_stats()
 
             # If creating the execution agent for the first time, this skip check will not take effect.
             # It will only take effect on subsequent forward calls.

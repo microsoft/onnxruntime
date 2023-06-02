@@ -75,6 +75,14 @@ void QDQTransformerConvTests() {
                       0.01 /*per_sample_tolerance*/,
                       0.01 /*relative_per_sample_tolerance*/,
                       std::make_unique<QDQSelectorActionTransformer>(QDQIsInt8Allowed()));
+    TransformerTester(BuildQDQConvTestCase<InputType, WeightType, BiasType, OutputType>(input_shape, weights_shape),
+                      check_graph,
+                      TransformerLevel::Level1,
+                      TransformerLevel::Level2,
+                      19 /*opset_version*/,
+                      0.01 /*per_sample_tolerance*/,
+                      0.01 /*relative_per_sample_tolerance*/,
+                      std::make_unique<QDQSelectorActionTransformer>(QDQIsInt8Allowed()));
   };
 
   test_case({1, 12, 37}, {32, 12, 5});
@@ -166,12 +174,17 @@ TEST(QDQTransformerTests, ConvMaxPoolReshape_UInt8) {
   test_case({1, 12, 37}, {32, 12, 5}, 11);
   test_case({1, 12, 37}, {32, 12, 5}, 12);
   test_case({1, 12, 37}, {32, 12, 5}, 18);
+  test_case({1, 12, 37}, {32, 12, 5}, 19);
+
   test_case({1, 23, 13, 13}, {30, 23, 3, 3}, 11);
   test_case({1, 23, 13, 13}, {30, 23, 3, 3}, 12);
   test_case({1, 23, 13, 13}, {30, 23, 3, 3}, 18);
+  test_case({1, 23, 13, 13}, {30, 23, 3, 3}, 19);
+
   test_case({1, 22, 11, 13, 15}, {30, 22, 5, 3, 3}, 11);
   test_case({1, 22, 11, 13, 15}, {30, 22, 5, 3, 3}, 12);
   test_case({1, 22, 11, 13, 15}, {30, 22, 5, 3, 3}, 18);
+  test_case({1, 22, 11, 13, 15}, {30, 22, 5, 3, 3}, 19);
 }
 
 TEST(QDQTransformerTests, ConvMaxPoolReshape_Int8) {
@@ -274,6 +287,22 @@ TEST(QDQTransformerTests, DQ_S8_to_U8) {
                     0.01 /*per_sample_tolerance*/,
                     0.01 /*relative_per_sample_tolerance*/,
                     nullptr, add_session_options);
+  TransformerTester(build_test_case,
+                    check_graph,
+                    TransformerLevel::Level1,
+                    TransformerLevel::Level2,
+                    18 /*opset_version*/,
+                    0.01 /*per_sample_tolerance*/,
+                    0.01 /*relative_per_sample_tolerance*/,
+                    nullptr, add_session_options);
+  TransformerTester(build_test_case,
+                    check_graph,
+                    TransformerLevel::Level1,
+                    TransformerLevel::Level2,
+                    19 /*opset_version*/,
+                    0.01 /*per_sample_tolerance*/,
+                    0.01 /*relative_per_sample_tolerance*/,
+                    nullptr, add_session_options);
 }
 #endif  // Only for X64 with contrib ops enabled
 
@@ -311,6 +340,7 @@ void QDQTransformerAveragePoolTests() {
                       0.01 /*per_sample_tolerance*/,
                       0.01 /*relative_per_sample_tolerance*/,
                       std::make_unique<QDQSelectorActionTransformer>(QDQIsInt8Allowed()));
+    // TODO: fix opset 19
   };
 
   test_case({1, 12, 37});
@@ -368,6 +398,7 @@ void QDQTransformerGlobalAveragePoolTests() {
                       0.01 /*per_sample_tolerance*/,
                       0.01 /*relative_per_sample_tolerance*/,
                       std::make_unique<QDQSelectorActionTransformer>(QDQIsInt8Allowed()));
+    // TODO: fix opset 19
   };
 
   test_case({1, 12, 37});
@@ -423,6 +454,14 @@ void QDQTransformerBinaryOpTests(const std::string& op_type) {
                       TransformerLevel::Level1,
                       TransformerLevel::Level2,
                       18 /*opset_version*/,
+                      0.01 /*per_sample_tolerance*/,
+                      0.01 /*relative_per_sample_tolerance*/,
+                      std::make_unique<QDQSelectorActionTransformer>(QDQIsInt8Allowed()));
+    TransformerTester(BuildBinaryOpTestCase<Input1Type, Input2Type, OutputType>(input_shape, op_type),
+                      check_graph,
+                      TransformerLevel::Level1,
+                      TransformerLevel::Level2,
+                      19 /*opset_version*/,
                       0.01 /*per_sample_tolerance*/,
                       0.01 /*relative_per_sample_tolerance*/,
                       std::make_unique<QDQSelectorActionTransformer>(QDQIsInt8Allowed()));
@@ -562,6 +601,14 @@ void QDQTransformerMatMulTests(bool has_output_q) {
                       TransformerLevel::Level1,
                       TransformerLevel::Level2,
                       18 /*opset_version*/,
+                      0.01 /*per_sample_tolerance*/,
+                      0.01 /*relative_per_sample_tolerance*/,
+                      std::make_unique<QDQSelectorActionTransformer>(QDQIsInt8Allowed()));
+    TransformerTester(build_test_case,
+                      check_graph,
+                      TransformerLevel::Level1,
+                      TransformerLevel::Level2,
+                      19 /*opset_version*/,
                       0.01 /*per_sample_tolerance*/,
                       0.01 /*relative_per_sample_tolerance*/,
                       std::make_unique<QDQSelectorActionTransformer>(QDQIsInt8Allowed()));
@@ -728,6 +775,14 @@ void QDQTransformerGemmTests(bool has_output_q, bool has_bias, bool beta_not_one
                       0.01 /*per_sample_tolerance*/,
                       0.01 /*relative_per_sample_tolerance*/,
                       std::make_unique<QDQSelectorActionTransformer>(QDQIsInt8Allowed()));
+    TransformerTester(build_test_case,
+                      check_binary_op_graph,
+                      TransformerLevel::Level1,
+                      TransformerLevel::Level2,
+                      19 /*opset_version*/,
+                      0.01 /*per_sample_tolerance*/,
+                      0.01 /*relative_per_sample_tolerance*/,
+                      std::make_unique<QDQSelectorActionTransformer>(QDQIsInt8Allowed()));
   };
 
   test_case({2, 2}, {2, 4});
@@ -872,6 +927,14 @@ TEST(QDQTransformerTests, DoubleQDQ) {
         18,
         (scale_1 + scale_3) / 2,
         0.01);
+    TransformerTester(
+        BuildDoubleQDQTestCases<int8_t, int8_t, int8_t, int8_t>(zp_1, zp_2, zp_3, zp_4, scale_1, scale_2, scale_3, scale_4),
+        succeed ? expect_succeed : expect_fail,
+        TransformerLevel::Default,
+        TransformerLevel::Level1,
+        19,
+        (scale_1 + scale_3) / 2,
+        0.01);
   };
 
   auto test_case_2u8_2s8_failed = [&](uint8_t zp_1, uint8_t zp_2, int8_t zp_3, int8_t zp_4,
@@ -930,7 +993,7 @@ TEST(QDQTransformerTests, Split) {
                       check_graph,
                       TransformerLevel::Level1,
                       TransformerLevel::Level2,
-                      {12, 18});
+                      {12, 18, 19});
   };
   test_case({6, 18, 54}, 0);
 }
@@ -947,7 +1010,7 @@ TEST(QDQTransformerTests, Split_without_IdenticalChildrenConsolidation) {
     TransformerTester(BuildConsolidationTestCase<int8_t, int8_t>(input_shape, axis),
                       check_graph,
                       TransformerLevel::Level1,
-                      TransformerLevel::Level2, {12, 18}, {}, {}, nullptr, {},
+                      TransformerLevel::Level2, {12, 18, 19}, {}, {}, nullptr, {},
                       {"IdenticalChildrenConsolidation"});
   };
   test_case({6, 18, 54}, 0);
@@ -965,7 +1028,7 @@ TEST(QDQTransformerTests, Split_with_IdenticalChildrenConsolidation) {
                       check_graph,
                       TransformerLevel::Level1,
                       TransformerLevel::Level2,
-                      {12, 18});
+                      {12, 18, 19});
   };
   test_case({6, 18, 54}, 0);
 }
@@ -1157,6 +1220,11 @@ TEST(QDQTransformerTests, ResizeReshapeSqueezeUnsqueeze) {
                       TransformerLevel::Level1,
                       TransformerLevel::Level2,
                       13 /*opset_version*/);
+
+    TransformerTester(build_test_case, check_graph,
+                      TransformerLevel::Level1,
+                      TransformerLevel::Level2,
+                      19 /*opset_version*/);
   };
 
   test_case({1, 2, 26, 42}, {4});
@@ -1194,6 +1262,10 @@ TEST(QDQTransformerTests, ArgMax) {
                       TransformerLevel::Level1,
                       TransformerLevel::Level2,
                       /* opset_version */ 13);
+    TransformerTester(build_test_case, check_graph,
+                      TransformerLevel::Level1,
+                      TransformerLevel::Level2,
+                      /* opset_version */ 19);
   };
 
   test_case({2, 13, 12, 37}, 1, 0, 0);
@@ -1336,6 +1408,13 @@ TEST(QDQTransformerTests, MatMulIntegerToFloat) {
                       12 /*opset_version*/,
                       1e-5 /*per_sample_tolerance*/,
                       1e-5 /*relative_per_sample_tolerance*/);
+    TransformerTester(build_test_case,
+                      check_graph,
+                      TransformerLevel::Level1,
+                      TransformerLevel::Level2,
+                      19 /*opset_version*/,
+                      1e-5 /*per_sample_tolerance*/,
+                      1e-5 /*relative_per_sample_tolerance*/);
   };
 
   test_case({12, 37}, {37, 12});
@@ -1445,6 +1524,14 @@ TEST(QDQTransformerTests, ConvAveragePoolReshape_UInt8) {
                       12 /*opset_version*/,
                       0.01f /*per_sample_tolerance*/,
                       0.01f /*relative_per_sample_tolerance*/);
+    TransformerTester(build_test_case,
+                      check_graph,
+                      TransformerLevel::Level1,
+                      TransformerLevel::Level2,
+                      18 /*opset_version*/,
+                      0.01f /*per_sample_tolerance*/,
+                      0.01f /*relative_per_sample_tolerance*/);
+    // TODO: fix opset 19
   };
 
   test_case({1, 12, 37}, {32, 12, 5});
@@ -1508,6 +1595,14 @@ TEST(QDQTransformerTests, ConvAveragePoolReshape_Int8) {
                       12 /*opset_version*/,
                       0.01f /*per_sample_tolerance*/,
                       0.01f /*relative_per_sample_tolerance*/);
+    TransformerTester(build_test_case,
+                      check_graph,
+                      TransformerLevel::Level1,
+                      TransformerLevel::Level2,
+                      18 /*opset_version*/,
+                      0.01f /*per_sample_tolerance*/,
+                      0.01f /*relative_per_sample_tolerance*/);
+    // TODO: fix opset 19
   };
 
   test_case({1, 12, 37}, {32, 12, 5});
@@ -1566,6 +1661,7 @@ TEST(QDQTransformerTests, ConvAveragePoolReshape_Int8_Fail) {
       EXPECT_EQ(op_to_count["DequantizeLinear"], 3);
     };
 
+    // TODO: fix opset 19
     TransformerTester(build_test_case,
                       check_graph,
                       TransformerLevel::Level1,
@@ -1632,6 +1728,14 @@ void QDQTransformerLeakyReluTests() {
                       TransformerLevel::Level1,
                       TransformerLevel::Level2,
                       18 /*opset_version*/,
+                      0.01 /*per_sample_tolerance*/,
+                      0.01 /*relative_per_sample_tolerance*/,
+                      std::make_unique<QDQSelectorActionTransformer>(QDQIsInt8Allowed()));
+    TransformerTester(build_test_case,
+                      check_graph,
+                      TransformerLevel::Level1,
+                      TransformerLevel::Level2,
+                      19 /*opset_version*/,
                       0.01 /*per_sample_tolerance*/,
                       0.01 /*relative_per_sample_tolerance*/,
                       std::make_unique<QDQSelectorActionTransformer>(QDQIsInt8Allowed()));
@@ -1709,6 +1813,14 @@ void QDQTransformerSigmoidTests() {
                       TransformerLevel::Level1,
                       TransformerLevel::Level2,
                       18 /*opset_version*/,
+                      0.01 /*per_sample_tolerance*/,
+                      0.01 /*relative_per_sample_tolerance*/,
+                      std::make_unique<QDQSelectorActionTransformer>(QDQIsInt8Allowed()));
+    TransformerTester(build_test_case,
+                      check_graph,
+                      TransformerLevel::Level1,
+                      TransformerLevel::Level2,
+                      19 /*opset_version*/,
                       0.01 /*per_sample_tolerance*/,
                       0.01 /*relative_per_sample_tolerance*/,
                       std::make_unique<QDQSelectorActionTransformer>(QDQIsInt8Allowed()));
@@ -1850,6 +1962,12 @@ TEST(QDQTransformerTests, QBackward_MutilpleSteps) {
                       TransformerLevel::Level1,
                       TransformerLevel::Level2,
                       13 /*opset_version*/);
+    TransformerTester(build_test_case,
+                      check_graph,
+                      TransformerLevel::Level1,
+                      TransformerLevel::Level2,
+                      18 /*opset_version*/);
+    // TODO: fix opset 19
   };
 
   test_case({1, 23, 13, 13}, {30, 23, 3, 3});
@@ -1900,6 +2018,18 @@ TEST(QDQTransformerTests, ConvTranspose_DQForward) {
                       TransformerLevel::Level1,
                       TransformerLevel::Level2,
                       12, 0.0, 0.0, nullptr, {},  // defaults that we're not overriding
+                      {"TransposeOptimizer"});    // disable TransposeOptimizer for simplicity
+    TransformerTester(build_test_case,
+                      check_graph,
+                      TransformerLevel::Level1,
+                      TransformerLevel::Level2,
+                      18, 0.0, 0.0, nullptr, {},  // defaults that we're not overriding
+                      {"TransposeOptimizer"});    // disable TransposeOptimizer for simplicity
+    TransformerTester(build_test_case,
+                      check_graph,
+                      TransformerLevel::Level1,
+                      TransformerLevel::Level2,
+                      19, 0.0, 0.0, nullptr, {},  // defaults that we're not overriding
                       {"TransposeOptimizer"});    // disable TransposeOptimizer for simplicity
   };
 
@@ -1976,6 +2106,14 @@ TEST(QDQTransformerTests, DQForward_MutilpleSteps) {
                       13 /*opset_version*/,
                       0.0, 0.0, nullptr, {},    // defaults that we're not overriding
                       {"TransposeOptimizer"});  // disable TransposeOptimizer for simplicity
+    TransformerTester(build_test_case,
+                      check_graph,
+                      TransformerLevel::Level1,
+                      TransformerLevel::Level2,
+                      18 /*opset_version*/,
+                      0.0, 0.0, nullptr, {},    // defaults that we're not overriding
+                      {"TransposeOptimizer"});  // disable TransposeOptimizer for simplicity
+    // TODO: fix opset 19
   };
 
   test_case({1, 13, 13, 23}, {30, 23, 3, 3}, {0, 3, 1, 2});
@@ -2032,7 +2170,7 @@ TEST(QDQTransformerTests, Clip) {
                       epsilon);
   };
 
-  std::vector<int64_t> opsets{12, 18};
+  std::vector<int64_t> opsets{12, 18, 19};
   for (auto opset : opsets) {
     test_case(.0235294122248888f, static_cast<int8_t>(-128), 0, opset);  // [0, 6]
     test_case(.02f, static_cast<int8_t>(-128), 0, opset);                // [0, 5.1]
@@ -2092,6 +2230,30 @@ TEST(QDQTransformerTests, Concat) {
                       0.01f /*per_sample_tolerance*/,
                       0.01f /*relative_per_sample_tolerance*/,
                       std::make_unique<QDQSelectorActionTransformer>(QDQIsInt8Allowed()));
+    TransformerTester(BuildQDQConcatTestCase(input_shapes,
+                                             axis,
+                                             has_input_float,
+                                             has_input_int8,
+                                             has_output_int8),
+                      check_graph,
+                      TransformerLevel::Level1,
+                      TransformerLevel::Level2,
+                      18 /*opset_version*/,
+                      0.01f /*per_sample_tolerance*/,
+                      0.01f /*relative_per_sample_tolerance*/,
+                      std::make_unique<QDQSelectorActionTransformer>(QDQIsInt8Allowed()));
+    TransformerTester(BuildQDQConcatTestCase(input_shapes,
+                                             axis,
+                                             has_input_float,
+                                             has_input_int8,
+                                             has_output_int8),
+                      check_graph,
+                      TransformerLevel::Level1,
+                      TransformerLevel::Level2,
+                      19 /*opset_version*/,
+                      0.01f /*per_sample_tolerance*/,
+                      0.01f /*relative_per_sample_tolerance*/,
+                      std::make_unique<QDQSelectorActionTransformer>(QDQIsInt8Allowed()));
   };
 
   test_case({{1, 6, 36}, {1, 3, 36}}, 1);
@@ -2145,6 +2307,22 @@ void QDQTransformerSoftmaxTests() {
                       TransformerLevel::Level1,
                       TransformerLevel::Level2,
                       12 /*opset_version*/,
+                      0.01 /*per_sample_tolerance*/,
+                      0.01 /*relative_per_sample_tolerance*/,
+                      std::make_unique<QDQSelectorActionTransformer>(QDQIsInt8Allowed()));
+    TransformerTester(build_test_case,
+                      check_graph,
+                      TransformerLevel::Level1,
+                      TransformerLevel::Level2,
+                      18 /*opset_version*/,
+                      0.01 /*per_sample_tolerance*/,
+                      0.01 /*relative_per_sample_tolerance*/,
+                      std::make_unique<QDQSelectorActionTransformer>(QDQIsInt8Allowed()));
+    TransformerTester(build_test_case,
+                      check_graph,
+                      TransformerLevel::Level1,
+                      TransformerLevel::Level2,
+                      19 /*opset_version*/,
                       0.01 /*per_sample_tolerance*/,
                       0.01 /*relative_per_sample_tolerance*/,
                       std::make_unique<QDQSelectorActionTransformer>(QDQIsInt8Allowed()));
@@ -2308,6 +2486,13 @@ TEST(QDQTransformerTests, QDQPropagation_DQForward) {
                       TransformerLevel::Level1,
                       12, 0.0, 0.0, nullptr, {},  // defaults that we're not overriding
                       {"TransposeOptimizer"});    // disable TransposeOptimizer for simplicity
+    TransformerTester(build_test_case,
+                      check_graph,
+                      TransformerLevel::Default,
+                      TransformerLevel::Level1,
+                      18, 0.0, 0.0, nullptr, {},  // defaults that we're not overriding
+                      {"TransposeOptimizer"});    // disable TransposeOptimizer for simplicity
+    // TODO: fix opset 19
   };
 
   test_case({1, 13, 13, 23}, 4, {0, 3, 1, 2}, false, false);
@@ -2455,6 +2640,18 @@ TEST(QDQTransformerTests, QDQPropagation_Per_Layer_No_Propagation) {
                       TransformerLevel::Default,
                       TransformerLevel::Level1,
                       12, 0.0, 0.0, nullptr, {},  // defaults that we're not overriding
+                      {"TransposeOptimizer"});    // disable TransposeOptimizer for simplicity
+    TransformerTester(build_test_case,
+                      check_graph,
+                      TransformerLevel::Default,
+                      TransformerLevel::Level1,
+                      18, 0.0, 0.0, nullptr, {},  // defaults that we're not overriding
+                      {"TransposeOptimizer"});    // disable TransposeOptimizer for simplicity
+    TransformerTester(build_test_case,
+                      check_graph,
+                      TransformerLevel::Default,
+                      TransformerLevel::Level1,
+                      19, 0.0, 0.0, nullptr, {},  // defaults that we're not overriding
                       {"TransposeOptimizer"});    // disable TransposeOptimizer for simplicity
   };
 
@@ -2620,7 +2817,7 @@ TEST(QDQTransformerTests, QDQ_Selector_Test) {
 
 // regression test to validate TransposeOptimizer and QDQ Propagation don't loop
 // see https://github.com/microsoft/onnxruntime/issues/11605
-TEST(QDQTransformerTests, QDQPropagation_GH11605_Opset12) {
+TEST(QDQTransformerTests, QDQPropagation_GH11605_Opset12_19) {
   auto test_case = [&]() {
     auto build_test_case = [&](ModelTestBuilder& builder) {
       auto* input_arg = builder.MakeInput<uint8_t>({1, 4, 4},
@@ -2671,6 +2868,8 @@ TEST(QDQTransformerTests, QDQPropagation_GH11605_Opset12) {
                       TransformerLevel::Default,
                       TransformerLevel::Level2,
                       12);
+
+    // TODO: fix opset 18, 19
   };
 
   test_case();
@@ -2724,6 +2923,11 @@ TEST(QDQTransformerTests, QDQPropagation_GH11605_Opset13) {
                       TransformerLevel::Default,
                       TransformerLevel::Level2,
                       13);
+    TransformerTester(build_test_case,
+                      check_graph,
+                      TransformerLevel::Default,
+                      TransformerLevel::Level2,
+                      19);
   };
 
   test_case();
@@ -2795,6 +2999,24 @@ TEST(QDQTransformerTests, QDQFinalCleanupTransformer_BasicQDQCleanup) {
                       0.01f /*relative_per_sample_tolerance*/,
                       std::make_unique<QDQFinalCleanupTransformer>(true /*enable_q_dq_cleanup*/),
                       add_session_options);
+    TransformerTester(build_test_case,
+                      check_graph,
+                      TransformerLevel::Level1,
+                      TransformerLevel::Level2,
+                      18 /*opset_version*/,
+                      0.025f /*per_sample_tolerance*/,
+                      0.01f /*relative_per_sample_tolerance*/,
+                      std::make_unique<QDQFinalCleanupTransformer>(true /*enable_q_dq_cleanup*/),
+                      add_session_options);
+    TransformerTester(build_test_case,
+                      check_graph,
+                      TransformerLevel::Level1,
+                      TransformerLevel::Level2,
+                      19 /*opset_version*/,
+                      0.025f /*per_sample_tolerance*/,
+                      0.01f /*relative_per_sample_tolerance*/,
+                      std::make_unique<QDQFinalCleanupTransformer>(true /*enable_q_dq_cleanup*/),
+                      add_session_options);
   };
 
   test_case({{1, 2, 4}, {1, 3, 4}});
@@ -2832,6 +3054,24 @@ TEST(QDQTransformerTests, QDQFinalCleanupTransformer_BasicDQQCleanUp) {
                       TransformerLevel::Level1,
                       TransformerLevel::Level2,
                       12 /*opset_version*/,
+                      0.0f /*per_sample_tolerance*/,
+                      0.0f /*relative_per_sample_tolerance*/,
+                      std::make_unique<QDQFinalCleanupTransformer>(false /*enable_q_dq_cleanup*/));
+
+    TransformerTester(build_test_case,
+                      check_graph,
+                      TransformerLevel::Level1,
+                      TransformerLevel::Level2,
+                      18 /*opset_version*/,
+                      0.0f /*per_sample_tolerance*/,
+                      0.0f /*relative_per_sample_tolerance*/,
+                      std::make_unique<QDQFinalCleanupTransformer>(false /*enable_q_dq_cleanup*/));
+
+    TransformerTester(build_test_case,
+                      check_graph,
+                      TransformerLevel::Level1,
+                      TransformerLevel::Level2,
+                      19 /*opset_version*/,
                       0.0f /*per_sample_tolerance*/,
                       0.0f /*relative_per_sample_tolerance*/,
                       std::make_unique<QDQFinalCleanupTransformer>(false /*enable_q_dq_cleanup*/));
@@ -2895,6 +3135,26 @@ TEST(QDQTransformerTests, QDQFinalCleanupTransformer_GraphInputToOutput) {
                       relative_per_sample_tolerance,
                       std::make_unique<QDQFinalCleanupTransformer>(is_q_dq /*enable_q_dq_cleanup*/),
                       add_session_options);
+
+    TransformerTester(build_test_case,
+                      check_graph,
+                      TransformerLevel::Level1,
+                      TransformerLevel::Level2,
+                      18 /*opset_version*/,
+                      per_sample_tolerance,
+                      relative_per_sample_tolerance,
+                      std::make_unique<QDQFinalCleanupTransformer>(is_q_dq /*enable_q_dq_cleanup*/),
+                      add_session_options);
+
+    TransformerTester(build_test_case,
+                      check_graph,
+                      TransformerLevel::Level1,
+                      TransformerLevel::Level2,
+                      19 /*opset_version*/,
+                      per_sample_tolerance,
+                      relative_per_sample_tolerance,
+                      std::make_unique<QDQFinalCleanupTransformer>(is_q_dq /*enable_q_dq_cleanup*/),
+                      add_session_options);
   };
 
   test_case(true);
@@ -2953,6 +3213,22 @@ TEST(QDQTransformerTests, QDQSoftmaxWithDQProducingGraphOutput) {
                       12 /*opset_version*/,
                       0.01 /*per_sample_tolerance*/,
                       0.01 /*relative_per_sample_tolerance*/);
+
+    TransformerTester(build_test_case,
+                      check_graph,
+                      TransformerLevel::Level1,
+                      TransformerLevel::Level2,
+                      18 /*opset_version*/,
+                      0.01 /*per_sample_tolerance*/,
+                      0.01 /*relative_per_sample_tolerance*/);
+
+    TransformerTester(build_test_case,
+                      check_graph,
+                      TransformerLevel::Level1,
+                      TransformerLevel::Level2,
+                      19 /*opset_version*/,
+                      0.01 /*per_sample_tolerance*/,
+                      0.01 /*relative_per_sample_tolerance*/);
   };
 
   test_case({1, 12, 37}, -1);
@@ -3007,6 +3283,18 @@ TEST(QDQTransformerTests, DropDQSelectorWithDQProducingGraphOutput) {
                       TransformerLevel::Level1,
                       TransformerLevel::Level2,
                       12 /*opset_version*/);
+
+    TransformerTester(build_test_case,
+                      check_graph,
+                      TransformerLevel::Level1,
+                      TransformerLevel::Level2,
+                      18 /*opset_version*/);
+
+    TransformerTester(build_test_case,
+                      check_graph,
+                      TransformerLevel::Level1,
+                      TransformerLevel::Level2,
+                      19 /*opset_version*/);
   };
 
   // test with and without the DQ producing a graph output to validate the test hits DropDQ

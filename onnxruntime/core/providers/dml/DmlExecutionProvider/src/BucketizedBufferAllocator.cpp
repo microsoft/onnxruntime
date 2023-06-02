@@ -239,17 +239,12 @@ namespace Dml
 
     void* CPUAllocator::Alloc(size_t size)
     {
-        if (size <= 0)
-        {
-            return nullptr;
-        }
-        void* p = malloc(size);
-        return p;
+        return onnxruntime::AllocatorDefaultAlloc(size);
     }
 
     void CPUAllocator::Free(void* p)
     {
-        free(p);
+        return onnxruntime::AllocatorDefaultFree(p);
     }
 
 } // namespace Dml

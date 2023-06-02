@@ -94,6 +94,7 @@ class RegistrationProcessor:
         start_version: int,
         end_version: typing.Optional[int] = None,
         type: typing.Optional[str] = None,
+        type2: typing.Optional[str] = None,
     ):
         """
         Process lines that contain a kernel registration.
@@ -103,6 +104,7 @@ class RegistrationProcessor:
         :param start_version: Start version
         :param end_version: End version or None if unversioned registration
         :param type: Type used in registration, if this is a typed registration
+        :param type2: Second type used in registration, if this is a typed registration
         """
         pass
 
@@ -137,6 +139,10 @@ def _process_lines(lines: typing.List[str], offset: int, registration_processor:
     onnx_versioned_op_len = len(onnx_versioned_op)
     onnx_versioned_typed_op = "ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME"
     onnx_versioned_typed_op_len = len(onnx_versioned_typed_op)
+    onnx_two_typed_op = "ONNX_OPERATOR_TWO_TYPED_KERNEL_CLASS_NAME"
+    onnx_two_typed_op_len = len(onnx_two_typed_op)
+    onnx_versioned_two_typed_op = "ONNX_OPERATOR_VERSIONED_TWO_TYPED_KERNEL_CLASS_NAME"
+    onnx_versioned_two_typed_op_len = len(onnx_versioned_two_typed_op)
     end_marks = tuple([");", ")>", ")>,", ")>,};", ")>};"])
 
     end_mark = ""
@@ -202,6 +208,28 @@ def _process_lines(lines: typing.List[str], offset: int, registration_processor:
         )
         registration_processor.process_registration(
             lines_to_process, domain, op_type, int(start_version), int(end_version), type
+        )
+
+    elif onnx_two_typed_op in code_line:
+        # e.g. BuildKernelCreateInfo<ONNX_OPERATOR_TWO_TYPED_KERNEL_CLASS_NAME(
+        #          kCpuExecutionProvider, kOnnxDomain, 19, float, uint8, QuantizeLinear)>,
+        trim_at = code_line.index(onnx_two_typed_op) + onnx_two_typed_op_len + 1
+        *_, domain, start_version, type1, type2, op_type = (
+            arg.strip() for arg in code_line[trim_at : -len(end_mark)].split(",")
+        )
+        registration_processor.process_registration(
+            lines_to_process, domain, op_type, int(start_version), None, type1, type2
+        )
+
+    elif onnx_versioned_two_typed_op in code_line:
+        # e.g. BuildKernelCreateInfo<ONNX_OPERATOR_TWO_TYPED_KERNEL_CLASS_NAME(
+        #          kCpuExecutionProvider, kOnnxDomain, 19, float, uint8, QuantizeLinear)>,
+        trim_at = code_line.index(onnx_versioned_two_typed_op) + onnx_versioned_two_typed_op_len + 1
+        *_, domain, start_version, end_version, type1, type2, op_type = (
+            arg.strip() for arg in code_line[trim_at : -len(end_mark)].split(",")
+        )
+        registration_processor.process_registration(
+            lines_to_process, domain, op_type, int(start_version), int(end_version), type1, type2
         )
 
     else:

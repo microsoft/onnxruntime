@@ -1447,7 +1447,7 @@ std::vector<AllocatorPtr> CANNExecutionProvider::CreatePreferredAllocators() {
                                                     -1,
                                                     -1,
                                                     -1,
-                                                    -1)},
+                                                    -1L)},
       true,
       false);
 
