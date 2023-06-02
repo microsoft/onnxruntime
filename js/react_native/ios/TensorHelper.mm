@@ -26,7 +26,7 @@ NSString *const JsTensorTypeString = @"string";
 + (Ort::Value)createInputTensor:(RCTBlobManager *)blobManager
                           input:(NSDictionary *)input
                    ortAllocator:(OrtAllocator *)ortAllocator
-                    allocations:(std::vector<Ort::MemoryAllocation> &)allocatons {
+                    allocations:(std::vector<Ort::MemoryAllocation> &)allocations {
   // shape
   NSArray *dimsArray = [input objectForKey:@"dims"];
   std::vector<int64_t> dims;
@@ -58,7 +58,7 @@ NSString *const JsTensorTypeString = @"string";
                                                 dims:dims
                                               buffer:buffer
                                         ortAllocator:ortAllocator
-                                         allocations:allocatons];
+                                         allocations:allocations];
     [blobManager remove:blobId];
     return inputTensor;
   }

@@ -42,7 +42,7 @@ FOUNDATION_EXPORT NSString* const JsTensorTypeString;
 +(Ort::Value)createInputTensor:(RCTBlobManager *)blobManager
                          input:(NSDictionary*)input
                   ortAllocator:(OrtAllocator*)ortAllocator
-                   allocations:(std::vector<Ort::MemoryAllocation>&)allocatons;
+                   allocations:(std::vector<Ort::MemoryAllocation>&)allocations;
 
 /**
  * It creates an output map from an output tensor.
