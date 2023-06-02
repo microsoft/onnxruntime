@@ -587,9 +587,6 @@ add_custom_command(
       ${REPO_ROOT}/tools/python/util/__init__append.py >>
       $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/tools/__init__.py
   COMMAND ${CMAKE_COMMAND} -E copy
-      ${onnxruntime_python_openvino_python_srcs}
-      $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/tools/
-  COMMAND ${CMAKE_COMMAND} -E copy
       ${onnxruntime_qdq_helper_srcs}
       $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/tools/qdq_helpers/
   COMMAND ${CMAKE_COMMAND} -E copy
@@ -638,6 +635,15 @@ add_custom_command(
       ${REPO_ROOT}/VERSION_NUMBER
       $<TARGET_FILE_DIR:${build_output_target}>
 )
+
+if (onnxruntime_USE_OPENVINO)
+  add_custom_command(
+    TARGET onnxruntime_pybind11_state POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy
+        ${onnxruntime_python_openvino_python_srcs}
+        $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/tools/
+  )
+endif()
 
 if (onnxruntime_ENABLE_EXTERNAL_CUSTOM_OP_SCHEMAS)
   add_custom_command(
