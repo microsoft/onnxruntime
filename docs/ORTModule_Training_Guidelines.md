@@ -158,6 +158,17 @@ inspection results to standard outputs.
 	export ORTMODULE_PRINT_INPUT_DENSITY=0 # Disable
 	```
 
+#### ORTMODULE_PRINT_MEMORY_STATS
+
+- **Feature Area**: *ORTMODULE/RuntimeInspector*
+- **Description**: By default, this is disabled. This env var can be used for print the memory inspection results
+to standard outputs.
+
+	```bash
+	export ORTMODULE_PRINT_MEMORY_STATS=1 # Enable
+	export ORTMODULE_PRINT_MEMORY_STATS=0 # Disable
+	```
+
 ### 2.2 Memory Optimization
 
 Q: *Want to run a bigger batch size?*
