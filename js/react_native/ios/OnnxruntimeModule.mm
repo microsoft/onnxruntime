@@ -51,6 +51,9 @@ RCTBlobManager *blobManager = nil;
 - (void)checkBlobManager {
   if (blobManager == nil) {
     blobManager = [[RCTBridge currentBridge] moduleForClass:RCTBlobManager.class];
+    if (blobManager == nil) {
+      @throw @"RCTBlobManager is not initialized";
+    }
   }
 }
 

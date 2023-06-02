@@ -72,6 +72,9 @@ public class OnnxruntimeModule extends ReactContextBaseJavaModule {
   public void checkBlobModule() {
     if (blobModule == null) {
       blobModule = getReactApplicationContext().getNativeModule(BlobModule.class);
+      if (blobModule == null) {
+        throw new RuntimeException("BlobModule is not initializeds");
+      }
     }
   }
 

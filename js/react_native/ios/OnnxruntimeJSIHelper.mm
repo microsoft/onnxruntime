@@ -40,6 +40,9 @@ RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(install)
     auto offset = data.getProperty(runtime, "offset").asNumber();
 
     RCTBlobManager* blobManager = [[RCTBridge currentBridge] moduleForClass:RCTBlobManager.class];
+    if (blobManager == nil) {
+      throw jsi::JSError(runtime, "RCTBlobManager is not initialized");
+    }
 
     NSString* blobIdStr = [NSString stringWithUTF8String:blobId.c_str()];
     auto blob = [blobManager resolve:blobIdStr offset:(long)offset size:(long)size];
@@ -69,6 +72,10 @@ RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(install)
     NSData* data = [NSData dataWithBytesNoCopy:arrayBuffer.data(runtime) length:size freeWhenDone:NO];
 
     RCTBlobManager* blobManager = [[RCTBridge currentBridge] moduleForClass:RCTBlobManager.class];
+    if (blobManager == nil) {
+      throw jsi::JSError(runtime, "RCTBlobManager is not initialized");
+    }
+
     NSString* blobId = [blobManager store:data];
 
     jsi::Object result(runtime);
