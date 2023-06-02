@@ -59,6 +59,7 @@ __device__ __forceinline__ T reduce_block_into_lanes(T* x, T val, int lanes = 1,
 #else
     for (int i = 16; i >= lanes; i >>= 1) final = final + __shfl_down(final, i);
 #endif
+  }
 
   if (share_result) {
     if (tid < lanes) x[tid] = final;  // EpilogueOp
