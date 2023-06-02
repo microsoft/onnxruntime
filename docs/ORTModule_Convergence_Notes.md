@@ -76,12 +76,12 @@ GlobalSubscriberManager.subscribe(model, [StatisticsSubscriber(output_dir="ort_o
 
 Arguments:
 - output_dir: the directory in all activation statistics files will be stored.
-- start_step [optional]: the first step that runs subscriber actions.
-- end_step [optional]: the end step (exclusively) that runs subscriber actions.
-- override_output_dir: whether `output_dir` can be overridden if it already exists.
-- run_on_cpu: whether to run the subscriber actions on CPU, this should be the last resort when inserted
-    inspector node affects memory peak causing original recipe run failed with OOM.
-- bucket_size: the size of the bucket to split the statistic calculation.
+- `start_step` [optional]: the first step that runs subscriber actions.
+- `end_step` [optional]: the end step (exclusively) that runs subscriber actions.
+- `override_output_dir`: whether `output_dir` can be overridden if it already exists.
+- `run_on_cpu`: whether to run the subscriber actions on CPU, this should be the last resort when inserted
+    inspector node affects memory peak causing the original recipe run to fail with OOM.
+- `bucket_size`: the size of the bucket to split the statistic calculation.
 
 ### 2.2 Use `_InspectActivation` to collect intermediate tensors in a `nn.Module` forward()
 
@@ -119,7 +119,7 @@ stat file using the activation name will be overwritten by the last write. The d
 
 ### 2.3 Collect on multiple ranks
 
-`GlobalSubscriberManager` did not explicitly handle the racing condition when multiple ranks write into the same file path,
+`GlobalSubscriberManager` does not explicitly handle the racing condition when multiple ranks write into the same file path,
 here is the example if you want to collect statistics on multiple ranks:
 
 ```python

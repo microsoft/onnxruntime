@@ -53,7 +53,7 @@ class _InspectActivation(torch.autograd.Function):
     """
     This class is used to run the subscriber's forward and backward functions.
     The function will be called by two kinds of callers:
-        1. SubscriberManager call it for each registered nn.Module.
+        1. SubscriberManager calls it for each registered nn.Module.
         2. Users who want to inspect the activation tensor at any place of model definition code.
     """
 

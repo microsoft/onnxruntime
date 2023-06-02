@@ -51,7 +51,7 @@ class StatisticsSubscriber(SubscriberBase):
             end_step: the end step (exclusively) that runs subscriber actions.
             override_output_dir: whether `output_dir` can be overridden if it already exists.
             run_on_cpu: whether to run the subscriber actions on CPU, this should be the last resort when inserted
-                inspector node affects memory peak causing original recipe run to fail with OOM.
+                inspector node affects memory peak causing the original recipe run to fail with OOM.
             bucket_size: the size of the bucket to split the statistic calculation.
         """
         super().__init__(start_step=start_step, end_step=end_step)
@@ -104,18 +104,18 @@ class StatisticsSubscriber(SubscriberBase):
         if self._run_on_cpu:
             num_nan = torch.isnan(flatten_array).sum()
             num_inf = torch.isinf(flatten_array).sum()
-            num_neg = torch.less(flatten_array, zero_tensor).to(torch.int64).sum()
-            num_pos = torch.greater(flatten_array, zero_tensor).to(torch.int64).sum()
-            num_zero = torch.eq(flatten_array, zero_tensor).to(torch.int64).sum()
+            num_neg = (flatten_array < 0).sum()
+            num_pos = (flatten_array > 0).sum()
+            num_zero = (flatten_array == 0).sum()
             min_value = flatten_array.min()
             max_value = flatten_array.max()
             mean_value = flatten_array.mean()
             mean_of_std_value = flatten_array.std()
         else:
             # Split the calculation for each bucket, then do another round of calculation on the bucket results.
-            # This can at the best efforts reduce the peak memory impact.
+            # This can at the best effort reduce the peak memory impact.
             bucket_size = self._bucket_size
-            element_count = flatten_array.size(dim=0)
+            element_count = flatten_array.numel()
             ceil_bucket_count = (element_count + bucket_size - 1) // (bucket_size)
             nan_buckets = torch.zeros(ceil_bucket_count, dtype=torch.int64, device=flatten_array.device)
             inf_buckets = torch.zeros(ceil_bucket_count, dtype=torch.int64, device=flatten_array.device)
