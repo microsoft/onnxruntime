@@ -48,7 +48,9 @@ Do not modify directly.*
 | Sin | ai.onnx(7+) |  |
 | Sinh | ai.onnx(9+) |  |
 | Sqrt | ai.onnx(6-12,13+) |  |
+| Squeeze | ai.onnx(1-10,11-12,13+) |  |
 | Sub | ai.onnx(7-12,13,14+) |  |
 | Tan | ai.onnx(7+) |  |
 | ThresholdedRelu | ai.onnx(10+) |  |
 | Transpose | ai.onnx(1-12,13+) | need perf optimization |
+| Unsqueeze | ai.onnx(1-10,11-12,13+) |  |
