@@ -70,9 +70,8 @@ NS_ASSUME_NONNULL_BEGIN
 }
 
 - (nullable NSString*)getStringPropertyWithName:(NSString*)name error:(NSError**)error {
-  Ort::Property value;
   try {
-    value = [self CXXAPIOrtCheckpoint].GetProperty(name.UTF8String);
+    Ort::Property value = [self CXXAPIOrtCheckpoint].GetProperty(name.UTF8String);
     if (std::string* str = std::get_if<std::string>(&value)) {
       return [NSString stringWithUTF8String:str->c_str()];
     }
@@ -82,9 +81,8 @@ NS_ASSUME_NONNULL_BEGIN
 }
 
 - (int64_t)getIntPropertyWithName:(NSString*)name error:(NSError**)error {
-  Ort::Property value;
   try {
-    value = [self CXXAPIOrtCheckpoint].GetProperty(name.UTF8String);
+    Ort::Property value = [self CXXAPIOrtCheckpoint].GetProperty(name.UTF8String);
     if (int64_t* i = std::get_if<int64_t>(&value)) {
       return *i;
     }
@@ -94,9 +92,8 @@ NS_ASSUME_NONNULL_BEGIN
 }
 
 - (float)getFloatPropertyWithName:(NSString*)name error:(NSError**)error {
-  Ort::Property value;
   try {
-    value = [self CXXAPIOrtCheckpoint].GetProperty(name.UTF8String);
+    Ort::Property value = [self CXXAPIOrtCheckpoint].GetProperty(name.UTF8String);
     if (float* f = std::get_if<float>(&value)) {
       return *f;
     }
