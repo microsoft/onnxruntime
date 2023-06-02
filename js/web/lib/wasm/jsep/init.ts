@@ -23,6 +23,10 @@ class TensorViewImpl implements TensorView {
     return new Float32Array(this.module.HEAP8.buffer, this.data, ShapeUtil.size(this.dims));
   }
 
+  getBigInt64Array(): BigInt64Array {
+    return new BigInt64Array(this.module.HEAP8.buffer, this.data, ShapeUtil.size(this.dims));
+  }
+
   reshape(newDims: readonly number[]): TensorView {
     if (ShapeUtil.size(newDims) !== ShapeUtil.size(this.dims)) {
       throw new Error('Invalid new shape');
