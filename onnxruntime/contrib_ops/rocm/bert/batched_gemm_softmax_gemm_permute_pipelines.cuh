@@ -623,7 +623,7 @@ class GemmSoftmaxGemmPermuteTunableOp : public tunable::TunableOp<GemmSoftmaxGem
       *reinterpret_cast<StoreT*>(out + out_offset) = store;
     } else {
 #pragma unroll
-      for (int i = tidx; i < mask_lengths.z; i++) {
+      for (int i = 0; i < mask_lengths.z - tidx; i++) {
         out[out_offset + i] = cvt(mask_buffer[in_offset + i]);
       }
     }
