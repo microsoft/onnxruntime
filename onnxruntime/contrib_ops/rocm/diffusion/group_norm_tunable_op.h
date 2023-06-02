@@ -203,8 +203,8 @@ class GroupNormNHWCTunableOp : public TunableOp<GroupNormNHWCParams<T>> {
       ORT_UNUSED_PARAMETER(_);
       this->RegisterOp(std::move(op));
     }
-  }
 #endif
+  }
 };
 
 #undef ADD_OP_FOR_ALL_VEC_SIZE

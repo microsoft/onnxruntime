@@ -20,7 +20,7 @@ def group_norm_kernel(
     c_per_group,
     eps,
     BLOCK_SIZE: tl.constexpr,
-    ACTIVATION_SWISH: tl.constexpr
+    ACTIVATION_SWISH: tl.constexpr,
 ):
     row_x = tl.program_id(0)
     row_y = tl.program_id(1)
@@ -37,17 +37,17 @@ def group_norm_kernel(
     group_mean = 0.0
     for i in range(h * w):
         x_ptr = input_ptr + i * c
-        a = tl.load(x_ptr + cols, mask=mask, other=0.).to(tl.float32)
+        a = tl.load(x_ptr + cols, mask=mask, other=0.0).to(tl.float32)
         group_mean += tl.sum(a, axis=0)
-    group_mean /= (h * w * c_per_group)
+    group_mean /= h * w * c_per_group
 
     group_var = 0.0
     for i in range(h * w):
         x_ptr = input_ptr + i * c
-        a = tl.load(x_ptr + cols, mask=mask, other=0.).to(tl.float32)
-        a = tl.where(mask, a - group_mean, 0.)
+        a = tl.load(x_ptr + cols, mask=mask, other=0.0).to(tl.float32)
+        a = tl.where(mask, a - group_mean, 0.0)
         group_var += tl.sum(a * a, axis=0)
-    group_var /= (h * w * c_per_group)
+    group_var /= h * w * c_per_group
 
     rstd = 1 / tl.sqrt(group_var + eps)
 
@@ -67,7 +67,7 @@ def group_norm_kernel(
 
 with_swish = [True, False]
 dtypes = ["fp32", "fp16"]
-blocks = [2 ** i for i in range(1, 8)]
+blocks = [2**i for i in range(1, 8)]
 name_pattern = "GroupNormTriton_{}_{}_b{}_w{}"
 sig_pattern = "*{},*{},*fp32,*fp32,i32,i32,i32,i32,fp32"
 group_pattern = "GroupNormTriton_{}_{}"
@@ -78,7 +78,7 @@ def get_function_table():
 
     def get_num_warps(block_size):
         # return all powers of 2 but not greater than block_size
-        return [2 ** i for i in range(0, 7) if 2 ** i <= block_size]
+        return [2**i for i in range(0, 7) if 2**i <= block_size]
 
     for swish, dtype, b in product(with_swish, dtypes, blocks):
         for num_warps in get_num_warps(b):
