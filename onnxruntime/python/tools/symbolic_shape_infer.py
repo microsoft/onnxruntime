@@ -408,6 +408,7 @@ class SymbolicShapeInference:
 
     def _get_value(self, node, idx):
         name = node.input[idx]
+        print("name", name, node)
         assert name in self.sympy_data_ or name in self.initializers_
         return self.sympy_data_[name] if name in self.sympy_data_ else numpy_helper.to_array(self.initializers_[name])
 
@@ -820,7 +821,26 @@ class SymbolicShapeInference:
             "Neg": lambda l: -l[0],  # noqa: E741
         }
         assert node.op_type in funcs
-        self._compute_on_sympy_data(node, funcs[node.op_type])
+
+        assert len(node.output) == 1
+        op_func = funcs[node.op_type]
+
+        # Before mul & div operations
+        # cast inputs into interger might lose decimal part and reduce precision
+        # keep them as float, finish the operation, then cast the result into integer
+        if node.op_type in ["Mul", "Div"]:
+            values = self._get_int_or_float_values(node, broadcast=True, allow_float_values=True)
+        else:
+            values = self._get_int_or_float_values(node, broadcast=True)
+
+        if all([v is not None for v in values]):
+            is_list = [type(v) == list for v in values]
+            as_list = any(is_list)
+            if as_list:
+                self.sympy_data_[node.output[0]] = [op_func(vs) for vs in zip(*values)]
+            else:
+                self.sympy_data_[node.output[0]] = op_func(values)
+
 
     def _infer_Cast(self, node):  # noqa: N802
         self._pass_on_sympy_data(node)
@@ -1577,7 +1597,7 @@ class SymbolicShapeInference:
             if -1 in new_sympy_shape:
                 new_dim = total // non_deferred_size
                 new_sympy_shape[deferred_dim_idx] = new_dim
-
+            print("node.name 11111 >> ", node.name, "new_sympy_shape >> ", new_sympy_shape)
             self._update_computed_dims(new_sympy_shape)
             vi.CopyFrom(
                 helper.make_tensor_value_info(
@@ -1586,6 +1606,7 @@ class SymbolicShapeInference:
                     get_shape_from_sympy_shape(new_sympy_shape),
                 )
             )
+            print("node.name 22222 >> ", node.name, "new_sympy_shape >> ", new_sympy_shape)
 
         self._pass_on_sympy_data(node)
 
