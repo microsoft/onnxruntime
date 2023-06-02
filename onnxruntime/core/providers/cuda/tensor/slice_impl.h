@@ -14,10 +14,10 @@ Status SliceImpl(cudaStream_t stream,
                  const TArray<int64_t>& starts,
                  const TArray<int64_t>& steps,
                  const TArray<int64_t>& input_strides,
-                 const TArray<fast_divmod>& output_strides,
+                 const TArray<DivMod<uint64_t>>& output_strides,
                  const void* input_data,
                  void* output_data,
-                 const size_t N);
+                 const uint64_t N);
 
 #ifdef ENABLE_TRAINING_OPS
 Status SliceImplGrad(cudaStream_t stream,
@@ -26,10 +26,10 @@ Status SliceImplGrad(cudaStream_t stream,
                      const TArray<int64_t>& starts,
                      const TArray<int64_t>& steps,
                      const TArray<int64_t>& input_strides,
-                     const TArray<fast_divmod>& output_strides,
+                     const TArray<DivMod<uint64_t>>& output_strides,
                      const void* input_data,
                      void* output_data,
-                     const size_t N);
+                     const uint64_t N);
 #endif  // ENABLE_TRAINING_OPS
 
 }  // namespace cuda

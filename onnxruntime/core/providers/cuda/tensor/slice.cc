@@ -83,7 +83,7 @@ static Status SliceImpCore(cudaStream_t stream,
                            const void* input_data, void* output_data,
                            size_t element_size, size_t dimension_count,
                            const TArray<int64_t>& starts_buffer, const TArray<int64_t>& steps_buffer,
-                           const TArray<int64_t>& input_strides, const TArray<fast_divmod>& output_strides,
+                           const TArray<int64_t>& input_strides, const TArray<DivMod<uint64_t>>& output_strides,
                            const TensorShape& output_shape) {
   if (output_shape.Size() == 0) {
     return Status::OK();
@@ -104,7 +104,7 @@ static Status SliceImpCore(cudaStream_t stream,
 namespace SliceCuda {
 
 static Status ComputeSliceStrides(const TensorShape& input_shape, TArray<int64_t>& input_strides,
-                                  TArray<fast_divmod>& output_strides,
+                                  TArray<DivMod<uint64_t>>& output_strides,
                                   SliceOp::PrepareForComputeMetadata& compute_metadata) {
   // If we were able to coalesce the input and output shapes, use the new shapes to compute the strides.
   const auto input_dimensions = input_shape.GetDims();
@@ -124,7 +124,7 @@ static Status ComputeSliceStrides(const TensorShape& input_shape, TArray<int64_t
   TensorPitches original_output_strides(output_dims);
   output_strides.SetSize(gsl::narrow_cast<int32_t>(original_output_strides.size()));
   for (int32_t i = 0, limit = static_cast<int32_t>(original_output_strides.size()); i < limit; ++i) {
-    output_strides[i] = fast_divmod(gsl::narrow_cast<int>(original_output_strides[i]));
+    output_strides[i] = DivMod<uint64_t>(gsl::narrow_cast<uint64_t>(original_output_strides[i]));
   }
 
   return Status::OK();
@@ -142,7 +142,7 @@ Status Impl(cudaStream_t stream,
   TArray<int64_t> starts_buffer(compute_metadata.starts_);
   TArray<int64_t> steps_buffer(compute_metadata.steps_);
   TArray<int64_t> input_strides;
-  TArray<fast_divmod> output_strides;
+  TArray<DivMod<uint64_t>> output_strides;
 
   ORT_RETURN_IF_ERROR(ComputeSliceStrides(input_shape, input_strides, output_strides, compute_metadata));
 
@@ -187,7 +187,7 @@ Status Slice<dynamic>::ComputeInternal(OpKernelContext* ctx) const {
   TArray<int64_t> starts_buffer(compute_metadata.starts_);
   TArray<int64_t> steps_buffer(compute_metadata.steps_);
   TArray<int64_t> input_strides;
-  TArray<fast_divmod> output_strides;
+  TArray<DivMod<uint64_t>> output_strides;
 
   ORT_RETURN_IF_ERROR(SliceCuda::ComputeSliceStrides(input_shape, input_strides, output_strides, compute_metadata));
 
@@ -218,7 +218,7 @@ Status Slice<dynamic>::FillInputVectors(OpKernelContext* ctx, TensorShapeVector&
 template <bool dynamic>
 Status Slice<dynamic>::CallSliceImp(size_t element_size, size_t dimension_count, const TArray<int64_t>& starts_buffer,
                                     const TArray<int64_t>& steps_buffer, const TArray<int64_t>& input_strides,
-                                    const TArray<fast_divmod>& output_strides, OpKernelContext* ctx,
+                                    const TArray<DivMod<uint64_t>>& output_strides, OpKernelContext* ctx,
                                     const TensorShape& output_shape) const {
   const auto* input_tensor = ctx->Input<Tensor>(0);
   auto* output_tensor = ctx->Output(0, output_shape);

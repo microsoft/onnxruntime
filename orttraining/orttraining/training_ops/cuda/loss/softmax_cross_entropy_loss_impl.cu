@@ -12,7 +12,7 @@ struct OpSoftmaxCrossEntropyWeights {
   OpSoftmaxCrossEntropyWeights(const TLabel* label_data, const T* weight_data, TLabel C, TLabel ignore_index)
       : label_data_(label_data), weight_data_(weight_data), C_(C), ignore_index_(ignore_index) {}
 
-  __device__ __inline__ TOut operator()(CUDA_LONG idx) const {
+  __device__ __inline__ TOut operator()(uint64_t idx) const {
     if (label_data_[idx] != ignore_index_) {
       if (IsWeighted) {
         CUDA_KERNEL_ASSERT(label_data_[idx] >= 0 && label_data_[idx] < C_);
@@ -68,7 +68,7 @@ struct OpWeightedSoftmaxCrossEntropyLoss {
         C_(C),
         ignore_index_(ignore_index) {}
 
-  __device__ __inline__ T operator()(CUDA_LONG idx) const {
+  __device__ __inline__ T operator()(uint64_t idx) const {
     if (label_data_[idx] != ignore_index_) {
       CUDA_KERNEL_ASSERT(label_data_[idx] >= 0 && label_data_[idx] < C_);
       return static_cast<T>(static_cast<TAcc>(-log_prob_data_[idx * C_ + label_data_[idx]] * weight_data_[idx]) /
@@ -106,15 +106,15 @@ struct OpWeightedSoftmaxCrossEntropyLossGrad {
         normalize_factor_data_(normalize_factor_data),
         bias_data_(bias_data),
         C_(C) {
-    C_fdm_ = fast_divmod(static_cast<int>(C));
+    C_fdm_ = DivMod(static_cast<uint64_t>(C));
   }
 
-  __device__ __inline__ TOut operator()(CUDA_LONG idx) const {
+  __device__ __inline__ TOut operator()(uint64_t idx) const {
     // normalize_factor is sum of labels' weights. Because zero sum implies all weights are 0, the loss function should
     // be constant 0 and its corresponding gradient should be 0 as well.
     TAcc result = TAcc(0.f);
     if (*normalize_factor_data_ != TAcc(0.f)) {
-      int row, d;
+      uint64_t row, d;
       C_fdm_.divmod(idx, row, d);
       CUDA_KERNEL_ASSERT(weight_data_[row] == T(0.f) || (label_data_[row] >= 0 && label_data_[row] < C_));
       result = static_cast<TAcc>((IsReductionNone ? dY_data_[row] : *dY_data_) * weight_data_[row]) *
@@ -131,7 +131,7 @@ struct OpWeightedSoftmaxCrossEntropyLossGrad {
   const TAcc* normalize_factor_data_;
   const TOut* bias_data_;
   TLabel C_;
-  fast_divmod C_fdm_;
+  DivMod<uint64_t> C_fdm_;
 };
 
 template <typename T, typename TAcc, typename TLabel, typename TOut>

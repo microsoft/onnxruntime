@@ -8,6 +8,7 @@
 namespace onnxruntime {
 namespace cuda {
 
+namespace {
 #ifdef USE_ROCM
 constexpr int kElementsPerThread = 2;
 constexpr int kThreadsPerBlock = 512;
@@ -17,11 +18,11 @@ constexpr int kThreadsPerBlock = GridDim::maxThreadsPerBlock;
 #endif
 
 template <typename T, typename FuncT>
-__global__ void ElementwiseKernel(T* output_data, const FuncT functor, CUDA_LONG N) {
-  CUDA_LONG start = kElementsPerThread * kThreadsPerBlock * blockIdx.x + threadIdx.x;
+__global__ void ElementwiseKernel(T* output_data, const FuncT functor, uint64_t N) {
+  uint64_t start = kElementsPerThread * kThreadsPerBlock * blockIdx.x + threadIdx.x;
   T value[kElementsPerThread];
 
-  CUDA_LONG id = start;
+  uint64_t id = start;
 #pragma unroll
   for (int i = 0; i < kElementsPerThread; ++i) {
     if (id < N) {
@@ -39,12 +40,13 @@ __global__ void ElementwiseKernel(T* output_data, const FuncT functor, CUDA_LONG
     }
   }
 }
+}
 
 template <typename T, typename FuncT>
-void LaunchElementwiseKernel(cudaStream_t stream, T* output_data, const FuncT& functor, size_t output_size) {
+void LaunchElementwiseKernel(cudaStream_t stream, T* output_data, const FuncT& functor, uint64_t output_size) {
   if (output_size == 0) return;
-  CUDA_LONG N = static_cast<CUDA_LONG>(output_size);
-  int blocksPerGrid = CeilDiv(N, kThreadsPerBlock * kElementsPerThread);
+  uint64_t N = output_size;
+  uint64_t blocksPerGrid = CeilDiv(N, kThreadsPerBlock * kElementsPerThread);
   ElementwiseKernel<T, FuncT><<<blocksPerGrid, kThreadsPerBlock, 0, stream>>>(output_data, functor, N);
 }
 
