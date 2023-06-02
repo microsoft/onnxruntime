@@ -11,27 +11,27 @@
 #endif  // defined(__clang__)
 
 // paths are different when building the Swift Package Manager package as the headers come from the iOS pod archive
+#define STRINGIFY(x) #x
 #ifdef SPM_BUILD
-#define HEADER_DIR "onnxruntime/"
+#define HEADER_FILE_PATH(x) STRINGIFY(onnxruntime / x)
 #else
-#define HEADER_DIR ""
+#define HEADER_FILE_PATH(x) STRINGIFY(x)
 #endif
 
 #ifndef ENABLE_TRAINING_APIS
-#include HEADER_DIR "onnxruntime_c_api.h"
-#include HEADER_DIR "onnxruntime_cxx_api.h"
+#include HEADER_FILE_PATH(onnxruntime_c_api.h)
+#include HEADER_FILE_PATH(onnxruntime_cxx_api.h)
 #else
-#include HEADER_DIR "onnxruntime_training_c_api.h"
-#include HEADER_DIR "onnxruntime_training_cxx_api.h"
+#include HEADER_FILE_PATH(onnxruntime_training_c_api.h)
+#include HEADER_FILE_PATH(onnxruntime_training_cxx_api.h)
 #endif
 
-#if __has_include(HEADER_DIR "coreml_provider_factory.h")
+#if __has_include(HEADER_FILE_PATH(coreml_provider_factory.h))
 #define ORT_OBJC_API_COREML_EP_AVAILABLE 1
-#include HEADER_DIR "coreml_provider_factory.h"
+#include HEADER_FILE_PATH(coreml_provider_factory.h)
 #else
 #define ORT_OBJC_API_COREML_EP_AVAILABLE 0
 #endif
-
 
 #if defined(__clang__)
 #pragma clang diagnostic pop
