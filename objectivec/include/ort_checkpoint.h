@@ -31,8 +31,8 @@ NS_ASSUME_NONNULL_BEGIN
  * @param error Optional error information set if an error occurs.
  * @return The instance, or nil if an error occurs.
  *
- * @note The construction of the checkpoint state requires ORTEnv instance to be created.
- * The intialization may fail if the ORTEnv is not properly initialized.
+ * @warning The construction of the checkpoint state requires instantiation of `ORTEnv`.
+ * The intialization will fail if the `ORTEnv` is not properly initialized.
  */
 - (nullable instancetype)initWithPath:(NSString*)path
                                 error:(NSError**)error NS_DESIGNATED_INITIALIZER;
