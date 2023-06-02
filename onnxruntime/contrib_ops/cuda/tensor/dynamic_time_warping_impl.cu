@@ -55,7 +55,7 @@ __global__ void DynamicTimeWarpingKernel(
                 t = 2;
             }
             cost_idx += ((cols + 1) + 1);
-            cost_buffer[cost_idx] = cost + input[r * cols + c];
+            cost_buffer[cost_idx] = cost + input[(r - 1) * cols + (c - 1)];
             trace_buffer[cost_idx] = t;
         }
     }
@@ -67,7 +67,7 @@ __global__ void DynamicTimeWarpingKernel(
     int r = rows - 1;
     int c = cols - 1;
     int pos = static_cast<int>(max_index_len); // reverse put
-    while (r > 0 && c > 0) {
+    while (r >= 0 && c >= 0) {
         --pos;
         result_buffer[pos] = r;
         result_buffer[max_index_len + pos] = c;
