@@ -37,8 +37,8 @@ RUN cd /migraphx && rbuild package --cxx /opt/rocm/llvm/bin/clang++ -d /migraphx
 RUN dpkg -i /migraphx/build/*.deb
 RUN rm -rf /migraphx
 
-# ARG BUILD_UID=1001
-# ARG BUILD_USER=onnxruntimedev
-# RUN adduser --uid $BUILD_UID $BUILD_USER
-# WORKDIR /home/$BUILD_USER
-# USER $BUILD_USER
+ARG BUILD_UID=1001
+ARG BUILD_USER=onnxruntimedev
+RUN adduser --uid $BUILD_UID $BUILD_USER
+WORKDIR /home/$BUILD_USER
+USER $BUILD_USER
