@@ -216,7 +216,7 @@ def chain_model(args):
         # TODO: check duplicat names
         beam_graph.initializer.extend(post_qk_graph.initializer)
         beam_graph.node.extend(post_qk_graph.node)
-        beam_graph.input.extend(post_qk_graph.input[1:])
+        beam_graph.input.extend(post_qk_graph.input[2:])
         beam_graph.output.extend(post_qk_graph.output)
 
     # Verify graph's inputs match beam search's inputs
