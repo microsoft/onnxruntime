@@ -56,11 +56,11 @@ struct TestInputDef {
     return shape_;
   }
 
-  const bool IsInitializer() const {
+  bool IsInitializer() const {
     return is_initializer_;
   }
 
-  const bool IsRandomData() const {
+  bool IsRandomData() const {
     return data_info_.index() == 1;
   }
 
@@ -68,7 +68,7 @@ struct TestInputDef {
     return std::get<RandomData>(data_info_);
   }
 
-  const bool IsRawData() const {
+  bool IsRawData() const {
     return data_info_.index() == 0;
   }
 
@@ -105,7 +105,7 @@ inline NodeArg* MakeTestInput(ModelTestBuilder& builder, const TestInputDef<T>& 
       input = builder.MakeInput<T>(shape, raw_data);
     }
   } else {  // Random data
-    const TestInputDef<T>::RandomData& rand_info = input_def.GetRandomDataInfo();
+    const auto& rand_info = input_def.GetRandomDataInfo();
 
     if (is_initializer) {
       input = builder.MakeInitializer<T>(shape, rand_info.min, rand_info.max);
