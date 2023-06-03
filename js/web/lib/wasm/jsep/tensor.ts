@@ -97,6 +97,10 @@ export interface TensorView {
    * get a Float32Array data view of the tensor data. tensor data must be on CPU.
    */
   getFloat32Array(): Float32Array;
+
+  /**
+   * get a BigInt64Array data view of the tensor data. tensor data must be on CPU.
+   */
   getBigInt64Array(): BigInt64Array;
 
   /**
