@@ -46,7 +46,7 @@ const createReduceProgramInfo =
       for (let k = 0; k < inputs[0].dims.length; k++) {
         // if this axis is reduced
         if (axes.indexOf(k) >= 0 || axes.length === 0) {
-          if (attributes.keepDims === 1) {
+          if (attributes.keepDims === true) {
             outputShape.push(1);
           }  // else { remove the axis from outputShape; }
 

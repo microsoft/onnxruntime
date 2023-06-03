@@ -73,9 +73,9 @@ class ComputeContextImpl implements ComputeContext {
       TensorView[] {
     // prepare inputs. inputs should always be valid data.
     const mappedInputs =
-        inputsOutputsMapping ?.inputs ?.map(i => typeof i === 'number' ? this.inputs[i] : i) ? ? this.inputs;
+        inputsOutputsMapping?.inputs?.map(i => typeof i === 'number' ? this.inputs[i] : i) ?? this.inputs;
     // prepare outputs.
-    const outputIndices = inputsOutputsMapping ?.outputs ? ? [];
+    const outputIndices = inputsOutputsMapping?.outputs ?? [];
     const createKernelOutput = (index: number, dataType: number, dims: readonly number[]): TensorView =>
         new TensorViewImpl(this.module, dataType, this.output(index, dims), dims);
     const createTemporaryOutput = (dataType: number, dims: readonly number[]): TensorView => {
