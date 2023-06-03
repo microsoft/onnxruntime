@@ -113,11 +113,18 @@ export class Tensor implements TensorInterface {
           throw new TypeError(`Unsupported tensor type: ${arg0}.`);
         }
         if (Array.isArray(arg1)) {
-          // use 'as any' here because TypeScript's check on type of 'SupportedTypedArrayConstructors.from()' produces
-          // incorrect results.
-          // 'typedArrayConstructor' should be one of the typed array prototype objects.
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          data = (typedArrayConstructor as any).from(arg1);
+          if (arg0 === 'float16') {
+            // Throw error here because when user try to use number array as data,
+            // e.g. new Tensor('float16', [1, 2, 3, 4], dims)), it will actually call
+            // Uint16Array.from(arg1) which generates wrong data.
+            throw new TypeError(`Unsupported tensor type: ${arg0}.`);
+          } else {
+            // use 'as any' here because TypeScript's check on type of 'SupportedTypedArrayConstructors.from()' produces
+            // incorrect results.
+            // 'typedArrayConstructor' should be one of the typed array prototype objects.
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            data = (typedArrayConstructor as any).from(arg1);
+          }
         } else if (arg1 instanceof typedArrayConstructor) {
           data = arg1;
         } else {
