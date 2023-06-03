@@ -109,7 +109,7 @@ export interface Env {
   /**
    * Get version of the current package.
    */
-  versions: {
+  readonly versions: {
     common: string;
     web?: string;
     node?: string;
