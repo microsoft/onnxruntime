@@ -22,12 +22,12 @@ namespace js {
                        [](int64_t axis) { return gsl::narrow_cast<int32_t>(axis); });                        \
       }                                                                                                      \
       JSEP_INIT_KERNEL_ATTRIBUTE(ReduceKernel, ({                                                            \
-                                   "keepDims" : $1,                                                          \
-                                   "noopWithEmptyAxes" : $2,                                                 \
+                                   "keepDims" : !!$1,                                                          \
+                                   "noopWithEmptyAxes" : !!$2,                                                 \
                                    "axes" : $3 ? (Array.from(HEAP32.subarray($4, $4 + $3))) : [],            \
                                  }),                                                                         \
                                  static_cast<int32_t>(keepdims_),                                            \
-                                 noop_with_empty_axes_,                                                      \
+                                 static_cast<int32_t>(noop_with_empty_axes_),                                \
                                  gsl::narrow_cast<int32_t>(axes.size()),                                     \
                                  reinterpret_cast<int32_t>((axes.size() > 0) ? axes.data() : nullptr) >> 2); \
     }                                                                                                        \
