@@ -119,5 +119,6 @@ def update_version():
     run(["npm", "run", "update-version", "react_native"], cwd=js_root)
     run(["npm", "run", "format"], cwd=js_root)
 
+
 if __name__ == "__main__":
     update_version()
