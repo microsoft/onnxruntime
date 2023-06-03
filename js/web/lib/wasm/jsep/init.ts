@@ -4,7 +4,7 @@
 import {Env} from 'onnxruntime-common';
 
 import {OrtWasmModule} from '../binding/ort-wasm';
-import {getTensorElementSize} from '../wasm-common';
+import {DataType, getTensorElementSize} from '../wasm-common';
 
 import {WebGpuBackend} from './backend-webgpu';
 import {LOG_DEBUG} from './log';
@@ -20,10 +20,16 @@ class TensorViewImpl implements TensorView {
       public readonly dims: readonly number[]) {}
 
   getFloat32Array(): Float32Array {
+    if (this.dataType !== DataType.float) {
+      throw new Error('Invalid data type');
+    }
     return new Float32Array(this.module.HEAP8.buffer, this.data, ShapeUtil.size(this.dims));
   }
 
   getBigInt64Array(): BigInt64Array {
+    if (this.dataType !== DataType.int64) {
+      throw new Error('Invalid data type');
+    }
     return new BigInt64Array(this.module.HEAP8.buffer, this.data, ShapeUtil.size(this.dims));
   }
 
@@ -67,9 +73,9 @@ class ComputeContextImpl implements ComputeContext {
       TensorView[] {
     // prepare inputs. inputs should always be valid data.
     const mappedInputs =
-        inputsOutputsMapping?.inputs?.map(i => typeof i === 'number' ? this.inputs[i] : i) ?? this.inputs;
+        inputsOutputsMapping ?.inputs ?.map(i => typeof i === 'number' ? this.inputs[i] : i) ? ? this.inputs;
     // prepare outputs.
-    const outputIndices = inputsOutputsMapping?.outputs ?? [];
+    const outputIndices = inputsOutputsMapping ?.outputs ? ? [];
     const createKernelOutput = (index: number, dataType: number, dims: readonly number[]): TensorView =>
         new TensorViewImpl(this.module, dataType, this.output(index, dims), dims);
     const createTemporaryOutput = (dataType: number, dims: readonly number[]): TensorView => {
