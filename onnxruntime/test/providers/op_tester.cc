@@ -14,9 +14,8 @@ void OpTester::AddNodes(onnxruntime::Graph& graph,
                         std::vector<onnxruntime::NodeArg*>& graph_input_defs,
                         std::vector<onnxruntime::NodeArg*>& graph_output_defs,
                         std::vector<std::function<void(onnxruntime::Node& node)>>& add_attribute_funcs) {
-  // default behavior is to create a single Node for the op being tested, with
-  // node inputs/outputs
-  // being 1:1 with graph inputs/outputs.
+  // default behavior is to create a single Node for the op being tested,
+  // with node inputs/outputs being 1:1 with graph inputs/outputs.
   auto& node = graph.AddNode("node1", op_, op_, graph_input_defs, graph_output_defs, nullptr, Domain());
 
   // Add the attributes if any

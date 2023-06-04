@@ -2018,8 +2018,7 @@ TEST(InferenceSessionTests, TestStrictShapeInference) {
   // we also need for the output to be valid so OpTester doesn't throw so add an Unsqueeze after the Shape.
   class OpTesterWithReshape : public OpTester {
    public:
-    // don't cache the model as we're testing failure during Graph::Resolve
-    OpTesterWithReshape() : OpTester("Shape", 7, kOnnxDomain, /* cache_model */ false) {
+    OpTesterWithReshape() : OpTester("Shape", 7) {
     }
 
    protected:

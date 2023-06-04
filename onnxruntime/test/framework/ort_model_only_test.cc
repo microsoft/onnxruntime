@@ -79,27 +79,6 @@ static void RunOrtModel(const OrtModelTestInfo& test_info) {
 }
 
 #if !defined(ORT_MINIMAL_BUILD)
-// Same Tensor from ONNX and ORT format will have different binary representation, need to compare value by value
-// static void CompareTensors(const OrtValue& left_value, const OrtValue& right_value) {
-//  const Tensor& left = left_value.Get<Tensor>();
-//  const Tensor& right = right_value.Get<Tensor>();
-//
-//  ASSERT_EQ(left.Shape().GetDims(), right.Shape().GetDims());
-//  ASSERT_EQ(left.GetElementType(), right.GetElementType());
-//
-//  if (left.IsDataTypeString()) {
-//    auto size = left.Shape().Size();
-//    const auto* left_strings = left.Data<std::string>();
-//    const auto* right_strings = right.Data<std::string>();
-//
-//    for (int i = 0; i < size; ++i) {
-//      EXPECT_EQ(left_strings[i], right_strings[i]) << "Mismatch index:" << i;
-//    }
-//  } else {
-//    ASSERT_EQ(memcmp(left.DataRaw(), right.DataRaw(), left.SizeInBytes()), 0);
-//  }
-//}
-
 // Keep the CompareTypeProtos in case we need debug the difference
 /*
 static void CompareTypeProtos(const TypeProto& left_type_proto, const TypeProto& right_type_proto) {

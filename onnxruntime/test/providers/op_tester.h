@@ -43,8 +43,6 @@ class OpTester : public BaseTester {
 
   using ExpectResult = BaseTester::ExpectResult;
 
-  // ~OpTester() override;
-
   // Set whether the NodeArg created by AddInput/AddOutput should include shape information
   // for Tensor types. If not added, shape inferencing should resolve. If added, shape inferencing
   // should validate. Default is to add.
