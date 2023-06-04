@@ -670,9 +670,7 @@ class BaseTester {
   std::vector<Data> output_data_;
   std::vector<OrtValue> fetches_;
 
-#ifndef NDEBUG
   bool run_called_{};
-#endif
 
   gsl::span<const int64_t> ToDimsSpan(const DimsVariant& dims_var) {
     gsl::span<const int64_t> result;
