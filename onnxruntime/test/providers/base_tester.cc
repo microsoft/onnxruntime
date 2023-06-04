@@ -29,6 +29,7 @@ namespace onnxruntime {
 namespace test {
 namespace {
 
+#ifndef NDEBUG
 void DebugTrap() {
 #if _MSC_VER
   __debugbreak();
@@ -36,6 +37,7 @@ void DebugTrap() {
   raise(SIGTRAP);
 #endif
 }
+#endif
 }  // namespace
 
 BaseTester::~BaseTester() {
