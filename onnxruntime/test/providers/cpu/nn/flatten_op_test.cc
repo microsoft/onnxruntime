@@ -82,8 +82,7 @@ TEST(FlattenOpModelTest, Flatten_broadcast) {
   std::shared_ptr<Model> model;
   auto status = Model::Load(model_uri, model, nullptr, GetEnvironment().GetLoggingManager()->DefaultLogger());
 
-  OpTester tester("flatten_broadcast");
-  tester.SetModelCache(model);
+  ModelTester tester("flatten_broadcast", model_uri);
 
   tester.AddInput<float>("X", {4}, {0.f, 1.f, 2.f, 3.f});
   tester.AddInput<float>("Y", {3, 4},

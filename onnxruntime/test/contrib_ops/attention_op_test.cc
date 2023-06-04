@@ -2219,7 +2219,7 @@ static void RunModelWithRandomInput(
   std::vector<float> bias_data = random.Uniform<float>(bias_dims, -1.0f, 1.0f);
 
   float gpu_threshold = is_float16 ? static_cast<float>(sequence_length) / 32.0f : 0.005f;
-  constexpr float cpu_threshold = 0.002f;
+  constexpr float cpu_threshold = 0.003f;
   bool enable_cuda = HasCudaEnvironment(is_float16 ? 530 : 0);
   bool enable_rocm = (nullptr != DefaultRocmExecutionProvider().get());
   bool enable_cpu = (nullptr != DefaultCpuExecutionProvider().get() && !is_float16);

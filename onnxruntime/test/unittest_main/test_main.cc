@@ -57,6 +57,7 @@ int TEST_MAIN(int argc, char** argv) {
 
     ortenv_setup();
     status = RUN_ALL_TESTS();
+    std::cout << "Test status was " << status << std::endl;
   }
   ORT_CATCH(const std::exception& ex) {
     ORT_HANDLE_EXCEPTION([&]() {
@@ -72,5 +73,6 @@ int TEST_MAIN(int argc, char** argv) {
   // make memory leak checker happy
   ::google::protobuf::ShutdownProtobufLibrary();
 #endif
+  std::cout << "Returning status of " << status << std::endl;
   return status;
 }
