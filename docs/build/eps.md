@@ -617,7 +617,7 @@ set(CMAKE_C_COMPILER aarch64-linux-gnu-gcc)
 ---
 
 ## AMD Vitis AI
-See more information on the Vitis AI Execution Provider [here](../execution-providers/community-maintained/Vitis-AI-ExecutionProvider.md).
+See more information on the Vitis AI Execution Provider [here](../execution-providers/Vitis-AI-ExecutionProvider.md).
 
 ### Windows
 {: .no_toc }
@@ -643,7 +643,7 @@ e.g.
 ### Linux
 {: .no_toc }
 
-Currently Linux support is only enabled for AMD Adapable SoCs.  Please refer to the guidance [here](../execution-providers/community-maintained/Vitis-AI-ExecutionProvider.md#amd-adaptable-soc-installation) for SoC targets.
+Currently Linux support is only enabled for AMD Adapable SoCs.  Please refer to the guidance [here](../execution-providers/Vitis-AI-ExecutionProvider.md#amd-adaptable-soc-installation) for SoC targets.
 
 ---
 
