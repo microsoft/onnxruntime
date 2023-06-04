@@ -26,6 +26,7 @@ constexpr const char* kEnableCudaGraph = "enable_cuda_graph";
 constexpr const char* kCudnnConv1dPadToNc1d = "cudnn_conv1d_pad_to_nc1d";
 constexpr const char* kTunableOpEnable = "tunable_op_enable";
 constexpr const char* kTunableOpTuningEnable = "tunable_op_tuning_enable";
+constexpr const char* kTunableOpMaxTuningDurationMs = "tunable_op_max_tuning_duration_ms";
 constexpr const char* kEnableSkipLayerNormStrictMode = "enable_skip_layer_norm_strict_mode";
 }  // namespace provider_option_names
 }  // namespace cuda
@@ -108,6 +109,12 @@ CUDAExecutionProviderInfo CUDAExecutionProviderInfo::FromProviderOptions(const P
                 ORT_RETURN_IF_ERROR(ParseStringWithClassicLocale(value_str, info.tunable_op.tuning_enable));
                 return Status::OK();
               })
+          .AddValueParser(
+              cuda::provider_option_names::kTunableOpMaxTuningDurationMs,
+              [&info](const std::string& value_str) -> Status {
+                ORT_RETURN_IF_ERROR(ParseStringWithClassicLocale(value_str, info.tunable_op.max_tuning_duration_ms));
+                return Status::OK();
+              })
           .Parse(options));
 
   CUDAExecutionProviderExternalAllocatorInfo alloc_info{alloc, free, empty_cache};
@@ -132,6 +139,7 @@ ProviderOptions CUDAExecutionProviderInfo::ToProviderOptions(const CUDAExecution
       {cuda::provider_option_names::kCudnnConv1dPadToNc1d, MakeStringWithClassicLocale(info.cudnn_conv1d_pad_to_nc1d)},
       {cuda::provider_option_names::kTunableOpEnable, MakeStringWithClassicLocale(info.tunable_op.enable)},
       {cuda::provider_option_names::kTunableOpTuningEnable, MakeStringWithClassicLocale(info.tunable_op.tuning_enable)},
+      {cuda::provider_option_names::kTunableOpMaxTuningDurationMs, MakeStringWithClassicLocale(info.tunable_op.max_tuning_duration_ms)},
       {cuda::provider_option_names::kEnableSkipLayerNormStrictMode, MakeStringWithClassicLocale(info.enable_skip_layer_norm_strict_mode)},
   };
 
@@ -149,6 +157,7 @@ ProviderOptions CUDAExecutionProviderInfo::ToProviderOptions(const OrtCUDAProvid
       {cuda::provider_option_names::kCudnnConv1dPadToNc1d, MakeStringWithClassicLocale(info.cudnn_conv1d_pad_to_nc1d)},
       {cuda::provider_option_names::kTunableOpEnable, MakeStringWithClassicLocale(info.tunable_op_enable)},
       {cuda::provider_option_names::kTunableOpTuningEnable, MakeStringWithClassicLocale(info.tunable_op_tuning_enable)},
+      {cuda::provider_option_names::kTunableOpMaxTuningDurationMs, MakeStringWithClassicLocale(info.tunable_op_max_tuning_duration_ms)},
   };
 
   return options;

@@ -364,7 +364,7 @@ stages:
 
 - template: ../nuget/templates/test_linux.yml
   parameters:
-    AgentPool : aiinfra-Linux-CPU
+    AgentPool : onnxruntime-Ubuntu2004-AMD-CPU
     NugetPackageName : 'Microsoft.ML.OnnxRuntime.Training'
     ArtifactSuffix: 'Training-CPU'
     StageSuffix: 'Training_CPU'

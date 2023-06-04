@@ -96,11 +96,19 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(If,
                                    If);
 
 // optional type is supported starting opset-16
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(If,
+                                   16, 18,
+                                   KernelDefBuilder()
+                                       .TypeConstraint("B", DataTypeImpl::GetTensorType<bool>())
+                                       .TypeConstraint("V", DataTypeImpl::AllTensorAndSequenceTensorAndOptionalTypes()),
+                                   If);
+
+// float 8 support was added.
 ONNX_CPU_OPERATOR_KERNEL(If,
-                         16,
+                         19,
                          KernelDefBuilder()
                              .TypeConstraint("B", DataTypeImpl::GetTensorType<bool>())
-                             .TypeConstraint("V", DataTypeImpl::AllTensorAndSequenceTensorAndOptionalTypes()),
+                             .TypeConstraint("V", DataTypeImpl::AllTensorAndSequenceTensorAndOptionalTypesIRv9()),
                          If);
 
 If::Info::Info(const onnxruntime::Node& node, const GraphViewer& subgraph_in) : subgraph(subgraph_in) {

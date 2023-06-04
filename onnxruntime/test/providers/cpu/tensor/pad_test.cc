@@ -1069,12 +1069,7 @@ TEST(PadOpTest, ConstantPadAxesWithOneDimensionSpecified) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kNnapiExecutionProvider});
 }
 
-/*
-  Note: Disable the Negative Axes test for ConstantPad for now until onnx shape inferencing
-  add support for handling negative axes.
-  Issue link to the bug: https://github.com/onnx/onnx/issues/5003
-*/
-TEST(PadOpTest, DISABLED_ConstantPadNegativeAxes) {
+TEST(PadOpTest, ConstantPadNegativeAxes) {
   // Specified negative axes value
   OpTester test("Pad", 18);
   test.AddAttribute("mode", "constant");

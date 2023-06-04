@@ -143,6 +143,24 @@ class ModelTestBuilder {
     return &graph_.GetOrCreateNodeArg(name, nullptr);
   }
 
+  template <typename T>
+  NodeArg* MakeOutput(const std::optional<std::vector<int64_t>>& shape) {
+    ONNX_NAMESPACE::TypeProto type_proto;
+    type_proto.mutable_tensor_type()->set_elem_type(utils::ToTensorProtoElementType<T>());
+    if (shape != std::nullopt) {
+      ONNX_NAMESPACE::TensorShapeProto* shape_proto = type_proto.mutable_tensor_type()->mutable_shape();
+      for (auto& d : *shape) {
+        auto dim = shape_proto->add_dim();
+        if (d != -1) {
+          dim->set_dim_value(d);
+        }
+      }
+    }
+    std::string name = graph_.GenerateNodeArgName("output");
+    output_names_.push_back(name);
+    return &graph_.GetOrCreateNodeArg(name, &type_proto);
+  }
+
   NodeArg* MakeIntermediate() {
     std::string name = graph_.GenerateNodeArgName("node");
     return &graph_.GetOrCreateNodeArg(name, nullptr);
