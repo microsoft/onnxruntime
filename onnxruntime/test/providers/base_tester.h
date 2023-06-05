@@ -45,9 +45,9 @@ class BaseTester {
   // a pointer to allow testing scenarios where the expected result is ExpectResult::kExpectFailure.
   virtual void CreateModelToTest(const ModelOptions& model_options, Model*& model) = 0;
 
+ public:
   virtual ~BaseTester();
 
- public:
   // We have an initializer_list and vector version of the Add functions because std::vector is specialized for
   // bool and we can't get the raw data out. So those cases must use an initializer_list
 
