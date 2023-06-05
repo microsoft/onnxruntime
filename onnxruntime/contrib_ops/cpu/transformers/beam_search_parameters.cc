@@ -47,6 +47,21 @@ void BeamSearchParameters::ParseFromInputs(OpKernelContext* context) {
   }
   batch_size = static_cast<int>(dims[0]);
 
+  extra_decoding_ids = gsl::span<int32_t>();
+  if (this->model_type == IGenerationParameters::kModelTypeWhisper) {
+    const Tensor* extra_decoder_tensor = context->Input<Tensor>(13);
+    if (extra_decoder_tensor != nullptr) {
+      const auto& extra_decoder_tensor_dims = extra_decoder_tensor->Shape().GetDims();
+      ORT_ENFORCE(extra_decoder_tensor_dims.size() == 2,
+          "extra_decoder_tensor shall have 2 dimensions. Got ",
+          extra_decoder_tensor_dims.size());
+      ORT_ENFORCE(extra_decoder_tensor_dims[0] == batch_size,
+          "extra_decoder_tensor first dim not same as batch_size. Got ",
+          extra_decoder_tensor_dims[0], ", expecting ", batch_size);
+      extra_decoding_ids = gsl::span<const int32_t>(extra_decoder_tensor->Data<int32_t>(), extra_decoder_tensor->Shape().Size());
+    }
+  }
+
   if (this->model_type == IGenerationParameters::kModelTypeGpt) {
     sequence_length = static_cast<int>(dims[1]);
   } else if (this->model_type == IGenerationParameters::kModelTypeWhisper) {
