@@ -466,6 +466,12 @@ struct OperatorDescTraits<DML_LP_POOLING_OPERATOR_DESC>
 };
 
 template <>
+struct OperatorDescTraits<DML_LP_POOLING1_OPERATOR_DESC>
+{
+    static constexpr DML_OPERATOR_TYPE Type = DML_OPERATOR_LP_POOLING1;
+};
+
+template <>
 struct OperatorDescTraits<DML_MAX_POOLING_OPERATOR_DESC>
 {
     static constexpr DML_OPERATOR_TYPE Type = DML_OPERATOR_MAX_POOLING;
@@ -1455,6 +1461,12 @@ struct OperatorTypeTraits<(DML_OPERATOR_TYPE)DML_OPERATOR_LP_POOLING>
 };
 
 template <>
+struct OperatorTypeTraits<(DML_OPERATOR_TYPE)DML_OPERATOR_LP_POOLING1>
+{
+    using DescType = DML_LP_POOLING1_OPERATOR_DESC;
+};
+
+template <>
 struct OperatorTypeTraits<(DML_OPERATOR_TYPE)DML_OPERATOR_MAX_POOLING>
 {
     using DescType = DML_MAX_POOLING_OPERATOR_DESC;
@@ -2261,6 +2273,8 @@ auto OperatorTypeVisitor(DML_OPERATOR_TYPE type, Visitor&& visitor, Ts&&... args
         return std::invoke(std::forward<Visitor>(visitor), DML_AVERAGE_POOLING_OPERATOR_DESC{}, std::forward<Ts>(args)...);
     case DML_OPERATOR_LP_POOLING:
         return std::invoke(std::forward<Visitor>(visitor), DML_LP_POOLING_OPERATOR_DESC{}, std::forward<Ts>(args)...);
+    case DML_OPERATOR_LP_POOLING1:
+        return std::invoke(std::forward<Visitor>(visitor), DML_LP_POOLING1_OPERATOR_DESC{}, std::forward<Ts>(args)...);
     case DML_OPERATOR_MAX_POOLING:
         return std::invoke(std::forward<Visitor>(visitor), DML_MAX_POOLING_OPERATOR_DESC{}, std::forward<Ts>(args)...);
     case DML_OPERATOR_MAX_POOLING1:
@@ -2555,6 +2569,7 @@ inline gsl::czstring ToString(DML_OPERATOR_TYPE value)
     case DML_OPERATOR_ARGMAX: return "DML_OPERATOR_ARGMAX";
     case DML_OPERATOR_AVERAGE_POOLING: return "DML_OPERATOR_AVERAGE_POOLING";
     case DML_OPERATOR_LP_POOLING: return "DML_OPERATOR_LP_POOLING";
+    case DML_OPERATOR_LP_POOLING1: return "DML_OPERATOR_LP_POOLING1";
     case DML_OPERATOR_MAX_POOLING: return "DML_OPERATOR_MAX_POOLING";
     case DML_OPERATOR_MAX_POOLING1: return "DML_OPERATOR_MAX_POOLING1";
     case DML_OPERATOR_ROI_POOLING: return "DML_OPERATOR_ROI_POOLING";

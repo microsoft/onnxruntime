@@ -608,6 +608,7 @@ constexpr static OperatorRegistrationInformation operatorRegistrationInformation
     {REG_INFO(      7,  GlobalMaxPool,                      typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},
     {REG_INFO(      7,  LpPool,                             typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},
     {REG_INFO(     11,  LpPool,                             typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},
+    {REG_INFO(     18,  LpPool,                             typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},
     {REG_INFO(      7,  GlobalLpPool,                       typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},
     {REG_INFO(      7,  MaxRoiPool,                         typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},
     {REG_INFO_VER( 10,  RoiAlign,                           typeNameListTwo,                supportedTypeListRoiAlign,              DmlGraphSupport::Supported)},

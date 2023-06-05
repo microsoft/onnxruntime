@@ -405,6 +405,7 @@ namespace OperatorHelper
         static const int sc_sinceVer_BitwiseXor = 18;
         static const int sc_sinceVer_BitwiseNot = 18;
         static const int sc_sinceVer_Split = 18;
+        static const int sc_sinceVer_LpPool = 18;
     }
 
     namespace MsftOperatorSet1
