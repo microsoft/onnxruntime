@@ -625,7 +625,7 @@ class BaseTester {
 
   bool GetAddShapeToTensorData() const { return add_shape_to_tensor_data_; }
   void SetAddShapeToTensorData(bool add_shape) { add_shape_to_tensor_data_ = add_shape; }
-  void SetAddSymbolicDimToTensorData(bool symbolic_dim) { add_symbolic_dim_to_tensor_data_ = symbolic_dim; }
+  void SetAddSymbolicDimToTensorData(int symbolic_dim) { add_symbolic_dim_to_tensor_data_ = symbolic_dim; }
   void SetRunCalled() { run_called_ = true; }
 
   struct RunContext {
@@ -641,7 +641,7 @@ class BaseTester {
 
   std::vector<Data>& GetInputData() { return input_data_; }
   std::vector<Data>& GetOutputData() { return output_data_; }
-  std::vector<size_t> GetInitializerIndexes() { return initializer_indexes_; }
+  std::vector<size_t>& GetInitializerIndexes() { return initializer_indexes_; }
 
   void AddInitializers(onnxruntime::Graph& graph);
 
@@ -661,36 +661,7 @@ class BaseTester {
                     const std::string& provider_type,
                     bool allow_released_onnx_opset_only = true);
 
- private:
-  void FillFeeds(std::unordered_map<std::string, OrtValue>& feeds);
-
-  RunContext ctx_{};
-
-  std::vector<Data> input_data_;
-  std::vector<Data> output_data_;
-  std::vector<OrtValue> fetches_;
-
-  bool run_called_{};
-
-  gsl::span<const int64_t> ToDimsSpan(const DimsVariant& dims_var) {
-    gsl::span<const int64_t> result;
-    switch (dims_var.index()) {
-      case 0:
-        result = std::get<0>(dims_var);
-        break;
-      case 1:
-        result = std::get<1>(dims_var);
-        break;
-      default:
-        ORT_THROW("Unhandled dims variant");
-    }
-    return result;
-  }
-
-  // this is used by some training test code. TBD if that setup could be refined so this could be private
 #if defined(ENABLE_TRAINING)
- protected:
-#endif
   template <typename T>
   void AddData(std::vector<Data>& data, const char* name, const DimsVariant& dims_var, const T* values,
                int64_t values_count, bool is_initializer = false, bool sort_output = false,
@@ -771,10 +742,33 @@ class BaseTester {
       ORT_RETHROW;
     }
   }
-
-#if defined(ENABLE_TRAINING)
- private:
 #endif
+
+ private:
+  void FillFeeds(std::unordered_map<std::string, OrtValue>& feeds);
+
+  RunContext ctx_{};
+
+  std::vector<Data> input_data_;
+  std::vector<Data> output_data_;
+  std::vector<OrtValue> fetches_;
+
+  bool run_called_{};
+
+  gsl::span<const int64_t> ToDimsSpan(const DimsVariant& dims_var) {
+    gsl::span<const int64_t> result;
+    switch (dims_var.index()) {
+      case 0:
+        result = std::get<0>(dims_var);
+        break;
+      case 1:
+        result = std::get<1>(dims_var);
+        break;
+      default:
+        ORT_THROW("Unhandled dims variant");
+    }
+    return result;
+  }
 
   template <typename T>
   void AddSeqData(std::vector<Data>& data, const char* name,

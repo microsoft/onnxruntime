@@ -204,7 +204,7 @@ void RunGatherGradConsistentOutputTest(
     auto output_handler =
         [&provider_outputs](const std::vector<OrtValue>& fetches, const std::string& provider_type) {
           ASSERT_EQ(fetches.size(), 1);
-          const Tensor& output_tensor = FetchTensor(fetches[0]);
+          const Tensor& output_tensor = fetches[0].Get<Tensor>();
           const auto output_size = output_tensor.Shape().Size();
           std::vector<float> output;
           output.reserve(output_size);

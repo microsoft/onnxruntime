@@ -89,6 +89,11 @@ class GradientOpTester : public OpTester {
   }
 
  private:
+  void CreateModelToTest(const ModelOptions& /*model_options*/, Model*& model) override {
+    // NOTE: The current setup doesn't allow ModelOptions to be set/used as we call BuildGraph directly.
+    model = &GetModel();
+  }
+
   void FillFeedsAndOutputNames(std::unordered_map<std::string, OrtValue>& feeds,
                                std::vector<std::string>& output_names,
                                int output_index_to_use_as_loss,

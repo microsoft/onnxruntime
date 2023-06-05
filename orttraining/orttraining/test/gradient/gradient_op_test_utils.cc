@@ -183,7 +183,7 @@ void GradientOpTester::FillFeedsAndOutputNames(std::unordered_map<std::string, O
   assert(input_infos_ && output_infos_);
 
   const auto& input_infos = *input_infos_;
-  const auto& output_infos = *input_infos_;
+  const auto& output_infos = *output_infos_;
 
   OpTester::FillFeedsAndOutputNames(feeds, output_names);
   output_names.clear();  // ignore output names

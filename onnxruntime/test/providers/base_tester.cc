@@ -3,6 +3,7 @@
 
 #include "test/providers/base_tester.h"
 
+#include <csignal>
 #include "gmock/gmock.h"
 
 #include "core/common/logging/logging.h"
