@@ -33,6 +33,7 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.Reader;
 import java.math.BigInteger;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
@@ -327,6 +328,22 @@ public class OnnxruntimeModule extends ReactContextBaseJavaModule {
       String executionMode = options.getString("executionMode");
       if (executionModeTable.containsKey(executionMode)) {
         sessionOptions.setExecutionMode(executionModeTable.get(executionMode));
+      }
+    }
+
+    if (options.hasKey("executionProviders")) {
+      ReadableArray executionProviders = options.getArray("executionProviders");
+      for (int i = 0; i < executionProviders.size(); ++i) {
+        String executionProvider = executionProviders.getString(i);
+        if (executionProvider.equals("xnnpack")) {
+          sessionOptions.addXnnpack(Collections.emptyMap());
+        } else if (executionProvider.equals("nnapi")) {
+          sessionOptions.addNnapi();
+        } else if (executionProvider.equals("cpu")) {
+          continue;
+        } else {
+          throw new OrtException("Unsupported execution provider: " + executionProvider);
+        }
       }
     }
 

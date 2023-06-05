@@ -17,8 +17,10 @@
 #ifdef ORT_ENABLE_EXTENSIONS
 #include "onnxruntime_cxx_api.h"
 #include "onnxruntime_extensions.h"
+#include "coreml_provider_factory.h"
 #else
 #include "onnxruntime/onnxruntime_cxx_api.h"
+#include "onnxruntime/coreml_provider_factory.h"
 #endif
 
 @implementation OnnxruntimeModule
@@ -303,6 +305,22 @@ static NSDictionary *executionModeTable = @{@"sequential" : @(ORT_SEQUENTIAL), @
     NSString *executionMode = [[options objectForKey:@"executionMode"] stringValue];
     if ([executionModeTable objectForKey:executionMode]) {
       sessionOptions.SetExecutionMode((ExecutionMode)[[executionModeTable objectForKey:executionMode] intValue]);
+    }
+  }
+
+  if ([options objectForKey:@"executionProviders"]) {
+    NSArray *executionProviders = [options objectForKey:@"executionProviders"];
+    for (NSString *executionProvider in executionProviders) {
+      if ([executionProvider isEqualToString:@"coreml"]) {
+        Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_CoreML(sessionOptions, 0));
+      } else if ([executionProvider isEqualToString:@"cpu"]) {
+        continue;
+      } else {
+        NSException *exception = [NSException exceptionWithName:@"onnxruntime"
+                                                         reason:@"unsupported execution provider"
+                                                       userInfo:nil];
+        @throw exception;
+      }
     }
   }
 
