@@ -7,6 +7,8 @@
 #include <fstream>
 #include "test_fixture.h"
 #include "file_util.h"
+#include "test_allocator.h"
+#include "gtest/gtest.h"
 
 #include "gmock/gmock.h"
 
@@ -102,6 +104,45 @@ TEST(CApiTest, TestExternalInitializersInjection) {
   Ort::SessionOptions so;
   so.AddExternalInitializers(init_names, initializer_data);
   EXPECT_NO_THROW(Ort::Session(*ort_env, model_path, so));
+}
+
+TEST(CApiTest, TestGetExternalDataLocationsFromArray) {
+  constexpr auto model_path = ORT_TSTR("testdata/model_with_external_initializer_come_from_user.onnx");
+
+  std::ifstream model_file_stream(model_path, std::ios::in | std::ios::binary);
+  ASSERT_TRUE(model_file_stream.good());
+
+  model_file_stream.seekg(0, std::ios::end);
+  size_t size = model_file_stream.tellg();
+  model_file_stream.seekg(0, std::ios::beg);
+  std::vector<char> file_contents(size, 0);
+  model_file_stream.read(&file_contents[0], size);
+  model_file_stream.close();
+
+  OrtExternalDataLocation* locations;
+  size_t locations_size;
+
+  const auto& api = Ort::GetApi();
+
+  auto default_allocator = std::make_unique<MockedOrtAllocator>();
+
+  ASSERT_TRUE(api.GetExternalDataLocationsFromArray(*ort_env, default_allocator.get(), file_contents.data(), size, &locations, &locations_size) == nullptr);
+
+  ASSERT_EQ(locations_size, 1);
+
+  ASSERT_EQ(locations[0].shape_len, 1);
+
+  ASSERT_EQ(locations[0].shape[0], 4);
+
+  ASSERT_EQ(locations[0].type, ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64);
+
+  ASSERT_THAT(std::string(locations[0].name), testing::StrEq("Pads_not_on_disk"));
+
+  ASSERT_THAT(std::string(locations[0].location), testing::StrEq("Pads_not_on_disk.bin"));
+
+  api.ReleaseExternalDataLocations(default_allocator.get(), locations, locations_size);
+
+  default_allocator.get()->LeakCheck();
 }
 
 #endif

@@ -2383,11 +2383,15 @@ ORT_API(const OrtTrainingApi*, OrtApis::GetTrainingApi, uint32_t version) {
 ORT_API_STATUS_IMPL(OrtApis::GetExternalDataLocationsFromArray, _In_ const OrtEnv* env, _Inout_ OrtAllocator* allocator,
                     _In_ const void* model_data, size_t model_data_length, _Outptr_ OrtExternalDataLocation** locations_out, _Outptr_ size_t* locations_out_size) {
   API_IMPL_BEGIN
+
+#if defined(ORT_MINIMAL_BUILD) || defined(DISABLE_EXTERNAL_INITIALIZERS)
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "Initializer tensors with external data is not supported in this build");
+#else
+
   OrtStatus* status = nullptr;
   std::shared_ptr<Model> model;
   *locations_out = nullptr;
   *locations_out_size = 0;
-
   /* Load the model from bytes */
   ORT_API_RETURN_IF_STATUS_NOT_OK(Model::LoadFromBytes(model_data_length, (void*)model_data, model, nullptr, env->GetLoggingManager()->DefaultLogger()));
   Graph& graph = model->MainGraph();
@@ -2456,10 +2460,15 @@ ORT_API_STATUS_IMPL(OrtApis::GetExternalDataLocationsFromArray, _In_ const OrtEn
   *locations_out_size = external_initialized.size();
 
   return status;
+#endif
   API_IMPL_END
 }
 
 ORT_API(void, OrtApis::ReleaseExternalDataLocations, _Inout_ OrtAllocator* allocator, _Frees_ptr_opt_ OrtExternalDataLocation* locations, size_t locations_size) {
+#if defined(ORT_MINIMAL_BUILD) || defined(DISABLE_EXTERNAL_INITIALIZERS)
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "Initializer tensors with external data is not supported in this build");
+#else
+
   for (size_t i = 0; i < locations_size; i++) {
     if (locations[i].shape) {
       allocator->Free(allocator, locations[i].shape);
@@ -2477,6 +2486,7 @@ ORT_API(void, OrtApis::ReleaseExternalDataLocations, _Inout_ OrtAllocator* alloc
   if (locations) {
     allocator->Free(allocator, locations);
   }
+#endif
 }
 
 static constexpr OrtApiBase ort_api_base = {
