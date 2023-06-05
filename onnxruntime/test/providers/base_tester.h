@@ -661,7 +661,6 @@ class BaseTester {
                     const std::string& provider_type,
                     bool allow_released_onnx_opset_only = true);
 
-#if defined(ENABLE_TRAINING)
   template <typename T>
   void AddData(std::vector<Data>& data, const char* name, const DimsVariant& dims_var, const T* values,
                int64_t values_count, bool is_initializer = false, bool sort_output = false,
@@ -742,7 +741,6 @@ class BaseTester {
       ORT_RETHROW;
     }
   }
-#endif
 
  private:
   void FillFeeds(std::unordered_map<std::string, OrtValue>& feeds);
