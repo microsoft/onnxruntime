@@ -79,7 +79,8 @@ class QGemm : protected GemmBase, public MatMulIntegerBase {
       gemm_output_buffer = std::make_unique<Tensor>(DataTypeImpl::GetType<int32_t>(), outputshape, allocator);
       gemm_output_data = gemm_output_buffer->MutableData<int32_t>();
     } else {
-      // TODO: why it needs to bypass the type check?
+      // y_scale is NULL. Then y_zp must also be NULL. In this case Y's type must be int32_t. This is checked by the
+	  // OP schema type. So the following cast is safe.
       gemm_output_data = static_cast<int32_t*>(y->MutableDataRaw());
     }
 
