@@ -22,6 +22,7 @@
 #include "core/common/safeint.h"
 #include "core/graph/constants.h"
 #include "core/graph/graph.h"
+#include "core/graph/model.h"
 #include "core/framework/allocator.h"
 #include "core/framework/tensor.h"
 #include "core/framework/ort_value.h"
@@ -2379,6 +2380,105 @@ ORT_API(const OrtTrainingApi*, OrtApis::GetTrainingApi, uint32_t version) {
 #endif
 }
 
+ORT_API_STATUS_IMPL(OrtApis::GetExternalDataLocationsFromArray, _In_ const OrtEnv* env, _Inout_ OrtAllocator* allocator,
+                    _In_ const void* model_data, size_t model_data_length, _Outptr_ OrtExternalDataLocation** locations_out, _Outptr_ size_t* locations_out_size) {
+  API_IMPL_BEGIN
+  OrtStatus* status = nullptr;
+  std::shared_ptr<Model> model;
+  *locations_out = nullptr;
+  *locations_out_size = 0;
+
+  /* Load the model from bytes */
+  ORT_API_RETURN_IF_STATUS_NOT_OK(Model::LoadFromBytes(model_data_length, (void*)model_data, model, nullptr, env->GetLoggingManager()->DefaultLogger()));
+  Graph& graph = model->MainGraph();
+  const InitializedTensorSet& initialized_tensor_set = graph.GetAllInitializedTensors();
+
+  InlinedHashSet<const std::pair<const std::string, const ONNX_NAMESPACE::TensorProto*>*> external_initialized;
+
+  /* Get all external initializers */
+  for (const auto& x : initialized_tensor_set) {
+    const ONNX_NAMESPACE::TensorProto* tensor_proto = x.second;
+    if (utils::HasExternalData(*tensor_proto)) {
+      external_initialized.insert(&x);
+    }
+  }
+
+  /* Return preemptively if size == 0 */
+  size_t external_initialized_size = external_initialized.size();
+  if (external_initialized_size == 0) {
+    return status;
+  }
+
+  /* Allocate Buffer */
+  size_t buffer_size = external_initialized_size * sizeof(OrtExternalDataLocation);
+  IAllocatorUniquePtr<OrtExternalDataLocation> buffer_alloc(reinterpret_cast<OrtExternalDataLocation*>(allocator->Alloc(allocator, buffer_size)),
+                                                            [allocator, external_initialized_size](OrtExternalDataLocation* p) { ReleaseExternalDataLocations(allocator, p, external_initialized_size); });
+
+  if (!buffer_alloc) {
+    return OrtApis::CreateStatus(ORT_FAIL, "buffer allocation failed");
+  }
+
+  OrtExternalDataLocation* locations = buffer_alloc.get();
+
+  std::memset(locations, 0, buffer_size);
+
+  int index = 0;
+  for (auto const& x : external_initialized) {
+    const std::string* tensor_name = &x->first;
+    const ONNX_NAMESPACE::TensorProto* tensor_proto = x->second;
+
+    std::basic_string<ORTCHAR_T> external_file_path;
+    onnxruntime::FileOffsetType file_offset;
+    SafeInt<size_t> tensor_byte_size;
+    ORT_API_RETURN_IF_STATUS_NOT_OK(utils::GetExternalDataInfo(*tensor_proto, nullptr, external_file_path, file_offset, tensor_byte_size));
+
+    TensorShape tensor_shape = utils::GetTensorShapeFromTensorProto(*tensor_proto);
+    int type = tensor_proto->data_type();
+
+    locations[index].type = (ONNXTensorElementDataType)type;
+    locations[index].size = tensor_byte_size;
+    locations[index].offset = file_offset;
+    locations[index].shape_len = tensor_shape.NumDimensions();
+
+    locations[index].shape = (int64_t*)allocator->Alloc(allocator, sizeof(int64_t) * tensor_shape.NumDimensions());
+    tensor_shape.CopyDims(locations[index].shape, locations[index].shape_len);
+
+    locations[index].name = (char*)allocator->Alloc(allocator, tensor_name->size() + 1);
+    memcpy(locations[index].name, tensor_name->c_str(), tensor_name->size() + 1);
+
+    locations[index].location = (char*)allocator->Alloc(allocator, external_file_path.size() + 1);
+    memcpy(locations[index].location, external_file_path.c_str(), external_file_path.size() + 1);
+
+    index++;
+  }
+
+  *locations_out = buffer_alloc.release();
+  *locations_out_size = external_initialized.size();
+
+  return status;
+  API_IMPL_END
+}
+
+ORT_API(void, OrtApis::ReleaseExternalDataLocations, _Inout_ OrtAllocator* allocator, _Frees_ptr_opt_ OrtExternalDataLocation* locations, size_t locations_size) {
+  for (size_t i = 0; i < locations_size; i++) {
+    if (locations[i].shape) {
+      allocator->Free(allocator, locations[i].shape);
+    }
+
+    if (locations[i].name) {
+      allocator->Free(allocator, locations[i].name);
+    }
+
+    if (locations[i].location) {
+      allocator->Free(allocator, locations[i].location);
+    }
+  }
+
+  if (locations) {
+    allocator->Free(allocator, locations);
+  }
+}
+
 static constexpr OrtApiBase ort_api_base = {
     &OrtApis::GetApi,
     &OrtApis::GetVersionString};
@@ -2734,6 +2834,9 @@ static constexpr OrtApi ort_api_1_to_16 = {
     &OrtApis::UpdateROCMProviderOptions,
     &OrtApis::GetROCMProviderOptionsAsString,
     &OrtApis::ReleaseROCMProviderOptions,
+    &OrtApis::GetExternalDataLocationsFromArray,
+    &OrtApis::ReleaseExternalDataLocations,
+
 };
 
 // OrtApiBase can never change as there is no way to know what version of OrtApiBase is returned by OrtGetApiBase.

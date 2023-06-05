@@ -120,43 +120,6 @@ Status UnpackTensorWithRawData(const void* raw_data, size_t raw_data_len, size_t
                                      reinterpret_cast<unsigned char*>(p_data));
 }
 
-static Status GetExternalDataInfo(const ONNX_NAMESPACE::TensorProto& tensor_proto,
-                                  const ORTCHAR_T* tensor_proto_dir,
-                                  std::basic_string<ORTCHAR_T>& external_file_path,
-                                  onnxruntime::FileOffsetType& file_offset,
-                                  SafeInt<size_t>& tensor_byte_size) {
-  ORT_RETURN_IF_NOT(onnxruntime::utils::HasExternalData(tensor_proto),
-                    "Tensor does not have external data to read from.");
-
-  ORT_RETURN_IF(!onnxruntime::utils::HasDataType(tensor_proto) || onnxruntime::utils::HasString(tensor_proto),
-                "External data type cannot be UNDEFINED or STRING.");
-
-  std::unique_ptr<onnxruntime::ExternalDataInfo> external_data_info;
-  ORT_RETURN_IF_ERROR(onnxruntime::ExternalDataInfo::Create(tensor_proto.external_data(), external_data_info));
-
-  const auto& location = external_data_info->GetRelPath();
-
-  if (location == onnxruntime::utils::kTensorProtoMemoryAddressTag) {
-    external_file_path = location;
-  } else {
-    if (tensor_proto_dir != nullptr) {
-      external_file_path = onnxruntime::ConcatPathComponent<ORTCHAR_T>(tensor_proto_dir,
-                                                                       external_data_info->GetRelPath());
-    } else {
-      external_file_path = external_data_info->GetRelPath();
-    }
-  }
-
-  ORT_RETURN_IF_ERROR(onnxruntime::utils::GetSizeInBytesFromTensorProto<0>(tensor_proto, &tensor_byte_size));
-  const size_t external_data_length = external_data_info->GetLength();
-  ORT_RETURN_IF_NOT(external_data_length == 0 || external_data_length == tensor_byte_size,
-                    "TensorProto: ", tensor_proto.name(), " external data size mismatch. Computed size: ",
-                    *&tensor_byte_size, ", external_data.length: ", external_data_length);
-
-  file_offset = external_data_info->GetOffset();
-
-  return Status::OK();
-}
 
 // Read external data for tensor in unint8_t* form and return Status::OK() if the data is read successfully.
 // Uses the tensor_proto_dir to construct the full path for external data. If tensor_proto_dir == nullptr
@@ -794,6 +757,44 @@ Status GetExtDataFromTensorProto(const Env& env, const ORTCHAR_T* model_path,
                                        ext_data_buf, ext_data_deleter));
     ext_data_len = raw_data_safe_len;
   }
+
+  return Status::OK();
+}
+
+Status GetExternalDataInfo(const ONNX_NAMESPACE::TensorProto& tensor_proto,
+                                  const ORTCHAR_T* tensor_proto_dir,
+                                  std::basic_string<ORTCHAR_T>& external_file_path,
+                                  onnxruntime::FileOffsetType& file_offset,
+                                  SafeInt<size_t>& tensor_byte_size) {
+  ORT_RETURN_IF_NOT(onnxruntime::utils::HasExternalData(tensor_proto),
+                    "Tensor does not have external data to read from.");
+
+  ORT_RETURN_IF(!onnxruntime::utils::HasDataType(tensor_proto) || onnxruntime::utils::HasString(tensor_proto),
+                "External data type cannot be UNDEFINED or STRING.");
+
+  std::unique_ptr<onnxruntime::ExternalDataInfo> external_data_info;
+  ORT_RETURN_IF_ERROR(onnxruntime::ExternalDataInfo::Create(tensor_proto.external_data(), external_data_info));
+
+  const auto& location = external_data_info->GetRelPath();
+
+  if (location == onnxruntime::utils::kTensorProtoMemoryAddressTag) {
+    external_file_path = location;
+  } else {
+    if (tensor_proto_dir != nullptr) {
+      external_file_path = onnxruntime::ConcatPathComponent<ORTCHAR_T>(tensor_proto_dir,
+                                                                       external_data_info->GetRelPath());
+    } else {
+      external_file_path = external_data_info->GetRelPath();
+    }
+  }
+
+  ORT_RETURN_IF_ERROR(onnxruntime::utils::GetSizeInBytesFromTensorProto<0>(tensor_proto, &tensor_byte_size));
+  const size_t external_data_length = external_data_info->GetLength();
+  ORT_RETURN_IF_NOT(external_data_length == 0 || external_data_length == tensor_byte_size,
+                    "TensorProto: ", tensor_proto.name(), " external data size mismatch. Computed size: ",
+                    *&tensor_byte_size, ", external_data.length: ", external_data_length);
+
+  file_offset = external_data_info->GetOffset();
 
   return Status::OK();
 }

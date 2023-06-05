@@ -90,6 +90,12 @@ common::Status GetExtDataFromTensorProto(const Env& env, const ORTCHAR_T* model_
                                          void*& ext_data_buf, SafeInt<size_t>& ext_data_len,
                                          OrtCallback& ext_data_deleter);
 
+common::Status GetExternalDataInfo(const ONNX_NAMESPACE::TensorProto& tensor_proto,
+                                   const ORTCHAR_T* tensor_proto_dir,
+                                   std::basic_string<ORTCHAR_T>& external_file_path,
+                                   onnxruntime::FileOffsetType& file_offset,
+                                   SafeInt<size_t>& tensor_byte_size);
+
 // Convert the AttributeProto from a Constant node into a TensorProto that can be used as an initializer
 // If AttributeProto contains a TensorProto, this tensor proto is converted as is including the case when the
 // the data location is external. i.e. it does not load the external data.

@@ -261,6 +261,16 @@ typedef enum OrtOpAttrType {
   ORT_OP_ATTR_STRINGS,
 } OrtOpAttrType;
 
+typedef struct OrtExternalDataLocation {
+  ONNXTensorElementDataType type;
+  int64_t* shape;
+  size_t shape_len;
+  char* name;
+  char* location;
+  uint64_t offset;
+  uint64_t size;
+} OrtExternalDataLocation;
+
 //! @}
 #define ORT_RUNTIME_CLASS(X) \
   struct Ort##X;             \
@@ -4284,6 +4294,11 @@ struct OrtApi {
    * \since Version 1.16.
    */
   void(ORT_API_CALL* ReleaseROCMProviderOptions)(_Frees_ptr_opt_ OrtROCMProviderOptions* input);
+
+  ORT_API2_STATUS(GetExternalDataLocationsFromArray, _In_ const OrtEnv* env, _Inout_ OrtAllocator* allocator,
+                  _In_ const void* model_data, size_t model_data_length, _Outptr_ OrtExternalDataLocation** locations_out, _Outptr_ size_t* locations_out_size);
+
+  void(ORT_API_CALL* ReleaseExternalDataLocations)(_Inout_ OrtAllocator* allocator, _Frees_ptr_opt_ OrtExternalDataLocation* locations, size_t locations_size);
 
   /// @}
 };
