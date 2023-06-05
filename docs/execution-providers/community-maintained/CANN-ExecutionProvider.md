@@ -22,6 +22,10 @@ The CANN Execution Provider (EP) for ONNX Runtime is developed by Huawei.
 * TOC placeholder
 {:toc}
 
+## Install
+
+Pre-built binaries of ONNX Runtime with CANN EP are published, but only for python currently, please refer to [onnxruntime-cann](https://pypi.org/project/onnxruntime-cann/).
+
 ## Requirements
 
 Please reference table below for official CANN packages dependencies for the ONNX Runtime inferencing package.
@@ -31,14 +35,11 @@ Please reference table below for official CANN packages dependencies for the ONN
 |v1.12.1|6.0.0|
 |v1.13.1|6.0.0|
 |v1.14.0|6.0.0|
+|v1.15.0|6.0.0|
 
 ## Build
 
 For build instructions, please see the [BUILD page](../../build/eps.md#cann).
-
-## Install
-
-Pre-built binaries of ONNX Runtime with CANN EP are published for most language bindings. Please reference [Install ORT](../../install).
 
 ## Configuration Options
 
@@ -65,17 +66,102 @@ kSameAsRequested    | extend by the requested amount
 
 Default value: kNextPowerOfTwo
 
-### do_copy_in_default_stream
-
-Whether to do copies in the default stream or use separate streams. The recommended setting is true. If false, there are race conditions and possibly better performance.
-
-Default value: true
-
 ### enable_cann_graph
 
 Whether to use the graph inference engine to speed up performance. The recommended setting is true. If false, it will fall back to the single-operator inference engine.
 
 Default value: true
+
+### dump_graphs
+
+Whether to dump the subgraph into onnx format for analysis of subgraph segmentation.
+
+Default value: false
+
+### precision_mode
+
+The precision mode of the operator.
+
+Value                   | Description
+-|-
+force_fp32/cube_fp16in_fp32out | convert to float32 first according to operator implementation
+force_fp16 | convert to float16 when float16 and float32 are both supported
+allow_fp32_to_fp16 | convert to float16 when float32 is not supported
+must_keep_origin_dtype | keep it as it is
+allow_mix_precision/allow_mix_precision_fp16 | mix precision mode
+
+Default value: force_fp16
+
+### op_select_impl_mode
+
+Some built-in operators in CANN have high-precision and high-performance implementation.
+
+Value                   | Description
+-|-
+high_precision | aim for high precision
+high_performance | aim for high preformance
+
+Default value: high_performance
+
+### optypelist_for_implmode
+
+Enumerate the list of operators which use the mode specified by the op_select_impl_mode parameter.
+
+The supported operators are as follows:
+
+* Pooling
+* SoftmaxV2
+* LRN
+* ROIAlign
+
+Default value: None
+
+## Performance tuning
+
+### IO Binding
+
+The [I/O Binding feature](../../performance/tune-performance/iobinding.html) should be utilized to avoid overhead resulting from copies on inputs and outputs.
+
+* Python
+
+```python
+import numpy as np
+import onnxruntime as ort
+
+providers = [
+    (
+        "CANNExecutionProvider",
+        {
+            "device_id": 0,
+            "arena_extend_strategy": "kNextPowerOfTwo",
+            "npu_mem_limit": 2 * 1024 * 1024 * 1024,
+            "enable_cann_graph": True,
+        },
+    ),
+    "CPUExecutionProvider",
+]
+
+model_path = '<path to model>'
+
+options = ort.SessionOptions()
+options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_DISABLE_ALL
+options.execution_mode = ort.ExecutionMode.ORT_PARALLEL
+
+session = ort.InferenceSession(model_path, sess_options=options, providers=providers)
+
+x = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.int64)
+x_ortvalue = ort.OrtValue.ortvalue_from_numpy(x, "cann", 0)
+
+io_binding = sess.io_binding()
+io_binding.bind_ortvalue_input(name="input", ortvalue=x_ortvalue)
+io_binding.bind_output("output", "cann")
+
+sess.run_with_iobinding(io_binding)
+
+return io_binding.get_outputs()[0].numpy()
+```
+
+* C/C++(future)
 
 ## Samples
 
@@ -97,7 +183,8 @@ providers = [
             "device_id": 0,
             "arena_extend_strategy": "kNextPowerOfTwo",
             "npu_mem_limit": 2 * 1024 * 1024 * 1024,
-            "do_copy_in_default_stream": True,
+            "op_select_impl_mode": "high_performance",
+            "optypelist_for_implmode": "Gelu",
             "enable_cann_graph": True
         },
     ),
@@ -118,8 +205,8 @@ g_ort->CreateSessionOptions(&session_options);
 OrtCANNProviderOptions *cann_options = nullptr;
 g_ort->CreateCANNProviderOptions(&cann_options);
 
-std::vector<const char *> keys{"device_id", "npu_mem_limit", "arena_extend_strategy", "do_copy_in_default_stream", "enable_cann_graph"};
-std::vector<const char *> values{"1", "2147483648", "kSameAsRequested", "1", "1"};
+std::vector<const char *> keys{"device_id", "npu_mem_limit", "arena_extend_strategy", "enable_cann_graph"};
+std::vector<const char *> values{"0", "2147483648", "kSameAsRequested", "1"};
 
 g_ort->UpdateCANNProviderOptions(cann_options, keys.data(), values.data(), keys.size());
 

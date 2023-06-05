@@ -28,14 +28,6 @@ Pre-built Python binaries of ONNX Runtime with Azure EP are published on Pypi: [
 
 ## Requirements
 
-For Windows, please install [zlib](https://zlib.net/) and [re2](https://github.com/google/re2), and add their binaries into the system path.
-If built from source, zlib and re2 binaries could be easily located with:
-
-```dos
-cd <build_output_path>
-dir /s zlib1.dll re2.dll
-```
-
 For Linux, please make sure openssl is installed.
 
 ## Build

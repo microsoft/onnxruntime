@@ -22,6 +22,7 @@ The contrib operator schemas are documented in the ONNX Runtime repository.
 | Release | Documentation |
 |---------|---------------|
 | Main | [https://github.com/microsoft/onnxruntime/blob/main/docs/ContribOperators.md](https://github.com/microsoft/onnxruntime/blob/main/docs/ContribOperators.md) |
+| 1.15 | [https://github.com/microsoft/onnxruntime/blob/rel-1.15.0/docs/ContribOperators.md](https://github.com/microsoft/onnxruntime/blob/rel-1.15.0/docs/ContribOperators.md)|
 | 1.14 | [https://github.com/microsoft/onnxruntime/blob/rel-1.14.0/docs/ContribOperators.md](https://github.com/microsoft/onnxruntime/blob/rel-1.14.0/docs/ContribOperators.md)|
 | 1.13 | [https://github.com/microsoft/onnxruntime/blob/rel-1.13.1/docs/ContribOperators.md](https://github.com/microsoft/onnxruntime/blob/rel-1.13.1/docs/ContribOperators.md)|
 | 1.12 | [https://github.com/microsoft/onnxruntime/blob/rel-1.12.0/docs/ContribOperators.md](https://github.com/microsoft/onnxruntime/blob/rel-1.12.0/docs/ContribOperators.md)|
@@ -46,11 +47,11 @@ A new operator should have complete reference implementation tests and shape inf
 
 Reference implementation python tests should be added in
 [onnxruntime/test/python/contrib_ops](https://github.com/microsoft/onnxruntime/tree/main/onnxruntime/test/python/contrib_ops).
-E.g., [onnx_test_trilu.py](https://github.com/microsoft/onnxruntime/tree/main/onnxruntime/test/python/contrib_ops/onnx_test_trilu.py)
+E.g., [aten_op_tests.py](https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/test/python/contrib_ops/aten_op_tests.py)
 
 Shape inference C++ tests should be added in
 [onnxruntime/test/contrib_ops](https://github.com/microsoft/onnxruntime/tree/main/onnxruntime/test/contrib_ops).
-E.g., [trilu_shape_inference_test.cc](https://github.com/microsoft/onnxruntime/tree/main/onnxruntime/test/contrib_ops/trilu_shape_inference_test.cc)
+E.g., [trilu_shape_inference_test.cc](https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/test/providers/cpu/tensor/trilu_shape_inference_test.cc)
 
 The operator kernel should be implemented using `Compute` function
 under contrib namespace in [onnxruntime/contrib_ops/cpu/](https://github.com/microsoft/onnxruntime/tree/main/onnxruntime/contrib_ops/cpu/)
@@ -86,7 +87,7 @@ Status Inverse::Compute(OpKernelContext* ctx) const {
 }  // namespace onnxruntime
 ```
 
-The kernel should be registered in [cpu_contrib_kernels.cc](https://github.com/microsoft/onnxruntime/tree/main/onnxruntime/contrib_ops/cpu_contrib_kernels.cc) for CPU and [cuda_contrib_kernels.cc](https://github.com/microsoft/onnxruntime/tree/main/onnxruntime/contrib_ops/cuda_contrib_kernels.cc) for CUDA.
+The kernel should be registered in [cpu_contrib_kernels.cc](https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/contrib_ops/cpu/cpu_contrib_kernels.cc) for CPU and [cuda_contrib_kernels.cc](https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/contrib_ops/cuda/cuda_contrib_kernels.cc) for CUDA.
 
 Now you should be able to build and install ONNX Runtime to start using your custom op.
 

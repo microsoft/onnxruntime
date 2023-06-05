@@ -1,4 +1,4 @@
-# Sample workflow for building and deploying a Jekyll site to GitHub Pages
+# Workflow for building and deploying the ORT GitHub Pages site
 name: Publish site
 
 on:
@@ -72,7 +72,15 @@ jobs:
           branch: main
           path: apidocs
 
-      - name: Move apidocs folder into place
+      - name: Download Objective-C apidocs artifact
+        uses: dawidd6/action-download-artifact@v2
+        with:
+          name: onnxruntime-objectivec-apidocs
+          workflow: publish-objectivec-apidocs.yml
+          branch: main
+          path: apidocs
+
+      - name: Move apidocs folders into place
         run: |
           sudo rm -rf _site/docs/api/c
           sudo mv apidocs/docs/api/c _site/docs/api
@@ -82,6 +90,8 @@ jobs:
           sudo mv apidocs/docs/api/java _site/docs/api
           sudo rm -rf _site/docs/api/python
           sudo mv apidocs/docs/api/python _site/docs/api
+          sudo rm -rf _site/docs/api/objectivec
+          sudo mv apidocs/docs/api/objectivec _site/docs/api
 
       - name: Upload site
         uses: actions/upload-pages-artifact@v1

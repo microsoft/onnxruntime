@@ -223,7 +223,7 @@ tensor([[[-0.3884,  0.0229, -0.0522,  ..., -0.4899, -0.3066,  0.0675],
  
 ### Scheduler
 
-The scheduler algorithm and the `unet` model work together to denoise the image to create an image that represents the text prompt. There are different scheduler algorithms that can be used, to learn more about them [check out this blog from Hugging Face](https://huggingface.co/docs/diffusers/using-diffusers/schedulers). In this example we will use the [`LMSDiscreteScheduler`](https://github.com/cassiebreviu/StableDiffusion/blob/main/StableDiffusion/LMSDiscreteScheduler.cs) which was created based on the Hugging Face [scheduling_lms_discrete.py](https://github.com/huggingface/diffusers/blob/main/src/diffusers/schedulers/scheduling_lms_discrete.py).
+The scheduler algorithm and the `unet` model work together to denoise the image to create an image that represents the text prompt. There are different scheduler algorithms that can be used, to learn more about them [check out this blog from Hugging Face](https://huggingface.co/docs/diffusers/using-diffusers/schedulers). In this example we will use the `LMSDiscreteScheduler, which was created based on the HuggingFace [scheduling_lms_discrete.py](https://github.com/huggingface/diffusers/blob/main/src/diffusers/schedulers/scheduling_lms_discrete.py).
 
 ### Timesteps
 The inference loop is the main loop that runs the scheduler algorithm and the `unet` model. The loop runs for the number of `timesteps` which are calculated by the scheduler algorithm based on the number of inference steps and other parameters.

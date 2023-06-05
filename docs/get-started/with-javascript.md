@@ -107,6 +107,15 @@ const ort = require('onnxruntime-react-native');
 ```
 
 
+#### Enable ONNX Runtime Extensions for React Native
+To enable support for [ONNX Runtime Extensions](https://github.com/microsoft/onnxruntime-extensions) in your React Native app,
+you need to specify the following configuration as a top-level entry (note: usually where the package `name`and `version`fields are) in your project's root directory `package.json` file. 
+
+```js
+"onnxruntimeExtensionsEnabled": "true"
+```
+
+
 ## Builds
 
 [Builds](https://onnxruntime.ai/docs/build/web.html) are published to **npm** and can be installed using `npm install`

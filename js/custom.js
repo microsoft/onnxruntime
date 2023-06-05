@@ -236,3 +236,20 @@ function carouselNormalization() {
 	    }.bind(this)); 
 	}
 })(jQuery);
+
+let copyText = (e) => {
+  // console.log(e.target.previousSibling.innerHTML.replace( /(<([^>]+)>)/ig, ''))
+  text = e.target.previousSibling.innerText;
+  navigator.clipboard.writeText(text);
+  $(e.target).popover({
+    content: "Copied!",
+    placement: "Left",
+    trigger: "manual"
+  });
+  $(e.target).popover("show");
+
+  // Hide the popover after 2 seconds
+  setTimeout(() => {
+    $(e.target).popover("hide");
+  }, 1500);
+}
