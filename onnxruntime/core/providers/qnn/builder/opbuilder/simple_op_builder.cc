@@ -203,18 +203,20 @@ Status SimpleOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_w
     return Status::OK();
   }
 
+  const std::string& op_type = node_unit.OpType();
+
   if (do_op_validation) {
     ORT_RETURN_IF_ERROR(ExplictOpCheck(qnn_model_wrapper, node_unit));
   } else if (is_quantized_model && NodeUnit::Type::SingleNode == node_unit.UnitType() &&
-             node_unit.OpType() == "Transpose") {
+             op_type == "Transpose") {
     LOGS(logger, VERBOSE) << "Add single Transpose node: " << node_unit.Name();
     return HandleSingleTransposeNode(qnn_model_wrapper, node_unit, std::move(input_names), is_quantized_model);
   }
 
   std::vector<std::string> param_tensor_names;
   // Add attribute
-  if (node_unit.OpType() == "LogSoftmax" || node_unit.OpType() == "Softmax" || node_unit.OpType() == "Concat") {
-    int32_t default_axis = ("Softmax" == node_unit.OpType()) ? -1 : 0;
+  if (op_type == "LogSoftmax" || op_type == "Softmax" || op_type == "Concat") {
+    int32_t default_axis = ("Softmax" == op_type) ? -1 : 0;
     Qnn_Scalar_t axis_qnn_scalar = QNN_SCALAR_INIT;
     ORT_RETURN_IF_ERROR(ProcessAxisAttribute(qnn_model_wrapper, node_unit, axis_qnn_scalar, default_axis));
     QnnParamWrapper axis_param(node_unit.Index(), node_unit.Name(), qnn_def::axis, axis_qnn_scalar);
@@ -222,7 +224,7 @@ Status SimpleOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_w
     qnn_model_wrapper.AddParamWrapper(std::move(axis_param));
   }
 
-  if (node_unit.OpType() == "MatMul") {
+  if (op_type == "MatMul") {
     Qnn_Scalar_t scalar_param = QNN_SCALAR_INIT;
     scalar_param.dataType = QNN_DATATYPE_BOOL_8;
     scalar_param.bool8Value = 0;
@@ -235,25 +237,24 @@ Status SimpleOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_w
     qnn_model_wrapper.AddParamWrapper(std::move(transpose_in1_param));
   }
 
-  if (node_unit.OpType() == "Transpose") {
+  if (op_type == "Transpose") {
     ORT_RETURN_IF_ERROR(ProcessPermAttribute(qnn_model_wrapper, node_unit, param_tensor_names));
   }
 
-  if (node_unit.OpType() == "LeakyRelu") {
+  if (op_type == "LeakyRelu") {
     std::string input_name = "alpha";
     ORT_RETURN_IF_ERROR(ProcessAlphaAttributeAsInput(qnn_model_wrapper, node_unit, input_name, is_quantized_model));
     input_names.push_back(input_name);
   }
 
-  if (node_unit.OpType() == "Elu") {
+  if (op_type == "Elu") {
     ORT_RETURN_IF_ERROR(ProcessAlphaAttribute(qnn_model_wrapper, node_unit, param_tensor_names));
   }
 
   ORT_RETURN_IF_ERROR(ProcessOutputs(qnn_model_wrapper, node_unit,
                                      std::move(input_names),
                                      std::move(param_tensor_names),
-                                     logger, is_quantized_model, do_op_validation, GetQnnOpType(node_unit.OpType())));
-
+                                     logger, is_quantized_model, do_op_validation, GetQnnOpType(op_type)));
   return Status::OK();
 }
 

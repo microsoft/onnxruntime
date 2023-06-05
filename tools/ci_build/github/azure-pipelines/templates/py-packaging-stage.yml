@@ -335,7 +335,7 @@ stages:
 
   - ${{ if eq(parameters.enable_mac_cpu, true) }}:
     - job: MacOS_py_Wheels
-      timeoutInMinutes: 90
+      timeoutInMinutes: 120
       workspace:
         clean: all
       pool:
@@ -513,6 +513,6 @@ stages:
       - template: py-linux-gpu.yml
         parameters:
           arch: 'x86_64'
-          machine_pool: 'aiinfra-Linux-CPU'
+          machine_pool: 'onnxruntime-Ubuntu2004-AMD-CPU'
           ${{ if contains(parameters.build_py_parameters, '--use_azure') }}:
             device: '-d AZURE'

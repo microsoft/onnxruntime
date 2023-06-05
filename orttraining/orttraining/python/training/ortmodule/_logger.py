@@ -6,7 +6,6 @@
 import io
 import logging
 import sys
-import warnings
 from contextlib import contextmanager
 from enum import IntEnum
 from typing import Dict, List
@@ -42,21 +41,12 @@ def suppress_os_stream_output(suppress_stdout=True, suppress_stderr=True, log_le
             sys.stdout = fo
         if suppress_stderr and suppress_logs:
             sys.stderr = fo
-        yield
+        yield fo
     finally:
         if suppress_stdout:
             sys.stdout = stdout
         if suppress_stderr:
             sys.stderr = stderr
-
-        if fo.tell() > 0 and suppress_logs:
-            # If anything was captured in fo, raise a single user warning letting users know that there was
-            # some warning or error that was raised
-            warnings.warn(
-                "There were one or more warnings or errors raised while exporting the PyTorch "
-                "model. Please enable INFO level logging to view all warnings and errors.",
-                UserWarning,
-            )
 
 
 ORTMODULE_LOG_LEVEL_MAP: Dict[LogLevel, List[int]] = {
@@ -74,3 +64,15 @@ def ortmodule_loglevel_to_onnxruntime_c_loglevel(loglevel: LogLevel) -> int:
 
 def ortmodule_loglevel_to_python_loglevel(loglevel: LogLevel) -> int:
     return ORTMODULE_LOG_LEVEL_MAP.get(loglevel, [Severity.WARNING, logging.WARNING])[1]
+
+
+class LogColor:
+    HEADER = "\033[95m"
+    BLUE = "\033[94m"
+    CYAN = "\033[96m"
+    GREEN = "\033[92m"
+    WARNING = "\033[93m"
+    RED = "\033[91m"
+    ENDC = "\033[0m"
+    BOLD = "\033[1m"
+    UNDERLINE = "\033[4m"

@@ -252,6 +252,7 @@ struct CUDA_Provider : Provider {
     info.cudnn_conv1d_pad_to_nc1d = params->cudnn_conv1d_pad_to_nc1d != 0;
     info.tunable_op.enable = params->tunable_op_enable;
     info.tunable_op.tuning_enable = params->tunable_op_tuning_enable;
+    info.tunable_op.max_tuning_duration_ms = params->tunable_op_max_tuning_duration_ms;
     info.enable_skip_layer_norm_strict_mode = params->enable_skip_layer_norm_strict_mode != 0;
 
     return std::make_shared<CUDAProviderFactory>(info);
