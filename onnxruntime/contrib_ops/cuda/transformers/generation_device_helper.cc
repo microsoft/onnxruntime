@@ -471,6 +471,23 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
                                          cuda_stream));
   }
 
+  const bool need_handle_extra_decoding_ids =
+    (parameters->model_type == onnxruntime::contrib::transformers::IGenerationParameters::kModelTypeWhisper) &&
+    (!parameters->extra_decoding_ids.empty()) &&
+    (parameters->extra_decoding_ids.size() / parameters->batch_size >= step);
+
+  if (need_handle_extra_decoding_ids) {
+    cuda::LaunchForceDecodingIds(
+      next_token_scores.data(),
+      parameters->batch_size,
+      parameters->num_beams,
+      parameters->vocab_size,
+      parameters->extra_decoding_ids.data(),
+      parameters->extra_decoding_ids.size() / parameters->batch_size,
+      step - 1,
+      cuda_stream);
+  }
+
 #ifdef DEBUG_GENERATION
   dumper->Print("next_token_scores after logits process", next_token_scores.data(), batch_size, num_beams, vocab_size);
 #endif
