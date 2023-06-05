@@ -68,6 +68,12 @@ def chain_model(args):
     else:
         beam_inputs.append("")
 
+    if args.extra_decoding_ids:
+        beam_inputs.append("extra_decoding_ids")
+    else:
+        beam_inputs.append("")
+
+
     beam_outputs = ["sequences"]
     if args.collect_cross_qk:
         beam_outputs.extend(["", "", "cross_qk"])
@@ -110,6 +116,8 @@ def chain_model(args):
     )
     if args.collect_cross_qk:
         node.attribute.extend([helper.make_attribute("decoder_output_cross_qk", 1)])
+    if args.extra_decoding_round:
+        node.attribute.extend([helper.make_attribute("extra_decoding_round", 1)])
 
     # beam graph inputs
     float_data_type = TensorProto.FLOAT
@@ -170,6 +178,12 @@ def chain_model(args):
             "cross_qk_layer_head", TensorProto.INT32, ["num_layer_head", 2]
         )
         graph_inputs.append(cross_qk_layer_head)
+
+    if args.extra_decoding_ids:
+        extra_decoding_ids = helper.make_tensor_value_info(
+            "extra_decoding_ids", TensorProto.INT32, ["batch_size", "extra_decoding_ids_len"]
+        )
+        graph_inputs.append(extra_decoding_ids)
 
     # graph outputs
     sequences = helper.make_tensor_value_info(

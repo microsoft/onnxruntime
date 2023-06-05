@@ -170,6 +170,22 @@ def parse_arguments(argv=None):
     parser.set_defaults(chain_model=True)
 
     parser.add_argument(
+        "--extra_decoding_ids",
+        required=False,
+        action="store_true",
+        help="Need extra starting decoding ids for some feature like cross qk. Default if false.",
+    )
+    parser.set_defaults(extra_decoding_ids=False)
+
+    parser.add_argument(
+        "--extra_decoding_round",
+        required=False,
+        action="store_true",
+        help="Need one extra decoding round for feature like cross qk. Default if false.",
+    )
+    parser.set_defaults(extra_decoding_round=False)
+
+    parser.add_argument(
         "--collect_cross_qk",
         required=False,
         action="store_true",

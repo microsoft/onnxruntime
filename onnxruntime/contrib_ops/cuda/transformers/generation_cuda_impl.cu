@@ -1493,6 +1493,52 @@ template void LaunchFinalizeCrossQK<MLFloat16>(
     int num_return_sequences,
     const int* cache_indir_data);
 
+template <int ElementsPerThreads>
+__global__ void ForceDecodingIdsKernel(
+    float* beam_scores,
+    const int vocab_size,
+    const int32_t* force_ids,
+    int id_len,
+    int step
+) {
+  const int num_beams = gridDim.y;
+  const int beam = blockIdx.y;
+  const int batch = blockIdx.z;
+  beam_scores += (((int64_t)batch * num_beams + beam)* vocab_size); // move to (batch, beam)
+  const int32_t id_wanted = force_ids[((int64_t)batch * id_len) + step];
+
+  const int32_t elements_per_block = (int32_t)blockDim.x * ElementsPerThreads;
+  const int32_t block_start_id = blockIdx.x * elements_per_block;
+
+  int32_t token_id = block_start_id + (int)threadIdx.x;
+  #pragma unroll
+  for (int elem = 0; elem < ElementsPerThreads; elem++) {
+    if (token_id < vocab_size) {
+      beam_scores[token_id] == ((token_id == id_wanted) ? 1.0f : 0.0f);
+    }
+    token_id += (int)blockDim.x;
+  }
+}
+
+
+void LaunchForceDecodingIds(
+    float* beam_scores,
+    const int batch_size,
+    const int num_beams,
+    const int vocab_size,
+    const int32_t* force_ids,
+    int id_len,
+    int step,
+    cudaStream_t stream
+) {
+  dim3 blocks(512);
+  constexpr int ElementsPerThreads = 4;
+  unsigned gridx = static_cast<unsigned>((vocab_size + 512 * ElementsPerThreads - 1) / (512 * ElementsPerThreads));
+  dim3 grids(gridx, num_beams, batch_size);
+  ForceDecodingIdsKernel<ElementsPerThreads><<<grids, blocks, 0, stream>>>(
+    beam_scores, vocab_size, force_ids, id_len, step
+  );
+}
 
 }  // namespace cuda
 }  // namespace contrib

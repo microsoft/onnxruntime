@@ -243,6 +243,16 @@ void LaunchFinalizeCrossQK(
     int num_return_sequences,
     const int* cache_indir_data);
 
+void LaunchForceDecodingIds(
+    float* beam_scores,
+    const int batch_size,
+    const int num_beams,
+    const int vocab_size,
+    const int32_t* force_ids,
+    int id_len,
+    int step,
+    cudaStream_t stream);
+
 }  // namespace cuda
 }  // namespace contrib
 }  // namespace onnxruntime

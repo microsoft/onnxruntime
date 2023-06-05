@@ -1123,6 +1123,9 @@ ONNX_MS_OPERATOR_SET_SCHEMA(BeamSearch, 1,
                                       "If not provided, it will be inferred from the decoder subgraph's output shape",
                                       AttributeProto::INT, static_cast<int64_t>(-1))
                                 .Attr("decoder_output_cross_qk", "If nozero, decoder subgraph contains output Q*K from cross attentions. Default 0.", AttributeProto::INT, OPTIONAL_VALUE)
+                                .Attr("extra_decoding_round",
+                                      "Do one extra decoding round, for example, to get tail cross qk, when decoding for all batches are finished. Default 0.",
+                                      AttributeProto::INT, OPTIONAL_VALUE)
                                 .Input(0, "input_ids", "The sequence used as a prompt for the generation in the encoder subgraph. Shape is (batch_size, sequence_length)", "F")
                                 .Input(1, "max_length", "The maximum length of the sequence to be generated. Shape is (1)", "I")
                                 .Input(2, "min_length", "The minimum length below which the score of eos_token_id is set to -Inf. Shape is (1)", "I", OpSchema::Optional)
@@ -1142,6 +1145,11 @@ ONNX_MS_OPERATOR_SET_SCHEMA(BeamSearch, 1,
                                 .Input(12, "cross_qk_layer_head",
                                        "Only keep this list of (layer, head) of QK in the final cross_qk output when use_cross_qk is set. Default collect all"
                                        "its shape is (number of (layer, head) to keep, 2), i.e., [[layer_id1, head_id1], [layer_id2, head_id2]......]",
+                                       "I", OpSchema::Optional)
+                                .Input(13, "extra_decoding_ids_for_cross_qk",
+                                       "Part of the decoder_input_ids that we need cross qk for it. it is of shape  (batch_size, extra_input_ids_for_cross_qk)."
+                                       "In such case, we should remove this from the tail of the decoder_input_ids, and put it here. ids < 0 in it (for multiple batch) "
+                                       "are treated as stop of the extra_decoding_ids for corresponding batch.",
                                        "I", OpSchema::Optional)
                                 .Output(0, "sequences", "Word IDs of generated sequences. Shape is (batch_size, num_return_sequences, max_sequence_length)", "I")
                                 .Output(1, "sequences_scores", "Final beam score of the generated sequences. Shape is (batch_size, num_return_sequences)", "T", OpSchema::Optional)
