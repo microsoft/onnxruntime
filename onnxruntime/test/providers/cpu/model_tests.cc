@@ -1124,7 +1124,10 @@ TEST_P(ModelTest, Run) {
                                                     ORT_TSTR("SSD")};
     all_disabled_tests.insert(std::begin(x86_disabled_tests), std::end(x86_disabled_tests));
 #endif
-
+    // fp16 models have different outputs with different kinds of hardware. We need to disable all fp16 models
+    all_disabled_tests.insert(ORT_TSTR("fp16_shufflenet"));
+    all_disabled_tests.insert(ORT_TSTR("fp16_inception_v1"));
+    all_disabled_tests.insert(ORT_TSTR("fp16_tiny_yolov2"));
     std::vector<std::basic_string<ORTCHAR_T>> paths;
 #if defined(NDEBUG) || defined(RUN_MODELTEST_IN_DEBUG_MODE)
 #ifdef _WIN32
