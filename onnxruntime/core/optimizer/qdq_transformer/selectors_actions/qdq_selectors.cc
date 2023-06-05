@@ -62,9 +62,15 @@ bool NodeGroupSelector::CheckQDQNodes(const GraphViewer& graph_viewer, const Nod
   }
 
   int num_outputs = NumActualValues(node, false);  // number of outputs that exist
-  return (num_outputs == gsl::narrow_cast<int>(q_nodes.size())) &&
-         q_nodes.size() == node.GetOutputEdgesCount() &&
-         !graph_viewer.NodeProducesGraphOutput(node);
+  bool result = (num_outputs == gsl::narrow_cast<int>(q_nodes.size())) &&
+                q_nodes.size() == node.GetOutputEdgesCount();
+
+  // Graph like DQ -> Conv -> Q is also supported by QNN EP
+#ifndef USE_QNN
+  result&& = !graph_viewer.NodeProducesGraphOutput(node);
+#endif
+
+  return result;
 }
 
 std::optional<NodeGroup> NodeGroupSelector::GetQDQSelection(const GraphViewer& graph_viewer, const Node& node) const {
