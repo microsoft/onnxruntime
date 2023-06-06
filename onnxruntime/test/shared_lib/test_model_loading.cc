@@ -134,6 +134,10 @@ TEST(CApiTest, TestGetExternalDataLocationsFromArray) {
 
   ASSERT_EQ(locations[0].shape[0], 4);
 
+  ASSERT_EQ(locations[0].size, 32);
+
+  ASSERT_EQ(locations[0].offset, 0);
+
   ASSERT_EQ(locations[0].type, ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64);
 
   ASSERT_THAT(std::string(locations[0].name), testing::StrEq("Pads_not_on_disk"));
