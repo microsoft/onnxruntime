@@ -64,15 +64,6 @@ Status SoftMaxOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, cons
   const auto& operand_types(model_builder.GetOperandTypes());
   const auto android_feature_level = model_builder.GetEffectiveFeatureLevel();
 
-  // TODO: Needs fix
-  // ??? Not sure why we need this test. At that feature level axis was 1 and input was 2D or 4D.
-  // Whether 4D input was NCHW or NHWC input shouldn't matter when axis is 1.
-  // Commenting out to get feedback in PR prior to potential removal.
-  // if (android_feature_level < ANEURALNETWORKS_FEATURE_LEVEL_3) {
-  //  ORT_ENFORCE(model_builder.UseNCHW(),
-  //              "For Android API Level < 29 input for softmax needs to be NCHW.");
-  //}
-
   const auto& input = node_unit.Inputs()[0].node_arg.Name();
   const auto& output = node_unit.Outputs()[0].node_arg.Name();
 
@@ -173,9 +164,9 @@ bool SoftMaxOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& /* initiali
 
   if (node_unit.SinceVersion() < 13) {
     // if opset < 13 the ONNX spec coerces to 2D based on axis, so we will manually do that when adding to the model
-    // and use axis of 1. A 2D input with axis==1 works with all NNAPI versions.
+    // and use axis of 1.
   } else {
-    const auto input_size = input_shape.size();
+    const auto input_size = narrow<int32_t>(input_shape.size());
 
     if (input_size > 4) {
       LOGS_DEFAULT(VERBOSE) << "Softmax only supports maximum 4d input. input is " << input_size << "d";
@@ -189,25 +180,17 @@ bool SoftMaxOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& /* initiali
     }
 
     if (params.android_feature_level < ANEURALNETWORKS_FEATURE_LEVEL_3) {
+      // 2D or 4D input is supported with axis of the last dim
       if (input_size != 2 && input_size != 4) {
-        LOGS_DEFAULT(VERBOSE) << "Softmax only support 2d/4d shape, input has " << input_size << "d shape";
+        LOGS_DEFAULT(VERBOSE) << "Softmax only support 2d or 4d shape, input has " << input_size << "d shape";
         return false;
       }
 
-      if (axis != 1) {
-        LOGS_DEFAULT(VERBOSE) << "Softmax only support axis 1 on Android API level: " << params.android_feature_level
-                              << " input axis: " << axis;
+      if (axis != input_size - 1) {
+        LOGS_DEFAULT(VERBOSE) << "Softmax only supports axis of the last dim on Android API level "
+                              << params.android_feature_level << ". input axis: " << axis;
         return false;
       }
-    }
-
-    if (static_cast<uint32_t>(axis) != input_size - 1) {
-      // TODO: If we want to support axis != -1 for opset 13+ we need to add do something like the CPU implementation
-      // where we transpose to move the axis being softmaxed to the inner-most dimension, run the softmax, and
-      // transpose back. Assuming that is rare so skipping for now.
-      LOGS_DEFAULT(VERBOSE) << "Softmax currently only supports axis being the inner-most on opset 13+. axis="
-                            << axis << " rank=" << input_size;
-      return false;
     }
   }
 
