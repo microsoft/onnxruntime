@@ -25,7 +25,7 @@ jobs:
 
       ${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager --install 'system-images;android-31;default;x86_64'
 
-      ${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/avdmanager create avd --name android_emulator_avd --package 'system-images;android-31;default;x86_64' --force
+      echo "no" | ${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/avdmanager create avd --name android_emulator_avd --package 'system-images;android-31;default;x86_64' --force
 
       ${ANDROID_SDK_ROOT}/tools/emulator \
         -avd android_emulator_avd \
