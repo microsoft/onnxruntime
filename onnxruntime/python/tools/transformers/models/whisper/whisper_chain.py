@@ -77,6 +77,10 @@ def chain_model(args):
     beam_outputs = ["sequences"]
     if args.collect_cross_qk:
         beam_outputs.extend(["", "", "cross_qk"])
+    if args.output_no_speech_probs:
+        while len(beam_outputs) < 3:
+            beam_outputs.extend([""])
+        beam_outputs.extend(["no_speech_probs"])
 
     input_features_cast_node, len_pen_cast_node, rep_pen_cast_node = None, None, None
     if args.precision == Precision.FLOAT16:
@@ -118,6 +122,8 @@ def chain_model(args):
         node.attribute.extend([helper.make_attribute("decoder_output_cross_qk", 1)])
     if args.extra_decoding_round:
         node.attribute.extend([helper.make_attribute("extra_decoding_round", 1)])
+    if args.no_speech_token_id >= 0:
+        node.attribute.extend([helper.make_attribute("no_speech_token", args.no_speech_token_id)])
 
     # beam graph inputs
     float_data_type = TensorProto.FLOAT

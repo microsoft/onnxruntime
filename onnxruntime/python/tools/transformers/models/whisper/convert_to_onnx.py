@@ -202,6 +202,13 @@ def parse_arguments(argv=None):
     parser.set_defaults(output_cross_qk=False)
 
     parser.add_argument(
+        "--no_speech_token_id",
+        default=50362,
+        type=int,
+        help="specify no_speech_token_id. Default is 1000. if >= 0, will be add into beam search attr",
+    )
+
+    parser.add_argument(
         "--output_no_speech_probs",
         required=False,
         action="store_true",
