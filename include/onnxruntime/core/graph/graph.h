@@ -872,10 +872,13 @@ class Graph {
 
   /** Gets the mutable NodeArg with the provided name.
   @returns Pointer to NodeArg if found, nullptr if not. */
-  NodeArg* GetNodeArg(const std::string& name) {
+  NodeArg* GetNodeArg(const std::string& name, bool check_ancestors = false) {
     auto iter = node_args_.find(name);
     if (iter != node_args_.end()) {
       return iter->second.get();
+    }
+    if (parent_graph_ != nullptr) {
+      return parent_graph_->GetNodeArg(name, check_ancestors);
     }
     return nullptr;
   }

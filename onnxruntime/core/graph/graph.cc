@@ -3869,13 +3869,13 @@ Node& Graph::CreateFusedSubGraphNode(const IndexedSubGraph& sub_graph, const std
 
   int cur_idx = 0;
   for (const auto& arg_name : func_meta_def->inputs) {
-    input_args.push_back(GetNodeArg(arg_name));
+    input_args.push_back(GetNodeArg(arg_name, true));
     input_indexes[arg_name] = cur_idx++;
   }
 
   cur_idx = 0;
   for (const auto& arg_name : func_meta_def->outputs) {
-    output_args.push_back(GetNodeArg(arg_name));
+    output_args.push_back(GetNodeArg(arg_name, true));
     output_indexes[arg_name] = cur_idx++;
   }
 

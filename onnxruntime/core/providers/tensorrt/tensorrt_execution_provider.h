@@ -137,6 +137,13 @@ struct TensorrtFuncState {
   nvinfer1::TacticSources tactic_sources;
 };
 
+// Holds important information for building valid ORT graph.
+struct SubGraphContext {
+  std::unordered_set<std::string> output_args;
+  std::unordered_map<std::string, const NodeArg*> inputs_and_initializers;
+  std::unordered_set<const NodeArg*> manually_added_graph_inputs;
+};
+
 // Logical device representation.
 class TensorrtExecutionProvider : public IExecutionProvider {
  public:
@@ -211,6 +218,7 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   bool detailed_build_log_ = false;
 
   std::unordered_set<std::string> control_flow_op_set_ = {"If", "Loop", "Scan"};
+  std::unordered_map<std::string, std::unique_ptr<SubGraphContext>> subgraph_context_map_;
   std::unordered_map<std::string, tensorrt_ptr::unique_pointer<nvonnxparser::IParser>> parsers_;
   std::unordered_map<std::string, std::unique_ptr<nvinfer1::ICudaEngine>> engines_;
   std::unordered_map<std::string, std::unique_ptr<nvinfer1::IExecutionContext>> contexts_;
@@ -259,5 +267,39 @@ class TensorrtExecutionProvider : public IExecutionProvider {
 
   /**Check whether all the nodes of subgraph are supported*/
   bool IsSubGraphFullySupported(SubGraphCollection_t supported_nodes_vector, const int number_of_ort_nodes) const;
+
+  /**
+  * Set inputs, initializers and outputs for all subgraphs during TensorrtExecutionProvider::GetSupportedList() and save those information in subgraph context data structure.
+  * It's useful for building a valid graph and make Graph::Resolve() happy especially when dealing with nested control-flow op graph.
+  */
+  void BuildSubGraphContext(Graph* build_graph);
+
+  /**
+  * Set graph outer scope values for subgraphs and add thoes values as top-level graph's inputs if needed.
+  */
+  void SetGraphOuterScopeValuesAndInputs(Graph* build_graph, const Graph* graph);
+
+  /**
+  * If ORT TRT manually sets graph input in TensorrtExecutionProvider::SetGraphOuterScopeValuesAndInputs(), we have to manully set all the graph inputs in order to pass Graph::Resolve()
+  */
+  void SetAllGraphInputs(Graph* graph);
+
+  /**
+  * The newly-built graph has not yet being resolved by Graph::Resolve(), so we can't leverage ORT Graph IsInputInitializerOrOutput() API.
+  * We have to do it by ourselves.
+  */
+  bool IsInputInitializerOrOutput(Graph* graph, const std::string& name, bool check_ancestors) const;
+
+  /**
+  * The newly-built graph has not yet being resolved by Graph::Resolve(), so we can't leverage ORT Graph IsOuterScopeValues() API.
+  * We have to do it by ourselves.
+  */
+  bool IsOuterScopeValue(Graph* graph, const std::string& name) const;
+
+  /**
+  * The newly-built graph has not yet being resolved by Graph::Resolve(), so we can't leverage ORT Graph IsLocalValue() API.
+  * We have to do it by ourselves.
+  */
+  bool IsLocalValue(Graph* graph, const std::string& name) const;
 };
 }  // namespace onnxruntime
