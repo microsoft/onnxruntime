@@ -49,6 +49,12 @@ WebNNExecutionProvider::WebNNExecutionProvider(
   // defined in WebNN. Because there's an ongoing spec discussion to simplify this API at
   // https://github.com/webmachinelearning/webnn/issues/302.
   context_options.set("devicePreference", emscripten::val(webnn_device_flags));
+  // WebNN EP uses NHWC layout for CPU XNNPACK backend and NCHW for GPU DML backend.
+  if (webnn_device_flags.compare("cpu") == 0) {
+    preferred_layout_ = DataLayout::NHWC;
+  } else {
+    preferred_layout_ = DataLayout::NCHW;
+  }
   if (webnn_power_flags.compare("default") != 0) {
     context_options.set("powerPreference", emscripten::val(webnn_power_flags));
   }
@@ -207,7 +213,7 @@ common::Status WebNNExecutionProvider::Compile(const std::vector<FusedNodeAndGra
     Node& fused_node = fused_node_and_graph.fused_node;
     const onnxruntime::GraphViewer& graph_viewer(fused_node_and_graph.filtered_graph);
 
-    webnn::ModelBuilder builder(graph_viewer, *GetLogger(), wnn_context_, wnn_builder_);
+    webnn::ModelBuilder builder(graph_viewer, *GetLogger(), wnn_context_, wnn_builder_, preferred_layout_);
     std::unique_ptr<webnn::Model> model;
     ORT_RETURN_IF_ERROR(builder.Compile(model));
     // Build map from input name to its index in input definitions.

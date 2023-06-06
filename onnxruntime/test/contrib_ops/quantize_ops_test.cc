@@ -41,7 +41,7 @@ TEST(DequantizeLinearOpTest, DequantizeLinear_per_tensor_float_int8) {
 }
 
 #ifdef USE_CUDA
-TEST(DequantizeLinearOpTest, DISABLED_DequantizeLinear_per_tensor_half_uint8) {  //  Op with name (InsertedCast_x_scale) and type (Cast) Version mismatch. node_version: 19 kernel start version: 13 kernel_end_version:
+TEST(DequantizeLinearOpTest, DequantizeLinear_per_tensor_half_uint8) {
   OpTester test("DequantizeLinear", 1, onnxruntime::kMSDomain);
   std::vector<int64_t> dims{4};
   test.AddInput<uint8_t>("x", dims, {0, 3, 128, 255});

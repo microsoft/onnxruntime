@@ -20,6 +20,8 @@ if typing.TYPE_CHECKING:
 def get_ort_device_type(device_type: str, device_index) -> C.OrtDevice:
     if device_type == "cuda":
         return C.OrtDevice.cuda()
+    elif device_type == "cann":
+        return C.OrtDevice.cann()
     elif device_type == "cpu":
         return C.OrtDevice.cpu()
     elif device_type == "ort":
@@ -374,7 +376,10 @@ class InferenceSession(Session):
         self._sess_options = sess_options
         self._sess_options_initial = sess_options
         self._enable_fallback = True
-        self._read_config_from_model = os.environ.get("ORT_LOAD_CONFIG_FROM_MODEL") == "1"
+        if "read_config_from_model" in kwargs:
+            self._read_config_from_model = int(kwargs["read_config_from_model"]) == 1
+        else:
+            self._read_config_from_model = os.environ.get("ORT_LOAD_CONFIG_FROM_MODEL") == "1"
 
         # internal parameters that we don't expect to be used in general so aren't documented
         disabled_optimizers = kwargs["disabled_optimizers"] if "disabled_optimizers" in kwargs else None
@@ -487,7 +492,7 @@ class IOBinding:
     def bind_input(self, name, device_type, device_id, element_type, shape, buffer_ptr):
         """
         :param name: input name
-        :param device_type: e.g. cpu, cuda
+        :param device_type: e.g. cpu, cuda, cann
         :param device_id: device id, e.g. 0
         :param element_type: input element type
         :param shape: input shape
@@ -526,7 +531,7 @@ class IOBinding:
     ):
         """
         :param name: output name
-        :param device_type: e.g. cpu, cuda, cpu by default
+        :param device_type: e.g. cpu, cuda, cann, cpu by default
         :param device_id: device id, e.g. 0
         :param element_type: output element type
         :param shape: output shape
@@ -626,7 +631,7 @@ class OrtValue:
         A copy of the data in the Numpy object is held by the OrtValue only if the device is NOT cpu
 
         :param numpy_obj: The Numpy object to construct the OrtValue from
-        :param device_type: e.g. cpu, cuda, cpu by default
+        :param device_type: e.g. cpu, cuda, cann, cpu by default
         :param device_id: device id, e.g. 0
         """
         # Hold a reference to the numpy object (if device_type is 'cpu') as the OrtValue
@@ -651,7 +656,7 @@ class OrtValue:
 
         :param shape: List of integers indicating the shape of the OrtValue
         :param element_type: The data type of the elements in the OrtValue (numpy type)
-        :param device_type: e.g. cpu, cuda, cpu by default
+        :param device_type: e.g. cpu, cuda, cann, cpu by default
         :param device_id: device id, e.g. 0
         """
         if shape is None or element_type is None:
@@ -691,7 +696,7 @@ class OrtValue:
 
     def device_name(self):
         """
-        Returns the name of the device where the OrtValue's data buffer resides e.g. cpu, cuda
+        Returns the name of the device where the OrtValue's data buffer resides e.g. cpu, cuda, cann
         """
         return self._ortvalue.device_name().lower()
 

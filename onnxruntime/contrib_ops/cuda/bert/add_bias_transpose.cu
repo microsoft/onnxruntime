@@ -36,7 +36,7 @@ __global__ void AddBiasTransposeTrt(const T* input, const T* biases, T* output) 
 
   const int h = threadIdx.x;
   if (h < H) {
-    output[out_offset + h] = input[in_offset + h] + biases[m * NH + n * H + h];
+    output[out_offset + h] = input[in_offset + h] + (nullptr == biases ? T{} : biases[m * NH + n * H + h]);
   }
 }
 
@@ -61,7 +61,7 @@ __global__ void AddBiasTransposeTrtLarge(const int head_size, const T* input, co
 
   int h = threadIdx.x;
   while (h < H) {
-    output[out_offset + h] = input[in_offset + h] + biases[m * NH + n * H + h];
+    output[out_offset + h] = input[in_offset + h] + (nullptr == biases ? T{} : biases[m * NH + n * H + h]);
     h += stride;
   }
 }
@@ -92,7 +92,7 @@ __global__ void AddBiasTransposeTrt(const T* query, const T* key, const T* value
 
   const int h = threadIdx.x;
   if (h < H) {
-    output[out_offset + h] = input[in_offset + h] + biases[m * NH + n * H + h];
+    output[out_offset + h] = input[in_offset + h] + (nullptr == biases ? T{} : biases[m * NH + n * H + h]);
   }
 }
 
@@ -118,7 +118,7 @@ __global__ void AddBiasTransposeTrtLarge(const int head_size,
 
   int h = threadIdx.x;
   if (h < H) {
-    output[out_offset + h] = input[in_offset + h] + biases[m * NH + n * H + h];
+    output[out_offset + h] = input[in_offset + h] + (nullptr == biases ? T{} : biases[m * NH + n * H + h]);
     h += stride;
   }
 }
@@ -149,7 +149,7 @@ __global__ void AddBiasTransposeTrtKV(const T* key, const T* value, const T* bia
 
   const int h = threadIdx.x;
   if (h < H) {
-    output[out_offset + h] = input[in_offset + h] + biases[(m + 1) * NH + n * H + h];
+    output[out_offset + h] = input[in_offset + h] + (nullptr == biases ? T{} : biases[(m + 1) * NH + n * H + h]);
   }
 }
 
@@ -177,7 +177,7 @@ __global__ void AddBiasTransposeTrtKVLarge(const int head_size,
 
   int h = threadIdx.x;
   while (h < H) {
-    output[out_offset + h] = input[in_offset + h] + biases[(m + 1) * NH + n * H + h];
+    output[out_offset + h] = input[in_offset + h] + (nullptr == biases ? T{} : biases[(m + 1) * NH + n * H + h]);
     h += stride;
   }
 }
@@ -208,9 +208,9 @@ __global__ void AddBiasTransposeQKV(int M, const T* input, const T* biases, T* o
 
   const int h = threadIdx.x;
   if (h < head_size) {
-    output[out_offset + h] = input[in_offset + h] + biases[m * NH + n * H + h];
+    output[out_offset + h] = input[in_offset + h] + (nullptr == biases ? T{} : biases[m * NH + n * H + h]);
     if (nullptr != qkv_add_bias) {
-      qkv_add_bias[in_offset + h] = input[in_offset + h] + biases[m * NH + n * H + h];
+      qkv_add_bias[in_offset + h] = input[in_offset + h] + (nullptr == biases ? T{} : biases[m * NH + n * H + h]);
     }
   }
 }
@@ -271,9 +271,9 @@ __global__ void AddBiasTransposeQKV(int M, const T* input, const T* biases, T* o
       k = *reinterpret_cast<const Vec_t*>(&input[src_k_idx]);
       v = *reinterpret_cast<const Vec_t*>(&input[src_v_idx]);
 
-      q_bias = *reinterpret_cast<const Vec_t*>(&biases[n * H + head_idx]);
-      k_bias = *reinterpret_cast<const Vec_t*>(&biases[NH + n * H + head_idx]);
-      v_bias = *reinterpret_cast<const Vec_t*>(&biases[2 * NH + n * H + head_idx]);
+      q_bias = nullptr == biases ? Vec_t{} : *reinterpret_cast<const Vec_t*>(&biases[n * H + head_idx]);
+      k_bias = nullptr == biases ? Vec_t{} : *reinterpret_cast<const Vec_t*>(&biases[NH + n * H + head_idx]);
+      v_bias = nullptr == biases ? Vec_t{} : *reinterpret_cast<const Vec_t*>(&biases[2 * NH + n * H + head_idx]);
     }
 
     q = add_vec(q, q_bias);
@@ -403,7 +403,7 @@ __global__ void AddBiasTransposeQKV(const T* input, const T* biases, T* output, 
                 h;                                // H
 
   if (h < head_size) {
-    output[out_offset] = input[in_offset] + biases[bias_offset];
+    output[out_offset] = input[in_offset] + (nullptr == biases ? T{} : biases[bias_offset]);
   }
 }
 
@@ -432,9 +432,9 @@ __global__ void AddBiasTransposeQKVLarge(const int head_size, const T* input, co
 
   int h = threadIdx.x;
   while (h < H) {
-    output[out_offset + h] = input[in_offset + h] + biases[m * NH + n * H + h];
+    output[out_offset + h] = input[in_offset + h] + (nullptr == biases ? T{} : biases[m * NH + n * H + h]);
     if (nullptr != qkv_add_bias) {
-      qkv_add_bias[in_offset + h] = input[in_offset + h] + biases[m * NH + n * H + h];
+      qkv_add_bias[in_offset + h] = input[in_offset + h] + (nullptr == biases ? T{} : biases[m * NH + n * H + h]);
     }
     h += stride;
   }
@@ -483,7 +483,7 @@ __global__ void AddBiasTransposeCutlass(const T* input, const T* biases, T* outp
                 h;                                // H
 
   if (h < head_size) {
-    output[out_offset] = input[in_offset] + biases[bias_offset];
+    output[out_offset] = input[in_offset] + (nullptr == biases ? T{} : biases[bias_offset]);
   }
 }
 
@@ -545,7 +545,7 @@ __global__ void AddBiasTransposeCutlass(int M, const T* input, const T* biases, 
 
   const int h = threadIdx.x;
   if (h < head_size) {
-    output[out_offset + h] = input[in_offset + h] + biases[m * NH + n * H + h];
+    output[out_offset + h] = input[in_offset + h] + (nullptr == biases ? T{} : biases[m * NH + n * H + h]);
   }
 }
 
@@ -573,7 +573,7 @@ __global__ void AddBiasTransposeCutlassLarge(const int head_size, const T* input
 
   int h = threadIdx.x;
   while (h < H) {
-    output[out_offset + h] = input[in_offset + h] + biases[m * NH + n * H + h];
+    output[out_offset + h] = input[in_offset + h] + (nullptr == biases ? T{} : biases[m * NH + n * H + h]);
     h += stride;
   }
 }
@@ -603,7 +603,7 @@ __global__ void AddBiasTranspose(const T* input, const T* biases, T* output) {
 
   const int h = threadIdx.x;
   if (h < head_size) {
-    output[out_offset + h] = input[in_offset + h] + biases[m * NH + n * H + h];
+    output[out_offset + h] = input[in_offset + h] + (nullptr == biases ? T{} : biases[m * NH + n * H + h]);
   }
 }
 
@@ -903,7 +903,7 @@ void InvokeAddBias(
   // K
   {
     const dim3 grid(kv_sequence_length, batch_size, num_matrices);
-    const T* biases_k = biases + num_heads * head_size;
+    const T* biases_k = nullptr == biases ? nullptr : biases + num_heads * head_size;
 
     if (head_size * num_heads <= max_threads_per_block) {
       const dim3 block(head_size, num_heads, 1);
@@ -918,7 +918,7 @@ void InvokeAddBias(
   {
     const dim3 grid(kv_sequence_length, batch_size, num_matrices);
 
-    const T* biases_v = biases + 2 * num_heads * head_size;
+    const T* biases_v = nullptr == biases ? nullptr : biases + 2 * num_heads * head_size;
     if (v_head_size * num_heads <= max_threads_per_block) {
       const dim3 block(v_head_size, num_heads, 1);
       AddBiasTransposeTrt<T><<<grid, block, 0, stream>>>(value, biases_v, v);
