@@ -231,6 +231,20 @@ def run_cross_attention(
         output_attentions=False,
     )
 
+    if has_bias:
+        print("zero out bias and run mha again")
+        torch.nn.init.zeros_(mha.query.bias)
+        torch.nn.init.zeros_(mha.key.bias)
+        torch.nn.init.zeros_(mha.value.bias)
+        mha.forward(
+            hidden_states,
+            attention_mask=None,
+            encoder_hidden_states=encoder_hidden_states,
+            encoder_attention_mask=key_padding_mask,
+            past_key_value=None,
+            output_attentions=False,
+        )
+
 
 def run_self_attention(
     hidden_dim,
@@ -312,6 +326,20 @@ def run_self_attention(
         past_key_value=None,
         output_attentions=False,
     )
+
+    if has_bias:
+        print("zero out bias and run mha again")
+        torch.nn.init.zeros_(mha.query.bias)
+        torch.nn.init.zeros_(mha.key.bias)
+        torch.nn.init.zeros_(mha.value.bias)
+        mha.forward(
+            hidden_states,
+            attention_mask=None,
+            encoder_hidden_states=None,
+            encoder_attention_mask=key_padding_mask,
+            past_key_value=None,
+            output_attentions=False,
+        )
 
 
 def run_cross_batch2_headsize_40():
