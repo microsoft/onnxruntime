@@ -37,7 +37,7 @@ TEST_F(QnnCPUBackendTests, Test_QDQConvWithDynamicWeightsFromMul) {
     // DQ node for Conv bias
     auto* dq_bias_output = builder.MakeIntermediate();
     auto* bias = builder.MakeInitializer<int32_t>({16}, static_cast<int32_t>(0), static_cast<int32_t>(127));
-    
+
     // Mul node
     // DQ nodes for Mul
     auto* mul_dq1_output = builder.MakeIntermediate();
