@@ -202,6 +202,14 @@ def parse_arguments(argv=None):
     parser.set_defaults(output_cross_qk=False)
 
     parser.add_argument(
+        "--output_no_speech_probs",
+        required=False,
+        action="store_true",
+        help="Beam search model output no speech probs which is computed from the encoder/context-decoder graph.",
+    )
+    parser.set_defaults(output_no_speech_probs=False)
+
+    parser.add_argument(
         "--cross_qk_onnx_model",
         required=False,
         type=str,

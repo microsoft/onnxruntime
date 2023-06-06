@@ -253,6 +253,16 @@ void LaunchForceDecodingIds(
     int step,
     cudaStream_t stream);
 
+template <typename T>
+void LaunchSaveNoSpeechProbs(
+    T* result_no_speech_probs,      /* [batch]*/
+    const float* probs,             /* [batch, num_beams, vocab_size]*/
+    const int batch_size,
+    const int num_beams,
+    const int vocab_size,
+    const int no_speech_token_id,
+    cudaStream_t stream);
+
 }  // namespace cuda
 }  // namespace contrib
 }  // namespace onnxruntime

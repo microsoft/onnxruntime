@@ -1515,7 +1515,7 @@ __global__ void ForceDecodingIdsKernel(
   #pragma unroll
   for (int elem = 0; elem < ElementsPerThreads; elem++) {
     if (token_id < vocab_size) {
-      beam_scores[token_id] == ((token_id == id_wanted) ? 1.0f : 0.0f);
+      beam_scores[token_id] = ((token_id == id_wanted) ? 1.0f : 0.0f);
     }
     token_id += (int)blockDim.x;
   }
@@ -1540,6 +1540,60 @@ void LaunchForceDecodingIds(
     beam_scores, vocab_size, force_ids, id_len, step
   );
 }
+
+template <typename T>
+__global__ void SaveNoSpeechProbsKernel(
+    T* result_no_speech_probs,
+    const float* probs,
+    const int batch_size,
+    const int num_beams,
+    const int vocab_size,
+    const int no_speech_token_id
+) {
+  int b = blockIdx.x * blockDim.x + threadIdx.x;
+  if (b < batch_size) {
+    int64_t src_offset = b * num_beams * vocab_size + no_speech_token_id;
+    result_no_speech_probs[b] = (T)(probs[src_offset]);
+  }
+}
+
+template <typename T>
+void LaunchSaveNoSpeechProbs(
+    T* result_no_speech_probs,      /* [batch]*/
+    const float* probs,             /* [batch, num_beams, vocab_size]*/
+    const int batch_size,
+    const int num_beams,
+    const int vocab_size,
+    const int no_speech_token_id,
+    cudaStream_t stream
+) {
+  int tpb = std::min(batch_size, 256);
+  int bpg = (batch_size + 255) / 256;
+
+  typedef typename ToCudaType<T>::MappedType CudaT;
+  SaveNoSpeechProbsKernel<CudaT><<<bpg, tpb, 0, stream>>>(
+    (CudaT*)result_no_speech_probs, probs, batch_size, num_beams, vocab_size, no_speech_token_id);
+}
+
+template void LaunchSaveNoSpeechProbs<float>(
+    float* result_no_speech_probs,
+    const float* probs,
+    const int batch_size,
+    const int num_beams,
+    const int vocab_size,
+    const int no_speech_token_id,
+    cudaStream_t stream
+);
+
+template void LaunchSaveNoSpeechProbs<MLFloat16>(
+    MLFloat16* result_no_speech_probs,
+    const float* probs,
+    const int batch_size,
+    const int num_beams,
+    const int vocab_size,
+    const int no_speech_token_id,
+    cudaStream_t stream
+);
 
 }  // namespace cuda
 }  // namespace contrib

@@ -132,6 +132,15 @@ Status BeamSearchWhisper<T>::Execute(const FeedsFetchesManager& encoder_feeds_fe
   TensorShape scores_shape(&scores_dims[0], sizeof(scores_dims) / sizeof(scores_dims[0]));
   Tensor* output_scores = this->context_.Output(2, scores_shape);
 
+  TensorShape no_speech_probs_shape{parameters->batch_size};
+  Tensor* no_speech_probs = this->context_.Output(4, no_speech_probs_shape);
+  if (no_speech_probs && no_speech_probs->MutableData<T>()) {
+    ORT_ENFORCE(parameters->no_speech_token >= 0 && parameters->no_speech_token < parameters->vocab_size,
+                "no_speech_token id out of range, it is ", parameters->no_speech_token,
+                ", vocab_size is", parameters->vocab_size);
+    this->parameters_->no_speech_probs = (void*)no_speech_probs->MutableData<T>();
+  }
+
   // Update the flag to indicate whether scores exists in output
   this->parameters_->output_scores = (output_scores != nullptr);
 
