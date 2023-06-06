@@ -10,8 +10,6 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-#if defined(USE_CUDA)
-
 static Status cublasLtMatMulInt8SetupAlgo(cublasLtHandle_t cublasLt_handle, cublasLtMatmulAlgo_t& algo,
                                           int algo_id, int swizzle,
                                           int custom_option, int tile, int splitk_val,
@@ -200,8 +198,6 @@ Status QOrdered_MatMul(cublasLtHandle_t cublasLt_handle, cudaStream_t stream,
                                         stream));
   return Status::OK();
 }
-
-#endif
 
 }  // namespace cuda
 }  // namespace contrib
