@@ -21,22 +21,10 @@ jobs:
   - template: "templates/use-android-ndk.yml"
 
   - script: |
-      set -e -x
-
-      echo "original emulator version"
-      $ANDROID_SDK_ROOT/emulator/emulator -v
-
-      $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --install emulator
-
-      echo "updated emulator version"
-      $ANDROID_SDK_ROOT/emulator/emulator -v
-    displayName: Update Android emulator
-
-  - script: |
       python3 tools/python/run_android_emulator.py \
         --android-sdk-root ${ANDROID_SDK_ROOT} \
         --create-avd --system-image "system-images;android-31;default;x86_64" \
-        --start --emulator-extra-args="-partition-size 4096" \
+        --start --emulator-extra-args="-partition-size 4096 -verbose" \
         --emulator-pid-file $(Build.BinariesDirectory)/emulator.pid
     displayName: Start Android emulator
     timeoutInMinutes: 10
