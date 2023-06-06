@@ -44,7 +44,7 @@ stages:
         RunStaticCodeAnalysis: false
         ORT_EP_NAME: CUDA
         WITH_CACHE: true
-        MachinePool: onnxruntime-Win2022-GPU-T4
+        MachinePool: onnxruntime-Win2022-GPU-A10
 
 - stage: training
   dependsOn: []
@@ -62,6 +62,7 @@ stages:
         RunStaticCodeAnalysis: false
         ORT_EP_NAME: CUDA
         WITH_CACHE: true
+        # Some unit tests crash on A10 GPUs. So this job still needs to use A10.
         MachinePool: onnxruntime-Win2022-GPU-T4
         isTraining: true
 
@@ -81,7 +82,6 @@ stages:
         RunStaticCodeAnalysis: false
         ORT_EP_NAME: DML
         WITH_CACHE: true
-        # DirectML cannot run on T4 GPUs.
         MachinePool: onnxruntime-Win2019-GPU-dml-A10
 
 - stage: kernelDocumentation
@@ -102,4 +102,4 @@ stages:
         GenerateDocumentation: true
         ORT_EP_NAME: CUDA # It doesn't really matter which EP is selected here since this stage is for documentation.
         WITH_CACHE: true
-        MachinePool: onnxruntime-Win2022-GPU-T4
+        MachinePool: onnxruntime-Win2022-GPU-A10
