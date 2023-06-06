@@ -57,7 +57,7 @@ Status TransformLayoutForEP(Graph& graph, bool& modified, const IExecutionProvid
   // We pass in nullptr for the new_node_ep param as new nodes will be assigned by the graph partitioner after
   // TransformLayoutForEP returns.
   // sub graph recurse will be added later.
-  auto api_graph = MakeApiGraph(graph, execution_provider.GetAllocator(OrtMemTypeDefault), /*new_node_ep*/ nullptr);
+  auto api_graph = MakeApiGraph(graph, cpu_allocator, /*new_node_ep*/ nullptr);
   const auto& layout_sensitive_ops = GetORTLayoutSensitiveOps();
 
   // to convert to NHWC we need to wrap layout sensitive nodes to Transpose from NCHW to NHWC and back.
