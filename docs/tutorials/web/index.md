@@ -32,7 +32,7 @@ For more detail on the steps below, see the [build a web application](./build-we
 
      You can also use the onnxruntime-web package in the frontend of an electron app.
 
-     With onnxruntime-web, you have the option to use `webgl` for GPU processing or WebAssembly (`wasm`) for CPU processing. All ONNX operators are supported by WASM but only a subset are currently supported by WebGL.
+     With onnxruntime-web, you have the option to use `webgl` or `webgpu` for GPU processing, and WebAssembly (`wasm`, alias to `cpu`) for CPU processing. All ONNX operators are supported by WASM but only a subset are currently supported by WebGL and WebGPU.
 
    * Inference on server in JavaScript. Use the `onnxruntime-node` package.
 
