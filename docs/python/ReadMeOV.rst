@@ -15,7 +15,7 @@ Requirements
 ^^^^^^^^^^^^
 
 - Ubuntu 18.04, 20.04, RHEL(CPU only) or Windows 10 - 64 bit
-- Python 3.8, 3.9 or 3.10 for Linux and only Python3.9 for Windows
+- Python 3.8, 3.9 or 3.10 for Linux and only Python3.10 for Windows
 
 This package supports:
  - Intel® CPUs
