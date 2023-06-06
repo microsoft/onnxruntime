@@ -89,6 +89,13 @@ static const OpVersionsAndSelector::OpVersionsMap GetInstanceNormalizationOpVers
 static const OpVersionsAndSelector::OpVersionsMap GetBatchNormalizationOpVersionsMap() {
   return {{"BatchNormalization", {}}};
 }
+static const OpVersionsAndSelector::OpVersionsMap GetLogicalComparisonOpVersionsMap() {
+  return {{"Equal", {}},
+          {"Greater", {}},
+          {"GreaterOrEqual", {}},
+          {"Less", {}},
+          {"LessOrEqual", {}}};
+}
 
 /* Selector rules registration related */
 void RegisterMiscSelectors(Selectors& qdq_selectors) {
@@ -162,6 +169,13 @@ void RegisterBatchNormalizationSelector(Selectors& qdq_selectors) {
                                  std::move(selector));
 }
 
+void RegisterLogicalComparisonSelectors(Selectors& qdq_selectors) {
+  /* register selectors for logical comparison ops */
+  std::unique_ptr<NodeGroupSelector> selector = std::make_unique<LogicalComparisonNodeGroupSelector>();
+  qdq_selectors.RegisterSelector(GetLogicalComparisonOpVersionsMap(),
+                                 std::move(selector));
+}
+
 void SelectorManager::CreateSelectors() {
   RegisterMiscSelectors(qdq_selectors_);
   RegisterUnarySelectors(qdq_selectors_);
@@ -173,6 +187,7 @@ void SelectorManager::CreateSelectors() {
   RegisterGemmSelector(qdq_selectors_);
   RegisterInstanceNormalizationSelector(qdq_selectors_);
   RegisterBatchNormalizationSelector(qdq_selectors_);
+  RegisterLogicalComparisonSelectors(qdq_selectors_);
 }
 
 void SelectorManager::InitializeSelectorsMap() {

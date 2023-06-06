@@ -293,20 +293,6 @@ Status MultiHeadAttention<T>::Compute(OpKernelContext* context) const {
 
   AllocatorPtr allocator;
 
-  if (qkv_bias == nullptr) {
-    // We assume query, key/past_key, and value/past_value are already in the correct shape
-
-    // Check that key/value or past_key/past_value is valid
-    ORT_ENFORCE((key != nullptr && value != nullptr) || (past_key != nullptr && past_value != nullptr));
-    return ApplyAttention(query->Data<T>(),
-                          (key != nullptr) ? key->Data<T>() : past_key->Data<T>(),
-                          (value != nullptr) ? value->Data<T>() : past_value->Data<T>(),
-                          key_padding_mask, nullptr /* past */, nullptr /* past_k */, nullptr /* past_v */,
-                          output, present_k, present_v,
-                          batch_size, q_sequence_length, kv_sequence_length,
-                          qk_head_size, v_head_size, v_hidden_size, extra_add_qk, context);
-  }
-
   // For each of Q/K/V, there are multiple scenarios:
   // 1) Combined QKV bias is null
   //    a) Q/K/V is (B, S, D)
@@ -323,12 +309,12 @@ Status MultiHeadAttention<T>::Compute(OpKernelContext* context) const {
     TensorShape q_BNSH(new_dims_span);
     Tensor::InitOrtValue(element_type, q_BNSH, allocator, Q);
     if (qkv_bias == nullptr) {
-      Tensor* query_reshaped = nullptr;
+      std::unique_ptr<Tensor> query_reshaped;
       if (query->Shape().GetDims().size() == 3) {
-        query_reshaped = const_cast<Tensor*>(query);
-        ORT_RETURN_IF_ERROR(Reshape_BSD_to_BSNH(query_reshaped, batch_size, q_sequence_length, num_heads_, qk_head_size));
+        query_reshaped = std::make_unique<Tensor>(query->DataType(), query->Shape(), const_cast<void*>(query->DataRaw()), query->Location());
+        ORT_RETURN_IF_ERROR(Reshape_BSD_to_BSNH(query_reshaped.get(), batch_size, q_sequence_length, num_heads_, qk_head_size));
       }
-      ORT_RETURN_IF_ERROR(Transpose_BSNH_to_BNSH((query_reshaped == nullptr) ? query : query_reshaped, Q));
+      ORT_RETURN_IF_ERROR(Transpose_BSNH_to_BNSH((query_reshaped == nullptr) ? query : query_reshaped.get(), Q));
     } else {
       if (q_sequence_length == 1) {
         ORT_RETURN_IF_ERROR(AddBiasReshape(query, qkv_bias, Q, q_bias_offset, batch_size, q_sequence_length, num_heads_, qk_head_size, qk_hidden_size, context));
@@ -355,12 +341,12 @@ Status MultiHeadAttention<T>::Compute(OpKernelContext* context) const {
     TensorShape k_BNLH(new_dims_span);
     Tensor::InitOrtValue(element_type, k_BNLH, allocator, K);
     if (qkv_bias == nullptr) {
-      Tensor* key_reshaped = nullptr;
+      std::unique_ptr<Tensor> key_reshaped;
       if (key->Shape().GetDims().size() == 3) {
-        key_reshaped = const_cast<Tensor*>(key);
-        ORT_RETURN_IF_ERROR(Reshape_BSD_to_BSNH(key_reshaped, batch_size, kv_sequence_length, num_heads_, qk_head_size));
+        key_reshaped = std::make_unique<Tensor>(key->DataType(), key->Shape(), const_cast<void*>(key->DataRaw()), key->Location());
+        ORT_RETURN_IF_ERROR(Reshape_BSD_to_BSNH(key_reshaped.get(), batch_size, kv_sequence_length, num_heads_, qk_head_size));
       }
-      ORT_RETURN_IF_ERROR(Transpose_BSNH_to_BNSH((key_reshaped == nullptr) ? key : key_reshaped, K));
+      ORT_RETURN_IF_ERROR(Transpose_BSNH_to_BNSH((key_reshaped == nullptr) ? key : key_reshaped.get(), K));
     } else {
       if (kv_sequence_length == 1) {
         ORT_RETURN_IF_ERROR(AddBiasReshape(key, qkv_bias, K, k_bias_offset, batch_size, kv_sequence_length, num_heads_, qk_head_size, qk_hidden_size, context));
@@ -378,12 +364,12 @@ Status MultiHeadAttention<T>::Compute(OpKernelContext* context) const {
     TensorShape v_BNLH(new_dims_span);
     Tensor::InitOrtValue(element_type, v_BNLH, allocator, V);
     if (qkv_bias == nullptr) {
-      Tensor* value_reshaped = nullptr;
+      std::unique_ptr<Tensor> value_reshaped;
       if (value->Shape().GetDims().size() == 3) {
-        value_reshaped = const_cast<Tensor*>(value);
-        ORT_RETURN_IF_ERROR(Reshape_BSD_to_BSNH(value_reshaped, batch_size, kv_sequence_length, num_heads_, v_head_size));
+        value_reshaped = std::make_unique<Tensor>(value->DataType(), value->Shape(), const_cast<void*>(value->DataRaw()), value->Location());
+        ORT_RETURN_IF_ERROR(Reshape_BSD_to_BSNH(value_reshaped.get(), batch_size, kv_sequence_length, num_heads_, v_head_size));
       }
-      ORT_RETURN_IF_ERROR(Transpose_BSNH_to_BNSH((value_reshaped == nullptr) ? value : value_reshaped, V));
+      ORT_RETURN_IF_ERROR(Transpose_BSNH_to_BNSH((value_reshaped == nullptr) ? value : value_reshaped.get(), V));
     } else {
       if (kv_sequence_length == 1) {
         ORT_RETURN_IF_ERROR(AddBiasReshape(value, qkv_bias, V, v_bias_offset, batch_size, kv_sequence_length, num_heads_, v_head_size, v_hidden_size, context));

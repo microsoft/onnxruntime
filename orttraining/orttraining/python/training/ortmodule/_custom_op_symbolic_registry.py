@@ -3,15 +3,18 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
-import warnings  # noqa: F401
+from typing import Callable
 
 import torch
 import torch.onnx.symbolic_helper as sym_help
+from packaging import version
 from packaging.version import Version
 from torch.onnx import register_custom_op_symbolic
 from torch.onnx.symbolic_helper import _get_tensor_dim_size, _get_tensor_sizes, parse_args
 
 from onnxruntime.training import ortmodule
+
+from ._utils import get_runtime_pytorch_version
 
 # Mapping from pytorch scalar type to onnx scalar type.
 _CAST_PYTORCH_TO_ONNX = {
@@ -43,12 +46,34 @@ def pytorch_type_to_onnx(scalar_type: str) -> torch.onnx.TensorProtoDataType:
         return _CAST_PYTORCH_TO_ONNX[scalar_type]
 
 
-def wrap_custom_export_function(original_func):
-    # Starting from PyTorch 1.11, there has been a change to symbolic function signature
-    # in terms of how additional context is accessed. More info at
-    # https://github.com/pytorch/pytorch/blob/6b02648479d3615fa3260961e24f38dd0f22da94/torch/onnx/symbolic_helper.py#L48
-    # This code can be cleaned up once support for PyTorch version < 1.11 is dropped.
-    try:
+def wrap_custom_export_function(original_func: Callable) -> Callable:
+    """This function is to wrap the custom export function to make sure it can be used by different versions of PyTorch.
+
+    Args:
+        original_func: The original custom export function.
+
+    Note1:
+        [PyTorch exporter breaking change] Starting from PyTorch 1.11, there has been a change to symbolic function
+        signature in terms of how additional context is accessed. More info at
+        https://github.com/pytorch/pytorch/blob/6b02648479d3615fa3260961e24f38dd0f22da94/torch/onnx/symbolic_helper.py#L48
+        This code can be cleaned up once support for PyTorch version < 1.11 is dropped.
+    Note2:
+        [PyTorch exporter breaking change] Custom export function's first argument is SymbolicContext since 1.11, but
+        is changed later, and will be deprecated in 1.13 as claimed. So we need to use GraphContext as the first
+        argument instead.
+
+    """
+    runtime_pytorch_version = get_runtime_pytorch_version()
+
+    if runtime_pytorch_version >= version.parse("1.13"):
+        from torch.onnx._internal import jit_utils
+
+        def _export_with_ctx(graph_context: jit_utils.GraphContext, *args, **kwargs):
+            return original_func(graph_context, graph_context.original_node, *args, **kwargs)
+
+        return _export_with_ctx
+
+    elif runtime_pytorch_version >= version.parse("1.11"):
         from torch.onnx import SymbolicContext
 
         def _export_with_ctx(ctx: SymbolicContext, graph, *args, **kwargs):
@@ -56,7 +81,7 @@ def wrap_custom_export_function(original_func):
             return original_func(graph, node, *args, **kwargs)
 
         return _export_with_ctx
-    except ImportError:
+    else:
 
         def _export_with_no_ctx(graph, *args, **kwargs):
             return original_func(graph, None, *args, **kwargs)
