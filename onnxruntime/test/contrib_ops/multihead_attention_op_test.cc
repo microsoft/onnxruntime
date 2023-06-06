@@ -452,13 +452,17 @@ static void RunMultiHeadAttentionTests(AttentionTestData& data, bool disable_cpu
   }
 }
 
-#if !defined(_MSC_VER) || defined(USE_DML)
+// Disable some tests in Windows since prefast build might crash with large test data.
+#if !defined(_MSC_VER)
 // Test fused cross attention kernel
 // It requires head_size > 32 and head_size <= 64 for T4 GPU; hidden_size == v_hidden_size.
 TEST(MultiHeadAttentionTest, CrossAttention_Batch2_HeadSize40) {
   ROCM_GTEST_SKIP("ROCm MHA does not support bias");
   AttentionTestData data;
   GetCrossAttentionData_HeadSize40(data);
+  RunMultiHeadAttentionTests(data);
+
+  GetCrossAttentionData_HeadSize40_NoBias(data);
   RunMultiHeadAttentionTests(data);
 }
 
@@ -467,6 +471,9 @@ TEST(MultiHeadAttentionTest, CrossAttention_Batch2_HeadSize32_RightSidePadding_M
   AttentionTestData data;
   GetCrossAttentionData_Batch2_HeadSize32_RightSidePadding(data, true);
   RunMultiHeadAttentionTests(data, true);
+
+  GetCrossAttentionData_Batch2_HeadSize32_RightSidePadding_NoBias(data, true);
+  RunMultiHeadAttentionTests(data, true);
 }
 
 TEST(MultiHeadAttentionTest, CrossAttention_Batch2_HeadSize32_RightSidePadding_Mask2D) {
@@ -474,12 +481,18 @@ TEST(MultiHeadAttentionTest, CrossAttention_Batch2_HeadSize32_RightSidePadding_M
   AttentionTestData data;
   GetCrossAttentionData_Batch2_HeadSize32_RightSidePadding(data, false);
   RunMultiHeadAttentionTests(data, true);
+
+  GetCrossAttentionData_Batch2_HeadSize32_RightSidePadding_NoBias(data, false);
+  RunMultiHeadAttentionTests(data, true);
 }
 
 TEST(MultiHeadAttentionTest, CrossAttention_Batch1_HeadSize32_LeftSidePadding_Mask2D) {
   ROCM_GTEST_SKIP("ROCm MHA does not support mask");
   AttentionTestData data;
   GetCrossAttentionData_Batch1_HeadSize32_LeftSidePadding(data);
+  RunMultiHeadAttentionTests(data, true);
+
+  GetCrossAttentionData_Batch1_HeadSize32_LeftSidePadding_NoBias(data);
   RunMultiHeadAttentionTests(data, true);
 }
 
@@ -504,12 +517,18 @@ TEST(MultiHeadAttentionTest, CrossAttention_Batch2_HeadSize16_8) {
   AttentionTestData data;
   GetCrossAttentionData_HeadSize16_8(data);
   RunMultiHeadAttentionTests(data);
+
+  GetCrossAttentionData_HeadSize16_8_NoBias(data);
+  RunMultiHeadAttentionTests(data);
 }
 
 TEST(MultiHeadAttentionTest, CrossAttention_Batch1_HeadSize16) {
   ROCM_GTEST_SKIP("ROCm MHA does not support bias");
   AttentionTestData data;
   GetCrossAttentionData_HeadSize16(data);
+  RunMultiHeadAttentionTests(data);
+
+  GetCrossAttentionData_HeadSize16_NoBias(data);
   RunMultiHeadAttentionTests(data);
 }
 

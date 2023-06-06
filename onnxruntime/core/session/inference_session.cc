@@ -886,10 +886,13 @@ common::Status InferenceSession::Load() {
 #endif
     const bool strict_shape_type_inference = session_options_.config_options.GetConfigOrDefault(
                                                  kOrtSessionOptionsConfigStrictShapeTypeInference, "0") == "1";
+    const bool allow_released_opsets_only = session_options_.config_options.GetConfigOrDefault(
+                                                kOrtSessionOptionsConfigStrictAllowReleasedOpsetsOnly, "1") == "1";
+
     // Pass on ownership of the parsed ModelProto to the Model instance (its job here is done by this stage)
     return Model::Load(std::move(this->model_proto_), model_location_, model,
                        HasLocalSchema() ? &custom_schema_registries_ : nullptr, *session_logger_,
-                       ModelOptions(true, strict_shape_type_inference));
+                       ModelOptions(allow_released_opsets_only, strict_shape_type_inference));
   };
 
   return LoadWithLoader(loader, "model_loading_from_saved_proto");
@@ -940,9 +943,10 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool 
     transform_layout_fn = [this](Graph& graph_to_transform, bool& modified,
                                  const IExecutionProvider& execution_provider,
                                  const layout_transformer::DebugGraphFn& debug_graph_fn) -> Status {
+      AllocatorPtr cpu_allocator = std::make_shared<CPUAllocator>();
       ORT_RETURN_IF_ERROR_SESSIONID_(
           layout_transformer::TransformLayoutForEP(graph_to_transform, modified, execution_provider,
-                                                   execution_providers_.GetDefaultCpuAllocator(), debug_graph_fn));
+                                                   std::move(cpu_allocator), debug_graph_fn));
 
       if (modified) {
         ORT_RETURN_IF_ERROR_SESSIONID_(
@@ -1272,11 +1276,12 @@ Status PartitionOrtFormatModel(onnxruntime::Graph& graph,
   // only provide NCWH to NHWC layout transformer if supported
   if (layout_transformer::IsSupportedOpset(graph)) {
     transform_layout_fn =
-        [&providers](Graph& graph_to_transform, bool& modified,
-                     const IExecutionProvider& execution_provider,
-                     const layout_transformer::DebugGraphFn& debug_graph_fn) -> Status {
+        [](Graph& graph_to_transform, bool& modified,
+           const IExecutionProvider& execution_provider,
+           const layout_transformer::DebugGraphFn& debug_graph_fn) -> Status {
+      AllocatorPtr cpu_allocator = std::make_shared<CPUAllocator>();
       return layout_transformer::TransformLayoutForEP(graph_to_transform, modified, execution_provider,
-                                                      providers.GetDefaultCpuAllocator(), debug_graph_fn);
+                                                      std::move(cpu_allocator), debug_graph_fn);
     };
   }
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)

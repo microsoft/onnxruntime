@@ -5,7 +5,6 @@
 
 #include <filesystem>
 #include "core/providers/common.h"
-#include "core/framework/allocatormgr.h"
 #include "core/framework/compute_capability.h"
 #include "core/graph/graph_viewer.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
@@ -23,7 +22,10 @@ constexpr const char* QNN = "QNN";
 
 std::string GetFileNameFromModelPath(onnxruntime::Path model_path) {
   auto model_path_components = model_path.GetComponents();
-  ORT_ENFORCE(!model_path_components.empty(), "Model path not valid!");
+  // There's no model path if model loaded from buffer stead of file
+  if (model_path_components.empty()) {
+    return "";
+  }
   return PathToUTF8String(model_path_components.back());
 }
 
@@ -127,14 +129,6 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
   if (htp_performance_mode_pos != runtime_options_.end()) {
     ParseHtpPerformanceMode(htp_performance_mode_pos->second);
   }
-
-  AllocatorCreationInfo device_info(
-      [](int) {
-        return std::make_unique<CPUAllocator>(OrtMemoryInfo(QNN, OrtAllocatorType::OrtDeviceAllocator));
-      });
-
-  cpu_allocator_ = CreateAllocator(device_info);
-  InsertAllocator(cpu_allocator_);
 
   qnn_backend_manager_ = std::make_unique<qnn::QnnBackendManager>(backend_path_,
                                                                   profiling_level_,
@@ -246,7 +240,7 @@ QNNExecutionProvider::GetSupportedNodes(const GraphViewer& graph_viewer,
                                                 qnn_backend_manager_->GetQnnBackendHandle(),
                                                 model_input_index_map,
                                                 model_output_index_map,
-                                                initializer_input_lookup, cpu_allocator_);
+                                                initializer_input_lookup);
 
   for (const auto& node : graph_viewer.Nodes()) {
     const NodeUnit* node_unit = node_unit_map.at(&node);
@@ -436,7 +430,6 @@ Status QNNExecutionProvider::CompileFromOrtGraph(const std::vector<FusedNodeAndG
 
     std::unique_ptr<qnn::QnnModel> qnn_model = std::make_unique<qnn::QnnModel>(logger,
                                                                                qnn_backend_manager_.get(),
-                                                                               cpu_allocator_,
                                                                                qnn_backend_manager_->IsNpuBackend());
 
     ORT_RETURN_IF_ERROR(qnn_model->ComposeGraph(graph_viewer, fused_node));
@@ -480,7 +473,6 @@ Status QNNExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused
     if (load_from_cached_context) {
       std::unique_ptr<qnn::QnnModel> qnn_model = std::make_unique<qnn::QnnModel>(logger,
                                                                                  qnn_backend_manager_.get(),
-                                                                                 cpu_allocator_,
                                                                                  is_npu_backend);
       ORT_RETURN_IF_ERROR(qnn_backend_manager_->LoadCachedQnnContext(context_cache_pathstring, *(qnn_model.get())));
       ORT_RETURN_IF_ERROR(qnn_model->SetGraphInputOutputInfo(graph_viewer, fused_node));
@@ -496,11 +488,11 @@ Status QNNExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused
     } else {
       // Load and execute from Onnx model if not exit and dump the context
       ORT_RETURN_IF_ERROR(CompileFromOrtGraph(fused_nodes_and_graphs, node_compute_funcs, logger));
-      // fused_node.OpType() is generated in GetCapability, e.g QNN_[hash_id]_[id]
-      // dump fused_node.OpType() as metadata in context cache binary file, so that we can validate it in GetCapability
+      // graph_viewer.Name() is generated in GetCapability, e.g QNN_[hash_id]_[id]
+      // dump graph_viewer.Name() as metadata in context cache binary file, so that we can validate it in GetCapability
       ORT_RETURN_IF_ERROR(qnn_backend_manager_->DumpQnnContext(context_cache_pathstring,
                                                                GetFileNameFromModelPath(graph_viewer.ModelPath()),
-                                                               fused_node.OpType()));
+                                                               graph_viewer.Name()));
     }
     return Status::OK();
   }

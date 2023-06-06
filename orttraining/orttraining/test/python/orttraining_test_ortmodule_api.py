@@ -4214,18 +4214,20 @@ def test_hf_save_pretrained():
             assert p1.data.ne(p2.data).sum() == 0
 
 
-def test_ortmodule_string_inputs_are_ignored():
+def test_ortmodule_string_inputs_are_ignored(caplog):
     pt_model = MyStrNet()
-    ort_model = ORTModule(copy.deepcopy(pt_model))
+    ort_model = ORTModule(copy.deepcopy(pt_model), DebugOptions(log_level=LogLevel.INFO))
     x = torch.randn(1, 2)
 
-    with pytest.warns(UserWarning) as warning_record:
-        out = ort_model(x, "hello")
+    out = ort_model(x, "hello")
 
-    assert (
-        "Received input of type <class 'str'> which may be treated as a constant by ORT by default."
-        in warning_record[1].message.args[0]
-    )
+    target_str = "Received input of type <class 'str'> which may be treated as a constant by ORT by default."
+    found_target_str = False
+    for record in caplog.records:
+        if target_str in record.message:
+            found_target_str = True
+
+    assert found_target_str
     _test_helpers.assert_values_are_close(out, x + 1)
 
 
@@ -4803,7 +4805,7 @@ def test_ortmodule_setattr_signals_model_changed():
     del os.environ["ORTMODULE_SKIPCHECK_POLICY"]
 
 
-def test_ortmodule_attribute_name_collision_warning():
+def test_ortmodule_attribute_name_collision_warning(caplog):
     class UserNet(torch.nn.Module):
         def __init__(self):
             super().__init__()
@@ -4818,17 +4820,14 @@ def test_ortmodule_attribute_name_collision_warning():
 
     device = "cuda"
     pt_model = UserNet().to(device)
-    with pytest.warns(UserWarning) as warning_record:
-        ORTModule(pt_model)
 
-    # FutureWarning('The first argument to symbolic functions is deprecated in 1.13 and will be removed in the future.
-    # Please annotate treat the first argument (g) as GraphContext and use context information from the object
-    # instead.')
-    # TODO(bmeswani): Check with the exporter team as to what this might mean for ortmodule.
-    assert len(warning_record) == 3
+    ORTModule(pt_model)
+    warning_record = [record.message for record in caplog.records if record.levelname == "WARNING"]
 
-    assert "_torch_module collides with ORTModule's attribute name." in warning_record[1].message.args[0]
-    assert "load_state_dict collides with ORTModule's attribute name." in warning_record[2].message.args[0]
+    assert len(warning_record) == 2
+
+    assert "_torch_module collides with ORTModule's attribute name." in warning_record[-2]
+    assert "load_state_dict collides with ORTModule's attribute name." in warning_record[-1]
 
 
 def test_ortmodule_ortmodule_method_attribute_copy():
@@ -5731,10 +5730,10 @@ def test_runtime_inspector_label_and_embed_sparsity_detection(embed_is_sparse, l
     found_embed_is_sparse = False
     found_label_is_sparse = False
     for record in caplog.records:
-        if "Label sparsity based optimization is on for" in record.getMessage():
+        if "Label sparsity-based optimization is ON for" in record.getMessage():
             found_label_is_sparse = True
 
-        if "Embedding sparsity based optimization is on for" in record.getMessage():
+        if "Embedding sparsity-based optimization is ON for" in record.getMessage():
             found_embed_is_sparse = True
 
     if label_is_sparse:

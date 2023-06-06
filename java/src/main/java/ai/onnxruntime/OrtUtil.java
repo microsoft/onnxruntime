@@ -493,6 +493,9 @@ public final class OrtUtil {
    * @return The prepared buffer tuple.
    */
   static BufferTuple prepareBuffer(Buffer data, OnnxJavaType type) {
+    if (type == OnnxJavaType.STRING || type == OnnxJavaType.UNKNOWN) {
+      throw new IllegalStateException("Cannot create a " + type + " tensor from a buffer");
+    }
     int bufferPos;
     long bufferSizeLong = data.remaining() * (long) type.size;
     if (bufferSizeLong > (Integer.MAX_VALUE - (8 * type.size))) {
@@ -522,6 +525,7 @@ public final class OrtUtil {
         case DOUBLE:
           tmp = buffer.asDoubleBuffer().put((DoubleBuffer) data);
           break;
+        case BOOL:
         case UINT8:
         case INT8:
           // buffer is already a ByteBuffer, no cast needed.
@@ -536,12 +540,10 @@ public final class OrtUtil {
         case INT64:
           tmp = buffer.asLongBuffer().put((LongBuffer) data);
           break;
-        case BOOL:
-        case STRING:
-        case UNKNOWN:
         default:
           throw new IllegalStateException(
-              "Impossible to reach here, managed to cast a buffer as an incorrect type");
+              "Impossible to reach here, managed to cast a buffer as an incorrect type, found "
+                  + type);
       }
       data.position(origPosition);
       tmp.rewind();
