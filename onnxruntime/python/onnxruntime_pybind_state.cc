@@ -151,7 +151,11 @@ const char* GetDeviceName(const OrtDevice& device) {
     case OrtDevice::FPGA:
       return "FPGA";
     case OrtDevice::NPU:
+#ifdef USE_CANN
+      return CANN;
+#else
       return "NPU";
+#endif
     default:
       ORT_THROW("Unknown device type: ", device.Type());
   }
@@ -1143,6 +1147,7 @@ void addObjectMethods(py::module& m, ExecutionProviderRegistrationFn ep_registra
       .def("device_type", &OrtDevice::Type, R"pbdoc(Device Type.)pbdoc")
       .def_static("cpu", []() { return OrtDevice::CPU; })
       .def_static("cuda", []() { return OrtDevice::GPU; })
+      .def_static("cann", []() { return OrtDevice::NPU; })
       .def_static("fpga", []() { return OrtDevice::FPGA; })
       .def_static("npu", []() { return OrtDevice::NPU; })
       .def_static("default_memory", []() { return OrtDevice::MemType::DEFAULT; });
