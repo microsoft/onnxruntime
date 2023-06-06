@@ -43,9 +43,6 @@ GetOutputTensor(Ort::KernelContext& context,
                 std::unordered_map<std::string, int> output_names,
                 std::shared_ptr<ngraph::Node> node);
 
-InferenceEngine::Precision
-ConvertPrecisionONNXToOpenVINO(const ONNX_NAMESPACE::TypeProto& onnx_type);
-
 Ort::UnownedValue
 GetOutputTensor(Ort::KernelContext& context, size_t batch_size,
                 OVInferRequestPtr infer_request,

@@ -7,9 +7,6 @@
 #include <memory>
 
 #include "core/providers/shared_library/provider_api.h"
-
-#include <inference_engine.hpp>
-
 #include "contexts.h"
 #include "backend_manager.h"
 #include "ibackend.h"
@@ -36,11 +33,11 @@ BackendManager::BackendManager(const onnxruntime::Node& fused_node,
                                const logging::Logger& logger) {
   auto prec_str = GetGlobalContext().precision_str;
   if (prec_str == "FP32") {
-    subgraph_context_.precision = InferenceEngine::Precision::FP32;
+    subgraph_context_.precision = "FP32";
   } else if (prec_str == "FP16") {
-    subgraph_context_.precision = InferenceEngine::Precision::FP16;
+    subgraph_context_.precision = "FP16";
   } else if (prec_str == "U8") {
-    subgraph_context_.precision = InferenceEngine::Precision::U8;
+    subgraph_context_.precision = "U8";
   } else {
     throw std::string("Invalid OpenVINO Precision type: " + prec_str);
   }

@@ -57,7 +57,7 @@ CreateOVModel(const ONNX_NAMESPACE::ModelProto& model_proto, const GlobalContext
   const std::string model = model_proto.SerializeAsString();
   try {
     auto cnn_network = global_context.ie_core.ReadModel(model);
-    if ((subgraph_context.precision == InferenceEngine::Precision::FP16) &&
+    if ((subgraph_context.precision == "FP16") &&
         (global_context.device_type.find("VPUX") == std::string::npos)) {
       // FP16 transformations
       ov::pass::ConvertFP32ToFP16 pass_obj;
@@ -101,38 +101,12 @@ CreateOVModel(const ONNX_NAMESPACE::ModelProto& model_proto, const GlobalContext
       std::string name = cnn_network->get_friendly_name();
       ov::pass::Serialize serializer(name + ".xml", name + ".bin");
       serializer.run_on_model(cnn_network);
-      ngraph::plot_graph(cnn_network, name + "_executable" + ".dot");
     }
 #endif
 #endif
     return cnn_network;
   } catch (std::string const& msg) {
     throw msg;
-  }
-}
-
-InferenceEngine::Precision ConvertPrecisionONNXToOpenVINO(const ONNX_NAMESPACE::TypeProto& onnx_type) {
-  ONNX_NAMESPACE::DataType type_string = ONNX_NAMESPACE::Utils::DataTypeUtils::ToType(onnx_type);
-  if (*type_string == "float" || *type_string == "tensor(float)") {
-    return InferenceEngine::Precision::FP32;
-  } else if (*type_string == "float16" || *type_string == "tensor(float16)") {
-    return InferenceEngine::Precision::FP16;
-  } else if (*type_string == "int32" || *type_string == "tensor(int32)") {
-    return InferenceEngine::Precision::I32;
-  } else if (*type_string == "int16" || *type_string == "tensor(int16)") {
-    return InferenceEngine::Precision::I16;
-  } else if (*type_string == "int8" || *type_string == "tensor(int8)") {
-    return InferenceEngine::Precision::I8;
-  } else if (*type_string == "uint16" || *type_string == "tensor(uint16)") {
-    return InferenceEngine::Precision::U16;
-  } else if (*type_string == "uint8" || *type_string == "tensor(uint8)") {
-    return InferenceEngine::Precision::U8;
-  } else if (*type_string == "bool" || *type_string == "tensor(bool)") {
-    return InferenceEngine::Precision::U8;
-  } else if (*type_string == "int64" || *type_string == "tensor(int64)") {
-    return InferenceEngine::Precision::I32;
-  } else {
-    throw std::string(log_tag + "Unsupported Data type");
   }
 }
 

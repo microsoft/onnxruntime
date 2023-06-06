@@ -5,11 +5,13 @@
 
 #include <vector>
 
-#include <inference_engine.hpp>
-#if defined(OPENVINO_2022_1) || (OPENVINO_2022_2) || (OPENVINO_2022_3) || (OPENVINO_2023_0)
+
+#if defined (OPENVINO_2022_1) || (OPENVINO_2022_2) || (OPENVINO_2022_3)  || (OPENVINO_2023_0)
 #define OV_API_20
 #include "openvino/openvino.hpp"
 #include "openvino/pass/convert_fp32_to_fp16.hpp"
+#else
+#include <inference_engine.hpp>
 #endif
 
 #ifdef IO_BUFFER_ENABLED
@@ -26,10 +28,8 @@ class OVCore;
 class OVInferRequest;
 class OVExeNetwork;
 
-typedef InferenceEngine::Precision OVPrecision;
 typedef ov::Tensor OVTensor;
 typedef ov::ProfilingInfo OVProfilingInfo;
-typedef ov::AnyMap OVConfig;
 typedef ov::Model OVNetwork;
 typedef std::shared_ptr<OVInferRequest> OVInferRequestPtr;
 typedef std::shared_ptr<OVTensor> OVTensorPtr;
