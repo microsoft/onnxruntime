@@ -1,11 +1,13 @@
 jobs:
-- job: edch_test
+- job: android_emulator_test
   workspace:
     clean: all
   pool:
     vmImage: 'macOS-13'
 
   steps:
+  - checkout: none
+
   - task: UsePythonVersion@0
     displayName: Use Python 3.10
     inputs:
@@ -18,21 +20,20 @@ jobs:
       jdkArchitectureOption: 'x64'
       jdkSourceOption: 'PreInstalled'
 
-  - template: "templates/use-android-ndk.yml"
+  - bash: |
+      set -e -x
 
-  - script: |
-      python3 tools/python/run_android_emulator.py \
-        --android-sdk-root ${ANDROID_SDK_ROOT} \
-        --create-avd --system-image "system-images;android-31;default;x86_64" \
-        --start --emulator-extra-args="-partition-size 4096 -verbose" \
-        --emulator-pid-file $(Build.BinariesDirectory)/emulator.pid
+      ${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager --install 'system-images;android-31;default;x86_64'
+
+      ${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/avdmanager create avd --name android_emulator_avd --package 'system-images;android-31;default;x86_64' --force
+
+      ${ANDROID_SDK_ROOT}/tools/emulator \
+        -avd android_emulator_avd \
+        -memory 4096 \
+        -timezone America/Los_Angeles \
+        -no-snapshot -no-audio -no-boot-anim -no-window \
+        -partition-size 4096 &
+
+      ${ANDROID_SDK_ROOT}/platform-tools/adb wait-for-device shell 'while [[ -z \$(getprop sys.boot_completed) ]]; do sleep 1; done; input keyevent 82'
     displayName: Start Android emulator
     timeoutInMinutes: 10
-
-  - script: |
-      python3 tools/python/run_android_emulator.py \
-        --android-sdk-root ${ANDROID_SDK_ROOT} \
-        --stop \
-        --emulator-pid-file $(Build.BinariesDirectory)/emulator.pid
-    displayName: Stop Android emulator
-    condition: always()
