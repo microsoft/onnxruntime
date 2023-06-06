@@ -8,11 +8,6 @@ jobs:
   steps:
   - checkout: none
 
-  - task: UsePythonVersion@0
-    displayName: Use Python 3.10
-    inputs:
-      versionSpec: 3.10
-
   - task: JavaToolInstaller@0
     displayName: Use jdk 11
     inputs:
@@ -34,6 +29,6 @@ jobs:
         -no-snapshot -no-audio -no-boot-anim -no-window \
         -partition-size 4096 &
 
-      ${ANDROID_SDK_ROOT}/platform-tools/adb wait-for-device shell 'while [[ -z \$(getprop sys.boot_completed) ]]; do sleep 1; done; input keyevent 82'
+      ${ANDROID_SDK_ROOT}/platform-tools/adb wait-for-device shell 'while [[ -z \$\(getprop sys.boot_completed\) ]]; do sleep 1; done; input keyevent 82'
     displayName: Start Android emulator
     timeoutInMinutes: 10
