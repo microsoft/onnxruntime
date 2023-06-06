@@ -5,6 +5,7 @@
 
 #include <string>
 #include <vector>
+#include <iostream>
 #include "core/common/gsl.h"
 #include "core/common/inlined_containers.h"
 #include "core/framework/config_options.h"
@@ -23,6 +24,23 @@ enum class ExecutionOrder {
   DEFAULT = 0,        // default topological sort
   PRIORITY_BASED = 1  // priority-based topological sort
 };
+
+inline std::ostream& operator<<(std::ostream& os, const ExecutionOrder& order)
+{
+    switch (order)
+    {
+        case ExecutionOrder::DEFAULT:
+            os << "DEFAULT";
+            break;
+        case ExecutionOrder::PRIORITY_BASED:
+            os << "PRIORITY_BASED";
+            break;
+        default:
+            os << "UNKNOWN";
+            break;
+    }
+    return os;
+}
 
 enum class FreeDimensionOverrideType {
   Invalid = 0,
@@ -89,6 +107,7 @@ struct SessionOptions {
 
   /// Log severity for the inference session. Applies to session load, initialization, etc.
   /// See https://github.com/microsoft/onnxruntime/blob/main/include/onnxruntime/core/common/logging/severity.h
+  /// See https://github.com/microsoft/onnxruntime/blob/main/include/onnxruntime/core/session/onnxruntime_c_api.h#L231 for OrtLoggingLevel mappings
   /// Default = -1 (use default logger severity)
   int session_log_severity_level = -1;
   int session_log_verbosity_level = 0;  ///< VLOG level if debug build and session_log_severity_level is 0 (VERBOSE).
