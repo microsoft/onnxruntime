@@ -15,9 +15,10 @@ enum CMakeBuildType{
 Get the name of a temporary folder under the native install directory
 #>
 function Get-TempDirectory {
-  #TODO: what if the env does not exist?
   if (-not [string]::IsNullOrWhitespace($Env:AGENT_TEMPDIRECTORY)){
     return $Env:AGENT_TEMPDIRECTORY
+  } elseif (-not [string]::IsNullOrWhitespace($Env:RUNNER_TEMP)){
+    return $Env:RUNNER_TEMP
   } else {
     return $Env:TEMP
   }
@@ -347,25 +348,19 @@ function Install-Pybind {
     $msbuild_args = "-nodeReuse:false", "-nologo", "-nr:false", "-maxcpucount", "-p:UseMultiToolTask=true", "-p:configuration=`"$build_config`""
 
     if ($use_cache) {
-      $msbuild_args += "/p:CLToolExe=cl.exe /p:CLToolPath=C:\ProgramData\chocolatey\bin /p:TrackFileAccess=false /p:UseMultiToolTask=true"
+      $msbuild_args += "/p:CLToolExe=cl.exe", "/p:CLToolPath=C:\ProgramData\chocolatey\bin", "/p:TrackFileAccess=false", "/p:UseMultiToolTask=true"
     }
 
     $final_args = $msbuild_args + "pybind11.sln"
     Write-Host $final_args
-
-    $p = Start-Process -FilePath $msbuild_path -ArgumentList $final_args -NoNewWindow -Wait -PassThru
-    $exitCode = $p.ExitCode
-    if ($exitCode -ne 0) {
-        Write-Host -Object "Build pybind11.sln failed. Exitcode: $exitCode"
-        exit $exitCode
+    &$msbuild_path $final_args
+    if ($lastExitCode -ne 0) {
+      exit $lastExitCode
     }
-
     $final_args = $msbuild_args + "INSTALL.vcxproj"
-    $p = Start-Process -FilePath $msbuild_path -ArgumentList $final_args -NoNewWindow -Wait -PassThru
-    $exitCode = $p.ExitCode
-    if ($exitCode -ne 0) {
-        Write-Host -Object "Install pybind failed. Exitcode: $exitCode"
-        exit $exitCode
+    &$msbuild_path $final_args
+    if ($lastExitCode -ne 0) {
+      exit $lastExitCode
     }
     Write-Host "Installing pybind finished."
 
@@ -408,14 +403,14 @@ function Install-Protobuf {
     }
     cd $protobuf_src_dir
     cd *
-	# Search patch.exe
-	$patch_path = 'C:\Program Files\Git\usr\bin\patch.exe'
-	if(-not (Test-Path $patch_path -PathType Leaf)){
+    # Search patch.exe
+    $patch_path = 'C:\Program Files\Git\usr\bin\patch.exe'
+    if(-not (Test-Path $patch_path -PathType Leaf)){
       $git_command_path = (Get-Command -CommandType Application git)[0].Path
       Write-Host "Git command path:$git_command_path"
       $git_installation_folder = Split-Path -Path (Split-Path -Path $git_command_path)
       $patch_path = Join-Path -Path $git_installation_folder "usr\bin\patch.exe"
-	}
+    }
     if(Test-Path $patch_path -PathType Leaf){
       Write-Host "Patching protobuf ..."
       Get-Content $src_root\cmake\patches\protobuf\protobuf_cmake.patch | &$patch_path --ignore-whitespace -p1
@@ -443,19 +438,14 @@ function Install-Protobuf {
     $final_args = $msbuild_args + "protobuf.sln"
     Write-Host $final_args
 
-    $p = Start-Process -FilePath $msbuild_path -ArgumentList $final_args -NoNewWindow -Wait -PassThru
-    $exitCode = $p.ExitCode
-    if ($exitCode -ne 0) {
-        Write-Host -Object "Build protobuf.sln failed. Exitcode: $exitCode"
-        exit $exitCode
+    &$msbuild_path $final_args
+    if ($lastExitCode -ne 0) {
+      exit $lastExitCode
     }
-
     $final_args = $msbuild_args + "INSTALL.vcxproj"
-    $p = Start-Process -FilePath $msbuild_path -ArgumentList $final_args -NoNewWindow -Wait -PassThru
-    $exitCode = $p.ExitCode
-    if ($exitCode -ne 0) {
-        Write-Host -Object "Install protobuf failed. Exitcode: $exitCode"
-        exit $exitCode
+    &$msbuild_path $final_args
+    if ($lastExitCode -ne 0) {
+      exit $lastExitCode
     }
     Write-Host "Installing protobuf finished."
     popd
@@ -511,21 +501,23 @@ function Install-ONNX {
     }
     $Env:CMAKE_ARGS="-DONNX_USE_PROTOBUF_SHARED_LIBS=OFF -DProtobuf_USE_STATIC_LIBS=ON -DONNX_USE_LITE_PROTO=OFF"
 
-    $p = Start-Process -NoNewWindow -Wait -PassThru -FilePath "python.exe" -ArgumentList "setup.py", "bdist_wheel"
-    $exitCode = $p.ExitCode
-    if ($exitCode -ne 0) {
+    python.exe "setup.py" "bdist_wheel"
+    if ($lastExitCode -ne 0) {
         Write-Host -Object "Generate wheel file failed. Exitcode: $exitCode"
-        exit $exitCode
+        exit $lastExitCode
     }
     Write-Host "Uninstalling onnx and ignore errors if there is any..."
     python -m pip uninstall -y onnx -qq
+    if ($lastExitCode -ne 0) {
+        Write-Host -Object "Generate wheel file failed. Exitcode: $exitCode"
+        exit $lastExitCode
+    }
     Write-Host "Installing the newly built ONNX python package"
     Get-ChildItem -Path dist/*.whl | foreach {
-        $p = Start-Process -NoNewWindow -Wait -PassThru -FilePath "python.exe" -ArgumentList "-m", "pip", "--disable-pip-version-check", "install", "--upgrade", $_.fullname
-        $exitCode = $p.ExitCode
-        if ($exitCode -ne 0) {
-          Write-Host -Object "Install wheel file failed. Exitcode: $exitCode"
-          exit $exitCode
+        python.exe -m pip --disable-pip-version-check install --upgrade $_.fullname
+        if ($lastExitCode -ne 0) {
+          Write-Host -Object "Generate wheel file failed. Exitcode: $exitCode"
+          exit $lastExitCode
         }
     }
     Write-Host "Finished installing onnx"
