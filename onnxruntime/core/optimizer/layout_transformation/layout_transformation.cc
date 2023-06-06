@@ -139,8 +139,11 @@ Status TransformLayoutForEP(Graph& graph, bool& modified, const IExecutionProvid
   }
 
   const auto max_node_idx = graph.MaxNodeIndex();
-  OptimizeResult result = onnx_transpose_optimization::Optimize(*api_graph, execution_provider.Type(),
-                                                                PostLayoutTransformCostCheck);
+  // NOTE: We do not assign new nodes to the current EP, so the second argument to Optimize is an empty string.
+  // Layout transformation happens during graph partitioning, and GetCapability is called again for the current EP
+  // after TransformLayoutForEP returns. That GetCapability call is where any new nodes can be assigned to the EP
+  // if they are supported by it.
+  OptimizeResult result = onnx_transpose_optimization::Optimize(*api_graph, "", PostLayoutTransformCostCheck);
 
   if (result.error_msg) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Layout/Transpose optimization for ", execution_provider.Type(),

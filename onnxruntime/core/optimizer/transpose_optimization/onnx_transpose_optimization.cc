@@ -1914,19 +1914,50 @@ OptimizeResult OptimizeImpl(OptimizerCtx& ctx) {
   bool changed = false;
   bool have_dq = false;
 
+  // 3 Scenarios:
+  //
+  // 1. Level 1 optimizer.
+  //
+  //    When level 1 optimizers are first run prior to graph partitioning no nodes are assigned.
+  //    We can modify any existing nodes and add new nodes.
+  //    ctx.provider_type is empty.
+  //
+  //    Level 1 optimizers may also run after layout transformation to do things like constant folding. 
+  //    In this case we can only modify unassigned nodes.
+  //
+  // 2. Layout transformation:
+  //
+  //    Existing nodes may be unassigned, assigned to the EP the layout is changing for, or assigned to a different EP.
+  //    ctx.provider_type is set to the EP the layout is changing for.
+  //
+  //    We can modify unassigned nodes.
+  //    We can not modify any nodes assigned to a different EP as the modification may render them incompatible with
+  //    the EP.
+  //    We can modify nodes assigned to the current EP and create new nodes, but do not assign any new nodes yet.
+  //    Following the layout change GraphPartitioner will call GetCapability again for the current EP, which allows
+  //    it to take the new nodes where possible.
+  //    We also know that the CPU EP will take any remaining nodes as the last step of graph partitioning.
+  //
+  //    To do this, we check node assignment vs the current EP name to determine if the node can be modified.
+  //    We leave onnxruntime::ApiGraph::new_node_ep_ empty so new nodes are not assigned here.
+  //
+  // 3. Level 3 NHWC Transformer:
+  //
+  //    Specific to CPU EP and runs post-partitioning, so all nodes are assigned at this point.
+  //    ctx.provider_type is set to the CPU EP.
+  //    Existing nodes assigned to the CPU EP can be modified.
+  //    New nodes can be created and are directly assigned to the CPU EP by setting onnxruntime::ApiGraph::new_node_ep_
+  //
   const auto can_modify_node = [&ctx](const api::NodeRef& node) {
-    bool can_modify = true;
     const auto& node_ep = node.GetExecutionProviderType();
-    if (ctx.provider_type.empty()) {
-      // general call to Optimize. only touch unassigned nodes.
-      if (!node_ep.empty()) {
-        can_modify = false;
-      }
-    } else {
-      // EP specific call to optimize. only touch unassigned nodes, or nodes assigned to that EP.
-      if (!node_ep.empty() && node_ep != ctx.provider_type) {
-        can_modify = false;
-      }
+    bool can_modify = false;
+
+    if (node_ep.empty()) {
+      // unassigned nodes can always be modified
+      can_modify = true;
+    } else if (node_ep == ctx.provider_type) {
+      // we can also modify if the EP name in provider_type is not empty and the node is assigned to that EP.
+      can_modify = true;
     }
 
     return can_modify;
