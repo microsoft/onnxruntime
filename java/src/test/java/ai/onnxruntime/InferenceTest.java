@@ -659,7 +659,7 @@ public class InferenceTest {
   }
 
   @Test
-  public void testExternalInitializers() throws OrtException {
+  public void testExternalInitializers() throws IOException, OrtException {
     String modelPath = TestHelpers.getResourcePath("/java-external-matmul.onnx").toString();
 
     // Run by loading the external initializer from disk
@@ -679,6 +679,21 @@ public class InferenceTest {
       OnnxTensor tensor = TestHelpers.makeIdentityMatrixBuf(env, 4);
       options.addExternalInitializers(Collections.singletonMap("tensor", tensor));
       try (OrtSession session = env.createSession(modelPath, options)) {
+        try (OnnxTensor t = OnnxTensor.createTensor(env, new float[][] {{1, 2, 3, 4}});
+             OrtSession.Result res = session.run(Collections.singletonMap("input", t))) {
+          OnnxTensor output = (OnnxTensor) res.get(0);
+          float[][] outputArr = (float[][]) output.getValue();
+          assertArrayEquals(new float[] {1, 2, 3, 4}, outputArr[0]);
+        }
+      }
+      tensor.close();
+    }
+    // Run by overriding the initializer with the identity matrix loaded from a byte array
+    byte[] modelBytes = Files.readAllBytes(TestHelpers.getResourcePath("/java-external-matmul.onnx"));
+    try (SessionOptions options = new SessionOptions()) {
+      OnnxTensor tensor = TestHelpers.makeIdentityMatrixBuf(env, 4);
+      options.addExternalInitializers(Collections.singletonMap("tensor", tensor));
+      try (OrtSession session = env.createSession(modelBytes, options)) {
         try (OnnxTensor t = OnnxTensor.createTensor(env, new float[][] {{1, 2, 3, 4}});
             OrtSession.Result res = session.run(Collections.singletonMap("input", t))) {
           OnnxTensor output = (OnnxTensor) res.get(0);
