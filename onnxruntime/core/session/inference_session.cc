@@ -10,7 +10,7 @@
 #include <list>
 #include <string>
 #include <thread>
-
+#include <codecvt>
 #include "core/common/denormal.h"
 #include "core/common/logging/logging.h"
 #include "core/common/parse_string.h"
@@ -46,6 +46,7 @@
 #include "core/optimizer/transformer_memcpy.h"
 #include "core/optimizer/transpose_optimizer/optimizer_utils.h"
 #include "core/platform/Barrier.h"
+#include "core/platform/env_var_utils.h"
 #include "core/platform/ort_mutex.h"
 #include "core/platform/threadpool.h"
 #include "core/providers/cpu/controlflow/utils.h"
@@ -178,6 +179,10 @@ static Status FinalizeSessionOptions(const SessionOptions& user_provided_session
 #if !defined(ORT_MINIMAL_BUILD)
   const logging::Logger& default_logger = logging::LoggingManager::DefaultLogger();
 
+  // Necessary otherwise INFO logs below won't actually be logged
+  auto defaultLoggerOrigSeverity = default_logger.GetSeverity();
+  logging::LoggingManager::SetDefaultLoggerSeverity(logging::Severity::kINFO);
+
   // By now the environment should have initialized. (It is enforced prior to this.)
   const Env& env_instance = Env::Default();
 
@@ -237,6 +242,104 @@ static Status FinalizeSessionOptions(const SessionOptions& user_provided_session
   ORT_UNUSED_PARAMETER(is_model_proto_parsed);
   finalized_session_options = user_provided_session_options;
 #endif  // !defined(ORT_MINIMAL_BUILD)
+
+  int envVarSession_execution_mode = ParseEnvironmentVariableWithDefault<int>("ORT_DEBUG_SESSION_EXECUTION_MODE", -1);
+  if (envVarSession_execution_mode != -1 &&
+      envVarSession_execution_mode != finalized_session_options.execution_mode &&
+      envVarSession_execution_mode <= static_cast<int>(ExecutionMode::ORT_PARALLEL)) {
+    LOGS(default_logger, INFO) << "Overriding execution_mode. Original:" << static_cast<int>(finalized_session_options.execution_mode) << " New:" << envVarSession_execution_mode;
+    finalized_session_options.execution_mode = static_cast<ExecutionMode>(envVarSession_execution_mode);
+  }
+
+  int envVarSession_interOpNumThreads = ParseEnvironmentVariableWithDefault<int>("ORT_DEBUG_SESSION_INTER_OP_NUMTHREADS", -1);
+  if (envVarSession_interOpNumThreads != -1) {
+    LOGS(default_logger, INFO) << "Overriding inter_op_param thread_pool_size. Original:" << finalized_session_options.inter_op_param.thread_pool_size << " New:" << envVarSession_interOpNumThreads;
+    finalized_session_options.inter_op_param.thread_pool_size = envVarSession_interOpNumThreads;
+  }
+
+  int envVarSession_intraOpNumThreads = ParseEnvironmentVariableWithDefault<int>("ORT_DEBUG_SESSION_INTRA_OP_NUMTHREADS", -1);
+  if (envVarSession_intraOpNumThreads != -1) {
+    LOGS(default_logger, INFO) << "Overriding intra_op_param thread_pool_size. Original:" << finalized_session_options.intra_op_param.thread_pool_size << " New:" << envVarSession_intraOpNumThreads;
+    finalized_session_options.intra_op_param.thread_pool_size = envVarSession_intraOpNumThreads;
+  }
+
+  int envVarSession_enable_profiling = ParseEnvironmentVariableWithDefault<int>("ORT_DEBUG_SESSION_ENABLE_PROFILING", -1);
+  if (envVarSession_enable_profiling != -1)
+  {
+    bool envVarSession_enable_profilingBool = envVarSession_enable_profiling == 0 ? false : true;
+    if (finalized_session_options.enable_profiling != envVarSession_enable_profilingBool) {
+      LOGS(default_logger, INFO) << "Overriding enable_profiling. Original:" << finalized_session_options.enable_profiling << " New:" << envVarSession_enable_profilingBool;
+      finalized_session_options.enable_profiling = envVarSession_enable_profilingBool;
+    }
+  }
+
+  std::string envVarSession_profile_file_prefix = ParseEnvironmentVariableWithDefault<std::string>("ORT_DEBUG_SESSION_PROFILE_FILE_PREFIX", "");
+  if (envVarSession_profile_file_prefix != "")
+  {
+    std::basic_string<ORTCHAR_T> profile_file_prefix_ort_string;
+
+    #ifdef _WIN32
+    profile_file_prefix_ort_string = std::wstring_convert<std::codecvt_utf8<wchar_t>>().from_bytes(envVarSession_profile_file_prefix);
+    #else
+    profile_file_prefix_ort_string = envVarSession_profile_file_prefix;
+    #endif
+
+    LOGS(default_logger, INFO) << "Overriding profile_file_prefix. Original:"
+                               << std::wstring_convert<std::codecvt_utf8<wchar_t>>().to_bytes(finalized_session_options.profile_file_prefix) << " New:"
+                               << std::wstring_convert<std::codecvt_utf8<wchar_t>>().to_bytes(profile_file_prefix_ort_string);
+    finalized_session_options.profile_file_prefix = profile_file_prefix_ort_string;
+  }
+
+  int envVarSession_graph_optimization_level = ParseEnvironmentVariableWithDefault<int>("ORT_DEBUG_SESSION_GRAPH_OPTIMIZATION_LEVEL", -1);
+  if (envVarSession_graph_optimization_level != -1 && envVarSession_graph_optimization_level <= static_cast<int>(TransformerLevel::MaxLevel)) {
+    LOGS(default_logger, INFO) << "Overriding graph_optimization_level. Original:" << static_cast<int>(finalized_session_options.graph_optimization_level) << " New:" << envVarSession_graph_optimization_level;
+    finalized_session_options.graph_optimization_level = static_cast<TransformerLevel>(envVarSession_graph_optimization_level);
+  }
+
+  // Note this is inverse from intuitive with Verbose=0, Error=4
+  int envVarSession_log_severity_level = ParseEnvironmentVariableWithDefault<int>("ORT_DEBUG_SESSION_LOG_SEVERITY_LEVEL", -1);
+  if (envVarSession_log_severity_level != -1 && envVarSession_log_severity_level <= ORT_LOGGING_LEVEL_FATAL) {
+    LOGS(default_logger, INFO) << "Overriding session_log_severity_level. Original:" << finalized_session_options.session_log_severity_level << " New:" << envVarSession_log_severity_level;
+    finalized_session_options.session_log_severity_level = envVarSession_log_severity_level;
+  }
+
+  int envVarSession_log_verbosity_level = ParseEnvironmentVariableWithDefault<int>("ORT_DEBUG_SESSION_LOG_VERBOSITY_LEVEL", -1);
+  if (envVarSession_log_verbosity_level != -1) {
+    LOGS(default_logger, INFO) << "Overriding session_log_verbosity_level. Original:" << finalized_session_options.session_log_verbosity_level << " New:" << envVarSession_log_verbosity_level;
+    finalized_session_options.session_log_verbosity_level = envVarSession_log_verbosity_level;
+  }
+
+  int envVarSession_enable_Cpu_Mem_Arena = ParseEnvironmentVariableWithDefault<int>("ORT_DEBUG_SESSION_ENABLE_CPU_MEM_ARENA", -1);
+  if (envVarSession_enable_Cpu_Mem_Arena != -1)
+  {
+    bool envVarSession_enable_Cpu_Mem_ArenaBool = envVarSession_enable_Cpu_Mem_Arena == 0 ? false : true;
+    if (finalized_session_options.enable_cpu_mem_arena != envVarSession_enable_Cpu_Mem_ArenaBool) {
+      LOGS(default_logger, INFO) << "Overriding enable_cpu_mem_arena. Original:" << finalized_session_options.enable_cpu_mem_arena << " New:" << envVarSession_enable_Cpu_Mem_ArenaBool;
+      finalized_session_options.enable_cpu_mem_arena = envVarSession_enable_Cpu_Mem_ArenaBool;
+    }
+  }
+
+  int envVarSession_enable_Memory_Pattern = ParseEnvironmentVariableWithDefault<int>("ORT_DEBUG_SESSION_ENABLE_MEMORY_PATTERN", -1);
+  if (envVarSession_enable_Memory_Pattern != -1)
+  {
+    bool envVarSession_enable_Memory_PatternBool = envVarSession_enable_Memory_Pattern == 0 ? false : true;
+    if (finalized_session_options.enable_mem_pattern != envVarSession_enable_Memory_PatternBool)
+    LOGS(default_logger, INFO) << "Overriding enable_mem_pattern. Original:" << finalized_session_options.enable_mem_pattern << " New:" << envVarSession_enable_Memory_PatternBool;
+    finalized_session_options.enable_mem_pattern = envVarSession_enable_Memory_PatternBool;
+  }
+
+  int envVarSession_enable_mem_reuse = ParseEnvironmentVariableWithDefault<int>("ORT_DEBUG_SESSION_ENABLE_MEM_REUSE", -1);
+  if (envVarSession_enable_mem_reuse != -1)
+  {
+    bool envVarSession_enable_mem_reuseBool = envVarSession_enable_mem_reuse == 0 ? false : true;
+    if (finalized_session_options.enable_mem_reuse != envVarSession_enable_mem_reuseBool)
+    LOGS(default_logger, INFO) << "Overriding enable_mem_reuse. Original:" << finalized_session_options.enable_mem_reuse << " New:" << envVarSession_enable_mem_reuseBool;
+    finalized_session_options.enable_mem_reuse = envVarSession_enable_mem_reuseBool;
+  }
+
+#if !defined(ORT_MINIMAL_BUILD)
+  logging::LoggingManager::SetDefaultLoggerSeverity(defaultLoggerOrigSeverity);
+#endif
 
   return Status::OK();
 }
