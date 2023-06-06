@@ -190,13 +190,19 @@ def chain_model(args):
         "sequences", TensorProto.INT32, ["batch_size", "num_return_sequences", "max_length"]
     )
     graph_outputs = [sequences]
-    if args.output_cross_qk or (not args.cross_qk_onnx_model):
+    if args.output_cross_qk or (not args.cross_qk_onnx_model and args.collect_cross_qk):
         cross_qk = helper.make_tensor_value_info(
             "cross_qk",
             float_data_type,
             ["batch_size", "num_return_sequences", "num_layer_head_cross_qk", "max_length", "frames"],
         )
         graph_outputs.extend([cross_qk])
+
+    if args.output_no_speech_probs:
+        no_speech_probs = helper.make_tensor_value_info(
+            "no_speech_probs", float_data_type, ["batch_size"]
+        )
+        graph_outputs.extend([no_speech_probs])
 
     if hasattr(args, "use_gpu") and args.use_gpu:
         if update_decoder_subgraph_share_buffer_and_use_decoder_masked_mha(decoder_model.graph):

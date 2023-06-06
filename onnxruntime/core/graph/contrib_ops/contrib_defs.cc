@@ -1126,6 +1126,9 @@ ONNX_MS_OPERATOR_SET_SCHEMA(BeamSearch, 1,
                                 .Attr("extra_decoding_round",
                                       "Do one extra decoding round, for example, to get tail cross qk, when decoding for all batches are finished. Default 0.",
                                       AttributeProto::INT, OPTIONAL_VALUE)
+                                .Attr("no_speech_token",
+                                      "The token in whisper model that mark all sequence empty. With this model, whisper could output no_speech_prob after  Default -1.",
+                                      AttributeProto::INT, OPTIONAL_VALUE)
                                 .Input(0, "input_ids", "The sequence used as a prompt for the generation in the encoder subgraph. Shape is (batch_size, sequence_length)", "F")
                                 .Input(1, "max_length", "The maximum length of the sequence to be generated. Shape is (1)", "I")
                                 .Input(2, "min_length", "The minimum length below which the score of eos_token_id is set to -Inf. Shape is (1)", "I", OpSchema::Optional)
@@ -1163,6 +1166,11 @@ ONNX_MS_OPERATOR_SET_SCHEMA(BeamSearch, 1,
                                         "F = the frames or kv-seq-len of the cross attention input, T = real decoded token length, L = number of layers,"
                                         "B = batch size, R = num_return_sequences. It then should return tensor of shape [B, R, L*H, T, F]."
                                         "If cross_qk_layer_head is given, shape is [B, R, cross_qk_layer_head.shape[0], T, F]",
+                                        "T", OpSchema::Optional)
+                                .Output(4, "non_speech_probs",
+                                        "For whisper model, output the probabilities from logits after encoder and context decoding for the no_speech_token."
+                                        "Currently we treat the last token's logits is what we need, in future extra graph logic may be add to the encoder/context-decoder subgraph."
+                                        "The prob is save before logits may be updated by extra-decoding-ids. The shape of non_speech_probs is [B]",
                                         "T", OpSchema::Optional)
                                 .TypeConstraint("T", {"tensor(float)", "tensor(float16)"}, "Constrain to float tensors.")
                                 .TypeConstraint("F", {"tensor(float)", "tensor(int32)", "tensor(float16)"}, "Constrain input type to float or int tensors.")
