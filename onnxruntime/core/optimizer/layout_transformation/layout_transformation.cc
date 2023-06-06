@@ -23,9 +23,17 @@ const std::unordered_set<std::string_view>& GetORTLayoutSensitiveOps() {
   static std::unordered_set<std::string_view> ort_layout_sensitive_ops = []() {
     const auto& layout_sensitive_ops = onnx_transpose_optimization::GetLayoutSensitiveOps();
     std::unordered_set<std::string_view> ort_specific_ops =
-        {"FusedConv",
-         "QLinearAveragePool",
-         "QLinearGlobalAveragePool"};
+    { "FusedConv",
+      "QLinearAveragePool",
+      "QLinearGlobalAveragePool"
+#if defined(USE_CUDA) || defined(USE_ROCM) || defined(USE_QNN) || defined(USE_WEBNN)
+      // The CUDA/ROCM Resize kernel is layout sensitive as it only handles NCHW input.
+      // The CPU kernel and ONNX spec are not limited to handling NCHW input so are not layout sensitive, and
+      // onnx_layout_transformation::HandleResize is used.
+      ,
+      "Resize"
+#endif
+    };
 
     ort_specific_ops.insert(layout_sensitive_ops.cbegin(), layout_sensitive_ops.cend());
     return ort_specific_ops;

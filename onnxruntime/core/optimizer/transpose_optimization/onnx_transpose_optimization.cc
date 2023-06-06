@@ -1922,7 +1922,7 @@ OptimizeResult OptimizeImpl(OptimizerCtx& ctx) {
   //    We can modify any existing nodes and add new nodes.
   //    ctx.provider_type is empty.
   //
-  //    Level 1 optimizers may also run after layout transformation to do things like constant folding. 
+  //    Level 1 optimizers may also run after layout transformation to do things like constant folding.
   //    In this case we can only modify unassigned nodes.
   //
   // 2. Layout transformation:
