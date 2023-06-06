@@ -26,6 +26,7 @@ void BeamSearchParameters::ParseFromAttributes(const OpKernelInfo& info) {
   no_repeat_ngram_size = static_cast<int>(info.GetAttrOrDefault<int64_t>("no_repeat_ngram_size", 0));
   vocab_size = static_cast<int>(info.GetAttrOrDefault<int64_t>("vocab_size", -1));
   extra_decoding_round = (info.GetAttrOrDefault<int64_t>("extra_decoding_round", 0LL) != 0LL);
+  no_speech_token = static_cast<int>(info.GetAttrOrDefault<int64_t>("no_speech_token", -1LL));
 }
 
 void BeamSearchParameters::ParseFromInputs(OpKernelContext* context) {
