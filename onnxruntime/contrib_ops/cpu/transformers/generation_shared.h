@@ -179,6 +179,7 @@ struct IGenerationParameters {
 
   bool decoder_output_cross_qk = false;
   gsl::span<const int32_t> extra_decoding_ids;
+  bool extra_decoding_round = false;
 };
 
 }  // namespace transformers

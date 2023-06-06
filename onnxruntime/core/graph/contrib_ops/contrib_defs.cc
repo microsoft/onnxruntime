@@ -1146,8 +1146,8 @@ ONNX_MS_OPERATOR_SET_SCHEMA(BeamSearch, 1,
                                        "Only keep this list of (layer, head) of QK in the final cross_qk output when use_cross_qk is set. Default collect all"
                                        "its shape is (number of (layer, head) to keep, 2), i.e., [[layer_id1, head_id1], [layer_id2, head_id2]......]",
                                        "I", OpSchema::Optional)
-                                .Input(13, "extra_decoding_ids_for_cross_qk",
-                                       "Part of the decoder_input_ids that we need cross qk for it. it is of shape  (batch_size, extra_input_ids_for_cross_qk)."
+                                .Input(13, "extra_decoding_ids",
+                                       "Part of the decoder_input_ids that we need cross qk for it. it is of shape  (batch_size, extra_decoding_ids_len)."
                                        "In such case, we should remove this from the tail of the decoder_input_ids, and put it here. ids < 0 in it (for multiple batch) "
                                        "are treated as stop of the extra_decoding_ids for corresponding batch.",
                                        "I", OpSchema::Optional)
