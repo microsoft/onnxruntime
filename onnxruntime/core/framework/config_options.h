@@ -34,7 +34,6 @@ struct ConfigOptions {
   Status AddConfigEntry(const char* config_key, const char* config_value) noexcept;
 
   friend std::ostream& operator<<(std::ostream& os, const ConfigOptions& config_options);
-
 };
 
 }  // namespace onnxruntime

@@ -14,19 +14,19 @@
 #include "core/common/logging/logging.h"
 
 std::ostream& operator<<(std::ostream& os, const OrtThreadPoolParams& params) {
-    os << "OrtThreadPoolParams {";
-    os << " thread_pool_size: " << params.thread_pool_size;
-    os << " auto_set_affinity: " << params.auto_set_affinity;
-    os << " allow_spinning: " << params.allow_spinning;
-    os << " dynamic_block_base_: " << params.dynamic_block_base_;
-    os << " stack_size: " << params.stack_size;
-    os << " affinity_str: " << params.affinity_str;
-    // os << " name: " << (params.name ? params.name : L"nullptr");
-    os << " set_denormal_as_zero: " << params.set_denormal_as_zero;
-    //os << " custom_create_thread_fn: " << (params.custom_create_thread_fn ? "set" : "nullptr");
-    //os << " custom_thread_creation_options: " << (params.custom_thread_creation_options ? "set" : "nullptr");
-    //os << " custom_join_thread_fn: " << (params.custom_join_thread_fn ? "set" : "nullptr");
-    os << " }";
+  os << "OrtThreadPoolParams {";
+  os << " thread_pool_size: " << params.thread_pool_size;
+  os << " auto_set_affinity: " << params.auto_set_affinity;
+  os << " allow_spinning: " << params.allow_spinning;
+  os << " dynamic_block_base_: " << params.dynamic_block_base_;
+  os << " stack_size: " << params.stack_size;
+  os << " affinity_str: " << params.affinity_str;
+  // os << " name: " << (params.name ? params.name : L"nullptr");
+  os << " set_denormal_as_zero: " << params.set_denormal_as_zero;
+  // os << " custom_create_thread_fn: " << (params.custom_create_thread_fn ? "set" : "nullptr");
+  // os << " custom_thread_creation_options: " << (params.custom_thread_creation_options ? "set" : "nullptr");
+  // os << " custom_join_thread_fn: " << (params.custom_join_thread_fn ? "set" : "nullptr");
+  os << " }";
   return os;
 }
 

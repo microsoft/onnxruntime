@@ -25,21 +25,19 @@ enum class ExecutionOrder {
   PRIORITY_BASED = 1  // priority-based topological sort
 };
 
-inline std::ostream& operator<<(std::ostream& os, const ExecutionOrder& order)
-{
-    switch (order)
-    {
-        case ExecutionOrder::DEFAULT:
-            os << "DEFAULT";
-            break;
-        case ExecutionOrder::PRIORITY_BASED:
-            os << "PRIORITY_BASED";
-            break;
-        default:
-            os << "UNKNOWN";
-            break;
-    }
-    return os;
+inline std::ostream& operator<<(std::ostream& os, const ExecutionOrder& order) {
+  switch (order) {
+    case ExecutionOrder::DEFAULT:
+      os << "DEFAULT";
+      break;
+    case ExecutionOrder::PRIORITY_BASED:
+      os << "PRIORITY_BASED";
+      break;
+    default:
+      os << "UNKNOWN";
+      break;
+  }
+  return os;
 }
 
 enum class FreeDimensionOverrideType {

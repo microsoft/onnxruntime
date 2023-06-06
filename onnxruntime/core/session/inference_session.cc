@@ -346,32 +346,32 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
   InitLogger(logging_manager_);  // this sets session_logger_ so that it can be used for logging after this point.
 
   LOGS(*session_logger_, INFO) << "Session Options { "
-                               << " execution_mode:"                     << session_options_.execution_mode
-                               << " execution_order:"                    << session_options_.execution_order
-                               << " enable_profiling:"                   << session_options_.enable_profiling
-                               << " optimized_model_filepath:"           << std::wstring_convert<std::codecvt_utf8<wchar_t>>().to_bytes(session_options_.optimized_model_filepath)
-                               << " enable_mem_pattern:"                 << session_options_.enable_mem_pattern
-                               << " enable_mem_reuse:"                   << session_options_.enable_mem_reuse
-                               << " enable_cpu_mem_arena:"               << session_options_.enable_cpu_mem_arena
-                               << " profile_file_prefix:"                << std::wstring_convert<std::codecvt_utf8<wchar_t>>().to_bytes(session_options_.profile_file_prefix)
-                               << " session_logid:"                      << session_options_.session_logid
-                               << " session_log_severity_level:"         << session_options_.session_log_severity_level
-                               << " session_log_verbosity_level:"        << session_options_.session_log_verbosity_level
+                               << " execution_mode:" << session_options_.execution_mode
+                               << " execution_order:" << session_options_.execution_order
+                               << " enable_profiling:" << session_options_.enable_profiling
+                               << " optimized_model_filepath:" << std::wstring_convert<std::codecvt_utf8<wchar_t>>().to_bytes(session_options_.optimized_model_filepath)
+                               << " enable_mem_pattern:" << session_options_.enable_mem_pattern
+                               << " enable_mem_reuse:" << session_options_.enable_mem_reuse
+                               << " enable_cpu_mem_arena:" << session_options_.enable_cpu_mem_arena
+                               << " profile_file_prefix:" << std::wstring_convert<std::codecvt_utf8<wchar_t>>().to_bytes(session_options_.profile_file_prefix)
+                               << " session_logid:" << session_options_.session_logid
+                               << " session_log_severity_level:" << session_options_.session_log_severity_level
+                               << " session_log_verbosity_level:" << session_options_.session_log_verbosity_level
                                << " max_num_graph_transformation_steps:" << session_options_.max_num_graph_transformation_steps
-                               << " graph_optimization_level:"           << static_cast<int>(session_options_.graph_optimization_level)
-                               << " intra_op_param:"                     << session_options_.intra_op_param
-                               << " inter_op_param:"                     << session_options_.inter_op_param
+                               << " graph_optimization_level:" << static_cast<int>(session_options_.graph_optimization_level)
+                               << " intra_op_param:" << session_options_.intra_op_param
+                               << " inter_op_param:" << session_options_.inter_op_param
                                //<< " free_dimension_overrides:"           << session_options_.free_dimension_overrides
-                               << " use_per_session_threads:"            << session_options_.use_per_session_threads
-                               << " thread_pool_allow_spinning:"         << session_options_.thread_pool_allow_spinning
-                               << " use_deterministic_compute:"          << session_options_.use_deterministic_compute
-                               << " config_options: { "                  << session_options_.config_options << " }"
-                               //<< " initializers_to_share_map:"          << session_options_.initializers_to_share_map
+                               << " use_per_session_threads:" << session_options_.use_per_session_threads
+                               << " thread_pool_allow_spinning:" << session_options_.thread_pool_allow_spinning
+                               << " use_deterministic_compute:" << session_options_.use_deterministic_compute
+                               << " config_options: { " << session_options_.config_options << " }"
+  //<< " initializers_to_share_map:"          << session_options_.initializers_to_share_map
 #if !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_EXTERNAL_INITIALIZERS)
-                                //<< " external_initializers:"             << session_options_.external_initializers
+  //<< " external_initializers:"             << session_options_.external_initializers
 #endif
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
-                              //<< " custom_op_libs:" << session_options_.custom_op_libs
+  //<< " custom_op_libs:" << session_options_.custom_op_libs
 #endif
                                << " }";
 
