@@ -3,7 +3,9 @@
 
 #include "api.h"
 
+#include "onnxruntime_training_cxx_api.h"
 #include "core/session/onnxruntime_cxx_api.h"
+// #include "orttraining/training_api/include/onnxruntime_training_cxx_api.h"
 
 #include <iostream>
 #include <vector>
@@ -23,9 +25,13 @@ OrtErrorCode CheckStatus(OrtStatusPtr status) {
   }
   return g_last_error_code;
 }
+// TODO: add checkstatus for training api or add flag for training api version
 
 #define CHECK_STATUS(ORT_API_NAME, ...) \
   CheckStatus(Ort::GetApi().ORT_API_NAME(__VA_ARGS__))
+
+#define CHECK_TRAINING_STATUS(ORT_API_NAME, ...) \
+  CheckStatus(Ort::GetTrainingApi().ORT_API_NAME(__VA_ARGS__))
 
 #define RETURN_ERROR_CODE_IF_ERROR(ORT_API_NAME, ...)         \
   do {                                                        \
@@ -157,6 +163,11 @@ void OrtReleaseSessionOptions(OrtSessionOptions* session_options) {
 }
 
 OrtSession* OrtCreateSession(void* data, size_t data_length, OrtSessionOptions* session_options) {
+  // OrtSessionOptions must not be nullptr.
+  if (session_options == nullptr) {
+    return nullptr;
+  }
+
 #if defined(__EMSCRIPTEN_PTHREADS__)
   RETURN_NULLPTR_IF_ERROR(DisablePerSessionThreads, session_options);
 #else
@@ -379,5 +390,12 @@ char* OrtEndProfiling(ort_session_handle_t session) {
   char* file_name = nullptr;
   return (CHECK_STATUS(SessionEndProfiling, session, allocator, &file_name) == ORT_OK)
              ? file_name
+             : nullptr;
+}
+
+OrtCheckpointState* OrtTrainingLoadCheckpoint(const ORTCHAR_T* path_to_checkpoint) {
+  OrtCheckpointState* checkpoint = nullptr;
+  return (CHECK_TRAINING_STATUS(LoadCheckpoint, path_to_checkpoint, &checkpoint) == ORT_OK)
+             ? checkpoint
              : nullptr;
 }
