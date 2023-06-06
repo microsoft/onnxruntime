@@ -264,8 +264,7 @@ static Status FinalizeSessionOptions(const SessionOptions& user_provided_session
   }
 
   int envVarSession_enable_profiling = ParseEnvironmentVariableWithDefault<int>("ORT_DEBUG_SESSION_ENABLE_PROFILING", -1);
-  if (envVarSession_enable_profiling != -1)
-  {
+  if (envVarSession_enable_profiling != -1) {
     bool envVarSession_enable_profilingBool = envVarSession_enable_profiling == 0 ? false : true;
     if (finalized_session_options.enable_profiling != envVarSession_enable_profilingBool) {
       LOGS(default_logger, INFO) << "Overriding enable_profiling. Original:" << finalized_session_options.enable_profiling << " New:" << envVarSession_enable_profilingBool;
@@ -274,15 +273,14 @@ static Status FinalizeSessionOptions(const SessionOptions& user_provided_session
   }
 
   std::string envVarSession_profile_file_prefix = ParseEnvironmentVariableWithDefault<std::string>("ORT_DEBUG_SESSION_PROFILE_FILE_PREFIX", "");
-  if (envVarSession_profile_file_prefix != "")
-  {
+  if (envVarSession_profile_file_prefix != "") {
     std::basic_string<ORTCHAR_T> profile_file_prefix_ort_string;
 
-    #ifdef _WIN32
+#ifdef _WIN32
     profile_file_prefix_ort_string = std::wstring_convert<std::codecvt_utf8<wchar_t>>().from_bytes(envVarSession_profile_file_prefix);
-    #else
+#else
     profile_file_prefix_ort_string = envVarSession_profile_file_prefix;
-    #endif
+#endif
 
     LOGS(default_logger, INFO) << "Overriding profile_file_prefix. Original:"
                                << std::wstring_convert<std::codecvt_utf8<wchar_t>>().to_bytes(finalized_session_options.profile_file_prefix) << " New:"
@@ -310,8 +308,7 @@ static Status FinalizeSessionOptions(const SessionOptions& user_provided_session
   }
 
   int envVarSession_enable_Cpu_Mem_Arena = ParseEnvironmentVariableWithDefault<int>("ORT_DEBUG_SESSION_ENABLE_CPU_MEM_ARENA", -1);
-  if (envVarSession_enable_Cpu_Mem_Arena != -1)
-  {
+  if (envVarSession_enable_Cpu_Mem_Arena != -1) {
     bool envVarSession_enable_Cpu_Mem_ArenaBool = envVarSession_enable_Cpu_Mem_Arena == 0 ? false : true;
     if (finalized_session_options.enable_cpu_mem_arena != envVarSession_enable_Cpu_Mem_ArenaBool) {
       LOGS(default_logger, INFO) << "Overriding enable_cpu_mem_arena. Original:" << finalized_session_options.enable_cpu_mem_arena << " New:" << envVarSession_enable_Cpu_Mem_ArenaBool;
@@ -320,21 +317,21 @@ static Status FinalizeSessionOptions(const SessionOptions& user_provided_session
   }
 
   int envVarSession_enable_Memory_Pattern = ParseEnvironmentVariableWithDefault<int>("ORT_DEBUG_SESSION_ENABLE_MEMORY_PATTERN", -1);
-  if (envVarSession_enable_Memory_Pattern != -1)
-  {
+  if (envVarSession_enable_Memory_Pattern != -1) {
     bool envVarSession_enable_Memory_PatternBool = envVarSession_enable_Memory_Pattern == 0 ? false : true;
-    if (finalized_session_options.enable_mem_pattern != envVarSession_enable_Memory_PatternBool)
-    LOGS(default_logger, INFO) << "Overriding enable_mem_pattern. Original:" << finalized_session_options.enable_mem_pattern << " New:" << envVarSession_enable_Memory_PatternBool;
-    finalized_session_options.enable_mem_pattern = envVarSession_enable_Memory_PatternBool;
+    if (finalized_session_options.enable_mem_pattern != envVarSession_enable_Memory_PatternBool) {
+      LOGS(default_logger, INFO) << "Overriding enable_mem_pattern. Original:" << finalized_session_options.enable_mem_pattern << " New:" << envVarSession_enable_Memory_PatternBool;
+      finalized_session_options.enable_mem_pattern = envVarSession_enable_Memory_PatternBool;
+    }
   }
 
   int envVarSession_enable_mem_reuse = ParseEnvironmentVariableWithDefault<int>("ORT_DEBUG_SESSION_ENABLE_MEM_REUSE", -1);
-  if (envVarSession_enable_mem_reuse != -1)
-  {
+  if (envVarSession_enable_mem_reuse != -1) {
     bool envVarSession_enable_mem_reuseBool = envVarSession_enable_mem_reuse == 0 ? false : true;
-    if (finalized_session_options.enable_mem_reuse != envVarSession_enable_mem_reuseBool)
-    LOGS(default_logger, INFO) << "Overriding enable_mem_reuse. Original:" << finalized_session_options.enable_mem_reuse << " New:" << envVarSession_enable_mem_reuseBool;
-    finalized_session_options.enable_mem_reuse = envVarSession_enable_mem_reuseBool;
+    if (finalized_session_options.enable_mem_reuse != envVarSession_enable_mem_reuseBool) {
+      LOGS(default_logger, INFO) << "Overriding enable_mem_reuse. Original:" << finalized_session_options.enable_mem_reuse << " New:" << envVarSession_enable_mem_reuseBool;
+      finalized_session_options.enable_mem_reuse = envVarSession_enable_mem_reuseBool;
+    }
   }
 
 #if !defined(ORT_MINIMAL_BUILD)
