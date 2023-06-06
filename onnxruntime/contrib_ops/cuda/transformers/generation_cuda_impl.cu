@@ -1506,6 +1506,7 @@ __global__ void ForceDecodingIdsKernel(
   const int batch = blockIdx.z;
   beam_scores += (((int64_t)batch * num_beams + beam)* vocab_size); // move to (batch, beam)
   const int32_t id_wanted = force_ids[((int64_t)batch * id_len) + step];
+  if (id_wanted < 0 || id_wanted >= vocab_size) return;
 
   const int32_t elements_per_block = (int32_t)blockDim.x * ElementsPerThreads;
   const int32_t block_start_id = blockIdx.x * elements_per_block;
