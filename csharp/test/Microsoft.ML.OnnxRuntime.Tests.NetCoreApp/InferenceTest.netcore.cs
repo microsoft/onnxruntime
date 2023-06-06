@@ -604,7 +604,14 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                      IReadOnlyList<NamedOnnxValue> inputContainer, IReadOnlyList<NamedOnnxValue> outputContainer)
         {
             var outMeta = session.OutputMetadata;
-            using (var resultCollection = session.Run(inputContainer))
+
+            var orderedOutputNames = new List<string>(outputContainer.Count);
+            foreach (var output in outputContainer)
+            {
+                orderedOutputNames.Add(output.Name);
+            }
+
+            using (var resultCollection = session.Run(inputContainer, orderedOutputNames))
             {
                 Assert.Equal(outputContainer.Count, resultCollection.Count);
                 for (int i = 0; i < resultCollection.Count; ++i)
@@ -613,6 +620,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                     var outputValue = outputContainer[i];
 
                     Assert.NotNull(outputValue);
+                    Assert.Equal(result.Name, outputValue.Name);
 
                     var outputMeta = outMeta[outputValue.Name];
                     if (outputMeta.OnnxValueType == OnnxValueType.ONNX_TYPE_OPTIONAL)
