@@ -307,6 +307,7 @@ Status BeamSearchWhisper<T>::Execute(const FeedsFetchesManager& encoder_feeds_fe
     }
   }
 
+  int extra_round = parameters->extra_decoding_round ? 1 : 0;
   while (current_length < parameters->max_length) {
     iteration_counter++;
 #ifdef DEBUG_GENERATION
@@ -354,7 +355,10 @@ Status BeamSearchWhisper<T>::Execute(const FeedsFetchesManager& encoder_feeds_fe
 
     // When all batches are finished, stop earlier to avoid wasting computation.
     if (this->beam_scorer_->IsDone()) {
-      break;
+      if (extra_round > 0)
+        extra_round = 0;
+      else
+        break;
     }
 
     // Increase sequence length after a new token is generated.
