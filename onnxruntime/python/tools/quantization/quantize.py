@@ -144,6 +144,17 @@ class StaticQuantConfig(QuantConfig):
                         a DeQuantizeLinear node. If False, it remains floating-point bias and does not insert
                         any quantization nodes associated with biases.
                         This extra option is only effective when quant_format is QuantFormat.QDQ.
+                    SmoothQuant = True/False :
+                        Default is False. If enabled, SmoothQuant algorithm will be applied before quantization to do
+                        fake input channel quantization.
+                    SmoothQuantAlpha = 0.5 :
+                        Default is 0.5. Support 'auto' or a float value, 'auto' means automatic tuning. It only works
+                        if SmoothQuant is True. It controls the difficulty of weight and activation quantization. A larger
+                        alpha value could be used on models with more significant activation outliers to migrate more
+                        quantization difficulty to weights.
+                    SmoothQuantFolding = True/False :
+                        Default is True. It only works if SmoothQuant is True. If enabled, inserted Mul ops during
+                        SmoothQuant will be folded into the previous op if the previous op is foldable.
             execution_provider : A enum indicates the Execution Provider such as: CPU, TRT, NNAPI, SNE, etc.
         Raises:
             ValueError: Raise ValueError if execution provider is unknown
@@ -330,6 +341,17 @@ def quantize_static(
                     Default is 0.01. Constant smoothing factor to use when computing the moving average of the
                     minimum and maximum values. Effective only when the calibration method selected is MinMax and
                     when CalibMovingAverage is set to True.
+                SmoothQuant = True/False :
+                    Default is False. If enabled, SmoothQuant algorithm will be applied before quantization to do
+                    fake input channel quantization.
+                SmoothQuantAlpha = 0.5 :
+                    Default is 0.5. Support 'auto' or a float value, 'auto' means automatic tuning. It only works
+                    if SmoothQuant is True. It controls the difficulty of weight and activation quantization. A larger
+                    alpha value could be used on models with more significant activation outliers to migrate more
+                    quantization difficulty to weights.
+                SmoothQuantFolding = True/False :
+                    Default is True. It only works if SmoothQuant is True. If enabled, inserted Mul ops during
+                    SmoothQuant will be folded into the previous op if the previous op is foldable.
     """
 
     extra_options = extra_options or {}
@@ -361,6 +383,18 @@ def quantize_static(
     calib_extra_options = {
         key: extra_options.get(name) for (name, key) in calib_extra_options_keys if name in extra_options
     }
+
+    if extra_options.get('SmoothQuant', False):
+        from neural_compressor.adaptor.ox_utils.smooth_quant import ORTSmoothQuant
+        import copy
+        orig_nodes = [i.name for i in model.graph.node]
+        def dataloader():
+            inc_dataloader = copy.deepcopy(calibration_data_reader)
+            for data in inc_dataloader:
+                yield data, None
+        sq = ORTSmoothQuant(model, dataloader(), reduce_range)
+        model = sq.transform(extra_options.get('SmoothQuantAlpha', 0.5), extra_options.get('SmoothQuantFolding', True)).model
+        nodes_to_exclude.extend([i.name for i in model.graph.node if i.name not in orig_nodes])
 
     with tempfile.TemporaryDirectory(prefix="ort.quant.") as quant_tmp_dir:
         calibrator = create_calibrator(
