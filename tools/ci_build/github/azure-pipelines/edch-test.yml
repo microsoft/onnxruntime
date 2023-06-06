@@ -29,6 +29,6 @@ jobs:
         -no-snapshot -no-audio -no-boot-anim -no-window \
         -partition-size 4096 &
 
-      ${ANDROID_SDK_ROOT}/platform-tools/adb wait-for-device shell 'while [[ -z $(getprop sys.boot_completed) | tr -d '\r' ]]; do sleep 1; done; input keyevent 82'
+      ${ANDROID_SDK_ROOT}/platform-tools/adb wait-for-device shell 'while [[ -z $(getprop sys.boot_completed | tr -d '\r') ]]; do sleep 1; done; input keyevent 82'
     displayName: Start Android emulator
     timeoutInMinutes: 10
