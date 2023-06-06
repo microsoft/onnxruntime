@@ -461,12 +461,18 @@ TEST(MultiHeadAttentionTest, CrossAttention_Batch2_HeadSize40) {
   AttentionTestData data;
   GetCrossAttentionData_HeadSize40(data);
   RunMultiHeadAttentionTests(data);
+
+  GetCrossAttentionData_HeadSize40_NoBias(data);
+  RunMultiHeadAttentionTests(data);
 }
 
 TEST(MultiHeadAttentionTest, CrossAttention_Batch2_HeadSize32_RightSidePadding_Mask1D) {
   ROCM_GTEST_SKIP("ROCm MHA does not support mask");
   AttentionTestData data;
   GetCrossAttentionData_Batch2_HeadSize32_RightSidePadding(data, true);
+  RunMultiHeadAttentionTests(data, true);
+
+  GetCrossAttentionData_Batch2_HeadSize32_RightSidePadding_NoBias(data, true);
   RunMultiHeadAttentionTests(data, true);
 }
 
@@ -475,12 +481,18 @@ TEST(MultiHeadAttentionTest, CrossAttention_Batch2_HeadSize32_RightSidePadding_M
   AttentionTestData data;
   GetCrossAttentionData_Batch2_HeadSize32_RightSidePadding(data, false);
   RunMultiHeadAttentionTests(data, true);
+
+  GetCrossAttentionData_Batch2_HeadSize32_RightSidePadding_NoBias(data, false);
+  RunMultiHeadAttentionTests(data, true);
 }
 
 TEST(MultiHeadAttentionTest, CrossAttention_Batch1_HeadSize32_LeftSidePadding_Mask2D) {
   ROCM_GTEST_SKIP("ROCm MHA does not support mask");
   AttentionTestData data;
   GetCrossAttentionData_Batch1_HeadSize32_LeftSidePadding(data);
+  RunMultiHeadAttentionTests(data, true);
+
+  GetCrossAttentionData_Batch1_HeadSize32_LeftSidePadding_NoBias(data);
   RunMultiHeadAttentionTests(data, true);
 }
 
@@ -505,12 +517,18 @@ TEST(MultiHeadAttentionTest, CrossAttention_Batch2_HeadSize16_8) {
   AttentionTestData data;
   GetCrossAttentionData_HeadSize16_8(data);
   RunMultiHeadAttentionTests(data);
+
+  GetCrossAttentionData_HeadSize16_8_NoBias(data);
+  RunMultiHeadAttentionTests(data);
 }
 
 TEST(MultiHeadAttentionTest, CrossAttention_Batch1_HeadSize16) {
   ROCM_GTEST_SKIP("ROCm MHA does not support bias");
   AttentionTestData data;
   GetCrossAttentionData_HeadSize16(data);
+  RunMultiHeadAttentionTests(data);
+
+  GetCrossAttentionData_HeadSize16_NoBias(data);
   RunMultiHeadAttentionTests(data);
 }
 
