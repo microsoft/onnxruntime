@@ -78,7 +78,7 @@ using InitBeamStateFunc = std::function<void(
     int num_beams,
     Stream* stream)>;
 
-using CreateBeamScorer = std::function<std::unique_ptr<transformers::IBeamScorer>(const transformers::IGenerationParameters& parameters, AllocatorPtr& allocator, Stream* stream)>;
+using CreateBeamScorer = std::function<std::unique_ptr<transformers::IBeamScorer>(const transformers::IGenerationParameters& parameters, AllocatorPtr& allocator, AllocatorPtr& allocator_cpu, Stream* stream)>;
 
 template <typename T>
 using InitGreedyStateFunc = std::function<void(

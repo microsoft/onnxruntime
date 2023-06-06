@@ -52,7 +52,7 @@ void InitBeamState(transformers::IBeamSearchState<T>* beam_state,
                    int num_beams,
                    Stream* ort_stream);
 
-std::unique_ptr<transformers::IBeamScorer> CreateBeamScorer(const transformers::IGenerationParameters& parameters, AllocatorPtr& allocator, Stream* ort_stream);
+std::unique_ptr<transformers::IBeamScorer> CreateBeamScorer(const transformers::IGenerationParameters& parameters, AllocatorPtr& allocator, AllocatorPtr& allocator_cpu, Stream* ort_stream);
 
 template <typename T>
 void InitGreedyState(transformers::IGreedySearchState<T>* greedy_state,

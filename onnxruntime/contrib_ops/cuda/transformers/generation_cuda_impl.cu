@@ -75,7 +75,7 @@ __global__ void LogitsProcessKernel(
     int padded_vocab_size,
     int total_elements,
     int demote_token_id,
-    int32_t* sequences,
+    const int32_t* sequences,
     int max_sequence_length,
     int current_sequence_length,
     float repetition_penalty,
@@ -91,7 +91,7 @@ __global__ void LogitsProcessKernel(
     } else {
       // RepetitionPenaltyLogitsProcessor
       if (repetition_penalty != 1.0f) {
-        int32_t* current_sequence = sequences + batch_beam_index * max_sequence_length;
+        const int32_t* current_sequence = sequences + batch_beam_index * max_sequence_length;
         bool found = false;
         for (int i = 0; i < current_sequence_length; i++) {
           if (current_sequence[i] == word_id) {
@@ -107,7 +107,7 @@ __global__ void LogitsProcessKernel(
 
       // NoRepeatNGramLogitsProcessor
       if (no_repeat_ngram_size > 0 && current_sequence_length >= no_repeat_ngram_size) {
-        int32_t* current_sequence = sequences + batch_beam_index * max_sequence_length;
+        const int32_t* current_sequence = sequences + batch_beam_index * max_sequence_length;
         bool found = false;
         for (int i = no_repeat_ngram_size - 1; i < current_sequence_length; i++) {
           if (current_sequence[i] == word_id) {  // last token of n-gram matched
@@ -176,7 +176,7 @@ void LaunchLogitsProcessKernel(
     int vocab_size,
     int padded_vocab_size,
     int demote_token_id,
-    int32_t* sequences,
+    const int32_t* sequences,
     int max_sequence_length,
     int current_sequence_length,
     float repetition_penalty,
@@ -217,7 +217,7 @@ template void LaunchLogitsProcessKernel(
     int vocab_size,
     int padded_vocab_size,
     int demote_token_id,
-    int32_t* sequences,
+    const int32_t* sequences,
     int max_sequence_length,
     int current_sequence_length,
     float repetition_penalty,
@@ -236,7 +236,7 @@ template void LaunchLogitsProcessKernel(
     int vocab_size,
     int padded_vocab_size,
     int demote_token_id,
-    int32_t* sequences,
+    const int32_t* sequences,
     int max_sequence_length,
     int current_sequence_length,
     float repetition_penalty,
@@ -245,20 +245,29 @@ template void LaunchLogitsProcessKernel(
 
 
 __global__ void InitializeBeamHypotheses(gsl::span<BeamHypotheses> beam_hyps, float length_penalty, gsl::span<HypothesisScore> beams, int num_beams) {
-  for (int i = 0; i < beam_hyps.size(); i++) {
-    BeamHypotheses& beam_hyp = beam_hyps[i];
-    beam_hyp.beams_ = beams.subspan(i * num_beams, num_beams);
-    beam_hyp.beams_used_ = 0;
-    beam_hyp.length_penalty_ = length_penalty;
-    beam_hyp.done_ = false;
-  }
+  int index = blockIdx.x * blockDim.x + threadIdx.x;
+  if (index >= beam_hyps.size())
+    return;
+
+  BeamHypotheses& beam_hyp = beam_hyps[index];
+  beam_hyp.beams_ = beams.subspan(index * num_beams, num_beams);
+  beam_hyp.beams_used_ = 0;
+  beam_hyp.length_penalty_ = length_penalty;
+  beam_hyp.done_ = false;
 }
 
 void LaunchInitializeBeamHypotheses(gsl::span<BeamHypotheses> beam_hyps, float length_penalty, gsl::span<HypothesisScore> beams, int num_beams, cudaStream_t stream) {
-  InitializeBeamHypotheses<<<1, 1, 0, stream>>>(beam_hyps, length_penalty, beams, num_beams);
+  int block_size = (beam_hyps.size()+31)&~31; // Round up to nearest multiple of 32
+  int grid_size = 1;
+  if (block_size>256) {
+    grid_size=(block_size+255)/256;
+    block_size=256;
+  }
+
+  InitializeBeamHypotheses<<<grid_size, block_size, 0, stream>>>(beam_hyps, length_penalty, beams, num_beams);
 }
 
-__device__ void BeamHypotheses::Add(const gsl::span<const int32_t>& hypothesis, float sum_logprobs) {
+__device__ void BeamHypotheses::Add(const gsl::span<const int32_t> hypothesis, float sum_logprobs) {
   auto length = hypothesis.size();
   float score = sum_logprobs / pow(static_cast<float>(length), length_penalty_);
 
@@ -285,8 +294,8 @@ __device__ bool BeamHypotheses::CanImprove(float best_sum_logprobs, int current_
 __device__ void BeamHypotheses::Output(
     int top_k,
     int max_length,
-    gsl::span<int32_t>& sequences,       // buffer filled with pad token ID, shape (num_return_sequences, max_length)
-    gsl::span<float>& sequences_scores)  // buffer of shape (num_return_sequences) or empty
+    gsl::span<int32_t> sequences,       // buffer filled with pad token ID, shape (num_return_sequences, max_length)
+    gsl::span<float> sequences_scores)  // buffer of shape (num_return_sequences) or empty
 {
   // Copy the top_k beams into the sequences
   for (int index = 0; index < top_k; index++) {
@@ -312,23 +321,29 @@ __global__ void BeamSearchScorer_Process(BeamScorerState& state,
                                          gsl::span<int32_t> next_beam_tokens_,
                                          gsl::span<int32_t> next_beam_indices_,
                                          gsl::span<int32_t> hypothesis_buffer_,
-                                          gsl::span<const float> next_scores,
+                                         gsl::span<const float> next_scores,
                                          gsl::span<const int32_t> next_tokens,
                                          gsl::span<const int32_t> next_indices) {
   // Sequences shape is (batch_size * num_beams, total_sequence_length)
   // It contains word ID of whole sequence generated so far.
   // It is different from subgraph input_ids, which only need one word when past state is not empty.
 
-  for (size_t batch = 0; batch < state.batch_size_; batch++) {
+  int batch = blockIdx.x * blockDim.x + threadIdx.x;
+  if (batch >= state.batch_size_)
+    return;
+
+  int batch_start = batch * state.num_beams_;
+
+  while (true) {  // Use a while loop so 'break' is equivalent to a goto outside of this scope
     cuda::BeamHypotheses& beam_hyp = beam_hyps_[batch];
     if (beam_hyp.done_) {
       // Pad the batch.
       for (size_t j = 0; j < state.num_beams_; j++) {
-        next_beam_scores_[batch * state.num_beams_ + j] = 0.0f;
-        next_beam_tokens_[batch * state.num_beams_ + j] = state.pad_token_id_;
-        next_beam_indices_[batch * state.num_beams_ + j] = 0;
+        next_beam_scores_[batch_start + j] = 0.0f;
+        next_beam_tokens_[batch_start + j] = state.pad_token_id_;
+        next_beam_indices_[batch_start + j] = 0;
       }
-      continue;
+      break;
     }
 
     // Next tokens for this sentence.
@@ -339,7 +354,7 @@ __global__ void BeamSearchScorer_Process(BeamScorerState& state,
       float next_score = next_scores[batch * top_k + j];
       int32_t next_index = next_indices[batch * top_k + j];
 
-      int batch_beam_idx = static_cast<int>(batch * state.num_beams_) + next_index;
+      int batch_beam_idx = batch_start + next_index;
       // Add to generated hypotheses if end of sentence.
       if ((state.eos_token_id_ >= 0) && (next_token == state.eos_token_id_)) {
         bool is_beam_token_worse_than_top_num_beams = (j >= state.num_beams_);
@@ -349,17 +364,16 @@ __global__ void BeamSearchScorer_Process(BeamScorerState& state,
 
         // Clone the sequence and append to buffer.
         gsl::span<const int32_t> src = sequences_buffer.subspan(batch_beam_idx * state.max_length_, sequence_length);
-        auto clone = hypothesis_buffer_.subspan(state.hypothesis_buffer_used_, sequence_length);
+        auto clone = hypothesis_buffer_.subspan(atomicAdd(&state.hypothesis_buffer_used_, sequence_length), sequence_length);
 
-        for (unsigned i=0;i<src.size();i++)
+        for (unsigned i = 0; i < src.size(); i++)
           clone[i] = src[i];
-        state.hypothesis_buffer_used_ += static_cast<size_t>(sequence_length);
         beam_hyp.Add(gsl::span<const int32_t>(clone.data(), clone.size()), next_score);
       } else {
         // Add next predicted token since it is not eos_token.
-        next_beam_scores_[batch * state.num_beams_ + beam_idx] = next_score;
-        next_beam_tokens_[batch * state.num_beams_ + beam_idx] = next_token;
-        next_beam_indices_[batch * state.num_beams_ + beam_idx] = batch_beam_idx;
+        next_beam_scores_[batch_start + beam_idx] = next_score;
+        next_beam_tokens_[batch_start + beam_idx] = next_token;
+        next_beam_indices_[batch_start + beam_idx] = batch_beam_idx;
         ++beam_idx;
       }
 
@@ -370,35 +384,35 @@ __global__ void BeamSearchScorer_Process(BeamScorerState& state,
 
     //  Check if we are done so that we can save a pad step if all(done)
     if (beam_hyp.beams_used_ < state.num_beams_)
-      continue;
+      break;
 
     if (!state.early_stopping_) {
-      gsl::span<const float> topk_scores = next_scores.subspan(batch * state.num_beams_, top_k);
+      gsl::span<const float> topk_scores = next_scores.subspan(batch_start, top_k);
       const auto best_sum_logprobs = std::max_element(topk_scores.begin(), topk_scores.end());
       if (beam_hyp.CanImprove(*best_sum_logprobs, sequence_length))
-        continue;
+        break;
     }
 
     beam_hyp.done_ = true;
     state.not_done_count_--;
+    break;
   }
 
   // AppendNextTokenToSequences
-  for (int j = 0; j < state.batch_size_ * state.num_beams_; j++) {
-    int beam_index = next_beam_indices_[j];
+  for (int beam_idx = 0; beam_idx < state.num_beams_; beam_idx++) {
+    int beam_index = next_beam_indices_[batch_start + beam_idx];
     const int32_t* source = &sequences_buffer[beam_index * state.max_length_];
-    int32_t* target = &next_sequences[j * state.max_length_];
-    for (int i=0;i<state.sequence_length_; i++)
-      target[i]=source[i];
+    int32_t* target = &next_sequences[(batch_start + beam_idx) * state.max_length_];
+    for (int i = 0; i < sequence_length; i++)
+      target[i] = source[i];
 
     // Append next token to each beam.
-    target[state.sequence_length_] = next_beam_tokens_[j];
+    target[sequence_length] = next_beam_tokens_[batch_start + beam_idx];
   }
-
-  state.sequence_length_++;
 }
 
-void LaunchBeamSearchScorer_Process(BeamScorerState& state,
+void LaunchBeamSearchScorer_Process(int batch_size,
+                                    BeamScorerState& state,
                                     gsl::span<const int32_t> sequences,
                                     gsl::span<int32_t> next_sequences,
                                     int sequence_length,
@@ -411,7 +425,8 @@ void LaunchBeamSearchScorer_Process(BeamScorerState& state,
                                     gsl::span<const int32_t> next_tokens,
                                     gsl::span<const int32_t> next_indices,
                                     cudaStream_t stream) {
-  BeamSearchScorer_Process<<<1, 1, 0, stream>>>(state,
+
+  BeamSearchScorer_Process<<<1, batch_size, 0, stream>>>(state,
                                                 sequences,
                                                 next_sequences,
                                                 sequence_length,
@@ -423,6 +438,66 @@ void LaunchBeamSearchScorer_Process(BeamScorerState& state,
                                                 next_scores,
                                                 next_tokens,
                                                 next_indices);
+}
+
+__global__ void BeamSearchScorer_Finalize(BeamScorerState& state,
+                                         gsl::span<const int32_t> sequences_buffer,
+                                         int sequence_length,
+                                         gsl::span<BeamHypotheses> beam_hyps_,
+                                         gsl::span<const float> final_beam_scores,
+                                         gsl::span<int32_t> output,
+                                         gsl::span<float> sequence_scores) {
+
+  // Finalize all open beam hypotheses and add to generated hypotheses.
+  for (size_t batch_index = 0; batch_index < state.batch_size_; batch_index++) {
+    cuda::BeamHypotheses& beam_hyp = beam_hyps_[batch_index];
+    if (beam_hyp.done_) {
+      continue;
+    }
+
+    for (size_t beam_index = 0; beam_index < state.num_beams_; beam_index++) {
+      size_t batch_beam_index = batch_index * state.num_beams_ + beam_index;
+      float final_score = final_beam_scores[batch_beam_index];
+      auto final_tokens = sequences_buffer.subspan(batch_beam_index * state.max_length_, sequence_length);
+//      auto final_tokens = sequences.GetSequence(batch_beam_index);
+      beam_hyp.Add(final_tokens, final_score);
+    }
+  }
+
+  // Fill output sequences with pad token ID so that we do not need append it later.
+  for (size_t i=0;i<output.size();i++)
+    output[i]=state.pad_token_id_;
+
+  // Select the best hypotheses according to number of sequences to return.
+  for (size_t batch_index = 0; batch_index < state.batch_size_; batch_index++) {
+    cuda::BeamHypotheses& beam_hyp = beam_hyps_[batch_index];
+
+    auto batch_output = output.subspan(batch_index * state.num_return_sequences_ * state.max_length_,
+                                       state.num_return_sequences_ * state.max_length_);
+    beam_hyp.Output(
+        state.num_return_sequences_,
+        state.max_length_,
+        batch_output,
+        sequence_scores.empty() ? sequence_scores : sequence_scores.subspan(batch_index * state.num_return_sequences_, state.num_return_sequences_));
+  }
+}
+
+
+void LaunchBeamSearchScorer_Finalize(BeamScorerState& state,
+                                     gsl::span<const int32_t> sequences,
+                                     int sequence_length,
+                                     gsl::span<BeamHypotheses> beam_hyps,
+                                     gsl::span<const float> final_beam_scores,
+                                     gsl::span<int32_t> output,
+                                     gsl::span<float> sequence_scores,
+                                     cudaStream_t stream) {
+  BeamSearchScorer_Finalize<<<1, 1, 0, stream>>>(state,
+                                                 sequences,
+                                                 sequence_length,
+                                                 beam_hyps,
+                                                 final_beam_scores,
+                                                 output,
+                                                 sequence_scores);
 }
 
 __global__ void AddProbsKernel(float* log_probs,

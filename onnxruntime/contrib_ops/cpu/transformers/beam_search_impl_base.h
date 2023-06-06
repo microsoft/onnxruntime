@@ -266,10 +266,37 @@ Status BeamSearchBase<T>::GenerateNextToken(
   ORT_RETURN_IF_ERROR(ProcessLogits(logits, beam_state, cpu_state, temp_space_allocator_, counter));
 
   if (this->IsCuda()) {
+    gsl::span<float>& beam_scores = beam_scorer_->GetNextScores();
+    // It is optional to clone beam_scores. Change it to use same buffer also works for CPU:
+    //    beam_state.beam_scores = beam_scores
+    // Here we make a copy to reduce the coupling with little cost (the buffer size is small).
+    ORT_RETURN_IF_ERROR(device_copy_func_(beam_state.beam_scores,
+                                          beam_scores,
+                                          ort_stream_,
+                                          DeviceCopyDirection::deviceToDevice));
+
+    beam_next_tokens = beam_scorer_->GetNextTokens();
+    beam_indices = beam_scorer_->GetNextIndices();
+
+#ifdef DEBUG_GENERATION
+    cuda_dumper_->Print("beam_scores from scorer", beam_scores.data(), parameters_->batch_size, parameters_->num_beams);
+    cuda_dumper_->Print("beam_next_tokens", beam_next_tokens.data(), parameters_->batch_size, parameters_->num_beams);
+    cpu_dumper_.Print("beam_indices", beam_indices.data(), parameters_->batch_size, parameters_->num_beams);
+#endif
+
     // the Cuda beam scorer does this update step
     cpu_state.sequences.AfterDeviceAppendedNextToken();
-  }
-  else {
+
+#ifdef DEBUG_GENERATION
+    // CUDA equivalent of cpu_state.sequences.PrintSequences
+    auto sequences_buffer = cpu_state.sequences.GetCurrentDeviceSequences();
+    for (int i = 0; i < parameters_->batch_size * parameters_->num_beams; i++) {
+      gsl::span<const int32_t> sequence = sequences_buffer.subspan(i * parameters_->max_length, cpu_state.sequences.GetSequenceLength());
+      cuda_dumper_->Print("sequences", i, false);
+      cuda_dumper_->Print(nullptr, sequence.data(), 1, static_cast<int>(sequence.size()));
+    }
+#endif
+  } else {
     gsl::span<float>& beam_scores = beam_scorer_->GetNextScores();
     // It is optional to clone beam_scores. Change it to use same buffer also works for CPU:
     //    beam_state.beam_scores = beam_scores
@@ -282,17 +309,17 @@ Status BeamSearchBase<T>::GenerateNextToken(
     beam_next_tokens = beam_scorer_->GetNextTokens();
     beam_indices = beam_scorer_->GetNextIndices();
 
-  #ifdef DEBUG_GENERATION
+#ifdef DEBUG_GENERATION
     cpu_dumper_.Print("beam_scores from scorer", beam_scores.data(), parameters_->batch_size, parameters_->num_beams);
     cpu_dumper_.Print("beam_next_tokens", beam_next_tokens.data(), parameters_->batch_size, parameters_->num_beams);
     cpu_dumper_.Print("beam_indices", beam_indices.data(), parameters_->batch_size, parameters_->num_beams);
-  #endif
+#endif
 
     cpu_state.sequences.AppendNextTokenToSequences(beam_indices, beam_next_tokens);
 
-  #ifdef DEBUG_GENERATION
+#ifdef DEBUG_GENERATION
     cpu_state.sequences.PrintSequences(&cpu_dumper_);
-  #endif
+#endif
   }
 
   return Status::OK();

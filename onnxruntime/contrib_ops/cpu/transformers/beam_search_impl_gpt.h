@@ -202,7 +202,9 @@ Status BeamSearchGpt<T>::Execute(const FeedsFetchesManager* init_run_feeds_fetch
   std::vector<OrtValue> fetches;
 
   // Initialize resources
-  this->beam_scorer_ = create_beam_scorer_func_ ? create_beam_scorer_func_(*parameters, this->temp_space_allocator_, this->ort_stream_) : std::make_unique<BeamSearchScorer>(*parameters, this->cpu_allocator_);
+  this->beam_scorer_ = create_beam_scorer_func_
+                           ? create_beam_scorer_func_(*parameters, this->temp_space_allocator_, this->cpu_allocator_, this->ort_stream_)
+                           : std::make_unique<BeamSearchScorer>(*parameters, this->cpu_allocator_);
 
   BeamSearchCpuState cpu_state{*parameters,
                                this->cpu_allocator_,
@@ -233,9 +235,6 @@ Status BeamSearchGpt<T>::Execute(const FeedsFetchesManager* init_run_feeds_fetch
                                 gpt_subgraph_.has_decoder_masked_attention_,
                                 true /* use_position */};
 
-  if (this->IsCuda())
-    cpu_state.sequences.InitDevice(beam_state.sequences_device);
-
   init_beam_state_func_(&beam_state,
                         cpu_state.sequence_lengths,
                         parameters->batch_size,
@@ -243,6 +242,14 @@ Status BeamSearchGpt<T>::Execute(const FeedsFetchesManager* init_run_feeds_fetch
                         this->ort_stream_);
 
   cpu_state.SetExpandedSequence(expanded_input_ids_in_cpu.Get<Tensor>().DataAsSpan<int32_t>());
+
+  if (this->IsCuda()) {
+    cpu_state.sequences.InitDevice(beam_state.sequences_device);
+    ORT_RETURN_IF_ERROR(this->device_copy_int32_func_(beam_state.sequences_device.subspan(0, beam_state.sequences_device.size() / 2),
+                                                      cpu_state.sequences_space.subspan(0, cpu_state.sequences_space.size() / 2),
+                                                      nullptr,
+                                                      DeviceCopyDirection::hostToDevice));
+  }
 
 #ifdef DEBUG_GENERATION
   const IConsoleDumper* dumper = this->GetConsoleDumper();
@@ -369,14 +376,6 @@ Status BeamSearchGpt<T>::Execute(const FeedsFetchesManager* init_run_feeds_fetch
   }
 
   gsl::span<const float> final_beam_scores = beam_state.beam_scores;
-  if (this->IsCuda()) {
-    ORT_RETURN_IF_ERROR(this->device_copy_func_(cpu_state.final_beam_scores,
-                                                final_beam_scores,
-                                                nullptr,
-                                                DeviceCopyDirection::deviceToHost));
-    final_beam_scores = cpu_state.final_beam_scores;
-  }
-
   this->beam_scorer_->Finalize(cpu_state.sequences,
                                final_beam_scores,
                                output_sequences,
