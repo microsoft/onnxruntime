@@ -118,6 +118,11 @@ std::shared_ptr<IExecutionProviderFactory> DMLProviderFactoryCreator::Create(int
     params.ComputeScratchMemorySizeBytes = static_cast<UINT>(D3D12XBOX_DEFAULT_SIZE_BYTES);
     ORT_THROW_IF_FAILED(D3D12XboxCreateDevice(nullptr, &params, IID_GRAPHICS_PPV_ARGS(d3d12_device.ReleaseAndGetAddressOf())));
 #else
+
+  // Microsoft::WRL::ComPtr<ID3D12Debug> debugLayer;
+  // D3D12GetDebugInterface(IID_PPV_ARGS(&debugLayer));
+  // debugLayer->EnableDebugLayer();
+
   ComPtr<IDXGIFactory4> dxgi_factory;
   ORT_THROW_IF_FAILED(CreateDXGIFactory2(0, IID_GRAPHICS_PPV_ARGS(dxgi_factory.ReleaseAndGetAddressOf())));
 

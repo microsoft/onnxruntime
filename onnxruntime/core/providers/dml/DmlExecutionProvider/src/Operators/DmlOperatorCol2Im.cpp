@@ -13,22 +13,27 @@ public:
     :   DmlOperator(kernelCreationContext),
         Col2ImHelper(kernelCreationContext, kernelCreationContext.GetTensorShapeDescription())
     {
-        ML_CHECK_VALID_ARGUMENT(kernelCreationContext.GetInputCount() == 1, "Col2Im expects 1 input.");
+        ML_CHECK_VALID_ARGUMENT(kernelCreationContext.GetInputCount() == 3, "Col2Im expects 3 inputs.");
         ML_CHECK_VALID_ARGUMENT(kernelCreationContext.GetOutputCount() == 1, "Col2Im expects 1 output.");
 
         auto tensorShapeDescription = kernelCreationContext.GetTensorShapeDescription();
         std::vector<uint32_t> inputTensorShape = tensorShapeDescription.GetInputTensorShape(0);
         std::vector<uint32_t> outputTensorShape = tensorShapeDescription.GetOutputTensorShape(0);
 
-        ML_CHECK_VALID_ARGUMENT(outputTensorShape.size() == m_imageShape.size());
+        ML_CHECK_VALID_ARGUMENT(outputTensorShape.size() == m_outputShape.size());
         for (uint32_t i = 0; i < outputTensorShape.size(); i++) {
-            ML_CHECK_VALID_ARGUMENT(outputTensorShape[i] == m_imageShape[i]);
+            ML_CHECK_VALID_ARGUMENT(outputTensorShape[i] == m_outputShape[i]);
         }
 
-        gsl::span<const uint32_t> outputShapes[1] = { m_imageShape };
-        DmlOperator::InitializeOutputsWithShapes(kernelCreationContext,
-                                                 std::nullopt,
-                                                 outputShapes);
+        std::vector<std::optional<uint32_t>> inputIndices = { 0 };
+        gsl::span<const uint32_t> inputShapes[1] = { m_inputShape };
+        gsl::span<const uint32_t> outputShapes[1] = { m_outputShape };
+        DmlOperator::InitializeWithShapes(kernelCreationContext,
+                                          inputIndices,
+                                          std::nullopt,
+                                          inputShapes,
+                                          outputShapes,
+                                          3);
 
         // Prepare DML_FOLD_OPERATOR_DESC
         std::vector<DML_TENSOR_DESC> inputDescs = GetDmlInputDescs();

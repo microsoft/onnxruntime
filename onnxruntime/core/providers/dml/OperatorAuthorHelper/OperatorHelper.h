@@ -1171,14 +1171,16 @@ protected:
 class Col2ImHelper
 {
 public:
-    void Initialize(const IKernelInformationAdapter& kernelInformation);
+    void Initialize(
+        const IKernelInformationAdapter& kernelInformation,
+        const IShapeInformationAdapter& shapeInformation);
 
     // Info_t is used to obtain attributes which will be used for calculating the output shape later.
     // Shape_t is used to obtain input shape which will be used for adjusting attribute value.
     template <typename Info_t, typename Shape_t>
-    Col2ImHelper(const Info_t& info, const Shape_t& /*shape*/)
+    Col2ImHelper(const Info_t& info, const Shape_t& shape)
     {
-        Initialize(KernelInformationAdapter(info));
+        Initialize(KernelInformationAdapter(info), ShapeInformationAdapter(shape));
     }
 
     std::vector<EdgeShapes> GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const;
@@ -1189,6 +1191,8 @@ protected:
     std::vector<uint32_t> m_strides;
     std::vector<uint32_t> m_imageShape;
     std::vector<uint32_t> m_blockShape;
+    std::vector<uint32_t> m_inputShape;
+    std::vector<uint32_t> m_outputShape;
 };
 
 
