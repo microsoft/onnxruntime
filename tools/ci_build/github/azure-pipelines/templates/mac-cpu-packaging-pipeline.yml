@@ -76,25 +76,27 @@ stages:
           find . -type f
         workingDirectory: $(Build.ArtifactStagingDirectory)
         displayName: check unzipped files
-      #- task: ExtractFiles@1
-      #  inputs:
-      #    archiveFilePatterns: '$(Build.ArtifactStagingDirectory)//onnxruntime-osx-x86_64-*.tgz'
-      #    destinationFolder: '$(Build.ArtifactStagingDirectory)/onnxruntime-osx-x86_64'
-      #    cleanDestinationFolder: true
+      - task: ExtractFiles@1
+        inputs:
+          archiveFilePatterns: '$(Build.ArtifactStagingDirectory)//onnxruntime-osx-x86_64-*.tgz'
+          destinationFolder: '$(Build.ArtifactStagingDirectory)/onnxruntime-osx-x86_64'
+          cleanDestinationFolder: true
       - bash: |
           find . -type f
         workingDirectory: $(Build.ArtifactStagingDirectory)
         displayName: check unzipped files
+      - task: ArchiveFiles@2
+        inputs:
+          rootFolderOrFile: '$(Build.ArtifactStagingDirectory)'
+          includeRootFolder: false
+          archiveType: 'zip'
+          archiveFile: '$(Build.ArtifactStagingDirectory)/onnxruntime-osx-x86_64.zip'
       - template: mac-esrp-dylib.yml
         parameters:
           FolderPath: '$(Build.ArtifactStagingDirectory)'
           DisplayName: 'ESRP - Sign Mac'
           DoEsrp: true
           Pattern: '*.dylib'
-      - task: ArchiveFiles@2
-        inputs:
-          rootFolderOrFile: '$(Build.ArtifactStagingDirectory)'
-          archiveType: 'tar'
 
       - ${{ if eq(parameters.BuildForAllArchs, true) }}:
         - template: flex-downloadPipelineArtifact.yml
@@ -111,12 +113,6 @@ stages:
             TargetPath: '$(Build.ArtifactStagingDirectory)'
             SpecificArtifact: ${{ parameters.specificArtifact }}
             BuildId: ${{ parameters.BuildId }}
-
-        - template: templates/win-esrp-dll.yml
-          parameters:
-            FolderPath: '$(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\bin\RelWithDebInfo'
-            DisplayName: 'ESRP - Sign Mac'
-            DoEsrp: ${{ parameters.DoEsrp }}
 
       - task: PublishPipelineArtifact@1
         inputs:
