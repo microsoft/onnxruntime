@@ -94,10 +94,10 @@ stages:
           archiveFile: '$(Build.ArtifactStagingDirectory)/testdata.zip'
       - template: mac-esrp-dylib.yml
         parameters:
-          FolderPath: '$(Build.ArtifactStagingDirectory)'
+          FolderPath: '$(Build.ArtifactStagingDirectory)/'
           DisplayName: 'ESRP - Sign Mac'
           DoEsrp: true
-          Pattern: '*.dylib'
+          Pattern: '*.zip'
 
       - ${{ if eq(parameters.BuildForAllArchs, true) }}:
         - template: flex-downloadPipelineArtifact.yml
