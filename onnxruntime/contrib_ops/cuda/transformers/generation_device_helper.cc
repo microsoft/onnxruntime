@@ -1267,7 +1267,7 @@ Status UpdateDecoderFeeds(
 
     // If the last input is not `past_sequence_length`, then the beam search specific inputs
     // for `DecoderMaskedSelfAttention` is present
-    if (need_cache_indir) {
+    if (need_cache_indir && num_beams > 1) {
       ORT_ENFORCE(!beam_indices_gpu.empty(), "Beam indices must be present on CUDA while using DecoderMaskedMultiHeadAttention with BeamSearch");
 
       // The cache indirection feed comes 2 feeds after the `past_sequence_length` feed
