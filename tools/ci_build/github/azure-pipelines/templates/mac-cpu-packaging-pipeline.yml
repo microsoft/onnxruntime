@@ -85,6 +85,7 @@ stages:
       - bash: |
           find . -name "*.dylib" -exec zip {}.zip {} \;
           find . -name "*.zip"
+          cp ./testdata/libcustom_op_library.dylib.zip libcustom_op_library.dylib.zip
         workingDirectory: $(Build.ArtifactStagingDirectory)
         displayName: zip dylib files
       - template: mac-esrp-dylib.yml
@@ -95,10 +96,10 @@ stages:
           Pattern: '*.zip'
       - bash: |
           find $(Build.ArtifactStagingDirectory) -name "*.zip" -exec codesign -dvvv {} \;
-          codesign -dvvv $(Build.ArtifactStagingDirectory)/onnxruntime-osx-x86_64-1.16.0/lib/libonnxruntime.1.16.0.dylib.zip
+          codesign -dvvv $(Build.ArtifactStagingDirectory)/onnxruntime-osx-x86_64/onnxruntime-osx-x86_64-1.16.0/lib/libonnxruntime.1.16.0.dylib.zip
           find . -name "*.zip" -exec unzip -o {} \;
           find $(Build.ArtifactStagingDirectory) -name "*.dylib" -exec codesign -dvvv {} \;
-          codesign -dvvv $(Build.ArtifactStagingDirectory)/onnxruntime-osx-x86_64-1.16.0/lib/libonnxruntime.1.16.0.dylib
+          codesign -dvvv $(Build.ArtifactStagingDirectory)/onnxruntime-osx-x86_64/onnxruntime-osx-x86_64-1.16.0/lib/libonnxruntime.1.16.0.dylib
           find . -name "*.zip" -exec rm {} \;
         displayName: 'Verify code signing'
 
