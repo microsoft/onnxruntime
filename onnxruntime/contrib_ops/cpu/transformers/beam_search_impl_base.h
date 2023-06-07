@@ -56,11 +56,6 @@ struct BeamSearchState : IBeamSearchState<T> {
       Tensor temp(DataTypeImpl::GetType<T>(), staging_for_past_state_reorder_buffer_shape, allocator);
 
       this->staging_for_past_state_reorder = std::move(temp);
-
-      // We need a buffer on GPU to hold the final chosen indices after BeamScorer has finished processing
-      // TODO: This is a temporary work-around as BeamScorer currently only runs on CPU.
-      // We can remove these kinds of work-arounds once BeamScorer runs on CUDA eventually.
-      this->chosen_indices = AllocateBuffer<int32_t>(allocator, chosen_indices_buffer_, batch_beam_size);
     }
   }
 
@@ -82,7 +77,6 @@ struct BeamSearchState : IBeamSearchState<T> {
   BufferUniquePtr beam_scores_buffer_;
   BufferUniquePtr scores_buffer_;
   BufferUniquePtr topk_temp_buffer_;
-  BufferUniquePtr chosen_indices_buffer_;
   BufferUniquePtr sequences_device_buffer_;
 };
 
@@ -177,7 +171,6 @@ class BeamSearchBase : public GenerateBase {
   // Process logits and append next tokens to sequences.
   Status GenerateNextToken(const OrtValue& logits,
                            gsl::span<int32_t>& beam_next_tokens,
-                           gsl::span<int32_t>& beam_indices,
                            BeamSearchState<T>& beam_state,
                            BeamSearchCpuState& cpu_state,
                            int counter);
@@ -258,7 +251,6 @@ template <typename T>
 Status BeamSearchBase<T>::GenerateNextToken(
     const OrtValue& logits,
     gsl::span<int32_t>& beam_next_tokens,
-    gsl::span<int32_t>& beam_indices,
     BeamSearchState<T>& beam_state,
     BeamSearchCpuState& cpu_state,
     int counter) {
@@ -266,7 +258,7 @@ Status BeamSearchBase<T>::GenerateNextToken(
   ORT_RETURN_IF_ERROR(ProcessLogits(logits, beam_state, cpu_state, temp_space_allocator_, counter));
 
   if (this->IsCuda()) {
-    gsl::span<float>& beam_scores = beam_scorer_->GetNextScores();
+    auto beam_scores = beam_scorer_->GetNextScores();
     // It is optional to clone beam_scores. Change it to use same buffer also works for CPU:
     //    beam_state.beam_scores = beam_scores
     // Here we make a copy to reduce the coupling with little cost (the buffer size is small).
@@ -276,15 +268,15 @@ Status BeamSearchBase<T>::GenerateNextToken(
                                           DeviceCopyDirection::deviceToDevice));
 
     beam_next_tokens = beam_scorer_->GetNextTokens();
-    beam_indices = beam_scorer_->GetNextIndices();
+    auto beam_indices = beam_scorer_->GetNextIndicesGPU();
 
 #ifdef DEBUG_GENERATION
     cuda_dumper_->Print("beam_scores from scorer", beam_scores.data(), parameters_->batch_size, parameters_->num_beams);
     cuda_dumper_->Print("beam_next_tokens", beam_next_tokens.data(), parameters_->batch_size, parameters_->num_beams);
-    cpu_dumper_.Print("beam_indices", beam_indices.data(), parameters_->batch_size, parameters_->num_beams);
+    cuda_dumper_->Print("beam_indices", beam_indices.data(), parameters_->batch_size, parameters_->num_beams);
 #endif
 
-    // the Cuda beam scorer does this update step
+    // the Cuda beam scorer does the AppendNextTokenSequences, all that's left for Cuda is a this small step
     cpu_state.sequences.AfterDeviceAppendedNextToken();
 
 #ifdef DEBUG_GENERATION
@@ -297,7 +289,7 @@ Status BeamSearchBase<T>::GenerateNextToken(
     }
 #endif
   } else {
-    gsl::span<float>& beam_scores = beam_scorer_->GetNextScores();
+    auto beam_scores = beam_scorer_->GetNextScores();
     // It is optional to clone beam_scores. Change it to use same buffer also works for CPU:
     //    beam_state.beam_scores = beam_scores
     // Here we make a copy to reduce the coupling with little cost (the buffer size is small).
@@ -307,7 +299,7 @@ Status BeamSearchBase<T>::GenerateNextToken(
                                           DeviceCopyDirection::hostToDevice));
 
     beam_next_tokens = beam_scorer_->GetNextTokens();
-    beam_indices = beam_scorer_->GetNextIndices();
+    auto beam_indices = beam_scorer_->GetNextIndicesCPU();
 
 #ifdef DEBUG_GENERATION
     cpu_dumper_.Print("beam_scores from scorer", beam_scores.data(), parameters_->batch_size, parameters_->num_beams);

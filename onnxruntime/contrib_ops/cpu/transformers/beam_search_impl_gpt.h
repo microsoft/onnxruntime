@@ -243,6 +243,8 @@ Status BeamSearchGpt<T>::Execute(const FeedsFetchesManager* init_run_feeds_fetch
 
   cpu_state.SetExpandedSequence(expanded_input_ids_in_cpu.Get<Tensor>().DataAsSpan<int32_t>());
 
+  // beam_state.sequences_device is the GPU version of cpu_state.sequences_space,
+  // this copies it over to the GPU after setting it up on the CPU
   if (this->IsCuda()) {
     cpu_state.sequences.InitDevice(beam_state.sequences_device);
     ORT_RETURN_IF_ERROR(this->device_copy_int32_func_(beam_state.sequences_device.subspan(0, beam_state.sequences_device.size() / 2),
@@ -314,10 +316,8 @@ Status BeamSearchGpt<T>::Execute(const FeedsFetchesManager* init_run_feeds_fetch
 
     const OrtValue& logits = fetches[0];
     gsl::span<int32_t> beam_next_tokens;
-    gsl::span<int32_t> beam_indices;
     ORT_RETURN_IF_ERROR(this->GenerateNextToken(logits,
                                                 beam_next_tokens,
-                                                beam_indices,
                                                 beam_state,
                                                 cpu_state,
                                                 iteration_counter));
@@ -356,9 +356,11 @@ Status BeamSearchGpt<T>::Execute(const FeedsFetchesManager* init_run_feeds_fetch
       ORT_RETURN_IF_ERROR(UpdateFeeds(fetches, feeds, current_length,
                                       position_ids, increase_position,
                                       ReinterpretAsSpan<const int32_t>(beam_next_tokens),
-                                      ReinterpretAsSpan<const int32_t>(beam_indices),
                                       gpt_subgraph_.has_decoder_masked_attention_
-                                          ? ReinterpretAsSpan<const int32_t>(beam_state.chosen_indices)
+                                          ? place_holder
+                                          : ReinterpretAsSpan<const int32_t>(this->beam_scorer_->GetNextIndicesCPU()),
+                                      gpt_subgraph_.has_decoder_masked_attention_
+                                          ? ReinterpretAsSpan<const int32_t>(this->beam_scorer_->GetNextIndicesGPU())
                                           : place_holder,
                                       current_length - 1,
                                       parameters->sequence_length,

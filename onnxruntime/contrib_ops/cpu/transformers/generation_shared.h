@@ -41,9 +41,6 @@ struct IBeamSearchState {
 
   gsl::span<int32_t> sequences_device; // shape (2 * batch_size * max_length)
 
-  // The final chosen indices after BeamScorer has finished processing
-  gsl::span<int32_t> chosen_indices;  // shape (batch_size, num_beams)
-
   Tensor staging_for_past_state_reorder;  // Tensor of shape (batch_size * num_beams, num_heads, max_length, head_size)
 };
 
@@ -124,9 +121,10 @@ struct IBeamScorer {
 
   virtual bool IsDone() const = 0;
 
-  virtual gsl::span<float>& GetNextScores() = 0;
-  virtual gsl::span<int32_t>& GetNextTokens() = 0;
-  virtual gsl::span<int32_t>& GetNextIndices() = 0;
+  virtual gsl::span<float>   GetNextScores() = 0;
+  virtual gsl::span<int32_t> GetNextTokens() = 0;
+  virtual gsl::span<int32_t> GetNextIndicesCPU() = 0;
+  virtual gsl::span<int32_t> GetNextIndicesGPU() { return {}; }  // If this is non CPU, returns the device buffer of the indices
 };
 
 struct IGenerationParameters {

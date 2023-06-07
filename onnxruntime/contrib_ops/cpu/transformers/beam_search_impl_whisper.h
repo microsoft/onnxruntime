@@ -194,7 +194,6 @@ Status BeamSearchWhisper<T>::Execute(const FeedsFetchesManager& encoder_feeds_fe
   // Generate next token from logits output from encoder, and initialize decoder inputs.
   // ------------------------------------------------------------------------------
   gsl::span<int32_t> beam_next_tokens;
-  gsl::span<int32_t> beam_indices;
 
   int iteration_counter = 0;
   std::vector<OrtValue> decoder_feeds;
@@ -206,7 +205,6 @@ Status BeamSearchWhisper<T>::Execute(const FeedsFetchesManager& encoder_feeds_fe
     ++iteration_counter;
     ORT_RETURN_IF_ERROR(this->GenerateNextToken(encoder_fetches[0],
                                                 beam_next_tokens,
-                                                beam_indices,
                                                 beam_state,
                                                 cpu_state,
                                                 iteration_counter));
@@ -302,7 +300,6 @@ Status BeamSearchWhisper<T>::Execute(const FeedsFetchesManager& encoder_feeds_fe
     const OrtValue& logits = decoder_fetches[0];
     ORT_RETURN_IF_ERROR(this->GenerateNextToken(logits,
                                                 beam_next_tokens,
-                                                beam_indices,
                                                 beam_state,
                                                 cpu_state,
                                                 iteration_counter));
@@ -326,9 +323,11 @@ Status BeamSearchWhisper<T>::Execute(const FeedsFetchesManager& encoder_feeds_fe
           decoder_feeds,
           num_present_outputs,
           ReinterpretAsSpan<const int32_t>(beam_next_tokens),
-          ReinterpretAsSpan<const int32_t>(beam_indices),
           decoder_subgraph_.has_decoder_masked_attention_
-              ? ReinterpretAsSpan<const int32_t>(beam_state.chosen_indices)
+              ? place_holder
+              : ReinterpretAsSpan<const int32_t>(this->beam_scorer_->GetNextIndicesCPU()),
+          decoder_subgraph_.has_decoder_masked_attention_
+              ? ReinterpretAsSpan<const int32_t>(this->beam_scorer_->GetNextIndicesGPU())
               : place_holder,
           parameters->num_beams,
           decoder_subgraph_.GetFirstPastInputIndex(),

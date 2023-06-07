@@ -63,10 +63,10 @@ struct BeamHypotheses {
   __device__ bool CanImprove(float best_sum_logprobs, int current_length) const;
 
   // Output results
-  __device__ void Output(int top_k,                            // number of sequences to return
-                        int max_length,                       // max sequence length
-                        gsl::span<int32_t> sequences,        // buffer with pad token, shape (num_return_sequences, max_length)
-                        gsl::span<float> sequences_scores);  // buffer for sequence scores, with shape (num_return_sequences)
+  __device__ void Output(int top_k,                           // number of sequences to return
+                         int max_length,                      // max sequence length
+                         gsl::span<int32_t> sequences,        // buffer with pad token, shape (num_return_sequences, max_length)
+                         gsl::span<float> sequences_scores);  // buffer for sequence scores, with shape (num_return_sequences)
 };
 
 struct BeamScorerState {
@@ -85,19 +85,19 @@ struct BeamScorerState {
 void LaunchInitializeBeamHypotheses(gsl::span<BeamHypotheses> beam_hyps, float length_penalty, gsl::span<HypothesisScore> beams, int num_beams, cudaStream_t stream);
 
 void LaunchBeamSearchScorer_Process(int batch_size,
-                      BeamScorerState& state, 
-                      gsl::span<const int32_t> sequences,
-                      gsl::span<int32_t> next_sequences,
-                      int sequence_length,
-                      gsl::span<BeamHypotheses> beam_hyps_,
-                      gsl::span<float> next_beam_scores_,
-                      gsl::span<int32_t> next_beam_tokens_,
-                      gsl::span<int32_t> next_beam_indices_,
-                      gsl::span<int32_t> hypothesis_buffer_,
-                      gsl::span<const float> next_scores,
-                      gsl::span<const int32_t> next_tokens,
-                      gsl::span<const int32_t> next_indices,
-                      cudaStream_t stream);
+                                    BeamScorerState& state,
+                                    gsl::span<const int32_t> sequences,
+                                    gsl::span<int32_t> next_sequences,
+                                    int sequence_length,
+                                    gsl::span<BeamHypotheses> beam_hyps_,
+                                    gsl::span<float> next_beam_scores_,
+                                    gsl::span<int32_t> next_beam_tokens_,
+                                    gsl::span<int32_t> next_beam_indices_,
+                                    gsl::span<int32_t> hypothesis_buffer_,
+                                    gsl::span<const float> next_scores,
+                                    gsl::span<const int32_t> next_tokens,
+                                    gsl::span<const int32_t> next_indices,
+                                    cudaStream_t stream);
 
 void LaunchBeamSearchScorer_Finalize(BeamScorerState& state,
                                      gsl::span<const int32_t> sequences,
@@ -108,7 +108,7 @@ void LaunchBeamSearchScorer_Finalize(BeamScorerState& state,
                                      gsl::span<float> sequence_scores,
                                      cudaStream_t stream);
 
-  void LaunchNextTokenKernel(const int64_t* next_token_indices,
+void LaunchNextTokenKernel(const int64_t* next_token_indices,
                            int32_t* next_indices,
                            int32_t* next_tokens,
                            int batch_size,

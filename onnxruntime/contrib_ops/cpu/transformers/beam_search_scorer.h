@@ -62,9 +62,9 @@ struct BeamSearchScorer : IBeamScorer {
 
   bool IsDone() const override { return not_done_count_ == 0; }
 
-  gsl::span<float>& GetNextScores() override { return next_beam_scores_; }
-  gsl::span<int32_t>& GetNextTokens() override { return next_beam_tokens_; }
-  gsl::span<int32_t>& GetNextIndices() override { return next_beam_indices_; }
+  gsl::span<float>   GetNextScores() override { return next_beam_scores_; }
+  gsl::span<int32_t> GetNextTokens() override { return next_beam_tokens_; }
+  gsl::span<int32_t> GetNextIndicesCPU() override { return next_beam_indices_; }
 
  private:
 

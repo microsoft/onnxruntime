@@ -550,31 +550,12 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
       next_tokens,
       next_indices);
 
-  // TODO: This is a temporary work-around as BeamScorer currently only runs on CPU.
-  // We can remove these kinds of work-arounds once BeamScorer runs on CUDA eventually.
-  auto chosen_indices = beam_scorer->GetNextIndices();
-  auto beam_state_chosen_indices = beam_state->chosen_indices;
-
-  if (!beam_state_chosen_indices.empty()) {
-    // If we have allocated `chosen_indices` in beam_state, it means that we
-    // will be needing the chosen indices from BeamScorer as we are using
-    // DecoderMaskedSelfAttention, so copy it over.
-    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(beam_state_chosen_indices.data(),
-                                         chosen_indices.data(),
-                                         chosen_indices.size_bytes(),
-                                         cudaMemcpyHostToDevice,
-                                         cuda_stream));
-
-    CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(cuda_stream));
-  }
-
 #ifdef ENABLE_NVTX_PROFILE
   processLogitsRange.End();
 #endif
 
   return Status::OK();
 }
-
 
 struct CudaBeamSearchScorer : transformers::IBeamScorer {
   CudaBeamSearchScorer(const transformers::IGenerationParameters& parameters,
@@ -593,16 +574,16 @@ struct CudaBeamSearchScorer : transformers::IBeamScorer {
 
   bool IsDone() const override;
 
-  gsl::span<float>& GetNextScores() override { return next_beam_scores_; }
-  gsl::span<int32_t>& GetNextTokens() override { return next_beam_tokens_; }
-  gsl::span<int32_t>& GetNextIndices() override {
+  gsl::span<float> GetNextScores() override { return next_beam_scores_; }
+  gsl::span<int32_t> GetNextTokens() override { return next_beam_tokens_; }
+  gsl::span<int32_t> GetNextIndicesCPU() override {
     cudaMemcpyAsync(next_beam_indices_cpu_.data(), next_beam_indices_.data(), next_beam_indices_.size_bytes(), cudaMemcpyDeviceToHost, stream_);
     cudaStreamSynchronize(stream_);
     return next_beam_indices_cpu_;
   }
+  gsl::span<int32_t> GetNextIndicesGPU() override { return next_beam_indices_; }
 
  private:
-
   mutable cuda::BeamScorerState state_cpu_;
   IAllocatorUniquePtr<cuda::BeamScorerState> state_gpu_;
   cudaStream_t stream_;
@@ -637,10 +618,9 @@ gsl::span<TAlloc> Allocate(std::shared_ptr<IAllocator> allocator,
   return gsl::make_span(unique_ptr.get(), size);
 }
 
-  CudaBeamSearchScorer::CudaBeamSearchScorer(const transformers::IGenerationParameters& parameters,
+CudaBeamSearchScorer::CudaBeamSearchScorer(const transformers::IGenerationParameters& parameters,
                                            AllocatorPtr& allocator, AllocatorPtr& allocator_cpu, Stream* stream)
     : stream_{stream ? reinterpret_cast<cudaStream_t>(stream->GetHandle()) : nullptr} {
-
   state_cpu_.batch_size_ = static_cast<size_t>(parameters.batch_size);
   state_cpu_.num_beams_ = static_cast<size_t>(parameters.num_beams);
   state_cpu_.max_length_ = static_cast<size_t>(parameters.max_length);
@@ -695,12 +675,10 @@ bool CudaBeamSearchScorer::IsDone() const {
   return state_cpu_.not_done_count_ == 0;
 }
 
-
 void CudaBeamSearchScorer::Finalize(transformers::ISequences& sequences,
                                     gsl::span<const float>& final_beam_scores,
                                     Tensor* output_sequences,
                                     Tensor* output_sequence_scores) {
-
   ORT_ENFORCE(output_sequences != nullptr);
 
   // Word IDs of each sequence, with shape (batch_size * num_return_sequences, max_sequence_length).
@@ -955,6 +933,7 @@ Status PickGptPastState(const std::vector<OrtValue>& last_outputs,
 
     gsl::span<T> past_span = gsl::make_span<T>(past.GetMutable<Tensor>()->MutableData<T>(), past_shape.Size());
     gsl::span<const T> present_span = gsl::make_span<const T>(present.Get<Tensor>().Data<T>(), past_shape.Size());
+
     for (size_t j = 0; j < beam_indices.size(); j++) {
       int32_t beam_index = beam_indices[j];
       gsl::span<const T> present_key = present_span.subspan(beam_index * block_size_per_beam, block_size_per_beam);
