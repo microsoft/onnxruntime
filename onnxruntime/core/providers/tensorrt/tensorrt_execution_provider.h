@@ -248,7 +248,8 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   other execution provider.
   */
   SubGraphCollection_t GetSupportedList(SubGraphCollection_t supported_nodes_list, int iterations, const int max_iterations,
-                                        const GraphViewer& graph, bool* early_termination) const;
+                                        const GraphViewer& graph, bool* early_termination,
+                                        std::unordered_map<std::string, std::unique_ptr<SubGraphContext>>& subgraph_context_map) const;
 
   bool DetectTensorRTGraphCycles(SubGraphCollection_t& supported_nodes_vector, const GraphViewer& graph, const HashValue& model_hash, bool remove_cycles = true) const;
 
@@ -272,34 +273,45 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   * Set inputs, initializers and outputs for all subgraphs during TensorrtExecutionProvider::GetSupportedList() and save those information in subgraph context data structure.
   * It's useful for building a valid graph and make Graph::Resolve() happy especially when dealing with nested control-flow op graph.
   */
-  void BuildSubGraphContext(Graph* build_graph);
+  void BuildSubGraphContext(Graph* build_graph,
+                            std::unordered_map<std::string, std::unique_ptr<SubGraphContext>>& subgraph_context_map) const;
 
   /**
   * Set graph outer scope values for subgraphs and add thoes values as top-level graph's inputs if needed.
   */
-  void SetGraphOuterScopeValuesAndInputs(Graph* build_graph, const Graph* graph);
+  void SetGraphOuterScopeValuesAndInputs(Graph* build_graph,
+                                         const Graph* graph,
+                                         std::unordered_map<std::string, std::unique_ptr<SubGraphContext>>& subgraph_context_map) const;
 
   /**
   * If ORT TRT manually sets graph input in TensorrtExecutionProvider::SetGraphOuterScopeValuesAndInputs(), we have to manully set all the graph inputs in order to pass Graph::Resolve()
   */
-  void SetAllGraphInputs(Graph* graph);
+  void SetAllGraphInputs(Graph* graph,
+                         std::unordered_map<std::string, std::unique_ptr<SubGraphContext>>& subgraph_context_map) const;
 
   /**
   * The newly-built graph has not yet being resolved by Graph::Resolve(), so we can't leverage ORT Graph IsInputInitializerOrOutput() API.
   * We have to do it by ourselves.
   */
-  bool IsInputInitializerOrOutput(Graph* graph, const std::string& name, bool check_ancestors) const;
+  bool IsInputInitializerOrOutput(Graph* graph,
+                                  const std::string& name,
+                                  bool check_ancestors,
+                                  std::unordered_map<std::string, std::unique_ptr<SubGraphContext>>& subgraph_context_map) const;
 
   /**
   * The newly-built graph has not yet being resolved by Graph::Resolve(), so we can't leverage ORT Graph IsOuterScopeValues() API.
   * We have to do it by ourselves.
   */
-  bool IsOuterScopeValue(Graph* graph, const std::string& name) const;
+  bool IsOuterScopeValue(Graph* graph,
+                         const std::string& name,
+                         std::unordered_map<std::string, std::unique_ptr<SubGraphContext>>& subgraph_context_map) const;
 
   /**
   * The newly-built graph has not yet being resolved by Graph::Resolve(), so we can't leverage ORT Graph IsLocalValue() API.
   * We have to do it by ourselves.
   */
-  bool IsLocalValue(Graph* graph, const std::string& name) const;
+  bool IsLocalValue(Graph* graph,
+                    const std::string& name,
+                    std::unordered_map<std::string, std::unique_ptr<SubGraphContext>>& subgraph_context_map) const;
 };
 }  // namespace onnxruntime

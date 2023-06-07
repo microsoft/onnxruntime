@@ -1263,7 +1263,8 @@ std::unique_ptr<IndexedSubGraph> TensorrtExecutionProvider::GetSubGraph(SubGraph
 }
 
 SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollection_t nodes_vector_input, int iterations, const int max_iterations,
-                                                                 const GraphViewer& graph, bool* early_termination) const {
+                                                                 const GraphViewer& graph, bool* early_termination,
+                                                                 std::unordered_map<std::string, std::unique_ptr<SubGraphContext>>& subgraph_context_map) const {
   // Return if iterations are exceeding predefined number
   SubGraphCollection_t nodes_list_output;
   if (iterations > max_iterations) {
@@ -1349,6 +1350,9 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
           }
         }
 
+        BuildSubGraphContext(&graph_build, subgraph_context_map);
+        SetGraphOuterScopeValuesAndInputs(&graph_build, &graph.GetGraph(), subgraph_context_map);
+        SetAllGraphInputs(&graph_build, subgraph_context_map);
         ORT_ENFORCE(graph_build.Resolve().IsOK());
 
         // Add parent graph output to the subgraph
@@ -1420,7 +1424,7 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
 
         SubGraphCollection_t next_nodes_list;
         const std::vector<NodeIndex>& subgraph_node_index = graph_viewer->GetNodesInTopologicalOrder();
-        next_nodes_list = GetSupportedList(parser_nodes_list, iterations, max_iterations, *graph_viewer, early_termination);
+        next_nodes_list = GetSupportedList(parser_nodes_list, iterations, max_iterations, *graph_viewer, early_termination, subgraph_context_map);
         for (size_t i = 0, end = next_nodes_list.size(); i < end; ++i) {
           for (size_t j = 0, end = next_nodes_list[i].first.size(); j < end; ++j) {
             next_nodes_list[i].first[j] = group.first[subgraph_node_index[next_nodes_list[i].first[j]]];
@@ -1603,8 +1607,9 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
   }
 
   SubGraphCollection_t supported_nodes_vector, parser_nodes_vector = {{filtered_nodes_vector, false}};
+  std::unordered_map<std::string, std::unique_ptr<SubGraphContext>> subgraph_context_map;
   bool early_termination = false;
-  supported_nodes_vector = GetSupportedList(parser_nodes_vector, 0, max_partition_iterations_, graph, &early_termination);
+  supported_nodes_vector = GetSupportedList(parser_nodes_vector, 0, max_partition_iterations_, graph, &early_termination, subgraph_context_map);
   if (early_termination) {
     supported_nodes_vector.clear();
   }
@@ -1661,7 +1666,7 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
           std::iota(std::begin(subgraph_nodes_vector), std::end(subgraph_nodes_vector), 0);
           SubGraphCollection_t parser_subgraph_nodes_vector = {{subgraph_nodes_vector, false}};
           bool subgraph_early_termination = false;
-          subgraph_supported_nodes_vector = GetSupportedList(parser_subgraph_nodes_vector, 0, max_partition_iterations_, *sub_graph_veiwer, &subgraph_early_termination);
+          subgraph_supported_nodes_vector = GetSupportedList(parser_subgraph_nodes_vector, 0, max_partition_iterations_, *sub_graph_veiwer, &subgraph_early_termination, subgraph_context_map);
           all_subgraphs_are_supported = IsSubGraphFullySupported(subgraph_supported_nodes_vector, number_of_ort_subgraph_nodes);
           break;
         }
