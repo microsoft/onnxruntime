@@ -99,7 +99,7 @@ stages:
       - bash: |
           set -ex
           #find $(Build.ArtifactStagingDirectory) -name "*.zip" -exec codesign -dvvv {} \;
-          unzip -v $(Build.ArtifactStagingDirectory)/archive.zip -d $(Build.ArtifactStagingDirectory)/zip
+          unzip $(Build.ArtifactStagingDirectory)/archive.zip -d $(Build.ArtifactStagingDirectory)/zip
           #find . -name "*.zip" -exec unzip -o {} \;
           #codesign -dvvv $(Build.ArtifactStagingDirectory)/archive/libcustom_op_library.dylib
           #codesign -dvvv $(Build.ArtifactStagingDirectory)/zip/libcustom_op_library.dylib
