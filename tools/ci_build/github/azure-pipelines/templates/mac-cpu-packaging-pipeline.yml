@@ -84,6 +84,7 @@ stages:
           cleanDestinationFolder: true
       - bash: |
           mkdir -p $(Build.ArtifactStagingDirectory)/archive
+          mkdir -p $(Build.ArtifactStagingDirectory)/archive
           find $(Build.ArtifactStagingDirectory)/testdata -name "*.dylib" -exec mv -vf {} $(Build.ArtifactStagingDirectory)/archive/ \;
           zip -r $(Build.ArtifactStagingDirectory)/archive.zip $(Build.ArtifactStagingDirectory)/archive
           find . -name "*.zip"
@@ -97,8 +98,10 @@ stages:
           Pattern: '*.zip'
       - bash: |
           find $(Build.ArtifactStagingDirectory) -name "*.zip" -exec codesign -dvvv {} \;
-          find . -name "*.zip" -exec unzip -o {} \;
+          unzip $(Build.ArtifactStagingDirectory)/archive.zip -d $(Build.ArtifactStagingDirectory)/zip/
+          #find . -name "*.zip" -exec unzip -o {} \;
           codesign -dvvv $(Build.ArtifactStagingDirectory)/archive/libcustom_op_library.dylib
+          codesign -dvvv $(Build.ArtifactStagingDirectory)/zip/libcustom_op_library.dylib
           find $(Build.ArtifactStagingDirectory) -name "*.dylib" -exec codesign -dvvv {} \;
           find . -name "*.zip" -exec rm {} \;
         displayName: 'Verify code signing'
