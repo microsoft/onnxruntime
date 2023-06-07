@@ -91,7 +91,7 @@ stages:
         displayName: zip dylib files
       - template: mac-esrp-dylib.yml
         parameters:
-          FolderPath: '$(Build.ArtifactStagingDirectory)/archive'
+          FolderPath: '$(Build.ArtifactStagingDirectory)'
           DisplayName: 'ESRP - Sign Mac'
           DoEsrp: true
           Pattern: '*.zip'
