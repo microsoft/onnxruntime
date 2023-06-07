@@ -84,7 +84,7 @@ stages:
           cleanDestinationFolder: true
       - bash: |
           mkdir -p $(Build.ArtifactStagingDirectory)/archive
-          find "$(Build.ArtifactStagingDirectory)/onnxruntime-osx-x86_64" -name  "*.dylib" -exec mv -vf {} $(Build.ArtifactStagingDirectory)/archive/ \;
+          find "$(Build.ArtifactStagingDirectory)/onnxruntime-osx-x86_64" -name  "*libonnxruntime.1.16.0.dylib" -exec mv -vf {} $(Build.ArtifactStagingDirectory)/archive/ \;
           zip -r archive.zip archive
           find . -name "*.zip"
         workingDirectory: $(Build.ArtifactStagingDirectory)
