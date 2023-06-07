@@ -29,6 +29,8 @@ class ConstantSharing : public GraphTransformer {
         excluded_initializers_(excluded_initializers) {
   }
 
+  static constexpr int64_t TENSOR_ELEM_COUNT_THRESHOLD = 8;
+
  private:
   Status ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const override;
 
