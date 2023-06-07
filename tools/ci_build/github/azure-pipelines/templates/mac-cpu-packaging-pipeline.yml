@@ -88,7 +88,7 @@ stages:
         displayName: check unzipped files
       - task: ArchiveFiles@2
         inputs:
-          rootFolderOrFile: '$(Build.ArtifactStagingDirectory)'
+          rootFolderOrFile: '$(Build.ArtifactStagingDirectory)/onnxruntime-osx-x86_64'
           includeRootFolder: false
           archiveType: 'zip'
           archiveFile: '$(Build.ArtifactStagingDirectory)/zip/onnxruntime-osx-x86_64.zip'
