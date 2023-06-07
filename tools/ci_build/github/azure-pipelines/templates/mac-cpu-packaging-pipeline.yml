@@ -83,9 +83,8 @@ stages:
           destinationFolder: '$(Build.ArtifactStagingDirectory)/onnxruntime-osx-x86_64'
           cleanDestinationFolder: true
       - bash: |
-          find . -name "*.dylib" -exec zip {}.zip {} \;
+          find . -name "*.dylib" -exec mkdir -p  "$(dirname {})"/tmp \; -exec cp {} "$(dirname {})"/tmp \; -exec zip -r "$(dirname {})"/tmp.zip "$(dirname {})"/tmp \;
           find . -name "*.zip"
-          cp ./testdata/libcustom_op_library.dylib.zip libcustom_op_library.dylib.zip
         workingDirectory: $(Build.ArtifactStagingDirectory)
         displayName: zip dylib files
       - template: mac-esrp-dylib.yml
