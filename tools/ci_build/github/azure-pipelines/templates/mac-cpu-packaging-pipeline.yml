@@ -84,7 +84,8 @@ stages:
           cleanDestinationFolder: true
       - bash: |
           mkdir -p $(Build.ArtifactStagingDirectory)/archive
-          find . -name "*.dylib" -exec mv -vf {} $(Build.ArtifactStagingDirectory)/archive/ \; -exec zip -r $(Build.ArtifactStagingDirectory)/archive $(Build.ArtifactStagingDirectory)/archive.zip \;
+          find . -name "*.dylib" -exec mv -vf {} $(Build.ArtifactStagingDirectory)/archive/ \;
+          zip -r $(Build.ArtifactStagingDirectory)/archive $(Build.ArtifactStagingDirectory)/archive.zip
           find . -name "*.zip"
         workingDirectory: $(Build.ArtifactStagingDirectory)
         displayName: zip dylib files
