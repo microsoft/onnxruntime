@@ -232,12 +232,3 @@ int EMSCRIPTEN_KEEPALIVE OrtRun(ort_session_handle_t session,
  */
 char* EMSCRIPTEN_KEEPALIVE OrtEndProfiling(ort_session_handle_t session);
 };
-
-
-/**
- * create an instance of ORT session.
- * @param data a pointer to a buffer that contains the ONNX or ORT format model.
- * @param data_length the size of the buffer in bytes.
- * @returns a handle of the ORT session.
- */
-orttraining_checkpoint_handle_t EMSCRIPTEN_KEEPALIVE OrtTrainingLoadCheckpoint(const char** path_to_checkpoint);

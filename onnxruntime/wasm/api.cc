@@ -392,10 +392,3 @@ char* OrtEndProfiling(ort_session_handle_t session) {
              ? file_name
              : nullptr;
 }
-
-OrtCheckpointState* OrtTrainingLoadCheckpoint(const ORTCHAR_T* path_to_checkpoint) {
-  OrtCheckpointState* checkpoint = nullptr;
-  return (CHECK_TRAINING_STATUS(LoadCheckpoint, path_to_checkpoint, &checkpoint) == ORT_OK)
-             ? checkpoint
-             : nullptr;
-}
