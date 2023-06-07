@@ -17,6 +17,8 @@ Abstract:
 #pragma once
 
 #include "mlasi.h"
+//#include "./x86_64/asmmacro.h"
+//#include "./x86_64/AssembleAvxVnni.h"
 
 #ifdef WIN32
 #define tile_dpbssd(dst, src1, src2) _tile_dpbssd(dst, src1, src2)
@@ -42,9 +44,33 @@ tile_loadconfig(const void* __config)
 }
 #else
 
-#define tile_int8_dp_internal(name,dst,src1,src2)					\
-  __asm__ volatile							\
-  ("{"#name"\t%%tmm"#src2", %%tmm"#src1", %%tmm"#dst"|"#name"\t%%tmm"#dst", %%tmm"#src1", %%tmm"#src2"}" ::)
+extern "C" { 
+	void MlasTdpAmx(int dst, int src1, int src2); 
+	void MlasTdpAmxT4T2T0(int dst, int src1, int src2); 
+	void MlasTdpAmxT5T3T0(int dst, int src1, int src2); 
+	void MlasTdpAmxT6T2T1(int dst, int src1, int src2); 
+	void MlasTdpAmxT7T3T1(int dst, int src1, int src2); 
+}
+//MlasTdpAmx(dst,src1,src2)
+
+#define tile_dpbusd_t4t2t0(dst,src1,src2)			\
+  MlasTdpAmxT4T2T0(dst,src1,src2) 
+
+#define tile_dpbusd_t5t3t0(dst,src1,src2)			\
+  MlasTdpAmxT5T3T0(dst,src1,src2) 
+
+#define tile_dpbusd_t6t2t1(dst,src1,src2)			\
+  MlasTdpAmxT6T2T1(dst,src1,src2) 
+
+#define tile_dpbusd_t7t3t1(dst,src1,src2)			\
+  MlasTdpAmxT7T3T1(dst,src1,src2) 
+
+#define tile_int8_dp_internal(name,dst,src1,src2)			\
+  MlasTdpAmx(dst,src1,src2) 
+
+/*  __asm__ volatile							\
+  ("{TdpbusdTmmTmmTmm\ttmm"#src2", tmm"#src1", tmm"#dst"|"#name"\ttmm"#dst", tmm"#src1", tmm"#src2"}" ::)
+*/
 
 #define tile_dpbssd(dst,src1,src2)					\
   tile_int8_dp_internal (tdpbssd, dst, src1, src2)
@@ -53,7 +79,7 @@ tile_loadconfig(const void* __config)
   tile_int8_dp_internal (tdpbsud, dst, src1, src2)
 
 #define tile_dpbusd(dst,src1,src2)					\
-  tile_int8_dp_internal (tdpbusd, dst, src1, src2)
+  tile_int8_dp_internal (TdpbusdTmmTmmTmm, dst, src1, src2)
 
 #define tile_dpbuud(dst,src1,src2)					\
   tile_int8_dp_internal (tdpbuud, dst, src1, src2)

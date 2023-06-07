@@ -499,12 +499,16 @@ MlasGemmQuantKernel<MLAS_GEMM_U8S8_KERNEL_AMX>(
                 tile_loadd(TMM0, b_blk, TILE_K);
                 tile_loadd(TMM2, a_blk, static_cast<int>(PackedCountK));
                 tile_loadd(TMM1, (void*)(b_blk + PackedCountK * TILE_N), TILE_K);
-                tile_dpbusd(TMM4, TMM2, TMM0);
-                tile_dpbusd(TMM6, TMM2, TMM1);
+                //tile_dpbusd(TMM4, TMM2, TMM0);
+                //tile_dpbusd(TMM6, TMM2, TMM1);
+                tile_dpbusd_t4t2t0(TMM4, TMM2, TMM0);
+                tile_dpbusd_t6t2t1(TMM6, TMM2, TMM1);
                 if (m1 > 0){
                     tile_loadd(TMM3, a_next_blk, static_cast<int>(PackedCountK));
-                    tile_dpbusd(TMM5, TMM3, TMM0);
-                    tile_dpbusd(TMM7, TMM3, TMM1);
+                    //tile_dpbusd(TMM5, TMM3, TMM0);
+                    //tile_dpbusd(TMM7, TMM3, TMM1);
+                    tile_dpbusd_t5t3t0(TMM5, TMM3, TMM0);
+                    tile_dpbusd_t7t3t1(TMM7, TMM3, TMM1);
                 }
                 b_blk += TILE_N * TILE_K;
                 a_blk += TILE_K;
@@ -593,16 +597,20 @@ MlasGemmQuantKernel<MLAS_GEMM_U8S8_KERNEL_AMX>(
             for (size_t k = PackedCountK; k > 0; k -=TILE_K) {
                 tile_loadd(TMM0, b_blk, TILE_K);
                 tile_loadd(TMM2, a_blk, static_cast<int>(PackedCountK));
-                tile_dpbusd(TMM4, TMM2, TMM0);
+                //tile_dpbusd(TMM4, TMM2, TMM0);
+                tile_dpbusd_t4t2t0(TMM4, TMM2, TMM0);
                 if (m1 > 0){
                     tile_loadd(TMM3, a_next_blk, static_cast<int>(PackedCountK));
-                    tile_dpbusd(TMM5, TMM3, TMM0);
+                    //tile_dpbusd(TMM5, TMM3, TMM0);
+                    tile_dpbusd_t5t3t0(TMM5, TMM3, TMM0);
                 }
                 if (nmask_high != 0){
                     tile_loadd(TMM1, (void*)(b_blk + PackedCountK * TILE_N), TILE_K);
-                    tile_dpbusd(TMM6, TMM2, TMM1);
+                    //tile_dpbusd(TMM6, TMM2, TMM1);
+                    tile_dpbusd_t6t2t1(TMM6, TMM2, TMM1);
                     if (m1 > 0){
-                        tile_dpbusd(TMM7, TMM3, TMM1);
+                        //tile_dpbusd(TMM7, TMM3, TMM1);
+                        tile_dpbusd_t7t3t1(TMM7, TMM3, TMM1);
                     }
                 }
                 b_blk += TILE_N * TILE_K;
@@ -666,7 +674,8 @@ MlasGemmQuantKernel<MLAS_GEMM_U8S8_KERNEL_AMX>(
             tile_loadd(TMM1, (void*)(b_blk + PackedCountK * TILE_N), TILE_K);
             InitHalfTileWithRowColSumsZeroPoints(Tile6+128, RowSumBuffer+8, colsum, zeropoint, c_blk+ldc*8+TILE_N, ldc, ZeroMode);
             tile_loadd(TMM6, Tile6, TILE_N * sizeof(int32_t));
-            tile_dpbusd(TMM4, TMM2, TMM0);
+            //tile_dpbusd(TMM4, TMM2, TMM0);
+            tile_dpbusd_t4t2t0(TMM4, TMM2, TMM0);
             InitHalfTileWithRowColSumsZeroPoints(Tile7, RowSumBuffer+TILE_M, colsum, zeropoint, c16_blk+TILE_N, ldc, ZeroMode);
             InitHalfTileWithRowColSumsZeroPoints(Tile7+128, RowSumBuffer+TILE_M+8, colsum, zeropoint, c16_blk+ldc*8+TILE_N, ldc, ZeroMode);
         } else {
@@ -687,7 +696,8 @@ MlasGemmQuantKernel<MLAS_GEMM_U8S8_KERNEL_AMX>(
             tile_loadd(TMM1, (void*)(b_blk + PackedCountK * TILE_N), TILE_K);
             InitHalfTileWithRowColSums(Tile6+128, RowSumBuffer+8, colsum, c_blk+ldc*8+TILE_N, ldc, ZeroMode);
             tile_loadd(TMM6, Tile6, TILE_N * sizeof(int32_t));
-            tile_dpbusd(TMM4, TMM2, TMM0);
+            //tile_dpbusd(TMM4, TMM2, TMM0);
+            tile_dpbusd_t4t2t0(TMM4, TMM2, TMM0);
             InitHalfTileWithRowColSums(Tile7, RowSumBuffer+TILE_M, colsum, c16_blk+TILE_N, ldc, ZeroMode);
             InitHalfTileWithRowColSums(Tile7+128, RowSumBuffer+TILE_M+8, colsum, c16_blk+ldc*8+TILE_N, ldc, ZeroMode);
         }
@@ -697,18 +707,26 @@ MlasGemmQuantKernel<MLAS_GEMM_U8S8_KERNEL_AMX>(
             b_blk += TILE_N * TILE_K;
             a_blk += TILE_K;
             a_next_blk += TILE_K;
-            tile_dpbusd(TMM5, TMM3, TMM0);
+            //tile_dpbusd(TMM5, TMM3, TMM0);
+            tile_dpbusd_t5t3t0(TMM5, TMM3, TMM0);
             tile_loadd(TMM0, b_blk, TILE_K);
-            tile_dpbusd(TMM6, TMM2, TMM1);
+            //tile_dpbusd(TMM6, TMM2, TMM1);
+            tile_dpbusd_t6t2t1(TMM6, TMM2, TMM1);
             tile_loadd(TMM2, a_blk, static_cast<int>(PackedCountK));
-            tile_dpbusd(TMM7, TMM3, TMM1);
+            //tile_dpbusd(TMM7, TMM3, TMM1);
+            tile_dpbusd_t7t3t1(TMM7, TMM3, TMM1);
             tile_loadd(TMM3, a_next_blk, static_cast<int>(PackedCountK));
             tile_loadd(TMM1, (void*)(b_blk + PackedCountK * TILE_N), TILE_K);
-            tile_dpbusd(TMM4, TMM2, TMM0);
+            //tile_dpbusd(TMM4, TMM2, TMM0);
+            tile_dpbusd_t4t2t0(TMM4, TMM2, TMM0);
         }
-        tile_dpbusd(TMM5, TMM3, TMM0);
-        tile_dpbusd(TMM6, TMM2, TMM1);
-        tile_dpbusd(TMM7, TMM3, TMM1);
+        //tile_dpbusd(TMM5, TMM3, TMM0);
+        //tile_dpbusd(TMM6, TMM2, TMM1);
+        //tile_dpbusd(TMM7, TMM3, TMM1);
+	tile_dpbusd_t5t3t0(TMM5, TMM3, TMM0);
+        tile_dpbusd_t6t2t1(TMM6, TMM2, TMM1);
+        tile_dpbusd_t7t3t1(TMM7, TMM3, TMM1);
+
         b_blk += PackedCountK * TILE_N + TILE_N * TILE_K;
         tile_stored(TMM4, c_blk, static_cast<int>(ldc * sizeof(int32_t)));
         tile_stored(TMM5, c16_blk, static_cast<int>(ldc * sizeof(int32_t)));
@@ -773,12 +791,18 @@ MlasGemmQuantKernel<MLAS_GEMM_U8S8_KERNEL_AMX>(
             tile_loadd(TMM0, b_blk, TILE_K);
             tile_loadd(TMM2, a_blk, static_cast<int>(PackedCountK));
             tile_loadd(TMM3, a_next_blk, static_cast<int>(PackedCountK));
-            tile_dpbusd(TMM4, TMM2, TMM0);
-            tile_dpbusd(TMM5, TMM3, TMM0);
+            //tile_dpbusd(TMM4, TMM2, TMM0);
+            //tile_dpbusd(TMM5, TMM3, TMM0);
+	    tile_dpbusd_t4t2t0(TMM4, TMM2, TMM0);
+            tile_dpbusd_t5t3t0(TMM5, TMM3, TMM0);
+
             if (nmask_high != 0){
                 tile_loadd(TMM1, (void*)(b_blk + PackedCountK * TILE_N), TILE_K);
-                tile_dpbusd(TMM6, TMM2, TMM1);
-                tile_dpbusd(TMM7, TMM3, TMM1);
+                //tile_dpbusd(TMM6, TMM2, TMM1);
+                //tile_dpbusd(TMM7, TMM3, TMM1);
+		tile_dpbusd_t6t2t1(TMM6, TMM2, TMM1);
+                tile_dpbusd_t7t3t1(TMM7, TMM3, TMM1);
+
             }
             b_blk += TILE_N * TILE_K;
             a_blk += TILE_K;

@@ -53,6 +53,100 @@ Abstract:
         .equ    .LXmmIndex_xmm14, 14
         .equ    .LXmmIndex_xmm15, 15
 
+	.equ    .LTmmIndex_tmm0, 0
+        .equ    .LTmmIndex_tmm1, 1
+        .equ    .LTmmIndex_tmm2, 2
+        .equ    .LTmmIndex_tmm3, 3
+        .equ    .LTmmIndex_tmm4, 4
+        .equ    .LTmmIndex_tmm5, 5
+        .equ    .LTmmIndex_tmm6, 6
+        .equ    .LTmmIndex_tmm7, 7
+        
+/*--
+ 
+    C4 E2 4B 5E CB  ; tdpbssd     tmm1,tmm3,tmm6
+    C4 E2 7B 5E FA  ; tdpbssd     tmm7,tmm2,tmm0
+    C4 E2 5A 5E DA  ; tdpbsud     tmm3,tmm2,tmm4
+    C4 E2 4A 5E C7  ; tdpbsud     tmm0,tmm7,tmm6
+    C4 E2 59 5E E8  ; tdpbusd     tmm5,tmm0,tmm4
+    C4 E2 71 5E C3  ; tdpbusd     tmm0,tmm3,tmm1
+    C4 E2 48 5E D0  ; tdpbuud     tmm2,tmm0,tmm6
+    C4 E2 40 5E E3  ; tdpbuud     tmm4,tmm3,tmm7
+--*/
+
+        .macro DPTmmTmmTmm prefix, DestReg, Src1Reg, Src2Reg
+
+        .set    Payload0, 0x02              # "0F 38" prefix
+        .set    Payload0, Payload0 + ((((.LTmmIndex_\DestReg\() >> 3) & 1) ^ 1) << 7)
+        .set    Payload0, Payload0 + (1 << 6)
+        .set    Payload0, Payload0 + ((((.LTmmIndex_\Src2Reg\() >> 3) & 1) ^ 1) << 5)
+
+        .set    Payload1, \prefix\()
+        .set    Payload1, Payload1 + (((.LTmmIndex_\Src2Reg\() & 15) ^ 15) << 3)
+
+        .set    ModRMByte, 0xC0             # register form
+        .set    ModRMByte, ModRMByte + ((.LTmmIndex_\DestReg\() & 7) << 3)
+        .set    ModRMByte, ModRMByte + (.LTmmIndex_\Src1Reg\() & 7)
+
+        .byte   0xC4, Payload0, Payload1, 0x5E, ModRMByte
+
+        .endm
+
+
+        .macro TdpbssdTmmTmmTmm DestReg, Src1Reg, Src2Reg
+
+        DPTmmTmmTmm 0x03, \DestReg\(), \Src1Reg\(), \Src2Reg\()
+
+        .endm
+
+
+        .macro TdpbsudTmmTmmTmm DestReg, Src1Reg, Src2Reg
+
+        DPTmmTmmTmm 0x02, \DestReg\(), \Src1Reg\(), \Src2Reg\()
+
+        .endm
+
+
+        .macro TdpbusdTmmTmmTmm DestReg, Src1Reg, Src2Reg
+
+        DPTmmTmmTmm 0x01, \DestReg\(), \Src1Reg\(), \Src2Reg\()
+
+        .endm
+
+
+        .macro TdpbuudTmmTmmTmm DestReg, Src1Reg, Src2Reg
+
+        DPTmmTmmTmm 0x00, \DestReg\(), \Src1Reg\(), \Src2Reg\()
+
+        .endm
+
+/*
+
+    tilerelease ; C4 E2 78 49 C0
+
+*/
+
+        .macro TileReleaseMacro
+
+        .byte 0xC4, 0xE2, 0x78, 0x49, 0xC0
+
+        .endm
+
+/*
+
+    tilezero tmm5   ; C4 E2 7B 49 E8
+    tilezero tmm3   ; C4 E2 7B 49 D8
+
+*/
+
+        .macro TileZeroMacro SrcReg
+
+        .set ModRMByte, 0xC0     # register form
+        .set    ModRMByte, ModRMByte + ((.LTmmIndex_\SrcReg\() & 7) << 3)
+        .byte   0xC4, 0xE2, 0x7B, 0x49, ModRMByte
+
+        .endm
+
 /*++
 
 Macro Description:
