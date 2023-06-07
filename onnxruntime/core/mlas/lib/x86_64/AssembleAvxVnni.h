@@ -62,6 +62,22 @@ Abstract:
         .equ    .LTmmIndex_tmm6, 6
         .equ    .LTmmIndex_tmm7, 7
         
+	.equ    .LGprIndex_rax, 0
+        .equ    .LGprIndex_rcx, 1
+        .equ    .LGprIndex_rdx, 2
+        .equ    .LGprIndex_rbx, 3
+        .equ    .LGprIndex_rbp, 5
+        .equ    .LGprIndex_rsi, 6
+        .equ    .LGprIndex_rdi, 7
+        .equ    .LGprIndex_r8, 8
+        .equ    .LGprIndex_r9, 9
+        .equ    .LGprIndex_r10, 10
+        .equ    .LGprIndex_r11, 11
+        .equ    .LGprIndex_r12, 12
+        .equ    .LGprIndex_r13, 13
+        .equ    .LGprIndex_r14, 14
+        .equ    .LGprIndex_r15, 15
+
 /*--
  
     C4 E2 4B 5E CB  ; tdpbssd     tmm1,tmm3,tmm6
@@ -133,10 +149,8 @@ Abstract:
         .endm
 
 /*
-
     tilezero tmm5   ; C4 E2 7B 49 E8
     tilezero tmm3   ; C4 E2 7B 49 D8
-
 */
 
         .macro TileZeroMacro SrcReg
@@ -147,6 +161,79 @@ Abstract:
 
         .endm
 
+
+/*
+ tileloadd tmm1, [rcx+rdx]          ; C4 E2 7B 4B 0C 11    
+ tileloaddt1 tmm0, [r11+rbx]        ; C4 C2 79 4B 04 1B
+ tilestored [rsi+rdi], tmm6         ; C4 E2 7A 4B 34 3E
+*/
+
+        .macro TileLoadMacro instr, SrcReg, BaseReg, Stride
+
+        .set    Payload0, 0x02              # "0F 38" prefix
+        .set    Payload0, Payload0 + ((((.LTmmIndex_\SrcReg\() >> 3) & 1) ^ 1) << 7)
+        .set    Payload0, Payload0 + ((((.LGprIndex_\Stride\() >> 3) & 1) ^ 1) << 6)
+        .set    Payload0, Payload0 + ((((.LGprIndex_\BaseReg\() >> 3) & 1) ^ 1) << 5)
+
+        .set ModRMByte, 0x00     # memory form
+        .set ModRMByte, ModRMByte + (1 << 2)   # SibBye required
+        .set ModRMByte, ModRMByte + ((.LTmmIndex_\SrcReg\() & 7) << 3)
+
+        .set SibByte, 0x00  # scale factor 1(SS)
+        .set SibByte, SibByte + ((.LGprIndex_\Stride\() & 7) << 3)
+        .set SibByte, SibByte + (.LGprIndex_\BaseReg\() & 7)
+
+        .byte   0xC4, Payload0, \instr\(), 0x4B, ModRMByte, SibByte
+
+        .endm
+
+
+        .macro TileloaddTmmMem DstReg, BaseReg, Stride
+        TileLoadMacro 0x7B, \DstReg\(), \BaseReg\(), \Stride\()
+        .endm
+
+
+
+
+
+        .macro TileloaddT1TmmMem DstReg, BaseReg, Stride
+        TileLoadMacro 0x79, \DstReg\(), \BaseReg\(), \Stride\()
+        .endm
+
+
+        .macro TileStoredMemTmm SrcReg, BaseReg, Stride
+        TileLoadMacro 0x7A, \SrcReg\(), \BaseReg\(), \Stride\()
+        .endm
+
+        .macro tilecfgMacro instr, BaseReg
+	.set    Payload0, 0x02              # "0F 38" prefix
+	.set    Payload0, Payload0 + (1 << 7)
+	.set    Payload0, Payload0 + (1 << 6)
+#.set    Payload0, Payload0 + ((((.LGprIndex_\BaseReg\() >> 3) & 1) ^ 1) << 5)
+        .set    Payload0, Payload0 + ((((7 >> 3) & 1) ^ 1) << 5)
+
+	.set ModRMByte, 0x00     # memory form & no reg
+#.set ModRMByte, ModRMByte + (.LGprIndex_\BaseReg\() & 7)
+	.set ModRMByte, ModRMByte + (7 & 7)
+
+	.byte 0xC4, Payload0, \instr\(), 0x49, ModRMByte
+
+        .endm
+
+
+        .macro ldtilecfgMacro BaseReg
+
+        tilecfgMacro 0x78, BaseReg
+
+        .endm
+
+
+        .macro sttilecfgMacro BaseReg
+        
+	tilecfgMacro 0x79, BaseReg
+
+        .endm
+	
 /*++
 
 Macro Description:

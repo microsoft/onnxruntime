@@ -50,6 +50,27 @@ extern "C" {
 	void MlasTdpAmxT5T3T0(int dst, int src1, int src2); 
 	void MlasTdpAmxT6T2T1(int dst, int src1, int src2); 
 	void MlasTdpAmxT7T3T1(int dst, int src1, int src2); 
+
+	void MlasLoadAmxT0(int dst, const void* base, long stride);
+	void MlasLoadAmxT1(int dst, const void* base, long stride);
+	void MlasLoadAmxT2(int dst, const void* base, long stride);
+	void MlasLoadAmxT3(int dst, const void* base, long stride);
+	void MlasLoadAmxT4(int dst, const void* base, long stride);
+	void MlasLoadAmxT5(int dst, const void* base, long stride);
+	void MlasLoadAmxT6(int dst, const void* base, long stride);
+	void MlasLoadAmxT7(int dst, const void* base, long stride);
+
+	void MlasStoreAmxT0(int src, const void* base, long stride);
+	void MlasStoreAmxT1(int src, const void* base, long stride);
+	void MlasStoreAmxT2(int src, const void* base, long stride);
+	void MlasStoreAmxT3(int src, const void* base, long stride);
+	void MlasStoreAmxT4(int src, const void* base, long stride);
+	void MlasStoreAmxT5(int src, const void* base, long stride);
+	void MlasStoreAmxT6(int src, const void* base, long stride);
+	void MlasStoreAmxT7(int src, const void* base, long stride);
+
+	void MlasLoadConfigAmx(const void *__config);
+	void MlasStoreConfigAmx(void *__config);
 }
 //MlasTdpAmx(dst,src1,src2)
 
@@ -67,6 +88,62 @@ extern "C" {
 
 #define tile_int8_dp_internal(name,dst,src1,src2)			\
   MlasTdpAmx(dst,src1,src2) 
+
+#define tile_loadd_t0(dst,base,stride)		\
+  MlasLoadAmxT0(dst, base, stride)
+
+#define tile_loadd_t1(dst,base,stride)		\
+  MlasLoadAmxT1(dst, base, stride)
+
+#define tile_loadd_t2(dst,base,stride)		\
+  MlasLoadAmxT2(dst, base, stride)
+
+#define tile_loadd_t3(dst,base,stride)		\
+  MlasLoadAmxT3(dst, base, stride)
+
+#define tile_loadd_t4(dst,base,stride)		\
+  MlasLoadAmxT4(dst, base, stride)
+
+#define tile_loadd_t5(dst,base,stride)		\
+  MlasLoadAmxT5(dst, base, stride)
+
+#define tile_loadd_t6(dst,base,stride)		\
+  MlasLoadAmxT6(dst, base, stride)
+
+#define tile_loadd_t7(dst,base,stride)		\
+  MlasLoadAmxT7(dst, base, stride)
+
+
+#define tile_stored_t0(src,base,stride)		\
+  MlasStoreAmxT0(src, base, stride)
+
+#define tile_stored_t1(src,base,stride)		\
+  MlasStoreAmxT1(src, base, stride)
+
+#define tile_stored_t2(src,base,stride)		\
+  MlasStoreAmxT2(src, base, stride)
+
+#define tile_stored_t3(src,base,stride)		\
+  MlasStoreAmxT3(src, base, stride)
+
+#define tile_stored_t4(src,base,stride)		\
+  MlasStoreAmxT4(src, base, stride)
+
+#define tile_stored_t5(src,base,stride)		\
+  MlasStoreAmxT5(src, base, stride)
+
+#define tile_stored_t6(src,base,stride)		\
+  MlasStoreAmxT6(src, base, stride)
+
+#define tile_stored_t7(src,base,stride)		\
+  MlasStoreAmxT7(src, base, stride)
+
+#define tile_loadconfig(config)		\
+  MlasLoadConfigAmx(config)
+
+#define tile_storeconfig(config)		\
+  MlasStoreConfigAmx(config)
+
 
 /*  __asm__ volatile							\
   ("{TdpbusdTmmTmmTmm\ttmm"#src2", tmm"#src1", tmm"#dst"|"#name"\ttmm"#dst", tmm"#src1", tmm"#src2"}" ::)
@@ -109,6 +186,7 @@ extern "C" {
    :: "r" ((void*) (base)), "r" ((long) (stride)) \
    : "memory")
 
+/**
 void tile_loadconfig (const void *__config)
 {
   __asm__ volatile ("ldtilecfg\t%X0" :: "m" (*((const void **)__config)));
@@ -118,4 +196,6 @@ void tile_storeconfig (void *__config)
 {
   __asm__ volatile ("sttilecfg\t%X0" : "=m" (*((void **)__config)));
 }
+**/
+
 #endif
