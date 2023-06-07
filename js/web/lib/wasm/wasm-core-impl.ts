@@ -46,11 +46,30 @@ const activeSessions = new Map<number, SessionMetadata>();
  * create an instance of InferenceSession.
  * @returns the metadata of InferenceSession. 0-value handle for failure.
  */
-export const createSessionAllocate = (model: Uint8Array): [number, number] => {
+export const createSessionAllocate = async (model: Uint8Array | { reader: ReadableStreamDefaultReader<Uint8Array>; size: number }): Promise<[number, number]> => {
   const wasm = getInstance();
-  const modelDataOffset = wasm._malloc(model.byteLength);
-  wasm.HEAPU8.set(model, modelDataOffset);
-  return [modelDataOffset, model.byteLength];
+  if (model instanceof Uint8Array) {
+    const modelDataOffset = wasm._malloc(model.byteLength) >>> 0;
+    wasm.HEAPU8.set(model, modelDataOffset);
+    return [modelDataOffset, model.byteLength];
+  } else {
+    const modelDataOffset = wasm._malloc(model.size) >>> 0;
+    let offset = 0;
+    while (true) {
+      const { done, value } = await model.reader.read();
+
+      if (done) {
+        break;
+      }
+
+      const memory = new Uint8Array(wasm.HEAPU8.buffer, modelDataOffset + offset, value.byteLength);
+      memory.set(new Uint8Array(value.buffer));
+
+      offset += value.byteLength;
+      // console.log('wrote chunk', offset);
+    }
+    return [modelDataOffset, model.size];
+  }
 };
 
 export const createSessionFinalize =
@@ -110,8 +129,8 @@ export const createSessionFinalize =
  * @returns the metadata of InferenceSession. 0-value handle for failure.
  */
 export const createSession =
-    (model: Uint8Array, options?: InferenceSession.SessionOptions): SerializableSessionMetadata => {
-      const modelData: SerializableModeldata = createSessionAllocate(model);
+    async (model: Uint8Array, options?: InferenceSession.SessionOptions): Promise<SerializableSessionMetadata> => {
+      const modelData: SerializableModeldata = await createSessionAllocate(model);
       return createSessionFinalize(modelData, options);
     };
 
@@ -170,7 +189,7 @@ export const run = async(
       if (Array.isArray(data)) {
         // string tensor
         dataByteLength = 4 * data.length;
-        dataOffset = wasm._malloc(dataByteLength);
+        dataOffset = wasm._malloc(dataByteLength) >>> 0;
         inputAllocs.push(dataOffset);
         let dataIndex = dataOffset / 4;
         for (let i = 0; i < data.length; i++) {
@@ -181,14 +200,19 @@ export const run = async(
         }
       } else {
         dataByteLength = data.byteLength;
-        dataOffset = wasm._malloc(dataByteLength);
+        dataOffset = wasm._malloc(dataByteLength) >>> 0;
         inputAllocs.push(dataOffset);
+        // eslint-disable-next-line no-bitwise
+        console.log('SETTING INPUT OFFSET', dataOffset, dataOffset);
+        // eslint-disable-next-line no-bitwise
         wasm.HEAPU8.set(new Uint8Array(data.buffer, data.byteOffset, dataByteLength), dataOffset);
+        console.log('SET INPUT OFFSET');
       }
 
       const stack = wasm.stackSave();
       const dimsOffset = wasm.stackAlloc(4 * dims.length);
       try {
+        console.log('creating tensor', dimsOffset, tensorDataTypeStringToEnum(dataType), dataOffset, dataByteLength, dimsOffset, dims.length);
         let dimIndex = dimsOffset / 4;
         dims.forEach(d => wasm.HEAP32[dimIndex++] = d);
         const tensor = wasm._OrtCreateTensor(
@@ -197,6 +221,7 @@ export const run = async(
           throw new Error('Can\'t create a tensor');
         }
         inputValues.push(tensor);
+        console.log('created tensor');
       } finally {
         wasm.stackRestore(stack);
       }
@@ -222,10 +247,13 @@ export const run = async(
         wasm.HEAPU32[outputNamesIndex++] = outputNamesUTF8Encoded[outputIndices[i]];
       }
 
+      console.log('running', sessionHandle, inputNamesOffset, inputValuesOffset, inputCount, outputNamesOffset, outputCount,
+          outputValuesOffset, runOptionsHandle);
       // support RunOptions
       let errorCode = wasm._OrtRun(
           sessionHandle, inputNamesOffset, inputValuesOffset, inputCount, outputNamesOffset, outputCount,
           outputValuesOffset, runOptionsHandle);
+      console.log('run', errorCode);
 
       // eslint-disable-next-line @typescript-eslint/naming-convention
       const runPromise = wasm.jsepRunPromise;

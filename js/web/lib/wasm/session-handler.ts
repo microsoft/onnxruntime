@@ -19,9 +19,18 @@ export class OnnxruntimeWebAssemblySessionHandler implements SessionHandler {
   async createSessionAllocate(path: string): Promise<SerializableModeldata> {
     // fetch model from url and move to wasm heap. The arraybufffer that held the http
     // response is freed once we return
+    const head = await fetch(path, { method: 'HEAD' });
+    const size = head.headers.get('Content-Length');
+
+    if (size === null) {
+      throw new Error('Error getting model size');
+    }
     const response = await fetch(path);
-    const arrayBuffer = await response.arrayBuffer();
-    return createSessionAllocate(new Uint8Array(arrayBuffer));
+    if (response.body === null) {
+      throw new Error('Error getting model size');
+    }
+    const reader = response.body.getReader();
+    return createSessionAllocate({ reader, size: parseInt(size, 10) });
   }
 
   async loadModel(pathOrBuffer: string|Uint8Array, options?: InferenceSession.SessionOptions): Promise<void> {

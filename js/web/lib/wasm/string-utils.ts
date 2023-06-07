@@ -7,7 +7,7 @@ export const allocWasmString = (data: string, allocs: number[]): number => {
   const wasm = getInstance();
 
   const dataLength = wasm.lengthBytesUTF8(data) + 1;
-  const dataOffset = wasm._malloc(dataLength);
+  const dataOffset = wasm._malloc(dataLength) >>> 0;
   wasm.stringToUTF8(data, dataOffset, dataLength);
   allocs.push(dataOffset);
 
