@@ -79,7 +79,7 @@ Status TileCoreForFixedSizeTypes(const Tensor& input_tensor, Tensor& output_tens
 
     // Tile data for the innermost axis
     copy = output - block_size;
-    num_repeats = onnxruntime::narrow<size_t>(repeats[dimension_count - 1]);
+    num_repeats = static_cast<size_t>(repeats[dimension_count - 1]);
     size_t repeat;
     for (repeat = 1; repeat * 2 < num_repeats; repeat *= 2) {
       memcpy(output, copy, block_size * repeat);
@@ -93,7 +93,7 @@ Status TileCoreForFixedSizeTypes(const Tensor& input_tensor, Tensor& output_tens
       ptrdiff_t pitch = onnxruntime::narrow<size_t>(output_pitches[input_counters.Axis()] * input_shape[input_counters.Axis()]);
       block_size = pitch * element_size;
       copy = output - block_size;
-      num_repeats = onnxruntime::narrow(repeats[input_counters.Axis()]);
+      num_repeats = static_cast<size_t>(repeats[input_counters.Axis()]);
       for (repeat = 1; repeat * 2 < num_repeats; repeat *= 2) {
         memcpy(output, copy, block_size * repeat);
         output += block_size * repeat;
