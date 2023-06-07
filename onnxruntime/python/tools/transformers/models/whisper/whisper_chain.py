@@ -29,8 +29,8 @@ def chain_model(args):
         "min_length",
         "num_beams",
         "num_return_sequences",
-        "length_penalty",
-        "repetition_penalty",
+        "length_penalty_fp16" if args.precision == Precision.FLOAT16 else "length_penalty",
+        "repetition_penalty_fp16" if args.precision == Precision.FLOAT16 else "input_features",
         "vocab_mask" if args.use_prefix_vocab_mask else "",
         "prefix_vocab_mask" if args.use_prefix_vocab_mask else "",
         "",
@@ -45,11 +45,25 @@ def chain_model(args):
     beam_outputs = ["sequences"]
 
     if args.precision == Precision.FLOAT16:
-        cast_node = helper.make_node(
+        input_features_cast_node = helper.make_node(
             "Cast",
             inputs=["input_features"],
             outputs=["input_features_fp16"],
-            name="CastToFp16",
+            name="CastInputFeaturesToFp16",
+            to=TensorProto.FLOAT16,
+        )
+        len_pen_cast_node = helper.make_node(
+            "Cast",
+            inputs=["length_penalty"],
+            outputs=["length_penalty_fp16"],
+            name="CastLengthPenaltyToFp16",
+            to=TensorProto.FLOAT16,
+        )
+        rep_pen_cast_node = helper.make_node(
+            "Cast",
+            inputs=["repetition_penalty"],
+            outputs=["repetition_penalty_fp16"],
+            name="CastRepetitionPenaltyToFp16",
             to=TensorProto.FLOAT16,
         )
 
@@ -113,7 +127,7 @@ def chain_model(args):
 
     if hasattr(args, "use_gpu") and args.use_gpu:
         if update_decoder_subgraph_share_buffer_and_use_decoder_masked_mha(decoder_model.graph):
-            print("*****update whisper decoder subgraph successfully!!!*****")
+            print("*****Updated whisper decoder subgraph successfully!!!*****")
         else:
             print("*****DecoderMaskedMultiHeadAttention is not applied to whisper decoder*****")
 
@@ -129,9 +143,9 @@ def chain_model(args):
 
     opset_import = [helper.make_opsetid(domain="com.microsoft", version=1), helper.make_opsetid(domain="", version=17)]
 
-    graph_nodes = ([cast_node] if args.precision == Precision.FLOAT16 else []) + [node]
+    graph_nodes = [input_features_cast_node, len_pen_cast_node, rep_pen_cast_node, node] if args.precision == Precision.FLOAT16 else [node]
     beam_graph = helper.make_graph(graph_nodes, "beam-search-test", graph_inputs, graph_outputs, initializers)
-    beam_model = helper.make_model(beam_graph, producer_name="pytorch", opset_imports=opset_import)
+    beam_model = helper.make_model(beam_graph, producer_name="onnxruntime.transformers", opset_imports=opset_import)
 
     onnx.save(
         beam_model,
