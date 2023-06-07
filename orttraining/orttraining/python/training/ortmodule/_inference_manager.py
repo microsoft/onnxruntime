@@ -3,7 +3,7 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
-import warnings
+from logging import Logger
 from typing import Tuple
 
 import onnx
@@ -11,7 +11,7 @@ import torch
 
 from onnxruntime.capi import _pybind_state as C
 
-from . import _are_deterministic_algorithms_enabled, _io, _logger, _use_deterministic_algorithms, _utils
+from . import _are_deterministic_algorithms_enabled, _io, _use_deterministic_algorithms, _utils
 from ._execution_agent import InferenceAgent
 from ._fallback import ORTModuleFallbackException, _FallbackManager, _FallbackPolicy
 from ._graph_execution_manager import GraphExecutionManager, _RunStateInfo, _SkipCheck
@@ -24,8 +24,8 @@ class InferenceManager(GraphExecutionManager):
     InferenceManager is responsible for building and running the forward graph of the inference model
     """
 
-    def __init__(self, model, debug_options: DebugOptions, fallback_manager: _FallbackManager):
-        super().__init__(model, debug_options, fallback_manager)
+    def __init__(self, model, debug_options: DebugOptions, fallback_manager: _FallbackManager, logger: Logger):
+        super().__init__(model, debug_options, fallback_manager, logger)
         self._export_mode = torch.onnx.TrainingMode.EVAL
 
     @staticmethod
@@ -92,18 +92,14 @@ class InferenceManager(GraphExecutionManager):
 
         try:
             # Issue at most one warning message about fast path
-            if (
-                self._first_skip_check_warning is True
-                and self._skip_check.is_disabled() is False
-                and self._debug_options.logging.log_level <= _logger.LogLevel.WARNING
-            ):
+            if self._first_skip_check_warning is True and self._skip_check.is_disabled() is False:
                 self._first_skip_check_warning = False
-                warnings.warn(
-                    f"Fast path enabled - skipping checks."
-                    f"rebuild gradient graph: {self._skip_check.is_set(_SkipCheck.SKIP_CHECK_BUILD_GRADIENT)},"
-                    f"execution agent recreation: {self._skip_check.is_set(_SkipCheck.SKIP_CHECK_EXECUTION_AGENT)},"
-                    f"device check: {self._skip_check.is_set(_SkipCheck.SKIP_CHECK_DEVICE)}",
-                    UserWarning,
+                self._logger.warning(
+                    "Fast path enabled - skipping checks. rebuild gradient graph: %s, execution agent recreation: %s, "
+                    "device check: %s",
+                    self._skip_check.is_set(_SkipCheck.SKIP_CHECK_BUILD_GRADIENT),
+                    self._skip_check.is_set(_SkipCheck.SKIP_CHECK_EXECUTION_AGENT),
+                    self._skip_check.is_set(_SkipCheck.SKIP_CHECK_DEVICE),
                 )
 
             # If exporting module to ONNX for the first time, this skip check will not take effect.
@@ -127,6 +123,8 @@ class InferenceManager(GraphExecutionManager):
 
                     # Build the gradient graph
                     self._build_graph(graph_transformer_config)
+
+                    self._log_feature_stats()
 
             # If creating the execution agent for the first time, this skip check will not take effect.
             # It will only take effect on subsequent forward calls.

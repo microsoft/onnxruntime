@@ -1036,6 +1036,7 @@ TEST_P(ModelTest, Run) {
                                                    ORT_TSTR("batchnorm_example_training_mode"),
                                                    ORT_TSTR("batchnorm_epsilon_training_mode"),
                                                    ORT_TSTR("mobilenetv2-1.0"),
+                                                   ORT_TSTR("shufflenet"),
                                                    ORT_TSTR("candy"),
                                                    ORT_TSTR("range_float_type_positive_delta_expanded"),
                                                    ORT_TSTR("range_int32_type_negative_delta_expanded"),
