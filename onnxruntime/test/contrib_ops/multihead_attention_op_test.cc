@@ -66,6 +66,16 @@ static void RunMultiHeadAttentionTest(
   bool enable_cpu = (nullptr != DefaultCpuExecutionProvider().get()) && !use_float16 && !disable_cpu;
   bool enable_dml = (nullptr != DefaultDmlExecutionProvider().get()) && !disable_dml;
 
+  if (enable_rocm && !use_float16) {
+    LOGS_DEFAULT(WARNING) << "ROCm MHA only have kernel for half datatype implemented, skip float datatype tests";
+    enable_rocm = false;
+  }
+
+  if (enable_rocm && !bias_data.empty()) {
+    LOGS_DEFAULT(WARNING) << "ROCm MHA does not support qkv_bias, skip qkv_bias tests";
+    enable_rocm = false;
+  }
+
   if (enable_cpu || enable_cuda || enable_rocm || enable_dml) {
     OpTester tester("MultiHeadAttention", 1, onnxruntime::kMSDomain);
     tester.AddAttribute<int64_t>("num_heads", static_cast<int64_t>(num_heads));
@@ -457,7 +467,6 @@ static void RunMultiHeadAttentionTests(AttentionTestData& data, bool disable_cpu
 // Test fused cross attention kernel
 // It requires head_size > 32 and head_size <= 64 for T4 GPU; hidden_size == v_hidden_size.
 TEST(MultiHeadAttentionTest, CrossAttention_Batch2_HeadSize40) {
-  ROCM_GTEST_SKIP("ROCm MHA does not support bias");
   AttentionTestData data;
   GetCrossAttentionData_HeadSize40(data);
   RunMultiHeadAttentionTests(data);
@@ -467,7 +476,7 @@ TEST(MultiHeadAttentionTest, CrossAttention_Batch2_HeadSize40) {
 }
 
 TEST(MultiHeadAttentionTest, CrossAttention_Batch2_HeadSize32_RightSidePadding_Mask1D) {
-  ROCM_GTEST_SKIP("ROCm MHA does not support mask");
+  ROCM_GTEST_SKIP("ROCm MHA does not support mask type of MASK_1D_KEY_SEQ_LEN");
   AttentionTestData data;
   GetCrossAttentionData_Batch2_HeadSize32_RightSidePadding(data, true);
   RunMultiHeadAttentionTests(data, true);
@@ -477,7 +486,7 @@ TEST(MultiHeadAttentionTest, CrossAttention_Batch2_HeadSize32_RightSidePadding_M
 }
 
 TEST(MultiHeadAttentionTest, CrossAttention_Batch2_HeadSize32_RightSidePadding_Mask2D) {
-  ROCM_GTEST_SKIP("ROCm MHA does not support mask");
+  ROCM_GTEST_SKIP("ROCm MHA expect failure due to ck bug");
   AttentionTestData data;
   GetCrossAttentionData_Batch2_HeadSize32_RightSidePadding(data, false);
   RunMultiHeadAttentionTests(data, true);
@@ -487,7 +496,6 @@ TEST(MultiHeadAttentionTest, CrossAttention_Batch2_HeadSize32_RightSidePadding_M
 }
 
 TEST(MultiHeadAttentionTest, CrossAttention_Batch1_HeadSize32_LeftSidePadding_Mask2D) {
-  ROCM_GTEST_SKIP("ROCm MHA does not support mask");
   AttentionTestData data;
   GetCrossAttentionData_Batch1_HeadSize32_LeftSidePadding(data);
   RunMultiHeadAttentionTests(data, true);
@@ -513,7 +521,6 @@ TEST(MultiHeadAttentionTest, SelfAttention_Batch2_HeadSize32_NoBias_NoMask_Packe
 
 // This tests qk_head_size != v_head_size
 TEST(MultiHeadAttentionTest, CrossAttention_Batch2_HeadSize16_8) {
-  ROCM_GTEST_SKIP("ROCm MHA does not support bias");
   AttentionTestData data;
   GetCrossAttentionData_HeadSize16_8(data);
   RunMultiHeadAttentionTests(data);
@@ -523,7 +530,6 @@ TEST(MultiHeadAttentionTest, CrossAttention_Batch2_HeadSize16_8) {
 }
 
 TEST(MultiHeadAttentionTest, CrossAttention_Batch1_HeadSize16) {
-  ROCM_GTEST_SKIP("ROCm MHA does not support bias");
   AttentionTestData data;
   GetCrossAttentionData_HeadSize16(data);
   RunMultiHeadAttentionTests(data);
@@ -533,21 +539,21 @@ TEST(MultiHeadAttentionTest, CrossAttention_Batch1_HeadSize16) {
 }
 
 TEST(MultiHeadAttentionTest, CrossAttentionWithPast) {
-  ROCM_GTEST_SKIP("ROCm MHA does not support attention cache");
+  ROCM_GTEST_SKIP("ROCm MHA only support head_size >= 8");
   AttentionTestData data;
   GetCrossAttentionDataWithPast(data);
   RunMultiHeadAttentionTests(data);
 }
 
 TEST(MultiHeadAttentionTest, SelfAttention_WithPast_WithRelPosBias_ForT5) {
-  ROCM_GTEST_SKIP("ROCm MHA does not support attention cache");
+  ROCM_GTEST_SKIP("ROCm MHA only support head_size >= 8");
   AttentionTestData data;
   GetSelfAttentionData_WithPast_WithRelPosBias_ForT5(data);
   RunMultiHeadAttentionTests(data, true);
 }
 
 TEST(MultiHeadAttentionTest, AttentionCutlassRelPosBias) {
-  ROCM_GTEST_SKIP("ROCm does not support cutlass");
+  // ROCM_GTEST_SKIP("ROCm does not support cutlass");
   AttentionTestData data;
   GetAttentionDataCutlassRelPosBias(data);
   RunMultiHeadAttentionTests(data);
@@ -555,7 +561,6 @@ TEST(MultiHeadAttentionTest, AttentionCutlassRelPosBias) {
 
 TEST(MultiHeadAttentionTest, CrossAttention_DiffSequenceLengths) {
   // Whisper decoder cross attention without mask and different sequence lengths for Q and K/V
-  ROCM_GTEST_SKIP("ROCm not supported");
   AttentionTestData data;
   GetCrossAttentionData_DiffSequenceLengths(data);
   RunMultiHeadAttentionTests(data);
@@ -569,7 +574,6 @@ TEST(MultiHeadAttentionTest, CrossAttention_DiffSequenceLengths) {
 
 TEST(MultiHeadAttentionTest, SelfAttention_WithPastAndPresent_NoMask_NoRelPosBias) {
   // Whisper decoder self attention with past_kv and present_kv
-  ROCM_GTEST_SKIP("ROCm not supported");
   AttentionTestData data;
   GetSelfAttentionData_WithPastAndPresent_NoMask_NoRelPosBias(data);
   RunMultiHeadAttentionTests(data);
@@ -583,7 +587,6 @@ TEST(MultiHeadAttentionTest, SelfAttention_WithPastAndPresent_NoMask_NoRelPosBia
 
 TEST(MultiHeadAttentionTest, CrossAttention_WithPastPassedInDirectly_NoMask) {
   // Whisper decoder cross attention with past_kv in place of current KV and no present_kv
-  ROCM_GTEST_SKIP("ROCm not supported");
   AttentionTestData data;
   GetCrossAttentionData_WithPastPassedInDirectly_NoMask(data);
   RunMultiHeadAttentionTests(data);
