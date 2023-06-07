@@ -83,16 +83,10 @@ stages:
           destinationFolder: '$(Build.ArtifactStagingDirectory)/onnxruntime-osx-x86_64'
           cleanDestinationFolder: true
       - bash: |
-          find . -type f
-          mkdir -p $(Build.ArtifactStagingDirectory)/zip
+          find . -name "*.dylib" -exec zip {}.zip {} \;
+          find . -name "*.zip"
         workingDirectory: $(Build.ArtifactStagingDirectory)
-        displayName: check unzipped files
-      - task: ArchiveFiles@2
-        inputs:
-          rootFolderOrFile: '$(Build.ArtifactStagingDirectory)/testdata'
-          includeRootFolder: false
-          archiveType: 'zip'
-          archiveFile: '$(Build.ArtifactStagingDirectory)/testdata.zip'
+        displayName: zip dylib files
       - template: mac-esrp-dylib.yml
         parameters:
           FolderPath: '$(Build.ArtifactStagingDirectory)/'
@@ -100,11 +94,9 @@ stages:
           DoEsrp: true
           Pattern: '*.zip'
       - bash: |
-          codesign -v $(Build.ArtifactStagingDirectory)/testdata.zip
-          unzip $(Build.ArtifactStagingDirectory)/testdata.zip -d $(Build.ArtifactStagingDirectory)/zip/
-          ls -l $(Build.ArtifactStagingDirectory)/zip/
-          find $(Build.ArtifactStagingDirectory)/zip/ -name "*.dylib" -exec codesign -dvvv {} \;
-          codesign -dvvv $(Build.ArtifactStagingDirectory)/zip/libcustom_op_library.dylib
+          find . -name "*.zip" -exec unzip -f {} \;
+          find $(Build.ArtifactStagingDirectory) -name "*.dylib" -exec codesign -dvvv {} \;
+          find . -name "*.zip" -exec rm {} \;
         displayName: 'Verify code signing'
 
       - ${{ if eq(parameters.BuildForAllArchs, true) }}:
