@@ -349,11 +349,11 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
                                << " execution_mode:" << session_options_.execution_mode
                                << " execution_order:" << session_options_.execution_order
                                << " enable_profiling:" << session_options_.enable_profiling
-                               << " optimized_model_filepath:" << std::wstring_convert<std::codecvt_utf8<wchar_t>>().to_bytes(session_options_.optimized_model_filepath)
+                               << " optimized_model_filepath:" << ORT_TSTR_CONVERT_TO_PRINTABLE_STRING(session_options_.optimized_model_filepath)
                                << " enable_mem_pattern:" << session_options_.enable_mem_pattern
                                << " enable_mem_reuse:" << session_options_.enable_mem_reuse
                                << " enable_cpu_mem_arena:" << session_options_.enable_cpu_mem_arena
-                               << " profile_file_prefix:" << std::wstring_convert<std::codecvt_utf8<wchar_t>>().to_bytes(session_options_.profile_file_prefix)
+                               << " profile_file_prefix:" << ORT_TSTR_CONVERT_TO_PRINTABLE_STRING(session_options_.profile_file_prefix)
                                << " session_logid:" << session_options_.session_logid
                                << " session_log_severity_level:" << session_options_.session_log_severity_level
                                << " session_log_verbosity_level:" << session_options_.session_log_verbosity_level
