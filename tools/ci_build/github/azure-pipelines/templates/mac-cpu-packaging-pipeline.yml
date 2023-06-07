@@ -86,7 +86,7 @@ stages:
           find $(Build.ArtifactStagingDirectory)/onnxruntime-osx-x86_64 -type f
           mkdir -p $(Build.ArtifactStagingDirectory)/archive
           #find . -name  "*libonnxruntime.1.16.0.dylib" -type f -exec mv -vf {} $(Build.ArtifactStagingDirectory)/archive/ \;
-          cp "$(Build.ArtifactStagingDirectory)/onnxruntime-osx-x86_64onnxruntime-osx-x86_64-1.16.0/lib/libonnxruntime.1.16.0.dylib" $(Build.ArtifactStagingDirectory)/archive/libonnxruntime.1.16.0.dylib
+          cp "$(Build.ArtifactStagingDirectory)/onnxruntime-osx-x86_64/onnxruntime-osx-x86_64-1.16.0/lib/libonnxruntime.1.16.0.dylib" $(Build.ArtifactStagingDirectory)/archive/libonnxruntime.1.16.0.dylib
           zip -r archive.zip archive
           find . -name "*.zip"
         workingDirectory: $(Build.ArtifactStagingDirectory)
