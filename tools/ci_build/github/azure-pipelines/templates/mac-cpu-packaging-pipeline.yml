@@ -85,7 +85,7 @@ stages:
       - bash: |
           #find . -name "*.dylib" -exec mkdir -p  "$(dirname {})"/tmp \; -exec cp {} "$(dirname {})"/tmp \; -exec zip -r "$(dirname {})"/tmp.zip "$(dirname {})"/tmp \;
           mkdir -p $(Build.ArtifactStagingDirectory)/archive
-          find . -name "*.dylib" -exec yes | cp {} $(Build.ArtifactStagingDirectory)/archive/{} \; -exec zip -r $(Build.ArtifactStagingDirectory)/archive $(Build.ArtifactStagingDirectory)/archive.zip \;
+          find . -name "*.dylib" -exec cp -vf {} $(Build.ArtifactStagingDirectory)/archive/{} \; -exec zip -r $(Build.ArtifactStagingDirectory)/archive $(Build.ArtifactStagingDirectory)/archive.zip \;
           find . -name "*.zip"
         workingDirectory: $(Build.ArtifactStagingDirectory)
         displayName: zip dylib files
