@@ -25,7 +25,7 @@ struct HypothesisScore {
 };
 
 struct BeamHypotheses {
-  // As these are constructed as an unitialized array of memory, 
+  // As these are constructed as an unitialized array of memory,
   void Init(float length_penalty, gsl::span<HypothesisScore> beams);
 
   // Add a new hypothesis
@@ -62,12 +62,11 @@ struct BeamSearchScorer : IBeamScorer {
 
   bool IsDone() const override { return not_done_count_ == 0; }
 
-  gsl::span<float>   GetNextScores() override { return next_beam_scores_; }
+  gsl::span<float> GetNextScores() override { return next_beam_scores_; }
   gsl::span<int32_t> GetNextTokens() override { return next_beam_tokens_; }
   gsl::span<int32_t> GetNextIndicesCPU() override { return next_beam_indices_; }
 
  private:
-
   size_t batch_size_;
   size_t num_beams_;
   size_t max_length_;

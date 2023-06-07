@@ -612,8 +612,7 @@ struct CudaBeamSearchScorer : transformers::IBeamScorer {
 template <typename TAlloc>
 gsl::span<TAlloc> Allocate(std::shared_ptr<IAllocator> allocator,
                            size_t size,
-                           IAllocatorUniquePtr<TAlloc>& unique_ptr,
-                           bool fill = false, TAlloc fill_value = TAlloc{}) {
+                           IAllocatorUniquePtr<TAlloc>& unique_ptr) {
   unique_ptr = IAllocator::MakeUniquePtr<TAlloc>(std::move(allocator), size);
   return gsl::make_span(unique_ptr.get(), size);
 }

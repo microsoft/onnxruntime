@@ -39,7 +39,7 @@ struct IBeamSearchState {
                                        // in total, it will be:
                                        // 2 * (batch_size * num_beams * (parts_vocab + 1), 2 * num_beams)
 
-  gsl::span<int32_t> sequences_device; // shape (2 * batch_size * max_length)
+  gsl::span<int32_t> sequences_device;  // shape (2 * batch_size * max_length)
 
   Tensor staging_for_past_state_reorder;  // Tensor of shape (batch_size * num_beams, num_heads, max_length, head_size)
 };
@@ -95,8 +95,8 @@ struct ISamplingState {
 struct ISequences {
   virtual ~ISequences() {}
   virtual gsl::span<const int32_t> GetSequence(int beam_index) const = 0;
-  virtual gsl::span<const int32_t> GetCurrentDeviceSequences() const = 0; // Get all current beam_index sequences in one continuous block (to pass to CUDA)
-  virtual gsl::span<int32_t> GetNextDeviceSequences() = 0;  // Get all next beam_index sequences in one continuous block (to pass to CUDA)
+  virtual gsl::span<const int32_t> GetCurrentDeviceSequences() const = 0;  // Get all current beam_index sequences in one continuous block (to pass to CUDA)
+  virtual gsl::span<int32_t> GetNextDeviceSequences() = 0;                 // Get all next beam_index sequences in one continuous block (to pass to CUDA)
   virtual int GetSequenceLength() const = 0;
 };
 
@@ -121,7 +121,7 @@ struct IBeamScorer {
 
   virtual bool IsDone() const = 0;
 
-  virtual gsl::span<float>   GetNextScores() = 0;
+  virtual gsl::span<float> GetNextScores() = 0;
   virtual gsl::span<int32_t> GetNextTokens() = 0;
   virtual gsl::span<int32_t> GetNextIndicesCPU() = 0;
   virtual gsl::span<int32_t> GetNextIndicesGPU() { return {}; }  // If this is non CPU, returns the device buffer of the indices
