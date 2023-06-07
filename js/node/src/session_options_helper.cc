@@ -9,11 +9,13 @@
 
 #include "common.h"
 #include "session_options_helper.h"
-#ifdef _WIN32
+#ifdef USE_DML
 #include "dml_provider_factory.h"
 #endif
+#ifdef USE_TENSORRT
 #include "tensorrt_provider_factory.h"
-#ifdef __APPLE__
+#endif
+#ifdef USE_COREML
 #include "coreml_provider_factory.h"
 #endif
 
@@ -52,29 +54,21 @@ void ParseExecutionProviders(const Napi::Array epList, Ort::SessionOptions &sess
     // CPU execution provider
     if (name == "cpu") {
       // TODO: handling CPU EP options
+#ifdef USE_CUDA
     } else if (name == "cuda") {
-#ifndef __APPLE__
       Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_CUDA(sessionOptions, deviceId));
-#else
-      ORT_NAPI_THROW_ERROR(epList.Env(), "CUDA EP is not supported on macOS");
 #endif
+#ifdef USE_TENSORRT
     } else if (name == "tensorrt") {
-#ifndef __APPLE__
       Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Tensorrt(sessionOptions, deviceId));
-#else
-      ORT_NAPI_THROW_ERROR(epList.Env(), "TensorRT EP is not supported on macOS");
 #endif
+#ifdef USE_DML
     } else if (name == "dml") {
-#ifdef _WIN32
       Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_DML(sessionOptions, deviceId));
-#else
-      ORT_NAPI_THROW_ERROR(epList.Env(), "DirectML EP is supported only on Windows");
 #endif
+#ifdef USE_COREML
     } else if (name == "coreml") {
-#ifdef __APPLE__
       Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_CoreML(sessionOptions, coreMlFlags));
-#else
-      ORT_NAPI_THROW_ERROR(epList.Env(), "CoreML EP is supported only on macOS");
 #endif
     } else {
       ORT_NAPI_THROW_ERROR(epList.Env(), "Invalid argument: sessionOptions.executionProviders[", i,

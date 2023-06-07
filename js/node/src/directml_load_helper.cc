@@ -29,7 +29,7 @@ void LoadDirectMLDll(Napi::Env env)
 
   path.resize(path.rfind(L'\\') + 1);
   path.append(L"DirectML.dll");
-  auto libraryLoadResult = LoadLibraryW(const_cast<wchar_t*>(path.c_str()));
+  HMODULE libraryLoadResult = LoadLibraryW(path.c_str());
 
   if (!libraryLoadResult) {
     int ret = GetLastError();
