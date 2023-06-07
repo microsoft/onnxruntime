@@ -49,6 +49,7 @@ std::set<std::string> ops_supported_only_in_model = {
     "OneHot",
     "Pad",
     "QuantizeLinear",
+    "RandomNormalLike",
     "Range",
     "ReduceMin",
     "Resize",
@@ -57,7 +58,8 @@ std::set<std::string> ops_supported_only_in_model = {
     "Slice",
     "Split",
     "Tile",
-    "TopK"};
+    "TopK",
+    "Trilu"};
 
 // Ops which are supported as functions (as composite ops)
 std::set<std::string> ops_supported_as_function = {
@@ -205,7 +207,7 @@ std::vector<SupportedOp> supported_op_mode = {
     {"QLinearMatMul", V_2022_3, {"CPU"}},
     {"QuantizeLinear", V_2021_4, {"CPU", "GPU"}},
     {"QuantizeLinear", V_2023_0, {"VPUX"}},
-    {"RandomNormalLike", V_2023_0, {"All"}},
+    {"RandomNormalLike", V_2023_0, {"CPU", "GPU"}},
     {"Range", V_2022_1, {"CPU", "GPU"}},
     {"Range", V_2023_0, {"VPUX"}},
     {"Reciprocal", V_2020_4, {"CPU", "GPU"}},
@@ -279,7 +281,7 @@ std::vector<SupportedOp> supported_op_mode = {
     {"Tile", V_2023_0, {"VPUX"}},
     {"Transpose", V_2020_4, {"CPU", "GPU"}},
     {"Transpose", V_2023_0, {"VPUX"}},
-    {"Trilu", V_2023_0, {"All"}},
+    {"Trilu", V_2023_0, {"CPU", "GPU"}},
     {"TopK", V_2020_4, {"CPU", "GPU"}},
     {"TopK", V_2023_0, {"VPUX"}},
     {"Unsqueeze", V_2020_4, {"CPU", "GPU"}},
