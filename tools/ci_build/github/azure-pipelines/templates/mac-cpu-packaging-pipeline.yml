@@ -102,7 +102,9 @@ stages:
       - bash: |
           codesign -v $(Build.ArtifactStagingDirectory)/testdata.zip
           unzip $(Build.ArtifactStagingDirectory)/testdata.zip -d $(Build.ArtifactStagingDirectory)/zip/
+          ls -l $(Build.ArtifactStagingDirectory)/zip/
           find $(Build.ArtifactStagingDirectory)/zip/ -name "*.dylib" -exec codesign -v {} \;
+          codesign -v $(Build.ArtifactStagingDirectory)/zip/libcustom_op_library.dylib
         displayName: 'Verify code signing'
 
       - ${{ if eq(parameters.BuildForAllArchs, true) }}:
