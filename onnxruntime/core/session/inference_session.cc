@@ -275,16 +275,11 @@ static Status FinalizeSessionOptions(const SessionOptions& user_provided_session
   std::string envVarSession_profile_file_prefix = ParseEnvironmentVariableWithDefault<std::string>("ORT_DEBUG_SESSION_PROFILE_FILE_PREFIX", "");
   if (envVarSession_profile_file_prefix != "") {
     std::basic_string<ORTCHAR_T> profile_file_prefix_ort_string;
-
-#ifdef _WIN32
-    profile_file_prefix_ort_string = std::wstring_convert<std::codecvt_utf8<wchar_t>>().from_bytes(envVarSession_profile_file_prefix);
-#else
-    profile_file_prefix_ort_string = envVarSession_profile_file_prefix;
-#endif
+    profile_file_prefix_ort_string = ORT_TSTR_CONVERT_FROM_STRING(envVarSession_profile_file_prefix);
 
     LOGS(default_logger, INFO) << "Overriding profile_file_prefix. Original:"
-                               << std::wstring_convert<std::codecvt_utf8<wchar_t>>().to_bytes(finalized_session_options.profile_file_prefix) << " New:"
-                               << std::wstring_convert<std::codecvt_utf8<wchar_t>>().to_bytes(profile_file_prefix_ort_string);
+                               << ORT_TSTR_CONVERT_TO_PRINTABLE_STRING(finalized_session_options.profile_file_prefix) << " New:"
+                               << ORT_TSTR_CONVERT_TO_PRINTABLE_STRING(profile_file_prefix_ort_string);
     finalized_session_options.profile_file_prefix = profile_file_prefix_ort_string;
   }
 
