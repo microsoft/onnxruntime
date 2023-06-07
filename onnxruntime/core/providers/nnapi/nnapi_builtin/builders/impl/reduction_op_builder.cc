@@ -7,6 +7,7 @@
 #include "core/common/safeint.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/graph/graph_viewer.h"
+#include "core/optimizer/initializer.h"
 #include "core/providers/common.h"
 #include "core/providers/shared/utils/utils.h"
 #include "core/providers/nnapi/nnapi_builtin/builders/helper.h"
@@ -146,6 +147,7 @@ Status ReductionOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, co
       model_builder.RegisterOperand(output, operand_indices.at(inputs[0].node_arg.Name()), output_operand_type);
     }
   }
+  return Status::OK();
 }
 
 // Operator support related
@@ -162,7 +164,8 @@ int32_t ReductionOpBuilder::GetMinSupportedNNAPIFeatureLevel(
 
 bool ReductionOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
                                            const OpSupportCheckParams& /* params */) const {
-  const auto& inputs = node_unit.Inputs;
+  const auto& inputs = node_unit.Inputs();
+  const auto& op(node_unit.OpType());
 
   Shape input_shape;
   if (!GetShape(inputs[0].node_arg, input_shape))
@@ -173,23 +176,25 @@ bool ReductionOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializ
                           << input_shape.size() << "d shape";
     return false;
   }
+  if (op == "ReduceMean") {
+    if (node_unit.SinceVersion() > 13 && inputs.size() > 1 && inputs[1].node_arg.Exists()) {
+      const auto& axes_name = inputs[1].node_arg.Name();
+      if (!Contains(initializers, axes_name)) {
+        LOGS_DEFAULT(VERBOSE) << "Axes of ReduceMean must be a constant initializer.";
+        return false;
+      }
 
-  if (node_unit.SinceVersion() > 13 && inputs.size() > 1 && inputs[1].node_arg->Exists()) {
-    const auto& axes_name = input_defs[1]->Name();
-    if (!Contains(initializers, axes_name)) {
-      LOGS(logger, VERBOSE) << "Axes of reduction must be a constant initializer.";
-      return false;
-    }
+      NodeAttrHelper helper(node_unit);
 
-    NodeAttrHelper helper(node_unit);
-
-    // Notes from NNAPI doc:
-    // https://developer.android.com/ndk/reference/group/neural-networks#group___neural_networks_1ggaabbe492c60331b13038e39d4207940e0a047fe95a35b27f45c05432b6ca18eb6c
-    if (initializers.at(axes_name)->int64_data_size() == 0 && helper.Get("noop_with_empty_axes", 0) == 0) {
-      LOGS(logger, VERBOSE) << "NNAPI doesn't support the behavior by default to reduce all dimensions when 'axes' is empty" << std::endl;
-      return false;
+      // Notes from NNAPI doc:
+      // https://developer.android.com/ndk/reference/group/neural-networks#group___neural_networks_1ggaabbe492c60331b13038e39d4207940e0a047fe95a35b27f45c05432b6ca18eb6c
+      if (initializers.at(axes_name)->int64_data_size() == 0 && helper.Get("noop_with_empty_axes", 0) == 0) {
+        LOGS_DEFAULT(VERBOSE) << "NNAPI doesn't support the behavior by default to reduce all dimensions when 'axes' is empty" << std::endl;
+        return false;
+      }
     }
   }
+  return true;
 }
 
 void CreateReductionOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {
