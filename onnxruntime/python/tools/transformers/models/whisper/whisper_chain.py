@@ -192,13 +192,17 @@ def chain_model(args):
 
     all_nodes.extend([node])
     beam_graph = helper.make_graph(all_nodes, "beam-search-test", graph_inputs, graph_outputs, initializers)
+    beam_graph_input_names = [gi.name for gi in graph_inputs]
+    beam_graph_output_names = [go.name for go in graph_outputs]
     if args.cross_qk_onnx_model:
         post_qk_model = onnx.load_model(args.cross_qk_onnx_model, load_external_data=True)
         post_qk_graph = post_qk_model.graph
-        # TODO: check duplicat names
         beam_graph.initializer.extend(post_qk_graph.initializer)
         beam_graph.node.extend(post_qk_graph.node)
-        beam_graph.input.extend(post_qk_graph.input[1:])
+        # TODO: Treat same name same input, user need check their shapes, etc
+        for pgi in post_qk_graph.input:
+            if (pgi.name not in beam_graph_input_names) and (pgi.name not in beam_graph_output_names) and (not pgi.name == 'cross_qk'):
+                beam_graph.input.extend([pgi])
         beam_graph.output.extend(post_qk_graph.output)
 
     beam_model = helper.make_model(beam_graph, producer_name="onnxruntime", opset_imports=opset_import)
