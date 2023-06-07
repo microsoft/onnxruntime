@@ -44,6 +44,7 @@ def chain_model(args):
         beam_inputs.append("logits_processor")
     beam_outputs = ["sequences"]
 
+    input_features_cast_node, len_pen_cast_node, rep_pen_cast_node = None, None, None
     if args.precision == Precision.FLOAT16:
         input_features_cast_node = helper.make_node(
             "Cast",
@@ -143,7 +144,11 @@ def chain_model(args):
 
     opset_import = [helper.make_opsetid(domain="com.microsoft", version=1), helper.make_opsetid(domain="", version=17)]
 
-    graph_nodes = [input_features_cast_node, len_pen_cast_node, rep_pen_cast_node, node] if args.precision == Precision.FLOAT16 else [node]
+    graph_nodes = (
+        [input_features_cast_node, len_pen_cast_node, rep_pen_cast_node, node]
+        if args.precision == Precision.FLOAT16
+        else [node]
+    )
     beam_graph = helper.make_graph(graph_nodes, "beam-search-test", graph_inputs, graph_outputs, initializers)
     beam_model = helper.make_model(beam_graph, producer_name="onnxruntime.transformers", opset_imports=opset_import)
 
