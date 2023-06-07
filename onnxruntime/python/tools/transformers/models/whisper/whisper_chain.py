@@ -37,8 +37,6 @@ def chain_model(args):
 
     config = WhisperConfig.from_pretrained(args.model_name_or_path)
 
-    all_nodes = []
-
     beam_inputs = [
         "input_features_fp16" if args.precision == Precision.FLOAT16 else "input_features",
         "max_length",
@@ -72,7 +70,6 @@ def chain_model(args):
         beam_inputs.append("extra_decoding_ids")
     else:
         beam_inputs.append("")
-
 
     beam_outputs = ["sequences"]
     if args.collect_cross_qk:
@@ -205,9 +202,7 @@ def chain_model(args):
         graph_outputs.extend([cross_qk])
 
     if args.output_no_speech_probs:
-        no_speech_probs = helper.make_tensor_value_info(
-            "no_speech_probs", float_data_type, ["batch_size"]
-        )
+        no_speech_probs = helper.make_tensor_value_info("no_speech_probs", float_data_type, ["batch_size"])
         graph_outputs.extend([no_speech_probs])
 
     if hasattr(args, "use_gpu") and args.use_gpu:
@@ -236,13 +231,22 @@ def chain_model(args):
         else [node]
     )
     beam_graph = helper.make_graph(graph_nodes, "beam-search-test", graph_inputs, graph_outputs, initializers)
+    beam_graph_input_names = [gi.name for gi in graph_inputs]
+    beam_graph_output_names = [go.name for go in graph_outputs]
+
     if args.cross_qk_onnx_model:
         post_qk_model = onnx.load_model(args.cross_qk_onnx_model, load_external_data=True)
         post_qk_graph = post_qk_model.graph
-        # TODO: check duplicat names
         beam_graph.initializer.extend(post_qk_graph.initializer)
         beam_graph.node.extend(post_qk_graph.node)
-        beam_graph.input.extend(post_qk_graph.input[1:])
+        # TODO: Treat same name same input, user need check their shapes, etc
+        for pgi in post_qk_graph.input:
+            if (
+                (pgi.name not in beam_graph_input_names)
+                and (pgi.name not in beam_graph_output_names)
+                and (not pgi.name == "cross_qk")
+            ):
+                beam_graph.input.extend([pgi])
         beam_graph.output.extend(post_qk_graph.output)
 
     # Verify graph's inputs match beam search's inputs
