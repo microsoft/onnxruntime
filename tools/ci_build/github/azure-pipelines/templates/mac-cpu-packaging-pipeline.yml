@@ -83,9 +83,8 @@ stages:
           destinationFolder: '$(Build.ArtifactStagingDirectory)/onnxruntime-osx-x86_64'
           cleanDestinationFolder: true
       - bash: |
-          #find . -name "*.dylib" -exec mkdir -p  "$(dirname {})"/tmp \; -exec cp {} "$(dirname {})"/tmp \; -exec zip -r "$(dirname {})"/tmp.zip "$(dirname {})"/tmp \;
           mkdir -p $(Build.ArtifactStagingDirectory)/archive
-          find . -name "*.dylib" -exec cp -vf {} $(Build.ArtifactStagingDirectory)/archive/{} \; -exec zip -r $(Build.ArtifactStagingDirectory)/archive $(Build.ArtifactStagingDirectory)/archive.zip \;
+          find . -name "*.dylib" -exec mv -vf {} $(Build.ArtifactStagingDirectory)/archive/ \; -exec zip -r $(Build.ArtifactStagingDirectory)/archive $(Build.ArtifactStagingDirectory)/archive.zip \;
           find . -name "*.zip"
         workingDirectory: $(Build.ArtifactStagingDirectory)
         displayName: zip dylib files
@@ -97,11 +96,9 @@ stages:
           Pattern: '*.zip'
       - bash: |
           find $(Build.ArtifactStagingDirectory) -name "*.zip" -exec codesign -dvvv {} \;
-          #codesign -dvvv $(Build.ArtifactStagingDirectory)/onnxruntime-osx-x86_64/onnxruntime-osx-x86_64-1.16.0/lib/libonnxruntime.1.16.0.dylib.zip
           find . -name "*.zip" -exec unzip -o {} \;
           codesign -dvvv $(Build.ArtifactStagingDirectory)/archive/libcustom_op_library.dylib
           find $(Build.ArtifactStagingDirectory) -name "*.dylib" -exec codesign -dvvv {} \;
-          #codesign -dvvv $(Build.ArtifactStagingDirectory)/onnxruntime-osx-x86_64/onnxruntime-osx-x86_64-1.16.0/lib/libonnxruntime.1.16.0.dylib
           find . -name "*.zip" -exec rm {} \;
         displayName: 'Verify code signing'
 
