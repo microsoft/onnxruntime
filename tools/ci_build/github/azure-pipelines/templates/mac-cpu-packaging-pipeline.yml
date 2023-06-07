@@ -74,7 +74,7 @@ stages:
           SpecificArtifact: ${{ parameters.specificArtifact }}
           BuildId: ${{ parameters.BuildId }}
       - bash: |
-          find . -type f -xtype f
+          find . -type f
         workingDirectory: $(Build.ArtifactStagingDirectory)
         displayName: check unzipped files
       - task: ExtractFiles@1
