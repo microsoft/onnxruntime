@@ -99,7 +99,7 @@ stages:
           DisplayName: 'ESRP - Sign Mac'
           DoEsrp: true
           Pattern: '*.zip'
-      - bash:
+      - bash: |
           codesign -v $(Build.ArtifactStagingDirectory)/testdata.zip
           unzip $(Build.ArtifactStagingDirectory)/testdata.zip -d $(Build.ArtifactStagingDirectory)/zip/
           find $(Build.ArtifactStagingDirectory)/zip/ -name "*.dylib" -exec codesign -v {} \;
