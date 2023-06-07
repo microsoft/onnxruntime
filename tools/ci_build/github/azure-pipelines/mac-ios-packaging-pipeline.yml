@@ -173,6 +173,8 @@ jobs:
       xcWorkspacePath: '$(Build.BinariesDirectory)/app_center_test_full/ios_package_test/ios_package_test.xcworkspace'
       sdk: 'iphoneos'
       scheme: 'ios_package_test'
+      xcodeVersion: 'specifyPath'
+      xcodeDeveloperDir: '/Applications/Xcode_${{ variables.xcodeVersion }}.app/Contents/Developer'
       signingOption: 'manual'
       signingIdentity: '$(APPLE_CERTIFICATE_SIGNING_IDENTITY)'
       provisioningProfileName: 'iOS Team Provisioning Profile'
