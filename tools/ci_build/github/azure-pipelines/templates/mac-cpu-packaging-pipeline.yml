@@ -88,7 +88,7 @@ stages:
         displayName: check unzipped files
       - task: ArchiveFiles@2
         inputs:
-          rootFolderOrFile: '$(Build.ArtifactStagingDirectory)/onnxruntime-osx-x86_64'
+          rootFolderOrFile: '$(Build.ArtifactStagingDirectory)/testdata'
           includeRootFolder: false
           archiveType: 'zip'
           archiveFile: '$(Build.ArtifactStagingDirectory)/zip/onnxruntime-osx-x86_64.zip'
@@ -97,7 +97,7 @@ stages:
           FolderPath: '$(Build.ArtifactStagingDirectory)/zip'
           DisplayName: 'ESRP - Sign Mac'
           DoEsrp: true
-          Pattern: '/**/*.dylib'
+          Pattern: '*.dylib'
 
       - ${{ if eq(parameters.BuildForAllArchs, true) }}:
         - template: flex-downloadPipelineArtifact.yml
