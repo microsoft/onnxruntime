@@ -93,7 +93,7 @@ stages:
           archiveFile: '$(Build.ArtifactStagingDirectory)/onnxruntime-osx-x86_64.zip'
       - template: mac-esrp-dylib.yml
         parameters:
-          FolderPath: '$(Build.ArtifactStagingDirectory)'
+          FolderPath: '$(Build.ArtifactStagingDirectory)/onnxruntime-osx-x86_64.zip'
           DisplayName: 'ESRP - Sign Mac'
           DoEsrp: true
           Pattern: '*.dylib'
