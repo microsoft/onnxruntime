@@ -76,18 +76,18 @@ stages:
           find . -type f
         workingDirectory: $(Build.ArtifactStagingDirectory)
         displayName: check unzipped files
-      - task: ExtractFiles@1
-        inputs:
-          archiveFilePatterns: '$(Build.ArtifactStagingDirectory)//onnxruntime-osx-x86_64-*.tgz'
-          destinationFolder: '$(Build.ArtifactStagingDirectory)/onnxruntime-osx-x86_64'
-          cleanDestinationFolder: true
+      #- task: ExtractFiles@1
+      #  inputs:
+      #    archiveFilePatterns: '$(Build.ArtifactStagingDirectory)//onnxruntime-osx-x86_64-*.tgz'
+      #    destinationFolder: '$(Build.ArtifactStagingDirectory)/onnxruntime-osx-x86_64'
+      #    cleanDestinationFolder: true
       - bash: |
           find . -type f
         workingDirectory: $(Build.ArtifactStagingDirectory)
         displayName: check unzipped files
       - template: mac-esrp-dylib.yml
         parameters:
-          FolderPath: '$(Build.ArtifactStagingDirectory)/onnxruntime-osx-x86_64'
+          FolderPath: '$(Build.ArtifactStagingDirectory)'
           DisplayName: 'ESRP - Sign Mac'
           DoEsrp: true
           Pattern: '*.dylib'
