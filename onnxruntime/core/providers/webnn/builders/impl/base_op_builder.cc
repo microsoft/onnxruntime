@@ -38,7 +38,7 @@ bool HasExternalInitializer(const InitializedTensorSet& initializers, const Node
 Status BaseOpBuilder::AddToModelBuilder(ModelBuilder& model_builder, const Node& node,
                                         const logging::Logger& logger) const {
   ORT_RETURN_IF_NOT(
-      IsOpSupported(model_builder.GetInitializerTensors(), node, logger),
+      IsOpSupported(model_builder.GetInitializerTensors(), node, model_builder.GetWebnnDeviceType(), logger),
       "Unsupported operator ",
       node.OpType());
   ORT_RETURN_IF_ERROR(AddToModelBuilderImpl(model_builder, node, logger));
@@ -50,8 +50,8 @@ Status BaseOpBuilder::AddToModelBuilder(ModelBuilder& model_builder, const Node&
 // Operator support related.
 
 bool BaseOpBuilder::IsOpSupported(const InitializedTensorSet& initializers, const Node& node,
-                                  const logging::Logger& logger) const {
-  if (!HasSupportedInputs(node, logger))
+                                  const WebnnDeviceType device_type, const logging::Logger& logger) const {
+  if (!HasSupportedInputs(node, device_type, logger))
     return false;
 
   // We do not support external initializers for now.
@@ -61,10 +61,11 @@ bool BaseOpBuilder::IsOpSupported(const InitializedTensorSet& initializers, cons
   if (!HasSupportedOpSet(node, logger))
     return false;
 
-  return IsOpSupportedImpl(initializers, node, logger);
+  return IsOpSupportedImpl(initializers, node, device_type, logger);
 }
 
-bool BaseOpBuilder::HasSupportedInputs(const Node& node, const logging::Logger& logger) const {
+bool BaseOpBuilder::HasSupportedInputs(const Node& node, const WebnnDeviceType device_type,
+                                       const logging::Logger& logger) const {
   const auto node_name = MakeString("Node [", node.Name(), "] type [", node.OpType(), "]");
   for (const auto* input : node.InputDefs()) {
     if (!IsInputSupported(*input, node_name, logger)) {
@@ -72,10 +73,12 @@ bool BaseOpBuilder::HasSupportedInputs(const Node& node, const logging::Logger& 
     }
   }
 
-  return HasSupportedInputsImpl(node, logger);
+  return HasSupportedInputsImpl(node, device_type, logger);
 }
 
-bool BaseOpBuilder::HasSupportedInputsImpl(const Node& node, const logging::Logger& logger) const {
+bool BaseOpBuilder::HasSupportedInputsImpl(const Node& node,
+                                           const WebnnDeviceType device_type,
+                                           const logging::Logger& logger) const {
   // We only check the type of input 0 by default, specific op builder can override this.
   const auto& input = *node.InputDefs()[0];
 
@@ -83,7 +86,7 @@ bool BaseOpBuilder::HasSupportedInputsImpl(const Node& node, const logging::Logg
   if (!GetType(input, input_type, logger))
     return false;
 
-  if (input_type != ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
+  if (!IsSupportedDataType(input_type, device_type)) {
     LOGS(logger, VERBOSE) << "[" << node.OpType()
                           << "] Input type: [" << input_type
                           << "] is not supported for now";
