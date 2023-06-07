@@ -83,6 +83,7 @@ stages:
           cleanDestinationFolder: true
       - bash: |
           find . -type f
+          mkdir -p $(Build.ArtifactStagingDirectory)/zip
         workingDirectory: $(Build.ArtifactStagingDirectory)
         displayName: check unzipped files
       - task: ArchiveFiles@2
@@ -90,10 +91,10 @@ stages:
           rootFolderOrFile: '$(Build.ArtifactStagingDirectory)'
           includeRootFolder: false
           archiveType: 'zip'
-          archiveFile: '$(Build.ArtifactStagingDirectory)/onnxruntime-osx-x86_64.zip'
+          archiveFile: '$(Build.ArtifactStagingDirectory)/zip/onnxruntime-osx-x86_64.zip'
       - template: mac-esrp-dylib.yml
         parameters:
-          FolderPath: '$(Build.ArtifactStagingDirectory)/onnxruntime-osx-x86_64.zip'
+          FolderPath: '$(Build.ArtifactStagingDirectory)/zip'
           DisplayName: 'ESRP - Sign Mac'
           DoEsrp: true
           Pattern: '*.dylib'
