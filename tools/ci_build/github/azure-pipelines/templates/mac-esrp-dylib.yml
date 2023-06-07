@@ -13,10 +13,10 @@ parameters:
 
 - name: Pattern
   type: string
-  default: '*.dll'
+  default: '*.dylib'
 
 steps:
-- task: SFP.build-tasks.custom-build-task-1.EsrpCodeSigning@2
+- task: EsrpCodeSigning@3
   displayName: ${{ parameters.DisplayName }}
   condition: and(succeeded(), eq('${{ parameters.DoEsrp }}', true))
   inputs:
@@ -37,18 +37,6 @@ steps:
             {
               "parameterName": "OpusInfo",
               "parameterValue": "http://www.microsoft.com"
-            },
-            {
-              "parameterName": "PageHash",
-              "parameterValue": "/NPH"
-            },
-            {
-              "parameterName": "FileDigest",
-              "parameterValue": "/fd sha256"
-            },
-            {
-              "parameterName": "TimeStamp",
-              "parameterValue": "/tr \"http://rfc3161.gtm.corp.microsoft.com/TSS/HttpTspServer\" /td sha256"
             }
           ],
           "toolName": "sign",
