@@ -91,10 +91,10 @@ stages:
           rootFolderOrFile: '$(Build.ArtifactStagingDirectory)/testdata'
           includeRootFolder: false
           archiveType: 'zip'
-          archiveFile: '$(Build.ArtifactStagingDirectory)/zip/onnxruntime-osx-x86_64.zip'
+          archiveFile: '$(Build.ArtifactStagingDirectory)/testdata.zip'
       - template: mac-esrp-dylib.yml
         parameters:
-          FolderPath: '$(Build.ArtifactStagingDirectory)/zip'
+          FolderPath: '$(Build.ArtifactStagingDirectory)'
           DisplayName: 'ESRP - Sign Mac'
           DoEsrp: true
           Pattern: '*.dylib'
