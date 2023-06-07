@@ -98,6 +98,18 @@ class TestStaticQuantization(unittest.TestCase):
         check_model_correctness(self, self._model_fp32_path, quant_model_path, data_reader.get_next())
         data_reader.rewind()
 
+    def test_smooth_quant(self):
+        data_reader = InputFeedsNegOneZeroOne(10, {"input": [1, self._channel_size, 1, 3]})
+        quant_config = StaticQuantConfig(data_reader, extra_options={'SmoothQuant': True})
+        quant_model_path = str(Path(self._tmp_model_dir.name) / "quant.config.onnx")
+        quantize(self._model_fp32_path, quant_model_path, quant_config)
+
+        data_reader.rewind()
+        check_model_correctness(self, self._model_fp32_path, quant_model_path, data_reader.get_next())
+        data_reader.rewind()
+
+        model = onnx.load(quant_model_path)
+        self.assertTrue('Mul' in [i.op_type for i in model.graph.node])
 
 if __name__ == "__main__":
     unittest.main()

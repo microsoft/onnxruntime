@@ -147,11 +147,10 @@ class StaticQuantConfig(QuantConfig):
                     SmoothQuant = True/False :
                         Default is False. If enabled, SmoothQuant algorithm will be applied before quantization to do
                         fake input channel quantization.
-                    SmoothQuantAlpha = 0.5 :
-                        Default is 0.5. Support 'auto' or a float value, 'auto' means automatic tuning. It only works
-                        if SmoothQuant is True. It controls the difficulty of weight and activation quantization. A larger
-                        alpha value could be used on models with more significant activation outliers to migrate more
-                        quantization difficulty to weights.
+                    SmoothQuantAlpha = float :
+                        Default is 0.5. It only works if SmoothQuant is True. It controls the difficulty of weight
+                        and activation quantization. A larger alpha value could be used on models with more significant
+                        activation outliers to migrate more quantization difficulty to weights.
                     SmoothQuantFolding = True/False :
                         Default is True. It only works if SmoothQuant is True. If enabled, inserted Mul ops during
                         SmoothQuant will be folded into the previous op if the previous op is foldable.
@@ -344,11 +343,10 @@ def quantize_static(
                 SmoothQuant = True/False :
                     Default is False. If enabled, SmoothQuant algorithm will be applied before quantization to do
                     fake input channel quantization.
-                SmoothQuantAlpha = 0.5 :
-                    Default is 0.5. Support 'auto' or a float value, 'auto' means automatic tuning. It only works
-                    if SmoothQuant is True. It controls the difficulty of weight and activation quantization. A larger
-                    alpha value could be used on models with more significant activation outliers to migrate more
-                    quantization difficulty to weights.
+                SmoothQuantAlpha = float :
+                    Default is 0.5. It only works if SmoothQuant is True. It controls the difficulty of weight
+                    and activation quantization. A larger alpha value could be used on models with more significant
+                    activation outliers to migrate more quantization difficulty to weights.
                 SmoothQuantFolding = True/False :
                     Default is True. It only works if SmoothQuant is True. If enabled, inserted Mul ops during
                     SmoothQuant will be folded into the previous op if the previous op is foldable.
