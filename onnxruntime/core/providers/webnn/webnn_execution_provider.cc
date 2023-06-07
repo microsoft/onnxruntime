@@ -263,7 +263,6 @@ common::Status WebNNExecutionProvider::Compile(const std::vector<FusedNodeAndGra
       const size_t num_inputs = ctx.GetInputCount();
       const size_t num_outputs = ctx.GetOutputCount();
 
-      // Ort::CustomOpApi ort{*api};
       webnn::Model* model = reinterpret_cast<webnn::Model*>(state);
 
       const auto& model_inputs = model->GetInputs();
