@@ -4,7 +4,7 @@ on:
     branches:
       - main
       - rel-*
-      - snnn/prefast
+      - snnn-patch-8
   pull_request:
 
 concurrency:
