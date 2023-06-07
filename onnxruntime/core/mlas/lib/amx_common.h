@@ -35,13 +35,72 @@ Abstract:
 
 #define tile_stored(dst, base, stride) _tile_stored(dst, base, stride)
 
+#define tile_loadconfig(config)		\
+ _tile_loadconfig(config)
+
 #define tile_storeconfig(config) _tile_storeconfig(config)
 
-void
-tile_loadconfig(const void* __config)
-{
-    _tile_loadconfig(__config);
-}
+#define tile_dpbusd_t4t2t0(dst,src1,src2)			\
+  _tile_dpbusd(dst, src1, src2) 
+
+#define tile_dpbusd_t5t3t0(dst,src1,src2)			\
+  _tile_dpbusd(dst, src1, src2) 
+
+#define tile_dpbusd_t6t2t1(dst,src1,src2)			\
+  _tile_dpbusd(dst, src1, src2) 
+
+#define tile_dpbusd_t7t3t1(dst,src1,src2)			\
+  _tile_dpbusd(dst, src1, src2) 
+
+#define tile_loadd_t0(dst,base,stride)		\
+ _tile_loadd(dst, base, stride)
+
+#define tile_loadd_t1(dst,base,stride)		\
+ _tile_loadd(dst, base, stride)
+
+#define tile_loadd_t2(dst,base,stride)		\
+ _tile_loadd(dst, base, stride)
+
+#define tile_loadd_t3(dst,base,stride)		\
+ _tile_loadd(dst, base, stride)
+
+#define tile_loadd_t4(dst,base,stride)		\
+ _tile_loadd(dst, base, stride)
+
+#define tile_loadd_t5(dst,base,stride)		\
+ _tile_loadd(dst, base, stride)
+
+#define tile_loadd_t6(dst,base,stride)		\
+ _tile_loadd(dst, base, stride)
+
+#define tile_loadd_t7(dst,base,stride)		\
+ _tile_loadd(dst, base, stride)
+
+#define tile_stored_t0(src,base,stride)		\
+ _tile_stored(dst, base, stride)
+
+#define tile_stored_t1(src,base,stride)		\
+ _tile_stored(dst, base, stride)
+
+#define tile_stored_t2(src,base,stride)		\
+ _tile_stored(dst, base, stride)
+
+#define tile_stored_t3(src,base,stride)		\
+ _tile_stored(dst, base, stride)
+
+#define tile_stored_t4(src,base,stride)		\
+ _tile_stored(dst, base, stride)
+
+#define tile_stored_t5(src,base,stride)		\
+ _tile_stored(dst, base, stride)
+
+#define tile_stored_t6(src,base,stride)		\
+ _tile_stored(dst, base, stride)
+
+#define tile_stored_t7(src,base,stride)		\
+ _tile_stored(dst, base, stride)
+
+
 #else
 
 extern "C" { 
