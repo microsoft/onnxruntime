@@ -328,7 +328,6 @@ void InitGreedyState(transformers::IGreedySearchState<T>* greedy_state,
 template <typename T>
 Status ProcessLogits(const OrtValue& logits,                                 // logits output of subgraph
                      transformers::IBeamSearchState<T>* beam_state,          // state
-                     transformers::IBeamSearchCpuState* cpu_state,           // state in CPU
                      transformers::ISequences* sequences,                    // sequences
                      AllocatorPtr& allocator,                                // default allocator
                      onnxruntime::concurrency::ThreadPool* thread_pool,      // thread pool (for CPU only)
@@ -531,9 +530,8 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
     cuda::LaunchNextTokenKernel(next_token_indices, beam_state->next_indices.data(), beam_state->next_tokens.data(),
                                 batch_size, top_k, vocab_size, cuda_stream);
 
-    const float* data = topk_scores->Data<float>();
 #ifdef DEBUG_GENERATION
-    dumper->Print("next_scores before scorer", data, batch_size, top_k);
+    dumper->Print("next_scores before scorer", topk_scores->Data<float>(), batch_size, top_k);
     dumper->Print("next_tokens before scorer", beam_state->next_tokens.data(), batch_size, top_k);
     dumper->Print("next_indices before scorer", beam_state->next_indices.data(), batch_size, top_k);
 #endif
@@ -1327,7 +1325,6 @@ template void InitGreedyState<float>(
 template Status ProcessLogits<float>(
     const OrtValue& logits,
     transformers::IBeamSearchState<float>* beam_state,
-    transformers::IBeamSearchCpuState* cpu_state,
     transformers::ISequences* sequences,
     AllocatorPtr& allocator,
     onnxruntime::concurrency::ThreadPool* thread_pool,
@@ -1399,7 +1396,6 @@ template void InitGreedyState<MLFloat16>(
 template Status ProcessLogits<MLFloat16>(
     const OrtValue& logits,
     transformers::IBeamSearchState<MLFloat16>* beam_state,
-    transformers::IBeamSearchCpuState* cpu_state,
     transformers::ISequences* sequences,
     AllocatorPtr& allocator,
     onnxruntime::concurrency::ThreadPool* thread_pool,

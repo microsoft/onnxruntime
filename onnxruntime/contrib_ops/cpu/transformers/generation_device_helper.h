@@ -90,7 +90,6 @@ template <typename T>
 using ProcessLogitsFunc = std::function<Status(
     const OrtValue& logits,                                 // logits output of subgraph
     transformers::IBeamSearchState<T>* beam_state,          // state
-    transformers::IBeamSearchCpuState* cpu_state,           // state in CPU
     transformers::ISequences* sequences,                    // sequences
     AllocatorPtr& allocator,                                // default allocator
     onnxruntime::concurrency::ThreadPool* thread_pool,      // thread pool (for CPU only)
@@ -231,7 +230,6 @@ void InitGreedyState(transformers::IGreedySearchState<T>* greedy_state,
 template <typename T>
 Status ProcessLogits(const OrtValue& logits,                                 // logits output of subgraph
                      transformers::IBeamSearchState<T>* beam_state,          // state
-                     transformers::IBeamSearchCpuState* cpu_state,           // state in CPU
                      transformers::ISequences* sequences,                    // sequences
                      AllocatorPtr& allocator,                                // default allocator
                      onnxruntime::concurrency::ThreadPool* thread_pool,      // thread pool (for CPU only)

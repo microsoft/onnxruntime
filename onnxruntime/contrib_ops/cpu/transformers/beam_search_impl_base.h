@@ -242,7 +242,7 @@ Status BeamSearchBase<T>::ProcessLogits(
     BeamSearchCpuState& cpu_state,
     AllocatorPtr& allocator,
     int counter) {
-  return process_logits_func_(logits, &beam_state, &cpu_state, &(cpu_state.sequences), allocator,
+  return process_logits_func_(logits, &beam_state, &(cpu_state.sequences), allocator,
                               thread_pool_, &logits_processors_, beam_scorer_.get(),
                               parameters_, counter, ort_stream_, GetConsoleDumper());
 }
