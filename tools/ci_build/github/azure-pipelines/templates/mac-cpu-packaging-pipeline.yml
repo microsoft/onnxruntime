@@ -98,6 +98,11 @@ stages:
           DisplayName: 'ESRP - Sign Mac'
           DoEsrp: true
           Pattern: '*.zip'
+      - bash:
+          codesign -v $(Build.ArtifactStagingDirectory)/testdata.zip
+          unzip $(Build.ArtifactStagingDirectory)/testdata.zip -d $(Build.ArtifactStagingDirectory)/zip/
+          find $(Build.ArtifactStagingDirectory)/zip/ -name "*.dylib" -exec codesign -v {} \;
+        displayName: 'Verify code signing'
 
       - ${{ if eq(parameters.BuildForAllArchs, true) }}:
         - template: flex-downloadPipelineArtifact.yml
