@@ -18,6 +18,7 @@ import android.util.Log;
 import androidx.annotation.NonNull;
 import androidx.annotation.RequiresApi;
 import com.facebook.react.bridge.Arguments;
+import com.facebook.react.bridge.LifecycleEventListener;
 import com.facebook.react.bridge.Promise;
 import com.facebook.react.bridge.ReactApplicationContext;
 import com.facebook.react.bridge.ReactContextBaseJavaModule;
@@ -42,7 +43,7 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 @RequiresApi(api = Build.VERSION_CODES.N)
-public class OnnxruntimeModule extends ReactContextBaseJavaModule {
+public class OnnxruntimeModule extends ReactContextBaseJavaModule implements LifecycleEventListener {
   private static ReactApplicationContext reactContext;
 
   private static OrtEnvironment ortEnvironment = OrtEnvironment.getEnvironment();
@@ -102,6 +103,22 @@ public class OnnxruntimeModule extends ReactContextBaseJavaModule {
       promise.resolve(resultMap);
     } catch (Exception e) {
       promise.reject("Failed to load model from buffer: " + e.getMessage(), e);
+    }
+  }
+
+  /**
+   * React native binding API to dispose a session.
+   *
+   * @param key session key representing a session given at loadModel()
+   * @param promise output returning back to react native js
+   */
+  @ReactMethod
+  public void dispose(String key, Promise promise) {
+    try {
+      dispose(key);
+      promise.resolve(null);
+    } catch (OrtException e) {
+      promise.reject("Failed to dispose session: " + e.getMessage(), e);
     }
   }
 
@@ -196,6 +213,19 @@ public class OnnxruntimeModule extends ReactContextBaseJavaModule {
   }
 
   /**
+   * Dispose a model using given key.
+   *
+   * @param key a session key representing the session given at loadModel()
+   */
+  public void dispose(String key) throws OrtException {
+    OrtSession ortSession = sessionMap.get(key);
+    if (ortSession != null) {
+      ortSession.close();
+      sessionMap.remove(key);
+    }
+  }
+
+  /**
    * Run a model using given uri.
    *
    * @param key a session key representing the session given at loadModel()
@@ -215,6 +245,7 @@ public class OnnxruntimeModule extends ReactContextBaseJavaModule {
     long startTime = System.currentTimeMillis();
     Map<String, OnnxTensor> feed = new HashMap<>();
     Iterator<String> iterator = ortSession.getInputNames().iterator();
+    Result result = null;
     try {
       while (iterator.hasNext()) {
         String inputName = iterator.next();
@@ -252,7 +283,6 @@ public class OnnxruntimeModule extends ReactContextBaseJavaModule {
       Log.d("Duration", "createInputTensor: " + duration);
 
       startTime = System.currentTimeMillis();
-      Result result = null;
       if (requestedOutputs != null) {
         result = ortSession.run(feed, requestedOutputs, runOptions);
       } else {
@@ -270,6 +300,9 @@ public class OnnxruntimeModule extends ReactContextBaseJavaModule {
 
     } finally {
       OnnxValue.close(feed);
+      if (result != null) {
+        result.close();
+      }
     }
   }
 
@@ -357,5 +390,23 @@ public class OnnxruntimeModule extends ReactContextBaseJavaModule {
     }
 
     return runOptions;
+  }
+
+  @Override
+  public void onHostResume() {}
+
+  @Override
+  public void onHostPause() {}
+
+  @Override
+  public void onHostDestroy() {
+    for (String key : sessionMap.keySet()) {
+      try {
+        dispose(key);
+      } catch (Exception e) {
+        Log.e("onHostDestroy", "Failed to dispose session: " + key, e);
+      }
+    }
+    sessionMap.clear();
   }
 }
