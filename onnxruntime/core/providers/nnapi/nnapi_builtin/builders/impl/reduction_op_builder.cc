@@ -135,8 +135,8 @@ Status ReductionOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, co
         }
       }
 
-      // In case of a tensor has all 1's in dimension such as {1,1,1,1} and gets all reduced
-      // the output shape will be {1}
+      // In case of a tensor has all 1's in dimension such as {1,1,1,1} and gets all reduced,
+      // NNAPI requires the output shape to be {1}. (otherwise NNAPI will treat it as dynamic shape.)
       if (output_dimen.empty())
         output_dimen.push_back(1);
 
