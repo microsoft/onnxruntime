@@ -250,6 +250,20 @@ TEST_F(QnnHTPBackendTests, DISABLED_TestQDQConvU8U8S32_large_input2_bias_initial
   RunHTPConvOpTest<uint8_t, uint8_t, int32_t, uint8_t>({1, 128, 8, 56}, {32, 128, 1, 1}, true, {1, 1}, {0, 0, 0, 0}, {1, 1}, "NOTSET", ExpectedEPNodeAssignment::All,
                                                        "TestQDQConvU8U8S32_large_input2_bias_initializer");
 }
+
+// TODO: Certain large input sizes cause the QNN graph to fail to finalize with error 1002 (QNN_COMMON_ERROR_MEM_ALLOC).
+TEST_F(QnnHTPBackendTests, DISABLED_TestQDQConvU8U8S32_LargeInput_Dilations_Pads) {
+  RunHTPConvOpTest<uint8_t, uint8_t, int32_t, uint8_t>(
+      {1, 3, 768, 1152},  // input_shape
+      {64, 3, 7, 7},      // weights_shape
+      true,               // is_bias_initializer
+      {2, 2},             // strides
+      {3, 3, 3, 3},       // pads
+      {1, 1},             // dilations
+      "NOTSET",           // auto_pad
+      ExpectedEPNodeAssignment::All,
+      "TestQDQConvU8U8S32_large_input2_bias_initializer");
+}
 #endif  // defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
 
 }  // namespace test
