@@ -382,16 +382,18 @@ def quantize_static(
         key: extra_options.get(name) for (name, key) in calib_extra_options_keys if name in extra_options
     }
 
-    if extra_options.get('SmoothQuant', False):
-        from neural_compressor.adaptor.ox_utils.smooth_quant import ORTSmoothQuant
+    if extra_options.get("SmoothQuant", False):
         import copy
+        from neural_compressor.adaptor.ox_utils.smooth_quant import ORTSmoothQuant
         orig_nodes = [i.name for i in model.graph.node]
         def dataloader():
             inc_dataloader = copy.deepcopy(calibration_data_reader)
             for data in inc_dataloader:
                 yield data, None
         sq = ORTSmoothQuant(model, dataloader(), reduce_range)
-        model = sq.transform(extra_options.get('SmoothQuantAlpha', 0.5), extra_options.get('SmoothQuantFolding', True)).model
+        model = sq.transform(
+            extra_options.get("SmoothQuantAlpha", 0.5), extra_options.get("SmoothQuantFolding", True)
+        ).model
         nodes_to_exclude.extend([i.name for i in model.graph.node if i.name not in orig_nodes])
 
     with tempfile.TemporaryDirectory(prefix="ort.quant.") as quant_tmp_dir:
