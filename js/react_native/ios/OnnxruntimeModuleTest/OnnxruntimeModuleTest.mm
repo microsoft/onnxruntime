@@ -87,6 +87,12 @@
     XCTAssertTrue([[resultMap objectForKey:@"output"] isEqualToDictionary:inputTensorMap]);
     XCTAssertTrue([[resultMap2 objectForKey:@"output"] isEqualToDictionary:inputTensorMap]);
   }
+
+  // test dispose
+  {
+    [onnxruntimeModule dispose:sessionKey];
+    [onnxruntimeModule dispose:sessionKey2];
+  }
 }
 
 @end
