@@ -75,9 +75,6 @@ stages:
           TargetPath: '$(Build.ArtifactStagingDirectory)'
           SpecificArtifact: ${{ parameters.specificArtifact }}
           BuildId: ${{ parameters.BuildId }}
-      - template: mac-cpu-sign-steps.yml
-        parameters:
-          package_name: 'onnxruntime-osx-x86_64-$(ort_ver)'
 
       - ${{ if eq(parameters.BuildForAllArchs, true) }}:
         - template: flex-downloadPipelineArtifact.yml
@@ -87,9 +84,6 @@ stages:
             TargetPath: '$(Build.ArtifactStagingDirectory)'
             SpecificArtifact: ${{ parameters.specificArtifact }}
             BuildId: ${{ parameters.BuildId }}
-        - template: mac-cpu-sign-steps.yml
-          parameters:
-            package_name: 'onnxruntime-osx-arm64-$(ort_ver)'
         - template: flex-downloadPipelineArtifact.yml
           parameters:
             StepName: 'Download Pipeline onnxruntime-osx-universal2'
@@ -97,9 +91,13 @@ stages:
             TargetPath: '$(Build.ArtifactStagingDirectory)'
             SpecificArtifact: ${{ parameters.specificArtifact }}
             BuildId: ${{ parameters.BuildId }}
-        - template: mac-cpu-sign-steps.yml
-          parameters:
-            package_name: 'onnxruntime-osx-universal2-$(ort_ver)'
+
+      - template: mac-esrp-dylib.yml
+        parameters:
+          FolderPath: '$(Build.ArtifactStagingDirectory)'
+          DisplayName: 'ESRP - Sign Mac'
+          DoEsrp: true
+          Pattern: '*.zip'
 
       - task: PublishPipelineArtifact@1
         inputs:
