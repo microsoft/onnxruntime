@@ -83,10 +83,12 @@ stages:
           destinationFolder: '$(Build.ArtifactStagingDirectory)/onnxruntime-osx-x86_64'
           cleanDestinationFolder: true
       - bash: |
-          find $(Build.ArtifactStagingDirectory)/onnxruntime-osx-x86_64 -type f
+          find $(Build.ArtifactStagingDirectory) -name "*.dylib" -exec ls -l {} \;
           mkdir -p $(Build.ArtifactStagingDirectory)/archive
           cp "$(Build.ArtifactStagingDirectory)/testdata/libcustom_op_library.dylib" $(Build.ArtifactStagingDirectory)/archive/libcustom_op_library.dylib
           cp "$(Build.ArtifactStagingDirectory)/onnxruntime-osx-x86_64/onnxruntime-osx-x86_64-1.16.0/lib/libonnxruntime.dylib" $(Build.ArtifactStagingDirectory)/archive/libonnxruntime.dylib
+          cp "onnxruntime-osx-x86_64/onnxruntime-osx-x86_64-1.16.0/lib/libonnxruntime.1.16.0.dylib.dSYM/Contents/Resources/DWARF/libonnxruntime.1.16.0.dylib" $(Build.ArtifactStagingDirectory)/archive/libonnxruntime.1.16.0.dylib.dSYM/Contents/Resources/DWARF/libonnxruntime.1.16.0.dylib
+          /Users/runner/work/1/a/onnxruntime-osx-x86_64/onnxruntime-osx-x86_64-1.16.0/lib/libonnxruntime.1.16.0.dylib.dSYM/Contents/Resources/DWARF/libonnxruntime.1.16.0.dylib
           zip -r archive.zip archive && rm -rf archive
           find . -name "*.zip"
         workingDirectory: $(Build.ArtifactStagingDirectory)
@@ -102,6 +104,7 @@ stages:
           unzip $(Build.ArtifactStagingDirectory)/archive.zip -d $(Build.ArtifactStagingDirectory)
           yes | cp -f $(Build.ArtifactStagingDirectory)/archive/libcustom_op_library.dylib $(Build.ArtifactStagingDirectory)/testdata/libcustom_op_library.dylib
           yes | cp -f $(Build.ArtifactStagingDirectory)/archive/libonnxruntime.dylib $(Build.ArtifactStagingDirectory)/onnxruntime-osx-x86_64/onnxruntime-osx-x86_64-1.16.0/lib/libonnxruntime.dylib
+          yes | cp -f $(Build.ArtifactStagingDirectory)/archive/libonnxruntime.1.16.0.dylib.dSYM/Contents/Resources/DWARF/libonnxruntime.1.16.0.dylib $(Build.ArtifactStagingDirectory)/onnxruntime-osx-x86_64/onnxruntime-osx-x86_64-1.16.0/lib/libonnxruntime.1.16.0.dylib.dSYM/Contents/Resources/DWARF/libonnxruntime.1.16.0.dylib
           rm -rf $(Build.ArtifactStagingDirectory)/archive
           find $(Build.ArtifactStagingDirectory) -name "*.dylib" -exec codesign -dvvv {} \;
           find $(Build.ArtifactStagingDirectory) -name "*.dylib" -exec ls -l {} \;
