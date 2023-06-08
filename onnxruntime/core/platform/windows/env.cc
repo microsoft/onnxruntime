@@ -137,12 +137,25 @@ class WindowsThread : public EnvThread {
   static unsigned __stdcall ThreadMain(void* param) {
     std::unique_ptr<Param> p(static_cast<Param*>(param));
 
-    const ORTCHAR_T* name_prefix =
-        (p->name_prefix == nullptr || wcslen(p->name_prefix) == 0) ? L"onnxruntime" : p->name_prefix;
-    std::wostringstream oss;
-    oss << name_prefix << "-" << p->index;
-    // Ignore the error
-    (void)SetThreadDescription(GetCurrentThread(), oss.str().c_str());
+// Not all machines have SetThreadDescription (e.g. Azure App Service sandbox) so we need to ensure 
+// it's available before calling.
+#if WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP)
+    HMODULE kernelModule = GetModuleHandle(TEXT("kernel32.dll"));
+    // kernel32.dll is always loaded
+    assert(kernelModule != nullptr);
+    auto pSetThrDesc = (SetThreadDescriptionFunc)GetProcAddress(kernelModule, "SetThreadDescription");
+#else
+    constexpr SetThreadDescriptionFunc pSetThrDesc = nullptr;
+#endif
+
+    if (pSetThrDesc) {
+      const ORTCHAR_T* name_prefix =
+          (p->name_prefix == nullptr || wcslen(p->name_prefix) == 0) ? L"onnxruntime" : p->name_prefix;
+      std::wostringstream oss;
+      oss << name_prefix << "-" << p->index;
+      // Ignore the error
+      (void)SetThreadDescription(GetCurrentThread(), oss.str().c_str());
+    }
 
     unsigned ret = 0;
     ORT_TRY {
