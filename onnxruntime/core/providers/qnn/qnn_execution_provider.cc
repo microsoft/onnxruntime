@@ -444,7 +444,7 @@ Status QNNExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused
     ORT_ENFORCE(fused_nodes_and_graphs.size() == 1, "Only support singel partition for context cache feature.");
     Node& fused_node = fused_nodes_and_graphs[0].fused_node;
     const onnxruntime::GraphViewer& graph_viewer(fused_nodes_and_graphs[0].filtered_graph);
-    // The dumy_model_descripton won't be used since IsContextCacheFileExists call cached the result
+    // The dumy_model_description won't be used since IsContextCacheFileExists call cached the result
     // The graph_viewer.Description here is not same with original model
     std::string dumy_model_descripton = "";
     bool load_from_cached_context = qnn_backend_manager_->IsContextCacheFileExists(context_cache_path_,
