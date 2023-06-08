@@ -33,9 +33,14 @@ jobs:
     displayName: Generate compile_commands.json and ONNX protobuf files
 
   - script: |
+      set -e
+
+      CLANG_TIDY_CHECKS="-*,clang-analyzer-*"
+
       "$(brew --prefix llvm@15)/bin/clang-tidy" \
         -p="$(Build.BinariesDirectory)/Debug" \
-        --checks="-*,clang-analyzer-*" \
+        --checks="${CLANG_TIDY_CHECKS}" \
+        --warnings-as-errors="${CLANG_TIDY_CHECKS}" \
         --header-filter="objectivec/include|objectivec|onnxruntime/core" \
         ./objectivec/*.mm \
         ./onnxruntime/core/platform/apple/logging/apple_log_sink.mm \
