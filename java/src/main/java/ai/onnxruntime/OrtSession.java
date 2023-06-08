@@ -794,7 +794,7 @@ public class OrtSession implements AutoCloseable {
      * {@link #addInitializer(String, OnnxTensorLike)}.
      *
      * @param initializers The map of names to initializers.
-     * @throws OrtException If the initializers could be loaded.
+     * @throws OrtException If the initializers could not be loaded.
      */
     public void addExternalInitializers(Map<String, OnnxTensorLike> initializers)
         throws OrtException {
