@@ -205,21 +205,19 @@ using ExpandBufferFunc = std::function<Status(
     bool only_copy_shape,
     int max_sequence_length)>;
 
-template <typename T>
 using UpdateDecoderCrossQKFunc = std::function<Status(
     int iteration_number,
     Stream* stream,
     OrtValue* cross_qks,
-    IAllocatorUniquePtr<T*>& qk_layer_pointers,
+    IAllocatorUniquePtr<float*>& qk_layer_pointers,
     int num_layers,
     int cross_qk_layer_head_pair_count,
     const int* cross_qk_layer_head_pairs,
-    T* cross_qk_buffer_data,
+    float* cross_qk_buffer_data,
     int max_length,
     AllocatorPtr allocator)>;
 
 
-template <typename T>
 using FinalizeDecoderCrossQKFunc = std::function<Status(
     Stream* stream,
     int iteration_number,
@@ -230,8 +228,8 @@ using FinalizeDecoderCrossQKFunc = std::function<Status(
     int cross_qk_layer_head_pair_count,
     const int* cross_qk_layer_head_pairs,
     int frames_of_k,
-    const T* cross_qk_buffer_data,
-    T* cross_qk_output,
+    const float* cross_qk_buffer_data,
+    float* cross_qk_output,
     int num_return_sequences,
     const int* cache_indir_data)>;
 
@@ -399,21 +397,19 @@ Status ExpandBuffer(
     bool only_copy_shape,
     int max_sequence_length);
 
-template <typename T>
 Status UpdateDecoderCrossQK(
     int iteration_number,
     Stream* stream,
     OrtValue* cross_qks,
-    IAllocatorUniquePtr<T*>& qk_layer_pointers,
+    IAllocatorUniquePtr<float*>& qk_layer_pointers,
     int num_layers,
     int cross_qk_layer_head_pair_count,
     const int* cross_qk_layer_head_pairs,
-    T* cross_qk_buffer_data,
+    float* cross_qk_buffer_data,
     int max_length,
     AllocatorPtr allocator
 );
 
-template <typename T>
 Status FinalizeDecoderCrossQK(
     Stream* stream,
     int iteration_number,
@@ -424,8 +420,8 @@ Status FinalizeDecoderCrossQK(
     int cross_qk_layer_head_pair_count,
     const int* cross_qk_layer_head_pairs,
     int frames_of_k,
-    const T* cross_qk_buffer_data,
-    T* cross_qk_output,
+    const float* cross_qk_buffer_data,
+    float* cross_qk_output,
     int num_return_sequences,
     const int* cache_indir_data
 );

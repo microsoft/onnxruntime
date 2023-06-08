@@ -196,7 +196,7 @@ def chain_model(args):
     if args.output_cross_qk or (not args.cross_qk_onnx_model and args.collect_cross_qk):
         cross_qk = helper.make_tensor_value_info(
             "cross_qk",
-            float_data_type,
+            TensorProto.FLOAT,
             ["batch_size", "num_return_sequences", "num_layer_head_cross_qk", "max_length", "frames"],
         )
         graph_outputs.extend([cross_qk])

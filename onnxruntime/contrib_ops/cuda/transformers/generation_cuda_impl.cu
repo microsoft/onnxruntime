@@ -1341,11 +1341,10 @@ __global__ void CopyCrossQKSingleDecodeStepKernel(
   }
 }
 
-template <typename T>
 void LaunchCopyCrossQKSingleDecodeStep(
     cudaStream_t stream,
-    T* cross_qk_buffer_data,
-    T** qk_layer_pointers,
+    float* cross_qk_buffer_data,
+    float** qk_layer_pointers,
     int token_index,
     int batchxbeam,
     int num_layers,
@@ -1357,7 +1356,7 @@ void LaunchCopyCrossQKSingleDecodeStep(
 ) {
   dim3 block(512);
   dim3 grid(cross_qk_layer_head_pair_count, batchxbeam);
-  typedef typename ToCudaType<T>::MappedType CudaT;
+  typedef typename ToCudaType<float>::MappedType CudaT;
 
   CopyCrossQKSingleDecodeStepKernel<<<grid, block, 0, stream>>>(
       (CudaT*)cross_qk_buffer_data,
@@ -1370,32 +1369,6 @@ void LaunchCopyCrossQKSingleDecodeStep(
       max_length
   );
 }
-
-template void LaunchCopyCrossQKSingleDecodeStep<float>(
-    cudaStream_t stream,
-    float* cross_qk_buffer_data,
-    float** qk_layer_pointers,
-    int token_index,
-    int batchxbeam,
-    int num_layers,
-    int num_heads,
-    int cross_qk_layer_head_pair_count,
-    const int* cross_qk_layer_head_pairs,
-    int frames,
-    int max_length);
-
-template void LaunchCopyCrossQKSingleDecodeStep<MLFloat16>(
-    cudaStream_t stream,
-    MLFloat16* cross_qk_buffer_data,
-    MLFloat16** qk_layer_pointers,
-    int token_index,
-    int batchxbeam,
-    int num_layers,
-    int num_heads,
-    int cross_qk_layer_head_pair_count,
-    const int* cross_qk_layer_head_pairs,
-    int frames,
-    int max_length);
 
 
 template <typename T>
@@ -1429,7 +1402,6 @@ __global__ void CopyDecoderCrossQKAllStepsKernel(
   }
 }
 
-template <typename T>
 void LaunchFinalizeCrossQK(
     cudaStream_t stream,
     int iteration_number,
@@ -1440,8 +1412,8 @@ void LaunchFinalizeCrossQK(
     int cross_qk_layer_head_pair_count,
     [[maybe_unused]] const int* cross_qk_layer_head_pairs,
     int frames_of_k,
-    const T* cross_qk_buffer_data,
-    T* cross_qk_output,
+    const float* cross_qk_buffer_data,
+    float* cross_qk_output,
     int num_return_sequences,
     const int* cache_indir_data
 ) {
@@ -1450,7 +1422,7 @@ void LaunchFinalizeCrossQK(
   const int total_decoding_length = iteration_number - 1;
   dim3 block(512);
   dim3 grid(total_decoding_length, cross_qk_layer_head_pair_count, (unsigned)br);
-  typedef typename ToCudaType<T>::MappedType CudaT;
+  typedef typename ToCudaType<float>::MappedType CudaT;
 
   CopyDecoderCrossQKAllStepsKernel<<<grid, block, 0, stream>>>(
     context_decoding_len,
@@ -1462,36 +1434,6 @@ void LaunchFinalizeCrossQK(
     (CudaT*)cross_qk_output,
     cache_indir_data);
 }
-
-template void LaunchFinalizeCrossQK<float>(
-    cudaStream_t stream,
-    int iteration_number,
-    int context_decoding_len,
-    int batch_size,
-    int num_beams,
-    int max_length,
-    int cross_qk_layer_head_pair_count,
-    const int* cross_qk_layer_head_pairs,
-    int frames_of_k,
-    const float* cross_qk_buffer_data,
-    float* cross_qk_output,
-    int num_return_sequences,
-    const int* cache_indir_data);
-
-template void LaunchFinalizeCrossQK<MLFloat16>(
-    cudaStream_t stream,
-    int iteration_number,
-    int context_decoding_len,
-    int batch_size,
-    int num_beams,
-    int max_length,
-    int cross_qk_layer_head_pair_count,
-    const int* cross_qk_layer_head_pairs,
-    int frames_of_k,
-    const MLFloat16* cross_qk_buffer_data,
-    MLFloat16* cross_qk_output,
-    int num_return_sequences,
-    const int* cache_indir_data);
 
 template <int ElementsPerThreads>
 __global__ void ForceDecodingIdsKernel(

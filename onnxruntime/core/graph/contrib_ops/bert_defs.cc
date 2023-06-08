@@ -844,8 +844,9 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Output(3,
                 "qk",
                 "normalized Q * K, of shape (batch_size, num_heads, 1, head_size). ",
-                "T",
+                "V",
                 OpSchema::Optional)
+        .TypeConstraint("V", {"tensor(float)"}, "Constrain qk output types to float32 tensors.")
         .TypeConstraint("T",
                         {"tensor(float)", "tensor(float16)"},
                         "Constrain input and output types to float tensors.")
