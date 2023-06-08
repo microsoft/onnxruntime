@@ -77,6 +77,10 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
     CreateGemmOpBuilder("MatMul", op_registrations);
   }
 
+  {  // Identity
+    CreateIdentityOpBuilder("Identity", op_registrations);
+  }
+
   {  // Logical
     CreateLogicalOpBuilder("Equal", op_registrations);
   }
