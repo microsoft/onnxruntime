@@ -596,18 +596,18 @@ Status QnnBackendManager::ValidateWithContextFile(const std::string& model_name,
 
   ORT_RETURN_IF(model_name != model_name_from_ctx_cache_,
                 "Model file name from context cache metadata: " + model_name_from_ctx_cache_ +
-                " is different with target: " + model_name +
-                ". Please make sure the context binary file matches the model.");
+                    " is different with target: " + model_name +
+                    ". Please make sure the context binary file matches the model.");
 
   ORT_RETURN_IF(model_description_ != model_description_from_ctx_cache_,
                 "Model description from context cache metadata: " + model_description_from_ctx_cache_ +
-                " is different with target: " + model_description_ +
-                ". Please make sure the context binary file matches the model.");
+                    " is different with target: " + model_description_ +
+                    ". Please make sure the context binary file matches the model.");
 
   ORT_RETURN_IF(graph_name != graph_name_from_ctx_cache_ && get_capability_round_2_,
                 "Graph name from context cache metadata: " + graph_name_from_ctx_cache_ +
-                " is different with target: " + graph_name +
-                ". You may need to re-generate the context binary file.");
+                    " is different with target: " + graph_name +
+                    ". You may need to re-generate the context binary file.");
 
   get_capability_round_2_ = true;
   return Status::OK();
