@@ -791,7 +791,8 @@ public class OrtSession implements AutoCloseable {
      * <p>Note the initializers are copied into the session once it has been created, and the native
      * references are removed from this {@code SessionOptions}. Once the session has been created
      * those initializers can be closed. This is a different lifetime to initializers added via
-     * {@link #addInitializer(String, OnnxTensorLike)}.
+     * {@link #addInitializer(String, OnnxTensorLike)}. The initializers must be created from 
+     * {@link java.nio.Buffer} objects.
      *
      * @param initializers The map of names to initializers.
      * @throws OrtException If the initializers could not be loaded.
@@ -816,7 +817,8 @@ public class OrtSession implements AutoCloseable {
      * Adds an initializer to override one from the ONNX model.
      *
      * <p>Note the initializer lifetime must outlive the session and session options. This is a
-     * different lifetime to initializers added via {@link #addExternalInitializers(Map)}.
+     * different lifetime to initializers added via {@link #addExternalInitializers(Map)}. The
+     * initializers must be created from {@link java.nio.Buffer} objects.
      *
      * @param name The initializer name.
      * @param initializer The initializer value.
