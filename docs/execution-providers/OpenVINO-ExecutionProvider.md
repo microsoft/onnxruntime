@@ -50,15 +50,12 @@ pip install onnxruntime-openvino
 
 * **Windows**
 
-   To enable OpenVINO™ Execution Provider with ONNX Runtime on Windows we must install OpenVINO™ separately:
-      ```
-      pip install openvino
-      ```
-   Code to be added in ONNX Runtime Windows Samples:
-      ```
-      import openvino.utils as utils
-      utils.add_openvino_libs_to_path()
-      ```
+   To enable OpenVINO™ Execution Provider with ONNX Runtime on Windows it is must to set up the OpenVINO™ Environment Variables using the full installer package of OpenVINO™.
+   Initialize the OpenVINO™ environment by running the setupvars script as shown below. This is a required step:
+
+   ```
+      C:\ <openvino_install_directory>\setupvars.bat
+   ```
 
 * **Linux**
 

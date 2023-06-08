@@ -68,6 +68,17 @@ import * as ort from 'onnxruntime-web';
 const ort = require('onnxruntime-web');
 ```
 
+If you want to use ONNX Runtime Web with WebGPU support (experimental feature), you need to import as below:
+
+```js
+// use ES6 style import syntax (recommended)
+import * as ort from 'onnxruntime-web/webgpu';
+```
+```js
+// or use CommonJS style import syntax
+const ort = require('onnxruntime-web/webgpu');
+```
+
 ### Examples
 
 ONNX Runtime Web can also be imported via a script tag in a HTML file, from a CDN server. Here are some examples:
@@ -104,6 +115,15 @@ import * as ort from 'onnxruntime-react-native';
 ```js
 // or use CommonJS style import syntax
 const ort = require('onnxruntime-react-native');
+```
+
+
+#### Enable ONNX Runtime Extensions for React Native
+To enable support for [ONNX Runtime Extensions](https://github.com/microsoft/onnxruntime-extensions) in your React Native app,
+you need to specify the following configuration as a top-level entry (note: usually where the package `name`and `version`fields are) in your project's root directory `package.json` file. 
+
+```js
+"onnxruntimeExtensionsEnabled": "true"
 ```
 
 

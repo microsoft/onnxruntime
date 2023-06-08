@@ -16,14 +16,21 @@
 	<meta http-equiv="X-UA-Compatible" content="IE=edge" />
 	<title>ONNX Runtime | Home</title>
 	<link rel="icon" href="./images/ONNXRuntime-Favicon.png" type="image/gif" sizes="16x16" />
+	<!-- Imports -->
+	<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/4.6.2/css/bootstrap.min.css"
+		integrity="sha512-rt/SrQ4UNIaGfDyEXZtNcyWvQeOq0QLygHluFQcSjaGB04IxWhal71tKuzP6K8eYXYB6vJV4pHkXcmFGGQ1/0w=="
+		crossorigin="anonymous" referrerpolicy="no-referrer" />
+	<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"
+		integrity="sha512-iecdLmaskl7CVkqkXNQ/ZH/XLlvWZOJyj7Yy7tcenmpD1ypASozpmT/E0iPtmFIB46ZmdtAc9eNBvH0H/ZpiBw=="
+		crossorigin="anonymous" referrerpolicy="no-referrer" />
+	<link rel="stylesheet"
+		href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/atom-one-light.min.css"
+		integrity="sha512-o5v54Kh5PH0dgnf9ei0L+vMRsbm5fvIvnR/XkrZZjN4mqdaeH7PW66tumBoQVIaKNVrLCZiBEfHzRY4JJSMK/Q=="
+		crossorigin="anonymous" referrerpolicy="no-referrer" />
+	<!-- Local Files -->
 	<link rel="stylesheet" href="css/fonts.css" />
-
-	<link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css" />
-	<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.3.0/css/all.min.css" />
 	<link rel="stylesheet" href="css/custom.css?v1.6" />
 	<link rel="stylesheet" href="css/responsive.css?v1.6" />
-	<!-- Syntax highlighting -->
-	<link rel="stylesheet" href="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/styles/atom-one-light.min.css" />
 </head>
 
 <body>
@@ -37,7 +44,7 @@
 			<div role="main" id="skipMain">
 				<div class="container px-md-4 px-lg-5 pt-5 mx-auto text-center">
 					<h1 class="pt-3 pb-3 pt-md-5 pb-lg-3 px-md-4 px-lg-5 mt-5 mb-0">
-						Optimize and Accelerate Machine Learning Inferencing and Training
+						Cross-Platform Accelerated Machine Learning
 					</h1>
 				</div>
 
@@ -491,8 +498,8 @@ Console.WriteLine(outputs[0].AsTensor<float>()[0]);</code>
 														<span>ROCm </span>
 													</div>
 													<div class="col-lg-3 col-md-3 r-option version" role="option"
-														tabindex="-1" aria-selected="false" id="SNPE">
-														<span>SNPE</span>
+														tabindex="-1" aria-selected="false" id="QNN">
+														<span>QNN</span>
 													</div>
 													<div class="col-lg-3 col-md-3 r-option version" role="option"
 														tabindex="-1" aria-selected="false" id="TensorRT">
@@ -559,20 +566,52 @@ Console.WriteLine(outputs[0].AsTensor<float>()[0]);</code>
 								aria-hidden="true">
 								<div class="row ml-0">
 									<div class="col">
+
+										<div class="row r-wrap mb-1 mb-md-0 mr-0">
+											<div class="col-md-3 r-heading">
+												<h3 id="ot_selectScenario">Scenario</h3>
+												<p id="ot_decriptionScenario" class="sr-only">
+													Scenario list contains two items
+												</p>
+											</div>
+											<div class="col-md-9 r-content pr-0 pl-md-4" role="listbox"
+												id="ot_listbox-4" aria-labelledby="ot_selectScenario"
+												aria-describedby="ot_decriptionScenario">
+												<div class="row ot_scenario">
+													<div class="col r-option version" role="option" tabindex="0"
+														aria-selected="true" id="ot_large_model">
+														<span><abbr>Large Model Training</abbr></span>
+													</div>
+													<div class="col r-option version" role="option" tabindex="-1"
+														aria-selected="false" id="ot_on_device">
+														<span><abbr>On-Device Training</abbr></span>
+													</div>
+												</div>
+											</div>
+										</div>
+
 										<div class="row r-wrap mb-1 mb-md-0 mr-0">
 											<div class="col-md-3 r-heading">
 												<h3 id="ot_selectOS">Platform</h3>
 												<p id="ot_decriptionOS" class="sr-only">
-													Platform list contains one item
+													Platform list contains three items
 												</p>
 											</div>
 											<div class="col-md-9 r-content pr-0 pl-md-4" role="listbox"
 												id="ot_listbox-1" aria-labelledby="ot_selectOS"
 												aria-describedby="ot_decriptionOS">
 												<div class="row ot_os">
-													<div class="col r-option selected" role="option" tabindex="0"
+													<div class="col r-option" role="option" tabindex="0"
 														aria-selected="true" id="ot_linux">
 														<span>Linux</span>
+													</div>
+													<div class="col r-option" role="option" tabindex="0"
+														aria-selected="true" id="ot_windows">
+														<span>Windows</span>
+													</div>
+													<div class="col r-option" role="option" tabindex="0"
+														aria-selected="true" id="ot_android">
+														<span>Android</span>
 													</div>
 												</div>
 											</div>
@@ -582,16 +621,32 @@ Console.WriteLine(outputs[0].AsTensor<float>()[0]);</code>
 											<div class="col-md-3 r-heading">
 												<h3 id="ot_selectLanguage">API</h3>
 												<p id="ot_decriptionLanguage" class="sr-only">
-													API list contains one item
+													API list contains five items
 												</p>
 											</div>
 											<div class="col-md-9 r-content pr-0 pl-md-4" role="listbox"
 												id="ot_listbox-2" aria-labelledby="ot_selectLanguage"
 												aria-describedby="ot_decriptionLanguage">
 												<div class="row ot_language">
-													<div class="col r-option selected" role="option" tabindex="0"
-														aria-selected="true" id="ot_ORTModule">
-														<span>ORTModule for Pytorch</span>
+													<div class="col r-option" role="option" tabindex="0"
+														aria-selected="true" id="ot_python">
+														<span>Python</span>
+													</div>
+													<div class="col r-option" role="option" tabindex="0"
+														aria-selected="true" id="ot_c">
+														<span>C</span>
+													</div>
+													<div class="col r-option" role="option" tabindex="0"
+														aria-selected="true" id="ot_cplusplus">
+														<span>C++</span>
+													</div>
+													<div class="col r-option" role="option" tabindex="0"
+														aria-selected="true" id="ot_csharp">
+														<span>C#</span>
+													</div>
+													<div class="col r-option" role="option" tabindex="0"
+														aria-selected="true" id="ot_java">
+														<span>Java</span>
 													</div>
 												</div>
 											</div>
@@ -603,20 +658,24 @@ Console.WriteLine(outputs[0].AsTensor<float>()[0]);</code>
 													Hardware Acceleration
 												</h3>
 												<p id="ot_decriptionHardwareAcceleration" class="sr-only">
-													Hardware Acceleration list contains two items
+													Hardware Acceleration list contains three items
 												</p>
 											</div>
 											<div class="col-md-9 r-content pr-0 pl-md-4" role="listbox"
 												id="ot_listbox-4" aria-labelledby="ot_selectHardwareAcceleration"
 												aria-describedby="ot_decriptionHardwareAcceleration">
 												<div class="row ot_hardwareAcceleration">
-													<div class="col r-option version selected" role="option"
-														tabindex="0" aria-selected="true" id="ot_CUDA">
+													<div class="col r-option version" role="option" tabindex="0"
+														aria-selected="true" id="ot_CUDA">
 														<span><abbr>CUDA</abbr></span>
 													</div>
 													<div class="col r-option version" role="option" tabindex="-1"
 														aria-selected="false" id="ot_ROCm">
 														<span><abbr>ROCm</abbr></span>
+													</div>
+													<div class="col r-option version" role="option" tabindex="-1"
+														aria-selected="false" id="ot_CPU">
+														<span><abbr>CPU</abbr></span>
 													</div>
 												</div>
 											</div>
@@ -968,18 +1027,26 @@ Console.WriteLine(outputs[0].AsTensor<float>()[0]);</code>
 		<span class="fa fa-angle-up p-1"></span>
 	</a>
 
-	<script src="https://www.w3schools.com/lib/w3.js"></script>
-	<script>
-		w3.includeHTML();
-	</script>
-	<script src="https://code.jquery.com/jquery-3.4.1.min.js"></script>
-	<script src="https://maxcdn.bootstrapcdn.com/bootstrap/4.3.1/js/bootstrap.min.js"></script>
-	<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/highlight.min.js"></script>
-	<script>
-		hljs.highlightAll();
-	</script>
-	<script src="./js/custom.js?v1.6"></script>
-	<script src="./js/script.js?v1.6"></script>
+
 </body>
+<!-- Imports -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.7.0/jquery.min.js"
+	integrity="sha512-3gJwYpMe3QewGELv8k/BX9vcqhryRdzRMxVfq6ngyWXwo03GFEzjsUm8Q7RZcHPHksttq7/GFoxjCVUjkjvPdw=="
+	crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/4.6.2/js/bootstrap.min.js"
+	integrity="sha512-7rusk8kGPFynZWu26OKbTeI+QPoYchtxsmPeBqkHIEXJxeun4yJ4ISYe7C6sz9wdxeE1Gk3VxsIWgCZTc+vX3g=="
+	crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/highlight.min.js"
+	integrity="sha512-rdhY3cbXURo13l/WU9VlaRyaIYeJ/KBakckXIvJNAQde8DgpOmE+eZf7ha4vdqVjTtwQt69bD2wH2LXob/LB7Q=="
+	crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+<!-- Local Files -->
+<script src="./js/w3.js"></script>
+<script src="./js/custom.js?v1.6"></script>
+<script src="./js/script.js?v1.6"></script>
+
+<script>
+	w3.includeHTML();
+	hljs.highlightAll();
+</script>
 
 </html>

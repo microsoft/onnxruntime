@@ -176,26 +176,111 @@ Download the [onnxruntime-android](https://mvnrepository.com/artifact/com.micros
 
 Refer to the instructions for creating a [custom Android package](../build/custom.md#android).
 
-## ORT Training package
+## Install for On-Device Training
 
+Unless stated otherwise, the installation instructions in this section refer to pre-built packages designed to perform on-device training.
+
+If the pre-built training package supports your model but is too large, you can create a [custom training build](../build/custom.md).
+
+### Offline Phase - Prepare for Training
+
+```bash
+pip install onnxruntime-training
 ```
+
+### Training Phase - On-Device Training
+
+<table>
+  <tr>
+    <th>Device</th>
+    <th>Language</th>
+    <th>PackageName</th>
+    <th>Installation Instructions</th>
+  </tr>
+  <tr>
+    <td>Windows</td>
+    <td>C, C++, C#</td>
+    <!-- TODO (baijumeswani) - Update to Training link once published -->
+    <td><a href="https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime">Microsoft.ML.OnnxRuntime.Training</a></td>
+    <td>
+      <pre lang="bash">dotnet add package Microsoft.ML.OnnxRuntime.Training</pre>
+    </td>
+  </tr>
+  <!-- <tr>
+    <td></td>
+    <td>Python</td>
+    <td><a href="https://pypi.org/project/onnxruntime-training/">onnxruntime-training</a></td>
+    <td>
+      <pre lang="bash">pip install onnxruntime-training</pre>
+    </td>
+  </tr> -->
+  <tr>
+    <td>Linux</td>
+    <td>C, C++</td>
+    <td><a href="https://github.com/microsoft/onnxruntime/releases">onnxruntime-training-linux*.tgz</a></td>
+    <td>
+      <ul>
+        <li>Download the <code>*.tgz</code> file from <a href="https://github.com/microsoft/onnxruntime/releases">here</a>.</li>
+        <li>Extract it.</li>
+        <li>Move and include the header files in the <code>include</code> directory.</li>
+        <li>Move the <code>libonnxruntime.so</code> dynamic library to a desired path and include it.</li>
+      </ul>
+    </td>
+  </tr>
+  <tr>
+    <td></td>
+    <td>Python</td>
+    <td><a href="https://pypi.org/project/onnxruntime-training/">onnxruntime-training</a></td>
+    <td>
+      <pre lang="bash">pip install onnxruntime-training</pre>
+    </td>
+  </tr>
+  <tr>
+    <td>Android</td>
+    <td>C, C++</td>
+    <td><a href="https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-training-android">onnxruntime-training-android</a></td>
+    <td>
+      <ul>
+        <li>Download the <a href="https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-android">onnxruntime-training-android (full package)</a> AAR hosted at Maven Central.</li>
+        <li>Change the file extension from <code>.aar</code> to <code>.zip</code>, and unzip it.</li>
+        <li>Include the header files from the <code>headers</code> folder.</li>
+        <li>Include the relevant <code>libonnxruntime.so</code> dynamic library from the <code>jni</code> folder in your NDK project.</li>
+      </ul>
+    </td>
+  </tr>
+  <tr>
+    <td></td>
+    <td>Java/Kotlin</td>
+    <td><a href="https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-android">onnxruntime-training-android</a></td>
+    <td>In your Android Studio Project, make the following changes to:
+      <ol>
+        <li>build.gradle (Project):
+          <pre lang="gradle">
+repositories {
+    mavenCentral()
+}
+          </pre>
+        </li>
+        <li>build.gradle (Module):
+          <pre lang="gradle">
+dependencies {
+    implementation 'com.microsoft.onnxruntime:onnxruntime-training-android:latest.release'
+}
+          </pre>
+        </li>
+      </ol>
+    </td>
+  </tr>
+</table>
+
+## Large Model Training
+
+```bash
 pip install torch-ort
 python -m torch_ort.configure
 ```
 
-**Note**: This installs the default version of the `torch-ort` and `onnxruntime-training` packages that are mapped to specific versions of the CUDA libraries. Refer to the install options in [ONNXRUNTIME.ai](https://onnxruntime.ai).
-
-### Add ORTModule in the `train.py`
-
-```python
-   from torch_ort import ORTModule
-   .
-   .
-   .
-   model = ORTModule(model)
-```
-
-**Note**: the `model` where ORTModule is wrapped needs to be a derived from the `torch.nn.Module` class.
+**Note**: This installs the default version of the `torch-ort` and `onnxruntime-training` packages that are mapped to specific versions of the CUDA libraries. Refer to the install options in [onnxruntime.ai](https://onnxruntime.ai).
 
 ## Inference install table for all languages
 
@@ -234,20 +319,4 @@ In addition to general [requirements](#requirements), please note additional req
 
 ## Training install table for all languages
 
-ONNX Runtime Training packages are available for different versions of PyTorch, CUDA and ROCm versions.
-
-The install command is:
-```cmd
-pip3 install torch-ort [-f location]
-python 3 -m torch_ort.configure
-```
-
-The _location_ needs to be specified for any specific version other than the default combination. The location for the different configurations are below:
-
-||Official build (location)|Nightly build (location)|
-|---|---|---|
-|PyTorch 1.11 (ROCm 5.2)||[onnxruntime_nightly_torch1110.rocm52](https://download.onnxruntime.ai/onnxruntime_stable_rocm52.html)|
-|PyTorch 1.12.1 (ROCm 5.2.3)||[onnxruntime_nightly_torch1121.rocm523](https://download.onnxruntime.ai/onnxruntime_nightly_rocm523.html)|
-|PyTorch 1.13 (ROCm 5.2.3)||[onnxruntime_nightly_torch1130.rocm523](https://download.onnxruntime.ai/onnxruntime_nightly_rocm523.html)|
-|PyTorch 1.12.1 (ROCm 5.3.2)||[onnxruntime_nightly_torch1121.rocm532](https://download.onnxruntime.ai/onnxruntime_nightly_rocm532.html)|
-|PyTorch 1.13.1(ROCm 5.4)||[onnxruntime_nightly_torch1131.rocm54](https://download.onnxruntime.ai/onnxruntime_nightly_rocm54.html)|
+Refer to the getting started with [Optimized Training](../../index.html#getStartedTable) page for more fine-grained installation instructions.
