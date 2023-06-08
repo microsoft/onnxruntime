@@ -4307,9 +4307,30 @@ struct OrtApi {
    */
   void(ORT_API_CALL* ReleaseROCMProviderOptions)(_Frees_ptr_opt_ OrtROCMProviderOptions* input);
 
+  /** \brief Extract external data locations from memory.
+   *
+   * \param[in] env
+   * \param[in] allocator
+   * \param[in] model_data
+   * \param[in] model_data_length
+   * \param[out] locations_out Returns an array of OrtExternalDataLocation. Must be freed with OrtApi::ReleaseExternalDataLocations
+   * \param[out] locations_out_size Size of locations_out
+   *
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.16.
+   */
   ORT_API2_STATUS(GetExternalDataLocationsFromArray, _In_ const OrtEnv* env, _Inout_ OrtAllocator* allocator,
                   _In_ const void* model_data, size_t model_data_length, _Outptr_ OrtExternalDataLocation** locations_out, _Outptr_ size_t* locations_out_size);
 
+
+  /** \brief Release an array of OrtExternalDataLocation
+   *
+   * \note allocator must the same which has been used in GetExternalDataLocationsFromArray
+   *
+   * \since Version 1.16.
+   */
   void(ORT_API_CALL* ReleaseExternalDataLocations)(_Inout_ OrtAllocator* allocator, _Frees_ptr_opt_ OrtExternalDataLocation* locations, size_t locations_size);
 
   /// @}
