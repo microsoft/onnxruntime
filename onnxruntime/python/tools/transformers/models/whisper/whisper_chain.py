@@ -58,7 +58,6 @@ def chain_model(args):
     else:
         beam_inputs.append("")
 
-
     beam_outputs = ["sequences"]
     if args.collect_cross_qk:
         beam_outputs.extend(["", "", "cross_qk"])
@@ -160,7 +159,7 @@ def chain_model(args):
     graph_outputs = [sequences]
     if args.output_cross_qk or (not args.cross_qk_onnx_model and args.collect_cross_qk):
         cross_qk = helper.make_tensor_value_info(
-            "cross_qk", float_data_type, ["batch_size", "num_return_sequences", "num_layer_head", "decoded_length", "frames"]
+            "cross_qk", TensorProto.FLOAT, ["batch_size", "num_return_sequences", "num_layer_head", "decoded_length", "frames"]
         )
         graph_outputs.extend([cross_qk])
 
