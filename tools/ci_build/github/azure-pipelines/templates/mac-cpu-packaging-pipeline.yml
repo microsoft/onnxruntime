@@ -97,6 +97,14 @@ stages:
           DoEsrp: true
           Pattern: '*.zip'
 
+      - bash: |
+          set -ex
+          find $(Build.ArtifactStagingDirectory) -name "*.zip" -exec unzip {} -d $(Agent.TempDirectory)/macpackage \;
+          find $(Agent.TempDirectory)/macpackage -name "*.dylib" -exec codesign -dvvv {} \;
+          find $(Agent.TempDirectory)/macpackage -name "*.dylib" -exec ls -l {} \;
+          rm -rf $(Agent.TempDirectory)/macpackage
+        displayName: 'Verify code signing'
+
       - task: PublishPipelineArtifact@1
         inputs:
           targetPath: '$(Build.ArtifactStagingDirectory)'
