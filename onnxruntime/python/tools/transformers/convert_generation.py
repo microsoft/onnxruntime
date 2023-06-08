@@ -1310,7 +1310,7 @@ def update_decoder_subgraph_output_cross_attention(subg: GraphProto):
 
             cross_attention = onnx.helper.make_tensor_value_info(
                 cross_attention_out_name,
-                atten_data_type,
+                TensorProto.FLOAT,
                 [batch_size_dim, num_heads_dim, 1, cross_seq_len_dim]
             )
             subg.output.extend([cross_attention])

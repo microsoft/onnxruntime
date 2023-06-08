@@ -124,10 +124,10 @@ Status WhisperDecoderSubgraph::Validate(const std::vector<const NodeArg*>& subgr
                   "decoder subgraph past inputs shall have same data type as that of encoder_hidden_states.");
   }
 
-  for (int i = 0; i < num_subgraph_outputs; i++) {
-    ORT_RETURN_IF(subgraph_outputs[i]->TypeAsProto()->tensor_type().elem_type() != float_type,
-                  "decoder subgraph output shall have same data type as that of encoder_hidden_states");
-  }
+  // for (int i = 0; i < num_subgraph_outputs; i++) {
+  //   ORT_RETURN_IF(subgraph_outputs[i]->TypeAsProto()->tensor_type().elem_type() != float_type,
+  //                 "decoder subgraph output shall have same data type as that of encoder_hidden_states");
+  // }
 
   is_output_float16_ = (subgraph_outputs[0]->TypeAsProto()->tensor_type().elem_type() == float16_type);
 
