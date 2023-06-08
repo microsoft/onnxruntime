@@ -56,7 +56,7 @@ stages:
 - template: mac-cpu-packaging-pipeline.yml
   parameters:
     AllowReleasedOpsetOnly: 1
-    BuildForAllArchs: false
+    BuildForAllArchs: true
     SpecificArtifact: ${{ parameters.SpecificArtifact }}
     BuildId: ${{ parameters.BuildId }}
 
