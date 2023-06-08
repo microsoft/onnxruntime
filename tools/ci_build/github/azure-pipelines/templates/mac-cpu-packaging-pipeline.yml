@@ -106,7 +106,7 @@ stages:
           yes | cp -f $(Build.ArtifactStagingDirectory)/archive/libonnxruntime.dylib $(Build.ArtifactStagingDirectory)/onnxruntime-osx-x86_64/onnxruntime-osx-x86_64-1.16.0/lib/libonnxruntime.dylib
           yes | cp -f $(Build.ArtifactStagingDirectory)/archive/dsym_libonnxruntime.1.16.0.dylib $(Build.ArtifactStagingDirectory)/onnxruntime-osx-x86_64/onnxruntime-osx-x86_64-1.16.0/lib/libonnxruntime.1.16.0.dylib.dSYM/Contents/Resources/DWARF/libonnxruntime.1.16.0.dylib
           #mv -f $(Build.ArtifactStagingDirectory)/archive/onnxruntime-osx-x86_64 $(Build.ArtifactStagingDirectory)/onnxruntime-osx-x86_64
-          rm -rf $(Build.ArtifactStagingDirectory)/archive
+          #rm -rf $(Build.ArtifactStagingDirectory)/archive
           find $(Build.ArtifactStagingDirectory) -name "*.dylib" -exec codesign -dvvv {} \;
           find $(Build.ArtifactStagingDirectory) -name "*.dylib" -exec ls -l {} \;
         displayName: 'Verify code signing'
