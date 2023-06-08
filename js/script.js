@@ -985,9 +985,6 @@ var validCombos = {
     "windows,Java,X64,DNNL":
         "Follow <a href='http://www.onnxruntime.ai/docs/build/inferencing.html#common-build-instructions' target='_blank'>build</a> and <a href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
 
-    "windows,Java,X64,NUPHAR":
-        "Follow <a href='http://www.onnxruntime.ai/docs/build/inferencing.html#common-build-instructions' target='_blank'>build</a> and <a href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
-
     "windows,Java,X64,OpenVINO":
         "Follow <a href='http://www.onnxruntime.ai/docs/build/inferencing.html#common-build-instructions' target='_blank'>build</a> and <a href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
 
@@ -995,9 +992,6 @@ var validCombos = {
         "Add a dependency on <a href='https://search.maven.org/artifact/com.microsoft.onnxruntime/onnxruntime_gpu' target='_blank'>com.microsoft.onnxruntime:onnxruntime_gpu</a> using Maven/Gradle. <br/>Refer to <a href='http://www.onnxruntime.ai/docs/execution-providers/TensorRT-ExecutionProvider.html' target='_blank'>docs</a> for usage details.",
 
     "linux,Java,X64,DNNL":
-        "Follow <a href='http://www.onnxruntime.ai/docs/build/inferencing.html#common-build-instructions' target='_blank'>build</a> and <a href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
-
-    "linux,Java,X64,NUPHAR":
         "Follow <a href='http://www.onnxruntime.ai/docs/build/inferencing.html#common-build-instructions' target='_blank'>build</a> and <a href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
 
     "linux,Java,X64,OpenVINO":
