@@ -17,8 +17,6 @@ Abstract:
 #pragma once
 
 #include "mlasi.h"
-//#include "./x86_64/asmmacro.h"
-//#include "./x86_64/AssembleAvxVnni.h"
 
 #ifdef WIN32
 #define tile_dpbssd(dst, src1, src2) _tile_dpbssd(dst, src1, src2)
@@ -131,7 +129,6 @@ extern "C" {
 	void MlasLoadConfigAmx(const void *__config);
 	void MlasStoreConfigAmx(void *__config);
 }
-//MlasTdpAmx(dst,src1,src2)
 
 #define tile_dpbusd_t4t2t0(dst,src1,src2)			\
   MlasTdpAmxT4T2T0(dst,src1,src2) 
@@ -204,10 +201,6 @@ extern "C" {
   MlasStoreConfigAmx(config)
 
 
-/*  __asm__ volatile							\
-  ("{TdpbusdTmmTmmTmm\ttmm"#src2", tmm"#src1", tmm"#dst"|"#name"\ttmm"#dst", tmm"#src1", tmm"#src2"}" ::)
-*/
-
 #define tile_dpbssd(dst,src1,src2)					\
   tile_int8_dp_internal (tdpbssd, dst, src1, src2)
 
@@ -244,17 +237,5 @@ extern "C" {
   ("{tilestored\t%%tmm"#src", (%0,%1,1)|tilestored\t[%0+%1*1], %%tmm"#src"}" \
    :: "r" ((void*) (base)), "r" ((long) (stride)) \
    : "memory")
-
-/**
-void tile_loadconfig (const void *__config)
-{
-  __asm__ volatile ("ldtilecfg\t%X0" :: "m" (*((const void **)__config)));
-}
-
-void tile_storeconfig (void *__config)
-{
-  __asm__ volatile ("sttilecfg\t%X0" : "=m" (*((void **)__config)));
-}
-**/
 
 #endif

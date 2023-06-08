@@ -1,63 +1,44 @@
 /*++
 
-Copyright (c) 2020 Intel Corporation. All rights reserved.
+Copyright (c) 2023 Intel Corporation. All rights reserved.
 
 Licensed under the MIT License.
 
 Module Name:
 
-    QgemvU8S8KernelAvxVnni.s
+	QgemmU8S8KernelAmxCommon.s
 
 Abstract:
 
-    This module implements the kernels for the quantized integer matrix/vector
-    multiply operation (QGEMV).
+    This module implements the common operators for quantized U8S8 AMX GEMM kernel.
 
-    This implementation uses AVXVNNI instructions.
+    This implementation uses AMX instructions.
 
 --*/
 
 #include "asmmacro.h"
-#include "AssembleAvxVnni.h"
+#include "AssembleAmx.h"
 
         .intel_syntax noprefix
-
-//
-// Stack frame layout for the U8S8 kernel.
-//
-
-        .equ    .LGemvU8S8KernelFrame_mask, -8
-        .equ    .LGemvU8S8KernelFrame_SavedRbx, 0
-        .equ    .LGemvU8S8KernelFrame_SavedRbp, 8
-        .equ    .LGemvU8S8KernelFrame_ReturnAddress, 16
-
-        .text
 
 /*++
 
 Routine Description:
 
-    This routine is an inner kernel to compute matrix/vector multiplication.
+	Following four routines implement the tile dot product routines
+	used in the Qgemm U8S8 AMX kernel.
 
 Arguments:
 
-    A (rdi) - Supplies the address of vector A.
+    dst (rdi) - Supplies the destination tile id.
 
-    B (rsi) - Supplies the address of matrix B.
+    src1 (rsi) - Supplies the first source tile id. 
 
-    C (rdx) - Supplies the address of matrix C.
-
-    CountK (rcx) - Supplies the number of columns from vector A and the number
-        of rows from matrix B to iterate over.
-
-    CountN (r8) - Supplies the number of columns from matrix B and matrix C to
-        iterate over.
-
-    ldb (r9) - Supplies the first dimension of matrix B.
+    src2 (rdx) - Supplies the second source tile id.
 
 Return Value:
-
-    None.
+	
+	None
 
 --*/
 	
@@ -89,6 +70,27 @@ C_UNDERSCORE(MlasTdpAmxT7T3T1):
 
 	ret
 
+
+/*++
+
+Routine Description:
+
+	Following routines implement the tile load routines
+	used in the Qgemm U8S8 AMX kernel.
+
+Arguments:
+
+	dst (rdi) - Supplies the destination tile id.
+
+    	base (rsi) - Supplies the base address of memory location.
+
+    	stride (rdx) - Supplies the stride for tile load.
+
+Return Value:
+	
+	None
+
+--*/
 
 .globl  C_UNDERSCORE(MlasLoadAmxT0)
 C_UNDERSCORE(MlasLoadAmxT0):
@@ -146,6 +148,28 @@ C_UNDERSCORE(MlasLoadAmxT7):
 
 	ret
 
+
+/*++
+
+Routine Description:
+
+	Following routines implement the tile store routines
+	used in the Qgemm U8S8 AMX kernel.
+
+Arguments:
+
+	src (rdi) - Supplies the source tile id.
+
+    	base (rsi) - Supplies the base address of memory location.
+
+    	stride (rdx) - Supplies the stride for tile store.
+
+Return Value:
+	
+	None
+
+--*/
+
 .globl  C_UNDERSCORE(MlasStoreAmxT0)
 C_UNDERSCORE(MlasStoreAmxT0):
 
@@ -202,12 +226,47 @@ C_UNDERSCORE(MlasStoreAmxT7):
 
 	ret
 
+/*++
+
+Routine Description:
+
+	Following routine implements the tile config load routines
+	used in the Qgemm U8S8 AMX kernel.
+
+Arguments:
+
+	src (rdi) - Supplies the memory address for the tile configuration.
+
+Return Value:
+	
+	None
+
+--*/
+
 .globl  C_UNDERSCORE(MlasLoadConfigAmx)
 C_UNDERSCORE(MlasLoadConfigAmx):
 
 	ldtilecfgMacro rdi
 
 	ret
+
+
+/*++
+
+Routine Description:
+
+	Following routine implements the tile store config routines
+	used in the Qgemm U8S8 AMX kernel.
+
+Arguments:
+
+	src (rdi) - Supplies the memory address for the tile configuration.
+
+Return Value:
+	
+	None
+
+--*/
 
 .globl  C_UNDERSCORE(MlasStoreConfigAmx)
 C_UNDERSCORE(MlasStoreConfigAmx):
