@@ -632,6 +632,12 @@ public class InferenceTest {
     runProvider(OrtProvider.XNNPACK);
   }
 
+  @Test
+  @EnabledIfSystemProperty(named = "USE_COREML", matches = "1")
+  public void testCoreML() throws OrtException {
+    runProvider(OrtProvider.CORE_ML);
+  }
+
   private void runProvider(OrtProvider provider) throws OrtException {
     EnumSet<OrtProvider> providers = OrtEnvironment.getAvailableProviders();
     assertTrue(providers.size() > 1);
