@@ -70,22 +70,21 @@ Status ReductionOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, co
 
   if (op_type == "ReduceMean") {
     // Get axes for ReduceMean
-    if (node_unit.SinceVersion() > 13) {
-      // ReduceMean-18 uses the second input as axes
-      // And `axes` is an optional input. If it is not supplied, return an empty axes
-      if (inputs.size() > 1) {
-        const auto& initializers(model_builder.GetInitializerTensors());
-        const auto& axes_tensor = *initializers.at(inputs[1].node_arg.Name());
-        Initializer unpacked_tensor(axes_tensor);
-        auto raw_axes = unpacked_tensor.DataAsSpan<int64_t>();
-        const auto size = SafeInt<uint32_t>(axes_tensor.dims()[0]);
-        axes.resize(size);
-        for (uint32_t i = 0; i < size; i++) {
-          // it is unlikely we have an axis value overflow for int32
-          axes[i] = static_cast<int32_t>(raw_axes[i]);
-        }
+    // ReduceMean-18 uses the second input as axes
+    // And `axes` is an optional input. If it is not supplied, return an empty axes
+    if (inputs.size() > 1 && inputs[1].node_arg.Exists()) {
+      const auto& initializers(model_builder.GetInitializerTensors());
+      const auto& axes_tensor = *initializers.at(inputs[1].node_arg.Name());
+      Initializer unpacked_tensor(axes_tensor);
+      auto raw_axes = unpacked_tensor.DataAsSpan<int64_t>();
+      const auto size = SafeInt<uint32_t>(axes_tensor.dims()[0]);
+      axes.resize(size);
+      for (uint32_t i = 0; i < size; i++) {
+        // it is unlikely we have an axis value overflow for int32
+        axes[i] = static_cast<int32_t>(raw_axes[i]);
       }
-    } else {
+    } else if (helper.HasAttr("axes")) {
+      std::cout << "check if enter: " << std::endl;
       const auto& axes_int64 = helper.Get("axes", std::vector<int64_t>{});
       axes.reserve(axes_int64.size());
       for (auto& axis : axes_int64) {
@@ -94,7 +93,12 @@ Status ReductionOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, co
     }
   }
 
-  const bool keepdims = helper.Get("keepdims", 1) != 0;
+  // Debug: dump out axes vector
+  for (auto& axis : axes) {
+    std::cout << "check the axes vector value: " << axis << std::endl;
+  }
+
+  const auto keepdims = helper.Get("keepdims", 1);
 
   // Add ReduceMean op
   InlinedVector<uint32_t> input_indices;
@@ -121,7 +125,7 @@ Status ReductionOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, co
 
     // Make output dimensions
     InlinedVector<uint32_t> output_dimen;
-    if (keepdims) {
+    if (keepdims == 1) {
       output_dimen.reserve(input_size);
     } else {
       output_dimen.reserve(input_size - axes_to_be_reduced.size());
@@ -131,7 +135,7 @@ Status ReductionOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, co
       if (!Contains(axes_to_be_reduced, i)) {
         output_dimen.push_back(input_shape[i]);
       } else {
-        if (keepdims) {
+        if (keepdims == 1) {
           output_dimen.push_back(1);
         }
       }
@@ -143,6 +147,9 @@ Status ReductionOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, co
       output_dimen.push_back(1);
 
     shaper.AddShape(output, output_dimen);
+
+    ADD_SCALAR_OPERAND(model_builder, input_indices, keepdims);
+
     const OperandType output_operand_type(operand_types.at(inputs[0].node_arg.Name()).type, output_dimen);
     ORT_RETURN_IF_ERROR(model_builder.AddOperation(op_code, input_indices,
                                                    {output}, {output_operand_type}));
