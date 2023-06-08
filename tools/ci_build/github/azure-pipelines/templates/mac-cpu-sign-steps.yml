@@ -1,0 +1,47 @@
+parameters:
+- name: package_name
+  type: string
+
+steps:
+    - bash: |
+        find . -type f
+      workingDirectory: $(Build.ArtifactStagingDirectory)
+      displayName: check unzipped files
+    - task: ExtractFiles@1
+      inputs:
+        archiveFilePatterns: '$(Build.ArtifactStagingDirectory)/${{parameters.package_name}}.tgz'
+        destinationFolder: '$(Build.ArtifactStagingDirectory)/${{parameters.package_name}}'
+        cleanDestinationFolder: true
+    - bash: |
+        rm -f '$(Build.ArtifactStagingDirectory)/${{parameters.package_name}}.tgz'
+        find $(Build.ArtifactStagingDirectory) -name "*.dylib" -exec ls -l {} \;
+        mkdir -p $(Build.ArtifactStagingDirectory)/archive
+        mv "$(Build.ArtifactStagingDirectory)/${{parameters.package_name}}" "$(Build.ArtifactStagingDirectory)/archive"
+        #mv "$(Build.ArtifactStagingDirectory)/testdata" "$(Build.ArtifactStagingDirectory)/archive"
+        zip -r archive.zip archive && rm -rf archive
+        find . -name "*.zip"
+      workingDirectory: $(Build.ArtifactStagingDirectory)
+      displayName: zip dylib files
+    - template: mac-esrp-dylib.yml
+      parameters:
+        FolderPath: '$(Build.ArtifactStagingDirectory)'
+        DisplayName: 'ESRP - Sign Mac'
+        DoEsrp: true
+        Pattern: '*.zip'
+    - bash: |
+        set -ex
+        unzip $(Build.ArtifactStagingDirectory)/archive.zip -d $(Build.ArtifactStagingDirectory)
+        mv -f $(Build.ArtifactStagingDirectory)/archive/${{parameters.package_name}} $(Build.ArtifactStagingDirectory)/${{parameters.package_name}}
+        #mv -f $(Build.ArtifactStagingDirectory)/archive/testdata $(Build.ArtifactStagingDirectory)/testdata
+        rm -rf $(Build.ArtifactStagingDirectory)/archive
+        find $(Build.ArtifactStagingDirectory) -name "*.dylib" -exec codesign -dvvv {} \;
+        find $(Build.ArtifactStagingDirectory) -name "*.dylib" -exec ls -l {} \;
+      displayName: 'Verify code signing'
+      workingDirectory: $(Build.ArtifactStagingDirectory)
+    - task: ArchiveFiles@2
+      inputs:
+        rootFolderOrFile: $(Build.ArtifactStagingDirectory)/${{parameters.package_name}}
+        includeRootFolder: false
+        archiveType: 'tar'
+        archiveFile: '$(Build.ArtifactStagingDirectory)/${{parameters.package_name}}.zip'
+        replaceExistingArchive: true
