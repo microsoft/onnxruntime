@@ -1085,16 +1085,15 @@ template Status CreateWhisperEncoderInputs<MLFloat16>(
     OrtValue& decoder_input_ids);
 
 
-template <typename T>
 Status UpdateDecoderCrossQK(
     [[maybe_unused]] int iteration_number,
     [[maybe_unused]] Stream* tream,
     [[maybe_unused]] OrtValue* cross_qks,
-    [[maybe_unused]] IAllocatorUniquePtr<T*>& qk_layer_pointers,
+    [[maybe_unused]] IAllocatorUniquePtr<float*>& qk_layer_pointers,
     [[maybe_unused]] int num_layers,
     [[maybe_unused]] int cross_qk_layer_head_pair_count,
     [[maybe_unused]] const int* cross_qk_layer_head_pairs,
-    [[maybe_unused]] T* cross_qk_buffer_data,
+    [[maybe_unused]] float* cross_qk_buffer_data,
     [[maybe_unused]] int max_length,
     [[maybe_unused]] AllocatorPtr allocator
 ) {
@@ -1102,31 +1101,6 @@ Status UpdateDecoderCrossQK(
   return Status::OK();
 }
 
-template Status UpdateDecoderCrossQK<MLFloat16>(
-    int iteration_number,
-    Stream* stream,
-    OrtValue* cross_qks,
-    IAllocatorUniquePtr<MLFloat16*>& qk_layer_pointers,
-    int num_layers,
-    int cross_qk_layer_head_pair_count,
-    const int* cross_qk_layer_head_pairs,
-    MLFloat16* cross_qk_buffer_data,
-    int max_length,
-    AllocatorPtr allocator);
-
-template Status UpdateDecoderCrossQK<float>(
-    int iteration_number,
-    Stream* tream,
-    OrtValue* cross_qks,
-    IAllocatorUniquePtr<float*>& qk_layer_pointers,
-    int num_layers,
-    int cross_qk_layer_head_pair_count,
-    const int* cross_qk_layer_head_pairs,
-    float* cross_qk_buffer_data,
-    int max_length,
-    AllocatorPtr allocator);
-
-template <typename T>
 Status FinalizeDecoderCrossQK(
     [[maybe_unused]] Stream* stream,
     [[maybe_unused]] int iteration_number,
@@ -1137,45 +1111,14 @@ Status FinalizeDecoderCrossQK(
     [[maybe_unused]] int cross_qk_layer_head_pair_count,
     [[maybe_unused]] const int* cross_qk_layer_head_pairs,
     [[maybe_unused]] int frames_of_k,
-    [[maybe_unused]] const T* cross_qk_buffer_data,
-    [[maybe_unused]] T* cross_qk_output,
+    [[maybe_unused]] const float* cross_qk_buffer_data,
+    [[maybe_unused]] float* cross_qk_output,
     [[maybe_unused]] int num_return_sequences,
     [[maybe_unused]] const int* cache_indir_data
 ) {
   throw std::runtime_error("CPU beam search current not support output cross QK.");
   return Status::OK();
 }
-
-template Status FinalizeDecoderCrossQK<float>(
-    Stream* stream,
-    int iteration_number,
-    int context_decoding_len,
-    int batch_size,
-    int num_beams,
-    int max_length,
-    int cross_qk_layer_head_pair_count,
-    const int* cross_qk_layer_head_pairs,
-    int frames_of_k,
-    const float* cross_qk_buffer_data,
-    float* cross_qk_output,
-    int num_return_sequences,
-    const int* cache_indir_data);
-
-template Status FinalizeDecoderCrossQK<MLFloat16>(
-    Stream* stream,
-    int iteration_number,
-    int context_decoding_len,
-    int batch_size,
-    int num_beams,
-    int max_length,
-    int cross_qk_layer_head_pair_count,
-    const int* cross_qk_layer_head_pairs,
-    int frames_of_k,
-    const MLFloat16* cross_qk_buffer_data,
-    MLFloat16* cross_qk_output,
-    int num_return_sequences,
-    const int* cache_indir_data);
-
 
 }  // namespace GenerationCpuDeviceHelper
 }  // namespace contrib

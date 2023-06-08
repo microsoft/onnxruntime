@@ -1593,16 +1593,15 @@ template Status ExpandBuffer<MLFloat16>(
     bool only_copy_shape,
     int max_sequence_length);
 
-template <typename T>
 Status UpdateDecoderCrossQK(
     int iteration_number,
     Stream* stream,
     OrtValue* cross_qks,
-    IAllocatorUniquePtr<T*>& qk_layer_pointers,
+    IAllocatorUniquePtr<float*>& qk_layer_pointers,
     int num_layers,
     int cross_qk_layer_head_pair_count,
     const int* cross_qk_layer_head_pairs,
-    T* cross_qk_buffer_data,
+    float* cross_qk_buffer_data,
     int max_length,
     AllocatorPtr allocator) {
   cudaStream_t cuda_stream = stream ? static_cast<cudaStream_t>(stream->GetHandle()) : nullptr;
@@ -1610,10 +1609,10 @@ Status UpdateDecoderCrossQK(
   if (qk_layer_pointers.get() == nullptr) {
     // Put all the qk pointers into gpu, as they did not change in following decoding steps
     // also this help to use single kernel to process each step
-    qk_layer_pointers = IAllocator::MakeUniquePtr<T*>(allocator, static_cast<size_t>(num_layers), false, stream);
-    std::vector<T*> qk_layer_data(num_layers, nullptr);
+    qk_layer_pointers = IAllocator::MakeUniquePtr<float*>(allocator, static_cast<size_t>(num_layers), false, stream);
+    std::vector<float*> qk_layer_data(num_layers, nullptr);
     for (int layer = 0; layer < num_layers; layer++) {
-      qk_layer_data[layer] = cross_qks[layer].GetMutable<Tensor>()->MutableData<T>();
+      qk_layer_data[layer] = cross_qks[layer].GetMutable<Tensor>()->MutableData<float>();
     }
     CUDA_RETURN_IF_ERROR(cudaMemcpyAsync((void*)qk_layer_pointers.get(), qk_layer_data.data(), sizeof(qk_layer_data[0]) * num_layers,
                                          cudaMemcpyHostToDevice, cuda_stream));
@@ -1642,31 +1641,6 @@ Status UpdateDecoderCrossQK(
   return Status::OK();
 }
 
-template Status UpdateDecoderCrossQK<MLFloat16>(
-    int iteration_number,
-    Stream* stream,
-    OrtValue* cross_qks,
-    IAllocatorUniquePtr<MLFloat16*>& qk_layer_pointers,
-    int num_layers,
-    int cross_qk_layer_head_pair_count,
-    const int* cross_qk_layer_head_pairs,
-    MLFloat16* cross_qk_buffer_data,
-    int max_length,
-    AllocatorPtr allocator);
-
-template Status UpdateDecoderCrossQK<float>(
-    int iteration_number,
-    Stream* stream,
-    OrtValue* cross_qks,
-    IAllocatorUniquePtr<float*>& qk_layer_pointers,
-    int num_layers,
-    int cross_qk_layer_head_pair_count,
-    const int* cross_qk_layer_head_pairs,
-    float* cross_qk_buffer_data,
-    int max_length,
-    AllocatorPtr allocator);
-
-template <typename T>
 Status FinalizeDecoderCrossQK(
     Stream* stream,
     int iteration_number,
@@ -1677,8 +1651,8 @@ Status FinalizeDecoderCrossQK(
     int cross_qk_layer_head_pair_count,
     const int* cross_qk_layer_head_pairs,
     int frames_of_k,
-    const T* cross_qk_buffer_data,
-    T* cross_qk_output,
+    const float* cross_qk_buffer_data,
+    float* cross_qk_output,
     int num_return_sequences,
     const int* cache_indir_data) {
   cudaStream_t cuda_stream = stream ? static_cast<cudaStream_t>(stream->GetHandle()) : nullptr;
@@ -1702,36 +1676,6 @@ Status FinalizeDecoderCrossQK(
 
   return Status::OK();
 }
-
-template Status FinalizeDecoderCrossQK(
-    Stream* stream,
-    int iteration_number,
-    int context_decoding_len,
-    int batch_size,
-    int num_beams,
-    int max_length,
-    int cross_qk_layer_head_pair_count,
-    const int* cross_qk_layer_head_pairs,
-    int frames_of_k,
-    const float* cross_qk_buffer_data,
-    float* cross_qk_output,
-    int num_return_sequences,
-    const int* cache_indir_data);
-
-template Status FinalizeDecoderCrossQK(
-    Stream* stream,
-    int iteration_number,
-    int context_decoding_len,
-    int batch_size,
-    int num_beams,
-    int max_length,
-    int cross_qk_layer_head_pair_count,
-    const int* cross_qk_layer_head_pairs,
-    int frames_of_k,
-    const MLFloat16* cross_qk_buffer_data,
-    MLFloat16* cross_qk_output,
-    int num_return_sequences,
-    const int* cache_indir_data);
 
 }  // namespace GenerationCudaDeviceHelper
 }  // namespace contrib

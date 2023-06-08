@@ -1166,12 +1166,13 @@ ONNX_MS_OPERATOR_SET_SCHEMA(BeamSearch, 1,
                                         "F = the frames or kv-seq-len of the cross attention input, T = real decoded token length, L = number of layers,"
                                         "B = batch size, R = num_return_sequences. It then should return tensor of shape [B, R, L*H, T, F]."
                                         "If cross_qk_layer_head is given, shape is [B, R, cross_qk_layer_head.shape[0], T, F]",
-                                        "T", OpSchema::Optional)
+                                        "V", OpSchema::Optional)
                                 .Output(4, "non_speech_probs",
                                         "For whisper model, output the probabilities from logits after encoder and context decoding for the no_speech_token."
                                         "Currently we treat the last token's logits is what we need, in future extra graph logic may be add to the encoder/context-decoder subgraph."
                                         "The prob is save before logits may be updated by extra-decoding-ids. The shape of non_speech_probs is [B]",
                                         "T", OpSchema::Optional)
+                                .TypeConstraint("V", {"tensor(float)"}, "Constrain to float32 tensors.")
                                 .TypeConstraint("T", {"tensor(float)", "tensor(float16)"}, "Constrain to float tensors.")
                                 .TypeConstraint("F", {"tensor(float)", "tensor(int32)", "tensor(float16)"}, "Constrain input type to float or int tensors.")
                                 .TypeConstraint("I", {"tensor(int32)"}, "Constrain to integer types")

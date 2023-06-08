@@ -213,11 +213,10 @@ void BufferExpansionKernelLauncher(const T* input,
                                    int chunk_size,
                                    cudaStream_t stream);
 
-template <typename T>
 void LaunchCopyCrossQKSingleDecodeStep(
     cudaStream_t stream,
-    T* cross_qk_buffer_data,
-    T** qk_layer_pointers,
+    float* cross_qk_buffer_data,
+    float** qk_layer_pointers,
     int token_index,
     int batchxbeam,
     int num_layers,
@@ -227,7 +226,6 @@ void LaunchCopyCrossQKSingleDecodeStep(
     int frames,
     int max_length);
 
-template <typename T>
 void LaunchFinalizeCrossQK(
     cudaStream_t stream,
     int iteration_number,
@@ -238,8 +236,8 @@ void LaunchFinalizeCrossQK(
     int cross_qk_layer_head_pair_count,
     const int* cross_qk_layer_head_pairs,
     int frames_of_k,
-    const T* cross_qk_buffer_data,
-    T* cross_qk_output,
+    const float* cross_qk_buffer_data,
+    float* cross_qk_output,
     int num_return_sequences,
     const int* cache_indir_data);
 
