@@ -518,20 +518,6 @@ class FusionAttention(Fusion):
         qkv_nodes = [qkv_matmul]
         qkv_output = qkv_matmul_output
 
-        if self.disable_multi_head_attention_bias:
-            add_bias_node_name = self.model.create_node_name("Add")
-            bias_name = self.create_combined_qkv_bias(q_add, k_add, v_add, add_bias_node_name)
-            qkv_add_bias_output = add_bias_node_name + "_bias_out"
-            qkv_bias = helper.make_node(
-                "Add",
-                inputs=[qkv_matmul_output, bias_name],
-                outputs=[qkv_add_bias_output],
-                name=add_bias_node_name,
-            )
-            self.node_name_to_graph_name[add_bias_node_name] = self.this_graph_name
-            qkv_nodes.append(qkv_bias)
-            qkv_output = qkv_add_bias_output
-
         # Create Slice nodes to access Q, K, V
         q_slice_name = matmul_node_name + "_q_start_index"
         q_start_tensor = helper.make_tensor(name=q_slice_name, data_type=TensorProto.INT64, dims=[1], vals=[0])
@@ -577,10 +563,34 @@ class FusionAttention(Fusion):
         )
         self.node_name_to_graph_name[v_slice.name] = self.this_graph_name
 
+        q_output = q_slice
+        k_output = k_slice
+        v_output = v_slice
+        qkv_nodes.extend([q_slice, k_slice, v_slice])
+
+        if self.disable_multi_head_attention_bias:
+            if q_add is not None:
+                initializer_input = 1 if self.model.get_initializer(q_add.input[1]) else 0
+                q_add.input[1-initializer_input] = q_slice_output
+                q_output = q_add
+                qkv_nodes.append(q_add)
+                self.node_name_to_graph_name[q_add.name] = self.this_graph_name
+            if k_add is not None:
+                initializer_input = 1 if self.model.get_initializer(k_add.input[1]) else 0
+                k_add.input[1-initializer_input] = k_slice_output
+                k_output = k_add
+                qkv_nodes.append(k_add)
+                self.node_name_to_graph_name[k_add.name] = self.this_graph_name
+            if v_add is not None:
+                initializer_input = 1 if self.model.get_initializer(v_add.input[1]) else 0
+                v_add.input[1-initializer_input] = v_slice_output
+                v_output = v_add
+                qkv_nodes.append(v_add)
+                self.node_name_to_graph_name[v_add.name] = self.this_graph_name
+
         # Add nodes to graph
         self.nodes_to_add.extend(qkv_nodes)
-        self.nodes_to_add.extend([q_slice, k_slice, v_slice])
-        return q_slice, k_slice, v_slice
+        return q_output, k_output, v_output
 
     def create_multihead_attention_node(
         self,
