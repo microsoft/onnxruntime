@@ -99,11 +99,12 @@ stages:
           Pattern: '*.zip'
       - bash: |
           set -ex
-          unzip $(Build.ArtifactStagingDirectory)/archive.zip
+          unzip $(Build.ArtifactStagingDirectory)/archive.zip -d $(Build.ArtifactStagingDirectory)
           yes | cp -f $(Build.ArtifactStagingDirectory)/archive/libcustom_op_library.dylib $(Build.ArtifactStagingDirectory)/testdata/libcustom_op_library.dylib
           yes | cp -f $(Build.ArtifactStagingDirectory)/archive/libonnxruntime.dylib $(Build.ArtifactStagingDirectory)/onnxruntime-osx-x86_64/onnxruntime-osx-x86_64-1.16.0/lib/libonnxruntime.dylib
           find $(Build.ArtifactStagingDirectory) -name "*.dylib" -exec codesign -dvvv {} \;
         displayName: 'Verify code signing'
+        workingDirectory: $(Build.ArtifactStagingDirectory)
 
       - ${{ if eq(parameters.BuildForAllArchs, true) }}:
         - template: flex-downloadPipelineArtifact.yml
