@@ -8,6 +8,8 @@ import argparse
 import copy
 import logging
 import os
+import re
+import shutil
 import sys
 
 import torch
@@ -317,9 +319,9 @@ def export_onnx_models(
 
         with torch.no_grad():
             max_diff = WhisperHelper.verify_onnx(model, ort_session, device, use_int32_inputs)
-        logger.info(f"PyTorch and OnnxRuntime results max difference = {max_diff}")
+        logger.info(f"PyTorch and ONNX Runtime results max difference = {max_diff}")
         if max_diff > 1e-4:
-            logger.warning("PyTorch and OnnxRuntime results are NOT close")
+            logger.warning("PyTorch and ONNX Runtime results are NOT close")
 
         output_paths.append(output_path)
 
@@ -377,6 +379,18 @@ def main(argv=None):
                 args.decoder_path = path
         chain_model(args)
         output_paths.append(args.beam_model_output_dir)
+
+        # Change directory layout from <output dir>/openai/<all models> to <output dir>/<model name>_beamsearch.onnx[.data]
+        # if using pre-trained model name
+        if re.search("^openai/whisper-[a-z]*", args.model_name_or_path):
+            old_model_path = os.path.join(args.output, args.model_name_or_path + "_beamsearch")
+            new_model_path = os.path.join(args.output, args.model_name_or_path[len("openai/") :] + "_beamsearch")
+            output_paths = [path for path in output_paths if "_beamsearch" in path]
+            output_paths = [path.replace("/openai/", "/") for path in output_paths]
+
+            os.rename(old_model_path + ".onnx", new_model_path + ".onnx")
+            os.rename(old_model_path + ".onnx.data", new_model_path + ".onnx.data")
+            shutil.rmtree(os.path.join(args.output, "openai"))
 
     logger.info(f"Done! Outputs: {output_paths}")
 

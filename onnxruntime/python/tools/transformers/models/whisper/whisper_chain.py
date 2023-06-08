@@ -1,3 +1,4 @@
+import logging
 import os
 import sys
 
@@ -11,6 +12,8 @@ from convert_generation import (  # noqa: E402
     get_shared_initializers,
     update_decoder_subgraph_share_buffer_and_use_decoder_masked_mha,
 )
+
+logger = logging.getLogger(__name__)
 
 
 def chain_model(args):
@@ -42,6 +45,7 @@ def chain_model(args):
 
     if args.use_logits_processor:
         beam_inputs.append("logits_processor")
+
     beam_outputs = ["sequences"]
 
     input_features_cast_node, len_pen_cast_node, rep_pen_cast_node = None, None, None
@@ -128,9 +132,9 @@ def chain_model(args):
 
     if hasattr(args, "use_gpu") and args.use_gpu:
         if update_decoder_subgraph_share_buffer_and_use_decoder_masked_mha(decoder_model.graph):
-            print("*****Updated whisper decoder subgraph successfully!!!*****")
+            logger.info("Updated whisper decoder subgraph to use DecoderMaskedMultiHeadAttention successfully!")
         else:
-            print("*****DecoderMaskedMultiHeadAttention is not applied to whisper decoder*****")
+            logger.warning("DecoderMaskedMultiHeadAttention could not be applied to whisper decoder subgraph")
 
     # Initializers/opsets
     # Delete shared data between decoder/encoder and move to larger graph initializers
@@ -150,7 +154,18 @@ def chain_model(args):
         else [node]
     )
     beam_graph = helper.make_graph(graph_nodes, "beam-search-test", graph_inputs, graph_outputs, initializers)
-    beam_model = helper.make_model(beam_graph, producer_name="onnxruntime.transformers", opset_imports=opset_import)
+    ir_version = decoder_model.ir_version
+    if decoder_model.ir_version != encoder_model.ir_version:
+        logger.warning(
+            f"Mismatched IR versions detected. Encoder subgraph has IR version {encoder_model.ir_version} and decoder subgraph has IR version {decoder_model.ir_version}."
+        )
+    else:
+        logger.info(f"Using IR version {ir_version} for chained model")
+
+    # Set IR version of chained model to IR version of subgraphs in order to generate a working E2E model
+    beam_model = helper.make_model_gen_version(
+        beam_graph, producer_name="onnxruntime.transformers", opset_imports=opset_import, ir_version=ir_version
+    )
 
     onnx.save(
         beam_model,
