@@ -66,13 +66,13 @@ Status ReductionOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, co
   }
 
   NodeAttrHelper helper(node_unit);
+  std::vector<int32_t> axes;
 
   if (op_type == "ReduceMean") {
     // Get axes for ReduceMean
-    std::vector<int32_t> axes;
-    // ReduceMean-18 uses the second input as axes
     if (node_unit.SinceVersion() > 13) {
-      // For ReduceMean, axes is an optional input. If it is not supplied, return an empty axes
+      // ReduceMean-18 uses the second input as axes
+      // And `axes` is an optional input. If it is not supplied, return an empty axes
       if (inputs.size() > 1) {
         const auto& initializers(model_builder.GetInitializerTensors());
         const auto& axes_tensor = *initializers.at(inputs[1].node_arg.Name());
@@ -86,67 +86,72 @@ Status ReductionOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, co
         }
       }
     } else {
-      axes = helper.Get("axes", std::vector<int32_t>());
-    }
-
-    const bool keepdims = helper.Get("keepdims", 1) != 0;
-
-    // Add ReduceMean op
-    InlinedVector<uint32_t> input_indices;
-    input_indices.push_back(operand_indices.at(inputs[0].node_arg.Name()));  // data
-
-    if (!axes.empty()) {
-      for (auto& axis : axes) {
-        axis = static_cast<int32_t>(HandleNegativeAxis(axis, input_shape.size()));
+      const auto& axes_int64 = helper.Get("axes", std::vector<int64_t>{});
+      axes.reserve(axes_int64.size());
+      for (auto& axis : axes_int64) {
+        axes.push_back(static_cast<int32_t>(axis));
       }
-
-      const auto axes_name = model_builder.GetUniqueName(node_unit.Name() + inputs[0].node_arg.Name() + "_axes");
-      Shape axes_dimen = {static_cast<uint32_t>(axes.size())};
-      const OperandType axes_operand_type(Type::TENSOR_INT32, axes_dimen);
-      ORT_RETURN_IF_ERROR(model_builder.AddOperandFromPersistMemoryBuffer(axes_name, axes.data(), axes_operand_type));
-
-      input_indices.push_back(operand_indices.at(axes_name));  // axes
-
-      int32_t input_size = static_cast<int32_t>(input_shape.size());
-      std::unordered_set<int32_t> axes_to_be_reduced;
-
-      for (const auto& axis : axes) {
-        axes_to_be_reduced.insert(axis);
-      }
-
-      // Make output dimensions
-      InlinedVector<uint32_t> output_dimen;
-      if (keepdims) {
-        output_dimen.reserve(input_size);
-      } else {
-        output_dimen.reserve(input_size - axes_to_be_reduced.size());
-      }
-
-      for (int32_t i = 0; i < input_size; i++) {
-        if (!Contains(axes_to_be_reduced, i)) {
-          output_dimen.push_back(input_shape[i]);
-        } else {
-          if (keepdims) {
-            output_dimen.push_back(1);
-          }
-        }
-      }
-
-      // In case of a tensor has all 1's in dimension such as {1,1,1,1} and gets all reduced
-      // the output shape will be {1}
-      if (output_dimen.empty())
-        output_dimen.push_back(1);
-
-      shaper.AddShape(output, output_dimen);
-      const OperandType output_operand_type(operand_types.at(inputs[0].node_arg.Name()).type, output_dimen);
-      ORT_RETURN_IF_ERROR(model_builder.AddOperation(op_code, input_indices,
-                                                     {output}, {output_operand_type}));
-    } else {
-      // For case that `axes` is empty act as an Identity op
-      const OperandType output_operand_type(operand_types.at(inputs[0].node_arg.Name()).type, input_shape);
-      model_builder.RegisterOperand(output, operand_indices.at(inputs[0].node_arg.Name()), output_operand_type);
     }
   }
+
+  const bool keepdims = helper.Get("keepdims", 1) != 0;
+
+  // Add ReduceMean op
+  InlinedVector<uint32_t> input_indices;
+  input_indices.push_back(operand_indices.at(inputs[0].node_arg.Name()));  // data
+
+  if (!axes.empty()) {
+    for (auto& axis : axes) {
+      axis = static_cast<int32_t>(HandleNegativeAxis(axis, input_shape.size()));
+    }
+
+    const auto axes_name = model_builder.GetUniqueName(node_unit.Name() + inputs[0].node_arg.Name() + "_axes");
+    Shape axes_dimen = {static_cast<uint32_t>(axes.size())};
+    const OperandType axes_operand_type(Type::TENSOR_INT32, axes_dimen);
+    ORT_RETURN_IF_ERROR(model_builder.AddOperandFromPersistMemoryBuffer(axes_name, axes.data(), axes_operand_type));
+
+    input_indices.push_back(operand_indices.at(axes_name));  // axes
+
+    int32_t input_size = static_cast<int32_t>(input_shape.size());
+    std::unordered_set<int32_t> axes_to_be_reduced;
+
+    for (const auto& axis : axes) {
+      axes_to_be_reduced.insert(axis);
+    }
+
+    // Make output dimensions
+    InlinedVector<uint32_t> output_dimen;
+    if (keepdims) {
+      output_dimen.reserve(input_size);
+    } else {
+      output_dimen.reserve(input_size - axes_to_be_reduced.size());
+    }
+
+    for (int32_t i = 0; i < input_size; i++) {
+      if (!Contains(axes_to_be_reduced, i)) {
+        output_dimen.push_back(input_shape[i]);
+      } else {
+        if (keepdims) {
+          output_dimen.push_back(1);
+        }
+      }
+    }
+
+    // In case of a tensor has all 1's in dimension such as {1,1,1,1} and gets all reduced
+    // the output shape will be {1}
+    if (output_dimen.empty())
+      output_dimen.push_back(1);
+
+    shaper.AddShape(output, output_dimen);
+    const OperandType output_operand_type(operand_types.at(inputs[0].node_arg.Name()).type, output_dimen);
+    ORT_RETURN_IF_ERROR(model_builder.AddOperation(op_code, input_indices,
+                                                   {output}, {output_operand_type}));
+  } else {
+    // For case that `axes` is empty act as an Identity op
+    const OperandType output_operand_type(operand_types.at(inputs[0].node_arg.Name()).type, input_shape);
+    model_builder.RegisterOperand(output, operand_indices.at(inputs[0].node_arg.Name()), output_operand_type);
+  }
+
   return Status::OK();
 }
 
