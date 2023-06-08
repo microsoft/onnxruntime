@@ -198,7 +198,7 @@ Status DecoderMaskedMultiHeadAttention<T1, T2>::ComputeInternal(OpKernelContext*
     int64_t qk_dims[] = {parameters.batch_size, parameters.num_heads,  1, parameters.total_sequence_length};
     TensorShape qk_shape(&qk_dims[0], sizeof(qk_dims) / sizeof(qk_dims[0]));
     cross_qk = context->Output(kQKOutputIndex, qk_shape);
-    parameters.out_qk = cross_qk->MutableData<T1>();
+    parameters.out_qk = cross_qk->MutableData<float>();
   }
 
   parameters.out = output->MutableDataRaw();
