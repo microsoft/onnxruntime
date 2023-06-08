@@ -571,22 +571,25 @@ class FusionAttention(Fusion):
         if self.disable_multi_head_attention_bias:
             if q_add is not None:
                 initializer_input = 1 if self.model.get_initializer(q_add.input[1]) else 0
-                q_add.input[1-initializer_input] = q_slice_output
-                q_output = q_add
-                qkv_nodes.append(q_add)
-                self.node_name_to_graph_name[q_add.name] = self.this_graph_name
+                if np.any(NumpyHelper.to_array(self.model.get_initializer(q_add.input[initializer_input]))):
+                    q_add.input[1-initializer_input] = q_slice_output
+                    q_output = q_add
+                    qkv_nodes.append(q_add)
+                    self.node_name_to_graph_name[q_add.name] = self.this_graph_name
             if k_add is not None:
                 initializer_input = 1 if self.model.get_initializer(k_add.input[1]) else 0
-                k_add.input[1-initializer_input] = k_slice_output
-                k_output = k_add
-                qkv_nodes.append(k_add)
-                self.node_name_to_graph_name[k_add.name] = self.this_graph_name
+                if np.any(NumpyHelper.to_array(self.model.get_initializer(k_add.input[initializer_input]))):
+                    k_add.input[1-initializer_input] = k_slice_output
+                    k_output = k_add
+                    qkv_nodes.append(k_add)
+                    self.node_name_to_graph_name[k_add.name] = self.this_graph_name
             if v_add is not None:
                 initializer_input = 1 if self.model.get_initializer(v_add.input[1]) else 0
-                v_add.input[1-initializer_input] = v_slice_output
-                v_output = v_add
-                qkv_nodes.append(v_add)
-                self.node_name_to_graph_name[v_add.name] = self.this_graph_name
+                if np.any(NumpyHelper.to_array(self.model.get_initializer(v_add.input[initializer_input]))):
+                    v_add.input[1-initializer_input] = v_slice_output
+                    v_output = v_add
+                    qkv_nodes.append(v_add)
+                    self.node_name_to_graph_name[v_add.name] = self.this_graph_name
 
         # Add nodes to graph
         self.nodes_to_add.extend(qkv_nodes)
