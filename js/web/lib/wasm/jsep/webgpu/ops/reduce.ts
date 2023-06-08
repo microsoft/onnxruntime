@@ -10,7 +10,7 @@ import {ComputeContext, GpuDataType, ProgramInfo, ProgramInfoLoader, ProgramMeta
 import {createIndicesHelper, ShaderHelper} from './common';
 
 const validateInputs = (inputs: readonly TensorView[]): void => {
-  if (!inputs || inputs.length == 0 || inputs.length > 2) {
+  if (!inputs || inputs.length === 0 || inputs.length > 2) {
     throw new Error('Reduce op requires 1 or 2 inputs.');
   }
 
@@ -98,10 +98,10 @@ const createReduceProgramInfo =
     };
 
 const createReduceAttributesFromInput = (input: TensorView, attributes: ReduceAttributes): ReduceAttributes => {
-  var axes: number[] = [];
+  const axes: number[] = [];
   input.getBigInt64Array().forEach(v => axes.push(Number(v)));
-  var keepDims = attributes.keepDims;
-  var noopWithEmptyAxes = attributes.noopWithEmptyAxes;
+  const keepDims = attributes.keepDims;
+  const noopWithEmptyAxes = attributes.noopWithEmptyAxes;
   return createAttributeWithCacheKey({axes, keepDims, noopWithEmptyAxes});
 };
 
@@ -113,7 +113,7 @@ const createReduceProgramInfoLoader =
             ...metadata,
             get: () => createReduceProgramInfo(
                 metadata, [inputs[0]],
-                (inputs.length == 1) ? attributes : createReduceAttributesFromInput(inputs[1], attributes), reduceOp)
+                (inputs.length === 1) ? attributes : createReduceAttributesFromInput(inputs[1], attributes), reduceOp)
           };
         };
 
