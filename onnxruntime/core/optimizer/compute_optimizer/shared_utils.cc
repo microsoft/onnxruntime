@@ -193,22 +193,22 @@ NodeArg* CreateInitializerFromVector(Graph& graph,
 NodeArg* InsertNodesForValidIndices(Graph& graph,
                                     Node& node,
                                     NodeArg* input_to_filter,
-                                    NodeArg* padding_idx) {
-  InlinedVector<NodeArg*> sub_input_args{input_to_filter, padding_idx};
+                                    NodeArg* invalid_value) {
+  InlinedVector<NodeArg*> sub_input_args{input_to_filter, invalid_value};
 
   InlinedVector<NodeArg*> sub_output_args{&graph.GetOrCreateNodeArg(graph.GenerateNodeArgName("sub_result"),
                                                                     input_to_filter->TypeAsProto())};
 
-  Node& sub_node = graph.AddNode(graph.GenerateNodeName("sub_pad_idx"), "Sub", "sub padding idx", sub_input_args,
+  Node& sub_node = graph.AddNode(graph.GenerateNodeName("sub_invalid_value"), "Sub", "sub invalid value", sub_input_args,
                                  sub_output_args, nullptr, kOnnxDomain);
   ORT_ENFORCE(graph.SetOpSchemaFromRegistryForNode(sub_node), "Failed to set op schema for " + sub_node.Name());
   sub_node.SetExecutionProviderType(node.GetExecutionProviderType());
 
-  auto non_zero_out_arg = &graph.GetOrCreateNodeArg(graph.GenerateNodeArgName("filter_pad_result"),
+  auto non_zero_out_arg = &graph.GetOrCreateNodeArg(graph.GenerateNodeArgName("filter_valid_result"),
                                                     input_to_filter->TypeAsProto());
 
-  Node& non_zero_node = graph.AddNode(graph.GenerateNodeName("filter_pad"), "NonZero",
-                                      "filtering padding idx",
+  Node& non_zero_node = graph.AddNode(graph.GenerateNodeName("filter_valid_value"), "NonZero",
+                                      "filtering valid value",
                                       {sub_node.MutableOutputDefs()[0]},
                                       {non_zero_out_arg}, nullptr, kOnnxDomain);
 

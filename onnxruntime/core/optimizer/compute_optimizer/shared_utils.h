@@ -180,25 +180,26 @@ NodeArg* CreateInitializerFromVector(Graph& graph,
  * @brief Insert a pattern of 'Sub + NonZero + Squeeze' into the graph.
  *   This pattern is used to filter out the valid indices of the input tensor which is not padding idx.
  *   After inserting the pattern, the graph will be like:
- *     input_to_filter    padding_idx
- *                 \      /
- *                   Sub
- *                    |
- *                NonZero
- *                    |
- *                Squeeze
- *                    |
+ *     input_to_filter                   invalid_value
+ *  (shape: [token_count])
+ *                         \         /
+ *                             Sub
+ *                              |
+ *                           NonZero
+ *                              |
+ *                           Squeeze
+ *                              |
  *                 output (shape: [valid_indices_num])
  *
  * @param graph The graph to insert the pattern.
  * @param node The node that triggers the optimization search.
  * @param input_to_filter The input tensor to filter.
- * @param padding_idx The padding index.
+ * @param invalid_value The padding index.
  */
 NodeArg* InsertNodesForValidIndices(Graph& graph,
                                     Node& node,
                                     NodeArg* input_to_filter,
-                                    NodeArg* padding_idx);
+                                    NodeArg* invalid_value);
 
 }  // namespace onnxruntime::optimizer::compute_optimizer
 #endif

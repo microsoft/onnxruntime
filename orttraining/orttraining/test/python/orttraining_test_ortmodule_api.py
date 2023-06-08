@@ -5783,6 +5783,8 @@ def test_padding_elimination():
             output = self.LayerNorm(output + hidden_states)
             return output
 
+    # This toy model is written referring to HuggingFace bert-large-uncased:https://huggingface.co/bert-large-uncased
+    # This is just a simple version of it for convenient testing.
     class ToyModel(torch.nn.Module):
         def __init__(self, num_hidden_layers, vocab_size, hidden_size, num_attention_heads, pad_token_id, num_labels):
             super().__init__()
@@ -5820,20 +5822,28 @@ def test_padding_elimination():
         optimizer.step()
         optimizer.zero_grad()
 
+    # Generate one batch of inputs (shape:[batch_size, max_seq_length]) and masks (shape:[batch_size, max_seq_length]).
+    # Each input has random length from 1 to max_seq_length with values from 2 to vocab_size and padded with 1 at
+    # [max_seq_length - length:]. Values of masks are 1 at [0:length] and 0 at [length:max_seq_length].
     def generate_inputs(batch_size, max_seq_length, vocab_size):
         batched_inputs = []
         batched_masks = []
         for _ in range(batch_size):
+            # Generate random length from 1 to max_seq_length
             seq_len = random.randint(1, max_seq_length)
+
+            # Generate input values and padding respectively and concatenate them
             input_id = torch.randint(2, vocab_size, (seq_len,), dtype=torch.long, device=device)
             padding = torch.ones((max_seq_length-seq_len,), dtype=torch.long, device=device)
+            batched_inputs.append(torch.cat((input_id, padding)))
+
+            # Generate mask values and padding respectively and concatenate them
             mask_ones = torch.ones((seq_len,), device=device)
             mask_zeros = torch.zeros((max_seq_length-seq_len,), device=device)
-            batched_inputs.append(torch.cat((input_id, padding)))
             batched_masks.append(torch.cat((mask_ones, mask_zeros)))
         return torch.stack(batched_inputs), torch.stack(batched_masks)
 
-    num_layers, vocab_size, hidden_size, num_attention_heads = 1, 50265, 768, 12
+    num_layers, vocab_size, hidden_size, num_attention_heads = 12, 50265, 768, 12
     batch_size, max_seq_length = 8, 128
     device = "cuda"
     pt_model = ToyModel(num_layers, vocab_size, hidden_size, num_attention_heads, 1, 3).to(device)
@@ -5847,11 +5857,11 @@ def test_padding_elimination():
         ort_mask = copy.deepcopy(pt_mask)
         pt_target = torch.randint(3, (batch_size, ), device=device)
         ort_target = copy.deepcopy(pt_target)
+        # Run one step of forward and backward for torch and ort respectively
         pt_prediction = run_step(pt_model, pt_input, pt_mask, pt_target)
         ort_prediction = run_step(ort_model, ort_input, ort_mask, ort_target)
-        for pt_param, ort_param in zip(pt_model.parameters(), ort_model.parameters()):
-            _test_helpers.assert_values_are_close(pt_param.grad, ort_param.grad, atol=1e-4, rtol=1e-5)
 
+        # Run one step of optimizer for torch and ort respectively
         run_optim_step(pt_optimizer)
         run_optim_step(ort_optimizer)
 

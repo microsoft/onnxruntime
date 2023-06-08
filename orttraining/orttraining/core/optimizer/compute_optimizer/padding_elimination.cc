@@ -8,9 +8,9 @@
 #include "core/optimizer/initializer.h"
 #include "orttraining/core/optimizer/compute_optimizer/padding_elimination.h"
 
-using namespace ONNX_NAMESPACE;
-using namespace ::onnxruntime::common;
 namespace onnxruntime {
+
+namespace {
 
 void PushAllOutputNode(Graph& graph, std::queue<Node*>& q, Node* node, std::unordered_set<Node*>& visited) {
   for (auto iter = node->OutputNodesBegin(); iter != node->OutputNodesEnd(); ++iter) {
@@ -98,9 +98,18 @@ NodeArg* InsertNodesForInput(Graph& graph,
   std::vector<int64_t> new_shape;
   new_shape.push_back(-1);  // only support flatten 0 and 1 dims
   auto input_shape = node.InputDefs()[in_index]->Shape();
+  ORT_ENFORCE(input_shape->dim_size() >= 2);
+  ONNX_NAMESPACE::TensorShapeProto flattened_shape;
+  if (input_shape->dim(0).has_dim_value() && input_shape->dim(1).has_dim_value()) {
+    flattened_shape.add_dim()->set_dim_value(input_shape->dim(0).dim_value() * input_shape->dim(1).dim_value());
+  } else {
+    std::string token_dim_name = MakeString("valid_token_count_", utils::GetRandomSeed());
+    flattened_shape.add_dim()->set_dim_param(token_dim_name);
+  }
   for (int k = 2; k < input_shape->dim_size(); k++) {
     ORT_ENFORCE(input_shape->dim(k).has_dim_value());
     new_shape.push_back(input_shape->dim(k).dim_value());
+    flattened_shape.add_dim()->set_dim_value(input_shape->dim(k).dim_value());
   }
   ONNX_NAMESPACE::TensorProto new_shape_const_tensor;
   new_shape_const_tensor.set_name(graph.GenerateNodeArgName("new_shape"));
@@ -112,7 +121,7 @@ NodeArg* InsertNodesForInput(Graph& graph,
 
   InlinedVector<NodeArg*> reshape_output_args;
   reshape_output_args.push_back(
-      &graph.GetOrCreateNodeArg(graph.GenerateNodeArgName("inputs_reshape_result"), nullptr));
+      &graph.GetOrCreateNodeArg(graph.GenerateNodeArgName("inputs_reshape_result"), node.MutableInputDefs()[in_index]->TypeAsProto()));
 
   Node* new_reshape_node = onnxruntime::optimizer::compute_optimizer::InsertIntermediateNodeOnDestInput(
       graph, node,
@@ -131,10 +140,6 @@ NodeArg* InsertNodesForInput(Graph& graph,
   new_reshape_node->SetExecutionProviderType(node.GetExecutionProviderType());
   auto reshape_out_arg = new_reshape_node->MutableOutputDefs()[0];
 
-  ONNX_NAMESPACE::TensorShapeProto flattened_shape;
-  for (auto dim_value : new_shape) {
-    flattened_shape.add_dim()->set_dim_value(dim_value);
-  }
   reshape_out_arg->SetShape(flattened_shape);
 
   InlinedVector<NodeArg*> gather_input_args;
@@ -266,6 +271,135 @@ NodeArg* InsertNodesForOutput(Graph& graph,
   return new_reshape_node->MutableOutputDefs()[0];
 }
 
+// Iterate the subgraph beginning from the start_node, and put all node args contained in the subgraph into
+// candidate_node_args. Also put all input nodes and output nodes of the subgraph into candidate_input and
+// candidate_output respectively.
+void IterateSubgraphFromNode(Graph& graph,
+                                  Node* start_node,
+                                  std::unordered_set<NodeArg*>& candidate_node_args,
+                                  std::unordered_set<Node*>& candidate_input,
+                                  std::unordered_set<Node*>& candidate_output,
+                                  const logging::Logger& logger) {
+  std::queue<Node*> to_visit;
+  std::unordered_set<Node*> visited;
+  PushAllOutputNode(graph, to_visit, start_node, visited);
+  while (!to_visit.empty()) {
+    Node* cur = to_visit.front();
+    to_visit.pop();
+    visited.insert(cur);
+    if (graph_utils::IsSupportedOptypeVersionAndDomain(*cur, "Add", {7, 13, 14})) {
+      ORT_ENFORCE(candidate_node_args.find(cur->MutableInputDefs()[0]) != candidate_node_args.end() ||
+                  candidate_node_args.find(cur->MutableInputDefs()[1]) != candidate_node_args.end());
+      NodeArg* arg_in_subgraph = nullptr;
+      NodeArg* arg_not_in_subgraph = nullptr;
+      if (candidate_node_args.find(cur->MutableInputDefs()[0]) != candidate_node_args.end()) {
+        arg_in_subgraph = cur->MutableInputDefs()[0];
+        arg_not_in_subgraph = cur->MutableInputDefs()[1];
+      } else if (candidate_node_args.find(cur->MutableInputDefs()[1]) != candidate_node_args.end()) {
+        arg_in_subgraph = cur->MutableInputDefs()[1];
+        arg_not_in_subgraph = cur->MutableInputDefs()[0];
+      }
+
+      // arg_in_subgraph is contained in candidate_node_args, so its shape must be [batch_size, seq_len, ...]
+      // Now only support cases of the two shapes are absolutely same or the other shape dim size is smaller by 2.
+      // For example, [batch_size, seqlen, hidden_size] and [batch_size, seqlen, hidden_size].
+      //              [batch_size, seqlen, hidden_size] and [seqlen].
+      // TODO: support other case such as:
+      //              [batch_size, seqlen, hidden_size] and [batch_size, 1, hidden_size]
+      if (arg_not_in_subgraph->Shape()->dim_size() <= arg_in_subgraph->Shape()->dim_size() - 2 ||
+          (arg_in_subgraph->Shape()->dim_size() == arg_not_in_subgraph->Shape()->dim_size() &&
+           arg_in_subgraph->Shape()->dim(0) == arg_not_in_subgraph->Shape()->dim(0) &&
+           arg_in_subgraph->Shape()->dim(1) == arg_not_in_subgraph->Shape()->dim(1))) {
+        candidate_node_args.insert(cur->MutableOutputDefs()[0]);
+        PushAllOutputNode(graph, to_visit, cur, visited);
+        // There are two possibilities here:
+        // 1. The size of arg_not_in_subgraph->Shape is smaller than arg_in_subgraph->Shape by 2,
+        //    do not need to add flatten pattern to arg_not_in_subgraph.
+        // 2. The size of arg_not_in_subgraph->Shape is same with arg_in_subgraph->Shape and the first
+        //    two dims value are exactly same, then there are also two possibilities:
+        //     <1>. The arg_not_in_subgraph is propagated from embedding_node (contained in candidate_node_args),
+        //          do not need to process it.
+        //     <2>. The arg_not_in_subgraph is not propagated from embedding_node (not contained in candidate_node_args),
+        //          need to add flatten pattern to arg_not_in_subgraph.
+        //     Here we just add cur node to candidate_input and process it (add flatten pattern to its input) after
+        //     the graph iteration, according to whether it's contained in candidate_node_args.
+        if (arg_in_subgraph->Shape()->dim_size() == arg_not_in_subgraph->Shape()->dim_size()) {
+          candidate_input.insert(cur);
+        }
+      } else {
+        LOG_DEBUG_INFO(logger, "PaddingElimination::Input shapes of node:" + cur->Name() + "are not compatible.");
+        candidate_output.insert(cur);
+        continue;
+      }
+    } else if (graph_utils::IsSupportedOptypeVersionAndDomain(*cur, "LayerNormalization", {1, 17}, kOnnxDomain)) {
+      if (candidate_node_args.find(cur->MutableInputDefs()[0]) == candidate_node_args.end()){
+        LOG_DEBUG_INFO(logger, "PaddingElimination::Fist input of Normalization: " + cur->Name() +
+                               " is not in candidate_node_args.");
+        candidate_output.insert(cur);
+        continue;
+      }
+      auto axis = static_cast<int64_t>(cur->GetAttributes().at("axis").i());
+      axis = axis < 0 ? axis + cur->InputDefs()[0]->Shape()->dim_size() : axis;
+      if (axis < 2) {
+        LOG_DEBUG_INFO(logger, "PaddingElimination::axis of Normalization: " + cur->Name() + " is " +
+                                   std::to_string(axis) + ", which blocks merging leading two dims.");
+        candidate_output.insert(cur);
+      } else {
+        candidate_node_args.insert(cur->MutableOutputDefs()[0]);
+        PushAllOutputNode(graph, to_visit, cur, visited);
+      }
+    } else if (graph_utils::IsSupportedOptypeVersionAndDomain(*cur, "Dropout", {12, 13})) {
+      ORT_ENFORCE(candidate_node_args.find(cur->MutableInputDefs()[0]) != candidate_node_args.end());
+      candidate_node_args.insert(cur->MutableOutputDefs()[0]);
+      candidate_node_args.insert(cur->MutableOutputDefs()[1]);
+      PushAllOutputNode(graph, to_visit, cur, visited);
+    } else if (graph_utils::IsSupportedOptypeVersionAndDomain(*cur, "Cast", {9, 13}) ||
+               graph_utils::IsSupportedOptypeVersionAndDomain(*cur, "BiasGelu", {1}, kMSDomain)) {
+      ORT_ENFORCE(candidate_node_args.find(cur->MutableInputDefs()[0]) != candidate_node_args.end());
+      candidate_node_args.insert(cur->MutableOutputDefs()[0]);
+      PushAllOutputNode(graph, to_visit, cur, visited);
+    } else if (graph_utils::IsSupportedOptypeVersionAndDomain(*cur, "MatMul", {1, 9, 13})) {
+      ORT_ENFORCE(candidate_node_args.find(cur->MutableInputDefs()[0]) != candidate_node_args.end() ||
+                  candidate_node_args.find(cur->MutableInputDefs()[1]) != candidate_node_args.end());
+      if (candidate_node_args.find(cur->MutableInputDefs()[0]) != candidate_node_args.end()) {
+        // If shape of [batch_size, seqlen, ...] is propagated from the first argument of MatMul.
+        // The dim size of the first argument must larger than 2 to propagete the first two dims to the output.
+        // Or else the first two dims of the output will not be [batch_size, seqlen] and this MatMul will be added
+        // to candidate_output as the output of the subgraph.
+        if (cur->InputDefs()[0]->Shape()->dim_size() > 2) {
+          candidate_node_args.insert(cur->MutableOutputDefs()[0]);
+          PushAllOutputNode(graph, to_visit, cur, visited);
+        } else {
+          LOG_DEBUG_INFO(logger,
+                         "PaddingElimination::dim size of left input of matmul smaller than 3 and \
+                            this matmul would be output of subgraph.");
+          candidate_output.insert(cur);
+          continue;
+        }
+      } else {
+        LOG_DEBUG_INFO(logger, "PaddingElimination::right edge of matmul would not included.");
+        candidate_output.insert(cur);
+        continue;
+      }
+    } else if (graph_utils::IsSupportedOptypeVersionAndDomain(*cur, "PythonOp", {1}, kMSDomain)) {
+      if (candidate_node_args.find(cur->MutableInputDefs()[0]) == candidate_node_args.end()){
+        candidate_output.insert(cur);
+        continue;
+      }
+      auto func_name = static_cast<std::string>(cur->GetAttributes().at("name").s());
+      if (func_name == "_InspectActivation" || func_name == "_IncrementStep") {
+        candidate_node_args.insert(cur->MutableOutputDefs()[1]);
+        PushAllOutputNode(graph, to_visit, cur, visited);
+      } else {
+        candidate_output.insert(cur);
+      }
+    } else {
+      candidate_output.insert(cur);
+    }
+  }
+}
+}  // namespace
+
 Status PaddingElimination::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
   LOG_DEBUG_INFO(logger, "Enter PaddingElimination");
 
@@ -278,18 +412,15 @@ Status PaddingElimination::ApplyImpl(Graph& graph, bool& modified, int graph_lev
   const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
   Node* embedding_node = nullptr;
   NodeArg* input_ids_arg = nullptr;
-  // Make sure each egde in candidate_edges has two consecutive dims to be flattened.
-  // Now only support the case that the first two dims are consecutive.
-  // All edges in candidate_edges constitute the subgraph which is propagated from the embedding node
-  std::unordered_set<NodeArg*> candidate_edges;
-  // nodes in candidate_input are the input nodes to the subgraph constituted by candidate_edges
-  // input edges of nodes in candidate_input should be in candidate_edges or to be added Reshape + Gather
+  // Make sure each node_arg in candidate_node_args has first two consecutive dims to be flattened.
+  // All node_args in candidate_node_args constitute the subgraph which is propagated from the embedding node
+  std::unordered_set<NodeArg*> candidate_node_args;
+  // nodes in candidate_input are the input nodes to the subgraph constituted by candidate_node_args
+  // input args of nodes in candidate_input should be in candidate_node_args or to be added Reshape + Gather
   std::unordered_set<Node*> candidate_input;
-  // nodes in candidate_output are the output nodes from the subgraph constituted by candidate_edges
-  // input edges of nodes in candidate_output, if in candidate_edges, should be added GatherGrad + Reshape
+  // nodes in candidate_output are the output nodes from the subgraph constituted by candidate_node_args
+  // input args of nodes in candidate_output, if in candidate_node_args, should be added GatherGrad + Reshape
   std::unordered_set<Node*> candidate_output;
-  std::queue<Node*> to_visit;
-  std::unordered_set<Node*> visited;
 
   // Find the valid embedding node
   for (auto node_index : node_topology_list) {
@@ -305,26 +436,25 @@ Status PaddingElimination::ApplyImpl(Graph& graph, bool& modified, int graph_lev
         graph_utils::IsGraphInput(graph, node.InputDefs()[1]) &&
         node.InputDefs()[1]->Shape()->dim(0).has_dim_param() &&
         node.InputDefs()[1]->Shape()->dim(1).has_dim_param()) {
-      const TensorProto* tensor_proto = graph_utils::GetConstantInitializer(graph, node.InputDefs()[2]->Name());
-      if (tensor_proto != nullptr &&
-          tensor_proto->dims_size() == 0 &&
-          ((tensor_proto->data_type() == ONNX_NAMESPACE::TensorProto_DataType_INT32) ||
-           (tensor_proto->data_type() == ONNX_NAMESPACE::TensorProto_DataType_INT64))) {
-        int64_t padding_idx = *reinterpret_cast<const int64_t*>(tensor_proto->raw_data().data());
+      if (std::find(sparse_embedding_input_names_.begin(), sparse_embedding_input_names_.end(),
+                    node.InputDefs()[1]->Name()) == sparse_embedding_input_names_.end()) {
+        LOG_DEBUG_INFO(logger, "Skip node " + node.Name() + "(" + node.OpType() +
+                                   ") due to embedding input is not in the sparse embedding input list.");
+        continue;
+      }
+      const ONNX_NAMESPACE::TensorProto* padding_initializer = graph_utils::GetConstantInitializer(graph, node.InputDefs()[2]->Name());
+      if (padding_initializer != nullptr &&
+          padding_initializer->dims_size() == 0 &&
+          ((padding_initializer->data_type() == ONNX_NAMESPACE::TensorProto_DataType_INT32) ||
+           (padding_initializer->data_type() == ONNX_NAMESPACE::TensorProto_DataType_INT64))) {
+        int64_t padding_idx = *reinterpret_cast<const int64_t*>(padding_initializer->raw_data().data());
         if (padding_idx < 0) {
-          continue;
-        }
-        if (std::find(sparse_embedding_input_names_.begin(), sparse_embedding_input_names_.end(),
-                      node.InputDefs()[1]->Name()) == sparse_embedding_input_names_.end()) {
-          LOG_DEBUG_INFO(logger, "Skip node " + node.Name() + "(" + node.OpType() +
-                                     ") due to embedding input is not in the sparse embedding input list.");
           continue;
         }
         embedding_node = &node;
         input_ids_arg = embedding_node->MutableInputDefs()[1];
-        PushAllOutputNode(graph, to_visit, embedding_node, visited);
-        for (auto output_edges : embedding_node->MutableOutputDefs()) {
-          candidate_edges.insert(output_edges);
+        for (auto output_defs : embedding_node->MutableOutputDefs()) {
+          candidate_node_args.insert(output_defs);
         }
         break;
       }
@@ -336,119 +466,7 @@ Status PaddingElimination::ApplyImpl(Graph& graph, bool& modified, int graph_lev
     return Status::OK();
   }
 
-  while (!to_visit.empty()) {
-    Node* cur = to_visit.front();
-    to_visit.pop();
-    visited.insert(cur);
-    if (graph_utils::IsSupportedOptypeVersionAndDomain(*cur, "Add", {7, 13, 14})) {
-      ORT_ENFORCE(candidate_edges.find(cur->MutableInputDefs()[0]) != candidate_edges.end() ||
-                  candidate_edges.find(cur->MutableInputDefs()[1]) != candidate_edges.end());
-      if (candidate_edges.find(cur->MutableInputDefs()[0]) != candidate_edges.end()) {
-        // Shape of [batch_size, seqlen, ...] is propagated from the first argument of cur node.
-        // Now only support the target two dims are absolutely same or the other shape dim size is smaller by 2.
-        // TODO: support other case such as the other shape is [batch_size, 1, ...]
-        if (cur->InputDefs()[1]->Shape()->dim_size() < cur->InputDefs()[0]->Shape()->dim_size() - 1 ||
-            (cur->InputDefs()[0]->Shape()->dim_size() == cur->InputDefs()[1]->Shape()->dim_size() &&
-             cur->InputDefs()[0]->Shape()->dim(0) == cur->InputDefs()[1]->Shape()->dim(0) &&
-             cur->InputDefs()[0]->Shape()->dim(1) == cur->InputDefs()[1]->Shape()->dim(1))) {
-          candidate_edges.insert(cur->MutableOutputDefs()[0]);
-          PushAllOutputNode(graph, to_visit, cur, visited);
-
-          // There are two possibilities here:
-          // 1. The size of cur->InputDefs()[1]->Shape is smaller than cur->InputDefs()[0]->Shape by 2,
-          //    do not need to add flatten pattern to cur->InputDefs()[1].
-          // 2. The size of cur->InputDefs()[1]->Shape is same with cur->InputDefs()[0]->Shape and the first
-          //    two dims value are exactly same, then there are also two possibilities:
-          //     <1>. The cur->InputDefs()[1] is propagated from embedding_node (contained in candidate_edges),
-          //          do not need to process it.
-          //     <2>. The cur->InputDefs()[1] is not propagated from embedding_node (not contained in candidate_edges),
-          //          need to add flatten pattern to cur->InputDefs()[1].
-          //     Here we just add cur node to candidate_input and process it (add flatten pattern to its input) after
-          //     the graph iteration, according to whether it's contained in candidate_edges.
-          if (cur->InputDefs()[0]->Shape()->dim_size() == cur->InputDefs()[1]->Shape()->dim_size()) {
-            candidate_input.insert(cur);
-          }
-        } else {
-          LOG_DEBUG_INFO(logger, "PaddingElimination::Input shapes of node:" + cur->Name() + "are not compatible.");
-          candidate_output.insert(cur);
-          continue;
-        }
-      } else if (candidate_edges.find(cur->MutableInputDefs()[1]) != candidate_edges.end()) {
-        // Shape of [batch_size, seqlen, ...] is propagated from the second argument of cur node.
-        // Similar with 'if(candidate_edges.find(cur->MutableInputDefs()[0]) != candidate_edges.end())'
-        if (cur->InputDefs()[0]->Shape()->dim_size() < cur->InputDefs()[1]->Shape()->dim_size() - 1 ||
-            (cur->InputDefs()[0]->Shape()->dim_size() == cur->InputDefs()[1]->Shape()->dim_size() &&
-             cur->InputDefs()[0]->Shape()->dim(0) == cur->InputDefs()[1]->Shape()->dim(0) &&
-             cur->InputDefs()[0]->Shape()->dim(1) == cur->InputDefs()[1]->Shape()->dim(1))) {
-          candidate_edges.insert(cur->MutableOutputDefs()[0]);
-          PushAllOutputNode(graph, to_visit, cur, visited);
-          if (cur->InputDefs()[0]->Shape()->dim_size() == cur->InputDefs()[1]->Shape()->dim_size()) {
-            candidate_input.insert(cur);
-          }
-        } else {
-          LOG_DEBUG_INFO(logger, "PaddingElimination::Input shapes of node:" + cur->Name() + "are not compatible.");
-          candidate_output.insert(cur);
-          continue;
-        }
-      }
-    } else if (graph_utils::IsSupportedOptypeVersionAndDomain(*cur, "LayerNormalization", {1, 17}, kOnnxDomain)) {
-      ORT_ENFORCE(candidate_edges.find(cur->MutableInputDefs()[0]) != candidate_edges.end());
-      auto axis = static_cast<int64_t>(cur->GetAttributes().at("axis").i());
-      axis = axis < 0 ? axis + cur->InputDefs()[0]->Shape()->dim_size() : axis;
-      if (axis < 2) {
-        LOG_DEBUG_INFO(logger, "PaddingElimination::axis of Normalization: " + cur->Name() + " is " +
-                                   std::to_string(axis) + ", which blocks merging leading two dims.");
-        candidate_output.insert(cur);
-      } else {
-        candidate_edges.insert(cur->MutableOutputDefs()[0]);
-        PushAllOutputNode(graph, to_visit, cur, visited);
-      }
-    } else if (graph_utils::IsSupportedOptypeVersionAndDomain(*cur, "Dropout", {12, 13})) {
-      ORT_ENFORCE(candidate_edges.find(cur->MutableInputDefs()[0]) != candidate_edges.end());
-      candidate_edges.insert(cur->MutableOutputDefs()[0]);
-      candidate_edges.insert(cur->MutableOutputDefs()[1]);
-      PushAllOutputNode(graph, to_visit, cur, visited);
-    } else if (graph_utils::IsSupportedOptypeVersionAndDomain(*cur, "Cast", {9, 13}) ||
-               graph_utils::IsSupportedOptypeVersionAndDomain(*cur, "BiasGelu", {1}, kMSDomain)) {
-      ORT_ENFORCE(candidate_edges.find(cur->MutableInputDefs()[0]) != candidate_edges.end());
-      candidate_edges.insert(cur->MutableOutputDefs()[0]);
-      PushAllOutputNode(graph, to_visit, cur, visited);
-    } else if (graph_utils::IsSupportedOptypeVersionAndDomain(*cur, "MatMul", {1, 9, 13})) {
-      ORT_ENFORCE(candidate_edges.find(cur->MutableInputDefs()[0]) != candidate_edges.end() ||
-                  candidate_edges.find(cur->MutableInputDefs()[1]) != candidate_edges.end());
-      if (candidate_edges.find(cur->MutableInputDefs()[0]) != candidate_edges.end()) {
-        // If shape of [batch_size, seqlen, ...] is propagated from the first argument of MatMul.
-        // The dim size of the first argument must larger than 2 to propagete the first two dims to the output.
-        // Or else the first two dims of the output will not be [batch_size, seqlen] and this MatMul will be added
-        // to candidate_output as the output of the subgraph.
-        if (cur->InputDefs()[0]->Shape()->dim_size() > 2) {
-          candidate_edges.insert(cur->MutableOutputDefs()[0]);
-          PushAllOutputNode(graph, to_visit, cur, visited);
-        } else {
-          LOG_DEBUG_INFO(logger,
-                         "PaddingElimination::dim size of left input of matmul smaller than 3 and \
-                            this matmul would be output of subgraph.");
-          candidate_output.insert(cur);
-          continue;
-        }
-      } else {
-        LOG_DEBUG_INFO(logger, "PaddingElimination::right edge of matmul would not included.");
-        candidate_output.insert(cur);
-        continue;
-      }
-    } else if (graph_utils::IsSupportedOptypeVersionAndDomain(*cur, "PythonOp", {1}, kMSDomain)) {
-      ORT_ENFORCE(candidate_edges.find(cur->MutableInputDefs()[0]) != candidate_edges.end());
-      auto func_name = static_cast<std::string>(cur->GetAttributes().at("name").s());
-      if (func_name == "_InspectActivation" || func_name == "_IncrementStep") {
-        candidate_edges.insert(cur->MutableOutputDefs()[1]);
-        PushAllOutputNode(graph, to_visit, cur, visited);
-      } else {
-        candidate_output.insert(cur);
-      }
-    } else {
-      candidate_output.insert(cur);
-    }
-  }
+  IterateSubgraphFromNode(graph, embedding_node, candidate_node_args, candidate_input, candidate_output, logger);
 
   // Add Reshape + Sub + NonZero + Squeeze to get the not padding index to be gathered
   InlinedVector<NodeArg*> reshape_input_args;
@@ -492,7 +510,7 @@ Status PaddingElimination::ApplyImpl(Graph& graph, bool& modified, int graph_lev
   modified = true;
   for (auto& node : candidate_input) {
     for (size_t i = 0; i < node->InputDefs().size(); ++i) {
-      if (candidate_edges.find(node->MutableInputDefs()[i]) == candidate_edges.end()) {
+      if (candidate_node_args.find(node->MutableInputDefs()[i]) == candidate_node_args.end()) {
         InsertNodesForInput(graph, *node, i, squeeze_out_arg, logger);
       }
     }
@@ -524,7 +542,7 @@ Status PaddingElimination::ApplyImpl(Graph& graph, bool& modified, int graph_lev
   // to unflatten the shape of [valid_token_count, ...] to [batch_size, seq_len, ...]
   for (const auto& node : candidate_output) {
     for (size_t i = 0; i < node->InputDefs().size(); ++i) {
-      if (candidate_edges.find(node->MutableInputDefs()[i]) != candidate_edges.end()) {
+      if (candidate_node_args.find(node->MutableInputDefs()[i]) != candidate_node_args.end()) {
         // Get a shape of the i-th input of the node with first index updated to value of first_dim
         // which is batch_size * seq_len. This shape arg will be used as the shape input of GatherGrad
         NodeArg* shape_arg_for_gather_grad = UpdateShape(
@@ -535,7 +553,7 @@ Status PaddingElimination::ApplyImpl(Graph& graph, bool& modified, int graph_lev
   }
 
   // Update shape for each edge of the subgraph
-  for (auto edge : candidate_edges) {
+  for (auto edge : candidate_node_args) {
     ONNX_NAMESPACE::TensorShapeProto flattened_shape;
     flattened_shape.add_dim()->set_dim_param(token_dim_name);
     auto input_shape = edge->Shape();
