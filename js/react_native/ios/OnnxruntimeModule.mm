@@ -313,6 +313,8 @@ static NSDictionary *executionModeTable = @{@"sequential" : @(ORT_SEQUENTIAL), @
     for (NSString *executionProvider in executionProviders) {
       if ([executionProvider isEqualToString:@"coreml"]) {
         Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_CoreML(sessionOptions, 0));
+      } else if ([executionProvider isEqualToString:@"xnnpack"]) {
+        sessionOptions.AppendExecutionProvider("XNNPACK", {});
       } else if ([executionProvider isEqualToString:@"cpu"]) {
         continue;
       } else {
