@@ -102,7 +102,9 @@ stages:
           unzip $(Build.ArtifactStagingDirectory)/archive.zip -d $(Build.ArtifactStagingDirectory)
           yes | cp -f $(Build.ArtifactStagingDirectory)/archive/libcustom_op_library.dylib $(Build.ArtifactStagingDirectory)/testdata/libcustom_op_library.dylib
           yes | cp -f $(Build.ArtifactStagingDirectory)/archive/libonnxruntime.dylib $(Build.ArtifactStagingDirectory)/onnxruntime-osx-x86_64/onnxruntime-osx-x86_64-1.16.0/lib/libonnxruntime.dylib
+          rm -rf $(Build.ArtifactStagingDirectory)/archive
           find $(Build.ArtifactStagingDirectory) -name "*.dylib" -exec codesign -dvvv {} \;
+          find $(Build.ArtifactStagingDirectory) -name "*.dylib" -exec ls -l {} \;
         displayName: 'Verify code signing'
         workingDirectory: $(Build.ArtifactStagingDirectory)
 
