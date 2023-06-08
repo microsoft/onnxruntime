@@ -384,12 +384,15 @@ def quantize_static(
 
     if extra_options.get("SmoothQuant", False):
         import copy
+
         from neural_compressor.adaptor.ox_utils.smooth_quant import ORTSmoothQuant
-        orig_nodes = [i.name for i in model.graph.node]
+
         def dataloader():
             inc_dataloader = copy.deepcopy(calibration_data_reader)
             for data in inc_dataloader:
                 yield data, None
+
+        orig_nodes = [i.name for i in model.graph.node]
         sq = ORTSmoothQuant(model, dataloader(), reduce_range)
         model = sq.transform(
             extra_options.get("SmoothQuantAlpha", 0.5), extra_options.get("SmoothQuantFolding", True)
