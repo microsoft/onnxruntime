@@ -82,7 +82,7 @@ AllocatorPtr CreateAllocator(const AllocatorCreationInfo& info) {
                                         max_power_of_two_extend_bytes);
     }
   } else {
-    return std::move(device_allocator);
+    return device_allocator;
   }
 }
 
