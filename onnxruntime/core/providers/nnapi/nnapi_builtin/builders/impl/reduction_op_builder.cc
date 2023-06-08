@@ -58,21 +58,21 @@ Status ReductionOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, co
   const auto& operand_indices(model_builder.GetOperandIndices());
   const auto& operand_types(model_builder.GetOperandTypes());
 
+  NodeAttrHelper helper(node_unit);
+
   int32_t op_code;
   if (op_type == "ReduceMean") {
     op_code = ANEURALNETWORKS_MEAN;
   } else {
+    // TODO: Add more reduction ops support
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "ReductionOpBuilder, unknown op: ", op_type);
   }
 
-  NodeAttrHelper helper(node_unit);
-  std::vector<int32_t> axes;
-
   if (op_type == "ReduceMean") {
     // Get axes for ReduceMean
-    // ReduceMean-18 uses the second input as axes
-    // And `axes` is an optional input. If it is not provided, return an empty axes
+    std::vector<int32_t> axes;
     if (inputs.size() > 1 && inputs[1].node_arg.Exists()) {
+      // ReduceMean-18 uses the second optional input as axes
       const auto& initializers(model_builder.GetInitializerTensors());
       const auto& axes_tensor = *initializers.at(inputs[1].node_arg.Name());
       Initializer unpacked_tensor(axes_tensor);
@@ -84,73 +84,74 @@ Status ReductionOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, co
         axes[i] = static_cast<int32_t>(raw_axes[i]);
       }
     } else if (helper.HasAttr("axes")) {
+      // For ReduceMean-13 or eariler, retrieve axes from the attribute
       const auto& axes_int64 = helper.Get("axes", std::vector<int64_t>{});
       axes.reserve(axes_int64.size());
       for (auto& axis : axes_int64) {
         axes.push_back(static_cast<int32_t>(axis));
       }
     }
-  }
 
-  const auto keepdims = helper.Get("keepdims", 1);
+    // Add ReduceMean operation
+    const auto keepdims = helper.Get("keepdims", 1);
 
-  // Add ReduceMean op
-  InlinedVector<uint32_t> input_indices;
-  input_indices.push_back(operand_indices.at(inputs[0].node_arg.Name()));  // data
+    InlinedVector<uint32_t> input_indices;
+    input_indices.push_back(operand_indices.at(inputs[0].node_arg.Name()));  // data
 
-  if (!axes.empty()) {
-    for (auto& axis : axes) {
-      axis = static_cast<int32_t>(HandleNegativeAxis(axis, input_shape.size()));
-    }
+    if (!axes.empty()) {
+      for (auto& axis : axes) {
+        axis = static_cast<int32_t>(HandleNegativeAxis(axis, input_shape.size()));
+      }
 
-    const auto axes_name = model_builder.GetUniqueName(node_unit.Name() + inputs[0].node_arg.Name() + "_axes");
-    Shape axes_dimen = {static_cast<uint32_t>(axes.size())};
-    const OperandType axes_operand_type(Type::TENSOR_INT32, axes_dimen);
-    ORT_RETURN_IF_ERROR(model_builder.AddOperandFromPersistMemoryBuffer(axes_name, axes.data(), axes_operand_type));
+      const auto axes_name = model_builder.GetUniqueName(node_unit.Name() + inputs[0].node_arg.Name() + "_axes");
+      Shape axes_dimen = {static_cast<uint32_t>(axes.size())};
+      const OperandType axes_operand_type(Type::TENSOR_INT32, axes_dimen);
+      ORT_RETURN_IF_ERROR(model_builder.AddOperandFromPersistMemoryBuffer(axes_name, axes.data(), axes_operand_type));
 
-    input_indices.push_back(operand_indices.at(axes_name));  // axes
+      input_indices.push_back(operand_indices.at(axes_name));  // axes
 
-    int32_t input_size = static_cast<int32_t>(input_shape.size());
-    std::unordered_set<int32_t> axes_to_be_reduced;
+      int32_t input_size = static_cast<int32_t>(input_shape.size());
+      std::unordered_set<int32_t> axes_to_be_reduced;
 
-    for (const auto& axis : axes) {
-      axes_to_be_reduced.insert(axis);
-    }
+      for (const auto& axis : axes) {
+        axes_to_be_reduced.insert(axis);
+      }
 
-    // Make output dimensions
-    InlinedVector<uint32_t> output_dimen;
-    if (keepdims == 1) {
-      output_dimen.reserve(input_size);
-    } else {
-      output_dimen.reserve(input_size - axes_to_be_reduced.size());
-    }
-
-    for (int32_t i = 0; i < input_size; i++) {
-      if (!Contains(axes_to_be_reduced, i)) {
-        output_dimen.push_back(input_shape[i]);
+      // Make output dimensions
+      InlinedVector<uint32_t> output_dimen;
+      if (keepdims == 1) {
+        output_dimen.reserve(input_size);
       } else {
-        if (keepdims == 1) {
-          output_dimen.push_back(1);
+        output_dimen.reserve(input_size - axes_to_be_reduced.size());
+      }
+
+      for (int32_t i = 0; i < input_size; i++) {
+        if (!Contains(axes_to_be_reduced, i)) {
+          output_dimen.push_back(input_shape[i]);
+        } else {
+          if (keepdims == 1) {
+            output_dimen.push_back(1);
+          }
         }
       }
+
+      // In case of a tensor has all 1's in dimension such as {1,1,1,1} and gets all reduced
+      // the output shape will be {1}
+      if (output_dimen.empty())
+        output_dimen.push_back(1);
+
+      shaper.AddShape(output, output_dimen);
+
+      ADD_SCALAR_OPERAND(model_builder, input_indices, keepdims);
+
+      const OperandType output_operand_type(operand_types.at(inputs[0].node_arg.Name()).type, output_dimen);
+      ORT_RETURN_IF_ERROR(model_builder.AddOperation(op_code, input_indices,
+                                                     {output}, {output_operand_type}));
+    } else {
+      // For case that `axes` is empty, act as an Identity op
+      const OperandType output_operand_type(operand_types.at(inputs[0].node_arg.Name()).type, input_shape);
+      model_builder.RegisterOperand(output, operand_indices.at(inputs[0].node_arg.Name()), output_operand_type);
     }
-
-    // In case of a tensor has all 1's in dimension such as {1,1,1,1} and gets all reduced
-    // the output shape will be {1}
-    if (output_dimen.empty())
-      output_dimen.push_back(1);
-
-    shaper.AddShape(output, output_dimen);
-
-    ADD_SCALAR_OPERAND(model_builder, input_indices, keepdims);
-
-    const OperandType output_operand_type(operand_types.at(inputs[0].node_arg.Name()).type, output_dimen);
-    ORT_RETURN_IF_ERROR(model_builder.AddOperation(op_code, input_indices,
-                                                   {output}, {output_operand_type}));
-  } else {
-    // For case that `axes` is empty act as an Identity op
-    const OperandType output_operand_type(operand_types.at(inputs[0].node_arg.Name()).type, input_shape);
-    model_builder.RegisterOperand(output, operand_indices.at(inputs[0].node_arg.Name()), output_operand_type);
   }
 
   return Status::OK();
@@ -178,7 +179,7 @@ bool ReductionOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializ
     return false;
 
   if (input_shape.size() > 4 || input_shape.empty()) {
-    LOGS_DEFAULT(VERBOSE) << "NNAPI reduce ops only support 1-4d shape, input is "
+    LOGS_DEFAULT(VERBOSE) << "NNAPI reduction ops only support 1-4d shape, input is "
                           << input_shape.size() << "d shape";
     return false;
   }
@@ -191,21 +192,29 @@ bool ReductionOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializ
     // Notes from NNAPI doc:
     // https://developer.android.com/ndk/reference/group/neural-networks#group___neural_networks_1ggaabbe492c60331b13038e39d4207940e0a047fe95a35b27f45c05432b6ca18eb6c
     if (node_unit.SinceVersion() < 18 && !helper.HasAttr("axes")) {
-      LOGS_DEFAULT(VERBOSE) << "For ReduceMean op version earlier than 18, `axes` is required to provided as an attribute for NNAPI.";
+      // ONNX doc does not specify `axes` attribute to be optional, but we have unit test cases for ReduceMean 13- where axes attributes not provided
+      // and treated as default behavior to reduce all.
+      LOGS_DEFAULT(VERBOSE) << "For ReduceMean op version earlier than 18, `axes` is required to be provided as an attribute for NNAPI.";
       return false;
     }
 
-    if (node_unit.SinceVersion() > 13 && inputs.size() > 1 && inputs[1].node_arg.Exists()) {
-      const auto& axes_name = inputs[1].node_arg.Name();
-      if (!Contains(initializers, axes_name)) {
-        LOGS_DEFAULT(VERBOSE) << "Axes of ReduceMean must be a constant initializer.";
-        return false;
+    if (node_unit.SinceVersion() > 13) {
+      if (inputs.size() > 1 && inputs[1].node_arg.Exists()) {
+        const auto& axes_name = inputs[1].node_arg.Name();
+        if (!Contains(initializers, axes_name)) {
+          LOGS_DEFAULT(VERBOSE) << "Axes of ReduceMean must be a constant initializer.";
+          return false;
+        }
+
+        // When `axes` is empty and `noop_with_empty_axes` equals 1, the case is supported and will be treated as an identity op.
+        if (initializers.at(axes_name)->int64_data_size() == 0 && helper.Get("noop_with_empty_axes", 0) == 0) {
+          LOGS_DEFAULT(VERBOSE) << "NNAPI ReduceMean doesn't support the behavior by default to reduce all dimensions when 'axes' is empty.";
+          return false;
+        }
       }
-      
-      // When `axes` is empty and `noop_with_empty_axes` equals 1, the case is supported and will be treated as an identity op.
-      if (initializers.at(axes_name)->int64_data_size() == 0 && helper.Get("noop_with_empty_axes", 0) == 0) {
-        LOGS_DEFAULT(VERBOSE) << "NNAPI doesn't support the behavior by default to reduce all dimensions when 'axes' is empty.";
-        return false;
+
+      if (inputs.size() < 2 && helper.Get("noop_with_empty_axes", 0) == 0) {
+        LOGS_DEFAULT(VERBOSE) << "For ReduceMean-18, NNAPI does not support the default behavior to reduce all dimensions when `axes` is not provided and `noop_with_empty_axes` is false.";
       }
     }
   }
@@ -216,7 +225,7 @@ void CreateReductionOpBuilder(const std::string& op_type, OpBuilderRegistrations
   CreateSharedOpBuilderImpl<ReductionOpBuilder>(
       op_type, op_registrations,
       {
-          // TODO: Add more nnapi Reduction ops support
+          // TODO: Add more reduction ops support
           "ReduceMean",
       });
 }
