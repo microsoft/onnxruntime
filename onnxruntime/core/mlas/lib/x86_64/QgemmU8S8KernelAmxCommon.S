@@ -205,14 +205,14 @@ C_UNDERSCORE(MlasStoreAmxT7):
 .globl  C_UNDERSCORE(MlasLoadConfigAmx)
 C_UNDERSCORE(MlasLoadConfigAmx):
 
-	ldtilecfgMacro rdx
+	ldtilecfgMacro rdi
 
 	ret
 
 .globl  C_UNDERSCORE(MlasStoreConfigAmx)
 C_UNDERSCORE(MlasStoreConfigAmx):
 
-	sttilecfgMacro rdx
+	sttilecfgMacro rdi
 
 	ret
 
