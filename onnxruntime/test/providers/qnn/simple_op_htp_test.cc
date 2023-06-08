@@ -5,6 +5,7 @@
 
 #include <string>
 #include <filesystem>
+#include <variant>
 #include "core/graph/graph.h"
 
 #include "test/optimizer/qdq_test_utils.h"
@@ -45,6 +46,55 @@ GetQDQTestCaseFn BuildQDQSingleInputOpTestCase(const std::vector<int64_t>& input
     auto* final_output = builder.MakeOutput();
     builder.AddDequantizeLinearNode<InputQType>(q_output, quant_scale, quant_zero_point, final_output);
   };
+}
+
+template <typename InputType = float, typename InputQType = uint8_t>
+static GetTestModelFn BuildQDQBinaryOpTestCase(const std::string& op_type, const TestInputDef<InputType>& input0_def,
+                                               const TestInputDef<InputType>& input1_def) {
+  return [op_type, input0_def, input1_def](ModelTestBuilder& builder) {
+    const InputQType zero_point = std::numeric_limits<InputQType>::max() / 2;
+    constexpr float qdq_scale = 0.0004f;
+
+    NodeArg* input0 = MakeTestInput(builder, input0_def);
+    NodeArg* input1 = MakeTestInput(builder, input1_def);
+    NodeArg* output = builder.MakeOutput();
+
+    // input -> Q -> DQ -> Op
+    auto* qdq0_output = AddQDQNodePair<InputQType>(builder, input0, qdq_scale, zero_point);
+    auto* qdq1_output = AddQDQNodePair<InputQType>(builder, input1, qdq_scale, zero_point);
+
+    // Op -> op_output
+    auto* op_output = builder.MakeIntermediate();
+    builder.AddNode(op_type, {qdq0_output, qdq1_output}, {op_output});
+
+    // op_output -> Q -> DQ -> output
+    auto* op_q_output = builder.MakeIntermediate();
+    builder.AddQuantizeLinearNode<InputQType>(op_output, qdq_scale, zero_point, op_q_output);
+    builder.AddDequantizeLinearNode<InputQType>(op_q_output, qdq_scale, zero_point, output);
+  };
+}
+
+template <typename InputType = float, typename InputQType = uint8_t>
+static void RunQDQBinaryOpTest(const std::string& op_type, const TestInputDef<InputType>& input0_def,
+                               const TestInputDef<InputType>& input1_def,
+                               const char* test_description,
+                               int opset_version,
+                               ExpectedEPNodeAssignment expected_ep_assignment,
+                               int num_nodes_in_graph) {
+  ProviderOptions provider_options;
+#if defined(_WIN32)
+  provider_options["backend_path"] = "QnnHtp.dll";
+#else
+  provider_options["backend_path"] = "libQnnHtp.so";
+#endif
+
+  // Runs model with a Q/DQ binary op and compares the outputs of the CPU and QNN EPs.
+  RunQnnModelTest(BuildQDQBinaryOpTestCase<InputType, InputQType>(op_type, input0_def, input1_def),
+                  provider_options,
+                  opset_version,
+                  expected_ep_assignment,
+                  num_nodes_in_graph,
+                  test_description);
 }
 
 /**
@@ -136,6 +186,51 @@ TEST_F(QnnHTPBackendTests, ContextBinaryCacheTest) {
                   ExpectedEPNodeAssignment::All,
                   1,
                   "ContextBinaryCacheTest");
+}
+
+TEST_F(QnnHTPBackendTests, TestSub4D_SmallInputs) {
+  RunQDQBinaryOpTest<float, uint8_t>("Sub", TestInputDef<float>({1, 3, 8, 8}, false, -1.0f, 1.0f),
+                                     TestInputDef<float>({1, 3, 8, 8}, false, -1.0f, 1.0f),
+                                     "TestSub4D_SmallInputs", 17, ExpectedEPNodeAssignment::All, 1);
+}
+
+// TODO: Certain large input sizes cause the QNN graph to fail to finalize with error 1002 (QNN_COMMON_ERROR_MEM_ALLOC).
+// Enable when this is fixed.
+TEST_F(QnnHTPBackendTests, DISABLED_TestSub4D_LargeInputs) {
+  RunQDQBinaryOpTest<float, uint8_t>("Sub", TestInputDef<float>({1, 3, 768, 1152}, false, -1.0f, 1.0f),
+                                     TestInputDef<float>({1, 3, 768, 1152}, false, -1.0f, 1.0f),
+                                     "TestSub4D_LargeInputs", 17, ExpectedEPNodeAssignment::All, 1);
+}
+
+// TODO: Certain large input sizes cause the QNN graph to fail to finalize with error 1002 (QNN_COMMON_ERROR_MEM_ALLOC).
+// Enable when this is fixed.
+TEST_F(QnnHTPBackendTests, DISABLED_TestSub4D_Broadcast) {
+  RunQDQBinaryOpTest<float, uint8_t>("Sub", TestInputDef<float>({1, 3, 768, 1152}, false, -1.0f, 1.0f),
+                                     TestInputDef<float>({3, 1, 1}, true, {1.0f, 0.5f, -0.3f}),
+                                     "TestSub4D_Broadcast", 17, ExpectedEPNodeAssignment::All, 1);
+}
+
+TEST_F(QnnHTPBackendTests, TestDiv4D_SmallInputs) {
+  RunQDQBinaryOpTest<float, uint8_t>("Div", TestInputDef<float>({1, 3, 8, 8}, false, -1.0f, 1.0f),
+                                     TestInputDef<float>({1, 3, 8, 8}, false, -1.0f, 1.0f),
+                                     "TestDiv4D_SmallInputs", 17, ExpectedEPNodeAssignment::All, 1);
+}
+
+// TODO: Certain large input sizes cause the QNN graph to fail to finalize with error 1002 (QNN_COMMON_ERROR_MEM_ALLOC).
+// Enable when this is fixed.
+TEST_F(QnnHTPBackendTests, DISABLED_TestDiv4D_LargeInputs) {
+  RunQDQBinaryOpTest<float, uint8_t>("Div", TestInputDef<float>({1, 3, 768, 1152}, false, -1.0f, 1.0f),
+                                     TestInputDef<float>({1, 3, 768, 1152}, false, -1.0f, 1.0f),
+                                     "TestDiv4D_LargeInputs", 17, ExpectedEPNodeAssignment::All, 1);
+}
+
+// TODO: Certain large input sizes cause the QNN graph to fail to finalize with error 1002 (QNN_COMMON_ERROR_MEM_ALLOC).
+// Enable when this is fixed.
+// Fails accuracy when input0 has dims [1,3,768,768]
+TEST_F(QnnHTPBackendTests, DISABLED_TestDiv4D_Broadcast) {
+  RunQDQBinaryOpTest<float, uint8_t>("Div", TestInputDef<float>({1, 3, 768, 1152}, false, -1.0f, 1.0f),
+                                     TestInputDef<float>({3, 1, 1}, true, {1.0f, 0.5f, -0.3f}),
+                                     "TestDiv4D_Broadcast", 17, ExpectedEPNodeAssignment::All, 1);
 }
 
 #endif  // defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
