@@ -446,7 +446,7 @@ Status QNNExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused
     const onnxruntime::GraphViewer& graph_viewer(fused_nodes_and_graphs[0].filtered_graph);
     // The dumy_model_description won't be used since IsContextCacheFileExists call cached the result
     // The graph_viewer.Description here is not same with original model
-    std::string dumy_model_descripton = "";
+    std::string dumy_model_description = "";
     bool load_from_cached_context = qnn_backend_manager_->IsContextCacheFileExists(context_cache_path_,
                                                                                    dumy_model_descripton,
                                                                                    graph_viewer.ModelPath().ToPathString());
