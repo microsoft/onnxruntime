@@ -155,11 +155,6 @@ class InferenceSession {
   InferenceSession(const SessionOptions& session_options,
                    const Environment& session_env,
                    const PathString& model_uri);
-#ifdef _WIN32
-  InferenceSession(const SessionOptions& session_options,
-                   const Environment& session_env,
-                   const std::string& model_uri);
-#endif
 
   /**
     Create a new InferenceSession
@@ -482,7 +477,7 @@ class InferenceSession {
   const logging::Logger* GetLogger() const { return session_logger_; };
 
   const SessionState& GetSessionState() const {
-    ORT_ENFORCE(session_state_ != nullptr, "Session must be initialized to create session state.");
+    ORT_ENFORCE(session_state_.has_value(), "Session must be initialized to create session state.");
     return *session_state_;
   }
 
@@ -682,7 +677,7 @@ class InferenceSession {
 
   // Immutable state for each op in the model. Shared by all executors.
   // It has a dependency on execution_providers_.
-  std::unique_ptr<SessionState> session_state_;
+  std::optional<SessionState> session_state_;
 
   // Threadpools per session. These are initialized and used for the entire duration of the session
   // when use_per_session_threads is true.

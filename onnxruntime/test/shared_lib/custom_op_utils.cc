@@ -43,7 +43,7 @@ void MyCustomKernel::Compute(OrtKernelContext* context) {
   void* allocated = allocator->Alloc(allocator, 2);
   EXPECT_NE(allocated, nullptr) << "KernelContext_GetAllocator() can successfully allocate some memory";
   allocator->Free(allocator, allocated);
-
+  ort_.ReleaseAllocator(allocator);
   // Do computation
 #ifdef USE_CUDA
   // Launch on stream 0 or user provided stream

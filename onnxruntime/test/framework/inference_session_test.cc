@@ -2252,7 +2252,7 @@ TEST(InferenceSessionTests, LoadModelWithValidOrtConfigJson) {
 #endif
 
   SessionOptions so;
-  std::string model_path = "testdata/model_with_valid_ort_config_json.onnx";
+  static constexpr const ORTCHAR_T* model_path = ORT_TSTR("testdata/model_with_valid_ort_config_json.onnx");
 
   // Create session
   InferenceSession session_object_1{so, GetEnvironment(), model_path};
@@ -2318,7 +2318,7 @@ TEST(InferenceSessionTests, LoadModelWithInValidOrtConfigJson) {
 #endif
 
   SessionOptions so;
-  std::string model_path = "testdata/model_with_invalid_ort_config_json.onnx";
+  static constexpr const ORTCHAR_T* model_path = ORT_TSTR("testdata/model_with_invalid_ort_config_json.onnx");
 
   // Create session (should throw as the json within the model is invalid/improperly formed)
   ORT_TRY {
@@ -2371,7 +2371,7 @@ TEST(InferenceSessionTests, LoadModelWithNoOrtConfigJson) {
   // Change from default value for one option
   so.intra_op_param.thread_pool_size = 2;
 
-  std::string model_path = "testdata/transform/abs-id-max.onnx";
+  static constexpr const ORTCHAR_T* model_path = ORT_TSTR("testdata/transform/abs-id-max.onnx");
 
   // Create session
   InferenceSession session_object_1{so, GetEnvironment(), model_path};
@@ -2415,7 +2415,7 @@ TEST(InferenceSessionTests, LoadModelWithEnvVarSetToUnsupportedVal) {
   putenv(env_var_value_set_to_unsupported_val);
 #endif
   SessionOptions so;
-  std::string model_path = "testdata/model_with_valid_ort_config_json.onnx";
+  static constexpr const ORTCHAR_T* model_path = ORT_TSTR("testdata/model_with_valid_ort_config_json.onnx");
 
   // Create session (should throw because of the unsupported value for the env var - ORT_LOAD_CONFIG_FROM_MODEL)
   ORT_TRY {

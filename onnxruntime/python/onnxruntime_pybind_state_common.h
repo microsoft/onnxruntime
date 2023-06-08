@@ -236,7 +236,7 @@ struct PyInferenceSession {
       : env_(std::move(env)) {
     if (is_arg_file_name) {
       // Given arg is the file path. Invoke the corresponding ctor().
-      sess_ = std::make_unique<InferenceSession>(so.value, *env_, arg);
+      sess_ = std::make_unique<InferenceSession>(so.value, *env_, ToPathString(arg));
     } else {
       // Given arg is the model content as bytes. Invoke the corresponding ctor().
       std::istringstream buffer(arg);

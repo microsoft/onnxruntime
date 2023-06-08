@@ -407,14 +407,6 @@ InferenceSession::InferenceSession(const SessionOptions& session_options, const 
   ConstructorCommon(session_options, session_env);
 }
 
-#ifdef _WIN32
-InferenceSession::InferenceSession(const SessionOptions& session_options,
-                                   const Environment& session_env,
-                                   const std::string& model_uri)
-    : InferenceSession(session_options, session_env, ToPathString(model_uri)) {
-}
-#endif
-
 InferenceSession::InferenceSession(const SessionOptions& session_options, const Environment& session_env,
                                    std::istream& model_istream)
     : graph_transformer_mgr_(session_options.max_num_graph_transformation_steps),
@@ -1431,7 +1423,7 @@ common::Status InferenceSession::Initialize() {
 #endif
 
     // now that we have all the execution providers, create the session state
-    session_state_ = std::make_unique<SessionState>(
+    session_state_.emplace(
         model_->MainGraph(),
         execution_providers_,
         GetIntraOpThreadPoolToUse(),
