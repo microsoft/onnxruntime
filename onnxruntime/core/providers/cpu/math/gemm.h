@@ -39,7 +39,7 @@ class Gemm : protected GemmBase, public OpKernel {
 
  protected:
   TensorShape b_shape_;
-  BufferUniquePtr packed_b_;
+  IAllocatorUniquePtr<void> packed_b_;
 
   // For fused gemm + activation
   std::unique_ptr<functors::ElementWiseRangedTransform<T>> activation_;
