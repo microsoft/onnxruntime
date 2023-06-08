@@ -324,13 +324,11 @@ bool QnnBackendManager::IsContextCacheFileExists(const std::string& customer_con
   }
   model_description_ = model_description;
   // Use user provided context cache file path if exist, otherwise try model_file.onnx.bin by default
-  onnxruntime::PathString context_cache_pathstring;
   if (customer_context_cache_path.empty()) {
-    context_cache_pathstring = model_pathstring + ToPathString(".bin");
+    context_cache_path_ = PathToUTF8String(model_pathstring) + ".bin";
   } else {
-    context_cache_pathstring = ToPathString(context_cache_path_);
+    context_cache_path_ = customer_context_cache_path;
   }
-  context_cache_path_ = PathToUTF8String(context_cache_pathstring);
 
   ctx_file_exists_ = std::filesystem::exists(context_cache_path_);
 

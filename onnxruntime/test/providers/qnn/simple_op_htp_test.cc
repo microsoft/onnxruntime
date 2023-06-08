@@ -106,7 +106,6 @@ TEST_F(QnnHTPBackendTests, TestQDQAtanTest) {
 // 1st run will generate the Qnn context cache binary file
 // 2nd run will load and run from Qnn context cache binary file
 TEST_F(QnnHTPBackendTests, ContextBinaryCacheTest) {
-  RunQDQSingleInputOpTest({1, 2, 3}, "Atan", "TestQDQGeluTest", 11, ExpectedEPNodeAssignment::All, 1);
   ProviderOptions provider_options;
 #if defined(_WIN32)
   provider_options["backend_path"] = "QnnHtp.dll";
