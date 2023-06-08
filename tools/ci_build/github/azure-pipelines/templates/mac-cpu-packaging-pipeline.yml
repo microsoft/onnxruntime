@@ -62,8 +62,6 @@ stages:
   dependsOn: MacOS_C_API_Packaging_CPU
   jobs:
     - job: MacOS_C_API_Package_Publish
-      variables:
-        ort_ver: '1.16.0'
       pool:
         vmImage: 'macOS-12'
       steps:
