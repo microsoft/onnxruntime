@@ -183,7 +183,7 @@ void Gemm<MLFloat16>::ComputeGemm(CBLAS_TRANSPOSE trans_a, CBLAS_TRANSPOSE trans
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wclass-memaccess"
 #endif
-  // MLFloat16's constructor is explict, so here we need to use memset
+  // MLFloat16's constructor is explicit, so here we need to use memset
   if (c_data == nullptr)
     memset(&beta, 0, sizeof(MLFloat16));
 #if defined(__GNUC__) && defined(HAS_CLASS_MEMACCESS)
