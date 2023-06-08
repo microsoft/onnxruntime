@@ -599,7 +599,6 @@ TEST(NnapiExecutionProviderTest, ActivationOutsideOfPartition) {
   ASSERT_EQ(CountAssignedNodes(session_object.GetGraph(), kNnapiExecutionProvider), 1);
 }
 
-
 }  // namespace test
 }  // namespace onnxruntime
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
