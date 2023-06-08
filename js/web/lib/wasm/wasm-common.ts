@@ -45,6 +45,8 @@ export const tensorDataTypeStringToEnum = (type: string): DataType => {
       return DataType.int32;
     case 'uint32':
       return DataType.uint32;
+    case 'float16':
+      return DataType.float16;
     case 'float32':
       return DataType.float;
     case 'float64':
@@ -80,6 +82,8 @@ export const tensorDataTypeEnumToString = (typeProto: DataType): Tensor.Type => 
       return 'int32';
     case DataType.uint32:
       return 'uint32';
+    case DataType.float16:
+      return 'float16';
     case DataType.float:
       return 'float32';
     case DataType.double:
@@ -110,6 +114,8 @@ export const tensorTypeToTypedArrayConstructor = (type: Tensor.Type): Float32Arr
     Int8ArrayConstructor|Uint16ArrayConstructor|Int16ArrayConstructor|Int32ArrayConstructor|BigInt64ArrayConstructor|
     Uint8ArrayConstructor|Float64ArrayConstructor|Uint32ArrayConstructor|BigUint64ArrayConstructor => {
       switch (type) {
+        case 'float16':
+          return Uint16Array;
         case 'float32':
           return Float32Array;
         case 'uint8':
