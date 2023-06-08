@@ -60,7 +60,9 @@ void BeamSearchParameters::ParseFromInputs(OpKernelContext* context) {
       ORT_ENFORCE(extra_decoder_tensor_dims[0] == batch_size,
           "extra_decoder_tensor first dim not same as batch_size. Got ",
           extra_decoder_tensor_dims[0], ", expecting ", batch_size);
-      extra_decoding_ids = gsl::span<const int32_t>(extra_decoder_tensor->Data<int32_t>(), extra_decoder_tensor->Shape().Size());
+      if (extra_decoder_tensor->Shape().Size() > 0) {
+        extra_decoding_ids = gsl::span<const int32_t>(extra_decoder_tensor->Data<int32_t>(), extra_decoder_tensor->Shape().Size());
+      }
     }
   }
 
