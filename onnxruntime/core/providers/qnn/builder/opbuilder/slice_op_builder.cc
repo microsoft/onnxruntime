@@ -217,7 +217,7 @@ Status SliceOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wr
                                      {param_tensor_name},
                                      logger,
                                      is_quantized_model,
-                                     do_op_validation));
+                                     do_op_validation, GetQnnOpType(node_unit.OpType())));
   return Status::OK();
 }
 

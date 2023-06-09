@@ -542,11 +542,12 @@ def parse_arguments():
     parser.add_argument(
         "--cmake_generator",
         choices=[
+            "MinGW Makefiles",
+            "Ninja",
+            "NMake Makefiles",
+            "Unix Makefiles",
             "Visual Studio 16 2019",
             "Visual Studio 17 2022",
-            "Ninja",
-            "MinGW Makefiles",
-            "NMake Makefiles",
             "Xcode",
         ],
         default=None,
@@ -687,6 +688,7 @@ def parse_arguments():
     parser.add_argument("--use_cache", action="store_true", help="Use compiler cache in CI")
 
     parser.add_argument("--use_triton_kernel", action="store_true", help="Use triton compiled kernels")
+    parser.add_argument("--use_lock_free_queue", action="store_true", help="Use lock-free task queue for threadpool.")
 
     if not is_windows():
         parser.add_argument(
@@ -895,6 +897,9 @@ def generate_build_tree(
     if not use_dev_mode(args):
         cmake_args += ["--compile-no-warning-as-error"]
 
+    # enable/disable float 8 types
+    disable_float8_types = args.use_rocm or args.android or args.minimal_build
+
     cmake_args += [
         "-Donnxruntime_RUN_ONNX_TESTS=" + ("ON" if args.enable_onnx_tests else "OFF"),
         "-Donnxruntime_GENERATE_TEST_REPORTS=ON",
@@ -972,7 +977,6 @@ def generate_build_tree(
         "-Donnxruntime_USE_MPI=" + ("ON" if args.use_mpi else "OFF"),
         "-Donnxruntime_ENABLE_MEMORY_PROFILE=" + ("ON" if args.enable_memory_profile else "OFF"),
         "-Donnxruntime_ENABLE_CUDA_LINE_NUMBER_INFO=" + ("ON" if args.enable_cuda_line_info else "OFF"),
-        "-Donnxruntime_BUILD_WEBASSEMBLY=" + ("ON" if args.build_wasm else "OFF"),
         "-Donnxruntime_BUILD_WEBASSEMBLY_STATIC_LIB=" + ("ON" if args.build_wasm_static_lib else "OFF"),
         "-Donnxruntime_ENABLE_WEBASSEMBLY_EXCEPTION_CATCHING="
         + ("OFF" if args.disable_wasm_exception_catching else "ON"),
@@ -993,6 +997,7 @@ def generate_build_tree(
         "-Donnxruntime_USE_WEBNN=" + ("ON" if args.use_webnn else "OFF"),
         "-Donnxruntime_USE_CANN=" + ("ON" if args.use_cann else "OFF"),
         "-Donnxruntime_USE_TRITON_KERNEL=" + ("ON" if args.use_triton_kernel else "OFF"),
+        "-Donnxruntime_DISABLE_FLOAT8_TYPES=" + ("ON" if disable_float8_types else "OFF"),
     ]
 
     # By default on Windows we currently support only cross compiling for ARM/ARM64
@@ -1324,6 +1329,9 @@ def generate_build_tree(
 
     if args.use_azure:
         add_default_definition(cmake_extra_defines, "onnxruntime_USE_AZURE", "ON")
+
+    if args.use_lock_free_queue:
+        add_default_definition(cmake_extra_defines, "onnxruntime_USE_LOCK_FREE_QUEUE", "ON")
 
     cmake_args += [f"-D{define}" for define in cmake_extra_defines]
 
@@ -1662,6 +1670,11 @@ def run_android_tests(args, source_dir, build_dir, config, cwd):
 
 
 def run_ios_tests(args, source_dir, config, cwd):
+    simulator_device_name = subprocess.check_output(
+        ["bash", os.path.join(source_dir, "tools", "ci_build", "github", "apple", "get_simulator_device_name.sh")],
+        text=True,
+    ).strip()
+
     xc_test_schemes = [
         "onnxruntime_test_all_xc",
     ]
@@ -1684,7 +1697,7 @@ def run_ios_tests(args, source_dir, config, cwd):
                 "-scheme",
                 xc_test_scheme,
                 "-destination",
-                "platform=iOS Simulator,OS=latest,name=iPhone SE (2nd generation)",
+                f"platform=iOS Simulator,OS=latest,name={simulator_device_name}",
             ],
             cwd=cwd,
         )
@@ -2454,6 +2467,10 @@ def main():
                     args.test = False
 
         if args.build_wasm:
+            if is_windows() and platform.architecture()[0] == "32bit":
+                raise BuildError("Please use a 64-bit python to run this script")
+            if args.build_wheel or args.enable_pybind:
+                raise BuildError("WASM does not support pybind")
             emsdk_version = args.emsdk_version
             emsdk_dir = os.path.join(source_dir, "cmake", "external", "emsdk")
             emsdk_file = os.path.join(emsdk_dir, "emsdk.bat") if is_windows() else os.path.join(emsdk_dir, "emsdk")

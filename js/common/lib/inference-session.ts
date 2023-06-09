@@ -306,6 +306,15 @@ export interface InferenceSession {
 
   // #endregion
 
+  // #region release()
+
+  /**
+   * Release the inference session and the underlying resources.
+   */
+  release(): Promise<void>;
+
+  // #endregion
+
   // #region profiling
 
   /**

@@ -18,6 +18,105 @@ namespace test {
 
 using GetTestModelFn = std::function<void(ModelTestBuilder& builder)>;
 
+// Class that defines an input that can be created with ModelTestBuilder.
+// Defines whether the input is an initializer and if the data should be randomized or if
+// set to an explicit value.
+template <typename T>
+struct TestInputDef {
+  struct RawData {
+    std::vector<T> data;
+  };
+
+  struct RandomData {
+    T min;
+    T max;
+  };
+
+  TestInputDef() : is_initializer_(false) {}
+
+  // Create a random input.
+  TestInputDef(std::vector<int64_t> shape, bool is_initializer, T rand_min, T rand_max)
+      : shape_(std::move(shape)),
+        data_info_(RandomData{rand_min, rand_max}),
+        is_initializer_(is_initializer) {}
+
+  // Create an input with explicit data.
+  TestInputDef(std::vector<int64_t> shape, bool is_initializer, std::vector<T> data)
+      : shape_(std::move(shape)),
+        data_info_(RawData{std::move(data)}),
+        is_initializer_(is_initializer) {}
+
+  TestInputDef(TestInputDef&& other) = default;
+  TestInputDef(const TestInputDef& other) = default;
+
+  TestInputDef& operator=(const TestInputDef& other) = default;
+  TestInputDef& operator=(TestInputDef&& other) = default;
+
+  const std::vector<int64_t>& GetShape() const {
+    return shape_;
+  }
+
+  bool IsInitializer() const {
+    return is_initializer_;
+  }
+
+  bool IsRandomData() const {
+    return data_info_.index() == 1;
+  }
+
+  const RandomData& GetRandomDataInfo() const {
+    return std::get<RandomData>(data_info_);
+  }
+
+  bool IsRawData() const {
+    return data_info_.index() == 0;
+  }
+
+  const std::vector<T>& GetRawData() const {
+    return std::get<RawData>(data_info_).data;
+  }
+
+ private:
+  std::vector<int64_t> shape_;
+  std::variant<RawData, RandomData> data_info_;
+  bool is_initializer_;
+};
+
+/**
+ * Creates and returns an input in a test model graph. The input's characteristics are defined
+ * by the provided input definition.
+ *
+ * \param builder Model builder object used to build the model's inputs, outputs, and nodes.
+ * \param input_def Input definition that describes what kind of input to create.
+ * \return A pointer to the new input.
+ */
+template <typename T>
+inline NodeArg* MakeTestInput(ModelTestBuilder& builder, const TestInputDef<T>& input_def) {
+  NodeArg* input = nullptr;
+  const auto& shape = input_def.GetShape();
+  const bool is_initializer = input_def.IsInitializer();
+
+  if (input_def.IsRawData()) {  // Raw data.
+    const std::vector<T>& raw_data = input_def.GetRawData();
+
+    if (is_initializer) {
+      input = builder.MakeInitializer<T>(shape, raw_data);
+    } else {
+      input = builder.MakeInput<T>(shape, raw_data);
+    }
+  } else {  // Random data
+    const auto& rand_info = input_def.GetRandomDataInfo();
+
+    if (is_initializer) {
+      input = builder.MakeInitializer<T>(shape, rand_info.min, rand_info.max);
+    } else {
+      input = builder.MakeInput<T>(shape, rand_info.min, rand_info.max);
+    }
+  }
+
+  return input;
+}
+
 /**
  * Runs a test model on the QNN EP. Checks the graph node assignment, and that inference
  * outputs for QNN and CPU match.
@@ -29,10 +128,12 @@ using GetTestModelFn = std::function<void(ModelTestBuilder& builder)>;
  * \param num_modes_in_ep The expected number of nodes assigned to QNN EP's partition.
  * \param test_description Description of the test for error reporting.
  * \param fp32_abs_err The acceptable error between CPU EP and QNN EP.
+ * \param log_severity The logger's minimum severity level.
  */
 void RunQnnModelTest(const GetTestModelFn& build_test_case, const ProviderOptions& provider_options,
                      int opset_version, ExpectedEPNodeAssignment expected_ep_assignment, int num_nodes_in_ep,
-                     const char* test_description, float fp32_abs_err = 1e-5f);
+                     const char* test_description, float fp32_abs_err = 1e-5f,
+                     logging::Severity log_severity = logging::Severity::kERROR);
 
 enum class BackendSupport {
   SUPPORT_UNKNOWN,

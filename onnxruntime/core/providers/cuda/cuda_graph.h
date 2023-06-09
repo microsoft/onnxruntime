@@ -23,10 +23,8 @@ struct CUDAGraph {
   void Reset();
 
  private:
-#if defined(CUDA_VERSION) && CUDA_VERSION >= 10000
   cudaGraph_t graph_ = NULL;
   cudaGraphExec_t graph_exec_ = NULL;
-#endif
 
   bool has_graph_ = false;
   bool has_graph_exec_ = false;
