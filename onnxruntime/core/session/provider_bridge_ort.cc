@@ -1176,7 +1176,7 @@ bool InitProvidersSharedLibrary() try {
 
 struct ProviderLibrary {
   ProviderLibrary(const ORTCHAR_T* filename, bool unload = true) : filename_{filename}, unload_{unload} {}
-  ~ProviderLibrary() {
+  virtual ~ProviderLibrary() {
     // assert(!handle_); // We should already be unloaded at this point (disabled until Python shuts down deterministically)
   }
 
@@ -1190,7 +1190,7 @@ struct ProviderLibrary {
         ORT_THROW_IF_ERROR(Env::Default().LoadDynamicLibrary(full_path, false, &handle_));
 
         Provider* (*PGetProvider)();
-        ORT_THROW_IF_ERROR(Env::Default().GetSymbolFromLibrary(handle_, "GetProvider", (void**)&PGetProvider));
+        ORT_THROW_IF_ERROR(Env::Default().GetSymbolFromLibrary(handle_, GetFunctionName(), (void**)&PGetProvider));
 
         provider_ = PGetProvider();
         provider_->Initialize();
@@ -1223,7 +1223,11 @@ struct ProviderLibrary {
     }
   }
 
- private:
+  virtual const char* GetFunctionName() const {
+    return "GetProvider";
+  }
+
+ protected:
   std::mutex mutex_;
   const ORTCHAR_T* filename_;
   bool unload_;
@@ -1237,6 +1241,12 @@ static ProviderLibrary s_library_cuda(LIBRARY_PREFIX ORT_TSTR("onnxruntime_provi
 #ifndef _WIN32
                                       ,
                                       false /* unload - On Linux if we unload the cuda shared provider we crash */
+#endif
+);
+static ProviderLibrary s_library_cuda_test(LIBRARY_PREFIX ORT_TSTR("onnxruntime_providers_cuda_test") LIBRARY_EXTENSION
+#ifndef _WIN32
+                                           ,
+                                           false /* unload - On Linux if we unload the cuda shared provider we crash */
 #endif
 );
 static ProviderLibrary s_library_cann(LIBRARY_PREFIX ORT_TSTR("onnxruntime_providers_cann") LIBRARY_EXTENSION
@@ -1261,6 +1271,7 @@ void UnloadSharedProviders() {
   s_library_openvino.Unload();
   s_library_tensorrt.Unload();
   s_library_cuda.Unload();
+  s_library_cuda_test.Unload();
   s_library_cann.Unload();
   s_library_rocm.Unload();
   s_library_shared.Unload();
@@ -1413,6 +1424,20 @@ ProviderInfo_CUDA* TryGetProviderInfo_CUDA() try {
 
 ProviderInfo_CUDA& GetProviderInfo_CUDA() {
   if (auto* info = TryGetProviderInfo_CUDA())
+    return *info;
+
+  ORT_THROW("CUDA Provider not available, can't get interface for it");
+}
+
+ProviderInfo_CUDA* TryGetProviderInfo_CUDA_Test() try {
+  return reinterpret_cast<ProviderInfo_CUDA*>(s_library_cuda_test.Get().GetInfo());
+} catch (const std::exception& exception) {
+  LOGS_DEFAULT(ERROR) << exception.what();
+  return nullptr;
+}
+
+ProviderInfo_CUDA& GetProviderInfo_CUDA_Test() {
+  if (auto* info = TryGetProviderInfo_CUDA_Test())
     return *info;
 
   ORT_THROW("CUDA Provider not available, can't get interface for it");

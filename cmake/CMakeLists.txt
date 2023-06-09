@@ -986,6 +986,15 @@ function(onnxruntime_add_shared_library_module target_name)
   endif()
 endfunction()
 
+function(onnxruntime_add_object_library target_name)
+  add_library(${target_name} OBJECT ${ARGN})
+
+  onnxruntime_configure_target(${target_name})
+  if (MSVC AND onnxruntime_target_platform STREQUAL "x86")
+    target_link_options(${target_name} PRIVATE /SAFESEH)
+  endif()
+endfunction()
+
 function(onnxruntime_add_executable target_name)
   add_executable(${target_name} ${ARGN})
   onnxruntime_configure_target(${target_name})

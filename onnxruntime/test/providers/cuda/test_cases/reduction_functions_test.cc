@@ -1,8 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#ifndef NDEBUG
-
 #include <memory>
 
 #include "core/common/optional.h"
@@ -373,5 +371,3 @@ void ReductionFunctionsTest_GetApplicableMatrixReduction() {
 }  // namespace test
 }  // namespace cuda
 }  // namespace onnxruntime
-
-#endif

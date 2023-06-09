@@ -16,9 +16,6 @@
 #include "core/providers/cuda/cuda_allocator.h"
 #include "core/providers/cuda/gpu_data_transfer.h"
 #include "core/providers/cuda/math/unary_elementwise_ops_impl.h"
-#ifndef NDEBUG
-#include "core/providers/cuda/test/all_tests.h"
-#endif
 
 #ifdef ENABLE_NVTX_PROFILE
 #include "nvtx_profile.h"
@@ -52,7 +49,7 @@ std::unique_ptr<IExecutionProvider> CUDAProviderFactory::CreateProvider() {
   return std::make_unique<CUDAExecutionProvider>(info_);
 }
 
-struct ProviderInfo_CUDA_Impl final : ProviderInfo_CUDA {
+struct ProviderInfo_CUDA_Impl : ProviderInfo_CUDA {
   OrtStatus* SetCurrentGpuDeviceId(_In_ int device_id) override {
     int num_devices;
     auto cuda_err = ::cudaGetDeviceCount(&num_devices);
@@ -183,38 +180,8 @@ struct ProviderInfo_CUDA_Impl final : ProviderInfo_CUDA {
   std::shared_ptr<IAllocator> CreateCudaAllocator(int16_t device_id, size_t gpu_mem_limit, onnxruntime::ArenaExtendStrategy arena_extend_strategy, onnxruntime::CUDAExecutionProviderExternalAllocatorInfo& external_allocator_info, const OrtArenaCfg* default_memory_arena_cfg) override {
     return CUDAExecutionProvider::CreateCudaAllocator(device_id, gpu_mem_limit, arena_extend_strategy, external_allocator_info, default_memory_arena_cfg);
   }
-
-#ifndef NDEBUG
-  bool TestAll() override {
-    // TestAll is the entry point of CUDA EP's insternal tests.
-    // Those internal tests are not directly callable from onnxruntime_test_all
-    // because CUDA EP is a shared library now.
-
-    // This is just one test. Call other test functions below.
-    cuda::test::TestDeferredRelease();
-    cuda::test::TestDeferredReleaseWithoutArena();
-
-    cuda::test::TestBeamSearchTopK();
-    cuda::test::TestGreedySearchTopOne();
-
-    cuda::test::CudaGemmOptions_TestDefaultOptions();
-    cuda::test::CudaGemmOptions_TestCompute16F();
-    cuda::test::CudaGemmOptions_NoReducedPrecision();
-    cuda::test::CudaGemmOptions_Pedantic();
-    cuda::test::CudaGemmOptions_Compute16F_Pedantic();
-    cuda::test::CudaGemmOptions_Compute16F_NoReducedPrecision();
-
-    cuda::test::ReductionFunctionsTest_ReduceRowToScalar();
-    cuda::test::ReductionFunctionsTest_ReduceRowsToRow();
-    cuda::test::ReductionFunctionsTest_ReduceColumnsToColumn();
-    cuda::test::ReductionFunctionsTest_BufferOffsets();
-    cuda::test::ReductionFunctionsTest_InvalidBufferSize();
-    cuda::test::ReductionFunctionsTest_GetApplicableMatrixReduction();
-
-    return true;
-  }
-#endif
-} g_info;
+};
+ProviderInfo_CUDA_Impl g_info;
 
 struct CUDA_Provider : Provider {
   void* GetInfo() override { return &g_info; }
@@ -291,14 +258,12 @@ struct CUDA_Provider : Provider {
   void Shutdown() override {
     DeleteRegistry();
   }
+};
 
-} g_provider;
+CUDA_Provider g_provider;
+
+CUDA_Provider* GetProvider() {
+  return &g_provider;
+}
 
 }  // namespace onnxruntime
-
-extern "C" {
-
-ORT_API(onnxruntime::Provider*, GetProvider) {
-  return &onnxruntime::g_provider;
-}
-}

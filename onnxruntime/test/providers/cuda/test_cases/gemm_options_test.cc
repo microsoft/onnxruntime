@@ -1,8 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#ifndef NDEBUG
-
 #include "core/common/common.h"
 #include "core/providers/cuda/cuda_common.h"
 
@@ -90,5 +88,3 @@ void CudaGemmOptions_Compute16F_NoReducedPrecision() {
 }  // namespace test
 }  // namespace cuda
 }  // namespace onnxruntime
-
-#endif

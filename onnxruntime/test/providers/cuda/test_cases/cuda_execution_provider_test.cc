@@ -5,9 +5,8 @@
 // extra code in the core of CUDA EP and that code may
 //  1. slow down performance critical applications and
 //  2. increase binary size of ORT.
-#ifndef NDEBUG
 #include <iostream>
-#include "core/providers/cuda/test/all_tests.h"
+#include "test/providers/cuda/test_cases/all_tests.h"
 #include "core/providers/cuda/cuda_execution_provider.h"
 #include "core/providers/cuda/cuda_allocator.h"
 #include "core/providers/cuda/cuda_stream_handle.h"
@@ -86,4 +85,3 @@ void TestDeferredReleaseWithoutArena() {
 }  // namespace test
 }  // namespace cuda
 }  // namespace onnxruntime
-#endif
