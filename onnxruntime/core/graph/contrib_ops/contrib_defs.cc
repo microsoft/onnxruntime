@@ -1123,9 +1123,6 @@ ONNX_MS_OPERATOR_SET_SCHEMA(BeamSearch, 1,
                                       "If not provided, it will be inferred from the decoder subgraph's output shape",
                                       AttributeProto::INT, static_cast<int64_t>(-1))
                                 .Attr("decoder_output_cross_qk", "If nozero, decoder subgraph contains output Q*K from cross attentions. Default 0.", AttributeProto::INT, OPTIONAL_VALUE)
-                                .Attr("extra_decoding_round",
-                                      "Do one extra decoding round, for example, to get tail cross qk, when decoding for all batches are finished. Default 0.",
-                                      AttributeProto::INT, OPTIONAL_VALUE)
                                 .Attr("no_speech_token",
                                       "The token in whisper model that mark all sequence empty. With this model, whisper could output no_speech_prob after  Default -1.",
                                       AttributeProto::INT, OPTIONAL_VALUE)
