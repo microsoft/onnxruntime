@@ -47,14 +47,14 @@ class QGemm : protected GemmBase, public MatMulIntegerBase {
     bool a_is_signed = a->IsDataType<int8_t>();
     const uint8_t* a_data = static_cast<const uint8_t*>(a->DataRaw());
 
-    std::unique_ptr<Tensor> a_trans_buffer;
+    std::optional<Tensor> a_trans_buffer;
     if (trans_A_ == CblasTrans) {
       a_data = quantization::TransPoseInputData(a_data, a_trans_buffer, allocator, K, M);
     }
 
     bool b_is_signed;
     const uint8_t* b_data = nullptr;
-    std::unique_ptr<Tensor> b_trans_buffer;
+    std::optional<Tensor> b_trans_buffer;
     if (nullptr == b) {
       b_data = static_cast<const uint8_t*>(packed_b_.get());
       b_is_signed = b_is_signed_;
@@ -71,11 +71,11 @@ class QGemm : protected GemmBase, public MatMulIntegerBase {
 
     // prepare output buffer of GEMM
     int32_t* gemm_output_data = nullptr;
-    std::unique_ptr<Tensor> gemm_output_buffer;
+    std::optional<Tensor> gemm_output_buffer;
     bool need_requant = y_scale != nullptr;
     if (need_requant) {
       TensorShape outputshape{static_cast<int64_t>(M), static_cast<int64_t>(N)};
-      gemm_output_buffer = std::make_unique<Tensor>(DataTypeImpl::GetType<int32_t>(), outputshape, allocator);
+      gemm_output_buffer.emplace(DataTypeImpl::GetType<int32_t>(), outputshape, allocator);
       gemm_output_data = gemm_output_buffer->MutableData<int32_t>();
     } else {
       gemm_output_data = static_cast<int32_t*>(y->MutableDataRaw());
@@ -103,8 +103,8 @@ class QGemm : protected GemmBase, public MatMulIntegerBase {
     gemm_param.PerColumnZeroPoints = !IsScalarOr1ElementVector(b_zp);
 
     std::vector<float> output_scales = ComputeOutputScale(a_scale, b_scale, y_scale);
-    std::unique_ptr<MLAS_QGEMM_SCALE_BIAS_OUTPUT_PROCESSOR> scale_bias_proc_ptr;
-    std::unique_ptr<MLAS_QGEMM_REQUANT_OUTPUT_PROCESSOR> requant_proc_ptr;
+    std::optional<MLAS_QGEMM_SCALE_BIAS_OUTPUT_PROCESSOR> scale_bias_proc_ptr;
+    std::optional<MLAS_QGEMM_REQUANT_OUTPUT_PROCESSOR> requant_proc_ptr;
     SetPostProcessor(y_zp, N, output_scales, y, gemm_param, scale_bias_proc_ptr, requant_proc_ptr);
 
     MlasGemmBatch(gemm_shape, &gemm_param, 1, context->GetOperatorThreadPool());
@@ -181,12 +181,12 @@ class QGemm : protected GemmBase, public MatMulIntegerBase {
                                const std::vector<float>& output_scales,
                                Tensor* y,
                                MLAS_GEMM_QUANT_DATA_PARAMS& gemm_param,
-                               std::unique_ptr<MLAS_QGEMM_SCALE_BIAS_OUTPUT_PROCESSOR>& scale_bias_proc_ptr,
-                               std::unique_ptr<MLAS_QGEMM_REQUANT_OUTPUT_PROCESSOR>& requant_proc_ptr) {
+                               std::optional<MLAS_QGEMM_SCALE_BIAS_OUTPUT_PROCESSOR>& scale_bias_proc_ptr,
+                               std::optional<MLAS_QGEMM_REQUANT_OUTPUT_PROCESSOR>& requant_proc_ptr) {
     if (nullptr != y_zp) {
       bool is_y_signed = y->IsDataType<int8_t>();
       int32_t y_zero_point = is_y_signed ? *y_zp->Data<int8_t>() : *y_zp->Data<uint8_t>();
-      requant_proc_ptr = std::make_unique<MLAS_QGEMM_REQUANT_OUTPUT_PROCESSOR>(
+      requant_proc_ptr.emplace(
           y->MutableDataRaw(),
           out_lda,
           nullptr,
@@ -194,16 +194,16 @@ class QGemm : protected GemmBase, public MatMulIntegerBase {
           output_scales.size() > 1,
           y_zero_point,
           is_y_signed);
-      gemm_param.OutputProcessor = requant_proc_ptr.get();
+      gemm_param.OutputProcessor = &*requant_proc_ptr;
     } else {
-      scale_bias_proc_ptr = std::make_unique<MLAS_QGEMM_SCALE_BIAS_OUTPUT_PROCESSOR>(
+      scale_bias_proc_ptr.emplace(
           static_cast<float*>(y->MutableDataRaw()),
           out_lda,
           output_scales.data(),
           nullptr,
           MLAS_QGEMM_OUTPUT_MODE::ZeroMode,
           output_scales.size() > 1 ? MLAS_QUANTIZATION_GRANULARITY::PerColumn : MLAS_QUANTIZATION_GRANULARITY::PerMatrix);
-      gemm_param.OutputProcessor = scale_bias_proc_ptr.get();
+      gemm_param.OutputProcessor = &*scale_bias_proc_ptr;
     }
   }
 };
