@@ -3,9 +3,10 @@
 
 #pragma once
 
-// This file does not include gtest related header files.
 #include <random>
 #include <type_traits>
+
+#include "gtest/gtest.h"
 
 #include "core/common/gsl.h"
 #include "core/common/common.h"
@@ -37,14 +38,15 @@ inline int64_t SizeFromDims(gsl::span<const int64_t> dims, gsl::span<const int64
 }
 }  // namespace detail
 
-class RandomValueGeneratorBase {
+class RandomValueGenerator {
  public:
   using RandomEngine = std::default_random_engine;
   using RandomSeedType = RandomEngine::result_type;
 
-  explicit RandomValueGeneratorBase(optional<RandomSeedType> seed = {})
+  explicit RandomValueGenerator(optional<RandomSeedType> seed = {})
       : random_seed_{seed.has_value() ? *seed : static_cast<RandomSeedType>(GetTestRandomSeed())},
-        generator_{random_seed_} {
+        generator_{random_seed_},
+        output_trace_{__FILE__, __LINE__, "ORT test random seed: " + std::to_string(random_seed_)} {
   }
 
   RandomSeedType GetRandomSeed() const {
@@ -160,9 +162,11 @@ class RandomValueGeneratorBase {
     return val;
   }
 
- protected:
+ private:
   const RandomSeedType random_seed_;
   RandomEngine generator_;
+  // while this instance is in scope, output some context information on test failure like the random seed value
+  const ::testing::ScopedTrace output_trace_;
 };
 
 }  // namespace test

@@ -7,11 +7,6 @@
 namespace onnxruntime {
 namespace test {
 
-RandomValueGenerator::RandomValueGenerator(optional<RandomSeedType> seed)
-    : RandomValueGeneratorBase(seed),
-      output_trace_{__FILE__, __LINE__, "ORT test random seed: " + std::to_string(random_seed_)} {
-}
-
 FixedPatternValueGenerator::FixedPatternValueGenerator()
     : generator_{0},
       output_trace_{__FILE__, __LINE__, "ORT test random seed with fixed pattern tensor generator"} {

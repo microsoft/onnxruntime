@@ -10,6 +10,7 @@
 #include "core/providers/cuda/cuda_execution_provider.h"
 #include "core/providers/cuda/cuda_allocator.h"
 #include "core/providers/cuda/cuda_stream_handle.h"
+#include "gtest/gtest.h"
 
 namespace onnxruntime {
 namespace cuda {
@@ -42,7 +43,7 @@ void TestDeferredRelease() {
   // Memory stats
   AllocatorStats stats;
   cpu_pinned_alloc->GetStats(&stats);
-  ORT_ENFORCE(stats.num_allocs == n_allocs);
+  ASSERT_EQ(stats.num_allocs, n_allocs);
   ORT_THROW_IF_ERROR(stream.CleanUpOnRunEnd());
   ORT_THROW_IF_ERROR(ep.OnRunEnd(true));
 }

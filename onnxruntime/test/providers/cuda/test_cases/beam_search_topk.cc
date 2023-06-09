@@ -7,6 +7,7 @@
 #include <random>
 
 #include <cuda_runtime.h>
+#include "gtest/gtest.h"
 
 namespace onnxruntime {
 namespace cuda {
@@ -118,7 +119,7 @@ void TestBeamSearchTopK() {
   CUDA_CALL_THROW(cudaMemcpy(top_k_token_host.data(), top_k_token, batch_size * k * 4, cudaMemcpyDeviceToHost));
   CUDA_CALL_THROW(cudaMemcpy(top_k_indices_host.data(), top_k_indices, batch_size * k * 4, cudaMemcpyDeviceToHost));
   for (int32_t i = 0; i < batch_size * k; i++) {
-    ORT_ENFORCE(top_k_values_ref[i] == top_k_values_host[i] &&
+    ASSERT_TRUE(top_k_values_ref[i] == top_k_values_host[i] &&
                 top_k_tokens_ref[i] == top_k_token_host[i] &&
                 top_k_indices_ref[i] == top_k_indices_host[i]);
   }

@@ -7,13 +7,13 @@
 #include <iostream>
 namespace onnxruntime {
 
-ProviderInfo_CUDA& TryGetProviderInfo_CUDA_Test();
+ProviderInfo_CUDA& GetProviderInfo_CUDA_Test();
 
 namespace test {
 namespace cuda {
 TEST(CUDA_EP_Unittest, All) {
-  onnxruntime::ProviderInfo_CUDA& ep = onnxruntime::TryGetProviderInfo_CUDA_Test();
-  ASSERT_TRUE(ep.TestAll());
+  onnxruntime::ProviderInfo_CUDA& ep = onnxruntime::GetProviderInfo_CUDA_Test();
+  ep.TestAll();
 }
 
 }  // namespace cuda

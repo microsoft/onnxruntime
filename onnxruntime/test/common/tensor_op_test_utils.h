@@ -15,19 +15,10 @@
 #include "core/common/type_utils.h"
 #include "core/framework/tensor.h"
 #include "core/util/math.h"
-#include "test/common/random_generator_base.h"
+#include "test/common/random_generator.h"
 
 namespace onnxruntime {
 namespace test {
-
-class RandomValueGenerator : public RandomValueGeneratorBase {
- public:
-  explicit RandomValueGenerator(optional<RandomSeedType> seed = {});
-
- private:
-  // while this instance is in scope, output some context information on test failure like the random seed value
-  const ::testing::ScopedTrace output_trace_;
-};
 
 // This class provides similar functionality as `RandomValueGenerator` but generates `fixed` patterns
 // for given tensor element type and shape. It should be used in unstable tests because

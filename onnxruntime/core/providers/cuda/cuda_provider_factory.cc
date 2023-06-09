@@ -49,7 +49,7 @@ std::unique_ptr<IExecutionProvider> CUDAProviderFactory::CreateProvider() {
   return std::make_unique<CUDAExecutionProvider>(info_);
 }
 
-struct ProviderInfo_CUDA_Impl : ProviderInfo_CUDA {
+struct ProviderInfo_CUDA_Impl final : ProviderInfo_CUDA {
   OrtStatus* SetCurrentGpuDeviceId(_In_ int device_id) override {
     int num_devices;
     auto cuda_err = ::cudaGetDeviceCount(&num_devices);
@@ -180,8 +180,7 @@ struct ProviderInfo_CUDA_Impl : ProviderInfo_CUDA {
   std::shared_ptr<IAllocator> CreateCudaAllocator(int16_t device_id, size_t gpu_mem_limit, onnxruntime::ArenaExtendStrategy arena_extend_strategy, onnxruntime::CUDAExecutionProviderExternalAllocatorInfo& external_allocator_info, const OrtArenaCfg* default_memory_arena_cfg) override {
     return CUDAExecutionProvider::CreateCudaAllocator(device_id, gpu_mem_limit, arena_extend_strategy, external_allocator_info, default_memory_arena_cfg);
   }
-};
-ProviderInfo_CUDA_Impl g_info;
+} g_info;
 
 struct CUDA_Provider : Provider {
   void* GetInfo() override { return &g_info; }
@@ -258,9 +257,8 @@ struct CUDA_Provider : Provider {
   void Shutdown() override {
     DeleteRegistry();
   }
-};
 
-CUDA_Provider g_provider;
+} g_provider;
 
 CUDA_Provider* GetProvider() {
   return &g_provider;

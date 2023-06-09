@@ -8,6 +8,8 @@
 
 #include <cuda_runtime.h>
 
+#include "gtest/gtest.h"
+
 namespace onnxruntime {
 namespace cuda {
 namespace test {
@@ -86,7 +88,7 @@ void TestGreedySearchTopOne() {
   CUDA_CALL_THROW(cudaMemcpy(top_k_values_host.data(), output_score_data, batch_size * sizeof(float), cudaMemcpyDeviceToHost));
   CUDA_CALL_THROW(cudaMemcpy(top_k_token_host.data(), output_token_data, batch_size * sizeof(float), cudaMemcpyDeviceToHost));
   for (int32_t i = 0; i < batch_size; i++) {
-    ORT_ENFORCE(top_k_values_ref[i] == top_k_values_host[i] &&
+    ASSERT_TRUE(top_k_values_ref[i] == top_k_values_host[i] &&
                 top_k_tokens_ref[i] == top_k_token_host[i]);
   }
 

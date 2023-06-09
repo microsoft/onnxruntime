@@ -754,9 +754,13 @@ if (onnxruntime_USE_CUDA)
   list(APPEND onnxruntime_test_common_libs onnxruntime_test_cuda_ops_lib)
   file(GLOB onnxruntime_test_providers_cuda_ut_src CONFIGURE_DEPENDS
     "${TEST_SRC_DIR}/providers/cuda/test_cases/*"
-    )
-  onnxruntime_add_shared_library_module(onnxruntime_providers_cuda_test ${onnxruntime_test_providers_cuda_ut_src} $<TARGET_OBJECTS:onnxruntime_providers_cuda_obj>)
-  add_cuda_provider_shared_module(onnxruntime_providers_cuda_test)
+  )
+  # onnxruntime_providers_cuda_ut is only for unittests.
+  onnxruntime_add_shared_library_module(onnxruntime_providers_cuda_ut ${onnxruntime_test_providers_cuda_ut_src} $<TARGET_OBJECTS:onnxruntime_providers_cuda_obj>)
+  config_cuda_provider_shared_module(onnxruntime_providers_cuda_ut)
+  onnxruntime_add_include_to_target(onnxruntime_providers_cuda_ut GTest::gtest GTest::gmock)
+  target_link_libraries(onnxruntime_providers_cuda_ut PRIVATE GTest::gtest GTest::gmock)
+  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_cuda_ut)
 endif()
 
 set(all_dependencies ${onnxruntime_test_providers_dependencies} )

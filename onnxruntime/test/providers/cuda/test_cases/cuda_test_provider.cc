@@ -97,12 +97,13 @@ struct ProviderInfo_CUDA_TestImpl : ProviderInfo_CUDA {
     return nullptr;
   }
 
-  bool TestAll() override {
+  void TestAll() override {
     // TestAll is the entry point of CUDA EP's insternal tests.
     // Those internal tests are not directly callable from onnxruntime_test_all
     // because CUDA EP is a shared library now.
+    // This is a test provider that implements all the test cases.
+    // onnxruntime_test_all is calling this function through TryGetProviderInfo_CUDA_Test.
 
-    // This is just one test. Call other test functions below.
     cuda::test::TestDeferredRelease();
     cuda::test::TestDeferredReleaseWithoutArena();
 
@@ -122,8 +123,6 @@ struct ProviderInfo_CUDA_TestImpl : ProviderInfo_CUDA {
     cuda::test::ReductionFunctionsTest_BufferOffsets();
     cuda::test::ReductionFunctionsTest_InvalidBufferSize();
     cuda::test::ReductionFunctionsTest_GetApplicableMatrixReduction();
-
-    return true;
   }
 };
 ProviderInfo_CUDA_TestImpl g_test_info;
@@ -145,7 +144,7 @@ CUDA_Test_Provider g_test_provider;
 }  // namespace onnxruntime
 
 extern "C" {
-
+// This is the entry point of libonnxruntime_providers_cuda_ut.so/dll.
 ORT_API(onnxruntime::Provider*, GetProvider) {
   return &onnxruntime::g_test_provider;
 }

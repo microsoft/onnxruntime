@@ -1176,7 +1176,7 @@ bool InitProvidersSharedLibrary() try {
 
 struct ProviderLibrary {
   ProviderLibrary(const ORTCHAR_T* filename, bool unload = true) : filename_{filename}, unload_{unload} {}
-  virtual ~ProviderLibrary() {
+  ~ProviderLibrary() {
     // assert(!handle_); // We should already be unloaded at this point (disabled until Python shuts down deterministically)
   }
 
@@ -1190,7 +1190,7 @@ struct ProviderLibrary {
         ORT_THROW_IF_ERROR(Env::Default().LoadDynamicLibrary(full_path, false, &handle_));
 
         Provider* (*PGetProvider)();
-        ORT_THROW_IF_ERROR(Env::Default().GetSymbolFromLibrary(handle_, GetFunctionName(), (void**)&PGetProvider));
+        ORT_THROW_IF_ERROR(Env::Default().GetSymbolFromLibrary(handle_, "GetProvider", (void**)&PGetProvider));
 
         provider_ = PGetProvider();
         provider_->Initialize();
@@ -1223,11 +1223,7 @@ struct ProviderLibrary {
     }
   }
 
-  virtual const char* GetFunctionName() const {
-    return "GetProvider";
-  }
-
- protected:
+ private:
   std::mutex mutex_;
   const ORTCHAR_T* filename_;
   bool unload_;
@@ -1243,7 +1239,8 @@ static ProviderLibrary s_library_cuda(LIBRARY_PREFIX ORT_TSTR("onnxruntime_provi
                                       false /* unload - On Linux if we unload the cuda shared provider we crash */
 #endif
 );
-static ProviderLibrary s_library_cuda_test(LIBRARY_PREFIX ORT_TSTR("onnxruntime_providers_cuda_test") LIBRARY_EXTENSION
+// This lib is only for unittest.
+static ProviderLibrary s_library_cuda_test(LIBRARY_PREFIX ORT_TSTR("onnxruntime_providers_cuda_ut") LIBRARY_EXTENSION
 #ifndef _WIN32
                                            ,
                                            false /* unload - On Linux if we unload the cuda shared provider we crash */
