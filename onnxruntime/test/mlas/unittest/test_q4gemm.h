@@ -144,8 +144,13 @@ class MlasQ4GemmTest : public MlasTestBase {
 
  public:
   static const char* GetTestSuiteName() {
-      static const std::vector<std::string> qtype_names = {"BlkQ4Sym",
-                                                           "BlkQ4Zp8"};
+    /*
+          BlkQ4Sym = 0,
+          BlkQ4Zp8 = 1,
+          BlkQ4Sym64 = 2,
+          BlkQ4Sym128 = 4
+    */
+    static const std::vector<std::string> qtype_names = {"BlkQ4Sym", "BlkQ4Zp8", "BlkQ4Sym64", "", "BlkQ4Sym128"};
     static std::string suite_name = std::string("Q4GemmFP") + 
                                     qtype_names[QType] +
                                     (Threaded ? "_Threaded" : "_SingleThread");

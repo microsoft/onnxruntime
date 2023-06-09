@@ -13,9 +13,7 @@ Abstract:
     This module implements the fp32 matrix multiplication with compressed
     weight tensor (right hand side). The assumption is the right hand side
     tensor can be pre-packed and compressed using int-4 quantization to save
-    memory. Quantized weights are expanded to fp32 before matrix
-    multiplication.
-
+    memory.
 --*/
 
 #include "q4common.h"
@@ -23,24 +21,9 @@ Abstract:
 #include <type_traits>
 #include <immintrin.h>
 
-template<typename Q4TYPE, typename KERNEL>
-MLAS_FORCEINLINE
-size_t
-MlasQ4GemmKernel(
-    size_t CountM,
-    size_t CountN,
-    size_t CountK,
-    float* C,
-    size_t ldc,
-    const float* Bias,
-    const float* A,
-    size_t lda,
-    const uint8_t* PackedB);
-
-struct MLAS_FP_Q4_GEMM_KERNEL_DEFAULT {
-    static constexpr size_t StrideM = 4;
+struct MLAS_FP_Q4_GEMM_KERNEL_AVX512VNNI {
+    static constexpr size_t StrideM = 256;
 };
-
 
 /**
  * @brief Horizontally sum 4 vectors and store
@@ -78,230 +61,232 @@ FoldAccumulators(
     return _mm_add_ps(_mm256_extractf32x4_ps(acc_y, 0), _mm256_extractf32x4_ps(acc_y, 1));
 }
 
-static
-MLAS_FORCEINLINE
-__m128
-FoldAccumulators(
-    const __m256& acc0,
-    const __m256& acc1,
-    const __m256& acc2,
-    const __m256& acc3
-    )
-{
-    __m256 acc_lo01 = _mm256_unpacklo_ps(acc0, acc1);
-    __m256 acc_hi01 = _mm256_unpackhi_ps(acc0, acc1);
-    __m256 acc_lo23 = _mm256_unpacklo_ps(acc2, acc3);
-    __m256 acc_hi23 = _mm256_unpackhi_ps(acc2, acc3);
-
-    __m256 acc_lo0123 = _mm256_castpd_ps(
-        _mm256_unpacklo_pd(_mm256_castps_pd(acc_lo01), _mm256_castps_pd(acc_lo23)));
-    __m256 acc_hi0123 = _mm256_castpd_ps(
-        _mm256_unpackhi_pd(_mm256_castps_pd(acc_lo01), _mm256_castps_pd(acc_lo23)));
-    acc_lo0123 = _mm256_add_ps(acc_lo0123, acc_hi0123);
-    acc_hi0123 = _mm256_castpd_ps(
-        _mm256_unpacklo_pd(_mm256_castps_pd(acc_hi01), _mm256_castps_pd(acc_hi23)));
-    acc_lo0123 = _mm256_add_ps(acc_lo0123, acc_hi0123);
-    acc_hi0123 = _mm256_castpd_ps(
-        _mm256_unpackhi_pd(_mm256_castps_pd(acc_hi01), _mm256_castps_pd(acc_hi23)));
-    acc_lo0123 = _mm256_add_ps(acc_lo0123, acc_hi0123);
-
-    return _mm_add_ps(_mm256_extractf32x4_ps(acc_lo0123, 0), _mm256_extractf32x4_ps(acc_lo0123, 1));
-}
-
-
 template<typename Q4Type>
 MLAS_FORCEINLINE
 size_t
 MlasQ4GemmKernelAvx512f(
+    const float* A,
+    const uint8_t* PackedB,
+    float* C,
     size_t CountM,
     size_t CountN,
     size_t CountK,
-    float* C,
-    size_t ldc,
-    const float* Bias,
-    const float* A,
     size_t lda,
-    const uint8_t* PackedB
+    size_t ldb,
+    size_t ldc,
+    const float* Bias
     )
 {
+    // We process 32 quantized values in a batch.
+    static_assert(MLAS_QUANT4_BLK_UNIT == 32);
+    static_assert((typename Q4Type::BlkLen) % MLAS_QUANT4_BLK_UNIT == 0);
+
     const __m256i lowMask = _mm256_set1_epi8(0xF);
+    const __m256i eight = _mm256_set1_epi8(8);
 
     for (size_t m = 0; m < CountM; m++) {
-        const uint8_t* b = PackedB;
-
+        const auto* b_col = PackedB;
         auto* sum_ptr = C;
-        auto* bias_ptr = Bias;
-        int64_t nblk = (int64_t)(CountN) - MLAS_Q4_N_STRIDE;
+        const auto* bias_ptr = Bias;
+
+        int64_t nblk = (int64_t)(CountN) - 4;
         while (nblk >= 0) {
-            static_assert(MLAS_Q4_N_STRIDE == 4);
             __m512 acc_lo0 = _mm512_setzero();
             __m512 acc_lo1 = _mm512_setzero();
             __m512 acc_lo2 = _mm512_setzero();
             __m512 acc_lo3 = _mm512_setzero();
+            const auto* b = b_col;
 
             for (size_t k = 0; k < CountK; k += (typename Q4Type::BlkLen)) {
                 size_t ck = std::min(CountK - k, (typename Q4Type::BlkLen));
 
-                // Load A row vectors
-                uint32_t mask = 0xffffffff >> (typename Q4Type::BlkLen - ck);
-                __m512 av_lo = _mm512_maskz_loadu_ps(__mmask16(mask), A + k);
+                const float scale_v0 = MlasQ4BlkScale<Q4Type>(b);
+                const float scale_v1 = MlasQ4BlkScale<Q4Type>(b + ldb);
+                const float scale_v2 = MlasQ4BlkScale<Q4Type>(b + ldb * 2);
+                const float scale_v3 = MlasQ4BlkScale<Q4Type>(b + ldb * 3);
 
-                mask = mask >> 16;
-                __m512 av_hi = mask == 0 ? _mm512_setzero_ps()
-                                         : _mm512_maskz_loadu_ps(__mmask16(mask), A + k + 16);
+                const __m128i* b0ptr = (const __m128i*)MlasQ4BlkData<Q4Type>(b);
+                const __m128i* b1ptr = (const __m128i*)MlasQ4BlkData<Q4Type>(b + ldb);
+                const __m128i* b2ptr = (const __m128i*)MlasQ4BlkData<Q4Type>(b + ldb * 2);
+                const __m128i* b3ptr = (const __m128i*)MlasQ4BlkData<Q4Type>(b + ldb * 3);
 
-                // Load 4 B column vectors (quantized to int4 blobs)
-                const __m512 scale_v0 = _mm512_set1_ps(MlasQ4BlkScale<Q4Type>(b));
-                uint8_t zp0 = 8;
-                if constexpr (std::is_same_v<Q4Type, MLAS_Q4TYPE_BLK1>)
-                    zp0 = MlasQ4BlkZeroPoint<MLAS_Q4TYPE_BLK1>(b);
-                const __m128i bvi4_0 =
-                    _mm_loadu_si128((const __m128i*)MlasQ4BlkData<Q4Type>(b));
-                b += Q4Type::BlobSize;
+                for (size_t kk = 0; kk < ck; kk += MLAS_QUANT4_BLK_UNIT) {
+                    size_t kklen = std::min((size_t)MLAS_QUANT4_BLK_UNIT, ck - kk);
 
-                const __m512 scale_v1 = _mm512_set1_ps(MlasQ4BlkScale<Q4Type>(b));
-                uint8_t zp1 = 8;
-                if constexpr (std::is_same_v<Q4Type, MLAS_Q4TYPE_BLK1>)
-                    zp1 = MlasQ4BlkZeroPoint<MLAS_Q4TYPE_BLK1>(b);
-                const __m128i bvi4_1 =
-                    _mm_loadu_si128((const __m128i*)MlasQ4BlkData<Q4Type>(b));
-                b += Q4Type::BlobSize;
+                    // Load A row vectors
+                    uint32_t mask = 0xffffffff >> (MLAS_QUANT4_BLK_UNIT - kklen);
+                    __m512 av_lo = _mm512_maskz_loadu_ps(__mmask16(mask), A + k + kk);
 
-                const __m512 scale_v2 = _mm512_set1_ps(MlasQ4BlkScale<Q4Type>(b));
-                uint8_t zp2 = 8;
-                if constexpr (std::is_same_v<Q4Type, MLAS_Q4TYPE_BLK1>)
-                    zp2 = MlasQ4BlkZeroPoint<MLAS_Q4TYPE_BLK1>(b);
-                const __m128i bvi4_2 =
-                    _mm_loadu_si128((const __m128i*)MlasQ4BlkData<Q4Type>(b));
-                b += Q4Type::BlobSize;
+                    mask = mask >> 16;
+                    __m512 av_hi = mask == 0 ? _mm512_setzero_ps()
+                                             : _mm512_maskz_loadu_ps(__mmask16(mask), A + k + kk + 16);
 
-                const __m512 scale_v3 = _mm512_set1_ps(MlasQ4BlkScale<Q4Type>(b));
-                uint8_t zp3 = 8;
-                if constexpr (std::is_same_v<Q4Type, MLAS_Q4TYPE_BLK1>)
-                    zp3 = MlasQ4BlkZeroPoint<MLAS_Q4TYPE_BLK1>(b);
-                const __m128i bvi4_3 =
-                    _mm_loadu_si128((const __m128i*)MlasQ4BlkData<Q4Type>(b));
-                b += Q4Type::BlobSize;
+                    // Load B col vectors
+                    const __m128i bvi4_0 = _mm_loadu_si128(b0ptr++);
+                    const __m128i bvi4_1 = _mm_loadu_si128(b1ptr++);
+                    const __m128i bvi4_2 = _mm_loadu_si128(b2ptr++);
+                    const __m128i bvi4_3 = _mm_loadu_si128(b3ptr++);
 
-                // expand 4b into byte array
-                __m256i bytes0 = _mm256_set_m128i(_mm_srli_epi16(bvi4_0, 4), bvi4_0);
-                __m256i bytes1 = _mm256_set_m128i(_mm_srli_epi16(bvi4_1, 4), bvi4_1);
-                __m256i bytes2 = _mm256_set_m128i(_mm_srli_epi16(bvi4_2, 4), bvi4_2);
-                __m256i bytes3 = _mm256_set_m128i(_mm_srli_epi16(bvi4_3, 4), bvi4_3);
-                bytes0 = _mm256_and_si256(lowMask, bytes0);
-                bytes1 = _mm256_and_si256(lowMask, bytes1);
-                bytes2 = _mm256_and_si256(lowMask, bytes2);
-                bytes3 = _mm256_and_si256(lowMask, bytes3);
+                    // expand 4b into byte array
+                    __m256i bytes0 = _mm256_set_m128i(_mm_srli_epi16(bvi4_0, 4), bvi4_0);
+                    __m256i bytes1 = _mm256_set_m128i(_mm_srli_epi16(bvi4_1, 4), bvi4_1);
+                    __m256i bytes2 = _mm256_set_m128i(_mm_srli_epi16(bvi4_2, 4), bvi4_2);
+                    __m256i bytes3 = _mm256_set_m128i(_mm_srli_epi16(bvi4_3, 4), bvi4_3);
+                    bytes0 = _mm256_and_si256(lowMask, bytes0);
+                    bytes1 = _mm256_and_si256(lowMask, bytes1);
+                    bytes2 = _mm256_and_si256(lowMask, bytes2);
+                    bytes3 = _mm256_and_si256(lowMask, bytes3);
 
-                // Subtract zero-point from the integers
-                bytes0 = _mm256_sub_epi8(bytes0, _mm256_set1_epi8(zp0));
-                bytes1 = _mm256_sub_epi8(bytes1, _mm256_set1_epi8(zp1));
-                bytes2 = _mm256_sub_epi8(bytes2, _mm256_set1_epi8(zp2));
-                bytes3 = _mm256_sub_epi8(bytes3, _mm256_set1_epi8(zp3));
-
-                // Convert to 16-bit int
-                const __m256i vx16_lo0 = _mm256_cvtepi8_epi16(_mm256_extracti128_si256(bytes0, 0));
-                const __m256i vx16_hi0 = _mm256_cvtepi8_epi16(_mm256_extracti128_si256(bytes0, 1));
-                const __m256i vx16_lo1 = _mm256_cvtepi8_epi16(_mm256_extracti128_si256(bytes1, 0));
-                const __m256i vx16_hi1 = _mm256_cvtepi8_epi16(_mm256_extracti128_si256(bytes1, 1));
-                const __m256i vx16_lo2 = _mm256_cvtepi8_epi16(_mm256_extracti128_si256(bytes2, 0));
-                const __m256i vx16_hi2 = _mm256_cvtepi8_epi16(_mm256_extracti128_si256(bytes2, 1));
-                const __m256i vx16_lo3 = _mm256_cvtepi8_epi16(_mm256_extracti128_si256(bytes3, 0));
-                const __m256i vx16_hi3 = _mm256_cvtepi8_epi16(_mm256_extracti128_si256(bytes3, 1));
-
-                // Convert to 32-bit int -> float 32
-                __m512 bvf_lo0 = _mm512_cvtepi32_ps(_mm512_cvtepi16_epi32(vx16_lo0));
-                __m512 bvf_hi0 = _mm512_cvtepi32_ps(_mm512_cvtepi16_epi32(vx16_hi0));
-                __m512 bvf_lo1 = _mm512_cvtepi32_ps(_mm512_cvtepi16_epi32(vx16_lo1));
-                __m512 bvf_hi1 = _mm512_cvtepi32_ps(_mm512_cvtepi16_epi32(vx16_hi1));
-                __m512 bvf_lo2 = _mm512_cvtepi32_ps(_mm512_cvtepi16_epi32(vx16_lo2));
-                __m512 bvf_hi2 = _mm512_cvtepi32_ps(_mm512_cvtepi16_epi32(vx16_hi2));
-                __m512 bvf_lo3 = _mm512_cvtepi32_ps(_mm512_cvtepi16_epi32(vx16_lo3));
-                __m512 bvf_hi3 = _mm512_cvtepi32_ps(_mm512_cvtepi16_epi32(vx16_hi3));
-                bvf_lo0 = _mm512_mul_ps(bvf_lo0, scale_v0);
-                bvf_hi0 = _mm512_mul_ps(bvf_hi0, scale_v0);
-                bvf_lo1 = _mm512_mul_ps(bvf_lo1, scale_v1);
-                bvf_hi1 = _mm512_mul_ps(bvf_hi1, scale_v1);
-                bvf_lo2 = _mm512_mul_ps(bvf_lo2, scale_v2);
-                bvf_hi2 = _mm512_mul_ps(bvf_hi2, scale_v2);
-                bvf_lo3 = _mm512_mul_ps(bvf_lo3, scale_v3);
-                bvf_hi3 = _mm512_mul_ps(bvf_hi3, scale_v3);
-
-                acc_lo0 = _mm512_fmadd_ps(bvf_lo0, av_lo, acc_lo0);
-                acc_lo0 = _mm512_fmadd_ps(bvf_hi0, av_hi, acc_lo0);
-                acc_lo1 = _mm512_fmadd_ps(bvf_lo1, av_lo, acc_lo1);
-                acc_lo1 = _mm512_fmadd_ps(bvf_hi1, av_hi, acc_lo1);
-                acc_lo2 = _mm512_fmadd_ps(bvf_lo2, av_lo, acc_lo2);
-                acc_lo2 = _mm512_fmadd_ps(bvf_hi2, av_hi, acc_lo2);
-                acc_lo3 = _mm512_fmadd_ps(bvf_lo3, av_lo, acc_lo3);
-                acc_lo3 = _mm512_fmadd_ps(bvf_hi3, av_hi, acc_lo3);
-            }
-
-            __m128 acc_x = FoldAccumulators(acc_lo0, acc_lo1, acc_lo2, acc_lo3);
-
-            if (Bias != nullptr) {
-                acc_x = _mm_add_ps(acc_x, _mm_loadu_ps(bias_ptr));
-            }
-
-            _mm_store_ps(sum_ptr, acc_x);
-
-            sum_ptr += MLAS_Q4_N_STRIDE;
-            bias_ptr += MLAS_Q4_N_STRIDE;
-            nblk -= MLAS_Q4_N_STRIDE;
-        }
-
-        // left over columns less than 4 ?
-        nblk += MLAS_Q4_N_STRIDE;
-        if (nblk > 0) {
-            __m512 acc_lo[MLAS_Q4_N_STRIDE]{};
-
-            for (size_t k = 0; k < CountK; k += (typename Q4Type::BlkLen)) {
-                size_t ck = std::min(CountK - k, (typename Q4Type::BlkLen));
-
-                uint32_t mask = 0xffffffff >> ((typename Q4Type::BlkLen) - ck);
-                __m512 av_lo = _mm512_maskz_loadu_ps(__mmask16(mask), A + k);
-
-                mask = mask >> 16;
-                __m512 av_hi = mask == 0 ? _mm512_setzero_ps()
-                    : _mm512_maskz_loadu_ps(__mmask16(mask), A + k + 16);
-
-                for (int64_t nn = 0; nn < nblk; nn++) {
-                    const __m512 scale_v = _mm512_set1_ps(MlasQ4BlkScale<Q4Type>(b));
-
-                    const __m128i bvi4 =
-                        _mm_loadu_si128((const __m128i*)MlasQ4BlkData<Q4Type>(b));
-                    __m256i bytes = _mm256_set_m128i(_mm_srli_epi16(bvi4, 4), bvi4);
-                    bytes = _mm256_and_si256(lowMask, bytes);
-
-                    if constexpr (std::is_same_v<Q4Type, MLAS_Q4TYPE_BLK1>)
-                    {
+                    // Subtract zero-point from the integers
+                    if constexpr (std::is_same_v<Q4Type, MLAS_Q4TYPE_BLK1>) {
                         // Subtract zero-point from the integers
-                        const uint8_t zp = MlasQ4BlkZeroPoint<MLAS_Q4TYPE_BLK1>(b);
-                        bytes = _mm256_sub_epi8(bytes, _mm256_set1_epi8(zp));
-                    }
-                    else {
+                        bytes0 = _mm256_sub_epi8(
+                            bytes0, _mm256_set1_epi8(MlasQ4BlkZeroPoint<MLAS_Q4TYPE_BLK1>(b)));
+                        bytes1 = _mm256_sub_epi8(
+                            bytes1,
+                            _mm256_set1_epi8(MlasQ4BlkZeroPoint<MLAS_Q4TYPE_BLK1>(b + ldb)));
+                        bytes2 = _mm256_sub_epi8(
+                            bytes2,
+                            _mm256_set1_epi8(MlasQ4BlkZeroPoint<MLAS_Q4TYPE_BLK1>(b + ldb * 2)));
+                        bytes3 = _mm256_sub_epi8(
+                            bytes3,
+                            _mm256_set1_epi8(MlasQ4BlkZeroPoint<MLAS_Q4TYPE_BLK1>(b + ldb * 3)));
+                    } else {
                         // Subtract 8 from the integers
-                        bytes = _mm256_sub_epi8(bytes, _mm256_set1_epi8(8));
+                        bytes0 = _mm256_sub_epi8(bytes0, eight);
+                        bytes1 = _mm256_sub_epi8(bytes1, eight);
+                        bytes2 = _mm256_sub_epi8(bytes2, eight);
+                        bytes3 = _mm256_sub_epi8(bytes3, eight);
                     }
 
                     // Convert to 16-bit int
-                    const __m256i vx16_lo =
-                        _mm256_cvtepi8_epi16(_mm256_extracti128_si256(bytes, 0));
-                    const __m256i vx16_hi =
-                        _mm256_cvtepi8_epi16(_mm256_extracti128_si256(bytes, 1));
+                    const __m256i vx16_lo0 =
+                        _mm256_cvtepi8_epi16(_mm256_extracti128_si256(bytes0, 0));
+                    const __m256i vx16_hi0 =
+                        _mm256_cvtepi8_epi16(_mm256_extracti128_si256(bytes0, 1));
+                    const __m256i vx16_lo1 =
+                        _mm256_cvtepi8_epi16(_mm256_extracti128_si256(bytes1, 0));
+                    const __m256i vx16_hi1 =
+                        _mm256_cvtepi8_epi16(_mm256_extracti128_si256(bytes1, 1));
+                    const __m256i vx16_lo2 =
+                        _mm256_cvtepi8_epi16(_mm256_extracti128_si256(bytes2, 0));
+                    const __m256i vx16_hi2 =
+                        _mm256_cvtepi8_epi16(_mm256_extracti128_si256(bytes2, 1));
+                    const __m256i vx16_lo3 =
+                        _mm256_cvtepi8_epi16(_mm256_extracti128_si256(bytes3, 0));
+                    const __m256i vx16_hi3 =
+                        _mm256_cvtepi8_epi16(_mm256_extracti128_si256(bytes3, 1));
 
                     // Convert to 32-bit int -> float 32
-                    __m512 bvf_lo = _mm512_cvtepi32_ps(_mm512_cvtepi16_epi32(vx16_lo));
-                    __m512 bvf_hi = _mm512_cvtepi32_ps(_mm512_cvtepi16_epi32(vx16_hi));
-                    bvf_lo = _mm512_mul_ps(bvf_lo, scale_v);
-                    bvf_hi = _mm512_mul_ps(bvf_hi, scale_v);
+                    __m512 bvf_lo0 = _mm512_cvtepi32_ps(_mm512_cvtepi16_epi32(vx16_lo0));
+                    __m512 bvf_hi0 = _mm512_cvtepi32_ps(_mm512_cvtepi16_epi32(vx16_hi0));
+                    __m512 bvf_lo1 = _mm512_cvtepi32_ps(_mm512_cvtepi16_epi32(vx16_lo1));
+                    __m512 bvf_hi1 = _mm512_cvtepi32_ps(_mm512_cvtepi16_epi32(vx16_hi1));
+                    __m512 bvf_lo2 = _mm512_cvtepi32_ps(_mm512_cvtepi16_epi32(vx16_lo2));
+                    __m512 bvf_hi2 = _mm512_cvtepi32_ps(_mm512_cvtepi16_epi32(vx16_hi2));
+                    __m512 bvf_lo3 = _mm512_cvtepi32_ps(_mm512_cvtepi16_epi32(vx16_lo3));
+                    __m512 bvf_hi3 = _mm512_cvtepi32_ps(_mm512_cvtepi16_epi32(vx16_hi3));
 
-                    acc_lo[nn] = _mm512_fmadd_ps(bvf_lo, av_lo, acc_lo[nn]);
-                    acc_lo[nn] = _mm512_fmadd_ps(bvf_hi, av_hi, acc_lo[nn]);
+                    __m512 s = _mm512_set1_ps(scale_v0);
+                    bvf_lo0 = _mm512_mul_ps(bvf_lo0, s);
+                    bvf_hi0 = _mm512_mul_ps(bvf_hi0, s);
+                    s = _mm512_set1_ps(scale_v1);
+                    bvf_lo1 = _mm512_mul_ps(bvf_lo1, s);
+                    bvf_hi1 = _mm512_mul_ps(bvf_hi1, s);
+                    s = _mm512_set1_ps(scale_v2);
+                    bvf_lo2 = _mm512_mul_ps(bvf_lo2, s);
+                    bvf_hi2 = _mm512_mul_ps(bvf_hi2, s);
+                    s = _mm512_set1_ps(scale_v3);
+                    bvf_lo3 = _mm512_mul_ps(bvf_lo3, s);
+                    bvf_hi3 = _mm512_mul_ps(bvf_hi3, s);
 
-                    b += typename Q4Type::BlobSize;
+                    acc_lo0 = _mm512_fmadd_ps(bvf_lo0, av_lo, acc_lo0);
+                    acc_lo0 = _mm512_fmadd_ps(bvf_hi0, av_hi, acc_lo0);
+                    acc_lo1 = _mm512_fmadd_ps(bvf_lo1, av_lo, acc_lo1);
+                    acc_lo1 = _mm512_fmadd_ps(bvf_hi1, av_hi, acc_lo1);
+                    acc_lo2 = _mm512_fmadd_ps(bvf_lo2, av_lo, acc_lo2);
+                    acc_lo2 = _mm512_fmadd_ps(bvf_hi2, av_hi, acc_lo2);
+                    acc_lo3 = _mm512_fmadd_ps(bvf_lo3, av_lo, acc_lo3);
+                    acc_lo3 = _mm512_fmadd_ps(bvf_hi3, av_hi, acc_lo3);
                 }
-                b += (MLAS_Q4_N_STRIDE - nblk) * (typename Q4Type::BlobSize);
+
+                b += Q4Type::BlobSize;
+            }
+
+            __m128 acc_x = FoldAccumulators(acc_lo0, acc_lo1, acc_lo2, acc_lo3);
+            if (Bias != nullptr) {
+                acc_x = _mm_add_ps(acc_x, _mm_loadu_ps(bias_ptr));
+            }
+            _mm_store_ps(sum_ptr, acc_x);
+
+            // move to next 4 columns
+            b_col += 4 * ldb;
+            sum_ptr += 4;
+            bias_ptr += 4;
+            nblk -= 4;
+        }
+
+        // left over columns less than 4 ?
+        nblk += 4;
+        if (nblk > 0) {
+            __m512 acc_lo[4]{};
+            const auto* b = b_col;
+
+            for (size_t k = 0; k < CountK; k += (typename Q4Type::BlkLen)) {
+                size_t ck = std::min(CountK - k, (typename Q4Type::BlkLen));
+
+                float scale_v[4];
+                const __m128i* b_ptr[4];
+                for (int64_t nn = 0; nn < nblk; nn++) {
+                    const auto* bb = b + ldb * nn;
+                    scale_v[nn] = MlasQ4BlkScale<Q4Type>(bb);
+                    b_ptr[nn] = (const __m128i*)MlasQ4BlkData<Q4Type>(bb);
+                }
+
+                for (size_t kk = 0; kk < ck; kk += MLAS_QUANT4_BLK_UNIT) {
+                    size_t kklen = std::min((size_t)MLAS_QUANT4_BLK_UNIT, ck - kk);
+
+                    uint32_t mask = 0xffffffff >> (MLAS_QUANT4_BLK_UNIT - kklen);
+                    __m512 av_lo = _mm512_maskz_loadu_ps(__mmask16(mask), A + k + kk);
+
+                    mask = mask >> 16;
+                    __m512 av_hi = mask == 0
+                                       ? _mm512_setzero_ps()
+                                       : _mm512_maskz_loadu_ps(__mmask16(mask), A + k + kk + 16);
+
+                    for (int64_t nn = 0; nn < nblk; nn++) {
+                        const __m128i bvi4 = _mm_loadu_si128(b_ptr[nn]++);
+                        __m256i bytes = _mm256_set_m128i(_mm_srli_epi16(bvi4, 4), bvi4);
+                        bytes = _mm256_and_si256(lowMask, bytes);
+
+                        if constexpr (std::is_same_v<Q4Type, MLAS_Q4TYPE_BLK1>) {
+                            // Subtract zero-point from the integers
+                            const auto* bb = b + ldb * nn;
+                            const uint8_t zp = MlasQ4BlkZeroPoint<MLAS_Q4TYPE_BLK1>(bb);
+                            bytes = _mm256_sub_epi8(bytes, _mm256_set1_epi8(zp));
+                        } else {
+                            // Subtract 8 from the integers
+                            bytes = _mm256_sub_epi8(bytes, eight);
+                        }
+
+                        // Convert to 16-bit int
+                        const __m256i vx16_lo =
+                            _mm256_cvtepi8_epi16(_mm256_extracti128_si256(bytes, 0));
+                        const __m256i vx16_hi =
+                            _mm256_cvtepi8_epi16(_mm256_extracti128_si256(bytes, 1));
+
+                        // Convert to 32-bit int -> float 32
+                        __m512 bvf_lo = _mm512_cvtepi32_ps(_mm512_cvtepi16_epi32(vx16_lo));
+                        __m512 bvf_hi = _mm512_cvtepi32_ps(_mm512_cvtepi16_epi32(vx16_hi));
+                        __m512 s = _mm512_set1_ps(scale_v[nn]);
+                        bvf_lo = _mm512_mul_ps(bvf_lo, s);
+                        bvf_hi = _mm512_mul_ps(bvf_hi, s);
+
+                        acc_lo[nn] = _mm512_fmadd_ps(bvf_lo, av_lo, acc_lo[nn]);
+                        acc_lo[nn] = _mm512_fmadd_ps(bvf_hi, av_hi, acc_lo[nn]);
+                    }
+                }
+                b += (typename Q4Type::BlobSize);
             }
 
             for (int64_t nn = 0; nn < nblk; nn++) {
@@ -317,40 +302,100 @@ MlasQ4GemmKernelAvx512f(
     return CountM;
 }
 
-template<>
+template<typename Q4TYPE, typename KERNEL>
 MLAS_FORCEINLINE
 size_t
-MlasQ4GemmKernel<MLAS_Q4TYPE_BLK1,MLAS_FP_Q4_GEMM_KERNEL_DEFAULT>(
+MlasQ4GemmKernel(
+    const float* A,
+    const uint8_t* PackedB,
+    float* C,
     size_t CountM,
     size_t CountN,
     size_t CountK,
-    float* C,
-    size_t ldc,
-    const float* Bias,
-    const float* A,
     size_t lda,
-    const uint8_t* PackedB)
+    size_t ldb,
+    size_t ldc,
+    const float* Bias
+);
+
+template<>
+MLAS_FORCEINLINE
+size_t
+MlasQ4GemmKernel<MLAS_Q4TYPE_BLK1,MLAS_FP_Q4_GEMM_KERNEL_AVX512VNNI>(
+    const float* A,
+    const uint8_t* PackedB,
+    float* C,
+    size_t CountM,
+    size_t CountN,
+    size_t CountK,
+    size_t lda,
+    size_t ldb,
+    size_t ldc,
+    const float* Bias
+    )
 {
-    return MlasQ4GemmKernelAvx512f<MLAS_Q4TYPE_BLK1>(CountM, CountN, CountK, C, ldc, Bias, A, lda,
-                                                     PackedB);
+    return MlasQ4GemmKernelAvx512f<MLAS_Q4TYPE_BLK1>(A, PackedB, C, CountM, CountN, CountK, lda,
+                                                     ldb, ldc, Bias);
 }
 
 template<>
 MLAS_FORCEINLINE
 size_t
-MlasQ4GemmKernel<MLAS_Q4TYPE_BLK0, MLAS_FP_Q4_GEMM_KERNEL_DEFAULT>(
+MlasQ4GemmKernel<MLAS_Q4TYPE_BLK2,MLAS_FP_Q4_GEMM_KERNEL_AVX512VNNI>(
+    const float* A,
+    const uint8_t* PackedB,
+    float* C,
     size_t CountM,
     size_t CountN,
     size_t CountK,
-    float* C,
-    size_t ldc,
-    const float* Bias,
-    const float* A,
     size_t lda,
-    const uint8_t* PackedB)
+    size_t ldb,
+    size_t ldc,
+    const float* Bias
+    )
 {
-    return MlasQ4GemmKernelAvx512f<MLAS_Q4TYPE_BLK0>(CountM, CountN, CountK, C, ldc, Bias, A, lda,
-                                                     PackedB);
+    return MlasQ4GemmKernelAvx512f<MLAS_Q4TYPE_BLK2>(A, PackedB, C, CountM, CountN, CountK, lda,
+                                                     ldb, ldc, Bias);
+}
+
+template<>
+MLAS_FORCEINLINE
+size_t
+MlasQ4GemmKernel<MLAS_Q4TYPE_BLK4,MLAS_FP_Q4_GEMM_KERNEL_AVX512VNNI>(
+    const float* A,
+    const uint8_t* PackedB,
+    float* C,
+    size_t CountM,
+    size_t CountN,
+    size_t CountK,
+    size_t lda,
+    size_t ldb,
+    size_t ldc,
+    const float* Bias
+    )
+{
+    return MlasQ4GemmKernelAvx512f<MLAS_Q4TYPE_BLK4>(A, PackedB, C, CountM, CountN, CountK, lda,
+                                                     ldb, ldc, Bias);
+}
+
+template<>
+MLAS_FORCEINLINE
+size_t
+MlasQ4GemmKernel<MLAS_Q4TYPE_BLK0, MLAS_FP_Q4_GEMM_KERNEL_AVX512VNNI>(
+    const float* A,
+    const uint8_t* PackedB,
+    float* C,
+    size_t CountM,
+    size_t CountN,
+    size_t CountK,
+    size_t lda,
+    size_t ldb,
+    size_t ldc,
+    const float* Bias
+    )
+{
+    return MlasQ4GemmKernelAvx512f<MLAS_Q4TYPE_BLK0>(A, PackedB, C, CountM, CountN, CountK, lda,
+                                                     ldb, ldc, Bias);
 }
 
 
@@ -369,6 +414,7 @@ MlasQ4GemmOperation(
     const size_t ldc = DataParams->ldc;
 
     const size_t k_blks = MlasDivRoundup(K, (typename Q4TYPE::BlkLen));
+    const size_t ldb = k_blks * (typename Q4TYPE::BlobSize);
     const float* A = DataParams->A + RangeStartM * lda;
     const uint8_t* PackedB = (const uint8_t*)DataParams->B;
     float* C = DataParams->C + RangeStartM * ldc + RangeStartN;
@@ -386,14 +432,14 @@ MlasQ4GemmOperation(
         // Step through each slice of matrix A along the M dimension.
         //
         const float* bias = (Bias == nullptr) ? nullptr : Bias + RangeStartN + n;
-        const uint8_t* b_col = PackedB + (RangeStartN + n) * k_blks * (typename Q4TYPE::BlobSize);
+        const uint8_t* b_col = PackedB + (RangeStartN + n) * ldb;
         float* c_blk = C + n;
         const float* a_row = A;
 
         size_t RowsRemaining = RangeCountM;
         while (RowsRemaining > 0) {
-            auto RowsHandled =
-                MlasQ4GemmKernel<Q4TYPE, KERNEL>(RowsRemaining, CountN, K, c_blk, ldc, bias, a_row, lda, b_col);
+            auto RowsHandled = MlasQ4GemmKernel<Q4TYPE, KERNEL>(a_row, b_col, c_blk, RowsRemaining,
+                                                                CountN, K, lda, ldb, ldc, bias);
 
             if (DataParams->OutputProcessor != nullptr) {
                 DataParams->OutputProcessor->Process(
@@ -408,7 +454,27 @@ MlasQ4GemmOperation(
     }
 }
 
-/////////////////////////////////////////////////////////
+typedef
+void
+(MLAS_Q4GEMM_OPERATION)(
+    const size_t K,
+    const MLAS_Q4_GEMM_DATA_PARAMS* DataParams,
+    const size_t RangeStartM,
+    const size_t RangeCountM,
+    const size_t RangeStartN,
+    const size_t RangeCountN
+    );
+
+static MLAS_Q4GEMM_OPERATION* Q4Operations_avx512vnni[] = {
+    MlasQ4GemmOperation<MLAS_Q4TYPE_BLK0, MLAS_FP_Q4_GEMM_KERNEL_AVX512VNNI>,
+    MlasQ4GemmOperation<MLAS_Q4TYPE_BLK1, MLAS_FP_Q4_GEMM_KERNEL_AVX512VNNI>,
+    MlasQ4GemmOperation<MLAS_Q4TYPE_BLK2, MLAS_FP_Q4_GEMM_KERNEL_AVX512VNNI>,
+    nullptr,
+    MlasQ4GemmOperation<MLAS_Q4TYPE_BLK4, MLAS_FP_Q4_GEMM_KERNEL_AVX512VNNI>
+};
+
+
+////////////////////////////////////////////////////////////
 //  Block int8 quantization, currently we only
 //  implement symmetric quant, with no zero-point
 
@@ -506,6 +572,8 @@ MlasQ80BlkQuantSize(MLAS_BLK_QUANT_TYPE QType, size_t M, size_t K)
             return MlasQ80BlkQuantSizeImpl<MLAS_Q4TYPE_BLK1>(M, K);
         case BlkQ4Sym64:
             return MlasQ80BlkQuantSizeImpl<MLAS_Q4TYPE_BLK2>(M, K);
+        case BlkQ4Sym128:
+            return MlasQ80BlkQuantSizeImpl<MLAS_Q4TYPE_BLK4>(M, K);
         default:
             return MlasQ80BlkQuantSizeImpl<MLAS_Q4TYPE_BLK0>(M, K);
     }
@@ -552,15 +620,45 @@ MlasQ80BlkQuant(
             return Q80BlkQuant<MLAS_Q4TYPE_BLK1>(Qblob, A, M, K, lda, ThreadPool);
         case BlkQ4Sym64:
             return Q80BlkQuant<MLAS_Q4TYPE_BLK2>(Qblob, A, M, K, lda, ThreadPool);
+        case BlkQ4Sym128:
+            return Q80BlkQuant<MLAS_Q4TYPE_BLK4>(Qblob, A, M, K, lda, ThreadPool);
         default:
             return Q80BlkQuant<MLAS_Q4TYPE_BLK0>(Qblob, A, M, K, lda, ThreadPool);
     }
 }
 
+static
+MLAS_FORCEINLINE
+__m128
+FoldAccumulators(
+    const __m256& acc0,
+    const __m256& acc1,
+    const __m256& acc2,
+    const __m256& acc3
+    )
+{
+    __m256 acc_lo01 = _mm256_unpacklo_ps(acc0, acc1);
+    __m256 acc_hi01 = _mm256_unpackhi_ps(acc0, acc1);
+    __m256 acc_lo23 = _mm256_unpacklo_ps(acc2, acc3);
+    __m256 acc_hi23 = _mm256_unpackhi_ps(acc2, acc3);
 
+    __m256 acc_lo0123 = _mm256_castpd_ps(
+        _mm256_unpacklo_pd(_mm256_castps_pd(acc_lo01), _mm256_castps_pd(acc_lo23)));
+    __m256 acc_hi0123 = _mm256_castpd_ps(
+        _mm256_unpackhi_pd(_mm256_castps_pd(acc_lo01), _mm256_castps_pd(acc_lo23)));
+    acc_lo0123 = _mm256_add_ps(acc_lo0123, acc_hi0123);
+    acc_hi0123 = _mm256_castpd_ps(
+        _mm256_unpacklo_pd(_mm256_castps_pd(acc_hi01), _mm256_castps_pd(acc_hi23)));
+    acc_lo0123 = _mm256_add_ps(acc_lo0123, acc_hi0123);
+    acc_hi0123 = _mm256_castpd_ps(
+        _mm256_unpackhi_pd(_mm256_castps_pd(acc_hi01), _mm256_castps_pd(acc_hi23)));
+    acc_lo0123 = _mm256_add_ps(acc_lo0123, acc_hi0123);
+
+    return _mm_add_ps(_mm256_extractf32x4_ps(acc_lo0123, 0), _mm256_extractf32x4_ps(acc_lo0123, 1));
+}
 
 static inline float
-mm256_reduce_add_ps(__m256 x)
+mm256_reduce_add_ps(__m256& x)
 {
     /* ( x3+x7, x2+x6, x1+x5, x0+x4 ) */
     const __m128 x128 = _mm_add_ps(_mm256_extractf128_ps(x, 1), _mm256_castps256_ps128(x));
@@ -577,167 +675,180 @@ template<typename Q4Type>
 MLAS_FORCEINLINE
 size_t
 MlasQ8Q4GemmKernelAvx512f(
+    const int8_t* QuantA,
+    const uint8_t* PackedB,
+    float* C,
     size_t CountM,
     size_t CountN,
     size_t CountK,
-    float* C,
-    size_t ldc,
-    const float* Bias,
-    const int8_t* QuantA,
     size_t lda,
-    const uint8_t* PackedB
+    size_t ldb,
+    size_t ldc,
+    const float* Bias
     )
 {
+    // We process 32 quantized values in a batch.
+    static_assert(MLAS_QUANT4_BLK_UNIT == 32);
+    static_assert((typename Q4Type::BlkLen) % MLAS_QUANT4_BLK_UNIT == 0);
+
     const __m256i zero = _mm256_setzero_si256();
     const __m256i lowMask = _mm256_set1_epi8(0xF);
+    const __m256i eight = _mm256_set1_epi8(8);
 
     for (size_t m = 0; m < CountM; m++) {
-        const uint8_t* b = PackedB;
-
+        const uint8_t* b_col = PackedB;
         auto* sum_ptr = C;
         auto* bias_ptr = Bias;
-        int64_t nblk = (int64_t)(CountN) - MLAS_Q4_N_STRIDE;
+
+        int64_t nblk = (int64_t)(CountN) - 4;
         while (nblk >= 0) {
-            static_assert(MLAS_Q4_N_STRIDE == 4);
             __m256 acc_lo0 = _mm256_setzero_ps();
             __m256 acc_lo1 = _mm256_setzero_ps();
             __m256 acc_lo2 = _mm256_setzero_ps();
             __m256 acc_lo3 = _mm256_setzero_ps();
             const int8_t* ablob = QuantA;
+            const auto* b = b_col;
 
             for (size_t k = 0; k < CountK; k += (typename Q4Type::BlkLen)) {
                 const float a_scale = *reinterpret_cast<const float*>(ablob);
                 ablob += sizeof(float);
-                const __m256i a_bytes = _mm256_loadu_si256((const __m256i*)ablob);
-                ablob += 32;
+                const float scale_v0 = MlasQ4BlkScale<Q4Type>(b) * a_scale;
+                const float scale_v1 = MlasQ4BlkScale<Q4Type>(b + ldb) * a_scale;
+                const float scale_v2 = MlasQ4BlkScale<Q4Type>(b + ldb * 2) * a_scale;
+                const float scale_v3 = MlasQ4BlkScale<Q4Type>(b + ldb * 3) * a_scale;
 
-                // Load 4 B column vectors (quantized to int4 blobs)
-                const __m256 scale_v0 = _mm256_set1_ps(MlasQ4BlkScale<Q4Type>(b) * a_scale);
-                uint8_t zp0 = 8;
-                if constexpr (std::is_same_v<Q4Type, MLAS_Q4TYPE_BLK1>)
-                    zp0 = MlasQ4BlkZeroPoint<MLAS_Q4TYPE_BLK1>(b);
-                const __m128i bvi4_0 =
-                    _mm_loadu_si128((const __m128i*)MlasQ4BlkData<Q4Type>(b));
-                b += Q4Type::BlobSize;
+                const __m128i* b0ptr = (const __m128i*)MlasQ4BlkData<Q4Type>(b);
+                const __m128i* b1ptr = (const __m128i*)MlasQ4BlkData<Q4Type>(b + ldb);
+                const __m128i* b2ptr = (const __m128i*)MlasQ4BlkData<Q4Type>(b + ldb * 2);
+                const __m128i* b3ptr = (const __m128i*)MlasQ4BlkData<Q4Type>(b + ldb * 3);
 
-                const __m256 scale_v1 = _mm256_set1_ps(MlasQ4BlkScale<Q4Type>(b) * a_scale);
-                uint8_t zp1 = 8;
-                if constexpr (std::is_same_v<Q4Type, MLAS_Q4TYPE_BLK1>)
-                    zp1 = MlasQ4BlkZeroPoint<MLAS_Q4TYPE_BLK1>(b);
-                const __m128i bvi4_1 =
-                    _mm_loadu_si128((const __m128i*)MlasQ4BlkData<Q4Type>(b));
-                b += Q4Type::BlobSize;
+                for (size_t kk = 0; kk < typename Q4Type::BlkLen; kk += MLAS_QUANT4_BLK_UNIT) {
+                    // Load A row vector
+                    const __m256i a_bytes = _mm256_loadu_si256((const __m256i*)ablob);
+                    ablob += MLAS_QUANT4_BLK_UNIT;
 
-                const __m256 scale_v2 = _mm256_set1_ps(MlasQ4BlkScale<Q4Type>(b) * a_scale);
-                uint8_t zp2 = 8;
-                if constexpr (std::is_same_v<Q4Type, MLAS_Q4TYPE_BLK1>)
-                    zp2 = MlasQ4BlkZeroPoint<MLAS_Q4TYPE_BLK1>(b);
-                const __m128i bvi4_2 =
-                    _mm_loadu_si128((const __m128i*)MlasQ4BlkData<Q4Type>(b));
-                b += Q4Type::BlobSize;
+                    // Load 4 B column vectors (quantized to int4 blobs)
+                    const __m128i bvi4_0 = _mm_loadu_si128(b0ptr++);
+                    const __m128i bvi4_1 = _mm_loadu_si128(b1ptr++);
+                    const __m128i bvi4_2 = _mm_loadu_si128(b2ptr++);
+                    const __m128i bvi4_3 = _mm_loadu_si128(b3ptr++);
 
-                const __m256 scale_v3 = _mm256_set1_ps(MlasQ4BlkScale<Q4Type>(b) * a_scale);
-                uint8_t zp3 = 8;
-                if constexpr (std::is_same_v<Q4Type, MLAS_Q4TYPE_BLK1>)
-                    zp3 = MlasQ4BlkZeroPoint<MLAS_Q4TYPE_BLK1>(b);
-                const __m128i bvi4_3 =
-                    _mm_loadu_si128((const __m128i*)MlasQ4BlkData<Q4Type>(b));
-                b += Q4Type::BlobSize;
+                    // expand 4b into byte array
+                    __m256i bytes0 = _mm256_set_m128i(_mm_srli_epi16(bvi4_0, 4), bvi4_0);
+                    __m256i bytes1 = _mm256_set_m128i(_mm_srli_epi16(bvi4_1, 4), bvi4_1);
+                    __m256i bytes2 = _mm256_set_m128i(_mm_srli_epi16(bvi4_2, 4), bvi4_2);
+                    __m256i bytes3 = _mm256_set_m128i(_mm_srli_epi16(bvi4_3, 4), bvi4_3);
+                    bytes0 = _mm256_and_si256(lowMask, bytes0);
+                    bytes1 = _mm256_and_si256(lowMask, bytes1);
+                    bytes2 = _mm256_and_si256(lowMask, bytes2);
+                    bytes3 = _mm256_and_si256(lowMask, bytes3);
 
-                // expand 4b into byte array
-                __m256i bytes0 = _mm256_set_m128i(_mm_srli_epi16(bvi4_0, 4), bvi4_0);
-                __m256i bytes1 = _mm256_set_m128i(_mm_srli_epi16(bvi4_1, 4), bvi4_1);
-                __m256i bytes2 = _mm256_set_m128i(_mm_srli_epi16(bvi4_2, 4), bvi4_2);
-                __m256i bytes3 = _mm256_set_m128i(_mm_srli_epi16(bvi4_3, 4), bvi4_3);
-                bytes0 = _mm256_and_si256(lowMask, bytes0);
-                bytes1 = _mm256_and_si256(lowMask, bytes1);
-                bytes2 = _mm256_and_si256(lowMask, bytes2);
-                bytes3 = _mm256_and_si256(lowMask, bytes3);
-
-                // Subtract zero-point from the integers
-                bytes0 = _mm256_sub_epi8(bytes0, _mm256_set1_epi8(zp0));
-                bytes1 = _mm256_sub_epi8(bytes1, _mm256_set1_epi8(zp1));
-                bytes2 = _mm256_sub_epi8(bytes2, _mm256_set1_epi8(zp2));
-                bytes3 = _mm256_sub_epi8(bytes3, _mm256_set1_epi8(zp3));
-
-                // to use vnni unsigned x signed int, negate all negative
-                // b vals to make it all positive, and then also negate the
-                // corresponding a vals to compensate
-                const __m256i summed_pairs0 = _mm256_dpbusd_epi32(
-                    zero, _mm256_sign_epi8(bytes0, bytes0), _mm256_sign_epi8(a_bytes, bytes0));
-                const __m256i summed_pairs1 = _mm256_dpbusd_epi32(
-                    zero, _mm256_sign_epi8(bytes1, bytes1), _mm256_sign_epi8(a_bytes, bytes1));
-                const __m256i summed_pairs2 = _mm256_dpbusd_epi32(
-                    zero, _mm256_sign_epi8(bytes2, bytes2), _mm256_sign_epi8(a_bytes, bytes2));
-                const __m256i summed_pairs3 = _mm256_dpbusd_epi32(
-                    zero, _mm256_sign_epi8(bytes3, bytes3), _mm256_sign_epi8(a_bytes, bytes3));
-
-                const __m256 sums0 = _mm256_cvtepi32_ps(summed_pairs0);
-                const __m256 sums1 = _mm256_cvtepi32_ps(summed_pairs1);
-                const __m256 sums2 = _mm256_cvtepi32_ps(summed_pairs2);
-                const __m256 sums3 = _mm256_cvtepi32_ps(summed_pairs3);
-                acc_lo0 = _mm256_fmadd_ps(scale_v0, sums0, acc_lo0);
-                acc_lo1 = _mm256_fmadd_ps(scale_v1, sums1, acc_lo1);
-                acc_lo2 = _mm256_fmadd_ps(scale_v2, sums2, acc_lo2);
-                acc_lo3 = _mm256_fmadd_ps(scale_v3, sums3, acc_lo3);
-            }
-
-            __m128 acc_x = FoldAccumulators(acc_lo0, acc_lo1, acc_lo2, acc_lo3);
-
-            if (Bias != nullptr) {
-                acc_x = _mm_add_ps(acc_x, _mm_loadu_ps(bias_ptr));
-            }
-
-            _mm_store_ps(sum_ptr, acc_x);
-
-            sum_ptr += MLAS_Q4_N_STRIDE;
-            bias_ptr += MLAS_Q4_N_STRIDE;
-            nblk -= MLAS_Q4_N_STRIDE;
-        }
-
-        // left over columns less than 4 ?
-        nblk += MLAS_Q4_N_STRIDE;
-        if (nblk > 0) {
-            __m256 acc_lo[MLAS_Q4_N_STRIDE]{};
-            const int8_t* ablob = QuantA;
-
-            for (size_t k = 0; k < CountK; k += (typename Q4Type::BlkLen)) {
-                const float a_scale = *reinterpret_cast<const float*>(ablob);
-                ablob += sizeof(float);
-                const __m256i a_bytes = _mm256_loadu_si256((const __m256i*)ablob);
-                ablob += 32;
-
-                for (int64_t nn = 0; nn < nblk; nn++) {
-                    const __m256 scale_v = _mm256_set1_ps(MlasQ4BlkScale<Q4Type>(b) * a_scale);
-
-                    const __m128i bvi4 =
-                        _mm_loadu_si128((const __m128i*)MlasQ4BlkData<Q4Type>(b));
-                    __m256i b_bytes = _mm256_set_m128i(_mm_srli_epi16(bvi4, 4), bvi4);
-                    b_bytes = _mm256_and_si256(lowMask, b_bytes);
-
-                    if constexpr (std::is_same_v<Q4Type, MLAS_Q4TYPE_BLK1>)
-                    {
-                        // Subtract zero-point from the integers
-                        const uint8_t zp = MlasQ4BlkZeroPoint<MLAS_Q4TYPE_BLK1>(b);
-                        b_bytes = _mm256_sub_epi8(b_bytes, _mm256_set1_epi8(zp));
-                    }
-                    else {
-                        // Subtract 8 from the integers
-                        b_bytes = _mm256_sub_epi8(b_bytes, _mm256_set1_epi8(8));
+                    // Subtract zero-point from the integers
+                    if constexpr (std::is_same_v<Q4Type, MLAS_Q4TYPE_BLK1>) {
+                        bytes0 = _mm256_sub_epi8(
+                            bytes0, _mm256_set1_epi8(MlasQ4BlkZeroPoint<MLAS_Q4TYPE_BLK1>(b)));
+                        bytes1 = _mm256_sub_epi8(
+                            bytes1,
+                            _mm256_set1_epi8(MlasQ4BlkZeroPoint<MLAS_Q4TYPE_BLK1>(b + ldb)));
+                        bytes2 = _mm256_sub_epi8(
+                            bytes2,
+                            _mm256_set1_epi8(MlasQ4BlkZeroPoint<MLAS_Q4TYPE_BLK1>(b + ldb * 2)));
+                        bytes3 = _mm256_sub_epi8(
+                            bytes3,
+                            _mm256_set1_epi8(MlasQ4BlkZeroPoint<MLAS_Q4TYPE_BLK1>(b + ldb * 3)));
+                    } else {
+                        bytes0 = _mm256_sub_epi8(bytes0, eight);
+                        bytes1 = _mm256_sub_epi8(bytes1, eight);
+                        bytes2 = _mm256_sub_epi8(bytes2, eight);
+                        bytes3 = _mm256_sub_epi8(bytes3, eight);
                     }
 
                     // to use vnni unsigned x signed int, negate all negative
-                    // b vals to make it all positive, 
-                    const __m256i ax = _mm256_sign_epi8(b_bytes, b_bytes);
-                    // and then also negate the corresponding a vals to compensate
-                    const __m256i sy = _mm256_sign_epi8(a_bytes, b_bytes);
-                    const __m256i summed_pairs = _mm256_dpbusd_epi32(zero, ax, sy);
-                    const __m256 sum = _mm256_cvtepi32_ps(summed_pairs);
-                    acc_lo[nn] = _mm256_fmadd_ps(scale_v, sum, acc_lo[nn]);
+                    // b vals to make it all positive, and then also negate the
+                    // corresponding a vals to compensate
+                    const __m256i summed_pairs0 = _mm256_dpbusd_epi32(
+                        zero, _mm256_sign_epi8(bytes0, bytes0), _mm256_sign_epi8(a_bytes, bytes0));
+                    const __m256i summed_pairs1 = _mm256_dpbusd_epi32(
+                        zero, _mm256_sign_epi8(bytes1, bytes1), _mm256_sign_epi8(a_bytes, bytes1));
+                    const __m256i summed_pairs2 = _mm256_dpbusd_epi32(
+                        zero, _mm256_sign_epi8(bytes2, bytes2), _mm256_sign_epi8(a_bytes, bytes2));
+                    const __m256i summed_pairs3 = _mm256_dpbusd_epi32(
+                        zero, _mm256_sign_epi8(bytes3, bytes3), _mm256_sign_epi8(a_bytes, bytes3));
 
-                    b += typename Q4Type::BlobSize;
+                    const __m256 sums0 = _mm256_cvtepi32_ps(summed_pairs0);
+                    const __m256 sums1 = _mm256_cvtepi32_ps(summed_pairs1);
+                    const __m256 sums2 = _mm256_cvtepi32_ps(summed_pairs2);
+                    const __m256 sums3 = _mm256_cvtepi32_ps(summed_pairs3);
+                    acc_lo0 = _mm256_fmadd_ps(_mm256_set1_ps(scale_v0), sums0, acc_lo0);
+                    acc_lo1 = _mm256_fmadd_ps(_mm256_set1_ps(scale_v1), sums1, acc_lo1);
+                    acc_lo2 = _mm256_fmadd_ps(_mm256_set1_ps(scale_v2), sums2, acc_lo2);
+                    acc_lo3 = _mm256_fmadd_ps(_mm256_set1_ps(scale_v3), sums3, acc_lo3);
                 }
-                b += (MLAS_Q4_N_STRIDE - nblk) * (typename Q4Type::BlobSize);
+                b += Q4Type::BlobSize;
+            }
+
+            __m128 acc_x = FoldAccumulators(acc_lo0, acc_lo1, acc_lo2, acc_lo3);
+            if (Bias != nullptr) {
+                acc_x = _mm_add_ps(acc_x, _mm_loadu_ps(bias_ptr));
+            }
+            _mm_store_ps(sum_ptr, acc_x);
+
+            // move to next 4 columns
+            b_col += 4 * ldb;
+            sum_ptr += 4;
+            bias_ptr += 4;
+            nblk -= 4;
+        }
+
+        // left over columns less than 4 ?
+        nblk += 4;
+        if (nblk > 0) {
+            __m256 acc_lo[4]{};
+            const int8_t* ablob = QuantA;
+            const auto* b = b_col;
+
+            for (size_t k = 0; k < CountK; k += (typename Q4Type::BlkLen)) {
+                const float a_scale = *reinterpret_cast<const float*>(ablob);
+                ablob += sizeof(float);
+
+                float scale_v[4];
+                const __m128i* b_ptr[4];
+                for (int64_t nn = 0; nn < nblk; nn++) {
+                    const auto* bb = b + ldb * nn;
+                    scale_v[nn] = MlasQ4BlkScale<Q4Type>(bb) * a_scale;
+                    b_ptr[nn] = (const __m128i*)MlasQ4BlkData<Q4Type>(bb);
+                }
+
+                for (size_t kk = 0; kk < typename Q4Type::BlkLen; kk += MLAS_QUANT4_BLK_UNIT) {
+                    const __m256i a_bytes = _mm256_loadu_si256((const __m256i*)ablob);
+                    ablob += MLAS_QUANT4_BLK_UNIT;
+
+                    for (int64_t nn = 0; nn < nblk; nn++) {
+                        const __m128i bvi4 = _mm_loadu_si128(b_ptr[nn]++);
+                        __m256i b_bytes = _mm256_set_m128i(_mm_srli_epi16(bvi4, 4), bvi4);
+                        b_bytes = _mm256_and_si256(lowMask, b_bytes);
+
+                        if constexpr (std::is_same_v<Q4Type, MLAS_Q4TYPE_BLK1>) {
+                            // Subtract zero-point from the integers
+                            const auto* bb = b + ldb * nn;
+                            const uint8_t zp = MlasQ4BlkZeroPoint<MLAS_Q4TYPE_BLK1>(bb);
+                            b_bytes = _mm256_sub_epi8(b_bytes, _mm256_set1_epi8(zp));
+                        } else {
+                            // Subtract 8 from the integers
+                            b_bytes = _mm256_sub_epi8(b_bytes, eight);
+                        }
+
+                        // to use vnni unsigned x signed int, negate all negative
+                        // b vals to make it all positive,
+                        const __m256i ax = _mm256_sign_epi8(b_bytes, b_bytes);
+                        // and then also negate the corresponding a vals to compensate
+                        const __m256i sy = _mm256_sign_epi8(a_bytes, b_bytes);
+                        const __m256i summed_pairs = _mm256_dpbusd_epi32(zero, ax, sy);
+                        const __m256 sum = _mm256_cvtepi32_ps(summed_pairs);
+                        acc_lo[nn] = _mm256_fmadd_ps(_mm256_set1_ps(scale_v[nn]), sum, acc_lo[nn]);
+                    }
+                }
+                b += typename Q4Type::BlobSize;
             }
 
             for (int64_t nn = 0; nn < nblk; nn++) {
@@ -757,51 +868,97 @@ template<typename Q4TYPE, typename KERNEL>
 MLAS_FORCEINLINE
 size_t
 MlasQ8Q4GemmKernel(
+    const int8_t* QuantA,
+    const uint8_t* PackedB,
+    float* C,
     size_t CountM,
     size_t CountN,
     size_t CountK,
-    float* C,
-    size_t ldc,
-    const float* Bias,
-    const int8_t* QuantA,
     size_t lda,
-    const uint8_t* PackedB);
+    size_t ldb,
+    size_t ldc,
+    const float* Bias
+    );
 
 
 template<>
 MLAS_FORCEINLINE
 size_t
-MlasQ8Q4GemmKernel<MLAS_Q4TYPE_BLK1,MLAS_FP_Q4_GEMM_KERNEL_DEFAULT>(
+MlasQ8Q4GemmKernel<MLAS_Q4TYPE_BLK1,MLAS_FP_Q4_GEMM_KERNEL_AVX512VNNI>(
+    const int8_t* QuantA,
+    const uint8_t* PackedB,
+    float* C,
     size_t CountM,
     size_t CountN,
     size_t CountK,
-    float* C,
-    size_t ldc,
-    const float* Bias,
-    const int8_t* QuantA,
     size_t lda,
-    const uint8_t* PackedB)
+    size_t ldb,
+    size_t ldc,
+    const float* Bias
+    )
 {
-    return MlasQ8Q4GemmKernelAvx512f<MLAS_Q4TYPE_BLK1>(CountM, CountN, CountK, C, ldc, Bias, QuantA,
-                                                       lda, PackedB);
+    return MlasQ8Q4GemmKernelAvx512f<MLAS_Q4TYPE_BLK1>(QuantA, PackedB, C, CountM, CountN, CountK,
+                                                       lda, ldb, ldc, Bias);
 }
 
 template<>
 MLAS_FORCEINLINE
 size_t
-MlasQ8Q4GemmKernel<MLAS_Q4TYPE_BLK0, MLAS_FP_Q4_GEMM_KERNEL_DEFAULT>(
+MlasQ8Q4GemmKernel<MLAS_Q4TYPE_BLK0, MLAS_FP_Q4_GEMM_KERNEL_AVX512VNNI>(
+    const int8_t* QuantA,
+    const uint8_t* PackedB,
+    float* C,
     size_t CountM,
     size_t CountN,
     size_t CountK,
-    float* C,
-    size_t ldc,
-    const float* Bias,
-    const int8_t* QuantA,
     size_t lda,
-    const uint8_t* PackedB)
+    size_t ldb,
+    size_t ldc,
+    const float* Bias
+    )
 {
-    return MlasQ8Q4GemmKernelAvx512f<MLAS_Q4TYPE_BLK0>(CountM, CountN, CountK, C, ldc, Bias, QuantA, lda,
-                                                     PackedB);
+    return MlasQ8Q4GemmKernelAvx512f<MLAS_Q4TYPE_BLK0>(QuantA, PackedB, C, CountM, CountN, CountK,
+                                                       lda, ldb, ldc, Bias);
+}
+
+template<>
+MLAS_FORCEINLINE
+size_t
+MlasQ8Q4GemmKernel<MLAS_Q4TYPE_BLK2, MLAS_FP_Q4_GEMM_KERNEL_AVX512VNNI>(
+    const int8_t* QuantA,
+    const uint8_t* PackedB,
+    float* C,
+    size_t CountM,
+    size_t CountN,
+    size_t CountK,
+    size_t lda,
+    size_t ldb,
+    size_t ldc,
+    const float* Bias
+    )
+{
+    return MlasQ8Q4GemmKernelAvx512f<MLAS_Q4TYPE_BLK2>(QuantA, PackedB, C, CountM, CountN, CountK,
+                                                       lda, ldb, ldc, Bias);
+}
+
+template<>
+MLAS_FORCEINLINE
+size_t
+MlasQ8Q4GemmKernel<MLAS_Q4TYPE_BLK4, MLAS_FP_Q4_GEMM_KERNEL_AVX512VNNI>(
+    const int8_t* QuantA,
+    const uint8_t* PackedB,
+    float* C,
+    size_t CountM,
+    size_t CountN,
+    size_t CountK,
+    size_t lda,
+    size_t ldb,
+    size_t ldc,
+    const float* Bias
+    )
+{
+    return MlasQ8Q4GemmKernelAvx512f<MLAS_Q4TYPE_BLK4>(QuantA, PackedB, C, CountM, CountN, CountK,
+                                                       lda, ldb, ldc, Bias);
 }
 
 
@@ -817,6 +974,7 @@ MlasQ8Q4GemmOperation(
 )
 {
     const size_t k_blks = MlasDivRoundup(K, (typename Q4TYPE::BlkLen));
+    const size_t ldb = k_blks * (typename Q4TYPE::BlobSize);
     const size_t lda = k_blks * Q8BlobUnitSize<Q4TYPE>();
     const size_t ldc = DataParams->ldc;
 
@@ -837,14 +995,14 @@ MlasQ8Q4GemmOperation(
         // Step through each slice of matrix A along the M dimension.
         //
         const float* bias = (Bias == nullptr) ? nullptr : Bias + RangeStartN + n;
-        const uint8_t* b_col = PackedB + (RangeStartN + n) * k_blks * (typename Q4TYPE::BlobSize);
+        const uint8_t* b_col = PackedB + (RangeStartN + n) * ldb;
         float* c_blk = C + n;
         const int8_t* a_row = A;
 
         size_t RowsRemaining = RangeCountM;
         while (RowsRemaining > 0) {
-            auto RowsHandled =
-                MlasQ8Q4GemmKernel<Q4TYPE, KERNEL>(RowsRemaining, CountN, K, c_blk, ldc, bias, a_row, lda, b_col);
+            auto RowsHandled = MlasQ8Q4GemmKernel<Q4TYPE, KERNEL>(
+                a_row, b_col, c_blk, RowsRemaining, CountN, K, lda, ldb, ldc, bias);
 
             if (DataParams->OutputProcessor != nullptr) {
                 DataParams->OutputProcessor->Process(
@@ -859,6 +1017,24 @@ MlasQ8Q4GemmOperation(
     }
 }
 
+typedef
+void
+(MLAS_Q8Q4GEMM_OPERATION)(
+    const size_t K,
+    const MLAS_Q8Q4_GEMM_DATA_PARAMS* DataParams,
+    const size_t RangeStartM,
+    const size_t RangeCountM,
+    const size_t RangeStartN,
+    const size_t RangeCountN
+    );
+
+static MLAS_Q8Q4GEMM_OPERATION* Q8Q4Operations_avx512vnni[] = {
+    MlasQ8Q4GemmOperation<MLAS_Q4TYPE_BLK0, MLAS_FP_Q4_GEMM_KERNEL_AVX512VNNI>,
+    MlasQ8Q4GemmOperation<MLAS_Q4TYPE_BLK1, MLAS_FP_Q4_GEMM_KERNEL_AVX512VNNI>,
+    MlasQ8Q4GemmOperation<MLAS_Q4TYPE_BLK2, MLAS_FP_Q4_GEMM_KERNEL_AVX512VNNI>,
+    nullptr,
+    MlasQ8Q4GemmOperation<MLAS_Q4TYPE_BLK4, MLAS_FP_Q4_GEMM_KERNEL_AVX512VNNI>
+};
 
 template<typename ParamBlockType>
 MLAS_FORCEINLINE
@@ -880,14 +1056,10 @@ MlasQ4GemmBatchDriver(
 
     if constexpr (std::is_same_v<ParamBlockType, MLAS_Q4_GEMM_DATA_PARAMS>)
     {
-        operation = QType == BlkQ4Sym
-                        ? MlasQ4GemmOperation<MLAS_Q4TYPE_BLK0, MLAS_FP_Q4_GEMM_KERNEL_DEFAULT>
-                        : MlasQ4GemmOperation<MLAS_Q4TYPE_BLK1, MLAS_FP_Q4_GEMM_KERNEL_DEFAULT>;
+        operation = Q4Operations_avx512vnni[QType];
     }
     else {
-        operation = QType == BlkQ4Sym
-                        ? MlasQ8Q4GemmOperation<MLAS_Q4TYPE_BLK0, MLAS_FP_Q4_GEMM_KERNEL_DEFAULT>
-                        : MlasQ8Q4GemmOperation<MLAS_Q4TYPE_BLK1, MLAS_FP_Q4_GEMM_KERNEL_DEFAULT>;
+        operation = Q8Q4Operations_avx512vnni[QType];
     }
 
     if (ThreadPool == nullptr) {
@@ -918,7 +1090,7 @@ MlasQ4GemmBatchDriver(
         ThreadsPerGemm = 1;
     }
 
-    const size_t StrideM = 4;  // dispatch->StrideM;
+    const size_t StrideM = 512;
 
     size_t nc = N;
     if (ThreadsPerGemm > 1) {
@@ -927,7 +1099,7 @@ MlasQ4GemmBatchDriver(
         const size_t BlockedM = MlasDivRoundup(M, StrideM);
         const size_t max_nc = MlasDivRoundup(N * BlockedM, ThreadsPerGemm);
         if (max_nc < nc) {
-            nc = std::min(nc, MlasDivRoundup(nc, max_nc * MLAS_QGEMM_STRIDEN_THREAD_ALIGN) *
+            nc = std::min(nc, MlasDivRoundup(max_nc, MLAS_QGEMM_STRIDEN_THREAD_ALIGN) *
                                   MLAS_QGEMM_STRIDEN_THREAD_ALIGN);
         }
     }

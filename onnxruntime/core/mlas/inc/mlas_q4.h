@@ -29,10 +29,11 @@ Abstract:
  * @brief Define types of block quantization
  */
 typedef enum {
-    BlkQ4Sym = 0,   /*!< int4 Symmetric Block Quantization, zero_point = 0 */
-    BlkQ4Zp8 = 1,   /*!< int4 Block Quantization, zero_point is int8 type */
-    BlkQ4Sym64 = 2  /*!< int4 Symmetric Block Quantization, 64 values per block*/
-}MLAS_BLK_QUANT_TYPE;
+    BlkQ4Sym = 0,    /*!< int4 Symmetric Block Quantization, zero_point = 0 */
+    BlkQ4Zp8 = 1,    /*!< int4 Block Quantization, zero_point is int8 type */
+    BlkQ4Sym64 = 2,  /*!< int4 Symmetric Block Quantization, 64 values per block*/
+    BlkQ4Sym128 = 4  /*!< int4 Symmetric Block Quantization, 128 values per block*/
+} MLAS_BLK_QUANT_TYPE;
 
 /**
  * @brief Computs the number of bytes required to pack and int4-quantize

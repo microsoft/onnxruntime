@@ -32,31 +32,28 @@ CloseEnough(float actual, float expected) {
   return ratio < 0.005;
 }
 
-#define QK8_0 32
-typedef struct {
-  float d;           // delta
-  int8_t qs[QK8_0];  // quants
-} block_q8_0;
-
+template<size_t QBlkLen>
 static void blkq8_dequant_reference(const int8_t* src, float* dst, size_t M, size_t K) {
-  const size_t num_blks = K / QK8_0;
-  const block_q8_0* blob = reinterpret_cast<const block_q8_0*>(src);
+  const size_t num_blks = K / QBlkLen;
+  const size_t remain = K % QBlkLen;
+  const auto* blob = reinterpret_cast<const int8_t*>(src);
 
   for (size_t m = 0; m < M; m++) {
-    for (size_t i = 0; i < num_blks; i++, blob++, dst += QK8_0) {
-      const float scale = blob->d;
-      for (int j = 0; j < QK8_0; ++j) {
-        dst[j] = blob->qs[j] * scale;
+    for (size_t i = 0; i < num_blks; i++, dst += QBlkLen) {
+      const float scale = *reinterpret_cast<const float*>(blob);
+      blob += sizeof(float);
+      for (size_t j = 0; j < QBlkLen; ++j) {
+        dst[j] = *(blob++) * scale;
       }
     }
 
-    const size_t remain = K % QK8_0;
     if (remain > 0) {
-      const float scale = blob->d;
+      const float scale = *reinterpret_cast<const float*>(blob);
+      blob += sizeof(float);
       for (int j = 0; j < remain; ++j) {
-        dst[j] = blob->qs[j] * scale;
+        dst[j] = blob[j] * scale;
       }
-      blob++;
+      blob += QBlkLen;
       dst += remain;
     }
   }
@@ -133,7 +130,17 @@ class MlasQ8Q4GemmTest : public MlasTestBase {
     MlasQ4GemmUnPackB(QType, bdata, PackedB, N, K, N);
 
     float* adata = BufferDequantA.GetBuffer(M * K);
-    blkq8_dequant_reference(QuantA, adata, M, K);
+    switch (QType) {
+      case BlkQ4Sym64:
+        blkq8_dequant_reference<64>(QuantA, adata, M, K);
+        break;
+      case BlkQ4Sym128:
+        blkq8_dequant_reference<128>(QuantA, adata, M, K);
+        break;
+      default:
+        blkq8_dequant_reference<32>(QuantA, adata, M, K);
+        break;
+    }
 
     for (size_t m = 0; m < M; m++) {
       for (size_t n = 0; n < N; n++) {
@@ -187,8 +194,13 @@ class MlasQ8Q4GemmTest : public MlasTestBase {
 
  public:
   static const char* GetTestSuiteName() {
-    static const std::vector<std::string> qtype_names = {"BlkQ4Sym",
-                                                         "BlkQ4Zp8"};
+    /*
+          BlkQ4Sym = 0,
+          BlkQ4Zp8 = 1,
+          BlkQ4Sym64 = 2,
+          BlkQ4Sym128 = 4
+    */
+    static const std::vector<std::string> qtype_names = {"BlkQ4Sym", "BlkQ4Zp8", "BlkQ4Sym64", "", "BlkQ4Sym128"};
     static std::string suite_name = std::string("Q8Q4GemmFP") +
                                     qtype_names[QType] +
                                     (Threaded ? "_Threaded" : "_SingleThread");
@@ -268,6 +280,10 @@ template <>
 MlasQ8Q4GemmTest<BlkQ4Zp8, false>* MlasTestFixture<MlasQ8Q4GemmTest<BlkQ4Zp8, false>>::mlas_tester(nullptr);
 template <>
 MlasQ8Q4GemmTest<BlkQ4Zp8, true>* MlasTestFixture<MlasQ8Q4GemmTest<BlkQ4Zp8, true>>::mlas_tester(nullptr);
+template <>
+MlasQ8Q4GemmTest<BlkQ4Sym128, false>* MlasTestFixture<MlasQ8Q4GemmTest<BlkQ4Sym128, false>>::mlas_tester(nullptr);
+template <>
+MlasQ8Q4GemmTest<BlkQ4Sym128, true>* MlasTestFixture<MlasQ8Q4GemmTest<BlkQ4Sym128, true>>::mlas_tester(nullptr);
 
 static size_t Q8Q4GemmRegistShortExecute() {
   size_t count = 0;
@@ -276,6 +292,8 @@ static size_t Q8Q4GemmRegistShortExecute() {
   count += Q8Q4GemmShortExecuteTest<BlkQ4Sym, true>::RegisterShortExecuteTests();
   count += Q8Q4GemmShortExecuteTest<BlkQ4Zp8, false>::RegisterShortExecuteTests();
   count += Q8Q4GemmShortExecuteTest<BlkQ4Zp8, true>::RegisterShortExecuteTests();
+  count += Q8Q4GemmShortExecuteTest<BlkQ4Sym128, false>::RegisterShortExecuteTests();
+  count += Q8Q4GemmShortExecuteTest<BlkQ4Sym128, true>::RegisterShortExecuteTests();
 
   return count;
 }

@@ -10,12 +10,12 @@ Module Name:
 
 Abstract:
 
-    Contains the common structures and code for blocked int4 quantization
-    and dequantization.
+    Define int4 block quantization types.
 
     Int4 block quantization is used to compress weight tensors of large
-    language models.
-
+    language models. It takes a number (must be multiple of 32) of floating
+    point values, calculates their quantization parameters, and saves
+    the parameters and the quantized data in a blob.
 --*/
 
 #include "mlas_q4.h"
@@ -28,12 +28,20 @@ Abstract:
 // Functions for locating data from a quantized blob
 //
 template<typename T> 
+MLAS_FORCEINLINE
 float&
-MlasQ4BlkScale(uint8_t* BlkPtr);
+MlasQ4BlkScale(uint8_t* BlkPtr)
+{
+    return *reinterpret_cast<float*>(BlkPtr);
+}
 
 template <typename T>
+MLAS_FORCEINLINE
 float
-MlasQ4BlkScale(const uint8_t* BlkPtr);
+MlasQ4BlkScale(const uint8_t* BlkPtr)
+{
+    return *reinterpret_cast<const float*>(BlkPtr);
+}
 
 template <typename T>
 uint8_t&
@@ -44,17 +52,26 @@ uint8_t
 MlasQ4BlkZeroPoint(const uint8_t* BlkPtr);
 
 template <typename T>
+MLAS_FORCEINLINE
 uint8_t*
-MlasQ4BlkData(uint8_t* BlkPtr);
+MlasQ4BlkData(uint8_t* BlkPtr)
+{
+    return BlkPtr + sizeof(float);
+}
 
 template <typename T>
+MLAS_FORCEINLINE
 const uint8_t*
-MlasQ4BlkData(const uint8_t* BlkPtr);
+MlasQ4BlkData(const uint8_t* BlkPtr)
+{
+    return BlkPtr + sizeof(float);
+}
 
 /**
- * @brief 32 numbers per quantization block
+ * @brief Every block quantization type, its block size (BlkLen)
+ *        Must be multiple of 32!
  */
-constexpr size_t MLAS_QUANT4_BLK_LEN = 32;
+constexpr size_t MLAS_QUANT4_BLK_UNIT = 32;
 
 /**
  * @brief Representing int4 quantize type, block quant type 0:
@@ -64,38 +81,9 @@ constexpr size_t MLAS_QUANT4_BLK_LEN = 32;
  * into int4. The resulting blob takes 16 + 4 = 20 bytes.
  */
 struct MLAS_Q4TYPE_BLK0 {
-    static constexpr size_t BlkLen = MLAS_QUANT4_BLK_LEN;
+    static constexpr size_t BlkLen = MLAS_QUANT4_BLK_UNIT;
     static constexpr size_t BlobSize = BlkLen / 2 + sizeof(float);
 };
-
-template <>
-inline float&
-MlasQ4BlkScale<MLAS_Q4TYPE_BLK0>(uint8_t* BlkPtr)
-{
-    return *reinterpret_cast<float*>(BlkPtr);
-}
-
-template <>
-inline float
-MlasQ4BlkScale<MLAS_Q4TYPE_BLK0>(const uint8_t* BlkPtr)
-{
-    return *reinterpret_cast<const float*>(BlkPtr);
-}
-
-template <>
-inline uint8_t*
-MlasQ4BlkData<MLAS_Q4TYPE_BLK0>(uint8_t* BlkPtr)
-{
-    return BlkPtr + sizeof(float);
-}
-
-template <>
-inline const uint8_t*
-MlasQ4BlkData<MLAS_Q4TYPE_BLK0>(const uint8_t* BlkPtr)
-{
-    return BlkPtr + sizeof(float);
-}
-
 
 /**
  * @brief Representing int4 quantize type, block quant type 1:
@@ -103,25 +91,14 @@ MlasQ4BlkData<MLAS_Q4TYPE_BLK0>(const uint8_t* BlkPtr)
  * Block size 32, use 32 fp32 numbers to find quantization parameter:
  * scale (fp 32) and zero point (int8), and then quantize the numbers
  * into int4. The resulting blob takes 16 + 5 = 21 bytes.
+ * 
+ * So far this is the only type that includes a zero-point value.
+ * Maybe we should consider store the quantization parameters seperatedly.
  */
 struct MLAS_Q4TYPE_BLK1 {
-    static constexpr size_t BlkLen = MLAS_QUANT4_BLK_LEN;
+    static constexpr size_t BlkLen = MLAS_QUANT4_BLK_UNIT;
     static constexpr size_t BlobSize = BlkLen / 2 + sizeof(float) + sizeof(uint8_t);
 };
-
-template<>
-inline float&
-MlasQ4BlkScale<MLAS_Q4TYPE_BLK1>(uint8_t* BlkPtr)
-{
-    return *reinterpret_cast<float*>(BlkPtr);
-}
-
-template<>
-inline float
-MlasQ4BlkScale<MLAS_Q4TYPE_BLK1>(const uint8_t* BlkPtr)
-{
-    return *reinterpret_cast<const float*>(BlkPtr);
-}
 
 template<>
 inline uint8_t&
@@ -151,7 +128,6 @@ MlasQ4BlkData<MLAS_Q4TYPE_BLK1>(const uint8_t* BlkPtr)
     return BlkPtr + sizeof(float) + sizeof(uint8_t);
 }
 
-
 /**
  * @brief Representing int4 quantize type, block quant type 2:
  *
@@ -160,50 +136,19 @@ MlasQ4BlkData<MLAS_Q4TYPE_BLK1>(const uint8_t* BlkPtr)
  * into int4. The resulting blob takes 32 + 4 = 36 bytes.
  */
 struct MLAS_Q4TYPE_BLK2 {
-    static constexpr size_t BlkLen = 64;
+    static constexpr size_t BlkLen = MLAS_QUANT4_BLK_UNIT * 2;
     static constexpr size_t BlobSize = BlkLen / 2 + sizeof(float);
 };
 
-template <>
-inline float&
-MlasQ4BlkScale<MLAS_Q4TYPE_BLK2>(uint8_t* BlkPtr)
-{
-    return *reinterpret_cast<float*>(BlkPtr);
-}
 
-template <>
-inline float
-MlasQ4BlkScale<MLAS_Q4TYPE_BLK2>(const uint8_t* BlkPtr)
-{
-    return *reinterpret_cast<const float*>(BlkPtr);
-}
-
-template <>
-inline uint8_t*
-MlasQ4BlkData<MLAS_Q4TYPE_BLK2>(uint8_t* BlkPtr)
-{
-    return BlkPtr + sizeof(float);
-}
-
-template <>
-inline const uint8_t*
-MlasQ4BlkData<MLAS_Q4TYPE_BLK2>(const uint8_t* BlkPtr)
-{
-    return BlkPtr + sizeof(float);
-}
-
-//
-// Quantization and Packing
-//
-// Since block quantization is used for compress large language model weights,
-// it is usually used as the right hand side in matrix multiplications. So
-// we can just perform quantize and packing together to help accelerate
-// matrix multiplication.
-//
-// We take a tiles of 32 row and 4 column, transpose it, and quantize it
-// into 4 blocks. So numbers in quantized block are from the same column.
-// This is different from other int4 block quantization, where the numbers
-// in a block are from the same row.
-//
-
-constexpr size_t MLAS_Q4_N_STRIDE = 4;
+/**
+ * @brief Representing int4 quantize type, block quant type 4:
+ *
+ * Block size 128, use 128 fp32 numbers to find quantization parameter:
+ * scale (fp 32) and no zero point, then quantize the numbers
+ * into int4. The resulting blob takes 32 + 4 = 36 bytes.
+ */
+struct MLAS_Q4TYPE_BLK4 {
+    static constexpr size_t BlkLen = MLAS_QUANT4_BLK_UNIT * 4;
+    static constexpr size_t BlobSize = BlkLen / 2 + sizeof(float);
+};

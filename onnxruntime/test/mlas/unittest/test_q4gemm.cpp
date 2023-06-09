@@ -89,6 +89,10 @@ template <>
 MlasQ4GemmTest<BlkQ4Zp8, false>* MlasTestFixture<MlasQ4GemmTest<BlkQ4Zp8, false>>::mlas_tester(nullptr);
 template <>
 MlasQ4GemmTest<BlkQ4Zp8, true>* MlasTestFixture<MlasQ4GemmTest<BlkQ4Zp8, true>>::mlas_tester(nullptr);
+template <>
+MlasQ4GemmTest<BlkQ4Sym128, false>* MlasTestFixture<MlasQ4GemmTest<BlkQ4Sym128, false>>::mlas_tester(nullptr);
+template <>
+MlasQ4GemmTest<BlkQ4Sym128, true>* MlasTestFixture<MlasQ4GemmTest<BlkQ4Sym128, true>>::mlas_tester(nullptr);
 
 
 static size_t Q4GemmRegistShortExecute() {
@@ -98,6 +102,8 @@ static size_t Q4GemmRegistShortExecute() {
   count += Q4GemmShortExecuteTest<BlkQ4Sym, true>::RegisterShortExecuteTests();
   count += Q4GemmShortExecuteTest<BlkQ4Zp8, false>::RegisterShortExecuteTests();
   count += Q4GemmShortExecuteTest<BlkQ4Zp8, true>::RegisterShortExecuteTests();
+  count += Q4GemmShortExecuteTest<BlkQ4Sym128, false>::RegisterShortExecuteTests();
+  count += Q4GemmShortExecuteTest<BlkQ4Sym128, true>::RegisterShortExecuteTests();
 
   return count;
 }
