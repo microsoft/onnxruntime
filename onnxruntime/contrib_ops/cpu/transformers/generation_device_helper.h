@@ -222,7 +222,8 @@ using FinalizeDecoderCrossQKFunc = std::function<Status(
     const float* cross_qk_buffer_data,
     float* cross_qk_output,
     int num_return_sequences,
-    const int* cache_indir_data)>;
+    const int* cache_indir_data,
+    gsl::span<const int32_t> beam_indices)>;
 
 }  // namespace GenerationDeviceHelper
 
@@ -413,7 +414,8 @@ Status FinalizeDecoderCrossQK(
     const float* cross_qk_buffer_data,
     float* cross_qk_output,
     int num_return_sequences,
-    const int* cache_indir_data
+    const int* cache_indir_data,
+    gsl::span<const int32_t> beam_indices
 );
 
 }  // namespace GenerationCpuDeviceHelper
