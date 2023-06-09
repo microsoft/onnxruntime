@@ -203,16 +203,6 @@ def chain_model(args):
         no_speech_probs = helper.make_tensor_value_info("no_speech_probs", TensorProto.FLOAT, ["batch_size"])
         graph_outputs.extend([no_speech_probs])
 
-        prob_cast_node = helper.make_node(
-            "Cast",
-            inputs=["no_speech_probs_beam"],
-            outputs=["no_speech_probs"],
-            name="no_speech_probs_cast_to_fp32",
-            to=TensorProto.FLOAT,
-        )
-
-        all_nodes.extend([prob_cast_node])
-
     if hasattr(args, "use_gpu") and args.use_gpu:
         if update_decoder_subgraph_share_buffer_and_use_decoder_masked_mha(decoder_model.graph):
             logger.info("Updated whisper decoder subgraph to use DecoderMaskedMultiHeadAttention successfully!")
@@ -238,7 +228,17 @@ def chain_model(args):
         if args.precision == Precision.FLOAT16
         else [node]
     )
-    beam_graph = helper.make_graph(graph_nodes, "beam-search-test", graph_inputs, graph_outputs, initializers)
+    if args.output_no_speech_probs:
+        prob_cast_node = helper.make_node(
+            "Cast",
+            inputs=["no_speech_probs_beam"],
+            outputs=["no_speech_probs"],
+            name="no_speech_probs_cast_to_fp32",
+            to=TensorProto.FLOAT,
+        )
+        graph_nodes.extend([prob_cast_node])
+
+    beam_graph = helper.make_graph(all_nodes, "beam-search-test", graph_inputs, graph_outputs, initializers)
     beam_graph_input_names = [gi.name for gi in graph_inputs]
     beam_graph_output_names = [go.name for go in graph_outputs]
 
