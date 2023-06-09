@@ -179,7 +179,6 @@ struct IGenerationParameters {
 
   bool decoder_output_cross_qk = false;
   gsl::span<const int32_t> extra_decoding_ids;
-  bool extra_decoding_round = false;
   int32_t no_speech_token = -1;
   void* no_speech_probs = nullptr;
 };
