@@ -448,11 +448,17 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
                                          cudaMemcpyHostToDevice, cuda_stream));
   }
 
+  // NOTE: currently we treat extra decoding ids are same
+  int extra_decoding_len = static_cast<int>(parameters->extra_decoding_ids.size() / parameters->batch_size);
+  const bool need_handle_extra_decoding_ids = is_whisper_model
+                                               && (!parameters->extra_decoding_ids.empty())
+                                               && (extra_decoding_len >= step);
+
   cuda::LaunchLogitsProcessKernel<float>(
       next_token_scores.data(),
       parameters->vocab_mask.data(),
-      step > 1 ? nullptr : parameters->prefix_vocab_mask.data(),  // prefix vocab mask is applied to first step only.
-      nullptr,                                                    // parameters->presence_mask.data(),
+      (step > extra_decoding_len + 1) ? nullptr : parameters->prefix_vocab_mask.data(),  // prefix vocab mask is applied to first step only.
+      nullptr,                                                                           // parameters->presence_mask.data(),
       parameters->presence_penalty,
       parameters->temperature,
       parameters->batch_size,
@@ -493,11 +499,7 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
     //                                      cuda_stream));
   }
 
-  const bool need_handle_extra_decoding_ids =
-    is_whisper_model && (!parameters->extra_decoding_ids.empty()) &&
-    (static_cast<int64_t>(parameters->extra_decoding_ids.size() / parameters->batch_size) >= step);
-
-  if (need_handle_extra_decoding_ids) {
+  if (need_handle_extra_decoding_ids && !parameters->extra_decoding_ids.empty()) {
     cuda::LaunchForceDecodingIds(
       next_token_scores.data(),
       parameters->batch_size,
@@ -1654,7 +1656,8 @@ Status FinalizeDecoderCrossQK(
     const float* cross_qk_buffer_data,
     float* cross_qk_output,
     int num_return_sequences,
-    const int* cache_indir_data) {
+    const int* cache_indir_data,
+    gsl::span<const int32_t> beam_indices_gpu) {
   cudaStream_t cuda_stream = stream ? static_cast<cudaStream_t>(stream->GetHandle()) : nullptr;
 
   cuda::LaunchFinalizeCrossQK(
@@ -1670,7 +1673,8 @@ Status FinalizeDecoderCrossQK(
     cross_qk_buffer_data,
     cross_qk_output,
     num_return_sequences,
-    cache_indir_data);
+    cache_indir_data,
+    beam_indices_gpu.data());
 
   CUDA_RETURN_IF_ERROR(cudaGetLastError());
 

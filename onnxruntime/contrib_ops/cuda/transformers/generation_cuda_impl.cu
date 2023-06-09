@@ -1380,7 +1380,8 @@ __global__ void CopyDecoderCrossQKAllStepsKernel(
     int frames_of_k,
     const T* cross_qk_buffer_data, // [batch, num_beams, layer_head_pair_count, max_length, frames]
     T* cross_qk_output, // [batch, num_return_sequences, layer_head_pair_count, total_decoding_length, frames]
-    const int* cache_indir_data // [batch, num_beams, max_length]
+    const int* cache_indir_data, // [batch, num_beams, max_length]
+    const int32_t* beam_indices
 ) {
   const int pair = blockIdx.y;
   const int layer_head_pair_count = gridDim.y;
@@ -1390,7 +1391,10 @@ __global__ void CopyDecoderCrossQKAllStepsKernel(
   const int batch = br / num_return_sequences;
   const int ret_seq_id = br % num_return_sequences;
 
-  const int64_t offset_in_cache = ((int64_t)batch * num_beams + ret_seq_id) * max_length + token_decoding_index + context_decoding_len;
+  // get the real beam index, as the cache_indir_data did not updated in last token
+  const int src_beam = beam_indices[batch * num_beams + ret_seq_id] % num_beams;
+
+  const int64_t offset_in_cache = ((int64_t)batch * num_beams + src_beam) * max_length + token_decoding_index + context_decoding_len;
   int bm_mapped = ((num_beams <= 1) ? 0: ((token_decoding_index == total_decoding_length - 1) ?  ret_seq_id : cache_indir_data[offset_in_cache]));
   int bi_src = batch * num_beams + bm_mapped;
 
@@ -1416,7 +1420,8 @@ void LaunchFinalizeCrossQK(
     const float* cross_qk_buffer_data,
     float* cross_qk_output,
     int num_return_sequences,
-    const int* cache_indir_data
+    const int* cache_indir_data,
+    const int32_t* beam_indices
 ) {
   int64_t br = (int64_t)batch_size * num_return_sequences;
   ORT_ENFORCE(br < 65536L && cross_qk_layer_head_pair_count < 65536);
@@ -1433,7 +1438,8 @@ void LaunchFinalizeCrossQK(
     frames_of_k,
     (const CudaT*)cross_qk_buffer_data,
     (CudaT*)cross_qk_output,
-    cache_indir_data);
+    cache_indir_data,
+    beam_indices);
 }
 
 template <int ElementsPerThreads>
