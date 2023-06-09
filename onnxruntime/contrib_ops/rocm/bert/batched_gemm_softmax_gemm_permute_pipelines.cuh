@@ -309,7 +309,11 @@ inline std::tuple<Strides, Strides, Strides> GetQkvStrides(const RocmAttentionPa
           Strides::BSNHMemory(B, L, N, Hv),
       };
     case BSNH_BNLH_BNLH_NONE_NONE_NONE_NONE:
-
+      return {
+          Strides::BSNHMemory(B, S, N, H),
+          Strides::BNSHMemory(B, N, L, H),
+          Strides::BNSHMemory(B, N, L, Hv),
+      };
     case BSNH_BLN2H_NONE_NONE_NONE_NONE_NONE:
       return {
           Strides::BSNHMemory(B, S, N, H),
