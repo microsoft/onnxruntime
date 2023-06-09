@@ -20,8 +20,8 @@ import androidx.test.platform.app.InstrumentationRegistry;
 import com.facebook.react.bridge.Arguments;
 import com.facebook.react.bridge.JavaOnlyArray;
 import com.facebook.react.bridge.JavaOnlyMap;
-import com.facebook.react.bridge.ReadableMap;
 import com.facebook.react.bridge.ReactApplicationContext;
+import com.facebook.react.bridge.ReadableMap;
 import com.facebook.react.modules.blob.BlobModule;
 import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
@@ -348,8 +348,7 @@ public class TensorHelperTest {
       }
       Assert.assertEquals(outputMap.getString("type"), TensorHelper.JsTensorTypeFloat);
       ReadableMap data = outputMap.getMap("data");
-      FloatBuffer buffer =
-          ByteBuffer.wrap(blobModule.testGetData(data)).order(ByteOrder.nativeOrder()).asFloatBuffer();
+      FloatBuffer buffer = ByteBuffer.wrap(blobModule.testGetData(data)).order(ByteOrder.nativeOrder()).asFloatBuffer();
       for (int i = 0; i < 5; ++i) {
         Assert.assertEquals(buffer.get(i), inputData[i], 1e-6f);
       }
@@ -429,8 +428,7 @@ public class TensorHelperTest {
       }
       Assert.assertEquals(outputMap.getString("type"), TensorHelper.JsTensorTypeInt);
       ReadableMap data = outputMap.getMap("data");
-      IntBuffer buffer =
-          ByteBuffer.wrap(blobModule.testGetData(data)).order(ByteOrder.nativeOrder()).asIntBuffer();
+      IntBuffer buffer = ByteBuffer.wrap(blobModule.testGetData(data)).order(ByteOrder.nativeOrder()).asIntBuffer();
       for (int i = 0; i < 5; ++i) {
         Assert.assertEquals(buffer.get(i), inputData[i]);
       }
@@ -470,8 +468,7 @@ public class TensorHelperTest {
       }
       Assert.assertEquals(outputMap.getString("type"), TensorHelper.JsTensorTypeLong);
       ReadableMap data = outputMap.getMap("data");
-      LongBuffer buffer =
-          ByteBuffer.wrap(blobModule.testGetData(data)).order(ByteOrder.nativeOrder()).asLongBuffer();
+      LongBuffer buffer = ByteBuffer.wrap(blobModule.testGetData(data)).order(ByteOrder.nativeOrder()).asLongBuffer();
       for (int i = 0; i < 5; ++i) {
         Assert.assertEquals(buffer.get(i), inputData[i]);
       }

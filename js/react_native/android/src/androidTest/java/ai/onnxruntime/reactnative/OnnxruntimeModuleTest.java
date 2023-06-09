@@ -10,14 +10,14 @@ import ai.onnxruntime.TensorInfo;
 import android.util.Base64;
 import androidx.test.platform.app.InstrumentationRegistry;
 import com.facebook.react.bridge.Arguments;
+import com.facebook.react.bridge.CatalystInstance;
 import com.facebook.react.bridge.JavaOnlyArray;
 import com.facebook.react.bridge.JavaOnlyMap;
 import com.facebook.react.bridge.ReactApplicationContext;
-import com.facebook.react.modules.blob.BlobModule;
 import com.facebook.react.bridge.ReadableArray;
 import com.facebook.react.bridge.ReadableMap;
 import com.facebook.react.bridge.WritableMap;
-import com.facebook.react.bridge.CatalystInstance;
+import com.facebook.react.modules.blob.BlobModule;
 import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 import java.nio.ByteBuffer;
@@ -133,9 +133,8 @@ public class OnnxruntimeModuleTest {
           }
           Assert.assertEquals(outputMap.getString("type"), TensorHelper.JsTensorTypeFloat);
           ReadableMap data = outputMap.getMap("data");
-          FloatBuffer buffer = ByteBuffer.wrap(blobModule.testGetData(data))
-                                   .order(ByteOrder.nativeOrder())
-                                   .asFloatBuffer();
+          FloatBuffer buffer =
+              ByteBuffer.wrap(blobModule.testGetData(data)).order(ByteOrder.nativeOrder()).asFloatBuffer();
           for (int i = 0; i < 5; ++i) {
             Assert.assertEquals(buffer.get(i), inputData[i], 1e-6f);
           }

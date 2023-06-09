@@ -48,7 +48,8 @@ static void testCreateInputTensorT(const std::array<T, 3> &outValues, std::funct
 
   Ort::AllocatorWithDefaultOptions ortAllocator;
   std::vector<Ort::MemoryAllocation> allocations;
-  Ort::Value inputTensor = [TensorHelper createInputTensor:testBlobManager input:inputTensorMap
+  Ort::Value inputTensor = [TensorHelper createInputTensor:testBlobManager
+                                                     input:inputTensorMap
                                               ortAllocator:ortAllocator
                                                allocations:allocations];
 
@@ -204,9 +205,11 @@ static void testCreateOutputTensorT(const std::array<T, 5> &outValues, std::func
     typePtr[i] = outValues[i];
   }
 
-  inputTensorMap[@"data"] = [testBlobManager testCreateData:byteBufferRef];;
+  inputTensorMap[@"data"] = [testBlobManager testCreateData:byteBufferRef];
+  ;
   std::vector<Ort::MemoryAllocation> allocations;
-  Ort::Value inputTensor = [TensorHelper createInputTensor:testBlobManager input:inputTensorMap
+  Ort::Value inputTensor = [TensorHelper createInputTensor:testBlobManager
+                                                     input:inputTensorMap
                                               ortAllocator:ortAllocator
                                                allocations:allocations];
 

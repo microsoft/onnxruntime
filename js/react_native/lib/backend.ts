@@ -4,7 +4,7 @@
 import {Backend, InferenceSession, SessionHandler, Tensor,} from 'onnxruntime-common';
 import {Platform} from 'react-native';
 
-import {binding, Binding, jsiHelper, JSIBlob} from './binding';
+import {binding, Binding, JSIBlob, jsiHelper} from './binding';
 
 type SupportedTypedArray = Exclude<Tensor.DataType, string[]>;
 

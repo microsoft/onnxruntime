@@ -116,11 +116,11 @@ NSString *const JsTensorTypeString = @"string";
       outputTensor[@"data"] = buffer;
     } else {
       NSData *data = [self createOutputTensor:value];
-      NSString* blobId = [blobManager store:data];
+      NSString *blobId = [blobManager store:data];
       outputTensor[@"data"] = @{
-        @"blobId": blobId,
-        @"offset": @0,
-        @"size": @(data.length),
+        @"blobId" : blobId,
+        @"offset" : @0,
+        @"size" : @(data.length),
       };
     }
 
@@ -184,8 +184,8 @@ static Ort::Value createInputTensorT(OrtAllocator *ortAllocator, const std::vect
 template <typename T> static NSData *createOutputTensorT(const Ort::Value &tensor) {
   const auto data = tensor.GetTensorData<T>();
   return [NSData dataWithBytesNoCopy:(void *)data
-                                        length:tensor.GetTensorTypeAndShapeInfo().GetElementCount() * sizeof(T)
-                                  freeWhenDone:false];
+                              length:tensor.GetTensorTypeAndShapeInfo().GetElementCount() * sizeof(T)
+                        freeWhenDone:false];
 }
 
 + (NSData *)createOutputTensor:(const Ort::Value &)tensor {

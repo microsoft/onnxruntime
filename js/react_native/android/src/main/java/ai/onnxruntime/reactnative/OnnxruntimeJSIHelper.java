@@ -1,7 +1,6 @@
 package ai.onnxruntime.reactnative;
 
 import androidx.annotation.NonNull;
-
 import com.facebook.react.bridge.JavaScriptContextHolder;
 import com.facebook.react.bridge.ReactApplicationContext;
 import com.facebook.react.bridge.ReactContextBaseJavaModule;

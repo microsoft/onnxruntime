@@ -5,9 +5,9 @@
 #import "TensorHelper.h"
 
 #import <Foundation/Foundation.h>
-#import <React/RCTLog.h>
-#import <React/RCTBridge+Private.h>
 #import <React/RCTBlobManager.h>
+#import <React/RCTBridge+Private.h>
+#import <React/RCTLog.h>
 
 // Note: Using below syntax for including ort c api and ort extensions headers to resolve a compiling error happened
 // in an expo react native ios app when ort extensions enabled (a redefinition error of multiple object types defined
@@ -289,7 +289,10 @@ RCT_EXPORT_METHOD(run
       @throw exception;
     }
 
-    Ort::Value value = [TensorHelper createInputTensor:blobManager input:inputTensor ortAllocator:ortAllocator allocations:allocations];
+    Ort::Value value = [TensorHelper createInputTensor:blobManager
+                                                 input:inputTensor
+                                          ortAllocator:ortAllocator
+                                           allocations:allocations];
     feeds.emplace_back(std::move(value));
   }
 

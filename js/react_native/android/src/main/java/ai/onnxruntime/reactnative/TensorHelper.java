@@ -48,7 +48,8 @@ public class TensorHelper {
    * It creates an input tensor from a map passed by react native js.
    * 'data' is blob object and the buffer is stored in BlobModule. It first resolve it and creates a tensor.
    */
-  public static OnnxTensor createInputTensor(BlobModule blobModule, ReadableMap inputTensor, OrtEnvironment ortEnvironment) throws Exception {
+  public static OnnxTensor createInputTensor(BlobModule blobModule, ReadableMap inputTensor,
+                                             OrtEnvironment ortEnvironment) throws Exception {
     // shape
     ReadableArray dimsArray = inputTensor.getArray("dims");
     long[] dims = new long[dimsArray.size()];

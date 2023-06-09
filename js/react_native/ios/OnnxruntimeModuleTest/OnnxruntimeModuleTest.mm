@@ -2,12 +2,11 @@
 // Licensed under the MIT License.
 
 #import "OnnxruntimeModule.h"
-#import "TensorHelper.h"
 #import "FakeRCTBlobManager.h"
+#import "TensorHelper.h"
 
 #import <XCTest/XCTest.h>
 #import <onnxruntime/onnxruntime_cxx_api.h>
-
 
 @interface OnnxruntimeModuleTest : XCTestCase
 
@@ -101,8 +100,8 @@ FakeRCTBlobManager *fakeBlobManager = nil;
     XCTAssertTrue([[resultMap2 objectForKey:@"output"][@"dims"] isEqualToArray:inputTensorMap[@"dims"]]);
 
     // type
-    XCTAssertEqual([resultMap objectForKey:@"output"][@"type"] , JsTensorTypeFloat);
-    XCTAssertEqual([resultMap2 objectForKey:@"output"][@"type"] , JsTensorTypeFloat);
+    XCTAssertEqual([resultMap objectForKey:@"output"][@"type"], JsTensorTypeFloat);
+    XCTAssertEqual([resultMap2 objectForKey:@"output"][@"type"], JsTensorTypeFloat);
 
     // data ({ blobId, offset, size })
     XCTAssertEqual([[resultMap objectForKey:@"output"][@"data"][@"offset"] longValue], 0);

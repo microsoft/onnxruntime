@@ -4,16 +4,14 @@
 package ai.onnxruntime.reactnative;
 
 import com.facebook.react.bridge.Arguments;
-import com.facebook.react.bridge.ReadableMap;
 import com.facebook.react.bridge.JavaOnlyMap;
 import com.facebook.react.bridge.ReactApplicationContext;
+import com.facebook.react.bridge.ReadableMap;
 import com.facebook.react.modules.blob.BlobModule;
 
 public class FakeBlobModule extends BlobModule {
 
-  public FakeBlobModule(ReactApplicationContext context) {
-    super(null);
-  }
+  public FakeBlobModule(ReactApplicationContext context) { super(null); }
 
   @Override
   public String getName() {

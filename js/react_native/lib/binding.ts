@@ -29,9 +29,7 @@ interface ModelLoadInfo {
  * JSIBlob is a blob object that exchange ArrayBuffer by OnnxruntimeJSIHelper.
  */
 export type JSIBlob = {
-  blobId: string;
-  offset: number;
-  size: number;
+  blobId: string; offset: number; size: number;
 }
 
 /**
@@ -87,21 +85,25 @@ export const binding = Onnxruntime as Binding.InferenceSession;
 OnnxruntimeJSIHelper.install();
 
 declare global {
-  var jsiOnnxruntimeStoreArrayBuffer: ((buffer: ArrayBuffer) => JSIBlob) | undefined;
-  var jsiOnnxruntimeResolveArrayBuffer: ((blob: JSIBlob) => ArrayBuffer) | undefined;
+  var jsiOnnxruntimeStoreArrayBuffer: ((buffer: ArrayBuffer) => JSIBlob)|undefined;
+  var jsiOnnxruntimeResolveArrayBuffer: ((blob: JSIBlob) => ArrayBuffer)|undefined;
 }
 
 export const jsiHelper = {
-  storeArrayBuffer: globalThis.jsiOnnxruntimeStoreArrayBuffer ||
-    (() => {
-      throw new Error('jsiOnnxruntimeStoreArrayBuffer is not found, please make sure OnnxruntimeJSIHelper installation is successful.');
-    }),
-  resolveArrayBuffer: globalThis.jsiOnnxruntimeResolveArrayBuffer ||
-    (() => {
-      throw new Error('jsiOnnxruntimeResolveArrayBuffer is not found, please make sure OnnxruntimeJSIHelper installation is successful.');
-    }),
+  storeArrayBuffer:
+      globalThis.jsiOnnxruntimeStoreArrayBuffer || (() => {
+        throw new Error(
+            'jsiOnnxruntimeStoreArrayBuffer is not found, please make sure OnnxruntimeJSIHelper installation is successful.');
+      }),
+  resolveArrayBuffer:
+      globalThis.jsiOnnxruntimeResolveArrayBuffer || (() => {
+        throw new Error(
+            'jsiOnnxruntimeResolveArrayBuffer is not found, please make sure OnnxruntimeJSIHelper installation is successful.');
+      }),
 }
 
 // Remove global functions after installation
-delete globalThis.jsiOnnxruntimeStoreArrayBuffer;
-delete globalThis.jsiOnnxruntimeResolveArrayBuffer;
+{
+  delete globalThis.jsiOnnxruntimeStoreArrayBuffer;
+  delete globalThis.jsiOnnxruntimeResolveArrayBuffer;
+}
