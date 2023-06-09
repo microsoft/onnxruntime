@@ -263,6 +263,32 @@ TEST_F(QnnCPUBackendTests, TestCPUConvf32_bias_initializer) {
   RunCPUConvOpTest({1, 1, 3, 3}, {2, 1, 2, 2}, true, {1, 1}, {0, 0, 0, 0}, {1, 1}, "NOTSET", ExpectedEPNodeAssignment::All, "TestCPUConvf32_bias_initializer");
 }
 
+// Tests auto_pad value "SAME_UPPER"
+TEST_F(QnnCPUBackendTests, TestCPUConvf32_AutoPadUpper) {
+  RunCPUConvOpTest({1, 1, 3, 3},  // Input 0 shape
+                   {2, 1, 2, 2},  // Input 1 (weights) shape
+                   true,          // is_bias_initializer
+                   {1, 1},        // strides
+                   {},            // pads
+                   {1, 1},        // dilations
+                   "SAME_UPPER",  // auto_pad
+                   ExpectedEPNodeAssignment::All,
+                   "TestCPUConvf32_AutoPadUpper");
+}
+
+// Tests auto_pad value "SAME_LOWER"
+TEST_F(QnnCPUBackendTests, TestCPUConvf32_AutoPadLower) {
+  RunCPUConvOpTest({1, 1, 3, 3},  // Input 0 shape
+                   {2, 1, 2, 2},  // Input 1 (weights) shape
+                   true,          // is_bias_initializer
+                   {1, 1},        // strides
+                   {},            // pads
+                   {1, 1},        // dilations
+                   "SAME_LOWER",  // auto_pad
+                   ExpectedEPNodeAssignment::All,
+                   "TestCPUConvf32_AutoPadLower");
+}
+
 // large input,output, pads
 // TODO: re-enable tests once Padding issues are resolved
 TEST_F(QnnCPUBackendTests, DISABLED_TestCPUConvf32_large_input1_pad_bias_initializer) {
