@@ -26,8 +26,8 @@ class ShapeOpBuilder : public BaseOpBuilder {
 };
 
 Status ShapeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
-                                               const Node& node,
-                                               const logging::Logger& logger) const {
+                                             const Node& node,
+                                             const logging::Logger& logger) const {
   const auto& input_defs = node.InputDefs();
   std::vector<int64_t> input_shape;
   ORT_RETURN_IF_NOT(GetShape(*input_defs[0], input_shape, logger), "Cannot get shape");
@@ -67,9 +67,9 @@ Status ShapeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 // Operator support related.
 
 bool ShapeOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& /* initializers */,
-                                         const Node& node,
-                                         const WebnnDeviceType device_type,
-                                         const logging::Logger& logger) const {
+                                       const Node& node,
+                                       const WebnnDeviceType device_type,
+                                       const logging::Logger& logger) const {
   const auto& input_defs = node.InputDefs();
   std::vector<int64_t> input_shape;
   if (!GetShape(*input_defs[0], input_shape, logger))
