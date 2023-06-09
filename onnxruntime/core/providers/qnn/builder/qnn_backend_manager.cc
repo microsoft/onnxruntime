@@ -170,6 +170,7 @@ void QnnBackendManager::InitializeQnnLog() {
     default:
       break;
   }
+  LOGS(*logger_, VERBOSE) << "Set Qnn log level: " << qnn_log_level;
 
   if (QNN_SUCCESS != qnn_interface_.logCreate(QnnLogging, qnn_log_level, &log_handle_)) {
     LOGS(*logger_, WARNING) << "Unable to initialize logging in the QNN backend.";
