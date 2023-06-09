@@ -210,16 +210,25 @@ void TensorrtExecutionProvider::SetAllGraphInputs(Graph* graph,
 
   SubGraphContext* context = subgraph_context_map[subgraph_name].get();
   std::vector<const NodeArg*> graph_inputs_including_initializers;
+  std::unordered_set<std::string> graph_inputs_including_initializers_set; 
+
   for (const auto& entry : context->inputs_and_initializers) {
     graph_inputs_including_initializers.push_back(entry.second);
+    graph_inputs_including_initializers_set.insert(entry.first);
   }
 
   for (const auto& entry : context->manually_added_graph_inputs) {
-    graph_inputs_including_initializers.push_back(entry);
+    if (graph_inputs_including_initializers_set.find(entry.first) == graph_inputs_including_initializers_set.end()) {
+      graph_inputs_including_initializers.push_back(entry.second);
+      graph_inputs_including_initializers_set.insert(entry.first);
+    }
   }
 
   for (const auto& node_arg : graph->GetInputsIncludingInitializers()) {
-    graph_inputs_including_initializers.push_back(node_arg);
+    if (graph_inputs_including_initializers_set.find(node_arg->Name()) == graph_inputs_including_initializers_set.end()) {
+      graph_inputs_including_initializers.push_back(node_arg);
+      graph_inputs_including_initializers_set.insert(node_arg->Name());
+    }
   }
 
   graph->SetInputs(graph_inputs_including_initializers);

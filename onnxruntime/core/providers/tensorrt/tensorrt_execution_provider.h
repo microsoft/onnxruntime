@@ -217,7 +217,6 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   bool force_timing_cache_match_ = false;
   bool detailed_build_log_ = false;
 
-  bool graph_has_control_flow_op_ = false;
   std::unordered_set<std::string> control_flow_op_set_ = {"If", "Loop", "Scan"};
   std::unordered_map<std::string, std::unique_ptr<SubGraphContext>> subgraph_context_map_;
   std::unordered_map<std::string, tensorrt_ptr::unique_pointer<nvonnxparser::IParser>> parsers_;

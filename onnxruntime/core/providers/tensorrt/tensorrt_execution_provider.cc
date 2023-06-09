@@ -1350,11 +1350,9 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
           }
         }
 
-        if (graph_has_control_flow_op_) {
-          BuildSubGraphContext(&graph_build, subgraph_context_map);
-          SetGraphOuterScopeValuesAndInputs(&graph_build, &graph.GetGraph(), subgraph_context_map);
-          SetAllGraphInputs(&graph_build, subgraph_context_map);
-        }
+        BuildSubGraphContext(&graph_build, subgraph_context_map);
+        SetGraphOuterScopeValuesAndInputs(&graph_build, &graph.GetGraph(), subgraph_context_map);
+        SetAllGraphInputs(&graph_build, subgraph_context_map);
 
         ORT_ENFORCE(graph_build.Resolve().IsOK());
 
@@ -1604,7 +1602,6 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
           // if not all its subgraphs are supported, we need to exclude this control flow op
           continue;
         }
-        graph_has_control_flow_op_ = true;
       }
     }
     filtered_nodes_vector.push_back(index);
