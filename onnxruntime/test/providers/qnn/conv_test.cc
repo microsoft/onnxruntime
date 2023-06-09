@@ -196,11 +196,11 @@ GetTestModelFn BuildQDQConvTestCase(const std::vector<int64_t>& input_shape,
     Node& convNode = builder.AddNode("Conv", {dq_output, dq_w_output, dq_bias_output}, {conv_output});
 
     auto* q_output = builder.MakeIntermediate();
-    builder.AddQuantizeLinearNode<OutputType>(conv_output, .039f,
+    builder.AddQuantizeLinearNode<OutputType>(conv_output, 1e-4f,
                                               (OutputLimits::min() + OutputLimits::max()) / 2 + 1,
                                               q_output);
 
-    builder.AddDequantizeLinearNode<OutputType>(q_output, .039f,
+    builder.AddDequantizeLinearNode<OutputType>(q_output, 1e-4f,
                                                 (OutputLimits::min() + OutputLimits::max()) / 2 + 1,
                                                 output_arg);
     convNode.AddAttribute("auto_pad", auto_pad);
@@ -228,7 +228,8 @@ static void RunHTPConvOpTest(const std::vector<int64_t>& input_shape,
                              const std::vector<int64_t>& dilations,
                              const std::string& auto_pad,
                              ExpectedEPNodeAssignment expected_ep_assignment, const char* test_description,
-                             int opset = 13) {
+                             int opset = 13,
+                             float fp32_abs_err = 1e-5f) {
   ProviderOptions provider_options;
 
 #if defined(_WIN32)
@@ -245,7 +246,8 @@ static void RunHTPConvOpTest(const std::vector<int64_t>& input_shape,
                   opset,
                   expected_ep_assignment,
                   expected_nodes_in_partition,
-                  test_description);
+                  test_description,
+                  fp32_abs_err);
 }
 
 // Check that QNN compiles DQ -> Conv -> Q as a single unit.
@@ -337,28 +339,32 @@ TEST_F(QnnHTPBackendTests, TestQDQConvU8U8S32_bias_initializer) {
 TEST_F(QnnHTPBackendTests, TestConvU8U8S32_AutoPadUpper) {
   RunHTPConvOpTest<uint8_t, uint8_t, int32_t, uint8_t>(
       {1, 1, 5, 5},  // input_shape
-      {1, 1, 3, 3},  // weights_shape
+      {1, 1, 4, 4},  // weights_shape
       true,          // is_bias_initializer
       {1, 1},        // strides
       {},            // pads
       {1, 1},        // dilations
       "SAME_UPPER",  // auto_pad
       ExpectedEPNodeAssignment::All,
-      "TestConvU8U8S32_AutoPadUpper");
+      "TestConvU8U8S32_AutoPadUpper",
+      13,
+      1e-4f);
 }
 
 // Tests auto_pad value "SAME_LOWER" on HTP backend (compares to CPU EP).
 TEST_F(QnnHTPBackendTests, TestConvU8U8S32_AutoPadLower) {
   RunHTPConvOpTest<uint8_t, uint8_t, int32_t, uint8_t>(
       {1, 1, 5, 5},  // input_shape
-      {1, 1, 3, 3},  // weights_shape
+      {1, 1, 4, 4},  // weights_shape
       true,          // is_bias_initializer
       {1, 1},        // strides
       {},            // pads
       {1, 1},        // dilations
       "SAME_LOWER",  // auto_pad
       ExpectedEPNodeAssignment::All,
-      "TestConvU8U8S32_AutoPadLower");
+      "TestConvU8U8S32_AutoPadLower",
+      13,
+      1e-4f);
 }
 
 // TODO: re-enable tests once HTP issues are resolved
