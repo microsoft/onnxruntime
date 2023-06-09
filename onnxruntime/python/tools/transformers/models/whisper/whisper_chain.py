@@ -167,11 +167,6 @@ def chain_model(args):
         )
         graph_outputs.extend([no_speech_probs])
 
-        prob_cast_node = helper.make_node("Cast", inputs=['no_speech_probs_beam'], outputs=['no_speech_probs'],
-                        name="no_speech_probs_cast_to_fp32", to=TensorProto.FLOAT)
-
-        all_nodes.extend([prob_cast_node])
-
     if hasattr(args, "use_gpu") and args.use_gpu:
         if update_decoder_subgraph_share_buffer_and_use_decoder_masked_mha(decoder_model.graph):
             print("*****update whisper decoder subgraph successfully!!!*****")
@@ -193,6 +188,11 @@ def chain_model(args):
     opset_import = [helper.make_opsetid(domain="com.microsoft", version=1), helper.make_opsetid(domain="", version=17)]
 
     all_nodes.extend([node])
+    if args.output_no_speech_probs:
+        prob_cast_node = helper.make_node("Cast", inputs=['no_speech_probs_beam'], outputs=['no_speech_probs'],
+                        name="no_speech_probs_cast_to_fp32", to=TensorProto.FLOAT)
+        all_nodes.extend([prob_cast_node])
+
     beam_graph = helper.make_graph(all_nodes, "beam-search-test", graph_inputs, graph_outputs, initializers)
     beam_graph_input_names = [gi.name for gi in graph_inputs]
     beam_graph_output_names = [go.name for go in graph_outputs]
