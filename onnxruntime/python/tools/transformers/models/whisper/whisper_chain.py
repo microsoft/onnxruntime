@@ -77,7 +77,7 @@ def chain_model(args):
     if args.output_no_speech_probs:
         while len(beam_outputs) < 3:
             beam_outputs.extend([""])
-        beam_outputs.extend(["no_speech_probs"])
+        beam_outputs.extend(["no_speech_probs_beam"])
 
     input_features_cast_node, len_pen_cast_node, rep_pen_cast_node = None, None, None
     if args.precision == Precision.FLOAT16:
@@ -200,8 +200,18 @@ def chain_model(args):
         graph_outputs.extend([cross_qk])
 
     if args.output_no_speech_probs:
-        no_speech_probs = helper.make_tensor_value_info("no_speech_probs", float_data_type, ["batch_size"])
+        no_speech_probs = helper.make_tensor_value_info("no_speech_probs", TensorProto.FLOAT, ["batch_size"])
         graph_outputs.extend([no_speech_probs])
+
+        prob_cast_node = helper.make_node(
+            "Cast",
+            inputs=["no_speech_probs_beam"],
+            outputs=["no_speech_probs"],
+            name="no_speech_probs_cast_to_fp32",
+            to=TensorProto.FLOAT,
+        )
+
+        all_nodes.extend([prob_cast_node])
 
     if hasattr(args, "use_gpu") and args.use_gpu:
         if update_decoder_subgraph_share_buffer_and_use_decoder_masked_mha(decoder_model.graph):
