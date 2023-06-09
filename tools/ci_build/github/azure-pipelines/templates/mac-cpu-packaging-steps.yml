@@ -68,9 +68,8 @@ steps:
   inputs:
     rootFolderOrFile: '$(Build.BinariesDirectory)/onnxruntime-osx-${{ parameters.MacosArch }}-$(OnnxRuntimeVersion)'
     includeRootFolder: true
-    archiveType: 'tar' # Options: zip, 7z, tar, wim
-    tarCompression: 'gz'
-    archiveFile: '$(Build.ArtifactStagingDirectory)/onnxruntime-osx-${{ parameters.MacosArch }}-$(OnnxRuntimeVersion).tgz'
+    archiveType: 'zip' # Options: zip, 7z, tar, wim
+    archiveFile: '$(Build.ArtifactStagingDirectory)/onnxruntime-osx-${{ parameters.MacosArch }}-$(OnnxRuntimeVersion).zip'
     replaceExistingArchive: true
 
 - script: |
