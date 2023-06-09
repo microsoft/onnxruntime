@@ -36,16 +36,10 @@ def chain_model(args):
         "repetition_penalty_fp16" if args.precision == Precision.FLOAT16 else "input_features",
         "vocab_mask" if args.use_prefix_vocab_mask else "",
         "prefix_vocab_mask" if args.use_prefix_vocab_mask else "",
-        "",
+        "", # attention mask
+        "decoder_input_ids" if args.use_forced_decoder_ids else "",
+        "logits_processor" if args.use_logits_processor else "",
     ]
-    if args.use_forced_decoder_ids:
-        beam_inputs.append("decoder_input_ids")
-    else:
-        beam_inputs.append("")
-
-    if args.use_logits_processor:
-        beam_inputs.append("logits_processor")
-
     beam_outputs = ["sequences"]
 
     input_features_cast_node, len_pen_cast_node, rep_pen_cast_node = None, None, None
@@ -154,17 +148,12 @@ def chain_model(args):
         else [node]
     )
     beam_graph = helper.make_graph(graph_nodes, "beam-search-test", graph_inputs, graph_outputs, initializers)
-    ir_version = decoder_model.ir_version
-    if decoder_model.ir_version != encoder_model.ir_version:
-        logger.warning(
-            f"Mismatched IR versions detected. Encoder subgraph has IR version {encoder_model.ir_version} and decoder subgraph has IR version {decoder_model.ir_version}."
-        )
-    else:
-        logger.info(f"Using IR version {ir_version} for chained model")
+    assert decoder_model.ir_version == encoder_model.ir_version
+    logger.info(f"Using IR version {decoder_model.ir_version} for chained model")
 
     # Set IR version of chained model to IR version of subgraphs in order to generate a working E2E model
     beam_model = helper.make_model_gen_version(
-        beam_graph, producer_name="onnxruntime.transformers", opset_imports=opset_import, ir_version=ir_version
+        beam_graph, producer_name="onnxruntime.transformers", opset_imports=opset_import, ir_version=decoder_model.ir_version
     )
 
     onnx.save(

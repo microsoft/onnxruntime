@@ -317,12 +317,6 @@ def export_onnx_models(
             provider=["CUDAExecutionProvider", "CPUExecutionProvider"] if use_gpu else ["CPUExecutionProvider"],
         )
 
-        with torch.no_grad():
-            max_diff = WhisperHelper.verify_onnx(model, ort_session, device, use_int32_inputs)
-        logger.info(f"PyTorch and ONNX Runtime results max difference = {max_diff}")
-        if max_diff > 1e-4:
-            logger.warning("PyTorch and ONNX Runtime results are NOT close")
-
         output_paths.append(output_path)
 
     return output_paths
@@ -379,6 +373,24 @@ def main(argv=None):
                 args.decoder_path = path
         chain_model(args)
         output_paths.append(args.beam_model_output_dir)
+
+        # Check chained model
+        ort_session = create_onnxruntime_session(
+            args.beam_model_output_dir,
+            use_gpu=args.use_gpu,
+            provider=["CUDAExecutionProvider", "CPUExecutionProvider"] if args.use_gpu else ["CPUExecutionProvider"],
+        )
+        device = torch.device("cuda:0" if args.use_gpu else "cpu")
+
+        # Wrap parity check in try-except to allow export to continue in case this produces an error
+        try:
+            with torch.no_grad():
+                max_diff = WhisperHelper.verify_onnx(args.model_name_or_path, ort_session, device)
+            logger.info(f"Max difference between PyTorch and ONNX Runtime results = {max_diff}")
+            if max_diff > 1e-4:
+                logger.warning("PyTorch and ONNX Runtime results are NOT close")
+        except:
+            logger.warning("An error occurred while trying to verify parity between PyTorch and ONNX Runtime")
 
         # Change directory layout from <output dir>/openai/<all models> to <output dir>/<model name>_beamsearch.onnx[.data]
         # if using pre-trained model name
