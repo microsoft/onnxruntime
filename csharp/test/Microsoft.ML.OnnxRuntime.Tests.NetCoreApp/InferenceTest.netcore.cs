@@ -897,8 +897,8 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 
             var elementMeta = metaData.AsSequenceMetadata().ElementMeta;
 
-            var resultCount = resultSequence.GetCount();
-            Assert.Equal(expectedSequence.GetCount(), resultCount);
+            var resultCount = resultSequence.GetValueCount();
+            Assert.Equal(expectedSequence.GetValueCount(), resultCount);
 
             using (var cleanUp = new DisposableListTest<IDisposable>())
             {

@@ -119,9 +119,8 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 }
             }
         }
-
-        static void RunTensorCreateWithData<T>(TensorElementType dataType, long[] shape,
-            IntPtr buffer, int bufferLen, ReadOnlySpan<T> originalData) where T: struct
+        static void VerifyTensorCreateWithData<T>(OrtValue tensor, TensorElementType dataType, long[] shape,
+            ReadOnlySpan<T> originalData) where T : struct
         {
             // Verify invocation
             var dataTypeInfo = TensorBase.GetTypeInfo(typeof(T));
@@ -130,36 +129,32 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 
             var elementsNum = ArrayUtilities.GetSizeForShape(shape);
 
-            using (var tensor = OrtValue.CreateTensorValueWithData(OrtMemoryInfo.DefaultInstance, dataType,
-                shape, buffer, bufferLen))
+            Assert.True(tensor.IsTensor);
+            Assert.False(tensor.IsSparseTensor);
+            Assert.Equal(OnnxValueType.ONNX_TYPE_TENSOR, tensor.OnnxType);
+
+            using (var typeInfo = tensor.GetTypeInfo())
             {
-                Assert.True(tensor.IsTensor);
-                Assert.False(tensor.IsSparseTensor);
-                Assert.Equal(OnnxValueType.ONNX_TYPE_TENSOR, tensor.OnnxType);
-
-                using (var typeInfo = tensor.GetTypeInfo())
+                Assert.Equal(OnnxValueType.ONNX_TYPE_TENSOR, typeInfo.OnnxType);
+                using (var typeShape = typeInfo.GetTensorTypeAndShapeInfo())
                 {
-                    Assert.Equal(OnnxValueType.ONNX_TYPE_TENSOR, typeInfo.OnnxType);
-                    using (var typeShape = typeInfo.GetTensorTypeAndShapeInfo())
-                    {
-                        Assert.Equal(shape.Length, typeShape.GetDimensionsCount());
-                        var fetchedShape = typeShape.GetShape();
-                        Assert.Equal(shape.Length, fetchedShape.Length);
-                        Assert.Equal(shape, fetchedShape);
-                        Assert.Equal(elementsNum, typeShape.GetElementCount());
-                    }
+                    Assert.Equal(shape.Length, typeShape.GetDimensionsCount());
+                    var fetchedShape = typeShape.GetShape();
+                    Assert.Equal(shape.Length, fetchedShape.Length);
+                    Assert.Equal(shape, fetchedShape);
+                    Assert.Equal(elementsNum, typeShape.GetElementCount());
                 }
-
-                using (var memInfo = tensor.GetTensorMemoryInfo())
-                {
-                    Assert.Equal("Cpu", memInfo.Name);
-                    Assert.Equal(OrtMemType.CpuOutput, memInfo.GetMemoryType());
-                    Assert.Equal(OrtAllocatorType.DeviceAllocator, memInfo.GetAllocatorType());
-                }
-
-                // Verify contained data
-                Assert.Equal(originalData.ToArray(), tensor.GetTensorDataAsSpan<T>().ToArray());
             }
+
+            using (var memInfo = tensor.GetTensorMemoryInfo())
+            {
+                Assert.Equal("Cpu", memInfo.Name);
+                Assert.Equal(OrtMemType.CpuOutput, memInfo.GetMemoryType());
+                Assert.Equal(OrtAllocatorType.DeviceAllocator, memInfo.GetAllocatorType());
+            }
+
+            // Verify contained data
+            Assert.Equal(originalData.ToArray(), tensor.GetTensorDataAsSpan<T>().ToArray());
         }
 
         [Fact(DisplayName = "CreateTensorOverManagedBuffer")]
@@ -178,20 +173,9 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             // The tensor will be created on top of the managed memory. No copy is made.
             // The memory should stay pinned until the OrtValue instance is disposed. This means
             // stayed pinned until the end of Run() method when you are actually running inference.
-            using (var pin = mem.Pin())
+            using(var tensor = OrtValue.CreateTensorValueFromMemory(data, shape))
             {
-                // We need this unsafe block because we are obtaining a pointer to a managed data,
-                // but if we use unmanaged memory allocation OR we are getting a pointer
-                // to a native memory or to a device memory, we can simply pass IntPtr to
-                // Create(), no pinning is needed.
-                IntPtr dataPtr;
-                unsafe
-                {
-                    dataPtr = (IntPtr)pin.Pointer;
-                }
-
-                var bufferLen = data.Length * typeInfo.TypeSize;
-                RunTensorCreateWithData<int>(TensorElementType.Int32, shape, dataPtr, bufferLen, data);
+                VerifyTensorCreateWithData<int>(tensor, TensorElementType.Int32, shape, data);
             }
         }
 
@@ -220,7 +204,11 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 var elementsNum = ArrayUtilities.GetSizeForShape(shape);
                 Assert.Equal(elementsNum, Elements);
 
-                RunTensorCreateWithData<int>(TensorElementType.Int32, shape, dataPtr, bufferLen, data);
+                using (var tensor = OrtValue.CreateTensorValueWithData(OrtMemoryInfo.DefaultInstance, TensorElementType.Int32,
+                        shape, dataPtr, bufferLen))
+                {
+                    VerifyTensorCreateWithData<int>(tensor, TensorElementType.Int32, shape, data);
+                }
             }
             finally
             {
@@ -228,14 +216,14 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             }
         }
 
-        private static void PopulateAndCheck<T>(T[] data) where T: struct
+        private static void PopulateAndCheck<T>(T[] data) where T : struct
         {
             var typeInfo = TensorBase.GetTypeInfo(typeof(T));
             Assert.NotNull(typeInfo);
 
             long[] shape = { data.LongLength };
 
-            using(var ortValue = OrtValue.CreateAllocatedTensorValue(OrtAllocator.DefaultInstance,
+            using (var ortValue = OrtValue.CreateAllocatedTensorValue(OrtAllocator.DefaultInstance,
                 typeInfo.ElementType, shape))
             {
                 var dst = ortValue.GetTensorMutableDataAsSpan<T>();
@@ -251,7 +239,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         [Fact(DisplayName = "CreateAllocatedTensor")]
         public void CreateAllocatedTensor()
         {
-            float[] float_data = { 1, 2, 3, 4, 5, 6, 7, 8};
+            float[] float_data = { 1, 2, 3, 4, 5, 6, 7, 8 };
             int[] int_data = { 1, 2, 3, 4, 5, 6, 7, 8 };
             ushort[] ushort_data = { 1, 2, 3, 4, 5, 6, 7, 8 };
             double[] dbl_data = { 1, 2, 3, 4, 5, 6, 7, 8 };
@@ -270,21 +258,15 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         // Use this utility method to create two tensors for Map and Sequence tests
         private static Tuple<OrtValue, OrtValue> CreateTwoTensors(IList<IDisposable> cleanup)
         {
-            var pin_1 = new Memory<long>(ml_data_1).Pin();
-            cleanup.Add(pin_1);
-            var pin_2 = new Memory<long>(ml_data_2).Pin();
-            cleanup.Add(pin_2);
-
+            const int ml_data_dim = 2;
             // For map tensors they must be single dimensional
-            long[] shape = { 2 };
+            long[] shape = { ml_data_dim };
 
             unsafe
             {
-                var ortValue_1 = OrtValue.CreateTensorValueWithData(OrtMemoryInfo.DefaultInstance, TensorElementType.Int64,
-                                       shape, (IntPtr)pin_1.Pointer, ml_data_1.Length * sizeof(long));
+                var ortValue_1 = OrtValue.CreateTensorValueFromMemory(ml_data_1, shape);
                 cleanup.Add(ortValue_1);
-                var ortValue_2 = OrtValue.CreateTensorValueWithData(OrtMemoryInfo.DefaultInstance, TensorElementType.Int64,
-                                       shape, (IntPtr)pin_2.Pointer, ml_data_2.Length * sizeof(long));
+                var ortValue_2 = OrtValue.CreateTensorValueFromMemory(ml_data_2, shape);
                 cleanup.Add(ortValue_2);
                 return Tuple.Create(ortValue_1, ortValue_2);
             }
@@ -300,7 +282,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 {
                     Assert.Equal(OnnxValueType.ONNX_TYPE_MAP, map.OnnxType);
                     // Must return always 2 for map since we have two ort values
-                    Assert.Equal(2, map.GetCount());
+                    Assert.Equal(2, map.GetValueCount());
 
                     var keys = map.GetValue(0, OrtAllocator.DefaultInstance);
                     cleanUp.Add(keys);
@@ -322,12 +304,12 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             {
                 var valTuple = CreateTwoTensors(cleanUp);
                 OrtValue[] seqVals = { valTuple.Item1, valTuple.Item2 };
-                using(var seq = OrtValue.CreateSequence(seqVals))
+                using (var seq = OrtValue.CreateSequence(seqVals))
                 {
                     Assert.Equal(OnnxValueType.ONNX_TYPE_SEQUENCE, seq.OnnxType);
 
                     // Will return 2 because we put 2 values in the sequence
-                    Assert.Equal(2, seq.GetCount());
+                    Assert.Equal(2, seq.GetValueCount());
 
                     var item_0 = seq.GetValue(0, OrtAllocator.DefaultInstance);
                     cleanUp.Add(item_0);

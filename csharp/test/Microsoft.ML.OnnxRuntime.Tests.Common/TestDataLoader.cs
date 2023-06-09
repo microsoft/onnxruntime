@@ -521,6 +521,8 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             var ortValue = OrtValue.CreateAllocatedTensorValue(allocator, elementType, shape);
             try
             {
+                // The endianess data in protobuf is little endian.
+                // We simply copy raw memory into the tensor raw data.
                 var span = ortValue.GetTensorMutableRawData();
                 Assert.Equal(rawData.Length, span.Length);
                 var rawSpan = new Span<byte>(rawData);
@@ -547,40 +549,6 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             var dt = new DenseTensor<string>(strArray, dimensions);
             return NamedOnnxValue.CreateFromTensor<string>(nodeName, dt);
         }
-
-        internal static (OrtValue, MemoryHandle) CreateOrtValueTensorOverData<T>(T[] data, long[] shape)
-             where T : struct
-        {
-            var shapeSize = ArrayUtilities.GetSizeForShape(shape);
-            if (shapeSize != data.Length)
-            {
-                throw new ArgumentException($"Shape size: {shapeSize} does not match data length: {data.Length}");
-            }
-
-            var typeInfo = TensorBase.GetTypeInfo(typeof(T));
-            // Unregistered data type
-            Assert.NotNull(typeInfo);
-
-            var pin = new Memory<T>(data).Pin();
-            try
-            {
-                IntPtr buffer;
-                long bufferLen = typeInfo.TypeSize * data.Length;
-                unsafe
-                {
-                    buffer = (IntPtr)pin.Pointer;
-                }
-                var result = OrtValue.CreateTensorValueWithData(OrtMemoryInfo.DefaultInstance, typeInfo.ElementType,
-                    shape, buffer, bufferLen);
-                return (result, pin);
-            }
-            catch (Exception)
-            {
-                pin.Dispose();
-                throw;
-            }
-        }
-
         internal static OrtValue CreateOrtValueFromStringTensor(IList<Google.Protobuf.ByteString> strings,
             long[] shape)
         {

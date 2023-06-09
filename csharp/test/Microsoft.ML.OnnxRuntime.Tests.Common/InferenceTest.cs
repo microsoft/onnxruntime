@@ -469,8 +469,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 
                 // Allocate input OrtValue on top of the inputData
                 // Input should stay pinned for the entire duration of the inference
-                var (inputOrtValue, pinInput) = TestDataLoader.CreateOrtValueTensorOverData<float>(inputData, inputShape);
-                cleanUp.Add(pinInput);
+                var inputOrtValue = OrtValue.CreateTensorValueFromMemory<float>(inputData, inputShape);
                 cleanUp.Add(inputOrtValue);
 
                 // Create OrtValue and pre-allocate output buffer using the expected output shape

@@ -313,9 +313,9 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             var memInput = new Memory<float>(input);
             IntPtr inputPtr;
 
-            // Output data, shape is the same
-            float[] output = { 1.0F, 4.0F, 9.0F, 16.0F, 25.0F, 36.0F };
-            Assert.Equal(inputOutputShapeSize, output.LongLength);
+            // Output data on the first iteration
+            float[] firstIterExpectedOutput = { 1.0F, 4.0F, 9.0F, 16.0F, 25.0F, 36.0F };
+            Assert.Equal(inputOutputShapeSize, firstIterExpectedOutput.LongLength);
 
             using (var cleanUp = new DisposableListTest<IDisposable>())
             {
@@ -328,22 +328,26 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 var ioBinding = session.CreateIoBinding();
                 cleanUp.Add(ioBinding);
 
+
+
                 var pinInput = memInput.Pin();
                 cleanUp.Add(pinInput);
 
+                // This can be a ptr to arbitrary buffer, not necessarily a pinned one
                 unsafe
                 {
                     inputPtr = (IntPtr)pinInput.Pointer;
                 }
 
                 // Bind the input
-                // We could have bound the output as well, but we simply bind it to a device in this case.
-                // Just check the result the first time around.
                 using (var ortInput = OrtValue.CreateTensorValueWithData(OrtMemoryInfo.DefaultInstance,
                                        TensorElementType.Float, inputOutputShape, inputPtr, input.Length * sizeof(float)))
                 {
                     ioBinding.BindInput(inputName, ortInput);
                 }
+
+                // We could have bound the output as well, but we simply bind it to a device in this case.
+                // Just check the result the first time around.
                 ioBinding.BindOutputToDevice(outputName, OrtMemoryInfo.DefaultInstance);
 
                 ioBinding.SynchronizeBoundInputs();
@@ -365,7 +369,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                     }
 
                     // First time around the output should match the expected
-                    Assert.Equal(output, res.GetTensorDataAsSpan<float>().ToArray());
+                    Assert.Equal(firstIterExpectedOutput, res.GetTensorDataAsSpan<float>().ToArray());
 
                     // Now we rebind the output to the input
                     // It is the same name, so the OrtValue would be replaced.

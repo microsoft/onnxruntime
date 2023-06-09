@@ -28,6 +28,9 @@ namespace Microsoft.ML.OnnxRuntime
     }
 
     /// <summary>
+    /// This is a legacy class that is kept for backward compatibility.
+    /// Use OrtValue based API.
+    /// 
     /// The class associates a name with an Object. 
     /// The name of the class is a misnomer, it does not hold any Onnx values,
     /// just managed representation of them.
@@ -36,7 +39,7 @@ namespace Microsoft.ML.OnnxRuntime
     /// disposable, it can not hold on to any native objects.
     /// 
     /// When used as input, we temporarily create OrtValues that map managed inputs
-    /// directly. Thus we are able to avoid copying.
+    /// directly. Thus we are able to avoid copying of contiguous data.
     /// 
     /// For outputs, tensor buffers works the same as input, providing it matches
     /// the expected output shape. For other types (maps and sequences) we create a copy of the data.
@@ -44,7 +47,7 @@ namespace Microsoft.ML.OnnxRuntime
     /// the underlying OrtValues that must be destroyed before Run() returns.
     /// 
     /// To avoid data copying on output, use DisposableNamedOnnxValue class that is returned from Run() methods.
-    /// This provides access to the native memory and avoids copying.
+    /// This provides access to the native memory tensors and avoids copying.
     /// 
     /// It is a recursive structure that may contain Tensors (base case)
     /// Other sequences and maps. Although the OnnxValueType is exposed,
@@ -221,12 +224,12 @@ namespace Microsoft.ML.OnnxRuntime
         /// both OrtValue and pinnedMemoryHandle
         /// </summary>
         /// <param name="pinnedMemoryHandle">dispose after returned OrtValus is disposed</param>
-        /// <returns>an instance of OrtValue. The lifespan of OrtValue must overlap pinnedMemoryHandle</returns>
-        internal virtual OrtValue InputToOrtValue(NodeMetadata metadata, out IDisposable memoryOwner)
+        /// <returns>The native OrtValue handle</returns>
+        internal virtual IntPtr InputToOrtValue(NodeMetadata metadata, out IDisposable memoryOwner)
         {
-            var projection = new ManagedTypeProjection(this, metadata);
+            var projection = ManagedTypeProjection.CreateProjection(this, metadata);
             memoryOwner = projection;
-            return projection.Value;
+            return projection.Handle;
         }
 
         /// <summary>
@@ -239,15 +242,15 @@ namespace Microsoft.ML.OnnxRuntime
         /// <param name="metadata"></param>
         /// <param name="memoryOwner"></param>
         /// <returns></returns>
-        internal virtual OrtValue OutputToOrtValue(NodeMetadata metadata, out IDisposable memoryOwner)
+        internal virtual IntPtr OutputToOrtValue(NodeMetadata metadata, out IDisposable memoryOwner)
         {
             // For NamedOnnxValue for output we only allow to produce OrtValue for tensors
             // or optional type that may contain a tensor
             if (metadata.OnnxValueType == OnnxValueType.ONNX_TYPE_TENSOR)
             {
-                var projection = new ManagedTypeProjection(this, metadata);
+                var projection = ManagedTypeProjection.CreateProjection(this, metadata);
                 memoryOwner = projection;
-                return projection.Value;
+                return projection.Handle;
             }
 
             if (metadata.OnnxValueType == OnnxValueType.ONNX_TYPE_OPTIONAL)
@@ -255,9 +258,9 @@ namespace Microsoft.ML.OnnxRuntime
                 var meta = metadata.AsOptionalMetadata().ElementMeta;
                 if (meta.OnnxValueType == OnnxValueType.ONNX_TYPE_TENSOR)
                 {
-                    var projection = new ManagedTypeProjection(this, meta);
+                    var projection = ManagedTypeProjection.CreateProjection(this, metadata);
                     memoryOwner = projection;
-                    return projection.Value;
+                    return projection.Handle;
                 }
             }
 
@@ -299,8 +302,5 @@ namespace Microsoft.ML.OnnxRuntime
             Debug.Assert(_mapHelper != null);
             return _mapHelper.Values;
         }
-
-        // may expose different types of getters in future
-
     }
 }

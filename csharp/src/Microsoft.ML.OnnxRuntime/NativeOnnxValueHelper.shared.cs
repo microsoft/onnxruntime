@@ -152,6 +152,50 @@ namespace Microsoft.ML.OnnxRuntime
         }
     }
 
+    // Guards an array of disposable objects on stack and disposes them in reverse order
+    internal ref struct DisposableArray<T> where T: IDisposable
+    {
+        internal Span<T> Span { get; private set; }
+        internal DisposableArray(Span<T> disposables)
+        {
+            Span = disposables;
+        }
+
+        public void Dispose()
+        {
+            if (Span.Length > 0)
+            {
+                for (int i = Span.Length - 1; i >= 0; --i)
+                {
+                    Span[i]?.Dispose();
+                }
+            }
+        }
+    }
+
+    internal ref struct DisposableOrtValueHandleArray
+    {
+        internal Span<IntPtr> Span { get; private set; }
+        internal DisposableOrtValueHandleArray(Span<IntPtr> handles)
+        {
+            Span = handles;
+        }
+
+        public void Dispose()
+        {
+            if (Span.Length > 0)
+            {
+                for (int i = Span.Length - 1; i >= 0; --i)
+                {
+                    if (Span[i] != IntPtr.Zero)
+                    {
+                        NativeMethods.OrtReleaseValue(Span[i]);
+                    }
+                }
+            }
+        }
+    }
+
     /// <summary>
     /// This class converts a string to a UTF8 encoded byte array and then copies it to an unmanaged buffer.
     /// This is done, so we can pass it to the native code and avoid pinning.

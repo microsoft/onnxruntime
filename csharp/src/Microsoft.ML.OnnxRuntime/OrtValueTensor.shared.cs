@@ -30,18 +30,23 @@ namespace Microsoft.ML.OnnxRuntime
         private DisposableList<T> _disposables;
         bool _disposed = false;
 
-        internal NativeOrtValueCollectionOwner(OrtValue ortValue, DisposableList<T> disposables)
+        /// <summary>
+        /// _Ctor. Takes ownership of ortValue and sets it to null on success.
+        /// </summary>
+        /// <param name="ortValue">becomes null on success</param>
+        /// <param name="disposables"></param>
+        internal NativeOrtValueCollectionOwner(ref OrtValue ortValue, DisposableList<T> disposables)
         {
-            Debug.Assert(ortValue.IsOwned);
-            _ortValue = new OrtValue(ortValue.Disown());
+            _ortValue = ortValue;
+            ortValue = null;
             _disposables = disposables;
         }
 
         #region IOrtValueOwner
         /// <summary>
-        /// Returns a non-owning ortValue
+        /// Returns OrtValue that is owned by this instance
         /// </summary>
-        public OrtValue Value { get { return new OrtValue(_ortValue.Handle, false); } }
+        public OrtValue Value { get { return _ortValue; } }
         #endregion IOrtValueOwner
 
         #region Disposable
@@ -99,8 +104,8 @@ namespace Microsoft.ML.OnnxRuntime
         /// <summary>
         /// Constructs an instance and takes ownership of ortValue on success
         /// </summary>
-        /// <param name="ortValue">ortValue that is a Tensor</param>
-        public OrtValueTensor(OrtValue ortValue)
+        /// <param name="ortValue">ortValue that is a Tensor. It becomes null on successful return.</param>
+        public OrtValueTensor(ref OrtValue ortValue)
         {
             using(var typeAndShapeInfo = ortValue.GetTensorTypeAndShape())
             {
@@ -136,14 +141,14 @@ namespace Microsoft.ML.OnnxRuntime
                 }
             }
             // Transfer ownership
-            _ortValue = new OrtValue(ortValue.Disown());
+            _ortValue = ortValue;
+            ortValue = null;
         }
 
         /// <summary>
-        /// Returns a non-owning copy of OrtValue so the
-        /// result can not release native memory
+        /// Returns OrtValue that is owned by this instance
         /// </summary>
-        public OrtValue Value { get { return new OrtValue(_ortValue.Handle, false); } }
+        public OrtValue Value { get { return _ortValue; } }
 
         public bool IsDisposed { get; private set; } = false;
 

@@ -2,6 +2,8 @@
 // Licensed under the MIT License.
 
 using System;
+using System.Diagnostics;
+using System.Runtime.ExceptionServices;
 using System.Runtime.InteropServices;
 using System.Text;
 
@@ -279,15 +281,21 @@ namespace Microsoft.ML.OnnxRuntime
                 return Array.Empty<string>();
             }
 
+            int outputCount = (int)count;
+            Span<IntPtr> lenSpan;
+            unsafe
+            {
+                lenSpan = new Span<IntPtr>(lengths.ToPointer(), outputCount);
+            }
+
             try
             {
-                int outputCount = (int)count;
                 var result = new string[outputCount];
 
                 int readOffset = 0;
                 for (int i = 0; i < outputCount; ++i)
                 {
-                    var strLen = (int)Marshal.ReadIntPtr(lengths, IntPtr.Size * i);
+                    var strLen = (int)lenSpan[i];
                     unsafe
                     {
                         var strStart = new IntPtr(buffer.ToInt64() + readOffset);
@@ -311,35 +319,54 @@ namespace Microsoft.ML.OnnxRuntime
         /// <returns>IDisposableReadOnlyCollection<OrtValue></returns>
         public IDisposableReadOnlyCollection<OrtValue> GetOutputValues()
         {
+            var ortValues = GetOutputOrtValues();
+            return new DisposableList<OrtValue>(ortValues);
+        }
+
+        internal OrtValue[] GetOutputOrtValues()
+        {
             var allocator = OrtAllocator.DefaultInstance;
             NativeApiStatus.VerifySuccess(NativeMethods.OrtGetBoundOutputValues(handle, allocator.Pointer,
                 out IntPtr ortValues, out UIntPtr count));
 
             if ((ulong)count == 0)
             {
-                return new DisposableList<OrtValue>();
+                return Array.Empty<OrtValue>();
+            }
+
+            int outputCount = (int)count;
+            Span<IntPtr> srcSpan;
+            unsafe
+            {
+                srcSpan = new Span<IntPtr>(ortValues.ToPointer(), outputCount);
             }
 
             try
             {
-                int outputCount = (int)count;
-                var ortList = new DisposableList<OrtValue>(outputCount);
-                try
+                Debug.Assert(outputCount == srcSpan.Length, "Improperly created span");
+
+                OrtValue[] result = new OrtValue[outputCount];
+
+                for (int i = 0; i < outputCount; ++i)
                 {
-                    for (int i = 0; i < outputCount; ++i)
-                    {
-                        IntPtr ortValue = Marshal.ReadIntPtr(ortValues, IntPtr.Size * i);
-                        ortList.Add(new OrtValue(ortValue));
-                    }
+                    result[i] = new OrtValue(srcSpan[i]);
                 }
-                catch (Exception)
-                {
-                    ortList.Dispose();
-                    throw;
-                }
-                return ortList;
+
+                return result;
             }
-            finally { allocator.FreeMemory(ortValues); }
+            catch (Exception)
+            {
+                // There is a very little chance that we throw
+                for (int i = 0; i < srcSpan.Length; ++i)
+                {
+                    NativeMethods.OrtReleaseValue(srcSpan[i]);
+                }
+                throw;
+            }
+            finally
+            {
+                allocator.FreeMemory(ortValues);
+            }
         }
 
         /// <summary>

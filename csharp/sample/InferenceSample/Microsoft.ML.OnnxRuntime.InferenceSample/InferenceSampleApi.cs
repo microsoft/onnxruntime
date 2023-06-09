@@ -16,14 +16,6 @@ namespace Microsoft.ML.OnnxRuntime.InferenceSample
 
             // this is the data for only one input tensor for this model
             var inputData = LoadTensorFromEmbeddedResource("TestData.bench.in");
-            var mem = new Memory<float>(inputData);
-            _inputPin = mem.Pin();
-
-            IntPtr dataPtr;
-            unsafe
-            {
-                dataPtr = (IntPtr)(_inputPin).Pointer;
-            }
 
             // create default session with default session options
             // Creating an InferenceSession and loading the model is an expensive operation, so generally you would
@@ -44,8 +36,7 @@ namespace Microsoft.ML.OnnxRuntime.InferenceSample
                 Debug.Assert(shapeLen <= inputData.LongLength);
                 var bufferSize = shapeLen * sizeof(float);
 
-                var ortValue = OrtValue.CreateTensorValueWithData(OrtMemoryInfo.DefaultInstance, TensorElementType.Float,
-                    shape, dataPtr, bufferSize);
+                var ortValue = OrtValue.CreateTensorValueFromMemory(inputData, shape);
                 _inputData.Add(ortValue);
 
                 _orderedInputNames.Add(name);
@@ -76,11 +67,7 @@ namespace Microsoft.ML.OnnxRuntime.InferenceSample
                 {
                     var name = _inferenceSession.OutputNames[i];
                     Console.WriteLine("Output for {0}", name);
-                    // Use tensor to print out the information. ToArray() creates a copy of data,
-                    // however, you can directly access native memory via returned Span<T>
-                    var mem = new Memory<float>(results[i].GetTensorDataAsSpan<float>().ToArray());
-                    var dt = new DenseTensor<float>(mem, _inferenceSession.OutputMetadata[name].Dimensions);
-                    Console.WriteLine(dt.GetArrayString());
+                    Console.WriteLine(results[i].GetTensorDataAsSpan<float>().ToArray());
                 }
             }
         }
