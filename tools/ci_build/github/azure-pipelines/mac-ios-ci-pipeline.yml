@@ -1,7 +1,7 @@
 jobs:
 - job: iOS_CI_on_Mac
   pool:
-    vmImage: 'macOS-12'
+    vmImage: 'macOS-13'
   variables:
     PROTO_CACHE_DIR: $(Pipeline.Workspace)/proto_ccache
     ORT_CACHE_DIR: $(Pipeline.Workspace)/ort_ccache
@@ -28,8 +28,8 @@ jobs:
       # Failing tests:
       #   -[XnnpackEP TestConvTranspose_qdq]
       #   -[XnnpackEP TestQDQConvS8S8_per_channel]
-      parameters:
-        xcodeVersion: "13.1"
+      #parameters:
+      #  xcodeVersion: "13.1"
 
     - template: templates/mac-build-step-with-cache.yml
       parameters:
