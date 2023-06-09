@@ -168,7 +168,7 @@ void TensorrtExecutionProvider::SetGraphOuterScopeValuesAndInputs(Graph* graph_b
         graph_build->AddOuterScopeNodeArg(input->Name());
         LOGS_DEFAULT(VERBOSE) << "\t" << input->Name() << " is used in this subgraph";
 
-        if (context && (context->manually_added_graph_inputs.find(input->Name()) != context->manually_added_graph_inputs.end()) {
+        if (context && (context->manually_added_graph_inputs.find(input->Name()) != context->manually_added_graph_inputs.end())) {
           LOGS_DEFAULT(VERBOSE) << "\t" << input->Name() << " is already been added as an explicit input to graph";
           continue;
         }
