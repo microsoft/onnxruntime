@@ -128,7 +128,7 @@ Status GatherOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
                                                  {intermediate_output}, {output_operand_type}));
 
   std::string squeeze_op_name = model_builder.GetUniqueName(node_unit.Name() + "_squeeze");
-  return op_builder_helpers::AddSqueezeOp(model_builder, squeeze_op_name, intermediate_output, {output}, {axis});
+  return op_builder_helpers::AddSqueezeOp(model_builder, squeeze_op_name, intermediate_output, output, {axis});
 }
 
 // Operator support related
