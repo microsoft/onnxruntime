@@ -39,7 +39,7 @@ REGISTER_KERNEL_TYPED(float)
 REGISTER_KERNEL_TYPED(MLFloat16)
 
 template <typename T>
-Attention<T>::Attention(const OpKernelInfo& info) : RocmKernel(info), AttentionBase(info, true) {}
+Attention<T>::Attention(const OpKernelInfo& info) : RocmKernel(info), AttentionBase(info, true), attn_type_(A) {}
 
 template <typename T>
 Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
@@ -86,8 +86,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   using AttentionGeneric = GemmSoftmaxGemmPermuteGenericPipeline<HipT>;
   using AttentionTunableOp = GemmSoftmaxGemmPermuteTunableOp<HipT>;
 
-  ORT_RETURN_IF_ERROR(ClassifyAttentionMode(
-      Node().OpType(), &attn, /*qkv=*/{}, /*past=*/{past}, /*present=*/{present}));
+  ORT_RETURN_IF_ERROR(ClassifyAttentionMode(attn_type_, &attn, /*qkv=*/{}, /*past=*/{past}, /*present=*/{present}));
   ORT_ENFORCE(attn.mode == QFMT_KFMT_VFMT_NONE_NONE_NONE_NONE ||
               attn.mode == QFMT_KFMT_VFMT_NONE_NONE_2BNTH_NONE ||
               attn.mode == QFMT_KFMT_VFMT_NONE_NONE_2BNMH_NONE ||
