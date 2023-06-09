@@ -22,6 +22,11 @@ parameters:
   type: boolean
   default: false
 
+- name: DoESRP
+  displayName: Do ESRP
+  type: boolean
+  default: false
+
 # these 2 parameters are used for debugging.
 - name: SpecificArtifact
   displayName: Use Specific Artifact (Debugging only)
@@ -90,12 +95,13 @@ stages:
             SpecificArtifact: ${{ parameters.specificArtifact }}
             BuildId: ${{ parameters.BuildId }}
 
-      - template: mac-esrp-dylib.yml
-        parameters:
-          FolderPath: '$(Build.ArtifactStagingDirectory)'
-          DisplayName: 'ESRP - Sign Mac'
-          DoEsrp: true
-          Pattern: '*.zip'
+      - ${{ if eq(parameters.DoESRP, true)}}
+        - template: mac-esrp-dylib.yml
+          parameters:
+            FolderPath: '$(Build.ArtifactStagingDirectory)'
+            DisplayName: 'ESRP - Sign Mac'
+            DoEsrp: true
+            Pattern: '*.zip
 
       - bash: |
           set -ex

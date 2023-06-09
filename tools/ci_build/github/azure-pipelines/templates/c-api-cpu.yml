@@ -59,6 +59,7 @@ stages:
     BuildForAllArchs: true
     SpecificArtifact: ${{ parameters.SpecificArtifact }}
     BuildId: ${{ parameters.BuildId }}
+    DoEsrp: ${{ parameters.DoEsrp }}
 
 - stage: Android_Java_API_AAR_Packaging_Mobile
   dependsOn: []
