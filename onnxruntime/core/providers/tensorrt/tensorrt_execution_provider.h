@@ -141,7 +141,7 @@ struct TensorrtFuncState {
 struct SubGraphContext {
   std::unordered_set<std::string> output_args;
   std::unordered_map<std::string, const NodeArg*> inputs_and_initializers;
-  std::unordered_set<const NodeArg*> manually_added_graph_inputs;
+  std::unordered_map<std::string, const NodeArg*> manually_added_graph_inputs;
 };
 
 // Logical device representation.
@@ -217,6 +217,7 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   bool force_timing_cache_match_ = false;
   bool detailed_build_log_ = false;
 
+  bool graph_has_control_flow_op_ = false;
   std::unordered_set<std::string> control_flow_op_set_ = {"If", "Loop", "Scan"};
   std::unordered_map<std::string, std::unique_ptr<SubGraphContext>> subgraph_context_map_;
   std::unordered_map<std::string, tensorrt_ptr::unique_pointer<nvonnxparser::IParser>> parsers_;
@@ -277,7 +278,7 @@ class TensorrtExecutionProvider : public IExecutionProvider {
                             std::unordered_map<std::string, std::unique_ptr<SubGraphContext>>& subgraph_context_map) const;
 
   /**
-  * Set graph outer scope values for subgraphs and add thoes values as top-level graph's inputs if needed.
+  * Set outer scope values for subgraphs and add thoes values as top-level graph's inputs if needed.
   */
   void SetGraphOuterScopeValuesAndInputs(Graph* build_graph,
                                          const Graph* graph,

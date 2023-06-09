@@ -58,16 +58,19 @@ void TensorrtExecutionProvider::BuildSubGraphContext(Graph* graph,
 
     auto subgraph_map = node->GetAttributeNameToMutableSubgraphMap();
     for (auto& entry : subgraph_map) {
-      auto attr_name = entry.first;
       Graph* subgraph = entry.second;
       BuildSubGraphContext(subgraph, subgraph_context_map);
     }
   }
 
   std::string subgraph_name = graph->Name();
-  if (subgraph_context_map.find(subgraph_name) == subgraph_context_map.end()) {
-    subgraph_context_map.emplace(subgraph_name, std::make_unique<SubGraphContext>());
+
+  // Subgraph context has been built before, no need to do it again
+  if (subgraph_context_map.find(subgraph_name) != subgraph_context_map.end()) {
+    return;
   }
+
+  subgraph_context_map.emplace(subgraph_name, std::make_unique<SubGraphContext>());
   SubGraphContext* context = subgraph_context_map.at(subgraph_name).get();
 
   // Collect all nodes' outputs and nodes' name
@@ -99,7 +102,7 @@ void TensorrtExecutionProvider::BuildSubGraphContext(Graph* graph,
   }
 }
 
-// Set graph outer scope values for subgraphs and add thoes values as top-level graph's inputs if needed.
+// Set outer scope values for subgraphs and add thoes values as top-level graph's inputs if needed.
 void TensorrtExecutionProvider::SetGraphOuterScopeValuesAndInputs(Graph* graph_build,
                                                                   const Graph* graph,
                                                                   std::unordered_map<std::string, std::unique_ptr<SubGraphContext>>& subgraph_context_map) const {
@@ -135,48 +138,56 @@ void TensorrtExecutionProvider::SetGraphOuterScopeValuesAndInputs(Graph* graph_b
     }
   }
 
+  // Start from the inner most subgraph first and check whether its outer scope values are existed in the newly built graph.
+  // If not, we need to add those outer scope values as explict inputs to the top-level of newly built graph.
   if (graph_build->ParentNode()) {
 
-    std::cout << "Parent Node: " << graph->ParentNode()->Name() << std::endl;
-    std::cout << "\timplicit inputs:" << std::endl;
+    auto top_level_graph = graph_build;
+    while (top_level_graph->MutableParentGraph()) {
+      top_level_graph = top_level_graph->MutableParentGraph();
+    }
+    if (subgraph_context_map.find(top_level_graph->Name()) != subgraph_context_map.end()) {
+      LOGS_DEFAULT(ERROR) << "[TensorRT EP] Can't find top-level graph context. Please check BuildSubGraphContext() has built the graph context correctly.";
+      return;
+    }
 
-    //std::vector<const onnxruntime::NodeArg*> manually_added_graph_inputs;
+    SubGraphContext* context = subgraph_context_map.at(top_level_graph->Name()).get();
+
+    LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Subgraph is " << graph_build->Name();
+    LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Its parent node is " << graph->ParentNode()->Name();
+    LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] \tIts parent node's implicit inputs:";
+
 
     // Iterate all the implict inputs to set outer scope value for the newly built subgraph
     for (const auto& input : graph->ParentNode()->ImplicitInputDefs()) {
+      LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] \t"<< input->Name();
 
       // The node arg in parent node's implicit inputs could be used for parent node's other subgraph, for example "If" op has two subgraphs.
       // So we need to make sure that the node arg is used in current subgraph only. (GetNodeArg searches for specific node arg in all node args in the graph)
       if (graph_build->GetNodeArg(input->Name())) {
         graph_build->AddOuterScopeNodeArg(input->Name());
-        std::cout << "\t" << input->Name() << std::endl;
+        LOGS_DEFAULT(VERBOSE) << "\t" << input->Name() << " is used in this subgraph";
+
+        if (context && (context->manually_added_graph_inputs.find(input->Name()) != context->manually_added_graph_inputs.end()) {
+          LOGS_DEFAULT(VERBOSE) << "\t" << input->Name() << " is already been added as an explicit input to graph";
+          continue;
+        }
 
         // Handle the case where this outer scope value is not existed in any outer scope levels of the newly built graph (the newly built graph is the subgraph of the original graph)
-        // need to add the outer scope value from origianl graph as an explict input to the top-level of newly built graph
+        // need to add the outer scope value as an explict input to the top-level of newly built graph
         if (!IsOuterScopeValue(graph_build, input->Name(), subgraph_context_map)) {
-
-          auto top_level_graph = graph_build;
-          while (top_level_graph->MutableParentGraph()) {
-            top_level_graph = top_level_graph->MutableParentGraph();
-          }
-
           const auto& name = input->Name();
           auto graph_inputs_including_initializers = top_level_graph->GetInputsIncludingInitializers();
           auto added_graph_input = std::find_if(graph_inputs_including_initializers.begin(), graph_inputs_including_initializers.end(),
                                                 [&name](const NodeArg* entry) { return entry->Name() == name; });
 
           if (added_graph_input == graph_inputs_including_initializers.end()) {
-            auto type_proto = ONNX_NAMESPACE::TypeProto::Create();
-            type_proto->copy_from(input->TypeAsProto());
-            auto& n_input = top_level_graph->GetOrCreateNodeArg(input->Name(), type_proto.get());
-            std::cout << "\t(add explicit input)" << n_input.Name() << std::endl;
-            // update subgraph context
-            std::string subgraph_name = top_level_graph->Name();
-            if (subgraph_context_map.find(subgraph_name) != subgraph_context_map.end()) {
-              SubGraphContext* context = subgraph_context_map.at(subgraph_name).get();
-              if (context) {
-                context->manually_added_graph_inputs.insert(&n_input);
-              }
+            if (context) {
+              auto type_proto = ONNX_NAMESPACE::TypeProto::Create();
+              type_proto->copy_from(input->TypeAsProto());
+              auto& n_input = top_level_graph->GetOrCreateNodeArg(name, type_proto.get());
+              context->manually_added_graph_inputs[n_input.Name()] = &n_input;
+              LOGS_DEFAULT(VERBOSE) << "\t" << n_input.Name() << " is added as an explicit input into the newly built graph" << std::endl;
             }
           }
         }
