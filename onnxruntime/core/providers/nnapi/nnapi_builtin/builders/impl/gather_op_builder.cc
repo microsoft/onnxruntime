@@ -121,14 +121,14 @@ Status GatherOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
                                       {output}, {output_operand_type});
   }
 
-  std::string intermidiate_output = model_builder.GetUniqueName(node_unit.Name() + "_need_squeeze");
-  shaper.AddShape(intermidiate_output, output_shape);
+  std::string intermediate_output = model_builder.GetUniqueName(node_unit.Name() + "_need_squeeze");
+  shaper.AddShape(intermediate_output, output_shape);
 
   ORT_RETURN_IF_ERROR(model_builder.AddOperation(ANEURALNETWORKS_GATHER, input_indices,
-                                                 {intermidiate_output}, {output_operand_type}));
+                                                 {intermediate_output}, {output_operand_type}));
 
   std::string squeeze_op_name = model_builder.GetUniqueName(node_unit.Name() + "_squeeze");
-  return op_builder_helpers::AddSqueezeOp(model_builder, squeeze_op_name, intermidiate_output, {output}, {axis});
+  return op_builder_helpers::AddSqueezeOp(model_builder, squeeze_op_name, intermediate_output, {output}, {axis});
 }
 
 // Operator support related
