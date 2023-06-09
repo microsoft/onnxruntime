@@ -8,6 +8,7 @@
 #include "core/session/onnxruntime_c_api.h"
 #include "ortdevice.h"
 #include "ortmemoryinfo.h"
+#include <map>
 
 // This configures the arena based allocator used by ORT
 // See docs/C_API.md for details on what these mean and how to choose these values
@@ -210,6 +211,7 @@ class CPUAllocator : public IAllocator {
 };
 
 using AllocatorPtr = std::shared_ptr<IAllocator>;
+using AllocatorMap = std::map<OrtDevice, AllocatorPtr>;
 
 void* AllocatorDefaultAlloc(size_t size);
 void AllocatorDefaultFree(void* p);

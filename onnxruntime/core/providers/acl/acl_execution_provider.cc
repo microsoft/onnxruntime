@@ -88,8 +88,7 @@ std::shared_ptr<KernelRegistry> GetAclKernelRegistry() {
 }  // namespace acl
 
 ACLExecutionProvider::ACLExecutionProvider(const ACLExecutionProviderInfo&)
-  : IExecutionProvider{onnxruntime::kAclExecutionProvider} {}
-
+    : IExecutionProvider{onnxruntime::kAclExecutionProvider} {}
 
 ACLExecutionProvider::~ACLExecutionProvider() {}
 

@@ -316,9 +316,10 @@ JsExecutionProvider::JsExecutionProvider(const JsExecutionProviderInfo& info)
 
 std::vector<AllocatorPtr> JsExecutionProvider::CreatePreferredAllocators() {
   AllocatorCreationInfo customAllocatorCreationInfo([&](int) {
-      return std::make_unique<js::JsCustomAllocator>();
-    }, 0, false);   // TODO(leca): REVIEW: need JsCPUAllocator?
-  return std::vector<AllocatorPtr> {CreateAllocator(customAllocatorCreationInfo)};
+    return std::make_unique<js::JsCustomAllocator>();
+  },
+                                                    0, false);  // TODO(leca): REVIEW: need JsCPUAllocator?
+  return std::vector<AllocatorPtr>{CreateAllocator(customAllocatorCreationInfo)};
 }
 
 std::vector<std::unique_ptr<ComputeCapability>> JsExecutionProvider::GetCapability(

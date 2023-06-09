@@ -627,9 +627,6 @@ class InferenceSession {
   template <typename T>
   void StartProfiling(const std::basic_string<T>& file_prefix);
 
-  // Updates all SessionState allocators with the allocators from the env
-  void UpdateSessionStateAllocatorsWithSharedAllocators();
-
   /*
    * Validate and parses the shrink arena request string from the user
    * List format: "device_0:device_id_0;device_1:device_id_1"

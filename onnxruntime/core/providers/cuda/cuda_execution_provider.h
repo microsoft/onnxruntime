@@ -81,12 +81,10 @@ class CUDAExecutionProvider : public IExecutionProvider {
 
   std::unique_ptr<profiling::EpProfiler> GetProfiler() override;
 
-#if defined(CUDA_VERSION) && CUDA_VERSION >= 10000
   bool IsGraphCaptureEnabled() const override;
   bool IsGraphCaptured() const override;
   Status ReplayGraph() override;
-#endif
-  void RegisterStreamHandlers(IStreamCommandHandleRegistry& stream_handle_registry, std::map<OrtDevice, AllocatorPtr>& allocators) const override;
+  void RegisterStreamHandlers(IStreamCommandHandleRegistry& stream_handle_registry, AllocatorMap& allocators) const override;
   OrtDevice GetOrtDeviceByMemType(OrtMemType mem_type) const override;
   std::vector<AllocatorPtr> CreatePreferredAllocators() override;
 
@@ -167,14 +165,12 @@ class CUDAExecutionProvider : public IExecutionProvider {
       }
     }
 
-#if defined(CUDA_VERSION) && CUDA_VERSION >= 10000
     bool IsGraphCaptureAllowed() const;
     void CaptureBegin();
     void CaptureEnd();
     bool IsGraphCaptured() const;
     Status ReplayGraph();
     void IncrementRegularRunCountBeforeGraphCapture();
-#endif
 
    private:
     cublasHandle_t cublas_handle_ = nullptr;
@@ -190,15 +186,12 @@ class CUDAExecutionProvider : public IExecutionProvider {
     std::unique_ptr<cuda::IConstantBuffer<Float8E5M2>> constant_ones_float8e5m2_;
 #endif
 
-#if defined(CUDA_VERSION) && CUDA_VERSION >= 10000
     // Cuda graph with multi threads will be supported in the future, so cuda_graph_
     // is put under PerThreadContext.
     CUDAGraph cuda_graph_;
     bool is_graph_captured_ = false;
     int regular_run_count_before_graph_capture_ = 0;
     const int min_num_runs_before_cuda_graph_capture_ = 1;  // required min regular runs before graph capture for the necessary memory allocations.
-
-#endif
   };
 
   using PerThreadContextMap = std::unordered_map<const CUDAExecutionProvider*, std::weak_ptr<PerThreadContext>>;

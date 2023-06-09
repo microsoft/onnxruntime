@@ -100,7 +100,7 @@ class SessionState {
                profiling::Profiler& profiler,
                const SessionOptions& sess_options,
                PrepackedWeightsContainer* prepacked_weights_container = nullptr,
-               std::shared_ptr<std::map<OrtDevice, AllocatorPtr>> parent_allocators = nullptr);
+               AllocatorMap* parent_allocators = nullptr);
 
   ~SessionState() {
     for (auto& kvp : deleter_for_initialized_tensors_) {
@@ -133,9 +133,11 @@ class SessionState {
   AllocatorPtr GetAllocator(const OrtDevice& device) const noexcept;
 
   /*
-  * Get allocators. CANNOT be const member function as allocators_ will be changed after SessionState's initialization for shared allocator scenario (InferenceSession::UpdateSessionStateAllocatorsWithSharedAllocators())
-  */
-  std::map<OrtDevice, AllocatorPtr>& GetAllocators() { return *allocators_; }
+   * Get allocators.
+   */
+  const AllocatorMap& GetAllocators() { return *allocators_; }
+
+  void UpdateAllocatorsWithEnvAllocators(const std::vector<AllocatorPtr>&);
 
   const OrtValueNameIdxMap& GetOrtValueNameIdxMap() const noexcept { return ort_value_name_idx_map_; }
 
@@ -446,7 +448,8 @@ class SessionState {
   // and as this isn't considered performance critical currently it's not worth the maintenance overhead of adding one.
   // We do get an allocator from ExecutionFrame so this is looked up frequently, however there most likely aren't many
   // entries in the map
-  std::shared_ptr<std::map<OrtDevice, AllocatorPtr>> allocators_;
+  std::unique_ptr<AllocatorMap> allocators_unique_ptr_;
+  AllocatorMap* allocators_;
 
   OrtValueNameIdxMap ort_value_name_idx_map_;
 

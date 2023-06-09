@@ -12,7 +12,7 @@ std::shared_ptr<KernelRegistry> DummyExecutionProvider::GetKernelRegistry() cons
 }
 
 std::vector<AllocatorPtr> DummyExecutionProvider::CreatePreferredAllocators() {
-  return std::vector<AllocatorPtr> { std::make_shared<DummyAllocator>() };
+  return std::vector<AllocatorPtr>{std::make_shared<DummyAllocator>()};
 }
 
 }  // namespace test

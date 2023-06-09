@@ -2327,7 +2327,7 @@ ROCMExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
   return result;
 }
 
-void ROCMExecutionProvider::RegisterStreamHandlers(IStreamCommandHandleRegistry& stream_handle_registry, std::map<OrtDevice, AllocatorPtr>& allocators) const {
+void ROCMExecutionProvider::RegisterStreamHandlers(IStreamCommandHandleRegistry& stream_handle_registry, AllocatorMap& allocators) const {
   // This allocator must be the same to the allocator
   // used in AllocateBufferOnCPUPinned.
   auto allocator = allocators[GetOrtDeviceByMemType(OrtMemTypeCPU)];
@@ -2358,11 +2358,10 @@ std::vector<AllocatorPtr> ROCMExecutionProvider::CreatePreferredAllocators() {
       // correct to use the GPU device id, unless we wanted to share the pinned memory allocator across devices,
       // at the risk the lifetime isn't managed correctly if one of those devices go away.
       0);
-  return std::vector<AllocatorPtr> {
-    CreateRocmAllocator(info_.device_id, info_.gpu_mem_limit, info_.arena_extend_strategy,
-      info_.external_allocator_info, info_.default_memory_arena_cfg),
-    CreateAllocator(pinned_memory_info)
-  };
+  return std::vector<AllocatorPtr>{
+      CreateRocmAllocator(info_.device_id, info_.gpu_mem_limit, info_.arena_extend_strategy,
+                          info_.external_allocator_info, info_.default_memory_arena_cfg),
+      CreateAllocator(pinned_memory_info)};
 }
 
 }  // namespace onnxruntime

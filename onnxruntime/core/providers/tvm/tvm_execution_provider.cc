@@ -54,7 +54,7 @@ std::vector<AllocatorPtr> TvmExecutionProvider::CreatePreferredAllocators() {
                                                  return std::make_unique<TVMAllocator>();
                                                },
                                                0, false};
-  return std::vector<AllocatorPtr>{CreateAllocator(default_memory_info)}; // TODO(leca): REVIEW: will CPU EP also use this?
+  return std::vector<AllocatorPtr>{CreateAllocator(default_memory_info)};  // TODO(leca): REVIEW: will CPU EP also use this?
 }
 
 TvmExecutionProvider::~TvmExecutionProvider() {}

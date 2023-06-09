@@ -583,13 +583,13 @@ Status PrepareQkv(contrib::AttentionParameters& parameters,
       // Key (BxLxNxH) => K (BxNxLxH)
       LaunchAddBiasTranspose<T>(stream, 1, format, max_threads_per_block,
                                 batch_size, kv_sequence_length, num_heads, qk_head_size,
-                                data.key, data.bias + num_heads * qk_head_size, k,
+                                data.key, nullptr == data.bias ? nullptr : data.bias + num_heads * qk_head_size, k,
                                 true, -1);
 
       // Value (BxLxNxH_v) => K (BxNxLxH_v)
       LaunchAddBiasTranspose<T>(stream, 1, format, max_threads_per_block,
                                 batch_size, kv_sequence_length, num_heads, v_head_size,
-                                data.value, data.bias + 2 * num_heads * qk_head_size, v,
+                                data.value, nullptr == data.bias ? nullptr : data.bias + 2 * num_heads * qk_head_size, v,
                                 true, -1);
 
       DUMP_TENSOR_D("q(BNSH)", q, batch_size * num_heads, sequence_length, qk_head_size);

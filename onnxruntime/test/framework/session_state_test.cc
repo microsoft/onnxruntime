@@ -158,8 +158,8 @@ TEST_P(SessionStateTestP, TestInitializerProcessing) {
   GraphPartitioner partitioner(krm, execution_providers);
   status = partitioner.Partition(graph, session_state.GetMutableFuncMgr(),
                                  [](Graph& graph, bool& modified,
-                                                        const IExecutionProvider& execution_provider,
-                                                        const layout_transformer::DebugGraphFn& debug_graph_fn) -> Status {
+                                    const IExecutionProvider& execution_provider,
+                                    const layout_transformer::DebugGraphFn& debug_graph_fn) -> Status {
                                    AllocatorPtr cpu_allocator = std::make_shared<CPUAllocator>();
                                    return layout_transformer::TransformLayoutForEP(graph, modified, execution_provider, std::move(cpu_allocator), debug_graph_fn);
                                  });
@@ -238,8 +238,8 @@ TEST(SessionStateTest, TestInitializerMemoryAllocatedUsingNonArenaMemory) {
     GraphPartitioner partitioner(krm, execution_providers);
     status = partitioner.Partition(graph, session_state.GetMutableFuncMgr(),
                                    [&cpu_allocator](Graph& graph, bool& modified,
-                                                          const IExecutionProvider& execution_provider,
-                                                          const layout_transformer::DebugGraphFn& debug_graph_fn) -> Status {
+                                                    const IExecutionProvider& execution_provider,
+                                                    const layout_transformer::DebugGraphFn& debug_graph_fn) -> Status {
                                      return layout_transformer::TransformLayoutForEP(graph, modified, execution_provider, cpu_allocator, debug_graph_fn);
                                    });
     ASSERT_TRUE(status.IsOK()) << status;
@@ -293,8 +293,8 @@ TEST(SessionStateTest, TestInitializerMemoryAllocatedUsingNonArenaMemory) {
     GraphPartitioner partitioner(krm, execution_providers);
     status = partitioner.Partition(graph, session_state.GetMutableFuncMgr(),
                                    [&cpu_allocator](Graph& graph, bool& modified,
-                                                          const IExecutionProvider& execution_provider,
-                                                          const layout_transformer::DebugGraphFn& debug_graph_fn) -> Status {
+                                                    const IExecutionProvider& execution_provider,
+                                                    const layout_transformer::DebugGraphFn& debug_graph_fn) -> Status {
                                      return layout_transformer::TransformLayoutForEP(graph, modified, execution_provider, cpu_allocator, debug_graph_fn);
                                    });
     ASSERT_TRUE(status.IsOK()) << status;
@@ -348,14 +348,15 @@ class PrePackingTestOpKernel : public OpKernel {
     ORT_UNUSED_PARAMETER(tensor);
     ORT_UNUSED_PARAMETER(input_idx);
 
-    weight_packed_ = BufferUniquePtr(alloc->Alloc(8), BufferDeleter(alloc));
+    size_t weight_packed_len = 8;
+    weight_packed_ = IAllocator::MakeUniquePtr<void>(alloc, weight_packed_len, true);
     float* data_weights_packed = reinterpret_cast<float*>(weight_packed_.get());
     data_weights_packed[0] = 1.2345f;
     data_weights_packed[1] = data_weights_packed[0] * 2.f;
 
     if (prepacked_weights != nullptr) {
       prepacked_weights->buffers_.push_back(std::move(weight_packed_));
-      prepacked_weights->buffer_sizes_.push_back(8);
+      prepacked_weights->buffer_sizes_.push_back(weight_packed_len);
     }
 
     is_packed = true;
@@ -365,7 +366,7 @@ class PrePackingTestOpKernel : public OpKernel {
 
   int prepack_calls_count = 0;
   int store_pre_packed_weight_calls_count = 0;
-  BufferUniquePtr weight_packed_;
+  IAllocatorUniquePtr<void> weight_packed_;
 };
 
 static void CreateSimpleGraph(Graph& graph) {

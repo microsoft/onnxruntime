@@ -1457,10 +1457,10 @@ std::vector<AllocatorPtr> CANNExecutionProvider::CreatePreferredAllocators() {
       },
       pinned_device.Id());
 
-  return std::vector<AllocatorPtr> { CreateAllocator(default_memory_info), CreateAllocator(pinned_memory_info) };
+  return std::vector<AllocatorPtr>{CreateAllocator(default_memory_info), CreateAllocator(pinned_memory_info)};
 }
 
-void CANNExecutionProvider::RegisterStreamHandlers(IStreamCommandHandleRegistry& stream_handle_registry, std::map<OrtDevice, AllocatorPtr>&) const {
+void CANNExecutionProvider::RegisterStreamHandlers(IStreamCommandHandleRegistry& stream_handle_registry, AllocatorMap&) const {
   RegisterCannStreamHandles(stream_handle_registry, OrtDevice::NPU);
 }
 

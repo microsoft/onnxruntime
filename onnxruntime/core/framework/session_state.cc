@@ -70,7 +70,7 @@ SessionState::SessionState(Graph& graph,
                            profiling::Profiler& profiler,
                            const SessionOptions& sess_options,
                            PrepackedWeightsContainer* prepacked_weights_container,
-                           std::shared_ptr<std::map<OrtDevice, AllocatorPtr>> parent_allocators)
+                           AllocatorMap* parent_allocators)
     : graph_(graph),
       execution_providers_(execution_providers),
       logger_(logger),
@@ -90,7 +90,8 @@ SessionState::SessionState(Graph& graph,
   if (parent_allocators) {
     allocators_ = parent_allocators;
   } else {
-    allocators_ = std::make_shared<std::map<OrtDevice, AllocatorPtr>>();
+    allocators_unique_ptr_ = std::make_unique<AllocatorMap>();
+    allocators_ = allocators_unique_ptr_.get();
     // The allocator registration rule:
     // Each location (OrtDevice) will only have 1 allocator used for whole session.
     // The EP which is registered first will have higher priority
@@ -111,6 +112,12 @@ AllocatorPtr SessionState::GetAllocator(const OrtDevice& device) const noexcept 
   auto it = allocators_->find(device);
   if (it != allocators_->end()) return it->second;
   return nullptr;
+}
+
+void SessionState::UpdateAllocatorsWithEnvAllocators(const std::vector<AllocatorPtr>& env_allocators) {
+  for (const auto& env_alloc : env_allocators) {
+    (*allocators_)[env_alloc->Info().device] = env_alloc;
+  }
 }
 
 void SessionState::CreateGraphInfo() {

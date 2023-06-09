@@ -4300,9 +4300,9 @@ struct OrtApi {
   /// @}
 
   /** \brief Create and register Cuda Allocator
-  *  \param[in] env OrtEnv instance
-  *  \param[in] mem_info OrtMemoryInfo instance
-  */
+   *  \param[in] env OrtEnv instance
+   *  \param[in] mem_info OrtMemoryInfo instance
+   */
   ORT_API2_STATUS(CreateAndRegisterCudaAllocator, _Inout_ OrtEnv* env, _In_ const OrtMemoryInfo* mem_info, _In_ const OrtArenaCfg* arena_cfg,
                   _In_reads_(num_keys) const char* const* provider_options_keys, _In_reads_(num_keys) const char* const* provider_options_values, _In_ size_t num_keys);
 };

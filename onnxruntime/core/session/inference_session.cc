@@ -1411,11 +1411,11 @@ common::Status InferenceSession::Initialize() {
         session_options_,
         prepacked_weights_container_);
 
-    bool use_env_allocators =       // TODO(leca): review
+    bool use_env_allocators =
         session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigUseEnvAllocators, "0") == "1";
     if (use_env_allocators) {
       LOGS(*session_logger_, INFO) << "This session will use the allocator registered with the environment.";
-      UpdateSessionStateAllocatorsWithSharedAllocators();
+      session_state_->UpdateAllocatorsWithEnvAllocators(environment_.GetRegisteredSharedAllocators());
     }
 
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
@@ -1689,13 +1689,6 @@ common::Status InferenceSession::Initialize() {
 #if defined(_MSC_VER) && !defined(__clang__)
 #pragma warning(pop)
 #endif
-
-void InferenceSession::UpdateSessionStateAllocatorsWithSharedAllocators() {
-  std::map<OrtDevice, AllocatorPtr>& session_allocators = session_state_->GetAllocators();
-  for (const auto& shared_alloc : environment_.GetRegisteredSharedAllocators()) {
-    session_allocators[shared_alloc->Info().device] = shared_alloc;
-  }
-}
 
 int InferenceSession::GetCurrentNumRuns() const {
   return current_num_runs_.load();

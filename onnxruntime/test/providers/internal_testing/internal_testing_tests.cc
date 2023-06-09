@@ -249,7 +249,7 @@ TEST(InternalTestingEP, TestNhwcConversionOfStaticKernels) {
 }
 
 // This test can be deprecated now as the code logic has been changed so the model is not applicable
-//TEST(InternalTestingEP, TestRegisterAllocatorHandlesUsageInMultipleSessions) {
+// TEST(InternalTestingEP, TestRegisterAllocatorHandlesUsageInMultipleSessions) {
 //}
 
 // make sure allocators returned by SessionState::GetAllocator are valid when IExecutionProvider::ReplaceAllocator

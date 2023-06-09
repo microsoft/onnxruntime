@@ -165,7 +165,7 @@ std::vector<AllocatorPtr> XnnpackExecutionProvider::CreatePreferredAllocators() 
   if (st != xnn_status_success) {
     ORT_THROW("XNNPACK initialization failed with status ", st);
   }
-  return std::vector<AllocatorPtr> {stored_allocator};
+  return std::vector<AllocatorPtr>{stored_allocator};
 }
 
 // For ops are not lay-out sensitive and does not defined in

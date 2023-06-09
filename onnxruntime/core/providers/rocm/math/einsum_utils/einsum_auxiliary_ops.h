@@ -25,7 +25,8 @@ struct EinsumRocmAssets {
                             Stream* ort_stream,
                             AllocatorPtr gpu_allocator) : rocblas_handle_(rocblas_handle),
                                                           rocm_ep_(rocm_ep),
-                                                          ort_stream_(ort_stream), gpu_allocator_(gpu_allocator) {}
+                                                          ort_stream_(ort_stream),
+                                                          gpu_allocator_(gpu_allocator) {}
 
   hipStream_t GetRocmStream() {
     return ort_stream_ ? static_cast<hipStream_t>(ort_stream_->GetHandle()) : nullptr;

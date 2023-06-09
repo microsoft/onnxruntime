@@ -65,7 +65,7 @@ class CANNExecutionProvider : public IExecutionProvider {
     return CANNExecutionProviderInfo::ToProviderOptions(info_);
   }
 
-  void RegisterStreamHandlers(IStreamCommandHandleRegistry& stream_handle_registry, std::map<OrtDevice, AllocatorPtr>&) const override;
+  void RegisterStreamHandlers(IStreamCommandHandleRegistry& stream_handle_registry, AllocatorMap&) const override;
 
   OrtDevice GetOrtDeviceByMemType(OrtMemType mem_type) const override;
 

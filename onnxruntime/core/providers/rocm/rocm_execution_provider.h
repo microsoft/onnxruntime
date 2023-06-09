@@ -75,7 +75,7 @@ class ROCMExecutionProvider : public IExecutionProvider {
 
   std::unique_ptr<profiling::EpProfiler> GetProfiler() override;
 
-  void RegisterStreamHandlers(IStreamCommandHandleRegistry& stream_handle_registry, std::map<OrtDevice, AllocatorPtr>& allocators) const override;
+  void RegisterStreamHandlers(IStreamCommandHandleRegistry& stream_handle_registry, AllocatorMap& allocators) const override;
   std::vector<AllocatorPtr> CreatePreferredAllocators() override;
   OrtDevice GetOrtDeviceByMemType(OrtMemType mem_type) const override;
 

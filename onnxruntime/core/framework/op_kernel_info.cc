@@ -15,7 +15,7 @@ OpKernelInfo::OpKernelInfo(const onnxruntime::Node& node,
                            const std::unordered_map<int, OrtValue>& constant_initialized_tensors,
                            const OrtValueNameIdxMap& ort_value_name_idx_map,
                            const DataTransferManager& data_transfer_mgr,
-                           const std::map<OrtDevice, AllocatorPtr>& allocators)
+                           const AllocatorMap& allocators)
     : OpNodeProtoHelper(&proto_helper_context_),
       node_(node),
       kernel_def_(kernel_def),
@@ -23,7 +23,8 @@ OpKernelInfo::OpKernelInfo(const onnxruntime::Node& node,
       constant_initialized_tensors_(constant_initialized_tensors),
       ort_value_name_idx_map_(ort_value_name_idx_map),
       data_transfer_mgr_(data_transfer_mgr),
-      proto_helper_context_(node), allocators_(allocators){}
+      proto_helper_context_(node),
+      allocators_(allocators) {}
 
 OpKernelInfo::OpKernelInfo(const OpKernelInfo& other)
     : OpKernelInfo(other.node_, other.kernel_def_, *other.execution_provider_, other.constant_initialized_tensors_,

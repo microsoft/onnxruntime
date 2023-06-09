@@ -27,8 +27,8 @@ class ConvOpBuilder : public BaseOpBuilder {
 
   // Operator support related.
  private:
-  bool IsOpSupportedImpl(const InitializedTensorSet& /* initializers */, const Node& /* node */,
-                         const logging::Logger& /* logger */) const override;
+  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
+                         const WebnnDeviceType /* device_type */, const logging::Logger& logger) const override;
 };
 
 void ConvOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const {
@@ -96,7 +96,7 @@ Status AddInitializerInNewLayout(ModelBuilder& model_builder,
                                  bool is_conv) {
   const auto& tensor = *model_builder.GetInitializerTensors().at(name);
   auto data_type = tensor.data_type();
-  if (data_type != ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
+  if (!IsSupportedDataType(data_type, model_builder.GetWebnnDeviceType())) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "The initializer of graph has unsupported type, name: ",
                            tensor.name(), " type: ", data_type);
@@ -123,7 +123,29 @@ Status AddInitializerInNewLayout(ModelBuilder& model_builder,
 
   SafeInt<size_t> num_elements = SafeInt<size_t>(Product(dest_shape));
 
-  size_t element_size = 4;
+  size_t element_size{0};
+  switch (data_type) {
+    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16:
+      element_size = sizeof(uint16_t);
+      break;
+    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
+      element_size = sizeof(float);
+      break;
+    case ONNX_NAMESPACE::TensorProto_DataType_INT32:
+      element_size = sizeof(int32_t);
+      break;
+    case ONNX_NAMESPACE::TensorProto_DataType_INT64:
+      element_size = sizeof(int64_t);
+      break;
+    case ONNX_NAMESPACE::TensorProto_DataType_UINT32:
+      element_size = sizeof(uint32_t);
+      break;
+    case ONNX_NAMESPACE::TensorProto_DataType_UINT64:
+      element_size = sizeof(uint64_t);
+      break;
+    default:
+      break;
+  }
   std::unique_ptr<uint8_t[]> buffer_holder(new uint8_t[element_size * num_elements]);
   uint8_t* buffer = buffer_holder.get();
 
@@ -157,7 +179,7 @@ Status AddInitializerInNewLayout(ModelBuilder& model_builder,
     }
   }
   ORT_RETURN_IF_ERROR(model_builder.AddOperandFromPersistMemoryBuffer(name, buffer, num_elements * element_size,
-                                                                      dest_shape, 4));
+                                                                      dest_shape, data_type));
   return Status::OK();
 }
 
@@ -175,7 +197,6 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
   const auto dilations = helper.Get("dilations", std::vector<int32_t>{1, 1});
   auto pads = helper.Get("pads", std::vector<int32_t>{0, 0, 0, 0});
   const auto& weight = input_defs[1]->Name();
-
   if (op_type == "Conv") {
     emscripten::val options = emscripten::val::object();
     ORT_RETURN_IF_ERROR(SetConvBaseOptions(model_builder, node, options, strides, dilations, pads, logger));
@@ -193,6 +214,7 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
       }
     }
     emscripten::val filter = model_builder.GetOperand(input_defs[1]->Name());
+
     output = model_builder.GetBuilder().call<emscripten::val>("conv2d", input, filter, options);
   } else {
     emscripten::val options = emscripten::val::object();
@@ -242,7 +264,6 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
       options.set("outputPadding", emscripten::val::array(output_padding));
     }
     emscripten::val filter = model_builder.GetOperand(input_defs[1]->Name());
-
     output = model_builder.GetBuilder().call<emscripten::val>("convTranspose2d", input, filter, options);
   }
 
@@ -252,7 +273,9 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
 
 // Operator support related.
 
-bool ConvOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
+bool ConvOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers,
+                                      const Node& node,
+                                      const WebnnDeviceType /* device_type */,
                                       const logging::Logger& logger) const {
   const auto& name = node.Name();
   const auto& op_type = node.OpType();

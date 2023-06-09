@@ -297,7 +297,7 @@ class IExecutionProvider {
     return DataLayout::NCHW;
   }
 
-  virtual void RegisterStreamHandlers(IStreamCommandHandleRegistry& /*stream_handle_registry*/, std::map<OrtDevice, AllocatorPtr>&) const {}
+  virtual void RegisterStreamHandlers(IStreamCommandHandleRegistry& /*stream_handle_registry*/, AllocatorMap&) const {}
 
   /** Does the EP support concurrent calls to InferenceSession::Run to execute the model.
    */

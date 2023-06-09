@@ -52,8 +52,10 @@ WebNNExecutionProvider::WebNNExecutionProvider(
   // WebNN EP uses NHWC layout for CPU XNNPACK backend and NCHW for GPU DML backend.
   if (webnn_device_flags.compare("cpu") == 0) {
     preferred_layout_ = DataLayout::NHWC;
+    wnn_device_type_ = webnn::WebnnDeviceType::CPU;
   } else {
     preferred_layout_ = DataLayout::NCHW;
+    wnn_device_type_ = webnn::WebnnDeviceType::GPU;
   }
   if (webnn_power_flags.compare("default") != 0) {
     context_options.set("powerPreference", emscripten::val(webnn_power_flags));
@@ -100,7 +102,7 @@ WebNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
 
   const auto& logger = *GetLogger();
 
-  const auto node_groups = webnn::GetSupportedNodes(graph_viewer, wnn_builder_, logger);
+  const auto node_groups = webnn::GetSupportedNodes(graph_viewer, wnn_builder_, wnn_device_type_, logger);
 
   if (node_groups.empty()) {
     return result;
@@ -130,13 +132,18 @@ WebNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
     InlinedHashSet<const NodeArg*> subgraph_inputs;
     InlinedHashSet<const NodeArg*> subgraph_outputs;
     std::vector<const NodeArg*> ordered_subgraph_inputs;
-    std::vector<const NodeArg*> ordered_subgraph_outputs;
+    // Output should be unique. It may be produced as graph output and subgraph output.
+    InlinedHashSet<const NodeArg*> ordered_subgraph_outputs;
 
     for (const auto& index : group) {
       sub_graph->nodes.push_back(index);
       const auto* node = graph_viewer.GetNode(index);
 
       for (const auto* input : node->InputDefs()) {
+        if (!input->Exists()) {
+          // skip the placeholder inputs.
+          continue;
+        }
         // if the node input was not produced by this subgraph, add it to the subgraph inputs.
         if (node_outputs.count(input) == 0) {
           if (subgraph_inputs.count(input) == 0) {
@@ -151,7 +158,7 @@ WebNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
         node_outputs.insert(output_def);
         // if output is overall graph output we need to produce it.
         if (graph_outputs.count(output_def) != 0) {
-          ordered_subgraph_outputs.push_back(output_def);
+          ordered_subgraph_outputs.insert(output_def);
         }
       }
 
@@ -161,7 +168,7 @@ WebNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
           const auto* output_def = output_defs[it->GetSrcArgIndex()];
           if (subgraph_outputs.count(output_def) == 0) {
             subgraph_outputs.insert(output_def);
-            ordered_subgraph_outputs.push_back(output_def);
+            ordered_subgraph_outputs.insert(output_def);
           }
         }
       }
@@ -213,7 +220,8 @@ common::Status WebNNExecutionProvider::Compile(const std::vector<FusedNodeAndGra
     Node& fused_node = fused_node_and_graph.fused_node;
     const onnxruntime::GraphViewer& graph_viewer(fused_node_and_graph.filtered_graph);
 
-    webnn::ModelBuilder builder(graph_viewer, *GetLogger(), wnn_context_, wnn_builder_, preferred_layout_);
+    webnn::ModelBuilder builder(graph_viewer, *GetLogger(), wnn_context_,
+                                wnn_builder_, preferred_layout_, wnn_device_type_);
     std::unique_ptr<webnn::Model> model;
     ORT_RETURN_IF_ERROR(builder.Compile(model));
     // Build map from input name to its index in input definitions.
@@ -255,7 +263,6 @@ common::Status WebNNExecutionProvider::Compile(const std::vector<FusedNodeAndGra
       const size_t num_inputs = ctx.GetInputCount();
       const size_t num_outputs = ctx.GetOutputCount();
 
-      // Ort::CustomOpApi ort{*api};
       webnn::Model* model = reinterpret_cast<webnn::Model*>(state);
 
       const auto& model_inputs = model->GetInputs();
@@ -311,7 +318,13 @@ common::Status WebNNExecutionProvider::Compile(const std::vector<FusedNodeAndGra
 
           void* output_buffer;
           switch (output_type) {
+            case ONNX_NAMESPACE::TensorProto_DataType_BOOL:
+            case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16:
             case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
+            case ONNX_NAMESPACE::TensorProto_DataType_INT32:
+            case ONNX_NAMESPACE::TensorProto_DataType_INT64:
+            case ONNX_NAMESPACE::TensorProto_DataType_UINT32:
+            case ONNX_NAMESPACE::TensorProto_DataType_UINT64:
               output_buffer = output_tensor.GetTensorMutableRawData();
               break;
             default:

@@ -984,14 +984,15 @@ TensorrtExecutionProvider::~TensorrtExecutionProvider() {
 
 std::vector<AllocatorPtr> TensorrtExecutionProvider::CreatePreferredAllocators() {
   AllocatorCreationInfo default_memory_info(
-          [](OrtDevice::DeviceId device_id) { return CreateCUDAAllocator(device_id, onnxruntime::CUDA); }, device_id_);
+      [](OrtDevice::DeviceId device_id) { return CreateCUDAAllocator(device_id, onnxruntime::CUDA); }, device_id_);
 
   AllocatorCreationInfo pinned_allocator_info(
-          [](OrtDevice::DeviceId device_id) {
-            return CreateCUDAPinnedAllocator(device_id, onnxruntime::CUDA_PINNED);
-          }, 0);
+      [](OrtDevice::DeviceId device_id) {
+        return CreateCUDAPinnedAllocator(device_id, onnxruntime::CUDA_PINNED);
+      },
+      0);
 
-  return std::vector<AllocatorPtr> {CreateAllocator(default_memory_info), CreateAllocator(pinned_allocator_info)};
+  return std::vector<AllocatorPtr>{CreateAllocator(default_memory_info), CreateAllocator(pinned_allocator_info)};
 }
 
 std::unique_ptr<IDataTransfer> TensorrtExecutionProvider::GetDataTransfer() const {
@@ -2771,7 +2772,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
   return Status::OK();
 }
 
-void TensorrtExecutionProvider::RegisterStreamHandlers(IStreamCommandHandleRegistry& stream_handle_registry, std::map<OrtDevice, AllocatorPtr>& allocators) const {
+void TensorrtExecutionProvider::RegisterStreamHandlers(IStreamCommandHandleRegistry& stream_handle_registry, AllocatorMap& allocators) const {
   auto allocator = allocators[GetOrtDeviceByMemType(OrtMemTypeCPU)];
   RegisterCudaStreamHandles(stream_handle_registry, OrtDevice::GPU, allocator, true, stream_, external_stream_, external_cudnn_handle_, external_cublas_handle_);
 }

@@ -133,12 +133,13 @@ MIGraphXExecutionProvider::~MIGraphXExecutionProvider() {
 
 std::vector<AllocatorPtr> MIGraphXExecutionProvider::CreatePreferredAllocators() {
   AllocatorCreationInfo default_memory_info(
-          [](OrtDevice::DeviceId device_id) { return CreateROCMAllocator(device_id, onnxruntime::CUDA); }, device_id_);
+      [](OrtDevice::DeviceId device_id) { return CreateROCMAllocator(device_id, onnxruntime::CUDA); }, device_id_);
   AllocatorCreationInfo pinned_allocator_info(
-          [](OrtDevice::DeviceId device_id) {
-            return CreateROCMPinnedAllocator(device_id, onnxruntime::CUDA_PINNED);
-          }, 0);
-  return std::vector<AllocatorPtr> {CreateAllocator(default_memory_info), CreateAllocator(pinned_allocator_info)};
+      [](OrtDevice::DeviceId device_id) {
+        return CreateROCMPinnedAllocator(device_id, onnxruntime::CUDA_PINNED);
+      },
+      0);
+  return std::vector<AllocatorPtr>{CreateAllocator(default_memory_info), CreateAllocator(pinned_allocator_info)};
 }
 
 std::unique_ptr<onnxruntime::IDataTransfer> MIGraphXExecutionProvider::GetDataTransfer() const {
@@ -1135,7 +1136,7 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
   return Status::OK();
 }
 
-void MIGraphXExecutionProvider::RegisterStreamHandlers(IStreamCommandHandleRegistry& stream_handle_registry, std::map<OrtDevice, AllocatorPtr>& allocators) const {
+void MIGraphXExecutionProvider::RegisterStreamHandlers(IStreamCommandHandleRegistry& stream_handle_registry, AllocatorMap& allocators) const {
   auto allocator = allocators[GetOrtDeviceByMemType(OrtMemTypeCPU)];
   RegisterRocmStreamHandles(stream_handle_registry, OrtDevice::GPU, allocator, true, stream_, false /*TODO:external_stream_*/, external_miopen_handle_, external_rocblas_handle_);
 }
