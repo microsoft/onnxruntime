@@ -146,7 +146,7 @@ void TensorrtExecutionProvider::SetGraphOuterScopeValuesAndInputs(Graph* graph_b
     while (top_level_graph->MutableParentGraph()) {
       top_level_graph = top_level_graph->MutableParentGraph();
     }
-    if (subgraph_context_map.find(top_level_graph->Name()) != subgraph_context_map.end()) {
+    if (subgraph_context_map.find(top_level_graph->Name()) == subgraph_context_map.end()) {
       LOGS_DEFAULT(ERROR) << "[TensorRT EP] Can't find top-level graph context. Please check BuildSubGraphContext() has built the graph context correctly.";
       return;
     }
