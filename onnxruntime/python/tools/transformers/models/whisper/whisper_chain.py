@@ -117,8 +117,6 @@ def chain_model(args):
     )
     if args.collect_cross_qk:
         node.attribute.extend([helper.make_attribute("decoder_output_cross_qk", 1)])
-    if args.extra_decoding_round:
-        node.attribute.extend([helper.make_attribute("extra_decoding_round", 1)])
     if args.no_speech_token_id >= 0:
         node.attribute.extend([helper.make_attribute("no_speech_token", args.no_speech_token_id)])
 
