@@ -1457,7 +1457,7 @@ __global__ void ForceDecodingIdsKernel(
   #pragma unroll
   for (int elem = 0; elem < ElementsPerThreads; elem++) {
     if (token_id < vocab_size) {
-      beam_scores[token_id] = ((token_id == id_wanted) ? 1.0f : cub::FpLimits<float>::Lowest());
+      beam_scores[token_id] = ((token_id == id_wanted) ? 0.0f : cub::FpLimits<float>::Lowest());
     }
     token_id += (int)blockDim.x;
   }
