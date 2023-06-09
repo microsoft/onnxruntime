@@ -109,6 +109,8 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
       // CSE. For example, if A and B nodes both do Add operation with a same value but different initializers, by
       // default, CSE will not merge them, because the different initializers are represented by different NodeArg.
       transformers.emplace_back(std::make_unique<ConstantSharing>(compatible_eps));
+      // LayerNormFusion must be applied before CommonSubexpressionElimination as the latter will break the pattern when 2 LayerNormFusion share the same input.
+      transformers.emplace_back(std::make_unique<LayerNormFusion>(compatible_eps));
       // Remove duplicate nodes. Must be applied before any recompute transformations.
       if (config.gelu_recompute || config.attn_dropout_recompute || config.transformer_layer_recompute) {
         transformers.emplace_back(std::make_unique<CommonSubexpressionEliminationApplyOnce>(compatible_eps));
@@ -117,7 +119,6 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
       }
 
       transformers.emplace_back(std::make_unique<GeluFusion>(compatible_eps));
-      transformers.emplace_back(std::make_unique<LayerNormFusion>(compatible_eps));
 #if defined(USE_CUDA) || defined(USE_ROCM)
       transformers.emplace_back(std::make_unique<SimplifiedLayerNormFusion>(compatible_eps,
                                                                             true /* skip_device_check*/));
@@ -175,10 +176,9 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
 #ifdef ENABLE_TRAINING
       if (config.enable_compute_optimizer) {
         transformers.emplace_back(std::make_unique<UpStreamGatherGraphTransformer>(compatible_eps));
-        if (config.enable_label_sparsity_optimization) {
-          transformers.emplace_back(std::make_unique<UpStreamReshapeGraphTransformer>(compatible_eps));
-          transformers.emplace_back(std::make_unique<InsertGatherBeforeSceLoss>(compatible_eps));
-        }
+        transformers.emplace_back(std::make_unique<UpStreamReshapeGraphTransformer>(compatible_eps));
+        transformers.emplace_back(std::make_unique<InsertGatherBeforeSceLoss>(compatible_eps,
+                                                                              config.sparse_label_input_names));
       }
 #endif
 

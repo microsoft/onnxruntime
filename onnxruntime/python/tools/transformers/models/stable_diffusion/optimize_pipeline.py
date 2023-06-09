@@ -131,9 +131,9 @@ def optimize_sd_pipeline(
         if model_type in ["unet"]:
             # Some optimizations are not available in v1.14 or older version: packed QKV and BiasAdd
             has_all_optimizations = version.parse(onnxruntime.__version__) >= version.parse("1.15.0")
-            fusion_options.enable_packed_kv = float16
-            fusion_options.enable_packed_qkv = float16 and has_all_optimizations
-            fusion_options.enable_bias_add = has_all_optimizations
+            fusion_options.enable_packed_kv = float16 and fusion_options.enable_packed_kv
+            fusion_options.enable_packed_qkv = float16 and has_all_optimizations and fusion_options.enable_packed_qkv
+            fusion_options.enable_bias_add = has_all_optimizations and fusion_options.enable_bias_add
 
         m = optimize_model(
             str(onnx_model_path),
@@ -312,4 +312,5 @@ def main():
     )
 
 
-main()
+if __name__ == "__main__":
+    main()

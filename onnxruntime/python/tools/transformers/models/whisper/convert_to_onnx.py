@@ -22,7 +22,7 @@ from benchmark_helper import Precision, create_onnxruntime_session, prepare_envi
 logger = logging.getLogger("")
 
 
-def parse_arguments():
+def parse_arguments(argv=None):
     parser = argparse.ArgumentParser()
 
     pretrained_models = PRETRAINED_WHISPER_MODELS
@@ -84,9 +84,46 @@ def parse_arguments():
         "--use_decoder_start_token",
         required=False,
         action="store_true",
-        help="Use config.decoder_start_token_id. Otherwise, add an extra graph input for decoder_input_ids.",
+        help="Use config.decoder_start_token_id. Otherwise, add an extra graph input to \
+              the encoder-decoder-init subgraph for decoder_input_ids.",
     )
     parser.set_defaults(use_decoder_start_token=False)
+
+    parser.add_argument(
+        "-f",
+        "--use_forced_decoder_ids",
+        required=False,
+        action="store_true",
+        help="Use decoder_input_ids as an extra graph input to the beam search op",
+    )
+    parser.set_defaults(use_forced_decoder_ids=False)
+
+    parser.add_argument(
+        "-l",
+        "--use_logits_processor",
+        required=False,
+        action="store_true",
+        help="Use logits_processor as an extra graph input to enable specific logits processing",
+    )
+    parser.set_defaults(use_specific_logits_processor=False)
+
+    parser.add_argument(
+        "-v",
+        "--use_vocab_mask",
+        required=False,
+        action="store_true",
+        help="Use vocab_mask as an extra graph input to enable specific logits processing",
+    )
+    parser.set_defaults(use_vocab_mask=False)
+
+    parser.add_argument(
+        "-u",
+        "--use_prefix_vocab_mask",
+        required=False,
+        action="store_true",
+        help="Use prefix_vocab_mask as an extra graph input to enable specific logits processing",
+    )
+    parser.set_defaults(use_prefix_vocab_mask=False)
 
     parser.add_argument(
         "-w",
@@ -157,7 +194,7 @@ def parse_arguments():
         help="Produce beam search model with chained encdecinit and decoder.",
     )
 
-    parser.add_argument("--no_repeat_ngram_size", type=int, default=3, help="default to 3")
+    parser.add_argument("--no_repeat_ngram_size", type=int, default=0, help="default to 0")
 
     parser.add_argument(
         "--state_dict_path",
@@ -166,7 +203,7 @@ def parse_arguments():
         help="filepath to load pre-trained model with custom state dictionary (e.g. pytorch_model.bin)",
     )
 
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     return args
 
@@ -197,11 +234,12 @@ def export_onnx_models(
     )
     config = models["decoder"].config
 
-    if (not use_external_data_format) and (config.num_layers > 24):
+    if (not use_external_data_format) and (config.num_hidden_layers > 24):
         logger.info("Try use_external_data_format when model size > 2GB")
 
     output_paths = []
     for name, model in models.items():
+        print(f"========> Handling {name} model......")
         model.to(device)
         filename_suffix = "_" + name
 
@@ -288,8 +326,8 @@ def export_onnx_models(
     return output_paths
 
 
-def main():
-    args = parse_arguments()
+def main(argv=None):
+    args = parse_arguments(argv)
 
     setup_logger(args.verbose)
 

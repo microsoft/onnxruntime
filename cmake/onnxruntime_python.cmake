@@ -20,10 +20,6 @@ file(GLOB onnxruntime_pybind_srcs CONFIGURE_DEPENDS
   ${onnxruntime_pybind_srcs_pattern}
   )
 
-if(NOT onnxruntime_PYBIND_EXPORT_OPSCHEMA)
-  list(REMOVE_ITEM onnxruntime_pybind_srcs  ${ONNXRUNTIME_ROOT}/python/onnxruntime_pybind_schema.cc)
-endif()
-
 if(onnxruntime_ENABLE_TRAINING)
   list(REMOVE_ITEM onnxruntime_pybind_srcs  ${ONNXRUNTIME_ROOT}/python/onnxruntime_pybind_module.cc)
 endif()
@@ -652,9 +648,9 @@ endif()
 
 if (NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_EXTENDED_MINIMAL_BUILD
                                   AND NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin|iOS"
-                                  AND NOT (CMAKE_SYSTEM_NAME STREQUAL "Android")
+                                  AND NOT CMAKE_SYSTEM_NAME STREQUAL "Android"
                                   AND NOT onnxruntime_USE_ROCM
-                                  AND NOT onnxruntime_BUILD_WEBASSEMBLY)
+                                  AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
   add_custom_command(
     TARGET onnxruntime_pybind11_state POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy
@@ -910,7 +906,7 @@ if (onnxruntime_USE_TVM)
 endif()
 
 if (onnxruntime_USE_DML)
-  if (NOT dml_EXTERNAL_PROJECT)
+  if (NOT onnxruntime_USE_CUSTOM_DIRECTML)
     set(dml_shared_lib_path ${DML_PACKAGE_DIR}/bin/${onnxruntime_target_platform}-win/${DML_SHARED_LIB})
   else()
     set(dml_shared_lib_path ${DML_PACKAGE_DIR}/bin/${DML_SHARED_LIB})

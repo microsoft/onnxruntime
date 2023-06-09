@@ -1,0 +1,285 @@
+parameters:
+  DoDebugBuild: 'true' # Unused. Use BuildConfigurations instead.
+  DoCompliance: 'false'
+  BuildCommand: ''
+  StageName: 'Windows_CI_Dev'
+  DoNugetPack:  'false'
+  NuPackScript : ''
+  ArtifactName: 'drop-nuget'
+  DoNodejsPack: 'false'
+  DoEsrp: 'false'
+  DoTestCoverage: 'false'
+  BuildArch: 'x64' # Optional. Options: x86, x64
+  sln_platform: 'x64' # Options: Win32, x64, arm, arm64
+  EnvSetupScript: 'setup_env.bat'
+  AgentPool: 'onnxruntime-Win-CPU-2022'
+  AgentDemands: []
+  OrtPackageId: Microsoft.ML.OnnxRuntime
+  BuildConfigurations: ['RelWithDebInfo'] # Options: Debug, RelWithDebInfo
+  RunTests : 'true'
+  EnableLto: true
+  # Controls whether unreleased onnx opsets are allowed. Default is set to 1
+  AllowReleasedOpsetOnly: '0'
+  IsReleaseBuild: false
+stages:
+- stage: ${{ parameters.StageName }}
+  dependsOn: []
+  jobs:
+  - job:
+    timeoutInMinutes: 200
+    strategy:
+      maxParallel: 2
+      matrix:
+        ${{ each BuildConfiguration in parameters.BuildConfigurations }}:
+          ${{ BuildConfiguration }}:
+            BuildConfig: ${{ BuildConfiguration }}
+    workspace:
+      clean: all
+    pool:
+      name: ${{ parameters.AgentPool }}
+      demands: ${{ parameters.AgentDemands }}
+    variables:
+      buildDirectory: '$(Build.BinariesDirectory)'
+      BuildCommand: ${{ parameters.BuildCommand }}
+      OnnxRuntimeBuildDirectory: '$(Build.BinariesDirectory)'
+      DotNetExe: 'dotnet.exe'
+      runCodesignValidationInjection: and(${{ parameters.DoNodejsPack }},${{ parameters. DoEsrp}}) #For the others, code sign is in a separated job
+      DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
+      ALLOW_RELEASED_ONNX_OPSET_ONLY: ${{ parameters.AllowReleasedOpsetOnly }}
+      ${{ if eq(parameters.EnableLto, true) }}:
+        build_py_lto_flag: --enable_lto
+      ${{ if or(eq(parameters.AgentPool, 'aiinfra-dml-winbuild'), eq(parameters.AgentPool, 'onnxruntime-Win-CPU-2019')) }}:
+        vsVersion: '2019'
+
+    steps:
+      # Windows_CI_GPU_DML_Dev_arm64 build job still needs protobuf submodule
+      - checkout: self
+        clean: true
+        submodules: recursive
+
+      - powershell: |
+          if($env:TELEMETRYGUID)
+          {
+            $length = $env:TELEMETRYGUID.length
+            $fileContent = "#define TraceLoggingOptionMicrosoftTelemetry() \
+              TraceLoggingOptionGroup("+$env:TELEMETRYGUID.substring(1, $length-2)+")"
+            New-Item -Path "$(Build.SourcesDirectory)\include\onnxruntime\core\platform\windows\TraceLoggingConfigPrivate.h" -ItemType "file" -Value "$fileContent" -Force
+            Write-Output "Enabling TELEMETRY"
+          }
+        displayName: 'Create TraceLoggingConfigPrivate.h For WinML Telemetry'
+        env:
+          TELEMETRYGUID: $(TELEMETRYGUID)
+
+      - task: NodeTool@0
+        inputs:
+          versionSpec: '16.x'
+
+      - task: UsePythonVersion@0
+        inputs:
+          versionSpec: '3.8'
+          addToPath: true
+          architecture: ${{ parameters.BuildArch }}
+
+      - task: BatchScript@1
+        displayName: 'setup env'
+        inputs:
+          filename: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\${{ parameters.EnvSetupScript }}'
+          modifyEnvironment: true
+          workingFolder: '$(Build.BinariesDirectory)'
+
+      - task: PowerShell@2
+        displayName: 'Install ONNX'
+        inputs:
+          filePath: '$(Build.SourcesDirectory)/tools/ci_build/github/windows/install_third_party_deps.ps1'
+          workingDirectory: '$(Build.BinariesDirectory)'
+          arguments: -cpu_arch ${{ parameters.BuildArch }} -install_prefix $(Build.BinariesDirectory)\${{ parameters.BuildConfig }}\installed -build_config $(BuildConfig)
+
+      - task: PythonScript@0
+        displayName: 'Generate cmake config'
+        inputs:
+          scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
+          arguments: '$(BuildCommand) --path_to_protoc_exe $(Build.BinariesDirectory)\installed\bin\protoc.exe --build_csharp --update --config $(BuildConfig) ${{ variables.build_py_lto_flag }}'
+          workingDirectory: '$(Build.BinariesDirectory)'
+
+      - ${{ if notIn(parameters['sln_platform'], 'Win32', 'x64') }}:
+        # Use cross-compiled protoc
+        - script: |
+           @echo ##vso[task.setvariable variable=ProtocDirectory]$(Build.BinariesDirectory)\installed\bin
+
+      - task: VSBuild@1
+        displayName: 'Build'
+        inputs:
+          solution: '$(Build.BinariesDirectory)\$(BuildConfig)\onnxruntime.sln'
+          platform: ${{ parameters.sln_platform }}
+          configuration: $(BuildConfig)
+          msbuildArchitecture: ${{ parameters.BuildArch }}
+          maximumCpuCount: true
+          logProjectEvents: true
+          workingFolder: '$(Build.BinariesDirectory)\$(BuildConfig)'
+          createLogFile: true
+
+      # The Configuration variable is required to build C#
+      - script: |
+         @echo ##vso[task.setvariable variable=Configuration]$(BuildConfig)
+        displayName: 'Set Configuration variable'
+
+
+      - task: NuGetToolInstaller@0
+        displayName: Use Nuget 5.7.0
+        inputs:
+          versionSpec: 5.7.0
+
+      - task: MSBuild@1
+        displayName: 'Restore NuGet Packages'
+        inputs:
+          solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
+          platform: 'Any CPU'
+          configuration: '$(BuildConfig)'
+          msbuildArguments: '-t:restore -p:OrtPackageId=${{ parameters.OrtPackageId }}'
+          workingDirectory: '$(Build.SourcesDirectory)\csharp'
+
+      - task: MSBuild@1
+        displayName: 'Build C#'
+        inputs:
+          solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
+          configuration: '$(BuildConfig)'
+          platform: 'Any CPU'
+          msbuildArguments: '-p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=${{ parameters.OrtPackageId }} -p:IsReleaseBuild=${{ parameters.IsReleaseBuild }}'
+          workingDirectory: '$(Build.SourcesDirectory)\csharp'
+
+      - script: |
+         mklink /D /J models C:\local\models
+        workingDirectory: '$(Build.BinariesDirectory)'
+        displayName: 'Create models link'
+
+      - ${{ if in(parameters['sln_platform'], 'Win32', 'x64') }}:
+        - task: DotNetCoreCLI@2
+          displayName: 'Test C#'
+          inputs:
+            command: test
+            projects: '$(Build.SourcesDirectory)\csharp\test\Microsoft.ML.OnnxRuntime.Tests.NetCoreApp\Microsoft.ML.OnnxRuntime.Tests.NetCoreApp.csproj'
+            configuration: '$(BuildConfig)'
+            arguments: '--configuration $(BuildConfig) -p:Platform="Any CPU" -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=${{ parameters.OrtPackageId }}'
+            workingDirectory: '$(Build.SourcesDirectory)\csharp'
+
+        - ${{ if eq(parameters.RunTests, true) }}:
+          - script: |
+             mklink  /D /J $(Build.BinariesDirectory)\$(BuildConfig)\models C:\local\models
+             DIR dist\ /S /B > wheel_filename_file
+             set /p WHEEL_FILENAME=<wheel_filename_file
+             del wheel_filename_file
+             python.exe -m pip install -q --upgrade %WHEEL_FILENAME%
+             set PATH=%PATH%;$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)
+             @echo %PATH%
+             python $(Build.SourcesDirectory)\tools\ci_build\build.py $(BuildCommand) --test --config $(BuildConfig) ${{ variables.build_py_lto_flag }}
+            workingDirectory: '$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)'
+            displayName: 'Run tests'
+
+      - ${{ if eq(parameters.RunTests, true) }}:
+        - task: PublishTestResults@2
+          displayName: 'Publish unit test results'
+          inputs:
+            testResultsFiles: '**\*.results.xml'
+            searchFolder: '$(Build.BinariesDirectory)'
+            testRunTitle: 'Unit Test Run'
+          condition: succeededOrFailed()
+
+      # Nuget packaging if needed
+      - ${{ if eq(parameters['DoNugetPack'], 'true') }}:
+        - task: BatchScript@1
+          displayName: 'Setup VS2022 env vars'
+          inputs:
+            ${{ if eq(variables.vsVersion, '2019') }}:
+              filename: 'C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\VC\Auxiliary\Build\vcvarsall.bat'
+            ${{ else }}:
+              filename: 'C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvarsall.bat'
+            arguments: ${{ parameters.BuildArch }}
+            modifyEnvironment: true
+        # Esrp signing
+        - template: ../../templates/win-esrp-dll.yml
+          parameters:
+            FolderPath: '$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)'
+            DisplayName: 'ESRP - Sign Native dlls'
+            DoEsrp: ${{ parameters.DoEsrp }}
+            Pattern: 'onnx_test_runner.exe, onnxruntime_perf_test.exe,*.dll' #keep sync with src/Microsoft.ML.OnnxRuntime/Microsoft.ML.OnnxRuntime.csproj
+
+        - template: ../../templates/win-esrp-dll.yml
+          parameters:
+            FolderPath: '$(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\bin\$(BuildConfig)'
+            DisplayName: 'ESRP - Sign C# dlls'
+            DoEsrp: ${{ parameters.DoEsrp }}
+
+        - script: |
+           ${{ parameters.NuPackScript }}
+          workingDirectory: '$(Build.SourcesDirectory)\csharp'
+          displayName: 'Create NuGet Package'
+          failOnStderr: true
+
+        - task: PublishPipelineArtifact@0
+          displayName: 'Publish Pipeline Artifact: ${{ parameters.ArtifactName }}'
+          inputs:
+            artifactName: ${{ parameters.ArtifactName }}
+            targetPath: '$(Build.ArtifactStagingDirectory)'
+
+        - ${{ if eq(parameters['IsReleaseBuild'], 'true') }}:
+          - task: PublishSymbols@2
+            displayName: 'Publish Build Symbols'
+            inputs:
+              symbolsFolder: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo'
+              searchPattern: '**/*.pdb'
+              symbolServerType: teamServices
+
+      # Node.js Publish
+      - ${{ if eq(parameters['DoNodejsPack'], 'true') }}:
+        - task: BatchScript@1
+          displayName: 'Setup VS env vars'
+          inputs:
+            ${{ if eq(variables.vsVersion, '2019') }}:
+              filename: 'C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\VC\Auxiliary\Build\vcvarsall.bat'
+            ${{ else }}:
+              filename: 'C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvarsall.bat'
+            arguments: ${{ parameters.BuildArch }}
+            modifyEnvironment: true
+        - template: ../../templates/win-esrp-dll.yml
+          parameters:
+            FolderPath: '$(Build.SourcesDirectory)\js\node\bin\napi-v3\win32\x64'
+            DisplayName: 'ESRP - Sign Node.js binding binaries'
+            DoEsrp: ${{ parameters.DoEsrp }}
+            Pattern: '*.dll,*.node'
+
+        - script: |
+           del /Q $(Build.SourcesDirectory)\js\node\bin\napi-v3\win32\x64\CodeSignSummary-*.*
+           call npm pack
+           copy $(Build.SourcesDirectory)\js\node\onnxruntime-*.tgz $(Build.ArtifactStagingDirectory)
+           xcopy /E /I $(Build.SourcesDirectory)\js\node\prebuilds $(Build.ArtifactStagingDirectory)\prebuilds
+          workingDirectory: '$(Build.SourcesDirectory)\js\node'
+          displayName: 'Create NPM Package'
+
+        - task: PublishPipelineArtifact@0
+          displayName: 'Publish Pipeline Artifact: ${{ parameters.ArtifactName }}'
+          inputs:
+            artifactName: ${{ parameters.ArtifactName }}
+            targetPath: '$(Build.ArtifactStagingDirectory)'
+
+        # Put an unzipped version there to check if all the binaries are signed.
+        - script: |
+           7z x $(Build.ArtifactStagingDirectory)\prebuilds\onnxruntime-*.tar.gz
+           7z x $(Build.ArtifactStagingDirectory)\onnxruntime-*.tar
+          displayName: 'Unzip package to test'
+          workingDirectory: '$(Build.ArtifactStagingDirectory)'
+
+      - ${{ if eq(parameters['DoCompliance'], 'true') }}:
+        - template: ../../templates/compliance.yml
+          parameters :
+            msbuildPlatform: ${{ parameters.sln_platform }}
+            # parameter couldn't be compared with string, so I have to use boolean.
+            ${{ if eq(variables.vsVersion, '2019') }}:
+              vs2022: false
+
+      - template: ../../templates/component-governance-component-detection-steps.yml
+        parameters :
+          condition : 'succeeded'
+
+      - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
+        displayName: 'Clean Agent Directories'
+        condition: always()

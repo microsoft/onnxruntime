@@ -8,6 +8,8 @@
 #include <vector>
 
 #ifdef USE_COMPOSABLE_KERNEL
+#include "core/providers/rocm/composable_kernel_common.h"
+
 #include "ck/ck.hpp"
 #include "ck/library/tensor_operation_instance/gpu/gemm_add_fastgelu.hpp"
 #include "ck/library/tensor_operation_instance/gpu/gemm_fastgelu.hpp"
@@ -28,20 +30,7 @@ namespace internal {
 
 #ifdef USE_COMPOSABLE_KERNEL
 
-template <typename T>
-struct DataTypeAdaptor {
-  using type = T;
-};
-
-template <>
-struct DataTypeAdaptor<half> {
-  using type = ck::half_t;
-};
-
-template <>
-struct DataTypeAdaptor<BFloat16> {
-  using type = ck::bhalf16_t;
-};
+using onnxruntime::rocm::CKDataTypeAdaptor;
 
 using Row = ck::tensor_layout::gemm::RowMajor;
 using Col = ck::tensor_layout::gemm::ColumnMajor;
@@ -52,7 +41,7 @@ using FastGelu = ck::tensor_operation::element_wise::FastGelu;
 
 template <typename T, typename ALayout, typename BLayout>
 auto GetCKGemmAddFastGeluTypeStringAndOps() {
-  using CKDataType = typename DataTypeAdaptor<T>::type;
+  using CKDataType = typename CKDataTypeAdaptor<T>::type;
   using DeviceGemmAddFastGelu = ck::tensor_operation::device::DeviceGemmMultipleD<
       ALayout, BLayout, ck::Tuple<Row>, Row,
       CKDataType, CKDataType, ck::Tuple<CKDataType>, CKDataType,
@@ -89,7 +78,7 @@ auto GetCKGemmAddFastGeluTypeStringAndOps() {
 
 template <typename T, typename ALayout, typename BLayout>
 auto GetCKGemmFastGeluTypeStringAndOps() {
-  using CKDataType = typename DataTypeAdaptor<T>::type;
+  using CKDataType = typename CKDataTypeAdaptor<T>::type;
   using DeviceGemmFastGelu = ck::tensor_operation::device::DeviceGemmMultipleD<
       ALayout, BLayout, ck::Tuple<>, Row,
       CKDataType, CKDataType, ck::Tuple<>, CKDataType,

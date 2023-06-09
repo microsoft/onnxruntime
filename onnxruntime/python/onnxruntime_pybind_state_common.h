@@ -399,13 +399,11 @@ void addIoBindingMethods(pybind11::module& m);
 
 void addSparseTensorMethods(pybind11::module& m);
 
-#ifdef onnxruntime_PYBIND_EXPORT_OPSCHEMA
 void addGlobalSchemaFunctions(pybind11::module& m);
 
 void addOpKernelSubmodule(pybind11::module& m);
 
 void addOpSchemaSubmodule(pybind11::module& m);
-#endif
 
 const char* GetDeviceName(const OrtDevice& device);
 

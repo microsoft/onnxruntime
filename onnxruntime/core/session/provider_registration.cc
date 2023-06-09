@@ -68,7 +68,7 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
 
   if (strcmp(provider_name, "QNN") == 0) {
 #if defined(USE_QNN)
-    options->provider_factories.push_back(QNNProviderFactoryCreator::Create(provider_options));
+    options->provider_factories.push_back(QNNProviderFactoryCreator::Create(provider_options, &(options->value)));
 #else
     status = create_not_supported_status();
 #endif
@@ -81,6 +81,16 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
   } else if (strcmp(provider_name, "XNNPACK") == 0) {
 #if defined(USE_XNNPACK)
     options->provider_factories.push_back(XnnpackProviderFactoryCreator::Create(provider_options, &(options->value)));
+#else
+    status = create_not_supported_status();
+#endif
+  } else if (strcmp(provider_name, "WEBNN") == 0) {
+#if defined(USE_WEBNN)
+    std::string deviceType = options->value.config_options.GetConfigOrDefault("deviceType", "cpu");
+    std::string powerPreference = options->value.config_options.GetConfigOrDefault("powerPreference", "default");
+    provider_options["deviceType"] = deviceType;
+    provider_options["powerPreference"] = powerPreference;
+    options->provider_factories.push_back(WebNNProviderFactoryCreator::Create(provider_options));
 #else
     status = create_not_supported_status();
 #endif
@@ -361,6 +371,37 @@ ORT_API_STATUS_IMPL(OrtApis::GetDnnlProviderOptionsAsString,
 }
 
 ORT_API(void, OrtApis::ReleaseDnnlProviderOptions, _Frees_ptr_opt_ OrtDnnlProviderOptions* ptr) {
+  ORT_UNUSED_PARAMETER(ptr);
+}
+
+ORT_API_STATUS_IMPL(OrtApis::CreateROCMProviderOptions, _Outptr_ OrtROCMProviderOptions** out) {
+  ORT_UNUSED_PARAMETER(out);
+  return CreateNotEnabledStatus("ROCM");
+}
+
+ORT_API_STATUS_IMPL(OrtApis::UpdateROCMProviderOptions,
+                    _Inout_ OrtROCMProviderOptions* rocm_options,
+                    _In_reads_(num_keys) const char* const* provider_options_keys,
+                    _In_reads_(num_keys) const char* const* provider_options_values,
+                    size_t num_keys) {
+  ORT_UNUSED_PARAMETER(rocm_options);
+  ORT_UNUSED_PARAMETER(provider_options_keys);
+  ORT_UNUSED_PARAMETER(provider_options_values);
+  ORT_UNUSED_PARAMETER(num_keys);
+  return CreateNotEnabledStatus("ROCM");
+}
+
+ORT_API_STATUS_IMPL(OrtApis::GetROCMProviderOptionsAsString,
+                    _In_ const OrtROCMProviderOptions* rocm_options,
+                    _Inout_ OrtAllocator* allocator,
+                    _Outptr_ char** ptr) {
+  ORT_UNUSED_PARAMETER(rocm_options);
+  ORT_UNUSED_PARAMETER(allocator);
+  ORT_UNUSED_PARAMETER(ptr);
+  return CreateNotEnabledStatus("ROCM");
+}
+
+ORT_API(void, OrtApis::ReleaseROCMProviderOptions, _Frees_ptr_opt_ OrtROCMProviderOptions* ptr) {
   ORT_UNUSED_PARAMETER(ptr);
 }
 #endif

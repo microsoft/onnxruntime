@@ -13,8 +13,6 @@ namespace transformers {
 // This class keeps track of sequences generated.
 class Sequences : public ISequences {
  public:
-  Sequences() {}
-
   // Initialize the sequence.
   void Init(gsl::span<int32_t> buffer, int batch_beam_size, int sequence_length, int max_length);
 

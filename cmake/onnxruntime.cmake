@@ -28,9 +28,9 @@ macro(get_mobile_api_headers _HEADERS)
   )
 
   if (onnxruntime_ENABLE_TRAINING_APIS)
-    list(APPEND ${_HEADERS} "${REPO_ROOT/orttraining/orttraining/training_api/include/onnxruntime_training_c_api.h}")
-    list(APPEND ${_HEADERS} "${REPO_ROOT/orttraining/orttraining/training_api/include/onnxruntime_training_cxx_api.h}")
-    list(APPEND ${_HEADERS} "${REPO_ROOT/orttraining/orttraining/training_api/include/onnxruntime_training_cxx_inline_api.h}")
+    list(APPEND ${_HEADERS} "${REPO_ROOT}/orttraining/orttraining/training_api/include/onnxruntime_training_c_api.h")
+    list(APPEND ${_HEADERS} "${REPO_ROOT}/orttraining/orttraining/training_api/include/onnxruntime_training_cxx_api.h")
+    list(APPEND ${_HEADERS} "${REPO_ROOT}/orttraining/orttraining/training_api/include/onnxruntime_training_cxx_inline.h")
   endif()
 
   # need to add header files for enabled EPs
@@ -136,7 +136,7 @@ if (NOT WIN32)
     else()
         set_target_properties(onnxruntime PROPERTIES INSTALL_RPATH "@loader_path")
     endif()
-  elseif (NOT onnxruntime_BUILD_WEBASSEMBLY)
+  elseif (NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
     set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -Wl,-rpath='$ORIGIN'")
   endif()
 endif()
@@ -188,9 +188,9 @@ set(onnxruntime_INTERNAL_LIBRARIES
   ${PROVIDERS_SNPE}
   ${PROVIDERS_TVM}
   ${PROVIDERS_RKNPU}
-  ${PROVIDERS_ROCM}
   ${PROVIDERS_VITISAI}
   ${PROVIDERS_XNNPACK}
+  ${PROVIDERS_WEBNN}
   ${PROVIDERS_AZURE}
   ${PROVIDERS_INTERNAL_TESTING}
   ${onnxruntime_winml}

@@ -178,12 +178,12 @@ Module::Module(const std::string& train_model_path_or_bytes,
   state_->module_checkpoint_state.train_session_data_transfer_mgr = &train_sess_->GetDataTransferManager();
 
   // Extract model input and output names
-  std::vector<std::string> train_input_names, train_output_names;
+  InlinedVector<std::string> train_input_names, train_output_names;
   utils::GetGraphInputOutputNames(train_sess_, train_input_names, train_output_names);
 
   // Reorder the extracted input names in the following order:
   // user inputs, weights, gradients, reset_grad
-  std::vector<std::string> user_input_names, param_input_names, grad_input_names, reset_grad_name;
+  InlinedVector<std::string> user_input_names, param_input_names, grad_input_names, reset_grad_name;
 
   std::unordered_map<std::string, size_t> param_name_to_grad_input_index_map;
   for (const auto& input_name : train_input_names) {
@@ -283,7 +283,7 @@ Module::Module(const std::string& train_model_path_or_bytes,
     // We are making certain assumptions: Like the order in which parameters occur will be same between train and eval
     // graphs, and all the weights present in both graphs match.
     // TODO: Add the checks instead of making assumptions??
-    std::vector<std::string> eval_user_input_names, eval_param_input_names;
+    InlinedVector<std::string> eval_user_input_names, eval_param_input_names;
     for (const auto& input_name : eval_input_names_) {
       if (state_->module_checkpoint_state.named_parameters.find(input_name) !=
           state_->module_checkpoint_state.named_parameters.end()) {

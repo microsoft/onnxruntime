@@ -190,7 +190,7 @@ def generate_repo_url(line_list, repo_url, commit_id):
 
 
 def generate_dependencies(xml_text, package_name, version):
-    dml_dependency = '<dependency id="Microsoft.AI.DirectML" version="1.10.1"/>'
+    dml_dependency = '<dependency id="Microsoft.AI.DirectML" version="1.12.0"/>'
 
     if package_name == "Microsoft.AI.MachineLearning":
         xml_text.append("<dependencies>")
@@ -320,6 +320,7 @@ def generate_files(line_list, args):
     ]
     is_mklml_package = args.package_name == "Microsoft.ML.OnnxRuntime.MKLML"
     is_cuda_gpu_package = args.package_name == "Microsoft.ML.OnnxRuntime.Gpu"
+    is_rocm_gpu_package = args.package_name == "Microsoft.ML.OnnxRuntime.ROCm"
     is_dml_package = args.package_name == "Microsoft.ML.OnnxRuntime.DirectML"
     is_windowsai_package = args.package_name == "Microsoft.AI.MachineLearning"
     is_snpe_package = args.package_name == "Microsoft.ML.OnnxRuntime.Snpe"
@@ -368,6 +369,7 @@ def generate_files(line_list, args):
             "tensorrt_ep_shared_lib": "libonnxruntime_providers_tensorrt.so",
             "openvino_ep_shared_lib": "libonnxruntime_providers_openvino.so",
             "cuda_ep_shared_lib": "libonnxruntime_providers_cuda.so",
+            "rocm_ep_shared_lib": "libonnxruntime_providers_rocm.so",
             "onnxruntime_perf_test": "onnxruntime_perf_test",
             "onnx_test_runner": "onnx_test_runner",
         }
@@ -667,6 +669,26 @@ def generate_files(line_list, args):
             # TODO(agladyshev): Add support for Linux.
             raise RuntimeError("Now only Windows is supported for TVM EP.")
 
+    if is_rocm_gpu_package:
+        if not is_linux():
+            raise RuntimeError("Only Linux is supported for ROCm EP.")
+        files_list.append(
+            "<file src="
+            + '"'
+            + os.path.join(args.native_build_path, nuget_dependencies["providers_shared_lib"])
+            + runtimes_target
+            + args.target_architecture
+            + '\\native" />'
+        )
+        files_list.append(
+            "<file src="
+            + '"'
+            + os.path.join(args.native_build_path, nuget_dependencies["rocm_ep_shared_lib"])
+            + runtimes_target
+            + args.target_architecture
+            + '\\native" />'
+        )
+
     if args.execution_provider == "openvino":
         openvino_path = get_env_var("INTEL_OPENVINO_DIR")
         files_list.append(
@@ -861,7 +883,15 @@ def generate_files(line_list, args):
             files_list.append("<file src=" + '"' + windowsai_net50_props + '" target="build\\net5.0" />')
             files_list.append("<file src=" + '"' + windowsai_net50_targets + '" target="build\\net5.0" />')
 
-    if is_cpu_package or is_cuda_gpu_package or is_dml_package or is_mklml_package or is_snpe_package or is_qnn_package:
+    if (
+        is_cpu_package
+        or is_cuda_gpu_package
+        or is_rocm_gpu_package
+        or is_dml_package
+        or is_mklml_package
+        or is_snpe_package
+        or is_qnn_package
+    ):
         # Process props file
         source_props = os.path.join(
             args.sources_path, "csharp", "src", "Microsoft.ML.OnnxRuntime", "targets", "netstandard", "props.xml"

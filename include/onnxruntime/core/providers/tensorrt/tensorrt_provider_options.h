@@ -36,7 +36,7 @@ struct OrtTensorRTProviderOptionsV2 {
   int trt_detailed_build_log;                   // Enable detailed build step logging on TensorRT EP with timing for each engine build. Default 0 = false, nonzero = true
   int trt_build_heuristics_enable;              // Build engine using heuristics to reduce build time. Default 0 = false, nonzero = true
   int trt_sparsity_enable;                      // Control if sparsity can be used by TRT. Default 0 = false, 1 = true
-  int trt_builder_optimization_level;           // Set the builder optimization level. WARNING: levels below 2 do not guarantee good engine performance, but greatly improve build time.  Default 2, valid range [0-4]
+  int trt_builder_optimization_level;           // Set the builder optimization level. WARNING: levels below 3 do not guarantee good engine performance, but greatly improve build time.  Default 3, valid range [0-5]
   int trt_auxiliary_streams;                    // Set maximum number of auxiliary streams per inference stream. Setting this value to 0 will lead to optimal memory usage. Default -1 = heuristics
   const char* trt_tactic_sources;               // pecify the tactics to be used by adding (+) or removing (-) tactics from the default
                                                 // tactic sources (default = all available tactics) e.g. "-CUDNN,+CUBLAS" available keys: "CUBLAS"|"CUBLAS_LT"|"CUDNN"|"EDGE_MASK_CONVOLUTIONS"

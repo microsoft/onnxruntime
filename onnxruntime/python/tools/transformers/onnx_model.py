@@ -644,12 +644,17 @@ class OnnxModel:
                 if model_with_shape is not None:
                     name_vi = {}
                     for vi in model_with_shape.graph.value_info:
-                        vi_copy = ValueInfoProto()
-                        vi_copy.CopyFrom(vi)
-                        if hasattr(vi_copy.type, "tensor_type") and hasattr(vi_copy.type.tensor_type, "shape"):
-                            vi_copy.type.tensor_type.ClearField("shape")
-                        name_vi[vi.name] = vi_copy
-
+                        if (
+                            hasattr(vi.type, "tensor_type")
+                            and hasattr(vi.type.tensor_type, "elem_type")
+                            and vi.type.tensor_type.elem_type != TensorProto.UNDEFINED
+                            and vi.name
+                        ):
+                            vi_copy = ValueInfoProto()
+                            vi_copy.CopyFrom(vi)
+                            if hasattr(vi_copy.type.tensor_type, "shape"):
+                                vi_copy.type.tensor_type.ClearField("shape")
+                            name_vi[vi.name] = vi_copy
                     for vi in model.graph.value_info:
                         if vi.name in name_vi:
                             del name_vi[vi.name]
@@ -941,6 +946,7 @@ class OnnxModel:
 
         sorted_node_set_len = -1
         graph_nodes = graph.node if not is_deterministic else sorted(graph.node, key=lambda x: x.name)
+
         last_node_name = None
         while len(sorted_node_set) != len(graph_nodes):
             if len(sorted_node_set) == sorted_node_set_len:
@@ -954,7 +960,8 @@ class OnnxModel:
                     sorted_nodes.append(node)
                     sorted_node_set.add(node_idx)
                     for output in node.output:
-                        deps_set.add(output)
+                        if output:
+                            deps_set.add(output)
                     continue
                 failed = False
                 for input_name in node.input:
@@ -965,7 +972,8 @@ class OnnxModel:
                     sorted_nodes.append(node)
                     sorted_node_set.add(node_idx)
                     for output in node.output:
-                        deps_set.add(output)
+                        if output:
+                            deps_set.add(output)
                 else:
                     continue
 

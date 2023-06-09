@@ -1434,6 +1434,28 @@ Status CANNExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fuse
   return Status::OK();
 }
 
+AllocatorPtr CANNExecutionProvider::CreateCannAllocator(OrtDevice::DeviceId device_id, size_t npu_mem_limit,
+                                                        ArenaExtendStrategy arena_extend_strategy,
+                                                        OrtArenaCfg* default_memory_arena_cfg) {
+  AllocatorCreationInfo default_memory_info(
+      [](OrtDevice::DeviceId id) {
+        return std::make_unique<CANNAllocator>(id, CANN);
+      },
+      device_id,
+      true,
+      {default_memory_arena_cfg ? *default_memory_arena_cfg
+                                : OrtArenaCfg(npu_mem_limit,
+                                              static_cast<int>(arena_extend_strategy),
+                                              -1,
+                                              -1,
+                                              -1,
+                                              -1L)},
+      true,
+      false);
+
+  return CreateAllocator(default_memory_info);
+}
+
 void CANNExecutionProvider::RegisterAllocator(AllocatorManager& allocator_manager) {
   OrtDevice cann_device{OrtDevice::NPU, OrtDevice::MemType::DEFAULT, info_.device_id};
   OrtDevice pinned_device{OrtDevice::CPU, OrtDevice::MemType::CANN_PINNED, DEFAULT_CPU_ALLOCATOR_DEVICE_ID};
@@ -1444,22 +1466,8 @@ void CANNExecutionProvider::RegisterAllocator(AllocatorManager& allocator_manage
     cann_alloc = allocator_manager.GetAllocator(OrtMemTypeDefault, cann_device);
 
     if (!cann_alloc) {
-      AllocatorCreationInfo default_memory_info(
-          [](OrtDevice::DeviceId id) {
-            return std::make_unique<CANNAllocator>(id, CANN);
-          },
-          cann_device.Id(),
-          true,
-          {info_.default_memory_arena_cfg ? *info_.default_memory_arena_cfg
-                                          : OrtArenaCfg(info_.npu_mem_limit,
-                                                        static_cast<int>(info_.arena_extend_strategy),
-                                                        -1,
-                                                        -1,
-                                                        -1)},
-          true,
-          false);
-
-      cann_alloc = CreateAllocator(default_memory_info);
+      cann_alloc = CreateCannAllocator(info_.device_id, info_.npu_mem_limit, info_.arena_extend_strategy,
+                                       info_.default_memory_arena_cfg);
       allocator_manager.InsertAllocator(cann_alloc);
     }
 
@@ -1511,7 +1519,7 @@ void CANNExecutionProvider::RegisterStreamHandlers(IStreamCommandHandleRegistry&
 
 OrtDevice CANNExecutionProvider::GetOrtDeviceByMemType(OrtMemType mem_type) const {
   if (mem_type == OrtMemTypeCPUInput || mem_type == OrtMemTypeCPUOutput) {
-    return OrtDevice(OrtDevice::CPU, OrtDevice::MemType::CANN_PINNED, default_device_.Id());
+    return OrtDevice(OrtDevice::CPU, OrtDevice::MemType::CANN_PINNED, 0 /*CPU device id always be 0*/);
   }
   return default_device_;
 }

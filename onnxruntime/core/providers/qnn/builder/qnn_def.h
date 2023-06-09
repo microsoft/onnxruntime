@@ -35,6 +35,27 @@ enum class ProfilingLevel : uint8_t {
   INVALID
 };
 
+// Defines performance modes available for HTP backend.
+enum class HtpPerformanceMode : uint8_t {
+  kHtpDefault = 0,
+  kHtpSustainedHighPerformance,
+  kHtpBurst,
+  kHtpHighPerformance,
+  kHtpPowerSaver,
+  kHtpLowPowerSaver,
+  kHtpHighPowerSaver,
+  kHtpLowBalanced,
+  kHtpBalanced,
+};
+
+// constexpr config values
+constexpr const int kSleepMinLatency = 40;
+constexpr const int kSleepLowLatency = 100;
+constexpr const int kSleepMediumLatency = 1000;
+constexpr const int kSleepHighLatency = 2000;
+constexpr const int kDcvsDisable = 0;
+constexpr const int kDcvsEnable = 1;
+
 struct OnnxTensorInfo {
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(OnnxTensorInfo);
   OnnxTensorInfo(size_t index, int32_t data_type, std::vector<int64_t>&& shape) : index_(index), data_type_(data_type), shape_(std::move(shape)) {}
@@ -101,6 +122,30 @@ class QnnTensorWrapper {
     }
 
     SetQnnTensorQParams(qnn_tensor_, quantize_params);
+  }
+
+  QnnTensorWrapper(const Qnn_Tensor_t& qnn_tensor) : tensor_name_(GetQnnTensorName(qnn_tensor)),
+                                                     client_buf_{} {
+    qnn_tensor_ = qnn_tensor;
+    SetQnnTensorName(qnn_tensor_, tensor_name_.c_str());
+
+    Qnn_QuantizeParams_t quantize_param = QNN_QUANTIZE_PARAMS_INIT;
+    const auto& src_quantize_param = GetQnnTensorQParams(qnn_tensor);
+    // quantization only support SCALE_OFFSET encoding
+    quantize_param.encodingDefinition = src_quantize_param.encodingDefinition;
+    quantize_param.quantizationEncoding = src_quantize_param.quantizationEncoding;
+    quantize_param.scaleOffsetEncoding = src_quantize_param.scaleOffsetEncoding;
+    SetQnnTensorQParams(qnn_tensor_, quantize_param);
+
+    uint32_t shape_rank = GetQnnTensorRank(qnn_tensor);
+    uint32_t* shape_data = GetQnnTensorDims(qnn_tensor);
+    dimensions_.assign(shape_data, shape_data + shape_rank);
+    SetQnnTensorDim(qnn_tensor_, dimensions_);
+
+    // This method is only used for graph inputs/outputs when desearilize from cached context
+    // no client buffer should be set
+
+    SetQnnTensorMemType(qnn_tensor_, QNN_TENSORMEMTYPE_RAW);
   }
 
   QnnTensorWrapper() = default;
@@ -360,7 +405,7 @@ class QnnOpProperty {
 
 class GraphInfo {
  public:
-  GraphInfo(Qnn_GraphHandle_t graph,
+  GraphInfo(const Qnn_GraphHandle_t graph,
             const std::string& name,
             std::vector<QnnTensorWrapper>&& input_tensors,
             std::vector<QnnTensorWrapper>&& output_tensors) : graph_name_(name),
@@ -391,12 +436,6 @@ typedef struct GraphConfigInfo {
   const char* graphName;
   const QnnGraph_Config_t** graphConfigs;
 } GraphConfigInfo_t;
-
-void QnnLogStdoutCallback(const char* format,
-                          QnnLog_Level_t level,
-                          uint64_t timestamp,
-                          va_list argument_parameter);
-static std::mutex qnn_log_mutex_;
 
 namespace qnn_def {
 const std::string package_name = "qti.aisw";

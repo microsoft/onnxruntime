@@ -1,6 +1,6 @@
 jobs:
 - job: 'build'
-  pool: 'Win-GPU-2019'
+  pool: 'onnxruntime-Win2022-GPU-T4'
   strategy:
     maxParallel: 2
     matrix:
@@ -38,6 +38,9 @@ jobs:
     workingDirectory: '$(Build.BinariesDirectory)'
     displayName: 'Install python modules'
 
+  - powershell: |
+      azcopy.exe cp --recursive "https://lotusscus.blob.core.windows.net/models/cuda_sdk/v11.8" $(Agent.TempDirectory)
+
   - task: PowerShell@2
     displayName: 'Install ONNX'
     inputs:
@@ -49,7 +52,7 @@ jobs:
     displayName: 'Build and test'
     inputs:
       scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-      arguments: '--config $(BuildConfig) --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --cmake_generator "Visual Studio 16 2019" --build_wheel --use_cuda --cuda_version=11.6 --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.6" --cmake_extra_defines CMAKE_SYSTEM_VERSION=10.0.18362.0 "CMAKE_CUDA_ARCHITECTURES=75" --include_ops_by_config="$(Build.SourcesDirectory)\onnxruntime\test\testdata\required_ops.config"'
+      arguments: '--config $(BuildConfig) --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --cmake_generator "Visual Studio 17 2022" --build_wheel --use_cuda --cuda_home="$(Agent.TempDirectory)\v11.8" --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=75" --include_ops_by_config="$(Build.SourcesDirectory)\onnxruntime\test\testdata\required_ops.config"'
       workingDirectory: '$(Build.BinariesDirectory)'
 
   - template: templates/component-governance-component-detection-steps.yml

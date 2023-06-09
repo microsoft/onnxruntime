@@ -583,13 +583,13 @@ Status PrepareQkv(contrib::AttentionParameters& parameters,
       // Key (BxLxNxH) => K (BxNxLxH)
       LaunchAddBiasTranspose<T>(stream, 1, format, max_threads_per_block,
                                 batch_size, kv_sequence_length, num_heads, qk_head_size,
-                                data.key, data.bias + num_heads * qk_head_size, k,
+                                data.key, nullptr == data.bias ? nullptr : data.bias + num_heads * qk_head_size, k,
                                 true, -1);
 
       // Value (BxLxNxH_v) => K (BxNxLxH_v)
       LaunchAddBiasTranspose<T>(stream, 1, format, max_threads_per_block,
                                 batch_size, kv_sequence_length, num_heads, v_head_size,
-                                data.value, data.bias + 2 * num_heads * qk_head_size, v,
+                                data.value, nullptr == data.bias ? nullptr : data.bias + 2 * num_heads * qk_head_size, v,
                                 true, -1);
 
       DUMP_TENSOR_D("q(BNSH)", q, batch_size * num_heads, sequence_length, qk_head_size);
@@ -858,6 +858,10 @@ Status QkvToContext(
       query = data.query;
     }
 
+    DUMP_TENSOR_D("attention q(BSNH)", q, batch_size * sequence_length, num_heads * qk_head_size);
+    DUMP_TENSOR_D("attention k(BSNH)", k, batch_size * sequence_length, num_heads * qk_head_size);
+    DUMP_TENSOR_D("attention v(BSNH)", v, batch_size * sequence_length, num_heads * v_head_size);
+
     MemoryEfficientAttentionParams p;
     p.sm = device_prop.major * 10 + device_prop.minor;
     p.is_half = sizeof(T) == 2;
@@ -881,7 +885,7 @@ Status QkvToContext(
     p.workspace = MemoryEfficientAttentionParams::need_workspace(v_head_size, sizeof(T) == sizeof(float)) ? scratch1 : nullptr;
     p.stream = stream;
     run_memory_efficient_attention(p);
-    DUMP_TENSOR("cutlass output", data.output, batch_size * sequence_length, num_heads, v_head_size);
+    DUMP_TENSOR("attention cutlass output", data.output, batch_size * sequence_length, num_heads, v_head_size);
     return Status::OK();
   }
 #endif

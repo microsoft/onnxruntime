@@ -85,6 +85,11 @@ if ($MODE -eq "dev") {
     pushd $JS_COMMON_DIR
     npm version --allow-same-version $ort_common_latest_version
     echo $($version_number.commit) | Out-File -Encoding ascii -NoNewline -FilePath ./__commit.txt
+    # update version.ts of common
+    pushd ..
+    npm run update-version common
+    npm run format
+    popd
     npm pack
     popd
 
@@ -147,6 +152,13 @@ if ($MODE -eq "dev") {
         pushd $JS_COMMON_DIR
         npm version --allow-same-version $($version_number.version)
         # file __commit.txt is already generated
+
+        # update version.ts of common
+        pushd ..
+        npm run update-version common
+        npm run format
+        popd
+
         npm pack
         popd
     }
@@ -155,6 +167,13 @@ if ($MODE -eq "dev") {
     pushd $JS_TARGET_DIR
     npm version --allow-same-version $($version_number.version)
     echo $($version_number.commit) | Out-File -Encoding ascii -NoNewline -FilePath ./__commit.txt
+
+    # update version.ts of TARGET
+    pushd ..
+    npm run update-version $TARGET
+    npm run format
+    popd
+
     npm pack
     popd
 } elseif ($MODE -eq "release") {
@@ -171,11 +190,25 @@ if ($MODE -eq "dev") {
 
     pushd $JS_COMMON_DIR
     npm version --allow-same-version $($version_number.version)
+
+    # update version.ts of common
+    pushd ..
+    npm run update-version common
+    npm run format
+    popd
+
     npm pack
     popd
 
     pushd $JS_TARGET_DIR
     npm version --allow-same-version $($version_number.version)
+
+    # update version.ts of TARGET
+    pushd ..
+    npm run update-version $TARGET
+    npm run format
+    popd
+
     npm pack
     popd
 }

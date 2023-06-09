@@ -89,7 +89,7 @@ struct OpKernelRegistryId {
       const std::basic_string_view<char>& op,
       const std::basic_string_view<char>& domain,
       const int version,
-      std::initializer_list<std::pair<std::string, MLDataType>> init_list)
+      const std::initializer_list<std::pair<const std::string, MLDataType>>& init_list)
       : op_type_(op), domain_(domain), version_(version), type_constraints_(init_list) {}
 };
 

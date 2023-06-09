@@ -43,6 +43,6 @@ class Optimizer:
         """Gets the current learning rate of the optimizer.
 
         Returns:
-            float: The current learning rate.
+            The current learning rate.
         """
         return self._optimizer.get_learning_rate()

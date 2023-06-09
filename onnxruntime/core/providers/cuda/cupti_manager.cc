@@ -5,7 +5,7 @@
 namespace onnxruntime {
 namespace profiling {
 
-#if defined(USE_CUDA) && defined(ENABLE_CUDA_PROFILING) && defined(CUDA_VERSION) && CUDA_VERSION >= 11000
+#if defined(USE_CUDA) && defined(ENABLE_CUDA_PROFILING)
 
 static inline std::string GetMemcpyKindString(CUpti_ActivityMemcpyKind kind) {
   switch (kind) {

@@ -6,18 +6,19 @@
 
 #import <Foundation/Foundation.h>
 #import <React/RCTLog.h>
-#import <onnxruntime/onnxruntime_cxx_api.h>
 
+// Note: Using below syntax for including ort c api and ort extensions headers to resolve a compiling error happened
+// in an expo react native ios app when ort extensions enabled (a redefinition error of multiple object types defined
+// within ORT C API header). It's an edge case that compiler allows both ort c api headers to be included when #include
+// syntax doesn't match. For the case when extensions not enabled, it still requires a onnxruntime prefix directory for
+// searching paths. Also in general, it's a convention to use #include for C/C++ headers rather then #import. See:
+// https://google.github.io/styleguide/objcguide.html#import-and-include
+// https://microsoft.github.io/objc-guide/Headers/ImportAndInclude.html
 #ifdef ORT_ENABLE_EXTENSIONS
-extern "C" {
-// Note: Declared in onnxruntime_extensions.h but forward declared here to resolve a build issue:
-// (A compilation error happened while building an expo react native ios app, onnxruntime_c_api.h header
-// included in the onnxruntime_extensions.h leads to a redefinition conflicts with multiple object defined in the ORT C
-// API.) So doing a forward declaration here instead of #include "onnxruntime_extensions.h" as a workaround for now
-// before we have a fix.
-// TODO: Investigate if we can include onnxruntime_extensions.h here
-OrtStatus *RegisterCustomOps(OrtSessionOptions *options, const OrtApiBase *api);
-} // Extern C
+#include "onnxruntime_cxx_api.h"
+#include "onnxruntime_extensions.h"
+#else
+#include "onnxruntime/onnxruntime_cxx_api.h"
 #endif
 
 @implementation OnnxruntimeModule
@@ -86,6 +87,25 @@ RCT_EXPORT_METHOD(loadModelFromBase64EncodedBuffer
     resolve(resultMap);
   } @catch (...) {
     reject(@"onnxruntime", @"failed to load model from buffer", nil);
+  }
+}
+
+/**
+ * React native binding API to dispose a session using given key from loadModel()
+ *
+ * @param key a model path location given at loadModel()
+ * @param resolve callback for returning output back to react native js
+ * @param reject callback for returning an error back to react native js
+ */
+RCT_EXPORT_METHOD(dispose
+                  : (NSString *)key resolver
+                  : (RCTPromiseResolveBlock)resolve rejecter
+                  : (RCTPromiseRejectBlock)reject) {
+  @try {
+    [self dispose:key];
+    resolve(nil);
+  } @catch (...) {
+    reject(@"onnxruntime", @"failed to dispose session", nil);
   }
 }
 
@@ -193,6 +213,25 @@ RCT_EXPORT_METHOD(run
   resultMap[@"outputNames"] = outputNames;
 
   return resultMap;
+}
+
+/**
+ * Dispose a session given a key.
+ *
+ * @param key a session key returned from loadModel()
+ */
+- (void)dispose:(NSString *)key {
+  NSValue *value = [sessionMap objectForKey:key];
+  if (value == nil) {
+    NSException *exception = [NSException exceptionWithName:@"onnxruntime"
+                                                     reason:@"can't find onnxruntime session"
+                                                   userInfo:nil];
+    @throw exception;
+  }
+  [sessionMap removeObjectForKey:key];
+  SessionInfo *sessionInfo = (SessionInfo *)[value pointerValue];
+  delete sessionInfo;
+  sessionInfo = nullptr;
 }
 
 /**
@@ -337,10 +376,7 @@ static NSDictionary *executionModeTable = @{@"sequential" : @(ORT_SEQUENTIAL), @
 - (void)dealloc {
   NSEnumerator *iterator = [sessionMap keyEnumerator];
   while (NSString *key = [iterator nextObject]) {
-    NSValue *value = [sessionMap objectForKey:key];
-    SessionInfo *sessionInfo = (SessionInfo *)[value pointerValue];
-    delete sessionInfo;
-    sessionInfo = nullptr;
+    [self dispose:key];
   }
 }
 

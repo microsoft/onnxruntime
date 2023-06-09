@@ -877,7 +877,7 @@ const std::unordered_set<std::string_view>& GetORTLayoutSensitiveOps() {
     { "FusedConv",
       "QLinearAveragePool",
       "QLinearGlobalAveragePool"
-#if defined(USE_CUDA) || defined(USE_ROCM) || defined(USE_QNN)
+#if defined(USE_CUDA) || defined(USE_ROCM) || defined(USE_QNN) || defined(USE_WEBNN)
       // The CUDA/ROCM Resize kernel is layout sensitive as it only handles NCHW input.
       // The CPU kernel and ONNX spec are not limited to handling NCHW input so are not layout sensitive, and
       // onnx_layout_transformation::HandleResize is used.
@@ -911,9 +911,8 @@ PostLayoutTransformCostCheck(const api::GraphRef& graph, const api::NodeRef& nod
 }
 
 Status TransformLayoutForEP(Graph& graph, bool& modified, const IExecutionProvider& execution_provider,
-                            const DebugGraphFn& debug_graph_fn) {
-  // sub graph recurse will be added later
-  auto api_graph = MakeApiGraph(graph, execution_provider.GetAllocator(OrtMemTypeDefault), nullptr);
+                            AllocatorPtr cpu_allocator, const DebugGraphFn& debug_graph_fn) {
+  auto api_graph = MakeApiGraph(graph, cpu_allocator, nullptr);
   const auto& layout_sensitive_ops = GetORTLayoutSensitiveOps();
 
   for (auto& node : api_graph->Nodes()) {

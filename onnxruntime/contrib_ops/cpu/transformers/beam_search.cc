@@ -34,7 +34,7 @@
 #include "contrib_ops/cpu/transformers/beam_search_scorer.h"
 #include "contrib_ops/cpu/transformers/beam_search_impl_gpt.h"
 #include "contrib_ops/cpu/transformers/beam_search_impl_t5.h"
-#include "contrib_ops/cpu/transformers/subgraph_whisper_encoder.h"
+#include "contrib_ops/cpu/transformers/beam_search_impl_whisper.h"
 #include "contrib_ops/cpu/transformers/greedy_search_impl_gpt.h"
 
 using namespace ONNX_NAMESPACE;
@@ -61,7 +61,7 @@ namespace transformers {
 void BeamSearch::Init(const OpKernelInfo& info) {
   parameters_.ParseFromAttributes(info);
 
-  // Model_type could be either 0 (GPT-2) or 1 (encoder-decoder like T5)
+  // Model_type could be either 0 (GPT-2), 1 (encoder-decoder like T5), or 2 (Whisper)
   ORT_ENFORCE(parameters_.model_type == IGenerationParameters::kModelTypeGpt ||
               parameters_.model_type == IGenerationParameters::kModelTypeT5 ||
               parameters_.model_type == IGenerationParameters::kModelTypeWhisper);
@@ -69,7 +69,7 @@ void BeamSearch::Init(const OpKernelInfo& info) {
   ONNX_NAMESPACE::GraphProto proto;
 
   if (parameters_.model_type != IGenerationParameters::kModelTypeGpt) {
-    // Make sure the encoder sub-graph attribute is present for the T5 model.
+    // Make sure the encoder sub-graph attribute is present for the T5 and Whisper models.
     ORT_ENFORCE(info.GetAttr<ONNX_NAMESPACE::GraphProto>("encoder", &proto).IsOK());
   }
 
@@ -151,33 +151,28 @@ Status BeamSearch::SetupSubgraphExecutionInfo(const SessionState& session_state,
     }
   } else if (parameters_.model_type == IGenerationParameters::kModelTypeWhisper) {
     if (attribute_name == "encoder") {
-      ORT_ENFORCE(t5_encoder_subgraph_ == nullptr,
+      ORT_ENFORCE(whisper_encoder_subgraph_ == nullptr,
                   "SetupSubgraphExecutionInfo should only be called once for each subgraph.");
-      t5_encoder_subgraph_ = std::make_unique<WhisperEncoderSubgraph>(node,
-                                                                      attribute_name,
-                                                                      subgraph_session_state.GetGraphViewer());
-      ORT_RETURN_IF_ERROR(t5_encoder_subgraph_->Setup(session_state, subgraph_session_state));
-      encoder_feeds_fetches_manager_ = t5_encoder_subgraph_->GetFeedsFetchesManager();
+      whisper_encoder_subgraph_ = std::make_unique<WhisperEncoderSubgraph>(node,
+                                                                           attribute_name,
+                                                                           subgraph_session_state.GetGraphViewer());
+      ORT_RETURN_IF_ERROR(whisper_encoder_subgraph_->Setup(session_state, subgraph_session_state));
+      encoder_feeds_fetches_manager_ = whisper_encoder_subgraph_->GetFeedsFetchesManager();
 
-      if (parameters_.decoder_start_token_id < 0) {
-        ORT_RETURN_IF(t5_encoder_subgraph_->num_subgraph_inputs != 2,
-                      "Encoder subgraph shall have 2 inputs when decoder_start_token_id attribute is empty");
-      } else {
-        ORT_RETURN_IF(t5_encoder_subgraph_->num_subgraph_inputs != 3,
-                      "Encoder subgraph shall have 3 inputs when decoder_start_token_id attribute is available");
-      }
+      ORT_RETURN_IF(whisper_encoder_subgraph_->num_subgraph_inputs != 2,
+                    "Encoder subgraph shall have 2 inputs (encoder_input_ids, decoder_input_ids)");
     } else if (attribute_name == "decoder") {
-      ORT_ENFORCE(t5_decoder_subgraph_ == nullptr,
+      ORT_ENFORCE(whisper_decoder_subgraph_ == nullptr,
                   "SetupSubgraphExecutionInfo should only be called once for each subgraph.");
-      t5_decoder_subgraph_ = std::make_unique<T5DecoderSubgraph>(node,
-                                                                 attribute_name,
-                                                                 subgraph_session_state.GetGraphViewer());
-      ORT_RETURN_IF_ERROR(t5_decoder_subgraph_->Setup(session_state, subgraph_session_state));
-      decoder_feeds_fetches_manager_ = t5_decoder_subgraph_->GetFeedsFetchesManager();
-      parameters_.SetSubgraphParameters(t5_decoder_subgraph_->vocab_size,
-                                        t5_decoder_subgraph_->num_heads,
-                                        t5_decoder_subgraph_->head_size,
-                                        t5_decoder_subgraph_->num_layers);
+      whisper_decoder_subgraph_ = std::make_unique<WhisperDecoderSubgraph>(node,
+                                                                           attribute_name,
+                                                                           subgraph_session_state.GetGraphViewer());
+      ORT_RETURN_IF_ERROR(whisper_decoder_subgraph_->Setup(session_state, subgraph_session_state));
+      decoder_feeds_fetches_manager_ = whisper_decoder_subgraph_->GetFeedsFetchesManager();
+      parameters_.SetSubgraphParameters(whisper_decoder_subgraph_->vocab_size,
+                                        whisper_decoder_subgraph_->num_heads,
+                                        whisper_decoder_subgraph_->head_size,
+                                        whisper_decoder_subgraph_->num_layers);
     }
   }
 
@@ -309,10 +304,10 @@ Status BeamSearch::Compute(OpKernelContext* ctx) const {
   // Change the CreateEncoderInputs function for Whisper shapes
   if (parameters_.model_type == IGenerationParameters::kModelTypeWhisper) {
     // Subgraph has constraint that the output is either float or float16
-    if (!t5_decoder_subgraph_->IsOutputFloat16()) {
-      BeamSearchT5<float> impl{
-          *ctx_internal, *encoder_session_state, *decoder_session_state, *t5_encoder_subgraph_,
-          *t5_decoder_subgraph_, thread_pool, ctx->GetComputeStream(), dumper_, parameters,
+    if (!whisper_decoder_subgraph_->IsOutputFloat16()) {
+      BeamSearchWhisper<float> impl{
+          *ctx_internal, *encoder_session_state, *decoder_session_state, *whisper_encoder_subgraph_,
+          *whisper_decoder_subgraph_, thread_pool, ctx->GetComputeStream(), dumper_, parameters,
           add_to_feeds_func_ ? add_to_feeds_func_ : GenerationCpuDeviceHelper::AddToFeeds,
           reorder_past_state_func_ ? reorder_past_state_func_ : nullptr,  // Only CUDA implementation needs the reorder helper for now
           init_cache_indir_func_ ? init_cache_indir_func_ : nullptr,      // Only CUDA implementation needs the init cache_indir for now
@@ -321,9 +316,8 @@ Status BeamSearch::Compute(OpKernelContext* ctx) const {
           init_beam_state_func_ ? init_beam_state_func_ : GenerationCpuDeviceHelper::InitBeamState<float>,
           device_copy_func_ ? device_copy_func_ : GenerationCpuDeviceHelper::DeviceCopy<float>,
           device_copy_int32_func_ ? device_copy_int32_func_ : GenerationCpuDeviceHelper::DeviceCopy<int32_t>,
-          create_encoder_inputs_func_ ? create_encoder_inputs_func_ : GenerationCpuDeviceHelper::CreateWhisperEncoderInputs<float>,
+          create_whisper_encoder_inputs_func_ ? create_whisper_encoder_inputs_func_ : GenerationCpuDeviceHelper::CreateWhisperEncoderInputs<float>,
           update_decoder_feeds_func_ ? update_decoder_feeds_func_ : GenerationCpuDeviceHelper::UpdateDecoderFeeds<float>,
-          expand_buffer_int32_func_ ? expand_buffer_int32_func_ : GenerationCpuDeviceHelper::ExpandBuffer<int32_t>,
           expand_buffer_float_func_ ? expand_buffer_float_func_ : GenerationCpuDeviceHelper::ExpandBuffer<float>,
           expand_buffer_float16_func_ ? expand_buffer_float16_func_ : GenerationCpuDeviceHelper::ExpandBuffer<MLFloat16>,
           cuda_device_prop_,
@@ -332,9 +326,9 @@ Status BeamSearch::Compute(OpKernelContext* ctx) const {
 
       return impl.Execute(*encoder_feeds_fetches_manager_, *decoder_feeds_fetches_manager_);
     } else {
-      BeamSearchT5<MLFloat16> impl{
-          *ctx_internal, *encoder_session_state, *decoder_session_state, *t5_encoder_subgraph_,
-          *t5_decoder_subgraph_, thread_pool, ctx->GetComputeStream(), dumper_, parameters,
+      BeamSearchWhisper<MLFloat16> impl{
+          *ctx_internal, *encoder_session_state, *decoder_session_state, *whisper_encoder_subgraph_,
+          *whisper_decoder_subgraph_, thread_pool, ctx->GetComputeStream(), dumper_, parameters,
           add_to_feeds_func_ ? add_to_feeds_func_ : GenerationCpuDeviceHelper::AddToFeeds,
           reorder_past_state_func_ ? reorder_past_state_func_ : nullptr,  // Only CUDA implementation needs the reorder helper for now
           init_cache_indir_func_ ? init_cache_indir_func_ : nullptr,      // Only CUDA implementation needs the init cache_indir for now
@@ -343,9 +337,8 @@ Status BeamSearch::Compute(OpKernelContext* ctx) const {
           init_beam_state_fp16_func_,
           device_copy_func_,
           device_copy_int32_func_,
-          create_encoder_inputs_func_ ? create_encoder_inputs_func_ : GenerationCpuDeviceHelper::CreateWhisperEncoderInputs<MLFloat16>,
-          update_decoder_feeds_fp16_func_,
-          expand_buffer_int32_func_,
+          create_whisper_encoder_inputs_func_ ? create_whisper_encoder_inputs_func_ : GenerationCpuDeviceHelper::CreateWhisperEncoderInputs<MLFloat16>,
+          update_decoder_feeds_fp16_func_ ? update_decoder_feeds_fp16_func_ : GenerationCpuDeviceHelper::UpdateDecoderFeeds<MLFloat16>,
           expand_buffer_float_func_,
           expand_buffer_float16_func_,
           cuda_device_prop_,

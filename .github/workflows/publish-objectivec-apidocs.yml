@@ -6,7 +6,7 @@ on:
     branches:
     - main
     paths:
-    - objectivec
+    - objectivec/**
   schedule:
   - cron: '0 0 1 * *'
   workflow_dispatch:
@@ -21,7 +21,7 @@ permissions:
 jobs:
   build:
     name: Generate Objective-C API docs
-    runs-on: macos-12
+    runs-on: macos-13
     steps:
     - uses: actions/checkout@v3
 

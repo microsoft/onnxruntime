@@ -286,6 +286,12 @@ namespace Microsoft.ML.OnnxRuntime
         public IntPtr CastTypeInfoToOptionalTypeInfo;
         public IntPtr GetOptionalContainedTypeInfo;
         public IntPtr GetResizedStringTensorElementBuffer;
+        public IntPtr KernelContext_GetAllocator;
+        public IntPtr GetBuildInfoString;
+        public IntPtr CreateROCMProviderOptions;
+        public IntPtr UpdateROCMProviderOptions;
+        public IntPtr GetROCMProviderOptionsAsString;
+        public IntPtr ReleaseROCMProviderOptions;
     }
 
     internal static class NativeMethods
@@ -492,6 +498,12 @@ namespace Microsoft.ML.OnnxRuntime
                     api_.SessionOptionsAppendExecutionProvider,
                     typeof(DSessionOptionsAppendExecutionProvider));
             OrtUpdateEnvWithCustomLogLevel = (DOrtUpdateEnvWithCustomLogLevel)Marshal.GetDelegateForFunctionPointer(api_.UpdateEnvWithCustomLogLevel, typeof(DOrtUpdateEnvWithCustomLogLevel));
+            SessionOptionsAppendExecutionProvider_ROCM = (DSessionOptionsAppendExecutionProvider_ROCM)Marshal.GetDelegateForFunctionPointer(
+                                                 api_.SessionOptionsAppendExecutionProvider_ROCM, typeof(DSessionOptionsAppendExecutionProvider_ROCM));
+            OrtCreateROCMProviderOptions = (DOrtCreateROCMProviderOptions)Marshal.GetDelegateForFunctionPointer(api_.CreateROCMProviderOptions, typeof(DOrtCreateROCMProviderOptions));
+            OrtUpdateROCMProviderOptions = (DOrtUpdateROCMProviderOptions)Marshal.GetDelegateForFunctionPointer(api_.UpdateROCMProviderOptions, typeof(DOrtUpdateROCMProviderOptions));
+            OrtGetROCMProviderOptionsAsString = (DOrtGetROCMProviderOptionsAsString)Marshal.GetDelegateForFunctionPointer(api_.GetROCMProviderOptionsAsString, typeof(DOrtGetROCMProviderOptionsAsString));
+            OrtReleaseROCMProviderOptions = (DOrtReleaseROCMProviderOptions)Marshal.GetDelegateForFunctionPointer(api_.ReleaseROCMProviderOptions, typeof(DOrtReleaseROCMProviderOptions));
         }
 
         internal class NativeLib
@@ -658,6 +670,51 @@ namespace Microsoft.ML.OnnxRuntime
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
         public delegate void DOrtReleaseCUDAProviderOptions(IntPtr /*(OrtCUDAProviderOptions*)*/ cudaProviderOptionsInstance);
         public static DOrtReleaseCUDAProviderOptions OrtReleaseCUDAProviderOptions;
+
+        /// <summary>
+        /// Creates native OrtROCMProviderOptions instance
+        /// </summary>
+        /// <param name="rocmProviderOptionsInstance">(output) native instance of OrtROCMProviderOptions</param>
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate IntPtr /* OrtStatus* */DOrtCreateROCMProviderOptions(
+            out IntPtr /*(OrtROCMProviderOptions**)*/ rocmProviderOptionsInstance);
+        public static DOrtCreateROCMProviderOptions OrtCreateROCMProviderOptions;
+
+        /// <summary>
+        /// Updates native OrtROCMProviderOptions instance using given key/value pairs
+        /// </summary>
+        /// <param name="rocmProviderOptionsInstance">native instance of OrtROCMProviderOptions</param>
+        /// <param name="providerOptionsKeys">configuration keys of OrtROCMProviderOptions</param>
+        /// <param name="providerOptionsValues">configuration values of OrtROCMProviderOptions</param>
+        /// <param name="numKeys">number of configuration keys</param>
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate IntPtr /* OrtStatus* */DOrtUpdateROCMProviderOptions(
+            IntPtr /*(OrtROCMProviderOptions*)*/ rocmProviderOptionsInstance,
+            IntPtr[] /*(const char* const *)*/ providerOptionsKeys,
+            IntPtr[] /*(const char* const *)*/ providerOptionsValues,
+            UIntPtr /*(size_t)*/ numKeys);
+        public static DOrtUpdateROCMProviderOptions OrtUpdateROCMProviderOptions;
+
+        /// <summary>
+        /// Get native OrtROCMProviderOptions in serialized string
+        /// </summary>
+        /// <param name="allocator">instance of OrtAllocator</param>
+        /// <param name="ptr">is a UTF-8 null terminated string allocated using 'allocator'</param>
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate IntPtr /* OrtStatus* */DOrtGetROCMProviderOptionsAsString(
+            IntPtr /*(OrtROCMProviderOptions**)*/ rocmProviderOptionsInstance,
+            IntPtr /*(OrtAllocator*)*/ allocator,
+            out IntPtr /*(char**)*/ptr);
+        public static DOrtGetROCMProviderOptionsAsString OrtGetROCMProviderOptionsAsString;
+
+        /// <summary>
+        /// Releases native OrtROCMProviderOptions instance
+        /// </summary>
+        /// <param name="rocmProviderOptionsInstance">native instance of OrtROCMProviderOptions to be released</param>
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate void DOrtReleaseROCMProviderOptions(IntPtr /*(OrtROCMProviderOptions*)*/ rocmProviderOptionsInstance);
+        public static DOrtReleaseROCMProviderOptions OrtReleaseROCMProviderOptions;
+
         #endregion
 
         #region Status API
@@ -1038,6 +1095,18 @@ namespace Microsoft.ML.OnnxRuntime
                                                IntPtr /*(const OrtCUDAProviderOptionsV2*)*/ cudaProviderOptions);
 
         public static DSessionOptionsAppendExecutionProvider_CUDA_V2 SessionOptionsAppendExecutionProvider_CUDA_V2;
+
+        /// <summary>
+        /// Append a ROCm EP instance (configured based on given provider options) to the native OrtSessionOptions instance
+        /// </summary>
+        /// <param name="options">Native OrtSessionOptions instance</param>
+        /// <param name="rocmProviderOptions">Native OrtROCMProviderOptions instance</param>
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate IntPtr /*(OrtStatus*)*/DSessionOptionsAppendExecutionProvider_ROCM(
+                                               IntPtr /*(OrtSessionOptions*)*/ options,
+                                               IntPtr /*(const OrtROCMProviderOptions*)*/ rocmProviderOptions);
+
+        public static DSessionOptionsAppendExecutionProvider_ROCM SessionOptionsAppendExecutionProvider_ROCM;
 
         /// <summary>
         /// Free Dimension override (by denotation)
@@ -1653,7 +1722,6 @@ namespace Microsoft.ML.OnnxRuntime
             IntPtr /* (OrtAllocator*) */ allocator, IntPtr /* (const char*) */ key, out IntPtr /* (char**) */ value);
 
         public static DOrtModelMetadataLookupCustomMetadataMap OrtModelMetadataLookupCustomMetadataMap;
-
 
         /// <summary>
         /// Frees ModelMetadata instance

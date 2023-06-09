@@ -129,24 +129,33 @@ Before full qualified name can be got from exporter, this environment variables 
 - **Feature Area**: *ORTMODULE/Optimizations*
 - **Description**: By default, this is enabled then some computation can be saved. This env var can be used for disabling
 the optimization to guarantee exactly same compute with baseline (for example PyTorch, when doing convergence parity
-debugging). Disable it with following command:
+debugging).
 
 	```bash
-	export ORTMODULE_ENABLE_COMPUTE_OPTIMIZER=0
+	export ORTMODULE_ENABLE_COMPUTE_OPTIMIZER=1 # Enable
+	export ORTMODULE_ENABLE_COMPUTE_OPTIMIZER=0 # Disable
 	```
 
-	There are fine-grained flags to control different optimizations, but only applied when `ORTMODULE_ENABLE_COMPUTE_OPTIMIZER` is enabled.
-	- `ORTMODULE_ENABLE_LABEL_SPARSITY_OPT` is used to enable the optimization leveraging label sparsity.
+#### ORTMODULE_ENABLE_SPARSE_OPTIMIZER
 
-#### ORTMODULE_ENABLE_INPUT_DENSITY_INSPECTOR
-
-- **Feature Area**: *ORTMODULE/Runtime inspector*
-- **Description**: By default, this is disabled. This env var can be used for enabling the input data sparsity
-inspection. Training users or our dev could leverage this info for improving perf accordingly. Enable it with following
-command:
+- **Feature Area**: *ORTMODULE/Optimizations*
+- **Description**: By default, this is enabled. This env var can be used for enabling or disabling the input data sparsity
+based performance optimizations.
 
 	```bash
-	export ORTMODULE_ENABLE_INPUT_DENSITY_INSPECTOR=1
+	export ORTMODULE_ENABLE_SPARSE_OPTIMIZER=1 # Enable
+	export ORTMODULE_ENABLE_SPARSE_OPTIMIZER=0 # Disable
+	```
+
+#### ORTMODULE_PRINT_INPUT_DENSITY
+
+- **Feature Area**: *ORTMODULE/RuntimeInspector*
+- **Description**: By default, this is disabled. This env var can be used for print the input data sparsity
+inspection results to standard outputs.
+
+	```bash
+	export ORTMODULE_PRINT_INPUT_DENSITY=1 # Enable
+	export ORTMODULE_PRINT_INPUT_DENSITY=0 # Disable
 	```
 
 ### 2.2 Memory Optimization

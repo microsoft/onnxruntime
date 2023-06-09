@@ -195,6 +195,7 @@ class SymbolicShapeInference:
             "RestorePadding": self._infer_RestorePadding,
             "BiasGelu": self._infer_BiasGelu,
             "MultiHeadAttention": self._infer_MultiHeadAttention,
+            "DecoderMaskedMultiHeadAttention": self._infer_DecoderMaskedMultiHeadAttention,
             "EmbedLayerNormalization": self._infer_EmbedLayerNormalization,
             "FastGelu": self._infer_FastGelu,
             "Gelu": self._infer_Gelu,
@@ -491,12 +492,13 @@ class SymbolicShapeInference:
 
         for i_o in range(len(node.output)):
             o = node.output[i_o]
-            vi = self.out_mp_.graph.value_info.add()
-            if not skip_infer:
-                vi.CopyFrom(self.tmp_mp_.graph.output[i_o])
-            else:
-                vi.name = o
-            self.known_vi_[o] = vi
+            if o:  # skip optional output
+                vi = self.out_mp_.graph.value_info.add()
+                if not skip_infer:
+                    vi.CopyFrom(self.tmp_mp_.graph.output[i_o])
+                else:
+                    vi.name = o
+                self.known_vi_[o] = vi
 
     def _onnx_infer_subgraph(self, node, subgraph, use_node_input=True, inc_subgraph_id=True):
         if self.verbose_ > 2:
@@ -2232,10 +2234,33 @@ class SymbolicShapeInference:
                 present_shape = [batch_size, num_heads, total_sequence_length, head_size]
 
                 assert output_dtype is not None
-                vi = self.known_vi_[node.output[1]]
-                vi.CopyFrom(helper.make_tensor_value_info(vi.name, output_dtype, present_shape))
-                vi = self.known_vi_[node.output[2]]
-                vi.CopyFrom(helper.make_tensor_value_info(vi.name, output_dtype, present_shape))
+                if len(node.output) > 2 and node.output[1] and node.output[2]:
+                    vi = self.known_vi_[node.output[1]]
+                    vi.CopyFrom(helper.make_tensor_value_info(vi.name, output_dtype, present_shape))
+                    vi = self.known_vi_[node.output[2]]
+                    vi.CopyFrom(helper.make_tensor_value_info(vi.name, output_dtype, present_shape))
+
+    def _infer_DecoderMaskedMultiHeadAttention(self, node):  # noqa: N802
+        # Output 0 has shape (batch_size, 1, v_hidden_size)
+        # Q, K and V without packing:
+        #   Input 0 (query) has shape (batch_size, 1, hidden_size)
+        #   Input 5 (past_key) if exists has shape (batch_size, num_heads, max_sequence_length, head_size)
+
+        query_shape = self._get_shape(node, 0)
+        if query_shape is not None:
+            output_shape = query_shape
+            output_dtype = self.known_vi_[node.input[0]].type.tensor_type.elem_type
+            assert output_dtype is not None
+            vi = self.known_vi_[node.output[0]]
+            vi.CopyFrom(helper.make_tensor_value_info(node.output[0], output_dtype, output_shape))
+
+            if len(node.output) > 2 and node.output[1] and node.output[2]:
+                past_shape = self._try_get_shape(node, 5)
+                if past_shape is not None:
+                    vi = self.known_vi_[node.output[1]]
+                    vi.CopyFrom(helper.make_tensor_value_info(vi.name, output_dtype, past_shape))
+                    vi = self.known_vi_[node.output[2]]
+                    vi.CopyFrom(helper.make_tensor_value_info(vi.name, output_dtype, past_shape))
 
     def _infer_FastGelu(self, node):  # noqa: N802
         self._propagate_shape_and_type(node)
@@ -2443,7 +2468,6 @@ class SymbolicShapeInference:
                     raise Exception("Invalid model with cyclic graph")
 
         for node in sorted_nodes:
-            # print(node.name)
             assert all([i in self.known_vi_ for i in node.input if i])
             self._onnx_infer_single_node(node)
             known_aten_op = False
@@ -2659,10 +2683,16 @@ class SymbolicShapeInference:
                         logger.debug("Stopping at incomplete shape inference at " + node.op_type + ": " + node.name)
                         logger.debug("node inputs:")
                         for i in node.input:
-                            logger.debug(self.known_vi_[i])
+                            if i in self.known_vi_:
+                                logger.debug(self.known_vi_[i])
+                            else:
+                                logger.debug(f"not in knwon_vi_ for {i}")
                         logger.debug("node outputs:")
                         for o in node.output:
-                            logger.debug(self.known_vi_[o])
+                            if o in self.known_vi_:
+                                logger.debug(self.known_vi_[o])
+                            else:
+                                logger.debug(f"not in knwon_vi_ for {o}")
                         if self.auto_merge_ and not out_type_undefined:
                             logger.debug("Merging: " + str(self.suggested_merge_))
                     return False

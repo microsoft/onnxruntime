@@ -209,14 +209,13 @@ class TunableOp {
 
  private:
   static void WarmUp(Op<ParamsT>& op, const ParamsT* param) {
-    constexpr const int num_iter = 4;
+    constexpr const int num_iter = 1;
     for (int i = 0; i < num_iter; i++) {
       ORT_THROW_IF_ERROR(op(param));
     }
   }
 
-  static double Profile(Op<ParamsT>& op, const ParamsT* param) {
-    constexpr const int num_iter = 100;
+  static double Profile(Op<ParamsT>& op, const ParamsT* param, int num_iter) {
     TimerT timer{param->Stream()};
     timer.Start();
     for (int i = 0; i < num_iter; i++) {
@@ -242,11 +241,15 @@ class TunableOp {
   }
 
   int FindFastestImpl(const ParamsT* params, const std::vector<Op<ParamsT>>& candidates) {
+    ITuningContext* ctx = params->TuningContext();
     auto op_sig = Signature();
     auto param_sig = params->Signature();
     LOGS_DEFAULT(VERBOSE) << "FindFastestImpl for " << op_sig << '(' << param_sig << ')';
     auto min_time = std::numeric_limits<double>::infinity();
     int id = -1;
+
+    constexpr const int max_tuning_iter = 100;
+    constexpr const int approx_num_iter = 3;
 
     for (size_t i = 0; i < candidates.size(); i++) {
       auto& candidate = const_cast<Op<ParamsT>&>(candidates[i]);
@@ -256,7 +259,13 @@ class TunableOp {
       }
 
       WarmUp(candidate, params);
-      auto time = Profile(candidate, params);
+
+      auto approx_duration = Profile(candidate, params, approx_num_iter);
+      int tuning_iter = std::max(1, int(std::min(double(max_tuning_iter), ctx->GetMaxTuningDurationMs() / approx_duration)));
+
+      LOGS_DEFAULT(VERBOSE) << "FindFastestImpl run instance " << op_sig << '(' << param_sig << ") id=" << i << " " << tuning_iter << " times.";
+
+      auto time = Profile(candidate, params, tuning_iter);
       if (time < min_time) {
         min_time = time;
         id = static_cast<int>(i);

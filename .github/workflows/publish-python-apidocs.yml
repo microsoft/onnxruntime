@@ -6,7 +6,8 @@ on:
     branches:
       - main
     paths:
-      - onnxruntime/python
+      - onnxruntime/python/**
+      - docs/python/**
   schedule:
     - cron: '0 0 1 * *'
   workflow_dispatch:
@@ -34,19 +35,19 @@ jobs:
           python3 -m pip install --upgrade pip
           cd docs/python
           python3 -m pip install -r requirements.txt
-          python3 -m pip install -i https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT-Nightly/pypi/simple/ ort-nightly
+          python3 -m pip install --pre onnxruntime-training -f https://download.onnxruntime.ai/onnxruntime_nightly_cpu.html
           python3 -m pip list
       - name: Generate Python docs with Sphinx
         run: |
           cd tools/doc
           ./builddoc.sh /usr/bin ../.. ../../build
       - name: Log source commit
-        run: git rev-parse --short HEAD > build/docs/inference/html/source-version.txt
+        run: git rev-parse --short HEAD > build/docs/html/source-version.txt
       - name: Move Python docs into site
         run: |
           rm -rf _site/docs/api/python
-          mkdir -p _site/docs/api
-          mv build/docs/inference/html _site/docs/api/python
+          mkdir -p _site/docs/api/
+          mv build/docs/html _site/docs/api/python
       - name: Upload docs artifact
         uses: actions/upload-artifact@v3
         with:

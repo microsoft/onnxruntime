@@ -11,6 +11,8 @@
 #include "core/session/onnxruntime_c_api.h"
 #include "core/framework/library_handles.h"
 
+#define TRT_DEFAULT_OPTIMIZER_LEVEL 3
+
 namespace onnxruntime {
 // Information needed to construct trt execution providers.
 struct TensorrtExecutionProviderInfo {
@@ -40,7 +42,7 @@ struct TensorrtExecutionProviderInfo {
   bool detailed_build_log{false};
   bool build_heuristics_enable{false};
   bool sparsity_enable{false};
-  int builder_optimization_level{2};
+  int builder_optimization_level{3};
   int auxiliary_streams{-1};
   std::string tactic_sources{""};
   std::string extra_plugin_lib_paths{""};

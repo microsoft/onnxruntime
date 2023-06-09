@@ -3,7 +3,12 @@ parameters:
   displayName: msbuildPlatform
   type: string
   default: x64
-  
+
+- name: vs2022
+  displayName: Visual Studio Version
+  type: string
+  default: true
+
 steps:
 - task: CredScan@2
   displayName: 'Run CredScan'
@@ -26,15 +31,19 @@ steps:
      **/*.obj
      **/*.pdb
      **/*.dll
-      
+
 #Manually set msBuildCommandline so that we can also set CAExcludePath
 - task: securedevelopmentteam.vss-secure-development-tools.build-task-prefast.SDLNativeRules@2
   displayName: 'Run the PREfast SDL Native Rules for MSBuild'
   inputs:
     userProvideBuildInfo: msBuildInfo
-    msBuildVersion: 16.0
     msBuildArchitecture: x64
-    msBuildCommandline: '"C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\MSBuild\Current\Bin\amd64\msbuild.exe" "$(Build.BinariesDirectory)\RelWithDebInfo\onnxruntime.sln" /p:platform="${{parameters.msbuildPlatform}}" /p:configuration="RelWithDebInfo" /p:CAExcludePath="$(Build.BinariesDirectory);$(Build.SourcesDirectory)\cmake;C:\program files (x86)" /p:VisualStudioVersion="16.0" /m /p:PreferredToolArchitecture=x64'
+    ${{ if eq(parameters.vs2022, false)}}:
+      msBuildVersion: 16.0
+      msBuildCommandline: '"C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\MSBuild\Current\Bin\amd64\msbuild.exe" "$(Build.BinariesDirectory)\RelWithDebInfo\onnxruntime.sln" /p:platform="${{parameters.msbuildPlatform}}" /p:configuration="RelWithDebInfo" /p:CAExcludePath="$(Build.BinariesDirectory);$(Build.SourcesDirectory)\cmake;C:\program files (x86)" /p:VisualStudioVersion="17.0" /m /p:PreferredToolArchitecture=x64'
+    ${{ else }}:
+      msBuildVersion: 17.0
+      msBuildCommandline: '"C:\Program Files\Microsoft Visual Studio\2022\Enterprise\MSBuild\Current\Bin\amd64\msbuild.exe" "$(Build.BinariesDirectory)\RelWithDebInfo\onnxruntime.sln" /p:platform="${{parameters.msbuildPlatform}}" /p:configuration="RelWithDebInfo" /p:CAExcludePath="$(Build.BinariesDirectory);$(Build.SourcesDirectory)\cmake;C:\program files (x86)" /p:VisualStudioVersion="17.0" /m /p:PreferredToolArchitecture=x64'
   continueOnError: true
 
 - task: securedevelopmentteam.vss-secure-development-tools.build-task-report.SdtReport@1

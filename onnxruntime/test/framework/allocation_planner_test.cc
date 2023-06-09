@@ -1393,7 +1393,6 @@ TEST_F(PlannerTest, MultiStream2NodesSameStreamConsumedBy1NodeInDifferentStream)
 #endif
 
 #if !defined(__wasm__) && defined(ORT_ENABLE_STREAM)
-
 TEST_F(PlannerTest, ParaPlanCreation) {
   TypeProto graph_in_type;
   graph_in_type.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
@@ -1946,8 +1945,32 @@ TEST_F(PlannerTest, TestMultiStreamMismatchDevice) {
   status = sess.Initialize();
   ASSERT_TRUE(!status.IsOK());
 }
-
 #endif
 
+#if defined(USE_CUDA) && defined(ORT_ENABLE_STREAM)
+TEST_F(PlannerTest, TestCpuIf) {
+  SessionOptions sess_opt;
+  sess_opt.graph_optimization_level = TransformerLevel::Default;
+
+  InferenceSession sess(sess_opt, GetEnvironment(), ORT_TSTR("./testdata/multi_stream_models/cpu_if.onnx"));
+  auto status = sess.RegisterExecutionProvider(DefaultCudaExecutionProvider());
+  ASSERT_TRUE(status.IsOK());
+  status = sess.Load();
+  ASSERT_TRUE(status.IsOK());
+  status = sess.Initialize();
+  ASSERT_TRUE(status.IsOK());
+
+  auto& sess_state = const_cast<onnxruntime::SessionState&>(sess.GetSessionState());
+  const auto& exe_plan = sess_state.GetExecutionPlan()->execution_plan;
+  if (exe_plan.size() == 2 &&
+      exe_plan[1]->device_.Type() == OrtDevice::CPU &&
+      exe_plan[1]->steps_.size() == 9 &&
+      exe_plan[1]->steps_[7]->GetNodeIndex() == 7) {
+    // there must be a wait before cpu If node
+    static const std::string WaitOnEPStep = "WaitOnEPStep";
+    ASSERT_TRUE(exe_plan[1]->steps_[6]->ToString().substr(0, WaitOnEPStep.size()) == WaitOnEPStep);
+  }
+}
+#endif
 }  // namespace test
 }  // namespace onnxruntime

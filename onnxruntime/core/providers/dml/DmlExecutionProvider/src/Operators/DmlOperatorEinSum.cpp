@@ -26,12 +26,13 @@ public:
         }
         inputIndices.resize(bindableInputCount);
 
-        DmlOperator::Initialize(kernelCreationContext, inputIndices, outputIndices);
+        constexpr uint32_t dimCount = 2;
+        DmlOperator::Initialize(kernelCreationContext, inputIndices, outputIndices, std::nullopt, std::nullopt, dimCount);
 
         std::vector<DML_TENSOR_DESC> inputDescs = GetDmlInputDescs();
         std::vector<DML_TENSOR_DESC> outputDescs = GetDmlOutputDescs();
 
-        static_assert(RecognizedOperatorType::Total == static_cast<RecognizedOperatorType>(11), "Update this switch.");
+        static_assert(RecognizedOperatorType::Total == static_cast<RecognizedOperatorType>(12), "Update this switch.");
         switch (m_recognizedOperatorType)
         {
         case RecognizedOperatorType::Multiply:
@@ -42,6 +43,28 @@ public:
                 operatorDesc.OutputTensor = outputDescs.data();
 
                 SetDmlOperatorDesc({ DML_OPERATOR_ELEMENT_WISE_MULTIPLY, &operatorDesc}, kernelCreationContext);
+            }
+            break;
+
+        case RecognizedOperatorType::OuterProduct:
+            {
+                std::array<uint32_t, 2> aSizes = {m_inputTensorDescs[0].GetSizes().back(), 1};
+                TensorDesc aTensorDesc = TensorDesc(m_inputTensorDescs[0].GetDmlDataType(), aSizes);
+                auto aDmlTensorDesc = aTensorDesc.GetDmlDesc();
+
+                std::array<uint32_t, 2> bSizes = {1, m_inputTensorDescs[1].GetSizes().back()};
+                TensorDesc bTensorDesc = TensorDesc(m_inputTensorDescs[1].GetDmlDataType(), bSizes);
+                auto bDmlTensorDesc = bTensorDesc.GetDmlDesc();
+
+                DML_GEMM_OPERATOR_DESC operatorDesc = {};
+                operatorDesc.ATensor = &aDmlTensorDesc;
+                operatorDesc.BTensor = &bDmlTensorDesc;
+                operatorDesc.OutputTensor = &outputDescs[0];
+                operatorDesc.Alpha = 1.0;
+                operatorDesc.Beta = 0.0;
+                operatorDesc.FusedActivation = nullptr;
+
+                SetDmlOperatorDesc({ DML_OPERATOR_GEMM, &operatorDesc }, kernelCreationContext);
             }
             break;
 
@@ -253,7 +276,7 @@ void CALLBACK QueryEinSum(IMLOperatorSupportQueryContextPrivate* context, bool* 
     EinSumHelper helper(attributes);
     auto recognizedOperatorType = helper.GetRecognizedOperatorType();
 
-    static_assert(EinSumHelper::RecognizedOperatorType::Total == static_cast<EinSumHelper::RecognizedOperatorType>(11), "Update this function.");
+    static_assert(EinSumHelper::RecognizedOperatorType::Total == static_cast<EinSumHelper::RecognizedOperatorType>(12), "Update this function.");
     *isSupported = (recognizedOperatorType != EinSumHelper::RecognizedOperatorType::None);
 }
 

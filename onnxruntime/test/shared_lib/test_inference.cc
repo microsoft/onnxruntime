@@ -81,7 +81,11 @@ void RunSession(OrtAllocator* allocator, Ort::Session& session_object,
 
   OutT* f = output_tensor->GetTensorMutableData<OutT>();
   for (size_t i = 0; i != total_len; ++i) {
-    ASSERT_EQ(values_y[i], f[i]);
+    if constexpr (std::is_same<OutT, float>::value || std::is_same<OutT, double>::value) {
+      ASSERT_NEAR(values_y[i], f[i], 1e-3);
+    } else {
+      ASSERT_EQ(values_y[i], f[i]);
+    }
   }
 }
 
@@ -2209,9 +2213,15 @@ TEST(CApiTest, get_available_providers_cpp) {
 }
 
 TEST(CApiTest, get_version_string_cpp) {
-  std::basic_string<ORTCHAR_T> version_string = Ort::GetVersionString();
+  auto version_string = Ort::GetVersionString();
   ASSERT_FALSE(version_string.empty());
-  ASSERT_EQ(version_string, std::basic_string<ORTCHAR_T>(ORT_TSTR_ON_MACRO(ORT_VERSION)));
+  ASSERT_EQ(version_string, std::string(ORT_VERSION));
+}
+
+TEST(CApiTest, get_build_info_string) {
+  auto build_info_string = Ort::GetBuildInfoString();
+  ASSERT_FALSE(build_info_string.empty());
+  ASSERT_EQ(build_info_string, std::string(ORT_BUILD_INFO));
 }
 
 TEST(CApiTest, TestSharedAllocators) {
@@ -2493,8 +2503,8 @@ TEST(CApiTest, ConfigureCudaArenaAndDemonstrateMemoryArenaShrinkage) {
 
   Ort::SessionOptions session_options;
 
-  const char* keys[] = {"max_mem", "arena_extend_strategy", "initial_chunk_size_bytes", "max_dead_bytes_per_chunk", "initial_growth_chunk_size_bytes"};
-  const size_t values[] = {0 /*let ort pick default max memory*/, 0, 1024, 0, 256};
+  const char* keys[] = {"max_mem", "arena_extend_strategy", "initial_chunk_size_bytes", "max_dead_bytes_per_chunk", "initial_growth_chunk_size_bytes", "max_power_of_two_extend_bytes"};
+  const size_t values[] = {0 /*let ort pick default max memory*/, 0, 1024, 0, 256, 1L << 24};
 
   OrtArenaCfg* arena_cfg = nullptr;
   ASSERT_TRUE(api.CreateArenaCfgV2(keys, values, 5, &arena_cfg) == nullptr);
@@ -2828,6 +2838,8 @@ TEST(CApiTest, TestMultiStreamInferenceSimpleSSD) {
 }
 #endif
 
+#if !defined(REDUCED_OPS_BUILD) && !defined(DISABLE_OPTIONAL_TYPE)
+
 TEST(LiteCustomOpTest, CustomFunc) {
   Ort::SessionOptions session_options;
   session_options.SetIntraOpNumThreads(1);
@@ -2904,7 +2916,7 @@ TEST(LiteCustomOpTest, CustomStruct) {
   const auto& ortApi = Ort::GetApi();
 
   Ort::CustomOpDomain v2_domain{"v2"};
-  std::unique_ptr<OrtCustomOp> mrg_op_ptr{Ort::Custom::CreateCustomOp<Merge>("Merge", "CPUExecutionProvider")};
+  std::unique_ptr<Ort::Custom::OrtLiteCustomOp> mrg_op_ptr{Ort::Custom::CreateLiteCustomOp<Merge>("Merge", "CPUExecutionProvider")};
   v2_domain.Add(mrg_op_ptr.get());
 
   Ort::SessionOptions session_options;
@@ -3019,7 +3031,6 @@ TEST(LiteCustomOpTest, HasOptional) {
   ASSERT_TRUE(output_tensors.size() == 2);
 }
 
-#if !defined(ORT_MINIMAL_BUILD)
 TEST(MultiKernelSingleSchemaTest, valid) {
   Ort::SessionOptions session_options;
   session_options.SetIntraOpNumThreads(1);

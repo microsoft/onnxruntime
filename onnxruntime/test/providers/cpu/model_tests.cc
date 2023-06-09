@@ -268,6 +268,8 @@ TEST_P(ModelTest, Run) {
 #ifdef _WIN32
     broken_tests.insert({"LSTM_Seq_lens_unpacked", "this test fails with new image since Aug 25."});
     broken_tests.insert({"bidaf", "this test fails with new image since Aug 25."});
+#else
+    broken_tests.insert({"bidaf", "this test should be recovered when multi-gpu pipeline deprecates NV12", {"opset9"}});
 #endif
   }
 
@@ -702,7 +704,7 @@ TEST_P(ModelTest, Run) {
           OrtTensorRTProviderOptionsV2 params{0, 0, nullptr, 1000, 1, 1 << 30,
                                               1,  // enable fp16
                                               0, nullptr, 0, 0, 0, 0, 0, nullptr, 0, nullptr, 0, 0, 0, 0, 0, 0, 0, 0,
-                                              2, -1, nullptr, nullptr, nullptr, nullptr, nullptr};
+                                              3, -1, nullptr, nullptr, nullptr, nullptr, nullptr};
 
           ortso.AppendExecutionProvider_TensorRT_V2(params);
         } else {
@@ -1034,6 +1036,7 @@ TEST_P(ModelTest, Run) {
                                                    ORT_TSTR("batchnorm_example_training_mode"),
                                                    ORT_TSTR("batchnorm_epsilon_training_mode"),
                                                    ORT_TSTR("mobilenetv2-1.0"),
+                                                   ORT_TSTR("shufflenet"),
                                                    ORT_TSTR("candy"),
                                                    ORT_TSTR("range_float_type_positive_delta_expanded"),
                                                    ORT_TSTR("range_int32_type_negative_delta_expanded"),

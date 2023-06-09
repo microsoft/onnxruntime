@@ -202,26 +202,11 @@ Status BeamSearchGpt<T>::Execute(const FeedsFetchesManager* init_run_feeds_fetch
   std::vector<OrtValue> fetches;
 
   // Initialize resources
-  onnxruntime::OrtStlAllocator<HypothesisScore> hypothesis_score_allocator(this->cpu_allocator_);
-  onnxruntime::OrtStlAllocator<BeamHypotheses> beam_hyps_allocator(this->cpu_allocator_);
-  this->beam_scorer_ = std::make_unique<BeamSearchScorer>(static_cast<size_t>(parameters->batch_size),
-                                                          static_cast<size_t>(parameters->num_beams),
-                                                          static_cast<size_t>(parameters->max_length),
-                                                          parameters->length_penalty,
-                                                          parameters->early_stopping,
-                                                          static_cast<size_t>(parameters->num_return_sequences),
-                                                          parameters->pad_token_id,
-                                                          parameters->eos_token_id,
-                                                          hypothesis_score_allocator,
-                                                          beam_hyps_allocator);
-  this->beam_scorer_->Initialize(this->cpu_allocator_, parameters->sequence_length);
+  this->beam_scorer_ = std::make_unique<BeamSearchScorer>(*parameters, this->cpu_allocator_);
 
-  BeamSearchCpuState cpu_state;
-  cpu_state.Init(this->cpu_allocator_,
-                 static_cast<size_t>(parameters->BatchBeamSize()),
-                 parameters->max_length,
-                 parameters->sequence_length,
-                 this->IsCuda());
+  BeamSearchCpuState cpu_state{*parameters,
+                               this->cpu_allocator_,
+                               this->IsCuda()};
 
   // buffer in GPU for input_ids, position_ids and attention_mask
   IAllocatorUniquePtr<char> buffer;
@@ -243,19 +228,10 @@ Status BeamSearchGpt<T>::Execute(const FeedsFetchesManager* init_run_feeds_fetch
     }
   }
 
-  BeamSearchState<T> beam_state;
-  constexpr bool use_position = true;
-  beam_state.Init(this->temp_space_allocator_,
-                  parameters->batch_size,
-                  parameters->num_beams,
-                  parameters->vocab_size,
-                  parameters->sequence_length,
-                  parameters->max_length,
-                  parameters->num_heads,
-                  parameters->head_size,
-                  gpt_subgraph_.has_decoder_masked_attention_,
-                  parameters->output_scores,
-                  use_position);
+  BeamSearchState<T> beam_state{*parameters,
+                                this->temp_space_allocator_,
+                                gpt_subgraph_.has_decoder_masked_attention_,
+                                true /* use_position */};
 
   init_beam_state_func_(&beam_state,
                         cpu_state.sequence_lengths,
@@ -263,11 +239,7 @@ Status BeamSearchGpt<T>::Execute(const FeedsFetchesManager* init_run_feeds_fetch
                         parameters->num_beams,
                         this->ort_stream_);
 
-  gsl::span<const int32_t> input_ids = expanded_input_ids_in_cpu.Get<Tensor>().DataAsSpan<int32_t>();
-  cpu_state.SetSequence(input_ids,
-                        static_cast<size_t>(parameters->BatchBeamSize()),
-                        parameters->max_length,
-                        parameters->sequence_length);
+  cpu_state.SetExpandedSequence(expanded_input_ids_in_cpu.Get<Tensor>().DataAsSpan<int32_t>());
 
 #ifdef DEBUG_GENERATION
   const IConsoleDumper* dumper = this->GetConsoleDumper();
@@ -394,25 +366,24 @@ Status BeamSearchGpt<T>::Execute(const FeedsFetchesManager* init_run_feeds_fetch
     }
   }
 
-  gsl::span<const float> final_beam_scores(beam_state.beam_scores.data(), beam_state.beam_scores.size());
+  gsl::span<const float> final_beam_scores = beam_state.beam_scores;
   if (this->IsCuda()) {
     ORT_RETURN_IF_ERROR(this->device_copy_func_(cpu_state.final_beam_scores,
                                                 final_beam_scores,
                                                 nullptr,
                                                 DeviceCopyDirection::deviceToHost));
-    final_beam_scores = gsl::make_span<const float>(cpu_state.final_beam_scores.data(),
-                                                    cpu_state.final_beam_scores.size());
+    final_beam_scores = cpu_state.final_beam_scores;
   }
 
-  this->beam_scorer_->Finalize(&(cpu_state.sequences),
+  this->beam_scorer_->Finalize(cpu_state.sequences,
                                final_beam_scores,
                                output_sequences,
                                output_sequences_scores);
 
   // Output per token scores
-  if (output_scores != nullptr) {
+  if (output_scores) {
     gsl::span<float> target = output_scores->MutableDataAsSpan<float>();
-    gsl::span<const float> source = gsl::span<const float>(beam_state.scores.data(), beam_state.scores.size());
+    gsl::span<const float> source = beam_state.scores;
     assert(target.size() == source.size());
     ORT_RETURN_IF_ERROR(this->device_copy_func_(target, source, nullptr, DeviceCopyDirection::deviceToDevice));
   }
