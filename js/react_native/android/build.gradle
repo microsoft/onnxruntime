@@ -238,18 +238,3 @@ dependencies {
     implementation "com.microsoft.onnxruntime:onnxruntime-extensions-android:latest.integration@aar"
   }
 }
-
-// Resolves "LOCAL_SRC_FILES points to a missing file, Check that libfb.so exists or that its path is correct".
-tasks.whenTaskAdded { task ->
-  if (task.name.contains("configureCMakeDebug")) {
-     rootProject.getTasksByName("packageReactNdkDebugLibs", true).forEach {
-       task.dependsOn(it)
-     }
-  }
-
-  if (task.name.contains("configureCMakeRel")) {
-     rootProject.getTasksByName("packageReactNdkReleaseLibs", true).forEach {
-       task.dependsOn(it)
-     }
-  }
-}
