@@ -5,15 +5,15 @@
 # --------------------------------------------------------------------------
 
 import logging
-import numpy as np
 import os
 import sys
 from pathlib import Path
 from typing import Dict, Tuple, Union
 
+import numpy as np
 import torch
-from transformers import WhisperForConditionalGeneration, WhisperProcessor, WhisperConfig
 from datasets import load_dataset
+from transformers import WhisperConfig, WhisperForConditionalGeneration, WhisperProcessor
 from whisper_decoder import WhisperDecoder, WhisperDecoderHelper, WhisperDecoderInit
 from whisper_encoder import WhisperEncoder, WhisperEncoderHelper
 from whisper_encoder_decoder_init import WhisperEncoderDecoderInit, WhisperEncoderDecoderInitHelper
@@ -272,7 +272,7 @@ class WhisperHelper:
         ds = load_dataset("hf-internal-testing/librispeech_asr_dummy", "clean", split="validation")
         input_features = processor([ds[0]["audio"]["array"]], return_tensors="pt").input_features
 
-        max_length, min_length, num_beams, num_return_sequences = 26, 0, 5, 1
+        batch_size, max_length, min_length, num_beams, num_return_sequences = 1, 26, 0, 5, 1
         length_penalty, repetition_penalty = 1.0, 1.0
         inputs = {
             "input_features": input_features.to(device),
@@ -299,7 +299,7 @@ class WhisperHelper:
             "tensor(int8)": np.int8,
             "tensor(uint8)": np.uint8,
         }
-        
+
         for name, dtype in zip(ort_names, ort_dtypes):
             if name == "input_features":
                 inputs[name] = inputs[name].detach().cpu().numpy()

@@ -316,6 +316,7 @@ def export_onnx_models(
             use_gpu=use_gpu,
             provider=["CUDAExecutionProvider", "CPUExecutionProvider"] if use_gpu else ["CPUExecutionProvider"],
         )
+        assert ort_session is not None
 
         output_paths.append(output_path)
 
@@ -389,8 +390,9 @@ def main(argv=None):
             logger.info(f"Max difference between PyTorch and ONNX Runtime results = {max_diff}")
             if max_diff > 1e-4:
                 logger.warning("PyTorch and ONNX Runtime results are NOT close")
-        except:
-            logger.warning("An error occurred while trying to verify parity between PyTorch and ONNX Runtime")
+        except Exception as e:
+            logger.warning("An error occurred while trying to verify parity between PyTorch and ONNX Runtime.")
+            logger.warning(e)
 
         # Change directory layout from <output dir>/openai/<all models> to <output dir>/<model name>_beamsearch.onnx[.data]
         # if using pre-trained model name

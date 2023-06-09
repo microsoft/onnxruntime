@@ -36,7 +36,7 @@ def chain_model(args):
         "repetition_penalty_fp16" if args.precision == Precision.FLOAT16 else "input_features",
         "vocab_mask" if args.use_prefix_vocab_mask else "",
         "prefix_vocab_mask" if args.use_prefix_vocab_mask else "",
-        "", # attention mask
+        "",  # attention mask
         "decoder_input_ids" if args.use_forced_decoder_ids else "",
         "logits_processor" if args.use_logits_processor else "",
     ]
@@ -153,7 +153,10 @@ def chain_model(args):
 
     # Set IR version of chained model to IR version of subgraphs in order to generate a working E2E model
     beam_model = helper.make_model_gen_version(
-        beam_graph, producer_name="onnxruntime.transformers", opset_imports=opset_import, ir_version=decoder_model.ir_version
+        beam_graph,
+        producer_name="onnxruntime.transformers",
+        opset_imports=opset_import,
+        ir_version=decoder_model.ir_version,
     )
 
     onnx.save(
