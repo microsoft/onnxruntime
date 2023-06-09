@@ -13,7 +13,7 @@ parameters:
 
 - name: Pattern
   type: string
-  default: '*.dylib'
+  default: '*.zip'
 
 steps:
 - task: EsrpCodeSigning@3

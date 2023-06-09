@@ -68,7 +68,10 @@ stages:
   jobs:
     - job: MacOS_C_API_Package_Publish
       pool:
-        vmImage: 'macOS-13'
+        ${{ if eq(parameters.DoESRP, true)}}:
+          vmImage: 'macOS-12'
+        ${{ else }}:
+          vmImage: 'macOS-13'
       steps:
       - checkout: none
       - template: flex-downloadPipelineArtifact.yml
@@ -95,27 +98,27 @@ stages:
             SpecificArtifact: ${{ parameters.specificArtifact }}
             BuildId: ${{ parameters.BuildId }}
 
-      - ${{ if eq(parameters.DoESRP, true)}}
+      - ${{ if eq(parameters.DoESRP, true)}}:
         - template: mac-esrp-dylib.yml
           parameters:
             FolderPath: '$(Build.ArtifactStagingDirectory)'
             DisplayName: 'ESRP - Sign Mac'
             DoEsrp: true
-            Pattern: '*.zip
-
-      - bash: |
-          set -ex
-          find $(Build.ArtifactStagingDirectory) -name "*.zip" -exec unzip {} -d $(Agent.TempDirectory)/macpackage \;
-          find $(Agent.TempDirectory)/macpackage -name "*.dylib" -exec codesign -dvvv {} \;
-          find $(Agent.TempDirectory)/macpackage -name "*.dylib" -exec ls -l {} \;
-          rm -rf $(Agent.TempDirectory)/macpackage
-        displayName: 'Verify code signing'
+            Pattern: '*.zip'
+        - bash: |
+            set -ex
+            find $(Build.ArtifactStagingDirectory) -name "*.zip" -exec unzip {} -d $(Agent.TempDirectory)/macpackage \;
+            find $(Agent.TempDirectory)/macpackage -name "*.dylib" -exec codesign -dvvv {} \;
+            find $(Agent.TempDirectory)/macpackage -name "*.dylib" -exec ls -l {} \;
+            rm -rf $(Agent.TempDirectory)/macpackage
+          displayName: 'Verify code signing'
 
       - task: PublishPipelineArtifact@1
         inputs:
           targetPath: '$(Build.ArtifactStagingDirectory)'
           artifact: 'onnxruntime-osx'
           condition: 'succeededOrFailed()'
+
       - template: component-governance-component-detection-steps.yml
         parameters:
           condition: 'succeeded'
