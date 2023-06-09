@@ -1391,7 +1391,8 @@ __global__ void CopyDecoderCrossQKAllStepsKernel(
   const int ret_seq_id = br % num_return_sequences;
 
   const int64_t offset_in_cache = ((int64_t)batch * num_beams + ret_seq_id) * max_length + token_decoding_index + context_decoding_len;
-  int bi_src = batch * num_beams + ((num_beams > 1) ? cache_indir_data[offset_in_cache] : 0);
+  int bm_mapped = ((num_beams <= 1) ? 0: ((token_decoding_index == total_decoding_length - 1) ?  ret_seq_id : cache_indir_data[offset_in_cache]));
+  int bi_src = batch * num_beams + bm_mapped;
 
   T* target =  cross_qk_output +
           (((int64_t)br * layer_head_pair_count + (int64_t)pair) * total_decoding_length + token_decoding_index) * frames_of_k;
