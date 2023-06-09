@@ -322,7 +322,6 @@ Status BeamSearchWhisper<T>::Execute(const FeedsFetchesManager& encoder_feeds_fe
     }
   }
 
-  int extra_round = parameters->extra_decoding_round ? 1 : 0;
   while (current_length < parameters->max_length) {
     iteration_counter++;
 #ifdef DEBUG_GENERATION
@@ -368,17 +367,6 @@ Status BeamSearchWhisper<T>::Execute(const FeedsFetchesManager& encoder_feeds_fe
                                                 cpu_state,
                                                 iteration_counter));
 
-    // When all batches are finished, stop earlier to avoid wasting computation.
-    if (this->beam_scorer_->IsDone()) {
-      if (extra_round > 0)
-        extra_round = 0;
-      else
-        break;
-    }
-
-    // Increase sequence length after a new token is generated.
-    ++current_length;
-
     if (decoder_subgraph_.output_cross_qk_) {
       int decoder_output_first_cross_qk = decoder_subgraph_.GetFirstPresentOutputIndex() + (2 * decoder_subgraph_.num_layers);
       ORT_RETURN_IF_ERROR(this->update_decoder_cross_qk_func_(
@@ -393,6 +381,14 @@ Status BeamSearchWhisper<T>::Execute(const FeedsFetchesManager& encoder_feeds_fe
         parameters->max_length,
         this->temp_space_allocator_));
     }
+
+    // When all batches are finished, stop earlier to avoid wasting computation.
+    if (this->beam_scorer_->IsDone()) {
+        break;
+    }
+
+    // Increase sequence length after a new token is generated.
+    ++current_length;
 
     // Prepare inputs for next round of subgraph call.
     if (current_length < parameters->max_length) {
