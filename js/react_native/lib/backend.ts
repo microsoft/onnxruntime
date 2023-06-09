@@ -117,7 +117,7 @@ class OnnxruntimeSessionHandler implements SessionHandler {
     const returnValue: {[name: string]: Binding.EncodedTensorType} = {};
     for (const key in feeds) {
       if (Object.hasOwnProperty.call(feeds, key)) {
-        let data: string|string[]|JSIBlob;
+        let data: JSIBlob|string[];
 
         if (Array.isArray(feeds[key].data)) {
           data = feeds[key].data as string[];
