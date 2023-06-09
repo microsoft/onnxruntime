@@ -18,6 +18,9 @@ class UnaryOpBuilder : public BaseOpBuilder {
  private:
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
                                const logging::Logger& logger) const override ORT_MUST_USE_RESULT;
+  // Operator support related.
+ private:
+  int GetMinSupportedOpSet(const Node& node) const override;
 };
 
 // Add operator related.
@@ -28,18 +31,29 @@ Status UnaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
 
   emscripten::val input = model_builder.GetOperand(node.InputDefs()[0]->Name());
   emscripten::val output = emscripten::val::object();
-  if (op_type == "Cos") {
+
+  if (op_type == "Ceil") {
+    output = model_builder.GetBuilder().call<emscripten::val>("ceil", input);
+  } else if (op_type == "Cos") {
     output = model_builder.GetBuilder().call<emscripten::val>("cos", input);
   } else if (op_type == "Erf") {
     output = model_builder.GetBuilder().call<emscripten::val>("erf", input);
+  } else if (op_type == "Exp") {
+    output = model_builder.GetBuilder().call<emscripten::val>("exp", input);
   } else if (op_type == "Floor") {
     output = model_builder.GetBuilder().call<emscripten::val>("floor", input);
+  } else if (op_type == "Identity") {
+    output = model_builder.GetBuilder().call<emscripten::val>("identity", input);
   } else if (op_type == "Not") {
     output = model_builder.GetBuilder().call<emscripten::val>("logicalNot", input);
+  } else if (op_type == "Reciprocal") {
+    output = model_builder.GetBuilder().call<emscripten::val>("reciprocal", input);
   } else if (op_type == "Sin") {
     output = model_builder.GetBuilder().call<emscripten::val>("sin", input);
   } else if (op_type == "Sqrt") {
     output = model_builder.GetBuilder().call<emscripten::val>("sqrt", input);
+  } else if (op_type == "Tan") {
+    output = model_builder.GetBuilder().call<emscripten::val>("tan", input);
   } else {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "UnaryOpBuilder::AddToModelBuilderImpl, unknown op: ", op_type);
@@ -49,18 +63,30 @@ Status UnaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
   return Status::OK();
 }
 
+// All unary ops except "Not" and "Identity" contain 'consumed_inputs' attribute before opset 6,
+// which is not supported in WebNN EP for now.
+int UnaryOpBuilder::GetMinSupportedOpSet(const Node& node) const {
+  if (node.OpType() != "Not" && node.OpType() != "Identity")
+    return 6;
+}
+
 void CreateUnaryOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {
   if (op_registrations.op_builder_map.find(op_type) != op_registrations.op_builder_map.cend())
     return;
 
   static std::vector<std::string> op_types =
       {
+          "Ceil",
           "Cos",
           "Erf",
+          "Exp",
           "Floor",
+          "Identity",
           "Not",
+          "Reciprocal",
           "Sin",
           "Sqrt",
+          "Tan"
       };
 
   op_registrations.builders.push_back(std::make_unique<UnaryOpBuilder>());
