@@ -380,20 +380,6 @@ Status BeamSearchWhisper<T>::Execute(const FeedsFetchesManager& encoder_feeds_fe
 
     ORT_RETURN_IF_ERROR(status);
 
-#ifdef DEBUG_GENERATION
-    for (int i = 0; i <= decoder_subgraph_.GetFirstPresentOutputIndex(); i++) {
-      dumper->Print("decoder_fetches", i, true);
-      dumper->Print("", decoder_fetches[i]);
-    }
-#endif
-
-    const OrtValue& logits = decoder_fetches[0];
-    ORT_RETURN_IF_ERROR(this->GenerateNextToken(logits,
-                                                beam_next_tokens,
-                                                beam_state,
-                                                cpu_state,
-                                                iteration_counter));
-
     if (decoder_subgraph_.output_cross_qk_) {
       int decoder_output_first_cross_qk = decoder_subgraph_.GetFirstPresentOutputIndex() + (2 * decoder_subgraph_.num_layers);
       ORT_RETURN_IF_ERROR(this->update_decoder_cross_qk_func_(
@@ -408,6 +394,20 @@ Status BeamSearchWhisper<T>::Execute(const FeedsFetchesManager& encoder_feeds_fe
         parameters->max_length,
         this->temp_space_allocator_));
     }
+
+#ifdef DEBUG_GENERATION
+    for (int i = 0; i <= decoder_subgraph_.GetFirstPresentOutputIndex(); i++) {
+      dumper->Print("decoder_fetches", i, true);
+      dumper->Print("", decoder_fetches[i]);
+    }
+#endif
+
+    const OrtValue& logits = decoder_fetches[0];
+    ORT_RETURN_IF_ERROR(this->GenerateNextToken(logits,
+                                                beam_next_tokens,
+                                                beam_state,
+                                                cpu_state,
+                                                iteration_counter));
 
     // When all batches are finished, stop earlier to avoid wasting computation.
     if (this->beam_scorer_->IsDone()) {
@@ -462,12 +462,6 @@ Status BeamSearchWhisper<T>::Execute(const FeedsFetchesManager& encoder_feeds_fe
     }
   }
 
-  gsl::span<const float> final_beam_scores = beam_state.beam_scores;
-  this->beam_scorer_->Finalize(cpu_state.sequences,
-                               final_beam_scores,
-                               output_sequences,
-                               output_sequences_scores);
-
   if (decoder_subgraph_.output_cross_qk_) {
     TensorShape cross_qk_shape{
         static_cast<int64_t>(parameters->batch_size),
@@ -479,6 +473,7 @@ Status BeamSearchWhisper<T>::Execute(const FeedsFetchesManager& encoder_feeds_fe
 
     size_t cache_indir_input_offset = static_cast<size_t>(decoder_subgraph_.GetFirstPastInputIndex()) + 4 * static_cast<size_t>(decoder_subgraph_.num_layers) + 2;
     const int* cache_indir_data = decoder_feeds[cache_indir_input_offset].GetMutable<Tensor>()->Data<int32_t>();
+    auto beam_indices = this->beam_scorer_->GetNextIndicesGPU(); // currently only support on GPU
     ORT_RETURN_IF_ERROR(this->finalize_decoder_cross_qk_func_(
       this->ort_stream_,
       iteration_counter,
@@ -492,9 +487,15 @@ Status BeamSearchWhisper<T>::Execute(const FeedsFetchesManager& encoder_feeds_fe
       cross_qk_buffer_data,
       cross_qk_output->MutableData<float>(),
       parameters->num_return_sequences,
-      cache_indir_data
-      ));
+      cache_indir_data,
+      beam_indices));
   }
+
+  gsl::span<const float> final_beam_scores = beam_state.beam_scores;
+  this->beam_scorer_->Finalize(cpu_state.sequences,
+                               final_beam_scores,
+                               output_sequences,
+                               output_sequences_scores);
 
   // Output per token scores
   if (output_scores) {
