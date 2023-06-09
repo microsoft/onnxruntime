@@ -263,7 +263,7 @@ TEST_F(QnnCPUBackendTests, TestCPUConvf32_bias_initializer) {
   RunCPUConvOpTest({1, 1, 3, 3}, {2, 1, 2, 2}, true, {1, 1}, {0, 0, 0, 0}, {1, 1}, "NOTSET", ExpectedEPNodeAssignment::All, "TestCPUConvf32_bias_initializer");
 }
 
-// Tests auto_pad value "SAME_UPPER"
+// Tests auto_pad value "SAME_UPPER" (compares to CPU EP).
 TEST_F(QnnCPUBackendTests, TestCPUConvf32_AutoPadUpper) {
   RunCPUConvOpTest({1, 1, 3, 3},  // Input 0 shape
                    {2, 1, 2, 2},  // Input 1 (weights) shape
@@ -276,7 +276,7 @@ TEST_F(QnnCPUBackendTests, TestCPUConvf32_AutoPadUpper) {
                    "TestCPUConvf32_AutoPadUpper");
 }
 
-// Tests auto_pad value "SAME_LOWER"
+// Tests auto_pad value "SAME_LOWER" (compares to CPU EP).
 TEST_F(QnnCPUBackendTests, TestCPUConvf32_AutoPadLower) {
   RunCPUConvOpTest({1, 1, 3, 3},  // Input 0 shape
                    {2, 1, 2, 2},  // Input 1 (weights) shape
@@ -331,6 +331,34 @@ TEST_F(QnnHTPBackendTests, TestQDQConvU8U8S32_bias_input) {
 TEST_F(QnnHTPBackendTests, TestQDQConvU8U8S32_bias_initializer) {
   RunHTPConvOpTest<uint8_t, uint8_t, int32_t, uint8_t>({1, 1, 5, 5}, {1, 1, 3, 3}, true, {1, 1}, {0, 0, 0, 0}, {1, 1}, "NOTSET", ExpectedEPNodeAssignment::All,
                                                        "TestQDQConvU8U8S32_bias_initializer");
+}
+
+// Tests auto_pad value "SAME_UPPER" on HTP backend (compares to CPU EP).
+TEST_F(QnnHTPBackendTests, TestConvU8U8S32_AutoPadUpper) {
+  RunHTPConvOpTest<uint8_t, uint8_t, int32_t, uint8_t>(
+      {1, 1, 5, 5},  // input_shape
+      {1, 1, 3, 3},  // weights_shape
+      true,          // is_bias_initializer
+      {1, 1},        // strides
+      {},            // pads
+      {1, 1},        // dilations
+      "SAME_UPPER",  // auto_pad
+      ExpectedEPNodeAssignment::All,
+      "TestConvU8U8S32_AutoPadUpper");
+}
+
+// Tests auto_pad value "SAME_LOWER" on HTP backend (compares to CPU EP).
+TEST_F(QnnHTPBackendTests, TestConvU8U8S32_AutoPadLower) {
+  RunHTPConvOpTest<uint8_t, uint8_t, int32_t, uint8_t>(
+      {1, 1, 5, 5},  // input_shape
+      {1, 1, 3, 3},  // weights_shape
+      true,          // is_bias_initializer
+      {1, 1},        // strides
+      {},            // pads
+      {1, 1},        // dilations
+      "SAME_LOWER",  // auto_pad
+      ExpectedEPNodeAssignment::All,
+      "TestConvU8U8S32_AutoPadLower");
 }
 
 // TODO: re-enable tests once HTP issues are resolved
