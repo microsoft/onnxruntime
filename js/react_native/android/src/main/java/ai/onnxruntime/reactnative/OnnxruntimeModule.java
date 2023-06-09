@@ -11,6 +11,7 @@ import ai.onnxruntime.OrtSession;
 import ai.onnxruntime.OrtSession.Result;
 import ai.onnxruntime.OrtSession.RunOptions;
 import ai.onnxruntime.OrtSession.SessionOptions;
+import ai.onnxruntime.providers.NNAPIFlags;
 import android.net.Uri;
 import android.os.Build;
 import android.util.Base64;
@@ -34,6 +35,7 @@ import java.io.InputStreamReader;
 import java.io.Reader;
 import java.math.BigInteger;
 import java.util.Collections;
+import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
@@ -334,15 +336,37 @@ public class OnnxruntimeModule extends ReactContextBaseJavaModule {
     if (options.hasKey("executionProviders")) {
       ReadableArray executionProviders = options.getArray("executionProviders");
       for (int i = 0; i < executionProviders.size(); ++i) {
-        String executionProvider = executionProviders.getString(i);
-        if (executionProvider.equals("xnnpack")) {
+        String epName = null;
+        ReadableMap epOptions = null;
+        if (executionProviders.getType(i) == ReadableType.String) {
+          epName = executionProviders.getString(i);
+        } else {
+          epOptions = executionProviders.getMap(i);
+          epName = options.getString("name");
+        }
+        if (epName.equals("nnapi")) {
+          EnumSet<NNAPIFlags> flags = EnumSet.noneOf(NNAPIFlags.class);
+          if (epOptions != null) {
+            if (epOptions.hasKey("useFP16") && options.getBoolean("useFP16")) {
+              flags.add(NNAPIFlags.USE_FP16);
+            }
+            if (epOptions.hasKey("useNCHW") && options.getBoolean("useNCHW")) {
+              flags.add(NNAPIFlags.USE_NCHW);
+            }
+            if (epOptions.hasKey("cpuDisabled") && options.getBoolean("cpuDisabled")) {
+              flags.add(NNAPIFlags.CPU_DISABLED);
+            }
+            if (epOptions.hasKey("cpuOnly") && options.getBoolean("cpuOnly")) {
+              flags.add(NNAPIFlags.CPU_ONLY);
+            }
+          }
+          sessionOptions.addNnapi(flags);
+        } else if (epName.equals("xnnpack")) {
           sessionOptions.addXnnpack(Collections.emptyMap());
-        } else if (executionProvider.equals("nnapi")) {
-          sessionOptions.addNnapi();
-        } else if (executionProvider.equals("cpu")) {
+        } else if (epName.equals("cpu")) {
           continue;
         } else {
-          throw new OrtException("Unsupported execution provider: " + executionProvider);
+          throw new OrtException("Unsupported execution provider: " + epName);
         }
       }
     }

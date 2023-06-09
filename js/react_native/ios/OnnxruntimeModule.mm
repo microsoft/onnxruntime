@@ -15,12 +15,12 @@
 // https://google.github.io/styleguide/objcguide.html#import-and-include
 // https://microsoft.github.io/objc-guide/Headers/ImportAndInclude.html
 #ifdef ORT_ENABLE_EXTENSIONS
+#include "coreml_provider_factory.h"
 #include "onnxruntime_cxx_api.h"
 #include "onnxruntime_extensions.h"
-#include "coreml_provider_factory.h"
 #else
-#include "onnxruntime/onnxruntime_cxx_api.h"
 #include "onnxruntime/coreml_provider_factory.h"
+#include "onnxruntime/onnxruntime_cxx_api.h"
 #endif
 
 @implementation OnnxruntimeModule
@@ -310,12 +310,32 @@ static NSDictionary *executionModeTable = @{@"sequential" : @(ORT_SEQUENTIAL), @
 
   if ([options objectForKey:@"executionProviders"]) {
     NSArray *executionProviders = [options objectForKey:@"executionProviders"];
-    for (NSString *executionProvider in executionProviders) {
-      if ([executionProvider isEqualToString:@"coreml"]) {
-        Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_CoreML(sessionOptions, 0));
-      } else if ([executionProvider isEqualToString:@"xnnpack"]) {
+    for (auto *executionProvider in executionProviders) {
+      NSString *epName = nil;
+      bool useOptions = false;
+      if ([executionProvider isKindOfClass:[NSString class]]) {
+        epName = (NSString *)executionProvider;
+      } else {
+        epName = [executionProvider objectForKey:@"name"];
+        useOptions = true;
+      }
+      if ([epName isEqualToString:@"coreml"]) {
+        uint32_t coreml_flags = 0;
+        if (useOptions) {
+          if ([[executionProvider objectForKey:@"useCPUOnly"] boolValue]) {
+            coreml_flags |= COREML_FLAG_USE_CPU_ONLY;
+          }
+          if ([[executionProvider objectForKey:@"enableOnSubgraph"] boolValue]) {
+            coreml_flags |= COREML_FLAG_ENABLE_ON_SUBGRAPH;
+          }
+          if ([[executionProvider objectForKey:@"onlyEnableDeviceWithANE"] boolValue]) {
+            coreml_flags |= COREML_FLAG_ONLY_ENABLE_DEVICE_WITH_ANE;
+          }
+        }
+        Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_CoreML(sessionOptions, coreml_flags));
+      } else if ([epName isEqualToString:@"xnnpack"]) {
         sessionOptions.AppendExecutionProvider("XNNPACK", {});
-      } else if ([executionProvider isEqualToString:@"cpu"]) {
+      } else if ([epName isEqualToString:@"cpu"]) {
         continue;
       } else {
         NSException *exception = [NSException exceptionWithName:@"onnxruntime"
