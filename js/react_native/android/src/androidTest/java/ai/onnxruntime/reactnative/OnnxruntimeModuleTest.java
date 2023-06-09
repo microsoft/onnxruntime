@@ -143,6 +143,9 @@ public class OnnxruntimeModuleTest {
           Assert.fail(e.getMessage());
         }
       }
+
+      // test dispose
+      ortModule.dispose(sessionKey);
     } finally {
       mockSession.finishMocking();
     }

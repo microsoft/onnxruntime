@@ -196,7 +196,7 @@ Status Transpose::DoTranspose(const cudaDeviceProp& prop,
     auto mn = TryTransposeWithCublas(new_permutations, new_input_dims);
     int M = std::get<0>(mn);
     int N = std::get<1>(mn);
-    if (M != 0 && N != 0) {
+    if (M != 0 && N != 0 && (element_type != ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16 || CanUse_cublasTransposeHelper_MLFloat16(M, N))) {
       if (element_type == utils::GetONNXTensorElementDataType<float>()) {
         return TransposeWithCublas<float>(stream, cublas_handle, input, output, M, N);
       } else if (element_type == utils::GetONNXTensorElementDataType<double>()) {

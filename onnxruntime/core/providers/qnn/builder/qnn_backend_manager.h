@@ -106,25 +106,7 @@ class QnnBackendManager {
     }
   }
 
-  void InitializeQnnLog() {
-    const std::map<logging::Severity, QnnLog_Level_t> ort_log_level_to_qnn_log_level = {
-        {logging::Severity::kVERBOSE, QNN_LOG_LEVEL_DEBUG},
-        {logging::Severity::kINFO, QNN_LOG_LEVEL_INFO},
-        {logging::Severity::kWARNING, QNN_LOG_LEVEL_WARN},
-        {logging::Severity::kERROR, QNN_LOG_LEVEL_ERROR},
-        {logging::Severity::kFATAL, QNN_LOG_LEVEL_ERROR}};
-
-    QnnLog_Level_t qnn_log_level = QNN_LOG_LEVEL_WARN;
-    auto ort_log_level = logger_->GetSeverity();
-    auto pos = ort_log_level_to_qnn_log_level.find(ort_log_level);
-    if (pos != ort_log_level_to_qnn_log_level.end()) {
-      qnn_log_level = pos->second;
-    }
-
-    if (QNN_SUCCESS != qnn_interface_.logCreate(QnnLogStdoutCallback, qnn_log_level, &log_handle_)) {
-      LOGS(*logger_, WARNING) << "Unable to initialize logging in the QNN backend.";
-    }
-  }
+  void InitializeQnnLog();
 
   // Terminate logging in the backend
   Status TerminateQnnLog() {

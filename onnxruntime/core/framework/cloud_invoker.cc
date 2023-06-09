@@ -292,6 +292,14 @@ onnxruntime::TensorPtr AzureTritonInvoker::CreateTensor(const std::string& data_
     return std::make_unique<Tensor>(onnxruntime::DataTypeImpl::GetType<uint64_t>(), TensorShape{dim}, allocator_);
   } else if (data_type == "BF16") {
     return std::make_unique<Tensor>(onnxruntime::DataTypeImpl::GetType<BFloat16>(), TensorShape{dim}, allocator_);
+  } else if (data_type == "FLOAT8E4MEFN") {
+    return std::make_unique<Tensor>(onnxruntime::DataTypeImpl::GetType<Float8E4M3FN>(), TensorShape{dim}, allocator_);
+  } else if (data_type == "FLOAT8E4MEFNUZ") {
+    return std::make_unique<Tensor>(onnxruntime::DataTypeImpl::GetType<Float8E4M3FNUZ>(), TensorShape{dim}, allocator_);
+  } else if (data_type == "FLOAT8E5M2") {
+    return std::make_unique<Tensor>(onnxruntime::DataTypeImpl::GetType<Float8E5M2>(), TensorShape{dim}, allocator_);
+  } else if (data_type == "FLOAT8E5M2FNUZ") {
+    return std::make_unique<Tensor>(onnxruntime::DataTypeImpl::GetType<Float8E5M2FNUZ>(), TensorShape{dim}, allocator_);
   } else {
     return {};
   }

@@ -84,7 +84,7 @@ class OnnxruntimeSessionHandler implements SessionHandler {
   }
 
   async dispose(): Promise<void> {
-    return Promise.resolve();
+    return this.#inferenceSession.dispose(this.#key);
   }
 
   startProfiling(): void {

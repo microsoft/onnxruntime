@@ -74,6 +74,7 @@ export declare namespace Binding {
   interface InferenceSession {
     loadModel(modelPath: string, options: SessionOptions): Promise<ModelLoadInfoType>;
     loadModelFromBlob?(buffer: string|JSIBlob, options: SessionOptions): Promise<ModelLoadInfoType>;
+    dispose(key: string): Promise<void>;
     run(key: string, feeds: FeedsType, fetches: FetchesType, options: RunOptions): Promise<ReturnType>;
   }
 }

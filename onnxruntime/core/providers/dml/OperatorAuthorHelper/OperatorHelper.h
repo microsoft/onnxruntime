@@ -687,13 +687,6 @@ public:
 
     std::vector<EdgeShapes> GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const;
 
-private:
-    static void HandleEmptyAxes(
-        /*inout*/std::vector<int32_t>& onnxAxes,
-        gsl::span<const uint32_t> inputShape,
-        bool treatEmptyAsNop
-    );
-
 protected:
     std::vector<int32_t> m_axes;
     int m_keepDims = 0; // Keep the dimensions rather than removing size 1 dimensions.
@@ -1526,6 +1519,7 @@ using ShapeInferenceHelper_Slice13 = VersionedOpsetHelper<SliceHelper, 13>; // N
 using ShapeInferenceHelper_Pad7 = VersionedOpsetHelper<PaddingHelper, 7>;
 using ShapeInferenceHelper_Pad11 = VersionedOpsetHelper<PaddingHelper, 11>;
 using ShapeInferenceHelper_Pad13 = VersionedOpsetHelper<PaddingHelper, 13>;
+using ShapeInferenceHelper_Pad18 = VersionedOpsetHelper<PaddingHelper, 18>;
 
 using ShapeInferenceHelper_SpaceToDepth = SpaceToDepthHelper;
 using ShapeInferenceHelper_DepthToSpace = DepthToSpaceHelper;

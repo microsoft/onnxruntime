@@ -113,6 +113,25 @@ RCT_EXPORT_METHOD(loadModelFromBlob
 }
 
 /**
+ * React native binding API to dispose a session using given key from loadModel()
+ *
+ * @param key a model path location given at loadModel()
+ * @param resolve callback for returning output back to react native js
+ * @param reject callback for returning an error back to react native js
+ */
+RCT_EXPORT_METHOD(dispose
+                  : (NSString *)key resolver
+                  : (RCTPromiseResolveBlock)resolve rejecter
+                  : (RCTPromiseRejectBlock)reject) {
+  @try {
+    [self dispose:key];
+    resolve(nil);
+  } @catch (...) {
+    reject(@"onnxruntime", @"failed to dispose session", nil);
+  }
+}
+
+/**
  * React native binding API to run a model using given uri.
  *
  * @param url a model path location given at loadModel()
@@ -216,6 +235,25 @@ RCT_EXPORT_METHOD(run
   resultMap[@"outputNames"] = outputNames;
 
   return resultMap;
+}
+
+/**
+ * Dispose a session given a key.
+ *
+ * @param key a session key returned from loadModel()
+ */
+- (void)dispose:(NSString *)key {
+  NSValue *value = [sessionMap objectForKey:key];
+  if (value == nil) {
+    NSException *exception = [NSException exceptionWithName:@"onnxruntime"
+                                                     reason:@"can't find onnxruntime session"
+                                                   userInfo:nil];
+    @throw exception;
+  }
+  [sessionMap removeObjectForKey:key];
+  SessionInfo *sessionInfo = (SessionInfo *)[value pointerValue];
+  delete sessionInfo;
+  sessionInfo = nullptr;
 }
 
 /**
@@ -362,10 +400,7 @@ static NSDictionary *executionModeTable = @{@"sequential" : @(ORT_SEQUENTIAL), @
 - (void)dealloc {
   NSEnumerator *iterator = [sessionMap keyEnumerator];
   while (NSString *key = [iterator nextObject]) {
-    NSValue *value = [sessionMap objectForKey:key];
-    SessionInfo *sessionInfo = (SessionInfo *)[value pointerValue];
-    delete sessionInfo;
-    sessionInfo = nullptr;
+    [self dispose:key];
   }
   blobManager = nullptr;
 }

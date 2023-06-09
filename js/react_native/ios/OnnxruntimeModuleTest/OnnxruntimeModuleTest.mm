@@ -108,6 +108,12 @@ FakeRCTBlobManager *fakeBlobManager = nil;
     XCTAssertEqual([[resultMap objectForKey:@"output"][@"data"][@"offset"] longValue], 0);
     XCTAssertEqual([[resultMap2 objectForKey:@"output"][@"data"][@"size"] longValue], byteBufferSize);
   }
+
+  // test dispose
+  {
+    [onnxruntimeModule dispose:sessionKey];
+    [onnxruntimeModule dispose:sessionKey2];
+  }
 }
 
 @end

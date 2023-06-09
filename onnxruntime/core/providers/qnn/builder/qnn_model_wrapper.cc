@@ -63,6 +63,7 @@ bool QnnModelWrapper::AddTensorWrapper(QnnTensorWrapper&& tensor_wrapper) {
   }
 
   if (IsQnnTensorWrapperExist(tensor_name) == true) {
+    LOGS(logger_, VERBOSE) << "Tensor eist already: " << tensor_name;
     return true;
   }
 
@@ -362,6 +363,7 @@ Status QnnModelWrapper::AddTransposeNode(NodeIndex node_index,
                                          const std::vector<uint32_t>& output_shape,
                                          const Qnn_DataType_t& tensor_data_type,
                                          const Qnn_QuantizeParams_t& quantize_param,
+                                         bool do_op_validation,
                                          const bool is_for_input,
                                          const bool is_for_output) {
   // No need to add this for output nodes as it is added as output tensor for previous node
@@ -397,7 +399,8 @@ Status QnnModelWrapper::AddTransposeNode(NodeIndex node_index,
                 qnn_node_type,
                 {input_name},
                 {output_name},
-                {param_tensor_name});
+                {param_tensor_name},
+                do_op_validation);
 
   return Status::OK();
 }

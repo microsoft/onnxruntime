@@ -3,7 +3,8 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
-import warnings
+from logging import Logger
+from typing import Tuple
 
 import onnx
 import torch
@@ -11,27 +12,51 @@ import torch
 from onnxruntime.capi import _pybind_state as C
 from onnxruntime.capi.onnxruntime_inference_collection import get_ort_device_type
 
-from . import _are_deterministic_algorithms_enabled, _io, _logger, _use_deterministic_algorithms, _utils
+from . import _are_deterministic_algorithms_enabled, _io, _use_deterministic_algorithms, _utils
 from ._execution_agent import TrainingAgent
 from ._fallback import ORTModuleFallbackException, _FallbackManager, _FallbackPolicy
+from ._gradient_accumulation_manager import GradientAccumulationManager
 from ._graph_execution_manager import GraphExecutionManager, _RunStateInfo, _SkipCheck
+from ._io import _FlattenedModule, _InputInfo
 from .debug_options import DebugOptions
 
 
 class TrainingManager(GraphExecutionManager):
     """Concrete instance of GraphExecutionManager that is able to manage the training model
 
-    TrainingManager is responsible for building and running the forward and backward graph of the training model
+    TrainingManager is responsible for building and running the forward and backward graph of the training model.
     """
 
-    def __init__(self, model, debug_options: DebugOptions, fallback_manager: _FallbackManager):
-        super().__init__(model, debug_options, fallback_manager)
+    def __init__(
+        self, model: _FlattenedModule, debug_options: DebugOptions, fallback_manager: _FallbackManager, logger: Logger
+    ):
+        super().__init__(model, debug_options, fallback_manager, logger)
+
         self._export_mode = torch.onnx.TrainingMode.TRAINING
         self._forward_class = self._create_autofunction_class()
 
     @staticmethod
-    def execution_session_run_forward(execution_session, onnx_model, device, gradient_accumulation_manager, *inputs):
-        """Runs the forward graph on execution_session with given model inputs and device"""
+    def execution_session_run_forward(
+        execution_session,
+        onnx_model: onnx.ModelProto,
+        device: torch.device,
+        gradient_accumulation_manager: GradientAccumulationManager,
+        *inputs,
+    ) -> Tuple[Tuple[torch.Tensor, ...], _RunStateInfo]:
+        """Runs the forward pass on `execution_session` with given `onnx_model`, `device` and `inputs`
+
+        Args:
+            execution_session (InferenceAgent or TrainingAgent): Agent which runs training.
+            onnx_model (onnx.ModelProto): ONNX model
+            device (torch.device): PyTorch device
+            gradient_accumulation_manager (GradientAccumulationManager): Gradient accumulation manager
+            inputs: (torch.Tensor or a container of): User inputs passed from ORTModule.forward().
+
+        Returns:
+            Returns a tuple (user_outputs, run_info):
+            user_outputs: The model output (either torch.Tensor or a container of torch.Tensor)
+            run_info: A _RunStateInfo which contains extra information about the execution of the graph
+        """
 
         # TODO: Try to reuse the output buffers as some of the output tensors are same sizes,
         #   especially the backward graph outputs.
@@ -54,7 +79,9 @@ class TrainingManager(GraphExecutionManager):
         # Run and return module outputs.
         execution_session.run_forward(forward_inputs, forward_outputs, state, gradient_accumulation_manager.cache)
 
-        user_outputs = gradient_accumulation_manager.extract_outputs_and_maybe_update_cache(forward_outputs, device)
+        user_outputs: Tuple[torch.Tensor, ...] = gradient_accumulation_manager.extract_outputs_and_maybe_update_cache(
+            forward_outputs, device
+        )
 
         output_info = [(output.shape, output.device, output.dtype) for output in user_outputs]
         run_info = _RunStateInfo(state, output_info)
@@ -174,6 +201,14 @@ class TrainingManager(GraphExecutionManager):
         ONNX model is exported the first time this method is executed.
         Next, we build a full training graph with module_graph_builder.
         Finally, we instantiate the ONNX Runtime InferenceSession.
+
+        The call stack is as follows:
+            ORTModule.forward(*inputs, **kwargs) ->
+            ORTModule._torch_module.forward(*inputs, **kwargs) where _torch_module is a TorchModuleORT instance ->
+            ORTModule._torch_module._execution_manager(is_training()).forward(*inputs, **kwargs) where:
+                TorchModuleORT._execution_manager(true) is a TrainingManager instance;
+                and TorchModuleORT._execution_manager(false) is an InferenceManager instance.
+
         """
 
         # Fallback to PyTorch due to failures *external* to forward(),
@@ -182,19 +217,14 @@ class TrainingManager(GraphExecutionManager):
             return self._fallback_manager.fallback(self._debug_options.logging.log_level, *inputs, **kwargs)
 
         try:
-            if (
-                self._first_skip_check_warning is True
-                and self._skip_check.is_disabled() is False
-                and self._debug_options.logging.log_level <= _logger.LogLevel.WARNING
-            ):
+            if self._first_skip_check_warning is True and self._skip_check.is_disabled() is False:
                 # Only change this after the firs time a warning is issued.
                 self._first_skip_check_warning = False
-                warnings.warn(
-                    f"Fast path enabled - skipping checks."
-                    f" Rebuild graph: {self._skip_check.is_set(_SkipCheck.SKIP_CHECK_BUILD_GRADIENT)},"
-                    f" Execution agent: {self._skip_check.is_set(_SkipCheck.SKIP_CHECK_EXECUTION_AGENT)},"
-                    f" Device check: {self._skip_check.is_set(_SkipCheck.SKIP_CHECK_DEVICE)}",
-                    UserWarning,
+                self._logger.info(
+                    "Fast path enabled - skipping checks.Rebuild graph: %s, Execution agent: %s, Device check: %s",
+                    self._skip_check.is_set(_SkipCheck.SKIP_CHECK_BUILD_GRADIENT),
+                    self._skip_check.is_set(_SkipCheck.SKIP_CHECK_EXECUTION_AGENT),
+                    self._skip_check.is_set(_SkipCheck.SKIP_CHECK_DEVICE),
                 )
 
             # If exporting module to ONNX for the first time, this skip check will not take effect.
@@ -209,7 +239,7 @@ class TrainingManager(GraphExecutionManager):
                     # If model was exported, then initialize the graph builder
                     self._initialize_graph_builder()
 
-                # since the schema was just extracted while trying to export the model and it was either
+                # Since the schema was just extracted while trying to export the model and it was either
                 # saved to self._input_info.schema or checked for equality with the self._input_info.schema
                 # it should not need to be updated again. Pass it inside parse_inputs_for_onnx_export.
                 input_info = _io.parse_inputs_for_onnx_export(
@@ -229,6 +259,8 @@ class TrainingManager(GraphExecutionManager):
 
                     # Build the gradient graph
                     self._build_graph(graph_transformer_config)
+
+                    self._log_feature_stats()
 
             # If creating the execution agent for the first time, this skip check will not take effect.
             # It will only take effect on subsequent forward calls.
@@ -366,7 +398,7 @@ class TrainingManager(GraphExecutionManager):
             local_device_rank,
         )
 
-    def _reinitialize_graph_builder(self, input_info):
+    def _reinitialize_graph_builder(self, input_info: _InputInfo):
         """Return true if the module graph builder was reinitialized"""
 
         # Model may have unused params dropped after export and not part of self._graph_initializer_names_to_train

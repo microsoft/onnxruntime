@@ -130,7 +130,7 @@ void PrintInforPerTensor(const MemoryInfo::AllocInfoPerTensor& alloc_info, const
   std::cout << "Index: " << alloc_info.mlvalue_index << ", ";
   std::cout << "Reuse inplace: " << alloc_info.inplace_reuse << ", ";
   std::cout << "Alloc type: " << alloc_info.alloc_kind << ", ";
-  std::cout << "Location: " << alloc_info.location.name << ", ";
+  std::cout << "Location: " << alloc_info.location.ToString() << ", ";
   std::cout << "lifetime: (" << alloc_info.lifetime_interval.first << ", " << alloc_info.lifetime_interval.second << "), ";
   std::cout << "planned block: (" << mem_info.planned_block.offset_ << ", "
             << (mem_info.planned_block.offset_ + mem_info.planned_block.size_) << "), ";
@@ -142,24 +142,24 @@ void PrintInforPerTensor(const MemoryInfo::AllocInfoPerTensor& alloc_info, const
 
 void MemoryInfo::PrintMemoryInfoForLocation(const OrtDevice::DeviceType location) {
   for (const auto& map : tensors_memory_info_map_) {
-    if (map.first.device.Type() != location) continue;
-    std::cout << "Initializer in " << map.first.name << "\n";
+    if (map.first.Type() != location) continue;
+    std::cout << "Initializer in " << map.first.ToString() << "\n";
     const auto& initailizer_map = map.second.at(MapType::Initializer);
     for (const auto& item : initailizer_map) {
-      if (AllocPlan(item.first)->location.device.Type() != location) continue;
+      if (AllocPlan(item.first)->location.Type() != location) continue;
       PrintInforPerTensor(*AllocPlan(item.first), item.second, initailizer_map.GetAllocAddress(item.first));
     }
-    std::cout << "\nStatic Activation in " << map.first.name << "\n";
+    std::cout << "\nStatic Activation in " << map.first.ToString() << "\n";
     const auto& static_activation_map = map.second.at(MapType::StaticActivation);
     for (const auto& item : static_activation_map) {
-      if (AllocPlan(item.first)->location.device.Type() != location) continue;
+      if (AllocPlan(item.first)->location.Type() != location) continue;
       PrintInforPerTensor(*AllocPlan(item.first), item.second, static_activation_map.GetAllocAddress(item.first));
     }
 
-    std::cout << "\nDynamic Activation in " << map.first.name << "\n";
+    std::cout << "\nDynamic Activation in " << map.first.ToString() << "\n";
     const auto& dynamic_activation_map = map.second.at(MapType::DynamicActivation);
     for (const auto& item : dynamic_activation_map) {
-      if (AllocPlan(item.first)->location.device.Type() != location) continue;
+      if (AllocPlan(item.first)->location.Type() != location) continue;
       PrintInforPerTensor(*AllocPlan(item.first), item.second, dynamic_activation_map.GetAllocAddress(item.first));
     }
   }
@@ -273,10 +273,10 @@ void MemoryProfiler::CreateEvents(const std::string& p_name,
   // Create Event for each tensor
   auto& time_step_trace = GetMemoryInfo().time_step_trace_;
   for (const auto& location_map : GetMemoryInfo().tensors_memory_info_map_) {
-    const OrtMemoryInfo& memory_info = location_map.first;
+    const OrtDevice& memory_info = location_map.first;
     const auto& maptype_to_map_mapping = location_map.second;
 
-    if (memory_info.device.Type() != device_type) continue;
+    if (memory_info.Type() != device_type) continue;
 
     // If there is no tensor of a map_type, we skip creating event for that map_type
     if (maptype_to_map_mapping.find(map_type) == maptype_to_map_mapping.end()) continue;
