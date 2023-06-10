@@ -209,6 +209,22 @@ def parse_arguments(argv=None):
     parser.set_defaults(output_no_speech_probs=False)
 
     parser.add_argument(
+        "--output_scores",
+        required=False,
+        action="store_true",
+        help="Beam search model output scores over vocab per generated token.",
+    )
+    parser.set_defaults(output_scores=False)
+
+    parser.add_argument(
+        "--output_sequence_scores",
+        required=False,
+        action="store_true",
+        help="Beam search model output scores for each generated sequence.",
+    )
+    parser.set_defaults(output_sequence_scores=False)
+
+    parser.add_argument(
         "--cross_qk_onnx_model",
         required=False,
         type=str,
