@@ -41,6 +41,8 @@ Status BinaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
     output = model_builder.GetBuilder().call<emscripten::val>("mul", input0, input1);
   } else if (op_type == "Div") {
     output = model_builder.GetBuilder().call<emscripten::val>("div", input0, input1);
+  } else if (op_type == "Pow") {
+    output = model_builder.GetBuilder().call<emscripten::val>("pow", input0, input1);
   } else {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "BinaryOpBuilder::AddToModelBuilderImpl, unknown op: ", op_type);
@@ -53,7 +55,7 @@ Status BinaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
 // Operator support related.
 
 int BinaryOpBuilder::GetMinSupportedOpSet(const Node& /* node */) const {
-  // Add/Sub/Mul/Div opset 6- has broadcast attributes we do not support now.
+  // Add/Sub/Mul/Div/Pow opset 6- has broadcast attributes we do not support now.
   return 7;
 }
 
@@ -67,6 +69,7 @@ void CreateBinaryOpBuilder(const std::string& op_type, OpBuilderRegistrations& o
           "Sub",
           "Mul",
           "Div",
+          "Pow",
       };
 
   op_registrations.builders.push_back(std::make_unique<BinaryOpBuilder>());

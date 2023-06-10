@@ -2,9 +2,10 @@
 // Licensed under the MIT License.
 
 export * from 'onnxruntime-common';
+import {registerBackend, env} from 'onnxruntime-common';
 import {Platform} from 'react-native';
-import {registerBackend} from 'onnxruntime-common';
 import {onnxruntimeBackend} from './backend';
+import {version} from './version';
 
 registerBackend('cpu', onnxruntimeBackend, 1);
 registerBackend('xnnpack', onnxruntimeBackend, 1);
@@ -13,3 +14,5 @@ if (Platform.OS === 'android') {
 } else if (Platform.OS === 'ios') {
   registerBackend('coreml', onnxruntimeBackend, 1);
 }
+
+env.versions['react-native'] = version;

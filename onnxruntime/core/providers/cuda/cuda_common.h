@@ -65,11 +65,7 @@ inline bool CalculateFdmStrides(gsl::span<fast_divmod> p, const std::vector<int6
 class CublasMathModeSetter {
  public:
   CublasMathModeSetter(const cudaDeviceProp& prop, cublasHandle_t handle, cublasMath_t mode) : handle_(handle) {
-#if defined(CUDA_VERSION) && CUDA_VERSION < 11000
-    enable_ = (mode == CUBLAS_TENSOR_OP_MATH ? prop.major >= 7 : true);
-#else
     enable_ = (mode == CUBLAS_TF32_TENSOR_OP_MATH ? prop.major >= 8 : true);
-#endif
 
     if (enable_) {
       cublasGetMathMode(handle, &mode_);
@@ -95,7 +91,7 @@ class CublasMathModeSetter {
 // Cublas Gemm options for half data type
 class HalfGemmOptions {
  public:
-#if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
+#if defined(USE_CUDA)
   cublasMath_t GetMathMode() const {
     if (pedantic_) {
       return CUBLAS_PEDANTIC_MATH;
@@ -127,7 +123,7 @@ class HalfGemmOptions {
 
   void Initialize(int value) {
     compute_16f_ = (value & 0x01) > 0;
-#if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
+#if defined(USE_CUDA)
     disallow_reduced_precision_reduction_ = (value & 0x02) > 0;
     pedantic_ = (value & 0x04) > 0;
     LOGS_DEFAULT(INFO) << "ORT_CUDA_GEMM_OPTIONS: compute_16f=" << instance.compute_16f_
@@ -143,7 +139,7 @@ class HalfGemmOptions {
   // Default is FP32. Aggregate in FP16 might be faster but the cost is loss in precision.
   bool compute_16f_{false};
 
-#if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
+#if defined(USE_CUDA)
   // Avoid intermediate overflows in accumulation. When compute type is FP32, it will not use FP16 in reduction.
   bool disallow_reduced_precision_reduction_{false};
 
