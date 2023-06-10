@@ -153,9 +153,9 @@ void TensorrtExecutionProvider::SetGraphOuterScopeValuesAndInputs(Graph* graph_b
 
     SubGraphContext* context = subgraph_context_map.at(top_level_graph->Name()).get();
 
-    LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Subgraph is " << graph_build->Name();
+    LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Subgraph name is " << graph_build->Name();
     LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Its parent node is " << graph->ParentNode()->Name();
-    LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] \tIts parent node's implicit inputs:";
+    LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Its parent node's implicit inputs:";
 
 
     // Iterate all the implict inputs to set outer scope value for the newly built subgraph
@@ -166,10 +166,10 @@ void TensorrtExecutionProvider::SetGraphOuterScopeValuesAndInputs(Graph* graph_b
       // So we need to make sure that the node arg is used in current subgraph only. (GetNodeArg searches for specific node arg in all node args in the graph)
       if (graph_build->GetNodeArg(input->Name())) {
         graph_build->AddOuterScopeNodeArg(input->Name());
-        LOGS_DEFAULT(VERBOSE) << "\t" << input->Name() << " is used in this subgraph";
+        LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] \t" << input->Name() << " is used in this subgraph";
 
         if (context && (context->manually_added_graph_inputs.find(input->Name()) != context->manually_added_graph_inputs.end())) {
-          LOGS_DEFAULT(VERBOSE) << "\t" << input->Name() << " is already been added as an explicit input to graph";
+          LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] \t" << input->Name() << " is already been added as an explicit input to graph";
           continue;
         }
 
@@ -187,7 +187,7 @@ void TensorrtExecutionProvider::SetGraphOuterScopeValuesAndInputs(Graph* graph_b
               type_proto->copy_from(input->TypeAsProto());
               auto& n_input = top_level_graph->GetOrCreateNodeArg(name, type_proto.get());
               context->manually_added_graph_inputs[n_input.Name()] = &n_input;
-              LOGS_DEFAULT(VERBOSE) << "\t" << n_input.Name() << " is added as an explicit input into the newly built graph" << std::endl;
+              LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] \t" << n_input.Name() << " is added as an explicit input into the newly built graph" << std::endl;
             }
           }
         }
