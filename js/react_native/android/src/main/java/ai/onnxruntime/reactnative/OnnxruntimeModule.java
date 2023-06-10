@@ -342,21 +342,21 @@ public class OnnxruntimeModule extends ReactContextBaseJavaModule {
           epName = executionProviders.getString(i);
         } else {
           epOptions = executionProviders.getMap(i);
-          epName = options.getString("name");
+          epName = epOptions.getString("name");
         }
         if (epName.equals("nnapi")) {
           EnumSet<NNAPIFlags> flags = EnumSet.noneOf(NNAPIFlags.class);
           if (epOptions != null) {
-            if (epOptions.hasKey("useFP16") && options.getBoolean("useFP16")) {
+            if (epOptions.hasKey("useFP16") && epOptions.getBoolean("useFP16")) {
               flags.add(NNAPIFlags.USE_FP16);
             }
-            if (epOptions.hasKey("useNCHW") && options.getBoolean("useNCHW")) {
+            if (epOptions.hasKey("useNCHW") && epOptions.getBoolean("useNCHW")) {
               flags.add(NNAPIFlags.USE_NCHW);
             }
-            if (epOptions.hasKey("cpuDisabled") && options.getBoolean("cpuDisabled")) {
+            if (epOptions.hasKey("cpuDisabled") && epOptions.getBoolean("cpuDisabled")) {
               flags.add(NNAPIFlags.CPU_DISABLED);
             }
-            if (epOptions.hasKey("cpuOnly") && options.getBoolean("cpuOnly")) {
+            if (epOptions.hasKey("cpuOnly") && epOptions.getBoolean("cpuOnly")) {
               flags.add(NNAPIFlags.CPU_ONLY);
             }
           }
