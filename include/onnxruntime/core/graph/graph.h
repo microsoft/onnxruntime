@@ -877,7 +877,7 @@ class Graph {
     if (iter != node_args_.end()) {
       return iter->second.get();
     }
-    if (parent_graph_ != nullptr) {
+    if (check_ancestors && parent_graph_ != nullptr) {
       return parent_graph_->GetNodeArg(name, check_ancestors);
     }
     return nullptr;
