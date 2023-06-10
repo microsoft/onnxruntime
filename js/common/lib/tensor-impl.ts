@@ -1,12 +1,12 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {Tensor as TensorInterface} from './tensor.js';
-import {TensorToDataUrlOptions, TensorToImageDataOptions} from './tensor-conversion.js';
 import {tensorToDataURL, tensorToImageData} from './tensor-conversion-impl.js';
-import {TensorFromImageBitmapOptions, TensorFromImageDataOptions, TensorFromImageElementOptions, TensorFromUrlOptions} from './tensor-factory.js';
+import {TensorToDataUrlOptions, TensorToImageDataOptions} from './tensor-conversion.js';
 import {tensorFromImage} from './tensor-factory-impl.js';
+import {TensorFromImageBitmapOptions, TensorFromImageDataOptions, TensorFromImageElementOptions, TensorFromUrlOptions} from './tensor-factory.js';
 import {calculateSize, tensorReshape} from './tensor-utils-impl.js';
+import {Tensor as TensorInterface} from './tensor.js';
 
 type TensorType = TensorInterface.Type;
 type TensorDataType = TensorInterface.DataType;
