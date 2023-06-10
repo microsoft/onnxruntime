@@ -1152,12 +1152,12 @@ ONNX_MS_OPERATOR_SET_SCHEMA(BeamSearch, 1,
                                        "are treated as stop of the extra_decoding_ids for corresponding batch.",
                                        "I", OpSchema::Optional)
                                 .Output(0, "sequences", "Word IDs of generated sequences. Shape is (batch_size, num_return_sequences, max_sequence_length)", "I")
-                                .Output(1, "sequences_scores", "Final beam score of the generated sequences. Shape is (batch_size, num_return_sequences)", "T", OpSchema::Optional)
+                                .Output(1, "sequences_scores", "Final beam score of the generated sequences. Shape is (batch_size, num_return_sequences)", "V", OpSchema::Optional)
                                 .Output(2, "scores",
                                         "Processed beam scores for each vocabulary token at each generation step."
                                         "Beam scores consisting of log softmax scores for each vocabulary token and sum of log softmax of previously generated tokens in this beam."
                                         "Shape is (max_length - sequence_length, batch_size, num_beams, vocab_size)",
-                                        "T", OpSchema::Optional)
+                                        "V", OpSchema::Optional)
                                 .Output(3, "cross_qk",
                                         "Output the accumulated stacked Q*K in cross attentions. Let H = number of Head of cross attention, "
                                         "F = the frames or kv-seq-len of the cross attention input, T = real decoded token length, L = number of layers,"

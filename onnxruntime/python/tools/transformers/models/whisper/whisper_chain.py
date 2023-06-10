@@ -72,10 +72,17 @@ def chain_model(args):
         beam_inputs.append("")
 
     beam_outputs = ["sequences"]
+    if args.output_sequence_scores:
+        beam_outputs.append("sequence_scores")
+    if args.output_scores:
+        beam_outputs.append("scores")
+
     if args.collect_cross_qk:
-        beam_outputs.extend(["", "", "cross_qk"])
-    if args.output_no_speech_probs:
         while len(beam_outputs) < 3:
+            beam_outputs.extend([""])
+        beam_outputs.extend(["cross_qk"])
+    if args.output_no_speech_probs:
+        while len(beam_outputs) < 4:
             beam_outputs.extend([""])
         beam_outputs.extend(["no_speech_probs_beam"])
 
@@ -202,6 +209,18 @@ def chain_model(args):
     if args.output_no_speech_probs:
         no_speech_probs = helper.make_tensor_value_info("no_speech_probs", TensorProto.FLOAT, ["batch_size"])
         graph_outputs.extend([no_speech_probs])
+
+    if args.output_sequence_scores:
+        sequence_scores = helper.make_tensor_value_info(
+            "sequence_scores", TensorProto.FLOAT, ["batch_size"]
+        )
+        graph_outputs.extend([sequence_scores])
+
+    if args.output_scores:
+        scores = helper.make_tensor_value_info(
+            "scores", TensorProto.FLOAT, ["batch_size"]
+        )
+        graph_outputs.extend([scores])
 
     if hasattr(args, "use_gpu") and args.use_gpu:
         if update_decoder_subgraph_share_buffer_and_use_decoder_masked_mha(decoder_model.graph):
