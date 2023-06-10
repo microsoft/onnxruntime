@@ -187,7 +187,7 @@ void TensorrtExecutionProvider::SetGraphOuterScopeValuesAndInputs(Graph* graph_b
               type_proto->copy_from(input->TypeAsProto());
               auto& n_input = top_level_graph->GetOrCreateNodeArg(name, type_proto.get());
               context->manually_added_graph_inputs[n_input.Name()] = &n_input;
-              LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] \t" << n_input.Name() << " is added as an explicit input into the newly built graph" << std::endl;
+              LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] \t" << n_input.Name() << " is added as an explicit input into the newly built graph";
             }
           }
         }
