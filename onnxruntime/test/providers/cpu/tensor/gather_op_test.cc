@@ -415,6 +415,49 @@ TEST(GatherOpTest, Gather_axis1_neg_indices2d_int8) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});  // TensorRT: Assertion `regionRanges != nullptr' failed
 }
 
+// pytorch converter can emit Gather with a scalar indices which equates to a slice from that axis and the axis
+// essentially being squeezed.
+TEST(GatherOpTest, Gather_axis0_scalar_indices) {
+  // To test for NNAPI EP, we need the indices to be initializers
+  auto run_test = [](bool indices_is_initializer) {
+    OpTester test("Gather");
+    test.AddAttribute<int64_t>("axis", 0LL);
+    test.AddInput<float>("data", {2, 2, 2},
+                         {0.00f, 0.01f,
+                          0.10f, 0.11f,
+                          1.00f, 1.01f,
+                          1.10f, 1.11f});
+    test.AddInput<int64_t>("indices", {}, {1LL}, indices_is_initializer);
+    test.AddOutput<float>("output", {2, 2},  // second and third dims. first dim is reduced to 1 and squeezed
+                          {1.00f, 1.01f,
+                           1.10f, 1.11f});
+    test.Run();
+  };
+
+  run_test(false);
+  run_test(true);
+}
+
+TEST(GatherOpTest, Gather_axis1_scalar_indices) {
+  // To test for NNAPI EP, we need the indices to be initializers
+  auto run_test = [](bool indices_is_initializer) {
+    OpTester test("Gather");
+    test.AddAttribute<int64_t>("axis", 1LL);
+    test.AddInput<float>("data", {2, 2, 2},
+                         {0.00f, 0.01f,
+                          0.10f, 0.11f,
+                          1.00f, 1.01f,
+                          1.10f, 1.11f});
+    test.AddInput<int64_t>("indices", {}, {1LL}, indices_is_initializer);
+    test.AddOutput<float>("output", {2, 2},  // first and third dims. second dim is reduced to 1 and squeezed
+                          {0.10f, 0.11f,
+                           1.10f, 1.11f});
+    test.Run();
+  };
+
+  run_test(false);
+  run_test(true);
+}
 #ifdef ENABLE_TRAINING_OPS
 // Should remove the shrunken_gather include from ENABLE_TRAINING_OPS once 1). compute optimizer is enabled for inference or
 // 2). this is needed by inference for other purpose.
