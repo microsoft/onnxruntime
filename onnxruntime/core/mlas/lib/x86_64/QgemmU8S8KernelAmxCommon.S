@@ -6,274 +6,246 @@ Licensed under the MIT License.
 
 Module Name:
 
-	QgemmU8S8KernelAmxCommon.s
+    AssembleAmx.h
 
 Abstract:
 
-    This module implements the common operators for quantized U8S8 AMX GEMM kernel.
-
-    This implementation uses AMX instructions.
+    This module contains macros to build AMX instructions for toolchains that
+    do not natively support this newer instruction set extension.
 
 --*/
 
-#include "asmmacro.h"
-#include "AssembleAmx.h"
+	.intel_syntax noprefix
+//
+// Map friendly register names to the encoded register index.
+//
 
-        .intel_syntax noprefix
+	.equ    .LTmmIndex_tmm0, 0
+        .equ    .LTmmIndex_tmm1, 1
+        .equ    .LTmmIndex_tmm2, 2
+        .equ    .LTmmIndex_tmm3, 3
+        .equ    .LTmmIndex_tmm4, 4
+        .equ    .LTmmIndex_tmm5, 5
+        .equ    .LTmmIndex_tmm6, 6
+        .equ    .LTmmIndex_tmm7, 7
+        
+	.equ    .LGprIndex_rax, 0
+        .equ    .LGprIndex_rcx, 1
+        .equ    .LGprIndex_rdx, 2
+        .equ    .LGprIndex_rbx, 3
+        .equ    .LGprIndex_rbp, 5
+        .equ    .LGprIndex_rsi, 6
+        .equ    .LGprIndex_rdi, 7
+        .equ    .LGprIndex_r8,  8
+        .equ    .LGprIndex_r9,  9
+        .equ    .LGprIndex_r10, 10
+        .equ    .LGprIndex_r11, 11
+        .equ    .LGprIndex_r12, 12
+        .equ    .LGprIndex_r13, 13
+        .equ    .LGprIndex_r14, 14
+        .equ    .LGprIndex_r15, 15
 
 /*++
 
-Routine Description:
+Macro Description:
 
-	Following four routines implement the tile dot product routines
-	used in the Qgemm U8S8 AMX kernel.
+    This macro builds a AMX instruction of the form:
+
+        instr tmm1,tmm2,tmm3
 
 Arguments:
 
-    dst (rdi) - Supplies the destination tile id.
+    prefix - Specifies the opcode for the AMX instruction.
 
-    src1 (rsi) - Supplies the first source tile id. 
+    DestReg - Specifies the destination AMX tile.
 
-    src2 (rdx) - Supplies the second source tile id.
+    Src1Reg - Specifies the first source AMX tile.
 
-Return Value:
-	
-	None
+    Src2Reg - Specifies the second source AMX tile.
 
 --*/
-	
-	.globl  C_UNDERSCORE(MlasTdpAmxT4T2T0)
-C_UNDERSCORE(MlasTdpAmxT4T2T0):
 
-	TdpbusdTmmTmmTmm tmm4, tmm2, tmm0	
+        .macro DPTmmTmmTmm prefix, DestReg, Src1Reg, Src2Reg
 
-	ret
+        .set    Payload0, 0x02              # "0F 38" prefix
+        .set    Payload0, Payload0 + ((((.LTmmIndex_\DestReg\() >> 3) & 1) ^ 1) << 7)
+        .set    Payload0, Payload0 + (1 << 6)
+        .set    Payload0, Payload0 + ((((.LTmmIndex_\Src2Reg\() >> 3) & 1) ^ 1) << 5)
 
-	.globl  C_UNDERSCORE(MlasTdpAmxT5T3T0)
-C_UNDERSCORE(MlasTdpAmxT5T3T0):
+        .set    Payload1, \prefix\()
+        .set    Payload1, Payload1 + (((.LTmmIndex_\Src2Reg\() & 15) ^ 15) << 3)
 
-	TdpbusdTmmTmmTmm tmm5, tmm3, tmm0	
+        .set    ModRMByte, 0xC0             # register form
+        .set    ModRMByte, ModRMByte + ((.LTmmIndex_\DestReg\() & 7) << 3)
+        .set    ModRMByte, ModRMByte + (.LTmmIndex_\Src1Reg\() & 7)
 
-	ret
+        .byte   0xC4, Payload0, Payload1, 0x5E, ModRMByte
 
-	.globl  C_UNDERSCORE(MlasTdpAmxT6T2T1)
-C_UNDERSCORE(MlasTdpAmxT6T2T1):
+        .endm
 
-	TdpbusdTmmTmmTmm tmm6, tmm2, tmm1	
 
-	ret
+        .macro TdpbssdTmmTmmTmm DestReg, Src1Reg, Src2Reg
 
-	.globl  C_UNDERSCORE(MlasTdpAmxT7T3T1)
-C_UNDERSCORE(MlasTdpAmxT7T3T1):
+        DPTmmTmmTmm 0x03, \DestReg\(), \Src1Reg\(), \Src2Reg\()
 
-	TdpbusdTmmTmmTmm tmm7, tmm3, tmm1	
+        .endm
 
-	ret
 
+        .macro TdpbsudTmmTmmTmm DestReg, Src1Reg, Src2Reg
+
+        DPTmmTmmTmm 0x02, \DestReg\(), \Src1Reg\(), \Src2Reg\()
+
+        .endm
+
+
+        .macro TdpbusdTmmTmmTmm DestReg, Src1Reg, Src2Reg
+
+        DPTmmTmmTmm 0x01, \DestReg\(), \Src1Reg\(), \Src2Reg\()
+
+        .endm
+
+
+        .macro TdpbuudTmmTmmTmm DestReg, Src1Reg, Src2Reg
+
+        DPTmmTmmTmm 0x00, \DestReg\(), \Src1Reg\(), \Src2Reg\()
+
+        .endm
 
 /*++
 
-Routine Description:
+Macro Description:
 
-	Following routines implement the tile load routines
-	used in the Qgemm U8S8 AMX kernel.
+    This macro builds a AMX tile release instruction.
 
 Arguments:
 
-	dst (rdi) - Supplies the destination tile id.
 
-    	base (rsi) - Supplies the base address of memory location.
-
-    	stride (rdx) - Supplies the stride for tile load.
-
-Return Value:
-	
-	None
 
 --*/
 
-.globl  C_UNDERSCORE(MlasLoadAmxT0)
-C_UNDERSCORE(MlasLoadAmxT0):
+//        .macro TileReleaseMacro
 
-	TileloaddTmmMem tmm0, rsi, rdx
+//        .byte 0xC4, 0xE2, 0x78, 0x49, 0xC0
 
-	ret
-
-.globl  C_UNDERSCORE(MlasLoadAmxT1)
-C_UNDERSCORE(MlasLoadAmxT1):
-
-	TileloaddTmmMem tmm1, rsi, rdx
-
-	ret
-
-.globl  C_UNDERSCORE(MlasLoadAmxT2)
-C_UNDERSCORE(MlasLoadAmxT2):
-
-	TileloaddTmmMem tmm2, rsi, rdx
-
-	ret
-
-.globl  C_UNDERSCORE(MlasLoadAmxT3)
-C_UNDERSCORE(MlasLoadAmxT3):
-
-	TileloaddTmmMem tmm3, rsi, rdx
-
-	ret
-
-.globl  C_UNDERSCORE(MlasLoadAmxT4)
-C_UNDERSCORE(MlasLoadAmxT4):
-
-	TileloaddTmmMem tmm4, rsi, rdx
-
-	ret
-
-.globl  C_UNDERSCORE(MlasLoadAmxT5)
-C_UNDERSCORE(MlasLoadAmxT5):
-
-	TileloaddTmmMem tmm5, rsi, rdx
-
-	ret
-
-.globl  C_UNDERSCORE(MlasLoadAmxT6)
-C_UNDERSCORE(MlasLoadAmxT6):
-
-	TileloaddTmmMem tmm6, rsi, rdx
-
-	ret
-
-.globl  C_UNDERSCORE(MlasLoadAmxT7)
-C_UNDERSCORE(MlasLoadAmxT7):
-
-	TileloaddTmmMem tmm7, rsi, rdx
-
-	ret
+//        .endm
 
 
 /*++
 
-Routine Description:
+Macro Description:
 
-	Following routines implement the tile store routines
-	used in the Qgemm U8S8 AMX kernel.
+    This macro builds an AMX tile zero instruction of the form:
+
+        instr tmm1
 
 Arguments:
 
-	src (rdi) - Supplies the source tile id.
-
-    	base (rsi) - Supplies the base address of memory location.
-
-    	stride (rdx) - Supplies the stride for tile store.
-
-Return Value:
-	
-	None
+    SrcReg - Specifies the source AMX tile.
 
 --*/
 
-.globl  C_UNDERSCORE(MlasStoreAmxT0)
-C_UNDERSCORE(MlasStoreAmxT0):
+        .macro TileZeroMacro SrcReg
 
-	TileStoredMemTmm tmm0, rsi, rdx
+        .set ModRMByte, 0xC0     # register form
+        .set    ModRMByte, ModRMByte + ((.LTmmIndex_\SrcReg\() & 7) << 3)
+        .byte   0xC4, 0xE2, 0x7B, 0x49, ModRMByte
 
-	ret
-
-.globl  C_UNDERSCORE(MlasStoreAmxT1)
-C_UNDERSCORE(MlasStoreAmxT1):
-
-	TileStoredMemTmm tmm1, rsi, rdx
-
-	ret
-
-.globl  C_UNDERSCORE(MlasStoreAmxT2)
-C_UNDERSCORE(MlasStoreAmxT2):
-
-	TileStoredMemTmm tmm2, rsi, rdx
-
-	ret
-
-.globl  C_UNDERSCORE(MlasStoreAmxT3)
-C_UNDERSCORE(MlasStoreAmxT3):
-
-	TileStoredMemTmm tmm3, rsi, rdx
-
-	ret
-
-.globl  C_UNDERSCORE(MlasStoreAmxT4)
-C_UNDERSCORE(MlasStoreAmxT4):
-
-	TileStoredMemTmm tmm4, rsi, rdx
-
-	ret
-
-.globl  C_UNDERSCORE(MlasStoreAmxT5)
-C_UNDERSCORE(MlasStoreAmxT5):
-
-	TileStoredMemTmm tmm5, rsi, rdx
-
-	ret
-
-.globl  C_UNDERSCORE(MlasStoreAmxT6)
-C_UNDERSCORE(MlasStoreAmxT6):
-
-	TileStoredMemTmm tmm6, rsi, rdx
-
-	ret
-
-.globl  C_UNDERSCORE(MlasStoreAmxT7)
-C_UNDERSCORE(MlasStoreAmxT7):
-
-	TileStoredMemTmm tmm7, rsi, rdx
-
-	ret
+        .endm
 
 /*++
 
-Routine Description:
+Macro Description:
 
-	Following routine implements the tile config load routines
-	used in the Qgemm U8S8 AMX kernel.
+    This macro builds an AMX memory instruction of the form:
+
+        instr tmm, base, stride
 
 Arguments:
 
-	src (rdi) - Supplies the memory address for the tile configuration.
+    instr - Specifies the opcode for the AMX instruction.
 
-Return Value:
-	
-	None
+    SrcReg - Specifies the target AMX tile.
+
+    BaseReg - Specifies the base address of memory location.
+
+    Stride - Specifies the stride for the memory instruction
 
 --*/
 
-.globl  C_UNDERSCORE(MlasLoadConfigAmx)
-C_UNDERSCORE(MlasLoadConfigAmx):
+        .macro TileLoadMacro instr, SrcReg, BaseReg, Stride
 
-	ldtilecfgMacro rdi
+        .set    Payload0, 0x02              # "0F 38" prefix
+        .set    Payload0, Payload0 + ((((.LTmmIndex_\SrcReg\() >> 3) & 1) ^ 1) << 7)
+        .set    Payload0, Payload0 + ((((.LGprIndex_\Stride\() >> 3) & 1) ^ 1) << 6)
+        .set    Payload0, Payload0 + ((((.LGprIndex_\BaseReg\() >> 3) & 1) ^ 1) << 5)
 
-	ret
+        .set ModRMByte, 0x00     # memory form
+        .set ModRMByte, ModRMByte + (1 << 2)   # SibBye required
+        .set ModRMByte, ModRMByte + ((.LTmmIndex_\SrcReg\() & 7) << 3)
+
+        .set SibByte, 0x00  # scale factor 1(SS)
+        .set SibByte, SibByte + ((.LGprIndex_\Stride\() & 7) << 3)
+        .set SibByte, SibByte + (.LGprIndex_\BaseReg\() & 7)
+
+        .byte   0xC4, Payload0, \instr\(), 0x4B, ModRMByte, SibByte
+
+        .endm
+
+
+        .macro TileloaddTmmMem DstReg, BaseReg, Stride
+        TileLoadMacro 0x7B, \DstReg\(), \BaseReg\(), \Stride\()
+        .endm
+
+        .macro TileloaddT1TmmMem DstReg, BaseReg, Stride
+        TileLoadMacro 0x79, \DstReg\(), \BaseReg\(), \Stride\()
+        .endm
+
+
+        .macro TileStoredMemTmm SrcReg, BaseReg, Stride
+        TileLoadMacro 0x7A, \SrcReg\(), \BaseReg\(), \Stride\()
+        .endm
 
 
 /*++
 
-Routine Description:
+Macro Description:
 
-	Following routine implements the tile store config routines
-	used in the Qgemm U8S8 AMX kernel.
+    This macro builds an AMX tile configuration instruction of the form:
+
+        instr base
 
 Arguments:
 
-	src (rdi) - Supplies the memory address for the tile configuration.
+    instr - Specifies the opcode for the AMX instruction.
 
-Return Value:
-	
-	None
+    BaseReg - Specifies the memory address of the tile configuration.
 
 --*/
 
-.globl  C_UNDERSCORE(MlasStoreConfigAmx)
-C_UNDERSCORE(MlasStoreConfigAmx):
+        .macro tilecfgMacro instr, BaseReg
+	.set    Payload0, 0x02              # "0F 38" prefix
+	.set    Payload0, Payload0 + (1 << 7)
+	.set    Payload0, Payload0 + (1 << 6)
+	.set    Payload0, Payload0 + ((((.LGprIndex_\BaseReg\() >> 3) & 1) ^ 1) << 5)
 
-	sttilecfgMacro rdi
+	.set ModRMByte, 0x00     # memory form & no reg
+	.set ModRMByte, ModRMByte + (.LGprIndex_\BaseReg\() & 7)
 
-	ret
+	.byte 0xC4, Payload0, \instr\(), 0x49, ModRMByte
 
-	.end
+        .endm
 
+
+        .macro ldtilecfgMacro BaseReg
+
+        tilecfgMacro 0x78, \BaseReg\()
+
+        .endm
+
+
+        .macro sttilecfgMacro BaseReg
+        
+	tilecfgMacro 0x79, \BaseReg\()
+
+        .endm
+	
