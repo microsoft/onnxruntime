@@ -394,7 +394,7 @@ def main(argv=None):
 
         # Remove extra ONNX models saved in output directory
         for fle in os.listdir(output_dir):
-            if "_beamsearch" not in path:
+            if "_beamsearch" not in fle:
                 os.remove(os.path.join(output_dir, fle))
         output_paths = [args.beam_model_output_dir]
 
