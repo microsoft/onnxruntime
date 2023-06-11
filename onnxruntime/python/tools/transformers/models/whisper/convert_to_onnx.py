@@ -393,9 +393,9 @@ def main(argv=None):
             logger.warning(e)
 
         # Remove extra ONNX models saved in output directory
-        for path in os.listdir(output_dir):
+        for fle in os.listdir(output_dir):
             if "_beamsearch" not in path:
-                os.remove(os.path.join(output_dir, path))
+                os.remove(os.path.join(output_dir, fle))
         output_paths = [args.beam_model_output_dir]
 
     logger.info(f"Done! Outputs: {output_paths}")
