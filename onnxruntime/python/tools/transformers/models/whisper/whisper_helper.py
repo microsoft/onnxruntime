@@ -64,7 +64,7 @@ class WhisperHelper:
         if os.path.isdir(model_name_or_path):
             model_name = Path(model_name_or_path).parts[-1]
         else:
-            model_name.split("/")[-1]
+            model_name = model_name.split("/")[-1]
 
         model_name += suffix
 

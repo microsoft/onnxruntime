@@ -8,8 +8,6 @@ import argparse
 import copy
 import logging
 import os
-import re
-import shutil
 import sys
 
 import torch
@@ -394,17 +392,11 @@ def main(argv=None):
             logger.warning("An error occurred while trying to verify parity between PyTorch and ONNX Runtime.")
             logger.warning(e)
 
-        # Change directory layout from <output dir>/openai/<all models> to <output dir>/<model name>_beamsearch.onnx[.data]
-        # if using pre-trained model name
-        if re.search("^openai/whisper-[a-z]*", args.model_name_or_path):
-            old_model_path = os.path.join(args.output, args.model_name_or_path + "_beamsearch")
-            new_model_path = os.path.join(args.output, args.model_name_or_path[len("openai/") :] + "_beamsearch")
-            output_paths = [path for path in output_paths if "_beamsearch" in path]
-            output_paths = [path.replace("/openai/", "/") for path in output_paths]
-
-            os.rename(old_model_path + ".onnx", new_model_path + ".onnx")
-            os.rename(old_model_path + ".onnx.data", new_model_path + ".onnx.data")
-            shutil.rmtree(os.path.join(args.output, "openai"))
+        # Remove extra ONNX models saved in output directory
+        for path in os.listdir(output_dir):
+            if "_beamsearch" not in path:
+                os.remove(os.path.join(output_dir, path))
+        output_paths = [args.beam_model_output_dir]
 
     logger.info(f"Done! Outputs: {output_paths}")
 
