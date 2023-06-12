@@ -167,7 +167,7 @@ class StatisticsSubscriber(SubscriberBase):
             f.write(
                 f"{'>'*max(0, depth) + display_name} shape: {tensor_shape} dtype: {tensor_dtype} size: {flatten_array.size()} \n"
                 f"min: {min_value} max: {max_value}, mean: {mean_value}, "
-                f"mean_of_std: {std_value} \n"
+                f"std: {std_value} \n"
                 f"nan: {num_nan}, inf: {num_inf}\n"
             )
             f.write(f"samples(top 128): {flatten_array[:128]}\n")
