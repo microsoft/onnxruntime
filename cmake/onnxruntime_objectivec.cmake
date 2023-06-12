@@ -40,6 +40,16 @@ file(GLOB onnxruntime_objc_srcs CONFIGURE_DEPENDS
     "${OBJC_ROOT}/*.m"
     "${OBJC_ROOT}/*.mm")
 
+if(NOT onnxruntime_ENABLE_TRAINING_APIS)
+    list(REMOVE_ITEM onnxruntime_objc_headers
+        "${OBJC_ROOT}/include/ort_checkpoint.h")
+
+    list(REMOVE_ITEM onnxruntime_objc_srcs
+        "${OBJC_ROOT}/ort_checkpoint_internal.h"
+        "${OBJC_ROOT}/ort_checkpoint.mm")
+endif()
+
+
 source_group(TREE "${OBJC_ROOT}" FILES
     ${onnxruntime_objc_headers}
     ${onnxruntime_objc_srcs})
@@ -59,6 +69,13 @@ if(onnxruntime_USE_COREML)
     target_include_directories(onnxruntime_objc
         PRIVATE
             "${ONNXRUNTIME_INCLUDE_DIR}/core/providers/coreml")
+endif()
+
+if (onnxruntime_ENABLE_TRAINING_APIS)
+    target_include_directories(onnxruntime_objc
+        PRIVATE
+            "${ORTTRAINING_SOURCE_DIR}/training_api/include/")
+
 endif()
 
 find_library(FOUNDATION_LIB Foundation REQUIRED)
@@ -105,6 +122,12 @@ if(onnxruntime_BUILD_UNIT_TESTS)
         "${OBJC_ROOT}/test/*.m"
         "${OBJC_ROOT}/test/*.mm")
 
+    if(NOT onnxruntime_ENABLE_TRAINING_APIS)
+        list(REMOVE_ITEM onnxruntime_objc_test_srcs
+            "${OBJC_ROOT}/test/ort_checkpoint_test.mm")
+
+    endif()
+
     source_group(TREE "${OBJC_ROOT}" FILES ${onnxruntime_objc_test_srcs})
 
     xctest_add_bundle(onnxruntime_objc_test onnxruntime_objc
@@ -124,6 +147,7 @@ if(onnxruntime_BUILD_UNIT_TESTS)
     add_custom_command(TARGET onnxruntime_objc_test POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_directory
             "${OBJC_ROOT}/test/testdata"
+            "${ONNXRUNTIME_ROOT}/test/testdata/training_api"
             "$<TARGET_BUNDLE_CONTENT_DIR:onnxruntime_objc_test>/Resources")
 
     xctest_add_test(XCTest.onnxruntime_objc_test onnxruntime_objc_test)

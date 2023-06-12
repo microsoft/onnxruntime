@@ -53,7 +53,6 @@ class ConvOpBuilder : public BaseOpBuilder {
 // The nodes from 1st call of GetCapability do not get layout transformer applied, it's still NCHW
 // The nodes from 2nd call of GetCapability get layout transformer applied, it's NHWC
 // Need to do op validation in 1st call of GetCapability
-// TODO: Check if node domain == kMSInternalNHWCDomain to determine if the layout has been transformed.
 Status ConvOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
                                     const NodeUnit& node_unit,
                                     const logging::Logger& logger,
@@ -128,7 +127,6 @@ Status ConvOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
                                     bool is_quantized_model,
                                     std::vector<std::string>& input_names,
                                     bool do_op_validation) const {
-  ORT_UNUSED_PARAMETER(do_op_validation);
   Qnn_QuantizeParams_t quantize_param = QNN_QUANTIZE_PARAMS_INIT;
   InitializeQuantizeParam(quantize_param, is_quantized_model);
   Qnn_DataType_t qnn_data_type = QNN_DATATYPE_FLOAT_32;
@@ -192,6 +190,7 @@ Status ConvOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
                                                                        new_input_shape,
                                                                        qnn_data_type,
                                                                        quantize_param,
+                                                                       do_op_validation,
                                                                        is_graph_input));
         } else if (node_unit.OpType() == "ConvTranspose") {
           ORT_RETURN_IF_ERROR(qnn_model_wrapper.AddCnhwToHwcnTranspose(node_unit.Index(),
@@ -201,6 +200,7 @@ Status ConvOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
                                                                        new_input_shape,
                                                                        qnn_data_type,
                                                                        quantize_param,
+                                                                       do_op_validation,
                                                                        is_graph_input));
         } else {
           ORT_THROW("Unexpected operator %s", node_unit.OpType());
@@ -211,14 +211,14 @@ Status ConvOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
     }
     input_names.push_back(input_tensor_name);
 
-    if (qnn_model_wrapper.IsQnnTensorWrapperExist(input_name)) {
-      LOGS(logger, VERBOSE) << "Tensor already added, skip it: " << input_name;
+    if (qnn_model_wrapper.IsQnnTensorWrapperExist(input_tensor_name)) {
+      LOGS(logger, VERBOSE) << "Tensor already added, skip it: " << input_tensor_name;
       continue;
     }
 
-    Qnn_TensorType_t tensor_type = GetInputTensorType(qnn_model_wrapper, input_name);
+    Qnn_TensorType_t tensor_type = GetInputTensorType(qnn_model_wrapper, input_tensor_name);
 
-    QnnTensorWrapper input_tensorwrapper(input_name, tensor_type, qnn_data_type, quantize_param,
+    QnnTensorWrapper input_tensorwrapper(input_tensor_name, tensor_type, qnn_data_type, quantize_param,
                                          std::move(input_shape), std::move(unpacked_tensor));
     ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(input_tensorwrapper)), "Failed to add tensor.");
   }
@@ -311,15 +311,26 @@ Status ConvOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wra
       total_padding[0] = stride_values[0] * (input_0_shape[1] - 1) + output_padding_0 + (input_1_shape[2] - 1) * dilations_0 + 1 - output_shape[1];
       total_padding[1] = stride_values[1] * (input_0_shape[2] - 1) + output_padding_1 + (input_1_shape[3] - 1) * dilations_1 + 1 - output_shape[2];
     } else {
-      total_padding[0] = output_shape[1] * stride_values[0] - input_0_shape[1] + 1;
-      total_padding[1] = output_shape[1] * stride_values[0] - input_0_shape[2] + 1;
+      // dilated_filter_height = (shape(in[1])[height] - 1) * dilation[0] + 1
+      // height_out = floor((pad_amount[0,0] + shape(in[0])[height] + pad_amount[0,1] - dilated_filter_height) / stride[0] + 1)
+      //
+      // Set total_height_padding equal to pad_amount[0,0] + pad_amount[0,1], and solve for it.
+      uint32_t dilated_filter_height = (input_1_shape[2] - 1) * dilations_0 + 1;
+      total_padding[0] = (output_shape[1] - 1) * stride_values[0] + dilated_filter_height - input_0_shape[1];  // Total height padding
+
+      // dilated_filter_width = (shape(in[1])[width] - 1) * dilation[1] + 1
+      // width_out = floor((pad_amount[1,0] + shape(in[0])[width] + pad_amount[1,1] - dilated_filter_width) / stride[1] + 1)
+      //
+      // Set total_width_padding equal to pad_amount[1,0] + pad_amount[1,1], and solve for it.
+      uint32_t dilated_filter_width = (input_1_shape[3] - 1) * dilations_1 + 1;
+      total_padding[1] = (output_shape[2] - 1) * stride_values[1] + dilated_filter_width - input_0_shape[2];  // Total width padding
     }
-    if (auto_pad.compare("SAME_UPPER")) {
+    if (auto_pad.compare("SAME_UPPER") == 0) {
       pad_values[0] = total_padding[0] / 2;
       pad_values[1] = total_padding[1] / 2;
       pad_values[2] = total_padding[0] - pad_values[0];
       pad_values[3] = total_padding[1] - pad_values[1];
-    } else if (auto_pad.compare("SAME_LOWER")) {
+    } else if (auto_pad.compare("SAME_LOWER") == 0) {
       pad_values[2] = total_padding[0] / 2;
       pad_values[3] = total_padding[1] / 2;
       pad_values[0] = total_padding[0] - pad_values[2];
