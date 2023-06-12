@@ -255,7 +255,7 @@ TEST(XnnpackEP, DISABLED_TestQDQConvS8S8) {  //  [ONNXRuntimeError] : 9 : NOT_IM
   RunModelTestWithPath(ort_model_path, "xnnpack_qdq_test_graph_conv_s8s8", graph_verify, 0.2f);
 }
 
-TEST(XnnpackEP, DISABLED_TestQDQConvS8S8_per_channel) {
+TEST(XnnpackEP, TestQDQConvS8S8_per_channel) {
   std::function<void(const Graph&)> graph_verify = [](const Graph& graph) -> void {
     ASSERT_EQ(graph.NumberOfNodes(), 5) << "Transpose*2 + dq +q +qlinearconv "
                                            "leaving 5 nodes.";
@@ -433,7 +433,7 @@ TEST(XnnpackEP, TestConvTranspose_With_OutputShape) {
                });
 }
 
-TEST(XnnpackEP, DISABLED_TestConvTranspose_qdq) {
+TEST(XnnpackEP, TestConvTranspose_qdq) {
   const ORTCHAR_T* ort_model_path = ORT_MODEL_FOLDER "test_conv_follow_convtrans_s8.onnx";
   RunModelTestWithPath(ort_model_path, "test_conv_follow_convtrans_s8", nullptr, 0.2f);
 }
