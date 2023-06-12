@@ -1,164 +1,96 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/common/inlined_containers.h"
-#include "core/common/logging/logging.h"
-#include "core/common/logging/sinks/clog_sink.h"
-#include "core/common/path.h"
-#include "core/framework/framework_common.h"
-#include "core/graph/graph_viewer.h"
-#include "core/graph/model.h"
-#include "core/platform/env.h"
-#include "core/platform/path_lib.h"
-#include "core/util/protobuf_parsing_utils.h"
-
-#include "orttraining/core/framework/checkpoint_common.h"
-#include "orttraining/core/framework/protobuf_message_sequence.h"
 #include "orttraining/training_api/checkpoint.h"
-#include "orttraining/training_api/utils.h"
 
-namespace onnxruntime {
-namespace training {
-namespace api {
+#include <filesystem>
+
+#include "core/flatbuffers/schema/ort_training.fbs.h"
+#include "core/framework/framework_common.h"
+#include "core/framework/tensorprotoutils.h"
+#include "core/graph/graph_flatbuffers_utils.h"
+
+namespace onnxruntime::training::api {
 
 namespace {
 
-const PathString k_tensor_proto_file_name = ORT_TSTR("tensors.pbseq");
-const PathString k_tensor_proto_properties_file_name = ORT_TSTR("properties.pbseq");
-const PathString k_trainable_param_root_prefix = ORT_TSTR("paramtrain");
-const PathString k_non_trainable_param_root_prefix = ORT_TSTR("paramfrozen");
-const PathString k_optimizer_root_prefix = ORT_TSTR("optim");
-const PathString k_property_root_prefix = ORT_TSTR("custom");
-const PathString k_name_separator = ORT_TSTR("_");
-
-const char builtin_lr_property_name[] = "builtin.initial_learning_rate";
-const char builtin_step_property_name[] = "builtin.step";
-
 /**
- * @brief Create TensorProtos From OrtValue objects
+ * @brief Create flatbuffer tensors from OrtValue objects
  *
- * @param name_to_ort_value name to OrtValue mapping.
- * @param data_transfer_manager data transfer manager to copy the tensor in OrtValue.
- * @param saved_tensor_protos saved results.
- * @return Status
+ * @param name_to_ort_value Name to OrtValue map.
+ * @param data_transfer_manager Data transfer manager to copy the OrtValue tensor to a cpu buffer.
+ * @param builder Builder to create flatbuffer tensors.
+ * @param flatbuffer_tensors Flatbuffer tensors to be populated.
+ * @return Status of the operation.
  */
-Status CreateTensorProtosFromOrtValues(
-    const NameMLValMap& name_to_ort_value,
+Status FlatbufferTensorsFromOrtValues(
+    const InlinedHashMap<std::string, OrtValue>& name_to_ort_value,
     const DataTransferManager& data_transfer_manager,
-    std::vector<ONNX_NAMESPACE::TensorProto>& saved_tensor_protos) {
-  // Order the tensors by name.
-  InlinedVector<std::string> ordered_tensor_names{};
-  ordered_tensor_names.reserve(name_to_ort_value.size());
-  std::transform(name_to_ort_value.begin(), name_to_ort_value.end(), std::back_inserter(ordered_tensor_names),
-                 [](const NameMLValMap::value_type& v) { return v.first; });
-  std::sort(ordered_tensor_names.begin(), ordered_tensor_names.end());
-
-  saved_tensor_protos.reserve(ordered_tensor_names.size());
-
-  uint64_t total_bytes = 0;
-  constexpr uint64_t PROTOBUF_UPPER_LIMIT = 2 * 1000 * 1000 * 1000;
-  for (const auto& tensor_name : ordered_tensor_names) {
-    const OrtValue& ort_value = name_to_ort_value.at(tensor_name);
-    ORT_RETURN_IF_NOT(ort_value.IsTensor(), "ort_value.IsTensor() was false");
-    const Tensor& src_tensor = ort_value.Get<Tensor>();
-
-    // Currently large model size not considered, so exception thrown here
-    // when protobuf upper limit hit.
-    total_bytes += static_cast<uint64_t>(src_tensor.SizeInBytes());
-    if (total_bytes >= PROTOBUF_UPPER_LIMIT) {
-      ORT_THROW("checkpoint file size hit upper limit.");
-    }
-
-    saved_tensor_protos.emplace_back(utils::CopyTensorToTensorProto(
-        src_tensor, tensor_name, data_transfer_manager));
+    flatbuffers::FlatBufferBuilder& builder,
+    std::vector<flatbuffers::Offset<fbs::Tensor>>& flatbuffer_tensors) {
+  for (const auto& [name, ort_value] : name_to_ort_value) {
+    flatbuffers::Offset<fbs::Tensor> fbs_tensor;
+    ORT_RETURN_IF_ERROR(fbs::utils::SaveOrtValueOrtFormat(name, ort_value, data_transfer_manager, builder, fbs_tensor));
+    flatbuffer_tensors.emplace_back(fbs_tensor);
   }
 
   return Status::OK();
 }
 
-PathString GetTensorProtoFilePath(const PathString& checkpoint_directory, const PathString& filename_prefix) {
-  std::basic_ostringstream<PathChar> oss;
-  oss << filename_prefix << k_name_separator << k_tensor_proto_file_name;
-  return ConcatPathComponent<PathChar>(checkpoint_directory, oss.str());
-}
+/**
+ * @brief Create OrtValue objects from flatbuffer tensors.
+ *
+ * @param flatbuffer_tensors Flatbuffer tensors.
+ * @param name_to_ort_value Name to OrtValue map to be populated.
+ * @return Status of the operation.
+ */
+Status OrtValuesFromFlatbufferTensors(
+    const flatbuffers::Vector<flatbuffers::Offset<onnxruntime::fbs::Tensor>>* flatbuffer_tensors,
+    InlinedHashMap<std::string, OrtValue>& name_to_ort_value) {
+  ORT_RETURN_IF_NOT(flatbuffer_tensors, "Expected: Both trainable and non trainable tensors must exist.",
+                    " Actual: Encountered a nullptr. Checkpoint file is invalid");
 
-PathString GetTensorProtoPropertiesFilePath(
-    const PathString& checkpoint_directory, const PathString& filename_prefix) {
-  std::basic_ostringstream<PathChar> oss;
-  oss << filename_prefix << k_name_separator << k_tensor_proto_properties_file_name;
-  return ConcatPathComponent<PathChar>(checkpoint_directory, oss.str());
-}
+  for (auto* fbs_tensor : *flatbuffer_tensors) {
+    ORT_RETURN_IF_NOT(fbs_tensor, "Encountered a nullptr flatbuffer tensor. Checkpoint file is invalid.");
 
-PathString StringConcat(
-    const PathString& s_a, const PathString& s_b,
-    const PathString& del = k_name_separator) {
-  std::basic_ostringstream<PathChar> oss;
-  oss << s_a << del << s_b;
-  return oss.str();
-}
-
-void StringSplit(const PathString& s, std::vector<PathString>& results,
-                 const PathString& del = k_name_separator) {
-  ORT_ENFORCE(!s.empty(), "String to split is empty");
-  size_t start = 0;
-  size_t end = s.find(del);
-  while (end != std::string::npos) {
-    results.push_back(s.substr(start, end - start));
-    start = end + del.size();
-    end = s.find(del, start);
+    std::string tensor_name;
+    OrtValue ort_value;
+    ORT_RETURN_IF_ERROR(fbs::utils::LoadOrtValueOrtFormat(*fbs_tensor, tensor_name, ort_value));
+    name_to_ort_value.emplace(tensor_name, ort_value);
   }
-  results.push_back(s.substr(start, end - start));
+
+  return Status::OK();
 }
 
-bool StringStartsWith(PathString const& s, PathString const& p) {
-  return s.rfind(p, 0) == 0;
+namespace Save {
+
+/**
+ * @brief Save from a checkpoint flatbuffer to file.
+ * @param checkpoint_path Path to save the checkpoint file.
+ * @param builder Flatbuffer builder containing the checkpoint buffer.
+ * @return Status of the operation.
+ *
+ */
+Status ToFile(const PathString& checkpoint_path, flatbuffers::FlatBufferBuilder& builder) {
+  std::ofstream file(checkpoint_path, std::ios::binary);
+  uint8_t* buf = builder.GetBufferPointer();
+  int size = builder.GetSize();
+  file.write(reinterpret_cast<const char*>(buf), size);
+  ORT_RETURN_IF_NOT(file, "Failed to save ORT format model to file: ", ToUTF8String(checkpoint_path));
+
+  return Status::OK();
 }
 
-bool StringEndsWith(PathString const& s, PathString const& p) {
-  if (p.size() > s.size()) return false;
-  return std::equal(p.rbegin(), p.rend(), s.rbegin());
-}
-
-void WriteTensorProtoToFile(const PathString& file_path,
-                            const std::vector<ONNX_NAMESPACE::TensorProto>& tensor_protos,
-                            std::string caller_context) {
-  auto file_write_status = WithOpenFile(
-      file_path, false,
-      [&tensor_protos](int fd) {
-        google::protobuf::io::FileOutputStream output{fd};
-        ORT_RETURN_IF_ERROR(WriteProtoMessageSequence(tensor_protos, output));
-        return Status::OK();
-      });
-
-  ORT_ENFORCE(file_write_status.IsOK(), caller_context, " write file failed: ", ToUTF8String(file_path));
-}
-
-void LoadTensorProtoFromFile(const PathString& file_path,
-                             std::vector<ONNX_NAMESPACE::TensorProto>& tensor_protos,
-                             std::string caller_context) {
-  auto file_read_status = WithOpenFile(
-      file_path, true,
-      [&tensor_protos](int fd) {
-        google::protobuf::io::FileInputStream input{fd};
-        ORT_RETURN_IF_ERROR(ReadProtoMessageSequence(tensor_protos, input));
-        return Status::OK();
-      });
-
-  ORT_ENFORCE(file_read_status.IsOK(), caller_context, " load file failed: ", ToUTF8String(file_path));
-}
-
-template <typename Func>
-void FilterFilesFromDirectory(const PathString& folder_path, Func func) {
-  LoopDir(folder_path, [&func](const PathChar* filename, OrtFileType file_type) -> bool {
-    if (filename[0] == '.' || file_type == OrtFileType::TYPE_DIR) {
-      return true;
-    }
-
-    return func(filename);
-  });
-}
-
-Status OrtSaveInternal(
+#if !defined(ORT_MINIMAL_BUILD)
+/**
+ * @brief Save from ONNX initializers to a checkpoint file.
+ *
+ * @param trainable_tensor_protos trainable parameters in TensorProto format.
+ * @param non_trainable_tensor_protos non-trainable parameters in TensorProto format.
+ * @param checkpoint_path file where checkpoint is saved.
+ * @return Status
+ */
+Status FromTensorProtos(
     const std::vector<ONNX_NAMESPACE::TensorProto>& trainable_tensor_protos,
     const std::vector<ONNX_NAMESPACE::TensorProto>& non_trainable_tensor_protos,
     const PathString& checkpoint_path) {
@@ -169,413 +101,542 @@ Status OrtSaveInternal(
   auto check_unique = [](const std::vector<ONNX_NAMESPACE::TensorProto>& tensor_protos,
                          std::set<std::string>& unique_names) {
     for (auto& tensor_proto : tensor_protos) {
-      ORT_ENFORCE(unique_names.find(tensor_proto.name()) == unique_names.end(),
-                  "Duplicated tensor proto named ", tensor_proto.name());
+      ORT_RETURN_IF_NOT(unique_names.find(tensor_proto.name()) == unique_names.end(),
+                        "Duplicated tensor proto named ", tensor_proto.name());
       unique_names.emplace(tensor_proto.name());
     }
+
+    return Status::OK();
   };
-  check_unique(trainable_tensor_protos, trainable_unique_names);
-  check_unique(non_trainable_tensor_protos, non_trainable_unique_names);
+
+  ORT_RETURN_IF_ERROR(check_unique(trainable_tensor_protos, trainable_unique_names));
+  ORT_RETURN_IF_ERROR(check_unique(non_trainable_tensor_protos, non_trainable_unique_names));
   std::set_intersection(trainable_unique_names.begin(), trainable_unique_names.end(),
                         non_trainable_unique_names.begin(), non_trainable_unique_names.end(),
                         std::back_inserter(inter_sec));
   ORT_RETURN_IF_NOT(inter_sec.empty(), "Tensor name exists in both trainable param list and non-trainable param list.");
 
-  // Keep following saving logic aligned with OrtSaveModuleStatesInternal.
-  LOGS_DEFAULT(INFO)
-      << "Saving model checkpoint files to " << ToUTF8String(checkpoint_path);
-  LOGS_DEFAULT_IF(Env::Default().FolderExists(checkpoint_path), WARNING)
-      << "Checkpoint directory exists - data may be overwritten.";
-  ORT_RETURN_IF_ERROR(Env::Default().CreateFolder(checkpoint_path));
-
-  // Save TensorProto to file.
-  if (trainable_tensor_protos.size() > 0) {
-    WriteTensorProtoToFile(
-        GetTensorProtoFilePath(checkpoint_path, k_trainable_param_root_prefix),
-        trainable_tensor_protos, "[trainable_param]");
+  constexpr size_t m_bytes = 1024 * 1024;
+  size_t fbs_buffer_size = 0U;
+  for (const auto& tensor_proto : trainable_tensor_protos) {
+    fbs_buffer_size += tensor_proto.ByteSizeLong();
+  }
+  for (const auto& tensor_proto : non_trainable_tensor_protos) {
+    fbs_buffer_size += tensor_proto.ByteSizeLong();
   }
 
-  if (non_trainable_tensor_protos.size() > 0) {
-    WriteTensorProtoToFile(
-        GetTensorProtoFilePath(checkpoint_path, k_non_trainable_param_root_prefix),
-        non_trainable_tensor_protos, "[non_trainable_param]");
+  // Align buffer size to 1MB.
+  fbs_buffer_size = std::max(fbs_buffer_size, m_bytes);
+  fbs_buffer_size = ((fbs_buffer_size + m_bytes - 1) / m_bytes) * m_bytes;
+  flatbuffers::FlatBufferBuilder builder(fbs_buffer_size);
+
+  const auto tensor_protos_to_fbs_tensors = [&builder](const auto& tensor_protos, auto& fbs_tensors) {
+    fbs_tensors.reserve(tensor_protos.size());
+    for (const auto& tensor_proto : tensor_protos) {
+      flatbuffers::Offset<fbs::Tensor> fbs_tensor;
+      ORT_RETURN_IF_ERROR(
+          fbs::utils::SaveInitializerOrtFormat(builder, tensor_proto, Path(), fbs_tensor));
+      fbs_tensors.push_back(fbs_tensor);
+    }
+
+    return Status::OK();
+  };
+
+  std::vector<flatbuffers::Offset<fbs::Tensor>> trainable_tensors;
+  ORT_RETURN_IF_ERROR(tensor_protos_to_fbs_tensors(trainable_tensor_protos, trainable_tensors));
+
+  std::vector<flatbuffers::Offset<fbs::Tensor>> non_trainable_tensors;
+  ORT_RETURN_IF_ERROR(tensor_protos_to_fbs_tensors(non_trainable_tensor_protos, non_trainable_tensors));
+
+  const auto fbs_trainable_tensors = builder.CreateVector(trainable_tensors);
+  const auto fbs_non_trainable_tensors = builder.CreateVector(non_trainable_tensors);
+
+  fbs::ModuleStateBuilder module_state_builder(builder);
+  module_state_builder.add_requires_grad(fbs_trainable_tensors);
+  module_state_builder.add_frozen_params(fbs_non_trainable_tensors);
+  flatbuffers::Offset<fbs::ModuleState> fbs_module_state = module_state_builder.Finish();
+
+  // This function only stores the module state since the optimizer state and
+  // user defined properties are not available.
+  const std::vector<flatbuffers::Offset<fbs::OptimizerGroup>> optimizer_groups;
+  const auto fbs_optimizer_groups = builder.CreateVector(optimizer_groups);
+  flatbuffers::Offset<fbs::PropertyBag> fbs_property_bag;
+
+  fbs::CheckpointBuilder checkpoint_builder(builder);
+  checkpoint_builder.add_module_state(fbs_module_state);
+  checkpoint_builder.add_optimizer_groups(fbs_optimizer_groups);
+  checkpoint_builder.add_property_bag(fbs_property_bag);
+  auto checkpoint = checkpoint_builder.Finish();
+  builder.Finish(checkpoint, fbs::CheckpointIdentifier());
+
+  ORT_RETURN_IF_ERROR(Save::ToFile(checkpoint_path, builder));
+
+  return Status::OK();
+}
+#endif
+
+/**
+ * @brief Save from the module state to a flatbuffer checkpoint module state.
+ *
+ * @param module_state module state containing the model's trainable and non-trainable parameters.
+ * @param builder Flatbuffer builder.
+ * @param fbs_module_state Flatbuffer module state to be populated.
+ * @return Status of the operation.
+ */
+Status FromModuleState(const ModuleCheckpointState& module_state,
+                       flatbuffers::FlatBufferBuilder& builder,
+                       flatbuffers::Offset<fbs::ModuleState>& fbs_module_state) {
+  if (module_state.named_parameters.empty()) {
+    std::vector<flatbuffers::Offset<fbs::Tensor>> trainable_tensors;
+    std::vector<flatbuffers::Offset<fbs::Tensor>> non_trainable_tensors;
+    const auto fbs_trainable_tensors = builder.CreateVector(trainable_tensors);
+    const auto fbs_non_trainable_tensors = builder.CreateVector(non_trainable_tensors);
+
+    fbs::ModuleStateBuilder module_state_builder(builder);
+    module_state_builder.add_requires_grad(fbs_trainable_tensors);
+    module_state_builder.add_frozen_params(fbs_non_trainable_tensors);
+    fbs_module_state = module_state_builder.Finish();
+    return Status::OK();
   }
+
+  ORT_RETURN_IF_NOT(module_state.train_session_data_transfer_mgr,
+                    "Cannot save module state to a checkpoint. Expected: A valid data transfer manager. ",
+                    "Actual: nullptr.");
+
+  InlinedHashMap<std::string, OrtValue> requires_grad;
+  InlinedHashMap<std::string, OrtValue> frozen_params;
+  for (auto& [name, value] : module_state.named_parameters) {
+    if (value->RequiresGrad()) {
+      requires_grad.emplace(name, value->Data());
+    } else {
+      frozen_params.emplace(name, value->Data());
+    }
+  }
+
+  std::vector<flatbuffers::Offset<fbs::Tensor>> trainable_tensors;
+  trainable_tensors.reserve(requires_grad.size());
+  ORT_RETURN_IF_ERROR(FlatbufferTensorsFromOrtValues(
+      requires_grad,
+      *module_state.train_session_data_transfer_mgr,
+      builder, trainable_tensors));
+
+  std::vector<flatbuffers::Offset<fbs::Tensor>> non_trainable_tensors;
+  non_trainable_tensors.reserve(frozen_params.size());
+  ORT_RETURN_IF_ERROR(FlatbufferTensorsFromOrtValues(
+      frozen_params,
+      *module_state.train_session_data_transfer_mgr,
+      builder, non_trainable_tensors));
+
+  const auto fbs_trainable_tensors = builder.CreateVector(trainable_tensors);
+  const auto fbs_non_trainable_tensors = builder.CreateVector(non_trainable_tensors);
+
+  fbs::ModuleStateBuilder module_state_builder(builder);
+  module_state_builder.add_requires_grad(fbs_trainable_tensors);
+  module_state_builder.add_frozen_params(fbs_non_trainable_tensors);
+  fbs_module_state = module_state_builder.Finish();
 
   return Status::OK();
 }
 
-Status OrtSaveModuleStatesInternal(ModuleCheckpointState& module_state,
-                                   const PathString& parameter_folder_path) {
-  // Write weight tensors files.
-  const auto& param_states = module_state.named_parameters;
-  if (!param_states.empty()) {
-    ORT_ENFORCE(module_state.train_session_data_transfer_mgr,
-                "module checkpoint state has null train_session_data_transfer_mgr.");
-
-    InlinedHashMap<PathString, std::unordered_map<std::string, OrtValue>>
-        parameter_ort_values;
-    for (auto it = param_states.begin(); it != param_states.end(); ++it) {
-      if (it->second->RequiresGrad()) {
-        parameter_ort_values[k_trainable_param_root_prefix].insert({it->first, it->second->Data()});
-      } else {
-        parameter_ort_values[k_non_trainable_param_root_prefix].insert({it->first, it->second->Data()});
-      }
-    }
-
-    // Parameters saving.
-    for (auto& pair : parameter_ort_values) {
-      std::vector<ONNX_NAMESPACE::TensorProto> param_tensor_protos;
-      ORT_RETURN_IF_ERROR(CreateTensorProtosFromOrtValues(
-          pair.second,
-          *module_state.train_session_data_transfer_mgr,
-          param_tensor_protos));
-
-      // Save TensorProto to file.
-      WriteTensorProtoToFile(
-          GetTensorProtoFilePath(parameter_folder_path, pair.first),
-          param_tensor_protos, "[param]");
-    }
-  }
-
-  return Status::OK();
-}
-
-Status OrtSaveOptimizerStatesInternal(OptimizerCheckpointState& optimizer_state,
-                                      const PathString& checkpoint_path) {
+/**
+ * @brief Save from the optimizer state to a flatbuffer checkpoint optimizer state.
+ *
+ * @param optimizer_state optimizer state containing the optimizer's state (for example learning rate, step, first
+ *                        and second order momentums ...).
+ * @param builder Flatbuffer builder.
+ * @param fbs_optimizer_groups Flatbuffer optimizer groups to be populated.
+ * @return Status of the operation.
+ */
+Status FromOptimizerState(const OptimizerCheckpointState& optimizer_state,
+                          flatbuffers::FlatBufferBuilder& builder,
+                          std::vector<flatbuffers::Offset<fbs::OptimizerGroup>>& fbs_optimizer_groups) {
   if (optimizer_state.group_named_optimizer_states.empty()) {
     return Status::OK();
   }
 
-  ORT_ENFORCE(optimizer_state.optimizer_session_data_transfer_mgr,
-              "optimizer checkpoint state has null optimizer_session_data_transfer_mgr.");
+  ORT_RETURN_IF_NOT(optimizer_state.optimizer_session_data_transfer_mgr,
+                    "Cannot save optimizer state to a checkpoint. Expected: A valid data transfer manager. ",
+                    "Actual: nullptr.");
 
-  // Write optimizer state tensors files.
+  fbs_optimizer_groups.reserve(optimizer_state.group_named_optimizer_states.size());
   for (auto& group_named_optimizer_state : optimizer_state.group_named_optimizer_states) {
-    const PathString group_name = ToPathString(group_named_optimizer_state.first);
     const std::shared_ptr<GroupOptimizerState>& group_optimizer_state_ptr = group_named_optimizer_state.second;
-    const PathString& cur_group_filename_prefix =
-        StringConcat(k_optimizer_root_prefix, group_name);
 
-    // Re-organize optimizer_state_ort_values mapping
-    // Firstly indexed by momentum names; Secondly indexed by parameter names.
-    InlinedHashMap<std::string, std::unordered_map<std::string, OrtValue>> optimizer_state_ort_values;
+    std::vector<flatbuffers::Offset<fbs::ParameterOptimizerState>> optimizer_states;
+    optimizer_states.reserve(group_optimizer_state_ptr->param_named_optimizer_states.size());
     for (const auto& [param_name, param_optimizer_state] : group_optimizer_state_ptr->param_named_optimizer_states) {
-      for (const auto& [momentum_name, m_state_val] : param_optimizer_state) {
-        if (optimizer_state_ort_values.find(momentum_name) == optimizer_state_ort_values.end()) {
-          std::unordered_map<std::string, OrtValue> param_name_to_ortvalue{{param_name, m_state_val}};
-          optimizer_state_ort_values.insert({momentum_name, param_name_to_ortvalue});
-        } else {
-          optimizer_state_ort_values[momentum_name].insert({param_name, m_state_val});
-        }
-      }
-    }
-
-    // Save each optimizer state (of all parameters) into single file.
-    // For example: save "momentum_1" of all parameters into one file.
-    for (auto& pair : optimizer_state_ort_values) {
-      const PathString momentum_name = ToPathString(pair.first);
-      const std::unordered_map<std::string, OrtValue>& param_name_to_ortvalue = pair.second;
-      const PathString& cur_state_filename_prefix =
-          StringConcat(cur_group_filename_prefix, momentum_name);
-
-      std::vector<ONNX_NAMESPACE::TensorProto> saved_tensor_protos;
-      ORT_RETURN_IF_ERROR(CreateTensorProtosFromOrtValues(
-          param_name_to_ortvalue,
+      std::vector<flatbuffers::Offset<fbs::Tensor>> momentums;
+      momentums.reserve(param_optimizer_state.size());
+      ORT_RETURN_IF_ERROR(FlatbufferTensorsFromOrtValues(
+          param_optimizer_state,
           *optimizer_state.optimizer_session_data_transfer_mgr,
-          saved_tensor_protos));
+          builder, momentums));
 
-      // Save TensorProto to file.
-      WriteTensorProtoToFile(
-          GetTensorProtoFilePath(checkpoint_path, cur_state_filename_prefix),
-          saved_tensor_protos, "[optimizer_state]");
+      fbs::ParameterOptimizerStateBuilder optimizer_state_builder(builder);
+      optimizer_state_builder.add_param_name(builder.CreateString(param_name));
+      optimizer_state_builder.add_momentums(builder.CreateVector(momentums));
+
+      flatbuffers::Offset<fbs::ParameterOptimizerState> fbs_optimizer_state = optimizer_state_builder.Finish();
+      optimizer_states.emplace_back(fbs_optimizer_state);
     }
 
-    // Storing group-wise properties.
-    PropertyBag properties;
-    properties.AddProperty(builtin_lr_property_name, group_optimizer_state_ptr->initial_lr);
-    properties.AddProperty(builtin_step_property_name, group_optimizer_state_ptr->step);
-    std::vector<ONNX_NAMESPACE::TensorProto> group_wise_properties_tensor_protos;
-    properties.ToTensorProtos(group_wise_properties_tensor_protos);
+    const auto fbs_group_name = builder.CreateString(group_named_optimizer_state.first);
+    const auto fbs_optimizer_states = builder.CreateVector(optimizer_states);
 
-    WriteTensorProtoToFile(
-        GetTensorProtoPropertiesFilePath(checkpoint_path, cur_group_filename_prefix),
-        group_wise_properties_tensor_protos, "[param_group_properties]");
+    fbs::OptimizerGroupBuilder optimizer_state_builder(builder);
+    optimizer_state_builder.add_group_name(fbs_group_name);
+    optimizer_state_builder.add_initial_learning_rate(group_optimizer_state_ptr->initial_lr);
+    optimizer_state_builder.add_step(group_optimizer_state_ptr->step);
+    optimizer_state_builder.add_optimizer_states(fbs_optimizer_states);
+    auto fbs_optimizer_group = optimizer_state_builder.Finish();
+    fbs_optimizer_groups.emplace_back(fbs_optimizer_group);
   }
 
   return Status::OK();
 }
 
-Status OrtSaveInternal(
-    CheckpointState& state, const PathString& checkpoint_path, const bool include_optimizer_state) {
-  LOGS_DEFAULT(INFO) << "Saving model checkpoint files to " << ToUTF8String(checkpoint_path);
-  LOGS_DEFAULT_IF(Env::Default().FolderExists(checkpoint_path), WARNING)
-      << "Checkpoint directory exists - data may be overwritten.";
-  ORT_RETURN_IF_ERROR(Env::Default().CreateFolder(checkpoint_path));
+/**
+ * @brief Save from user defined properties to a flatbuffer checkpoint property bag.
+ *
+ * @param property_bag user defined properties.
+ * @param builder Flatbuffer builder.
+ * @param fbs_property_bag Flatbuffer property bag to be populated.
+ * @return Status of the operation.
+ */
+Status FromPropertyBag(const PropertyBag& property_bag, flatbuffers::FlatBufferBuilder& builder,
+                       flatbuffers::Offset<fbs::PropertyBag>& fbs_property_bag) {
+  std::vector<flatbuffers::Offset<fbs::IntProperty>> ints;
+  std::vector<flatbuffers::Offset<fbs::FloatProperty>> floats;
+  std::vector<flatbuffers::Offset<fbs::StringProperty>> strings;
+  for (const auto& [name, value] : property_bag) {
+    const auto fbs_property_name = builder.CreateString(name);
+    if (std::holds_alternative<int64_t>(value)) {
+      fbs::IntPropertyBuilder int_property_builder(builder);
+      int_property_builder.add_name(fbs_property_name);
+      int_property_builder.add_value(std::get<int64_t>(value));
+      flatbuffers::Offset<fbs::IntProperty> property = int_property_builder.Finish();
+      ints.emplace_back(property);
+    } else if (std::holds_alternative<float>(value)) {
+      fbs::FloatPropertyBuilder float_property_builder(builder);
+      float_property_builder.add_name(fbs_property_name);
+      float_property_builder.add_value(std::get<float>(value));
+      flatbuffers::Offset<fbs::FloatProperty> property = float_property_builder.Finish();
+      floats.emplace_back(property);
+    } else if (std::holds_alternative<std::string>(value)) {
+      const auto fbs_property_value = builder.CreateString(std::get<std::string>(value));
+      fbs::StringPropertyBuilder string_property_builder(builder);
+      string_property_builder.add_name(fbs_property_name);
+      string_property_builder.add_value(fbs_property_value);
+      flatbuffers::Offset<fbs::StringProperty> property = string_property_builder.Finish();
+      strings.emplace_back(property);
+    } else {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Unknown property type encountered in the property bag.");
+    }
+  }
+
+  const auto fbs_ints = builder.CreateVector(ints);
+  const auto fbs_floats = builder.CreateVector(floats);
+  const auto fbs_strings = builder.CreateVector(strings);
+
+  fbs::PropertyBagBuilder property_bag_builder(builder);
+  property_bag_builder.add_ints(fbs_ints);
+  property_bag_builder.add_floats(fbs_floats);
+  property_bag_builder.add_strings(fbs_strings);
+  fbs_property_bag = property_bag_builder.Finish();
+
+  return Status::OK();
+}
+
+/**
+ * @brief Save from a checkpoint state to a checkpoint file.
+ *
+ * @param state parameter/optimizer and other user defined training states.
+ * @param checkpoint_path file where checkpoint is saved.
+ * @param include_optimizer_state Whether to include optimizer state in the checkpoint.
+ * @return Status of the operation.
+ */
+Status FromCheckpointState(
+    const CheckpointState& state, const PathString& checkpoint_path, const bool include_optimizer_state) {
+  flatbuffers::FlatBufferBuilder builder(1024);
 
   // Write weight tensors files.
-  ORT_RETURN_IF_ERROR(OrtSaveModuleStatesInternal(state.module_checkpoint_state, checkpoint_path));
+  flatbuffers::Offset<fbs::ModuleState> module_state;
+  ORT_RETURN_IF_ERROR(FromModuleState(state.module_checkpoint_state, builder, module_state));
 
   // Write optimizer state tensors files.
+  std::vector<flatbuffers::Offset<fbs::OptimizerGroup>> optimizer_groups;
   if (include_optimizer_state) {
-    ORT_RETURN_IF_ERROR(OrtSaveOptimizerStatesInternal(state.optimizer_checkpoint_state, checkpoint_path));
+    ORT_RETURN_IF_ERROR(FromOptimizerState(state.optimizer_checkpoint_state, builder, optimizer_groups));
   }
 
-  // Write properties file
-  const PropertyBag& property_bag = state.property_bag;
-  if (property_bag.Size() > 0) {
-    std::vector<ONNX_NAMESPACE::TensorProto> properties_tensor_protos;
-    property_bag.ToTensorProtos(properties_tensor_protos);
+  flatbuffers::Offset<fbs::PropertyBag> property_bag;
+  ORT_RETURN_IF_ERROR(FromPropertyBag(state.property_bag, builder, property_bag));
 
-    WriteTensorProtoToFile(
-        GetTensorProtoPropertiesFilePath(checkpoint_path, k_property_root_prefix),
-        properties_tensor_protos, "[custom_properties]");
-  }
+  const auto fbs_optimizer_groups = builder.CreateVector(optimizer_groups);
 
-  LOGS_DEFAULT(INFO) << "Checkpoint saved successfully.";
+  fbs::CheckpointBuilder checkpoint_builder(builder);
+  checkpoint_builder.add_module_state(module_state);
+  checkpoint_builder.add_optimizer_groups(fbs_optimizer_groups);
+  checkpoint_builder.add_property_bag(property_bag);
+  auto checkpoint = checkpoint_builder.Finish();
+  builder.Finish(checkpoint, fbs::CheckpointIdentifier());
+
+  ORT_RETURN_IF_ERROR(Save::ToFile(checkpoint_path, builder));
+
   return Status::OK();
 }
 
-Status OrtLoadModuleStatesInternal(
-    const PathString& parameter_folder_path, ModuleCheckpointState& module_state) {
-  // Find parameter files.
-  InlinedVector<std::pair<PathString, bool>> param_filenames;
-  FilterFilesFromDirectory(
-      parameter_folder_path,
-      [&param_filenames](const PathChar* filename) -> bool {
-        PathString filename_str = filename;
-        if (StringStartsWith(filename_str, k_trainable_param_root_prefix)) {
-          param_filenames.push_back(std::make_pair(filename_str, true));
-        } else if (StringStartsWith(filename_str, k_non_trainable_param_root_prefix)) {
-          param_filenames.push_back(std::make_pair(filename_str, false));
-        }
-        return true;
-      });
+}  // namespace Save
 
-  if (param_filenames.empty()) {
+namespace Load {
+
+/**
+ * @brief Load checkpoint flatbuffer from file.
+ * @param checkpoint_path Path to the checkpoint file.
+ * @param checkpoint_bytes Contents of the checkpoint file in bytes.
+ * @param checkpoint_span Checkpoint bytes represented as a span.
+ * @return Status of the operation.
+ *
+ */
+Status FromFile(const PathString& checkpoint_path, std::vector<uint8_t>& checkpoint_bytes,
+                gsl::span<const uint8_t>& checkpoint_span) {
+  ORT_RETURN_IF_NOT(std::filesystem::exists(checkpoint_path), "Checkpoint does not exist at provided path: ",
+                    ToUTF8String(checkpoint_path));
+
+  size_t num_bytes = 0;
+  ORT_RETURN_IF_ERROR(Env::Default().GetFileLength(checkpoint_path.c_str(), num_bytes));
+  checkpoint_bytes.resize(num_bytes);
+
+  std::ifstream bytes_stream(checkpoint_path, std::ifstream::in | std::ifstream::binary);
+  bytes_stream.read(reinterpret_cast<char*>(checkpoint_bytes.data()), num_bytes);
+
+  ORT_RETURN_IF_NOT(bytes_stream, "Loading checkpoint from ", ToUTF8String(checkpoint_path), " failed. Only ",
+                    bytes_stream.gcount(), "/", num_bytes, " bytes could be read.");
+
+  checkpoint_span = gsl::span<const uint8_t>(checkpoint_bytes.data(), num_bytes);
+
+  flatbuffers::Verifier verifier(checkpoint_span.data(), checkpoint_span.size());
+  ORT_RETURN_IF_NOT(fbs::VerifyCheckpointBuffer(verifier), "Checkpoint verification failed.");
+
+  return Status::OK();
+}
+
+/**
+ * @brief Load from a flatbuffer checkpoint module state to a module state.
+ *
+ * @param fbs_module_state Flatbuffer module state.
+ * @param module_state Module state to be populated.
+ * @return Status of the operation.
+ */
+Status ToModuleState(
+    const onnxruntime::fbs::ModuleState* fbs_module_state, ModuleCheckpointState& module_state) {
+  ORT_RETURN_IF_NOT(fbs_module_state, "Checkpoint is invalid. Expected: Valid checkpoint module state flatbuffer. ",
+                    "Acutal: nullptr.");
+
+  const auto* requires_grad = fbs_module_state->requires_grad();
+  flatbuffers::uoffset_t trainable_params_size = (requires_grad != nullptr ? requires_grad->size() : 0U);
+  InlinedHashMap<std::string, OrtValue> trainable_params;
+  trainable_params.reserve(trainable_params_size);
+  ORT_RETURN_IF_ERROR(OrtValuesFromFlatbufferTensors(requires_grad, trainable_params));
+
+  for (auto& [name, value] : trainable_params) {
+    auto param = std::make_shared<Parameter>(name, value, true);
+    module_state.named_parameters.emplace(name, param);
+  }
+
+  const auto* frozen_params = fbs_module_state->frozen_params();
+  flatbuffers::uoffset_t non_trainable_params_size = (frozen_params != nullptr ? frozen_params->size() : 0U);
+  InlinedHashMap<std::string, OrtValue> non_trainable_params;
+  non_trainable_params.reserve(non_trainable_params_size);
+  ORT_RETURN_IF_ERROR(OrtValuesFromFlatbufferTensors(frozen_params, non_trainable_params));
+
+  for (auto& [name, value] : non_trainable_params) {
+    auto param = std::make_shared<Parameter>(name, value, false);
+    module_state.named_parameters.emplace(name, param);
+  }
+
+  return Status::OK();
+}
+
+/**
+ * @brief Load from a flatbuffer checkpoint optimizer state to an optimizer state.
+ *
+ * @param optimizer_groups Flatbuffer optimizer groups.
+ * @param optimizer_state Optimizer state to be populated.
+ * @return Status of the operation.
+ */
+Status ToOptimizerState(
+    const flatbuffers::Vector<flatbuffers::Offset<onnxruntime::fbs::OptimizerGroup>>* optimizer_groups,
+    OptimizerCheckpointState& optimizer_state) {
+  for (auto* optimizer_group : *optimizer_groups) {
+    const std::string group_name = optimizer_group->group_name()->str();
+    const int64_t step = optimizer_group->step();
+    const float initial_learning_rate = optimizer_group->initial_learning_rate();
+
+    auto* parameter_optimizer_states = optimizer_group->optimizer_states();
+
+    [[maybe_unused]] auto [optimizer_state_it, inserted] =
+        optimizer_state.group_named_optimizer_states.emplace(group_name, std::make_shared<GroupOptimizerState>());
+
+    optimizer_state_it->second->step = step;
+    optimizer_state_it->second->initial_lr = initial_learning_rate;
+    for (auto* parameter_optimizer_state : *parameter_optimizer_states) {
+      std::string param_name = parameter_optimizer_state->param_name()->str();
+      auto* momentums = parameter_optimizer_state->momentums();
+      ORT_RETURN_IF_ERROR(OrtValuesFromFlatbufferTensors(momentums, optimizer_state_it->second->param_named_optimizer_states[param_name]));
+    }
+  }
+
+  return Status::OK();
+}
+
+/**
+ * @brief Load from a flatbuffer checkpoint property bag to a property bag.
+ *
+ * @param fbs_property_bag Flatbuffer property bag.
+ * @param property_bag Property bag to be populated.
+ * @return Status of the operation.
+ */
+Status ToPropertyBag(const onnxruntime::fbs::PropertyBag* fbs_property_bag,
+                     PropertyBag& property_bag) {
+  if (nullptr == fbs_property_bag) {
     return Status::OK();
   }
 
-  // Parameter parsing.
-  auto& named_parameters = module_state.named_parameters;
-  auto load_model_proto_into_module =
-      [&named_parameters](const PathString module_state_file_path, bool is_trainable) -> Status {
-    std::vector<ONNX_NAMESPACE::TensorProto> param_tensor_protos{};
-
-    LoadTensorProtoFromFile(module_state_file_path, param_tensor_protos, "[params]");
-
-    std::unordered_map<std::string, OrtValue> name_to_ort_values;
-    ORT_RETURN_IF_ERROR(CreateOrtValuesFromTensorProtos(param_tensor_protos, name_to_ort_values));
-    for (auto it = name_to_ort_values.begin(); it != name_to_ort_values.end(); ++it) {
-      auto param = std::make_shared<Parameter>(it->first, it->second, is_trainable);
-      named_parameters.insert({it->first, param});
+  auto* ints = fbs_property_bag->ints();
+  if (nullptr != ints) {
+    for (auto* int_property : *ints) {
+      std::string name = int_property->name()->str();
+      auto value = int_property->value();
+      property_bag.AddProperty(name, value);
     }
+  }
+
+  auto* floats = fbs_property_bag->floats();
+  if (nullptr != floats) {
+    for (auto* float_property : *floats) {
+      std::string name = float_property->name()->str();
+      auto value = float_property->value();
+      property_bag.AddProperty(name, value);
+    }
+  }
+
+  auto* strings = fbs_property_bag->strings();
+  if (nullptr != strings) {
+    for (auto* string_property : *strings) {
+      std::string name = string_property->name()->str();
+      std::string value = string_property->value()->str();
+      property_bag.AddProperty(name, value);
+    }
+  }
+
+  return Status::OK();
+}
+
+#if !defined(ORT_MINIMAL_BUILD)
+/**
+ * @brief Load checkpoint from a checkpoint file to initializers in a model proto.
+ *
+ * @param checkpoint_path Path to the checkpoint file.
+ * @param model_proto Model proto to be populated.
+ * @return Status of the operation.
+ */
+Status ToModelProto(const PathString& checkpoint_path,
+                    ONNX_NAMESPACE::ModelProto& model_proto) {
+  std::vector<uint8_t> checkpoint_bytes;
+  gsl::span<const uint8_t> checkpoint_span;
+  ORT_RETURN_IF_ERROR(Load::FromFile(checkpoint_path, checkpoint_bytes, checkpoint_span));
+
+  const auto* fbs_checkpoint = fbs::GetCheckpoint(checkpoint_span.data());
+  ORT_RETURN_IF_NOT(fbs_checkpoint, "Checkpoint is invalid. Expected: Valid checkpoint flatbuffer. Acutal: nullptr.");
+
+  auto* module_state = fbs_checkpoint->module_state();
+  if (nullptr == module_state) {
+    return Status::OK();
+  }
+
+  InlinedHashMap<std::string, ONNX_NAMESPACE::TensorProto> param_tensor_protos;
+
+  const auto flatbuffer_tensors_to_tensor_protos = [&param_tensor_protos](const auto* flatbuffer_tensors) {
+    if (nullptr == flatbuffer_tensors) {
+      return Status::OK();
+    }
+
+    for (auto* fbs_tensor : *flatbuffer_tensors) {
+      ONNX_NAMESPACE::TensorProto tensor_proto;
+      OrtFormatLoadOptions load_options{false, false};
+      ORT_RETURN_IF_ERROR(fbs::utils::LoadInitializerOrtFormat(*fbs_tensor, tensor_proto, load_options));
+      param_tensor_protos.insert({fbs_tensor->name()->str(), tensor_proto});
+    }
+
     return Status::OK();
   };
 
-  for (auto& pair : param_filenames) {
-    auto param_file_path = ConcatPathComponent<PathChar>(parameter_folder_path, pair.first);
-    ORT_RETURN_IF_ERROR(load_model_proto_into_module(param_file_path, pair.second));
-  }
+  ORT_RETURN_IF_ERROR(flatbuffer_tensors_to_tensor_protos(module_state->requires_grad()));
+  ORT_RETURN_IF_ERROR(flatbuffer_tensors_to_tensor_protos(module_state->frozen_params()));
 
-  return Status::OK();
-}
-
-Status OrtLoadOptimizerStatesInternal(const PathString& optimizer_folder_path,
-                                      OptimizerCheckpointState& optimizer_state) {
-  // Optimizer states parsing.
-  std::vector<PathString> optim_state_filenames;
-  std::vector<PathString> optim_property_filenames;
-  FilterFilesFromDirectory(
-      optimizer_folder_path,
-      [&optim_state_filenames, &optim_property_filenames](const PathChar* filename) -> bool {
-        PathString filename_str = filename;
-        if (StringStartsWith(filename_str, k_optimizer_root_prefix)) {
-          if (StringEndsWith(filename_str, k_tensor_proto_file_name)) {
-            optim_state_filenames.push_back(filename_str);
-          } else if (StringEndsWith(filename_str, k_tensor_proto_properties_file_name)) {
-            optim_property_filenames.push_back(filename_str);
-          } else {
-            ORT_THROW("Unexpected file extension.");
-          }
-        }
-        return true;
-      });
-
-  auto& grouped_optimizer_states = optimizer_state.group_named_optimizer_states;
-  // For each optimizer state files, parse the data and feed into grouped_optimizer_states.
-  for (auto& filename : optim_state_filenames) {
-    std::vector<PathString> results;
-    StringSplit(filename, results);
-    ORT_ENFORCE(results.size() >= 3U, "Incorrect optimizer state filename.");
-    const std::string& group_name = ToUTF8String(results[1]);
-    const std::string& momentum_name = ToUTF8String(results[2]);
-
-    const PathString cur_group_filename_prefix =
-        StringConcat(k_optimizer_root_prefix, results[1]);
-    PathString cur_momentum_state_filename_prefix =
-        StringConcat(cur_group_filename_prefix, results[2]);
-    ORT_ENFORCE(filename.compare(StringConcat(cur_momentum_state_filename_prefix, k_tensor_proto_file_name)) == 0);
-
-    if (grouped_optimizer_states.find(group_name) == grouped_optimizer_states.end()) {
-      grouped_optimizer_states.insert({group_name, std::make_shared<GroupOptimizerState>()});
-    }
-
-    auto& group_optimizer_state = grouped_optimizer_states[group_name];
-    InlinedHashMap<std::string, ParameterOptimizerState>&
-        param_optimizer_states = group_optimizer_state->param_named_optimizer_states;
-
-    const PathString& tensor_file_path = GetTensorProtoFilePath(optimizer_folder_path,
-                                                                cur_momentum_state_filename_prefix);
-    std::vector<ONNX_NAMESPACE::TensorProto> param_optimizer_state_tensor_protos{};
-    LoadTensorProtoFromFile(tensor_file_path, param_optimizer_state_tensor_protos, "[optimizer_state]");
-
-    std::unordered_map<std::string, OrtValue> name_to_ort_values;
-    ORT_RETURN_IF_ERROR(CreateOrtValuesFromTensorProtos(param_optimizer_state_tensor_protos, name_to_ort_values));
-    for (auto& pair : name_to_ort_values) {
-      auto& param_name = pair.first;
-      if (param_optimizer_states.find(param_name) == param_optimizer_states.end()) {
-        ParameterOptimizerState param_state;
-        param_optimizer_states.insert({param_name, param_state});
-      }
-      param_optimizer_states[param_name].insert({momentum_name, std::move(pair.second)});
-    }
-  }
-
-  // For each optimizer properties files, parse the data and feed into grouped_optimizer_states.
-  for (auto& filename : optim_property_filenames) {
-    std::vector<PathString> results;
-    StringSplit(filename, results);
-    ORT_ENFORCE(results.size() >= 2U, "Incorrect optimizer property filename.");
-    const std::string& group_name = ToUTF8String(results[1]);
-
-    if (grouped_optimizer_states.find(group_name) == grouped_optimizer_states.end()) {
-      grouped_optimizer_states.insert({group_name, std::make_shared<GroupOptimizerState>()});
-    }
-
-    auto& group_optimizer_state = grouped_optimizer_states[group_name];
-
-    // Parse group-wise properties.
-    const PathString cur_group_filename_prefix = StringConcat(k_optimizer_root_prefix, results[1]);
-    const PathString& tensor_file_path = GetTensorProtoPropertiesFilePath(optimizer_folder_path,
-                                                                          cur_group_filename_prefix);
-    std::vector<ONNX_NAMESPACE::TensorProto> group_wise_property_protos{};
-    LoadTensorProtoFromFile(tensor_file_path, group_wise_property_protos, "[optimizer_groupwise_property]");
-
-    PropertyBag properties;
-    for (auto& property_proto : group_wise_property_protos) {
-      properties.AddProperty(property_proto);
-    }
-
-    group_optimizer_state->initial_lr = properties.GetProperty<float>(builtin_lr_property_name);
-    group_optimizer_state->step = properties.GetProperty<int64_t>(builtin_step_property_name);
-    grouped_optimizer_states.insert({group_name, group_optimizer_state});
-  }
-
-  return Status::OK();
-}
-
-Status OrtLoadCustomPropertyInternal(const PathString& property_folder_path,
-                                     PropertyBag& property_bag) {
-  // Find custom property files.
-  std::vector<PathString> custom_property_filenames;
-  FilterFilesFromDirectory(
-      property_folder_path,
-      [&custom_property_filenames](const PathChar* filename) -> bool {
-        PathString filename_str = filename;
-        if (StringStartsWith(filename_str, k_property_root_prefix)) {
-          custom_property_filenames.push_back(filename_str);
-        }
-        return true;
-      });
-
-  if (custom_property_filenames.empty()) {
-    return Status::OK();
-  }
-
-  for (auto& property_file_path : custom_property_filenames) {
-    std::vector<ONNX_NAMESPACE::TensorProto> property_protos{};
-    auto property_file_full_path = ConcatPathComponent<PathChar>(property_folder_path, property_file_path);
-    LoadTensorProtoFromFile(property_file_full_path, property_protos, "[custom_property]");
-
-    for (auto& property_proto : property_protos) {
-      property_bag.AddProperty(property_proto);
-    }
-  }
-
-  return Status::OK();
-}
-
-Status OrtLoadInternal(const PathString& checkpoint_path,
-                       ONNX_NAMESPACE::ModelProto& model_proto) {
-  // Find tensor proto files.
-  InlinedHashMap<std::string, ONNX_NAMESPACE::TensorProto> param_tensor_protos;
-  InlinedVector<PathString> tensor_proto_filenames;
-
-  FilterFilesFromDirectory(
-      checkpoint_path,
-      [&tensor_proto_filenames](const PathChar* filename) -> bool {
-        PathString filename_str = filename;
-        if (StringEndsWith(filename_str, k_tensor_proto_file_name)) {
-          tensor_proto_filenames.push_back(filename_str);
-        }
-        return true;
-      });
-
-  // Load tensor protos to the tensorProto Vector
-  for (const auto& tensor_file_path : tensor_proto_filenames) {
-    std::vector<ONNX_NAMESPACE::TensorProto> tensor_protos{};
-    const auto tensor_file_full_path = ConcatPathComponent<PathChar>(checkpoint_path, tensor_file_path);
-    LoadTensorProtoFromFile(tensor_file_full_path, tensor_protos, "[params]");
-
-    for (auto& tensor_proto : tensor_protos) {
-      auto tensor_proto_name = tensor_proto.name();
-      param_tensor_protos.emplace(std::make_pair(tensor_proto_name, std::move(tensor_proto)));
-    }
-  }
-
-  // Load imported initializers into the Model
+  // Copy loaded tensor protos to the initializers in the ModelProto
   for (auto& init : *(model_proto.mutable_graph()->mutable_initializer())) {
-    ORT_ENFORCE(init.has_name(), "An initializer should have a name.");
+    ORT_RETURN_IF_NOT(init.has_name(), "ModelProto is invalid. Expected: All initializers must have names.");
     auto it = param_tensor_protos.find(init.name());
     if (it == param_tensor_protos.end()) {
       continue;
     }
-    init = it->second;
+    init.CopyFrom(it->second);
   }
 
   return Status::OK();
 }
+#endif
 
-Status OrtLoadInternal(const PathString& checkpoint_path, CheckpointState& state) {
-  ORT_ENFORCE(Env::Default().FolderExists(checkpoint_path), "Checkpoint folder does not exist.");
-  ORT_RETURN_IF_ERROR(OrtLoadModuleStatesInternal(checkpoint_path, state.module_checkpoint_state));
-  ORT_RETURN_IF_ERROR(OrtLoadOptimizerStatesInternal(checkpoint_path, state.optimizer_checkpoint_state));
-  ORT_RETURN_IF_ERROR(OrtLoadCustomPropertyInternal(checkpoint_path, state.property_bag));
+/**
+ * @brief Load checkpoint from a checkpoint file to a checkpoint state.
+ *
+ * @param checkpoint_path Path to the checkpoint file.
+ * @param state Checkpoint state to be populated.
+ * @return Status of the operation.
+ */
+Status ToCheckpointState(const PathString& checkpoint_path, CheckpointState& state) {
+  std::vector<uint8_t> checkpoint_bytes;
+  gsl::span<const uint8_t> checkpoint_span;
+  ORT_RETURN_IF_ERROR(Load::FromFile(checkpoint_path, checkpoint_bytes, checkpoint_span));
+
+  const auto* fbs_checkpoint = fbs::GetCheckpoint(checkpoint_span.data());
+  ORT_RETURN_IF_NOT(fbs_checkpoint, "Checkpoint is invalid. Expected: Valid checkpoint flatbuffer. Acutal: nullptr.");
+
+  ORT_RETURN_IF_ERROR(ToModuleState(fbs_checkpoint->module_state(), state.module_checkpoint_state));
+  ORT_RETURN_IF_ERROR(ToOptimizerState(fbs_checkpoint->optimizer_groups(), state.optimizer_checkpoint_state));
+  ORT_RETURN_IF_ERROR(ToPropertyBag(fbs_checkpoint->property_bag(), state.property_bag));
+
   return Status::OK();
 }
 
+}  // namespace Load
+
 }  // namespace
 
+#if !defined(ORT_MINIMAL_BUILD)
 Status SaveCheckpoint(const std::vector<ONNX_NAMESPACE::TensorProto>& trainable_tensor_protos,
                       const std::vector<ONNX_NAMESPACE::TensorProto>& non_trainable_tensor_protos,
                       const PathString& checkpoint_path) {
-  return OrtSaveInternal(trainable_tensor_protos, non_trainable_tensor_protos, checkpoint_path);
+  return Save::FromTensorProtos(trainable_tensor_protos, non_trainable_tensor_protos, checkpoint_path);
 }
+#endif
 
-Status SaveCheckpoint(CheckpointState& states, const PathString& checkpoint_path,
+Status SaveCheckpoint(const CheckpointState& states, const PathString& checkpoint_path,
                       const bool include_optimizer_state) {
-  return OrtSaveInternal(states, checkpoint_path, include_optimizer_state);
+  return Save::FromCheckpointState(states, checkpoint_path, include_optimizer_state);
 }
 
 Status LoadCheckpoint(const PathString& checkpoint_path, CheckpointState& checkpoint_states) {
-  return OrtLoadInternal(checkpoint_path, checkpoint_states);
+  return Load::ToCheckpointState(checkpoint_path, checkpoint_states);
 }
 
+#if !defined(ORT_MINIMAL_BUILD)
 Status LoadCheckpointToModel(const PathString& checkpoint_path,
                              ONNX_NAMESPACE::ModelProto& model_proto) {
-  return OrtLoadInternal(checkpoint_path, model_proto);
+  return Load::ToModelProto(checkpoint_path, model_proto);
 }
+#endif
 
-}  // namespace api
-}  // namespace training
-}  // namespace onnxruntime
+}  // namespace onnxruntime::training::api

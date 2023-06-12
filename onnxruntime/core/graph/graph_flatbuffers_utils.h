@@ -7,6 +7,8 @@
 
 #include "core/common/status.h"
 #include "core/graph/ort_format_load_options.h"
+#include "core/framework/ort_value.h"
+#include "core/framework/data_transfer_manager.h"
 
 namespace ONNX_NAMESPACE {
 class AttributeProto;
@@ -88,6 +90,30 @@ Status LoadAttributeOrtFormat(const fbs::Attribute& fbs_attr,
                               onnxruntime::Graph& graph, onnxruntime::Node& node,
                               const OrtFormatLoadOptions& load_options,
                               const logging::Logger& logger);
+
+#ifdef ENABLE_TRAINING_APIS
+
+/// @brief Save an OrtValue to a flatbuffer tensor
+/// @param[in] tensor_name Name of the tensor
+/// @param[in] ort_value OrtValue to serialize to a flatbuffer tensor
+/// @param[in] data_transfer_manager Manager to use for copying data to a cpu buffer
+/// @param[in] builder flatbuffer builder to use for creating the flatbuffer tensor
+/// @param[out] fbs_tensor flatbuffer tensor to serialize the OrtValue to
+/// @return Status indicating success or providing error information
+Status SaveOrtValueOrtFormat(
+    const std::string& tensor_name, const OrtValue& ort_value,
+    const DataTransferManager& data_transfer_manager, flatbuffers::FlatBufferBuilder& builder,
+    flatbuffers::Offset<fbs::Tensor>& fbs_tensor);
+
+/// @brief Load an OrtValue from a flatbuffer tensor
+/// @param[in] fbs_tensor flatbuffer tensor to load the OrtValue from
+/// @param[out] tensor_name Name of the tensor
+/// @param[out] ort_value OrtValue to load the flatbuffer tensor into
+/// @return Status indicating success or providing error information
+Status LoadOrtValueOrtFormat(const fbs::Tensor& fbs_tensor,
+                             std::string& tensor_name, OrtValue& ort_value);
+
+#endif
 
 }  // namespace utils
 }  // namespace fbs
