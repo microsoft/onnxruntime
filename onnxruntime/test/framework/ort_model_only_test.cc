@@ -149,7 +149,7 @@ static void CompareGraphAndSessionState(const InferenceSessionWrapper& session_o
     const OrtValue& left = pair.second;
     const OrtValue& right = iter->second;
     // CompareTensors(left, right);
-    Check("initializer_" + std::to_string(pair.first), left, right);
+    CheckOrtValuesAreEqual("initializer_" + std::to_string(pair.first), left, right);
   }
 
   // check all node args are fine
@@ -395,7 +395,7 @@ void TestOrtModelUpdate(const PathString& onnx_file,
   auto compare_outputs = [](gsl::span<OrtValue> expected, gsl::span<OrtValue> actual) {
     ASSERT_EQ(expected.size(), actual.size());
     for (size_t i = 0; i < expected.size(); ++i) {
-      Check("output_" + std::to_string(i), expected[i], actual[i]);
+      CheckOrtValuesAreEqual("output_" + std::to_string(i), expected[i], actual[i]);
     }
   };
 
