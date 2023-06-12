@@ -208,8 +208,8 @@ def load_dataset(args):
             wget.download(url, "./cola_public_1.1.zip")
         else:
             print("Reusing cached dataset")
-
-    if not os.path.exists(args.data_dir):
+    data_file=os.path.join(args.data_dir, "in_domain_train.tsv")
+    if not os.path.exists(data_file):
         _download_dataset("./cola_public_1.1.zip")
         # Unzip it
         print("Extracting dataset")
@@ -220,7 +220,7 @@ def load_dataset(args):
 
     # Load the dataset into a pandas dataframe.
     df = pd.read_csv(
-        os.path.join(args.data_dir, "in_domain_train.tsv"),
+        data_file,
         delimiter="\t",
         header=None,
         names=["sentence_source", "label", "label_notes", "sentence"],
