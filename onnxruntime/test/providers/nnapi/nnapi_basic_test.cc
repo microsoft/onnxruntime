@@ -518,6 +518,31 @@ TEST(NnapiExecutionProviderTest, DISABLED_TestCast) {
   RunQDQModelTest(build_func, "nnapi_qdq_test_graph_cast", {ExpectedEPNodeAssignment::None});
 }
 
+TEST(NnapiExecutionProviderTest, TestGather) {
+  auto BuildGatherTestCase = [](const std::vector<int64_t>& input_shape,
+                                bool scalar_indices) {
+    return [input_shape, scalar_indices](ModelTestBuilder& builder) {
+      auto* input_arg = builder.MakeInput<float>(input_shape,
+                                                 std::numeric_limits<float>::min(),
+                                                 std::numeric_limits<float>::max());
+      auto* output_arg = builder.MakeOutput();
+      auto* indices = builder.MakeScalarInitializer<int64_t>(1);
+      if (!scalar_indices) {
+        indices = builder.Make1DInitializer<int64_t>({1});
+      }
+      auto& gather_node = builder.AddNode("Gather", {input_arg, indices}, {output_arg});
+      gather_node.AddAttribute("axis", int64_t(1));
+    };
+  };
+
+  RunQDQModelTest(BuildGatherTestCase({10, 5, 5} /* input_shape */, true /* scalar_indices */),
+                  "nnapi_test_graph_gather_scalar", {ExpectedEPNodeAssignment::All});
+
+  RunQDQModelTest(BuildGatherTestCase({10, 5, 5} /* input_shape */, false /* not scalar_indices */),
+                  "nnapi_test_graph_gather",
+                  {ExpectedEPNodeAssignment::All});
+}
+
 #endif  // !(ORT_MINIMAL_BUILD)
 
 TEST(NnapiExecutionProviderTest, NNAPIFlagsTest) {

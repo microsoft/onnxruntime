@@ -542,11 +542,12 @@ def parse_arguments():
     parser.add_argument(
         "--cmake_generator",
         choices=[
+            "MinGW Makefiles",
+            "Ninja",
+            "NMake Makefiles",
+            "Unix Makefiles",
             "Visual Studio 16 2019",
             "Visual Studio 17 2022",
-            "Ninja",
-            "MinGW Makefiles",
-            "NMake Makefiles",
             "Xcode",
         ],
         default=None,
@@ -1669,6 +1670,11 @@ def run_android_tests(args, source_dir, build_dir, config, cwd):
 
 
 def run_ios_tests(args, source_dir, config, cwd):
+    simulator_device_name = subprocess.check_output(
+        ["bash", os.path.join(source_dir, "tools", "ci_build", "github", "apple", "get_simulator_device_name.sh")],
+        text=True,
+    ).strip()
+
     xc_test_schemes = [
         "onnxruntime_test_all_xc",
     ]
@@ -1691,7 +1697,7 @@ def run_ios_tests(args, source_dir, config, cwd):
                 "-scheme",
                 xc_test_scheme,
                 "-destination",
-                "platform=iOS Simulator,OS=latest,name=iPhone SE (2nd generation)",
+                f"platform=iOS Simulator,OS=latest,name={simulator_device_name}",
             ],
             cwd=cwd,
         )

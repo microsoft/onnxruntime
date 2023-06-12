@@ -211,7 +211,7 @@ static void RunModelTestWithPath(const ORTCHAR_T* ort_model_path, const char* gr
   RandomValueGenerator generator;
   TensorShape input_shape_x{input_shape};
   std::vector<float> input_x = generator.Uniform<float>(input_shape_x.GetDims(),
-                                                        -64, 64);
+                                                        -10, 24);
   OrtValue ml_value_x;
   CreateMLValue<float>(input_shape_x.GetDims(), input_x.data(), OrtMemoryInfo(), &ml_value_x);
   NameMLValMap feeds;
