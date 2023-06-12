@@ -37,8 +37,6 @@ def _convert_phase_to_string(phase: Phase) -> str:
 class RuntimeInspector:
     """
     Runtime inspector for ORTModule.
-
-    Currently, it only wraps input density inspector.
     """
 
     def __init__(self, logger: Logger):
@@ -48,8 +46,7 @@ class RuntimeInspector:
         self.memory_ob: Union[MemoryObserver, None] = None
 
     def enable_input_inspector(self, model: ModelProto, user_input_names: List[str]) -> None:
-        """
-        Initialize input inspector from the given ONNX model and user input names.
+        """Initialize input inspector from the given ONNX model and user input names.
 
         Args:
             model: ONNX model.
@@ -64,8 +61,7 @@ class RuntimeInspector:
         return self.input_density_ob.initialize(model, user_input_names)
 
     def inspect_input(self, input_name, input_data) -> Tuple[bool, float, float]:
-        """
-        Inspect input data and print statistics.
+        """Inspect input data and print statistics.
 
         Args:
             input_name: User input name.
@@ -87,8 +83,7 @@ class RuntimeInspector:
         self.input_density_ob = None
 
     def enable_memory_inspector(self, module: torch.nn.Module):
-        """
-        Enable memory inspector for ORTModule.
+        """Enable memory inspector for ORTModule.
 
         Args:
             module: ORTModule.
@@ -99,8 +94,7 @@ class RuntimeInspector:
             raise RuntimeError("Memory observer is already enabled.")
 
     def inspect_memory(self, phase: Phase) -> None:
-        """
-        Inspect memory usage and print statistics.
+        """Inspect memory usage and print statistics.
 
         Args:
             phase: Phase to inspect.
@@ -110,8 +104,7 @@ class RuntimeInspector:
 
 
 class InputDensityObserver:
-    """
-    Training input data observer for ORTModule.
+    """Training input data observer for ORTModule.
 
     Data observer is used to collect data/compute sparsity information for embedding and label inputs. It needs to be
     firstly initialized with the ONNX model and user input names. Then, it can be used to inspect the input data
@@ -474,7 +467,7 @@ class MemoryObserver:
     current/peak memory usage, current/peak inactive and non-releasable memory.
     """
 
-    NORMALIZER_FATOR = float(1024 * 1024)
+    NORMALIZER_FACTOR = float(1024 * 1024)
     NORMALIZER_UNIT = "MiB"
 
     def __init__(self, m: torch.nn.Module, logger: Logger):
@@ -488,7 +481,7 @@ class MemoryObserver:
 
         self._rank_info = f"[{self._rank}/{self._world_size}]"
         self._pre_phase = Phase.INVALID
-        self._last_pahse = Phase.POST_BACKWARD if m.training else Phase.POST_FORWARD
+        self._last_phase = Phase.POST_BACKWARD if m.training else Phase.POST_FORWARD
 
         self._is_first_inspect = True
 
@@ -505,7 +498,7 @@ class MemoryObserver:
         if self._rank != 0:
             return
 
-        if cur_phase < Phase.PRE_FORWARD or cur_phase > self._last_pahse:
+        if cur_phase < Phase.PRE_FORWARD or cur_phase > self._last_phase:
             raise RuntimeError(f"Invalid phase detected: {cur_phase}")
 
         if (cur_phase - self._pre_phase) != 1:
@@ -535,9 +528,9 @@ class MemoryObserver:
 
         # For the 10+ steps, only print when it is power of 2.
         if self._current_step < 10 or (self._current_step & (self._current_step - 1) == 0):
-            print(summ)
+            self._logger.info(summ)
 
-        if cur_phase == self._last_pahse:
+        if cur_phase == self._last_phase:
             self._increase_step()
             self._pre_phase = Phase.INVALID
             return
@@ -547,5 +540,5 @@ class MemoryObserver:
     def _increase_step(self):
         self._current_step += 1
 
-    def _normalize(self, mem_size_in_bytes: Union[float, int]):
-        return f"{float(mem_size_in_bytes) / MemoryObserver.NORMALIZER_FATOR:.0f}"
+    def _normalize(self, mem_size_in_bytes: Union[float, int]) -> str:
+        return f"{float(mem_size_in_bytes) / MemoryObserver.NORMALIZER_FACTOR:.0f}"
