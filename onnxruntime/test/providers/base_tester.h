@@ -754,18 +754,7 @@ class BaseTester {
   bool run_called_{};
 
   gsl::span<const int64_t> ToDimsSpan(const DimsVariant& dims_var) {
-    gsl::span<const int64_t> result;
-    switch (dims_var.index()) {
-      case 0:
-        result = std::get<0>(dims_var);
-        break;
-      case 1:
-        result = std::get<1>(dims_var);
-        break;
-      default:
-        ORT_THROW("Unhandled dims variant");
-    }
-    return result;
+    return std::visit([](auto&& dims) { return gsl::span<const int64_t>(dims); }, dims_var);
   }
 
   template <typename T>
