@@ -442,7 +442,7 @@ KernelCreateInfo CreateKernelCreateInfo(const std::string& domain, const OrtCust
     const auto input_type = op->GetInputType(op, i);
     const auto input_name = "Input" + std::to_string(i);
     if (input_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED) {
-      def_builder.TypeConstraint(input_name, DataTypeImpl::AllTensorTypes());
+      def_builder.TypeConstraint(input_name, DataTypeImpl::AllTensorTypesIRv9());
     } else {
       def_builder.TypeConstraint(input_name, DataTypeImpl::TensorTypeFromONNXEnum(static_cast<int>(input_type))->AsTensorType());
     }
@@ -452,7 +452,7 @@ KernelCreateInfo CreateKernelCreateInfo(const std::string& domain, const OrtCust
     const auto output_type = op->GetOutputType(op, i);
     const auto output_name = "Output" + std::to_string(i);
     if (output_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED) {
-      def_builder.TypeConstraint(output_name, DataTypeImpl::AllTensorTypes());
+      def_builder.TypeConstraint(output_name, DataTypeImpl::AllTensorTypesIRv9());
     } else {
       def_builder.TypeConstraint(output_name, DataTypeImpl::TensorTypeFromONNXEnum(static_cast<int>(output_type))->AsTensorType());
     }
@@ -508,7 +508,7 @@ ONNX_NAMESPACE::OpSchema CreateSchema(const std::string& domain, const OrtCustom
     std::string input_name = "Input" + std::to_string(i);
     schema.Input(gsl::narrow_cast<int>(i), input_name, "", input_name, option, is_homogeneous, min_arity);
     // support all types as input here in schema, and handle the type inference in TypeShapeInference func
-    schema.TypeConstraint(input_name, DataTypeImpl::ToString(DataTypeImpl::AllTensorTypes()), "all types");
+    schema.TypeConstraint(input_name, DataTypeImpl::ToString(DataTypeImpl::AllTensorTypesIRv9()), "all types");
   }
 
   for (size_t i = 0; i < output_count; i++) {
@@ -546,7 +546,7 @@ ONNX_NAMESPACE::OpSchema CreateSchema(const std::string& domain, const OrtCustom
     std::string output_name = "Output" + std::to_string(i);
     schema.Output(gsl::narrow_cast<int>(i), output_name, "", output_name, option, is_homogeneous, min_arity);
     // support all types as input here in schema, and handle the type inference in TypeShapeInference func
-    schema.TypeConstraint(output_name, DataTypeImpl::ToString(DataTypeImpl::AllTensorTypes()), "all types");
+    schema.TypeConstraint(output_name, DataTypeImpl::ToString(DataTypeImpl::AllTensorTypesIRv9()), "all types");
   }
   schema.SetDomain(domain);
   schema.SinceVersion(1);
@@ -757,7 +757,7 @@ common::Status CreateCustomRegistry(gsl::span<OrtCustomOpDomain* const> op_domai
       }
 
       for (size_t i = 0; i < undefined; i++) {
-        def_builder.TypeConstraint("T" + std::to_string(i), DataTypeImpl::AllTensorTypes());
+        def_builder.TypeConstraint("T" + std::to_string(i), DataTypeImpl::AllTensorTypesIRv9());
       }
 
       if (const char* provider_type = op->GetExecutionProviderType(op)) {

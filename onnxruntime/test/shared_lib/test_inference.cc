@@ -1973,6 +1973,30 @@ TEST(CApiTest, create_tensor_with_data_bfloat16) {
   ASSERT_EQ(values[1], value_at_1);
 }
 
+#if !defined(DISABLE_FLOAT8_TYPES)
+
+TEST(CApiTest, create_tensor_with_data_float8) {
+  Ort::Float8E4M3FN_t values[] = {0, 1, 2, 3, 4};
+  constexpr size_t values_length = sizeof(values) / sizeof(values[0]);
+  std::vector<int64_t> dims = {static_cast<int64_t>(values_length)};
+
+  Ort::MemoryInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
+
+  Ort::Value tensor = Ort::Value::CreateTensor<Ort::Float8E4M3FN_t>(info, values, values_length, dims.data(), dims.size());
+  const auto* new_pointer = tensor.GetTensorData<Ort::Float8E4M3FN_t>();
+  ASSERT_EQ(new_pointer, values);
+  auto type_info = tensor.GetTypeInfo();
+  auto tensor_info = type_info.GetTensorTypeAndShapeInfo();
+  ASSERT_NE(tensor_info, nullptr);
+  ASSERT_EQ(1u, tensor_info.GetDimensionsCount());
+  ASSERT_EQ(tensor_info.GetElementType(), ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E4M3FN);
+
+  Ort::Float8E4M3FN_t value_at_1 = tensor.At<Ort::Float8E4M3FN_t>({1});
+  ASSERT_EQ(values[1], value_at_1);
+}
+
+#endif
+
 TEST(CApiTest, access_tensor_data_elements) {
   /**
    * Create a 2x3 data blob that looks like:

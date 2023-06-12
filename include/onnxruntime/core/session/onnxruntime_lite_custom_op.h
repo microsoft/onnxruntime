@@ -421,6 +421,13 @@ struct OrtLiteCustomOp : public OrtCustomOp {
   CREATE_TUPLE(std::string)
   CREATE_TUPLE_INPUT(std::string_view)
 
+#if !defined(DISABLE_FLOAT8_TYPES)
+  CREATE_TUPLE(Ort::Float8E4M3FN_t)
+  CREATE_TUPLE(Ort::Float8E4M3FNUZ_t)
+  CREATE_TUPLE(Ort::Float8E5M2_t)
+  CREATE_TUPLE(Ort::Float8E5M2FNUZ_t)
+#endif
+
   // ParseArgs ...
   template <typename... Ts>
   static typename std::enable_if<0 == sizeof...(Ts)>::type
@@ -493,6 +500,14 @@ struct OrtLiteCustomOp : public OrtCustomOp {
   PARSE_ARGS(uint64_t, ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT64)
   PARSE_ARGS(std::string, ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING)
   PARSE_ARGS(std::string_view, ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING)  // todo - remove string_view output
+
+#if !defined(DISABLE_FLOAT8_TYPES)
+  PARSE_ARGS(Ort::Float8E4M3FN_t, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E4M3FN)
+  PARSE_ARGS(Ort::Float8E4M3FNUZ_t, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E4M3FNUZ)
+  PARSE_ARGS(Ort::Float8E5M2_t, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E5M2)
+  PARSE_ARGS(Ort::Float8E5M2FNUZ_t, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E5M2FNUZ)
+#endif
+
 
   OrtLiteCustomOp(const char* op_name,
                   const char* execution_provider) : op_name_(op_name),

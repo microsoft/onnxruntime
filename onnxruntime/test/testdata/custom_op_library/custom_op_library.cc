@@ -130,6 +130,28 @@ void Filter(const Ort::Custom::Tensor<float>& floats_in,
   }
 }
 
+#if !defined(DISABLE_FLOAT8_TYPES)
+
+void FilterFloat8(const Ort::Custom::Tensor<Ort::Float8E4M3FN_t>& floats_in,
+                  Ort::Custom::Tensor<Ort::Float8E4M3FN_t>& floats_out) {
+  const Ort::Float8E4M3FN_t* in = floats_in.Data();
+  auto in_len = floats_in.NumberOfElement();
+
+  std::vector<Ort::Float8E4M3FN_t> filter_floats;
+  for (int64_t i = 0; i < in_len; ++i) {
+    if (in[i] > 1.f) {
+      filter_floats.push_back(in[i]);
+    }
+  }
+
+  Ort::Float8E4M3FN_t* out = static_cast<Ort::Float8E4M3FN_t*>(floats_out.Allocate({static_cast<int64_t>(filter_floats.size())}));
+  for (size_t j = 0; j < filter_floats.size(); ++j) {
+    out[j] = filter_floats[j];
+  }
+}
+
+#endif
+
 void Box(const Ort::Custom::Tensor<float>* float_in_1,
          const Ort::Custom::Tensor<float>* float_in_2,
          std::optional<const Ort::Custom::Tensor<float>*> float_in_3,
@@ -177,6 +199,9 @@ OrtStatus* ORT_API_CALL RegisterCustomOps(OrtSessionOptions* options, const OrtA
   static const std::unique_ptr<LiteOp> fus_op_ptr{Ort::Custom::CreateLiteCustomOp("Fuse", "CPUExecutionProvider", Fuse)};
   static const std::unique_ptr<LiteOp> sel_op_ptr{Ort::Custom::CreateLiteCustomOp("Select", "CPUExecutionProvider", Select)};
   static const std::unique_ptr<LiteOp> fil_op_ptr{Ort::Custom::CreateLiteCustomOp("Filter", "CPUExecutionProvider", Filter)};
+#if !defined(DISABLE_FLOAT8_TYPES)
+  static const std::unique_ptr<LiteOp> fil8_op_ptr{Ort::Custom::CreateLiteCustomOp("FilterFloat8", "CPUExecutionProvider", Filter)};
+#endif
   static const std::unique_ptr<LiteOp> box_op_ptr{Ort::Custom::CreateLiteCustomOp("Box", "CPUExecutionProvider", Box)};
 
   OrtStatus* result = nullptr;
@@ -192,6 +217,9 @@ OrtStatus* ORT_API_CALL RegisterCustomOps(OrtSessionOptions* options, const OrtA
     domain_v2.Add(fus_op_ptr.get());
     domain_v2.Add(sel_op_ptr.get());
     domain_v2.Add(fil_op_ptr.get());
+#if !defined(DISABLE_FLOAT8_TYPES)
+    domain_v2.Add(fil8_op_ptr.get());
+#endif
     domain_v2.Add(box_op_ptr.get());
 
     Ort::UnownedSessionOptions session_options(options);
