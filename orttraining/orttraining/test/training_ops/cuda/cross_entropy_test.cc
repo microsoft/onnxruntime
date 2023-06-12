@@ -896,20 +896,82 @@ static std::vector<OrtValue> RunSCELossInternalGradWithEP(
   return test->GetFetches();
 }
 
+template <typename TOut>
+void PostProcessCpuBaselineOutputs(const OrtValue& ort_value,
+                                   bool restore_batch,
+                                   int64_t batch_size,
+                                   OrtValue& ret_ort_value) {
+  auto y_data_size = ort_value.Get<Tensor>().Shape().Size();
+  const float* y_buffer = ort_value.Get<Tensor>().Data<float>();
+  std::vector<float> cpu_temp_buffer;
+  std::vector<int64_t> dims = ort_value.Get<Tensor>().Shape().GetDims();
+  if (restore_batch) {
+    cpu_temp_buffer.resize(y_data_size * batch_size);
+    dims[0] = batch_size;
+  } else {
+    cpu_temp_buffer.resize(y_data_size);
+  }
+
+  for (int64_t batch_idx = 0; batch_idx < batch_size; batch_idx++) {
+    std::copy(y_buffer, y_buffer + y_data_size, cpu_temp_buffer.begin() + batch_idx * y_data_size);
+  }
+
+  if (std::is_same<TOut, MLFloat16>::value) {
+    std::vector<MLFloat16> ret_half(cpu_temp_buffer.size());
+    ConvertFloatToMLFloat16(cpu_temp_buffer.data(), ret_half.data(), static_cast<int>(cpu_temp_buffer.size()));
+    test::CreateInputOrtValueOnCPU<MLFloat16>(dims, ret_half, &ret_ort_value);
+  } else {
+    std::vector<TOut> ret(cpu_temp_buffer.size());
+    test::CreateInputOrtValueOnCPU<TOut>(dims, ret, &ret_ort_value);
+  }
+}
+
 template <typename T, typename TOut>
 static void TestSoftmaxCrossEntropyLossInternalGrad(const std::vector<int64_t>& dY_dims,
-                                                    const std::vector<int64_t>& log_prob_dims,
+                                                    const std::vector<int64_t>& log_prob_dims, /* {bsz, vocab_size*/
                                                     const std::vector<int64_t>& index_dims,
                                                     const std::vector<int64_t>& weight_dims,
                                                     const std::vector<int64_t>& dX_dims,
                                                     const std::string& reduction,
                                                     const std::int64_t ignore_index = -1,
                                                     const double error_tolerance = 1e-4,
-                                                    const bool has_bias = false) {
+                                                    const bool has_bias = false,
+                                                    const bool generate_baseline_with_single_batch = false) {
+  int64_t bsz = log_prob_dims[0];
+  int64_t vocab_size = log_prob_dims[1];
   std::vector<float> dY_data, log_prob_data, weight_data, bias_data;
   std::vector<int64_t> index_data;
-  PrepareSCELossInternalGradTestData(dY_dims, log_prob_dims, index_dims, weight_dims, dX_dims, ignore_index, has_bias,
-                                     dY_data, log_prob_data, index_data, weight_data, bias_data);
+  dY_data.reserve(bsz * vocab_size);
+  log_prob_data.reserve(bsz * vocab_size);
+  weight_data.reserve(vocab_size);
+  bias_data.reserve(bsz * vocab_size);
+  index_data.reserve(bsz);
+
+  std::vector<int64_t> single_batch_dY_dims = dY_dims;
+  std::vector<int64_t> single_batch_log_prob_dims;
+  std::vector<int64_t> single_batch_index_dims;
+  std::vector<int64_t> single_batch_weight_dims;
+  std::vector<int64_t> single_batch_dX_dims;
+
+  if (generate_baseline_with_single_batch) {
+    single_batch_log_prob_dims = {1, vocab_size};
+    single_batch_index_dims = {1};
+    single_batch_weight_dims = {vocab_size};
+    single_batch_dX_dims = {1, vocab_size};
+  } else {
+    single_batch_log_prob_dims = log_prob_dims;
+    single_batch_index_dims = index_dims;
+    single_batch_weight_dims = weight_dims;
+    single_batch_dX_dims = dX_dims;
+  }
+
+  std::vector<float> single_batch_dY_data, single_batch_log_prob_data, single_batch_weight_data,
+      single_batch_bias_data;
+  std::vector<int64_t> single_batch_index_data;
+  PrepareSCELossInternalGradTestData(single_batch_dY_dims, single_batch_log_prob_dims, single_batch_index_dims,
+                                     single_batch_weight_dims, single_batch_dX_dims, ignore_index, has_bias,
+                                     single_batch_dY_data, single_batch_log_prob_data, single_batch_index_data,
+                                     single_batch_weight_data, single_batch_bias_data);
 
   // Run on CPU using float input and output
   // (because the CPU implementation doesn't support variant input output types.)
@@ -918,8 +980,32 @@ static void TestSoftmaxCrossEntropyLossInternalGrad(const std::vector<int64_t>& 
       RunSCELossInternalGradWithEP<float, float>(
           []() -> std::unique_ptr<IExecutionProvider> { return DefaultCpuExecutionProvider(); },
           reduction, ignore_index, error_tolerance, has_bias,
-          dY_dims, log_prob_dims, index_dims, weight_dims, dX_dims,
-          dY_data, log_prob_data, index_data, weight_data, bias_data);
+          single_batch_dY_dims, single_batch_log_prob_dims, single_batch_index_dims, single_batch_weight_dims, single_batch_dX_dims,
+          single_batch_dY_data, single_batch_log_prob_data, single_batch_index_data, single_batch_weight_data, single_batch_bias_data);
+
+  std::vector<OrtValue> base_ortvalues;
+  if (generate_baseline_with_single_batch) {
+    for (int64_t batch_idx = 0; batch_idx < bsz; ++batch_idx) {
+      dY_data.insert(dY_data.end(), single_batch_dY_data.begin(), single_batch_dY_data.end());
+      log_prob_data.insert(log_prob_data.end(), single_batch_log_prob_data.begin(), single_batch_log_prob_data.end());
+      index_data.insert(index_data.end(), single_batch_index_data.begin(), single_batch_index_data.end());
+      bias_data.insert(bias_data.end(), single_batch_bias_data.begin(), single_batch_bias_data.end());
+    }
+
+    weight_data.insert(weight_data.end(), single_batch_weight_data.begin(), single_batch_weight_data.end());
+
+    OrtValue dY_ortvalue;
+    PostProcessCpuBaselineOutputs(cpu_fetches[0], true, bsz, dY_ortvalue);
+    base_ortvalues.push_back(dY_ortvalue);
+  } else {
+    dY_data = single_batch_dY_data;
+    log_prob_data = single_batch_log_prob_data;
+    index_data = single_batch_index_data;
+    weight_data = single_batch_weight_data;
+    bias_data = single_batch_bias_data;
+
+    base_ortvalues = cpu_fetches;
+  }
 
   // Run on CUDA and compare results with cpu results.
   std::vector<OrtValue> target_fetches =
@@ -1033,6 +1119,27 @@ TEST(CrossEntropyTest, SoftmaxCrossEntropyLossInternalGrad_TinySizeTensor_half) 
                                                                 dX_dims, "sum", 0, 5e-2, true);
   TestSoftmaxCrossEntropyLossInternalGrad<MLFloat16, MLFloat16>({8}, log_prob_dims, index_dims, weight_dims, dX_dims,
                                                                 "none", 0, 5e-2, true);
+}
+
+TEST(CrossEntropyTest, SoftmaxCrossEntropyLossInternalGrad_LargeSizeTensor) {
+  // Data pattern comes from Bloom model training.
+
+  int64_t bsz = 9 * 1023;
+  int64_t vocab_size = 250680;
+  std::vector<int64_t> dY_dims{};
+  std::vector<int64_t> log_prob_dims{bsz, vocab_size};
+  std::vector<int64_t> index_dims{bsz};
+  std::vector<int64_t> weight_dims{vocab_size};
+  std::vector<int64_t> dX_dims{bsz, vocab_size};
+  TestSoftmaxCrossEntropyLossInternalGrad<MLFloat16, MLFloat16>(dY_dims, log_prob_dims, index_dims, weight_dims,
+                                                                dX_dims, "mean", -1, 5e-2, false /*has_bias*/,
+                                                                true /*generate_baseline_with_single_batch*/);
+  TestSoftmaxCrossEntropyLossInternalGrad<MLFloat16, MLFloat16>(dY_dims, log_prob_dims, index_dims, weight_dims,
+                                                                dX_dims, "sum", -1, 5e-2, false /*has_bias*/,
+                                                                true /*generate_baseline_with_single_batch*/);
+  TestSoftmaxCrossEntropyLossInternalGrad<MLFloat16, MLFloat16>({8}, log_prob_dims, index_dims, weight_dims, dX_dims,
+                                                                "none", -1, 5e-2, false /*has_bias*/,
+                                                                true /*generate_baseline_with_single_batch*/);
 }
 
 TEST(CrossEntropyTest, SoftmaxCrossEntropyLossInternalGrad_TinySizeTensorFloatInputHalfOutput) {

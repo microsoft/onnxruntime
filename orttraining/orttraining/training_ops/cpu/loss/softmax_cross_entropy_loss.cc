@@ -291,11 +291,11 @@ Status SoftmaxCrossEntropyLossGrad<T1, T2>::Compute(OpKernelContext* context) co
     const T1* weight_data = weight.template Data<T1>();
 
     if (reduction_ == ReductionType::NONE) {
-      for (int i = 0; i < n_d; i++) {
+      for (int64_t i = 0; i < N_D; i++) {
         T2 label_sample = label_data[i];
         T1 weight_smaple = weight_data[label_sample] * dY_data[i];
-        for (int j = 0; j < c; j++) {
-          int index = i * c + j;
+        for (int64_t j = 0; j < C; j++) {
+          int64_t index = i * C + j;
           if (ignore_index == label_sample) {
             d_logit_data[index] = 0;
           } else {
@@ -308,7 +308,7 @@ Status SoftmaxCrossEntropyLossGrad<T1, T2>::Compute(OpKernelContext* context) co
       T1 dY_scaled = *dY_data;
       if (reduction_ == ReductionType::MEAN) {
         T1 sum_weight = (T1)0;
-        for (int i = 0; i < n_d; i++) {
+        for (int64_t i = 0; i < N_D; i++) {
           if (ignore_index != label_data[i]) {
             sum_weight += weight_data[label_data[i]];
           }
@@ -319,11 +319,11 @@ Status SoftmaxCrossEntropyLossGrad<T1, T2>::Compute(OpKernelContext* context) co
         }
       }
 
-      for (int i = 0; i < n_d; i++) {
+      for (int64_t i = 0; i < N_D; i++) {
         T2 label_sample = label_data[i];
         T1 weight_smaple = weight_data[label_sample] * dY_scaled;
-        for (int j = 0; j < c; j++) {
-          int index = i * c + j;
+        for (int64_t j = 0; j < C; j++) {
+          int64_t index = i * C + j;
           if (ignore_index == label_sample) {
             d_logit_data[index] = 0;
           } else {
@@ -334,10 +334,10 @@ Status SoftmaxCrossEntropyLossGrad<T1, T2>::Compute(OpKernelContext* context) co
     }
   } else {
     if (reduction_ == ReductionType::NONE) {
-      for (int i = 0; i < n_d; i++) {
+      for (int64_t i = 0; i < N_D; i++) {
         T2 label_sample = label_data[i];
-        for (int j = 0; j < c; j++) {
-          int index = i * c + j;
+        for (int64_t j = 0; j < C; j++) {
+          int64_t index = i * C + j;
           if (ignore_index == label_sample) {
             d_logit_data[index] = 0;
           } else {
@@ -348,7 +348,7 @@ Status SoftmaxCrossEntropyLossGrad<T1, T2>::Compute(OpKernelContext* context) co
     } else {
       T1 dY_scaled = *dY_data;
       int unignored_sample_count = 0;
-      for (int i = 0; i < n_d; i++) {
+      for (int64_t i = 0; i < N_D; i++) {
         if (ignore_index != label_data[i]) {
           unignored_sample_count += 1;
         }
@@ -358,10 +358,10 @@ Status SoftmaxCrossEntropyLossGrad<T1, T2>::Compute(OpKernelContext* context) co
         dY_scaled = *dY_data / unignored_sample_count;
       }
 
-      for (int i = 0; i < n_d; i++) {
+      for (int64_t i = 0; i < N_D; i++) {
         T2 label_sample = label_data[i];
-        for (int j = 0; j < c; j++) {
-          int index = i * c + j;
+        for (int64_t j = 0; j < C; j++) {
+          int64_t index = i * c + j;
           if (ignore_index == label_sample) {
             d_logit_data[index] = 0;
           } else {
@@ -391,7 +391,7 @@ Status SoftmaxCrossEntropyLossGrad<T1, T2>::Compute(OpKernelContext* context) co
   if (p_bias) {
     ORT_ENFORCE(probability_shape.Size() == p_bias->Shape().Size());
     const T1* bias_data = p_bias->Data<T1>();
-    for (size_t i = 0; i < static_cast<size_t>(probability_shape.Size()); ++i) {
+    for (int64_t i = 0; i < probability_shape.Size(); ++i) {
       d_logit_data[i] += bias_data[i];
     }
   }
