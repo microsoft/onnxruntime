@@ -1,7 +1,7 @@
 jobs:
 - job: iOS_CI_on_Mac
   pool:
-    vmImage: 'macOS-12'
+    vmImage: 'macOS-13'
   variables:
     PROTO_CACHE_DIR: $(Pipeline.Workspace)/proto_ccache
     ORT_CACHE_DIR: $(Pipeline.Workspace)/ort_ccache
@@ -24,13 +24,6 @@ jobs:
               CCACHE_DIR: $(PROTO_CACHE_DIR)
 
     - template: templates/use-xcode-version.yml
-      # TODO figure out XNNPACK EP test failures
-      # Failing tests:
-      #   -[XnnpackEP TestConvTranspose_qdq]
-      #   -[XnnpackEP TestQDQConvS8S8_per_channel]
-      parameters:
-        xcodeVersion: "13.1"
-
     - template: templates/mac-build-step-with-cache.yml
       parameters:
         WithCache: true
