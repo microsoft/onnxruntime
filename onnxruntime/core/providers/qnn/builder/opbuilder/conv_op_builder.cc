@@ -311,15 +311,26 @@ Status ConvOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wra
       total_padding[0] = stride_values[0] * (input_0_shape[1] - 1) + output_padding_0 + (input_1_shape[2] - 1) * dilations_0 + 1 - output_shape[1];
       total_padding[1] = stride_values[1] * (input_0_shape[2] - 1) + output_padding_1 + (input_1_shape[3] - 1) * dilations_1 + 1 - output_shape[2];
     } else {
-      total_padding[0] = output_shape[1] * stride_values[0] - input_0_shape[1] + 1;
-      total_padding[1] = output_shape[1] * stride_values[0] - input_0_shape[2] + 1;
+      // dilated_filter_height = (shape(in[1])[height] - 1) * dilation[0] + 1
+      // height_out = floor((pad_amount[0,0] + shape(in[0])[height] + pad_amount[0,1] - dilated_filter_height) / stride[0] + 1)
+      //
+      // Set total_height_padding equal to pad_amount[0,0] + pad_amount[0,1], and solve for it.
+      uint32_t dilated_filter_height = (input_1_shape[2] - 1) * dilations_0 + 1;
+      total_padding[0] = (output_shape[1] - 1) * stride_values[0] + dilated_filter_height - input_0_shape[1];  // Total height padding
+
+      // dilated_filter_width = (shape(in[1])[width] - 1) * dilation[1] + 1
+      // width_out = floor((pad_amount[1,0] + shape(in[0])[width] + pad_amount[1,1] - dilated_filter_width) / stride[1] + 1)
+      //
+      // Set total_width_padding equal to pad_amount[1,0] + pad_amount[1,1], and solve for it.
+      uint32_t dilated_filter_width = (input_1_shape[3] - 1) * dilations_1 + 1;
+      total_padding[1] = (output_shape[2] - 1) * stride_values[1] + dilated_filter_width - input_0_shape[2];  // Total width padding
     }
-    if (auto_pad.compare("SAME_UPPER")) {
+    if (auto_pad.compare("SAME_UPPER") == 0) {
       pad_values[0] = total_padding[0] / 2;
       pad_values[1] = total_padding[1] / 2;
       pad_values[2] = total_padding[0] - pad_values[0];
       pad_values[3] = total_padding[1] - pad_values[1];
-    } else if (auto_pad.compare("SAME_LOWER")) {
+    } else if (auto_pad.compare("SAME_LOWER") == 0) {
       pad_values[2] = total_padding[0] / 2;
       pad_values[3] = total_padding[1] / 2;
       pad_values[0] = total_padding[0] - pad_values[2];
