@@ -5,7 +5,6 @@
 
 #include "onnxruntime_training_cxx_api.h"
 #include "core/session/onnxruntime_cxx_api.h"
-// #include "orttraining/training_api/include/onnxruntime_training_cxx_api.h"
 
 #include <iostream>
 #include <vector>
@@ -25,7 +24,6 @@ OrtErrorCode CheckStatus(OrtStatusPtr status) {
   }
   return g_last_error_code;
 }
-// TODO: add checkstatus for training api or add flag for training api version
 
 #define CHECK_STATUS(ORT_API_NAME, ...) \
   CheckStatus(Ort::GetApi().ORT_API_NAME(__VA_ARGS__))
