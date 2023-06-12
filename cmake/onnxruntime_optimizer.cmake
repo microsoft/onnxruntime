@@ -72,9 +72,7 @@ else()
   )
 endif()
 
-if (onnxruntime_ENABLE_TRAINING_APIS)
-  # we need optimizers for both full build as well as training api only build.
-  # Using onnxruntime_ENABLE_TRAINING_APIS since it is always ON in a full training build.
+if (onnxruntime_ENABLE_TRAINING)
   list(APPEND onnxruntime_optimizer_src_patterns
     "${ORTTRAINING_SOURCE_DIR}/core/optimizer/*.h"
     "${ORTTRAINING_SOURCE_DIR}/core/optimizer/*.cc"

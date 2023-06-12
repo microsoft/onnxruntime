@@ -1,6 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+// Graph transformers are not needed for on-device training and can be left
+// out at compile time.
+#ifdef ENABLE_TRAINING
 #include <memory>
 #include "orttraining/core/optimizer/graph_transformer_utils.h"
 
@@ -61,13 +64,9 @@
 #include "orttraining/core/optimizer/qdq_fusion.h"
 #include "orttraining/core/optimizer/shape_optimizer.h"
 #include "orttraining/core/optimizer/transformer_layer_recompute.h"
-
-// Only enabled in full training build. Not in on device training builds
-#ifdef ENABLE_TRAINING
 #include "core/optimizer/compute_optimizer/upstream_gather.h"
 #include "core/optimizer/compute_optimizer/upstream_reshape.h"
 #include "orttraining/core/optimizer/compute_optimizer/sceloss_compute_optimization.h"
-#endif
 
 namespace onnxruntime {
 namespace training {
@@ -173,14 +172,12 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
                                                                      cuda_execution_provider));
       }
 
-#ifdef ENABLE_TRAINING
       if (config.enable_compute_optimizer) {
         transformers.emplace_back(std::make_unique<UpStreamGatherGraphTransformer>(compatible_eps));
         transformers.emplace_back(std::make_unique<UpStreamReshapeGraphTransformer>(compatible_eps));
         transformers.emplace_back(std::make_unique<InsertGatherBeforeSceLoss>(compatible_eps,
                                                                               config.sparse_label_input_names));
       }
-#endif
 
     } break;
 
@@ -303,3 +300,5 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
 }  // namespace transformer_utils
 }  // namespace training
 }  // namespace onnxruntime
+
+#endif
