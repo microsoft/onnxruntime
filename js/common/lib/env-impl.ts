@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 import {Env} from './env';
+import {version} from './version';
 
 type LogLevelType = Env['logLevel'];
 
@@ -11,6 +12,7 @@ export const env: Env = {
   wasm: {} as Env.WebAssemblyFlags,
   webgl: {} as Env.WebGLFlags,
   webgpu: {} as Env.WebGpuFlags,
+  versions: {common: version},
 
   set logLevel(value: LogLevelType) {
     if (value === undefined) {

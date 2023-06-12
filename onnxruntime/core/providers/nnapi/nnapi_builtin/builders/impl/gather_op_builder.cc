@@ -71,6 +71,8 @@ Status GatherOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
   input_indices.push_back(operand_indices.at(input1));
   ADD_SCALAR_OPERAND(model_builder, input_indices, axis);
 
+  auto output_shape = shaper[output];
+  bool need_squeeze = false;
   int32_t indices_data_type;
   GetType(node_unit.Inputs()[1].node_arg, indices_data_type);
   if (Contains(model_builder.GetInitializerTensors(), input2) &&
@@ -98,14 +100,35 @@ Status GatherOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
       indices.assign(indice_span.begin(), indice_span.end());
     }
 
+    // If indices is a scalar, insert a dimension of 1
+    // ONNX spec says that indices can be q-D tensor, q could be any value >= 0
+    // When indices is a scalar, output shape would be automatically squeezed.
+    // Add a fake output dimension to avoid NNAPI error.
+    if (indices_dimen.empty()) {
+      indices_dimen.push_back(1);
+      output_shape.insert(output_shape.begin() + axis, 1);
+      need_squeeze = true;
+    }
+
     OperandType indices_operand_type(Type::TENSOR_INT32, indices_dimen);
     ORT_RETURN_IF_ERROR(model_builder.AddOperandFromPersistMemoryBuffer(input2, indices.data(), indices_operand_type));
   }
   input_indices.push_back(operand_indices.at(input2));
 
-  const OperandType output_operand_type(operand_types.at(input1).type, shaper[output]);
-  return model_builder.AddOperation(ANEURALNETWORKS_GATHER, input_indices,
-                                    {output}, {output_operand_type});
+  const OperandType output_operand_type(operand_types.at(input1).type, output_shape);
+  if (!need_squeeze) {
+    return model_builder.AddOperation(ANEURALNETWORKS_GATHER, input_indices,
+                                      {output}, {output_operand_type});
+  }
+
+  std::string intermediate_output = model_builder.GetUniqueName(node_unit.Name() + "_need_squeeze");
+  shaper.AddShape(intermediate_output, output_shape);
+
+  ORT_RETURN_IF_ERROR(model_builder.AddOperation(ANEURALNETWORKS_GATHER, input_indices,
+                                                 {intermediate_output}, {output_operand_type}));
+
+  std::string squeeze_op_name = model_builder.GetUniqueName(node_unit.Name() + "_squeeze");
+  return op_builder_helpers::AddSqueezeOp(model_builder, squeeze_op_name, intermediate_output, output, {axis});
 }
 
 // Operator support related

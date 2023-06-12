@@ -134,7 +134,7 @@ Status GemmOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
       std::vector<uint32_t> perm{1, 0};
       ORT_RETURN_IF_ERROR(qnn_model_wrapper.AddTransposeNode(node_unit.Index(), node_input_name, input_tensor_name,
                                                              old_input_shape, perm, input_shape,
-                                                             qnn_data_type, quantize_param));
+                                                             qnn_data_type, quantize_param, do_op_validation));
     }
 
     if (2 == input_i && 2 == input_shape.size()) {

@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "gtest/gtest.h"
+#include "test/common/cuda_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/util/include/default_providers.h"
 
@@ -193,7 +194,8 @@ TEST(DequantizeLinearOpTest, Per_Channel_Axis_1_int32) {
                          0, 4, 16, 48,
                          0, 20, 80, 240});
   // Disable Tensorrt EP due to error, only activation types allowed as input to this layer.
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+  // Disable CUDA, ROCm EP, there is no implementation for int32_t.
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kCudaExecutionProvider, kRocmExecutionProvider});
 }
 
 // 1d zero & scale with uint8 broadcast axis -2 (-2 resolves to axis 0)
@@ -310,11 +312,51 @@ TEST(QuantizeLinearOpTest, Scalar) {
 }
 
 // quantize with scalar data
-TEST(QuantizeLinearOpTest, DISABLED_QuantizeLinear_Without_Zero_Point) {
+TEST(QuantizeLinearOpTest, QuantizeLinear_Without_Zero_Point_Opset10) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: AbiCustomRegistry.cpp(507): The parameter is incorrect";
+  }
+
   OpTester test("QuantizeLinear", 10);
   test.AddInput<float>("x", {}, {3});
   test.AddInput<float>("y_scale", {}, {2.0f});
   test.AddOutput<uint8_t>("y", {}, {2});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT doesn't support support UINT8 for quantization
+}
+
+TEST(QuantizeLinearOpTest, QuantizeLinear_Without_Zero_Point_Opset13) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: AbiCustomRegistry.cpp(507): The parameter is incorrect";
+  }
+
+  OpTester test("QuantizeLinear", 13);
+  test.AddInput<float>("x", {}, {3});
+  test.AddInput<float>("y_scale", {}, {2.0f});
+  test.AddOutput<uint8_t>("y", {}, {2});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT doesn't support support UINT8 for quantization
+}
+
+TEST(QuantizeLinearOpTest, QuantizeLinear_With_Zero_Point0) {
+  OpTester test("QuantizeLinear", 10);
+  test.AddInput<float>("x", {}, {3});
+  test.AddInput<float>("y_scale", {}, {2.0f});
+  test.AddInput<uint8_t>("y_zero_point", {}, {0});
+  test.AddOutput<uint8_t>("y", {}, {2});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT doesn't support support UINT8 for quantization
+}
+
+TEST(QuantizeLinearOpTest, QuantizeLinear_With_Zero_Dim1) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: AbiCustomRegistry.cpp(507): The parameter is incorrect";
+  }
+
+  OpTester test("QuantizeLinear", 10);
+  test.AddInput<float>("x", {1}, {3});
+  test.AddInput<float>("y_scale", {1}, {2.0f});
+  test.AddOutput<uint8_t>("y", {1}, {2});
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT doesn't support support UINT8 for quantization
 }
 
@@ -368,6 +410,88 @@ TEST(QuantizeLinearOpTest, Per_Channel_Axis_neg) {
                            0, 0, 1, 250});
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT doesn't support support UINT8 for quantization
 }
+
+#if !defined(DISABLE_FLOAT8_TYPES)
+
+template <typename InT, typename OutT>
+void DequantizeLinearOp19Test() {
+  OpTester test("DequantizeLinear", 19);
+  std::vector<int64_t> dims{4};
+  std::vector<InT> x;
+  x.push_back(InT(0.0f, true));
+  x.push_back(InT(1.0f, true));
+  x.push_back(InT(2.0f, true));
+  x.push_back(InT(3.0f, true));
+  test.AddInput<InT>("x", dims, x);
+  test.AddInput<OutT>("x_scale", {}, {static_cast<OutT>(1.0f)});
+  test.AddInput<InT>("x_zero_point", {}, {InT(0.0f, true)});
+  std::vector<OutT> y;
+  for (auto it : x) {
+    y.push_back(static_cast<OutT>(it.ToFloat()));
+  }
+  test.AddOutput<OutT>("y", dims, y);
+  // Disable Tensorrt EP due to error:node1_quantize_scale_node: out of bounds channel axis 1. Number of input dimensions is 1.
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+
+TEST(DequantizeLinearOpTest, Float8) {
+  constexpr int min_cuda_architecture = 11080;
+  bool enable_cuda = (nullptr != DefaultCpuExecutionProvider().get()) && HasCudaEnvironment(min_cuda_architecture);
+  bool enable_cpu = (nullptr != DefaultCpuExecutionProvider().get());
+
+  if (enable_cpu || enable_cuda)
+    DequantizeLinearOp19Test<Float8E4M3FN, float>();
+  if (enable_cpu)
+    DequantizeLinearOp19Test<Float8E4M3FNUZ, float>();
+  if (enable_cpu || enable_cuda)
+    DequantizeLinearOp19Test<Float8E5M2, float>();
+  if (enable_cpu)
+    DequantizeLinearOp19Test<Float8E5M2FNUZ, float>();
+}
+
+template <typename InT, typename OutT>
+void QuantizeLinearOp19Test(bool saturate) {
+  OpTester test("QuantizeLinear", 19);
+  if (!saturate) {
+    test.AddAttribute<int64_t>("saturate", 0);
+  }
+  std::vector<int64_t> dims{6};
+  std::vector<InT> x{0, 2, 3, 1000, -254, -1000};
+  test.AddInput<InT>("x", dims, x);
+  test.AddInput<InT>("y_scale", {}, {1.0f});
+  test.AddInput<OutT>("y_zero_point", {}, {OutT(0.0f, true)});
+  std::vector<OutT> y;
+  for (auto it : x) {
+    y.push_back(OutT(it, saturate));
+  }
+  test.AddOutput<OutT>("y", dims, y);
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+
+TEST(QuantizeLinearOpTest, Float8) {
+  constexpr int min_cuda_architecture = 11080;
+  bool enable_cuda = (nullptr != DefaultCpuExecutionProvider().get()) && HasCudaEnvironment(min_cuda_architecture);
+  bool enable_cpu = (nullptr != DefaultCpuExecutionProvider().get());
+
+  if (enable_cpu || enable_cuda)
+    QuantizeLinearOp19Test<float, Float8E4M3FN>(true);
+  if (enable_cpu)
+    QuantizeLinearOp19Test<float, Float8E4M3FNUZ>(true);
+  if (enable_cpu || enable_cuda)
+    QuantizeLinearOp19Test<float, Float8E5M2>(true);
+  if (enable_cpu)
+    QuantizeLinearOp19Test<float, Float8E5M2FNUZ>(true);
+  if (enable_cpu || enable_cuda)
+    QuantizeLinearOp19Test<float, Float8E4M3FN>(false);
+  if (enable_cpu)
+    QuantizeLinearOp19Test<float, Float8E4M3FNUZ>(false);
+  if (enable_cpu || enable_cuda)
+    QuantizeLinearOp19Test<float, Float8E5M2>(false);
+  if (enable_cpu)
+    QuantizeLinearOp19Test<float, Float8E5M2FNUZ>(false);
+}
+
+#endif
 
 }  // namespace test
 }  // namespace onnxruntime

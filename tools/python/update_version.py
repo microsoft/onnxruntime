@@ -111,6 +111,14 @@ def update_version():
     run(["npm", "version", version], cwd=os.path.join(js_root, "react_native"))
     run(["yarn", "upgrade", "onnxruntime-common"], cwd=os.path.join(js_root, "react_native"))
 
+    # upgrade version.ts in each package
+    run(["npm", "ci"], cwd=js_root)
+    run(["npm", "run", "update-version", "common"], cwd=js_root)
+    run(["npm", "run", "update-version", "node"], cwd=js_root)
+    run(["npm", "run", "update-version", "web"], cwd=js_root)
+    run(["npm", "run", "update-version", "react_native"], cwd=js_root)
+    run(["npm", "run", "format"], cwd=js_root)
+
 
 if __name__ == "__main__":
     update_version()

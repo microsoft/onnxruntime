@@ -19,12 +19,13 @@ namespace webnn {
 
 ModelBuilder::ModelBuilder(const GraphViewer& graph_viewer, const logging::Logger& logger,
                            const emscripten::val& context, const emscripten::val& builder,
-                           const DataLayout preferred_layout)
+                           const DataLayout preferred_layout, const WebnnDeviceType wnn_device_type)
     : graph_viewer_(graph_viewer),
       logger_(logger),
       wnn_context_(context),
       wnn_builder_(builder),
-      preferred_layout_(preferred_layout) {}
+      preferred_layout_(preferred_layout),
+      wnn_device_type_(wnn_device_type) {}
 
 Status ModelBuilder::Initialize() {
   PreprocessInitializers();
@@ -91,32 +92,66 @@ Status ModelBuilder::RegisterInitializers() {
   for (const auto& pair : GetInitializerTensors()) {
     const auto& tensor = *pair.second;
     const auto& name = tensor.name();
-    if (Contains(skipped_initializers_, name))
+    // Optional tensors can be indicated by an empty name, just ignore it.
+    if (name.empty() || Contains(skipped_initializers_, name))
       continue;
 
     const auto& shape = tensor.dims();
     std::vector<int32_t> dims;
-    if (shape.empty()) {
-      // This is a scalar initializer, WebNN requires a shape, make this a {1} tensor.
-      dims = {1};
-    } else {
-      std::transform(shape.cbegin(), shape.cend(),
-                     std::back_inserter(dims),
-                     [](int64_t dim) -> int32_t { return SafeInt<int32_t>(dim); });
-    }
+    // When the shape is empty, it is scalar initializer that dims = {};
+    std::transform(shape.cbegin(), shape.cend(),
+                   std::back_inserter(dims),
+                   [](int64_t dim) -> int32_t { return SafeInt<int32_t>(dim); });
 
     emscripten::val desc = emscripten::val::object();
     desc.set("dimensions", emscripten::val::array(dims));
     auto data_type = tensor.data_type();
     emscripten::val operand = emscripten::val::object();
-    if (data_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
+    if (IsSupportedDataType(data_type, wnn_device_type_)) {
       unpacked_tensors_.push_back({});
       std::vector<uint8_t>& unpacked_tensor = unpacked_tensors_.back();
       ORT_RETURN_IF_ERROR(onnxruntime::utils::UnpackInitializerData(tensor, unpacked_tensor));
       auto num_elements = SafeInt<size_t>(Product(tensor.dims()));
-      desc.set("type", emscripten::val("float32"));
-      emscripten::val view{emscripten::typed_memory_view(num_elements,
-                                                         reinterpret_cast<float*>(unpacked_tensor.data()))};
+      emscripten::val view = emscripten::val::undefined();
+      switch (data_type) {
+        case ONNX_NAMESPACE::TensorProto_DataType_BOOL:
+          desc.set("type", emscripten::val("uint8"));
+          view = emscripten::val{emscripten::typed_memory_view(num_elements,
+                                                               reinterpret_cast<uint8_t*>(unpacked_tensor.data()))};
+          break;
+        case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16:
+          desc.set("type", emscripten::val("float16"));
+          view = emscripten::val{emscripten::typed_memory_view(num_elements,
+                                                               reinterpret_cast<uint16_t*>(unpacked_tensor.data()))};
+          break;
+        case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
+          desc.set("type", emscripten::val("float32"));
+          view = emscripten::val{emscripten::typed_memory_view(num_elements,
+                                                               reinterpret_cast<float*>(unpacked_tensor.data()))};
+          break;
+        case ONNX_NAMESPACE::TensorProto_DataType_INT32:
+          desc.set("type", emscripten::val("int32"));
+          view = emscripten::val{emscripten::typed_memory_view(num_elements,
+                                                               reinterpret_cast<int32_t*>(unpacked_tensor.data()))};
+          break;
+        case ONNX_NAMESPACE::TensorProto_DataType_INT64:
+          desc.set("type", emscripten::val("int64"));
+          view = emscripten::val{emscripten::typed_memory_view(num_elements,
+                                                               reinterpret_cast<int64_t*>(unpacked_tensor.data()))};
+          break;
+        case ONNX_NAMESPACE::TensorProto_DataType_UINT32:
+          desc.set("type", emscripten::val("uint32"));
+          view = emscripten::val{emscripten::typed_memory_view(num_elements,
+                                                               reinterpret_cast<uint32_t*>(unpacked_tensor.data()))};
+          break;
+        case ONNX_NAMESPACE::TensorProto_DataType_UINT64:
+          desc.set("type", emscripten::val("uint64"));
+          view = emscripten::val{emscripten::typed_memory_view(num_elements,
+                                                               reinterpret_cast<uint64_t*>(unpacked_tensor.data()))};
+          break;
+        default:
+          break;
+      }
 #ifdef ENABLE_WEBASSEMBLY_THREADS
       // Workaround for WebAssembly multi-threads enabled since WebNN API only accepts non-shared ArrayBufferView.
       // https://www.w3.org/TR/webnn/#typedefdef-mlnamedarraybufferviews
@@ -188,18 +223,36 @@ Status ModelBuilder::RegisterModelInputOutput(const NodeArg& node_arg, bool is_i
     const auto* type_proto = node_arg.TypeAsProto();
     if (!type_proto || !type_proto->tensor_type().has_elem_type()) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "The  ", input_output_type, " of graph doesn't have elem_type: ", name);
+                             "The ", input_output_type, " of graph doesn't have elem_type: ", name);
     }
 
     data_type = type_proto->tensor_type().elem_type();
     switch (data_type) {
+      case ONNX_NAMESPACE::TensorProto_DataType_BOOL:
+        desc.set("type", emscripten::val("uint8"));
+        break;
+      case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16:
+        desc.set("type", emscripten::val("float16"));
+        break;
       case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
         desc.set("type", emscripten::val("float32"));
+        break;
+      case ONNX_NAMESPACE::TensorProto_DataType_INT32:
+        desc.set("type", emscripten::val("int32"));
+        break;
+      case ONNX_NAMESPACE::TensorProto_DataType_INT64:
+        desc.set("type", emscripten::val("int64"));
+        break;
+      case ONNX_NAMESPACE::TensorProto_DataType_UINT32:
+        desc.set("type", emscripten::val("uint32"));
+        break;
+      case ONNX_NAMESPACE::TensorProto_DataType_UINT64:
+        desc.set("type", emscripten::val("uint64"));
         break;
       default: {
         // TODO: support other type.
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                               "The  ", input_output_type, " of graph doesn't have valid type, name: ", name,
+                               "The ", input_output_type, " of graph doesn't have valid type, name: ", name,
                                " type: ", type_proto->tensor_type().elem_type());
       }
     }
@@ -246,14 +299,53 @@ Status ModelBuilder::AddOperations() {
 
 Status ModelBuilder::AddOperandFromPersistMemoryBuffer(
     const std::string& name, const void* buffer, const size_t size,
-    const std::vector<uint32_t> shape, const size_t element_size) {
+    const std::vector<uint32_t> shape, const int32_t data_type) {
   auto persist_buffer = std::make_unique<uint8_t[]>(size);
   uint8_t* dest = persist_buffer.get();
   memcpy(dest, buffer, size);
-  emscripten::val view{emscripten::typed_memory_view(size / element_size, reinterpret_cast<const float*>(dest))};
+  emscripten::val view = emscripten::val::undefined();
   emscripten::val desc = emscripten::val::object();
+  switch (data_type) {
+    case ONNX_NAMESPACE::TensorProto_DataType_BOOL:
+      view = emscripten::val{emscripten::typed_memory_view(size / sizeof(uint8_t),
+                                                           reinterpret_cast<const uint8_t*>(dest))};
+      desc.set("type", emscripten::val("uint8"));
+      break;
+    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16:
+      view = emscripten::val{emscripten::typed_memory_view(size / sizeof(uint16_t),
+                                                           reinterpret_cast<const uint16_t*>(dest))};
+      desc.set("type", emscripten::val("float16"));
+      break;
+    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
+      view = emscripten::val{emscripten::typed_memory_view(size / sizeof(float),
+                                                           reinterpret_cast<const float*>(dest))};
+      desc.set("type", emscripten::val("float32"));
+      break;
+    case ONNX_NAMESPACE::TensorProto_DataType_INT32:
+      view = emscripten::val{emscripten::typed_memory_view(size / sizeof(int32_t),
+                                                           reinterpret_cast<const int32_t*>(dest))};
+      desc.set("type", emscripten::val("int32"));
+      break;
+    case ONNX_NAMESPACE::TensorProto_DataType_INT64:
+      view = emscripten::val{emscripten::typed_memory_view(size / sizeof(int64_t),
+                                                           reinterpret_cast<const int64_t*>(dest))};
+      desc.set("type", emscripten::val("int64"));
+      break;
+    case ONNX_NAMESPACE::TensorProto_DataType_UINT32:
+      view = emscripten::val{emscripten::typed_memory_view(size / sizeof(uint32_t),
+                                                           reinterpret_cast<const uint32_t*>(dest))};
+      desc.set("type", emscripten::val("uint32"));
+      break;
+    case ONNX_NAMESPACE::TensorProto_DataType_UINT64:
+      view = emscripten::val{emscripten::typed_memory_view(size / sizeof(uint64_t),
+                                                           reinterpret_cast<const uint64_t*>(dest))};
+      desc.set("type", emscripten::val("uint64"));
+      break;
+    default:
+      break;
+  }
+
   desc.set("dimensions", emscripten::val::array(shape));
-  desc.set("type", emscripten::val("float32"));
   emscripten::val operand = emscripten::val::object();
 #ifdef ENABLE_WEBASSEMBLY_THREADS
   // Workaround for WebAssembly multi-threads enabled since WebNN API only accepts non-shared ArrayBufferView.
