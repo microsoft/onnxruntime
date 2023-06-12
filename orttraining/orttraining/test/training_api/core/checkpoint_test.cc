@@ -33,8 +33,6 @@
 #include "orttraining/test/training_api/core/data_utils.h"
 #include "default_providers.h"
 
-#include <filesystem>
-
 using onnxruntime::test::TemporaryDirectory;
 using namespace onnxruntime::training::api;
 
@@ -89,9 +87,6 @@ TEST(CheckpointApiTest, SaveOnnxModelAsCheckpoint_ThenLoad_CPU) {
 
   // Remove the temporary directory if it already exists.
   auto ckpt_test_root_dir = ORT_TSTR("checkpointing_api_test_dir");
-  if (Env::Default().FolderExists(ckpt_test_root_dir)) {
-    ORT_ENFORCE(Env::Default().DeleteFolder(ckpt_test_root_dir).IsOK());
-  }
   TemporaryDirectory tmp_dir{ckpt_test_root_dir};
 
   /// Phase 2 - Run save checkpoint APIs.
@@ -101,9 +96,6 @@ TEST(CheckpointApiTest, SaveOnnxModelAsCheckpoint_ThenLoad_CPU) {
   PathString checkpoint_path{
       ConcatPathComponent<PathChar>(tmp_dir.Path(), ORT_TSTR("e2e_ckpt_save_cpu"))};
   ASSERT_STATUS_OK(SaveCheckpoint(trainable_param_values, non_trainable_param_values, checkpoint_path));
-
-  // Check the checkpoint file in the directory.
-  ASSERT_TRUE(std::filesystem::exists(checkpoint_path));
 
   /// Phase 3 - Run load checkpoint APIs.
   /// And check the result comparable with initial parameter values.
@@ -238,18 +230,12 @@ TEST(CheckpointApiTest, SaveOptimizerStateAsCheckpoint_ThenLoad_CUDA) {
 
   // Remove the temporary directory if it already exists.
   auto ckpt_test_root_dir = ORT_TSTR("checkpointing_api_test_dir");
-  if (Env::Default().FolderExists(ckpt_test_root_dir)) {
-    ORT_ENFORCE(Env::Default().DeleteFolder(ckpt_test_root_dir).IsOK());
-  }
   TemporaryDirectory tmp_dir{ckpt_test_root_dir};
 
   // Call Save APIs.
   PathString checkpoint_path{
       ConcatPathComponent<PathChar>(tmp_dir.Path(), ORT_TSTR("e2e_ckpt_save_cpu"))};
   ASSERT_STATUS_OK(SaveCheckpoint(state, checkpoint_path, true));
-
-  // Check the checkpoint file in the directory.
-  ASSERT_TRUE(std::filesystem::exists(checkpoint_path));
 
   /// Phase 2 - Run load checkpoint APIs.
   /// Validate the result matches with initial optimizer state values.
@@ -319,9 +305,6 @@ TEST(CheckpointApiTest, SaveCustomPropertyAsCheckpoint_ThenLoad_CPU) {
 
   // Remove the temporary directory if it already exists.
   auto ckpt_test_root_dir = ORT_TSTR("checkpointing_api_test_dir");
-  if (Env::Default().FolderExists(ckpt_test_root_dir)) {
-    ORT_ENFORCE(Env::Default().DeleteFolder(ckpt_test_root_dir).IsOK());
-  }
   TemporaryDirectory tmp_dir{ckpt_test_root_dir};
 
   /// Phase 2 - Call save checkpoint APIs.
@@ -331,9 +314,6 @@ TEST(CheckpointApiTest, SaveCustomPropertyAsCheckpoint_ThenLoad_CPU) {
   PathString checkpoint_path{
       ConcatPathComponent<PathChar>(tmp_dir.Path(), ORT_TSTR("e2e_ckpt_save_cpu"))};
   ASSERT_STATUS_OK(SaveCheckpoint(checkpoint_state, checkpoint_path, false));
-
-  // Check the checkpoint file in the directory.
-  ASSERT_TRUE(std::filesystem::exists(checkpoint_path));
 
   // Call Load APIs
   CheckpointState checkpoint_state_to_load;

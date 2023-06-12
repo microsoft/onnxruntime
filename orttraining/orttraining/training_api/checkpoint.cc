@@ -3,8 +3,6 @@
 
 #include "orttraining/training_api/checkpoint.h"
 
-#include <filesystem>
-
 #include "core/flatbuffers/schema/ort_training.fbs.h"
 #include "core/framework/framework_common.h"
 #include "core/framework/tensorprotoutils.h"
@@ -400,9 +398,6 @@ namespace Load {
  */
 Status FromFile(const PathString& checkpoint_path, std::vector<uint8_t>& checkpoint_bytes,
                 gsl::span<const uint8_t>& checkpoint_span) {
-  ORT_RETURN_IF_NOT(std::filesystem::exists(checkpoint_path), "Checkpoint does not exist at provided path: ",
-                    ToUTF8String(checkpoint_path));
-
   size_t num_bytes = 0;
   ORT_RETURN_IF_ERROR(Env::Default().GetFileLength(checkpoint_path.c_str(), num_bytes));
   checkpoint_bytes.resize(num_bytes);
