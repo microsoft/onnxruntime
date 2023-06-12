@@ -11,7 +11,7 @@ import tempfile
 SCRIPT_DIR = pathlib.Path(__file__).parent.resolve()
 
 
-def update_namespace(schema_path: pathlib.Path, updated_schema_path: pathlib.Path):
+def update_schema_names(schema_path: pathlib.Path, updated_schema_path: pathlib.Path, names_to_update: dict[str, str]):
     # create a copy of the schema so we can replace the namespace so that the generated module name doesn't clash
     # with the 'onnxruntime' package.
     with open(schema_path) as input, open(updated_schema_path, "w") as output:
@@ -19,7 +19,10 @@ def update_namespace(schema_path: pathlib.Path, updated_schema_path: pathlib.Pat
             # convert any line with the namespace to use ort_flatbuffers_py instead of onnxruntime as the top level
             # namespace. this doesn't change how anything works - it just avoids a naming clash with the 'real'
             # onnxruntime python package
-            output.write(line.replace("onnxruntime.fbs", "ort_flatbuffers_py.fbs"))
+            updated_line = line
+            for old_name, new_name in names_to_update.items():
+                updated_line = updated_line.replace(old_name, new_name)
+            output.write(updated_line)
 
 
 def generate_python(flatc: pathlib.Path, schema_path: pathlib.Path, output_dir: pathlib.Path):
@@ -77,20 +80,37 @@ def main():
         help="Specify which language bindings to generate.",
     )
 
+    parser.add_argument(
+        "-t",
+        "--training",
+        action="store_true",
+        help="Generate training schema bindings in addition to the default ort.fbs.",
+    )
+
     args = parser.parse_args()
     languages = args.languages if args.languages is not None else all_languages
     flatc = args.flatc.resolve(strict=True)
     schema_path = SCRIPT_DIR / "ort.fbs"
+    training_schema_path = SCRIPT_DIR / "ort_training.fbs"
 
     if "python" in languages:
         with tempfile.TemporaryDirectory() as temp_dir_name:
             temp_dir = pathlib.Path(temp_dir_name).resolve()
             updated_schema_path = temp_dir / "ort.py.fbs"
-            update_namespace(schema_path, updated_schema_path)
+            update_schema_names(schema_path, updated_schema_path, {"onnxruntime.fbs": "ort_flatbuffers_py.fbs"})
 
             output_dir = temp_dir / "out"
             output_dir.mkdir()
             generate_python(flatc, updated_schema_path, output_dir)
+
+            if args.training:
+                updated_training_schema_path = temp_dir / "ort_training.py.fbs"
+                update_schema_names(
+                    training_schema_path,
+                    updated_training_schema_path,
+                    {"onnxruntime.fbs": "ort_flatbuffers_py.fbs", "ort.fbs": "ort.py.fbs"},
+                )
+                generate_python(flatc, updated_training_schema_path, output_dir)
             create_init_py(output_dir)
 
             # replace generated files in repo
@@ -101,6 +121,9 @@ def main():
 
     if "cpp" in languages:
         generate_cpp(flatc, schema_path)
+
+        if args.training:
+            generate_cpp(flatc, training_schema_path)
 
 
 if __name__ == "__main__":

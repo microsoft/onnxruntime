@@ -5,7 +5,7 @@ ORT file format.
 [The ORT file format schema](ort.fbs) uses the [FlatBuffers](https://github.com/google/flatbuffers) serialization
 library.
 
-Please do not directly modify [the generated C++ header file](ort.fbs.h) or [the generated Python binding
+Please do not directly modify [the generated C++ header file](ort.fbs.h), or [the generated Python binding
 files](../ort_flatbuffers_py).
 
 The flatbuffers compiler (flatc) is built as part of an ONNX Runtime build. It is located in the external/flatbuffers
@@ -13,9 +13,9 @@ subdirectory of the build output directory.
 
 e.g.
   - Windows Debug build
-    - \build\Windows\Debug\external\flatbuffers\Debug\flatc.exe
+    - \build\Windows\Debug\_deps\flatbuffers-build\Debug\flatc.exe
   - Linux Debug build
-    - /build/Linux/external/flatbuffers/Debug/flatc
+    - /build/Linux/Debug/_deps/flatbuffers-build/flatc
 
 It is possible to use another flatc as well, e.g., from a separate installation. Note that ONNX Runtime uses
 FlatBuffers 1.12.
