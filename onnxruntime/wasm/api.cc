@@ -390,3 +390,75 @@ char* OrtEndProfiling(ort_session_handle_t session) {
              ? file_name
              : nullptr;
 }
+<<<<<<< HEAD
+=======
+
+OrtCheckpointState* OrtTrainingLoadCheckpoint(void* checkpoint, size_t checkpoint_size) {
+  OrtCheckpointState* checkpoint = nullptr;
+  return (CHECK_TRAINING_STATUS(LoadCheckpointFromBuffer, checkpoint, checkpoint_size, &checkpoint) == ORT_OK)
+             ? checkpoint
+             : nullptr;
+}
+
+
+// void EMSCRIPTEN_KEEPALIVE OrtTrainingSaveCheckpoint(const orttraining_checkpoint_handle_t checkpoint_state,
+//                                                     const ORTCHAR_T* path_to_checkpoint,
+//                                                     const bool include_optimizer_state) {
+//   Ort::GetTrainingApi().SaveCheckpoint(checkpoint_state, path_to_checkpoint, include_optimizer_state);
+// }
+
+OrtTrainingSession* EMSCRIPTEN_KEEPALIVE OrtTrainingCreateTrainingSession(const ort_session_options_handle_t options,
+                                                                          orttraining_checkpoint_handle_t checkpoint_state,
+                                                                          void* train_model,
+                                                                          size_t train_size
+                                                                          void* eval_model,
+                                                                          size_t eval_size,
+                                                                          void* optimizer_model
+                                                                          size_t optimizer_size) {
+  OrtTrainingSession* training_session = nullptr;
+  return (CHECK_TRAINING_STATUS(CreateTrainingSessionFromBuffer, g_env, options, checkpoint_state,
+                                train_model, train_size, eval_model, eval_size, optimizer_model,
+                                optimizer_size,
+                                &training_session) == ORT_OK)
+                                ? training_session
+                                : nullptr;
+}
+
+void EMSCRIPTEN_KEEPALIVE OrtTrainingLazyResetGrad(orttraining_session_handle_t session) {
+  Ort::GetTrainingApi().LazyResetGrad(session);
+}
+
+OrtValue* EMSCRIPTEN_KEEPALIVE OrtTrainingTrainStep(orttraining_session_handle_t session,
+                                                               const ort_run_options_handle_t options,
+                                                               const size_t inputs_len,
+                                                               const ort_tensor_handle_t const* inputs,
+                                                               const size_t outputs_len,
+                                                               ort_tensor_handle_t* outputs
+                                                               ) {
+  return (CHECK_TRAINING_STATUS(TrainStep, session, options, inputs_len, inputs, outputs_len, outputs) == ORT_OK)
+                                ? *outputs
+                                : nullptr;
+}
+
+OrtValue* EMSCRIPTEN_KEEPALIVE OrtTrainingTrainStep(orttraining_session_handle_t session,
+                                                               const size_t inputs_len,
+                                                               const ort_tensor_handle_t const* inputs,
+                                                               const size_t outputs_len,
+                                                               ort_tensor_handle_t* outputs
+                                                               ) {
+  OrtRunOptions* run_options = nullptr;
+  return OrtTrainingTrainStep(session, run_options, inputs_len, inputs, outputs_len, outputs);
+}
+
+void EMSCRIPTEN_KEEPALIVE OrtTrainingOptimizerStep(orttraining_session_handle_t session,
+                                                   const ort_run_options_handle_t run_options) {
+  Ort::GetTrainingApi().OptimizerStep(session, run_options);
+}
+
+// void EMSCRIPTEN_KEEPALIVE OrtTrainingExportModelForInferencing(orttraining_session_handle_t session,
+//                                                                const ORTCHAR_T* inference_model_path,
+//                                                                size_t graph_outputs_len,
+//                                                                const char* const* graph_output_names) {
+//   Ort::GetTrainingApi().ExportModelForInferencing(session, inference_model_path, graph_outputs_len, graph_output_names);
+// }
+>>>>>>> updated wasm api.cc to match header file & put in placeholder method calls in implementation
