@@ -36,3 +36,9 @@ RUN cd /migraphx && git clone --depth=1 --branch ${MIGRAPHX_VERSION} https://git
 RUN cd /migraphx && rbuild package --cxx /opt/rocm/llvm/bin/clang++ -d /migraphx/deps -B /migraphx/build -S /migraphx/src/ -DPYTHON_EXECUTABLE=/usr/bin/python3
 RUN dpkg -i /migraphx/build/*.deb
 RUN rm -rf /migraphx
+
+ARG BUILD_UID=1001
+ARG BUILD_USER=onnxruntimedev
+RUN adduser --uid $BUILD_UID $BUILD_USER
+WORKDIR /home/$BUILD_USER
+USER $BUILD_USER

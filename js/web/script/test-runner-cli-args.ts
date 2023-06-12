@@ -171,7 +171,7 @@ export interface TestRunnerCliArgs {
   cudaFlags?: Record<string, unknown>;
   wasmOptions?: InferenceSession.WebAssemblyExecutionProviderOption;
   webglOptions?: InferenceSession.WebGLExecutionProviderOption;
-  globalEnvFlags?: Env;
+  globalEnvFlags?: Test.Options['globalEnvFlags'];
   noSandbox?: boolean;
 }
 
@@ -327,7 +327,7 @@ function parseWebgpuFlags(args: minimist.ParsedArgs): Env.WebGpuFlags {
   return {profilingMode};
 }
 
-function parseGlobalEnvFlags(args: minimist.ParsedArgs): Env {
+function parseGlobalEnvFlags(args: minimist.ParsedArgs): NonNullable<TestRunnerCliArgs['globalEnvFlags']> {
   const wasm = parseWasmFlags(args);
   const webgl = parseWebglFlags(args);
   const webgpu = parseWebgpuFlags(args);
@@ -382,9 +382,9 @@ export function parseTestRunnerCliArgs(cmdlineArgs: string[]): TestRunnerCliArgs
 
   const globalEnvFlags = parseGlobalEnvFlags(args);
 
-  if (backend.includes('webnn') && !globalEnvFlags.wasm.proxy) {
+  if (backend.includes('webnn') && !globalEnvFlags.wasm!.proxy) {
     // Backend webnn is restricted in the dedicated worker.
-    globalEnvFlags.wasm.proxy = true;
+    globalEnvFlags.wasm!.proxy = true;
   }
 
   // Options:
