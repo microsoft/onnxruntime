@@ -27,38 +27,13 @@ bool PreShapeNodeElimination::SatisfyCondition(const Graph& graph, const Node& n
   }
 
   const Node* next_node = output_nodes[0];
-  const auto& op_type = node.OpType();
 
   // Check if next node is Shape
   if (next_node->OpType() != "Shape") {
     return false;
   }
 
-  // Check if the current node is Cast and the next node is Shape
-  if (op_type == "Cast") {
-    return next_node->OpType() == "Shape";
-  }
-
-  // Check if the current node is Transpose and the next node is Shape
-  if (op_type == "Transpose") {
-    // Check if the dimensions of the input to Transpose are the same
-    const auto& transpose_input_shape = node.InputDefs()[0]->Shape();
-
-    if (transpose_input_shape->dim_size() >= 2) {
-      const int64_t dim_size = transpose_input_shape->dim_size();
-      const int64_t first_dim = transpose_input_shape->dim(0).dim_value();
-      for (int64_t i = 1; i < dim_size; ++i) {
-        if (!transpose_input_shape->dim(i).has_dim_value() ||
-            transpose_input_shape->dim(i).dim_value() != first_dim) {
-          return false;
-        }
-      }
-
-      return next_node->OpType() == "Shape";
-    }
-  }
-
-  return false;
+  return next_node->OpType() == "Shape";
 }
 
 }  // namespace onnxruntime

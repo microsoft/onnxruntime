@@ -3168,7 +3168,6 @@ TEST_F(GraphTransformationTests, PreShapeNodeElimination) {
   Graph& graph = model->MainGraph();
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
   ASSERT_TRUE(op_to_count["Cast"] == 3);
-  ASSERT_TRUE(op_to_count["Transpose"] == 2);
 
   auto rule_transformer_L1 = std::make_unique<RuleBasedGraphTransformer>("RuleTransformer1");
   ASSERT_STATUS_OK(rule_transformer_L1->Register(std::make_unique<PreShapeNodeElimination>()));
@@ -3179,7 +3178,6 @@ TEST_F(GraphTransformationTests, PreShapeNodeElimination) {
   op_to_count = CountOpsInGraph(graph);
 
   ASSERT_TRUE(op_to_count["Cast"] == 2);
-  ASSERT_TRUE(op_to_count["Transpose"] == 1);
 }
 
 #ifndef DISABLE_CONTRIB_OPS

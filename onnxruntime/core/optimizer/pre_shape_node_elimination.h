@@ -16,7 +16,7 @@ class PreShapeNodeElimination : public RewriteRule {
   PreShapeNodeElimination() noexcept : RewriteRule("PreShapeNodeElimination") {}
 
   std::vector<std::string> TargetOpTypes() const noexcept override {
-    return {"Cast", "Transpose"};
+    return {"Cast"};
   }
 
  private:
