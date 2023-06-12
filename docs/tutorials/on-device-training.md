@@ -23,10 +23,16 @@ In this tutorial, we will use data to learn to:
 - Classify celebrities into one of four categories using a custom celebrities dataset.
 
 ## Contents
-{: .no_toc }
 
-* TOC placeholder
-{:toc}
+- [Introduction](#introduction)
+- [Prerequisites](#prerequisites)
+- [Offline Phase - Building the training artifacts](#offline-phase---building-the-training-artifacts)
+  - [Export the model to ONNX](#op1)
+  - [Define the trainable and non trainable parameters](#op2)
+  - [Generate the training artifacts](#op3)
+- [Training Phase - Android application development](#training-phase---android-application-development)
+- [Training Phase - Running the application on a device](#training-phase---running-the-application-on-a-device)
+- [Conclusion](#conclusion)
 
 ## Prerequisites
 
@@ -42,13 +48,7 @@ To follow this tutorial, you should have a basic understanding of Android app de
 
 ## Offline Phase - Building the training artifacts
 
-### Contents
-{: .no_toc }
-
-* TOC placeholder
-{:toc}
-
-### 1. Export the model to ONNX.
+1. <a name="op1"></a>Export the model to ONNX.
 
     We start with a pre-trained PyTorch model and export it to ONNX. The `MobileNetV2` model has been pretrained on the imagenet dataset that has data in 1000 categories. For our task of image classification, we want to only classify images in 4 classes. So, we change the last layer of the model to output 4 logits instead of 1,000.
 
@@ -74,7 +74,7 @@ To follow this tutorial, you should have a basic understanding of Android app de
                      dynamic_axes={"input": {0: "batch"}, "output": {0: "batch"}})
     ```
 
-### 2. Define the trainable and non trainable parameters
+2. <a name="op2"></a>Define the trainable and non trainable parameters
 
     ```python
    import onnx
@@ -92,8 +92,9 @@ To follow this tutorial, you should have a basic understanding of Android app de
    ]
     ```
 
-### 3. Generate the training artifacts. We will use the `CrossEntropyLoss` loss and the `AdamW` optimizer for this tutorial.
-   More details around artifact generation can be found [here](../../docs/api/python/on_device_training/training_artifacts.html).
+3. <a name="op-3"></a>Generate the training artifacts.
+
+   We will use the `CrossEntropyLoss` loss and the `AdamW` optimizer for this tutorial. More details around artifact generation can be found [here](../../docs/api/python/on_device_training/training_artifacts.html).
 
     ```python
    from onnxruntime.training import artifacts
@@ -109,7 +110,8 @@ To follow this tutorial, you should have a basic understanding of Android app de
    )
     ```
 
-### 4. That's all! The training artifacts have been generated in the `training_artifacts` folder. This marks the end of the offline phase. These artifacts are ready to be deployed to the Android device for training.
+
+   That's all! The training artifacts have been generated in the `training_artifacts` folder. This marks the end of the offline phase. These artifacts are ready to be deployed to the Android device for training.
 
 ## Training Phase - Android application development
 
