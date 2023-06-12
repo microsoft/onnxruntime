@@ -455,8 +455,8 @@ void LaunchBeamSearchScorer_Process(int batch_size,
                                                          next_tokens.data(),
                                                          next_indices.data());
 
-  const unsigned max_threads = 512;
-  unsigned batch_beam_size = batch_size * num_beams;
+  const int max_threads = 512;
+  int batch_beam_size = batch_size * num_beams;
   dim3 block_size;
   dim3 grid_size;
   if (batch_beam_size * sequence_length <= max_threads) {  // Can fit into a single thread block

@@ -142,10 +142,10 @@ void BeamSearchScorer::Process(ISequences& sequences,
 
         // Clone the sequence and append to buffer.
         gsl::span<const int32_t> src = sequences.GetSequence(batch_beam_idx);
-        auto clone = hypothesis_buffer_.subspan(hypothesis_buffer_used_, sequence_length);
+        auto clone = hypothesis_buffer_.subspan(static_cast<size_t>(hypothesis_buffer_used_), sequence_length);
 
         gsl::copy(src, clone);
-        hypothesis_buffer_used_ += static_cast<size_t>(sequence_length);
+        hypothesis_buffer_used_ += sequence_length;
         auto sequence = ReinterpretAsSpan<const int32_t>(clone);
         beam_hyp.Add(sequence, next_score);
       } else {
@@ -165,7 +165,7 @@ void BeamSearchScorer::Process(ISequences& sequences,
     ORT_ENFORCE(hypothesis_buffer_used_ <= hypothesis_buffer_.size());
 
     //  Check if we are done so that we can save a pad step if all(done)
-    if (beam_hyp.beams_used_ < num_beams_)
+    if (static_cast<size_t>(beam_hyp.beams_used_) < num_beams_)
       continue;
 
     if (!early_stopping_) {
@@ -219,11 +219,11 @@ void BeamSearchScorer::Finalize(ISequences& sequences,
 
     auto batch_output = output.subspan(batch_index * num_return_sequences_ * max_length_,
                                        num_return_sequences_ * max_length_);
-    beam_hyp.Output(
-        num_return_sequences_,
-        max_length_,
-        batch_output,
-        sequence_scores.empty() ? sequence_scores : sequence_scores.subspan(batch_index * num_return_sequences_, num_return_sequences_));
+    gsl::span<float> sequence_scores_buffer;
+    if (sequence_scores.empty())
+      sequence_scores_buffer = sequence_scores.subspan(batch_index * num_return_sequences_, num_return_sequences_);
+
+    beam_hyp.Output(num_return_sequences_, max_length_, batch_output, sequence_scores_buffer);
   }
 }
 
