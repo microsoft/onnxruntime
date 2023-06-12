@@ -8,7 +8,7 @@ parent: Tutorials
 
 Here is what the application will look like at the end of this tutorial:
 
-![Application Showcase](../../images/on-device-training-application-prediction-tom.jpg)
+<img src="../../images/on-device-training-application-prediction-tom.jpg"  width="18%" height="18%">
 
 ## Introduction
 
@@ -31,7 +31,16 @@ In this tutorial, we will use data to learn to:
   - [Define the trainable and non trainable parameters](#op2)
   - [Generate the training artifacts](#op3)
 - [Training Phase - Android application development](#training-phase---android-application-development)
+  - [Setting up the project in Android Studio](#tp1)
+  - [Adding the ONNX Runtime dependency](#tp2)
+  - [Packaging the Prebuilt Training Artifacts and Dataset](#tp3)
+  - [Interfacing with ONNX Runtime - C++ Code](#tp4)
+  - [Image Preprocessing](#tp5)
+  - [Application Frontend](#tp6)
 - [Training Phase - Running the application on a device](#training-phase---running-the-application-on-a-device)
+  - [Running the application on a device](#tp7)
+  - [Training with a pre-loaded dataset - Animals](#tp8)
+  - [Training with a custom dataset - Celebrities](#tp9)
 - [Conclusion](#conclusion)
 
 ## Prerequisites
@@ -115,7 +124,7 @@ To follow this tutorial, you should have a basic understanding of Android app de
 
 ## Training Phase - Android application development
 
-1. Set up the project in Android Studio
+1. <a name="tp1"></a>Setting up the project in Android Studio
 
    a. Open Android Studio and click `New Project`
    ![Android Studio Setup - New Project](../../images/on-device-training-android-studio-setup.png)
@@ -134,15 +143,15 @@ To follow this tutorial, you should have a basic understanding of Android app de
 
    ![Android Studio Setup - Project C++ ToolChain](../../images/on-device-training-android-studio-toolchain.png)
 
-   d. That's it. The Android Studio project has been set up. You should now be able to see the Android Studio editor with some boiler plate code.
+   d. That's it! The Android Studio project has been set up. You should now be able to see the Android Studio editor with some boiler plate code.
 
-2. Add the ONNX Runtime dependency
+2. <a name="tp2"></a>Adding the ONNX Runtime dependency
 
    a. Create two new folder called `lib` and `include\onnxruntime` under the cpp directory in the Android Studio project.
 
    ![lib and include folder](../../images/on-device-training-lib-include.png)
 
-   b. Head over to [Maven Central](https://central.sonatype.com/artifact/com.microsoft.onnxruntime/onnxruntime-training-android/) and download the `onnxruntime-training-android` archive package (aar file).
+   b. Head over to [Maven Central](https://central.sonatype.com/artifact/com.microsoft.onnxruntime/onnxruntime-training-android/). Go to `Versions`->`Browse`-> and download the `onnxruntime-training-android` archive package (aar file).
 
    c. Rename the `aar` extension to `zip`. So `onnxruntime-training-android-1.15.0.aar` becomes `onnxruntime-training-android-1.15.0.zip`.
 
@@ -166,19 +175,42 @@ To follow this tutorial, you should have a basic understanding of Android app de
    }
    ```
 
-   i. Add the `onnxruntime` shared library to the `CMakeLists.txt` so that `cmake` can find and build against the shated library. To do this, add these lines after the `ortpersonalize` library is added in the `CMakeLists.txt`:
+   Note that the `defaultConfig` section of the `build.gradle` file should look like:
+
+   ```diff
+   defaultConfig {
+      applicationId "com.example.ortpersonalize"
+      minSdk 29
+      targetSdk 33
+      versionCode 1
+      versionName "1.0"
+
+      testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+      externalNativeBuild {
+         cmake {
+               cppFlags '-std=c++17'
+         }
+      }
+
+   +   ndk {
+   +      abiFilters 'arm64-v8a'
+   +   }
+   }
+   ```
+
+   i. Add the `onnxruntime` shared library to the `CMakeLists.txt` so that `cmake` can find and build against the shared library. To do this, add these lines after the `ortpersonalize` library is added in the `CMakeLists.txt`:
 
    ```bash
    add_library(onnxruntime SHARED IMPORTED)
    set_target_properties(onnxruntime PROPERTIES IMPORTED_LOCATION ${CMAKE_SOURCE_DIR}/lib/libonnxruntime.so)
    ```
-   j. Let `CMake` know where the ONNX Runtime header files can be found by adding this line right after the above two lines:
+   Let `CMake` know where the ONNX Runtime header files can be found by adding this line right after the above two lines:
 
    ```bash
    target_include_directories(ortpersonalize PRIVATE ${CMAKE_SOURCE_DIR}/include/onnxruntime)
    ```
 
-   k. Link the Android C++ project against the `onnxruntime` library by adding the `onnxruntime` library to `target_link_libraries`:
+   Link the Android C++ project against the `onnxruntime` library by adding the `onnxruntime` library to `target_link_libraries`:
 
    ```bash
    target_link_libraries( # Specifies the target library.
@@ -191,23 +223,62 @@ To follow this tutorial, you should have a basic understanding of Android app de
         onnxruntime)
    ```
 
-   l. Build the application and wait for success to confirm that the app has included the ONNX Runtime headers and can link against the shared onnxruntime library successfully.
+   Note that the `CMakeLists.txt` file should look like:
 
-3. Packaging the Prebuilt Training Artifacts and Dataset
+   ```diff
+   project("ortpersonalize")
+
+   add_library( # Sets the name of the library.
+         ortpersonalize
+
+         # Sets the library as a shared library.
+         SHARED
+
+         # Provides a relative path to your source file(s).
+         native-lib.cpp
+   +     utils.cpp
+   +     inference.cpp
+   +     train.cpp)
+
+   + add_library(onnxruntime SHARED IMPORTED)
+   + set_target_properties(onnxruntime PROPERTIES IMPORTED_LOCATION ${CMAKE_SOURCE_DIR}/lib/libonnxruntime.so)
+   + target_include_directories(ortpersonalize PRIVATE ${CMAKE_SOURCE_DIR}/include/onnxruntime)
+
+   find_library( # Sets the name of the path variable.
+         log-lib
+
+         # Specifies the name of the NDK library that
+         # you want CMake to locate.
+         log)
+
+   target_link_libraries( # Specifies the target library.
+         ortpersonalize
+
+         # Links the target library to the log library
+         # included in the NDK.
+         ${log-lib}
+
+   +     onnxruntime)
+
+   ```
+
+   j. Build the application and wait for success to confirm that the app has included the ONNX Runtime headers and can link against the shared onnxruntime library successfully.
+
+3. <a name="tp3"></a>Packaging the Prebuilt Training Artifacts and Dataset
 
    a. Create a new `assets` folder inside the `app` from the left pane of the Android Studio project by right click app -> New -> Folder -> Assets Folder and place it under main.
 
-   b. Copy the above generated training artifacts to this folder.
+   b. Copy the training artifacts generated in step 2 to this folder.
 
-   c. Now, head over to the [`onnxruntime-training-examples`](https://github.com/microsoft/onnxruntime-training-examples/tree/master/on_device_training/mobile/android/c-cpp/data) repo and download the dataset (`images.zip`) to your machine and extract it. This dataset was modified from the orignal [`animals-10`](https://www.kaggle.com/datasets/alessiocorrado99/animals10) dataset available on Kaggle created by [Corrado Alessio](https://www.kaggle.com/alessiocorrado99). To download this dataset to your machine
+   c. Now, head over to the [`onnxruntime-training-examples`](https://github.com/microsoft/onnxruntime-training-examples/tree/master/on_device_training/mobile/android/c-cpp/data) repo and download the dataset (`images.zip`) to your machine and extract it. This dataset was modified from the orignal [`animals-10`](https://www.kaggle.com/datasets/alessiocorrado99/animals10) dataset available on Kaggle created by [Corrado Alessio](https://www.kaggle.com/alessiocorrado99).
 
    d. Copy the downloaded `images` folder to `assets/images` directory in Android Studio.
 
-   e. The left pane of the project should look like this:
+   The left pane of the project should look like this:
 
    ![Project Assets](../../images/on-device-training-project-assets.png)
 
-4. C++ Code
+4. <a name="tp4"></a>Interfacing with ONNX Runtime - C++ Code
 
    a. We will implement the following four functions in C++ that will be called from the application:
       - `createSession`: Will be invoked on the application startup. It will create a new `CheckpointState` and `TrainingSession` objects.
@@ -215,7 +286,7 @@ To follow this tutorial, you should have a basic understanding of Android app de
       - `performTraining`: Will be invoked when the user clicks the `Train` button on the UI.
       - `performInference`: Will be invoked when the user clicks the `Infer` button on the UI.
 
-   b. createSession
+   b. Create Session
 
       This function gets called when the application is launched. This will use the training artifacts assets to create the `C++` CheckpointState and TrainingSession objects. These objects will be used for training the model on the device.
 
@@ -288,7 +359,7 @@ To follow this tutorial, you should have a basic understanding of Android app de
    };
    ```
 
-   c. releaseSession
+   c. Release Session
 
       This function gets called when the application is about to shutdown. It releases the resources that were created when the application was launched, mainly the CheckpointState and the TrainingSession.
 
@@ -306,7 +377,7 @@ To follow this tutorial, you should have a basic understanding of Android app de
    }
    ```
 
-   d. performTraining
+   d. Perform Training
 
       This function gets called for every batch that needs to be trained. The training loop is written on the application side in Kotlin, and within the training loop, the `performTraining` function gets invoked for every batch.
 
@@ -386,7 +457,7 @@ To follow this tutorial, you should have a basic understanding of Android app de
    } // namespace training
    ```
 
-   e. performInference
+   e. Perform Inference
 
       This function gets called when the user wants to perform inferencing.
 
@@ -531,7 +602,7 @@ To follow this tutorial, you should have a basic understanding of Android app de
    } // utils
    ```
 
-5. Image Preprocessing in Java or Kotlin
+5. <a name="tp5"></a>Image Preprocessing
 
    a. The `MobileNetV2` model expects that the input image provided be
       - of size `3 x 224 x 224`.
@@ -663,7 +734,7 @@ To follow this tutorial, you should have a basic understanding of Android app de
    }
    ```
 
-6. Frontend in Java or Kotlin
+6. <a name="tp6"></a>Application Frontend
 
    a. For this tutorial, we will be using the following user interface elements:
      - Train and Infer buttons
@@ -680,7 +751,7 @@ To follow this tutorial, you should have a basic understanding of Android app de
 
    e. Create a new file under the `layout` folder called `dialog.xml`. Copy the contents from [`dialog.xml`](https://github.com/microsoft/onnxruntime-training-examples/blob/206521eb22e496b2ea50bef956e63273b6b1d5bf/on_device_training/mobile/android/c-cpp/app/ORTPersonalize/app/src/main/res/layout/dialog.xml) to the newly created `dialog.xml` local to your Android Studio.
 
-   f. The remainder of the changes in this secion need to be made in the `MainActivity.kt` file.
+   f. The remainder of the changes in this section need to be made in the `MainActivity.kt` file.
 
    g. Imports:
 
@@ -1379,15 +1450,15 @@ To follow this tutorial, you should have a basic understanding of Android app de
 
 ## Training Phase - Running the application on a device
 
-1. Running all this on a device.
+1. <a name="tp7"></a>Running the application on a device
 
    a. Let's connect our Android device to the machine and run the application on the device.
 
    b. Launching the application on the device should look like this:
 
-   ![Application Landing Page](../../images/on-device-training-application-landing-page.jpg)
+   <img src="../../images/on-device-training-application-landing-page.jpg"  width="18%" height="18%">
 
-2. Training with a pre-loaded dataset - Animals
+2. <a name="tp8"></a>Training with a pre-loaded dataset - Animals
 
    a. Let's get started with training using the pre-loaded animals device by launching the application on the device.
 
@@ -1399,11 +1470,11 @@ To follow this tutorial, you should have a basic understanding of Android app de
 
    e. Use any animal image from your library for inferencing now.
 
-   ![Prediction - Cow](../../images/on-device-training-application-prediction-cow.jpg)
+   <img src="../../images/on-device-training-application-prediction-cow.jpg"  width="18%" height="18%">
 
-      As can be seen from the image above, the model correctly predicted `Cow`.
+   As can be seen from the image above, the model correctly predicted `Cow`.
 
-3. Training with a custom dataset - Celebrities
+3. <a name="tp9"></a>Training with a custom dataset - Celebrities
 
    a. Download images of Tom Cruise, Leonardo DiCaprio, Ryan Reynolds and Brad Pitt from the web.
    
@@ -1419,7 +1490,7 @@ To follow this tutorial, you should have a basic understanding of Android app de
 
    g. That's it!. Hopefully the application classified the image correctly.
 
-   ![Prediction - Tom Cruise](../../images/on-device-training-application-prediction-tom.jpg)
+   <img src="../../images/on-device-training-application-prediction-tom.jpg"  width="18%" height="18%">
 
 
 ## Conclusion
