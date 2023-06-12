@@ -18,9 +18,6 @@ class UnaryOpBuilder : public BaseOpBuilder {
  private:
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
                                const logging::Logger& logger) const override ORT_MUST_USE_RESULT;
-  // Operator support related.
- private:
-  int GetMinSupportedOpSet(const Node& node) const override;
 };
 
 // Add operator related.
@@ -63,13 +60,6 @@ Status UnaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
   return Status::OK();
 }
 
-// All unary ops except "Not" and "Identity" contain 'consumed_inputs' attribute before opset 6,
-// which is not supported in WebNN EP for now.
-int UnaryOpBuilder::GetMinSupportedOpSet(const Node& node) const {
-  if (node.OpType() != "Not" && node.OpType() != "Identity")
-    return 6;
-}
-
 void CreateUnaryOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {
   if (op_registrations.op_builder_map.find(op_type) != op_registrations.op_builder_map.cend())
     return;
@@ -86,7 +76,7 @@ void CreateUnaryOpBuilder(const std::string& op_type, OpBuilderRegistrations& op
           "Reciprocal",
           "Sin",
           "Sqrt",
-          "Tan"
+          "Tan",
       };
 
   op_registrations.builders.push_back(std::make_unique<UnaryOpBuilder>());
