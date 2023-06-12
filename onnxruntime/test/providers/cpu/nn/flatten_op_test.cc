@@ -78,10 +78,6 @@ TEST_F(FlattenOpTest, Flatten_neg_axis3) {
 // model execution will fail.
 TEST(FlattenOpModelTest, Flatten_broadcast) {
   auto model_uri = ORT_TSTR("testdata/flatten_broadcast.onnx");
-
-  std::shared_ptr<Model> model;
-  auto status = Model::Load(model_uri, model, nullptr, GetEnvironment().GetLoggingManager()->DefaultLogger());
-
   ModelTester tester("flatten_broadcast", model_uri);
 
   tester.AddInput<float>("X", {4}, {0.f, 1.f, 2.f, 3.f});

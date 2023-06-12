@@ -166,7 +166,7 @@ void KernelComputeTester::Run(std::unordered_set<int> strided_outputs) {
         ASSERT_STATUS_OK(dtm.CopyTensor(tensor, *cpu_value.GetMutable<Tensor>()));
       }
 
-      Check(output_data_[i].def_.Name(), output_data_[i].value_, cpu_value, {}, provider_);
+      CheckOrtValuesAreEqual(output_data_[i].def_.Name(), output_data_[i].value_, cpu_value, {}, provider_);
     }
   }
 }

@@ -46,8 +46,8 @@ void sort_expected_and_actual_buffers(std::vector<T>& expected,
 // other types are below
 template <typename T>
 struct TensorCheck {
-  void operator()(const Tensor& expected, const Tensor& actual,
-                  const std::string& provider_type, const ValidateOutputParams& params) const {
+  void operator()(const Tensor& expected, const Tensor& actual, const ValidateOutputParams& params,
+                  const std::string& /*provider_type*/) const {
     Tensor expected_sorted, actual_sorted;
     const T* cur_expected;
     const T* cur_actual;
@@ -68,7 +68,7 @@ struct TensorCheck {
     }
 
     for (int i = 0; i < size; ++i) {
-      EXPECT_EQ(cur_expected[i], cur_actual[i]) << "i:" << i << ", provider_type: " << provider_type;
+      EXPECT_EQ(cur_expected[i], cur_actual[i]) << "i:" << i;
     }
   }
 };
@@ -77,7 +77,8 @@ template <>
 struct TensorCheck<uint8_t> {
   void operator()(const Tensor& expected,
                   const Tensor& actual,
-                  const std::string& provider_type, const ValidateOutputParams& params) const {
+                  const ValidateOutputParams& params,
+                  const std::string& provider_type) const {
     const bool has_abs_err = params.absolute_error.has_value();
     const bool has_rel_err = params.relative_error.has_value();
 
@@ -114,14 +115,14 @@ struct TensorCheck<uint8_t> {
         if (has_rel_err) {
           EXPECT_NEAR(cur_expected[i], cur_actual[i],
                       *(params.relative_error) * cur_expected[i])  // expected[i] is unsigned, can't be negative
-              << "i:" << i << ", provider_type: " << provider_type;
+              << "i:" << i;
         } else {  // has_abs_err
-          EXPECT_NEAR(cur_expected[i], cur_actual[i], threshold) << "i:" << i << ", provider_type: " << provider_type;
+          EXPECT_NEAR(cur_expected[i], cur_actual[i], threshold) << "i:" << i;
         }
       }
     } else {
       for (int i = 0; i < size; ++i) {
-        EXPECT_EQ(cur_expected[i], cur_actual[i]) << "i:" << i << ", provider_type: " << provider_type;
+        EXPECT_EQ(cur_expected[i], cur_actual[i]) << "i:" << i;
       }
     }
   }
@@ -131,8 +132,8 @@ template <>
 struct TensorCheck<int8_t> {
   void operator()(const Tensor& expected,
                   const Tensor& actual,
-                  const std::string& provider_type,
-                  const ValidateOutputParams& params) const {
+                  const ValidateOutputParams& params,
+                  const std::string& /*provider_type*/) const {
     Tensor expected_sorted, actual_sorted;
     const int8_t* cur_expected;
     const int8_t* cur_actual;
@@ -157,11 +158,11 @@ struct TensorCheck<int8_t> {
       double threshold = *(params.absolute_error);
 
       for (int i = 0; i < size; ++i) {
-        EXPECT_NEAR(cur_expected[i], cur_actual[i], threshold) << "i:" << i << ", provider_type: " << provider_type;
+        EXPECT_NEAR(cur_expected[i], cur_actual[i], threshold) << "i:" << i;
       }
     } else {
       for (int i = 0; i < size; ++i) {
-        EXPECT_EQ(cur_expected[i], cur_actual[i]) << "i:" << i << ", provider_type: " << provider_type;
+        EXPECT_EQ(cur_expected[i], cur_actual[i]) << "i:" << i;
       }
     }
   }
@@ -171,8 +172,8 @@ template <>
 struct TensorCheck<double> {
   void operator()(const Tensor& expected,
                   const Tensor& actual,
-                  const std::string& provider_type,
-                  const ValidateOutputParams& params) const {
+                  const ValidateOutputParams& params,
+                  const std::string& /*provider_type*/) const {
     auto size = actual.Shape().Size();
 
     bool has_abs_err = params.absolute_error.has_value();
@@ -201,22 +202,20 @@ struct TensorCheck<double> {
       // NOTE: Check isnan first to work around MSVC linker bug when /LTCG:incremental is specified.
       // If the isinf check is first the isnan check and branch gets omitted
       if (std::isnan(cur_expected[i])) {
-        ASSERT_TRUE(std::isnan(cur_actual[i])) << "Expected NaN. i:" << i << ", provider_type: " << provider_type;
+        ASSERT_TRUE(std::isnan(cur_actual[i])) << "Expected NaN. i:" << i;
       } else if (std::isinf(cur_expected[i])) {  // Test infinity for equality
-        ASSERT_EQ(cur_expected[i], cur_actual[i]) << "Expected infinity. i:" << i
-                                                  << ", provider_type: " << provider_type;
+        ASSERT_EQ(cur_expected[i], cur_actual[i]) << "Expected infinity. i:" << i;
       } else {
         if (!has_abs_err && !has_rel_err) {
           // the default for existing tests
-          ASSERT_NEAR(cur_expected[i], cur_actual[i], threshold) << "i:" << i << ", provider_type: " << provider_type;
+          ASSERT_NEAR(cur_expected[i], cur_actual[i], threshold) << "i:" << i;
         } else {
           if (has_abs_err) {
-            ASSERT_NEAR(cur_expected[i], cur_actual[i], *(params.absolute_error))
-                << "i:" << i << ", provider_type: " << provider_type;
+            ASSERT_NEAR(cur_expected[i], cur_actual[i], *(params.absolute_error)) << "i:" << i;
           }
           if (has_rel_err) {
             ASSERT_NEAR(cur_expected[i], cur_actual[i], *(params.relative_error) * std::abs(cur_expected[i]))
-                << "i:" << i << ", provider_type: " << provider_type;
+                << "i:" << i;
           }
         }
       }
@@ -227,8 +226,8 @@ struct TensorCheck<double> {
 template <typename TypeToCheck>
 void InternalNumericalCheck(const Tensor& expected,
                             const Tensor& actual,
-                            const std::string& provider_type,
-                            const ValidateOutputParams& params) {
+                            const ValidateOutputParams& params,
+                            const std::string& /*provider_type*/) {
   const bool has_abs_err = params.absolute_error.has_value();
   const bool has_rel_err = params.relative_error.has_value();
 
@@ -257,21 +256,21 @@ void InternalNumericalCheck(const Tensor& expected,
     // NOTE: Check isnan first to work around MSVC linker bug when /LTCG:incremental is specified.
     // If the isinf check is first the isnan check and branch gets omitted
     if (std::isnan(cur_expected[i])) {
-      ASSERT_TRUE(std::isnan(cur_actual[i])) << "Expected NaN. i:" << i << ", provider_type: " << provider_type;
+      ASSERT_TRUE(std::isnan(cur_actual[i])) << "Expected NaN. i:" << i;
     } else if (std::isinf(cur_expected[i])) {  // Test infinity for equality
-      ASSERT_EQ(cur_expected[i], cur_actual[i]) << "Expected infinity. i:" << i << ", provider_type: " << provider_type;
+      ASSERT_EQ(cur_expected[i], cur_actual[i]) << "Expected infinity. i:" << i;
     } else {
       if (!has_abs_err && !has_rel_err) {
         // the default for existing tests
-        ASSERT_NEAR(cur_expected[i], cur_actual[i], threshold) << "i:" << i << ", provider_type: " << provider_type;
+        ASSERT_NEAR(cur_expected[i], cur_actual[i], threshold) << "i:" << i;
       } else {
         if (has_abs_err) {
           ASSERT_NEAR(cur_expected[i], cur_actual[i], *(params.absolute_error))
-              << "i:" << i << ", provider_type: " << provider_type;
+              << "i:" << i;
         }
         if (has_rel_err) {
           ASSERT_NEAR(cur_expected[i], cur_actual[i], *(params.relative_error) * std::abs(cur_expected[i]))
-              << "i:" << i << ", provider_type: " << provider_type;
+              << "i:" << i;
         }
       }
     }
@@ -282,9 +281,9 @@ template <>
 struct TensorCheck<float> {
   void operator()(const Tensor& expected,
                   const Tensor& actual,
-                  const std::string& provider_type,
-                  const ValidateOutputParams& params) const {
-    InternalNumericalCheck<float>(expected, actual, provider_type, params);
+                  const ValidateOutputParams& params,
+                  const std::string& provider_type) const {
+    InternalNumericalCheck<float>(expected, actual, params, provider_type);
   }
 };
 
@@ -292,8 +291,8 @@ template <>
 struct TensorCheck<MLFloat16> {
   void operator()(const Tensor& expected,
                   const Tensor& actual,
-                  const std::string& provider_type,
-                  const ValidateOutputParams& params) const {
+                  const ValidateOutputParams& params,
+                  const std::string& /*provider_type*/) const {
     auto* cur_expected = expected.Data<MLFloat16>();
     auto* cur_actual = actual.Data<MLFloat16>();
     auto size = actual.Shape().Size();
@@ -320,21 +319,21 @@ struct TensorCheck<MLFloat16> {
 #endif
     for (int i = 0; i < size; ++i) {
       if (std::isnan(f_expected[i])) {
-        EXPECT_TRUE(std::isnan(f_expected[i])) << "Expected NaN. i:" << i << ", provider_type: " << provider_type;
+        EXPECT_TRUE(std::isnan(f_expected[i])) << "Expected NaN. i:" << i;
       } else if (std::isinf(f_expected[i])) {  // Test infinity for equality
-        EXPECT_EQ(f_expected[i], f_actual[i]) << "Expected infinity. i:" << i << ", provider_type: " << provider_type;
+        EXPECT_EQ(f_expected[i], f_actual[i]) << "Expected infinity. i:" << i;
       } else {
         if (!has_abs_err && !has_rel_err) {
           // the default for existing tests
-          EXPECT_NEAR(f_expected[i], f_actual[i], threshold) << "i:" << i << ", provider_type: " << provider_type;
+          EXPECT_NEAR(f_expected[i], f_actual[i], threshold) << "i:" << i;
         } else {
           if (has_abs_err) {
             EXPECT_NEAR(f_expected[i], f_actual[i], *(params.absolute_error))
-                << "i:" << i << ", provider_type: " << provider_type;
+                << "i:" << i;
           }
           if (has_rel_err) {
             EXPECT_NEAR(f_expected[i], f_actual[i], *(params.relative_error) * std::abs(cur_expected[i]))
-                << "i:" << i << ", provider_type: " << provider_type;
+                << "i:" << i;
           }
         }
       }
@@ -346,8 +345,8 @@ template <>
 struct TensorCheck<BFloat16> {
   void operator()(const Tensor& expected,
                   const Tensor& actual,
-                  const std::string& provider_type,
-                  const ValidateOutputParams& params) const {
+                  const ValidateOutputParams& params,
+                  const std::string& /*provider_type*/) const {
     auto* cur_expected = expected.Data<BFloat16>();
     auto* cur_actual = actual.Data<BFloat16>();
     auto size = actual.Shape().Size();
@@ -372,9 +371,9 @@ struct TensorCheck<BFloat16> {
 
     for (int i = 0; i < size; ++i) {
       if (std::isnan(f_expected[i])) {
-        EXPECT_TRUE(std::isnan(f_expected[i])) << "Expected NaN. i:" << i << ", provider_type: " << provider_type;
+        EXPECT_TRUE(std::isnan(f_expected[i])) << "Expected NaN. i:" << i;
       } else if (std::isinf(f_expected[i])) {  // Test infinity for equality
-        EXPECT_EQ(f_expected[i], f_actual[i]) << "Expected infinity. i:" << i << ", provider_type: " << provider_type;
+        EXPECT_EQ(f_expected[i], f_actual[i]) << "Expected infinity. i:" << i;
       } else {
         // the default for existing tests
         const float max_value = fmax(fabs(f_expected[i]), fabs(f_actual[i]));
@@ -382,11 +381,11 @@ struct TensorCheck<BFloat16> {
           const float abs_error = fabs(f_expected[i] - f_actual[i]);
           if (abs_error <= abs_threshold) {
             // if the absolute error is small enough, then no need to calculate realative error
-            EXPECT_NEAR(0, abs_error, abs_threshold) << "provider_type: " << provider_type;
+            EXPECT_NEAR(0, abs_error, abs_threshold);
           } else {
             // default for existing tests.
             const float rel_error = abs_error / max_value;
-            EXPECT_NEAR(0, rel_error, threshold) << "provider_type: " << provider_type;
+            EXPECT_NEAR(0, rel_error, threshold);
           }
         }
       }
@@ -397,15 +396,15 @@ struct TensorCheck<BFloat16> {
 
 // default Check
 template <typename T>
-void Check(std::string_view name, const ValidateOutputParams& /*params*/,
-           const OrtValue& expected, const T& actual, const std::string& provider_type) {
-  EXPECT_EQ(expected.Get<T>(), actual) << "name: " << name << " provider_type : " << provider_type;
+void Check(std::string_view name, const OrtValue& expected, const T& actual,
+           const ValidateOutputParams& /*params*/, const std::string& /*provider_type*/) {
+  EXPECT_EQ(expected.Get<T>(), actual) << "name: " << name;
 }
 
 // Check for Tensors
 template <>
-void Check<Tensor>(std::string_view name, const ValidateOutputParams& params,
-                   const OrtValue& expected, const Tensor& actual, const std::string& provider_type) {
+void Check<Tensor>(std::string_view name, const OrtValue& expected, const Tensor& actual,
+                   const ValidateOutputParams& params, const std::string& provider_type) {
   const Tensor& expected_tensor = expected.Get<Tensor>();
   ORT_ENFORCE(expected_tensor.Shape() == actual.Shape(),
               "Expected output shape [", expected_tensor.Shape(),
@@ -421,29 +420,27 @@ void Check<Tensor>(std::string_view name, const ValidateOutputParams& params,
                               MLFloat16, BFloat16>
       t_disp(actual.GetElementType());
 
-  t_disp.Invoke<TensorCheck>(expected_tensor, actual, provider_type, params);
+  t_disp.Invoke<TensorCheck>(expected_tensor, actual, params, provider_type);
 }
 
 // Check for sequence of tensors
 template <>
-void Check<TensorSeq>(std::string_view name, const ValidateOutputParams& params,
-                      const OrtValue& expected, const TensorSeq& output_seq, const std::string& provider_type) {
+void Check<TensorSeq>(std::string_view name, const OrtValue& expected, const TensorSeq& actual,
+                      const ValidateOutputParams& params, const std::string& provider_type) {
   const auto& exp_seq = expected.Get<TensorSeq>();
 
   // first ensure data types match
-  EXPECT_EQ(exp_seq.DataType(), output_seq.DataType())
+  EXPECT_EQ(exp_seq.DataType(), actual.DataType())
       << "Data types don't match for " << name << ". Expected : " << DataTypeImpl::ToString(exp_seq.DataType())
-      << " Output: " << output_seq.DataType()
-      << " provider_type: " << provider_type;
+      << " Output: " << actual.DataType();
 
   // check num of contained tensors
   size_t expected_num_tensors = exp_seq.Size();
-  size_t output_num_tensors = output_seq.Size();
-  EXPECT_EQ(expected_num_tensors, output_num_tensors)
+  size_t actual_num_tensors = actual.Size();
+  EXPECT_EQ(expected_num_tensors, actual_num_tensors)
       << "Mismatch in number of tensors in the sequence for " << name
       << ". Expected: " << expected_num_tensors
-      << " Output: " << output_num_tensors
-      << " provider_type: " << provider_type;
+      << " Output: " << actual_num_tensors;
 
   // now check the contents of the tensors
   auto element_type = exp_seq.DataType()->AsPrimitiveDataType()->GetDataType();
@@ -456,39 +453,42 @@ void Check<TensorSeq>(std::string_view name, const ValidateOutputParams& params,
                               MLFloat16, BFloat16>
       t_disp(element_type);
 
-  for (size_t i = 0; i < output_num_tensors; ++i) {
-    t_disp.Invoke<TensorCheck>(exp_seq.Get(i), output_seq.Get(i), provider_type, params);
+  for (size_t i = 0; i < actual_num_tensors; ++i) {
+    t_disp.Invoke<TensorCheck>(exp_seq.Get(i), actual.Get(i), params, provider_type);
   }
 }
 
 template <typename Type>
-void CheckDispatch(MLDataType type, std::string_view name, const ValidateOutputParams& params,
-                   const OrtValue& expected, const OrtValue& actual, const std::string& provider_type) {
+void CheckDispatch(MLDataType type, std::string_view name, const OrtValue& expected, const OrtValue& actual,
+                   const ValidateOutputParams& params, const std::string& provider_type) {
   if (type == DataTypeImpl::GetType<Type>()) {
-    Check<Type>(name, params, expected, actual.Get<Type>(), provider_type);
+    Check<Type>(name, expected, actual.Get<Type>(), params, provider_type);
   } else {
     ORT_THROW("OpTester:Check() not implemented for output tensor type of ", type);
   }
 }
 
 template <typename Type, typename Next, typename... Types>
-void CheckDispatch(MLDataType type, std::string_view name, const ValidateOutputParams& params,
-                   const OrtValue& expected, const OrtValue& actual, const std::string& provider_type) {
+void CheckDispatch(MLDataType type, std::string_view name, const OrtValue& expected, const OrtValue& actual,
+                   const ValidateOutputParams& params, const std::string& provider_type) {
   if (type == DataTypeImpl::GetType<Type>()) {
-    Check<Type>(name, params, expected, actual.Get<Type>(), provider_type);
+    Check<Type>(name, expected, actual.Get<Type>(), params, provider_type);
   } else {
-    CheckDispatch<Next, Types...>(type, name, params, expected, actual, provider_type);
+    CheckDispatch<Next, Types...>(type, name, expected, actual, params, provider_type);
   }
 }
 
-void Check(std::string_view name, const OrtValue& expected, const OrtValue& actual,
-           const ValidateOutputParams& params, const std::string& provider_type) {
+void CheckOrtValuesAreEqual(std::string_view name, const OrtValue& expected, const OrtValue& actual,
+                            const ValidateOutputParams& params, const std::string& provider_type) {
+  // Include provider_type in any error output
+  SCOPED_TRACE(MakeString("provider type: ", provider_type));
+
   CheckDispatch<
       Tensor,
 #if !defined(DISABLE_ML_OPS)
       VectorMapStringToFloat, VectorMapInt64ToFloat,
 #endif
-      TensorSeq>(expected.Type(), name, params, expected, actual, provider_type);
+      TensorSeq>(expected.Type(), name, expected, actual, params, provider_type);
 }
 
 }  // namespace test

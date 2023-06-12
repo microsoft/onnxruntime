@@ -78,7 +78,7 @@ class BaseTester {
   }
 
   template <typename T>
-  void AddInput(const char* name, std::initializer_list<int64_t> dims, const TensorShapeVector& values,
+  void AddInput(const char* name, std::initializer_list<int64_t> dims, gsl::span<const T> values,
                 bool is_initializer = false, const std::vector<std::string>* dim_params = nullptr) {
     const DimsVariant dims_var = std::vector<int64_t>(dims);
     AddData(input_data_, name, dims_var, values.data(), values.size(), is_initializer, false, dim_params);
@@ -350,13 +350,6 @@ class BaseTester {
   // This function doesn't work for vector<bool> because const vector<bool> cannot invoke its data().
   template <typename T>
   void AddOutput(const char* name, const DimsVariant& dims, const std::vector<T>& expected_values,
-                 bool sort_output = false, float rel_error = 0.0f, float abs_error = 0.0f) {
-    AddData(output_data_, name, dims, expected_values.data(), expected_values.size(), false,
-            sort_output, nullptr /* dim_params */, rel_error, abs_error);
-  }
-
-  template <typename T>
-  void AddOutput(const char* name, const DimsVariant& dims, const TensorShapeVector& expected_values,
                  bool sort_output = false, float rel_error = 0.0f, float abs_error = 0.0f) {
     AddData(output_data_, name, dims, expected_values.data(), expected_values.size(), false,
             sort_output, nullptr /* dim_params */, rel_error, abs_error);

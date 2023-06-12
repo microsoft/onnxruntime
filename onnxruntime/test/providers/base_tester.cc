@@ -376,9 +376,11 @@ void BaseTester::ExecuteModel(Model& model, SessionType& session,
               }
             }
 
-            Check(name, expected_data.data, ort_value, expected_data.validation_params, provider_type);
+            CheckOrtValuesAreEqual(name, expected_data.data, ort_value, expected_data.validation_params,
+                                   provider_type);
           } else {
-            Check(name, expected_data.data, ort_value, expected_data.validation_params, provider_type);
+            CheckOrtValuesAreEqual(name, expected_data.data, ort_value, expected_data.validation_params,
+                                   provider_type);
           }
 
           ++idx;
@@ -392,16 +394,6 @@ void BaseTester::ExecuteModel(Model& model, SessionType& session,
     }
   }
 }
-
-// void BaseTester::ClearEpsForAllNodes(Graph& graph) {
-//   const std::string empty;
-//   for (auto& node : graph.Nodes()) {
-//     node.SetExecutionProviderType(empty);
-//     for (auto& subgraph : node.GetAttributeNameToMutableSubgraphMap()) {
-//       ClearEpsForAllNodes(*subgraph.second);
-//     }
-//   }
-// }
 
 bool SetEpsForAllNodes(Graph& graph,
                        const std::vector<std::unique_ptr<IExecutionProvider>>& execution_providers,
