@@ -74,7 +74,7 @@ Status ToFile(const PathString& checkpoint_path, flatbuffers::FlatBufferBuilder&
   uint8_t* buf = builder.GetBufferPointer();
   int size = builder.GetSize();
   file.write(reinterpret_cast<const char*>(buf), size);
-  ORT_RETURN_IF_NOT(file, "Failed to save ORT format model to file: ", ToUTF8String(checkpoint_path));
+  ORT_RETURN_IF_NOT(file, "Failed to save checkpoint to file: ", ToUTF8String(checkpoint_path));
 
   return Status::OK();
 }
