@@ -1,8 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {Tensor} from './tensor';
-import {TensorToDataUrlOptions, TensorToImageDataOptions} from './tensor-conversion';
+import {TensorToDataUrlOptions, TensorToImageDataOptions} from './tensor-conversion.js';
+import {Tensor} from './tensor.js';
 
 /**
  * implementation of Tensor.toDataURL()
