@@ -46,27 +46,30 @@ void LaunchLogitsProcessKernel(
     cudaStream_t stream);
 
 struct HypothesisScore {
-  gsl::span<const int32_t> hypothesis;
+  const int32_t* hypothesis;
+  int hypothesis_length;
   float score;
 };
 
 struct BeamHypotheses {
-  gsl::span<HypothesisScore> beams_;  // Beam width sized array of hypotheses, sorted by highest scoring
-  int beams_used_;                    // Number of elements used in beams_
+  HypothesisScore* beams_;  // Beam width sized array of hypotheses, sorted by highest scoring
+  int beams_count_;
+  int beams_used_;          // Number of elements used in beams_
   float length_penalty_;
   bool done_;
 
   // Add a new hypothesis
-  __device__ void Add(const gsl::span<const int32_t> hypothesis, float sum_logprobs);
+  __device__ void Add(const int32_t* hypothesis, int hypothesis_length, float sum_logprobs);
 
   // Return true if this beats the worst score in the hypothesis
   __device__ bool CanImprove(float best_sum_logprobs, int current_length) const;
 
   // Output results
-  __device__ void Output(int top_k,                           // number of sequences to return
-                         int max_length,                      // max sequence length
-                         gsl::span<int32_t> sequences,        // buffer with pad token, shape (num_return_sequences, max_length)
-                         gsl::span<float> sequences_scores);  // buffer for sequence scores, with shape (num_return_sequences)
+  __device__ void Output(int top_k,                 // number of sequences to return
+                         int max_length,            // max sequence length
+                         int pad_token_id,          // pad token
+                         int32_t* sequences,        // buffer with pad token, shape (num_return_sequences, max_length)
+                         float* sequences_scores);  // buffer for sequence scores, with shape (num_return_sequences)
 };
 
 struct BeamScorerState {
@@ -79,12 +82,13 @@ struct BeamScorerState {
   bool early_stopping_;
   int not_done_count_;  // When zero, every batch entry is done (starts at batch_size_)
 
-  size_t hypothesis_buffer_used_{};  // Offset of available buffer, or length of used buffer.
+  size_t hypothesis_buffer_used_;  // Offset of available buffer, or length of used buffer.
 };
 
 void LaunchInitializeBeamHypotheses(gsl::span<BeamHypotheses> beam_hyps, float length_penalty, gsl::span<HypothesisScore> beams, int num_beams, cudaStream_t stream);
 
 void LaunchBeamSearchScorer_Process(int batch_size,
+                                    int num_beams,
                                     BeamScorerState& state,
                                     gsl::span<const int32_t> sequences,
                                     gsl::span<int32_t> next_sequences,
@@ -99,7 +103,8 @@ void LaunchBeamSearchScorer_Process(int batch_size,
                                     gsl::span<const int32_t> next_indices,
                                     cudaStream_t stream);
 
-void LaunchBeamSearchScorer_Finalize(BeamScorerState& state,
+void LaunchBeamSearchScorer_Finalize(int batch_size,
+                                     BeamScorerState& state,
                                      gsl::span<const int32_t> sequences,
                                      int sequence_length,
                                      gsl::span<BeamHypotheses> beam_hyps_,

@@ -571,6 +571,7 @@ struct CudaBeamSearchScorer : transformers::IBeamScorer {
                 Tensor* output_sequence_scores) override;
 
   bool IsDone() const override;
+  bool IsDoneLater() const override;
 
   gsl::span<float> GetNextScores() override { return next_beam_scores_; }
   gsl::span<int32_t> GetNextTokens() override { return next_beam_tokens_; }
@@ -582,7 +583,8 @@ struct CudaBeamSearchScorer : transformers::IBeamScorer {
   gsl::span<int32_t> GetNextIndicesGPU() override { return next_beam_indices_; }
 
  private:
-  mutable cuda::BeamScorerState state_cpu_;
+  mutable cuda::AutoDestoryCudaEvent state_copy_event_;
+  IAllocatorUniquePtr<cuda::BeamScorerState> state_cpu_;
   IAllocatorUniquePtr<cuda::BeamScorerState> state_gpu_;
   cudaStream_t stream_;
 
@@ -615,24 +617,37 @@ gsl::span<TAlloc> Allocate(std::shared_ptr<IAllocator> allocator,
   return gsl::make_span(unique_ptr.get(), size);
 }
 
+template<typename T>
+IAllocatorUniquePtr<T> AllocateCPUPinned()
+{
+  T* p;
+  cudaMallocHost(&p, sizeof(T));
+  return IAllocatorUniquePtr<T>{p, [](cuda::BeamScorerState* p) { cudaFreeHost(p); }};
+}
+
 CudaBeamSearchScorer::CudaBeamSearchScorer(const transformers::IGenerationParameters& parameters,
                                            AllocatorPtr& allocator, AllocatorPtr& allocator_cpu, Stream* stream)
     : stream_{stream ? reinterpret_cast<cudaStream_t>(stream->GetHandle()) : nullptr} {
-  state_cpu_.batch_size_ = static_cast<size_t>(parameters.batch_size);
-  state_cpu_.num_beams_ = static_cast<size_t>(parameters.num_beams);
-  state_cpu_.max_length_ = static_cast<size_t>(parameters.max_length);
-  state_cpu_.num_return_sequences_ = static_cast<size_t>(parameters.num_return_sequences);
-  state_cpu_.pad_token_id_ = parameters.pad_token_id;
-  state_cpu_.eos_token_id_ = parameters.eos_token_id;
-  state_cpu_.early_stopping_ = parameters.early_stopping;
-  state_cpu_.not_done_count_ = parameters.batch_size;
-  state_gpu_ = IAllocator::MakeUniquePtr<cuda::BeamScorerState>(allocator, 1);
-  cudaMemcpyAsync(state_gpu_.get(), &state_cpu_, sizeof(state_cpu_), ::cudaMemcpyHostToDevice, stream_);
 
-  size_t batch_beam_size = state_cpu_.batch_size_ * state_cpu_.num_beams_;
+  cudaEventCreate(&state_copy_event_.Get());
+
+  state_cpu_ = AllocateCPUPinned<cuda::BeamScorerState>();
+  state_cpu_->batch_size_ = static_cast<size_t>(parameters.batch_size);
+  state_cpu_->num_beams_ = static_cast<size_t>(parameters.num_beams);
+  state_cpu_->max_length_ = static_cast<size_t>(parameters.max_length);
+  state_cpu_->num_return_sequences_ = static_cast<size_t>(parameters.num_return_sequences);
+  state_cpu_->pad_token_id_ = parameters.pad_token_id;
+  state_cpu_->eos_token_id_ = parameters.eos_token_id;
+  state_cpu_->early_stopping_ = parameters.early_stopping;
+  state_cpu_->not_done_count_ = parameters.batch_size;
+  state_cpu_->hypothesis_buffer_used_ = 0;
+  state_gpu_ = IAllocator::MakeUniquePtr<cuda::BeamScorerState>(allocator, 1);
+  cudaMemcpyAsync(state_gpu_.get(), state_cpu_.get(), sizeof(cuda::BeamScorerState), ::cudaMemcpyHostToDevice, stream_);
+
+  size_t batch_beam_size = state_cpu_->batch_size_ * state_cpu_->num_beams_;
 
   auto beams = Allocate<cuda::HypothesisScore>(allocator, batch_beam_size, hypothesis_scores_ptr_);
-  beam_hyps_ = Allocate<cuda::BeamHypotheses>(allocator, state_cpu_.batch_size_, beam_hyps_ptr_);
+  beam_hyps_ = Allocate<cuda::BeamHypotheses>(allocator, state_cpu_->batch_size_, beam_hyps_ptr_);
 
   cuda::LaunchInitializeBeamHypotheses(beam_hyps_, parameters.length_penalty, beams, parameters.num_beams, stream_);
 
@@ -642,7 +657,7 @@ CudaBeamSearchScorer::CudaBeamSearchScorer(const transformers::IGenerationParame
   next_beam_indices_cpu_ = Allocate<int32_t>(allocator_cpu, batch_beam_size, next_beam_indices_ptr_);
 
   // Space to store intermediate sequence with length sequence_length, sequence_length + 1, ..., max_sequence_length.
-  size_t per_beam = (SafeInt<size_t>(state_cpu_.max_length_) * (state_cpu_.max_length_ + 1) - (parameters.sequence_length - 1) * parameters.sequence_length) / 2;
+  size_t per_beam = (SafeInt<size_t>(state_cpu_->max_length_) * (state_cpu_->max_length_ + 1) - (parameters.sequence_length - 1) * parameters.sequence_length) / 2;
   hypothesis_buffer_ = Allocate<int32_t>(allocator, batch_beam_size * per_beam, hypothesis_buffer_ptr_);
 }
 
@@ -650,7 +665,8 @@ void CudaBeamSearchScorer::Process(transformers::ISequences& sequences,
                                    gsl::span<const float>& next_scores,
                                    gsl::span<const int32_t>& next_tokens,
                                    gsl::span<const int32_t>& next_indices) {
-  cuda::LaunchBeamSearchScorer_Process(state_cpu_.batch_size_,
+  cuda::LaunchBeamSearchScorer_Process(state_cpu_->batch_size_,
+                                       state_cpu_->num_beams_,
                                        *state_gpu_,
                                        sequences.GetCurrentDeviceSequences(),
                                        sequences.GetNextDeviceSequences(),
@@ -667,9 +683,15 @@ void CudaBeamSearchScorer::Process(transformers::ISequences& sequences,
 }
 
 bool CudaBeamSearchScorer::IsDone() const {
-  cudaMemcpyAsync(&state_cpu_, state_gpu_.get(), sizeof(state_cpu_), ::cudaMemcpyDeviceToHost, stream_);
-  cudaStreamSynchronize(stream_);
-  return state_cpu_.not_done_count_ == 0;
+  cudaMemcpyAsync(state_cpu_.get(), state_gpu_.get(), sizeof(cuda::BeamScorerState), ::cudaMemcpyDeviceToHost, stream_);
+  cudaEventRecord(state_copy_event_.Get(), stream_);
+  return false;
+}
+
+bool CudaBeamSearchScorer::IsDoneLater() const
+{
+  cudaEventSynchronize(state_copy_event_.Get());
+  return state_cpu_->not_done_count_ == 0;
 }
 
 void CudaBeamSearchScorer::Finalize(transformers::ISequences& sequences,
@@ -687,7 +709,7 @@ void CudaBeamSearchScorer::Finalize(transformers::ISequences& sequences,
     sequence_scores = gsl::span<float>{output_sequence_scores->MutableData<float>(), static_cast<size_t>(output_sequence_scores->Shape().Size())};
   }
 
-  cuda::LaunchBeamSearchScorer_Finalize(*state_gpu_, sequences.GetCurrentDeviceSequences(), sequences.GetSequenceLength(), beam_hyps_, final_beam_scores, output, sequence_scores, stream_);
+  cuda::LaunchBeamSearchScorer_Finalize(state_cpu_->batch_size_, *state_gpu_, sequences.GetCurrentDeviceSequences(), sequences.GetSequenceLength(), beam_hyps_, final_beam_scores, output, sequence_scores, stream_);
 }
 
 std::unique_ptr<transformers::IBeamScorer> CreateBeamScorer(const transformers::IGenerationParameters& parameters,
@@ -899,7 +921,8 @@ Status DeviceCopy(gsl::span<T> target, gsl::span<const T> source, Stream* ort_st
   } else {
     CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(target.data(), source.data(), source.size_bytes(),
                                          static_cast<cudaMemcpyKind>(copyDirection), cuda_stream));
-    CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(cuda_stream));
+    if (copyDirection != DeviceCopyDirection::deviceToDevice)
+      CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(cuda_stream));
   }
   return Status::OK();
 }
@@ -1094,11 +1117,11 @@ Status UpdateGptFeeds(
       ORT_RETURN_IF_ERROR(PickGptPastState<T>(last_outputs, next_inputs, beam_indices_cpu, allocator,
                                               gpt_subgraph_first_past_input_idx,
                                               gpt_subgraph_first_present_output_idx, ort_stream));
+      // Make sure data is ready before next subgraph execution.
+      CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(cuda_stream));
     }
   }
 
-  // Make sure data is ready before next subgraph execution.
-  CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(cuda_stream));
 
 #ifdef ENABLE_NVTX_PROFILE
   updateFeedsRange.End();

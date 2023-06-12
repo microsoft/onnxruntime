@@ -87,7 +87,7 @@ struct BeamSearchScorer : IBeamScorer {
 
   IAllocatorUniquePtr<int32_t> hypothesis_buffer_ptr_;  // Allocated buffer to hold all hypotheses
   gsl::span<int32_t> hypothesis_buffer_;                // Span of the allocated buffer
-  size_t hypothesis_buffer_used_{};                     // Offset of available buffer, or length of used buffer.
+  int hypothesis_buffer_used_{};                        // Offset of available buffer, or length of used buffer.
 
   IAllocatorUniquePtr<HypothesisScore> hypothesis_scores_ptr_;  // num_beams_ * batch_size_, divided into num_beams_ chunks per BeamHypothesis in beam_hyps_
   IAllocatorUniquePtr<BeamHypotheses> beam_hyps_ptr_;

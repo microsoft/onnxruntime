@@ -323,9 +323,8 @@ Status BeamSearchGpt<T>::Execute(const FeedsFetchesManager* init_run_feeds_fetch
                                                 iteration_counter));
 
     // When all batches are finished, stop earlier to avoid wasting computation.
-    if (this->beam_scorer_->IsDone()) {
+    if (this->beam_scorer_->IsDone())
       break;
-    }
 
     // Increase sequence length after a new token is generated.
     ++current_length;
@@ -366,6 +365,9 @@ Status BeamSearchGpt<T>::Execute(const FeedsFetchesManager* init_run_feeds_fetch
                                       parameters->sequence_length,
                                       gpt_subgraph_.has_decoder_masked_attention_));
     }
+
+    if (this->beam_scorer_->IsDoneLater())
+      break;
 
     if (gpt_subgraph_.past_present_share_buffer_) {
       // clear fetched values before presents[]
