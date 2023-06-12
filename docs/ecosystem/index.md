@@ -26,7 +26,7 @@ ONNX Runtime functions as part of an ecosystem of tools and platforms to deliver
 * [Automated Machine Learning](https://github.com/Azure/MachineLearningNotebooks/blob/master/how-to-use-azureml/automated-machine-learning/classification-bank-marketing-all-features/auto-ml-classification-bank-marketing-all-features.ipynb){:target="_blank"}
 
 ## Azure Custom Vision
-* [Export a Custom Vision model to ONNX format](https://docs.microsoft.com/en-us/samples/azure-samples/cognitive-services-onnx-customvision-sample/cognitive-services-onnx-customvision-sample/){:target="_blank"}
+* [Export a Custom Vision model to ONNX format](https://learn.microsoft.com/en-us/azure/cognitive-services/custom-vision-service/export-programmatically){:target="_blank"}
 * [Use a Custom Vision model with Windows Machine Learning](https://docs.microsoft.com/en-us/azure/cognitive-services/custom-vision-service/custom-vision-onnx-windows-ml){:target="_blank"}
 
 ## Azure SQL Edge
