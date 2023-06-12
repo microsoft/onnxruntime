@@ -1429,7 +1429,10 @@ def build_targets(args, cmake_path, build_dir, configs, num_parallel_jobs, targe
             cmd_args.extend(["--target", target])
 
         build_tool_args = []
-        if num_parallel_jobs != 1:
+        # We do not pass any parallel jobs related option if num_parallel_jobs is 1 as that is the default 
+        # number of jobs in most generators, unless the cmake generator is ninja (as in the ninja case 
+        # the default number of jobs is not 1)
+        if num_parallel_jobs != 1 or args.cmake_generator == "Ninja":
             if is_windows() and args.cmake_generator != "Ninja" and not args.build_wasm:
                 build_tool_args += [
                     f"/maxcpucount:{num_parallel_jobs}",
