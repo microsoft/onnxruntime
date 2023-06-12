@@ -120,4 +120,4 @@ Status TrainingSession::ExportModelForInferencing(const std::string& inference_m
 }
 #endif
 
-}  // namespace api
+}  // namespace onnxruntime::training::api
