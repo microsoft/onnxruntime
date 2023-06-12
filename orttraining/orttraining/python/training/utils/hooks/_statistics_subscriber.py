@@ -100,7 +100,7 @@ class StatisticsSubscriber(SubscriberBase):
 
         if self._run_on_cpu:
             flatten_array = flatten_array.to("cpu")
-        zero_tensor = torch.tensor(0, dtype=flatten_array.dtype, device=flatten_array.device)
+
         if self._run_on_cpu:
             num_nan = torch.isnan(flatten_array).sum()
             num_inf = torch.isinf(flatten_array).sum()
@@ -110,7 +110,7 @@ class StatisticsSubscriber(SubscriberBase):
             min_value = flatten_array.min()
             max_value = flatten_array.max()
             mean_value = flatten_array.mean()
-            mean_of_std_value = flatten_array.std()
+            std_value = flatten_array.std()
         else:
             # Split the calculation for each bucket, then do another round of calculation on the bucket results.
             # This can at the best effort reduce the peak memory impact.
@@ -128,14 +128,17 @@ class StatisticsSubscriber(SubscriberBase):
             std_buckets = torch.zeros(ceil_bucket_count, dtype=flatten_array.dtype, device=flatten_array.device)
 
             # Summary for each bucket
+            element_count_per_bucket = torch.zeros(ceil_bucket_count, dtype=torch.int64, device=flatten_array.device)
             for i in range(ceil_bucket_count):
                 end = min((i + 1) * bucket_size, element_count)
                 bucket = flatten_array[i * bucket_size : end]
+                element_count_per_bucket[i] = bucket.numel()
+
                 nan_buckets[i] = torch.isnan(bucket).sum()
                 inf_buckets[i] = torch.isinf(bucket).sum()
-                neg_buckets[i] = torch.less(bucket, zero_tensor).to(torch.int64).sum()
-                pos_buckets[i] = torch.greater(bucket, zero_tensor).to(torch.int64).sum()
-                zero_buckets[i] = torch.eq(bucket, zero_tensor).to(torch.int64).sum()
+                neg_buckets[i] = (bucket < 0).sum()
+                pos_buckets[i] = (bucket > 0).sum()
+                zero_buckets[i] = (bucket == 0).sum()
                 min_buckets[i] = bucket.min()
                 max_buckets[i] = bucket.max()
                 mean_buckets[i] = bucket.sum()
@@ -150,7 +153,12 @@ class StatisticsSubscriber(SubscriberBase):
             min_value = min_buckets.min()
             max_value = max_buckets.max()
             mean_value = float(mean_buckets.sum()) / float(element_count)
-            mean_of_std_value = std_buckets.mean()
+            # Here we refer https://math.stackexchange.com/questions/2971315/how-do-i-combine-standard-deviations-of-two-groups
+            # to calculate the combined standard deviation of all buckets.
+            s = (element_count_per_bucket - 1) * (std_buckets**2) + element_count_per_bucket * (
+                (mean_buckets - mean_value) ** 2
+            )
+            std_value = torch.sqrt(s.sum() / (element_count - 1))
 
         with order_file_path.open(mode="a", encoding="utf-8") as f:
             f.write(f"{output_file_name}\n")
@@ -159,7 +167,7 @@ class StatisticsSubscriber(SubscriberBase):
             f.write(
                 f"{'>'*max(0, depth) + display_name} shape: {tensor_shape} dtype: {tensor_dtype} size: {flatten_array.size()} \n"
                 f"min: {min_value} max: {max_value}, mean: {mean_value}, "
-                f"mean_of_std: {mean_of_std_value} \n"
+                f"mean_of_std: {std_value} \n"
                 f"nan: {num_nan}, inf: {num_inf}\n"
             )
             f.write(f"samples(top 128): {flatten_array[:128]}\n")
