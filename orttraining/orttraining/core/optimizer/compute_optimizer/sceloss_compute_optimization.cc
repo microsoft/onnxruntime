@@ -135,7 +135,7 @@ Status InsertGatherBeforeSceLoss::ApplyImpl(Graph& graph, bool& modified, int /*
     // subgraph retrieving valid tokens for each SoftmaxCrossEntropyLossInternal node.
     // The duplication will be removed by CSE graph transformers.
     NodeArg* valid_labels_input_arg =
-        onnxruntime::optimizer::compute_optimizer::InsertNodesForValidIndices(graph, node, node.MutableInputDefs()[1], ignore_index_node_arg);
+        onnxruntime::optimizer::compute_optimizer::InsertNodesForValidIndices(graph, node.MutableInputDefs()[1], ignore_index_node_arg, node.GetExecutionProviderType());
 
     // Insert the ShrunkenGather node on the two inputs.
     for (int i = 0; i < 2; ++i) {

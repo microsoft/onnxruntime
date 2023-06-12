@@ -181,7 +181,7 @@ NodeArg* CreateInitializerFromVector(Graph& graph,
  *   This pattern is used to filter out the valid indices of the input tensor which is not padding idx.
  *   After inserting the pattern, the graph will be like:
  *     input_to_filter                   invalid_value
- *  (shape: [token_count])
+ *  (shape: [total_indices_count])
  *                         \         /
  *                             Sub
  *                              |
@@ -189,17 +189,17 @@ NodeArg* CreateInitializerFromVector(Graph& graph,
  *                              |
  *                           Squeeze
  *                              |
- *                 output (shape: [valid_indices_num])
+ *                 output (shape: [valid_indices_count])
  *
  * @param graph The graph to insert the pattern.
- * @param node The node that triggers the optimization search.
  * @param input_to_filter The input tensor to filter.
- * @param invalid_value The padding index.
+ * @param invalid_value The invalid index value to remove.
+ * @param execution_provider_type The execution provider type of the inserted nodes.
  */
 NodeArg* InsertNodesForValidIndices(Graph& graph,
-                                    Node& node,
                                     NodeArg* input_to_filter,
-                                    NodeArg* invalid_value);
+                                    NodeArg* invalid_value,
+                                    const std::string& execution_provider_type);
 
 }  // namespace onnxruntime::optimizer::compute_optimizer
 #endif

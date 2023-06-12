@@ -169,7 +169,6 @@ to standard outputs.
 	export ORTMODULE_PRINT_MEMORY_STATS=0 # Disable
 	```
 
-
 #### ORTMODULE_ENABLE_EMBEDDING_SPARSE_OPTIMIZER
 
 - **Feature Area**: *ORTMODULE/Optimizations*

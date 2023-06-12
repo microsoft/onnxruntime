@@ -191,9 +191,9 @@ NodeArg* CreateInitializerFromVector(Graph& graph,
 }
 
 NodeArg* InsertNodesForValidIndices(Graph& graph,
-                                    Node& node,
                                     NodeArg* input_to_filter,
-                                    NodeArg* invalid_value) {
+                                    NodeArg* invalid_value,
+                                    const std::string& execution_provider_type) {
   InlinedVector<NodeArg*> sub_input_args{input_to_filter, invalid_value};
 
   InlinedVector<NodeArg*> sub_output_args{&graph.GetOrCreateNodeArg(graph.GenerateNodeArgName("sub_result"),
@@ -202,7 +202,7 @@ NodeArg* InsertNodesForValidIndices(Graph& graph,
   Node& sub_node = graph.AddNode(graph.GenerateNodeName("sub_invalid_value"), "Sub", "sub invalid value", sub_input_args,
                                  sub_output_args, nullptr, kOnnxDomain);
   ORT_ENFORCE(graph.SetOpSchemaFromRegistryForNode(sub_node), "Failed to set op schema for " + sub_node.Name());
-  sub_node.SetExecutionProviderType(node.GetExecutionProviderType());
+  sub_node.SetExecutionProviderType(execution_provider_type);
 
   auto non_zero_out_arg = &graph.GetOrCreateNodeArg(graph.GenerateNodeArgName("filter_valid_result"),
                                                     input_to_filter->TypeAsProto());
@@ -222,7 +222,7 @@ NodeArg* InsertNodesForValidIndices(Graph& graph,
   non_zero_output_shape.add_dim()->set_dim_value(1);
   non_zero_output_shape.add_dim()->set_dim_param(dim_name);
   non_zero_out_arg->SetShape(non_zero_output_shape);
-  non_zero_node.SetExecutionProviderType(node.GetExecutionProviderType());
+  non_zero_node.SetExecutionProviderType(execution_provider_type);
 
   InlinedVector<NodeArg*> squeeze_input_args;
   squeeze_input_args.push_back(non_zero_out_arg);
@@ -247,7 +247,7 @@ NodeArg* InsertNodesForValidIndices(Graph& graph,
   ONNX_NAMESPACE::TensorShapeProto squeeze_output_shape;
   squeeze_output_shape.add_dim()->set_dim_param(dim_name);
   squeeze_out_arg->SetShape(squeeze_output_shape);
-  squeeze_node.SetExecutionProviderType(node.GetExecutionProviderType());
+  squeeze_node.SetExecutionProviderType(execution_provider_type);
 
   return squeeze_out_arg;
 }

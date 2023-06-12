@@ -5744,7 +5744,158 @@ def test_runtime_inspector_label_and_embed_sparsity_detection(embed_is_sparse, l
         assert found_embed_is_sparse
 
 
-def test_padding_elimination():
+@pytest.mark.parametrize(
+    "test_cases",
+    [
+        ("Add", 0),
+        ("Add", 1),
+        ("Add", 2),
+        ("MatMul", 0),
+        ("MatMul", 1),
+        ("Dropout", 0),
+        ("LayerNorm", 0),
+        ("Cast", 0),
+        ("BiasGelu", 0),
+    ],
+)
+def test_ops_for_padding_elimination(test_cases):
+    os.environ["ORTMODULE_ENABLE_EMBEDDING_SPARSE_OPTIMIZER"] = "1"
+    test_op = test_cases[0]
+    case = test_cases[1]
+
+    class ToyModel(torch.nn.Module):
+        def __init__(self, vocab_size, hidden_size, pad_token_id):
+            super().__init__()
+            self.word_embeddings = nn.Embedding(vocab_size, hidden_size, padding_idx=pad_token_id)
+            if test_op == "LayerNorm":
+                self.LayerNorm = nn.LayerNorm(hidden_size, eps=1e-05)
+            self.hidden_size = hidden_size
+
+        # test Add op for padding elimination
+        # in case 0, the shapes of inputs of Add are [batch_size, seqlen, hidden_size] and [hidden_size],
+        #            the Add should be included in padding elimination subgraph and the GatherGrad should be added to
+        #            output of Add.
+        # in case 1, the shapes of inputs of Add are [batch_size, seqlen, hidden_size] and [batch_size, 1, hidden_size],
+        #            this case is not support in padding elimination, so the Add should not be included in padding
+        #            elimination subgraph and the GatherGrad should be added before Add.
+        # in case 2, the shapes of inputs of Add are [batch_size, seqlen, hidden_size] and [batch_size, seqlen, hidden_size],
+        #            the Add should be included in padding elimination subgraph and the GatherGrad should be added to
+        #            output of Add. Besides, the other input of Add should be added 'Reshape + ShrunkenGather' to
+        #            flatten and elimination padding.
+        def test_add(self, input_ids):
+            input_shape = input_ids.size()
+            if case == 0:
+                add_input = torch.ones(self.hidden_size, dtype=torch.long).to(device)
+            elif case == 1:
+                add_input = torch.ones((input_shape[0], 1, self.hidden_size), dtype=torch.long).to(device)
+            elif case == 2:
+                add_input = torch.ones(input_shape, dtype=torch.long).to(device)
+                add_input = add_input.unsqueeze(-1).expand(-1, -1, self.hidden_size)
+            inputs_embeds = self.word_embeddings(input_ids)
+            output = add_input + inputs_embeds
+            return output
+
+        # test MatMul op for padding elimination
+        # in case 0, the shapes of inputs of MatMul are [2, seqlen] and [batch_size, seqlen, hidden_size]
+        #            this case is not support in padding elimination, so the MatMul should not be included in padding
+        #            elimination subgraph and the GatherGrad should be added before MatMul.
+        # in case 1, the shapes of inputs of MatMul are [batch_size, seqlen, hidden_size] and [hidden_size, 128]
+        #            the MatMul should be included in padding elimination subgraph and the GatherGrad should be added to
+        #            output of MatMul.
+        def test_matmul(self, input_ids):
+            inputs_embeds = self.word_embeddings(input_ids)
+            if case == 0:
+                matmul_input = torch.randn((2, input_ids.size(1))).to(device)
+                output = torch.matmul(matmul_input, inputs_embeds)
+            elif case == 1:
+                matmul_input = torch.randn((self.hidden_size, 128)).to(device)
+                output = torch.matmul(inputs_embeds, matmul_input)
+            return output
+
+        # test other ops for padding elimination
+        # all these ops should be included in padding elimination subgraph and the GatherGrad should be added to
+        # output of these ops.
+        def test_other(self, input_ids):
+            inputs_embeds = self.word_embeddings(input_ids)
+            if test_op == "Dropout":
+                output = torch.nn.functional.dropout(inputs_embeds, p=0.5, training=True)
+            elif test_op == "LayerNorm":
+                output = self.LayerNorm(inputs_embeds)
+            elif test_op == "Cast":
+                output = inputs_embeds.to(torch.float16)
+            elif test_op == "BiasGelu":
+                bias = torch.randn((self.hidden_size,)).to(device)
+                output = torch.nn.functional.gelu(inputs_embeds + bias)
+            return output
+
+        def forward(self, input_ids):
+            if test_op == "Add":
+                output = self.test_add(input_ids)
+            elif test_op == "MatMul":
+                output = self.test_matmul(input_ids)
+            else:
+                output = self.test_other(input_ids)
+            return output
+
+    # Generate one batch of inputs (shape:[batch_size, max_seq_length]).
+    # Each input has random length from 1 to max_seq_length*0.8 with values from 2 to vocab_size and padded with 1 at
+    # [max_seq_length - length:].
+    def generate_inputs(batch_size, max_seq_length, vocab_size):
+        batched_inputs = []
+        for _ in range(batch_size):
+            # Generate random length from 1 to max_seq_length*0.8, to ensure sparsity > 20%
+            seq_len = random.randint(1, int(max_seq_length * 0.8))
+
+            # Generate input values and padding respectively and concatenate them
+            input_id = torch.randint(2, vocab_size, (seq_len,), dtype=torch.long, device=device)
+            padding = torch.ones((max_seq_length - seq_len,), dtype=torch.long, device=device)
+            batched_inputs.append(torch.cat((input_id, padding)))
+        return torch.stack(batched_inputs)
+
+    vocab_size, hidden_size = 50265, 768
+    batch_size, max_seq_length = 8, 128
+    device = "cuda"
+    model = ORTModule(ToyModel(vocab_size, hidden_size, 1).to(device))
+    x = generate_inputs(batch_size, max_seq_length, vocab_size)
+    model(x)
+
+    training_model = model._torch_module._execution_manager(True)._onnx_models.optimized_model
+    assert len([node.op_type for node in training_model.graph.node if node.op_type == "Sub"]) == 1
+    assert len([node.op_type for node in training_model.graph.node if node.op_type == "NonZero"]) == 1
+    assert len([node.op_type for node in training_model.graph.node if node.op_type == "Squeeze"]) == 1
+    assert len([node.op_type for node in training_model.graph.node if node.op_type == "GatherGrad"]) == 1
+    if case == 2:
+        assert len([node.op_type for node in training_model.graph.node if node.op_type == "ShrunkenGather"]) == 2
+    else:
+        assert len([node.op_type for node in training_model.graph.node if node.op_type == "ShrunkenGather"]) == 1
+    gathergrad_node = [node for node in training_model.graph.node if node.op_type == "GatherGrad"][0]
+    if test_op == "Add":
+        if case == 0:
+            assert "/_original_module/Add_output_0" in gathergrad_node.input
+        elif case == 1:
+            assert "/_original_module/word_embeddings/ATen_output_0" in gathergrad_node.input
+    elif test_op == "MatMul":
+        if case == 0:
+            assert "/_original_module/word_embeddings/ATen_output_0" in gathergrad_node.input
+        elif case == 1:
+            assert "/_original_module/MatMul_output_0" in gathergrad_node.input
+    else:
+        if test_op == "Dropout":
+            assert "/_original_module/Dropout_output_0" in gathergrad_node.input
+        elif test_op == "LayerNorm":
+            assert "/_original_module/LayerNorm/Add_1_output_0" in gathergrad_node.input
+        elif test_op == "Cast":
+            assert "/_original_module/Cast_output_0" in gathergrad_node.input
+        elif test_op == "BiasGelu":
+            assert "/_original_module/Mul_1_output_0" in gathergrad_node.input
+
+    del os.environ["ORTMODULE_ENABLE_EMBEDDING_SPARSE_OPTIMIZER"]
+
+
+def test_e2e_padding_elimination():
+    os.environ["ORTMODULE_ENABLE_EMBEDDING_SPARSE_OPTIMIZER"] = "1"
+    torch.manual_seed(5032)
+
     class OneLayer(torch.nn.Module):
         def __init__(self, hidden_size, num_attention_heads):
             super().__init__()
@@ -5783,7 +5934,8 @@ def test_padding_elimination():
             output = self.LayerNorm(output + hidden_states)
             return output
 
-    # This toy model is written referring to HuggingFace bert-large-uncased:https://huggingface.co/bert-large-uncased
+    # This toy model is written referring to HuggingFace bert-large-uncased model in run_glue.py:
+    # https://github.com/huggingface/optimum/blob/72133e595f9a054c3221ec9ea87f42e0bdaa062b/examples/onnxruntime/training/text-classification/run_glue.py
     # This is just a simple version of it for convenient testing.
     class ToyModel(torch.nn.Module):
         def __init__(self, num_hidden_layers, vocab_size, hidden_size, num_attention_heads, pad_token_id, num_labels):
@@ -5823,23 +5975,23 @@ def test_padding_elimination():
         optimizer.zero_grad()
 
     # Generate one batch of inputs (shape:[batch_size, max_seq_length]) and masks (shape:[batch_size, max_seq_length]).
-    # Each input has random length from 1 to max_seq_length with values from 2 to vocab_size and padded with 1 at
+    # Each input has random length from 1 to max_seq_length*0.8 with values from 2 to vocab_size and padded with 1 at
     # [max_seq_length - length:]. Values of masks are 1 at [0:length] and 0 at [length:max_seq_length].
     def generate_inputs(batch_size, max_seq_length, vocab_size):
         batched_inputs = []
         batched_masks = []
         for _ in range(batch_size):
-            # Generate random length from 1 to max_seq_length
-            seq_len = random.randint(1, max_seq_length)
+            # Generate random length from 1 to max_seq_length*0.8, to ensure sparsity > 20%
+            seq_len = random.randint(1, int(max_seq_length * 0.8))
 
             # Generate input values and padding respectively and concatenate them
             input_id = torch.randint(2, vocab_size, (seq_len,), dtype=torch.long, device=device)
-            padding = torch.ones((max_seq_length-seq_len,), dtype=torch.long, device=device)
+            padding = torch.ones((max_seq_length - seq_len,), dtype=torch.long, device=device)
             batched_inputs.append(torch.cat((input_id, padding)))
 
             # Generate mask values and padding respectively and concatenate them
             mask_ones = torch.ones((seq_len,), device=device)
-            mask_zeros = torch.zeros((max_seq_length-seq_len,), device=device)
+            mask_zeros = torch.zeros((max_seq_length - seq_len,), device=device)
             batched_masks.append(torch.cat((mask_ones, mask_zeros)))
         return torch.stack(batched_inputs), torch.stack(batched_masks)
 
@@ -5855,7 +6007,7 @@ def test_padding_elimination():
         pt_input, pt_mask = generate_inputs(batch_size, max_seq_length, vocab_size)
         ort_input = copy.deepcopy(pt_input)
         ort_mask = copy.deepcopy(pt_mask)
-        pt_target = torch.randint(3, (batch_size, ), device=device)
+        pt_target = torch.randint(3, (batch_size,), device=device)
         ort_target = copy.deepcopy(pt_target)
         # Run one step of forward and backward for torch and ort respectively
         pt_prediction = run_step(pt_model, pt_input, pt_mask, pt_target)
@@ -5865,4 +6017,12 @@ def test_padding_elimination():
         run_optim_step(pt_optimizer)
         run_optim_step(ort_optimizer)
 
-        _test_helpers.assert_values_are_close(ort_prediction, pt_prediction)
+        for pt_param, ort_param in zip(pt_model.parameters(), ort_model.parameters()):
+            _test_helpers.assert_values_are_close(pt_param.grad, ort_param.grad, atol=1e-4, rtol=1e-5)
+
+        _test_helpers.assert_values_are_close(ort_prediction, pt_prediction, atol=1e-2, rtol=1e-4)
+
+    training_model = ort_model._torch_module._execution_manager(True)._onnx_models.optimized_model
+    assert "ShrunkenGather" in [node.op_type for node in training_model.graph.node]
+    assert "GatherGrad" in [node.op_type for node in training_model.graph.node]
+    del os.environ["ORTMODULE_ENABLE_EMBEDDING_SPARSE_OPTIMIZER"]
