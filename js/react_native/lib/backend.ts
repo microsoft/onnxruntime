@@ -123,7 +123,7 @@ class OnnxruntimeSessionHandler implements SessionHandler {
           data = feeds[key].data as string[];
         } else {
           const buffer = (feeds[key].data as SupportedTypedArray).buffer;
-          data = jsiHelper.storeArrayBuffer(buffer) as JSIBlob;
+          data = jsiHelper.storeArrayBuffer(buffer);
         }
 
         returnValue[key] = {
