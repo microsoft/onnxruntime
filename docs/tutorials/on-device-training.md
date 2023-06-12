@@ -6,6 +6,10 @@ parent: Tutorials
 
 # On-Device Training: Building an Android Application
 
+Here is what the application will look like at the end of this tutorial:
+
+![Application Showcase](../../images/on-device-training-application-prediction-tom.jpg)
+
 ## Introduction
 
 In this tutorial, we will explore how to build an Android application that incorporates ONNX Runtime's On-Device Training solution. On-device training refers to the process of training a machine learning model directly on an edge device without relying on cloud services or external servers.
@@ -18,6 +22,12 @@ In this tutorial, we will use data to learn to:
 - Classify animals into one of four categories using a pre-packed animals dataset.
 - Classify celebrities into one of four categories using a custom celebrities dataset.
 
+## Contents
+{: .no_toc }
+
+* TOC placeholder
+{:toc}
+
 ## Prerequisites
 
 To follow this tutorial, you should have a basic understanding of Android app development using Java or Kotlin. Familiarity with C++ as well as familiarity with machine learning concepts such as neural networks and image classification will help as well.
@@ -28,15 +38,21 @@ To follow this tutorial, you should have a basic understanding of Android app de
 - Android NDK r21+
 - An Android device with a camera in [developer mode](https://developer.android.com/studio/debug/dev-options) with USB debugging enabled
 
-> **Note** The purpose of this tutorial is to show how ONNX Runtime can be used for On-Device Training. The author of this tutorial is not an expert in Android app development. The information provided in this tutorial is for educational purposes only and should not be considered as professional advice.
-
 > **Note** The entire android application is also made available on the [`onnxruntime-training-examples`](https://github.com/microsoft/onnxruntime-training-examples/tree/master/on_device_training/mobile/android/c-cpp) GitHub repository.
 
 ## Offline Phase - Building the training artifacts
 
-1. Export the model to ONNX.
+### Contents
+{: .no_toc }
 
-    We start with a Pytorch model that has been pre-trained and export it to ONNX. The `MobileNetV2` model has been pretrained on the imagenet dataset that has data in 1000 categories. For our task of image classification, we want to only classify images in 4 classes. So, we change the last layer of the model to output 4 logits instead of 1,000.
+* TOC placeholder
+{:toc}
+
+### 1. Export the model to ONNX.
+
+    We start with a pre-trained PyTorch model and export it to ONNX. The `MobileNetV2` model has been pretrained on the imagenet dataset that has data in 1000 categories. For our task of image classification, we want to only classify images in 4 classes. So, we change the last layer of the model to output 4 logits instead of 1,000.
+
+    More details around how to export PyTorch models to ONNX can be found [here](https://pytorch.org/docs/stable/onnx.html).
 
     ```python
    import torch
@@ -58,7 +74,7 @@ To follow this tutorial, you should have a basic understanding of Android app de
                      dynamic_axes={"input": {0: "batch"}, "output": {0: "batch"}})
     ```
 
-2. Define the trainable and non trainable parameters
+### 2. Define the trainable and non trainable parameters
 
     ```python
    import onnx
@@ -67,7 +83,7 @@ To follow this tutorial, you should have a basic understanding of Android app de
    onnx_model = onnx.load(f"training_artifacts/{model_name}.onnx")
 
    # Define the parameters that require their gradients to be computed
-   # and those that do not.
+   # (trainable parameters) and those that do not (frozen/non trainable parameters).
    requires_grad = ["classifier.1.weight", "classifier.1.bias"]
    frozen_params = [
       param.name
@@ -76,7 +92,8 @@ To follow this tutorial, you should have a basic understanding of Android app de
    ]
     ```
 
-3. Generate the training artifacts. We will use the `CrossEntropyLoss` loss and the `AdamW` optimizer for this tutorial.
+### 3. Generate the training artifacts. We will use the `CrossEntropyLoss` loss and the `AdamW` optimizer for this tutorial.
+   More details around artifact generation can be found [here](../../docs/api/python/on_device_training/training_artifacts.html).
 
     ```python
    from onnxruntime.training import artifacts
@@ -92,7 +109,7 @@ To follow this tutorial, you should have a basic understanding of Android app de
    )
     ```
 
-4. That's all. The training artifacts have been generated in the `training_artifacts` folder. This marks the end of the offline phase. These artifacts are ready to be deployed to the Android device for training.
+### 4. That's all! The training artifacts have been generated in the `training_artifacts` folder. This marks the end of the offline phase. These artifacts are ready to be deployed to the Android device for training.
 
 ## Training Phase - Android application development
 
@@ -1358,15 +1375,17 @@ To follow this tutorial, you should have a basic understanding of Android app de
    <uses-feature android:name="android.hardware.camera" />
    ```
 
-7. Running all this on a device.
+## Training Phase - Running the application on a device
+
+1. Running all this on a device.
 
    a. Let's connect our Android device to the machine and run the application on the device.
 
    b. Launching the application on the device should look like this:
 
-   ![Prediction - Cow](../../images/on-device-training-application-landing-page.jpg)
+   ![Application Landing Page](../../images/on-device-training-application-landing-page.jpg)
 
-8. Training with a pre-loaded dataset - Animals
+2. Training with a pre-loaded dataset - Animals
 
    a. Let's get started with training using the pre-loaded animals device by launching the application on the device.
 
@@ -1382,7 +1401,7 @@ To follow this tutorial, you should have a basic understanding of Android app de
 
       As can be seen from the image above, the model correctly predicted `Cow`.
 
-9. Training with a custom dataset - Celebrities
+3. Training with a custom dataset - Celebrities
 
    a. Download images of Tom Cruise, Leonardo DiCaprio, Ryan Reynolds and Brad Pitt from the web.
    
