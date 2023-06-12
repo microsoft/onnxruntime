@@ -8,7 +8,7 @@ parent: Tutorials
 
 Here is what the application will look like at the end of this tutorial:
 
-<img src="../../images/on-device-training-application-prediction-tom.jpg"  width="18%" height="18%">
+<img src="../../images/on-device-training-application-prediction-tom.jpg"  width="30%" height="30%">
 
 ## Introduction
 
@@ -1456,7 +1456,7 @@ To follow this tutorial, you should have a basic understanding of Android app de
 
    b. Launching the application on the device should look like this:
 
-   <img src="../../images/on-device-training-application-landing-page.jpg"  width="18%" height="18%">
+   <img src="../../images/on-device-training-application-landing-page.jpg"  width="30%" height="30%">
 
 2. <a name="tp8"></a>Training with a pre-loaded dataset - Animals
 
@@ -1470,7 +1470,7 @@ To follow this tutorial, you should have a basic understanding of Android app de
 
    e. Use any animal image from your library for inferencing now.
 
-   <img src="../../images/on-device-training-application-prediction-cow.jpg"  width="18%" height="18%">
+   <img src="../../images/on-device-training-application-prediction-cow.jpg"  width="30%" height="30%">
 
    As can be seen from the image above, the model correctly predicted `Cow`.
 
@@ -1490,7 +1490,7 @@ To follow this tutorial, you should have a basic understanding of Android app de
 
    g. That's it!. Hopefully the application classified the image correctly.
 
-   <img src="../../images/on-device-training-application-prediction-tom.jpg"  width="18%" height="18%">
+   <img src="../../images/on-device-training-application-prediction-tom.jpg"  width="30%" height="30%">
 
 
 ## Conclusion
