@@ -82,7 +82,7 @@ struct BeamScorerState {
   bool early_stopping_;
   int not_done_count_;  // When zero, every batch entry is done (starts at batch_size_)
 
-  size_t hypothesis_buffer_used_;  // Offset of available buffer, or length of used buffer.
+  int hypothesis_buffer_used_;  // Offset of available buffer, or length of used buffer.
 };
 
 void LaunchInitializeBeamHypotheses(gsl::span<BeamHypotheses> beam_hyps, float length_penalty, gsl::span<HypothesisScore> beams, int num_beams, cudaStream_t stream);
