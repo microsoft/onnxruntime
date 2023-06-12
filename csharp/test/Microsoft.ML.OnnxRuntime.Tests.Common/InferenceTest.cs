@@ -1319,12 +1319,13 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         private void TestModelInputFLOAT16()
         {
             // model takes 1x5 input of fixed type, echoes back
+            Float16[] modelInput = { new Float16(15360), new Float16(16384), new Float16(16896), new Float16(17408), new Float16(17664) };
+            int[] inputShape = { 1, 5 };
             var model = TestDataLoader.LoadModelFromEmbeddedResource("test_types_FLOAT16.onnx");
             using (var session = new InferenceSession(model))
             {
                 var container = new List<NamedOnnxValue>();
-                var tensorIn = new DenseTensor<Float16>(
-                    new Float16[] { 15360, 16384, 16896, 17408, 17664 }, new int[] { 1, 5 });
+                var tensorIn = new DenseTensor<Float16>(modelInput, inputShape);
                 var nov = NamedOnnxValue.CreateFromTensor("input", tensorIn);
                 container.Add(nov);
                 using (var res = session.Run(container))
@@ -1341,13 +1342,15 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         [Fact(DisplayName = "TestModelInputBFLOAT16")]
         private void TestModelInputBFLOAT16()
         {
+            BFloat16[] modelInput = { new BFloat16(16256), new BFloat16(16384), 
+                new BFloat16(16448), new BFloat16(16512), new BFloat16(16544) };
+            int[] inputShape = { 1, 5 };
             // model takes 1x5 input of fixed type, echoes back
             var model = TestDataLoader.LoadModelFromEmbeddedResource("test_types_BFLOAT16.onnx");
             using (var session = new InferenceSession(model))
             {
                 var container = new List<NamedOnnxValue>();
-                var tensorIn = new DenseTensor<BFloat16>(
-                    new BFloat16[] { 16256, 16384, 16448, 16512, 16544 }, new int[] { 1, 5 });
+                var tensorIn = new DenseTensor<BFloat16>(modelInput, inputShape);
                 var nov = NamedOnnxValue.CreateFromTensor("input", tensorIn);
                 container.Add(nov);
                 using (var res = session.Run(container))

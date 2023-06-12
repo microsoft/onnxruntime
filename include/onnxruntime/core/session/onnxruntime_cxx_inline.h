@@ -7,6 +7,9 @@
 // These are the inline implementations of the C++ header APIs. They're in this separate file as to not clutter
 // the main C++ file with implementation details.
 
+#include <cstring>
+#include <limits>
+
 namespace Ort {
 
 namespace detail {
@@ -113,6 +116,326 @@ template <>
 struct TypeToTensorType<bool> {
   static constexpr ONNXTensorElementDataType type = ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL;
 };
+
+// the semantics of this enum should match std::endian from C++20
+namespace detail {
+
+enum class endian {
+#if defined(_WIN32)
+  little = 0,
+  big = 1,
+  native = little,
+#elif defined(__GNUC__) || defined(__clang__)
+  little = __ORDER_LITTLE_ENDIAN__,
+  big = __ORDER_BIG_ENDIAN__,
+  native = __BYTE_ORDER__,
+#else
+#error onnxruntime::endian is not implemented in this environment.
+#endif
+};
+
+static_assert(
+    endian::native == endian::little || endian::native == endian::big,
+    "Only little-endian or big-endian native byte orders are supported.");
+
+}  // namespace detail
+
+// The following Float16_t conversions are based on the code from
+// Eigen library.
+
+// The conversion routines are Copyright (c) Fabian Giesen, 2016.
+// The original license follows:
+//
+// Copyright (c) Fabian Giesen, 2016
+// All rights reserved.
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted.
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+// "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+// LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+// A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+// HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+// SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+// LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+// DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+// THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+// (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+namespace detail {
+union float32_bits {
+  unsigned int u;
+  float f;
+};
+}  // namespace detail
+
+inline Float16_t::Float16_t(float v) {
+  detail::float32_bits f;
+  f.f = v;
+
+  constexpr detail::float32_bits f32infty = {255 << 23};
+  constexpr detail::float32_bits f16max = {(127 + 16) << 23};
+  constexpr detail::float32_bits denorm_magic = {((127 - 15) + (23 - 10) + 1) << 23};
+  constexpr unsigned int sign_mask = 0x80000000u;
+  value = static_cast<uint16_t>(0x0u);
+
+  unsigned int sign = f.u & sign_mask;
+  f.u ^= sign;
+
+  // NOTE all the integer compares in this function can be safely
+  // compiled into signed compares since all operands are below
+  // 0x80000000. Important if you want fast straight SSE2 code
+  // (since there's no unsigned PCMPGTD).
+
+  if (f.u >= f16max.u) {                           // result is Inf or NaN (all exponent bits set)
+    value = (f.u > f32infty.u) ? 0x7e00 : 0x7c00;  // NaN->qNaN and Inf->Inf
+  } else {                                         // (De)normalized number or zero
+    if (f.u < (113 << 23)) {                       // resulting FP16 is subnormal or zero
+      // use a magic value to align our 10 mantissa bits at the bottom of
+      // the float. as long as FP addition is round-to-nearest-even this
+      // just works.
+      f.f += denorm_magic.f;
+
+      // and one integer subtract of the bias later, we have our final float!
+      value = static_cast<uint16_t>(f.u - denorm_magic.u);
+    } else {
+      unsigned int mant_odd = (f.u >> 13) & 1;  // resulting mantissa is odd
+
+      // update exponent, rounding bias part 1
+      // Equivalent to `f.u += ((unsigned int)(15 - 127) << 23) + 0xfff`, but
+      // without arithmetic overflow.
+      f.u += 0xc8000fffU;
+      // rounding bias part 2
+      f.u += mant_odd;
+      // take the bits!
+      value = static_cast<uint16_t>(f.u >> 13);
+    }
+  }
+
+  value |= static_cast<uint16_t>(sign >> 16);
+}
+
+inline float Float16_t::ToFloat() const noexcept {
+  constexpr detail::float32_bits magic = {113 << 23};
+  constexpr unsigned int shifted_exp = 0x7c00 << 13;  // exponent mask after shift
+  detail::float32_bits o;
+
+  o.u = (value & 0x7fff) << 13;          // exponent/mantissa bits
+  unsigned int exp = shifted_exp & o.u;  // just the exponent
+  o.u += (127 - 15) << 23;               // exponent adjust
+
+  // handle exponent special cases
+  if (exp == shifted_exp) {   // Inf/NaN?
+    o.u += (128 - 16) << 23;  // extra exp adjust
+  } else if (exp == 0) {      // Zero/Denormal?
+    o.u += 1 << 23;           // extra exp adjust
+    o.f -= magic.f;           // re-normalize
+  }
+
+  o.u |= (value & 0x8000) << 16;  // sign bit
+  return o.f;
+}
+
+inline bool Float16_t::IsNegative() const noexcept {
+  return static_cast<int16_t>(value) < 0;
+}
+
+inline bool Float16_t::IsNaN() const noexcept {
+  return Abs().value > kPositiveInfinityBits;
+}
+
+inline bool Float16_t::IsFinite() const noexcept {
+  return Abs().value < kPositiveInfinityBits;
+}
+
+inline bool Float16_t::IsPositiveInfinity() const noexcept {
+  return value == kPositiveInfinityBits;
+}
+
+inline bool Float16_t::IsNegativeInfinity() const noexcept {
+  return value == kNegativeInfinityBits;
+}
+
+inline bool Float16_t::IsInfinity() const noexcept {
+  return Abs().value == kPositiveInfinityBits;
+}
+
+inline bool Float16_t::IsNaNOrZero() const noexcept {
+  return ((value - 1) & ~kSignMask) >= kPositiveInfinityBits;
+}
+
+inline bool Float16_t::IsNormal() const noexcept {
+  auto abs = Abs();
+  return (abs.value < kPositiveInfinityBits)           // is finite
+         && (abs.value != 0)                           // is not zero
+         && ((abs.value & kBiasedExponentMask) != 0);  // is not subnormal (has a non-zero exponent)
+}
+
+inline bool Float16_t::IsSubnormal() const noexcept {
+  auto abs = Abs();
+  return (abs.value < kPositiveInfinityBits)           // is finite
+         && (abs.value != 0)                           // is not zero
+         && ((abs.value & kBiasedExponentMask) == 0);  // is subnormal (has a zero exponent)
+}
+
+inline Float16_t Float16_t::Abs() const noexcept {
+  return Float16_t::FromBits(static_cast<uint16_t>(value & ~kSignMask));
+}
+
+inline Float16_t Float16_t::Negate() const noexcept {
+  return IsNaN() ? *this : Float16_t::FromBits(static_cast<uint16_t>(value ^ kSignMask));
+}
+
+inline bool Float16_t::operator==(const Float16_t& rhs) const noexcept {
+  if (IsNaN() || rhs.IsNaN()) {
+    // IEEE defines that NaN is not equal to anything, including itself.
+    return false;
+  }
+  return value == rhs.value;
+}
+
+inline bool Float16_t::operator<(const Float16_t& rhs) const noexcept {
+  if (IsNaN() || rhs.IsNaN()) {
+    // IEEE defines that NaN is unordered with respect to everything, including itself.
+    return false;
+  }
+
+  const bool left_is_negative = IsNegative();
+  if (left_is_negative != rhs.IsNegative()) {
+    // When the signs of left and right differ, we know that left is less than right if it is
+    // the negative value. The exception to this is if both values are zero, in which case IEEE
+    // says they should be equal, even if the signs differ.
+    return left_is_negative && !AreZero(*this, rhs);
+  }
+  return (value != rhs.value) && ((value < rhs.value) ^ left_is_negative);
+}
+
+inline bool Float16_t::AreZero(const Float16_t& lhs, const Float16_t& rhs) noexcept {
+  return static_cast<uint16_t>((lhs.value | rhs.value) & ~Float16_t::kSignMask) == 0;
+}
+
+inline BFloat16_t::BFloat16_t(float v) noexcept {
+  if (v != v) {
+    value = kPositiveQNaNBits;
+  } else {
+    auto get_msb_half = [](float fl) {
+      uint16_t result;
+      if constexpr (detail::endian::native == detail::endian::little) {
+        std::memcpy(&result, reinterpret_cast<char*>(&fl) + sizeof(uint16_t), sizeof(uint16_t));
+      } else {
+        std::memcpy(&result, &fl, sizeof(uint16_t));
+      }
+      return result;
+    };
+
+    uint16_t upper_bits = get_msb_half(v);
+    union {
+      uint32_t U32;
+      float F32;
+    };
+    F32 = v;
+    U32 += (upper_bits & 1) + kRoundToNearest;
+    value = get_msb_half(F32);
+  }
+}
+
+inline float BFloat16_t::ToFloat() const noexcept {
+  if (IsNaN()) {
+    return std::numeric_limits<float>::quiet_NaN();
+  }
+  float result;
+  char* const first = reinterpret_cast<char*>(&result);
+  char* const second = first + sizeof(uint16_t);
+  if constexpr (detail::endian::native == detail::endian::little) {
+    std::memset(first, 0, sizeof(uint16_t));
+    std::memcpy(second, &value, sizeof(uint16_t));
+  } else {
+    std::memcpy(first, &value, sizeof(uint16_t));
+    std::memset(second, 0, sizeof(uint16_t));
+  }
+  return result;
+}
+
+inline bool BFloat16_t::IsNegative() const noexcept {
+  return static_cast<int16_t>(value) < 0;
+}
+
+inline bool BFloat16_t::IsNaN() const noexcept {
+  return Abs().value > kPositiveInfinityBits;
+}
+
+inline bool BFloat16_t::IsFinite() const noexcept {
+  return Abs().value < kPositiveInfinityBits;
+}
+
+inline bool BFloat16_t::IsPositiveInfinity() const noexcept {
+  return value == kPositiveInfinityBits;
+}
+
+inline bool BFloat16_t::IsNegativeInfinity() const noexcept {
+  return value == kNegativeInfinityBits;
+}
+
+inline bool BFloat16_t::IsInfinity() const noexcept {
+  return Abs().value == kPositiveInfinityBits;
+}
+
+inline bool BFloat16_t::IsNaNOrZero() const noexcept {
+  return ((value - 1) & ~kSignMask) >= kPositiveInfinityBits;
+}
+
+inline bool BFloat16_t::IsNormal() const noexcept {
+  auto abs = Abs();
+  return (abs.value < kPositiveInfinityBits)           // is finite
+         && (abs.value != 0)                           // is not zero
+         && ((abs.value & kBiasedExponentMask) != 0);  // is not subnormal (has a non-zero exponent)
+}
+
+inline bool BFloat16_t::IsSubnormal() const noexcept {
+  auto abs = Abs();
+  return (abs.value < kPositiveInfinityBits)           // is finite
+         && (abs.value != 0)                           // is not zero
+         && ((abs.value & kBiasedExponentMask) == 0);  // is subnormal (has a zero exponent)
+}
+
+inline BFloat16_t BFloat16_t::Abs() const noexcept {
+  return BFloat16_t::FromBits(static_cast<uint16_t>(value & ~kSignMask));
+}
+
+inline BFloat16_t BFloat16_t::Negate() const noexcept {
+  return IsNaN() ? *this : BFloat16_t::FromBits(static_cast<uint16_t>(value ^ kSignMask));
+}
+
+inline bool BFloat16_t::AreZero(const BFloat16_t& lhs, const BFloat16_t& rhs) noexcept {
+  // IEEE defines that positive and negative zero are equal, this gives us a quick equality check
+  // for two values by or'ing the private bits together and stripping the sign. They are both zero,
+  // and therefore equivalent, if the resulting value is still zero.
+  return static_cast<uint16_t>((lhs.value | rhs.value) & ~BFloat16_t::kSignMask) == 0;
+}
+
+inline bool BFloat16_t::operator==(const BFloat16_t& rhs) const noexcept {
+  if (IsNaN() || rhs.IsNaN()) {
+    // IEEE defines that NaN is not equal to anything, including itself.
+    return false;
+  }
+  return value == rhs.value;
+}
+
+inline bool BFloat16_t::operator<(const BFloat16_t& rhs) const noexcept {
+  if (IsNaN() || rhs.IsNaN()) {
+    // IEEE defines that NaN is unordered with respect to everything, including itself.
+    return false;
+  }
+
+  const bool left_is_negative = IsNegative();
+  if (left_is_negative != rhs.IsNegative()) {
+    // When the signs of left and right differ, we know that left is less than right if it is
+    // the negative value. The exception to this is if both values are zero, in which case IEEE
+    // says they should be equal, even if the signs differ.
+    return left_is_negative && !AreZero(*this, rhs);
+  }
+  return (value != rhs.value) && ((value < rhs.value) ^ left_is_negative);
+}
 
 inline MemoryAllocation::MemoryAllocation(OrtAllocator* allocator, void* p, size_t size)
     : allocator_(allocator), p_(p), size_(size) {

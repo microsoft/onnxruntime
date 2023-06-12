@@ -142,70 +142,317 @@ std::string GetBuildInfoString();
 std::vector<std::string> GetAvailableProviders();
 
 /** \brief IEEE 754 half-precision floating point data type
- * \details It is necessary for type dispatching to make use of C++ API
- * The type is implicitly convertible to/from uint16_t.
+ *
+ * \details This struct is used for converting float to float16 and back
+ * so the user could feed inputs and fetch outputs using these type.
+ *
  * The size of the structure should align with uint16_t and one can freely cast
  * uint16_t buffers to/from Ort::Float16_t to feed and retrieve data.
  *
- * Generally, you can feed any of your types as float16/blfoat16 data to create a tensor
- * on top of it, providing it can form a continuous buffer with 16-bit elements with no padding.
- * And you can also feed a array of uint16_t elements directly. For example,
- *
  * \code{.unparsed}
- * uint16_t values[] = { 15360, 16384, 16896, 17408, 17664};
- * constexpr size_t values_length = sizeof(values) / sizeof(values[0]);
- * std::vector<int64_t> dims = {values_length};  // one dimensional example
- * Ort::MemoryInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
- * // Note we are passing bytes count in this api, not number of elements -> sizeof(values)
- * auto float16_tensor = Ort::Value::CreateTensor(info, values, sizeof(values),
- *                                                dims.data(), dims.size(), ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16);
+ * // This example demonstrates converion from float to float16
+ * constexpr float values[] = {1.f, 2.f, 3.f, 4.f, 5.f};
+ * std::vector<Ort::Float16_t> fp16_values;
+ * fp16_values.reserve(std::size(values));
+ * std::transform(std::begin(values), std::end(values), std::back_inserter(fp16_values),
+ *     [](float value) { return Ort::Float16_t(value); });
+ *
  * \endcode
- *
- * Here is another example, a little bit more elaborate. Let's assume that you use your own float16 type and you want to use
- * a templated version of the API above so the type is automatically set based on your type. You will need to supply an extra
- * template specialization.
- *
- * \code{.unparsed}
- * namespace yours { struct half {}; } // assume this is your type, define this:
- * namespace Ort {
- * template<>
- * struct TypeToTensorType<yours::half> { static constexpr ONNXTensorElementDataType type = ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16; };
- * } //namespace Ort
- *
- * std::vector<yours::half> values;
- * std::vector<int64_t> dims = {values.size()}; // one dimensional example
- * Ort::MemoryInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
- * // Here we are passing element count -> values.size()
- * auto float16_tensor = Ort::Value::CreateTensor<yours::half>(info, values.data(), values.size(), dims.data(), dims.size());
- *
- *  \endcode
  */
 struct Float16_t {
-  uint16_t value;
-  constexpr Float16_t() noexcept : value(0) {}
-  constexpr Float16_t(uint16_t v) noexcept : value(v) {}
-  constexpr operator uint16_t() const noexcept { return value; }
-  constexpr bool operator==(const Float16_t& rhs) const noexcept { return value == rhs.value; };
-  constexpr bool operator!=(const Float16_t& rhs) const noexcept { return value != rhs.value; };
+ private:
+  /// <summary>
+  /// Constructor from a 16-bit representation of a float16 value
+  /// No conversion is done here.
+  /// </summary>
+  /// <param name="v">16-bit representation</param>
+  constexpr explicit Float16_t(uint16_t v) noexcept : value(v) {}
+
+ public:
+  enum Constants : uint16_t {
+    kSignMask = 0x8000U,
+    kBiasedExponentMask = 0x7C00,
+    kPositiveInfinityBits = 0x7C00,
+    kNegativeInfinityBits = 0xFC00,
+    kPositiveQNaNBits = 0x7E00,
+    kNegativeQNaNBits = 0xFE00,
+    kEpsilonBits = 0x4170,
+    kMinValueBits = 0xFBFF,
+    kMaxValueBits = 0x7BFF
+  };
+
+  uint16_t value{0};
+
+  Float16_t() = default;
+
+  /// <summary>
+  /// Explicit conversion to uint16_t representation of bfloat16.
+  /// </summary>
+  /// <param name="v">uint16_t bit representation of bfloat16</param>
+  /// <returns>new instance of Float16_t</returns>
+  static constexpr Float16_t FromBits(uint16_t v) noexcept { return Float16_t(v); }
+
+  /// <summary>
+  /// __ctor from float. Float is converted into float16 16-bit representation.
+  /// </summary>
+  /// <param name="v">float value</param>
+  explicit Float16_t(float v);
+
+  /// <summary>
+  /// Converts bfloat16 to float
+  /// </summary>
+  /// <returns>float representation of bfloat16 value</returns>
+  float ToFloat() const noexcept;
+
+  /// <summary>
+  /// Checks if the value is negative
+  /// </summary>
+  /// <returns>true if negative</returns>
+  bool IsNegative() const noexcept;
+
+  /// <summary>
+  /// Tests if the value is NaN
+  /// </summary>
+  /// <returns>true if NaN</returns>
+  bool IsNaN() const noexcept;
+
+  /// <summary>
+  /// Tests if the value is finite
+  /// </summary>
+  /// <returns>true if finite</returns>
+  bool IsFinite() const noexcept;
+
+  /// <summary>
+  /// Tests if the value represents positive infinity.
+  /// </summary>
+  /// <returns>true if positive infinity</returns>
+  bool IsPositiveInfinity() const noexcept;
+
+  /// <summary>
+  /// Tests if the value represents negative infinity
+  /// </summary>
+  /// <returns>true if negative infinity</returns>
+  bool IsNegativeInfinity() const noexcept;
+
+  /// <summary>
+  /// Tests if the value is either positive or negative infinity.
+  /// </summary>
+  /// <returns>True if absolute value is infinity</returns>
+  bool IsInfinity() const noexcept;
+
+  /// <summary>
+  /// Tests if the value is NaN or zero. Useful for comparisons.
+  /// </summary>
+  /// <returns>True if NaN or zero.</returns>
+  bool IsNaNOrZero() const noexcept;
+
+  /// <summary>
+  /// Tests if the value is normal (not zero, subnormal, infinite, or NaN).
+  /// </summary>
+  /// <returns>True if so</returns>
+  bool IsNormal() const noexcept;
+
+  /// <summary>
+  /// Tests if the value is subnormal (denormal).
+  /// </summary>
+  /// <returns>True if so</returns>
+  bool IsSubnormal() const noexcept;
+
+  /// <summary>
+  /// Creates an instance that represents absolute value.
+  /// </summary>
+  /// <returns>Absolute value</returns>
+  Float16_t Abs() const noexcept;
+
+  /// <summary>
+  /// Creates a new instance with the sign flipped.
+  /// </summary>
+  /// <returns>Flipped sign instance</returns>
+  Float16_t Negate() const noexcept;
+
+  /// <summary>
+  /// IEEE defines that positive and negative zero are equal, this gives us a quick equality check
+  /// for two values by or'ing the private bits together and stripping the sign. They are both zero,
+  /// and therefore equivalent, if the resulting value is still zero.
+  /// </summary>
+  /// <param name="lhs">first value</param>
+  /// <param name="rhs">second value</param>
+  /// <returns>True if both arguments represent zero</returns>
+  static bool AreZero(const Float16_t& lhs, const Float16_t& rhs) noexcept;
+
+  /// <summary>
+  /// User defined conversion operator. Converts Float16_t to float.
+  /// </summary>
+  explicit operator float() const noexcept { return ToFloat(); }
+
+  /// <summary>
+  /// User defined conversion to uint16_t representation of Float16_t.
+  /// </summary>
+  constexpr explicit operator uint16_t() const noexcept { return value; }
+
+  bool operator==(const Float16_t& rhs) const noexcept;
+  bool operator!=(const Float16_t& rhs) const noexcept { return !(*this == rhs); }
+  bool operator<(const Float16_t& rhs) const noexcept;
 };
 
 static_assert(sizeof(Float16_t) == sizeof(uint16_t), "Sizes must match");
 
 /** \brief bfloat16 (Brain Floating Point) data type
- * \details It is necessary for type dispatching to make use of C++ API
- * The type is implicitly convertible to/from uint16_t.
+ *
+ * \details This struct is used for converting float to bfloat16 and back
+ * so the user could feed inputs and fetch outputs using these type.
+ *
  * The size of the structure should align with uint16_t and one can freely cast
  * uint16_t buffers to/from Ort::BFloat16_t to feed and retrieve data.
  *
- * See also code examples for Float16_t above.
+ * \code{.unparsed}
+ * // This example demonstrates converion from float to float16
+ * constexpr float values[] = {1.f, 2.f, 3.f, 4.f, 5.f};
+ * std::vector<Ort::BFloat16_t> bfp16_values;
+ * bfp16_values.reserve(std::size(values));
+ * std::transform(std::begin(values), std::end(values), std::back_inserter(bfp16_values),
+ *     [](float value) { return Ort::BFloat16_t(value); });
+ *
+ * \endcode
  */
 struct BFloat16_t {
-  uint16_t value;
-  constexpr BFloat16_t() noexcept : value(0) {}
-  constexpr BFloat16_t(uint16_t v) noexcept : value(v) {}
-  constexpr operator uint16_t() const noexcept { return value; }
-  constexpr bool operator==(const BFloat16_t& rhs) const noexcept { return value == rhs.value; };
-  constexpr bool operator!=(const BFloat16_t& rhs) const noexcept { return value != rhs.value; };
+ private:
+  /// <summary>
+  /// Constructor from a uint16_t representation of bfloat16
+  /// used in FromBits() to escape overload resolution issue with
+  /// constructor from float.
+  /// No conversion is done.
+  /// </summary>
+  /// <param name="v">16-bit bfloat16 value</param>
+  constexpr explicit BFloat16_t(uint16_t v) noexcept : value(v) {}
+
+ public:
+  enum Constants : uint16_t {
+    kSignMask = 0x8000U,
+    kBiasedExponentMask = 0x7F80U,
+    kPositiveInfinityBits = 0x7F80U,
+    kNegativeInfinityBits = 0xFF80U,
+    kPositiveQNaNBits = 0x7FC1U,
+    kNegativeQNaNBits = 0xFFC1U,
+    kSignaling_NaN = 0x7F80U,
+    kEpsilonBits = 0x0080U,
+    kMinValueBits = 0xFF7FU,
+    kMaxValueBits = 0x7F7FU,
+    kRoundToNearest = 0x7FFFU
+  };
+
+  uint16_t value{0};
+
+  BFloat16_t() = default;
+
+  /// <summary>
+  /// Explicit conversion to uint16_t representation of bfloat16.
+  /// </summary>
+  /// <param name="v">uint16_t bit representation of bfloat16</param>
+  /// <returns>new instance of BFloat16_t</returns>
+  static constexpr BFloat16_t FromBits(uint16_t v) noexcept { return BFloat16_t(v); }
+
+  /// <summary>
+  /// __ctor from float. Float is converted into bfloat16 16-bit representation.
+  /// </summary>
+  /// <param name="v">float value</param>
+  explicit BFloat16_t(float v) noexcept;
+
+  /// <summary>
+  /// Converts bfloat16 to float
+  /// </summary>
+  /// <returns>float representation of bfloat16 value</returns>
+  float ToFloat() const noexcept;
+
+  /// <summary>
+  /// Checks if the value is negative
+  /// </summary>
+  /// <returns>true if negative</returns>
+  bool IsNegative() const noexcept;
+
+  /// <summary>
+  /// Tests if the value is NaN
+  /// </summary>
+  /// <returns>true if NaN</returns>
+  bool IsNaN() const noexcept;
+
+  /// <summary>
+  /// Tests if the value is finite
+  /// </summary>
+  /// <returns>true if finite</returns>
+  bool IsFinite() const noexcept;
+
+  /// <summary>
+  /// Tests if the value represents positive infinity.
+  /// </summary>
+  /// <returns>true if positive infinity</returns>
+  bool IsPositiveInfinity() const noexcept;
+
+  /// <summary>
+  /// Tests if the value represents negative infinity
+  /// </summary>
+  /// <returns>true if negative infinity</returns>
+  bool IsNegativeInfinity() const noexcept;
+
+  /// <summary>
+  /// Tests if the value is either positive or negative infinity.
+  /// </summary>
+  /// <returns>True if absolute value is infinity</returns>
+  bool IsInfinity() const noexcept;
+
+  /// <summary>
+  /// Tests if the value is NaN or zero. Useful for comparisons.
+  /// </summary>
+  /// <returns>True if NaN or zero.</returns>
+  bool IsNaNOrZero() const noexcept;
+
+  /// <summary>
+  /// Tests if the value is normal (not zero, subnormal, infinite, or NaN).
+  /// </summary>
+  /// <returns>True if so</returns>
+  bool IsNormal() const noexcept;
+
+  /// <summary>
+  /// Tests if the value is subnormal (denormal).
+  /// </summary>
+  /// <returns>True if so</returns>
+  bool IsSubnormal() const noexcept;
+
+  /// <summary>
+  /// Creates an instance that represents absolute value.
+  /// </summary>
+  /// <returns>Absolute value</returns>
+  BFloat16_t Abs() const noexcept;
+
+  /// <summary>
+  /// Creates a new instance with the sign flipped.
+  /// </summary>
+  /// <returns>Flipped sign instance</returns>
+  BFloat16_t Negate() const noexcept;
+
+  /// <summary>
+  /// IEEE defines that positive and negative zero are equal, this gives us a quick equality check
+  /// for two values by or'ing the private bits together and stripping the sign. They are both zero,
+  /// and therefore equivalent, if the resulting value is still zero.
+  /// </summary>
+  /// <param name="lhs">first value</param>
+  /// <param name="rhs">second value</param>
+  /// <returns>True if both arguments represent zero</returns>
+  static bool AreZero(const BFloat16_t& lhs, const BFloat16_t& rhs) noexcept;
+
+  /// <summary>
+  /// User defined conversion operator. Converts BFloat16_t to float.
+  /// </summary>
+  explicit operator float() const noexcept { return ToFloat(); }
+
+  /// <summary>
+  /// User defined conversion to uint16_t representation of Bfloat16_t.
+  /// </summary>
+  constexpr explicit operator uint16_t() const noexcept { return value; }
+
+  bool operator==(const BFloat16_t& rhs) const noexcept;
+  bool operator!=(const BFloat16_t& rhs) const noexcept { return !(*this == rhs); }
+  bool operator<(const BFloat16_t& rhs) const noexcept;
 };
 
 static_assert(sizeof(BFloat16_t) == sizeof(uint16_t), "Sizes must match");

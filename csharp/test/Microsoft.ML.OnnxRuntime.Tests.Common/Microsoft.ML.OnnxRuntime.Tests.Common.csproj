@@ -50,7 +50,6 @@
 
   <ItemGroup>
     <Compile Remove="InferenceTest.cs" />
-    <Compile Remove="OrtEnvTests.cs" />
     <Compile Remove="OrtIoBindingAllocationTest.cs" />
     <Compile Remove="OrtValueTests.cs" />
     <Compile Remove="Tensors\TensorTests.cs" />
@@ -80,7 +79,6 @@
   <ItemGroup>
     <!-- include common files for visibility, however they're compiled directly by the target specific test projects -->
     <None Include="InferenceTest.cs" />
-    <None Include="OrtEnvTests.cs" />
     <None Include="OnnxData.cs" />
     <None Include="OrtIoBindingAllocationTest.cs" Condition=" '$(EnableDefaultCompileItems)' == 'true' " />
     <None Include="OrtValueTests.cs" />
