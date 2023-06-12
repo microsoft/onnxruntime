@@ -123,7 +123,7 @@ stat file using the activation name will be overwritten by the last write. The d
 here is the example if you want to collect statistics on multiple ranks:
 
 ```python
-from onnxruntime.training.utils.hooks import GlobalSubscriberManager
+from onnxruntime.training.utils.hooks import GlobalSubscriberManager, StatisticsSubscriber
 GlobalSubscriberManager.subscribe(model, [StatisticsSubscriber(output_dir="ort_out_" + str(torch.distributed.get_rank()),
                                           override_output_dir=True)])
 ```
