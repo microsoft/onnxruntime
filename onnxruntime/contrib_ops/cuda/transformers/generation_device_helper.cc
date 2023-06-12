@@ -570,7 +570,7 @@ struct CudaBeamSearchScorer : transformers::IBeamScorer {
                 Tensor* output_sequences,
                 Tensor* output_sequence_scores) override;
 
-  bool IsDone() const override;
+  bool IsDone() const override { return false; } // For CUDA we speculatively run the next step while we wait for the GPU to report status. We use 'IsDoneLater()' for this
   bool IsDoneLater() const override;
 
   gsl::span<float> GetNextScores() override { return next_beam_scores_; }
@@ -583,7 +583,7 @@ struct CudaBeamSearchScorer : transformers::IBeamScorer {
   gsl::span<int32_t> GetNextIndicesGPU() override { return next_beam_indices_; }
 
  private:
-  mutable cuda::AutoDestoryCudaEvent state_copy_event_;
+  mutable cuda::AutoDestoryCudaEvent event_process_complete_;
   IAllocatorUniquePtr<cuda::BeamScorerState> state_cpu_;
   IAllocatorUniquePtr<cuda::BeamScorerState> state_gpu_;
   cudaStream_t stream_;
@@ -617,9 +617,8 @@ gsl::span<TAlloc> Allocate(std::shared_ptr<IAllocator> allocator,
   return gsl::make_span(unique_ptr.get(), size);
 }
 
-template<typename T>
-IAllocatorUniquePtr<T> AllocateCPUPinned()
-{
+template <typename T>
+IAllocatorUniquePtr<T> AllocateCPUPinned() {
   T* p;
   cudaMallocHost(&p, sizeof(T));
   return IAllocatorUniquePtr<T>{p, [](cuda::BeamScorerState* p) { cudaFreeHost(p); }};
@@ -628,8 +627,7 @@ IAllocatorUniquePtr<T> AllocateCPUPinned()
 CudaBeamSearchScorer::CudaBeamSearchScorer(const transformers::IGenerationParameters& parameters,
                                            AllocatorPtr& allocator, AllocatorPtr& allocator_cpu, Stream* stream)
     : stream_{stream ? reinterpret_cast<cudaStream_t>(stream->GetHandle()) : nullptr} {
-
-  cudaEventCreate(&state_copy_event_.Get());
+  cudaEventCreate(&event_process_complete_.Get());
 
   state_cpu_ = AllocateCPUPinned<cuda::BeamScorerState>();
   state_cpu_->batch_size_ = static_cast<size_t>(parameters.batch_size);
@@ -665,11 +663,9 @@ void CudaBeamSearchScorer::Process(transformers::ISequences& sequences,
                                    gsl::span<const float>& next_scores,
                                    gsl::span<const int32_t>& next_tokens,
                                    gsl::span<const int32_t>& next_indices) {
-  cuda::LaunchBeamSearchScorer_Process(state_cpu_->batch_size_,
-                                       state_cpu_->num_beams_,
+  cuda::LaunchBeamSearchScorer_Process(*state_cpu_,
                                        *state_gpu_,
                                        sequences.GetCurrentDeviceSequences(),
-                                       sequences.GetNextDeviceSequences(),
                                        sequences.GetSequenceLength(),
                                        beam_hyps_,
                                        next_beam_scores_,
@@ -680,17 +676,20 @@ void CudaBeamSearchScorer::Process(transformers::ISequences& sequences,
                                        next_tokens,
                                        next_indices,
                                        stream_);
+  cudaEventRecord(event_process_complete_.Get(), stream_);
+
+  cuda::LaunchBeamSearchScorer_AppendNextTokenToSequences(*state_cpu_,
+                                                          *state_gpu_,
+                                                          sequences.GetCurrentDeviceSequences(),
+                                                          sequences.GetNextDeviceSequences(),
+                                                          sequences.GetSequenceLength(),
+                                                          next_beam_tokens_,
+                                                          next_beam_indices_,
+                                                          stream_);
 }
 
-bool CudaBeamSearchScorer::IsDone() const {
-  cudaMemcpyAsync(state_cpu_.get(), state_gpu_.get(), sizeof(cuda::BeamScorerState), ::cudaMemcpyDeviceToHost, stream_);
-  cudaEventRecord(state_copy_event_.Get(), stream_);
-  return false;
-}
-
-bool CudaBeamSearchScorer::IsDoneLater() const
-{
-  cudaEventSynchronize(state_copy_event_.Get());
+bool CudaBeamSearchScorer::IsDoneLater() const {
+  cudaEventSynchronize(event_process_complete_.Get());
   return state_cpu_->not_done_count_ == 0;
 }
 
@@ -1121,7 +1120,6 @@ Status UpdateGptFeeds(
       CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(cuda_stream));
     }
   }
-
 
 #ifdef ENABLE_NVTX_PROFILE
   updateFeedsRange.End();

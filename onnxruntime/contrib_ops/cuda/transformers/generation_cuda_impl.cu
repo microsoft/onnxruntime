@@ -323,7 +323,8 @@ __device__ void BeamHypotheses::Output(
   }
 }
 
-__global__ void BeamSearchScorer_Process(BeamScorerState& state,
+__global__ void BeamSearchScorer_Process(BeamScorerState& state_cpu,
+                                         BeamScorerState& state,
                                          const int32_t* sequences_buffer,
                                          int sequence_length,
                                          BeamHypotheses* beam_hyps_,
@@ -381,16 +382,10 @@ __global__ void BeamSearchScorer_Process(BeamScorerState& state,
 
     //  Check if we are done so that we can save a pad step if all(done)
     if (beam_hyp.beams_used_ == state.num_beams_) {
-      if (state.early_stopping_) {
+      if (state.early_stopping_ || !beam_hyp.CanImprove(*std::max_element(next_scores + batch_start, next_scores + batch_start + top_k), sequence_length)) {
         beam_hyp.done_ = true;
-        atomicAdd(&state.not_done_count_, -1);
-      } else {
-        const float* topk_scores = next_scores + batch_start;
-        const auto best_sum_logprobs = std::max_element(topk_scores, topk_scores + top_k);
-        if (!beam_hyp.CanImprove(*best_sum_logprobs, sequence_length)) {
-          beam_hyp.done_ = true;
-          atomicAdd(&state.not_done_count_, -1);
-        }
+        if (atomicAdd(&state.not_done_count_, -1) == 0)
+          state_cpu.not_done_count_ = 0;  // Update the CPU side
       }
     }
   } else {
@@ -401,6 +396,33 @@ __global__ void BeamSearchScorer_Process(BeamScorerState& state,
       next_beam_indices_[batch_start + beam_idx] = 0;
     }
   }
+}
+
+void LaunchBeamSearchScorer_Process(BeamScorerState& state_cpu,
+                                    BeamScorerState& state,
+                                    gsl::span<const int32_t> sequences,
+                                    int sequence_length,
+                                    gsl::span<BeamHypotheses> beam_hyps,
+                                    gsl::span<float> next_beam_scores,
+                                    gsl::span<int32_t> next_beam_tokens,
+                                    gsl::span<int32_t> next_beam_indices,
+                                    gsl::span<int32_t> hypothesis_buffer,
+                                    gsl::span<const float> next_scores,
+                                    gsl::span<const int32_t> next_tokens,
+                                    gsl::span<const int32_t> next_indices,
+                                    cudaStream_t stream) {
+  BeamSearchScorer_Process<<<1, state_cpu.batch_size_, 0, stream>>>(state_cpu,
+                                                                    state,
+                                                                    sequences.data(),
+                                                                    sequence_length,
+                                                                    beam_hyps.data(),
+                                                                    next_beam_scores.data(),
+                                                                    next_beam_tokens.data(),
+                                                                    next_beam_indices.data(),
+                                                                    hypothesis_buffer.data(),
+                                                                    next_scores.data(),
+                                                                    next_tokens.data(),
+                                                                    next_indices.data());
 }
 
 __global__ void BeamSearchScorer_AppendNextTokenToSequences1(BeamScorerState& state,
@@ -428,35 +450,16 @@ __global__ void BeamSearchScorer_AppendNextTokenToSequences2(BeamScorerState& st
   next_sequences[beam_idx * state.max_length_ + sequence_length] = next_beam_tokens_[beam_idx];
 }
 
-void LaunchBeamSearchScorer_Process(int batch_size,
-                                    int num_beams,
-                                    BeamScorerState& state,
-                                    gsl::span<const int32_t> sequences,
-                                    gsl::span<int32_t> next_sequences,
-                                    int sequence_length,
-                                    gsl::span<BeamHypotheses> beam_hyps,
-                                    gsl::span<float> next_beam_scores,
-                                    gsl::span<int32_t> next_beam_tokens,
-                                    gsl::span<int32_t> next_beam_indices,
-                                    gsl::span<int32_t> hypothesis_buffer,
-                                    gsl::span<const float> next_scores,
-                                    gsl::span<const int32_t> next_tokens,
-                                    gsl::span<const int32_t> next_indices,
-                                    cudaStream_t stream) {
-  BeamSearchScorer_Process<<<1, batch_size, 0, stream>>>(state,
-                                                         sequences.data(),
-                                                         sequence_length,
-                                                         beam_hyps.data(),
-                                                         next_beam_scores.data(),
-                                                         next_beam_tokens.data(),
-                                                         next_beam_indices.data(),
-                                                         hypothesis_buffer.data(),
-                                                         next_scores.data(),
-                                                         next_tokens.data(),
-                                                         next_indices.data());
-
+void LaunchBeamSearchScorer_AppendNextTokenToSequences(BeamScorerState& state_cpu,
+                                                       BeamScorerState& state,
+                                                       gsl::span<const int32_t> sequences,
+                                                       gsl::span<int32_t> next_sequences,
+                                                       int sequence_length,
+                                                       gsl::span<int32_t> next_beam_tokens,
+                                                       gsl::span<int32_t> next_beam_indices,
+                                                       cudaStream_t stream) {
   const int max_threads = 512;
-  int batch_beam_size = batch_size * num_beams;
+  int batch_beam_size = state_cpu.batch_size_ * state_cpu.num_beams_;
   dim3 block_size;
   dim3 grid_size;
   if (batch_beam_size * sequence_length <= max_threads) {  // Can fit into a single thread block

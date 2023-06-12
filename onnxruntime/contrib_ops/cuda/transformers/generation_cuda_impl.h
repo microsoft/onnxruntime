@@ -54,7 +54,7 @@ struct HypothesisScore {
 struct BeamHypotheses {
   HypothesisScore* beams_;  // Beam width sized array of hypotheses, sorted by highest scoring
   int beams_count_;
-  int beams_used_;          // Number of elements used in beams_
+  int beams_used_;  // Number of elements used in beams_
   float length_penalty_;
   bool done_;
 
@@ -73,10 +73,10 @@ struct BeamHypotheses {
 };
 
 struct BeamScorerState {
-  size_t batch_size_;
-  size_t num_beams_;
-  size_t max_length_;
-  size_t num_return_sequences_;
+  int batch_size_;
+  int num_beams_;
+  int max_length_;
+  int num_return_sequences_;
   int pad_token_id_;
   int eos_token_id_;
   bool early_stopping_;
@@ -87,11 +87,9 @@ struct BeamScorerState {
 
 void LaunchInitializeBeamHypotheses(gsl::span<BeamHypotheses> beam_hyps, float length_penalty, gsl::span<HypothesisScore> beams, int num_beams, cudaStream_t stream);
 
-void LaunchBeamSearchScorer_Process(int batch_size,
-                                    int num_beams,
+void LaunchBeamSearchScorer_Process(BeamScorerState& state_cpu,
                                     BeamScorerState& state,
                                     gsl::span<const int32_t> sequences,
-                                    gsl::span<int32_t> next_sequences,
                                     int sequence_length,
                                     gsl::span<BeamHypotheses> beam_hyps_,
                                     gsl::span<float> next_beam_scores_,
@@ -102,6 +100,15 @@ void LaunchBeamSearchScorer_Process(int batch_size,
                                     gsl::span<const int32_t> next_tokens,
                                     gsl::span<const int32_t> next_indices,
                                     cudaStream_t stream);
+
+void LaunchBeamSearchScorer_AppendNextTokenToSequences(BeamScorerState& state_cpu,
+                                                       BeamScorerState& state,
+                                                       gsl::span<const int32_t> sequences,
+                                                       gsl::span<int32_t> next_sequences,
+                                                       int sequence_length,
+                                                       gsl::span<int32_t> next_beam_tokens,
+                                                       gsl::span<int32_t> next_beam_indices,
+                                                       cudaStream_t stream);
 
 void LaunchBeamSearchScorer_Finalize(int batch_size,
                                      BeamScorerState& state,
