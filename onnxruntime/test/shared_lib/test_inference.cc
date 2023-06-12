@@ -177,6 +177,9 @@ static constexpr PATH_TYPE SEQUENCE_MODEL_URI_2 = TSTR("testdata/optional_sequen
 #endif
 static constexpr PATH_TYPE CUSTOM_OP_MODEL_URI = TSTR("testdata/foo_1.onnx");
 static constexpr PATH_TYPE CUSTOM_OP_LIBRARY_TEST_MODEL_URI = TSTR("testdata/custom_op_library/custom_op_test.onnx");
+#if !defined(DISABLE_FLOAT8_TYPES)
+static constexpr PATH_TYPE CUSTOM_OP_LIBRARY_TEST_MODEL_FLOAT8_URI = TSTR("testdata/custom_op_library/custom_op_test_float8.onnx");
+#endif
 #if defined(USE_OPENVINO) && (!defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS))
 static constexpr PATH_TYPE CUSTOM_OP_OPENVINO_WRAPPER_LIB_TEST_MODEL_URI = TSTR(
     "testdata/custom_op_openvino_wrapper_library/custom_op_mnist_ov_wrapper.onnx");
@@ -1392,6 +1395,51 @@ TEST(CApiTest, test_custom_op_library) {
                          expected_values_y, 0, nullptr, lib_name.c_str());
 #endif
 }
+
+#if !defined(DISABLE_FLOAT8_TYPES)
+
+// It has memory leak. The OrtCustomOpDomain created in custom_op_library.cc:RegisterCustomOps function was not freed
+#if defined(__ANDROID__)
+TEST(CApiTest, DISABLED_test_custom_op_library_float8) {
+// To accomodate a reduced op build pipeline
+#elif defined(REDUCED_OPS_BUILD) && defined(USE_CUDA)
+TEST(CApiTest, DISABLED_test_custom_op_library_float8) {
+#else
+TEST(CApiTest, test_custom_op_library_float8) {
+#endif
+  std::cout << "Running inference using custom op shared library" << std::endl;
+
+  std::vector<Input> inputs(2);
+  inputs[0].name = "input_1";
+  inputs[0].dims = {2};
+  inputs[0].values = {0, 1};
+  inputs[1].name = "input_2";
+  inputs[1].dims = {2};
+  inputs[1].values = {3, 4};
+
+  // prepare expected inputs and outputs
+  std::vector<int64_t> expected_dims_y = {2};
+  std::vector<int32_t> expected_values_y = {0 ,1};
+
+  onnxruntime::PathString lib_name;
+#if defined(_WIN32)
+  lib_name = ORT_TSTR("custom_op_library.dll");
+#elif defined(__APPLE__)
+  lib_name = ORT_TSTR("libcustom_op_library.dylib");
+#else
+  lib_name = ORT_TSTR("./libcustom_op_library.so");
+#endif
+
+#ifdef USE_CUDA
+  TestInference<int32_t>(*ort_env, CUSTOM_OP_LIBRARY_TEST_MODEL_FLOAT8_URI, inputs, "output", expected_dims_y,
+                         expected_values_y, 1, nullptr, lib_name.c_str());
+#else
+  TestInference<int32_t>(*ort_env, CUSTOM_OP_LIBRARY_TEST_MODEL_FLOAT8_URI, inputs, "output", expected_dims_y,
+                         expected_values_y, 0, nullptr, lib_name.c_str());
+#endif
+}
+
+#endif
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
 #if defined(__ANDROID__)

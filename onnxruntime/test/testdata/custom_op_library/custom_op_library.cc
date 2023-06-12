@@ -67,6 +67,58 @@ struct CustomOpOne : Ort::CustomOpBase<CustomOpOne, KernelOne> {
   ONNXTensorElementDataType GetOutputType(size_t /*index*/) const { return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT; };
 };
 
+#if !defined(DISABLE_FLOAT8_TYPES)
+
+struct KernelOneFloat8 {
+  void Compute(OrtKernelContext* context) {
+    // Setup inputs
+    Ort::KernelContext ctx(context);
+    auto input_X = ctx.GetInput(0);
+    auto input_Y = ctx.GetInput(1);
+    const Ort::Float8E4M3FN_t* X = input_X.GetTensorData<Ort::Float8E4M3FN_t>();
+    const Ort::Float8E4M3FN_t* Y = input_Y.GetTensorData<Ort::Float8E4M3FN_t>();
+
+    // Setup output
+    auto dimensions = input_X.GetTensorTypeAndShapeInfo().GetShape();
+
+    auto output = ctx.GetOutput(0, dimensions);
+    Ort::Float8E4M3FN_t* out = output.GetTensorMutableData<Ort::Float8E4M3FN_t>();
+
+    const size_t size = output.GetTensorTypeAndShapeInfo().GetElementCount();
+
+    // Do computation
+#ifdef USE_CUDA
+    cudaStream_t stream = reinterpret_cast<cudaStream_t>(ctx.GetGPUComputeStream());
+    cuda_add(size, out, X, Y, stream);
+#else
+    for (size_t i = 0; i < size; i++) {
+      out[i] = X[i];
+    }
+#endif
+  }
+};
+
+// legacy custom op registration
+struct CustomOpOneFloat8 : Ort::CustomOpBase<CustomOpOneFloat8, KernelOneFloat8> {
+  void* CreateKernel(const OrtApi& /* api */, const OrtKernelInfo* /* info */) const {
+    return std::make_unique<KernelOneFloat8>().release();
+  };
+
+  const char* GetName() const { return "CustomOpOneFloat8"; };
+
+#ifdef USE_CUDA
+  const char* GetExecutionProviderType() const { return "CUDAExecutionProvider"; };
+#endif
+
+  size_t GetInputTypeCount() const { return 2; };
+  ONNXTensorElementDataType GetInputType(size_t /*index*/) const { return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E4M3FN; };
+
+  size_t GetOutputTypeCount() const { return 1; };
+  ONNXTensorElementDataType GetOutputType(size_t /*index*/) const { return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E4M3FN; };
+};
+
+#endif
+
 // lite custom op as a function
 void KernelTwo(const Ort::Custom::Tensor<float>& X,
                Ort::Custom::Tensor<int32_t>& Y) {
@@ -192,6 +244,9 @@ OrtStatus* ORT_API_CALL RegisterCustomOps(OrtSessionOptions* options, const OrtA
   Ort::Global<void>::api_ = api->GetApi(ORT_API_VERSION);
 
   static const CustomOpOne c_CustomOpOne;
+#if !defined(DISABLE_FLOAT8_TYPES)
+  static const CustomOpOne c_CustomOpOneFloat8;
+#endif
   using LiteOp = Ort::Custom::OrtLiteCustomOp;
   static const std::unique_ptr<LiteOp> c_CustomOpTwo{Ort::Custom::CreateLiteCustomOp("CustomOpTwo", "CPUExecutionProvider", KernelTwo)};
   static const std::unique_ptr<LiteOp> c_MulTopOpFloat{Ort::Custom::CreateLiteCustomOp("MulTop", "CPUExecutionProvider", MulTop<float>)};
@@ -209,6 +264,9 @@ OrtStatus* ORT_API_CALL RegisterCustomOps(OrtSessionOptions* options, const OrtA
   ORT_TRY {
     Ort::CustomOpDomain domain{c_OpDomain};
     domain.Add(&c_CustomOpOne);
+#if !defined(DISABLE_FLOAT8_TYPES)
+    domain.Add(&c_CustomOpOneFloat8);
+#endif
     domain.Add(c_CustomOpTwo.get());
 
     Ort::CustomOpDomain domain_v2{"v2"};

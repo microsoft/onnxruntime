@@ -20,6 +20,9 @@ typedef const char* PATH_TYPE;
 
 extern std::unique_ptr<Ort::Env> ort_env;
 static constexpr PATH_TYPE TestModel = TSTR("testdata/custom_op_library/custom_op_test.onnx");
+#if !defined(DISABLE_FLOAT8_TYPES)
+static constexpr PATH_TYPE TestModelFloat8 = TSTR("testdata/custom_op_library/custom_op_test_float8.onnx");
+#endif
 
 // Test OrtApi RegisterCustomOpsUsingFunction.
 // Replicate the expected mobile setup where the binary is linked against onnxruntime and a custom ops library.
@@ -39,6 +42,26 @@ TEST(CustomOpRegistration, TestUsingFuncNameCApi) {
   // load model containing nodes using the custom op/s to validate. will throw if custom op wasn't registered.
   Ort::Session session(*ort_env, TestModel, session_options);
 }
+
+#if !defined(DISABLE_FLOAT8_TYPES)
+
+TEST(CustomOpRegistration, TestUsingFuncNameCApiFloat8) {
+  Ort::SessionOptions session_options;
+
+  // need to reference something in the custom ops library to prevent it being thrown away by the linker
+  void* addr = reinterpret_cast<void*>(RegisterCustomOpsAltName);
+  std::cout << "RegisterCustomOpsAltName addr " << addr << "\n";
+
+  // RegisterUnitTestCustomOps will add the Foo custom op in domain ort_unit_test
+  // custom_op_library has RegisterCustomOps and RegisterCustomOpsAltName as options for registration functions.
+  // Call RegisterCustomOpsAltName to test the path which does not use the default name.
+  Ort::ThrowOnError(Ort::GetApi().RegisterCustomOpsUsingFunction(session_options, "RegisterCustomOpsAltName"));
+
+  // load model containing nodes using the custom op/s to validate. will throw if custom op wasn't registered.
+  Ort::Session session(*ort_env, TestModelFloat8, session_options);
+}
+
+#endif
 
 TEST(CustomOpRegistration, TestUsingFuncNameCxxApi) {
   Ort::SessionOptions session_options;
