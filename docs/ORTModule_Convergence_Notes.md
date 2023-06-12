@@ -31,10 +31,10 @@ Before looking into this further, we should clarify a few things (if possible):
 <sub>
 
 ```python
-from onnxruntime.training.utils.hooks import GlobalSubscriberManager,
-                                             StatisticsSubscriber
-GlobalSubscriberManager.subscribe(model, [StatisticsSubscriber(output_dir="pt_out",
-                                          override_output_dir=True)])
+from onnxruntime.training.utils.hooks import GlobalSubscriberManager, StatisticsSubscriber
+GlobalSubscriberManager.subscribe(
+    model, [StatisticsSubscriber(output_dir="pt_out", override_output_dir=True)]
+)
 ```
 
 </sub>
@@ -44,10 +44,10 @@ GlobalSubscriberManager.subscribe(model, [StatisticsSubscriber(output_dir="pt_ou
 
 ```python
 model = ORTModule(model)
-from onnxruntime.training.utils.hooks import GlobalSubscriberManager,
-                                             StatisticsSubscriber
-GlobalSubscriberManager.subscribe(model, [StatisticsSubscriber(output_dir="ort_out",
-                                          override_output_dir=True)])
+from onnxruntime.training.utils.hooks import GlobalSubscriberManager, StatisticsSubscriber
+GlobalSubscriberManager.subscribe(
+    model, [StatisticsSubscriber(output_dir="ort_out", override_output_dir=True)]
+)
 ```
 
 </sub>
