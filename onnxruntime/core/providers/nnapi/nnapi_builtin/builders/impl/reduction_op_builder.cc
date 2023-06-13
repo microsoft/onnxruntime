@@ -85,11 +85,7 @@ Status ReductionOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, co
       const auto& axes_tensor = *initializers.at(inputs[1].node_arg.Name());
       Initializer unpacked_tensor(axes_tensor);
       auto raw_axes = unpacked_tensor.DataAsSpan<int64_t>();
-      axes.resize(raw_axes.size());
-      for (uint32_t i = 0; i < raw_axes.size(); i++) {
-        // it is unlikely we have an axis value overflow for int32
-        axes[i] = static_cast<int32_t>(raw_axes[i]);
-      }
+      axes = OnnxShapeToNnapi(raw_axes, input_shape.size());
     } else {
       // Cases when optional axes input is not provided
       if (noop_with_empty_axes == 0) {
@@ -102,10 +98,7 @@ Status ReductionOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, co
   } else {
     // For ReduceMean-13 or earlier, retrieve axes from the attribute
     const auto& axes_int64 = helper.Get("axes", std::vector<int64_t>{});
-    axes.reserve(axes_int64.size());
-    for (auto& axis : axes_int64) {
-      axes.push_back(static_cast<int32_t>(axis));
-    }
+    axes = OnnxShapeToNnapi(gsl::span<const int64_t>(axes_int64.data(), axes_int64.size()), input_shape.size());
 
     if (axes.empty()) {
       // When axes attribute is not specified or provided as empty, treated as default behavior to reduce all dimensions and similarly in this case,
@@ -120,10 +113,6 @@ Status ReductionOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, co
   input_indices.push_back(operand_indices.at(inputs[0].node_arg.Name()));  // data
 
   if (!axes.empty()) {
-    for (auto& axis : axes) {
-      axis = static_cast<int32_t>(HandleNegativeAxis(axis, input_shape.size()));
-    }
-
     const auto axes_name = model_builder.GetUniqueName(node_unit.Name() + inputs[0].node_arg.Name() + "_axes");
     Shape axes_dimen = {static_cast<uint32_t>(axes.size())};
     const OperandType axes_operand_type(Type::TENSOR_INT32, axes_dimen);

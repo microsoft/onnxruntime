@@ -392,5 +392,19 @@ bool CheckIsInitializer(const InitializedTensorSet& initializers, const NodeUnit
   return true;
 }
 
+std::vector<int32_t> OnnxShapeToNnapi(gsl::span<const int64_t> onnx_shape, std::optional<size_t> input_size = std::nullopt) {
+  std::vector<int32_t> result;
+  result.reserve(onnx_shape.size());
+  for (auto dim : onnx_shape) {
+    if (input_size.has_value()) {
+      dim = HandleNegativeAxis(dim, *input_size);
+    }
+
+    result.push_back(narrow<int32_t>(dim));
+  }
+
+  return result;
+}
+
 }  // namespace nnapi
 }  // namespace onnxruntime
