@@ -5894,7 +5894,14 @@ def test_ops_for_padding_elimination(test_cases):
 
 def test_e2e_padding_elimination():
     os.environ["ORTMODULE_ENABLE_EMBEDDING_SPARSE_OPTIMIZER"] = "1"
-    torch.manual_seed(5032)
+    seed = 5033
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    torch.backends.cudnn.determinstic=True
+    torch.backends.cudnn.benchmark=False
 
     class OneLayer(torch.nn.Module):
         def __init__(self, hidden_size, num_attention_heads):
@@ -6020,7 +6027,7 @@ def test_e2e_padding_elimination():
         for pt_param, ort_param in zip(pt_model.parameters(), ort_model.parameters()):
             _test_helpers.assert_values_are_close(pt_param.grad, ort_param.grad, atol=1e-4, rtol=1e-5)
 
-        _test_helpers.assert_values_are_close(ort_prediction, pt_prediction, atol=1e-2, rtol=1e-4)
+        _test_helpers.assert_values_are_close(ort_prediction, pt_prediction, atol=1e-3, rtol=1e-4)
 
     training_model = ort_model._torch_module._execution_manager(True)._onnx_models.optimized_model
     assert "ShrunkenGather" in [node.op_type for node in training_model.graph.node]
