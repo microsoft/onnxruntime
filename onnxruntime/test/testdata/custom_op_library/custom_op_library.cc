@@ -225,7 +225,7 @@ OrtStatus* ORT_API_CALL RegisterCustomOps(OrtSessionOptions* options, const OrtA
 
   static const CustomOpOne c_CustomOpOne;
 #if !defined(DISABLE_FLOAT8_TYPES)
-  static const CustomOpOne c_CustomOpOneFloat8;
+  static const CustomOpOneFloat8 c_CustomOpOneFloat8;
 #endif
   using LiteOp = Ort::Custom::OrtLiteCustomOp;
   static const std::unique_ptr<LiteOp> c_CustomOpTwo{Ort::Custom::CreateLiteCustomOp("CustomOpTwo", "CPUExecutionProvider", KernelTwo)};

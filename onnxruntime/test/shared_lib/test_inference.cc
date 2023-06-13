@@ -1415,10 +1415,10 @@ TEST(CApiTest, test_custom_op_library_float8) {
   std::cout << "Running inference using custom op shared library" << std::endl;
 
   std::vector<InputF8> inputs(2);
-  inputs[0].name = "input_1";
+  inputs[0].name = "X";
   inputs[0].dims = {2};
   inputs[0].values = {0, 1};
-  inputs[1].name = "input_2";
+  inputs[1].name = "Y";
   inputs[1].dims = {2};
   inputs[1].values = {3, 4};
 
@@ -1436,7 +1436,7 @@ TEST(CApiTest, test_custom_op_library_float8) {
 #endif
 
   TestInference<Ort::Float8E4M3FN_t, Ort::Float8E4M3FN_t, InputF8>(*ort_env, CUSTOM_OP_LIBRARY_TEST_MODEL_FLOAT8_URI, inputs,
-                                                                   "output", expected_dims_y,
+                                                                   "Z", expected_dims_y,
                                                                    expected_values_y, 0, nullptr, lib_name.c_str());
 }
 
