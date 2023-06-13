@@ -886,6 +886,7 @@ struct ProviderHostImpl : ProviderHost {
   const TensorSeq* OpKernelContext__Input_TensorSeq(const OpKernelContext* p, int index) override { return p->Input<TensorSeq>(index); }
   const Tensor& OpKernelContext__RequiredInput_Tensor(const OpKernelContext* p, int index) override { return p->RequiredInput<Tensor>(index); }
   MLDataType OpKernelContext__InputType(const OpKernelContext* p, int index) override { return p->InputType(index); }
+  MLDataType OpKernelContext__OutputType(const OpKernelContext* p, int index) override { return p->OutputType(index); }
   Tensor* OpKernelContext__Output_Tensor(OpKernelContext* p, int index) override { return p->Output<Tensor>(index); }
   TensorSeq* OpKernelContext__Output_TensorSeq(OpKernelContext* p, int index) override { return p->Output<TensorSeq>(index); }
   Tensor* OpKernelContext__Output(OpKernelContext* p, int index, const TensorShape& shape) override { return p->Output(index, shape); }

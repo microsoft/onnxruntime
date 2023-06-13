@@ -768,6 +768,7 @@ struct ProviderHost {
 #endif
   virtual Tensor& OpKernelContext__RequiredOutput(OpKernelContext* p, int index, const TensorShape& shape) = 0;
   virtual MLDataType OpKernelContext__InputType(const OpKernelContext* p, int index) = 0;
+  virtual MLDataType OpKernelContext__OutputType(const OpKernelContext* p, int index) = 0;
   virtual int OpKernelContext__InputCount(const OpKernelContext* p) = 0;
   virtual int OpKernelContext__OutputCount(const OpKernelContext* p) = 0;
   virtual Status OpKernelContext__GetTempSpaceAllocator(const OpKernelContext* p, AllocatorPtr* output) = 0;

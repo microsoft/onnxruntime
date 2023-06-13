@@ -12,9 +12,9 @@
 // select data dump destination using
 //   ORT_DEBUG_NODE_IO_DUMP_DATA_DESTINATION= one of {stdout, files, sqlite}
 
-#ifdef DEBUG_NODE_INPUTS_OUTPUTS
-
 #pragma once
+
+#ifdef DEBUG_NODE_INPUTS_OUTPUTS
 
 #include "core/common/path.h"
 #include "core/framework/op_kernel.h"
@@ -58,6 +58,8 @@ constexpr const char* kDumpingDataToFilesForAllNodesIsOk =
 constexpr const char* kSnippetThreshold = "ORT_DEBUG_NODE_IO_SNIPPET_THRESHOLD";
 // Number of array items in snippet at beginning and end of each dimension (default 3)
 constexpr const char* kSnippetEdgeItems = "ORT_DEBUG_NODE_IO_SNIPPET_EDGE_ITEMS";
+// Use kernel to dump.
+constexpr const char* kDumpWithKernel = "ORT_DEBUG_NODE_DUMP_WITH_KERNEL";
 
 }  // namespace debug_node_inputs_outputs_env_vars
 
@@ -114,6 +116,8 @@ struct NodeDumpOptions {
 
   // Number of array items in snippet at beginning and end of each dimension for Stdout.
   int snippet_edge_items;
+
+  bool dump_with_kernel;
 };
 
 struct NodeDumpContext {

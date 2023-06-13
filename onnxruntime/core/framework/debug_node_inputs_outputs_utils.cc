@@ -360,6 +360,11 @@ const NodeDumpOptions& NodeDumpOptionsFromEnvironmentVariables() {
 
     NodeDumpOptions opts{};
 
+    opts.dump_with_kernel = false;
+    if (ParseEnvironmentVariableWithDefault<bool>(env_vars::kDumpWithKernel, false)) {
+      opts.dump_with_kernel = true;
+    }
+
     // Preserve existing behavior of printing the shapes by default. Turn it off only if the user has requested so
     // explicitly by setting the value of the env variable to 0.
     opts.dump_flags = NodeDumpOptions::DumpFlags::None;

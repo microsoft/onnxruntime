@@ -327,7 +327,12 @@ class KernelScope {
 #endif
 
 #ifdef DEBUG_NODE_INPUTS_OUTPUTS
-    utils::DumpNodeInputs(dump_context_, kernel_context_, kernel_.Node(), session_state_);
+    const utils::NodeDumpOptions& dump_options = utils::NodeDumpOptionsFromEnvironmentVariables();
+    if (dump_options.dump_with_kernel){
+      kernel.DumpInputs(&kernel_context_);
+    } else {
+      utils::DumpNodeInputs(dump_context_, kernel_context_, kernel_.Node(), session_state_);
+    }
 #endif
 
 #ifdef ENABLE_NVTX_PROFILE
@@ -401,7 +406,12 @@ class KernelScope {
 #endif
 
 #ifdef DEBUG_NODE_INPUTS_OUTPUTS
-    utils::DumpNodeOutputs(dump_context_, kernel_context_, kernel_.Node(), session_state_);
+    const utils::NodeDumpOptions& dump_options = utils::NodeDumpOptionsFromEnvironmentVariables();
+    if (dump_options.dump_with_kernel){
+      kernel_.DumpOutputs(&kernel_context_);
+    } else {
+      utils::DumpNodeOutputs(dump_context_, kernel_context_, kernel_.Node(), session_state_);
+    }
 #endif
   }  //~KernelScope
 

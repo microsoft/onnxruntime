@@ -61,6 +61,12 @@ class OpKernel {
     ORT_NOT_IMPLEMENTED(__FUNCTION__, " is not implemented");
   }
 
+  virtual void DumpInputs(_Inout_ OpKernelContext* /*context*/) const{
+  }
+
+  virtual void DumpOutputs(_Inout_ OpKernelContext* /*context*/) const{
+  }
+
   // Override this function to PrePack initialized constant tensor to the format as needed.
   // For example, MatMul kernel can pack the input B if it is constant like code below.
   //   Status PrePack(const Tensor& tensor, int input_idx, /*out*/ bool& is_packed,

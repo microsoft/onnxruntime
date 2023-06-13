@@ -784,6 +784,7 @@ struct OpKernelContext final {
   int InputCount() const { return g_host->OpKernelContext__InputCount(this); }
 
   MLDataType InputType(int index) const { return g_host->OpKernelContext__InputType(this, index); }
+  MLDataType OutputType(int index) const { return g_host->OpKernelContext__OutputType(this, index); }
 
   template <typename T>
   T* Output(int index);

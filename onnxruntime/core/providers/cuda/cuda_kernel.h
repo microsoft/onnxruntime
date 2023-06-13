@@ -23,6 +23,12 @@ class CudaKernel : public OpKernel {
         provider_(const_cast<CUDAExecutionProvider*>(static_cast<const CUDAExecutionProvider*>(info.GetExecutionProvider()))) {
   }
 
+#ifdef DEBUG_NODE_INPUTS_OUTPUTS
+  void DumpInputs(OpKernelContext* context) const override;
+
+  void DumpOutputs(OpKernelContext* context) const override;
+#endif
+
   Status Compute(OpKernelContext* p_op_kernel_context) const override {
     auto s = ComputeInternal(p_op_kernel_context);
     // use this to precisely locate the node where CUDA failure comes from
@@ -36,7 +42,7 @@ class CudaKernel : public OpKernel {
     }
     return s;
   }
-
+ 
   virtual Status ComputeInternal(OpKernelContext* p_op_kernel_context) const = 0;
 
   template <typename T>
