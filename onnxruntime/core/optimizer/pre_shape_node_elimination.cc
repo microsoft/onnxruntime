@@ -26,14 +26,15 @@ bool PreShapeNodeElimination::SatisfyCondition(const Graph& graph, const Node& n
     return false;
   }
 
-  const Node* next_node = output_nodes[0];
-
-  // Check if next node is Shape
-  if (next_node->OpType() != "Shape") {
-    return false;
+  for (const Node* next_node : output_nodes) {
+    // Check if the next node is not of type "Shape"
+    if (next_node->OpType() != "Shape") {
+      return false;
+    }
   }
 
-  return next_node->OpType() == "Shape";
+  // All output nodes are of type "Shape"
+  return true;
 }
 
 }  // namespace onnxruntime
