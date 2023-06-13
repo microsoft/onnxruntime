@@ -27,15 +27,12 @@ class BeamSearchGpt : public BeamSearchBase<T> {
                 BeamSearchParameters& params,
                 const GenerationDeviceHelper::CreateGptInputsFunc& create_inputs_func,
                 const GenerationDeviceHelper::AddToFeedsFunc& add_to_feeds_func,
-                const GenerationDeviceHelper::ReorderPastStateFunc& reorder_past_state_func,
                 const GenerationDeviceHelper::TopkFunc& topk_func,
                 const GenerationDeviceHelper::ProcessLogitsFunc<T>& process_logits_func,
                 const GenerationDeviceHelper::InitBeamStateFunc<T>& init_beam_state_func,
                 const GenerationDeviceHelper::DeviceCopyFunc<float>& device_copy_func,
                 const GenerationDeviceHelper::DeviceCopyFunc<int32_t>& device_copy_int32_func,
-                const GenerationDeviceHelper::UpdateGptFeedsFunc<T>& update_feeds_func,
-                const void* cuda_device_prop,
-                int cuda_device_arch)
+                const GenerationDeviceHelper::UpdateGptFeedsFunc<T>& update_feeds_func)
       : BeamSearchBase<T>(context, decoder_session_state, thread_pool,
                           ort_stream, cuda_dumper, params,
                           topk_func, process_logits_func, device_copy_func, device_copy_int32_func),
@@ -45,18 +42,26 @@ class BeamSearchGpt : public BeamSearchBase<T> {
         create_inputs_func_(create_inputs_func),
         add_to_feeds_func_(add_to_feeds_func),
         init_beam_state_func_(init_beam_state_func),
-        reorder_past_state_func_(reorder_past_state_func),
-        update_feeds_func_(update_feeds_func),
-        cuda_device_prop_(cuda_device_prop),
-        cuda_device_arch_(cuda_device_arch) {
+        update_feeds_func_(update_feeds_func) {}
+
+#ifdef USE_CUDA
+  Status InitializeCuda(
+      const GenerationDeviceHelper::ReorderPastStateFunc& reorder_past_state_func,
+      const void* cuda_device_prop,
+      int cuda_device_arch) {
+    reorder_past_state_func_ = reorder_past_state_func;
+    cuda_device_prop_ = cuda_device_prop;
+    cuda_device_arch_ = cuda_device_arch;
     if (gpt_subgraph_.has_decoder_masked_attention_) {
-      ORT_ENFORCE(cuda_device_arch_ >= 530,
-                  "Decoder masked self attention can only be used on "
-                  "GPU cards of compute capability 5.3 or higher. "
-                  "This card has compute capability ",
-                  cuda_device_arch_);
+      ORT_RETURN_IF(cuda_device_arch_ >= 530,
+                    "Decoder masked self attention can only be used on "
+                    "GPU cards of compute capability 5.3 or higher. "
+                    "This card has compute capability ",
+                    cuda_device_arch_);
     }
+    return Status::OK();
   }
+#endif
 
   // Execute beam search in iterations util stopping criteria is reached.
   // In each iteration, GPT subgraph is called, and next token for each sequence is generated.
@@ -93,7 +98,9 @@ class BeamSearchGpt : public BeamSearchBase<T> {
   GenerationDeviceHelper::CreateGptInputsFunc create_inputs_func_;
   GenerationDeviceHelper::AddToFeedsFunc add_to_feeds_func_;
   GenerationDeviceHelper::InitBeamStateFunc<T> init_beam_state_func_;
+#ifdef USE_CUDA
   GenerationDeviceHelper::ReorderPastStateFunc reorder_past_state_func_;
+#endif
   GenerationDeviceHelper::UpdateGptFeedsFunc<T> update_feeds_func_;
 
   const void* cuda_device_prop_ = nullptr;
@@ -321,6 +328,7 @@ Status BeamSearchGpt<T>::Execute(const FeedsFetchesManager* init_run_feeds_fetch
     // Increase sequence length after a new token is generated.
     ++current_length;
 
+#ifdef USE_CUDA
     // Reorder past state after first run if the GPT subgraph (the one used after the first iteration)
     // contains DecoderMaskedSelfAttention nodes
     if (iteration_counter == 1 && gpt_subgraph_.has_decoder_masked_attention_) {
@@ -337,6 +345,7 @@ Status BeamSearchGpt<T>::Execute(const FeedsFetchesManager* init_run_feeds_fetch
                                                      this->ort_stream_));
       }
     }
+#endif
 
     // Prepare inputs for next round of subgraph call.
     if (current_length < parameters->max_length) {
