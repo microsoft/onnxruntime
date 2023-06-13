@@ -333,83 +333,6 @@ For more information on OpenVINO™ Execution Provider&#39;s ONNX Layer support,
 
 ---
 
-### Prerequisites
-{: .no_toc }
-
-* The Nuphar execution provider for ONNX Runtime is built and tested with LLVM 9.0.0. Because of TVM's requirement when building with LLVM, you need to build LLVM from source. To build the debug flavor of ONNX Runtime, you need the debug build of LLVM.
-   * Windows (Visual Studio 2017):
-   ```
-   REM download llvm source code 9.0.0 and unzip to \llvm\source\path, then install to \llvm\install\path
-   cd \llvm\source\path
-   mkdir build
-   cd build
-   cmake .. -G "Visual Studio 15 2017 Win64" -DLLVM_TARGETS_TO_BUILD=X86 -DLLVM_ENABLE_DIA_SDK=OFF
-   msbuild llvm.sln /maxcpucount /p:Configuration=Release /p:Platform=x64
-   cmake -DCMAKE_INSTALL_PREFIX=\llvm\install\path -DBUILD_TYPE=Release -P cmake_install.cmake
-   ```
-
-*Note that following LLVM cmake patch is necessary to make the build work on Windows, Linux does not need to apply the patch.*
-The patch is to fix the linking warning LNK4199 caused by this [LLVM commit](https://github.com/llvm-mirror/llvm/commit/148f823e4845c9a13faea62e3105abb80b39e4bc)
-
-```
-diff --git "a/lib\\Support\\CMakeLists.txt" "b/lib\\Support\\CMakeLists.txt"
-index 7dfa97c..6d99e71 100644
---- "a/lib\\Support\\CMakeLists.txt"
-+++ "b/lib\\Support\\CMakeLists.txt"
-@@ -38,12 +38,6 @@ elseif( CMAKE_HOST_UNIX )
-   endif()
- endif( MSVC OR MINGW )
-
--# Delay load shell32.dll if possible to speed up process startup.
--set (delayload_flags)
--if (MSVC)
--  set (delayload_flags delayimp -delayload:shell32.dll -delayload:ole32.dll)
--endif()
--
- # Link Z3 if the user wants to build it.
- if(LLVM_WITH_Z3)
-   set(Z3_LINK_FILES ${Z3_LIBRARIES})
-@@ -187,7 +181,7 @@ add_llvm_library(LLVMSupport
-   ${LLVM_MAIN_INCLUDE_DIR}/llvm/ADT
-   ${LLVM_MAIN_INCLUDE_DIR}/llvm/Support
-   ${Backtrace_INCLUDE_DIRS}
--  LINK_LIBS ${system_libs} ${delayload_flags} ${Z3_LINK_FILES}
-+  LINK_LIBS ${system_libs} ${Z3_LINK_FILES}
-   )
-
- set_property(TARGET LLVMSupport PROPERTY LLVM_SYSTEM_LIBS "${system_libs}")
-```
-   * Linux
-   Download llvm source code 9.0.0 and unzip to /llvm/source/path, then install to /llvm/install/path
-   ```
-   cd /llvm/source/path
-   mkdir build
-   cd build
-   cmake .. -DLLVM_TARGETS_TO_BUILD=X86 -DCMAKE_BUILD_TYPE=Release
-   make -j$(nproc)
-   cmake -DCMAKE_INSTALL_PREFIX=/llvm/install/path -DBUILD_TYPE=Release -P cmake_install.cmake
-   ```
-
-### Build Instructions
-{: .no_toc }
-
-#### Windows
-```
-.\build.bat --llvm_path=\llvm\install\path\lib\cmake\llvm --use_mklml --use_nuphar --build_shared_lib --build_csharp --enable_pybind --config=Release
-```
-
-* These instructions build the release flavor. The Debug build of LLVM would be needed to build with the Debug flavor of ONNX Runtime.
-
-#### Linux:
-```
-./build.sh --llvm_path=/llvm/install/path/lib/cmake/llvm --use_mklml --use_nuphar --build_shared_lib --build_csharp --enable_pybind --config=Release
-```
-
-Dockerfile instructions are available [here](https://github.com/microsoft/onnxruntime/tree/main/dockerfiles#nuphar).
-
-
----
-
 ## QNN
 See more information on the QNN execution provider [here](../execution-providers/QNN-ExecutionProvider.md).
 
@@ -483,7 +406,7 @@ alias cmake="/usr/bin/cmake -DCMAKE_TOOLCHAIN_FILE=$OECORE_NATIVE_SYSROOT/usr/sh
 
 1. Configure ONNX Runtime with ACL support:
 ```
-cmake ../onnxruntime-arm-upstream/cmake -DONNX_CUSTOM_PROTOC_EXECUTABLE=/usr/bin/protoc -Donnxruntime_RUN_ONNX_TESTS=OFF -Donnxruntime_GENERATE_TEST_REPORTS=ON -Donnxruntime_DEV_MODE=ON -DPYTHON_EXECUTABLE=/usr/bin/python3 -Donnxruntime_USE_CUDA=OFF -Donnxruntime_USE_NSYNC=OFF -Donnxruntime_CUDNN_HOME= -Donnxruntime_USE_JEMALLOC=OFF -Donnxruntime_ENABLE_PYTHON=OFF -Donnxruntime_BUILD_CSHARP=OFF -Donnxruntime_BUILD_SHARED_LIB=ON -Donnxruntime_USE_EIGEN_FOR_BLAS=ON -Donnxruntime_USE_OPENBLAS=OFF -Donnxruntime_USE_ACL=ON -Donnxruntime_USE_DNNL=OFF -Donnxruntime_USE_MKLML=OFF -Donnxruntime_USE_OPENMP=ON -Donnxruntime_USE_TVM=OFF -Donnxruntime_USE_LLVM=OFF -Donnxruntime_ENABLE_MICROSOFT_INTERNAL=OFF -Donnxruntime_USE_BRAINSLICE=OFF -Donnxruntime_USE_NUPHAR=OFF -Donnxruntime_USE_EIGEN_THREADPOOL=OFF -Donnxruntime_BUILD_UNIT_TESTS=ON -DCMAKE_BUILD_TYPE=RelWithDebInfo
+cmake ../onnxruntime-arm-upstream/cmake -DONNX_CUSTOM_PROTOC_EXECUTABLE=/usr/bin/protoc -Donnxruntime_RUN_ONNX_TESTS=OFF -Donnxruntime_GENERATE_TEST_REPORTS=ON -Donnxruntime_DEV_MODE=ON -DPYTHON_EXECUTABLE=/usr/bin/python3 -Donnxruntime_USE_CUDA=OFF -Donnxruntime_USE_NSYNC=OFF -Donnxruntime_CUDNN_HOME= -Donnxruntime_USE_JEMALLOC=OFF -Donnxruntime_ENABLE_PYTHON=OFF -Donnxruntime_BUILD_CSHARP=OFF -Donnxruntime_BUILD_SHARED_LIB=ON -Donnxruntime_USE_EIGEN_FOR_BLAS=ON -Donnxruntime_USE_OPENBLAS=OFF -Donnxruntime_USE_ACL=ON -Donnxruntime_USE_DNNL=OFF -Donnxruntime_USE_MKLML=OFF -Donnxruntime_USE_OPENMP=ON -Donnxruntime_USE_TVM=OFF -Donnxruntime_USE_LLVM=OFF -Donnxruntime_ENABLE_MICROSOFT_INTERNAL=OFF -Donnxruntime_USE_BRAINSLICE=OFF -Donnxruntime_USE_EIGEN_THREADPOOL=OFF -Donnxruntime_BUILD_UNIT_TESTS=ON -DCMAKE_BUILD_TYPE=RelWithDebInfo
 ```
 The ```-Donnxruntime_USE_ACL=ON``` option will use, by default, the 19.05 version of the Arm Compute Library. To set the right version you can use:
 ```-Donnxruntime_USE_ACL_1902=ON```, ```-Donnxruntime_USE_ACL_1905=ON```, ```-Donnxruntime_USE_ACL_1908=ON``` or ```-Donnxruntime_USE_ACL_2002=ON```;
@@ -617,7 +540,7 @@ set(CMAKE_C_COMPILER aarch64-linux-gnu-gcc)
 ---
 
 ## AMD Vitis AI
-See more information on the Vitis AI Execution Provider [here](../execution-providers/community-maintained/Vitis-AI-ExecutionProvider.md).
+See more information on the Vitis AI Execution Provider [here](../execution-providers/Vitis-AI-ExecutionProvider.md).
 
 ### Windows
 {: .no_toc }
@@ -643,7 +566,7 @@ e.g.
 ### Linux
 {: .no_toc }
 
-Currently Linux support is only enabled for AMD Adapable SoCs.  Please refer to the guidance [here](../execution-providers/community-maintained/Vitis-AI-ExecutionProvider.md#amd-adaptable-soc-installation) for SoC targets.
+Currently Linux support is only enabled for AMD Adapable SoCs.  Please refer to the guidance [here](../execution-providers/Vitis-AI-ExecutionProvider.md#amd-adaptable-soc-installation) for SoC targets.
 
 ---
 
