@@ -23,12 +23,20 @@ namespace {
  */
 Status FlatbufferTensorsFromOrtValues(
     const InlinedHashMap<std::string, OrtValue>& name_to_ort_value,
-    const DataTransferManager& data_transfer_manager,
+    const DataTransferManager* data_transfer_manager,
     flatbuffers::FlatBufferBuilder& builder,
     std::vector<flatbuffers::Offset<fbs::Tensor>>& flatbuffer_tensors) {
   for (const auto& [name, ort_value] : name_to_ort_value) {
     flatbuffers::Offset<fbs::Tensor> fbs_tensor;
-    ORT_RETURN_IF_ERROR(fbs::utils::SaveOrtValueOrtFormat(name, ort_value, data_transfer_manager, builder, fbs_tensor));
+    ORT_RETURN_IF_ERROR(fbs::utils::SaveOrtValueOrtFormat(
+        name, ort_value, [&data_transfer_manager](const auto& src_tensor, auto& dst_tensor) {
+          ORT_RETURN_IF_NOT(data_transfer_manager,
+                            "Cannot save OrtValue to a checkpoint. Expected: A valid data transfer manager. ",
+                            "Actual: nullptr.");
+          ORT_RETURN_IF_ERROR(data_transfer_manager->CopyTensor(src_tensor, dst_tensor));
+          return Status::OK();
+        },
+        builder, fbs_tensor));
     flatbuffer_tensors.emplace_back(fbs_tensor);
   }
 
@@ -43,12 +51,9 @@ Status FlatbufferTensorsFromOrtValues(
  * @return Status of the operation.
  */
 Status OrtValuesFromFlatbufferTensors(
-    const flatbuffers::Vector<flatbuffers::Offset<onnxruntime::fbs::Tensor>>* flatbuffer_tensors,
+    const flatbuffers::Vector<flatbuffers::Offset<onnxruntime::fbs::Tensor>>& flatbuffer_tensors,
     InlinedHashMap<std::string, OrtValue>& name_to_ort_value) {
-  ORT_RETURN_IF_NOT(flatbuffer_tensors, "Expected: Both trainable and non trainable tensors must exist.",
-                    " Actual: Encountered a nullptr. Checkpoint file is invalid");
-
-  for (auto* fbs_tensor : *flatbuffer_tensors) {
+  for (auto* fbs_tensor : flatbuffer_tensors) {
     ORT_RETURN_IF_NOT(fbs_tensor, "Encountered a nullptr flatbuffer tensor. Checkpoint file is invalid.");
 
     std::string tensor_name;
@@ -197,10 +202,6 @@ Status FromModuleState(const ModuleCheckpointState& module_state,
     return Status::OK();
   }
 
-  ORT_RETURN_IF_NOT(module_state.train_session_data_transfer_mgr,
-                    "Cannot save module state to a checkpoint. Expected: A valid data transfer manager. ",
-                    "Actual: nullptr.");
-
   InlinedHashMap<std::string, OrtValue> requires_grad;
   InlinedHashMap<std::string, OrtValue> frozen_params;
   for (auto& [name, value] : module_state.named_parameters) {
@@ -215,14 +216,14 @@ Status FromModuleState(const ModuleCheckpointState& module_state,
   trainable_tensors.reserve(requires_grad.size());
   ORT_RETURN_IF_ERROR(FlatbufferTensorsFromOrtValues(
       requires_grad,
-      *module_state.train_session_data_transfer_mgr,
+      module_state.train_session_data_transfer_mgr,
       builder, trainable_tensors));
 
   std::vector<flatbuffers::Offset<fbs::Tensor>> non_trainable_tensors;
   non_trainable_tensors.reserve(frozen_params.size());
   ORT_RETURN_IF_ERROR(FlatbufferTensorsFromOrtValues(
       frozen_params,
-      *module_state.train_session_data_transfer_mgr,
+      module_state.train_session_data_transfer_mgr,
       builder, non_trainable_tensors));
 
   const auto fbs_trainable_tensors = builder.CreateVector(trainable_tensors);
@@ -252,10 +253,6 @@ Status FromOptimizerState(const OptimizerCheckpointState& optimizer_state,
     return Status::OK();
   }
 
-  ORT_RETURN_IF_NOT(optimizer_state.optimizer_session_data_transfer_mgr,
-                    "Cannot save optimizer state to a checkpoint. Expected: A valid data transfer manager. ",
-                    "Actual: nullptr.");
-
   fbs_optimizer_groups.reserve(optimizer_state.group_named_optimizer_states.size());
   for (auto& group_named_optimizer_state : optimizer_state.group_named_optimizer_states) {
     const std::shared_ptr<GroupOptimizerState>& group_optimizer_state_ptr = group_named_optimizer_state.second;
@@ -267,7 +264,7 @@ Status FromOptimizerState(const OptimizerCheckpointState& optimizer_state,
       momentums.reserve(param_optimizer_state.size());
       ORT_RETURN_IF_ERROR(FlatbufferTensorsFromOrtValues(
           param_optimizer_state,
-          *optimizer_state.optimizer_session_data_transfer_mgr,
+          optimizer_state.optimizer_session_data_transfer_mgr,
           builder, momentums));
 
       fbs::ParameterOptimizerStateBuilder optimizer_state_builder(builder);
@@ -424,26 +421,27 @@ Status FromFile(const PathString& checkpoint_path, std::vector<uint8_t>& checkpo
  * @return Status of the operation.
  */
 Status ToModuleState(
-    const onnxruntime::fbs::ModuleState* fbs_module_state, ModuleCheckpointState& module_state) {
-  ORT_RETURN_IF_NOT(fbs_module_state, "Checkpoint is invalid. Expected: Valid checkpoint module state flatbuffer. ",
-                    "Acutal: nullptr.");
-
-  const auto* requires_grad = fbs_module_state->requires_grad();
-  flatbuffers::uoffset_t trainable_params_size = (requires_grad != nullptr ? requires_grad->size() : 0U);
+    const onnxruntime::fbs::ModuleState& fbs_module_state, ModuleCheckpointState& module_state) {
+  const auto* requires_grad = fbs_module_state.requires_grad();
+  ORT_RETURN_IF_NOT(requires_grad, "Expected: Valid trainable tensors flatbuffer.",
+                    " Actual: Encountered a nullptr. Checkpoint file is invalid");
+  flatbuffers::uoffset_t trainable_params_size = requires_grad->size();
   InlinedHashMap<std::string, OrtValue> trainable_params;
   trainable_params.reserve(trainable_params_size);
-  ORT_RETURN_IF_ERROR(OrtValuesFromFlatbufferTensors(requires_grad, trainable_params));
+  ORT_RETURN_IF_ERROR(OrtValuesFromFlatbufferTensors(*requires_grad, trainable_params));
 
   for (auto& [name, value] : trainable_params) {
     auto param = std::make_shared<Parameter>(name, value, true);
     module_state.named_parameters.emplace(name, param);
   }
 
-  const auto* frozen_params = fbs_module_state->frozen_params();
-  flatbuffers::uoffset_t non_trainable_params_size = (frozen_params != nullptr ? frozen_params->size() : 0U);
+  const auto* frozen_params = fbs_module_state.frozen_params();
+  ORT_RETURN_IF_NOT(frozen_params, "Expected: Valid non trainable tensors flatbuffer.",
+                    " Actual: Encountered a nullptr. Checkpoint file is invalid");
+  flatbuffers::uoffset_t non_trainable_params_size = frozen_params->size();
   InlinedHashMap<std::string, OrtValue> non_trainable_params;
   non_trainable_params.reserve(non_trainable_params_size);
-  ORT_RETURN_IF_ERROR(OrtValuesFromFlatbufferTensors(frozen_params, non_trainable_params));
+  ORT_RETURN_IF_ERROR(OrtValuesFromFlatbufferTensors(*frozen_params, non_trainable_params));
 
   for (auto& [name, value] : non_trainable_params) {
     auto param = std::make_shared<Parameter>(name, value, false);
@@ -461,14 +459,19 @@ Status ToModuleState(
  * @return Status of the operation.
  */
 Status ToOptimizerState(
-    const flatbuffers::Vector<flatbuffers::Offset<onnxruntime::fbs::OptimizerGroup>>* optimizer_groups,
+    const flatbuffers::Vector<flatbuffers::Offset<onnxruntime::fbs::OptimizerGroup>>& optimizer_groups,
     OptimizerCheckpointState& optimizer_state) {
-  for (auto* optimizer_group : *optimizer_groups) {
+  for (auto* optimizer_group : optimizer_groups) {
+    ORT_RETURN_IF_NOT(optimizer_group, "Expected: Valid optimizer groups flatbuffer.",
+                      " Actual: Encountered a nullptr. Checkpoint file is invalid");
+
     const std::string group_name = optimizer_group->group_name()->str();
     const int64_t step = optimizer_group->step();
     const float initial_learning_rate = optimizer_group->initial_learning_rate();
 
     auto* parameter_optimizer_states = optimizer_group->optimizer_states();
+    ORT_RETURN_IF_NOT(parameter_optimizer_states, "Expected: Valid parameter optimizer states flatbuffer.",
+                      " Actual: Encountered a nullptr. Checkpoint file is invalid");
 
     [[maybe_unused]] auto [optimizer_state_it, inserted] =
         optimizer_state.group_named_optimizer_states.emplace(group_name, std::make_shared<GroupOptimizerState>());
@@ -478,7 +481,10 @@ Status ToOptimizerState(
     for (auto* parameter_optimizer_state : *parameter_optimizer_states) {
       std::string param_name = parameter_optimizer_state->param_name()->str();
       auto* momentums = parameter_optimizer_state->momentums();
-      ORT_RETURN_IF_ERROR(OrtValuesFromFlatbufferTensors(momentums, optimizer_state_it->second->param_named_optimizer_states[param_name]));
+      ORT_RETURN_IF_NOT(momentums, "Expected: Valid optimizer momentum tensors flatbuffer.",
+                        " Actual: Encountered a nullptr. Checkpoint file is invalid");
+      ORT_RETURN_IF_ERROR(OrtValuesFromFlatbufferTensors(
+          *momentums, optimizer_state_it->second->param_named_optimizer_states[param_name]));
     }
   }
 
@@ -492,13 +498,9 @@ Status ToOptimizerState(
  * @param property_bag Property bag to be populated.
  * @return Status of the operation.
  */
-Status ToPropertyBag(const onnxruntime::fbs::PropertyBag* fbs_property_bag,
+Status ToPropertyBag(const onnxruntime::fbs::PropertyBag& fbs_property_bag,
                      PropertyBag& property_bag) {
-  if (nullptr == fbs_property_bag) {
-    return Status::OK();
-  }
-
-  auto* ints = fbs_property_bag->ints();
+  auto* ints = fbs_property_bag.ints();
   if (nullptr != ints) {
     for (auto* int_property : *ints) {
       std::string name = int_property->name()->str();
@@ -507,7 +509,7 @@ Status ToPropertyBag(const onnxruntime::fbs::PropertyBag* fbs_property_bag,
     }
   }
 
-  auto* floats = fbs_property_bag->floats();
+  auto* floats = fbs_property_bag.floats();
   if (nullptr != floats) {
     for (auto* float_property : *floats) {
       std::string name = float_property->name()->str();
@@ -516,7 +518,7 @@ Status ToPropertyBag(const onnxruntime::fbs::PropertyBag* fbs_property_bag,
     }
   }
 
-  auto* strings = fbs_property_bag->strings();
+  auto* strings = fbs_property_bag.strings();
   if (nullptr != strings) {
     for (auto* string_property : *strings) {
       std::string name = string_property->name()->str();
@@ -543,7 +545,7 @@ Status ToModelProto(const PathString& checkpoint_path,
   ORT_RETURN_IF_ERROR(Load::FromFile(checkpoint_path, checkpoint_bytes, checkpoint_span));
 
   const auto* fbs_checkpoint = fbs::GetCheckpoint(checkpoint_span.data());
-  ORT_RETURN_IF_NOT(fbs_checkpoint, "Checkpoint is invalid. Expected: Valid checkpoint flatbuffer. Acutal: nullptr.");
+  ORT_RETURN_IF_NOT(fbs_checkpoint, "Checkpoint is invalid. Expected: Valid checkpoint flatbuffer. Actual: nullptr.");
 
   auto* module_state = fbs_checkpoint->module_state();
   if (nullptr == module_state) {
@@ -552,12 +554,9 @@ Status ToModelProto(const PathString& checkpoint_path,
 
   InlinedHashMap<std::string, ONNX_NAMESPACE::TensorProto> param_tensor_protos;
 
-  const auto flatbuffer_tensors_to_tensor_protos = [&param_tensor_protos](const auto* flatbuffer_tensors) {
-    if (nullptr == flatbuffer_tensors) {
-      return Status::OK();
-    }
-
-    for (auto* fbs_tensor : *flatbuffer_tensors) {
+  const auto flatbuffer_tensors_to_tensor_protos = [&param_tensor_protos](const auto& flatbuffer_tensors) {
+    for (auto* fbs_tensor : flatbuffer_tensors) {
+      ORT_RETURN_IF_NOT(fbs_tensor, "Checkpoint is invalid. Expected: Valid flatbuffer tensor. Actual: nullptr.");
       ONNX_NAMESPACE::TensorProto tensor_proto;
       OrtFormatLoadOptions load_options{false, false};
       ORT_RETURN_IF_ERROR(fbs::utils::LoadInitializerOrtFormat(*fbs_tensor, tensor_proto, load_options));
@@ -567,8 +566,15 @@ Status ToModelProto(const PathString& checkpoint_path,
     return Status::OK();
   };
 
-  ORT_RETURN_IF_ERROR(flatbuffer_tensors_to_tensor_protos(module_state->requires_grad()));
-  ORT_RETURN_IF_ERROR(flatbuffer_tensors_to_tensor_protos(module_state->frozen_params()));
+  const auto* requires_grad = module_state->requires_grad();
+  ORT_RETURN_IF_NOT(requires_grad,
+                    "Checkpoint is invalid. Expected: Valid trainable params flatbuffer. Actual: nullptr.");
+  ORT_RETURN_IF_ERROR(flatbuffer_tensors_to_tensor_protos(*requires_grad));
+
+  const auto* frozen_params = module_state->frozen_params();
+  ORT_RETURN_IF_NOT(frozen_params,
+                    "Checkpoint is invalid. Expected: Valid non-trainable params flatbuffer. Actual: nullptr.");
+  ORT_RETURN_IF_ERROR(flatbuffer_tensors_to_tensor_protos(*frozen_params));
 
   // Copy loaded tensor protos to the initializers in the ModelProto
   for (auto& init : *(model_proto.mutable_graph()->mutable_initializer())) {
@@ -597,11 +603,22 @@ Status ToCheckpointState(const PathString& checkpoint_path, CheckpointState& sta
   ORT_RETURN_IF_ERROR(Load::FromFile(checkpoint_path, checkpoint_bytes, checkpoint_span));
 
   const auto* fbs_checkpoint = fbs::GetCheckpoint(checkpoint_span.data());
-  ORT_RETURN_IF_NOT(fbs_checkpoint, "Checkpoint is invalid. Expected: Valid checkpoint flatbuffer. Acutal: nullptr.");
+  ORT_RETURN_IF_NOT(fbs_checkpoint, "Checkpoint is invalid. Expected: Valid checkpoint flatbuffer. Actual: nullptr.");
 
-  ORT_RETURN_IF_ERROR(ToModuleState(fbs_checkpoint->module_state(), state.module_checkpoint_state));
-  ORT_RETURN_IF_ERROR(ToOptimizerState(fbs_checkpoint->optimizer_groups(), state.optimizer_checkpoint_state));
-  ORT_RETURN_IF_ERROR(ToPropertyBag(fbs_checkpoint->property_bag(), state.property_bag));
+  const auto* fbs_module_state = fbs_checkpoint->module_state();
+  ORT_RETURN_IF_NOT(fbs_module_state, "Checkpoint file is invalid. Expected: Valid module state flatbuffer.",
+                    " Actual: Encountered a nullptr.");
+  ORT_RETURN_IF_ERROR(ToModuleState(*fbs_module_state, state.module_checkpoint_state));
+
+  const auto* fbs_optimizer_groups = fbs_checkpoint->optimizer_groups();
+  ORT_RETURN_IF_NOT(fbs_optimizer_groups, "Checkpoint file is invalid. Expected: Valid optimizer groups flatbuffer.",
+                    " Actual: Encountered a nullptr.");
+  ORT_RETURN_IF_ERROR(ToOptimizerState(*fbs_optimizer_groups, state.optimizer_checkpoint_state));
+
+  const auto* fbs_property_bag = fbs_checkpoint->property_bag();
+  if (nullptr != fbs_property_bag) {
+    ORT_RETURN_IF_ERROR(ToPropertyBag(*fbs_property_bag, state.property_bag));
+  }
 
   return Status::OK();
 }

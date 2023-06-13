@@ -97,7 +97,9 @@ def main():
         with tempfile.TemporaryDirectory() as temp_dir_name:
             temp_dir = pathlib.Path(temp_dir_name).resolve()
             updated_schema_path = temp_dir / "ort.py.fbs"
-            update_schema_names(schema_path, updated_schema_path, {"onnxruntime.fbs": "ort_flatbuffers_py.fbs"})
+            update_schema_names(
+                schema_path, updated_schema_path, {"namespace onnxruntime.fbs;": "namespace ort_flatbuffers_py.fbs;"}
+            )
 
             output_dir = temp_dir / "out"
             output_dir.mkdir()
@@ -108,7 +110,10 @@ def main():
                 update_schema_names(
                     training_schema_path,
                     updated_training_schema_path,
-                    {"onnxruntime.fbs": "ort_flatbuffers_py.fbs", "ort.fbs": "ort.py.fbs"},
+                    {
+                        "namespace onnxruntime.fbs;": "namespace ort_flatbuffers_py.fbs;",
+                        'include "ort.fbs";': 'include "ort.py.fbs";',
+                    },
                 )
                 generate_python(flatc, updated_training_schema_path, output_dir)
             create_init_py(output_dir)

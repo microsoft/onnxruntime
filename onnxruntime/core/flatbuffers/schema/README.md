@@ -1,12 +1,15 @@
 # ORT File Format
 This directory contains [the ORT file format schema](ort.fbs) and [the generated C++ header file](ort.fbs.h) for the
 ORT file format.
+This directory also contains [the on-device training checkpoint schema](ort_training.fbs) and
+[the corresponding auto generated C++ header file](ort_training.fbs.h) for the checkpoint format.
 
-[The ORT file format schema](ort.fbs) uses the [FlatBuffers](https://github.com/google/flatbuffers) serialization
-library.
+[The ORT file format schema](ort.fbs) and [the on-device training checkpoint schema](ort_training.fbs)
+uses the [FlatBuffers](https://github.com/google/flatbuffers) serialization library.
 
-Please do not directly modify [the generated C++ header file](ort.fbs.h), or [the generated Python binding
-files](../ort_flatbuffers_py).
+Please do not directly modify the generated C++ header file for [the ORT file format]((ort.fbs.h))
+or for [the training checkpoint file format](ort_training.fbs.h),
+or [the generated Python bindingfiles](../ort_flatbuffers_py).
 
 The flatbuffers compiler (flatc) is built as part of an ONNX Runtime build. It is located in the external/flatbuffers
 subdirectory of the build output directory.
@@ -21,7 +24,7 @@ It is possible to use another flatc as well, e.g., from a separate installation.
 FlatBuffers 1.12.
 
 To update the ORT file format schema and generated files:
-1. Modify [the ORT file format schema](ort.fbs).
+1. Modify [the ORT file format schema](ort.fbs) or [training checkpoint schema](ort_training.fbs).
 2. Run [compile_schema.py](./compile_schema.py) to generate the C++ and Python bindings.
 
     ```

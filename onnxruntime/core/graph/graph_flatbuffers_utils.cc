@@ -340,55 +340,54 @@ Status LoadAttributeOrtFormat(const fbs::Attribute& fbs_attr,
   return Status::OK();
 }
 
+#ifdef ENABLE_TRAINING_APIS
+
 Status SaveOrtValueOrtFormat(
     const std::string& tensor_name, const OrtValue& ort_value,
-    const DataTransferManager& data_transfer_manager, flatbuffers::FlatBufferBuilder& builder,
+    const std::function<Status(const onnxruntime::Tensor& src_tensor, onnxruntime::Tensor& dst_tensor)> copy_tensor,
+    flatbuffers::FlatBufferBuilder& builder,
     flatbuffers::Offset<fbs::Tensor>& fbs_tensor) {
   // Check if the OrtValue is a tensor.
   ORT_RETURN_IF_NOT(ort_value.IsTensor(), "Only tensor OrtValues can be saved to a checkpoint.");
 
+  const auto ort_tensor_to_fbs_tensor = [&builder](const auto& tensor_name, const auto& ort_tensor, auto& fbs_tensor) {
+    ORT_RETURN_IF(ort_tensor.IsDataTypeString(),
+                  "TensorProto_DataType_STRING is not supported while saving a tensor to ORT format.");
+
+    const auto fbs_tensor_name = builder.CreateString(tensor_name);
+    const auto fbs_tensor_doc_string = builder.CreateString(std::string());
+    const auto fbs_tensor_dims = SaveDims(builder, ort_tensor.Shape().GetDims());
+    flatbuffers::Offset<flatbuffers::Vector<uint8_t>> raw_data = builder.CreateVector(
+        static_cast<const uint8_t*>(ort_tensor.DataRaw()),
+        ort_tensor.SizeInBytes());
+
+    fbs::TensorBuilder tb(builder);
+    tb.add_name(fbs_tensor_name);
+    tb.add_doc_string(fbs_tensor_doc_string);
+    tb.add_dims(fbs_tensor_dims);
+    tb.add_data_type(static_cast<fbs::TensorDataType>(ort_tensor.GetElementType()));
+    tb.add_raw_data(raw_data);
+    fbs_tensor = tb.Finish();
+    return Status::OK();
+  };
+
   const onnxruntime::Tensor& src_tensor = ort_value.Get<onnxruntime::Tensor>();
+
   // Check if the tensor is on CPU. If not, we need to copy the tensor to CPU before saving it.
   if (const auto& tensor_location = src_tensor.Location();
-      tensor_location.device.Type() != OrtDevice::CPU &&
-      tensor_location.mem_type != OrtMemTypeCPUInput &&
-      tensor_location.mem_type != OrtMemTypeCPUOutput &&
-      tensor_location.device.Type() != OrtDevice::GPU) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "Device type ", tensor_location.device.Type(),
-                           " is not supported while saving a tensor to a checkpoint.");
+      tensor_location.device.Type() != OrtDevice::CPU) {
+    InlinedVector<uint8_t> tensor_data_buffer{};
+    tensor_data_buffer.resize(src_tensor.SizeInBytes());
+    const OrtMemoryInfo cpu_alloc_info{onnxruntime::CPU, OrtDeviceAllocator};
+    onnxruntime::Tensor dst_tensor{src_tensor.DataType(), src_tensor.Shape(), tensor_data_buffer.data(), cpu_alloc_info};
+    ORT_RETURN_IF_ERROR(copy_tensor(src_tensor, dst_tensor));
+    ORT_RETURN_IF_ERROR(ort_tensor_to_fbs_tensor(tensor_name, dst_tensor, fbs_tensor));
+  } else {
+    ORT_RETURN_IF_ERROR(ort_tensor_to_fbs_tensor(tensor_name, src_tensor, fbs_tensor));
   }
 
-  InlinedVector<uint8_t> tensor_data_buffer{};
-  tensor_data_buffer.resize(src_tensor.SizeInBytes());
-  const OrtMemoryInfo cpu_alloc_info{onnxruntime::CPU, OrtDeviceAllocator};
-
-  gsl::span<uint8_t> dst_span = gsl::make_span(tensor_data_buffer);
-  ORT_RETURN_IF_NOT(src_tensor.SizeInBytes() == static_cast<size_t>(dst_span.size_bytes()),
-                    "Size of src and dst buffer mismatch. Src size: ", src_tensor.SizeInBytes(),
-                    " Dst size: ", dst_span.size_bytes());
-
-  onnxruntime::Tensor dst_tensor{src_tensor.DataType(), src_tensor.Shape(), dst_span.data(), cpu_alloc_info};
-  ORT_RETURN_IF_ERROR(data_transfer_manager.CopyTensor(src_tensor, dst_tensor));
-
-  ORT_RETURN_IF(dst_tensor.IsDataTypeString(),
-                "TensorProto_DataType_STRING is not supported while saving a tensor to ORT format.");
-
-  flatbuffers::Offset<flatbuffers::Vector<uint8_t>> raw_data = builder.CreateVector(dst_span.data(), dst_span.size());
-  const auto fbs_tensor_name = builder.CreateString(tensor_name);
-  const auto fbs_tensor_doc_string = builder.CreateString(std::string());
-  const auto fbs_tensor_dims = SaveDims(builder, dst_tensor.Shape().GetDims());
-
-  fbs::TensorBuilder tb(builder);
-  tb.add_name(fbs_tensor_name);
-  tb.add_doc_string(fbs_tensor_doc_string);
-  tb.add_dims(fbs_tensor_dims);
-  tb.add_data_type(static_cast<fbs::TensorDataType>(dst_tensor.GetElementType()));
-  tb.add_raw_data(raw_data);
-  fbs_tensor = tb.Finish();
   return Status::OK();
 }
-
-#ifdef ENABLE_TRAINING_APIS
 
 #define UNPACK_TESOR_WITH_TYPE(T)                                                                          \
   ORT_RETURN_IF_ERROR(onnxruntime::utils::UnpackTensor(unused_tensor_proto, fbs_tensor.raw_data()->Data(), \
@@ -407,11 +406,11 @@ Status LoadOrtValueOrtFormat(const fbs::Tensor& fbs_tensor,
   static const AllocatorPtr cpu_allocator = cpu_provider.GetAllocator(OrtMemTypeDefault);
 
   auto* fbs_tensor_name = fbs_tensor.name();
-  ORT_RETURN_IF_NOT(fbs_tensor_name, "Checkpoint is invalid. Expected: A valid tensor name. Acutal: nullptr.");
+  ORT_RETURN_IF_NOT(fbs_tensor_name, "Checkpoint is invalid. Expected: A valid tensor name. Actual: nullptr.");
   tensor_name = fbs_tensor_name->str();
 
   auto* tensor_dims = fbs_tensor.dims();
-  ORT_RETURN_IF_NOT(tensor_dims, "Checkpoint is invalid. Expected: Valid tensor dims. Acutal: nullptr.");
+  ORT_RETURN_IF_NOT(tensor_dims, "Checkpoint is invalid. Expected: Valid tensor dims. Actual: nullptr.");
 
   auto tensor_data_type = fbs_tensor.data_type();
   const DataTypeImpl* tensor_dtype = DataTypeImpl::TensorTypeFromONNXEnum(
@@ -457,7 +456,8 @@ Status LoadOrtValueOrtFormat(const fbs::Tensor& fbs_tensor,
     case ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E5M2:
     case ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E5M2FNUZ:
     default:
-      return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "Cannot unpack tensor with type ", static_cast<int>(tensor_data_type));
+      return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "Cannot unpack tensor with type ",
+                             static_cast<int>(tensor_data_type));
   }
 
   ort_value.Init(dst_tensor.release(), DataTypeImpl::GetType<onnxruntime::Tensor>(),
