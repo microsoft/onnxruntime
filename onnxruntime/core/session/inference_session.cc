@@ -2213,15 +2213,13 @@ Status InferenceSession::Run(const RunOptions& run_options,
   TraceLoggingWriteStop(ortrun_activity, "OrtRun");
 #endif
 
-  // As two inference runs (one for memory allocation and one for graph capturing)
-  // are needed before replaying the captured graph, here run the inference again
-  // to capture the graph, so that users just need one session run to capture
-  // the graph.
+  // As N+1 inference runs (N for memory allocation and 1 for graph capturing)
+  // are needed before replaying the captured graph, here run N inference runs recursively until graph captured,
+  // so that users just need one session run to capture the graph.
+  // N is defined in min_num_runs_before_cuda_graph_capture_ for CUDA EP, and the value could be different for other EP.
   if (retval.IsOK() && cached_execution_provider_for_graph_replay_.IsGraphCaptureEnabled() &&
       !cached_execution_provider_for_graph_replay_.IsGraphCaptured()) {
-    LOGS(*session_logger_, INFO) << "Start the second Run() to capture the graph. "
-                                    "The first one is for necessary memory allocation;"
-                                    "The second one is for capturing the graph.";
+    LOGS(*session_logger_, INFO) << "Start another run for necessary memory allocation or graph capture.";
     ORT_RETURN_IF_ERROR(Run(run_options, feed_names, feeds, output_names, p_fetches, p_fetches_device_info));
   }
   return retval;

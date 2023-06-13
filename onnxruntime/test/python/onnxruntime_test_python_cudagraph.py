@@ -117,8 +117,10 @@ class TestInferenceSessionWithCudaGraph(unittest.TestCase):
                 atol=1e-05,
             )
 
-    def testRunsWithCudaGraph2(self):
+    def testArenaWithCudaGraph(self):  # noqa: N802
         if "CUDAExecutionProvider" in onnxrt.get_available_providers():
+            # To test cuda graph catpure, we set Arena extend strategy to be SameAsRequested so as to detect any
+            # potential memory allocation after the first run.
             providers = [
                 ("CUDAExecutionProvider", {"enable_cuda_graph": True, "arena_extend_strategy": "kSameAsRequested"})
             ]
@@ -129,11 +131,10 @@ class TestInferenceSessionWithCudaGraph(unittest.TestCase):
                 "softmaxout_1": [16, 1000, 1, 1],
             }
 
-            # TODO: set arena initial chunk size to a small value when there is Python API for that.
-            # In this way, it is easy to reproduce memory allocation during cuda graph catpure.
-            # Right now, we can manually change DEFAULT_INITIAL_CHUNK_SIZE_BYTES = 16 in core/framework/bfc_arena.h
-
-            session = onnxrt.InferenceSession(test_model_path, providers=providers)
+            session_options = onnxrt.SessionOptions()
+            # It is optional to disable memory pattern since min_num_runs_before_cuda_graph_capture_ = 2.
+            session_options.enable_mem_pattern = False
+            session = onnxrt.InferenceSession(test_model_path, session_options, providers=providers)
 
             cuda_graph_helper = CudaGraphHelper(session, input_and_output_shape)
             io_binding = cuda_graph_helper.io_binding
