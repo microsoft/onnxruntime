@@ -172,7 +172,8 @@ inline uint32_t ShapeSize(const Shape& shape) {
 bool CheckIsInitializer(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
                         const std::string& input_name, const char* input_description);
 
-// Convert ONNX int64 shape to NNAPI int32 type shape
+// Convert ONNX int64 input to NNAPI int32 type input
+// Mostly used in handling `axes` input for now (including the handling for negative axis)
 std::vector<int32_t> OnnxShapeToNnapi(gsl::span<const int64_t> onnx_shape, std::optional<size_t> input_size);
 
 }  // namespace nnapi
