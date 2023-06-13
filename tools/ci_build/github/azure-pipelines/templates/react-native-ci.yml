@@ -50,6 +50,8 @@ stages:
   jobs:
   - job: ReactNative_CI
     pool:
+      # We need macOS-12 to run the Android emulator for now.
+      # https://github.com/actions/runner-images/issues/7671
       vmImage: 'macOS-12'
     variables:
       runCodesignValidationInjection: false
@@ -68,14 +70,14 @@ stages:
         versionSpec: "3.9"
         addToPath: true
         rchitecture: "x64"
-  
+
     - task: JavaToolInstaller@0
       displayName: Use jdk 11
       inputs:
         versionSpec: '11'
         jdkArchitectureOption: 'x64'
         jdkSourceOption: 'PreInstalled'
-  
+
     - task: NodeTool@0
       inputs:
         versionSpec: '16.x'
@@ -130,7 +132,7 @@ stages:
                 --variant Full \
                 --build-settings-file $(Build.SourcesDirectory)/tools/ci_build/github/js/react_native_e2e_full_ios_framework_build_settings.json \
                 -b="--path_to_protoc_exe" -b "$(Build.BinariesDirectory)/installed/bin/protoc"
-        
+
             # Mobile build:
             #  python $(Build.SourcesDirectory)/tools/ci_build/github/apple/build_and_assemble_ios_pods.py \
             #    --build_dir $(Build.BinariesDirectory)/ios_framework_mobile \
@@ -167,7 +169,7 @@ stages:
         contents: onnxruntime-android-*.aar
         targetFolder: $(Build.SourcesDirectory)/js/react_native/android/libs
       displayName: Copy Android package to React Native directory
-  
+
     - script: |
         npm ci
       workingDirectory: '$(Build.SourcesDirectory)/js'
@@ -295,13 +297,13 @@ stages:
         detox build --configuration android.emu.release
       workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e'
       displayName: Build React Native Detox Android e2e Tests
-  
+
     - script: |
         JEST_JUNIT_OUTPUT_FILE=$(Build.SourcesDirectory)/js/react_native/e2e/android-test-results.xml \
-        detox test --record-logs all  --configuration android.emu.release
+        detox test --record-logs all --configuration android.emu.release
       workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e'
       displayName: Run React Native Detox Android e2e Tests
-    
+
     - task: PublishTestResults@2
       inputs:
         testResultsFiles: '$(Build.SourcesDirectory)/js/react_native/e2e/android-test-results.xml'
@@ -309,12 +311,12 @@ stages:
         testRunTitle: 'React Native Detox Android e2e Test Results'
       condition: succeededOrFailed()
       displayName: Publish React Native Detox Android e2e Test Results
-    
+
     - script: |
         detox build --configuration ios.sim.release
       workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e'
       displayName: Build React Native Detox iOS e2e Tests
-  
+
     - script: |
         JEST_JUNIT_OUTPUT_FILE=$(Build.SourcesDirectory)/js/react_native/e2e/ios-test-results.xml \
         detox test --record-logs all --configuration ios.sim.release
@@ -331,8 +333,10 @@ stages:
 
     - task: PublishPipelineArtifact@1
       inputs:
-        targetPath:  '$(Build.SourcesDirectory)/js/react_native/e2e/artifacts'
-      displayName: Publish React Native Detox E2E test artifacts
+        artifact: e2e_test_logs
+        targetPath: '$(Build.SourcesDirectory)/js/react_native/e2e/artifacts'
+      condition: succeededOrFailed()
+      displayName: Publish React Native Detox E2E test logs
 
     - script: |
         python3 tools/python/run_android_emulator.py \

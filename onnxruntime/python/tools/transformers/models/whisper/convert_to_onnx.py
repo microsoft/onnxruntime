@@ -108,6 +108,24 @@ def parse_arguments(argv=None):
     parser.set_defaults(use_specific_logits_processor=False)
 
     parser.add_argument(
+        "-v",
+        "--use_vocab_mask",
+        required=False,
+        action="store_true",
+        help="Use vocab_mask as an extra graph input to enable specific logits processing",
+    )
+    parser.set_defaults(use_vocab_mask=False)
+
+    parser.add_argument(
+        "-u",
+        "--use_prefix_vocab_mask",
+        required=False,
+        action="store_true",
+        help="Use prefix_vocab_mask as an extra graph input to enable specific logits processing",
+    )
+    parser.set_defaults(use_prefix_vocab_mask=False)
+
+    parser.add_argument(
         "-w",
         "--overwrite",
         required=False,
@@ -176,7 +194,7 @@ def parse_arguments(argv=None):
         help="Produce beam search model with chained encdecinit and decoder.",
     )
 
-    parser.add_argument("--no_repeat_ngram_size", type=int, default=3, help="default to 3")
+    parser.add_argument("--no_repeat_ngram_size", type=int, default=0, help="default to 0")
 
     parser.add_argument(
         "--state_dict_path",

@@ -172,11 +172,7 @@ CUDAExecutionProvider::PerThreadContext::PerThreadContext(OrtDevice::DeviceId de
   CUDNN_CALL_THROW(cudnnCreate(&cudnn_handle_));
   CUDNN_CALL_THROW(cudnnSetStream(cudnn_handle_, stream));
 
-#if defined(CUDA_VERSION) && CUDA_VERSION >= 10000
   cuda_graph_.SetStream(stream);
-#else
-  ORT_UNUSED_PARAMETER(stream);
-#endif
 }
 
 CUDAExecutionProvider::PerThreadContext::~PerThreadContext() {
@@ -185,7 +181,6 @@ CUDAExecutionProvider::PerThreadContext::~PerThreadContext() {
   ORT_IGNORE_RETURN_VALUE(CUDNN_CALL(cudnnDestroy(cudnn_handle_)));
 }
 
-#if defined(CUDA_VERSION) && CUDA_VERSION >= 10000
 bool CUDAExecutionProvider::PerThreadContext::IsGraphCaptureAllowed() const {
   return regular_run_count_before_graph_capture_ >= min_num_runs_before_cuda_graph_capture_;
 }
@@ -212,7 +207,6 @@ Status CUDAExecutionProvider::PerThreadContext::ReplayGraph() {
 void CUDAExecutionProvider::PerThreadContext::IncrementRegularRunCountBeforeGraphCapture() {
   ++regular_run_count_before_graph_capture_;
 }
-#endif
 
 void OverrideTunableOpInfoByEnv(CUDAExecutionProviderInfo& info) {
   if (auto env_tunable_op_enable = onnxruntime::ParseTestOnlyEnvironmentVariable<bool>(
@@ -434,7 +428,6 @@ Status CUDAExecutionProvider::OnRunEnd(bool sync_stream) {
   return Status::OK();
 }
 
-#if defined(CUDA_VERSION) && CUDA_VERSION >= 10000
 bool CUDAExecutionProvider::IsGraphCaptureEnabled() const {
   return info_.enable_cuda_graph;
 }
@@ -446,7 +439,6 @@ bool CUDAExecutionProvider::IsGraphCaptured() const {
 Status CUDAExecutionProvider::ReplayGraph() {
   return GetPerThreadContext().ReplayGraph();
 }
-#endif
 
 namespace cuda {
 // opset 1 to 9
