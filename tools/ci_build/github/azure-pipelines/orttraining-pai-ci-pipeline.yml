@@ -263,6 +263,6 @@ jobs:
         fi
       workingDirectory: $(Build.SourcesDirectory)
     displayName: 'Umount dataset'
-    condition: succeededOrFailed()
+    condition: always()
 
   - template: templates/explicitly-defined-final-tasks.yml
