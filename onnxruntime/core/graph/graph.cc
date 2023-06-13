@@ -3866,16 +3866,19 @@ Node& Graph::CreateFusedSubGraphNode(const IndexedSubGraph& sub_graph, const std
   std::vector<NodeArg*> output_args;
   std::unordered_map<std::string, int> input_indexes;
   std::unordered_map<std::string, int> output_indexes;
+  // If the subgraph we are going to build is the subgraph of the original graph and the NodeArgs of the outer scope values
+  // are defined in the top-level original graph. It needs to get those NodeArgs from ancestors.
+  bool check_ancestors = func_meta_def->check_ancestors ? true : false;
 
   int cur_idx = 0;
   for (const auto& arg_name : func_meta_def->inputs) {
-    input_args.push_back(GetNodeArg(arg_name, true));
+    input_args.push_back(GetNodeArg(arg_name, check_ancestors));
     input_indexes[arg_name] = cur_idx++;
   }
 
   cur_idx = 0;
   for (const auto& arg_name : func_meta_def->outputs) {
-    output_args.push_back(GetNodeArg(arg_name, true));
+    output_args.push_back(GetNodeArg(arg_name, check_ancestors));
     output_indexes[arg_name] = cur_idx++;
   }
 

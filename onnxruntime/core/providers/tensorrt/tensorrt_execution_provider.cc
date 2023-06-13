@@ -1257,6 +1257,7 @@ std::unique_ptr<IndexedSubGraph> TensorrtExecutionProvider::GetSubGraph(SubGraph
 
   meta_def->domain() = kMSDomain;
   meta_def->since_version() = 1;
+  meta_def->check_ancestors() = true;
   sub_graph->SetMetaDef(std::move(meta_def));
 
   return sub_graph;

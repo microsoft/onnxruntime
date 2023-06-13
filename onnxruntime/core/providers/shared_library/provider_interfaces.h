@@ -459,6 +459,7 @@ struct ProviderHost {
   virtual std::vector<std::string>& IndexedSubGraph_MetaDef__constant_initializers(IndexedSubGraph_MetaDef* p) = 0;
   virtual NodeAttributes& IndexedSubGraph_MetaDef__attributes(IndexedSubGraph_MetaDef* p) = 0;
   virtual std::string& IndexedSubGraph_MetaDef__doc_string(IndexedSubGraph_MetaDef* p) = 0;
+  virtual bool& IndexedSubGraph_MetaDef__check_ancestors(IndexedSubGraph_MetaDef* p) = 0;
 
   // IndexedSubGraph
   virtual std::unique_ptr<IndexedSubGraph> IndexedSubGraph__construct() = 0;

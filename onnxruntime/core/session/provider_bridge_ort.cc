@@ -565,6 +565,7 @@ struct ProviderHostImpl : ProviderHost {
   std::vector<std::string>& IndexedSubGraph_MetaDef__constant_initializers(IndexedSubGraph_MetaDef* p) override { return p->constant_initializers; }
   NodeAttributes& IndexedSubGraph_MetaDef__attributes(IndexedSubGraph_MetaDef* p) override { return p->attributes; }
   std::string& IndexedSubGraph_MetaDef__doc_string(IndexedSubGraph_MetaDef* p) override { return p->doc_string; }
+  bool& IndexedSubGraph_MetaDef__check_ancestors(IndexedSubGraph_MetaDef* p) override { return p->check_ancestors; }
 
   // IndexedSubGraph (wrapped)
   std::unique_ptr<IndexedSubGraph> IndexedSubGraph__construct() override { return std::make_unique<IndexedSubGraph>(); }
