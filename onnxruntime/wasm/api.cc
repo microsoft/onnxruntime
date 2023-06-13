@@ -278,7 +278,6 @@ int OrtGetTensorData(OrtValue* tensor, int* data_type, void** data, size_t** dim
   }
 
   if (type == ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING) {
-    void* p_string_data = nullptr;
     size_t num_elements;
     RETURN_ERROR_CODE_IF_ERROR(GetTensorShapeElementCount, info, &num_elements);
 

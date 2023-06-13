@@ -42,7 +42,7 @@ int EMSCRIPTEN_KEEPALIVE OrtInit(int num_threads, int logging_level);
  * @param error_code [out] a pointer to accept the error code.
  * @param error_message [out] a pointer to accept the error message. The message buffer is only available before any ORT API is called.
  */
-void EMSCRIPTEN_KEEPALIVE OrtGetLastError(__out int* error_code, __out const char** error_message);
+void EMSCRIPTEN_KEEPALIVE OrtGetLastError(int* error_code, const char** error_message);
 
 /**
  * create an instance of ORT session options.
@@ -114,13 +114,13 @@ void EMSCRIPTEN_KEEPALIVE OrtReleaseSession(ort_session_handle_t session);
 /**
  * get model's input count and output count.
  * @param session handle of the specified session
- * @param input_count a pointer to a size_t variable to accept input_count.
- * @param output_count a pointer to a size_t variable to accept output_count.
+ * @param input_count [out] a pointer to a size_t variable to accept input_count.
+ * @param output_count [out] a pointer to a size_t variable to accept output_count.
  * @returns ORT error code. If not zero, call OrtGetLastError() to get detailed error message.
  */
 int EMSCRIPTEN_KEEPALIVE OrtGetInputOutputCount(ort_session_handle_t session,
-                                                __out size_t* input_count,
-                                                __out size_t* output_count);
+                                                size_t* input_count,
+                                                size_t* output_count);
 
 /**
  * get the model's input name.
