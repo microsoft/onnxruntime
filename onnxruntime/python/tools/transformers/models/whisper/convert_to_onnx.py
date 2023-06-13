@@ -385,12 +385,13 @@ def main(argv=None):
         try:
             with torch.no_grad():
                 max_diff = WhisperHelper.verify_onnx(args.model_name_or_path, ort_session, device)
-            logger.info(f"Max difference between PyTorch and ONNX Runtime results = {max_diff}")
+            logger.info(f"Max difference between PyTorch and ONNX Runtime tokens = {max_diff}")
             if max_diff > 1e-4:
                 logger.warning("PyTorch and ONNX Runtime results are NOT close")
         except Exception as e:
-            logger.warning("An error occurred while trying to verify parity between PyTorch and ONNX Runtime.")
-            logger.warning(e)
+            logger.warning(
+                f"An error occurred while trying to verify parity between PyTorch and ONNX Runtime: {e}", exc_info=True
+            )
 
         # Remove extra ONNX models saved in output directory
         for fle in os.listdir(output_dir):

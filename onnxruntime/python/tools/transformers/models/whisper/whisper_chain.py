@@ -159,6 +159,10 @@ def chain_model(args):
         ir_version=decoder_model.ir_version,
     )
 
+    if os.path.isfile(args.beam_model_output_dir):
+        logger.info(f"Overwriting {args.beam_model_output_dir} and {args.beam_model_output_dir + '.data'}")
+        os.remove(args.beam_model_output_dir)
+        os.remove(args.beam_model_output_dir + ".data")
     onnx.save(
         beam_model,
         args.beam_model_output_dir,
