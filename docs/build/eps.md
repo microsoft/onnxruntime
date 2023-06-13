@@ -232,46 +232,29 @@ See more information on the OpenVINO™ Execution Provider [here](../execution-p
 ### Prerequisites
 {: .no_toc }
 
-1. Install the OpenVINO™ offline/online installer from Intel<sup>®</sup> Distribution of OpenVINO™<sup>TM</sup> Toolkit **Release 2022.2** for the appropriate OS and target hardware:
-   * [Linux - CPU, GPU, VPU, VAD-M](https://software.intel.com/en-us/openvino-toolkit/choose-download/free-download-linux)
-   * [Windows - CPU, GPU, VPU, VAD-M](https://software.intel.com/en-us/openvino-toolkit/choose-download/free-download-windows).
+1. Install the OpenVINO™ offline/online installer from Intel<sup>®</sup> Distribution of OpenVINO™<sup>TM</sup> Toolkit **Release 2023.0** for the appropriate OS and target hardware:
+   * [Windows - CPU, GPU](https://www.intel.com/content/www/us/en/developer/tools/openvino-toolkit/download.html?ENVIRONMENT=RUNTIME&OP_SYSTEM=WINDOWS&VERSION=v_2023_0&DISTRIBUTION=ARCHIVE).
+   * [Linux - CPU, GPU](https://www.intel.com/content/www/us/en/developer/tools/openvino-toolkit/download.html?ENVIRONMENT=RUNTIME&OP_SYSTEM=LINUX&VERSION=v_2023_0&DISTRIBUTION=ARCHIVE)
 
-   Follow [documentation](https://docs.openvino.ai/latest/index.html) for detailed instructions.
+   Follow [documentation](https://docs.openvino.ai/2023.0/index.html) for detailed instructions.
 
-  *2022.2 is the recommended OpenVINO™ version. [OpenVINO™ 2021.4](https://docs.openvinotoolkit.org/2021.4/index.html) is minimal OpenVINO™ version requirement.*
-  *The minimum ubuntu version to support 2022.2 is 18.04.*
+  *2023.0 is the recommended OpenVINO™ version. [OpenVINO™ 2022.1](https://docs.openvino.ai/2022.1/index.html) is minimal OpenVINO™ version requirement.*
+  *The minimum ubuntu version to support 2023.0 is 18.04.*
 
 2. Configure the target hardware with specific follow on instructions:
-   * To configure Intel<sup>®</sup> Processor Graphics(GPU) please follow these instructions: [Windows](https://docs.openvino.ai/latest/openvino_docs_install_guides_configurations_for_intel_gpu.html#gpu-guide-windows), [Linux](https://docs.openvino.ai/latest/openvino_docs_install_guides_configurations_for_intel_gpu.html#gpu-guide)
-   * To configure Intel<sup>®</sup> Movidius<sup>TM</sup> USB, please follow this getting started guide: [Linux](https://docs.openvino.ai/latest/openvino_docs_install_guides_configurations_for_ncs2.html#ncs-guide)
-   * To configure Intel<sup>®</sup> Vision Accelerator Design based on 8 Movidius<sup>TM</sup> MyriadX VPUs, please follow this configuration guide: [Windows](https://docs.openvino.ai/latest/openvino_docs_install_guides_installing_openvino_ivad_vpu.html#vpu-guide-windows), [Linux](https://docs.openvino.ai/latest/openvino_docs_install_guides_installing_openvino_ivad_vpu.html#vpu-guide). Follow steps 3 and 4 to complete the configuration.
+   * To configure Intel<sup>®</sup> Processor Graphics(GPU) please follow these instructions: [Windows](https://docs.openvino.ai/latest/openvino_docs_install_guides_configurations_for_intel_gpu.html#gpu-guide-windows), [Linux](https://docs.openvino.ai/latest/openvino_docs_install_guides_configurations_for_intel_gpu.html#linux)
+
 
 3. Initialize the OpenVINO™ environment by running the setupvars script as shown below. This is a required step:
-   * For Linux run till OpenVINO™ 2021.4 version:
+   * For Windows:
    ```
-      $ source <openvino_install_directory>/bin/setupvars.sh
+      C:\<openvino_install_directory>\setupvars.bat
    ```
-   * For Linux run from OpenVINO™ 2022.1 version:
+   * For Linux:
    ```
       $ source <openvino_install_directory>/setupvars.sh
    ```
-   * For Windows run till OpenVINO™ 2021.4 version:
-   ```
-      C:\ <openvino_install_directory>\bin\setupvars.bat
-   ```
-   * For Windows run from OpenVINO™ 2022.1 version:
-   ```
-      C:\ <openvino_install_directory>\setupvars.bat
-   ```
    **Note:** If you are using a dockerfile to use OpenVINO™ Execution Provider, sourcing OpenVINO™ won't be possible within the dockerfile. You would have to explicitly set the LD_LIBRARY_PATH to point to OpenVINO™ libraries location. Refer our [dockerfile](https://github.com/microsoft/onnxruntime/blob/main/dockerfiles/Dockerfile.openvino).
-
-
-4. Extra configuration step for Intel<sup>®</sup> Vision Accelerator Design based on 8 Movidius<sup>TM</sup> MyriadX VPUs:
-   * After setting the environment using setupvars script, follow these steps to change the default scheduler of VAD-M to Bypass:
-      * Edit the hddl_service.config file from $HDDL_INSTALL_DIR/config/hddl_service.config and change the field "bypass_device_number" to 8.
-      * Restart the hddl daemon for the changes to take effect.
-      * Note that if OpenVINO was installed with root permissions, this file has to be changed with the same permissions.
-
 
 ### Build Instructions
 {: .no_toc }
@@ -279,28 +262,32 @@ See more information on the OpenVINO™ Execution Provider [here](../execution-p
 #### Windows
 
 ```
-.\build.bat --config RelWithDebInfo --use_openvino <hardware_option> --build_shared_lib
+.\build.bat --config RelWithDebInfo --use_openvino <hardware_option> --build_shared_lib --build_wheel
 ```
 
-*Note: The default Windows CMake Generator is Visual Studio 2017, but you can also use the newer Visual Studio 2019 by passing `--cmake_generator "Visual Studio 16 2019"` to `.\build.bat`*
+*Note: The default Windows CMake Generator is Visual Studio 2019, but you can also use the newer Visual Studio 2022 by passing `--cmake_generator "Visual Studio 17 2022"` to `.\build.bat`*
 
 #### Linux
 
 ```bash
-./build.sh --config RelWithDebInfo --use_openvino <hardware_option> --build_shared_lib
+./build.sh --config RelWithDebInfo --use_openvino <hardware_option> --build_shared_lib --build_wheel
 ```
 
+* `--build_wheel` Creates python wheel file in dist/ folder. Enable it when building from source and/or while building with CXX11_ABI=1 of OpenVINO.
 * `--use_openvino` builds the OpenVINO™ Execution Provider in ONNX Runtime.
 * `<hardware_option>`: Specifies the default hardware target for building OpenVINO™ Execution Provider. This can be overriden dynamically at runtime with another option (refer to [OpenVINO™-ExecutionProvider](../execution-providers/OpenVINO-ExecutionProvider.md#summary-of-options) for more details on dynamic device selection). Below are the options for different Intel target devices.
+
+Refer to [Intel GPU device naming convention](https://docs.openvino.ai/2023.0/openvino_docs_OV_UG_supported_plugins_GPU.html#device-naming-convention) for specifying the correct hardware target in cases where both integrated and discrete GPU's co-exist.
 
 | Hardware Option | Target Device |
 | --------------- | ------------------------|
 | <code>CPU_FP32</code> | Intel<sup>®</sup> CPUs |
 | <code>GPU_FP32</code> | Intel<sup>®</sup> Integrated Graphics |
 | <code>GPU_FP16</code> | Intel<sup>®</sup> Integrated Graphics with FP16 quantization of models |
-| <code>MYRIAD_FP16</code> | Intel<sup>®</sup> Movidius<sup>TM</sup> USB sticks | 
-| <code>VAD-M_FP16</code> | Intel<sup>®</sup> Vision Accelerator Design based on 8 Movidius<sup>TM</sup> MyriadX VPUs |
-| <code>VAD-F_FP32</code> | Intel<sup>®</sup> Vision Accelerator Design with an Intel<sup>®</sup> Arria<sup>®</sup> 10 FPGA |
+| <code>GPU.0_FP32</code> | Intel<sup>®</sup> Integrated Graphics |
+| <code>GPU.0_FP16</code> | Intel<sup>®</sup> Integrated Graphics with FP16 quantization of models |
+| <code>GPU.1_FP32</code> | Intel<sup>®</sup> Discrete Graphics |
+| <code>GPU.1_FP16</code> | Intel<sup>®</sup> Discrete Graphics with FP16 quantization of models |
 | <code>HETERO:DEVICE_TYPE_1,DEVICE_TYPE_2,DEVICE_TYPE_3...</code> | All Intel<sup>®</sup> silicons mentioned above |
 | <code>MULTI:DEVICE_TYPE_1,DEVICE_TYPE_2,DEVICE_TYPE_3...</code> | All Intel<sup>®</sup> silicons mentioned above |
 | <code>AUTO:DEVICE_TYPE_1,DEVICE_TYPE_2,DEVICE_TYPE_3...</code> | All Intel<sup>®</sup> silicons mentioned above |
@@ -308,12 +295,12 @@ See more information on the OpenVINO™ Execution Provider [here](../execution-p
 Specifying Hardware Target for HETERO or Multi or AUTO device Build:
 
 HETERO:DEVICE_TYPE_1,DEVICE_TYPE_2,DEVICE_TYPE_3...
-The DEVICE_TYPE can be any of these devices from this list ['CPU','GPU','MYRIAD','FPGA','HDDL']
+The DEVICE_TYPE can be any of these devices from this list ['CPU','GPU']
 
 A minimum of two device's should be specified for a valid HETERO or MULTI or AUTO device build.
 
 ```
-Example's: HETERO:MYRIAD,CPU or AUTO:GPU,CPU or MULTI:MYRIAD,GPU,CPU
+Example's: HETERO:GPU,CPU or AUTO:GPU,CPU or MULTI:GPU,CPU
 ```
 
 #### Disable subgraph partition Feature
@@ -325,8 +312,7 @@ Example's: HETERO:MYRIAD,CPU or AUTO:GPU,CPU or MULTI:MYRIAD,GPU,CPU
 
 ```
 Usage: --use_openvino CPU_FP32_NO_PARTITION or --use_openvino GPU_FP32_NO_PARTITION or
-       --use_openvino GPU_FP16_NO_PARTITION or --use_openvino MYRIAD_FP16_NO_PARTITION or
-       --use_openvino VAD-F_FP32_NO_PARTITION or --use_openvino VAD-M_FP16_NO_PARTITION
+       --use_openvino GPU_FP16_NO_PARTITION 
 ```
 
 For more information on OpenVINO™ Execution Provider&#39;s ONNX Layer support, Topology support, and Intel hardware enabled, please refer to the document [OpenVINO™-ExecutionProvider](../execution-providers/OpenVINO-ExecutionProvider.md)
