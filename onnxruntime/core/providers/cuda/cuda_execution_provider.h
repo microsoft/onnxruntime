@@ -221,7 +221,9 @@ class CUDAExecutionProvider : public IExecutionProvider {
     CUDAGraph cuda_graph_;
     bool is_graph_captured_ = false;
     int regular_run_count_before_graph_capture_ = 0;
-    const int min_num_runs_before_cuda_graph_capture_ = 1;  // required min regular runs before graph capture for the necessary memory allocations.
+
+    // There is chance that the second run need memory allocation for memory pattern optimization.
+    const int min_num_runs_before_cuda_graph_capture_ = 2;  // required min regular runs before graph capture for the necessary memory allocations.
   };
 
   using PerThreadContextMap = std::unordered_map<const CUDAExecutionProvider*, std::weak_ptr<PerThreadContext>>;

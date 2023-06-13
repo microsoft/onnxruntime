@@ -1533,32 +1533,30 @@ common::Status InferenceSession::Initialize() {
       // Then the CUDA EP is cached for triggering a ReplayGraph() in Run().
       auto* cuda_ep = execution_providers_.Get(onnxruntime::kCudaExecutionProvider);
       if (cuda_ep && cuda_ep->IsGraphCaptureEnabled()) {
-        if (cuda_ep->IsGraphCaptureEnabled()) {
-          if (HasControlflowNodes(graph)) {
-            LOGS(*session_logger_, ERROR) << "This session cannot use the CUDA Graph feature as requested by the user "
-                                          << " as the model has control flow nodes which can't be supported by CUDA Graphs.";
+        if (HasControlflowNodes(graph)) {
+          LOGS(*session_logger_, ERROR) << "This session cannot use the CUDA Graph feature as requested by the user "
+                                        << " as the model has control flow nodes which can't be supported by CUDA Graphs.";
 
-            // Return error status as we don't want the session initialization to complete successfully
-            // if the user has requested usage of CUDA Graph feature and we cannot honor that.
-            ORT_RETURN_IF_ERROR_SESSIONID_(
-                ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                                "This session cannot use the CUDA Graph feature as requested by the user "
-                                " as the model has control flow nodes which can't be supported by CUDA Graphs."));
-          } else if (!AreAllNodesInMainGraphAssignedToOneEp(graph, onnxruntime::kCudaExecutionProvider)) {
-            LOGS(*session_logger_, ERROR) << "This session cannot use the CUDA Graph feature as requested by the user "
-                                          << " as all the graph nodes have not been partitioned to the CUDA EP.";
+          // Return error status as we don't want the session initialization to complete successfully
+          // if the user has requested usage of CUDA Graph feature and we cannot honor that.
+          ORT_RETURN_IF_ERROR_SESSIONID_(
+              ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                              "This session cannot use the CUDA Graph feature as requested by the user "
+                              " as the model has control flow nodes which can't be supported by CUDA Graphs."));
+        } else if (!AreAllNodesInMainGraphAssignedToOneEp(graph, onnxruntime::kCudaExecutionProvider)) {
+          LOGS(*session_logger_, ERROR) << "This session cannot use the CUDA Graph feature as requested by the user "
+                                        << " as all the graph nodes have not been partitioned to the CUDA EP.";
 
-            // Return error status as we don't want the session initialization to complete successfully
-            // if the user has requested usage of CUDA Graph feature and we cannot honor that.
-            ORT_RETURN_IF_ERROR_SESSIONID_(
-                ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                                "This session cannot use the CUDA Graph feature as requested by the user "
-                                " as all the graph nodes have not been partitioned to the CUDA EP."));
+          // Return error status as we don't want the session initialization to complete successfully
+          // if the user has requested usage of CUDA Graph feature and we cannot honor that.
+          ORT_RETURN_IF_ERROR_SESSIONID_(
+              ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                              "This session cannot use the CUDA Graph feature as requested by the user "
+                              " as all the graph nodes have not been partitioned to the CUDA EP."));
 
-          } else {
-            LOGS(*session_logger_, INFO) << "This session will use the CUDA Graph feature as requested by the user.";
-            cached_execution_provider_for_graph_replay_.SetExecutionProvider(cuda_ep);
-          }
+        } else {
+          LOGS(*session_logger_, INFO) << "This session will use the CUDA Graph feature as requested by the user.";
+          cached_execution_provider_for_graph_replay_.SetExecutionProvider(cuda_ep);
         }
       }
 
@@ -2119,7 +2117,7 @@ Status InferenceSession::Run(const RunOptions& run_options,
         auto start_func = [&xp, &exec_providers_to_stop]() {
           auto status = xp->OnRunStart();
           if (status.IsOK())
-            exec_providers_to_stop.push_back(xp.get());
+              exec_providers_to_stop.push_back(xp.get());
 
           return status;
         };
@@ -2141,9 +2139,37 @@ Status InferenceSession::Run(const RunOptions& run_options,
       session_state_->IncrementGraphExecutionCounter();
 #endif
 
-      ORT_CHECK_AND_SET_RETVAL(utils::ExecuteGraph(*session_state_, feeds_fetches_manager, feeds, *p_fetches,
-                                                   session_options_.execution_mode,
-                                                   run_options, run_logger));
+#ifdef ORT_ENABLE_STREAM
+      DeviceStreamCollectionHolder device_stream_collection_holder(session_state_.get());
+#endif
+
+      if (retval.IsOK()) {
+        retval = utils::ExecuteGraph(*session_state_, feeds_fetches_manager, feeds, *p_fetches,
+                                     session_options_.execution_mode,
+                                     run_options,
+#ifdef ORT_ENABLE_STREAM
+                                     device_stream_collection_holder,
+#endif
+                                     run_logger);
+      }
+
+      // info all execution providers InferenceSession:Run ended
+      for (auto* xp : exec_providers_to_stop) {
+        bool synchronize_execution_providers = run_options.config_options.GetConfigOrDefault(kOrtRunOptionsConfigDisableSynchronizeExecutionProviders, "0") == "0";
+        auto status = xp->OnRunEnd(synchronize_execution_providers);
+        ORT_CHECK_AND_SET_RETVAL(status);
+      }
+
+      // Move stream cleanup from ExecuteGraph to here for cuda graph capture.
+      // Cleanup will call cudaStreamSyncronize, which is not allowed for graph capture.
+      // Note that graph capture ends when we call xp->OnRunEnd() in the above code so it is safe here.
+#ifdef ORT_ENABLE_STREAM
+      DeviceStreamCollection* device_stream_collection = device_stream_collection_holder.p_.get();
+      if (device_stream_collection) {
+        bool sync_execution_provider = run_options.config_options.GetConfigOrDefault(kOrtRunOptionsConfigDisableSynchronizeExecutionProviders, "0") == "0";
+        ORT_CHECK_AND_SET_RETVAL(device_stream_collection->CleanUp(sync_execution_provider));
+      }
+#endif
     }
     ORT_CATCH(const std::exception& e) {
       ORT_HANDLE_EXCEPTION([&]() {
@@ -2154,12 +2180,7 @@ Status InferenceSession::Run(const RunOptions& run_options,
       retval = Status(common::ONNXRUNTIME, common::RUNTIME_EXCEPTION, "Encountered unknown exception in Run()");
     }
 
-    // info all execution providers InferenceSession:Run ended
-    for (auto* xp : exec_providers_to_stop) {
-      bool synchronize_execution_providers = run_options.config_options.GetConfigOrDefault(kOrtRunOptionsConfigDisableSynchronizeExecutionProviders, "0") == "0";
-      auto status = xp->OnRunEnd(synchronize_execution_providers);
-      ORT_CHECK_AND_SET_RETVAL(status);
-    }
+
 
     if (!arenas_to_shrink.empty()) {
       ShrinkMemoryArenas(arenas_to_shrink);
