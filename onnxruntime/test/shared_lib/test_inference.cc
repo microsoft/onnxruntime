@@ -1424,7 +1424,7 @@ TEST(CApiTest, test_custom_op_library_float8) {
 
   // prepare expected inputs and outputs
   std::vector<int64_t> expected_dims_y = {2};
-  std::vector<Ort::Float8E4M3FN_t> expected_values_y = {0 ,1};
+  std::vector<Ort::Float8E4M3FN_t> expected_values_y = {0, 1};
 
   onnxruntime::PathString lib_name;
 #if defined(_WIN32)
