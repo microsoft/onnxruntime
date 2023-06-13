@@ -6,16 +6,10 @@ from copy import deepcopy
 from typing import Optional, Sequence, Tuple
 
 import numpy as np
-import onnxruntime as ort
-from onnx import (
-    ModelProto,
-    NodeProto,
-    TensorProto,
-    ValueInfoProto,
-    checker,
-    helper,
-)
 import onnx
+from onnx import ModelProto, NodeProto, TensorProto, ValueInfoProto, checker, helper
+
+import onnxruntime as ort
 
 
 def make_vi_like(vi: ValueInfoProto, name: str) -> ValueInfoProto:
@@ -25,9 +19,7 @@ def make_vi_like(vi: ValueInfoProto, name: str) -> ValueInfoProto:
     return new_vi
 
 
-def make_optional_tensor_value_info(
-    name: str, elem_type: int, shape: Sequence[int]
-) -> ValueInfoProto:
+def make_optional_tensor_value_info(name: str, elem_type: int, shape: Sequence[int]) -> ValueInfoProto:
     """Makes a `ValueInfoProto` with optional type."""
     tensor_type_proto = helper.make_tensor_type_proto(
         elem_type=elem_type,
@@ -49,18 +41,12 @@ def make_optional_vi(vi: ValueInfoProto, name: Optional[str] = None) -> ValueInf
     return opt_vi
 
 
-def make_const(
-    vi: ValueInfoProto, name: str, value: int = 0
-) -> Tuple[ValueInfoProto, NodeProto, TensorProto]:
+def make_const(vi: ValueInfoProto, name: str, value: int = 0) -> Tuple[ValueInfoProto, NodeProto, TensorProto]:
     """Creates a constant 1D tensor from `vi`."""
     const_vi = make_vi_like(vi, name)
     const_shape = [d.dim_value for d in vi.type.tensor_type.shape.dim]
-    const_shape_tensor = helper.make_tensor(
-        f"{name}.shape", TensorProto.INT64, [len(const_shape)], const_shape
-    )
-    const_fill = helper.make_tensor(
-        f"{name}.const.value", const_vi.type.tensor_type.elem_type, [1], [value]
-    )
+    const_shape_tensor = helper.make_tensor(f"{name}.shape", TensorProto.INT64, [len(const_shape)], const_shape)
+    const_fill = helper.make_tensor(f"{name}.const.value", const_vi.type.tensor_type.elem_type, [1], [value])
     const_node = helper.make_node(
         "ConstantOfShape",
         inputs=[const_shape_tensor.name],
@@ -92,9 +78,7 @@ def make_opt_nested_greater_or_equal() -> ModelProto:
         outputs=[x1_vi.name],
         name="OptionalGetElement.Input",
     )
-    add_node = helper.make_node(
-        "Add", inputs=[x1_vi.name, x2_vi.name], outputs=[y1_vi.name], name="Add_Op"
-    )
+    add_node = helper.make_node("Add", inputs=[x1_vi.name, x2_vi.name], outputs=[y1_vi.name], name="Add_Op")
     add_x1_x2_subgraph = helper.make_graph(
         [input_get_elem_node, add_node],
         name="add-x1-x2-subgraph",
@@ -131,9 +115,7 @@ def make_opt_nested_greater_or_equal() -> ModelProto:
         outputs=[add_const_out_vi.name],
         name="Add_Const.1",
     )
-    expand_shape = helper.make_tensor(
-        f"{add_const_out_vi}.shape", TensorProto.INT64, [2], [1, 2]
-    )
+    expand_shape = helper.make_tensor(f"{add_const_out_vi}.shape", TensorProto.INT64, [2], [1, 2])
     expand_node = helper.make_node(
         "Expand",
         inputs=[add_const_out_vi.name, expand_shape.name],
@@ -151,9 +133,7 @@ def make_opt_nested_greater_or_equal() -> ModelProto:
 
     # Subgraph flow based on `x3` value
     y3_if_vi = make_vi_like(y_vi, "x3.if.out")
-    x3_eq_vi, x3_const_node, x3_const_shape_tensor = make_const(
-        x3_vi, "x3.equal", value=0
-    )
+    x3_eq_vi, x3_const_node, x3_const_shape_tensor = make_const(x3_vi, "x3.equal", value=0)
     x3_ge_vi = helper.make_tensor_value_info(
         "x3_ge",
         TensorProto.BOOL,
@@ -255,6 +235,7 @@ def test_nested_optional_greater_or_equal(use_trt: bool = False) -> None:
     )
 
     return
+
 
 class TestNestedControlFlowOpsGraph(unittest.TestCase):
     def test3LevelControlFlowOpsGraph(self):  # noqa: N802
