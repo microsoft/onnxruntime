@@ -81,7 +81,7 @@ int OrtInit(int num_threads, int logging_level) {
 
 void OrtGetLastError(int* error_code, const char** error_message) {
   *error_code = g_last_error_code;
-  *error_message = g_last_error_message.c_str();
+  *error_message = g_last_error_message.empty() ? nullptr : g_last_error_message.c_str();
 }
 
 OrtSessionOptions* OrtCreateSessionOptions(size_t graph_optimization_level,
