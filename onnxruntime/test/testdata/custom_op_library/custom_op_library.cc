@@ -71,30 +71,16 @@ struct CustomOpOne : Ort::CustomOpBase<CustomOpOne, KernelOne> {
 
 struct KernelOneFloat8 {
   void Compute(OrtKernelContext* context) {
-    // Setup inputs
     Ort::KernelContext ctx(context);
     auto input_X = ctx.GetInput(0);
-    auto input_Y = ctx.GetInput(1);
     const Ort::Float8E4M3FN_t* X = input_X.GetTensorData<Ort::Float8E4M3FN_t>();
-    const Ort::Float8E4M3FN_t* Y = input_Y.GetTensorData<Ort::Float8E4M3FN_t>();
-
-    // Setup output
     auto dimensions = input_X.GetTensorTypeAndShapeInfo().GetShape();
-
     auto output = ctx.GetOutput(0, dimensions);
     Ort::Float8E4M3FN_t* out = output.GetTensorMutableData<Ort::Float8E4M3FN_t>();
-
     const size_t size = output.GetTensorTypeAndShapeInfo().GetElementCount();
-
-    // Do computation
-#ifdef USE_CUDA
-    cudaStream_t stream = reinterpret_cast<cudaStream_t>(ctx.GetGPUComputeStream());
-    cuda_add(size, out, X, Y, stream);
-#else
     for (size_t i = 0; i < size; i++) {
       out[i] = X[i];
     }
-#endif
   }
 };
 
@@ -103,16 +89,10 @@ struct CustomOpOneFloat8 : Ort::CustomOpBase<CustomOpOneFloat8, KernelOneFloat8>
   void* CreateKernel(const OrtApi& /* api */, const OrtKernelInfo* /* info */) const {
     return std::make_unique<KernelOneFloat8>().release();
   };
-
   const char* GetName() const { return "CustomOpOneFloat8"; };
-
-#ifdef USE_CUDA
-  const char* GetExecutionProviderType() const { return "CUDAExecutionProvider"; };
-#endif
-
+  const char* GetExecutionProviderType() const { return "CPUExecutionProvider"; };
   size_t GetInputTypeCount() const { return 2; };
   ONNXTensorElementDataType GetInputType(size_t /*index*/) const { return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E4M3FN; };
-
   size_t GetOutputTypeCount() const { return 1; };
   ONNXTensorElementDataType GetOutputType(size_t /*index*/) const { return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E4M3FN; };
 };
@@ -255,7 +235,7 @@ OrtStatus* ORT_API_CALL RegisterCustomOps(OrtSessionOptions* options, const OrtA
   static const std::unique_ptr<LiteOp> sel_op_ptr{Ort::Custom::CreateLiteCustomOp("Select", "CPUExecutionProvider", Select)};
   static const std::unique_ptr<LiteOp> fil_op_ptr{Ort::Custom::CreateLiteCustomOp("Filter", "CPUExecutionProvider", Filter)};
 #if !defined(DISABLE_FLOAT8_TYPES)
-  static const std::unique_ptr<LiteOp> fil8_op_ptr{Ort::Custom::CreateLiteCustomOp("FilterFloat8", "CPUExecutionProvider", Filter)};
+  static const std::unique_ptr<LiteOp> fil8_op_ptr{Ort::Custom::CreateLiteCustomOp("FilterFloat8", "CPUExecutionProvider", FilterFloat8)};
 #endif
   static const std::unique_ptr<LiteOp> box_op_ptr{Ort::Custom::CreateLiteCustomOp("Box", "CPUExecutionProvider", Box)};
 

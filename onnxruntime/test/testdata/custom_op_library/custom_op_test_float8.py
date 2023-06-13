@@ -1,6 +1,6 @@
-from onnx import TensorProto
-from onnx.helper import make_model, make_node, make_graph, make_tensor_value_info, make_opsetid
 from onnx.checker import check_model
+from onnx.helper import make_model, make_node, make_graph, make_tensor_value_info, make_opsetid
+from onnx import TensorProto
 
 X = make_tensor_value_info("X", TensorProto.FLOAT8E4M3FN, [None])
 Y = make_tensor_value_info("Y", TensorProto.FLOAT8E4M3FN, [None])

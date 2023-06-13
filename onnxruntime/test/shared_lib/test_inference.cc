@@ -47,9 +47,9 @@ constexpr size_t countof(T (&)[N]) { return N; }
 
 extern std::unique_ptr<Ort::Env> ort_env;
 
-template <typename OutT>
+template <typename OutT, typename InT = float, typename InputT = Input>
 void RunSession(OrtAllocator* allocator, Ort::Session& session_object,
-                const std::vector<Input>& inputs,
+                const std::vector<InputT>& inputs,
                 const char* output_name,
                 const std::vector<int64_t>& dims_y,
                 const std::vector<OutT>& values_y,
@@ -59,8 +59,8 @@ void RunSession(OrtAllocator* allocator, Ort::Session& session_object,
   for (size_t i = 0; i < inputs.size(); i++) {
     input_names.emplace_back(inputs[i].name);
     ort_inputs.emplace_back(
-        Ort::Value::CreateTensor<float>(allocator->Info(allocator), const_cast<float*>(inputs[i].values.data()),
-                                        inputs[i].values.size(), inputs[i].dims.data(), inputs[i].dims.size()));
+        Ort::Value::CreateTensor<InT>(allocator->Info(allocator), const_cast<InT*>(inputs[i].values.data()),
+                                      inputs[i].values.size(), inputs[i].dims.data(), inputs[i].dims.size()));
   }
 
   std::vector<Ort::Value> ort_outputs;
@@ -89,9 +89,9 @@ void RunSession(OrtAllocator* allocator, Ort::Session& session_object,
   }
 }
 
-template <typename OutT>
+template <typename OutT, typename InT = float, typename InputT = Input>
 static void TestInference(Ort::Env& env, const std::basic_string<ORTCHAR_T>& model_uri,
-                          const std::vector<Input>& inputs,
+                          const std::vector<InputT>& inputs,
                           const char* output_name,
                           const std::vector<int64_t>& expected_dims_y,
                           const std::vector<OutT>& expected_values_y,
@@ -144,26 +144,26 @@ static void TestInference(Ort::Env& env, const std::basic_string<ORTCHAR_T>& mod
     auto default_allocator = std::make_unique<MockedOrtAllocator>();
 
     // without preallocated output tensor
-    RunSession<OutT>(default_allocator.get(),
-                     session,
-                     inputs,
-                     output_name,
-                     expected_dims_y,
-                     expected_values_y,
-                     nullptr);
+    RunSession<OutT, InT, InputT>(default_allocator.get(),
+                                  session,
+                                  inputs,
+                                  output_name,
+                                  expected_dims_y,
+                                  expected_values_y,
+                                  nullptr);
     // with preallocated output tensor
-    Ort::Value value_y = Ort::Value::CreateTensor<float>(default_allocator.get(),
-                                                         expected_dims_y.data(), expected_dims_y.size());
+    Ort::Value value_y = Ort::Value::CreateTensor<InT>(default_allocator.get(),
+                                                       expected_dims_y.data(), expected_dims_y.size());
 
     // test it twice
     for (int i = 0; i != 2; ++i)
-      RunSession<OutT>(default_allocator.get(),
-                       session,
-                       inputs,
-                       output_name,
-                       expected_dims_y,
-                       expected_values_y,
-                       &value_y);
+      RunSession<OutT, InT, InputT>(default_allocator.get(),
+                                    session,
+                                    inputs,
+                                    output_name,
+                                    expected_dims_y,
+                                    expected_values_y,
+                                    &value_y);
   }
 }
 
@@ -1398,10 +1398,15 @@ TEST(CApiTest, test_custom_op_library) {
 
 #if !defined(DISABLE_FLOAT8_TYPES)
 
-// It has memory leak. The OrtCustomOpDomain created in custom_op_library.cc:RegisterCustomOps function was not freed
+struct InputF8 {
+  const char* name = nullptr;
+  std::vector<int64_t> dims;
+  std::vector<Ort::Float8E4M3FN_t> values;
+};
+
+// See test test_custom_op_library_float8.
 #if defined(__ANDROID__)
 TEST(CApiTest, DISABLED_test_custom_op_library_float8) {
-// To accomodate a reduced op build pipeline
 #elif defined(REDUCED_OPS_BUILD) && defined(USE_CUDA)
 TEST(CApiTest, DISABLED_test_custom_op_library_float8) {
 #else
@@ -1409,7 +1414,7 @@ TEST(CApiTest, test_custom_op_library_float8) {
 #endif
   std::cout << "Running inference using custom op shared library" << std::endl;
 
-  std::vector<Input> inputs(2);
+  std::vector<InputF8> inputs(2);
   inputs[0].name = "input_1";
   inputs[0].dims = {2};
   inputs[0].values = {0, 1};
@@ -1419,7 +1424,7 @@ TEST(CApiTest, test_custom_op_library_float8) {
 
   // prepare expected inputs and outputs
   std::vector<int64_t> expected_dims_y = {2};
-  std::vector<int32_t> expected_values_y = {0 ,1};
+  std::vector<Ort::Float8E4M3FN_t> expected_values_y = {0 ,1};
 
   onnxruntime::PathString lib_name;
 #if defined(_WIN32)
@@ -1430,13 +1435,9 @@ TEST(CApiTest, test_custom_op_library_float8) {
   lib_name = ORT_TSTR("./libcustom_op_library.so");
 #endif
 
-#ifdef USE_CUDA
-  TestInference<int32_t>(*ort_env, CUSTOM_OP_LIBRARY_TEST_MODEL_FLOAT8_URI, inputs, "output", expected_dims_y,
-                         expected_values_y, 1, nullptr, lib_name.c_str());
-#else
-  TestInference<int32_t>(*ort_env, CUSTOM_OP_LIBRARY_TEST_MODEL_FLOAT8_URI, inputs, "output", expected_dims_y,
-                         expected_values_y, 0, nullptr, lib_name.c_str());
-#endif
+  TestInference<Ort::Float8E4M3FN_t, Ort::Float8E4M3FN_t, InputF8>(*ort_env, CUSTOM_OP_LIBRARY_TEST_MODEL_FLOAT8_URI, inputs,
+                                                                   "output", expected_dims_y,
+                                                                   expected_values_y, 0, nullptr, lib_name.c_str());
 }
 
 #endif
