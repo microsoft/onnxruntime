@@ -14,6 +14,10 @@ steps:
   displayName: 'Mount bert-data'
   condition: succeededOrFailed()
 
+- bash: ls /bert_data
+  displayName: 'ls bert_data'
+  condition: succeededOrFailed()
+
 - bash: tools/ci_build/github/linux/docker/scripts/training/azure_scale_set_vm_mount_test_data.sh -p $(orttrainingtestdatascus-storage-key) -s "//orttrainingtestdatascus.file.core.windows.net/hf-models-cache" -d "/hf_models_cache"
   displayName: 'Mount hf-models-cache'
   condition: succeededOrFailed()

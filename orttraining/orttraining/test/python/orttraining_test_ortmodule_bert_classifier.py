@@ -208,6 +208,7 @@ def load_dataset(args):
             wget.download(url, "./cola_public_1.1.zip")
         else:
             print("Reusing cached dataset")
+
     data_file=os.path.join(args.data_dir, "in_domain_train.tsv")
     if not os.path.exists(data_file):
         _download_dataset("./cola_public_1.1.zip")
