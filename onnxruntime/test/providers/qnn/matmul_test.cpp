@@ -43,7 +43,6 @@ GetQDQTestCaseFn BuildMatMulOpQDQTestCase(const std::vector<int64_t>& input1_sha
     auto* output_arg = builder.MakeOutput();
 
     using InputLimits = std::numeric_limits<QuantType>;
-    using OutputTypeLimits = std::numeric_limits<QuantType>;
 
     // add QDQ input
     auto* q1_output = builder.MakeIntermediate();
