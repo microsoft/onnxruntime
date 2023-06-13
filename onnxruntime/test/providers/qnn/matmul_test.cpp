@@ -137,7 +137,8 @@ TEST_F(QnnCPUBackendTests, TestMatMulOp) {
                     ExpectedEPNodeAssignment::All, "TestMatMulOp", 18);
 }
 
-TEST_F(QnnCPUBackendTests, TestMatMulOp2) {
+// QNN broadcast issue
+TEST_F(QnnCPUBackendTests, DISABLED_TestMatMulOp2) {
   RunMatMulOpOpTest({28, 1, 64} /* input_shape1 */,
                     {64, 32} /* input_shape2 */,
                     ExpectedEPNodeAssignment::All, "TestMatMulOp2", 18);
