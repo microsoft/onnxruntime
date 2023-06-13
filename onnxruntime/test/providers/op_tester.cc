@@ -88,13 +88,13 @@ void OpTester::CreateModelToTest(const ModelOptions& model_options, Model*& mode
   }
 
   if (!status.IsOK()) {
+    model = nullptr;
+
     if (ctx.expect_result == ExpectResult::kExpectFailure) {
       ASSERT_THAT(status.ErrorMessage(), testing::HasSubstr(ctx.expected_failure_string));
     } else {
       ASSERT_TRUE(status.IsOK()) << "Resolve failed with status: " << status.ErrorMessage();
     }
-
-    model = nullptr;
   }
 }
 
