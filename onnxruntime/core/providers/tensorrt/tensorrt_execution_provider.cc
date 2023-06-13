@@ -1289,6 +1289,7 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
       } else {
         auto model_build = graph.CreateModel(*GetLogger());
         auto& graph_build = model_build->MainGraph();
+        bool has_control_flow_op = false;
 
         // Add node and node args
         // If node output is also parent graph output, the  output will be added to the
@@ -1327,6 +1328,10 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
             }
           }
 
+          if (control_flow_op_set_.find(node->OpType()) != control_flow_op_set_.end()) {
+            has_control_flow_op = true;
+          }
+
           // If the node has subgraph, it's possible that the ORT graph of that subgraph and the GraphProto in the node attributes are not in sync because of graph optimization.
           // Therefore, we need to force GraphProto attributes to be updated in order to get the valid GraphProto.
           if (node->GetAttributes().size() > 0) {
@@ -1351,9 +1356,12 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
           }
         }
 
-        BuildSubGraphContext(&graph_build, subgraph_context_map);
-        SetGraphOuterScopeValuesAndInputs(&graph_build, &graph.GetGraph(), subgraph_context_map);
-        SetAllGraphInputs(&graph_build, subgraph_context_map);
+        if (has_control_flow_op) {
+          LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Handle outer scope values for the subgraph " << graph_build.Name();
+          BuildSubGraphContext(&graph_build, subgraph_context_map);
+          SetGraphOuterScopeValuesAndInputs(&graph_build, &graph.GetGraph(), subgraph_context_map);
+          SetAllGraphInputs(&graph_build, subgraph_context_map);
+        }
 
         ORT_ENFORCE(graph_build.Resolve().IsOK());
 

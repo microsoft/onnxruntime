@@ -106,8 +106,6 @@ void TensorrtExecutionProvider::BuildSubGraphContext(Graph* graph,
 void TensorrtExecutionProvider::SetGraphOuterScopeValuesAndInputs(Graph* graph_build,
                                                                   const Graph* graph,
                                                                   std::unordered_map<std::string, std::unique_ptr<SubGraphContext>>& subgraph_context_map) const {
-  LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Handle outer scope values if the graph contains any subgraphs";
-
   // Iterate all the nodes and recurse into inner most subgraph first
   for (int i = 0; i < graph_build->MaxNodeIndex(); ++i) {
     auto graph_build_node = graph_build->GetNode(i);
