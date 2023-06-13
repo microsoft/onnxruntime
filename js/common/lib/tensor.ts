@@ -1,9 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {TensorFactory} from './tensor-factory';
-import {Tensor as TensorImpl} from './tensor-impl';
-import {TypedTensorUtils} from './tensor-utils';
+import {TensorFactory} from './tensor-factory.js';
+import {Tensor as TensorImpl} from './tensor-impl.js';
+import {TypedTensorUtils} from './tensor-utils.js';
 
 /* eslint-disable @typescript-eslint/no-redeclare */
 
