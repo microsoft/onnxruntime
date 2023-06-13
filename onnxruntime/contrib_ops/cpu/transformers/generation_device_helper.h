@@ -33,6 +33,7 @@ enum DeviceCopyDirection {
 
 namespace GenerationDeviceHelper {
 
+#ifdef USE_CUDA
 using ReorderPastStateFunc = std::function<Status(
     const void* cuda_device_prop,  // cudaDeviceProp
     Tensor& past_state,
@@ -42,6 +43,7 @@ using ReorderPastStateFunc = std::function<Status(
 using InitCacheIndirFunc = std::function<Status(
     Tensor& cache_indir,
     Stream* stream)>;
+#endif
 
 using TopkFunc = std::function<Status(
     const Tensor* input, const int axis, const unsigned k, bool largest, bool sorted,

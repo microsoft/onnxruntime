@@ -37,9 +37,7 @@ transformers::CudaTensorConsoleDumper g_cuda_dumper;
 
 BeamSearch::BeamSearch(const OpKernelInfo& info)
     : onnxruntime::contrib::transformers::BeamSearch(info) {
-  SetDeviceHelpers(GenerationCudaDeviceHelper::ReorderPastState,
-                   GenerationCudaDeviceHelper::InitCacheIndir,
-                   GenerationCudaDeviceHelper::AddToFeeds,
+  SetDeviceHelpers(GenerationCudaDeviceHelper::AddToFeeds,
                    GenerationCudaDeviceHelper::TopK,
                    GenerationCudaDeviceHelper::DeviceCopy<float>,
                    GenerationCudaDeviceHelper::DeviceCopy<int32_t>,
@@ -47,6 +45,10 @@ BeamSearch::BeamSearch(const OpKernelInfo& info)
                    GenerationCudaDeviceHelper::ProcessLogits<MLFloat16>,
                    GenerationCudaDeviceHelper::InitBeamState<float>,
                    GenerationCudaDeviceHelper::InitBeamState<MLFloat16>);
+
+#ifndef USE_ROCM
+  SetDeviceHelpers_Cuda(GenerationCudaDeviceHelper::ReorderPastState, GenerationCudaDeviceHelper::InitCacheIndir);
+#endif
 
   SetDeviceHelpers_Gpt(GenerationCudaDeviceHelper::UpdateGptFeeds<float>,
                        GenerationCudaDeviceHelper::UpdateGptFeeds<MLFloat16>);
