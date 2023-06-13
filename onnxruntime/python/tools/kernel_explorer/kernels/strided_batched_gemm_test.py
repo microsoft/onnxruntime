@@ -207,10 +207,14 @@ def profile_with_args(dtype, transa, transb, m, n, k, batch, sort):
     fn_rocblas = getattr(ke, "RocBlasStridedBatchedGemm" + dtype_suffix)
     fn_ck = getattr(ke, "CKStridedBatchedGemm" + dtype_suffix + transab_suffix)
     fn_tunable = getattr(ke, "StridedBatchedGemmTunable" + dtype_suffix + transab_suffix)
+    if ke.is_hipblaslt_available():
+        fn_hipblaslt = getattr(ke, "StridedBatchedGemmHipBlasLt" + dtype_suffix + transab_suffix)
     with ke.benchmark(sort):
         profile_gemm_func(fn_rocblas, dtype, transa, transb, m, n, k, batch)
         profile_gemm_func(fn_ck, dtype, transa, transb, m, n, k, batch)
         profile_gemm_func(fn_tunable, dtype, transa, transb, m, n, k, batch)
+        if ke.is_hipblaslt_available():
+            profile_gemm_func(fn_hipblaslt, dtype, transa, transb, m, n, k, batch)
     print()
 
 
