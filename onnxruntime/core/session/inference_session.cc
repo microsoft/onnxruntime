@@ -2117,7 +2117,7 @@ Status InferenceSession::Run(const RunOptions& run_options,
         auto start_func = [&xp, &exec_providers_to_stop]() {
           auto status = xp->OnRunStart();
           if (status.IsOK())
-              exec_providers_to_stop.push_back(xp.get());
+            exec_providers_to_stop.push_back(xp.get());
 
           return status;
         };
@@ -2179,8 +2179,6 @@ Status InferenceSession::Run(const RunOptions& run_options,
     ORT_CATCH(...) {
       retval = Status(common::ONNXRUNTIME, common::RUNTIME_EXCEPTION, "Encountered unknown exception in Run()");
     }
-
-
 
     if (!arenas_to_shrink.empty()) {
       ShrinkMemoryArenas(arenas_to_shrink);
