@@ -42,7 +42,7 @@ class Conv : public JsKernel {
                                  static_cast<int32_t>(conv_attrs_.pads.size() > 1 ? conv_attrs_.pads[1] : 0),
                                  static_cast<int32_t>(conv_attrs_.strides.size() > 0 ? conv_attrs_.strides[0] : 0),
                                  static_cast<int32_t>(channels_last),
-                                 reinterpret_cast<int32_t>(&w_is_const_));
+                                 reinterpret_cast<size_t>(&w_is_const_));
     } else {
       JSEP_INIT_KERNEL_ATTRIBUTE(Conv, ({
                                    "format" : $13 ? "NHWC" : "NCHW",
@@ -67,7 +67,7 @@ class Conv : public JsKernel {
                                  static_cast<int32_t>(conv_attrs_.strides.size() > 0 ? conv_attrs_.strides[0] : 0),
                                  static_cast<int32_t>(conv_attrs_.strides.size() > 1 ? conv_attrs_.strides[1] : 0),
                                  static_cast<int32_t>(channels_last),
-                                 reinterpret_cast<int32_t>(&w_is_const_));
+                                 reinterpret_cast<size_t>(&w_is_const_));
     }
   }
 

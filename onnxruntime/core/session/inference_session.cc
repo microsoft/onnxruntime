@@ -1064,6 +1064,7 @@ Status InferenceSession::LoadOrtModel(const void* model_data, int model_data_len
         config_options.GetConfigOrDefault(kOrtSessionOptionsConfigUseORTModelBytesDirectly, "0") == "1";
 
     if (!use_ort_model_bytes_directly) {
+      LOGS(*session_logger_, INFO) << "using use_ort_model_bytes_directly. ";
       // copy bytes as we need them to be available when InferenceSession::Initialize is called later.
       ort_format_model_bytes_data_holder_.resize(model_data_len);
       std::copy_n(reinterpret_cast<const uint8_t*>(model_data), model_data_len,
@@ -1073,6 +1074,7 @@ Status InferenceSession::LoadOrtModel(const void* model_data, int model_data_len
       // Use the model_data directly to reduce memory consumption
       // This will require the model_data to be alive until the InferenceSession is initialized
       ort_format_model_bytes_ = gsl::span<const uint8_t>(reinterpret_cast<const uint8_t*>(model_data), model_data_len);
+      LOGS(*session_logger_, INFO) << "NOT using use_ort_model_bytes_directly. ";
     }
     return Status::OK();
   });

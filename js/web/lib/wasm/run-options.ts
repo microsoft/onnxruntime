@@ -39,7 +39,9 @@ export const setRunOptions = (options: InferenceSession.RunOptions): [number, nu
     }
 
     runOptionsHandle = wasm._OrtCreateRunOptions(
-        runOptions.logSeverityLevel!, runOptions.logVerbosityLevel!, !!runOptions.terminate!, tagDataOffset);
+        // @ts-ignore
+        BigInt(runOptions.logSeverityLevel!), BigInt(runOptions.logVerbosityLevel!), !!runOptions.terminate!,
+        BigInt(tagDataOffset));
     if (runOptionsHandle === 0) {
       throw new Error('Can\'t create run options');
     }
@@ -57,8 +59,10 @@ export const setRunOptions = (options: InferenceSession.RunOptions): [number, nu
 
     return [runOptionsHandle, allocs];
   } catch (e) {
-    if (runOptionsHandle !== 0) {
-      wasm._OrtReleaseRunOptions(runOptionsHandle);
+    // @ts-ignore
+    if (runOptionsHandle !== 0 && runOptionsHandle !== 0n) {
+      // @ts-ignore
+      wasm._OrtReleaseRunOptions(BigInt(runOptionsHandle));
     }
     allocs.forEach(wasm._free);
     throw e;

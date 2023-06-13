@@ -31,6 +31,10 @@ export class OnnxruntimeWebAssemblySessionHandler implements SessionHandler {
     }
     const reader = response.body.getReader();
     return createSessionAllocate({ reader, size: parseInt(size, 10) });
+
+    // const response = await fetch(path);
+    // const arrayBuffer = await response.arrayBuffer();
+    // return createSessionAllocate(new Uint8Array(arrayBuffer));
   }
 
   async loadModel(pathOrBuffer: string|Uint8Array, options?: InferenceSession.SessionOptions): Promise<void> {

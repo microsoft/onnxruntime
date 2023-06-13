@@ -14,7 +14,7 @@ const args = minimist(process.argv);
 // --bundle-mode=dev
 // --bundle-mode=perf
 // --bundle-mode=node
-const MODE = args['bundle-mode'] || 'prod';
+const MODE = args['bundle-mode'] || 'dev';
 if (['prod', 'dev', 'perf', 'node'].indexOf(MODE) === -1) {
   throw new Error(`unknown build mode: ${MODE}`);
 }
@@ -94,7 +94,7 @@ if (WASM) {
     const terser = spawnSync(
         'npx',
         [
-          'terser', WASM_BINDING_THREADED_JS_PATH, '--compress', 'passes=2', '--format', 'comments=false', '--mangle',
+          'terser', WASM_BINDING_THREADED_JS_PATH, '--format','--mangle',
           'reserved=[_scriptDir,startWorker]', '--module'
         ],
         {shell: true, encoding: 'utf-8', cwd: ROOT_FOLDER});
@@ -119,7 +119,7 @@ if (WASM) {
     const terser = spawnSync(
         'npx',
         [
-          'terser', WASM_BINDING_SIMD_THREADED_JSEP_JS_PATH, '--compress', 'passes=2', '--format', 'comments=false',
+          'terser', WASM_BINDING_SIMD_THREADED_JSEP_JS_PATH, 'passes=2', '--format',
           '--mangle', 'reserved=[_scriptDir,startWorker]', '--module'
         ],
         {shell: true, encoding: 'utf-8', cwd: ROOT_FOLDER});

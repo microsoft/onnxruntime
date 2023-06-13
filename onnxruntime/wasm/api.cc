@@ -229,7 +229,7 @@ OrtValue* OrtCreateTensor(int data_type, void* data, size_t data_length, size_t*
   }
 }
 
-int OrtGetTensorData(OrtValue* tensor, int* data_type, void** data, size_t** dims, size_t* dims_length) {
+int OrtGetTensorData(OrtValue* tensor, size_t* data_type, void** data, size_t** dims, size_t* dims_length) {
 #define RELEASE_AND_RETURN_ERROR_CODE_IF_ERROR(ORT_API_NAME, ...) \
   do {                                                            \
     int error_code = CHECK_STATUS(ORT_API_NAME, __VA_ARGS__);     \
@@ -270,7 +270,7 @@ int OrtGetTensorData(OrtValue* tensor, int* data_type, void** data, size_t** dim
 
   ONNXTensorElementDataType type;
   RELEASE_AND_RETURN_ERROR_CODE_IF_ERROR(GetTensorElementType, info, &type);
-  *data_type = static_cast<int>(type);
+  *data_type = static_cast<size_t>(type);
 
   *dims_length = dims_len;
   std::vector<int64_t> shape(dims_len, 0);

@@ -98,7 +98,8 @@ const setExecutionProviders =
         }
 
         const epNameDataOffset = allocWasmString(epName, allocs);
-        if (getInstance()._OrtAppendExecutionProvider(sessionOptionsHandle, epNameDataOffset) !== 0) {
+        // @ts-ignore
+        if (getInstance()._OrtAppendExecutionProvider(BigInt(sessionOptionsHandle), BigInt(epNameDataOffset)) !== 0) {
           throw new Error(`Can't append execution provider: ${epName}`);
         }
       }
@@ -116,7 +117,7 @@ export const setSessionOptions = (options?: InferenceSession.SessionOptions): [n
     const graphOptimizationLevel = getGraphOptimzationLevel(sessionOptions.graphOptimizationLevel ?? 'all');
     const executionMode = getExecutionMode(sessionOptions.executionMode ?? 'sequential');
     const logIdDataOffset =
-        typeof sessionOptions.logId === 'string' ? allocWasmString(sessionOptions.logId, allocs) : 0;
+        typeof sessionOptions.logId === 'string' ? allocWasmString(sessionOptions.logId, allocs) : BigInt(0);
 
     const logSeverityLevel = sessionOptions.logSeverityLevel ?? 2;  // Default to 2 - warning
     if (!Number.isInteger(logSeverityLevel) || logSeverityLevel < 0 || logSeverityLevel > 4) {
@@ -130,11 +131,15 @@ export const setSessionOptions = (options?: InferenceSession.SessionOptions): [n
 
     const optimizedModelFilePathOffset = typeof sessionOptions.optimizedModelFilePath === 'string' ?
         allocWasmString(sessionOptions.optimizedModelFilePath, allocs) :
-        0;
+        BigInt(0);
 
     sessionOptionsHandle = wasm._OrtCreateSessionOptions(
-        graphOptimizationLevel, !!sessionOptions.enableCpuMemArena, !!sessionOptions.enableMemPattern, executionMode,
-        !!sessionOptions.enableProfiling, 0, logIdDataOffset, logSeverityLevel, logVerbosityLevel,
+        // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+        // @ts-ignore
+        BigInt(graphOptimizationLevel), !!sessionOptions.enableCpuMemArena, !!sessionOptions.enableMemPattern,
+        BigInt(executionMode),
+        !!sessionOptions.enableProfiling, BigInt(0), logIdDataOffset, BigInt(logSeverityLevel),
+        BigInt(logVerbosityLevel),
         optimizedModelFilePathOffset);
     if (sessionOptionsHandle === 0) {
       throw new Error('Can\'t create session options');
@@ -149,7 +154,10 @@ export const setSessionOptions = (options?: InferenceSession.SessionOptions): [n
         const keyDataOffset = allocWasmString(key, allocs);
         const valueDataOffset = allocWasmString(value, allocs);
 
-        if (wasm._OrtAddSessionConfigEntry(sessionOptionsHandle, keyDataOffset, valueDataOffset) !== 0) {
+        // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+        // @ts-ignore
+        if (wasm._OrtAddSessionConfigEntry(BigInt(sessionOptionsHandle), BigInt(keyDataOffset),
+            BigInt(valueDataOffset)) !== 0) {
           throw new Error(`Can't set a session config entry: ${key} - ${value}`);
         }
       });
