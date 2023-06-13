@@ -12,9 +12,6 @@
 
 #include <stddef.h>
 
-struct OrtStatus;
-using ort_status_t = OrtStatus*;
-
 struct OrtSession;
 using ort_session_handle_t = OrtSession*;
 
