@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Linq.Expressions;
 using System.Runtime.InteropServices;
 
 namespace Microsoft.ML.OnnxRuntime
@@ -196,17 +197,19 @@ namespace Microsoft.ML.OnnxRuntime
             NativeApiStatus.VerifySuccess(NativeTrainingMethods.OrtTrainStep(_nativeHandle, _builtInRunOptions.Handle, (UIntPtr)inputValues.Count,
                 inputValuesArray, (UIntPtr)_trainOutputCount, outputValuesArray));
 
-            var ortValues = Array.ConvertAll<IntPtr, OrtValue>(outputValuesArray, h => new OrtValue(h));
-
-            var disposer = new DisposableArray<OrtValue>(ortValues);
+            // On success ortValues would contain nulls that will be
+            // ignored. On failure, ortValues would contain at least
+            // some valid OrtValue instances that need to be disposed.
+            // It would be nice to use using() clause, but we need to upgrade to C# 8.0 for that.
+            var ortValueDisposer = ConvertNativeHandlesToOrtValues(outputValuesArray);
             try
             {
                 var result = new DisposableList<DisposableNamedOnnxValue>(_trainOutputNames.Count);
                 try
                 {
-                    for (int i = 0; i < ortValues.Length; i++)
+                    for (int i = 0; i < ortValueDisposer.Span.Length; i++)
                     {
-                        result.Add(DisposableNamedOnnxValue.CreateFromOrtValue(_trainOutputNames[i], ref ortValues[i]));
+                        result.Add(DisposableNamedOnnxValue.CreateFromOrtValue(_trainOutputNames[i], ref ortValueDisposer.Span[i]));
                     }
                 }
                 catch (OnnxRuntimeException)
@@ -218,7 +221,10 @@ namespace Microsoft.ML.OnnxRuntime
             }
             finally
             {
-                disposer.Dispose();
+                // On success ortValues would contain nulls that will be
+                // ignored. On failure, ortValues would contain at least
+                // some valid OrtValue instances that need to be disposed.
+                ortValueDisposer.Dispose();
             }
         }
 
@@ -247,18 +253,20 @@ namespace Microsoft.ML.OnnxRuntime
             NativeApiStatus.VerifySuccess(NativeTrainingMethods.OrtTrainStep(_nativeHandle, options.Handle, (UIntPtr)inputValues.Count,
                 inputValuesArray, (UIntPtr)_trainOutputCount, outputValuesArray));
 
-            var ortValues = Array.ConvertAll<IntPtr, OrtValue>(outputValuesArray, h => new OrtValue(h));
 
-            var disposer = new DisposableArray<OrtValue>(ortValues);
+            // On success ortValues would contain nulls that will be
+            // ignored. On failure, ortValues would contain at least
+            // some valid OrtValue instances that need to be disposed.
+            // It would be nice to use using() clause, but we need to upgrade to C# 8.0 for that.
+            var ortValueDisposer = ConvertNativeHandlesToOrtValues(outputValuesArray);
             try
             {
                 var result = new DisposableList<DisposableNamedOnnxValue>(_trainOutputNames.Count);
                 try
                 {
-                    for (int i = 0; i < ortValues.Length; i++)
+                    for (int i = 0; i < ortValueDisposer.Span.Length; i++)
                     {
-                        var ortValue = ortValues[i];
-                        result.Add(DisposableNamedOnnxValue.CreateFromOrtValue(_trainOutputNames[i], ref ortValues[i]));
+                        result.Add(DisposableNamedOnnxValue.CreateFromOrtValue(_trainOutputNames[i], ref ortValueDisposer.Span[i]));
                     }
                 }
                 catch (OnnxRuntimeException)
@@ -270,7 +278,44 @@ namespace Microsoft.ML.OnnxRuntime
             }
             finally
             {
-                disposer.Dispose();
+                ortValueDisposer.Dispose();
+            }
+        }
+
+        /// <summary>
+        /// Convert native OrtValue handles to OrtValue instances
+        /// in an exceptions safe manner.
+        /// </summary>
+        /// <param name="nativeHandles"></param>
+        /// <returns></returns>
+        private DisposableArray<OrtValue> ConvertNativeHandlesToOrtValues(IntPtr[] nativeHandles)
+        {
+            var diposableArray = new DisposableOrtValueHandleArray(nativeHandles);
+            try
+            {
+                var ortValues = new OrtValue[nativeHandles.Length];
+                var ortValueDisposer = new DisposableArray<OrtValue>(ortValues);
+                try
+                {
+                    for (int i = 0; i < nativeHandles.Length; i++)
+                    {
+                        ortValues[i] = new OrtValue(nativeHandles[i]);
+                        nativeHandles[i] = IntPtr.Zero;
+                    }
+                    return ortValueDisposer;
+                }
+                catch (Exception)
+                {
+                    // ortValues is the result, dispose only on exception
+                    ortValueDisposer.Dispose();
+                    throw;
+                }
+            }
+            catch (Exception)
+            {
+                // No need to dispose on exception since the ownership is transferred to ortValues
+                diposableArray.Dispose();
+                throw;
             }
         }
 

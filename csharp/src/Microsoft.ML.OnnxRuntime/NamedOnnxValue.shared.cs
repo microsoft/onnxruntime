@@ -225,7 +225,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// </summary>
         /// <param name="pinnedMemoryHandle">dispose after returned OrtValus is disposed</param>
         /// <returns>The native OrtValue handle</returns>
-        internal virtual IntPtr InputToOrtValue(NodeMetadata metadata, out IDisposable memoryOwner)
+        internal virtual IntPtr InputToOrtValueHandle(NodeMetadata metadata, out IDisposable memoryOwner)
         {
             var projection = ManagedTypeProjection.CreateProjection(this, metadata);
             memoryOwner = projection;
@@ -242,7 +242,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// <param name="metadata"></param>
         /// <param name="memoryOwner"></param>
         /// <returns></returns>
-        internal virtual IntPtr OutputToOrtValue(NodeMetadata metadata, out IDisposable memoryOwner)
+        internal virtual IntPtr OutputToOrtValueHandle(NodeMetadata metadata, out IDisposable memoryOwner)
         {
             // For NamedOnnxValue for output we only allow to produce OrtValue for tensors
             // or optional type that may contain a tensor

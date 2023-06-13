@@ -67,7 +67,15 @@ namespace Microsoft.ML.OnnxRuntime.InferenceSample
                 {
                     var name = _inferenceSession.OutputNames[i];
                     Console.WriteLine("Output for {0}", name);
-                    Console.WriteLine(results[i].GetTensorDataAsSpan<float>().ToArray());
+                    // We can now access the native buffer directly from the OrtValue, no copy is involved.
+                    // Spans are structs and are stack allocated. They do not add any GC pressure.
+                    ReadOnlySpan<float> span = results[i].GetTensorDataAsSpan<float>();
+                    Console.Write($"Input {i} results:");
+                    for(int k = 0; k < span.Length; ++k)
+                    {
+                        Console.Write($" {span[k]}");
+                    }
+                    Console.WriteLine();
                 }
             }
         }
@@ -84,8 +92,6 @@ namespace Microsoft.ML.OnnxRuntime.InferenceSample
                     {
                         v?.Dispose();
                     }
-
-                _inputPin.Dispose();
 
                 _disposed = true;
             }
@@ -136,7 +142,6 @@ namespace Microsoft.ML.OnnxRuntime.InferenceSample
 
         private bool _disposed = false;
         private readonly byte[] _model;
-        private readonly MemoryHandle _inputPin = default; // One time for inputs is Okay here.
         private readonly List<string> _orderedInputNames;
         private readonly List<OrtValue> _inputData;
         private InferenceSession _inferenceSession;

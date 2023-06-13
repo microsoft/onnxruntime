@@ -89,7 +89,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 
             var tensor = new DenseTensor<string>(strs, shape);
 
-            using (var strTensor = OrtValue.CreateStringTensor(tensor))
+            using (var strTensor = OrtValue.CreateFromStringTensor(tensor))
             {
                 Assert.True(strTensor.IsTensor);
                 Assert.False(strTensor.IsSparseTensor);

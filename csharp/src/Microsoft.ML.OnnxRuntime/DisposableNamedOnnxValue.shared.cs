@@ -135,7 +135,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// </summary>
         /// <param name="pinnedMemoryHandle">always set to null</param>
         /// <returns>Native OrtValue handle</returns>
-        internal override IntPtr InputToOrtValue(NodeMetadata metadata, out IDisposable memoryHolder)
+        internal override IntPtr InputToOrtValueHandle(NodeMetadata metadata, out IDisposable memoryHolder)
         {
             if (_ortValueHolder == null)
             {
@@ -156,9 +156,9 @@ namespace Microsoft.ML.OnnxRuntime
         /// <param name="metadata"></param>
         /// <param name="memoryOwner"></param>
         /// <returns></returns>
-        internal override IntPtr OutputToOrtValue(NodeMetadata metadata, out IDisposable memoryOwner)
+        internal override IntPtr OutputToOrtValueHandle(NodeMetadata metadata, out IDisposable memoryOwner)
         {
-            return InputToOrtValue(metadata, out memoryOwner);
+            return InputToOrtValueHandle(metadata, out memoryOwner);
         }
 
         /// <summary>
@@ -440,6 +440,8 @@ namespace Microsoft.ML.OnnxRuntime
             }
             finally
             {
+                // On success valSpan would contain nulls
+                // which will be ignored.
                 disposer.Dispose();
             }
 
@@ -462,14 +464,15 @@ namespace Microsoft.ML.OnnxRuntime
         private static DisposableNamedOnnxValue FromNativeMapElements<K, V>(string name, ref OrtValue ortValueMap,
             ref OrtValue ortValueTensorKeys, ref OrtValue ortValueTensorValues)
         {
-            var listOfKeysValues = new DisposableList<IDisposable>(2);
-            var collOwner = new NativeOrtValueCollectionOwner<IDisposable>(ref ortValueMap, listOfKeysValues);
+            Span<IDisposable> keysValues = new IDisposable[2];
+            var keyValuesDisposer = new DisposableArray<IDisposable>(keysValues);
+            var collOwner = new NativeOrtValueCollectionOwner<IDisposable>(ref ortValueMap, null);
             try
             {
                 var tensorKeys = new OrtValueTensor<K>(ref ortValueTensorKeys);
-                listOfKeysValues.Add(ortValueTensorKeys);
+                keysValues[0] = tensorKeys;
                 var tensorValues = new OrtValueTensor<V>(ref ortValueTensorValues);
-                listOfKeysValues.Add(ortValueTensorValues);
+                keysValues[1] = tensorValues;
 
                 MapHelper mapHelper = null;
                 if (typeof(K) == typeof(string))
@@ -530,6 +533,10 @@ namespace Microsoft.ML.OnnxRuntime
             {
                 collOwner.Dispose();
                 throw;
+            }
+            finally
+            {
+                keyValuesDisposer.Dispose();
             }
         }
 

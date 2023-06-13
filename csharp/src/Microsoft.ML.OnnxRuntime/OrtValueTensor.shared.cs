@@ -34,7 +34,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// _Ctor. Takes ownership of ortValue and sets it to null on success.
         /// </summary>
         /// <param name="ortValue">becomes null on success</param>
-        /// <param name="disposables"></param>
+        /// <param name="disposables">A collection of disposables that support composed types</param>
         internal NativeOrtValueCollectionOwner(ref OrtValue ortValue, DisposableList<T> disposables)
         {
             _ortValue = ortValue;

@@ -153,7 +153,7 @@ namespace Microsoft.ML.OnnxRuntime
     }
 
     // Guards an array of disposable objects on stack and disposes them in reverse order
-    internal ref struct DisposableArray<T> where T: IDisposable
+    internal ref struct DisposableArray<T> where T : IDisposable
     {
         internal Span<T> Span { get; private set; }
         internal DisposableArray(Span<T> disposables)
@@ -163,12 +163,11 @@ namespace Microsoft.ML.OnnxRuntime
 
         public void Dispose()
         {
-            if (Span.Length > 0)
+            // Dispose in the reverse order in case there are dependencies
+            // between objects created later.
+            for (int i = Span.Length - 1; i >= 0; --i)
             {
-                for (int i = Span.Length - 1; i >= 0; --i)
-                {
-                    Span[i]?.Dispose();
-                }
+                Span[i]?.Dispose();
             }
         }
     }
@@ -183,14 +182,12 @@ namespace Microsoft.ML.OnnxRuntime
 
         public void Dispose()
         {
-            if (Span.Length > 0)
+            // Dispose in the reverse order in case there are dependencies
+            for (int i = Span.Length - 1; i >= 0; --i)
             {
-                for (int i = Span.Length - 1; i >= 0; --i)
+                if (Span[i] != IntPtr.Zero)
                 {
-                    if (Span[i] != IntPtr.Zero)
-                    {
-                        NativeMethods.OrtReleaseValue(Span[i]);
-                    }
+                    NativeMethods.OrtReleaseValue(Span[i]);
                 }
             }
         }

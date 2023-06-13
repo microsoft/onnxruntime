@@ -30,32 +30,52 @@ namespace Microsoft.ML.OnnxRuntime
     /// Represents a disposable OrtValue.
     /// This class exposes a native instance of OrtValue.
     /// The class implements IDisposable and must
-    /// be disposed.
+    /// be disposed of, otherwise native resources will leak
+    /// and will eventually cause the application to slow down or crash.
+    /// 
+    /// If the OrtValue instance is constructed over a managed memory, and it is not
+    /// disposed properly, the pinned memory will continue to be pinned and interfere
+    /// with GC operation.
     /// </summary>
     public class OrtValue : IDisposable
     {
         private IntPtr _handle;
         private MemoryHandle? _memHandle;
         private bool _disposed;
+
         /// <summary>
-        /// __Ctor
+        /// Constructor. The newly constructed OrtValue takes ownership of the native OrtValue instance
+        /// and disposes of it when the OrtValue instance is disposed.
         /// </summary>
         /// <param name="handle">Pointer to a native instance of OrtValue</param>
-        internal OrtValue(IntPtr handle)
+        /// <param name="onnxValueType">OnnxValue type if known, otherwise the constructor would iterrogate
+        /// the handle</param>
+        internal OrtValue(IntPtr handle, OnnxValueType onnxValueType = OnnxValueType.ONNX_TYPE_UNKNOWN)
         {
             _handle = handle;
+            OnnxType = onnxValueType;
+            if (OnnxType == OnnxValueType.ONNX_TYPE_UNKNOWN)
+            {
+                InitOnnxType();
+            }
         }
 
         /// <summary>
-        /// __Ctor to construct OrtValue over managed memory.
+        /// Constructor to construct OrtValue over managed memory.
         /// We pin the memory and unpin it at the disposal time.
+        /// The newly constructed OrtValue takes ownership of the native OrtValue instance
+        /// and disposes of it when the OrtValue instance is disposed.
         /// </summary>
-        /// <param name="handle"></param>
-        /// <param name="memHandle"></param>
+        /// <param name="handle">Pointer to a native instance of OrtValue</param>
+        /// <param name="memHandle">memory handle to a pinned user supplied (usually managed) memory
+        /// It is disposed of (unpinned) when OrtValue is disposed.
+        /// </param>
         private OrtValue(IntPtr handle, MemoryHandle memHandle)
         {
             _handle = handle;
             _memHandle = memHandle;
+            // OrtValue on top of the pinned memory is always a tensor
+            OnnxType = OnnxValueType.ONNX_TYPE_TENSOR;
         }
 
         /// <summary>
@@ -67,13 +87,12 @@ namespace Microsoft.ML.OnnxRuntime
         /// Fetches OrtValue type if it has one.
         /// </summary>
         /// <value>OnnxValueType</value>
-        public OnnxValueType OnnxType
+        public OnnxValueType OnnxType { get; private set; }
+
+        private void InitOnnxType()
         {
-            get
-            {
-                NativeApiStatus.VerifySuccess(NativeMethods.OrtGetValueType(Handle, out IntPtr onnxType));
-                return (OnnxValueType)onnxType;
-            }
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtGetValueType(Handle, out IntPtr onnxType));
+            OnnxType = (OnnxValueType)onnxType;
         }
 
         /// <summary>
@@ -103,7 +122,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// <summary>
         /// Valid for composite ML types like map, sequence.
         /// Returns 2 for map (keys, values) and N for sequence, where N is the number of elements
-        /// int he sequence.
+        /// int the sequence.
         /// </summary>
         /// <returns>Element count</returns>
         public int GetValueCount()
@@ -159,7 +178,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// The span is valid as long as the OrtValue instance is alive (not disposed).
         /// </summary>
         /// <typeparam name="T"></typeparam>
-        /// <returns></returns>
+        /// <returns>Typed Span over the native buffer</returns>
         public Span<T> GetTensorMutableDataAsSpan<T>() where T : struct
         {
             var byteSpan = GetTensorBufferRawData(typeof(T));
@@ -167,14 +186,13 @@ namespace Microsoft.ML.OnnxRuntime
         }
 
         /// <summary>
-        /// 
+        /// Provides mutable raw native buffer access.
         /// </summary>
-        /// <returns></returns>
+        /// <returns>Span over the native buffer bytes</returns>
         public Span<byte> GetTensorMutableRawData()
         {
             return GetTensorBufferRawData(typeof(byte));
         }
-
 
         /// <summary>
         /// Fetch string tensor element buffer pointer at the specified index,
@@ -226,14 +244,14 @@ namespace Microsoft.ML.OnnxRuntime
         /// <returns>ReadOnlySpan over UTF-8 bytes of the string tensor element</returns>
         public ReadOnlySpan<byte> GetStringElementAsSpan(int index)
         {
-            GetStringTensorElementBuffer((UIntPtr)index, out UIntPtr len, out IntPtr buffer);
-            if ((uint)len == 0)
+            GetStringTensorElementBuffer((UIntPtr)index, out uint bytesLen, out IntPtr bufferPtr);
+            if (bytesLen == 0)
             {
                 return ReadOnlySpan<byte>.Empty;
             }
             unsafe
             {
-                return new ReadOnlySpan<byte>((buffer).ToPointer(), (int)len);
+                return new ReadOnlySpan<byte>((bufferPtr).ToPointer(), (int)bytesLen);
             }
         }
 
@@ -299,7 +317,7 @@ namespace Microsoft.ML.OnnxRuntime
         {
             var onnxType = OnnxType;
             if (onnxType != OnnxValueType.ONNX_TYPE_TENSOR &&
-                               onnxType != OnnxValueType.ONNX_TYPE_SPARSETENSOR)
+                onnxType != OnnxValueType.ONNX_TYPE_SPARSETENSOR)
             {
                 throw new OnnxRuntimeException(ErrorCode.InvalidArgument,
                                        $"This OrtValue type contains: {onnxType}, not a tensor or sparse tensor");
@@ -326,39 +344,41 @@ namespace Microsoft.ML.OnnxRuntime
 
         private char[] GetStringTensorElementChars(int index)
         {
-            GetStringTensorElementBuffer((UIntPtr)index, out UIntPtr len, out IntPtr buffer);
-            if ((uint)len == 0)
+            GetStringTensorElementBuffer((UIntPtr)index, out uint bytesLen, out IntPtr bufferPtr);
+            if (bytesLen == 0)
             {
                 return Array.Empty<char>();
             }
 
             unsafe
             {
-                int charCount = Encoding.UTF8.GetCharCount((byte*)(buffer).ToPointer(), (int)len);
+                int charCount = Encoding.UTF8.GetCharCount((byte*)(bufferPtr).ToPointer(), (int)bytesLen);
                 var chars = new char[charCount];
                 fixed (char* ch = chars)
                 {
-                    Encoding.UTF8.GetChars((byte*)(buffer).ToPointer(), (int)len, (char*)ch, charCount);
+                    Encoding.UTF8.GetChars((byte*)(bufferPtr).ToPointer(), (int)bytesLen, (char*)ch, charCount);
                 }
                 return chars;
             }
         }
 
-        private void GetStringTensorElementBuffer(UIntPtr index, out UIntPtr bufferLen, out IntPtr buffer)
+        private void GetStringTensorElementBuffer(UIntPtr index, out uint bytesLen, out IntPtr bufferPtr)
         {
             // Length is in UTF-8 bytes. Strings are not zero terminated, so length is required.
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtGetStringTensorElementLength(Handle, index, out bufferLen));
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtGetStringTensorElementLength(Handle, index, out UIntPtr bufferLen));
 
-            if ((uint)bufferLen == 0)
+            bytesLen = (uint)bufferLen;
+
+            if (bytesLen == 0)
             {
-                buffer = IntPtr.Zero;
+                bufferPtr = IntPtr.Zero;
                 return;
             }
 
             // XXX: We lack the API (at the moment) that simply gives access to string element buffer. So we get the resized one
             // to the same length which leaves it unchanged.
             NativeApiStatus.VerifySuccess(NativeMethods.OrtGetResizedStringTensorElementBuffer(Handle,
-                   (UIntPtr)index, bufferLen, out buffer));
+                   (UIntPtr)index, bufferLen, out bufferPtr));
         }
 
         private Span<byte> GetTensorBufferRawData(Type requestedType)
@@ -409,7 +429,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// natively allocated using Marshal.AllocHGlobal(), stackalloc or other means (may be on a device).
         /// 
         /// The resulting OrtValue does not own the underlying memory buffer and will not attempt to
-        /// deallocate it.
+        /// deallocate it. The caller must make sure that the memory remains valid for the duration of OrtValue lifetime.
         /// </summary>
         /// <param name="memInfo">Memory Info. For managed memory its default is cpu.
         ///                       For other kinds of memory, one must construct as appropriate.</param>
@@ -451,7 +471,7 @@ namespace Microsoft.ML.OnnxRuntime
                                     elementType,
                                     out IntPtr ortValueHandle
                                 ));
-            return new OrtValue(ortValueHandle);
+            return new OrtValue(ortValueHandle, OnnxValueType.ONNX_TYPE_TENSOR);
         }
 
         /// <summary>
@@ -468,7 +488,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// <exception cref="OnnxRuntimeException"></exception>
         public static OrtValue CreateTensorValueFromMemory<T>(OrtMemoryInfo memoryInfo, Memory<T> memory, long[] shape)
         {
-            var typeInfo = TensorBase.GetTypeInfo(typeof(T)) ?? 
+            var typeInfo = TensorBase.GetTypeInfo(typeof(T)) ??
                 throw new OnnxRuntimeException(ErrorCode.InvalidArgument, $"Tensor of type: {typeof(T)} is not supported");
 
             if (typeInfo.IsString)
@@ -542,7 +562,7 @@ namespace Microsoft.ML.OnnxRuntime
         {
             NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateTensorAsOrtValue(allocator.Pointer, shape,
                 (UIntPtr)shape.Length, elementType, out IntPtr ortValueHandle));
-            return new OrtValue(ortValueHandle);
+            return new OrtValue(ortValueHandle, OnnxValueType.ONNX_TYPE_TENSOR);
         }
 
         /// <summary>
@@ -551,30 +571,26 @@ namespace Microsoft.ML.OnnxRuntime
         /// to native code.
         /// </summary>
         /// <param name="value">Tensor object</param>
-        /// <param name="memoryHandle">For all tensor types but string tensors we endeavor to use managed memory
-        ///  to avoid additional allocation and copy. This out parameter represents a chunk of pinned memory which will need
-        ///  to be disposed when no longer needed. The lifespan of memoryHandle should eclipse the lifespan of the corresponding
-        ///  OrtValue.
-        /// </param>
         /// <param name="elementType">discovered tensor element type</param>
         /// <returns>And instance of OrtValue constructed on top of the object</returns>
         internal static OrtValue CreateFromTensorObject(TensorBase value, out TensorElementType elementType)
         {
             var typeInfo = value.GetTypeInfo();
-            MemoryHandle? memHandle;
             OrtValue ortValue = null;
-            int dataBufferLength;
-            long[] shape;
-            int rank;
 
             TensorElementType elType = typeInfo.ElementType;
             var typeSize = typeInfo.TypeSize;
             if (typeInfo.IsString)
             {
-                ortValue = CreateStringTensor(value as Tensor<string>);
+                ortValue = CreateFromStringTensor(value as Tensor<string>);
             }
             else
             {
+                int dataBufferLength;
+                long[] shape;
+                int rank;
+
+                MemoryHandle memHandle;
                 switch (elType)
                 {
                     case TensorElementType.Float:
@@ -643,11 +659,10 @@ namespace Microsoft.ML.OnnxRuntime
 
                 try
                 {
-                    Debug.Assert(memHandle.HasValue);
                     IntPtr dataBufferPointer = IntPtr.Zero;
                     unsafe
                     {
-                        dataBufferPointer = (IntPtr)(memHandle.Value).Pointer;
+                        dataBufferPointer = (IntPtr)memHandle.Pointer;
                     }
 
                     NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateTensorWithDataAsOrtValue(
@@ -659,11 +674,11 @@ namespace Microsoft.ML.OnnxRuntime
                         elType,
                         out IntPtr nativeValue));
 
-                    ortValue = new OrtValue(nativeValue, memHandle.Value);
+                    ortValue = new OrtValue(nativeValue, memHandle);
                 }
                 catch (Exception)
                 {
-                    memHandle?.Dispose();
+                    memHandle.Dispose();
                     throw;
                 }
             }
@@ -690,7 +705,7 @@ namespace Microsoft.ML.OnnxRuntime
                                 TensorElementType.String,
                                 out IntPtr valueHandle
                                 ));
-            return new OrtValue(valueHandle);
+            return new OrtValue(valueHandle, OnnxValueType.ONNX_TYPE_TENSOR);
         }
 
         /// <summary>
@@ -751,7 +766,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// <param name="tensor">Tensor<string></param>
         /// <returns>A disposable OrtValue instance</returns>
         /// <exception cref="OnnxRuntimeException"></exception>
-        public static OrtValue CreateStringTensor(Tensor<string> tensor)
+        public static OrtValue CreateFromStringTensor(Tensor<string> tensor)
         {
             if (tensor == null)
             {
@@ -811,7 +826,7 @@ namespace Microsoft.ML.OnnxRuntime
             NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateValue(handles,
                 (UIntPtr)ortValues.Count, (IntPtr)OnnxValueType.ONNX_TYPE_SEQUENCE,
                 out IntPtr sequenceHandle));
-            return new OrtValue(sequenceHandle);
+            return new OrtValue(sequenceHandle, OnnxValueType.ONNX_TYPE_SEQUENCE);
         }
 
 
@@ -836,9 +851,9 @@ namespace Microsoft.ML.OnnxRuntime
 
             IntPtr[] handles = { keys.Handle, values.Handle };
             NativeApiStatus.VerifySuccess(
-                NativeMethods.OrtCreateValue(handles, (UIntPtr)2, (IntPtr)OnnxValueType.ONNX_TYPE_MAP,
+                NativeMethods.OrtCreateValue(handles, (UIntPtr)handles.Length, (IntPtr)OnnxValueType.ONNX_TYPE_MAP,
                                out IntPtr mapHandle));
-            return new OrtValue(mapHandle);
+            return new OrtValue(mapHandle, OnnxValueType.ONNX_TYPE_MAP);
         }
 
         private unsafe void FillStringTensorElement(char* strPtr, int strLength, int index)
@@ -860,7 +875,7 @@ namespace Microsoft.ML.OnnxRuntime
         private static void PinAsTensor<T>(
                                         Tensor<T> tensor,
                                         int elementSize,
-                                        out MemoryHandle? pinnedHandle,
+                                        out MemoryHandle pinnedHandle,
                                         out int dataBufferLength,
                                         out long[] shape,
                                         out int rank)

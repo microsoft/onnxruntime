@@ -323,7 +323,7 @@ namespace Microsoft.ML.OnnxRuntime
             var disposableHandles = RunImpl(options, inputNamesArray, inputValuesArray, outputNamesArray);
             try
             {
-                return InferenceSession.CreateDisposableResult(disposableHandles.Span, outputNames);
+                return CreateDisposableResult(disposableHandles.Span, outputNames);
             }
             finally
             {
@@ -591,7 +591,8 @@ namespace Microsoft.ML.OnnxRuntime
         /// returning a collection of output OrtValues.
         /// </summary>
         /// <param name="runOptions">runOptions</param>
-        /// <param name="inputNames">a collection of input names. To supply all names, use InputNames property</param>
+        /// <param name="inputNames">A collection of input names.
+        /// To supply all names, use InputNames property</param>
         /// <param name="inputValues">Input OrtValues. The size of the collection must match the size and the order of the inputNames</param>
         /// <param name="outputNames">Output names requested. To supply all names, use OutputNames property.</param>
         /// <returns>A disposable collection of disposable OrtValues</returns>
@@ -646,11 +647,12 @@ namespace Microsoft.ML.OnnxRuntime
         /// prefer the output to go to the pre-allocated memory. In such a case, you create
         /// output OrtValues over those pre-allocated buffers and pass them to the API.
         /// </summary>
-        /// <param name="runOptions"></param>
-        /// <param name="inputNames"></param>
-        /// <param name="inputValues"></param>
-        /// <param name="outputNames"></param>
-        /// <param name="outputValues"></param>
+        /// <param name="runOptions">runOptions, if null the defaults are used</param>
+        /// <param name="inputNames">collection of input names.</param>
+        /// <param name="inputValues">collection of input OrtValues. Must match the order and the number of input names.</param>
+        /// <param name="outputNames">Requested output names.</param>
+        /// <param name="outputValues">Pre-allocated output values. 
+        /// The order and the number must match the specified output names. Shapes must match actual output values.</param>
         /// <exception cref="ArgumentException"></exception>
         public void Run(RunOptions runOptions, IReadOnlyCollection<string> inputNames, IReadOnlyCollection<OrtValue> inputValues,
             IReadOnlyCollection<string> outputNames, IReadOnlyCollection<OrtValue> outputValues)
@@ -665,6 +667,11 @@ namespace Microsoft.ML.OnnxRuntime
             {
                 throw new ArgumentException(
                     $"Length of {nameof(outputNames)} ({outputNames.Count}) must match that of {nameof(outputValues)} ({outputValues.Count}).");
+            }
+
+            if (runOptions is null)
+            {
+                runOptions = _builtInRunOptions;
             }
 
             var inputNamesArray = LookupUtf8Names(inputNames, n => n, LookupInputMetadata);
@@ -770,6 +777,9 @@ namespace Microsoft.ML.OnnxRuntime
             }
             finally
             {
+                // On success ortValues would contain nulls that will be
+                // ignored. On failure, ortValues would contain at least
+                // some valid OrtValue instances that need to be disposed.
                 dispValues.Dispose();
             }
         }
@@ -838,7 +848,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// <returns></returns>
         private static IntPtr ExtractOrtValueHandleForInput(NamedOnnxValue input, NodeMetadata metadata, out IDisposable memOwner)
         {
-            return input.InputToOrtValue(metadata, out memOwner);
+            return input.InputToOrtValueHandle(metadata, out memOwner);
         }
 
         /// <summary>
@@ -850,7 +860,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// <returns>May return null if the onnx value type does not support pre-creation of output OrtValues</returns>
         private static IntPtr ExtractOrtValueHandleForOutput(NamedOnnxValue output, NodeMetadata metadata, out IDisposable memOwner)
         {
-            return output.OutputToOrtValue(metadata, out memOwner);
+            return output.OutputToOrtValueHandle(metadata, out memOwner);
         }
 
         /// <summary>
@@ -859,7 +869,6 @@ namespace Microsoft.ML.OnnxRuntime
         /// <param name="values">names to convert to zero terminated utf8 and pin</param>
         /// <param name="nameExtractor">extractor functor that helps extracting names from inputs</param>
         /// <param name="metaDict">inputs/outputs metadata</param>
-        /// <param name="cleanupList">list to add pinned memory to for later disposal</param>
         /// <returns></returns>
         private static IntPtr[] LookupUtf8Names<T>(IReadOnlyCollection<T> values, NameExtractor<T> nameExtractor,
             MetadataLookup metaLookup)
@@ -883,7 +892,6 @@ namespace Microsoft.ML.OnnxRuntime
         /// </summary>
         /// <param name="values">a collection of NamedOnnxValues</param>
         /// <param name="metaLookup">Metadata lookup function (input/initializers/output)</param>
-        /// <param name="cleanupList">list to cleanup in an exception safe manner</param>
         /// <returns></returns>
         private static IntPtr[] GetOrtValuesHandles(IReadOnlyCollection<NamedOnnxValue> values, MetadataLookup metaLookup,
             OrtValueHandleExtractor ortValueExtractor, out DisposableArray<IDisposable> disposer)

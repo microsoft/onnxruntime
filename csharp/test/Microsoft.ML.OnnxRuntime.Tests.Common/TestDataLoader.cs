@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Text;
 using Xunit;
 using Xunit.Sdk;
@@ -108,39 +109,40 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             if (protoDt == TensorElementType.String)
                 return CreateNamedOnnxValueFromStringTensor(tensor.StringData, nodeName, intDims);
 
-            return CreateNamedOnnxValueFromTensorRawData(nodeName, tensor.RawData.ToArray(), metaElementType, intDims);
+            return CreateNamedOnnxValueFromTensorRawData(nodeName, tensor.RawData.Span, metaElementType, intDims);
         }
 
-        internal static NamedOnnxValue CreateNamedOnnxValueFromTensorRawData(string nodeName, byte[] rawData, TensorElementType elementType, int[] intDims)
+        internal static NamedOnnxValue CreateNamedOnnxValueFromTensorRawData(string nodeName, ReadOnlySpan<byte> rawData,
+            TensorElementType elementType, int[] intDims)
         {
             switch (elementType)
             {
                 case TensorElementType.Float:
-                    return CreateNamedOnnxValueFromRawData<float>(nodeName, rawData, sizeof(float), intDims);
+                    return CreateNamedOnnxValueFromRawData<float>(nodeName, rawData, intDims);
                 case TensorElementType.Double:
-                    return CreateNamedOnnxValueFromRawData<double>(nodeName, rawData, sizeof(double), intDims);
+                    return CreateNamedOnnxValueFromRawData<double>(nodeName, rawData, intDims);
                 case TensorElementType.Int32:
-                    return CreateNamedOnnxValueFromRawData<int>(nodeName, rawData, sizeof(int), intDims);
+                    return CreateNamedOnnxValueFromRawData<int>(nodeName, rawData, intDims);
                 case TensorElementType.UInt32:
-                    return CreateNamedOnnxValueFromRawData<uint>(nodeName, rawData, sizeof(uint), intDims);
+                    return CreateNamedOnnxValueFromRawData<uint>(nodeName, rawData, intDims);
                 case TensorElementType.Int16:
-                    return CreateNamedOnnxValueFromRawData<short>(nodeName, rawData, sizeof(short), intDims);
+                    return CreateNamedOnnxValueFromRawData<short>(nodeName, rawData, intDims);
                 case TensorElementType.UInt16:
-                    return CreateNamedOnnxValueFromRawData<ushort>(nodeName, rawData, sizeof(ushort), intDims);
+                    return CreateNamedOnnxValueFromRawData<ushort>(nodeName, rawData, intDims);
                 case TensorElementType.Int64:
-                    return CreateNamedOnnxValueFromRawData<long>(nodeName, rawData, sizeof(long), intDims);
+                    return CreateNamedOnnxValueFromRawData<long>(nodeName, rawData, intDims);
                 case TensorElementType.UInt64:
-                    return CreateNamedOnnxValueFromRawData<ulong>(nodeName, rawData, sizeof(ulong), intDims);
+                    return CreateNamedOnnxValueFromRawData<ulong>(nodeName, rawData, intDims);
                 case TensorElementType.UInt8:
-                    return CreateNamedOnnxValueFromRawData<byte>(nodeName, rawData, sizeof(byte), intDims);
+                    return CreateNamedOnnxValueFromRawData<byte>(nodeName, rawData, intDims);
                 case TensorElementType.Int8:
-                    return CreateNamedOnnxValueFromRawData<sbyte>(nodeName, rawData, sizeof(sbyte), intDims);
+                    return CreateNamedOnnxValueFromRawData<sbyte>(nodeName, rawData, intDims);
                 case TensorElementType.Bool:
-                    return CreateNamedOnnxValueFromRawData<bool>(nodeName, rawData, sizeof(bool), intDims);
+                    return CreateNamedOnnxValueFromRawData<bool>(nodeName, rawData, intDims);
                 case TensorElementType.Float16:
-                    return CreateNamedOnnxValueFromRawData<Float16>(nodeName, rawData, sizeof(ushort), intDims);
+                    return CreateNamedOnnxValueFromRawData<Float16>(nodeName, rawData, intDims);
                 case TensorElementType.BFloat16:
-                    return CreateNamedOnnxValueFromRawData<BFloat16>(nodeName, rawData, sizeof(ushort), intDims);
+                    return CreateNamedOnnxValueFromRawData<BFloat16>(nodeName, rawData, intDims);
                 case TensorElementType.String:
                     throw new ArgumentException("For string tensors of type use: CreateNamedOnnxValueFromStringTensor.");
                 default:
@@ -350,25 +352,12 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             }
         }
 
-        internal static NamedOnnxValue CreateNamedOnnxValueFromRawData<T>(string name, byte[] rawData, int elemWidth, int[] dimensions)
+        internal static NamedOnnxValue CreateNamedOnnxValueFromRawData<T>(string name, ReadOnlySpan<byte> rawData,
+            int[] dimensions) where T : struct
         {
-            T[] typedArr = new T[rawData.Length / elemWidth];
-            var typeOf = typeof(T);
-            if (typeOf == typeof(Float16) || typeOf == typeof(BFloat16))
-            {
-                using (var memSrcHandle = new Memory<byte>(rawData).Pin())
-                using (var memDstHandle = new Memory<T>(typedArr).Pin())
-                {
-                    unsafe
-                    {
-                        Buffer.MemoryCopy(memSrcHandle.Pointer, memDstHandle.Pointer, typedArr.Length * elemWidth, rawData.LongLength);
-                    }
-                }
-            }
-            else
-            {
-                Buffer.BlockCopy(rawData, 0, typedArr, 0, rawData.Length);
-            }
+            var typedSrcSpan = MemoryMarshal.Cast<byte, T>(rawData);
+            T[] typedArr = new T[typedSrcSpan.Length];
+            typedSrcSpan.CopyTo(typedArr);
             var dt = new DenseTensor<T>(typedArr, dimensions);
             return NamedOnnxValue.CreateFromTensor<T>(name, dt);
         }
@@ -410,7 +399,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             if (protoDt == TensorElementType.String)
                 return CreateOrtValueFromStringTensor(tensor.StringData, shape);
 
-            return CreateOrtValueFromRawData(OrtAllocator.DefaultInstance, tensor.RawData.ToArray(), metaElementType, shape);
+            return CreateOrtValueFromRawData(OrtAllocator.DefaultInstance, tensor.RawData.Span, metaElementType, shape);
         }
 
         internal static OrtValue CreateOrtValueFromSequence(Onnx.SequenceProto sequence, string nodeName, NodeMetadata nodeMeta)
@@ -507,7 +496,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             }
         }
 
-        internal static OrtValue CreateOrtValueFromRawData(OrtAllocator allocator, byte[] rawData, TensorElementType elementType, long[] shape)
+        internal static OrtValue CreateOrtValueFromRawData(OrtAllocator allocator, ReadOnlySpan<byte> rawData, TensorElementType elementType, long[] shape)
         {
             Debug.Assert(elementType != TensorElementType.String, "Does not support strings");
             var typeInfo = TensorBase.GetElementTypeInfo(elementType);
@@ -525,9 +514,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 // We simply copy raw memory into the tensor raw data.
                 var span = ortValue.GetTensorMutableRawData();
                 Assert.Equal(rawData.Length, span.Length);
-                var rawSpan = new Span<byte>(rawData);
-                rawSpan.CopyTo(span);
-                Assert.Equal(rawData, span.ToArray());
+                rawData.CopyTo(span);
                 return ortValue;
             }
             catch (Exception)
@@ -536,7 +523,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 throw;
             }
         }
- 
+
         internal static NamedOnnxValue CreateNamedOnnxValueFromStringTensor(IList<Google.Protobuf.ByteString> strings,
             string nodeName, int[] dimensions)
         {
