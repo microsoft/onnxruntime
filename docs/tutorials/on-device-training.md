@@ -101,7 +101,7 @@ To follow this tutorial, you should have a basic understanding of Android app de
    ]
     ```
 
-3. <a name="op-3"></a>Generate the training artifacts.
+3. <a name="op3"></a>Generate the training artifacts.
 
    We will use the `CrossEntropyLoss` loss and the `AdamW` optimizer for this tutorial. More details around artifact generation can be found [here](../../docs/api/python/on_device_training/training_artifacts.html).
 
