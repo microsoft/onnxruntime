@@ -26,6 +26,10 @@ jobs:
       value: $[format('{0:dd}{0:MM}{0:yyyy}', pipeline.startTime)]
 
   steps:
+  - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
+    displayName: 'Clean Agent Directories'
+    condition: always()
+
   - checkout: self
     clean: true
     submodules: recursive
@@ -260,3 +264,5 @@ jobs:
       workingDirectory: $(Build.SourcesDirectory)
     displayName: 'Umount dataset'
     condition: succeededOrFailed()
+
+  - template: templates/explicitly-defined-final-tasks.yml
