@@ -9,7 +9,7 @@
 #include "test/util/include/scoped_env_vars.h"
 #include "test/contrib_ops/attention_op_test_helper.h"
 
-#if defined(USE_ROCM) && defined(USE_COMPOSABLE_KERNEL)
+#if defined(USE_ROCM) && defined(USE_COMPOSABLE_KERNEL) && !defined(USE_MIGRAPHX)
 #define DISABLE_ROCM false
 #else
 #define DISABLE_ROCM true
@@ -19,12 +19,6 @@
 #define ROCM_GTEST_SKIP(message) GTEST_SKIP_(message)
 #else
 #define ROCM_GTEST_SKIP(message)
-#endif
-
-#if defined(USE_MIGRAPHX)
-#define MIGX_GTEST_SKIP(message) GTEST_SKIP_(message)
-#else
-#define MIGX_GTEST_SKIP(message)
 #endif
 
 namespace onnxruntime {
@@ -505,14 +499,12 @@ TEST(MultiHeadAttentionTest, CrossAttention_Batch1_HeadSize32_LeftSidePadding_Ma
 }
 
 TEST(MultiHeadAttentionTest, CrossAttention_Batch2_HeadSize32_NoBias_NoMask_PackedKV) {
-  MIGX_GTEST_SKIP("MIGX MHA does not support Packed KV");
   AttentionTestData data;
   GetCrossAttentionData_Batch2_HeadSize32_NoBias_NoMask_PackedKV(data);
   RunMultiHeadAttentionTests(data);
 }
 
 TEST(MultiHeadAttentionTest, SelfAttention_Batch2_HeadSize32_NoBias_NoMask_PackedQKV) {
-  MIGX_GTEST_SKIP("MIGX MHA does not support Packed QKV");
   AttentionTestData data;
   GetSelfAttentionData_Batch2_HeadSize32_NoBias_NoMask_PackedQKV(data);
   RunMultiHeadAttentionTests(data);
