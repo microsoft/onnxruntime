@@ -356,9 +356,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             int[] dimensions) where T : struct
         {
             var typedSrcSpan = MemoryMarshal.Cast<byte, T>(rawData);
-            T[] typedArr = new T[typedSrcSpan.Length];
-            typedSrcSpan.CopyTo(typedArr);
-            var dt = new DenseTensor<T>(typedArr, dimensions);
+            var dt = new DenseTensor<T>(typedSrcSpan.ToArray(), dimensions);
             return NamedOnnxValue.CreateFromTensor<T>(name, dt);
         }
 

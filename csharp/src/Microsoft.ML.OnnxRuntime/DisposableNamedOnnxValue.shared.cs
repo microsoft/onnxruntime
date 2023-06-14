@@ -215,11 +215,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// <returns></returns>
         private static DisposableNamedOnnxValue FromNativeTensor(string name, ref OrtValue ortValue)
         {
-            TensorElementType elemType;
-            using(var typeAndShape = ortValue.GetTensorTypeAndShape())
-            {
-                elemType = typeAndShape.ElementDataType;
-            }
+            TensorElementType elemType = ortValue.GetTensorTypeAndShape().ElementDataType;
 
             DisposableNamedOnnxValue result;
 

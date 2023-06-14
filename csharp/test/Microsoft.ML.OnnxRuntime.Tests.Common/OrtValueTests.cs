@@ -31,14 +31,14 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 Assert.True(strTensor.IsTensor);
                 Assert.False(strTensor.IsSparseTensor);
                 Assert.Equal(OnnxValueType.ONNX_TYPE_TENSOR, strTensor.OnnxType);
-                using (var typeShape = strTensor.GetTensorTypeAndShape())
+                var typeShape = strTensor.GetTensorTypeAndShape();
                 {
                     Assert.True(typeShape.IsString);
-                    Assert.Equal(shape.Length, typeShape.GetDimensionsCount());
-                    var fetchedShape = typeShape.GetShape();
+                    Assert.Equal(shape.Length, typeShape.DimensionsCount);
+                    var fetchedShape = typeShape.Shape;
                     Assert.Equal(shape.Length, fetchedShape.Length);
                     Assert.Equal(shape, fetchedShape);
-                    Assert.Equal(elementsNum, typeShape.GetElementCount());
+                    Assert.Equal(elementsNum, typeShape.ElementCount);
                 }
 
                 using (var memInfo = strTensor.GetTensorMemoryInfo())
@@ -94,13 +94,13 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 Assert.True(strTensor.IsTensor);
                 Assert.False(strTensor.IsSparseTensor);
                 Assert.Equal(OnnxValueType.ONNX_TYPE_TENSOR, strTensor.OnnxType);
-                using (var typeShape = strTensor.GetTensorTypeAndShape())
+                var typeShape = strTensor.GetTensorTypeAndShape();
                 {
                     Assert.True(typeShape.IsString);
-                    Assert.Equal(shape.Length, typeShape.GetDimensionsCount());
-                    var fetchedShape = typeShape.GetShape();
+                    Assert.Equal(shape.Length, typeShape.DimensionsCount);
+                    var fetchedShape = typeShape.Shape;
                     Assert.Equal(shape.Length, fetchedShape.Length);
-                    Assert.Equal(strs.Length, typeShape.GetElementCount());
+                    Assert.Equal(strs.Length, typeShape.ElementCount);
                 }
 
                 using (var memInfo = strTensor.GetTensorMemoryInfo())
@@ -133,17 +133,16 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             Assert.False(tensor.IsSparseTensor);
             Assert.Equal(OnnxValueType.ONNX_TYPE_TENSOR, tensor.OnnxType);
 
-            using (var typeInfo = tensor.GetTypeInfo())
+            var typeInfo = tensor.GetTypeInfo();
             {
                 Assert.Equal(OnnxValueType.ONNX_TYPE_TENSOR, typeInfo.OnnxType);
-                using (var typeShape = typeInfo.GetTensorTypeAndShapeInfo())
-                {
-                    Assert.Equal(shape.Length, typeShape.GetDimensionsCount());
-                    var fetchedShape = typeShape.GetShape();
-                    Assert.Equal(shape.Length, fetchedShape.Length);
-                    Assert.Equal(shape, fetchedShape);
-                    Assert.Equal(elementsNum, typeShape.GetElementCount());
-                }
+                var typeShape = typeInfo.TensorTypeAndShapeInfo;
+                Assert.Equal(shape.Length, typeShape.DimensionsCount);
+
+                var fetchedShape = typeShape.Shape;
+                Assert.Equal(shape.Length, fetchedShape.Length);
+                Assert.Equal(shape, fetchedShape);
+                Assert.Equal(elementsNum, typeShape.ElementCount);
             }
 
             using (var memInfo = tensor.GetTensorMemoryInfo())

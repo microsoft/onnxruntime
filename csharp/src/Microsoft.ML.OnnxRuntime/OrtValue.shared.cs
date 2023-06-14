@@ -40,7 +40,7 @@ namespace Microsoft.ML.OnnxRuntime
     public class OrtValue : IDisposable
     {
         private IntPtr _handle;
-        private MemoryHandle? _memHandle;
+        private MemoryHandle? _memHandle; // Present when the OrtValue is created on top of managed memory
         private bool _disposed;
 
         /// <summary>
@@ -286,7 +286,14 @@ namespace Microsoft.ML.OnnxRuntime
         public OrtTypeInfo GetTypeInfo()
         {
             NativeApiStatus.VerifySuccess(NativeMethods.OrtGetTypeInfo(Handle, out IntPtr typeInfo));
-            return new OrtTypeInfo(typeInfo);
+            try
+            {
+                return new OrtTypeInfo(typeInfo);
+            }
+            finally
+            {
+                NativeMethods.OrtReleaseTypeInfo(typeInfo);
+            }
         }
 
         /// <summary>
@@ -305,7 +312,14 @@ namespace Microsoft.ML.OnnxRuntime
             }
 
             NativeMethods.OrtGetTensorTypeAndShape(Handle, out IntPtr typeAndShapeInfo);
-            return new OrtTensorTypeAndShapeInfo(typeAndShapeInfo, true);
+            try
+            {
+                return new OrtTensorTypeAndShapeInfo(typeAndShapeInfo);
+            }
+            finally
+            {
+                NativeMethods.OrtReleaseTensorTypeAndShapeInfo(typeAndShapeInfo);
+            }
         }
 
         /// <summary>
@@ -383,11 +397,10 @@ namespace Microsoft.ML.OnnxRuntime
 
         private Span<byte> GetTensorBufferRawData(Type requestedType)
         {
-            var onnxType = OnnxType;
-            if (onnxType != OnnxValueType.ONNX_TYPE_TENSOR)
+            if (OnnxType != OnnxValueType.ONNX_TYPE_TENSOR)
             {
                 throw new OnnxRuntimeException(ErrorCode.InvalidArgument,
-                    $"This OrtValue type contains: {onnxType}, not a tensor");
+                    $"This OrtValue type contains: {OnnxType}, not a tensor");
             }
 
             GetTensorElementTypeAndCount(out long count, out TensorElementType elementType);

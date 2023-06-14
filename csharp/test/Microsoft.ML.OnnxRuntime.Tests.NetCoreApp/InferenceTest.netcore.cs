@@ -936,13 +936,11 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             Assert.True(result.IsTensor);
             Assert.True(expectedValue.IsTensor);
 
-            using (var resultTypeShape = result.GetTensorTypeAndShape())
-            using (var expectedTypeShape = expectedValue.GetTensorTypeAndShape())
-            {
-                Assert.Equal(expectedElementType, resultTypeShape.ElementDataType);
-                Assert.Equal(expectedElementType, expectedTypeShape.ElementDataType);
-                Assert.Equal(expectedTypeShape.GetShape(), resultTypeShape.GetShape());
-            }
+            var resultTypeShape = result.GetTensorTypeAndShape();
+            var expectedTypeShape = expectedValue.GetTensorTypeAndShape();
+            Assert.Equal(expectedElementType, resultTypeShape.ElementDataType);
+            Assert.Equal(expectedElementType, expectedTypeShape.ElementDataType);
+            Assert.Equal(expectedTypeShape.Shape, resultTypeShape.Shape);
 
             if (expectedElementType == TensorElementType.String)
             {
@@ -1012,16 +1010,12 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             {
                 var result = results[i];
 
-                TensorElementType resultElementType;
-                using (var resultTypeShape = result.GetTensorTypeAndShape())
-                {
-                    resultElementType = resultTypeShape.ElementDataType;
-                }
+                var resultTypeShape = result.GetTensorTypeAndShape();
 
                 var expectedValue = expectedValues[i];
                 Assert.Equal(OnnxValueType.ONNX_TYPE_TENSOR, expectedValue.ValueType);
 
-                switch (resultElementType)
+                switch (resultTypeShape.ElementDataType)
                 {
                     case TensorElementType.Float:
                         Assert.Equal(result.GetTensorDataAsSpan<float>().ToArray(), expectedValue.AsTensor<float>().ToArray(),
@@ -1070,7 +1064,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                         Assert.Equal(result.GetStringTensorAsArray(), expectedValue.AsTensor<string>().ToArray(), new ExactComparer<string>());
                         break;
                     default:
-                        Assert.True(false, "VerifyTensorResults cannot handle ElementType: " + resultElementType.ToString());
+                        Assert.True(false, $"VerifyTensorResults cannot handle ElementType: { resultTypeShape.ElementDataType}");
                         break;
                 }
             }

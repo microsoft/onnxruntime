@@ -34,7 +34,9 @@ namespace Microsoft.ML.OnnxRuntime
         /// _Ctor. Takes ownership of ortValue and sets it to null on success.
         /// </summary>
         /// <param name="ortValue">becomes null on success</param>
-        /// <param name="disposables">A collection of disposables that support composed types</param>
+        /// <param name="disposables">A collection of disposables that support composed types.
+        /// We stick them here and dispose them when this instance is disposed.
+        /// </param>
         internal NativeOrtValueCollectionOwner(ref OrtValue ortValue, DisposableList<T> disposables)
         {
             _ortValue = ortValue;
@@ -107,7 +109,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// <param name="ortValue">ortValue that is a Tensor. It becomes null on successful return.</param>
         public OrtValueTensor(ref OrtValue ortValue)
         {
-            using(var typeAndShapeInfo = ortValue.GetTensorTypeAndShape())
+            var typeAndShapeInfo = ortValue.GetTensorTypeAndShape();
             {
                 TensorElementType elemType = typeAndShapeInfo.ElementDataType;
 
@@ -122,10 +124,9 @@ namespace Microsoft.ML.OnnxRuntime
 
                 ElementType = elemType;
                 ElementWidth = typeInfo.TypeSize;
-                Count = (int)typeAndShapeInfo.GetElementCount();
+                Count = (int)typeAndShapeInfo.ElementCount;
 
-                var shape = typeAndShapeInfo.GetShape();
-                Dimensions = Array.ConvertAll(shape, x => (int)x);
+                Dimensions = Array.ConvertAll(typeAndShapeInfo.Shape, x => (int)x);
 
                 if (!typeAndShapeInfo.IsString)
                 {

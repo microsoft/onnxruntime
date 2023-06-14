@@ -4,151 +4,185 @@
 
 using Microsoft.ML.OnnxRuntime.Tensors;
 using System;
-using System.Runtime.InteropServices;
 
 namespace Microsoft.ML.OnnxRuntime
 {
     /// <summary>
     /// This class retrieves Type Information for input/outputs of the model.
     /// </summary>
-    public class OrtTypeInfo : SafeHandle
+    public class OrtTypeInfo
     {
-        internal OrtTypeInfo(IntPtr handle) : base(handle, true)
-        {
-        }
+        private OrtTensorTypeAndShapeInfo? _tensorTypeAndShape;
+        private OrtSequenceOrOptionalTypeInfo? _sequenceOrOptional;
+        private OrtMapTypeInfo? _mapTypeInfo;
 
-        internal IntPtr Handle { get { return handle; } }
+        internal OrtTypeInfo(IntPtr handle)
+        {
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtGetOnnxTypeFromTypeInfo(handle, out IntPtr onnxType));
+            OnnxType = (OnnxValueType)onnxType;
+
+            switch (OnnxType)
+            {
+                case OnnxValueType.ONNX_TYPE_TENSOR:
+                case OnnxValueType.ONNX_TYPE_SPARSETENSOR:
+                    {
+                        NativeApiStatus.VerifySuccess(NativeMethods.OrtCastTypeInfoToTensorInfo(handle, out IntPtr tensorInfo));
+                        if (tensorInfo == IntPtr.Zero)
+                            throw new OnnxRuntimeException(ErrorCode.Fail,
+                                "Type Information indicates a tensor, but casting to TensorInfo fails");
+                        _tensorTypeAndShape = new OrtTensorTypeAndShapeInfo(tensorInfo);
+                    }
+                    break;
+                case OnnxValueType.ONNX_TYPE_SEQUENCE:
+                    {
+                        NativeApiStatus.VerifySuccess(NativeMethods.OrtCastTypeInfoToSequenceTypeInfo(handle, out IntPtr sequenceInfo));
+                        if (sequenceInfo == IntPtr.Zero)
+                        {
+                            throw new OnnxRuntimeException(ErrorCode.InvalidArgument,
+                                                   "TypeInfo cast to SequenceTypeInfo failed. The object does not represent a sequence");
+                        }
+                        _sequenceOrOptional = new OrtSequenceOrOptionalTypeInfo(sequenceInfo);
+                    }
+                    break;
+                case OnnxValueType.ONNX_TYPE_MAP:
+                    {
+                        NativeApiStatus.VerifySuccess(NativeMethods.OrtCastTypeInfoToMapTypeInfo(handle, out IntPtr mapInfo));
+                        if (mapInfo == IntPtr.Zero)
+                        {
+                            throw new OnnxRuntimeException(ErrorCode.InvalidArgument,
+                                                           "TypeInfo cast to MapTypeInfo failed. The object does not represent a map");
+                        }
+                        _mapTypeInfo = new OrtMapTypeInfo(mapInfo);
+                    }
+                    break;
+                case OnnxValueType.ONNX_TYPE_OPTIONAL:
+                    {
+                        NativeApiStatus.VerifySuccess(NativeMethods.OrtCastTypeInfoToOptionalTypeInfo(handle, out IntPtr optionalInfo));
+                        if (optionalInfo == IntPtr.Zero)
+                        {
+                            throw new OnnxRuntimeException(ErrorCode.InvalidArgument,
+                                                           "TypeInfo cast to OptionalTypeInfo failed. The object does not represent a optional");
+                        }
+                        _sequenceOrOptional = new OrtSequenceOrOptionalTypeInfo(optionalInfo);
+                    }
+                    break;
+                default:
+                    throw new OnnxRuntimeException(ErrorCode.NotImplemented, $"OnnxValueType: {OnnxType} is not supported here");
+            }
+        }
 
         /// <summary>
         /// Represents OnnxValueType of the OrtTypeInfo
         /// </summary>
         /// <value>OnnxValueType</value>
-        public OnnxValueType OnnxType
-        {
-            get
-            {
-                NativeApiStatus.VerifySuccess(NativeMethods.OrtGetOnnxTypeFromTypeInfo(handle, out IntPtr type));
-                return (OnnxValueType)type;
-            }
-        }
+        public OnnxValueType OnnxType { get; private set; }
 
         /// <summary>
-        /// This method returns the tensor type and shape information from the OrtTypeInfo
+        /// This property returns the tensor type and shape information from the OrtTypeInfo
         /// iff this OrtTypeInfo represents a tensor.
         /// </summary>
         /// <exception cref="OnnxRuntimeException"></exception>
-        /// <returns>Instance of OrtTensorTypeAndShapeInfo</returns>
-        public OrtTensorTypeAndShapeInfo GetTensorTypeAndShapeInfo()
+        /// <value>Instance of OrtTensorTypeAndShapeInfo</value>
+        public OrtTensorTypeAndShapeInfo TensorTypeAndShapeInfo
         {
-            // The method below never fails, but returns null as if the cast has failed.
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtCastTypeInfoToTensorInfo(handle, out IntPtr tensorInfo));
-            if (tensorInfo == IntPtr.Zero)
+            get
             {
-                throw new OnnxRuntimeException(ErrorCode.InvalidArgument,
-                    "TypeInfo cast to TensorTypeInfo failed. The object does not represent a tensor");
+                if (OnnxType != OnnxValueType.ONNX_TYPE_TENSOR &&
+                    OnnxType != OnnxValueType.ONNX_TYPE_SPARSETENSOR)
+                {
+                    throw new OnnxRuntimeException(ErrorCode.InvalidArgument, "TypeInfo does not represent a tensor/sparsetensor");
+                }
+                return _tensorTypeAndShape.Value;
             }
-            return new OrtTensorTypeAndShapeInfo(tensorInfo, false);
         }
 
         /// <summary>
-        /// Fetches sequence type information from the OrtTypeInfo.
+        /// Sequence type information from the OrtTypeInfo iff this OrtTypeInfo represents a sequence.
         /// </summary>
         /// <returns>Instance of OrtSequenceTypeInfo</returns>
         /// <exception cref="OnnxRuntimeException"></exception>
-        public OrtSequenceTypeInfo GetSequenceTypeInfo()
+        public OrtSequenceOrOptionalTypeInfo SequenceTypeInfo
         {
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtCastTypeInfoToSequenceTypeInfo(handle, out IntPtr sequenceInfo));
-            if (sequenceInfo == IntPtr.Zero)
+            get
             {
-                throw new OnnxRuntimeException(ErrorCode.InvalidArgument,
-                                       "TypeInfo cast to SequenceTypeInfo failed. The object does not represent a sequence");
+                if (OnnxType != OnnxValueType.ONNX_TYPE_SEQUENCE)
+                {
+                    throw new OnnxRuntimeException(ErrorCode.InvalidArgument, "TypeInfo does not represent a sequence");
+                }
+                return _sequenceOrOptional.Value;
             }
-            return new OrtSequenceTypeInfo(sequenceInfo);
         }
 
         /// <summary>
-        /// Fetches MapTypeInfo from the OrtTypeInfo.
+        /// Represents MapTypeInfo from the OrtTypeInfo iff this OrtTypeInfo represents a map.
         /// </summary>
-        /// <returns>Instance of MapTypeInfo</returns>
+        /// <value>Instance of MapTypeInfo</value>
         /// <exception cref="OnnxRuntimeException"></exception>
-        public OrtMapTypeInfo GetMapTypeInfo()
+        public OrtMapTypeInfo MapTypeInfo
         {
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtCastTypeInfoToMapTypeInfo(handle, out IntPtr mapInfo));
-            if (mapInfo == IntPtr.Zero)
+            get
             {
-                throw new OnnxRuntimeException(ErrorCode.InvalidArgument,
-                                               "TypeInfo cast to MapTypeInfo failed. The object does not represent a map");
+                if (OnnxType != OnnxValueType.ONNX_TYPE_MAP)
+                {
+                    throw new OnnxRuntimeException(ErrorCode.InvalidArgument, "TypeInfo does not represent a map");
+                }
+                return _mapTypeInfo.Value;
             }
-            return new OrtMapTypeInfo(mapInfo);
         }
 
-
         /// <summary>
-        /// Fetches OptionalTypeInfo from the OrtTypeInfo.
+        /// Fetches OptionalTypeInfo from the OrtTypeInfo iff this OrtTypeInfo represents a optional type.
         /// </summary>
         /// <returns>Instance of OptionalTypeInfo</returns>
         /// <exception cref="OnnxRuntimeException"></exception>
-        public OrtOptionalTypeInfo GetOptionalTypeInfo()
+        public OrtSequenceOrOptionalTypeInfo OptionalTypeInfo
         {
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtCastTypeInfoToOptionalTypeInfo(handle, out IntPtr optionalInfo));
-            if (optionalInfo == IntPtr.Zero)
+            get
             {
-                throw new OnnxRuntimeException(ErrorCode.InvalidArgument,
-                                               "TypeInfo cast to OptionalTypeInfo failed. The object does not represent a optional");
+                if (OnnxType != OnnxValueType.ONNX_TYPE_OPTIONAL)
+                {
+                    throw new OnnxRuntimeException(ErrorCode.InvalidArgument, "TypeInfo does not represent a optional");
+                }
+                return _sequenceOrOptional.Value;
             }
-            return new OrtOptionalTypeInfo(optionalInfo);
         }
-
-        #region SafeHandle
-        /// <summary>
-        /// Overrides SafeHandle.IsInvalid
-        /// </summary>
-        /// <value>returns true if handle is equal to Zero</value>
-        public override bool IsInvalid { get { return handle == IntPtr.Zero; } }
-
-        /// <summary>
-        /// Overrides SafeHandle.ReleaseHandle() to properly dispose of
-        /// the native instance of OrtValue
-        /// </summary>
-        /// <returns>always returns true</returns>
-        protected override bool ReleaseHandle()
-        {
-            NativeMethods.OrtReleaseTypeInfo(handle);
-            handle = IntPtr.Zero;
-            return true;
-        }
-        #endregion
     }
 
     /// <summary>
-    /// This class represents type and shape information for a tensor.
+    /// This struct represents type and shape information for a tensor.
     /// It may describe a tensor type that is a model input or output or
     /// an information that can be extracted from a tensor in OrtValue.
     /// 
     /// </summary>
-    public class OrtTensorTypeAndShapeInfo : SafeHandle
+    public struct OrtTensorTypeAndShapeInfo
     {
-        private readonly bool _owned;
-
-        internal OrtTensorTypeAndShapeInfo(IntPtr handle, bool owned) : base(handle, true)
+        internal OrtTensorTypeAndShapeInfo(IntPtr handle)
         {
-            _owned = owned;
-        }
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtGetTensorElementType(handle, out IntPtr elementType));
+            ElementDataType = (TensorElementType)elementType;
 
-        internal IntPtr Handle { get { return handle; } }
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtGetTensorShapeElementCount(handle, out UIntPtr count));
+            ElementCount = (long)count;
+
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtGetDimensionsCount(handle, out UIntPtr dimCount));
+            Shape = new long[(uint)dimCount];
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtGetDimensions(handle, Shape, dimCount));
+
+            IntPtr[] dimPtrs = new IntPtr[(uint)dimCount];
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtGetSymbolicDimensions(handle, dimPtrs, dimCount));
+
+            SymbolicDimensions = new string[(uint)dimCount];
+            for (int i = 0; i < dimPtrs.Length; ++i)
+            {
+                SymbolicDimensions[i] = NativeOnnxValueHelper.StringFromNativeUtf8(dimPtrs[i]);
+            }
+        }
 
         /// <summary>
         /// Fetches tensor element data type
         /// </summary>
         /// <value>enum value for the data type</value>
-        public TensorElementType ElementDataType
-        {
-            get
-            {
-                NativeApiStatus.VerifySuccess(NativeMethods.OrtGetTensorElementType(Handle, out IntPtr type));
-                return (TensorElementType)type;
-            }
-        }
+        public TensorElementType ElementDataType { get; private set; }
 
         /// <summary>
         /// Returns true if this data element is a string
@@ -165,178 +199,87 @@ namespace Microsoft.ML.OnnxRuntime
         /// Fetches tensor element count based on the shape information.
         /// </summary>
         /// <returns>number of typed tensor elements</returns>
-        public long GetElementCount()
-        {
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtGetTensorShapeElementCount(Handle, out UIntPtr count));
-            return (long)count;
-        }
+        public long ElementCount { get; private set; }
 
         /// <summary>
         /// Fetches shape dimension count (rank) for the tensor.
         /// </summary>
         /// <returns>dim count</returns>
-        public int GetDimensionsCount()
-        {
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtGetDimensionsCount(Handle, out UIntPtr count));
-            return (int)count;
-        }
+        public int DimensionsCount { get { return Shape.Length; } }
 
         /// <summary>
-        /// Fetches tensor symbolic dimensions. Use GetShape to fetch integer dimensions.
-        /// The size of the vector returned is equal to the value returned by GetDimensionsCount.
+        /// Tensor symbolic dimensions. Shape to fetch integer dimensions.
         /// Positions that do not have symbolic dimensions will have empty strings.
         /// </summary>
-        /// <returns>string[]</returns>
-        public string[] GetSymbolicDimensions()
-        {
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtGetDimensionsCount(Handle, out UIntPtr dimCount));
-            IntPtr[] dimPtrs = new IntPtr[dimCount.ToUInt32()];
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtGetSymbolicDimensions(Handle, dimPtrs, dimCount));
-            var symbolicDims = new string[dimCount.ToUInt32()];
-            for (int i = 0; i < dimPtrs.Length; ++i)
-            {
-                symbolicDims[i] = NativeOnnxValueHelper.StringFromNativeUtf8(dimPtrs[i]);
-            }
-            return symbolicDims;
-        }
-
+        /// <value>string[]</value>
+        public string[] SymbolicDimensions { get; private set; }
 
         /// <summary>
-        /// Fetches tensor integer dimensions. Symbolic dimensions are represented as -1.
-        /// Use GetSymbolicDimensions to fetch symbolic dimensions.
+        /// Tensor integer dimensions. Symbolic dimensions are represented as -1.
+        /// Use SymbolicDimensions to obtain symbolic dimensions.
         /// </summary>
-        /// <returns>array of dims</returns>
-        public long[] GetShape()
-        {
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtGetDimensionsCount(Handle, out UIntPtr dimCount));
-            long[] shape = new long[dimCount.ToUInt32()];
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtGetDimensions(Handle, shape, dimCount));
-            return shape;
-        }
-
-        #region SafeHandle
-        /// <summary>
-        /// Overrides SafeHandle.IsInvalid
-        /// </summary>
-        /// <value>returns true if handle is equal to Zero</value>
-        public override bool IsInvalid { get { return handle == IntPtr.Zero; } }
-
-        /// <summary>
-        /// Overrides SafeHandle.ReleaseHandle() to properly dispose of
-        /// the native instance of OrtValue
-        /// </summary>
-        /// <returns>always returns true</returns>
-        protected override bool ReleaseHandle()
-        {
-            // We have to surrender ownership to some legacy classes
-            // Or we never had that ownership to begin with
-            if (_owned)
-            {
-                NativeMethods.OrtReleaseTensorTypeAndShapeInfo(Handle);
-            }
-            handle = IntPtr.Zero;
-            return true;
-        }
-        #endregion
+        /// <value>array of dims</value>
+        public long[] Shape { get; private set; }
     }
 
     /// <summary>
-    /// Represents Sequence type information. This class never owns
-    /// the handle, it is owned by OrtTypeInfo instance, that must be alive
-    /// at the time of this instance's use.
+    /// Represents Sequence type information.
     /// </summary>
-    public class OrtSequenceTypeInfo
+    public struct OrtSequenceOrOptionalTypeInfo
     {
-        internal OrtSequenceTypeInfo(IntPtr handle)
+        internal OrtSequenceOrOptionalTypeInfo(IntPtr handle)
         {
-            Handle = handle;
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtGetSequenceElementType(handle, out IntPtr typeInfo));
+            try
+            {
+                ElementType = new OrtTypeInfo(typeInfo);
+            }
+            finally
+            {
+                NativeMethods.OrtReleaseTypeInfo(typeInfo);
+            }
         }
-
-        internal IntPtr Handle { get; }
 
         /// <summary>
         /// Returns type information for the element type of the sequence
         /// </summary>
         /// <value>OrtTypeInfo</value>
-        public OrtTypeInfo ElementType
-        {
-            get
-            {
-                NativeApiStatus.VerifySuccess(NativeMethods.OrtGetSequenceElementType(Handle, out IntPtr typeInfo));
-                return new OrtTypeInfo(typeInfo);
-            }
-        }
+        public OrtTypeInfo ElementType { get; private set; }
     }
 
     /// <summary>
-    /// Represents Optional Type information. This class never owns
-    /// the native handle. It is owned by the OrtTypeInfo instance, that must be alive
-    /// at the time of this instance use
-    /// </summary>
-    public class OrtOptionalTypeInfo
-    {
-        internal OrtOptionalTypeInfo(IntPtr handle)
-        {
-            Handle = handle;
-        }
-
-        internal IntPtr Handle { get; }
-
-        /// <summary>
-        /// Returns type information for the element type of the sequence
-        /// </summary>
-        /// <value>OrtTypeInfo</value>
-        public OrtTypeInfo ElementType
-        {
-            get
-            {
-                NativeApiStatus.VerifySuccess(NativeMethods.OrtGetOptionalContainedTypeInfo(Handle, out IntPtr typeInfo));
-                return new OrtTypeInfo(typeInfo);
-            }
-        }
-    }
-
-    /// <summary>
-    /// Represents Map input/output information. This class never owns
-    /// the handle, it is owned by OrtTypeInfo instance, that must be alive
-    /// at the time of this instance's use.
+    /// Represents Map input/output information.
     /// 
     /// Maps are represented at run time by a tensor of primitive types
     /// and values are represented either by Tensor/Sequence/Optional or another map.
     /// </summary>
-    public class OrtMapTypeInfo
+    public struct OrtMapTypeInfo
     {
         internal OrtMapTypeInfo(IntPtr handle)
         {
-            Handle = handle;
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtGetMapKeyType(handle, out IntPtr tensorElementType));
+            KeyType = (TensorElementType)tensorElementType;
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtGetMapValueType(handle, out IntPtr typeInfo));
+            try
+            {
+                ValueType = new OrtTypeInfo(typeInfo);
+            }
+            finally
+            {
+                NativeMethods.OrtReleaseTypeInfo(typeInfo);
+            }
         }
-
-        internal IntPtr Handle { get; }
 
         /// <summary>
         /// Returns KeyType which is the data type of the keys tensor
         /// </summary>
         /// <value>OrtTypeInfo</value>
-        public TensorElementType KeyType
-        {
-            get
-            {
-                NativeApiStatus.VerifySuccess(NativeMethods.OrtGetMapKeyType(Handle, out IntPtr tensorElementType));
-                return (TensorElementType)tensorElementType;
-            }
-        }
+        public TensorElementType KeyType { get; private set; }
 
         /// <summary>
         /// Returns an instance of OrtTypeInfo describing the value type for the map
         /// </summary>
         /// <value>OrtTypeInfo</value>
-        public OrtTypeInfo ValueType
-        {
-            get
-            {
-                NativeApiStatus.VerifySuccess(NativeMethods.OrtGetMapValueType(Handle, out IntPtr typeInfo));
-                return new OrtTypeInfo(typeInfo);
-            }
-        }
+        public OrtTypeInfo ValueType { get; private set; }
     }
 }

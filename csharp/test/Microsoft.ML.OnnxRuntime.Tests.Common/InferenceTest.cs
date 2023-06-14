@@ -626,15 +626,10 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         {
             Assert.True(resultTensor.IsTensor);
 
+            var typeShape = resultTensor.GetTensorTypeAndShape();
+            Assert.Equal(TensorElementType.Float, typeShape.ElementDataType);
 
-            long[] resultShape;
-            using (var typeShape = resultTensor.GetTensorTypeAndShape())
-            {
-                Assert.Equal(TensorElementType.Float, typeShape.ElementDataType);
-                resultShape = typeShape.GetShape();
-            }
-
-            Assert.Equal(resultShape, expectedShape);
+            Assert.Equal(typeShape.Shape, expectedShape);
             var resultSpan = resultTensor.GetTensorDataAsSpan<float>().ToArray();
             var expectedSpan = expectedOutput.ToArray();
             Assert.Equal(expectedSpan, resultSpan, new FloatComparer());

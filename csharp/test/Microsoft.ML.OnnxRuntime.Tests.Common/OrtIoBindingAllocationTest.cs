@@ -195,10 +195,8 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                     var res = results.First();
                     Assert.True(res.IsTensor);
 
-                    using (var typeAndShape = res.GetTensorTypeAndShape())
-                    {
-                        Assert.Equal(_outputData.LongLength, typeAndShape.GetElementCount());
-                    }
+                    var typeAndShape = res.GetTensorTypeAndShape();
+                    Assert.Equal(_outputData.LongLength, typeAndShape.ElementCount);
 
                     var dataSpan = res.GetTensorDataAsSpan<float>();
                     Assert.Equal(_outputData, dataSpan.ToArray(), new FloatComparer());
@@ -240,10 +238,8 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                     var res = results.First();
                     Assert.True(res.IsTensor);
 
-                    using (var typeAndShape = res.GetTensorTypeAndShape())
-                    {
-                        Assert.Equal(_outputData.LongLength, typeAndShape.GetElementCount());
-                    }
+                    var typeAndShape = res.GetTensorTypeAndShape();
+                    Assert.Equal(_outputData.LongLength, typeAndShape.ElementCount);
 
                     var dataSpan = res.GetTensorDataAsSpan<float>();
                     Assert.Equal(_outputData, dataSpan.ToArray(), new FloatComparer());
@@ -274,10 +270,8 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                     var res = outputs.First();
                     Assert.True(res.IsTensor);
 
-                    using (var typeAndShape = res.GetTensorTypeAndShape())
-                    {
-                        Assert.Equal(_outputData.LongLength, typeAndShape.GetElementCount());
-                    }
+                    var typeAndShape = res.GetTensorTypeAndShape();
+                    Assert.Equal(_outputData.LongLength, typeAndShape.ElementCount);
 
                     var dataSpan = res.GetTensorDataAsSpan<float>();
                     Assert.Equal(_outputData, dataSpan.ToArray(), new FloatComparer());
@@ -361,12 +355,10 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                     var res = results.First();
                     Assert.True(res.IsTensor);
 
-                    using (var typeShape = res.GetTensorTypeAndShape())
-                    {
-                        Assert.Equal(TensorElementType.Float, typeShape.ElementDataType);
-                        Assert.Equal(inputOutputShape, typeShape.GetShape());
-                        Assert.Equal(inputOutputShapeSize, typeShape.GetElementCount());
-                    }
+                    var typeShape = res.GetTensorTypeAndShape();
+                    Assert.Equal(TensorElementType.Float, typeShape.ElementDataType);
+                    Assert.Equal(inputOutputShape, typeShape.Shape);
+                    Assert.Equal(inputOutputShapeSize, typeShape.ElementCount);
 
                     // First time around the output should match the expected
                     Assert.Equal(firstIterExpectedOutput, res.GetTensorDataAsSpan<float>().ToArray());
@@ -386,12 +378,10 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                         Assert.Single(results); // One output
                         var res = results.First();
                         Assert.True(res.IsTensor);
-                        using (var typeShape = res.GetTensorTypeAndShape())
-                        {
-                            Assert.Equal(TensorElementType.Float, typeShape.ElementDataType);
-                            Assert.Equal(inputOutputShapeSize, typeShape.GetElementCount());
-                            Assert.Equal(inputOutputShape, typeShape.GetShape());
-                        }
+                        var typeShape = res.GetTensorTypeAndShape();
+                        Assert.Equal(TensorElementType.Float, typeShape.ElementDataType);
+                        Assert.Equal(inputOutputShapeSize, typeShape.ElementCount);
+                        Assert.Equal(inputOutputShape, typeShape.Shape);
 
                         ioBinding.BindInput(inputName, res);
                     }
