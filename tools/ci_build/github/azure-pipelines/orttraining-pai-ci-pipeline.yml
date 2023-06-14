@@ -265,4 +265,11 @@ jobs:
     displayName: 'Umount dataset'
     condition: always()
 
-  - template: templates/explicitly-defined-final-tasks.yml
+  - template: templates/component-governance-component-detection-steps.yml
+    parameters :
+      condition : 'succeeded'
+
+  - script: docker image prune -f
+    displayName: Clean docker images
+    condition: eq(variables['Agent.OS'], 'Linux')
+    continueOnError: true
