@@ -1996,13 +1996,14 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
 
     // Name the engine cache based on GPU compute capacity to prevent user from loading an incompatible cache
     cudaDeviceProp prop;
+    std::string compute_capability = "";
     CUDA_CALL_THROW(cudaGetDeviceProperties(&prop, device_id_));
-    std::string compute_capability = "_sm" + std::to_string(prop.major) + std::to_string(prop.minor);
+    compute_capability = GetComputeCapacity(prop);
 
     if (!has_dynamic_shape) {
       const std::string cache_path = GetCachePath(cache_path_, trt_node_name_with_precision);
-      const std::string engine_cache_path = cache_path + compute_capability + ".engine";
-      const std::string profile_cache_path = cache_path + compute_capability + ".profile";
+      const std::string engine_cache_path = cache_path + "_sm" + compute_capability + ".engine";
+      const std::string profile_cache_path = cache_path + "_sm" + compute_capability + ".profile";
       std::string timing_cache_path = "";
       bool engine_update = false;
       if (timing_cache_enable_) {
@@ -2236,6 +2237,12 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
       void* cuda_stream;
       Ort::ThrowOnError(api->KernelContext_GetGPUComputeStream(context, &cuda_stream));
       cudaStream_t stream = static_cast<cudaStream_t>(cuda_stream);
+
+      // Name the engine cache based on GPU compute capacity to prevent user from loading an incompatible cache
+      cudaDeviceProp prop;
+      std::string compute_capability = "";
+      CUDA_CALL_THROW(cudaGetDeviceProperties(&prop, device_id_));
+      compute_capability = GetComputeCapacity(prop);
 
       // Load serialized engine
       const std::string cache_path = GetCachePath(trt_state->engine_cache_path, trt_state->trt_node_name_with_precision);
