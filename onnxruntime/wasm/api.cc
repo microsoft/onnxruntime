@@ -143,8 +143,7 @@ OrtSessionOptions* OrtCreateSessionOptions(size_t graph_optimization_level,
   RETURN_NULLPTR_IF_ERROR(EnableOrtCustomOps, session_options);
 #endif
 
-  UNREGISTER_AUTO_RELEASE(session_options);
-  return session_options;
+  return UNREGISTER_AUTO_RELEASE(session_options);
 }
 
 int OrtAppendExecutionProvider(ort_session_options_handle_t session_options, const char* name) {
@@ -232,8 +231,7 @@ OrtValue* OrtCreateTensor(int data_type, void* data, size_t data_length, size_t*
     const char* const* strings = reinterpret_cast<const char* const*>(data);
     RETURN_NULLPTR_IF_ERROR(FillStringTensor, value, strings, data_length / sizeof(const char*));
 
-    UNREGISTER_AUTO_RELEASE(value);
-    return value;
+    return UNREGISTER_AUTO_RELEASE(value);
   } else {
     OrtMemoryInfo* memoryInfo = nullptr;
     RETURN_NULLPTR_IF_ERROR(CreateCpuMemoryInfo, OrtDeviceAllocator, OrtMemTypeDefault, &memoryInfo);
@@ -315,18 +313,16 @@ int OrtGetTensorData(OrtValue* tensor, int* data_type, void** data, size_t** dim
     // put null at the last char
     reinterpret_cast<char*>(p_string_data)[buf_size] = '\0';
 
-    UNREGISTER_AUTO_RELEASE(p_string_data);
-    *data = p_string_data;
+    *data = UNREGISTER_AUTO_RELEASE(p_string_data);
   } else {
     void* p_tensor_raw_data = nullptr;
     RETURN_ERROR_CODE_IF_ERROR(GetTensorMutableData, tensor, &p_tensor_raw_data);
     *data = p_tensor_raw_data;
   }
 
-  UNREGISTER_AUTO_RELEASE(p_dims);
   *data_type = static_cast<int>(type);
   *dims_length = dims_len;
-  *dims = p_dims;
+  *dims = UNREGISTER_AUTO_RELEASE(p_dims);
   return ORT_OK;
 }
 
@@ -357,8 +353,7 @@ OrtRunOptions* OrtCreateRunOptions(size_t log_severity_level,
     RETURN_NULLPTR_IF_ERROR(RunOptionsSetRunTag, run_options, tag);
   }
 
-  UNREGISTER_AUTO_RELEASE(run_options);
-  return run_options;
+  return UNREGISTER_AUTO_RELEASE(run_options);
 }
 
 int OrtAddRunConfigEntry(OrtRunOptions* run_options,
