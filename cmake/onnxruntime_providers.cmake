@@ -505,7 +505,7 @@ if (onnxruntime_USE_CUDA)
     target_link_libraries(${target} PRIVATE cublasLt cublas cudnn curand cufft ${ABSEIL_LIBS} ${ONNXRUNTIME_PROVIDERS_SHARED} Boost::mp11 safeint_interface)
     if(onnxruntime_CUDNN_HOME)
       target_include_directories(${target} PRIVATE ${onnxruntime_CUDNN_HOME}/include)
-      target_link_directories(onnxruntime_providers_cuda PRIVATE ${onnxruntime_CUDNN_HOME}/lib)
+      target_link_directories(${target} PRIVATE ${onnxruntime_CUDNN_HOME}/lib)
     endif()
 
     if (onnxruntime_USE_TRITON_KERNEL)
@@ -532,7 +532,7 @@ if (onnxruntime_USE_CUDA)
 
     if (onnxruntime_ENABLE_CUDA_PROFILING) # configure cupti for cuda profiling
       target_include_directories(${target} PRIVATE ${onnxruntime_CUDA_HOME}/extras/CUPTI/include)
-      target_link_directories(onnxruntime_providers_cuda PRIVATE ${onnxruntime_CUDA_HOME}/extras/CUPTI/lib64)
+      target_link_directories(${target} PRIVATE ${onnxruntime_CUDA_HOME}/extras/CUPTI/lib64)
       target_link_libraries(${target} PRIVATE cupti)
     endif()
 
@@ -556,7 +556,7 @@ if (onnxruntime_USE_CUDA)
     if (WIN32)
       # *.cu cannot use PCH
       if (NOT onnxruntime_BUILD_CACHE)
-        target_precompile_headers(onnxruntime_providers_cuda PUBLIC
+        target_precompile_headers(${target} PUBLIC
           "${ONNXRUNTIME_ROOT}/core/providers/cuda/cuda_pch.h"
           "${ONNXRUNTIME_ROOT}/core/providers/cuda/cuda_pch.cc"
         )
@@ -584,7 +584,7 @@ if (onnxruntime_USE_CUDA)
     elseif(WIN32)
       set_property(TARGET ${target} APPEND_STRING PROPERTY LINK_FLAGS "-DEF:${ONNXRUNTIME_ROOT}/core/providers/cuda/symbols.def")
     else()
-      message(FATAL_ERROR "onnxruntime_providers_cuda unknown platform, need to specify shared library exports for it")
+      message(FATAL_ERROR "${target} unknown platform, need to specify shared library exports for it")
     endif()
 
     if (onnxruntime_ENABLE_ATEN)
