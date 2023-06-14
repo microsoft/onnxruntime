@@ -186,7 +186,7 @@ NodeArg* InsertNodesForOutput(Graph& graph,
   auto input_shape = node.InputDefs()[in_index]->Shape();
   for (int k = 2; k < input_shape->dim_size(); k++) {
     // When executing, Shape of node here has been flattened, so the indices should be k-1.
-    other_indices.push_back(k - 1);
+    other_indices.push_back(int64_t(k) - 1);
   }
 
   // Construct the unflattened_shape_arg of [batch_size, seqlen, ...]
