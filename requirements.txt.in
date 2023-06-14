@@ -4,4 +4,3 @@ numpy >= @Python_NumPy_VERSION@
 packaging
 protobuf
 sympy
-neural-compressor

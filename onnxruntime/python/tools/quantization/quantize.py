@@ -383,21 +383,33 @@ def quantize_static(
     }
 
     if extra_options.get("SmoothQuant", False):
+        import importlib
+
+        try:
+            importlib.import_module("neural_compressor.adaptor.ox_utils.smooth_quant")
+        except Exception as e:
+            logger.error("{}.".format(e))
+            raise RuntimeError("neural-compressor is not correctly installed. Please check your environment.")
+
         import copy
 
+        from .quant_utils import save_and_reload_model
         from neural_compressor.adaptor.ox_utils.smooth_quant import ORTSmoothQuant
 
-        def dataloader():
-            inc_dataloader = copy.deepcopy(calibration_data_reader)
-            for data in inc_dataloader:
+        def inc_dataloader():
+            data_reader = copy.deepcopy(calibration_data_reader)
+            for data in data_reader:
                 yield data, None
 
         orig_nodes = [i.name for i in model.graph.node]
-        sq = ORTSmoothQuant(model, dataloader(), reduce_range)
+        dataloader = inc_dataloader()
+        sq = ORTSmoothQuant(model_input, dataloader, reduce_range)
+        del dataloader
         model = sq.transform(
             extra_options.get("SmoothQuantAlpha", 0.5), extra_options.get("SmoothQuantFolding", True)
         ).model
         nodes_to_exclude.extend([i.name for i in model.graph.node if i.name not in orig_nodes])
+        model = save_and_reload_model(model)
 
     with tempfile.TemporaryDirectory(prefix="ort.quant.") as quant_tmp_dir:
         calibrator = create_calibrator(
