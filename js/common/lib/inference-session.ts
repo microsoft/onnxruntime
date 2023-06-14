@@ -1,8 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {InferenceSession as InferenceSessionImpl} from './inference-session-impl';
-import {OnnxValue} from './onnx-value';
+import {InferenceSession as InferenceSessionImpl} from './inference-session-impl.js';
+import {OnnxValue} from './onnx-value.js';
 
 /* eslint-disable @typescript-eslint/no-redeclare */
 
