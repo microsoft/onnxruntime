@@ -1833,15 +1833,15 @@ TEST(ComputeOptimizerTests, ReshapeElementwiseOps_NoPropagation1) {
 
 /*
 Test graph include multiple equivalent subgraphs as below.
-                           graph input [128, 4, 32] (int64_t)
-                            |               |
-                                          Cast
-                                            |
-                                         Reshape
-                                            |
-                                         Identity
-                                            |
-                                    graph out [128, 128] (int64_t)
+          graph input [128, 4, 32] (int64_t)
+                          |
+                        Cast    initializer value: (-1, 128)
+                          |    /
+                        Reshape
+                          |
+                        Identity
+                          |
+                  graph out [128, 128] (int64_t)
 
 Add an Identity node because currently we don't allow Reshape generate graph output.
 */
