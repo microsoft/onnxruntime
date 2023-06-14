@@ -388,13 +388,14 @@ def quantize_static(
         try:
             importlib.import_module("neural_compressor.adaptor.ox_utils.smooth_quant")
         except Exception as e:
-            logger.error("{}.".format(e))
+            logger.error(f"{e}.")
             raise RuntimeError("neural-compressor is not correctly installed. Please check your environment.")
 
         import copy
 
-        from .quant_utils import save_and_reload_model
         from neural_compressor.adaptor.ox_utils.smooth_quant import ORTSmoothQuant
+
+        from .quant_utils import save_and_reload_model
 
         def inc_dataloader():
             data_reader = copy.deepcopy(calibration_data_reader)
