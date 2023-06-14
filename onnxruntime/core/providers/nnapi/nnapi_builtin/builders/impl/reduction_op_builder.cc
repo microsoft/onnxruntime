@@ -69,10 +69,10 @@ Status ReductionOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, co
   }
 
   const auto keepdims = helper.Get("keepdims", 1);
-  const bool noop_with_empty_axes = helper.Get("noop_with_empty_axes", 0);
+  const auto noop_with_empty_axes = helper.Get("noop_with_empty_axes", 0);
 
   // Get axes for ReduceMean
-  // ONNX `ReduceMean` will reduce by default all dimensions if axes is not provided/provided as empty. However, NNAPI doesn't implement the behavior
+  // Note: ONNX `ReduceMean` will reduce by default all dimensions if axes is not provided/provided as empty. However, NNAPI doesn't implement the behavior
   // to reduce all dimensions by default when 'axes' is empty/not provided. We will convert the case by providing an input with all axes for NNAPI here.
   // Notes from NNAPI doc:
   // https://developer.android.com/ndk/reference/group/neural-networks#group___neural_networks_1ggaabbe492c60331b13038e39d4207940e0a047fe95a35b27f45c05432b6ca18eb6c
@@ -89,9 +89,9 @@ Status ReductionOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, co
     } else {
       // Cases when optional axes input is not provided
       if (noop_with_empty_axes == 0) {
-        // NNAPI doen't implement the behavior by default to reduce all dimensions when axes is empty,
+        // NNAPI doesn't implement the behavior by default to reduce all dimensions when axes is empty,
         // we will convert the case by providing an input with all axes here.
-        axes.reserve(input_shape.size());
+        axes.resize(input_shape.size());
         std::iota(axes.begin(), axes.end(), 0);
       }
     }
@@ -121,22 +121,17 @@ Status ReductionOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, co
     input_indices.push_back(operand_indices.at(axes_name));  // axes
 
     int32_t input_size = static_cast<int32_t>(input_shape.size());
-    std::vector<int32_t> axes_to_be_reduced;
-
-    for (const auto& axis : axes) {
-      axes_to_be_reduced.push_back(axis);
-    }
 
     // Make output dimensions
     InlinedVector<uint32_t> output_dimen;
     if (keepdims == 1) {
       output_dimen.reserve(input_size);
     } else {
-      output_dimen.reserve(input_size - axes_to_be_reduced.size());
+      output_dimen.reserve(input_size - axes.size());
     }
 
     for (int32_t i = 0; i < input_size; i++) {
-      if (std::find(axes_to_be_reduced.begin(), axes_to_be_reduced.end(), i) == axes_to_be_reduced.end()) {
+      if (std::find(axes.begin(), axes.end(), i) == axes.end()) {
         output_dimen.push_back(input_shape[i]);
       } else {
         if (keepdims == 1) {
