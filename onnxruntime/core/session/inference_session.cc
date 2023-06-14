@@ -117,27 +117,34 @@ inline std::basic_string<T> GetCurrentTimeString() {
    and all shape nodes are placed on the CPU EP
  */
 std::pair<bool, int> AreAllComputeNodesAssignedToCudaEp(const Graph& graph) {
-  InlinedHashSet<const Node*> shape_nodes;
-  std::queue<const Node*> bfs_queue;
+  InlinedHashSet<NodeIndex> shape_nodes;
+  InlinedHashSet<NodeIndex> bfs_visited;
+  std::queue<NodeIndex> bfs_queue;
 
   // Perform BFS to collect all nodes between all Shape -> Reshape node pairs
   for (const auto& node : graph.Nodes()) {
     if (node.OpType() == "Shape") {
-      for (auto it = node.InputNodesBegin(); it != node.OutputNodesEnd(); ++it) {
-        bfs_queue.push(&*it);
+      for (auto iter = node.OutputNodesBegin(), end = node.OutputNodesEnd(); iter != end; ++iter) {
+        bfs_visited.insert(iter->Index());
+        bfs_queue.push(iter->Index());
       }
     }
   }
 
   while (!bfs_queue.empty()) {
-    const auto* root = bfs_queue.front();
+    auto node_index = bfs_queue.front();
     bfs_queue.pop();
 
-    shape_nodes.insert(root);
+    const auto* node = graph.GetNode(node_index);
 
-    for (auto it = root->InputNodesBegin(); it != root->OutputNodesEnd(); ++it) {
-      if (it->OpType() != "Reshape") {
-        bfs_queue.push(&*it);
+    shape_nodes.insert(node_index);
+
+    for (auto iter = node->OutputNodesBegin(), end = node->OutputNodesEnd(); iter != end; ++iter) {
+      // If the child is not a Reshape node and we haven't processed/visited the node already,
+      // add the node for further processing
+      if (iter->OpType() != "Reshape" && (bfs_visited.find(iter->Index()) == bfs_visited.end())) {
+        bfs_visited.insert(iter->Index());
+        bfs_queue.push(iter->Index());
       }
     }
   }
@@ -158,7 +165,7 @@ std::pair<bool, int> AreAllComputeNodesAssignedToCudaEp(const Graph& graph) {
 
       // Check if this node is a shape node - If it isn't then we
       // have found a compute node assigned to the CPU EP
-      if (shape_nodes.find(&node) == shape_nodes.end()) {
+      if (shape_nodes.find(node.Index()) == shape_nodes.end()) {
         return std::make_pair(false, -1);
       }
     }
@@ -1166,7 +1173,7 @@ Status InferenceSession::LoadOrtModelWithLoader(std::function<Status()> load_ort
                 "The ORT format model version [", fbs_ort_model_version->string_view(),
                 "] is not supported in this build ", ORT_VERSION, ". ",
                 kOrtFormatVersion5BreakingChangeNote);
-#else   // ^^ defined(ORT_MINIMAL_BUILD) ^^ / vv !defined(ORT_MINIMAL_BUILD) vv
+#else  // ^^ defined(ORT_MINIMAL_BUILD) ^^ / vv !defined(ORT_MINIMAL_BUILD) vv
   const auto has_saved_runtime_optimizations = [](const fbs::InferenceSession& fbs_session) -> bool {
     if (const auto* fbs_model = fbs_session.model()) {
       if (const auto* fbs_graph = fbs_model->graph()) {
@@ -1656,7 +1663,7 @@ common::Status InferenceSession::Initialize() {
 
       // Update temporary copies of metadata, input- and output definitions to the same state as the resolved graph
       ORT_RETURN_IF_ERROR_SESSIONID_(SaveModelMetadata(*model_));
-#else   // !defined(ORT_MINIMAL_BUILD)
+#else  // !defined(ORT_MINIMAL_BUILD)
       ORT_RETURN_IF_ERROR_SESSIONID_(
           ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                           "Loading anything other than ORT format models is not enabled in this build."));
