@@ -174,7 +174,7 @@ def _convert(
     return converted_models
 
 
-def parse_args():
+def parse_args(args=None):
     parser = argparse.ArgumentParser(
         os.path.basename(__file__),
         description="""Convert the ONNX format model/s in the provided directory to ORT format models.
@@ -251,19 +251,17 @@ def parse_args():
     )
 
     parser.add_argument(
-        "model_path_or_dir",
+        "--model_path_or_dir",
         type=pathlib.Path,
         help="Provide path to ONNX model or directory containing ONNX model/s to convert. "
         "All files with a .onnx extension, including those in subdirectories, will be "
         "processed.",
     )
 
-    return parser.parse_args()
+    return parser.parse_args() if args is None else parser.parse_args(args)
 
 
-def convert_onnx_models_to_ort():
-    args = parse_args()
-
+def convert_onnx_models_to_ort(args):
     output_dir = None
     if args.output_dir is not None:
         if not args.output_dir.is_dir():
@@ -358,4 +356,4 @@ def convert_onnx_models_to_ort():
 
 
 if __name__ == "__main__":
-    convert_onnx_models_to_ort()
+    convert_onnx_models_to_ort(parse_args())

@@ -9,7 +9,8 @@ from typing import List, Optional, Union
 
 import onnx
 
-import onnxruntime.training.onnxblock as onnxblock
+from onnxruntime.tools.convert_onnx_models_to_ort import OptimizationStyle, convert_onnx_models_to_ort, parse_args
+from onnxruntime.training import onnxblock
 
 
 class LossType(Enum):
@@ -58,7 +59,8 @@ def generate_artifacts(
         optimizer: The optimizer enum to be used for training. If None, no optimizer model is generated.
         artifact_directory: The directory to save the generated artifacts.
             If None, the current working directory is used.
-        prefix: The prefix to be used for the generated artifacts. If not specified, no prefix is used.
+        prefix (str): The prefix to be used for the generated artifacts. If not specified, no prefix is used.
+        ort_format (bool): Whether to save the generated artifacts in ORT format or not. Default is False.
 
     Raises:
         RuntimeError: If the loss provided is neither one of the supported losses nor an instance of `onnxblock.Block`
@@ -137,12 +139,38 @@ def generate_artifacts(
     if os.path.exists(training_model_path):
         logging.info("Training model path %s already exists. Overwriting.", training_model_path)
     onnx.save(training_model, training_model_path)
+    if extra_options.get("ort_format", True):
+        convert_onnx_models_to_ort(
+            parse_args(
+                [
+                    "--output_dir",
+                    str(artifact_directory),
+                    "--optimization_style",
+                    f"{OptimizationStyle.Fixed.name}",
+                    "--model_path_or_dir",
+                    str(training_model_path),
+                ]
+            )
+        )
     logging.info("Saved training model to %s", training_model_path)
 
     eval_model_path = artifact_directory / f"{prefix}eval_model.onnx"
     if os.path.exists(eval_model_path):
         logging.info("Eval model path %s already exists. Overwriting.", eval_model_path)
     onnx.save(eval_model, eval_model_path)
+    if extra_options.get("ort_format", True):
+        convert_onnx_models_to_ort(
+            parse_args(
+                [
+                    "--output_dir",
+                    str(artifact_directory),
+                    "--optimization_style",
+                    f"{OptimizationStyle.Fixed.name}",
+                    "--model_path_or_dir",
+                    str(eval_model_path),
+                ]
+            )
+        )
     logging.info("Saved eval model to %s", eval_model_path)
 
     checkpoint_path = artifact_directory / f"{prefix}checkpoint"
@@ -173,4 +201,17 @@ def generate_artifacts(
 
     optimizer_model_path = artifact_directory / f"{prefix}optimizer_model.onnx"
     onnx.save(optim_model, optimizer_model_path)
+    if extra_options.get("ort_format", True):
+        convert_onnx_models_to_ort(
+            parse_args(
+                [
+                    "--output_dir",
+                    str(artifact_directory),
+                    "--optimization_style",
+                    f"{OptimizationStyle.Fixed.name}",
+                    "--model_path_or_dir",
+                    str(optimizer_model_path),
+                ]
+            )
+        )
     logging.info("Saved optimizer model to %s", optimizer_model_path)
