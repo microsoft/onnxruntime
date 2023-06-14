@@ -728,7 +728,7 @@ void TorchMultinomialKernelLauncher(float* d_input,
 
   int numSM = props.multiProcessorCount;
   int maxThreads = props.maxThreadsPerBlock;
-  int warp_size = 32;  // at::cuda::warp_size();
+  int warp_size = props.warpSize;
   int requiredWarps = (vocab_size + warp_size - 1) / warp_size;
   int requiredThreads = std::min(maxThreads, requiredWarps * warp_size);
   int requiredShared = requiredThreads * sizeof(float);
@@ -863,7 +863,7 @@ void KeyCacheExpansionKernelLauncher(const T* key_cache,
   equiv_head_size = (equiv_head_size & 1) == 0 ? (equiv_head_size >> 1) : equiv_head_size;
 
   // Here we know head_size is smaller than max_thread_num_per_block
-  int tpb = std::max(32, equiv_head_size);
+  int tpb = std::max(GPU_WARP_SIZE_HOST, equiv_head_size);
 
   // round up tpb to power of 2
   --tpb;
