@@ -182,7 +182,7 @@ void OrtReleaseSession(OrtSession* session) {
 
 int OrtGetInputOutputCount(OrtSession* session, size_t* input_count, size_t* output_count) {
   RETURN_ERROR_CODE_IF_ERROR(SessionGetInputCount, session, input_count);
-  RETURN_ERROR_CODE_IF_ERROR(SessionGetInputCount, session, output_count);
+  RETURN_ERROR_CODE_IF_ERROR(SessionGetOutputCount, session, output_count);
 }
 
 char* OrtGetInputName(OrtSession* session, size_t index) {
