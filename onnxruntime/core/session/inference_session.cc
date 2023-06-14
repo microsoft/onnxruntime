@@ -6,7 +6,6 @@
 
 #include <memory>
 #include <sstream>
-#include <unordered_set>
 #include <list>
 #include <string>
 #include <thread>
@@ -118,7 +117,7 @@ inline std::basic_string<T> GetCurrentTimeString() {
    and all shape nodes are placed on the CPU EP
  */
 std::pair<bool, int> AreAllComputeNodesAssignedToCudaEp(const Graph& graph) {
-  std::unordered_set<const Node*> shape_nodes;
+  InlinedHashSet<const Node*> shape_nodes;
   std::queue<const Node*> bfs_queue;
 
   // Perform BFS to collect all nodes between all Shape -> Reshape node pairs
