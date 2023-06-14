@@ -85,6 +85,9 @@ Status LaunchStridedCopy(cudaStream_t stream,
   int num_heads = in_shape.y;
   int sequence_length = in_shape.z;
   int head_size = in_shape.w;
+  if (sequence_length == 0) {
+    return Status::OK();
+  }
 
   const dim3 grid(sequence_length, batch_size);
   if (0 == (head_size % 4)) {  // pack 4 element together
