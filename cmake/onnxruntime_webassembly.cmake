@@ -233,7 +233,7 @@ else()
     target_compile_definitions(onnxruntime_webassembly PRIVATE USE_JSEP=1)
     target_link_options(onnxruntime_webassembly PRIVATE
       --pre-js "${ONNXRUNTIME_ROOT}/wasm/js_internal_api.js"
-      "SHELL:-s ASYNCIFY=1"
+      "SHELL:-s ASYNCIFY=2"
       "SHELL:-s ASYNCIFY_STACK_SIZE=65536"
     )
   endif()
