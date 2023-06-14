@@ -127,8 +127,43 @@ static bool IsRelevantOutput(const Node* node, const NodeArg* output) {
   return true;
 }
 
+// Check whether the node is a cast operation from float16/float to the specified data_type.
+static bool IsCastTo(const Node* node, TensorProto_DataType data_type) {
+  if (node->OpType() == "Cast") {
+    const NodeAttributes& attributes = node->GetAttributes();
+    const auto attr_hit = attributes.find("to");
+    ORT_ENFORCE(attr_hit != attributes.end(), "Node: ", node->Name(),
+                " is a Cast node and it must have 'to' attribute set.");
+    const NodeArg* input = node->InputDefs()[0];
+    auto input_data_type = static_cast<TensorProto_DataType>(input->TypeAsProto()->tensor_type().elem_type());
+    // Allow cast nodes with same input and output type float/float16 to eliminate such casts.
+    return (input_data_type == TensorProto::FLOAT16 || input_data_type == TensorProto::FLOAT) &&
+           attr_hit->second.i() == static_cast<int64_t>(data_type);
+  }
+  return false;
+}
+
+// when node is softmax, and its input comes from a cast-to-fp32 node, and its output is only consumed by one cast-to-fp16 node, then we can treat it as a fp16-allowed op,
+// as ort's softmax implementation already does the necessary cast logic, for example do reduce sum at fp32
+static bool SoftmaxCanBeFP16(const Node& node) {
+  if (node.OpType() != "Softmax")
+    return false;
+  // 1. input comes from a cast-to-fp32 node
+  const Node* input_node = graph_utils::GetInputNode(node, 0);
+  if (!(input_node && IsCastTo(input_node, TensorProto::FLOAT)))
+    return false;
+  // 2. output is consumed by a cast-to-fp16 node ONLY
+  if (node.GetOutputEdgesCount() != 1)
+    return false;
+  const Node* output_node = &(*node.OutputNodesBegin());
+  if (!(output_node && IsCastTo(output_node, TensorProto::FLOAT16)))
+    return false;
+
+  return true;
+}
+
 // Check whether the given opcode is fp16 allowed for the given level of optimization.
-static bool IsFP16Allow(const std::string& op_type, size_t level, const FP16AllowOps& fp16_allow_level0_ops) {
+static bool IsFP16Allow(const std::string& op_type, size_t level, const FP16AllowOps& fp16_allow_level0_ops, const Node* node = nullptr) {
   // XXX: Shall we add a check for unsupported level or just ignore it as the current code does?
   constexpr size_t MaxSupportedCastPropagationLevel = 2;
 
@@ -146,23 +181,7 @@ static bool IsFP16Allow(const std::string& op_type, size_t level, const FP16Allo
   for (size_t i = 1, limit = std::min(level, MaxSupportedCastPropagationLevel); i <= limit && !fp16_allow; ++i) {
     fp16_allow = Contains(allowed_ops[i - 1].get(), op_type);
   }
-  return fp16_allow;
-}
-
-// Check whether the node is a cast operation from float16/float to the specified data_type.
-static bool IsCastTo(const Node* node, TensorProto_DataType data_type) {
-  if (node->OpType() == "Cast") {
-    const NodeAttributes& attributes = node->GetAttributes();
-    const auto attr_hit = attributes.find("to");
-    ORT_ENFORCE(attr_hit != attributes.end(), "Node: ", node->Name(),
-                " is a Cast node and it must have 'to' attribute set.");
-    const NodeArg* input = node->InputDefs()[0];
-    auto input_data_type = static_cast<TensorProto_DataType>(input->TypeAsProto()->tensor_type().elem_type());
-    // Allow cast nodes with same input and output type float/float16 to eliminate such casts.
-    return (input_data_type == TensorProto::FLOAT16 || input_data_type == TensorProto::FLOAT) &&
-           attr_hit->second.i() == static_cast<int64_t>(data_type);
-  }
-  return false;
+  return fp16_allow || (node && SoftmaxCanBeFP16(*node));
 }
 
 // Check whether the node-arg element type is same the specified data type
@@ -569,7 +588,7 @@ static void SearchUpstream(Graph& graph, NodeArg* node_arg, Node* dst_node,
       require_cast[node_arg].push_back(dst_node);
     } else {
       std::string op_type = node->OpType();
-      if (!IsFP16Allow(op_type, level, fp16_allow_ops)) {
+      if (!IsFP16Allow(op_type, level, fp16_allow_ops, node)) {
         // Cannot traverse-up beyond this point
         if (node_arg->Exists() && IsType(*node_arg, TensorProto_DataType_FLOAT)) {
           require_cast[node_arg].push_back(dst_node);
@@ -635,7 +654,7 @@ static void SearchDownstream(Graph& graph, NodeArg* node_arg,
         // This Cast node and the Cast node that will be created later will cancel out
         require_cast[node_arg].push_back(node);
       } else {
-        if (!IsFP16Allow(op_type, level, fp16_allow_ops)) {
+        if (!IsFP16Allow(op_type, level, fp16_allow_ops, node)) {
           if (node_arg->Exists() &&
               IsType(*node_arg, TensorProto_DataType_FLOAT)) {
             require_cast[node_arg].push_back(node);
@@ -975,7 +994,7 @@ static bool PropagateFP32CastsFromInputsToOutputs(Graph& graph, Node* node,
                                                   NodeIndices& inserted_nodes,
                                                   const logging::Logger& logger) {
   bool modified = false;
-  if (IsFP16Allow(node->OpType(), level, fp16_allow_ops)) {
+  if (IsFP16Allow(node->OpType(), level, fp16_allow_ops, node)) {
     bool has_float_inputs = false;
     bool all_float_inputs_have_casts = true;
     InlinedVector<Node*> casts;
@@ -1084,7 +1103,7 @@ static bool PropagateFP16CastsFromOutputsToInputs(Graph& graph, Node* node,
                                                   NodeIndices& inserted_nodes,
                                                   const logging::Logger& logger) {
   bool modified = false;
-  if (IsFP16Allow(node->OpType(), level, fp16_allow_ops)) {
+  if (IsFP16Allow(node->OpType(), level, fp16_allow_ops, node)) {
     bool has_float_outputs = false;
     bool all_float_outputs_have_casts = true;
     InlinedVector<Node*> casts;  // Cast nodes to propagate.
@@ -1336,7 +1355,7 @@ Status PropagateCastOps::ApplyImpl(Graph& graph, bool& modified, int graph_level
         // Using InsertFP16Cast and InsertFP32Casts insert float16 casts on all inputs and float casts on all outputs.
         // Each consumer of each output gets a separate float cast inserted. Doing so will convert the computation of
         // current node from 32 bit float to 16 bit float operation. These cast operations will be eventually reduced.
-        if (IsFP16Allow(node.OpType(), level_, fp16_allow_ops_0_)) {
+        if (IsFP16Allow(node.OpType(), level_, fp16_allow_ops_0_, &node)) {
           // Insert FP16 Cast on all float inputs
           converted_nodes.insert(node.Index());
           for (NodeArg* input_arg : node.MutableInputDefs()) {
