@@ -5,7 +5,10 @@
 #import <XCTest/XCTest.h>
 
 #import "ort_checkpoint.h"
+#import "ort_training_session.h"
 #import "ort_env.h"
+#import "ort_session.h"
+
 #import "test/assertion_utils.h"
 
 NS_ASSUME_NONNULL_BEGIN
@@ -27,22 +30,85 @@ NS_ASSUME_NONNULL_BEGIN
   ORTAssertNullableResultSuccessful(_ortEnv, err);
 }
 
-- (NSString*)getCheckpointPath {
++ (NSString*)getCheckpointPath {
   NSBundle* bundle = [NSBundle bundleForClass:[ORTCheckpointTest class]];
   NSString* path = [[bundle resourcePath] stringByAppendingPathComponent:@"checkpoint.ckpt"];
   return path;
 }
 
-- (void)testLoadCheckpoint {
++ (NSString*)getTrainingModelPath {
+  NSBundle* bundle = [NSBundle bundleForClass:[ORTCheckpointTest class]];
+  NSString* path = [[bundle resourcePath] stringByAppendingPathComponent:@"training_model.onnx"];
+  return path;
+}
+
++ (NSString*)createTempDirectory {
+  NSString* temporaryDirectory = NSTemporaryDirectory();
+  NSString* directoryPath = [temporaryDirectory stringByAppendingPathComponent:@"ort-objective-c-training-test"];
+
   NSError* error = nil;
-  ORTCheckpoint* checkpoint = [[ORTCheckpoint alloc] initWithPath:[self getCheckpointPath] error:&error];
+  [[NSFileManager defaultManager] createDirectoryAtPath:directoryPath withIntermediateDirectories:YES attributes:nil error:&error];
+
+  if (error) {
+    NSLog(@"Error creating temporary directory: %@", error.localizedDescription);
+    return nil;
+  }
+
+  return directoryPath;
+}
+
+- (void)deleteTempDirectory:(NSString*)directoryPath {
+  NSError* error = nil;
+  NSFileManager* fileManager = [NSFileManager defaultManager];
+
+  // Check if the directory exists
+  BOOL directoryExists = [fileManager fileExistsAtPath:directoryPath];
+
+  if (directoryExists) {
+    // Remove the directory and its contents
+    BOOL success = [fileManager removeItemAtPath:directoryPath error:&error];
+
+    if (!success) {
+      NSLog(@"Error deleting temporary directory: %@", error.localizedDescription);
+    }
+  }
+}
+
+- (void)testSaveCheckPoint {
+  NSError* error = nil;
+  ORTCheckpoint* checkpoint = [[ORTCheckpoint alloc] initWithPath:[ORTCheckpointTest getCheckpointPath] error:&error];
+  ORTAssertNullableResultSuccessful(checkpoint, error);
+
+  ORTSessionOptions* sessionOptions = [[ORTSessionOptions alloc] initWithError:&error];
+  ORTAssertNullableResultSuccessful(sessionOptions, error);
+
+  ORTTrainingSession* session = [[ORTTrainingSession alloc] initWithEnv:self.ortEnv
+                                                         sessionOptions:sessionOptions
+                                                             checkPoint:checkpoint
+                                                         trainModelPath:[ORTCheckpointTest getTrainingModelPath]
+                                                          evalModelPath:nil
+                                                     optimizerModelPath:nil
+                                                                  error:&error];
+
+  ORTAssertNullableResultSuccessful(session, error);
+
+  // save checkpoint
+  NSString* path = [ORTCheckpointTest createTempDirectory];
+  BOOL result = [checkpoint saveCheckpointToPath:path withOptimizerState:NO error:&error];
+  [self deleteTempDirectory:path];
+  ORTAssertBoolResultSuccessful(result, error);
+}
+
+- (void)testInitCheckpoint {
+  NSError* error = nil;
+  ORTCheckpoint* checkpoint = [[ORTCheckpoint alloc] initWithPath:[ORTCheckpointTest getCheckpointPath] error:&error];
   ORTAssertNullableResultSuccessful(checkpoint, error);
 }
 
 - (void)testIntProperty {
   NSError* error = nil;
   // Load checkpoint
-  ORTCheckpoint* checkpoint = [[ORTCheckpoint alloc] initWithPath:[self getCheckpointPath] error:&error];
+  ORTCheckpoint* checkpoint = [[ORTCheckpoint alloc] initWithPath:[ORTCheckpointTest getCheckpointPath] error:&error];
   ORTAssertNullableResultSuccessful(checkpoint, error);
 
   // Add property
@@ -57,7 +123,7 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)testFloatProperty {
   NSError* error = nil;
   // Load checkpoint
-  ORTCheckpoint* checkpoint = [[ORTCheckpoint alloc] initWithPath:[self getCheckpointPath] error:&error];
+  ORTCheckpoint* checkpoint = [[ORTCheckpoint alloc] initWithPath:[ORTCheckpointTest getCheckpointPath] error:&error];
   ORTAssertNullableResultSuccessful(checkpoint, error);
 
   // Add property
@@ -72,7 +138,7 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)testStringProperty {
   NSError* error = nil;
   // Load checkpoint
-  ORTCheckpoint* checkpoint = [[ORTCheckpoint alloc] initWithPath:[self getCheckpointPath] error:&error];
+  ORTCheckpoint* checkpoint = [[ORTCheckpoint alloc] initWithPath:[ORTCheckpointTest getCheckpointPath] error:&error];
   ORTAssertNullableResultSuccessful(checkpoint, error);
 
   // Add property

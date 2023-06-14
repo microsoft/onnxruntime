@@ -29,4 +29,10 @@ NS_ASSUME_NONNULL_BEGIN
     XCTAssertNotNil(error);                            \
   } while (0)
 
+#define ORTAssertFloatResultSuccessful(expected, result, error)                                      \
+  do {                                                                                               \
+    XCTAssertEqual(result, expected, @"Expected %f but got %f. Error: %@", expected, result, error); \
+    XCTAssertNil(error);                                                                             \
+  } while (0)
+
 NS_ASSUME_NONNULL_END
