@@ -239,8 +239,7 @@ jobs:
               python -m onnxruntime.training.ortmodule.torch_cpp_extensions.install; \
               python orttraining_ortmodule_tests.py \
                 --mnist /mnist \
-                --bert_data /bert_data/hf_data/glue_data/CoLA/original/raw \
-                --transformers_cache /hf_models_cache/huggingface/transformers"
+                --bert_data /bert_data/hf_data/glue_data/CoLA/original/raw"
       workingDirectory: $(Build.SourcesDirectory)
     displayName: 'Run orttraining_ortmodule_tests.py'
     condition: and(succeededOrFailed(), eq(variables.onnxruntimeBuildSucceeded, 'true'))
