@@ -2246,8 +2246,8 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
 
       // Load serialized engine
       const std::string cache_path = GetCachePath(trt_state->engine_cache_path, trt_state->trt_node_name_with_precision);
-      const std::string engine_cache_path = cache_path + compute_capability + ".engine";
-      const std::string profile_cache_path = cache_path + compute_capability + ".profile";
+      const std::string engine_cache_path = cache_path + "_sm" + compute_capability + ".engine";
+      const std::string profile_cache_path = cache_path + "_sm" + compute_capability + ".profile";
       std::string timing_cache_path = "";
       if (timing_cache_enable_) {
         timing_cache_path = GetTimingCachePath(cache_path_, prop);
