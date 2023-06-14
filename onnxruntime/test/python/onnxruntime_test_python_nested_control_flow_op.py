@@ -6,7 +6,6 @@ from copy import deepcopy
 from typing import Optional, Sequence, Tuple
 
 import numpy as np
-import onnx
 from onnx import ModelProto, NodeProto, TensorProto, ValueInfoProto, checker, helper
 
 import onnxruntime as ort
@@ -224,7 +223,7 @@ def test_nested_optional_greater_or_equal(use_trt: bool = False) -> None:
         providers=providers,
     )
 
-    x1_name, x2_name, x3_name = [i.name for i in m.graph.input]
+    x1_name, x2_name, x3_name = (i.name for i in m.graph.input)
     session.run(
         [m.graph.output[0].name],
         {
