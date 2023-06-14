@@ -10,6 +10,7 @@
 #include <list>
 #include <string>
 #include <thread>
+#include <queue>
 
 #include "core/common/denormal.h"
 #include "core/common/logging/logging.h"
@@ -113,16 +114,58 @@ inline std::basic_string<T> GetCurrentTimeString() {
 
 #if !defined(ORT_MINIMAL_BUILD)
 
-bool AreAllNodesInMainGraphAssignedToOneEp(const Graph& graph, ProviderType provider) {
-  for (const auto& node : graph.Nodes()) {
-    const auto& node_provider = node.GetExecutionProviderType();
+/* This method returns ture if all *compute* nodes are placed on the CUDA EP
+   and all shape nodes are placed on the CPU EP
+ */
+std::pair<bool, int> AreAllComputeNodesAssignedToCudaEp(const Graph& graph) {
+  std::unordered_set<const Node*> shape_nodes;
+  std::queue<const Node*> bfs_queue;
 
-    if (node_provider.empty() || node_provider != provider) {
-      return false;
+  // Perform BFS to collect all nodes between all Shape -> Reshape node pairs
+  for (const auto& node : graph.Nodes()) {
+    if (node.OpType() == "Shape") {
+      for (auto it = node.InputNodesBegin(); it != node.OutputNodesEnd(); ++it) {
+        bfs_queue.push(&*it);
+      }
     }
   }
 
-  return true;
+  while (!bfs_queue.empty()) {
+    const auto* root = bfs_queue.front();
+    bfs_queue.pop();
+
+    shape_nodes.insert(root);
+
+    for (auto it = root->InputNodesBegin(); it != root->OutputNodesEnd(); ++it) {
+      if (it->OpType() != "Reshape") {
+        bfs_queue.push(&*it);
+      }
+    }
+  }
+
+  for (const auto& node : graph.Nodes()) {
+    const auto& node_provider = node.GetExecutionProviderType();
+
+    // This node is not partitioned to the CUDA EP
+    // Ensure that this is a shape node assigned to the CPU EP
+    if (node_provider != onnxruntime::kCudaExecutionProvider) {
+      // If this node is partitioned to any other EP other
+      // than the CPU EP, then this isn't a shape node.
+      // Empty provider string means CPU EP.
+      if (!node_provider.empty() &&
+          node_provider != onnxruntime::kCpuExecutionProvider) {
+        return std::make_pair(false, -1);
+      }
+
+      // Check if this node is a shape node - If it isn't then we
+      // have found a compute node assigned to the CPU EP
+      if (shape_nodes.find(&node) == shape_nodes.end()) {
+        return std::make_pair(false, -1);
+      }
+    }
+  }
+
+  return std::make_pair(true, static_cast<int>(shape_nodes.size()));
 }
 
 bool HasControlflowNodes(const Graph& graph) {
@@ -1544,7 +1587,11 @@ common::Status InferenceSession::Initialize() {
                 ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                                 "This session cannot use the CUDA Graph feature as requested by the user "
                                 " as the model has control flow nodes which can't be supported by CUDA Graphs."));
-          } else if (!AreAllNodesInMainGraphAssignedToOneEp(graph, onnxruntime::kCudaExecutionProvider)) {
+          }
+
+          auto res = AreAllComputeNodesAssignedToCudaEp(graph);
+
+          if (!res.first) {
             LOGS(*session_logger_, ERROR) << "This session cannot use the CUDA Graph feature as requested by the user "
                                           << " as all the graph nodes have not been partitioned to the CUDA EP.";
 
@@ -1554,11 +1601,21 @@ common::Status InferenceSession::Initialize() {
                 ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                                 "This session cannot use the CUDA Graph feature as requested by the user "
                                 " as all the graph nodes have not been partitioned to the CUDA EP."));
-
-          } else {
-            LOGS(*session_logger_, INFO) << "This session will use the CUDA Graph feature as requested by the user.";
-            cached_execution_provider_for_graph_replay_.SetExecutionProvider(cuda_ep);
           }
+
+          if (res.second > 0) {
+            LOGS(*session_logger_, WARNING) << "This model has shape massaging nodes that will execute on CPU. "
+                                            << "Use the CUDA Graph feature with caution. "
+                                            << "As long as the intermediate shapes produced in the model "
+                                            << "using the representative input used to capture the CUDA graph, "
+                                            << "will match the shapes produced in the model for other inputs "
+                                            << "of the same shape as the representative input (common case), "
+                                            << "it is safe to use the CUDA Graph feature.";
+          }
+
+          // We can use the CUDA Graph feature
+          LOGS(*session_logger_, INFO) << "This session will use the CUDA Graph feature as requested by the user.";
+          cached_execution_provider_for_graph_replay_.SetExecutionProvider(cuda_ep);
         }
       }
 
