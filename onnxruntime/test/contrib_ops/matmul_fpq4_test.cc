@@ -41,8 +41,9 @@ TEST(MatMulFpQ4, MatMul2DSym) {
   }
 
   std::vector<float> input1_f_vals(N * K);
-  int v = -8;
+  int v = -2;
   for (size_t i = 0; i < N * K; i++) {
+    if (v == 0 || v == -3 || v == 3) v++;
     input1_f_vals[i] = (float)v;
     if (++v >= 8) {
       v = -8;

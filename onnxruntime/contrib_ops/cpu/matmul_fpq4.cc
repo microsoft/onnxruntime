@@ -63,27 +63,15 @@ Status MatMulFpQ4::Compute(OpKernelContext* ctx) const {
   const auto* blob_data = b->Data<uint8_t>();
   auto* y_data = y->MutableData<float>();
 
-  AllocatorPtr alloc;
-  ORT_RETURN_IF_ERROR(ctx->GetTempSpaceAllocator(&alloc));
-  auto b_data_ptr = alloc->Alloc(SafeInt<size_t>(K) * N * sizeof(float));
-  BufferUniquePtr b_data_buffer(b_data_ptr, BufferDeleter(std::move(alloc)));
-  auto* b_data = static_cast<float*>(b_data_buffer.get());
-  MlasQ4GemmUnPackB(blk_quant_type_, b_data, blob_data, N, K, N);
-
-  std::vector<MLAS_SGEMM_DATA_PARAMS> data(max_len);
+  std::vector<MLAS_Q4_GEMM_DATA_PARAMS> gemm_params(max_len);
   for (size_t i = 0; i < max_len; i++) {
-    data[i].BIsPacked = false;
-    data[i].A = a_data + helper.LeftOffsets()[i];
-    data[i].lda = lda;
-    data[i].B = b_data;
-    data[i].ldb = N;
-    data[i].C = y_data + helper.OutputOffsets()[i];
-    data[i].ldc = N;
-    data[i].alpha = 1.0f;
-    data[i].beta = 0.0f;
+    gemm_params[i].A = a_data + helper.LeftOffsets()[i];
+    gemm_params[i].lda = lda;
+    gemm_params[i].B = blob_data;
+    gemm_params[i].C = y_data + helper.OutputOffsets()[i];
+    gemm_params[i].ldc = N;
   }
-  MlasGemmBatch(CblasNoTrans, CblasNoTrans,
-                M, N, K, data.data(), max_len, thread_pool);
+  MlasQ4GemmBatch(blk_quant_type_, M, N, K, max_len, gemm_params.data(), thread_pool);
 
   return Status::OK();
 }
