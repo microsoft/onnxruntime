@@ -282,7 +282,7 @@ int OrtGetTensorData(OrtValue* tensor, int* data_type, void** data, size_t** dim
     RETURN_ERROR_CODE_IF_ERROR(GetTensorShapeElementCount, info, &num_elements);
 
     // NOTE: ORT C-API does not expose an interface for users to get string raw data directly. There is always a copy.
-    //       we can use the tensor raw data because it is type of "std::string *", which is very starightforward to
+    //       we can use the tensor raw data because it is type of "std::string *", which is very straightforward to
     //       implement and can also save memory usage. However, this approach depends on the Tensor's implementation
     //       details. So we have to copy the string content here.
 
