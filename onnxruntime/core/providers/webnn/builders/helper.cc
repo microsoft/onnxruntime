@@ -27,11 +27,12 @@ bool GetShape(const NodeArg& node_arg, std::vector<int64_t>& shape, const loggin
   return true;
 }
 
-bool IsNodeSupported(const Node& node, const GraphViewer& graph_viewer, const logging::Logger& logger) {
+bool IsNodeSupported(const Node& node, const GraphViewer& graph_viewer,
+                     const WebnnDeviceType device_type, const logging::Logger& logger) {
   const auto& op_builders = GetOpBuilders();
   if (Contains(op_builders, node.OpType())) {
     const auto* op_builder = op_builders.at(node.OpType());
-    return op_builder->IsOpSupported(graph_viewer.GetAllInitializedTensors(), node, logger);
+    return op_builder->IsOpSupported(graph_viewer.GetAllInitializedTensors(), node, device_type, logger);
   } else {
     return false;
   }
@@ -40,6 +41,10 @@ bool IsNodeSupported(const Node& node, const GraphViewer& graph_viewer, const lo
 bool IsInputSupported(const NodeArg& input, const std::string& parent_name, const logging::Logger& logger) {
   const auto& input_name = input.Name();
   const auto* shape_proto = input.Shape();
+  // Optional tensors can be indicated by an empty name, just ignore it.
+  if (input_name.empty()) {
+    return true;
+  }
   // We do not support input with no shape.
   if (!shape_proto) {
     LOGS(logger, VERBOSE) << "Input [" << input_name << "] of [" << parent_name
@@ -59,6 +64,7 @@ bool IsInputSupported(const NodeArg& input, const std::string& parent_name, cons
 
 std::vector<std::vector<NodeIndex>> GetSupportedNodes(const GraphViewer& graph_viewer,
                                                       const emscripten::val& wnn_builder_,
+                                                      const WebnnDeviceType device_type,
                                                       const logging::Logger& logger) {
   std::vector<std::vector<size_t>> supported_node_groups;
 
@@ -78,7 +84,7 @@ std::vector<std::vector<NodeIndex>> GetSupportedNodes(const GraphViewer& graph_v
     // Firstly check if platform supports the WebNN op.
     if (CheckSingleOp(node->OpType(), wnn_builder_)) {
       LOGS(logger, VERBOSE) << "Operator type: [" << node->OpType() << "] is supported by browser";
-      supported = IsNodeSupported(*node, graph_viewer, logger);
+      supported = IsNodeSupported(*node, graph_viewer, device_type, logger);
     }
 
     LOGS(logger, VERBOSE) << "Operator type: [" << node->OpType()
@@ -101,6 +107,36 @@ std::vector<std::vector<NodeIndex>> GetSupportedNodes(const GraphViewer& graph_v
   }
 
   return supported_node_groups;
+}
+
+bool IsSupportedDataType(const int32_t data_type, const WebnnDeviceType device_type) {
+  // Current data type implementation status of WebNN is inconsistent along with different backends,
+  // The XNNPack backend supports only FP32, while the DML backend POC supports more.
+  if (device_type == WebnnDeviceType::CPU) {
+    return std::find(supported_cpu_data_types.begin(), supported_cpu_data_types.end(), data_type) !=
+           supported_cpu_data_types.end();
+  } else {
+    return std::find(supported_gpu_data_types.begin(), supported_gpu_data_types.end(), data_type) !=
+           supported_gpu_data_types.end();
+  }
+}
+
+bool IsValidMultidirectionalBroadcast(std::vector<int64_t>& shape_a,
+                                      std::vector<int64_t>& shape_b,
+                                      const logging::Logger& logger) {
+  int64_t size_a = shape_a.size();
+  int64_t size_b = shape_b.size();
+  int64_t smaller_size = std::min(size_a, size_b);
+  for (int64_t i = 0; i < smaller_size; i++) {
+    // right alignment
+    int64_t axis_a = size_a - i - 1;
+    int64_t axis_b = size_b - i - 1;
+    // Broadcastable tensors must either have each dimension the same size or equal to one.
+    if (shape_a[axis_a] != shape_b[axis_b] && shape_a[axis_a] != 1 && shape_b[axis_b] != 1) {
+      return false;
+    }
+  }
+  return true;
 }
 
 }  // namespace webnn

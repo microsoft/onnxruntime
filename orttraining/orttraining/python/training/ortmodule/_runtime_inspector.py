@@ -40,7 +40,7 @@ class RuntimeInspector:
 
         return self.input_density_ob.initialize(model, user_input_names)
 
-    def inspect_input(self, input_name, input_data) -> Tuple[bool, bool, bool]:
+    def inspect_input(self, input_name, input_data) -> Tuple[bool, float, float]:
         """
         Inspect input data and print statistics.
 
@@ -51,13 +51,13 @@ class RuntimeInspector:
         Returns:
             found: Whether the input name is found in `_embedding_graph_input_to_padding_idx_map` and
                 `_loss_label_graph_input_to_ignore_idx_map`.
-            embedding_is_sparse: Whether the input is sparse.
-            label_is_sparse: Whether the input is sparse.
+            embed_input_density: Density for the inspected embedding input if found to be True; otherwise, return 100.
+            label_input_density: Density for the inspected label input if found to be True; otherwise, return 100.
         """
         if self.input_density_ob is not None:
             return self.input_density_ob.inspect_from_input_data(input_name, input_data)
 
-        return (False, False, False)
+        return (False, 100, 100)
 
     def disable_input_inspector(self) -> None:
         """Disable input density inspector."""
@@ -282,7 +282,7 @@ class InputDensityObserver:
                 [ignore_index, label_preprocess_func]
             )
 
-    def inspect_from_input_data(self, name: str, inp) -> Tuple[bool, bool, bool]:
+    def inspect_from_input_data(self, name: str, inp) -> Tuple[bool, float, float]:
         """
         Inspect input data and print statistics.
 
@@ -292,15 +292,15 @@ class InputDensityObserver:
         Returns:
             found: Whether the input name is found in `_embedding_graph_input_to_padding_idx_map` and
                 `_loss_label_graph_input_to_ignore_idx_map`.
-            embedding_is_sparse: Whether the input is sparse.
-            label_is_sparse: Whether the input is sparse.
+            embed_input_density: Density for the inspected embedding input if found to be True; otherwise, return 100.
+            label_input_density: Density for the inspected label input if found to be True; otherwise, return 100.
         """
         if not self._is_initialized:
-            return (False, False, False)
+            return (False, 100, 100)
 
         try:
             data = inp.clone()
-            found, embedding_is_sparse, label_is_sparse = self._inspect_embed_label_input(name, data)
+            found, embed_input_density, label_input_density = self._inspect_embed_label_input(name, data)
             if found:
                 self._current_step += 1
 
@@ -308,16 +308,15 @@ class InputDensityObserver:
                     self._last_step = self._current_step
                     self._print_embed_label_stats()
 
-            return (found, embedding_is_sparse, label_is_sparse)
+            return (found, embed_input_density, label_input_density)
         except Exception as e:
             self._logger.warning(f"Failed to inspect input {name} due to {e}", UserWarning)
-            return (False, False, False)
+            return (False, 100, 100)
 
     def _inspect_embed_label_input(self, name, data):
         found = False
-        embedding_is_sparse = False
-        label_is_sparse = False
-
+        min_embed_density = 100
+        min_label_density = 100
         if (
             len(self._embedding_graph_input_to_padding_idx_map) > 0
             and name in self._embedding_graph_input_to_padding_idx_map
@@ -330,7 +329,8 @@ class InputDensityObserver:
                     valid_token_per_batch = str(torch.count_nonzero(data - padding_idx, dim=1).tolist())
                 total_token = data.numel()
                 embed_density = float(valid_token) / float(total_token) * 100
-                embedding_is_sparse = embedding_is_sparse or (embed_density < 90)
+                if embed_density < 90:
+                    min_embed_density = min(min_embed_density, embed_density)
                 self._stats.append(
                     [
                         self._current_step,
@@ -355,7 +355,8 @@ class InputDensityObserver:
                 valid_token = torch.count_nonzero(data_preprocessed - ignore_index)
                 total_token = data_preprocessed.numel()
                 label_density = float(valid_token) / float(total_token) * 100
-                label_is_sparse = label_is_sparse or (label_density < 90)
+                if label_density < 90:
+                    min_label_density = min(min_label_density, label_density)
                 self._stats.append(
                     [
                         self._current_step,
@@ -370,7 +371,7 @@ class InputDensityObserver:
                 )
                 found = True
 
-        return found, embedding_is_sparse, label_is_sparse
+        return found, min_embed_density, min_label_density
 
     def _print_embed_label_stats(self):
         if len(self._stats) > 0:

@@ -113,10 +113,11 @@ stages:
           addToPath: true
           architecture: $(buildArch)
 
-      - task: PythonScript@0
-        displayName: 'Run a Python script'
+      - task: onebranch.pipeline.tsaoptions@1
+        displayName: 'OneBranch TSAOptions'
         inputs:
-          scriptPath: 'tools\ci_build\update_tsaoptions.py'
+          tsaConfigFilePath: '$(Build.SourcesDirectory)\.config\tsaoptions.json'
+          appendSourceBranchName: false
 
       - template: set-nightly-build-option-variable-step.yml
 
@@ -248,7 +249,7 @@ stages:
           msBuildArchitecture: amd64
           setupCommandlines: 'python $(Build.SourcesDirectory)\tools\ci_build\build.py --config Debug --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --cmake_generator "Visual Studio 17 2022" --enable_pybind --enable_onnx_tests --parallel $(TelemetryOption) --update --cmake_extra_defines onnxruntime_ENABLE_STATIC_ANALYSIS=ON'
           msBuildCommandline: '"C:\Program Files\Microsoft Visual Studio\2022\Enterprise\MSBuild\Current\Bin\amd64\msbuild.exe" "$(Build.BinariesDirectory)\Debug\onnxruntime.sln" /p:platform="$(MsbuildPlatform)" /p:configuration=Debug /p:VisualStudioVersion="17.0" /m /p:PreferredToolArchitecture=x64'
-          excludedPaths: '$(Build.BinariesDirectory)#$(Build.SourcesDirectory)\cmake#C:\program files (x86)'
+          excludedPaths: '$(Build.BinariesDirectory)#$(Build.SourcesDirectory)\cmake#C:\program files'
 
 
       - task: TSAUpload@2
@@ -270,33 +271,33 @@ stages:
   - ${{ if eq(parameters.enable_windows_gpu, true) }}:
       - template: py-win-gpu.yml
         parameters:
-          MACHINE_POOL: 'onnxruntime-gpu-winbuild-t4'
+          MACHINE_POOL: 'onnxruntime-Win2022-GPU-T4'
           PYTHON_VERSION: '3.8'
-          EP_BUILD_FLAGS: --use_tensorrt --use_tensorrt_builtin_parser --tensorrt_home="C:\local\TensorRT-8.6.0.12.Windows10.x86_64.cuda-11.8" --cuda_version=11.8 --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.8"  --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=52;60;61;70;75;80"
+          EP_BUILD_FLAGS: --use_tensorrt --tensorrt_home="C:\local\TensorRT-8.6.0.12.Windows10.x86_64.cuda-11.8" --cuda_home="$(Agent.TempDirectory)\v11.8"  --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=52;60;61;70;75;80"
           ENV_SETUP_SCRIPT: setup_env_gpu.bat
           EP_NAME: gpu
 
       - template: py-win-gpu.yml
         parameters:
-          MACHINE_POOL: 'onnxruntime-gpu-winbuild-t4'
+          MACHINE_POOL: 'onnxruntime-Win2022-GPU-T4'
           PYTHON_VERSION: '3.9'
-          EP_BUILD_FLAGS: --use_tensorrt --use_tensorrt_builtin_parser --tensorrt_home="C:\local\TensorRT-8.6.0.12.Windows10.x86_64.cuda-11.8" --cuda_version=11.8 --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.8"  --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=52;60;61;70;75;80"
+          EP_BUILD_FLAGS: --use_tensorrt --tensorrt_home="C:\local\TensorRT-8.6.0.12.Windows10.x86_64.cuda-11.8" --cuda_home="$(Agent.TempDirectory)\v11.8"  --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=52;60;61;70;75;80"
           ENV_SETUP_SCRIPT: setup_env_gpu.bat
           EP_NAME: gpu
 
       - template: py-win-gpu.yml
         parameters:
-          MACHINE_POOL: 'onnxruntime-gpu-winbuild-t4'
+          MACHINE_POOL: 'onnxruntime-Win2022-GPU-T4'
           PYTHON_VERSION: '3.10'
-          EP_BUILD_FLAGS: --use_tensorrt --use_tensorrt_builtin_parser --tensorrt_home="C:\local\TensorRT-8.6.0.12.Windows10.x86_64.cuda-11.8" --cuda_version=11.8 --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.8"  --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=52;60;61;70;75;80"
+          EP_BUILD_FLAGS: --use_tensorrt --tensorrt_home="C:\local\TensorRT-8.6.0.12.Windows10.x86_64.cuda-11.8" --cuda_home="$(Agent.TempDirectory)\v11.8"  --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=52;60;61;70;75;80"
           ENV_SETUP_SCRIPT: setup_env_gpu.bat
           EP_NAME: gpu
 
       - template: py-win-gpu.yml
         parameters:
-          MACHINE_POOL: 'onnxruntime-gpu-winbuild-t4'
+          MACHINE_POOL: 'onnxruntime-Win2022-GPU-T4'
           PYTHON_VERSION: '3.11'
-          EP_BUILD_FLAGS: --use_tensorrt --tensorrt_home="C:\local\TensorRT-8.6.0.12.Windows10.x86_64.cuda-11.8" --cuda_version=11.8 --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.8"  --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=52;60;61;70;75;80"
+          EP_BUILD_FLAGS: --use_tensorrt --tensorrt_home="C:\local\TensorRT-8.6.0.12.Windows10.x86_64.cuda-11.8" --cuda_home="$(Agent.TempDirectory)\v11.8"  --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=52;60;61;70;75;80"
           ENV_SETUP_SCRIPT: setup_env_gpu.bat
           EP_NAME: gpu
 
@@ -334,11 +335,11 @@ stages:
 
   - ${{ if eq(parameters.enable_mac_cpu, true) }}:
     - job: MacOS_py_Wheels
-      timeoutInMinutes: 90
+      timeoutInMinutes: 120
       workspace:
         clean: all
       pool:
-        vmImage: 'macOS-12'
+        vmImage: 'macOS-13'
       variables:
         MACOSX_DEPLOYMENT_TARGET: '10.15'
       strategy:
@@ -361,6 +362,8 @@ stages:
         inputs:
           versionSpec: $(PythonVersion)
 
+      - template: use-xcode-version.yml
+
       - script: |
           set -e -x
           pushd .
@@ -374,7 +377,6 @@ stages:
           export CMAKE_ARGS="-DONNX_GEN_PB_TYPE_STUBS=OFF -DONNX_WERROR=OFF"
           export _PYTHON_HOST_PLATFORM=macosx-${{variables.MACOSX_DEPLOYMENT_TARGET}}-x86_64
           python3 -m pip install -r '$(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/scripts/requirements.txt'
-          sudo xcode-select --switch /Applications/Xcode_13.1.app/Contents/Developer
           python3 $(Build.SourcesDirectory)/tools/ci_build/build.py --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --parallel --config Release --skip_onnx_tests --build_wheel ${{ parameters.build_py_parameters }}
         displayName: 'Command Line Script'
 
@@ -400,7 +402,7 @@ stages:
       workspace:
         clean: all
       pool:
-        vmImage: 'macOS-12'
+        vmImage: 'macOS-13'
       variables:
         MACOSX_DEPLOYMENT_TARGET: '11.0'
       strategy:
@@ -431,6 +433,8 @@ stages:
           system_profiler SPSoftwareDataType SPHardwareDataType
         displayName: 'Mac machine info'
 
+      - template: use-xcode-version.yml
+
       # Don't remove _PYTHON_HOST_PLATFORM, it's used to generate correct package name
       # Setting _PYTHON_HOST_PLATFORM overwrites the value return by get_platform()
       # Ref: https://wiki.debian.org/Python/MultiArch
@@ -447,7 +451,6 @@ stages:
           export CMAKE_ARGS="-DONNX_GEN_PB_TYPE_STUBS=OFF -DONNX_WERROR=OFF"
           export _PYTHON_HOST_PLATFORM=macosx-${{variables.MACOSX_DEPLOYMENT_TARGET}}-arm64
           python3 -m pip install -r '$(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/scripts/requirements.txt'
-          sudo xcode-select --switch /Applications/Xcode_13.1.app/Contents/Developer
           python3 $(Build.SourcesDirectory)/tools/ci_build/build.py --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --parallel --config Release --skip_tests --cmake_extra_defines CMAKE_OSX_ARCHITECTURES=arm64 --build_wheel ${{ parameters.build_py_parameters }}
         displayName: 'Command Line Script'
 
@@ -512,6 +515,6 @@ stages:
       - template: py-linux-gpu.yml
         parameters:
           arch: 'x86_64'
-          machine_pool: 'aiinfra-Linux-CPU'
+          machine_pool: 'onnxruntime-Ubuntu2004-AMD-CPU'
           ${{ if contains(parameters.build_py_parameters, '--use_azure') }}:
             device: '-d AZURE'

@@ -11,29 +11,28 @@
 #endif  // defined(__clang__)
 
 // paths are different when building the Swift Package Manager package as the headers come from the iOS pod archive
+// clang-format off
+#define STRINGIFY(x) #x
 #ifdef SPM_BUILD
-#include "onnxruntime/onnxruntime_c_api.h"
-#include "onnxruntime/onnxruntime_cxx_api.h"
-
-#if __has_include("onnxruntime/coreml_provider_factory.h")
-#define ORT_OBJC_API_COREML_EP_AVAILABLE 1
-#include "onnxruntime/coreml_provider_factory.h"
+#define ORT_C_CXX_HEADER_FILE_PATH(x) STRINGIFY(onnxruntime/x)
 #else
-#define ORT_OBJC_API_COREML_EP_AVAILABLE 0
+#define ORT_C_CXX_HEADER_FILE_PATH(x) STRINGIFY(x)
+#endif
+// clang-format on
+
+#ifndef ENABLE_TRAINING_APIS
+#include ORT_C_CXX_HEADER_FILE_PATH(onnxruntime_c_api.h)
+#include ORT_C_CXX_HEADER_FILE_PATH(onnxruntime_cxx_api.h)
+#else
+#include ORT_C_CXX_HEADER_FILE_PATH(onnxruntime_training_c_api.h)
+#include ORT_C_CXX_HEADER_FILE_PATH(onnxruntime_training_cxx_api.h)
 #endif
 
-#else
-#include "onnxruntime_c_api.h"
-#include "onnxruntime_cxx_api.h"
-
-#if __has_include("coreml_provider_factory.h")
+#if __has_include(ORT_C_CXX_HEADER_FILE_PATH(coreml_provider_factory.h))
 #define ORT_OBJC_API_COREML_EP_AVAILABLE 1
-#include "coreml_provider_factory.h"
+#include ORT_C_CXX_HEADER_FILE_PATH(coreml_provider_factory.h)
 #else
 #define ORT_OBJC_API_COREML_EP_AVAILABLE 0
-
-#endif
-
 #endif
 
 #if defined(__clang__)

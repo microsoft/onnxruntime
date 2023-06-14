@@ -3,5 +3,5 @@ stages:
   parameters:
     AllowReleasedOpsetOnly: 0
     BuildForAllArchs: false
-    AdditionalBuildFlags: --enable_training
+    AdditionalBuildFlags: --enable_training --build_objc
     WithCache: true

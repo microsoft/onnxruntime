@@ -50,6 +50,8 @@ stages:
   jobs:
   - job: ReactNative_CI
     pool:
+      # We need macOS-12 to run the Android emulator for now.
+      # https://github.com/actions/runner-images/issues/7671
       vmImage: 'macOS-12'
     variables:
       runCodesignValidationInjection: false
@@ -308,7 +310,7 @@ stages:
 
     - script: |
         JEST_JUNIT_OUTPUT_FILE=$(Build.SourcesDirectory)/js/react_native/e2e/android-test-results.xml \
-        detox test --record-logs all  --configuration android.emu.release
+        detox test --record-logs all --configuration android.emu.release
       workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e'
       displayName: Run React Native Detox Android e2e Tests
 
@@ -341,8 +343,10 @@ stages:
 
     - task: PublishPipelineArtifact@1
       inputs:
-        targetPath:  '$(Build.SourcesDirectory)/js/react_native/e2e/artifacts'
-      displayName: Publish React Native Detox E2E test artifacts
+        artifact: e2e_test_logs
+        targetPath: '$(Build.SourcesDirectory)/js/react_native/e2e/artifacts'
+      condition: succeededOrFailed()
+      displayName: Publish React Native Detox E2E test logs
 
     - script: |
         python3 tools/python/run_android_emulator.py \
