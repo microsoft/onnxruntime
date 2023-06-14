@@ -314,6 +314,8 @@ int OrtGetTensorData(OrtValue* tensor, int* data_type, void** data, size_t** dim
 
     // put null at the last char
     reinterpret_cast<char*>(p_string_data)[buf_size] = '\0';
+
+    UNREGISTER_AUTO_RELEASE(p_string_data);
     *data = p_string_data;
   } else {
     void* p_tensor_raw_data = nullptr;
@@ -321,6 +323,7 @@ int OrtGetTensorData(OrtValue* tensor, int* data_type, void** data, size_t** dim
     *data = p_tensor_raw_data;
   }
 
+  UNREGISTER_AUTO_RELEASE(p_dims);
   *data_type = static_cast<int>(type);
   *dims_length = dims_len;
   *dims = p_dims;
@@ -354,6 +357,7 @@ OrtRunOptions* OrtCreateRunOptions(size_t log_severity_level,
     RETURN_NULLPTR_IF_ERROR(RunOptionsSetRunTag, run_options, tag);
   }
 
+  UNREGISTER_AUTO_RELEASE(run_options);
   return run_options;
 }
 
