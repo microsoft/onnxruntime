@@ -4,9 +4,9 @@ Do not modify directly.*
 
 ## Execution Providers
 
--- [CPUExecutionProvider](#cpuexecutionprovider)
--- [CUDAExecutionProvider](#cudaexecutionprovider)
--- [DmlExecutionProvider](#dmlexecutionprovider)
+- [CPUExecutionProvider](#cpuexecutionprovider)
+- [CUDAExecutionProvider](#cudaexecutionprovider)
+- [DmlExecutionProvider](#dmlexecutionprovider)
 
 ---------------
 
