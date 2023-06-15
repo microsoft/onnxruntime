@@ -4,11 +4,20 @@
 #include "test_util.h"
 #include "mlas_q4.h"
 
+void MlasSgemmCopyPackB(
+    float* D,
+    const float* B,
+    size_t ldb,
+    size_t CountX,
+    size_t CountY);
+
 class MlasQ4dqTest : public MlasTestBase {
  private:
   MatrixGuardBuffer<float> FpInputBuf;
   MatrixGuardBuffer<uint8_t> PackedBuf;
   MatrixGuardBuffer<float> FpOutBuf;
+  MatrixGuardBuffer<float> SgemmPackBuf;
+  MatrixGuardBuffer<float> SgemmPackRefBuf;
 
   void Test(size_t N, size_t K, MLAS_BLK_QUANT_TYPE qtype) {
     float* Input = FpInputBuf.GetBuffer(N * K, true);
@@ -44,6 +53,21 @@ class MlasQ4dqTest : public MlasTestBase {
       ASSERT_EQ(Output[i], Input[i]) << ", index=" << i << ", [" << N << "x"
                                      << K << "] QType: " << qtype ;
     }
+
+    /* Test MlasBlkQ4DequantSgemmPackB, make sure we can reuse SGEMM kernel as it rearrange B the same way as sgemm pack B*/
+    const size_t AlignedN = (N + 15) & ~15;
+    const size_t AlignedK = (K + 15) & ~15;
+    float* gemmpack = SgemmPackBuf.GetBuffer(AlignedK * AlignedN, true);
+    float* gemmpack_ref = SgemmPackRefBuf.GetBuffer(AlignedK * AlignedN, true);
+    MlasSgemmCopyPackB(gemmpack_ref, Input, N, N, K);
+
+    const size_t blkq_ldb = MlasQ4GemmPackBSize(qtype, 1, K);
+    MlasBlkQ4DequantSgemmPackB(qtype, gemmpack, Packed, N, K, blkq_ldb);
+    for (size_t i = 0; i < AlignedN * K; i++) {
+      ASSERT_EQ(gemmpack[i], gemmpack_ref[i]) << ", sgemm pack index=" << i << ", [" << N << "x"
+                                     << K << "] QType: " << qtype;
+    }
+
   }
 
  public:

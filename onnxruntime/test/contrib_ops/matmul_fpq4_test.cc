@@ -28,7 +28,7 @@ TEST(MatMulFpQ4, MatMul2DSym) {
   // (100 x 41) X (41 x 288)
   const int64_t M = 100;
   const int64_t N = 288;
-  const int64_t K = 41;
+  const int64_t K = 52;
 
   std::vector<float> input0_vals(M * K);
   float fv = -135.f;

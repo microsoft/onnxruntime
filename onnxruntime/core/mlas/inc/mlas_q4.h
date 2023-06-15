@@ -229,3 +229,25 @@ MlasQ8Q4GemmBatch(
     const MLAS_Q8Q4_GEMM_DATA_PARAMS* DataParams,
     MLAS_THREADPOOL* ThreadPool
     );
+
+/**
+ * @brief For testing purpose,
+ *        Dequantize the data intp fp32, and then pack them for use
+ *        in sgemm kernel. equivalent to MlasQ4GemmUnPackB and then
+ *        MlasSgemmCopyPackB
+ * @param QType 
+ * @param FpData 
+ * @param PackedB 
+ * @param CountN 
+ * @param CountK 
+ * @param ldb 
+*/
+void
+MlasBlkQ4DequantSgemmPackB(
+    MLAS_BLK_QUANT_TYPE QType,
+    float* FpData,
+    const uint8_t* PackedB,
+    size_t CountN,
+    size_t CountK,
+    size_t ldb
+    );
