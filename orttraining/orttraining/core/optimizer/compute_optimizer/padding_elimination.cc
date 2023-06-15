@@ -307,7 +307,7 @@ void IterateSubgraphFromNode(Graph& graph,
       //              [batch_size, seqlen, hidden_size] and [hidden_size].
       // TODO: support other case such as:
       //              [batch_size, seqlen, hidden_size] and [batch_size, 1, hidden_size]
-      if (arg_not_in_subgraph->Shape() && arg_not_in_subgraph->Shape() &&
+      if (arg_in_subgraph->Shape() && arg_not_in_subgraph->Shape() &&
           (arg_not_in_subgraph->Shape()->dim_size() <= arg_in_subgraph->Shape()->dim_size() - 2 ||
            (arg_in_subgraph->Shape()->dim_size() == arg_not_in_subgraph->Shape()->dim_size() &&
             arg_in_subgraph->Shape()->dim(0) == arg_not_in_subgraph->Shape()->dim(0) &&

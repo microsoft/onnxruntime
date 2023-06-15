@@ -5784,6 +5784,7 @@ def test_ops_for_padding_elimination(test_cases):
         #            flatten and elimination padding.
         def test_add(self, input_ids):
             input_shape = input_ids.size()
+            add_input = None
             if case == 0:
                 add_input = torch.ones(self.hidden_size, dtype=torch.long).to(device)
             elif case == 1:
@@ -5817,6 +5818,7 @@ def test_ops_for_padding_elimination(test_cases):
         # output of these ops.
         def test_other(self, input_ids):
             inputs_embeds = self.word_embeddings(input_ids)
+            output = None
             if test_op == "Dropout":
                 output = torch.nn.functional.dropout(inputs_embeds, p=0.5, training=True)
             elif test_op == "LayerNorm":
@@ -5900,8 +5902,8 @@ def test_e2e_padding_elimination():
     torch.manual_seed(seed)
     torch.cuda.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
-    torch.backends.cudnn.determinstic=True
-    torch.backends.cudnn.benchmark=False
+    torch.backends.cudnn.determinstic = True
+    torch.backends.cudnn.benchmark = False
 
     class OneLayer(torch.nn.Module):
         def __init__(self, hidden_size, num_attention_heads):
