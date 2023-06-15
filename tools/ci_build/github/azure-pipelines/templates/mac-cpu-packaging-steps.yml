@@ -64,13 +64,9 @@ steps:
     args: '-r $(Build.BinariesDirectory) -a onnxruntime-osx-${{ parameters.MacosArch }}-$(OnnxRuntimeVersion) -l libonnxruntime.$(OnnxRuntimeVersion).dylib -c Release -s $(Build.SourcesDirectory) -t $(Build.SourceVersion)'
     workingDirectory: '$(Build.BinariesDirectory)/Release'
 
-- task: ArchiveFiles@2
-  inputs:
-    rootFolderOrFile: '$(Build.BinariesDirectory)/onnxruntime-osx-${{ parameters.MacosArch }}-$(OnnxRuntimeVersion)'
-    includeRootFolder: true
-    archiveType: 'zip' # Options: zip, 7z, tar, wim
-    archiveFile: '$(Build.ArtifactStagingDirectory)/onnxruntime-osx-${{ parameters.MacosArch }}-$(OnnxRuntimeVersion).zip'
-    replaceExistingArchive: true
+- script: |
+    zip -FSr --symlinks '$(Build.ArtifactStagingDirectory)/onnxruntime-osx-${{ parameters.MacosArch }}-$(OnnxRuntimeVersion).zip' '$(Build.BinariesDirectory)/onnxruntime-osx-${{ parameters.MacosArch }}-$(OnnxRuntimeVersion)'
+  displayName: 'Zip build artifacts'
 
 - script: |
    set -e -x
