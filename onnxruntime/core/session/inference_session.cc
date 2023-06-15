@@ -125,8 +125,11 @@ std::pair<bool, int> AreAllComputeNodesAssignedToCudaEp(const Graph& graph) {
   for (const auto& node : graph.Nodes()) {
     if (node.OpType() == "Shape") {
       for (auto iter = node.OutputNodesBegin(), end = node.OutputNodesEnd(); iter != end; ++iter) {
-        bfs_visited.insert(iter->Index());
-        bfs_queue.push(iter->Index());
+        // If we haven't picked this node for BFS processing yet, then pick it up
+        if ((bfs_visited.find(iter->Index()) == bfs_visited.end())) {
+          bfs_visited.insert(iter->Index());
+          bfs_queue.push(iter->Index());
+        }
       }
     }
   }
@@ -1173,7 +1176,7 @@ Status InferenceSession::LoadOrtModelWithLoader(std::function<Status()> load_ort
                 "The ORT format model version [", fbs_ort_model_version->string_view(),
                 "] is not supported in this build ", ORT_VERSION, ". ",
                 kOrtFormatVersion5BreakingChangeNote);
-#else  // ^^ defined(ORT_MINIMAL_BUILD) ^^ / vv !defined(ORT_MINIMAL_BUILD) vv
+#else   // ^^ defined(ORT_MINIMAL_BUILD) ^^ / vv !defined(ORT_MINIMAL_BUILD) vv
   const auto has_saved_runtime_optimizations = [](const fbs::InferenceSession& fbs_session) -> bool {
     if (const auto* fbs_model = fbs_session.model()) {
       if (const auto* fbs_graph = fbs_model->graph()) {
@@ -1660,7 +1663,7 @@ common::Status InferenceSession::Initialize() {
 
       // Update temporary copies of metadata, input- and output definitions to the same state as the resolved graph
       ORT_RETURN_IF_ERROR_SESSIONID_(SaveModelMetadata(*model_));
-#else  // !defined(ORT_MINIMAL_BUILD)
+#else   // !defined(ORT_MINIMAL_BUILD)
       ORT_RETURN_IF_ERROR_SESSIONID_(
           ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                           "Loading anything other than ORT format models is not enabled in this build."));
