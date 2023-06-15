@@ -3,7 +3,103 @@
 
 #include "core/providers/cpu/tensor/mean_variance_normalization.h"
 
+#include <algorithm>
+#include <optional>
+
+#include "core/common/gsl.h"
+#include "core/common/inlined_containers.h"
+#include "core/providers/common.h"
+#include "core/providers/cpu/tensor/transpose.h"
+
 namespace onnxruntime {
+
+namespace {
+InlinedVector<int64_t> GetAxesFromAttribute(const OpKernelInfo& info) {
+  const auto axes = info.GetAttrsOrDefault<int64_t>("axes", {0, 2, 3});
+  // TODO handle across_channels
+  return InlinedVector<int64_t>(axes.begin(), axes.end());
+}
+
+InlinedVector<int64_t> NormalizeAxes(gsl::span<const int64_t> axes, size_t rank) {
+  InlinedVector<int64_t> normalized_axes{};
+  normalized_axes.reserve(axes.size());
+  std::copy_if(axes.begin(), axes.end(), std::back_inserter(normalized_axes),
+               [rank](int64_t axis) { return IsAxisInRange(axis, static_cast<int64_t>(rank)); });
+  std::transform(normalized_axes.begin(), normalized_axes.end(), normalized_axes.begin(),
+                 [rank](int64_t axis) { return HandleNegativeAxis(axis, static_cast<int64_t>(rank)); });
+  std::sort(normalized_axes.begin(), normalized_axes.end());
+  normalized_axes.erase(std::unique(normalized_axes.begin(), normalized_axes.end()), normalized_axes.end());
+  return normalized_axes;
+}
+
+std::optional<InlinedVector<size_t>> GetTransposePermutationIfNeeded(gsl::span<const int64_t> normalized_axes, size_t rank) {
+  // we need to transpose if anything other than the trailing axes are specified
+  // assume normalized_axes is sorted with unique values
+
+  const bool is_transpose_needed = [&]() {
+    for (size_t i = 0, num_axes = normalized_axes.size(); i < num_axes; ++i) {
+      if (static_cast<size_t>(normalized_axes[i]) != rank - num_axes + i) {
+        return true;
+      }
+    }
+    return false;
+  }();
+
+  if (!is_transpose_needed) {
+    return std::nullopt;
+  }
+
+  // permutation of [ { unspecified axes }, { specified axes } ]
+  InlinedVector<size_t> permutation{};
+  permutation.reserve(rank);
+
+  auto specified_axis_it = normalized_axes.begin();
+  for (size_t axis = 0; axis < rank; ++axis) {
+    if (specified_axis_it != normalized_axes.end() &&
+        axis == static_cast<size_t>(*specified_axis_it)) {
+      // skip specified axis for now, add them all to the end later
+      ++specified_axis_it;
+    } else {
+      // add unspecified axis
+      permutation.push_back(axis);
+    }
+  }
+
+  // add all specified axes
+  std::transform(normalized_axes.begin(), normalized_axes.end(), std::back_inserter(permutation),
+                 [](int64_t axis) { return static_cast<size_t>(axis); });
+
+  return permutation;
+}
+}  // namespace
+
+class MeanVarianceNormalization : public OpKernel {
+ public:
+  MeanVarianceNormalization(const OpKernelInfo& info)
+      : OpKernel{info},
+        normalize_variance_(info.GetAttrOrDefault<int64_t>("normalize_variance", int64_t{1}) == int64_t{1}),
+        axes_{GetAxesFromAttribute(info)} {
+  }
+
+  Status Compute(OpKernelContext* context) const override {
+    // general idea:
+    // - transpose to partition into [unspecified axes, specified axes]
+    // - do normalization on inner dimensions
+    // - transpose back
+    const auto& X = context->RequiredInput<Tensor>(0);
+
+    const auto rank = X.Shape().GetDims().size();
+
+    const auto normalized_axes = NormalizeAxes(axes_, rank);
+
+    const auto optional_transpose_permutation = GetTransposePermutationIfNeeded(normalized_axes, rank);
+  }
+
+ private:
+  const bool normalize_variance_;
+  const InlinedVector<int64_t> axes_;
+};
+
 ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     MeanVarianceNormalization,
     9,
@@ -16,4 +112,5 @@ ONNX_CPU_OPERATOR_KERNEL(
     13,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     MeanVarianceNormalization_1<float>);
+
 }  // namespace onnxruntime
