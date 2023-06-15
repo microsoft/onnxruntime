@@ -14,6 +14,9 @@ OrtErrorCode g_last_error_code;
 std::string g_last_error_message;
 }  // namespace
 
+static_assert(sizeof(const char*) == sizeof(size_t), "size of a pointer and a size_t value should be the same.");
+static_assert(sizeof(size_t) == 4, "size of size_t should be 4 in this build (wasm32).");
+
 OrtErrorCode CheckStatus(OrtStatusPtr status) {
   if (status) {
     std::string error_message = Ort::GetApi().GetErrorMessage(status);
@@ -38,7 +41,6 @@ OrtErrorCode CheckStatus(OrtStatusPtr status) {
     }                                                         \
   } while (false)
 
-// TODO: This macro can be removed when we changed all APIs to return a status code.
 #define RETURN_NULLPTR_IF_ERROR(ORT_API_NAME, ...)           \
   do {                                                       \
     if (CHECK_STATUS(ORT_API_NAME, __VA_ARGS__) != ORT_OK) { \
@@ -250,8 +252,8 @@ int OrtGetTensorData(OrtValue* tensor, int* data_type, void** data, size_t** dim
   ONNXType tensor_type;
   RETURN_ERROR_CODE_IF_ERROR(GetValueType, tensor, &tensor_type);
   if (tensor_type != ONNX_TYPE_TENSOR) {
-    // TODO: make ORT_STATUS
-    return ORT_FAIL;
+    return CheckStatus(
+        Ort::GetApi().CreateStatus(ORT_NOT_IMPLEMENTED, "Reading data from non-tensor typed value is not supported."));
   }
 
   OrtTensorTypeAndShapeInfo* info = nullptr;
@@ -291,8 +293,6 @@ int OrtGetTensorData(OrtValue* tensor, int* data_type, void** data, size_t** dim
     // The buffer contains following data:
     //  - a sequence of pointers to (const char*), size = num_elements * sizeof(const char*).
     //  - followed by a raw buffer to store string content, size = string_data_length + 1.
-    static_assert(sizeof(const char*) == sizeof(size_t), "size of a pointer and a size_t value should be the same.");
-
     size_t string_data_offset = num_elements * sizeof(const char*);
     size_t buf_size = string_data_offset + string_data_length;
     void* p_string_data = allocator->Alloc(allocator, buf_size + 1);
