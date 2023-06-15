@@ -13,8 +13,6 @@ namespace rocm {
 
 using namespace onnxruntime::rocm;
 
-
-
 template <typename T>
 class MultiHeadAttention final : public RocmKernel {
  public:
