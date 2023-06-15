@@ -6,7 +6,7 @@ input_shape = [2, 2]
 input = helper.make_tensor_value_info("input", TensorProto.FLOAT, input_shape)
 output = helper.make_tensor_value_info("output", TensorProto.FLOAT, input_shape)
 
-cast1 = helper.make_node("Cast", ["input"], ["cast1"], name="cast1", to=1)
+cast1 = helper.make_node("Cast", ["input"], ["cast1"], name="cast1", to=2)
 shape1 = helper.make_node("Shape", ["cast1"], ["shape1"], name="shape1")
 add = helper.make_node("Add", ["cast1", "cast1"], ["add"], name="add")
 cast2 = helper.make_node("Cast", ["add"], ["cast2"], name="cast2", to=1)
