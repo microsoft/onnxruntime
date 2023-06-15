@@ -99,7 +99,7 @@ stages:
       GenerateDocumentation: false
       EnablePython: false
       MachinePool: 'onnxruntime-Win-CPU-2022'
-      
+
 - stage: MemoryProfiling
   dependsOn: [ ]
   jobs:
