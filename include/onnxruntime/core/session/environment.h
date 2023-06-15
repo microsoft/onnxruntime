@@ -81,9 +81,12 @@ class Environment {
 
   Environment() = default;
 
-#ifdef USE_CUDA
-  Status CreateAndRegisterCudaAllocator(const OrtMemoryInfo& mem_info, const std::unordered_map<std::string, std::string>& options, const OrtArenaCfg* arena_cfg = nullptr);
-#endif  // USE_CUDA
+  /**
+   * Create and register an allocator, specified by provider_type, for sharing between multiple sessions.
+   * Return an error if an allocator with the same OrtMemoryInfo is already registered.
+   * For provider_type please refer core/graph/constants.h
+   */
+  Status CreateAndRegisterAllocatorV2(const std::string& provider_type, const OrtMemoryInfo& mem_info, const std::unordered_map<std::string, std::string>& options, const OrtArenaCfg* arena_cfg = nullptr);
 
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Environment);

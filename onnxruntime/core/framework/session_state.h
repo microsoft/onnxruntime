@@ -135,7 +135,7 @@ class SessionState {
   /*
    * Get allocators.
    */
-  const AllocatorMap& GetAllocators() { return *allocators_; }
+  const AllocatorMap& GetAllocators() const { return *allocators_; }
 
   void UpdateAllocatorsWithEnvAllocators(const std::vector<AllocatorPtr>&);
 
@@ -448,6 +448,11 @@ class SessionState {
   // and as this isn't considered performance critical currently it's not worth the maintenance overhead of adding one.
   // We do get an allocator from ExecutionFrame so this is looked up frequently, however there most likely aren't many
   // entries in the map
+  // SessionState will contain other SessionState objects for subgraph. The unique ptr will be initialized only the
+  // SessionState object is in the parent graph, the raw pointer will be initialized when session state is in parent
+  // graph (from the unique ptr) or in the subgraph (from the raw pointer from parent session state). The raw pointer
+  // will be used all the way to access std::map<OrtDevice, AllocatorPtr>, unique pointer is only releasing the resource
+  // when the parent session state is releasing.
   std::unique_ptr<AllocatorMap> allocators_unique_ptr_;
   AllocatorMap* allocators_;
 

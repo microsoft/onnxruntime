@@ -4299,11 +4299,20 @@ struct OrtApi {
 
   /// @}
 
-  /** \brief Create and register Cuda Allocator
+  /** \brief Create an allocator with specific type and register it with the ::OrtEnv
+   *  This API enhance CreateAndRegisterAllocator that it can create an allocator with specific type, not just CPU allocator
+   *  Enables sharing the allocator between multiple sessions that use the same env instance.
+   *  Lifetime of the created allocator will be valid for the duration of the environment.
+   *  Returns an error if an allocator with the same ::OrtMemoryInfo is already registered.
    *  \param[in] env OrtEnv instance
+   *  \param[in] provider_type ExecutionProvider type
    *  \param[in] mem_info OrtMemoryInfo instance
+   *  \param[in] arena_cfg Arena configuration
+   *  \param[in] provider_options_keys key of the provider options map
+   *  \param[in] provider_options_values value of the provider options map
+   *  \param[in] num_keys Length of the provider options map
    */
-  ORT_API2_STATUS(CreateAndRegisterCudaAllocator, _Inout_ OrtEnv* env, _In_ const OrtMemoryInfo* mem_info, _In_ const OrtArenaCfg* arena_cfg,
+  ORT_API2_STATUS(CreateAndRegisterAllocatorV2, _Inout_ OrtEnv* env, _In_ const char* provider_type, _In_ const OrtMemoryInfo* mem_info, _In_ const OrtArenaCfg* arena_cfg,
                   _In_reads_(num_keys) const char* const* provider_options_keys, _In_reads_(num_keys) const char* const* provider_options_values, _In_ size_t num_keys);
 };
 

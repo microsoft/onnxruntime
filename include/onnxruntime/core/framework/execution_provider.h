@@ -320,6 +320,10 @@ class IExecutionProvider {
     return default_device_;
   };
 
+  /**
+   * Create Preferred allocators for the current Execution Provider
+   * This function is a stateless function which creates new instances of Allocator, without storing them in EP.
+   */
   virtual std::vector<AllocatorPtr> CreatePreferredAllocators() { return std::vector<AllocatorPtr>(); };
 
  private:

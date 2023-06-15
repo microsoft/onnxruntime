@@ -332,15 +332,22 @@ Internal copy node
   return status;
 }
 
+Status Environment::CreateAndRegisterAllocatorV2(const std::string& provider_type, const OrtMemoryInfo& mem_info, const std::unordered_map<std::string, std::string>& options, const OrtArenaCfg* arena_cfg) {
+  if (provider_type == onnxruntime::kCpuExecutionProvider) {
+    ORT_UNUSED_PARAMETER(options);
+    return CreateAndRegisterAllocator(mem_info, arena_cfg);
+  }
 #ifdef USE_CUDA
-Status Environment::CreateAndRegisterCudaAllocator(const OrtMemoryInfo& mem_info, const std::unordered_map<std::string, std::string>& options, const OrtArenaCfg* arena_cfg) {
-  CUDAExecutionProviderInfo cuda_ep_info;
-  GetProviderInfo_CUDA().CUDAExecutionProviderInfo__FromProviderOptions(options, cuda_ep_info);
-  CUDAExecutionProviderExternalAllocatorInfo external_info = cuda_ep_info.external_allocator_info;
-  AllocatorPtr allocator_ptr = GetProviderInfo_CUDA().CreateCudaAllocator(static_cast<int16_t>(mem_info.device.Id()), arena_cfg->max_mem, static_cast<ArenaExtendStrategy>(arena_cfg->arena_extend_strategy),
-                                                                          external_info, const_cast<OrtArenaCfg*>(arena_cfg));
-  return RegisterAllocator(allocator_ptr);
+  if (provider_type == onnxruntime::kCudaExecutionProvider) {
+    CUDAExecutionProviderInfo cuda_ep_info;
+    GetProviderInfo_CUDA().CUDAExecutionProviderInfo__FromProviderOptions(options, cuda_ep_info);
+    CUDAExecutionProviderExternalAllocatorInfo external_info = cuda_ep_info.external_allocator_info;
+    AllocatorPtr allocator_ptr = GetProviderInfo_CUDA().CreateCudaAllocator(static_cast<int16_t>(mem_info.device.Id()), arena_cfg->max_mem, static_cast<ArenaExtendStrategy>(arena_cfg->arena_extend_strategy),
+                                                                            external_info, const_cast<OrtArenaCfg*>(arena_cfg));
+    return RegisterAllocator(allocator_ptr);
+  }
+#endif
+  return Status{ONNXRUNTIME, common::INVALID_ARGUMENT, provider_type + " is not implemented in CreateAndRegisterAllocatorV2()"};
 }
-#endif  // USE_CUDA
 
 }  // namespace onnxruntime

@@ -136,9 +136,8 @@ ORT_API(void, OrtApis::ReleaseAllocator, _Frees_ptr_opt_ OrtAllocator* allocator
   delete static_cast<onnxruntime::OrtAllocatorImpl*>(allocator);
 }
 
-ORT_API_STATUS_IMPL(OrtApis::CreateAndRegisterCudaAllocator, _Inout_ OrtEnv* env, _In_ const OrtMemoryInfo* mem_info, _In_ const OrtArenaCfg* arena_cfg,
+ORT_API_STATUS_IMPL(OrtApis::CreateAndRegisterAllocatorV2, _Inout_ OrtEnv* env, _In_ const char* provider_type, _In_ const OrtMemoryInfo* mem_info, _In_ const OrtArenaCfg* arena_cfg,
                     _In_reads_(num_keys) const char* const* provider_options_keys, _In_reads_(num_keys) const char* const* provider_options_values, _In_ size_t num_keys) {
-#ifdef USE_CUDA
   using namespace onnxruntime;
   std::unordered_map<std::string, std::string> options;
   for (size_t i = 0; i != num_keys; i++) {
@@ -163,18 +162,10 @@ ORT_API_STATUS_IMPL(OrtApis::CreateAndRegisterCudaAllocator, _Inout_ OrtEnv* env
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "OrtMemoryInfo is null");
   }
 
-  auto st = env->CreateAndRegisterCudaAllocator(*mem_info, options, arena_cfg);
+  auto st = env->CreateAndRegisterAllocatorV2(provider_type, *mem_info, options, arena_cfg);
 
   if (!st.IsOK()) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, st.ErrorMessage().c_str());
   }
-#else
-  ORT_UNUSED_PARAMETER(env);
-  ORT_UNUSED_PARAMETER(mem_info);
-  ORT_UNUSED_PARAMETER(arena_cfg);
-  ORT_UNUSED_PARAMETER(num_keys);
-  ORT_UNUSED_PARAMETER(provider_options_keys);
-  ORT_UNUSED_PARAMETER(provider_options_values);
-#endif  // USE_CUDA
   return nullptr;
 }
