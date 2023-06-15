@@ -24,15 +24,15 @@ def chain_model(args):
     config = WhisperConfig.from_pretrained(args.model_name_or_path)
 
     beam_inputs = [
-        "input_features",
+        "input_features_fp16" if args.precision == Precision.FLOAT16 else "input_features",
         "max_length",
         "min_length",
         "num_beams",
         "num_return_sequences",
-        "length_penalty",
-        "repetition_penalty",
-        "",
-        "",
+        "length_penalty_fp16" if args.precision == Precision.FLOAT16 else "length_penalty",
+        "repetition_penalty_fp16" if args.precision == Precision.FLOAT16 else "input_features",
+        "vocab_mask" if args.use_prefix_vocab_mask else "",
+        "prefix_vocab_mask" if args.use_prefix_vocab_mask else "",
         "",
     ]
     if args.use_forced_decoder_ids:
@@ -43,6 +43,30 @@ def chain_model(args):
     if args.use_logits_processor:
         beam_inputs.append("logits_processor")
     beam_outputs = ["sequences"]
+
+    input_features_cast_node, len_pen_cast_node, rep_pen_cast_node = None, None, None
+    if args.precision == Precision.FLOAT16:
+        input_features_cast_node = helper.make_node(
+            "Cast",
+            inputs=["input_features"],
+            outputs=["input_features_fp16"],
+            name="CastInputFeaturesToFp16",
+            to=TensorProto.FLOAT16,
+        )
+        len_pen_cast_node = helper.make_node(
+            "Cast",
+            inputs=["length_penalty"],
+            outputs=["length_penalty_fp16"],
+            name="CastLengthPenaltyToFp16",
+            to=TensorProto.FLOAT16,
+        )
+        rep_pen_cast_node = helper.make_node(
+            "Cast",
+            inputs=["repetition_penalty"],
+            outputs=["repetition_penalty_fp16"],
+            name="CastRepetitionPenaltyToFp16",
+            to=TensorProto.FLOAT16,
+        )
 
     node = helper.make_node("BeamSearch", inputs=beam_inputs, outputs=beam_outputs, name="BeamSearch_zcode")
     node.domain = "com.microsoft"
@@ -57,13 +81,8 @@ def chain_model(args):
         ]
     )
 
-    # beam graph inputs
-    float_data_type = TensorProto.FLOAT
-    if args.precision != Precision.FLOAT32:
-        float_data_type = TensorProto.FLOAT16
-
     input_features = helper.make_tensor_value_info(
-        "input_features", float_data_type, ["batch_size", "feature_size", "sequence_length"]
+        "input_features", TensorProto.FLOAT, ["batch_size", "feature_size", "sequence_length"]
     )
     max_length = helper.make_tensor_value_info("max_length", TensorProto.INT32, [1])
     min_length = helper.make_tensor_value_info("min_length", TensorProto.INT32, [1])
@@ -91,6 +110,16 @@ def chain_model(args):
         logits_processor = helper.make_tensor_value_info("logits_processor", TensorProto.INT32, [1])
         graph_inputs.append(logits_processor)
 
+    if args.use_vocab_mask:
+        vocab_mask = helper.make_tensor_value_info("vocab_mask", TensorProto.INT32, [config.vocab_size])
+        graph_inputs.append(vocab_mask)
+
+    if args.use_prefix_vocab_mask:
+        prefix_vocab_mask = helper.make_tensor_value_info(
+            "prefix_vocab_mask", TensorProto.INT32, ["batch_size", config.vocab_size]
+        )
+        graph_inputs.append(prefix_vocab_mask)
+
     # graph outputs
     sequences = helper.make_tensor_value_info(
         "sequences", TensorProto.INT32, ["batch_size", "num_return_sequences", "max_length"]
@@ -99,7 +128,7 @@ def chain_model(args):
 
     if hasattr(args, "use_gpu") and args.use_gpu:
         if update_decoder_subgraph_share_buffer_and_use_decoder_masked_mha(decoder_model.graph):
-            print("*****update whisper decoder subgraph successfully!!!*****")
+            print("*****Updated whisper decoder subgraph successfully!!!*****")
         else:
             print("*****DecoderMaskedMultiHeadAttention is not applied to whisper decoder*****")
 
@@ -115,8 +144,13 @@ def chain_model(args):
 
     opset_import = [helper.make_opsetid(domain="com.microsoft", version=1), helper.make_opsetid(domain="", version=17)]
 
-    beam_graph = helper.make_graph([node], "beam-search-test", graph_inputs, graph_outputs, initializers)
-    beam_model = helper.make_model(beam_graph, producer_name="pytorch", opset_imports=opset_import)
+    graph_nodes = (
+        [input_features_cast_node, len_pen_cast_node, rep_pen_cast_node, node]
+        if args.precision == Precision.FLOAT16
+        else [node]
+    )
+    beam_graph = helper.make_graph(graph_nodes, "beam-search-test", graph_inputs, graph_outputs, initializers)
+    beam_model = helper.make_model(beam_graph, producer_name="onnxruntime.transformers", opset_imports=opset_import)
 
     onnx.save(
         beam_model,
