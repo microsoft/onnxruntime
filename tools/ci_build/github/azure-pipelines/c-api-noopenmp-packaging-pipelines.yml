@@ -785,7 +785,7 @@ stages:
 
 - template: nuget/templates/dml-vs-2019.yml
   parameters:
-    AgentPool : 'aiinfra-dml-winbuild'
+    AgentPool : 'onnxruntime-Win2019-GPU-dml-A10'
     IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
     ArtifactName: 'drop-nuget-dml'
     StageName: 'Windows_CI_GPU_DML_Dev'
@@ -808,7 +808,7 @@ stages:
 
 - template: nuget/templates/dml-vs-2019.yml
   parameters:
-    AgentPool : 'aiinfra-dml-winbuild'
+    AgentPool : 'onnxruntime-Win2019-GPU-dml-A10'
     IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
     ArtifactName: 'drop-win-dml-x86-zip'
     StageName: 'Windows_CI_GPU_DML_Dev_x86'
