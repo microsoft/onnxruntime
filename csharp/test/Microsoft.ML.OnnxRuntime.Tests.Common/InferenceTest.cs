@@ -363,7 +363,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                     var inputName = inputNames[0];
                     Assert.Equal(typeof(float), inputMeta[inputName].ElementType);
                     Assert.True(inputMeta[inputName].IsTensor);
-                    var longShape = Array.ConvertAll<int, long>(inputMeta[inputName].Dimensions, d => d);
+                    var longShape = Array.ConvertAll<int, long>(inputMeta[inputName].Dimensions, Convert.ToInt64);
                     var byteSize = longShape.Aggregate(1L, (a, b) => a * b) * sizeof(float);
                     pinnedInputs.Add(FixedBufferOnnxValue.CreateFromMemory<float>(memInfo, inputData,
                         TensorElementType.Float, longShape, byteSize));
@@ -375,7 +375,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                     var outputName = outputNames[0];
                     Assert.Equal(typeof(float), outputMeta[outputName].ElementType);
                     Assert.True(outputMeta[outputName].IsTensor);
-                    longShape = Array.ConvertAll<int, long>(outputMeta[outputName].Dimensions, d => d);
+                    longShape = Array.ConvertAll<int, long>(outputMeta[outputName].Dimensions, Convert.ToInt64);
                     byteSize = longShape.Aggregate(1L, (a, b) => a * b) * sizeof(float);
                     float[] outputBuffer = new float[expectedOutput.Length];
                     pinnedOutputs.Add(FixedBufferOnnxValue.CreateFromMemory<float>(memInfo, outputBuffer,
@@ -455,7 +455,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 var inputNames = inputMeta.Keys.ToList().AsReadOnly();
                 Assert.Equal(TensorElementType.Float, inputMeta[inputNames[0]].ElementDataType);
                 Assert.True(inputMeta[inputNames[0]].IsTensor);
-                var inputShape = Array.ConvertAll<int, long>(inputMeta[inputNames[0]].Dimensions, d => d);
+                var inputShape = Array.ConvertAll<int, long>(inputMeta[inputNames[0]].Dimensions, Convert.ToInt64);
 
 
                 var outputMeta = session.OutputMetadata;
@@ -1508,7 +1508,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                     var outNode0 = outputs.ElementAtOrDefault(0);
                     Assert.Equal("label", outNode0.Name);
                     Assert.Equal(OnnxValueType.ONNX_TYPE_TENSOR, outNode0.ValueType);
-                    Assert.Equal(TensorElementType.String, (TensorElementType)outNode0.ElementType);
+                    Assert.Equal(TensorElementType.String, outNode0.ElementType);
 
                     // try-cast as a tensor
                     var outLabelTensor = outNode0.AsTensor<string>();

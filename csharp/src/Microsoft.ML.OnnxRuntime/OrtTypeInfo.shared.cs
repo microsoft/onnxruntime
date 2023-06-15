@@ -28,8 +28,10 @@ namespace Microsoft.ML.OnnxRuntime
                     {
                         NativeApiStatus.VerifySuccess(NativeMethods.OrtCastTypeInfoToTensorInfo(handle, out IntPtr tensorInfo));
                         if (tensorInfo == IntPtr.Zero)
+                        {
                             throw new OnnxRuntimeException(ErrorCode.Fail,
                                 "Type Information indicates a tensor, but casting to TensorInfo fails");
+                        }
                         _tensorTypeAndShape = new OrtTensorTypeAndShapeInfo(tensorInfo);
                     }
                     break;
@@ -165,6 +167,7 @@ namespace Microsoft.ML.OnnxRuntime
             ElementCount = (long)count;
 
             NativeApiStatus.VerifySuccess(NativeMethods.OrtGetDimensionsCount(handle, out UIntPtr dimCount));
+
             Shape = new long[(uint)dimCount];
             NativeApiStatus.VerifySuccess(NativeMethods.OrtGetDimensions(handle, Shape, dimCount));
 

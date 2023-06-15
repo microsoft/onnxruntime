@@ -31,7 +31,7 @@ namespace Microsoft.ML.OnnxRuntime.InferenceSample
             {
                 // We create an OrtValue in this case over the buffer of potentially different shapes.
                 // It is Okay as long as the specified shape does not exceed the actual length of the buffer
-                var shape = Array.ConvertAll<int, long>(inputMeta[name].Dimensions, d => d);
+                var shape = Array.ConvertAll<int, long>(inputMeta[name].Dimensions, Convert.ToInt64);
                 var shapeLen = shape.Aggregate(1L, (a, v) => a * v);
                 Debug.Assert(shapeLen <= inputData.LongLength);
                 var bufferSize = shapeLen * sizeof(float);

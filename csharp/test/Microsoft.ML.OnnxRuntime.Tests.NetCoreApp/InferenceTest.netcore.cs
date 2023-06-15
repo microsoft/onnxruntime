@@ -767,15 +767,6 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                             {
                                 LoadInputData(opset, modelName, testDataDir, session, inputOrtValues, TestDataLoader.LoadOrtValueFromFilePb);
                                 LoadOutputData(opset, modelName, testDataDir, session, outputOrtValues, TestDataLoader.LoadOrtValueFromFilePb);
-                                //if (opset == "opset10" && modelName == "GPT-2")
-                                //{
-                                //    var inputContainer = new List<NamedOnnxValue>(session.InputMetadata.Count);
-                                //    LoadInputData(opset, modelName, testDataDir, session, inputContainer, TestDataLoader.LoadOnnxValueFromFilePb);
-                                //    VerifyContainerContent(inputOrtValues, inputContainer);
-                                //    var outputContainer = new List<NamedOnnxValue>(session.OutputMetadata.Count);
-                                //    LoadOutputData(opset, modelName, testDataDir, session, outputContainer, TestDataLoader.LoadOnnxValueFromFilePb);
-                                //    VerifyContainerContent(outputOrtValues, outputContainer);
-                                //}
                                 RunPretrainedModel(session, runOptions, inputOrtValues, outputOrtValues);
                             }
                         }

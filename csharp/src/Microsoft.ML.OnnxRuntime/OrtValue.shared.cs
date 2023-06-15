@@ -37,7 +37,7 @@ namespace Microsoft.ML.OnnxRuntime
     /// disposed properly, the pinned memory will continue to be pinned and interfere
     /// with GC operation.
     /// </summary>
-    public class OrtValue : IDisposable
+    public class OrtValue : IOrtValueOwner, IDisposable
     {
         private IntPtr _handle;
         private MemoryHandle? _memHandle; // Present when the OrtValue is created on top of managed memory
@@ -82,6 +82,12 @@ namespace Microsoft.ML.OnnxRuntime
         /// Native handle to OrtValue for internal use.
         /// </summary>
         internal IntPtr Handle { get { return _handle; } }
+
+        /// <summary>
+        /// Implement IOrtValueOwner interface
+        /// </summary>
+        /// <value>returns this</value>
+        public OrtValue Value => this;
 
         /// <summary>
         /// Fetches OrtValue type if it has one.
@@ -786,7 +792,7 @@ namespace Microsoft.ML.OnnxRuntime
                 throw new OnnxRuntimeException(ErrorCode.InvalidArgument, "Expecting a valid string tensor");
             }
 
-            long[] shape = Array.ConvertAll<int, long>(tensor.Dimensions.ToArray(), (x) => (long)x);
+            long[] shape = Array.ConvertAll<int, long>(tensor.Dimensions.ToArray(), Convert.ToInt64);
 
             var ortValue = CreateTensorWithEmptyStrings(OrtAllocator.DefaultInstance, shape);
             try
@@ -905,7 +911,7 @@ namespace Microsoft.ML.OnnxRuntime
             }
 
             DenseTensor<T> dt = tensor as DenseTensor<T> ?? tensor.ToDenseTensor();
-            shape = Array.ConvertAll<int, long>(dt.Dimensions.ToArray(), (x) => (long)x);
+            shape = Array.ConvertAll<int, long>(dt.Dimensions.ToArray(), Convert.ToInt64);
             rank = dt.Rank;
 
             dataBufferLength = dt.Buffer.Length * elementSize;
@@ -946,11 +952,8 @@ namespace Microsoft.ML.OnnxRuntime
             }
 
             Debug.Assert(_handle != IntPtr.Zero);
-            if (_handle != IntPtr.Zero)
-            {
-                NativeMethods.OrtReleaseValue(_handle);
-                _handle = IntPtr.Zero;
-            }
+            NativeMethods.OrtReleaseValue(_handle);
+           _handle = IntPtr.Zero;
             _disposed = true;
         }
 

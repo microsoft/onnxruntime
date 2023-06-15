@@ -52,8 +52,8 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             var inputMeta = _session.InputMetadata;
             var outputMeta = _session.OutputMetadata;
 
-            _inputShape = Array.ConvertAll<int, long>(inputMeta[_inputName].Dimensions, d => d);
-            _outputShape = Array.ConvertAll<int, long>(outputMeta[_outputName].Dimensions, d => d);
+            _inputShape = Array.ConvertAll<int, long>(inputMeta[_inputName].Dimensions, Convert.ToInt64);
+            _outputShape = Array.ConvertAll<int, long>(outputMeta[_outputName].Dimensions, Convert.ToInt64);
 
             var inputShapeSize = ArrayUtilities.GetSizeForShape(_inputShape);
             Assert.Equal(inputShapeSize, _inputData.Length);

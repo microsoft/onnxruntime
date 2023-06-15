@@ -165,12 +165,14 @@ namespace Microsoft.ML.OnnxRuntime
             // The order in which Keys and Values are unspecified,
             // but it is guaranteed to be the same order
             // These tensors are 1-D
-            var keysMemory = new Memory<K>(value.Keys.ToArray<K>());
-            var keysTensor = new DenseTensor<K>(keysMemory, new int[1] { keysMemory.Length });
+            return CreateFromMap<K, V>(name, value.Keys, value.Values);
+        }
 
-            var valuesMemory = new Memory<V>(value.Values.ToArray<V>());
-            var valuesTensor = new DenseTensor<V>(valuesMemory, new int[1] { valuesMemory.Length });
-            return new NamedOnnxValue(name, value, new MapHelper(keysTensor, valuesTensor));
+        internal static NamedOnnxValue CreateFromMap<K, V>(string name, ICollection<K> keys, ICollection<V> values)
+        {
+            var keysTensor = new DenseTensor<K>(keys.ToArray(), new int[1] { keys.Count });
+            var valuesTensor = new DenseTensor<V>(values.ToArray(), new int[1] { values.Count });
+            return new NamedOnnxValue(name, values, new MapHelper(keysTensor, valuesTensor));
         }
 
         /// <summary>

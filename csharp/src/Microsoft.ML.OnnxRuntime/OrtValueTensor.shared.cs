@@ -23,11 +23,10 @@ namespace Microsoft.ML.OnnxRuntime
     /// This class is used in conjunction with DisposableNamedOnnxValue to 
     /// own native collection OrtValue and dispose of it along with any DisposableNamedOnnxValues
     /// </summary>
-    internal class NativeOrtValueCollectionOwner<T> : IOrtValueOwner, IDisposable
-        where T : IDisposable
+    internal class NativeOrtValueCollectionOwner : IOrtValueOwner, IDisposable
     {
         private OrtValue _ortValue;
-        private DisposableList<T> _disposables;
+        private IDisposable _disposables;
         bool _disposed = false;
 
         /// <summary>
@@ -37,7 +36,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// <param name="disposables">A collection of disposables that support composed types.
         /// We stick them here and dispose them when this instance is disposed.
         /// </param>
-        internal NativeOrtValueCollectionOwner(ref OrtValue ortValue, DisposableList<T> disposables)
+        internal NativeOrtValueCollectionOwner(ref OrtValue ortValue, IDisposable disposables)
         {
             _ortValue = ortValue;
             ortValue = null;
@@ -101,7 +100,6 @@ namespace Microsoft.ML.OnnxRuntime
     {
         private OrtValue _ortValue; // Disposable
         private readonly IntPtr _dataBufferPointer;    // pointer to mutable tensor data in native memory
-        private readonly string[] _dataBufferAsString; // string tensor values copied into managed memory
 
         /// <summary>
         /// Constructs an instance and takes ownership of ortValue on success
@@ -110,37 +108,25 @@ namespace Microsoft.ML.OnnxRuntime
         public OrtValueTensor(ref OrtValue ortValue)
         {
             var typeAndShapeInfo = ortValue.GetTensorTypeAndShape();
+            TensorElementType elemType = typeAndShapeInfo.ElementDataType;
+
+            var typeInfo = TensorBase.GetElementTypeInfo(elemType) ?? throw new OnnxRuntimeException(ErrorCode.InvalidArgument,
+                    $"Unable to query type information for data type: {elemType}");
+
+            if (typeof(T) != typeInfo.TensorType)
             {
-                TensorElementType elemType = typeAndShapeInfo.ElementDataType;
-
-                var typeInfo = TensorBase.GetElementTypeInfo(elemType) ?? throw new OnnxRuntimeException(ErrorCode.InvalidArgument,
-                        $"Unable to query type information for data type: {elemType}");
-
-                if (typeof(T) != typeInfo.TensorType)
-                {
-                    throw new OnnxRuntimeException(ErrorCode.InvalidArgument,
-                        $"The OrtValueTensor<T> type being instantiated for T = [{typeof(T)}] while supplied OrtValue contains T = [{typeInfo.TensorType}]");
-                }
-
-                ElementType = elemType;
-                ElementWidth = typeInfo.TypeSize;
-                Count = (int)typeAndShapeInfo.ElementCount;
-
-                Dimensions = Array.ConvertAll(typeAndShapeInfo.Shape, x => (int)x);
-
-                if (!typeAndShapeInfo.IsString)
-                {
-                    NativeApiStatus.VerifySuccess(NativeMethods.OrtGetTensorMutableData(ortValue.Handle, out _dataBufferPointer));
-                }
-                else
-                {
-                    _dataBufferAsString = new string[Count];
-                    for(int i = 0; i < Count; ++i)
-                    {
-                        _dataBufferAsString[i] = ortValue.GetStringElement(i);
-                    }
-                }
+                throw new OnnxRuntimeException(ErrorCode.InvalidArgument,
+                    $"The OrtValueTensor<T> type being instantiated for T = [{typeof(T)}] while supplied OrtValue contains T = [{typeInfo.TensorType}]");
             }
+
+            ElementType = elemType;
+            ElementWidth = typeInfo.TypeSize;
+            Count = (int)typeAndShapeInfo.ElementCount;
+
+            Dimensions = Array.ConvertAll(typeAndShapeInfo.Shape, Convert.ToInt32);
+
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtGetTensorMutableData(ortValue.Handle, out _dataBufferPointer));
+
             // Transfer ownership
             _ortValue = ortValue;
             ortValue = null;
@@ -179,24 +165,6 @@ namespace Microsoft.ML.OnnxRuntime
             }
 
             return span;
-        }
-
-        /// <summary>
-        /// Returns Memory<string> over the array of strings
-        /// that were contained in the OrtValue Tensor<string>.
-        /// </summary>
-        /// <returns>Memory</returns>
-        /// <exception cref="ObjectDisposedException"></exception>
-        /// <exception cref="NotSupportedException"></exception>
-        public Memory<String> GetBytesAsStringMemory()
-        {
-            if (IsDisposed)
-                throw new ObjectDisposedException(nameof(OrtValueTensor<T>));
-
-            if (typeof(T) != typeof(string))
-                throw new NotSupportedException(nameof(OrtValueTensor<T>.GetBytesAsStringMemory) + ": supports only strings");
-
-            return (_dataBufferAsString == null) ? new Memory<string>() : new Memory<string>(_dataBufferAsString);
         }
 
         /// <summary>

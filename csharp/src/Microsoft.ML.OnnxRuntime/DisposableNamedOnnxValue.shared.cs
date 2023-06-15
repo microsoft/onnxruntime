@@ -4,6 +4,9 @@
 using Microsoft.ML.OnnxRuntime.Tensors;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.Linq;
+using System.Xml.Linq;
 
 namespace Microsoft.ML.OnnxRuntime
 {
@@ -139,7 +142,7 @@ namespace Microsoft.ML.OnnxRuntime
         {
             if (_ortValueHolder == null)
             {
-                throw new InvalidOperationException("The instance of this class does not own any OrtValues");
+                throw new InvalidOperationException("The instance of this class does not own an OrtValue");
             }
             // PinnedMemoryHandle holds the default value as DisposableNamedOnnxValue
             // doesn't hold any managed buffer (that needs to be pinned)
@@ -201,7 +204,7 @@ namespace Microsoft.ML.OnnxRuntime
                     result = FromNativeMap(name, ref ortValue, allocator);
                     break;
                 default:
-                    throw new NotSupportedException("OnnxValueType : " + onnxValueType + " is not supported");
+                    throw new NotSupportedException($"OnnxValueType : {onnxValueType} is not supported");
             }
             return result;
         }
@@ -215,11 +218,10 @@ namespace Microsoft.ML.OnnxRuntime
         /// <returns></returns>
         private static DisposableNamedOnnxValue FromNativeTensor(string name, ref OrtValue ortValue)
         {
-            TensorElementType elemType = ortValue.GetTensorTypeAndShape().ElementDataType;
-
             DisposableNamedOnnxValue result;
 
-            switch (elemType)
+            var typeShape = ortValue.GetTensorTypeAndShape();
+            switch (typeShape.ElementDataType)
             {
                 case TensorElementType.Float:
                     result = FromNativeTensor<float>(name, ref ortValue);
@@ -252,7 +254,10 @@ namespace Microsoft.ML.OnnxRuntime
                     result = FromNativeTensor<sbyte>(name, ref ortValue);
                     break;
                 case TensorElementType.String:
-                    result = FromNativeTensor<string>(name, ref ortValue);
+                    {
+                        var shape = Array.ConvertAll<long, int>(typeShape.Shape, Convert.ToInt32);
+                        result = FromNativeStringTensor(name, shape, ref ortValue);
+                    }
                     break;
                 case TensorElementType.Bool:
                     result = FromNativeTensor<bool>(name, ref ortValue);
@@ -264,12 +269,22 @@ namespace Microsoft.ML.OnnxRuntime
                     result = FromNativeTensor<BFloat16>(name, ref ortValue);
                     break;
                 default:
-                    throw new NotSupportedException("Tensor of element type: " + elemType + " is not supported");
+                    throw new NotSupportedException($"Tensor of element type: {typeShape.ElementDataType} is not supported");
 
             }
 
             return result;
         }
+
+        private static DisposableNamedOnnxValue FromNativeStringTensor(string name, int[] shape, ref OrtValue ortValue)
+        {
+            var dt = new DenseTensor<string>(ortValue.GetStringTensorAsArray(), shape);
+            // still need to hold on to ortValue in case we need this for input handles
+            var result = new DisposableNamedOnnxValue(name, dt, TensorElementType.String, ortValue);
+            ortValue = null;
+            return result;
+        }
+
 
         /// <summary>
         /// This method creates an instance of DisposableNamedOnnxValue that has possession of ortValueElement
@@ -281,19 +296,12 @@ namespace Microsoft.ML.OnnxRuntime
         /// <returns>DisposableNamedOnnxValue instance</returns>
         private static DisposableNamedOnnxValue FromNativeTensor<T>(string name, ref OrtValue ortValue)
         {
+            Debug.Assert(typeof(T) != typeof(string), "No longer handles strings");
             var ortValueTensor = new OrtValueTensor<T>(ref ortValue);
             try
             {
-                if (typeof(T) == typeof(string))
-                {
-                    var dt = new DenseTensor<string>(ortValueTensor.GetBytesAsStringMemory(), ortValueTensor.Dimensions);
-                    return new DisposableNamedOnnxValue(name, dt, ortValueTensor.ElementType, ortValueTensor);
-                }
-                else
-                {
-                    DenseTensor<T> dt = new DenseTensor<T>(ortValueTensor.Memory, ortValueTensor.Dimensions);
-                    return new DisposableNamedOnnxValue(name, dt, ortValueTensor.ElementType, ortValueTensor);
-                }
+                var dt = new DenseTensor<T>(ortValueTensor.Memory, ortValueTensor.Dimensions);
+                return new DisposableNamedOnnxValue(name, dt, ortValueTensor.ElementType, ortValueTensor);
             }
             catch (Exception)
             {
@@ -331,7 +339,7 @@ namespace Microsoft.ML.OnnxRuntime
                 }
                 // NativeOrtValueCollectionOwner will take ownership of ortValueSequence and will make sure sequence
                 // is also disposed.
-                var nativeCollectionManager = new NativeOrtValueCollectionOwner<DisposableNamedOnnxValue>(ref ortValueSequence, sequence);
+                var nativeCollectionManager = new NativeOrtValueCollectionOwner(ref ortValueSequence, sequence);
                 return new DisposableNamedOnnxValue(name, sequence, OnnxValueType.ONNX_TYPE_SEQUENCE, nativeCollectionManager);
             }
             catch (Exception)
@@ -362,82 +370,71 @@ namespace Microsoft.ML.OnnxRuntime
             try
             {
                 valSpan[0] = ortValueMap.GetValue(0, allocator);
-
-                NativeApiStatus.VerifySuccess(NativeMethods.OrtGetTensorTypeAndShape(valSpan[0].Handle, out IntPtr typeAndShape));
-                TensorElementType keyElemType;
-                try
-                {
-                    NativeApiStatus.VerifySuccess(NativeMethods.OrtGetTensorElementType(typeAndShape, out IntPtr el_type));
-                    keyElemType = (TensorElementType)el_type;
-                }
-                finally
-                {
-                    NativeMethods.OrtReleaseTensorTypeAndShapeInfo(typeAndShape);
-                }
-
                 valSpan[1] = ortValueMap.GetValue(1, allocator);
 
-                NativeApiStatus.VerifySuccess(NativeMethods.OrtGetTensorTypeAndShape(valSpan[1].Handle, out typeAndShape));
-                TensorElementType valueElemType;
-                try
-                {
-                    NativeApiStatus.VerifySuccess(NativeMethods.OrtGetTensorElementType(typeAndShape, out IntPtr el_type));
-                    valueElemType = (TensorElementType)el_type;
-                }
-                finally
-                {
-                    NativeMethods.OrtReleaseTensorTypeAndShapeInfo(typeAndShape);
-                }
+                var keysTypeShape = valSpan[0].GetTensorTypeAndShape();
+                var valsTypeInfo = valSpan[1].GetTensorTypeAndShape();
+
+                int[] intKeyShape = Array.ConvertAll<long, int>(keysTypeShape.Shape, Convert.ToInt32);
+                int[] intValsShape = Array.ConvertAll<long, int>(valsTypeInfo.Shape, Convert.ToInt32);
 
                 // The supported combinations of key and value types are taken from the ORT C API.
-                switch (keyElemType)
+                switch (keysTypeShape.ElementDataType)
                 {
                     case TensorElementType.Int64:
-                        switch (valueElemType)
+                        switch (valsTypeInfo.ElementDataType)
                         {
                             case TensorElementType.Float:
-                                result = FromNativeMapElements<Int64, float>(name, ref ortValueMap, ref valSpan[0], ref valSpan[1]);
+                                result = FromNativeMapElements<Int64, float>(name, ref ortValueMap,
+                                    intKeyShape, ref valSpan[0], intValsShape, ref valSpan[1]);
                                 break;
                             case TensorElementType.Double:
-                                result = FromNativeMapElements<Int64, double>(name, ref ortValueMap, ref valSpan[0], ref valSpan[1]);
+                                result = FromNativeMapElements<Int64, double>(name, ref ortValueMap,
+                                    intKeyShape, ref valSpan[0], intValsShape, ref valSpan[1]);
                                 break;
                             case TensorElementType.Int64:
-                                result = FromNativeMapElements<Int64, Int64>(name, ref ortValueMap, ref valSpan[0], ref valSpan[1]);
+                                result = FromNativeMapElements<Int64, Int64>(name, ref ortValueMap,
+                                    intKeyShape, ref valSpan[0], intValsShape, ref valSpan[1]);
                                 break;
                             case TensorElementType.String:
-                                result = FromNativeMapElements<Int64, string>(name, ref ortValueMap, ref valSpan[0], ref valSpan[1]);
+                                result = FromNativeMapElements<Int64, string>(name, ref ortValueMap,
+                                    intKeyShape, ref valSpan[0], intValsShape, ref valSpan[1]);
                                 break;
                             default:
                                 break;
                         }
                         break;
                     case TensorElementType.String:
-                        switch (valueElemType)
+                        switch (valsTypeInfo.ElementDataType)
                         {
                             case TensorElementType.Float:
-                                result = FromNativeMapElements<string, float>(name, ref ortValueMap, ref valSpan[0], ref valSpan[1]);
+                                result = FromNativeMapElements<string, float>(name, ref ortValueMap,
+                                    intKeyShape, ref valSpan[0], intValsShape, ref valSpan[1]);
                                 break;
                             case TensorElementType.Double:
-                                result = FromNativeMapElements<string, double>(name, ref ortValueMap, ref valSpan[0], ref valSpan[1]);
+                                result = FromNativeMapElements<string, double>(name, ref ortValueMap,
+                                    intKeyShape, ref valSpan[0], intValsShape, ref valSpan[1]);
                                 break;
                             case TensorElementType.Int64:
-                                result = FromNativeMapElements<string, Int64>(name, ref ortValueMap, ref valSpan[0], ref valSpan[1]);
+                                result = FromNativeMapElements<string, Int64>(name, ref ortValueMap,
+                                    intKeyShape, ref valSpan[0], intValsShape, ref valSpan[1]);
                                 break;
                             case TensorElementType.String:
-                                result = FromNativeMapElements<string, string>(name, ref ortValueMap, ref valSpan[0], ref valSpan[1]);
+                                result = FromNativeMapElements<string, string>(name, ref ortValueMap,
+                                    intKeyShape, ref valSpan[0], intValsShape, ref valSpan[1]);
                                 break;
                             default:
                                 break;
                         }
                         break;
                     default:
-                        throw new NotSupportedException("Map key type: " + keyElemType + " is not supported");
+                        throw new NotSupportedException($"Map key type: {keysTypeShape.ElementDataType} is not supported");
                 }
             }
             finally
             {
-                // On success valSpan would contain nulls
-                // which will be ignored.
+                // Any values that are taken possession of
+                // will be null, others, like string tensors, will be disposed
                 disposer.Dispose();
             }
 
@@ -446,7 +443,7 @@ namespace Microsoft.ML.OnnxRuntime
 
 
         /// <summary>
-        /// This method maps keys and values of the map and copies them into a mamanged Dictionary
+        /// This method maps keys and values of the map and copies them into a managed Dictionary
         /// and returns as an instance of DisposableNamedOnnxValue. The method takes possession of ortValueMap,
         /// ortValueTensorKeys and ortValueTensorValues and disposes of them.
         /// </summary>
@@ -454,89 +451,82 @@ namespace Microsoft.ML.OnnxRuntime
         /// <typeparam name="V"></typeparam>
         /// <param name="name"></param>
         /// <param name="ortValueMap">becomes null on success return</param>
+        /// <param name="keysShape">keys shape in ints</param>
         /// <param name="ortValueTensorKeys">becomes null on success</param>
+        /// <param name="valsShape">values shape in ints</param>
         /// <param name="ortValueTensorValues">becomes null on success</param>
         /// <returns></returns>
         private static DisposableNamedOnnxValue FromNativeMapElements<K, V>(string name, ref OrtValue ortValueMap,
-            ref OrtValue ortValueTensorKeys, ref OrtValue ortValueTensorValues)
+            int[] keysShape, ref OrtValue ortValueTensorKeys,
+            int[] valsShape, ref OrtValue ortValueTensorValues)
         {
-            Span<IDisposable> keysValues = new IDisposable[2];
-            var keyValuesDisposer = new DisposableArray<IDisposable>(keysValues);
-            var collOwner = new NativeOrtValueCollectionOwner<IDisposable>(ref ortValueMap, null);
-            try
+            if (typeof(K) == typeof(string))
             {
-                var tensorKeys = new OrtValueTensor<K>(ref ortValueTensorKeys);
-                keysValues[0] = tensorKeys;
-                var tensorValues = new OrtValueTensor<V>(ref ortValueTensorValues);
-                keysValues[1] = tensorValues;
+                var denseTensorKeys = new DenseTensor<string>(ortValueTensorKeys.GetStringTensorAsArray(), keysShape);
 
-                MapHelper mapHelper = null;
-                if (typeof(K) == typeof(string))
+                if (typeof(V) == typeof(string))
                 {
-                    var denseTensorKeys = new DenseTensor<string>(tensorKeys.GetBytesAsStringMemory(), tensorKeys.Dimensions);
-
-                    if (typeof(V) == typeof(string))
-                    {
-                        var map = new Dictionary<string, string>();
-                        var denseTensorValues = new DenseTensor<string>(tensorValues.GetBytesAsStringMemory(), tensorValues.Dimensions);
-                        for (var i = 0; i < denseTensorKeys.Length; i++)
-                        {
-                            map.Add(denseTensorKeys.GetValue(i), denseTensorValues.GetValue(i));
-                        }
-                        mapHelper = new MapHelper(denseTensorKeys, denseTensorValues);
-                        return new DisposableNamedOnnxValue(name, map, mapHelper, collOwner);
-                    }
-                    else
-                    {
-                        var map = new Dictionary<string, V>();
-                        var denseTensorValues = new DenseTensor<V>(tensorValues.Memory, tensorValues.Dimensions);
-                        for (var i = 0; i < denseTensorKeys.Length; i++)
-                        {
-                            map.Add(denseTensorKeys.GetValue(i), denseTensorValues.GetValue(i));
-                        }
-                        mapHelper = new MapHelper(denseTensorKeys, denseTensorValues);
-                        return new DisposableNamedOnnxValue(name, map, mapHelper, collOwner);
-                    }
+                    var denseTensorValues = new DenseTensor<string>(ortValueTensorValues.GetStringTensorAsArray(), valsShape);
+                    var map = Enumerable.Range(0, (int)denseTensorKeys.Length).ToDictionary(i => denseTensorKeys[i], i => denseTensorValues[i]);
+                    var mapHelper = new MapHelper(denseTensorKeys, denseTensorValues);
+                    var result = new DisposableNamedOnnxValue(name, map, mapHelper, ortValueMap);
+                    ortValueMap = null;
+                    return result;
                 }
                 else
                 {
-                    var denseTensorKeys = new DenseTensor<K>(tensorKeys.Memory, tensorKeys.Dimensions);
-                    if (typeof(V) == typeof(string))
-                    {
-                        var map = new Dictionary<K, string>();
-                        var denseTensorValues = new DenseTensor<string>(tensorValues.GetBytesAsStringMemory(), tensorValues.Dimensions);
-                        for (var i = 0; i < denseTensorKeys.Length; i++)
-                        {
-                            map.Add(denseTensorKeys.GetValue(i), denseTensorValues.GetValue(i));
-                        }
-                        mapHelper = new MapHelper(denseTensorKeys, denseTensorValues);
-                        return new DisposableNamedOnnxValue(name, map, mapHelper, collOwner);
-                    }
-                    else
+                    var tensorValues = new OrtValueTensor<V>(ref ortValueTensorValues);
+                    try
                     {
                         var denseTensorValues = new DenseTensor<V>(tensorValues.Memory, tensorValues.Dimensions);
-                        var map = new Dictionary<K, V>();
-                        for (var i = 0; i < denseTensorKeys.Length; i++)
-                        {
-                            map.Add(denseTensorKeys.GetValue(i), denseTensorValues.GetValue(i));
-                        }
-                        mapHelper = new MapHelper(denseTensorKeys, denseTensorValues);
-                        return new DisposableNamedOnnxValue(name, map, mapHelper, collOwner);
+                        return FromMapDenseTensors(name, ref ortValueMap, denseTensorKeys, denseTensorValues, tensorValues);
+                    }
+                    catch (Exception)
+                    {
+                        tensorValues.Dispose();
+                        throw;
                     }
                 }
             }
-            catch (Exception)
+            else
             {
-                collOwner.Dispose();
-                throw;
-            }
-            finally
-            {
-                keyValuesDisposer.Dispose();
+                var disposer = new DisposableList<IDisposable>(2);
+                try
+                {
+                    var tensorKeys = new OrtValueTensor<K>(ref ortValueTensorKeys);
+                    disposer.Add(tensorKeys);
+                    var denseTensorKeys = new DenseTensor<K>(tensorKeys.Memory, tensorKeys.Dimensions);
+                    if (typeof(V) == typeof(string))
+                    {
+                        var denseTensorValues = new DenseTensor<string>(ortValueTensorValues.GetStringTensorAsArray(), valsShape);
+                        return FromMapDenseTensors(name, ref ortValueMap, denseTensorKeys, denseTensorValues, disposer);
+                    }
+                    else
+                    {
+                        var tensorValues = new OrtValueTensor<V>(ref ortValueTensorValues);
+                        disposer.Add(tensorValues);
+                        var denseTensorValues = new DenseTensor<V>(tensorValues.Memory, tensorValues.Dimensions);
+                        return FromMapDenseTensors(name, ref ortValueMap, denseTensorKeys, denseTensorValues, disposer);
+                    }
+                }
+                catch (Exception)
+                {
+                    disposer.Dispose();
+                    throw;
+                }
             }
         }
 
         #region IDisposable Support
+
+        private static DisposableNamedOnnxValue FromMapDenseTensors<K, V>(string name, ref OrtValue ortValueMap,
+            DenseTensor<K> keys, DenseTensor<V> values, IDisposable disposables)
+        {
+            var map = Enumerable.Range(0, (int)keys.Length).ToDictionary(i => keys[i], i => values[i]);
+            var mapHelper = new MapHelper(keys, values);
+            var collOwner = new NativeOrtValueCollectionOwner(ref ortValueMap, disposables);
+            return new DisposableNamedOnnxValue(name, map, mapHelper, collOwner);
+        }
 
         /// <summary>
         /// IDisposable implementation
