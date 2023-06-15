@@ -127,7 +127,7 @@ def generate_artifacts(
         model_params = training_block.parameters()
 
     def _export_to_ort_format(model_path, output_dir, extra_options):
-        if extra_options.get("ort_format", True):
+        if "ort_format" in extra_options and extra_options["ort_format"] is True:
             convert_onnx_models_to_ort(
                 parse_args(
                     [
