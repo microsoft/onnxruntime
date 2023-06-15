@@ -251,7 +251,7 @@ def parse_args(args=None):
     )
 
     parser.add_argument(
-        "--model_path_or_dir",
+        "model_path_or_dir",
         type=pathlib.Path,
         help="Provide path to ONNX model or directory containing ONNX model/s to convert. "
         "All files with a .onnx extension, including those in subdirectories, will be "

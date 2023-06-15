@@ -131,12 +131,11 @@ def generate_artifacts(
             convert_onnx_models_to_ort(
                 parse_args(
                     [
+                        str(model_path),
                         "--output_dir",
                         str(output_dir),
                         "--optimization_style",
                         f"{OptimizationStyle.Fixed.name}",
-                        "--model_path_or_dir",
-                        str(model_path),
                     ]
                 )
             )
