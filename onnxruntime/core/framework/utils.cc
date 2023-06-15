@@ -22,9 +22,6 @@
 #include "core/framework/TensorSeq.h"
 #include "core/framework/run_options.h"
 #include "core/session/onnxruntime_run_options_config_keys.h"
-#ifdef USE_AZURE
-#include "core/framework/cloud_executor.h"
-#endif
 #ifdef ENABLE_TRAINING
 #include "core/framework/partial_graph_execution_state.h"
 #endif
@@ -782,17 +779,6 @@ common::Status ExecuteGraph(const SessionState& session_state,
                             gsl::span<const OrtValue> feeds, std::vector<OrtValue>& fetches,
                             ExecutionMode execution_mode, const RunOptions& run_options,
                             const logging::Logger& logger) {
-#ifdef USE_AZURE
-  const auto iter = run_options.config_options.configurations.find("use_azure");
-  if (iter != run_options.config_options.configurations.end() && iter->second != "0") {
-    CloudExecutor cloud_executor(run_options.config_options.configurations);
-    const auto& feeds_fetches_info = feeds_fetches_manager.GetFeedsFetchesInfo();
-    return cloud_executor.Execute(session_state,
-                                  feeds_fetches_info.feeds_mlvalue_idxs, feeds,
-                                  feeds_fetches_info.fetches_mlvalue_idxs, fetches, {},
-                                  logger);
-  }
-#endif
   bool synchronize_execution_providers = run_options.config_options.GetConfigOrDefault(kOrtRunOptionsConfigDisableSynchronizeExecutionProviders, "0") == "0";
   return ExecuteGraph(session_state,
                       feeds_fetches_manager,
