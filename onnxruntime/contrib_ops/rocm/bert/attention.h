@@ -18,6 +18,7 @@ class Attention final : public RocmKernel, public AttentionBase {
  public:
   Attention(const OpKernelInfo& info);
   Status ComputeInternal(OpKernelContext* context) const override;
+
  public:
   AttentionType attn_type_;
 };
