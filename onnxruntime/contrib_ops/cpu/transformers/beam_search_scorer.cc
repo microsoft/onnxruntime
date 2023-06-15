@@ -162,7 +162,7 @@ void BeamSearchScorer::Process(ISequences& sequences,
     }
 
     ORT_ENFORCE(beam_idx == num_beams_);
-    ORT_ENFORCE(hypothesis_buffer_used_ <= hypothesis_buffer_.size());
+    ORT_ENFORCE(static_cast<size_t>(hypothesis_buffer_used_) <= hypothesis_buffer_.size());
 
     //  Check if we are done so that we can save a pad step if all(done)
     if (static_cast<size_t>(beam_hyp.beams_used_) < num_beams_)
