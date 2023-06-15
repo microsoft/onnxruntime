@@ -299,8 +299,6 @@ int OrtGetTensorData(OrtValue* tensor, int* data_type, void** data, size_t** dim
     void* p_string_content = reinterpret_cast<char*>(p_string_data) + string_data_offset;
     REGISTER_AUTO_RELEASE_BUFFER(void, p_string_data, allocator);
 
-    // TODO: should we ensure memory alignment for p_string_content?
-
     size_t* p_offsets = reinterpret_cast<size_t*>(p_string_data);
     RETURN_ERROR_CODE_IF_ERROR(GetStringTensorContent, tensor, p_string_content, string_data_length, p_offsets, num_elements);
 
