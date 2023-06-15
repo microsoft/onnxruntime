@@ -180,6 +180,14 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
   ORT_RETURN_IF_ERROR(right_arrays.CopyToGpu(ctx->GetComputeStream()));
   ORT_RETURN_IF_ERROR(output_arrays.CopyToGpu(ctx->GetComputeStream()));
 
+  // TF32 provides a huge performance gain for training and inference while preserving FP32 levels of accuracy.
+  // It requires Ampere or newer GPU, and pointers of matrics shall be aligned (ideal alignment is 16-byte).
+  // Assume that start memory of input/output tensor is aligned, we only check offsets of sub-matrix per batch here.
+  cublasMath_t mode = (std::is_same<T, float>::value && device_prop.major >= 8 && helper.IsBatchedGemmAligned())
+                          ? CUBLAS_TF32_TENSOR_OP_MATH
+                          : CUBLAS_DEFAULT_MATH;
+  CublasMathModeSetter math_mode_setter(device_prop, GetCublasHandle(ctx), mode);
+
   // note that onnxruntime OrtValue is row major, while cublas is column major,
   // so swap left/right operands
   CUBLAS_RETURN_IF_ERROR(cublasGemmBatchedHelper(
