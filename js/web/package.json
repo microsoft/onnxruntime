@@ -69,17 +69,17 @@
   "exports": {
     ".": {
       "node": {
-        "default": "./dist/ort-web.node.js",
-        "types": "./types.d.ts"
+        "types": "./types.d.ts",
+        "default": "./dist/ort-web.node.js"
       },
       "default": {
-        "default": "./dist/ort.min.js",
-        "types": "./types.d.ts"
+        "types": "./types.d.ts",
+        "default": "./dist/ort.min.js"
       }
     },
     "./webgpu": {
-      "default": "./dist/ort.webgpu.min.js",
-      "types": "./types.d.ts"
+      "types": "./types.d.ts",
+      "default": "./dist/ort.webgpu.min.js"
     }
   },
   "types": "./types.d.ts",
