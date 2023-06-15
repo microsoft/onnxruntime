@@ -7,7 +7,7 @@
 
 #include "core/common/status.h"
 #include "core/graph/ort_format_load_options.h"
-#include "core/framework/ort_value.h"
+#include "core/framework/tensor.h"
 
 namespace ONNX_NAMESPACE {
 class AttributeProto;

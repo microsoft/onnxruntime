@@ -87,7 +87,16 @@ Status FlatbufferTensorsFromOrtValues(
     const DataTransferManager* data_transfer_manager,
     flatbuffers::FlatBufferBuilder& builder,
     std::vector<flatbuffers::Offset<fbs::Tensor>>& flatbuffer_tensors) {
-  for (const auto& [name, ort_value] : name_to_ort_value) {
+  InlinedVector<std::string> sorted_tensor_names;
+  sorted_tensor_names.reserve(name_to_ort_value.size());
+  for ([[maybe_unused]] const auto& [name, ort_value] : name_to_ort_value) {
+    sorted_tensor_names.emplace_back(name);
+  }
+
+  std::sort(sorted_tensor_names.begin(), sorted_tensor_names.end());
+
+  for (const auto& name : sorted_tensor_names) {
+    const OrtValue& ort_value = name_to_ort_value.at(name);
     flatbuffers::Offset<fbs::Tensor> fbs_tensor;
     ORT_RETURN_IF_ERROR(FlatbufferTensorFromOrtValue(
         name, ort_value, [&data_transfer_manager](const auto& src_tensor, auto& dst_tensor) {
@@ -158,11 +167,9 @@ Status FromTensorProtos(
     const std::vector<ONNX_NAMESPACE::TensorProto>& non_trainable_tensor_protos,
     const PathString& checkpoint_path) {
   // Make sure name unique across trainable and non-trainable lists.
-  std::set<std::string> trainable_unique_names;
-  std::set<std::string> non_trainable_unique_names;
-  InlinedVector<std::string> inter_sec;
-  auto check_unique = [](const std::vector<ONNX_NAMESPACE::TensorProto>& tensor_protos,
-                         std::set<std::string>& unique_names) {
+  std::set<std::string> unique_names;
+  const auto check_unique = [](const std::vector<ONNX_NAMESPACE::TensorProto>& tensor_protos,
+                               std::set<std::string>& unique_names) {
     for (auto& tensor_proto : tensor_protos) {
       ORT_RETURN_IF_NOT(unique_names.find(tensor_proto.name()) == unique_names.end(),
                         "Duplicated tensor proto named ", tensor_proto.name());
@@ -172,12 +179,8 @@ Status FromTensorProtos(
     return Status::OK();
   };
 
-  ORT_RETURN_IF_ERROR(check_unique(trainable_tensor_protos, trainable_unique_names));
-  ORT_RETURN_IF_ERROR(check_unique(non_trainable_tensor_protos, non_trainable_unique_names));
-  std::set_intersection(trainable_unique_names.begin(), trainable_unique_names.end(),
-                        non_trainable_unique_names.begin(), non_trainable_unique_names.end(),
-                        std::back_inserter(inter_sec));
-  ORT_RETURN_IF_NOT(inter_sec.empty(), "Tensor name exists in both trainable param list and non-trainable param list.");
+  ORT_RETURN_IF_ERROR(check_unique(trainable_tensor_protos, unique_names));
+  ORT_RETURN_IF_ERROR(check_unique(non_trainable_tensor_protos, unique_names));
 
   constexpr size_t m_bytes = 1024 * 1024;
   size_t fbs_buffer_size = 0U;
@@ -219,16 +222,8 @@ Status FromTensorProtos(
   module_state_builder.add_frozen_params(fbs_non_trainable_tensors);
   flatbuffers::Offset<fbs::ModuleState> fbs_module_state = module_state_builder.Finish();
 
-  // This function only stores the module state since the optimizer state and
-  // user defined properties are not available.
-  const std::vector<flatbuffers::Offset<fbs::OptimizerGroup>> optimizer_groups;
-  const auto fbs_optimizer_groups = builder.CreateVector(optimizer_groups);
-  flatbuffers::Offset<fbs::PropertyBag> fbs_property_bag;
-
   fbs::CheckpointBuilder checkpoint_builder(builder);
   checkpoint_builder.add_module_state(fbs_module_state);
-  checkpoint_builder.add_optimizer_groups(fbs_optimizer_groups);
-  checkpoint_builder.add_property_bag(fbs_property_bag);
   auto checkpoint = checkpoint_builder.Finish();
   builder.Finish(checkpoint, fbs::CheckpointIdentifier());
 
@@ -248,15 +243,6 @@ Status FromModuleState(const ModuleCheckpointState& module_state,
                        flatbuffers::FlatBufferBuilder& builder,
                        flatbuffers::Offset<fbs::ModuleState>& fbs_module_state) {
   if (module_state.named_parameters.empty()) {
-    std::vector<flatbuffers::Offset<fbs::Tensor>> trainable_tensors;
-    std::vector<flatbuffers::Offset<fbs::Tensor>> non_trainable_tensors;
-    const auto fbs_trainable_tensors = builder.CreateVector(trainable_tensors);
-    const auto fbs_non_trainable_tensors = builder.CreateVector(non_trainable_tensors);
-
-    fbs::ModuleStateBuilder module_state_builder(builder);
-    module_state_builder.add_requires_grad(fbs_trainable_tensors);
-    module_state_builder.add_frozen_params(fbs_non_trainable_tensors);
-    fbs_module_state = module_state_builder.Finish();
     return Status::OK();
   }
 
@@ -358,6 +344,10 @@ Status FromOptimizerState(const OptimizerCheckpointState& optimizer_state,
  */
 Status FromPropertyBag(const PropertyBag& property_bag, flatbuffers::FlatBufferBuilder& builder,
                        flatbuffers::Offset<fbs::PropertyBag>& fbs_property_bag) {
+  if (property_bag.Size() == 0U) {
+    return Status::OK();
+  }
+
   std::vector<flatbuffers::Offset<fbs::IntProperty>> ints;
   std::vector<flatbuffers::Offset<fbs::FloatProperty>> floats;
   std::vector<flatbuffers::Offset<fbs::StringProperty>> strings;
@@ -449,8 +439,7 @@ namespace Load {
  * @return Status of the operation.
  *
  */
-Status FromFile(const PathString& checkpoint_path, std::vector<uint8_t>& checkpoint_bytes,
-                gsl::span<const uint8_t>& checkpoint_span) {
+Status FromFile(const PathString& checkpoint_path, std::vector<uint8_t>& checkpoint_bytes) {
   size_t num_bytes = 0;
   ORT_RETURN_IF_ERROR(Env::Default().GetFileLength(checkpoint_path.c_str(), num_bytes));
   checkpoint_bytes.resize(num_bytes);
@@ -461,9 +450,7 @@ Status FromFile(const PathString& checkpoint_path, std::vector<uint8_t>& checkpo
   ORT_RETURN_IF_NOT(bytes_stream, "Loading checkpoint from ", ToUTF8String(checkpoint_path), " failed. Only ",
                     bytes_stream.gcount(), "/", num_bytes, " bytes could be read.");
 
-  checkpoint_span = gsl::span<const uint8_t>(checkpoint_bytes.data(), num_bytes);
-
-  flatbuffers::Verifier verifier(checkpoint_span.data(), checkpoint_span.size());
+  flatbuffers::Verifier verifier(checkpoint_bytes.data(), checkpoint_bytes.size());
   ORT_RETURN_IF_NOT(fbs::VerifyCheckpointBuffer(verifier), "Checkpoint verification failed.");
 
   return Status::OK();
@@ -559,6 +546,12 @@ Status ToPropertyBag(const onnxruntime::fbs::PropertyBag& fbs_property_bag,
   auto* ints = fbs_property_bag.ints();
   if (nullptr != ints) {
     for (auto* int_property : *ints) {
+      ORT_RETURN_IF_NOT(int_property, "Checkpoint is invalid. Expected: Valid flatbuffer int property. ",
+                        "Actual: nullptr.");
+      ORT_RETURN_IF_NOT(int_property->name(), "Checkpoint is invalid. Expected: Valid flatbuffer int property name. ",
+                        "Actual: nullptr.");
+      ORT_RETURN_IF_NOT(int_property->value(), "Checkpoint is invalid. Expected: Valid flatbuffer int property value. ",
+                        "Actual: nullptr.");
       std::string name = int_property->name()->str();
       auto value = int_property->value();
       property_bag.AddProperty(name, value);
@@ -568,6 +561,12 @@ Status ToPropertyBag(const onnxruntime::fbs::PropertyBag& fbs_property_bag,
   auto* floats = fbs_property_bag.floats();
   if (nullptr != floats) {
     for (auto* float_property : *floats) {
+      ORT_RETURN_IF_NOT(float_property, "Checkpoint is invalid. Expected: Valid flatbuffer float property. ",
+                        "Actual: nullptr.");
+      ORT_RETURN_IF_NOT(float_property->name(), "Checkpoint is invalid. Expected: Valid flatbuffer float property name. ",
+                        "Actual: nullptr.");
+      ORT_RETURN_IF_NOT(float_property->value(), "Checkpoint is invalid. Expected: Valid flatbuffer float property value. ",
+                        "Actual: nullptr.");
       std::string name = float_property->name()->str();
       auto value = float_property->value();
       property_bag.AddProperty(name, value);
@@ -577,6 +576,12 @@ Status ToPropertyBag(const onnxruntime::fbs::PropertyBag& fbs_property_bag,
   auto* strings = fbs_property_bag.strings();
   if (nullptr != strings) {
     for (auto* string_property : *strings) {
+      ORT_RETURN_IF_NOT(string_property, "Checkpoint is invalid. Expected: Valid flatbuffer string property. ",
+                        "Actual: nullptr.");
+      ORT_RETURN_IF_NOT(string_property->name(), "Checkpoint is invalid. Expected: Valid flatbuffer string property name. ",
+                        "Actual: nullptr.");
+      ORT_RETURN_IF_NOT(string_property->value(), "Checkpoint is invalid. Expected: Valid flatbuffer string property value. ",
+                        "Actual: nullptr.");
       std::string name = string_property->name()->str();
       std::string value = string_property->value()->str();
       property_bag.AddProperty(name, value);
@@ -597,10 +602,9 @@ Status ToPropertyBag(const onnxruntime::fbs::PropertyBag& fbs_property_bag,
 Status ToModelProto(const PathString& checkpoint_path,
                     ONNX_NAMESPACE::ModelProto& model_proto) {
   std::vector<uint8_t> checkpoint_bytes;
-  gsl::span<const uint8_t> checkpoint_span;
-  ORT_RETURN_IF_ERROR(Load::FromFile(checkpoint_path, checkpoint_bytes, checkpoint_span));
+  ORT_RETURN_IF_ERROR(Load::FromFile(checkpoint_path, checkpoint_bytes));
 
-  const auto* fbs_checkpoint = fbs::GetCheckpoint(checkpoint_span.data());
+  const auto* fbs_checkpoint = fbs::GetCheckpoint(checkpoint_bytes.data());
   ORT_RETURN_IF_NOT(fbs_checkpoint, "Checkpoint is invalid. Expected: Valid checkpoint flatbuffer. Actual: nullptr.");
 
   auto* module_state = fbs_checkpoint->module_state();
@@ -655,21 +659,20 @@ Status ToModelProto(const PathString& checkpoint_path,
  */
 Status ToCheckpointState(const PathString& checkpoint_path, CheckpointState& state) {
   std::vector<uint8_t> checkpoint_bytes;
-  gsl::span<const uint8_t> checkpoint_span;
-  ORT_RETURN_IF_ERROR(Load::FromFile(checkpoint_path, checkpoint_bytes, checkpoint_span));
+  ORT_RETURN_IF_ERROR(Load::FromFile(checkpoint_path, checkpoint_bytes));
 
-  const auto* fbs_checkpoint = fbs::GetCheckpoint(checkpoint_span.data());
+  const auto* fbs_checkpoint = fbs::GetCheckpoint(checkpoint_bytes.data());
   ORT_RETURN_IF_NOT(fbs_checkpoint, "Checkpoint is invalid. Expected: Valid checkpoint flatbuffer. Actual: nullptr.");
 
   const auto* fbs_module_state = fbs_checkpoint->module_state();
-  ORT_RETURN_IF_NOT(fbs_module_state, "Checkpoint file is invalid. Expected: Valid module state flatbuffer.",
-                    " Actual: Encountered a nullptr.");
-  ORT_RETURN_IF_ERROR(ToModuleState(*fbs_module_state, state.module_checkpoint_state));
+  if (nullptr != fbs_module_state) {
+    ORT_RETURN_IF_ERROR(ToModuleState(*fbs_module_state, state.module_checkpoint_state));
+  }
 
   const auto* fbs_optimizer_groups = fbs_checkpoint->optimizer_groups();
-  ORT_RETURN_IF_NOT(fbs_optimizer_groups, "Checkpoint file is invalid. Expected: Valid optimizer groups flatbuffer.",
-                    " Actual: Encountered a nullptr.");
-  ORT_RETURN_IF_ERROR(ToOptimizerState(*fbs_optimizer_groups, state.optimizer_checkpoint_state));
+  if (nullptr != fbs_optimizer_groups) {
+    ORT_RETURN_IF_ERROR(ToOptimizerState(*fbs_optimizer_groups, state.optimizer_checkpoint_state));
+  }
 
   const auto* fbs_property_bag = fbs_checkpoint->property_bag();
   if (nullptr != fbs_property_bag) {
