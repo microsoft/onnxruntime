@@ -3,10 +3,13 @@
 
 'use strict';
 
-const bundleMode = require('minimist')(process.argv)['bundle-mode'] || 'dev';  // 'dev'|'perf'|undefined;
-const karmaPlugins = require('minimist')(process.argv)['karma-plugins'] || undefined;
-const timeoutMocha = require('minimist')(process.argv)['timeout-mocha'] || 60000;
-const forceLocalHost = !!require('minimist')(process.argv)['force-localhost'];
+const args = require('minimist')(process.argv);
+
+const bundleMode = args['bundle-mode'] || 'dev';  // 'dev'|'perf'|undefined;
+const karmaPlugins = args['karma-plugins'] || undefined;
+const timeoutMocha = args['timeout-mocha'] || 60000;
+const forceLocalHost = !!args['force-localhost'];
+const useJspi = !!args['use-jspi'];
 const commonFile = bundleMode === 'dev' ? '../common/dist/ort-common.js' : '../common/dist/ort-common.min.js'
 const mainFile = bundleMode === 'dev' ? 'test/ort.dev.js' : 'test/ort.perf.js';
 
@@ -42,6 +45,11 @@ const hostname = getMachineIpAddress();
 // In Node.js v16 and below, 'localhost' is using IPv4, so need to listen to '0.0.0.0'
 // In Node.js v17+, 'localhost' is using IPv6, so need to listen to '::'
 const listenAddress = Number.parseInt(process.versions.node.split('.')[0]) >= 17 ? '::' : '0.0.0.0';
+
+const chromeFlags = ['--enable-features=SharedArrayBuffer'];
+if (useJspi) {
+  chromeFlags.push('--js-flags="--experimental-wasm-stack-switching"');
+}
 
 module.exports = function (config) {
   config.set({
@@ -92,21 +100,21 @@ module.exports = function (config) {
     customLaunchers: {
       ChromeTest: {
         base: 'Chrome',
-        flags: ['--enable-features=SharedArrayBuffer']
+        flags: [...chromeFlags]
       },
       ChromeTestHeadless: {
         base: 'ChromeHeadless',
-        flags: ['--enable-features=SharedArrayBuffer']
+        flags: [...chromeFlags]
       },
       ChromeDebug: {
         debug: true,
-        base: 'Chrome', flags: ['--remote-debugging-port=9333', '--enable-features=SharedArrayBuffer']
+        base: 'Chrome', flags: ['--remote-debugging-port=9333', ...chromeFlags]
       },
       ChromeCanaryTest: {
         base: 'ChromeCanary',
         flags: [
-          '--enable-features=SharedArrayBuffer',
-          '--enable-experimental-web-platform-features'
+          '--enable-experimental-web-platform-features',
+          ...chromeFlags
         ]
       },
       ChromeCanaryDebug: {
@@ -114,16 +122,16 @@ module.exports = function (config) {
         base: 'ChromeCanary',
         flags: [
           '--remote-debugging-port=9333',
-          '--enable-features=SharedArrayBuffer',
-          '--enable-experimental-web-platform-features'
+          '--enable-experimental-web-platform-features',
+          ...chromeFlags
         ]
       },
       ChromeWebGpuProfileTest: {
         base: 'Chrome',
         flags: [
           '--window-size=1,1',
-          '--enable-features=SharedArrayBuffer',
-          '--disable-dawn-features=disallow_unsafe_apis'
+          '--disable-dawn-features=disallow_unsafe_apis',
+          ...chromeFlags
         ]
       },
       ChromeWebGpuProfileDebug: {
@@ -131,8 +139,8 @@ module.exports = function (config) {
         base: 'Chrome',
         flags: [
           '--remote-debugging-port=9333',
-          '--enable-features=SharedArrayBuffer',
           '--disable-dawn-features=disallow_unsafe_apis',
+          ...chromeFlags
         ]
       },
       //

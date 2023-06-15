@@ -166,6 +166,13 @@ export interface TestRunnerCliArgs {
    */
   graphOptimizationLevel: 'disabled'|'basic'|'extended'|'all';
 
+  /**
+   * whether to use JSPI based asyncify.
+   * If the web assembly artifact is built with ASYNCIFY=2, this flag should be set to true, so that we can instruct
+   * karma runner to launch the browser with flag to support stack switching.
+   */
+  useJspi?: boolean;
+
   cpuOptions?: InferenceSession.CpuExecutionProviderOption;
   cudaOptions?: InferenceSession.CudaExecutionProviderOption;
   cudaFlags?: Record<string, unknown>;
@@ -380,6 +387,8 @@ export function parseTestRunnerCliArgs(cmdlineArgs: string[]): TestRunnerCliArgs
     }
   }
 
+  const useJspi = !!args['use-jspi'];
+
   const globalEnvFlags = parseGlobalEnvFlags(args);
 
   if (backend.includes('webnn') && !globalEnvFlags.wasm!.proxy) {
@@ -460,6 +469,7 @@ export function parseTestRunnerCliArgs(cmdlineArgs: string[]): TestRunnerCliArgs
     times: perf ? times : undefined,
     optimizedModelFilePath,
     graphOptimizationLevel: graphOptimizationLevel as TestRunnerCliArgs['graphOptimizationLevel'],
+    useJspi,
     fileCache,
     cpuOptions,
     webglOptions,

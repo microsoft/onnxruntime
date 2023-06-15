@@ -472,6 +472,9 @@ async function main() {
       } else {
         karmaArgs.push('--single-run');
       }
+      if (args.useJspi) {
+        karmaArgs.push('--use-jspi');
+      }
       if (args.noSandbox) {
         karmaArgs.push('--no-sandbox');
       }
