@@ -4,6 +4,7 @@
 #include <queue>
 #include <math.h>
 #include "core/common/common.h"
+#include "core/common/narrow.h"
 #include "core/common/safeint.h"
 #include "core/common/span_utils.h"
 #include "core/framework/allocator.h"
@@ -196,7 +197,7 @@ void BeamSearchScorer::Finalize(ISequences& sequences,
     for (size_t beam_index = 0; beam_index < num_beams_; beam_index++) {
       size_t batch_beam_index = batch_index * num_beams_ + beam_index;
       float final_score = final_beam_scores[batch_beam_index];
-      auto final_tokens = sequences.GetSequence(batch_beam_index);
+      auto final_tokens = sequences.GetSequence(narrow<int>(batch_beam_index));
       beam_hyp.Add(final_tokens, final_score);
     }
   }

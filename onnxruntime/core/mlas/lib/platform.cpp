@@ -55,7 +55,7 @@ MLASCPUIDInfo::MLASCPUIDInfo()
 #if defined(BUILD_MLAS_NO_ONNXRUNTIME)
 MLASCPUIDInfo::MLASCPUIDInfo()
 {
-    has_arm_neon_dot_ = ((getauxval(AT_HWCAP) & HWCAP_ASIMDDP) != 0); 
+    has_arm_neon_dot_ = ((getauxval(AT_HWCAP) & HWCAP_ASIMDDP) != 0);
 
     // raw hack! Need CPUIDInfo implementation for more precise detection
     has_fp16_ = has_arm_neon_dot_;
@@ -408,7 +408,6 @@ Return Value:
                     }
                 }
 
-#ifdef MLAS_AMX_SUPPORTED
                 //
                 // Check if the processor supports AMX-TILE and AMX-INT8
                 // features.
@@ -419,7 +418,6 @@ Return Value:
                         this->GemmU8S8Dispatch = &MlasGemmU8S8DispatchAmx;
                     }
                 }
-#endif // MLAS_AMX_SUPPORTED
 
 #endif // ORT_MINIMAL_BUILD
 
@@ -447,10 +445,10 @@ Return Value:
 
 #if defined(_WIN32)
     HasDotProductInstructions = (IsProcessorFeaturePresent(PF_ARM_V82_DP_INSTRUCTIONS_AVAILABLE) != 0);
-#elif defined(__linux__)
-    HasDotProductInstructions = MLAS_CPUIDINFO::GetCPUIDInfo().HasArmNeonDot();
 #else
-    HasDotProductInstructions = false;
+    uint64_t isar0_el1;
+    asm("mrs %[reg], ID_AA64ISAR0_EL1\n" : [reg] "=r"(isar0_el1) : :);
+    HasDotProductInstructions = ((isar0_el1 >> 44) & 0xfu) == 0x1u;
 #endif
 
     if (HasDotProductInstructions) {

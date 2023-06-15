@@ -35,7 +35,6 @@ using SupportedTypeList = boost::mp11::mp_list<MLFloat16, float, double, int32_t
 // TODO(pengwa): we can gradually increase this threshold if we see more benefits (memory saving
 // or more CSE optimizations triggered). Should be careful to cover test cases that assume initializer
 // name did not change after transformation then.
-static constexpr int64_t TENSOR_ELEM_COUNT_THRESHOLD = 8;
 static constexpr char SHARED_INITIALIZER_PREFIX[] = "ortshared_";
 
 bool IsAllowedToShare(const ONNX_NAMESPACE::TensorShapeProto* input_shape,
@@ -52,12 +51,12 @@ bool IsAllowedToShare(const ONNX_NAMESPACE::TensorShapeProto* input_shape,
 
     int64_t dim_value = dim.dim_value();
     num_elements *= dim_value;
-    if (num_elements > TENSOR_ELEM_COUNT_THRESHOLD) {
+    if (num_elements > ConstantSharing::TENSOR_ELEM_COUNT_THRESHOLD) {
       return false;
     }
   }
 
-  if (num_elements > 0 && num_elements <= TENSOR_ELEM_COUNT_THRESHOLD) {
+  if (num_elements > 0 && num_elements <= ConstantSharing::TENSOR_ELEM_COUNT_THRESHOLD) {
     return true;
   }
 

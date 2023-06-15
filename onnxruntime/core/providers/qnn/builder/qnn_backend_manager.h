@@ -69,13 +69,11 @@ class QnnBackendManager {
     return CreateContext();
   }
 
-  Status DumpQnnContext(const onnxruntime::PathString& context_cache_pathstring,
-                        const std::string& model_name,
-                        const std::string& graph_name);
+  Status DumpQnnContext(const std::string& model_name, const std::string& graph_name);
 
-  Status LoadCachedQnnContext(const onnxruntime::PathString& context_cache_pathstring, QnnModel& qnn_model);
+  Status LoadCachedQnnContext(QnnModel& qnn_model);
 
-  Status GetMetadataFromOrtContextFile(const onnxruntime::PathString& model_path);
+  Status GetMetadataFromOrtContextFile();
 
   Status ValidateWithContextFile(const std::string& model_name, const std::string& graph_name);
 
@@ -106,25 +104,7 @@ class QnnBackendManager {
     }
   }
 
-  void InitializeQnnLog() {
-    const std::map<logging::Severity, QnnLog_Level_t> ort_log_level_to_qnn_log_level = {
-        {logging::Severity::kVERBOSE, QNN_LOG_LEVEL_DEBUG},
-        {logging::Severity::kINFO, QNN_LOG_LEVEL_INFO},
-        {logging::Severity::kWARNING, QNN_LOG_LEVEL_WARN},
-        {logging::Severity::kERROR, QNN_LOG_LEVEL_ERROR},
-        {logging::Severity::kFATAL, QNN_LOG_LEVEL_ERROR}};
-
-    QnnLog_Level_t qnn_log_level = QNN_LOG_LEVEL_WARN;
-    auto ort_log_level = logger_->GetSeverity();
-    auto pos = ort_log_level_to_qnn_log_level.find(ort_log_level);
-    if (pos != ort_log_level_to_qnn_log_level.end()) {
-      qnn_log_level = pos->second;
-    }
-
-    if (QNN_SUCCESS != qnn_interface_.logCreate(QnnLogStdoutCallback, qnn_log_level, &log_handle_)) {
-      LOGS(*logger_, WARNING) << "Unable to initialize logging in the QNN backend.";
-    }
-  }
+  void InitializeQnnLog();
 
   // Terminate logging in the backend
   Status TerminateQnnLog() {
@@ -150,6 +130,10 @@ class QnnBackendManager {
 
   // NPU backend requires quantized model
   bool IsNpuBackend() { return is_npu_backend_; }
+
+  bool IsContextCacheFileExists(const std::string& customer_context_cache_path,
+                                const std::string& model_description,
+                                const onnxruntime::PathString& model_pathstring);
 
  private:
   void* LoadLib(const char* file_name, int flags, std::string& error_msg);
@@ -215,6 +199,10 @@ class QnnBackendManager {
   HtpPerformanceMode htp_performance_mode_;
   std::string model_name_from_ctx_cache_ = "";
   std::string graph_name_from_ctx_cache_ = "";
+  std::string model_description_from_ctx_cache_ = "";
+  std::string model_description_ = "";
+  std::string context_cache_path_ = "";
+  bool ctx_file_exists_ = false;
   bool ctx_metadata_tried_ = false;
   bool ort_generated_ctx_cache_ = false;
   bool get_capability_round_2_ = false;

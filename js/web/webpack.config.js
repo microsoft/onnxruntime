@@ -49,7 +49,7 @@ function defaultTerserPluginOptions(target) {
         passes: 2
       },
       mangle: {
-        reserved: ["_scriptDir","startWorker"]
+        reserved: ["_scriptDir", "startWorker"]
       }
     }
   };
@@ -111,6 +111,7 @@ function buildConfig({ filename, format, target, mode, devtool, build_defs }) {
       }]
     },
     mode,
+    node: false,
     devtool
   };
 
@@ -268,8 +269,9 @@ function buildTestRunnerConfig({
         type: 'asset/source'
       }]
     },
-    mode: mode,
-    devtool: devtool,
+    mode,
+    node: false,
+    devtool,
   };
 
   if (mode === 'production') {

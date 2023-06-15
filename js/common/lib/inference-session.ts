@@ -1,8 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {InferenceSession as InferenceSessionImpl} from './inference-session-impl';
-import {OnnxValue} from './onnx-value';
+import {InferenceSession as InferenceSessionImpl} from './inference-session-impl.js';
+import {OnnxValue} from './onnx-value.js';
 
 /* eslint-disable @typescript-eslint/no-redeclare */
 
@@ -303,6 +303,15 @@ export interface InferenceSession {
    */
   run(feeds: InferenceSession.FeedsType, fetches: InferenceSession.FetchesType,
       options?: InferenceSession.RunOptions): Promise<InferenceSession.ReturnType>;
+
+  // #endregion
+
+  // #region release()
+
+  /**
+   * Release the inference session and the underlying resources.
+   */
+  release(): Promise<void>;
 
   // #endregion
 
