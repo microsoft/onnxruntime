@@ -368,7 +368,7 @@ NS_ASSUME_NONNULL_BEGIN
   ORTAssertBoolResultSuccessful(result, error);
 }
 
--(void)testSetSeed {
+- (void)testSetSeed {
   ORTSetSeed(2718);
 }
 
