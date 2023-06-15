@@ -27,7 +27,7 @@ class ModelTester : public BaseTester {
   /// <param name="test_name">Name of test to use in logs and error messages.</param>
   /// <param name="model_uri">Model to load</param>
   /// <param name="onnx_opset_version">ONNX opset version for the model.
-  /// Only required if testing a model with an unrelease opset version.</param>
+  /// Only required if testing a model with an unreleased opset version.</param>
   explicit ModelTester(std::string_view test_name, const PathString& model_uri, int onnx_opset_version = -1)
       : BaseTester{test_name, onnx_opset_version, onnxruntime::kOnnxDomain},
         model_uri_{model_uri} {
