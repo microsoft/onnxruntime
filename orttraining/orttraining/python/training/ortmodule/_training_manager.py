@@ -18,6 +18,7 @@ from ._fallback import ORTModuleFallbackException, _FallbackManager, _FallbackPo
 from ._gradient_accumulation_manager import GradientAccumulationManager
 from ._graph_execution_manager import GraphExecutionManager, _RunStateInfo, _SkipCheck
 from ._io import _FlattenedModule, _InputInfo
+from ._runtime_inspector import Phase
 from .debug_options import DebugOptions
 
 
@@ -103,6 +104,7 @@ class TrainingManager(GraphExecutionManager):
 
                 Module outputs are returned to the user
                 """
+                self._rt_inspector.inspect_memory(Phase.PRE_FORWARD)
 
                 if self._skip_check.is_set(_SkipCheck.SKIP_CHECK_DEVICE) is False:
                     # Assert that the input and model device match
@@ -137,11 +139,15 @@ class TrainingManager(GraphExecutionManager):
                 for idx in self._graph_info.output_grad_indices_non_differentiable:
                     ctx.mark_non_differentiable(user_outputs[idx])
 
+                self._rt_inspector.inspect_memory(Phase.POST_FORWARD)
+
                 return user_outputs
 
             @staticmethod
             def backward(ctx, *grad_outputs):
                 """Performs backward pass based on grad wrt module output"""
+
+                self._rt_inspector.inspect_memory(Phase.PRE_BACKWARD)
 
                 assert ctx.run_info is not None, "forward() or __call__() methods must be called before backward()"
                 if self._skip_check.is_set(_SkipCheck.SKIP_CHECK_DEVICE) is False:
@@ -190,8 +196,11 @@ class TrainingManager(GraphExecutionManager):
 
                 # Fast version: all backward_outputs are converted first.
                 # This version only works if backward_outputs is an OrtValueVector.
-                transfered_backward_outputs = _utils._ortvalues_to_torch_tensor(backward_outputs, self._device)
-                return tuple(transfered_backward_outputs[idx] if idx != -1 else None for idx in self._gradient_map)
+                transferred_backward_outputs = _utils._ortvalues_to_torch_tensor(backward_outputs, self._device)
+
+                self._rt_inspector.inspect_memory(Phase.POST_BACKWARD)
+
+                return tuple(transferred_backward_outputs[idx] if idx != -1 else None for idx in self._gradient_map)
 
         return _ORTModuleFunction
 

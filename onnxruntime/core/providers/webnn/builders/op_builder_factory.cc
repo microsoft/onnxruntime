@@ -16,12 +16,17 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
   OpBuilderRegistrations op_registrations;
 
   {  // Unary
+    CreateUnaryOpBuilder("Ceil", op_registrations);
     CreateUnaryOpBuilder("Cos", op_registrations);
     CreateUnaryOpBuilder("Erf", op_registrations);
+    CreateUnaryOpBuilder("Exp", op_registrations);
     CreateUnaryOpBuilder("Floor", op_registrations);
+    CreateUnaryOpBuilder("Identity", op_registrations);
     CreateUnaryOpBuilder("Not", op_registrations);
+    CreateUnaryOpBuilder("Reciprocal", op_registrations);
     CreateUnaryOpBuilder("Sin", op_registrations);
     CreateUnaryOpBuilder("Sqrt", op_registrations);
+    CreateUnaryOpBuilder("Tan", op_registrations);
   }
 
   {  // Binary
@@ -103,6 +108,10 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
 
   {  // Resize
     CreateResizeOpBuilder("Resize", op_registrations);
+  }
+
+  {  // Shape
+    CreateShapeOpBuilder("Shape", op_registrations);
   }
 
   {  // Slice
