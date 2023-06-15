@@ -20,7 +20,7 @@
  * the user can save the CheckpointState to a checkpoint file.
  *
  * The checkpoint file is a single flatbuffer file containing all the states highlighted above.
- * The flatbuffer schema is defined in onnxruntime/core/flatbuffers/schema/ort_training.fbs
+ * The flatbuffer schema is defined in onnxruntime/core/flatbuffers/schema/ort_training_checkpoint.fbs
  *
  */
 

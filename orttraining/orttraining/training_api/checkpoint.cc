@@ -3,7 +3,7 @@
 
 #include "orttraining/training_api/checkpoint.h"
 
-#include "core/flatbuffers/schema/ort_training.fbs.h"
+#include "core/flatbuffers/schema/ort_training_checkpoint.fbs.h"
 #include "core/framework/framework_common.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/graph/graph_flatbuffers_utils.h"

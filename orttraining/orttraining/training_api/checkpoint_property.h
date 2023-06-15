@@ -8,7 +8,6 @@
 #include <variant>
 
 #include "core/common/inlined_containers.h"
-#include "core/flatbuffers/schema/ort_training.fbs.h"
 
 namespace onnxruntime::training::api {
 

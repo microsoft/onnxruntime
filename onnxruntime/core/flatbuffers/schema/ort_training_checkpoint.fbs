@@ -50,4 +50,4 @@ table Checkpoint {
 }
 
 root_type Checkpoint;
-file_identifier "ORTCheckpoint";
+file_identifier "ODTC"; // ORT On-Device-Training Checkpoint

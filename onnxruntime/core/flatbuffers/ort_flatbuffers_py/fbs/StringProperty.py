@@ -18,7 +18,7 @@ class StringProperty(object):
 
     @classmethod
     def StringPropertyBufferHasIdentifier(cls, buf, offset, size_prefixed=False):
-        return flatbuffers.util.BufferHasIdentifier(buf, offset, b"\x4F\x52\x54\x4D", size_prefixed=size_prefixed)
+        return flatbuffers.util.BufferHasIdentifier(buf, offset, b"\x4F\x44\x54\x43", size_prefixed=size_prefixed)
 
     # StringProperty
     def Init(self, buf, pos):
