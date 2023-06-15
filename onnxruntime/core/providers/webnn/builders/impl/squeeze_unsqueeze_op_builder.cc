@@ -46,6 +46,7 @@ void SqueezeUnsqueezeOpBuilder::AddInitializersToSkip(ModelBuilder& model_builde
 Status SqueezeUnsqueezeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
                                                         const Node& node,
                                                         const logging::Logger& logger) const {
+  const auto& op_type(node.OpType());
   const auto& input_defs = node.InputDefs();
   emscripten::val input = model_builder.GetOperand(input_defs[0]->Name());
   std::vector<int64_t> input_shape;
@@ -81,10 +82,13 @@ Status SqueezeUnsqueezeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_buil
   }
 
   emscripten::val output = emscripten::val::undefined();
-  if (node.OpType() == "Squeeze") {
+  if (op_type == "Squeeze") {
     output = model_builder.GetBuilder().call<emscripten::val>("squeeze", input, options);
-  } else {  // Unsqueeze
+  } else if (op_type == "Unsqueeze") {
     output = model_builder.GetBuilder().call<emscripten::val>("unsqueeze", input, options);
+  } else {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "SqueezeUnsqueezeOpBuilder::AddToModelBuilderImpl, unknown op: ", op_type);
   }
 
   model_builder.AddOperand(node.OutputDefs()[0]->Name(), std::move(output));
@@ -97,41 +101,28 @@ bool SqueezeUnsqueezeOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& in
                                                   const Node& node,
                                                   const WebnnDeviceType /* device_type */,
                                                   const logging::Logger& logger) const {
+  const auto& op_type(node.OpType());
   const auto& input_defs = node.InputDefs();
   std::vector<int64_t> input_shape;
   if (!GetShape(*input_defs[0], input_shape, logger))
     return false;
 
-  // Unsqueeze opset 13 uses input 1 as axes, it needs to be an initializer.
+  if (input_defs.size() < 1) {
+    LOGS(logger, ERROR) << op_type << " has no input tensor";
+    return false;
+  }
+
+  // Squeeze/Unsqueeze opset 13 uses input 1 as axes, it needs to be an initializer.
   if (node.SinceVersion() >= 13) {
-    if (node.OpType() == "Squeeze") {
-      if (input_defs.size() < 1) {
-        LOGS(logger, ERROR) << "Squeeze has no input tensor";
-        return false;
-      }
-      // Axes for Squeeze is optional.
-      if (input_defs.size() > 1) {
-        const auto& axes_name = input_defs[1]->Name();
-        if (!Contains(initializers, axes_name)) {
-          LOGS(logger, ERROR) << "Input axes of Squeeze must be provided";
-          return false;
-        }
-      }
-    } else {  // Unsqueeze
-      if (input_defs.size() < 2) {
-        LOGS(logger, ERROR) << "Input axes of Unsqueeze must be provided";
-        return false;
-      }
+    if (input_defs.size() > 1) {
       const auto& axes_name = input_defs[1]->Name();
       if (!Contains(initializers, axes_name)) {
-        LOGS(logger, ERROR) << "Input axes of Unsqueeze must be known";
+        LOGS(logger, ERROR) << "Input axes of " << op_type << " is not present and constant";
         return false;
       }
-    }
-
-  } else {
-    if (input_defs.size() < 1) {
-      LOGS(logger, ERROR) << node.OpType() << " has no input tensor";
+    } else if (op_type == "Unsqueeze") {
+      // The axes are optional for Squeeze, but not Unsqueeze.
+      LOGS(logger, ERROR) << "Input axes of Unsqueeze must be provided";
       return false;
     }
   }
