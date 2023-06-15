@@ -153,7 +153,8 @@ class StatisticsSubscriber(SubscriberBase):
             min_value = min_buckets.min()
             max_value = max_buckets.max()
             mean_value = float(mean_buckets.sum()) / float(element_count)
-            # Here we refer https://math.stackexchange.com/questions/2971315/how-do-i-combine-standard-deviations-of-two-groups
+            # Here we refer to
+            # https://math.stackexchange.com/questions/2971315/how-do-i-combine-standard-deviations-of-two-groups
             # to calculate the combined standard deviation of all buckets.
             s = (element_count_per_bucket - 1) * (std_buckets**2) + element_count_per_bucket * (
                 (mean_buckets - mean_value) ** 2
