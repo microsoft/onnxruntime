@@ -516,7 +516,6 @@ class FusionAttention(Fusion):
         self.node_name_to_graph_name[matmul_node_name] = self.this_graph_name
 
         qkv_nodes = [qkv_matmul]
-        qkv_output = qkv_matmul_output
 
         # Create Slice nodes to access Q, K, V
         q_slice_name = matmul_node_name + "_q_start_index"
@@ -541,7 +540,7 @@ class FusionAttention(Fusion):
         q_slice_output = matmul_node_name + "_q_out"
         q_slice = helper.make_node(
             "Slice",
-            inputs=[qkv_output, q_slice_name, k_slice_name, qkv_last_axis_name],
+            inputs=[qkv_matmul_output, q_slice_name, k_slice_name, qkv_last_axis_name],
             outputs=[q_slice_output],
             name=self.model.create_node_name("Slice"),
         )
@@ -549,7 +548,7 @@ class FusionAttention(Fusion):
         k_slice_output = matmul_node_name + "_k_out"
         k_slice = helper.make_node(
             "Slice",
-            inputs=[qkv_output, k_slice_name, v_slice_name, qkv_last_axis_name],
+            inputs=[qkv_matmul_output, k_slice_name, v_slice_name, qkv_last_axis_name],
             outputs=[k_slice_output],
             name=self.model.create_node_name("Slice"),
         )
@@ -557,7 +556,7 @@ class FusionAttention(Fusion):
         v_slice_output = matmul_node_name + "_v_out"
         v_slice = helper.make_node(
             "Slice",
-            inputs=[qkv_output, v_slice_name, end_of_qkv_name, qkv_last_axis_name],
+            inputs=[qkv_matmul_output, v_slice_name, end_of_qkv_name, qkv_last_axis_name],
             outputs=[v_slice_output],
             name=self.model.create_node_name("Slice"),
         )
@@ -572,21 +571,21 @@ class FusionAttention(Fusion):
             if q_add is not None:
                 initializer_input = 1 if self.model.get_initializer(q_add.input[1]) else 0
                 if np.any(NumpyHelper.to_array(self.model.get_initializer(q_add.input[initializer_input]))):
-                    q_add.input[1-initializer_input] = q_slice_output
+                    q_add.input[1 - initializer_input] = q_slice_output
                     q_output = q_add
                     qkv_nodes.append(q_add)
                     self.node_name_to_graph_name[q_add.name] = self.this_graph_name
             if k_add is not None:
                 initializer_input = 1 if self.model.get_initializer(k_add.input[1]) else 0
                 if np.any(NumpyHelper.to_array(self.model.get_initializer(k_add.input[initializer_input]))):
-                    k_add.input[1-initializer_input] = k_slice_output
+                    k_add.input[1 - initializer_input] = k_slice_output
                     k_output = k_add
                     qkv_nodes.append(k_add)
                     self.node_name_to_graph_name[k_add.name] = self.this_graph_name
             if v_add is not None:
                 initializer_input = 1 if self.model.get_initializer(v_add.input[1]) else 0
                 if np.any(NumpyHelper.to_array(self.model.get_initializer(v_add.input[initializer_input]))):
-                    v_add.input[1-initializer_input] = v_slice_output
+                    v_add.input[1 - initializer_input] = v_slice_output
                     v_output = v_add
                     qkv_nodes.append(v_add)
                     self.node_name_to_graph_name[v_add.name] = self.this_graph_name
