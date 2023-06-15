@@ -191,10 +191,9 @@ To follow this tutorial, you should have a basic understanding of Android app de
                 cppFlags '-std=c++17'
           }
        }
-
-   +    ndk {
+   +   ndk {
    +       abiFilters 'arm64-v8a'
-   +    }
+   +   }
    
     }
    ```
@@ -240,7 +239,6 @@ To follow this tutorial, you should have a basic understanding of Android app de
    +     utils.cpp
    +     inference.cpp
    +     train.cpp)
-
    + add_library(onnxruntime SHARED IMPORTED)
    + set_target_properties(onnxruntime PROPERTIES IMPORTED_LOCATION ${CMAKE_SOURCE_DIR}/lib/libonnxruntime.so)
    + target_include_directories(ortpersonalize PRIVATE ${CMAKE_SOURCE_DIR}/include/onnxruntime)
@@ -258,7 +256,6 @@ To follow this tutorial, you should have a basic understanding of Android app de
          # Links the target library to the log library
          # included in the NDK.
          ${log-lib}
-
    +     onnxruntime)
 
    ```
