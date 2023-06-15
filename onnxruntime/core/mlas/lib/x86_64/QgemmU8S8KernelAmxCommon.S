@@ -146,7 +146,7 @@ Arguments:
 
         .macro TileZeroMacro SrcReg
 
-        .set ModRMByte, 0xC0     # register form
+        .set 	ModRMByte, 0xC0     # register form
         .set    ModRMByte, ModRMByte + ((.LTmmIndex_\SrcReg\() & 7) << 3)
         .byte   0xC4, 0xE2, 0x7B, 0x49, ModRMByte
 
@@ -179,13 +179,13 @@ Arguments:
         .set    Payload0, Payload0 + ((((.LGprIndex_\Stride\() >> 3) & 1) ^ 1) << 6)
         .set    Payload0, Payload0 + ((((.LGprIndex_\BaseReg\() >> 3) & 1) ^ 1) << 5)
 
-        .set ModRMByte, 0x00     # memory form
-        .set ModRMByte, ModRMByte + (1 << 2)   # SibBye required
-        .set ModRMByte, ModRMByte + ((.LTmmIndex_\SrcReg\() & 7) << 3)
+        .set 	ModRMByte, 0x00     # memory form
+        .set 	ModRMByte, ModRMByte + (1 << 2)   # SibBye required
+        .set 	ModRMByte, ModRMByte + ((.LTmmIndex_\SrcReg\() & 7) << 3)
 
-        .set SibByte, 0x00  # scale factor 1(SS)
-        .set SibByte, SibByte + ((.LGprIndex_\Stride\() & 7) << 3)
-        .set SibByte, SibByte + (.LGprIndex_\BaseReg\() & 7)
+        .set 	SibByte, 0x00  # scale factor 1(SS)
+        .set 	SibByte, SibByte + ((.LGprIndex_\Stride\() & 7) << 3)
+        .set 	SibByte, SibByte + (.LGprIndex_\BaseReg\() & 7)
 
         .byte   0xC4, Payload0, \instr\(), 0x4B, ModRMByte, SibByte
 
@@ -228,8 +228,8 @@ Arguments:
 	.set    Payload0, Payload0 + (1 << 6)
 	.set    Payload0, Payload0 + ((((.LGprIndex_\BaseReg\() >> 3) & 1) ^ 1) << 5)
 
-	.set ModRMByte, 0x00     # memory form & no reg
-	.set ModRMByte, ModRMByte + (.LGprIndex_\BaseReg\() & 7)
+	.set 	ModRMByte, 0x00     # memory form & no reg
+	.set 	ModRMByte, ModRMByte + (.LGprIndex_\BaseReg\() & 7)
 
 	.byte 0xC4, Payload0, \instr\(), 0x49, ModRMByte
 

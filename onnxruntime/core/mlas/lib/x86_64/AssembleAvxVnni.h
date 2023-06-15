@@ -53,9 +53,7 @@ Abstract:
         .equ    .LXmmIndex_xmm14, 14
         .equ    .LXmmIndex_xmm15, 15
 
-	
 /*++
-
 
 Macro Description:
 
