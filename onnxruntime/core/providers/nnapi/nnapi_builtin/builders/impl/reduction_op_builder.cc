@@ -68,8 +68,8 @@ Status ReductionOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, co
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "ReductionOpBuilder, unknown op: ", op_type);
   }
 
-  const auto keepdims = helper.Get("keepdims", 1);
-  const auto noop_with_empty_axes = helper.Get("noop_with_empty_axes", 0);
+  const bool keepdims = helper.Get("keepdims", 1) != 0;
+  const bool noop_with_empty_axes = helper.Get("noop_with_empty_axes", 0) != 0;
 
   // Get axes for ReduceMean
   // Note: ONNX `ReduceMean` will reduce by default all dimensions if axes is not provided/provided as empty. However, NNAPI doesn't implement the behavior
@@ -77,7 +77,6 @@ Status ReductionOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, co
   // Notes from NNAPI doc:
   // https://developer.android.com/ndk/reference/group/neural-networks#group___neural_networks_1ggaabbe492c60331b13038e39d4207940e0a047fe95a35b27f45c05432b6ca18eb6c
   std::vector<int32_t> axes;
-
   if (node_unit.SinceVersion() >= 18) {
     if (inputs.size() > 1 && inputs[1].node_arg.Exists()) {
       // ReduceMean-18 uses the second optional input as axes
@@ -86,73 +85,65 @@ Status ReductionOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, co
       Initializer unpacked_tensor(axes_tensor);
       auto raw_axes = unpacked_tensor.DataAsSpan<int64_t>();
       axes = OnnxShapeToNnapi(raw_axes, input_shape.size());
-    } else {
-      // Cases when optional axes input is not provided
-      if (noop_with_empty_axes == 0) {
-        // NNAPI doesn't implement the behavior by default to reduce all dimensions when axes is empty,
-        // we will convert the case by providing an input with all axes here.
-        axes.resize(input_shape.size());
-        std::iota(axes.begin(), axes.end(), 0);
-      }
     }
   } else {
     // For ReduceMean-13 or earlier, retrieve axes from the attribute
     const auto& axes_int64 = helper.Get("axes", std::vector<int64_t>{});
     axes = OnnxShapeToNnapi(gsl::span<const int64_t>(axes_int64.data(), axes_int64.size()), input_shape.size());
+  }
 
-    if (axes.empty()) {
-      // When axes attribute is not specified or provided as empty, treated as default behavior to reduce all dimensions and similarly in this case,
-      // we provide an input with all axes for NNAPI here.
-      axes.resize(input_shape.size());
-      std::iota(axes.begin(), axes.end(), 0);
-    }
+  if (axes.empty() && !noop_with_empty_axes) {
+    // When axes attribute is not specified or provided as empty, reduce all dimensions by default and
+    // we provide an input with all axes for NNAPI here to simulate this default behavior
+    axes.resize(input_shape.size());
+    std::iota(axes.begin(), axes.end(), 0);
   }
 
   // Add ReduceMean operation
   InlinedVector<uint32_t> input_indices;
   input_indices.push_back(operand_indices.at(inputs[0].node_arg.Name()));  // data
 
-  if (!axes.empty()) {
-    const auto axes_name = model_builder.GetUniqueName(node_unit.Name() + inputs[0].node_arg.Name() + "_axes");
-    Shape axes_dimen = {static_cast<uint32_t>(axes.size())};
-    const OperandType axes_operand_type(Type::TENSOR_INT32, axes_dimen);
-    ORT_RETURN_IF_ERROR(model_builder.AddOperandFromPersistMemoryBuffer(axes_name, axes.data(), axes_operand_type));
+  const auto axes_name = model_builder.GetUniqueName(node_unit.Name() + inputs[0].node_arg.Name() + "_axes");
+  Shape axes_dimen = {static_cast<uint32_t>(axes.size())};
+  const OperandType axes_operand_type(Type::TENSOR_INT32, axes_dimen);
+  ORT_RETURN_IF_ERROR(model_builder.AddOperandFromPersistMemoryBuffer(axes_name, axes.data(), axes_operand_type));
 
-    input_indices.push_back(operand_indices.at(axes_name));  // axes
+  input_indices.push_back(operand_indices.at(axes_name));  // axes
 
-    int32_t input_size = static_cast<int32_t>(input_shape.size());
+  int32_t input_size = static_cast<int32_t>(input_shape.size());
 
-    // Make output dimensions
-    InlinedVector<uint32_t> output_dimen;
-    if (keepdims == 1) {
-      output_dimen.reserve(input_size);
+  // Make output dimensions
+  InlinedVector<uint32_t> output_dimen;
+  if (keepdims) {
+    output_dimen.reserve(input_size);
+  } else {
+    output_dimen.reserve(input_size - axes.size());
+  }
+
+  for (int32_t i = 0; i < input_size; i++) {
+    if (std::find(axes.begin(), axes.end(), i) == axes.end()) {
+      output_dimen.push_back(input_shape[i]);
     } else {
-      output_dimen.reserve(input_size - axes.size());
-    }
-
-    for (int32_t i = 0; i < input_size; i++) {
-      if (std::find(axes.begin(), axes.end(), i) == axes.end()) {
-        output_dimen.push_back(input_shape[i]);
-      } else {
-        if (keepdims == 1) {
-          output_dimen.push_back(1);
-        }
+      if (keepdims) {
+        output_dimen.push_back(1);
       }
     }
+  }
 
-    // In case of a tensor has all 1's in dimension such as {1,1,1,1} and gets all reduced,
-    // NNAPI requires the output shape to be {1}. (otherwise NNAPI will treat it as dynamic shape.)
-    if (output_dimen.empty())
-      output_dimen.push_back(1);
+  // In case of a tensor has all 1's in dimension such as {1,1,1,1} and gets all reduced,
+  // NNAPI requires the output shape to be {1}. (otherwise NNAPI will treat it as dynamic shape.)
+  if (output_dimen.empty())
+    output_dimen.push_back(1);
 
-    shaper.AddShape(output, output_dimen);
+  shaper.AddShape(output, output_dimen);
 
-    ADD_SCALAR_OPERAND(model_builder, input_indices, keepdims);
+  ADD_SCALAR_OPERAND(model_builder, input_indices, helper.Get("keepdims", 1));
 
-    const OperandType output_operand_type(operand_types.at(inputs[0].node_arg.Name()).type, output_dimen);
-    ORT_RETURN_IF_ERROR(model_builder.AddOperation(op_code, input_indices,
-                                                   {output}, {output_operand_type}));
-  } else {
+  const OperandType output_operand_type(operand_types.at(inputs[0].node_arg.Name()).type, output_dimen);
+  ORT_RETURN_IF_ERROR(model_builder.AddOperation(op_code, input_indices,
+                                                 {output}, {output_operand_type}));
+
+  if (axes.empty() && noop_with_empty_axes) {
     // If `axes` is still empty at this point, meaning that it's ReduceMean-18 and attribute `noop_with_empty_axes` specifies as 1,
     // treat as an Identity op here.
     const OperandType output_operand_type(operand_types.at(inputs[0].node_arg.Name()).type, input_shape);
@@ -188,8 +179,6 @@ bool ReductionOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializ
                           << input_shape.size() << "d shape";
     return false;
   }
-
-  NodeAttrHelper helper(node_unit);
 
   if (op == "ReduceMean") {
     if (inputs.size() > 1 && inputs[1].node_arg.Exists()) {
