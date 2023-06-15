@@ -93,8 +93,7 @@ Status ReductionOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, co
   }
 
   if (axes.empty() && !noop_with_empty_axes) {
-    // When axes attribute is not specified or provided as empty, reduce all dimensions by default and
-    // we provide an input with all axes for NNAPI here to simulate this default behavior
+    // we provide an input with all axes for NNAPI here to simulate this default behavior to reduce all dimensions
     axes.resize(input_shape.size());
     std::iota(axes.begin(), axes.end(), 0);
   }
