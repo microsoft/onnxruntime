@@ -136,7 +136,7 @@ export const createSessionFinalize =
         if (sessionOptionsHandle !== 0) {
           wasm._OrtReleaseSessionOptions(sessionOptionsHandle);
         }
-        allocs.forEach(wasm._free);
+        allocs.forEach(alloc => wasm._free(alloc));
       }
     };
 
