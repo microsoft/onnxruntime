@@ -147,7 +147,7 @@ To follow this tutorial, you should have a basic understanding of Android app de
 
 2. <a name="tp2"></a>Adding the ONNX Runtime dependency
 
-   a. Create two new folder called `lib` and `include\onnxruntime` under the cpp directory in the Android Studio project.
+   a. Create two new folders called `lib` and `include\onnxruntime` under the cpp directory in the Android Studio project.
 
    ![lib and include folder](../../images/on-device-training-lib-include.png)
 
@@ -178,25 +178,25 @@ To follow this tutorial, you should have a basic understanding of Android app de
    Note that the `defaultConfig` section of the `build.gradle` file should look like:
 
    ```diff
-   defaultConfig {
-      applicationId "com.example.ortpersonalize"
-      minSdk 29
-      targetSdk 33
-      versionCode 1
-      versionName "1.0"
+    defaultConfig {
+       applicationId "com.example.ortpersonalize"
+       minSdk 29
+       targetSdk 33
+       versionCode 1
+       versionName "1.0"
 
-      testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
-      externalNativeBuild {
-         cmake {
-               cppFlags '-std=c++17'
-         }
-      }
+       testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+       externalNativeBuild {
+          cmake {
+                cppFlags '-std=c++17'
+          }
+       }
 
-   +   ndk {
-   +      abiFilters 'arm64-v8a'
-   +   }
+   +    ndk {
+   +       abiFilters 'arm64-v8a'
+   +    }
    
-   }
+    }
    ```
 
    i. Add the `onnxruntime` shared library to the `CMakeLists.txt` so that `cmake` can find and build against the shared library. To do this, add these lines after the `ortpersonalize` library is added in the `CMakeLists.txt`:
