@@ -235,12 +235,12 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                         TensorElementType.Float, outputShape, outputBuffer.Length * sizeof(float)));
 
                     trainingSession.TrainStep(pinnedInputs, pinnedOutputs);
-                    // Assert.Equal(expectedOutput_1, outputBuffer, new FloatComparer());
+                    Assert.Equal(expectedOutput_1, outputBuffer, new FloatComparer());
 
                     trainingSession.LazyResetGrad();
 
                     trainingSession.TrainStep(pinnedInputs, pinnedOutputs);
-                    // Assert.Equal(expectedOutput_1, outputBuffer, new FloatComparer());
+                    Assert.Equal(expectedOutput_1, outputBuffer, new FloatComparer());
 
                     trainingSession.OptimizerStep();
 
