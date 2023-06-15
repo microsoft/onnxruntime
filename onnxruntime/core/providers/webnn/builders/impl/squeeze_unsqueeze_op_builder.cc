@@ -46,7 +46,7 @@ void SqueezeUnsqueezeOpBuilder::AddInitializersToSkip(ModelBuilder& model_builde
 Status SqueezeUnsqueezeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
                                                         const Node& node,
                                                         const logging::Logger& logger) const {
-  const auto& op_type(node.OpType());
+  const auto& op_type = node.OpType();
   const auto& input_defs = node.InputDefs();
   emscripten::val input = model_builder.GetOperand(input_defs[0]->Name());
   std::vector<int64_t> input_shape;
@@ -101,7 +101,7 @@ bool SqueezeUnsqueezeOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& in
                                                   const Node& node,
                                                   const WebnnDeviceType /* device_type */,
                                                   const logging::Logger& logger) const {
-  const auto& op_type(node.OpType());
+  const auto& op_type = node.OpType();
   const auto& input_defs = node.InputDefs();
   std::vector<int64_t> input_shape;
   if (!GetShape(*input_defs[0], input_shape, logger))
