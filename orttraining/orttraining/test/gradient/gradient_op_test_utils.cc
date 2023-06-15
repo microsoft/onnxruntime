@@ -20,10 +20,12 @@ namespace test {
 void GradientOpTester::Run(int output_index_to_use_as_loss,
                            int data_index_of_output,
                            std::vector<std::unique_ptr<IExecutionProvider>>* execution_providers) {
+  SetTestFunctionCalled();
+
   try {
     std::unordered_map<std::string, int> extra_domain_to_version{{kMSDomain, 1}, {kOnnxDomain, 9}};
 
-    ASSERT_NE(cached_model_, nullptr);
+    ORT_ENFORCE(cached_model_, "BuildAndCacheModel must be called first");
     Model& model = *cached_model_;
     Graph& graph = model.MainGraph();
 
@@ -166,8 +168,6 @@ void GradientOpTester::Run(int output_index_to_use_as_loss,
     }
 
     EXPECT_TRUE(has_run) << "No registered execution providers were able to run the model.";
-    SetRunCalled();
-
   } catch (const std::exception& ex) {
     std::cerr << ex.what();
     // rethrow as some tests for error handling expect this

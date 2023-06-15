@@ -47,8 +47,8 @@ class OpTester : public BaseTester {
   // for Tensor types. If not added, shape inferencing should resolve. If added, shape inferencing
   // should validate. Default is to add.
   // Additionally a symbolic dimension will be added if symbolic_dim matches a dimension in the input.
-  OpTester& AddShapeToTensorData(bool add_shape = true, int symbolic_dim = -1) {
-    SetAddShapeToTensorData(add_shape);
+  OpTester& AddShapeToTensorData(bool enable = true, int symbolic_dim = -1) {
+    SetAddShapeToTensorData(enable);
     SetAddSymbolicDimToTensorData(symbolic_dim);
     return *this;
   }

@@ -15,6 +15,8 @@ namespace onnxruntime {
 namespace test {
 
 void OpFunctionTester::RunFunctionBodyGraphOnCPU(TwoDArray& results) {
+  SetTestFunctionCalled();
+
   auto& model = BuildModel();
   auto& graph = model.MainGraph();
   const auto& op = Op();
@@ -55,7 +57,6 @@ void OpFunctionTester::RunFunctionBodyGraphOnCPU(TwoDArray& results) {
 
   std::vector<OrtValue> cpu_fetches;
   ASSERT_STATUS_OK(cpu_session_object.Run(run_options, feeds, output_names, &cpu_fetches));
-  SetRunCalled();
 
   auto fetch_index = 0;
 
@@ -116,7 +117,7 @@ void CompareResults(const onnxruntime::training::OpDef& op_def,
                                                         attributes,
                                                         opset_version);
   TwoDArray results;
-  inline_tester->RunFunctionBodyGraphOnCPU(results);
+  ASSERT_NO_FATAL_FAILURE(inline_tester->RunFunctionBodyGraphOnCPU(results));
 
   // Use run_results got from inline testing as expected data,
   // test against all registered kernels.

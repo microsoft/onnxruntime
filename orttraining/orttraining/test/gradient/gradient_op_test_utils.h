@@ -53,10 +53,14 @@ class GradientOpTester : public OpTester {
   }
 
   // we save the resolved model on the first build and re-use in Run calls
-  void BuildAndCacheModel(const std::unordered_map<std::string, int>& extra_domain_to_version) {
+  Status BuildAndCacheModel(const std::unordered_map<std::string, int>& extra_domain_to_version) {
     auto& model = OpTester::BuildModel(extra_domain_to_version);
-    ASSERT_STATUS_OK(model.MainGraph().Resolve());
-    cached_model_ = &model;
+    auto status = model.MainGraph().Resolve();
+    if (status.IsOK()) {
+      cached_model_ = &model;
+    }
+
+    return status;
   }
 
   Model& GetModel() {

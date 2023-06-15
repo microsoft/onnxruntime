@@ -43,8 +43,8 @@ void DebugTrap() {
 
 BaseTester::~BaseTester() {
 #ifndef NDEBUG
-  if (!run_called_) {
-    std::cerr << "Someone forgot to call BaseTester::Run()" << std::endl;
+  if (!testing_function_called_) {
+    std::cerr << "Test was not executed." << std::endl;
     DebugTrap();
   }
 #endif
@@ -544,9 +544,7 @@ void BaseTester::RunWithConfig(size_t* number_of_pre_packed_weights_counter,
                                size_t* number_of_shared_pre_packed_weights_counter) {
   std::string cur_provider = "not set";
   ORT_TRY {
-#ifndef NDEBUG
-    run_called_ = true;
-#endif
+    testing_function_called_ = true;
     fetches_.clear();
 
     // IsAllowReleasedONNXOpsetsOnlySet() checks for the appropriate env var in the process (i.e.) process-wide
@@ -711,8 +709,7 @@ void BaseTester::RunWithConfig(size_t* number_of_pre_packed_weights_counter,
       // So, no registered EPs were able to run the model is okay for this situation.
       ORT_UNUSED_PARAMETER(has_run);
 #else
-      EXPECT_TRUE(has_run)
-          << "No registered execution providers were able to run the model.";
+      EXPECT_TRUE(has_run) << "No registered execution providers were able to run the model.";
 #endif
     }
   }

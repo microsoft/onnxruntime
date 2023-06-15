@@ -48,8 +48,11 @@ void CompareOpTester::CompareWithCPU(const std::string& target_provider_type,
                                      double relative_per_sample_tolerance,
                                      const bool need_cpu_cast,
                                      const std::unordered_map<std::string, int>& extra_domain_to_version) {
+  SetTestFunctionCalled();
+
   std::unique_ptr<IExecutionProvider> target_execution_provider = GetExecutionProvider(target_provider_type);
-  ASSERT_TRUE(target_execution_provider != nullptr) << "provider_type " << target_provider_type << " is not supported.";
+  ASSERT_TRUE(target_execution_provider != nullptr) << "provider_type " << target_provider_type
+                                                    << " is not supported.";
 
   auto& model = BuildModel(extra_domain_to_version);
   auto& graph = model.MainGraph();
@@ -89,7 +92,6 @@ void CompareOpTester::CompareWithCPU(const std::string& target_provider_type,
 
   std::vector<OrtValue> cpu_fetches;
   ASSERT_STATUS_OK(cpu_session_object.Run({}, feeds, output_names, &cpu_fetches));
-  SetRunCalled();
 
   // run with target provider
   // build the graph again as the cpu graph may be with casts
@@ -99,7 +101,7 @@ void CompareOpTester::CompareWithCPU(const std::string& target_provider_type,
   ASSERT_STATUS_OK(tp_graph.Resolve());
 
   InferenceSession target_session_object{so, GetEnvironment()};
-  EXPECT_TRUE(target_session_object.RegisterExecutionProvider(std::move(target_execution_provider)).IsOK());
+  ASSERT_STATUS_OK(target_session_object.RegisterExecutionProvider(std::move(target_execution_provider)));
 
   std::string s2;
   tp_model.ToProto().SerializeToString(&s2);

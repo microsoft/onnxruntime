@@ -22,7 +22,6 @@ limitations under the License.
 #include "orttraining/core/framework/gradient_graph_builder.h"
 #include "orttraining/core/graph/gradient_config.h"
 
-#include "test/util/include/asserts.h"
 #include "test/util/include/default_providers.h"
 #include "test/util/include/test_random_seed.h"
 
@@ -167,7 +166,7 @@ inline void GradientChecker<X_T, Y_T, JAC_T>::AddDatas(GradientOpTester& op_test
 }
 
 template <typename X_T, typename Y_T, typename JAC_T>
-inline void GradientChecker<X_T, Y_T, JAC_T>::ComputeTheoreticalJacobianTranspose(
+inline Status GradientChecker<X_T, Y_T, JAC_T>::ComputeTheoreticalJacobianTranspose(
     const OpDef& op_def, const std::vector<TensorInfo>& x_infos, const std::vector<TensorInfo>& y_infos,
     std::vector<std::vector<X_T>>* x_datas, std::vector<std::vector<Y_T>>* y_datas,
     std::vector<std::vector<JAC_T>>* jacobian_ts, const std::vector<size_t>& row_strides,
@@ -179,7 +178,7 @@ inline void GradientChecker<X_T, Y_T, JAC_T>::ComputeTheoreticalJacobianTranspos
   GradientOpTester op_tester(op_def.type.c_str(), op_def.opset_version, op_def.domain.c_str(),
                              false, &x_infos, &y_infos);
   op_tester.AddShapeToTensorData(add_shape);
-  InitOpTesterWithGradGraph(op_tester, x_infos, y_infos, x_datas, y_datas, attributes);
+  ORT_RETURN_IF_ERROR(InitOpTesterWithGradGraph(op_tester, x_infos, y_infos, x_datas, y_datas, attributes));
 
   // currently only supported scalar valued fns - and complex types are not supported
   for (size_t y_idx = 0; y_idx < y_num; y_idx++) {  // for each dy input
@@ -222,10 +221,12 @@ inline void GradientChecker<X_T, Y_T, JAC_T>::ComputeTheoreticalJacobianTranspos
       }
     }
   }
+
+  return Status::OK();
 }
 
 template <typename X_T, typename Y_T, typename JAC_T>
-inline void GradientChecker<X_T, Y_T, JAC_T>::InitOpTesterWithGraph(
+inline Status GradientChecker<X_T, Y_T, JAC_T>::InitOpTesterWithGraph(
     GradientOpTester& op_tester, const std::vector<TensorInfo>& x_infos, const std::vector<TensorInfo>& y_infos,
     std::vector<std::vector<X_T>>* x_datas, std::vector<std::vector<Y_T>>* y_datas,
     const std::vector<AttributeProto>& attributes,
@@ -237,16 +238,17 @@ inline void GradientChecker<X_T, Y_T, JAC_T>::InitOpTesterWithGraph(
   }
 
   // build graph
-  op_tester.BuildAndCacheModel(extra_domain_to_version);
+  return op_tester.BuildAndCacheModel(extra_domain_to_version);
 }
 
 template <typename X_T, typename Y_T, typename JAC_T>
-inline void GradientChecker<X_T, Y_T, JAC_T>::InitOpTesterWithGradGraph(
+inline Status GradientChecker<X_T, Y_T, JAC_T>::InitOpTesterWithGradGraph(
     GradientOpTester& op_tester, const std::vector<TensorInfo>& x_infos, const std::vector<TensorInfo>& y_infos,
     std::vector<std::vector<X_T>>* x_datas, std::vector<std::vector<Y_T>>* y_datas,
     const std::vector<AttributeProto>& attributes) {
   std::unordered_map<std::string, int> extra_domain_to_version{{kMSDomain, 1}, {kOnnxDomain, 9}};
-  InitOpTesterWithGraph(op_tester, x_infos, y_infos, x_datas, y_datas, attributes, extra_domain_to_version);
+  ORT_RETURN_IF_ERROR(
+      InitOpTesterWithGraph(op_tester, x_infos, y_infos, x_datas, y_datas, attributes, extra_domain_to_version));
 
   // build grad graph
   auto& model = op_tester.GetModel();
@@ -273,11 +275,11 @@ inline void GradientChecker<X_T, Y_T, JAC_T>::InitOpTesterWithGradGraph(
   gradient_graph_config.set_gradients_as_graph_outputs = true;
   training::GradientGraphBuilder grad_graph_builder(&graph, dy_values, weights_to_train, "", gradient_graph_config,
                                                     logging::LoggingManager::DefaultLogger());
-  ASSERT_STATUS_OK(grad_graph_builder.Build());
+  return grad_graph_builder.Build();
 }
 
 template <typename X_T, typename Y_T, typename JAC_T>
-inline void GradientChecker<X_T, Y_T, JAC_T>::ComputeNumericJacobianTranspose(
+inline Status GradientChecker<X_T, Y_T, JAC_T>::ComputeNumericJacobianTranspose(
     const OpDef& op_def, const std::vector<TensorInfo>& x_infos, const std::vector<TensorInfo>& y_infos,
     const JAC_T delta, std::vector<std::vector<X_T>>* x_datas, std::vector<std::vector<Y_T>>* y_datas,
     std::vector<std::vector<JAC_T>>* jacobian_ts, const std::vector<size_t>& row_strides,
@@ -290,7 +292,7 @@ inline void GradientChecker<X_T, Y_T, JAC_T>::ComputeNumericJacobianTranspose(
   // build the graph once and reuse it later in the looping logic
   GradientOpTester op_tester(op_def.type.c_str(), op_def.opset_version, op_def.domain.c_str(), false);
   op_tester.AddShapeToTensorData(add_shape);
-  InitOpTesterWithGraph(op_tester, x_infos, y_infos, x_datas, y_datas, attributes);
+  ORT_RETURN_IF_ERROR(InitOpTesterWithGraph(op_tester, x_infos, y_infos, x_datas, y_datas, attributes));
 
   for (size_t x_idx = 0; x_idx < x_num; ++x_idx) {
     if (!x_infos[x_idx].has_gradient) {
@@ -333,10 +335,12 @@ inline void GradientChecker<X_T, Y_T, JAC_T>::ComputeNumericJacobianTranspose(
       (*x_datas)[x_idx][r] = v;
     }
   }
+
+  return Status::OK();
 }
 
 template <typename X_T, typename Y_T, typename JAC_T>
-inline void GradientChecker<X_T, Y_T, JAC_T>::ComputeGradientErrorInternal(
+inline Status GradientChecker<X_T, Y_T, JAC_T>::ComputeGradientErrorInternal(
     const OpDef& op_def, const std::vector<TensorInfo>& x_infos, const std::vector<TensorInfo>& y_infos,
     std::vector<std::vector<X_T>>* x_datas, std::vector<std::vector<Y_T>>* y_datas, JAC_T* max_error,
     const std::vector<AttributeProto>& attributes, bool check_not_have_gradient, bool check_not_have_shape_inferencing,
@@ -360,9 +364,9 @@ inline void GradientChecker<X_T, Y_T, JAC_T>::ComputeGradientErrorInternal(
   InitJacobians(row_count, col_count, &jacobian_ns);
 
   // Compute numeric Jacobian.
-  ComputeNumericJacobianTranspose(op_def, x_infos, y_infos, JAC_T{1e-3f}, x_datas, y_datas,
-                                  &jacobian_ns, row_strides, col_strides, attributes, true,
-                                  execution_providers);
+  ORT_RETURN_IF_ERROR(ComputeNumericJacobianTranspose(op_def, x_infos, y_infos, JAC_T{1e-3f}, x_datas, y_datas,
+                                                      &jacobian_ns, row_strides, col_strides, attributes, true,
+                                                      execution_providers));
 
   // Compute the maximum error between theoretical and numeric Jacobians.
   *max_error = 0.0;
@@ -391,9 +395,9 @@ inline void GradientChecker<X_T, Y_T, JAC_T>::ComputeGradientErrorInternal(
       }
 
       // Compute theoretical Jacobian.
-      ComputeTheoreticalJacobianTranspose(op_def, x_infos_gradient_variation, y_infos, x_datas,
-                                          y_datas, &jacobian_ts, row_strides, col_strides,
-                                          attributes, add_shape, execution_providers);
+      ORT_RETURN_IF_ERROR(ComputeTheoreticalJacobianTranspose(op_def, x_infos_gradient_variation, y_infos, x_datas,
+                                                              y_datas, &jacobian_ts, row_strides, col_strides,
+                                                              attributes, add_shape, execution_providers));
 
       // We have numeric jacobians regardless of has_gradient (computed once).
       // We only have theoretical jacobians for those has_gradient.
@@ -422,7 +426,7 @@ inline void GradientChecker<X_T, Y_T, JAC_T>::ComputeGradientErrorInternal(
               // (Note that std::max may ignore NaN arguments.)
               if (std::isnan(cur_error)) {
                 *max_error = cur_error;
-                return;
+                return Status::OK();
               }
               *max_error = std::max(*max_error, cur_error);
             }
@@ -431,10 +435,12 @@ inline void GradientChecker<X_T, Y_T, JAC_T>::ComputeGradientErrorInternal(
       }
     }
   }
+
+  return Status::OK();
 }
 
 template <typename X_T, typename Y_T, typename JAC_T>
-inline void GradientChecker<X_T, Y_T, JAC_T>::ComputeGradientError(
+inline Status GradientChecker<X_T, Y_T, JAC_T>::ComputeGradientError(
     const OpDef& op_def, const std::vector<TensorInfo>& x_infos, const std::vector<TensorInfo>& y_infos,
     JAC_T* max_error, const std::vector<AttributeProto>& attributes, bool check_not_have_gradient, /* = true*/
     bool check_not_have_shape_inferencing /* = false*/,
@@ -461,12 +467,12 @@ inline void GradientChecker<X_T, Y_T, JAC_T>::ComputeGradientError(
     }
   }
 
-  ComputeGradientError(op_def, x_infos, y_infos, max_error, x_datas, attributes, check_not_have_gradient,
-                       check_not_have_shape_inferencing, execution_providers);
+  return ComputeGradientError(op_def, x_infos, y_infos, max_error, x_datas, attributes, check_not_have_gradient,
+                              check_not_have_shape_inferencing, execution_providers);
 }
 
 template <typename X_T, typename Y_T, typename JAC_T>
-inline void GradientChecker<X_T, Y_T, JAC_T>::ComputeGradientError(
+inline Status GradientChecker<X_T, Y_T, JAC_T>::ComputeGradientError(
     const OpDef& op_def, const std::vector<TensorInfo>& x_infos, const std::vector<TensorInfo>& y_infos,
     JAC_T* max_error, std::vector<std::vector<X_T>> x_datas,
     const std::vector<ONNX_NAMESPACE::AttributeProto>& attributes, bool check_not_have_gradient, /* = true*/
@@ -479,8 +485,8 @@ inline void GradientChecker<X_T, Y_T, JAC_T>::ComputeGradientError(
   }
 
   // Compute gradient error.
-  ComputeGradientErrorInternal(op_def, x_infos, y_infos, &x_datas, &y_datas, max_error, attributes,
-                               check_not_have_gradient, check_not_have_shape_inferencing, execution_providers);
+  return ComputeGradientErrorInternal(op_def, x_infos, y_infos, &x_datas, &y_datas, max_error, attributes,
+                                      check_not_have_gradient, check_not_have_shape_inferencing, execution_providers);
 }
 
 #define INSTANTIATE_GRAD_ERR_TYPE(X_T, Y_T, JAC_T) template class GradientChecker<X_T, Y_T, JAC_T>;

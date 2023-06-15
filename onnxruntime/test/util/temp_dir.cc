@@ -6,37 +6,39 @@
 #include "gtest/gtest.h"
 
 #include "core/platform/env.h"
-#include "test/util/include/asserts.h"
+
 namespace onnxruntime {
 namespace test {
-
 namespace {
-void DeleteDirectory(const PathString& path) {
-  ASSERT_STATUS_OK(Env::Default().DeleteFolder(path));
-}
+void CreateOrDeleteDirectory(const PathString& path, bool create, bool throw_on_fail = true) {
+  const auto status = create ? Env::Default().CreateFolder(path) : Env::Default().DeleteFolder(path);
+  EXPECT_TRUE(status.IsOK()) << "Failed to " << (create ? "create" : "delete") << "temporary directory " << path;
 
-void CreateDirectory(const PathString& path, bool delete_if_exists) {
-  const bool exists = Env::Default().FolderExists(path);
-  if (exists) {
-    if (delete_if_exists) {
-      DeleteDirectory(path);
-    } else {
-      FAIL() << "Temporary directory " << path << " already exists.";
-    }
+  if (throw_on_fail) {
+    ORT_ENFORCE(status.IsOK());
   }
-
-  ASSERT_STATUS_OK(Env::Default().CreateFolder(path));
 }
-
 }  // namespace
 
 TemporaryDirectory::TemporaryDirectory(const PathString& path, bool delete_if_exists)
     : path_{path} {
-  CreateDirectory(path, delete_if_exists);
+  // EXPECT and throw to fail even if anyone is catching exceptions
+  const bool exists = Env::Default().FolderExists(path_);
+  if (exists) {
+    if (!delete_if_exists) {
+      EXPECT_FALSE(exists) << "Temporary directory " << path_ << " already exists.";
+      ORT_ENFORCE(!exists);
+    }
+
+    CreateOrDeleteDirectory(path_, /* create */ false);
+  }
+
+  CreateOrDeleteDirectory(path_, /* create*/ true);
 }
 
 TemporaryDirectory::~TemporaryDirectory() {
-  DeleteDirectory(path_);
+  // don't throw in dtor
+  CreateOrDeleteDirectory(path_, /* create */ false, /* throw_on_fail */ false);
 }
 
 }  // namespace test

@@ -617,9 +617,9 @@ class BaseTester {
   }
 
   bool GetAddShapeToTensorData() const { return add_shape_to_tensor_data_; }
-  void SetAddShapeToTensorData(bool add_shape) { add_shape_to_tensor_data_ = add_shape; }
+  void SetAddShapeToTensorData(bool enable) { add_shape_to_tensor_data_ = enable; }
   void SetAddSymbolicDimToTensorData(int symbolic_dim) { add_symbolic_dim_to_tensor_data_ = symbolic_dim; }
-  void SetRunCalled() { run_called_ = true; }
+  void SetTestFunctionCalled() { testing_function_called_ = true; }
 
   struct RunContext {
     SessionOptions session_options{};
@@ -744,7 +744,7 @@ class BaseTester {
   std::vector<Data> output_data_;
   std::vector<OrtValue> fetches_;
 
-  bool run_called_{};
+  bool testing_function_called_{};  // has the function that performs the actual testing been called yet?
 
   gsl::span<const int64_t> ToDimsSpan(const DimsVariant& dims_var) {
     return std::visit([](auto&& dims) { return gsl::span<const int64_t>(dims); }, dims_var);
