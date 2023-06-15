@@ -13,8 +13,8 @@ Given a model and targeted hardware, Olive composes the best suitable optimizati
 the most efficient model(s) and runtime configurations for inferencing with ONNX Runtime, while taking a set of constraints such as accuracy and latency into consideration. Techniques Olive has integrated include ONNX Runtime Transformer optimizations, ONNX Runtime performance tuning, HW-dependent tunable post training quantization, quantize aware training, and more. Olive is the recommended tool for model optimization for ONNX Runtime.
 
 **Examples:**
-1. [BERT optimization on CPU (with post training quantization)](https://github.com/microsoft/Olive/tree/main/examples/bert_ptq_cpu)
-2. [BERT optimization on CPU (with quantization aware training)](https://github.com/microsoft/Olive/tree/main/examples/quantization_aware_training/bert_qat_customized_train_loop_cpu)
+1. [BERT optimization on CPU (with post training quantization)](https://github.com/microsoft/Olive/blob/main/examples/bert/bert_ptq_cpu.json)
+2. [BERT optimization on CPU (with quantization aware training)](https://github.com/microsoft/Olive/blob/main/examples/bert/bert_qat_customized_train_loop_cpu.json)
 
 
 For more details, pls refer to [Olive repo](https://github.com/microsoft/Olive) and [Olive documentation](https://microsoft.github.io/Olive).

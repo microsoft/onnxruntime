@@ -128,7 +128,7 @@ See [Vitis AI Model Quantization](https://xilinx.github.io/Vitis-AI/docs/workflo
 
 ### Olive
 
-Experimental support for Microsoft Olive is enabled in this release.  The Vitis AI Quantizer has been integrated as a plugin into Olive and will be upstreamed.  Once this is complete, users can refer to the Vitis AI example(s) provided in the [Olive Vitis AI Example Directory](https://github.com/microsoft/Olive/tree/main/examples/resnet_vitis_ai_ptq_cpu).
+Experimental support for Microsoft Olive is enabled in this release.  The Vitis AI Quantizer has been integrated as a plugin into Olive and will be upstreamed.  Once this is complete, users can refer to the Vitis AI example(s) provided in the [Olive Vitis AI Example Directory](https://github.com/microsoft/Olive/blob/main/examples/resnet/resnet_vitis_ai_ptq_cpu.json).
 
 ## Runtime Options
 
