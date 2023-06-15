@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <chrono>
+#include <iostream>
 #include <memory>
 #include "test/compare_ortvalue.h"
 #include "test/util/include/default_providers.h"
@@ -655,6 +657,45 @@ TEST(CrossEntropyTest, DISABLED_SoftmaxCrossEntropyLoss_LargeSizeTensor) {
   TestSoftmaxCrossEntropyLoss<float, float>(&X_dims, &index_dims, nullptr, &Y_dims_none, &log_prob_dims, "none");
 }
 
+TEST(CrossEntropyTest, SoftmaxCrossEntropyLoss_LargeSizeTensorInt32Index) {
+  // The element count is around the upper limit of int32_t.
+  int64_t bsz = 419430;
+  int64_t vocab_size = 5120;
+
+  std::vector<int64_t> X_dims{bsz, vocab_size};
+  std::vector<int64_t> index_dims{bsz};
+  std::vector<int64_t> weight_dims{vocab_size};
+  std::vector<int64_t> Y_dims{};
+  std::vector<int64_t> Y_dims_none{bsz};
+  std::vector<int64_t> log_prob_dims{bsz, vocab_size};
+
+  const std::int64_t ignore_index = -1;
+  const double error_tolerance = 1e-4;
+  // Only test reduce mean because it's too costly to run more tests.
+  TestSCELoss<MLFloat16, MLFloat16>("SoftmaxCrossEntropyLossInternal", 1, onnxruntime::kMSDomain,
+                                    &X_dims, &index_dims, &weight_dims, &Y_dims, &log_prob_dims, "mean",
+                                    ignore_index, error_tolerance);
+}
+
+TEST(CrossEntropyTest, SoftmaxCrossEntropyLoss_LargeSizeTensorUInt64Index) {
+  // The element count is bigger than the upper limit of int32_t.
+  int64_t bsz = 419431;
+  int64_t vocab_size = 5120;
+  std::vector<int64_t> X_dims{bsz, vocab_size};
+  std::vector<int64_t> index_dims{bsz};
+  std::vector<int64_t> weight_dims{vocab_size};
+  std::vector<int64_t> Y_dims{};
+  std::vector<int64_t> Y_dims_none{bsz};
+  std::vector<int64_t> log_prob_dims{bsz, vocab_size};
+
+  const std::int64_t ignore_index = -1;
+  const double error_tolerance = 1e-4;
+  // Only test reduce mean because it's too costly to run more tests.
+  TestSCELoss<MLFloat16, MLFloat16>("SoftmaxCrossEntropyLossInternal", 1, onnxruntime::kMSDomain,
+                                    &X_dims, &index_dims, &weight_dims, &Y_dims, &log_prob_dims, "mean",
+                                    ignore_index, error_tolerance);
+}
+
 static void TestSoftmaxCrossEntropyLossGrad(const std::vector<int64_t>& dY_dims,
                                             const std::vector<int64_t>& log_prob_dims,
                                             const std::vector<int64_t>& index_dims,
@@ -842,17 +883,17 @@ static std::vector<OrtValue> RunSCELossInternalGradWithEP(
 
   if (std::is_same<T, MLFloat16>::value) {
     std::vector<MLFloat16> dY_data_half(dY_data.size());
-    ConvertFloatToMLFloat16(dY_data.data(), dY_data_half.data(), static_cast<int>(dY_data.size()));
+    ConvertFloatToMLFloat16(dY_data.data(), dY_data_half.data(), dY_data.size());
     test->AddInput<MLFloat16>("dY", dY_dims, dY_data_half);
 
     std::vector<MLFloat16> log_prob_data_half(log_prob_data.size());
-    ConvertFloatToMLFloat16(log_prob_data.data(), log_prob_data_half.data(), static_cast<int>(log_prob_data.size()));
+    ConvertFloatToMLFloat16(log_prob_data.data(), log_prob_data_half.data(), log_prob_data.size());
     test->AddInput<MLFloat16>("log_prob", log_prob_dims, log_prob_data_half);
 
     test->AddInput<int64_t>("index", index_dims, index_data);
 
     std::vector<MLFloat16> weight_data_half(weight_data.size());
-    ConvertFloatToMLFloat16(weight_data.data(), weight_data_half.data(), static_cast<int>(weight_data.size()));
+    ConvertFloatToMLFloat16(weight_data.data(), weight_data_half.data(), weight_data.size());
     test->AddInput<MLFloat16>("weight", weight_dims, weight_data_half);
 
     if (ignore_index != -1 || has_bias) {
@@ -872,12 +913,12 @@ static std::vector<OrtValue> RunSCELossInternalGradWithEP(
     // Be noted, bias should be aligned with output's data type.
     if (has_bias) {
       std::vector<MLFloat16> bias_data_half(bias_data.size());
-      ConvertFloatToMLFloat16(bias_data.data(), bias_data_half.data(), static_cast<int>(bias_data.size()));
+      ConvertFloatToMLFloat16(bias_data.data(), bias_data_half.data(), bias_data.size());
       test->AddInput<MLFloat16>("bias", dX_dims, bias_data_half);
     }
 
     std::vector<MLFloat16> expected_data_half(expected_value.size());
-    ConvertFloatToMLFloat16(expected_value.data(), expected_data_half.data(), static_cast<int>(expected_value.size()));
+    ConvertFloatToMLFloat16(expected_value.data(), expected_data_half.data(), expected_value.size());
     test->AddOutput<MLFloat16>("dX", dX_dims, expected_data_half, false /*sort_output*/,
                                error_tolerance /*rel_error*/, error_tolerance /*abs_error*/);
 
@@ -938,22 +979,10 @@ static void TestSoftmaxCrossEntropyLossInternalGrad(const std::vector<int64_t>& 
   // Compare
   ASSERT_EQ(cpu_fetches.size(), target_fetches.size());
   for (size_t i = 0; i < cpu_fetches.size(); i++) {
-    if (std::is_same<TOut, MLFloat16>::value) {
-      auto y_data_size = cpu_fetches[i].Get<Tensor>().Shape().Size();
-      std::vector<float> cpu_temp_buffer;
-      cpu_temp_buffer.resize(y_data_size);
-      const float* y_buffer = cpu_fetches[i].Get<Tensor>().Data<float>();
-      std::copy(y_buffer, y_buffer + y_data_size, cpu_temp_buffer.begin());
-
-      std::vector<MLFloat16> ret_half(cpu_temp_buffer.size());
-      ConvertFloatToMLFloat16(cpu_temp_buffer.data(), ret_half.data(), static_cast<int>(cpu_temp_buffer.size()));
-
-      OrtValue target;
-      test::CreateInputOrtValueOnCPU<MLFloat16>(cpu_fetches[i].Get<Tensor>().Shape().GetDims(), ret_half, &target);
-      auto ret = CompareOrtValue(target_fetches[i], target, error_tolerance /*per_sample_tolerance*/,
-                                 error_tolerance /*relative_per_sample_tolerance*/, false);
+    if (!std::is_same<TOut, float>::value) {
+      auto ret = CompareOrtValueNumerals(target_fetches[i], cpu_fetches[i], error_tolerance /*per_sample_tolerance*/,
+                                         error_tolerance /*relative_per_sample_tolerance*/);
       EXPECT_EQ(ret.first, COMPARE_RESULT::SUCCESS) << ret.second;
-
     } else {
       auto ret = CompareOrtValue(target_fetches[i], cpu_fetches[i], error_tolerance /*per_sample_tolerance*/,
                                  error_tolerance /*relative_per_sample_tolerance*/, false);
@@ -1071,6 +1100,40 @@ TEST(CrossEntropyTest, SoftmaxCrossEntropyLossInternalGrad_TinySizeTensorFloatIn
                                                             dX_dims, "sum", 0, 5e-2, true);
   TestSoftmaxCrossEntropyLossInternalGrad<float, MLFloat16>({8}, log_prob_dims, index_dims, weight_dims, dX_dims,
                                                             "none", 0, 5e-2, true);
+}
+
+TEST(CrossEntropyTest, SoftmaxCrossEntropyLossInternalGrad_LargeSizeTensorInt32Index) {
+  // The element count is around the upper limit of int32_t.
+  int64_t bsz = 419430;
+  int64_t vocab_size = 5120;
+  std::vector<int64_t> dY_dims{};
+  std::vector<int64_t> log_prob_dims{bsz, vocab_size};
+  std::vector<int64_t> index_dims{bsz};
+  std::vector<int64_t> weight_dims{vocab_size};
+  std::vector<int64_t> dX_dims{bsz, vocab_size};
+  TestSoftmaxCrossEntropyLossInternalGrad<MLFloat16, MLFloat16>(dY_dims, log_prob_dims, index_dims, weight_dims,
+                                                                dX_dims, "mean", -1, 5e-2, false /*has_bias*/);
+
+  // This test did not test against reduce-sum because the absolute value after computing is pretty big, sometimes
+  // around 65535, CPU baseline result is smaller than 65535, but CUDA result is a little bigger than it, generating
+  // inf, which is not a good test case.
+}
+
+TEST(CrossEntropyTest, SoftmaxCrossEntropyLossInternalGrad_LargeSizeTensorUInt64Index) {
+  // The element count is bigger than the upper limit of int32_t.
+  int64_t bsz = 419431;
+  int64_t vocab_size = 5120;
+  std::vector<int64_t> dY_dims{};
+  std::vector<int64_t> log_prob_dims{bsz, vocab_size};
+  std::vector<int64_t> index_dims{bsz};
+  std::vector<int64_t> weight_dims{vocab_size};
+  std::vector<int64_t> dX_dims{bsz, vocab_size};
+  TestSoftmaxCrossEntropyLossInternalGrad<MLFloat16, MLFloat16>(dY_dims, log_prob_dims, index_dims, weight_dims,
+                                                                dX_dims, "mean", -1, 5e-2, false /*has_bias*/);
+
+  // This test did not test against reduce-sum because the absolute value after computing is pretty big, sometimes
+  // around 65535, CPU baseline result is smaller than 65535, but CUDA result is a little bigger than it, generating
+  // inf, which is not a good test case.
 }
 
 }  // namespace test

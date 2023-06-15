@@ -16,7 +16,7 @@ namespace contrib {
 template <typename T>
 void ComputeShareSoftmaxCrossEntropyCPU(const int n,
                                         const int d,
-                                        const int nd,
+                                        const uint64_t nd,
                                         const T* logit_data,
                                         T* shifted_logit,
                                         T* log_prob_data) {
@@ -70,7 +70,7 @@ Status SoftmaxCrossEntropy<T>::Compute(OpKernelContext* context) const {
   int64_t D = logit_shape[logit_shape.NumDimensions() - 1];
   const int n = gsl::narrow_cast<int>(N);
   const int d = gsl::narrow_cast<int>(D);
-  const int nd = gsl::narrow_cast<int>(N * D);
+  const uint64_t nd = N * D;
 
   Tensor* loss = context->Output(0, TensorShape({}));
   Tensor* log_prob = context->Output(1, logit_shape);
@@ -180,7 +180,7 @@ Status SparseSoftmaxCrossEntropy<T>::Compute(OpKernelContext* context) const {
   int64_t D = logit_shape[logit_shape.NumDimensions() - 1];
   const int n = gsl::narrow_cast<int>(N);
   const int d = gsl::narrow_cast<int>(D);
-  const int nd = gsl::narrow_cast<int>(N * D);
+  const uint64_t nd = N * D;
 
   Tensor* loss = context->Output(0, TensorShape({}));
   Tensor* log_prob = context->Output(1, logit_shape);

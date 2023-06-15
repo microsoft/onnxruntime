@@ -113,8 +113,8 @@ Status SoftmaxCrossEntropyLoss<T1, T2>::Compute(OpKernelContext* context) const 
   VerifyLogitWeightAndLabelShape(logit_shape, label_shape, p_weight ? &p_weight->Shape() : nullptr);
 
   // N_D = N * D1 * D2...D*K
-  int64_t N_D;
-  int64_t C;
+  int64_t N_D = 0;
+  int64_t C = 0;
   GetNDCFromLogitAndLabelShape(logit_shape, label_shape, N_D, C);
   const T1* logit_data = logit.template Data<T1>();
   OrtValue transpose_output;
@@ -133,7 +133,7 @@ Status SoftmaxCrossEntropyLoss<T1, T2>::Compute(OpKernelContext* context) const 
 
   const int n_d = gsl::narrow_cast<int>(N_D);
   const int c = gsl::narrow_cast<int>(C);
-  const int n_d_c = gsl::narrow_cast<int>(N_D * C);
+  const uint64_t n_d_c = N_D * C;
   Tensor* loss = context->Output(0, reduction_ == ReductionType::NONE ? TensorShape(label.Shape()) : TensorShape({}));
   T1* log_prob_data;
   std::vector<T1> log_prob_data_buffer(0);
@@ -260,17 +260,15 @@ Status SoftmaxCrossEntropyLossGrad<T1, T2>::Compute(OpKernelContext* context) co
   VerifyLogitWeightAndLabelShape(probability_shape, label_shape, p_weight ? &p_weight->Shape() : nullptr);
 
   // N_D = N * D1 * D2...D*K
-  int64_t N_D;
-  int64_t C;
+  int64_t N_D = 0;
+  int64_t C = 0;
   GetNDCFromLogitAndLabelShape(probability_shape, label_shape, N_D, C);
-  const int n_d = gsl::narrow_cast<int>(N_D);
-  const int c = gsl::narrow_cast<int>(C);
   const T1* dY_data = dY.template Data<T1>();
   const T1* log_prob_data = log_prob.template Data<T1>();
   const T2* label_data = label.template Data<T2>();
   Tensor* d_logit = context->Output(0, probability_shape);
   T1* d_logit_data = d_logit->template MutableData<T1>();
-  std::memset(d_logit_data, 0, sizeof(T1) * n_d);
+  std::memset(d_logit_data, 0, sizeof(T1) * N_D);
   OrtValue transpose_output;
   TensorShapeVector new_shape;
   std::vector<size_t> permutations;
@@ -285,90 +283,107 @@ Status SoftmaxCrossEntropyLossGrad<T1, T2>::Compute(OpKernelContext* context) co
     log_prob_data = (*transpose_output.GetMutable<Tensor>()).template Data<T1>();
   }
 
-  // REVIEW(codemzs): Use parallel for below.
+  static constexpr double cost = 1.0;
+  auto* tp = context->GetOperatorThreadPool();
   if (p_weight) {
     const Tensor& weight = *p_weight;
     const T1* weight_data = weight.template Data<T1>();
 
     if (reduction_ == ReductionType::NONE) {
-      for (int i = 0; i < n_d; i++) {
-        T2 label_sample = label_data[i];
-        T1 weight_smaple = weight_data[label_sample] * dY_data[i];
-        for (int j = 0; j < c; j++) {
-          int index = i * c + j;
-          if (ignore_index == label_sample) {
-            d_logit_data[index] = 0;
-          } else {
-            d_logit_data[index] = (exp(log_prob_data[index]) - (label_sample == j)) * weight_smaple;
-          }
-        }
-      }
-
+      concurrency::ThreadPool::TryParallelFor(
+          tp, N_D * C, cost,
+          [&label_data, &weight_data, &d_logit_data, &log_prob_data, ignore_index, C, &dY_data](
+              std::ptrdiff_t begin, std::ptrdiff_t end) {
+            for (std::ptrdiff_t index = begin; index != end; ++index) {
+              int64_t row = index / C;
+              int64_t col = index % C;
+              T2 label_sample = label_data[row];
+              T1 weight_smaple = weight_data[label_sample] * dY_data[row];
+              if (ignore_index == label_sample) {
+                d_logit_data[index] = 0;
+              } else {
+                d_logit_data[index] = (exp(log_prob_data[index]) - (label_sample == col)) * weight_smaple;
+              }
+            }
+          });
     } else {
       T1 dY_scaled = *dY_data;
       if (reduction_ == ReductionType::MEAN) {
-        T1 sum_weight = (T1)0;
-        for (int i = 0; i < n_d; i++) {
+        double sum_weight = (double)0;
+        for (int64_t i = 0; i < N_D; i++) {
           if (ignore_index != label_data[i]) {
             sum_weight += weight_data[label_data[i]];
           }
         }
 
         if (sum_weight != 0) {
-          dY_scaled = *dY_data / sum_weight;
+          dY_scaled = static_cast<T1>(*dY_data / sum_weight);
         }
       }
 
-      for (int i = 0; i < n_d; i++) {
-        T2 label_sample = label_data[i];
-        T1 weight_smaple = weight_data[label_sample] * dY_scaled;
-        for (int j = 0; j < c; j++) {
-          int index = i * c + j;
-          if (ignore_index == label_sample) {
-            d_logit_data[index] = 0;
-          } else {
-            d_logit_data[index] = (exp(log_prob_data[index]) - (label_sample == j)) * weight_smaple;
-          }
-        }
-      }
+      concurrency::ThreadPool::TryParallelFor(
+          tp, N_D * C, cost,
+          [&label_data, &weight_data, dY_scaled, &d_logit_data, &log_prob_data, ignore_index, C](
+              std::ptrdiff_t begin, std::ptrdiff_t end) {
+            for (std::ptrdiff_t index = begin; index != end; ++index) {
+              int64_t row = index / C;
+              int64_t col = index % C;
+              T2 label_sample = label_data[row];
+              T1 weight_smaple = weight_data[label_sample] * dY_scaled;
+              if (ignore_index == label_sample) {
+                d_logit_data[index] = 0;
+              } else {
+                d_logit_data[index] = (exp(log_prob_data[index]) - (label_sample == col)) * weight_smaple;
+              }
+            }
+          });
     }
   } else {
     if (reduction_ == ReductionType::NONE) {
-      for (int i = 0; i < n_d; i++) {
-        T2 label_sample = label_data[i];
-        for (int j = 0; j < c; j++) {
-          int index = i * c + j;
-          if (ignore_index == label_sample) {
-            d_logit_data[index] = 0;
-          } else {
-            d_logit_data[index] = (exp(log_prob_data[index]) - (label_sample == j)) * dY_data[i];
-          }
-        }
-      }
+      concurrency::ThreadPool::TryParallelFor(
+          tp, N_D * C, cost,
+          [&label_data, &d_logit_data, &log_prob_data, ignore_index, C, &dY_data](
+              std::ptrdiff_t begin, std::ptrdiff_t end) {
+            for (std::ptrdiff_t index = begin; index != end; ++index) {
+              int64_t row = index / C;
+              int64_t col = index % C;
+              T2 label_sample = label_data[row];
+              if (ignore_index == label_sample) {
+                d_logit_data[index] = 0;
+              } else {
+                d_logit_data[index] = (exp(log_prob_data[index]) - (label_sample == col)) * dY_data[row];
+              }
+            }
+          });
+
     } else {
       T1 dY_scaled = *dY_data;
-      int unignored_sample_count = 0;
-      for (int i = 0; i < n_d; i++) {
+      uint64_t unignored_sample_count = 0;
+      for (int64_t i = 0; i < N_D; i++) {
         if (ignore_index != label_data[i]) {
           unignored_sample_count += 1;
         }
       }
 
       if ((reduction_ == ReductionType::MEAN) && (unignored_sample_count != 0)) {
-        dY_scaled = *dY_data / unignored_sample_count;
+        dY_scaled = static_cast<T1>(*dY_data / unignored_sample_count);
       }
 
-      for (int i = 0; i < n_d; i++) {
-        T2 label_sample = label_data[i];
-        for (int j = 0; j < c; j++) {
-          int index = i * c + j;
-          if (ignore_index == label_sample) {
-            d_logit_data[index] = 0;
-          } else {
-            d_logit_data[index] = (exp(log_prob_data[index]) - (label_sample == j)) * dY_scaled;
-          }
-        }
-      }
+      concurrency::ThreadPool::TryParallelFor(
+          tp, N_D * C, cost,
+          [&label_data, &d_logit_data, &log_prob_data, ignore_index, C, &dY_scaled](
+              std::ptrdiff_t begin, std::ptrdiff_t end) {
+            for (std::ptrdiff_t index = begin; index != end; ++index) {
+              int64_t row = index / C;
+              int64_t col = index % C;
+              T2 label_sample = label_data[row];
+              if (ignore_index == label_sample) {
+                d_logit_data[index] = 0;
+              } else {
+                d_logit_data[index] = (exp(log_prob_data[index]) - (label_sample == col)) * dY_scaled;
+              }
+            }
+          });
     }
   }
 
@@ -391,9 +406,14 @@ Status SoftmaxCrossEntropyLossGrad<T1, T2>::Compute(OpKernelContext* context) co
   if (p_bias) {
     ORT_ENFORCE(probability_shape.Size() == p_bias->Shape().Size());
     const T1* bias_data = p_bias->Data<T1>();
-    for (size_t i = 0; i < static_cast<size_t>(probability_shape.Size()); ++i) {
-      d_logit_data[i] += bias_data[i];
-    }
+    concurrency::ThreadPool::TryParallelFor(
+        tp, probability_shape.Size(), cost,
+        [&d_logit_data, &bias_data](
+            std::ptrdiff_t begin, std::ptrdiff_t end) {
+          for (std::ptrdiff_t index = begin; index != end; ++index) {
+            d_logit_data[index] += bias_data[index];
+          }
+        });
   }
 
   return Status::OK();

@@ -2,8 +2,11 @@
 // Licensed under the MIT License.
 
 #include "test/compare_ortvalue.h"
+
 #include <cmath>
 #include <sstream>
+#include <mutex>
+#include <thread>
 
 #ifdef __GNUC__
 #pragma GCC diagnostic push
@@ -25,11 +28,12 @@
 #pragma GCC diagnostic pop
 #endif
 
-#include "core/graph/onnx_protobuf.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/framework/utils.h"
 #include "core/framework/TensorSeq.h"
+#include "core/graph/onnx_protobuf.h"
 #include <core/session/onnxruntime_cxx_api.h>
+#include "core/util/math.h"
 
 using namespace onnxruntime;
 
@@ -454,6 +458,91 @@ static std::pair<COMPARE_RESULT, std::string> CompareTensorOrtValueAndTensorType
   }
 
   return std::make_pair(COMPARE_RESULT::SUCCESS, "");
+}
+
+namespace {
+template <typename T>
+float ParseValueToFloat(T data_value) {
+  return static_cast<float>(data_value);
+}
+
+float ParseValueToFloat(MLFloat16 data_value) {
+  return Eigen::half_impl::half_to_float(Eigen::half_impl::__half_raw(data_value.val));
+}
+
+float ParseValueToFloat(float data_value) {
+  // Covert float to half and then convert back to float to simulate rounding to half
+  return ParseValueToFloat(MLFloat16(math::floatToHalf(data_value)));
+}
+
+template <typename RealT, typename ExpectT>
+std::pair<COMPARE_RESULT, std::string> CompareFloat16WithFloatResult(const Tensor& outvalue,
+                                                                     const Tensor& expected_value,
+                                                                     double per_sample_tolerance,
+                                                                     double relative_per_sample_tolerance) {
+  const size_t size1 = static_cast<size_t>(expected_value.Shape().Size());
+  const ExpectT* expected_output = expected_value.Data<ExpectT>();
+  const RealT* real_output = outvalue.Data<RealT>();
+
+  COMPARE_RESULT result = COMPARE_RESULT::SUCCESS;
+  std::string error_msg = "";
+
+  OrtThreadPoolParams to;
+  to.thread_pool_size = 16;
+  auto tp = concurrency::CreateThreadPool(&onnxruntime::Env::Default(), to, concurrency::ThreadPoolType::INTRA_OP);
+
+  static double cost = 1;
+  std::once_flag write_flag;
+  concurrency::ThreadPool::TryParallelFor(
+      tp.get(), size1, cost,
+      [&error_msg, &result, &expected_output, &real_output, per_sample_tolerance,
+       relative_per_sample_tolerance, size1, &write_flag](
+          std::ptrdiff_t begin, std::ptrdiff_t end) {
+        for (std::ptrdiff_t di = begin; di != end && di < static_cast<std::ptrdiff_t>(size1); ++di) {
+          float expected = ParseValueToFloat(expected_output[di]);
+          float real = ParseValueToFloat(real_output[di]);
+          const double diff = std::fabs(expected - real);
+          const double rtol = per_sample_tolerance + relative_per_sample_tolerance * std::fabs(expected);
+          if (!IsResultCloselyMatch<float>(real, expected, diff, rtol)) {
+            std::ostringstream oss;
+            oss << "idx: " << di << ", expected " << expected << ", got " << real
+                << ", diff: " << diff << ", tol=" << rtol << "\n";
+            std::call_once(write_flag, [&error_msg, &result, &oss]() {
+              error_msg = oss.str();
+              result = COMPARE_RESULT::RESULT_DIFFERS;
+            });
+            break;
+          }
+        }
+      });
+
+  return std::make_pair(result, error_msg);
+}
+
+}  // namespace
+
+std::pair<COMPARE_RESULT, std::string> CompareOrtValueNumerals(const OrtValue& real_mlvalue, const OrtValue& expected_mlvalue,
+                                                               double per_sample_tolerance,
+                                                               double relative_per_sample_tolerance) {
+  if (real_mlvalue.IsTensor()) {
+    const Tensor& outvalue = real_mlvalue.Get<Tensor>();
+    const Tensor& expected_tensor = expected_mlvalue.Get<Tensor>();
+    if (outvalue.DataType() == DataTypeImpl::GetType<float>() &&
+        expected_tensor.DataType() == DataTypeImpl::GetType<MLFloat16>()) {
+      return CompareFloat16WithFloatResult<float, MLFloat16>(outvalue,
+                                                             expected_tensor,
+                                                             per_sample_tolerance,
+                                                             relative_per_sample_tolerance);
+    } else if (outvalue.DataType() == DataTypeImpl::GetType<MLFloat16>() &&
+               expected_tensor.DataType() == DataTypeImpl::GetType<float>()) {
+      return CompareFloat16WithFloatResult<MLFloat16, float>(outvalue,
+                                                             expected_tensor,
+                                                             per_sample_tolerance,
+                                                             relative_per_sample_tolerance);
+    }
+  }
+
+  return std::make_pair(COMPARE_RESULT::NOT_SUPPORT, "Unsupported compare with CompareOrtValueNumerals.");
 }
 
 std::pair<COMPARE_RESULT, std::string> VerifyValueInfo(const ONNX_NAMESPACE::ValueInfoProto& v, const OrtValue* val_ptr) {

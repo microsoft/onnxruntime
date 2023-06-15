@@ -24,7 +24,7 @@ class LossBase : public OpKernel {
 template <typename T>
 void ComputeShareSoftmaxCrossEntropyCPU(const int n,
                                         const int d,
-                                        const int nd,
+                                        const uint64_t nd,
                                         const T* logit_data,
                                         T* shifted_logit,
                                         T* log_prob_data);
