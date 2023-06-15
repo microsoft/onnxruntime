@@ -24,9 +24,9 @@ void OpFunctionTester::RunFunctionBodyGraphOnCPU(TwoDArray& results) {
   ASSERT_STATUS_OK(graph.Resolve());
 
   auto& node = *graph.Nodes().begin();
-  ORT_ENFORCE(node.OpType() == op);
+  ASSERT_EQ(node.OpType(), op);
   // Inline function will call Resolve itself
-  ORT_THROW_IF_ERROR(graph.InlineFunction(node));
+  ASSERT_STATUS_OK(graph.InlineFunction(node));
 
   // Hookup the inputs and outputs
   std::unordered_map<std::string, OrtValue> feeds;

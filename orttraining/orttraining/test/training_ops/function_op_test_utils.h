@@ -14,6 +14,9 @@ class OpFunctionTester : public OpTester {
  public:
   OpFunctionTester(const char* op, int opset_version = 9, const char* domain = onnxruntime::kOnnxDomain)
       : OpTester(op, opset_version, domain) {}
+
+  // NOTE: wrap this call with ASSERT_NO_FATAL_FAILURE if your test has additional code following it.
+  // See CompareResults for an example of doing that.
   void RunFunctionBodyGraphOnCPU(TwoDArray& results);
   virtual ~OpFunctionTester();
 };
