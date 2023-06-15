@@ -6,13 +6,13 @@ parent: Tutorials
 
 # On-Device Training: Building an Android Application
 
+In this tutorial, we will explore how to build an Android application that incorporates ONNX Runtime's On-Device Training solution. On-device training refers to the process of training a machine learning model directly on an edge device without relying on cloud services or external servers.
+
 Here is what the application will look like at the end of this tutorial:
 
 <img src="../../images/on-device-training-application-prediction-tom.jpg"  width="30%" height="30%">
 
 ## Introduction
-
-In this tutorial, we will explore how to build an Android application that incorporates ONNX Runtime's On-Device Training solution. On-device training refers to the process of training a machine learning model directly on an edge device without relying on cloud services or external servers.
 
 We will guide you through the steps to create an Android app that can train a simple image classification model using on-device training techniques. This tutorial showcases the `transfer learning` technique where knowledge gained from training a model on one task is leveraged to improve the performance of a model on a different but related task. Instead of starting the learning process from scratch, transfer learning allows us to transfer the knowledge or features learned by a pre-trained model to a new task.
 
