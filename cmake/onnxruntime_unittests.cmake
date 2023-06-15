@@ -1268,6 +1268,7 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
               LIBS ${onnxruntime_shared_lib_test_LIBS}
               DEPENDS ${all_dependencies}
       )
+      onnxruntime_add_include_to_target(onnxruntime_api_tests_without_env onnx Boost::mp11)
     endif()
   endif()
 
