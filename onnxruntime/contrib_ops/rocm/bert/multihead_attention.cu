@@ -105,12 +105,9 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
     past_key = context->Input<Tensor>(5);
     past_value = context->Input<Tensor>(6);
     past_seq_len = context->Input<Tensor>(kPastSequenceLengthInputIndex);
-    const Tensor* beam_width = context->Input<Tensor>(8);
-    const Tensor* cache_indirection = context->Input<Tensor>(9);
+    // const Tensor* beam_width = context->Input<Tensor>(8);         // NOTE: not used
+    // const Tensor* cache_indirection = context->Input<Tensor>(9);  // TODO: should not present for ROCm EP
     bias = context->Input<Tensor>(10);
-    ORT_UNUSED_PARAMETER(beam_width);
-    ORT_UNUSED_PARAMETER(cache_indirection);
-    // ORT_ENFORCE(nullptr == cache_indirection, "cache_indirection should not be presented on ROCm EP");
   }
 
   if (nullptr != bias) {
