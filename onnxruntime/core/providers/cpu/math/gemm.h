@@ -29,10 +29,10 @@ class Gemm : protected GemmBase, public OpKernel {
                                    /*out*/ bool& used_shared_buffers) override;
 
   static void ComputeGemm(CBLAS_TRANSPOSE trans_a, CBLAS_TRANSPOSE trans_b,
-                          int64_t M, int64_t N, int64_t K,
-                          float alpha,
+                          ptrdiff_t M, ptrdiff_t N, ptrdiff_t K,
+                          T alpha,
                           const T* a_data, const T* b_data,
-                          float beta,
+                          T beta,
                           const T* c_data, const TensorShape* c_shape,
                           T* y_data,
                           concurrency::ThreadPool* thread_pool);
@@ -44,7 +44,7 @@ class Gemm : protected GemmBase, public OpKernel {
   // For fused gemm + activation
   std::unique_ptr<functors::ElementWiseRangedTransform<T>> activation_;
 
-  void ComputeActivation(T* y_data, size_t y_size, concurrency::ThreadPool* thread_pool) const;
+  void ComputeActivation(_Inout_updates_(y_size) T* y_data, ptrdiff_t y_size, _Inout_opt_ concurrency::ThreadPool* thread_pool) const;
 };
 
 }  // namespace onnxruntime
