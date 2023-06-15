@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-// #ifdef ENABLE_TRAINING_APIS
+#ifdef ENABLE_TRAINING_APIS
 #import <Foundation/Foundation.h>
 #include <stdint.h>
 
@@ -228,6 +228,13 @@ NS_ASSUME_NONNULL_BEGIN
                                         error:(NSError**)error;
 @end
 
+/**
+ * This function sets the seed for generating random numbers.
+ * Use this function to generate reproducible results. It should be noted that completely reproducible results are not guaranteed.
+ *
+ * @param seed Manual seed to use for random number generation
+*/
+void ORTSetSeed(int64_t seed);
 NS_ASSUME_NONNULL_END
 
-// #endif  // ENABLE_TRAINING_APIS
+#endif  // ENABLE_TRAINING_APIS

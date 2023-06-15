@@ -182,7 +182,7 @@ NS_ASSUME_NONNULL_BEGIN
                                       error:(NSError**)error {
   try {
     Ort::Value val = [self CXXAPIOrtTrainingSession].ToBuffer(onlyTrainable);
-    return [[ORTValue alloc] initWithCAPIOrtValue:val
+    return [[ORTValue alloc] initWithCAPIOrtValue:val.release()
                                externalTensorData:nil
                                             error:error];
   }
@@ -201,6 +201,10 @@ NS_ASSUME_NONNULL_BEGIN
 }
 
 @end
+
+void ORTSetSeed(int64_t seed) {
+  Ort::SetSeed(seed);
+}
 
 NS_ASSUME_NONNULL_END
 
