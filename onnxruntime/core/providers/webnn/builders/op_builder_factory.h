@@ -39,9 +39,9 @@ void CreateResizeOpBuilder(const std::string& op_type, OpBuilderRegistrations& o
 void CreateSliceOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 void CreateSoftmaxOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 void CreateSplitOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
+void CreateSqueezeUnsqueezeOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 void CreateTransposeOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 void CreateUnaryOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
-void CreateUnsqueezeOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 
 }  // namespace webnn
 }  // namespace onnxruntime
