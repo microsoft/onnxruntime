@@ -342,132 +342,68 @@ Status LoadAttributeOrtFormat(const fbs::Attribute& fbs_attr,
 
 #ifdef ENABLE_TRAINING_APIS
 
-Status SaveOrtValueOrtFormat(
-    const std::string& tensor_name, const OrtValue& ort_value,
-    const std::function<Status(const onnxruntime::Tensor& src_tensor, onnxruntime::Tensor& dst_tensor)> copy_tensor,
+Status SaveOrtTensorOrtFormat(
+    const std::string& tensor_name, const onnxruntime::Tensor& ort_tensor,
     flatbuffers::FlatBufferBuilder& builder,
     flatbuffers::Offset<fbs::Tensor>& fbs_tensor) {
-  // Check if the OrtValue is a tensor.
-  ORT_RETURN_IF_NOT(ort_value.IsTensor(), "Only tensor OrtValues can be saved to a checkpoint.");
+  ORT_RETURN_IF(ort_tensor.IsDataTypeString(),
+                "TensorProto_DataType_STRING is not supported while saving a tensor to ORT format.");
 
-  const auto ort_tensor_to_fbs_tensor = [&builder](const auto& tensor_name, const auto& ort_tensor, auto& fbs_tensor) {
-    ORT_RETURN_IF(ort_tensor.IsDataTypeString(),
-                  "TensorProto_DataType_STRING is not supported while saving a tensor to ORT format.");
+  const auto fbs_tensor_name = builder.CreateString(tensor_name);
+  const auto fbs_tensor_dims = SaveDims(builder, ort_tensor.Shape().GetDims());
+  flatbuffers::Offset<flatbuffers::Vector<uint8_t>> raw_data = builder.CreateVector(
+      static_cast<const uint8_t*>(ort_tensor.DataRaw()),
+      ort_tensor.SizeInBytes());
 
-    const auto fbs_tensor_name = builder.CreateString(tensor_name);
-    const auto fbs_tensor_doc_string = builder.CreateString(std::string());
-    const auto fbs_tensor_dims = SaveDims(builder, ort_tensor.Shape().GetDims());
-    flatbuffers::Offset<flatbuffers::Vector<uint8_t>> raw_data = builder.CreateVector(
-        static_cast<const uint8_t*>(ort_tensor.DataRaw()),
-        ort_tensor.SizeInBytes());
-
-    fbs::TensorBuilder tb(builder);
-    tb.add_name(fbs_tensor_name);
-    tb.add_doc_string(fbs_tensor_doc_string);
-    tb.add_dims(fbs_tensor_dims);
-    tb.add_data_type(static_cast<fbs::TensorDataType>(ort_tensor.GetElementType()));
-    tb.add_raw_data(raw_data);
-    fbs_tensor = tb.Finish();
-    return Status::OK();
-  };
-
-  const onnxruntime::Tensor& src_tensor = ort_value.Get<onnxruntime::Tensor>();
-
-  // Check if the tensor is on CPU. If not, we need to copy the tensor to CPU before saving it.
-  if (const auto& tensor_location = src_tensor.Location();
-      tensor_location.device.Type() != OrtDevice::CPU) {
-    InlinedVector<uint8_t> tensor_data_buffer{};
-    tensor_data_buffer.resize(src_tensor.SizeInBytes());
-    const OrtMemoryInfo cpu_alloc_info{onnxruntime::CPU, OrtDeviceAllocator};
-    onnxruntime::Tensor dst_tensor{src_tensor.DataType(), src_tensor.Shape(), tensor_data_buffer.data(), cpu_alloc_info};
-    ORT_RETURN_IF_ERROR(copy_tensor(src_tensor, dst_tensor));
-    ORT_RETURN_IF_ERROR(ort_tensor_to_fbs_tensor(tensor_name, dst_tensor, fbs_tensor));
-  } else {
-    ORT_RETURN_IF_ERROR(ort_tensor_to_fbs_tensor(tensor_name, src_tensor, fbs_tensor));
-  }
-
+  fbs::TensorBuilder tb(builder);
+  tb.add_name(fbs_tensor_name);
+  tb.add_doc_string(0);
+  tb.add_dims(fbs_tensor_dims);
+  tb.add_data_type(static_cast<fbs::TensorDataType>(ort_tensor.GetElementType()));
+  tb.add_raw_data(raw_data);
+  fbs_tensor = tb.Finish();
   return Status::OK();
 }
 
-#define UNPACK_TESOR_WITH_TYPE(T)                                                                          \
-  ORT_RETURN_IF_ERROR(onnxruntime::utils::UnpackTensor(unused_tensor_proto, fbs_tensor.raw_data()->Data(), \
-                                                       fbs_tensor.raw_data()->size(),                      \
-                                                       dst_tensor->MutableData<T>(),                       \
-                                                       static_cast<size_t>(dst_tensor->Shape().Size())));  \
-  break;
+template <typename T>
+struct UnpackTensorWithType {
+  Status operator()(const ONNX_NAMESPACE::TensorProto& tensor_proto, const fbs::Tensor& fbs_tensor,
+                    onnxruntime::Tensor& ort_tensor) const {
+    return onnxruntime::utils::UnpackTensor(
+        tensor_proto, fbs_tensor.raw_data()->Data(),
+        fbs_tensor.raw_data()->size(),
+        ort_tensor.MutableData<T>(),
+        static_cast<size_t>(ort_tensor.Shape().Size()));
+  }
+};
 
-Status LoadOrtValueOrtFormat(const fbs::Tensor& fbs_tensor,
-                             std::string& tensor_name, OrtValue& ort_value) {
-  // The assumption is that the flatbuffer buffer will be destructed once the checkpoint has been loaded.
-  // And so, we must allocate a buffer where the tensor data can be copied using the cpu allocator.
-  // This buffer is owned by the OrtValue.
-  static const CPUExecutionProviderInfo info;
-  static const CPUExecutionProvider cpu_provider(info);
-  static const AllocatorPtr cpu_allocator = cpu_provider.GetAllocator(OrtMemTypeDefault);
-
+Status LoadOrtTensorOrtFormat(const fbs::Tensor& fbs_tensor, const AllocatorPtr allocator,
+                              std::string& tensor_name, std::unique_ptr<onnxruntime::Tensor>& ort_tensor) {
   auto* fbs_tensor_name = fbs_tensor.name();
-  ORT_RETURN_IF_NOT(fbs_tensor_name, "Checkpoint is invalid. Expected: A valid tensor name. Actual: nullptr.");
+  ORT_RETURN_IF_NOT(fbs_tensor_name, "Flatbuffer tensor is invalid. Expected: A valid tensor name. Actual: nullptr.");
   tensor_name = fbs_tensor_name->str();
 
   auto* tensor_dims = fbs_tensor.dims();
-  ORT_RETURN_IF_NOT(tensor_dims, "Checkpoint is invalid. Expected: Valid tensor dims. Actual: nullptr.");
+  ORT_RETURN_IF_NOT(tensor_dims, "Flatbuffer tensor is invalid. Expected: Valid tensor dims. Actual: nullptr.");
 
-  auto tensor_data_type = fbs_tensor.data_type();
+  const auto tensor_data_type = static_cast<int32_t>(fbs_tensor.data_type());
   const DataTypeImpl* tensor_dtype = DataTypeImpl::TensorTypeFromONNXEnum(
-                                         static_cast<int>(tensor_data_type))
+                                         tensor_data_type)
                                          ->GetElementType();
-  auto dst_tensor = std::make_unique<onnxruntime::Tensor>(
-      tensor_dtype, TensorShape(InlinedVector<int64_t>{tensor_dims->begin(), tensor_dims->end()}), cpu_allocator);
+  ort_tensor = std::make_unique<onnxruntime::Tensor>(
+      tensor_dtype, TensorShape(InlinedVector<int64_t>{tensor_dims->begin(), tensor_dims->end()}), allocator);
 
-  // The tensor proto is used a dummy here. The actual data is stored in the raw_data field of the flatbuffer.
-  // The data is copied from the raw_data field to the dst_tensor.
+  // The tensor proto is used as a dummy here. The actual data is stored in the raw_data field of the flatbuffer.
+  // The data is copied from the raw_data field to the ort_tensor.
   ONNX_NAMESPACE::TensorProto unused_tensor_proto;
-  unused_tensor_proto.set_data_type(static_cast<int>(tensor_data_type));
+  unused_tensor_proto.set_data_type(tensor_data_type);
 
-  switch (static_cast<int>(tensor_data_type)) {
-    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
-      UNPACK_TESOR_WITH_TYPE(float);
-    case ONNX_NAMESPACE::TensorProto_DataType_BOOL:
-      UNPACK_TESOR_WITH_TYPE(bool);
-    case ONNX_NAMESPACE::TensorProto_DataType_DOUBLE:
-      UNPACK_TESOR_WITH_TYPE(double);
-    case ONNX_NAMESPACE::TensorProto_DataType_STRING:
-      UNPACK_TESOR_WITH_TYPE(std::string);
-    case ONNX_NAMESPACE::TensorProto_DataType_INT8:
-      UNPACK_TESOR_WITH_TYPE(int8_t);
-    case ONNX_NAMESPACE::TensorProto_DataType_UINT8:
-      UNPACK_TESOR_WITH_TYPE(uint8_t);
-    case ONNX_NAMESPACE::TensorProto_DataType_INT16:
-      UNPACK_TESOR_WITH_TYPE(int16_t);
-    case ONNX_NAMESPACE::TensorProto_DataType_UINT16:
-      UNPACK_TESOR_WITH_TYPE(uint16_t);
-    case ONNX_NAMESPACE::TensorProto_DataType_INT32:
-      UNPACK_TESOR_WITH_TYPE(int32_t);
-    case ONNX_NAMESPACE::TensorProto_DataType_UINT32:
-      UNPACK_TESOR_WITH_TYPE(uint32_t);
-    case ONNX_NAMESPACE::TensorProto_DataType_INT64:
-      UNPACK_TESOR_WITH_TYPE(int64_t);
-    case ONNX_NAMESPACE::TensorProto_DataType_UINT64:
-      UNPACK_TESOR_WITH_TYPE(uint64_t);
-    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16:
-    case ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16:
-    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E4M3FN:
-    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E4M3FNUZ:
-    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E5M2:
-    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E5M2FNUZ:
-    default:
-      return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "Cannot unpack tensor with type ",
-                             static_cast<int>(tensor_data_type));
-  }
-
-  ort_value.Init(dst_tensor.release(), DataTypeImpl::GetType<onnxruntime::Tensor>(),
-                 DataTypeImpl::GetType<onnxruntime::Tensor>()->GetDeleteFunc());
-
-  return Status::OK();
+  onnxruntime::utils::MLTypeCallDispatcher<float, bool, double, int8_t, uint8_t, int16_t, uint16_t,
+                                           int32_t, uint32_t, int64_t, uint64_t>
+      dispatcher(tensor_data_type);
+  return dispatcher.InvokeRet<Status, UnpackTensorWithType>(unused_tensor_proto, fbs_tensor, *ort_tensor);
 }
 
-#undef UNPACK_TESOR_WITH_TYPE
-
-#endif
+#endif  // ENABLE_TRAINING_APIS
 
 }  // namespace onnxruntime::fbs::utils

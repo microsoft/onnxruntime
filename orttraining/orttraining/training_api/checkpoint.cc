@@ -13,6 +13,67 @@ namespace onnxruntime::training::api {
 namespace {
 
 /**
+ * @brief Create flatbuffer tensor from OrtValue object
+ *
+ * @param tensor_name Name of the tensor
+ * @param ort_value OrtValue object to save to the flatbuffer tensor.
+ * @param copy_tensor Function to copy the tensor to a cpu buffer.
+ * @param builder Builder to create flatbuffer tensors.
+ * @param flatbuffer_tensor Flatbuffer tensor to be populated.
+ * @return Status of the operation.
+ */
+Status FlatbufferTensorFromOrtValue(
+    const std::string& tensor_name, const OrtValue& ort_value,
+    const std::function<Status(const onnxruntime::Tensor& src_tensor, onnxruntime::Tensor& dst_tensor)> copy_tensor,
+    flatbuffers::FlatBufferBuilder& builder,
+    flatbuffers::Offset<fbs::Tensor>& fbs_tensor) {
+  // Check if the OrtValue is a tensor.
+  ORT_RETURN_IF_NOT(ort_value.IsTensor(), "Only tensor OrtValues can be saved to a checkpoint.");
+  const onnxruntime::Tensor& src_tensor = ort_value.Get<onnxruntime::Tensor>();
+
+  // Check if the tensor is on CPU. If not, we need to copy the tensor to CPU before saving it.
+  if (const auto& tensor_location = src_tensor.Location();
+      tensor_location.device.Type() != OrtDevice::CPU) {
+    InlinedVector<uint8_t> tensor_data_buffer{};
+    tensor_data_buffer.resize(src_tensor.SizeInBytes());
+    const OrtMemoryInfo cpu_alloc_info{onnxruntime::CPU, OrtDeviceAllocator};
+    onnxruntime::Tensor dst_tensor{src_tensor.DataType(), src_tensor.Shape(), tensor_data_buffer.data(), cpu_alloc_info};
+    ORT_RETURN_IF_ERROR(copy_tensor(src_tensor, dst_tensor));
+    ORT_RETURN_IF_ERROR(fbs::utils::SaveOrtTensorOrtFormat(tensor_name, dst_tensor, builder, fbs_tensor));
+  } else {
+    ORT_RETURN_IF_ERROR(fbs::utils::SaveOrtTensorOrtFormat(tensor_name, src_tensor, builder, fbs_tensor));
+  }
+
+  return Status::OK();
+}
+
+/**
+ * @brief Create OrtValue object from flatbuffer tensor
+ *
+ * @param fbs_tensor Flatbuffer tensor.
+ * @param tensor_name Name of the tensor.
+ * @param ort_value OrtValue object to be populated.
+ * @return Status of the operation.
+ */
+Status OrtValueFromFlatbufferTensor(const fbs::Tensor& fbs_tensor,
+                                    std::string& tensor_name, OrtValue& ort_value) {
+  // The assumption is that the flatbuffer buffer will be destructed once the checkpoint has been loaded.
+  // And so, we must allocate a buffer where the tensor data can be copied using the cpu allocator.
+  // This buffer is owned by the OrtValue.
+  static const CPUExecutionProviderInfo info;
+  static const CPUExecutionProvider cpu_provider(info);
+  const AllocatorPtr cpu_allocator = cpu_provider.GetAllocator(OrtMemTypeDefault);
+
+  std::unique_ptr<Tensor> ort_tensor{};
+  ORT_RETURN_IF_ERROR(fbs::utils::LoadOrtTensorOrtFormat(fbs_tensor, cpu_allocator, tensor_name, ort_tensor));
+
+  ort_value.Init(ort_tensor.release(), DataTypeImpl::GetType<onnxruntime::Tensor>(),
+                 DataTypeImpl::GetType<onnxruntime::Tensor>()->GetDeleteFunc());
+
+  return Status::OK();
+}
+
+/**
  * @brief Create flatbuffer tensors from OrtValue objects
  *
  * @param name_to_ort_value Name to OrtValue map.
@@ -28,13 +89,12 @@ Status FlatbufferTensorsFromOrtValues(
     std::vector<flatbuffers::Offset<fbs::Tensor>>& flatbuffer_tensors) {
   for (const auto& [name, ort_value] : name_to_ort_value) {
     flatbuffers::Offset<fbs::Tensor> fbs_tensor;
-    ORT_RETURN_IF_ERROR(fbs::utils::SaveOrtValueOrtFormat(
+    ORT_RETURN_IF_ERROR(FlatbufferTensorFromOrtValue(
         name, ort_value, [&data_transfer_manager](const auto& src_tensor, auto& dst_tensor) {
           ORT_RETURN_IF_NOT(data_transfer_manager,
                             "Cannot save OrtValue to a checkpoint. Expected: A valid data transfer manager. ",
                             "Actual: nullptr.");
-          ORT_RETURN_IF_ERROR(data_transfer_manager->CopyTensor(src_tensor, dst_tensor));
-          return Status::OK();
+          return data_transfer_manager->CopyTensor(src_tensor, dst_tensor);
         },
         builder, fbs_tensor));
     flatbuffer_tensors.emplace_back(fbs_tensor);
@@ -58,7 +118,7 @@ Status OrtValuesFromFlatbufferTensors(
 
     std::string tensor_name;
     OrtValue ort_value;
-    ORT_RETURN_IF_ERROR(fbs::utils::LoadOrtValueOrtFormat(*fbs_tensor, tensor_name, ort_value));
+    ORT_RETURN_IF_ERROR(OrtValueFromFlatbufferTensor(*fbs_tensor, tensor_name, ort_value));
     name_to_ort_value.emplace(tensor_name, ort_value);
   }
 
@@ -172,9 +232,7 @@ Status FromTensorProtos(
   auto checkpoint = checkpoint_builder.Finish();
   builder.Finish(checkpoint, fbs::CheckpointIdentifier());
 
-  ORT_RETURN_IF_ERROR(Save::ToFile(checkpoint_path, builder));
-
-  return Status::OK();
+  return Save::ToFile(checkpoint_path, builder);
 }
 #endif
 
@@ -376,9 +434,7 @@ Status FromCheckpointState(
   auto checkpoint = checkpoint_builder.Finish();
   builder.Finish(checkpoint, fbs::CheckpointIdentifier());
 
-  ORT_RETURN_IF_ERROR(Save::ToFile(checkpoint_path, builder));
-
-  return Status::OK();
+  return Save::ToFile(checkpoint_path, builder);
 }
 
 }  // namespace Save

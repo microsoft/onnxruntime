@@ -67,7 +67,7 @@ def main():
         required=True,
         type=pathlib.Path,
         help="Path to flatbuffers flatc executable. "
-        "Can be found in the build directory under external/flatbuffers/<config>/",
+        "Can be found in the build directory under _deps/flatbuffers-build/<config>/",
     )
 
     all_languages = ["python", "cpp"]
@@ -80,18 +80,11 @@ def main():
         help="Specify which language bindings to generate.",
     )
 
-    parser.add_argument(
-        "-t",
-        "--training",
-        action="store_true",
-        help="Generate training schema bindings in addition to the default ort.fbs.",
-    )
-
     args = parser.parse_args()
     languages = args.languages if args.languages is not None else all_languages
     flatc = args.flatc.resolve(strict=True)
     schema_path = SCRIPT_DIR / "ort.fbs"
-    training_schema_path = SCRIPT_DIR / "ort_training.fbs"
+    training_schema_path = SCRIPT_DIR / "ort_training_checkpoint.fbs"
 
     if "python" in languages:
         with tempfile.TemporaryDirectory() as temp_dir_name:
@@ -105,17 +98,16 @@ def main():
             output_dir.mkdir()
             generate_python(flatc, updated_schema_path, output_dir)
 
-            if args.training:
-                updated_training_schema_path = temp_dir / "ort_training.py.fbs"
-                update_schema_names(
-                    training_schema_path,
-                    updated_training_schema_path,
-                    {
-                        "namespace onnxruntime.fbs;": "namespace ort_flatbuffers_py.fbs;",
-                        'include "ort.fbs";': 'include "ort.py.fbs";',
-                    },
-                )
-                generate_python(flatc, updated_training_schema_path, output_dir)
+            updated_training_schema_path = temp_dir / "ort_training_checkpoint.py.fbs"
+            update_schema_names(
+                training_schema_path,
+                updated_training_schema_path,
+                {
+                    "namespace onnxruntime.fbs;": "namespace ort_flatbuffers_py.fbs;",
+                    'include "ort.fbs";': 'include "ort.py.fbs";',
+                },
+            )
+            generate_python(flatc, updated_training_schema_path, output_dir)
             create_init_py(output_dir)
 
             # replace generated files in repo
@@ -126,9 +118,7 @@ def main():
 
     if "cpp" in languages:
         generate_cpp(flatc, schema_path)
-
-        if args.training:
-            generate_cpp(flatc, training_schema_path)
+        generate_cpp(flatc, training_schema_path)
 
 
 if __name__ == "__main__":

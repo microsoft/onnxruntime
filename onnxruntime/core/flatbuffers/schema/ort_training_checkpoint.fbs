@@ -50,4 +50,4 @@ table Checkpoint {
 }
 
 root_type Checkpoint;
-file_identifier "ORTM";
+file_identifier "ORTCheckpoint";
