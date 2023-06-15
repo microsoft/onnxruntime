@@ -81,7 +81,7 @@ stages:
         msbuildPlatform: x64
         isX86: false
         job_name_suffix: x64_release
-        RunOnnxRuntimeTests: false
+        RunOnnxRuntimeTests: true
         RunStaticCodeAnalysis: false
         isTraining: false
         ORT_EP_NAME: XNNPACK

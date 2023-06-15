@@ -64,6 +64,7 @@ jobs:
     setVcvars: true
     ALLOW_RELEASED_ONNX_OPSET_ONLY: '0'
     DocUpdateNeeded: false  # Set to true during document generation if there are diffs
+    NVIDIA_TF32_OVERRIDE: '0'
     skipComponentGovernanceDetection: true
     DEPS_CACHE_DIR: $(Agent.TempDirectory)/deps_ccache
     ORT_CACHE_DIR: $(Agent.TempDirectory)/ort_ccache
