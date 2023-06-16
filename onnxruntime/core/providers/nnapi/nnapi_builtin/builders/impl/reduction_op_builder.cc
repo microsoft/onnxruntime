@@ -136,7 +136,7 @@ Status ReductionOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, co
 
   shaper.AddShape(output, output_dimen);
 
-  ADD_SCALAR_OPERAND(model_builder, input_indices, helper.Get("keepdims", 1));
+  ADD_SCALAR_OPERAND(model_builder, input_indices, keepdims ? 1 : 0);
 
   const OperandType output_operand_type(operand_types.at(inputs[0].node_arg.Name()).type, output_dimen);
   ORT_RETURN_IF_ERROR(model_builder.AddOperation(op_code, input_indices,
