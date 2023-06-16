@@ -230,6 +230,7 @@ class WhisperHelper:
         use_external_data_format: bool = False,
         auto_mixed_precision: bool = True,
         use_gpu: bool = False,
+        provider: str = "cpu",
     ):
         """Optimize ONNX model with an option to convert it to use mixed precision."""
 
@@ -237,6 +238,7 @@ class WhisperHelper:
 
         optimization_options = FusionOptions("bart")
         optimization_options.use_multi_head_attention = True
+        optimization_options.disable_multi_head_attention_bias = provider == "rocm"
 
         m = optimize_model(
             onnx_model_path,
