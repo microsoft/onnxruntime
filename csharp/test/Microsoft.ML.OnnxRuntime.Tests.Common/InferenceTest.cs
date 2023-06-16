@@ -439,8 +439,8 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             }
         }
 
-        [Fact(DisplayName = "RunInferenceUsingPreAllocatedOutputOrtValues")]
-        public void RunInferenceUsingPreAllocatedOutputOrtValues()
+        [Fact(DisplayName = "RunInferenceUsingPreAllocatedOutputsAndDictionary")]
+        public void RunInferenceUsingPreAllocatedOutputsAndDictionary()
         {
             var model = TestDataLoader.LoadModelFromEmbeddedResource("squeezenet.onnx");
             using (var cleanUp = new DisposableListTest<IDisposable>())
@@ -484,6 +484,15 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                     ValidateRunResult(outputOrtValue, expectedOutput, expectedShape);
                 }
 
+                //Let's run this again with an interface that takes a Dictionary of name/OrtValue
+                var inputDict = new Dictionary<string, OrtValue>();
+                inputDict.Add(inputNames[0], inputOrtValue);
+                using (var results = session.Run(runOptions, inputDict, expectedOutputNames))
+                {
+                    Assert.Single(results);
+                    var outputOrtValue = results[0];
+                    ValidateRunResult(outputOrtValue, expectedOutput, expectedShape);
+                }
             }
         }
 

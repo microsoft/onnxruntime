@@ -635,6 +635,55 @@ namespace Microsoft.ML.OnnxRuntime
             }
         }
 
+        /// <summary>
+        /// This API takes inputs as a dictionary of input names paired with input OrtValues
+        /// 
+        /// It returns a disposable collection of OrtValues for outputs that were designated by outputNames
+        /// </summary>
+        /// <param name="runOptions"></param>
+        /// <param name="inputs">Dictionary of name/value pairs</param>
+        /// <param name="outputNames">requested outputs. To request all outputs, use OutputNames property of this sessions</param>
+        /// <returns>A disposable collection of outputs</returns>
+        public IDisposableReadOnlyCollection<OrtValue> Run(RunOptions runOptions, IReadOnlyDictionary<string, OrtValue> inputs,
+            IReadOnlyCollection<string> outputNames)
+        {
+            IntPtr[] inputNamesArray = new IntPtr[inputs.Count];
+            IntPtr[] inputHandlesArray = new IntPtr[inputs.Count];
+
+            int count = 0;
+            foreach(var input in inputs)
+            {
+                inputNamesArray[count] = LookupInputMetadata(input.Key).ZeroTerminatedName;
+                inputHandlesArray[count] = input.Value.Handle;
+                ++count;
+            }
+
+            var outputNamesArray = LookupUtf8Names(outputNames, n => n, LookupOutputMetadata);
+            var disposableHandles = RunImpl(runOptions, inputNamesArray, inputHandlesArray, outputNamesArray);
+            try
+            {
+                var outputValues = new DisposableList<OrtValue>(disposableHandles.Span.Length);
+                try
+                {
+                    for (int i = 0; i < disposableHandles.Span.Length; i++)
+                    {
+                        outputValues.Add(new OrtValue(disposableHandles.Span[i]));
+                        disposableHandles.Span[i] = IntPtr.Zero;
+                    }
+                    return outputValues;
+                }
+                catch (Exception)
+                {
+                    outputValues.Dispose();
+                    throw;
+                }
+            }
+            finally
+            {
+                disposableHandles.Dispose();
+            }
+        }
+
 
         /// <summary>
         /// The API takes collections of inputNames/inputValues and collections of outputNames/outputValues.
