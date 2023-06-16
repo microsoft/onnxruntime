@@ -142,14 +142,6 @@ NS_ASSUME_NONNULL_BEGIN
   XCTAssertTrue([outputNames containsObject:@"onnx::loss::21273"]);
 }
 
-//-(void)testTrainStep {
-//  NSError* error = nil;
-//  ORTTrainingSession* session = [self makeTrainingSession];
-//
-//  BOOL result = [session trainStepWithError:&error];
-//  ORTAssertBoolResultSuccessful(result, error);
-//}
-
 - (void)runTrainStepWithSession:(ORTTrainingSession*)session {
   // load input and expected output
   NSError* error = nil;
@@ -237,10 +229,12 @@ NS_ASSUME_NONNULL_BEGIN
   ORTAssertNullableResultSuccessful(labelTensor, error);
   [pinnedInputs addObject:labelTensor];
 
+  // create session
   ORTCheckpoint* checkpoint = [[ORTCheckpoint alloc] initWithPath:[ORTTrainingSessionTest getFilePathFromName:@"checkpoint.ckpt"] error:&error];
   ORTAssertNullableResultSuccessful(checkpoint, error);
   ORTTrainingSession* session = [self makeTrainingSessionWithCheckPoint:checkpoint];
 
+  // run train step, optimzer steps and check loss
   NSArray<ORTValue*>* outputs = [session trainStepWithInputValues:pinnedInputs error:&error];
   ORTAssertNullableResultSuccessful(outputs, error);
 
@@ -330,7 +324,6 @@ NS_ASSUME_NONNULL_BEGIN
   NSString* infernceModelPath = [NSTemporaryDirectory() stringByAppendingPathComponent:@"inference_model.onnx"];
   XCTAssertNotNil(infernceModelPath);
 
-  // [ORTTrainingSessionTest createTempFileWithName:@"inference_model" extension:@"onnx"];
   NSArray<NSString*>* graphOutputNames = [NSArray arrayWithObjects:@"output-0", nil];
 
   BOOL result = [session exportModelForInferenceWithOutputPath:infernceModelPath
@@ -339,6 +332,11 @@ NS_ASSUME_NONNULL_BEGIN
 
   ORTAssertBoolResultSuccessful(result, error);
   XCTAssertTrue([[NSFileManager defaultManager] fileExistsAtPath:infernceModelPath]);
+
+  [self addTeardownBlock:^{
+    NSError* error = nil;
+    [[NSFileManager defaultManager] removeItemAtPath:infernceModelPath error:&error];
+  }];
 }
 
 - (void)testToBuffer {
@@ -349,6 +347,7 @@ NS_ASSUME_NONNULL_BEGIN
 
   ORTValue* buffer = [session toBufferWithTrainable:YES error:&error];
   ORTAssertNullableResultSuccessful(buffer, error);
+
   ORTValueTypeInfo* typeInfo = [buffer typeInfoWithError:&error];
   ORTAssertNullableResultSuccessful(typeInfo, error);
   XCTAssertEqual(typeInfo.type, ORTValueTypeTensor);

@@ -46,6 +46,8 @@ NS_ASSUME_NONNULL_BEGIN
  * @param error Optional error information set if an error occurs.
  * @return The instance, or nil if an error occurs.
  *
+ * @note `ORTTrainingSession` does not hold a copy of the checkpoint state. Therefore, it is required that the
+ * checkpoint state outlive the lifetime of the training session.
  */
 - (nullable instancetype)initWithEnv:(ORTEnv*)env
                       sessionOptions:(ORTSessionOptions*)sessionOptions
@@ -72,8 +74,8 @@ NS_ASSUME_NONNULL_BEGIN
                                                    error:(NSError**)error;
 
 /**
- * Performs a evaluation step that computes the outputs of the eval model for the given inputs.
- * The eval step is performed based on the eval model that was provided to the training session.
+ * Performs a evaluation step that computes the outputs of the evaluation model for the given inputs.
+ * The eval step is performed based on the evaluation model that was provided to the training session.
  *
  * @param inputs The input values to the eval model.
  * @param error Optional error information set if an error occurs.
@@ -91,7 +93,7 @@ NS_ASSUME_NONNULL_BEGIN
  * invocation of the `trainStep` method.
  *
  * @param error Optional error information set if an error occurs.
- * @return YES if the gradients were reset successfully, NO otherwise.
+ * @return YES if the gradients are set to reset successfully, NO otherwise.
  */
 - (BOOL)lazyResetGradWithError:(NSError**)error;
 
@@ -107,7 +109,7 @@ NS_ASSUME_NONNULL_BEGIN
 
 /**
  * Returns the names of the user inputs for the training and evaluation models that can be associated with
- * the `ORTValue` provided to the `trainStep` and `evalStep` methods
+ * the `ORTValue` provided to the `trainStep` or `evalStep` methods
  *
  * @param train If YES, returns the names of the user inputs for the training model, otherwise returns the names of the
  * user inputs for the evaluation model.
@@ -119,7 +121,7 @@ NS_ASSUME_NONNULL_BEGIN
 
 /**
  * Returns the names of the user outputs for the training and evaluation models that can be associated with
- * the `ORTValue` returned by the `trainStep` and `evalStep` methods
+ * the `ORTValue` returned by the `trainStep` or `evalStep` methods
  *
  * @param train If YES, returns the names of the user outputs for the training model, otherwise returns the names of the
  * user outputs for the evaluation model.
