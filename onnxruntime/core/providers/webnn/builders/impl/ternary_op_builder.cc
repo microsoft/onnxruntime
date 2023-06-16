@@ -25,7 +25,8 @@ class TernaryOpBuilder : public BaseOpBuilder {
 Status TernaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
                                               const logging::Logger& /* logger */) const {
   const auto& op_type(node.OpType());
-
+  ORT_RETURN_IF(node.InputDefs().size() < 3, "Operator requires at least three inputs");
+  
   emscripten::val input0 = model_builder.GetOperand(node.InputDefs()[0]->Name());
   emscripten::val input1 = model_builder.GetOperand(node.InputDefs()[1]->Name());
   emscripten::val input2 = model_builder.GetOperand(node.InputDefs()[2]->Name());
