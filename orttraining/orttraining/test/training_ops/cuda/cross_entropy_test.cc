@@ -1101,7 +1101,7 @@ TEST(CrossEntropyTest, SoftmaxCrossEntropyLossInternalGrad_LargeSizeTensorInt32I
   std::vector<int64_t> weight_dims{vocab_size};
   std::vector<int64_t> dX_dims{bsz, vocab_size};
   TestSoftmaxCrossEntropyLossInternalGrad<MLFloat16, MLFloat16>(dY_dims, log_prob_dims, index_dims, weight_dims,
-                                                                dX_dims, "mean", -1, 5e-2, false /*has_bias*/);
+                                                                dX_dims, "mean", -1, 1e-3, false /*has_bias*/);
 
   // This test did not test against reduce-sum because the absolute value after computing is pretty big, sometimes
   // around 65535, CPU baseline result is smaller than 65535, but CUDA result is a little bigger than it, generating
@@ -1118,7 +1118,7 @@ TEST(CrossEntropyTest, SoftmaxCrossEntropyLossInternalGrad_LargeSizeTensorUInt64
   std::vector<int64_t> weight_dims{vocab_size};
   std::vector<int64_t> dX_dims{bsz, vocab_size};
   TestSoftmaxCrossEntropyLossInternalGrad<MLFloat16, MLFloat16>(dY_dims, log_prob_dims, index_dims, weight_dims,
-                                                                dX_dims, "mean", -1, 5e-2, false /*has_bias*/);
+                                                                dX_dims, "mean", -1, 1e-3, false /*has_bias*/);
 
   // This test did not test against reduce-sum because the absolute value after computing is pretty big, sometimes
   // around 65535, CPU baseline result is smaller than 65535, but CUDA result is a little bigger than it, generating
