@@ -392,7 +392,7 @@ bool CheckIsInitializer(const InitializedTensorSet& initializers, const NodeUnit
   return true;
 }
 
-std::vector<int32_t> OnnxAxesToNnapi(gsl::span<const int64_t> onnx_axes, std::optional<size_t> input_rank = std::nullopt) {
+std::vector<int32_t> OnnxAxesToNnapi(gsl::span<const int64_t> onnx_axes, std::optional<size_t> input_rank) {
   std::vector<int32_t> result;
   result.reserve(onnx_axes.size());
   for (auto dim : onnx_axes) {
