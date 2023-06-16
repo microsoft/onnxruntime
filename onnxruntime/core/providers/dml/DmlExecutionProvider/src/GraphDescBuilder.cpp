@@ -219,11 +219,9 @@ namespace Dml::GraphDescBuilder
 
         // Iterate through each node and create a corresponding node in the new graph
         // We can iterate the nodes in any order because the edge connectivity will take care of the topological order
-        std::unordered_map<std::string, std::vector<uint32_t>> inferredOutputShapes;
-
-        for (const onnxruntime::Node* subgraphNode : subgraphNodes)
+        for (size_t sortedNodeIndex : indexedSubGraph.nodes)
         {
-            const onnxruntime::Node& node = *subgraphNode;
+            const onnxruntime::Node& node = *graph.GetNode(sortedNodeIndex);
 
             const GraphNodeProperties& graphNodeProps = graphNodePropertyMap.find(GetUniqueNodeName(node))->second;
             const auto& requiredConstantCpuInputs = graphNodeProps.internalRegInfo->requiredConstantCpuInputs;
@@ -232,14 +230,22 @@ namespace Dml::GraphDescBuilder
             {
                 ComPtr<IMLOperatorTensor> tensor = nullptr;
 
-                // Check whether this specific node requested support for constant CPU inputs
-                if (std::find(requiredConstantCpuInputs.begin(), requiredConstantCpuInputs.end(), inputIndex) != requiredConstantCpuInputs.end())
+                auto inputDefs = node.InputDefs();
+
+                if (inputIndex < inputDefs.size())
                 {
-                    auto inputDefs = node.InputDefs();
-                    if (inputIndex < inputDefs.size())
+                    const onnxruntime::NodeArg* arg = inputDefs[inputIndex];
+                    tensor = constantCpuGraphInputGetter(arg->Name());
+
+                    if (tensor == nullptr)
                     {
-                        const onnxruntime::NodeArg* arg = inputDefs[inputIndex];
-                        tensor = constantCpuGraphInputGetter(arg->Name());
+                        bool inputRequiredAsConstant = std::find(
+                            requiredConstantCpuInputs.begin(),
+                            requiredConstantCpuInputs.end(),
+                            inputIndex) != requiredConstantCpuInputs.end();
+
+                        // This shouldn't happen since kernel creation is deferred and repeated when required constant inputs are not present.
+                        ORT_THROW_HR_IF(E_UNEXPECTED, inputRequiredAsConstant);
                     }
                 }
 
