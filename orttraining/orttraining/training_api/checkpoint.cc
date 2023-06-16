@@ -550,8 +550,6 @@ Status ToPropertyBag(const onnxruntime::fbs::PropertyBag& fbs_property_bag,
                         "Actual: nullptr.");
       ORT_RETURN_IF_NOT(int_property->name(), "Checkpoint is invalid. Expected: Valid flatbuffer int property name. ",
                         "Actual: nullptr.");
-      ORT_RETURN_IF_NOT(int_property->value(), "Checkpoint is invalid. Expected: Valid flatbuffer int property value. ",
-                        "Actual: nullptr.");
       std::string name = int_property->name()->str();
       auto value = int_property->value();
       property_bag.AddProperty(name, value);
@@ -564,8 +562,6 @@ Status ToPropertyBag(const onnxruntime::fbs::PropertyBag& fbs_property_bag,
       ORT_RETURN_IF_NOT(float_property, "Checkpoint is invalid. Expected: Valid flatbuffer float property. ",
                         "Actual: nullptr.");
       ORT_RETURN_IF_NOT(float_property->name(), "Checkpoint is invalid. Expected: Valid flatbuffer float property name. ",
-                        "Actual: nullptr.");
-      ORT_RETURN_IF_NOT(float_property->value(), "Checkpoint is invalid. Expected: Valid flatbuffer float property value. ",
                         "Actual: nullptr.");
       std::string name = float_property->name()->str();
       auto value = float_property->value();
