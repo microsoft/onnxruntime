@@ -3,5 +3,5 @@ packaging
 protobuf==3.20.2
 numpy==1.24.0
 coloredlogs==15.0
-transformers==4.24.0
+transformers==4.30.0
 psutil
