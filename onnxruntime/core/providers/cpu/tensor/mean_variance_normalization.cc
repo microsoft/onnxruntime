@@ -86,13 +86,35 @@ class MeanVarianceNormalization : public OpKernel {
     // - transpose to partition into [unspecified axes, specified axes]
     // - do normalization on inner dimensions
     // - transpose back
-    const auto& X = context->RequiredInput<Tensor>(0);
+    const auto& input = context->RequiredInput<Tensor>(0);
 
-    const auto rank = X.Shape().GetDims().size();
+    const auto rank = input.Shape().GetDims().size();
 
     const auto normalized_axes = NormalizeAxes(axes_, rank);
 
-    const auto optional_transpose_permutation = GetTransposePermutationIfNeeded(normalized_axes, rank);
+    const auto transpose_permutation = GetTransposePermutationIfNeeded(normalized_axes, rank);
+    const bool is_transpose_required = transpose_permutation.has_value();
+
+    // intermediate tensors if transposing is necessary
+    Tensor transposed_input;
+    Tensor transposed_result;
+
+    if (is_transpose_required) {
+      AllocatorPtr alloc;
+      ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&alloc));
+
+      InlinedVector<int64_t> transposed_dims{};
+      transposed_dims.reserve(rank);
+      std::transform(transpose_permutation->begin(), transpose_permutation->end(), std::back_inserter(transposed_dims),
+                     [&input_shape = input.Shape().GetDims()](size_t axis) { return input_shape[axis]; });
+      const TensorShape transposed_shape = TensorShape::FromExistingBuffer(transposed_dims);
+
+      transposed_input = Tensor{input.DataType(), transposed_shape, alloc};
+
+      ORT_RETURN_IF_ERROR(TransposeBase::DoTranspose(*transpose_permutation, input, transposed_input));
+
+      transposed_output = Tensor{input.DataType(), transposed_shape, alloc};
+    }
   }
 
  private:
