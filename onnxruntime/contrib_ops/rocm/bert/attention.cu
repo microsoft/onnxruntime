@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <fstream>
 #include "contrib_ops/rocm/bert/attention.h"
 #include "contrib_ops/rocm/bert/attention_impl.h"
 #include "contrib_ops/rocm/bert/batched_gemm_permute_pipelines.cuh"
@@ -37,6 +38,16 @@ constexpr int kPresentOutputIndex = 1;
 
 REGISTER_KERNEL_TYPED(float)
 REGISTER_KERNEL_TYPED(MLFloat16)
+
+static int64_t counter = -1;
+
+static void DumpTensor(const std::string& prefix, const Tensor* t, int64_t num_bytes) {
+  HIP_CALL_THROW(hipDeviceSynchronize());
+  std::vector<char> tmp(num_bytes);
+  HIP_CALL_THROW(hipMemcpy(tmp.data(), t->DataRaw(), num_bytes, hipMemcpyDeviceToHost));
+  std::ofstream of(prefix + std::to_string(counter) + ".bin", std::ios::binary);
+  of.write(tmp.data(), num_bytes);
+}
 
 template <typename T>
 Attention<T>::Attention(const OpKernelInfo& info) : RocmKernel(info), AttentionBase(info, true), attn_type_(A) {}
@@ -103,6 +114,8 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   auto qkv_project_output = GetScratchBuffer<void>(qkv_project_output_bytes, context->GetComputeStream());
   auto workspace = GetScratchBuffer<void>(shared_workspace_bytes, context->GetComputeStream());
 
+  std::cout << ">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> attention mode: " << attn.mode << std::endl;
+
   GemmPermuteParams<HipT> gemm_permute_params;
   {
     auto& params = gemm_permute_params;
@@ -163,6 +176,12 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
     // update pointers to present_k and present_v. TODO: switch to ConvertToOffsetedBufferViews
     k_buffer = reinterpret_cast<HipT*>(present->MutableDataRaw());
     v_buffer = reinterpret_cast<HipT*>(present->MutableDataRaw()) + dst_strides.OffsetAt(attn.batch_size, 0, 0, 0);
+  }
+
+  if (attn.mode == QFMT_KFMT_VFMT_NONE_NONE_2BNTH_NONE) {
+    counter += 1;
+    std::cout << counter << " kv_seqlen:" << attn.kv_sequence_length << ", past_seqlen:" << attn.past_sequence_length << ", max_seqlen:" << attn.max_sequence_length << ", total_seqlen:" << attn.total_sequence_length << std::endl;
+    DumpTensor("present", present, present->SizeInBytes());
   }
 
   // For testing, environment variable ORT_TRANSFORMER_OPTIONS=1 could enable persistent softmax

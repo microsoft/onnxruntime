@@ -208,6 +208,7 @@ Status WhisperDecoderSubgraph::CreateInitialFeeds(
       ORT_RETURN_IF(has_hidden_state_ == false, "Invalid hidden_states expension: has_hidden_state_ == false");
       OrtValue expanded_hidden_states;
       if (is_output_float16_) {
+std::cout << __FILE__":" << __LINE__ << std::endl;
         ORT_RETURN_IF_ERROR(expand_buffer_float16_func(stream,
                                                        encoder_fetches[j],
                                                        num_beam,
@@ -216,6 +217,7 @@ Status WhisperDecoderSubgraph::CreateInitialFeeds(
                                                        true,
                                                        0 /*max_sequence_length*/));
       } else {
+std::cout << __FILE__":" << __LINE__ << std::endl;
         ORT_RETURN_IF_ERROR(expand_buffer_float_func(stream,
                                                      encoder_fetches[j],
                                                      num_beam,
@@ -231,6 +233,7 @@ Status WhisperDecoderSubgraph::CreateInitialFeeds(
 
       OrtValue expanded_cache;
       if (is_output_float16_) {
+std::cout << __FILE__":" << __LINE__ << std::endl;
         ORT_RETURN_IF_ERROR(expand_buffer_float16_func(stream,
                                                        encoder_fetches[j],
                                                        num_beam,
@@ -239,6 +242,7 @@ Status WhisperDecoderSubgraph::CreateInitialFeeds(
                                                        false,
                                                        use_max_seq_len ? past_present_share_buffer_max_seq_len : 0));
       } else {
+std::cout << __FILE__":" << __LINE__ << std::endl;
         ORT_RETURN_IF_ERROR(expand_buffer_float_func(stream,
                                                      encoder_fetches[j],
                                                      num_beam,

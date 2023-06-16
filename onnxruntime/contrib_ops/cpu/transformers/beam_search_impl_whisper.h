@@ -152,6 +152,7 @@ Status BeamSearchWhisper<T>::Execute(const FeedsFetchesManager& encoder_feeds_fe
       decoder_input_ids,
       this->ort_stream_));
 
+std::cout << __FILE__ ":" << __LINE__ << std::endl;
 #ifdef DEBUG_NODE_INPUTS_OUTPUTS
   const_cast<SessionState&>(this->encoder_session_state_).IncrementGraphExecutionCounter();
 #endif
@@ -165,6 +166,7 @@ Status BeamSearchWhisper<T>::Execute(const FeedsFetchesManager& encoder_feeds_fe
                                              this->context_.Logger(),
                                              this->ort_stream_));
 
+std::cout << __FILE__ ":" << __LINE__ << std::endl;
 #ifdef DEBUG_GENERATION
   const IConsoleDumper* dumper = this->GetConsoleDumper();
   for (int i = 0; i < this->encoder_subgraph_.num_subgraph_inputs; i++) {
@@ -209,6 +211,7 @@ Status BeamSearchWhisper<T>::Execute(const FeedsFetchesManager& encoder_feeds_fe
 
   std::vector<OrtValue> decoder_fetches;
 
+std::cout << __FILE__ ":" << __LINE__ << std::endl;
   if (current_length + 1 < parameters->max_length) {
     ++iteration_counter;
     ORT_RETURN_IF_ERROR(this->GenerateNextToken(encoder_fetches[0],
@@ -219,6 +222,7 @@ Status BeamSearchWhisper<T>::Execute(const FeedsFetchesManager& encoder_feeds_fe
                                                 iteration_counter));
     ++current_length;  // Increase sequence length after a new token is generated.
 
+std::cout << __FILE__ ":" << __LINE__ << std::endl;
     ORT_RETURN_IF_ERROR(decoder_subgraph_.CreateInitialFeeds(this->cpu_allocator_,
                                                              ReinterpretAsSpan<const int32_t>(beam_next_tokens),
                                                              this->implicit_inputs_,
@@ -236,6 +240,7 @@ Status BeamSearchWhisper<T>::Execute(const FeedsFetchesManager& encoder_feeds_fe
                                                              parameters->max_length,
                                                              decoder_subgraph_.has_decoder_masked_attention_));
 
+std::cout << __FILE__ ":" << __LINE__ << std::endl;
     if (decoder_subgraph_.past_present_share_buffer_) {
       decoder_fetches.reserve(static_cast<int64_t>(decoder_subgraph_.GetFirstPresentOutputIndex()) + 2 * static_cast<int64_t>(decoder_subgraph_.num_layers));
       decoder_fetches.resize(decoder_subgraph_.GetFirstPresentOutputIndex(), OrtValue());
@@ -250,6 +255,7 @@ Status BeamSearchWhisper<T>::Execute(const FeedsFetchesManager& encoder_feeds_fe
       }
     }
 
+std::cout << __FILE__ ":" << __LINE__ << std::endl;
     if (decoder_subgraph_.has_decoder_masked_attention_) {
       size_t offset = static_cast<size_t>(decoder_subgraph_.GetFirstPastInputIndex());
       // Need to check cross attention's past key tensor size, suppose all layers cross attention key size are same
@@ -272,6 +278,7 @@ Status BeamSearchWhisper<T>::Execute(const FeedsFetchesManager& encoder_feeds_fe
   }
 
   while (current_length < parameters->max_length) {
+std::cout << __FILE__ ":" << __LINE__ << std::endl;
     iteration_counter++;
 #ifdef DEBUG_GENERATION
     auto cur_len = std::to_string(current_length);

@@ -3,6 +3,18 @@
 
 #pragma once
 
+
+#define DEBUG_SYNC(stream)                                                               \
+  std::cout << __FILE__ ":" << __LINE__ << std::endl;                                    \
+  if (stream != nullptr) {                                                               \
+    HIP_RETURN_IF_ERROR(hipStreamSynchronize(stream));                                 \
+    std::cout << __FILE__ ":" << __LINE__ << " after hipStreamSynchronize" << std::endl; \
+  }                                                                                      \
+  HIP_RETURN_IF_ERROR(hipDeviceSynchronize());                                         \
+  std::cout << __FILE__ ":" << __LINE__ << " after hipDeviceSynchronize" << std::endl;   \
+  HIP_RETURN_IF_ERROR(hipGetLastError());                                              \
+  std::cout << __FILE__ ":" << __LINE__ << " after hipGetLastError" << std::endl;
+
 /* About Computing in these Pipelines
 
 B: batch size of Attention Op. NOTE: To be disambiguated with batch size of GEMMs
@@ -651,6 +663,7 @@ class GemmSoftmaxGemmPermuteTunableOp : public tunable::TunableOp<GemmSoftmaxGem
         reinterpret_cast<T*>(params->workspace_buffer), {lengths.y * lengths.z, lengths.z, 1},  // out desc
         buffer, lengths, strides,                                                               // mask desc
         cvt);
+DEBUG_SYNC(params->stream);
 
     return HIP_CALL(hipGetLastError());
   }
@@ -763,6 +776,38 @@ auto GetCKGemmSoftmaxGemmPermuteTypeStringAndOps() {
           Nop{},
           Nop{});
 
+#if 1
+      auto print = [](const std::string& prefix, const std::vector<ck::index_t>& l, const std::vector<ck::index_t>& s, const void* ptr) {
+        std::cout << __FILE__ ":" << __LINE__ << " " << prefix << ": dim, " << l.size()
+                  << ", lengths {" << l[0] << ", " << l[1] << ", " << l[2] << ", " << l[3] << "}, strides {"
+                  << s[0] << ", " << s[1] << ", " << s[2] << ", " << s[3] << "} " << ptr << std::endl;
+      };
+      print("a_gs_ms_ks", q_buffer_lengths, q_buffer_strides, params->q_buffer);
+      print("b0_gs_ns_ks", k_buffer_lengths, k_buffer_strides, params->k_buffer);
+      print("b1_gs_os_ns", v_buffer_lengths, v_buffer_strides, params->v_buffer);
+      print("c_gs_ms_os", out_buffer_lengths, out_buffer_strides, params->out_buffer);
+      // if constexpr (USE_MASK) {
+      //   print("d_ms_ns_length (mask)", bias_lengths[0], bias_strides[0]);
+      //   HIP_RETURN_IF_ERROR(hipStreamSynchronize(params->Stream()));
+      //   auto numbytes = bias_lengths[0][0] * bias_lengths[0][1] * bias_lengths[0][2] * bias_lengths[0][3] * sizeof(T);
+      //   std::vector<char> tmp(numbytes);
+      //   std::cout << bias_buffers[0] << " " << numbytes << std::endl;
+      //   HIP_RETURN_IF_ERROR(hipMemcpy(tmp.data(), bias_buffers[0], numbytes, hipMemcpyDeviceToHost));
+      //   std::cout << "mask_after.bin" << std::endl;
+      //   std::cout << "mask_after.bin" << std::endl;
+      //   std::cout << "mask_after.bin" << std::endl;
+      //   std::cout << "mask_after.bin" << std::endl;
+      //   std::cout << "mask_after.bin" << std::endl;
+      //   std::cout << "mask_after.bin" << std::endl;
+      //   std::cout << "mask_after.bin" << std::endl;
+      //   std::ofstream of("mask_after.bin", std::ios::binary);
+      //   of.write(tmp.data(),numbytes);
+      // }
+      // if constexpr (USE_BIAS) {
+      //   print("d_ms_ns_length (bias)", bias_lengths[kNumBiasBuffer - 1], bias_strides[kNumBiasBuffer - 1]);
+      // }
+#endif
+
       TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(!impl->IsSupportedArgument(arg.get()),
                                                 impl->GetTypeString(), " does not support ", params->Signature());
 
@@ -770,6 +815,10 @@ auto GetCKGemmSoftmaxGemmPermuteTypeStringAndOps() {
         ORT_RETURN_IF_ERROR(GemmSoftmaxGemmPermuteTunableOp<T>::LaunchConvertToFilledMaskValue(params));
       }
       invoker->Run(arg.get(), StreamConfig{params->Stream()});
+
+std::cout << params->Signature() << std::endl;
+DEBUG_SYNC(params->stream);
+
       return Status::OK();
     };
     ret.emplace_back(std::make_pair(std::move(type_string), std::move(op)));

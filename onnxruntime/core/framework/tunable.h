@@ -18,6 +18,7 @@
 #include <unordered_set>
 #include <utility>
 #include <vector>
+#include <iostream>
 
 #include "core/common/common.h"
 #ifndef SHARED_PROVIDER
@@ -244,7 +245,7 @@ class TunableOp {
     ITuningContext* ctx = params->TuningContext();
     auto op_sig = Signature();
     auto param_sig = params->Signature();
-    LOGS_DEFAULT(VERBOSE) << "FindFastestImpl for " << op_sig << '(' << param_sig << ')';
+    std::cout << __FILE__ ":" << __LINE__ << " FindFastestImpl for " << op_sig << '(' << param_sig << ')' << std::endl;
     auto min_time = std::numeric_limits<double>::infinity();
     int id = -1;
 

@@ -19,6 +19,17 @@
 #include "contrib_ops/cuda/transformers/greedy_search_top_one.h"
 #include "core/providers/cuda/tensor/transpose.h"
 
+#define DEBUG_SYNC(stream)                                                               \
+  std::cout << __FILE__ ":" << __LINE__ << std::endl;                                    \
+  if (stream != nullptr) {                                                               \
+    CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream));                                 \
+    std::cout << __FILE__ ":" << __LINE__ << " after cudaStreamSynchronize" << std::endl; \
+  }                                                                                      \
+  CUDA_RETURN_IF_ERROR(cudaDeviceSynchronize());                                         \
+  std::cout << __FILE__ ":" << __LINE__ << " after cudaDeviceSynchronize" << std::endl;   \
+  CUDA_RETURN_IF_ERROR(cudaGetLastError());                                              \
+  std::cout << __FILE__ ":" << __LINE__ << " after cudaGetLastError" << std::endl;
+
 // the includes would be dummy for ROCm, we will ignore them for now
 #ifdef ENABLE_NVTX_PROFILE
 #include "core/providers/cuda/nvtx_profile.h"
@@ -338,6 +349,7 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
                      int step,                                               // iteration counter
                      Stream* ort_stream,                                     // cuda stream (for CUDA only)
                      const transformers::IConsoleDumper* dumper) {           // tensor dumper
+DEBUG_SYNC(0);
 
 #ifdef ENABLE_NVTX_PROFILE
   profile::NvtxNestedRangeCreator processLogitsRange("ProcessLogits", profile::Color::Red);
@@ -360,6 +372,7 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
 
   typedef typename ToCudaType<T>::MappedType CudaT;
   const CudaT* logits_data = reinterpret_cast<const CudaT*>(logits.Get<Tensor>().Data<T>());
+DEBUG_SYNC(0);
 
   // Logits has shape (batch_size * num_beams, input_length, padded_vocab_size),
   // where input_length equals to parameters_->sequence_length for first subgraph call, and 1 for the remaining calls.
@@ -367,6 +380,7 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
   ORT_ENFORCE(logits_shape.NumDimensions() == 3);
   auto input_length = logits_shape[1];
   auto logits_batch_size = logits_shape[0];
+DEBUG_SYNC(0);
 
   // NOTE: `padded_vocab_size` MAY be different from `vocab_size`.
   // But the following implementation should work correctly if they are the same
@@ -374,12 +388,14 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
   auto padded_vocab_size = static_cast<int>(logits_shape[2]);
 
   cudaStream_t cuda_stream = ort_stream ? static_cast<cudaStream_t>(ort_stream->GetHandle()) : nullptr;
+DEBUG_SYNC(cuda_stream);
 
   // Get logits for the last token:
   //    next_token_logits = logits[:, -1, :], and the result shape is (batch_size * num_beams, vocab_size)
   // When input_length == 1, use logits directly in SoftmaxCPU below so it only need for input_length > 1.
   gsl::span<T>& next_token_logits = beam_state->next_token_logits;
   // TODO(tianleiwu): use one kernel to replace a loop of memory copy.
+DEBUG_SYNC(cuda_stream);
   if (input_length > 1 || logits_batch_size == batch_size) {
     // Move the pointer in increments of padded_vocab_size to account for any padding
     // if any in the logits weight of the MatMul.
@@ -390,8 +406,10 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
       // for token generation.
       gsl::span<const T> source(reinterpret_cast<const T*>(current_logits), vocab_size);
       gsl::span<T> target = next_token_logits.subspan(static_cast<size_t>(i) * vocab_size, vocab_size);
+std::cout << __FILE__ ":" << __LINE__ << "i:" << i << std::endl;
       CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(target.data(), source.data(), sizeof(T) * vocab_size,
                                            cudaMemcpyDeviceToDevice, cuda_stream));
+DEBUG_SYNC(cuda_stream);
       if (logits_batch_size == batch_beam_size) {
         current_logits += input_length * padded_vocab_size;
       } else if (logits_batch_size == batch_size && i % num_beams == num_beams - 1) {
@@ -399,6 +417,7 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
       }
     }
   }
+DEBUG_SYNC(cuda_stream);
 
 #ifdef DEBUG_GENERATION
   dumper->Print("logits", logits);
@@ -416,11 +435,13 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
 
   const CudaT* X_data = is_reuse_logits_buffer ? logits_data : reinterpret_cast<const CudaT*>(next_token_logits.data());
 
+DEBUG_SYNC(cuda_stream);
   ORT_RETURN_IF_ERROR((dispatch_blockwise_softmax_forward<CudaT, float, float, true>(
       cuda_stream, Y_data, X_data, vocab_size,
       is_reuse_logits_buffer ? padded_vocab_size : vocab_size,
       vocab_size,
       batch_size * num_beams)));
+DEBUG_SYNC(cuda_stream);
 
 #ifdef DEBUG_GENERATION
   dumper->Print("next_token_scores after softmax", next_token_scores.data(), batch_size, num_beams, vocab_size);
@@ -436,8 +457,10 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
     void* data = allocator->Alloc(bytes);
     BufferUniquePtr temp_buffer(data, BufferDeleter(allocator));
     sequences_buffer = std::move(temp_buffer);
+std::cout << __FILE__ ":" << __LINE__ << std::endl;
     CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(sequences_buffer.get(), sequences->GetSequence(0).data(), bytes,
                                          cudaMemcpyHostToDevice, cuda_stream));
+DEBUG_SYNC(cuda_stream);
   }
 
   cuda::LaunchLogitsProcessKernel<float>(
@@ -458,6 +481,7 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
       parameters->repetition_penalty,
       parameters->no_repeat_ngram_size,
       cuda_stream);
+DEBUG_SYNC(cuda_stream);
 
 #ifdef DEBUG_GENERATION
   dumper->Print("next_token_scores after logits process", next_token_scores.data(), batch_size, num_beams, vocab_size);
@@ -466,6 +490,7 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
   //    next_token_scores = next_token_scores + beam_scores[:, None].expand_as(next_token_scores)
   cuda::LaunchAddProbsKernel(next_token_scores.data(), beam_state->beam_scores.data(),
                              batch_size, num_beams, vocab_size, cuda_stream);
+DEBUG_SYNC(cuda_stream);
 
 #ifdef DEBUG_GENERATION
   dumper->Print("next_token_scores adding beam_scores", next_token_scores.data(), batch_size, num_beams, vocab_size);
@@ -473,11 +498,13 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
 
   if (output_scores) {
     // Append next token scores to the scores output.
+std::cout << __FILE__ ":" << __LINE__ << std::endl;
     CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(beam_state->remaining_scores.data(),
                                          next_token_scores.data(),
                                          next_token_scores.size_bytes(),
                                          cudaMemcpyDeviceToDevice,
                                          cuda_stream));
+DEBUG_SYNC(cuda_stream);
     beam_state->remaining_scores = beam_state->remaining_scores.subspan(next_token_scores.size());
   }
 
@@ -503,6 +530,7 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
                          beam_state->next_tokens.data(),
                          beam_state->next_indices.data(),
                          cuda_stream);
+DEBUG_SYNC(cuda_stream);
 
     // Select [batch_size, 2 * num_beams] from [batch_size * num_beams, 2 * num_beams]
 #ifdef DEBUG_GENERATION
@@ -512,11 +540,15 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
 #endif
 
     // TODO: Remove these kinds of cross-device copies once BeamScorer runs on CUDA
+DEBUG_SYNC(cuda_stream);
+std::cout << __FILE__ ":" << __LINE__ << " copy with stream(" << cuda_stream << ")" << std::endl;
+std::cout << __FILE__ ":" << __LINE__ << " next_scores " << beam_state->next_scores.data() << " " << beam_state->next_scores.size_bytes() << " ---> " << cpu_state->topk_scores.data() << " " << cpu_state->topk_scores.size_bytes() << std::endl;
     CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(cpu_state->topk_scores.data(),
                                          beam_state->next_scores.data(),
                                          beam_state->next_scores.size_bytes(),
                                          cudaMemcpyDeviceToHost,
                                          cuda_stream));
+std::cout << __FILE__ ":" << __LINE__ << std::endl;
   } else {
     // Apply top-k selection like the following:
     //   next_token_scores = next_token_scores.view(batch_size, num_beams * vocab_size)
@@ -551,6 +583,7 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
     const int64_t* next_token_indices = topk_indices->Data<int64_t>();
     cuda::LaunchNextTokenKernel(next_token_indices, beam_state->next_indices.data(), beam_state->next_tokens.data(),
                                 batch_size, top_k, vocab_size, cuda_stream);
+DEBUG_SYNC(cuda_stream);
 
     const float* data = topk_scores->Data<float>();
 #ifdef DEBUG_GENERATION
@@ -560,24 +593,32 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
 #endif
 
     // TODO: Remove these kinds of cross-device copies once BeamScorer runs on CUDA
+std::cout << __FILE__ ":" << __LINE__ << " copy with stream(" << cuda_stream << ")" << std::endl;
+std::cout << __FILE__ ":" << __LINE__ << " topk_scores " << data << " " << topk_scores->SizeInBytes() << " ---> " << cpu_state->topk_scores.data() << " " << cpu_state->topk_scores.size_bytes() << std::endl;
     CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(cpu_state->topk_scores.data(),
                                          data,
                                          topk_scores->SizeInBytes(),
                                          cudaMemcpyDeviceToHost,
                                          cuda_stream));
+DEBUG_SYNC(cuda_stream);
   }
 
   // TODO: Remove these kinds of cross-device copies once BeamScorer runs on CUDA
+std::cout << __FILE__ ":" << __LINE__ << " next_tokens " << beam_state->next_tokens.data() << " " << beam_state->next_tokens.size_bytes() << " ---> " << cpu_state->topk_tokens.data() << " " << cpu_state->topk_tokens.size_bytes() << std::endl;
   CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(cpu_state->topk_tokens.data(),
                                        beam_state->next_tokens.data(),
                                        beam_state->next_tokens.size_bytes(),
                                        cudaMemcpyDeviceToHost,
                                        cuda_stream));
+DEBUG_SYNC(cuda_stream);
+std::cout << __FILE__ ":" << __LINE__ << " next_indices " << beam_state->next_indices.data() << " " << beam_state->next_indices.size_bytes() << " ---> " << cpu_state->topk_indices.data() << " " << cpu_state->topk_indices.size_bytes() << std::endl;
   CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(cpu_state->topk_indices.data(),
                                        beam_state->next_indices.data(),
                                        beam_state->next_indices.size_bytes(),
                                        cudaMemcpyDeviceToHost,
                                        cuda_stream));
+DEBUG_SYNC(cuda_stream);
+std::cout << __FILE__ ":" << __LINE__ << std::endl;
   CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(cuda_stream));
 
   gsl::span<const float> next_scores(cpu_state->topk_scores.data(), beam_state->next_scores.size());
@@ -590,6 +631,7 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
       next_scores,
       next_tokens,
       next_indices);
+DEBUG_SYNC(cuda_stream);
 
   // TODO: This is a temporary work-around as BeamScorer currently only runs on CPU.
   // We can remove these kinds of work-arounds once BeamScorer runs on CUDA eventually.
@@ -600,11 +642,13 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
     // If we have allocated `chosen_indices` in beam_state, it means that we
     // will be needing the chosen indices from BeamScorer as we are using
     // DecoderMaskedSelfAttention, so copy it over.
+std::cout << __FILE__ ":" << __LINE__ << std::endl;
     CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(beam_state_chosen_indices.data(),
                                          chosen_indices.data(),
                                          chosen_indices.size_bytes(),
                                          cudaMemcpyHostToDevice,
                                          cuda_stream));
+DEBUG_SYNC(cuda_stream);
 
     CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(cuda_stream));
   }
@@ -812,14 +856,17 @@ Status GreedySearchProcessLogits(
 
 template <typename T>
 Status DeviceCopy(gsl::span<T> target, gsl::span<const T> source, Stream* ort_stream, int copyDirection) {
+DEBUG_SYNC(0);
   assert(copyDirection >= 0 && copyDirection <= 3);
   cudaStream_t cuda_stream = ort_stream ? static_cast<cudaStream_t>(ort_stream->GetHandle()) : nullptr;
   if (cuda_stream == nullptr) {
     CUDA_RETURN_IF_ERROR(cudaMemcpy(target.data(), source.data(), source.size_bytes(),
                                     static_cast<cudaMemcpyKind>(copyDirection)));
+DEBUG_SYNC(cuda_stream);
   } else {
     CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(target.data(), source.data(), source.size_bytes(),
                                          static_cast<cudaMemcpyKind>(copyDirection), cuda_stream));
+DEBUG_SYNC(cuda_stream);
     CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(cuda_stream));
   }
   return Status::OK();
@@ -1217,6 +1264,7 @@ Status ExpandBuffer(Stream* ort_stream,
   // Expand from [B, N, S, H] to [B*beam, N, S_max, H]
   const int64_t& num_heads = input_shape[1];
   const int64_t& head_size = input_shape[3];
+std::cout << __FILE__":" << __LINE__ << std::endl;
 
   cuda::KeyCacheExpansionKernelLauncher<CudaT>(reinterpret_cast<const CudaT*>(input_data),
                                                reinterpret_cast<CudaT*>(expanded_data),
@@ -1228,6 +1276,7 @@ Status ExpandBuffer(Stream* ort_stream,
                                                static_cast<int>(head_size),
                                                cuda_stream);
 
+std::cout << __FILE__":" << __LINE__ << std::endl;
   return Status::OK();
 }
 

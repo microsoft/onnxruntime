@@ -3,6 +3,7 @@
 
 #include "contrib_ops/rocm/bert/multihead_attention.h"
 
+#include <fstream>
 #include "contrib_ops/cpu/bert/multihead_attention_helper.h"
 #include "contrib_ops/rocm/bert/attention_impl.h"
 #include "contrib_ops/rocm/bert/batched_gemm_softmax_gemm_permute_pipelines.cuh"
@@ -54,6 +55,16 @@ static constexpr int kPresentOutputIndex = 1;
 REGISTER_DMMHA_KERNEL_TYPED(float);
 REGISTER_DMMHA_KERNEL_TYPED(MLFloat16);
 
+static int64_t counter = -1;
+
+static void DumpTensor(const std::string& prefix, const Tensor* t, int64_t num_bytes) {
+  HIP_CALL_THROW(hipDeviceSynchronize());
+  std::vector<char> tmp(num_bytes);
+  HIP_CALL_THROW(hipMemcpy(tmp.data(), t->DataRaw(), num_bytes, hipMemcpyDeviceToHost));
+  std::ofstream of(prefix + std::to_string(counter) + ".bin", std::ios::binary);
+  of.write(tmp.data(), num_bytes);
+}
+
 template <typename T>
 MultiHeadAttention<T>::MultiHeadAttention(const OpKernelInfo& info)
     : RocmKernel(info) {
@@ -78,6 +89,8 @@ MultiHeadAttention<T>::MultiHeadAttention(const OpKernelInfo& info)
 
 template <typename T>
 Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
+DEBUG_SYNC(0);
+
   ORT_ENFORCE(
       GetTuningContext()->IsTunableOpEnabled(),
       "MultiHeadAttention of ROCm EP is only supported if tunable op is used and tuning is enabled.");
@@ -131,6 +144,7 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "Input sequence length should be 1 to use DecoderMaskedMultiHeadAttention");
   }
+DEBUG_SYNC(0);
 
   TensorShapeVector output_shape(3);
   output_shape[0] = static_cast<int64_t>(attn.batch_size);
@@ -153,13 +167,27 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
       /*qkv=*/{query, key, value},
       /*past=*/{past_key, past_value},
       /*present=*/{present_key, present_value}));
+DEBUG_SYNC(0);
 
   using HipT = typename ToHipType<T>::MappedType;
   using AttentionTunableOp = GemmSoftmaxGemmPermuteTunableOp<HipT>;
   auto workspace_bytes = AttentionTunableOp::GetWorkspaceNumBytes(&attn);
   auto workspace = GetScratchBuffer<void>(workspace_bytes, context->GetComputeStream());
 
+  std::cout << __FILE__ ":" << __LINE__ << " >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> attention mode: " << attn.mode << std::endl;
+  if (attn.mode == BSNH_BLNH_BLNH_BNMH_BNMH_BNMH_BNMH || attn.mode == BSNH_BLNH_BLNH_BNPH_BNPH_BNTH_BNTH ||  attn.mode == BSNH_BNLH_BNLH_NONE_NONE_NONE_NONE) {
+    counter += 1;
+    DumpTensor("query", query, query->SizeInBytes());
+    DumpTensor("key", key, key->SizeInBytes());
+    DumpTensor("value", value, value->SizeInBytes());
+    if (attn.mode != BSNH_BNLH_BNLH_NONE_NONE_NONE_NONE) {
+      DumpTensor("past_key", past_key, past_key->SizeInBytes());
+      DumpTensor("past_value", past_value, past_value->SizeInBytes());
+    }
+  }
+
   hipStream_t stream = Stream(context);
+DEBUG_SYNC(stream);
   if (nullptr != present_key) {  // process past present concat
     Strides dst_strides;
 
@@ -226,19 +254,23 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
       ORT_RETURN_IF_ERROR(LaunchStridedCopy(
           stream, past_key_src, past_shape, past_src_strides.ForBNSHCoord(),
           past_key_dst, dst_strides.ForBNSHCoord(), device_prop.maxThreadsPerBlock));
+DEBUG_SYNC(stream);
     }
     if (past_value_dst) {
       ORT_RETURN_IF_ERROR(LaunchStridedCopy(
           stream, past_value_src, past_shape, past_src_strides.ForBNSHCoord(),
           past_value_dst, dst_strides.ForBNSHCoord(), device_prop.maxThreadsPerBlock));
+DEBUG_SYNC(stream);
     }
 
     ORT_RETURN_IF_ERROR(LaunchStridedCopy(
         stream, add_key_src, add_shape, add_src_strides.ForBNSHCoord(),
         add_key_dst, dst_strides.ForBNSHCoord(), device_prop.maxThreadsPerBlock));
+DEBUG_SYNC(stream);
     ORT_RETURN_IF_ERROR(LaunchStridedCopy(
         stream, add_value_src, add_shape, add_src_strides.ForBNSHCoord(),
         add_value_dst, dst_strides.ForBNSHCoord(), device_prop.maxThreadsPerBlock));
+DEBUG_SYNC(stream);
   }
 
   GemmSoftmaxGemmPermuteParams<HipT> params;
@@ -267,7 +299,21 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
   }
 
   params.workspace_buffer = reinterpret_cast<HipT*>(workspace.get());
-  return AttentionTunableOp{}(&params);
+  auto status = AttentionTunableOp{}(&params);
+DEBUG_SYNC(stream);
+
+  if (attn.mode == BSNH_BLNH_BLNH_BNMH_BNMH_BNMH_BNMH || attn.mode == BSNH_BLNH_BLNH_BNPH_BNPH_BNTH_BNTH || attn.mode == BSNH_BNLH_BNLH_NONE_NONE_NONE_NONE) {
+    std::cout << __FILE__ ":" << __LINE__ << " " << params.Signature() << std::endl;
+    std::cout << __FILE__ ":" << __LINE__ << counter << " kv_seqlen:" << attn.kv_sequence_length << ", past_seqlen:" << attn.past_sequence_length << ", max_seqlen:" << attn.max_sequence_length << ", total_seqlen:" << attn.total_sequence_length << std::endl;
+
+    DumpTensor("output", output, output->SizeInBytes());
+    if (attn.mode != BSNH_BNLH_BNLH_NONE_NONE_NONE_NONE) {
+      DumpTensor("present_key", present_key, present_key->SizeInBytes());
+      DumpTensor("present_value", present_value, present_value->SizeInBytes());
+    }
+  }
+
+  return status;
 }
 
 }  // namespace rocm

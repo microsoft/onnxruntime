@@ -242,15 +242,18 @@ Status BeamSearch::Compute(OpKernelContext* ctx) const {
       ORT_RETURN_IF_ERROR(impl.InitializeCuda(reorder_past_state_func_, cuda_device_prop_, cuda_device_arch_));
 #endif
       ORT_RETURN_IF_ERROR(impl.Initialize());
+std::cout << __FILE__ ":" << __LINE__ << std::endl;
 
       return impl.Execute(init_run_decoder_feeds_fetches_manager_, *decoder_feeds_fetches_manager_);
     }
   }
+std::cout << __FILE__ ":" << __LINE__ << std::endl;
 
   auto* encoder_session_state = ctx_internal->SubgraphSessionState("encoder");
   ORT_ENFORCE(encoder_session_state, "Subgraph SessionState was not found for 'encoder' attribute.");
   ORT_ENFORCE(encoder_feeds_fetches_manager_, "CreateFeedsFetchesManager must be called prior to execution of graph.");
 
+std::cout << __FILE__ ":" << __LINE__ << std::endl;
   if (parameters_.model_type == IGenerationParameters::kModelTypeT5) {
     // Subgraph has constraint that the output is either float or float16
     if (!t5_decoder_subgraph_->IsOutputFloat16()) {
@@ -272,9 +275,11 @@ Status BeamSearch::Compute(OpKernelContext* ctx) const {
       ORT_RETURN_IF_ERROR(impl.InitializeCuda(reorder_past_state_func_, init_cache_indir_func_, cuda_device_prop_, cuda_device_arch_));
 #endif
       ORT_RETURN_IF_ERROR(impl.Initialize());
+std::cout << __FILE__ ":" << __LINE__ << std::endl;
 
       return impl.Execute(*encoder_feeds_fetches_manager_, *decoder_feeds_fetches_manager_);
     } else {
+std::cout << __FILE__ ":" << __LINE__ << std::endl;
       BeamSearchT5<MLFloat16> impl{
           *ctx_internal, *encoder_session_state, *decoder_session_state, *t5_encoder_subgraph_,
           *t5_decoder_subgraph_, thread_pool, ctx->GetComputeStream(), dumper_, parameters,
@@ -294,14 +299,17 @@ Status BeamSearch::Compute(OpKernelContext* ctx) const {
 #endif
       ORT_RETURN_IF_ERROR(impl.Initialize());
 
+std::cout << __FILE__ ":" << __LINE__ << std::endl;
       return impl.Execute(*encoder_feeds_fetches_manager_, *decoder_feeds_fetches_manager_);
     }
   }
 
   // Change the CreateEncoderInputs function for Whisper shapes
+std::cout << __FILE__ ":" << __LINE__ << std::endl;
   if (parameters_.model_type == IGenerationParameters::kModelTypeWhisper) {
     // Subgraph has constraint that the output is either float or float16
     if (!whisper_decoder_subgraph_->IsOutputFloat16()) {
+std::cout << __FILE__ ":" << __LINE__ << std::endl;
       BeamSearchWhisper<float> impl{
           *ctx_internal, *encoder_session_state, *decoder_session_state, *whisper_encoder_subgraph_,
           *whisper_decoder_subgraph_, thread_pool, ctx->GetComputeStream(), dumper_, parameters,
@@ -320,8 +328,10 @@ Status BeamSearch::Compute(OpKernelContext* ctx) const {
 #endif
       ORT_RETURN_IF_ERROR(impl.Initialize());
 
+std::cout << __FILE__ ":" << __LINE__ << std::endl;
       return impl.Execute(*encoder_feeds_fetches_manager_, *decoder_feeds_fetches_manager_);
     } else {
+std::cout << __FILE__ ":" << __LINE__ << std::endl;
       BeamSearchWhisper<MLFloat16> impl{
           *ctx_internal, *encoder_session_state, *decoder_session_state, *whisper_encoder_subgraph_,
           *whisper_decoder_subgraph_, thread_pool, ctx->GetComputeStream(), dumper_, parameters,
@@ -340,6 +350,7 @@ Status BeamSearch::Compute(OpKernelContext* ctx) const {
 #endif
       ORT_RETURN_IF_ERROR(impl.Initialize());
 
+std::cout << __FILE__ ":" << __LINE__ << std::endl;
       return impl.Execute(*encoder_feeds_fetches_manager_, *decoder_feeds_fetches_manager_);
     }
   }

@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <fstream>
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include "cub/util_type.cuh"
@@ -934,6 +935,15 @@ template void KeyCacheExpansionKernelLauncher(const int32_t* key_cache,
                                               int head_size,
                                               cudaStream_t stream);
 
+static int counter = -1;
+static void Dump(const std::string& prefix, const void* t, int64_t num_bytes) {
+  HIP_CALL_THROW(hipDeviceSynchronize());
+  std::vector<char> tmp(num_bytes);
+  HIP_CALL_THROW(hipMemcpy(tmp.data(), t, num_bytes, hipMemcpyDeviceToHost));
+  std::ofstream of(prefix + std::to_string(counter) + ".bin", std::ios::binary);
+  of.write(tmp.data(), num_bytes);
+}
+
 template <typename T>
 __global__ void BufferExpansionKernel(const T* input,
                                       T* output,
@@ -977,9 +987,13 @@ void BufferExpansionKernelLauncher(const T* input,
   } else {
 #endif
     const dim3 grid(batch_size, beam_width, (chunk_size + block.x - 1) / block.x);
+std::cout << __FILE__ ":" << __LINE__ << " block(128), grid(" << grid.x << "," << grid.y << "," << grid.z << ") chunk_size:" << chunk_size << std::endl;
     BufferExpansionKernel<<<grid, block, 0, stream>>>(input,
                                                       output,
                                                       chunk_size);
+    counter += 1;
+    Dump("BufferExpansionKernelLauncher_input", input, 64 * sizeof(T));
+    Dump("BufferExpansionKernelLauncher_output", output, 64 * sizeof(T));
 #ifndef USE_ROCM
   }
 #endif

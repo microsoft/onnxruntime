@@ -93,13 +93,19 @@ struct BeamSearchCpuState : IBeamSearchCpuState {
     size_t sequences_bytes = SafeInt<size_t>(2) * batch_beam_size_ * parameters.max_length;
     sequences_space = AllocateBuffer<int32_t>(allocator, sequences_space_buffer_, sequences_bytes, true /* fill */);
     sequences.Init(sequences_space, batch_beam_size_, parameters.sequence_length, parameters.max_length);
+std::cout << __FILE__ ":" << __LINE__ << std::endl;
 
     if (is_cuda) {
+std::cout << __FILE__ ":" << __LINE__ << std::endl;
       // buffers used by CUDA operator but not by CPU operator.
       topk_scores = AllocateBuffer<float>(allocator, topk_scores_buffer_, 2 * static_cast<size_t>(batch_beam_size_));
       topk_tokens = AllocateBuffer<int32_t>(allocator, topk_tokens_buffer_, 2 * static_cast<size_t>(batch_beam_size_));
       topk_indices = AllocateBuffer<int32_t>(allocator, topk_indices_buffer_, 2 * static_cast<size_t>(batch_beam_size_));
       final_beam_scores = AllocateBuffer<float>(allocator, final_beam_scores_buffer_, batch_beam_size_);
+std::cout << "topk_scores" << topk_scores.data() << " " << topk_scores.size_bytes() << std::endl;
+std::cout << "topk_tokens" << topk_tokens.data() << " " << topk_tokens.size_bytes() << std::endl;
+std::cout << "topk_indices" << topk_indices.data() << " " << topk_indices.size_bytes() << std::endl;
+std::cout << "final_beam_scores" << final_beam_scores.data() << " " << final_beam_scores.size_bytes() << std::endl;
     }
   }
 
