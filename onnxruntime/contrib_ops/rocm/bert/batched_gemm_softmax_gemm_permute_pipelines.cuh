@@ -3,18 +3,6 @@
 
 #pragma once
 
-
-#define DEBUG_SYNC(stream)                                                               \
-  std::cout << __FILE__ ":" << __LINE__ << std::endl;                                    \
-  if (stream != nullptr) {                                                               \
-    HIP_RETURN_IF_ERROR(hipStreamSynchronize(stream));                                 \
-    std::cout << __FILE__ ":" << __LINE__ << " after hipStreamSynchronize" << std::endl; \
-  }                                                                                      \
-  HIP_RETURN_IF_ERROR(hipDeviceSynchronize());                                         \
-  std::cout << __FILE__ ":" << __LINE__ << " after hipDeviceSynchronize" << std::endl;   \
-  HIP_RETURN_IF_ERROR(hipGetLastError());                                              \
-  std::cout << __FILE__ ":" << __LINE__ << " after hipGetLastError" << std::endl;
-
 /* About Computing in these Pipelines
 
 B: batch size of Attention Op. NOTE: To be disambiguated with batch size of GEMMs
@@ -663,7 +651,6 @@ class GemmSoftmaxGemmPermuteTunableOp : public tunable::TunableOp<GemmSoftmaxGem
         reinterpret_cast<T*>(params->workspace_buffer), {lengths.y * lengths.z, lengths.z, 1},  // out desc
         buffer, lengths, strides,                                                               // mask desc
         cvt);
-DEBUG_SYNC(params->stream);
 
     return HIP_CALL(hipGetLastError());
   }
@@ -817,8 +804,6 @@ auto GetCKGemmSoftmaxGemmPermuteTypeStringAndOps() {
       invoker->Run(arg.get(), StreamConfig{params->Stream()});
 
 std::cout << params->Signature() << std::endl;
-DEBUG_SYNC(params->stream);
-
       return Status::OK();
     };
     ret.emplace_back(std::make_pair(std::move(type_string), std::move(op)));

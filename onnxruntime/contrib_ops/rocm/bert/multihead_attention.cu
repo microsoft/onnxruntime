@@ -89,8 +89,6 @@ MultiHeadAttention<T>::MultiHeadAttention(const OpKernelInfo& info)
 
 template <typename T>
 Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
-DEBUG_SYNC(0);
-
   ORT_ENFORCE(
       GetTuningContext()->IsTunableOpEnabled(),
       "MultiHeadAttention of ROCm EP is only supported if tunable op is used and tuning is enabled.");
@@ -144,8 +142,6 @@ DEBUG_SYNC(0);
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "Input sequence length should be 1 to use DecoderMaskedMultiHeadAttention");
   }
-DEBUG_SYNC(0);
-
   TensorShapeVector output_shape(3);
   output_shape[0] = static_cast<int64_t>(attn.batch_size);
   output_shape[1] = static_cast<int64_t>(attn.sequence_length);
@@ -167,8 +163,6 @@ DEBUG_SYNC(0);
       /*qkv=*/{query, key, value},
       /*past=*/{past_key, past_value},
       /*present=*/{present_key, present_value}));
-DEBUG_SYNC(0);
-
   using HipT = typename ToHipType<T>::MappedType;
   using AttentionTunableOp = GemmSoftmaxGemmPermuteTunableOp<HipT>;
   auto workspace_bytes = AttentionTunableOp::GetWorkspaceNumBytes(&attn);
@@ -187,7 +181,6 @@ DEBUG_SYNC(0);
   }
 
   hipStream_t stream = Stream(context);
-DEBUG_SYNC(stream);
   if (nullptr != present_key) {  // process past present concat
     Strides dst_strides;
 
@@ -254,23 +247,19 @@ DEBUG_SYNC(stream);
       ORT_RETURN_IF_ERROR(LaunchStridedCopy(
           stream, past_key_src, past_shape, past_src_strides.ForBNSHCoord(),
           past_key_dst, dst_strides.ForBNSHCoord(), device_prop.maxThreadsPerBlock));
-DEBUG_SYNC(stream);
     }
     if (past_value_dst) {
       ORT_RETURN_IF_ERROR(LaunchStridedCopy(
           stream, past_value_src, past_shape, past_src_strides.ForBNSHCoord(),
           past_value_dst, dst_strides.ForBNSHCoord(), device_prop.maxThreadsPerBlock));
-DEBUG_SYNC(stream);
     }
 
     ORT_RETURN_IF_ERROR(LaunchStridedCopy(
         stream, add_key_src, add_shape, add_src_strides.ForBNSHCoord(),
         add_key_dst, dst_strides.ForBNSHCoord(), device_prop.maxThreadsPerBlock));
-DEBUG_SYNC(stream);
     ORT_RETURN_IF_ERROR(LaunchStridedCopy(
         stream, add_value_src, add_shape, add_src_strides.ForBNSHCoord(),
         add_value_dst, dst_strides.ForBNSHCoord(), device_prop.maxThreadsPerBlock));
-DEBUG_SYNC(stream);
   }
 
   GemmSoftmaxGemmPermuteParams<HipT> params;
@@ -300,7 +289,6 @@ DEBUG_SYNC(stream);
 
   params.workspace_buffer = reinterpret_cast<HipT*>(workspace.get());
   auto status = AttentionTunableOp{}(&params);
-DEBUG_SYNC(stream);
 
   if (attn.mode == BSNH_BLNH_BLNH_BNMH_BNMH_BNMH_BNMH || attn.mode == BSNH_BLNH_BLNH_BNPH_BNPH_BNTH_BNTH || attn.mode == BSNH_BNLH_BNLH_NONE_NONE_NONE_NONE) {
     std::cout << __FILE__ ":" << __LINE__ << " " << params.Signature() << std::endl;
