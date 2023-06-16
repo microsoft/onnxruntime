@@ -32,10 +32,6 @@ namespace test {
 // Doesn't work with ExecutionProviders class and KernelRegistryManager
 IExecutionProvider* TestCPUExecutionProvider();
 
-#ifdef USE_RKNPU
-IExecutionProvider* TestRknpuExecutionProvider();
-#endif
-
 template <typename T>
 inline void CopyVectorToTensor(const std::vector<T>& value, Tensor& tensor) {
   gsl::copy(gsl::make_span(value), tensor.MutableDataAsSpan<T>());

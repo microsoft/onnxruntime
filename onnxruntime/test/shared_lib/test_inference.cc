@@ -2362,7 +2362,7 @@ TEST(CApiTest, TestSharedAllocators) {
     std::vector<const char*> keys, values;
     ASSERT_TRUE(api.CreateAndRegisterAllocatorV2(env_ptr, onnxruntime::kCudaExecutionProvider, cuda_meminfo, arena_cfg, keys.data(), values.data(), 0) == nullptr);
 
-        // Test that duplicates are handled
+    // Test that duplicates are handled
     std::unique_ptr<OrtStatus, decltype(api.ReleaseStatus)> status_releaser(
         api.CreateAndRegisterAllocatorV2(env_ptr, onnxruntime::kCudaExecutionProvider, cuda_meminfo, arena_cfg, keys.data(), values.data(), 0),
         api.ReleaseStatus);

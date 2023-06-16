@@ -113,7 +113,7 @@ Status Environment::RegisterAllocator(AllocatorPtr allocator) {
 Status Environment::CreateAndRegisterAllocator(const OrtMemoryInfo& mem_info, const OrtArenaCfg* arena_cfg) {
   // TODO should we allow sharing of non-CPU allocators?
   if (mem_info.device.Type() != OrtDevice::CPU) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Only CPU devices are supported for now.");
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Only CPU devices are supported. Please call CreateAndRegisterAllocatorV2() for other device.");
   }
 
   // determine if arena should be used
@@ -343,7 +343,7 @@ Status Environment::CreateAndRegisterAllocatorV2(const std::string& provider_typ
     GetProviderInfo_CUDA().CUDAExecutionProviderInfo__FromProviderOptions(options, cuda_ep_info);
     CUDAExecutionProviderExternalAllocatorInfo external_info = cuda_ep_info.external_allocator_info;
     AllocatorPtr allocator_ptr = GetProviderInfo_CUDA().CreateCudaAllocator(static_cast<int16_t>(mem_info.device.Id()), arena_cfg->max_mem, static_cast<ArenaExtendStrategy>(arena_cfg->arena_extend_strategy),
-                                                                            external_info, const_cast<OrtArenaCfg*>(arena_cfg));
+                                                                            external_info, arena_cfg);
     return RegisterAllocator(allocator_ptr);
   }
 #endif

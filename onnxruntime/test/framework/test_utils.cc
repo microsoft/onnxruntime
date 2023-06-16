@@ -11,13 +11,6 @@ IExecutionProvider* TestCPUExecutionProvider() {
   return &cpu_provider;
 }
 
-#ifdef USE_RKNPU
-IExecutionProvider* TestRknpuExecutionProvider() {
-  static RknpuExecutionProvider rknpu_provider;
-  return &rknpu_provider;
-}
-#endif
-
 static void CountOpsInGraphImpl(const Graph& graph, bool recurse_into_subgraphs, OpCountMap& ops) {
   for (auto& node : graph.Nodes()) {
     std::string key = node.Domain() + (node.Domain().empty() ? "" : ".") + node.OpType();
