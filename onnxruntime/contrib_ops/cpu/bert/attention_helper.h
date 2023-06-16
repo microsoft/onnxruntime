@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <limits>
 #include "core/util/math.h"
 #include "core/util/math_cpuonly.h"
 #include "core/common/safeint.h"
@@ -64,7 +65,7 @@ template <typename T>
 void PrepareMask(const int32_t* mask_index,
                  gsl::span<const int64_t> mask_index_dims,
                  T* mask_data,
-                 bool is_unidirectional,
+                 bool causal,
                  int batch_size,
                  int sequence_length,
                  int past_sequence_length,
@@ -85,11 +86,11 @@ void PrepareMask(const int32_t* mask_index,
       p_mask[i] = (mask_index[i] > 0) ? static_cast<T>(0.0f) : static_cast<T>(mask_filter_value);
     }
 
-    if (is_unidirectional) {
+    if (causal) {
       for (int b_i = 0; b_i < batch_size; b_i++) {
         for (int s_i = 0; s_i < sequence_length - 1; s_i++) {
           for (int m_i = past_sequence_length + s_i + 1; m_i < all_sequence_length; m_i++) {
-            p_mask[s_i * all_sequence_length + m_i] += static_cast<T>(mask_filter_value);
+            p_mask[s_i * all_sequence_length + m_i] = std::numeric_limits<T>::lowest();
           }
         }
         p_mask += static_cast<size_t>(sequence_length) * all_sequence_length;
@@ -139,13 +140,14 @@ void PrepareMask(const int32_t* mask_index,
     }
 
     // Apply unidirectional mask.
-    if (is_unidirectional) {
+    if (causal) {
       for (int s_i = 0; s_i < sequence_length - 1; s_i++) {
         for (int m_i = past_sequence_length + s_i + 1; m_i < all_sequence_length; m_i++) {
-          p_mask[s_i * all_sequence_length + m_i] += static_cast<T>(mask_filter_value);
+          p_mask[s_i * all_sequence_length + m_i] = std::numeric_limits<T>::lowest();
         }
       }
     }
+
     ptrdiff_t mask_to_advance = SafeInt<ptrdiff_t>(sequence_length) * all_sequence_length;
     p_mask += mask_to_advance;
   }
