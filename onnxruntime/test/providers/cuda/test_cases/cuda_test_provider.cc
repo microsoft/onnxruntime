@@ -10,13 +10,13 @@
 #include <chrono>
 
 #include "core/common/gsl.h"
+#include "gtest/gtest.h"
 
 #include "core/providers/cuda/cuda_execution_provider.h"
 #include "core/providers/cuda/cuda_execution_provider_info.h"
 #include "core/providers/cuda/cuda_allocator.h"
 #include "core/providers/cuda/gpu_data_transfer.h"
 #include "core/providers/cuda/math/unary_elementwise_ops_impl.h"
-#include "test/providers/cuda/test_cases/all_tests.h"
 
 #ifdef ENABLE_NVTX_PROFILE
 #include "core/providers/cuda/nvtx_profile.h"
@@ -101,28 +101,13 @@ struct ProviderInfo_CUDA_TestImpl : ProviderInfo_CUDA {
     // TestAll is the entry point of CUDA EP's insternal tests.
     // Those internal tests are not directly callable from onnxruntime_test_all
     // because CUDA EP is a shared library now.
-    // This is a test provider that implements all the test cases.
+    // Instead, this is a test provider that implements all the test cases.
     // onnxruntime_test_all is calling this function through TryGetProviderInfo_CUDA_Test.
-
-    cuda::test::TestDeferredRelease();
-    cuda::test::TestDeferredReleaseWithoutArena();
-
-    cuda::test::TestBeamSearchTopK();
-    cuda::test::TestGreedySearchTopOne();
-
-    cuda::test::CudaGemmOptions_TestDefaultOptions();
-    cuda::test::CudaGemmOptions_TestCompute16F();
-    cuda::test::CudaGemmOptions_NoReducedPrecision();
-    cuda::test::CudaGemmOptions_Pedantic();
-    cuda::test::CudaGemmOptions_Compute16F_Pedantic();
-    cuda::test::CudaGemmOptions_Compute16F_NoReducedPrecision();
-
-    cuda::test::ReductionFunctionsTest_ReduceRowToScalar();
-    cuda::test::ReductionFunctionsTest_ReduceRowsToRow();
-    cuda::test::ReductionFunctionsTest_ReduceColumnsToColumn();
-    cuda::test::ReductionFunctionsTest_BufferOffsets();
-    cuda::test::ReductionFunctionsTest_InvalidBufferSize();
-    cuda::test::ReductionFunctionsTest_GetApplicableMatrixReduction();
+    int argc = 1;
+    std::string mock_exe_name = "onnxruntime_providers_cuda_ut";
+    char* argv[] = {const_cast<char*>(mock_exe_name.data())};
+    ::testing::InitGoogleTest(&argc, argv);
+    ORT_ENFORCE(RUN_ALL_TESTS() == 0);
   }
 };
 ProviderInfo_CUDA_TestImpl g_test_info;

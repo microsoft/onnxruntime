@@ -6,7 +6,6 @@
 //  1. slow down performance critical applications and
 //  2. increase binary size of ORT.
 #include <iostream>
-#include "test/providers/cuda/test_cases/all_tests.h"
 #include "core/providers/cuda/cuda_execution_provider.h"
 #include "core/providers/cuda/cuda_allocator.h"
 #include "core/providers/cuda/cuda_stream_handle.h"
@@ -17,7 +16,7 @@ namespace cuda {
 namespace test {
 // TODO: Since the "DeferredRelease" has been migrated to CudaStream class,
 // we should migrate this test from CudaEP unit test to CudaStream unit test.
-void TestDeferredRelease() {
+TEST(TestDeferredRelease, WithArena) {
   // Create CUDA EP.
   CUDAExecutionProviderInfo info;
   CUDAExecutionProvider ep(info);
@@ -48,7 +47,7 @@ void TestDeferredRelease() {
   ORT_THROW_IF_ERROR(ep.OnRunEnd(true));
 }
 
-void TestDeferredReleaseWithoutArena() {
+TEST(TestDeferredRelease, WithoutArena) {
   // Create CUDA EP.
   CUDAExecutionProviderInfo info;
   CUDAExecutionProvider ep(info);
