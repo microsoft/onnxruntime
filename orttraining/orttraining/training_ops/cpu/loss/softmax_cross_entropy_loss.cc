@@ -149,7 +149,7 @@ Status SoftmaxCrossEntropyLoss<T1, T2>::Compute(OpKernelContext* context) const 
   const T2* label_data = label.template Data<T2>();
   T1* loss_data = loss->template MutableData<T1>();
   std::vector<T1> shifted_logit(n_d_c);
-  ORT_ENFORCE(n_d_c <= std::numeric_limits<Eigen::Index>::max());
+  ORT_ENFORCE(n_d_c <= static_cast<uint64_t>(std::numeric_limits<Eigen::Index>::max()));
   ComputeShareSoftmaxCrossEntropyCPU(n_d, c, static_cast<Eigen::Index>(n_d_c), logit_data, shifted_logit.data(),
                                      log_prob_data);
   std::vector<T1> loss_sample_buffer(0);

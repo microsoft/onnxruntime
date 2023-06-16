@@ -85,7 +85,7 @@ Status SoftmaxCrossEntropy<T>::Compute(OpKernelContext* context) const {
   // where shifted_logit = logit - max_logit
   // along classes
 
-  ORT_ENFORCE(nd <= std::numeric_limits<Eigen::Index>::max());
+  ORT_ENFORCE(nd <= static_cast<uint64_t>(std::numeric_limits<Eigen::Index>::max()));
   ComputeShareSoftmaxCrossEntropyCPU(n, d, static_cast<Eigen::Index>(nd),
                                      logit_data,
                                      shifted_logit.data(),
@@ -195,7 +195,7 @@ Status SparseSoftmaxCrossEntropy<T>::Compute(OpKernelContext* context) const {
   // computation begins here
   std::vector<float> shifted_logit(nd);
 
-  ORT_ENFORCE(nd <= std::numeric_limits<Eigen::Index>::max());
+  ORT_ENFORCE(nd <= static_cast<uint64_t>(std::numeric_limits<Eigen::Index>::max()));
   ComputeShareSoftmaxCrossEntropyCPU(n, d, static_cast<Eigen::Index>(nd), logit_data,
                                      shifted_logit.data(),
                                      log_prob_data);

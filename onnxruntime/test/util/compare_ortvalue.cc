@@ -69,8 +69,9 @@ const char* ElementTypeToString(MLDataType type) {
  * @brief Check if two values are closely matched with given tolerance.
 
  * Definition of closely match:
- * > If diff is nan, then real_value and expected_value must both be nan.
- * > If diff is inf, then real_value and expected_value must both be inf with same sign.
+ * > If any of real_value and expected_value is nan, real_value and expected_value must both be nan.
+ * > If any of real_value and expected_value is inf, then real_value and expected_value
+ *   must both be inf with same sign.
  * > Otherwise, diff <= tol.
 
  * @param real_value The value to be checked.
@@ -81,10 +82,10 @@ const char* ElementTypeToString(MLDataType type) {
  */
 template <typename T>
 bool IsResultCloselyMatch(const T& real_value, const T& expected_value, const double diff, const double tol) {
-  if (std::isnan(diff))
+  if (std::isnan(real_value) || std::isnan(expected_value))
     return std::isnan(real_value) && std::isnan(expected_value);  // not possible both are not nan if diff is nan.
 
-  if (std::isinf(diff)) {
+  if (std::isinf(real_value) || std::isinf(expected_value)) {
     if (std::isinf(real_value) && std::isinf(expected_value))
       return (real_value > 0 && expected_value > 0) || (real_value < 0 && expected_value < 0);
     else
