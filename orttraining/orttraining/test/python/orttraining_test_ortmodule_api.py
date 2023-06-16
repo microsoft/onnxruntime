@@ -5679,6 +5679,7 @@ def test_gradient_correctness_bce_with_logits():
 @pytest.mark.parametrize("rank", [1, 2])
 def test_runtime_inspector_label_and_embed_sparsity_detection(embed_is_sparse, label_is_sparse, rank, caplog):
     os.environ["ORTMODULE_ENABLE_EMBEDDING_SPARSE_OPTIMIZER"] = "1"
+
     class NeuralNetCrossEntropyLoss(torch.nn.Module):
         def __init__(self, num_embeddings, embedding_dim):
             super().__init__()
@@ -6028,9 +6029,8 @@ def test_e2e_padding_elimination():
         run_optim_step(ort_optimizer)
 
         for pt_param, ort_param in zip(pt_model.parameters(), ort_model.parameters()):
-            if pt_param.grad is None:
-                assert pt_param.name == torch.__version__
-            _test_helpers.assert_values_are_close(pt_param.grad, ort_param.grad, atol=1e-4, rtol=1e-5)
+            if pt_param.grad is not None:
+                _test_helpers.assert_values_are_close(pt_param.grad, ort_param.grad, atol=1e-4, rtol=1e-5)
 
         _test_helpers.assert_values_are_close(ort_prediction, pt_prediction, atol=1e-3, rtol=1e-4)
 

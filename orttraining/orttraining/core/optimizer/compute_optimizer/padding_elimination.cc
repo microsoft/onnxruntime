@@ -103,7 +103,7 @@ NodeArg* InsertNodesForInput(Graph& graph,
   if (input_shape->dim(0).has_dim_value() && input_shape->dim(1).has_dim_value()) {
     flattened_shape.add_dim()->set_dim_value(input_shape->dim(0).dim_value() * input_shape->dim(1).dim_value());
   } else {
-    std::string token_dim_name = MakeString("valid_token_count_", utils::GetRandomSeed());
+    std::string token_dim_name = MakeString("total_token_count_", utils::GetRandomSeed());
     flattened_shape.add_dim()->set_dim_param(token_dim_name);
   }
   for (int k = 2; k < input_shape->dim_size(); k++) {
@@ -380,7 +380,7 @@ void IterateSubgraphFromNode(Graph& graph,
         candidate_outputs.insert(cur);
         continue;
       } else {
-        ORT_THROW("");
+        ORT_THROW("PaddingElimination::found matmul node without input in subgraph.");
       }
     } else if (graph_utils::IsSupportedOptypeVersionAndDomain(*cur, "PythonOp", {1}, kMSDomain)) {
       if (subgraph.find(cur->MutableInputDefs()[0]) == subgraph.end()) {
@@ -422,6 +422,8 @@ Status PaddingElimination::ApplyImpl(Graph& graph, bool& modified, int graph_lev
   // input args of nodes in candidate_outputs, if in subgraph, should be added GatherGrad + Reshape
   // record node that its input args may be output of the subgraph into candidate_outputs
   std::unordered_set<Node*> candidate_outputs;
+  int64_t handled_input_count = 0;
+  int64_t handled_output_count = 0;
 
   // Find the valid embedding node
   for (auto node_index : node_topology_list) {
@@ -436,9 +438,7 @@ Status PaddingElimination::ApplyImpl(Graph& graph, bool& modified, int graph_lev
         node.InputDefs()[1]->Exists() &&
         graph_utils::IsGraphInput(graph, node.InputDefs()[1]) &&
         node.InputDefs()[1]->Shape() &&
-        node.InputDefs()[1]->Shape()->dim_size() >= 2 &&
-        node.InputDefs()[1]->Shape()->dim(0).has_dim_param() &&
-        node.InputDefs()[1]->Shape()->dim(1).has_dim_param()) {
+        node.InputDefs()[1]->Shape()->dim_size() >= 2) {
       if (std::find(sparse_embedding_input_names_.begin(), sparse_embedding_input_names_.end(),
                     node.InputDefs()[1]->Name()) == sparse_embedding_input_names_.end()) {
         LOG_DEBUG_INFO(logger, "Skip node " + node.Name() + "(" + node.OpType() +
@@ -503,18 +503,19 @@ Status PaddingElimination::ApplyImpl(Graph& graph, bool& modified, int graph_lev
   ORT_ENFORCE(graph.SetOpSchemaFromRegistryForNode(reshape_node), "Failed to set op schema for " + reshape_node.Name());
   reshape_node.SetExecutionProviderType(embedding_node->GetExecutionProviderType());
 
-  std::string token_dim_name = MakeString("valid_token_count_", utils::GetRandomSeed());
   NodeArg* squeeze_out_arg = onnxruntime::optimizer::compute_optimizer::InsertNodesForValidIndices(
       graph, reshape_output_args[0], embedding_node->MutableInputDefs()[2], embedding_node->GetExecutionProviderType());
 
   // Add flatten pattern to each input node of the subgraph
   // to flattern the shape of [batch_size, seqlen, ...] to [valid_token_count, ...]
   InsertNodesForInput(graph, *embedding_node, 1, squeeze_out_arg, logger);
+  handled_input_count++;
   modified = true;
   for (auto& node : candidate_inputs) {
     for (size_t i = 0; i < node->InputDefs().size(); ++i) {
       if (subgraph.find(node->MutableInputDefs()[i]) == subgraph.end()) {
         InsertNodesForInput(graph, *node, i, squeeze_out_arg, logger);
+        handled_input_count++;
       }
     }
   }
@@ -551,10 +552,12 @@ Status PaddingElimination::ApplyImpl(Graph& graph, bool& modified, int graph_lev
         NodeArg* shape_arg_for_gather_grad = UpdateShape(
             graph, node->MutableInputDefs()[i], first_dim, first_index_arg, *node);
         InsertNodesForOutput(graph, *node, i, squeeze_out_arg, shape_arg_for_gather_grad, first_two_dims_arg, logger);
+        handled_output_count++;
       }
     }
   }
 
+  std::string token_dim_name = MakeString("valid_token_count_", utils::GetRandomSeed());
   // Update shape for each edge of the subgraph
   for (auto edge : subgraph) {
     ONNX_NAMESPACE::TensorShapeProto flattened_shape;
@@ -566,6 +569,8 @@ Status PaddingElimination::ApplyImpl(Graph& graph, bool& modified, int graph_lev
       edge->SetShape(flattened_shape);
     }
   }
+  LOGS(logger, INFO) << "PaddingElimination::Total handled input node count:  " << handled_input_count
+                     << " output node count: " << handled_output_count;
   return Status::OK();
 }
 }  // namespace onnxruntime
