@@ -410,7 +410,18 @@ static void TestSCELoss(const char* op, int opset_version,
 
   std::vector<float> X_data, weight_data;
   std::vector<int64_t> index_data;
-  PrepareSCELossTestData(X_dims, index_dims, weight_dims, ignore_index, X_data, index_data, weight_data);
+
+  if (std::is_same<T, MLFloat16>::value) {
+    std::vector<float> X_data_temp;
+    std::vector<float> weight_data_temp;
+    PrepareSCELossTestData(X_dims, index_dims, weight_dims, ignore_index, X_data_temp, index_data, weight_data_temp);
+    X_data.resize(X_data_temp.size());
+    weight_data.resize(weight_data_temp.size());
+    ClipFloatToMLFloat16Range(X_data_temp.data(), X_data.data(), X_data.size());
+    ClipFloatToMLFloat16Range(weight_data_temp.data(), weight_data.data(), weight_data.size());
+  } else {
+    PrepareSCELossTestData(X_dims, index_dims, weight_dims, ignore_index, X_data, index_data, weight_data);
+  }
 
   // Run on CPU using float input and output
   // (because the CPU implementation doesn't support variant input output types.)
@@ -645,7 +656,7 @@ TEST(CrossEntropyTest, DISABLED_SoftmaxCrossEntropyLoss_LargeSizeTensor) {
 }
 
 #ifndef _WIN32
-// Disable the large size tests because it is too slow, running on Linux would be enough.
+// Disable the large size tests for Windows because it is too slow, running on Linux would be enough.
 TEST(CrossEntropyTest, SoftmaxCrossEntropyLoss_LargeSizeTensorInt32Index) {
   // The element count is around the upper limit of int32_t.
   constexpr int64_t bsz = 419430;
@@ -659,7 +670,7 @@ TEST(CrossEntropyTest, SoftmaxCrossEntropyLoss_LargeSizeTensorInt32Index) {
   std::vector<int64_t> log_prob_dims{bsz, vocab_size};
 
   constexpr std::int64_t ignore_index = -1;
-  constexpr double error_tolerance = 5e-2;
+  constexpr double error_tolerance = 1e-3;
   // Only test reduce mean because it's too costly to run more tests.
   TestSCELoss<MLFloat16, MLFloat16>("SoftmaxCrossEntropyLossInternal", 1, onnxruntime::kMSDomain,
                                     &X_dims, &index_dims, &weight_dims, &Y_dims, &log_prob_dims, "mean",
@@ -678,7 +689,7 @@ TEST(CrossEntropyTest, SoftmaxCrossEntropyLoss_LargeSizeTensorUInt64Index) {
   std::vector<int64_t> log_prob_dims{bsz, vocab_size};
 
   constexpr std::int64_t ignore_index = -1;
-  constexpr double error_tolerance = 5e-2;
+  constexpr double error_tolerance = 1e-3;
   // Only test reduce mean because it's too costly to run more tests.
   TestSCELoss<MLFloat16, MLFloat16>("SoftmaxCrossEntropyLossInternal", 1, onnxruntime::kMSDomain,
                                     &X_dims, &index_dims, &weight_dims, &Y_dims, &log_prob_dims, "mean",
@@ -1093,7 +1104,7 @@ TEST(CrossEntropyTest, SoftmaxCrossEntropyLossInternalGrad_TinySizeTensorFloatIn
 }
 
 #ifndef _WIN32
-// Disable the large size tests because it is too slow, running on Linux would be enough.
+// Disable the large size tests for Windows because it is too slow, running on Linux would be enough.
 TEST(CrossEntropyTest, SoftmaxCrossEntropyLossInternalGrad_LargeSizeTensorInt32Index) {
   // The element count is around the upper limit of int32_t.
   constexpr int64_t bsz = 419430;

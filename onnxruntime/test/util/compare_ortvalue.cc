@@ -65,13 +65,33 @@ const char* ElementTypeToString(MLDataType type) {
   return DataTypeImpl::ToString(type);
 }
 
+/**
+ * @brief Check if two values are closely matched with given tolerance.
+
+ * Definition of closely match:
+ * > If diff is nan, then real_value and expected_value must both be nan.
+ * > If diff is inf, then real_value and expected_value must both be inf with same sign.
+ * > Otherwise, diff <= tol.
+
+ * @param real_value The value to be checked.
+ * @param expected_value The baseline value used to check against.
+ * @param diff The absolute difference calculated by the caller from real_value and expected_value.
+ * @param tol The absolute tolerance.
+ * @return True when closely matched; False otherwise.
+ */
 template <typename T>
-bool IsResultCloselyMatch(const T& outvalue, const T& expected_value, const double diff, const double tol) {
-  if (diff > tol) return false;
-  if (std::isnan(diff) && !(std::isnan(outvalue) && std::isnan(expected_value)) &&
-      !(std::isinf(outvalue) && std::isinf(expected_value)))
-    return false;
-  return true;
+bool IsResultCloselyMatch(const T& real_value, const T& expected_value, const double diff, const double tol) {
+  if (std::isnan(diff))
+    return std::isnan(real_value) && std::isnan(expected_value);  // not possible both are not nan if diff is nan.
+
+  if (std::isinf(diff)) {
+    if (std::isinf(real_value) && std::isinf(expected_value))
+      return (real_value > 0 && expected_value > 0) || (real_value < 0 && expected_value < 0);
+    else
+      return false;
+  }
+
+  return (diff <= tol);
 }
 
 template <typename FLOAT_TYPE>

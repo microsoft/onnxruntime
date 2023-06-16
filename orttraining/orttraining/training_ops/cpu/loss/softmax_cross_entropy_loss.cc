@@ -5,7 +5,6 @@
 #include "core/util/math_cpuonly.h"
 #include "core/providers/common.h"
 #include <unsupported/Eigen/SpecialFunctions>
-#include "core/util/math.h"
 #include "core/providers/cpu/math/matmul_helper.h"
 #include "core/providers/cpu/tensor/transpose.h"
 #include "core/providers/cpu/controlflow/scan_utils.h"
@@ -150,7 +149,9 @@ Status SoftmaxCrossEntropyLoss<T1, T2>::Compute(OpKernelContext* context) const 
   const T2* label_data = label.template Data<T2>();
   T1* loss_data = loss->template MutableData<T1>();
   std::vector<T1> shifted_logit(n_d_c);
-  ComputeShareSoftmaxCrossEntropyCPU(n_d, c, n_d_c, logit_data, shifted_logit.data(), log_prob_data);
+  ORT_ENFORCE(n_d_c <= std::numeric_limits<Eigen::Index>::max());
+  ComputeShareSoftmaxCrossEntropyCPU(n_d, c, static_cast<Eigen::Index>(n_d_c), logit_data, shifted_logit.data(),
+                                     log_prob_data);
   std::vector<T1> loss_sample_buffer(0);
   T1* loss_sample;
   if (reduction_ == ReductionType::NONE) {
