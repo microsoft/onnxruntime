@@ -5,7 +5,7 @@ parameters:
 
 steps:
 - ${{ if eq(parameters['DoEsrp'], 'true') }}:
-  - task: SFP.build-tasks.custom-build-task-1.EsrpCodeSigning@2
+  - task: SFP.build-tasks.custom-build-task-1.EsrpCodeSigning@3
     displayName: ${{ parameters.DisplayName }}
     inputs:
       ConnectedServiceName: 'OnnxRuntime CodeSign 20190817'
