@@ -239,6 +239,12 @@ static void RunAttentionTest(
       tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
     }
 
+    if (enable_rocm) {
+      std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+      execution_providers.push_back(DefaultRocmExecutionProvider(/*test_tunable_op=*/true));
+      tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+    }
+
     if (enable_cpu) {
       std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
       execution_providers.push_back(DefaultCpuExecutionProvider());
