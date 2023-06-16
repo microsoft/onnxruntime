@@ -170,15 +170,6 @@ namespace Microsoft.ML.OnnxRuntime
 
             Shape = new long[(uint)dimCount];
             NativeApiStatus.VerifySuccess(NativeMethods.OrtGetDimensions(handle, Shape, dimCount));
-
-            IntPtr[] dimPtrs = new IntPtr[(uint)dimCount];
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtGetSymbolicDimensions(handle, dimPtrs, dimCount));
-
-            SymbolicDimensions = new string[(uint)dimCount];
-            for (int i = 0; i < dimPtrs.Length; ++i)
-            {
-                SymbolicDimensions[i] = NativeOnnxValueHelper.StringFromNativeUtf8(dimPtrs[i]);
-            }
         }
 
         /// <summary>
@@ -209,13 +200,6 @@ namespace Microsoft.ML.OnnxRuntime
         /// </summary>
         /// <returns>dim count</returns>
         public int DimensionsCount { get { return Shape.Length; } }
-
-        /// <summary>
-        /// Tensor symbolic dimensions. Shape to fetch integer dimensions.
-        /// Positions that do not have symbolic dimensions will have empty strings.
-        /// </summary>
-        /// <value>string[]</value>
-        public string[] SymbolicDimensions { get; private set; }
 
         /// <summary>
         /// Tensor integer dimensions. Symbolic dimensions are represented as -1.

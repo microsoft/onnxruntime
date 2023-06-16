@@ -612,21 +612,7 @@ namespace Microsoft.ML.OnnxRuntime
             var disposableHandles = RunImpl(runOptions, inputNamesArray, inputHandlesArray, outputNamesArray);
             try
             {
-                var outputValues = new DisposableList<OrtValue>(disposableHandles.Span.Length);
-                try
-                {
-                    for (int i = 0; i < disposableHandles.Span.Length; i++)
-                    {
-                        outputValues.Add(new OrtValue(disposableHandles.Span[i]));
-                        disposableHandles.Span[i] = IntPtr.Zero;
-                    }
-                    return outputValues;
-                }
-                catch (Exception)
-                {
-                    outputValues.Dispose();
-                    throw;
-                }
+                return CreateDisposableResult(disposableHandles);
             }
             finally
             {
@@ -661,21 +647,7 @@ namespace Microsoft.ML.OnnxRuntime
             var disposableHandles = RunImpl(runOptions, inputNamesArray, inputHandlesArray, outputNamesArray);
             try
             {
-                var outputValues = new DisposableList<OrtValue>(disposableHandles.Span.Length);
-                try
-                {
-                    for (int i = 0; i < disposableHandles.Span.Length; i++)
-                    {
-                        outputValues.Add(new OrtValue(disposableHandles.Span[i]));
-                        disposableHandles.Span[i] = IntPtr.Zero;
-                    }
-                    return outputValues;
-                }
-                catch (Exception)
-                {
-                    outputValues.Dispose();
-                    throw;
-                }
+                return CreateDisposableResult(disposableHandles);
             }
             finally
             {
@@ -683,6 +655,24 @@ namespace Microsoft.ML.OnnxRuntime
             }
         }
 
+        private static IDisposableReadOnlyCollection<OrtValue> CreateDisposableResult(DisposableOrtValueHandleArray disposableHandles)
+        {
+            var outputValues = new DisposableList<OrtValue>(disposableHandles.Span.Length);
+            try
+            {
+                for (int i = 0; i < disposableHandles.Span.Length; i++)
+                {
+                    outputValues.Add(new OrtValue(disposableHandles.Span[i]));
+                    disposableHandles.Span[i] = IntPtr.Zero;
+                }
+                return outputValues;
+            }
+            catch (Exception)
+            {
+                outputValues.Dispose();
+                throw;
+            }
+        }
 
         /// <summary>
         /// The API takes collections of inputNames/inputValues and collections of outputNames/outputValues.
