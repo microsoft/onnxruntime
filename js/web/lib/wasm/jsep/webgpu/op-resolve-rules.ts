@@ -31,7 +31,7 @@ export const WEBGPU_OP_RESOLVE_RULES: Map<string, OperatorImplementation> = new 
   ['ClipV10', [unaryOps.clipV10]],
   ['Clip', [unaryOps.clip]],
   ['Conv', [conv, parseConvAttributes]],
-  ['ConvTranspose', [convTranspose, parseConvAttributes]],
+  ['ConvTranspose', [convTranspose, parseConvTransposeAttributes]],
   ['Cos', [unaryOps.cos]],
   ['Cosh', [unaryOps.cosh]],
   ['Div', [binaryOps.div]],

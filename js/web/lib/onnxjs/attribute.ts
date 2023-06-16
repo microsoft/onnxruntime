@@ -12,6 +12,7 @@ import ortFbs = onnxruntime.experimental.fbs;
 
 export declare namespace Attribute {
   export interface DataTypeMap {
+    boolean: boolean;
     float: number;
     int: number;
     string: string;
@@ -52,6 +53,11 @@ export class Attribute {
   delete(key: string): void {
     this._attributes.delete(key);
   }
+
+  getBoolean(key: string, defaultValue?: Attribute.DataTypeMap['boolean']) {
+    return this.get(key, 'boolean', defaultValue);
+  }
+
   getFloat(key: string, defaultValue?: Attribute.DataTypeMap['float']) {
     return this.get(key, 'float', defaultValue);
   }
