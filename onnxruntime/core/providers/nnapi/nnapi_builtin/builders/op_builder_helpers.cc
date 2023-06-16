@@ -924,12 +924,12 @@ Status GetAxesForSqueezeAndUnSqueeze(ModelBuilder& model_builder, const NodeUnit
       const auto& axes_tensor = *initializers.at(node_unit.Inputs()[1].node_arg.Name());
       Initializer unpacked_tensor(axes_tensor);
       auto raw_axes = unpacked_tensor.DataAsSpan<int64_t>();
-      axes = OnnxIndexesToNnapi(raw_axes, std::nullopt);
+      axes = OnnxAxesToNnapi(raw_axes, std::nullopt);
     }
   } else {
     NodeAttrHelper helper(node_unit);
     const auto& axes_int64 = helper.Get("axes", std::vector<int64_t>{});
-    axes = OnnxIndexesToNnapi(gsl::span<const int64_t>(axes_int64.data(), axes_int64.size()), std::nullopt);
+    axes = OnnxAxesToNnapi(gsl::span<const int64_t>(axes_int64.data(), axes_int64.size()), std::nullopt);
   }
 
   return Status::OK();

@@ -84,12 +84,12 @@ Status ReductionOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, co
       const auto& axes_tensor = *initializers.at(inputs[1].node_arg.Name());
       Initializer unpacked_tensor(axes_tensor);
       auto raw_axes = unpacked_tensor.DataAsSpan<int64_t>();
-      axes = OnnxIndexesToNnapi(raw_axes, input_shape.size());
+      axes = OnnxAxesToNnapi(raw_axes, input_shape.size());
     }
   } else {
     // For ReduceMean-13 or earlier, retrieve axes from the attribute
     const auto& axes_int64 = helper.Get("axes", std::vector<int64_t>{});
-    axes = OnnxIndexesToNnapi(gsl::span<const int64_t>(axes_int64.data(), axes_int64.size()), input_shape.size());
+    axes = OnnxAxesToNnapi(gsl::span<const int64_t>(axes_int64.data(), axes_int64.size()), input_shape.size());
   }
 
   if (axes.empty() && !noop_with_empty_axes) {

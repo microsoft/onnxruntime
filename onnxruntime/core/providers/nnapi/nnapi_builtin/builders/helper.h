@@ -174,7 +174,7 @@ bool CheckIsInitializer(const InitializedTensorSet& initializers, const NodeUnit
 
 // Convert ONNX int64 input to NNAPI int32 type input and optionally handle negative axis if needed
 // Mostly used in handling `axes` input for now
-std::vector<int32_t> OnnxIndexesToNnapi(gsl::span<const int64_t> onnx_indexes, std::optional<size_t> input_size);
+std::vector<int32_t> OnnxAxesToNnapi(gsl::span<const int64_t> onnx_axes, std::optional<size_t> input_rank);
 
 }  // namespace nnapi
 }  // namespace onnxruntime
