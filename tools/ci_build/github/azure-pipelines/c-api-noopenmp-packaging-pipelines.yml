@@ -73,14 +73,8 @@ resources:
     ref: 5eda9aded5462201e6310105728d33016e637ea7
 
 variables:
-- name: ReleaseVersionSuffix
-  value: ''
-
-variables:
-  - name: specificArtifact
-    value: ${{ parameters.SpecificArtifact }}
-  - name: otherRunId
-    value: ${{ parameters.BuildId }}
+  - name: ReleaseVersionSuffix
+    value: ''
 
 stages:
 - stage: Setup
