@@ -93,14 +93,13 @@ class WhisperHelper:
         if state_dict_path:
             model.load_state_dict(torch.load(state_dict_path), strict=False)
 
-        decoder = WhisperDecoder(model, None, model.config)
+        decoder = WhisperDecoder(model, model.config)
         decoder.eval().to(device)
 
         if merge_encoder_and_decoder_init:
             encoder_decoder_init = WhisperEncoderDecoderInit(
                 model,
                 model,
-                None,
                 model.config,
                 decoder_start_token_id=None,
             )
@@ -108,7 +107,7 @@ class WhisperHelper:
         else:
             encoder = WhisperEncoder(model.model.encoder, model.config)
             encoder.eval().to(device)
-            decoder_init = WhisperDecoderInit(model.decoder, None, model.config)
+            decoder_init = WhisperDecoderInit(model.decoder, model.config)
             decoder_init.eval().to(device)
             return {
                 "encoder": encoder,
