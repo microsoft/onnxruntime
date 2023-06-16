@@ -1676,6 +1676,20 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
           std::iota(std::begin(subgraph_nodes_vector), std::end(subgraph_nodes_vector), 0);
           SubGraphCollection_t parser_subgraph_nodes_vector = {{subgraph_nodes_vector, false}};
           bool subgraph_early_termination = false;
+
+          // Another subgraph of "If" control flow has been parsed by GetCapability before and all subgraph's nodes assigned to TRT EP.
+          if (AllNodesAssignedToSpecificEP(*sub_graph_veiwer, kTensorrtExecutionProvider)) {
+            all_subgraph_are_supported = true;
+            break;
+          } 
+          // Another subgraph of "If" control flow has been parsed by GetCapability and not all subgraph's nodes assigned to TRT EP.
+          // (Note: GetExecutionProviderType() returns "" meaning node has not yet been assigned to any EPs)
+          else if (!AllNodesAssignedToSpecificEP(*sub_graph_veiwer, "")) {
+            all_subgraph_are_supported = false;
+            break;
+          }
+
+          // Another subgraph of "If" control flow has not yet been parsed by GetCapability.
           subgraph_supported_nodes_vector = GetSupportedList(parser_subgraph_nodes_vector, 0, max_partition_iterations_, *sub_graph_veiwer, &subgraph_early_termination, subgraph_context_map);
           all_subgraphs_are_supported = IsSubGraphFullySupported(subgraph_supported_nodes_vector, number_of_ort_subgraph_nodes);
           break;
