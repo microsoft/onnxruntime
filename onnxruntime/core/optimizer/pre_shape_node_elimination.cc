@@ -1,3 +1,6 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
 #include "core/common/logging/logging.h"
 #include "core/optimizer/rewrite_rule.h"
 #include "core/optimizer/pre_shape_node_elimination.h"
@@ -30,7 +33,11 @@ Status PreShapeNodeElimination::Apply(Graph& graph, Node& node, RewriteRuleEffec
   return Status::OK();
 }
 
-bool PreShapeNodeElimination::SatisfyCondition(const Graph& graph, const Node& node, const logging::Logger& logger) const {
+bool PreShapeNodeElimination::SatisfyCondition(const Graph& graph, const Node& node, const logging::Logger& logger) const {    
+  if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "Cast", {13, 15, 19})) {
+    return false;
+  }
+
   if (!graph_utils::CanRemoveNode(graph, node, logger)) {
     return false;
   }
