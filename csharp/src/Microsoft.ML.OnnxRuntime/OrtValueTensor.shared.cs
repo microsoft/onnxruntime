@@ -4,9 +4,6 @@
 using Microsoft.ML.OnnxRuntime.Tensors;
 using System;
 using System.Buffers;
-using System.Diagnostics;
-using System.Runtime.InteropServices;
-using System.Text;
 
 namespace Microsoft.ML.OnnxRuntime
 {

@@ -2,13 +2,9 @@
 // Licensed under the MIT License.
 
 using Microsoft.ML.OnnxRuntime.Tensors;
-using Microsoft.Win32.SafeHandles;
-using Newtonsoft.Json;
 using System;
-using System.Diagnostics;
 using System.Linq;
 using System.Runtime.InteropServices;
-using System.Xml.Linq;
 using Xunit;
 using static Microsoft.ML.OnnxRuntime.Tests.InferenceTest;
 

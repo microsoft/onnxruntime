@@ -3,10 +3,8 @@
 
 using Microsoft.ML.OnnxRuntime.Tensors;
 using System;
-using System.Buffers;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Linq;
 
 namespace Microsoft.ML.OnnxRuntime
 {

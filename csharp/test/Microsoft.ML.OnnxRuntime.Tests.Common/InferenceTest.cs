@@ -2,7 +2,6 @@
 // Licensed under the MIT License.
 
 using Microsoft.ML.OnnxRuntime.Tensors;
-using Newtonsoft.Json;
 using System;
 using System.Collections.Generic;
 using System.Linq;

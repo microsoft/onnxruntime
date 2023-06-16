@@ -3,7 +3,6 @@
 
 using Microsoft.ML.OnnxRuntime.Tensors;
 using System;
-using System.Buffers;
 
 namespace Microsoft.ML.OnnxRuntime
 {

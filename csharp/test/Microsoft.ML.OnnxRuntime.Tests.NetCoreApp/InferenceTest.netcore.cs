@@ -1,11 +1,10 @@
-﻿using System;
+﻿using Microsoft.ML.OnnxRuntime.Tensors;
+using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
-using Microsoft.ML.OnnxRuntime.Tensors;
 using Xunit;
 
 namespace Microsoft.ML.OnnxRuntime.Tests

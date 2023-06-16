@@ -8,7 +8,6 @@ using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text;
 using Xunit;
-using Xunit.Sdk;
 
 namespace Microsoft.ML.OnnxRuntime.Tests
 {
