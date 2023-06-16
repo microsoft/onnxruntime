@@ -65,7 +65,7 @@ std::set<std::string> ops_supported_only_in_model = {
 std::set<std::string> ops_supported_as_function = {
     "LessOrEqual",
     "GreaterOrEqual",
-};
+    "LayerNormalization"};
 
 std::vector<SupportedOp> supported_op_mode = {
     {"Abs", V_2020_4, {"CPU", "GPU"}},
@@ -162,6 +162,7 @@ std::vector<SupportedOp> supported_op_mode = {
     {"InstanceNormalization", V_2023_0, {"VPUX"}},
     {"HardSigmoid", V_2020_4, {"CPU", "GPU"}},
     {"HardMax", V_2022_1, {"CPU", "GPU"}},
+    {"LayerNormalization", V_2023_0, {"CPU", "GPU"}},
     {"LeakyRelu", V_2020_4, {"CPU", "GPU"}},
     {"LeakyRelu", V_2023_0, {"VPUX"}},
     {"Less", V_2020_4, {"CPU", "GPU"}},
@@ -736,7 +737,7 @@ void DataOps::populate_op_mode_supported() {
                                auto shape = x_arg->Shape();
                                if (shape != nullptr) {
                                  // input tensor rank cannot be of one dimension
-                                 if (shape->dim_size() == 1|| shape->dim_size() == 4) {
+                                 if (shape->dim_size() == 1 || shape->dim_size() == 4) {
                                    return true;
                                  }
                                }
