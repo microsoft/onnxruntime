@@ -436,6 +436,7 @@ Status PaddingElimination::ApplyImpl(Graph& graph, bool& modified, int graph_lev
         node.InputDefs()[1]->Exists() &&
         graph_utils::IsGraphInput(graph, node.InputDefs()[1]) &&
         node.InputDefs()[1]->Shape() &&
+        node.InputDefs()[1]->Shape()->dim_size() >= 2 &&
         node.InputDefs()[1]->Shape()->dim(0).has_dim_param() &&
         node.InputDefs()[1]->Shape()->dim(1).has_dim_param()) {
       if (std::find(sparse_embedding_input_names_.begin(), sparse_embedding_input_names_.end(),
