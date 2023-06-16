@@ -489,22 +489,6 @@ static common::Status CopyInputsAcrossDevices(const SessionState& session_state,
 }
 
 #ifdef ORT_ENABLE_STREAM
-struct DeviceStreamCollectionHolder {
-  DeviceStreamCollectionHolder(
-      const SessionState& session_state) : session_state_(session_state),
-                                           p_(session_state.AcquireDeviceStreamCollection()) {
-  }
-
-  ~DeviceStreamCollectionHolder() {
-    if (p_) {
-      session_state_.RecycleDeviceStreamCollection(std::move(p_));
-    }
-  }
-
-  const SessionState& session_state_;
-  std::unique_ptr<DeviceStreamCollection> p_;
-};
-
 static void UpdateWithParentStream(DeviceStreamCollection& device_stream_collection,
                                    Stream* parent_stream) {
   if (parent_stream) {
@@ -551,7 +535,7 @@ common::Status CopyOneInputAcrossDevices(const SessionState& session_state, cons
 
   Stream* device_stream = nullptr;
 #ifdef ORT_ENABLE_STREAM
-  DeviceStreamCollectionHolder device_stream_collection_holder(session_state);
+  DeviceStreamCollectionHolder device_stream_collection_holder(&session_state);
   if (device_stream_collection_holder.p_ != nullptr) {
     DeviceStreamCollection* device_stream_collection = device_stream_collection_holder.p_.get();
     size_t num_streams = device_stream_collection->NumStreams();
@@ -750,7 +734,10 @@ common::Status ExecuteGraph(const SessionState& session_state,
                             FeedsFetchesManager& feeds_fetches_manager,
                             gsl::span<const OrtValue> feeds, std::vector<OrtValue>& fetches,
                             ExecutionMode execution_mode, const bool& terminate_flag,
-                            const logging::Logger& logger, bool sync_execution_provider,
+                            const logging::Logger& logger,
+#ifdef ORT_ENABLE_STREAM
+                            DeviceStreamCollectionHolder& device_stream_collection_holder,
+#endif
                             bool only_execute_path_to_fetches,
                             Stream* parent_stream) {
   ORT_RETURN_IF_ERROR(utils::InitializeFeedFetchCopyInfo(session_state, feeds_fetches_manager));
@@ -758,18 +745,14 @@ common::Status ExecuteGraph(const SessionState& session_state,
   // finalize the copy info using the provided feeds and fetches. will update device_copy_checks in the background
   FinalizeFeedFetchCopyInfo(feeds_fetches_manager, feeds, fetches);
 #ifdef ORT_ENABLE_STREAM
-  DeviceStreamCollectionHolder device_stream_collection_holder(session_state);
   DeviceStreamCollection* device_stream_collection = device_stream_collection_holder.p_.get();
   auto retval = ExecuteGraphImpl(session_state, feeds_fetches_manager, feeds, fetches, {},
                                  execution_mode, terminate_flag, logger,
                                  device_stream_collection,
                                  only_execute_path_to_fetches,
                                  parent_stream);
-  if (device_stream_collection)
-    ORT_CHECK_AND_SET_RETVAL(device_stream_collection->CleanUp(sync_execution_provider));
   return retval;
 #else
-  ORT_UNUSED_PARAMETER(sync_execution_provider);
   return ExecuteGraphImpl(session_state, feeds_fetches_manager, feeds, fetches, {},
                           execution_mode, terminate_flag, logger,
                           only_execute_path_to_fetches,
@@ -781,6 +764,9 @@ common::Status ExecuteGraph(const SessionState& session_state,
                             FeedsFetchesManager& feeds_fetches_manager,
                             gsl::span<const OrtValue> feeds, std::vector<OrtValue>& fetches,
                             ExecutionMode execution_mode, const RunOptions& run_options,
+#ifdef ORT_ENABLE_STREAM
+                            DeviceStreamCollectionHolder& device_stream_collection_holder,
+#endif
                             const logging::Logger& logger) {
 #ifdef USE_AZURE
   const auto iter = run_options.config_options.configurations.find("use_azure");
@@ -793,14 +779,15 @@ common::Status ExecuteGraph(const SessionState& session_state,
                                   logger);
   }
 #endif
-  bool synchronize_execution_providers = run_options.config_options.GetConfigOrDefault(kOrtRunOptionsConfigDisableSynchronizeExecutionProviders, "0") == "0";
   return ExecuteGraph(session_state,
                       feeds_fetches_manager,
                       feeds, fetches,
                       execution_mode,
                       run_options.terminate,
                       logger,
-                      synchronize_execution_providers,
+#ifdef ORT_ENABLE_STREAM
+                      device_stream_collection_holder,
+#endif
                       run_options.only_execute_path_to_fetches);
 }
 
@@ -946,7 +933,7 @@ common::Status ExecuteSubgraph(const SessionState& session_state, const FeedsFet
                                Stream* parent_stream,
                                bool sync_subgraph_fetches) {
 #ifdef ORT_ENABLE_STREAM
-  DeviceStreamCollectionHolder device_stream_collection_holder(session_state);
+  DeviceStreamCollectionHolder device_stream_collection_holder(&session_state);
   DeviceStreamCollection* device_stream_collection = device_stream_collection_holder.p_.get();
 
   auto retval = ExecuteGraphImpl(session_state, feeds_fetches_manager, feeds, fetches, fetch_allocators,

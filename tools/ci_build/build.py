@@ -542,11 +542,12 @@ def parse_arguments():
     parser.add_argument(
         "--cmake_generator",
         choices=[
+            "MinGW Makefiles",
+            "Ninja",
+            "NMake Makefiles",
+            "Unix Makefiles",
             "Visual Studio 16 2019",
             "Visual Studio 17 2022",
-            "Ninja",
-            "MinGW Makefiles",
-            "NMake Makefiles",
             "Xcode",
         ],
         default=None,
