@@ -6,6 +6,8 @@
 #include "core/providers/cuda/shared_inc/cuda_call.h"
 #include "core/framework/stream_handles.h"
 
+#define CUDA_STREAM_VER 1
+
 namespace onnxruntime {
 
 struct CudaStream : Stream {
@@ -32,6 +34,8 @@ struct CudaStream : Stream {
   cudnnHandle_t cudnn_handle_{};
 
   cublasHandle_t cublas_handle_{};
+
+  void* GetResource(const char* id) const override;
 
  private:
   std::vector<void*> deferred_cpu_buffers_;

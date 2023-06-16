@@ -19,6 +19,17 @@ void cuda_add(int64_t, T3*, const T1*, const T2*, cudaStream_t compute_stream);
 
 static const char* c_OpDomain = "test.customop";
 
+#ifdef USE_CUDA
+void KernelOne(Ort::Custom::OrtCudaContext* cuda_ctx,
+               const Ort::Custom::Tensor<float>& X,
+               const Ort::Custom::Tensor<float>& Y,
+               Ort::Custom::Tensor<float>& Z) {
+  auto input_shape = X.Shape();
+  cudaStream_t cuda_stream = reinterpret_cast<cudaStream_t>(cuda_ctx->cuda_stream);
+  auto z_raw = Z.Allocate(input_shape);
+  cuda_add(Z.NumberOfElement(), z_raw, X.Data(), Y.Data(), cuda_stream);
+}
+#else
 struct KernelOne {
   void Compute(OrtKernelContext* context) {
     // Setup inputs
@@ -37,14 +48,14 @@ struct KernelOne {
     const size_t size = output.GetTensorTypeAndShapeInfo().GetElementCount();
 
     // Do computation
-#ifdef USE_CUDA
-    cudaStream_t stream = reinterpret_cast<cudaStream_t>(ctx.GetGPUComputeStream());
-    cuda_add(size, out, X, Y, stream);
-#else
+//#ifdef USE_CUDA
+//    cudaStream_t stream = reinterpret_cast<cudaStream_t>(ctx.GetGPUComputeStream());
+//    cuda_add(size, out, X, Y, stream);
+//#else
     for (size_t i = 0; i < size; i++) {
       out[i] = X[i] + Y[i];
     }
-#endif
+//#endif
   }
 };
 
@@ -66,6 +77,7 @@ struct CustomOpOne : Ort::CustomOpBase<CustomOpOne, KernelOne> {
   size_t GetOutputTypeCount() const { return 1; };
   ONNXTensorElementDataType GetOutputType(size_t /*index*/) const { return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT; };
 };
+#endif
 
 // lite custom op as a function
 void KernelTwo(const Ort::Custom::Tensor<float>& X,
@@ -169,8 +181,14 @@ static void AddOrtCustomOpDomainToContainer(Ort::CustomOpDomain&& domain) {
 OrtStatus* ORT_API_CALL RegisterCustomOps(OrtSessionOptions* options, const OrtApiBase* api) {
   Ort::Global<void>::api_ = api->GetApi(ORT_API_VERSION);
 
-  static const CustomOpOne c_CustomOpOne;
   using LiteOp = Ort::Custom::OrtLiteCustomOp;
+
+#ifdef USE_CUDA
+  static const std::unique_ptr<LiteOp> c_CustomOpOne{Ort::Custom::CreateLiteCustomOp("CustomOpOne", "CUDAExecutionProvider", KernelOne)};
+#else
+  static const CustomOpOne c_CustomOpOne;
+#endif  // !1
+
   static const std::unique_ptr<LiteOp> c_CustomOpTwo{Ort::Custom::CreateLiteCustomOp("CustomOpTwo", "CPUExecutionProvider", KernelTwo)};
   static const std::unique_ptr<LiteOp> c_MulTopOpFloat{Ort::Custom::CreateLiteCustomOp("MulTop", "CPUExecutionProvider", MulTop<float>)};
   static const std::unique_ptr<LiteOp> c_MulTopOpInt32{Ort::Custom::CreateLiteCustomOp("MulTop", "CPUExecutionProvider", MulTop<int32_t>)};
@@ -183,7 +201,11 @@ OrtStatus* ORT_API_CALL RegisterCustomOps(OrtSessionOptions* options, const OrtA
 
   ORT_TRY {
     Ort::CustomOpDomain domain{c_OpDomain};
+#ifdef USE_CUDA
+    domain.Add(c_CustomOpOne.get());
+#else
     domain.Add(&c_CustomOpOne);
+#endif
     domain.Add(c_CustomOpTwo.get());
 
     Ort::CustomOpDomain domain_v2{"v2"};

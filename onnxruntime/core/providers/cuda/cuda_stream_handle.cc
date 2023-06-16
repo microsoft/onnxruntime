@@ -46,6 +46,7 @@ CudaStream::CudaStream(cudaStream_t stream,
                                                                 own_stream_(own_flag),
                                                                 cpu_allocator_(cpu_allocator),
                                                                 release_cpu_buffer_on_cuda_stream_(release_cpu_buffer_on_cuda_stream) {
+  version_ = CUDA_STREAM_VER;
   if (own_flag) {
     CUBLAS_CALL_THROW(cublasCreate(&cublas_handle_));
     CUBLAS_CALL_THROW(cublasSetStream(cublas_handle_, stream));
@@ -146,6 +147,18 @@ Status CudaStream::CleanUpOnRunEnd() {
 
   deferred_cpu_buffers_.clear();
   return Status::OK();
+}
+
+void* CudaStream::GetResource(const char* id) const {
+  if (strcmp(id, "cuda_stream") == 0) {
+    return static_cast<void*>(GetHandle());
+  } else if (strcmp(id, "cudnn_handle") == 0) {
+    return static_cast<void*>(cudnn_handle_);
+  } else if (strcmp(id, "cublas_handle") == 0) {
+    return static_cast<void*>(cublas_handle_);
+  } else {
+    return Stream::GetResource(id);
+  }
 }
 
 // CPU Stream command handles

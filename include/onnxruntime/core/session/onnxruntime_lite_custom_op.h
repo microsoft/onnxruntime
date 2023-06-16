@@ -251,6 +251,45 @@ class Tensor<std::string_view> : public TensorBase {
 
 using TensorPtr = std::unique_ptr<Custom::TensorBase>;
 
+////////////////////////////// CudaContext //////////////////////////////////
+//#ifdef ENABLE_CUDA_CONTEXT
+
+struct OrtCudaContext {
+
+  void* raw_stream = {};
+
+  void* cuda_stream = {};
+  void* cudnn_handle = {};
+  void* cublas_handle = {};
+
+  void Init(const OrtKernelContext& kernel_ctx) {
+    void* stream = {};
+    const auto& ort_api = GetApi();
+    OrtStatus* status = nullptr;
+
+    status = ort_api.KernelContext_GetStream(&kernel_ctx, &raw_stream);
+    if (status) {
+      ORT_CXX_API_THROW("failed to fetch raw stream", OrtErrorCode::ORT_RUNTIME_EXCEPTION);
+    }
+
+    status = ort_api.Stream_GetResource(raw_stream, "cuda_stream", &cuda_stream);
+    if (status) {
+      ORT_CXX_API_THROW("failed to fetch cuda stream", OrtErrorCode::ORT_RUNTIME_EXCEPTION);
+    }
+
+    status = ort_api.Stream_GetResource(raw_stream, "cudnn_handle", &cudnn_handle);
+    if (status) {
+      ORT_CXX_API_THROW("failed to fetch cudnn stream", OrtErrorCode::ORT_RUNTIME_EXCEPTION);
+    }
+
+    status = ort_api.Stream_GetResource(raw_stream, "cublas_handle", &cublas_handle);
+    if (status) {
+      ORT_CXX_API_THROW("failed to fetch cublas stream", OrtErrorCode::ORT_RUNTIME_EXCEPTION);
+    }
+  }
+};
+//#endif
+
 //////////////////////////// OrtLiteCustomOp ////////////////////////////////
 
 struct OrtLiteCustomOp : public OrtCustomOp {
@@ -271,6 +310,18 @@ struct OrtLiteCustomOp : public OrtCustomOp {
     auto next = CreateTuple<ith_input, ith_output, Ts...>(context, tensors, num_input, num_output, ep);
     return std::tuple_cat(current, next);
   }
+
+//#ifdef ENABLE_CUDA_CONTEXT
+  template <size_t ith_input, size_t ith_output, typename T, typename... Ts>
+  static typename std::enable_if<std::is_same<T, OrtCudaContext*>::value, std::tuple<T, Ts...>>::type
+  CreateTuple(OrtKernelContext* context, std::vector<TensorPtr>& tensors, size_t num_input, size_t num_output, const std::string& ep) {
+    thread_local OrtCudaContext cuda_context;
+    cuda_context.Init(*context);
+    std::tuple<T> current = std::tuple<OrtCudaContext*>{&cuda_context};
+    auto next = CreateTuple<ith_input, ith_output, Ts...>(context, tensors, num_input, num_output, ep);
+    return std::tuple_cat(current, next);
+  }
+//#endif
 
 #define CREATE_TUPLE_INPUT(data_type)                                                                                                   \
   template <size_t ith_input, size_t ith_output, typename T, typename... Ts>                                                            \
@@ -429,6 +480,12 @@ struct OrtLiteCustomOp : public OrtCustomOp {
 
   template <typename T, typename... Ts>
   static typename std::enable_if<0 <= sizeof...(Ts) && std::is_same<T, OrtKernelContext*>::value>::type
+  ParseArgs(std::vector<ONNXTensorElementDataType>& input_types, std::vector<ONNXTensorElementDataType>& output_types) {
+    ParseArgs<Ts...>(input_types, output_types);
+  }
+
+  template <typename T, typename... Ts>
+  static typename std::enable_if<0 <= sizeof...(Ts) && std::is_same<T, OrtCudaContext*>::value>::type
   ParseArgs(std::vector<ONNXTensorElementDataType>& input_types, std::vector<ONNXTensorElementDataType>& output_types) {
     ParseArgs<Ts...>(input_types, output_types);
   }

@@ -124,6 +124,39 @@ ORT_API_STATUS_IMPL(OrtApis::KernelContext_GetAllocator, _In_ const OrtKernelCon
   API_IMPL_END
 };
 
+ORT_API_STATUS_IMPL(OrtApis::KernelContext_GetStream, _In_ const OrtKernelContext* context, _Outptr_ void** out) {
+  API_IMPL_BEGIN
+  const auto* ctx = reinterpret_cast<const onnxruntime::OpKernelContext*>(context);
+  *out = reinterpret_cast<void*>(ctx->GetComputeStream());
+  return nullptr;
+  API_IMPL_END
+};
+
+ORT_API_STATUS_IMPL(OrtApis::Stream_GetVersion, _In_ const void* stream, _Out_ int32_t* version) {
+  API_IMPL_BEGIN
+  const auto* ort_stream = reinterpret_cast<const onnxruntime::Stream*>(stream);
+  *version = ort_stream->GetVersion();
+  return nullptr;
+  API_IMPL_END
+};
+
+ORT_API_STATUS_IMPL(OrtApis::Stream_GetDevice, _In_ const void* stream, _Out_ int8_t* device) {
+  API_IMPL_BEGIN
+  const auto* ort_stream = reinterpret_cast<const onnxruntime::Stream*>(stream);
+  *device = ort_stream->GetDevice().Type();
+  return nullptr;
+  API_IMPL_END
+};
+
+ORT_API_STATUS_IMPL(OrtApis::Stream_GetResource, _In_ const void* stream, _In_ const char* id, _Outptr_ void** resource) {
+  API_IMPL_BEGIN
+  const auto* ort_stream = reinterpret_cast<const onnxruntime::Stream*>(stream);
+  *resource = ort_stream->GetResource(id);
+  return nullptr;
+  API_IMPL_END
+}
+
+
 #ifdef _WIN32
 #pragma warning(pop)
 #endif
