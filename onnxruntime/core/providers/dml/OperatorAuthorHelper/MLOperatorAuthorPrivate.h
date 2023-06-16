@@ -41,6 +41,11 @@ IMLOperatorShapeInferenceContextPrivate : public IMLOperatorShapeInferenceContex
         _Outptr_ IMLOperatorTensor** tensor
         ) const noexcept PURE;
 
+    STDMETHOD(TryGetConstantInputTensor)(
+        uint32_t inputIndex, 
+        _Outptr_ IMLOperatorTensor** tensor
+        ) const noexcept PURE;
+
     //! Gets the number of dimensions of a tensor output of the operator.
     STDMETHOD(GetSequenceInputInfo)(
         uint32_t inputIndex,
@@ -73,6 +78,11 @@ IMLOperatorKernelCreationContextPrivate : public IMLOperatorKernelCreationContex
         _Outptr_ IMLOperatorTensor** tensor
         ) const noexcept PURE;
 
+    STDMETHOD(TryGetConstantInputTensor)(
+        uint32_t inputIndex, 
+        _Outptr_ IMLOperatorTensor** tensor
+        ) const noexcept PURE;
+    
     STDMETHOD_(bool, IsDmlGraphNode)() const noexcept PURE;
 
     STDMETHOD(SetDmlOperator)(

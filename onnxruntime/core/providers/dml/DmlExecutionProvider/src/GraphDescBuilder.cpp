@@ -230,14 +230,22 @@ namespace Dml::GraphDescBuilder
             {
                 ComPtr<IMLOperatorTensor> tensor = nullptr;
 
-                // Check whether this specific node requested support for constant CPU inputs
-                if (std::find(requiredConstantCpuInputs.begin(), requiredConstantCpuInputs.end(), inputIndex) != requiredConstantCpuInputs.end())
+                auto inputDefs = node.InputDefs();
+
+                if (inputIndex < inputDefs.size())
                 {
-                    auto inputDefs = node.InputDefs();
-                    if (inputIndex < inputDefs.size())
+                    const onnxruntime::NodeArg* arg = inputDefs[inputIndex];
+                    tensor = constantCpuGraphInputGetter(arg->Name());
+
+                    if (tensor == nullptr)
                     {
-                        const onnxruntime::NodeArg* arg = inputDefs[inputIndex];
-                        tensor = constantCpuGraphInputGetter(arg->Name());
+                        bool inputRequiredAsConstant = std::find(
+                            requiredConstantCpuInputs.begin(),
+                            requiredConstantCpuInputs.end(),
+                            inputIndex) != requiredConstantCpuInputs.end();
+
+                        // This shouldn't happen since kernel creation is deferred and repeated when required constant inputs are not present.
+                        ORT_THROW_HR_IF(E_UNEXPECTED, inputRequiredAsConstant);
                     }
                 }
 

@@ -1123,7 +1123,7 @@ namespace Windows::AI::MachineLearning::Adapter
         }
         ORT_CATCH_RETURN
     }
-
+    
     template <class NodeInfoImpl_t, class Base1_t, class Base2_t>
     HRESULT STDMETHODCALLTYPE OpNodeInfoWrapper<NodeInfoImpl_t, Base1_t, Base2_t>::GetConstantInputTensor(uint32_t inputIndex, IMLOperatorTensor** tensor) const noexcept
     {
@@ -1144,6 +1144,33 @@ namespace Windows::AI::MachineLearning::Adapter
             {
                 // This shouldn't happen since kernel creation is deferred and repeated when required constant inputs are not present.
                 return E_UNEXPECTED;
+            }
+
+            *tensor = tensorWrapper.Detach();
+
+            return S_OK;
+        }
+        ORT_CATCH_RETURN
+    }
+
+    template <class NodeInfoImpl_t, class Base1_t, class Base2_t>
+    HRESULT STDMETHODCALLTYPE OpNodeInfoWrapper<NodeInfoImpl_t, Base1_t, Base2_t>::TryGetConstantInputTensor(uint32_t inputIndex, IMLOperatorTensor** tensor) const noexcept
+    {
+        ORT_TRY
+        {
+            auto constantInput = m_constantInputGetter(inputIndex);
+            ORT_THROW_HR_IF(E_INVALIDARG, !std::holds_alternative<ComPtr<IMLOperatorTensor>>(constantInput));
+
+            auto tensorWrapper = std::get<ComPtr<IMLOperatorTensor>>(constantInput);
+            if (tensorWrapper == nullptr)
+            {
+                bool inputRequiredAsConstant = std::find(
+                                                 m_requiredConstantCpuInputs.begin(),
+                                                 m_requiredConstantCpuInputs.end(),
+                                                 inputIndex) != m_requiredConstantCpuInputs.end();
+                
+                // This shouldn't happen since kernel creation is deferred and repeated when required constant inputs are not present.
+                ORT_THROW_HR_IF(E_UNEXPECTED, inputRequiredAsConstant);
             }
 
             *tensor = tensorWrapper.Detach();
