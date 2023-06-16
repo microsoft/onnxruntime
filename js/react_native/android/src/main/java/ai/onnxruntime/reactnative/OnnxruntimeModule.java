@@ -13,7 +13,6 @@ import ai.onnxruntime.OrtSession.RunOptions;
 import ai.onnxruntime.OrtSession.SessionOptions;
 import android.net.Uri;
 import android.os.Build;
-import android.util.Base64;
 import android.util.Log;
 import androidx.annotation.NonNull;
 import androidx.annotation.RequiresApi;
@@ -28,6 +27,7 @@ import com.facebook.react.bridge.ReadableMap;
 import com.facebook.react.bridge.ReadableType;
 import com.facebook.react.bridge.WritableArray;
 import com.facebook.react.bridge.WritableMap;
+import com.facebook.react.modules.blob.BlobModule;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
@@ -56,6 +56,8 @@ public class OnnxruntimeModule extends ReactContextBaseJavaModule implements Lif
     return key;
   }
 
+  protected BlobModule blobModule;
+
   public OnnxruntimeModule(ReactApplicationContext context) {
     super(context);
     reactContext = context;
@@ -65,6 +67,15 @@ public class OnnxruntimeModule extends ReactContextBaseJavaModule implements Lif
   @Override
   public String getName() {
     return "Onnxruntime";
+  }
+
+  public void checkBlobModule() {
+    if (blobModule == null) {
+      blobModule = getReactApplicationContext().getNativeModule(BlobModule.class);
+      if (blobModule == null) {
+        throw new RuntimeException("BlobModule is not initialized");
+      }
+    }
   }
 
   /**
@@ -87,19 +98,22 @@ public class OnnxruntimeModule extends ReactContextBaseJavaModule implements Lif
   }
 
   /**
-   * React native binding API to load a model using the BASE64 encoded model data.
+   * React native binding API to load a model using blob object that data stored in BlobModule.
    *
-   * @param data the BASE64 encoded model data.
+   * @param data the blob object
    * @param options onnxruntime session options
    * @param promise output returning back to react native js
    * @note the value provided to `promise` includes a key representing the session.
    *       when run() is called, the key must be passed into the first parameter.
    */
   @ReactMethod
-  public void loadModelFromBase64EncodedBuffer(String data, ReadableMap options, Promise promise) {
+  public void loadModelFromBlob(ReadableMap data, ReadableMap options, Promise promise) {
     try {
-      byte[] modelData = Base64.decode(data, Base64.DEFAULT);
-      WritableMap resultMap = loadModel(modelData, options);
+      checkBlobModule();
+      String blobId = data.getString("blobId");
+      byte[] bytes = blobModule.resolve(blobId, data.getInt("offset"), data.getInt("size"));
+      blobModule.remove(blobId);
+      WritableMap resultMap = loadModel(bytes, options);
       promise.resolve(resultMap);
     } catch (Exception e) {
       promise.reject("Failed to load model from buffer: " + e.getMessage(), e);
@@ -242,6 +256,8 @@ public class OnnxruntimeModule extends ReactContextBaseJavaModule implements Lif
 
     RunOptions runOptions = parseRunOptions(options);
 
+    checkBlobModule();
+
     long startTime = System.currentTimeMillis();
     Map<String, OnnxTensor> feed = new HashMap<>();
     Iterator<String> iterator = ortSession.getInputNames().iterator();
@@ -255,19 +271,7 @@ public class OnnxruntimeModule extends ReactContextBaseJavaModule implements Lif
           throw new Exception("Can't find input: " + inputName);
         }
 
-        if (inputMap.getType("data") != ReadableType.String) {
-          // NOTE:
-          //
-          // tensor data should always be a BASE64 encoded string.
-          // This is because the current React Native bridge supports limited data type as arguments.
-          // In order to pass data from JS to Java, we have to encode them into string.
-          //
-          // see also:
-          //   https://reactnative.dev/docs/native-modules-android#argument-types
-          throw new Exception("Non string type of a tensor data is not allowed");
-        }
-
-        OnnxTensor onnxTensor = TensorHelper.createInputTensor(inputMap, ortEnvironment);
+        OnnxTensor onnxTensor = TensorHelper.createInputTensor(blobModule, inputMap, ortEnvironment);
         feed.put(inputName, onnxTensor);
       }
 
@@ -292,7 +296,7 @@ public class OnnxruntimeModule extends ReactContextBaseJavaModule implements Lif
       Log.d("Duration", "inference: " + duration);
 
       startTime = System.currentTimeMillis();
-      WritableMap resultMap = TensorHelper.createOutputTensor(result);
+      WritableMap resultMap = TensorHelper.createOutputTensor(blobModule, result);
       duration = System.currentTimeMillis() - startTime;
       Log.d("Duration", "createOutputTensor: " + duration);
 
