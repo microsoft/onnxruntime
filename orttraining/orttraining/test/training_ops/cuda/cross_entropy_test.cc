@@ -678,7 +678,7 @@ TEST(CrossEntropyTest, SoftmaxCrossEntropyLoss_LargeSizeTensorUInt64Index) {
   std::vector<int64_t> log_prob_dims{bsz, vocab_size};
 
   constexpr std::int64_t ignore_index = -1;
-  constexpr double error_tolerance = 5e-2;
+  constexpr double error_tolerance = 1e-2;
   // Only test reduce mean because it's too costly to run more tests.
   TestSCELoss<MLFloat16, MLFloat16>("SoftmaxCrossEntropyLossInternal", 1, onnxruntime::kMSDomain,
                                     &X_dims, &index_dims, &weight_dims, &Y_dims, &log_prob_dims, "mean",
