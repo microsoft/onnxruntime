@@ -284,14 +284,18 @@ TEST(CrossEntropyTest, SparseSoftmaxCrossEntropyGrad_LargeSizeTensor) {
   TestSparseSoftmaxCrossEntropyGrad(dY_dims, log_prob_dims, index_dims, dX_dims, "sum");
 }
 
-static void PrepareSCELossTestData(const std::vector<int64_t>* X_dims,
-                                   const std::vector<int64_t>* index_dims, const std::vector<int64_t>* weight_dims,
-                                   const std::int64_t ignore_index,
-                                   std::vector<float>& X_data, std::vector<int64_t>& index_data,
-                                   std::vector<float>& weight_data) {
+template <typename FloatT>
+void PrepareSCELossTestData(const std::vector<int64_t>* X_dims,
+                            const std::vector<int64_t>* index_dims, const std::vector<int64_t>* weight_dims,
+                            const std::int64_t ignore_index,
+                            std::vector<FloatT>& X_data,
+                            std::vector<int64_t>& index_data,
+                            std::vector<FloatT>& weight_data) {
   // create rand inputs
+  ParallelRandomValueGenerator prandom{2333};
+  X_data = prandom.Uniform<FloatT>(*X_dims, -200.0f, 200.0f);
+
   RandomValueGenerator random{2333};
-  X_data = random.Uniform<float>(*X_dims, -200.0f, 200.0f);
   index_data = random.Uniform<int64_t>(*index_dims, 0, (*X_dims)[1]);
   // Add one data point that has ignore_index.
   if (index_data.size() > 0) {
@@ -299,7 +303,7 @@ static void PrepareSCELossTestData(const std::vector<int64_t>* X_dims,
   }
 
   if (weight_dims) {
-    weight_data = random.Uniform<float>(*weight_dims, 0.0f, 1.0f);
+    weight_data = prandom.Uniform<FloatT>(*weight_dims, 0.0f, 1.0f);
   }
 }
 
@@ -317,9 +321,9 @@ static std::vector<OrtValue> RunSCELossWithEP(const char* op,
                                               const std::vector<int64_t>* weight_dims,
                                               const std::vector<int64_t>* Y_dims,
                                               const std::vector<int64_t>* log_prob_dims,
-                                              std::vector<float>& X_data,
+                                              std::vector<T>& X_data,
                                               std::vector<int64_t>& index_data,
-                                              std::vector<float>& weight_data) {
+                                              std::vector<T>& weight_data) {
   /**
    * OpTester's atol/rtol check is too strict for our testing cases. Imagine expected value is 4.7683704451628728e-07,
    * real value is 0, even we set rtol=1e-1, atol = 1e-4. The check still fail.
@@ -331,11 +335,11 @@ static std::vector<OrtValue> RunSCELossWithEP(const char* op,
    * So here we disable OpTester's check by default, and do the check externally.
    */
   bool need_verify_outputs = false;
-  std::vector<std::vector<float>> expected_values;
+  std::vector<std::vector<TOut>> expected_values;
   // Still need feed the output data even we don't want to verify it.
-  expected_values.push_back(FillZeros<float>(*Y_dims));
+  expected_values.push_back(FillZeros<TOut>(*Y_dims));
   if (log_prob_dims) {
-    expected_values.push_back(FillZeros<float>(*log_prob_dims));
+    expected_values.push_back(FillZeros<TOut>(*log_prob_dims));
   }
 
   OpTester test(op, opset_version, domain, need_verify_outputs /*verify_output*/);
@@ -350,46 +354,21 @@ static std::vector<OrtValue> RunSCELossWithEP(const char* op,
     test.AddAttribute("ignore_index", ignore_index);
   }
 
-  if (std::is_same<T, MLFloat16>::value) {
-    std::vector<MLFloat16> X_data_half(X_data.size());
-    ConvertFloatToMLFloat16(X_data.data(), X_data_half.data(), X_data.size());
-    test.AddInput<MLFloat16>("X", *X_dims, X_data_half);
-  } else {
-    test.AddInput<float>("X", *X_dims, X_data);
-  }
+  test.AddInput<T>("X", *X_dims, X_data);
 
   test.AddInput<int64_t>("index", *index_dims, index_data);
 
   if (weight_dims) {
-    if (std::is_same<T, MLFloat16>::value) {
-      std::vector<MLFloat16> weight_data_half(weight_data.size());
-      ConvertFloatToMLFloat16(weight_data.data(), weight_data_half.data(), weight_data.size());
-      test.AddInput<MLFloat16>("weight", *weight_dims, weight_data_half);
-    } else {
-      test.AddInput<float>("weight", *weight_dims, weight_data);
-    }
+    test.AddInput<T>("weight", *weight_dims, weight_data);
   }
 
   if (is_internal_op && ignore_index != -1) {
     test.AddInput<int64_t>("ignore_index", {}, &ignore_index, 1);
   }
 
-  if (std::is_same<TOut, MLFloat16>::value) {
-    std::vector<MLFloat16> output_half(expected_values[0].size());
-    ConvertFloatToMLFloat16(expected_values[0].data(), output_half.data(), expected_values[0].size());
-    test.AddOutput<MLFloat16>("output", *Y_dims, output_half);
-
-    if (log_prob_dims) {
-      std::vector<MLFloat16> log_prob_half(expected_values[1].size());
-      ConvertFloatToMLFloat16(expected_values[1].data(), log_prob_half.data(), expected_values[1].size());
-      test.AddOutput<MLFloat16>("log_prob", *log_prob_dims, log_prob_half);
-    }
-
-  } else {
-    test.AddOutput<float>("output", *Y_dims, expected_values[0]);
-    if (log_prob_dims) {
-      test.AddOutput<float>("log_prob", *log_prob_dims, expected_values[1]);
-    }
+  test.AddOutput<TOut>("output", *Y_dims, expected_values[0]);
+  if (log_prob_dims) {
+    test.AddOutput<TOut>("log_prob", *log_prob_dims, expected_values[1]);
   }
 
   std::vector<std::unique_ptr<IExecutionProvider>> eps;
@@ -408,34 +387,38 @@ static void TestSCELoss(const char* op, int opset_version,
   ASSERT_TRUE((std::is_same<T, MLFloat16>::value || std::is_same<T, float>::value));
   ASSERT_TRUE((std::is_same<TOut, MLFloat16>::value || std::is_same<TOut, float>::value));
 
-  std::vector<float> X_data, weight_data;
+  std::vector<T> X_data, weight_data;
   std::vector<int64_t> index_data;
-
-  if (std::is_same<T, MLFloat16>::value) {
-    std::vector<float> X_data_temp;
-    std::vector<float> weight_data_temp;
-    PrepareSCELossTestData(X_dims, index_dims, weight_dims, ignore_index, X_data_temp, index_data, weight_data_temp);
-    X_data.resize(X_data_temp.size());
-    weight_data.resize(weight_data_temp.size());
-    ClipFloatToMLFloat16Range(X_data_temp.data(), X_data.data(), X_data.size());
-    ClipFloatToMLFloat16Range(weight_data_temp.data(), weight_data.data(), weight_data.size());
-  } else {
-    PrepareSCELossTestData(X_dims, index_dims, weight_dims, ignore_index, X_data, index_data, weight_data);
-  }
+  PrepareSCELossTestData<T>(X_dims, index_dims, weight_dims, ignore_index, X_data, index_data, weight_data);
 
   // Run on CPU using float input and output
   // (because the CPU implementation doesn't support variant input output types.)
   // Be noted, no result comparison is done here.
-  std::vector<OrtValue> cpu_fetches = RunSCELossWithEP<float, float>(
-      op, opset_version, domain,
-      []() -> std::unique_ptr<IExecutionProvider> { return DefaultCpuExecutionProvider(); },
-      reduction, ignore_index, error_tolerance,
-      X_dims, index_dims, weight_dims,
-      Y_dims, log_prob_dims,
-      X_data, index_data, weight_data);
+  std::vector<OrtValue> cpu_fetches;
+  if (std::is_same<T, MLFloat16>::value) {
+    std::vector<float> X_data_temp(X_data.size());
+    std::vector<float> weight_data_temp(weight_data.size());
+    ConvertMLFloat16ToFloat(reinterpret_cast<MLFloat16*>(X_data.data()), X_data_temp.data(), X_data.size());
+    ConvertMLFloat16ToFloat(reinterpret_cast<MLFloat16*>(weight_data.data()), weight_data_temp.data(), weight_data.size());
+    cpu_fetches = RunSCELossWithEP<float, float>(
+        op, opset_version, domain,
+        []() -> std::unique_ptr<IExecutionProvider> { return DefaultCpuExecutionProvider(); },
+        reduction, ignore_index, error_tolerance,
+        X_dims, index_dims, weight_dims,
+        Y_dims, log_prob_dims,
+        X_data_temp, index_data, weight_data_temp);
+  } else {
+    cpu_fetches = RunSCELossWithEP<T, float>(
+        op, opset_version, domain,
+        []() -> std::unique_ptr<IExecutionProvider> { return DefaultCpuExecutionProvider(); },
+        reduction, ignore_index, error_tolerance,
+        X_dims, index_dims, weight_dims,
+        Y_dims, log_prob_dims,
+        X_data, index_data, weight_data);
+  }
 
   // Run on CUDA.
-  // Be noted, no result comparison is done here because OpTester's check is too strick for our test cases.
+  // Be noted, no result comparison is done here because OpTester's check is too strict for our test cases.
   // Check more details in comment of RunSCELossWithEP.
   std::vector<OrtValue> target_fetches = RunSCELossWithEP<T, TOut>(
       op, opset_version, domain,
@@ -454,7 +437,7 @@ static void TestSCELoss(const char* op, int opset_version,
   // Compare
   ASSERT_EQ(cpu_fetches.size(), target_fetches.size());
   for (size_t i = 0; i < cpu_fetches.size(); i++) {
-    if (!std::is_same<TOut, float>::value) {
+    if (!std::is_same<TOut, float>::value) {  // baseline output is float.
       auto ret = CompareOrtValueNumerals(target_fetches[i], cpu_fetches[i], error_tolerance /*per_sample_tolerance*/,
                                          error_tolerance /*relative_per_sample_tolerance*/);
       EXPECT_EQ(ret.first, COMPARE_RESULT::SUCCESS) << ret.second;

@@ -1178,15 +1178,6 @@ inline void ConvertFloatToMLFloat16(const float* f_datat, MLFloat16* h_data, siz
   output_vector = in_vector.template cast<Eigen::half>();
 }
 
-inline void ClipFloatToMLFloat16Range(const float* f_data, float* out_data, size_t input_size) {
-  auto in_vector = ConstEigenVectorMap<float>(f_data, input_size);
-  auto output_vector = EigenVectorMap<float>(out_data, input_size);
-  std::vector<MLFloat16> m(input_size);
-  auto temp_vector = EigenVectorMap<Eigen::half>(static_cast<Eigen::half*>(static_cast<void*>(m.data())), input_size);
-  temp_vector = in_vector.template cast<Eigen::half>();
-  output_vector = temp_vector.template cast<float>();
-}
-
 inline void ConvertMLFloat16ToFloat(const MLFloat16* h_data, float* f_data, size_t input_size) {
   auto in_vector =
       ConstEigenVectorMap<Eigen::half>(static_cast<const Eigen::half*>(static_cast<const void*>(h_data)), input_size);

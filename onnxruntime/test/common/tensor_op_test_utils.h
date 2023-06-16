@@ -15,6 +15,8 @@
 #include "core/common/type_utils.h"
 #include "core/framework/tensor.h"
 #include "core/util/math.h"
+#include "core/platform/threadpool.h"
+#include "core/util/thread_utils.h"
 
 namespace onnxruntime {
 namespace test {
@@ -307,21 +309,92 @@ inline void CheckTensor(const Tensor& expected_tensor, const Tensor& output_tens
                   "] did not match run output shape [" +
                   output_tensor.Shape().ToString() + "]");
 
-  ASSERT_TRUE(expected_tensor.DataType() == DataTypeImpl::GetType<float>()) << "Compare with non float number is not supported yet. ";
+  ASSERT_TRUE(expected_tensor.DataType() == DataTypeImpl::GetType<float>())
+      << "Compare with non float number is not supported yet. ";
   auto expected = expected_tensor.Data<float>();
   auto output = output_tensor.Data<float>();
   for (auto i = 0; i < expected_tensor.Shape().Size(); ++i) {
     const auto expected_value = expected[i], actual_value = output[i];
     if (std::isnan(expected_value)) {
-      ASSERT_TRUE(std::isnan(actual_value)) << "value mismatch at index " << i << "; expected is NaN, actual is not NaN";
+      ASSERT_TRUE(std::isnan(actual_value)) << "value mismatch at index " << i
+                                            << "; expected is NaN, actual is not NaN";
     } else if (std::isinf(expected_value)) {
       ASSERT_EQ(expected_value, actual_value) << "value mismatch at index " << i;
     } else {
       double diff = fabs(expected_value - actual_value);
-      ASSERT_TRUE(diff <= (atol + rtol * fabs(expected_value))) << "value mismatch at index " << i << "; expected: " << expected_value << ", actual: " << actual_value;
+      ASSERT_TRUE(diff <= (atol + rtol * fabs(expected_value))) << "value mismatch at index " << i << "; expected: "
+                                                                << expected_value << ", actual: " << actual_value;
     }
   }
 }
+
+class ParallelRandomValueGenerator {
+ public:
+  using RandomEngine = std::default_random_engine;
+  using RandomSeedType = RandomEngine::result_type;
+
+  ParallelRandomValueGenerator(RandomSeedType base_seed)
+      : base_seed_{base_seed} {
+  }
+
+  // Random values generated are in the range [min, max).
+  template <typename TFloat>
+  typename std::enable_if<
+      std::is_floating_point<TFloat>::value,
+      std::vector<TFloat>>::type
+  Uniform(gsl::span<const int64_t> dims, TFloat min, TFloat max) {
+    OrtThreadPoolParams to;
+    to.thread_pool_size = 16;
+    auto tp = concurrency::CreateThreadPool(&onnxruntime::Env::Default(), to,
+                                            concurrency::ThreadPoolType::INTRA_OP);
+    static double cost = 1;
+    RandomSeedType base_seed = base_seed_;
+    std::vector<TFloat> val(detail::SizeFromDims(dims));
+    concurrency::ThreadPool::TryParallelFor(
+        tp.get(), val.size(), cost,
+        [&min, &max, &base_seed, &val](
+            std::ptrdiff_t begin, std::ptrdiff_t end) {
+          RandomEngine generator{base_seed + begin};
+          std::uniform_real_distribution<TFloat> distribution(min, max);
+          for (std::ptrdiff_t di = begin; di != end; ++di) {
+            val[di] = distribution(generator);
+          }
+        });
+
+    return val;
+  }
+
+  // Random values generated are in the range [min, max).
+  template <typename TFloat16>
+  typename std::enable_if<
+      std::is_same_v<TFloat16, MLFloat16>,
+      std::vector<TFloat16>>::type
+  Uniform(gsl::span<const int64_t> dims, float min, float max) {
+    OrtThreadPoolParams to;
+    to.thread_pool_size = 16;
+    auto tp = concurrency::CreateThreadPool(&onnxruntime::Env::Default(), to,
+                                            concurrency::ThreadPoolType::INTRA_OP);
+    static double cost = 1;
+    RandomSeedType base_seed = base_seed_;
+    std::vector<TFloat16> val(detail::SizeFromDims(dims));
+    concurrency::ThreadPool::TryParallelFor(
+        tp.get(), val.size(), cost,
+        [&min, &max, &base_seed, &val](
+            std::ptrdiff_t begin, std::ptrdiff_t end) {
+          RandomEngine generator{base_seed + begin};
+          std::uniform_real_distribution<float> distribution(min, max);
+          for (std::ptrdiff_t di = begin; di != end; ++di) {
+            val[di] = TFloat16(math::floatToHalf(distribution(generator)));
+            ;
+          }
+        });
+
+    return val;
+  }
+
+ private:
+  const RandomSeedType base_seed_;
+};
 
 }  // namespace test
 }  // namespace onnxruntime
