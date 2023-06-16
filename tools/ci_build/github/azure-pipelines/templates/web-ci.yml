@@ -71,7 +71,7 @@ stages:
       CommitOverride: true
       BuildConfig: 'Debug'
       NpmPackagingMode: ${{ parameters.NpmPackagingMode }}
-      PoolName: ${{ parameters.PoolName }}
+      PoolName: onnxruntime-Win2022-GPU-A10
       PackageName: ${{ parameters.PackageName }}
 
 - stage: Build_wasm_Release
