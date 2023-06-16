@@ -1679,13 +1679,13 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
 
           // Another subgraph of "If" control flow has been parsed by GetCapability before and all subgraph's nodes assigned to TRT EP.
           if (AllNodesAssignedToSpecificEP(*sub_graph_veiwer, kTensorrtExecutionProvider)) {
-            all_subgraph_are_supported = true;
+            all_subgraphs_are_supported = true;
             break;
           } 
           // Another subgraph of "If" control flow has been parsed by GetCapability and not all subgraph's nodes assigned to TRT EP.
           // (Note: GetExecutionProviderType() returns "" meaning node has not yet been assigned to any EPs)
           else if (!AllNodesAssignedToSpecificEP(*sub_graph_veiwer, "")) {
-            all_subgraph_are_supported = false;
+            all_subgraphs_are_supported = false;
             break;
           }
 
