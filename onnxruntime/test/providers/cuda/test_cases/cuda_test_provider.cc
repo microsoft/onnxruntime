@@ -19,7 +19,7 @@
 #include "test/providers/cuda/test_cases/all_tests.h"
 
 #ifdef ENABLE_NVTX_PROFILE
-#include "nvtx_profile.h"
+#include "core/providers/cuda/nvtx_profile.h"
 #endif
 
 using namespace onnxruntime;
