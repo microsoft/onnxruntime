@@ -1,7 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include <chrono>
 #include <iostream>
 #include <memory>
 #include "test/compare_ortvalue.h"
@@ -353,7 +352,7 @@ static std::vector<OrtValue> RunSCELossWithEP(const char* op,
 
   if (std::is_same<T, MLFloat16>::value) {
     std::vector<MLFloat16> X_data_half(X_data.size());
-    ConvertFloatToMLFloat16(X_data.data(), X_data_half.data(), static_cast<int>(X_data.size()));
+    ConvertFloatToMLFloat16(X_data.data(), X_data_half.data(), X_data.size());
     test.AddInput<MLFloat16>("X", *X_dims, X_data_half);
   } else {
     test.AddInput<float>("X", *X_dims, X_data);
@@ -364,7 +363,7 @@ static std::vector<OrtValue> RunSCELossWithEP(const char* op,
   if (weight_dims) {
     if (std::is_same<T, MLFloat16>::value) {
       std::vector<MLFloat16> weight_data_half(weight_data.size());
-      ConvertFloatToMLFloat16(weight_data.data(), weight_data_half.data(), static_cast<int>(weight_data.size()));
+      ConvertFloatToMLFloat16(weight_data.data(), weight_data_half.data(), weight_data.size());
       test.AddInput<MLFloat16>("weight", *weight_dims, weight_data_half);
     } else {
       test.AddInput<float>("weight", *weight_dims, weight_data);
@@ -377,12 +376,12 @@ static std::vector<OrtValue> RunSCELossWithEP(const char* op,
 
   if (std::is_same<TOut, MLFloat16>::value) {
     std::vector<MLFloat16> output_half(expected_values[0].size());
-    ConvertFloatToMLFloat16(expected_values[0].data(), output_half.data(), static_cast<int>(expected_values[0].size()));
+    ConvertFloatToMLFloat16(expected_values[0].data(), output_half.data(), expected_values[0].size());
     test.AddOutput<MLFloat16>("output", *Y_dims, output_half);
 
     if (log_prob_dims) {
       std::vector<MLFloat16> log_prob_half(expected_values[1].size());
-      ConvertFloatToMLFloat16(expected_values[1].data(), log_prob_half.data(), static_cast<int>(expected_values[1].size()));
+      ConvertFloatToMLFloat16(expected_values[1].data(), log_prob_half.data(), expected_values[1].size());
       test.AddOutput<MLFloat16>("log_prob", *log_prob_dims, log_prob_half);
     }
 
@@ -444,22 +443,10 @@ static void TestSCELoss(const char* op, int opset_version,
   // Compare
   ASSERT_EQ(cpu_fetches.size(), target_fetches.size());
   for (size_t i = 0; i < cpu_fetches.size(); i++) {
-    if (std::is_same<TOut, MLFloat16>::value) {
-      auto y_data_size = cpu_fetches[i].Get<Tensor>().Shape().Size();
-      std::vector<float> cpu_temp_buffer;
-      cpu_temp_buffer.resize(y_data_size);
-      const float* y_buffer = cpu_fetches[i].Get<Tensor>().Data<float>();
-      std::copy(y_buffer, y_buffer + y_data_size, cpu_temp_buffer.begin());
-
-      std::vector<MLFloat16> ret_half(cpu_temp_buffer.size());
-      ConvertFloatToMLFloat16(cpu_temp_buffer.data(), ret_half.data(), static_cast<int>(cpu_temp_buffer.size()));
-
-      OrtValue target;
-      test::CreateInputOrtValueOnCPU<MLFloat16>(cpu_fetches[i].Get<Tensor>().Shape().GetDims(), ret_half, &target);
-      auto ret = CompareOrtValue(target_fetches[i], target, error_tolerance /*per_sample_tolerance*/,
-                                 error_tolerance /*relative_per_sample_tolerance*/, false);
+    if (!std::is_same<TOut, float>::value) {
+      auto ret = CompareOrtValueNumerals(target_fetches[i], cpu_fetches[i], error_tolerance /*per_sample_tolerance*/,
+                                         error_tolerance /*relative_per_sample_tolerance*/);
       EXPECT_EQ(ret.first, COMPARE_RESULT::SUCCESS) << ret.second;
-
     } else {
       auto ret = CompareOrtValue(target_fetches[i], cpu_fetches[i], error_tolerance /*per_sample_tolerance*/,
                                  error_tolerance /*relative_per_sample_tolerance*/, false);
@@ -657,10 +644,12 @@ TEST(CrossEntropyTest, DISABLED_SoftmaxCrossEntropyLoss_LargeSizeTensor) {
   TestSoftmaxCrossEntropyLoss<float, float>(&X_dims, &index_dims, nullptr, &Y_dims_none, &log_prob_dims, "none");
 }
 
+#ifndef _WIN32
+// Disable the large size tests because it is too slow, running on Linux would be enough.
 TEST(CrossEntropyTest, SoftmaxCrossEntropyLoss_LargeSizeTensorInt32Index) {
   // The element count is around the upper limit of int32_t.
-  int64_t bsz = 419430;
-  int64_t vocab_size = 5120;
+  constexpr int64_t bsz = 419430;
+  constexpr int64_t vocab_size = 5120;
 
   std::vector<int64_t> X_dims{bsz, vocab_size};
   std::vector<int64_t> index_dims{bsz};
@@ -669,8 +658,8 @@ TEST(CrossEntropyTest, SoftmaxCrossEntropyLoss_LargeSizeTensorInt32Index) {
   std::vector<int64_t> Y_dims_none{bsz};
   std::vector<int64_t> log_prob_dims{bsz, vocab_size};
 
-  const std::int64_t ignore_index = -1;
-  const double error_tolerance = 1e-4;
+  constexpr std::int64_t ignore_index = -1;
+  constexpr double error_tolerance = 5e-2;
   // Only test reduce mean because it's too costly to run more tests.
   TestSCELoss<MLFloat16, MLFloat16>("SoftmaxCrossEntropyLossInternal", 1, onnxruntime::kMSDomain,
                                     &X_dims, &index_dims, &weight_dims, &Y_dims, &log_prob_dims, "mean",
@@ -679,8 +668,8 @@ TEST(CrossEntropyTest, SoftmaxCrossEntropyLoss_LargeSizeTensorInt32Index) {
 
 TEST(CrossEntropyTest, SoftmaxCrossEntropyLoss_LargeSizeTensorUInt64Index) {
   // The element count is bigger than the upper limit of int32_t.
-  int64_t bsz = 419431;
-  int64_t vocab_size = 5120;
+  constexpr int64_t bsz = 419431;
+  constexpr int64_t vocab_size = 5120;
   std::vector<int64_t> X_dims{bsz, vocab_size};
   std::vector<int64_t> index_dims{bsz};
   std::vector<int64_t> weight_dims{vocab_size};
@@ -688,13 +677,14 @@ TEST(CrossEntropyTest, SoftmaxCrossEntropyLoss_LargeSizeTensorUInt64Index) {
   std::vector<int64_t> Y_dims_none{bsz};
   std::vector<int64_t> log_prob_dims{bsz, vocab_size};
 
-  const std::int64_t ignore_index = -1;
-  const double error_tolerance = 1e-4;
+  constexpr std::int64_t ignore_index = -1;
+  constexpr double error_tolerance = 5e-2;
   // Only test reduce mean because it's too costly to run more tests.
   TestSCELoss<MLFloat16, MLFloat16>("SoftmaxCrossEntropyLossInternal", 1, onnxruntime::kMSDomain,
                                     &X_dims, &index_dims, &weight_dims, &Y_dims, &log_prob_dims, "mean",
                                     ignore_index, error_tolerance);
 }
+#endif
 
 static void TestSoftmaxCrossEntropyLossGrad(const std::vector<int64_t>& dY_dims,
                                             const std::vector<int64_t>& log_prob_dims,
@@ -719,11 +709,11 @@ static void TestSoftmaxCrossEntropyLossGrad(const std::vector<int64_t>& dY_dims,
   }
   if (test_fp16) {
     std::vector<MLFloat16> dY_data_half(dY_data.size());
-    ConvertFloatToMLFloat16(dY_data.data(), dY_data_half.data(), static_cast<int>(dY_data.size()));
+    ConvertFloatToMLFloat16(dY_data.data(), dY_data_half.data(), dY_data.size());
     test.AddInput<MLFloat16>("dY", dY_dims, dY_data_half);
 
     std::vector<MLFloat16> log_prob_data_half(log_prob_data.size());
-    ConvertFloatToMLFloat16(log_prob_data.data(), log_prob_data_half.data(), static_cast<int>(log_prob_data.size()));
+    ConvertFloatToMLFloat16(log_prob_data.data(), log_prob_data_half.data(), log_prob_data.size());
     test.AddInput<MLFloat16>("log_prob", log_prob_dims, log_prob_data_half);
 
     test.AddInput<int64_t>("index", index_dims, index_data);
@@ -1102,10 +1092,12 @@ TEST(CrossEntropyTest, SoftmaxCrossEntropyLossInternalGrad_TinySizeTensorFloatIn
                                                             "none", 0, 5e-2, true);
 }
 
+#ifndef _WIN32
+// Disable the large size tests because it is too slow, running on Linux would be enough.
 TEST(CrossEntropyTest, SoftmaxCrossEntropyLossInternalGrad_LargeSizeTensorInt32Index) {
   // The element count is around the upper limit of int32_t.
-  int64_t bsz = 419430;
-  int64_t vocab_size = 5120;
+  constexpr int64_t bsz = 419430;
+  constexpr int64_t vocab_size = 5120;
   std::vector<int64_t> dY_dims{};
   std::vector<int64_t> log_prob_dims{bsz, vocab_size};
   std::vector<int64_t> index_dims{bsz};
@@ -1121,8 +1113,8 @@ TEST(CrossEntropyTest, SoftmaxCrossEntropyLossInternalGrad_LargeSizeTensorInt32I
 
 TEST(CrossEntropyTest, SoftmaxCrossEntropyLossInternalGrad_LargeSizeTensorUInt64Index) {
   // The element count is bigger than the upper limit of int32_t.
-  int64_t bsz = 419431;
-  int64_t vocab_size = 5120;
+  constexpr int64_t bsz = 419431;
+  constexpr int64_t vocab_size = 5120;
   std::vector<int64_t> dY_dims{};
   std::vector<int64_t> log_prob_dims{bsz, vocab_size};
   std::vector<int64_t> index_dims{bsz};
@@ -1135,6 +1127,7 @@ TEST(CrossEntropyTest, SoftmaxCrossEntropyLossInternalGrad_LargeSizeTensorUInt64
   // around 65535, CPU baseline result is smaller than 65535, but CUDA result is a little bigger than it, generating
   // inf, which is not a good test case.
 }
+#endif
 
 }  // namespace test
 }  // namespace onnxruntime

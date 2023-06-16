@@ -32,27 +32,14 @@ struct OpSoftmaxCrossEntropyWeights {
 template <typename T, typename TLabel, typename TOut>
 void ComputeSoftmaxCrossEntropyWeightsImpl(cudaStream_t stream, const TLabel* label, const T* weight, size_t count,
                                            size_t label_depth, int64_t ignore_index, TOut* weight_data_nd) {
-  uint64_t total_count = count * label_depth;
-  if (total_count <= std::numeric_limits<int>::max()) {
-    if (weight) {
-      OpSoftmaxCrossEntropyWeights<T, TLabel, TOut, true, int> op(label, weight, static_cast<TLabel>(label_depth),
-                                                                  static_cast<TLabel>(ignore_index));
-      LaunchElementwiseKernel<TOut, decltype(op), int>(stream, weight_data_nd, op, static_cast<int>(count));
-    } else {
-      OpSoftmaxCrossEntropyWeights<T, TLabel, TOut, false, int> op(label, nullptr, static_cast<TLabel>(label_depth),
+  if (weight) {
+    OpSoftmaxCrossEntropyWeights<T, TLabel, TOut, true, size_t> op(label, weight, static_cast<TLabel>(label_depth),
                                                                    static_cast<TLabel>(ignore_index));
-      LaunchElementwiseKernel<TOut, decltype(op), int>(stream, weight_data_nd, op, static_cast<int>(count));
-    }
+    LaunchElementwiseKernel<TOut, decltype(op), size_t>(stream, weight_data_nd, op, count);
   } else {
-    if (weight) {
-      OpSoftmaxCrossEntropyWeights<T, TLabel, TOut, true, uint64_t> op(label, weight, static_cast<TLabel>(label_depth),
-                                                                       static_cast<TLabel>(ignore_index));
-      LaunchElementwiseKernel<TOut, decltype(op), uint64_t>(stream, weight_data_nd, op, static_cast<uint64_t>(count));
-    } else {
-      OpSoftmaxCrossEntropyWeights<T, TLabel, TOut, false, uint64_t> op(label, nullptr, static_cast<TLabel>(label_depth),
-                                                                        static_cast<TLabel>(ignore_index));
-      LaunchElementwiseKernel<TOut, decltype(op), uint64_t>(stream, weight_data_nd, op, static_cast<uint64_t>(count));
-    }
+    OpSoftmaxCrossEntropyWeights<T, TLabel, TOut, false, size_t> op(label, nullptr, static_cast<TLabel>(label_depth),
+                                                                    static_cast<TLabel>(ignore_index));
+    LaunchElementwiseKernel<TOut, decltype(op), size_t>(stream, weight_data_nd, op, count);
   }
 }
 
@@ -84,8 +71,9 @@ struct OpWeightedSoftmaxCrossEntropyLoss {
   __device__ __inline__ T operator()(TIndex idx) const {
     if (label_data_[idx] != ignore_index_) {
       CUDA_KERNEL_ASSERT(label_data_[idx] >= 0 && label_data_[idx] < C_);
-      return static_cast<T>(static_cast<TAcc>(-log_prob_data_[idx * C_ + label_data_[idx]] * weight_data_[idx]) /
-                            (*normalize_factor_data_));
+      T ret = static_cast<T>(static_cast<TAcc>(-log_prob_data_[idx * C_ + label_data_[idx]] * weight_data_[idx]) /
+                             (*normalize_factor_data_));
+      return ret;
     }
     return T(0.f);
   }
