@@ -1759,11 +1759,6 @@ if (onnxruntime_USE_XNNPACK)
 
   add_dependencies(onnxruntime_providers_xnnpack onnx ${onnxruntime_EXTERNAL_DEPENDENCIES})
   set_target_properties(onnxruntime_providers_xnnpack PROPERTIES FOLDER "ONNXRuntime")
-
-  install(DIRECTORY ${ONNXRUNTIME_INCLUDE_DIR}/core/providers/xnnpack
-    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core/providers
-  )
-
   set_target_properties(onnxruntime_providers_xnnpack PROPERTIES LINKER_LANGUAGE CXX)
 
   if (NOT onnxruntime_BUILD_SHARED_LIB)
