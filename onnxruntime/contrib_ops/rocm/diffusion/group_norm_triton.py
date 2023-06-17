@@ -4,6 +4,7 @@
 # --------------------------------------------------------------------------
 
 from itertools import product
+
 import triton
 import triton.language as tl
 
@@ -34,34 +35,29 @@ def group_norm_kernel(
     mask = cols < c_per_group
 
     # Calculate mean and variance
-    group_mean = 0.0
+    _sum = tl.zeros([BLOCK_SIZE], dtype=tl.float32)
+    _square_sum = tl.zeros([BLOCK_SIZE], dtype=tl.float32)
     for i in range(h * w):
         x_ptr = input_ptr + i * c
         a = tl.load(x_ptr + cols, mask=mask, other=0.0).to(tl.float32)
-        group_mean += tl.sum(a, axis=0)
-    group_mean /= h * w * c_per_group
-
-    group_var = 0.0
-    for i in range(h * w):
-        x_ptr = input_ptr + i * c
-        a = tl.load(x_ptr + cols, mask=mask, other=0.0).to(tl.float32)
-        a = tl.where(mask, a - group_mean, 0.0)
-        group_var += tl.sum(a * a, axis=0)
-    group_var /= h * w * c_per_group
+        _sum += a
+        _square_sum += a * a
+    group_mean = tl.sum(_sum, axis=0) / (h * w * c_per_group)
+    group_var = tl.sum(_square_sum, axis=0) / (h * w * c_per_group) - group_mean * group_mean
 
     rstd = 1 / tl.sqrt(group_var + eps)
 
     # Normalize and apply linear transformation
+    gamma = tl.load(gamma_ptr + cols, mask=mask).to(tl.float32)
+    beta = tl.load(beta_ptr + cols, mask=mask).to(tl.float32)
     for i in range(h * w):  # i: h * w
         y_ptr = output_ptr + i * c
         x_ptr = input_ptr + i * c
-        gamma = tl.load(gamma_ptr + cols, mask=mask).to(tl.float32)
-        beta = tl.load(beta_ptr + cols, mask=mask).to(tl.float32)
         x = tl.load(x_ptr + cols, mask=mask).to(tl.float32)
         x_hat = (x - group_mean) * rstd
         y = x_hat * gamma + beta
         if ACTIVATION_SWISH:
-            y = y * tl.sigmoid(y)
+            y *= tl.sigmoid(y)
         tl.store(y_ptr + cols, y, mask=mask)
 
 
@@ -93,6 +89,7 @@ def get_function_table():
             func_desc = {"name": name, "group": group, "func": group_norm_kernel, "sig": sig, "kwargs": kwargs}
             func_table.append(func_desc)
     return func_table
+
 
 if __name__ == "__main__":
     func_table = get_function_table()
