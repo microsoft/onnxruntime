@@ -225,15 +225,24 @@ else()
     --no-entry
   )
 
+  if (NOT onnxruntime_USE_JSEP AND onnxruntime_WEBASSEMBLY_USE_JSPI)
+    message(FATAL_ERROR "Cannot specify onnxruntime_WEBASSEMBLY_USE_JSPI without onnxruntime_USE_JSEP")
+  endif()
+
   if (onnxruntime_USE_JSEP)
-    # NOTE: "-s ASYNCIFY=1" is required for JSEP to work with WebGPU
+    if (onnxruntime_WEBASSEMBLY_USE_JSPI)
+      set(ASYNCIFY_MODE 2)
+    else()
+      set(ASYNCIFY_MODE 1)
+    endif()
+    # NOTE: "-s ASYNCIFY=1|2" is required for JSEP to work with WebGPU
     #       This flag allows async functions to be called from sync functions, in the cost of binary size and
     #       build time. See https://emscripten.org/docs/porting/asyncify.html for more details.
 
     target_compile_definitions(onnxruntime_webassembly PRIVATE USE_JSEP=1)
     target_link_options(onnxruntime_webassembly PRIVATE
       --pre-js "${ONNXRUNTIME_ROOT}/wasm/js_internal_api.js"
-      "SHELL:-s ASYNCIFY=2"
+      "SHELL:-s ASYNCIFY=${ASYNCIFY_MODE}"
       "SHELL:-s ASYNCIFY_STACK_SIZE=65536"
     )
   endif()
