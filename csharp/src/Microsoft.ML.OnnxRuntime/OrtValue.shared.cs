@@ -128,7 +128,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// <summary>
         /// Valid for composite ML types like map, sequence.
         /// Returns 2 for map (keys, values) and N for sequence, where N is the number of elements
-        /// int the sequence.
+        /// in the sequence.
         /// </summary>
         /// <returns>Element count</returns>
         public int GetValueCount()

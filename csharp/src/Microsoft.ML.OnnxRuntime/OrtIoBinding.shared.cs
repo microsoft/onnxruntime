@@ -342,8 +342,6 @@ namespace Microsoft.ML.OnnxRuntime
 
             try
             {
-                Debug.Assert(outputCount == srcSpan.Length, "Improperly created span");
-
                 OrtValue[] result = new OrtValue[outputCount];
 
                 for (int i = 0; i < outputCount; ++i)

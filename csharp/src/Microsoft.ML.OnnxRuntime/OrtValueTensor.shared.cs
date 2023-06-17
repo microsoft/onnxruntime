@@ -152,9 +152,6 @@ namespace Microsoft.ML.OnnxRuntime
         /// <returns>SpanT</returns>
         public override Span<T> GetSpan()
         {
-            if (IsDisposed)
-                throw new ObjectDisposedException(nameof(OrtValueTensor<T>));
-
             Span<T> span = null;
             unsafe
             {

@@ -280,6 +280,11 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 using (var map = OrtValue.CreateMap(valTuple.Item1, valTuple.Item2))
                 {
                     Assert.Equal(OnnxValueType.ONNX_TYPE_MAP, map.OnnxType);
+                    var typeInfo = map.GetTypeInfo();
+                    var mapInfo = typeInfo.MapTypeInfo;
+                    Assert.Equal(TensorElementType.Int64, mapInfo.KeyType);
+                    Assert.Equal(OnnxValueType.ONNX_TYPE_TENSOR, mapInfo.ValueType.OnnxType);
+
                     // Must return always 2 for map since we have two ort values
                     Assert.Equal(2, map.GetValueCount());
 
@@ -306,6 +311,9 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 using (var seq = OrtValue.CreateSequence(seqVals))
                 {
                     Assert.Equal(OnnxValueType.ONNX_TYPE_SEQUENCE, seq.OnnxType);
+                    var typeInfo = seq.GetTypeInfo();
+                    var seqInfo = typeInfo.SequenceTypeInfo;
+                    Assert.Equal(OnnxValueType.ONNX_TYPE_TENSOR, seqInfo.ElementType.OnnxType);
 
                     // Will return 2 because we put 2 values in the sequence
                     Assert.Equal(2, seq.GetValueCount());

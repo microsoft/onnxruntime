@@ -184,7 +184,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 
                 ioBinding.SynchronizeBoundInputs();
 
-                using (var results = _session.RunWithBindingResults(_runOptions, ioBinding))
+                using (var results = _session.RunWithBoundResults(_runOptions, ioBinding))
                 {
                     ioBinding.SynchronizeBoundOutputs();
                     Assert.Single(results);
@@ -227,7 +227,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 ioBinding.BindOutputToDevice(_outputName, OrtMemoryInfo.DefaultInstance);
                 ioBinding.SynchronizeBoundInputs();
 
-                using (var results = _session.RunWithBindingResults(_runOptions, ioBinding))
+                using (var results = _session.RunWithBoundResults(_runOptions, ioBinding))
                 {
                     ioBinding.SynchronizeBoundOutputs();
                     Assert.Single(results);
@@ -259,7 +259,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 ioBinding.BindInput(_inputName, Tensors.TensorElementType.Float, _inputShape, ortAllocationInput);
                 ioBinding.BindOutput(_outputName, Tensors.TensorElementType.Float, _outputShape, ortAllocationOutput);
                 ioBinding.SynchronizeBoundInputs();
-                using (var outputs = _session.RunWithBindingResults(_runOptions, ioBinding))
+                using (var outputs = _session.RunWithBoundResults(_runOptions, ioBinding))
                 {
                     ioBinding.SynchronizeBoundOutputs();
                     Assert.Single(outputs);
@@ -343,7 +343,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 ioBinding.SynchronizeBoundInputs();
 
                 // We dispose the output after we rebind it to the input because it will be copied during binding.
-                using (var results = session.RunWithBindingResults(runOptions, ioBinding))
+                using (var results = session.RunWithBoundResults(runOptions, ioBinding))
                 {
                     ioBinding.SynchronizeBoundOutputs();
                     Assert.Single(results); // One output
@@ -368,7 +368,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 const int iterations = 2;
                 for (int i = 0; i < iterations; ++i)
                 {
-                    using (var results = session.RunWithBindingResults(runOptions, ioBinding))
+                    using (var results = session.RunWithBoundResults(runOptions, ioBinding))
                     {
                         ioBinding.SynchronizeBoundOutputs();
                         Assert.Single(results); // One output

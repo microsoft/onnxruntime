@@ -203,7 +203,6 @@ namespace Microsoft.ML.OnnxRuntime
 
         /// <summary>
         /// Tensor integer dimensions. Symbolic dimensions are represented as -1.
-        /// Use SymbolicDimensions to obtain symbolic dimensions.
         /// </summary>
         /// <value>array of dims</value>
         public long[] Shape { get; private set; }

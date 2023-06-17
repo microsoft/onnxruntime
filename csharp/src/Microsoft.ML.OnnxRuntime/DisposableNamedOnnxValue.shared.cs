@@ -295,7 +295,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// <returns>DisposableNamedOnnxValue instance</returns>
         private static DisposableNamedOnnxValue FromNativeTensor<T>(string name, ref OrtValue ortValue)
         {
-            Debug.Assert(typeof(T) != typeof(string), "No longer handles strings");
+            Debug.Assert(typeof(T) != typeof(string), "Use FromNativeStringTensor for strings");
             var ortValueTensor = new OrtValueTensor<T>(ref ortValue);
             try
             {
@@ -400,7 +400,7 @@ namespace Microsoft.ML.OnnxRuntime
                                     intKeyShape, ref valSpan[0], intValsShape, ref valSpan[1]);
                                 break;
                             default:
-                                break;
+                                throw new NotSupportedException($"Map value type: {valsTypeInfo.ElementDataType} is not supported");
                         }
                         break;
                     case TensorElementType.String:
@@ -423,7 +423,7 @@ namespace Microsoft.ML.OnnxRuntime
                                     intKeyShape, ref valSpan[0], intValsShape, ref valSpan[1]);
                                 break;
                             default:
-                                break;
+                                throw new NotSupportedException($"Map value type: {valsTypeInfo.ElementDataType} is not supported");
                         }
                         break;
                     default:

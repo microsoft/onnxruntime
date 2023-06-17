@@ -764,7 +764,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// <param name="runOptions">RunOptions</param>
         /// <param name="ioBinding">Binding instance</param>
         /// <returns>A disposable collection of OrtValues</returns>
-        public IDisposableReadOnlyCollection<OrtValue> RunWithBindingResults(RunOptions runOptions, OrtIoBinding ioBinding)
+        public IDisposableReadOnlyCollection<OrtValue> RunWithBoundResults(RunOptions runOptions, OrtIoBinding ioBinding)
         {
             NativeApiStatus.VerifySuccess(NativeMethods.OrtRunWithBinding(Handle, runOptions.Handle, ioBinding.Handle));
             return ioBinding.GetOutputValues();
