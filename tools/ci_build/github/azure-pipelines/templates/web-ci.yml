@@ -23,7 +23,10 @@ parameters:
   displayName: 'Build JSEP'
   type: boolean
   default: true
-
+- name: UseJspi
+  displayName: 'Use JSPI based ASYNCIFY feature for WebAssembly build when JSEP is enabled'
+  type: boolean
+  default: false
 - name: ExtraBuildArgs
   displayName: 'Extra build command line arguments'
   type: string
@@ -62,6 +65,7 @@ stages:
       ExtraBuildArgs: '--use_extensions --cmake_extra_defines onnxruntime_WEBASSEMBLY_DEFAULT_EXTENSION_FLAGS=ON ${{ parameters.ExtraBuildArgs }}'
       PoolName: ${{ parameters.PoolName }}
       BuildJsep: ${{ parameters.BuildJsep }}
+      UseJspi: ${{ parameters.UseJspi }}
 
 - stage: Build_web_Debug
   dependsOn: Build_wasm_Debug
@@ -73,6 +77,7 @@ stages:
       NpmPackagingMode: ${{ parameters.NpmPackagingMode }}
       PoolName: ${{ parameters.PoolName }}
       PackageName: ${{ parameters.PackageName }}
+      UseJspi: ${{ parameters.UseJspi }}
 
 - stage: Build_wasm_Release
   dependsOn: Extract_commit
@@ -84,6 +89,7 @@ stages:
       ExtraBuildArgs: '--target onnxruntime_webassembly --skip_tests --enable_wasm_api_exception_catching --disable_rtti --use_extensions --cmake_extra_defines onnxruntime_WEBASSEMBLY_DEFAULT_EXTENSION_FLAGS=ON ${{ parameters.ExtraBuildArgs }}'
       PoolName: ${{ parameters.PoolName }}
       BuildJsep: ${{ parameters.BuildJsep }}
+      UseJspi: ${{ parameters.UseJspi }}
 
 - ${{ if eq(parameters.BuildStaticLib, 'true') }}:
   - stage: Build_wasm_Release_static_library
@@ -108,8 +114,9 @@ stages:
       NpmPackagingMode: ${{ parameters.NpmPackagingMode }}
       PoolName: ${{ parameters.PoolName }}
       PackageName: ${{ parameters.PackageName }}
+      UseJspi: ${{ parameters.UseJspi }}
 
-- ${{ if ne(parameters.IsReleasePipeline, true) }}:
+- ${{ if and(ne(parameters.IsReleasePipeline, true), ne(parameters.UseJspi, true)) }}:
   - stage: Test_web_BrowserStack
     dependsOn: Build_wasm_Release
     jobs:

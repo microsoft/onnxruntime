@@ -26,6 +26,16 @@ parameters:
   type: boolean
   default: false
 
+- name: UseJspi
+  type: boolean
+  default: false
+
+variables:
+  ${{ if eq(parameters.UseJspi, true) }}:
+    JsepBuildArgsExtra: '--wasm_use_jspi'
+  ${{ if ne(parameters.UseJspi, true) }}:
+    JsepBuildArgsExtra: ''
+
 jobs:
 - job: build_WASM
   pool: ${{ parameters.PoolName }}
@@ -34,6 +44,7 @@ jobs:
     EnvSetupScript: setup_env.bat
     buildArch: x64
     CommonBuildArgs: '--parallel --config ${{ parameters.BuildConfig }} --skip_submodule_sync --cmake_generator "MinGW Makefiles" --build_wasm --use_xnnpack --emsdk_version releases-7c905cfc1ca6699f6ccb288ae174902cfbdcf0a2-64bit ${{ parameters.ExtraBuildArgs }}'
+    JsepBuildArgs: '${{ variables.JsepBuildArgsExtra }} --enable_wasm_simd --use_jsep --target onnxruntime_webassembly --skip_tests'
     runCodesignValidationInjection: false
   timeoutInMinutes: ${{ parameters.TimeoutInMinutes }}
   workspace:
@@ -104,14 +115,14 @@ jobs:
       displayName: 'Build (simd + JSEP)'
       inputs:
         scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-        arguments: '$(CommonBuildArgs) --build_dir $(Build.BinariesDirectory)\wasm_simd_jsep --enable_wasm_simd --use_jsep --target onnxruntime_webassembly --skip_tests'
+        arguments: '$(CommonBuildArgs) --build_dir $(Build.BinariesDirectory)\wasm_simd_jsep $(JsepBuildArgs)'
         workingDirectory: '$(Build.BinariesDirectory)'
   - ${{ if eq(parameters.BuildJsep, true) }}:
     - task: PythonScript@0
       displayName: 'Build (simd + threads + JSEP)'
       inputs:
         scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-        arguments: '$(CommonBuildArgs) --build_dir $(Build.BinariesDirectory)\wasm_simd_threads_jsep --enable_wasm_simd --enable_wasm_threads --use_jsep --target onnxruntime_webassembly --skip_tests'
+        arguments: '$(CommonBuildArgs) --build_dir $(Build.BinariesDirectory)\wasm_simd_threads_jsep --enable_wasm_threads $(JsepBuildArgs)'
         workingDirectory: '$(Build.BinariesDirectory)'
   - ${{ if eq(parameters.SkipPublish, false) }}:
     - script: |

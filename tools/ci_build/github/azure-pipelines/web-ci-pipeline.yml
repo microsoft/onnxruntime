@@ -9,6 +9,11 @@ parameters:
   - 'custom'
   default: 'nightly (@dev)'
 
+- name: UseJspi
+  displayName: 'Use JSPI based ASYNCIFY feature for WebAssembly build'
+  type: boolean
+  default: false
+
 variables:
   # pipeline should define the following varaibles
   #   ExtraBuildArgs
@@ -31,3 +36,4 @@ stages:
     PoolName: 'onnxruntime-Win-CPU-2022-web'
     BuildStaticLib: true
     ExtraBuildArgs: $(ExtraBuildArgs)
+    UseJspi: ${{ parameters.UseJspi }}
