@@ -1,6 +1,19 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+import {getInstance} from './wasm-factory';
+
+export const allocWasmString = (data: string, allocs: number[]): number => {
+  const wasm = getInstance();
+
+  const dataLength = wasm.lengthBytesUTF8(data) + 1;
+  const dataOffset = wasm._malloc(dataLength);
+  wasm.stringToUTF8(data, dataOffset, dataLength);
+  allocs.push(dataOffset);
+
+  return dataOffset;
+};
+
 interface ExtraOptionsHandler {
   (name: string, value: string): void;
 }
@@ -29,3 +42,23 @@ export const iterateExtraOptions =
         }
       });
     };
+
+/**
+ * check web assembly API's last error and throw error if any error occurred.
+ * @param message a message used when an error occurred.
+ */
+export const checkLastError = (message: string): void => {
+  const wasm = getInstance();
+
+  const stack = wasm.stackSave();
+  try {
+    const paramsOffset = wasm.stackAlloc(8);
+    wasm._OrtGetLastError(paramsOffset, paramsOffset + 4);
+    const errorCode = wasm.HEAP32[paramsOffset / 4];
+    const errorMessagePointer = wasm.HEAPU32[paramsOffset / 4 + 1];
+    const errorMessage = errorMessagePointer ? wasm.UTF8ToString(errorMessagePointer) : '';
+    throw new Error(`${message} ERROR_CODE: ${errorCode}, ERROR_MESSAGE: ${errorMessage}`);
+  } finally {
+    wasm.stackRestore(stack);
+  }
+};

@@ -150,12 +150,23 @@ based performance optimizations.
 #### ORTMODULE_PRINT_INPUT_DENSITY
 
 - **Feature Area**: *ORTMODULE/RuntimeInspector*
-- **Description**: By default, this is disabled. This env var can be used for print the input data sparsity
+- **Description**: By default, this is disabled. This env var can be used for printing the input data sparsity
 inspection results to standard outputs.
 
 	```bash
 	export ORTMODULE_PRINT_INPUT_DENSITY=1 # Enable
 	export ORTMODULE_PRINT_INPUT_DENSITY=0 # Disable
+	```
+
+#### ORTMODULE_PRINT_MEMORY_STATS
+
+- **Feature Area**: *ORTMODULE/RuntimeInspector*
+- **Description**: By default, this is disabled. This env var can be used for printing the memory inspection results
+to standard outputs.
+
+	```bash
+	export ORTMODULE_PRINT_MEMORY_STATS=1 # Enable
+	export ORTMODULE_PRINT_MEMORY_STATS=0 # Disable
 	```
 
 ### 2.2 Memory Optimization

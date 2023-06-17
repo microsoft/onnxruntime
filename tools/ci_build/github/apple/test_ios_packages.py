@@ -114,6 +114,11 @@ def _test_ios_packages(args):
 
         # run the tests
         if not args.prepare_test_project_only:
+            simulator_device_name = subprocess.check_output(
+                ["bash", str(REPO_DIR / "tools" / "ci_build" / "github" / "apple" / "get_simulator_device_name.sh")],
+                text=True,
+            ).strip()
+
             subprocess.run(
                 [
                     "xcrun",
@@ -124,7 +129,7 @@ def _test_ios_packages(args):
                     "-scheme",
                     "ios_package_test",
                     "-destination",
-                    "platform=iOS Simulator,OS=latest,name=iPhone SE (2nd generation)",
+                    f"platform=iOS Simulator,OS=latest,name={simulator_device_name}",
                 ],
                 shell=False,
                 check=True,
