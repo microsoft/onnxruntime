@@ -122,6 +122,24 @@ Status ClassifyAttentionMode(
         attn->mode = BSNH_BNLH_BNLH_NONE_NONE_NONE_NONE;
         return Status::OK();
       }
+    } else if (num_qkv == 3 && num_past == 0 && num_present == 2) {
+      if (attn->past_present_share_buffer == false) {
+        if (attn->qkv_format == Q_K_V_BSNH) {
+          attn->mode = BSNH_BLNH_BLNH_NONE_NONE_BNTH_BNTH;
+          return Status::OK();
+        } else if (attn->pass_past_in_kv) {
+          attn->mode = BSNH_BNLH_BNLH_NONE_NONE_BNTH_BNTH;
+          return Status::OK();
+        }
+      } else {
+        if (attn->qkv_format == Q_K_V_BSNH) {
+          attn->mode = BSNH_BLNH_BLNH_NONE_NONE_BNMH_BNMH;
+          return Status::OK();
+        } else if (attn->pass_past_in_kv) {
+          attn->mode = BSNH_BNLH_BNLH_NONE_NONE_BNMH_BNMH;
+          return Status::OK();
+        }
+      }
     } else if (num_qkv == 3 && num_past == 2 && num_present == 2) {
       if (attn->past_present_share_buffer == false) {
         if (attn->qkv_format == Q_K_V_BSNH) {

@@ -20,7 +20,9 @@ import androidx.test.platform.app.InstrumentationRegistry;
 import com.facebook.react.bridge.Arguments;
 import com.facebook.react.bridge.JavaOnlyArray;
 import com.facebook.react.bridge.JavaOnlyMap;
+import com.facebook.react.bridge.ReactApplicationContext;
 import com.facebook.react.bridge.ReadableMap;
+import com.facebook.react.modules.blob.BlobModule;
 import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 import java.nio.ByteBuffer;
@@ -39,11 +41,17 @@ import org.mockito.MockitoSession;
 
 @SmallTest
 public class TensorHelperTest {
+  private ReactApplicationContext reactContext =
+      new ReactApplicationContext(InstrumentationRegistry.getInstrumentation().getContext());
+
   private OrtEnvironment ortEnvironment;
+
+  private FakeBlobModule blobModule;
 
   @Before
   public void setUp() {
     ortEnvironment = OrtEnvironment.getEnvironment("TensorHelperTest");
+    blobModule = new FakeBlobModule(reactContext);
   }
 
   @Test
@@ -64,10 +72,9 @@ public class TensorHelperTest {
     dataFloatBuffer.put(Float.MIN_VALUE);
     dataFloatBuffer.put(2.0f);
     dataFloatBuffer.put(Float.MAX_VALUE);
-    String dataEncoded = Base64.encodeToString(dataByteBuffer.array(), Base64.DEFAULT);
-    inputTensorMap.putString("data", dataEncoded);
+    inputTensorMap.putMap("data", blobModule.testCreateData(dataByteBuffer.array()));
 
-    OnnxTensor inputTensor = TensorHelper.createInputTensor(inputTensorMap, ortEnvironment);
+    OnnxTensor inputTensor = TensorHelper.createInputTensor(blobModule, inputTensorMap, ortEnvironment);
 
     Assert.assertEquals(inputTensor.getInfo().onnxType, TensorInfo.OnnxTensorType.ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT);
     Assert.assertEquals(outputTensor.getInfo().onnxType, TensorInfo.OnnxTensorType.ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT);
@@ -94,10 +101,9 @@ public class TensorHelperTest {
     dataByteBuffer.put(Byte.MIN_VALUE);
     dataByteBuffer.put((byte)2);
     dataByteBuffer.put(Byte.MAX_VALUE);
-    String dataEncoded = Base64.encodeToString(dataByteBuffer.array(), Base64.DEFAULT);
-    inputTensorMap.putString("data", dataEncoded);
+    inputTensorMap.putMap("data", blobModule.testCreateData(dataByteBuffer.array()));
 
-    OnnxTensor inputTensor = TensorHelper.createInputTensor(inputTensorMap, ortEnvironment);
+    OnnxTensor inputTensor = TensorHelper.createInputTensor(blobModule, inputTensorMap, ortEnvironment);
 
     Assert.assertEquals(inputTensor.getInfo().onnxType, TensorInfo.OnnxTensorType.ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8);
     Assert.assertEquals(outputTensor.getInfo().onnxType, TensorInfo.OnnxTensorType.ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8);
@@ -125,10 +131,9 @@ public class TensorHelperTest {
     dataByteBuffer.put((byte)0);
     dataByteBuffer.put((byte)2);
     dataByteBuffer.put((byte)255);
-    String dataEncoded = Base64.encodeToString(dataByteBuffer.array(), Base64.DEFAULT);
-    inputTensorMap.putString("data", dataEncoded);
+    inputTensorMap.putMap("data", blobModule.testCreateData(dataByteBuffer.array()));
 
-    OnnxTensor inputTensor = TensorHelper.createInputTensor(inputTensorMap, ortEnvironment);
+    OnnxTensor inputTensor = TensorHelper.createInputTensor(blobModule, inputTensorMap, ortEnvironment);
 
     Assert.assertEquals(inputTensor.getInfo().onnxType, TensorInfo.OnnxTensorType.ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8);
     Assert.assertEquals(outputTensor.getInfo().onnxType, TensorInfo.OnnxTensorType.ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8);
@@ -157,10 +162,9 @@ public class TensorHelperTest {
     dataIntBuffer.put(Integer.MIN_VALUE);
     dataIntBuffer.put(2);
     dataIntBuffer.put(Integer.MAX_VALUE);
-    String dataEncoded = Base64.encodeToString(dataByteBuffer.array(), Base64.DEFAULT);
-    inputTensorMap.putString("data", dataEncoded);
+    inputTensorMap.putMap("data", blobModule.testCreateData(dataByteBuffer.array()));
 
-    OnnxTensor inputTensor = TensorHelper.createInputTensor(inputTensorMap, ortEnvironment);
+    OnnxTensor inputTensor = TensorHelper.createInputTensor(blobModule, inputTensorMap, ortEnvironment);
 
     Assert.assertEquals(inputTensor.getInfo().onnxType, TensorInfo.OnnxTensorType.ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32);
     Assert.assertEquals(outputTensor.getInfo().onnxType, TensorInfo.OnnxTensorType.ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32);
@@ -189,10 +193,9 @@ public class TensorHelperTest {
     dataLongBuffer.put(Long.MIN_VALUE);
     dataLongBuffer.put(15000000001L);
     dataLongBuffer.put(Long.MAX_VALUE);
-    String dataEncoded = Base64.encodeToString(dataByteBuffer.array(), Base64.DEFAULT);
-    inputTensorMap.putString("data", dataEncoded);
+    inputTensorMap.putMap("data", blobModule.testCreateData(dataByteBuffer.array()));
 
-    OnnxTensor inputTensor = TensorHelper.createInputTensor(inputTensorMap, ortEnvironment);
+    OnnxTensor inputTensor = TensorHelper.createInputTensor(blobModule, inputTensorMap, ortEnvironment);
 
     Assert.assertEquals(inputTensor.getInfo().onnxType, TensorInfo.OnnxTensorType.ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64);
     Assert.assertEquals(outputTensor.getInfo().onnxType, TensorInfo.OnnxTensorType.ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64);
@@ -221,10 +224,9 @@ public class TensorHelperTest {
     dataDoubleBuffer.put(Double.MIN_VALUE);
     dataDoubleBuffer.put(1.8e+30);
     dataDoubleBuffer.put(Double.MAX_VALUE);
-    String dataEncoded = Base64.encodeToString(dataByteBuffer.array(), Base64.DEFAULT);
-    inputTensorMap.putString("data", dataEncoded);
+    inputTensorMap.putMap("data", blobModule.testCreateData(dataByteBuffer.array()));
 
-    OnnxTensor inputTensor = TensorHelper.createInputTensor(inputTensorMap, ortEnvironment);
+    OnnxTensor inputTensor = TensorHelper.createInputTensor(blobModule, inputTensorMap, ortEnvironment);
 
     Assert.assertEquals(inputTensor.getInfo().onnxType, TensorInfo.OnnxTensorType.ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE);
     Assert.assertEquals(outputTensor.getInfo().onnxType,
@@ -258,14 +260,14 @@ public class TensorHelperTest {
 
       OrtSession.Result result = session.run(container);
 
-      ReadableMap resultMap = TensorHelper.createOutputTensor(result);
+      ReadableMap resultMap = TensorHelper.createOutputTensor(blobModule, result);
       ReadableMap outputMap = resultMap.getMap("output");
       for (int i = 0; i < 2; ++i) {
         Assert.assertEquals(outputMap.getArray("dims").getInt(i), dims[i]);
       }
       Assert.assertEquals(outputMap.getString("type"), TensorHelper.JsTensorTypeBool);
-      String dataEncoded = outputMap.getString("data");
-      ByteBuffer buffer = ByteBuffer.wrap(Base64.decode(dataEncoded, Base64.DEFAULT));
+      ReadableMap data = outputMap.getMap("data");
+      ByteBuffer buffer = ByteBuffer.wrap(blobModule.testGetData(data));
       for (int i = 0; i < 5; ++i) {
         Assert.assertEquals(buffer.get(i) == 1, inputData[i]);
       }
@@ -298,15 +300,15 @@ public class TensorHelperTest {
 
       OrtSession.Result result = session.run(container);
 
-      ReadableMap resultMap = TensorHelper.createOutputTensor(result);
+      ReadableMap resultMap = TensorHelper.createOutputTensor(blobModule, result);
       ReadableMap outputMap = resultMap.getMap("output");
       for (int i = 0; i < 2; ++i) {
         Assert.assertEquals(outputMap.getArray("dims").getInt(i), dims[i]);
       }
       Assert.assertEquals(outputMap.getString("type"), TensorHelper.JsTensorTypeDouble);
-      String dataEncoded = outputMap.getString("data");
+      ReadableMap data = outputMap.getMap("data");
       DoubleBuffer buffer =
-          ByteBuffer.wrap(Base64.decode(dataEncoded, Base64.DEFAULT)).order(ByteOrder.nativeOrder()).asDoubleBuffer();
+          ByteBuffer.wrap(blobModule.testGetData(data)).order(ByteOrder.nativeOrder()).asDoubleBuffer();
       for (int i = 0; i < 5; ++i) {
         Assert.assertEquals(buffer.get(i), inputData[i], 1e-6f);
       }
@@ -339,15 +341,14 @@ public class TensorHelperTest {
 
       OrtSession.Result result = session.run(container);
 
-      ReadableMap resultMap = TensorHelper.createOutputTensor(result);
+      ReadableMap resultMap = TensorHelper.createOutputTensor(blobModule, result);
       ReadableMap outputMap = resultMap.getMap("output");
       for (int i = 0; i < 2; ++i) {
         Assert.assertEquals(outputMap.getArray("dims").getInt(i), dims[i]);
       }
       Assert.assertEquals(outputMap.getString("type"), TensorHelper.JsTensorTypeFloat);
-      String dataEncoded = outputMap.getString("data");
-      FloatBuffer buffer =
-          ByteBuffer.wrap(Base64.decode(dataEncoded, Base64.DEFAULT)).order(ByteOrder.nativeOrder()).asFloatBuffer();
+      ReadableMap data = outputMap.getMap("data");
+      FloatBuffer buffer = ByteBuffer.wrap(blobModule.testGetData(data)).order(ByteOrder.nativeOrder()).asFloatBuffer();
       for (int i = 0; i < 5; ++i) {
         Assert.assertEquals(buffer.get(i), inputData[i], 1e-6f);
       }
@@ -380,14 +381,14 @@ public class TensorHelperTest {
 
       OrtSession.Result result = session.run(container);
 
-      ReadableMap resultMap = TensorHelper.createOutputTensor(result);
+      ReadableMap resultMap = TensorHelper.createOutputTensor(blobModule, result);
       ReadableMap outputMap = resultMap.getMap("output");
       for (int i = 0; i < 2; ++i) {
         Assert.assertEquals(outputMap.getArray("dims").getInt(i), dims[i]);
       }
       Assert.assertEquals(outputMap.getString("type"), TensorHelper.JsTensorTypeByte);
-      String dataEncoded = outputMap.getString("data");
-      ByteBuffer buffer = ByteBuffer.wrap(Base64.decode(dataEncoded, Base64.DEFAULT));
+      ReadableMap data = outputMap.getMap("data");
+      ByteBuffer buffer = ByteBuffer.wrap(blobModule.testGetData(data));
       for (int i = 0; i < 5; ++i) {
         Assert.assertEquals(buffer.get(i), inputData[i]);
       }
@@ -420,15 +421,14 @@ public class TensorHelperTest {
 
       OrtSession.Result result = session.run(container);
 
-      ReadableMap resultMap = TensorHelper.createOutputTensor(result);
+      ReadableMap resultMap = TensorHelper.createOutputTensor(blobModule, result);
       ReadableMap outputMap = resultMap.getMap("output");
       for (int i = 0; i < 2; ++i) {
         Assert.assertEquals(outputMap.getArray("dims").getInt(i), dims[i]);
       }
       Assert.assertEquals(outputMap.getString("type"), TensorHelper.JsTensorTypeInt);
-      String dataEncoded = outputMap.getString("data");
-      IntBuffer buffer =
-          ByteBuffer.wrap(Base64.decode(dataEncoded, Base64.DEFAULT)).order(ByteOrder.nativeOrder()).asIntBuffer();
+      ReadableMap data = outputMap.getMap("data");
+      IntBuffer buffer = ByteBuffer.wrap(blobModule.testGetData(data)).order(ByteOrder.nativeOrder()).asIntBuffer();
       for (int i = 0; i < 5; ++i) {
         Assert.assertEquals(buffer.get(i), inputData[i]);
       }
@@ -461,15 +461,14 @@ public class TensorHelperTest {
 
       OrtSession.Result result = session.run(container);
 
-      ReadableMap resultMap = TensorHelper.createOutputTensor(result);
+      ReadableMap resultMap = TensorHelper.createOutputTensor(blobModule, result);
       ReadableMap outputMap = resultMap.getMap("output");
       for (int i = 0; i < 2; ++i) {
         Assert.assertEquals(outputMap.getArray("dims").getInt(i), dims[i]);
       }
       Assert.assertEquals(outputMap.getString("type"), TensorHelper.JsTensorTypeLong);
-      String dataEncoded = outputMap.getString("data");
-      LongBuffer buffer =
-          ByteBuffer.wrap(Base64.decode(dataEncoded, Base64.DEFAULT)).order(ByteOrder.nativeOrder()).asLongBuffer();
+      ReadableMap data = outputMap.getMap("data");
+      LongBuffer buffer = ByteBuffer.wrap(blobModule.testGetData(data)).order(ByteOrder.nativeOrder()).asLongBuffer();
       for (int i = 0; i < 5; ++i) {
         Assert.assertEquals(buffer.get(i), inputData[i]);
       }
@@ -502,14 +501,14 @@ public class TensorHelperTest {
 
       OrtSession.Result result = session.run(container);
 
-      ReadableMap resultMap = TensorHelper.createOutputTensor(result);
+      ReadableMap resultMap = TensorHelper.createOutputTensor(blobModule, result);
       ReadableMap outputMap = resultMap.getMap("output");
       for (int i = 0; i < 2; ++i) {
         Assert.assertEquals(outputMap.getArray("dims").getInt(i), dims[i]);
       }
       Assert.assertEquals(outputMap.getString("type"), TensorHelper.JsTensorTypeUnsignedByte);
-      String dataEncoded = outputMap.getString("data");
-      ByteBuffer buffer = ByteBuffer.wrap(Base64.decode(dataEncoded, Base64.DEFAULT));
+      ReadableMap data = outputMap.getMap("data");
+      ByteBuffer buffer = ByteBuffer.wrap(blobModule.testGetData(data));
       for (int i = 0; i < 5; ++i) {
         Assert.assertEquals(buffer.get(i), inputData[i]);
       }
