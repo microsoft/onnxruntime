@@ -640,7 +640,7 @@ TEST(CrossEntropyTest, DISABLED_SoftmaxCrossEntropyLoss_LargeSizeTensor) {
 
 #ifndef _WIN32
 // Disable the large size tests for Windows because it is too slow, running on Linux would be enough.
-TEST(CrossEntropyTest, SoftmaxCrossEntropyLoss_LargeSizeTensorInt32Index) {
+TEST(CrossEntropyTest, SoftmaxCrossEntropyLossInternal_LargeSizeTensorInt32Index) {
   // The element count is around the upper limit of int32_t.
   constexpr int64_t bsz = 419430;
   constexpr int64_t vocab_size = 5120;
@@ -660,7 +660,7 @@ TEST(CrossEntropyTest, SoftmaxCrossEntropyLoss_LargeSizeTensorInt32Index) {
                                     ignore_index, error_tolerance);
 }
 
-TEST(CrossEntropyTest, SoftmaxCrossEntropyLoss_LargeSizeTensorUInt64Index) {
+TEST(CrossEntropyTest, SoftmaxCrossEntropyLossInternal_LargeSizeTensorUInt64Index) {
   // The element count is bigger than the upper limit of int32_t.
   constexpr int64_t bsz = 419431;
   constexpr int64_t vocab_size = 5120;
