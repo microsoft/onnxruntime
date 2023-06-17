@@ -20,25 +20,28 @@ InlinedVector<int64_t> GetAxesFromAttribute(const OpKernelInfo& info) {
   return InlinedVector<int64_t>(axes.begin(), axes.end());
 }
 
-InlinedVector<int64_t> NormalizeAxes(gsl::span<const int64_t> axes, size_t rank) {
-  InlinedVector<int64_t> normalized_axes{};
+// drop out of range, make non-negative, sort, and make unique
+InlinedVector<size_t> NormalizeAxes(gsl::span<const int64_t> axes, size_t rank) {
+  InlinedVector<size_t> normalized_axes{};
   normalized_axes.reserve(axes.size());
-  std::copy_if(axes.begin(), axes.end(), std::back_inserter(normalized_axes),
-               [rank](int64_t axis) { return IsAxisInRange(axis, static_cast<int64_t>(rank)); });
-  std::transform(normalized_axes.begin(), normalized_axes.end(), normalized_axes.begin(),
-                 [rank](int64_t axis) { return HandleNegativeAxis(axis, static_cast<int64_t>(rank)); });
+  for (int64_t axis : axes) {
+    if (IsAxisInRange(axis, static_cast<int64_t>(rank))) {
+      normalized_axes.push_back(
+          static_cast<size_t>(HandleNegativeAxis(axis, static_cast<int64_t>(rank))));
+    }
+  }
   std::sort(normalized_axes.begin(), normalized_axes.end());
   normalized_axes.erase(std::unique(normalized_axes.begin(), normalized_axes.end()), normalized_axes.end());
   return normalized_axes;
 }
 
-std::optional<InlinedVector<size_t>> GetTransposePermutationIfNeeded(gsl::span<const int64_t> normalized_axes, size_t rank) {
+std::optional<InlinedVector<size_t>> GetTransposePermutationIfNeeded(gsl::span<const size_t> normalized_axes, size_t rank) {
   // we need to transpose if anything other than the trailing axes are specified
   // assume normalized_axes is sorted with unique values
 
   const bool is_transpose_needed = [&]() {
     for (size_t i = 0, num_axes = normalized_axes.size(); i < num_axes; ++i) {
-      if (static_cast<size_t>(normalized_axes[i]) != rank - num_axes + i) {
+      if (normalized_axes[i] != rank - num_axes + i) {
         return true;
       }
     }
@@ -56,7 +59,7 @@ std::optional<InlinedVector<size_t>> GetTransposePermutationIfNeeded(gsl::span<c
   auto specified_axis_it = normalized_axes.begin();
   for (size_t axis = 0; axis < rank; ++axis) {
     if (specified_axis_it != normalized_axes.end() &&
-        axis == static_cast<size_t>(*specified_axis_it)) {
+        axis == *specified_axis_it) {
       // skip specified axis for now, add them all to the end later
       ++specified_axis_it;
     } else {
@@ -66,10 +69,42 @@ std::optional<InlinedVector<size_t>> GetTransposePermutationIfNeeded(gsl::span<c
   }
 
   // add all specified axes
-  std::transform(normalized_axes.begin(), normalized_axes.end(), std::back_inserter(permutation),
-                 [](int64_t axis) { return static_cast<size_t>(axis); });
+  permutation.insert(permutation.end(), normalized_axes.begin(), normalized_axes.end());
 
   return permutation;
+}
+
+// Given a 2D array with dimensions (M x N), compute normalized quantities for M sets of N values.
+Status ComputeMeanVarianceNormalization2D(size_t M, size_t N,
+                                          gsl::span<const float> X, gsl::span<float> Y,
+                                          bool normalize_variance) {
+  ORT_RETURN_IF_NOT(X.size() == M * N && X.size() == Y.size(), "X and Y must both have M * N elements.");
+
+  const auto idx_M = narrow<Eigen::Index>(M), idx_N = narrow<Eigen::Index>(N);
+  // Note: Eigen arrays have column-major storage by default, so we specify N x M.
+  ConstEigenArrayMap<float> X_array(X.data(), idx_N, idx_M);
+  EigenArrayMap<float> Y_array(Y.data(), idx_N, idx_M);
+
+  // for each column, compute Y = X - E[X]
+  Y_array = X_array - X_array.colwise().mean();
+
+  if (normalize_variance) {
+    // for each column, compute Y' = (X - E[X]) / ( E[ (X - E[X])^2 ] )^(1/2)
+    //   we start with Y = X - E[X],
+    //   so Y' = Y / ( E[ Y^2 ] )^(1/2)
+    Y_array /= Y_array.square().colwise().mean().sqrt().eval();
+  }
+
+  return Status::OK();
+}
+
+InlinedVector<size_t> InvertPerm(gsl::span<const size_t> perm) {
+  InlinedVector<size_t> inverted_perm{};
+  inverted_perm.resize(perm.size());
+  for (size_t i = 0; i < perm.size(); ++i) {
+    inverted_perm[perm[i]] = i;
+  }
+  return inverted_perm;
 }
 }  // namespace
 
@@ -99,6 +134,8 @@ class MeanVarianceNormalization : public OpKernel {
     Tensor transposed_input;
     Tensor transposed_result;
 
+    TensorShape compute_shape = input.Shape();
+
     if (is_transpose_required) {
       AllocatorPtr alloc;
       ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&alloc));
@@ -106,15 +143,37 @@ class MeanVarianceNormalization : public OpKernel {
       InlinedVector<int64_t> transposed_dims{};
       transposed_dims.reserve(rank);
       std::transform(transpose_permutation->begin(), transpose_permutation->end(), std::back_inserter(transposed_dims),
-                     [&input_shape = input.Shape().GetDims()](size_t axis) { return input_shape[axis]; });
-      const TensorShape transposed_shape = TensorShape::FromExistingBuffer(transposed_dims);
+                     [input_dims = input.Shape().GetDims()](size_t axis) { return input_dims[axis]; });
+      compute_shape = TensorShape(transposed_dims);
 
-      transposed_input = Tensor{input.DataType(), transposed_shape, alloc};
+      transposed_input = Tensor{input.DataType(), compute_shape, alloc};
 
       ORT_RETURN_IF_ERROR(TransposeBase::DoTranspose(*transpose_permutation, input, transposed_input));
 
-      transposed_output = Tensor{input.DataType(), transposed_shape, alloc};
+      transposed_result = Tensor{input.DataType(), compute_shape, alloc};
     }
+
+    Tensor& output = context->RequiredOutput(0, input.Shape());
+
+    const size_t num_unspecified_axes = rank - normalized_axes.size();
+    const size_t M = narrow<size_t>(compute_shape.SizeToDimension(num_unspecified_axes)),
+                 N = narrow<size_t>(compute_shape.SizeFromDimension(num_unspecified_axes));
+
+    const gsl::span<const float> X = is_transpose_required
+                                         ? transposed_input.DataAsSpan<float>()
+                                         : input.DataAsSpan<float>();
+    const gsl::span<float> Y = is_transpose_required
+                                   ? transposed_result.MutableDataAsSpan<float>()
+                                   : output.MutableDataAsSpan<float>();
+
+    ORT_RETURN_IF_ERROR(ComputeMeanVarianceNormalization2D(M, N, X, Y, normalize_variance_));
+
+    if (is_transpose_required) {
+      const auto inverted_permutation = InvertPerm(*transpose_permutation);
+      ORT_RETURN_IF_ERROR(TransposeBase::DoTranspose(inverted_permutation, transposed_result, output));
+    }
+
+    return Status::OK();
   }
 
  private:
