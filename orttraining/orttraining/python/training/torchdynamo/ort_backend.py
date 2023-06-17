@@ -18,9 +18,7 @@ import torch.jit
 import torch.onnx
 import torch.onnx._onnx_supported_ops
 from torch._decomp import decomposition_table
-from torch._dynamo.utils import detect_fake_mode
 from torch._subclasses.fake_tensor import FakeTensor
-from torch.fx.experimental.proxy_tensor import make_fx
 from torch.fx.passes.fake_tensor_prop import FakeTensorProp
 from torch.fx.passes.infra.partitioner import CapabilityBasedPartitioner
 from torch.fx.passes.operator_support import OperatorSupport

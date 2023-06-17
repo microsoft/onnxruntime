@@ -6,7 +6,7 @@
 from functorch.compile import min_cut_rematerialization_partition
 from torch._dynamo.backends.common import aot_autograd
 
-from .ort_backend import OrtBackend, ATEN2ATEN_DECOMP
+from .ort_backend import ATEN2ATEN_DECOMP, OrtBackend
 
 # This should be the underlying compiler for ALL graphs if
 # the user uses ORT to accelerate PyTorch via Dynamo.
@@ -29,9 +29,7 @@ DEFAULT_BACKEND = OrtBackend()
 #  result = compiled_model(torch.rand(2, 2, dtype=torch.float)
 #  result.sum().backward()
 aot_ort = aot_autograd(
-    fw_compiler=DEFAULT_BACKEND,
-    partition_fn=min_cut_rematerialization_partition,
-    decompositions=ATEN2ATEN_DECOMP
+    fw_compiler=DEFAULT_BACKEND, partition_fn=min_cut_rematerialization_partition, decompositions=ATEN2ATEN_DECOMP
 )
 
 # Declare ORT as a compiler in Dynamo for inference (i.e., when .backward is NOT called).
