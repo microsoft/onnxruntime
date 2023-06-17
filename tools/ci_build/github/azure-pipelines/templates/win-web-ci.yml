@@ -24,18 +24,16 @@ parameters:
   type: boolean
   default: false
 
-variables:
-  ${{ if eq(parameters.UseJspi, true) }}:
-    NpmTestArgsExtra: '--use-jspi'
-  ${{ if ne(parameters.UseJspi, true) }}:
-    NpmTestArgsExtra: ''
-
 jobs:
 - job: build_onnxruntime_web
   pool: ${{ parameters.PoolName }}
 
   variables:
     runCodesignValidationInjection: false
+    ${{ if eq(parameters.UseJspi, true) }}:
+      NpmTestArgsExtra: '--use-jspi'
+    ${{ if ne(parameters.UseJspi, true) }}:
+      NpmTestArgsExtra: ''
   timeoutInMinutes: 60
   workspace:
     clean: all
@@ -141,15 +139,15 @@ jobs:
       errorActionPreference: stop
     displayName: 'Pack NPM packages'
   - script: |
-     npm test -- ${{ variables.NpmTestArgsExtra }}
+     npm test -- $(NpmTestArgsExtra)
     workingDirectory: '$(Build.SourcesDirectory)\js\web'
     displayName: 'Run ort-web tests'
   - script: |
-     npm test -- --webgl-texture-pack-mode -b=webgl ${{ variables.NpmTestArgsExtra }}
+     npm test -- --webgl-texture-pack-mode -b=webgl $(NpmTestArgsExtra)
     workingDirectory: '$(Build.SourcesDirectory)\js\web'
     displayName: 'Run ort-web tests - WebGL: packed mode'
   - script: |
-     npm test -- --wasm-enable-proxy -b=wasm ${{ variables.NpmTestArgsExtra }}
+     npm test -- --wasm-enable-proxy -b=wasm $(NpmTestArgsExtra)
     workingDirectory: '$(Build.SourcesDirectory)\js\web'
     displayName: 'Run ort-web tests - WebAssembly: proxy'
   - script: |
