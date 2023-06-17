@@ -131,15 +131,15 @@ jobs:
       errorActionPreference: stop
     displayName: 'Pack NPM packages'
   - script: |
-     npm test
+     npm test -- -e=edge
     workingDirectory: '$(Build.SourcesDirectory)\js\web'
     displayName: 'Run ort-web tests'
   - script: |
-     npm test -- --webgl-texture-pack-mode -b=webgl
+     npm test -- --webgl-texture-pack-mode -b=webgl -e=edge
     workingDirectory: '$(Build.SourcesDirectory)\js\web'
     displayName: 'Run ort-web tests - WebGL: packed mode'
   - script: |
-     npm test -- --wasm-enable-proxy -b=wasm
+     npm test -- --wasm-enable-proxy -b=wasm -e=edge
     workingDirectory: '$(Build.SourcesDirectory)\js\web'
     displayName: 'Run ort-web tests - WebAssembly: proxy'
     condition: and(succeeded(), eq('${{ parameters.BuildConfig }}', 'Release'))
