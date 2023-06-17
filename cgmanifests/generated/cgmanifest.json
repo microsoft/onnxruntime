@@ -132,7 +132,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "e7e1482087f58913b80a20b04d5c58d9d6d90155",
+          "commitHash": "6e921e1b1d21e84a5c82416ba7ecd98e33a436d0",
           "repositoryUrl": "https://github.com/HowardHinnant/date.git"
         },
         "comments": "date"
