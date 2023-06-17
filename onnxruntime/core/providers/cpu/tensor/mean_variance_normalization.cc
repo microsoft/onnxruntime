@@ -74,7 +74,8 @@ std::optional<InlinedVector<size_t>> GetTransposePermutationIfNeeded(gsl::span<c
   return permutation;
 }
 
-// Given a 2D array with dimensions (M x N), compute normalized quantities for M sets of N values.
+// Given an M x N array where N is the inner dimension, compute normalized quantities for M sets of N values.
+// X is the input and Y is the output.
 Status ComputeMeanVarianceNormalization2D(size_t M, size_t N,
                                           gsl::span<const float> X, gsl::span<float> Y,
                                           bool normalize_variance) {
