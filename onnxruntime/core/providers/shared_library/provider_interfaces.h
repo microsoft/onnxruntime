@@ -927,8 +927,8 @@ struct ProviderHost {
 #endif
 
 #if defined(USE_CUDA) || defined(USE_ROCM)
-
   virtual PhiloxGenerator& PhiloxGenerator__Default() = 0;
+#endif
 
 #ifdef ENABLE_TRAINING_TORCH_INTEROP
   virtual void contrib__PythonOpBase__Init(contrib::PythonOpBase* p, const OpKernelInfo& info) = 0;
@@ -942,7 +942,6 @@ struct ProviderHost {
 
   virtual language_interop_ops::torch::RefCountTracker& GetRefCountTrackerInstance() = 0;
   virtual void RefCountTracker__DumpDetails(const language_interop_ops::torch::RefCountTracker* p, const std::string& phase_name) = 0;
-#endif
 #endif
 
 #if defined(USE_CANN)
