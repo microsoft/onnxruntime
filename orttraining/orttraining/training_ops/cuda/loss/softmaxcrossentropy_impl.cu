@@ -25,7 +25,7 @@ template <typename T>
 void SoftMaxCrossEntropyImpl(cudaStream_t stream, const T* log_prob, const T* label, size_t normalize_factor,
                              T* output_data, size_t count) {
   OpSoftmaxCrossEntropy<T> op(log_prob, label, static_cast<T>(normalize_factor));
-  LaunchElementwiseKernel<T, decltype(op), int>(stream, output_data, op, count);
+  LaunchElementwiseKernel<T, decltype(op), size_t>(stream, output_data, op, count);
 }
 
 template void SoftMaxCrossEntropyImpl(cudaStream_t stream, const float* log_prob, const float* label,

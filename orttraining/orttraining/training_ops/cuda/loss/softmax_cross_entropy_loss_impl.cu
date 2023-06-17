@@ -90,18 +90,10 @@ template <typename T, typename TAcc, typename TLabel>
 void SoftmaxCrossEntropyLossImpl(cudaStream_t stream, const T* log_prob, const TLabel* label, const T* weight,
                                  const TAcc* normalize_factor, size_t count, size_t label_depth, int64_t ignore_index,
                                  T* output_data) {
-  uint64_t total_count = count * label_depth;
-  if (total_count <= std::numeric_limits<int>::max()) {
-    OpWeightedSoftmaxCrossEntropyLoss<T, TAcc, TLabel, int> op(log_prob, label, weight, normalize_factor,
-                                                               static_cast<TLabel>(label_depth),
-                                                               static_cast<TLabel>(ignore_index));
-    LaunchElementwiseKernel<T, decltype(op), int>(stream, output_data, op, count);
-  } else {
-    OpWeightedSoftmaxCrossEntropyLoss<T, TAcc, TLabel, uint64_t> op(log_prob, label, weight, normalize_factor,
-                                                                    static_cast<TLabel>(label_depth),
-                                                                    static_cast<TLabel>(ignore_index));
-    LaunchElementwiseKernel<T, decltype(op), uint64_t>(stream, output_data, op, count);
-  }
+  OpWeightedSoftmaxCrossEntropyLoss<T, TAcc, TLabel, size_t> op(log_prob, label, weight, normalize_factor,
+                                                                static_cast<TLabel>(label_depth),
+                                                                static_cast<TLabel>(ignore_index));
+  LaunchElementwiseKernel<T, decltype(op), size_t>(stream, output_data, op, count);
 }
 
 template <typename T, typename TAcc, typename TLabel, typename TOut, bool IsReductionNone, bool HasBias, typename TIndex>

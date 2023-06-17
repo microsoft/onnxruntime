@@ -354,7 +354,11 @@ class ParallelRandomValueGenerator {
         tp.get(), val.size(), cost,
         [&min, &max, &base_seed, &val](
             std::ptrdiff_t begin, std::ptrdiff_t end) {
-          RandomEngine generator{base_seed + begin};
+          RandomSeedType seed = base_seed;
+          auto new_seed = static_cast<std::ptrdiff_t>(base_seed) + begin;
+          if (new_seed < static_cast<std::ptrdiff_t>(std::numeric_limits<RandomSeedType>::max()))
+            seed = static_cast<RandomSeedType>(new_seed);
+          RandomEngine generator{seed};
           std::uniform_real_distribution<TFloat> distribution(min, max);
           for (std::ptrdiff_t di = begin; di != end; ++di) {
             val[di] = distribution(generator);
@@ -381,7 +385,11 @@ class ParallelRandomValueGenerator {
         tp.get(), val.size(), cost,
         [&min, &max, &base_seed, &val](
             std::ptrdiff_t begin, std::ptrdiff_t end) {
-          RandomEngine generator{base_seed + begin};
+          RandomSeedType seed = base_seed;
+          auto new_seed = static_cast<std::ptrdiff_t>(base_seed) + begin;
+          if (new_seed < static_cast<std::ptrdiff_t>(std::numeric_limits<RandomSeedType>::max()))
+            seed = static_cast<RandomSeedType>(new_seed);
+          RandomEngine generator{seed};
           std::uniform_real_distribution<float> distribution(min, max);
           for (std::ptrdiff_t di = begin; di != end; ++di) {
             val[di] = TFloat16(math::floatToHalf(distribution(generator)));
