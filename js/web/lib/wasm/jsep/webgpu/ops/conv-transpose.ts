@@ -28,7 +28,7 @@ const distributePadding = (totalPad: number, autoPad: string, pads: number[], he
 
 const calculateOutputShapeAndPads =
     (inputShape: readonly number[], kernelShape: readonly number[], dilations: readonly number[], autoPad: string,
-     pads: number[], strides: readonly number[], isChannelLast: boolean, outputPadding: number[],
+     group: number, pads: number[], strides: readonly number[], isChannelLast: boolean, outputPadding: number[],
      outputShape: number[]) => {
       const spatialRank = inputShape.length - 2;
       const updateOutputShape = outputShape.length === 0;
@@ -37,27 +37,21 @@ const calculateOutputShapeAndPads =
           outputPadding.push(0);
         }
       }
-      if (updateOutputShape) {
-        outputShape.push(inputShape[0]);
-        if (!isChannelLast) {
-          outputShape.push(inputShape[1]);
-        }
-      }
-
+      const batchSize = inputShape[0];
+      const outChannels = kernelShape[isChannelLast ? 3 : 1] * group;
       for (let i = 0, j = inputShape.length - spatialRank - (isChannelLast ? 1 : 0); i < spatialRank; ++i, ++j) {
         const inSize = inputShape[j];
         const outSize = updateOutputShape ? inSize * strides[i] : outputShape[i];
-        const totalPad = computeTotalPad(inSize, strides[i], pads[i], kernelShape[i], dilations[i], outSize);
+        const totalPad = computeTotalPad(inSize, strides[i], pads[i], kernelShape[j], dilations[i], outSize);
         distributePadding(totalPad, autoPad, pads, i, i + spatialRank);
         if (updateOutputShape) {
           outputShape.push(
-              strides[i] * (inSize - 1) + outputPadding[i] + (kernelShape[i] - 1) * dilations[i] + 1 - pads[i] -
+              strides[i] * (inSize - 1) + outputPadding[i] + (kernelShape[j] - 1) * dilations[i] + 1 - pads[i] -
               pads[i + spatialRank]);
         }
       }
-      if (isChannelLast) {
-        outputShape.push(inputShape[inputShape.length - 1]);
-      }
+      outputShape.splice(0, 0, batchSize);
+      outputShape.splice(isChannelLast ? 3 : 1, 0, outChannels);
     };
 
 export interface ConvTransposeAttributes extends ConvAttributes {
@@ -72,12 +66,15 @@ const getAdjustedConvTransposeAttributes =
     <T extends ConvTransposeAttributes>(attributes: T, inputs: readonly TensorView[]): T => {
       const kernelShape = attributes.kernelShape.slice();
       // if kernelShape is not specified in the attributes of this op, infer it from the weight tensor dims
-      if (attributes.kernelShape.length === 0) {
+      if (attributes.kernelShape.length === 0 || attributes.kernelShape.reduce((a, b) => a * b, 0) === 0) {
+        kernelShape.length = 0;
         for (let i = 2; i < inputs[1].dims.length; ++i) {
           kernelShape.push(inputs[1].dims[i]);
         }
       }
       const isChannelsLast = attributes.format === 'NHWC';
+      kernelShape.splice(0, 0, inputs[1].dims[0]);
+      kernelShape.splice(isChannelsLast ? 3 : 1, 0, inputs[1].dims[1]);
 
       const pads = attributes.pads.slice();
       const outputShape = attributes.outputShape.slice();
@@ -86,8 +83,8 @@ const getAdjustedConvTransposeAttributes =
       // If outputShape is not specified in the attributes of this op, infer it from the parameters
       // Similarly, automatically infer pads if not specified
       calculateOutputShapeAndPads(
-          inputShape, kernelShape, attributes.dilations, attributes.autoPad, pads, attributes.strides, isChannelsLast,
-          outputPadding, outputShape);
+          inputShape, kernelShape, attributes.dilations, attributes.autoPad, attributes.group, pads, attributes.strides,
+          isChannelsLast, outputPadding, outputShape);
 
       // always return a new object so does not modify the original attributes
       const newAttributes: T = Object.assign({}, attributes);
@@ -140,7 +137,7 @@ const validateInputs = (inputs: readonly TensorView[], attributes: ConvTranspose
   }
 
   // FILTER_IN_CHANNEL should be equal to DATA_CHANNEL
-  const dataChannel = attributes.format === 'NHWC' ? inputs[0].dims[3] :  inputs[0].dims[1];
+  const dataChannel = attributes.format === 'NHWC' ? inputs[0].dims[3] : inputs[0].dims[1];
   const filterInChannel = inputs[1].dims[0];
   if (dataChannel !== filterInChannel) {
     throw new Error('FILTER_IN_CHANNEL should be equal to DATA_CHANNEL');

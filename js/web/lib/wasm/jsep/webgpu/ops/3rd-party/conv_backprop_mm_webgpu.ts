@@ -15,7 +15,6 @@
  * =============================================================================
  */
 
-
 // sampled from [@tensorflow/tfjs] tfjs-backend-webgpu/src/conv_backprop_mm_webgpu.ts
 //
 // modified to fit the needs of the project
@@ -67,32 +66,12 @@ const convTranspose2dCommonSnippet =
       if (xC < 0.0 || xC >= f32(outBackprop[2]) || fract(xC) > 0.0) {
         return ${typeSnippet(innerElementSize)}(0.0);
       }
-      let coord0 = vec4<i32>(
+      let coord = vec4<i32>(
           batch,
           i32(xR),
           i32(xC),
           col % outBackprop[3]);
-
-      let coord1 = vec4<i32>(
-          batch,
-          i32(xR),
-          i32(xC),
-          (col+1) % outBackprop[3]);
-      let coord2 = vec4<i32>(
-          batch,
-          i32(xR),
-          i32(xC),
-          (col+2) % outBackprop[3]);
-      let coord3 = vec4<i32>(
-            batch,
-            i32(xR),
-            i32(xC),
-            (col+3) % outBackprop[3]);
-      let v0 = x[getIndexFromCoords4D(coord0, xShape)/${innerElementSize}];
-      let v1 = x[getIndexFromCoords4D(coord1, xShape)/${innerElementSize}];
-      let v2 = x[getIndexFromCoords4D(coord2, xShape)/${innerElementSize}];
-      let v3 = x[getIndexFromCoords4D(coord3, xShape)/${innerElementSize}];
-      return vec4<f32>(v0, v1, v2, v3);`;
+      return x[getIndexFromCoords4D(coord, xShape)/${innerElementSize}];`;
 
       const sampleA = `if (row < dimAOuter && col < dimInner) {
         ${readASnippet}
@@ -138,14 +117,10 @@ export const createConvTranspose2DMatMulProgramInfo =
      sequentialAccessByThreads: boolean): ProgramInfo => {
       const isChannelsLast = attributes.format === 'NHWC';
       const inChannels = isChannelsLast ? inputs[0].dims[3] : inputs[0].dims[1];
-      const batchSize = outputShape[0];
-      // const outWidth = outputShape[0];
-      // const outHeight = outputShape[1];
-      // const outChannels = inChannels;
-      // const batchSize = inputs[0].dims[2];
-      const outWidth = isChannelsLast ? outputShape[2] : outputShape[3];
-      const outHeight = isChannelsLast ? outputShape[1] : outputShape[2];
-      const outChannels = isChannelsLast ? outputShape[3] : outputShape[1];
+      const outWidth = outputShape[0];
+      const outHeight = outputShape[1];
+      const outChannels = inChannels;
+      const batchSize = inputs[0].dims[2];
       const isVec4 = (((inChannels % 4 === 0 || inChannels % 3 === 0) && isChannelsLast) ||
                       (outWidth % 4 === 0 && !isChannelsLast)) &&
           outChannels % 4 === 0;
@@ -177,7 +152,7 @@ export const createConvTranspose2DMatMulProgramInfo =
 
       const declareInputs = [
         `@group(0) @binding(0) var<storage, read> x: array<${isVec4 && innerElementSize === 4 ? 'vec4<f32>' : 'f32'}>;`,
-        `@group(0) @binding(1) var<storage, read> w: array<${isVec4 ? 'vec4<f32>' : 'f32'}>;`
+        `@group(0) @binding(1) var<storage, read> W: array<${isVec4 ? 'vec4<f32>' : 'f32'}>;`
       ];
       let declareFunctions = `
       fn setOutputAtIndex(flatIndex : i32, value : ${isVec4 ? 'vec4<f32>' : 'f32'}) {
@@ -217,12 +192,12 @@ export const createConvTranspose2DMatMulProgramInfo =
         const pad : vec2<i32> = vec2<i32>(${attributes.pads[0]}, ${attributes.pads[1]});
         const stride : vec2<i32> = vec2<i32>(${attributes.strides[0]}, ${attributes.strides[1]});
         const dilation : vec2<i32> = vec2<i32>(${attributes.dilations[0]}, ${attributes.dilations[1]});
-        const outBackprop : vec4<i32> = ${inputs[0].dims};
+        const outBackprop : vec4<i32> = vec4<i32>(${inputs[0].dims});
         const dimAOuter : i32 = ${dimAOuter};
         const dimBOuter : i32 = ${dimBOuter};
         const dimInner : i32 = ${dimInner};
         ${declareFunctions}
-        ${convTranspose2dCommonSnippet(isChannelsLast, fitAOuter, fitBOuter, fitInner, undefined)}
+        ${convTranspose2dCommonSnippet(isChannelsLast, fitAOuter, fitBOuter, fitInner, undefined, isVec4 ? 4 : 1)}
             ${
             isVec4 ? makeMatMulPackedVec4Source(elementsPerThread, workGroupSize, !isChannelsLast, tileInner) :
                      makeMatMulPackedSource(
