@@ -25,7 +25,7 @@ struct HypothesisScore {
 };
 
 struct BeamHypotheses {
-  // As these are constructed as an unitialized array of memory,
+  // As these are constructed as an uninitialized array of memory, we need an Init method
   void Init(float length_penalty, gsl::span<HypothesisScore> beams);
 
   // Add a new hypothesis

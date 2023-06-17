@@ -570,7 +570,7 @@ struct CudaBeamSearchScorer : transformers::IBeamScorer {
                 Tensor* output_sequences,
                 Tensor* output_sequence_scores) override;
 
-  bool IsDone() const override { return false; } // For CUDA we speculatively run the next step while we wait for the GPU to report status. We use 'IsDoneLater()' for this
+  bool IsDone() const override { return false; }  // For CUDA we speculatively run the next step while we wait for the GPU to report status. We use 'IsDoneLater()' for this
   bool IsDoneLater() const override;
 
   gsl::span<float> GetNextScores() override { return next_beam_scores_; }
@@ -1046,7 +1046,7 @@ Status UpdateGptFeeds(
   cudaStream_t cuda_stream = ort_stream ? static_cast<cudaStream_t>(ort_stream->GetHandle()) : nullptr;
 
   CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(input_ids_data, beam_next_tokens.data(), beam_next_tokens.size_bytes(),
-                                       cudaMemcpyDeviceToDevice, cuda_stream));
+                                       num_beams == 1 ? cudaMemcpyHostToDevice : cudaMemcpyDeviceToDevice, cuda_stream));
 
   next_inputs[0] = input_ids;
 

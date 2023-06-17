@@ -119,7 +119,7 @@ struct IBeamScorer {
                         Tensor* output_sequences,
                         Tensor* output_sequence_scores) = 0;
 
-  virtual bool IsDone() const = 0; // GPU version will return false here, as it asynchronously queues up the event
+  virtual bool IsDone() const = 0;                    // GPU version will return false here, as it asynchronously queues up the event
   virtual bool IsDoneLater() const { return false; }  // GPU version waits for the asynchous result to complete here
 
   virtual gsl::span<float> GetNextScores() = 0;

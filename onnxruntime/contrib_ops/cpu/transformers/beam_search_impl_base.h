@@ -268,9 +268,9 @@ Status BeamSearchBase<T>::GenerateNextToken(
                                           DeviceCopyDirection::deviceToDevice));
 
     beam_next_tokens = beam_scorer_->GetNextTokens();
-    auto beam_indices = beam_scorer_->GetNextIndicesGPU();
 
 #ifdef DEBUG_GENERATION
+    auto beam_indices = beam_scorer_->GetNextIndicesGPU();
     cuda_dumper_->Print("beam_scores from scorer", beam_scores.data(), parameters_->batch_size, parameters_->num_beams);
     cuda_dumper_->Print("beam_next_tokens", beam_next_tokens.data(), parameters_->batch_size, parameters_->num_beams);
     cuda_dumper_->Print("beam_indices", beam_indices.data(), parameters_->batch_size, parameters_->num_beams);
