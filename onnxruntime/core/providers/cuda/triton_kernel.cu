@@ -16,8 +16,8 @@
     auto status = expr;                                               \
     const char* error_str;                                            \
     if (status != CUDA_SUCCESS) {                                     \
-      auto get_err_str_status = cuGetErrorString(status, &error_str); \
-      (void)get_err_str_status;                                       \
+      auto get_status_err_str = cuGetErrorString(status, &error_str); \
+      ORT_UNUSED_PARAMETER(get_status_err_str);                       \
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, msg, error_str);      \
     }                                                                 \
   } while (0)
@@ -27,8 +27,8 @@
     auto status = expr;                                               \
     const char* error_str;                                            \
     if (status != CUDA_SUCCESS) {                                     \
-      auto get_err_str_status = cuGetErrorString(status, &error_str); \
-      (void)get_err_str_status;                                       \
+      auto get_status_err_str = cuGetErrorString(status, &error_str); \
+      ORT_UNUSED_PARAMETER(get_status_err_str);                       \
       ORT_THROW(msg, error_str);                                      \
     }                                                                 \
   } while (0)
