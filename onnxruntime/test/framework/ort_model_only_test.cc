@@ -11,6 +11,7 @@
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "test_utils.h"
 #include "test/common/tensor_op_test_utils.h"
+#include "test/providers/checkers.h"
 #include "test/test_environment.h"
 #include "test/util/include/asserts.h"
 #include "test/util/include/inference_session_wrapper.h"
@@ -78,27 +79,6 @@ static void RunOrtModel(const OrtModelTestInfo& test_info) {
 }
 
 #if !defined(ORT_MINIMAL_BUILD)
-// Same Tensor from ONNX and ORT format will have different binary representation, need to compare value by value
-static void CompareTensors(const OrtValue& left_value, const OrtValue& right_value) {
-  const Tensor& left = left_value.Get<Tensor>();
-  const Tensor& right = right_value.Get<Tensor>();
-
-  ASSERT_EQ(left.Shape().GetDims(), right.Shape().GetDims());
-  ASSERT_EQ(left.GetElementType(), right.GetElementType());
-
-  if (left.IsDataTypeString()) {
-    auto size = left.Shape().Size();
-    const auto* left_strings = left.Data<std::string>();
-    const auto* right_strings = right.Data<std::string>();
-
-    for (int i = 0; i < size; ++i) {
-      EXPECT_EQ(left_strings[i], right_strings[i]) << "Mismatch index:" << i;
-    }
-  } else {
-    ASSERT_EQ(memcmp(left.DataRaw(), right.DataRaw(), left.SizeInBytes()), 0);
-  }
-}
-
 // Keep the CompareTypeProtos in case we need debug the difference
 /*
 static void CompareTypeProtos(const TypeProto& left_type_proto, const TypeProto& right_type_proto) {
@@ -168,7 +148,8 @@ static void CompareGraphAndSessionState(const InferenceSessionWrapper& session_o
 
     const OrtValue& left = pair.second;
     const OrtValue& right = iter->second;
-    CompareTensors(left, right);
+    // CompareTensors(left, right);
+    CheckOrtValuesAreEqual("initializer_" + std::to_string(pair.first), left, right);
   }
 
   // check all node args are fine
@@ -414,7 +395,7 @@ void TestOrtModelUpdate(const PathString& onnx_file,
   auto compare_outputs = [](gsl::span<OrtValue> expected, gsl::span<OrtValue> actual) {
     ASSERT_EQ(expected.size(), actual.size());
     for (size_t i = 0; i < expected.size(); ++i) {
-      CompareTensors(expected[i], actual[i]);
+      CheckOrtValuesAreEqual("output_" + std::to_string(i), expected[i], actual[i]);
     }
   };
 
