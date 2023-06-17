@@ -930,7 +930,7 @@ TEST(Loop, PassThroughSubgraphInputNoTypeOrShape) {
   test.AddOutput<float>("loop_var_0_final", {1}, {123.f});
 
   // Disable TensorRT on unsupported data type BOOL
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
 }
 
 TEST(Loop, BugFixIssue4031_implicit_input_handling) {

@@ -25,7 +25,7 @@ struct RunOptions {
   bool add_bad_shape = false;
   bool mixed_execution_providers = false;
   // Disable TensorRT because its parser fails, and it can't handle unknown dimensions
-  std::unordered_set<std::string> excluded_provider_types{kTensorrtExecutionProvider};
+  std::unordered_set<std::string> excluded_provider_types{kTensorrtExecutionProvider, kOpenVINOExecutionProvider};
 };
 
 static common::Status CreateSubgraph(Graph& graph, RunOptions& options, const std::string& failure_message = "");
