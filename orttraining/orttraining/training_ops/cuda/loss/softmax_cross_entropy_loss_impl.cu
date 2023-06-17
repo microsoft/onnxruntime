@@ -33,13 +33,13 @@ template <typename T, typename TLabel, typename TOut>
 void ComputeSoftmaxCrossEntropyWeightsImpl(cudaStream_t stream, const TLabel* label, const T* weight, size_t count,
                                            size_t label_depth, int64_t ignore_index, TOut* weight_data_nd) {
   if (weight) {
-    OpSoftmaxCrossEntropyWeights<T, TLabel, TOut, true, size_t> op(label, weight, static_cast<TLabel>(label_depth),
-                                                                   static_cast<TLabel>(ignore_index));
-    LaunchElementwiseKernel<TOut, decltype(op), size_t>(stream, weight_data_nd, op, count);
+    typedef OpSoftmaxCrossEntropyWeights<T, TLabel, TOut, true, size_t> OP_Type;
+    OP_Type op(label, weight, static_cast<TLabel>(label_depth), static_cast<TLabel>(ignore_index));
+    LaunchElementwiseKernel<TOut, OP_Type, size_t>(stream, weight_data_nd, op, count);
   } else {
-    OpSoftmaxCrossEntropyWeights<T, TLabel, TOut, false, size_t> op(label, nullptr, static_cast<TLabel>(label_depth),
-                                                                    static_cast<TLabel>(ignore_index));
-    LaunchElementwiseKernel<TOut, decltype(op), size_t>(stream, weight_data_nd, op, count);
+    typedef OpSoftmaxCrossEntropyWeights<T, TLabel, TOut, false, size_t> OP_Type;
+    OP_Type op(label, nullptr, static_cast<TLabel>(label_depth), static_cast<TLabel>(ignore_index));
+    LaunchElementwiseKernel<TOut, OP_Type, size_t>(stream, weight_data_nd, op, count);
   }
 }
 
@@ -90,10 +90,11 @@ template <typename T, typename TAcc, typename TLabel>
 void SoftmaxCrossEntropyLossImpl(cudaStream_t stream, const T* log_prob, const TLabel* label, const T* weight,
                                  const TAcc* normalize_factor, size_t count, size_t label_depth, int64_t ignore_index,
                                  T* output_data) {
-  OpWeightedSoftmaxCrossEntropyLoss<T, TAcc, TLabel, size_t> op(log_prob, label, weight, normalize_factor,
-                                                                static_cast<TLabel>(label_depth),
-                                                                static_cast<TLabel>(ignore_index));
-  LaunchElementwiseKernel<T, decltype(op), size_t>(stream, output_data, op, count);
+  typedef OpWeightedSoftmaxCrossEntropyLoss<T, TAcc, TLabel, size_t> OP_Type;
+  OP_Type op(log_prob, label, weight, normalize_factor,
+             static_cast<TLabel>(label_depth),
+             static_cast<TLabel>(ignore_index));
+  LaunchElementwiseKernel<T, OP_Type, size_t>(stream, output_data, op, count);
 }
 
 template <typename T, typename TAcc, typename TLabel, typename TOut, bool IsReductionNone, bool HasBias, typename TIndex>
@@ -140,16 +141,16 @@ template <typename T, typename TAcc, typename TLabel, typename TOut>
 void SoftmaxCrossEntropyLossGradImpl(cudaStream_t stream, const T* dY, const T* log_prob, const TLabel* label,
                                      const T* weight, const TAcc* normalize_factor, const TOut* bias_data, size_t count,
                                      size_t label_depth, bool reduction_none, TOut* output_data) {
-#define LAUNCH_WEIGHTED_SOFTMAX_CROSS_ENTROPY_LOSS_GRAD_KERNEL(is_reduction_none, has_bias)                   \
-  uint64_t total_count = count * label_depth;                                                                 \
-  if (total_count <= std::numeric_limits<int>::max()) {                                                       \
-    OpWeightedSoftmaxCrossEntropyLossGrad<T, TAcc, TLabel, TOut, is_reduction_none, has_bias, int> op(        \
-        dY, log_prob, label, weight, normalize_factor, bias_data, static_cast<TLabel>(label_depth));          \
-    LaunchElementwiseKernel<TOut, decltype(op), int>(stream, output_data, op, static_cast<int>(total_count)); \
-  } else {                                                                                                    \
-    OpWeightedSoftmaxCrossEntropyLossGrad<T, TAcc, TLabel, TOut, is_reduction_none, has_bias, uint64_t> op(   \
-        dY, log_prob, label, weight, normalize_factor, bias_data, static_cast<TLabel>(label_depth));          \
-    LaunchElementwiseKernel<TOut, decltype(op), uint64_t>(stream, output_data, op, total_count);              \
+#define LAUNCH_WEIGHTED_SOFTMAX_CROSS_ENTROPY_LOSS_GRAD_KERNEL(is_reduction_none, has_bias)                              \
+  uint64_t total_count = count * label_depth;                                                                            \
+  if (total_count <= static_cast<uint64_t>(std::numeric_limits<int>::max())) {                                           \
+    typedef OpWeightedSoftmaxCrossEntropyLossGrad<T, TAcc, TLabel, TOut, is_reduction_none, has_bias, int> OP_Type;      \
+    OP_Type op(dY, log_prob, label, weight, normalize_factor, bias_data, static_cast<TLabel>(label_depth));              \
+    LaunchElementwiseKernel<TOut, OP_Type, int>(stream, output_data, op, static_cast<int>(total_count));                 \
+  } else {                                                                                                               \
+    typedef OpWeightedSoftmaxCrossEntropyLossGrad<T, TAcc, TLabel, TOut, is_reduction_none, has_bias, uint64_t> OP_Type; \
+    OP_Type op(dY, log_prob, label, weight, normalize_factor, bias_data, static_cast<TLabel>(label_depth));              \
+    LaunchElementwiseKernel<TOut, decltype(op), uint64_t>(stream, output_data, op, total_count);                         \
   }
   if (reduction_none) {
     if (bias_data) {
