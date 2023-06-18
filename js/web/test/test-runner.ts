@@ -47,7 +47,7 @@ function fromInternalTensor(tensor: Tensor): ort.Tensor {
 }
 
 async function loadFile(uri: string): Promise<Uint8Array> {
-  if (typeof fetch === 'undefined') {
+  if (typeof process !== 'undefined' && process.versions) {
     // node
     return promisify(readFile)(uri);
   } else {
