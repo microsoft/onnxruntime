@@ -426,11 +426,15 @@ class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCannExecutionProvider, kOnnxDomain,
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCannExecutionProvider, kOnnxDomain, 14, double, Relu);
 class ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCannExecutionProvider, kOnnxDomain,
                                                       14, 14, float, BatchNormalization);
-class ONNX_OPERATOR_KERNEL_CLASS_NAME(kCannExecutionProvider, kOnnxDomain, 14, Identity);
+class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kCannExecutionProvider, kOnnxDomain,
+                                                14, 18, Identity);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kCannExecutionProvider, kOnnxDomain, 14, Reshape);
 
 // op 15
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCannExecutionProvider, kOnnxDomain, 15, float, BatchNormalization);
+
+// op 19
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kCannExecutionProvider, kOnnxDomain, 19, Identity);
 
 Status RegisterCANNKernels(KernelRegistry& kernel_registry) {
   static const BuildKernelCreateInfoFn function_table[] = {
@@ -1001,12 +1005,16 @@ Status RegisterCANNKernels(KernelRegistry& kernel_registry) {
                                                                   14, double, Relu)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCannExecutionProvider, kOnnxDomain,
                                                                             14, 14, float, BatchNormalization)>,
-      BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kCannExecutionProvider, kOnnxDomain, 14, Identity)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kCannExecutionProvider, kOnnxDomain,
+                                                                      14, 18, Identity)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kCannExecutionProvider, kOnnxDomain, 14, Reshape)>,
 
       // op 15
       BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCannExecutionProvider, kOnnxDomain,
                                                                   15, float, BatchNormalization)>,
+
+      // op 19
+      BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kCannExecutionProvider, kOnnxDomain, 19, Identity)>,
   };
 
   for (auto& function_table_entry : function_table) {

@@ -3,98 +3,65 @@
 
 'use strict';
 
-const path = require('path');
-const webpack = require('webpack');
-const TerserPlugin = require("terser-webpack-plugin");
-
-function terserEcmaVersionFromWebpackTarget(target) {
-  switch (target) {
-    case 'es5':
-      return 5;
-    case 'es6':
-    case 'es2015':
-      return 2015;
-    case 'es2017':
-      return 2017;
-    default:
-      throw new RangeError(`not supported ECMA version: ${target}`);
-  }
-}
-
-function addCopyrightBannerPlugin(mode, target) {
-  const VERSION = require(path.join(__dirname, 'package.json')).version;
-  const COPYRIGHT_BANNER = `/*!
- * ONNX Runtime Common v${VERSION}
- * Copyright (c) Microsoft Corporation. All rights reserved.
- * Licensed under the MIT License.
- */`;
-
-  if (mode === 'production') {
-    return new TerserPlugin({
-      extractComments: false,
-      terserOptions: {
-        ecma: terserEcmaVersionFromWebpackTarget(target),
-        format: {
-          preamble: COPYRIGHT_BANNER,
-          comments: false,
-        },
-        compress: {
-          passes: 2
-        }
-      }
-    });
-  } else {
-    return new webpack.BannerPlugin({ banner: COPYRIGHT_BANNER, raw: true });
-  }
-}
+import webpack from 'webpack';
+import {resolve} from 'node:path';
+import {DEFAULT_ES_VERSION, addCopyrightBannerPlugin} from '../webpack.shared.mjs';
 
 function buildConfig({
-  suffix = '',
-  format = 'umd',
-  target = 'es2017',
-  mode = 'production',
-  devtool = 'source-map'
+  suffix = '.js',                  // '.js', '.min.js', ...
+  format = 'umd',                  // 'umd', 'commonjs'
+  target = 'web',                  // 'web', 'node'
+  esVersion = DEFAULT_ES_VERSION,  // 'es5', 'es6', ...
+  mode = 'production',             // 'development', 'production'
+  devtool = 'source-map'           // 'inline-source-map', 'source-map'
 }) {
+  // output file name
+  const filename = `ort-common${suffix}`;
+
+  // variable name of the exported object.
+  // - set to 'ort' when building 'umd' format.
+  // - set to undefined when building other formats (commonjs/module)
+  const exportName = format === 'umd' ? 'ort' : undefined;
+
   return {
-    target: [format === 'commonjs' ? 'node' : 'web', target],
-    entry: path.resolve(__dirname, 'lib/index.ts'),
+    target: [target, esVersion],
+    entry: resolve('./lib/index.ts'),
     output: {
-      path: path.resolve(__dirname, 'dist'),
-      filename: `ort-common${suffix}.js`,
-      library: {
-        name: format === 'commonjs' ? undefined : 'ort',
-        type: format
-      }
+      path: resolve('./dist'),
+      filename,
+      library: {name: exportName, type: format},
     },
-    resolve: { extensions: ['.ts', '.js'] },
+    resolve: {
+      extensions: ['.ts', '.js'],
+      extensionAlias: {'.js': ['.ts', '.js']},
+    },
     plugins: [
-      new webpack.WatchIgnorePlugin({ paths: [/\.js$/, /\.d\.ts$/] }),
-      addCopyrightBannerPlugin(mode, target),
+      new webpack.WatchIgnorePlugin({paths: [/\.js$/, /\.d\.ts$/]}),
+      addCopyrightBannerPlugin(mode, 'common', esVersion),
     ],
     module: {
       rules: [{
-        test: /\.tsx?$/,
-        use: [
-          {
-            loader: 'ts-loader',
-            options: {
-              compilerOptions: { target }
-            }
-          }
-        ]
+        test: /\.ts$/,
+        use: [{
+          loader: 'ts-loader',
+          options: {compilerOptions: {target: esVersion}},
+        }]
       }]
     },
-    mode: mode,
-    devtool: devtool,
+    mode,
+    devtool,
   };
 }
 
-module.exports = (env, argv) => {
+export default (env, argv) => {
   return [
-    buildConfig({ suffix: '.es5.min', target: 'es5' }),
-    buildConfig({ suffix: '.es6.min', target: 'es6' }),
-    buildConfig({ suffix: '.min' }),
-    buildConfig({ mode: 'development', devtool: 'inline-source-map' }),
-    buildConfig({ format: 'commonjs', suffix: '.node' }),
+    buildConfig({suffix: '.es5.min.js', target: 'web', esVersion: 'es5'}),
+    buildConfig({suffix: '.min.js'}),
+    buildConfig({mode: 'development', devtool: 'inline-source-map'}),
+    buildConfig({
+      suffix: '.node.cjs',
+      target: 'node',
+      format: 'commonjs',
+    }),
   ];
 };

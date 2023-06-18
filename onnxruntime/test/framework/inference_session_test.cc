@@ -57,6 +57,7 @@
 #include "test/util/include/inference_session_wrapper.h"
 
 #include "gtest/gtest.h"
+#include "gmock/gmock.h"
 
 using namespace std;
 using namespace ONNX_NAMESPACE;

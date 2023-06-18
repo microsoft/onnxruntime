@@ -10,7 +10,7 @@
 #include "test/util/include/asserts.h"
 #include "test/util/include/default_providers.h"
 #include "test/util/include/inference_session_wrapper.h"
-#include "test/util/include/test/test_environment.h"
+#include "test/util/include/test_environment.h"
 #include "test/util/include/test_utils.h"
 
 #if !defined(ORT_MINIMAL_BUILD)

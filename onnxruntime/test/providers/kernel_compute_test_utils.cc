@@ -5,6 +5,7 @@
 
 #include "test/providers/kernel_compute_test_utils.h"
 
+#include "core/framework/execution_providers.h"
 #include "core/optimizer/optimizer_execution_frame.h"
 #include "test/util/include/default_providers.h"
 
@@ -164,11 +165,8 @@ void KernelComputeTester::Run(std::unordered_set<int> strided_outputs) {
                              tensor.Strides());
         ASSERT_STATUS_OK(dtm.CopyTensor(tensor, *cpu_value.GetMutable<Tensor>()));
       }
-      optional<float> rel;
-      optional<float> abs;
-      OpTester::Data expected(std::move(output_data_[i].def_), std::move(output_data_[i].value_), std::move(rel),
-                              std::move(abs));
-      Check(expected, cpu_value.Get<Tensor>(), provider_);
+
+      CheckOrtValuesAreEqual(output_data_[i].def_.Name(), output_data_[i].value_, cpu_value, {}, provider_);
     }
   }
 }
