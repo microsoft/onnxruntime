@@ -221,7 +221,7 @@ void BeamSearchScorer::Finalize(ISequences& sequences,
     auto batch_output = output.subspan(batch_index * num_return_sequences_ * max_length_,
                                        num_return_sequences_ * max_length_);
     gsl::span<float> sequence_scores_buffer;
-    if (sequence_scores.empty())
+    if (!sequence_scores.empty())
       sequence_scores_buffer = sequence_scores.subspan(batch_index * num_return_sequences_, num_return_sequences_);
 
     beam_hyp.Output(num_return_sequences_, max_length_, batch_output, sequence_scores_buffer);
