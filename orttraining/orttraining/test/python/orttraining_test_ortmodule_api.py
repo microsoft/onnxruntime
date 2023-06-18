@@ -5807,6 +5807,7 @@ def test_ops_for_padding_elimination(test_cases):
         #            output of MatMul.
         def test_matmul(self, input_ids):
             inputs_embeds = self.word_embeddings(input_ids)
+            output = None
             if case == 0:
                 matmul_input = torch.randn((2, input_ids.size(1))).to(device)
                 output = torch.matmul(matmul_input, inputs_embeds)

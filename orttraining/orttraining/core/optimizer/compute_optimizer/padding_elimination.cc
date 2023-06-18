@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#ifdef ENABLE_TRAINING
+
 #include <onnx/defs/attr_proto_util.h>
 
 #include "core/framework/random_seed.h"
@@ -8,15 +10,17 @@
 #include "core/optimizer/initializer.h"
 #include "orttraining/core/optimizer/compute_optimizer/padding_elimination.h"
 
+using namespace onnxruntime::optimizer::compute_optimizer;
+
 namespace onnxruntime {
 
 namespace {
 
 void PushAllOutputNode(Graph& graph, std::queue<Node*>& q, Node* node, std::unordered_set<Node*>& visited) {
   for (auto iter = node->OutputNodesBegin(); iter != node->OutputNodesEnd(); ++iter) {
-    Node* node = graph.GetNode(iter->Index());
-    if (visited.find(node) == visited.end()) {
-      q.push(node);
+    Node* output_node = graph.GetNode(iter->Index());
+    if (visited.find(output_node) == visited.end()) {
+      q.push(output_node);
     }
   }
 }
@@ -89,7 +93,7 @@ NodeArg* UpdateShape(Graph& graph, NodeArg* input, NodeArg* update_value, NodeAr
 // The gather_index_arg is the indices of the elements that are not padding.
 NodeArg* InsertNodesForInput(Graph& graph,
                              Node& node,
-                             int in_index,
+                             uint32_t in_index,
                              NodeArg* gather_index_arg,
                              const logging::Logger& logger) {
   InlinedVector<NodeArg*> reshape_input_args;
@@ -123,7 +127,7 @@ NodeArg* InsertNodesForInput(Graph& graph,
   reshape_output_args.push_back(
       &graph.GetOrCreateNodeArg(graph.GenerateNodeArgName("inputs_reshape_result"), node.MutableInputDefs()[in_index]->TypeAsProto()));
 
-  Node* new_reshape_node = onnxruntime::optimizer::compute_optimizer::InsertIntermediateNodeOnDestInput(
+  Node* new_reshape_node = InsertIntermediateNodeOnDestInput(
       graph, node,
       in_index,
       0,
@@ -152,7 +156,7 @@ NodeArg* InsertNodesForInput(Graph& graph,
       &graph.GetOrCreateNodeArg(graph.GenerateNodeArgName("padding_filter_result"),
                                 reshape_out_arg->TypeAsProto()));
 
-  Node* new_gather_node = onnxruntime::optimizer::compute_optimizer::InsertIntermediateNodeOnDestInput(
+  Node* new_gather_node = InsertIntermediateNodeOnDestInput(
       graph, node,
       in_index,
       0,
@@ -177,7 +181,7 @@ NodeArg* InsertNodesForInput(Graph& graph,
 // gathergrad_index_arg and new_shape_arg are the arguments needed by GatherGrad.
 NodeArg* InsertNodesForOutput(Graph& graph,
                               Node& node,
-                              int in_index,
+                              uint32_t in_index,
                               NodeArg* gathergrad_index_arg,
                               NodeArg* new_shape_arg,
                               NodeArg* first_two_dims_arg,
@@ -232,7 +236,7 @@ NodeArg* InsertNodesForOutput(Graph& graph,
       &graph.GetOrCreateNodeArg(graph.GenerateNodeArgName("padding_recover_result"),
                                 nullptr));
 
-  Node* new_gathergrad_node = onnxruntime::optimizer::compute_optimizer::InsertIntermediateNodeOnDestInput(
+  Node* new_gathergrad_node = InsertIntermediateNodeOnDestInput(
       graph, node,
       in_index,
       2,
@@ -254,7 +258,7 @@ NodeArg* InsertNodesForOutput(Graph& graph,
   reshape_input_args.push_back(unflattened_shape_arg);
   InlinedVector<NodeArg*> reshape_output_args{&graph.GetOrCreateNodeArg(graph.GenerateNodeArgName("reshape_result"),
                                                                         nullptr)};
-  Node* new_reshape_node = onnxruntime::optimizer::compute_optimizer::InsertIntermediateNodeOnDestInput(
+  Node* new_reshape_node = InsertIntermediateNodeOnDestInput(
       graph, node,
       in_index,
       0,
@@ -503,7 +507,7 @@ Status PaddingElimination::ApplyImpl(Graph& graph, bool& modified, int graph_lev
   ORT_ENFORCE(graph.SetOpSchemaFromRegistryForNode(reshape_node), "Failed to set op schema for " + reshape_node.Name());
   reshape_node.SetExecutionProviderType(embedding_node->GetExecutionProviderType());
 
-  NodeArg* squeeze_out_arg = onnxruntime::optimizer::compute_optimizer::InsertNodesForValidIndices(
+  NodeArg* squeeze_out_arg = InsertNodesForValidIndices(
       graph, reshape_output_args[0], embedding_node->MutableInputDefs()[2], embedding_node->GetExecutionProviderType());
 
   // Add flatten pattern to each input node of the subgraph
@@ -512,7 +516,7 @@ Status PaddingElimination::ApplyImpl(Graph& graph, bool& modified, int graph_lev
   handled_input_count++;
   modified = true;
   for (auto& node : candidate_inputs) {
-    for (size_t i = 0; i < node->InputDefs().size(); ++i) {
+    for (uint32_t i = 0; i < node->InputDefs().size(); ++i) {
       if (subgraph.find(node->MutableInputDefs()[i]) == subgraph.end()) {
         InsertNodesForInput(graph, *node, i, squeeze_out_arg, logger);
         handled_input_count++;
@@ -545,7 +549,7 @@ Status PaddingElimination::ApplyImpl(Graph& graph, bool& modified, int graph_lev
   // Add pattern to each output node of the subgraph
   // to unflatten the shape of [valid_token_count, ...] to [batch_size, seq_len, ...]
   for (const auto& node : candidate_outputs) {
-    for (size_t i = 0; i < node->InputDefs().size(); ++i) {
+    for (uint32_t i = 0; i < node->InputDefs().size(); ++i) {
       if (subgraph.find(node->MutableInputDefs()[i]) != subgraph.end()) {
         // Get a shape of the i-th input of the node with first index updated to value of first_dim
         // which is batch_size * seq_len. This shape arg will be used as the shape input of GatherGrad
@@ -573,4 +577,7 @@ Status PaddingElimination::ApplyImpl(Graph& graph, bool& modified, int graph_lev
                      << " output node count: " << handled_output_count;
   return Status::OK();
 }
+
 }  // namespace onnxruntime
+
+#endif
