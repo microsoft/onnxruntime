@@ -10,7 +10,7 @@ namespace onnxruntime {
 class TensorShape;
 class TensorShape2 {
  public:
-  TensorShape2() = default;
+  //TensorShape2() = default;
   TensorShape2(std::vector<int64_t> dims);
   ~TensorShape2();
 
@@ -30,7 +30,7 @@ class TensorShape2 {
   bool IsScalar() const;
 
  private:
-//  std::unique_ptr<TensorShape> tensor_shape_;
-  TensorShape* tensor_shape_;
+  std::unique_ptr<TensorShape> tensor_shape_;
+//  TensorShape* tensor_shape_;
 };
 }  // namespace onnxruntime
