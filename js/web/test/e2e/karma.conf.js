@@ -27,7 +27,8 @@ module.exports = function (config) {
       { pattern: './model.onnx', included: false }
     ],
     plugins: [
-      require('@chiragrupani/karma-chromium-edge-launcher')
+      require('@chiragrupani/karma-chromium-edge-launcher'),
+      ...config.plugins
     ],
     proxies: {
       '/model.onnx': '/base/model.onnx',
