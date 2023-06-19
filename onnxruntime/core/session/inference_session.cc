@@ -1614,7 +1614,7 @@ common::Status InferenceSession::Initialize() {
                                 "as the model has control flow nodes which can't be supported by CUDA Graphs."));
           }
 
-          if (strcmp(target_ep->Type(), onnxruntime::kCudaExecutionProvider) == 0) {
+          if (strcmp(target_ep->Type().c_str(), onnxruntime::kCudaExecutionProvider) == 0) {
             auto res = AreAllComputeNodesAssignedToCudaEp(graph);
 
             if (!res.first) {
