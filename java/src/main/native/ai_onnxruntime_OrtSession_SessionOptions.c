@@ -600,7 +600,7 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_addArm
 JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_addCoreML
   (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle, jint coreMLFlags) {
     (void)jobj;
-  #ifdef USE_CORE_ML
+  #ifdef USE_COREML
     checkOrtStatus(jniEnv,(const OrtApi*)apiHandle,OrtSessionOptionsAppendExecutionProvider_CoreML((OrtSessionOptions*) handle, (uint32_t) coreMLFlags));
   #else
     (void)apiHandle;(void)handle;(void)coreMLFlags; // Parameters used when CoreML is defined.

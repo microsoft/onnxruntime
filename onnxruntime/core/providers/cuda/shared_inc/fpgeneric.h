@@ -30,7 +30,7 @@ cublasGemmHelper(cublasHandle_t handle,
                  const float* beta,
                  float* C, int ldc,
                  const cudaDeviceProp& prop) {
-#if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
+#if defined(USE_CUDA)
   // TF32 uses 10 bit mantissa which has sufficient margin of precision for most use cases. It gets 8x throughput than FP32 in A100.
   // It can be overrided by setting environment variable NVIDIA_TF32_OVERRIDE = 0 to disable TF32
   onnxruntime::cuda::CublasMathModeSetter math_mode_setter(prop, handle, CUBLAS_TF32_TENSOR_OP_MATH);
@@ -154,7 +154,7 @@ inline cublasStatus_t cublasGemmHelper(cublasHandle_t handle,
   }
 }
 
-#if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
+#if defined(USE_CUDA)
 inline cublasStatus_t cublasGemmHelper(cublasHandle_t handle, cublasOperation_t transa, cublasOperation_t transb, int m,
                                        int n, int k, const BFloat16* alpha, const BFloat16* A, int lda,
                                        const BFloat16* B, int ldb, const BFloat16* beta, BFloat16* C, int ldc,
@@ -185,13 +185,7 @@ inline cublasStatus_t cublasGemmBatchedHelper(cublasHandle_t handle,
                                               const float* beta,
                                               float* Carray[], int ldc,
                                               int batch_count,
-                                              const cudaDeviceProp& prop) {
-#if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
-  onnxruntime::cuda::CublasMathModeSetter math_mode_setter(prop, handle, CUBLAS_TF32_TENSOR_OP_MATH);
-#else
-  ORT_UNUSED_PARAMETER(prop);
-#endif
-
+                                              const cudaDeviceProp&) {
   return cublasSgemmBatched(handle,
                             transa,
                             transb,
@@ -271,7 +265,7 @@ inline cublasStatus_t cublasGemmBatchedHelper(cublasHandle_t handle,
   }
 }
 
-#if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
+#if defined(USE_CUDA)
 inline cublasStatus_t cublasGemmBatchedHelper(cublasHandle_t handle, cublasOperation_t transa, cublasOperation_t transb,
                                               int m, int n, int k, const BFloat16* alpha, const BFloat16* Aarray[],
                                               int lda, const BFloat16* Barray[], int ldb, const BFloat16* beta,
@@ -309,7 +303,7 @@ inline cublasStatus_t cublasGemmStridedBatchedHelper(cublasHandle_t handle,
                                                      int batch_count,
                                                      const cudaDeviceProp& prop) {
 #ifdef ENABLE_TRAINING_OPS
-#if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
+#if defined(USE_CUDA)
   onnxruntime::cuda::CublasMathModeSetter math_mode_setter(prop, handle, CUBLAS_TF32_TENSOR_OP_MATH);
 #else
   ORT_UNUSED_PARAMETER(prop);
@@ -452,7 +446,7 @@ inline cublasStatus_t cublasGemmStridedBatchedHelper(cublasHandle_t handle,
   }
 }
 
-#if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
+#if defined(USE_CUDA)
 inline cublasStatus_t cublasGemmStridedBatchedHelper(cublasHandle_t handle, cublasOperation_t transa,
                                                      cublasOperation_t transb, int m, int n, int k,
                                                      const BFloat16* alpha, const BFloat16* A, int lda,

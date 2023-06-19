@@ -28,6 +28,8 @@ class ITuningContext {
   virtual void DisableTuning() = 0;
   virtual bool IsTuningEnabled() const = 0;
 
+  virtual void SetMaxTuningDurationMs(int max_duration_ms) = 0;
+  virtual int GetMaxTuningDurationMs() const = 0;
   virtual void EnableTunableOpAndTuning() final {
     EnableTunableOp();
     EnableTuning();

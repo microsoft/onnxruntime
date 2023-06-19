@@ -170,6 +170,7 @@ void QnnBackendManager::InitializeQnnLog() {
     default:
       break;
   }
+  LOGS(*logger_, VERBOSE) << "Set Qnn log level: " << qnn_log_level;
 
   if (QNN_SUCCESS != qnn_interface_.logCreate(QnnLogging, qnn_log_level, &log_handle_)) {
     LOGS(*logger_, WARNING) << "Unable to initialize logging in the QNN backend.";
@@ -315,6 +316,26 @@ Status QnnBackendManager::ReleaseContext() {
   return Status::OK();
 }
 
+bool QnnBackendManager::IsContextCacheFileExists(const std::string& customer_context_cache_path,
+                                                 const std::string& model_description,
+                                                 const onnxruntime::PathString& model_pathstring) {
+  // Avoid duplicate work
+  if (!context_cache_path_.empty()) {
+    return ctx_file_exists_;
+  }
+  model_description_ = model_description;
+  // Use user provided context cache file path if exist, otherwise try model_file.onnx.bin by default
+  if (customer_context_cache_path.empty()) {
+    context_cache_path_ = PathToUTF8String(model_pathstring) + ".bin";
+  } else {
+    context_cache_path_ = customer_context_cache_path;
+  }
+
+  ctx_file_exists_ = std::filesystem::exists(context_cache_path_);
+
+  return ctx_file_exists_;
+}
+
 Status WriteInt16ToBinaryFile(std::ofstream& of_stream, uint16_t value) {
   const std::vector<uint16_t> data{value};
   std::vector<unsigned char> data_bytes(sizeof(uint16_t) / sizeof(unsigned char));
@@ -323,9 +344,7 @@ Status WriteInt16ToBinaryFile(std::ofstream& of_stream, uint16_t value) {
   return Status::OK();
 }
 
-Status QnnBackendManager::DumpQnnContext(const onnxruntime::PathString& context_cache_pathstring,
-                                         const std::string& model_name,
-                                         const std::string& graph_name) {
+Status QnnBackendManager::DumpQnnContext(const std::string& model_name, const std::string& graph_name) {
   if (nullptr == qnn_interface_.contextGetBinarySize ||
       nullptr == qnn_interface_.contextGetBinary) {
     LOGS(*logger_, ERROR) << "Failed to get valid function pointer.";
@@ -361,7 +380,7 @@ Status QnnBackendManager::DumpQnnContext(const onnxruntime::PathString& context_
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Context written buffer exceeds allocated buffer size.");
   }
 
-  std::ofstream of_stream(context_cache_pathstring.c_str(), std::ofstream::binary);
+  std::ofstream of_stream(context_cache_path_.c_str(), std::ofstream::binary);
   if (!of_stream) {
     LOGS(*logger_, ERROR) << "Failed to open cached context file.";
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to open context cache file.");
@@ -370,7 +389,10 @@ Status QnnBackendManager::DumpQnnContext(const onnxruntime::PathString& context_
   // Write Ort metadata into context binary file
   uint16_t model_name_length = static_cast<uint16_t>(model_name.length());
   uint16_t graph_name_length = static_cast<uint16_t>(graph_name.length());
-  uint16_t header_length = 3 * sizeof(uint16_t) + model_name_length + graph_name_length;
+  uint16_t model_description_length = static_cast<uint16_t>(model_description_.length());
+
+  // Header: uint16_t(totale_length)|uint16_t(model_name_length)|model_name|uint16_t(graph_name_length)|graph_name|uint16_t(model_description_length)|model_description
+  uint16_t header_length = 4 * sizeof(uint16_t) + model_name_length + graph_name_length + model_description_length;
   uint16_t totale_length = header_length + static_cast<uint16_t>(strlen(QNN_PROVIDER));
   of_stream.write(QNN_PROVIDER, strlen(QNN_PROVIDER));
 
@@ -381,6 +403,11 @@ Status QnnBackendManager::DumpQnnContext(const onnxruntime::PathString& context_
 
   ORT_RETURN_IF_ERROR(WriteInt16ToBinaryFile(of_stream, graph_name_length));
   of_stream.write(graph_name.c_str(), graph_name_length);
+
+  ORT_RETURN_IF_ERROR(WriteInt16ToBinaryFile(of_stream, model_description_length));
+  of_stream.write(model_description_.c_str(), model_description_length);
+  model_description_.clear();
+
   LOGS(*logger_, VERBOSE) << "Dump metadata with length: " << totale_length;
 
   of_stream.write(reinterpret_cast<char*>(context_buffer.get()), written_buffer_size);
@@ -389,14 +416,16 @@ Status QnnBackendManager::DumpQnnContext(const onnxruntime::PathString& context_
   return Status::OK();
 }
 
-Status QnnBackendManager::LoadCachedQnnContext(const onnxruntime::PathString& context_cache_pathstring, QnnModel& qnn_model) {
+Status QnnBackendManager::LoadCachedQnnContext(QnnModel& qnn_model) {
   bool result = nullptr == qnn_sys_interface_.systemContextCreate ||
                 nullptr == qnn_sys_interface_.systemContextGetBinaryInfo ||
                 nullptr == qnn_sys_interface_.systemContextFree;
   ORT_RETURN_IF(result, "Failed to get valid function pointer.");
 
+  ORT_RETURN_IF(!ctx_file_exists_, "Qnn context binary file not exist for some reason!");
+
   uint64_t buffer_size{0};
-  std::ifstream cache_file(context_cache_pathstring.c_str(), std::ifstream::binary);
+  std::ifstream cache_file(context_cache_path_.c_str(), std::ifstream::binary);
   ORT_RETURN_IF(!cache_file || !cache_file.good(), "Failed to open cache file.");
   cache_file.seekg(0, cache_file.end);
   buffer_size = cache_file.tellg();
@@ -465,6 +494,8 @@ Status QnnBackendManager::LoadCachedQnnContext(const onnxruntime::PathString& co
   ORT_RETURN_IF_ERROR(ExtractBackendProfilingInfo());
   context_created_ = true;
 
+  model_description_.clear();
+  model_description_from_ctx_cache_.clear();
   LOGS(*logger_, VERBOSE) << "Load from cached QNN Context completed.";
   return Status::OK();
 }
@@ -501,12 +532,11 @@ Status ReadInt16FromBinaryFile(std::ifstream& binary_file, uint16_t& value) {
 }
 
 /* \brief: Try to get metadata from Ort generated context cache binary file.
- * \param[in] context_cache_pathstring - context cache binary file path string
  *  Cached context binary file generated by Ort has some metadata which can be used for validation with the model
  *  to avoid user choose a wrong context binary file which is not for this model
  *  It is treated as Qnn generated context binary file if no metadata found from the file
  */
-Status QnnBackendManager::GetMetadataFromOrtContextFile(const onnxruntime::PathString& context_cache_pathstring) {
+Status QnnBackendManager::GetMetadataFromOrtContextFile() {
   // Only try parse meta data once
   if (ctx_metadata_tried_) {
     return Status::OK();
@@ -514,7 +544,7 @@ Status QnnBackendManager::GetMetadataFromOrtContextFile(const onnxruntime::PathS
   ctx_metadata_tried_ = true;
 
   uint64_t buffer_size = 0;
-  std::ifstream cache_file(context_cache_pathstring.c_str(), std::ifstream::binary);
+  std::ifstream cache_file(context_cache_path_.c_str(), std::ifstream::binary);
   ORT_RETURN_IF(!cache_file || !cache_file.good(), "Failed to open context cache file.");
   cache_file.seekg(0, cache_file.end);
   buffer_size = cache_file.tellg();
@@ -532,17 +562,18 @@ Status QnnBackendManager::GetMetadataFromOrtContextFile(const onnxruntime::PathS
   }
   ort_generated_ctx_cache_ = true;
 
-  uint16_t header_length = 0;
-  ORT_RETURN_IF_ERROR(ReadInt16FromBinaryFile(cache_file, header_length));
-  ort_ctx_metadata_length_ = header_length + static_cast<uint16_t>(ort_flag_length);
+  uint16_t str_length = 0;
+  ORT_RETURN_IF_ERROR(ReadInt16FromBinaryFile(cache_file, str_length));
+  ort_ctx_metadata_length_ = str_length + static_cast<uint16_t>(ort_flag_length);
 
-  uint16_t model_name_length = 0;
-  ORT_RETURN_IF_ERROR(ReadInt16FromBinaryFile(cache_file, model_name_length));
-  ORT_RETURN_IF_ERROR(ReadStringFromBinaryFile(cache_file, model_name_from_ctx_cache_, static_cast<size_t>(model_name_length)));
+  ORT_RETURN_IF_ERROR(ReadInt16FromBinaryFile(cache_file, str_length));
+  ORT_RETURN_IF_ERROR(ReadStringFromBinaryFile(cache_file, model_name_from_ctx_cache_, static_cast<size_t>(str_length)));
 
-  uint16_t graph_name_length = 0;
-  ORT_RETURN_IF_ERROR(ReadInt16FromBinaryFile(cache_file, graph_name_length));
-  ORT_RETURN_IF_ERROR(ReadStringFromBinaryFile(cache_file, graph_name_from_ctx_cache_, static_cast<size_t>(graph_name_length)));
+  ORT_RETURN_IF_ERROR(ReadInt16FromBinaryFile(cache_file, str_length));
+  ORT_RETURN_IF_ERROR(ReadStringFromBinaryFile(cache_file, graph_name_from_ctx_cache_, static_cast<size_t>(str_length)));
+
+  ORT_RETURN_IF_ERROR(ReadInt16FromBinaryFile(cache_file, str_length));
+  ORT_RETURN_IF_ERROR(ReadStringFromBinaryFile(cache_file, model_description_from_ctx_cache_, static_cast<size_t>(str_length)));
 
   return Status::OK();
 }
@@ -554,15 +585,30 @@ Status QnnBackendManager::GetMetadataFromOrtContextFile(const onnxruntime::PathS
  *                          so only validate the graph name for 2nd call
  */
 Status QnnBackendManager::ValidateWithContextFile(const std::string& model_name, const std::string& graph_name) {
+  ORT_RETURN_IF(!ctx_file_exists_, "Qnn context binary file not exist for some reason!");
+
+  // Get metadata from cached context binary file
+  ORT_RETURN_IF_ERROR(GetMetadataFromOrtContextFile());
+
+  // The context binary file doesn't have ORT metadata, so it is generated from QNN toolchain not from ORT
   if (!ort_generated_ctx_cache_) {
     return Status::OK();
   }
 
   ORT_RETURN_IF(model_name != model_name_from_ctx_cache_,
-                "Model file name from context cache metadata: " + model_name_from_ctx_cache_ + " is different with target: " + model_name);
+                "Model file name from context cache metadata: " + model_name_from_ctx_cache_ +
+                    " is different with target: " + model_name +
+                    ". Please make sure the context binary file matches the model.");
+
+  ORT_RETURN_IF(model_description_ != model_description_from_ctx_cache_,
+                "Model description from context cache metadata: " + model_description_from_ctx_cache_ +
+                    " is different with target: " + model_description_ +
+                    ". Please make sure the context binary file matches the model.");
 
   ORT_RETURN_IF(graph_name != graph_name_from_ctx_cache_ && get_capability_round_2_,
-                "Graph name from context cache metadata: " + graph_name_from_ctx_cache_ + " is different with target: " + graph_name);
+                "Graph name from context cache metadata: " + graph_name_from_ctx_cache_ +
+                    " is different with target: " + graph_name +
+                    ". You may need to re-generate the context binary file.");
 
   get_capability_round_2_ = true;
   return Status::OK();

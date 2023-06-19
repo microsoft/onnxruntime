@@ -1,9 +1,5 @@
 /*
-<<<<<<< HEAD
  * Copyright (c) 2019, 2023, Oracle and/or its affiliates. All rights reserved.
-=======
- * Copyright (c) 2019, 2022, Oracle and/or its affiliates. All rights reserved.
->>>>>>> 98b8e2e31 (More fixes, tests now pass.)
  * Licensed under the MIT License.
  */
 package ai.onnxruntime;

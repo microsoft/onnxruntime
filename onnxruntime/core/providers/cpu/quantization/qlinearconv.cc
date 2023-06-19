@@ -290,9 +290,9 @@ class QLinearConv : public OpKernel {
 
   ConvAttributes conv_attrs_;
   TensorShape W_shape_;
-  BufferUniquePtr packed_W_buffer_;
+  IAllocatorUniquePtr<void> packed_W_buffer_;
   size_t packed_W_size_{0};
-  BufferUniquePtr reordered_W_buffer_;
+  IAllocatorUniquePtr<void> reordered_W_buffer_;
   bool is_W_signed_{false};
   bool is_W_packed_{false};
   bool is_symmetric_conv_{false};
@@ -421,22 +421,21 @@ Status QLinearConv<ActType>::PrePack(const Tensor& tensor, int input_idx, Alloca
                                        is_W_signed_);
     if (packed_W_size_ != 0) {
       size_t packed_W_data_size = SafeInt<size_t>(group_count) * packed_W_size_;
-      auto* packed_W = static_cast<uint8_t*>(alloc->Alloc(packed_W_data_size));
+      packed_W_buffer_ = IAllocator::MakeUniquePtr<void>(alloc, packed_W_data_size, true);
+      auto* packed_W = static_cast<uint8_t*>(packed_W_buffer_.get());
 
       // Initialize memory to 0 as there could be some padding associated with pre-packed
       // buffer memory and we don not want it uninitialized and generate different hashes
       // if and when we try to cache this pre-packed buffer for sharing between sessions.
       memset(packed_W, 0, packed_W_data_size);
 
-      packed_W_buffer_ = BufferUniquePtr(packed_W, BufferDeleter(alloc));
-
       // Allocate a temporary buffer to hold the reordered oihw->hwio filter for
       // a single group.
       //
       // Note: The size of this buffer is less than or equal to the size of the original
       // weight tensor, so the allocation size is guaranteed to fit inside size_t.
-      auto* group_reordered_W = static_cast<uint8_t*>(alloc->Alloc(group_output_channels * group_input_channels * kernel_size));
-      BufferUniquePtr group_reordered_W_buffer(group_reordered_W, BufferDeleter(alloc));
+      auto group_reordered_W_buffer = IAllocator::MakeUniquePtr<void>(alloc, group_output_channels * group_input_channels * kernel_size, true);
+      auto* group_reordered_W = static_cast<uint8_t*>(group_reordered_W_buffer.get());
 
       const size_t W_offset = group_output_channels * kernel_dim;
 
@@ -470,14 +469,13 @@ Status QLinearConv<ActType>::PrePack(const Tensor& tensor, int input_idx, Alloca
   }
 
   size_t reordered_w_data_size = SafeInt<size_t>(sizeof(uint8_t)) * output_channels * group_input_channels * kernel_size;
-  auto* reordered_W = static_cast<uint8_t*>(alloc->Alloc(reordered_w_data_size));
+  reordered_W_buffer_ = IAllocator::MakeUniquePtr<void>(alloc, reordered_w_data_size, true);
+  uint8_t* reordered_W = static_cast<uint8_t*>(reordered_W_buffer_.get());
 
   // Initialize memory to 0 as there could be some padding associated with pre-packed
   // buffer memory and we don not want it uninitialized and generate different hashes
   // if and when we try to cache this pre-packed buffer for sharing between sessions.
   memset(reordered_W, 0, reordered_w_data_size);
-
-  reordered_W_buffer_ = BufferUniquePtr(reordered_W, BufferDeleter(alloc));
 
   ReorderFilter(Wdata, reordered_W, output_channels, group_input_channels, kernel_size);
 

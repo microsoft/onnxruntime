@@ -11,13 +11,14 @@ import ai.onnxruntime.OrtSession;
 import ai.onnxruntime.OrtSession.Result;
 import ai.onnxruntime.OrtSession.RunOptions;
 import ai.onnxruntime.OrtSession.SessionOptions;
+import ai.onnxruntime.providers.NNAPIFlags;
 import android.net.Uri;
 import android.os.Build;
-import android.util.Base64;
 import android.util.Log;
 import androidx.annotation.NonNull;
 import androidx.annotation.RequiresApi;
 import com.facebook.react.bridge.Arguments;
+import com.facebook.react.bridge.LifecycleEventListener;
 import com.facebook.react.bridge.Promise;
 import com.facebook.react.bridge.ReactApplicationContext;
 import com.facebook.react.bridge.ReactContextBaseJavaModule;
@@ -27,12 +28,15 @@ import com.facebook.react.bridge.ReadableMap;
 import com.facebook.react.bridge.ReadableType;
 import com.facebook.react.bridge.WritableArray;
 import com.facebook.react.bridge.WritableMap;
+import com.facebook.react.modules.blob.BlobModule;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.Reader;
 import java.math.BigInteger;
+import java.util.Collections;
+import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
@@ -42,7 +46,7 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 @RequiresApi(api = Build.VERSION_CODES.N)
-public class OnnxruntimeModule extends ReactContextBaseJavaModule {
+public class OnnxruntimeModule extends ReactContextBaseJavaModule implements LifecycleEventListener {
   private static ReactApplicationContext reactContext;
 
   private static OrtEnvironment ortEnvironment = OrtEnvironment.getEnvironment();
@@ -55,6 +59,8 @@ public class OnnxruntimeModule extends ReactContextBaseJavaModule {
     return key;
   }
 
+  protected BlobModule blobModule;
+
   public OnnxruntimeModule(ReactApplicationContext context) {
     super(context);
     reactContext = context;
@@ -64,6 +70,15 @@ public class OnnxruntimeModule extends ReactContextBaseJavaModule {
   @Override
   public String getName() {
     return "Onnxruntime";
+  }
+
+  public void checkBlobModule() {
+    if (blobModule == null) {
+      blobModule = getReactApplicationContext().getNativeModule(BlobModule.class);
+      if (blobModule == null) {
+        throw new RuntimeException("BlobModule is not initialized");
+      }
+    }
   }
 
   /**
@@ -86,22 +101,41 @@ public class OnnxruntimeModule extends ReactContextBaseJavaModule {
   }
 
   /**
-   * React native binding API to load a model using the BASE64 encoded model data.
+   * React native binding API to load a model using blob object that data stored in BlobModule.
    *
-   * @param data the BASE64 encoded model data.
+   * @param data the blob object
    * @param options onnxruntime session options
    * @param promise output returning back to react native js
    * @note the value provided to `promise` includes a key representing the session.
    *       when run() is called, the key must be passed into the first parameter.
    */
   @ReactMethod
-  public void loadModelFromBase64EncodedBuffer(String data, ReadableMap options, Promise promise) {
+  public void loadModelFromBlob(ReadableMap data, ReadableMap options, Promise promise) {
     try {
-      byte[] modelData = Base64.decode(data, Base64.DEFAULT);
-      WritableMap resultMap = loadModel(modelData, options);
+      checkBlobModule();
+      String blobId = data.getString("blobId");
+      byte[] bytes = blobModule.resolve(blobId, data.getInt("offset"), data.getInt("size"));
+      blobModule.remove(blobId);
+      WritableMap resultMap = loadModel(bytes, options);
       promise.resolve(resultMap);
     } catch (Exception e) {
       promise.reject("Failed to load model from buffer: " + e.getMessage(), e);
+    }
+  }
+
+  /**
+   * React native binding API to dispose a session.
+   *
+   * @param key session key representing a session given at loadModel()
+   * @param promise output returning back to react native js
+   */
+  @ReactMethod
+  public void dispose(String key, Promise promise) {
+    try {
+      dispose(key);
+      promise.resolve(null);
+    } catch (OrtException e) {
+      promise.reject("Failed to dispose session: " + e.getMessage(), e);
     }
   }
 
@@ -196,6 +230,19 @@ public class OnnxruntimeModule extends ReactContextBaseJavaModule {
   }
 
   /**
+   * Dispose a model using given key.
+   *
+   * @param key a session key representing the session given at loadModel()
+   */
+  public void dispose(String key) throws OrtException {
+    OrtSession ortSession = sessionMap.get(key);
+    if (ortSession != null) {
+      ortSession.close();
+      sessionMap.remove(key);
+    }
+  }
+
+  /**
    * Run a model using given uri.
    *
    * @param key a session key representing the session given at loadModel()
@@ -212,9 +259,12 @@ public class OnnxruntimeModule extends ReactContextBaseJavaModule {
 
     RunOptions runOptions = parseRunOptions(options);
 
+    checkBlobModule();
+
     long startTime = System.currentTimeMillis();
     Map<String, OnnxTensor> feed = new HashMap<>();
     Iterator<String> iterator = ortSession.getInputNames().iterator();
+    Result result = null;
     try {
       while (iterator.hasNext()) {
         String inputName = iterator.next();
@@ -224,19 +274,7 @@ public class OnnxruntimeModule extends ReactContextBaseJavaModule {
           throw new Exception("Can't find input: " + inputName);
         }
 
-        if (inputMap.getType("data") != ReadableType.String) {
-          // NOTE:
-          //
-          // tensor data should always be a BASE64 encoded string.
-          // This is because the current React Native bridge supports limited data type as arguments.
-          // In order to pass data from JS to Java, we have to encode them into string.
-          //
-          // see also:
-          //   https://reactnative.dev/docs/native-modules-android#argument-types
-          throw new Exception("Non string type of a tensor data is not allowed");
-        }
-
-        OnnxTensor onnxTensor = TensorHelper.createInputTensor(inputMap, ortEnvironment);
+        OnnxTensor onnxTensor = TensorHelper.createInputTensor(blobModule, inputMap, ortEnvironment);
         feed.put(inputName, onnxTensor);
       }
 
@@ -252,7 +290,6 @@ public class OnnxruntimeModule extends ReactContextBaseJavaModule {
       Log.d("Duration", "createInputTensor: " + duration);
 
       startTime = System.currentTimeMillis();
-      Result result = null;
       if (requestedOutputs != null) {
         result = ortSession.run(feed, requestedOutputs, runOptions);
       } else {
@@ -262,7 +299,7 @@ public class OnnxruntimeModule extends ReactContextBaseJavaModule {
       Log.d("Duration", "inference: " + duration);
 
       startTime = System.currentTimeMillis();
-      WritableMap resultMap = TensorHelper.createOutputTensor(result);
+      WritableMap resultMap = TensorHelper.createOutputTensor(blobModule, result);
       duration = System.currentTimeMillis() - startTime;
       Log.d("Duration", "createOutputTensor: " + duration);
 
@@ -270,6 +307,9 @@ public class OnnxruntimeModule extends ReactContextBaseJavaModule {
 
     } finally {
       OnnxValue.close(feed);
+      if (result != null) {
+        result.close();
+      }
     }
   }
 
@@ -330,6 +370,44 @@ public class OnnxruntimeModule extends ReactContextBaseJavaModule {
       }
     }
 
+    if (options.hasKey("executionProviders")) {
+      ReadableArray executionProviders = options.getArray("executionProviders");
+      for (int i = 0; i < executionProviders.size(); ++i) {
+        String epName = null;
+        ReadableMap epOptions = null;
+        if (executionProviders.getType(i) == ReadableType.String) {
+          epName = executionProviders.getString(i);
+        } else {
+          epOptions = executionProviders.getMap(i);
+          epName = epOptions.getString("name");
+        }
+        if (epName.equals("nnapi")) {
+          EnumSet<NNAPIFlags> flags = EnumSet.noneOf(NNAPIFlags.class);
+          if (epOptions != null) {
+            if (epOptions.hasKey("useFP16") && epOptions.getBoolean("useFP16")) {
+              flags.add(NNAPIFlags.USE_FP16);
+            }
+            if (epOptions.hasKey("useNCHW") && epOptions.getBoolean("useNCHW")) {
+              flags.add(NNAPIFlags.USE_NCHW);
+            }
+            if (epOptions.hasKey("cpuDisabled") && epOptions.getBoolean("cpuDisabled")) {
+              flags.add(NNAPIFlags.CPU_DISABLED);
+            }
+            if (epOptions.hasKey("cpuOnly") && epOptions.getBoolean("cpuOnly")) {
+              flags.add(NNAPIFlags.CPU_ONLY);
+            }
+          }
+          sessionOptions.addNnapi(flags);
+        } else if (epName.equals("xnnpack")) {
+          sessionOptions.addXnnpack(Collections.emptyMap());
+        } else if (epName.equals("cpu")) {
+          continue;
+        } else {
+          throw new OrtException("Unsupported execution provider: " + epName);
+        }
+      }
+    }
+
     if (options.hasKey("logId")) {
       String logId = options.getString("logId");
       sessionOptions.setLoggerId(logId);
@@ -357,5 +435,23 @@ public class OnnxruntimeModule extends ReactContextBaseJavaModule {
     }
 
     return runOptions;
+  }
+
+  @Override
+  public void onHostResume() {}
+
+  @Override
+  public void onHostPause() {}
+
+  @Override
+  public void onHostDestroy() {
+    for (String key : sessionMap.keySet()) {
+      try {
+        dispose(key);
+      } catch (Exception e) {
+        Log.e("onHostDestroy", "Failed to dispose session: " + key, e);
+      }
+    }
+    sessionMap.clear();
   }
 }

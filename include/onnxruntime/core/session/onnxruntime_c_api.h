@@ -61,6 +61,8 @@ extern "C" {
 #define _Check_return_
 #define _Outptr_result_maybenull_
 #define _In_reads_(X)
+#define _Inout_updates_(X)
+#define _Out_writes_(X)
 #define _Inout_updates_all_(X)
 #define _Out_writes_bytes_all_(X)
 #define _Out_writes_all_(X)
@@ -188,7 +190,12 @@ typedef enum ONNXTensorElementDataType {
   ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT64,      // maps to c type uint64_t
   ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX64,   // complex with float32 real and imaginary components
   ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX128,  // complex with float64 real and imaginary components
-  ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16     // Non-IEEE floating-point format based on IEEE754 single-precision
+  ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16,    // Non-IEEE floating-point format based on IEEE754 single-precision
+  // float 8 types were introduced in onnx 1.14, see https://onnx.ai/onnx/technical/float8.html
+  ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E4M3FN,    // Non-IEEE floating-point format based on IEEE754 single-precision
+  ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E4M3FNUZ,  // Non-IEEE floating-point format based on IEEE754 single-precision
+  ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E5M2,      // Non-IEEE floating-point format based on IEEE754 single-precision
+  ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E5M2FNUZ   // Non-IEEE floating-point format based on IEEE754 single-precision
 } ONNXTensorElementDataType;
 
 // Synced with onnx TypeProto oneof
@@ -401,7 +408,8 @@ typedef struct OrtCUDAProviderOptions {
         user_compute_stream{},
         default_memory_arena_cfg{},
         tunable_op_enable{false},
-        tunable_op_tuning_enable{false} {}
+        tunable_op_tuning_enable{false},
+        tunable_op_max_tuning_duration_ms{} {}
 #endif
 
   /** \brief CUDA device Id
@@ -464,6 +472,11 @@ typedef struct OrtCUDAProviderOptions {
    */
   int tunable_op_tuning_enable;
 
+  /** \brief Max tuning duration time limit for each instance of TunableOp.
+   *   Defaults to 0 to disable the limit.
+   */
+  int tunable_op_max_tuning_duration_ms;
+
 } OrtCUDAProviderOptions;
 
 /** \brief ROCM Provider Options
@@ -482,7 +495,8 @@ typedef struct OrtROCMProviderOptions {
         user_compute_stream{},
         default_memory_arena_cfg{},
         tunable_op_enable{false},
-        tunable_op_tuning_enable{false} {}
+        tunable_op_tuning_enable{false},
+        tunable_op_max_tuning_duration_ms{} {}
 #endif
 
   /** \brief ROCM device Id
@@ -543,6 +557,11 @@ typedef struct OrtROCMProviderOptions {
    *   This option can be overriden by environment variable ORT_ROCM_TUNABLE_OP_TUNING_ENABLE.
    */
   int tunable_op_tuning_enable;
+
+  /** \brief Max tuning duration time limit for each instance of TunableOp.
+   *   Defaults to 0 to disable the limit.
+   */
+  int tunable_op_max_tuning_duration_ms;
 
 } OrtROCMProviderOptions;
 
@@ -2728,6 +2747,10 @@ struct OrtApi {
    *  crossing which the current chunk is chunked into 2.
    * "initial_growth_chunk_size_bytes": (Possible) Size of the second allocation in the arena.
    *  Only relevant if arena strategy is `kNextPowerOfTwo`. Use -1 to allow ORT to choose the default.
+   * "max_power_of_two_extend_bytes": The maximum enxtend size if arena strategy is `kNextPowerOfTwo`.
+   *  It is not an allocation limit, it is only a limit for extention when requested byte is less than the limit.
+   *  When requested bytes is more than the limit, allocator will still return as requested.
+   *  Use -1 to allow ORT to choose the default 1GB for max_power_of_two_extend_bytes.
    *  Ultimately, the allocation size is determined by the allocation memory request.
    *  Further allocation sizes are governed by the arena extend strategy.
    *
