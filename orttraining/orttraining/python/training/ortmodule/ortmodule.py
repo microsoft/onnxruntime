@@ -10,7 +10,7 @@ from ._torch_module_ort import TorchModuleORT
 from ._custom_op_symbolic_registry import CustomOpSymbolicRegistry
 from ._custom_gradient_registry import CustomGradientRegistry
 from . import _utils
-from .debug_options import DebugOptions
+from ._options import DebugOptions
 from ._fallback import _FallbackManager, _FallbackPolicy, ORTModuleFallbackException
 from ._logger import ortmodule_loglevel_to_python_loglevel
 from onnxruntime.training import ortmodule

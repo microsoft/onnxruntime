@@ -113,7 +113,6 @@ class DebugOptions:
     """
 
     def __init__(self, log_level=LogLevel.WARNING, save_onnx=False, onnx_prefix="", save_path="", config=None):
-        configs = _load_data_from_json(config) if config else {}
         self.log_level = log_level
         self.save_onnx = save_onnx
         self.onnx_prefix = onnx_prefix

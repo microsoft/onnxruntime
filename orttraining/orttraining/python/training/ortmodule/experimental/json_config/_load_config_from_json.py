@@ -13,7 +13,7 @@ from onnxruntime.training import ortmodule
 
 from ..._fallback import _FallbackPolicy
 from ..._graph_execution_manager import _SkipCheck
-from ...debug_options import DebugOptions, LogLevel, _SaveOnnxOptions
+from ..._options import DebugOptions, LogLevel, _SaveOnnxOptions
 from . import JSON_PATH_ENVIRONMENT_KEY
 
 log = logging.getLogger(__name__)
