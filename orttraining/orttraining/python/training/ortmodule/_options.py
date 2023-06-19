@@ -13,7 +13,7 @@ from onnxruntime.training import ortmodule
 
 from ._fallback import _FallbackPolicy
 from ._logger import LogLevel
-from ._utils import _load_data_from_json, parse_os_env_skip_check_flags
+from ._utils import parse_os_env_skip_check_flags
 
 
 class _SaveOnnxOptions:

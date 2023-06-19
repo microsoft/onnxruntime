@@ -11,8 +11,8 @@ import torch
 from . import _io, _utils
 from ._fallback import ORTModuleTorchModelException, _FallbackManager, wrap_exception
 from ._graph_execution_manager_factory import GraphExecutionManagerFactory
-from ._torch_module_interface import TorchModuleInterface
 from ._options import DebugOptions
+from ._torch_module_interface import TorchModuleInterface
 
 T = TypeVar("T", bound="torch.nn.Module")
 
