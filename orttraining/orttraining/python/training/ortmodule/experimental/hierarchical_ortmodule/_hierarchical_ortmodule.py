@@ -1,6 +1,6 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
-# debug_options.py
+# _hierarchical_ortmodule.py
 import tempfile
 import warnings
 

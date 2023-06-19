@@ -47,7 +47,7 @@ More options for **developers**.
 +	from onnxruntime.training.ortmodule import ORTModule, DebugOptions, LogLevel
 +	model = ORTModule(model, DebugOptions(save_onnx=True, log_level=LogLevel.VERBOSE, onnx_prefix="model_name"))
 ```
-Check [DebugOptions implementation](../orttraining/orttraining/python/training/ortmodule/debug_options.py) for more details.
+Check [DebugOptions implementation](../orttraining/orttraining/python/training/ortmodule/_options.py) for more details.
 
 ### 2.1 Environment Variables
 

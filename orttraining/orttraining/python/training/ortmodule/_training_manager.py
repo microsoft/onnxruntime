@@ -18,8 +18,8 @@ from ._fallback import ORTModuleFallbackException, _FallbackManager, _FallbackPo
 from ._gradient_accumulation_manager import GradientAccumulationManager
 from ._graph_execution_manager import GraphExecutionManager, _RunStateInfo
 from ._io import _FlattenedModule, _InputInfo
+from ._options import DebugOptions, _SkipCheck
 from ._runtime_inspector import Phase
-from .debug_options import DebugOptions, _SkipCheck
 
 
 class TrainingManager(GraphExecutionManager):
