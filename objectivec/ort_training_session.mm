@@ -108,7 +108,7 @@ NS_ASSUME_NONNULL_BEGIN
   ORT_OBJC_API_IMPL_CATCH_RETURNING_BOOL(error)
 }
 
-- (BOOL)optimzerStepWithError:(NSError**)error {
+- (BOOL)optimizerStepWithError:(NSError**)error {
   try {
     [self CXXAPIOrtTrainingSession].OptimizerStep();
     return YES;

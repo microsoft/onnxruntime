@@ -252,7 +252,7 @@ NS_ASSUME_NONNULL_BEGIN
   ORTAssertNullableResultSuccessful(loss, error);
   XCTAssertEqualWithAccuracy([ORTTrainingSessionTest getFirstValueFromData:loss], [ORTTrainingSessionTest getFirstValueFromData:expectedOutput1], 1e-3f);
 
-  result = [session optimzerStepWithError:&error];
+  result = [session optimizerStepWithError:&error];
   ORTAssertBoolResultSuccessful(result, error);
 
   outputs = [session trainStepWithInputValues:pinnedInputs error:&error];
@@ -289,26 +289,26 @@ NS_ASSUME_NONNULL_BEGIN
 
   ORTAssertBoolResultSuccessful(result, error);
 
-  result = [session optimzerStepWithError:&error];
+  result = [session optimizerStepWithError:&error];
   ORTAssertBoolResultSuccessful(result, error);
   result = [session schedulerStepWithError:&error];
   ORTAssertBoolResultSuccessful(result, error);
   ORTAssertFloatResultSuccessful(0.05f, [session getLearningRateWithError:&error], error);
 
-  result = [session optimzerStepWithError:&error];
+  result = [session optimizerStepWithError:&error];
   ORTAssertBoolResultSuccessful(result, error);
   result = [session schedulerStepWithError:&error];
   ORTAssertBoolResultSuccessful(result, error);
   ORTAssertFloatResultSuccessful(0.1f, [session getLearningRateWithError:&error], error);
 
-  result = [session optimzerStepWithError:&error];
+  result = [session optimizerStepWithError:&error];
   ORTAssertBoolResultSuccessful(result, error);
   result = [session schedulerStepWithError:&error];
   ORTAssertBoolResultSuccessful(result, error);
   XCTAssertNil(error);
   ORTAssertFloatResultSuccessful(0.05f, [session getLearningRateWithError:&error], error);
 
-  result = [session optimzerStepWithError:&error];
+  result = [session optimizerStepWithError:&error];
   ORTAssertBoolResultSuccessful(result, error);
   result = [session schedulerStepWithError:&error];
   ORTAssertBoolResultSuccessful(result, error);

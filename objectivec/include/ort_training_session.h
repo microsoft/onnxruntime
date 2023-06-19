@@ -13,7 +13,7 @@ NS_ASSUME_NONNULL_BEGIN
 @class ORTSessionOptions;
 
 /**
- * Trainer class that provides metthods to train, evaluate and optimize ONNX models
+ * Trainer class that provides methods to train, evaluate and optimize ONNX models
  *
  * The training session requires four training artifacts:
  *  1. Training onnx model
@@ -34,7 +34,7 @@ NS_ASSUME_NONNULL_BEGIN
  * Creates a training session from the training artifacts that can be used to begin or resume training.
  *
  * The initializer instantiates the training session based on provided env and session options, which can be used to
- * begin or resume training from  a given checkpoint state. The checkpoint state repressents the parameters of training
+ * begin or resume training from a given checkpoint state. The checkpoint state represents the parameters of training
  * session which will be moved to the device specified in the session option if needed.
  *
  * @param env The `ORTEnv` instance to use for the training session.
@@ -60,10 +60,10 @@ NS_ASSUME_NONNULL_BEGIN
 /**
  * Performs a training step, which is equivalent to a forward and backward propagation in a single step.
  *
- * The training step computes the outputs of the training model and the graidents of the trainable parameters
+ * The training step computes the outputs of the training model and the gradients of the trainable parameters
  * for the given input values. The train step is performed based on the training model that was provided to the training session.
  * It is equivalent of running forward and backward propagation in a single step. The computed gradients are stored inside
- * the training session state so they can be later consumed by `optimzerStep`. The gradients can be lazily reset by
+ * the training session state so they can be later consumed by `optimizerStep`. The gradients can be lazily reset by
  * calling `lazyResetGrad` method.
  *
  * @param inputs The input values to the training model.
@@ -88,7 +88,7 @@ NS_ASSUME_NONNULL_BEGIN
 /**
  * Reset the gradients of all trainable parameters to zero lazily.
  *
- * Call to this method sets the internal state of the training session such that the gradients of the trainable parameters
+ * Calling this method sets the internal state of the training session such that the gradients of the trainable parameters
  * in the ORTCheckpoint will be scheduled to be reset just before the new gradients are computed on the next
  * invocation of the `trainStep` method.
  *
@@ -105,7 +105,7 @@ NS_ASSUME_NONNULL_BEGIN
  * @param error Optional error information set if an error occurs.
  * @return YES if the optimizer step was performed successfully, NO otherwise.
  */
-- (BOOL)optimzerStepWithError:(NSError**)error;
+- (BOOL)optimizerStepWithError:(NSError**)error;
 
 /**
  * Returns the names of the user inputs for the training and evaluation models that can be associated with
@@ -152,9 +152,9 @@ NS_ASSUME_NONNULL_BEGIN
 /**
  * Update the learning rate based on the registered learing rate scheduler.
  *
- * ScheduleStep takes a scheduler step that updates the learning rate that is being used by the training session.
- * This function should typically be called before invoking the optimizer step for each round, or as determined
- * necessary to update the learning rate being used by the training session.
+ * Performs a scheduler step that updates the learning rate that is being used by the training session.
+ * This function should typically be called before invoking the optimizer step for each round, or as necessary
+ * to update the learning rate being used by the training session.
  *
  * @note A valid predefined learning rate scheduler must be first registered to invoke this method.
  *
@@ -194,7 +194,7 @@ NS_ASSUME_NONNULL_BEGIN
  *
  * @param buffer Contiguous buffer to load the parameters from.
  * @param error Optional error information set if an error occurs.
- * @return YES if the parameters were loaded successfully, NO otherwise.=
+ * @return YES if the parameters were loaded successfully, NO otherwise.
  */
 - (BOOL)fromBufferWithValue:(ORTValue*)buffer
                       error:(NSError**)error;
@@ -220,12 +220,12 @@ NS_ASSUME_NONNULL_BEGIN
  *
  * @note The method reloads eval model from the path provided to initializer and expects that this path to be valid.
  *
- * @param infernceModelPath The path to serialize the inference model.
+ * @param inferenceModelPath The path to serialize the inference model.
  * @param graphOutputNames The names of the outputs that are needed in the inference model.
  * @param error Optional error information set if an error occurs.
  * @return YES if the inference model was exported successfully, NO otherwise.
  */
-- (BOOL)exportModelForInferenceWithOutputPath:(NSString*)infernceModelPath
+- (BOOL)exportModelForInferenceWithOutputPath:(NSString*)inferenceModelPath
                              graphOutputNames:(NSArray<NSString*>*)graphOutputNames
                                         error:(NSError**)error;
 @end
