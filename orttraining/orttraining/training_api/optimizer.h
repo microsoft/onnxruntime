@@ -96,7 +96,7 @@ struct Optimizer {
   // Initialize an optimizer module from an ORT inference session with loaded
   // training ONNX model For each parameter, initialize the OptimizerState based
   // on the graph input's ValueInfoProto if the parameter doesn't have it already.
-  Optimizer(const std::string& optim_path_or_bytes,
+  Optimizer(const ModelIdentifiers& model_identifiers,
             CheckpointState* state,
             const onnxruntime::SessionOptions& session_options,
             const Environment& env,
@@ -120,7 +120,7 @@ struct Optimizer {
   }
 
  private:
-  void Initialize(const std::string& optim_path_or_bytes,
+  void Initialize(const ModelIdentifiers& model_identifiers,
                   const onnxruntime::SessionOptions& session_options,
                   const Environment& env,
                   const std::vector<std::shared_ptr<IExecutionProvider>>& providers);

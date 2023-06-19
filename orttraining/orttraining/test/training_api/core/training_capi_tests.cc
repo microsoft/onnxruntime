@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "gtest/gtest.h"
+#include "gmock/gmock.h"
 
 #include "onnxruntime_c_api.h"
 #include "onnxruntime_training_c_api.h"
@@ -11,6 +12,7 @@
 
 #include "orttraining/test/training_api/core/data_utils.h"
 #include "test/util/include/temp_dir.h"
+#include "test/util/include/asserts.h"
 
 namespace onnxruntime::training::test {
 
@@ -137,5 +139,49 @@ TEST(TrainingCApiTest, FromBuffer) {
 
   training_session.FromBuffer(buffer);
 }
+
+TEST(TrainingCApiTest, LoadModelsFromArray) {
+  auto model_path = MODEL_FOLDER "training_model.onnx";
+  std::vector<char> buffer;
+  {
+    std::ifstream file(model_path, std::ios::binary | std::ios::ate);
+    if (!file)
+      ORT_THROW("Error reading model");
+    buffer.resize(file.tellg());
+    file.seekg(0, std::ios::beg);
+    if (!file.read(buffer.data(), buffer.size()))
+      ORT_THROW("Error reading model");
+  }
+
+
+  Ort::Env env;
+  Ort::CheckpointState checkpoint_state = Ort::CheckpointState::LoadCheckpoint(MODEL_FOLDER "checkpoint.ckpt");
+  Ort::TrainingSession training_session = Ort::TrainingSession(env, Ort::SessionOptions(), checkpoint_state, buffer.data(), buffer.size());
+}
+
+#if !defined(ORT_MINIMAL_BUILD) && !defined(ORT_NO_EXCEPTIONS)
+TEST(TrainingCApiTest, LoadModelsFromArrayThrows) {
+  auto model_path = MODEL_FOLDER "training_model.onnx";
+  std::vector<char> buffer;
+  {
+    std::ifstream file(model_path, std::ios::binary | std::ios::ate);
+    if (!file)
+      ORT_THROW("Error reading model");
+    buffer.resize(file.tellg());
+    file.seekg(0, std::ios::beg);
+    if (!file.read(buffer.data(), buffer.size()))
+      ORT_THROW("Error reading model");
+  }
+
+  try {
+    Ort::Env env;
+    Ort::CheckpointState checkpoint_state = Ort::CheckpointState::LoadCheckpoint(MODEL_FOLDER "checkpoint.ckpt");
+    Ort::TrainingSession training_session = Ort::TrainingSession(env, Ort::SessionOptions(), checkpoint_state, nullptr, 0);
+  } catch (const std::exception& ex) {
+    ASSERT_THAT(ex.what(),
+                testing::HasSubstr("Training Session Creation failed. Either the train model path or train model data should be specified."));
+  }
+}
+#endif
 
 }  // namespace onnxruntime::training::test

@@ -12,7 +12,6 @@
 #include "core/graph/graph_utils.h"
 
 #include "orttraining/training_api/checkpoint.h"
-#include "orttraining/training_api/utils.h"
 
 using namespace onnxruntime;
 
@@ -149,12 +148,11 @@ Status Parameter::ResetGrad() {
   return Status::OK();
 }
 
-Module::Module(const std::string& train_model_path_or_bytes,
+Module::Module(const ModelIdentifiers& model_identifiers,
                CheckpointState* state,
                const onnxruntime::SessionOptions& session_options,
                const Environment& env,
-               const std::vector<std::shared_ptr<IExecutionProvider>>& providers,
-               const std::optional<std::string>& eval_model_path_or_bytes)
+               const std::vector<std::shared_ptr<IExecutionProvider>>& providers)
     : state_{state} {
   // Enforce weight prepacking is disabled
   // If the user explicitly enabled weight prepacking then return an error.
@@ -168,7 +166,13 @@ Module::Module(const std::string& train_model_path_or_bytes,
   }
 
   train_sess_ = std::make_unique<onnxruntime::InferenceSession>(session_options, env);
-  ORT_THROW_IF_ERROR(train_sess_->Load(train_model_path_or_bytes));
+  ORT_ENFORCE(model_identifiers.train_model != "" || model_identifiers.train_model_data != nullptr,
+              "Training Session Creation failed. Either the train model path or train model data should be specified.");
+
+  ORT_THROW_IF_ERROR(model_identifiers.train_model_data == nullptr
+                     ? train_sess_->Load(model_identifiers.train_model)
+                     : train_sess_->Load(model_identifiers.train_model_data, model_identifiers.train_model_len));
+
   for (const auto& provider : providers) {
     ORT_THROW_IF_ERROR(train_sess_->RegisterExecutionProvider(provider));
   }
@@ -270,41 +274,50 @@ Module::Module(const std::string& train_model_path_or_bytes,
     }
   }
 
-  if (eval_model_path_or_bytes.has_value()) {
+  if (model_identifiers.eval_model.has_value()) {
     eval_sess_ = std::make_unique<onnxruntime::InferenceSession>(session_options, env);
-    ORT_THROW_IF_ERROR(eval_sess_->Load(eval_model_path_or_bytes.value()));
-    for (const auto& provider : providers) {
-      ORT_THROW_IF_ERROR(eval_sess_->RegisterExecutionProvider(provider));
-    }
-    ORT_THROW_IF_ERROR(eval_sess_->Initialize());
-    utils::GetGraphInputOutputNames(eval_sess_, eval_input_names_, eval_output_names_);
+    ORT_THROW_IF_ERROR(eval_sess_->Load(model_identifiers.eval_model.value()));
+  } else if (model_identifiers.eval_model_data != nullptr) {
+    eval_sess_ = std::make_unique<onnxruntime::InferenceSession>(session_options, env);
+    ORT_THROW_IF_ERROR(eval_sess_->Load(model_identifiers.eval_model_data, model_identifiers.eval_model_len));
+  } else {
+    return;
+  }
 
-    // Eval model validation
-    // We are making certain assumptions: Like the order in which parameters occur will be same between train and eval
-    // graphs, and all the weights present in both graphs match.
-    // TODO: Add the checks instead of making assumptions??
-    InlinedVector<std::string> eval_user_input_names, eval_param_input_names;
-    for (const auto& input_name : eval_input_names_) {
-      if (state_->module_checkpoint_state.named_parameters.find(input_name) !=
-          state_->module_checkpoint_state.named_parameters.end()) {
-        // it is a parameter
-        eval_param_input_names.emplace_back(input_name);
-        continue;
-      } else {
-        // It is user input. We handle user inputs separately in the eval
-        // because the eval graph might have different user inputs.
-        // Eg if loss is not a part of the eval graph, it won't have
-        // certain inputs like targets
-        eval_user_input_names.emplace_back(input_name);
-      }
-    }
-    eval_input_names_ = eval_user_input_names;
-    eval_user_input_count_ = eval_user_input_names.size();
-    eval_input_names_.insert(eval_input_names_.end(), eval_param_input_names.begin(), eval_param_input_names.end());
+  for (const auto& provider : providers) {
+    ORT_THROW_IF_ERROR(eval_sess_->RegisterExecutionProvider(provider));
+  }
+  ORT_THROW_IF_ERROR(eval_sess_->Initialize());
+  utils::GetGraphInputOutputNames(eval_sess_, eval_input_names_, eval_output_names_);
 
-    // Keep a copy of the eval model path to be able to later export the model for inferencing.
-    // The inference model will be reconstructed from the eval model.
-    eval_model_path_ = eval_model_path_or_bytes.value();
+  // Eval model validation
+  // We are making certain assumptions: Like the order in which parameters occur will be same between train and eval
+  // graphs, and all the weights present in both graphs match.
+  // TODO: Add the checks instead of making assumptions??
+  InlinedVector<std::string> eval_user_input_names, eval_param_input_names;
+  for (const auto& input_name : eval_input_names_) {
+    if (state_->module_checkpoint_state.named_parameters.find(input_name) !=
+        state_->module_checkpoint_state.named_parameters.end()) {
+      // it is a parameter
+      eval_param_input_names.emplace_back(input_name);
+      continue;
+    } else {
+      // It is user input. We handle user inputs separately in the eval
+      // because the eval graph might have different user inputs.
+      // Eg if loss is not a part of the eval graph, it won't have
+      // certain inputs like targets
+      eval_user_input_names.emplace_back(input_name);
+    }
+  }
+  eval_input_names_ = eval_user_input_names;
+  eval_user_input_count_ = eval_user_input_names.size();
+  eval_input_names_.insert(eval_input_names_.end(), eval_param_input_names.begin(), eval_param_input_names.end());
+
+  // Keep a copy of the eval model path to be able to later export the model for inferencing.
+  // The inference model will be reconstructed from the eval model.
+  // TODO [Ashwini]: Find a fix to export model for inference when the eval model is loaded from a buffer.
+  if(model_identifiers.eval_model.has_value()) {
+    eval_model_path_ = model_identifiers.eval_model.value();
   }
 }
 

@@ -4,6 +4,7 @@
 #pragma once
 
 #include "core/session/inference_session.h"
+#include "utils.h"
 
 namespace onnxruntime {
 namespace training {
@@ -73,12 +74,11 @@ struct Module {
  public:
   // Initialize a module from an ORT inference session with loaded
   // training ONNX model and load parameters
-  Module(const std::string& train_model_path_or_bytes,
+  Module(const ModelIdentifiers& model_identifiers,
          CheckpointState* state,
          const onnxruntime::SessionOptions& session_options,
          const Environment& env,
-         const std::vector<std::shared_ptr<IExecutionProvider>>& providers,
-         const std::optional<std::string>& eval_model_path_or_bytes = std::nullopt);
+         const std::vector<std::shared_ptr<IExecutionProvider>>& providers);
 
   // Return the trainable/nontrainable parameters
   std::vector<std::shared_ptr<Parameter>> Parameters() const;

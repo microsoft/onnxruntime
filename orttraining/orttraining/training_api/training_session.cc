@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "orttraining/training_api/training_session.h"
+#include "orttraining/training_api/utils.h"
 
 namespace onnxruntime {
 namespace training {
@@ -13,11 +14,11 @@ TrainingSession::TrainingSession(const Environment& session_env,
                                  CheckpointState* state,
                                  const ModelIdentifiers& model_identifiers)
     : state_{state},
-      module_{std::make_unique<Module>(model_identifiers.train_model, state_,
-                                       session_options, session_env, providers, model_identifiers.eval_model)},
-      optimizer_{model_identifiers.optim_model.has_value()
+      module_{std::make_unique<Module>(model_identifiers, state_,
+                                       session_options, session_env, providers)},
+      optimizer_{model_identifiers.optim_model.has_value() || model_identifiers.optim_model_len > 0
                      ? std::make_unique<Optimizer>(
-                           model_identifiers.optim_model.value(), state_,
+                           model_identifiers, state_,
                            session_options, session_env, providers)
                      : std::unique_ptr<Optimizer>()} {}
 

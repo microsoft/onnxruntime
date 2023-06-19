@@ -183,13 +183,13 @@ Status Optimizer::ConstructInputs() {
   return Status::OK();
 }  // namespace api
 
-Optimizer::Optimizer(const std::string& optim_path_or_bytes,
+Optimizer::Optimizer(const ModelIdentifiers& model_identifiers,
                      CheckpointState* state,
                      const onnxruntime::SessionOptions& session_options,
                      const Environment& env,
                      const std::vector<std::shared_ptr<IExecutionProvider>>& providers)
     : optim_sess_(std::make_unique<InferenceSession>(session_options, env)), state_(state) {
-  Initialize(optim_path_or_bytes, session_options, env, providers);
+  Initialize(model_identifiers, session_options, env, providers);
 
   ORT_ENFORCE(state != nullptr, "Checkpoint state cannot be null.");
   auto g_it = state_->optimizer_checkpoint_state.group_named_optimizer_states.find(GROUP_ZERO_NAME);
@@ -205,7 +205,7 @@ Optimizer::Optimizer(const std::string& optim_path_or_bytes,
   }
 }
 
-void Optimizer::Initialize(const std::string& optim_path_or_bytes,
+void Optimizer::Initialize(const ModelIdentifiers& model_identifiers,
                            const onnxruntime::SessionOptions& session_options,
                            const Environment& env,
                            const std::vector<std::shared_ptr<IExecutionProvider>>& providers) {
@@ -215,7 +215,10 @@ void Optimizer::Initialize(const std::string& optim_path_or_bytes,
     ORT_THROW_IF_ERROR(optim_sess_->RegisterExecutionProvider(execution_provider));
   }
 
-  ORT_THROW_IF_ERROR(optim_sess_->Load(optim_path_or_bytes));
+  ORT_THROW_IF_ERROR(model_identifiers.optim_model.has_value() ?
+                     optim_sess_->Load(model_identifiers.optim_model.value()) :
+                     optim_sess_->Load(model_identifiers.optim_model_data, model_identifiers.optim_model_len));
+
   ORT_THROW_IF_ERROR(optim_sess_->Initialize());
 
   // Make sure that the checkpoint state can copy tensors
@@ -223,7 +226,8 @@ void Optimizer::Initialize(const std::string& optim_path_or_bytes,
 
   utils::GetGraphInputOutputNames(optim_sess_, input_names_, output_names_);
 
-  optimizer_algo_ptr_ = OptimizerAlorithmFactory::CreateInstance(optim_path_or_bytes, group_count_);
+  //TODO[Ashwini]: Fix this before merging this PR - Needs hardcoding to ADAMW optimizer or updating CreateInstance to take in a pointer to model data buffer.
+  optimizer_algo_ptr_ = OptimizerAlorithmFactory::CreateInstance(model_identifiers.optim_model.value(), group_count_);
   ORT_ENFORCE(group_count_ == 1, "Group count can only be 1, but got: " + std::to_string(group_count_));
   ORT_ENFORCE(optimizer_algo_ptr_, "optimizer_algo_ptr_ should not be nullptr.");
 
