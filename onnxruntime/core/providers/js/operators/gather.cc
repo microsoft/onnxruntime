@@ -8,7 +8,6 @@
 #include "gather.h"
 #include "core/common/safeint.h"
 #include "core/framework/op_kernel.h"
-#include "core/providers/common.h"
 #include "core/providers/op_kernel_type_control.h"
 
 namespace onnxruntime {
