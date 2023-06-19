@@ -108,28 +108,40 @@ NS_ASSUME_NONNULL_BEGIN
 - (BOOL)optimizerStepWithError:(NSError**)error;
 
 /**
- * Returns the names of the user inputs for the training and evaluation models that can be associated with
- * the `ORTValue` provided to the `trainStep` or `evalStep` methods
+ * Returns the names of the user inputs for the training model that can be associated with
+ * the `ORTValue` provided to the `trainStep`
  *
- * @param train If YES, returns the names of the user inputs for the training model, otherwise returns the names of the
- * user inputs for the evaluation model.
  * @param error Optional error information set if an error occurs.
- * @return The names of the user inputs for the training or evaluation model.
+ * @return The names of the user inputs for the training model.
  */
-- (nullable NSArray<NSString*>*)inputNamesWithTraining:(BOOL)train
-                                                 error:(NSError**)error;
+- (nullable NSArray<NSString*>*)getTrainInputNamesWithError:(NSError**)error;
 
 /**
- * Returns the names of the user outputs for the training and evaluation models that can be associated with
- * the `ORTValue` returned by the `trainStep` or `evalStep` methods
+ * Returns the names of the user inputs for the evaluation model that can be associated with
+ * the `ORTValue` provided to the `evalStep`
  *
- * @param train If YES, returns the names of the user outputs for the training model, otherwise returns the names of the
- * user outputs for the evaluation model.
  * @param error Optional error information set if an error occurs.
- * @return The names of the user outputs for the training or evaluation model.
+ * @return The names of the user inputs for the evaluation model.
  */
-- (nullable NSArray<NSString*>*)outputNamesWithTraining:(BOOL)train
-                                                  error:(NSError**)error;
+- (nullable NSArray<NSString*>*)getEvalInputNamesWithError:(NSError**)error;
+
+/**
+ * Returns the names of the user outputs for the training model that can be associated with
+ * the `ORTValue` returned by the `trainStep`
+ *
+ * @param error Optional error information set if an error occurs.
+ * @return The names of the user outputs for the training model.
+ */
+- (nullable NSArray<NSString*>*)getTrainOutputNamesWithError:(NSError**)error;
+
+/**
+ * Returns the names of the user outputs for the evaluation model that can be associated with
+ * the `ORTValue` returned by the `evalStep`
+ *
+ * @param error Optional error information set if an error occurs.
+ * @return The names of the user outputs for the evaluation model.
+ */
+- (nullable NSArray<NSString*>*)getEvalOutputNamesWithError:(NSError**)error;
 
 /**
  * Registers a linear learning rate scheduler for the training session.

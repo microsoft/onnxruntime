@@ -1,4 +1,3 @@
-
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
@@ -11,22 +10,21 @@
 NS_ASSUME_NONNULL_BEGIN
 @class ORTValue;
 
-@interface ORTUtils : NSObject
+namespace Utils {
 
-+ (NSString*)toNSString:(const std::string&)str;
-+ (nullable NSString*)toNullableNSString:(const std::optional<std::basic_string<char>>&)str;
+NSString* toNSString(const std::string& str);
+NSString* _Nullable toNullableNSString(const std::optional<std::string>& str);
 
-+ (std::string)toStdString:(NSString*)str;
-+ (std::optional<std::basic_string<char>>)toStdOptionalString:(nullable NSString*)str;
+std::string toStdString(NSString* str);
+std::optional<std::string> toStdOptionalString(NSString* _Nullable str);
 
-+ (std::vector<std::string>)toStdStringVector:(NSArray<NSString*>*)strs;
-+ (NSArray<NSString*>*)toNSStringNSArray:(const std::vector<std::string>&)strs;
+std::vector<std::string> toStdStringVector(NSArray<NSString*>* strs);
+NSArray<NSString*>* toNSStringNSArray(const std::vector<std::string>& strs);
 
-+ (nullable NSArray<ORTValue*>*)toORTValueNSArray:(const std::vector<OrtValue*>&)values
-                                            error:(NSError**)error;
+NSArray<ORTValue*>* _Nullable toORTValueNSArray(const std::vector<OrtValue*>& values, NSError** error);
 
-+ (std::vector<const OrtValue*>)toOrtValueVector:(NSArray<ORTValue*>*)values;
+std::vector<const OrtValue*> toOrtValueVector(NSArray<ORTValue*>* values);
 
-@end
+}  // namespace Utils
 
 NS_ASSUME_NONNULL_END

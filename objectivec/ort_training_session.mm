@@ -39,8 +39,8 @@ NS_ASSUME_NONNULL_BEGIN
   }
 
   try {
-    std::optional<std::basic_string<char>> evalPath = [ORTUtils toStdOptionalString:evalModelPath];
-    std::optional<std::basic_string<char>> optimizerPath = [ORTUtils toStdOptionalString:optimizerModelPath];
+    std::optional<std::string> evalPath = Utils::toStdOptionalString(evalModelPath);
+    std::optional<std::string> optimizerPath = Utils::toStdOptionalString(optimizerModelPath);
 
     _session = Ort::TrainingSession{
         [env CXXAPIOrtEnv],
@@ -57,7 +57,7 @@ NS_ASSUME_NONNULL_BEGIN
 - (nullable NSArray<ORTValue*>*)trainStepWithInputValues:(NSArray<ORTValue*>*)inputs
                                                    error:(NSError**)error {
   try {
-    std::vector<const OrtValue*> inputValues = [ORTUtils toOrtValueVector:inputs];
+    std::vector<const OrtValue*> inputValues = Utils::toOrtValueVector(inputs);
 
     size_t outputCount;
     Ort::ThrowOnError(Ort::GetTrainingApi().TrainingSessionGetTrainingModelOutputCount(*_session, &outputCount));
@@ -72,7 +72,7 @@ NS_ASSUME_NONNULL_BEGIN
         outputValues.size(),
         outputValues.data()));
 
-    return [ORTUtils toORTValueNSArray:outputValues error:error];
+    return Utils::toORTValueNSArray(outputValues, error);
   }
   ORT_OBJC_API_IMPL_CATCH_RETURNING_NULLABLE(error)
 }
@@ -80,7 +80,7 @@ NS_ASSUME_NONNULL_BEGIN
                                                   error:(NSError**)error {
   try {
     // create vector of Ort::Value from NSArray<ORTValue*> with same size as inputValues
-    std::vector<const OrtValue*> inputValues = [ORTUtils toOrtValueVector:inputs];
+    std::vector<const OrtValue*> inputValues = Utils::toOrtValueVector(inputs);
 
     size_t outputCount;
     Ort::ThrowOnError(Ort::GetTrainingApi().TrainingSessionGetEvalModelOutputCount(*_session, &outputCount));
@@ -95,7 +95,7 @@ NS_ASSUME_NONNULL_BEGIN
         outputValues.size(),
         outputValues.data()));
 
-    return [ORTUtils toORTValueNSArray:outputValues error:error];
+    return Utils::toORTValueNSArray(outputValues, error);
   }
   ORT_OBJC_API_IMPL_CATCH_RETURNING_NULLABLE(error)
 }
@@ -116,20 +116,34 @@ NS_ASSUME_NONNULL_BEGIN
   ORT_OBJC_API_IMPL_CATCH_RETURNING_BOOL(error)
 }
 
-- (nullable NSArray<NSString*>*)inputNamesWithTraining:(BOOL)train
-                                                 error:(NSError**)error {
+- (nullable NSArray<NSString*>*)getTrainInputNamesWithError:(NSError**)error {
   try {
-    std::vector<std::string> inputNames = [self CXXAPIOrtTrainingSession].InputNames(train);
-    return [ORTUtils toNSStringNSArray:inputNames];
+    std::vector<std::string> inputNames = [self CXXAPIOrtTrainingSession].InputNames(true);
+    return Utils::toNSStringNSArray(inputNames);
   }
   ORT_OBJC_API_IMPL_CATCH_RETURNING_NULLABLE(error)
 }
 
-- (nullable NSArray<NSString*>*)outputNamesWithTraining:(BOOL)train
-                                                  error:(NSError**)error {
+- (nullable NSArray<NSString*>*)getTrainOutputNamesWithError:(NSError**)error {
   try {
-    std::vector<std::string> outputNames = [self CXXAPIOrtTrainingSession].OutputNames(train);
-    return [ORTUtils toNSStringNSArray:outputNames];
+    std::vector<std::string> outputNames = [self CXXAPIOrtTrainingSession].OutputNames(true);
+    return Utils::toNSStringNSArray(outputNames);
+  }
+  ORT_OBJC_API_IMPL_CATCH_RETURNING_NULLABLE(error)
+}
+
+- (nullable NSArray<NSString*>*)getEvalInputNamesWithError:(NSError**)error {
+  try {
+    std::vector<std::string> inputNames = [self CXXAPIOrtTrainingSession].InputNames(false);
+    return Utils::toNSStringNSArray(inputNames);
+  }
+  ORT_OBJC_API_IMPL_CATCH_RETURNING_NULLABLE(error)
+}
+
+- (nullable NSArray<NSString*>*)getEvalOutputNamesWithError:(NSError**)error {
+  try {
+    std::vector<std::string> outputNames = [self CXXAPIOrtTrainingSession].OutputNames(false);
+    return Utils::toNSStringNSArray(outputNames);
   }
   ORT_OBJC_API_IMPL_CATCH_RETURNING_NULLABLE(error)
 }
@@ -193,8 +207,8 @@ NS_ASSUME_NONNULL_BEGIN
                              graphOutputNames:(NSArray<NSString*>*)graphOutputNames
                                         error:(NSError**)error {
   try {
-    [self CXXAPIOrtTrainingSession].ExportModelForInferencing([ORTUtils toStdString:infernceModelPath],
-                                                              [ORTUtils toStdStringVector:graphOutputNames]);
+    [self CXXAPIOrtTrainingSession].ExportModelForInferencing(Utils::toStdString(infernceModelPath),
+                                                              Utils::toStdStringVector(graphOutputNames));
     return YES;
   }
   ORT_OBJC_API_IMPL_CATCH_RETURNING_BOOL(error)

@@ -1,4 +1,5 @@
-
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
 
 #import <vector>
 #import <optional>
@@ -12,31 +13,29 @@
 
 NS_ASSUME_NONNULL_BEGIN
 
-@implementation ORTUtils
-
-+ (NSString*)toNSString:(const std::string&)str {
+NSString* Utils::toNSString(const std::string& str) {
   return [NSString stringWithUTF8String:str.c_str()];
 }
 
-+ (nullable NSString*)toNullableNSString:(const std::optional<std::basic_string<char>>&)str {
+NSString* Utils::toNullableNSString(const std::optional<std::string>& str) {
   if (str.has_value()) {
     return [NSString stringWithUTF8String:str.value().c_str()];
   }
   return nil;
 }
 
-+ (std::string)toStdString:(NSString*)str {
+std::string Utils::toStdString(NSString* str) {
   return std::string([str UTF8String]);
 }
 
-+ (std::optional<std::basic_string<char>>)toStdOptionalString:(nullable NSString*)str {
+std::optional<std::string> Utils::toStdOptionalString(NSString* _Nullable str) {
   if (str) {
-    return std::optional<std::basic_string<char>>([str UTF8String]);
+    return std::optional<std::string>([str UTF8String]);
   }
   return std::nullopt;
 }
 
-+ (std::vector<std::string>)toStdStringVector:(NSArray<NSString*>*)strs {
+std::vector<std::string> Utils::toStdStringVector(NSArray<NSString*>* strs) {
   std::vector<std::string> result;
   for (NSString* str in strs) {
     result.push_back([str UTF8String]);
@@ -44,7 +43,7 @@ NS_ASSUME_NONNULL_BEGIN
   return result;
 }
 
-+ (NSArray<NSString*>*)toNSStringNSArray:(const std::vector<std::string>&)strs {
+NSArray<NSString*>* Utils::toNSStringNSArray(const std::vector<std::string>& strs) {
   NSMutableArray<NSString*>* result = [NSMutableArray arrayWithCapacity:strs.size()];
   for (const std::string& str : strs) {
     [result addObject:[NSString stringWithUTF8String:str.c_str()]];
@@ -52,8 +51,7 @@ NS_ASSUME_NONNULL_BEGIN
   return result;
 }
 
-+ (nullable NSArray<ORTValue*>*)toORTValueNSArray:(const std::vector<OrtValue*>&)values
-                                            error:(NSError**)error {
+NSArray<ORTValue*>* Utils::toORTValueNSArray(const std::vector<OrtValue*>& values, NSError** error) {
   NSMutableArray<ORTValue*>* result = [NSMutableArray arrayWithCapacity:values.size()];
   for (NSUInteger i = 0; i < values.size(); ++i) {
     ORTValue* val = [[ORTValue alloc] initWithCAPIOrtValue:values[i] externalTensorData:nil error:error];
@@ -69,14 +67,12 @@ NS_ASSUME_NONNULL_BEGIN
   return result;
 }
 
-+ (std::vector<const OrtValue*>)toOrtValueVector:(NSArray<ORTValue*>*)values {
+std::vector<const OrtValue*> Utils::toOrtValueVector(NSArray<ORTValue*>* values) {
   std::vector<const OrtValue*> result;
   for (ORTValue* val : values) {
     result.push_back(static_cast<const OrtValue*>([val CXXAPIOrtValue]));
   }
   return result;
 }
-
-@end
 
 NS_ASSUME_NONNULL_END

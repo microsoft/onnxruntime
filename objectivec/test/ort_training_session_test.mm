@@ -107,14 +107,14 @@ NS_ASSUME_NONNULL_BEGIN
   ORTTrainingSession* session = [self makeTrainingSessionWithCheckPoint:checkpoint];
 
   // check that inputNames contains input-0
-  NSArray<NSString*>* inputNames = [session inputNamesWithTraining:YES error:&error];
+  NSArray<NSString*>* inputNames = [session getTrainInputNamesWithError:&error];
   ORTAssertNullableResultSuccessful(inputNames, error);
 
   XCTAssertTrue(inputNames.count > 0);
   XCTAssertTrue([inputNames containsObject:@"input-0"]);
 
   // check that outNames contains onnx::loss::21273
-  NSArray<NSString*>* outputNames = [session outputNamesWithTraining:YES error:&error];
+  NSArray<NSString*>* outputNames = [session getTrainOutputNamesWithError:&error];
   ORTAssertNullableResultSuccessful(outputNames, error);
 
   XCTAssertTrue(outputNames.count > 0);
@@ -128,14 +128,14 @@ NS_ASSUME_NONNULL_BEGIN
   ORTTrainingSession* session = [self makeTrainingSessionWithCheckPoint:checkpoint];
 
   // check that inputNames contains input-0
-  NSArray<NSString*>* inputNames = [session inputNamesWithTraining:NO error:&error];
+  NSArray<NSString*>* inputNames = [session getEvalInputNamesWithError:&error];
   ORTAssertNullableResultSuccessful(inputNames, error);
 
   XCTAssertTrue(inputNames.count > 0);
   XCTAssertTrue([inputNames containsObject:@"input-0"]);
 
   // check that outNames contains onnx::loss::21273
-  NSArray<NSString*>* outputNames = [session outputNamesWithTraining:NO error:&error];
+  NSArray<NSString*>* outputNames = [session getEvalOutputNamesWithError:&error];
   ORTAssertNullableResultSuccessful(outputNames, error);
 
   XCTAssertTrue(outputNames.count > 0);
