@@ -522,15 +522,17 @@ else()
           ${mlas_platform_srcs_avx512core}
         )
 
-        set(mlas_platform_srcs
-          ${mlas_platform_srcs}
-          ${MLAS_SRC_DIR}/qgemm_kernel_amx.cpp
-	  ${MLAS_SRC_DIR}/amx_common.h
-          ${MLAS_SRC_DIR}/x86_64/QgemmU8S8KernelAmx.S
-	  ${MLAS_SRC_DIR}/x86_64/QgemmU8S8KernelAmxCommon.S
-          )
-        set_source_files_properties(${MLAS_SRC_DIR}/qgemm_kernel_amx.cpp PROPERTIES COMPILE_FLAGS "-masm=intel -mavx2 -mavx512bw -mavx512dq -mavx512vl -mavx512f")
-        set_source_files_properties(${MLAS_SRC_DIR}/x86_64/QgemmU8S8KernelAmx.S PROPERTIES COMPILE_FLAGS "-mavx2 -mavx512bw -mavx512dq -mavx512vl -mavx512f")
+	if(NOT APPLE)
+          set(mlas_platform_srcs
+            ${mlas_platform_srcs}
+            ${MLAS_SRC_DIR}/qgemm_kernel_amx.cpp
+	    ${MLAS_SRC_DIR}/amx_common.h
+            ${MLAS_SRC_DIR}/x86_64/QgemmU8S8KernelAmx.S
+	    ${MLAS_SRC_DIR}/x86_64/QgemmU8S8KernelAmxCommon.S
+            )
+          set_source_files_properties(${MLAS_SRC_DIR}/qgemm_kernel_amx.cpp PROPERTIES COMPILE_FLAGS "-masm=intel -mavx2 -mavx512bw -mavx512dq -mavx512vl -mavx512f")
+          set_source_files_properties(${MLAS_SRC_DIR}/x86_64/QgemmU8S8KernelAmx.S PROPERTIES COMPILE_FLAGS "-mavx2 -mavx512bw -mavx512dq -mavx512vl -mavx512f")
+	endif()
 
         if(ONNXRUNTIME_MLAS_MULTI_ARCH)
           onnxruntime_add_static_library(onnxruntime_mlas_x86_64 ${mlas_platform_srcs})
