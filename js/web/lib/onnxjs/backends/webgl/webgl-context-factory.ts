@@ -57,12 +57,15 @@ export function createNewWebGLContext(contextId?: 'webgl'|'webgl2'): WebGLContex
   };
   let gl: WebGLRenderingContext|null;
 
+  // eslint-disable-next-line no-console
   console.log(`DEBUG: contextID=${contextId}`);
+  // eslint-disable-next-line no-console
   console.log(`DEBUG: canvas=${canvas}`);
 
   const ca = contextAttributes;
   if (!contextId || contextId === 'webgl2') {
     gl = canvas.getContext('webgl2', ca);
+    // eslint-disable-next-line no-console
     console.log(`DEBUG: [webgl2] gl=${gl}`);
     if (gl) {
       try {
@@ -74,6 +77,7 @@ export function createNewWebGLContext(contextId?: 'webgl'|'webgl2'): WebGLContex
   }
   if (!contextId || contextId === 'webgl') {
     gl = canvas.getContext('webgl', ca) || canvas.getContext('experimental-webgl', ca) as WebGLRenderingContext;
+    // eslint-disable-next-line no-console
     console.log(`DEBUG: [webgl] gl=${gl}`);
     if (gl) {
       try {
