@@ -1329,7 +1329,7 @@ if (onnxruntime_USE_CUDA)
       if (CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 11)
         set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_80,code=sm_80") # A series
       endif()
-      if (CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 11.8)
+      if (CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 12)
         set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_90,code=sm_90") # H series
       endif()
     endif()
