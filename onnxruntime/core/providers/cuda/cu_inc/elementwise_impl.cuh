@@ -46,7 +46,7 @@ template <typename T, typename FuncT, typename TIndex>
 void LaunchElementwiseKernel(cudaStream_t stream, T* output_data, const FuncT& functor, TIndex output_size) {
   if (output_size == 0) return;
   TIndex N = output_size;
-  TIndex blocksPerGrid = CeilDiv(N, kThreadsPerBlock * kElementsPerThread);
+  int blocksPerGrid = static_cast<int>(CeilDiv(N, static_cast<TIndex>(kThreadsPerBlock * kElementsPerThread)));
   ElementwiseKernel<T, FuncT, TIndex><<<blocksPerGrid, kThreadsPerBlock, 0, stream>>>(output_data, functor, N);
 }
 
