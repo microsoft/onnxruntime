@@ -176,11 +176,9 @@ class TensorrtExecutionProvider : public IExecutionProvider {
 
   OrtDevice GetOrtDeviceByMemType(OrtMemType mem_type) const override;
 
-#if defined(CUDA_VERSION) && CUDA_VERSION >= 10000
   bool IsGraphCaptureEnabled() const override;
   bool IsGraphCaptured() const override;
   Status ReplayGraph() override;
-#endif
 
  private:
   TensorrtExecutionProviderInfo info_;
@@ -222,12 +220,10 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   bool detailed_build_log_ = false;
   bool cuda_graph_enable_ = false;
 
-#if defined(CUDA_VERSION) && CUDA_VERSION >= 10000
   std::unique_ptr<CUDAGraph> cuda_graph_;  // ORT TRT only supports CUDA graph when whole model is supported by TRT, so simply maintaining a CUDAGraph pointer is enough (no need to maintain one CUDAGraph pointer per TRT subgraph)
   bool is_graph_captured_ = false;
   int regular_run_count_before_graph_capture_ = 0;
   const int min_num_runs_before_cuda_graph_capture_ = 1;  // required min regular runs before graph capture for the necessary memory allocations.
-#endif
 
   std::unordered_set<std::string> control_flow_op_set_ = {"If", "Loop", "Scan"};
   std::unordered_map<std::string, tensorrt_ptr::unique_pointer<nvonnxparser::IParser>> parsers_;
@@ -279,11 +275,9 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   /**Check whether all the nodes of subgraph are supported*/
   bool IsSubGraphFullySupported(SubGraphCollection_t supported_nodes_vector, const int number_of_ort_nodes) const;
 
-#if defined(CUDA_VERSION) && CUDA_VERSION >= 10000
   bool IsGraphCaptureAllowed() const;
   void CaptureBegin();
   void CaptureEnd();
   void IncrementRegularRunCountBeforeGraphCapture();
-#endif
 };
 }  // namespace onnxruntime
