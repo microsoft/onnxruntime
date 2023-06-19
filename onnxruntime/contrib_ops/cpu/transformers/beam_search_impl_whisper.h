@@ -272,13 +272,13 @@ Status BeamSearchWhisper<T>::Execute(const FeedsFetchesManager& encoder_feeds_fe
       ORT_ENFORCE(decoder_subgraph_.has_decoder_masked_attention_, "decoder subgraph: output_cross_qk could only work with has_decoder_masked_attention");
       ORT_ENFORCE(decoder_subgraph_.past_present_share_buffer_, "decoder subgraph: output_cross_qk could only work with past_present_share_buffer");
 
-      cross_qk_layer_head_pair_count = parameters->num_layers * parameters->num_heads;
+      cross_qk_layer_head_pair_count = static_cast<int64_t>(parameters->num_layers) * parameters->num_heads;
       const auto* input_tensor_cross_qk_layer_head = this->context_.template Input<Tensor>(12);
       ORT_ENFORCE(input_tensor_cross_qk_layer_head != nullptr, "Must specify input cross_qk_layer_head");
       cross_qk_layer_head_pair_count = input_tensor_cross_qk_layer_head->Shape()[0];
       cross_qk_layer_head_pairs = input_tensor_cross_qk_layer_head->template Data<int32_t>();  // it is on GPU
 
-      size_t decoder_input_first_cross_key = static_cast<size_t>(decoder_subgraph_.GetFirstPastInputIndex()) + (2 * decoder_subgraph_.num_layers);
+      size_t decoder_input_first_cross_key = decoder_subgraph_.GetFirstPastInputIndex() + static_cast<size_t>(decoder_subgraph_.num_layers) * 2;
       auto first_cross_attention_key = decoder_feeds[decoder_input_first_cross_key].GetMutable<Tensor>();
       frames_of_k = first_cross_attention_key->Shape()[2];
 
@@ -432,7 +432,7 @@ Status BeamSearchWhisper<T>::Execute(const FeedsFetchesManager& encoder_feeds_fe
         static_cast<int64_t>(parameters->batch_size),
         static_cast<int64_t>(parameters->num_return_sequences),
         cross_qk_layer_head_pair_count,
-        static_cast<int64_t>(iteration_counter - 1),
+        static_cast<int64_t>(iteration_counter) - 1,
         frames_of_k};
     cross_qk_output = this->context_.Output(3, cross_qk_shape);
 
