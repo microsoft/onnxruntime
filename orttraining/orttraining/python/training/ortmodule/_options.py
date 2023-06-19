@@ -217,6 +217,7 @@ class _RuntimeOptions:
         self.enable_sparse_optimizer = True
         self.label_sparsity_ratio = ""
         self.embed_sparsity_ratio = ""
+        self._enable_embedding_sparse_optimizer = False  # TODO(pengwa): remove once validation on more models are done.
 
         # Configuration for memory optimization.
         self.memory_optimizer_config = ""
@@ -256,6 +257,12 @@ class _RuntimeOptions:
             if "ORTMODULE_ENABLE_SPARSE_OPTIMIZER" in os.environ:
                 self.enable_sparse_optimizer = os.getenv("ORTMODULE_ENABLE_SPARSE_OPTIMIZER") == 1
             self.enable_sparse_optimizer = self.enable_compute_optimizer and self.enable_sparse_optimizer
+
+        # TODO(pengwa): remove once validation on more models are done.
+        if "ORTMODULE_ENABLE_EMBEDDING_SPARSE_OPTIMIZER" in os.environ:
+            self._enable_embedding_sparse_optimizer = (
+                self.enable_sparse_optimizer and os.getenv("ORTMODULE_ENABLE_EMBEDDING_SPARSE_OPTIMIZER") == 1
+            )
 
         # Configuration for memory optimization.
         self.memory_optimizer_config = os.getenv("ORTMODULE_MEMORY_OPT_CONFIG", self.memory_optimizer_config)

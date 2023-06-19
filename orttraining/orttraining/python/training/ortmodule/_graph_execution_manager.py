@@ -498,7 +498,7 @@ class GraphExecutionManager(GraphExecutionInterface):
                         [f"{k}:{v:.0f}%" for k, v in label_sparsity_results.items()]
                     )
 
-                if len(embed_sparsity_results) > 0:
+                if self._rt_options._enable_embedding_sparse_optimizer and len(embed_sparsity_results) > 0:
                     graph_transformer_config.sparse_embedding_input_names = list(embed_sparsity_results.keys())
                     self._logger.info("Embedding sparsity-based optimization is ON for %s", embed_sparsity_results)
                     self._rt_options.embed_sparsity_ratio = ",".join(
