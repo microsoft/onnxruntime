@@ -930,7 +930,7 @@ TEST(Loop, PassThroughSubgraphInputNoTypeOrShape) {
   test.AddOutput<float>("loop_var_0_final", {1}, {123.f});
 
   // Disable TensorRT on unsupported data type BOOL
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
 }
 
 TEST(Loop, BugFixIssue4031_implicit_input_handling) {
@@ -1252,10 +1252,6 @@ TEST(Loop, OptionalTypeAsLoopCarriedDependency) {
   {
     OpTester test("Loop", 16);  // Opset 16 supports optional type
 
-    // Since this test is being written at a time when only opset 15  has been released, we set
-    // `test_allow_released_onnx_opset_only_` to 'false' to allow this test to run
-    test.test_allow_released_onnx_opset_only_ = false;
-
     auto body = create_subgraph(true);
     test.AddAttribute<GraphProto>("body", body);
 
@@ -1271,9 +1267,6 @@ TEST(Loop, OptionalTypeAsLoopCarriedDependency) {
   // CASE 2: Optional tensor + non-none
   {
     OpTester test("Loop", 16);  // Opset 16 supports optional type
-    // Since this test is being written at a time when only opset 15  has been released, we set
-    // `test_allow_released_onnx_opset_only_` to 'false' to allow this test to run
-    test.test_allow_released_onnx_opset_only_ = false;
 
     auto body = create_subgraph(true);
     test.AddAttribute<GraphProto>("body", body);
@@ -1291,9 +1284,6 @@ TEST(Loop, OptionalTypeAsLoopCarriedDependency) {
   // CASE 3: Optional tensor sequence + none
   {
     OpTester test("Loop", 16);  // Opset 16 supports optional type
-    // Since this test is being written at a time when only opset 15  has been released, we set
-    // `test_allow_released_onnx_opset_only_` to 'false' to allow this test to run
-    test.test_allow_released_onnx_opset_only_ = false;
 
     auto body = create_subgraph(false);
     test.AddAttribute<GraphProto>("body", body);
@@ -1311,9 +1301,6 @@ TEST(Loop, OptionalTypeAsLoopCarriedDependency) {
   // CASE 4: Optional tensor sequence + non-none
   {
     OpTester test("Loop", 16);  // Opset 16 supports optional type
-    // Since this test is being written at a time when only opset 15  has been released, we set
-    // `test_allow_released_onnx_opset_only_` to 'false' to allow this test to run
-    test.test_allow_released_onnx_opset_only_ = false;
 
     auto body = create_subgraph(false);
     test.AddAttribute<GraphProto>("body", body);

@@ -408,7 +408,8 @@ Return Value:
                     }
                 }
 
-#ifdef MLAS_AMX_SUPPORTED
+#ifndef __APPLE__
+
                 //
                 // Check if the processor supports AMX-TILE and AMX-INT8
                 // features.
@@ -419,7 +420,8 @@ Return Value:
                         this->GemmU8S8Dispatch = &MlasGemmU8S8DispatchAmx;
                     }
                 }
-#endif // MLAS_AMX_SUPPORTED
+
+#endif // __APPLE__
 
 #endif // ORT_MINIMAL_BUILD
 
@@ -434,7 +436,9 @@ Return Value:
 
 #if defined(MLAS_TARGET_ARM64)
 
-    this->GemmU8X8Dispatch = &MlasGemmU8X8DispatchNeon;
+    this->GemmU8U8Dispatch = &MlasGemmU8X8DispatchNeon;
+    this->GemmU8S8Dispatch = &MlasGemmX8S8DispatchNeon;
+    this->GemmS8S8Dispatch = &MlasGemmX8S8DispatchNeon;
     this->SymmQgemmDispatch = &MlasSymmQgemmS8DispatchNeon;
     this->ConvSymU8S8Dispatch = &MlasConvSymU8DispatchNeon;
     this->ConvSymS8S8Dispatch = &MlasConvSymS8DispatchNeon;
@@ -454,7 +458,9 @@ Return Value:
 #endif
 
     if (HasDotProductInstructions) {
-        this->GemmU8X8Dispatch = &MlasGemmU8X8DispatchUdot;
+        this->GemmU8U8Dispatch = &MlasGemmU8X8DispatchUdot;
+        this->GemmU8S8Dispatch = &MlasGemmU8X8DispatchUdot;
+        this->GemmS8S8Dispatch = &MlasGemmS8S8DispatchSdot;
         this->SymmQgemmDispatch = &MlasSymmQgemmS8DispatchSdot;
         this->ConvSymU8S8Dispatch = &MlasConvSymU8DispatchDot;
         this->ConvSymS8S8Dispatch = &MlasConvSymS8DispatchDot;

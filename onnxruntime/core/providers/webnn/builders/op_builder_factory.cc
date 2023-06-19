@@ -110,6 +110,10 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
     CreateResizeOpBuilder("Resize", op_registrations);
   }
 
+  {  // Shape
+    CreateShapeOpBuilder("Shape", op_registrations);
+  }
+
   {  // Slice
     CreateSliceOpBuilder("Slice", op_registrations);
   }
@@ -122,12 +126,13 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
     CreateSplitOpBuilder("Split", op_registrations);
   }
 
-  {  // Transpose
-    CreateTransposeOpBuilder("Transpose", op_registrations);
+  {  // Squeeze/Unsqueeze
+    CreateSqueezeUnsqueezeOpBuilder("Squeeze", op_registrations);
+    CreateSqueezeUnsqueezeOpBuilder("Unsqueeze", op_registrations);
   }
 
-  {  // Unsqueeze
-    CreateUnsqueezeOpBuilder("Unsqueeze", op_registrations);
+  {  // Transpose
+    CreateTransposeOpBuilder("Transpose", op_registrations);
   }
 
   return op_registrations;
