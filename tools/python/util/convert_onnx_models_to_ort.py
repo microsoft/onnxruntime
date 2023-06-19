@@ -10,7 +10,6 @@ import enum
 import os
 import pathlib
 import tempfile
-import typing
 
 import onnxruntime as ort
 
@@ -34,7 +33,7 @@ def _optimization_suffix(optimization_level_str: str, optimization_style: Optimi
 
 def _create_config_file_path(
     model_path_or_dir: pathlib.Path,
-    output_dir: typing.Optional[pathlib.Path],
+    output_dir: pathlib.Path | None,
     optimization_level_str: str,
     optimization_style: OptimizationStyle,
     enable_type_reduction: bool,
@@ -59,7 +58,7 @@ def _create_session_options(
     optimization_level: ort.GraphOptimizationLevel,
     output_model_path: pathlib.Path,
     custom_op_library: pathlib.Path,
-    session_options_config_entries: typing.Dict[str, str],
+    session_options_config_entries: dict[str, str],
 ):
     so = ort.SessionOptions()
     so.optimized_model_filepath = str(output_model_path)
@@ -76,15 +75,15 @@ def _create_session_options(
 
 def _convert(
     model_path_or_dir: pathlib.Path,
-    output_dir: typing.Optional[pathlib.Path],
+    output_dir: pathlib.Path | None,
     optimization_level_str: str,
     optimization_style: OptimizationStyle,
     custom_op_library: pathlib.Path,
     create_optimized_onnx_model: bool,
     allow_conversion_failures: bool,
     target_platform: str,
-    session_options_config_entries: typing.Dict[str, str],
-) -> typing.List[pathlib.Path]:
+    session_options_config_entries: dict[str, str],
+) -> list[pathlib.Path]:
     model_dir = model_path_or_dir if model_path_or_dir.is_dir() else model_path_or_dir.parent
     output_dir = output_dir or model_dir
 
