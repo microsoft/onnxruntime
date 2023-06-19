@@ -20,7 +20,7 @@ constexpr const int kCheckpointVersion = 1;
  * @param checkpoint_version The checkpoint version to check
  * @return true if the checkpoint version is supported, false otherwise
  */
-inline bool IsCheckpointVersionSupported(const int checkpoint_version) {
+inline constexpr bool IsCheckpointVersionSupported(const int checkpoint_version) {
   return kCheckpointVersion == checkpoint_version;
 }
 
