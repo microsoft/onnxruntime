@@ -58,7 +58,7 @@ jobs:
   - script: |
      echo.>>.gitattributes
      echo /js/** text=auto eol=lf>>.gitattributes
-     rd /s /q js
+     rm -rf js
      git checkout -- js/**
      git checkout -- .gitattributes
     workingDirectory: '$(Build.SourcesDirectory)'
