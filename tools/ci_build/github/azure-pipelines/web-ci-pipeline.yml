@@ -28,6 +28,8 @@ stages:
   parameters:
     NpmPackagingMode: ${{ variables.NpmPackagingMode }}
     IsReleasePipeline: false
-    PoolName: 'onnxruntime-Win-CPU-2022-web'
+    PoolName: 'onnxruntime-Ubuntu2004-AMD-CPU'
     BuildStaticLib: true
     ExtraBuildArgs: $(ExtraBuildArgs)
+    WASMTemplate: linux-wasm-ci.yml
+    WebTemplate: linux-web-ci.yml
