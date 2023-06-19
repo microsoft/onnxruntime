@@ -3579,6 +3579,7 @@ void Graph::CleanUnusedInitializersAndNodeArgs(const std::unordered_set<std::str
                       inputs_including_initializers.erase(j);
                     }
                   }
+                  =
                 });
 
   // Clear the unused NodeArgs
