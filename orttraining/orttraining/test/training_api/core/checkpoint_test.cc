@@ -28,7 +28,7 @@
 #include "test/test_environment.h"
 #include "test/util/include/asserts.h"
 #include "test/util/include/temp_dir.h"
-#include "test/util/include/test/test_environment.h"
+#include "test/util/include/test_environment.h"
 #include "orttraining/test/training_api/common/synthetic_data_loader.h"
 #include "orttraining/test/training_api/core/data_utils.h"
 #include "default_providers.h"

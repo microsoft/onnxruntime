@@ -202,6 +202,11 @@ class GraphExecutionManager(GraphExecutionInterface):
             self._enable_compute_optimizer
             and ortmodule._defined_from_envvar("ORTMODULE_ENABLE_SPARSE_OPTIMIZER", 1, warn=True) == 1
         )
+        self._enable_embedding_sparse_optimizer = (
+            self._enable_compute_optimizer
+            and self._enable_sparse_optimizer
+            and ortmodule._defined_from_envvar("ORTMODULE_ENABLE_EMBEDDING_SPARSE_OPTIMIZER", 0, warn=True) == 1
+        )
 
         self._print_input_density = ortmodule._defined_from_envvar("ORTMODULE_PRINT_INPUT_DENSITY", 0, warn=True) == 1
         self._print_memory_stat = ortmodule._defined_from_envvar("ORTMODULE_PRINT_MEMORY_STATS", 0, warn=True) == 1
@@ -620,7 +625,7 @@ class GraphExecutionManager(GraphExecutionInterface):
                         ]
                     )
 
-                if len(embed_sparsity_results) > 0:
+                if self._enable_embedding_sparse_optimizer and len(embed_sparsity_results) > 0:
                     graph_transformer_config.sparse_embedding_input_names = list(embed_sparsity_results.keys())
                     self._logger.info("Embedding sparsity-based optimization is ON for %s", embed_sparsity_results)
                     sparsity_stat_str = ",".join([f"{k}:{v:.0f}%" for k, v in embed_sparsity_results.items()])

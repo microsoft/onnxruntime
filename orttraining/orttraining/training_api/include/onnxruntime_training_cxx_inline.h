@@ -210,7 +210,10 @@ inline void CheckpointState::AddProperty(const std::string& property_name, const
     std::string value = std::get<std::string>(property_value);
     auto buffer = std::make_unique<char[]>(value.length() + 1);
     memcpy(buffer.get(), value.c_str(), value.length());
-    ThrowOnError(GetTrainingApi().AddProperty(p_, property_name.c_str(), OrtPropertyType::OrtStringProperty, buffer.get()));
+    // AddProperty takes a char* and calls PropertyBag::AddProperty which takes a std::string. The data will be
+    // copied at that point so buffer can free the local allocation once the call is made.
+    ThrowOnError(GetTrainingApi().AddProperty(p_, property_name.c_str(), OrtPropertyType::OrtStringProperty,
+                                              buffer.get()));
   } else {
     ThrowStatus(Status("Unknown property type received.", OrtErrorCode::ORT_INVALID_ARGUMENT));
   }
