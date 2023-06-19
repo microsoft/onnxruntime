@@ -2902,7 +2902,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
       // Note: One reason we don't put end of graph capture in OnRunEnd() like CUDA EP does is because of cuda stream mentioned in graph capture
       // above, another reason is because OnRunEnd() is not synchronized with OnRunStart() and ExecuteGraph() per inference_session.cc,
       // which might end up with many cuda graphs are captured by multiple threads if running with multithreading.
-      // It's safe to start/end CUDA graph capture in compute_func() here since the whole fucntion is protected by the lock_guard().
+      // It's safe to start/end CUDA graph capture in compute_func() here since the whole function is protected by the lock_guard().
       if (cuda_graph_enable_ && !IsGraphCaptured()) {
         if (IsGraphCaptureAllowed()) {
           CaptureEnd();

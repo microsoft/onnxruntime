@@ -1657,6 +1657,7 @@ common::Status InferenceSession::Initialize() {
           LOGS(*session_logger_, INFO) << "This session will use the CUDA Graph feature as requested by the user.";
           cached_execution_provider_for_graph_replay_.SetExecutionProvider(target_ep);
           break;  // Make sure only one ep can run CUDA graph.
+        }
       }
 
       const bool disable_cpu_ep_fallback = session_options_.config_options.GetConfigOrDefault(
