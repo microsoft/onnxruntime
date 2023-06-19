@@ -55,12 +55,12 @@ stages:
 - stage: Build_wasm_Debug
   dependsOn: Extract_commit
   jobs:
-  - template: win-wasm-ci.yml
+  - template: linux-wasm-ci.yml
     parameters:
       CommitOverride: true
       BuildConfig: 'Debug'
       ExtraBuildArgs: '--use_extensions --cmake_extra_defines onnxruntime_WEBASSEMBLY_DEFAULT_EXTENSION_FLAGS=ON ${{ parameters.ExtraBuildArgs }}'
-      PoolName: ${{ parameters.PoolName }}
+      PoolName: onnxruntime-Ubuntu2004-AMD-CPU
       BuildJsep: ${{ parameters.BuildJsep }}
 
 - stage: Build_web_Debug
