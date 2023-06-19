@@ -3,6 +3,7 @@
 
 #include "orttraining/training_api/checkpoint.h"
 
+#include "core/flatbuffers/checkpoint_version.h"
 #include "core/flatbuffers/schema/ort_training_checkpoint.fbs.h"
 #include "core/framework/framework_common.h"
 #include "core/framework/tensorprotoutils.h"
@@ -223,6 +224,7 @@ Status FromTensorProtos(
   flatbuffers::Offset<fbs::ModuleState> fbs_module_state = module_state_builder.Finish();
 
   fbs::CheckpointBuilder checkpoint_builder(builder);
+  checkpoint_builder.add_version(kCheckpointVersion);
   checkpoint_builder.add_module_state(fbs_module_state);
   auto checkpoint = checkpoint_builder.Finish();
   builder.Finish(checkpoint, fbs::CheckpointIdentifier());
@@ -418,6 +420,7 @@ Status FromCheckpointState(
   const auto fbs_optimizer_groups = builder.CreateVector(optimizer_groups);
 
   fbs::CheckpointBuilder checkpoint_builder(builder);
+  checkpoint_builder.add_version(kCheckpointVersion);
   checkpoint_builder.add_module_state(module_state);
   checkpoint_builder.add_optimizer_groups(fbs_optimizer_groups);
   checkpoint_builder.add_property_bag(property_bag);
@@ -603,6 +606,10 @@ Status ToModelProto(const PathString& checkpoint_path,
   const auto* fbs_checkpoint = fbs::GetCheckpoint(checkpoint_bytes.data());
   ORT_RETURN_IF_NOT(fbs_checkpoint, "Checkpoint is invalid. Expected: Valid checkpoint flatbuffer. Actual: nullptr.");
 
+  const auto checkpoint_version = fbs_checkpoint->version();
+  ORT_RETURN_IF_NOT(IsCheckpointVersionSupported(checkpoint_version),
+                    "Checkpoint is invalid. Expected: Checkpoint version ", checkpoint_version, " is not supported.");
+
   auto* module_state = fbs_checkpoint->module_state();
   if (nullptr == module_state) {
     return Status::OK();
@@ -659,6 +666,10 @@ Status ToCheckpointState(const PathString& checkpoint_path, CheckpointState& sta
 
   const auto* fbs_checkpoint = fbs::GetCheckpoint(checkpoint_bytes.data());
   ORT_RETURN_IF_NOT(fbs_checkpoint, "Checkpoint is invalid. Expected: Valid checkpoint flatbuffer. Actual: nullptr.");
+
+  const auto checkpoint_version = fbs_checkpoint->version();
+  ORT_RETURN_IF_NOT(IsCheckpointVersionSupported(checkpoint_version),
+                    "Checkpoint is invalid. Expected: Checkpoint version ", checkpoint_version, " is not supported.");
 
   const auto* fbs_module_state = fbs_checkpoint->module_state();
   if (nullptr != fbs_module_state) {

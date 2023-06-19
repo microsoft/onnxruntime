@@ -543,7 +543,8 @@ struct Checkpoint FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
     VT_MODULE_STATE = 4,
     VT_OPTIMIZER_GROUPS = 6,
-    VT_PROPERTY_BAG = 8
+    VT_PROPERTY_BAG = 8,
+    VT_VERSION = 10
   };
   const onnxruntime::fbs::ModuleState *module_state() const {
     return GetPointer<const onnxruntime::fbs::ModuleState *>(VT_MODULE_STATE);
@@ -554,6 +555,9 @@ struct Checkpoint FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   const onnxruntime::fbs::PropertyBag *property_bag() const {
     return GetPointer<const onnxruntime::fbs::PropertyBag *>(VT_PROPERTY_BAG);
   }
+  int32_t version() const {
+    return GetField<int32_t>(VT_VERSION, 0);
+  }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyOffset(verifier, VT_MODULE_STATE) &&
@@ -563,6 +567,7 @@ struct Checkpoint FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
            verifier.VerifyVectorOfTables(optimizer_groups()) &&
            VerifyOffset(verifier, VT_PROPERTY_BAG) &&
            verifier.VerifyTable(property_bag()) &&
+           VerifyField<int32_t>(verifier, VT_VERSION) &&
            verifier.EndTable();
   }
 };
@@ -580,6 +585,9 @@ struct CheckpointBuilder {
   void add_property_bag(flatbuffers::Offset<onnxruntime::fbs::PropertyBag> property_bag) {
     fbb_.AddOffset(Checkpoint::VT_PROPERTY_BAG, property_bag);
   }
+  void add_version(int32_t version) {
+    fbb_.AddElement<int32_t>(Checkpoint::VT_VERSION, version, 0);
+  }
   explicit CheckpointBuilder(flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
     start_ = fbb_.StartTable();
@@ -596,8 +604,10 @@ inline flatbuffers::Offset<Checkpoint> CreateCheckpoint(
     flatbuffers::FlatBufferBuilder &_fbb,
     flatbuffers::Offset<onnxruntime::fbs::ModuleState> module_state = 0,
     flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<onnxruntime::fbs::OptimizerGroup>>> optimizer_groups = 0,
-    flatbuffers::Offset<onnxruntime::fbs::PropertyBag> property_bag = 0) {
+    flatbuffers::Offset<onnxruntime::fbs::PropertyBag> property_bag = 0,
+    int32_t version = 0) {
   CheckpointBuilder builder_(_fbb);
+  builder_.add_version(version);
   builder_.add_property_bag(property_bag);
   builder_.add_optimizer_groups(optimizer_groups);
   builder_.add_module_state(module_state);
@@ -608,13 +618,15 @@ inline flatbuffers::Offset<Checkpoint> CreateCheckpointDirect(
     flatbuffers::FlatBufferBuilder &_fbb,
     flatbuffers::Offset<onnxruntime::fbs::ModuleState> module_state = 0,
     const std::vector<flatbuffers::Offset<onnxruntime::fbs::OptimizerGroup>> *optimizer_groups = nullptr,
-    flatbuffers::Offset<onnxruntime::fbs::PropertyBag> property_bag = 0) {
+    flatbuffers::Offset<onnxruntime::fbs::PropertyBag> property_bag = 0,
+    int32_t version = 0) {
   auto optimizer_groups__ = optimizer_groups ? _fbb.CreateVector<flatbuffers::Offset<onnxruntime::fbs::OptimizerGroup>>(*optimizer_groups) : 0;
   return onnxruntime::fbs::CreateCheckpoint(
       _fbb,
       module_state,
       optimizer_groups__,
-      property_bag);
+      property_bag,
+      version);
 }
 
 inline const onnxruntime::fbs::Checkpoint *GetCheckpoint(const void *buf) {

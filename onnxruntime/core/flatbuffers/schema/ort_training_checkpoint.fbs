@@ -44,6 +44,7 @@ table PropertyBag {
 }
 
 table Checkpoint {
+  version:int32;
   module_state:ModuleState;
   optimizer_groups:[OptimizerGroup];
   property_bag:PropertyBag;

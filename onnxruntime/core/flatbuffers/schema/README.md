@@ -30,10 +30,16 @@ To update the flatbuffers schemas and generated files:
     ```
     python onnxruntime/core/flatbuffers/schema/compile_schema.py --flatc <path to flatc>
     ```
+3. Update the version history and record the changes. Changes made to [the ORT file format schema](ort.fbs)
+warrants not only updating the ort format version, but also the checkpoint version since the checkpoint schema
+depends on the ort format schema.
+
 
 # ORT FB format version history
 In [ort_format_version.h](../ort_format_version.h), see `IsOrtModelVersionSupported()` for the supported versions and
 `kOrtModelVersion` for the current version.
+
+Any changes made to the
 
 ## Version 1
 History begins.
@@ -63,3 +69,12 @@ hashes to be enabled at model conversion time.
 ## Version 6
 Support for float 8 types. See [Float stored in 8 bits](https://onnx.ai/onnx/technical/float8.html)
 for further details about their format and usage.
+
+# Checkpoint format version history
+In [checkpoint_version.h](../checkpoint_version.h), see `IsCheckpointVersionSupported()` for the supported versions and
+`kCheckpointVersion` for the current version.
+
+## Version 1
+Introduces the On-Device Training Checkpoint format.
+The format include support for the ModuleState (stores the module parameters), OptimizerGroups
+(stores the optimizer states), and PropertyBag (stores custom user properties with support for int64, float and strings).
