@@ -261,19 +261,29 @@ def parse_args(args=None):
     return parser.parse_args() if args is None else parser.parse_args(args)
 
 
-def convert_onnx_models_to_ort(args):
-    output_dir = None
-    if args.output_dir is not None:
-        if not args.output_dir.is_dir():
-            args.output_dir.mkdir(parents=True)
-        output_dir = args.output_dir.resolve(strict=True)
+def convert_onnx_models_to_ort(
+    model_path_or_dir: pathlib.Path,
+    output_dir: pathlib.Path | None = None,
+    optimizations: list[str] | None = None,
+    custom_op_library_path: pathlib.Path | None = None,
+    target_platform: str | None = None,
+    save_optimized_onnx_model: bool | None = None,
+    allow_conversion_failures: bool | None = None,
+    enable_type_reduction: bool | None = None,
+):
+    if output_dir is not None:
+        if not output_dir.is_dir():
+            output_dir.mkdir(parents=True)
+        output_dir = output_dir.resolve(strict=True)
 
-    optimization_styles = [OptimizationStyle[style_str] for style_str in args.optimization_style]
+    optimization_styles = (
+        [OptimizationStyle[style_str] for style_str in optimizations] if optimizations is not None else []
+    )
     # setting optimization level is not expected to be needed by typical users, but it can be set with this
     # environment variable
     optimization_level_str = os.getenv("ORT_CONVERT_ONNX_MODELS_TO_ORT_OPTIMIZATION_LEVEL", "all")
-    model_path_or_dir = args.model_path_or_dir.resolve()
-    custom_op_library = args.custom_op_library.resolve() if args.custom_op_library else None
+    model_path_or_dir = model_path_or_dir.resolve()
+    custom_op_library = custom_op_library.resolve() if custom_op_library_path else None
 
     if not model_path_or_dir.is_dir() and not model_path_or_dir.is_file():
         raise FileNotFoundError(f"Model path '{model_path_or_dir}' is not a file or directory.")
@@ -283,7 +293,7 @@ def convert_onnx_models_to_ort(args):
 
     session_options_config_entries = {}
 
-    if args.target_platform == "arm":
+    if target_platform is not None and target_platform == "arm":
         session_options_config_entries["session.qdqisint8allowed"] = "1"
     else:
         session_options_config_entries["session.qdqisint8allowed"] = "0"
@@ -301,9 +311,9 @@ def convert_onnx_models_to_ort(args):
             optimization_level_str=optimization_level_str,
             optimization_style=optimization_style,
             custom_op_library=custom_op_library,
-            create_optimized_onnx_model=args.save_optimized_onnx_model,
-            allow_conversion_failures=args.allow_conversion_failures,
-            target_platform=args.target_platform,
+            create_optimized_onnx_model=save_optimized_onnx_model if save_optimized_onnx_model is not None else False,
+            allow_conversion_failures=allow_conversion_failures if allow_conversion_failures is not None else False,
+            target_platform=target_platform,
             session_options_config_entries=session_options_config_entries,
         )
 
@@ -333,8 +343,10 @@ def convert_onnx_models_to_ort(args):
                     optimization_style=OptimizationStyle.Fixed,
                     custom_op_library=custom_op_library,
                     create_optimized_onnx_model=False,  # not useful as they would be created in a temp directory
-                    allow_conversion_failures=args.allow_conversion_failures,
-                    target_platform=args.target_platform,
+                    allow_conversion_failures=allow_conversion_failures
+                    if allow_conversion_failures is not None
+                    else False,
+                    target_platform=target_platform,
                     session_options_config_entries=session_options_config_entries_for_second_conversion,
                 )
 
@@ -349,11 +361,23 @@ def convert_onnx_models_to_ort(args):
                 output_dir,
                 optimization_level_str,
                 optimization_style,
-                args.enable_type_reduction,
+                enable_type_reduction if enable_type_reduction is not None else False,
             )
 
-            create_config_from_models(converted_models, config_file, args.enable_type_reduction)
+            create_config_from_models(
+                converted_models, config_file, enable_type_reduction if enable_type_reduction is not None else False
+            )
 
 
 if __name__ == "__main__":
-    convert_onnx_models_to_ort(parse_args())
+    args = parse_args()
+    convert_onnx_models_to_ort(
+        args.model_path_or_dir,
+        output_dir=args.output_dir,
+        optimizations=args.optimization_style,
+        custom_op_library_path=args.custom_op_library,
+        target_platform=args.target_platform,
+        save_optimized_onnx_model=args.save_optimized_onnx_model,
+        allow_conversion_failures=args.allow_conversion_failures,
+        enable_type_reduction=args.enable_type_reduction,
+    )

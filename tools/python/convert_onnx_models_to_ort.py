@@ -8,4 +8,14 @@
 from util.convert_onnx_models_to_ort import convert_onnx_models_to_ort, parse_args
 
 if __name__ == "__main__":
-    convert_onnx_models_to_ort(parse_args())
+    args = parse_args()
+    convert_onnx_models_to_ort(
+        args.model_path_or_dir,
+        output_dir=args.output_dir,
+        optimizations=args.optimization_style,
+        custom_op_library_path=args.custom_op_library,
+        target_platform=args.target_platform,
+        save_optimized_onnx_model=args.save_optimized_onnx_model,
+        allow_conversion_failures=args.allow_conversion_failures,
+        enable_type_reduction=args.enable_type_reduction,
+    )

@@ -9,7 +9,7 @@ from typing import List, Optional, Union
 
 import onnx
 
-from onnxruntime.tools.convert_onnx_models_to_ort import OptimizationStyle, convert_onnx_models_to_ort, parse_args
+from onnxruntime.tools.convert_onnx_models_to_ort import OptimizationStyle, convert_onnx_models_to_ort
 from onnxruntime.training import onnxblock
 
 
@@ -127,18 +127,8 @@ def generate_artifacts(
         model_params = training_block.parameters()
 
     def _export_to_ort_format(model_path, output_dir, extra_options):
-        if "ort_format" in extra_options and extra_options["ort_format"] is True:
-            convert_onnx_models_to_ort(
-                parse_args(
-                    [
-                        str(model_path),
-                        "--output_dir",
-                        str(output_dir),
-                        "--optimization_style",
-                        f"{OptimizationStyle.Fixed.name}",
-                    ]
-                )
-            )
+        if extra_options.get("ort_format", False):
+            convert_onnx_models_to_ort(model_path, output_dir=output_dir, optimizations=[OptimizationStyle.Fixed.name])
 
     if artifact_directory is None:
         artifact_directory = pathlib.Path.cwd()
