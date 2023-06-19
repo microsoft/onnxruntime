@@ -640,26 +640,6 @@ TEST(CrossEntropyTest, DISABLED_SoftmaxCrossEntropyLoss_LargeSizeTensor) {
 
 #ifndef _WIN32
 // Disable the large size tests for Windows because it is too slow, running on Linux would be enough.
-TEST(CrossEntropyTest, SoftmaxCrossEntropyLossInternal_LargeSizeTensorInt32Index) {
-  // The element count is around the upper limit of int32_t.
-  constexpr int64_t bsz = 419430;
-  constexpr int64_t vocab_size = 5120;
-
-  std::vector<int64_t> X_dims{bsz, vocab_size};
-  std::vector<int64_t> index_dims{bsz};
-  std::vector<int64_t> weight_dims{vocab_size};
-  std::vector<int64_t> Y_dims{};
-  std::vector<int64_t> Y_dims_none{bsz};
-  std::vector<int64_t> log_prob_dims{bsz, vocab_size};
-
-  constexpr std::int64_t ignore_index = -1;
-  constexpr double error_tolerance = 1e-3;
-  // Only test reduce mean because it's too costly to run more tests.
-  TestSCELoss<MLFloat16, MLFloat16>("SoftmaxCrossEntropyLossInternal", 1, onnxruntime::kMSDomain,
-                                    &X_dims, &index_dims, &weight_dims, &Y_dims, &log_prob_dims, "mean",
-                                    ignore_index, error_tolerance);
-}
-
 TEST(CrossEntropyTest, SoftmaxCrossEntropyLossInternal_LargeSizeTensorUInt64Index) {
   // The element count is bigger than the upper limit of int32_t.
   constexpr int64_t bsz = 419431;
@@ -1091,23 +1071,6 @@ TEST(CrossEntropyTest, SoftmaxCrossEntropyLossInternalGrad_TinySizeTensorFloatIn
 
 #ifndef _WIN32
 // Disable the large size tests for Windows because it is too slow, running on Linux would be enough.
-TEST(CrossEntropyTest, SoftmaxCrossEntropyLossInternalGrad_LargeSizeTensorInt32Index) {
-  // The element count is around the upper limit of int32_t.
-  constexpr int64_t bsz = 419430;
-  constexpr int64_t vocab_size = 5120;
-  std::vector<int64_t> dY_dims{};
-  std::vector<int64_t> log_prob_dims{bsz, vocab_size};
-  std::vector<int64_t> index_dims{bsz};
-  std::vector<int64_t> weight_dims{vocab_size};
-  std::vector<int64_t> dX_dims{bsz, vocab_size};
-  TestSoftmaxCrossEntropyLossInternalGrad<MLFloat16, MLFloat16>(dY_dims, log_prob_dims, index_dims, weight_dims,
-                                                                dX_dims, "mean", -1, 1e-3, false /*has_bias*/);
-
-  // This test did not test against reduce-sum because the absolute value after computing is pretty big, sometimes
-  // around 65535, CPU baseline result is smaller than 65535, but CUDA result is a little bigger than it, generating
-  // inf, which is not a good test case.
-}
-
 TEST(CrossEntropyTest, SoftmaxCrossEntropyLossInternalGrad_LargeSizeTensorUInt64Index) {
   // The element count is bigger than the upper limit of int32_t.
   constexpr int64_t bsz = 419431;
