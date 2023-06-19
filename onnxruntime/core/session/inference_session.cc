@@ -176,7 +176,7 @@ std::pair<bool, int> AreAllComputeNodesAssignedToCudaEp(const Graph& graph) {
 
   return std::make_pair(true, static_cast<int>(shape_nodes.size()));
 }
-  
+
 bool AreAllNodesInMainGraphAssignedToOneEp(const Graph& graph, ProviderType provider) {
   for (const auto& node : graph.Nodes()) {
     const auto& node_provider = node.GetExecutionProviderType();
@@ -1612,8 +1612,8 @@ common::Status InferenceSession::Initialize() {
                 ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                                 "This session cannot use the CUDA Graph feature as requested by the user "
                                 "as the model has control flow nodes which can't be supported by CUDA Graphs."));
-          } 
-          
+          }
+
           if (strcmp(target_ep->Type(), onnxruntime::kCudaExecutionProvider) == 0) {
             auto res = AreAllComputeNodesAssignedToCudaEp(graph);
 
@@ -1628,7 +1628,7 @@ common::Status InferenceSession::Initialize() {
                                   "This session cannot use the CUDA Graph feature as requested by the user "
                                   " as all compute graph nodes have not been partitioned to the CUDA EP."));
             }
-            
+
             if (res.second > 0) {
               LOGS(*session_logger_, WARNING) << "This model has shape massaging nodes that will execute on CPU. "
                                               << "Use the CUDA Graph feature with caution. "
@@ -1653,7 +1653,7 @@ common::Status InferenceSession::Initialize() {
                                       target_ep->Type()));
             }
           }
-            
+
           LOGS(*session_logger_, INFO) << "This session will use the CUDA Graph feature as requested by the user.";
           cached_execution_provider_for_graph_replay_.SetExecutionProvider(target_ep);
           break;  // Make sure only one ep can run CUDA graph.
