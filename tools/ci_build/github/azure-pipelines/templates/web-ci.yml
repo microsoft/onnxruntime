@@ -40,7 +40,7 @@ stages:
 - stage: Extract_commit
   jobs:
   - job: Extract_commit
-    pool: ${{ parameters.PoolName }}
+    pool: onnxruntime-Win-CPU-2022-web
     variables:
       runCodesignValidationInjection: false
     timeoutInMinutes: 30
