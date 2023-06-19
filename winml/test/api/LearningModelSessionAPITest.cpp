@@ -1436,6 +1436,7 @@ static void people() {
   binding.Bind(L"thre", TensorFloat::CreateFromShapeArrayAndDataArray(std::vector<int64_t>{1, 1, 1, 1}, input1));
 
   //session.Evaluate(binding, L"");
+  session.Evaluate(binding, L"");
   auto start = std::chrono::high_resolution_clock::now();
   int num_iter = 10;
   for (int i = 0; i < num_iter; i++) {
