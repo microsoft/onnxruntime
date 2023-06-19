@@ -63,7 +63,7 @@ export function createNewWebGLContext(contextId?: 'webgl'|'webgl2'): WebGLContex
   const ca = contextAttributes;
   if (!contextId || contextId === 'webgl2') {
     gl = canvas.getContext('webgl2', ca);
-    console.log(`DEBUG: gl=${gl}`);
+    console.log(`DEBUG: [webgl2] gl=${gl}`);
     if (gl) {
       try {
         return new WebGLContext(gl, 2);
@@ -74,7 +74,7 @@ export function createNewWebGLContext(contextId?: 'webgl'|'webgl2'): WebGLContex
   }
   if (!contextId || contextId === 'webgl') {
     gl = canvas.getContext('webgl', ca) || canvas.getContext('experimental-webgl', ca) as WebGLRenderingContext;
-    console.log(`DEBUG: gl=${gl}`);
+    console.log(`DEBUG: [webgl] gl=${gl}`);
     if (gl) {
       try {
         return new WebGLContext(gl, 1);
