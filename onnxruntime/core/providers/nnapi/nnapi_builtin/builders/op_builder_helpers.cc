@@ -928,8 +928,8 @@ Status GetAxesForSqueezeAndUnSqueeze(ModelBuilder& model_builder, const NodeUnit
     }
   } else {
     NodeAttrHelper helper(node_unit);
-    const auto& axes_int64 = helper.Get("axes", std::vector<int64_t>{});
-    axes = OnnxAxesToNnapi(gsl::span<const int64_t>(axes_int64.data(), axes_int64.size()), std::nullopt);
+    const auto axes_int64 = helper.Get("axes", std::vector<int64_t>{});
+    axes = OnnxAxesToNnapi(axes_int64, std::nullopt);
   }
 
   return Status::OK();

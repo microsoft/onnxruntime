@@ -88,8 +88,8 @@ Status ReductionOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, co
     }
   } else {
     // For ReduceMean-13 or earlier, retrieve axes from the attribute
-    const auto& axes_int64 = helper.Get("axes", std::vector<int64_t>{});
-    axes = OnnxAxesToNnapi(gsl::span<const int64_t>(axes_int64.data(), axes_int64.size()), input_shape.size());
+    const auto axes_int64 = helper.Get("axes", std::vector<int64_t>{});
+    axes = OnnxAxesToNnapi(axes_int64, input_shape.size());
   }
 
   if (axes.empty() && !noop_with_empty_axes) {
