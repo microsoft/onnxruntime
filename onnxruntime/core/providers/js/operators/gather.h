@@ -15,9 +15,9 @@
 namespace onnxruntime {
 namespace js {
 
-class Gather : public JsKernel , public GatherBase{
+class Gather : public JsKernel, public GatherBase {
  public:
-  Gather(const OpKernelInfo& info) : JsKernel(info) , GatherBase(info){
+  Gather(const OpKernelInfo& info) : JsKernel(info), GatherBase(info) {
     int64_t axis = info.GetAttrOrDefault<int64_t>("axis", 0);
     JSEP_INIT_KERNEL_ATTRIBUTE(Gather, ({
                                  "axis" : $1
@@ -36,7 +36,7 @@ class GatherElements : public JsKernel {
   }
 };
 
-class GatherND : public JsKernel , protected GatherNDBase{
+class GatherND : public JsKernel, protected GatherNDBase {
  public:
   GatherND(const OpKernelInfo& info) : JsKernel(info) {
     int64_t batch_dims = info.GetAttrOrDefault<int64_t>("batch_dims", 0);
