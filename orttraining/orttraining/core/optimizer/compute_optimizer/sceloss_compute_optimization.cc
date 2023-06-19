@@ -16,68 +16,6 @@
 
 namespace onnxruntime {
 
-// Put utilities in an anonymous namespace.
-namespace {
-NodeArg* InsertNodesForValidLabelIndices(Graph& graph, Node& node, NodeArg* label_input, NodeArg* reduce_index_input) {
-  InlinedVector<NodeArg*> input_args{label_input, reduce_index_input};
-
-  InlinedVector<NodeArg*> output_args{&graph.GetOrCreateNodeArg(graph.GenerateNodeArgName("label_sub_result"),
-                                                                node.MutableInputDefs()[1]->TypeAsProto())};
-
-  Node& sub_node = graph.AddNode(graph.GenerateNodeName("labels_sub"), "Sub", "label sub padding idx", input_args,
-                                 output_args, nullptr, kOnnxDomain);
-  ORT_ENFORCE(graph.SetOpSchemaFromRegistryForNode(sub_node), "Failed to set op schema for " + sub_node.Name());
-  sub_node.SetExecutionProviderType(node.GetExecutionProviderType());
-
-  auto non_zero_out_arg = &graph.GetOrCreateNodeArg(graph.GenerateNodeArgName("labels_filter_pad_result"),
-                                                    node.MutableInputDefs()[1]->TypeAsProto());
-
-  Node& non_zero_node = graph.AddNode(graph.GenerateNodeName("labels_filter_pad"), "NonZero",
-                                      "labels filtering padding idx",
-                                      {sub_node.MutableOutputDefs()[0]},
-                                      {non_zero_out_arg}, nullptr, kOnnxDomain);
-
-  ORT_ENFORCE(graph.SetOpSchemaFromRegistryForNode(non_zero_node),
-              "Failed to set op schema for " + non_zero_node.Name());
-
-  const std::string dim_name = MakeString("valid_label_count_", utils::GetRandomSeed());
-
-  // 1D input NonZero generates output of shape (1,valid_token_count).
-  ONNX_NAMESPACE::TensorShapeProto non_zero_output_shape;
-  non_zero_output_shape.add_dim()->set_dim_value(1);
-  non_zero_output_shape.add_dim()->set_dim_param(dim_name);
-  non_zero_out_arg->SetShape(non_zero_output_shape);
-  non_zero_node.SetExecutionProviderType(node.GetExecutionProviderType());
-
-  InlinedVector<NodeArg*> squeeze_input_args;
-  squeeze_input_args.push_back(non_zero_out_arg);
-
-  bool opset_lower_than_13 = onnxruntime::optimizer::compute_optimizer::GetONNXOpSetVersion(graph) < 13;
-  onnxruntime::NodeAttributes attributes;
-  if (opset_lower_than_13) {
-    attributes["axes"] = ONNX_NAMESPACE::MakeAttribute("axes", std::vector<int64_t>{0});
-  } else {
-    squeeze_input_args.push_back(onnxruntime::optimizer::compute_optimizer::CreateInitializerFromVector(
-        graph, {1}, {0}, graph.GenerateNodeArgName("axes")));
-  }
-
-  auto squeeze_out_arg = &graph.GetOrCreateNodeArg(graph.GenerateNodeArgName("squeeze_adaptor"),
-                                                   non_zero_out_arg->TypeAsProto());
-  Node& squeeze_node = graph.AddNode(graph.GenerateNodeName("squeeze_adaptor"), "Squeeze", "nonzero_squeezer",
-                                     squeeze_input_args, {squeeze_out_arg}, &attributes, kOnnxDomain);
-  ORT_ENFORCE(graph.SetOpSchemaFromRegistryForNode(squeeze_node),
-              "Failed to set op schema for " + squeeze_node.Name());
-
-  // After Squeeze, the shape becomes (valid_token_count).
-  ONNX_NAMESPACE::TensorShapeProto squeeze_output_shape;
-  squeeze_output_shape.add_dim()->set_dim_param(dim_name);
-  squeeze_out_arg->SetShape(squeeze_output_shape);
-  squeeze_node.SetExecutionProviderType(node.GetExecutionProviderType());
-
-  return squeeze_out_arg;
-}
-}  // namespace
-
 Status InsertGatherBeforeSceLoss::ApplyImpl(Graph& graph, bool& modified, int /*graph_level*/,
                                             const logging::Logger& logger) const {
   LOG_DEBUG_INFO(logger, "Enter InsertGatherBeforeSceLoss");
@@ -197,7 +135,7 @@ Status InsertGatherBeforeSceLoss::ApplyImpl(Graph& graph, bool& modified, int /*
     // subgraph retrieving valid tokens for each SoftmaxCrossEntropyLossInternal node.
     // The duplication will be removed by CSE graph transformers.
     NodeArg* valid_labels_input_arg =
-        InsertNodesForValidLabelIndices(graph, node, node.MutableInputDefs()[1], ignore_index_node_arg);
+        onnxruntime::optimizer::compute_optimizer::InsertNodesForValidIndices(graph, node.MutableInputDefs()[1], ignore_index_node_arg, node.GetExecutionProviderType());
 
     // Insert the ShrunkenGather node on the two inputs.
     for (int i = 0; i < 2; ++i) {
