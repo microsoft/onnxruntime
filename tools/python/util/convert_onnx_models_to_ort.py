@@ -174,7 +174,7 @@ def _convert(
     return converted_models
 
 
-def parse_args(args=None):
+def parse_args():
     parser = argparse.ArgumentParser(
         os.path.basename(__file__),
         description="""Convert the ONNX format model/s in the provided directory to ORT format models.
@@ -258,7 +258,7 @@ def parse_args(args=None):
         "processed.",
     )
 
-    return parser.parse_args() if args is None else parser.parse_args(args)
+    return parser.parse_args()
 
 
 def convert_onnx_models_to_ort(
