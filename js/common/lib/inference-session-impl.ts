@@ -1,11 +1,11 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {SessionHandler} from './backend';
-import {resolveBackend} from './backend-impl';
-import {InferenceSession as InferenceSessionInterface} from './inference-session';
-import {OnnxValue} from './onnx-value';
-import {Tensor} from './tensor';
+import {resolveBackend} from './backend-impl.js';
+import {SessionHandler} from './backend.js';
+import {InferenceSession as InferenceSessionInterface} from './inference-session.js';
+import {OnnxValue} from './onnx-value.js';
+import {Tensor} from './tensor.js';
 
 type SessionOptions = InferenceSessionInterface.SessionOptions;
 type RunOptions = InferenceSessionInterface.RunOptions;

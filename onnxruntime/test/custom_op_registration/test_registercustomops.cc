@@ -46,18 +46,10 @@ TEST(CustomOpRegistration, TestUsingFuncNameCApi) {
 #if !defined(DISABLE_FLOAT8_TYPES)
 
 TEST(CustomOpRegistration, TestUsingFuncNameCApiFloat8) {
+  // Test similar to TestUsingFuncNameCApi but loads model custom_op_test_float8.onnx
+  // which uses type Float8E4M3FN.
   Ort::SessionOptions session_options;
-
-  // need to reference something in the custom ops library to prevent it being thrown away by the linker
-  void* addr = reinterpret_cast<void*>(RegisterCustomOpsAltName);
-  std::cout << "RegisterCustomOpsAltName addr " << addr << "\n";
-
-  // RegisterUnitTestCustomOps will add the Foo custom op in domain ort_unit_test
-  // custom_op_library has RegisterCustomOps and RegisterCustomOpsAltName as options for registration functions.
-  // Call RegisterCustomOpsAltName to test the path which does not use the default name.
-  Ort::ThrowOnError(Ort::GetApi().RegisterCustomOpsUsingFunction(session_options, "RegisterCustomOpsAltName"));
-
-  // load model containing nodes using the custom op/s to validate. will throw if custom op wasn't registered.
+  session_options.RegisterCustomOpsUsingFunction("RegisterCustomOpsAltName");
   Ort::Session session(*ort_env, TestModelFloat8, session_options);
 }
 

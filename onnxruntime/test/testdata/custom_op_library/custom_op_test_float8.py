@@ -1,6 +1,9 @@
-from onnx.checker import check_model
-from onnx.helper import make_model, make_node, make_graph, make_tensor_value_info, make_opsetid
+"""
+This file was used to generate model `custom_op_test_float8.py`.
+"""
 from onnx import TensorProto
+from onnx.checker import check_model
+from onnx.helper import make_graph, make_model, make_node, make_opsetid, make_tensor_value_info
 
 X = make_tensor_value_info("X", TensorProto.FLOAT8E4M3FN, [None])
 Y = make_tensor_value_info("Y", TensorProto.FLOAT8E4M3FN, [None])
