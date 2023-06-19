@@ -1591,11 +1591,18 @@ common::Status InferenceSession::Initialize() {
       ORT_RETURN_IF_ERROR_SESSIONID_(graph.Resolve());
 
       // Currently CUDA graph is only considered by CUDA EP and TRT EP.
+      //
+      // Check for CUDA EP:
       // If the CUDA EP is part of the providers list for this session AND
       // The CUDA EP is configured to do a graph capture AND
-      // All the compute graph nodes have been assigned to the CUDA EP,
+      // All the "compute" graph nodes have been assigned to the CUDA EP,
       // Then the CUDA EP is cached for triggering a ReplayGraph() in Run().
-      // Similar logic is applied to TRT EP.
+      //
+      // Check for TRT EP:
+      // If the TRT EP is part of the providers list for this session AND
+      // The TRT EP is configured to do a graph capture AND
+      // All the graph nodes have been assigned to the TRT EP,
+      // Then the TRT EP is cached for triggering a ReplayGraph() in Run().
       std::vector<const char*> cuda_graph_support_ep_list = {onnxruntime::kTensorrtExecutionProvider, onnxruntime::kCudaExecutionProvider};
 
       for (auto& it : cuda_graph_support_ep_list) {
@@ -1639,6 +1646,7 @@ common::Status InferenceSession::Initialize() {
                                               << "it is safe to use the CUDA Graph feature.";
             }
           } else {
+            // Following code path is for TRT EP currently.
             if (!AreAllNodesInMainGraphAssignedToOneEp(graph, target_ep->Type())) {
               LOGS(*session_logger_, ERROR) << "This session cannot use the CUDA Graph feature as requested by the user "
                                             << "as all the graph nodes have not been assigned to "
