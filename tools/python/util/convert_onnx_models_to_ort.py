@@ -283,7 +283,7 @@ def convert_onnx_models_to_ort(
     # environment variable
     optimization_level_str = os.getenv("ORT_CONVERT_ONNX_MODELS_TO_ORT_OPTIMIZATION_LEVEL", "all")
     model_path_or_dir = model_path_or_dir.resolve()
-    custom_op_library = custom_op_library.resolve() if custom_op_library_path else None
+    custom_op_library = custom_op_library_path.resolve() if custom_op_library_path else None
 
     if not model_path_or_dir.is_dir() and not model_path_or_dir.is_file():
         raise FileNotFoundError(f"Model path '{model_path_or_dir}' is not a file or directory.")
