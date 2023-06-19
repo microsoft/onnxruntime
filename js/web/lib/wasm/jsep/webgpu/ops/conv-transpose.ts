@@ -7,7 +7,7 @@ import {createAttributeWithCacheKey} from '../attribute-with-cache-key';
 import {ComputeContext} from '../types';
 
 import {ConvAttributes} from './conv';
-import {createConvTranspose2DMatMulProgramInfoLoader} from './conv-transpose-mm';
+import {createConv2dTransposeMatMulProgramInfoLoader} from './conv-transpose-mm';
 import {parseInternalActivationAttributes} from './fuse-utils';
 import {createTransposeProgramInfo, TransposeAttributes, transposeProgramMetadata} from './transpose';
 
@@ -244,7 +244,7 @@ const convTranspose2d =
 
       // STEP.3: compute matmul
       context.compute(
-          createConvTranspose2DMatMulProgramInfoLoader(
+          createConv2dTransposeMatMulProgramInfoLoader(
               convInputs, adjustedAttributes, outputShape, dimAOuter, dimBOuter, dimInner, hasBias,
               sequentialAccessByThreads),
           {inputs: convInputs});

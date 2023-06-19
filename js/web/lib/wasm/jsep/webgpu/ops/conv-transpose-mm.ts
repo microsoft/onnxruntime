@@ -4,24 +4,24 @@
 import {TensorView} from '../../tensor';
 import {GpuDataType, ProgramInfoLoader, ProgramMetadata} from '../types';
 
-import {createConvTranspose2DMatMulProgramInfo} from './3rd-party/conv_backprop_mm_webgpu';
+import {createConv2dTransposeMatMulProgramInfo} from './3rd-party/conv_backprop_mm_webgpu';
 import {ConvAttributes} from './conv';
 
 
-const createConvTranspose2DMatMulProgramMetadata = (hasBias: boolean, cacheHint: string): ProgramMetadata => ({
+const createConv2dTransposeMatMulProgramMetadata = (hasBias: boolean, cacheHint: string): ProgramMetadata => ({
   name: 'ConvTranspose2DMatMul',
   inputTypes: hasBias ? [GpuDataType.default, GpuDataType.default, GpuDataType.default] :
                         [GpuDataType.default, GpuDataType.default],
   cacheHint
 });
 
-export const createConvTranspose2DMatMulProgramInfoLoader =
+export const createConv2dTransposeMatMulProgramInfoLoader =
     (inputs: readonly TensorView[], attributes: ConvAttributes, outputShape: readonly number[], dimAOuter: number,
      dimBOuter: number, dimInner: number, hasBias: boolean, sequentialAccessByThreads: boolean): ProgramInfoLoader => {
-      const metadata = createConvTranspose2DMatMulProgramMetadata(hasBias, attributes.cacheKey);
+      const metadata = createConv2dTransposeMatMulProgramMetadata(hasBias, attributes.cacheKey);
       return {
         ...metadata,
-        get: () => createConvTranspose2DMatMulProgramInfo(
+        get: () => createConv2dTransposeMatMulProgramInfo(
             inputs, metadata, attributes, outputShape, dimAOuter, dimBOuter, dimInner, hasBias,
             sequentialAccessByThreads)
       };
