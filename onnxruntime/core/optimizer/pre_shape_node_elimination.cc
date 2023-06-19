@@ -33,12 +33,17 @@ Status PreShapeNodeElimination::Apply(Graph& graph, Node& node, RewriteRuleEffec
   return Status::OK();
 }
 
-bool PreShapeNodeElimination::SatisfyCondition(const Graph& graph, const Node& node, const logging::Logger& logger) const {    
+bool PreShapeNodeElimination::SatisfyCondition(const Graph& graph, const Node& node, const logging::Logger& logger) const {
   if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "Cast", {13, 15, 19})) {
     return false;
   }
 
   if (!graph_utils::CanRemoveNode(graph, node, logger)) {
+    return false;
+  }
+
+  const Node* p_input_node = graph_utils::GetInputNode(node, 0);
+  if (p_input_node == nullptr) {
     return false;
   }
 
