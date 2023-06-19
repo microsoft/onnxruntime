@@ -89,8 +89,7 @@ ROCMExecutionProviderInfo ROCMExecutionProviderInfo::FromProviderOptions(const P
               [&info](const std::string& value_str) -> Status {
                 ORT_RETURN_IF_ERROR(ParseStringWithClassicLocale(value_str, info.tunable_op.enable));
                 return Status::OK();
-              }) == ==
-      ==
+              })
           .AddValueParser(
               rocm::provider_option_names::kTunableOpTuningEnable,
               [&info](const std::string& value_str) -> Status {
