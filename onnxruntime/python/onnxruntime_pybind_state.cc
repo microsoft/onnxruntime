@@ -780,39 +780,30 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
 #endif
   } else if (type == kOpenVINOExecutionProvider) {
 #ifdef USE_OPENVINO
-    OrtOpenVINOProviderOptions params;
-    params.device_type = openvino_device_type.c_str();
+    // OrtOpenVINOProviderOptions params;
+    // params.device_type = openvino_device_type.c_str();
     std::string cache_dir;
 
     auto it = provider_options_map.find(type);
     if (it != provider_options_map.end()) {
       for (auto option : it->second) {
         if (option.first == "device_type") {
-          openvino_device_type = option.second;
-          params.device_type = openvino_device_type.c_str();
+          // openvino_device_type = option.second;
+          // params.device_type = openvino_device_type.c_str();
+          continue;
         } else if (option.first == "enable_vpu_fast_compile") {
-          if (option.second == "True") {
-            params.enable_vpu_fast_compile = true;
-          } else if (option.second == "False") {
-            params.enable_vpu_fast_compile = false;
-          } else {
+          if !(option.second == "True" || option.second == "true" ||
+              option.second == "False" || option.second == "false") {
             ORT_THROW("Invalid value passed for enable_vpu_fast_compile: ", option.second);
           }
-
         } else if (option.first == "enable_opencl_throttling") {
-          if (option.second == "True") {
-            params.enable_opencl_throttling = true;
-          } else if (option.second == "False") {
-            params.enable_opencl_throttling = false;
-          } else {
+          if !(option.second == "True" || option.second == "true" ||
+              option.second == "False" || option.second == "false") {
             ORT_THROW("Invalid value passed for enable_opencl_throttling: ", option.second);
           }
         } else if (option.first == "enable_dynamic_shapes") {
-          if (option.second == "True") {
-            params.enable_dynamic_shapes = true;
-          } else if (option.second == "False") {
-            params.enable_dynamic_shapes = false;
-          } else {
+          if !(option.second == "True" || option.second == "true" ||
+              option.second == "False" || option.second == "false") {
             ORT_THROW("Invalid value passed for enable_dynamic_shapes: ", option.second);
           }
         } else if (option.first == "device_id") {
@@ -820,16 +811,19 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
         } else if (option.first == "num_of_threads") {
           params.num_of_threads = std::stoi(option.second);
         } else if (option.first == "cache_dir") {
-          cache_dir = option.second;
-          params.cache_dir = cache_dir.c_str();
+          // cache_dir = option.second;
+          // params.cache_dir = cache_dir.c_str();
+          continue;
         } else if (option.first == "context") {
-          params.context = (void*)(option.second.c_str());
+          continue;
+          // params.context = (void*)(option.second.c_str());
         } else {
           ORT_THROW("Invalid OpenVINO EP option: ", option.first);
         }
       }
     }
-    if (std::shared_ptr<IExecutionProviderFactory> openvino_provider_factory = onnxruntime::OpenVINOProviderFactoryCreator::Create(&params)) {
+
+    if (std::shared_ptr<IExecutionProviderFactory> openvino_provider_factory = onnxruntime::OpenVINOProviderFactoryCreator::Create(provider_options_map)) {
       auto p = openvino_provider_factory->CreateProvider();
       // Reset global variables config to avoid it being accidentally passed on to the next session
       openvino_device_type.clear();

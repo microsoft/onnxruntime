@@ -66,7 +66,13 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
                                  (std::string(provider_name) + " execution provider is not supported in this build. ").c_str());
   };
 
-  if (strcmp(provider_name, "QNN") == 0) {
+  if (strcmp(provider_name, "OpenVINO") == 0) {
+#if defined(USE_OPENVINO)
+    options->provider_factories.push_back(OpenVINOProviderFactoryCreator::Create(provider_options));
+#else
+    status = create_not_supported_status();
+#endif
+  } else if (strcmp(provider_name, "QNN") == 0) {
 #if defined(USE_QNN)
     options->provider_factories.push_back(QNNProviderFactoryCreator::Create(provider_options, &(options->value)));
 #else
@@ -115,7 +121,7 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
   } else {
     ORT_UNUSED_PARAMETER(options);
     status = OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
-                                   "Unknown provider name. Currently supported values are 'SNPE', 'XNNPACK', and 'AZURE'");
+                                   "Unknown provider name. Currently supported values are 'OPENVINO', 'SNPE', 'XNNPACK', and 'AZURE'");
   }
 
   return status;

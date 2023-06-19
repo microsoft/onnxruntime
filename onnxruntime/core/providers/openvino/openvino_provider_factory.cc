@@ -49,6 +49,72 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_OpenVI
                                                                 enable_dynamic_shapes);
 }
 
+std::shared_ptr<IExecutionProviderFactory> OpenVINOProviderFactoryCreator::Create(const ProviderOptions& provider_options_map) {
+  // auto& provider_options_map = *reinterpret_cast<const ProviderOptions*>(void_params);
+    // std::cout << " provider_map device_type = " << provider_options_map.at("device_type") << std::endl;
+    // std::cout << " provider_map cache dir = " << provider_options_map.at("cache_dir") << std::endl;
+
+    std::string device_type = "";           // [device_type]: Overrides the accelerator hardware type and precision
+                                            //   with these values at runtime.
+    bool enable_vpu_fast_compile = false;   // [enable_vpu_fast_compile]: Fast-compile may be optionally enabled to
+                                            // speeds up the model's compilation to VPU device specific format.
+    std::string device_id = "";             // [device_id]: Selects a particular hardware device for inference.
+    size_t num_of_threads = 8;              // [num_of_threads]: Overrides the accelerator default value of number of
+                                            //  threads with this value at runtime.
+    std::string cache_dir = "";             // [cache_dir]: specify the path to
+                                            // dump and load the blobs for the model caching/kernel caching (GPU)
+                                            // feature. If blob files are already present, it will be directly loaded.
+    int num_streams = 1;                    // [num_streams]: Option that specifies the number of parallel inference
+                                            // requests to be processed on a given `device_type`. Overrides the
+                                            // accelerator default value of number of streams with this value at runtime.
+    bool enable_opencl_throttling = false;  // [enable_opencl_throttling]: Enables OpenCL queue throttling for GPU
+                                            // device (Reduces CPU Utilization when using GPU)
+    bool enable_dynamic_shapes = false;     // [enable_dynamic_shapes]: Enables Dynamic Shapes feature for CPU device)
+    void* context;
+
+    device_type = provider_options_map.at("device_type").c_str();
+    device_id = provider_options_map.at("device_id").c_str();
+    cache_dir = provider_options_map.at("cache_dir").c_str();
+    context = (void*) provider_options_map.at("context").c_str();
+
+    // std::stringstream sstream(provider_options_map.at("num_of_threads"));
+    // sstream >> num_of_threads;
+    num_of_threads = std::stoi(provider_options_map.at("num_of_threads"));
+    // std::stringstream nstream(provider_options_map.at("num_streams"));
+    // nstream >> num_streams;
+    num_streams = std::stoi(provider_options_map.at("num_streams"));
+    std::string bool_flag="";
+    bool_flag = provider_options_map.at("enable_vpu_fast_compile");
+    if(bool_flag=="true" || bool_flag=="True")
+      enable_vpu_fast_compile = true;
+    else if(bool_flag=="false" || bool_flag=="False")
+      enable_vpu_fast_compile = false;
+
+    bool_flag="";
+    bool_flag = provider_options_map.at("enable_opencl_throttling");
+    if(bool_flag=="true" || bool_flag=="True")
+      enable_opencl_throttling = true;
+    else if(bool_flag=="false" || bool_flag=="False")
+      enable_opencl_throttling = false;
+
+    bool_flag="";
+    bool_flag = provider_options_map.at("enable_dynamic_shapes");
+    if(bool_flag=="true" || bool_flag=="True")
+      enable_dynamic_shapes = true;
+    else if(bool_flag=="false" || bool_flag=="False")
+      enable_dynamic_shapes = false;
+
+    return std::make_shared<OpenVINOProviderFactory>(device_type,
+                                                     enable_vpu_fast_compile,
+                                                     device_id,
+                                                     num_of_threads,
+                                                     cache_dir,
+                                                     num_streams,
+                                                     context,
+                                                     enable_opencl_throttling,
+                                                     enable_dynamic_shapes);
+}
+
 }  // namespace onnxruntime
 
 namespace onnxruntime {
