@@ -12,25 +12,27 @@
 
 namespace onnxruntime {
 namespace js {
-#define REGISTER_GATHER_VERSIONED_KERNEL(GatherOp, sinceVersion, endVersion)                                         \
-  ONNX_OPERATOR_VERSIONED_KERNEL_EX(                                                                                 \
-      GatherOp,                                                                                                      \
-      kOnnxDomain,                                                                                                   \
-      sinceVersion, endVersion,                                                                                      \
-      kJsExecutionProvider,                                                                                          \
-      KernelDefBuilder()                                                                                             \
-          .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())                                              \
-          .TypeConstraint("Tind", {DataTypeImpl::GetTensorType<int32_t>(), DataTypeImpl::GetTensorType<int64_t>()}), \
+#define REGISTER_GATHER_VERSIONED_KERNEL(GatherOp, sinceVersion, endVersion)                                        \
+  ONNX_OPERATOR_VERSIONED_KERNEL_EX(                                                                                \
+      GatherOp,                                                                                                     \
+      kOnnxDomain,                                                                                                  \
+      sinceVersion, endVersion,                                                                                     \
+      kJsExecutionProvider,                                                                                         \
+      KernelDefBuilder()                                                                                            \
+          .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())                                             \
+          .TypeConstraint("Tind", {DataTypeImpl::GetTensorType<int32_t>(), DataTypeImpl::GetTensorType<int64_t>()}) \
+          .InputMemoryType(OrtMemTypeCPU, 1),                                                                       \
       GatherOp);
-#define REGISTER_GATHER_KERNEL(GatherOp, sinceVersion)                                                               \
-  ONNX_OPERATOR_KERNEL_EX(                                                                                           \
-      GatherOp,                                                                                                      \
-      kOnnxDomain,                                                                                                   \
-      sinceVersion,                                                                                                  \
-      kJsExecutionProvider,                                                                                          \
-      KernelDefBuilder()                                                                                             \
-          .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())                                              \
-          .TypeConstraint("Tind", {DataTypeImpl::GetTensorType<int32_t>(), DataTypeImpl::GetTensorType<int64_t>()}), \
+#define REGISTER_GATHER_KERNEL(GatherOp, sinceVersion)                                                              \
+  ONNX_OPERATOR_KERNEL_EX(                                                                                          \
+      GatherOp,                                                                                                     \
+      kOnnxDomain,                                                                                                  \
+      sinceVersion,                                                                                                 \
+      kJsExecutionProvider,                                                                                         \
+      KernelDefBuilder()                                                                                            \
+          .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())                                             \
+          .TypeConstraint("Tind", {DataTypeImpl::GetTensorType<int32_t>(), DataTypeImpl::GetTensorType<int64_t>()}) \
+          .InputMemoryType(OrtMemTypeCPU, 1),                                                                       \
       GatherOp);
 
 REGISTER_GATHER_VERSIONED_KERNEL(Gather, 1, 10);
