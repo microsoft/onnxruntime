@@ -576,8 +576,8 @@ struct CudaBeamSearchScorer : transformers::IBeamScorer {
   gsl::span<float> GetNextScores() override { return next_beam_scores_; }
   gsl::span<int32_t> GetNextTokens() override { return next_beam_tokens_; }
   gsl::span<int32_t> GetNextIndicesCPU() override {
-    cudaMemcpyAsync(next_beam_indices_cpu_.data(), next_beam_indices_.data(), next_beam_indices_.size_bytes(), cudaMemcpyDeviceToHost, stream_);
-    cudaStreamSynchronize(stream_);
+    CUDA_CALL_THROW(cudaMemcpyAsync(next_beam_indices_cpu_.data(), next_beam_indices_.data(), next_beam_indices_.size_bytes(), cudaMemcpyDeviceToHost, stream_));
+    CUDA_CALL_THROW(cudaStreamSynchronize(stream_));
     return next_beam_indices_cpu_;
   }
   gsl::span<int32_t> GetNextIndicesGPU() override { return next_beam_indices_; }
@@ -620,14 +620,14 @@ gsl::span<TAlloc> Allocate(std::shared_ptr<IAllocator> allocator,
 template <typename T>
 IAllocatorUniquePtr<T> AllocateCPUPinned() {
   T* p;
-  cudaMallocHost(&p, sizeof(T));
-  return IAllocatorUniquePtr<T>{p, [](cuda::BeamScorerState* p) { cudaFreeHost(p); }};
+  CUDA_CALL_THROW(cudaMallocHost(&p, sizeof(T)));
+  return IAllocatorUniquePtr<T>{p, [](cuda::BeamScorerState* p) { ORT_IGNORE_RETURN_VALUE(cudaFreeHost(p)); }};
 }
 
 CudaBeamSearchScorer::CudaBeamSearchScorer(const transformers::IGenerationParameters& parameters,
                                            AllocatorPtr& allocator, AllocatorPtr& allocator_cpu, Stream* stream)
     : stream_{stream ? reinterpret_cast<cudaStream_t>(stream->GetHandle()) : nullptr} {
-  cudaEventCreate(&event_process_complete_.Get());
+  CUDA_CALL_THROW(cudaEventCreate(&event_process_complete_.Get()));
 
   state_cpu_ = AllocateCPUPinned<cuda::BeamScorerState>();
   state_cpu_->batch_size_ = static_cast<size_t>(parameters.batch_size);
@@ -640,7 +640,7 @@ CudaBeamSearchScorer::CudaBeamSearchScorer(const transformers::IGenerationParame
   state_cpu_->not_done_count_ = parameters.batch_size;
   state_cpu_->hypothesis_buffer_used_ = 0;
   state_gpu_ = IAllocator::MakeUniquePtr<cuda::BeamScorerState>(allocator, 1);
-  cudaMemcpyAsync(state_gpu_.get(), state_cpu_.get(), sizeof(cuda::BeamScorerState), ::cudaMemcpyHostToDevice, stream_);
+  CUDA_CALL_THROW(cudaMemcpyAsync(state_gpu_.get(), state_cpu_.get(), sizeof(cuda::BeamScorerState), ::cudaMemcpyHostToDevice, stream_));
 
   size_t batch_beam_size = state_cpu_->batch_size_ * state_cpu_->num_beams_;
 
@@ -676,7 +676,7 @@ void CudaBeamSearchScorer::Process(transformers::ISequences& sequences,
                                        next_tokens,
                                        next_indices,
                                        stream_);
-  cudaEventRecord(event_process_complete_.Get(), stream_);
+  CUDA_CALL_THROW(cudaEventRecord(event_process_complete_.Get(), stream_));
 
   cuda::LaunchBeamSearchScorer_AppendNextTokenToSequences(*state_cpu_,
                                                           *state_gpu_,
@@ -689,7 +689,7 @@ void CudaBeamSearchScorer::Process(transformers::ISequences& sequences,
 }
 
 bool CudaBeamSearchScorer::IsDoneLater() const {
-  cudaEventSynchronize(event_process_complete_.Get());
+  CUDA_CALL_THROW(cudaEventSynchronize(event_process_complete_.Get()));
   return state_cpu_->not_done_count_ == 0;
 }
 
