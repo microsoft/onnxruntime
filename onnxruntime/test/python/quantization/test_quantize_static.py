@@ -109,7 +109,7 @@ class TestStaticQuantization(unittest.TestCase):
         data_reader.rewind()
 
         model = onnx.load(quant_model_path)
-        self.assertTrue("Mul" in [i.op_type for i in model.graph.node])
+        self.assertIn("Mul", [i.op_type for i in model.graph.node])
 
 
 if __name__ == "__main__":
