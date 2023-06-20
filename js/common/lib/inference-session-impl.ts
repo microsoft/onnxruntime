@@ -3,15 +3,15 @@
 
 import {SessionHandler} from './backend';
 import {resolveBackend} from './backend-impl';
-import {Session as InferenceSessionInterface} from './inference-session';
+import {Session, InferenceSession as InferenceSessionInterface} from './inference-session';
 import {OnnxValue} from './onnx-value';
 import {Tensor} from './tensor';
 
-type SessionOptions = InferenceSessionInterface.SessionOptions;
-type RunOptions = InferenceSessionInterface.RunOptions;
-type FeedsType = InferenceSessionInterface.FeedsType;
-type FetchesType = InferenceSessionInterface.FetchesType;
-type ReturnType = InferenceSessionInterface.ReturnType;
+type SessionOptions = Session.SessionOptions;
+type RunOptions = Session.RunOptions;
+type FeedsType = Session.FeedsType;
+type FetchesType = Session.FetchesType;
+type ReturnType = Session.ReturnType;
 
 export class InferenceSession implements InferenceSessionInterface {
   private constructor(handler: SessionHandler) {
