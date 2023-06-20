@@ -21,13 +21,11 @@ bool TestDeferredRelease() {
   // Create CUDA EP.
   CUDAExecutionProviderInfo info;
   CUDAExecutionProvider ep(info);
-  // Initialize allocators in EP.
-  onnxruntime::AllocatorManager allocator_manager;
-  ep.RegisterAllocator(allocator_manager);
-  AllocatorPtr gpu_alloctor = ep.GetAllocator(OrtMemType::OrtMemTypeDefault);
+  AllocatorPtr gpu_alloctor = ep.CreatePreferredAllocators()[0];
+
   // Allocator for call cudaMallocHost and cudaFreeHost
   // For details, see CUDAPinnedAllocator in cuda_allocator.cc.
-  AllocatorPtr cpu_pinned_alloc = ep.GetAllocator(OrtMemTypeCPU);
+  AllocatorPtr cpu_pinned_alloc = ep.CreatePreferredAllocators()[1];
   // let the CudaStream instance "own" the default stream, so we can avoid the
   // work to initialize cublas/cudnn/... It is ok since it is just a customized unit test.
   CudaStream stream(nullptr, gpu_alloctor->Info().device, cpu_pinned_alloc, false, true, nullptr, nullptr);
@@ -37,7 +35,7 @@ bool TestDeferredRelease() {
   ORT_THROW_IF_ERROR(ep.OnRunStart());
   for (size_t i = 0; i < n_allocs; ++i) {
     // Allocate 10MB CUDA pinned memory.
-    auto pinned_buffer = ep.AllocateBufferOnCPUPinned<void>(n_bytes);
+    auto pinned_buffer = IAllocator::MakeUniquePtr<void>(cpu_pinned_alloc, n_bytes);
     // Release it using CUDA callback.
     stream.EnqueDeferredCPUBuffer(pinned_buffer.release());
   }
@@ -55,36 +53,29 @@ bool TestDeferredReleaseWithoutArena() {
   // Create CUDA EP.
   CUDAExecutionProviderInfo info;
   CUDAExecutionProvider ep(info);
-  // Initialize allocators in EP.
-  onnxruntime::AllocatorManager allocator_manager;
 
   OrtDevice pinned_device{OrtDevice::CPU, OrtDevice::MemType::CUDA_PINNED, DEFAULT_CPU_ALLOCATOR_DEVICE_ID};
   // Create allocator without BFCArena
   AllocatorCreationInfo pinned_memory_info(
-      [](OrtDevice::DeviceId device_id) {
-        return std::make_unique<CUDAPinnedAllocator>(device_id, CUDA_PINNED);
+      [](OrtDevice::DeviceId) {
+        return std::make_unique<CUDAPinnedAllocator>(CUDA_PINNED);
       },
       pinned_device.Id(),
       false /* no arena */);
   auto cuda_pinned_alloc = CreateAllocator(pinned_memory_info);
-  allocator_manager.InsertAllocator(cuda_pinned_alloc);
-  // Use existing allocator in allocator_manager.
-  // Also register new allocator created by this EP in allocator_manager.
-  ep.RegisterAllocator(allocator_manager);
-  AllocatorPtr gpu_alloctor = ep.GetAllocator(OrtMemType::OrtMemTypeDefault);
+  AllocatorPtr gpu_alloctor = ep.CreatePreferredAllocators()[0];
   // Allocator for call cudaMallocHost and cudaFreeHost
   // For details, see CUDAPinnedAllocator in cuda_allocator.cc.
-  AllocatorPtr cpu_pinned_alloc = ep.GetAllocator(OrtMemTypeCPU);
   // let the CudaStream instance "own" the default stream, so we can avoid the
   // work to initialize cublas/cudnn/... It is ok since it is just a customized unit test.
-  CudaStream stream(nullptr, gpu_alloctor->Info().device, cpu_pinned_alloc, false, true, nullptr, nullptr);
+  CudaStream stream(nullptr, gpu_alloctor->Info().device, cuda_pinned_alloc, false, true, nullptr, nullptr);
   // 10 MB
   const size_t n_bytes = 10 * 1000000;
   const int64_t n_allocs = 64;
   ORT_THROW_IF_ERROR(ep.OnRunStart());
   for (size_t i = 0; i < n_allocs; ++i) {
     // Allocate 10MB CUDA pinned memory.
-    auto pinned_buffer = ep.AllocateBufferOnCPUPinned<void>(n_bytes);
+    auto pinned_buffer = IAllocator::MakeUniquePtr<void>(cuda_pinned_alloc, n_bytes);
     // Release it using CUDA callback.
     stream.EnqueDeferredCPUBuffer(pinned_buffer.release());
   }
