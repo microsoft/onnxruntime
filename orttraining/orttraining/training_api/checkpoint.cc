@@ -61,9 +61,9 @@ Status OrtValueFromFlatbufferTensor(const fbs::Tensor& fbs_tensor,
   // The assumption is that the flatbuffer buffer will be destructed once the checkpoint has been loaded.
   // And so, we must allocate a buffer where the tensor data can be copied using the cpu allocator.
   // This buffer is owned by the OrtValue.
-  static const CPUExecutionProviderInfo info;
-  static const CPUExecutionProvider cpu_provider(info);
-  const AllocatorPtr cpu_allocator = cpu_provider.CreatePreferredAllocators()[0];  // TODO(leca): review
+  static CPUExecutionProviderInfo info;
+  static CPUExecutionProvider cpu_provider(info);
+  AllocatorPtr cpu_allocator = cpu_provider.CreatePreferredAllocators()[0];  // TODO(leca): review
 
   std::unique_ptr<Tensor> ort_tensor{};
   ORT_RETURN_IF_ERROR(fbs::utils::LoadOrtTensorOrtFormat(fbs_tensor, cpu_allocator, tensor_name, ort_tensor));
