@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "gtest/gtest.h"
+#include "core/mlas/inc/mlas.h"
 #include "core/framework/run_options.h"
 #include "test/common/cuda_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
@@ -24,45 +25,7 @@ const constexpr auto run_with_tunable_op = &run_options;
 
 }  // namespace
 
-template <typename T>
-void TestGemmNoTrans() {
-  auto run_test = [](bool b_is_initializer, bool c_is_initializer = false) {
-    OpTester test("Gemm");
-
-    test.AddAttribute("transA", (int64_t)0);
-    test.AddAttribute("transB", (int64_t)0);
-    test.AddAttribute("alpha", 1.0f);
-    test.AddAttribute("beta", 1.0f);
-
-    test.AddInput<T>("A", {2, 4},
-                     {1.0f, 2.0f, 3.0f, 4.0f,
-                      -1.0f, -2.0f, -3.0f, -4.0f});
-    test.AddInput<T>("B", {4, 3}, std::vector<T>(12, 1.0f), b_is_initializer);
-    test.AddInput<T>("C", {2, 3}, std::vector<T>(6, 1.0f), c_is_initializer);
-    test.AddOutput<T>("Y", {2, 3},
-                      {11.0f, 11.0f, 11.0f,
-                       -9.0f, -9.0f, -9.0f});
-    test.Config(run_with_tunable_op)
-        .RunWithConfig();
-  };
-
-  run_test(false, false);
-  // NNAPI EP requires weight to be an initializer
-  run_test(true, false);
-  // CoreML EP requires weight and bias both to be initializers
-  run_test(true, true);
-}
-
-TEST(GemmOpTest, GemmNoTrans_float) {
-  TestGemmNoTrans<float>();
-}
-
-TEST(GemmOpTest, GemmNoTrans_double) {
-  TestGemmNoTrans<double>();
-}
-
 // Only CUDA and ROCM kernel has float 16 support
-#if defined(USE_CUDA) || defined(USE_ROCM)
 TEST(GemmOpTest, GemmNoTrans_f16) {
 #ifdef USE_CUDA
   int min_cuda_architecture = 530;
@@ -71,7 +34,7 @@ TEST(GemmOpTest, GemmNoTrans_f16) {
     return;
   }
 #endif
-  OpTester test("Gemm");
+  OpTester test("Gemm", 13);
 
   test.AddAttribute("transA", (int64_t)0);
   test.AddAttribute("transB", (int64_t)0);
@@ -102,7 +65,6 @@ TEST(GemmOpTest, GemmNoTrans_f16) {
       .Config(run_with_tunable_op)
       .RunWithConfig();
 }
-#endif
 
 #if defined(USE_CUDA) || defined(USE_ROCM) || defined(USE_DNNL)
 TEST(GemmOpTest, GemmNoTrans_bfloat16) {
@@ -147,270 +109,6 @@ TEST(GemmOpTest, GemmNoTrans_bfloat16) {
 }
 #endif  // USE_CUDA USE_RCOM USE_DNNL
 
-template <typename T>
-void TestGemmBroadcast() {
-  auto run_test = [](bool b_is_initializer, bool c_is_initializer) {
-    OpTester test("Gemm");
-
-    test.AddAttribute("transA", (int64_t)0);
-    test.AddAttribute("transB", (int64_t)0);
-    test.AddAttribute("alpha", 1.0f);
-    test.AddAttribute("beta", 1.0f);
-
-    test.AddInput<T>("A", {2, 4},
-                     {1.0f, 2.0f, 3.0f, 4.0f,
-                      -1.0f, -2.0f, -3.0f, -4.0f});
-    test.AddInput<T>("B", {4, 3}, std::vector<T>(12, 1.0f), b_is_initializer);
-    test.AddInput<T>("C", {3}, std::vector<T>{1.0f, 2.0f, 3.0f}, c_is_initializer);
-    test.AddOutput<T>("Y", {2, 3},
-                      {11.0f, 12.0f, 13.0f,
-                       -9.0f, -8.0f, -7.0f});
-#if defined(OPENVINO_CONFIG_GPU_FP16) || defined(OPENVINO_CONFIG_GPU_FP32)
-    test.ConfigExcludeEps({kOpenVINOExecutionProvider});  // OpenVINO: Temporarily disabled due to accuracy issues
-#endif
-    test.Config(run_with_tunable_op)
-        .RunWithConfig();
-  };
-
-  run_test(false, false);
-  // NNAPI EP requires weight to be an initializer
-  run_test(true, false);
-  // CoreML EP requires weight and bias both to be initializers
-  run_test(true, true);
-}
-
-TEST(GemmOpTest, GemmBroadcast) {
-  TestGemmBroadcast<float>();
-  TestGemmBroadcast<double>();
-}
-
-template <typename T>
-static void TestGemmTrans() {
-  OpTester test("Gemm");
-
-  test.AddAttribute("transA", (int64_t)1);
-  test.AddAttribute("transB", (int64_t)1);
-  test.AddAttribute("alpha", 1.0f);
-  test.AddAttribute("beta", 1.0f);
-
-  test.AddInput<T>("A", {4, 2},
-                   {1.0f, -1.0f,
-                    2.0f, -2.0f,
-                    3.0f, -3.0f,
-                    4.0f, -4.0f});
-  test.AddInput<T>("B", {3, 4}, std::vector<T>(12, 1.0f));
-  test.AddInput<T>("C", {3}, std::vector<T>(3, 1.0f));
-  test.AddOutput<T>("Y", {2, 3},
-                    {11.0f, 11.0f, 11.0f,
-                     -9.0f, -9.0f, -9.0f});
-#if defined(OPENVINO_CONFIG_GPU_FP16) || defined(OPENVINO_CONFIG_GPU_FP32)
-  test.ConfigExcludeEps({kOpenVINOExecutionProvider});  // OpenVINO: Temporarily disabled due to accuracy issues
-#endif
-  test.Config(run_with_tunable_op)
-      .RunWithConfig();
-}
-
-TEST(GemmOpTest, GemmTrans) {
-  TestGemmTrans<float>();
-  TestGemmTrans<double>();
-}
-
-// NNAPI EP's GEMM only works as A*B', add case only B is transposed
-// Also test NNAPI EP's handling of non-1D bias (C of Gemm)
-template <typename T>
-static void TestGemmTransB() {
-  auto run_test = [](bool b_is_initializer, bool c_is_initializer = false) {
-    OpTester test("Gemm");
-
-    test.AddAttribute("transA", (int64_t)0);
-    test.AddAttribute("transB", (int64_t)1);
-    test.AddAttribute("alpha", 1.0f);
-    test.AddAttribute("beta", 1.0f);
-
-    test.AddInput<T>("A", {2, 4},
-                     {1.0f, 2.0f, 3.0f, 4.0f,
-                      -1.0f, -2.0f, -3.0f, -4.0f});
-    test.AddInput<T>("B", {3, 4}, std::vector<T>(12, 1.0f), b_is_initializer);
-    test.AddInput<T>("C", {1, 3}, std::vector<T>(3, 1.0f), c_is_initializer);
-    test.AddOutput<T>("Y", {2, 3},
-                      {11.0f, 11.0f, 11.0f,
-                       -9.0f, -9.0f, -9.0f});
-#if defined(OPENVINO_CONFIG_GPU_FP16) || defined(OPENVINO_CONFIG_GPU_FP32)
-    test.ConfigExcludeEps({kOpenVINOExecutionProvider});  // OpenVINO: Temporarily disabled due to accuracy issues
-#endif
-    test.Config(run_with_tunable_op)
-        .RunWithConfig();
-  };
-  run_test(false, false);
-  // CoreML EP requires weight and bias both to be initializers
-  run_test(true, true);
-}
-
-TEST(GemmOpTest, GemmTransB) {
-  TestGemmTransB<float>();
-  TestGemmTransB<double>();
-}
-
-// NNAPI EP's GEMM only works as A*B', add case only B is transposed
-// Also test NNAPI EP's handling of non-1D bias (C of Gemm) which is broadcastable but not valid for NNAPI
-template <typename T>
-static void TestGemmTransB_1() {
-  auto run_test = [](bool b_is_initializer, bool c_is_initializer = false) {
-    OpTester test("Gemm");
-
-    test.AddAttribute("transA", (int64_t)0);
-    test.AddAttribute("transB", (int64_t)1);
-    test.AddAttribute("alpha", 1.0f);
-    test.AddAttribute("beta", 1.0f);
-
-    test.AddInput<T>("A", {2, 4},
-                     {1.0f, 2.0f, 3.0f, 4.0f,
-                      -1.0f, -2.0f, -3.0f, -4.0f});
-    test.AddInput<T>("B", {3, 4}, std::vector<T>(12, 1.0f), b_is_initializer);
-    test.AddInput<T>("C", {2, 1}, std::vector<T>(2, 1.0f), c_is_initializer);
-    test.AddOutput<T>("Y", {2, 3},
-                      {11.0f, 11.0f, 11.0f,
-                       -9.0f, -9.0f, -9.0f});
-#if defined(OPENVINO_CONFIG_GPU_FP16) || defined(OPENVINO_CONFIG_GPU_FP32)
-    test.ConfigExcludeEps({kOpenVINOExecutionProvider});  // OpenVINO: Temporarily disabled due to accuracy issues
-#endif
-    test.Config(run_with_tunable_op)
-        .RunWithConfig();
-  };
-  run_test(false, false);
-  // CoreML EP requires weight and bias both to be initializers
-  run_test(true, true);
-}
-
-TEST(GemmOpTest, GemmTransB_1) {
-  TestGemmTransB_1<float>();
-  TestGemmTransB_1<double>();
-}
-
-template <typename T>
-void TestGemmAlpha() {
-  OpTester test("Gemm");
-
-  test.AddAttribute("transA", (int64_t)0);
-  test.AddAttribute("transB", (int64_t)0);
-  test.AddAttribute("alpha", 0.5f);
-  test.AddAttribute("beta", 1.0f);
-
-  test.AddInput<T>("A", {2, 4},
-                   {1.0f, 2.0f, 3.0f, 4.0f,
-                    -1.0f, -2.0f, -3.0f, -4.0f});
-  test.AddInput<T>("B", {4, 3}, std::vector<T>(12, 1.0f));
-  test.AddInput<T>("C", {3}, std::vector<T>(3, 1.0f));
-  test.AddOutput<T>("Y", {2, 3},
-                    {6.0f, 6.0f, 6.0f,
-                     -4.0f, -4.0f, -4.0f});
-  // test.AddOutput<T>("Y", {2, 3},
-  //                   {5.0f, 5.0f, 5.0f,
-  //                    -5.0f, -5.0f, -5.0f});
-#if defined(OPENVINO_CONFIG_GPU_FP16) || defined(OPENVINO_CONFIG_GPU_FP32)
-  test.ConfigExcludeEps({kOpenVINOExecutionProvider});  // OpenVINO: Temporarily disabled due to accuracy issues
-#else
-  test.ConfigExcludeEps({kTensorrtExecutionProvider});  // TensorRT: Seg fault in parser
-#endif
-  test.Config(run_with_tunable_op)
-      .RunWithConfig();
-}
-
-TEST(GemmOpTest, GemmAlpha) {
-  TestGemmAlpha<float>();
-  TestGemmAlpha<double>();
-}
-
-template <typename T>
-void TestGemmBeta() {
-  OpTester test("Gemm");
-
-  test.AddAttribute("transA", (int64_t)0);
-  test.AddAttribute("transB", (int64_t)0);
-  test.AddAttribute("alpha", 1.0f);
-  test.AddAttribute("beta", 2.0f);
-
-  test.AddInput<T>("A", {2, 4},
-                   {1.0f, 2.0f, 3.0f, 4.0f,
-                    -1.0f, -2.0f, -3.0f, -4.0f});
-  test.AddInput<T>("B", {4, 3}, std::vector<T>(12, 1.0f));
-  test.AddInput<T>("C", {3}, std::vector<T>(3, 1.0f));
-  test.AddOutput<T>("Y", {2, 3},
-                    {12.0f, 12.0f, 12.0f,
-                     -8.0f, -8.0f, -8.0f});
-#if defined(OPENVINO_CONFIG_GPU_FP16) || defined(OPENVINO_CONFIG_GPU_FP32)
-  test.ConfigExcludeEps({kOpenVINOExecutionProvider});  // OpenVINO: Temporarily disabled due to accuracy issues
-#else
-  test.ConfigExcludeEps({kTensorrtExecutionProvider});  // TensorRT: Seg fault in parser
-#endif
-  test.Config(run_with_tunable_op)
-      .RunWithConfig();
-}
-
-TEST(GemmOpTest, GemmBeta) {
-  TestGemmBeta<float>();
-  TestGemmBeta<double>();
-}
-
-template <typename T>
-void TestGemmAlphaBeta() {
-  OpTester test("Gemm");
-
-  test.AddAttribute("transA", (int64_t)0);
-  test.AddAttribute("transB", (int64_t)0);
-  test.AddAttribute("alpha", 0.5f);
-  test.AddAttribute("beta", 2.0f);
-
-  test.AddInput<T>("A", {2, 4},
-                   {1.0f, 2.0f, 3.0f, 4.0f,
-                    -1.0f, -2.0f, -3.0f, -4.0f});
-  test.AddInput<T>("B", {4, 3}, std::vector<T>(12, 1.0f));
-  test.AddInput<T>("C", {3}, std::vector<T>(3, 1.0f));
-  test.AddOutput<T>("Y", {2, 3},
-                    {7.0f, 7.0f, 7.0f,
-                     -3.0f, -3.0f, -3.0f});
-#if defined(OPENVINO_CONFIG_GPU_FP16) || defined(OPENVINO_CONFIG_GPU_FP32)
-  test.ConfigExcludeEps({kOpenVINOExecutionProvider});  // OpenVINO: Temporarily disabled due to accuracy issues
-#else
-  test.ConfigExcludeEps({kTensorrtExecutionProvider});  // TensorRT: Seg fault in parser
-#endif
-  test.Config(run_with_tunable_op)
-      .RunWithConfig();
-}
-
-TEST(GemmOpTest, GemmAlphaBeta) {
-  TestGemmAlphaBeta<float>();
-  TestGemmAlphaBeta<double>();
-}
-
-template <typename T>
-void TestGemmNaN() {
-  OpTester test("Gemm");
-
-  test.AddAttribute("transA", (int64_t)0);
-  test.AddAttribute("transB", (int64_t)0);
-  test.AddAttribute("alpha", 1.0f);
-  test.AddAttribute("beta", 0.0f);
-
-  test.AddInput<T>("A", {2, 4},
-                   {1.0f, 2.0f, 3.0f, 4.0f,
-                    -1.0f, -2.0f, -3.0f, -4.0f});
-  test.AddInput<T>("B", {4, 3}, std::vector<T>(12, 1.0f));
-  test.AddInput<T>("C", {2, 3}, std::vector<T>(6, 1.0f));
-  test.AddOutput<T>("Y", {2, 3},
-                    {10.0f, 10.0f, 10.0f,
-                     -10.0f, -10.0f, -10.0f});
-
-  // TensorRT: Seg fault in parser
-  test.ConfigExcludeEps({kTensorrtExecutionProvider})
-      .Config(run_with_tunable_op)
-      .RunWithConfig();
-}
-
-TEST(GemmOpTest, GemmNaN) {
-  TestGemmNaN<float>();
-  TestGemmNaN<double>();
-}
 #if defined(USE_DNNL)
 TEST(GemmOpTest, GemmNaN_bfloat16) {
 #ifdef USE_DNNL
@@ -444,32 +142,6 @@ TEST(GemmOpTest, GemmNaN_bfloat16) {
 }
 #endif  //  USE_DNNL
 
-template <typename T>
-void TestGemmScalarBroadcast() {
-  OpTester test("Gemm");
-
-  test.AddAttribute("transA", (int64_t)0);
-  test.AddAttribute("transB", (int64_t)0);
-  test.AddAttribute("alpha", 1.0f);
-  test.AddAttribute("beta", 1.0f);
-
-  test.AddInput<T>("A", {2, 4},
-                   {1.0f, 2.0f, 3.0f, 4.0f,
-                    -1.0f, -2.0f, -3.0f, -4.0f});
-  test.AddInput<T>("B", {4, 3}, std::vector<T>(12, 1.0f));
-  test.AddInput<T>("C", {1}, std::vector<T>{1.0f});
-  test.AddOutput<T>("Y", {2, 3},
-                    {11.0f, 11.0f, 11.0f,
-                     -9.0f, -9.0f, -9.0f});
-  test.Config(run_with_tunable_op)
-      .RunWithConfig();
-}
-
-TEST(GemmOpTest, GemmScalarBroadcast) {
-  TestGemmScalarBroadcast<float>();
-  TestGemmScalarBroadcast<double>();
-}
-
 #if defined(USE_DNNL)
 TEST(GemmOpTest, GemmScalarBroadcast_bfloat16) {
 #ifdef USE_DNNL
@@ -502,31 +174,6 @@ TEST(GemmOpTest, GemmScalarBroadcast_bfloat16) {
 }
 #endif  //  USE_DNNL
 
-template <typename T>
-void TestGemm2DBroadcast_1() {
-  OpTester test("Gemm");
-
-  test.AddAttribute("transA", (int64_t)0);
-  test.AddAttribute("transB", (int64_t)0);
-  test.AddAttribute("alpha", 1.0f);
-  test.AddAttribute("beta", 1.0f);
-
-  test.AddInput<T>("A", {2, 4},
-                   {1.0f, 2.0f, 3.0f, 4.0f,
-                    -1.0f, -2.0f, -3.0f, -4.0f});
-  test.AddInput<T>("B", {4, 3}, std::vector<T>(12, 1.0f));
-  test.AddInput<T>("C", {2, 1}, std::vector<T>{1.0, 2.0f});
-  test.AddOutput<T>("Y", {2, 3},
-                    {11.0f, 11.0f, 11.0f,
-                     -8.0f, -8.0f, -8.0f});
-  test.Config(run_with_tunable_op)
-      .RunWithConfig();
-}
-
-TEST(GemmOpTest, Gemm2DBroadcast_1) {
-  TestGemm2DBroadcast_1<float>();
-  TestGemm2DBroadcast_1<double>();
-}
 #if defined(USE_DNNL)
 TEST(GemmOpTest, Gemm2DBroadcast_1_bfloat16) {
 #ifdef USE_DNNL
@@ -558,33 +205,6 @@ TEST(GemmOpTest, Gemm2DBroadcast_1_bfloat16) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider}, nullptr, &execution_providers);  // TensorRT: Seg fault in parser
 }
 #endif  //  USE_DNNL
-
-template <typename T>
-void TestGemm2DBroadcast_2() {
-  OpTester test("Gemm");
-
-  test.AddAttribute("transA", (int64_t)0);
-  test.AddAttribute("transB", (int64_t)0);
-  test.AddAttribute("alpha", 1.0f);
-  test.AddAttribute("beta", 1.0f);
-
-  // Same as GemmBroadcast, but adding the unnecessary second dimension.
-  test.AddInput<T>("A", {2, 4},
-                   {1.0f, 2.0f, 3.0f, 4.0f,
-                    -1.0f, -2.0f, -3.0f, -4.0f});
-  test.AddInput<T>("B", {4, 3}, std::vector<T>(12, 1.0f));
-  test.AddInput<T>("C", {1, 3}, std::vector<T>{1.0f, 2.0f, 3.0f});
-  test.AddOutput<T>("Y", {2, 3},
-                    {11.0f, 12.0f, 13.0f,
-                     -9.0f, -8.0f, -7.0f});
-  test.Config(run_with_tunable_op)
-      .RunWithConfig();
-}
-
-TEST(GemmOpTest, Gemm2DBroadcast_2) {
-  TestGemm2DBroadcast_2<float>();
-  TestGemm2DBroadcast_2<double>();
-}
 
 #if defined(USE_DNNL)
 TEST(GemmOpTest, Gemm2DBroadcast_2_bfloat16) {
@@ -618,32 +238,6 @@ TEST(GemmOpTest, Gemm2DBroadcast_2_bfloat16) {
 }
 #endif  //  USE_DNNL
 
-template <typename T>
-void TestGemmFalseBroadcast() {
-  OpTester test("Gemm");
-
-  test.AddAttribute("transA", (int64_t)0);
-  test.AddAttribute("transB", (int64_t)0);
-  test.AddAttribute("alpha", 1.0f);
-  test.AddAttribute("beta", 1.0f);
-
-  test.AddInput<T>("A", {2, 4},
-                   {1.0f, 2.0f, 3.0f, 4.0f,
-                    -1.0f, -2.0f, -3.0f, -4.0f});
-  test.AddInput<T>("B", {4, 3}, std::vector<T>(12, 1.0f));
-  test.AddInput<T>("C", {2, 3}, std::vector<T>{1.0f, 1.0f, 1.0f, 2.0f, 2.0f, 2.0f});
-  test.AddOutput<T>("Y", {2, 3},
-                    {11.0f, 11.0f, 11.0f,
-                     -8.0f, -8.0f, -8.0f});
-  test.Config(run_with_tunable_op)
-      .RunWithConfig();
-}
-
-TEST(GemmOpTest, GemmFalseBroadcast) {
-  TestGemmFalseBroadcast<float>();
-  TestGemmFalseBroadcast<double>();
-}
-
 #if defined(USE_DNNL)
 TEST(GemmOpTest, GemmFalseBroadcast_2_bfloat16) {
 #ifdef USE_DNNL
@@ -675,34 +269,363 @@ TEST(GemmOpTest, GemmFalseBroadcast_2_bfloat16) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 #endif  //  USE_DNNL
+
 template <typename T>
-void TestGemmEmptyTensor() {
+class GemmOpTypedTests : public ::testing::Test {
+};
+
+// On CPUs without fp16 instructions the tests will output a warning:
+// "registered execution providers CPUExecutionProvider were unable to run the model"
+// , then they will still pass.
+using GemmOpTypedTestsTypes = ::testing::Types<float, double, MLFloat16>;
+TYPED_TEST_SUITE(GemmOpTypedTests, GemmOpTypedTestsTypes);
+
+TYPED_TEST(GemmOpTypedTests, TestGemmScalarBroadcast) {
   OpTester test("Gemm");
+
+  test.AddAttribute("transA", (int64_t)0);
+  test.AddAttribute("transB", (int64_t)0);
+  test.AddAttribute("alpha", 1.0f);
+  test.AddAttribute("beta", 1.0f);
+
+  test.AddInput<TypeParam>("A", {2, 4},
+                           {static_cast<TypeParam>(1.0f), static_cast<TypeParam>(2.0f), static_cast<TypeParam>(3.0f), static_cast<TypeParam>(4.0f),
+                            static_cast<TypeParam>(-1.0f), static_cast<TypeParam>(-2.0f), static_cast<TypeParam>(-3.0f), static_cast<TypeParam>(-4.0f)});
+  test.AddInput<TypeParam>("B", {4, 3}, std::vector<TypeParam>(12, static_cast<TypeParam>(1.0f)));
+  test.AddInput<TypeParam>("C", {1}, std::vector<TypeParam>{static_cast<TypeParam>(1.0f)});
+  test.AddOutput<TypeParam>("Y", {2, 3},
+                            {static_cast<TypeParam>(11.0f), static_cast<TypeParam>(11.0f), static_cast<TypeParam>(11.0f),
+                             static_cast<TypeParam>(-9.0f), static_cast<TypeParam>(-9.0f), static_cast<TypeParam>(-9.0f)});
+  test.Config(run_with_tunable_op)
+      .RunWithConfig();
+}
+TYPED_TEST(GemmOpTypedTests, TestGemm2DBroadcast_2) {
+  OpTester test("Gemm");
+
+  test.AddAttribute("transA", (int64_t)0);
+  test.AddAttribute("transB", (int64_t)0);
+  test.AddAttribute("alpha", 1.0f);
+  test.AddAttribute("beta", 1.0f);
+
+  // Same as GemmBroadcast, but adding the unnecessary second dimension.
+  test.AddInput<TypeParam>("A", {2, 4},
+                           {static_cast<TypeParam>(1.0f), static_cast<TypeParam>(2.0f), static_cast<TypeParam>(3.0f), static_cast<TypeParam>(4.0f),
+                            static_cast<TypeParam>(-1.0f), static_cast<TypeParam>(-2.0f), static_cast<TypeParam>(-3.0f), static_cast<TypeParam>(-4.0f)});
+  test.AddInput<TypeParam>("B", {4, 3}, std::vector<TypeParam>(12, static_cast<TypeParam>(1.0f)));
+  test.AddInput<TypeParam>("C", {1, 3}, std::vector<TypeParam>{static_cast<TypeParam>(1.0f), static_cast<TypeParam>(2.0f), static_cast<TypeParam>(3.0f)});
+  test.AddOutput<TypeParam>("Y", {2, 3},
+                            {static_cast<TypeParam>(11.0f), static_cast<TypeParam>(12.0f), static_cast<TypeParam>(13.0f),
+                             static_cast<TypeParam>(-9.0f), static_cast<TypeParam>(-8.0f), static_cast<TypeParam>(-7.0f)});
+  test.Config(run_with_tunable_op)
+      .RunWithConfig();
+}
+
+TYPED_TEST(GemmOpTypedTests, TestGemmFalseBroadcast) {
+  OpTester test("Gemm");
+
+  test.AddAttribute("transA", (int64_t)0);
+  test.AddAttribute("transB", (int64_t)0);
+  test.AddAttribute("alpha", 1.0f);
+  test.AddAttribute("beta", 1.0f);
+
+  test.AddInput<TypeParam>("A", {2, 4},
+                           {static_cast<TypeParam>(1.0f), static_cast<TypeParam>(2.0f), static_cast<TypeParam>(3.0f), static_cast<TypeParam>(4.0f),
+                            static_cast<TypeParam>(-1.0f), static_cast<TypeParam>(-2.0f), static_cast<TypeParam>(-3.0f), static_cast<TypeParam>(-4.0f)});
+  test.AddInput<TypeParam>("B", {4, 3}, std::vector<TypeParam>(12, static_cast<TypeParam>(1.0f)));
+  test.AddInput<TypeParam>("C", {2, 3}, std::vector<TypeParam>{static_cast<TypeParam>(1.0f), static_cast<TypeParam>(1.0f), static_cast<TypeParam>(1.0f), static_cast<TypeParam>(2.0f), static_cast<TypeParam>(2.0f), static_cast<TypeParam>(2.0f)});
+  test.AddOutput<TypeParam>("Y", {2, 3},
+                            {static_cast<TypeParam>(11.0f), static_cast<TypeParam>(11.0f), static_cast<TypeParam>(11.0f),
+                             static_cast<TypeParam>(-8.0f), static_cast<TypeParam>(-8.0f), static_cast<TypeParam>(-8.0f)});
+  test.Config(run_with_tunable_op)
+      .RunWithConfig();
+}
+
+TYPED_TEST(GemmOpTypedTests, TestGemmBroadcast) {
+  auto run_test = [](bool b_is_initializer, bool c_is_initializer) {
+    OpTester test("Gemm");
+
+    test.AddAttribute("transA", (int64_t)0);
+    test.AddAttribute("transB", (int64_t)0);
+    test.AddAttribute("alpha", 1.0f);
+    test.AddAttribute("beta", 1.0f);
+
+    test.AddInput<TypeParam>("A", {2, 4},
+                             {static_cast<TypeParam>(1.0f), static_cast<TypeParam>(2.0f), static_cast<TypeParam>(3.0f), static_cast<TypeParam>(4.0f),
+                              static_cast<TypeParam>(-1.0f), static_cast<TypeParam>(-2.0f), static_cast<TypeParam>(-3.0f), static_cast<TypeParam>(-4.0f)});
+    test.AddInput<TypeParam>("B", {4, 3}, std::vector<TypeParam>(12, static_cast<TypeParam>(1.0f)), b_is_initializer);
+    test.AddInput<TypeParam>("C", {3}, std::vector<TypeParam>{static_cast<TypeParam>(1.0f), static_cast<TypeParam>(2.0f), static_cast<TypeParam>(3.0f)}, c_is_initializer);
+    test.AddOutput<TypeParam>("Y", {2, 3},
+                              {static_cast<TypeParam>(11.0f), static_cast<TypeParam>(12.0f), static_cast<TypeParam>(13.0f),
+                               static_cast<TypeParam>(-9.0f), static_cast<TypeParam>(-8.0f), static_cast<TypeParam>(-7.0f)});
+#if defined(OPENVINO_CONFIG_GPU_FP16) || defined(OPENVINO_CONFIG_GPU_FP32)
+    test.ConfigExcludeEps({kOpenVINOExecutionProvider});  // OpenVINO: Temporarily disabled due to accuracy issues
+#endif
+    test.Config(run_with_tunable_op)
+        .RunWithConfig();
+  };
+
+  run_test(false, false);
+  // NNAPI EP requires weight to be an initializer
+  run_test(true, false);
+  // CoreML EP requires weight and bias both to be initializers
+  run_test(true, true);
+}
+
+TYPED_TEST(GemmOpTypedTests, TestGemmTrans) {
+  OpTester test("Gemm");
+
+  test.AddAttribute("transA", (int64_t)1);
+  test.AddAttribute("transB", (int64_t)1);
+  test.AddAttribute("alpha", 1.0f);
+  test.AddAttribute("beta", 1.0f);
+
+  test.AddInput<TypeParam>("A", {4, 2},
+                           {static_cast<TypeParam>(1.0f), static_cast<TypeParam>(-1.0f),
+                            static_cast<TypeParam>(2.0f), static_cast<TypeParam>(-2.0f),
+                            static_cast<TypeParam>(3.0f), static_cast<TypeParam>(-3.0f),
+                            static_cast<TypeParam>(4.0f), static_cast<TypeParam>(-4.0f)});
+  test.AddInput<TypeParam>("B", {3, 4}, std::vector<TypeParam>(12, static_cast<TypeParam>(1.0f)));
+  test.AddInput<TypeParam>("C", {3}, std::vector<TypeParam>(3, static_cast<TypeParam>(1.0f)));
+  test.AddOutput<TypeParam>("Y", {2, 3},
+                            {static_cast<TypeParam>(11.0f), static_cast<TypeParam>(11.0f), static_cast<TypeParam>(11.0f),
+                             static_cast<TypeParam>(-9.0f), static_cast<TypeParam>(-9.0f), static_cast<TypeParam>(-9.0f)});
+#if defined(OPENVINO_CONFIG_GPU_FP16) || defined(OPENVINO_CONFIG_GPU_FP32)
+  test.ConfigExcludeEps({kOpenVINOExecutionProvider});  // OpenVINO: Temporarily disabled due to accuracy issues
+#endif
+  test.Config(run_with_tunable_op)
+      .RunWithConfig();
+}
+
+// NNAPI EP's GEMM only works as A*B', add case only B is transposed
+// Also test NNAPI EP's handling of non-1D bias (C of Gemm)
+TYPED_TEST(GemmOpTypedTests, TestGemmTransB) {
+  auto run_test = [](bool b_is_initializer, bool c_is_initializer = false) {
+    OpTester test("Gemm");
+
+    test.AddAttribute("transA", (int64_t)0);
+    test.AddAttribute("transB", (int64_t)1);
+    test.AddAttribute("alpha", 1.0f);
+    test.AddAttribute("beta", 1.0f);
+
+    test.AddInput<TypeParam>("A", {2, 4},
+                             {static_cast<TypeParam>(1.0f), static_cast<TypeParam>(2.0f), static_cast<TypeParam>(3.0f), static_cast<TypeParam>(4.0f),
+                              static_cast<TypeParam>(-1.0f), static_cast<TypeParam>(-2.0f), static_cast<TypeParam>(-3.0f), static_cast<TypeParam>(-4.0f)});
+    test.AddInput<TypeParam>("B", {3, 4}, std::vector<TypeParam>(12, static_cast<TypeParam>(1.0f)), b_is_initializer);
+    test.AddInput<TypeParam>("C", {1, 3}, std::vector<TypeParam>(3, static_cast<TypeParam>(1.0f)), c_is_initializer);
+    test.AddOutput<TypeParam>("Y", {2, 3},
+                              {static_cast<TypeParam>(11.0f), static_cast<TypeParam>(11.0f), static_cast<TypeParam>(11.0f),
+                               static_cast<TypeParam>(-9.0f), static_cast<TypeParam>(-9.0f), static_cast<TypeParam>(-9.0f)});
+#if defined(OPENVINO_CONFIG_GPU_FP16) || defined(OPENVINO_CONFIG_GPU_FP32)
+    test.ConfigExcludeEps({kOpenVINOExecutionProvider});  // OpenVINO: Temporarily disabled due to accuracy issues
+#endif
+    test.Config(run_with_tunable_op)
+        .RunWithConfig();
+  };
+  run_test(false, false);
+  // CoreML EP requires weight and bias both to be initializers
+  run_test(true, true);
+}
+
+// NNAPI EP's GEMM only works as A*B', add case only B is transposed
+// Also test NNAPI EP's handling of non-1D bias (C of Gemm) which is broadcastable but not valid for NNAPI
+TYPED_TEST(GemmOpTypedTests, TestGemmTransB_1) {
+  auto run_test = [](bool b_is_initializer, bool c_is_initializer = false) {
+    OpTester test("Gemm");
+
+    test.AddAttribute("transA", (int64_t)0);
+    test.AddAttribute("transB", (int64_t)1);
+    test.AddAttribute("alpha", 1.0f);
+    test.AddAttribute("beta", 1.0f);
+
+    test.AddInput<TypeParam>("A", {2, 4},
+                             {static_cast<TypeParam>(1.0f), static_cast<TypeParam>(2.0f), static_cast<TypeParam>(3.0f), static_cast<TypeParam>(4.0f),
+                              static_cast<TypeParam>(-1.0f), static_cast<TypeParam>(-2.0f), static_cast<TypeParam>(-3.0f), static_cast<TypeParam>(-4.0f)});
+    test.AddInput<TypeParam>("B", {3, 4}, std::vector<TypeParam>(12, static_cast<TypeParam>(1.0f)), b_is_initializer);
+    test.AddInput<TypeParam>("C", {2, 1}, std::vector<TypeParam>(2, static_cast<TypeParam>(1.0f)), c_is_initializer);
+    test.AddOutput<TypeParam>("Y", {2, 3},
+                              {static_cast<TypeParam>(11.0f), static_cast<TypeParam>(11.0f), static_cast<TypeParam>(11.0f),
+                               static_cast<TypeParam>(-9.0f), static_cast<TypeParam>(-9.0f), static_cast<TypeParam>(-9.0f)});
+#if defined(OPENVINO_CONFIG_GPU_FP16) || defined(OPENVINO_CONFIG_GPU_FP32)
+    test.ConfigExcludeEps({kOpenVINOExecutionProvider});  // OpenVINO: Temporarily disabled due to accuracy issues
+#endif
+    test.Config(run_with_tunable_op)
+        .RunWithConfig();
+  };
+  run_test(false, false);
+  // CoreML EP requires weight and bias both to be initializers
+  run_test(true, true);
+}
+
+TYPED_TEST(GemmOpTypedTests, TestGemmAlpha) {
+  OpTester test("Gemm");
+
+  test.AddAttribute("transA", (int64_t)0);
+  test.AddAttribute("transB", (int64_t)0);
+  test.AddAttribute("alpha", 0.5f);
+  test.AddAttribute("beta", 1.0f);
+
+  test.AddInput<TypeParam>("A", {2, 4},
+                           {static_cast<TypeParam>(1.0f), static_cast<TypeParam>(2.0f), static_cast<TypeParam>(3.0f), static_cast<TypeParam>(4.0f),
+                            static_cast<TypeParam>(-1.0f), static_cast<TypeParam>(-2.0f), static_cast<TypeParam>(-3.0f), static_cast<TypeParam>(-4.0f)});
+  test.AddInput<TypeParam>("B", {4, 3}, std::vector<TypeParam>(12, static_cast<TypeParam>(1.0f)));
+  test.AddInput<TypeParam>("C", {3}, std::vector<TypeParam>(3, static_cast<TypeParam>(1.0f)));
+  test.AddOutput<TypeParam>("Y", {2, 3},
+                            {static_cast<TypeParam>(6.0f), static_cast<TypeParam>(6.0f), static_cast<TypeParam>(6.0f),
+                             static_cast<TypeParam>(-4.0f), static_cast<TypeParam>(-4.0f), static_cast<TypeParam>(-4.0f)});
+  // test.AddOutput<TypeParam>("Y", {2, 3},
+  //                   {5.0f, 5.0f, 5.0f,
+  //                    -5.0f, -5.0f, -5.0f});
+#if defined(OPENVINO_CONFIG_GPU_FP16) || defined(OPENVINO_CONFIG_GPU_FP32)
+  test.ConfigExcludeEps({kOpenVINOExecutionProvider});  // OpenVINO: Temporarily disabled due to accuracy issues
+#else
+  test.ConfigExcludeEps({kTensorrtExecutionProvider});  // TensorRT: Seg fault in parser
+#endif
+  test.Config(run_with_tunable_op)
+      .RunWithConfig();
+}
+
+TYPED_TEST(GemmOpTypedTests, TestGemmBeta) {
+  OpTester test("Gemm");
+
+  test.AddAttribute("transA", (int64_t)0);
+  test.AddAttribute("transB", (int64_t)0);
+  test.AddAttribute("alpha", 1.0f);
+  test.AddAttribute("beta", 2.0f);
+
+  test.AddInput<TypeParam>("A", {2, 4},
+                           {static_cast<TypeParam>(1.0f), static_cast<TypeParam>(2.0f), static_cast<TypeParam>(3.0f), static_cast<TypeParam>(4.0f),
+                            static_cast<TypeParam>(-1.0f), static_cast<TypeParam>(-2.0f), static_cast<TypeParam>(-3.0f), static_cast<TypeParam>(-4.0f)});
+  test.AddInput<TypeParam>("B", {4, 3}, std::vector<TypeParam>(12, static_cast<TypeParam>(1.0f)));
+  test.AddInput<TypeParam>("C", {3}, std::vector<TypeParam>(3, static_cast<TypeParam>(1.0f)));
+  test.AddOutput<TypeParam>("Y", {2, 3},
+                            {static_cast<TypeParam>(12.0f), static_cast<TypeParam>(12.0f), static_cast<TypeParam>(12.0f),
+                             static_cast<TypeParam>(-8.0f), static_cast<TypeParam>(-8.0f), static_cast<TypeParam>(-8.0f)});
+#if defined(OPENVINO_CONFIG_GPU_FP16) || defined(OPENVINO_CONFIG_GPU_FP32)
+  test.ConfigExcludeEps({kOpenVINOExecutionProvider});  // OpenVINO: Temporarily disabled due to accuracy issues
+#else
+  test.ConfigExcludeEps({kTensorrtExecutionProvider});  // TensorRT: Seg fault in parser
+#endif
+  test.Config(run_with_tunable_op)
+      .RunWithConfig();
+}
+
+TYPED_TEST(GemmOpTypedTests, TestGemmNaN) {
+  OpTester test("Gemm");
+
+  test.AddAttribute("transA", (int64_t)0);
+  test.AddAttribute("transB", (int64_t)0);
+  test.AddAttribute("alpha", 1.0f);
+  test.AddAttribute("beta", 0.0f);
+
+  test.AddInput<TypeParam>("A", {2, 4},
+                           {static_cast<TypeParam>(1.0f), static_cast<TypeParam>(2.0f), static_cast<TypeParam>(3.0f), static_cast<TypeParam>(4.0f),
+                            static_cast<TypeParam>(-1.0f), static_cast<TypeParam>(-2.0f), static_cast<TypeParam>(-3.0f), static_cast<TypeParam>(-4.0f)});
+  test.AddInput<TypeParam>("B", {4, 3}, std::vector<TypeParam>(12, static_cast<TypeParam>(1.0f)));
+  test.AddInput<TypeParam>("C", {2, 3}, std::vector<TypeParam>(6, static_cast<TypeParam>(1.0f)));
+  test.AddOutput<TypeParam>("Y", {2, 3},
+                            {static_cast<TypeParam>(10.0f), static_cast<TypeParam>(10.0f), static_cast<TypeParam>(10.0f),
+                             static_cast<TypeParam>(-10.0f), static_cast<TypeParam>(-10.0f), static_cast<TypeParam>(-10.0f)});
+
+  // TensorRT: Seg fault in parser
+  test.ConfigExcludeEps({kTensorrtExecutionProvider})
+      .Config(run_with_tunable_op)
+      .RunWithConfig();
+}
+
+TYPED_TEST(GemmOpTypedTests, TestGemmAlphaBeta) {
+  OpTester test("Gemm", 13);
+
+  test.AddAttribute("transA", (int64_t)0);
+  test.AddAttribute("transB", (int64_t)0);
+  test.AddAttribute("alpha", 0.5f);
+  test.AddAttribute("beta", 2.0f);
+
+  test.AddInput<TypeParam>("A", {2, 4},
+                           {static_cast<TypeParam>(1.0f), static_cast<TypeParam>(2.0f), static_cast<TypeParam>(3.0f), static_cast<TypeParam>(4.0f),
+                            static_cast<TypeParam>(-1.0f), static_cast<TypeParam>(-2.0f), static_cast<TypeParam>(-3.0f), static_cast<TypeParam>(-4.0f)});
+  test.AddInput<TypeParam>("B", {4, 3}, std::vector<TypeParam>(12, static_cast<TypeParam>(1.0f)));
+  test.AddInput<TypeParam>("C", {3}, std::vector<TypeParam>(3, static_cast<TypeParam>(1.0f)));
+  test.AddOutput<TypeParam>("Y", {2, 3},
+                            {static_cast<TypeParam>(7.0f), static_cast<TypeParam>(7.0f), static_cast<TypeParam>(7.0f),
+                             static_cast<TypeParam>(-3.0f), static_cast<TypeParam>(-3.0f), static_cast<TypeParam>(-3.0f)});
+#if defined(OPENVINO_CONFIG_GPU_FP16) || defined(OPENVINO_CONFIG_GPU_FP32)
+  test.ConfigExcludeEps({kOpenVINOExecutionProvider});  // OpenVINO: Temporarily disabled due to accuracy issues
+#else
+  test.ConfigExcludeEps({kTensorrtExecutionProvider});  // TensorRT: Seg fault in parser
+#endif
+  test.Config(run_with_tunable_op)
+      .RunWithConfig();
+}
+
+// C is 1D
+TYPED_TEST(GemmOpTypedTests, TestGemm2DBroadcast_1) {
+  OpTester test("Gemm");
+
+  test.AddAttribute("transA", (int64_t)0);
+  test.AddAttribute("transB", (int64_t)0);
+  test.AddAttribute("alpha", 1.0f);
+  test.AddAttribute("beta", 1.0f);
+  std::array<TypeParam, 8> a_data{static_cast<TypeParam>(1.0f), static_cast<TypeParam>(2.0f), static_cast<TypeParam>(3.0f), static_cast<TypeParam>(4.0f),
+                                  static_cast<TypeParam>(-1.0f), static_cast<TypeParam>(-2.0f), static_cast<TypeParam>(-3.0f), static_cast<TypeParam>(-4.0f)};
+
+  test.AddInput<TypeParam>("A", {2, 4}, a_data.data(), a_data.size());
+  test.AddInput<TypeParam>("B", {4, 3}, std::vector<TypeParam>(12, static_cast<TypeParam>(1.0f)));
+  test.AddInput<TypeParam>("C", {2, 1}, std::vector<TypeParam>{static_cast<TypeParam>(1.0f), static_cast<TypeParam>(2.0f)});
+  test.AddOutput<TypeParam>("Y", {2, 3},
+                            {static_cast<TypeParam>(11.0f), static_cast<TypeParam>(11.0f), static_cast<TypeParam>(11.0f),
+                             static_cast<TypeParam>(-8.0f), static_cast<TypeParam>(-8.0f), static_cast<TypeParam>(-8.0f)});
+  test.Config(run_with_tunable_op)
+      .RunWithConfig();
+}
+
+TYPED_TEST(GemmOpTypedTests, TestGemmNoTrans) {
+  auto run_test = [](bool b_is_initializer, bool c_is_initializer = false) {
+    OpTester test("Gemm", 13);
+
+    test.AddAttribute("transA", (int64_t)0);
+    test.AddAttribute("transB", (int64_t)0);
+    test.AddAttribute("alpha", 1.0f);
+    test.AddAttribute("beta", 1.0f);
+
+    std::array<TypeParam, 8> a_data{static_cast<TypeParam>(1.0f), static_cast<TypeParam>(2.0f), static_cast<TypeParam>(3.0f), static_cast<TypeParam>(4.0f),
+                                    static_cast<TypeParam>(-1.0f), static_cast<TypeParam>(-2.0f), static_cast<TypeParam>(-3.0f), static_cast<TypeParam>(-4.0f)};
+
+    test.AddInput<TypeParam>("A", {2, 4}, a_data.data(), a_data.size());
+    test.AddInput<TypeParam>("B", {4, 3}, std::vector<TypeParam>(12, static_cast<TypeParam>(1.0f)), b_is_initializer);
+    test.AddInput<TypeParam>("C", {2, 3}, std::vector<TypeParam>(6, static_cast<TypeParam>(1.0f)), c_is_initializer);
+    test.AddOutput<TypeParam>("Y", {2, 3},
+                              {static_cast<TypeParam>(11.0f), static_cast<TypeParam>(11.0f), static_cast<TypeParam>(11.0f),
+                               static_cast<TypeParam>(-9.0f), static_cast<TypeParam>(-9.0f), static_cast<TypeParam>(-9.0f)});
+    test.Config(run_with_tunable_op)
+        .RunWithConfig();
+  };
+
+  run_test(false, false);
+  // NNAPI EP requires weight to be an initializer
+  run_test(true, false);
+  // CoreML EP requires weight and bias both to be initializers
+  run_test(true, true);
+}
+TYPED_TEST(GemmOpTypedTests, GemmEmptyTensor) {
+  OpTester test("Gemm", 13);
 
   test.AddAttribute("transA", static_cast<int64_t>(0));
   test.AddAttribute("transB", static_cast<int64_t>(0));
   test.AddAttribute("alpha", 1.0f);
   test.AddAttribute("beta", 1.0f);
 
-  test.AddInput<T>("A", {0, 4},
-                   {});
-  test.AddInput<T>("B", {4, 3}, std::vector<T>(12, 1.0f));
-  test.AddInput<T>("C", {3}, std::vector<T>(3, 1.0f));
-  test.AddOutput<T>("Y", {0, 3},
-                    {});
+  test.AddInput<TypeParam>("A", {0, 4},
+                           {});
+  test.AddInput<TypeParam>("B", {4, 3}, std::vector<TypeParam>(12, static_cast<TypeParam>(1.0f)));
+  test.AddInput<TypeParam>("C", {3}, std::vector<TypeParam>(3, static_cast<TypeParam>(1.0f)));
+  test.AddOutput<TypeParam>("Y", {0, 3},
+                            {});
   // TensorRT: doesn't support dynamic shape yet
   test.ConfigExcludeEps({kTensorrtExecutionProvider, kDnnlExecutionProvider, kQnnExecutionProvider})
       .Config(run_with_tunable_op)
       .RunWithConfig();
 }
-
-TEST(GemmOpTest, GemmEmptyTensor) {
-  TestGemmEmptyTensor<float>();
-  TestGemmEmptyTensor<double>();
-}
-
-template <typename T>
-static void TestGemmNoBiasOpset11() {
+TYPED_TEST(GemmOpTypedTests, MissingBias) {
   OpTester test("Gemm", 11);
 
   test.AddAttribute("transA", static_cast<int64_t>(0));
@@ -710,13 +633,13 @@ static void TestGemmNoBiasOpset11() {
   test.AddAttribute("alpha", 1.0f);
   test.AddAttribute("beta", 1.0f);
 
-  test.AddInput<T>("A", {2, 4},
-                   {1.0f, 2.0f, 3.0f, 4.0f,
-                    -1.0f, -2.0f, -3.0f, -4.0f});
-  test.AddInput<T>("B", {4, 3}, std::vector<T>(12, 1.0f));
-  test.AddOutput<T>("Y", {2, 3},
-                    {10.0f, 10.0f, 10.0f,
-                     -10.0f, -10.0f, -10.0f});
+  test.AddInput<TypeParam>("A", {2, 4},
+                           {static_cast<TypeParam>(1.0f), static_cast<TypeParam>(2.0f), static_cast<TypeParam>(3.0f), static_cast<TypeParam>(4.0f),
+                            static_cast<TypeParam>(-1.0f), static_cast<TypeParam>(-2.0f), static_cast<TypeParam>(-3.0f), static_cast<TypeParam>(-4.0f)});
+  test.AddInput<TypeParam>("B", {4, 3}, std::vector<TypeParam>(12, static_cast<TypeParam>(1.0f)));
+  test.AddOutput<TypeParam>("Y", {2, 3},
+                            {static_cast<TypeParam>(10.0f), static_cast<TypeParam>(10.0f), static_cast<TypeParam>(10.0f),
+                             static_cast<TypeParam>(-10.0f), static_cast<TypeParam>(-10.0f), static_cast<TypeParam>(-10.0f)});
   // tensorRT don't seem to support missing bias
   std::unordered_set<std::string> excluded_provider_types{kTensorrtExecutionProvider};
   // QNN Linux result diff 0.011714935302734375 exceed the threshold
@@ -728,31 +651,20 @@ static void TestGemmNoBiasOpset11() {
       .RunWithConfig();
 }
 
-TEST(GemmOpTest, GemmNoBiasOpset11) {
-  TestGemmNoBiasOpset11<float>();
-  TestGemmNoBiasOpset11<double>();
-}
-
-template <typename T>
-static void TestGemmWithAlphaOpset11() {
+TYPED_TEST(GemmOpTypedTests, TestGemmWithAlphaOpset11) {
   OpTester test("Gemm", 11);
 
   test.AddAttribute("alpha", 2.0f);
 
-  test.AddInput<T>("A", {2, 2},
-                   {1.0f, 2.0f, 3.0f, 4.0f});
-  test.AddInput<T>("B", {2, 2}, std::vector<T>(4, 1.0f));
-  test.AddOutput<T>("Y", {2, 2},
-                    {6.0f, 6.0f, 14.0f, 14.0f});
+  test.AddInput<TypeParam>("A", {2, 2},
+                           {static_cast<TypeParam>(1.0f), static_cast<TypeParam>(2.0f), static_cast<TypeParam>(3.0f), static_cast<TypeParam>(4.0f)});
+  test.AddInput<TypeParam>("B", {2, 2}, std::vector<TypeParam>(4, static_cast<TypeParam>(1.0f)));
+  test.AddOutput<TypeParam>("Y", {2, 2},
+                            {static_cast<TypeParam>(6.0f), static_cast<TypeParam>(6.0f), static_cast<TypeParam>(14.0f), static_cast<TypeParam>(14.0f)});
   // tensorRT don't seem to support missing bias
   test.ConfigExcludeEps({kTensorrtExecutionProvider})
       .Config(run_with_tunable_op)
       .RunWithConfig();
-}
-
-TEST(GemmOpTest, GemmWithAlphaOpset11) {
-  TestGemmWithAlphaOpset11<float>();
-  TestGemmWithAlphaOpset11<double>();
 }
 
 #ifndef ENABLE_TRAINING

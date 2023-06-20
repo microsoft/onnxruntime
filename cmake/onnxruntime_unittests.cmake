@@ -280,12 +280,18 @@ if((NOT onnxruntime_MINIMAL_BUILD OR onnxruntime_EXTENDED_MINIMAL_BUILD)
 endif()
 
 file(GLOB onnxruntime_test_training_src
+  "${ORTTRAINING_SOURCE_DIR}/test/model/*.h"
   "${ORTTRAINING_SOURCE_DIR}/test/model/*.cc"
+  "${ORTTRAINING_SOURCE_DIR}/test/gradient/*.h"
   "${ORTTRAINING_SOURCE_DIR}/test/gradient/*.cc"
+  "${ORTTRAINING_SOURCE_DIR}/test/graph/*.h"
   "${ORTTRAINING_SOURCE_DIR}/test/graph/*.cc"
+  "${ORTTRAINING_SOURCE_DIR}/test/session/*.h"
   "${ORTTRAINING_SOURCE_DIR}/test/session/*.cc"
+  "${ORTTRAINING_SOURCE_DIR}/test/optimizer/*.h"
   "${ORTTRAINING_SOURCE_DIR}/test/optimizer/*.cc"
   "${ORTTRAINING_SOURCE_DIR}/test/framework/*.cc"
+  "${ORTTRAINING_SOURCE_DIR}/test/distributed/*.h"
   "${ORTTRAINING_SOURCE_DIR}/test/distributed/*.cc"
   )
 
@@ -706,6 +712,7 @@ add_dependencies(onnxruntime_test_utils ${onnxruntime_EXTERNAL_DEPENDENCIES})
 target_include_directories(onnxruntime_test_utils PUBLIC "${TEST_SRC_DIR}/util/include" PRIVATE
         ${eigen_INCLUDE_DIRS} ${ONNXRUNTIME_ROOT})
 set_target_properties(onnxruntime_test_utils PROPERTIES FOLDER "ONNXRuntimeTest")
+source_group(TREE ${TEST_SRC_DIR} FILES ${onnxruntime_test_utils_src})
 
 set(onnx_test_runner_src_dir ${TEST_SRC_DIR}/onnx)
 file(GLOB onnx_test_runner_common_srcs CONFIGURE_DEPENDS
@@ -1280,7 +1287,13 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
         "${TEST_SRC_DIR}/debug_node_inputs_outputs/debug_node_inputs_outputs_utils_test.cc"
         "${TEST_SRC_DIR}/framework/TestAllocatorManager.cc"
         "${TEST_SRC_DIR}/framework/test_utils.cc"
+        "${TEST_SRC_DIR}/providers/base_tester.h"
+        "${TEST_SRC_DIR}/providers/base_tester.cc"
+        "${TEST_SRC_DIR}/providers/op_tester.h"
+        "${TEST_SRC_DIR}/providers/op_tester.cc"
+        "${TEST_SRC_DIR}/providers/provider_test_utils.h"
         "${TEST_SRC_DIR}/providers/provider_test_utils.cc"
+        "${TEST_SRC_DIR}/providers/tester_types.h"
         ${onnxruntime_unittest_main_src}
       LIBS ${onnxruntime_test_providers_libs} ${onnxruntime_test_common_libs}
       DEPENDS ${all_dependencies}

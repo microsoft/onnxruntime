@@ -58,9 +58,11 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* past_key = context->Input<Tensor>(6);
   const Tensor* past_value = context->Input<Tensor>(7);
 
-  // TODO: Add support for bias, key_padding_mask and attention cache.
-  ORT_ENFORCE(bias == nullptr && key_padding_mask == nullptr && past_key == nullptr && past_value == nullptr,
-              "bias, key_padding_mask and attention cache is not supported");
+  if (nullptr != bias) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                           "qkv_bias is not supported on ROCm EP. "
+                           "User should fuse the qkv bias to qkv projection instead.");
+  }
 
   auto& device_prop = GetDeviceProp();
   RocmAttentionParameters attn;
@@ -72,14 +74,10 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
           &attn,
           num_heads_, mask_filter_value_, scale_,
           false, false, device_prop.maxThreadsPerBlock));
-  // TODO: support more qkv formats
-  ORT_ENFORCE(attn.qkv_format == Q_KV_BSNH_BSN2H || attn.qkv_format == QKV_BSN3H, "Got ", attn.qkv_format);
-
-  int sequence_length = attn.sequence_length;
 
   TensorShapeVector output_shape(3);
   output_shape[0] = static_cast<int64_t>(attn.batch_size);
-  output_shape[1] = static_cast<int64_t>(sequence_length);
+  output_shape[1] = static_cast<int64_t>(attn.sequence_length);
   output_shape[2] = static_cast<int64_t>(attn.v_hidden_size);
   Tensor* output = context->Output(0, output_shape);
 
@@ -92,8 +90,6 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
   TensorShape present_shape(present_dims);
   Tensor* present_key = context->Output(1, present_shape);
   Tensor* present_value = context->Output(2, present_shape);
-  // TODO: Add support for attention cache
-  ORT_ENFORCE(present_key == nullptr && present_value == nullptr, "attention cache is not supported");
 
   ORT_RETURN_IF_ERROR(ClassifyAttentionMode(
       Node().OpType(), &attn,
@@ -101,25 +97,113 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
       /*past=*/{past_key, past_value},
       /*present=*/{present_key, present_value}));
 
-
   using HipT = typename ToHipType<T>::MappedType;
   using AttentionTunableOp = GemmSoftmaxGemmPermuteTunableOp<HipT>;
   auto workspace_bytes = AttentionTunableOp::GetWorkspaceNumBytes(&attn);
   auto workspace = GetScratchBuffer<void>(workspace_bytes, context->GetComputeStream());
 
+  hipStream_t stream = Stream(context);
+  if (nullptr != present_key) {  // process past present concat
+    Strides dst_strides;
+
+    int4 past_shape;
+    Strides past_src_strides;
+    const HipT* past_key_src;
+    const HipT* past_value_src;
+    HipT* past_key_dst{};
+    HipT* past_value_dst{};
+
+    int4 add_shape;
+    Strides add_src_strides;
+    const HipT* add_key_src =reinterpret_cast<const HipT*>(key->DataRaw());
+    const HipT* add_value_src = reinterpret_cast<const HipT*>(value->DataRaw());
+    HipT* add_key_dst;
+    HipT* add_value_dst;
+
+    if (attn.mode == BSNH_BLNH_BLNH_BNPH_BNPH_BNTH_BNTH ||
+        attn.mode == BSNH_BNLH_BNLH_BNPH_BNPH_BNTH_BNTH) {
+      dst_strides = Strides::BNSHMemory(attn.batch_size, attn.num_heads, attn.total_sequence_length, attn.head_size);
+
+      past_shape = {attn.batch_size, attn.num_heads, attn.past_sequence_length, attn.head_size};
+      past_src_strides = Strides::BNSHMemory(attn.batch_size, attn.num_heads, attn.past_sequence_length, attn.head_size);
+      past_key_src = reinterpret_cast<const HipT*>(past_key->DataRaw());
+      past_value_src = reinterpret_cast<const HipT*>(past_value->DataRaw());
+      past_key_dst = reinterpret_cast<HipT*>(present_key->MutableDataRaw());
+      past_value_dst = reinterpret_cast<HipT*>(present_value->MutableDataRaw());
+
+      if (attn.mode == BSNH_BLNH_BLNH_BNPH_BNPH_BNTH_BNTH) {
+        add_src_strides = Strides::BSNHMemory(attn.batch_size, attn.kv_sequence_length, attn.num_heads, attn.head_size);
+      } else if (attn.mode == BSNH_BNLH_BNLH_BNPH_BNPH_BNTH_BNTH) {
+        add_src_strides = Strides::BNSHMemory(attn.batch_size, attn.num_heads, attn.kv_sequence_length, attn.head_size);
+      }
+    } else if (attn.mode == BSNH_BLNH_BLNH_NONE_NONE_BNTH_BNTH ||
+               attn.mode == BSNH_BNLH_BNLH_NONE_NONE_BNTH_BNTH) {
+      dst_strides = Strides::BNSHMemory(attn.batch_size, attn.num_heads, attn.total_sequence_length, attn.head_size);
+
+      if (attn.mode == BSNH_BLNH_BLNH_NONE_NONE_BNTH_BNTH) {
+        add_src_strides = Strides::BSNHMemory(attn.batch_size, attn.kv_sequence_length, attn.num_heads, attn.head_size);
+      } else if (attn.mode == BSNH_BNLH_BNLH_NONE_NONE_BNTH_BNTH) {
+        add_src_strides = Strides::BNSHMemory(attn.batch_size, attn.num_heads, attn.kv_sequence_length, attn.head_size);
+      }
+    } else if (
+        attn.mode == BSNH_BLNH_BLNH_NONE_NONE_BNMH_BNMH ||
+        attn.mode == BSNH_BNLH_BNLH_NONE_NONE_BNMH_BNMH ||
+        attn.mode == BSNH_BLNH_BLNH_BNMH_BNMH_BNMH_BNMH ||
+        attn.mode == BSNH_BNLH_BNLH_BNMH_BNMH_BNMH_BNMH) {
+      dst_strides = Strides::BNSHMemory(attn.batch_size, attn.num_heads, attn.max_sequence_length, attn.head_size);
+
+      if (attn.mode == BSNH_BLNH_BLNH_NONE_NONE_BNMH_BNMH || attn.mode == BSNH_BLNH_BLNH_BNMH_BNMH_BNMH_BNMH) {
+        add_src_strides = Strides::BSNHMemory(attn.batch_size, attn.kv_sequence_length, attn.num_heads, attn.head_size);
+      } else if (attn.mode == BSNH_BNLH_BNLH_NONE_NONE_BNMH_BNMH || attn.mode == BSNH_BNLH_BNLH_BNMH_BNMH_BNMH_BNMH) {
+        add_src_strides = Strides::BNSHMemory(attn.batch_size, attn.num_heads, attn.kv_sequence_length, attn.head_size);
+      }
+    } else {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                             "past present concatenation  is not implemented for attention mode ", attn.mode);
+    }
+    add_shape = {attn.batch_size, attn.num_heads, attn.kv_sequence_length, attn.head_size};  // kernel in coord (b,n,s,h)
+    add_key_dst = reinterpret_cast<HipT*>(present_key->MutableDataRaw()) + dst_strides.OffsetAt(0, 0, attn.past_sequence_length, 0);
+    add_value_dst = reinterpret_cast<HipT*>(present_value->MutableDataRaw()) + dst_strides.OffsetAt(0, 0, attn.past_sequence_length, 0);
+
+    if (past_key_dst) {
+      ORT_RETURN_IF_ERROR(LaunchStridedCopy(
+          stream, past_key_src, past_shape, past_src_strides.ForBNSHCoord(),
+          past_key_dst, dst_strides.ForBNSHCoord(), device_prop.maxThreadsPerBlock));
+    }
+    if (past_value_dst) {
+      ORT_RETURN_IF_ERROR(LaunchStridedCopy(
+          stream, past_value_src, past_shape, past_src_strides.ForBNSHCoord(),
+          past_value_dst, dst_strides.ForBNSHCoord(), device_prop.maxThreadsPerBlock));
+    }
+
+    ORT_RETURN_IF_ERROR(LaunchStridedCopy(
+        stream, add_key_src, add_shape, add_src_strides.ForBNSHCoord(),
+        add_key_dst, dst_strides.ForBNSHCoord(), device_prop.maxThreadsPerBlock));
+    ORT_RETURN_IF_ERROR(LaunchStridedCopy(
+        stream, add_value_src, add_shape, add_src_strides.ForBNSHCoord(),
+        add_value_dst, dst_strides.ForBNSHCoord(), device_prop.maxThreadsPerBlock));
+  }
+
   GemmSoftmaxGemmPermuteParams<HipT> params;
   params.tuning_ctx = GetTuningContext();
-  params.stream = Stream(context);
+  params.stream = stream;
   params.handle = GetRocblasHandle(context);
   params.attention = &attn;
   params.device_prop = &device_prop;
   params.scale = scale_ == 0 ? 1.0f / sqrt(attn.head_size) : scale_;
   std::tie(params.q_buffer, params.k_buffer, params.v_buffer) = ConvertToOffsetedBufferViews<HipT>(
       &attn,
-      query->DataRaw(),
-      key == nullptr ? nullptr : key->DataRaw(),
-      value == nullptr ? nullptr : value->DataRaw());
+      nullptr == query ? nullptr : reinterpret_cast<const HipT*>(query->DataRaw()),
+      nullptr == key ? nullptr : reinterpret_cast<const HipT*>(key->DataRaw()),
+      nullptr == value ? nullptr : reinterpret_cast<const HipT*>(value->DataRaw()),
+      nullptr == present_key ? nullptr : reinterpret_cast<const HipT*>(present_key->DataRaw()),
+      nullptr == present_value ? nullptr : reinterpret_cast<const HipT*>(present_value->DataRaw()));
   params.out_buffer = reinterpret_cast<HipT*>(output->MutableDataRaw());
+
+  if (key_padding_mask != nullptr) {
+    params.mask_index_buffer = key_padding_mask->Data<int>();
+    params.mask_index_dims = key_padding_mask->Shape().AsShapeVector();
+  }
 
   if (relative_position_bias != nullptr) {
     params.bias_buffer = reinterpret_cast<const HipT*>(relative_position_bias->DataRaw());

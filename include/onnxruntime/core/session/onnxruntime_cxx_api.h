@@ -433,6 +433,8 @@ struct Env : detail::Base<OrtEnv> {
   Env& UpdateEnvWithCustomLogLevel(OrtLoggingLevel log_severity_level);  ///< Wraps OrtApi::UpdateEnvWithCustomLogLevel
 
   Env& CreateAndRegisterAllocator(const OrtMemoryInfo* mem_info, const OrtArenaCfg* arena_cfg);  ///< Wraps OrtApi::CreateAndRegisterAllocator
+
+  Env& CreateAndRegisterAllocatorV2(const std::string& provider_type, const OrtMemoryInfo* mem_info, const std::unordered_map<std::string, std::string>& options, const OrtArenaCfg* arena_cfg);  ///< Wraps OrtApi::CreateAndRegisterAllocatorV2
 };
 
 /** \brief Custom Op Domain

@@ -11,6 +11,7 @@
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "test_utils.h"
 #include "test/common/tensor_op_test_utils.h"
+#include "test/providers/checkers.h"
 #include "test/test_environment.h"
 #include "test/util/include/asserts.h"
 #include "test/util/include/inference_session_wrapper.h"
@@ -78,27 +79,6 @@ static void RunOrtModel(const OrtModelTestInfo& test_info) {
 }
 
 #if !defined(ORT_MINIMAL_BUILD)
-// Same Tensor from ONNX and ORT format will have different binary representation, need to compare value by value
-static void CompareTensors(const OrtValue& left_value, const OrtValue& right_value) {
-  const Tensor& left = left_value.Get<Tensor>();
-  const Tensor& right = right_value.Get<Tensor>();
-
-  ASSERT_EQ(left.Shape().GetDims(), right.Shape().GetDims());
-  ASSERT_EQ(left.GetElementType(), right.GetElementType());
-
-  if (left.IsDataTypeString()) {
-    auto size = left.Shape().Size();
-    const auto* left_strings = left.Data<std::string>();
-    const auto* right_strings = right.Data<std::string>();
-
-    for (int i = 0; i < size; ++i) {
-      EXPECT_EQ(left_strings[i], right_strings[i]) << "Mismatch index:" << i;
-    }
-  } else {
-    ASSERT_EQ(memcmp(left.DataRaw(), right.DataRaw(), left.SizeInBytes()), 0);
-  }
-}
-
 // Keep the CompareTypeProtos in case we need debug the difference
 /*
 static void CompareTypeProtos(const TypeProto& left_type_proto, const TypeProto& right_type_proto) {
@@ -168,7 +148,8 @@ static void CompareGraphAndSessionState(const InferenceSessionWrapper& session_o
 
     const OrtValue& left = pair.second;
     const OrtValue& right = iter->second;
-    CompareTensors(left, right);
+    // CompareTensors(left, right);
+    CheckOrtValuesAreEqual("initializer_" + std::to_string(pair.first), left, right);
   }
 
   // check all node args are fine
@@ -299,7 +280,7 @@ TEST(OrtModelOnlyTests, ValidateOrtFormatModelDoesNotRunOptimizersInFullBuild) {
 
   OrtValue ml_value;
   std::vector<float> data(28 * 28, 0.0);
-  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault), {1, 1, 28, 28}, data,
+  CreateMLValue<float>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0], {1, 1, 28, 28}, data,
                        &ml_value);
   test_info.inputs.insert(std::make_pair("Input3", ml_value));
 
@@ -325,7 +306,7 @@ TEST(OrtModelOnlyTests, SerializeToOrtFormat) {
   test_info.configs.push_back(std::make_pair(kOrtSessionOptionsConfigLoadModelFormat, "ORT"));
 
   OrtValue ml_value;
-  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault), {1}, {123.f},
+  CreateMLValue<float>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0], {1}, {123.f},
                        &ml_value);
   test_info.inputs.insert(std::make_pair("state_var_in", ml_value));
 
@@ -414,7 +395,7 @@ void TestOrtModelUpdate(const PathString& onnx_file,
   auto compare_outputs = [](gsl::span<OrtValue> expected, gsl::span<OrtValue> actual) {
     ASSERT_EQ(expected.size(), actual.size());
     for (size_t i = 0; i < expected.size(); ++i) {
-      CompareTensors(expected[i], actual[i]);
+      CheckOrtValuesAreEqual("output_" + std::to_string(i), expected[i], actual[i]);
     }
   };
 
@@ -434,7 +415,7 @@ TEST(OrtModelOnlyTests, UpdateOrtModelVersion) {
                        std::vector<int64_t> input_dims{1, 1, 28, 28};
                        std::vector<float> input_data = random.Gaussian<float>(input_dims, 0.0f, 0.9f);
                        OrtValue ml_value;
-                       CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault),
+                       CreateMLValue<float>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0],
                                             input_dims, input_data, &ml_value);
 
                        inputs = {{"Input3", ml_value}};
@@ -459,7 +440,7 @@ TEST(OrtModelOnlyTests, UpdateOrtModelVersionWithSavedRuntimeOptimizations) {
                          std::vector<int64_t> input_dims{1, 1, 5, 5};
                          std::vector<uint8_t> input_data = random.Uniform<uint8_t>(input_dims, 0, 255);
                          OrtValue ml_value;
-                         CreateMLValue<uint8_t>(TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault),
+                         CreateMLValue<uint8_t>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0],
                                                 input_dims, input_data, &ml_value);
 
                          inputs.emplace(MakeString("X_", i), std::move(ml_value));
@@ -479,7 +460,7 @@ TEST(OrtModelOnlyTests, SerializeToOrtFormatMLOps) {
   test_info.configs.push_back(std::make_pair(kOrtSessionOptionsConfigLoadModelFormat, "ORT"));
 
   OrtValue ml_value;
-  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault), {3, 2},
+  CreateMLValue<float>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0], {3, 2},
                        {0.f, 1.f, 1.f, 1.f, 2.f, 0.f}, &ml_value);
   test_info.inputs.insert(std::make_pair("input", ml_value));
 
@@ -530,7 +511,7 @@ OrtModelTestInfo GetTestInfoForLoadOrtFormatModel() {
   test_info.logid = "LoadOrtFormatModel";
 
   OrtValue ml_value;
-  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault), {1}, {123.f},
+  CreateMLValue<float>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0], {1}, {123.f},
                        &ml_value);
   test_info.inputs.insert(std::make_pair("state_var_in", ml_value));
 
@@ -584,7 +565,7 @@ OrtModelTestInfo GetTestInfoForLoadOrtFormatModelMLOps() {
   test_info.logid = "LoadOrtFormatModelMLOps";
 
   OrtValue ml_value;
-  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault), {3, 2},
+  CreateMLValue<float>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0], {3, 2},
                        {0.f, 1.f, 1.f, 1.f, 2.f, 0.f}, &ml_value);
   test_info.inputs.insert(std::make_pair("input", ml_value));
 

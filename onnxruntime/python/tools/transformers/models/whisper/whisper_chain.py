@@ -1,3 +1,4 @@
+import logging
 import os
 import sys
 
@@ -11,6 +12,8 @@ from convert_generation import (  # noqa: E402
     get_shared_initializers,
     update_decoder_subgraph_share_buffer_and_use_decoder_masked_mha,
 )
+
+logger = logging.getLogger(__name__)
 
 
 def chain_model(args):
@@ -33,15 +36,10 @@ def chain_model(args):
         "repetition_penalty_fp16" if args.precision == Precision.FLOAT16 else "input_features",
         "vocab_mask" if args.use_prefix_vocab_mask else "",
         "prefix_vocab_mask" if args.use_prefix_vocab_mask else "",
-        "",
+        "",  # attention mask
+        "decoder_input_ids" if args.use_forced_decoder_ids else "",
+        "logits_processor" if args.use_logits_processor else "",
     ]
-    if args.use_forced_decoder_ids:
-        beam_inputs.append("decoder_input_ids")
-    else:
-        beam_inputs.append("")
-
-    if args.use_logits_processor:
-        beam_inputs.append("logits_processor")
     beam_outputs = ["sequences"]
 
     input_features_cast_node, len_pen_cast_node, rep_pen_cast_node = None, None, None
@@ -128,9 +126,9 @@ def chain_model(args):
 
     if hasattr(args, "use_gpu") and args.use_gpu:
         if update_decoder_subgraph_share_buffer_and_use_decoder_masked_mha(decoder_model.graph):
-            print("*****Updated whisper decoder subgraph successfully!!!*****")
+            logger.info("Updated whisper decoder subgraph to use DecoderMaskedMultiHeadAttention successfully!")
         else:
-            print("*****DecoderMaskedMultiHeadAttention is not applied to whisper decoder*****")
+            logger.warning("DecoderMaskedMultiHeadAttention could not be applied to whisper decoder subgraph")
 
     # Initializers/opsets
     # Delete shared data between decoder/encoder and move to larger graph initializers
@@ -150,8 +148,21 @@ def chain_model(args):
         else [node]
     )
     beam_graph = helper.make_graph(graph_nodes, "beam-search-test", graph_inputs, graph_outputs, initializers)
-    beam_model = helper.make_model(beam_graph, producer_name="onnxruntime.transformers", opset_imports=opset_import)
+    assert decoder_model.ir_version == encoder_model.ir_version
+    logger.info(f"Using IR version {decoder_model.ir_version} for chained model")
 
+    # Set IR version of chained model to IR version of subgraphs in order to generate a working E2E model
+    beam_model = helper.make_model_gen_version(
+        beam_graph,
+        producer_name="onnxruntime.transformers",
+        opset_imports=opset_import,
+        ir_version=decoder_model.ir_version,
+    )
+
+    if os.path.isfile(args.beam_model_output_dir):
+        logger.info(f"Overwriting {args.beam_model_output_dir} and {args.beam_model_output_dir + '.data'}")
+        os.remove(args.beam_model_output_dir)
+        os.remove(args.beam_model_output_dir + ".data")
     onnx.save(
         beam_model,
         args.beam_model_output_dir,
