@@ -31,7 +31,7 @@ export class OnnxruntimeWebAssemblySessionHandler implements SessionHandler {
     }
 
     if (typeof pathOrBuffer === 'string') {
-      if (typeof fetch === 'undefined') {
+      if (typeof process !== 'undefined' && process.versions && process.versions.node) {
         // node
         const model = await promisify(readFile)(pathOrBuffer);
         [this.sessionId, this.inputNames, this.outputNames] = await createSession(model, options);
