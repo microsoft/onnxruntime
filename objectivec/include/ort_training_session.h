@@ -242,6 +242,10 @@ NS_ASSUME_NONNULL_BEGIN
                                         error:(NSError**)error;
 @end
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 /**
  * This function sets the seed for generating random numbers.
  * Use this function to generate reproducible results. It should be noted that completely reproducible results are not guaranteed.
@@ -249,6 +253,11 @@ NS_ASSUME_NONNULL_BEGIN
  * @param seed Manual seed to use for random number generation
  */
 void ORTSetSeed(int64_t seed);
+
+#ifdef __cplusplus
+}
+#endif
+
 NS_ASSUME_NONNULL_END
 
 #endif  // ENABLE_TRAINING_APIS

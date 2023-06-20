@@ -57,7 +57,7 @@ NS_ASSUME_NONNULL_BEGIN
 - (nullable NSArray<ORTValue*>*)trainStepWithInputValues:(NSArray<ORTValue*>*)inputs
                                                    error:(NSError**)error {
   try {
-    std::vector<const OrtValue*> inputValues = Utils::toOrtValueVector(inputs);
+    std::vector<const OrtValue*> inputValues = Utils::getWrappedCAPIOrtValues(inputs);
 
     size_t outputCount;
     Ort::ThrowOnError(Ort::GetTrainingApi().TrainingSessionGetTrainingModelOutputCount(*_session, &outputCount));
@@ -72,15 +72,15 @@ NS_ASSUME_NONNULL_BEGIN
         outputValues.size(),
         outputValues.data()));
 
-    return Utils::toORTValueNSArray(outputValues, error);
+    return Utils::wrapUnownedCAPIOrtValues(outputValues, error);
   }
   ORT_OBJC_API_IMPL_CATCH_RETURNING_NULLABLE(error)
 }
 - (nullable NSArray<ORTValue*>*)evalStepWithInputValues:(NSArray<ORTValue*>*)inputs
                                                   error:(NSError**)error {
   try {
-    // create vector of Ort::Value from NSArray<ORTValue*> with same size as inputValues
-    std::vector<const OrtValue*> inputValues = Utils::toOrtValueVector(inputs);
+    // create vector of OrtValue from NSArray<ORTValue*> with same size as inputValues
+    std::vector<const OrtValue*> inputValues = Utils::getWrappedCAPIOrtValues(inputs);
 
     size_t outputCount;
     Ort::ThrowOnError(Ort::GetTrainingApi().TrainingSessionGetEvalModelOutputCount(*_session, &outputCount));
@@ -95,7 +95,7 @@ NS_ASSUME_NONNULL_BEGIN
         outputValues.size(),
         outputValues.data()));
 
-    return Utils::toORTValueNSArray(outputValues, error);
+    return Utils::wrapUnownedCAPIOrtValues(outputValues, error);
   }
   ORT_OBJC_API_IMPL_CATCH_RETURNING_NULLABLE(error)
 }
@@ -203,11 +203,11 @@ NS_ASSUME_NONNULL_BEGIN
   ORT_OBJC_API_IMPL_CATCH_RETURNING_NULLABLE(error)
 }
 
-- (BOOL)exportModelForInferenceWithOutputPath:(NSString*)infernceModelPath
+- (BOOL)exportModelForInferenceWithOutputPath:(NSString*)inferenceModelPath
                              graphOutputNames:(NSArray<NSString*>*)graphOutputNames
                                         error:(NSError**)error {
   try {
-    [self CXXAPIOrtTrainingSession].ExportModelForInferencing(Utils::toStdString(infernceModelPath),
+    [self CXXAPIOrtTrainingSession].ExportModelForInferencing(Utils::toStdString(inferenceModelPath),
                                                               Utils::toStdStringVector(graphOutputNames));
     return YES;
   }

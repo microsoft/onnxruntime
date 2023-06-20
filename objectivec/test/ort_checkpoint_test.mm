@@ -47,7 +47,10 @@ NS_ASSUME_NONNULL_BEGIN
   NSString* directoryPath = [temporaryDirectory stringByAppendingPathComponent:@"ort-objective-c-training-test"];
 
   NSError* error = nil;
-  [[NSFileManager defaultManager] createDirectoryAtPath:directoryPath withIntermediateDirectories:YES attributes:nil error:&error];
+  [[NSFileManager defaultManager] createDirectoryAtPath:directoryPath
+                            withIntermediateDirectories:YES
+                                             attributes:nil
+                                                  error:&error];
 
   if (error) {
     NSLog(@"Error creating temporary directory: %@", error.localizedDescription);
@@ -57,7 +60,7 @@ NS_ASSUME_NONNULL_BEGIN
   return directoryPath;
 }
 
-- (void)deleteTempDirectory:(NSString*)directoryPath {
++ (void)deleteTempDirectory:(NSString*)directoryPath {
   NSError* error = nil;
   NSFileManager* fileManager = [NSFileManager defaultManager];
 
@@ -95,7 +98,7 @@ NS_ASSUME_NONNULL_BEGIN
   // save checkpoint
   NSString* path = [ORTCheckpointTest createTempDirectory];
   BOOL result = [checkpoint saveCheckpointToPath:path withOptimizerState:NO error:&error];
-  [self deleteTempDirectory:path];
+  [ORTCheckpointTest deleteTempDirectory:path];
   ORTAssertBoolResultSuccessful(result, error);
 }
 

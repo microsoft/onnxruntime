@@ -37,18 +37,6 @@ NS_ASSUME_NONNULL_BEGIN
   return path;
 }
 
-+ (NSString*)createTempFileWithName:(NSString*)name extension:(NSString*)extension {
-  NSString* tempDir = NSTemporaryDirectory();
-  NSString* tempFile = [tempDir stringByAppendingPathComponent:[NSString stringWithFormat:@"%@.%@", name, extension]];
-
-  NSFileManager* fileManager = [NSFileManager defaultManager];
-  if ([fileManager createFileAtPath:tempFile contents:nil attributes:nil]) {
-    return tempFile;
-  } else {
-    return nil;
-  }
-}
-
 + (NSMutableData*)loadTensorFromFile:(NSString*)filePath skipHeader:(BOOL)skipHeader {
   NSError* error = nil;
   NSString* fileContents = [NSString stringWithContentsOfFile:filePath
@@ -62,7 +50,8 @@ NS_ASSUME_NONNULL_BEGIN
     lines = [lines subarrayWithRange:NSMakeRange(1, lines.count - 1)];
   }
 
-  NSArray<NSString*>* dataArray = [lines[0] componentsSeparatedByCharactersInSet:[NSCharacterSet characterSetWithCharactersInString:@",[] "]];
+  NSArray<NSString*>* dataArray = [lines[0] componentsSeparatedByCharactersInSet:
+                                                [NSCharacterSet characterSetWithCharactersInString:@",[] "]];
   NSMutableData* tensorData = [NSMutableData data];
 
   for (NSString* str in dataArray) {
@@ -86,13 +75,14 @@ NS_ASSUME_NONNULL_BEGIN
   ORTSessionOptions* sessionOptions = [[ORTSessionOptions alloc] initWithError:&error];
   ORTAssertNullableResultSuccessful(sessionOptions, error);
 
-  ORTTrainingSession* session = [[ORTTrainingSession alloc] initWithEnv:self.ortEnv
-                                                         sessionOptions:sessionOptions
-                                                             checkPoint:checkpoint
-                                                         trainModelPath:[ORTTrainingSessionTest getFilePathFromName:@"training_model.onnx"]
-                                                          evalModelPath:[ORTTrainingSessionTest getFilePathFromName:@"eval_model.onnx"]
-                                                     optimizerModelPath:[ORTTrainingSessionTest getFilePathFromName:@"adamw.onnx"]
-                                                                  error:&error];
+  ORTTrainingSession* session = [[ORTTrainingSession alloc]
+             initWithEnv:self.ortEnv
+          sessionOptions:sessionOptions
+              checkPoint:checkpoint
+          trainModelPath:[ORTTrainingSessionTest getFilePathFromName:@"training_model.onnx"]
+           evalModelPath:[ORTTrainingSessionTest getFilePathFromName:@"eval_model.onnx"]
+      optimizerModelPath:[ORTTrainingSessionTest getFilePathFromName:@"adamw.onnx"]
+                   error:&error];
 
   ORTAssertNullableResultSuccessful(session, error);
   return session;
@@ -101,7 +91,8 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)testInitTrainingSession {
   NSError* error = nil;
 
-  ORTCheckpoint* checkpoint = [[ORTCheckpoint alloc] initWithPath:[ORTTrainingSessionTest getFilePathFromName:@"checkpoint.ckpt"]
+  ORTCheckpoint* checkpoint = [[ORTCheckpoint alloc] initWithPath:[ORTTrainingSessionTest
+                                                                      getFilePathFromName:@"checkpoint.ckpt"]
                                                             error:&error];
   ORTAssertNullableResultSuccessful(checkpoint, error);
   ORTTrainingSession* session = [self makeTrainingSessionWithCheckPoint:checkpoint];
@@ -123,7 +114,9 @@ NS_ASSUME_NONNULL_BEGIN
 
 - (void)testInintTrainingSessionWithEval {
   NSError* error = nil;
-  ORTCheckpoint* checkpoint = [[ORTCheckpoint alloc] initWithPath:[ORTTrainingSessionTest getFilePathFromName:@"checkpoint.ckpt"] error:&error];
+  ORTCheckpoint* checkpoint = [[ORTCheckpoint alloc] initWithPath:[ORTTrainingSessionTest
+                                                                      getFilePathFromName:@"checkpoint.ckpt"]
+                                                            error:&error];
   ORTAssertNullableResultSuccessful(checkpoint, error);
   ORTTrainingSession* session = [self makeTrainingSessionWithCheckPoint:checkpoint];
 
@@ -145,37 +138,43 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)runTrainStepWithSession:(ORTTrainingSession*)session {
   // load input and expected output
   NSError* error = nil;
-  NSMutableData* expectedOutput = [ORTTrainingSessionTest loadTensorFromFile:[ORTTrainingSessionTest getFilePathFromName:@"loss_1.out"] skipHeader:YES];
+  NSMutableData* expectedOutput = [ORTTrainingSessionTest loadTensorFromFile:[ORTTrainingSessionTest
+                                                                                 getFilePathFromName:@"loss_1.out"]
+                                                                  skipHeader:YES];
 
-  NSMutableData* input = [ORTTrainingSessionTest loadTensorFromFile:[ORTTrainingSessionTest getFilePathFromName:@"input-0.in"] skipHeader:YES];
+  NSMutableData* input = [ORTTrainingSessionTest loadTensorFromFile:[ORTTrainingSessionTest
+                                                                        getFilePathFromName:@"input-0.in"]
+                                                         skipHeader:YES];
 
-  int32_t lables[] = {1, 1};
+  int32_t labels[] = {1, 1};
 
   // create ORTValue array for input and labels
-  NSMutableArray<ORTValue*>* pinnedInputs = [NSMutableArray array];
+  NSMutableArray<ORTValue*>* inputValues = [NSMutableArray array];
 
   ORTValue* inputTensor = [[ORTValue alloc] initWithTensorData:input
                                                    elementType:ORTTensorElementDataTypeFloat
                                                          shape:@[ @2, @784 ]
                                                          error:&error];
   ORTAssertNullableResultSuccessful(inputTensor, error);
-  [pinnedInputs addObject:inputTensor];
+  [inputValues addObject:inputTensor];
 
-  ORTValue* labelTensor = [[ORTValue alloc] initWithTensorData:[NSMutableData dataWithBytes:lables length:sizeof(lables)]
+  ORTValue* labelTensor = [[ORTValue alloc] initWithTensorData:[NSMutableData dataWithBytes:labels
+                                                                                     length:sizeof(labels)]
                                                    elementType:ORTTensorElementDataTypeInt32
                                                          shape:@[ @2 ]
                                                          error:&error];
-  ORTAssertNullableResultSuccessful(labelTensor, error);
-  [pinnedInputs addObject:labelTensor];
 
-  NSArray<ORTValue*>* outputs = [session trainStepWithInputValues:pinnedInputs error:&error];
+  ORTAssertNullableResultSuccessful(labelTensor, error);
+  [inputValues addObject:labelTensor];
+
+  NSArray<ORTValue*>* outputs = [session trainStepWithInputValues:inputValues error:&error];
   ORTAssertNullableResultSuccessful(outputs, error);
   XCTAssertTrue(outputs.count > 0);
 
   BOOL result = [session lazyResetGradWithError:&error];
   ORTAssertBoolResultSuccessful(result, error);
 
-  outputs = [session trainStepWithInputValues:pinnedInputs error:&error];
+  outputs = [session trainStepWithInputValues:inputValues error:&error];
   ORTAssertNullableResultSuccessful(outputs, error);
   XCTAssertTrue(outputs.count > 0);
 
@@ -191,11 +190,14 @@ NS_ASSUME_NONNULL_BEGIN
 
   NSMutableData* tensorData = [outputBuffer tensorDataWithError:&error];
   ORTAssertNullableResultSuccessful(tensorData, error);
-  XCTAssertEqualWithAccuracy([ORTTrainingSessionTest getFirstValueFromData:tensorData], [ORTTrainingSessionTest getFirstValueFromData:expectedOutput], 1e-3f);
+  XCTAssertEqualWithAccuracy([ORTTrainingSessionTest getFirstValueFromData:tensorData],
+                             [ORTTrainingSessionTest getFirstValueFromData:expectedOutput], 1e-3f);
 }
 - (void)testTrainStepOutput {
   NSError* error = nil;
-  ORTCheckpoint* checkpoint = [[ORTCheckpoint alloc] initWithPath:[ORTTrainingSessionTest getFilePathFromName:@"checkpoint.ckpt"] error:&error];
+  ORTCheckpoint* checkpoint = [[ORTCheckpoint alloc] initWithPath:[ORTTrainingSessionTest
+                                                                      getFilePathFromName:@"checkpoint.ckpt"]
+                                                            error:&error];
   ORTAssertNullableResultSuccessful(checkpoint, error);
   ORTTrainingSession* session = [self makeTrainingSessionWithCheckPoint:checkpoint];
   [self runTrainStepWithSession:session];
@@ -204,67 +206,81 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)testOptimizerStep {
   // load input and expected output
   NSError* error = nil;
-  NSMutableData* expectedOutput1 = [ORTTrainingSessionTest loadTensorFromFile:[ORTTrainingSessionTest getFilePathFromName:@"loss_1.out"] skipHeader:YES];
+  NSMutableData* expectedOutput1 = [ORTTrainingSessionTest loadTensorFromFile:[ORTTrainingSessionTest
+                                                                                  getFilePathFromName:@"loss_1.out"]
+                                                                   skipHeader:YES];
 
-  NSMutableData* expectedOutput2 = [ORTTrainingSessionTest loadTensorFromFile:[ORTTrainingSessionTest getFilePathFromName:@"loss_2.out"] skipHeader:YES];
+  NSMutableData* expectedOutput2 = [ORTTrainingSessionTest loadTensorFromFile:[ORTTrainingSessionTest
+                                                                                  getFilePathFromName:@"loss_2.out"]
+                                                                   skipHeader:YES];
 
-  NSMutableData* input = [ORTTrainingSessionTest loadTensorFromFile:[ORTTrainingSessionTest getFilePathFromName:@"input-0.in"] skipHeader:YES];
+  NSMutableData* input = [ORTTrainingSessionTest loadTensorFromFile:[ORTTrainingSessionTest
+                                                                        getFilePathFromName:@"input-0.in"]
+                                                         skipHeader:YES];
 
-  int32_t lables[] = {1, 1};
+  int32_t labels[] = {1, 1};
 
   // create ORTValue array for input and labels
-  NSMutableArray<ORTValue*>* pinnedInputs = [NSMutableArray array];
+  NSMutableArray<ORTValue*>* inputValues = [NSMutableArray array];
 
   ORTValue* inputTensor = [[ORTValue alloc] initWithTensorData:input
                                                    elementType:ORTTensorElementDataTypeFloat
                                                          shape:@[ @2, @784 ]
                                                          error:&error];
   ORTAssertNullableResultSuccessful(inputTensor, error);
-  [pinnedInputs addObject:inputTensor];
+  [inputValues addObject:inputTensor];
 
-  ORTValue* labelTensor = [[ORTValue alloc] initWithTensorData:[NSMutableData dataWithBytes:lables length:sizeof(lables)]
+  ORTValue* labelTensor = [[ORTValue alloc] initWithTensorData:[NSMutableData dataWithBytes:labels
+                                                                                     length:sizeof(labels)]
                                                    elementType:ORTTensorElementDataTypeInt32
                                                          shape:@[ @2 ]
                                                          error:&error];
   ORTAssertNullableResultSuccessful(labelTensor, error);
-  [pinnedInputs addObject:labelTensor];
+  [inputValues addObject:labelTensor];
 
   // create session
-  ORTCheckpoint* checkpoint = [[ORTCheckpoint alloc] initWithPath:[ORTTrainingSessionTest getFilePathFromName:@"checkpoint.ckpt"] error:&error];
+  ORTCheckpoint* checkpoint = [[ORTCheckpoint alloc] initWithPath:[ORTTrainingSessionTest
+                                                                      getFilePathFromName:@"checkpoint.ckpt"]
+                                                            error:&error];
   ORTAssertNullableResultSuccessful(checkpoint, error);
   ORTTrainingSession* session = [self makeTrainingSessionWithCheckPoint:checkpoint];
 
   // run train step, optimzer steps and check loss
-  NSArray<ORTValue*>* outputs = [session trainStepWithInputValues:pinnedInputs error:&error];
+  NSArray<ORTValue*>* outputs = [session trainStepWithInputValues:inputValues error:&error];
   ORTAssertNullableResultSuccessful(outputs, error);
 
   NSMutableData* loss = [outputs[0] tensorDataWithError:&error];
   ORTAssertNullableResultSuccessful(loss, error);
-  XCTAssertEqualWithAccuracy([ORTTrainingSessionTest getFirstValueFromData:loss], [ORTTrainingSessionTest getFirstValueFromData:expectedOutput1], 1e-3f);
+  XCTAssertEqualWithAccuracy([ORTTrainingSessionTest getFirstValueFromData:loss],
+                             [ORTTrainingSessionTest getFirstValueFromData:expectedOutput1], 1e-3f);
 
   BOOL result = [session lazyResetGradWithError:&error];
   ORTAssertBoolResultSuccessful(result, error);
 
-  outputs = [session trainStepWithInputValues:pinnedInputs error:&error];
+  outputs = [session trainStepWithInputValues:inputValues error:&error];
   ORTAssertNullableResultSuccessful(outputs, error);
 
   loss = [outputs[0] tensorDataWithError:&error];
   ORTAssertNullableResultSuccessful(loss, error);
-  XCTAssertEqualWithAccuracy([ORTTrainingSessionTest getFirstValueFromData:loss], [ORTTrainingSessionTest getFirstValueFromData:expectedOutput1], 1e-3f);
+  XCTAssertEqualWithAccuracy([ORTTrainingSessionTest getFirstValueFromData:loss],
+                             [ORTTrainingSessionTest getFirstValueFromData:expectedOutput1], 1e-3f);
 
   result = [session optimizerStepWithError:&error];
   ORTAssertBoolResultSuccessful(result, error);
 
-  outputs = [session trainStepWithInputValues:pinnedInputs error:&error];
+  outputs = [session trainStepWithInputValues:inputValues error:&error];
   ORTAssertNullableResultSuccessful(outputs, error);
   loss = [outputs[0] tensorDataWithError:&error];
   ORTAssertNullableResultSuccessful(loss, error);
-  XCTAssertEqualWithAccuracy([ORTTrainingSessionTest getFirstValueFromData:loss], [ORTTrainingSessionTest getFirstValueFromData:expectedOutput2], 1e-3f);
+  XCTAssertEqualWithAccuracy([ORTTrainingSessionTest getFirstValueFromData:loss],
+                             [ORTTrainingSessionTest getFirstValueFromData:expectedOutput2], 1e-3f);
 }
 
 - (void)testSetLearningRate {
   NSError* error = nil;
-  ORTCheckpoint* checkpoint = [[ORTCheckpoint alloc] initWithPath:[ORTTrainingSessionTest getFilePathFromName:@"checkpoint.ckpt"] error:&error];
+  ORTCheckpoint* checkpoint = [[ORTCheckpoint alloc] initWithPath:[ORTTrainingSessionTest
+                                                                      getFilePathFromName:@"checkpoint.ckpt"]
+                                                            error:&error];
   ORTAssertNullableResultSuccessful(checkpoint, error);
   ORTTrainingSession* session = [self makeTrainingSessionWithCheckPoint:checkpoint];
 
@@ -277,7 +293,9 @@ NS_ASSUME_NONNULL_BEGIN
 
 - (void)testLinearLRScheduler {
   NSError* error = nil;
-  ORTCheckpoint* checkpoint = [[ORTCheckpoint alloc] initWithPath:[ORTTrainingSessionTest getFilePathFromName:@"checkpoint.ckpt"] error:&error];
+  ORTCheckpoint* checkpoint = [[ORTCheckpoint alloc] initWithPath:[ORTTrainingSessionTest
+                                                                      getFilePathFromName:@"checkpoint.ckpt"]
+                                                            error:&error];
   ORTAssertNullableResultSuccessful(checkpoint, error);
   ORTTrainingSession* session = [self makeTrainingSessionWithCheckPoint:checkpoint];
 
@@ -305,7 +323,6 @@ NS_ASSUME_NONNULL_BEGIN
   ORTAssertBoolResultSuccessful(result, error);
   result = [session schedulerStepWithError:&error];
   ORTAssertBoolResultSuccessful(result, error);
-  XCTAssertNil(error);
   ORTAssertFloatResultSuccessful(0.05f, [session getLearningRateWithError:&error], error);
 
   result = [session optimizerStepWithError:&error];
@@ -317,31 +334,35 @@ NS_ASSUME_NONNULL_BEGIN
 
 - (void)testExportModelForInference {
   NSError* error = nil;
-  ORTCheckpoint* checkpoint = [[ORTCheckpoint alloc] initWithPath:[ORTTrainingSessionTest getFilePathFromName:@"checkpoint.ckpt"] error:&error];
+  ORTCheckpoint* checkpoint = [[ORTCheckpoint alloc] initWithPath:[ORTTrainingSessionTest
+                                                                      getFilePathFromName:@"checkpoint.ckpt"]
+                                                            error:&error];
   ORTAssertNullableResultSuccessful(checkpoint, error);
   ORTTrainingSession* session = [self makeTrainingSessionWithCheckPoint:checkpoint];
 
-  NSString* infernceModelPath = [NSTemporaryDirectory() stringByAppendingPathComponent:@"inference_model.onnx"];
-  XCTAssertNotNil(infernceModelPath);
+  NSString* inferenceModelPath = [NSTemporaryDirectory() stringByAppendingPathComponent:@"inference_model.onnx"];
+  XCTAssertNotNil(inferenceModelPath);
 
   NSArray<NSString*>* graphOutputNames = [NSArray arrayWithObjects:@"output-0", nil];
 
-  BOOL result = [session exportModelForInferenceWithOutputPath:infernceModelPath
+  BOOL result = [session exportModelForInferenceWithOutputPath:inferenceModelPath
                                               graphOutputNames:graphOutputNames
                                                          error:&error];
 
   ORTAssertBoolResultSuccessful(result, error);
-  XCTAssertTrue([[NSFileManager defaultManager] fileExistsAtPath:infernceModelPath]);
+  XCTAssertTrue([[NSFileManager defaultManager] fileExistsAtPath:inferenceModelPath]);
 
   [self addTeardownBlock:^{
     NSError* error = nil;
-    [[NSFileManager defaultManager] removeItemAtPath:infernceModelPath error:&error];
+    [[NSFileManager defaultManager] removeItemAtPath:inferenceModelPath error:&error];
   }];
 }
 
 - (void)testToBuffer {
   NSError* error = nil;
-  ORTCheckpoint* checkpoint = [[ORTCheckpoint alloc] initWithPath:[ORTTrainingSessionTest getFilePathFromName:@"checkpoint.ckpt"] error:&error];
+  ORTCheckpoint* checkpoint = [[ORTCheckpoint alloc] initWithPath:[ORTTrainingSessionTest
+                                                                      getFilePathFromName:@"checkpoint.ckpt"]
+                                                            error:&error];
   ORTAssertNullableResultSuccessful(checkpoint, error);
   ORTTrainingSession* session = [self makeTrainingSessionWithCheckPoint:checkpoint];
 
@@ -356,7 +377,9 @@ NS_ASSUME_NONNULL_BEGIN
 
 - (void)testFromBuffer {
   NSError* error = nil;
-  ORTCheckpoint* checkpoint = [[ORTCheckpoint alloc] initWithPath:[ORTTrainingSessionTest getFilePathFromName:@"checkpoint.ckpt"] error:&error];
+  ORTCheckpoint* checkpoint = [[ORTCheckpoint alloc] initWithPath:[ORTTrainingSessionTest
+                                                                      getFilePathFromName:@"checkpoint.ckpt"]
+                                                            error:&error];
   ORTAssertNullableResultSuccessful(checkpoint, error);
   ORTTrainingSession* session = [self makeTrainingSessionWithCheckPoint:checkpoint];
 

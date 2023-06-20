@@ -7,6 +7,8 @@
 #include <string>
 #include <variant>
 
+#import "cxx_api.h"
+
 NS_ASSUME_NONNULL_BEGIN
 @class ORTValue;
 
@@ -21,9 +23,9 @@ std::optional<std::string> toStdOptionalString(NSString* _Nullable str);
 std::vector<std::string> toStdStringVector(NSArray<NSString*>* strs);
 NSArray<NSString*>* toNSStringNSArray(const std::vector<std::string>& strs);
 
-NSArray<ORTValue*>* _Nullable toORTValueNSArray(const std::vector<OrtValue*>& values, NSError** error);
+NSArray<ORTValue*>* _Nullable wrapUnownedCAPIOrtValues(const std::vector<OrtValue*>& values, NSError** error);
 
-std::vector<const OrtValue*> toOrtValueVector(NSArray<ORTValue*>* values);
+std::vector<const OrtValue*> getWrappedCAPIOrtValues(NSArray<ORTValue*>* values);
 
 }  // namespace Utils
 
