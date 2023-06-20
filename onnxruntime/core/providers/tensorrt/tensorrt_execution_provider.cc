@@ -1994,11 +1994,11 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
     std::unique_ptr<nvinfer1::ICudaEngine> trt_engine;
     std::unique_ptr<nvinfer1::IExecutionContext> trt_context;
 
-    // Name the engine cache based on GPU compute capacity to prevent user from loading an incompatible cache
+    // Name the engine cache based on GPU compute capacity and reduce the chance of loading an incompatible cache
+    // Note: Engine cache generated on a GPU with large memory might not be loadable on a GPU with smaller memory, even if they share the same compute capacity
     cudaDeviceProp prop;
-    std::string compute_capability = "";
     CUDA_CALL_THROW(cudaGetDeviceProperties(&prop, device_id_));
-    compute_capability = GetComputeCapacity(prop);
+    std::string compute_capability = GetComputeCapacity(prop);
 
     if (!has_dynamic_shape) {
       const std::string cache_path = GetCachePath(cache_path_, trt_node_name_with_precision);
@@ -2240,9 +2240,8 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
 
       // Name the engine cache based on GPU compute capacity to prevent user from loading an incompatible cache
       cudaDeviceProp prop;
-      std::string compute_capability = "";
       CUDA_CALL_THROW(cudaGetDeviceProperties(&prop, device_id_));
-      compute_capability = GetComputeCapacity(prop);
+      std::string compute_capability = GetComputeCapacity(prop);
 
       // Load serialized engine
       const std::string cache_path = GetCachePath(trt_state->engine_cache_path, trt_state->trt_node_name_with_precision);

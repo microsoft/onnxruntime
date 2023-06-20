@@ -447,7 +447,7 @@ std::string GetCachePath(const std::string& root, const std::string& name) {
  * Get compute capability
  *
  */
-std::string GetComputeCapacity(cudaDeviceProp prop) {
+std::string GetComputeCapacity(const cudaDeviceProp& prop) {
   const std::string compute_capability = std::to_string(prop.major * 10 + prop.minor);
   return compute_capability;
 }
