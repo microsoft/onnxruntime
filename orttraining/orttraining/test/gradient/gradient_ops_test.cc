@@ -1901,19 +1901,19 @@ TEST(GradientCheckerTest, GatherGrad) {
   }
 }
 
-TEST(GradientCheckerTest, GatherGradGrad) {
+TEST(GradientCheckerTest, PadByAxisGrad) {
   float max_error;
   GradientChecker<float, float, float> gradient_checker;
-  OpDef op_def{"GatherGrad", kMSDomain, 1};
+  OpDef op_def{"PadByAxis", kMSDomain, 1};
   TensorInfo shape_info({2}, false, nullptr, DataTypeImpl::GetTensorType<int64_t>());
   TensorInfo indices_info({2, 2}, false, nullptr, DataTypeImpl::GetTensorType<int64_t>());
   TensorInfo x_info({2, 2, 3});
-  std::vector<std::vector<float>> x_datas = {{6, 3}, {3, 5, 0, 1}, {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11}};
+  std::vector<std::vector<float>> x_datas = {{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11}, {3, 5, 0, 1}, {6, 3}};
 
   TensorShape y_shape{6, 3};
   int64_t axis = 0;
 
-  ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {shape_info, indices_info, x_info}, {y_shape}, &max_error,
+  ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {x_info, indices_info, shape_info}, {y_shape}, &max_error,
                                                          x_datas, {MakeAttribute("axis", axis)}));
   EXPECT_IS_TINY(max_error);
 }

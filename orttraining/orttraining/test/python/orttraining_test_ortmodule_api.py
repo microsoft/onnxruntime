@@ -5868,12 +5868,12 @@ def test_ops_for_padding_elimination(test_cases):
     assert len([node.op_type for node in training_model.graph.node if node.op_type == "Sub"]) == 1
     assert len([node.op_type for node in training_model.graph.node if node.op_type == "NonZero"]) == 1
     assert len([node.op_type for node in training_model.graph.node if node.op_type == "Squeeze"]) == 1
-    assert len([node.op_type for node in training_model.graph.node if node.op_type == "GatherGrad"]) == 1
+    assert len([node.op_type for node in training_model.graph.node if node.op_type == "PadByAxis"]) == 1
     if case == 2:
         assert len([node.op_type for node in training_model.graph.node if node.op_type == "ShrunkenGather"]) == 2
     else:
         assert len([node.op_type for node in training_model.graph.node if node.op_type == "ShrunkenGather"]) == 1
-    gathergrad_node = [node for node in training_model.graph.node if node.op_type == "GatherGrad"][0]
+    gathergrad_node = [node for node in training_model.graph.node if node.op_type == "PadByAxis"][0]
     if test_op == "Add":
         if case == 0:
             assert "/_original_module/Add_output_0" in gathergrad_node.input
@@ -6011,7 +6011,14 @@ def test_e2e_padding_elimination():
     batch_size, max_seq_length = 8, 128
     device = "cuda"
     pt_model = ToyModel(num_layers, vocab_size, hidden_size, num_attention_heads, 1, 3).to(device)
-    ort_model = ORTModule(copy.deepcopy(pt_model))
+
+    from onnxruntime.training.ortmodule import ORTModule, DebugOptions, LogLevel
+
+    # model = ORTModule(model, DebugOptions(save_onnx=True, log_level=LogLevel.VERBOSE, onnx_prefix="model_name"))
+
+    ort_model = ORTModule(
+        copy.deepcopy(pt_model), DebugOptions(save_onnx=True, log_level=LogLevel.INFO, onnx_prefix="0620")
+    )
     pt_optimizer = torch.optim.Adam(pt_model.parameters())
     ort_optimizer = torch.optim.Adam(ort_model.parameters())
 
@@ -6037,5 +6044,5 @@ def test_e2e_padding_elimination():
 
     training_model = ort_model._torch_module._execution_manager(True)._onnx_models.optimized_model
     assert "ShrunkenGather" in [node.op_type for node in training_model.graph.node]
-    assert "GatherGrad" in [node.op_type for node in training_model.graph.node]
+    assert "PadByAxis" in [node.op_type for node in training_model.graph.node]
     del os.environ["ORTMODULE_ENABLE_EMBEDDING_SPARSE_OPTIMIZER"]

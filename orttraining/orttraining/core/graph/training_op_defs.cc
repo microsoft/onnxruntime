@@ -1182,6 +1182,27 @@ void RegisterTrainingOpSchemas() {
           {"tensor(int32)", "tensor(int64)"},
           "Constrain indices to integer types");
 
+  ONNX_CONTRIB_OPERATOR_SCHEMA(PadByAxis)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .Input(0, "input", "input data of rank N, shape is [d1, d2, ..., dN]", "T")
+      .Input(1, "indices", "1D Tensor of int32/int64 indices, indexing on axis.", "T_INDEX")
+      .Input(2, "pad_dims", "1D tensor with two values, [M1, M2].", "T_INT")
+      .Output(0, "output", "output data of rank N+1, [M1, M2, d2, ..., dN]", "T")
+      .Output(1, "pad_output_shape", "1D tensor with output shape, [M1*M2, d2, ..., dN]", "T_INT")
+      .TypeConstraint(
+          "T_INT",
+          {"tensor(int32)", "tensor(int64)"},
+          "Constrain shape to integer tensors.")
+      .TypeConstraint(
+          "T",
+          {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
+          "Constrain input and output types to float tensors.")
+      .TypeConstraint(
+          "T_INDEX",
+          {"tensor(int32)", "tensor(int64)"},
+          "Constrain indices to integer types");
+
   ONNX_CONTRIB_OPERATOR_SCHEMA(GatherElementsGrad)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
