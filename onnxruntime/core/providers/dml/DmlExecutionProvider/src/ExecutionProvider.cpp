@@ -81,11 +81,6 @@ namespace Dml
         GRAPHICS_THROW_IF_FAILED(commandQueue->GetDevice(IID_GRAPHICS_PPV_ARGS(device.GetAddressOf())));
 
         m_impl = wil::MakeOrThrow<ExecutionProviderImpl>(dmlDevice, device.Get(), commandQueue, enableMetacommands);
-
-        // Register the allocators with ORT, through concrete ORT methods on the IExecutionProvider base class
-        InsertAllocator(m_impl->GetGpuAllocator());
-        InsertAllocator(m_impl->GetCpuInputAllocator());
-        InsertAllocator(m_impl->GetCpuOutputAllocator());
     }
 
     std::vector<std::unique_ptr<onnxruntime::ComputeCapability>>
@@ -121,7 +116,7 @@ namespace Dml
         ORT_TRY
         {
         ComPtr<IUnknown> allocation;
-        allocation.Attach(static_cast<IUnknown* >(m_allocator->Alloc(size, roundingMode)));
+        allocation.Attach(static_cast<IUnknown* >(m_allocator->Alloc(size)));
 
         const auto* allocInfo = m_allocator->DecodeDataHandle(allocation.Get());
 
@@ -189,29 +184,33 @@ namespace Dml
 
         m_context = std::make_shared<ExecutionContext>(m_d3d12Device.Get(), m_dmlDevice.Get(), queue);
 
-        // Create an allocator for D3D12 buffers used to hold tensor data. The returned buffers from the allocator
-        // should be DEFAULT heap buffers which can be used as UAVs, and which start in UAV state.
-        m_allocator = std::make_shared<BucketizedBufferAllocator>(
-            m_d3d12Device.Get(),
-            m_context,
-            CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
-            D3D12_HEAP_FLAG_NONE,
-            D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,
-            D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
-            std::make_unique<DmlCommittedResourceAllocator>(m_d3d12Device.Get()));
-
-        m_context->SetAllocator(m_allocator);
-
         m_uploadHeap = std::make_unique<PooledUploadHeap>(m_d3d12Device.Get(), m_context);
         m_readbackHeap = std::make_unique<ReadbackHeap>(m_d3d12Device.Get(), m_context);
-
-        // CPU Allocator used to create buffers for the MemcpyFromHost, Shape and Size operators.
-        m_cpuInputAllocator = std::make_shared<CPUAllocator>(OrtMemType::OrtMemTypeCPUInput);
-        m_cpuOutputAllocator = std::make_shared<CPUAllocator>(OrtMemType::OrtMemTypeCPUOutput);
 
         CreateDmlKernelRegistry(&m_kernelRegistry, &m_internalRegInfoMap);
 
         m_lastUploadFlushTime = std::chrono::steady_clock::now();
+    }
+
+    std::vector<onnxruntime::AllocatorPtr> ExecutionProviderImpl::CreatePreferredAllocators() {
+        if (!m_allocator)
+        {
+            // Create an allocator for D3D12 buffers used to hold tensor data. The returned buffers from the allocator
+            // should be DEFAULT heap buffers which can be used as UAVs, and which start in UAV state.
+            m_allocator = std::make_shared<BucketizedBufferAllocator>(m_d3d12Device.Get(),
+                m_context,  // TODO(leca): REVIEW: Will it cause memory issue when m_context is released in EP while alloc is released in sessionState?
+                CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
+                D3D12_HEAP_FLAG_NONE,
+                D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,
+                D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
+                std::make_unique<DmlCommittedResourceAllocator>(m_d3d12Device.Get()));
+            m_allocator->SetDefaultRoundingMode(m_defaultRoundingMode);   // TODO(leca): REVIEW: the original code is able to set roudingMode multiple times during alloc's life time. Double check this case is not happening
+            m_context->SetAllocator(m_allocator);
+            // CPU Allocator used to create buffers for the MemcpyFromHost, Shape and Size operators.
+            m_cpuInputAllocator = std::make_shared<CPUAllocator>(OrtMemType::OrtMemTypeCPUInput);
+        }
+
+        return std::vector<onnxruntime::AllocatorPtr>{m_allocator, m_cpuInputAllocator,};
     }
 
     HRESULT __stdcall ExecutionProviderImpl::GetD3DDevice(_COM_Outptr_ ID3D12Device** d3dDevice) const noexcept
@@ -966,7 +965,7 @@ namespace Dml
 
     void ExecutionProviderImpl::SetDefaultRoundingMode(AllocatorRoundingMode roundingMode)
     {
-        m_allocator->SetDefaultRoundingMode(roundingMode);
+        m_defaultRoundingMode = roundingMode;
     }
 
     void ExecutionProviderImpl::ReleaseCompletedReferences()
@@ -1115,12 +1114,6 @@ namespace Dml
     {
         return m_cpuInputAllocator;
     }
-
-    std::shared_ptr<onnxruntime::IAllocator> ExecutionProviderImpl::GetCpuOutputAllocator()
-    {
-        return m_cpuOutputAllocator;
-    }
-
 
     onnxruntime::common::Status ExecutionProviderImpl::OnSessionInitializationEnd()
     {
