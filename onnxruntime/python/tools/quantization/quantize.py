@@ -347,7 +347,7 @@ def quantize_static(
 
     pre_processed: bool = model_has_pre_process_metadata(model)
     if not pre_processed:
-        logging.warning(
+        logging.info(
             "Please consider pre-processing before quantization. See "
             "https://github.com/microsoft/onnxruntime-inference-examples/blob/main/quantization/image_classification"
             "/cpu/ReadMe.md "
@@ -364,7 +364,7 @@ def quantize_static(
 
     with tempfile.TemporaryDirectory(prefix="ort.quant.") as quant_tmp_dir:
         calibrator = create_calibrator(
-            model,
+            Path(model_input),
             op_types_to_quantize,
             augmented_model_path=Path(quant_tmp_dir).joinpath("augmented_model.onnx").as_posix(),
             calibrate_method=calibrate_method,

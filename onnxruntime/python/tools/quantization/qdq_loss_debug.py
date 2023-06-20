@@ -31,7 +31,7 @@ Example Usage:
         save_as_external_data=False,
     )
 
-    tensor_dict = collect_activations(augmented_model_path, data_reader)
+    tensor_dict = collect_activations(augmented_model_path, input_data_reader)
 ```
 
 `tensor_dict` points to a dictionary where the keys are tensor names and each value
@@ -58,7 +58,6 @@ from .quant_utils import (
     DEQUANT_OUTPUT_SUFFIX,
     QUANT_INPUT_SUFFIX,
     TENSOR_NAME_QUANT_SUFFIX,
-    clone_model_with_shape_infer,
     find_by_name,
     load_model,
 )
@@ -68,7 +67,7 @@ _TENSOR_SAVE_POSTFIX_LEN = len(_TENSOR_SAVE_POSTFIX)
 
 
 def modify_model_output_intermediate_tensors(
-    onnx_model: Union[str, Path, ModelProto], op_types_for_saving: Optional[Sequence[str]] = None
+    onnx_model: Union[str, Path], op_types_for_saving: Optional[Sequence[str]] = None
 ) -> ModelProto:
     """Augment a given ONNX model to save node input/output tensors.
 
@@ -76,7 +75,7 @@ def modify_model_output_intermediate_tensors(
     so that their values can be retrieved for debugging purposes.
 
     Args:
-        model: An ONNX model or the path to load the model.
+        onnx_model: the path to load the model.
         op_types_for_saving: Operator types for which the
                 input/output should be saved. By default, saving all the
                 float32/float16 tensors.
@@ -88,7 +87,7 @@ def modify_model_output_intermediate_tensors(
     if op_types_for_saving is None:
         op_types_for_saving = []
     saver = CalibraterBase(onnx_model, op_types_to_calibrate=op_types_for_saving)
-    model: ModelProto = clone_model_with_shape_infer(saver.model)
+    model = saver.model
     tensors, _ = saver.select_tensors_to_calibrate(model)
     reshape_shape_name = "LinearReshape_" + str(time.time())
     reshape_shape = numpy_helper.from_array(numpy.array([-1], dtype=numpy.int64), reshape_shape_name)
