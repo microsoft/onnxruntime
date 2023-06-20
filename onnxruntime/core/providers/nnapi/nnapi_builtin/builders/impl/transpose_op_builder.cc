@@ -64,7 +64,7 @@ Status TransposeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, co
   const auto& input = node_unit.Inputs()[0].node_arg.Name();
   const auto& output = node_unit.Outputs()[0].node_arg.Name();
   NodeAttrHelper helper(node_unit);
-  std::vector<int32_t> perm = helper.Get("perm", std::vector<int32_t>());
+  std::vector<int32_t> perm = helper.Get("perm", std::vector<int32_t>{});
   auto input_dims = static_cast<int32_t>(shaper[input].size());
   if (perm.empty()) {
     for (int32_t i = input_dims - 1; i >= 0; i--)
