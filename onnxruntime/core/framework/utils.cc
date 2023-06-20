@@ -123,7 +123,7 @@ static common::Status AllocateHelper(const AllocatorPtr& allocator,
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                            "Unsupported OrtValue type (invalid=",
                            (source_mlvalue.IsInvalid() ? 1 : 0),
-                           ", optional=", (source_mlvalue.IsOptional() ? 1 : 0), 
+                           ", optional=", (source_mlvalue.IsOptional() ? 1 : 0),
                            ", nontensor=", (source_mlvalue.IsNonTensor() ? 1 : 0),
                            ", primitive=", (source_mlvalue.IsPrimitiveData() ? 1 : 0),
                            ").");
