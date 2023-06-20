@@ -18,9 +18,7 @@ import torch.jit
 import torch.onnx
 import torch.onnx._onnx_supported_ops
 from torch._decomp import decomposition_table
-from torch._dynamo.utils import detect_fake_mode
 from torch._subclasses.fake_tensor import FakeTensor
-from torch.fx.experimental.proxy_tensor import make_fx
 from torch.fx.passes.fake_tensor_prop import FakeTensorProp
 from torch.fx.passes.infra.partitioner import CapabilityBasedPartitioner
 from torch.fx.passes.operator_support import OperatorSupport
@@ -182,8 +180,8 @@ def _get_support_dictionaries_and_decomposition_tables() -> (
 (
     _SUPPORT_DICT,
     _EXTRA_SUPPORT_DICT,
-    _ATEN2ATEN_DECOMP,
-    _ATEN2PRIM_DECOMP,
+    ATEN2ATEN_DECOMP,
+    ATEN2PRIM_DECOMP,
 ) = _get_support_dictionaries_and_decomposition_tables()
 
 
@@ -628,15 +626,8 @@ class OrtBackend:
         if graph_module in self._partitioner_cache:
             partitioned_prim_graph_module = self._partitioner_cache[graph_module]
         else:
-            prim_graph_module = make_fx(
-                graph_module, tracing_mode="fake", _allow_non_fake_inputs=True, decomposition_table=_ATEN2ATEN_DECOMP
-            )(*args)
+            prim_graph_module = graph_module
             # TODO(wechi): this is required for removing aten::_to_copy in _replace_to_copy_with_to.
-            # We need input and output tensors' devices to decide if aten::_to_copy is just a Cast.
-            fake_mode = detect_fake_mode(args)
-            if not fake_mode:
-                fake_mode = torch._subclasses.FakeTensorMode()
-            FakeTensorProp(prim_graph_module, mode=fake_mode).propagate(*args)
             _replace_to_copy_with_to(prim_graph_module)
             partitioner = CapabilityBasedPartitioner(
                 prim_graph_module, self._supported_ops, allows_single_node_partition=False

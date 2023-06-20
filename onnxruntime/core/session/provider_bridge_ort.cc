@@ -1068,8 +1068,8 @@ struct ProviderHostImpl : ProviderHost {
 #endif
 
 #if defined(USE_CUDA) || defined(USE_ROCM)
-
   PhiloxGenerator& PhiloxGenerator__Default() override { return PhiloxGenerator::Default(); }
+#endif
 
 #ifdef ENABLE_TRAINING_TORCH_INTEROP
   void contrib__PythonOpBase__Init(contrib::PythonOpBase* p, const OpKernelInfo& info) override { p->PythonOpBase::Init(info); }
@@ -1091,7 +1091,6 @@ struct ProviderHostImpl : ProviderHost {
   void RefCountTracker__DumpDetails(const language_interop_ops::torch::RefCountTracker* p, const std::string& phase_name) override {
     return p->language_interop_ops::torch::RefCountTracker::DumpDetails(phase_name);
   }
-#endif
 #endif
 
 #if defined(USE_CANN)
