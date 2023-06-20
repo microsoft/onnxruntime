@@ -28,12 +28,12 @@ template <typename T, typename ALayout, typename BLayout>
 class GemmHipBlasLt : public IKernelExplorer {
  public:
   GemmHipBlasLt(BlasOp opa, BlasOp opb,
-         int64_t m, int64_t n, int64_t k,
-         double alpha,
-         DeviceArray& a, int64_t lda,
-         DeviceArray& b, int64_t ldb,
-         double beta,
-         DeviceArray& c, int64_t ldc)
+                int64_t m, int64_t n, int64_t k,
+                double alpha,
+                DeviceArray& a, int64_t lda,
+                DeviceArray& b, int64_t ldb,
+                double beta,
+                DeviceArray& c, int64_t ldc)
       : params_{} {
     params_.tuning_ctx = TuningContext();
     params_.stream = Stream();

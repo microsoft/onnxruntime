@@ -7,6 +7,8 @@
 #include <hipblaslt/hipblaslt.h>
 #include <hipblaslt/hipblaslt-ext.hpp>
 #include "core/providers/rocm/tunable/gemm_ck.cuh"
+#include "core/providers/rocm/rocm_execution_provider.h"
+#include "core/providers/rocm/rocm_stream_handle.h"
 #endif
 
 #include "contrib_ops/rocm/bert/gemm_fast_gelu_common.h"
@@ -61,7 +63,6 @@ constexpr hipblasOperation_t MapCKLayoutToHipBlasLt() {
   return HIPBLAS_OP_T;
 }
 
-
 template <typename T, typename ParamsT>
 int GetBatchCountFromParams(const ParamsT* params) {
   ORT_UNUSED_PARAMETER(params);
@@ -73,7 +74,6 @@ int GetBatchCountFromParams(const StridedBatchedGemmParams<T>* params) {
   return params->batch;
 }
 
-
 template <typename T, typename ParamsT>
 const T* GetBiasFromParams(const ParamsT* params) {
   ORT_UNUSED_PARAMETER(params);
@@ -84,7 +84,6 @@ template <typename T>
 const T* GetBiasFromParams(const GemmFastGeluParams<T>* params) {
   return params->bias;
 }
-
 
 template <typename T, typename ParamsT>
 std::string TypeStringFor() {
@@ -98,28 +97,27 @@ std::string TypeStringFor() {
   return "UnknownType";
 }
 
-
 template <typename T, typename ALayout, typename BLayout, typename ParamsT>
 auto GetHipBlasLtTypeStringAndOps(ActivationType activation_type = ActivationType::NONE) {
   hipblasLtHandle_t handle;
-  hipblasLtCreate(&handle);
+  HIPBLASLT_CALL_THROW(hipblasLtCreate(&handle));
 
   hipblasOperation_t trans_a = MapCKLayoutToHipBlasLt<BLayout>();
   hipblasOperation_t trans_b = MapCKLayoutToHipBlasLt<ALayout>();
   hipblasDatatype_t in_out_datatype = HipBlasDataTypeFor<T>();
   std::vector<hipblasLtMatmulHeuristicResult_t> heuristic_result;
 
-  hipblaslt_ext::getAllAlgos(handle,
-                             hipblaslt_ext::GemmType::HIPBLASLT_GEMM,
-                             trans_a,
-                             trans_b,
-                             in_out_datatype,
-                             in_out_datatype,
-                             in_out_datatype,
-                             in_out_datatype,
-                             HIPBLASLT_COMPUTE_F32,
-                             heuristic_result);
-  hipblasLtDestroy(handle);
+  HIPBLASLT_CALL_THROW(hipblaslt_ext::getAllAlgos(handle,
+                                                  hipblaslt_ext::GemmType::HIPBLASLT_GEMM,
+                                                  trans_a,
+                                                  trans_b,
+                                                  in_out_datatype,
+                                                  in_out_datatype,
+                                                  in_out_datatype,
+                                                  in_out_datatype,
+                                                  HIPBLASLT_COMPUTE_F32,
+                                                  heuristic_result));
+  HIPBLASLT_CALL_THROW(hipblasLtDestroy(handle));
 
   int returned_algo_count = heuristic_result.size();
   std::vector<std::pair<std::string, Op<ParamsT>>> ret;
@@ -219,11 +217,18 @@ auto GetHipBlasLtTypeStringAndOps(ActivationType activation_type = ActivationTyp
                                                          workspace_size);
 
       TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(
-        status != HIPBLAS_STATUS_SUCCESS, "hipBLASLt find_all: algo not supported, index ", std::to_string(i));
+          status != HIPBLAS_STATUS_SUCCESS, "hipBLASLt find_all: algo not supported, index ", std::to_string(i));
 
       void* workspace;
+      const auto* ep = static_cast<const ROCMExecutionProvider*>(params->TuningContext()->GetExecutionProvider());
+      IAllocatorUniquePtr<void> buffer;
       if (workspace_size > 0) {
-        HIP_RETURN_IF_ERROR(hipMalloc(&workspace, workspace_size));
+        onnxruntime::Stream ort_stream(
+            static_cast<StreamHandle>(params->stream), ep->GetOrtDeviceByMemType(OrtMemTypeDefault));
+        buffer = ep->GetScratchBuffer<void>(
+            workspace_size, &ort_stream, onnxruntime::WaitRocmNotificationOnDevice);
+        using HipT = typename ToHipType<T>::MappedType;
+        workspace = reinterpret_cast<HipT*>(buffer.get());
       }
 
       HIPBLASLT_RETURN_IF_ERROR(hipblasLtMatmul(op_handle,
@@ -243,10 +248,6 @@ auto GetHipBlasLtTypeStringAndOps(ActivationType activation_type = ActivationTyp
                                                 workspace_size,
                                                 params->stream));
 
-      if (workspace_size > 0) {
-        HIP_RETURN_IF_ERROR(hipFree(workspace));
-      }
-
       HIPBLASLT_RETURN_IF_ERROR(hipblasLtMatmulDescDestroy(matmul));
       HIPBLASLT_RETURN_IF_ERROR(hipblasLtMatrixLayoutDestroy(mat_a));
       HIPBLASLT_RETURN_IF_ERROR(hipblasLtMatrixLayoutDestroy(mat_b));
@@ -254,8 +255,7 @@ auto GetHipBlasLtTypeStringAndOps(ActivationType activation_type = ActivationTyp
       HIPBLASLT_RETURN_IF_ERROR(hipblasLtDestroy(op_handle));
       return Status::OK();
     };
-    std::string type_string = TypeStringFor<T, ParamsT>();
-    type_string += "HipBlasLt_" + std::to_string(i);
+    std::string type_string = onnxruntime::MakeString(TypeStringFor<T, ParamsT>(), "HipBlasLt_", i);
     ret.emplace_back(type_string, std::move(hipblaslt_gemm_op));
   }
   return ret;
@@ -264,7 +264,7 @@ auto GetHipBlasLtTypeStringAndOps(ActivationType activation_type = ActivationTyp
 template <typename T, typename ALayout, typename BLayout>
 auto GetHipBlasLtGemmTypeStringAndOps() {
   return GetHipBlasLtTypeStringAndOps<T, ALayout, BLayout, GemmParams<T>>();
-  }
+}
 
 template <typename T, typename ALayout, typename BLayout>
 auto GetHipBlasLtStridedBatchedGemmTypeStringAndOps() {

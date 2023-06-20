@@ -37,6 +37,10 @@ Status ITuningContext::LoadTuningResults(const TuningResults& tr) {
   return Status::OK();
 }
 
+const IExecutionProvider* ITuningContext::GetExecutionProvider() const {
+  return ep_;
+}
+
 KernelMap TuningResultsManager::Lookup(const std::string& op_signature) const {
   std::scoped_lock l{lock_};
   auto it = results_.find(op_signature);
