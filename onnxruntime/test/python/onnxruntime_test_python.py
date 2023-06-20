@@ -1348,6 +1348,24 @@ class TestInferenceSession(unittest.TestCase):
             providers=onnxrt.get_available_providers(),
         )
 
+        if "CUDAExecutionProvider" in available_providers:
+            cuda_mem_info = onnxrt.OrtMemoryInfo(
+                "Cuda",
+                onnxrt.OrtAllocatorType.ORT_ARENA_ALLOCATOR,
+                0,
+                onnxrt.OrtMemType.DEFAULT,
+            )
+            ort_arena_cfg = onnxrt.OrtArenaCfg(0, -1, -1, -1)
+            onnxrt.create_and_register_allocator_v2("CUDAExecutionProvider", cuda_mem_info, {}, ort_arena_cfg)
+            so3 = onnxrt.SessionOptions()
+            so3.log_severity_level = 1
+            so3.add_session_config_entry("session.use_env_allocators", "1")
+            onnxrt.InferenceSession(
+                get_name("mul_1.onnx"),
+                sess_options=so3,
+                providers=onnxrt.get_available_providers(),
+            )
+
     def testMemoryArenaShrinkage(self):  # noqa: N802
         if platform.architecture()[0] == "32bit" or "ppc" in platform.machine() or "powerpc" in platform.machine():
             # on x86 or ppc builds, the CPU allocator does not use an arena

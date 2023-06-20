@@ -96,25 +96,8 @@ std::shared_ptr<KernelRegistry> GetArmNNKernelRegistry() {
 
 }  // namespace armnn_ep
 
-ArmNNExecutionProvider::ArmNNExecutionProvider(const ArmNNExecutionProviderInfo& info)
+ArmNNExecutionProvider::ArmNNExecutionProvider(const ArmNNExecutionProviderInfo&)
     : IExecutionProvider{onnxruntime::kArmNNExecutionProvider} {
-  ORT_UNUSED_PARAMETER(info);
-
-  AllocatorCreationInfo default_memory_info{
-      [](int) {
-        return std::make_unique<CPUAllocator>(OrtMemoryInfo(ArmNN, OrtAllocatorType::OrtDeviceAllocator));
-      },
-      0};
-
-  InsertAllocator(CreateAllocator(default_memory_info));
-
-  AllocatorCreationInfo cpu_memory_info{
-      [](int) {
-        return std::make_unique<CPUAllocator>(
-            OrtMemoryInfo(ArmNN_CPU, OrtAllocatorType::OrtDeviceAllocator, OrtDevice(), 0, OrtMemTypeCPUOutput));
-      }};
-
-  InsertAllocator(CreateAllocator(cpu_memory_info));
 }
 
 ArmNNExecutionProvider::~ArmNNExecutionProvider() {

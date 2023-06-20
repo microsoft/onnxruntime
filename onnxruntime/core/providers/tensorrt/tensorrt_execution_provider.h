@@ -120,10 +120,8 @@ struct TensorrtFuncState {
   std::string engine_cache_path;
   nvinfer1::IRuntime* runtime = nullptr;
   std::vector<nvinfer1::IOptimizationProfile*> profiles;
-  AllocatorPtr scratch_allocator;
   bool context_memory_sharing_enable = false;
   size_t* max_context_mem_size_ptr = nullptr;
-  IAllocatorUniquePtr<void>* context_memory = nullptr;
   std::unordered_map<std::string, float> dynamic_range_map;
   bool engine_decryption_enable = false;
   int (*engine_decryption)(const char*, char*, size_t*) = nullptr;
@@ -158,23 +156,20 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   common::Status Compile(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
                          std::vector<NodeComputeInfo>& node_compute_funcs) override;
 
-  AllocatorPtr GetAllocator(OrtMemType mem_type) const override;
-
-  void RegisterAllocator(AllocatorManager& allocator_manager) override;
-
   Status OnRunStart() override;
-
   Status OnRunEnd(bool sync_stream) override;
 
   ProviderOptions GetProviderOptions() const override {
     return TensorrtExecutionProviderInfo::ToProviderOptions(info_);
   }
 
-  void RegisterStreamHandlers(IStreamCommandHandleRegistry& stream_handle_registry) const override;
+  void RegisterStreamHandlers(IStreamCommandHandleRegistry& stream_handle_registry, AllocatorMap& allocators) const override;
 
   void GetCustomOpDomainList(std::vector<OrtCustomOpDomain*>& custom_op_domain_list) const override;
 
   OrtDevice GetOrtDeviceByMemType(OrtMemType mem_type) const override;
+
+  std::vector<AllocatorPtr> CreatePreferredAllocators() override;
 
   bool IsGraphCaptureEnabled() const override;
   bool IsGraphCaptured() const override;
@@ -206,7 +201,6 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   std::unique_ptr<nvinfer1::IRuntime> runtime_ = nullptr;
   OrtMutex tensorrt_mu_;
   int device_id_;
-  AllocatorPtr allocator_;
   bool context_memory_sharing_enable_ = false;
   bool layer_norm_fp32_fallback_ = false;
   size_t max_ctx_mem_size_ = 0;

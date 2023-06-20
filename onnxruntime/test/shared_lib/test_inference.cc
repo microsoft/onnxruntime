@@ -2386,6 +2386,53 @@ TEST(CApiTest, TestSharedAllocators) {
     // Ensure that there was no leak
     custom_allocator.LeakCheck();
   }
+#ifdef USE_CUDA
+  {
+    OrtMemoryInfo* cuda_meminfo = nullptr;
+    ASSERT_TRUE(api.CreateMemoryInfo("Cuda", OrtArenaAllocator, 0, OrtMemTypeDefault, &cuda_meminfo) == nullptr);
+    std::unique_ptr<OrtMemoryInfo, decltype(api.ReleaseMemoryInfo)> rel_info(cuda_meminfo, api.ReleaseMemoryInfo);
+
+    OrtArenaCfg* arena_cfg = nullptr;
+    ASSERT_TRUE(api.CreateArenaCfg(0, -1, -1, -1, &arena_cfg) == nullptr);
+    std::unique_ptr<OrtArenaCfg, decltype(api.ReleaseArenaCfg)> rel_arena_cfg(arena_cfg, api.ReleaseArenaCfg);
+
+    std::vector<const char*> keys, values;
+    ASSERT_TRUE(api.CreateAndRegisterAllocatorV2(env_ptr, onnxruntime::kCudaExecutionProvider, cuda_meminfo, arena_cfg, keys.data(), values.data(), 0) == nullptr);
+
+    // Test that duplicates are handled
+    std::unique_ptr<OrtStatus, decltype(api.ReleaseStatus)> status_releaser(
+        api.CreateAndRegisterAllocatorV2(env_ptr, onnxruntime::kCudaExecutionProvider, cuda_meminfo, arena_cfg, keys.data(), values.data(), 0),
+        api.ReleaseStatus);
+    ASSERT_FALSE(status_releaser.get() == nullptr);
+
+    {
+      // create session 1
+      Ort::SessionOptions cuda_session_options;
+      cuda_session_options.AddConfigEntry(kOrtSessionOptionsConfigUseEnvAllocators, "1");
+      cuda_session_options.AppendExecutionProvider_CUDA(OrtCUDAProviderOptions{});
+      Ort::Session session1(*ort_env, MODEL_URI, cuda_session_options);
+      RunSession<float>(allocator_for_input_memory_allocation.get(),
+                        session1,
+                        inputs,
+                        "Y",
+                        expected_dims_y,
+                        expected_values_y,
+                        nullptr);
+
+      // create session 2
+      Ort::Session session2(*ort_env, MODEL_URI, cuda_session_options);
+      RunSession<float>(allocator_for_input_memory_allocation.get(),
+                        session2,
+                        inputs,
+                        "Y",
+                        expected_dims_y,
+                        expected_values_y,
+                        nullptr);
+    }
+
+    ASSERT_TRUE(api.UnregisterAllocator(env_ptr, cuda_meminfo) == nullptr);
+  }
+#endif
 }
 
 TEST(CApiTest, TestSharingOfInitializerAndItsPrepackedVersion) {

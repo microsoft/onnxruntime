@@ -1030,81 +1030,17 @@ void TensorrtExecutionProvider::IncrementRegularRunCountBeforeGraphCapture() {
   ++regular_run_count_before_graph_capture_;
 }
 
-AllocatorPtr TensorrtExecutionProvider::GetAllocator(OrtMemType mem_type) const {
-  if (mem_type == OrtMemTypeDefault) {
-    return allocator_;
-  } else {
-    return IExecutionProvider::GetAllocator(mem_type);
-  }
-}
+std::vector<AllocatorPtr> TensorrtExecutionProvider::CreatePreferredAllocators() {
+  AllocatorCreationInfo default_memory_info(
+      [](OrtDevice::DeviceId device_id) { return CreateCUDAAllocator(device_id, onnxruntime::CUDA); }, device_id_);
 
-void TensorrtExecutionProvider::RegisterAllocator(AllocatorManager& allocator_manager) {
-  OrtDevice::DeviceId short_device_id = gsl::narrow<OrtDevice::DeviceId>(device_id_);
-  OrtDevice gpu_device{OrtDevice::GPU, OrtDevice::MemType::DEFAULT, short_device_id};
-  OrtDevice pinned_device{OrtDevice::CPU, OrtDevice::MemType::CUDA_PINNED, DEFAULT_CPU_ALLOCATOR_DEVICE_ID};
-  OrtDevice cpu_device{OrtDevice::CPU, OrtDevice::MemType::DEFAULT, DEFAULT_CPU_ALLOCATOR_DEVICE_ID};
+  AllocatorCreationInfo pinned_allocator_info(
+      [](OrtDevice::DeviceId device_id) {
+        return CreateCUDAPinnedAllocator(device_id, onnxruntime::CUDA_PINNED);
+      },
+      0);
 
-  // setup CUDA allocator
-  // if EP is used in multiple inference sessions we may already have an allocator. if so use that.
-  if (!allocator_) {
-    // use shared allocator if available
-    allocator_ = allocator_manager.GetAllocator(OrtMemTypeDefault, gpu_device);
-
-    if (!allocator_) {
-      AllocatorCreationInfo default_memory_info(
-          [](OrtDevice::DeviceId device_id) { return CreateCUDAAllocator(device_id, onnxruntime::CUDA); }, device_id_);
-      allocator_ = CreateAllocator(default_memory_info);
-      // enable sharing of our allocator
-      allocator_manager.InsertAllocator(allocator_);
-    }
-
-    InsertAllocator(allocator_);
-  }
-
-  // OrtMemTypeCPUOutput -- allocated by cudaMallocHost, used to copy CUDA device memory to CPU
-  // Use pinned memory instead of pageable memory make the data transfer faster
-  // Used by node MemcpyToHost only
-  auto cuda_pinned_alloc = GetAllocator(OrtMemTypeCPUOutput);
-  if (!cuda_pinned_alloc) {
-    cuda_pinned_alloc = allocator_manager.GetAllocator(OrtMemTypeCPUOutput, pinned_device);
-
-    if (!cuda_pinned_alloc) {
-      AllocatorCreationInfo pinned_allocator_info(
-          [](OrtDevice::DeviceId device_id) {
-            return CreateCUDAPinnedAllocator(device_id, onnxruntime::CUDA_PINNED);
-          },
-          pinned_device.Id());
-
-      cuda_pinned_alloc = CreateAllocator(pinned_allocator_info);
-      allocator_manager.InsertAllocator(cuda_pinned_alloc);
-    }
-
-    InsertAllocator(cuda_pinned_alloc);
-  }
-
-  auto cuda_cpu_alloc = GetAllocator(OrtMemTypeCPUInput);
-  if (!cuda_cpu_alloc) {
-    cuda_cpu_alloc = allocator_manager.GetAllocator(OrtMemTypeCPUInput, cpu_device);
-
-    if (!cuda_cpu_alloc) {
-      // TODO: this is actually used for the cuda kernels which explicitly ask for inputs from CPU.
-      // This will be refactored/removed when allocator and execution provider are decoupled.
-      // Need to move the OrtMemoryType out of Allocator, that's one thing blocking us to share it with CPU EP
-      // CPUAllocator is OrtMemTypeDefault for CPU EP
-      AllocatorCreationInfo cpu_memory_info(
-          [](int device_id) {
-            return std::make_unique<CPUAllocator>(
-                OrtMemoryInfo("CUDA_CPU", OrtAllocatorType::OrtDeviceAllocator, OrtDevice(), device_id,
-                              OrtMemTypeCPUInput));
-          },
-          cpu_device.Id());
-
-      cuda_cpu_alloc = CreateAllocator(cpu_memory_info);
-      allocator_manager.InsertAllocator(cuda_cpu_alloc);
-    }
-
-    InsertAllocator(cuda_cpu_alloc);
-  }
+  return std::vector<AllocatorPtr>{CreateAllocator(default_memory_info), CreateAllocator(pinned_allocator_info)};
 }
 
 std::unique_ptr<IDataTransfer> TensorrtExecutionProvider::GetDataTransfer() const {
@@ -2184,7 +2120,6 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
         size_t mem_size = trt_engine->getDeviceMemorySize();
         if (mem_size > max_ctx_mem_size_) {
           max_ctx_mem_size_ = mem_size;
-          context_memory_ = IAllocator::MakeUniquePtr<void>(allocator_, max_ctx_mem_size_);
         }
         trt_context = std::unique_ptr<nvinfer1::IExecutionContext>(trt_engine->createExecutionContextWithoutDeviceMemory());
       } else {
@@ -2245,7 +2180,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
             &networks_[context->node_name], input_info_[context->node_name], output_info_[context->node_name],
             input_shape_ranges_[context->node_name], &tensorrt_mu_, fp16_enable_, int8_enable_, int8_calibration_cache_available_,
             dla_enable_, dla_core_, &max_workspace_size_, trt_node_name_with_precision, engine_cache_enable_, cache_path_,
-            runtime_.get(), profiles_[context->node_name], allocator_, context_memory_sharing_enable_, &max_ctx_mem_size_, &context_memory_,
+            runtime_.get(), profiles_[context->node_name], context_memory_sharing_enable_, &max_ctx_mem_size_,
             dynamic_range_map, engine_decryption_enable_, engine_decryption_, engine_encryption_, timing_cache_enable_,
             force_timing_cache_match_, detailed_build_log_, build_heuristics_enable_, sparsity_enable_,
             builder_optimization_level_, auxiliary_streams_, !tactic_sources_.empty(), tactics};
@@ -2272,9 +2207,10 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
       auto trt_engine = trt_state->engine->get();
       auto trt_context = trt_state->context->get();
       auto trt_profiles = trt_state->profiles;
-      auto alloc = trt_state->scratch_allocator;
-      auto context_memory = trt_state->context_memory;
       auto max_context_mem_size_ptr = trt_state->max_context_mem_size_ptr;
+      OrtMemoryInfo mem_info("", OrtAllocatorType::OrtDeviceAllocator, OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, 0));
+      OrtAllocator* alloc;
+      Ort::ThrowOnError(api->KernelContext_GetAllocator(context, &mem_info, &alloc));
       int num_inputs = static_cast<int>(input_indexes.size());
       int num_outputs = static_cast<int>(output_indexes.size());
       bool engine_update = false;
@@ -2590,7 +2526,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
           case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT: {
             auto input_tensor_ptr = input_tensor.GetTensorData<float>();
             if (input_tensor_ptr == nullptr) {
-              scratch_buffers.push_back(IAllocator::MakeUniquePtr<void>(alloc, sizeof(float)));
+              scratch_buffers.push_back(IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, sizeof(float)));
               buffers[binding_index] = scratch_buffers.back().get();
             } else {
               buffers[binding_index] = const_cast<float*>(input_tensor_ptr);
@@ -2600,7 +2536,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
           case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16: {
             auto input_tensor_ptr = input_tensor.GetTensorData<uint16_t>();
             if (input_tensor_ptr == nullptr) {
-              scratch_buffers.push_back(IAllocator::MakeUniquePtr<void>(alloc, sizeof(uint16_t)));
+              scratch_buffers.push_back(IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, sizeof(uint16_t)));
               buffers[binding_index] = scratch_buffers.back().get();
             } else {
               buffers[binding_index] = const_cast<uint16_t*>(input_tensor_ptr);
@@ -2610,7 +2546,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
           case ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL: {
             auto input_tensor_ptr = input_tensor.GetTensorData<bool>();
             if (input_tensor_ptr == nullptr) {
-              scratch_buffers.push_back(IAllocator::MakeUniquePtr<void>(alloc, sizeof(bool)));
+              scratch_buffers.push_back(IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, sizeof(bool)));
               buffers[binding_index] = scratch_buffers.back().get();
             } else {
               buffers[binding_index] = const_cast<bool*>(input_tensor_ptr);
@@ -2620,7 +2556,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
           case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8: {
             auto input_tensor_ptr = input_tensor.GetTensorData<int8_t>();
             if (input_tensor_ptr == nullptr) {
-              scratch_buffers.push_back(IAllocator::MakeUniquePtr<void>(alloc, sizeof(int8_t)));
+              scratch_buffers.push_back(IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, sizeof(int8_t)));
               buffers[binding_index] = scratch_buffers.back().get();
             } else {
               buffers[binding_index] = const_cast<int8_t*>(input_tensor_ptr);
@@ -2630,7 +2566,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
           case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8: {
             auto input_tensor_ptr = input_tensor.GetTensorData<uint8_t>();
             if (input_tensor_ptr == nullptr) {
-              scratch_buffers.push_back(IAllocator::MakeUniquePtr<void>(alloc, sizeof(uint8_t)));
+              scratch_buffers.push_back(IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, sizeof(uint8_t)));
               buffers[binding_index] = scratch_buffers.back().get();
             } else {
               buffers[binding_index] = const_cast<uint8_t*>(input_tensor_ptr);
@@ -2640,7 +2576,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
           case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32: {
             auto input_tensor_ptr = input_tensor.GetTensorData<int32_t>();
             if (input_tensor_ptr == nullptr) {
-              scratch_buffers.push_back(IAllocator::MakeUniquePtr<void>(alloc, sizeof(int32_t)));
+              scratch_buffers.push_back(IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, sizeof(int32_t)));
               buffers[binding_index] = scratch_buffers.back().get();
             } else {
               buffers[binding_index] = const_cast<int32_t*>(input_tensor_ptr);
@@ -2651,7 +2587,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
             // Cast INT64 input to INT32 because TensorRT doesn't fully support INT64
             auto input_tensor_ptr = input_tensor.GetTensorData<int64_t>();
             if (input_tensor_ptr == nullptr) {
-              scratch_buffers.push_back(IAllocator::MakeUniquePtr<void>(alloc, sizeof(int32_t)));
+              scratch_buffers.push_back(IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, sizeof(int32_t)));
               buffers[binding_index] = scratch_buffers.back().get();
             } else {
               SafeInt<int> input_dim_size = 1;
@@ -2663,7 +2599,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
                   input_dim_size *= tensor_shapes[j];
                 }
               }
-              scratch_buffers.push_back(IAllocator::MakeUniquePtr<void>(alloc, input_dim_size * sizeof(int32_t)));
+              scratch_buffers.push_back(IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, input_dim_size * sizeof(int32_t)));
               buffers[binding_index] = scratch_buffers.back().get();
               cuda::Impl_Cast<int64_t, int32_t>(stream, input_tensor_ptr, reinterpret_cast<int32_t*>(buffers[binding_index]), input_dim_size);
             }
@@ -2673,7 +2609,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
             // Cast DOUBLE input to FLOAT because TensorRT doesn't fully support INT64
             auto input_tensor_ptr = input_tensor.GetTensorData<double>();
             if (input_tensor_ptr == nullptr) {
-              scratch_buffers.push_back(IAllocator::MakeUniquePtr<void>(alloc, sizeof(float)));
+              scratch_buffers.push_back(IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, sizeof(float)));
               buffers[binding_index] = scratch_buffers.back().get();
             } else {
               SafeInt<int> input_dim_size = 1;
@@ -2685,7 +2621,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
                   input_dim_size *= tensor_shapes[j];
                 }
               }
-              scratch_buffers.push_back(IAllocator::MakeUniquePtr<void>(alloc, input_dim_size * sizeof(float)));
+              scratch_buffers.push_back(IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, input_dim_size * sizeof(float)));
               buffers[binding_index] = scratch_buffers.back().get();
               cuda::Impl_Cast<double, float>(stream, input_tensor_ptr, reinterpret_cast<float*>(buffers[binding_index]), input_dim_size);
             }
@@ -2735,7 +2671,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
           case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT: {
             auto output_tensor_ptr = output_tensor.GetTensorMutableData<float>();
             if (output_tensor_ptr == nullptr) {
-              scratch_buffers.push_back(IAllocator::MakeUniquePtr<void>(alloc, sizeof(float)));
+              scratch_buffers.push_back(IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, sizeof(float)));
               buffers[binding_index] = scratch_buffers.back().get();
             } else {
               buffers[binding_index] = output_tensor_ptr;
@@ -2745,7 +2681,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
           case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16: {
             auto output_tensor_ptr = output_tensor.GetTensorMutableData<uint16_t>();
             if (output_tensor_ptr == nullptr) {
-              scratch_buffers.push_back(IAllocator::MakeUniquePtr<void>(alloc, sizeof(uint16_t)));
+              scratch_buffers.push_back(IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, sizeof(uint16_t)));
               buffers[binding_index] = scratch_buffers.back().get();
             } else {
               buffers[binding_index] = output_tensor_ptr;
@@ -2755,7 +2691,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
           case ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL: {
             auto output_tensor_ptr = output_tensor.GetTensorMutableData<bool>();
             if (output_tensor_ptr == nullptr) {
-              scratch_buffers.push_back(IAllocator::MakeUniquePtr<void>(alloc, sizeof(bool)));
+              scratch_buffers.push_back(IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, sizeof(bool)));
               buffers[binding_index] = scratch_buffers.back().get();
             } else {
               buffers[binding_index] = output_tensor_ptr;
@@ -2765,7 +2701,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
           case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8: {
             auto output_tensor_ptr = output_tensor.GetTensorMutableData<int8_t>();
             if (output_tensor_ptr == nullptr) {
-              scratch_buffers.push_back(IAllocator::MakeUniquePtr<void>(alloc, sizeof(int8_t)));
+              scratch_buffers.push_back(IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, sizeof(int8_t)));
               buffers[binding_index] = scratch_buffers.back().get();
             } else {
               buffers[binding_index] = output_tensor_ptr;
@@ -2775,7 +2711,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
           case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8: {
             auto output_tensor_ptr = output_tensor.GetTensorMutableData<uint8_t>();
             if (output_tensor_ptr == nullptr) {
-              scratch_buffers.push_back(IAllocator::MakeUniquePtr<void>(alloc, sizeof(uint8_t)));
+              scratch_buffers.push_back(IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, sizeof(uint8_t)));
               buffers[binding_index] = scratch_buffers.back().get();
             } else {
               buffers[binding_index] = output_tensor_ptr;
@@ -2785,7 +2721,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
           case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32: {
             auto output_tensor_ptr = output_tensor.GetTensorMutableData<int32_t>();
             if (output_tensor_ptr == nullptr) {
-              scratch_buffers.push_back(IAllocator::MakeUniquePtr<void>(alloc, sizeof(int32_t)));
+              scratch_buffers.push_back(IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, sizeof(int32_t)));
               buffers[binding_index] = scratch_buffers.back().get();
             } else {
               buffers[binding_index] = output_tensor_ptr;
@@ -2796,7 +2732,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
             // Allocate INT32 CUDA memory for INT64 output type because TensorRT doesn't fully support INT64
             auto output_tensor_ptr = output_tensor.GetTensorMutableData<int64_t>();
             if (output_tensor_ptr == nullptr) {
-              scratch_buffers.push_back(IAllocator::MakeUniquePtr<void>(alloc, sizeof(int32_t)));
+              scratch_buffers.push_back(IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, sizeof(int32_t)));
               buffers[binding_index] = scratch_buffers.back().get();
               output_dim_sizes[i] = 1;
             } else {
@@ -2809,7 +2745,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
                   output_dim_size *= dimensions.d[j];
                 }
               }
-              scratch_buffers.push_back(IAllocator::MakeUniquePtr<void>(alloc, output_dim_size * sizeof(int32_t)));
+              scratch_buffers.push_back(IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, output_dim_size * sizeof(int32_t)));
               buffers[binding_index] = scratch_buffers.back().get();
               output_dim_sizes[i] = output_dim_size;
             }
@@ -2819,7 +2755,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
             // Allocate FLOAT CUDA memory for DOUBLE output type because TensorRT doesn't fully support DOUBLE
             auto output_tensor_ptr = output_tensor.GetTensorMutableData<double>();
             if (output_tensor_ptr == nullptr) {
-              scratch_buffers.push_back(IAllocator::MakeUniquePtr<void>(alloc, sizeof(float)));
+              scratch_buffers.push_back(IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, sizeof(float)));
               buffers[binding_index] = scratch_buffers.back().get();
             } else {
               SafeInt<int> output_dim_size(output_dim_sizes[i]);
@@ -2831,7 +2767,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
                   output_dim_size *= dimensions.d[j];
                 }
               }
-              scratch_buffers.push_back(IAllocator::MakeUniquePtr<void>(alloc, output_dim_size * sizeof(float)));
+              scratch_buffers.push_back(IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, output_dim_size * sizeof(float)));
               buffers[binding_index] = scratch_buffers.back().get();
               output_dim_sizes[i] = output_dim_size;
             }
@@ -2849,9 +2785,8 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
         size_t mem_size = trt_engine->getDeviceMemorySize();
         if (mem_size > *max_context_mem_size_ptr) {
           *max_context_mem_size_ptr = mem_size;
-          *context_memory = IAllocator::MakeUniquePtr<void>(alloc, *max_context_mem_size_ptr);
         }
-        trt_context->setDeviceMemory((*context_memory).get());
+        trt_context->setDeviceMemory(IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, *max_context_mem_size_ptr).get());
       }
 
       // Start CUDA graph capture.
@@ -2915,8 +2850,8 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
   return Status::OK();
 }
 
-void TensorrtExecutionProvider::RegisterStreamHandlers(IStreamCommandHandleRegistry& stream_handle_registry) const {
-  auto allocator = GetAllocator(OrtMemTypeCPU);
+void TensorrtExecutionProvider::RegisterStreamHandlers(IStreamCommandHandleRegistry& stream_handle_registry, AllocatorMap& allocators) const {
+  auto allocator = allocators[GetOrtDeviceByMemType(OrtMemTypeCPU)];
   RegisterCudaStreamHandles(stream_handle_registry, OrtDevice::GPU, allocator, true, stream_, external_stream_, external_cudnn_handle_, external_cublas_handle_);
 }
 
