@@ -42,7 +42,7 @@ from typing import Callable, Dict, List, Optional, Sequence, Union
 
 import numpy
 import onnx
-from onnx import ModelProto, TensorProto, helper, numpy_helper
+from onnx import TensorProto, helper, numpy_helper
 
 import onnxruntime
 
