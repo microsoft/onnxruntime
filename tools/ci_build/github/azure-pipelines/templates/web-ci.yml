@@ -40,7 +40,7 @@ stages:
 - stage: Extract_commit
   jobs:
   - job: Extract_commit
-    pool: onnxruntime-Win-CPU-2022-web
+    pool: ${{ parameters.PoolName }}
     variables:
       runCodesignValidationInjection: false
     timeoutInMinutes: 30
@@ -50,9 +50,12 @@ stages:
     - checkout: none
       fetchDepth: 1
       submodules: false
-    - script: |
-        echo.$(Build.SourceVersion)
-        echo.$(Build.SourceVersion)>$(Build.ArtifactStagingDirectory)\__commit.txt
+    - task: Bash@3
+      inputs:
+        targetType: 'inline'
+        script: |
+          echo $(Build.SourceVersion)
+          echo $(Build.SourceVersion) > $(Build.ArtifactStagingDirectory)/__commit.txt
     - task: PublishPipelineArtifact@0
       displayName: 'Publish Pipeline Artifact'
       inputs:
