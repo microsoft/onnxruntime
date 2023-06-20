@@ -374,8 +374,8 @@ export const loadCheckpoint =
     return wasm._OrtTrainingLoadCheckpoint(filePath);
   }
 
-export const saveCheckpoint =
-  (filePath: String) => {
-    const wasm = getInstance();
-    return wasm._OrtTrainingSaveCheckpoint(filePath);
-  }
+// export const saveCheckpoint =
+//   (filePath: String) => {
+//     const wasm = getInstance();
+//     return wasm._OrtTrainingSaveCheckpoint(filePath);
+//   }

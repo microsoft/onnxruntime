@@ -1,8 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {InferenceSession} from './inference-session.js';
-import {OnnxValue} from './onnx-value.js';
+import {Session} from './inference-session';
+import {OnnxValue} from './onnx-value';
 
 /**
  * @internal
@@ -28,7 +28,7 @@ export interface SessionHandler {
   endProfiling(): void;
 
   run(feeds: SessionHandler.FeedsType, fetches: SessionHandler.FetchesType,
-      options: InferenceSession.RunOptions): Promise<SessionHandler.ReturnType>;
+      options: Session.RunOptions): Promise<SessionHandler.ReturnType>;
 }
 
 /**
@@ -42,7 +42,7 @@ export interface Backend {
    */
   init(): Promise<void>;
 
-  createSessionHandler(uriOrBuffer: string|Uint8Array, options?: InferenceSession.SessionOptions):
+  createSessionHandler(uriOrBuffer: string|Uint8Array, options?: Session.SessionOptions):
       Promise<SessionHandler>;
 }
 
