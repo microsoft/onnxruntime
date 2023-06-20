@@ -549,28 +549,16 @@ def load_model_with_shape_infer(model_path: Path) -> ModelProto:
     inferred_model_path = generate_identified_filename(model_path, "-inferred")
     onnx.shape_inference.infer_shapes_path(str(model_path), str(inferred_model_path))
     model = onnx.load(inferred_model_path.as_posix())
+    add_infer_metadata(model)
     inferred_model_path.unlink()
     return model
 
 
-def load_model(model_path: Path, need_optimize: bool) -> ModelProto:
-    with tempfile.TemporaryDirectory(prefix="ort.quant.") as quant_tmp_dir:
-        if need_optimize and not model_has_external_data(model_path):
-            opt_model_path = Path(quant_tmp_dir).joinpath("model.onnx")
-            optimize_model(model_path, opt_model_path)
-            model_path = opt_model_path
-
-        model = load_model_with_shape_infer(model_path)
-        add_infer_metadata(model)
-        return model
-
-
-def save_and_reload_model(model: ModelProto) -> ModelProto:
+def save_and_reload_model_with_shape_infer(model: ModelProto) -> ModelProto:
     with tempfile.TemporaryDirectory(prefix="ort.quant.") as quant_tmp_dir:
         model_path = Path(quant_tmp_dir).joinpath("model.onnx")
-        onnx.external_data_helper.convert_model_to_external_data(model, all_tensors_to_one_file=True)
-        onnx.save_model(model, model_path.as_posix())
-        return load_model(model_path, False)
+        onnx.save_model(model, model_path.as_posix(), save_as_external_data=True)
+        return load_model_with_shape_infer(model_path)
 
 
 def tensor_proto_to_array(initializer: TensorProto) -> numpy.ndarray:

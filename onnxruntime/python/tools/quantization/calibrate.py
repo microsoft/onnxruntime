@@ -17,7 +17,7 @@ from onnx import ModelProto, TensorProto, helper, numpy_helper
 
 import onnxruntime
 
-from .quant_utils import apply_plot, load_model, smooth_distribution
+from .quant_utils import apply_plot, load_model_with_shape_infer, smooth_distribution
 
 
 class CalibrationMethod(Enum):
@@ -63,9 +63,9 @@ class CalibraterBase:
         :param use_external_data_format: use external data format to store model which size is >= 2Gb
         """
         if isinstance(model_path, str):
-            self.model = load_model(Path(model_path), False)
+            self.model = load_model_with_shape_infer(Path(model_path))
         elif isinstance(model_path, Path):
-            self.model = load_model(model_path, False)
+            self.model = load_model_with_shape_infer(model_path)
         else:
             raise ValueError("model_path should be model path.")
 
