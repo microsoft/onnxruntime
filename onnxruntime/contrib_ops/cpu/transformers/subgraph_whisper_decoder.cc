@@ -175,7 +175,7 @@ Status WhisperDecoderSubgraph::CreateInitialFeeds(
 
   AllocatorPtr buffer_allocator = std::make_shared<onnxruntime::CPUAllocator>();
   size_t total_size = static_cast<size_t>(static_cast<long long>(cur_len) * batch_beam_size * sizeof(int));
-  auto seq_copy = IAllocator::MakeUniquePtr<int>(buffer_allocator, total_size);
+  auto seq_copy = IAllocator::MakeUniquePtr<int>(buffer_allocator, total_size, false, stream);
   int* seq_copy_ptr = seq_copy.get();
 
   if (!use_sequence_as_input_ids_) {
