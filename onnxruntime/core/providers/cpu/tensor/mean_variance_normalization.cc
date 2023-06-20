@@ -7,7 +7,6 @@
 #include <optional>
 
 #include "core/common/gsl.h"
-#include "core/common/inlined_containers.h"
 #include "core/providers/common.h"
 #include "core/providers/cpu/tensor/transpose.h"
 #include "core/util/math_cpuonly.h"
