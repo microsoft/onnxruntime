@@ -504,6 +504,12 @@ file(GLOB onnxruntime_qdq_helper_srcs CONFIGURE_DEPENDS
     ${REPO_ROOT}/tools/python/util/qdq_helpers/*.py
 )
 
+if (onnxruntime_USE_OPENVINO)
+  file(GLOB onnxruntime_python_openvino_python_srcs CONFIGURE_DEPENDS
+    ${REPO_ROOT}/tools/python/util/add_openvino_win_libs.py
+  )
+endif()
+
 set(build_output_target onnxruntime_common)
 if(NOT onnxruntime_ENABLE_STATIC_ANALYSIS)
 add_custom_command(
@@ -629,6 +635,15 @@ add_custom_command(
       ${REPO_ROOT}/VERSION_NUMBER
       $<TARGET_FILE_DIR:${build_output_target}>
 )
+
+if (onnxruntime_USE_OPENVINO)
+  add_custom_command(
+    TARGET onnxruntime_pybind11_state POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy
+        ${onnxruntime_python_openvino_python_srcs}
+        $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/tools/
+  )
+endif()
 
 if (onnxruntime_ENABLE_EXTERNAL_CUSTOM_OP_SCHEMAS)
   add_custom_command(

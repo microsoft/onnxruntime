@@ -185,18 +185,19 @@ Status TopK(const Tensor* input, const int axis, const unsigned k, bool largest,
   return result;
 }
 
-Status AddToFeeds(const IExecutionProvider* execution_provider,
-                  Stream* ort_stream,
+Status AddToFeeds(Stream* ort_stream,
                   std::initializer_list<OrtValue> inputs,
                   std::vector<OrtValue>& feeds,
-                  IAllocatorUniquePtr<char>& buffer) {
+                  IAllocatorUniquePtr<char>& buffer,
+                  AllocatorPtr device_allocator,
+                  AllocatorPtr host_allocator,
+                  const OrtMemoryInfo& location) {
 #ifdef ENABLE_NVTX_PROFILE
   profile::NvtxNestedRangeCreator addToFeedsRange("AddToFeeds", profile::Color::Blue);
   addToFeedsRange.Begin();
 #endif
 
   // Copy tensors to GPU, then add to feeds
-  const CUDAExecutionProvider* provider = reinterpret_cast<const CUDAExecutionProvider*>(execution_provider);
   size_t total_bytes = 0;
   for (auto& input : inputs) {
     if (input.IsAllocated()) {
@@ -206,9 +207,8 @@ Status AddToFeeds(const IExecutionProvider* execution_provider,
 
   ORT_ENFORCE(total_bytes > 0);
 
-  AllocatorPtr pinned_allocator = provider->GetAllocator(OrtMemTypeCPU);
   cudaStream_t stream = ort_stream ? static_cast<cudaStream_t>(ort_stream->GetHandle()) : nullptr;
-  auto pinned_buffer = IAllocator::MakeUniquePtr<void>(pinned_allocator, total_bytes);
+  auto pinned_buffer = IAllocator::MakeUniquePtr<void>(host_allocator, total_bytes);
   char* pinned_data = static_cast<char*>(pinned_buffer.get());
   // Copy tensors to one pinned memory buffer (so that we only need copy to GPU once)
   char* destination = pinned_data;
@@ -235,7 +235,7 @@ Status AddToFeeds(const IExecutionProvider* execution_provider,
     }
   }
   if (!buffer) {
-    buffer = provider->GetScratchBuffer<char>(total_bytes, ort_stream, WaitCudaNotificationOnDevice);
+    buffer = IAllocator::MakeUniquePtr<char>(device_allocator, total_bytes, false, ort_stream, WaitCudaNotificationOnDevice);
   }
   char* gpu_data = buffer.get();
   CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(gpu_data, pinned_data, total_bytes, cudaMemcpyHostToDevice, stream));
@@ -247,7 +247,6 @@ Status AddToFeeds(const IExecutionProvider* execution_provider,
   CUDA_RETURN_IF_ERROR(cudaEventRecord(isCopyDone, stream));
   CUDA_RETURN_IF_ERROR(cudaEventSynchronize(isCopyDone));
   // TODO(tianleiwu): allocate a buffer for subgraph inputs so that we can reuse the buffer in each subgraph call.
-  const OrtMemoryInfo& location = provider->GetAllocator(OrtMemTypeDefault)->Info();
   for (auto& input : inputs) {
     if (input.IsAllocated()) {
       const Tensor& tensor = input.Get<Tensor>();

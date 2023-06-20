@@ -64,11 +64,13 @@ using CreateGptInputsFunc = std::function<Status(
     OrtValue& expanded_attention_mask)>;
 
 using AddToFeedsFunc = std::function<Status(
-    const IExecutionProvider* provider,
     Stream* ort_stream,
     std::initializer_list<OrtValue> inputs,
     std::vector<OrtValue>& feeds,
-    IAllocatorUniquePtr<char>& buffer)>;
+    IAllocatorUniquePtr<char>& buffer,
+    AllocatorPtr device_allocator,
+    AllocatorPtr host_allocator,
+    const OrtMemoryInfo& location)>;
 
 template <typename T>
 using InitBeamStateFunc = std::function<void(
@@ -209,11 +211,13 @@ Status TopK(
     Tensor& output_indices);
 
 Status AddToFeeds(
-    const IExecutionProvider* execution_provider,
     Stream* ort_stream,
     std::initializer_list<OrtValue> inputs,
     std::vector<OrtValue>& feeds,
-    IAllocatorUniquePtr<char>& buffer);
+    IAllocatorUniquePtr<char>& buffer,
+    AllocatorPtr device_allocator,
+    AllocatorPtr host_allocator,
+    const OrtMemoryInfo& location);
 
 template <typename T>
 void InitBeamState(transformers::IBeamSearchState<T>* beam_state,
