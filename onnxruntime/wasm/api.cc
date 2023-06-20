@@ -410,13 +410,13 @@ OrtCheckpointState* OrtTrainingLoadCheckpoint(void* checkpoint, size_t checkpoin
 OrtTrainingSession* EMSCRIPTEN_KEEPALIVE OrtTrainingCreateTrainingSession(const ort_session_options_handle_t options,
                                                                           orttraining_checkpoint_handle_t checkpoint_state,
                                                                           void* train_model,
-                                                                          size_t train_size
+                                                                          size_t train_size,
                                                                           void* eval_model,
                                                                           size_t eval_size,
-                                                                          void* optimizer_model
+                                                                          void* optimizer_model,
                                                                           size_t optimizer_size) {
   OrtTrainingSession* training_session = nullptr;
-  return (CHECK_TRAINING_STATUS(CreateTrainingSessionFromBuffer, g_env, options, checkpoint_state,
+  return (CHECK_TRAINING_STATUS(CreateTrainingSessionFromArray, g_env, options, checkpoint_state,
                                 train_model, train_size, eval_model, eval_size, optimizer_model,
                                 optimizer_size,
                                 &training_session) == ORT_OK)

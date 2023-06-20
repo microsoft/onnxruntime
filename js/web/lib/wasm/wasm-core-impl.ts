@@ -367,3 +367,15 @@ export const extractTransferableBuffers = (tensors: readonly SerializableTensor[
   }
   return buffers;
 };
+
+export const loadCheckpoint =
+  (filePath: String) => {
+    const wasm = getInstance();
+    return wasm._OrtTrainingLoadCheckpoint(filePath);
+  }
+
+export const saveCheckpoint =
+  (filePath: String) => {
+    const wasm = getInstance();
+    return wasm._OrtTrainingSaveCheckpoint(filePath);
+  }
