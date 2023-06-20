@@ -6,6 +6,9 @@ import unittest
 import torch
 from torch import nn
 from torch.nn import functional as F
+import os
+import sys
+import onnxruntime as onnxrt
 
 from onnxruntime.training.torchdynamo.register_backend import aot_ort, ort
 
@@ -177,6 +180,59 @@ class TestTorchDynamoOrt(unittest.TestCase):
         for _ in range(5):
             run_mnist_model()
 
+    def test_DORT_custom_ops(self):  # noqa: N802
+        if sys.platform.startswith("win"):
+            shared_library = "custom_op_library.dll"
+            if not os.path.exists(shared_library):
+                raise FileNotFoundError(f"Unable to find '{shared_library}'")
+
+        elif sys.platform.startswith("darwin"):
+            shared_library = "libcustom_op_library.dylib"
+            if not os.path.exists(shared_library):
+                raise FileNotFoundError(f"Unable to find '{shared_library}'")
+
+        else:
+            shared_library = "./libcustom_op_library.so"
+            if not os.path.exists(shared_library):
+                raise FileNotFoundError(f"Unable to find '{shared_library}'")
+
+        # this = os.path.dirname(__file__)
+        # custom_op_model = os.path.join(this, "testdata", "custom_op_library", "custom_op_test.onnx")
+        # if not os.path.exists(custom_op_model):
+        #     raise FileNotFoundError(f"Unable to find '{custom_op_model}'")
+        # from torch._dynamo.backends.common import aot_autograd
+
+        def onnx_custom_add(g, x, y):
+            return g.op("test.customop::CustomOpOne", x, y, outputs=1)
+
+        from torch.onnx import register_custom_op_symbolic
+        register_custom_op_symbolic('aten::add', onnx_custom_add, opset_version=14)
+
+        from onnxruntime.training.torchdynamo import register_custom_op_in_dort
+        register_custom_op_in_dort('test.customop::CustomOpOne')
+
+        # from onnxruntime.training.torchdynamo.ort_backend import OrtBackend
+        # from onnxruntime.training.torchdynamo.register_backend import aot_ort, ort
+
+        so1 = onnxrt.SessionOptions()
+        so1.register_custom_ops_library(shared_library)
+
+        torch._dynamo.reset()
+
+        def custom_add(tensor_x: torch.Tensor, tensor_y: torch.Tensor):
+            return tensor_x + tensor_y
+
+        opt_add = torch._dynamo.optimize(ort)(custom_add)
+
+        tensor_x = torch.ones((64, 64), dtype=torch.float32)
+        tensor_y = torch.ones((64, 64), dtype=torch.float32)
+
+        # Baseline.
+        result_ref = custom_add(tensor_x, tensor_y)
+        # ORT result.
+        result_ort = opt_add(tensor_x, tensor_y)
+
+        torch.testing.assert_close(result_ref, result_ort)
 
 if __name__ == "__main__":
     unittest.main()
