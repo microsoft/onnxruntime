@@ -2238,7 +2238,8 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
       Ort::ThrowOnError(api->KernelContext_GetGPUComputeStream(context, &cuda_stream));
       cudaStream_t stream = static_cast<cudaStream_t>(cuda_stream);
 
-      // Name the engine cache based on GPU compute capacity to prevent user from loading an incompatible cache
+      // Name the engine cache based on GPU compute capacity and reduce the chance of loading an incompatible cache
+      // Note: Engine cache generated on a GPU with large memory might not be loadable on a GPU with smaller memory, even if they share the same compute capacity
       cudaDeviceProp prop;
       CUDA_CALL_THROW(cudaGetDeviceProperties(&prop, device_id_));
       std::string compute_capability = GetComputeCapacity(prop);
