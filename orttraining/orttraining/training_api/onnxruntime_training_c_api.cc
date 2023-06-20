@@ -6,6 +6,7 @@
 #include "core/framework/error_code_helper.h"
 #include "core/framework/random_seed.h"
 #include "core/session/abi_session_options_impl.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/session/ort_apis.h"
 #include "core/session/ort_env.h"
 #include "orttraining/training_api/checkpoint.h"
@@ -39,9 +40,13 @@ ORT_API_STATUS_IMPL(OrtTrainingApis::CreateTrainingSession, _In_ const OrtEnv* e
 
   ORT_TRY {
     using ProvidersType = std::vector<std::shared_ptr<onnxruntime::IExecutionProvider>>;
+    onnxruntime::SessionOptions so{};
+    if (options != nullptr) {
+      so = options->value;
+      ORT_THROW_IF_ERROR(so.config_options.AddConfigEntry(kOrtSessionOptionsConfigUseEnvAllocators, "1"));
+    }
     train_sess = std::make_unique<onnxruntime::training::api::TrainingSession>(
-        env->GetEnvironment(),
-        options == nullptr ? onnxruntime::SessionOptions() : options->value,
+        env->GetEnvironment(), so,
         options == nullptr ? ProvidersType() : CreateProviders(options->provider_factories),
         chkpt_state,
         onnxruntime::training::api::ModelIdentifiers(

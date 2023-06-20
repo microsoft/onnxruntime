@@ -20,7 +20,7 @@ TrainingSession::TrainingSession(Environment& session_env,
     }
   }
   module_ = std::make_unique<Module>(model_identifiers.train_model, state_,
-                                 session_options, session_env, providers, model_identifiers.eval_model);
+                                     session_options, session_env, providers, model_identifiers.eval_model);
   if (model_identifiers.optim_model.has_value()) {
     optimizer_ = std::make_unique<Optimizer>(model_identifiers.optim_model.value(), state_, session_options, session_env, providers);
   } else {
