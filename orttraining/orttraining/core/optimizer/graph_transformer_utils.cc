@@ -1,9 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-// Graph transformers are not needed for on-device training and can be left
-// out at compile time.
-#ifdef ENABLE_TRAINING
 #include <memory>
 #include "orttraining/core/optimizer/graph_transformer_utils.h"
 
@@ -303,5 +300,3 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
 }  // namespace transformer_utils
 }  // namespace training
 }  // namespace onnxruntime
-
-#endif

@@ -472,6 +472,9 @@ Status Module::EvalStep(const std::vector<OrtValue>& inputs, std::vector<OrtValu
 }
 
 #if !defined(ORT_MINIMAL_BUILD)
+// TODO (baijumeswani): ExportModelForInferencing should work irrespective of whether
+//                      the build is minimal or not. This will require to read the ort_format eval model,
+//                      trainsform it to an inference model and save it in ort_format.
 Status Module::ExportModelForInferencing(const std::string& inference_model_path,
                                          gsl::span<const std::string> graph_output_names) const {
   ORT_RETURN_IF(!eval_sess_ || eval_model_path_.empty(),
