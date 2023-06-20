@@ -55,7 +55,7 @@ stages:
         targetType: 'inline'
         script: |
           echo $(Build.SourceVersion)
-          echo $(Build.SourceVersion) > $(Build.ArtifactStagingDirectory)/__commit.txt
+          echo $(Build.SourceVersion) > "$(Build.ArtifactStagingDirectory)"/__commit.txt
     - task: PublishPipelineArtifact@0
       displayName: 'Publish Pipeline Artifact'
       inputs:
