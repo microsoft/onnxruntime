@@ -4,14 +4,8 @@
 # --------------------------------------------------------------------------
 
 import onnx
-import numpy as np
-import os
-import argparse
-from onnx import numpy_helper
 from onnx import helper
-from onnx import utils
-from onnx import AttributeProto, TensorProto, GraphProto
-from onnx import shape_inference
+from onnx import TensorProto
 from argparse import ArgumentParser
 
 def graph_topological_sort(graph):
@@ -105,6 +99,8 @@ def qnn_data_type_str_to_onnx_data_type(qnn_data_type_str):
         return TensorProto.FLOAT
     elif qnn_data_type_str == "QNN_DATATYPE_BOOL_8 ":
         return TensorProto.BOOL
+    else:
+        return TensorProto.UNDEFINED
 
 def parse_dims(line_content):
     value = line_content.split("=")
