@@ -426,7 +426,7 @@ TEST(TensorOpTest, ShapeTest3D) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
-void MeanVarianceNormalizationFunctionDefaultPerChannel() {
+TEST(TensorOpTest, MeanVarianceNormalizationDefaultAxes) {
   constexpr int64_t N = 2, C = 2, H = 2, W = 3;
 
   std::vector<float> N1C1 = {3.0f, -3.0f, -1.0f,
@@ -471,10 +471,10 @@ void MeanVarianceNormalizationFunctionDefaultPerChannel() {
 
   std::vector<float> N1C1_result(N1C1), N1C2_result(N1C2),
       N2C1_result(N2C1), N2C2_result(N2C2);
-  Normalize(N1C1_result, C1_meam_stdev, 1);
-  Normalize(N2C1_result, C1_meam_stdev, 1);
-  Normalize(N1C2_result, C2_meam_stdev, 1);
-  Normalize(N2C2_result, C2_meam_stdev, 1);
+  Normalize(N1C1_result, C1_meam_stdev, true);
+  Normalize(N2C1_result, C1_meam_stdev, true);
+  Normalize(N1C2_result, C2_meam_stdev, true);
+  Normalize(N2C2_result, C2_meam_stdev, true);
 
   std::vector<float> result;
   result.reserve(N * C * H * W);
@@ -489,35 +489,31 @@ void MeanVarianceNormalizationFunctionDefaultPerChannel() {
   test.Run();
 }
 
-void MeanVarianceNormalizationFunctionAcrossChannels(std::vector<int64_t> axes) {
-  constexpr int64_t N = 2, C = 2, H = 2, W = 3;
+static void TestMeanVarianceNormalizationOverAllAxes(const std::vector<int64_t>& shape) {
+  SCOPED_TRACE(MakeString("shape: ", TensorShape(shape)));
 
-  std::vector<float> X = {3.0f, -3.0f, -1.0f,
-                          1.0f, 2.0f, -1.0f,
-                          -2.0f, -2.0f, -2.0f,
-                          4.0f, 1.0f, 4.0f,
-                          0.0f, -2.0f, -2.0f,
-                          -4.0f, 5.0f, 7.0f,
-                          5.0f, -5.0f, -5.0f,
-                          3.0f, 4.0f, 4.0f};
-  auto mean_stdev = MeanStdev(X);
+  FixedPatternValueGenerator generator{};
 
-  std::vector<float> result(X);
-  Normalize(result, mean_stdev, 1);
+  const auto X_value_candidates = ValueRange<float>(11, -5.0f);
+  const auto X = generator.Discrete<float>(shape, X_value_candidates);
+  const auto mean_stdev = MeanStdev(X);
+
+  std::vector<float> Y(X);
+  Normalize(Y, mean_stdev, true);
 
   OpTester test("MeanVarianceNormalization", 9);
-  test.AddAttribute("axes", axes);
-  test.AddInput<float>("input", {N, C, H, W}, X);
-  test.AddOutput<float>("output", {N, C, H, W}, result);
+  const auto all_axes = ValueRange<int64_t>(shape.size());
+  test.AddAttribute("axes", all_axes);
+  test.AddInput<float>("input", shape, X);
+  test.AddOutput<float>("output", shape, Y);
+
   test.Run();
 }
 
-TEST(TensorOpTest, MeanVarianceNormalizationCPUTest) {
-  // axes: {0, 1, 2, 3} for across_channels
-  MeanVarianceNormalizationFunctionAcrossChannels({0, 1, 2, 3});
-
-  // Default (axes: {0, 2, 3}) for non across_channels
-  MeanVarianceNormalizationFunctionDefaultPerChannel();
+TEST(TensorOpTest, MeanVarianceNormalizationAllAxes) {
+  TestMeanVarianceNormalizationOverAllAxes({2, 2, 4});
+  TestMeanVarianceNormalizationOverAllAxes({2, 2, 2, 3});
+  TestMeanVarianceNormalizationOverAllAxes({2, 2, 2, 2, 2});
 }
 
 }  // namespace test

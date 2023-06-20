@@ -10,17 +10,25 @@
 #include "core/common/inlined_containers.h"
 #include "core/providers/common.h"
 #include "core/providers/cpu/tensor/transpose.h"
+#include "core/util/math_cpuonly.h"
 
 namespace onnxruntime {
 
 namespace {
 InlinedVector<int64_t> GetAxesFromAttribute(const OpKernelInfo& info) {
-  const auto axes = info.GetAttrsOrDefault<int64_t>("axes", {0, 2, 3});
-  // TODO handle across_channels
+  // legacy attribute that affects default axes value
+  const bool across_channels = info.GetAttrOrDefault<int64_t>("across_channels", int64_t{0}) == int64_t{1};
+
+  const auto default_axes = across_channels
+               ? std::vector<int64_t>{0, 1, 2, 3}
+               : std::vector<int64_t>{0, 2, 3};
+
+  const auto axes = info.GetAttrsOrDefault<int64_t>("axes", default_axes);
+
   return InlinedVector<int64_t>(axes.begin(), axes.end());
 }
 
-// drop out of range, make non-negative, sort, and make unique
+// Drop out of range, make non-negative, sort, and make unique.
 InlinedVector<size_t> NormalizeAxes(gsl::span<const int64_t> axes, size_t rank) {
   InlinedVector<size_t> normalized_axes{};
   normalized_axes.reserve(axes.size());
@@ -36,8 +44,8 @@ InlinedVector<size_t> NormalizeAxes(gsl::span<const int64_t> axes, size_t rank) 
 }
 
 std::optional<InlinedVector<size_t>> GetTransposePermutationIfNeeded(gsl::span<const size_t> normalized_axes, size_t rank) {
-  // we need to transpose if anything other than the trailing axes are specified
-  // assume normalized_axes is sorted with unique values
+  // We need to transpose if anything other than the trailing axes are specified.
+  // Assume `normalized_axes` is sorted with unique values.
 
   const bool is_transpose_needed = [&]() {
     for (size_t i = 0, num_axes = normalized_axes.size(); i < num_axes; ++i) {
@@ -87,13 +95,13 @@ Status ComputeMeanVarianceNormalization2D(size_t M, size_t N,
   EigenArrayMap<float> Y_array(Y.data(), idx_N, idx_M);
 
   // for each column, compute Y = X - E[X]
-  Y_array = X_array - X_array.colwise().mean();
+  Y_array = X_array.rowwise() - X_array.colwise().mean();
 
   if (normalize_variance) {
     // for each column, compute Y' = (X - E[X]) / ( E[ (X - E[X])^2 ] )^(1/2)
     //   we start with Y = X - E[X],
     //   so Y' = Y / ( E[ Y^2 ] )^(1/2)
-    Y_array /= Y_array.square().colwise().mean().sqrt().eval();
+    Y_array = (Y_array.rowwise() / (Y_array.square().colwise().mean().sqrt())).eval();
   }
 
   return Status::OK();
@@ -109,90 +117,94 @@ InlinedVector<size_t> InvertPerm(gsl::span<const size_t> perm) {
 }
 }  // namespace
 
-class MeanVarianceNormalization : public OpKernel {
- public:
-  MeanVarianceNormalization(const OpKernelInfo& info)
-      : OpKernel{info},
-        normalize_variance_(info.GetAttrOrDefault<int64_t>("normalize_variance", int64_t{1}) == int64_t{1}),
-        axes_{GetAxesFromAttribute(info)} {
-  }
+MeanVarianceNormalization::MeanVarianceNormalization(const OpKernelInfo& info)
+    : OpKernel{info},
+      normalize_variance_{
+          // legacy attribute
+          info.GetAttrOrDefault("normalize_variance", int64_t{1}) == int64_t{1}},
+      axes_{GetAxesFromAttribute(info)} {
+}
 
-  Status Compute(OpKernelContext* context) const override {
-    // general idea:
-    // - transpose to partition into [unspecified axes, specified axes]
-    // - do normalization on inner dimensions
-    // - transpose back
-    const auto& input = context->RequiredInput<Tensor>(0);
+Status MeanVarianceNormalization::Compute(OpKernelContext* context) const {
+  const auto& input = context->RequiredInput<Tensor>(0);
+  const auto input_shape = input.Shape();
 
-    const auto rank = input.Shape().GetDims().size();
+  Tensor& output = context->RequiredOutput(0, input_shape);
 
-    const auto normalized_axes = NormalizeAxes(axes_, rank);
+  // approach for normalizing values across arbitrary dimensions:
+  // - transpose to [unspecified axes, specified axes]
+  // - do normalization of inner dimension values
+  // - transpose back
 
-    const auto transpose_permutation = GetTransposePermutationIfNeeded(normalized_axes, rank);
-    const bool is_transpose_required = transpose_permutation.has_value();
+  const auto rank = input_shape.GetDims().size();
 
-    // intermediate tensors if transposing is necessary
-    Tensor transposed_input;
-    Tensor transposed_result;
+  const auto normalized_axes = NormalizeAxes(axes_, rank);
 
-    TensorShape compute_shape = input.Shape();
+  // The ONNX spec doesn't specify what to do if no axes are specified so we won't try to do anything.
+  ORT_RETURN_IF(normalized_axes.empty(), "No valid axes are specified. This is not handled now.");
 
-    if (is_transpose_required) {
-      AllocatorPtr alloc;
-      ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&alloc));
-
-      InlinedVector<int64_t> transposed_dims{};
-      transposed_dims.reserve(rank);
-      std::transform(transpose_permutation->begin(), transpose_permutation->end(), std::back_inserter(transposed_dims),
-                     [input_dims = input.Shape().GetDims()](size_t axis) { return input_dims[axis]; });
-      compute_shape = TensorShape(transposed_dims);
-
-      transposed_input = Tensor{input.DataType(), compute_shape, alloc};
-
-      ORT_RETURN_IF_ERROR(TransposeBase::DoTranspose(*transpose_permutation, input, transposed_input));
-
-      transposed_result = Tensor{input.DataType(), compute_shape, alloc};
-    }
-
-    Tensor& output = context->RequiredOutput(0, input.Shape());
-
-    const size_t num_unspecified_axes = rank - normalized_axes.size();
-    const size_t M = narrow<size_t>(compute_shape.SizeToDimension(num_unspecified_axes)),
-                 N = narrow<size_t>(compute_shape.SizeFromDimension(num_unspecified_axes));
-
-    const gsl::span<const float> X = is_transpose_required
-                                         ? transposed_input.DataAsSpan<float>()
-                                         : input.DataAsSpan<float>();
-    const gsl::span<float> Y = is_transpose_required
-                                   ? transposed_result.MutableDataAsSpan<float>()
-                                   : output.MutableDataAsSpan<float>();
-
-    ORT_RETURN_IF_ERROR(ComputeMeanVarianceNormalization2D(M, N, X, Y, normalize_variance_));
-
-    if (is_transpose_required) {
-      const auto inverted_permutation = InvertPerm(*transpose_permutation);
-      ORT_RETURN_IF_ERROR(TransposeBase::DoTranspose(inverted_permutation, transposed_result, output));
-    }
-
+  if (input_shape.Size() == 0) {
     return Status::OK();
   }
 
- private:
-  const bool normalize_variance_;
-  const InlinedVector<int64_t> axes_;
-};
+  const auto transpose_permutation = GetTransposePermutationIfNeeded(normalized_axes, rank);
+  const bool is_transpose_required = transpose_permutation.has_value();
+
+  // intermediate tensors if transposing is necessary
+  Tensor transposed_input;
+  Tensor transposed_result;
+
+  TensorShape compute_shape = input_shape;
+
+  if (is_transpose_required) {
+    AllocatorPtr alloc;
+    ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&alloc));
+
+    InlinedVector<int64_t> transposed_dims{};
+    transposed_dims.reserve(rank);
+    std::transform(transpose_permutation->begin(), transpose_permutation->end(), std::back_inserter(transposed_dims),
+                   [input_dims = input.Shape().GetDims()](size_t axis) { return input_dims[axis]; });
+    compute_shape = TensorShape(transposed_dims);
+
+    transposed_input = Tensor{input.DataType(), compute_shape, alloc};
+
+    ORT_RETURN_IF_ERROR(TransposeBase::DoTranspose(*transpose_permutation, input, transposed_input));
+
+    transposed_result = Tensor{input.DataType(), compute_shape, alloc};
+  }
+
+  const size_t num_unspecified_axes = rank - normalized_axes.size();
+  const size_t M = narrow<size_t>(compute_shape.SizeToDimension(num_unspecified_axes)),
+               N = narrow<size_t>(compute_shape.SizeFromDimension(num_unspecified_axes));
+
+  const gsl::span<const float> X = is_transpose_required
+                                       ? transposed_input.DataAsSpan<float>()
+                                       : input.DataAsSpan<float>();
+  const gsl::span<float> Y = is_transpose_required
+                                 ? transposed_result.MutableDataAsSpan<float>()
+                                 : output.MutableDataAsSpan<float>();
+
+  ORT_RETURN_IF_ERROR(ComputeMeanVarianceNormalization2D(M, N, X, Y, normalize_variance_));
+
+  if (is_transpose_required) {
+    const auto inverted_permutation = InvertPerm(*transpose_permutation);
+    ORT_RETURN_IF_ERROR(TransposeBase::DoTranspose(inverted_permutation, transposed_result, output));
+  }
+
+  return Status::OK();
+}
 
 ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     MeanVarianceNormalization,
     9,
     12,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
-    MeanVarianceNormalization_1<float>);
+    MeanVarianceNormalization);
 
 ONNX_CPU_OPERATOR_KERNEL(
     MeanVarianceNormalization,
     13,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
-    MeanVarianceNormalization_1<float>);
+    MeanVarianceNormalization);
 
 }  // namespace onnxruntime
