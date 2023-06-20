@@ -25,7 +25,7 @@ struct ModelIdentifiers {
 // Wrapper on top of module and optimizer classes and is the only class exposed via capis
 class TrainingSession {
  public:
-  TrainingSession(const Environment& session_env,
+  TrainingSession(Environment& session_env,
                   const SessionOptions& session_options,
                   const std::vector<std::shared_ptr<IExecutionProvider>>& providers,
                   CheckpointState* state,

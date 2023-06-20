@@ -7,19 +7,26 @@ namespace onnxruntime {
 namespace training {
 namespace api {
 
-TrainingSession::TrainingSession(const Environment& session_env,
+TrainingSession::TrainingSession(Environment& session_env,
                                  const SessionOptions& session_options,
                                  const std::vector<std::shared_ptr<IExecutionProvider>>& providers,
                                  CheckpointState* state,
                                  const ModelIdentifiers& model_identifiers)
-    : state_{state},
-      module_{std::make_unique<Module>(model_identifiers.train_model, state_,
-                                       session_options, session_env, providers, model_identifiers.eval_model)},
-      optimizer_{model_identifiers.optim_model.has_value()
-                     ? std::make_unique<Optimizer>(
-                           model_identifiers.optim_model.value(), state_,
-                           session_options, session_env, providers)
-                     : std::unique_ptr<Optimizer>()} {}
+    : state_{state} {
+  for (auto& provider : providers) {
+    auto allocators = provider->CreatePreferredAllocators();
+    for (auto& alloc : allocators) {
+      ORT_THROW_IF_ERROR(session_env.RegisterAllocator(std::move(alloc)));
+    }
+  }
+  module_ = std::make_unique<Module>(model_identifiers.train_model, state_,
+                                 session_options, session_env, providers, model_identifiers.eval_model);
+  if (model_identifiers.optim_model.has_value()) {
+    optimizer_ = std::make_unique<Optimizer>(model_identifiers.optim_model.value(), state_, session_options, session_env, providers);
+  } else {
+    optimizer_ = std::unique_ptr<Optimizer>();
+  }
+}
 
 Status TrainingSession::RegisterScheduler(
     const std::function<std::unique_ptr<LRSchedulerBase>(std::shared_ptr<Optimizer>)>& get_scheduler,
