@@ -6,6 +6,7 @@ import {conv, parseConvAttributes} from './ops/conv';
 import {gemm, parseGemmAttributes} from './ops/gemm';
 import {matMul} from './ops/matmul';
 import * as pool from './ops/pool';
+import {parseReduceAttributes, reduceL1, reduceL2, reduceLogSum, reduceLogSumExp, reduceMax, reduceMean, reduceMin, reduceProd, reduceSum, reduceSumSquare} from './ops/reduce';
 import {parseTransposeAttributes, transpose} from './ops/transpose';
 import * as unaryOps from './ops/unary-op';
 import {ComputeContext} from './types';
@@ -47,6 +48,16 @@ export const WEBGPU_OP_RESOLVE_RULES: Map<string, OperatorImplementation> = new 
   ['Neg', [unaryOps.neg]],
   ['Pow', [binaryOps.pow]],
   ['Reciprocal', [unaryOps.reciprocal]],
+  ['ReduceMin', [reduceMin, parseReduceAttributes]],
+  ['ReduceMean', [reduceMean, parseReduceAttributes]],
+  ['ReduceMax', [reduceMax, parseReduceAttributes]],
+  ['ReduceSum', [reduceSum, parseReduceAttributes]],
+  ['ReduceProd', [reduceProd, parseReduceAttributes]],
+  ['ReduceL1', [reduceL1, parseReduceAttributes]],
+  ['ReduceL2', [reduceL2, parseReduceAttributes]],
+  ['ReduceLogSum', [reduceLogSum, parseReduceAttributes]],
+  ['ReduceLogSumExp', [reduceLogSumExp, parseReduceAttributes]],
+  ['ReduceSumSquare', [reduceSumSquare, parseReduceAttributes]],
   ['Relu', [unaryOps.relu]],
   ['Sigmoid', [unaryOps.sigmoid]],
   ['Sin', [unaryOps.sin]],

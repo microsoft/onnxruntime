@@ -95,13 +95,6 @@ OpenVINOExecutionProvider::OpenVINOExecutionProvider(const OpenVINOExecutionProv
     }
   }
   openvino_ep::BackendManager::GetGlobalContext().device_id = info.device_id_;
-
-  AllocatorCreationInfo device_info(
-      [](int) {
-        return CreateCPUAllocator(OrtMemoryInfo(OpenVINO_CPU, OrtDeviceAllocator));
-      });
-
-  InsertAllocator(CreateAllocator(device_info));
 }
 
 std::vector<std::unique_ptr<ComputeCapability>>

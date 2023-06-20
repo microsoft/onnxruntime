@@ -9,7 +9,7 @@
 
 #include "gtest/gtest.h"
 
-#include "partition_utils.hpp"
+#include "partition_utils.h"
 
 namespace onnxruntime {
 namespace test {
