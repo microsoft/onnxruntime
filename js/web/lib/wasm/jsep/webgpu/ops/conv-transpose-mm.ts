@@ -5,7 +5,7 @@ import {TensorView} from '../../tensor';
 import {GpuDataType, ProgramInfoLoader, ProgramMetadata} from '../types';
 
 import {createConv2dTransposeMatMulProgramInfo} from './3rd-party/conv_backprop_mm_webgpu';
-import {ConvAttributes} from './conv';
+import {ConvTransposeAttributes} from './conv-transpose';
 
 
 const createConv2dTransposeMatMulProgramMetadata = (hasBias: boolean, cacheHint: string): ProgramMetadata => ({
@@ -16,8 +16,9 @@ const createConv2dTransposeMatMulProgramMetadata = (hasBias: boolean, cacheHint:
 });
 
 export const createConv2dTransposeMatMulProgramInfoLoader =
-    (inputs: readonly TensorView[], attributes: ConvAttributes, outputShape: readonly number[], dimAOuter: number,
-     dimBOuter: number, dimInner: number, hasBias: boolean, sequentialAccessByThreads: boolean): ProgramInfoLoader => {
+    (inputs: readonly TensorView[], attributes: ConvTransposeAttributes, outputShape: readonly number[],
+     dimAOuter: number, dimBOuter: number, dimInner: number, hasBias: boolean,
+     sequentialAccessByThreads: boolean): ProgramInfoLoader => {
       const metadata = createConv2dTransposeMatMulProgramMetadata(hasBias, attributes.cacheKey);
       return {
         ...metadata,

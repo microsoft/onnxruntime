@@ -209,9 +209,9 @@ const convTranspose2d =
       const weightWidth = inputs[1].dims[3];
 
       const outputShape = adjustedAttributes.outputShape;
-      const outHeight = outputShape[0];
-      const outWidth = outputShape[1];
-      const outChannels = inputChannels;
+      const outHeight = outputShape[isChannelsLast ? 1 : 2];
+      const outWidth = outputShape[isChannelsLast ? 2 : 3];
+      const outChannels = outputShape[isChannelsLast ? 3 : 1];
 
       const dimAOuter = isChannelsLast ? outHeight * outWidth : outChannels;
       const dimBOuter = isChannelsLast ? outChannels : outHeight * outWidth;
