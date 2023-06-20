@@ -1024,6 +1024,14 @@ void addGlobalMethods(py::module& m) {
           throw std::runtime_error("Error when creating and registering allocator: " + st.ErrorMessage());
         }
       });
+  m.def(
+      "create_and_register_allocator_v2", [](const std::string& provider_type, const OrtMemoryInfo& mem_info, const ProviderOptions& options, const OrtArenaCfg* arena_cfg = nullptr) -> void {
+        auto env = GetEnv();
+        auto st = env->CreateAndRegisterAllocatorV2(provider_type, mem_info, options, arena_cfg);
+        if (!st.IsOK()) {
+          throw std::runtime_error("Error when creating and registering allocator in create_and_register_allocator_v2: " + st.ErrorMessage());
+        }
+      });
 
 #ifdef USE_OPENVINO
   m.def(
