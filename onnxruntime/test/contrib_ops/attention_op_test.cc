@@ -239,6 +239,12 @@ static void RunAttentionTest(
       tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
     }
 
+    if (enable_rocm) {
+      std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+      execution_providers.push_back(DefaultRocmExecutionProvider(/*test_tunable_op=*/true));
+      tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+    }
+
     if (enable_cpu) {
       std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
       execution_providers.push_back(DefaultCpuExecutionProvider());
@@ -1644,7 +1650,7 @@ TEST(AttentionTest, AttentionUnidirectional3DMask) {
       1, 1};
 
   std::vector<float> output_data = {
-      3.0146f, 0.1142f, 3.9834f, 5.3394f,
+      -4.09f, 0.42f, -0.11f, 0.57f,
       8.69f, -0.13f, 4.25f, 5.65f,
       8.69f, -0.13f, 4.25f, 5.65f,
       3.96967912f, 0.07314367f, 4.25f, 5.65f};
@@ -1686,7 +1692,7 @@ TEST(AttentionTest, AttentionUnidirectionalAttentionMask) {
   std::vector<int32_t> mask_index_data = {0, 1, 1, 1};
 
   std::vector<float> output_data = {
-      3.0146f, 0.1142f, 3.9834f, 5.3394f,
+      -4.09f, 0.42f, -0.11f, 0.57f,
       8.69f, -0.13f, 4.25f, 5.65f,
       8.69f, -0.13f, 4.25f, 5.65f,
       3.96967912f, 0.07314367f, 4.25f, 5.65f};
@@ -1728,7 +1734,7 @@ TEST(AttentionTest, AttentionWithNormFactor) {
   std::vector<int32_t> mask_index_data = {0, 1, 1, 1};
 
   std::vector<float> output_data = {
-      3.0146f, 0.1142f, 3.9834f, 5.3394f,
+      -4.09f, 0.42f, -0.11f, 0.57f,
       8.69f, -0.13f, 4.25f, 5.65f,
       8.69f, -0.13f, 4.25f, 5.65f,
       3.96967912f, 0.07314367f, 4.25f, 5.65f};
@@ -1773,10 +1779,10 @@ TEST(AttentionTest, AttentionWithNeoXRotaryEmbedding) {
   std::vector<int32_t> mask_index_data = {0, 1, 1, 1};
 
   std::vector<float> output_data = {
-      3.0146f, 0.1142f, 3.9834f, 5.3394f,
-      8.69f, -0.13f, 4.25f, 5.65f,
-      8.69f, -0.13f, 4.25f, 5.65f,
-      -1.4697f, 0.3071f, 4.25f, 5.65f};
+      -4.0898f, 0.4199f, -0.1096f, 0.5703f,
+      8.6875f, -0.1299f, 4.25f, 5.6484f,
+      8.6875f, -0.1299f, 4.25f, 5.6484f,
+      -1.4697f, 0.3071f, 4.25f, 5.6484f};
 
   bool use_float16 = true;
   bool is_unidirectional = true;

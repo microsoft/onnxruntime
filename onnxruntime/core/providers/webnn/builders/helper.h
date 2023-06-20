@@ -137,6 +137,7 @@ static const InlinedHashMap<std::string, std::string> op_map = {
     {"Resize", "resample2d"},
     {"Shape", "slice"},
     {"Split", "split"},
+    {"Squeeze", "squeeze"},
     {"Transpose", "transpose"},
     {"Unsqueeze", "unsqueeze"},
 };
