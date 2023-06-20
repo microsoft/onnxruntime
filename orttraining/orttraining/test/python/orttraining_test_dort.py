@@ -9,9 +9,20 @@ from torch.nn import functional as F
 import os
 import sys
 import onnxruntime as onnxrt
+from torch.onnx import register_custom_op_symbolic
+from onnxruntime.training.torchdynamo import register_custom_op_in_dort
+
+def onnx_custom_add(g, x, y):
+    return g.op("test.customop::CustomOpOne", x, y, outputs=1)
+
+# register custom op in onnx
+register_custom_op_symbolic('aten::mul', onnx_custom_add, opset_version=14)
+
+# register custom op in dort
+register_custom_op_in_dort('test.customop::CustomOpOne')
 
 from onnxruntime.training.torchdynamo.register_backend import aot_ort, ort
-
+from onnxruntime.training.torchdynamo.ort_backend import OrtBackend
 
 class TestTorchDynamoOrt(unittest.TestCase):
     """Containers of tests for TorchDynamo ORT (DORT) backend."""
@@ -181,6 +192,8 @@ class TestTorchDynamoOrt(unittest.TestCase):
             run_mnist_model()
 
     def test_DORT_custom_ops(self):  # noqa: N802
+        torch._dynamo.reset()
+
         if sys.platform.startswith("win"):
             shared_library = "custom_op_library.dll"
             if not os.path.exists(shared_library):
@@ -196,43 +209,27 @@ class TestTorchDynamoOrt(unittest.TestCase):
             if not os.path.exists(shared_library):
                 raise FileNotFoundError(f"Unable to find '{shared_library}'")
 
-        # this = os.path.dirname(__file__)
-        # custom_op_model = os.path.join(this, "testdata", "custom_op_library", "custom_op_test.onnx")
-        # if not os.path.exists(custom_op_model):
-        #     raise FileNotFoundError(f"Unable to find '{custom_op_model}'")
-        # from torch._dynamo.backends.common import aot_autograd
-
-        def onnx_custom_add(g, x, y):
-            return g.op("test.customop::CustomOpOne", x, y, outputs=1)
-
-        from torch.onnx import register_custom_op_symbolic
-        register_custom_op_symbolic('aten::add', onnx_custom_add, opset_version=14)
-
-        from onnxruntime.training.torchdynamo import register_custom_op_in_dort
-        register_custom_op_in_dort('test.customop::CustomOpOne')
-
-        # from onnxruntime.training.torchdynamo.ort_backend import OrtBackend
-        # from onnxruntime.training.torchdynamo.register_backend import aot_ort, ort
-
         so1 = onnxrt.SessionOptions()
         so1.register_custom_ops_library(shared_library)
 
-        torch._dynamo.reset()
-
         def custom_add(tensor_x: torch.Tensor, tensor_y: torch.Tensor):
-            return tensor_x + tensor_y
+            return torch.mul(tensor_x, tensor_y)
 
-        opt_add = torch._dynamo.optimize(ort)(custom_add)
+        ort_backend = OrtBackend(session_options=so1)
+        opt_add = torch._dynamo.optimize(ort_backend)(custom_add)
 
         tensor_x = torch.ones((64, 64), dtype=torch.float32)
         tensor_y = torch.ones((64, 64), dtype=torch.float32)
 
         # Baseline.
-        result_ref = custom_add(tensor_x, tensor_y)
+        result_ref = torch.add(tensor_x, tensor_y)
         # ORT result.
         result_ort = opt_add(tensor_x, tensor_y)
 
+        print("result_ref", result_ref)
+        print("result_ort", result_ort)
         torch.testing.assert_close(result_ref, result_ort)
+
 
 if __name__ == "__main__":
     unittest.main()
