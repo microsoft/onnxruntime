@@ -34,7 +34,7 @@ TEST(AllocatorTest, CUDAAllocatorTest) {
   EXPECT_TRUE(cuda_addr);
 
   AllocatorCreationInfo pinned_memory_info(
-      [](int) { return std::make_unique<CUDAPinnedAllocator>(static_cast<OrtDevice::DeviceId>(0), CUDA_PINNED); });
+      [](int) { return std::make_unique<CUDAPinnedAllocator>(CUDA_PINNED); });
 
   auto pinned_allocator = CreateAllocator(pinned_memory_info);
 

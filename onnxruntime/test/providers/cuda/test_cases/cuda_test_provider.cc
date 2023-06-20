@@ -93,7 +93,7 @@ struct ProviderInfo_CUDA_TestImpl : ProviderInfo_CUDA {
     return nullptr;
   }
 
-  std::shared_ptr<IAllocator> CreateCudaAllocator(int16_t, size_t, onnxruntime::ArenaExtendStrategy, onnxruntime::CUDAExecutionProviderExternalAllocatorInfo&, OrtArenaCfg*) override {
+  std::shared_ptr<IAllocator> CreateCudaAllocator(int16_t, size_t, onnxruntime::ArenaExtendStrategy, onnxruntime::CUDAExecutionProviderExternalAllocatorInfo&, const OrtArenaCfg*) override {
     return nullptr;
   }
 
