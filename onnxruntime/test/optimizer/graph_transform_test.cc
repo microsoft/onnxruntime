@@ -3178,6 +3178,53 @@ TEST_F(GraphTransformationTests, PreShapeNodeElimination) {
   op_to_count = CountOpsInGraph(graph);
 
   ASSERT_TRUE(op_to_count["Cast"] == 2);
+
+  // Assert that the remaining "Cast" nodes have different names than "cast2"
+  bool names_are_different = true;
+  for (const Node& node : graph.Nodes()) {
+    if (node.OpType() == "Cast") {
+      const std::string& node_name = node.Name();
+      if (node_name == "cast") {
+        names_are_different = false;
+        break;
+      }
+    }
+  }
+
+  ASSERT_TRUE(names_are_different);
+
+  auto pre_graph_checker = [&](Graph& graph) {
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Cast"] == 1);
+    return Status::OK();
+  };
+
+  auto post_graph_checker = [&](Graph& graph) {
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Cast"] == 1);
+    return Status::OK();
+  };
+
+  // cast is the first node.
+  {
+    auto build_test_case = [&](ModelTestBuilder& builder) {
+      auto* input_arg = builder.MakeInput<float>({{2, 3, 3, 3}});
+      auto* cast_out = builder.MakeIntermediate();
+      auto* shape_out = builder.MakeIntermediate();
+      auto* output = builder.MakeOutput();
+
+      builder.AddNode("Cast", {input_arg}, {cast_out})
+          .AddAttribute("to", static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT));
+      builder.AddNode("Shape", {cast_out}, {shape_out});
+      builder.AddNode("Identity", {shape_out}, {output});
+    };
+
+    auto rule_transformer = std::make_unique<RuleBasedGraphTransformer>("RuleTransformer");
+    ASSERT_STATUS_OK(rule_transformer->Register(std::make_unique<PreShapeNodeElimination>()));
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 13, *logger_, std::move(rule_transformer), TransformerLevel::Level1, 1,
+                                          pre_graph_checker, post_graph_checker));
+  }
+
+  constexpr const ORTCHAR_T* output_model_uri = MODEL_FOLDER "pre_shape_node_elimination_output.onnx";
+  ASSERT_TRUE(Model::Save(*model, output_model_uri).IsOK());
 }
 
 #ifndef DISABLE_CONTRIB_OPS

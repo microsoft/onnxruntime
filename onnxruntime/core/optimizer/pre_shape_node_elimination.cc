@@ -34,7 +34,7 @@ Status PreShapeNodeElimination::Apply(Graph& graph, Node& node, RewriteRuleEffec
 }
 
 bool PreShapeNodeElimination::SatisfyCondition(const Graph& graph, const Node& node, const logging::Logger& logger) const {
-  if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "Cast", {13, 15, 19})) {
+  if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "Cast", {13, 15, 19}, kOnnxDomain)) {
     return false;
   }
 
