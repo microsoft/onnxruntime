@@ -70,7 +70,7 @@ void CreateInputOrtValueOnCPU(gsl::span<const int64_t> dims, const std::vector<T
                               OrtValue* p_ortvalue, AllocatorPtr alloc = nullptr) {
   static CPUExecutionProviderInfo info;
   static CPUExecutionProvider cpu_provider(info);
-  static AllocatorPtr cpu_allocator = cpu_provider.GetAllocator(OrtMemTypeDefault);
+  static AllocatorPtr cpu_allocator = cpu_provider.CreatePreferredAllocators()[0];
 
   TensorShape shape(dims);
   assert(shape.Size() == static_cast<int64_t>(value.size()));

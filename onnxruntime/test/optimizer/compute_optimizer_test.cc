@@ -1833,6 +1833,72 @@ TEST(ComputeOptimizerTests, ReshapeElementwiseOps_NoPropagation1) {
 
 /*
 Test graph include multiple equivalent subgraphs as below.
+          graph input [128, 4, 32] (int64_t)
+                          |
+                        Cast    initializer value: (-1, 128)
+                          |    /
+                        Reshape
+                          |
+                        Identity
+                          |
+                  graph out [128, 128] (int64_t)
+
+Add an Identity node because currently we don't allow Reshape generate graph output.
+*/
+TEST(ComputeOptimizerTests, ReshapeElementwiseOps_NoPropagation2) {
+  const logging::Logger* logger = &logging::LoggingManager::DefaultLogger();
+  auto pre_graph_checker = [](Graph& graph) -> Status {
+    auto op_count_pre = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_count_pre.size() == 3U);
+    TEST_RETURN_IF_NOT(op_count_pre["Cast"] == 1);
+    TEST_RETURN_IF_NOT(op_count_pre["Reshape"] == 1);
+    TEST_RETURN_IF_NOT(op_count_pre["Identity"] == 1);
+    return Status::OK();
+  };
+
+  auto post_graph_checker = [](Graph& graph) {
+    auto op_count_post = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_count_post.size() == 3U);
+    TEST_RETURN_IF_NOT(op_count_post["Cast"] == 1);
+    TEST_RETURN_IF_NOT(op_count_post["Reshape"] == 1);
+    TEST_RETURN_IF_NOT(op_count_post["Identity"] == 1);
+
+    for (Node& node : graph.Nodes()) {
+      if (node.OpType() == "Reshape") {
+        const auto& input_defs = node.InputDefs();
+        auto producer_node = graph.GetProducerNode(input_defs[0]->Name());
+        TEST_RETURN_IF_NOT(producer_node != nullptr);
+        TEST_RETURN_IF_NOT(producer_node->OpType() == "Cast");
+      }
+    }
+    return Status::OK();
+  };
+
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    auto* input1_arg = builder.MakeInput<int64_t>({{128, 4, 32}});
+    auto* cast_out = builder.MakeIntermediate();
+    builder.AddNode("Cast", {input1_arg}, {cast_out})
+        .AddAttribute("to", static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_INT64));
+
+    auto* shape_initializer = builder.MakeInitializer<int64_t>({2}, {-1, 128});
+    auto* reshape_out = builder.MakeIntermediate();
+    builder.AddNode("Reshape", {cast_out, shape_initializer}, {reshape_out});
+
+    auto* identity_out = builder.MakeOutput();
+    builder.AddNode("Identity", {reshape_out}, {identity_out});
+  };
+
+  const std::vector<int> opsets{12, 13, 14};
+  for (auto& opset_version : opsets) {
+    std::unique_ptr<GraphTransformer> transformer = std::make_unique<UpStreamReshapeGraphTransformer>();
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, opset_version, *logger, std::move(transformer),
+                                          TransformerLevel::Level1,
+                                          1, pre_graph_checker, post_graph_checker));
+  }
+}
+
+/*
+Test graph include multiple equivalent subgraphs as below.
            graph input [4, 32, 256] (int64_t)            graph input () (scalar, int64_t)
                             |                                |
                              \_____________   ______________/

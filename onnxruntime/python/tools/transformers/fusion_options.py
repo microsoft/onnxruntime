@@ -32,6 +32,7 @@ class FusionOptions:
         #     merged into one.
         # (2) Attention could only handle self attention; MultiHeadAttention could handle both self and cross attention.
         self.use_multi_head_attention = False
+        self.disable_multi_head_attention_bias = False
 
         self.enable_skip_layer_norm = True
         self.enable_embed_layer_norm = True
