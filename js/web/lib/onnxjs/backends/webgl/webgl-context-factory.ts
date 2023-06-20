@@ -56,7 +56,6 @@ export function createNewWebGLContext(contextId?: 'webgl'|'webgl2'): WebGLContex
     failIfMajorPerformanceCaveat: false
   };
   let gl: WebGLRenderingContext|null;
-
   const ca = contextAttributes;
   if (!contextId || contextId === 'webgl2') {
     gl = canvas.getContext('webgl2', ca);
