@@ -28,7 +28,7 @@ inline TrainingSession::TrainingSession(const Env& env, const SessionOptions& se
                                         CheckpointState& checkpoint_state,
                                         const void* train_model_data, size_t train_model_data_length,
                                         const void* eval_model_data, size_t eval_model_data_length,
-                                        const void* optim_model_data, size_t optim_model_data_length){
+                                        const void* optim_model_data, size_t optim_model_data_length) {
   ThrowOnError(GetTrainingApi().CreateTrainingSessionFromArray(
       env, session_options, checkpoint_state,
       train_model_data, train_model_data_length,

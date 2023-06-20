@@ -170,8 +170,8 @@ Module::Module(const ModelIdentifiers& model_identifiers,
               "Training Session Creation failed. Either the train model path or train model data should be specified.");
 
   ORT_THROW_IF_ERROR(model_identifiers.train_model_data == nullptr
-                     ? train_sess_->Load(model_identifiers.train_model)
-                     : train_sess_->Load(model_identifiers.train_model_data, model_identifiers.train_model_len));
+                         ? train_sess_->Load(model_identifiers.train_model)
+                         : train_sess_->Load(model_identifiers.train_model_data, model_identifiers.train_model_len));
 
   for (const auto& provider : providers) {
     ORT_THROW_IF_ERROR(train_sess_->RegisterExecutionProvider(provider));
@@ -316,7 +316,7 @@ Module::Module(const ModelIdentifiers& model_identifiers,
   // Keep a copy of the eval model path to be able to later export the model for inferencing.
   // The inference model will be reconstructed from the eval model.
   // TODO [Ashwini]: Find a fix to export model for inference when the eval model is loaded from a buffer.
-  if(model_identifiers.eval_model.has_value()) {
+  if (model_identifiers.eval_model.has_value()) {
     eval_model_path_ = model_identifiers.eval_model.value();
   }
 }

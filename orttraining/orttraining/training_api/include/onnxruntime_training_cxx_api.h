@@ -163,7 +163,6 @@ class TrainingSession : public detail::Base<OrtTrainingSession> {
                   const std::optional<std::basic_string<ORTCHAR_T>>& eval_model_path = std::nullopt,
                   const std::optional<std::basic_string<ORTCHAR_T>>& optimizer_model_path = std::nullopt);
 
-
   /** \brief Create a training session that can be used to begin or resume training.
    * This constructor allows the users to load the models from buffers instead of files.
    *

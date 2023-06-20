@@ -215,9 +215,7 @@ void Optimizer::Initialize(const ModelIdentifiers& model_identifiers,
     ORT_THROW_IF_ERROR(optim_sess_->RegisterExecutionProvider(execution_provider));
   }
 
-  ORT_THROW_IF_ERROR(model_identifiers.optim_model.has_value() ?
-                     optim_sess_->Load(model_identifiers.optim_model.value()) :
-                     optim_sess_->Load(model_identifiers.optim_model_data, model_identifiers.optim_model_len));
+  ORT_THROW_IF_ERROR(model_identifiers.optim_model.has_value() ? optim_sess_->Load(model_identifiers.optim_model.value()) : optim_sess_->Load(model_identifiers.optim_model_data, model_identifiers.optim_model_len));
 
   ORT_THROW_IF_ERROR(optim_sess_->Initialize());
 
@@ -226,7 +224,7 @@ void Optimizer::Initialize(const ModelIdentifiers& model_identifiers,
 
   utils::GetGraphInputOutputNames(optim_sess_, input_names_, output_names_);
 
-  //TODO[Ashwini]: Fix this before merging this PR - Needs hardcoding to ADAMW optimizer or updating CreateInstance to take in a pointer to model data buffer.
+  // TODO[Ashwini]: Fix this before merging this PR - Needs hardcoding to ADAMW optimizer or updating CreateInstance to take in a pointer to model data buffer.
   optimizer_algo_ptr_ = OptimizerAlorithmFactory::CreateInstance(model_identifiers.optim_model.value(), group_count_);
   ORT_ENFORCE(group_count_ == 1, "Group count can only be 1, but got: " + std::to_string(group_count_));
   ORT_ENFORCE(optimizer_algo_ptr_, "optimizer_algo_ptr_ should not be nullptr.");

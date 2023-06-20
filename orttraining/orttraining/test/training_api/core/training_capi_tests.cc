@@ -153,7 +153,6 @@ TEST(TrainingCApiTest, LoadModelsFromArray) {
       ORT_THROW("Error reading model");
   }
 
-
   Ort::Env env;
   Ort::CheckpointState checkpoint_state = Ort::CheckpointState::LoadCheckpoint(MODEL_FOLDER "checkpoint.ckpt");
   Ort::TrainingSession training_session = Ort::TrainingSession(env, Ort::SessionOptions(), checkpoint_state, buffer.data(), buffer.size());

@@ -29,9 +29,7 @@ struct ModelIdentifiers {
   ModelIdentifiers(const void* train_data, int train_data_len,
                    const void* optim_data = nullptr, int optim_data_len = 0,
                    const void* eval_data = nullptr, int eval_data_len = 0)
-      : train_model(""), train_model_data(train_data), train_model_len(train_data_len),
-        optim_model_data(optim_data), optim_model_len(optim_data_len),
-        eval_model_data(eval_data), eval_model_len(eval_data_len) {}
+      : train_model(""), train_model_data(train_data), train_model_len(train_data_len), optim_model_data(optim_data), optim_model_len(optim_data_len), eval_model_data(eval_data), eval_model_len(eval_data_len) {}
 };
 
 namespace utils {

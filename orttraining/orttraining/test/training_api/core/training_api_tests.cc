@@ -462,11 +462,15 @@ TEST(TrainingApiTest, OptimStep) {
   std::vector<std::shared_ptr<IExecutionProvider>> providers{onnxruntime::test::DefaultCudaExecutionProvider()};
   std::shared_ptr<IExecutionProvider> cuda_provider = providers.front();
   ASSERT_STATUS_OK(Environment::Create(nullptr, env));
+
+  auto model_identifier = ModelIdentifiers(onnxruntime::ToUTF8String(model_uri),
+                                           std::nullopt,
+                                           std::optional<std::string>(onnxruntime::ToUTF8String(optim_uri)));
   auto model = std::make_unique<onnxruntime::training::api::Module>(
-      ToUTF8String(model_uri), &state, session_option,
+      model_identifier, &state, session_option,
       *env, providers);
   auto optim = std::make_unique<onnxruntime::training::api::Optimizer>(
-      ToUTF8String(optim_uri), &state, session_option,
+      model_identifier, &state, session_option,
       *env, providers);
 
   OrtValue input, target;
