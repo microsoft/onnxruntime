@@ -2763,6 +2763,70 @@ This op functions in much the same was as Dropout-11 and Dropout-13 do, execpt t
         }
       });
 
+  ONNX_CONTRIB_OPERATOR_SCHEMA(BitShift)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc("same with onnx operator BitShift")
+      .Input(
+          0,
+          "X",
+          "First operand, input to be shifted.",
+          "T",
+          OpSchema::Single,
+          true,
+          1,
+          OpSchema::NonDifferentiable)
+      .Input(1, "Y", "Second operand, amounts of shift.", "T", OpSchema::Single, true, 1, OpSchema::NonDifferentiable)
+      .Output(0, "Z", "Output tensor", "T", OpSchema::Single, true, 1, OpSchema::NonDifferentiable)
+      .TypeConstraint(
+          "T",
+          {"tensor(uint8)", "tensor(uint16)", "tensor(uint32)", "tensor(int32)", "tensor(uint64)"},
+          "Constrain input and output types to integer tensors.")
+      .Attr(
+          "direction",
+          "Direction of moving bits. It can be either \"RIGHT\" (for right shift) "
+          "or \"LEFT\" (for left shift).",
+          AttributeProto::STRING)
+      .TypeAndShapeInferenceFunction([](InferenceContext& ctx) {
+        // Type inference
+        propagateElemTypeFromInputToOutput(ctx, 0, 0);
+        // Shape inference
+        if (hasNInputShapes(ctx, 2))
+          bidirectionalBroadcastShapeInference(
+              ctx.getInputType(0)->tensor_type().shape(),
+              ctx.getInputType(1)->tensor_type().shape(),
+              *ctx.getOutputType(0)->mutable_tensor_type()->mutable_shape());
+      });
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(BitwiseAnd)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc("same with onnx operator BitShift")
+      .Input(
+          0,
+          "X",
+          "First operand, input to be shifted.",
+          "T",
+          OpSchema::Single,
+          true,
+          1,
+          OpSchema::NonDifferentiable)
+      .Input(1, "Y", "Second operand, amounts of shift.", "T", OpSchema::Single, true, 1, OpSchema::NonDifferentiable)
+      .Output(0, "Z", "Output tensor", "T", OpSchema::Single, true, 1, OpSchema::NonDifferentiable)
+      .TypeConstraint(
+          "T",
+          {"tensor(uint8)", "tensor(uint16)", "tensor(uint32)", "tensor(int32)", "tensor(uint64)"},
+          "Constrain input and output types to integer tensors.")
+      .TypeAndShapeInferenceFunction([](InferenceContext& ctx) {
+        // Type inference
+        propagateElemTypeFromInputToOutput(ctx, 0, 0);
+        // Shape inference
+        if (hasNInputShapes(ctx, 2))
+          bidirectionalBroadcastShapeInference(
+              ctx.getInputType(0)->tensor_type().shape(),
+              ctx.getInputType(1)->tensor_type().shape(),
+              *ctx.getOutputType(0)->mutable_tensor_type()->mutable_shape());
+      });
 #ifdef ENABLE_ATEN
   ONNX_CONTRIB_OPERATOR_SCHEMA(ATen)
       .SetDomain(kPytorchAtenDomain)

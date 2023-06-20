@@ -28,7 +28,12 @@ namespace cuda {
   BINARY_OP_NAME_EXPR(Max, _Max(a, b))               \
   BINARY_OP_NAME_EXPR(Min, _Min(a, b))               \
   BINARY_OP_NAME_EXPR(Mod, _Mod(a, b))               \
-  BINARY_OP_NAME_EXPR(Fmod, _Fmod(a, b))
+  BINARY_OP_NAME_EXPR(Fmod, _Fmod(a, b))             \
+  BINARY_OP_NAME_EXPR(BitwiseAnd, (a & b))           \
+  BINARY_OP_NAME_EXPR(BitwiseOr, (a | b))            \
+  BINARY_OP_NAME_EXPR(BitwiseXor, (a ^ b))           \
+  BINARY_OP_NAME_EXPR(BitShiftRight, (a >> b))       \
+  BINARY_OP_NAME_EXPR(BitShiftLeft, (a << b))
 
 // NOTE that cu files are compiled with nvcc and should not refer to any onnxruntime headers
 // so struct BinaryElementwisePreparation cannot be used here

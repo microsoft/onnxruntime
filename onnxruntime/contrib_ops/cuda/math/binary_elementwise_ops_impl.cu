@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include <cuda_runtime.h>
+#include <cstdint>
 #include "contrib_ops/cuda/math/binary_elementwise_ops_impl.h"
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include "core/providers/cuda/cu_inc/binary_elementwise_impl.cuh"
@@ -91,7 +92,9 @@ CONTRIB_BINARY_OPS()
 // O: bool
 
 CONTRIB_SPECIALIZED_BINARY_ELEMENTWISE_IMPL_HFD(BiasGelu)
-
+CONTRIB_SPECIALIZED_BINARY_ELEMENTWISE_IMPL(BitShiftRight, int32_t)
+CONTRIB_SPECIALIZED_BINARY_ELEMENTWISE_IMPL(BitShiftLeft, int32_t)
+CONTRIB_SPECIALIZED_BINARY_ELEMENTWISE_IMPL(BitwiseAnd, int32_t)
 }  // namespace cuda
 }  // namespace contrib
 }  // namespace onnxruntime

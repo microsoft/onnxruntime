@@ -200,6 +200,23 @@ Status BinaryElementwise<ShouldBroadcast>::Prepare(OpKernelContext* context, Bin
 // D: double
 // O: bool
 
+#define BINARY_OP_VERSIONED_UINT_NOCOMPUTE(name, ver)           \
+  BINARY_ELEMENTWISE_REGISTER_KERNEL_TYPED(name, ver, uint64_t) \
+  BINARY_ELEMENTWISE_REGISTER_KERNEL_TYPED(name, ver, uint32_t) \
+  BINARY_ELEMENTWISE_REGISTER_KERNEL_TYPED(name, ver, int32_t)  \
+  BINARY_ELEMENTWISE_REGISTER_KERNEL_TYPED(name, ver, uint16_t) \
+  BINARY_ELEMENTWISE_REGISTER_KERNEL_TYPED(name, ver, uint8_t)
+
+#define BINARY_OP_VERSIONED_INTEGRAL(name, startver) \
+  BINARY_OP_TYPED(name, startver, uint64_t)          \
+  BINARY_OP_TYPED(name, startver, uint32_t)          \
+  BINARY_OP_TYPED(name, startver, uint16_t)          \
+  BINARY_OP_TYPED(name, startver, uint8_t)           \
+  BINARY_OP_TYPED(name, startver, int64_t)           \
+  BINARY_OP_TYPED(name, startver, int32_t)           \
+  BINARY_OP_TYPED(name, startver, int16_t)           \
+  BINARY_OP_TYPED(name, startver, int8_t)
+
 #define BINARY_OP_VERSIONED_HFD(name, startver, endver)        \
   BINARY_OP_VERSIONED_TYPED(name, startver, endver, MLFloat16) \
   BINARY_OP_VERSIONED_TYPED(name, startver, endver, float)     \
@@ -314,6 +331,13 @@ BINARY_OP_REGISTER_VERSIONED_CLASS_HFD(Pow, Pow_7, 7, 11)
 BINARY_LOGICALOP_TYPED(And, 7, bool)
 BINARY_LOGICALOP_TYPED(Or, 7, bool)
 BINARY_LOGICALOP_TYPED(Xor, 7, bool)
+
+BINARY_OP_VERSIONED_INTEGRAL(BitwiseAnd, 18)
+BINARY_OP_VERSIONED_INTEGRAL(BitwiseOr, 18)
+BINARY_OP_VERSIONED_INTEGRAL(BitwiseXor, 18)
+
+BINARY_OP_VERSIONED_UINT_NOCOMPUTE(BitShift, 11)
+
 BINARY_OP_VERSIONED_HFD(PRelu, 7, 8)
 BINARY_OP_VERSIONED_HFD(PRelu, 9, 15)
 // Opset-16 adds BFloat16 to allowed types for the PRelu operator
@@ -463,6 +487,40 @@ Status Pow::ComputeInternal(OpKernelContext* context) const {
                           DataTypeImpl::ToString(prepare.lhs_tensor->DataType()));
   }
   return s;
+}
+
+template <typename T>
+Status BitShift<T>::ComputeInternal(OpKernelContext* context) const {
+  BinaryElementwisePreparation prepare;
+  ORT_RETURN_IF_ERROR(Prepare(context, &prepare));
+  if (right_shift_) {
+    Impl_BitShiftRight<typename ToCudaType<T>::MappedType>(
+        Stream(context),
+        prepare.output_rank_or_simple_broadcast,
+        &prepare.lhs_padded_strides,
+        reinterpret_cast<const typename ToCudaType<T>::MappedType*>(prepare.lhs_tensor->Data<T>()),
+        &prepare.rhs_padded_strides,
+        reinterpret_cast<const typename ToCudaType<T>::MappedType*>(prepare.rhs_tensor->Data<T>()),
+        &prepare.fdm_output_strides,
+        prepare.fdm_H,
+        prepare.fdm_C,
+        reinterpret_cast<typename ToCudaType<T>::MappedType*>(prepare.output_tensor->MutableData<T>()),
+        prepare.output_tensor->Shape().Size());
+  } else {
+    Impl_BitShiftLeft<typename ToCudaType<T>::MappedType>(
+        Stream(context),
+        prepare.output_rank_or_simple_broadcast,
+        &prepare.lhs_padded_strides,
+        reinterpret_cast<const typename ToCudaType<T>::MappedType*>(prepare.lhs_tensor->Data<T>()),
+        &prepare.rhs_padded_strides,
+        reinterpret_cast<const typename ToCudaType<T>::MappedType*>(prepare.rhs_tensor->Data<T>()),
+        &prepare.fdm_output_strides,
+        prepare.fdm_H,
+        prepare.fdm_C,
+        reinterpret_cast<typename ToCudaType<T>::MappedType*>(prepare.output_tensor->MutableData<T>()),
+        prepare.output_tensor->Shape().Size());
+  }
+  return Status::OK();
 }
 
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(

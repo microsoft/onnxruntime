@@ -204,6 +204,41 @@ class Xor final : public BinaryElementwise<ShouldBroadcast> {
   Status ComputeInternal(OpKernelContext* context) const override;
 };
 
+template <typename T>
+class BitwiseAnd final : public BinaryElementwise<ShouldBroadcast> {
+ public:
+  BitwiseAnd(const OpKernelInfo& info) : BinaryElementwise(info) {}
+  Status ComputeInternal(OpKernelContext* context) const override;
+};
+
+template <typename T>
+class BitwiseOr final : public BinaryElementwise<ShouldBroadcast> {
+ public:
+  BitwiseOr(const OpKernelInfo& info) : BinaryElementwise(info) {}
+  Status ComputeInternal(OpKernelContext* context) const override;
+};
+
+template <typename T>
+class BitwiseXor final : public BinaryElementwise<ShouldBroadcast> {
+ public:
+  BitwiseXor(const OpKernelInfo& info) : BinaryElementwise(info) {}
+  Status ComputeInternal(OpKernelContext* context) const override;
+};
+
+template <typename T>
+class BitShift final : public BinaryElementwise<ShouldBroadcast> {
+ public:
+  BitShift(const OpKernelInfo& info) : BinaryElementwise(info) {
+    std::string direction;
+    ORT_THROW_IF_ERROR(info.GetAttr<std::string>("direction", &direction));
+    right_shift_ = direction=="RIGHT";
+  }
+  Status ComputeInternal(OpKernelContext* context) const override;
+
+ private:
+  bool right_shift_{false};
+};
+
 // PRelu is activation function, but it's closer to binary elementwise ops in implementation
 template <typename T>
 class PRelu final : public BinaryElementwise<ShouldBroadcast> {

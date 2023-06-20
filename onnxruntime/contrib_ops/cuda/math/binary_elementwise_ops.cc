@@ -9,6 +9,40 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
+template <typename T>
+Status BitShift<T>::ComputeInternal(OpKernelContext* context) const {
+  BinaryElementwisePreparation prepare;
+  ORT_RETURN_IF_ERROR(Prepare(context, &prepare));
+  if (right_shift_) {
+    Impl_BitShiftRight<typename ToCudaType<T>::MappedType>(
+        Stream(context),
+        prepare.output_rank_or_simple_broadcast,
+        &prepare.lhs_padded_strides,
+        reinterpret_cast<const typename ToCudaType<T>::MappedType*>(prepare.lhs_tensor->Data<T>()),
+        &prepare.rhs_padded_strides,
+        reinterpret_cast<const typename ToCudaType<T>::MappedType*>(prepare.rhs_tensor->Data<T>()),
+        &prepare.fdm_output_strides,
+        prepare.fdm_H,
+        prepare.fdm_C,
+        reinterpret_cast<typename ToCudaType<T>::MappedType*>(prepare.output_tensor->MutableData<T>()),
+        prepare.output_tensor->Shape().Size());
+  } else {
+    Impl_BitShiftLeft<typename ToCudaType<T>::MappedType>(
+        Stream(context),
+        prepare.output_rank_or_simple_broadcast,
+        &prepare.lhs_padded_strides,
+        reinterpret_cast<const typename ToCudaType<T>::MappedType*>(prepare.lhs_tensor->Data<T>()),
+        &prepare.rhs_padded_strides,
+        reinterpret_cast<const typename ToCudaType<T>::MappedType*>(prepare.rhs_tensor->Data<T>()),
+        &prepare.fdm_output_strides,
+        prepare.fdm_H,
+        prepare.fdm_C,
+        reinterpret_cast<typename ToCudaType<T>::MappedType*>(prepare.output_tensor->MutableData<T>()),
+        prepare.output_tensor->Shape().Size());
+  }
+  return Status::OK();
+}
+
 #define CONTRIB_BINARY_ELEMENTWISE_REGISTER_KERNEL_TYPED(x, ver, T)                        \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                                           \
       x,                                                                                   \
@@ -65,6 +99,8 @@ namespace cuda {
   CONTRIB_BINARY_OP_TYPED(name, ver, BFloat16)
 
 CONTRIB_BINARY_OP_HFD(BiasGelu, 1)
+CONTRIB_BINARY_ELEMENTWISE_REGISTER_KERNEL_TYPED(BitShift, 1, int32_t)
+CONTRIB_BINARY_OP_TYPED(BitwiseAnd, 1, int32_t)
 
 }  // namespace cuda
 }  // namespace contrib
