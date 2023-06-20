@@ -37,7 +37,7 @@
  *
  * This value is used by some API functions to behave as this version of the header expects.
  */
-#define ORT_API_VERSION 15
+#define ORT_API_VERSION 16
 
 #ifdef __cplusplus
 extern "C" {
@@ -4288,6 +4288,10 @@ struct OrtCustomOp {
   // and false (zero) otherwise.
   // Applicable only for custom ops that have a variadic output.
   int(ORT_API_CALL* GetVariadicOutputHomogeneity)(_In_ const struct OrtCustomOp* op);
+
+  // Fallible compute call
+  OrtStatusPtr(ORT_API_CALL* KernelComputeFallible)(_In_ void* op_kernel, _In_ OrtKernelContext* context);
+
 };
 
 /*

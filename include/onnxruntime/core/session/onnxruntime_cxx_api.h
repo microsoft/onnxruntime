@@ -1995,7 +1995,7 @@ struct CustomOpApi {
   const OrtApi& api_;
 };
 
-template <typename TOp, typename TKernel>
+  template <typename TOp, typename TKernel, bool Fallible = false>
 struct CustomOpBase : OrtCustomOp {
   CustomOpBase() {
     OrtCustomOp::version = ORT_API_VERSION;
@@ -2011,7 +2011,13 @@ struct CustomOpBase : OrtCustomOp {
     OrtCustomOp::GetOutputTypeCount = [](const OrtCustomOp* this_) { return static_cast<const TOp*>(this_)->GetOutputTypeCount(); };
     OrtCustomOp::GetOutputType = [](const OrtCustomOp* this_, size_t index) { return static_cast<const TOp*>(this_)->GetOutputType(index); };
 
-    OrtCustomOp::KernelCompute = [](void* op_kernel, OrtKernelContext* context) { static_cast<TKernel*>(op_kernel)->Compute(context); };
+    if constexpr(!Fallible) {
+      OrtCustomOp::KernelCompute = [](void* op_kernel, OrtKernelContext* context) {
+	static_cast<TKernel*>(op_kernel)->Compute(context);
+      };
+    } else {
+      OrtCustomOp::KernelCompute = nullptr;
+    }
 #if defined(_MSC_VER) && !defined(__clang__)
 #pragma warning(push)
 #pragma warning(disable : 26409)
@@ -2027,6 +2033,13 @@ struct CustomOpBase : OrtCustomOp {
     OrtCustomOp::GetVariadicInputHomogeneity = [](const OrtCustomOp* this_) { return static_cast<int>(static_cast<const TOp*>(this_)->GetVariadicInputHomogeneity()); };
     OrtCustomOp::GetVariadicOutputMinArity = [](const OrtCustomOp* this_) { return static_cast<const TOp*>(this_)->GetVariadicOutputMinArity(); };
     OrtCustomOp::GetVariadicOutputHomogeneity = [](const OrtCustomOp* this_) { return static_cast<int>(static_cast<const TOp*>(this_)->GetVariadicOutputHomogeneity()); };
+    if constexpr(Fallible) {
+      OrtCustomOp::KernelComputeFallible = [](void* op_kernel, OrtKernelContext* context) -> OrtStatusPtr {
+	return static_cast<TKernel*>(op_kernel)->ComputeFallible(context);
+      };
+    } else {
+      OrtCustomOp::KernelComputeFallible = nullptr;
+    }
   }
 
   // Default implementation of GetExecutionProviderType that returns nullptr to default to the CPU provider
@@ -2077,6 +2090,17 @@ struct CustomOpBase : OrtCustomOp {
   std::vector<std::string> GetSessionConfigKeys() const {
     return std::vector<std::string>{};
   }
+
+  // // One of the two compute functions must be defined
+  // void Compute(void* op_kernel, OrtKernelContext* context) {
+  //   return this->KernelCompute(op_kernel, context);
+  // }
+
+  // // // Call KernelCompute by default for backwards compatibility.
+  // // void Compute (void* op_kernel, OrtKernelContext* context) = 0;
+  
+  // // Call KernelCompute by default for backwards compatibility.
+  // Status ComputeFallible (void* op_kernel, OrtKernelContext* context) = 0;
 
  protected:
   // Helper function that returns a map of session config entries specified by CustomOpBase::GetSessionConfigKeys.

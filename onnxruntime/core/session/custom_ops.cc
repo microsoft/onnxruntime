@@ -403,6 +403,11 @@ struct CustomOpKernel : OpKernel {
   ~CustomOpKernel() override { op_.KernelDestroy(op_kernel_); }
 
   Status Compute(OpKernelContext* ctx) const override {
+    if (op_.version > 15 && op_.KernelCompute == 0) {
+      auto status_ptr = op_.KernelComputeFallible(op_kernel_, reinterpret_cast<OrtKernelContext*>(ctx));
+      return ToStatus(status_ptr);
+    }
+
     op_.KernelCompute(op_kernel_, reinterpret_cast<OrtKernelContext*>(ctx));
     return Status::OK();
   }

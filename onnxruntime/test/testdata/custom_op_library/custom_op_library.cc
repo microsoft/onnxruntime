@@ -1,4 +1,5 @@
 #include "custom_op_library.h"
+#include "onnxruntime_c_api.h"
 
 #define ORT_API_MANUAL_INIT
 #include "onnxruntime_cxx_api.h"
@@ -19,7 +20,7 @@ void cuda_add(int64_t, T3*, const T1*, const T2*, cudaStream_t compute_stream);
 static const char* c_OpDomain = "test.customop";
 
 struct KernelOne {
-  void Compute(OrtKernelContext* context) {
+  OrtStatusPtr ComputeFallible(OrtKernelContext* context) {
     // Setup inputs
     Ort::KernelContext ctx(context);
     auto input_X = ctx.GetInput(0);
@@ -36,14 +37,10 @@ struct KernelOne {
     const size_t size = output.GetTensorTypeAndShapeInfo().GetElementCount();
 
     // Do computation
-#ifdef USE_CUDA
-    cudaStream_t stream = reinterpret_cast<cudaStream_t>(ctx.GetGPUComputeStream());
-    cuda_add(size, out, X, Y, stream);
-#else
     for (size_t i = 0; i < size; i++) {
       out[i] = X[i] + Y[i];
     }
-#endif
+    return nullptr;
   }
 };
 
@@ -69,7 +66,7 @@ struct KernelTwo {
   }
 };
 
-struct CustomOpOne : Ort::CustomOpBase<CustomOpOne, KernelOne> {
+struct CustomOpOne : Ort::CustomOpBase<CustomOpOne, KernelOne, true> {
   void* CreateKernel(const OrtApi& /* api */, const OrtKernelInfo* /* info */) const {
     return std::make_unique<KernelOne>().release();
   };
