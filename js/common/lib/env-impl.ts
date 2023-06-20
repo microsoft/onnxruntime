@@ -1,8 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {Env} from './env';
-import {version} from './version';
+import {Env} from './env.js';
+import {version} from './version.js';
 
 type LogLevelType = Env['logLevel'];
 

@@ -123,7 +123,6 @@ class GraphExecutionManager(GraphExecutionInterface):
             )
         self._first_skip_check_warning = True
 
-        # Inspect embedding input index sparsity.
         self._rt_inspector = _runtime_inspector.RuntimeInspector(self._logger)
 
         # Graph transformer config
@@ -205,7 +204,7 @@ class GraphExecutionManager(GraphExecutionInterface):
         )
 
         self._print_input_density = ortmodule._defined_from_envvar("ORTMODULE_PRINT_INPUT_DENSITY", 0, warn=True) == 1
-
+        self._print_memory_stat = ortmodule._defined_from_envvar("ORTMODULE_PRINT_MEMORY_STATS", 0, warn=True) == 1
         self._enable_memory_optimizer = ortmodule._defined_from_envvar("ORTMODULE_MEMORY_OPT_CONFIG", "", warn=True)
 
         # Flag to re-export the model due to attribute change on the original module.
@@ -582,7 +581,7 @@ class GraphExecutionManager(GraphExecutionInterface):
                 [
                     " -FLOPReduction",
                     "ON" if self._enable_compute_optimizer else "OFF",
-                    "Enable/Disable with env ORTMODULE_ENABLE_COMPUTE_OPTIMIZER=1/0",
+                    "Reduce FLOPs by upstreaming shrinking-sized ops",
                 ],
             ]
         )
@@ -637,6 +636,9 @@ class GraphExecutionManager(GraphExecutionInterface):
             # when looping through inputs during training.
             if not self._print_input_density:
                 self._rt_inspector.disable_input_inspector()
+
+        if self._print_memory_stat:
+            self._rt_inspector.enable_memory_inspector(self._original_module)
 
     def _log_feature_stats(self):
         rank = 0

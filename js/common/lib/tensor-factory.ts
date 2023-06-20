@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {TypedTensor} from './tensor';
+import {TypedTensor} from './tensor.js';
 
 export type ImageFormat = 'RGB'|'RGBA'|'BGR'|'RBG';
 export type ImageTensorLayout = 'NHWC'|'NCHW';
