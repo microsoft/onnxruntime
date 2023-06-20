@@ -29,7 +29,7 @@ import {Activation, typeSnippet} from './activation_util';
 import {utilFunctions} from './conv_util';
 import {makeMatMulPackedSource, makeMatMulPackedVec4Source} from './matmul_packed_webgpu';
 
-const conv2dTransposeCommonSnippet =
+const convTranspose2dCommonSnippet =
     (isChannelsLast: boolean, fitAOuter: boolean, fitBOuter: boolean, fitInner: boolean, activation?: Activation,
      innerElementSize = 4): string => {
       const getWSnippet = (innerElementSize: number) => {
@@ -113,7 +113,7 @@ const conv2dTransposeCommonSnippet =
       return userCode;
     };
 
-export const createConv2dTransposeMatMulProgramInfo =
+export const createConvTranspose2DMatMulProgramInfo =
     (inputs: readonly TensorView[], metadata: ProgramMetadata, attributes: ConvTransposeAttributes,
      outputShape: readonly number[], dimAOuter: number, dimBOuter: number, dimInner: number, hasBias: boolean,
      sequentialAccessByThreads: boolean): ProgramInfo => {
@@ -200,7 +200,7 @@ export const createConv2dTransposeMatMulProgramInfo =
         const dimBOuter : i32 = ${dimBOuter};
         const dimInner : i32 = ${dimInner};
         ${declareFunctions}
-        ${conv2dTransposeCommonSnippet(isChannelsLast, fitAOuter, fitBOuter, fitInner, undefined, isVec4 ? 4 : 1)}
+        ${convTranspose2dCommonSnippet(isChannelsLast, fitAOuter, fitBOuter, fitInner, undefined, isVec4 ? 4 : 1)}
             ${
             isVec4 ? makeMatMulPackedVec4Source(elementsPerThread, workGroupSize, !isChannelsLast, tileInner) :
                      makeMatMulPackedSource(
