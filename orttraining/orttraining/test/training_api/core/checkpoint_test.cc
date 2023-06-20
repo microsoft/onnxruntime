@@ -244,7 +244,7 @@ TEST(CheckpointApiTest, SaveOptimizerStateAsCheckpoint_ThenLoad) {
   std::unique_ptr<Environment> env;
   ORT_THROW_IF_ERROR(Environment::Create(nullptr, env));
 
-  std::vector<std::shared_ptr<IExecutionProvider>> provider;
+  std::vector<std::shared_ptr<IExecutionProvider>> providers;
 #if defined(USE_CUDA)
   providers = {onnxruntime::test::DefaultCudaExecutionProvider()};
 #endif
@@ -253,9 +253,9 @@ TEST(CheckpointApiTest, SaveOptimizerStateAsCheckpoint_ThenLoad) {
                                            std::nullopt,
                                            std::optional<std::string>(onnxruntime::ToUTF8String(optim_uri)));
   auto model = std::make_unique<Module>(model_identifier, &state, session_option,
-                                        *env, provider);
+                                        *env, providers);
   auto optimizer = std::make_unique<Optimizer>(model_identifier, &state, session_option,
-                                               *env, provider);
+                                               *env, providers);
 
   // Remove the temporary directory if it already exists.
   auto ckpt_test_root_dir = ORT_TSTR("checkpointing_api_test_dir");
@@ -279,7 +279,7 @@ TEST(CheckpointApiTest, SaveOptimizerStateAsCheckpoint_ThenLoad) {
 
   std::set<PathString> valid_file_names;
   LoopDir(checkpoint_path,
-          [&valid_file_names, &checkpoint_path](const PathChar* filename, OrtFileType file_type) -> bool {
+          [&valid_file_names](const PathChar* filename, OrtFileType file_type) -> bool {
             PathString filename_str = filename;
             bool is_valid_ckpt_file_exts =
                 HasExtensionOf(filename_str, ORT_TSTR("pbseq")) || HasExtensionOf(filename_str, ORT_TSTR("bin"));
@@ -331,7 +331,6 @@ TEST(CheckpointApiTest, SaveOptimizerStateAsCheckpoint_ThenLoad) {
     }
   }
 }
-
 
 /**
  * Create PropertyBag with sets of properties,

@@ -169,10 +169,11 @@ struct PyOptimizer {
   PyOptimizer(const std::string optimizer_model_uri, onnxruntime::training::api::CheckpointState* state,
               std::vector<std::shared_ptr<IExecutionProvider>> providers)
       : optimizer_() {
+    auto model_identifiers = onnxruntime::training::api::ModelIdentifiers("", std::nullopt, optimizer_model_uri);
     auto env = GetTrainingEnv().GetORTEnv();
     // XXX: We hope that env will be around when optimizer needs it.
     optimizer_ = std::make_shared<onnxruntime::training::api::Optimizer>(
-        optimizer_model_uri, state, onnxruntime::SessionOptions(), *env, providers);
+        model_identifiers, state, onnxruntime::SessionOptions(), *env, providers);
   }
 
   std::shared_ptr<onnxruntime::training::api::Optimizer> optimizer_;
@@ -887,11 +888,10 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
                        std::optional<std::string> eval_model_uri,
                        OrtDevice device) {
         onnxruntime::SessionOptions session_option;
-        std::vector<std::shared_ptr<IExecutionProvider>> provider = GetExecutionProvidersForTrainingApis(device);
-
         auto env = GetTrainingEnv().GetORTEnv();
-        return std::make_unique<onnxruntime::training::api::Module>(
-            model_uri, state, session_option, *env, provider, eval_model_uri);
+        std::vector<std::shared_ptr<IExecutionProvider>> provider = GetExecutionProvidersForTrainingApis(device);
+        auto model_identifiers = onnxruntime::training::api::ModelIdentifiers(model_uri, eval_model_uri, std::nullopt);
+        return std::make_unique<onnxruntime::training::api::Module>(model_identifiers, state, session_option, *env, provider);
       }))
       .def("train_step",
            [](onnxruntime::training::api::Module* model,
