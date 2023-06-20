@@ -156,7 +156,8 @@ class TrainingUtil {
   static AllocatorPtr GetCpuAllocator() {
     static CPUExecutionProviderInfo info;
     static CPUExecutionProvider cpu_provider(info);
-    return cpu_provider.GetAllocator(OrtMemTypeDefault);
+    static AllocatorPtr ret = cpu_provider.CreatePreferredAllocators()[0];
+    return ret;
   }
 
   static void PrintNameMLValMap(const NameMLValMap& mlvalue_map);

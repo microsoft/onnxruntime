@@ -86,7 +86,8 @@ struct ProviderInfo_CUDA_Impl final : ProviderInfo_CUDA {
   }
 
   std::unique_ptr<IAllocator> CreateCUDAPinnedAllocator(int16_t device_id, const char* name) override {
-    return std::make_unique<CUDAPinnedAllocator>(device_id, name);
+    ORT_UNUSED_PARAMETER(device_id);
+    return std::make_unique<CUDAPinnedAllocator>(name);
   }
 
   std::unique_ptr<IDataTransfer> CreateGPUDataTransfer() override {
@@ -179,7 +180,7 @@ struct ProviderInfo_CUDA_Impl final : ProviderInfo_CUDA {
     return std::make_shared<CUDAProviderFactory>(info);
   }
 
-  std::shared_ptr<IAllocator> CreateCudaAllocator(int16_t device_id, size_t gpu_mem_limit, onnxruntime::ArenaExtendStrategy arena_extend_strategy, onnxruntime::CUDAExecutionProviderExternalAllocatorInfo& external_allocator_info, OrtArenaCfg* default_memory_arena_cfg) override {
+  std::shared_ptr<IAllocator> CreateCudaAllocator(int16_t device_id, size_t gpu_mem_limit, onnxruntime::ArenaExtendStrategy arena_extend_strategy, onnxruntime::CUDAExecutionProviderExternalAllocatorInfo& external_allocator_info, const OrtArenaCfg* default_memory_arena_cfg) override {
     return CUDAExecutionProvider::CreateCudaAllocator(device_id, gpu_mem_limit, arena_extend_strategy, external_allocator_info, default_memory_arena_cfg);
   }
 
