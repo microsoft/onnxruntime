@@ -12,7 +12,7 @@ if __name__ == "__main__":
     convert_onnx_models_to_ort(
         args.model_path_or_dir,
         output_dir=args.output_dir,
-        optimizations=args.optimization_style,
+        optimization_styles=args.optimization_style,
         custom_op_library_path=args.custom_op_library,
         target_platform=args.target_platform,
         save_optimized_onnx_model=args.save_optimized_onnx_model,

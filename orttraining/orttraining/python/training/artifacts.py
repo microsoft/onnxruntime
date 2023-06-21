@@ -128,7 +128,7 @@ def generate_artifacts(
 
     def _export_to_ort_format(model_path, output_dir, extra_options):
         if extra_options.get("ort_format", False):
-            convert_onnx_models_to_ort(model_path, output_dir=output_dir, optimizations=[OptimizationStyle.Fixed])
+            convert_onnx_models_to_ort(model_path, output_dir=output_dir, optimization_styles=[OptimizationStyle.Fixed])
 
     if artifact_directory is None:
         artifact_directory = pathlib.Path.cwd()
