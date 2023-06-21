@@ -33,7 +33,7 @@ def chain_model(args):
         "num_beams",
         "num_return_sequences",
         "length_penalty_fp16" if args.precision == Precision.FLOAT16 else "length_penalty",
-        "repetition_penalty_fp16" if args.precision == Precision.FLOAT16 else "input_features",
+        "repetition_penalty_fp16" if args.precision == Precision.FLOAT16 else "repetition_penalty",
         "vocab_mask" if args.use_prefix_vocab_mask else "",
         "prefix_vocab_mask" if args.use_prefix_vocab_mask else "",
         "",  # attention mask
