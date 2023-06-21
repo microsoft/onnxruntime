@@ -125,7 +125,7 @@ MeanVarianceNormalization::MeanVarianceNormalization(const OpKernelInfo& info)
 
 Status MeanVarianceNormalization::Compute(OpKernelContext* context) const {
   const auto& input = context->RequiredInput<Tensor>(0);
-  const auto input_shape = input.Shape();
+  const auto& input_shape = input.Shape();
 
   Tensor& output = context->RequiredOutput(0, input_shape);
 
