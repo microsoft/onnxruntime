@@ -287,6 +287,8 @@ def main():
     model.graph.node.extend(nodes_to_add)
     graph_topological_sort(model.graph)
 
+    # Add extra parameter all_tensors_to_one_file=False, size_threshold=5000 if the model exceeds protobuf 2GB limit e.g below
+    # onnx.save(model, args.onnx_model.replace(".onnx", "_add_trans.onnx"), all_tensors_to_one_file=False, size_threshold=5000)
     onnx.save(model, args.onnx_model.replace(".onnx", "_add_trans.onnx"))
 
 
