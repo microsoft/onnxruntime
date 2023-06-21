@@ -5,7 +5,8 @@
 
 from typing import Set
 
-# set of custom ops supported in DORT
+# set of custom ops supported in DORT.
+# It can contain, for example, `aten::custom_add`.
 custom_symbols: Set[str] = set()
 
 # register custom ops in DORT

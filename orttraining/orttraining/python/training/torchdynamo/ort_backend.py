@@ -142,9 +142,8 @@ def _get_support_dictionaries_and_decomposition_tables() -> (
             op_namespace = aten_op_name.split("::")[0]
             short_op_name = aten_op_name.split("::")[1]
             # Get the custom ops from: torch.ops.custom_namespace
-            op_function = "torch.ops." + op_namespace
-            op_overload_packet = getattr(eval(op_function), short_op_name)  # type: ignore
-            print("op_overload_packet: ", op_overload_packet)
+            custom_op_namespace = getattr(torch.ops, op_namespace)
+            op_overload_packet = getattr(custom_op_namespace, short_op_name)    # type: ignore
             for overload in op_overload_packet.overloads():
                 op_overload = getattr(op_overload_packet, overload)
                 support_dictionary[op_overload] = None
