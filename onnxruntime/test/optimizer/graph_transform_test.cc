@@ -3193,7 +3193,7 @@ TEST_F(GraphTransformationTests, PreShapeNodeElimination) {
 
   ASSERT_TRUE(names_are_different);
 
-  auto pre_graph_checker = [&](Graph& graph) {
+  auto pre_graph_checker = [](Graph& graph) {
     TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Cast"] == 1);
     return Status::OK();
   };

@@ -15,7 +15,7 @@ Status PreShapeNodeElimination::Apply(Graph& graph, Node& node, RewriteRuleEffec
 
   // Get mutable input node
   Node& input_node = *graph.GetNode(p_input_node->Index());
-  const int output_idx = graph_utils::GetNodeOutputIndexFromOutputName(input_node, node.MutableInputDefs()[0]->Name());
+  const size_t output_idx = graph_utils::GetNodeOutputIndexFromOutputName(input_node, node.InputDefs()[0]->Name());
 
   const auto node_index = node.Index();
   for (auto it = node.OutputEdgesBegin(), end = node.OutputEdgesEnd(); it != end; ++it) {
@@ -29,9 +29,7 @@ Status PreShapeNodeElimination::Apply(Graph& graph, Node& node, RewriteRuleEffec
 
     Node& mutable_consumer = *graph.GetNode(consumer_idx);
 
-    for (auto& input_def : mutable_consumer.MutableInputDefs()) {
-      input_def = input_node.MutableOutputDefs()[output_idx];
-    }
+    mutable_consumer.MutableInputDefs()[0] = input_node.MutableOutputDefs()[output_idx];
   }
 
   graph.RemoveNode(node.Index());
