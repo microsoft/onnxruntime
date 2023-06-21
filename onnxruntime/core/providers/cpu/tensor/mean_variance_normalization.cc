@@ -19,8 +19,8 @@ InlinedVector<int64_t> GetAxesFromAttribute(const OpKernelInfo& info) {
   const bool across_channels = info.GetAttrOrDefault<int64_t>("across_channels", int64_t{0}) == int64_t{1};
 
   const auto default_axes = across_channels
-               ? std::vector<int64_t>{0, 1, 2, 3}
-               : std::vector<int64_t>{0, 2, 3};
+                                ? std::vector<int64_t>{0, 1, 2, 3}
+                                : std::vector<int64_t>{0, 2, 3};
 
   const auto axes = info.GetAttrsOrDefault<int64_t>("axes", default_axes);
 
@@ -45,7 +45,6 @@ InlinedVector<size_t> NormalizeAxes(gsl::span<const int64_t> axes, size_t rank) 
 std::optional<InlinedVector<size_t>> GetTransposePermutationIfNeeded(gsl::span<const size_t> normalized_axes, size_t rank) {
   // We need to transpose if anything other than the trailing axes are specified.
   // Assume `normalized_axes` is sorted with unique values.
-
   const bool is_transpose_needed = [&]() {
     for (size_t i = 0, num_axes = normalized_axes.size(); i < num_axes; ++i) {
       if (normalized_axes[i] != rank - num_axes + i) {
@@ -89,7 +88,7 @@ Status ComputeMeanVarianceNormalization2D(size_t M, size_t N,
   ORT_RETURN_IF_NOT(X.size() == M * N && X.size() == Y.size(), "X and Y must both have M * N elements.");
 
   const auto idx_M = narrow<Eigen::Index>(M), idx_N = narrow<Eigen::Index>(N);
-  // Note: Eigen arrays have column-major storage by default, so we specify N x M.
+  // Note: Eigen arrays have column-major storage by default, so we specify N rows x M columns.
   ConstEigenArrayMap<float> X_array(X.data(), idx_N, idx_M);
   EigenArrayMap<float> Y_array(Y.data(), idx_N, idx_M);
 

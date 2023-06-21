@@ -13,7 +13,10 @@
 
 namespace onnxruntime {
 
-inline bool IsAxisInRange(int64_t axis, int64_t tensor_rank) {
+/**
+Returns whether `axis` is in range [-`tensor_rank`, `tensor_rank`).
+**/
+constexpr inline bool IsAxisInRange(int64_t axis, int64_t tensor_rank) {
   return axis >= -tensor_rank && axis <= tensor_rank - 1;
 }
 
