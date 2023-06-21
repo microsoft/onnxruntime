@@ -101,7 +101,7 @@ class TestInferenceSession(unittest.TestCase):
             so.logid = "TestModelSerializationWithExternalInitializers"
             so.optimized_model_filepath = "./model_with_external_initializers.onnx"
             external_initializers_file = "external_initializers.bin"
-            so.add_session_config_entry("session.optimized_model_external_initializers_file_path", external_initializers_file)
+            so.add_session_config_entry("session.optimized_model_external_initializers_file_name", external_initializers_file)
             so.add_session_config_entry("session.optimized_model_external_initializers_min_size_in_bytes", "100")
             onnxrt.InferenceSession(
                 get_name("mnist.onnx"),
