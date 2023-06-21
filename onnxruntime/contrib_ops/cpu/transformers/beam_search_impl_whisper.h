@@ -155,7 +155,8 @@ Status BeamSearchWhisper<T>::Execute(const FeedsFetchesManager& encoder_feeds_fe
 
   BeamSearchCpuState cpu_state{*parameters,
                                this->cpu_allocator_,
-                               this->IsCuda()};
+                               this->IsCuda(),
+                               this->ort_stream_};
 
   IAllocatorUniquePtr<char> buffer;
 
@@ -207,7 +208,8 @@ Status BeamSearchWhisper<T>::Execute(const FeedsFetchesManager& encoder_feeds_fe
   BeamSearchState<T> beam_state{*parameters,
                                 this->temp_space_allocator_,
                                 decoder_subgraph_.has_decoder_masked_attention_,
-                                false /* use_position */};
+                                false /* use_position */,
+                                this->ort_stream_};
 
   init_beam_state_func_(&beam_state,
                         cpu_state.sequence_lengths,
@@ -388,7 +390,7 @@ Status BeamSearchWhisper<T>::Execute(const FeedsFetchesManager& encoder_feeds_fe
         &decoder_fetches[decoder_output_first_cross_qk],
         qk_layer_pointers,
         parameters->num_layers,
-        cross_qk_layer_head_pair_count,
+        static_cast<int>(cross_qk_layer_head_pair_count),
         cross_qk_layer_head_pairs,
         cross_qk_buffer_data,
         parameters->max_length,
@@ -481,9 +483,9 @@ Status BeamSearchWhisper<T>::Execute(const FeedsFetchesManager& encoder_feeds_fe
       parameters->batch_size,
       parameters->num_beams,
       parameters->max_length,
-      cross_qk_layer_head_pair_count,
+      static_cast<int>(cross_qk_layer_head_pair_count),
       cross_qk_layer_head_pairs,
-      frames_of_k,
+      static_cast<int>(frames_of_k),
       cross_qk_buffer_data,
       cross_qk_output->MutableData<float>(),
       parameters->num_return_sequences,
