@@ -27,7 +27,7 @@ Tensor copy_sort(const Tensor& src, const AllocatorPtr& allocator) {
 template <typename T>
 void sort_expected_and_actual_buffers(const Tensor& expected, Tensor& expected_sorted,
                                       const Tensor& actual, Tensor& actual_sorted) {
-  auto allocator = TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault);
+  auto allocator = TestCPUExecutionProvider()->CreatePreferredAllocators()[0];
   expected_sorted = copy_sort<T>(expected, allocator);
   actual_sorted = copy_sort<T>(actual, allocator);
 }

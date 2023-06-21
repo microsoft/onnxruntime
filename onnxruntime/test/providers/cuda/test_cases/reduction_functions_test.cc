@@ -1,18 +1,18 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#if 0  // TODO: Can't call these directly from external code as Cuda is now a shared library
-//#ifdef USE_CUDA
-
 #include <memory>
 
 #include "gtest/gtest.h"
 
+#include "core/providers/cuda/shared_inc/cuda_utils.h"
 #include "core/common/optional.h"
 #include "core/providers/cuda/reduction/reduction_functions.h"
 #include "core/providers/cuda/shared_inc/cuda_utils.h"
-#include "test/common/tensor_op_test_utils.h"
+#include "test/common/random_generator.h"
 #include "test/util/include/asserts.h"
+// To avoid conflict of LogRuntimeError, we direct include the cc file directly.
+#include "test/util/test_random_seed.cc"
 
 using onnxruntime::test::RandomValueGenerator;
 
@@ -93,7 +93,7 @@ void TestReduceRowToScalarApis(int size, float relative_error_tolerance = 1e-4f)
       buffer.get(),
       buffer_size_in_bytes));
 
-  ASSERT_TRUE(CUDA_CALL(cudaDeviceSynchronize()));
+  ASSERT_TRUE(CUDA_CALL(cudaDeviceSynchronize()).IsOK());
 
   CheckDeviceValues(1, device_output_sum.get(), &expected_output_sum, relative_error_tolerance);
   CheckDeviceValues(1, device_output_square_sum.get(), &expected_output_square_sum, relative_error_tolerance);
@@ -133,7 +133,7 @@ void TestReduceRowsToRow(int m, int n, bool reset_initial_output, float relative
       m, n,
       reset_initial_output));
 
-  ASSERT_TRUE(CUDA_CALL(cudaDeviceSynchronize()));
+  ASSERT_TRUE(CUDA_CALL(cudaDeviceSynchronize()).IsOK());
 
   CheckDeviceValues(n, d_out.get(), expected_row.data(), relative_error_tolerance);
 }
@@ -173,7 +173,7 @@ void TestReduceColumnsToColumn(int m, int n, float relative_error_tolerance = 1e
       m, n,
       d_buffer.get(), buffer_size_in_bytes));
 
-  ASSERT_TRUE(CUDA_CALL(cudaDeviceSynchronize()));
+  ASSERT_TRUE(CUDA_CALL(cudaDeviceSynchronize()).IsOK());
 
   CheckDeviceValues(m, d_out.get(), expected_column.data(), relative_error_tolerance);
 }
@@ -208,6 +208,7 @@ TEST(ReductionFunctionsTest, ReduceColumnsToColumn) {
 TEST(ReductionFunctionsTest, BufferOffsets) {
   const int m = 2048;
   const int n = 1024;
+  const TensorShape shape{m, n};
 
   const size_t max_buffer_offset = 15;
 
@@ -224,7 +225,7 @@ TEST(ReductionFunctionsTest, BufferOffsets) {
   for (size_t buffer_offset = 1; buffer_offset <= max_buffer_offset; ++buffer_offset) {
     SCOPED_TRACE(MakeString("buffer offset: ", buffer_offset));
 
-    const auto input = random.Uniform<double>({m, n}, 1.0, 10.0);
+    const auto input = random.Uniform<double>(shape.GetDims(), 1.0, 10.0);
     cudaMemcpy(d_input.get(), input.data(), m * n * sizeof(double), cudaMemcpyHostToDevice);
 
     ASSERT_STATUS_OK(reduce_matrix_columns(
@@ -242,6 +243,7 @@ TEST(ReductionFunctionsTest, BufferOffsets) {
 TEST(ReductionFunctionsTest, InvalidBufferSize) {
   const int m = 2048;
   const int n = 1024;
+  const TensorShape shape{m, n};
 
   // this should be too small
   const size_t buffer_size_in_bytes =
@@ -252,7 +254,7 @@ TEST(ReductionFunctionsTest, InvalidBufferSize) {
   auto d_buffer = AllocateDeviceMemory<char>(buffer_size_in_bytes);
 
   RandomValueGenerator random{};
-  const auto input = random.Uniform<float>({m, n}, 1.0, 10.0);
+  const auto input = random.Uniform<float>(shape.GetDims(), 1.0, 10.0);
   cudaMemcpy(d_input.get(), input.data(), m * n * sizeof(float), cudaMemcpyHostToDevice);
 
   const auto status =
@@ -313,7 +315,7 @@ TEST(ReductionFunctionsTest, GetApplicableMatrixReduction) {
   // handle ones
   test_get_applicable_matrix_reduction(
       valid_op_type, {1, 2, 1, 1, 4, 1, 8, 1}, {0},
-      ApplicableMatrixReduction::Rows, 1, 2 * 4 * 8);
+      ApplicableMatrixReduction::Columns, 2 * 4 * 8, 1);
   test_get_applicable_matrix_reduction(
       valid_op_type, {1, 2, 1, 1, 4, 1, 8, 1}, {1},
       ApplicableMatrixReduction::Rows, 2, 4 * 8);
@@ -348,7 +350,7 @@ TEST(ReductionFunctionsTest, GetApplicableMatrixReduction) {
       ApplicableMatrixReduction::None);
   test_get_applicable_matrix_reduction(
       valid_op_type, {1, 2, 1, 1, 4, 1, 8, 1}, {3, 6},
-      ApplicableMatrixReduction::None);
+      ApplicableMatrixReduction::Columns, 2 * 4, 8);
 
   // invalid op type
   test_get_applicable_matrix_reduction(
@@ -359,5 +361,3 @@ TEST(ReductionFunctionsTest, GetApplicableMatrixReduction) {
 }  // namespace test
 }  // namespace cuda
 }  // namespace onnxruntime
-
-#endif
