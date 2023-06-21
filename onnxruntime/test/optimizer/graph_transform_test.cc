@@ -5155,13 +5155,10 @@ TEST_F(GraphTransformationTests, PropagateCastOpsTests_Gelu) {
   }
 }
 
-#endif
-
-#ifdef ENABLE_TRAINING_CORE
 TEST_F(GraphTransformationTests, PropagateCastOpsTests_Softmax) {
   using Strategy = GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy;
   {
-    auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto build_test_case = [](ModelTestBuilder& builder) {
       auto* input_arg = builder.MakeInput<MLFloat16>({{2, 3, 3, 3}});
       auto* cast_out_0 = builder.MakeIntermediate();
       auto* softmax_out = builder.MakeIntermediate();
@@ -5176,12 +5173,12 @@ TEST_F(GraphTransformationTests, PropagateCastOpsTests_Softmax) {
       builder.AddNode("Identity", {cast_out_1}, {identity_out});
     };
 
-    auto pre_graph_checker = [&](Graph& graph) {
+    auto pre_graph_checker = [](Graph& graph) {
       TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Cast"] == 2);
       return Status::OK();
     };
 
-    auto post_graph_checker = [&](Graph& graph) {
+    auto post_graph_checker = [](Graph& graph) {
       TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Cast"] == 0);
       return Status::OK();
     };
@@ -5192,7 +5189,7 @@ TEST_F(GraphTransformationTests, PropagateCastOpsTests_Softmax) {
   }
 
   {
-    auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto build_test_case = [](ModelTestBuilder& builder) {
       auto* input_arg = builder.MakeInput<BFloat16>({{2, -1, 3, -1}});
       auto* cast_out_0 = builder.MakeIntermediate();
       auto* softmax_out = builder.MakeIntermediate();
@@ -5207,12 +5204,12 @@ TEST_F(GraphTransformationTests, PropagateCastOpsTests_Softmax) {
       builder.AddNode("Identity", {cast_out_1}, {identity_out});
     };
 
-    auto pre_graph_checker = [&](Graph& graph) {
+    auto pre_graph_checker = [](Graph& graph) {
       TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Cast"] == 2);
       return Status::OK();
     };
 
-    auto post_graph_checker = [&](Graph& graph) {
+    auto post_graph_checker = [](Graph& graph) {
       TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Cast"] == 2);
       return Status::OK();
     };
