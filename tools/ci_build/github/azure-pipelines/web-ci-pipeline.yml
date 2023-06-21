@@ -32,4 +32,5 @@ stages:
     BuildStaticLib: true
     ExtraBuildArgs: $(ExtraBuildArgs)
     WASMTemplate: linux-wasm-ci.yml
-    WebTemplate: linux-web-ci.yml
+    WebTemplate: win-web-ci.yml
+    WebPoolName: 'onnxruntime-Win-CPU-2022-web'

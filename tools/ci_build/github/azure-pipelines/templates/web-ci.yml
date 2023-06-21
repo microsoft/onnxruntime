@@ -30,6 +30,10 @@ parameters:
 - name: WebTemplate
   type: string
   default: win-web-ci.yml
+# if WebPool Name is empty, use the PoolName.
+- name: WebPoolName
+  type: string
+  default: ''
 
 - name: ExtraBuildArgs
   displayName: 'Extra build command line arguments'
@@ -81,7 +85,10 @@ stages:
       CommitOverride: true
       BuildConfig: 'Debug'
       NpmPackagingMode: ${{ parameters.NpmPackagingMode }}
-      PoolName: ${{ parameters.PoolName }}
+      ${{ if eq(parameters.WebPoolName, '')}}:
+        PoolName: ${{ parameters.PoolName }}
+      ${{ else }}:
+        PoolName: ${{ parameters.WebPoolName }}
       PackageName: ${{ parameters.PackageName }}
 
 - stage: Build_wasm_Release
@@ -116,7 +123,10 @@ stages:
       CommitOverride: true
       BuildConfig: 'Release'
       NpmPackagingMode: ${{ parameters.NpmPackagingMode }}
-      PoolName: ${{ parameters.PoolName }}
+      ${{ if eq(parameters.WebPoolName, '')}}:
+        PoolName: ${{ parameters.PoolName }}
+      ${{ else }}:
+        PoolName: ${{ parameters.WebPoolName }}
       PackageName: ${{ parameters.PackageName }}
 
 - ${{ if ne(parameters.IsReleasePipeline, true) }}:

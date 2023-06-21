@@ -55,14 +55,6 @@ jobs:
      git submodule update --init -- cmake/external/onnx
     workingDirectory: '$(Build.SourcesDirectory)'
     displayName: 'Checkout submodule onnx'
-  - script: |
-     echo.>>.gitattributes
-     echo /js/** text=auto eol=lf>>.gitattributes
-     rm -rf js
-     git checkout -- js/**
-     git checkout -- .gitattributes
-    workingDirectory: '$(Build.SourcesDirectory)'
-    displayName: 'Testing: force EOL to lf on windows for /js/**'
   - task: NodeTool@0
     inputs:
       versionSpec: '16.x'
