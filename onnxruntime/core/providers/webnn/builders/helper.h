@@ -140,6 +140,7 @@ static const InlinedHashMap<std::string, std::string> op_map = {
     {"Squeeze", "squeeze"},
     {"Transpose", "transpose"},
     {"Unsqueeze", "unsqueeze"},
+    {"Where", "elementwiseIf"},
 };
 
 inline bool CheckSingleOp(const std::string& op_type, const emscripten::val& wnn_builder_) {

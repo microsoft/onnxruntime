@@ -16,8 +16,8 @@ export function bufferToBase64(buffer: Uint8Array): string {
   return base64.fromByteArray(buffer);
 }
 
-async function readFile(file: string) {
-  if (typeof fetch === 'undefined') {
+export async function readFile(file: string) {
+  if (typeof process !== 'undefined' && process.versions && process.versions.node) {
     // node
     return promisify(fs.readFile)(file);
   } else {

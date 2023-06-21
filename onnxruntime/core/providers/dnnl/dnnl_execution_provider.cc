@@ -34,22 +34,6 @@ DnnlExecutionProvider::DnnlExecutionProvider(const DnnlExecutionProviderInfo& in
       info_(info) {
   InitProviderOrtApi();
 
-  AllocatorCreationInfo default_memory_info(
-      {[](int) {
-        return onnxruntime::CreateCPUAllocator(OrtMemoryInfo(DNNL, OrtAllocatorType::OrtDeviceAllocator));
-      }},
-      0, info.use_arena);
-
-  AllocatorCreationInfo cpu_memory_info(
-      {[](int) {
-        return onnxruntime::CreateCPUAllocator(OrtMemoryInfo(DNNL_CPU, OrtAllocatorType::OrtDeviceAllocator, OrtDevice(), 0,
-                                                             OrtMemTypeCPUOutput));
-      }},
-      0, info.use_arena);
-
-  InsertAllocator(CreateAllocator(default_memory_info));
-  InsertAllocator(CreateAllocator(cpu_memory_info));
-
   // debug env variable to dump subgraphs
   const std::string dump_subgraphs_env = onnxruntime::GetEnvironmentVar("ORT_DNNL_DUMP_SUBGRAPHS");
   if (!dump_subgraphs_env.empty()) {
