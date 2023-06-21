@@ -259,27 +259,28 @@ def parse_args():
         "processed.",
     )
 
-    return parser.parse_args()
+    parsed_args = parser.parse_args()
+    parsed_args.optimization_style = [OptimizationStyle[style_str] for style_str in parsed_args.optimization_style]
+    return parsed_args
 
 
 def convert_onnx_models_to_ort(
     model_path_or_dir: pathlib.Path,
     output_dir: pathlib.Path | None = None,
-    optimizations: list[str] | None = None,
+    optimizations: list[OptimizationStyle] | None = None,
     custom_op_library_path: pathlib.Path | None = None,
     target_platform: str | None = None,
-    save_optimized_onnx_model: bool | None = None,
-    allow_conversion_failures: bool | None = None,
-    enable_type_reduction: bool | None = None,
+    save_optimized_onnx_model: bool = False,
+    allow_conversion_failures: bool = False,
+    enable_type_reduction: bool = False,
 ):
     if output_dir is not None:
         if not output_dir.is_dir():
             output_dir.mkdir(parents=True)
         output_dir = output_dir.resolve(strict=True)
 
-    optimization_styles = (
-        [OptimizationStyle[style_str] for style_str in optimizations] if optimizations is not None else []
-    )
+    optimization_styles = optimizations or []
+
     # setting optimization level is not expected to be needed by typical users, but it can be set with this
     # environment variable
     optimization_level_str = os.getenv("ORT_CONVERT_ONNX_MODELS_TO_ORT_OPTIMIZATION_LEVEL", "all")
@@ -312,8 +313,8 @@ def convert_onnx_models_to_ort(
             optimization_level_str=optimization_level_str,
             optimization_style=optimization_style,
             custom_op_library=custom_op_library,
-            create_optimized_onnx_model=save_optimized_onnx_model if save_optimized_onnx_model is not None else False,
-            allow_conversion_failures=allow_conversion_failures if allow_conversion_failures is not None else False,
+            create_optimized_onnx_model=save_optimized_onnx_model,
+            allow_conversion_failures=allow_conversion_failures,
             target_platform=target_platform,
             session_options_config_entries=session_options_config_entries,
         )
@@ -344,9 +345,7 @@ def convert_onnx_models_to_ort(
                     optimization_style=OptimizationStyle.Fixed,
                     custom_op_library=custom_op_library,
                     create_optimized_onnx_model=False,  # not useful as they would be created in a temp directory
-                    allow_conversion_failures=allow_conversion_failures
-                    if allow_conversion_failures is not None
-                    else False,
+                    allow_conversion_failures=allow_conversion_failures,
                     target_platform=target_platform,
                     session_options_config_entries=session_options_config_entries_for_second_conversion,
                 )
@@ -362,12 +361,10 @@ def convert_onnx_models_to_ort(
                 output_dir,
                 optimization_level_str,
                 optimization_style,
-                enable_type_reduction if enable_type_reduction is not None else False,
+                enable_type_reduction,
             )
 
-            create_config_from_models(
-                converted_models, config_file, enable_type_reduction if enable_type_reduction is not None else False
-            )
+            create_config_from_models(converted_models, config_file, enable_type_reduction)
 
 
 if __name__ == "__main__":
