@@ -66,12 +66,10 @@ class TestTorchDynamoOrtCustomOp(unittest.TestCase):
         tensor_x = torch.ones((64, 64), dtype=torch.float32)
         tensor_y = torch.ones((64, 64), dtype=torch.float32)
 
-        # Baseline.
-        result_ref = torch.add(tensor_x, tensor_y)
-        # ORT result.
-        result_ort = opt_add(tensor_x, tensor_y)
-
-        torch.testing.assert_close(result_ref, result_ort)
+        for _ in range(5):
+            result_ref = torch.add(tensor_x, tensor_y)
+            result_ort = opt_add(tensor_x, tensor_y)
+            torch.testing.assert_close(result_ref, result_ort)
 
 
 if __name__ == "__main__":
