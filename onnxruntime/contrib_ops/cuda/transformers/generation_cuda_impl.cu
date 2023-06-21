@@ -271,9 +271,17 @@ struct GridBlock32 {
   int block_size_;
 };
 
-void LaunchInitializeBeamHypotheses(gsl::span<BeamHypotheses> beam_hyps, float length_penalty, gsl::span<HypothesisScore> beams, int num_beams, cudaStream_t stream) {
+void LaunchInitializeBeamHypotheses(gsl::span<BeamHypotheses> beam_hyps,
+                                    float length_penalty,
+                                    gsl::span<HypothesisScore> beams,
+                                    int num_beams,
+                                    cudaStream_t stream) {
   GridBlock32 gb32{static_cast<int>(beam_hyps.size())};
-  InitializeBeamHypotheses<<<gb32.grid_size_, gb32.block_size_, 0, stream>>>(beam_hyps.data(), static_cast<int>(beam_hyps.size()), length_penalty, beams.data(), num_beams);
+  InitializeBeamHypotheses<<<gb32.grid_size_, gb32.block_size_, 0, stream>>>(beam_hyps.data(),
+                                                                             static_cast<int>(beam_hyps.size()),
+                                                                             length_penalty,
+                                                                             beams.data(),
+                                                                             num_beams);
 }
 
 __device__ void BeamHypotheses::Add(const int32_t* hypothesis, int hypothesis_length, float sum_logprobs) {

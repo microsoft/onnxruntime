@@ -1044,6 +1044,7 @@ Status UpdateGptFeeds(
   int32_t* input_ids_data = input_ids.GetMutable<Tensor>()->MutableData<int32_t>();
   cudaStream_t cuda_stream = ort_stream ? static_cast<cudaStream_t>(ort_stream->GetHandle()) : nullptr;
 
+  // num_beams == 1 using cudaMemcpyHostToDevice is because GreedySearch still uses CPU, BeamSearch is fully GPU
   CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(input_ids_data, beam_next_tokens.data(), beam_next_tokens.size_bytes(),
                                        num_beams == 1 ? cudaMemcpyHostToDevice : cudaMemcpyDeviceToDevice, cuda_stream));
 

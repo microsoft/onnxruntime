@@ -327,7 +327,7 @@ Status BeamSearchWhisper<T>::Execute(const FeedsFetchesManager& encoder_feeds_fe
 
     // TODO: If this is safe to do after update_decoder_feeds_func, move it later so that we can speculatively run the next steps while we wait
     // for the done result to transfer to the CPU
-    if (this->beam_scorer_->IsDone()) {
+    if (this->beam_scorer_->IsDoneLater()) {
       break;
     }
 
