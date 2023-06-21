@@ -25,7 +25,7 @@ def to_c_float_literals(arr):
     literals_per_line = 8
     literals = [f"{literal:.7f}f" for literal in arr.flatten().tolist()]
     result = ""
-    for (i, literal) in enumerate(literals):
+    for i, literal in enumerate(literals):
         result += "{},{}".format(literal, "\n" if (i + 1) % literals_per_line == 0 else " ")
     return result
 
