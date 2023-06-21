@@ -258,7 +258,6 @@ Status BeamSearchBase<T>::GenerateNextToken(
   ORT_RETURN_IF_ERROR(ProcessLogits(logits, beam_state, cpu_state, temp_space_allocator_, counter));
 
   if (this->IsCuda()) {
-#if 0
     auto beam_scores = beam_scorer_->GetNextScores();
     // It is optional to clone beam_scores. Change it to use same buffer also works:
     //    beam_state.beam_scores = beam_scores
@@ -267,7 +266,7 @@ Status BeamSearchBase<T>::GenerateNextToken(
                                           beam_scores,
                                           ort_stream_,
                                           DeviceCopyDirection::deviceToDevice));
-#endif
+
     beam_next_tokens = beam_scorer_->GetNextTokens();
 
 #ifdef DEBUG_GENERATION
