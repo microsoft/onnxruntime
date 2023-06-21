@@ -267,7 +267,7 @@ def parse_args():
 def convert_onnx_models_to_ort(
     model_path_or_dir: pathlib.Path,
     output_dir: pathlib.Path | None = None,
-    optimizations: list[OptimizationStyle] | None = None,
+    optimization_styles: list[OptimizationStyle] | None = None,
     custom_op_library_path: pathlib.Path | None = None,
     target_platform: str | None = None,
     save_optimized_onnx_model: bool = False,
@@ -279,7 +279,7 @@ def convert_onnx_models_to_ort(
             output_dir.mkdir(parents=True)
         output_dir = output_dir.resolve(strict=True)
 
-    optimization_styles = optimizations or []
+    optimization_styles = optimization_styles or []
 
     # setting optimization level is not expected to be needed by typical users, but it can be set with this
     # environment variable
