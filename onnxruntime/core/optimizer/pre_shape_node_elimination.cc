@@ -17,19 +17,22 @@ Status PreShapeNodeElimination::Apply(Graph& graph, Node& node, RewriteRuleEffec
   Node& input_node = *graph.GetNode(p_input_node->Index());
   const size_t output_idx = graph_utils::GetNodeOutputIndexFromOutputName(input_node, node.InputDefs()[0]->Name());
 
-  const auto node_index = node.Index();
+  std::vector<size_t> consumerIndices;
+
+  // Save Consumer Nodes Indices (Shape)
   for (auto it = node.OutputEdgesBegin(), end = node.OutputEdgesEnd(); it != end; ++it) {
     const auto& consumer = (*it).GetNode();
     const auto consumer_idx = consumer.Index();
-    const auto src_idx = (*it).GetSrcArgIndex();
-    const auto dst_idx = (*it).GetDstArgIndex();
+    consumerIndices.push_back(consumer_idx);
+  }
 
-    // Remove Edge from Graph.
-    graph.RemoveEdge(node_index, consumer_idx, src_idx, dst_idx);
+  // Remove output edges of the cast node
+  graph_utils::RemoveNodeOutputEdges(graph, node);
 
-    Node& mutable_consumer = *graph.GetNode(consumer_idx);
-
-    mutable_consumer.MutableInputDefs()[0] = input_node.MutableOutputDefs()[output_idx];
+  // Change input defs of shape nodes
+  for (size_t consumer_idx : consumerIndices) {
+    Node& shape_node = *graph.GetNode(consumer_idx);
+    shape_node.MutableInputDefs()[0] = input_node.MutableOutputDefs()[output_idx];
   }
 
   graph.RemoveNode(node.Index());
