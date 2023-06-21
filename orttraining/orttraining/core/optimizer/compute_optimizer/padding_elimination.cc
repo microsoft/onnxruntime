@@ -61,34 +61,6 @@ NodeArg* GetDimsValue(Graph& graph, NodeArg* input, NodeArg* indices_arg, Node& 
   return gather_out_args[0];
 }
 
-// Insert Shape + ScatterElements to get an updated shape of input with index of indices_arg updated to
-// the value of update_value.
-// Such as, if the indices_arg is a initializer of [0] and the original shape of input is [valid_token_count, a, b, c],
-// // this function will return a shape of [update_value, a, b, c]
-// NodeArg* UpdateShape(Graph& graph, NodeArg* input, NodeArg* update_value, NodeArg* indices_arg, Node& node) {
-//   InlinedVector<NodeArg*> shape_output_args{&graph.GetOrCreateNodeArg(graph.GenerateNodeArgName("shape_result"),
-//                                                                       nullptr)};
-//   Node& shape_node = graph.AddNode(graph.GenerateNodeName("shape"), "Shape", "", {input},
-//                                    shape_output_args, nullptr, kOnnxDomain);
-//   ORT_ENFORCE(graph.SetOpSchemaFromRegistryForNode(shape_node), "Failed to get shape for " + shape_node.Name());
-//   shape_node.SetExecutionProviderType(node.GetExecutionProviderType());
-
-//   InlinedVector<NodeArg*> scatter_input_args;
-//   scatter_input_args.push_back(shape_output_args[0]);
-//   scatter_input_args.push_back(indices_arg);
-//   scatter_input_args.push_back(update_value);
-
-//   InlinedVector<NodeArg*> scatter_out_args{&graph.GetOrCreateNodeArg(graph.GenerateNodeArgName("scatter_result"),
-//                                                                      nullptr)};
-
-//   Node& scatter_node = graph.AddNode(graph.GenerateNodeName("update_dim"), "ScatterElements", "", scatter_input_args,
-//                                      scatter_out_args, nullptr, kOnnxDomain);
-//   ORT_ENFORCE(graph.SetOpSchemaFromRegistryForNode(scatter_node), "Failed to update shape for " + scatter_node.Name());
-//   scatter_node.SetExecutionProviderType(node.GetExecutionProviderType());
-
-//   return scatter_out_args[0];
-// }
-
 // Insert Reshape + ShrunkenGather to flatten the in_index-th input of node.
 // The gather_index_arg is the indices of the elements that are not padding.
 NodeArg* InsertNodesForInput(Graph& graph,
@@ -125,7 +97,8 @@ NodeArg* InsertNodesForInput(Graph& graph,
 
   InlinedVector<NodeArg*> reshape_output_args;
   reshape_output_args.push_back(
-      &graph.GetOrCreateNodeArg(graph.GenerateNodeArgName("inputs_reshape_result"), node.MutableInputDefs()[in_index]->TypeAsProto()));
+      &graph.GetOrCreateNodeArg(graph.GenerateNodeArgName("inputs_reshape_result"),
+                                node.MutableInputDefs()[in_index]->TypeAsProto()));
 
   Node* new_reshape_node = InsertIntermediateNodeOnDestInput(
       graph, node,
@@ -193,10 +166,10 @@ NodeArg* InsertNodesForOutput(Graph& graph,
 
   InlinedVector<NodeArg*> gathergrad_output_args;
   gathergrad_output_args.push_back(
-      &graph.GetOrCreateNodeArg(graph.GenerateNodeArgName("padding_recover_result"),
+      &graph.GetOrCreateNodeArg(graph.GenerateNodeArgName("padded_result"),
                                 nullptr));
   gathergrad_output_args.push_back(
-      &graph.GetOrCreateNodeArg(graph.GenerateNodeArgName("unpadd_input_shape"),
+      &graph.GetOrCreateNodeArg(graph.GenerateNodeArgName("padded_d1xd2_shape"),
                                 nullptr));
 
   Node* new_gathergrad_node = InsertIntermediateNodeOnDestInput(
@@ -218,7 +191,7 @@ NodeArg* InsertNodesForOutput(Graph& graph,
 }
 
 // Iterate the subgraph beginning from the start_node, and put all node args into 'subgraph'
-// Also put all candidate input nodes and cantidate output nodes of the subgraph into candidate_inputs and
+// Also put all candidate input nodes and candidate output nodes of the subgraph into candidate_inputs and
 // candidate_outputs respectively.
 void IterateSubgraphFromNode(Graph& graph,
                              Node* start_node,
