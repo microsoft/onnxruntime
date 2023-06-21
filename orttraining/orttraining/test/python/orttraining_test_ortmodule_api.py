@@ -6011,14 +6011,7 @@ def test_e2e_padding_elimination():
     batch_size, max_seq_length = 8, 128
     device = "cuda"
     pt_model = ToyModel(num_layers, vocab_size, hidden_size, num_attention_heads, 1, 3).to(device)
-
-    from onnxruntime.training.ortmodule import ORTModule, DebugOptions, LogLevel
-
-    # model = ORTModule(model, DebugOptions(save_onnx=True, log_level=LogLevel.VERBOSE, onnx_prefix="model_name"))
-
-    ort_model = ORTModule(
-        copy.deepcopy(pt_model), DebugOptions(save_onnx=True, log_level=LogLevel.INFO, onnx_prefix="0620")
-    )
+    ort_model = ORTModule(copy.deepcopy(pt_model))
     pt_optimizer = torch.optim.Adam(pt_model.parameters())
     ort_optimizer = torch.optim.Adam(ort_model.parameters())
 

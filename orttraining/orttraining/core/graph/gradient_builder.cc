@@ -756,8 +756,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetPadByAxisGradient) {
   return std::vector<NodeDef>{
       NodeDef(OpDef("Reshape"),
               {GO(0), O(1)},
-              {IA("GO_reshaped")},
-              SrcNodeAttributes()),
+              {IA("GO_reshaped")}),
       NodeDef(OpDef{"Gather", kOnnxDomain, 1},
               {IA("GO_reshaped"), I(1)},
               {GI(0)},

@@ -91,40 +91,36 @@ namespace onnxruntime {
  *        \______________________\________________________________/__________________/________________/
  *                                                  |
  *                                            Aten:embedding
- *                _ _   _   _  _  __ _  _  _  __ _ _|
- *               /                                  |
- *    input_node                                    |
- *          \ [batch_size, seq_length]              |
- *           \                                      |
- *            \     [-1]                            |
- *             \    /                               |
- *             Reshape       (valid_token_index)    |
- *                  \           /                   |
- *                   ShrunkenGather                 |  shape:[valid_token, ...]
- *                             \                    |
- *         shape:[valid_token]  \                   |
- *                               \                  |
- *                         candidate_input_node     |
- *                                 \                |
- *                                  \               |
+ *          - - - - - - - - - - - - - - - - - - - - |
+ *         |                                        |
+ *       input_0                                    |            input_1
+ *          \ [batch_size, seq_length, ...]         |               |
+ *           \                                      |     [batch_size, seq_length, ...]
+ *            \     [-1]                            |               |
+ *             \    /                               |               |
+ *             Reshape       (valid_token_index)    |              Reshape      (valid_token_index)
+ *                  \           /                   |                 \           /
+ *                   ShrunkenGather       shape:[valid_token, ...]     ShrunkenGather
+ *                             \                    |                    /
+ *    shape:[valid_token, ...]  \                   |                   /
+ *                               \                  |                  /
+ *                         candidate_input_node     |       candidate_input_node
+ *                                 \                |                /
+ *                                  \               |               /
  *
  *                                             Subgraph
  *
  *                                                  |
- *                                                  | shape:[valid_token]
+ *                                                  | shape:[valid_token, ...]
  *                                                  |
+ *                                                  |  (valid_token_index)
+ *                                                  |     /   ________________ (unflatten_dims), shape:[2],
+ *                                                  |    /   /                 value:[batch_size, seq_length]
+ *                                                  |   /   /
+ *                                                 PadByAxis
  *                                                  |
- * [batch_size*seq_length]   (valid_token_index)    |
- *             \                  |                 /
- *              \                 |                /
- *                \               |              /
- *
- *                         GatherGrad
- *                              |
- *                           Reshape
- *                              |
- *                              | [batch_size, valid_token]
- *                      candidate_output_node
+ *                                                  | [batch_size, seq_length, ...]
+ *                                          candidate_output_node
  *
  *
  *

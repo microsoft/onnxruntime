@@ -27,7 +27,7 @@ namespace {
 template <typename T>
 struct PadByAxisFunctor {
   void operator()(cudaStream_t stream,
-                  const int64_t total_element_count,
+                  const int64_t input_element_count,
                   const fast_divmod output_element_stride_fdm,
                   const Tensor& input_tensor,
                   const Tensor& indices_tensor,
@@ -36,7 +36,7 @@ struct PadByAxisFunctor {
     const CudaT* input_data = reinterpret_cast<const CudaT*>(input_tensor.Data<T>());
 
     CUDA_CALL_THROW(cudaMemset(output_tensor.MutableDataRaw(), 0, output_tensor.Shape().Size() * sizeof(CudaT)));
-    PadByAxisImpl<CudaT>(stream, total_element_count, output_element_stride_fdm,
+    PadByAxisImpl<CudaT>(stream, input_element_count, output_element_stride_fdm,
                          input_data, indices_tensor.Data<int64_t>(),
                          reinterpret_cast<CudaT*>(output_tensor.MutableData<T>()));
   }
@@ -73,7 +73,6 @@ Status PadByAxis::ComputeInternal(OpKernelContext* context) const {
   }
 
   fast_divmod output_element_stride_fdm(static_cast<int>(element_stride));
-
   auto output_shape = TensorShape(output_shape_vec);
   Tensor* output_tensor = context->Output(0, output_shape);
 
