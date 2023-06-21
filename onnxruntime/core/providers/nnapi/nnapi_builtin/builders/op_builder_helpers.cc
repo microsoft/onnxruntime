@@ -919,22 +919,17 @@ Status GetAxesForSqueezeAndUnSqueeze(ModelBuilder& model_builder, const NodeUnit
   if (node_unit.SinceVersion() > 12) {
     // For squeeze, axes is an optional input.If it is not supplied, return an empty axes as default to squeeze all
     // For unsqueeze, axes is a required input. This check has no effect for it
-    // TODO: Add helper function to handle the following conversion from int64 initializer to int32
     if (node_unit.Inputs().size() > 1) {
       const auto& initializers(model_builder.GetInitializerTensors());
       const auto& axes_tensor = *initializers.at(node_unit.Inputs()[1].node_arg.Name());
       Initializer unpacked_tensor(axes_tensor);
       auto raw_axes = unpacked_tensor.DataAsSpan<int64_t>();
-      const auto size = SafeInt<uint32_t>(axes_tensor.dims()[0]);
-      axes.resize(size);
-      for (uint32_t i = 0; i < size; i++) {
-        // it is unlikely we have an axis value overflow for int32
-        axes[i] = static_cast<int32_t>(raw_axes[i]);
-      }
+      axes = OnnxAxesToNnapi(raw_axes, std::nullopt);
     }
   } else {
     NodeAttrHelper helper(node_unit);
-    axes = helper.Get("axes", std::vector<int32_t>());
+    const auto axes_int64 = helper.Get("axes", std::vector<int64_t>{});
+    axes = OnnxAxesToNnapi(axes_int64, std::nullopt);
   }
 
   return Status::OK();

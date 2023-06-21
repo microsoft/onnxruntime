@@ -42,7 +42,7 @@ std::vector<std::unique_ptr<ComputeCapability>> GetCapability::Execute() {
   std::vector<std::unique_ptr<ComputeCapability>> result;
 
   // Check if it is a subgraph
-  if (graph_viewer_.IsSubgraph()) {
+  if (graph_viewer_.IsSubgraph() && graph_viewer_.Name() == "tf2onnx") {
     return result;
   }
 

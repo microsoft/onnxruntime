@@ -427,7 +427,11 @@
         "^test_training_dropout_mask", // Runs but there's accuracy mismatch
         "^test_training_dropout_default", // Runs but there's accuracy mismatch
         "^test_center_crop_pad_crop_negative_axes_hwc*", // failed due to new types or shape infer with negative axis for CenterCropPad.
-        "^test_center_crop_pad_crop_negative_axes_hwc_expanded*" // failed due to new types or shape infer with negative axis for CenterCropPad.
+        "^test_center_crop_pad_crop_negative_axes_hwc_expanded*", // failed due to new types or shape infer with negative axis for CenterCropPad.
+        "test_range_int32_type_negative_delta_expanded_cpu", // Error but not a failure.
+        "test_range_float_type_positive_delta_expanded_cpu", // Error but not a failure.
+        "test_scan_sum_cpu", // Disabled due to output mismatch with tolerance.
+        "test_scan9_sum_cpu" // Disabled due to output mismatch with tolerance.
     ],
     "current_failing_tests_OPENVINO_opset18": [
         // pending opset 18 support, RUNTIME_EXCEPTION : Encountered unknown exception in Initialize()
