@@ -1929,15 +1929,20 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
     // Otherwise engine will be handled at inference time.
     std::unique_ptr<nvinfer1::ICudaEngine> trt_engine;
     std::unique_ptr<nvinfer1::IExecutionContext> trt_context;
+
+    // Name the engine cache based on GPU compute capacity and reduce the chance of loading an incompatible cache
+    // Note: Engine cache generated on a GPU with large memory might not be loadable on a GPU with smaller memory, even if they share the same compute capacity
+    cudaDeviceProp prop;
+    CUDA_CALL_THROW(cudaGetDeviceProperties(&prop, device_id_));
+    std::string compute_capability = GetComputeCapacity(prop);
+
     if (!has_dynamic_shape) {
       const std::string cache_path = GetCachePath(cache_path_, trt_node_name_with_precision);
-      const std::string engine_cache_path = cache_path + ".engine";
-      const std::string profile_cache_path = cache_path + ".profile";
+      const std::string engine_cache_path = cache_path + "_sm" + compute_capability + ".engine";
+      const std::string profile_cache_path = cache_path + "_sm" + compute_capability + ".profile";
       std::string timing_cache_path = "";
       bool engine_update = false;
       if (timing_cache_enable_) {
-        cudaDeviceProp prop;
-        CUDA_CALL_THROW(cudaGetDeviceProperties(&prop, device_id_));
         timing_cache_path = GetTimingCachePath(cache_path_, prop);
       }
       {
@@ -2169,14 +2174,18 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
       Ort::ThrowOnError(api->KernelContext_GetGPUComputeStream(context, &cuda_stream));
       cudaStream_t stream = static_cast<cudaStream_t>(cuda_stream);
 
+      // Name the engine cache based on GPU compute capacity and reduce the chance of loading an incompatible cache
+      // Note: Engine cache generated on a GPU with large memory might not be loadable on a GPU with smaller memory, even if they share the same compute capacity
+      cudaDeviceProp prop;
+      CUDA_CALL_THROW(cudaGetDeviceProperties(&prop, device_id_));
+      std::string compute_capability = GetComputeCapacity(prop);
+
       // Load serialized engine
       const std::string cache_path = GetCachePath(trt_state->engine_cache_path, trt_state->trt_node_name_with_precision);
-      const std::string engine_cache_path = cache_path + ".engine";
-      const std::string profile_cache_path = cache_path + ".profile";
+      const std::string engine_cache_path = cache_path + "_sm" + compute_capability + ".engine";
+      const std::string profile_cache_path = cache_path + "_sm" + compute_capability + ".profile";
       std::string timing_cache_path = "";
       if (timing_cache_enable_) {
-        cudaDeviceProp prop;
-        CUDA_CALL_THROW(cudaGetDeviceProperties(&prop, device_id_));
         timing_cache_path = GetTimingCachePath(cache_path_, prop);
       }
       if (trt_state->engine_cache_enable && trt_engine == nullptr) {
