@@ -3,7 +3,6 @@
 #define ORT_API_MANUAL_INIT
 #include "onnxruntime_cxx_api.h"
 #undef ORT_API_MANUAL_INIT
-#include "onnxruntime_lite_custom_op.h"
 
 #include <vector>
 #include <cmath>
@@ -12,20 +11,27 @@
 #include "core/common/common.h"
 
 #ifdef USE_CUDA
+#include <cuda.h>
 #include <cuda_runtime.h>
 template <typename T1, typename T2, typename T3>
 void cuda_add(int64_t, T3*, const T1*, const T2*, cudaStream_t compute_stream);
 #endif
 
+#ifdef USE_CUDA
+#include "onnxruntime_cuda_context.h"
+#endif
+#include "onnxruntime_lite_custom_op.h"
+
 static const char* c_OpDomain = "test.customop";
 
+#include <iostream>
 #ifdef USE_CUDA
 void KernelOne(Ort::Custom::OrtCudaContext* cuda_ctx,
                const Ort::Custom::Tensor<float>& X,
                const Ort::Custom::Tensor<float>& Y,
                Ort::Custom::Tensor<float>& Z) {
   auto input_shape = X.Shape();
-  cudaStream_t cuda_stream = reinterpret_cast<cudaStream_t>(cuda_ctx->cuda_stream);
+  cudaStream_t cuda_stream = cuda_ctx->cuda_stream;
   auto z_raw = Z.Allocate(input_shape);
   cuda_add(Z.NumberOfElement(), z_raw, X.Data(), Y.Data(), cuda_stream);
 }
