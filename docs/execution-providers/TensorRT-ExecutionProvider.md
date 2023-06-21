@@ -26,8 +26,9 @@ Pre-built packages and Docker images are available for Jetpack in the [Jetson Zo
 
 |ONNX Runtime|TensorRT|CUDA|
 |---|---|---|
-|main|8.5|11.6|
-|1.14|8.5|11.6|
+|main|8.5|11.8|
+|1.15|8.5|11.8|
+|1.14-1.15|8.5|11.6|
 |1.12-1.13|8.4|11.4|
 |1.11|8.2|11.4|
 |1.10|8.0|11.4|
@@ -409,13 +410,7 @@ This example shows how to run the Faster R-CNN model on TensorRT execution provi
     python symbolic_shape_infer.py --input /path/to/onnx/model/model.onnx --output /path/to/onnx/model/new_model.onnx --auto_merge
     ```
 
-3. Replace the original model with the new model and run the 
-    onnx_test_runner tool under ONNX Runtime build directory.
-    ```bash
-    ./onnx_test_runner -e tensorrt /path/to/onnx/model/
-    ```
-
-4. Run `onnxruntime_perf_test` on your shape-inferred Faster-RCNN model 
+3. Run `onnxruntime_perf_test` on your shape-inferred Faster-RCNN model 
 
    > Download sample test data with model from [model zoo](https://github.com/onnx/models/tree/main/vision/object_detection_segmentation/faster-rcnn), and put test_data_set folder next to your inferred model 
 
