@@ -30,7 +30,10 @@ parameters:
 - name: WebTemplate
   type: string
   default: win-web-ci.yml
-# if WebPool Name is empty, use the PoolName.
+# parameter couldn't be compared by string, so add one boolean parameter.
+- name: UseWebPoolName
+  type: boolean
+  default: false
 - name: WebPoolName
   type: string
   default: ''
@@ -85,7 +88,7 @@ stages:
       CommitOverride: true
       BuildConfig: 'Debug'
       NpmPackagingMode: ${{ parameters.NpmPackagingMode }}
-      ${{ if eq(parameters.WebPoolName, '')}}:
+      ${{ if eq(parameters.UseWebPoolName, true)}}:
         PoolName: ${{ parameters.PoolName }}
       ${{ else }}:
         PoolName: ${{ parameters.WebPoolName }}
@@ -123,7 +126,7 @@ stages:
       CommitOverride: true
       BuildConfig: 'Release'
       NpmPackagingMode: ${{ parameters.NpmPackagingMode }}
-      ${{ if eq(parameters.WebPoolName, '')}}:
+      ${{ if eq(parameters.UseWebPoolName, true)}}:
         PoolName: ${{ parameters.PoolName }}
       ${{ else }}:
         PoolName: ${{ parameters.WebPoolName }}
