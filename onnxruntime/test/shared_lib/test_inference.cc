@@ -1744,10 +1744,25 @@ TEST(CApiTest, io_binding_cuda) {
 }
 #endif
 
-#if defined(USE_CUDA)
+#if defined(USE_CUDA) || defined(USE_TENSORRT)
 TEST(CApiTest, basic_cuda_graph) {
   const auto& api = Ort::GetApi();
+  Ort::SessionOptions session_options;
 
+#if defined(USE_TENSORRT)
+  // Enable cuda graph in TRT provider option.
+  OrtTensorRTProviderOptionsV2* trt_options;
+  ASSERT_TRUE(api.CreateTensorRTProviderOptions(&trt_options) == nullptr);
+  std::unique_ptr<OrtTensorRTProviderOptionsV2, decltype(api.ReleaseTensorRTProviderOptions)>
+      rel_trt_options(trt_options, api.ReleaseTensorRTProviderOptions);
+  std::vector<const char*> keys{"trt_cuda_graph_enable"};
+  std::vector<const char*> values{"1"};
+  ASSERT_TRUE(api.UpdateTensorRTProviderOptions(rel_trt_options.get(), keys.data(), values.data(), keys.size()) == nullptr);
+
+  ASSERT_TRUE(api.SessionOptionsAppendExecutionProvider_TensorRT_V2(
+                  static_cast<OrtSessionOptions*>(session_options),
+                  rel_trt_options.get()) == nullptr);
+#else
   // Enable cuda graph in cuda provider option.
   OrtCUDAProviderOptionsV2* cuda_options = nullptr;
   ASSERT_TRUE(api.CreateCUDAProviderOptions(&cuda_options) == nullptr);
@@ -1757,10 +1772,10 @@ TEST(CApiTest, basic_cuda_graph) {
   std::vector<const char*> values{"1"};
   ASSERT_TRUE(api.UpdateCUDAProviderOptions(rel_cuda_options.get(), keys.data(), values.data(), 1) == nullptr);
 
-  Ort::SessionOptions session_options;
   ASSERT_TRUE(api.SessionOptionsAppendExecutionProvider_CUDA_V2(
                   static_cast<OrtSessionOptions*>(session_options),
                   rel_cuda_options.get()) == nullptr);
+#endif
 
   Ort::Session session(*ort_env, MODEL_URI, session_options);
   Ort::MemoryInfo info_cuda("Cuda", OrtAllocatorType::OrtArenaAllocator, 0, OrtMemTypeDefault);
