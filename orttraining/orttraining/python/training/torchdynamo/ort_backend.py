@@ -25,10 +25,10 @@ from torch.fx.passes.operator_support import OperatorSupport
 from torch.fx.passes.tools_common import CALLABLE_NODE_OPS
 from torch.onnx._globals import GLOBALS as ONNX_GLOBALS
 
-from . import custom_symbols
-
 import onnxruntime  # type: ignore
 from onnxruntime.capi import _pybind_state as ORTC
+
+from . import custom_symbols
 
 _NP_DTYPE = {
     torch.float16: np.float16,
@@ -87,7 +87,11 @@ def _get_onnx_supported_table() -> Set[str]:
         # We should build another dictionary for storing support table for prim ops.
         # Currently, we only consider aten ops as before.
         if aten_op_name not in custom_symbols and not aten_op_name.startswith("aten::"):
-            logger.info("Skip %s in support table because it's not in aten domain or supported custom ops %s", aten_op_name, custom_symbols)
+            logger.info(
+                "Skip %s in support table because it's not in aten domain or supported custom ops %s",
+                aten_op_name,
+                custom_symbols,
+            )
             continue
         short_op_name = aten_op_name.split("::")[1]
         if aten_op_name.startswith("aten::") and not hasattr(torch.ops.aten, short_op_name):  # type: ignore
@@ -143,7 +147,7 @@ def _get_support_dictionaries_and_decomposition_tables() -> (
             short_op_name = aten_op_name.split("::")[1]
             # Get the custom ops from: torch.ops.custom_namespace
             custom_op_namespace = getattr(torch.ops, op_namespace)
-            op_overload_packet = getattr(custom_op_namespace, short_op_name)    # type: ignore
+            op_overload_packet = getattr(custom_op_namespace, short_op_name)  # type: ignore
             for overload in op_overload_packet.overloads():
                 op_overload = getattr(op_overload_packet, overload)
                 support_dictionary[op_overload] = None
@@ -499,7 +503,7 @@ class OrtBackend:
         3. Inside _ort_accelerated_call, it creates onnxruntime.InferenceSession and calls it to execute the sub-graph.
     """
 
-    def __init__(self, ep: str = "", preallocate_output: bool = False, session_options = None):
+    def __init__(self, ep: str = "", preallocate_output: bool = False, session_options=None):
         self._supported_ops = OrtOperatorSupport()
         # TODO: this is a naive implementation of cache without proper guard
         self._partitioner_cache: Dict[torch.fx.GraphModule, torch.fx.GraphModule] = {}

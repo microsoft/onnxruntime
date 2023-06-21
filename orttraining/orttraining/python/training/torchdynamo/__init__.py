@@ -9,6 +9,7 @@ from typing import Set
 # It can contain, for example, `aten::custom_add`.
 custom_symbols: Set[str] = set()
 
+
 # register custom ops in DORT
 def register_custom_op_in_dort(custom_op_name: str):
     custom_symbols.add(custom_op_name)
