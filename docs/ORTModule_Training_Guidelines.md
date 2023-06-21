@@ -140,7 +140,7 @@ debugging).
 
 - **Feature Area**: *ORTMODULE/Optimizations*
 - **Description**: By default, this is enabled. This env var can be used for enabling or disabling the input data sparsity
-based performance optimizations.
+based performance optimizations, including embedding sparsity and label sparsity.
 
 	```bash
 	export ORTMODULE_ENABLE_SPARSE_OPTIMIZER=1 # Enable
@@ -167,6 +167,17 @@ to standard outputs.
 	```bash
 	export ORTMODULE_PRINT_MEMORY_STATS=1 # Enable
 	export ORTMODULE_PRINT_MEMORY_STATS=0 # Disable
+	```
+
+#### ORTMODULE_ENABLE_EMBEDDING_SPARSE_OPTIMIZER
+
+- **Feature Area**: *ORTMODULE/Optimizations*
+- **Description**: By default, this is disabled. This env var can be used for enabling or disabling the embedding input
+data sparsity based performance optimizations.
+
+	```bash
+	export ORTMODULE_ENABLE_EMBEDDING_SPARSE_OPTIMIZER=1 # Enable
+	export ORTMODULE_ENABLE_EMBEDDING_SPARSE_OPTIMIZER=0 # Disable
 	```
 
 ### 2.2 Memory Optimization

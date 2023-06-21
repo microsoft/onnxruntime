@@ -752,6 +752,17 @@ IMPLEMENT_GRADIENT_BUILDER(GetGatherGradient) {
               SrcNodeAttributes())};
 }
 
+IMPLEMENT_GRADIENT_BUILDER(GetGatherGradGradient) {
+  // TODO: Strictly speaking, GatherGrad's gradient is not alway Gather when the indices have repeated values.
+  // Since GatherGrad in foward path is only used by embed sparsity feature in which case the indices are unique,
+  // we can safely use Gather here. But we will adress this issue as soon as possible.
+  return std::vector<NodeDef>{
+      NodeDef(OpDef{"Gather", kOnnxDomain, 1},
+              {GO(0), I(1)},
+              {GI(2)},
+              SrcNodeAttributes())};
+}
+
 IMPLEMENT_GRADIENT_BUILDER(GetShrunkenGatherGradient) {
   return std::vector<NodeDef>{
       NodeDef("Shape",

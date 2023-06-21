@@ -39,11 +39,13 @@ Status TopK(const Tensor* input, const int axis, const unsigned k, bool largest,
             Tensor& output_values,
             Tensor& output_indices);
 
-Status AddToFeeds(const IExecutionProvider* execution_provider,
-                  Stream* ort_stream,
+Status AddToFeeds(Stream* ort_stream,
                   std::initializer_list<OrtValue> inputs,
                   std::vector<OrtValue>& feeds,
-                  IAllocatorUniquePtr<char>& buffer);
+                  IAllocatorUniquePtr<char>& buffer,
+                  AllocatorPtr device_allocator,
+                  AllocatorPtr host_allocator,
+                  const OrtMemoryInfo& location);
 
 template <typename T>
 void InitBeamState(transformers::IBeamSearchState<T>* beam_state,

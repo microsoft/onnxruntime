@@ -86,8 +86,9 @@ jobs:
           -e CCACHE_DIR=/cache \
           --workdir /onnxruntime_src \
           onnxruntimetrainingrocm-cibuild-rocm$(RocmVersion) \
-            /bin/bash -c "
-            ccache -s && ccache -z; \
+          /bin/bash -c "
+            set -ex; \
+            ccache -s; \
             python tools/ci_build/build.py \
               --config $(BuildConfig) \
               --enable_training \
@@ -153,6 +154,7 @@ jobs:
           --volume $(Build.BinariesDirectory):/build \
           onnxruntimetrainingrocm-cibuild-rocm$(RocmVersion) \
             /bin/bash -c "
+              set -ex; \
               export KERNEL_EXPLORER_BUILD_DIR=/build/$(BuildConfig); \
               pytest /onnxruntime_src/onnxruntime/python/tools/kernel_explorer/ -n 16 --reruns 1"
       workingDirectory: $(Build.SourcesDirectory)
@@ -175,6 +177,7 @@ jobs:
           --workdir /build/$(BuildConfig) \
           onnxruntimetrainingrocm-cibuild-rocm$(RocmVersion) \
             /bin/bash -c "
+              set -ex; \
               export PYTHONPATH=/build/$(BuildConfig); \
               python -m onnxruntime.training.ortmodule.torch_cpp_extensions.install; \
               python \
@@ -238,6 +241,7 @@ jobs:
           --workdir /build/$(BuildConfig) \
           onnxruntimetrainingrocm-cibuild-rocm$(RocmVersion) \
             /bin/bash -c "
+              set -ex; \
               unset PYTHONPATH; \
               pip install /build/$(BuildConfig)/dist/$whlfilename; \
               python -m onnxruntime.training.ortmodule.torch_cpp_extensions.install; \

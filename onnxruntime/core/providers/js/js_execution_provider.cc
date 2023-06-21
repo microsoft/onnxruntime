@@ -406,36 +406,12 @@ JsExecutionProvider::JsExecutionProvider(const JsExecutionProviderInfo& info)
     : IExecutionProvider{kJsExecutionProvider, OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, 0), true} {
 }
 
-// implement RegisterAllocator to test/validate sharing the CPU EP's allocator
-void JsExecutionProvider::RegisterAllocator(AllocatorManager& allocator_manager) {
-  OrtDevice cpu_device{OrtDevice::CPU, OrtDevice::MemType::DEFAULT, DEFAULT_CPU_ALLOCATOR_DEVICE_ID};
-  auto cpu_alloc = GetAllocator(OrtMemTypeCPU);
-  if (!cpu_alloc) {
-    cpu_alloc = allocator_manager.GetAllocator(OrtMemTypeCPU, cpu_device);
-    if (!cpu_alloc) {
-      AllocatorCreationInfo cpuAllocatorCreationInfo([&](int) {
-        return std::make_unique<js::JsCPUAllocator>();
-      },
-                                                     0, false);
-      cpu_alloc = CreateAllocator(cpuAllocatorCreationInfo);
-      allocator_manager.InsertAllocator(cpu_alloc);
-    }
-    InsertAllocator(cpu_alloc);
-  }
-
-  auto custom_alloc = GetAllocator(OrtMemTypeDefault);
-  if (!custom_alloc) {
-    custom_alloc = allocator_manager.GetAllocator(OrtMemTypeDefault, default_device_);
-    if (!custom_alloc) {
-      AllocatorCreationInfo customAllocatorCreationInfo([&](int) {
-        return std::make_unique<js::JsCustomAllocator>();
-      },
-                                                        0, false);
-      custom_alloc = CreateAllocator(customAllocatorCreationInfo);
-      allocator_manager.InsertAllocator(custom_alloc);
-    }
-    InsertAllocator(custom_alloc);
-  }
+std::vector<AllocatorPtr> JsExecutionProvider::CreatePreferredAllocators() {
+  AllocatorCreationInfo customAllocatorCreationInfo([&](int) {
+    return std::make_unique<js::JsCustomAllocator>();
+  },
+                                                    0, false);  // TODO(leca): REVIEW: need JsCPUAllocator?
+  return std::vector<AllocatorPtr>{CreateAllocator(customAllocatorCreationInfo)};
 }
 
 std::vector<std::unique_ptr<ComputeCapability>> JsExecutionProvider::GetCapability(
