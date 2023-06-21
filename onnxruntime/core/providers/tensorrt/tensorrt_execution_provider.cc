@@ -647,6 +647,62 @@ Status ApplyProfileShapesFromInputTensorValue(std::vector<nvinfer1::IOptimizatio
   return Status::OK();
 }
 
+TensorrtExecutionProvider::PerThreadContext::PerThreadContext(OrtDevice::DeviceId device_id, bool has_user_compute_stream, cudaStream_t stream) {
+  if (has_user_compute_stream) {
+    CUDA_CALL_THROW(cudaSetDevice(device_id));
+    ORT_IGNORE_RETURN_VALUE(CUBLAS_CALL(cublasCreate(&external_cublas_handle_)));
+    ORT_IGNORE_RETURN_VALUE(CUBLAS_CALL(cublasSetStream(external_cublas_handle_, stream)));
+    ORT_IGNORE_RETURN_VALUE(CUDNN_CALL(cudnnCreate(&external_cudnn_handle_)));
+    ORT_IGNORE_RETURN_VALUE(CUDNN_CALL(cudnnSetStream(external_cudnn_handle_, stream)));
+  }
+}
+
+TensorrtExecutionProvider::PerThreadContext::~PerThreadContext() {
+  if (external_cublas_handle_ != nullptr) {
+    ORT_IGNORE_RETURN_VALUE(CUBLAS_CALL(cublasDestroy(external_cublas_handle_)));
+  }
+  if (external_cudnn_handle_ != nullptr) {
+    ORT_IGNORE_RETURN_VALUE(CUDNN_CALL(cudnnDestroy(external_cudnn_handle_)));
+  }
+}
+
+TensorrtExecutionProvider::PerThreadContext& TensorrtExecutionProvider::GetPerThreadContext() const {
+  const auto& per_thread_context_cache = PerThreadContextCache();
+
+  // try to use cached context
+  auto cached_context_it = per_thread_context_cache->find(this);
+  if (cached_context_it != per_thread_context_cache->end()) {
+    auto cached_context = cached_context_it->second.lock();
+    ORT_ENFORCE(cached_context);
+    return *cached_context;
+  }
+
+  // get context and update cache
+  std::shared_ptr<PerThreadContext> context;
+  {
+    std::lock_guard<OrtMutex> lock(context_state_.mutex);
+
+    // get or create a context
+    if (context_state_.retired_context_pool.empty()) {
+      context = std::make_shared<PerThreadContext>(info_.device_id, info_.has_user_compute_stream, stream_);
+    } else {
+      context = context_state_.retired_context_pool.back();
+      context_state_.retired_context_pool.pop_back();
+    }
+
+    // insert into active_contexts, should not already be present
+    const auto active_contexts_insert_result = context_state_.active_contexts.insert(context);
+    ORT_ENFORCE(active_contexts_insert_result.second);
+
+    // insert into caches_to_update_on_destruction, may already be present
+    ORT_IGNORE_RETURN_VALUE(context_state_.caches_to_update_on_destruction.insert(per_thread_context_cache));
+  }
+
+  per_thread_context_cache->insert(std::make_pair(this, context));
+
+  return *context;
+}
+
 TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProviderInfo& info)
     : IExecutionProvider{onnxruntime::kTensorrtExecutionProvider, OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, info.device_id), true}, info_(info), device_id_(info.device_id) {
   InitProviderOrtApi();
@@ -655,10 +711,6 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
   if (info.has_user_compute_stream) {
     external_stream_ = true;
     stream_ = static_cast<cudaStream_t>(info.user_compute_stream);
-    ORT_IGNORE_RETURN_VALUE(CUBLAS_CALL(cublasCreate(&external_cublas_handle_)));
-    ORT_IGNORE_RETURN_VALUE(CUBLAS_CALL(cublasSetStream(external_cublas_handle_, stream_)));
-    ORT_IGNORE_RETURN_VALUE(CUDNN_CALL(cudnnCreate(&external_cudnn_handle_)));
-    ORT_IGNORE_RETURN_VALUE(CUDNN_CALL(cudnnSetStream(external_cudnn_handle_, stream_)));
   }
 
   std::string profile_min_shapes, profile_max_shapes, profile_opt_shapes;
@@ -902,7 +954,7 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
   }
 
   if (cuda_graph_enable_) {
-    cuda_graph_ = std::make_unique<CUDAGraph>();
+    GetPerThreadContext().InitCUDAGraph();
   }
 
   /*
@@ -983,10 +1035,6 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
 }
 
 TensorrtExecutionProvider::~TensorrtExecutionProvider() {
-  if (external_stream_) {
-    ORT_IGNORE_RETURN_VALUE(CUBLAS_CALL(cublasDestroy(external_cublas_handle_)));
-    ORT_IGNORE_RETURN_VALUE(CUDNN_CALL(cudnnDestroy(external_cudnn_handle_)));
-  }
   if (!external_stream_ && stream_) {
     ORT_IGNORE_RETURN_VALUE(CUDA_CALL(cudaStreamDestroy(stream_)));
   }
@@ -997,25 +1045,41 @@ bool TensorrtExecutionProvider::IsGraphCaptureEnabled() const {
   return cuda_graph_enable_;
 }
 
-bool TensorrtExecutionProvider::IsGraphCaptureAllowed() const {
+bool TensorrtExecutionProvider::IsGraphCaptured() const {
+  return GetPerThreadContext().IsGraphCaptured();
+}
+
+Status TensorrtExecutionProvider::ReplayGraph() {
+  return GetPerThreadContext().ReplayGraph();
+}
+
+void TensorrtExecutionProvider::PerThreadContext::InitCUDAGraph() {
+  cuda_graph_ = std::make_unique<CUDAGraph>();
+}
+
+void TensorrtExecutionProvider::PerThreadContext::SetGraphStream(cudaStream_t stream) {
+  cuda_graph_->SetStream(stream);
+}
+
+bool TensorrtExecutionProvider::PerThreadContext::IsGraphCaptureAllowed() const {
   return regular_run_count_before_graph_capture_ >= min_num_runs_before_cuda_graph_capture_;
 }
 
-void TensorrtExecutionProvider::CaptureBegin() {
+void TensorrtExecutionProvider::PerThreadContext::CaptureBegin() {
   cuda_graph_->Reset();
   cuda_graph_->CaptureBegin();
 }
 
-void TensorrtExecutionProvider::CaptureEnd() {
+void TensorrtExecutionProvider::PerThreadContext::CaptureEnd() {
   cuda_graph_->CaptureEnd();
   is_graph_captured_ = true;
 }
 
-bool TensorrtExecutionProvider::IsGraphCaptured() const {
+bool TensorrtExecutionProvider::PerThreadContext::IsGraphCaptured() const {
   return is_graph_captured_;
 }
 
-Status TensorrtExecutionProvider::ReplayGraph() {
+Status TensorrtExecutionProvider::PerThreadContext::ReplayGraph() {
   ORT_ENFORCE(IsGraphCaptured());
   // Please note that CUDAGraph::Replay() is not thread safe.
   // ORT TRT calls ReplayGraph() in compute_func() where synchromization is enforced due to lock_guard(),
@@ -1023,7 +1087,7 @@ Status TensorrtExecutionProvider::ReplayGraph() {
   return cuda_graph_->Replay();
 }
 
-void TensorrtExecutionProvider::IncrementRegularRunCountBeforeGraphCapture() {
+void TensorrtExecutionProvider::PerThreadContext::IncrementRegularRunCountBeforeGraphCapture() {
   // Please note that this function is not thread safe.
   // ORT TRT calls this function in compute_func() where synchronization is enforced due to lock_guard(),
   // therefore following increment is guaranteed to be thread safe.
@@ -2801,10 +2865,10 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
       // Start CUDA graph capture.
       // Note: The reason we don't put graph capture in OnRunStart() like CUDA EP does is because
       // current ORT TRT doesn't get cuda stream until compute time and graph capture requires cuda stream.
-      if (cuda_graph_enable_ && IsGraphCaptureAllowed() && !IsGraphCaptured()) {
+      if (cuda_graph_enable_ && GetPerThreadContext().IsGraphCaptureAllowed() && !GetPerThreadContext().IsGraphCaptured()) {
         LOGS_DEFAULT(INFO) << "Capturing the cuda graph for this model";
-        cuda_graph_->SetStream(stream);
-        CaptureBegin();
+        GetPerThreadContext().SetGraphStream(stream);
+        GetPerThreadContext().CaptureBegin();
       }
 
       // Run TRT inference
@@ -2840,14 +2904,14 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
       // above, another reason is because OnRunEnd() is not synchronized with OnRunStart() and ExecuteGraph() per inference_session.cc,
       // which might end up with many cuda graphs are captured by multiple threads if running with multithreading.
       // It's safe to start/end CUDA graph capture in compute_func() here since the whole function is protected by the lock_guard().
-      if (cuda_graph_enable_ && !IsGraphCaptured()) {
-        if (IsGraphCaptureAllowed()) {
-          CaptureEnd();
+      if (cuda_graph_enable_ && !GetPerThreadContext().IsGraphCaptured()) {
+        if (GetPerThreadContext().IsGraphCaptureAllowed()) {
+          GetPerThreadContext().CaptureEnd();
           // CUDA work issued to a capturing stream doesn’t actually run on the GPU,
           // so run the captured graph here to actually execute the work.
-          ORT_RETURN_IF_ERROR(ReplayGraph());
+          ORT_RETURN_IF_ERROR(GetPerThreadContext().ReplayGraph());
         } else {
-          IncrementRegularRunCountBeforeGraphCapture();
+          GetPerThreadContext().IncrementRegularRunCountBeforeGraphCapture();
         }
       }
 
@@ -2861,7 +2925,14 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
 
 void TensorrtExecutionProvider::RegisterStreamHandlers(IStreamCommandHandleRegistry& stream_handle_registry, AllocatorMap& allocators) const {
   auto allocator = allocators[GetOrtDeviceByMemType(OrtMemTypeCPU)];
-  RegisterCudaStreamHandles(stream_handle_registry, OrtDevice::GPU, allocator, true, stream_, external_stream_, external_cudnn_handle_, external_cublas_handle_);
+  RegisterCudaStreamHandles(stream_handle_registry,
+                            OrtDevice::GPU,
+                            allocator,
+                            true /* release_cpu_buffer_on_cuda_stream */,
+                            stream_,
+                            external_stream_ /* use_existing_stream */,
+                            GetPerThreadContext().CudnnHandle(),
+                            GetPerThreadContext().CublasHandle());
 }
 
 OrtDevice TensorrtExecutionProvider::GetOrtDeviceByMemType(OrtMemType mem_type) const {

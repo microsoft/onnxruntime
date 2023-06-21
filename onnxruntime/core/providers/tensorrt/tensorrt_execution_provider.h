@@ -144,6 +144,14 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   explicit TensorrtExecutionProvider(const TensorrtExecutionProviderInfo& info);
   virtual ~TensorrtExecutionProvider();
 
+  cublasHandle_t PerThreadDefaultCublasHandle() {
+    return GetPerThreadContext().CublasHandle();
+  }
+
+  cudnnHandle_t PerThreadDefaultCudnnHandle() {
+    return GetPerThreadContext().CudnnHandle();
+  }
+
   virtual std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;
   std::unique_ptr<IDataTransfer> GetDataTransfer() const override;
 
@@ -214,11 +222,6 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   bool detailed_build_log_ = false;
   bool cuda_graph_enable_ = false;
 
-  std::unique_ptr<CUDAGraph> cuda_graph_;  // ORT TRT only supports CUDA graph when whole model is supported by TRT, so simply maintaining a CUDAGraph pointer is enough (no need to maintain one CUDAGraph pointer per TRT subgraph)
-  bool is_graph_captured_ = false;
-  int regular_run_count_before_graph_capture_ = 0;
-  const int min_num_runs_before_cuda_graph_capture_ = 1;  // required min regular runs before graph capture for the necessary memory allocations.
-
   std::unordered_set<std::string> control_flow_op_set_ = {"If", "Loop", "Scan"};
   std::unordered_map<std::string, tensorrt_ptr::unique_pointer<nvonnxparser::IParser>> parsers_;
   std::unordered_map<std::string, std::unique_ptr<nvinfer1::ICudaEngine>> engines_;
@@ -233,9 +236,85 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   std::unordered_map<std::string, std::unordered_map<std::string, std::unordered_map<size_t, std::vector<std::vector<int64_t>>>>> input_shape_ranges_;
   std::unordered_map<std::string, std::vector<nvinfer1::IOptimizationProfile*>> profiles_;
 
-  // for external stream, we need to create its cudnn/cublass handle before cuda EP enable cuda graph capture
-  cudnnHandle_t external_cudnn_handle_ = nullptr;
-  cublasHandle_t external_cublas_handle_ = nullptr;
+  class PerThreadContext final {
+   public:
+    PerThreadContext(OrtDevice::DeviceId device_id, bool has_user_compute_stream, cudaStream_t stream);
+    ~PerThreadContext();
+
+    cublasHandle_t CublasHandle() const {
+      return external_cublas_handle_;
+    }
+
+    cudnnHandle_t CudnnHandle() const {
+      return external_cudnn_handle_;
+    }
+
+    void InitCUDAGraph();
+    void SetGraphStream(cudaStream_t stream);
+    bool IsGraphCaptureAllowed() const;
+    void CaptureBegin();
+    void CaptureEnd();
+    bool IsGraphCaptured() const;
+    Status ReplayGraph();
+    void IncrementRegularRunCountBeforeGraphCapture();
+
+   private:
+    cudnnHandle_t external_cudnn_handle_ = nullptr;
+    cublasHandle_t external_cublas_handle_ = nullptr;
+    std::unordered_map<std::string, std::unique_ptr<nvinfer1::IExecutionContext>> contexts_;
+
+    // Cuda graph with multi threads will be supported in the future, so cuda_graph_ is put under PerThreadContext.
+    // ORT TRT only supports CUDA graph when whole model is supported by TRT, so simply maintaining a CUDAGraph pointer is enough (no need to maintain one CUDAGraph pointer per TRT subgraph)
+    std::unique_ptr<CUDAGraph> cuda_graph_;
+    bool is_graph_captured_ = false;
+    int regular_run_count_before_graph_capture_ = -1;
+    // There is chance (currently only happens in CUDA EP) that the second regular run allocates GPU memory for causes like:
+    // (1) memory pattern is enabled. (2) arena allocation for stream.
+    // Since no GPU memory allocation is allowed during graph capturing, we need at least two regular runs
+    // to allocate enough memory in Arena before graph capturing.
+    const int min_num_runs_before_cuda_graph_capture_ = 0;  // required min regular runs before graph capture for the necessary memory allocations.
+  };
+
+  using PerThreadContextMap = std::unordered_map<const TensorrtExecutionProvider*, std::weak_ptr<PerThreadContext>>;
+  // thread local PerThreadContext cache
+
+  struct ContextCacheHolder {
+    ContextCacheHolder() {
+      // Keep a weak pointer to the object, if the weak pointer can be locked, then the shared pointer is still around, so we can reset it
+      RunOnUnload([&, weak_p_ = std::weak_ptr<PerThreadContextMap>(p)] {
+        if (auto lock = weak_p_.lock())
+          p.reset();
+      });
+    }
+    std::shared_ptr<PerThreadContextMap> p = std::make_shared<PerThreadContextMap>();
+  };
+
+  static const std::shared_ptr<PerThreadContextMap>& PerThreadContextCache() {
+    thread_local const ContextCacheHolder per_thread_context_cache;
+    return per_thread_context_cache.p;
+  }
+
+  struct PerThreadContextState {
+    // contexts that are currently active
+    std::set<std::shared_ptr<PerThreadContext>, std::owner_less<std::shared_ptr<PerThreadContext>>> active_contexts;
+    // contexts available for reuse
+    std::vector<std::shared_ptr<PerThreadContext>> retired_context_pool;
+    // weak references to thread local caches from which this TensorrtExecutionProvider instance's entry should be removed
+    // upon destruction
+    std::set<std::weak_ptr<PerThreadContextMap>, std::owner_less<std::weak_ptr<PerThreadContextMap>>>
+        caches_to_update_on_destruction;
+    // synchronizes access to PerThreadContextState members
+    OrtMutex mutex;
+  };
+
+  // The execution provider maintains the PerThreadContexts in this structure.
+  // Synchronization is required to update the contained structures.
+  // On the other hand, access to an individual PerThreadContext is assumed to be from a single thread at a time,
+  // so synchronization is not required for that.
+  mutable PerThreadContextState context_state_;
+
+  PerThreadContext& GetPerThreadContext() const;
+  void ReleasePerThreadContext() const;
 
   /**Get IndexedSubGraph based on node list of the subgraph*/
   std::unique_ptr<IndexedSubGraph> GetSubGraph(SubGraph_t graph_nodes_index,
@@ -269,9 +348,5 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   /**Check whether all the nodes of subgraph are supported*/
   bool IsSubGraphFullySupported(SubGraphCollection_t supported_nodes_vector, const int number_of_ort_nodes) const;
 
-  bool IsGraphCaptureAllowed() const;
-  void CaptureBegin();
-  void CaptureEnd();
-  void IncrementRegularRunCountBeforeGraphCapture();
 };
 }  // namespace onnxruntime
