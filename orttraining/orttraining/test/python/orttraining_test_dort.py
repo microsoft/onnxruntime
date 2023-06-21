@@ -22,7 +22,9 @@ register_custom_op_symbolic('aten::mul', onnx_custom_add, opset_version=14)
 register_custom_op_in_dort('test.customop::CustomOpOne')
 
 from onnxruntime.training.torchdynamo.register_backend import aot_ort, ort
-from onnxruntime.training.torchdynamo.ort_backend import OrtBackend
+from onnxruntime.training.torchdynamo.ort_backend import OrtBackend, ATEN2ATEN_DECOMP
+from functorch.compile import min_cut_rematerialization_partition
+from torch._dynamo.backends.common import aot_autograd
 
 class TestTorchDynamoOrt(unittest.TestCase):
     """Containers of tests for TorchDynamo ORT (DORT) backend."""
@@ -209,14 +211,16 @@ class TestTorchDynamoOrt(unittest.TestCase):
             if not os.path.exists(shared_library):
                 raise FileNotFoundError(f"Unable to find '{shared_library}'")
 
-        so1 = onnxrt.SessionOptions()
-        so1.register_custom_ops_library(shared_library)
+        session_options = onnxrt.SessionOptions()
+        session_options.register_custom_ops_library(shared_library)
+
+        ort_backend = OrtBackend(ep="CPUExecutionProvider", session_options=session_options)
+        aot_ort = aot_autograd(fw_compiler=ort_backend, partition_fn=min_cut_rematerialization_partition, decompositions=ATEN2ATEN_DECOMP)
 
         def custom_add(tensor_x: torch.Tensor, tensor_y: torch.Tensor):
             return torch.mul(tensor_x, tensor_y)
 
-        ort_backend = OrtBackend(session_options=so1)
-        opt_add = torch._dynamo.optimize(ort_backend)(custom_add)
+        opt_add = torch._dynamo.optimize(aot_ort)(custom_add)
 
         tensor_x = torch.ones((64, 64), dtype=torch.float32)
         tensor_y = torch.ones((64, 64), dtype=torch.float32)
@@ -226,8 +230,6 @@ class TestTorchDynamoOrt(unittest.TestCase):
         # ORT result.
         result_ort = opt_add(tensor_x, tensor_y)
 
-        print("result_ref", result_ref)
-        print("result_ort", result_ort)
         torch.testing.assert_close(result_ref, result_ort)
 
 

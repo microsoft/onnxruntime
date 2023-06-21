@@ -654,7 +654,7 @@ class OrtBackend:
             FakeTensorProp(prim_graph_module, mode=fake_mode).propagate(*args)
             _replace_to_copy_with_to(prim_graph_module)
             partitioner = CapabilityBasedPartitioner(
-                prim_graph_module, self._supported_ops, allows_single_node_partition=False
+                prim_graph_module, self._supported_ops, allows_single_node_partition=True
             )
             partitioned_prim_graph_module = partitioner.partition_and_fuse()
             self._partitioner_cache[graph_module] = partitioned_prim_graph_module
