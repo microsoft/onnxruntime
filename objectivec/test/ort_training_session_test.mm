@@ -10,6 +10,7 @@
 #import "ort_session.h"
 #import "ort_value.h"
 
+#import "test/test_utils.h"
 #import "test/assertion_utils.h"
 
 NS_ASSUME_NONNULL_BEGIN
@@ -62,12 +63,6 @@ NS_ASSUME_NONNULL_BEGIN
   }
 
   return tensorData;
-}
-
-+ (float)getFirstValueFromData:(NSData*)data {
-  float value;
-  [data getBytes:&value length:sizeof(float)];
-  return value;
 }
 
 - (ORTTrainingSession*)makeTrainingSessionWithCheckPoint:(ORTCheckpoint*)checkpoint {
@@ -190,8 +185,8 @@ NS_ASSUME_NONNULL_BEGIN
 
   NSMutableData* tensorData = [outputBuffer tensorDataWithError:&error];
   ORTAssertNullableResultSuccessful(tensorData, error);
-  XCTAssertEqualWithAccuracy([ORTTrainingSessionTest getFirstValueFromData:tensorData],
-                             [ORTTrainingSessionTest getFirstValueFromData:expectedOutput], 1e-3f);
+  ORTAssertEqualFloatArrays(testUtils::getFloatArrayFromData(tensorData),
+                            testUtils::getFloatArrayFromData(expectedOutput));
 }
 - (void)testTrainStepOutput {
   NSError* error = nil;
@@ -251,8 +246,8 @@ NS_ASSUME_NONNULL_BEGIN
 
   NSMutableData* loss = [outputs[0] tensorDataWithError:&error];
   ORTAssertNullableResultSuccessful(loss, error);
-  XCTAssertEqualWithAccuracy([ORTTrainingSessionTest getFirstValueFromData:loss],
-                             [ORTTrainingSessionTest getFirstValueFromData:expectedOutput1], 1e-3f);
+  ORTAssertEqualFloatArrays(testUtils::getFloatArrayFromData(loss),
+                            testUtils::getFloatArrayFromData(expectedOutput1));
 
   BOOL result = [session lazyResetGradWithError:&error];
   ORTAssertBoolResultSuccessful(result, error);
@@ -262,8 +257,8 @@ NS_ASSUME_NONNULL_BEGIN
 
   loss = [outputs[0] tensorDataWithError:&error];
   ORTAssertNullableResultSuccessful(loss, error);
-  XCTAssertEqualWithAccuracy([ORTTrainingSessionTest getFirstValueFromData:loss],
-                             [ORTTrainingSessionTest getFirstValueFromData:expectedOutput1], 1e-3f);
+  ORTAssertEqualFloatArrays(testUtils::getFloatArrayFromData(loss),
+                            testUtils::getFloatArrayFromData(expectedOutput1));
 
   result = [session optimizerStepWithError:&error];
   ORTAssertBoolResultSuccessful(result, error);
@@ -272,8 +267,8 @@ NS_ASSUME_NONNULL_BEGIN
   ORTAssertNullableResultSuccessful(outputs, error);
   loss = [outputs[0] tensorDataWithError:&error];
   ORTAssertNullableResultSuccessful(loss, error);
-  XCTAssertEqualWithAccuracy([ORTTrainingSessionTest getFirstValueFromData:loss],
-                             [ORTTrainingSessionTest getFirstValueFromData:expectedOutput2], 1e-3f);
+  ORTAssertEqualFloatArrays(testUtils::getFloatArrayFromData(loss),
+                            testUtils::getFloatArrayFromData(expectedOutput2));
 }
 
 - (void)testSetLearningRate {
@@ -288,7 +283,7 @@ NS_ASSUME_NONNULL_BEGIN
   BOOL result = [session setLearningRate:learningRate error:&error];
   ORTAssertBoolResultSuccessful(result, error);
   float actualLearningRate = [session getLearningRateWithError:&error];
-  ORTAssertFloatResultSuccessful(learningRate, actualLearningRate, error);
+  ORTAssertEqualFloatAndNoError(learningRate, actualLearningRate, error);
 }
 
 - (void)testLinearLRScheduler {
@@ -311,25 +306,25 @@ NS_ASSUME_NONNULL_BEGIN
   ORTAssertBoolResultSuccessful(result, error);
   result = [session schedulerStepWithError:&error];
   ORTAssertBoolResultSuccessful(result, error);
-  ORTAssertFloatResultSuccessful(0.05f, [session getLearningRateWithError:&error], error);
+  ORTAssertEqualFloatAndNoError(0.05f, [session getLearningRateWithError:&error], error);
 
   result = [session optimizerStepWithError:&error];
   ORTAssertBoolResultSuccessful(result, error);
   result = [session schedulerStepWithError:&error];
   ORTAssertBoolResultSuccessful(result, error);
-  ORTAssertFloatResultSuccessful(0.1f, [session getLearningRateWithError:&error], error);
+  ORTAssertEqualFloatAndNoError(0.1f, [session getLearningRateWithError:&error], error);
 
   result = [session optimizerStepWithError:&error];
   ORTAssertBoolResultSuccessful(result, error);
   result = [session schedulerStepWithError:&error];
   ORTAssertBoolResultSuccessful(result, error);
-  ORTAssertFloatResultSuccessful(0.05f, [session getLearningRateWithError:&error], error);
+  ORTAssertEqualFloatAndNoError(0.05f, [session getLearningRateWithError:&error], error);
 
   result = [session optimizerStepWithError:&error];
   ORTAssertBoolResultSuccessful(result, error);
   result = [session schedulerStepWithError:&error];
   ORTAssertBoolResultSuccessful(result, error);
-  ORTAssertFloatResultSuccessful(0.0f, [session getLearningRateWithError:&error], error);
+  ORTAssertEqualFloatAndNoError(0.0f, [session getLearningRateWithError:&error], error);
 }
 
 - (void)testExportModelForInference {

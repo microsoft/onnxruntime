@@ -9,6 +9,7 @@
 #import "ort_env.h"
 #import "ort_session.h"
 
+#import "test/test_utils.h"
 #import "test/assertion_utils.h"
 
 NS_ASSUME_NONNULL_BEGIN
@@ -42,41 +43,6 @@ NS_ASSUME_NONNULL_BEGIN
   return path;
 }
 
-+ (NSString*)createTempDirectory {
-  NSString* temporaryDirectory = NSTemporaryDirectory();
-  NSString* directoryPath = [temporaryDirectory stringByAppendingPathComponent:@"ort-objective-c-training-test"];
-
-  NSError* error = nil;
-  [[NSFileManager defaultManager] createDirectoryAtPath:directoryPath
-                            withIntermediateDirectories:YES
-                                             attributes:nil
-                                                  error:&error];
-
-  if (error) {
-    NSLog(@"Error creating temporary directory: %@", error.localizedDescription);
-    return nil;
-  }
-
-  return directoryPath;
-}
-
-+ (void)deleteTempDirectory:(NSString*)directoryPath {
-  NSError* error = nil;
-  NSFileManager* fileManager = [NSFileManager defaultManager];
-
-  // Check if the directory exists
-  BOOL directoryExists = [fileManager fileExistsAtPath:directoryPath];
-
-  if (directoryExists) {
-    // Remove the directory and its contents
-    BOOL success = [fileManager removeItemAtPath:directoryPath error:&error];
-
-    if (!success) {
-      NSLog(@"Error deleting temporary directory: %@", error.localizedDescription);
-    }
-  }
-}
-
 - (void)testSaveCheckPoint {
   NSError* error = nil;
   ORTCheckpoint* checkpoint = [[ORTCheckpoint alloc] initWithPath:[ORTCheckpointTest getCheckpointPath] error:&error];
@@ -96,9 +62,10 @@ NS_ASSUME_NONNULL_BEGIN
   ORTAssertNullableResultSuccessful(session, error);
 
   // save checkpoint
-  NSString* path = [ORTCheckpointTest createTempDirectory];
+  NSString* path = testUtils::createTemporaryDirectory(self);
+  XCTAssertNotNil(path);
   BOOL result = [checkpoint saveCheckpointToPath:path withOptimizerState:NO error:&error];
-  [ORTCheckpointTest deleteTempDirectory:path];
+
   ORTAssertBoolResultSuccessful(result, error);
 }
 

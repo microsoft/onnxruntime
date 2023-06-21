@@ -12,7 +12,7 @@
 NS_ASSUME_NONNULL_BEGIN
 @class ORTValue;
 
-namespace Utils {
+namespace utils {
 
 NSString* toNSString(const std::string& str);
 NSString* _Nullable toNullableNSString(const std::optional<std::string>& str);
@@ -27,6 +27,6 @@ NSArray<ORTValue*>* _Nullable wrapUnownedCAPIOrtValues(const std::vector<OrtValu
 
 std::vector<const OrtValue*> getWrappedCAPIOrtValues(NSArray<ORTValue*>* values);
 
-}  // namespace Utils
+}  // namespace utils
 
 NS_ASSUME_NONNULL_END
