@@ -11,18 +11,25 @@
 namespace onnxruntime {
 
 Status PreShapeNodeElimination::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_effect, const logging::Logger&) const {
-  // Remove Output Edges.
-  graph_utils::RemoveNodeOutputEdges(graph, node);
   const Node* p_input_node = graph_utils::GetInputNode(node, 0);
 
   // Get mutable input node
   Node& input_node = *graph.GetNode(p_input_node->Index());
   const int output_idx = graph_utils::GetNodeOutputIndexFromOutputName(input_node, node.MutableInputDefs()[0]->Name());
 
-  // Update InputDefs of the next shape nodes.
-  auto output_nodes = graph.GetMutableConsumerNodes(node.OutputDefs()[0]->Name());
-  for (Node* next_node : output_nodes) {
-    for (auto& input_def : next_node->MutableInputDefs()) {
+  const auto node_index = node.Index();
+  for (auto it = node.OutputEdgesBegin(), end = node.OutputEdgesEnd(); it != end; ++it) {
+    const auto& consumer = (*it).GetNode();
+    const auto consumer_idx = consumer.Index();
+    const auto src_idx = (*it).GetSrcArgIndex();
+    const auto dst_idx = (*it).GetDstArgIndex();
+
+    // Remove Edge from Graph.
+    graph.RemoveEdge(node_index, consumer_idx, src_idx, dst_idx);
+
+    Node& mutable_consumer = *graph.GetNode(consumer_idx);
+
+    for (auto& input_def : mutable_consumer.MutableInputDefs()) {
       input_def = input_node.MutableOutputDefs()[output_idx];
     }
   }

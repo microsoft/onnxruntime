@@ -3222,9 +3222,6 @@ TEST_F(GraphTransformationTests, PreShapeNodeElimination) {
     ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 13, *logger_, std::move(rule_transformer), TransformerLevel::Level1, 1,
                                           pre_graph_checker, post_graph_checker));
   }
-
-  constexpr const ORTCHAR_T* output_model_uri = MODEL_FOLDER "pre_shape_node_elimination_output.onnx";
-  ASSERT_TRUE(Model::Save(*model, output_model_uri).IsOK());
 }
 
 #ifndef DISABLE_CONTRIB_OPS
