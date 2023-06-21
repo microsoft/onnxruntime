@@ -8,7 +8,7 @@ import torch
 
 from .... import ortmodule
 from ... import ORTModule
-from ..._options import DebugOptions, LogLevel
+from ...options import DebugOptions, LogLevel
 
 # nn.Module's in this set are considered exportable to ONNX.
 # For other nn.Module's, torch.onnx.export is called to check if

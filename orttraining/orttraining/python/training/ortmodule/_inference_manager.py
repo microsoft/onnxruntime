@@ -15,7 +15,7 @@ from . import _are_deterministic_algorithms_enabled, _io, _use_deterministic_alg
 from ._execution_agent import InferenceAgent
 from ._fallback import ORTModuleFallbackException, _FallbackManager, _FallbackPolicy
 from ._graph_execution_manager import GraphExecutionManager, _RunStateInfo
-from ._options import DebugOptions, _SkipCheck
+from .options import DebugOptions, _SkipCheck
 
 
 class InferenceManager(GraphExecutionManager):

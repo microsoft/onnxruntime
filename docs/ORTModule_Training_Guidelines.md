@@ -47,7 +47,7 @@ More options for **developers**.
 +	from onnxruntime.training.ortmodule import ORTModule, DebugOptions, LogLevel
 +	model = ORTModule(model, DebugOptions(save_onnx=True, log_level=LogLevel.VERBOSE, onnx_prefix="model_name"))
 ```
-Check [DebugOptions implementation](../orttraining/orttraining/python/training/ortmodule/_options.py) for more details.
+Check [DebugOptions implementation](../orttraining/orttraining/python/training/ortmodule/options.py) for more details.
 
 ### 2.1 Environment Variables
 
@@ -99,12 +99,13 @@ The output directory of the onnx models by default is set to the current working
 	> Overall users should be aware that ORT performance boost might be trivial when they explicitly allow it.
 
 
-#### ORTMODULE_DISABLE_CUSTOM_AUTOGRAD_SUPPORT
+#### ORTMODULE_ENABLE_CUSTOM_AUTOGRAD
 
 - **Feature Area**: *ORTMODULE/PythonOp (torch.autograd.Function)*
 - **Description**: By default, all torch.autograd.Function classes will be exported to ORT PythonOp. There are some cases where you might consider disable it. For example, if you confirmed those torch.autograd.Function classes defined computations that could be inline exported by PyTorch, and it is safe to use the inline exported ONNX graph to train, then you can disable it, as a result, ORT has more opportunities to optimize more.
 	```bash
-	export ORTMODULE_DISABLE_CUSTOM_AUTOGRAD_SUPPORT=1
+	export ORTMODULE_ENABLE_CUSTOM_AUTOGRAD=1 # Enable
+	export ORTMODULE_ENABLE_CUSTOM_AUTOGRAD=0 # Disable
 	```
 
 	An alternative to disable without using environment variable:

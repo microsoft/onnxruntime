@@ -1,6 +1,6 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
-# _options.py
+# options.py
 
 import os
 from enum import IntFlag
@@ -14,6 +14,7 @@ from onnxruntime.training import ortmodule
 from ._fallback import _FallbackPolicy
 from ._logger import LogLevel
 from ._utils import parse_os_env_skip_check_flags
+from ._custom_autograd_function import custom_autograd_function_enabler
 
 
 class _SaveOnnxOptions:
@@ -155,11 +156,11 @@ class _SkipCheck(IntFlag):
         return _SkipCheck.SKIP_CHECK_DISABLED in self
 
 
-class _RuntimeOptions:
+class RuntimeOptions:
     """Configurable runtime options for ORTModule."""
 
-    def __init__(self, logger: Logger, config=None):
-        """Constructor for _RuntimeOptions.
+    def __init__(self, logger: Logger):
+        """Constructor for Options.
 
         Initially set all the options to their default values, then override them with the values
         from the environment variables.
@@ -200,8 +201,6 @@ class _RuntimeOptions:
         self._run_symbolic_shape_infer = True
 
         # PyTorch custom Autograd function support
-        from ._custom_autograd_function import custom_autograd_function_enabler
-
         self.enable_custom_autograd_function = custom_autograd_function_enabler.state
 
         self._use_external_gpu_allocator = True
@@ -246,6 +245,9 @@ class _RuntimeOptions:
         if self.conv_algo_search not in ["HEURISTIC", "EXHAUSTIVE"]:
             self._logger.warning("Invalid value of env CONV_ALGO_SEARCH. Must be HEURISTIC or EXHAUSTIVE.")
             self.conv_algo_search = "HEURISTIC"
+
+        if "ORTMODULE_ENABLE_CUSTOM_AUTOGRAD" in os.environ:
+            self.enable_custom_autograd_function = os.getenv("ORTMODULE_ENABLE_CUSTOM_AUTOGRAD") == 1
 
         # Configuration for compute optimization.
         compute_optimizer_reset = False

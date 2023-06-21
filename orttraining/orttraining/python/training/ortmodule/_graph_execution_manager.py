@@ -31,7 +31,7 @@ from ._fallback import (
 from ._gradient_accumulation_manager import GradientAccumulationManager
 from ._graph_execution_interface import GraphExecutionInterface
 from ._io import _FlattenedModule, _InputInfo, _ModelInputOutputSchemaType
-from ._options import DebugOptions, LogLevel, _RuntimeOptions
+from .options import DebugOptions, LogLevel, RuntimeOptions
 from ._runtime_inspector import RuntimeInspector
 from .torch_cpp_extensions.cpu.aten_op_executor import load_aten_op_executor_cpp_extension
 
@@ -64,7 +64,7 @@ class GraphExecutionManager(GraphExecutionInterface):
 
         self._logger = logger
 
-        self._rt_options = _RuntimeOptions(self._logger)
+        self._rt_options = RuntimeOptions(self._logger)
         # Original and flattened (transformed) output module
         self._flattened_module = module
 
