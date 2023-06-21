@@ -28,7 +28,7 @@ Pre-built packages and Docker images are available for Jetpack in the [Jetson Zo
 |---|---|---|
 |main|8.5|11.8|
 |1.15|8.5|11.8|
-|1.14-1.15|8.5|11.6|
+|1.14|8.5|11.6|
 |1.12-1.13|8.4|11.4|
 |1.11|8.2|11.4|
 |1.10|8.0|11.4|
