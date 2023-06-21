@@ -89,9 +89,9 @@ stages:
       BuildConfig: 'Debug'
       NpmPackagingMode: ${{ parameters.NpmPackagingMode }}
       ${{ if eq(parameters.UseWebPoolName, true)}}:
-        PoolName: ${{ parameters.PoolName }}
-      ${{ else }}:
         PoolName: ${{ parameters.WebPoolName }}
+      ${{ else }}:
+        PoolName: ${{ parameters.PoolName }}
       PackageName: ${{ parameters.PackageName }}
 
 - stage: Build_wasm_Release
@@ -127,9 +127,9 @@ stages:
       BuildConfig: 'Release'
       NpmPackagingMode: ${{ parameters.NpmPackagingMode }}
       ${{ if eq(parameters.UseWebPoolName, true)}}:
-        PoolName: ${{ parameters.PoolName }}
-      ${{ else }}:
         PoolName: ${{ parameters.WebPoolName }}
+      ${{ else }}:
+        PoolName: ${{ parameters.PoolName }}
       PackageName: ${{ parameters.PackageName }}
 
 - ${{ if ne(parameters.IsReleasePipeline, true) }}:
