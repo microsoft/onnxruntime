@@ -8,7 +8,7 @@ nav_order: 6
 # Get started with ORT for JavaScript
 {: .no_toc }
 
-ONNX Runtime JavaScript API is the unified interface used by [ONNX Runtime Node.js binding](https://github.com/microsoft/onnxruntime/tree/master/js/node), [ONNX Runtime Web](https://github.com/microsoft/onnxruntime/tree/master/js/web), and [ONNX Runtime for React Native](https://github.com/microsoft/onnxruntime/tree/master/js/react_native).
+ONNX Runtime JavaScript API is the unified interface used by [ONNX Runtime Node.js binding](https://github.com/microsoft/onnxruntime/tree/main/js/node), [ONNX Runtime Web](https://github.com/microsoft/onnxruntime/tree/main/js/web), and [ONNX Runtime for React Native](https://github.com/microsoft/onnxruntime/tree/main/js/react_native).
 
 ## Contents
 {: .no_toc }
@@ -107,6 +107,15 @@ const ort = require('onnxruntime-react-native');
 ```
 
 
+#### Enable ONNX Runtime Extensions for React Native
+To enable support for [ONNX Runtime Extensions](https://github.com/microsoft/onnxruntime-extensions) in your React Native app,
+you need to specify the following configuration as a top-level entry (note: usually where the package `name`and `version`fields are) in your project's root directory `package.json` file. 
+
+```js
+"onnxruntimeExtensionsEnabled": "true"
+```
+
+
 ## Builds
 
 [Builds](https://onnxruntime.ai/docs/build/web.html) are published to **npm** and can be installed using `npm install`
@@ -129,4 +138,4 @@ See also:
 
 - [ONNX Runtime JavaScript examples and API Usage](https://github.com/microsoft/onnxruntime-inference-examples/tree/main/js).
 
-- Typescript declarations for [Inference Session](https://github.com/microsoft/onnxruntime/blob/master/js/common/lib/inference-session.ts), [Tensor](https://github.com/microsoft/onnxruntime/blob/master/js/common/lib/tensor.ts), and [Environment Flags](https://github.com/microsoft/onnxruntime/blob/master/js/common/lib/env.ts) for reference.
+- Typescript declarations for [Inference Session](https://github.com/microsoft/onnxruntime/blob/main/js/common/lib/inference-session.ts), [Tensor](https://github.com/microsoft/onnxruntime/blob/main/js/common/lib/tensor.ts), and [Environment Flags](https://github.com/microsoft/onnxruntime/blob/main/js/common/lib/env.ts) for reference.

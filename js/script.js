@@ -19,10 +19,11 @@ var opts = {
 };
 var ot_opts = {
     // os: getAnchorSelectedOS() || getDefaultSelectedOS(),
-    ot_os: 'ot_linux',
+    ot_scenario: '',
+    ot_os: '',
     ot_architecture: 'ot_X64',
-    ot_language: 'ot_ORTModule',
-    ot_hardwareAcceleration: 'ot_CUDA',
+    ot_language: '',
+    ot_hardwareAcceleration: '',
 };
 
 var os = $(".os > .r-option");
@@ -34,6 +35,7 @@ var hardwareAcceleration = $(".hardwareAcceleration > .r-option");
 var ot_os = $(".ot_os > .r-option");
 var ot_tab = $('#OT_tab');
 
+var ot_scenario = $(".ot_scenario > .r-option");
 var ot_architecture = $(".ot_architecture > .r-option");
 var ot_language = $(".ot_language > .r-option");
 var ot_hardwareAcceleration = $(".ot_hardwareAcceleration > .r-option");
@@ -72,6 +74,14 @@ ot_os.on("keypress keyup", function (event) {
 ot_tab.on("click", function() {
     ot_commandMessage(ot_buildMatcher());
     ot_checkValidity();
+});
+ot_scenario.on("click", function () {
+    ot_selectedOption(ot_scenario, this, "ot_scenario");
+});
+ot_scenario.on("keypress keyup", function (event) {
+    if (checkKeyPress(event)) {
+        ot_selectedOption(ot_scenario, this, "ot_scenario");
+    }
 });
 architecture.on("click", function () {
     selectedOption(architecture, this, "architecture");
@@ -267,6 +277,7 @@ function checkValidity(){
 
 function ot_checkValidity(){
     var current_os = ot_opts['ot_os'];
+    var current_scenario = ot_opts['ot_scenario'];
     var current_lang = ot_opts['ot_language'];
     var current_arch = ot_opts['ot_architecture'];
     var current_hw = ot_opts['ot_hardwareAcceleration'];
@@ -279,6 +290,25 @@ function ot_checkValidity(){
     
     var valid = Object.getOwnPropertyNames(ot_validCombos);
 
+    // scenario section
+    for(var i =0; i<ot_scenario.length; i++){
+        //disable other selections once item in category selected
+        // if(ot_os[i].id!=current_os && current_os!=''){
+        //     $(ot_os[i]).addClass("gray");
+        //     continue;
+        // }
+        var isvalidcombo=false;
+        for(var k=0; k<valid.length;k++){
+            if(valid[k].indexOf(ot_scenario[i].id)!=-1 && valid[k].indexOf(current_os)!=-1 && valid[k].indexOf(current_arch)!=-1 && valid[k].indexOf(current_lang)!=-1 && valid[k].indexOf(current_hw)!=-1){
+                isvalidcombo=true;
+                break;       
+            }
+        }
+        if(isvalidcombo==false && ot_scenario[i].id!=current_scenario){
+            $(ot_scenario[i]).addClass("gray"); 
+        }
+    }
+
     //os section
     for(var i =0; i<ot_os.length; i++){
         //disable other selections once item in category selected
@@ -288,7 +318,7 @@ function ot_checkValidity(){
         // }
         var isvalidcombo=false;
         for(var k=0; k<valid.length;k++){
-            if(valid[k].indexOf(ot_os[i].id)!=-1 && valid[k].indexOf(current_arch)!=-1 && valid[k].indexOf(current_lang)!=-1 && valid[k].indexOf(current_hw)!=-1){
+            if(valid[k].indexOf(current_scenario)!=-1 && valid[k].indexOf(ot_os[i].id)!=-1 && valid[k].indexOf(current_arch)!=-1 && valid[k].indexOf(current_lang)!=-1 && valid[k].indexOf(current_hw)!=-1){
                 isvalidcombo=true;
                 break;       
             }
@@ -307,7 +337,7 @@ function ot_checkValidity(){
             //   }   
             var isvalidcombo=false;
             for(var k=0; k<valid.length;k++){
-                if(valid[k].indexOf(current_os)!=-1 && valid[k].indexOf(current_arch)!=-1 && valid[k].indexOf(ot_language[i].id)!=-1 && valid[k].indexOf(current_hw)!=-1){
+                if(valid[k].indexOf(current_scenario)!=-1 && valid[k].indexOf(current_os)!=-1 && valid[k].indexOf(current_arch)!=-1 && valid[k].indexOf(ot_language[i].id)!=-1 && valid[k].indexOf(current_hw)!=-1){
                     isvalidcombo=true;
                     break;       
                 }
@@ -326,7 +356,7 @@ function ot_checkValidity(){
         // }
         var isvalidcombo=false;
         for(var k=0; k<valid.length;k++){
-            if(valid[k].indexOf(current_os)!=-1 && valid[k].indexOf(ot_architecture[i].id)!=-1 && valid[k].indexOf(current_lang)!=-1 && valid[k].indexOf(current_hw)!=-1){
+            if(valid[k].indexOf(current_scenario)!=-1 && valid[k].indexOf(current_os)!=-1 && valid[k].indexOf(ot_architecture[i].id)!=-1 && valid[k].indexOf(current_lang)!=-1 && valid[k].indexOf(current_hw)!=-1){
                 isvalidcombo=true;
                 break;       
             }
@@ -345,7 +375,7 @@ function ot_checkValidity(){
         // }
             var isvalidcombo=false;
             for(var k=0; k<valid.length;k++){
-                if(valid[k].indexOf(current_os)!=-1 && valid[k].indexOf(current_arch)!=-1 && valid[k].indexOf(current_lang)!=-1 && valid[k].indexOf(ot_hardwareAcceleration[i].id)!=-1){
+                if(valid[k].indexOf(current_scenario)!=-1 && valid[k].indexOf(current_os)!=-1 && valid[k].indexOf(current_arch)!=-1 && valid[k].indexOf(current_lang)!=-1 && valid[k].indexOf(ot_hardwareAcceleration[i].id)!=-1){
                     isvalidcombo=true;
                     break;       
                 }
@@ -452,10 +482,9 @@ function ot_selectedOption(option, selection, category) {
     ot_checkValidity();  
 
         //if full selection is valid, don't gray out other options
-        if(ot_opts['os']!="" && ot_opts['architecture']!="" && ot_opts['hardwareAcceleration']!="" && ot_opts['language']!="" && isSupported==true){
+        if(ot_opts['scenario']!="" && ot_opts['os']!="" && ot_opts['architecture']!="" && ot_opts['hardwareAcceleration']!="" && ot_opts['language']!="" && isSupported==true){
             // console.log(opts);
             // ot_resetOptions();
-    
         }
 }
 
@@ -478,6 +507,9 @@ function resetOptions(){
   function ot_resetOptions(){
     for(var i=0; i<ot_os.length;i++){
       $(ot_os[i]).removeClass("gray");
+    }
+    for(var i=0; i<ot_scenario.length;i++){
+      $(ot_scenario[i]).removeClass("gray");
     }
     for(var i=0; i<ot_language.length;i++){
       $(ot_language[i]).removeClass("gray");
@@ -525,6 +557,8 @@ function ot_buildMatcher() {
     return (
         ot_opts.ot_os +
         "," +
+        ot_opts.ot_scenario +
+        "," +
         ot_opts.ot_language +
         "," +
         ot_opts.ot_architecture +
@@ -535,19 +569,75 @@ function ot_buildMatcher() {
 
 var ot_validCombos = {
 
-    "ot_linux,ot_ORTModule,ot_X64,ot_CUDA":
+    "ot_linux,ot_large_model,ot_python,ot_X64,ot_CUDA":
     "pip install onnxruntime-training -f https://downloads.onnxruntime.ai/onnxruntime_stable_<b>&lt;cu_version*</b>&gt;.html<br/>pip install torch-ort<br/>python -m torch_ort.configure<br/><br/>*</b><a href='https://download.onnxruntime.ai/' target='blank'>Available versions</a>",
 
-    "ot_linux,ot_ORTModule,ot_X64,ot_ROCm":
-    "pip install onnxruntime-training -f https://downloads.onnxruntime.ai/onnxruntime_stable_<b>&lt;rocm_version*</b>&gt;.html<br/>pip install torch-ort<br/>python -m torch_ort.configure<br/><br/>*<a href='https://download.onnxruntime.ai/' target='blank'>Available versions</a>"
+    "ot_linux,ot_large_model,ot_python,ot_X64,ot_ROCm":
+    "pip install onnxruntime-training -f https://downloads.onnxruntime.ai/onnxruntime_stable_<b>&lt;rocm_version*</b>&gt;.html<br/>pip install torch-ort<br/>python -m torch_ort.configure<br/><br/>*<a href='https://download.onnxruntime.ai/' target='blank'>Available versions</a>",
     
+    "ot_linux,ot_on_device,ot_python,ot_X64,ot_CPU":
+    "pip install onnxruntime-training -f https://downloads.onnxruntime.ai/onnxruntime_stable_<b>&lt;cu_version*</b>&gt;.html<br/><br/>*</b><a href='https://download.onnxruntime.ai/' target='blank'>Available versions</a>",
+
+    "ot_linux,ot_on_device,ot_python,ot_X64,ot_CUDA":
+    "Follow build instructions from&nbsp;<a href='https://onnxruntime.ai/docs/build/training.html' target='_blank'>here</a>",
+
+    "ot_windows,ot_on_device,ot_python,ot_X64,ot_CPU":
+    "Follow build instructions from&nbsp;<a href='https://onnxruntime.ai/docs/build/training.html' target='_blank'>here</a>",
+
+    "ot_windows,ot_on_device,ot_python,ot_X64,ot_CUDA":
+    "Follow build instructions from&nbsp;<a href='https://onnxruntime.ai/docs/build/training.html' target='_blank'>here</a>",
+
+    "ot_windows,ot_on_device,ot_c,ot_X64,ot_CPU":
+    "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.Training' target='_blank'>Microsoft.ML.OnnxRuntime.Training</a>",
+
+    "ot_windows,ot_on_device,ot_cplusplus,ot_X64,ot_CPU":
+    "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.Training' target='_blank'>Microsoft.ML.OnnxRuntime.Training</a>",
+
+    "ot_windows,ot_on_device,ot_csharp,ot_X64,ot_CPU":
+    "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.Training' target='_blank'>Microsoft.ML.OnnxRuntime.Training</a>",
+
+    "ot_linux,ot_on_device,ot_c,ot_X64,ot_CPU":
+    "Download .tgz file from&nbsp;<a href='https://github.com/microsoft/onnxruntime/releases' target='_blank'>Github</a> <br/>Refer to <a href='http://www.onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html#requirements' target='_blank'>docs</a> for requirements.",
+
+    "ot_linux,ot_on_device,ot_cplusplus,ot_X64,ot_CPU":
+    "Download .tgz file from&nbsp;<a href='https://github.com/microsoft/onnxruntime/releases' target='_blank'>Github</a> <br/>Refer to <a href='http://www.onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html#requirements' target='_blank'>docs</a> for requirements.",
+    
+    "ot_linux,ot_on_device,ot_csharp,ot_X64,ot_CPU":
+    "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.Training' target='_blank'>Microsoft.ML.OnnxRuntime.Training</a>",
+
+    "ot_linux,ot_on_device,ot_c,ot_X64,ot_CUDA":
+    "Follow build instructions from&nbsp;<a href='https://onnxruntime.ai/docs/build/training.html' target='_blank'>here</a>",
+
+    "ot_linux,ot_on_device,ot_cplusplus,ot_X64,ot_CUDA":
+    "Follow build instructions from&nbsp;<a href='https://onnxruntime.ai/docs/build/training.html' target='_blank'>here</a>",
+    
+    "ot_linux,ot_on_device,ot_csharp,ot_X64,ot_CUDA":
+    "Follow build instructions from&nbsp;<a href='https://onnxruntime.ai/docs/build/training.html' target='_blank'>here</a>",
+
+    "ot_windows,ot_on_device,ot_c,ot_X64,ot_CUDA":
+    "Follow build instructions from&nbsp;<a href='https://onnxruntime.ai/docs/build/training.html' target='_blank'>here</a>",
+
+    "ot_windows,ot_on_device,ot_cplusplus,ot_X64,ot_CUDA":
+    "Follow build instructions from&nbsp;<a href='https://onnxruntime.ai/docs/build/training.html' target='_blank'>here</a>",
+    
+    "ot_windows,ot_on_device,ot_csharp,ot_X64,ot_CUDA":
+    "Follow build instructions from&nbsp;<a href='https://onnxruntime.ai/docs/build/training.html' target='_blank'>here</a>",
+
+    "ot_android,ot_on_device,ot_c,ot_X64,ot_CPU":
+    "Follow installation instructions from&nbsp;<a href='https://onnxruntime.ai/docs/install/#install-for-on-device-training' target='_blank'>here</a>",
+
+    "ot_android,ot_on_device,ot_cplusplus,ot_X64,ot_CPU":
+    "Follow installation instructions from&nbsp;<a href='https://onnxruntime.ai/docs/install/#install-for-on-device-training' target='_blank'>here</a>",
+    
+    "ot_android,ot_on_device,ot_java,ot_X64,ot_CPU":
+    "Add a dependency on <a href='https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-training-android' target='_blank'>com.microsoft.onnxruntime:onnxruntime-training-android</a> using Maven/Gradle and refer to the instructions <a href='https://onnxruntime.ai/docs/install/#install-for-on-device-training' target='_blank'>here.</a>",
 };
 
 function ot_commandMessage(key) {
     $("#ot_command").removeClass("valid");
     $("#ot_command").removeClass("invalid");
 
-    if(ot_opts['ot_os']=='' || ot_opts['ot_architecture'] == '' || ot_opts['ot_language']=='' || ot_opts['ot_hardwareAcceleration'] == ''){
+    if(ot_opts['ot_os']=='' || ot_opts['ot_scenario'] == '' || ot_opts['ot_architecture'] == '' || ot_opts['ot_language']=='' || ot_opts['ot_hardwareAcceleration'] == ''){
         // console.log(ot_opts);
         $("#ot_command span").html(
             "Please select a combination of resources"
@@ -1033,28 +1123,34 @@ var validCombos = {
     "ios,C#,ARM64,CoreML":
         "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a>.",
  
-    "windows,Python,X86,VitisAI":
+    "windows,Python,X64,VitisAI":
         "Follow build instructions from <a href='https://aka.ms/build-ort-vitisai' target='_blank'>here</a>",
     
-    "linux,Python,X86,VitisAI":
+    "windows,C++,X64,VitisAI":
+        "Follow build instructions from <a href='https://aka.ms/build-ort-vitisai' target='_blank'>here</a>",
+
+    "linux,C++,ARM64,VitisAI":
+        "Follow build instructions from <a href='https://aka.ms/build-ort-vitisai' target='_blank'>here</a>",
+
+    "linux,Python,ARM64,VitisAI":
         "Follow build instructions from <a href='https://aka.ms/build-ort-vitisai' target='_blank'>here</a>",
     
-    "linux,Python,X86,MIGraphX":
+    "linux,Python,X64,MIGraphX":
         "Follow build instructions from <a href='https://aka.ms/build-ort-migraphx' target='_blank'>here</a>",
     
-    "linux,C-API,X86,MIGraphX":
+    "linux,C-API,X64,MIGraphX":
         "Follow build instructions from <a href='https://aka.ms/build-ort-migraphx' target='_blank'>here</a>",
     
-    "linux,C++,X86,MIGraphX":
+    "linux,C++,X64,MIGraphX":
         "Follow build instructions from <a href='https://aka.ms/build-ort-migraphx' target='_blank'>here</a>",
     
-    "linux,Python,X86,ROCm":
+    "linux,Python,X64,ROCm":
         "Follow build instructions from <a href='https://aka.ms/build-ort-rocm' target='_blank'>here</a>",
     
-    "linux,C-API,X86,ROCm":
+    "linux,C-API,X64,ROCm":
         "Follow build instructions from <a href='https://aka.ms/build-ort-rocm' target='_blank'>here</a>",
     
-    "linux,C++,X86,ROCm":
+    "linux,C++,X64,ROCm":
         "Follow build instructions from <a href='https://aka.ms/build-ort-rocm' target='_blank'>here</a>",
 
     "linux,Python,ARM64,ACL":
@@ -1169,6 +1265,12 @@ var validCombos = {
         "Follow build instructions from <a href='https://aka.ms/build-ort-snpe' target='_blank'>here</a>",
 
     //Xnnpack
+    "ios,C-API,ARM64,XNNPACK":
+        "Add 'onnxruntime-c' using CocoaPods and refer to the <a href='https://onnxruntime.ai/docs/tutorials/mobile/' target='_blank'>mobile deployment guide</a> or Follow build instructions from <a href='https://aka.ms/build-ort-xnnpack' target='_blank'>here</a>",
+
+    "ios,objectivec,ARM64,XNNPACK":
+        "Add 'onnxruntime-objc' using CocoaPods and refer to the <a href='https://onnxruntime.ai/docs/tutorials/mobile/' target='_blank'>mobile deployment guide</a>",
+
     "android,C-API,ARM64,XNNPACK":
         "Follow build instructions from <a href='https://aka.ms/build-ort-xnnpack' target='_blank'>here</a>",
 
@@ -1217,6 +1319,12 @@ var validCombos = {
 
     "linux,C++,X64,CANN":
         "Follow build instructions from <a href='http://www.onnxruntime.ai/docs/execution-providers/community-maintained/CANN-ExecutionProvider.html#build' target='_blank'>here</a>.",
+
+    "windows,Python,X64,Azure":
+        "Follow build instructions from <a href='https://aka.ms/build-ort-azure' target='_blank'>here</a>",
+
+    "linux,Python,X64,Azure":
+        "Follow build instructions from <a href='https://aka.ms/build-ort-azure' target='_blank'>here</a>",
 };
 
 function commandMessage(key) {

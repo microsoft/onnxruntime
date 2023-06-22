@@ -210,15 +210,15 @@ input_shapes = "[1 3 224 224] [1 2]"
 ```
 
 ## Performance Tuning
-TVM optimizes machine learning models through an automated tuning process that produces model variants specific to targeted hardware architectures.  This process also generates 'tuning logs' that the TVM EP relies on to maximize model performance. These logs can be acquired for your model by either using TVM as described here:
+TVM optimizes machine learning models through an automated tuning process that produces model variants specific to targeted hardware architectures.  This process also generates 'tuning logs' that the TVM EP relies on to maximize model performance. These logs can be acquired for your model either by using TVM as described here:
 
 AutoTVM:
 https://tvm.apache.org/docs/how_to/tune_with_autotvm/index.html
 
+Or
+
 Ansor (Autoscheduling):
 https://tvm.apache.org/docs/how_to/tune_with_autoscheduler/index.html
-
-or by using logs generated through the OctoML platform (https://onnx.octoml.ai) using instructions [here](https://help.octoml.ai/en/articles/5814452-using-octoml-platform-logs-with-onnx-rt-tvm-ep)
 
 Using the TVM EP with TVM tuning logs also requires users to turn off ONNX Runtime preprocessing.  To do this, the following `SessionOptions()` can be used:
 ```python
@@ -233,7 +233,7 @@ It is also possible to use a precompiled model.
 
 The compiled model can be obtained using the [OctoML platform](https://onnx.octoml.ai)
 or compiled directly (see **Support precompiled model** section in
-[Sample notebook for ResNet50 inference with TVM EP](https://github.com/microsoft/onnxruntime/blob/master/docs/python/inference/notebooks/onnxruntime-tvm-tutorial.ipynb)
+[Sample notebook for ResNet50 inference with TVM EP](https://github.com/microsoft/onnxruntime/blob/main/docs/python/inference/notebooks/onnxruntime-tvm-tutorial.ipynb)
 for more information on model compilation).
 
 In order to use the precompiled model, only need to pass two options:
@@ -247,7 +247,7 @@ the files of the precompiled model are located.
 You can read more about these options in section [Configuration options](#configuration-options) above.
 
 ## Samples
-- [Sample notebook for ResNet50 inference with TVM EP](https://github.com/microsoft/onnxruntime/blob/master/docs/python/inference/notebooks/onnxruntime-tvm-tutorial.ipynb)
+- [Sample notebook for ResNet50 inference with TVM EP](https://github.com/microsoft/onnxruntime/blob/main/docs/python/inference/notebooks/onnxruntime-tvm-tutorial.ipynb)
 
 ## Known issues
 - At this moment, the TVM EP has only been verified on UNIX/Linux and Windows systems.

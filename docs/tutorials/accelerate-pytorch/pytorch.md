@@ -157,7 +157,7 @@ Then you can run the ONNX model in the environment of your choice. The ONNXRunti
   // Allocate ONNXRuntime session
   auto memory_info = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU);
   Ort::Env env;
-  Ort::Session session{env, L"model.onnx", Ort::SessionOptions{nullptr}};
+  Ort::Session session{env, ORT_TSTR("model.onnx"), Ort::SessionOptions{nullptr}};
 
   // Allocate model inputs: fill in shape and size
   std::array<float, ...> input{};
@@ -193,12 +193,11 @@ To get started in your language and environment of choice, see [Get started with
 
 ### Accelerated inference with ONNXRuntime
 
-* [Accelerate BERT model on CPU](https://github.com/microsoft/onnxruntime/blob/master/onnxruntime/python/tools/transformers/notebooks/PyTorch_Bert-Squad_OnnxRuntime_CPU.ipynb)
-* [Accelerate BERT model on GPU](https://github.com/microsoft/onnxruntime/blob/master/onnxruntime/python/tools/transformers/notebooks/PyTorch_Bert-Squad_OnnxRuntime_GPU.ipynb)
+* [Accelerate BERT model on CPU](https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/python/tools/transformers/notebooks/PyTorch_Bert-Squad_OnnxRuntime_CPU.ipynb)
+* [Accelerate BERT model on GPU](https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/python/tools/transformers/notebooks/PyTorch_Bert-Squad_OnnxRuntime_GPU.ipynb)
 * [Accelerate reduced size BERT model through quantization](https://github.com/microsoft/onnxruntime-inference-examples/blob/main/quantization/notebooks/bert/Bert-GLUE_OnnxRuntime_quantization.ipynb)
 
-* [Accelerate GPT2 on CPU](https://github.com/microsoft/onnxruntime/blob/master/onnxruntime/python/tools/transformers/notebooks/Inference_GPT2_with_OnnxRuntime_on_CPU.ipynb)
-* [Accelerate GPT2 (with one step search) on CPU](https://github.com/microsoft/onnxruntime/blob/master/onnxruntime/python/tools/transformers/notebooks/Inference_GPT2-OneStepSearch_OnnxRuntime_CPU.ipynb)
+* [Accelerate GPT2 on CPU](https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/python/tools/transformers/notebooks/Inference_GPT2_with_OnnxRuntime_on_CPU.ipynb)
 
 ### RESNET-50
 * [Accelerate RESNET-50 model on CPU, GPU, and OpenVINO](resnet-inferencing.md)

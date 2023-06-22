@@ -62,7 +62,11 @@ Open Developer Command Prompt for Visual Studio version you are going to use. Th
 ```
 .\build.bat --config RelWithDebInfo --build_shared_lib --parallel
 ```
-The default Windows CMake Generator is Visual Studio 2017, but you can also use the newer Visual Studio 2019 by passing `--cmake_generator "Visual Studio 16 2019"` to `.\build.bat`. Visual Studio 2022 should be fine too. We recommend using the latest one.
+The default Windows CMake Generator is Visual Studio 2019. 
+For Visual Studio 2022 add `--cmake_generator "Visual Studio 17 2022"`. 
+For Visual Studio 2017 add `--cmake_generator "Visual Studio 15 2017"`. 
+
+We recommend using Visual Studio 2022.
 
 #### Linux
 
@@ -101,7 +105,7 @@ Note: unit tests will be skipped due to the incompatible CPU instruction set whe
 #### Notes
 
 * Please note that these instructions build the debug build, which may have performance tradeoffs. The "--config" parameter has four valid values: Debug, Release, RelWithDebInfo and MinSizeRel. Compared to "Release", "RelWithDebInfo" not only has debug info, it also disables some inlines to make the binary easier to debug. Thus RelWithDebInfo is slower than Release.
-* To build the version from each release (which include Windows, Linux, and Mac variants), see these [.yml files](https://github.com/microsoft/onnxruntime/tree/master/tools/ci_build/github/azure-pipelines/) for reference
+* To build the version from each release (which include Windows, Linux, and Mac variants), see these [.yml files](https://github.com/microsoft/onnxruntime/tree/main/tools/ci_build/github/azure-pipelines/) for reference
 * The build script runs all unit tests by default for native builds and skips tests by default for cross-compiled builds.
   To skip the tests, run with `--build` or `--update --build`.
 * If you need to install protobuf from source code (cmake/external/protobuf), please note:
@@ -224,7 +228,7 @@ Set onnxruntime_DEBUG_NODE_INPUTS_OUTPUT to build with this enabled.
 #### Configuration
 
 The debug dump behavior can be controlled with several environment variables.
-See [onnxruntime/core/framework/debug_node_inputs_outputs_utils.h](https://github.com/microsoft/onnxruntime/blob/master/onnxruntime/core/framework/debug_node_inputs_outputs_utils.h) for details.
+See [onnxruntime/core/framework/debug_node_inputs_outputs_utils.h](https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/core/framework/debug_node_inputs_outputs_utils.h) for details.
 
 ##### Examples
 
@@ -272,9 +276,9 @@ There are a few options for building for ARM.
 
 *EASY, SLOW, RECOMMENDED*
 
-This method rely on qemu user mode emulation. It allows you to compile using a desktop or cloud VM through instruction level simulation. You'll run the build on x86 CPU and translate every ARM instruction to x86. This is much faster than compiling natively on a low-end ARM device and avoids out-of-memory issues that may be encountered. The resulting ONNX Runtime Python wheel (.whl) file is then deployed to an ARM device where it can be invoked in Python 3 scripts.
+This method relies on qemu user mode emulation. It allows you to compile using a desktop or cloud VM through instruction level simulation. You'll run the build on x86 CPU and translate every ARM instruction to x86. This is much faster than compiling natively on a low-end ARM device and avoids out-of-memory issues that may be encountered. The resulting ONNX Runtime Python wheel (.whl) file is then deployed to an ARM device where it can be invoked in Python 3 scripts.
 
-Here is [an example for Raspberrypi3 and Raspbian](https://github.com/microsoft/onnxruntime/tree/master/dockerfiles/README.md#arm-32v7). Note: this does not work for Raspberrypi 1 or Zero, and if your operating system is different from what the dockerfile uses, it also may not work.
+Here is [an example for Raspberrypi3 and Raspbian](https://github.com/microsoft/onnxruntime/tree/main/dockerfiles/README.md#arm-32v7). Note: this does not work for Raspberrypi 1 or Zero, and if your operating system is different from what the dockerfile uses, it also may not work.
 
 The build process can take hours.
 
@@ -291,9 +295,9 @@ This option is very fast and allows the package to be built in minutes, but is c
     You can use [GCC](https://gcc.gnu.org/) or [Clang](http://clang.llvm.org/). Both work, but instructions here are based on GCC.
 
     In GCC terms:
-    * "build" describes the type of system on which GCC is being configured and compiled
+    * "build" describes the type of system on which GCC is being configured and compiled.
     * "host" describes the type of system on which GCC runs.
-    * "target" to describe the type of system for which GCC produce code
+    * "target" to describe the type of system for which GCC produce code.
 
     When not cross compiling, usually "build" = "host" = "target". When you do cross compile, usually "build" = "host" != "target". For example, you may build GCC on x86_64, then run GCC on x86_64, then generate binaries that target aarch64. In this case,"build" = "host" = x86_64 Linux, target is aarch64 Linux.
 

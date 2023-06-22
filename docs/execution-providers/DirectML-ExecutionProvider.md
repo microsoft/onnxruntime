@@ -16,7 +16,7 @@ DirectML is a high-performance, hardware-accelerated DirectX 12 library for mach
 
 When used standalone, the DirectML API is a low-level DirectX 12 library and is suitable for high-performance, low-latency applications such as frameworks, games, and other real-time applications. The seamless interoperability of DirectML with Direct3D 12 as well as its low overhead and conformance across hardware makes DirectML ideal for accelerating machine learning when both high performance is desired, and the reliability and predictability of results across hardware is critical.
 
-The DirectML Execution Provider currently uses DirectML version [1.9.0](https://www.nuget.org/packages/Microsoft.AI.DirectML/1.9.0) and supports up to ONNX opset 15 ([ONNX v1.10](https://github.com/onnx/onnx/releases/tag/v1.10.0)). Evaluating models which require a higher opset version is unsupported and will yield poor performance.
+The DirectML Execution Provider currently uses DirectML version [1.10.1](https://www.nuget.org/packages/Microsoft.AI.DirectML/1.10.1) and supports up to ONNX opset 15 ([ONNX v1.10](https://github.com/onnx/onnx/releases/tag/v1.10.0)). Evaluating models which require a higher opset version is unsupported and will yield poor performance.
 
 ## Contents
 {: .no_toc }
@@ -67,11 +67,22 @@ When using the [C API](../get-started/with-c.md) with a DML-enabled build of onn
 
  Creates a DirectML Execution Provider which executes on the hardware adapter with the given `device_id`, also known as the adapter index. The device ID corresponds to the enumeration order of hardware adapters as given by [IDXGIFactory::EnumAdapters](https://docs.microsoft.com/windows/win32/api/dxgi/nf-dxgi-idxgifactory-enumadapters). A `device_id` of 0 always corresponds to the default adapter, which is typically the primary display GPU installed on the system. Beware that in systems with multiple GPU's, the primary display (GPU 0) is often not the most performant one, particularly on laptops with dual adapters where battery lifetime is preferred over performance. So you can double check in Task Manager's performance tab to see which GPU is which. A negative `device_id` is invalid.
 
+Example for C API:
 ```c
 OrtStatus* OrtSessionOptionsAppendExecutionProvider_DML(
     _In_ OrtSessionOptions* options,
     int device_id
     );
+```
+
+Example for C# API:
+
+Install the Nuget Package [Microsoft.ML.OnnxRuntime.DirectML](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.DirectML/1.14.1) and use the following code to enable the DirectML EP:
+
+```csharp
+SessionOptions sessionOptions = newSessionOptions();
+sessionOptions.GraphOptimizationLevel = GraphOptimizationLevel.ORT_ENABLE_ALL;
+sessionOptions.AppendExecutionProvider_DML(0);
 ```
 
 ### `OrtSessionOptionsAppendExecutionProviderEx_DML` function
@@ -87,13 +98,14 @@ OrtStatus* OrtSessionOptionsAppendExecutionProviderEx_DML(
     );
 ```
 
+
 ## Configuration Options
 
 The DirectML execution provider does not support the use of memory pattern optimizations or parallel execution in onnxruntime. When supplying session options during InferenceSession creation, these options must be disabled or an error will be returned.
 
 If using the onnxruntime C API, you must call `DisableMemPattern` and `SetSessionExecutionMode` functions to set the options required by the DirectML execution provider.
 
-See [onnxruntime\include\onnxruntime\core\session\onnxruntime_c_api.h](https://github.com/microsoft/onnxruntime/tree/master/include//onnxruntime/core/session/onnxruntime_c_api.h).
+See [onnxruntime\include\onnxruntime\core\session\onnxruntime_c_api.h](https://github.com/microsoft/onnxruntime/tree/main/include//onnxruntime/core/session/onnxruntime_c_api.h).
 
     OrtStatus*(ORT_API_CALL* DisableMemPattern)(_Inout_ OrtSessionOptions* options)NO_EXCEPTION;
 

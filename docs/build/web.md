@@ -32,13 +32,13 @@ There are 2 steps to build ONNX Runtime Web:
   git clone --recursive https://github.com/Microsoft/onnxruntime
   cd onnxruntime
   ```
-- [Install](https://cmake.org/download/) cmake-3.18 or higher.
+- [Install](https://cmake.org/download/) cmake-3.24 or higher.
 
 - [Install](https://nodejs.org/) Node.js (16.0+)
 
   - (Optional) Use nvm ([Windows](https://github.com/coreybutler/nvm-windows) / [Mac/Linux](https://github.com/creationix/nvm)) to install Node.js
 
-- Python (3.8+): https://www.python.org/downloads/
+- Python (3.9+): https://www.python.org/downloads/
   - python should be added to the PATH environment variable
 
 - Ninja: https://ninja-build.org/
@@ -105,7 +105,7 @@ A full list of required build artifacts:
 
 ONNX Runtime WebAssembly can be built with flag `--minimal_build`. This will generate smaller artifacts and also have a less runtime memory usage. 
 In order to use this ONNX Runtime confiruation an ORT format model is required (vs. ONNX format). 
-For more info please see also [ORT format Conversion](../reference/ort-format-models.md).
+For more info please see also [ORT format Conversion](../performance/model-optimizations/ort-format-models.md).
 
 ### FAQ
 
@@ -119,7 +119,7 @@ Q: unittest fails on Debug build with debug info.
 
 Q: I have a C++ project for web scenario, which runs a ML model using ONNX Runtime and generates WebAssembly as an output. Does ONNX Runtime Web support a static WebAssembly library, so that my application can link with it and make all pre/post processors to be compiled together into WebAssembly?
 
-> A: With `--build_wasm`, a build script generates `.wasm` and `.js` files for web scenarios and intermediate libraries are not linked properly with other C/C++ projects. When you build ONNX Runtime Web using `--build_wasm_static_lib` instead of `--build_wasm`, a build script generates a static library of ONNX Runtime Web named `libonnxruntime_webassembly.a` in output directory. To run a simple inferencing like an [unit test](https://github.com/microsoft/onnxruntime/blob/master/onnxruntime/test/wasm/test_inference.cc), what you need is three header files as follows and `libonnxruntime_webassembly.a`.
+> A: With `--build_wasm`, a build script generates `.wasm` and `.js` files for web scenarios and intermediate libraries are not linked properly with other C/C++ projects. When you build ONNX Runtime Web using `--build_wasm_static_lib` instead of `--build_wasm`, a build script generates a static library of ONNX Runtime Web named `libonnxruntime_webassembly.a` in output directory. To run a simple inferencing like an [unit test](https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/test/wasm/test_inference.cc), what you need is three header files as follows and `libonnxruntime_webassembly.a`.
 
 - include/onnxruntime/core/session/onnxruntime_c_api.h
 - include/onnxruntime/core/session/onnxruntime_cxx_api.h

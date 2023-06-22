@@ -28,12 +28,12 @@ Returns an instance of the singlton class `OrtEnv`.
 ```cs
 void EnableTelemetryEvents();
 ```
-Enables platform-specific telemetry collection where applicable. Please see [Privacy](https://github.com/microsoft/onnxruntime/blob/master/docs/Privacy.md) for more details.    
+Enables platform-specific telemetry collection where applicable. Please see [Privacy](https://github.com/microsoft/onnxruntime/blob/main/docs/Privacy.md) for more details.    
 
 ```cs
 void DisableTelemetryEvents();
 ```
-Disables platform-specific telemetry collection. Please see [Privacy](https://github.com/microsoft/onnxruntime/blob/master/docs/Privacy.md) for more details.    
+Disables platform-specific telemetry collection. Please see [Privacy](https://github.com/microsoft/onnxruntime/blob/main/docs/Privacy.md) for more details.    
 
 ### InferenceSession
 ```cs
@@ -148,14 +148,14 @@ Accessor to the default static option object
 ```cs
 SetSessionGraphOptimizationLevel(GraphOptimizationLevel graph_transformer_level);
 ```
-See [Graph Optimizations in ONNX Runtime](../performance/graph-optimizations.md) for more details.
+See [Graph Optimizations in ONNX Runtime](../performance/model-optimizations/graph-optimizations.md) for more details.
 
 ```cs
 SetSessionExecutionMode(ExecutionMode execution_mode);
 ```
  * ORT_SEQUENTIAL - execute operators in the graph sequentially.
  * ORT_PARALLEL - execute operators in the graph in parallel.   
-See [How to tune performance](../performance/tune-performance.md) for more details.
+See [How to tune performance](../performance/tune-performance/index.md) for more details.
 
 ### NodeMetadata
 Container of metadata for a model graph node, used for communicating the shape and type of the input and output nodes.

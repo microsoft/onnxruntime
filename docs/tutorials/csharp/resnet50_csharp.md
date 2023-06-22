@@ -14,7 +14,7 @@ nav_order: 1
 
 The sample walks through how to run a pretrained ResNet50 v2 ONNX model using the Onnx Runtime C# API.
 
-The source code for this sample is available [here](https://github.com/microsoft/onnxruntime/tree/master/csharp/sample/Microsoft.ML.OnnxRuntime.ResNet50v2Sample).
+The source code for this sample is available [here](https://github.com/microsoft/onnxruntime/tree/main/csharp/sample/Microsoft.ML.OnnxRuntime.ResNet50v2Sample).
 
 ## Contents
 {: .no_toc }

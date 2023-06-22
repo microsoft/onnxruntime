@@ -47,7 +47,7 @@ The operators that are included are specified at build time, in a [configuration
 
 **`--enable_reduced_operator_type_support`**
 
-* Enables [operator type reduction](../reference/ort-format-models.md#enable-type-reduction). Requires ONNX Runtime version 1.7 or higher and for type reduction to have been enabled during model conversion
+* Enables [operator type reduction](../performance/model-optimizations/ort-format-models.md#enable-type-reduction). Requires ONNX Runtime version 1.7 or higher and for type reduction to have been enabled during model conversion
 
 If the configuration file is created using ORT format models, the input/output types that individual operators require can be tracked if `--enable_type_reduction` is specified. This can be used to further reduce the build size if `--enable_reduced_operator_type_support` is specified when building ORT.
 
@@ -66,7 +66,7 @@ RTTI is disabled by default in this build, unless the Python bindings (`--build_
 
 A basic minimal build has the following limitations:
 
-* No support for ONNX format models. The model must be converted to [ORT format](../reference/ort-format-models.md).
+* No support for ONNX format models. The model must be converted to [ORT format](../performance/model-optimizations/ort-format-models.md).
 * No support for runtime optimizations. Optimizations are performed during conversion to ORT format.
 * Support for execution providers that statically register kernels (e.g. ONNX Runtime CPU Execution Provider) only.
 
@@ -96,7 +96,7 @@ An extended minimal build supports more functionality than a basic minimal build
 **`--disable_ml_ops`**
 
 * Whilst the operator kernel reduction script disables all unused ML operator kernels, additional savings can be achieved by removing support for ML specific types. If you know that your model has no ML ops, or no ML ops that use the Map type, this flag can be provided.
-* See the specs for the [ONNX ML Operators](https://github.com/onnx/onnx/blob/master/docs/Operators-ml.md) if unsure.
+* See the specs for the [ONNX ML Operators](https://github.com/onnx/onnx/blob/main/docs/Operators-ml.md) if unsure.
 
 ### Use shared libc++ on Android
 
@@ -115,7 +115,7 @@ The `Release` configuration can also be used if you wish to prioritize performan
 
 ## Version of ONNX Runtime to build from
 
-Unless there is a specific feature you need, do not use the unreleased `master` branch.
+Unless there is a specific feature you need, do not use the unreleased `main` branch.
 
 Once you have cloned the ONNX Runtime repo, check out one of the release tags to build from.
 
@@ -125,7 +125,7 @@ cd onnxruntime
 git checkout <release tag>
 ```
 
-Release tag names follow the pattern `v<release version>`. For example, `v1.11.0`.
+Release tag names follow the pattern `v<release version>`. For example, `v1.13.1`.
 Find them [here](https://github.com/microsoft/onnxruntime/tags).
 
 ## Example build commands
@@ -157,7 +157,7 @@ Find them [here](https://github.com/microsoft/onnxruntime/tags).
 
 ## Custom build packages
 
-In this section, `ops.config` is a [configuration file](../reference/operators/reduced-operator-config-file.md) that specifies the opsets, op kernels, and types to include. See the configuration file used by the pre-built mobile packages at [tools/ci_build/github/android/mobile_package.required_operators.config](https://github.com/microsoft/onnxruntime/blob/master/tools/ci_build/github/android/mobile_package.required_operators.config).
+In this section, `ops.config` is a [configuration file](../reference/operators/reduced-operator-config-file.md) that specifies the opsets, op kernels, and types to include. See the configuration file used by the pre-built mobile packages at [tools/ci_build/github/android/mobile_package.required_operators.config](https://github.com/microsoft/onnxruntime/blob/main/tools/ci_build/github/android/mobile_package.required_operators.config).
 
 ### Web
 
@@ -165,7 +165,7 @@ _[This section is coming soon]_
 
 ### iOS
 
-To produce pods for an iOS build, use the [build_and_assemble_ios_pods.py](https://github.com/microsoft/onnxruntime/blob/master/tools/ci_build/github/apple/build_and_assemble_ios_pods.py) script from the ONNX Runtime repo.
+To produce pods for an iOS build, use the [build_and_assemble_ios_pods.py](https://github.com/microsoft/onnxruntime/blob/main/tools/ci_build/github/apple/build_and_assemble_ios_pods.py) script from the ONNX Runtime repo.
 
 1. Check out the version of ONNX Runtime you want to use.
 
@@ -182,7 +182,9 @@ To produce pods for an iOS build, use the [build_and_assemble_ios_pods.py](https
 
     This will do a custom build and create the pod package files for it in /path/to/staging/dir.
 
-    The build options are specified with the file provided to the `--build-settings-file` option. See the options used by the pre-built mobile package at [tools/ci_build/github/apple/default_mobile_ios_framework_build_settings.json](https://github.com/microsoft/onnxruntime/blob/master/tools/ci_build/github/apple/default_mobile_ios_framework_build_settings.json). You can use this file directly.
+    The build options are specified with the file provided to the `--build-settings-file` option. See the current build options used by the pre-built mobile package at [tools/ci_build/github/apple/default_mobile_ios_framework_build_settings.json](https://github.com/microsoft/onnxruntime/blob/main/tools/ci_build/github/apple/default_mobile_ios_framework_build_settings.json). You can use this file directly.
+
+    The reduced set of ops in the custom build is specified with the file provided to the `--include_ops_by_config` option. See the current op config used by the pre-built mobile package at [tools/ci_build/github/android/mobile_package.required_operators.config](https://github.com/microsoft/onnxruntime/blob/main/tools/ci_build/github/android/mobile_package.required_operators.config) (Android and iOS pre-built mobile packages share the same config file). You can use this file directly.
 
 3. Use the local pods.
 
@@ -198,9 +200,11 @@ To produce pods for an iOS build, use the [build_and_assemble_ios_pods.py](https
 
 ### Android
 
-To produce an Android AAR package, use the [build_custom_android_package.py](https://github.com/microsoft/onnxruntime/blob/master/tools/android_custom_build/build_custom_android_package.py) script from the ONNX Runtime repo.
+To produce an Android AAR package, use the [build_custom_android_package.py](https://github.com/microsoft/onnxruntime/blob/main/tools/android_custom_build/build_custom_android_package.py) script from the ONNX Runtime repo.
 
-The script can be used from within the repo or outside of it. Copy its [containing directory](https://github.com/microsoft/onnxruntime/blob/master/tools/android_custom_build) for usage outside of the repo.
+The script can be used from within the repo or outside of it. Copy its [containing directory](https://github.com/microsoft/onnxruntime/blob/main/tools/android_custom_build) for usage outside of the repo.
+
+Note: In the steps below, replace `<ORT version>` with the ONNX Runtime version you want to use, e.g., `1.13.1`.
 
 1. Run the build script.
 
@@ -208,29 +212,33 @@ The script can be used from within the repo or outside of it. Copy its [containi
 
     ```bash
     python3 tools/android_custom_build/build_custom_android_package.py \
-      --onnxruntime_branch_or_tag v1.11.0 \
+      --onnxruntime_branch_or_tag v<ORT version> \
       --include_ops_by_config /path/to/ops.config \
       --build_settings /path/to/build_settings.json \
       /path/to/working/dir
     ```
 
-    This will do a custom build and create the Android AAR package for it in /path/to/working/dir.
+    This will do a custom build and create the Android AAR package for it in `/path/to/working/dir`.
 
     Specify the ONNX Runtime version you want to use with the `--onnxruntime_branch_or_tag` option. The script uses a separate copy of the ONNX Runtime repo in a Docker container so this is independent from the containing ONNX Runtime repo's version.
 
-    The build options are specified with the file provided to the `--build_settings` option. See the options used by the pre-built mobile package at [tools/ci_build/github/android/default_mobile_aar_build_settings.json](https://github.com/microsoft/onnxruntime/blob/master/tools/ci_build/github/android/default_mobile_aar_build_settings.json). You can use this file directly.
+    The build options are specified with the file provided to the `--build_settings` option. See the current build options used by the pre-built mobile package at [tools/ci_build/github/android/default_mobile_aar_build_settings.json](https://github.com/microsoft/onnxruntime/blob/main/tools/ci_build/github/android/default_mobile_aar_build_settings.json).
+    
+    The reduced set of ops in the custom build is specified with the file provided to the `--include_ops_by_config` option. See the current op config used by the pre-built mobile package at [tools/ci_build/github/android/mobile_package.required_operators.config](https://github.com/microsoft/onnxruntime/blob/main/tools/ci_build/github/android/mobile_package.required_operators.config).
+
+    The `--build_settings` and `--include_ops_by_config` options are both optional and will default to what is used to build the pre-built mobile package. Not specifying either will result in a package like the pre-built mobile package.
 
 2. Use the local custom Android AAR package.
 
     For example, in an Android Studio project:
 
-    a. Copy the AAR file from `/path/to/working/dir/output/aar_out/<build config, e.g., Release>/com/microsoft/onnxruntime/onnxruntime-mobile/1.11.0/onnxruntime-mobile-1.11.0.aar` to the project's `<module name, e.g., app>/libs` directory.
+    a. Copy the AAR file from `/path/to/working/dir/output/aar_out/<build config, e.g., Release>/com/microsoft/onnxruntime/onnxruntime-mobile/<ORT version>/onnxruntime-mobile-<ORT version>.aar` to the project's `<module name, e.g., app>/libs` directory.
 
     b. Update the project's `<module name>/build.gradle` file dependencies section:
 
     ```diff
     -    implementation 'com.microsoft.onnxruntime:onnxruntime-mobile:latest.release'
-    +    implementation files('libs/onnxruntime-mobile-1.11.0.aar')
+    +    implementation files('libs/onnxruntime-mobile-<ORT version>.aar')
     ```
 
 ### Python

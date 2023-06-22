@@ -40,7 +40,7 @@ You can load your input data into OnnxTensor objects in several ways. The most e
     var tensorFromArray = OnnxTensor.createTensor(env,sourceArray);
 ```
 
-Here is a [complete sample program](https://github.com/microsoft/onnxruntime/blob/master/java/src/test/java/sample/ScoreMNIST.java) that runs inference on a pretrained MNIST model.
+Here is a [complete sample program](https://github.com/microsoft/onnxruntime/blob/main/java/src/test/java/sample/ScoreMNIST.java) that runs inference on a pretrained MNIST model.
 
 ## Running on a GPU or with another provider (Optional)
 

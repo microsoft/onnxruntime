@@ -11,7 +11,7 @@ redirect_from: /how-to
 
 ONNX Runtime is a cross-platform machine-learning model accelerator, with a flexible interface to integrate hardware-specific libraries. ONNX Runtime can be used with models from PyTorch, Tensorflow/Keras, TFLite, scikit-learn, and other frameworks.
 
-<iframe height="315" class="table-wrapper py px" src="https://www.youtube.com/embed/vo9vlR-TRK4" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
+<iframe height="315" class="table-wrapper py px" src="https://www.youtube.com/embed/waIeC3OIn70" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
 
 ## How to use ONNX Runtime
 
@@ -54,7 +54,7 @@ Examples use cases for ONNX Runtime Inferencing include:
 The premise is simple. 
 1. **Get a model.** This can be trained from any framework that supports export/conversion to ONNX format. See the [tutorials](./tutorials) for some of the popular frameworks/libraries. 
 2. **Load and run the model with ONNX Runtime.** See the [basic tutorials](./tutorials/api-basics) for running models in different languages.
-3. ***(Optional)* Tune performance using various runtime configurations or hardware accelerators.** There are lots of options here - see [How to: Tune Performance](./performance/tune-performance.md) as a starting point.
+3. ***(Optional)* Tune performance using various runtime configurations or hardware accelerators.** There are lots of options here - see the [Performance section](./performance) as a starting point.
 
 Even without step 3, ONNX Runtime will often provide performance improvements compared to the original framework. 
 
@@ -66,12 +66,5 @@ ONNX Runtime applies a number of graph optimizations on the model graph then par
 
 ## ONNX Runtime for Training
 
-Released in April 2021, ONNX Runtime Training provides a one-line addition for existing PyTorch training scripts to accelerate training times. The current support is focused on large transformer models on multi-node NVIDIA GPUs, with more to come. 
-
-### How it works
-{: .no_toc }
-
-Using the ORTModule class wrapper, ONNX Runtime for PyTorch runs the forward and backward passes of the training script using an optimized automatically-exported ONNX computation graph. ORT Training uses the same graph optimizations as ORT Inferencing, allowing for model training acceleration. 
-
-The ORTModule is instantiated from [`torch-ort`](https://github.com/pytorch/ort) backend in PyTorch. This new interface enables a seamless integration for ONNX Runtime training in a PyTorch training code with minimal changes to the existing code.
-
+- [Large Model Training](./get-started/training-pytorch.md)
+- [On-Device Training](./get-started/training-on-device.md)

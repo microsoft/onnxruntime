@@ -69,7 +69,7 @@ Here's an example screenshot of the app:
 
    > Conversion of this model is a two part process. The original model is in tflite format. This is firstly converted to ONNX format using the [tf2onnx converter](https://github.com/onnx/tensorflow-onnx).
    >
-   > The model is then converted into ORT format using the [onnx to ort converter](../../reference/ort-format-models.md).
+   > The model is then converted into ORT format using the [onnx to ort converter](../../performance/model-optimizations/ort-format-models.md).
    >
    > As well as generating the model in ORT format, the conversion script also outputs an [operator config file](../../reference/operators/reduced-operator-config-file.md)
 
@@ -118,5 +118,5 @@ Here's an example screenshot of the app:
 
 * For more information on converting tflite models to ONNX [Converting TFlite models to ONNX](https://github.com/onnx/tensorflow-onnx#getting-started)
 
-* [Convert ONNX models to ORT format](../../reference/ort-format-models.md)
+* [Convert ONNX models to ORT format](../../performance/model-optimizations/ort-format-models.md)
 

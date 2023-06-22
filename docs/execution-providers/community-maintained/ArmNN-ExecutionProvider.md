@@ -33,6 +33,4 @@ Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_ArmNN(so, enable_cpu_
 The C API details are [here](../../get-started/with-c.md).
 
 ## Performance Tuning
-For performance tuning, please see guidance on this page: [ONNX Runtime Perf Tuning](../../performance/tune-performance.md)
-
-When/if using [onnxruntime_perf_test](https://github.com/microsoft/onnxruntime/tree/master/onnxruntime/test/perftest), use the flag -e armnn
+When/if using [onnxruntime_perf_test](https://github.com/microsoft/onnxruntime/tree/main/onnxruntime/test/perftest), use the flag -e armnn

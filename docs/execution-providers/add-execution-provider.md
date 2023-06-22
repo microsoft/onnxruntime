@@ -2,7 +2,7 @@
 title: Add a new provider
 description: Instructions to add a new execution provider to ONNX Runtime
 parent: Execution Providers
-nav_order: 12
+nav_order: 13
 redirect_from: /docs/how-to/add-execution-provider
 ---
 
@@ -19,7 +19,7 @@ redirect_from: /docs/how-to/add-execution-provider
 
 1. Create a folder under onnxruntime/core/providers
 2. Create a folder under include/onnxruntime/core/providers, it should has the same name as the first step.
-3. Create a new class, which must inherit from [IExecutionProvider](https://github.com/microsoft/onnxruntime/tree/master/include//onnxruntime/core/framework/execution_provider.h). The source code should be put in 'onnxruntime/core/providers/[your_provider_name]'
+3. Create a new class, which must inherit from [IExecutionProvider](https://github.com/microsoft/onnxruntime/tree/main/include//onnxruntime/core/framework/execution_provider.h). The source code should be put in 'onnxruntime/core/providers/[your_provider_name]'
 4. Create a new header file under include/onnxruntime/core/providers/[your_provider_name]. The file should provide one function for creating an OrtProviderFactoryInterface. You may use 'include/onnxruntime/core/providers/cpu/cpu_provider_factory.h' as a template. You don't need to provide a function for creating MemoryInfo.
 5. Put a symbols.txt under 'onnxruntime/core/providers/[your_provider_name]'. The file should contain all the function names that would be exported from you provider. Usually, just a single function for creating provider factory is enough.
 6. Add your provider in onnxruntime_providers.cmake. Build it as a static lib.
@@ -27,9 +27,9 @@ redirect_from: /docs/how-to/add-execution-provider
 
 Examples:
 
-* [CPU Execution Provider](https://github.com/microsoft/onnxruntime/blob/master/onnxruntime/core/providers/cpu/cpu_execution_provider.h)
-* [CUDA Execution Provider](https://github.com/microsoft/onnxruntime/blob/master/onnxruntime/core/providers/cuda/cuda_execution_provider.h)               
-* [DNNL Execution Provider](https://github.com/microsoft/onnxruntime/blob/master/onnxruntime/core/providers/dnnl/dnnl_execution_provider.h)               
+* [CPU Execution Provider](https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/core/providers/cpu/cpu_execution_provider.h)
+* [CUDA Execution Provider](https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/core/providers/cuda/cuda_execution_provider.h)               
+* [DNNL Execution Provider](https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/core/providers/dnnl/dnnl_execution_provider.h)               
 
 ## Use the Execution Provider
 

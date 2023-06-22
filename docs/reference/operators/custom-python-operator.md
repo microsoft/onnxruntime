@@ -14,7 +14,7 @@ The Python Operator provides the capability to easily invoke any custom Python c
 
 ## Design Overview
 
-The feature can be in [language_interop_ops](https://github.com/microsoft/onnxruntime/tree/master/onnxruntime/core/language_interop_ops).
+The feature can be in [language_interop_ops](https://github.com/microsoft/onnxruntime/tree/main/onnxruntime/core/language_interop_ops).
 
 Here is a chart of calling sequence:
 <pre>

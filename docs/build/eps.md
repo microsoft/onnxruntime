@@ -45,8 +45,8 @@ The onnxruntime code will look for the provider shared libraries in the same loc
 ### Prerequisites
 {: .no_toc }
 
-* Install [CUDA](https://developer.nvidia.com/cuda-toolkit) and [cuDNN](https://developer.nvidia.com/cudnn)
-  * The path to the CUDA installation must be provided via the CUDA_PATH environment variable, or the `--cuda_home` parameter
+* Install [CUDA](https://developer.nvidia.com/cuda-toolkit) and [cuDNN](https://developer.nvidia.com/cudnn) according to the [version compatibility matrix](../execution-providers/CUDA-ExecutionProvider.md#requirements).
+  * The path to the CUDA installation must be provided via the CUDA_PATH environment variable, or the `--cuda_home` parameter.
   * The path to the cuDNN installation (include the `cuda` folder in the path) must be provided via the cuDNN_PATH environment variable, or `--cudnn_home` parameter. The cuDNN path should contain `bin`, `include` and `lib` directories.
   * The path to the cuDNN bin directory must be added to the PATH environment variable so that cudnn64_8.dll is found.
 
@@ -66,19 +66,20 @@ The onnxruntime code will look for the provider shared libraries in the same loc
 ./build.sh --use_cuda --cudnn_home <cudnn home path> --cuda_home <cuda home path>
 ```
 
-A Dockerfile is available [here](https://github.com/microsoft/onnxruntime/blob/master/dockerfiles#cuda).
+A Dockerfile is available [here](https://github.com/microsoft/onnxruntime/blob/main/dockerfiles#cuda).
 
-### Notes
+### Notes on older versions of ONNX Runtime, CUDA and Visual Studio
 {: .no_toc }
 
-* Depending on compatibility between the CUDA, cuDNN, and Visual Studio 2017 versions you are using, you may need to explicitly install an earlier version of the MSVC toolset.
- * CUDA 10.0 is [known to work](https://devblogs.microsoft.com/cppblog/cuda-10-is-now-available-with-support-for-the-latest-visual-studio-2017-versions/) with toolsets from 14.11 up to 14.16 (Visual Studio 2017 15.9), and should continue to work with future Visual Studio versions
- * CUDA 9.2 is known to work with the 14.11 MSVC toolset (Visual Studio 15.3 and 15.4)
-    * To install the 14.11 MSVC toolset, see [this page](https://blogs.msdn.microsoft.com/vcblog/2017/11/15/side-by-side-minor-version-msvc-toolsets-in-visual-studio-2017).
-    * To use the 14.11 toolset with a later version of Visual Studio 2017 you have two options:
-     1. Setup the Visual Studio environment variables to point to the 14.11 toolset by running vcvarsall.bat, prior to running the build script. e.g. if you have VS2017 Enterprise, an x64 build would use the following command `"C:\Program Files (x86)\Microsoft Visual Studio\2017\Enterprise\VC\Auxiliary\Build\vcvarsall.bat" amd64 -vcvars_ver=14.11` For convenience, .\build.amd64.1411.bat will do this and can be used in the same way as .\build.bat. e.g. ` .\build.amd64.1411.bat --use_cuda`
+* Depending on compatibility between the CUDA, cuDNN, and Visual Studio versions you are using, you may need to explicitly install an earlier version of the MSVC toolset.
+* For older version of ONNX Runtime and CUDA, and Visual Studio:
+    * CUDA 10.0 is [known to work](https://devblogs.microsoft.com/cppblog/cuda-10-is-now-available-with-support-for-the-latest-visual-studio-2017-versions/) with toolsets from 14.11 up to 14.16 (Visual Studio 2017 15.9), and should continue to work with future Visual Studio versions
+    * CUDA 9.2 is known to work with the 14.11 MSVC toolset (Visual Studio 15.3 and 15.4)
+        * To install the 14.11 MSVC toolset, see [this page](https://blogs.msdn.microsoft.com/vcblog/2017/11/15/side-by-side-minor-version-msvc-toolsets-in-visual-studio-2017).
+        * To use the 14.11 toolset with a later version of Visual Studio 2017 you have two options:
+          1. Setup the Visual Studio environment variables to point to the 14.11 toolset by running vcvarsall.bat, prior to running the build script. e.g. if you have VS2017 Enterprise, an x64 build would use the following command `"C:\Program Files (x86)\Microsoft Visual Studio\2017\Enterprise\VC\Auxiliary\Build\vcvarsall.bat" amd64 -vcvars_ver=14.11` For convenience, .\build.amd64.1411.bat will do this and can be used in the same way as .\build.bat. e.g. ` .\build.amd64.1411.bat --use_cuda`
 
-     2. Alternatively, if you have CMake 3.13 or later you can specify the toolset version via the `--msvc_toolset` build script parameter. e.g. `.\build.bat --msvc_toolset 14.11`
+          2. Alternatively, if you have CMake 3.13 or later you can specify the toolset version via the `--msvc_toolset` build script parameter. e.g. `.\build.bat --msvc_toolset 14.11`
 
 * If you have multiple versions of CUDA installed on a Windows machine and are building with Visual Studio, CMake will use the build files for the highest version of CUDA it finds in the BuildCustomization folder.
 e.g. C:\Program Files (x86)\Microsoft Visual Studio\2017\Enterprise\Common7\IDE\VC\VCTargets\BuildCustomizations\.
@@ -94,7 +95,7 @@ See more information on the TensorRT Execution Provider [here](../execution-prov
 {: .no_toc }
 
 * Install [CUDA](https://developer.nvidia.com/cuda-toolkit) and [cuDNN](https://developer.nvidia.com/cudnn)
-   * The TensorRT execution provider for ONNX Runtime is built and tested with CUDA 10.2/11.0/11.1/11.4/11.6 and cuDNN 8.0/cuDNN 8.2/cuDNN 8.4.
+   * The TensorRT execution provider for ONNX Runtime is built and tested with CUDA 11.0/11.1/11.4/11.6 and cuDNN 8.0/cuDNN 8.2/cuDNN 8.4.
    * The path to the CUDA installation must be provided via the CUDA_PATH environment variable, or the `--cuda_home` parameter. The CUDA path should contain `bin`, `include` and `lib` directories.
    * The path to the CUDA `bin` directory must be added to the PATH environment variable so that `nvcc` is found.
    * The path to the cuDNN installation (path to folder that contains libcudnn.so) must be provided via the cuDNN_PATH environment variable, or `--cudnn_home` parameter.
@@ -129,7 +130,7 @@ git checkout 7.2.1
 ./build.sh  --cudnn_home <path to cuDNN e.g. /usr/lib/x86_64-linux-gnu/> --cuda_home <path to folder for CUDA e.g. /usr/local/cuda> --use_tensorrt --tensorrt_home <path to TensorRT home> --skip_submodule_sync
 ```
 
-Dockerfile instructions are available [here](https://github.com/microsoft/onnxruntime/tree/master/dockerfiles#tensorrt)
+Dockerfile instructions are available [here](https://github.com/microsoft/onnxruntime/tree/main/dockerfiles#tensorrt)
 
 ---
 
@@ -262,7 +263,7 @@ See more information on the OpenVINO™ Execution Provider [here](../execution-p
    ```
       C:\ <openvino_install_directory>\setupvars.bat
    ```
-   **Note:** If you are using a dockerfile to use OpenVINO™ Execution Provider, sourcing OpenVINO™ won't be possible within the dockerfile. You would have to explicitly set the LD_LIBRARY_PATH to point to OpenVINO™ libraries location. Refer our [dockerfile](https://github.com/microsoft/onnxruntime/blob/master/dockerfiles/Dockerfile.openvino).
+   **Note:** If you are using a dockerfile to use OpenVINO™ Execution Provider, sourcing OpenVINO™ won't be possible within the dockerfile. You would have to explicitly set the LD_LIBRARY_PATH to point to OpenVINO™ libraries location. Refer our [dockerfile](https://github.com/microsoft/onnxruntime/blob/main/dockerfiles/Dockerfile.openvino).
 
 
 4. Extra configuration step for Intel<sup>®</sup> Vision Accelerator Design based on 8 Movidius<sup>TM</sup> MyriadX VPUs:
@@ -404,35 +405,43 @@ index 7dfa97c..6d99e71 100644
 ./build.sh --llvm_path=/llvm/install/path/lib/cmake/llvm --use_mklml --use_nuphar --build_shared_lib --build_csharp --enable_pybind --config=Release
 ```
 
-Dockerfile instructions are available [here](https://github.com/microsoft/onnxruntime/tree/master/dockerfiles#nuphar).
+Dockerfile instructions are available [here](https://github.com/microsoft/onnxruntime/tree/main/dockerfiles#nuphar).
 
 
 ---
 
-## SNPE
-See more information on the SNPE execution provider [here](../execution-providers/SNPE-ExecutionProvider.md).
+## QNN
+See more information on the QNN execution provider [here](../execution-providers/QNN-ExecutionProvider.md).
 
 ### Prerequisites
 {: .no_toc }
-* Qualcomm Neural Processing SDK [Linux/Android](https://developer.qualcomm.com/software/qualcomm-neural-processing-sdk)
-* Qualcomm Neural Processing SDK [Windows](https://developer.qualcomm.com/software/qualcomm-neural-processing-sdk/windows-on-snapdragon)
+* Qualcomm AI Engine Direct SDK (Qualcomm Neural Network SDK) [Linux/Android/Windows](https://qpm.qualcomm.com/main/tools/details/qualcomm_ai_engine_direct)
 
 ### Build Instructions
 {: .no_toc }
 
-#### Windows
+#### Windows (arm64 native build)
 ```
-build.bat --use_snpe --snpe_root=[location-of-SNPE_SDK] --build_shared_lib --cmake_generator "Visual Studio 16 2019" --skip_submodule_sync --config Release --build_dir \build\Windows
+build.bat --arm64 --use_qnn --qnn_home=[QNN_SDK path] --build_shared_lib --cmake_generator "Visual Studio 17 2022" --skip_submodule_sync --config Release --build_dir \build\Windows
+```
+
+build python bindings 
+```
+build.bat --arm64 --use_qnn --qnn_home=[QNN_SDK path] --build_wheel --cmake_generator "Visual Studio 17 2022" --skip_submodule_sync --config Release --build_dir \build\Windows
+```
+#### Linux (x64)
+```
+build.py --use_qnn --qnn_home=[QNN_SDK path] --build_shared_lib --skip_submodule_sync --config Release
 ```
 #### Android (Cross-Compile):
 
 Please reference [Build OnnxRuntime For Android](android.md)
 ```
 # on Windows
-build.bat --build_shared_lib --skip_submodule_sync --android --config Release --use_snpe --snpe_root [location-of-SNPE_SDK] --android_sdk_path [location-of-android_SDK] --android_ndk_path [location-of-android_NDK] --android_abi arm64-v8a --android_api [api-version] --cmake_generator Ninja --build_dir build\Android
+build.bat --build_shared_lib --skip_submodule_sync --android --config Release --use_qnn --qnn_home [QNN_SDK path] --android_sdk_path [android_SDK path] --android_ndk_path [android_NDK path] --android_abi arm64-v8a --android_api [api-version] --cmake_generator Ninja --build_dir build\Android
 
 # on Linux
-build.sh --build_shared_lib --skip_submodule_sync --android --config Release --use_snpe --snpe_root [location-of-SNPE_SDK] --android_sdk_path [location-of-android_SDK] --android_ndk_path [location-of-android_NDK] --android_abi arm64-v8a --android_api [api-version] --cmake_generator Ninja --build_dir build/Android
+build.sh --build_shared_lib --skip_submodule_sync --android --config Release --use_qnn --qnn_home [QNN_SDK path] --android_sdk_path [android_SDK path] --android_ndk_path [android_NDK path] --android_abi arm64-v8a --android_api [api-version] --cmake_generator Ninja --build_dir build/Android
 
 ```
 
@@ -607,35 +616,46 @@ set(CMAKE_C_COMPILER aarch64-linux-gnu-gcc)
 
 ---
 
-## Vitis-AI
-See more information on the Xilinx Vitis-AI execution provider [here](../execution-providers/community-maintained/Vitis-AI-ExecutionProvider.md).
+## AMD Vitis AI
+See more information on the Vitis AI Execution Provider [here](../execution-providers/community-maintained/Vitis-AI-ExecutionProvider.md).
 
-For instructions to setup the hardware environment: [Hardware setup](../execution-providers/community-maintained/Vitis-AI-ExecutionProvider.md#hardware-setup)
+### Windows
+{: .no_toc }
 
+From the Visual Studio Developer Command Prompt or Developer PowerShell, execute the following command:
+
+```
+.\build.bat --use_vitisai --build_shared_lib --parallel --config Release
+```
+
+If you wish to leverage the Python APIs, please include the `--build_wheel` flag:
+
+```
+.\build.bat --use_vitisai --build_shared_lib --parallel --config Release --build_wheel
+```
+
+You can override also override the installation location by specifying CMAKE_INSTALL_PREFIX via the cmake_extra_defines parameter.
+e.g.
+
+```
+.\build.bat --use_vitisai --build_shared_lib --parallel --config Release --cmake_extra_defines CMAKE_INSTALL_PREFIX=D:\onnxruntime
+```
 ### Linux
 {: .no_toc }
 
-
-```bash
-./build.sh --use_vitisai
-```
-
-### Notes
-{: .no_toc }
-
-The Vitis-AI execution provider is only supported on Linux.
+Currently Linux support is only enabled for AMD Adapable SoCs.  Please refer to the guidance [here](../execution-providers/community-maintained/Vitis-AI-ExecutionProvider.md#amd-adaptable-soc-installation) for SoC targets.
 
 ---
 
 ## AMD MIGraphX
 
-See more information on the MIGraphX Execution Provider [here](../execution-providers/community-maintained/MIGraphX-ExecutionProvider.md).
+See more information on the MIGraphX Execution Provider [here](../execution-providers/MIGraphX-ExecutionProvider.md).
 
 ### Prerequisites
 {: .no_toc }
 
-* Install [ROCM](https://rocmdocs.amd.com/en/latest/Installation_Guide/Installation-Guide.html)
-  * The MIGraphX execution provider for ONNX Runtime is built and tested with ROCM3.3
+* Install [ROCm](https://docs.amd.com/bundle/ROCm-Installation-Guide-v5.4/page/How_to_Install_ROCm.html#_How_to_Install)
+  * The MIGraphX execution provider for ONNX Runtime is built and tested with ROCm5.4
 * Install [MIGraphX](https://github.com/ROCmSoftwarePlatform/AMDMIGraphX)
   * The path to MIGraphX installation must be provided via the `--migraphx_home parameter`.
 
@@ -648,7 +668,7 @@ See more information on the MIGraphX Execution Provider [here](../execution-prov
 ./build.sh --config <Release|Debug|RelWithDebInfo> --use_migraphx --migraphx_home <path to MIGraphX home>
 ```
 
-Dockerfile instructions are available [here](https://github.com/microsoft/onnxruntime/blob/master/dockerfiles#migraphx).
+Dockerfile instructions are available [here](https://github.com/microsoft/onnxruntime/blob/main/dockerfiles#migraphx).
 
 ## AMD ROCm
 
@@ -657,8 +677,8 @@ See more information on the ROCm Execution Provider [here](../execution-provider
 ### Prerequisites
 {: .no_toc }
 
-* Install [ROCm](https://docs.amd.com/bundle/ROCm-Installation-Guide-v5.2.3/page/How_to_Install_ROCm.html#_How_to_Install)
-  * The ROCm execution provider for ONNX Runtime is built and tested with ROCm5.2.3
+* Install [ROCm](https://docs.amd.com/bundle/ROCm-Installation-Guide-v5.4/page/How_to_Install_ROCm.html#_How_to_Install)
+  * The ROCm execution provider for ONNX Runtime is built and tested with ROCm5.4
 
 ### Build Instructions
 {: .no_toc }
@@ -723,13 +743,14 @@ Once you have all the necessary components setup, follow the instructions to [cr
 
 ## XNNPACK
 
-Usage of XNNPACK on Android/Windows/Linux platforms is via the XNNPACK EP.
+Usage of XNNPACK on Android/iOS/Windows/Linux platforms is via the XNNPACK EP.
 
 See the [XNNPACK Execution Provider](../execution-providers/Xnnpack-ExecutionProvider.md) documentation for more details.
 
 The pre-built ONNX Runtime package([`onnxruntime-android`](https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-android)) for Android includes the XNNPACK EP.
 
-We don't support XNNPACK on iOS currently.
+The pre-built ONNX Runtime Mobile package for iOS, `onnxruntime-c` and `onnxruntime-objc` in [CocoaPods](https://cocoapods.org/), includes the XNNPACK EP. (Package `onnxruntime-objc` with XNNPACK will be available since 1.14.)
+
 
 If performing a custom build of ONNX Runtime, support for the XNNPACK EP must be enabled when building.
 
@@ -761,6 +782,20 @@ Linux example:
 ```bash
 ./build.sh --cmake_generator "Ninja" --android  --android_sdk_path /Android --android_ndk_path /Android/ndk/21.1.6352462/ --android_abi arm64-v8a --android_api 29 --use_xnnpack
 ```
+### Build for iOS (available since 1.14)
+A Mac machine is required to build package for iOS. Please follow this [guide](./ios.md) to set up environment firstly.
+#### Create a minimal build with XNNPACK EP support
+
+Once you have all the necessary components setup, follow the instructions to [create the custom build](./custom.md), with the following changes:
+
+* Replace `--minimal_build` with `--minimal_build extended` to enable support for execution providers that dynamically create kernels at runtime, which is required by the XNNPACK EP.
+* Add `--use_xnnpack` to include the XNNPACK EP in the build
+
+```dos
+<ONNX Runtime repository root>./build.sh --config <Release|Debug|RelWithDebInfo|MinSizeRel> --use_xcode \
+           --ios --ios_sysroot iphoneos --osx_arch arm64 --apple_deploy_target <minimal iOS version> --use_xnnpack --minimal_build extended --disable_ml_ops --disable_exceptions --build_shared_lib --skip_tests --include_ops_by_config <config file from model conversion>
+```
+
 ### Build for Windows
 ```dos
 <ONNX Runtime repository root>.\build.bat --config <Release|Debug|RelWithDebInfo> --use_xnnpack
@@ -802,3 +837,32 @@ See more information on the CANN Execution Provider [here](../execution-provider
 
 * The CANN execution provider supports building for both x64 and aarch64 architectures.
 * CANN excution provider now is only supported on Linux.
+
+## Azure
+
+See the [Azure Execution Provider](../execution-providers/Azure-ExecutionProvider.md) documentation for more details.
+
+### Prerequisites
+
+For Linux, before building, please:
+
+* install openssl dev package into the system, which is openssl-dev for redhat and libssl-dev for ubuntu.
+* if have multiple openssl dev versions installed in the system, please set environment variable "OPENSSL_ROOT_DIR" to the desired version, for example:
+
+```base
+set OPENSSL_ROOT_DIR=/usr/local/ssl3.x/
+```
+
+### Build Instructions
+
+#### Windows
+
+```dos
+build.bat --config <Release|Debug|RelWithDebInfo> --build_shared_lib --build_wheel --use_azure
+```
+
+#### Linux
+
+```bash
+./build.sh --config <Release|Debug|RelWithDebInfo> --build_shared_lib --build_wheel --use_azure
+```

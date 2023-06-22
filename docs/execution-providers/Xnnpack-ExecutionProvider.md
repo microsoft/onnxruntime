@@ -8,7 +8,7 @@ nav_order: 9
 
 # XNNPACK Execution Provider
 
-Accelerate ONNX models on Android devices and WebAssembly with ONNX Runtime and the XNNPACK execution provider. [(XNNPACK)](https://github.com/google/XNNPACK) is a highly optimized library of floating-point neural network inference operators for ARM, WebAssembly, and x86 platforms.
+Accelerate ONNX models on Android/iOS devices and WebAssembly with ONNX Runtime and the XNNPACK execution provider. [XNNPACK](https://github.com/google/XNNPACK) is a highly optimized library of floating-point neural network inference operators for ARM, WebAssembly, and x86 platforms.
 
 ## Contents
 {: .no_toc }
@@ -16,19 +16,19 @@ Accelerate ONNX models on Android devices and WebAssembly with ONNX Runtime and 
 * TOC placeholder
 {:toc}
 
-## Requirements
-
 
 ## Install
-Pre-built packages of ONNX Runtime([`onnxruntime-android`](https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-android)) with XNNPACK EP for Android are published on Maven.
+Pre-built packages of ONNX Runtime ([`onnxruntime-android`](https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-android)) with XNNPACK EP for Android are published on Maven.
 See [here](../install/index.md#install-on-android) for installation instructions.
 
-There is no pre-built package for iOS yet. We will update it once it is ready.
+Pre-built binaries(`onnxruntime-objc` and `onnxruntime-c`) of ONNX Runtime with XNNPACK EP for iOS are published to CocoaPods.
+See [here](../install/index.md#install-on-ios) for installation instructions.
+
 ## Build
 
 Please see the [Build page](../build/eps.md#xnnpack) for instructions on building a package that includes the XNNPACK EP.
 
-Support build for Android/Windows/Linux
+Support build for Android/iOS/Windows/Linux
 
 ## Usage
 
@@ -75,12 +75,17 @@ The number of threads to use for the XNNPACK EP's internal intra-op thread-pool.
 ## Supported ops
 Following ops are supported by the XNNPACK Execution Provider,
 
-|Operator|Note|
-|--------|------|
+|Operator|Note||
+|--------|------|-----|
 |ai.onnx:AveragePool|Only 2D Pool is supported.|
 |ai.onnx:Conv|Only 2D Conv is supported.<br/>Weights and bias should be constant.|
+|ai.onnx:ConvTranspose|Only 2D ConvTranspose is supported.<br/>Weights and bias should be constant.|since 1.14|
 |ai.onnx:MaxPool|Only 2D Pool is supported.|
 |ai.onnx:Softmax|all opset below 13 is supported, only support opset 13 when AXIS is the last dimension|
 |ai.onnx:QLinearConv|Only 2D Conv is supported.<br/>Weights and bias should be constant.<br/>All quantization scales and zero points should be constant.|
+|ai.onnx:Resize|2D/4D Resize in `Bilinear mode` are supported|since 1.14|
+|ai.onnx:Gemm|Only 2D Op is supported|since 1.14|
+|ai.onnx:Matmul|Only 2D Op is supported|since 1.14|
 |com.microsoft:QLinearAveragePool|Only 2D Pool is supported.<br/>All quantization scales and zero points should be constant.|
 |com.microsoft:QLinearSoftmax|All quantization scales and zero points should be constant.|
+|com.microsoft:QLinearConvTranspose|All quantization scales and zero points should be constant.|since 1.14|

@@ -1,9 +1,10 @@
 ---
 title: Model Usability Checker
 descriptions: ORT Mobile model usability checker.
-parent: Helpers
-grand_parent: Mobile
+parent: ORT Mobile Model Export Helpers
+grand_parent: Deploy on Mobile
 nav_order: 1
+
 ---
 # Model Usability Checker
 {: .no_toc }
@@ -96,7 +97,7 @@ INFO:  Please try updating the ONNX model opset to a supported version using
 
 ## Recommendation
 
-Finally the script will provide information on how to [convert the model to the ORT format](../../../../docs/reference/ort-format-models.md) required by ORT Mobile, and recommend which of the two ORT format models to use.
+Finally the script will provide information on how to [convert the model to the ORT format](../../../../docs/performance/model-optimizations/ort-format-models.md) required by ORT Mobile, and recommend which of the two ORT format models to use.
 
 ```
 INFO:  Run `python -m onnxruntime.tools.convert_onnx_models_to_ort ...` to convert the ONNX model to ORT format. 
