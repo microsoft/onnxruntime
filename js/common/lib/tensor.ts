@@ -41,6 +41,7 @@ interface TypedTensorBase<T extends Tensor.Type> {
    *
    * If the data is on CPU, returns the data immediately.
    * If the data is on GPU, downloads the data and returns the promise.
+   *
    * @param releaseData - whether release the data on GPU. Ignore if data is already on CPU.
    */
   getData(releaseData?: boolean): Promise<Tensor.DataTypeMap[T]>;
