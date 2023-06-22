@@ -139,6 +139,113 @@ TEST(CheckpointApiTest, SaveOnnxModelAsCheckpoint_ThenLoad_CPU) {
 }
 
 /**
+ * Load ONNX model from file path, save into ORT checkpoint files,
+ * Then load it into a bytes buffer and then load the buffer to a checkpoint, compare with the initial parameter values.
+ */
+TEST(CheckpointApiTest, SaveOnnxModelAsCheckpointThenLoadFromBufferCPU) {
+  /// Phase 1 - Test Preparation
+  /// Prepare the data and dest folder for saving checkpoint.
+  /// Also cooked the data for test result comparison.
+
+  // Model path and trainable parameter name definitions.
+  auto model_uri = MODEL_FOLDER "transform/computation_reduction/gathernd/e2e.onnx";
+  std::vector<std::string> expected_trainable_param_names{
+      "bert.encoder.layer.2.output.LayerNorm.weight",
+      "bert.encoder.layer.2.output.LayerNorm.bias",
+      "add1_initializerr",
+      "cls.predictions.transform.LayerNorm.weight",
+      "cls.predictions.transform.LayerNorm.bias",
+      "bert.embeddings.word_embeddings.weight_transposed",
+      "cls.predictions.bias",
+  };
+
+  // Extract a weight value baseline to compare.
+  // expected_trainable_param_name_to_ort_value is used to compare with the values after restoring from checkpoint.
+  auto logger_ptr = std::make_unique<logging::Logger>(logging::LoggingManager::DefaultLogger());
+  std::shared_ptr<Model> p_model;
+  ORT_ENFORCE(Model::Load(model_uri, p_model, nullptr, *logger_ptr).IsOK());
+  Graph& graph = p_model->MainGraph();
+
+  std::vector<ONNX_NAMESPACE::TensorProto> trainable_param_values;
+  trainable_param_values.reserve(expected_trainable_param_names.size());
+  std::vector<ONNX_NAMESPACE::TensorProto> non_trainable_param_values;
+  const auto& initializer_tensors = graph.GetAllInitializedTensors();
+  for (const auto& [initializer_name, tensor_proto] : initializer_tensors) {
+    if (std::find(expected_trainable_param_names.begin(), expected_trainable_param_names.end(), initializer_name) !=
+        expected_trainable_param_names.end()) {
+      trainable_param_values.emplace_back(static_cast<ONNX_NAMESPACE::TensorProto>(*tensor_proto));
+    } else {
+      non_trainable_param_values.emplace_back(static_cast<ONNX_NAMESPACE::TensorProto>(*tensor_proto));
+    }
+  }
+
+  std::unordered_map<std::string, OrtValue> expected_trainable_param_name_to_ort_value;
+  ORT_ENFORCE(CreateOrtValuesFromTensorProtos(trainable_param_values, expected_trainable_param_name_to_ort_value)
+                  .IsOK());
+
+  // Remove the temporary directory if it already exists.
+  auto ckpt_test_root_dir = ORT_TSTR("checkpointing_api_test_dir");
+  TemporaryDirectory tmp_dir{ckpt_test_root_dir};
+
+  /// Phase 2 - Run save checkpoint APIs.
+  /// And check the result checkpoint files.
+
+  // Call Save APIs.
+  PathString checkpoint_path{
+      ConcatPathComponent<PathChar>(tmp_dir.Path(), ORT_TSTR("e2e_ckpt_save_cpu"))};
+  ASSERT_STATUS_OK(SaveCheckpoint(trainable_param_values, non_trainable_param_values, checkpoint_path));
+
+  /// Phase 3 - Run load checkpoint APIs.
+  /// And check the result comparable with initial parameter values.
+
+  // Call Load APIs
+  size_t num_bytes = 0;
+  ASSERT_STATUS_OK(Env::Default().GetFileLength(checkpoint_path.c_str(), num_bytes));
+  std::vector<uint8_t> checkpoint_bytes(num_bytes);
+
+  std::ifstream bytes_stream(checkpoint_path, std::ifstream::in | std::ifstream::binary);
+  bytes_stream.read(reinterpret_cast<char*>(checkpoint_bytes.data()), num_bytes);
+
+  ASSERT_TRUE(bytes_stream);
+
+  CheckpointState checkpoint_state_to_load;
+  ASSERT_STATUS_OK(LoadCheckpointFromBuffer(checkpoint_bytes, checkpoint_state_to_load));
+  ModuleCheckpointState module_state = checkpoint_state_to_load.module_checkpoint_state;
+  const auto& param_states = module_state.named_parameters;
+  std::unordered_map<std::string, OrtValue> restored_param_name_to_ort_values;
+  std::vector<std::string> restored_trainable_param_names;
+  for (auto it = param_states.begin(); it != param_states.end(); ++it) {
+    restored_param_name_to_ort_values.insert({it->first, it->second->Data()});
+    if (it->second->RequiresGrad()) {
+      restored_trainable_param_names.emplace_back(it->first);
+    }
+  }
+
+  // Check loaded parameter's values are same with original ones.
+  ASSERT_EQ(expected_trainable_param_name_to_ort_value.size(), restored_trainable_param_names.size());
+  ASSERT_EQ(expected_trainable_param_name_to_ort_value.size(), 7);
+  ASSERT_EQ(restored_param_name_to_ort_values.size(), 9);
+
+  std::sort(expected_trainable_param_names.begin(), expected_trainable_param_names.end());
+  std::sort(restored_trainable_param_names.begin(), restored_trainable_param_names.end());
+  ASSERT_EQ(expected_trainable_param_names, restored_trainable_param_names);
+
+  for (const auto& name : restored_trainable_param_names) {
+    const auto& restored_ort_value = restored_param_name_to_ort_values[name];
+    const auto& expected_ort_value = expected_trainable_param_name_to_ort_value.at(name);
+
+    ASSERT_TRUE(restored_ort_value.IsTensor() && expected_ort_value.IsTensor());
+    const Tensor& restored_tensor = restored_ort_value.Get<Tensor>();
+    const Tensor& expected_tensor = expected_ort_value.Get<Tensor>();
+    ASSERT_EQ(expected_tensor.DataType(), restored_tensor.DataType());
+    ASSERT_EQ(expected_tensor.SizeInBytes(), restored_tensor.SizeInBytes());
+    ASSERT_EQ(expected_tensor.DataType(), restored_tensor.DataType());
+
+    ASSERT_EQ(std::memcmp(expected_tensor.DataRaw(), restored_tensor.DataRaw(), expected_tensor.SizeInBytes()), 0);
+  }
+}
+
+/**
  * Load ONNX model with parameters set to 0 from file path, Load Checkpoint weights into the Model,
  * Then compare the new weights to 0 to make sure they were changed after loading checkpoint to model.
  */
