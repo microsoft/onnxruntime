@@ -214,3 +214,10 @@ struct ROCM_Provider : Provider {
 } g_provider;
 
 }  // namespace onnxruntime
+
+extern "C" {
+
+ORT_API(onnxruntime::Provider*, GetProvider) {
+  return &onnxruntime::g_provider;
+}
+}
