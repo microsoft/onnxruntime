@@ -396,15 +396,21 @@ class OrtBackend:
                 raise
             self._ort_execution_info.example_outputs[graph_module] = prim_outputs
 
-            diagnostic_context = torch.onnx._internal.diagnostics.infra.DiagnosticContext(
-                name="OrtBackend",
-                version="0.0.1",
+            from torch.onnx._internal.fx import fx_onnx_interpreter
+
+            # Create the object to iterate through the nodes in graph one-by-one
+            # and calls the corresponding ONNX exporter for each node.
+            fx_interpreter = fx_onnx_interpreter.FxOnnxInterpreter(
+                diagnostic_context=DEFAULT_ONNX_EXPORTER_OPTIONS.diagnostic_context
             )
-            exported = torch.onnx._internal.fx.passes.export_fx_to_onnxscript(
-                diagnostic_context,
-                graph_module,
-                DEFAULT_ONNX_EXPORTER_OPTIONS,
+            # Start the per-node exporting process. It's conceptually a for loop
+            # scanning through the nodes in the graph.
+            exported = fx_interpreter.run(
+                fx_graph_module=graph_module,
+                onnxfunction_dispatcher=DEFAULT_ONNX_EXPORTER_OPTIONS.onnxfunction_dispatcher,
+                op_level_debug=DEFAULT_ONNX_EXPORTER_OPTIONS.op_level_debug,
             )
+            # Convert the exported result to ONNX ModelProto.
             onnx_proto = exported.to_model_proto(
                 opset_version=DEFAULT_ONNX_EXPORTER_OPTIONS.opset_version
             ).SerializeToString()
