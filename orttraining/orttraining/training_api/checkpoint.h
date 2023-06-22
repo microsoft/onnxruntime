@@ -4,7 +4,6 @@
 #pragma once
 
 #include "core/platform/path_lib.h"
-#include "onnx/defs/tensor_proto_util.h"
 #include "orttraining/training_api/checkpoint_property.h"
 #include "orttraining/training_api/module.h"
 #include "orttraining/training_api/optimizer.h"

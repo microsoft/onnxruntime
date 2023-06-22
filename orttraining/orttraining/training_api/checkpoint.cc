@@ -6,7 +6,6 @@
 #include "core/flatbuffers/checkpoint_version.h"
 #include "core/flatbuffers/schema/ort_training_checkpoint.fbs.h"
 #include "core/framework/framework_common.h"
-#include "core/framework/tensorprotoutils.h"
 #include "core/graph/graph_flatbuffers_utils.h"
 
 namespace onnxruntime::training::api {
@@ -116,7 +115,7 @@ Status FlatbufferTensorsFromOrtValues(
           return data_transfer_manager->CopyTensor(src_tensor, dst_tensor);
         },
         builder, fbs_tensor));
-    flatbuffer_tensors.emplace_back(fbs_tensor);
+    flatbuffer_tensors.emplace_back(std::move(fbs_tensor));
   }
 
   return Status::OK();
@@ -560,12 +559,12 @@ Status ToOptimizerState(
 
     [[maybe_unused]] auto [optimizer_state_it, inserted] =
         optimizer_state.group_named_optimizer_states.emplace(
-            std::move(group_name), std::move(std::make_shared<GroupOptimizerState>()));
+            std::move(group_name), std::make_shared<GroupOptimizerState>());
 
     optimizer_state_it->second->step = step;
     optimizer_state_it->second->initial_lr = initial_learning_rate;
     for (const auto* parameter_optimizer_state : *parameter_optimizer_states) {
-      std::string param_name = parameter_optimizer_state->param_name()->str();
+      const std::string param_name = parameter_optimizer_state->param_name()->str();
       const auto* momentums = parameter_optimizer_state->momentums();
       ORT_RETURN_IF_NOT(momentums, "Expected: Valid optimizer momentum tensors flatbuffer.",
                         " Actual: Encountered a nullptr. Checkpoint file is invalid");
@@ -606,7 +605,7 @@ Status ToPropertyBag(const onnxruntime::fbs::PropertyBag& fbs_property_bag,
                         "Actual: nullptr.");
       ORT_RETURN_IF_NOT(float_property->name(), "Checkpoint is invalid. Expected: Valid flatbuffer float property name. ",
                         "Actual: nullptr.");
-      std::string name = float_property->name()->str();
+      const std::string name = float_property->name()->str();
       const auto value = float_property->value();
       property_bag.AddProperty(name, value);
     }
