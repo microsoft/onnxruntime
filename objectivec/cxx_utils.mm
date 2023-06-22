@@ -48,8 +48,7 @@ std::vector<std::string> toStdStringVector(NSArray<NSString*>* strs) {
 NSArray<NSString*>* toNSStringNSArray(const std::vector<std::string>& strs) {
   NSMutableArray<NSString*>* result = [NSMutableArray arrayWithCapacity:strs.size()];
   for (const std::string& str : strs) {
-    NSString* _Nonnull nsStr = [NSString stringWithUTF8String:str.c_str()];
-    [result addObject:nsStr];
+    [result addObject:[[NSString alloc] initWithUTF8String:str.c_str()]];
   }
   return result;
 }
