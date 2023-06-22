@@ -23,9 +23,18 @@ struct TreeNodeElementId {
   }
   struct hash_fn {
     std::size_t operator()(const TreeNodeElementId& key) const {
-      std::size_t h1 = std::hash<int64_t>()(key.tree_id);
-      std::size_t h2 = std::hash<int64_t>()(key.node_id);
-      return h1 ^ h2;
+      // Employs Elegant Pairing algorithm to produce a unique positive integer from two positive integers.
+      // Reference: http://szudzik.com/ElegantPairing.pdf
+
+      u_int64_t combined_id;
+      u_int64_t x = static_cast<u_int64_t>(key.tree_id);
+      u_int64_t y = static_cast<u_int64_t>(key.node_id);
+      if (x >= y) {
+        combined_id = x * x + x + y;
+      } else {
+        combined_id = y * y + x;
+      }
+      return std::hash<u_int64_t>()(combined_id);
     }
   };
 };
