@@ -295,13 +295,18 @@ file(GLOB onnxruntime_test_training_src
   "${ORTTRAINING_SOURCE_DIR}/test/distributed/*.cc"
   )
 
-if (onnxruntime_ENABLE_TRAINING_APIS)
-  file(GLOB onnxruntime_test_training_api_src
-    "${ORTTRAINING_SOURCE_DIR}/test/training_api/common/*.cc"
-    "${ORTTRAINING_SOURCE_DIR}/test/training_api/common/*.h"
-    "${ORTTRAINING_SOURCE_DIR}/test/training_api/core/*.cc"
-    "${ORTTRAINING_SOURCE_DIR}/test/training_api/core/*.h"
-    )
+# TODO (baijumeswani): Remove the minimal build check here.
+#                      The training api tests should be runnable even on a minimal build.
+#                      This requires converting all the *.onnx files to ort format.
+if (NOT onnxruntime_MINIMAL_BUILD)
+  if (onnxruntime_ENABLE_TRAINING_APIS)
+    file(GLOB onnxruntime_test_training_api_src
+      "${ORTTRAINING_SOURCE_DIR}/test/training_api/common/*.cc"
+      "${ORTTRAINING_SOURCE_DIR}/test/training_api/common/*.h"
+      "${ORTTRAINING_SOURCE_DIR}/test/training_api/core/*.cc"
+      "${ORTTRAINING_SOURCE_DIR}/test/training_api/core/*.h"
+      )
+  endif()
 endif()
 
 if(WIN32)
@@ -370,26 +375,29 @@ if (onnxruntime_USE_CANN)
   list(APPEND onnxruntime_test_providers_src ${onnxruntime_test_providers_cann_src})
 endif()
 
-if (onnxruntime_ENABLE_TRAINING_APIS)
-  file(GLOB_RECURSE orttraining_test_trainingops_cpu_src CONFIGURE_DEPENDS
-    "${ORTTRAINING_SOURCE_DIR}/test/training_ops/compare_provider_test_utils.cc"
-    "${ORTTRAINING_SOURCE_DIR}/test/training_ops/function_op_test_utils.cc"
-    "${ORTTRAINING_SOURCE_DIR}/test/training_ops/cpu/*"
-    )
-
-  if (NOT onnxruntime_ENABLE_TRAINING)
-    list(REMOVE_ITEM orttraining_test_trainingops_cpu_src
-      "${ORTTRAINING_SOURCE_DIR}/test/training_ops/cpu/tensorboard/summary_op_test.cc"
+# Disable training ops test for minimal build as a lot of these depend on loading an onnx model.
+if (NOT onnxruntime_MINIMAL_BUILD)
+  if (onnxruntime_ENABLE_TRAINING_CORE)
+    file(GLOB_RECURSE orttraining_test_trainingops_cpu_src CONFIGURE_DEPENDS
+      "${ORTTRAINING_SOURCE_DIR}/test/training_ops/compare_provider_test_utils.cc"
+      "${ORTTRAINING_SOURCE_DIR}/test/training_ops/function_op_test_utils.cc"
+      "${ORTTRAINING_SOURCE_DIR}/test/training_ops/cpu/*"
       )
-  endif()
 
-  list(APPEND onnxruntime_test_providers_src ${orttraining_test_trainingops_cpu_src})
+    if (NOT onnxruntime_ENABLE_TRAINING)
+      list(REMOVE_ITEM orttraining_test_trainingops_cpu_src
+        "${ORTTRAINING_SOURCE_DIR}/test/training_ops/cpu/tensorboard/summary_op_test.cc"
+        )
+    endif()
 
-  if (onnxruntime_USE_CUDA OR onnxruntime_USE_ROCM)
-    file(GLOB_RECURSE orttraining_test_trainingops_cuda_src CONFIGURE_DEPENDS
-      "${ORTTRAINING_SOURCE_DIR}/test/training_ops/cuda/*"
-      )
-    list(APPEND onnxruntime_test_providers_src ${orttraining_test_trainingops_cuda_src})
+    list(APPEND onnxruntime_test_providers_src ${orttraining_test_trainingops_cpu_src})
+
+    if (onnxruntime_USE_CUDA OR onnxruntime_USE_ROCM)
+      file(GLOB_RECURSE orttraining_test_trainingops_cuda_src CONFIGURE_DEPENDS
+        "${ORTTRAINING_SOURCE_DIR}/test/training_ops/cuda/*"
+        )
+      list(APPEND onnxruntime_test_providers_src ${orttraining_test_trainingops_cuda_src})
+    endif()
   endif()
 endif()
 

@@ -4,9 +4,7 @@
 #include "orttraining/training_api/training_session.h"
 #include "orttraining/training_api/utils.h"
 
-namespace onnxruntime {
-namespace training {
-namespace api {
+namespace onnxruntime::training::api {
 
 TrainingSession::TrainingSession(const Environment& session_env,
                                  const SessionOptions& session_options,
@@ -116,11 +114,11 @@ Status TrainingSession::CopyBufferToParameters(OrtValue& parameters_buffer, cons
   return module_->CopyBufferToParameters(parameters_buffer, trainable_only);
 }
 
+#if !defined(ORT_MINIMAL_BUILD)
 Status TrainingSession::ExportModelForInferencing(const std::string& inference_model_path,
                                                   gsl::span<const std::string> graph_output_names) const {
   return module_->ExportModelForInferencing(inference_model_path, graph_output_names);
 }
+#endif
 
-}  // namespace api
-}  // namespace training
-}  // namespace onnxruntime
+}  // namespace onnxruntime::training::api

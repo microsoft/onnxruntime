@@ -72,9 +72,7 @@ else()
   )
 endif()
 
-if (onnxruntime_ENABLE_TRAINING_APIS)
-  # we need optimizers for both full build as well as training api only build.
-  # Using onnxruntime_ENABLE_TRAINING_APIS since it is always ON in a full training build.
+if (onnxruntime_ENABLE_TRAINING)
   list(APPEND onnxruntime_optimizer_src_patterns
     "${ORTTRAINING_SOURCE_DIR}/core/optimizer/*.h"
     "${ORTTRAINING_SOURCE_DIR}/core/optimizer/*.cc"
@@ -101,7 +99,7 @@ onnxruntime_add_static_library(onnxruntime_optimizer ${onnxruntime_optimizer_src
 
 onnxruntime_add_include_to_target(onnxruntime_optimizer onnxruntime_common onnxruntime_framework onnx onnx_proto ${PROTOBUF_LIB} flatbuffers::flatbuffers Boost::mp11 safeint_interface)
 target_include_directories(onnxruntime_optimizer PRIVATE ${ONNXRUNTIME_ROOT})
-if (onnxruntime_ENABLE_TRAINING_APIS)
+if (onnxruntime_ENABLE_TRAINING)
   target_include_directories(onnxruntime_optimizer PRIVATE ${ORTTRAINING_ROOT})
 endif()
 add_dependencies(onnxruntime_optimizer ${onnxruntime_EXTERNAL_DEPENDENCIES})
