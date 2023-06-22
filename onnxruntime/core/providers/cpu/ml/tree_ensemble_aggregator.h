@@ -23,7 +23,7 @@ struct TreeNodeElementId {
   }
   struct hash_fn {
     std::size_t operator()(const TreeNodeElementId& key) const {
-      // Employs Elegant Pairing algorithm to produce a unique positive integer from two positive integers.
+      // Employs Elegant Pairing function to produce a unique non-negative integer from two non-negative integers.
       // Reference: http://szudzik.com/ElegantPairing.pdf
 
       u_int64_t combined_id;
