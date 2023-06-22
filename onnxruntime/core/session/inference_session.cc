@@ -1689,7 +1689,7 @@ common::Status InferenceSession::Initialize() {
           ORT_RETURN_IF_ERROR_SESSIONID_(Model::Save(*model_, session_options_.optimized_model_filepath));
         } else {
           const size_t optimized_model_external_initializers_min_size_in_bytes =
-              std::stoi(session_options_.config_options.GetConfigOrDefault(
+              ParseStringWithClassicLocale<size_t>(session_options_.config_options.GetConfigOrDefault(
                   kOrtSessionOptionsOptimizedModelExternalInitializersMinSizeInBytes, "1024"));
           ORT_RETURN_IF_ERROR_SESSIONID_(Model::SaveWithExternalInitializers(*model_,
                                                                              session_options_.optimized_model_filepath,
