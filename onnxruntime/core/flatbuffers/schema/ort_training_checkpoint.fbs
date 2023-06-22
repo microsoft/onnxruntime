@@ -6,7 +6,7 @@ include "ort.fbs";
 namespace onnxruntime.fbs;
 
 table ModuleState {
-  requires_grad:[Tensor];
+  requires_grad_params:[Tensor];
   frozen_params:[Tensor];
 }
 

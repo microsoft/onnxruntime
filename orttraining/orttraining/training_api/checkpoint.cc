@@ -18,12 +18,15 @@ namespace {
  * @param keys Sorted keys.
  */
 template <typename T>
-void SortKeys(const T& hash_map, InlinedVector<std::string>& keys) {
+InlinedVector<std::string> SortedKeys(const T& hash_map) {
+  InlinedVector<std::string> keys;
   keys.reserve(hash_map.size());
   for ([[maybe_unused]] const auto& [key, value] : hash_map) {
     keys.push_back(key);
   }
   std::sort(keys.begin(), keys.end());
+
+  return keys;
 }
 
 /**
@@ -101,10 +104,7 @@ Status FlatbufferTensorsFromOrtValues(
     const DataTransferManager* data_transfer_manager,
     flatbuffers::FlatBufferBuilder& builder,
     std::vector<flatbuffers::Offset<fbs::Tensor>>& flatbuffer_tensors) {
-  InlinedVector<std::string> sorted_tensor_names;
-  SortKeys(name_to_ort_value, sorted_tensor_names);
-
-  for (const auto& name : sorted_tensor_names) {
+  for (const auto& name : SortedKeys(name_to_ort_value)) {
     const OrtValue& ort_value = name_to_ort_value.at(name);
     flatbuffers::Offset<fbs::Tensor> fbs_tensor;
     ORT_RETURN_IF_ERROR(FlatbufferTensorFromOrtValue(
@@ -115,7 +115,7 @@ Status FlatbufferTensorsFromOrtValues(
           return data_transfer_manager->CopyTensor(src_tensor, dst_tensor);
         },
         builder, fbs_tensor));
-    flatbuffer_tensors.emplace_back(std::move(fbs_tensor));
+    flatbuffer_tensors.push_back(fbs_tensor);
   }
 
   return Status::OK();
@@ -228,7 +228,7 @@ Status FromTensorProtos(
   const auto fbs_non_trainable_tensors = builder.CreateVector(non_trainable_tensors);
 
   fbs::ModuleStateBuilder module_state_builder(builder);
-  module_state_builder.add_requires_grad(fbs_trainable_tensors);
+  module_state_builder.add_requires_grad_params(fbs_trainable_tensors);
   module_state_builder.add_frozen_params(fbs_non_trainable_tensors);
   flatbuffers::Offset<fbs::ModuleState> fbs_module_state = module_state_builder.Finish();
 
@@ -257,15 +257,10 @@ Status FromModuleState(const ModuleCheckpointState& module_state,
     return Status::OK();
   }
 
-  size_t num_requires_grad_params = 0;
-  size_t num_frozen_params = 0;
-  for ([[maybe_unused]] const auto& [name, value] : module_state.named_parameters) {
-    if (value->RequiresGrad()) {
-      num_requires_grad_params++;
-    } else {
-      num_frozen_params++;
-    }
-  }
+  size_t num_requires_grad_params = std::count_if(
+      module_state.named_parameters.begin(), module_state.named_parameters.end(),
+      [](const auto& name_param_pair) { return name_param_pair.second->RequiresGrad(); });
+  size_t num_frozen_params = module_state.named_parameters.size() - num_requires_grad_params;
 
   InlinedHashMap<std::string, OrtValue> requires_grad_params;
   requires_grad_params.reserve(num_requires_grad_params);
@@ -297,7 +292,7 @@ Status FromModuleState(const ModuleCheckpointState& module_state,
   const auto fbs_non_trainable_tensors = builder.CreateVector(non_trainable_tensors);
 
   fbs::ModuleStateBuilder module_state_builder(builder);
-  module_state_builder.add_requires_grad(fbs_trainable_tensors);
+  module_state_builder.add_requires_grad_params(fbs_trainable_tensors);
   module_state_builder.add_frozen_params(fbs_non_trainable_tensors);
   fbs_module_state = module_state_builder.Finish();
 
@@ -321,20 +316,14 @@ Status FromOptimizerState(const OptimizerCheckpointState& optimizer_state,
   }
 
   fbs_optimizer_groups.reserve(optimizer_state.group_named_optimizer_states.size());
-  InlinedVector<std::string> sorted_group_names;
-  SortKeys(optimizer_state.group_named_optimizer_states, sorted_group_names);
-
-  for (const auto& group_name : sorted_group_names) {
+  for (const auto& group_name : SortedKeys(optimizer_state.group_named_optimizer_states)) {
     const std::shared_ptr<GroupOptimizerState>& group_optimizer_state_ptr =
         optimizer_state.group_named_optimizer_states.at(group_name);
 
     std::vector<flatbuffers::Offset<fbs::ParameterOptimizerState>> optimizer_states;
     optimizer_states.reserve(group_optimizer_state_ptr->param_named_optimizer_states.size());
 
-    InlinedVector<std::string> sorted_param_names;
-    SortKeys(group_optimizer_state_ptr->param_named_optimizer_states, sorted_param_names);
-
-    for (const auto& param_name : sorted_param_names) {
+    for (const auto& param_name : SortedKeys(group_optimizer_state_ptr->param_named_optimizer_states)) {
       const auto& param_optimizer_state = group_optimizer_state_ptr->param_named_optimizer_states.at(param_name);
       std::vector<flatbuffers::Offset<fbs::Tensor>> momentums;
       momentums.reserve(param_optimizer_state.size());
@@ -348,7 +337,7 @@ Status FromOptimizerState(const OptimizerCheckpointState& optimizer_state,
       optimizer_state_builder.add_momentums(builder.CreateVector(momentums));
 
       flatbuffers::Offset<fbs::ParameterOptimizerState> fbs_optimizer_state = optimizer_state_builder.Finish();
-      optimizer_states.emplace_back(std::move(fbs_optimizer_state));
+      optimizer_states.push_back(fbs_optimizer_state);
     }
 
     const auto fbs_group_name = builder.CreateString(group_name);
@@ -359,8 +348,8 @@ Status FromOptimizerState(const OptimizerCheckpointState& optimizer_state,
     optimizer_state_builder.add_initial_learning_rate(group_optimizer_state_ptr->initial_lr);
     optimizer_state_builder.add_step(group_optimizer_state_ptr->step);
     optimizer_state_builder.add_optimizer_states(fbs_optimizer_states);
-    const auto fbs_optimizer_group = optimizer_state_builder.Finish();
-    fbs_optimizer_groups.emplace_back(std::move(fbs_optimizer_group));
+    auto fbs_optimizer_group = optimizer_state_builder.Finish();
+    fbs_optimizer_groups.push_back(fbs_optimizer_group);
   }
 
   return Status::OK();
@@ -376,21 +365,14 @@ Status FromOptimizerState(const OptimizerCheckpointState& optimizer_state,
  */
 Status FromPropertyBag(const PropertyBag& property_bag, flatbuffers::FlatBufferBuilder& builder,
                        flatbuffers::Offset<fbs::PropertyBag>& fbs_property_bag) {
-  if (property_bag.Size() == 0U) {
+  if (property_bag.size() == 0U) {
     return Status::OK();
   }
-
-  InlinedVector<std::string> sorted_property_names;
-  sorted_property_names.reserve(property_bag.Size());
-  for ([[maybe_unused]] const auto& [name, value] : property_bag) {
-    sorted_property_names.push_back(name);
-  }
-  std::sort(sorted_property_names.begin(), sorted_property_names.end());
 
   std::vector<flatbuffers::Offset<fbs::IntProperty>> ints;
   std::vector<flatbuffers::Offset<fbs::FloatProperty>> floats;
   std::vector<flatbuffers::Offset<fbs::StringProperty>> strings;
-  for (const auto& name : sorted_property_names) {
+  for (const auto& name : SortedKeys(property_bag)) {
     const auto& value = property_bag.GetProperty<PropertyDataType>(name);
     const auto fbs_property_name = builder.CreateString(name);
     if (std::holds_alternative<int64_t>(value)) {
@@ -398,20 +380,20 @@ Status FromPropertyBag(const PropertyBag& property_bag, flatbuffers::FlatBufferB
       int_property_builder.add_name(fbs_property_name);
       int_property_builder.add_value(std::get<int64_t>(value));
       flatbuffers::Offset<fbs::IntProperty> property = int_property_builder.Finish();
-      ints.emplace_back(std::move(property));
+      ints.push_back(property);
     } else if (std::holds_alternative<float>(value)) {
       fbs::FloatPropertyBuilder float_property_builder(builder);
       float_property_builder.add_name(fbs_property_name);
       float_property_builder.add_value(std::get<float>(value));
       flatbuffers::Offset<fbs::FloatProperty> property = float_property_builder.Finish();
-      floats.emplace_back(std::move(property));
+      floats.push_back(property);
     } else if (std::holds_alternative<std::string>(value)) {
       const auto fbs_property_value = builder.CreateString(std::get<std::string>(value));
       fbs::StringPropertyBuilder string_property_builder(builder);
       string_property_builder.add_name(fbs_property_name);
       string_property_builder.add_value(fbs_property_value);
       flatbuffers::Offset<fbs::StringProperty> property = string_property_builder.Finish();
-      strings.emplace_back(std::move(property));
+      strings.push_back(property);
     } else {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Unknown property type encountered in the property bag.");
     }
@@ -506,7 +488,7 @@ Status FromFile(const PathString& checkpoint_path, InlinedVector<uint8_t>& check
  */
 Status ToModuleState(
     const onnxruntime::fbs::ModuleState& fbs_module_state, ModuleCheckpointState& module_state) {
-  const auto* requires_grad_params = fbs_module_state.requires_grad();
+  const auto* requires_grad_params = fbs_module_state.requires_grad_params();
   ORT_RETURN_IF_NOT(requires_grad_params, "Expected: Valid trainable tensors flatbuffer.",
                     " Actual: Encountered a nullptr. Checkpoint file is invalid");
   flatbuffers::uoffset_t trainable_params_size = requires_grad_params->size();
@@ -516,7 +498,7 @@ Status ToModuleState(
 
   for (auto& [name, value] : trainable_params) {
     auto param = std::make_shared<Parameter>(name, value, true);
-    module_state.named_parameters.emplace(std::move(name), std::move(param));
+    module_state.named_parameters.emplace(std::move(name), param);
   }
 
   const auto* frozen_params = fbs_module_state.frozen_params();
@@ -529,7 +511,7 @@ Status ToModuleState(
 
   for (auto& [name, value] : non_trainable_params) {
     auto param = std::make_shared<Parameter>(name, value, false);
-    module_state.named_parameters.emplace(std::move(name), std::move(param));
+    module_state.named_parameters.emplace(std::move(name), param);
   }
 
   return Status::OK();
@@ -549,7 +531,7 @@ Status ToOptimizerState(
     ORT_RETURN_IF_NOT(optimizer_group, "Expected: Valid optimizer groups flatbuffer.",
                       " Actual: Encountered a nullptr. Checkpoint file is invalid");
 
-    const std::string group_name = optimizer_group->group_name()->str();
+    std::string group_name = optimizer_group->group_name()->str();
     const int64_t step = optimizer_group->step();
     const float initial_learning_rate = optimizer_group->initial_learning_rate();
 
@@ -560,6 +542,9 @@ Status ToOptimizerState(
     [[maybe_unused]] auto [optimizer_state_it, inserted] =
         optimizer_state.group_named_optimizer_states.emplace(
             std::move(group_name), std::make_shared<GroupOptimizerState>());
+
+    ORT_RETURN_IF_NOT(inserted, "Encountered a duplicate optimizer group name: ", group_name,
+                      ". Checkpoint file is invalid.");
 
     optimizer_state_it->second->step = step;
     optimizer_state_it->second->initial_lr = initial_learning_rate;
@@ -654,7 +639,7 @@ Status ToModelProto(const PathString& checkpoint_path,
     return Status::OK();
   }
 
-  const auto* requires_grad_params = module_state->requires_grad();
+  const auto* requires_grad_params = module_state->requires_grad_params();
   ORT_RETURN_IF_NOT(requires_grad_params,
                     "Checkpoint is invalid. Expected: Valid trainable params flatbuffer. Actual: nullptr.");
 
@@ -663,7 +648,8 @@ Status ToModelProto(const PathString& checkpoint_path,
                     "Checkpoint is invalid. Expected: Valid non-trainable params flatbuffer. Actual: nullptr.");
 
   InlinedHashMap<std::string, ONNX_NAMESPACE::TensorProto> param_tensor_protos;
-  param_tensor_protos.reserve(requires_grad_params->size() + frozen_params->size());
+  param_tensor_protos.reserve(
+      static_cast<size_t>(requires_grad_params->size()) + static_cast<size_t>(frozen_params->size()));
 
   const auto flatbuffer_tensors_to_tensor_protos = [&param_tensor_protos](const auto& flatbuffer_tensors) {
     OrtFormatLoadOptions load_options{false, false};

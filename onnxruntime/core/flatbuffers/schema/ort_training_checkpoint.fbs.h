@@ -38,20 +38,20 @@ struct CheckpointBuilder;
 struct ModuleState FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   typedef ModuleStateBuilder Builder;
   enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
-    VT_REQUIRES_GRAD = 4,
+    VT_REQUIRES_GRAD_PARAMS = 4,
     VT_FROZEN_PARAMS = 6
   };
-  const flatbuffers::Vector<flatbuffers::Offset<onnxruntime::fbs::Tensor>> *requires_grad() const {
-    return GetPointer<const flatbuffers::Vector<flatbuffers::Offset<onnxruntime::fbs::Tensor>> *>(VT_REQUIRES_GRAD);
+  const flatbuffers::Vector<flatbuffers::Offset<onnxruntime::fbs::Tensor>> *requires_grad_params() const {
+    return GetPointer<const flatbuffers::Vector<flatbuffers::Offset<onnxruntime::fbs::Tensor>> *>(VT_REQUIRES_GRAD_PARAMS);
   }
   const flatbuffers::Vector<flatbuffers::Offset<onnxruntime::fbs::Tensor>> *frozen_params() const {
     return GetPointer<const flatbuffers::Vector<flatbuffers::Offset<onnxruntime::fbs::Tensor>> *>(VT_FROZEN_PARAMS);
   }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
-           VerifyOffset(verifier, VT_REQUIRES_GRAD) &&
-           verifier.VerifyVector(requires_grad()) &&
-           verifier.VerifyVectorOfTables(requires_grad()) &&
+           VerifyOffset(verifier, VT_REQUIRES_GRAD_PARAMS) &&
+           verifier.VerifyVector(requires_grad_params()) &&
+           verifier.VerifyVectorOfTables(requires_grad_params()) &&
            VerifyOffset(verifier, VT_FROZEN_PARAMS) &&
            verifier.VerifyVector(frozen_params()) &&
            verifier.VerifyVectorOfTables(frozen_params()) &&
@@ -63,8 +63,8 @@ struct ModuleStateBuilder {
   typedef ModuleState Table;
   flatbuffers::FlatBufferBuilder &fbb_;
   flatbuffers::uoffset_t start_;
-  void add_requires_grad(flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<onnxruntime::fbs::Tensor>>> requires_grad) {
-    fbb_.AddOffset(ModuleState::VT_REQUIRES_GRAD, requires_grad);
+  void add_requires_grad_params(flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<onnxruntime::fbs::Tensor>>> requires_grad_params) {
+    fbb_.AddOffset(ModuleState::VT_REQUIRES_GRAD_PARAMS, requires_grad_params);
   }
   void add_frozen_params(flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<onnxruntime::fbs::Tensor>>> frozen_params) {
     fbb_.AddOffset(ModuleState::VT_FROZEN_PARAMS, frozen_params);
@@ -83,23 +83,23 @@ struct ModuleStateBuilder {
 
 inline flatbuffers::Offset<ModuleState> CreateModuleState(
     flatbuffers::FlatBufferBuilder &_fbb,
-    flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<onnxruntime::fbs::Tensor>>> requires_grad = 0,
+    flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<onnxruntime::fbs::Tensor>>> requires_grad_params = 0,
     flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<onnxruntime::fbs::Tensor>>> frozen_params = 0) {
   ModuleStateBuilder builder_(_fbb);
   builder_.add_frozen_params(frozen_params);
-  builder_.add_requires_grad(requires_grad);
+  builder_.add_requires_grad_params(requires_grad_params);
   return builder_.Finish();
 }
 
 inline flatbuffers::Offset<ModuleState> CreateModuleStateDirect(
     flatbuffers::FlatBufferBuilder &_fbb,
-    const std::vector<flatbuffers::Offset<onnxruntime::fbs::Tensor>> *requires_grad = nullptr,
+    const std::vector<flatbuffers::Offset<onnxruntime::fbs::Tensor>> *requires_grad_params = nullptr,
     const std::vector<flatbuffers::Offset<onnxruntime::fbs::Tensor>> *frozen_params = nullptr) {
-  auto requires_grad__ = requires_grad ? _fbb.CreateVector<flatbuffers::Offset<onnxruntime::fbs::Tensor>>(*requires_grad) : 0;
+  auto requires_grad_params__ = requires_grad_params ? _fbb.CreateVector<flatbuffers::Offset<onnxruntime::fbs::Tensor>>(*requires_grad_params) : 0;
   auto frozen_params__ = frozen_params ? _fbb.CreateVector<flatbuffers::Offset<onnxruntime::fbs::Tensor>>(*frozen_params) : 0;
   return onnxruntime::fbs::CreateModuleState(
       _fbb,
-      requires_grad__,
+      requires_grad_params__,
       frozen_params__);
 }
 

@@ -1,4 +1,4 @@
-# ORT File Format
+# ORT Flatbuffer Schemas
 This directory contains [the ORT file format schema](ort.fbs) and [the generated C++ header file](ort.fbs.h) for the
 ORT file format.
 This directory also contains [the on-device training checkpoint schema](ort_training_checkpoint.fbs) and

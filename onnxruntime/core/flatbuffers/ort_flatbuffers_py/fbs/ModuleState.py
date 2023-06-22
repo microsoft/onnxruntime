@@ -25,7 +25,7 @@ class ModuleState(object):
         self._tab = flatbuffers.table.Table(buf, pos)
 
     # ModuleState
-    def RequiresGrad(self, j):
+    def RequiresGradParams(self, j):
         o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(4))
         if o != 0:
             x = self._tab.Vector(o)
@@ -38,14 +38,14 @@ class ModuleState(object):
         return None
 
     # ModuleState
-    def RequiresGradLength(self):
+    def RequiresGradParamsLength(self):
         o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(4))
         if o != 0:
             return self._tab.VectorLen(o)
         return 0
 
     # ModuleState
-    def RequiresGradIsNone(self):
+    def RequiresGradParamsIsNone(self):
         o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(4))
         return o == 0
 
@@ -75,8 +75,8 @@ class ModuleState(object):
         return o == 0
 
 def ModuleStateStart(builder): builder.StartObject(2)
-def ModuleStateAddRequiresGrad(builder, requiresGrad): builder.PrependUOffsetTRelativeSlot(0, flatbuffers.number_types.UOffsetTFlags.py_type(requiresGrad), 0)
-def ModuleStateStartRequiresGradVector(builder, numElems): return builder.StartVector(4, numElems, 4)
+def ModuleStateAddRequiresGradParams(builder, requiresGradParams): builder.PrependUOffsetTRelativeSlot(0, flatbuffers.number_types.UOffsetTFlags.py_type(requiresGradParams), 0)
+def ModuleStateStartRequiresGradParamsVector(builder, numElems): return builder.StartVector(4, numElems, 4)
 def ModuleStateAddFrozenParams(builder, frozenParams): builder.PrependUOffsetTRelativeSlot(1, flatbuffers.number_types.UOffsetTFlags.py_type(frozenParams), 0)
 def ModuleStateStartFrozenParamsVector(builder, numElems): return builder.StartVector(4, numElems, 4)
 def ModuleStateEnd(builder): return builder.EndObject()

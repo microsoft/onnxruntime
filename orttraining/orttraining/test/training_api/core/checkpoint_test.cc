@@ -319,7 +319,7 @@ TEST(CheckpointApiTest, SaveCustomPropertyAsCheckpoint_ThenLoad_CPU) {
   CheckpointState checkpoint_state_to_load;
   ASSERT_STATUS_OK(LoadCheckpoint(checkpoint_path, checkpoint_state_to_load));
   PropertyBag& restored_property_bag = checkpoint_state_to_load.property_bag;
-  ASSERT_EQ(restored_property_bag.Size(), 3);
+  ASSERT_EQ(restored_property_bag.size(), 3);
   float restored_f_data = restored_property_bag.GetProperty<float>(f_property_name);
   ASSERT_FLOAT_EQ(f_data, restored_f_data);
   int64_t restored_i_data = restored_property_bag.GetProperty<int64_t>(i_property_name);
