@@ -498,7 +498,7 @@ Status ToModuleState(
 
   for (auto& [name, value] : trainable_params) {
     auto param = std::make_shared<Parameter>(name, value, true);
-    module_state.named_parameters.emplace(std::move(name), param);
+    module_state.named_parameters.insert({name, param});
   }
 
   const auto* frozen_params = fbs_module_state.frozen_params();
@@ -511,7 +511,7 @@ Status ToModuleState(
 
   for (auto& [name, value] : non_trainable_params) {
     auto param = std::make_shared<Parameter>(name, value, false);
-    module_state.named_parameters.emplace(std::move(name), param);
+    module_state.named_parameters.insert({name, param});
   }
 
   return Status::OK();
