@@ -362,7 +362,7 @@ endif()
 list(APPEND onnxruntime_test_providers_src ${onnxruntime_test_providers_cpu_src})
 
 if (onnxruntime_USE_CUDA AND NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_REDUCED_OPS_BUILD)
-  file(GLOB_RECURSE onnxruntime_test_providers_cuda_src CONFIGURE_DEPENDS
+  file(GLOB onnxruntime_test_providers_cuda_src CONFIGURE_DEPENDS
     "${TEST_SRC_DIR}/providers/cuda/*"
     )
   list(APPEND onnxruntime_test_providers_src ${onnxruntime_test_providers_cuda_src})
@@ -760,6 +760,15 @@ endif()
 if (onnxruntime_USE_CUDA)
   onnxruntime_add_static_library(onnxruntime_test_cuda_ops_lib ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/cuda_ops.cu)
   list(APPEND onnxruntime_test_common_libs onnxruntime_test_cuda_ops_lib)
+  file(GLOB onnxruntime_test_providers_cuda_ut_src CONFIGURE_DEPENDS
+    "${TEST_SRC_DIR}/providers/cuda/test_cases/*"
+  )
+  # onnxruntime_providers_cuda_ut is only for unittests.
+  onnxruntime_add_shared_library_module(onnxruntime_providers_cuda_ut ${onnxruntime_test_providers_cuda_ut_src} $<TARGET_OBJECTS:onnxruntime_providers_cuda_obj>)
+  config_cuda_provider_shared_module(onnxruntime_providers_cuda_ut)
+  onnxruntime_add_include_to_target(onnxruntime_providers_cuda_ut GTest::gtest GTest::gmock)
+  target_link_libraries(onnxruntime_providers_cuda_ut PRIVATE GTest::gtest GTest::gmock)
+  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_cuda_ut)
 endif()
 
 set(all_dependencies ${onnxruntime_test_providers_dependencies} )
