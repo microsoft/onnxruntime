@@ -389,8 +389,8 @@ Status LoadOrtTensorOrtFormat(const fbs::Tensor& fbs_tensor, const AllocatorPtr 
   const DataTypeImpl* tensor_dtype = DataTypeImpl::TensorTypeFromONNXEnum(
                                          tensor_data_type)
                                          ->GetElementType();
-  ort_tensor = std::move(onnxruntime::Tensor(
-      tensor_dtype, TensorShape(tensor_dims->data(), tensor_dims->size()), allocator));
+  ort_tensor = onnxruntime::Tensor(
+      tensor_dtype, TensorShape(tensor_dims->data(), tensor_dims->size()), allocator);
 
   // The tensor proto is used as a dummy here. The actual data is stored in the raw_data field of the flatbuffer.
   // The data is copied from the raw_data field to the ort_tensor.
