@@ -1725,7 +1725,20 @@ common::Status InferenceSession::Initialize() {
       if (saving_ort_format) {
         ORT_RETURN_IF_ERROR_SESSIONID_(SaveToOrtFormat(session_options_.optimized_model_filepath));
       } else {
-        ORT_RETURN_IF_ERROR_SESSIONID_(Model::Save(*model_, session_options_.optimized_model_filepath));
+        const std::string optimized_model_external_initializers_file_name =
+            session_options_.config_options.GetConfigOrDefault(
+                kOrtSessionOptionsOptimizedModelExternalInitializersFileName, "");
+        if (optimized_model_external_initializers_file_name.empty()) {
+          ORT_RETURN_IF_ERROR_SESSIONID_(Model::Save(*model_, session_options_.optimized_model_filepath));
+        } else {
+          const size_t optimized_model_external_initializers_min_size_in_bytes =
+              ParseStringWithClassicLocale<size_t>(session_options_.config_options.GetConfigOrDefault(
+                  kOrtSessionOptionsOptimizedModelExternalInitializersMinSizeInBytes, "1024"));
+          ORT_RETURN_IF_ERROR_SESSIONID_(Model::SaveWithExternalInitializers(*model_,
+                                                                             session_options_.optimized_model_filepath,
+                                                                             optimized_model_external_initializers_file_name,
+                                                                             optimized_model_external_initializers_min_size_in_bytes));
+        }
       }
     }
 

@@ -65,6 +65,10 @@ module.exports = function(config) {
           base: 'ChromeCanary',
           flags: chromeFlags
         },
+        ChromeHeadlessTest: {
+          base: 'ChromeHeadless',
+          flags: chromeFlags
+        },
         EdgeTest: {
           base: 'Edge',
           flags: chromeFlags
