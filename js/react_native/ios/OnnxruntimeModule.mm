@@ -22,7 +22,7 @@
 #include "onnxruntime_extensions.h"
 #else
 #include "onnxruntime/coreml_provider_factory.h"
-#include "onnxruntime/onnxruntime_cxx_api.h"
+#include <onnxruntime/onnxruntime_cxx_api.h>
 #endif
 
 @implementation OnnxruntimeModule
