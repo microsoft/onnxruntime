@@ -106,6 +106,8 @@ See more information on the TensorRT Execution Provider [here](../execution-prov
    * By default, ONNX Runtime uses TensorRT built-in parser library, instead of generating the parser library from open-sourced [onnx-tensorrt](https://github.com/onnx/onnx-tensorrt/tree/main) submodule. 
      * To update TensorRT parser version, simply linking path to new TensorRT folder when building Onnx Runtime. 
      * To generate open-sourced parser when building ONNX Runtime, add additional `--use_tensorrt_oss_parser` parameter next to the parameter `--use_tensorrt` in build commands below.
+       * The default version of open-sourced onnx-tensorrt parser is encoded in cmake/deps.txt.
+       * To specify a different version, please update the commit link for the onnx-tensorrt repository, and run `sha1sum` command on the onnx-tensorrt zip file to acquire the SHA1 hash
 
 ### Build Instructions
 {: .no_toc }
@@ -115,11 +117,7 @@ See more information on the TensorRT Execution Provider [here](../execution-prov
 # to build with tensorrt built-in parser
 .\build.bat --cudnn_home <path to cuDNN home> --cuda_home <path to CUDA home> --use_tensorrt --tensorrt_home <path to TensorRT home> --cmake_generator "Visual Studio 17 2022"
 
-# to build with open-sourced parser. e.g. TensorRT 8.6-GA
-cd cmake/external/onnx-tensorrt
-git remote update
-git checkout 8.6-GA
-cd ../../..
+# to build with specific version of open-sourced onnx-tensorrt parser configured in cmake/deps.txt
 .\build.bat --cudnn_home <path to cuDNN home> --cuda_home <path to CUDA home> --use_tensorrt --tensorrt_home <path to TensorRT home> --use_tensorrt_oss_parser --cmake_generator "Visual Studio 17 2022" 
 ```
 
@@ -129,11 +127,7 @@ cd ../../..
 # to build with tensorrt built-in parser
 ./build.sh --cudnn_home <path to cuDNN e.g. /usr/lib/x86_64-linux-gnu/> --cuda_home <path to folder for CUDA e.g. /usr/local/cuda> --use_tensorrt --tensorrt_home <path to TensorRT home>
 
-# to build with open-sourced parser. e.g. TensorRT 8.6-GA
-cd cmake/external/onnx-tensorrt
-git remote update
-git checkout 8.6-GA
-cd ../../..
+# to build with specific version of open-sourced onnx-tensorrt parser configured in cmake/deps.txt
 ./build.sh  --cudnn_home <path to cuDNN e.g. /usr/lib/x86_64-linux-gnu/> --cuda_home <path to folder for CUDA e.g. /usr/local/cuda> --use_tensorrt --use_tensorrt_oss_parser --tensorrt_home <path to TensorRT home> --skip_submodule_sync
 ```
 
