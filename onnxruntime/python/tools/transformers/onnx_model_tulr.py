@@ -16,8 +16,10 @@ import numpy as np
 logger = logging.getLogger(__name__)
 
 #python optimizer.py --input /home/wy/Turing/tulrv6/base/model.onnx --output /home/wy/Turing/tulrv6/base/opt16/model.onnx --model_type tulr --num_heads 12 --hidden_size 768 --enable_gelu_approximation --use_external_data_format --float16
-#python optimizer.py --input /home/wy/Turing/tulrv6/large/model.onnx --output /home/wy/Turing/tulrv6/large/opt16/model.onnx --model_type tulr --num_heads 16 --hidden_size 1024 --enable_gelu_approximation --use_external_data_format --float16
+#python optimizer.py --input /home/wy/Turing/tulrv6/large/model.onnx --output /home/wy/Turing/tulrv6/large/opt16/model.onnx --model_type tulr --num_heads 16 --hidden_size 1024 --use_external_data_format --float16 --enable_gelu_approximation
 #python optimizer.py --input /home/wy/Turing/tulrv6/spacev6/model_best.onnx --output /home/wy/Turing/tulrv6/spacev6/opt16/model_best.onnx --model_type tulr --num_heads 12 --hidden_size 768 --enable_gelu_approximation --use_external_data_format --float16
+
+#python optimizer.py --input /data/wy/original/model.onnx --output /data/wy/cutlass_2/model.onnx --model_type tulr --num_heads 16 --hidden_size 1024 --enable_gelu_approximation --use_external_data_format --float16
 
 class FusionTulrAttention(FusionAttention):
     """
@@ -522,6 +524,7 @@ class TulrOnnxModel(BertOnnxModel):
 
     def fuse_attention(self):
         self.attention_fusion.apply()
+        print("fuse attention")
 
     def postprocess(self):
         self.rpb_fusion.apply()
@@ -529,6 +532,7 @@ class TulrOnnxModel(BertOnnxModel):
         self.clean_graph()
         self.prune_graph()
         change_attn_mask_to_1d(self.model.graph)
+        print("postprocess")
 
 
 
