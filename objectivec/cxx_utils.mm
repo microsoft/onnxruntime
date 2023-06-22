@@ -15,11 +15,11 @@ NS_ASSUME_NONNULL_BEGIN
 
 namespace utils {
 
-NSString* toNSString(const std::string& str) {
+NSString* _Nullable toNSString(const std::string& str) {
   return [NSString stringWithUTF8String:str.c_str()];
 }
 
-NSString* toNullableNSString(const std::optional<std::string>& str) {
+NSString* _Nullable toNullableNSString(const std::optional<std::string>& str) {
   if (str.has_value()) {
     return [NSString stringWithUTF8String:str.value().c_str()];
   }
@@ -48,12 +48,13 @@ std::vector<std::string> toStdStringVector(NSArray<NSString*>* strs) {
 NSArray<NSString*>* toNSStringNSArray(const std::vector<std::string>& strs) {
   NSMutableArray<NSString*>* result = [NSMutableArray arrayWithCapacity:strs.size()];
   for (const std::string& str : strs) {
-    [result addObject:[NSString stringWithUTF8String:str.c_str()]];
+    NSString* _Nonnull nsStr = [NSString stringWithUTF8String:str.c_str()];
+    [result addObject:nsStr];
   }
   return result;
 }
 
-NSArray<ORTValue*>* wrapUnownedCAPIOrtValues(const std::vector<OrtValue*>& values, NSError** error) {
+NSArray<ORTValue*>* _Nullable wrapUnownedCAPIOrtValues(const std::vector<OrtValue*>& values, NSError** error) {
   NSMutableArray<ORTValue*>* result = [NSMutableArray arrayWithCapacity:values.size()];
   for (size_t i = 0; i < values.size(); ++i) {
     ORTValue* val = [[ORTValue alloc] initWithCAPIOrtValue:values[i] externalTensorData:nil error:error];
