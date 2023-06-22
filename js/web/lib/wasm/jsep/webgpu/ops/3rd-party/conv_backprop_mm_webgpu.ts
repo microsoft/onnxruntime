@@ -85,9 +85,9 @@ const convTranspose2dCommonSnippet =
   }
 
   fn mm_readB(batch: i32, row : i32, col : i32) -> ${typeSnippet(innerElementSize)} {
-    let coordX = filterDims.x - 1 -
+    let coordX = filterDims[0] - 1 -
         row / (filterDims[1] * outBackprop[3]);
-    let coordY = filterDims.y - 1 -
+    let coordY = filterDims[1] - 1 -
         (row / outBackprop[3]) % filterDims[1];
     if (row < dimInner && col < dimBOuter &&
         coordX >= 0 && coordY >= 0) {
@@ -101,7 +101,7 @@ const convTranspose2dCommonSnippet =
   fn mm_write(batch: i32, row : i32, col : i32, valueInput : ${typeSnippet(innerElementSize)}) {
     if (row < dimAOuter && col < dimBOuter) {
       var value = valueInput;
-      let outWidth =${isChannelsLast ? 'outShape[1]' : 'outShape[2]'};
+      let outWidth =${isChannelsLast ? 'outShape[2]' : 'outShape[3]'};
       let outCoord = vec4<i32>(
           batch,
           row / outWidth,
@@ -120,13 +120,10 @@ export const createConvTranspose2DMatMulProgramInfo =
       const isChannelsLast = attributes.format === 'NHWC';
       const inChannels = isChannelsLast ? inputs[0].dims[3] : inputs[0].dims[1];
       const batchSize = outputShape[0];
-      const outWidth = outputShape[isChannelsLast ? 1 : 2];
-      const outHeight = outputShape[isChannelsLast ? 2 : 3];
-      const outChannels = outputShape[isChannelsLast ? 3 : 1];
-      const isVec4 = (((inChannels % 4 === 0 || inChannels % 3 === 0) && isChannelsLast) ||
-                      (outWidth % 4 === 0 && !isChannelsLast)) &&
-          outChannels % 4 === 0;
-
+      const outWidth = isChannelsLast ? outputShape[2] : outputShape[3];
+      const outHeight = isChannelsLast ? outputShape[1] : outputShape[2];
+      const outChannels = isChannelsLast ? outputShape[3] : outputShape[1];
+      const isVec4 = inChannels % 4 === 0 && outChannels % 4 === 0;
       // TODO: fine tune size
       const dispatchX = isChannelsLast ? outChannels : outWidth * outHeight;
       const dispatchY = isChannelsLast ? outWidth * outHeight : outChannels;
