@@ -189,7 +189,7 @@ Optimizer::Optimizer(const std::string& optim_path_or_bytes,
                      const Environment& env,
                      const std::vector<std::shared_ptr<IExecutionProvider>>& providers)
     : optim_sess_(std::make_unique<InferenceSession>(session_options, env)), state_(state) {
-  Initialize(optim_path_or_bytes, session_options, env, providers);
+  Initialize(optim_path_or_bytes, providers);
 
   ORT_ENFORCE(state != nullptr, "Checkpoint state cannot be null.");
   auto g_it = state_->optimizer_checkpoint_state.group_named_optimizer_states.find(GROUP_ZERO_NAME);
@@ -206,11 +206,7 @@ Optimizer::Optimizer(const std::string& optim_path_or_bytes,
 }
 
 void Optimizer::Initialize(const std::string& optim_path_or_bytes,
-                           const onnxruntime::SessionOptions& session_options,
-                           const Environment& env,
                            const std::vector<std::shared_ptr<IExecutionProvider>>& providers) {
-  optim_sess_ = std::make_unique<InferenceSession>(session_options, env);
-
   for (const auto& execution_provider : providers) {
     ORT_THROW_IF_ERROR(optim_sess_->RegisterExecutionProvider(execution_provider));
   }

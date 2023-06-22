@@ -166,6 +166,9 @@ struct OrtTrainingApi {
    *
    * This function creates a training session based on the env and session options provided that can
    * begin or resume training from a given checkpoint state for the given onnx models.
+   * The inference sessions within OrtTrainingSession will share allocators in OrtEnv object, but different
+   * OrtTrainingSession objects will NOT share allocators even under the same OrtEnv object.
+   * *NOT* thread-safe as the register shared allocator logic will throw exception.
    * The checkpoint state represents the parameters of the training session which will be moved
    * to the device specified by the user through the session options (if necessary).
    * The training session requires four training artifacts

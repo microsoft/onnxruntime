@@ -40,13 +40,13 @@ ORT_API_STATUS_IMPL(OrtTrainingApis::CreateTrainingSession, _In_ const OrtEnv* e
 
   ORT_TRY {
     using ProvidersType = std::vector<std::shared_ptr<onnxruntime::IExecutionProvider>>;
-    onnxruntime::SessionOptions so{};
     if (options != nullptr) {
-      so = options->value;
-      ORT_THROW_IF_ERROR(so.config_options.AddConfigEntry(kOrtSessionOptionsConfigUseEnvAllocators, "1"));
+      OrtSessionOptions* opt = const_cast<OrtSessionOptions*>(options);
+      ORT_THROW_IF_ERROR(opt->value.config_options.AddConfigEntry(kOrtSessionOptionsConfigUseEnvAllocators, "1"));
     }
     train_sess = std::make_unique<onnxruntime::training::api::TrainingSession>(
-        env->GetEnvironment(), so,
+        env->GetEnvironment(),
+        options == nullptr ? onnxruntime::SessionOptions() : options->value,
         options == nullptr ? ProvidersType() : CreateProviders(options->provider_factories),
         chkpt_state,
         onnxruntime::training::api::ModelIdentifiers(

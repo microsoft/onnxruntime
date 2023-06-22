@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/session/onnxruntime_session_options_config_keys.h"
 #include "orttraining/training_api/training_session.h"
 
 namespace onnxruntime {
@@ -13,10 +14,15 @@ TrainingSession::TrainingSession(Environment& session_env,
                                  CheckpointState* state,
                                  const ModelIdentifiers& model_identifiers)
     : state_{state} {
-  for (auto& provider : providers) {
-    auto allocators = provider->CreatePreferredAllocators();
-    for (auto& alloc : allocators) {
-      ORT_THROW_IF_ERROR(session_env.RegisterAllocator(std::move(alloc)));
+  bool use_env_allocators = session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigUseEnvAllocators, "0") == "1";
+  std::vector<OrtMemoryInfo> mem_infos;
+  if (use_env_allocators) {
+    for (auto& provider : providers) {
+      auto allocators = provider->CreatePreferredAllocators();
+      for (auto& alloc : allocators) {
+        mem_infos.push_back(alloc->Info());
+        ORT_THROW_IF_ERROR(session_env.RegisterAllocator(std::move(alloc)));
+      }
     }
   }
   module_ = std::make_unique<Module>(model_identifiers.train_model, state_,
@@ -25,6 +31,12 @@ TrainingSession::TrainingSession(Environment& session_env,
     optimizer_ = std::make_unique<Optimizer>(model_identifiers.optim_model.value(), state_, session_options, session_env, providers);
   } else {
     optimizer_ = std::unique_ptr<Optimizer>();
+  }
+
+  if (use_env_allocators) {
+    for (auto& mem_info : mem_infos) {
+      ORT_THROW_IF_ERROR(session_env.UnregisterAllocator(mem_info));
+    }
   }
 }
 

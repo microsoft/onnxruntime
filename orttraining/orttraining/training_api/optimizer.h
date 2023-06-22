@@ -121,8 +121,6 @@ struct Optimizer {
 
  private:
   void Initialize(const std::string& optim_path_or_bytes,
-                  const onnxruntime::SessionOptions& session_options,
-                  const Environment& env,
                   const std::vector<std::shared_ptr<IExecutionProvider>>& providers);
 
   int64_t GetStep() const {

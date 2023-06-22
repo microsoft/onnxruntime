@@ -11,6 +11,12 @@
 
 #include "orttraining/test/training_api/core/data_utils.h"
 #include "test/util/include/temp_dir.h"
+#ifdef USE_CUDA
+#include "core/providers/cuda/cuda_provider_options.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
+#include "core/session/ort_env.h"
+#endif  // USE_CUDA
+
 
 namespace onnxruntime::training::test {
 
@@ -138,4 +144,21 @@ TEST(TrainingCApiTest, FromBuffer) {
   training_session.FromBuffer(buffer);
 }
 
+#ifdef USE_CUDA
+TEST(TrainingCApiTest, ShareEnvAllocators) {
+  Ort::SessionOptions so{};
+  so.AppendExecutionProvider_CUDA_V2(OrtCUDAProviderOptionsV2{}); // TODO: seems no way to append CPU EP
+
+  auto model_uri = MODEL_FOLDER "training_model.onnx";
+
+  Ort::Env env;
+  Ort::CheckpointState checkpoint_state = Ort::CheckpointState::LoadCheckpoint(MODEL_FOLDER "checkpoint.ckpt");
+  Ort::TrainingSession training_session = Ort::TrainingSession(env, so, checkpoint_state, model_uri);
+  ASSERT_EQ("1", so.GetConfigEntry(kOrtSessionOptionsConfigUseEnvAllocators)) << "By default training session will share env allocators";
+  ASSERT_EQ(0L, ((OrtEnv*)env)->GetEnvironment().GetRegisteredSharedAllocators().size()) << "Shared allocators in Env will be cleared once TrainingSession object is created";
+
+  // TODO: check new_training_session is using different shared allocators
+  Ort::TrainingSession new_training_session = Ort::TrainingSession(env, so, checkpoint_state, model_uri);
+}
+#endif  // USE_CUDA
 }  // namespace onnxruntime::training::test
