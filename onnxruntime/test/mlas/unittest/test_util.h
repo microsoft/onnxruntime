@@ -127,9 +127,10 @@ class MatrixGuardBuffer {
           int FillValue = 11;
           T* FillAddress = start;
           for (size_t i = 0; i < size; i++) {
-            *FillAddress++ = (T)(FillValue - offset);
+            auto itemv = FillValue - offset;
+            *FillAddress++ = (T)(itemv);
 
-            FillValue+=7;
+            FillValue += 7;
             FillValue %= range;
           }
         });

@@ -56,7 +56,7 @@ usage(const char* cli)
     std::cout << "    --output_file {PATH}." << std::endl;
     std::cout << "            Path to the output file. Write to std out when missing" << std::endl;
     std::cout << "    --output_format {txt,bin}" << std::endl;
-    std::cout << "            txt: (default) text format: space seperated numbers." << std::endl;
+    std::cout << "            txt: (default) text format: space separated numbers." << std::endl;
     std::cout << "            bin: Binary format, can not be output to std out." << std::endl;
     std::cout << std::endl;
 }
@@ -96,10 +96,13 @@ parseArgs(int argc, char* argv[], Cli& cli)
         return false;
     }
 
-    try {
-        cli.num_rows = std::stoi(argv[2]);
-        cli.num_cols = std::stoi(argv[3]);
-    } catch (...) {
+    errno = 0;
+    cli.num_rows = (size_t)strtoul(argv[2], nullptr, 0);
+    if (cli.num_rows == 0 || errno != 0) {
+        return false;
+    }
+    cli.num_cols = (size_t)strtoul(argv[3], nullptr, 0);
+    if (cli.num_cols == 0 || errno != 0) {
         return false;
     }
 
@@ -113,9 +116,9 @@ parseArgs(int argc, char* argv[], Cli& cli)
     cli.input_file = getCmdOption(argv + 4, argv + argc, "--input_file");
     char* offset_str = getCmdOption(argv + 4, argv + argc, "--input_offset");
     if (offset_str) {
-        try {
-            cli.input_offset = std::stoi(offset_str);
-        } catch (...) {
+        errno = 0;
+        cli.input_offset = (size_t)strtoul(offset_str, nullptr, 0);
+        if (errno != 0) {
             return false;
         }
     }
@@ -185,6 +188,10 @@ quantize(const Cli& cli)
     }
 
     size_t qsize = MlasQ4GemmPackBSize(cli.quant_type, cli.num_cols, cli.num_rows);
+    if (qsize == 0) {
+        std::cerr << "Int4 Quantization not yet supported on this platform!";
+        return;
+    }
     std::vector<uint8_t> dstbuf(qsize);
     MlasQ4GemmPackB(cli.quant_type, dstbuf.data(), (const float*)srcbuf.data(), cli.num_cols,
                     cli.num_rows, cli.num_cols);
@@ -217,6 +224,10 @@ void
 dequantize(const Cli& cli)
 {
     size_t qsize = MlasQ4GemmPackBSize(cli.quant_type, cli.num_cols, cli.num_rows);
+    if (qsize == 0) {
+        std::cerr << "Int4 Quantization not yet supported on this platform!";
+        return;
+    }
     std::vector<uint8_t> srcbuf;
     readBinFile(cli.input_file, cli.input_offset, qsize, srcbuf);
     if (srcbuf.size() == 0) {
@@ -235,7 +246,7 @@ dequantize(const Cli& cli)
             std::cerr << "Cannot open output file " << cli.output_file << std::endl;
             return;
         }
-        out.write((const char*)dstbuf.data(), dstbuf.size() * sizeof(float));
+        out.write((const char*)dstbuf.data(), std::streamsize(dstbuf.size()) * sizeof(float));
     } else {
         std::streambuf* buf;
         if (cli.output_file) {

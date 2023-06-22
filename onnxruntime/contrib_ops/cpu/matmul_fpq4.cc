@@ -7,6 +7,8 @@
 // pre-packed and block-compacted into int4
 //
 
+#ifndef ORT_MINIMAL_BUILD
+
 #include "core/common/safeint.h"
 #include "core/framework/op_kernel.h"
 #include "core/providers/cpu/math/matmul_helper.h"
@@ -49,8 +51,10 @@ Status MatMulFpQ4::Compute(OpKernelContext* ctx) const {
   const size_t K = static_cast<size_t>(helper.K());
   const size_t lda = helper.Lda(false);
 
+  auto buf_size = MlasQ4GemmPackBSize(blk_quant_type_, N, K);
+  ORT_ENFORCE(buf_size > 0, "Operator MatMulFpQ4 not yet supported on this hardware platform.");
   ORT_ENFORCE(
-      (size_t)blob_len == MlasQ4GemmPackBSize(blk_quant_type_, N, K),
+      (size_t)blob_len == buf_size,
       "Quantized and packed blob size differ from expected!");
 
   Tensor* y = ctx->Output(0, helper.OutputShape());
@@ -89,3 +93,5 @@ ONNX_OPERATOR_KERNEL_EX(
 
 }  // namespace contrib
 }  // namespace onnxruntime
+
+#endif  // ORT_MINIMAL_BUILD

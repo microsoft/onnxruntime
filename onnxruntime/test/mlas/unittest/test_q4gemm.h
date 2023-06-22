@@ -1,5 +1,5 @@
 /*++
- 
+
 Copyright (c) Microsoft Corporation. All rights reserved.
 
 Licensed under the MIT License.
@@ -46,6 +46,7 @@ class MlasQ4GemmTest : public MlasTestBase {
   MatrixGuardBuffer<float> BufferBias;
   MatrixGuardBuffer<float> BufferC;
   MatrixGuardBuffer<float> BufferCReference;
+  MatrixGuardBuffer<float> BufferUnpack;
   MLAS_THREADPOOL* threadpool_;
 
   void* PackB(size_t N, size_t K, const float* B, size_t ldb) {
@@ -86,9 +87,8 @@ class MlasQ4GemmTest : public MlasTestBase {
                       const uint8_t* PackedB,
                       const float* Bias,
                       float* C) {
-//    std::vector<float> B(K * N);
-//    MlasQ4GemmUnPackB(QType, B.data(), PackedB, N, K, N);
-    MatrixGuardBuffer<float> BufferUnpack;
+    //    std::vector<float> B(K * N);
+    //    MlasQ4GemmUnPackB(QType, B.data(), PackedB, N, K, N);
     float* bdata = BufferUnpack.GetBuffer(K * N);
     MlasQ4GemmUnPackB(QType, bdata, PackedB, N, K, N);
 
@@ -108,7 +108,6 @@ class MlasQ4GemmTest : public MlasTestBase {
       }
     }
   }
-  
 
  public:
   MlasQ4GemmTest() : threadpool_(Threaded ? GetMlasThreadPool() : nullptr) {}
@@ -133,13 +132,13 @@ class MlasQ4GemmTest : public MlasTestBase {
     this->CallGemm(M, N, K, A, K, PackedB, Bias, C, N);
     ReferenceQgemm(M, N, K, A, PackedB, Bias, CReference);
     size_t f = 0;
-      for (size_t m = 0; m < M; m++) {
-        for (size_t n = 0; n < N; n++, f++) {
+    for (size_t m = 0; m < M; m++) {
+      for (size_t n = 0; n < N; n++, f++) {
         ASSERT_TRUE(CloseEnough(C[f], CReference[f]))
-            << "Expected: " << CReference[f] << " Actual: " << C[f] <<  "@[" << m << "x" << n << "], "
+            << "Expected: " << CReference[f] << " Actual: " << C[f] << "@[" << m << "x" << n << "], "
             << "M=" << M << ", N=" << N << ", K=" << K;
-        }
       }
+    }
   }
 
  public:
@@ -151,10 +150,9 @@ class MlasQ4GemmTest : public MlasTestBase {
           BlkQ4Sym128 = 4
     */
     static const std::vector<std::string> qtype_names = {"BlkQ4Sym", "BlkQ4Zp8", "BlkQ4Sym64", "", "BlkQ4Sym128"};
-    static std::string suite_name = std::string("Q4GemmFP") + 
+    static std::string suite_name = std::string("Q4GemmFP") +
                                     qtype_names[QType] +
                                     (Threaded ? "_Threaded" : "_SingleThread");
     return suite_name.c_str();
   }
-
 };

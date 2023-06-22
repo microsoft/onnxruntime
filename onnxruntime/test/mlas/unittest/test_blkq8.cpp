@@ -1,12 +1,14 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#ifndef ORT_MINIMAL_BUILD
+
 #include "test_util.h"
 #include "mlas_q4.h"
 
 #define QK8_0 64
 typedef struct {
-  float d;     // delta
+  float d;           // delta
   int8_t qs[QK8_0];  // quants
 } block_q8_0;
 
@@ -63,7 +65,7 @@ static void quantize_reference(const float* src, void* dst, size_t M, size_t k) 
   }
 }
 
-template<bool Threaded>
+template <bool Threaded>
 class MlasBlkQ8Test : public MlasTestBase {
  private:
   MatrixGuardBuffer<float> FpInputBuf;
@@ -74,7 +76,7 @@ class MlasBlkQ8Test : public MlasTestBase {
  public:
   static const char* GetTestSuiteName() {
     static const std::string suite_name = std::string("Q8DQ") +
-                                    (Threaded ? "_Threaded" : "_SingleThread");
+                                          (Threaded ? "_Threaded" : "_SingleThread");
     return suite_name.c_str();
   }
 
@@ -97,8 +99,7 @@ class MlasBlkQ8Test : public MlasTestBase {
   MlasBlkQ8Test() : threadpool_(Threaded ? GetMlasThreadPool() : nullptr) {}
 };
 
-
-template<bool Threaded>
+template <bool Threaded>
 class MlasBlkQ8ShortExeTest : public MlasTestFixture<MlasBlkQ8Test<Threaded>> {
  public:
   explicit MlasBlkQ8ShortExeTest(size_t M, size_t K) : M_(M), K_(K) {}
@@ -109,7 +110,7 @@ class MlasBlkQ8ShortExeTest : public MlasTestFixture<MlasBlkQ8Test<Threaded>> {
 
   static size_t RegisterSingleTest(size_t M, size_t K) {
     std::stringstream ss;
-    ss << "/M" << M << "xK" << K ;
+    ss << "/M" << M << "xK" << K;
     auto test_name = ss.str();
 
     testing::RegisterTest(
@@ -149,7 +150,7 @@ class MlasBlkQ8ShortExeTest : public MlasTestFixture<MlasBlkQ8Test<Threaded>> {
   size_t M_, K_;
 };
 
-template<>
+template <>
 MlasBlkQ8Test<true>* MlasTestFixture<MlasBlkQ8Test<true>>::mlas_tester(nullptr);
 
 template <>
@@ -162,10 +163,14 @@ static size_t BlkQ8ReisterShortTests() {
   return cnt;
 }
 
-
 static UNUSED_VARIABLE bool added_to_main = AddTestRegister([](bool is_short_execute) {
+  if (MlasQ80BlkQuantSize(BlkQ4Sym, 32, 32) == 0) {
+    return false;  // operation not yet supported on current hardware
+  }
   if (is_short_execute) {
     return BlkQ8ReisterShortTests() > 0;
   }
   return false;
 });
+
+#endif  // ORT_MINIMAL_BUILD

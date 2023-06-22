@@ -14,10 +14,12 @@ Abstract:
 
 --*/
 
+#ifndef ORT_MINIMAL_BUILD
+
 #include "test_q4gemm.h"
 
 //
-// Short Execute() test helper to register each test seperately by all parameters.
+// Short Execute() test helper to register each test separately by all parameters.
 //
 template <MLAS_BLK_QUANT_TYPE QType, bool Threaded>
 class Q4GemmShortExecuteTest : public MlasTestFixture<MlasQ4GemmTest<QType, Threaded>> {
@@ -71,7 +73,7 @@ class Q4GemmShortExecuteTest : public MlasTestFixture<MlasQ4GemmTest<QType, Thre
       test_registered += RegisterSingleTest(1, b, b, false);
     }
     test_registered += RegisterSingleTest(43, 500, 401, true);
-    //test_registered += RegisterSingleTest(1001, 1027, 1031, 1, false);
+    // test_registered += RegisterSingleTest(1001, 1027, 1031, 1, false);
 
     return test_registered;
   }
@@ -94,7 +96,6 @@ MlasQ4GemmTest<BlkQ4Sym128, false>* MlasTestFixture<MlasQ4GemmTest<BlkQ4Sym128, 
 template <>
 MlasQ4GemmTest<BlkQ4Sym128, true>* MlasTestFixture<MlasQ4GemmTest<BlkQ4Sym128, true>>::mlas_tester(nullptr);
 
-
 static size_t Q4GemmRegistShortExecute() {
   size_t count = 0;
 
@@ -109,8 +110,13 @@ static size_t Q4GemmRegistShortExecute() {
 }
 
 static UNUSED_VARIABLE bool added_to_main = AddTestRegister([](bool is_short_execute) {
+  if (MlasQ4GemmPackBSize(BlkQ4Sym, 32, 32) == 0) {
+    return false;
+  }
   if (is_short_execute) {
     return Q4GemmRegistShortExecute() > 0;
   }
   return false;
 });
+
+#endif  // ORT_MINIMAL_BUILD

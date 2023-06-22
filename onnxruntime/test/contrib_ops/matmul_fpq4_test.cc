@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#ifndef ORT_MINIMAL_BUILD
+
 #include "core/common/span_utils.h"
 #include "core/framework/tensor.h"
 #include "core/mlas/inc/mlas_q4.h"
@@ -22,13 +24,18 @@ namespace onnxruntime {
 namespace test {
 
 TEST(MatMulFpQ4, MatMul2DSym) {
+  // (100 x 41) X (41 x 288)
+  constexpr int64_t M = 100;
+  constexpr int64_t N = 288;
+  constexpr int64_t K = 52;
+
+  const auto buf_size = MlasQ4GemmPackBSize(BlkQ4Sym, (size_t)N, (size_t)K);
+  if (buf_size == 0) {
+    GTEST_SKIP();  // operation not supported on this hardware platform yet.
+  }
+
   OpTester test("MatMulFpQ4", 1, kMSDomain);
   test.AddAttribute<int64_t>("blk_quant_type", BlkQ4Sym);
-
-  // (100 x 41) X (41 x 288)
-  const int64_t M = 100;
-  const int64_t N = 288;
-  const int64_t K = 52;
 
   std::vector<float> input0_vals(M * K);
   float fv = -135.f;
@@ -49,7 +56,7 @@ TEST(MatMulFpQ4, MatMul2DSym) {
       v = -8;
     }
   }
-  std::vector<uint8_t> input1_vals(MlasQ4GemmPackBSize(BlkQ4Sym, (size_t)N, (size_t)K));
+  std::vector<uint8_t> input1_vals(buf_size);
   MlasQ4GemmPackB(BlkQ4Sym, input1_vals.data(), input1_f_vals.data(), (size_t)N, (size_t)K, (size_t)N);
 
   std::vector<float> expected_vals(M * N);
@@ -73,13 +80,18 @@ TEST(MatMulFpQ4, MatMul2DSym) {
 }
 
 TEST(MatMulFpQ4, MatMul2DBlkZp) {
+  // (100 x 41) X (41 x 288)
+  constexpr int64_t M = 100;
+  constexpr int64_t N = 288;
+  constexpr int64_t K = 41;
+
+  const auto buf_size = MlasQ4GemmPackBSize(BlkQ4Zp8, (size_t)N, (size_t)K);
+  if (buf_size == 0) {
+    GTEST_SKIP();  // operation not yet supported on this hardware platform.
+  }
+
   OpTester test("MatMulFpQ4", 1, kMSDomain);
   test.AddAttribute<int64_t>("blk_quant_type", BlkQ4Zp8);
-
-  // (100 x 41) X (41 x 288)
-  const int64_t M = 100;
-  const int64_t N = 288;
-  const int64_t K = 41;
 
   std::vector<float> input0_vals(M * K);
   float fv = -135.f;
@@ -99,7 +111,7 @@ TEST(MatMulFpQ4, MatMul2DBlkZp) {
       v = 0;
     }
   }
-  std::vector<uint8_t> input1_vals(MlasQ4GemmPackBSize(BlkQ4Zp8, (size_t)N, (size_t)K));
+  std::vector<uint8_t> input1_vals(buf_size);
   MlasQ4GemmPackB(BlkQ4Zp8, input1_vals.data(), input1_f_vals.data(), (size_t)N, (size_t)K, (size_t)N);
 
   std::vector<float> expected_vals(M * N);
@@ -124,3 +136,5 @@ TEST(MatMulFpQ4, MatMul2DBlkZp) {
 
 }  // namespace test
 }  // namespace onnxruntime
+
+#endif  // ORT_MINIMAL_BUILD

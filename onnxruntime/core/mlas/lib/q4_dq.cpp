@@ -21,18 +21,22 @@ Abstract:
 #include "q4common.h"
 
 template<typename T>
-MLAS_FORCEINLINE
+constexpr
 size_t
 BlkQ4BufSize(size_t N, size_t K)
 {
-    const size_t KBlocks = MlasDivRoundup(K, typename T::BlkLen);
-    return N * KBlocks * typename T::BlobSize;
+    const size_t KBlocks = MlasDivRoundup(K, T::BlkLen);
+    return N * KBlocks * T::BlobSize;
 }
 
 size_t
 MLASCALL
 MlasQ4GemmPackBSize(MLAS_BLK_QUANT_TYPE QType, size_t N, size_t K)
 {
+    if (GetMlasPlatform().FpQ4GemmDispatch == nullptr) {
+        return 0;
+    }
+
     switch (QType) {
         case BlkQ4Sym:
             return BlkQ4BufSize<MLAS_Q4TYPE_BLK0>(N, K);
@@ -56,8 +60,8 @@ MlasQ4GemmPackBImpl(void* PackedBuf, const float* FpData, size_t N, size_t K, si
     for (size_t n = 0; n < N; n ++) {
         const float* src = FpData; // starting from top of the column
 
-        for (size_t k = 0; k < K; k += typename T::BlkLen) {
-            size_t klen = std::min(typename T::BlkLen, K - k);
+        for (size_t k = 0; k < K; k += T::BlkLen) {
+            size_t klen = std::min(size_t(T::BlkLen), K - k);
             float amax = 0.0f; // abs(max)
             float max = 0.0f;
 
@@ -71,8 +75,8 @@ MlasQ4GemmPackBImpl(void* PackedBuf, const float* FpData, size_t N, size_t K, si
 
             const float scale = max / (-8);
             const float reciprocal_scale = scale ? 1.0f / scale : 0.0f;
-            MlasQ4BlkScale<typename T>(dst_ptr) = scale;
-            uint8_t* data = MlasQ4BlkData<typename T>(dst_ptr);
+            MlasQ4BlkScale<T>(dst_ptr) = scale;
+            uint8_t* data = MlasQ4BlkData<T>(dst_ptr);
 
             for (size_t kk = 0; kk < klen; kk += 32) {
                 size_t kklen = std::min((size_t)32, klen - kk);
@@ -90,7 +94,7 @@ MlasQ4GemmPackBImpl(void* PackedBuf, const float* FpData, size_t N, size_t K, si
             }
 
             // Move to next block of values in this column
-            dst_ptr += typename T::BlobSize;
+            dst_ptr += T::BlobSize;
             src += ldb * klen;
         }
 
@@ -195,12 +199,12 @@ MlasQ4GemmUnPackBImpl(float* FpData, const void* PackedBuf, size_t N, size_t K, 
 {
     const auto* src = reinterpret_cast<const uint8_t*>(PackedBuf);
     for (size_t n = 0; n < N; n++) {
-        for (size_t k = 0; k < K; k += typename T::BlkLen) {
-            size_t CountK = std::min(K - k, typename T::BlkLen);
+        for (size_t k = 0; k < K; k += T::BlkLen) {
+            size_t CountK = std::min(K - k, T::BlkLen);
 
             float* dest = FpData + ldb * k + n;
-            const float scale = MlasQ4BlkScale<typename T>(src);
-            const uint8_t* data = MlasQ4BlkData<typename T>(src);
+            const float scale = MlasQ4BlkScale<T>(src);
+            const uint8_t* data = MlasQ4BlkData<T>(src);
 
             for (size_t kk = 0; kk < CountK; kk += 32) {
                 size_t kklen = std::min((size_t)32, CountK - kk);
@@ -222,7 +226,7 @@ MlasQ4GemmUnPackBImpl(float* FpData, const void* PackedBuf, size_t N, size_t K, 
                 }
                 data += 16;
             }
-            src += typename T::BlobSize;
+            src += T::BlobSize;
         }
     }
 }

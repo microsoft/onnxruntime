@@ -38,5 +38,8 @@ class Q4dqWrapper:
             )
             subprocess.run(cmd, shell=True)
 
+            if not os.path.isfile(q4file):
+                raise Exception("Quantization failed, 4b quantization is not yet supported on this platform!")
+
             packed = np.fromfile(q4file, dtype="uint8")
             return packed

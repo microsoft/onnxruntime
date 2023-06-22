@@ -1738,8 +1738,11 @@ static void matmulQ4ShapeInference(ONNX_NAMESPACE::InferenceContext& ctx, int in
 
   size_t expectedPackSize = MlasQ4GemmPackBSize(
       blk_quant_type,
-      shapeR.dim(shapeR.dim_size() - 1).dim_value(),
-      shapeR.dim(shapeR.dim_size() - 2).dim_value());
+      size_t(shapeR.dim(shapeR.dim_size() - 1).dim_value()),
+      size_t(shapeR.dim(shapeR.dim_size() - 2).dim_value()));
+  if (expectedPackSize == 0) {
+    fail_shape_inference("4b quantization not yet supported on this hardware platform!");
+  }
   if (blob_shape.dim_size() != 1 && (size_t)blob_shape.dim(0).dim_value() != expectedPackSize) {
     fail_shape_inference("Input q4 tensors of wrong size!");
   }
@@ -1779,6 +1782,7 @@ static void matmulQ4ShapeInference(ONNX_NAMESPACE::InferenceContext& ctx, int in
   *ctx.getOutputType(0)->mutable_tensor_type()->mutable_shape() = resultShape;
 }
 
+#ifndef ORT_MINIMAL_BUILD
 ONNX_MS_OPERATOR_SET_SCHEMA(MatMulFpQ4, 1,
                             OpSchema()
                                 .SetDoc(R"DOC(
@@ -1810,6 +1814,7 @@ Matrix product with right hand matrix being pre-packed and quantized int4 data b
 
                                   matmulQ4ShapeInference(ctx, 0, 1, 2, blk_quant_type);
                                 }));
+#endif
 
 constexpr const char* TransposeMatMul_doc = R"DOC(
 Duplicate of FusedMatMul. Going forward FusedMatMul should be used. This OP will be supported for backward compatibility.

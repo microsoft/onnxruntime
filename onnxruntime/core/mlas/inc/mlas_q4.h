@@ -41,7 +41,7 @@ typedef enum {
  * @param QType  type of block quantization
  * @param N      the number of columns of matrix B. 
  * @param K      the number of rows of matrix B.
- * @return 
+ * @return size of the packing buffer, 0 if the operation is not yet supported.
 */
 size_t
 MLASCALL
@@ -159,7 +159,7 @@ MlasQ4GemmBatch(
  * @param[in]  QType   Type of block quantization used
  * @param[in]  M       Number of rows of the input matrix
  * @param[in]  K       Number of columns of the input matrix
- * @return    buffer size (in bytes) needed
+ * @return    buffer size (in bytes) needed, 0 if not yet supported on current hardware
 */
 size_t
 MLASCALL
@@ -228,26 +228,4 @@ MlasQ8Q4GemmBatch(
     const size_t BatchN,
     const MLAS_Q8Q4_GEMM_DATA_PARAMS* DataParams,
     MLAS_THREADPOOL* ThreadPool
-    );
-
-/**
- * @brief For testing purpose,
- *        Dequantize the data intp fp32, and then pack them for use
- *        in sgemm kernel. equivalent to MlasQ4GemmUnPackB and then
- *        MlasSgemmCopyPackB
- * @param QType 
- * @param FpData 
- * @param PackedB 
- * @param CountN 
- * @param CountK 
- * @param ldb 
-*/
-void
-MlasBlkQ4DequantSgemmPackB(
-    MLAS_BLK_QUANT_TYPE QType,
-    float* FpData,
-    const uint8_t* PackedB,
-    size_t CountN,
-    size_t CountK,
-    size_t ldb
     );

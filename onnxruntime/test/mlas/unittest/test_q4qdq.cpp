@@ -1,8 +1,45 @@
-// Copyright (c) Microsoft Corporation. All rights reserved.
-// Licensed under the MIT License.
+/*++
+
+Copyright (c) Microsoft Corporation. All rights reserved.
+
+Licensed under the MIT License.
+
+Module Name:
+
+    test_q4qdq.cpp
+
+Abstract:
+
+    Tests for MLAS int4 quantization and dequantization code.
+
+--*/
+
+#ifndef ORT_MINIMAL_BUILD
 
 #include "test_util.h"
 #include "mlas_q4.h"
+
+#if (defined(_M_AMD64) || defined(__x86_64__))
+
+/**
+ * @brief For testing purpose,
+ *        Dequantize the data intp fp32, and then pack them for use
+ *        in sgemm kernel. equivalent to MlasQ4GemmUnPackB and then
+ *        MlasSgemmCopyPackB
+ * @param QType
+ * @param FpData
+ * @param PackedB
+ * @param CountN
+ * @param CountK
+ * @param ldb
+ */
+void MlasBlkQ4DequantSgemmPackB(
+    MLAS_BLK_QUANT_TYPE QType,
+    float* FpData,
+    const uint8_t* PackedB,
+    size_t CountN,
+    size_t CountK,
+    size_t ldb);
 
 void MlasSgemmCopyPackB(
     float* D,
@@ -10,6 +47,8 @@ void MlasSgemmCopyPackB(
     size_t ldb,
     size_t CountX,
     size_t CountY);
+
+#endif  // x64
 
 class MlasQ4dqTest : public MlasTestBase {
  private:
@@ -51,8 +90,10 @@ class MlasQ4dqTest : public MlasTestBase {
 
     for (size_t i = 0; i < N * K; i++) {
       ASSERT_EQ(Output[i], Input[i]) << ", index=" << i << ", [" << N << "x"
-                                     << K << "] QType: " << qtype ;
+                                     << K << "] QType: " << qtype;
     }
+
+#if (defined(_M_AMD64) || defined(__x86_64__))
 
     /* Test MlasBlkQ4DequantSgemmPackB, make sure we can reuse SGEMM kernel as it rearrange B the same way as sgemm pack B*/
     const size_t AlignedN = (N + 15) & ~15;
@@ -65,9 +106,9 @@ class MlasQ4dqTest : public MlasTestBase {
     MlasBlkQ4DequantSgemmPackB(qtype, gemmpack, Packed, N, K, blkq_ldb);
     for (size_t i = 0; i < AlignedN * K; i++) {
       ASSERT_EQ(gemmpack[i], gemmpack_ref[i]) << ", sgemm pack index=" << i << ", [" << N << "x"
-                                     << K << "] QType: " << qtype;
+                                              << K << "] QType: " << qtype;
     }
-
+#endif  // x64
   }
 
  public:
@@ -104,9 +145,14 @@ template <>
 MlasQ4dqTest* MlasTestFixture<MlasQ4dqTest>::mlas_tester(nullptr);
 
 static UNUSED_VARIABLE bool added_to_main = AddTestRegister([](bool is_short_execute) {
+  if (MlasQ4GemmPackBSize(BlkQ4Sym, 32, 32) == 0) {
+    return (size_t)0;
+  }
   size_t count = 0;
   if (is_short_execute) {
     count += MlasDirectShortExecuteTests<MlasQ4dqTest>::RegisterShortExecute();
   }
   return count;
 });
+
+#endif  // ORT_MINIMAL_BUILD

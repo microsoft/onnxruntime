@@ -14,6 +14,7 @@ Abstract:
 
 --*/
 
+#ifndef ORT_MINIMAL_BUILD
 
 #include "test_util.h"
 #include "mlas_q4.h"
@@ -32,7 +33,7 @@ CloseEnough(float actual, float expected) {
   return ratio < 0.005;
 }
 
-template<size_t QBlkLen>
+template <size_t QBlkLen>
 static void blkq8_dequant_reference(const int8_t* src, float* dst, size_t M, size_t K) {
   const size_t num_blks = K / QBlkLen;
   const size_t remain = K % QBlkLen;
@@ -50,7 +51,7 @@ static void blkq8_dequant_reference(const int8_t* src, float* dst, size_t M, siz
     if (remain > 0) {
       const float scale = *reinterpret_cast<const float*>(blob);
       blob += sizeof(float);
-      for (int j = 0; j < remain; ++j) {
+      for (size_t j = 0; j < remain; ++j) {
         dst[j] = blob[j] * scale;
       }
       blob += QBlkLen;
@@ -58,7 +59,6 @@ static void blkq8_dequant_reference(const int8_t* src, float* dst, size_t M, siz
     }
   }
 }
-
 
 /**
  * @brief Test class for int8 x int4 block quantized GEMM
@@ -208,9 +208,8 @@ class MlasQ8Q4GemmTest : public MlasTestBase {
   }
 };
 
-
 //
-// Short Execute() test helper to register each test seperately by all parameters.
+// Short Execute() test helper to register each test separately by all parameters.
 //
 template <MLAS_BLK_QUANT_TYPE QType, bool Threaded>
 class Q8Q4GemmShortExecuteTest : public MlasTestFixture<MlasQ8Q4GemmTest<QType, Threaded>> {
@@ -299,8 +298,13 @@ static size_t Q8Q4GemmRegistShortExecute() {
 }
 
 static UNUSED_VARIABLE bool added_to_main = AddTestRegister([](bool is_short_execute) {
+  if (MlasQ80BlkQuantSize(BlkQ4Sym, 32, 32) == 0) {
+    return false;  // operation not yet supported on current hardware
+  }
   if (is_short_execute) {
     return Q8Q4GemmRegistShortExecute() > 0;
   }
   return false;
 });
+
+#endif  // ORT_MINIMAL_BUILD

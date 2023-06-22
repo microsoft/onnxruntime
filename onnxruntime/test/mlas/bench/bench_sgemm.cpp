@@ -126,7 +126,6 @@ BENCHMARK_CAPTURE(SGEMM, GEMV_ABTrans, false, true, true)->Apply(GemmSizeWithOne
 BENCHMARK_CAPTURE(SGEMM, PACKB_NoTransA, true, false, false)->Apply(GemmSizeProducts)->UseRealTime();
 BENCHMARK_CAPTURE(SGEMM, PACKB_TransA, true, true, false)->Apply(GemmSizeProducts)->UseRealTime();
 
-
 static void GemmLLMSizeProducts(benchmark::internal::Benchmark* b) {
   b->ArgNames(sgemm_bench_arg_names);
   ArgsProduct(b, {{1, 1024, 2048}, {4096}, {4096}});
