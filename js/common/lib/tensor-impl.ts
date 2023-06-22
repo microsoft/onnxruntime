@@ -4,12 +4,13 @@
 import {tensorToDataURL, tensorToImageData} from './tensor-conversion-impl.js';
 import {TensorToDataUrlOptions, TensorToImageDataOptions} from './tensor-conversion.js';
 import {tensorFromImage} from './tensor-factory-impl.js';
-import {TensorFromImageBitmapOptions, TensorFromImageDataOptions, TensorFromImageElementOptions, TensorFromUrlOptions} from './tensor-factory.js';
+import {TensorFromImageBitmapOptions, TensorFromImageDataOptions, TensorFromImageElementOptions, TensorFromTextureOptions, TensorFromUrlOptions} from './tensor-factory.js';
 import {calculateSize, tensorReshape} from './tensor-utils-impl.js';
 import {Tensor as TensorInterface} from './tensor.js';
 
 type TensorType = TensorInterface.Type;
 type TensorDataType = TensorInterface.DataType;
+type TensorDataLocation = TensorInterface.DataLocation;
 
 type SupportedTypedArrayConstructors = Float32ArrayConstructor|Uint8ArrayConstructor|Int8ArrayConstructor|
     Uint16ArrayConstructor|Int16ArrayConstructor|Int32ArrayConstructor|BigInt64ArrayConstructor|Uint8ArrayConstructor|
@@ -168,23 +169,47 @@ export class Tensor implements TensorInterface {
 
     this.dims = dims as readonly number[];
     this.type = type;
-    this.data = data;
+    this.cpuData = data;
+    this.dataLocation = 'cpu';
     this.size = size;
   }
   // #endregion
 
   // #region factory
-  static async fromImage(imageData: ImageData, options?: TensorFromImageDataOptions): Promise<Tensor>;
-  static async fromImage(imageElement: HTMLImageElement, options?: TensorFromImageElementOptions): Promise<Tensor>;
-  static async fromImage(bitmap: ImageBitmap, options: TensorFromImageBitmapOptions): Promise<Tensor>;
-  static async fromImage(urlSource: string, options?: TensorFromUrlOptions): Promise<Tensor>;
+  static async fromImage(imageData: ImageData, options?: TensorFromImageDataOptions): Promise<TensorInterface>;
+  static async fromImage(imageElement: HTMLImageElement, options?: TensorFromImageElementOptions):
+      Promise<TensorInterface>;
+  static async fromImage(bitmap: ImageBitmap, options: TensorFromImageBitmapOptions): Promise<TensorInterface>;
+  static async fromImage(urlSource: string, options?: TensorFromUrlOptions): Promise<TensorInterface>;
 
   static async fromImage(
       image: ImageData|HTMLImageElement|ImageBitmap|string,
       options?: TensorFromImageDataOptions|TensorFromImageElementOptions|TensorFromImageBitmapOptions|
-      TensorFromUrlOptions): Promise<Tensor> {
+      TensorFromUrlOptions): Promise<TensorInterface> {
     return tensorFromImage(image, options);
   }
+
+  static async fromTexture(_texture: WebGLTexture, _options: TensorFromTextureOptions): Promise<TensorInterface> {
+    throw new Error('not implemented.');
+  }
+
+  static fromPinnedBuffer<T extends Exclude<TensorInterface.Type, 'string'>>(
+      type: T, buffer: TensorInterface.DataTypeMap[T], dims?: readonly number[]): Tensor {
+    checkBigInt();
+
+    const expectedTypedArrayConstructor = NUMERIC_TENSOR_TYPE_TO_TYPEDARRAY_MAP.get(type);
+    if (!expectedTypedArrayConstructor) {
+      throw new TypeError(`unsupported type "${type}" to create tensor from pinned buffer`);
+    }
+    if (!(buffer instanceof expectedTypedArrayConstructor)) {
+      throw new TypeError(`buffer should be of type ${expectedTypedArrayConstructor.name}`);
+    }
+
+    const tensor = new Tensor(type, buffer, dims);
+    tensor.dataLocation = 'cpu-pinned';
+    return tensor;
+  }
+
   // #endregion
 
   // #region conversions
@@ -197,15 +222,75 @@ export class Tensor implements TensorInterface {
   }
   // #endregion
 
-  // #region fields
+  // #region public fields
   readonly dims: readonly number[];
   readonly type: TensorType;
-  readonly data: TensorDataType;
   readonly size: number;
   // #endregion
 
+  // #region private fields
+
+  /**
+   * stores the data on CPU, if location is 'cpu' or 'cpu-pinned'. otherwise empty.
+   */
+  private cpuData?: TensorDataType;
+  private dataLocation: TensorDataLocation;
+
+  /**
+   * stores the underlying texture when location is 'texture'. otherwise empty.
+   */
+  private gpuTexture?: WebGLTexture;
+  // #endregion
+
+  // #region properties
+  get data(): TensorDataType {
+    if (!this.cpuData) {
+      throw new Error(
+          'The data is not on CPU. Use `getData()` to download GPU data to CPU, ' +
+          'or use `texture` property to access the GPU data directly.');
+    }
+    return this.cpuData;
+  }
+
+  get location(): TensorDataLocation {
+    return this.dataLocation;
+  }
+
+  get texture(): WebGLTexture {
+    if (!this.gpuTexture) {
+      throw new Error('The data is not stored as a WebGL texture.');
+    }
+    return this.gpuTexture;
+  }
+  // #endregion
+
+  // #region methods
+
+  async getData(_releaseData?: boolean): Promise<TensorDataType> {
+    switch (this.dataLocation) {
+      case 'cpu':
+      case 'cpu-pinned':
+        return this.cpuData!;
+      case 'texture':
+        // TODO: implementation hint:
+        //
+        // const data = await downloadData(...);
+        // if (releaseData) {
+        //     releaseTexture(this.texture);
+        //     this.cpuData = data;
+        //     this.location = 'cpu';
+        // }
+        // return data;
+        throw new Error('Tensor.getData() not implemented for texture');
+      default:
+        throw new Error(`cannot get data from location: ${this.dataLocation}`);
+    }
+  }
+
+  // #endregion
+
   // #region tensor utilities
-  reshape(dims: readonly number[]): Tensor {
+  reshape(dims: readonly number[]): TensorInterface {
     return tensorReshape(this, dims);
   }
   // #endregion

@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {TypedTensor} from './tensor.js';
+import {Tensor, TypedTensor} from './tensor.js';
 
 export type ImageFormat = 'RGB'|'RGBA'|'BGR'|'RBG';
 export type ImageTensorLayout = 'NHWC'|'NCHW';
@@ -106,6 +106,8 @@ export interface TensorFromUrlOptions extends OptionsDimensions, OptionResizedDi
 export interface TensorFromImageBitmapOptions extends OptionResizedDimensions, OptionsTensorFormat, OptionsTensorLayout,
                                                       OptionsTensorDataType, OptionsNormalizationParameters {}
 
+export interface TensorFromTextureOptions extends OptionsDimensions /* TODO: add more */ {}
+
 export interface TensorFactory {
   /**
    * create a tensor from an ImageData object
@@ -165,4 +167,26 @@ export interface TensorFactory {
    */
   fromImage(bitmap: ImageBitmap, options: TensorFromImageBitmapOptions):
       Promise<TypedTensor<'float32'>|TypedTensor<'uint8'>>;
+
+  /**
+   * create a tensor from a WebGL texture
+   *
+   * @param texture - the WebGLTexture object to create tensor from
+   * @param options - An optional object representing options for creating tensor from WebGL texture.
+   *
+   * @returns A promise that resolves to a tensor object
+   */
+  fromTexture(texture: WebGLTexture, options: TensorFromTextureOptions): Promise<TypedTensor<'float32'>>;
+
+  /**
+   * create a tensor from a pre-allocated buffer. The buffer will be used as a pinned buffer.
+   *
+   * @param type - the tensor element type.
+   * @param buffer - a TypedArray corresponding to the type.
+   * @param dims - specify the dimension of the tensor. If omitted, a 1-D tensor is assumed.
+   *
+   * @returns A tensor object
+   */
+  fromPinnedBuffer<T extends Exclude<Tensor.Type, 'string'>>(
+      type: T, buffer: Tensor.DataTypeMap[T], dims?: readonly number[]): TypedTensor<T>;
 }

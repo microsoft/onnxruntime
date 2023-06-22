@@ -21,8 +21,29 @@ interface TypedTensorBase<T extends Tensor.Type> {
   readonly type: T;
   /**
    * Get the buffer data of the tensor.
+   *
+   * If the data is not on CPU (eg. it's in the form WebGLTexture), throw error.
    */
   readonly data: Tensor.DataTypeMap[T];
+  /**
+   * Get the location of the data.
+   */
+  readonly location: Tensor.DataLocation;
+  /**
+   * Get the WebGL texture that holds the tensor data.
+   *
+   * If the data is not on GPU, throw error.
+   */
+  readonly texture: WebGLTexture;
+
+  /**
+   * Get the buffer data of the tensor.
+   *
+   * If the data is on CPU, returns the data immediately.
+   * If the data is on GPU, downloads the data and returns the promise.
+   * @param releaseData - whether release the data on GPU. Ignore if data is already on CPU.
+   */
+  getData(releaseData?: boolean): Promise<Tensor.DataTypeMap[T]>;
 }
 
 export declare namespace Tensor {
@@ -66,6 +87,11 @@ export declare namespace Tensor {
 
   type DataType = DataTypeMap[Type];
   type ElementType = ElementTypeMap[Type];
+
+  /**
+   * represent where the tensor data is stored
+   */
+  export type DataLocation = 'cpu'|'cpu-pinned'|'texture';
 
   /**
    * represent the data type of a tensor
