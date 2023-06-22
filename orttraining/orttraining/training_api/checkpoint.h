@@ -52,8 +52,8 @@ Status SaveCheckpoint(const CheckpointState& state, const PathString& checkpoint
  * @param checkpoint_path file where checkpoint is saved.
  * @return Status
  */
-Status SaveCheckpoint(const std::vector<ONNX_NAMESPACE::TensorProto>& trainable_tensor_protos,
-                      const std::vector<ONNX_NAMESPACE::TensorProto>& non_trainable_tensor_protos,
+Status SaveCheckpoint(gsl::span<const ONNX_NAMESPACE::TensorProto> trainable_tensor_protos,
+                      gsl::span<const ONNX_NAMESPACE::TensorProto> non_trainable_tensor_protos,
                       const PathString& checkpoint_path);
 #endif
 

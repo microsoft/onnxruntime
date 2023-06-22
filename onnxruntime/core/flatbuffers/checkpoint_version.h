@@ -10,7 +10,7 @@ namespace onnxruntime {
 // and the changes should be documented here and in the
 // onnxruntime/core/flatbuffers/schema/README.md file.
 // Version 1: Introduces the On-Device Training Checkpoint format
-//            The format include support for the ModuleState (stores the module parameters), OptimizerGroups
+//            The format includes support for the ModuleState (stores the module parameters), OptimizerGroups
 //            (stores the optimizer states), and PropertyBag
 //            (stores custom user properties with support for int64, float and strings).
 constexpr const int kCheckpointVersion = 1;

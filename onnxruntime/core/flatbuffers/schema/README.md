@@ -9,7 +9,7 @@ uses the [FlatBuffers](https://github.com/google/flatbuffers) serialization libr
 
 Please do not directly modify the generated C++ header file for [the ORT file format]((ort.fbs.h))
 or for [the training checkpoint file format](ort_training_checkpoint.fbs.h),
-or [the generated Python bindingfiles](../ort_flatbuffers_py).
+or [the generated Python binding files](../ort_flatbuffers_py).
 
 The flatbuffers compiler (flatc) is built as part of an ONNX Runtime build. It is located in the _deps/flatbuffers-build/
 subdirectory of the build output directory.
@@ -38,8 +38,6 @@ depends on the ort format schema.
 # ORT FB format version history
 In [ort_format_version.h](../ort_format_version.h), see `IsOrtModelVersionSupported()` for the supported versions and
 `kOrtModelVersion` for the current version.
-
-Any changes made to the
 
 ## Version 1
 History begins.
@@ -75,6 +73,6 @@ In [checkpoint_version.h](../checkpoint_version.h), see `IsCheckpointVersionSupp
 `kCheckpointVersion` for the current version.
 
 ## Version 1
-Introduces the On-Device Training Checkpoint format.
-The format include support for the ModuleState (stores the module parameters), OptimizerGroups
+Initial support for the On-Device Training Checkpoint format.
+The format includes support for the ModuleState (stores the module parameters), OptimizerGroups
 (stores the optimizer states), and PropertyBag (stores custom user properties with support for int64, float and strings).

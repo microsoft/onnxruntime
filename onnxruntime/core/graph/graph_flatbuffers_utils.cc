@@ -11,7 +11,6 @@
 #include "core/framework/tensorprotoutils.h"
 #include "core/framework/tensor_external_data_info.h"
 #include "core/graph/graph.h"
-#include "core/providers/cpu/cpu_execution_provider.h"
 
 using namespace ONNX_NAMESPACE;
 
@@ -378,7 +377,7 @@ struct UnpackTensorWithType {
 };
 
 Status LoadOrtTensorOrtFormat(const fbs::Tensor& fbs_tensor, const AllocatorPtr allocator,
-                              std::string& tensor_name, std::unique_ptr<onnxruntime::Tensor>& ort_tensor) {
+                              std::string& tensor_name, onnxruntime::Tensor& ort_tensor) {
   auto* fbs_tensor_name = fbs_tensor.name();
   ORT_RETURN_IF_NOT(fbs_tensor_name, "Flatbuffer tensor is invalid. Expected: A valid tensor name. Actual: nullptr.");
   tensor_name = fbs_tensor_name->str();
@@ -390,8 +389,8 @@ Status LoadOrtTensorOrtFormat(const fbs::Tensor& fbs_tensor, const AllocatorPtr 
   const DataTypeImpl* tensor_dtype = DataTypeImpl::TensorTypeFromONNXEnum(
                                          tensor_data_type)
                                          ->GetElementType();
-  ort_tensor = std::make_unique<onnxruntime::Tensor>(
-      tensor_dtype, TensorShape(tensor_dims->data(), tensor_dims->size()), allocator);
+  ort_tensor = std::move(onnxruntime::Tensor(
+      tensor_dtype, TensorShape(tensor_dims->data(), tensor_dims->size()), allocator));
 
   // The tensor proto is used as a dummy here. The actual data is stored in the raw_data field of the flatbuffer.
   // The data is copied from the raw_data field to the ort_tensor.
@@ -401,7 +400,7 @@ Status LoadOrtTensorOrtFormat(const fbs::Tensor& fbs_tensor, const AllocatorPtr 
   onnxruntime::utils::MLTypeCallDispatcher<float, bool, double, int8_t, uint8_t, int16_t, uint16_t,
                                            int32_t, uint32_t, int64_t, uint64_t>
       dispatcher(tensor_data_type);
-  return dispatcher.InvokeRet<Status, UnpackTensorWithType>(unused_tensor_proto, fbs_tensor, *ort_tensor);
+  return dispatcher.InvokeRet<Status, UnpackTensorWithType>(unused_tensor_proto, fbs_tensor, ort_tensor);
 }
 
 #endif  // ENABLE_TRAINING_APIS
