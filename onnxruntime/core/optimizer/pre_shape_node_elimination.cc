@@ -42,10 +42,6 @@ Status PreShapeNodeElimination::Apply(Graph& graph, Node& node, RewriteRuleEffec
 }
 
 bool PreShapeNodeElimination::SatisfyCondition(const Graph& graph, const Node& node, const logging::Logger& logger) const {
-  if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "Cast", {13, 15, 19}, kOnnxDomain)) {
-    return false;
-  }
-
   if (!graph_utils::CanRemoveNode(graph, node, logger)) {
     return false;
   }
@@ -63,6 +59,10 @@ bool PreShapeNodeElimination::SatisfyCondition(const Graph& graph, const Node& n
 
   for (const Node* next_node : output_nodes) {
     // Check if the next node is not of type "Shape"
+    if (!graph_utils::IsSupportedOptypeVersionAndDomain(*next_node, "Shape", {13, 15, 19}, kOnnxDomain)) {
+      return false;
+    }
+
     if (next_node->OpType() != "Shape") {
       return false;
     }
