@@ -16,6 +16,9 @@ import torch._prims.executor
 import torch.fx
 import torch.jit
 import torch.onnx
+
+# TODO(wschin,justinchuby): Since the internal APIs are not stable, please
+# contact us if you hit errors.
 import torch.onnx._internal
 import torch.onnx._internal.diagnostics
 import torch.onnx._internal.exporter
