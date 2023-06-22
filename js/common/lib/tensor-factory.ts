@@ -106,7 +106,7 @@ export interface TensorFromUrlOptions extends OptionsDimensions, OptionResizedDi
 export interface TensorFromImageBitmapOptions extends OptionResizedDimensions, OptionsTensorFormat, OptionsTensorLayout,
                                                       OptionsTensorDataType, OptionsNormalizationParameters {}
 
-export interface TensorFromTextureOptions extends OptionsDimensions /* TODO: add more */ {}
+export interface TensorFromTextureOptions extends Required<OptionsDimensions>, OptionsFormat /* TODO: add more */ {}
 
 export interface TensorFactory {
   /**
