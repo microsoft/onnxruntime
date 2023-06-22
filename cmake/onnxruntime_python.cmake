@@ -910,7 +910,7 @@ if (onnxruntime_USE_TVM)
 endif()
 
 if (onnxruntime_USE_DML)
-  if (NOT dml_EXTERNAL_PROJECT)
+  if (NOT onnxruntime_USE_CUSTOM_DIRECTML)
     set(dml_shared_lib_path ${DML_PACKAGE_DIR}/bin/${onnxruntime_target_platform}-win/${DML_SHARED_LIB})
   else()
     set(dml_shared_lib_path ${DML_PACKAGE_DIR}/bin/${DML_SHARED_LIB})
