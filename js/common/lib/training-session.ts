@@ -18,10 +18,16 @@ export interface TrainingSession {
 }
 
 export interface TrainingSessionFactory {
-   create(buffer: ArrayBufferLike, options?: Session.SessionOptions): Promise<TrainingSession>;
+   create(checkpointState: CheckpointState, trainModel: ArrayBufferLike|string, evalModel: ArrayBufferLike|string,
+      optimizerModel: ArrayBufferLike|string, options?: Session.SessionOptions): Promise<TrainingSession>;
 }
 
 export interface CheckpointState {
-   loadCheckpoint(checkpointPath: String): Promise<CheckpointState>;
    // saveCheckpoint(checkpoint: String): Promise<CheckpointState>;
 }
+
+export interface CheckpointStateFactory {
+   loadCheckpoint(checkpoint: string|ArrayBufferLike): Promise<CheckpointState>;
+}
+
+export const CheckpointState: CheckpointStateFactory = CheckpointStateImpl;

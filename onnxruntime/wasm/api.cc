@@ -407,7 +407,8 @@ OrtCheckpointState* OrtTrainingLoadCheckpoint(void* checkpoint, size_t checkpoin
 //   Ort::GetTrainingApi().SaveCheckpoint(checkpoint_state, path_to_checkpoint, include_optimizer_state);
 // }
 
-OrtTrainingSession* EMSCRIPTEN_KEEPALIVE OrtTrainingCreateTrainingSession(const ort_session_options_handle_t options,
+
+	OrtTrainingSession* EMSCRIPTEN_KEEPALIVE OrtTrainingCreateTrainingSession(const ort_session_options_handle_t options,
                                                                           orttraining_checkpoint_handle_t checkpoint_state,
                                                                           void* train_model,
                                                                           size_t train_size,
@@ -428,10 +429,10 @@ void EMSCRIPTEN_KEEPALIVE OrtTrainingLazyResetGrad(orttraining_session_handle_t 
   Ort::GetTrainingApi().LazyResetGrad(session);
 }
 
-OrtValue* EMSCRIPTEN_KEEPALIVE OrtTrainingTrainStep(orttraining_session_handle_t session,
+OrtValue* EMSCRIPTEN_KEEPALIVE OrtTrainingTrainStepWithOptions(orttraining_session_handle_t session,
                                                                const ort_run_options_handle_t options,
                                                                const size_t inputs_len,
-                                                               const ort_tensor_handle_t const* inputs,
+                                                               const ort_tensor_handle_t* inputs,
                                                                const size_t outputs_len,
                                                                ort_tensor_handle_t* outputs
                                                                ) {
@@ -442,12 +443,12 @@ OrtValue* EMSCRIPTEN_KEEPALIVE OrtTrainingTrainStep(orttraining_session_handle_t
 
 OrtValue* EMSCRIPTEN_KEEPALIVE OrtTrainingTrainStep(orttraining_session_handle_t session,
                                                                const size_t inputs_len,
-                                                               const ort_tensor_handle_t const* inputs,
+                                                               const ort_tensor_handle_t* inputs,
                                                                const size_t outputs_len,
                                                                ort_tensor_handle_t* outputs
                                                                ) {
   OrtRunOptions* run_options = nullptr;
-  return OrtTrainingTrainStep(session, run_options, inputs_len, inputs, outputs_len, outputs);
+  return OrtTrainingTrainStepWithOptions(session, run_options, inputs_len, inputs, outputs_len, outputs);
 }
 
 void EMSCRIPTEN_KEEPALIVE OrtTrainingOptimizerStep(orttraining_session_handle_t session,

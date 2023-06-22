@@ -368,12 +368,17 @@ export const extractTransferableBuffers = (tensors: readonly SerializableTensor[
   return buffers;
 };
 
+/**
+ * Creates an instance of CheckpointState
+ * @param checkpointData string or buffer of the checkpoint
+ * @returns number that is the handle of the CheckpointState created
+ */
 export const loadCheckpoint =
-  (filePath: String) => {
+  (checkpointData: Uint8Array): number => {
     const wasm = getInstance();
-
+    const checkpointBuffer: SerializableModeldata = createSessionAllocate(checkpointData);
 //    return wasm._OrtTrainingLoadCheckpoint(filePath);
-    return wasm._OrtTrainingLoadCheckpoint();
+    return wasm._OrtTrainingLoadCheckpoint(checkpointBuffer[0], checkpointBuffer[1]);
   }
 
 // export const saveCheckpoint =
@@ -381,3 +386,41 @@ export const loadCheckpoint =
 //     const wasm = getInstance();
 //     return wasm._OrtTrainingSaveCheckpoint(filePath);
 //   }
+
+/**
+ * @returns list of fields of training-session-handler
+ */
+export const createTrainingSession =
+  (checkpoint: CheckpointState, trainModel: Uint8Array, evalModel: Uint8Array, optimizerModel: Uint8Array,
+    options?: InferenceSession.SessionOptions): SerializableSessionMetadata => {
+    const wasm = getInstance();
+    const trainData: SerializableModeldata = createSessionAllocate(trainModel);
+    const evalData: SerializableModeldata = createSessionAllocate(evalModel);
+    const optimizerData: SerializableModeldata = createSessionAllocate(optimizerModel);
+
+    let sessionHandle = 0;
+    let sessionOptionsHandle = 0;
+    let allocs: number[] = [];
+
+    try {
+      [sessionOptionsHandle, allocs] = setSessionOptions(options);
+      // TODO: figure out correct way to pass checkpoint handle to method call
+      sessionHandle = wasm._OrtTrainingCreateSession(sessionOptionsHandle, checkpoint, trainData[0], trainData[1],
+        evalData[0], evalData[1], optimizerData[0], optimizerData[1]);
+
+      if (sessionHandle=== 0) {
+        throw new Error('Can\'t create a training session');
+      }
+    } finally {
+      wasm._free(trainData[0]);
+      wasm._free(evalData[0]);
+      wasm._free(optimizerData[0]);
+      if (sessionOptionsHandle !== 0) {
+        wasm._OrtReleaseSessionOptions(sessionOptionsHandle);
+      }
+      allocs.forEach(wasm._free);
+    }
+
+    // TODO: not finished writing this fucntion
+  }
+}

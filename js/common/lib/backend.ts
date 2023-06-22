@@ -3,6 +3,7 @@
 
 import {Session} from './inference-session';
 import {OnnxValue} from './onnx-value';
+import {CheckpointState} from './training-session';
 
 /**
  * @internal
@@ -44,6 +45,20 @@ export interface Backend {
 
   createSessionHandler(uriOrBuffer: string|Uint8Array, options?: Session.SessionOptions):
       Promise<SessionHandler>;
+
+  createCheckpointState(pathOrBuffer: string|Uint8Array): Promise<CheckpointState>;
+
+  createTrainingSession(checkpointState: CheckpointState, trainModel: ArrayBufferLike|string, evalModel: ArrayBufferLike|string,
+      optimizerModel: ArrayBufferLike|string, options?: Session.SessionOptions): Promise<TrainingSessionHandler>;
 }
 
-export {registerBackend} from './backend-impl.js';
+export {registerBackend} from './backend-impl';
+
+export interface CheckpointHandler {
+  // save checkpoint implementation would go here
+  // need class representation of a checkpoint handler to also have the number id for handle
+}
+
+export interface TrainingSessionHandler {
+
+}
