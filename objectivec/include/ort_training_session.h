@@ -46,8 +46,6 @@ NS_ASSUME_NONNULL_BEGIN
  * @param error Optional error information set if an error occurs.
  * @return The instance, or nil if an error occurs.
  *
- * @note `ORTTrainingSession` does not hold a copy of the checkpoint state. Therefore, it is required that the
- * checkpoint state outlive the lifetime of the training session.
  */
 - (nullable instancetype)initWithEnv:(ORTEnv*)env
                       sessionOptions:(ORTSessionOptions*)sessionOptions
