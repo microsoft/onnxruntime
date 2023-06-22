@@ -48,7 +48,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// and disposes of it when the OrtValue instance is disposed.
         /// </summary>
         /// <param name="handle">Pointer to a native instance of OrtValue</param>
-        /// <param name="onnxValueType">OnnxValue type if known, otherwise the constructor would iterrogate
+        /// <param name="onnxValueType">OnnxValue type if known, otherwise the constructor would interrogate
         /// the handle</param>
         internal OrtValue(IntPtr handle, OnnxValueType onnxValueType = OnnxValueType.ONNX_TYPE_UNKNOWN)
         {

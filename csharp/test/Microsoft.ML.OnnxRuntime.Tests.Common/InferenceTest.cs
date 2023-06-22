@@ -2065,7 +2065,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             public ushort tolerance = 0;
             public bool Equals(BFloat16 x, BFloat16 y)
             {
-                return Math.Abs(x.value - y) <= (tolerance + y);
+                return Math.Abs(x.value - y.value) <= (tolerance + y);
             }
             public int GetHashCode(BFloat16 x)
             {

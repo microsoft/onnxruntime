@@ -22,7 +22,7 @@ namespace Microsoft.ML.OnnxRuntime
     /// at the time of the binding, not at run time. This means, that if your input data required a copy,
     /// your further input modifications would not be seen by onnxruntime unless you rebind it, even if it is
     /// the same buffer. If you require the scenario where data is copied, OrtIOBinding may not be the best match
-    /// for your use case.
+    /// for your use case. The fact that data copy is not made during runtime also has performance implications.
     /// 
     /// Making OrtValue first class citizen in ORT C# API practically obsoletes all of the existing overloads
     /// because OrtValue can be created on top of the all other types of memory. No need to designate it as external
@@ -31,8 +31,6 @@ namespace Microsoft.ML.OnnxRuntime
     /// 
     /// In fact, one can now create OrtValues over arbitrary pieces of memory, managed, native, stack and device(gpu)
     /// and feed them to the model and achieve the same effect without using IOBinding class.
-    ///
-    /// The fact that data copy is not made during runtime also has performance implications.
     /// </summary>
     public class OrtIoBinding : SafeHandle
     {
@@ -98,7 +96,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// </summary>
         /// <param name="name">name</param>
         /// <param name="allocation">non ort allocated memory</param>
-        [Obsolete("This BindOutput overload is deprecated. Create OrtValue over an arbitrary piece of memory.")]
+        [Obsolete("This BindInput overload is deprecated. Create OrtValue over an arbitrary piece of memory.")]
         public void BindInput(string name, OrtExternalAllocation allocation)
         {
             BindExternalAllocation(name, allocation, true);
