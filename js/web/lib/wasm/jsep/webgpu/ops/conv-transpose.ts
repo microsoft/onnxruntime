@@ -6,7 +6,9 @@ import {TensorView} from '../../tensor';
 import {createAttributeWithCacheKey} from '../attribute-with-cache-key';
 import {ComputeContext} from '../types';
 
+import {createConvTranspose2DProgramInfoLoader} from './3rd-party/conv_backprop_webgpu';
 import {ConvAttributes} from './conv';
+import {createGroupedConvProgramInfoLoader} from './conv-grouped';
 import {createConvTranspose2DMatMulProgramInfoLoader} from './conv-transpose-mm';
 import {parseInternalActivationAttributes} from './fuse-utils';
 import {createTransposeProgramInfo, TransposeAttributes, transposeProgramMetadata} from './transpose';
@@ -202,19 +204,37 @@ const convTranspose2d =
       const isChannelsLast = adjustedAttributes.format === 'NHWC';
 
       // const batchSize = context.inputs[0].dims[0];
-      // const inputHeight = inputs[0].dims[isChannelsLast ? 1 : 2];
-      // const inputWidth = inputs[0].dims[isChannelsLast ? 2 : 3];
+      const inputHeight = inputs[0].dims[isChannelsLast ? 1 : 2];
+      const inputWidth = inputs[0].dims[isChannelsLast ? 2 : 3];
       const inputChannels = inputs[0].dims[isChannelsLast ? 3 : 1];
       const weightHeight = inputs[1].dims[2];
       const weightWidth = inputs[1].dims[3];
 
       const outputShape = adjustedAttributes.outputShape;
-      const outHeight = outputShape[isChannelsLast ? 1 : 2];
-      const outWidth = outputShape[isChannelsLast ? 2 : 3];
+      const outputHeight = outputShape[isChannelsLast ? 1 : 2];
+      const outputWidth = outputShape[isChannelsLast ? 2 : 3];
       const outChannels = outputShape[isChannelsLast ? 3 : 1];
 
-      const dimAOuter = isChannelsLast ? outHeight * outWidth : outChannels;
-      const dimBOuter = isChannelsLast ? outChannels : outHeight * outWidth;
+      const sameSize = isChannelsLast && weightHeight === inputHeight && weightWidth === inputWidth &&
+          attributes.autoPad === 'VALID';
+      if (sameSize ||
+          (weightHeight === 1 && weightWidth === 1 && attributes.dilations[0] === 1 && attributes.dilations[1] === 1 &&
+           attributes.strides[0] === 1 && attributes.strides[1] === 1 &&
+           (attributes.autoPad === 'SAME_UPPER' || attributes.autoPad === 'SAME_LOWER' ||
+            attributes.autoPad === 'VALID'))) {
+        // TODO: implement conv2dByMatMul()
+        context.compute(createGroupedConvProgramInfoLoader(inputs, adjustedAttributes));
+        return;
+      }
+
+      if (!isChannelsLast || attributes.group !== 1) {
+        context.compute(createGroupedConvProgramInfoLoader(inputs, adjustedAttributes));
+        return;
+      }
+
+      // TODO: implement conv2dWithIm2Col()
+      const dimAOuter = isChannelsLast ? outputHeight * outputWidth : outChannels;
+      const dimBOuter = isChannelsLast ? outChannels : outputHeight * outputWidth;
       const dimInner = weightHeight * weightWidth * inputChannels;
 
       const sequentialAccessByThreads = /* backend.adapterInfo.isIntel() */ true;
@@ -243,12 +263,21 @@ const convTranspose2d =
       }
 
       // STEP.3: compute matmul
+      const useNaive = false;
       context.compute(
-          createConvTranspose2DMatMulProgramInfoLoader(
-              convInputs, adjustedAttributes, outputShape, dimAOuter, dimBOuter, dimInner, hasBias,
-              sequentialAccessByThreads),
+        useNaive ? createConvTranspose2DProgramInfoLoader(inputs, adjustedAttributes, outputShape, hasBias) :
+                   createConvTranspose2DMatMulProgramInfoLoader(
+             convInputs, adjustedAttributes, outputShape, dimAOuter, dimBOuter, dimInner, hasBias,
+             sequentialAccessByThreads),
           {inputs: convInputs});
     };
+//const convTranspose2dNaive =
+//    (context: ComputeContext, inputs: readonly TensorView[], attributes: ConvTransposeAttributes): void => {
+//      const adjustedAttributes = getAdjustedConvTransposeAttributes(attributes, inputs);
+//      const outputShape = adjustedAttributes.outputShape;
+//      const hasBias = inputs.length === 3;
+//      context.compute(createConvTranspose2DProgramInfoLoader(inputs, adjustedAttributes, outputShape, hasBias));
+//    };
 
 export const convTranspose = (context: ComputeContext, attributes: ConvTransposeAttributes): void => {
   validateInputs(context.inputs, attributes);
