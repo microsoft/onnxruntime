@@ -37,6 +37,10 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
     CreateBinaryOpBuilder("Pow", op_registrations);
   }
 
+  {  // Ternary
+    CreateTernaryOpBuilder("Where", op_registrations);
+  }
+
   {  // Activations
     CreateActivationOpBuilder("Relu", op_registrations);
     CreateActivationOpBuilder("LeakyRelu", op_registrations);
