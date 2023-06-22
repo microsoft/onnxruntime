@@ -405,9 +405,10 @@ def main(argv=None):
         try:
             with torch.no_grad():
                 max_diff = WhisperHelper.verify_onnx(args.model_name_or_path, ort_session, device)
-            logger.info(f"Max difference between PyTorch and ONNX Runtime token ids = {max_diff}")
             if max_diff > 1e-4:
                 logger.warning("PyTorch and ONNX Runtime results are NOT close")
+            else:
+                logger.info("PyTorch and ONNX Runtime results are close")
         except Exception as e:
             logger.warning(
                 f"An error occurred while trying to verify parity between PyTorch and ONNX Runtime: {e}", exc_info=True
