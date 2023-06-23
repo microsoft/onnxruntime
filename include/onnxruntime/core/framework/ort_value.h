@@ -79,18 +79,6 @@ struct OrtValue {
     return (type_ != nullptr && type_->IsInvalidType());
   }
 
-  bool IsNonTensor() const noexcept {
-    return (type_ != nullptr && type_->IsNonTensorType());
-  }
-
-  bool IsOptional() const noexcept {
-    return (type_ != nullptr && type_->IsOptionalType());
-  }
-
-  bool IsPrimitiveData() const noexcept {
-    return (type_ != nullptr && type_->IsPrimitiveDataType());
-  }
-
   onnxruntime::MLDataType Type() const {
     return type_;
   }

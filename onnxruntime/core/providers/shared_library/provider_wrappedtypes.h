@@ -544,11 +544,7 @@ class DataTypeImpl final {
 #if !defined(DISABLE_SPARSE_TENSORS)
   bool IsSparseTensorType() const { return g_host->DataTypeImpl__IsSparseTensorType(this); }
 #endif
-
-  bool IsOptionalType() const { return g_host->DataTypeImpl__IsOptionalType(this); }
-  bool IsNonTensorType() const { return g_host->DataTypeImpl__IsNonTensorType(this); }
   bool IsInvalidType() const { return g_host->DataTypeImpl__IsInvalidType(this); }
-  bool IsPrimitiveDataType() const { return g_host->DataTypeImpl__IsPrimitiveDataType(this); }
 
   DeleteFunc GetDeleteFunc() const { return g_host->DataTypeImpl__GetDeleteFunc(this); }
 

@@ -118,12 +118,7 @@ static common::Status AllocateHelper(const AllocatorPtr& allocator,
     TensorSeq::InitOrtValue(source_tensor_seq, allocator, target_mlvalue);
   } else {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                           "Unsupported OrtValue type (invalid=",
-                           (source_mlvalue.IsInvalid() ? 1 : 0),
-                           ", optional=", (source_mlvalue.IsOptional() ? 1 : 0),
-                           ", nontensor=", (source_mlvalue.IsNonTensor() ? 1 : 0),
-                           ", primitive=", (source_mlvalue.IsPrimitiveData() ? 1 : 0),
-                           ").");
+                           source_mlvalue.IsInvalid() ? "Unsupported OrtValue type." : "Invalid OrtValue type.");
   }
   return Status::OK();
 }

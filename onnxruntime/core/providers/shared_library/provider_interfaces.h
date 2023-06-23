@@ -586,10 +586,7 @@ struct ProviderHost {
 #if !defined(DISABLE_SPARSE_TENSORS)
   virtual bool DataTypeImpl__IsSparseTensorType(const DataTypeImpl* p) = 0;
 #endif
-  virtual bool DataTypeImpl__IsOptionalType(const DataTypeImpl* p) = 0;
-  virtual bool DataTypeImpl__IsNonTensorType(const DataTypeImpl* p) = 0;
   virtual bool DataTypeImpl__IsInvalidType(const DataTypeImpl* p) = 0;
-  virtual bool DataTypeImpl__IsPrimitiveDataType(const DataTypeImpl* p) = 0;
 
   virtual DeleteFunc DataTypeImpl__GetDeleteFunc(const DataTypeImpl* p) = 0;
 

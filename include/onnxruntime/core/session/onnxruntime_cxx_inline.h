@@ -114,7 +114,7 @@ struct TypeToTensorType<bool> {
   static constexpr ONNXTensorElementDataType type = ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL;
 };
 
-#if !defined(DISABLE_FLOAT8_TYPES)
+// #if !defined(DISABLE_FLOAT8_TYPES)
 
 template <>
 struct TypeToTensorType<Float8E4M3FN_t> {
@@ -133,7 +133,7 @@ struct TypeToTensorType<Float8E5M2FNUZ_t> {
   static constexpr ONNXTensorElementDataType type = ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E5M2FNUZ;
 };
 
-#endif
+// #endif
 
 inline MemoryAllocation::MemoryAllocation(OrtAllocator* allocator, void* p, size_t size)
     : allocator_(allocator), p_(p), size_(size) {

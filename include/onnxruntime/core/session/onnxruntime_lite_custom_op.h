@@ -421,12 +421,12 @@ struct OrtLiteCustomOp : public OrtCustomOp {
   CREATE_TUPLE(std::string)
   CREATE_TUPLE_INPUT(std::string_view)
 
-#if !defined(DISABLE_FLOAT8_TYPES)
+// #if !defined(DISABLE_FLOAT8_TYPES)
   CREATE_TUPLE(Ort::Float8E4M3FN_t)
   CREATE_TUPLE(Ort::Float8E4M3FNUZ_t)
   CREATE_TUPLE(Ort::Float8E5M2_t)
   CREATE_TUPLE(Ort::Float8E5M2FNUZ_t)
-#endif
+// #endif
 
   // ParseArgs ...
   template <typename... Ts>

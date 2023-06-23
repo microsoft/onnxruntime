@@ -691,11 +691,7 @@ struct ProviderHostImpl : ProviderHost {
 #if !defined(DISABLE_SPARSE_TENSORS)
   bool DataTypeImpl__IsSparseTensorType(const DataTypeImpl* p) override { return p->IsSparseTensorType(); }
 #endif
-
-  bool DataTypeImpl__IsOptionalType(const DataTypeImpl* p) override { return p->IsOptionalType(); }
-  bool DataTypeImpl__IsNonTensorType(const DataTypeImpl* p) override { return p->IsNonTensorType(); }
   bool DataTypeImpl__IsInvalidType(const DataTypeImpl* p) override { return p->IsInvalidType(); }
-  bool DataTypeImpl__IsPrimitiveDataType(const DataTypeImpl* p) override { return p->IsPrimitiveDataType(); }
 
   DeleteFunc DataTypeImpl__GetDeleteFunc(const DataTypeImpl* p) override { return p->GetDeleteFunc(); }
 
