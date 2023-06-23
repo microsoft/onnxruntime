@@ -703,7 +703,7 @@ Status QLinearConv<ActType>::Compute(OpKernelContext* context) const {
     compute_stride = MlasConvDepthwiseGetKernelOutputCnt();
   } else {
     if (is_symmetric_gemm_) {
-      compute_stride = MlasSymmQgemmGetKernelOutputCnt();
+      compute_stride = MlasSymmQgemmGetKernelOutputCnt(std::is_signed<ActType>::value);
     } else {
       compute_stride = MlasQgemmGetKernelOutputCnt(std::is_signed<ActType>::value, is_W_signed);
     }

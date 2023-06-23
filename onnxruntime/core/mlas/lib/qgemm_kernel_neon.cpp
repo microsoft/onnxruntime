@@ -635,11 +635,15 @@ struct MLAS_GEMM_X8S8_KERNEL_NEON {
     static constexpr size_t PackedK = 16;
     static constexpr MLAS_GEMM_QUANT_STRIDES Strides{24, 128, 256};
     static constexpr MLAS_GEMM_QUANT_STRIDES PackedStrides{24, 128, 384};
+
+    // Strides in symmetric quantized gemm
+    static constexpr size_t SymmStrideN = 512;
 };
 
 constexpr size_t MLAS_GEMM_X8S8_KERNEL_NEON::PackedK;
 constexpr MLAS_GEMM_QUANT_STRIDES MLAS_GEMM_X8S8_KERNEL_NEON::Strides;
 constexpr MLAS_GEMM_QUANT_STRIDES MLAS_GEMM_X8S8_KERNEL_NEON::PackedStrides;
+constexpr size_t MLAS_GEMM_X8S8_KERNEL_NEON::SymmStrideN;
 
 template <>
 MLAS_FORCEINLINE

@@ -755,11 +755,16 @@ MlasSymmQGemmPackedOperation(
     const size_t RangeCountN
     )
 {
+    size_t bufsize = KernelType::SymmStrideN * sizeof(int32_t);
+    MlasThreadedBufAlloc(bufsize);
+    auto* ScaleColumnSumBuffer = reinterpret_cast<int32_t*>(ThreadedBufHolder.get());
 
     const size_t K = Shape->K;
-
     const size_t lda = Data->lda;
     const size_t ldc = Data->ldc;
+    const int32_t zero_point_a = -(Data->ZeroPointA);
+    const size_t PackedCountK = (K + KernelType::PackedK - 1) / KernelType::PackedK;
+    const size_t AlignedK = PackedCountK * KernelType::PackedK;
 
     const int8_t* PanelA = (const int8_t*)(Data->A) + RangeStartM * lda;
     const int8_t* PackedB = (const int8_t*)Data->B;
@@ -771,34 +776,51 @@ MlasSymmQGemmPackedOperation(
     const size_t AlignedN =
         (Shape->N + MLAS_QGEMM_STRIDEN_THREAD_ALIGN - 1) & ~(MLAS_QGEMM_STRIDEN_THREAD_ALIGN - 1);
     const int32_t* PackedColumnSumBuffer = (const int32_t*)PackedB;
-    PackedB = (const int8_t*)(PackedColumnSumBuffer + AlignedN);
+    PackedB = (const int8_t*)(PackedColumnSumBuffer + AlignedN) + RangeStartN * AlignedK;
     PackedColumnSumBuffer += RangeStartN;
 
-    const size_t PackedCountK = (K + KernelType::PackedK - 1) / KernelType::PackedK;
 
     //
-    // Apply the global depth value constant without the ZeroPointB scaling from:
-    //
-    //     (A[i] - ZeroPointA) * (B[i] - ZeroPointB)
-    //              ==>
-    //     A[i] * B[i] - A[i] * ZeroPointB - B[i] * ZeroPointA + ZeroPointA * ZeroPointB
-    //
-    // ZeroPointB is zero, which makes this much simpler
+    // Step through each slice of matrix B along the N dimension.
     //
 
-    const int8_t* b = PackedB + RangeStartN * KernelType::PackedK * PackedCountK;
-    int32_t* c = C;
+    size_t CountN;
+    for (size_t n = 0; n < RangeCountN; n += CountN) {
+        CountN = std::min(RangeCountN - n, KernelType::SymmStrideN);
+        const int32_t* ColumnSumBuffer;
 
-    auto pa = PanelA;
-    size_t RowsRemaining = RangeCountM;
+        if (zero_point_a != 1) {
+            MlasGemmQuantScaleSumBuffer(ScaleColumnSumBuffer, PackedColumnSumBuffer, CountN,
+                                        zero_point_a);
+            ColumnSumBuffer = ScaleColumnSumBuffer;
+        } else {
+            ColumnSumBuffer = PackedColumnSumBuffer;
+        }
+        PackedColumnSumBuffer += CountN;
 
-    while (RowsRemaining > 0) {
-        size_t RowsHandled = MlasSymmQGemmKernel<KernelType>(
-            pa, b, c, PackedCountK, RowsRemaining, RangeCountN, ldc, lda, PackedColumnSumBuffer);
+        //
+        // Apply the global depth value constant without the ZeroPointB scaling from:
+        //
+        //     (A[i] - ZeroPointA) * (B[i] - ZeroPointB)
+        //              ==>
+        //     A[i] * B[i] - A[i] * ZeroPointB - B[i] * ZeroPointA + ZeroPointA * ZeroPointB
+        //
+        // ZeroPointB is zero, which makes this much simpler
+        //
 
-        c += ldc * RowsHandled;
-        pa += lda * RowsHandled;
-        RowsRemaining -= RowsHandled;
+        const int8_t* b = PackedB + n * AlignedK;
+        int32_t* c = C + n;
+        auto pa = PanelA;
+        size_t RowsRemaining = RangeCountM;
+
+        while (RowsRemaining > 0) {
+            size_t RowsHandled = MlasSymmQGemmKernel<KernelType>(
+                pa, b, c, PackedCountK, RowsRemaining, CountN, ldc, lda, ColumnSumBuffer);
+
+            c += ldc * RowsHandled;
+            pa += lda * RowsHandled;
+            RowsRemaining -= RowsHandled;
+        }
     }
 }
 

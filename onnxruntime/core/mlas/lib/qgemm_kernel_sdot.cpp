@@ -770,9 +770,11 @@ struct MLAS_SYMM_GEMM_S8S8_KERNEL_SDOT {
     typedef int8_t OffsetBType;
 
     static constexpr size_t PackedK = 16;
+    static constexpr size_t SymmStrideN = 512;
 };
 
 constexpr size_t MLAS_SYMM_GEMM_S8S8_KERNEL_SDOT::PackedK;
+constexpr size_t MLAS_SYMM_GEMM_S8S8_KERNEL_SDOT::SymmStrideN;
 
 template<>
 void
@@ -1046,8 +1048,12 @@ size_t MlasSymmQGemmKernel<MLAS_SYMM_GEMM_S8S8_KERNEL_SDOT>(
  */
 struct MLAS_SYMM_GEMM_S8S8_KERNEL_SDOT_LIT {
     static constexpr size_t PackedK = MLAS_SYMM_GEMM_S8S8_KERNEL_SDOT::PackedK;
+
+    // Strides in symmetric quantized gemm
+    static constexpr size_t SymmStrideN = 512;
 };
 constexpr size_t MLAS_SYMM_GEMM_S8S8_KERNEL_SDOT_LIT::PackedK;
+constexpr size_t MLAS_SYMM_GEMM_S8S8_KERNEL_SDOT_LIT::SymmStrideN;
 
 
 template <>

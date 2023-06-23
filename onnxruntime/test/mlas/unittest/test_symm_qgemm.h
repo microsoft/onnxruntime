@@ -42,8 +42,9 @@ class MlasSymmQgemmTestBase : public MlasTestBase {
       params.lda = lda;
       params.C = C + (M * N * i);
       params.ldc = ldc;
+      params.ZeroPointA = offa;
 
-      MlasSymmQgemmPackB(N, K, B + (K * N * i), ldb, AIsSigned, offa, PackedB + PackedBSize * i);
+      MlasSymmQgemmPackB(N, K, B + (K * N * i), ldb, AIsSigned, -1, PackedB + PackedBSize * i);
       params.B = PackedB + PackedBSize * i;
     }
 

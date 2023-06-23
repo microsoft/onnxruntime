@@ -202,11 +202,19 @@ MlasGemmBatch(
     });
 }
 
+MLAS_FORCEINLINE
+const MLAS_SYMM_QGEMM_DISPATCH*
+MlasSymmQgemmDispatch(bool AIsSigned)
+{
+    return AIsSigned ? GetMlasPlatform().SymmQgemmS8Dispatch
+                     : GetMlasPlatform().SymmQgemmU8Dispatch;
+}
+
 
 int32_t
-MlasSymmQgemmGetKernelOutputCnt()
+MlasSymmQgemmGetKernelOutputCnt(bool AIsSigned)
 {
-    const MLAS_SYMM_QGEMM_DISPATCH* dispatch = GetMlasPlatform().SymmQgemmDispatch;
+    const MLAS_SYMM_QGEMM_DISPATCH* dispatch = MlasSymmQgemmDispatch(AIsSigned);
     return int32_t(dispatch->StrideM);
 }
 
@@ -223,7 +231,7 @@ MlasSymmQgemmBatch(
     const size_t M = Shape.M;
     const size_t N = Shape.N;
     const size_t K = Shape.K;
-    const MLAS_SYMM_QGEMM_DISPATCH* dispatch = GetMlasPlatform().SymmQgemmDispatch;
+    const MLAS_SYMM_QGEMM_DISPATCH* dispatch = MlasSymmQgemmDispatch(Shape.AIsSigned);
 
     if (ThreadPool == nullptr) {
         // So our caller handles threaded job partition.
@@ -469,12 +477,6 @@ Return Value:
     }
 }
 
-#if defined(_MSC_VER) && !defined(__clang__)
-#pragma warning(push)
-// We can not make this function constexpr across different platforms
-#pragma warning(disable : 26497)
-#endif
-
 size_t
 MLASCALL
 MlasSymmQgemmPackBSize(
@@ -483,21 +485,10 @@ MlasSymmQgemmPackBSize(
     bool AIsSigned
     )
 {
-#ifndef MLAS_TARGET_ARM64
-
-    // Only have arm64 impl for now
-    MLAS_UNREFERENCED_PARAMETER(N);
-    MLAS_UNREFERENCED_PARAMETER(K);
-    MLAS_UNREFERENCED_PARAMETER(AIsSigned);
-    return 0;
-#else
-
-    // Only support s8s8 for now
-    if (!AIsSigned) {
+    const auto* Dispatch = MlasSymmQgemmDispatch(AIsSigned);
+    if (nullptr == Dispatch) {
         return 0;
     }
-
-    const auto* Dispatch = GetMlasPlatform().SymmQgemmDispatch;
 
     size_t PackedK = Dispatch->PackedK;
 
@@ -516,12 +507,7 @@ MlasSymmQgemmPackBSize(
         ~(BufferAlignment - 1);
 
     return AlignedBytesRequired;
-#endif  // !MLAS_TARGET_ARM64
 }
-#if defined(_MSC_VER) && !defined(__clang__)
-#pragma warning(pop)
-#endif
-
 
 void
 MLASCALL
@@ -535,9 +521,7 @@ MlasSymmQgemmPackB(
     void* PackedB
     )
 {
-    MLAS_UNREFERENCED_PARAMETER(AIsSigned);
-
-    const MLAS_SYMM_QGEMM_DISPATCH* SymmQgemmDispatch = GetMlasPlatform().SymmQgemmDispatch;
+    const MLAS_SYMM_QGEMM_DISPATCH* SymmQgemmDispatch = MlasSymmQgemmDispatch(AIsSigned);
 
     const size_t AlignedN =
         (N + MLAS_QGEMM_STRIDEN_THREAD_ALIGN - 1) & ~(MLAS_QGEMM_STRIDEN_THREAD_ALIGN - 1);
@@ -546,7 +530,9 @@ MlasSymmQgemmPackB(
 
     SymmQgemmDispatch->CopyPackBRoutine((uint8_t*)PackedB, (const uint8_t*)B, ldb, N, K,
                                         PackedColumnSumBuffer, true);
-    for (size_t n = 0; n < AlignedN; n++) {
-        PackedColumnSumBuffer[n] *= -ZeroPointA;
+    if (ZeroPointA != -1) {
+        for (size_t n = 0; n < AlignedN; n++) {
+            PackedColumnSumBuffer[n] *= -ZeroPointA;
+        }
     }
 }
