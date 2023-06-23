@@ -2286,12 +2286,18 @@ information on what attribute or type must be modified.)DOC")
                                     "Scale of tensor B if B is float 8 tensor",
                                     "TS",
                                     OpSchema::Optional)
+                                .Input(
+                                    4,
+                                    "scaleB",
+                                    "Scale of the output tensor if A or B is float 8.",
+                                    "TS",
+                                    OpSchema::Optional)
                                 .Output(0, "Y", "Output tensor of shape (M, N).", "TR")
                                 .TypeConstraint(
                                     "TA",
 #if !defined(DISABLE_FLOAT8_TYPES)
                                     {"tensor(float8e4m3fn)", "tensor(float8e5m2)", "tensor(float16)", "tensor(bfloat16)", "tensor(float)"},
-#else                                    
+#else
                                     {"tensor(float16)", "tensor(bfloat16)", "tensor(float)"},
 #endif
                                     "Constrain input type to float tensors.")
@@ -2299,7 +2305,7 @@ information on what attribute or type must be modified.)DOC")
                                     "TB",
 #if !defined(DISABLE_FLOAT8_TYPES)
                                     {"tensor(float8e4m3fn)", "tensor(float8e5m2)", "tensor(float16)", "tensor(bfloat16)", "tensor(float)"},
-#else                                    
+#else
                                     {"tensor(float16)", "tensor(bfloat16)", "tensor(float)"},
 #endif
                                     "Constrain input type to float tensors.")
@@ -2307,14 +2313,11 @@ information on what attribute or type must be modified.)DOC")
                                     "TR",
 #if !defined(DISABLE_FLOAT8_TYPES)
                                     {"tensor(float8e4m3fn)", "tensor(float8e5m2)", "tensor(float16)", "tensor(bfloat16)", "tensor(float)"},
-#else                                    
+#else
                                     {"tensor(float16)", "tensor(bfloat16)", "tensor(float)"},
 #endif
                                     "Constrain input type to float tensors.")
-                                .TypeConstraint(
-                                    "TS",
-                                    {"tensor(float)"},
-                                    "Constrain input type to float tensors.")
+                                .TypeConstraint("TS", {"tensor(float)"}, "Constrain input type to float tensors.")
                                 .Attr(
                                     "transA",
                                     "Whether A should be transposed",
@@ -2359,30 +2362,22 @@ information on what attribute or type must be modified.)DOC")
                                     static_cast<int64_t>(1))
                                 .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
                                   propagateElemTypeFromAttributeToOutput(ctx, "dtype", 0, TensorProto::FLOAT);
-                                  if (hasNInputShapes(ctx, 2)) {
-                                    auto transAAttr = ctx.getAttribute("transA");
-                                    bool transA = transAAttr ? static_cast<int>(transAAttr->i()) != 0 : false;
-                                    auto transBAttr = ctx.getAttribute("transB");
-                                    bool transB = transBAttr ? static_cast<int>(transBAttr->i()) != 0 : false;
-                                    auto& first_input_shape = getInputShape(ctx, 0);
-                                    auto& second_input_shape = getInputShape(ctx, 1);
-                                    if (first_input_shape.dim_size() != 2) {
-                                      fail_shape_inference("First input does not have rank 2");
-                                    }
-                                    if (second_input_shape.dim_size() != 2) {
-                                      fail_shape_inference("Second input does not have rank 2");
-                                    }
-                                    updateOutputShape(ctx, 0, {first_input_shape.dim(transA ? 1 : 0), second_input_shape.dim(transB ? 0 : 1)});
-                                    auto input_type = ctx.getInputType(0);
-                                    if (input_type == TensorProto::FLOAT8E4M3FN || input_type == TensorProto::FLOAT8E5M2) {
-                                      auto output_type = ctx.getOutputType(1);
-                                      const auto output_value_case = output_type->value_case();
-                                      if (output_value_case == TypeProto::kTensorType) {
-                                        setTensorElementType(TensorProto::FLOAT, input_value_case, *output_type);
-                                      }
-                                      updateOutputShape(ctx, 1, {1});
-                                    }
+                                  if (!hasNInputShapes(ctx, 2)) {
+                                    return;
                                   }
+                                  auto transAAttr = ctx.getAttribute("transA");
+                                  bool transA = transAAttr ? static_cast<int>(transAAttr->i()) != 0 : false;
+                                  auto transBAttr = ctx.getAttribute("transB");
+                                  bool transB = transBAttr ? static_cast<int>(transBAttr->i()) != 0 : false;
+                                  auto& first_input_shape = getInputShape(ctx, 0);
+                                  auto& second_input_shape = getInputShape(ctx, 1);
+                                  if (first_input_shape.dim_size() != 2) {
+                                    fail_shape_inference("First input does not have rank 2");
+                                  }
+                                  if (second_input_shape.dim_size() != 2) {
+                                    fail_shape_inference("Second input does not have rank 2");
+                                  }
+                                  updateOutputShape(ctx, 0, {first_input_shape.dim(transA ? 1 : 0), second_input_shape.dim(transB ? 0 : 1)});
                                 }));
 
 void RegisterContribSchemas() {
