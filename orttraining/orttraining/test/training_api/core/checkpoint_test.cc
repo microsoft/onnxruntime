@@ -351,7 +351,6 @@ TEST(CheckpointApiTest, SaveOptimizerStateAsCheckpoint_ThenLoad) {
       ConcatPathComponent<PathChar>(tmp_dir.Path(), ORT_TSTR("e2e_ckpt_save_cpu"))};
   ASSERT_STATUS_OK(SaveCheckpoint(state, checkpoint_path, true));
 
-<<<<<<< HEAD
   // Check the ckpt files in the directory.
   std::set<PathString> expected_file_names{
       ORT_TSTR("optim_group0_momentum0_tensors.pbseq"),
@@ -375,8 +374,6 @@ TEST(CheckpointApiTest, SaveOptimizerStateAsCheckpoint_ThenLoad) {
 
   ASSERT_EQ(expected_file_names, valid_file_names);
 
-=======
->>>>>>> Minimal Build for On-Device Training (#16326)
   /// Phase 2 - Run load checkpoint APIs.
   /// Validate the result matches with initial optimizer state values.
 
