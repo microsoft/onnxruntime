@@ -60,7 +60,7 @@ export class Session {
       this._model = new Model();
       if (typeof arg === 'string') {
         const isOrtFormat = arg.endsWith('.ort');
-        if (typeof fetch === 'undefined') {
+        if (typeof process !== 'undefined' && process.versions && process.versions.node) {
           // node
           const buf = await promisify(readFile)(arg);
           this.initialize(buf, isOrtFormat);

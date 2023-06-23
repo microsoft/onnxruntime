@@ -81,7 +81,7 @@
 #include "test/util/include/inference_session_wrapper.h"
 #include "test/util/include/temp_dir.h"
 #include "test/util/include/test_utils.h"
-#ifdef ENABLE_TRAINING_CORE
+#ifdef ENABLE_TRAINING
 #include "orttraining/core/optimizer/bitmask_dropout_replacement.h"
 #endif
 
@@ -4447,7 +4447,7 @@ TEST_F(GraphTransformationTests, BiasDropoutFusionTest) {
   TestBiasDropoutFusion(MODEL_FOLDER "fusion/bias_dropout_residual_same_shape_fusion_dim_is_param.onnx", *logger_);
 }
 
-#ifdef ENABLE_TRAINING_CORE
+#ifdef ENABLE_TRAINING
 static void TestBitmaskDropoutFusion(const PathString& file_path, bool is_bias_dropout, const logging::Logger& logger,
                                      const int add_count, const int dropout_count, const int bitmask_dropout_count,
                                      const int bias_dropout_count, const int bitmask_bias_dropout_count,
