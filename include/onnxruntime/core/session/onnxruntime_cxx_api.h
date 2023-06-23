@@ -210,8 +210,6 @@ struct BFloat16_t {
 
 static_assert(sizeof(BFloat16_t) == sizeof(uint16_t), "Sizes must match");
 
-// #if !defined(DISABLE_FLOAT8_TYPES)
-
 /** \brief float8e4m3fn (Float8 Floating Point) data type
  * \details It is necessary for type dispatching to make use of C++ API
  * The type is implicitly convertible to/from uint8_t.
@@ -275,8 +273,6 @@ struct Float8E5M2FNUZ_t {
 };
 
 static_assert(sizeof(Float8E5M2FNUZ_t) == sizeof(uint8_t), "Sizes must match");
-
-// #endif
 
 namespace detail {
 // This is used internally by the C++ API. This macro is to make it easy to generate overloaded methods for all of the various OrtRelease* functions for every Ort* type
