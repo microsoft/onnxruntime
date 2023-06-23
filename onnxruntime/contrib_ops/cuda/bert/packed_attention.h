@@ -52,6 +52,10 @@ class PackedAttention final : public TrtFusedAttention<T>, public CudaKernel {
   int num_heads_;                          // number of attention heads
   float scale_;                            // scale for softmax. Default is 0.0f, which will be replaced by 1/sqrt(num_heads) later
   std::vector<int64_t> qkv_hidden_sizes_;  // Q, K, V hidden sizes parsed from the qkv_hidden_sizes attribute.
+  bool disable_fused_runner_;
+  bool enable_trt_flash_attention_;
+  mutable std::unique_ptr<MHARunner> fused_fp16_runner_;
+  mutable std::once_flag fused_fp16_runner_created_;
 };
 
 }  // namespace cuda
