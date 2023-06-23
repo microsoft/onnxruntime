@@ -5,7 +5,7 @@
 
 import dataclasses
 import logging
-from typing import Any, Callable, Dict, Mapping, Set, Tuple, Union
+from typing import Any, Dict, Mapping, Tuple, Union
 
 import numpy as np
 import onnx
@@ -96,7 +96,7 @@ def _get_ort_device_type(device_type: str):
         return ORTC.OrtDevice.cpu()  # type: ignore
     # ort pytorch device is mapped to NPU OrtDevice type
     if device_type == "ort":
-        return ORTC.OrtDevice.npu()
+        return ORTC.OrtDevice.npu()  # type: ignore
     raise ValueError("Unsupported device type: " + device_type)
 
 

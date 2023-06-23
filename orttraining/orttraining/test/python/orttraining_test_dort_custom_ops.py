@@ -5,17 +5,17 @@ import os
 import sys
 import unittest
 
+import onnxscript
 import torch
 import torch._dynamo
 from functorch.compile import min_cut_rematerialization_partition
 from torch._dynamo.backends.common import aot_autograd
 
 import onnxruntime
-import onnxscript
 from onnxruntime.training.torchdynamo.ort_backend import (
+    DEFAULT_ONNX_EXPORTER_OPTIONS,
     DORT_DECOMPOSITION_TABLE,
     OrtBackend,
-    DEFAULT_ONNX_EXPORTER_OPTIONS,
 )
 
 # Dummy operator set to map aten::mul.Tensor to test.customop::CustomOpOne
