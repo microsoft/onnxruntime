@@ -31,8 +31,6 @@ from torch.fx.passes.infra.partitioner import CapabilityBasedPartitioner
 from torch.fx.passes.operator_support import OperatorSupport
 from torch.fx.passes.tools_common import CALLABLE_NODE_OPS
 
-from torch.onnx._globals import GLOBALS as ONNX_GLOBALS
-
 import onnxruntime  # type: ignore
 from onnxruntime.capi import _pybind_state as ORTC
 
@@ -201,10 +199,10 @@ def _create_onnx_model(onnx_proto):
     return onnx.ModelProto.FromString(onnx_proto)
 
 
-def _create_onnx_session(onnx_proto, ep: str):
+def _create_onnx_session(onnx_proto, ep: str, session_options):
     # TODO(wechi): Add more EPs per PyTorch device types.
     # TODO(wechi): enable external allocators.
-    return onnxruntime.InferenceSession(onnx_proto, providers=[ep])
+    return onnxruntime.InferenceSession(onnx_proto, providers=[ep], sess_options=session_options)
 
 
 def _infer_ep_from_device(device):
@@ -348,7 +346,7 @@ class OrtBackend:
         3. Inside _ort_accelerated_call, it creates onnxruntime.InferenceSession and calls it to execute the sub-graph.
     """
 
-    def __init__(self, ep: str = "", preallocate_output: bool = False):
+    def __init__(self, ep: str = "", preallocate_output: bool = False, session_options=None):
         self._supported_ops = OrtOperatorSupport()
         # TODO: this is a naive implementation of cache without proper guard
         self._partitioner_cache: Dict[torch.fx.GraphModule, torch.fx.GraphModule] = {}
@@ -356,6 +354,7 @@ class OrtBackend:
         self._ort_execution_info = OrtExecutionInfo()
 
         self.ep = ep
+        self.session_options = session_options
 
         # preallocate_output allows for allocating output torch Tensor buffers and feeding them to InferenceSession
         # in order to avoid internal allocation of output buffers in InferenceSession.
@@ -423,7 +422,7 @@ class OrtBackend:
             # so we add execution provider only based on the first input's device.
             ep = self.ep or _infer_ep_from_device(args[0].device)
 
-            onnx_session = _create_onnx_session(onnx_proto, ep)
+            onnx_session = _create_onnx_session(onnx_proto, ep, self.session_options)
             # Cache ORT session. It's reused for the same "graph_module".
             self._ort_execution_info.sessions[graph_module] = onnx_session
             # Generate ONNX model and extract its input and output names.
@@ -500,7 +499,7 @@ class OrtBackend:
             # TODO(wechi): this is required for removing aten::_to_copy in _replace_to_copy_with_to.
             _replace_to_copy_with_to(prim_graph_module)
             partitioner = CapabilityBasedPartitioner(
-                prim_graph_module, self._supported_ops, allows_single_node_partition=False
+                prim_graph_module, self._supported_ops, allows_single_node_partition=True
             )
             partitioned_prim_graph_module = partitioner.partition_and_fuse()
             self._partitioner_cache[graph_module] = partitioned_prim_graph_module
