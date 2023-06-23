@@ -384,7 +384,7 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
             nullptr,
             nullptr,
             nullptr,
-            nullptr};
+            0};
         for (auto option : it->second) {
           if (option.first == "device_id") {
             if (!option.second.empty()) {
@@ -601,6 +601,14 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
               params.trt_profile_opt_shapes = opt_profile.c_str();
             } else {
               ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_profile_opt_shapes' should be a string of 'input1:dim1xdimd2...,input2:dim1xdim2...,...'.\n");
+            }
+          } else if (option.first == "trt_cuda_graph_enable") {
+            if (option.second == "True" || option.second == "true") {
+              params.trt_cuda_graph_enable = true;
+            } else if (option.second == "False" || option.second == "false") {
+              params.trt_cuda_graph_enable = false;
+            } else {
+              ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_cuda_graph_enable' should be 'True' or 'False'. Default value is 'False'.\n");
             }
           } else {
             ORT_THROW("Invalid TensorRT EP option: ", option.first);
