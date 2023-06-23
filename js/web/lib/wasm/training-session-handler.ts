@@ -1,5 +1,5 @@
 import {readFile} from 'fs';
-import {CheckpointHandler, TrainingSessionHandler} from 'onnxruntime-common';
+import {CheckpointState, CheckpointHandler, TrainingSessionHandler} from 'onnxruntime-common';
 import { promisify } from 'util';
 // TODO: handler usually imports methods from proxy-wrapper, and proxy-wrapper imports from wasm-core-impl
 import * as core from './wasm-core-impl';
@@ -26,6 +26,10 @@ export class OnnxruntimeWebAssemblyCheckpointHandler implements CheckpointHandle
         } else {
             this.stateId = await core.loadCheckpoint(pathOrBuffer);
         }
+    }
+
+    dispose(): Promise<void> {
+        core.releaseCheckpoint(this.stateId);
     }
 }
 

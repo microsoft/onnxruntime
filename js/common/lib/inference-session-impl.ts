@@ -66,7 +66,7 @@ export class InferenceSession implements InferenceSessionInterface {
         const arg1Keys = Object.getOwnPropertyNames(arg1);
         for (const name of this.outputNames) {
           if (arg1Keys.indexOf(name) !== -1) {
-            const v = (arg1 as InferenceSessionInterface.NullableOnnxValueMapType)[name];
+            const v = (arg1 as Session.NullableOnnxValueMapType)[name];
             if (v === null || v instanceof Tensor) {
               isFetches = true;
               isFetchesEmpty = false;

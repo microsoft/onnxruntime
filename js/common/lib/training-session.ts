@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 import {OnnxValue} from './onnx-value';
-import {CheckpointState as CheckpointStateImpl} from './training-session-impl';
+import {CheckpointState as CheckpointStateImpl, TrainingSession as TrainingSessionImpl} from './training-session-impl';
 import {Session, RunOptions} from './inference-session';
 
 /* eslint-disable @typescript-eslint/no-redeclare */
@@ -15,6 +15,8 @@ export interface TrainingSession {
    trainStep(feeds: Session.FeedsType, fetches: Session.FetchesType, options?: RunOptions): Promise<Session.ReturnType>;
 
    optimizerStep(options?: RunOptions): void;
+
+   release(): Promise<void>;
 }
 
 export interface TrainingSessionFactory {
@@ -24,6 +26,7 @@ export interface TrainingSessionFactory {
 
 export interface CheckpointState {
    // saveCheckpoint(checkpoint: String): Promise<CheckpointState>;
+   release(): Promise<void>;
 }
 
 export interface CheckpointStateFactory {
@@ -31,3 +34,4 @@ export interface CheckpointStateFactory {
 }
 
 export const CheckpointState: CheckpointStateFactory = CheckpointStateImpl;
+export const TrainingSession: TrainingSessionFactory = TrainingSessionImpl;

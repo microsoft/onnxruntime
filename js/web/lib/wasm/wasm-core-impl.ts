@@ -387,6 +387,14 @@ export const loadCheckpoint =
 //     return wasm._OrtTrainingSaveCheckpoint(filePath);
 //   }
 
+export const releaseCheckpoint =
+  (checkpointId: number): void => {
+    const wasm = getInstance();
+    // TODO: determine if releasing the checkpoint id is enough -- reference the releaseSession
+    // method in the same file
+    wasm._OrtReleaseCheckpoint(checkpointId);
+  }
+
 /**
  * @returns list of fields of training-session-handler
  */
@@ -423,4 +431,3 @@ export const createTrainingSession =
 
     // TODO: not finished writing this fucntion
   }
-}

@@ -57,8 +57,10 @@ export {registerBackend} from './backend-impl';
 export interface CheckpointHandler {
   // save checkpoint implementation would go here
   // need class representation of a checkpoint handler to also have the number id for handle
+  dispose(): Promise<void>;
 }
 
 export interface TrainingSessionHandler {
+  dispose(): Promise<void>;
 
 }

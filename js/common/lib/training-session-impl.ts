@@ -32,6 +32,10 @@ export class TrainingSession implements TrainingSessionInterface {
         throw new Error('Method not implemented.');
     }
 
+    release(): Promise<void> {
+        throw new Error('Method not implemented.');
+    }
+
 }
 
 export class CheckpointState implements CheckpointStateInterface {
@@ -46,5 +50,9 @@ export class CheckpointState implements CheckpointStateInterface {
         const backend = await resolveBackend(backendHints);
         const handler = await backend.createCheckpointState(checkpoint);
         return new CheckpointState(handler);
+    }
+
+    release(): Promise<void> {
+        this.handler.dispose();
     }
 };
