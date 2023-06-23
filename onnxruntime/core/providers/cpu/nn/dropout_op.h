@@ -84,7 +84,7 @@ Status Dropout<T1, T2>::Compute(OpKernelContext* context) const {
     // generate mask
     {
       RandomGenerator& generator = generator_ != nullptr ? *generator_.get() : RandomGenerator::Default();
-      std::default_random_engine rng(generator.NextSeed());
+      std::default_random_engine rng(gsl::narrow_cast<std::default_random_engine::result_type>(generator.NextSeed()));
       std::uniform_real_distribution<float> dist{0.0f, 1.0f};
       mask_arr = Eigen::ArrayX<bool>::NullaryExpr(
           mask_arr.size(),

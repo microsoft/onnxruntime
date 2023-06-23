@@ -25,11 +25,14 @@ Keep in sync with doco generated from /docs/execution-providers/CoreML-Execution
 |ai.onnx:Pad|Only constant mode and last two dim padding is supported.<br/>Input pads and constant_value should be constant.<br/>If provided, axes should be constant.|
 |ai.onnx:Pow|Only supports cases when both inputs are fp32.|
 |ai.onnx:PRelu|Input slope should be constant.<br/>Input slope should either have shape [C, 1, 1] or have 1 element.|
+|ai.onnx:Reciprocal||
+|ai.onnx.ReduceSum||
 |ai.onnx:Relu||
 |ai.onnx:Reshape||
 |ai.onnx:Resize||
 |ai.onnx:Sigmoid||
 |ai.onnx:Squeeze||
+|ai.onnx:Sqrt||
 |ai.onnx:Sub||
 |ai.onnx:Tanh||
 |ai.onnx:Transpose||

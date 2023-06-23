@@ -1341,7 +1341,7 @@ static void TestSumMultipleInputsNoBroadcasting(size_t num_inputs, const TensorS
 
   OpTester test{"Sum", 8};
 
-  const auto dims = GetShapeVector(shape);
+  const auto dims = shape.AsShapeVector();
   const std::vector<element_type> input_data(shape.Size(), 1);
 
   for (size_t i = 0; i < num_inputs; ++i) {
@@ -2493,6 +2493,15 @@ TEST(MathOpTest, Equal_float) {
   std::vector<int64_t> dims{4};
   test.AddInput<float>("A", dims, {1.0f, 0.0f, -1.0f, -1.0f});
   test.AddInput<float>("B", dims, {1.0f, 1.0f, 2.0f, -1.0f});
+  test.AddOutput<bool>("C", dims, {true, false, false, true});
+  test.Run();
+}
+
+TEST(MathOpTest, Equal_string) {
+  OpTester test("Equal", 19);
+  std::vector<int64_t> dims{4};
+  test.AddInput<std::string>("A", dims, {"1.0f", "0.0f", "-1.0f", "-1.0f"});
+  test.AddInput<std::string>("B", dims, {"1.0f", "1.0f", "2.0f", "-1.0f"});
   test.AddOutput<bool>("C", dims, {true, false, false, true});
   test.Run();
 }

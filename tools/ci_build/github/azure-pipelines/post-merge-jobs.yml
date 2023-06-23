@@ -1,14 +1,3 @@
-variables:
-- name: WIN_CPU_BUILD_MACHINE_POOL_NAME
-  value: 'onnxruntime-Win-CPU-2022'
-- name: LINUX_CPU_BUILD_MACHINE_POOL_NAME  # name of a variable
-  # The public ADO project
-  ${{ if startsWith(variables['System.CollectionUri'], 'https://dev.azure.com/onnxruntime/') }}:
-    value: 'onnxruntime-Ubuntu2004-AMD-CPU'
-  # The private ADO project
-  ${{ if or(startsWith(variables['System.CollectionUri'], 'https://dev.azure.com/aiinfra/'),startsWith(variables['System.CollectionUri'], 'https://aiinfra.visualstudio.com/')) }}:
-    value: 'aiinfra-Linux-CPU'
-
 stages:
 - ${{ if or(startsWith(variables['System.CollectionUri'], 'https://dev.azure.com/aiinfra/'),startsWith(variables['System.CollectionUri'], 'https://aiinfra.visualstudio.com/')) }}:
   - template: templates/web-ci.yml
@@ -38,7 +27,7 @@ stages:
     runTests: true
     buildJava: false
     buildNodejs: false
-    ort_build_pool_name: ${{variables.WIN_CPU_BUILD_MACHINE_POOL_NAME}}
+    ort_build_pool_name: 'onnxruntime-Win-CPU-2022'
 
 - template: templates/win-ci.yml
   parameters:
@@ -53,7 +42,7 @@ stages:
     runTests: false
     buildJava: false
     buildNodejs: true
-    ort_build_pool_name: ${{variables.WIN_CPU_BUILD_MACHINE_POOL_NAME}}
+    ort_build_pool_name: 'onnxruntime-Win-CPU-2022'
 
 - template: templates/win-ci.yml
   parameters:
@@ -68,7 +57,28 @@ stages:
     runTests: true
     buildJava: true
     buildNodejs: true
-    ort_build_pool_name: ${{variables.WIN_CPU_BUILD_MACHINE_POOL_NAME}}
+    ort_build_pool_name: 'onnxruntime-Win-CPU-2022'
+
+- ${{ if or(startsWith(variables['System.CollectionUri'], 'https://dev.azure.com/aiinfra/'),startsWith(variables['System.CollectionUri'], 'https://aiinfra.visualstudio.com/')) }}:
+  # The settings below is the same as Windows GPU CI pipeline's CUDA job except here we set OnnxruntimeTestGpuDeviceId to 1
+  - stage: cuda_multi_gpu
+    dependsOn: []
+    jobs:
+    - template: templates/jobs/win-ci-vs-2022-job.yml
+      parameters:
+        BuildConfig: 'RelWithDebInfo'
+        EnvSetupScript: setup_env_cuda_11.bat
+        buildArch: x64
+        additionalBuildFlags: --enable_pybind --build_java --build_nodejs --use_cuda --cuda_home="$(Agent.TempDirectory)\v11.8" --enable_cuda_profiling --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86
+        msbuildPlatform: x64
+        isX86: false
+        job_name_suffix: x64_RelWithDebInfo
+        RunOnnxRuntimeTests: true
+        RunStaticCodeAnalysis: false
+        ORT_EP_NAME: CUDA
+        WITH_CACHE: true
+        MachinePool: onnxruntime-Win2022-GPU-MultiA10
+        OnnxruntimeTestGpuDeviceId: 1
 
 - stage: Mimalloc
   dependsOn: [ ]
@@ -88,9 +98,9 @@ stages:
       ORT_EP_NAME: CPU
       GenerateDocumentation: false
       EnablePython: false
-      MachinePool: ${{variables.WIN_CPU_BUILD_MACHINE_POOL_NAME}}
+      MachinePool: 'onnxruntime-Win-CPU-2022'
 
-- stage: NoAbseil
+- stage: MemoryProfiling
   dependsOn: [ ]
   jobs:
   - template: templates/jobs/win-ci-vs-2022-job.yml
@@ -98,17 +108,17 @@ stages:
       BuildConfig: 'Debug'
       EnvSetupScript: setup_env.bat
       buildArch: x64
-      additionalBuildFlags: --cmake_extra_defines onnxruntime_DISABLE_ABSEIL=ON
+      additionalBuildFlags: --cmake_extra_defines onnxruntime_ENABLE_MEMORY_PROFILE=ON
       msbuildPlatform: x64
       isX86: false
-      job_name_suffix: x64_no_absl
-      RunOnnxRuntimeTests: true
+      job_name_suffix: x64_no_memory_profiling
+      RunOnnxRuntimeTests: false
       RunStaticCodeAnalysis: false
       isTraining: false
       ORT_EP_NAME: CPU
       GenerateDocumentation: false
       EnablePython: false
-      MachinePool: ${{variables.WIN_CPU_BUILD_MACHINE_POOL_NAME}}
+      MachinePool: 'onnxruntime-Win-CPU-2022'
 
 - stage: MinimalBuildWithNoExceptions
   dependsOn: [ ]
@@ -128,7 +138,7 @@ stages:
       ORT_EP_NAME: CPU
       GenerateDocumentation: false
       EnablePython: false
-      MachinePool: ${{variables.WIN_CPU_BUILD_MACHINE_POOL_NAME}}
+      MachinePool: 'onnxruntime-Win-CPU-2022'
 
 - stage: DebugNodeInputsOutputs
   dependsOn: [ ]
@@ -148,7 +158,7 @@ stages:
       ORT_EP_NAME: CPU
       GenerateDocumentation: false
       EnablePython: false
-      MachinePool: ${{variables.WIN_CPU_BUILD_MACHINE_POOL_NAME}}
+      MachinePool: 'onnxruntime-Win-CPU-2022'
 
 #Generate test coverage report and publish the data to a Cloud database. Only runs daily.
 - stage: CodeCoverage
@@ -160,7 +170,7 @@ stages:
     timeoutInMinutes: 150
     variables:
       skipComponentGovernanceDetection: true
-    pool: ${{variables.LINUX_CPU_BUILD_MACHINE_POOL_NAME}}
+    pool: 'onnxruntime-Ubuntu2004-AMD-CPU'
     steps:
     - template: templates/set-version-number-variables-step.yml
 
@@ -206,7 +216,7 @@ stages:
   - job: AndroidCustomBuildScript
     workspace:
       clean: all
-    pool: ${{variables.LINUX_CPU_BUILD_MACHINE_POOL_NAME}}
+    pool: 'onnxruntime-Ubuntu2004-AMD-CPU'
     variables:
       dockerImageTag: onnxruntime-android-custom-build
     steps:

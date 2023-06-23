@@ -8,11 +8,10 @@ import inspect
 import io
 import logging
 import os
-import warnings
 from abc import ABC, abstractmethod  # noqa: F401
 from enum import IntFlag
 from functools import reduce
-from typing import Dict, Tuple
+from typing import Dict, List, Optional, Tuple
 
 import onnx
 import torch
@@ -30,18 +29,18 @@ from ._fallback import (
     ORTModuleONNXModelException,
     ORTModuleTorchModelException,
     _FallbackManager,
+    _FallbackPolicy,
     wrap_exception,
 )
 from ._gradient_accumulation_manager import GradientAccumulationManager
 from ._graph_execution_interface import GraphExecutionInterface
+from ._io import _FlattenedModule, _InputInfo, _ModelInputOutputSchemaType
 from .debug_options import DebugOptions, LogLevel
 from .torch_cpp_extensions.cpu.aten_op_executor import load_aten_op_executor_cpp_extension
 
-logger = logging.getLogger(__name__)
-
 
 class _RunStateInfo:
-    def __init__(self, state, output_info):
+    def __init__(self, state, output_info: List[Tuple[torch.Size, torch.device, torch.dtype]]):
         """
         :param state: State of partial run that contains intermediate tensors needed to resume the run later.
         :param output_info: Output info.
@@ -73,7 +72,13 @@ class _SkipCheck(IntFlag):
 
 
 class GraphExecutionManager(GraphExecutionInterface):
-    def __init__(self, module, debug_options: DebugOptions, fallback_manager: _FallbackManager):
+    def __init__(
+        self,
+        module: _FlattenedModule,
+        debug_options: DebugOptions,
+        fallback_manager: _FallbackManager,
+        logger: logging.Logger,
+    ):
         """Manages construction and execution of ONNX graphs"""
 
         super().__init__(module._original_module)
@@ -81,7 +86,8 @@ class GraphExecutionManager(GraphExecutionInterface):
         # IMPORTANT: Debug and Fallback must the configured first
         self._debug_options = debug_options
         self._fallback_manager = fallback_manager
-        logger.setLevel(_logger.ortmodule_loglevel_to_python_loglevel(self._debug_options.logging.log_level))
+
+        self._logger = logger
 
         # Original and flattened (transformed) output module
         self._flattened_module = module
@@ -92,9 +98,9 @@ class GraphExecutionManager(GraphExecutionInterface):
         # Model after inference optimization or gradient building.
         self._graph_builder = None
         self._graph_info = None
-        self._graph_initializer_names = None
-        self._graph_initializer_names_to_train = None
-        self._graph_initializers = None
+        self._graph_initializer_names = set()
+        self._graph_initializer_names_to_train = set()
+        self._graph_initializers: List[torch.nn.parameter.Parameter] = []
 
         # Update constant ONNX_OPSET_VERSION with env var ORTMODULE_ONNX_OPSET_VERSION
         # if defined.
@@ -105,7 +111,7 @@ class GraphExecutionManager(GraphExecutionInterface):
         # TrainingAgent or InferenceAgent
         self._execution_agent = None
 
-        # indicators of some logic have been executed previously and thus could be skipped for faster training
+        # Indicators of some logic have been executed previously and thus could be skipped for faster training
         # default is enabled, if not defined in os env
         self._skip_check = _SkipCheck(
             _SkipCheck.SKIP_CHECK_DEVICE | _SkipCheck.SKIP_CHECK_BUILD_GRADIENT | _SkipCheck.SKIP_CHECK_EXECUTION_AGENT
@@ -117,8 +123,7 @@ class GraphExecutionManager(GraphExecutionInterface):
             )
         self._first_skip_check_warning = True
 
-        # Inspect embedding input index sparsity.
-        self._rt_inspector = _runtime_inspector.RuntimeInspector(logger)
+        self._rt_inspector = _runtime_inspector.RuntimeInspector(self._logger)
 
         # Graph transformer config
         # Specify cast propagation strategy. Currently, three strategies are available, NONE, INSERT-AND-REDUCE and FLOOD-FILL
@@ -144,8 +149,6 @@ class GraphExecutionManager(GraphExecutionInterface):
         # It cannot overlap with required/immutable arguments (validated in runtime)
         self._export_extra_kwargs = {}
 
-        # Related to training graph shape inference
-        self._current_input_shape = None
         # default execution order is priority-based for both dynamic/static shape input for now
         # if we observe the benefit of static shape, we can expose this flag to the user
         self._use_static_shape = False
@@ -158,17 +161,24 @@ class GraphExecutionManager(GraphExecutionInterface):
 
         self._enable_custom_autograd_function = custom_autograd_function_enabler.state
 
-        self._input_info = None
-        self._module_output_schema = None
-        self._device = _utils.get_device_from_module(module)
+        # Input and output infos (including schema) for exported model.
+        self._input_info: Optional[_InputInfo] = None
+        self._module_output_schema: Optional[_ModelInputOutputSchemaType] = None
+        self._warning_log_detected_during_export = False
+        self._export_duration_in_ms = 0
 
-        self._module_parameters = list(inspect.signature(self._original_module.forward).parameters.values())
+        # Device where the model is placed.
+        self._device: Optional[torch.device] = _utils.get_device_from_module(module)
+
+        # Forward function input parameters of the original module.
+        self._module_parameters: List[inspect.Parameter] = list(
+            inspect.signature(self._original_module.forward).parameters.values()
+        )
 
         # TODO: remove after PyTorch ONNX exporter supports VAR_KEYWORD parameters.
         for input_parameter in self._module_parameters:
             if input_parameter.kind == inspect.Parameter.VAR_KEYWORD:
-                if self._debug_options.logging.log_level <= LogLevel.WARNING:
-                    logger.warning("The model's forward method has **kwargs parameter which has EXPERIMENTAL support!")
+                self._logger.info("The model's forward method has **kwargs parameter which has EXPERIMENTAL support!")
 
         self.is_rocm_pytorch = bool(torch.version.hip is not None and ROCM_HOME is not None)
 
@@ -192,8 +202,15 @@ class GraphExecutionManager(GraphExecutionInterface):
             self._enable_compute_optimizer
             and ortmodule._defined_from_envvar("ORTMODULE_ENABLE_SPARSE_OPTIMIZER", 1, warn=True) == 1
         )
+        self._enable_embedding_sparse_optimizer = (
+            self._enable_compute_optimizer
+            and self._enable_sparse_optimizer
+            and ortmodule._defined_from_envvar("ORTMODULE_ENABLE_EMBEDDING_SPARSE_OPTIMIZER", 0, warn=True) == 1
+        )
 
         self._print_input_density = ortmodule._defined_from_envvar("ORTMODULE_PRINT_INPUT_DENSITY", 0, warn=True) == 1
+        self._print_memory_stat = ortmodule._defined_from_envvar("ORTMODULE_PRINT_MEMORY_STATS", 0, warn=True) == 1
+        self._enable_memory_optimizer = ortmodule._defined_from_envvar("ORTMODULE_MEMORY_OPT_CONFIG", "", warn=True)
 
         # Flag to re-export the model due to attribute change on the original module.
         # Re-export will be avoided if _skip_check is enabled.
@@ -201,6 +218,21 @@ class GraphExecutionManager(GraphExecutionInterface):
 
         # Load ATen operator executor extension.
         load_aten_op_executor_cpp_extension()
+
+        self._feature_map: List[List[str]] = [
+            ["ATen Executor", "ON", "Dispatch ATen operators to ORT's ATen executor"],
+            [
+                "Cast Propagation",
+                "ON" if self._propagate_cast_ops_level > 0 else "OFF",
+                f"Level {self._propagate_cast_ops_level} enabled",
+            ],
+            ["Custom Function", "ON", "Support custom torch.autograd.Function export and execution"],
+            [
+                "Memory Optimizer",
+                "ON" if self._enable_memory_optimizer else "OFF",
+                "Enable with env ORTMODULE_MEMORY_OPT_CONFIG=<config>",
+            ],
+        ]
 
     def _get_torch_gpu_allocator_function_addresses(self):
         if self._use_external_gpu_allocator and torch.cuda.is_available():
@@ -230,26 +262,6 @@ class GraphExecutionManager(GraphExecutionInterface):
                 ),
             )
 
-    @staticmethod
-    def execution_session_run_forward(execution_session, onnx_model, device, *inputs):
-        """Runs the forward pass on `execution_session` with given `onnx_model`, `device` and `inputs`
-
-        This is a helper that can be called by the actual `GraphExecutionManager.forward` method
-
-        Args:
-            execution_session (InferenceAgent or InferenceAgent): Agent which runs either inference or train
-            onnx_model (onnx.ModelProto): ONNX model
-            device (torch.device): PyTorch device
-            inputs: (torch.Tensor or a container of): User input
-
-        Returns:
-            Returns a tuple (user_outputs, run_info):
-            user_outputs: The model output (either torch.Tensor or a container of torch.Tensor)
-            run_info: A _RunStateInfo which contains extra information about the execution of the graph
-        """
-
-        raise NotImplementedError
-
     @abstractmethod
     def forward(self):
         """Executes the forward method for ORTModule
@@ -271,8 +283,7 @@ class GraphExecutionManager(GraphExecutionInterface):
         """Creates and returns the session configuration to be used for the ExecutionAgent"""
 
         if _are_deterministic_algorithms_enabled():
-            if self._debug_options.logging.log_level <= _logger.LogLevel.INFO:
-                logger.warning("ORTModule's determinism will be enabled because PyTorch's determinism is enabled.")
+            self._logger.info("ORTModule's determinism will be enabled because PyTorch's determinism is enabled.")
 
         providers = None
         provider_options = None
@@ -285,7 +296,7 @@ class GraphExecutionManager(GraphExecutionInterface):
                 # Set Conv algo search mode to HEURISTIC by default, which is the same as PyTorch's default setting.
                 conv_algo_search = ortmodule._defined_from_envvar("ORTMODULE_CONV_ALGO_SEARCH", "HEURISTIC", warn=True)
                 if conv_algo_search not in ["HEURISTIC", "EXHAUSTIVE"]:
-                    warnings.warn("Invalid value of env CONV_ALGO_SEARCH. Must be HEURISTIC or EXHAUSTIVE.")
+                    self._logger.warning("Invalid value of env CONV_ALGO_SEARCH. Must be HEURISTIC or EXHAUSTIVE.")
                     conv_algo_search = "HEURISTIC"
                 provider_option_map["cudnn_conv_algo_search"] = conv_algo_search
                 provider_option_map["cudnn_conv_use_max_workspace"] = "1"
@@ -330,7 +341,7 @@ class GraphExecutionManager(GraphExecutionInterface):
 
         return session_options, providers, provider_options
 
-    def _export_model(self, *inputs, **kwargs):
+    def _export_model(self, *inputs, **kwargs) -> bool:
         # 1. Set the self._device from the user module
         # 2. Verify input schema matches the schema used on the previous model export
         # 3. Export the user model under self._export_training_flag mode
@@ -346,7 +357,7 @@ class GraphExecutionManager(GraphExecutionInterface):
         # e.g., some sympy functions in symbolic_shape_infer will change Python's random state.
         random_states = _utils.get_random_states()
 
-        schema = _io._extract_schema({"args": copy.copy(inputs), "kwargs": copy.copy(kwargs)})
+        schema = _io._extract_schema({"args": copy.copy(inputs), "kwargs": copy.copy(kwargs)}, self._logger)
         if (
             self._onnx_models.exported_model
             and schema == self._input_info.schema
@@ -374,77 +385,90 @@ class GraphExecutionManager(GraphExecutionInterface):
 
         return True
 
-    def _get_exported_model(self, input_schema, *inputs, **kwargs):
-        """Exports PyTorch `self._flattened_module` to ONNX for inferencing or training, using `*inputs` and `**kwargs` as input
+    def _get_exported_model(self, input_schema: _ModelInputOutputSchemaType, *inputs, **kwargs) -> onnx.ModelProto:
+        """Exports PyTorch `self._flattened_module` to ONNX for inferencing or training,
+          using `*inputs` and `**kwargs` as input
 
         TODO: How to support dynamic axes? Dimensions are determined by samples
         """
+        with _logger.suppress_os_stream_output(log_level=self._debug_options.logging.log_level) as suppress_output:
+            from datetime import datetime
 
-        # Setup dynamic axes for onnx model
-        self._input_info = _io.parse_inputs_for_onnx_export(self._module_parameters, None, input_schema, inputs, kwargs)
-        (
-            output_names,
-            output_dynamic_axes,
-            self._module_output_schema,
-        ) = _io.parse_outputs_for_onnx_export_and_extract_schema(
-            self._original_module, inputs, kwargs, self._debug_options.logging.log_level
-        )
-        self._input_info.dynamic_axes.update(output_dynamic_axes)
+            start = datetime.now()
 
-        # FlattenedModule needs _InputInfo to expand user input from *args to *args + **kwargs
-        self._flattened_module._input_info = self._input_info
-
-        # Export torch.nn.Module to ONNX
-        f = io.BytesIO()
-
-        # Deepcopy inputs, since input values may change after model run.
-        # NOTE: Inputs may contain tensors that have attributes preventing their deepcopy (example grad_fn).
-        # Therefore, deepcopy only the data component of the input tensors for export.
-        sample_inputs_copy, sample_kwargs_copy = _io.deepcopy_model_input(*inputs, **kwargs)
-        # NOTE: Flattening the input will change the 'input schema', resulting in a re-export
-        sample_inputs_as_tuple = tuple(self._input_info.flatten(sample_inputs_copy, sample_kwargs_copy, self._device))
-        # Ops behaving differently under train/eval mode need to be exported with the
-        # correct training flag to reflect the expected behavior.
-        # For example, the Dropout node in a model is dropped under eval mode.
-        assert self._export_mode is not None, "Please use a concrete instance of ExecutionManager"
-
-        try:
-            with torch.no_grad(), _logger.suppress_os_stream_output(log_level=self._debug_options.logging.log_level):
-                required_export_kwargs = {
-                    "input_names": self._input_info.names,
-                    "output_names": output_names,
-                    "opset_version": ortmodule.ONNX_OPSET_VERSION,
-                    "do_constant_folding": False,
-                    "training": self._export_mode,
-                    "dynamic_axes": self._input_info.dynamic_axes,
-                    "verbose": self._debug_options.logging.log_level < LogLevel.WARNING,
-                    "export_params": False,
-                    "keep_initializers_as_inputs": True,
-                }
-                invalid_args = self._export_extra_kwargs.keys() & required_export_kwargs.keys()
-                assert (
-                    len(invalid_args) == 0
-                ), f"The following PyTorch exporter arguments cannot be specified: '{invalid_args}'."
-                torch.onnx.export(
-                    self._flattened_module,
-                    sample_inputs_as_tuple,
-                    f,
-                    **required_export_kwargs,
-                    **self._export_extra_kwargs,
-                )
-        except Exception as e:
-            raise wrap_exception(  # noqa: B904
-                ORTModuleONNXModelException,
-                RuntimeError(
-                    f"There was an error while exporting the PyTorch model to ONNX: "
-                    f"\n\n{_utils.get_exception_as_string(e)}"
-                ),
+            # Setup dynamic axes for onnx model
+            self._input_info = _io.parse_inputs_for_onnx_export(
+                self._module_parameters, None, input_schema, inputs, kwargs
             )
-        exported_model = onnx.load_model_from_string(f.getvalue())
+            (
+                output_names,
+                output_dynamic_axes,
+                self._module_output_schema,
+            ) = _io.parse_outputs_for_onnx_export_and_extract_schema(
+                self._original_module, inputs, kwargs, self._logger
+            )
+            self._input_info.dynamic_axes.update(output_dynamic_axes)
 
-        exported_model = _post_process_after_export(
-            exported_model, self._enable_custom_autograd_function, self._debug_options.logging.log_level
-        )
+            # FlattenedModule needs _InputInfo to expand user input from *args to *args + **kwargs
+            self._flattened_module._input_info = self._input_info
+
+            # Export torch.nn.Module to ONNX
+            f = io.BytesIO()
+
+            # Deepcopy inputs, since input values may change after model run.
+            # NOTE: Inputs may contain tensors that have attributes preventing their deepcopy (example grad_fn).
+            # Therefore, deepcopy only the data component of the input tensors for export.
+            sample_inputs_copy, sample_kwargs_copy = _io.deepcopy_model_input(*inputs, **kwargs)
+            # NOTE: Flattening the input will change the 'input schema', resulting in a re-export
+            sample_inputs_as_tuple = tuple(
+                self._input_info.flatten(sample_inputs_copy, sample_kwargs_copy, self._device)
+            )
+            # Ops behaving differently under train/eval mode need to be exported with the
+            # correct training flag to reflect the expected behavior.
+            # For example, the Dropout node in a model is dropped under eval mode.
+            assert self._export_mode is not None, "Please use a concrete instance of ExecutionManager"
+
+            try:
+                with torch.no_grad():
+                    required_export_kwargs = {
+                        "input_names": self._input_info.names,
+                        "output_names": output_names,
+                        "opset_version": ortmodule.ONNX_OPSET_VERSION,
+                        "do_constant_folding": False,
+                        "training": self._export_mode,
+                        "dynamic_axes": self._input_info.dynamic_axes,
+                        "verbose": self._debug_options.logging.log_level < LogLevel.WARNING,
+                        "export_params": False,
+                        "keep_initializers_as_inputs": True,
+                    }
+                    invalid_args = self._export_extra_kwargs.keys() & required_export_kwargs.keys()
+                    assert (
+                        len(invalid_args) == 0
+                    ), f"The following PyTorch exporter arguments cannot be specified: '{invalid_args}'."
+                    torch.onnx.export(
+                        self._flattened_module,
+                        sample_inputs_as_tuple,
+                        f,
+                        **required_export_kwargs,
+                        **self._export_extra_kwargs,
+                    )
+            except Exception as e:
+                raise wrap_exception(  # noqa: B904
+                    ORTModuleONNXModelException,
+                    RuntimeError(
+                        f"There was an error while exporting the PyTorch model to ONNX: "
+                        f"\n\n{_utils.get_exception_as_string(e)}"
+                    ),
+                )
+            exported_model = onnx.load_model_from_string(f.getvalue())
+
+            exported_model = _post_process_after_export(exported_model, self._enable_custom_autograd_function)
+
+            if suppress_output.tell() > 0:
+                self._warning_log_detected_during_export = True
+
+            end = datetime.now()
+            self._export_duration_in_ms = (end - start).total_seconds() * 1000
 
         return exported_model
 
@@ -459,7 +483,7 @@ class GraphExecutionManager(GraphExecutionInterface):
                     ORTModuleDeviceException, RuntimeError("A device must be specified in the model or inputs!")
                 )
 
-    def _get_graph_transformer_config(self):
+    def _get_graph_transformer_config(self) -> C.TrainingGraphTransformerConfiguration:
         graph_transformer_config = C.TrainingGraphTransformerConfiguration()
         graph_transformer_config.propagate_cast_ops_config = C.PropagateCastOpsConfiguration()
         graph_transformer_config.propagate_cast_ops_config.level = self._propagate_cast_ops_level
@@ -546,14 +570,27 @@ class GraphExecutionManager(GraphExecutionInterface):
         Based on runtime inspection, enable conditional optimizations if applicable.
 
         Input sparsity-based optimization workflows:
-        1. Input density observer is enabled when label sparsity optimization is enabled.
+        1. Input density observer is enabled if the sparse optimizer is ON or user wants to print input density.
         2. Input density observer inspects input tensors and returns sparsity results.
         3. If label or embedding input sparsity is found in sparsity results, graph transformer config is updated to
            enable sparsity-based optimization.
 
         """
-
-        # Enable data sparsity inspection if label sparsity optimization is enabled or user wants to print input density.
+        self._feature_map.extend(
+            [
+                [
+                    "Compute Optimizer",
+                    "ON" if self._enable_compute_optimizer else "OFF",
+                    "Enable/Disable with env ORTMODULE_ENABLE_COMPUTE_OPTIMIZER=1/0",
+                ],
+                [
+                    " -FLOPReduction",
+                    "ON" if self._enable_compute_optimizer else "OFF",
+                    "Reduce FLOPs by upstreaming shrinking-sized ops",
+                ],
+            ]
+        )
+        # Enable data sparsity inspection if sparse optimizer is ON or user wants to print input density.
         if self._enable_sparse_optimizer or self._print_input_density:
             self._rt_inspector.enable_input_inspector(
                 self._onnx_models.exported_model, self._graph_builder.get_graph_info().user_input_names
@@ -577,14 +614,67 @@ class GraphExecutionManager(GraphExecutionInterface):
 
                 # Enable sparsity-based optimization when applicable.
                 if len(label_sparsity_results) > 0:
-                    graph_transformer_config.sparse_label_input_names = label_sparsity_results
-                    logger.info(f"Label sparsity based optimization is on for {label_sparsity_results}")
+                    graph_transformer_config.sparse_label_input_names = list(label_sparsity_results.keys())
+                    self._logger.info("Label sparsity-based optimization is ON for %s", label_sparsity_results)
+                    sparsity_stat_str = ",".join([f"{k}:{v:.0f}%" for k, v in label_sparsity_results.items()])
+                    self._feature_map.append(
+                        [
+                            " -LabelSparsityOpt",
+                            "ON",
+                            f"Input density: {sparsity_stat_str}, switch: ORTMODULE_ENABLE_SPARSE_OPTIMIZER=1/0",
+                        ]
+                    )
 
-                if len(embed_sparsity_results) > 0:
-                    graph_transformer_config.sparse_embedding_input_names = embed_sparsity_results
-                    logger.info(f"Embedding sparsity based optimization is on for {embed_sparsity_results}")
+                if self._enable_embedding_sparse_optimizer and len(embed_sparsity_results) > 0:
+                    graph_transformer_config.sparse_embedding_input_names = list(embed_sparsity_results.keys())
+                    self._logger.info("Embedding sparsity-based optimization is ON for %s", embed_sparsity_results)
+                    sparsity_stat_str = ",".join([f"{k}:{v:.0f}%" for k, v in embed_sparsity_results.items()])
+                    self._feature_map.append(
+                        [
+                            " -EmbedSparsityOpt",
+                            "ON",
+                            f"Input density: {sparsity_stat_str}, switch: ORTMODULE_ENABLE_SPARSE_OPTIMIZER=1/0",
+                        ]
+                    )
 
             # If users don't want to print input density, disable the input density observer to avoid overhead
             # when looping through inputs during training.
             if not self._print_input_density:
                 self._rt_inspector.disable_input_inspector()
+
+        if self._print_memory_stat:
+            self._rt_inspector.enable_memory_inspector(self._original_module)
+
+    def _log_feature_stats(self):
+        rank = 0
+        if torch.distributed.is_initialized():
+            rank = torch.distributed.get_rank()
+
+        if rank != 0:
+            return
+
+        self._feature_map.append(
+            [
+                "Auto Fallback",
+                "ON" if self._fallback_manager.policy is not _FallbackPolicy.FALLBACK_DISABLE else "OFF",
+                "Fallback to PyTorch when encountering unsupported ops",
+            ]
+        )
+
+        mode = "training" if self._export_mode == torch.onnx.TrainingMode.TRAINING else "inference"
+        mode = f"{_logger.LogColor.UNDERLINE}{mode}{_logger.LogColor.ENDC}"
+
+        stat = f"\n\n{_logger.LogColor.HEADER}***** ONNX Runtime Training (ORTModule) is accelerating your model *****{_logger.LogColor.ENDC}\n\n"
+        stat += f"ORTModule is enabled with following features ON/OFF for [{mode}] mode:\n\n"
+        for feature_tuple in self._feature_map:
+            stat += f"{feature_tuple[0]:<20}:\t{feature_tuple[1]:<10}:\t{feature_tuple[2]:<80}\n"
+
+        # If anything was captured in fo, raise a single user warning letting users know that there was
+        # any warning or error that was raised
+        stat += f"\n{_logger.LogColor.WARNING}There were one or more warnings or errors raised while exporting the PyTorch model.\n"
+        stat += f"Please enable INFO level logging with DebugOptions to view all warnings and errors.{_logger.LogColor.ENDC}\n\n"
+        stat += f"Export duration: {self._export_duration_in_ms:.0f} milliseconds\n"
+        stat += f"Versions: ONNX Runtime - {onnxruntime.__version__}, ONNX - {onnx.__version__}\n\n"
+        stat += f"{_logger.LogColor.HEADER}************************************************************************{_logger.LogColor.ENDC}\n\n"
+
+        self._logger.warning(stat)

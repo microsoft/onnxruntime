@@ -10,11 +10,14 @@ import ai.onnxruntime.TensorInfo;
 import android.util.Base64;
 import androidx.test.platform.app.InstrumentationRegistry;
 import com.facebook.react.bridge.Arguments;
+import com.facebook.react.bridge.CatalystInstance;
 import com.facebook.react.bridge.JavaOnlyArray;
 import com.facebook.react.bridge.JavaOnlyMap;
 import com.facebook.react.bridge.ReactApplicationContext;
 import com.facebook.react.bridge.ReadableArray;
 import com.facebook.react.bridge.ReadableMap;
+import com.facebook.react.bridge.WritableMap;
+import com.facebook.react.modules.blob.BlobModule;
 import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 import java.nio.ByteBuffer;
@@ -29,12 +32,17 @@ public class OnnxruntimeModuleTest {
   private ReactApplicationContext reactContext =
       new ReactApplicationContext(InstrumentationRegistry.getInstrumentation().getContext());
 
+  private FakeBlobModule blobModule;
+
   @Before
-  public void setUp() {}
+  public void setUp() {
+    blobModule = new FakeBlobModule(reactContext);
+  }
 
   @Test
   public void getName() throws Exception {
     OnnxruntimeModule ortModule = new OnnxruntimeModule(reactContext);
+    ortModule.blobModule = blobModule;
     String name = "Onnxruntime";
     Assert.assertEquals(ortModule.getName(), name);
   }
@@ -47,6 +55,7 @@ public class OnnxruntimeModuleTest {
       when(Arguments.createArray()).thenAnswer(i -> new JavaOnlyArray());
 
       OnnxruntimeModule ortModule = new OnnxruntimeModule(reactContext);
+      ortModule.blobModule = blobModule;
       String sessionKey = "";
 
       // test loadModel()
@@ -104,8 +113,7 @@ public class OnnxruntimeModuleTest {
             floatBuffer.put(value);
           }
           floatBuffer.rewind();
-          String dataEncoded = Base64.encodeToString(buffer.array(), Base64.DEFAULT);
-          inputTensorMap.putString("data", dataEncoded);
+          inputTensorMap.putMap("data", blobModule.testCreateData(buffer.array()));
 
           inputDataMap.putMap("input", inputTensorMap);
         }
@@ -124,10 +132,9 @@ public class OnnxruntimeModuleTest {
             Assert.assertEquals(outputMap.getArray("dims").getInt(i), dims[i]);
           }
           Assert.assertEquals(outputMap.getString("type"), TensorHelper.JsTensorTypeFloat);
-          String dataEncoded = outputMap.getString("data");
-          FloatBuffer buffer = ByteBuffer.wrap(Base64.decode(dataEncoded, Base64.DEFAULT))
-                                   .order(ByteOrder.nativeOrder())
-                                   .asFloatBuffer();
+          ReadableMap data = outputMap.getMap("data");
+          FloatBuffer buffer =
+              ByteBuffer.wrap(blobModule.testGetData(data)).order(ByteOrder.nativeOrder()).asFloatBuffer();
           for (int i = 0; i < 5; ++i) {
             Assert.assertEquals(buffer.get(i), inputData[i], 1e-6f);
           }
@@ -135,6 +142,9 @@ public class OnnxruntimeModuleTest {
           Assert.fail(e.getMessage());
         }
       }
+
+      // test dispose
+      ortModule.dispose(sessionKey);
     } finally {
       mockSession.finishMocking();
     }

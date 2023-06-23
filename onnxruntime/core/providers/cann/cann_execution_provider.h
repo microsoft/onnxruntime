@@ -37,22 +37,6 @@ class CANNExecutionProvider : public IExecutionProvider {
   Status OnRunStart() override;
 
   template <typename T>
-  IAllocatorUniquePtr<T> GetScratchBuffer(size_t count_or_bytes, Stream* stream, WaitNotificationFn wait_fn) const {
-    if (count_or_bytes == 0)
-      return nullptr;
-
-    return IAllocator::MakeUniquePtr<T>(GetAllocator(OrtMemTypeDefault), count_or_bytes, false, stream, wait_fn);
-  }
-
-  template <typename T>
-  IAllocatorUniquePtr<T> GetScratchBufferOnCANNPinned(size_t count_or_bytes) const {
-    if (count_or_bytes == 0)
-      return nullptr;
-
-    return IAllocator::MakeUniquePtr<T>(GetAllocator(OrtMemTypeCPU), count_or_bytes);
-  }
-
-  template <typename T>
   Status Fill(Tensor* y, void* addr, aclrtStream stream) const {
     return cann::Fill<T>(y, addr, stream);
   }
@@ -81,11 +65,11 @@ class CANNExecutionProvider : public IExecutionProvider {
     return CANNExecutionProviderInfo::ToProviderOptions(info_);
   }
 
-  void RegisterAllocator(AllocatorManager& allocator_manager) override;
-
-  void RegisterStreamHandlers(IStreamCommandHandleRegistry& stream_handle_registry) const override;
+  void RegisterStreamHandlers(IStreamCommandHandleRegistry& stream_handle_registry, AllocatorMap&) const override;
 
   OrtDevice GetOrtDeviceByMemType(OrtMemType mem_type) const override;
+
+  std::vector<AllocatorPtr> CreatePreferredAllocators() override;
 
  private:
   CANNExecutionProviderInfo info_;

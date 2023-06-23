@@ -7,6 +7,7 @@
 
 #include <type_traits>
 
+#include "core/common/gsl.h"
 #include "core/framework/data_types.h"
 #include "core/framework/error_code_helper.h"
 #include "core/framework/onnxruntime_typeinfo.h"
@@ -20,6 +21,11 @@
 #include "core/session/custom_ops.h"
 #include "core/session/inference_session.h"
 #include "core/session/ort_apis.h"
+
+#if !defined(ORT_MINIMAL_BUILD)
+static constexpr uint32_t min_ort_version_with_optional_io_support = 8;
+static constexpr uint32_t min_ort_version_with_variadic_io_support = 14;
+#endif
 
 ORT_API_STATUS_IMPL(OrtApis::KernelInfoGetAttribute_float, _In_ const OrtKernelInfo* info, _In_ const char* name, _Out_ float* out) {
   API_IMPL_BEGIN
@@ -55,7 +61,7 @@ ORT_API_STATUS_IMPL(OrtApis::KernelContext_GetOutputCount, _In_ const OrtKernelC
 
 ORT_API_STATUS_IMPL(OrtApis::KernelContext_GetInput, _In_ const OrtKernelContext* context, _In_ size_t index, _Out_ const OrtValue** out) {
   API_IMPL_BEGIN
-  *out = reinterpret_cast<const OrtValue*>(reinterpret_cast<const onnxruntime::OpKernelContextInternal*>(context)->GetInputMLValue(index));
+  *out = reinterpret_cast<const OrtValue*>(reinterpret_cast<const onnxruntime::OpKernelContextInternal*>(context)->GetInputMLValue(gsl::narrow_cast<int>(index)));
   return nullptr;
   API_IMPL_END
 };
@@ -63,7 +69,7 @@ ORT_API_STATUS_IMPL(OrtApis::KernelContext_GetInput, _In_ const OrtKernelContext
 ORT_API_STATUS_IMPL(OrtApis::KernelContext_GetOutput, _Inout_ OrtKernelContext* context, _In_ size_t index, _In_ const int64_t* dim_values, size_t dim_count, _Out_ OrtValue** out) {
   API_IMPL_BEGIN
   onnxruntime::TensorShape shape(dim_values, dim_count);
-  *out = reinterpret_cast<OrtValue*>(reinterpret_cast<onnxruntime::OpKernelContextInternal*>(context)->OutputMLValue(index, shape));
+  *out = reinterpret_cast<OrtValue*>(reinterpret_cast<onnxruntime::OpKernelContextInternal*>(context)->OutputMLValue(gsl::narrow_cast<int>(index), shape));
   return nullptr;
   API_IMPL_END
 };
@@ -301,7 +307,7 @@ ORT_API_STATUS_IMPL(OrtApis::KernelInfoGetConstantInput_tensor, _In_ const OrtKe
                     _Out_ int* is_constant, _Outptr_ const OrtValue** out) {
   API_IMPL_BEGIN
   const auto* op_info = reinterpret_cast<const onnxruntime::OpKernelInfo*>(info);
-  *is_constant = static_cast<int>(op_info->TryGetConstantInput(index, out));
+  *is_constant = static_cast<int>(op_info->TryGetConstantInput(gsl::narrow_cast<int>(index), out));
   return nullptr;
   API_IMPL_END
 };
@@ -428,7 +434,7 @@ KernelCreateInfo CreateKernelCreateInfo(const std::string& domain, const OrtCust
   // to work with newer versions (> 12) of the ORT binary.
   if (op->version > 12) {
     for (size_t i = 0; i < input_count; i++) {
-      def_builder.InputMemoryType(op->GetInputMemoryType(op, i), i);
+      def_builder.InputMemoryType(op->GetInputMemoryType(op, i), gsl::narrow_cast<int>(i));
     }
   }
 
@@ -467,9 +473,6 @@ KernelCreateInfo CreateKernelCreateInfo(const std::string& domain, const OrtCust
 }
 
 ONNX_NAMESPACE::OpSchema CreateSchema(const std::string& domain, const OrtCustomOp* op) {
-  constexpr uint32_t min_ort_version_with_optional_io_support = 8;
-  constexpr uint32_t min_ort_version_with_variadic_io_support = 14;
-
   const size_t input_count = op->GetInputTypeCount(op);
   const size_t output_count = op->GetOutputTypeCount(op);
   int undefined = 0;
@@ -503,7 +506,7 @@ ONNX_NAMESPACE::OpSchema CreateSchema(const std::string& domain, const OrtCustom
       undefined++;
     }
     std::string input_name = "Input" + std::to_string(i);
-    schema.Input(i, input_name, "", input_name, option, is_homogeneous, min_arity);
+    schema.Input(gsl::narrow_cast<int>(i), input_name, "", input_name, option, is_homogeneous, min_arity);
     // support all types as input here in schema, and handle the type inference in TypeShapeInference func
     schema.TypeConstraint(input_name, DataTypeImpl::ToString(DataTypeImpl::AllTensorTypes()), "all types");
   }
@@ -541,7 +544,7 @@ ONNX_NAMESPACE::OpSchema CreateSchema(const std::string& domain, const OrtCustom
       }
     }
     std::string output_name = "Output" + std::to_string(i);
-    schema.Output(i, output_name, "", output_name, option, is_homogeneous, min_arity);
+    schema.Output(gsl::narrow_cast<int>(i), output_name, "", output_name, option, is_homogeneous, min_arity);
     // support all types as input here in schema, and handle the type inference in TypeShapeInference func
     schema.TypeConstraint(output_name, DataTypeImpl::ToString(DataTypeImpl::AllTensorTypes()), "all types");
   }
@@ -562,7 +565,8 @@ Status IsCompatible(const ONNX_NAMESPACE::OpSchema& schema, const OrtCustomOp* o
     const auto characteristic = op->GetInputCharacteristic(op, i);
     const auto& formal_parameter = input_parameters[i];
     if (characteristic == OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_OPTIONAL) {
-      ORT_RETURN_IF_NOT(formal_parameter.GetOption() == onnx::OpSchema::FormalParameterOption::Optional,
+      ORT_RETURN_IF_NOT(op->version < min_ort_version_with_optional_io_support ||
+                            formal_parameter.GetOption() == onnx::OpSchema::FormalParameterOption::Optional,
                         "custom op schemas mismatch, expecting ", i + 1,
                         i == 0 ? "st" : (i == 1 ? "nd" : "th"),
                         " input to be of optional type");
@@ -571,7 +575,8 @@ Status IsCompatible(const ONNX_NAMESPACE::OpSchema& schema, const OrtCustomOp* o
                         "custom op schemas mismatch, expecting ", i + 1,
                         i == 0 ? "st" : (i == 1 ? "nd" : "th"),
                         " input to be of variadic type");
-      ORT_RETURN_IF_NOT(formal_parameter.GetIsHomogeneous() == (op->GetVariadicInputHomogeneity(op) != 0),
+      ORT_RETURN_IF_NOT(op->version < min_ort_version_with_variadic_io_support ||
+                            formal_parameter.GetIsHomogeneous() == (op->GetVariadicInputHomogeneity(op) != 0),
                         "custom op schemas mismatch, expecting ", i + 1,
                         i == 0 ? "st" : (i == 1 ? "nd" : "th"),
                         " input to keep same homogeneity");

@@ -62,13 +62,10 @@
 #include "orttraining/core/optimizer/shape_optimizer.h"
 #include "orttraining/core/optimizer/transformer_layer_recompute.h"
 #include "core/optimizer/pre_shape_node_elimination.h"
-
-// Only enabled in full training build. Not in on device training builds
-#ifdef ENABLE_TRAINING
 #include "core/optimizer/compute_optimizer/upstream_gather.h"
 #include "core/optimizer/compute_optimizer/upstream_reshape.h"
+#include "orttraining/core/optimizer/compute_optimizer/padding_elimination.h"
 #include "orttraining/core/optimizer/compute_optimizer/sceloss_compute_optimization.h"
-#endif
 
 namespace onnxruntime {
 namespace training {
@@ -175,14 +172,14 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
                                                                      cuda_execution_provider));
       }
 
-#ifdef ENABLE_TRAINING
       if (config.enable_compute_optimizer) {
         transformers.emplace_back(std::make_unique<UpStreamGatherGraphTransformer>(compatible_eps));
         transformers.emplace_back(std::make_unique<UpStreamReshapeGraphTransformer>(compatible_eps));
         transformers.emplace_back(std::make_unique<InsertGatherBeforeSceLoss>(compatible_eps,
                                                                               config.sparse_label_input_names));
+        transformers.emplace_back(std::make_unique<PaddingElimination>(compatible_eps,
+                                                                       config.sparse_embedding_input_names));
       }
-#endif
 
     } break;
 

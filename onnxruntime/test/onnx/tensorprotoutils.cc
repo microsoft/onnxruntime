@@ -230,6 +230,44 @@ void UnpackTensor(const onnx::TensorProto& tensor, const void* raw_data, size_t 
   return;
 }
 
+#define DEFINE_UNPACK_TENSOR_FLOAT8(TYPE, ONNX_TYPE)                                                       \
+  template <>                                                                                              \
+  void UnpackTensor(const onnx::TensorProto& tensor, const void* raw_data, size_t raw_data_len,            \
+                    /*out*/ TYPE* p_data, int64_t expected_size) {                                         \
+    if (nullptr == p_data) {                                                                               \
+      const size_t size = raw_data != nullptr ? raw_data_len : tensor.int32_data_size();                   \
+      if (size == 0)                                                                                       \
+        return;                                                                                            \
+      ORT_CXX_API_THROW("", OrtErrorCode::ORT_INVALID_ARGUMENT);                                           \
+    }                                                                                                      \
+    if (onnx::ONNX_TYPE != tensor.data_type()) {                                                           \
+      ORT_CXX_API_THROW("", OrtErrorCode::ORT_INVALID_ARGUMENT);                                           \
+    }                                                                                                      \
+    if (raw_data != nullptr) {                                                                             \
+      return UnpackTensorWithRawData(raw_data, raw_data_len, expected_size, p_data);                       \
+    }                                                                                                      \
+    if (tensor.int32_data_size() != expected_size)                                                         \
+      ORT_CXX_API_THROW(                                                                                   \
+          "UnpackTensor: the pre-allocate size does not match the size in proto", OrtErrorCode::ORT_FAIL); \
+    constexpr int max_value = std::numeric_limits<uint8_t>::max();                                         \
+    for (int i = 0; i < static_cast<int>(expected_size); i++) {                                            \
+      int v = tensor.int32_data()[i];                                                                      \
+      if (v < 0 || v > max_value) {                                                                        \
+        ORT_CXX_API_THROW(                                                                                 \
+            "data overflow", OrtErrorCode::ORT_FAIL);                                                      \
+      }                                                                                                    \
+      p_data[i] = TYPE(static_cast<uint8_t>(v), TYPE::FromBits());                                         \
+    }                                                                                                      \
+    return;                                                                                                \
+  }
+
+#if !defined(DISABLE_FLOAT8_TYPES)
+DEFINE_UNPACK_TENSOR_FLOAT8(Float8E4M3FN, TensorProto_DataType_FLOAT8E4M3FN)
+DEFINE_UNPACK_TENSOR_FLOAT8(Float8E4M3FNUZ, TensorProto_DataType_FLOAT8E4M3FNUZ)
+DEFINE_UNPACK_TENSOR_FLOAT8(Float8E5M2, TensorProto_DataType_FLOAT8E5M2)
+DEFINE_UNPACK_TENSOR_FLOAT8(Float8E5M2FNUZ, TensorProto_DataType_FLOAT8E5M2FNUZ)
+#endif
+
 #define CASE_PROTO_TRACE(X, Y)                                                \
   case onnx::TensorProto_DataType::TensorProto_DataType_##X:                  \
     if (!CalcMemSizeForArrayWithAlignment(size, sizeof(Y), alignment, out)) { \
@@ -263,6 +301,12 @@ Status GetSizeInBytesFromTensorProto(const ONNX_NAMESPACE::TensorProto& tensor_p
     CASE_PROTO_TRACE(UINT64, uint64_t);
     CASE_PROTO_TRACE(FLOAT16, MLFloat16);
     CASE_PROTO_TRACE(BFLOAT16, BFloat16);
+#if !defined(DISABLE_FLOAT8_TYPES)
+    CASE_PROTO_TRACE(FLOAT8E4M3FN, Float8E4M3FN);
+    CASE_PROTO_TRACE(FLOAT8E4M3FNUZ, Float8E4M3FNUZ);
+    CASE_PROTO_TRACE(FLOAT8E5M2, Float8E5M2);
+    CASE_PROTO_TRACE(FLOAT8E5M2FNUZ, Float8E5M2FNUZ);
+#endif
     CASE_PROTO_TRACE(STRING, std::string);
     default:
       return Status(common::ONNXRUNTIME, common::NOT_IMPLEMENTED);
@@ -343,6 +387,10 @@ ONNXTensorElementDataType CApiElementTypeFromProtoType(int type) {
     CASE_TYPE(COMPLEX64)
     CASE_TYPE(COMPLEX128)
     CASE_TYPE(BFLOAT16)
+    CASE_TYPE(FLOAT8E4M3FN)
+    CASE_TYPE(FLOAT8E4M3FNUZ)
+    CASE_TYPE(FLOAT8E5M2)
+    CASE_TYPE(FLOAT8E5M2FNUZ)
     default:
       return ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
   }
@@ -401,6 +449,12 @@ Status TensorProtoToMLValue(const onnx::TensorProto& tensor_proto, const MemBuff
         CASE_PROTO(UINT64, uint64_t);
         CASE_PROTO(FLOAT16, MLFloat16);
         CASE_PROTO(BFLOAT16, BFloat16);
+#if !defined(DISABLE_FLOAT8_TYPES)
+        CASE_PROTO(FLOAT8E4M3FN, Float8E4M3FN);
+        CASE_PROTO(FLOAT8E4M3FNUZ, Float8E4M3FNUZ);
+        CASE_PROTO(FLOAT8E5M2, Float8E5M2);
+        CASE_PROTO(FLOAT8E5M2FNUZ, Float8E5M2FNUZ);
+#endif
         case onnx::TensorProto_DataType::TensorProto_DataType_STRING:
           if (preallocated != nullptr) {
             OrtStatus* status = OrtInitializeBufferForTensor(preallocated, preallocated_size, ele_type);

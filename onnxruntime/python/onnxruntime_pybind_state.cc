@@ -151,7 +151,11 @@ const char* GetDeviceName(const OrtDevice& device) {
     case OrtDevice::FPGA:
       return "FPGA";
     case OrtDevice::NPU:
+#ifdef USE_CANN
+      return CANN;
+#else
       return "NPU";
+#endif
     default:
       ORT_THROW("Unknown device type: ", device.Type());
   }
@@ -380,7 +384,7 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
             nullptr,
             nullptr,
             nullptr,
-            nullptr};
+            0};
         for (auto option : it->second) {
           if (option.first == "device_id") {
             if (!option.second.empty()) {
@@ -597,6 +601,14 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
               params.trt_profile_opt_shapes = opt_profile.c_str();
             } else {
               ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_profile_opt_shapes' should be a string of 'input1:dim1xdimd2...,input2:dim1xdim2...,...'.\n");
+            }
+          } else if (option.first == "trt_cuda_graph_enable") {
+            if (option.second == "True" || option.second == "true") {
+              params.trt_cuda_graph_enable = true;
+            } else if (option.second == "False" || option.second == "false") {
+              params.trt_cuda_graph_enable = false;
+            } else {
+              ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_cuda_graph_enable' should be 'True' or 'False'. Default value is 'False'.\n");
             }
           } else {
             ORT_THROW("Invalid TensorRT EP option: ", option.first);
@@ -841,7 +853,7 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
 #ifdef USE_QNN
     auto cit = provider_options_map.find(type);
     return onnxruntime::QNNProviderFactoryCreator::Create(
-               cit == provider_options_map.end() ? ProviderOptions{} : cit->second)
+               cit == provider_options_map.end() ? ProviderOptions{} : cit->second, &session_options)
         ->CreateProvider();
 #endif
   } else {
@@ -1020,6 +1032,14 @@ void addGlobalMethods(py::module& m) {
           throw std::runtime_error("Error when creating and registering allocator: " + st.ErrorMessage());
         }
       });
+  m.def(
+      "create_and_register_allocator_v2", [](const std::string& provider_type, const OrtMemoryInfo& mem_info, const ProviderOptions& options, const OrtArenaCfg* arena_cfg = nullptr) -> void {
+        auto env = GetEnv();
+        auto st = env->CreateAndRegisterAllocatorV2(provider_type, mem_info, options, arena_cfg);
+        if (!st.IsOK()) {
+          throw std::runtime_error("Error when creating and registering allocator in create_and_register_allocator_v2: " + st.ErrorMessage());
+        }
+      });
 
 #ifdef USE_OPENVINO
   m.def(
@@ -1143,13 +1163,14 @@ void addObjectMethods(py::module& m, ExecutionProviderRegistrationFn ep_registra
       .def("device_type", &OrtDevice::Type, R"pbdoc(Device Type.)pbdoc")
       .def_static("cpu", []() { return OrtDevice::CPU; })
       .def_static("cuda", []() { return OrtDevice::GPU; })
+      .def_static("cann", []() { return OrtDevice::NPU; })
       .def_static("fpga", []() { return OrtDevice::FPGA; })
       .def_static("npu", []() { return OrtDevice::NPU; })
       .def_static("default_memory", []() { return OrtDevice::MemType::DEFAULT; });
 
   py::class_<OrtArenaCfg> ort_arena_cfg_binding(m, "OrtArenaCfg");
-  // Note: Doesn't expose initial_growth_chunk_sizes_bytes option. This constructor kept for
-  // backwards compatibility, key-value pair constructor overload exposes all options
+  // Note: Doesn't expose initial_growth_chunk_sizes_bytes/max_power_of_two_extend_bytes option.
+  // This constructor kept for backwards compatibility, key-value pair constructor overload exposes all options
   // There is a global var: arena_extend_strategy, which means we can't use that var name here
   // See docs/C_API.md for details on what the following parameters mean and how to choose these values
   ort_arena_cfg_binding.def(py::init([](size_t max_mem, int arena_extend_strategy_local,
@@ -1175,6 +1196,8 @@ void addObjectMethods(py::module& m, ExecutionProviderRegistrationFn ep_registra
             ort_arena_cfg->max_dead_bytes_per_chunk = kvp.second.cast<int>();
           } else if (key == "initial_growth_chunk_size_bytes") {
             ort_arena_cfg->initial_growth_chunk_size_bytes = kvp.second.cast<int>();
+          } else if (key == "max_power_of_two_extend_bytes") {
+            ort_arena_cfg->max_power_of_two_extend_bytes = kvp.second.cast<int>();
           } else {
             ORT_THROW("Invalid OrtArenaCfg option: ", key);
           }
@@ -1185,7 +1208,8 @@ void addObjectMethods(py::module& m, ExecutionProviderRegistrationFn ep_registra
       .def_readwrite("arena_extend_strategy", &OrtArenaCfg::arena_extend_strategy)
       .def_readwrite("initial_chunk_size_bytes", &OrtArenaCfg::initial_chunk_size_bytes)
       .def_readwrite("max_dead_bytes_per_chunk", &OrtArenaCfg::max_dead_bytes_per_chunk)
-      .def_readwrite("initial_growth_chunk_size_bytes", &OrtArenaCfg::initial_growth_chunk_size_bytes);
+      .def_readwrite("initial_growth_chunk_size_bytes", &OrtArenaCfg::initial_growth_chunk_size_bytes)
+      .def_readwrite("max_power_of_two_extend_bytes", &OrtArenaCfg::max_power_of_two_extend_bytes);
 
   py::class_<OrtMemoryInfo> ort_memory_info_binding(m, "OrtMemoryInfo");
   ort_memory_info_binding.def(py::init([](const char* name, OrtAllocatorType type, int id, OrtMemType mem_type) {

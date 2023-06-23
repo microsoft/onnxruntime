@@ -373,6 +373,19 @@ bool BatchNormalizationNodeGroupSelector::Check(const GraphViewer& graph_viewer,
   return true;
 }
 
+bool LogicalComparisonNodeGroupSelector::Check(const GraphViewer& graph_viewer,
+                                               const Node& node,
+                                               const std::vector<const Node*>& dq_nodes,
+                                               const std::vector<const Node*>& q_nodes) const {
+  if (!CheckQDQNodes(graph_viewer, node, dq_nodes, q_nodes, -1, true)) {
+    return false;
+  }
+
+  int32_t dt_input_1 = dq_nodes[0]->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
+  int32_t dt_input_2 = dq_nodes[1]->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
+  return dt_input_1 == dt_input_2;
+}
+
 }  // namespace QDQ
 }  // namespace onnxruntime
 

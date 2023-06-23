@@ -81,7 +81,8 @@ struct ProviderInfo_ROCM_Impl : ProviderInfo_ROCM {
   }
 
   std::unique_ptr<IAllocator> CreateROCMPinnedAllocator(int16_t device_id, const char* name) override {
-    return std::make_unique<ROCMPinnedAllocator>(device_id, name);
+    ORT_UNUSED_PARAMETER(device_id);
+    return std::make_unique<ROCMPinnedAllocator>(name);
   }
 
   std::unique_ptr<IDataTransfer> CreateGPUDataTransfer() override {
@@ -175,6 +176,7 @@ struct ROCM_Provider : Provider {
     info.default_memory_arena_cfg = params->default_memory_arena_cfg;
     info.tunable_op.enable = params->tunable_op_enable;
     info.tunable_op.tuning_enable = params->tunable_op_tuning_enable;
+    info.tunable_op.max_tuning_duration_ms = params->tunable_op_max_tuning_duration_ms;
 
     return std::make_shared<ROCMProviderFactory>(info);
   }
@@ -193,6 +195,7 @@ struct ROCM_Provider : Provider {
     rocm_options.default_memory_arena_cfg = info.default_memory_arena_cfg;
     rocm_options.tunable_op_enable = info.tunable_op.enable;
     rocm_options.tunable_op_tuning_enable = info.tunable_op.tuning_enable;
+    rocm_options.tunable_op_max_tuning_duration_ms = info.tunable_op.max_tuning_duration_ms;
   }
 
   ProviderOptions GetProviderOptions(const void* provider_options) override {
