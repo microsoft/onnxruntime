@@ -31,7 +31,7 @@ fi
 export ONNX_ML=1
 export CMAKE_ARGS="-DONNX_GEN_PB_TYPE_STUBS=OFF -DONNX_WERROR=OFF"
 
-pip install transformers
+/opt/python/cp39-cp39/bin/python3.9 -m pip install transformers
 
 cd /usr/local/
 echo "Cloning ONNX Script"
