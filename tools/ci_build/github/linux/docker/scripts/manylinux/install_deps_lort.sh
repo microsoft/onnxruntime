@@ -43,16 +43,12 @@ VERBOSE=1 BUILD_LAZY_TS_BACKEND=1 /opt/python/cp39-cp39/bin/python3.9 setup.py i
 cd ~ && /opt/python/cp39-cp39/bin/python3.9 -c "import torch; print(f'Installed Pytorch: {torch.__version__}')"
 
 cd /usr/local/
-echo "Cloning TorchDynamo"
-git clone --recursive https://github.com/pytorch/torchdynamo.git
-cd torchdynamo
-echo "Installing TorchDynamo requirements"
-/opt/python/cp39-cp39/bin/python3.9 -m pip install transformers
-/opt/python/cp39-cp39/bin/python3.9 -m pip install -r requirements.txt
-echo "Installing TorchDynamo"
+echo "Cloning ONNX Script"
+git clone --recursive https://github.com/microsoft/onnxscript.git
+cd onnxscript
+/opt/python/cp39-cp39/bin/python3.9 -m pip install -r requirements-dev.txt
 /opt/python/cp39-cp39/bin/python3.9 setup.py install
-cd ~ && /opt/python/cp39-cp39/bin/python3.9 -c "import torch; print(f'Installed Pytorch: {torch.__version__}')"
-cd ~ && /opt/python/cp39-cp39/bin/python3.9 -c "import torchdynamo; print(f'Installed TorchDynamo: {torchdynamo.__path__}')"
+cd ~ && /opt/python/cp39-cp39/bin/python3.9 -c "import onnxscript; print(f'Installed ONNX Script: {onnxscript.__version__}')"
 
 cd /
 rm -rf /tmp/src
