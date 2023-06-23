@@ -14,9 +14,8 @@ TrainingSession::TrainingSession(Environment& session_env,
                                  CheckpointState* state,
                                  const ModelIdentifiers& model_identifiers)
     : state_{state} {
-  bool use_env_allocators = session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigUseEnvAllocators, "0") == "1";
   std::vector<OrtMemoryInfo> mem_infos;
-  if (use_env_allocators) {
+  if (session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigUseEnvAllocators, "0") == "1") {
     for (auto& provider : providers) {
       auto allocators = provider->CreatePreferredAllocators();
       for (auto& alloc : allocators) {
@@ -33,10 +32,8 @@ TrainingSession::TrainingSession(Environment& session_env,
     optimizer_ = std::unique_ptr<Optimizer>();
   }
 
-  if (use_env_allocators) {
-    for (auto& mem_info : mem_infos) {
-      ORT_THROW_IF_ERROR(session_env.UnregisterAllocator(mem_info));
-    }
+  for (auto& mem_info : mem_infos) {
+    ORT_THROW_IF_ERROR(session_env.UnregisterAllocator(mem_info));
   }
 }
 
