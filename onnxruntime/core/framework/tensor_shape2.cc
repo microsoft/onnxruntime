@@ -27,4 +27,16 @@ bool TensorShape2::IsScalar() const {
   return tensor_shape_->IsScalar();
 //return true;
 }
+
+TensorShape3::TensorShape3() {
+  shape_.push_back(1);
+}
+
+size_t TensorShape3::NumDimensions() {
+  return shape_.size();
+}
+
+int cube(int x) {
+  return x * x * x;
+}
 }

@@ -33,4 +33,15 @@ class TensorShape2 {
   std::unique_ptr<TensorShape> tensor_shape_;
 //  TensorShape* tensor_shape_;
 };
+
+class TensorShape3 {
+ public:
+  TensorShape3();
+  size_t NumDimensions();
+ private:
+  std::vector<int> shape_;
+};
+
+int cube(int x);
+
 }  // namespace onnxruntime
