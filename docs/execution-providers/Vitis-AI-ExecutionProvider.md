@@ -1,10 +1,9 @@
 ---
 title: AMD - Vitis AI
 description: Instructions to execute ONNX Runtime on AMD devices with the Vitis AI execution provider
-grand_parent: Execution Providers
-parent: Community-maintained
+parent: Execution Providers
 nav_order: 6
-redirect_from: /docs/reference/execution-providers/Vitis-AI-ExecutionProvider
+redirect_from: /docs/execution-providers/community-maintained/Vitis-AI-ExecutionProvider
 ---
 
 # Vitis AI Execution Provider
@@ -110,7 +109,7 @@ pip install voe-[version]-cp39-cp39-win_amd64.whl
 
 
 ## Build
-To build the Ryzen AI Vitis AI ONNX Runtime Execution Provider from source, please refer to the [Build Instructions](../../build/eps.md#amd-vitis-ai).  
+To build the Ryzen AI Vitis AI ONNX Runtime Execution Provider from source, please refer to the [Build Instructions](../build/eps.md#amd-vitis-ai).  
 
 
 ## Quantization
@@ -129,7 +128,7 @@ See [Vitis AI Model Quantization](https://xilinx.github.io/Vitis-AI/docs/workflo
 
 ### Olive
 
-Experimental support for Microsoft Olive is enabled in this release.  The Vitis AI Quantizer has been integrated as a plugin into Olive and will be upstreamed.  Once this is complete, users can refer to the Vitis AI example(s) provided in the [Olive Vitis AI Example Directory](https://github.com/microsoft/Olive/tree/main/examples/resnet_vitis_ai_ptq_cpu).
+Experimental support for Microsoft Olive is enabled in this release.  The Vitis AI Quantizer has been integrated as a plugin into Olive and will be upstreamed.  Once this is complete, users can refer to the Vitis AI example(s) provided in the [Olive Vitis AI Example Directory](https://github.com/microsoft/Olive/blob/main/examples/resnet/resnet_vitis_ai_ptq_cpu.json).
 
 ## Runtime Options
 

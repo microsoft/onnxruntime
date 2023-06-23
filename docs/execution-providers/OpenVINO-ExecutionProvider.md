@@ -20,7 +20,7 @@ Accelerate ONNX models on Intel CPUs, GPUs with Intel OpenVINO™ Execution Prov
 ## Install
 
 Pre-built packages and Docker images are published for OpenVINO™ Execution Provider for ONNX Runtime by Intel for each release.
-* OpenVINO™ Execution Provider for ONNX Runtime Release page: [Latest v4.3 Release](https://github.com/intel/onnxruntime/releases)
+* OpenVINO™ Execution Provider for ONNX Runtime Release page: [Latest v5.0 Release](https://github.com/intel/onnxruntime/releases)
 * Python wheels Ubuntu/Windows: [onnxruntime-openvino](https://pypi.org/project/onnxruntime-openvino/)
 * Docker image: [openvino/onnxruntime_ep_ubuntu20](https://hub.docker.com/r/openvino/onnxruntime_ep_ubuntu20)
 
@@ -30,10 +30,9 @@ ONNX Runtime OpenVINO™ Execution Provider is compatible with three lastest rel
 
 |ONNX Runtime|OpenVINO™|Notes|
 |---|---|---|
+|1.15.0|2023.0|[Details](https://github.com/intel/onnxruntime/releases/tag/v5.0)|
 |1.14.0|2022.3|[Details](https://github.com/intel/onnxruntime/releases/tag/v4.3)|
 |1.13.0|2022.2|[Details](https://github.com/intel/onnxruntime/releases/tag/v4.2)|
-|1.11.0|2022.1|[Details](https://github.com/intel/onnxruntime/releases/tag/v4.0)|
-
 
 ## Build
 
@@ -59,27 +58,26 @@ pip install onnxruntime-openvino
 
 * **Linux**
 
-   OpenVINO™ Execution Provider with Onnx Runtime on Linux installed from PyPi.org come with prebuilt OpenVINO™ libs and supports flag CXX11_ABI=0. So there is no need to install OpenVINO™ separately.
+   OpenVINO™ Execution Provider with Onnx Runtime on Linux, installed from PyPi.org comes with prebuilt OpenVINO™ libs and supports flag CXX11_ABI=0. So there is no need to install OpenVINO™ separately.
 
-   To enable CX11_ABI=1 flag, build Onnx Runtime python wheel packages from source. For build instructions, please see the [BUILD page](../build/eps.md#openvino).
+   But if there is need to enable CX11_ABI=1 flag of OpenVINO, build Onnx Runtime python wheel packages from source. For build instructions, please see the [BUILD page](../build/eps.md#openvino).
    OpenVINO™ Execution Provider wheels on Linux built from source will not have prebuilt  OpenVINO™ libs so we must set the OpenVINO™ Environment Variable using the full installer package of OpenVINO™:
 
       ```
-      C:\ <openvino_install_directory>\setupvars.bat
+      $ source <openvino_install_directory>/setupvars.sh
       ```
-
 
 **Set OpenVINO™ Environment for C++**
 
 For Running C++/C# ORT Samples with the OpenVINO™ Execution Provider it is must to set up the OpenVINO™ Environment Variables using the full installer package of OpenVINO™.
 Initialize the OpenVINO™ environment by running the setupvars script as shown below. This is a required step:
-   * For Linux run:
-   ```
-      $ source <openvino_install_directory>/setupvars.sh
-   ```
    * For Windows run:
    ```
       C:\ <openvino_install_directory>\setupvars.bat
+   ```
+   * For Linux run:
+   ```
+      $ source <openvino_install_directory>/setupvars.sh
    ```
    **Note:** If you are using a dockerfile to use OpenVINO™ Execution Provider, sourcing OpenVINO™ won't be possible within the dockerfile. You would have to explicitly set the LD_LIBRARY_PATH to point to OpenVINO™ libraries location. Refer our [dockerfile](https://github.com/microsoft/onnxruntime/blob/main/dockerfiles/Dockerfile.openvino).
 
@@ -100,17 +98,17 @@ OpenVINO™ supports [model caching](https://docs.openvino.ai/latest/openvino_do
 
 From OpenVINO™ 2022.1 version, model caching feature is supported on CPU and kernel caching on iGPU.
 
-From OpenVINO™ 2022.3 version, the model caching feature is also supported on iGPU as preview.
+From OpenVINO™ 2022.3 version, the model caching feature is also supported on iGPU,dGPU as preview.
 
 This feature enables users to save and load the blob file directly. This file can be loaded directly on to the hardware device target and inferencing can be performed.
 
-Kernel Caching on iGPU :
+Kernel Caching on iGPU and dGPU:
 
-This feature also allows user to save kernel caching as cl_cache files for models with dynamic input shapes. These cl_cache files can be loaded directly onto the iGPU hardware device target and inferencing can be performed.
+This feature also allows user to save kernel caching as cl_cache files for models with dynamic input shapes. These cl_cache files can be loaded directly onto the iGPU/dGPU hardware device target and inferencing can be performed.
 
 #### <b> Enabling Model Caching via Runtime options using c++/python API's.</b>
 
-This flow can be enabled by setting the runtime config option 'cache_dir' specifying the path to dump and load the blobs (CPU, iGPU) or cl_cache(iGPU) while using the c++/python API'S.
+This flow can be enabled by setting the runtime config option 'cache_dir' specifying the path to dump and load the blobs (CPU, iGPU, dGPU) or cl_cache(iGPU, dGPU) while using the c++/python API'S.
 
 Refer to [Configuration Options](#configuration-options) for more information about using these runtime options.
 
@@ -247,7 +245,7 @@ The following table lists all the available configuration options and the Key-Va
 
 | **Key** | **Key type** | **Allowable Values** | **Value type** | **Description** |
 | --- | --- | --- | --- | --- |
-| device_type | string | CPU_FP32, CPU_FP16, GPU_FP32, GPU_FP16, GPU.0_FP16, GPU.1_FP16, GPU.0_FP16, GPU.0_FP32 based on the avaialable GPUs, Any valid Hetero combination, Any valid Multi or Auto devices combination | string | Overrides the accelerator hardware type and precision with these values at runtime. If this option is not explicitly set, default hardware and precision specified during build time is used. |Overrides the accelerator hardware type and precision with these values at runtime. If this option is not explicitly set, default hardware and precision specified during build time is used. |
+| device_type | string | CPU_FP32, CPU_FP16, GPU_FP32, GPU_FP16, GPU.0_FP32, GPU.1_FP32, GPU.0_FP16, GPU.1_FP16 based on the avaialable GPUs, Any valid Hetero combination, Any valid Multi or Auto devices combination | string | Overrides the accelerator hardware type and precision with these values at runtime. If this option is not explicitly set, default hardware and precision specified during build time is used. |Overrides the accelerator hardware type and precision with these values at runtime. If this option is not explicitly set, default hardware and precision specified during build time is used. |
 | device_id   | string | Any valid OpenVINO device ID | string | Selects a particular hardware device for inference. The list of valid OpenVINO device ID's available on a platform can be obtained either by Python API (`onnxruntime.capi._pybind_state.get_available_openvino_device_ids()`) or by [OpenVINO C/C++ API](https://docs.openvino.ai/latest/classInferenceEngine_1_1Core.html). If this option is not explicitly set, an arbitrary free device will be automatically selected by OpenVINO runtime.|
 | num_of_threads | string | Any unsigned positive number other than 0 | size_t | Overrides the accelerator default value of number of threads with this value at runtime. If this option is not explicitly set, default value of 8 is used during build time. |
 | cache_dir | string | Any valid string path on the hardware target | string | Explicitly specify the path to save and load the blobs enabling model caching feature.|
@@ -427,10 +425,6 @@ Below topologies from ONNX open model zoo are fully supported on OpenVINO™ Exe
 | inception_v1 | Yes | Yes |
 | inception_v2 | Yes | Yes |
 | mobilenetv2 | Yes | Yes |
-| resnet18v1 | Yes | Yes |
-| resnet34v1 | Yes | Yes |
-| resnet101v1 | Yes | Yes |
-| resnet152v1 | Yes | Yes |
 | resnet18v2 | Yes | Yes |
 | resnet34v2 | Yes | Yes |
 | resnet101v2 | Yes | Yes |
@@ -440,9 +434,8 @@ Below topologies from ONNX open model zoo are fully supported on OpenVINO™ Exe
 | shufflenet | Yes | Yes |
 | squeezenet1.1 | Yes | Yes |
 | vgg19 | Yes | Yes |
-| vgg16 | Yes | Yes |
 | zfnet512 | Yes | Yes |
-| mxnet_arcface | No | Yes |
+| mxnet_arcface | Yes | Yes |
 
 
 ### Image Recognition Networks
@@ -458,8 +451,8 @@ Below topologies from ONNX open model zoo are fully supported on OpenVINO™ Exe
 | tiny_yolov2 | Yes | Yes |
 | yolov3 | Yes | Yes |
 | tiny_yolov3 | Yes | Yes |
-| mask_rcnn | Yes | Yes |
-| faster_rcnn | Yes | Yes |
+| mask_rcnn | Yes | No |
+| faster_rcnn | Yes | No |
 | yolov4 | Yes | Yes |
 | yolov5 | Yes | Yes |
 | yolov7 | Yes | Yes |
