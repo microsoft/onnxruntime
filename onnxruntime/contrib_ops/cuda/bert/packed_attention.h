@@ -40,6 +40,7 @@ class PackedAttention final : public CudaKernel {
   bool disable_fused_runner_;
   bool enable_trt_flash_attention_;
   mutable std::unique_ptr<MHARunner> fused_fp16_runner_;
+  mutable std::once_flag fused_fp16_runner_created_;
 };
 
 }  // namespace cuda
