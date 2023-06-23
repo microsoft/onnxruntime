@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/session/onnxruntime_c_api.h"
+#if !defined(USE_ROCM)
 
 namespace onnxruntime {
 struct Provider;
@@ -15,3 +16,5 @@ ORT_API(onnxruntime::Provider*, GetProvider) {
   return reinterpret_cast<onnxruntime::Provider*>(onnxruntime::GetProvider());
 }
 }
+
+#endif
