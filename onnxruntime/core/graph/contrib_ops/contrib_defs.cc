@@ -2276,19 +2276,16 @@ information on what attribute or type must be modified.)DOC")
                                     "TB")
                                 .Input(
                                     2,
-                                    "C",
-                                    "Bias, the shape of C should be unidirectional broadcastable to (M, N).",
-                                    "TC")
+                                    "scaleA",
+                                    "Scale of tensor A if A is float 8 tensor",
+                                    "TS",
+                                    OpSchema::Optional)
                                 .Input(
                                     3,
-                                    "scale",
-                                    "Unused",
-                                    "TS")
-                                .Input(
-                                    4,
-                                    "result_type",
-                                    "unused but defines the result type",
-                                    "TR")
+                                    "scaleB",
+                                    "Scale of tensor B if B is float 8 tensor",
+                                    "TS",
+                                    OpSchema::Optional)
                                 .Output(0, "Y", "Output tensor of shape (M, N).", "TR")
                                 .TypeConstraint(
                                     "TA",
@@ -2307,7 +2304,7 @@ information on what attribute or type must be modified.)DOC")
 #endif
                                     "Constrain input type to float tensors.")
                                 .TypeConstraint(
-                                    "TC",
+                                    "TR",
 #if !defined(DISABLE_FLOAT8_TYPES)
                                     {"tensor(float8e4m3fn)", "tensor(float8e5m2)", "tensor(float16)", "tensor(bfloat16)", "tensor(float)"},
 #else                                    
@@ -2316,20 +2313,8 @@ information on what attribute or type must be modified.)DOC")
                                     "Constrain input type to float tensors.")
                                 .TypeConstraint(
                                     "TS",
-#if !defined(DISABLE_FLOAT8_TYPES)
-                                    {"tensor(float8e4m3fn)", "tensor(float8e5m2)", "tensor(float16)", "tensor(bfloat16)", "tensor(float)"},
-#else                                    
-                                    {"tensor(float16)", "tensor(bfloat16)", "tensor(float)"},
-#endif
+                                    {"tensor(float)"},
                                     "Constrain input type to float tensors.")
-                                .TypeConstraint(
-                                    "TR",
-#if !defined(DISABLE_FLOAT8_TYPES)
-                                    {"tensor(float8e4m3fn)", "tensor(float8e5m2)", "tensor(float16)", "tensor(bfloat16)", "tensor(float)"},
-#else                                    
-                                    {"tensor(float16)", "tensor(bfloat16)", "tensor(float)"},
-#endif
-                                    "Constrain output type to float tensors.")
                                 .Attr(
                                     "transA",
                                     "Whether A should be transposed",
@@ -2346,27 +2331,34 @@ information on what attribute or type must be modified.)DOC")
                                     AttributeProto::FLOAT,
                                     1.0f)
                                 .Attr(
-                                    "beta",
-                                    "Scalar multiplier for input tensor C.",
-                                    AttributeProto::FLOAT,
-                                    1.0f)
-                                .Attr(
                                     "smCount",
-                                    "",
+                                    "See documentation of cublasLtMatMul.",
                                     AttributeProto::INT,
                                     static_cast<int64_t>(0))
                                 .Attr(
                                     "fastAccumulationMode",
-                                    "",
+                                    "See documentation of cublasLtMatMul.",
                                     AttributeProto::INT,
                                     static_cast<int64_t>(1))
                                 .Attr(
                                     "computeType",
-                                    "",
+                                    "See documentation of cublasLtMatMul. This parameter contains "
+                                    "one of the possible value as a string.",
                                     AttributeProto::STRING,
-                                    "CUBLAS_COMPUTE_32F")
+                                    "CUBLAS_COMPUTE_32F_FAST_TF32")
+                                .Attr(
+                                    "rowMajor",
+                                    "Matrices are stored as row major or column major. "
+                                    "Float 8 types only supports column major.",
+                                    AttributeProto::INT,
+                                    static_cast<int64_t>(0))
+                                .Attr(
+                                    "dtype",
+                                    "Output Type. Same definition as attribute to from operator Cast.",
+                                    AttributeProto::INT,
+                                    static_cast<int64_t>(1))
                                 .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-                                  propagateElemTypeFromInputToOutput(ctx, 4, 0);
+                                  propagateElemTypeFromAttributeToOutput(ctx, "dtype", 0, TensorProto::FLOAT);
                                   if (hasNInputShapes(ctx, 2)) {
                                     auto transAAttr = ctx.getAttribute("transA");
                                     bool transA = transAAttr ? static_cast<int>(transAAttr->i()) != 0 : false;
@@ -2381,6 +2373,15 @@ information on what attribute or type must be modified.)DOC")
                                       fail_shape_inference("Second input does not have rank 2");
                                     }
                                     updateOutputShape(ctx, 0, {first_input_shape.dim(transA ? 1 : 0), second_input_shape.dim(transB ? 0 : 1)});
+                                    auto input_type = ctx.getInputType(0);
+                                    if (input_type == TensorProto::FLOAT8E4M3FN || input_type == TensorProto::FLOAT8E5M2) {
+                                      auto output_type = ctx.getOutputType(1);
+                                      const auto output_value_case = output_type->value_case();
+                                      if (output_value_case == TypeProto::kTensorType) {
+                                        setTensorElementType(TensorProto::FLOAT, input_value_case, *output_type);
+                                      }
+                                      updateOutputShape(ctx, 1, {1});
+                                    }
                                   }
                                 }));
 

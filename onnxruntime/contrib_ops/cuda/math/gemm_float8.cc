@@ -22,36 +22,42 @@ namespace cuda {
       (*KernelDefBuilder::Create())                                                                                 \
           .TypeConstraint("TA", BuildKernelDefConstraints<Float8E4M3FN, Float8E5M2, MLFloat16, BFloat16, float>())  \
           .TypeConstraint("TB", BuildKernelDefConstraints<Float8E4M3FN, Float8E5M2, MLFloat16, BFloat16, float>())  \
-          .TypeConstraint("TC", BuildKernelDefConstraints<Float8E4M3FN, Float8E5M2, MLFloat16, BFloat16, float>())  \
-          .TypeConstraint("TS", BuildKernelDefConstraints<Float8E4M3FN, Float8E5M2, MLFloat16, BFloat16, float>())  \
-          .TypeConstraint("TR", BuildKernelDefConstraints<Float8E4M3FN, Float8E5M2, MLFloat16, BFloat16, float>()), \
+          .TypeConstraint("TR", BuildKernelDefConstraints<Float8E4M3FN, Float8E5M2, MLFloat16, BFloat16, float>())  \
+          .TypeConstraint("TS", BuildKernelDefConstraints<float>())  \
       GemmFloat8);
 
 REGISTER_KERNEL()
 
-/*
-REGISTER_KERNEL_FIVE_TYPED(Float8E4M3FN, Float8E4M3FN, BFloat16, BFloat16, BFloat16)
-REGISTER_KERNEL_FIVE_TYPED(Float8E4M3FN, Float8E4M3FN, BFloat16, Float8E4M3FN, BFloat16)
-REGISTER_KERNEL_FIVE_TYPED(Float8E4M3FN, Float8E4M3FN, half, half, half)
-REGISTER_KERNEL_FIVE_TYPED(Float8E4M3FN, Float8E4M3FN, half, Float8E4M3FN, half)
-REGISTER_KERNEL_FIVE_TYPED(Float8E4M3FN, Float8E4M3FN, float, float, BFloat16)
 
-REGISTER_KERNEL_FIVE_TYPED(Float8E4M3FN, Float8E5M2, BFloat16, BFloat16, BFloat16)
-REGISTER_KERNEL_FIVE_TYPED(Float8E4M3FN, Float8E5M2, BFloat16, Float8E4M3FN, BFloat16)
-REGISTER_KERNEL_FIVE_TYPED(Float8E4M3FN, Float8E5M2, BFloat16, Float8E5M2, BFloat16)
-REGISTER_KERNEL_FIVE_TYPED(Float8E4M3FN, Float8E5M2, half, half, half)
-REGISTER_KERNEL_FIVE_TYPED(Float8E4M3FN, Float8E5M2, half, Float8E4M3FN, half)
-REGISTER_KERNEL_FIVE_TYPED(Float8E4M3FN, Float8E5M2, half, Float8E5M2, half)
-REGISTER_KERNEL_FIVE_TYPED(Float8E4M3FN, Float8E5M2, float, float, BFloat16)
+GemmFloat8::  GemmFloat8(const OpKernelInfo& info) : CudaKernel(info){
+    params_.transA_ = info.GetAttrOrDefault<int64_t>("transA", 0);
+    params_.transB_ = info.GetAttrOrDefault<int64_t>("transB", 0);
+    params_.fastAccumulationMode_ = info.GetAttrOrDefault<int64_t>("fastAccumulationMode", 1) != 0;
+    params_.rowMajor_ = info.GetAttrOrDefault<int64_t>("rowMajor", 1) != 0;
+    params_.smCount_ = info.GetAttrOrDefault<int64_t>("smCount", 0);
+    params_.alpha_ = info.GetAttrOrDefault<float>("alpha", 1);
 
-REGISTER_KERNEL_FIVE_TYPED(Float8E5M2, Float8E4M3FN, BFloat16, BFloat16, BFloat16)
-REGISTER_KERNEL_FIVE_TYPED(Float8E5M2, Float8E4M3FN, BFloat16, Float8E4M3FN, BFloat16)
-REGISTER_KERNEL_FIVE_TYPED(Float8E5M2, Float8E4M3FN, BFloat16, Float8E5M2, BFloat16)
-REGISTER_KERNEL_FIVE_TYPED(Float8E5M2, Float8E4M3FN, half, half, half)
-REGISTER_KERNEL_FIVE_TYPED(Float8E5M2, Float8E4M3FN, half, Float8E4M3FN, half)
-REGISTER_KERNEL_FIVE_TYPED(Float8E5M2, Float8E4M3FN, half, Float8E5M2, half)
-REGISTER_KERNEL_FIVE_TYPED(Float8E5M2, Float8E4M3FN, float, float, BFloat16)
-*/
+    std::string stemp = info.GetAttrOrDefault<std::string>("computeType", "CUBLAS_COMPUTE_32F");
+    if (stemp == "CUBLAS_COMPUTE_16F") {
+      params_.computeType_ = CUBLAS_COMPUTE_16F;
+      params_.scaleType_ = CUDA_R_16F;
+    } else if (stemp == "CUBLAS_COMPUTE_32F") {
+      params_.computeType_ = CUBLAS_COMPUTE_32F;
+      params_.scaleType_ = CUDA_R_32F;
+    } else if (stemp == "CUBLAS_COMPUTE_32F_FAST_16F") {
+      params_.computeType_ = CUBLAS_COMPUTE_32F_FAST_16F;
+      params_.scaleType_ = CUDA_R_16F;
+    } else if (stemp == "CUBLAS_COMPUTE_32F_FAST_16BF") {
+      params_.computeType_ = CUBLAS_COMPUTE_32F_FAST_16BF;
+      params_.scaleType_ = CUDA_R_16BF;
+    } else if (stemp == "CUBLAS_COMPUTE_32F_FAST_TF32") {
+      params_.computeType_ = CUBLAS_COMPUTE_32F_FAST_TF32;
+      params_.scaleType_ = CUDA_R_32F;
+    } else {
+      ORT_THROW("Unexpected value for compute_type: ", stemp, ".");
+    }
+  }
+
 
 Status GemmFloat8::ComputeInternal(OpKernelContext* ctx) const {
   // D = alpha*(A*B) + beta*(C)

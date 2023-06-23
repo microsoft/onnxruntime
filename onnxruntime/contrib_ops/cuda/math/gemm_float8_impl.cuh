@@ -14,20 +14,21 @@ namespace cuda {
 
 struct GemmFloat8_Impl {
   // see https://docs.nvidia.com/cuda/cublas/index.html?highlight=cublasLtMatmulDescAttributes_t#cublasltmatmuldescattributes-t
-  bool fast_accumulation_mode_;
+  bool fastAccumulationMode_;
   // see https://docs.nvidia.com/cuda/cublas/index.html?highlight=cublasComputeType_t#cublascomputetype-t
-  cublasComputeType_t compute_type_;
-  cudaDataType_t scale_type_;
-  int64_t sm_count_;
-  bool trans_A_;
-  bool trans_B_;
+  cublasComputeType_t computeType_;
+  cudaDataType_t scaleType_;
+  cudaDataType_t outputType_;
+  int64_t smCount_;
+  bool transA_;
+  bool transB_;
   float alpha_;
-  float beta_;
+  bool rowMajor_;
 
   void set(int M, int N, int K, int& lda, int& ldb, int& ldd) const;
 
   onnxruntime::Status CudaCompute(const int32_t* dtypes, cudaStream_t stream, cublasLtHandle_t handle,
-                                  const Tensor* A, const Tensor* B, const Tensor* C, Tensor* D,
+                                  const Tensor* A, const Tensor* B, const Tensor* scaleA, Tensor* scaleB,
                                   int M, int N, int K) const;
 };
 
