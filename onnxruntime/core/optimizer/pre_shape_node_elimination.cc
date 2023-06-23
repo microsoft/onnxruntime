@@ -11,12 +11,6 @@
 namespace onnxruntime {
 
 Status PreShapeNodeElimination::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_effect, const logging::Logger&) const {
-  const Node* p_input_node = graph_utils::GetInputNode(node, 0);
-
-  // Get mutable input node
-  Node& input_node = *graph.GetNode(p_input_node->Index());
-  const size_t output_idx = graph_utils::GetNodeOutputIndexFromOutputName(input_node, node.InputDefs()[0]->Name());
-
   std::vector<size_t> consumerIndices;
 
   // Save Consumer Nodes Indices (Shape)
@@ -32,7 +26,7 @@ Status PreShapeNodeElimination::Apply(Graph& graph, Node& node, RewriteRuleEffec
   // Change input defs of shape nodes
   for (size_t consumer_idx : consumerIndices) {
     Node& shape_node = *graph.GetNode(consumer_idx);
-    shape_node.MutableInputDefs()[0] = input_node.MutableOutputDefs()[output_idx];
+    shape_node.MutableInputDefs()[0] = node.MutableInputDefs()[0];
   }
 
   graph.RemoveNode(node.Index());
@@ -60,10 +54,6 @@ bool PreShapeNodeElimination::SatisfyCondition(const Graph& graph, const Node& n
   for (const Node* next_node : output_nodes) {
     // Check if the next node is not of type "Shape"
     if (!graph_utils::IsSupportedOptypeVersionAndDomain(*next_node, "Shape", {13, 15, 19}, kOnnxDomain)) {
-      return false;
-    }
-
-    if (next_node->OpType() != "Shape") {
       return false;
     }
   }
