@@ -1240,6 +1240,7 @@ OrtCUDAProviderOptionsV2 OrtCUDAProviderOptionsToOrtCUDAProviderOptionsV2(const 
   cuda_options_converted.enable_cuda_graph = 0;
   cuda_options_converted.cudnn_conv1d_pad_to_nc1d = 0;
   cuda_options_converted.enable_skip_layer_norm_strict_mode = 0;
+  cuda_options_converted.use_ep_level_unified_stream = 0;
 
   return cuda_options_converted;
 }
@@ -1782,6 +1783,7 @@ ORT_API_STATUS_IMPL(OrtApis::CreateCUDAProviderOptions, _Outptr_ OrtCUDAProvider
   options->enable_cuda_graph = 0;
   options->cudnn_conv1d_pad_to_nc1d = 0;
   options->enable_skip_layer_norm_strict_mode = 0;
+  options->use_ep_level_unified_stream = 0;
   *out = options.release();
   return nullptr;
 #else

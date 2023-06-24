@@ -31,4 +31,5 @@ struct OrtCUDAProviderOptionsV2 {
   int tunable_op_tuning_enable;                            // flag specifying if TunableOp is enabled for tuning, this relies on TunableOp is enabled.
   int enable_skip_layer_norm_strict_mode;                  // flag specifying if SkipLayerNorm is in strict mode. If true, use LayerNormalization kernel.
                                                            // The strict mode has better accuracy but lower performance.
+  int use_ep_level_unified_stream;                         // flag specifying if ep level stream is used or not
 };
