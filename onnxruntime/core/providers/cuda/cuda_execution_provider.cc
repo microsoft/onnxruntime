@@ -250,7 +250,7 @@ CUDAExecutionProvider::CUDAExecutionProvider(const CUDAExecutionProviderInfo& in
     if (info.external_allocator_info.UseExternalAllocator()) {
       use_ep_level_unified_stream_ = true;
       stream_ = nullptr;
-    } else if (info.enable_cuda_graph) {
+    } else if (info.enable_cuda_graph || info.use_ep_level_unified_stream) {
       // current cuda graph implementation only works with single stream
       // use EP level unified stream for all the reqeust
       CUDA_CALL_THROW(cudaStreamCreateWithFlags(&stream_, cudaStreamNonBlocking));
