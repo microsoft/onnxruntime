@@ -67,8 +67,8 @@ struct KernelTwo {
 };
 
 struct CustomOpOne : Ort::CustomOpBase<CustomOpOne, KernelOne, true> {
-  OrtStatusPtr CreateKernelFallible(const OrtApi& /* api */, const OrtKernelInfo* /* info */, void* op_kernel) const {
-    op_kernel = reinterpret_cast<void*>(std::make_unique<KernelOne>().release());
+  OrtStatusPtr CreateKernelFallible(const OrtApi& /* api */, const OrtKernelInfo* /* info */, void** op_kernel) const {
+    *op_kernel = reinterpret_cast<void*>(std::make_unique<KernelOne>().release());
     return nullptr;
   };
 

@@ -2027,7 +2027,7 @@ struct CustomOpBase : OrtCustomOp {
     OrtCustomOp::GetVariadicOutputHomogeneity = [](const OrtCustomOp* this_) { return static_cast<int>(static_cast<const TOp*>(this_)->GetVariadicOutputHomogeneity()); };
     if constexpr(Fallible) {
       OrtCustomOp::CreateKernelFallible = [](const OrtCustomOp* this_, const OrtApi* api, const OrtKernelInfo* info, void** op_kernel) -> OrtStatusPtr {
-	return static_cast<const TOp*>(this_)->CreateKernelFallible(*api, info, &op_kernel);
+	return static_cast<const TOp*>(this_)->CreateKernelFallible(*api, info, op_kernel);
       };
       OrtCustomOp::KernelComputeFallible = [](void* op_kernel, OrtKernelContext* context) -> OrtStatusPtr {
 	return static_cast<TKernel*>(op_kernel)->ComputeFallible(context);
