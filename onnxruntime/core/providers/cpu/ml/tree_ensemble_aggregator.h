@@ -27,7 +27,7 @@ struct TreeNodeElementId {
       // Reference: http://szudzik.com/ElegantPairing.pdf
 
       u_int64_t combined_id;
-      // Use absolute value, before casting, to reduce overflow change if any of the values is negative.
+      // Use absolute value, before casting, to reduce overflow chance if any of the values is negative.
       // In the worst (and also unlike) case, we will map 4 pairs of tree_id and node_id to the same value
       u_int64_t x = static_cast<u_int64_t>(std::abs(key.tree_id));
       u_int64_t y = static_cast<u_int64_t>(std::abs(key.node_id));
