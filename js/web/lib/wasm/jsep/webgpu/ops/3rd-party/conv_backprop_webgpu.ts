@@ -256,18 +256,18 @@ const createConvTranspose2DOpProgramShaderSource =
           // Convolve dy(?, ?, d2) with w(:, :, d1, d2) to compute dx(xR, xC, d1).
           // ? = to be determined. : = across all values in that axis.
           var dotProd = 0.0;
-          for (var wR: u32 = 0; wR < filterDims[0]; wR = wR + 1) {
-            let dyR = (f32(dyRCorner) + f32(wR)) / f32(strides.x);
-            let wRPerm = filterDims[0] - 1 - wR;
+          for (var wR: u32 = 0; wR < filterDims.x; wR = wR + 1) {
+            let dyR = (f32(dyRCorner) + f32(wR)) / f32(strides[0]);
+            let wRPerm = filterDims.x - 1 - wR;
             if (dyR < 0.0 || dyR >= f32(outBackprop[1]) || fract(dyR) > 0.0 ||
                 wRPerm < 0) {
               continue;
             }
             let idyR: u32 = u32(dyR);
 
-            for (var wC: u32 = 0; wC < filterDims[1]; wC = wC + 1) {
+            for (var wC: u32 = 0; wC < filterDims.y; wC = wC + 1) {
               let dyC = (f32(dyCCorner) + f32(wC)) / f32(strides.y);
-              let wCPerm = filterDims[1] - 1 - wC;
+              let wCPerm = filterDims.y - 1 - wC;
               if (dyC < 0.0 || dyC >= f32(outBackprop[2]) ||
                   fract(dyC) > 0.0 || wCPerm < 0) {
                 continue;
@@ -280,15 +280,15 @@ const createConvTranspose2DOpProgramShaderSource =
               'dyIndices',
               isChannelsLast ? ['batch', 'idyR', 'idyC', 'd2'] :
                                [
-                                 'wRPerm', 'wCPerm', 'd1', 'd2'
+                                 'batch', 'd2', 'idyR', 'idyC'
                                ])};
                 let xValue =  Dy[${dyIndicesHelper.i2oExpression('dyIndices')}];
                   ${
-          wIndicesHelper.indicesVariableDeclaration('wIndices', [
-            'wRPerm', 'wCPerm', 'd1', 'd2'
+          wIndicesHelper.indicesVariableDeclaration('wIndices', isChannelsLast ? ['d2', 'wRPerm', 'wCPerm', 'd1'] : [
+            'd2', 'd1', 'wRPerm', 'wCPerm'
           ])};
 
-                    let wValue = W[${wIndicesHelper.i2oExpression('wIndices')}];
+                let wValue = W[${wIndicesHelper.i2oExpression('wIndices')}];
                 dotProd = dotProd + xValue * wValue;
               }
             }
@@ -304,8 +304,9 @@ ${wIndicesHelper.i2oImpl}
   ${declareInputs.join('\n')}
   @group(0) @binding(${declareInputs.length}) var<storage, read_write> result: array<${isVec4 ? 'vec4<f32>' : 'f32'}>;
   const outShape : vec4<u32> = vec4<u32>(${outputShape.join(',')});
-  const outBackprop : vec4<u32> = outShape;
-  const pads : vec2<u32> = vec2<u32>(${attributes.pads[0]}, ${attributes.pads[1]});
+  const outBackprop : vec4<u32> = vec4<u32>(${inputs[0].dims.join(',')});
+  const pads : vec2<u32> = vec2<u32>(${attributes.pads[0] + attributes.pads[1]},${
+          attributes.pads[2] + attributes.pads[3]});
   const strides : vec2<u32> = vec2<u32>(${attributes.strides[0]}, ${attributes.strides[1]});
   const filterDims : vec2<u32> = vec2<u32>(${attributes.kernelShape[isChannelsLast ? 1 : 2]}, ${
           attributes.kernelShape[isChannelsLast ? 2 : 3]});

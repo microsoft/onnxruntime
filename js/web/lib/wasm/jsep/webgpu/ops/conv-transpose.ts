@@ -62,7 +62,7 @@ export interface ConvTransposeAttributes extends ConvAttributes {
 }
 
 // for transposing weight tensor from [C, M/group, kH, kW] to [kH, kW, C, M/group]
-const weightTransposeAttribute: TransposeAttributes = createAttributeWithCacheKey({perm: [2, 3, 0, 1]});
+const weightTransposeAttribute: TransposeAttributes = createAttributeWithCacheKey({perm: [0, 2, 3, 1]});
 
 const getAdjustedConvTransposeAttributes =
     <T extends ConvTransposeAttributes>(attributes: T, inputs: readonly TensorView[]): T => {
@@ -87,6 +87,13 @@ const getAdjustedConvTransposeAttributes =
       calculateOutputShapeAndPads(
           inputShape, kernelShape, attributes.dilations, attributes.autoPad, attributes.group, pads, attributes.strides,
           isChannelsLast, outputPadding, outputShape);
+
+      const padding0 = (kernelShape[1] - 1 - pads[0] - pads[1]);
+      const padding1 = (kernelShape[2] - 1 - pads[2] - pads[3]);
+      pads[0] = padding0 / 2;
+      pads[1] = padding0 - pads[0];
+      pads[2] = padding1 / 2;
+      pads[3] = padding1 - pads[2];
 
       // always return a new object so does not modify the original attributes
       const newAttributes: T = Object.assign({}, attributes);
@@ -263,12 +270,12 @@ const convTranspose2d =
       }
 
       // STEP.3: compute matmul
-      const useNaive = false;
+      const useNaive = true;
       context.compute(
-        useNaive ? createConvTranspose2DProgramInfoLoader(inputs, adjustedAttributes, outputShape, hasBias) :
-                   createConvTranspose2DMatMulProgramInfoLoader(
-             convInputs, adjustedAttributes, outputShape, dimAOuter, dimBOuter, dimInner, hasBias,
-             sequentialAccessByThreads),
+          useNaive ? createConvTranspose2DProgramInfoLoader(convInputs, adjustedAttributes, outputShape, hasBias) :
+                     createConvTranspose2DMatMulProgramInfoLoader(
+                         convInputs, adjustedAttributes, outputShape, dimAOuter, dimBOuter, dimInner, hasBias,
+                         sequentialAccessByThreads),
           {inputs: convInputs});
     };
 //const convTranspose2dNaive =
