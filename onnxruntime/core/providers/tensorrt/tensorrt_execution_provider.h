@@ -100,6 +100,7 @@ struct TensorrtFuncState {
   AllocateFunc test_allocate_func = nullptr;
   DestroyFunc test_release_func = nullptr;
   AllocatorHandle allocator = nullptr;
+  std::string fused_node_name;
   tensorrt_ptr::unique_pointer<nvonnxparser::IParser>* parser = nullptr;
   std::unique_ptr<nvinfer1::ICudaEngine>* engine = nullptr;
   std::unique_ptr<nvinfer1::IExecutionContext>* context = nullptr;
@@ -249,6 +250,9 @@ class TensorrtExecutionProvider : public IExecutionProvider {
       return external_cudnn_handle_;
     }
 
+    nvinfer1::IExecutionContext& GetTensorRTContext(std::string fused_node);
+    void SetTensorRTContext(std::string fused_node, std::shared_ptr<nvinfer1::IExecutionContext> context); 
+
     void InitCUDAGraph();
     void SetGraphStream(cudaStream_t stream);
     bool IsGraphCaptureAllowed() const;
@@ -261,7 +265,6 @@ class TensorrtExecutionProvider : public IExecutionProvider {
    private:
     cudnnHandle_t external_cudnn_handle_ = nullptr;
     cublasHandle_t external_cublas_handle_ = nullptr;
-    std::unordered_map<std::string, std::unique_ptr<nvinfer1::IExecutionContext>> contexts_;
 
     // Cuda graph with multi threads will be supported in the future, so cuda_graph_ is put under PerThreadContext.
     // ORT TRT only supports CUDA graph when whole model is supported by TRT, so simply maintaining a CUDAGraph pointer is enough (no need to maintain one CUDAGraph pointer per TRT subgraph)
@@ -273,6 +276,29 @@ class TensorrtExecutionProvider : public IExecutionProvider {
     // Since no GPU memory allocation is allowed during graph capturing, we need at least two regular runs
     // to allocate enough memory in Arena before graph capturing.
     const int min_num_runs_before_cuda_graph_capture_ = 0;  // required min regular runs before graph capture for the necessary memory allocations.
+
+
+    // One execution context is maintained on a per thread basis is suggested to avoid synchronization issue per TRT doc.   
+    std::unordered_map<std::string, std::shared_ptr<nvinfer1::IExecutionContext>> trt_context_map;
+
+    /*
+    using TRTContextMap = std::unordered_map<std::string, std::weak_ptr<nvinfer1::IExecutionContext>>;
+    struct TRTContextCacheHolder {
+      TRTContextCacheHolder() {
+        // Keep a weak pointer to the object, if the weak pointer can be locked, then the shared pointer is still around, so we can reset it
+        RunOnUnload([&, weak_p_ = std::weak_ptr<TRTContextMap>(p)] {
+          if (auto lock = weak_p_.lock())
+            p.reset();
+        });
+      }
+      std::shared_ptr<TRTContextMap> p = std::make_shared<TRTContextMap>();
+    };
+
+    static const std::shared_ptr<TRTContextMap>& TRTContextCache() {
+      static const TRTContextCacheHolder trt_context_cache;
+      return trt_context_cache.p;
+    }
+    */
   };
 
   using PerThreadContextMap = std::unordered_map<const TensorrtExecutionProvider*, std::weak_ptr<PerThreadContext>>;
