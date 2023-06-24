@@ -2582,17 +2582,13 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
         std::shared_ptr<nvinfer1::IExecutionContext> trt_context_updated;
         if (trt_state->context_memory_sharing_enable) {
           trt_context_updated.reset(trt_state->engine->get()->createExecutionContextWithoutDeviceMemory());
-          if (trt_context_updated == nullptr) {
-            return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "TensorRT EP failed to create context.");
-          }
-          GetPerThreadContext().SetTensorRTContext(fused_node_name, std::move(trt_context_updated)); 
         } else {
           trt_context_updated.reset(trt_state->engine->get()->createExecutionContext());
-          if (trt_context_updated == nullptr) {
-            return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "TensorRT EP failed to create context.");
-          }
-          GetPerThreadContext().SetTensorRTContext(fused_node_name, std::move(trt_context_updated)); 
         }
+        if (trt_context_updated == nullptr) {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "TensorRT EP failed to create context.");
+        }
+        GetPerThreadContext().SetTensorRTContext(fused_node_name, std::move(trt_context_updated)); 
       }
       nvinfer1::IExecutionContext& trt_context = GetPerThreadContext().GetTensorRTContext(fused_node_name);
 
