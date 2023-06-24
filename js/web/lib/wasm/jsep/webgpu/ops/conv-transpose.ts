@@ -9,7 +9,6 @@ import {ComputeContext} from '../types';
 import {createConvTranspose2DProgramInfoLoader} from './3rd-party/conv_backprop_webgpu';
 import {ConvAttributes} from './conv';
 import {createGroupedConvProgramInfoLoader} from './conv-grouped';
-import {createConvTranspose2DMatMulProgramInfoLoader} from './conv-transpose-mm';
 import {parseInternalActivationAttributes} from './fuse-utils';
 import {createTransposeProgramInfo, TransposeAttributes, transposeProgramMetadata} from './transpose';
 
@@ -213,14 +212,10 @@ const convTranspose2d =
       // const batchSize = context.inputs[0].dims[0];
       const inputHeight = inputs[0].dims[isChannelsLast ? 1 : 2];
       const inputWidth = inputs[0].dims[isChannelsLast ? 2 : 3];
-      const inputChannels = inputs[0].dims[isChannelsLast ? 3 : 1];
       const weightHeight = inputs[1].dims[2];
       const weightWidth = inputs[1].dims[3];
 
       const outputShape = adjustedAttributes.outputShape;
-      const outputHeight = outputShape[isChannelsLast ? 1 : 2];
-      const outputWidth = outputShape[isChannelsLast ? 2 : 3];
-      const outChannels = outputShape[isChannelsLast ? 3 : 1];
 
       const sameSize = isChannelsLast && weightHeight === inputHeight && weightWidth === inputWidth &&
           attributes.autoPad === 'VALID';
@@ -239,12 +234,6 @@ const convTranspose2d =
         return;
       }
 
-      // TODO: implement conv2dWithIm2Col()
-      const dimAOuter = isChannelsLast ? outputHeight * outputWidth : outChannels;
-      const dimBOuter = isChannelsLast ? outChannels : outputHeight * outputWidth;
-      const dimInner = weightHeight * weightWidth * inputChannels;
-
-      const sequentialAccessByThreads = /* backend.adapterInfo.isIntel() */ true;
 
       // STEP.1: transpose weight
       const transposedWeight = (context.customData.wT as TensorView | undefined) ??
@@ -270,21 +259,10 @@ const convTranspose2d =
       }
 
       // STEP.3: compute matmul
-      const useNaive = true;
       context.compute(
-          useNaive ? createConvTranspose2DProgramInfoLoader(convInputs, adjustedAttributes, outputShape, hasBias) :
-                     createConvTranspose2DMatMulProgramInfoLoader(
-                         convInputs, adjustedAttributes, outputShape, dimAOuter, dimBOuter, dimInner, hasBias,
-                         sequentialAccessByThreads),
+          createConvTranspose2DProgramInfoLoader(convInputs, adjustedAttributes, outputShape, hasBias),
           {inputs: convInputs});
     };
-//const convTranspose2dNaive =
-//    (context: ComputeContext, inputs: readonly TensorView[], attributes: ConvTransposeAttributes): void => {
-//      const adjustedAttributes = getAdjustedConvTransposeAttributes(attributes, inputs);
-//      const outputShape = adjustedAttributes.outputShape;
-//      const hasBias = inputs.length === 3;
-//      context.compute(createConvTranspose2DProgramInfoLoader(inputs, adjustedAttributes, outputShape, hasBias));
-//    };
 
 export const convTranspose = (context: ComputeContext, attributes: ConvTransposeAttributes): void => {
   validateInputs(context.inputs, attributes);
