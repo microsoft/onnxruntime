@@ -180,8 +180,12 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
         transformers.emplace_back(std::make_unique<UpStreamReshapeGraphTransformer>(compatible_eps));
         transformers.emplace_back(std::make_unique<InsertGatherBeforeSceLoss>(compatible_eps,
                                                                               config.sparse_label_input_names));
+#if defined(USE_CUDA) || defined(USE_ROCM)
+        // Put this under CUDA/ROCM guard as it depends on PadByAxis CUDA/ROCM kernel.
+        // Once we have a CPU kernel for PadByAxis, we can remove the guard.
         transformers.emplace_back(std::make_unique<PaddingElimination>(compatible_eps,
                                                                        config.sparse_embedding_input_names));
+#endif
       }
 #endif
 

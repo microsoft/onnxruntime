@@ -7,6 +7,8 @@
 namespace onnxruntime {
 namespace test {
 
+#if defined(USE_CUDA) || defined(USE_ROCM)
+
 TEST(PadbyAxisTest, FloatType1D) {
   std::vector<float> input = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.f};
   std::vector<int64_t> indices = {1, 3, 5, 7, 9, 11};
@@ -96,6 +98,8 @@ TEST(PadbyAxisTest, MLFloat16Type2D) {
   test.AddOutput<int64_t>("full_flatten_dims", {2}, full_flatten_dims);
   test.Run();
 }
+
+#endif
 
 }  // namespace test
 }  // namespace onnxruntime
