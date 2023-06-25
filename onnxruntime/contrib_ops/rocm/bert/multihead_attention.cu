@@ -56,15 +56,9 @@ REGISTER_DMMHA_KERNEL_TYPED(MLFloat16);
 
 template <typename T>
 MultiHeadAttention<T>::MultiHeadAttention(const OpKernelInfo& info)
-    : RocmKernel(info) {
-  if (info.node().OpType() == "MultiHeadAttention") {
-    attn_type_ = kMultiHeadAttention;
-  } else if (info.node().OpType() == "DecoderMaskedMultiHeadAttention") {
-    attn_type_ = kDecoderMaskedMultiHeadAttention;
-  } else {
-    ORT_THROW("unreachable");
-  }
-
+    : RocmKernel(info),
+      attn_type_(info.node().OpType() == "DecoderMaskedMultiHeadAttention" ? kDecoderMaskedMultiHeadAttention
+                                                                           : kMultiHeadAttention) {
   int64_t num_heads = 0;
   ORT_ENFORCE(info.GetAttr("num_heads", &num_heads).IsOK() && num_heads > 0);
   num_heads_ = static_cast<int>(num_heads);
@@ -73,7 +67,7 @@ MultiHeadAttention<T>::MultiHeadAttention(const OpKernelInfo& info)
 
   scale_ = info.GetAttrOrDefault<float>("scale", 0.0f);
 
-  past_present_share_buffer_ = info.GetAttrOrDefault<int64_t>("past_present_share_buffer", 0LL);
+  past_present_share_buffer_ = info.GetAttrOrDefault<int64_t>("past_present_share_buffer", 0LL) != 0LL;
 }
 
 template <typename T>
