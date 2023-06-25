@@ -101,6 +101,7 @@ Status BitShift<T>::ComputeInternal(OpKernelContext* context) const {
 CONTRIB_BINARY_OP_HFD(BiasGelu, 1)
 CONTRIB_BINARY_ELEMENTWISE_REGISTER_KERNEL_TYPED(BitShift, 1, int32_t)
 CONTRIB_BINARY_OP_TYPED(BitwiseAnd, 1, int32_t)
+CONTRIB_BINARY_OP_TYPED(BitwiseAnd, 1, int8_t)
 
 }  // namespace cuda
 }  // namespace contrib

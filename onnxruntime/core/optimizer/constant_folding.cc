@@ -106,7 +106,9 @@ Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level,
     if (!node) {
       continue;
     }
-
+    if (node->OpType().compare("DequantizeAndUnpackWeight") == 0) {
+      continue;
+    }
     ORT_RETURN_IF_ERROR(Recurse(*node, modified, graph_level, logger));
 
     // Updating a node may allow shape inferencing to infer output shapes of following nodes,
