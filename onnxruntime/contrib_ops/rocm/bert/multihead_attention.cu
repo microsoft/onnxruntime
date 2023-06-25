@@ -58,9 +58,9 @@ template <typename T>
 MultiHeadAttention<T>::MultiHeadAttention(const OpKernelInfo& info)
     : RocmKernel(info) {
   if (info.node().OpType() == "MultiHeadAttention") {
-    attn_type_ = MHA;
+    attn_type_ = kMultiHeadAttention;
   } else if (info.node().OpType() == "DecoderMaskedMultiHeadAttention") {
-    attn_type_ = DMMHA;
+    attn_type_ = kDecoderMaskedMultiHeadAttention;
   } else {
     ORT_THROW("unreachable");
   }
@@ -93,13 +93,13 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* past_value{};
   const Tensor* past_seq_len{};
 
-  if (attn_type_ == MHA) {
+  if (attn_type_ == kMultiHeadAttention) {
     bias = context->Input<Tensor>(3);
     key_padding_mask = context->Input<Tensor>(4);
     relative_position_bias = context->Input<Tensor>(5);
     past_key = context->Input<Tensor>(6);
     past_value = context->Input<Tensor>(7);
-  } else if (attn_type_ == DMMHA) {
+  } else if (attn_type_ == kDecoderMaskedMultiHeadAttention) {
     key_padding_mask = context->Input<Tensor>(3);
     relative_position_bias = context->Input<Tensor>(4);
     past_key = context->Input<Tensor>(5);
@@ -127,7 +127,7 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
           num_heads_, mask_filter_value_, scale_,
           past_present_share_buffer_, false, device_prop.maxThreadsPerBlock));
 
-  if (attn_type_ == DMMHA && attn.sequence_length != 1) {
+  if (attn_type_ == kDecoderMaskedMultiHeadAttention && attn.sequence_length != 1) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "Input sequence length should be 1 to use DecoderMaskedMultiHeadAttention");
   }

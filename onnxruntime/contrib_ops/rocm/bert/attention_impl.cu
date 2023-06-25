@@ -91,7 +91,7 @@ Status ClassifyAttentionMode(
   auto hint = MakeString(num_qkv, " qkv inputs, ", num_past, " past inputs and ", num_present, " present inputs");
   LOGS_DEFAULT(VERBOSE) << hint;
 
-  if (attn_type == A) {
+  if (attn_type == kAttention) {
     ORT_ENFORCE(num_qkv == 0);
     if (num_past == 0 && num_present == 0) {
       attn->mode = QFMT_KFMT_VFMT_NONE_NONE_NONE_NONE;
@@ -113,7 +113,7 @@ Status ClassifyAttentionMode(
         return Status::OK();
       }
     }
-  } else if (attn_type == MHA || attn_type == DMMHA) {
+  } else if (attn_type == kMultiHeadAttention || attn_type == kDecoderMaskedMultiHeadAttention) {
     if (num_qkv == 3 && num_past == 0 && num_present == 0) {
       if (attn->qkv_format == Q_K_V_BSNH) {
         attn->mode = BSNH_BLNH_BLNH_NONE_NONE_NONE_NONE;

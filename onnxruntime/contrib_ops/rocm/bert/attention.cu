@@ -39,7 +39,8 @@ REGISTER_KERNEL_TYPED(float)
 REGISTER_KERNEL_TYPED(MLFloat16)
 
 template <typename T>
-Attention<T>::Attention(const OpKernelInfo& info) : RocmKernel(info), AttentionBase(info, true), attn_type_(A) {}
+Attention<T>::Attention(const OpKernelInfo& info)
+    : RocmKernel(info), AttentionBase(info, true), attn_type_(kAttention) {}
 
 template <typename T>
 Status Attention<T>::ComputeInternal(OpKernelContext* context) const {

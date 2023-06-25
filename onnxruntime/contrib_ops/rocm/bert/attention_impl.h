@@ -161,9 +161,9 @@ class CompatRocblasMathModeSetter {
 };
 
 enum AttentionType {
-  A,      // Attention
-  MHA,    // MultiHeadAttention
-  DMMHA,  // DecoderMaskedMultiHeadAttention
+  kAttention,
+  kMultiHeadAttention,
+  kDecoderMaskedMultiHeadAttention,
 };
 
 enum AttentionMode {
