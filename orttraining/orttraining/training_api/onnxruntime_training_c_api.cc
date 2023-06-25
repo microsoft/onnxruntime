@@ -329,6 +329,9 @@ ORT_API_STATUS_IMPL(OrtTrainingApis::ExportModelForInferencing, _Inout_ OrtTrain
                     _In_reads_(graph_outputs_len) const char* const* graph_output_names) {
   API_IMPL_BEGIN
 
+  OrtStatus* status = nullptr;
+
+#if !defined(ORT_MINIMAL_BUILD)
   if (graph_outputs_len == 0U) {
     return OrtApis::CreateStatus(
         ORT_INVALID_ARGUMENT,
@@ -350,8 +353,16 @@ ORT_API_STATUS_IMPL(OrtTrainingApis::ExportModelForInferencing, _Inout_ OrtTrain
 
   ORT_API_RETURN_IF_STATUS_NOT_OK(
       session->ExportModelForInferencing(onnxruntime::ToUTF8String(inference_model_path), output_names));
+#else
+  ORT_UNUSED_PARAMETER(sess);
+  ORT_UNUSED_PARAMETER(inference_model_path);
+  ORT_UNUSED_PARAMETER(graph_outputs_len);
+  ORT_UNUSED_PARAMETER(graph_output_names);
+  status = OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED,
+                                 "Inference model cannot be exported in a minimal training build.");
+#endif
 
-  return nullptr;
+  return status;
   API_IMPL_END
 }
 

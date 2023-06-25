@@ -37,6 +37,10 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
     CreateBinaryOpBuilder("Pow", op_registrations);
   }
 
+  {  // Ternary
+    CreateTernaryOpBuilder("Where", op_registrations);
+  }
+
   {  // Activations
     CreateActivationOpBuilder("Relu", op_registrations);
     CreateActivationOpBuilder("LeakyRelu", op_registrations);
@@ -126,12 +130,13 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
     CreateSplitOpBuilder("Split", op_registrations);
   }
 
-  {  // Transpose
-    CreateTransposeOpBuilder("Transpose", op_registrations);
+  {  // Squeeze/Unsqueeze
+    CreateSqueezeUnsqueezeOpBuilder("Squeeze", op_registrations);
+    CreateSqueezeUnsqueezeOpBuilder("Unsqueeze", op_registrations);
   }
 
-  {  // Unsqueeze
-    CreateUnsqueezeOpBuilder("Unsqueeze", op_registrations);
+  {  // Transpose
+    CreateTransposeOpBuilder("Transpose", op_registrations);
   }
 
   return op_registrations;

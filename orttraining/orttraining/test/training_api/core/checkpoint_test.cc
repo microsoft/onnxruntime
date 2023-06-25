@@ -28,7 +28,7 @@
 #include "test/test_environment.h"
 #include "test/util/include/asserts.h"
 #include "test/util/include/temp_dir.h"
-#include "test/util/include/test/test_environment.h"
+#include "test/util/include/test_environment.h"
 #include "orttraining/test/training_api/common/synthetic_data_loader.h"
 #include "orttraining/test/training_api/core/data_utils.h"
 #include "default_providers.h"
@@ -36,11 +36,8 @@
 using onnxruntime::test::TemporaryDirectory;
 using namespace onnxruntime::training::api;
 
-namespace onnxruntime {
-namespace training {
-namespace test {
+namespace onnxruntime::training::test {
 
-namespace {
 #define MODEL_FOLDER ORT_TSTR("testdata/")
 
 /**
@@ -90,9 +87,6 @@ TEST(CheckpointApiTest, SaveOnnxModelAsCheckpoint_ThenLoad_CPU) {
 
   // Remove the temporary directory if it already exists.
   auto ckpt_test_root_dir = ORT_TSTR("checkpointing_api_test_dir");
-  if (Env::Default().FolderExists(ckpt_test_root_dir)) {
-    ORT_ENFORCE(Env::Default().DeleteFolder(ckpt_test_root_dir).IsOK());
-  }
   TemporaryDirectory tmp_dir{ckpt_test_root_dir};
 
   /// Phase 2 - Run save checkpoint APIs.
@@ -102,22 +96,6 @@ TEST(CheckpointApiTest, SaveOnnxModelAsCheckpoint_ThenLoad_CPU) {
   PathString checkpoint_path{
       ConcatPathComponent<PathChar>(tmp_dir.Path(), ORT_TSTR("e2e_ckpt_save_cpu"))};
   ASSERT_STATUS_OK(SaveCheckpoint(trainable_param_values, non_trainable_param_values, checkpoint_path));
-
-  // Check the ckpt files in the directory.
-  std::set<PathString> expected_file_names{ORT_TSTR("paramfrozen_tensors.pbseq"), ORT_TSTR("paramtrain_tensors.pbseq")};
-  std::set<PathString> valid_file_names;
-  LoopDir(checkpoint_path,
-          [&valid_file_names](const PathChar* filename, OrtFileType file_type) -> bool {
-            PathString filename_str = filename;
-            bool is_valid_ckpt_file_exts = HasExtensionOf(filename_str, ORT_TSTR("pbseq"));
-            if (filename_str[0] == '.' || file_type == OrtFileType::TYPE_DIR || !is_valid_ckpt_file_exts) {
-              return true;
-            }
-            valid_file_names.emplace(filename_str);
-            return true;
-          });
-
-  ASSERT_EQ(expected_file_names, valid_file_names);
 
   /// Phase 3 - Run load checkpoint APIs.
   /// And check the result comparable with initial parameter values.
@@ -171,7 +149,7 @@ TEST(CheckpointApiTest, LoadCheckpointToModel) {
   ASSERT_STATUS_OK(Model::Load(model_uri, p_model));
   // Phase 2: Load the checkpoint weights into the Model.
   // Call Load APIs
-  auto checkpoint_uri = MODEL_FOLDER "training_api/load_checkpoint";
+  auto checkpoint_uri = MODEL_FOLDER "training_api/checkpoint.ckpt";
   ASSERT_STATUS_OK(LoadCheckpointToModel(checkpoint_uri, p_model));
 
   // Phase 3: Make sure the Model's weights are not equal to zero after loading the new ones.
@@ -252,38 +230,12 @@ TEST(CheckpointApiTest, SaveOptimizerStateAsCheckpoint_ThenLoad_CUDA) {
 
   // Remove the temporary directory if it already exists.
   auto ckpt_test_root_dir = ORT_TSTR("checkpointing_api_test_dir");
-  if (Env::Default().FolderExists(ckpt_test_root_dir)) {
-    ORT_ENFORCE(Env::Default().DeleteFolder(ckpt_test_root_dir).IsOK());
-  }
   TemporaryDirectory tmp_dir{ckpt_test_root_dir};
 
   // Call Save APIs.
   PathString checkpoint_path{
       ConcatPathComponent<PathChar>(tmp_dir.Path(), ORT_TSTR("e2e_ckpt_save_cpu"))};
   ASSERT_STATUS_OK(SaveCheckpoint(state, checkpoint_path, true));
-
-  // Check the ckpt files in the directory.
-  std::set<PathString> expected_file_names{
-      ORT_TSTR("optim_group0_momentum0_tensors.pbseq"),
-      ORT_TSTR("optim_group0_momentum1_tensors.pbseq"),
-      ORT_TSTR("optim_group0_properties.pbseq"),
-      ORT_TSTR("paramtrain_tensors.pbseq"),
-  };
-
-  std::set<PathString> valid_file_names;
-  LoopDir(checkpoint_path,
-          [&valid_file_names, &checkpoint_path](const PathChar* filename, OrtFileType file_type) -> bool {
-            PathString filename_str = filename;
-            bool is_valid_ckpt_file_exts =
-                HasExtensionOf(filename_str, ORT_TSTR("pbseq")) || HasExtensionOf(filename_str, ORT_TSTR("bin"));
-            if (filename_str[0] == '.' || file_type == OrtFileType::TYPE_DIR || !is_valid_ckpt_file_exts) {
-              return true;
-            }
-            valid_file_names.emplace(filename_str);
-            return true;
-          });
-
-  ASSERT_EQ(expected_file_names, valid_file_names);
 
   /// Phase 2 - Run load checkpoint APIs.
   /// Validate the result matches with initial optimizer state values.
@@ -353,9 +305,6 @@ TEST(CheckpointApiTest, SaveCustomPropertyAsCheckpoint_ThenLoad_CPU) {
 
   // Remove the temporary directory if it already exists.
   auto ckpt_test_root_dir = ORT_TSTR("checkpointing_api_test_dir");
-  if (Env::Default().FolderExists(ckpt_test_root_dir)) {
-    ORT_ENFORCE(Env::Default().DeleteFolder(ckpt_test_root_dir).IsOK());
-  }
   TemporaryDirectory tmp_dir{ckpt_test_root_dir};
 
   /// Phase 2 - Call save checkpoint APIs.
@@ -364,33 +313,13 @@ TEST(CheckpointApiTest, SaveCustomPropertyAsCheckpoint_ThenLoad_CPU) {
   // Call Save APIs.
   PathString checkpoint_path{
       ConcatPathComponent<PathChar>(tmp_dir.Path(), ORT_TSTR("e2e_ckpt_save_cpu"))};
-  ASSERT_STATUS_OK(SaveCheckpoint(checkpoint_state, checkpoint_path, true));
-
-  // Check the ckpt files in the directory.
-  std::set<PathString> expected_file_names{
-      ORT_TSTR("custom_properties.pbseq"),
-  };
-
-  std::set<PathString> valid_file_names;
-  LoopDir(checkpoint_path,
-          [&valid_file_names](const PathChar* filename, OrtFileType file_type) -> bool {
-            PathString filename_str = filename;
-            bool is_valid_ckpt_file_exts =
-                HasExtensionOf(filename_str, ORT_TSTR("pbseq")) || HasExtensionOf(filename_str, ORT_TSTR("bin"));
-            if (filename_str[0] == '.' || file_type == OrtFileType::TYPE_DIR || !is_valid_ckpt_file_exts) {
-              return true;
-            }
-            valid_file_names.emplace(filename_str);
-            return true;
-          });
-
-  ASSERT_EQ(expected_file_names, valid_file_names);
+  ASSERT_STATUS_OK(SaveCheckpoint(checkpoint_state, checkpoint_path, false));
 
   // Call Load APIs
   CheckpointState checkpoint_state_to_load;
   ASSERT_STATUS_OK(LoadCheckpoint(checkpoint_path, checkpoint_state_to_load));
   PropertyBag& restored_property_bag = checkpoint_state_to_load.property_bag;
-  ASSERT_EQ(restored_property_bag.Size(), 3);
+  ASSERT_EQ(restored_property_bag.size(), 3);
   float restored_f_data = restored_property_bag.GetProperty<float>(f_property_name);
   ASSERT_FLOAT_EQ(f_data, restored_f_data);
   int64_t restored_i_data = restored_property_bag.GetProperty<int64_t>(i_property_name);
@@ -398,7 +327,4 @@ TEST(CheckpointApiTest, SaveCustomPropertyAsCheckpoint_ThenLoad_CPU) {
   std::string restored_s_data = restored_property_bag.GetProperty<std::string>(s_property_name);
   ASSERT_EQ(s_data, restored_s_data);
 }
-}  // namespace
-}  // namespace test
-}  // namespace training
-}  // namespace onnxruntime
+}  // namespace onnxruntime::training::test

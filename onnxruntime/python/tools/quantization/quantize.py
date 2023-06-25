@@ -10,7 +10,13 @@ from pathlib import Path
 from .calibrate import CalibrationDataReader, CalibrationMethod, create_calibrator
 from .onnx_quantizer import ONNXQuantizer
 from .qdq_quantizer import QDQQuantizer
-from .quant_utils import QuantFormat, QuantizationMode, QuantType, load_model, model_has_pre_process_metadata
+from .quant_utils import (
+    QuantFormat,
+    QuantizationMode,
+    QuantType,
+    load_model_with_shape_infer,
+    model_has_pre_process_metadata,
+)
 from .registry import IntegerOpsRegistry, QDQRegistry, QLinearOpsRegistry
 
 
@@ -24,7 +30,6 @@ class QuantConfig:
         nodes_to_exclude=None,
         per_channel=False,
         reduce_range=False,
-        optimize_model=True,
         use_external_data_format=False,
     ):
         """
@@ -54,8 +59,6 @@ class QuantConfig:
             reduce_range:
                 quantize weights with 7-bits. It may improve the accuracy for some models running on non-VNNI machine,
                 especially for per-channel mode
-            optimize_model: Deprecating Soon! Optimize model before quantization. NOT recommended, optimization will
-                change the computation graph, making debugging of quantization loss difficult.
             use_external_data_format: option used for large size (>2GB) model. Set to False by default.
         """
 
@@ -69,7 +72,6 @@ class QuantConfig:
         self.activation_type = activation_type
         self.nodes_to_quantize = nodes_to_quantize
         self.nodes_to_exclude = nodes_to_exclude
-        self.optimize_model = optimize_model
         self.use_external_data_format = use_external_data_format
 
 
@@ -86,7 +88,6 @@ class StaticQuantConfig(QuantConfig):
         nodes_to_exclude=None,
         per_channel=False,
         reduce_range=False,
-        optimize_model=True,
         use_external_data_format=False,
         extra_options=None,
     ):
@@ -157,7 +158,6 @@ class StaticQuantConfig(QuantConfig):
             nodes_to_exclude=nodes_to_exclude,
             per_channel=per_channel,
             reduce_range=reduce_range,
-            optimize_model=optimize_model,
             use_external_data_format=use_external_data_format,
         )
         self.calibration_data_reader = calibration_data_reader
@@ -175,7 +175,6 @@ class DynamicQuantConfig(QuantConfig):
         nodes_to_exclude=None,
         per_channel=False,
         reduce_range=False,
-        optimize_model=True,
         use_external_data_format=False,
         extra_options=None,
     ):
@@ -208,7 +207,6 @@ class DynamicQuantConfig(QuantConfig):
             weight_type=weight_type,
             nodes_to_quantize=nodes_to_quantize,
             nodes_to_exclude=nodes_to_exclude,
-            optimize_model=optimize_model,
             use_external_data_format=use_external_data_format,
         )
         self.extra_options = extra_options or {}
@@ -240,7 +238,6 @@ def quantize_static(
     weight_type=QuantType.QInt8,
     nodes_to_quantize=None,
     nodes_to_exclude=None,
-    optimize_model=True,
     use_external_data_format=False,
     calibrate_method=CalibrationMethod.MinMax,
     extra_options=None,
@@ -289,8 +286,6 @@ def quantize_static(
         nodes_to_exclude:
             List of nodes names to exclude. The nodes in this list will be excluded from quantization
             when it is not None.
-        optimize_model: Deprecating Soon! Optimize model before quantization. NOT recommended, optimization will
-            change the computation graph, making debugging of quantization loss difficult.
         use_external_data_format: option used for large size (>2GB) model. Set to False by default.
         extra_options:
             key value pair dictionary for various options in different case. Current used:
@@ -343,12 +338,12 @@ def quantize_static(
         qdq_ops = list(QDQRegistry.keys())
         op_types_to_quantize = list(set(q_linear_ops + qdq_ops))
 
-    model = load_model(Path(model_input), optimize_model)
+    model = load_model_with_shape_infer(Path(model_input))
 
     pre_processed: bool = model_has_pre_process_metadata(model)
     if not pre_processed:
         logging.warning(
-            "Please consider pre-processing before quantization. See "
+            "Please consider to run pre-processing before quantization. Refer to example: "
             "https://github.com/microsoft/onnxruntime-inference-examples/blob/main/quantization/image_classification"
             "/cpu/ReadMe.md "
         )
@@ -364,7 +359,7 @@ def quantize_static(
 
     with tempfile.TemporaryDirectory(prefix="ort.quant.") as quant_tmp_dir:
         calibrator = create_calibrator(
-            model,
+            Path(model_input),
             op_types_to_quantize,
             augmented_model_path=Path(quant_tmp_dir).joinpath("augmented_model.onnx").as_posix(),
             calibrate_method=calibrate_method,
@@ -427,7 +422,6 @@ def quantize_dynamic(
     weight_type=QuantType.QInt8,
     nodes_to_quantize=None,
     nodes_to_exclude=None,
-    optimize_model=True,
     use_external_data_format=False,
     extra_options=None,
 ):
@@ -457,8 +451,6 @@ def quantize_dynamic(
         nodes_to_exclude:
             List of nodes names to exclude. The nodes in this list will be excluded from quantization
             when it is not None.
-        optimize_model: Deprecating Soon! Optimize model before quantization. NOT recommended, optimization will
-            change the computation graph, making debugging of quantization loss difficult.
         use_external_data_format: option used for large size (>2GB) model. Set to False by default.
         extra_options:
             key value pair dictionary for various options in different case. Current used:
@@ -485,7 +477,15 @@ def quantize_dynamic(
     if not op_types_to_quantize or len(op_types_to_quantize) == 0:
         op_types_to_quantize = list(IntegerOpsRegistry.keys())
 
-    model = load_model(Path(model_input), optimize_model)
+    model = load_model_with_shape_infer(Path(model_input))
+
+    pre_processed: bool = model_has_pre_process_metadata(model)
+    if not pre_processed:
+        logging.warning(
+            "Please consider to run pre-processing before quantization. Refer to example: "
+            "https://github.com/microsoft/onnxruntime-inference-examples/blob/main/quantization/image_classification"
+            "/cpu/ReadMe.md "
+        )
 
     if "MatMulConstBOnly" not in extra_options:
         extra_options["MatMulConstBOnly"] = True
@@ -536,7 +536,6 @@ def quantize(
             nodes_to_exclude=quant_config.nodes_to_exclude,
             per_channel=quant_config.per_channel,
             reduce_range=quant_config.reduce_range,
-            optimize_model=quant_config.optimize_model,
             use_external_data_format=quant_config.use_external_data_format,
             extra_options=quant_config.extra_options,
         )
@@ -551,7 +550,6 @@ def quantize(
             nodes_to_exclude=quant_config.nodes_to_exclude,
             per_channel=quant_config.per_channel,
             reduce_range=quant_config.reduce_range,
-            optimize_model=quant_config.optimize_model,
             use_external_data_format=quant_config.use_external_data_format,
             extra_options=quant_config.extra_options,
         )
