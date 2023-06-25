@@ -1,8 +1,12 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
 #include <cuda.h>
 #include <cuda_runtime.h>
 #include <cuda_fp16.h>
 #include "core/providers/cuda/cu_inc/common.cuh"
-#include "quant_nbit_kernel.h"
+#include "quant_nbit_gemm.h"
+
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
@@ -135,7 +139,7 @@ __global__ void BatchGemv(T* out, const T* inA, const uint32_t* inB, const T* sc
   }
 }
 
-void quant4BGEMV_cuda(
+void Q4bitGemv(
     cudaStream_t stream,
     const void* vec_data,
     const int32_t* mat_data,
@@ -155,6 +159,8 @@ void quant4BGEMV_cuda(
       reinterpret_cast<const uint32_t*>(mat_data), static_cast<const half*>(scales_data),
       reinterpret_cast<const uint32_t*>(zeros_data), groupsize, MATRIX_M, MATRIX_K, MATRIX_N);
 }
+
+#if 0
 
 #ifdef __CUDA_ARCH__
 #if __CUDA_ARCH__ < 700
@@ -386,6 +392,8 @@ void vecquant4matmul_g_cuda(
       g_idx_data,
       batch, vec_height, height, width, zero_width);
 }
+#endif
+
 }  // namespace cuda
 }  // namespace contrib
 }  // namespace onnxruntime
