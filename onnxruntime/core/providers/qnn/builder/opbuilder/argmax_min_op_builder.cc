@@ -55,7 +55,7 @@ Status ArgMaxMinOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_mode
   ORT_RETURN_IF_ERROR(ProcessOutputs(qnn_model_wrapper, node_unit,
                                      std::move(input_names),
                                      std::move(param_tensor_names),
-                                     logger, is_quantized_model, do_op_validation));
+                                     logger, is_quantized_model, do_op_validation, GetQnnOpType(node_unit.OpType())));
 
   return Status::OK();
 }

@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #import "OnnxruntimeModule.h"
+#import "FakeRCTBlobManager.h"
 #import "TensorHelper.h"
 
 #import <XCTest/XCTest.h>
@@ -13,6 +14,14 @@
 
 @implementation OnnxruntimeModuleTest
 
+FakeRCTBlobManager *fakeBlobManager = nil;
+
++ (void)initialize {
+  if (self == [OnnxruntimeModuleTest class]) {
+    fakeBlobManager = [FakeRCTBlobManager new];
+  }
+}
+
 - (void)testOnnxruntimeModule {
   NSBundle *bundle = [NSBundle bundleForClass:[OnnxruntimeModuleTest class]];
   NSString *dataPath = [bundle pathForResource:@"test_types_float" ofType:@"ort"];
@@ -20,6 +29,7 @@
   NSString *sessionKey2 = @"";
 
   OnnxruntimeModule *onnxruntimeModule = [OnnxruntimeModule new];
+  [onnxruntimeModule setBlobManager:fakeBlobManager];
 
   {
     // test loadModelFromBuffer()
@@ -70,8 +80,8 @@
     }
     floatPtr = (float *)[byteBufferRef bytes];
 
-    NSString *dataEncoded = [byteBufferRef base64EncodedStringWithOptions:0];
-    inputTensorMap[@"data"] = dataEncoded;
+    XCTAssertNotNil(fakeBlobManager);
+    inputTensorMap[@"data"] = [fakeBlobManager testCreateData:byteBufferRef];
 
     NSMutableDictionary *inputDataMap = [NSMutableDictionary dictionary];
     inputDataMap[@"input"] = inputTensorMap;
@@ -84,8 +94,24 @@
     NSDictionary *resultMap = [onnxruntimeModule run:sessionKey input:inputDataMap output:output options:options];
     NSDictionary *resultMap2 = [onnxruntimeModule run:sessionKey2 input:inputDataMap output:output options:options];
 
-    XCTAssertTrue([[resultMap objectForKey:@"output"] isEqualToDictionary:inputTensorMap]);
-    XCTAssertTrue([[resultMap2 objectForKey:@"output"] isEqualToDictionary:inputTensorMap]);
+    // Compare output & input, but data.blobId is different
+    // dims
+    XCTAssertTrue([[resultMap objectForKey:@"output"][@"dims"] isEqualToArray:inputTensorMap[@"dims"]]);
+    XCTAssertTrue([[resultMap2 objectForKey:@"output"][@"dims"] isEqualToArray:inputTensorMap[@"dims"]]);
+
+    // type
+    XCTAssertEqual([resultMap objectForKey:@"output"][@"type"], JsTensorTypeFloat);
+    XCTAssertEqual([resultMap2 objectForKey:@"output"][@"type"], JsTensorTypeFloat);
+
+    // data ({ blobId, offset, size })
+    XCTAssertEqual([[resultMap objectForKey:@"output"][@"data"][@"offset"] longValue], 0);
+    XCTAssertEqual([[resultMap2 objectForKey:@"output"][@"data"][@"size"] longValue], byteBufferSize);
+  }
+
+  // test dispose
+  {
+    [onnxruntimeModule dispose:sessionKey];
+    [onnxruntimeModule dispose:sessionKey2];
   }
 }
 

@@ -43,6 +43,7 @@ void CreateGemmOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_
 void CreatePoolOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 void CreateMinMaxOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 void CreateUnaryOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
+void CreateReductionOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 
 }  // namespace nnapi
 }  // namespace onnxruntime

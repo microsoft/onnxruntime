@@ -70,7 +70,7 @@ resources:
     type: Github
     endpoint: Microsoft
     name: pypa/manylinux
-    ref: aead4d751c2101e23336aa73f2380df83e7a13f3
+    ref: 5eda9aded5462201e6310105728d33016e637ea7
 
 variables:
 - name: ReleaseVersionSuffix
@@ -214,7 +214,7 @@ stages:
     buildArch: x64
     msbuildPlatform: x64
     packageName: x64-tensorrt
-    buildparameter: --use_tensorrt --use_tensorrt_builtin_parser --tensorrt_home="C:\local\TensorRT-8.6.1.6.Windows10.x86_64.cuda-11.8" --cuda_version=11.8 --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.8"  --enable_onnx_tests --enable_wcos --build_java --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=52;60;61;70;75;80"
+    buildparameter: --use_tensorrt --tensorrt_home="C:\local\TensorRT-8.6.1.6.Windows10.x86_64.cuda-11.8" --cuda_version=11.8 --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.8"  --enable_onnx_tests --enable_wcos --build_java --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=52;60;61;70;75;80"
     runTests: ${{ parameters.RunOnnxRuntimeTests }}
     buildJava: true
     java_artifact_id: onnxruntime_gpu
@@ -794,11 +794,11 @@ stages:
 
 - template: nuget/templates/dml-vs-2022.yml
   parameters:
-    AgentPool : 'aiinfra-dml-winbuild'
+    AgentPool : 'onnxruntime-Win2019-GPU-dml-A10'
     IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
     ArtifactName: 'drop-nuget-dml'
     StageName: 'Windows_CI_GPU_DML_Dev'
-    BuildCommand: --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --enable_onnx_tests --enable_wcos --use_telemetry --use_dml --use_winml --cmake_generator "Visual Studio 17 2022"
+    BuildCommand: --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --enable_onnx_tests --enable_wcos --use_telemetry --use_dml --use_winml --cmake_generator "Visual Studio 16 2019"
     BuildArch: 'x64'
     msbuildArchitecture: 'amd64'
     EnvSetupScript: 'setup_env.bat'
@@ -817,11 +817,11 @@ stages:
 
 - template: nuget/templates/dml-vs-2022.yml
   parameters:
-    AgentPool : 'aiinfra-dml-winbuild'
+    AgentPool : 'onnxruntime-Win2019-GPU-dml-A10'
     IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
     ArtifactName: 'drop-win-dml-x86-zip'
     StageName: 'Windows_CI_GPU_DML_Dev_x86'
-    BuildCommand: --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --enable_onnx_tests --enable_wcos --use_telemetry --use_dml --use_winml --cmake_generator "Visual Studio 17 2022"
+    BuildCommand: --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --enable_onnx_tests --enable_wcos --use_telemetry --use_dml --use_winml --cmake_generator "Visual Studio 16 2019"
     BuildArch: 'x86'
     EnvSetupScript: 'setup_env_x86.bat'
     sln_platform: 'Win32'
@@ -840,11 +840,11 @@ stages:
 
 - template: nuget/templates/dml-vs-2022.yml
   parameters:
-    AgentPool : 'onnxruntime-Win-CPU-2022'
+    AgentPool : 'onnxruntime-Win2019-GPU-dml-A10'
     IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
     ArtifactName: 'drop-win-dml-arm64-zip'
     StageName: 'Windows_CI_GPU_DML_Dev_arm64'
-    BuildCommand: --build_dir $(Build.BinariesDirectory) --arm64 --skip_submodule_sync --build_shared_lib --enable_onnx_tests --enable_wcos --use_telemetry --use_dml --use_winml --cmake_generator "Visual Studio 17 2022"
+    BuildCommand: --build_dir $(Build.BinariesDirectory) --arm64 --skip_submodule_sync --build_shared_lib --enable_onnx_tests --enable_wcos --use_telemetry --use_dml --use_winml --cmake_generator "Visual Studio 16 2019"
     BuildArch: 'x64'
     EnvSetupScript: 'setup_env.bat'
     sln_platform: 'arm64'
@@ -863,11 +863,11 @@ stages:
 
 - template: nuget/templates/dml-vs-2022.yml
   parameters:
-    AgentPool : 'onnxruntime-Win-CPU-2022'
+    AgentPool : 'onnxruntime-Win-CPU-2019'
     IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
     ArtifactName: 'drop-win-dml-arm-zip'
     StageName: 'Windows_CI_GPU_DML_Dev_arm'
-    BuildCommand: --build_dir $(Build.BinariesDirectory) --arm --skip_submodule_sync --build_shared_lib --enable_onnx_tests --enable_wcos --use_telemetry --use_dml --use_winml --cmake_generator "Visual Studio 17 2022"
+    BuildCommand: --build_dir $(Build.BinariesDirectory) --arm --skip_submodule_sync --build_shared_lib --enable_onnx_tests --enable_wcos --use_telemetry --use_dml --use_winml --cmake_generator "Visual Studio 16 2019"
     BuildArch: 'x64'
     EnvSetupScript: 'setup_env.bat'
     sln_platform: 'arm'

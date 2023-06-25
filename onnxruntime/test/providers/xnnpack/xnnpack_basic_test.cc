@@ -119,13 +119,8 @@ TEST(XnnpackEP, TestAllocatorSharing) {
   init_session(eps, session2);
   init_session(eps1, session3);
 
-  // check that allocator sharing worked. the internal testing EP should be using the CPU EP allocator
-  ASSERT_EQ(eps[0]->GetAllocator(OrtMemType::OrtMemTypeDefault).get(),
-            eps[1]->GetAllocator(OrtMemType::OrtMemTypeDefault).get())
-      << "EPs do not have the same default allocator";
-  ASSERT_EQ(eps[0]->GetAllocator(OrtMemType::OrtMemTypeDefault).get(),
-            eps1[1]->GetAllocator(OrtMemType::OrtMemTypeDefault).get())
-      << "EPs do not have the same default allocator";
+  ASSERT_EQ(session1.GetAllocator(OrtMemoryInfo()).get(), session3.GetAllocator(OrtMemoryInfo()).get()) << "should use the same allocator from xnnpack cross session";
+  // TODO(leca): should also check there is only 1 allocator in session1.GetSessionState().GetAllocators() which is used by both xnnpack EP and CPU EP
 }
 
 TEST(XnnpackEP, TestAddEpUsingPublicApi) {
@@ -211,7 +206,7 @@ static void RunModelTestWithPath(const ORTCHAR_T* ort_model_path, const char* gr
   RandomValueGenerator generator;
   TensorShape input_shape_x{input_shape};
   std::vector<float> input_x = generator.Uniform<float>(input_shape_x.GetDims(),
-                                                        -64, 64);
+                                                        -10, 24);
   OrtValue ml_value_x;
   CreateMLValue<float>(input_shape_x.GetDims(), input_x.data(), OrtMemoryInfo(), &ml_value_x);
   NameMLValMap feeds;

@@ -66,7 +66,7 @@ class ModelTestBuilder {
     }
 
     OrtValue input_value;
-    CreateMLValue<T>(TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault),
+    CreateMLValue<T>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0],
                      shape,
                      data,
                      &input_value);
@@ -91,7 +91,8 @@ class ModelTestBuilder {
   }
 
   template <typename T>
-  NodeArg* MakeInput(const std::optional<std::vector<int64_t>>& shape) {
+  NodeArg* MakeInput(const std::optional<std::vector<int64_t>>& shape,
+                     std::optional<std::string> input_name = std::nullopt) {
     ONNX_NAMESPACE::TypeProto type_proto;
     type_proto.mutable_tensor_type()->set_elem_type(utils::ToTensorProtoElementType<T>());
     if (shape != std::nullopt) {
@@ -103,8 +104,14 @@ class ModelTestBuilder {
         }
       }
     }
-    std::string name = graph_.GenerateNodeArgName("input");
-    return &graph_.GetOrCreateNodeArg(name, &type_proto);
+
+    if (input_name == std::nullopt) {
+      std::string name = graph_.GenerateNodeArgName("input");
+      return &graph_.GetOrCreateNodeArg(name, &type_proto);
+    } else {
+      ORT_ENFORCE(graph_.GetNodeArg(*input_name) == nullptr, "Input name already exists: ", *input_name);
+      return &graph_.GetOrCreateNodeArg(*input_name, &type_proto);
+    }
   }
 
   template <typename T>
@@ -134,6 +141,24 @@ class ModelTestBuilder {
     std::string name = graph_.GenerateNodeArgName("output");
     output_names_.push_back(name);
     return &graph_.GetOrCreateNodeArg(name, nullptr);
+  }
+
+  template <typename T>
+  NodeArg* MakeOutput(const std::optional<std::vector<int64_t>>& shape) {
+    ONNX_NAMESPACE::TypeProto type_proto;
+    type_proto.mutable_tensor_type()->set_elem_type(utils::ToTensorProtoElementType<T>());
+    if (shape != std::nullopt) {
+      ONNX_NAMESPACE::TensorShapeProto* shape_proto = type_proto.mutable_tensor_type()->mutable_shape();
+      for (auto& d : *shape) {
+        auto dim = shape_proto->add_dim();
+        if (d != -1) {
+          dim->set_dim_value(d);
+        }
+      }
+    }
+    std::string name = graph_.GenerateNodeArgName("output");
+    output_names_.push_back(name);
+    return &graph_.GetOrCreateNodeArg(name, &type_proto);
   }
 
   NodeArg* MakeIntermediate() {
@@ -392,7 +417,7 @@ void TransformerTester(const std::function<void(ModelTestBuilder& helper)>& buil
                        const std::function<void(InferenceSessionWrapper& session)>& check_transformed_graph,
                        TransformerLevel baseline_level,
                        TransformerLevel target_level,
-                       const std::vector<int64_t>& opset_versions,
+                       const std::vector<int>& opset_versions,
                        double per_sample_tolerance = 0.0,
                        double relative_per_sample_tolerance = 0.0,
                        std::unique_ptr<GraphTransformer> transformer = nullptr,  // must be null in this case.
@@ -429,7 +454,7 @@ Status TestGraphTransformer(const std::function<void(ModelTestBuilder& helper)>&
  * @param post_graph_checker The graph checker function after applying the transformer
  */
 Status TestGraphTransformer(const std::function<void(ModelTestBuilder& helper)>& build_test_case,
-                            const std::vector<int64_t>& opset_versions,
+                            const std::vector<int>& opset_versions,
                             const logging::Logger& logger, std::unique_ptr<GraphTransformer> transformer,
                             TransformerLevel level, unsigned steps, const std::function<Status(Graph&)>& pre_graph_checker,
                             const std::function<Status(Graph&)>& post_graph_checker);

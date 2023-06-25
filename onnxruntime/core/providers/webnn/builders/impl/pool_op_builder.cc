@@ -23,8 +23,8 @@ class PoolOpBuilder : public BaseOpBuilder {
 
   // Operator support related.
  private:
-  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
-                         const logging::Logger& logger) const override;
+  bool IsOpSupportedImpl(const InitializedTensorSet& /* initializers */, const Node& node,
+                         const WebnnDeviceType /* device_type */, const logging::Logger& logger) const override;
 };
 
 // Add operator related.
@@ -62,7 +62,11 @@ Status PoolOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   options.set("strides", emscripten::val::array(strides));
   const auto dilations = helper.Get("dilations", std::vector<int32_t>{1, 1});
   options.set("dilations", emscripten::val::array(dilations));
-  options.set("layout", emscripten::val("nhwc"));
+  if (model_builder.GetPreferredLayout() == DataLayout::NHWC) {
+    options.set("layout", emscripten::val("nhwc"));
+  } else {
+    options.set("layout", emscripten::val("nchw"));
+  }
 
   // Add Padding.
   // Usually using autopadding is more efficient than using explicit padding.
@@ -104,7 +108,9 @@ Status PoolOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 }
 
 // Operator support related.
-bool PoolOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& /* initializers */, const Node& node,
+bool PoolOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& /* initializers */,
+                                      const Node& node,
+                                      const WebnnDeviceType /* device_type */,
                                       const logging::Logger& logger) const {
   const auto& op_type = node.OpType();
   const auto& input_defs = node.InputDefs();
