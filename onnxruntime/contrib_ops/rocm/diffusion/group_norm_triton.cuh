@@ -31,14 +31,6 @@ std::string GetGroupNormTritonGroupName() {
 
 }  // namespace
 
-inline int NextPowerOfTwo(int n) {
-  int ret = 1;
-  while (ret < n) {
-    ret <<= 1;
-  }
-  return ret;
-}
-
 template <typename T, bool WithSwish>
 auto GetTritonGroupNormNHWCTypeStringAndOps() {
   std::vector<std::pair<std::string, tunable::Op<GroupNormNHWCParams<T>>>> ret;
@@ -49,30 +41,27 @@ auto GetTritonGroupNormNHWCTypeStringAndOps() {
   }
 
   for (auto i : *kernel_list) {
-    // check params match
+    // Check params match
     auto* metadata = GetOrtTritonKernelMetadata(i);
-    auto block_size = -1;
-    const std::string block_name = "BLOCK_SIZE";
-    if (metadata->constants.count(block_name) != 0) {
-      block_size = metadata->constants.at(block_name);
-    }
-    auto impl = [i, block_size](const GroupNormNHWCParams<T>* params) -> Status {
-      auto min_block_size = NextPowerOfTwo(params->cPerGroup);
+    auto block_size = metadata->constants.at("BLOCK_SIZE");
+    auto hw_size = metadata->constants.at("HW_SIZE");
+    auto impl = [i, block_size, hw_size](const GroupNormNHWCParams<T>* params) -> Status {
       TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(
-        block_size != min_block_size, "Only keep BLOCK_SIZE == next power of 2 of cPerGroup");
+          params->cPerGroup > block_size || params->cPerGroup * 2 <= block_size,
+          "Arg block_size should be the next power of 2 of cPerGroup");
+      TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(params->hw % hw_size != 0, "Arg hw_size should be a divisor of hw");
       if constexpr (WithSwish) {
         TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(!params->withSwish, "Swish version only supports GN w/ swish");
       } else {
         TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(params->withSwish, "Pass version only supports GN w/o swish");
       }
-      // construct args for launch kernel
+      // Construct args for launch kernel
       struct {
         void* X;
         void* Y;
         const void* gamma;
         const void* beta;
-        int h;
-        int w;
+        int hw;
         int c;
         int c_per_group;
         float eps;
@@ -81,13 +70,12 @@ auto GetTritonGroupNormNHWCTypeStringAndOps() {
           (void*)params->dst,
           (const void*)params->gamma,
           (const void*)params->beta,
-          params->h,
-          params->w,
+          params->hw,
           params->c,
           params->cPerGroup,
           params->epsilon};
 
-      // grid dim is (batch_count, groups, 1)
+      // Grid dim is (batch_count, groups, 1)
       return LaunchTritonKernel(params->stream, i, params->n, params->groups, 1, &args, sizeof(args));
     };
     ret.emplace_back(std::make_pair(metadata->name, std::move(impl)));
