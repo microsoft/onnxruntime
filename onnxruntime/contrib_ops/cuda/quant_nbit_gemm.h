@@ -9,7 +9,7 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-void quant4BGEMV_cuda(
+void Q4bitGemv(
     cudaStream_t stream,
     const void* vec_data,
     const int32_t* mat_data,

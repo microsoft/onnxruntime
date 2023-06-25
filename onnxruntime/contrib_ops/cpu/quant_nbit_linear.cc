@@ -10,9 +10,9 @@
 namespace onnxruntime {
 namespace contrib {
 
-class QuantNbitsLinear final : public OpKernel {
+class QuantNbitsGemm final : public OpKernel {
  public:
-  explicit QuantNbitsLinear(const OpKernelInfo& info) : OpKernel{info} {
+  explicit QuantNbitsGemm(const OpKernelInfo& info) : OpKernel{info} {
     //ORT_ENFORCE(info.GetAttr("outfeatures", &outfeatures_).IsOK());
     //ORT_ENFORCE(info.GetAttr("infeatures", &in_features_).IsOK());
     bits_ = info.GetAttrOrDefault<int64_t>("bits", 3);
@@ -33,16 +33,16 @@ class QuantNbitsLinear final : public OpKernel {
 };
 
 ONNX_OPERATOR_KERNEL_EX(
-    QuantNbitsLinear,
+    QuantNbitsGemm,
     kMSDomain,
     1,
     kCpuExecutionProvider,
     (*KernelDefBuilder::Create())
         .TypeConstraint("T", BuildKernelDefConstraints<float, MLFloat16>()),
-    QuantNbitsLinear);
+    QuantNbitsGemm);
 
 int iii=0;
-Status QuantNbitsLinear::Compute(OpKernelContext* ctx) const {
+Status QuantNbitsGemm::Compute(OpKernelContext* ctx) const {
   const auto* input_x = ctx->Input<Tensor>(0);
   const auto* input_weight = ctx->Input<Tensor>(1);
   //const auto* input_scale = ctx->Input<Tensor>(2);

@@ -3,7 +3,6 @@
 #include "core/graph/contrib_ops/contrib_defs.h"
 
 #include <cmath>
-#include <cstddef>
 #include "core/graph/onnx_protobuf.h"
 
 #include "onnx/defs/shape_inference.h"
@@ -3524,7 +3523,10 @@ MatMulBnb4 is a MatMul with weight quantized with 4 bits using either FP4 or NF4
         bool transB = getAttribute(ctx, "transB", 1) != 0;
         MatmulWithQuantWeightShapeInference(ctx, in_features, out_features, transB);
       });
-void nBitQuantOpsShapeInference(InferenceContext& ctx, size_t weight_idx=0) {
+
+
+
+  void nBitQuantOpsShapeInference(InferenceContext& ctx) {
   auto *final_output_shape =
       ctx.getOutputType(0)->mutable_tensor_type()->mutable_shape();
 
@@ -3542,7 +3544,7 @@ void nBitQuantOpsShapeInference(InferenceContext& ctx, size_t weight_idx=0) {
     fail_shape_inference("bits and groupsize must be positive");
   }
 
-  auto qweight_input_shape = ctx.getInputType(weight_idx)->tensor_type().shape();
+  auto qweight_input_shape = ctx.getInputType(0)->tensor_type().shape();
   if (qweight_input_shape.dim_size() != 2) {
     return;  // Input tensor should have at least two dimensions.
   }
@@ -3556,6 +3558,7 @@ void nBitQuantOpsShapeInference(InferenceContext& ctx, size_t weight_idx=0) {
   }
   final_output_shape->add_dim()->set_dim_value(qweight_input_shape.dim(1).dim_value());
 }
+
 ONNX_CONTRIB_OPERATOR_SCHEMA(QuantNbitsGemm)
     .SetDomain(kMSDomain)
     .SinceVersion(1)
@@ -3577,7 +3580,7 @@ ONNX_CONTRIB_OPERATOR_SCHEMA(QuantNbitsGemm)
       // Type inference
       propagateElemTypeFromInputToOutput(ctx, 0, 0);
       // Shape inference
-      nBitQuantOpsShapeInference(ctx, 1);
+      nBitQuantOpsShapeInference(ctx);
     });
 ONNX_CONTRIB_OPERATOR_SCHEMA(DequantizeAndUnpackWeight)
     .SetDomain(kMSDomain)
@@ -3598,6 +3601,7 @@ ONNX_CONTRIB_OPERATOR_SCHEMA(DequantizeAndUnpackWeight)
       // Shape inference
       nBitQuantOpsShapeInference(ctx);
     });
+
 #ifdef ENABLE_ATEN
   ONNX_CONTRIB_OPERATOR_SCHEMA(ATen)
       .SetDomain(kPytorchAtenDomain)
