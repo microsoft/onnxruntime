@@ -39,20 +39,6 @@ struct RknpuFuncState {
 
 RknpuExecutionProvider::RknpuExecutionProvider()
     : IExecutionProvider{onnxruntime::kRknpuExecutionProvider} {
-  AllocatorCreationInfo default_memory_info{
-      [](int) {
-        return std::make_unique<CPUAllocator>(OrtMemoryInfo(RKNPU, OrtAllocatorType::OrtDeviceAllocator));
-      }};
-
-  InsertAllocator(CreateAllocator(default_memory_info));
-
-  AllocatorCreationInfo cpu_memory_info{
-      [](int) {
-        return std::make_unique<CPUAllocator>(
-            OrtMemoryInfo(RKNPU, OrtAllocatorType::OrtDeviceAllocator, OrtDevice(), 0, OrtMemTypeCPUOutput));
-      }};
-
-  InsertAllocator(CreateAllocator(cpu_memory_info));
 }
 
 RknpuExecutionProvider::~RknpuExecutionProvider() {}

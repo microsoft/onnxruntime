@@ -1,21 +1,16 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#if 0  // TODO: Can't call these directly from external code as Cuda is now a shared library
-//#ifdef USE_CUDA
+#include "core/common/common.h"
+#include "core/providers/cuda/cuda_common.h"
 
 #include "gtest/gtest.h"
-#include "core/providers/cuda/cuda_common.h"
 
 namespace onnxruntime {
 namespace cuda {
-
-// Initialize the singleton instance
-HalfGemmOptions HalfGemmOptions::instance;
-
 namespace test {
 
-TEST(CudaGemmOptionsTest, DefaultOptions) {
+TEST(CudaGemmOptions, TestDefaultOptions) {
   HalfGemmOptions gemm_options;
   ASSERT_FALSE(gemm_options.IsCompute16F());
 #if defined(USE_CUDA)
@@ -27,7 +22,7 @@ TEST(CudaGemmOptionsTest, DefaultOptions) {
 #endif
 }
 
-TEST(CudaGemmOptionsTest, Compute16F) {
+TEST(CudaGemmOptions, TestCompute16F) {
   HalfGemmOptions gemm_options;
   gemm_options.Initialize(1);
   ASSERT_TRUE(gemm_options.IsCompute16F());
@@ -40,7 +35,7 @@ TEST(CudaGemmOptionsTest, Compute16F) {
 #endif
 }
 
-TEST(CudaGemmOptionsTest, NoReducedPrecision) {
+TEST(CudaGemmOptions, NoReducedPrecision) {
   HalfGemmOptions gemm_options;
   gemm_options.Initialize(2);
   ASSERT_FALSE(gemm_options.IsCompute16F());
@@ -53,7 +48,7 @@ TEST(CudaGemmOptionsTest, NoReducedPrecision) {
 #endif
 }
 
-TEST(CudaGemmOptionsTest, Pedantic) {
+TEST(CudaGemmOptions, Pedantic) {
   HalfGemmOptions gemm_options;
   gemm_options.Initialize(4);
   ASSERT_FALSE(gemm_options.IsCompute16F());
@@ -66,7 +61,7 @@ TEST(CudaGemmOptionsTest, Pedantic) {
 #endif
 }
 
-TEST(CudaGemmOptionsTest, Compute16F_Pedantic) {
+TEST(CudaGemmOptions, Compute16F_Pedantic) {
   HalfGemmOptions gemm_options;
   gemm_options.Initialize(5);
   ASSERT_TRUE(gemm_options.IsCompute16F());
@@ -79,7 +74,7 @@ TEST(CudaGemmOptionsTest, Compute16F_Pedantic) {
 #endif
 }
 
-TEST(CudaGemmOptionsTest, Compute16F_NoReducedPrecision) {
+TEST(CudaGemmOptions, Compute16F_NoReducedPrecision) {
   HalfGemmOptions gemm_options;
   gemm_options.Initialize(3);
   ASSERT_TRUE(gemm_options.IsCompute16F());
@@ -95,5 +90,3 @@ TEST(CudaGemmOptionsTest, Compute16F_NoReducedPrecision) {
 }  // namespace test
 }  // namespace cuda
 }  // namespace onnxruntime
-
-#endif

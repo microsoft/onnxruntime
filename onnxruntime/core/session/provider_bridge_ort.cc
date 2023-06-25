@@ -300,8 +300,6 @@ struct ProviderHostImpl : ProviderHost {
   bool IAllocator__CalcMemSizeForArrayWithAlignment(size_t nmemb, size_t size, size_t alignment, size_t* out) override { return IAllocator::CalcMemSizeForArrayWithAlignment(nmemb, size, alignment, out); }
 
   // IExecutionProvider (direct)
-  AllocatorPtr IExecutionProvider__GetAllocator(const IExecutionProvider* p, OrtMemType mem_type) override { return p->IExecutionProvider::GetAllocator(mem_type); }
-  void IExecutionProvider__InsertAllocator(IExecutionProvider* p, AllocatorPtr allocator) override { return p->IExecutionProvider::InsertAllocator(allocator); }
   std::vector<std::unique_ptr<ComputeCapability>> IExecutionProvider__GetCapability(
       const IExecutionProvider* p, const onnxruntime::GraphViewer& graph_viewer,
       const IExecutionProvider::IKernelLookup& kernel_lookup) override {
@@ -314,10 +312,6 @@ struct ProviderHostImpl : ProviderHost {
 
   int IExecutionProvider__GenerateMetaDefId(const IExecutionProvider* p, const onnxruntime::GraphViewer& graph_viewer, HashValue& model_hash) override {
     return p->IExecutionProvider::GenerateMetaDefId(graph_viewer, model_hash);
-  }
-
-  void IExecutionProvider__RegisterAllocator(IExecutionProvider* p, AllocatorManager& allocator_manager) override {
-    return p->IExecutionProvider::RegisterAllocator(allocator_manager);
   }
 
   // Status (direct)
@@ -1074,8 +1068,8 @@ struct ProviderHostImpl : ProviderHost {
 #endif
 
 #if defined(USE_CUDA) || defined(USE_ROCM)
-
   PhiloxGenerator& PhiloxGenerator__Default() override { return PhiloxGenerator::Default(); }
+#endif
 
 #ifdef ENABLE_TRAINING_TORCH_INTEROP
   void contrib__PythonOpBase__Init(contrib::PythonOpBase* p, const OpKernelInfo& info) override { p->PythonOpBase::Init(info); }
@@ -1097,7 +1091,6 @@ struct ProviderHostImpl : ProviderHost {
   void RefCountTracker__DumpDetails(const language_interop_ops::torch::RefCountTracker* p, const std::string& phase_name) override {
     return p->language_interop_ops::torch::RefCountTracker::DumpDetails(phase_name);
   }
-#endif
 #endif
 
 #if defined(USE_CANN)
@@ -1245,6 +1238,13 @@ static ProviderLibrary s_library_cuda(LIBRARY_PREFIX ORT_TSTR("onnxruntime_provi
                                       false /* unload - On Linux if we unload the cuda shared provider we crash */
 #endif
 );
+// This lib is only for unittest.
+static ProviderLibrary s_library_cuda_test(LIBRARY_PREFIX ORT_TSTR("onnxruntime_providers_cuda_ut") LIBRARY_EXTENSION
+#ifndef _WIN32
+                                           ,
+                                           false /* unload - On Linux if we unload the cuda shared provider we crash */
+#endif
+);
 static ProviderLibrary s_library_cann(LIBRARY_PREFIX ORT_TSTR("onnxruntime_providers_cann") LIBRARY_EXTENSION
 #ifndef _WIN32
                                       ,
@@ -1267,6 +1267,7 @@ void UnloadSharedProviders() {
   s_library_openvino.Unload();
   s_library_tensorrt.Unload();
   s_library_cuda.Unload();
+  s_library_cuda_test.Unload();
   s_library_cann.Unload();
   s_library_rocm.Unload();
   s_library_shared.Unload();
@@ -1377,6 +1378,7 @@ OrtTensorRTProviderOptionsV2 OrtTensorRTProviderOptionsToOrtTensorRTProviderOpti
   trt_options_converted.trt_profile_min_shapes = "";
   trt_options_converted.trt_profile_max_shapes = "";
   trt_options_converted.trt_profile_opt_shapes = "";
+  trt_options_converted.trt_cuda_graph_enable = 0;
 
   return trt_options_converted;
 }
@@ -1419,6 +1421,20 @@ ProviderInfo_CUDA* TryGetProviderInfo_CUDA() try {
 
 ProviderInfo_CUDA& GetProviderInfo_CUDA() {
   if (auto* info = TryGetProviderInfo_CUDA())
+    return *info;
+
+  ORT_THROW("CUDA Provider not available, can't get interface for it");
+}
+
+ProviderInfo_CUDA* TryGetProviderInfo_CUDA_Test() try {
+  return reinterpret_cast<ProviderInfo_CUDA*>(s_library_cuda_test.Get().GetInfo());
+} catch (const std::exception& exception) {
+  LOGS_DEFAULT(ERROR) << exception.what();
+  return nullptr;
+}
+
+ProviderInfo_CUDA& GetProviderInfo_CUDA_Test() {
+  if (auto* info = TryGetProviderInfo_CUDA_Test())
     return *info;
 
   ORT_THROW("CUDA Provider not available, can't get interface for it");
@@ -1733,6 +1749,7 @@ ORT_API_STATUS_IMPL(OrtApis::CreateTensorRTProviderOptions, _Outptr_ OrtTensorRT
   options->trt_profile_min_shapes = nullptr;
   options->trt_profile_max_shapes = nullptr;
   options->trt_profile_opt_shapes = nullptr;
+  options->trt_cuda_graph_enable = false;
   *out = options.release();
   return nullptr;
 #else

@@ -86,9 +86,7 @@ class GenerateBase {
         temp_space_allocator_(nullptr),
         topk_func_(topk_func),
         device_copy_func_(device_copy_func) {
-    cpu_allocator_ = decoder_session_state.GetExecutionProviders()
-                         .Get(onnxruntime::kCpuExecutionProvider)
-                         ->GetAllocator(OrtMemTypeDefault);
+    cpu_allocator_ = decoder_session_state.GetAllocator(decoder_session_state.GetExecutionProviders().Get(onnxruntime::kCpuExecutionProvider)->GetOrtDeviceByMemType(OrtMemTypeDefault));
   }
 
   virtual ~GenerateBase() = default;
