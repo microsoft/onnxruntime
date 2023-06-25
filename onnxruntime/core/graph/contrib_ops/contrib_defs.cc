@@ -2895,7 +2895,7 @@ This op functions in much the same was as Dropout-11 and Dropout-13 do, execpt t
         }
       });
 
-  ONNX_CONTRIB_OPERATOR_SCHEMA(QuantNbitsLinear)
+  ONNX_CONTRIB_OPERATOR_SCHEMA(QuantNbitsGemm)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
       .SetDoc(R"DOC()DOC")
@@ -2927,6 +2927,23 @@ This op functions in much the same was as Dropout-11 and Dropout-13 do, execpt t
         // int r = input_shape.dim_size();
         // Shape inference
         // propagateShapeFromInputToOutput(ctx, 0, 0);
+      });
+  ONNX_CONTRIB_OPERATOR_SCHEMA(DequantizeAndUnpackWeight)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc("same with onnx operator BitShift")
+      .Input(0, "qweight", "First operand, input to be shifted.", "T", OpSchema::Single, true, 1, OpSchema::NonDifferentiable)
+      .Input(1, "scales", "Second operand, amounts of shift.", "T1", OpSchema::Single, true, 1, OpSchema::NonDifferentiable)
+      .Input(2, "qzeros", "Second operand, amounts of shift.", "T", OpSchema::Single, true, 1, OpSchema::NonDifferentiable)
+      .Output(0, "weight", "Output tensor", "T1", OpSchema::Single, true, 1, OpSchema::NonDifferentiable)
+      .TypeConstraint("T", {"tensor(uint32)", "tensor(int32)"}, "Constrain input and output types to integer tensors.")
+      .TypeConstraint("T1", {"tensor(float16)", "tensor(float)"}, "Constrain input and output types to integer tensors.")
+      .Attr("bits", "quantization bit number", AttributeProto::INT, static_cast<int64_t>(4))
+      .Attr("groupsize", "line nums in a group", AttributeProto::INT, static_cast<int64_t>(128))
+      .TypeAndShapeInferenceFunction([](InferenceContext& ctx) {
+        // Type inference
+        propagateElemTypeFromInputToOutput(ctx, 1, 0);
+        // Shape inference
       });
 #ifdef ENABLE_ATEN
   ONNX_CONTRIB_OPERATOR_SCHEMA(ATen)
