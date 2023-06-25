@@ -94,6 +94,7 @@ struct Tensorrt_Provider : Provider {
     info.profile_min_shapes = options.trt_profile_min_shapes == nullptr ? "" : options.trt_profile_min_shapes;
     info.profile_max_shapes = options.trt_profile_max_shapes == nullptr ? "" : options.trt_profile_max_shapes;
     info.profile_opt_shapes = options.trt_profile_opt_shapes == nullptr ? "" : options.trt_profile_opt_shapes;
+    info.cuda_graph_enable = options.trt_cuda_graph_enable != 0;
 
     common::Status status = CreateTensorRTCustomOpDomainList(info);
     if (!status.IsOK()) {
@@ -229,6 +230,8 @@ struct Tensorrt_Provider : Provider {
       dest[str_size] = '\0';
       trt_options.trt_profile_opt_shapes = (const char*)dest;
     }
+
+    trt_options.trt_cuda_graph_enable = internal_options.cuda_graph_enable;
   }
 
   ProviderOptions GetProviderOptions(const void* provider_options) override {

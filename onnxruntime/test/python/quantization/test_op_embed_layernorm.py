@@ -105,7 +105,9 @@ class TestOpEmbedLayerNormalization(unittest.TestCase):
         )
 
         graph = helper.make_graph(nodes, graph_name, inputs, outputs, initializer=initializers)
-        model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 14)])
+        model = helper.make_model(
+            graph, opset_imports=[helper.make_opsetid("", 14), helper.make_opsetid("com.microsoft", 1)]
+        )
         model.ir_version = 7  # use stable onnx ir version
         onnx.save(model, model_path)
 

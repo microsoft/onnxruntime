@@ -1,4 +1,5 @@
-
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
 
 #include "core/framework/tensor_shape.h"
 #include "contrib_ops/cuda/quantization/qordered_ops/qordered_qdq.h"
