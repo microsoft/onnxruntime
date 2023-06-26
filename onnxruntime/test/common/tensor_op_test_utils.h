@@ -29,7 +29,7 @@ class FixedPatternValueGenerator {
 
   template <typename TValue>
   std::vector<TValue>
-  Discrete(gsl::span<const int64_t> dims, const std::vector<TValue>& value_candidates) {
+  Discrete(gsl::span<const int64_t> dims, gsl::span<const TValue> value_candidates) {
     std::vector<TValue> values(detail::SizeFromDims(dims));
     std::uniform_int_distribution<size_t> distribution(0, value_candidates.size() - 1);
     // Tier 2 RNG. Use it if `RandomValueGenerator::Uniform` method causes large numerical errors
@@ -61,7 +61,7 @@ class FixedPatternValueGenerator {
 
   template <typename TValue>
   std::vector<TValue>
-  Circular(gsl::span<const int64_t> dims, const std::vector<TValue>& value_candidates) {
+  Circular(gsl::span<const int64_t> dims, gsl::span<const TValue> value_candidates) {
     // Tier 3 RNG. Use it if `Discrete` method causes large numerical errors
     // (e.g., when elementwise relative error > 1e-3).
     // Suggested value_candidates to alleviate numerical error (listed
@@ -118,7 +118,7 @@ inline std::vector<MLFloat16> ValueRange<MLFloat16>(size_t count, MLFloat16 star
   return result;
 }
 
-inline std::pair<float, float> MeanStdev(std::vector<float>& v) {
+inline std::pair<float, float> MeanStdev(gsl::span<const float> v) {
   float sum = std::accumulate(v.begin(), v.end(), 0.0f);
   float mean = sum / v.size();
 
@@ -132,7 +132,7 @@ inline std::pair<float, float> MeanStdev(std::vector<float>& v) {
 }
 
 inline void Normalize(std::vector<float>& v,
-                      std::pair<float, float>& mean_stdev, bool normalize_variance) {
+                      const std::pair<float, float>& mean_stdev, bool normalize_variance) {
   float mean = mean_stdev.first;
   float stdev = mean_stdev.second;
 
