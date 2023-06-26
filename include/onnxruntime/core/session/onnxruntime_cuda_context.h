@@ -4,6 +4,7 @@
 #ifndef ORT_CUDA_CTX
 #define ORT_CUDA_CTX
 
+#include "onnxruntime_ep_resource.h"
 #include <cuda_runtime.h>
 #include <cublas.h>
 //#include <cudnn.h>
@@ -25,14 +26,9 @@ struct OrtCudaContext {
     void* resource = {};
     OrtStatus* status = nullptr;
 
-    status = ort_api.KernelContext_GetStream(&kernel_ctx, &raw_stream);
+    status = ort_api.KernelContext_GetResource(&kernel_ctx, ORT_CUDA_RESOUCE_VERSION, CudaResource::cuda_stream_t, &resource);
     if (status) {
       ORT_CXX_API_THROW("failed to fetch raw stream", OrtErrorCode::ORT_RUNTIME_EXCEPTION);
-    }
-
-    status = ort_api.Stream_GetResource(raw_stream, "cuda_stream", &resource);
-    if (status) {
-      ORT_CXX_API_THROW("failed to fetch cuda stream", OrtErrorCode::ORT_RUNTIME_EXCEPTION);
     }
     cuda_stream = reinterpret_cast<cudaStream_t>(resource);
 
@@ -44,7 +40,7 @@ struct OrtCudaContext {
     //cudnn_handle = reinterpret_cast<cudnnHandle_t>(resource);
 
     resource = {};
-    status = ort_api.Stream_GetResource(raw_stream, "cublas_handle", &resource);
+    status = ort_api.KernelContext_GetResource(&kernel_ctx, ORT_CUDA_RESOUCE_VERSION, CudaResource::cublas_handle_t, &resource);
     if (status) {
       ORT_CXX_API_THROW("failed to fetch cublas stream", OrtErrorCode::ORT_RUNTIME_EXCEPTION);
     }

@@ -186,8 +186,6 @@ class OpKernelContext {
   */
   AllocatorPtr GetAllocator(const OrtDevice& device) const;
 
-  std::unordered_map<std::string, void*> info;
-
  protected:
   OpKernelContext(concurrency::ThreadPool* threadpool, const logging::Logger& logger, Stream* stream);
 

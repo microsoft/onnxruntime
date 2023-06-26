@@ -3,6 +3,7 @@
 #include "core/providers/cuda/cuda_stream_handle.h"
 #include "core/providers/cuda/cuda_common.h"
 #include "core/common/spin_pause.h"
+#include "core/session/onnxruntime_ep_resource.h"
 
 namespace onnxruntime {
 
@@ -149,16 +150,23 @@ Status CudaStream::CleanUpOnRunEnd() {
   return Status::OK();
 }
 
-void* CudaStream::GetResource(const char* id) const {
-  if (strcmp(id, "cuda_stream") == 0) {
-    return static_cast<void*>(GetHandle());
-  } else if (strcmp(id, "cudnn_handle") == 0) {
-    return static_cast<void*>(cudnn_handle_);
-  } else if (strcmp(id, "cublas_handle") == 0) {
-    return static_cast<void*>(cublas_handle_);
-  } else {
-    return Stream::GetResource(id);
+void* CudaStream::GetResource(int version, int id) const {
+  ORT_ENFORCE(version <= ORT_CUDA_RESOUCE_VERSION, "resource version unsupported!");
+  void* resource{};
+  switch (id) {
+    case CudaResource::cuda_stream_t:
+      return reinterpret_cast<void*>(GetHandle());
+      break;
+    case CudaResource::cudnn_handle_t:
+      return reinterpret_cast<void*>(cudnn_handle_);
+      break;
+    case CudaResource::cublas_handle_t:
+      return reinterpret_cast<void*>(cublas_handle_);
+      break;
+    default:
+      break;
   }
+  return resource;
 }
 
 // CPU Stream command handles

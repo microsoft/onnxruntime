@@ -98,12 +98,8 @@ class Stream {
 
   int32_t GetVersion() const { return version_; };
 
-  virtual void* GetResource(const char* id) const {
-    if (strcmp(id, "device_stream") == 0) {
-      return static_cast<void*>(GetHandle());
-    } else {
-      return nullptr;
-    }
+  virtual void* GetResource(int /*version*/, int /*id*/) const {
+    return nullptr;
   }
 
  private:

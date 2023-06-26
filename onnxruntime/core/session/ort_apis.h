@@ -476,8 +476,5 @@ ORT_API_STATUS_IMPL(UpdateROCMProviderOptions, _Inout_ OrtROCMProviderOptions* r
 ORT_API_STATUS_IMPL(GetROCMProviderOptionsAsString, _In_ const OrtROCMProviderOptions* rocm_options, _Inout_ OrtAllocator* allocator, _Outptr_ char** ptr);
 ORT_API(void, ReleaseROCMProviderOptions, _Frees_ptr_opt_ OrtROCMProviderOptions*);
 
-ORT_API_STATUS_IMPL(KernelContext_GetStream, _In_ const OrtKernelContext* context, _Outptr_ void** stream);
-ORT_API_STATUS_IMPL(Stream_GetVersion, _In_ const void* stream, _Out_ int32_t* version);
-ORT_API_STATUS_IMPL(Stream_GetDevice, _In_ const void* stream, _Out_ int8_t* device);
-ORT_API_STATUS_IMPL(Stream_GetResource, _In_ const void* stream, _In_ const char* id, _Outptr_ void** resource);
+ORT_API_STATUS_IMPL(KernelContext_GetResource, _In_ const OrtKernelContext* context, _In_ int resource_version, _In_ int resource_id, _Outptr_ void** stream);
 }  // namespace OrtApis

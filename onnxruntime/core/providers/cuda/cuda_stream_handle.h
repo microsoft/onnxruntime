@@ -35,7 +35,7 @@ struct CudaStream : Stream {
 
   cublasHandle_t cublas_handle_{};
 
-  void* GetResource(const char* id) const override;
+  void* GetResource(int version, int id) const override;
 
  private:
   std::vector<void*> deferred_cpu_buffers_;

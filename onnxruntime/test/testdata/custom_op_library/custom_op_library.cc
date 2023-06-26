@@ -31,6 +31,7 @@ void KernelOne(Ort::Custom::OrtCudaContext* cuda_ctx,
                const Ort::Custom::Tensor<float>& Y,
                Ort::Custom::Tensor<float>& Z) {
   auto input_shape = X.Shape();
+  std::cout << "Fetch cuda stream from context" << std::endl;
   cudaStream_t cuda_stream = cuda_ctx->cuda_stream;
   auto z_raw = Z.Allocate(input_shape);
   cuda_add(Z.NumberOfElement(), z_raw, X.Data(), Y.Data(), cuda_stream);

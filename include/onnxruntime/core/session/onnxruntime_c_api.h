@@ -4297,12 +4297,8 @@ struct OrtApi {
    */
   void(ORT_API_CALL* ReleaseROCMProviderOptions)(_Frees_ptr_opt_ OrtROCMProviderOptions* input);
 
-  ORT_API2_STATUS(KernelContext_GetStream, _In_ const OrtKernelContext* context, _Outptr_ void** stream);
-  ORT_API2_STATUS(Stream_GetVersion, _In_ const void* stream, _Out_ int32_t* version);
-  ORT_API2_STATUS(Stream_GetDevice, _In_ const void* stream, _Out_ int8_t* device);
-  ORT_API2_STATUS(Stream_GetResource, _In_ const void* stream, _In_ const char* id, _Outptr_ void** resource);
-  //ORT_API2_STATUS(Stream_GetCublasHandle, _In_ void* stream, _Outptr_ void** cudnn_handle);
-
+  //todo...
+  ORT_API2_STATUS(KernelContext_GetResource, _In_ const OrtKernelContext* context, _In_ int resouce_version, _In_ int resource_id, _Outptr_ void** resource);
   /// @}
 };
 
