@@ -158,17 +158,17 @@ NodeArg* InsertNodesForOutput(Graph& graph,
                               NodeArg* gathergrad_index_arg,
                               NodeArg* first_two_dims_arg,
                               const logging::Logger& logger) {
-  InlinedVector<NodeArg*> gathergrad_input_args;
-  gathergrad_input_args.reserve(3);
-  gathergrad_input_args.push_back(node.MutableInputDefs()[in_index]);
-  gathergrad_input_args.push_back(gathergrad_index_arg);
-  gathergrad_input_args.push_back(first_two_dims_arg);
+  InlinedVector<NodeArg*> pad_node_input_args;
+  pad_node_input_args.reserve(3);
+  pad_node_input_args.push_back(node.MutableInputDefs()[in_index]);
+  pad_node_input_args.push_back(gathergrad_index_arg);
+  pad_node_input_args.push_back(first_two_dims_arg);
 
-  InlinedVector<NodeArg*> gathergrad_output_args;
-  gathergrad_output_args.push_back(
+  InlinedVector<NodeArg*> pad_node_output_args;
+  pad_node_output_args.push_back(
       &graph.GetOrCreateNodeArg(graph.GenerateNodeArgName("padded_result"),
                                 nullptr));
-  gathergrad_output_args.push_back(
+  pad_node_output_args.push_back(
       &graph.GetOrCreateNodeArg(graph.GenerateNodeArgName("padded_d1xd2_shape"),
                                 nullptr));
 
@@ -180,8 +180,8 @@ NodeArg* InsertNodesForOutput(Graph& graph,
       graph.GenerateNodeName("PaddingRecover"),
       "PadAndUnflatten",
       "PadAndUnflatten node to recover invalid tokens.",
-      gathergrad_input_args,
-      gathergrad_output_args,
+      pad_node_input_args,
+      pad_node_output_args,
       {},
       kMSDomain,
       logger);
