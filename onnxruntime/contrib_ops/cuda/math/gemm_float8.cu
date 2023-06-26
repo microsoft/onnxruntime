@@ -46,10 +46,12 @@ static const char* CudaDataTypeToString(cudaDataType_t dt) {
       return "CUDA_R_16BF";
     case CUDA_R_32F:
       return "CUDA_R_32F";
+#if(CUDA_VERSION >= 11080)
     case CUDA_R_8F_E4M3:
       return "CUDA_R_8F_E4M3";
     case CUDA_R_8F_E5M2:
       return "CUDA_R_8F_E5M2";
+#endif
     default:
       return "<unknown>";
   }
@@ -83,7 +85,7 @@ cudaDataType_t ToCudaDataType(int32_t element_type) {
       return CUDA_R_16F;
     case ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16:
       return CUDA_R_16BF;
-#if !defined(DISABLE_FLOAT8_TYPES)
+#if(!defined(DISABLE_FLOAT8_TYPES) && (CUDA_VERSION >= 11080))
     case ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E4M3FN:
       return CUDA_R_8F_E4M3;
     case ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E5M2:
@@ -102,7 +104,7 @@ int32_t TypeSize(int32_t element_type) {
     case ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16:
     case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16:
       return 2;
-#if !defined(DISABLE_FLOAT8_TYPES)
+#if(!defined(DISABLE_FLOAT8_TYPES) && (CUDA_VERSION >= 11080))
     case ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E4M3FN:
     case ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E5M2:
       return 1;
@@ -150,24 +152,36 @@ void GemmFloat8::set(const TensorShape& a_shape, const TensorShape& b_shape, int
 Status GemmFloat8::ComputeInternal(OpKernelContext* ctx) const {
   const Tensor* A = nullptr;
   const Tensor* B = nullptr;
+  const Tensor* C = nullptr;
   const Tensor* scale_A = nullptr;
   const Tensor* scale_B = nullptr;
   const Tensor* scale_Y = nullptr;
+  bool has_scales = false;
   int n_inputs = ctx->InputCount();
-  if (n_inputs == 2) {
-    A = ctx->Input<Tensor>(0);
-    B = ctx->Input<Tensor>(1);
-  } else if (n_inputs == 5) {
-    A = ctx->Input<Tensor>(0);
-    B = ctx->Input<Tensor>(1);
-    scale_A = ctx->Input<Tensor>(2);
-    scale_B = ctx->Input<Tensor>(3);
-    scale_Y = ctx->Input<Tensor>(4);
+  ORT_ENFORCE(n_inputs >= 2, "A and/or B is missing.");
+  A = ctx->Input<Tensor>(0);
+  B = ctx->Input<Tensor>(1);
+  if (n_inputs == 3) {
+    C = ctx->Input<Tensor>(2);
+  }
+  else if (n_inputs > 3) {
+    has_scales = true;
+    if (n_inputs == 6) {
+      C = ctx->Input<Tensor>(2);
+      scale_A = ctx->Input<Tensor>(3);
+      scale_B = ctx->Input<Tensor>(4);
+      scale_Y = ctx->Input<Tensor>(5);
+      ORT_ENFORCE(C->GetElementType() == dtype_, "Bias type must be equal to dtype.");
+    } else if(n_inputs == 5) {
+      scale_A = ctx->Input<Tensor>(2);
+      scale_B = ctx->Input<Tensor>(3);
+      scale_Y = ctx->Input<Tensor>(4);
+    } else {
+      ORT_THROW("Unexpected number of inputs=", n_inputs, ".");
+    }
     ORT_ENFORCE(scale_A->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
     ORT_ENFORCE(scale_B->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
     ORT_ENFORCE(scale_Y->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
-  } else {
-    ORT_THROW("Unexpected number of inputs, it expects 2 or 5 inputs.");
   }
 
   auto a_shape = A->Shape();
@@ -175,6 +189,7 @@ Status GemmFloat8::ComputeInternal(OpKernelContext* ctx) const {
 
   ORT_ENFORCE(a_shape.GetDims().size() == 2);
   ORT_ENFORCE(b_shape.GetDims().size() == 2);
+  ORT_ENFORCE(C == nullptr || C->Shape().GetDims().size() == 2);
 
   int Md, Nd, Kd;
   auto check = set_check(a_shape, b_shape, Md, Nd, Kd);
@@ -236,7 +251,7 @@ Status GemmFloat8::ComputeInternal(OpKernelContext* ctx) const {
   const void* p_scale_a = nullptr;
   const void* p_scale_b = nullptr;
   const void* p_scale_y = nullptr;
-  if (n_inputs == 5) {
+  if (has_scales) {
     // gemm float 8
     const int8_t ifast_accumulation_mode = fast_accumulation_mode_ ? 1 : 0;
     CUBLAS_RETURN_IF_ERROR(cublasLtMatmulDescSetAttribute(
@@ -340,13 +355,13 @@ Status GemmFloat8::ComputeInternal(OpKernelContext* ctx) const {
   // TODO: This is only part changing. Everything before only depends on the input dimensions, type, and storage.
   // https://docs.nvidia.com/cuda/cublas/index.html?highlight=cublasLtMatmul#cublasltmatmul
   float beta = 0;
-  void* C = Y->MutableDataRaw();
+  const void* bias_ptr = C == nullptr ? nullptr : C->DataRaw();
   cuda_status = cublasLtMatmul(
       cublasLt, operationDesc, static_cast<const void*>(&alpha_), /* alpha */
       A->DataRaw(),                                               /* A */
       Adesc, B->DataRaw(),                                        /* B */
       Bdesc, static_cast<const void*>(&beta),                     /* beta */
-      C,                                                          /* C */
+      bias_ptr,                                                   /* C */
       Cdesc, Y->MutableDataRaw(),                                 /* Y */
       Ddesc, &heuristicResult.algo,                               /* algo */
       workspace,                                                  /* workspace */

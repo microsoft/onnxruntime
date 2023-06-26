@@ -2272,6 +2272,9 @@ class SymbolicShapeInference:
     def _infer_GemmFastGelu(self, node):  # noqa: N802
         self._compute_matmul_shape(node)
 
+    def _infer_GemmFloat8(self, node):  # noqa: N802
+        self._compute_matmul_shape(node)
+
     def _infer_LayerNormalization(self, node):  # noqa: N802
         self._propagate_shape_and_type(node)
 

@@ -2259,7 +2259,9 @@ Gemm for float and float 8. The operator calls function 'cublasLtMatmul'
 (https://docs.nvidia.com/cuda/cublas/index.html?highlight=cublasLtMatmul#cublasltmatmul).
 It lets the function checks what configuration is valid or not. If not, the error message
 shows the error message 'CUBLAS_STATUS_NOT_SUPPORTED'. NVIDIA documentation provides
-information on what attribute or type must be modified.)DOC")
+information on what attribute or type must be modified.
+This operator requires CUDA_VERSION >= 11.8 for float 8 and CUDA_VERSION >= 12.0
+for beta != 0.)DOC")
                                 .Input(
                                     0,
                                     "A",
@@ -2276,19 +2278,25 @@ information on what attribute or type must be modified.)DOC")
                                     "TB")
                                 .Input(
                                     2,
+                                    "C",
+                                    "Input tensor C.",
+                                    "TC",
+                                    OpSchema::Optional)
+                                .Input(
+                                    3,
                                     "scaleA",
                                     "Scale of tensor A if A is float 8 tensor",
                                     "TS",
                                     OpSchema::Optional)
                                 .Input(
-                                    3,
+                                    4,
                                     "scaleB",
                                     "Scale of tensor B if B is float 8 tensor",
                                     "TS",
                                     OpSchema::Optional)
                                 .Input(
-                                    4,
-                                    "scaleB",
+                                    5,
+                                    "scaleY",
                                     "Scale of the output tensor if A or B is float 8.",
                                     "TS",
                                     OpSchema::Optional)
@@ -2300,7 +2308,7 @@ information on what attribute or type must be modified.)DOC")
 #else
                                     {"tensor(float16)", "tensor(bfloat16)", "tensor(float)"},
 #endif
-                                    "Constrain input type to float tensors.")
+                                    "Constrain input type to input A.")
                                 .TypeConstraint(
                                     "TB",
 #if !defined(DISABLE_FLOAT8_TYPES)
@@ -2308,7 +2316,11 @@ information on what attribute or type must be modified.)DOC")
 #else
                                     {"tensor(float16)", "tensor(bfloat16)", "tensor(float)"},
 #endif
-                                    "Constrain input type to float tensors.")
+                                    "Constrain input type to input B.")
+                                .TypeConstraint(
+                                    "TC",
+                                    {"tensor(float16)", "tensor(bfloat16)", "tensor(float)"},
+                                    "Constrain input type to input C.")
                                 .TypeConstraint(
                                     "TR",
 #if !defined(DISABLE_FLOAT8_TYPES)
@@ -2316,8 +2328,8 @@ information on what attribute or type must be modified.)DOC")
 #else
                                     {"tensor(float16)", "tensor(bfloat16)", "tensor(float)"},
 #endif
-                                    "Constrain input type to float tensors.")
-                                .TypeConstraint("TS", {"tensor(float)"}, "Constrain input type to float tensors.")
+                                    "Constrain input type to input result type.")
+                                .TypeConstraint("TS", {"tensor(float)"}, "Constrain input type for all input scales (scaleA, scaleB, scaleY).")
                                 .Attr(
                                     "transA",
                                     "Whether A should be transposed",
@@ -2333,6 +2345,11 @@ information on what attribute or type must be modified.)DOC")
                                     "Scalar multiplier for the product of input tensors A * B.",
                                     AttributeProto::FLOAT,
                                     1.0f)
+                                .Attr(
+                                    "beta",
+                                    "Scalar multiplier for the product of input bias C.",
+                                    AttributeProto::FLOAT,
+                                    0.0f)
                                 .Attr(
                                     "smCount",
                                     "See documentation of cublasLtMatMul.",

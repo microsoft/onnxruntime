@@ -39,6 +39,11 @@ GemmFloat8::GemmFloat8(const OpKernelInfo& info) : CudaKernel(info) {
   storage_order_ = row_major ? CUBLASLT_ORDER_ROW : CUBLASLT_ORDER_COL;
   sm_count_ = info.GetAttrOrDefault<int64_t>("smCount", 0);
   alpha_ = info.GetAttrOrDefault<float>("alpha", 1);
+  beta_ = info.GetAttrOrDefault<float>("beta", 0);
+
+#if (CUDA_VERSION <= 12000)
+  ORT_ENFORCE(beta_ == 0, "CUDA < 12.0 does not support bias, beta must be 0.");
+#endif
 
   std::string stemp = info.GetAttrOrDefault<std::string>("computeType", "CUBLAS_COMPUTE_32F");
   if (stemp == "CUBLAS_COMPUTE_16F") {

@@ -28,6 +28,7 @@ class GemmFloat8 final : public onnxruntime::cuda::CudaKernel {
                    int& M, int& N, int& K) const;
 
   float alpha_;
+  float beta_;
   bool transA_;
   bool transB_;
   bool fast_accumulation_mode_;
