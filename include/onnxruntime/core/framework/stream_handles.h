@@ -96,8 +96,6 @@ class Stream {
     }
   }
 
-  int32_t GetVersion() const { return version_; };
-
   virtual void* GetResource(int /*version*/, int /*id*/) const {
     return nullptr;
   }
@@ -112,9 +110,6 @@ class Stream {
   std::unordered_map<Stream*, uint64_t> other_stream_clock_{};
 
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Stream);
-
- protected:
-  int32_t version_ = 0;
 };
 
 namespace synchronize {
@@ -174,8 +169,6 @@ class IStreamCommandHandleRegistry {
                               WaitNotificationFn fn) = 0;
   // register a handle about how to create stream on given device type.
   virtual void RegisterCreateStreamFn(OrtDevice::DeviceType device_type, CreateStreamFn f) = 0;
-
-  virtual void* GetContextInfo() { return nullptr; }
 };
 
 }  // namespace onnxruntime

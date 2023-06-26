@@ -55,14 +55,9 @@ struct KernelOne {
     const size_t size = output.GetTensorTypeAndShapeInfo().GetElementCount();
 
     // Do computation
-//#ifdef USE_CUDA
-//    cudaStream_t stream = reinterpret_cast<cudaStream_t>(ctx.GetGPUComputeStream());
-//    cuda_add(size, out, X, Y, stream);
-//#else
     for (size_t i = 0; i < size; i++) {
       out[i] = X[i] + Y[i];
     }
-//#endif
   }
 };
 

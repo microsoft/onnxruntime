@@ -47,7 +47,6 @@ CudaStream::CudaStream(cudaStream_t stream,
                                                                 own_stream_(own_flag),
                                                                 cpu_allocator_(cpu_allocator),
                                                                 release_cpu_buffer_on_cuda_stream_(release_cpu_buffer_on_cuda_stream) {
-  version_ = CUDA_STREAM_VER;
   if (own_flag) {
     CUBLAS_CALL_THROW(cublasCreate(&cublas_handle_));
     CUBLAS_CALL_THROW(cublasSetStream(cublas_handle_, stream));
