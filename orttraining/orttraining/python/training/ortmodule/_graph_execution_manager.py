@@ -31,9 +31,10 @@ from ._fallback import (
 from ._gradient_accumulation_manager import GradientAccumulationManager
 from ._graph_execution_interface import GraphExecutionInterface
 from ._io import _FlattenedModule, _InputInfo, _ModelInputOutputSchemaType
-from .options import DebugOptions, LogLevel, RuntimeOptions
 from ._runtime_inspector import RuntimeInspector
+from .options import DebugOptions, LogLevel, _RuntimeOptions
 from .torch_cpp_extensions.cpu.aten_op_executor import load_aten_op_executor_cpp_extension
+from ._fallback import _FallbackPolicy
 
 
 class _RunStateInfo:
@@ -64,7 +65,7 @@ class GraphExecutionManager(GraphExecutionInterface):
 
         self._logger = logger
 
-        self._rt_options = RuntimeOptions(self._logger)
+        self._runtime_options = _RuntimeOptions(self._logger)
         # Original and flattened (transformed) output module
         self._flattened_module = module
 
@@ -153,7 +154,7 @@ class GraphExecutionManager(GraphExecutionInterface):
         pass
 
     def _build_graph(self, config):
-        if self._rt_options._use_static_shape:
+        if self._runtime_options._use_static_shape:
             self._graph_builder.build(config, self._input_info.shape)
         else:
             self._graph_builder.build(config)
@@ -175,11 +176,11 @@ class GraphExecutionManager(GraphExecutionInterface):
             provider_option_map = {"device_id": str(self._device.index)}
             if not self.is_rocm_pytorch:
                 # Set Conv algo search mode to HEURISTIC by default, which is the same as PyTorch's default setting.
-                provider_option_map["cudnn_conv_algo_search"] = self._rt_options.conv_algo_search
+                provider_option_map["cudnn_conv_algo_search"] = self._runtime_options.conv_algo_search
                 provider_option_map["cudnn_conv_use_max_workspace"] = "1"
                 provider_option_map["cudnn_conv1d_pad_to_nc1d"] = "1"
-            if self._rt_options._use_external_gpu_allocator:
-                # assign self._torch_alloc and self._torch_free if self._rt_options._use_external_gpu_allocator is True
+            if self._runtime_options.use_external_gpu_allocator:
+                # assign self._torch_alloc and self._torch_free if self._runtime_options.use_external_gpu_allocator is True
                 # CPP extension to get torch GPU allocator's alloc and free function addresses
                 from onnxruntime.training.ortmodule.torch_cpp_extensions import torch_gpu_allocator
 
@@ -210,10 +211,10 @@ class GraphExecutionManager(GraphExecutionInterface):
         session_options.log_severity_level = int(self._debug_options.logging.log_level)
 
         session_options.add_session_config_entry(
-            "optimization.enable_memory_optimizer", self._rt_options.memory_optimizer_config
+            "optimization.enable_memory_optimizer", self._runtime_options.memory_optimizer_config
         )
         session_options.add_session_config_entry(
-            "optimization.enable_memory_probe_recompute_level", self._rt_options.probe_level
+            "optimization.enable_memory_probe_recompute_level", self._runtime_options.probe_level
         )
         # Disable weight prepacking
         session_options.add_session_config_entry("session.disable_prepacking", "1")
@@ -262,7 +263,7 @@ class GraphExecutionManager(GraphExecutionInterface):
                 self._export_mode,
             )
 
-        if self._rt_options._run_symbolic_shape_infer:
+        if self._runtime_options.run_symbolic_shape_infer:
             self._onnx_models.exported_model = SymbolicShapeInference.infer_shapes(
                 self._onnx_models.exported_model, auto_merge=True, guess_output_rank=True
             )
@@ -320,7 +321,7 @@ class GraphExecutionManager(GraphExecutionInterface):
                     required_export_kwargs = {
                         "input_names": self._input_info.names,
                         "output_names": output_names,
-                        "opset_version": self._rt_options.onnx_opset_version,
+                        "opset_version": self._runtime_options.onnx_opset_version,
                         "do_constant_folding": False,
                         "training": self._export_mode,
                         "dynamic_axes": self._input_info.dynamic_axes,
@@ -350,7 +351,7 @@ class GraphExecutionManager(GraphExecutionInterface):
             exported_model = onnx.load_model_from_string(f.getvalue())
 
             exported_model = _post_process_after_export(
-                exported_model, self._rt_options.enable_custom_autograd_function
+                exported_model, self._runtime_options.enable_custom_autograd_function
             )
 
             # If anything was captured by suppress_output during export, set the flag to
@@ -377,10 +378,10 @@ class GraphExecutionManager(GraphExecutionInterface):
     def _get_graph_transformer_config(self) -> C.TrainingGraphTransformerConfiguration:
         graph_transformer_config = C.TrainingGraphTransformerConfiguration()
         graph_transformer_config.propagate_cast_ops_config = C.PropagateCastOpsConfiguration()
-        graph_transformer_config.propagate_cast_ops_config.level = self._rt_options._propagate_cast_ops_level
-        graph_transformer_config.propagate_cast_ops_config.allow = self._rt_options._propagate_cast_ops_allow
-        graph_transformer_config.propagate_cast_ops_config.strategy = self._rt_options._propagate_cast_ops_strategy
-        graph_transformer_config.enable_compute_optimizer = self._rt_options.enable_compute_optimizer
+        graph_transformer_config.propagate_cast_ops_config.level = self._runtime_options.propagate_cast_ops_level
+        graph_transformer_config.propagate_cast_ops_config.allow = self._runtime_options.propagate_cast_ops_allow
+        graph_transformer_config.propagate_cast_ops_config.strategy = self._runtime_options.propagate_cast_ops_strategy
+        graph_transformer_config.enable_compute_optimizer = self._runtime_options.enable_compute_optimizer
         return graph_transformer_config
 
     def _initialize_graph_builder(self):
@@ -406,11 +407,11 @@ class GraphExecutionManager(GraphExecutionInterface):
         grad_builder_config.initializer_names_to_train = initializer_names_to_train
         grad_builder_config.input_names_require_grad = self._input_info.require_grad_names
         grad_builder_config.build_gradient_graph = self._export_mode == torch.onnx.TrainingMode.TRAINING
-        grad_builder_config.enable_caching = self._rt_options._enable_grad_acc_optimization
+        grad_builder_config.enable_caching = self._runtime_options.enable_grad_acc_optimization
         grad_builder_config.loglevel = _logger.ortmodule_loglevel_to_onnxruntime_c_loglevel(
             self._debug_options.logging.log_level
         )
-        grad_builder_config.use_memory_efficient_gradient = self._rt_options._use_memory_efficient_gradient
+        grad_builder_config.use_memory_efficient_gradient = self._runtime_options.use_memory_efficient_gradient
         self._graph_builder = C.OrtModuleGraphBuilder()
 
         # It is assumed here that the order and names of the inputs and outputs are not modified by the backend in any way
@@ -469,12 +470,12 @@ class GraphExecutionManager(GraphExecutionInterface):
         """
 
         # Enable data sparsity inspection if sparse optimizer is ON or user wants to print input density.
-        if self._rt_options.enable_sparse_optimizer or self._rt_options.print_input_density:
+        if self._runtime_options.enable_sparse_optimizer or self._runtime_options.print_input_density:
             self._rt_inspector.enable_input_inspector(
                 self._onnx_models.exported_model, self._graph_builder.get_graph_info().user_input_names
             )
 
-            if self._rt_options.enable_sparse_optimizer:
+            if self._runtime_options.enable_sparse_optimizer:
                 detected_device = _utils.get_device_from_module(self._original_module) or _utils.get_device_from_inputs(
                     inputs, kwargs
                 )
@@ -494,23 +495,23 @@ class GraphExecutionManager(GraphExecutionInterface):
                 if len(label_sparsity_results) > 0:
                     graph_transformer_config.sparse_label_input_names = list(label_sparsity_results.keys())
                     self._logger.info("Label sparsity-based optimization is ON for %s", label_sparsity_results)
-                    self._rt_options.label_sparsity_ratio = ",".join(
+                    self._runtime_options.label_sparsity_ratio = ",".join(
                         [f"{k}:{v:.0f}%" for k, v in label_sparsity_results.items()]
                     )
 
-                if self._rt_options._enable_embedding_sparse_optimizer and len(embed_sparsity_results) > 0:
+                if self._runtime_options.enable_embedding_sparse_optimizer and len(embed_sparsity_results) > 0:
                     graph_transformer_config.sparse_embedding_input_names = list(embed_sparsity_results.keys())
                     self._logger.info("Embedding sparsity-based optimization is ON for %s", embed_sparsity_results)
-                    self._rt_options.embed_sparsity_ratio = ",".join(
+                    self._runtime_options.embed_sparsity_ratio = ",".join(
                         [f"{k}:{v:.0f}%" for k, v in embed_sparsity_results.items()]
                     )
 
             # If users don't want to print input density, disable the input density observer to avoid overhead
             # when looping through inputs during training.
-            if not self._rt_options.print_input_density:
+            if not self._runtime_options.print_input_density:
                 self._rt_inspector.disable_input_inspector()
 
-        if self._rt_options.print_memory_stat:
+        if self._runtime_options.print_memory_stat:
             self._rt_inspector.enable_memory_inspector(self._original_module)
 
     def _log_feature_stats(self):
@@ -521,7 +522,56 @@ class GraphExecutionManager(GraphExecutionInterface):
         if rank != 0:
             return
 
-        feature_map = self._rt_options.get_feature_map()
+
+        feature_map: List[Tuple[str, bool, str]] = [
+            ("ATen Executor", True, "Dispatch ATen operators to ORT's ATen executor"),
+            ("Cast Propagation", self._runtime_options.propagate_cast_ops_level > 0,
+             f"Level {self._runtime_options.propagate_cast_ops_level} enabled"),
+            (
+                "Custom Function",
+                self._runtime_options.enable_custom_autograd_function,
+                "Support custom torch.autograd.Function export and execution",
+            ),
+            (
+                "Memory Optimizer",
+                len(self._runtime_options.memory_optimizer_config) > 0,
+                "Enable with env ORTMODULE_MEMORY_OPT_CONFIG=<config>",
+            ),
+        ]
+
+        if self._runtime_options.enable_compute_optimizer:
+            feature_map.extend(
+                [
+                    (
+                        "Compute Optimizer",
+                        self._runtime_options.enable_compute_optimizer,
+                        "Enable/Disable with env ORTMODULE_ENABLE_COMPUTE_OPTIMIZER=1/0",
+                    ),
+                    (
+                        " -FLOPReduction",
+                        self._runtime_options.enable_compute_optimizer,
+                        "Reduce FLOPs by upstreaming shrinking-sized ops",
+                    ),
+                ]
+            )
+
+            if len(self._runtime_options.label_sparsity_ratio) > 0:
+                feature_map.append((" -LabelSparsityOpt", True,
+                                    f"Input density: {self._runtime_options.label_sparsity_ratio}"))
+
+            if len(self._runtime_options.embed_sparsity_ratio) > 0:
+                feature_map.append((" -EmbedSparsityOpt", True,
+                                    f"Input density: {self._runtime_options.embed_sparsity_ratio}"))
+
+        feature_map.append(
+            (
+                "Auto Fallback",
+                self._runtime_options.fallback_policy is not _FallbackPolicy.FALLBACK_DISABLE,
+                "Fallback to PyTorch when encountering unsupported ops",
+            )
+        )
+
+
 
         mode = "training" if self._export_mode == torch.onnx.TrainingMode.TRAINING else "inference"
         mode = f"{_logger.LogColor.UNDERLINE}{mode}{_logger.LogColor.ENDC}"

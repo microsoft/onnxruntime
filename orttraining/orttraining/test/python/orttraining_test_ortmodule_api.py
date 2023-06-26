@@ -4454,7 +4454,7 @@ def test_ortmodule_gradient_accumulation_optimization_correctness():
 
     # model with optimization enabled
     opt_model = ORTModule(copy.deepcopy(pt_model))
-    opt_model._torch_module._execution_manager(is_training=True)._rt_options._enable_grad_acc_optimization = True
+    opt_model._torch_module._execution_manager(is_training=True)._runtime_options.enable_grad_acc_optimization = True
     opt_optimizer = torch.optim.Adam(opt_model.parameters())
 
     def run_step(model, x):

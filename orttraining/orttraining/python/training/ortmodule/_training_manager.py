@@ -18,8 +18,8 @@ from ._fallback import ORTModuleFallbackException, _FallbackManager, _FallbackPo
 from ._gradient_accumulation_manager import GradientAccumulationManager
 from ._graph_execution_manager import GraphExecutionManager, _RunStateInfo
 from ._io import _FlattenedModule, _InputInfo
-from .options import DebugOptions, _SkipCheck
 from ._runtime_inspector import Phase
+from .options import DebugOptions, _SkipCheck
 
 
 class TrainingManager(GraphExecutionManager):
@@ -106,7 +106,7 @@ class TrainingManager(GraphExecutionManager):
                 """
                 self._rt_inspector.inspect_memory(Phase.PRE_FORWARD)
 
-                if self._rt_options.skip_check.is_set(_SkipCheck.SKIP_CHECK_DEVICE) is False:
+                if self._runtime_options.skip_check.is_set(_SkipCheck.SKIP_CHECK_DEVICE) is False:
                     # Assert that the input and model device match
                     _utils._check_same_device(self._device, "Input argument to forward", *inputs)
 
@@ -150,7 +150,7 @@ class TrainingManager(GraphExecutionManager):
                 self._rt_inspector.inspect_memory(Phase.PRE_BACKWARD)
 
                 assert ctx.run_info is not None, "forward() or __call__() methods must be called before backward()"
-                if self._rt_options.skip_check.is_set(_SkipCheck.SKIP_CHECK_DEVICE) is False:
+                if self._runtime_options.skip_check.is_set(_SkipCheck.SKIP_CHECK_DEVICE) is False:
                     _utils._check_same_device(self._device, "Input argument to backward", *grad_outputs)
 
                 # Unpack saved_tensor to trigger version detection that catches inplace corruption
@@ -226,21 +226,21 @@ class TrainingManager(GraphExecutionManager):
             return self._fallback_manager.fallback(self._debug_options.logging.log_level, *inputs, **kwargs)
 
         try:
-            if self._first_skip_check_warning is True and self._rt_options.skip_check.is_disabled() is False:
+            if self._first_skip_check_warning is True and self._runtime_options.skip_check.is_disabled() is False:
                 # Only change this after the firs time a warning is issued.
                 self._first_skip_check_warning = False
                 self._logger.info(
                     "Fast path enabled - skipping checks.Rebuild graph: %s, Execution agent: %s, Device check: %s",
-                    self._rt_options.skip_check.is_set(_SkipCheck.SKIP_CHECK_BUILD_GRADIENT),
-                    self._rt_options.skip_check.is_set(_SkipCheck.SKIP_CHECK_EXECUTION_AGENT),
-                    self._rt_options.skip_check.is_set(_SkipCheck.SKIP_CHECK_DEVICE),
+                    self._runtime_options.skip_check.is_set(_SkipCheck.SKIP_CHECK_BUILD_GRADIENT),
+                    self._runtime_options.skip_check.is_set(_SkipCheck.SKIP_CHECK_EXECUTION_AGENT),
+                    self._runtime_options.skip_check.is_set(_SkipCheck.SKIP_CHECK_DEVICE),
                 )
 
             # If exporting module to ONNX for the first time, this skip check will not take effect.
             # It will only take effect on subsequent forward calls.
             build_gradient_graph = False
             if (
-                self._rt_options.skip_check.is_set(_SkipCheck.SKIP_CHECK_BUILD_GRADIENT) is False
+                self._runtime_options.skip_check.is_set(_SkipCheck.SKIP_CHECK_BUILD_GRADIENT) is False
                 or not self._onnx_models.exported_model
             ):
                 build_gradient_graph = self._export_model(*inputs, **kwargs)
@@ -275,7 +275,7 @@ class TrainingManager(GraphExecutionManager):
             # It will only take effect on subsequent forward calls.
             create_execution_session = False
             if (
-                self._rt_options.skip_check.is_set(_SkipCheck.SKIP_CHECK_EXECUTION_AGENT) is False
+                self._runtime_options.skip_check.is_set(_SkipCheck.SKIP_CHECK_EXECUTION_AGENT) is False
                 or not self._execution_agent
             ):
                 device = _utils.get_device_from_module(self._original_module) or _utils.get_device_from_inputs(
@@ -295,7 +295,7 @@ class TrainingManager(GraphExecutionManager):
                 self._create_execution_agent()
 
                 self._gradient_accumulation_manager.initialize(
-                    self._rt_options._enable_grad_acc_optimization, self._flattened_module, self._graph_info
+                    self._runtime_options.enable_grad_acc_optimization, self._flattened_module, self._graph_info
                 )
 
             self._gradient_accumulation_manager.maybe_update_cache_before_run()

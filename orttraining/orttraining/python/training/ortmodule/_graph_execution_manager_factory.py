@@ -9,8 +9,8 @@ from typing import Union
 from ._fallback import _FallbackManager
 from ._inference_manager import InferenceManager
 from ._io import _FlattenedModule
-from .options import DebugOptions
 from ._training_manager import TrainingManager
+from .options import DebugOptions
 
 
 class GraphExecutionManagerFactory:

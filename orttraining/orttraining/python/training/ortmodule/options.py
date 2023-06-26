@@ -9,12 +9,13 @@ from logging import Logger
 from typing import List, Tuple
 
 from onnxruntime.capi import _pybind_state as C
+from onnxruntime.capi._pybind_state import is_torch_interop_default_on
 from onnxruntime.training import ortmodule
 
+from ._custom_autograd_function import custom_autograd_function_enabler, enable_custom_autograd_support
 from ._fallback import _FallbackPolicy
 from ._logger import LogLevel
 from ._utils import parse_os_env_skip_check_flags
-from ._custom_autograd_function import custom_autograd_function_enabler
 
 
 class _SaveOnnxOptions:
@@ -156,7 +157,7 @@ class _SkipCheck(IntFlag):
         return _SkipCheck.SKIP_CHECK_DISABLED in self
 
 
-class RuntimeOptions:
+class _RuntimeOptions:
     """Configurable runtime options for ORTModule."""
 
     def __init__(self, logger: Logger):
@@ -175,10 +176,10 @@ class RuntimeOptions:
         #  NONE, INSERT-AND-REDUCE and FLOOD-FILL
         # The default is FLOOD_FILL, expand FP16 computation regions in the graph using
         # allowed opcodes for the given level.
-        self._propagate_cast_ops_strategy = C.PropagateCastOpsStrategy.FLOOD_FILL
+        self.propagate_cast_ops_strategy = C.PropagateCastOpsStrategy.FLOOD_FILL
         # Optimize by moving Cast operations if propagate_cast_ops_level is non-negative.
-        # - If the _propagate_cast_ops_level is set to zero, then the transformation considers only the opcodes
-        #   specified by _propagate_cast_ops_allow as "FP16 safe", to insert/(re)move cast operations before/after
+        # - If the propagate_cast_ops_level is set to zero, then the transformation considers only the opcodes
+        #   specified by propagate_cast_ops_allow as "FP16 safe", to insert/(re)move cast operations before/after
         #   to perform such operations in reduced (16-bit) precision.
         # - If propagate_cast_ops_level is positive, 1 or 2, then in addition to opcode codes specified by
         #   propagate_cast_ops_allow, use onnxruntime predetermined list of opcodes considered safe to move
@@ -188,35 +189,37 @@ class RuntimeOptions:
         #   such as GeLU, etc.
         # - Whereas Level 2 predetermined "FP16 safe" opcodes include opcodes that perform computation using
         #   contrib ops, Dropout, LayerNormalization, etc.
-        self._propagate_cast_ops_level = 1
+        self.propagate_cast_ops_level = 1
         # List of opcodes to be considered safe to move before/after the cast operation if propagate_cast_ops_level
         # is zero.
-        self._propagate_cast_ops_allow = []
+        self.propagate_cast_ops_allow = []
 
         # default execution order is priority-based for both dynamic/static shape input for now
         # if we observe the benefit of static shape, we can expose this flag to the user
         self._use_static_shape = False
 
         # flag to enable symbolic shape inference for dynamic shape inputs to improve performance
-        self._run_symbolic_shape_infer = True
+        self.run_symbolic_shape_infer = True
 
         # PyTorch custom Autograd function support
+        # Enable the custom autograd by default when PythonOp backend support is enabled during build.
+        enable_custom_autograd_support(is_torch_interop_default_on())
         self.enable_custom_autograd_function = custom_autograd_function_enabler.state
 
-        self._use_external_gpu_allocator = True
+        self.use_external_gpu_allocator = True
 
         # WIP feature to enable caching in Gradient accumulation scenario.
-        self._enable_grad_acc_optimization = False
+        self.enable_grad_acc_optimization = False
 
         # Memory-aware gradient builder.
-        self._use_memory_efficient_gradient = False
+        self.use_memory_efficient_gradient = False
 
         # Configuration for compute optimization.
         self.enable_compute_optimizer = True
         self.enable_sparse_optimizer = True
         self.label_sparsity_ratio = ""
         self.embed_sparsity_ratio = ""
-        self._enable_embedding_sparse_optimizer = False  # TODO(pengwa): remove once validation on more models are done.
+        self.enable_embedding_sparse_optimizer = False  # TODO(pengwa): remove once validation on more models are done.
 
         # Configuration for memory optimization.
         self.memory_optimizer_config = ""
@@ -262,7 +265,7 @@ class RuntimeOptions:
 
         # TODO(pengwa): remove once validation on more models are done.
         if "ORTMODULE_ENABLE_EMBEDDING_SPARSE_OPTIMIZER" in os.environ:
-            self._enable_embedding_sparse_optimizer = (
+            self.enable_embedding_sparse_optimizer = (
                 self.enable_sparse_optimizer and os.getenv("ORTMODULE_ENABLE_EMBEDDING_SPARSE_OPTIMIZER") == 1
             )
 
@@ -288,51 +291,3 @@ class RuntimeOptions:
                 lambda x, y: x | y,
                 [_SkipCheck[name] for name in parse_os_env_skip_check_flags("ORTMODULE_SKIPCHECK_POLICY")],
             )
-
-    def get_feature_map(self) -> List[Tuple[str, bool, str]]:
-        feature_map = [
-            ("ATen Executor", True, "Dispatch ATen operators to ORT's ATen executor"),
-            ("Cast Propagation", self._propagate_cast_ops_level > 0, f"Level {self._propagate_cast_ops_level} enabled"),
-            (
-                "Custom Function",
-                self.enable_custom_autograd_function,
-                "Support custom torch.autograd.Function export and execution",
-            ),
-            (
-                "Memory Optimizer",
-                len(self.memory_optimizer_config) > 0,
-                "Enable with env ORTMODULE_MEMORY_OPT_CONFIG=<config>",
-            ),
-        ]
-
-        if self.enable_compute_optimizer:
-            feature_map.extend(
-                [
-                    (
-                        "Compute Optimizer",
-                        self.enable_compute_optimizer,
-                        "Enable/Disable with env ORTMODULE_ENABLE_COMPUTE_OPTIMIZER=1/0",
-                    ),
-                    (
-                        " -FLOPReduction",
-                        self.enable_compute_optimizer,
-                        "Reduce FLOPs by upstreaming shrinking-sized ops",
-                    ),
-                ]
-            )
-
-            if len(self.label_sparsity_ratio) > 0:
-                feature_map.append((" -LabelSparsityOpt", True, f"Input density: {self.label_sparsity_ratio}"))
-
-            if len(self.embed_sparsity_ratio) > 0:
-                feature_map.append((" -EmbedSparsityOpt", True, f"Input density: {self.embed_sparsity_ratio}"))
-
-        feature_map.append(
-            (
-                "Auto Fallback",
-                self.fallback_policy is not _FallbackPolicy.FALLBACK_DISABLE,
-                "Fallback to PyTorch when encountering unsupported ops",
-            )
-        )
-
-        return feature_map
