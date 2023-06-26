@@ -4575,11 +4575,21 @@ Return true if all elements are true and false otherwise.
   ONNX_CONTRIB_OPERATOR_SCHEMA(PadAndUnflatten)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
-      .SetDoc(
-          "PadAndUnflatten operator pads zero on the first axis, and unflatten the axis into two axes according "
-          "to given unflatten_dims. This is used by padding elimination graph transformers.")
+      .SetDoc("PadAndUnflatten operator pads zero on the first axis, and unflatten the axis into two axes according
+              to given unflatten_dims. This is used by padding elimination graph transformers.
+              For each index in indices, the corresponding value in output comes from input.
+              For other indices, zero are padded.
+
+              A example:
+                input: [[1, 2, 3, 4], [5, 6, 7, 8]], shape is [2, 4]
+                indices: [0, 5], shape is [2]
+                unflatten_dims: [2, 3], shape is [2]
+                output: [[[1, 2, 3, 4], [0, 0, 0, 0], [0, 0, 0, 0]], [[0, 0, 0, 0], [0, 0, 0, 0], [5, 6, 7, 8]]],
+                shape is [2, 3, 4]
+                flatten_output_shape: [6, 4], shape is [2]")
       .Input(0, "input", "input data of rank N, shape is [d1, d2, ..., dN]", "T")
-      .Input(1, "indices", "1D Tensor of int32/int64 indices, value range in [0, M1*M2).", "T_INDEX")
+      .Input(1, "indices", "1D Tensor of int32/int64 indices, shape is [d1], each element's value ranges in [0, M1*M2).",
+             "T_INDEX")
       .Input(2, "unflatten_dims", "1D tensor with two values, [M1, M2].", "T_INT")
       .Output(0, "output", "output data of rank N+1, [M1, M2, d2, ..., dN]", "T")
       .Output(1, "flatten_output_shape", "1D tensor with output shape, [M1*M2, d2, ..., dN]", "T_INT")
