@@ -12,6 +12,7 @@ from onnx_model_bert import BertOnnxModel
 from fusion_base import Fusion
 from fusion_utils import FusionUtils
 import numpy as np
+
 logger = logging.getLogger(__name__)
 
 
@@ -185,11 +186,49 @@ def change_io_shape(graph: GraphProto):
     graph.output.extend(new_outputs)
 
 
+class FusionBias(Fusion):
+    def __init__(self, model: OnnxModel):
+        super().__init__(model, "", "Add")
+
+    def fuse(self, node, input_name_to_nodes, output_name_to_node):
+        expand_nodes = self.model.match_parent_path(
+            node,
+            ['Expand', 'Shape'],
+            [1, 1]
+        )
+        if expand_nodes is None:
+            return
+
+        expand_node = expand_nodes[0]
+        node.input[1] = expand_node.input[0]
+        self.nodes_to_remove.extend(expand_nodes)
+
+
+class FusionTransposeRemover(Fusion):
+    def __init__(self, model: OnnxModel):
+        super().__init__(model, "", ["LayerNormalization", "SkipLayerNormalization", "Attention", "MatMul"])
+
+    def fuse(self, node, input_name_to_nodes, output_name_to_node):
+        transpose_nodes = self.model.match_parent_path(
+            node,
+            ['Transpose'],
+            [0]
+        )
+        if transpose_nodes is None:
+            return
+
+        transpose_node = transpose_nodes[0]
+        node.input[0] = transpose_node.input[0]
+        #self.nodes_to_remove.extend(transpose_nodes)
+
+
 class Tnlgv4OnnxModel(BertOnnxModel):
     def __init__(self, model, num_heads, hidden_size):
         super().__init__(model, num_heads, hidden_size)
         self.attention_mask = AttentionMask(self)
         self.attention_fusion = FusionTNLGV4Attention(self, self.num_heads)
+        self.bias_fusion = FusionBias(self)
+        self.transpose_remover = FusionTransposeRemover(self)
 
     def fuse_attention(self):
         self.attention_fusion.apply()
@@ -198,6 +237,9 @@ class Tnlgv4OnnxModel(BertOnnxModel):
         self.utils.remove_useless_cast_nodes_in_fp16_model()
 
     def postprocess(self):
+        self.bias_fusion.apply()
+        self.transpose_remover.apply()
+        self.fuse_skip_layer_norm()
         self.clean_graph()
         self.prune_graph()
         change_io_shape(self.model.graph)
