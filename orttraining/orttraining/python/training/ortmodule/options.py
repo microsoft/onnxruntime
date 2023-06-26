@@ -240,7 +240,7 @@ class _RuntimeOptions:
         self._override_from_env_vars()
 
     def _override_from_env_vars(self):
-        self.onnx_opset_version = os.getenv("ORTMODULE_ONNX_OPSET_VERSION", self.onnx_opset_version)
+        self.onnx_opset_version = int(os.getenv("ORTMODULE_ONNX_OPSET_VERSION", self.onnx_opset_version))
         self.conv_algo_search = os.getenv("ORTMODULE_CONV_ALGO_SEARCH", self.conv_algo_search)
         if self.conv_algo_search not in ["HEURISTIC", "EXHAUSTIVE"]:
             self._logger.warning("Invalid value of env CONV_ALGO_SEARCH. Must be HEURISTIC or EXHAUSTIVE.")
@@ -249,18 +249,18 @@ class _RuntimeOptions:
         # Configuration for compute optimization.
         compute_optimizer_reset = False
         if "ORTMODULE_ENABLE_COMPUTE_OPTIMIZER" in os.environ:
-            self.enable_compute_optimizer = os.getenv("ORTMODULE_ENABLE_COMPUTE_OPTIMIZER") == 1
+            self.enable_compute_optimizer = int(os.getenv("ORTMODULE_ENABLE_COMPUTE_OPTIMIZER")) == 1
             compute_optimizer_reset = True
 
         if "ORTMODULE_ENABLE_SPARSE_OPTIMIZER" in os.environ or compute_optimizer_reset:
             if "ORTMODULE_ENABLE_SPARSE_OPTIMIZER" in os.environ:
-                self.enable_sparse_optimizer = os.getenv("ORTMODULE_ENABLE_SPARSE_OPTIMIZER") == 1
+                self.enable_sparse_optimizer = int(os.getenv("ORTMODULE_ENABLE_SPARSE_OPTIMIZER")) == 1
             self.enable_sparse_optimizer = self.enable_compute_optimizer and self.enable_sparse_optimizer
 
         # TODO(pengwa): remove once validation on more models are done.
         if "ORTMODULE_ENABLE_EMBEDDING_SPARSE_OPTIMIZER" in os.environ:
             self.enable_embedding_sparse_optimizer = (
-                self.enable_sparse_optimizer and os.getenv("ORTMODULE_ENABLE_EMBEDDING_SPARSE_OPTIMIZER") == 1
+                self.enable_sparse_optimizer and int(os.getenv("ORTMODULE_ENABLE_EMBEDDING_SPARSE_OPTIMIZER")) == 1
             )
 
         # Configuration for memory optimization.
@@ -269,9 +269,9 @@ class _RuntimeOptions:
 
         # Configuration for dev tools.
         if "ORTMODULE_PRINT_INPUT_DENSITY" in os.environ:
-            self.print_input_density = os.getenv("ORTMODULE_PRINT_INPUT_DENSITY") == 1
+            self.print_input_density = int(os.getenv("ORTMODULE_PRINT_INPUT_DENSITY")) == 1
         if "ORTMODULE_PRINT_MEMORY_STATS" in os.environ:
-            self.print_memory_stat = os.getenv("ORTMODULE_PRINT_MEMORY_STATS") == 1
+            self.print_memory_stat = int(os.getenv("ORTMODULE_PRINT_MEMORY_STATS")) == 1
 
         # Configuration for fallback.
         if "ORTMODULE_FALLBACK_POLICY" in os.environ:

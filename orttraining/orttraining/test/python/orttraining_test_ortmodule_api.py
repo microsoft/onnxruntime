@@ -4886,7 +4886,7 @@ def test_ortmodule_skip_check_load_from_os_env(policy_str, policy):
     ort_model = ORTModule(model)
 
     for training_mode in [False, True]:
-        assert ort_model._torch_module._execution_manager(training_mode)._skip_check == policy
+        assert ort_model._torch_module._execution_manager(training_mode)._runtime_options.skip_check == policy
 
     del os.environ["ORTMODULE_SKIPCHECK_POLICY"]
 
