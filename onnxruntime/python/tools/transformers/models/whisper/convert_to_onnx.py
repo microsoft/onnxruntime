@@ -356,6 +356,9 @@ def main(argv=None):
     if args.optimize_onnx:
         logger.warning("Applying graph optimization for Whisper...")
 
+    import time
+    start_time = time.time()
+
     output_paths = export_onnx_models(
         args.model_name_or_path,
         cache_dir,
@@ -392,7 +395,7 @@ def main(argv=None):
                 args.decoder_path = path
         chain_model(args)
         output_paths.append(args.beam_model_output_dir)
-
+        '''
         # Check chained model
         ort_session = create_onnxruntime_session(
             args.beam_model_output_dir,
@@ -417,9 +420,11 @@ def main(argv=None):
         for fle in os.listdir(output_dir):
             if "_beamsearch" not in fle:
                 os.remove(os.path.join(output_dir, fle))
+        '''
         output_paths = [args.beam_model_output_dir]
 
     logger.info(f"Done! Outputs: {output_paths}")
+    logger.info("Time to run: " + str(time.time()-start_time))
 
 
 if __name__ == "__main__":

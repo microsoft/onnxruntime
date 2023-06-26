@@ -50,7 +50,6 @@ import time
 from enum import Enum
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
-
 import numpy as np
 import onnx
 import torch
@@ -913,7 +912,7 @@ def remove_shared_initializers(
             if not (initializer2.dims and sum(initializer2.dims) >= min_elements):
                 continue
 
-            if OnnxModel.has_same_value(initializer1, initializer2):
+            if OnnxModel.has_same_value(initializer1, initializer2, greedy = True):
                 mapping_initializers_1[initializer1.name] = shared_prefix + initializer2.name
                 shared_initializers_1.append(initializer1)
 
@@ -924,6 +923,159 @@ def remove_shared_initializers(
                     shared_initializers_names.append(shared_name)
                 break
 
+    logger.debug(f"shared initializers:{shared_initializers_names}")
+    print(f"Time to find shared initializers:{time.time()-start_time}")
+
+
+    # Make sure new name does not exist in graph 1
+    for node in graph1.node:
+        for j in range(len(node.input)):
+            if node.input[j] in shared_initializers_names:
+                raise RuntimeError(f"name is found in graph 1: {node.input[j]}")
+
+    # Make sure new name does not exist in graph 2
+    for node in graph2.node:
+        for j in range(len(node.input)):
+            if node.input[j] in shared_initializers_names:
+                raise RuntimeError(f"name is found in graph 2: {node.input[j]}")
+
+    # Remove shared initializers from graph 2
+    for initializer in shared_initializers_2:
+        graph2.initializer.remove(initializer)
+
+    # Rename value info for old names in graph 2
+    for value_info in graph2.value_info:
+        if value_info.name in mapping_initializers_2:
+            value_info.name = mapping_initializers_2[value_info.name]
+
+    # Rename nodes inputs in graph 2:
+    for node in graph2.node:
+        for j in range(len(node.input)):
+            if node.input[j] in mapping_initializers_2:
+                new_name = mapping_initializers_2[node.input[j]]
+                logger.debug(f"graph 2 rename node {node.name} input {j} from {node.input[j]} to {new_name}")
+                node.input[j] = new_name
+
+    #  Remove shared initializers from graph 1
+    for initializer in shared_initializers_1:
+        graph1.initializer.remove(initializer)
+
+    # Rename value info for old names in graph 1
+    for value_info in graph1.value_info:
+        if value_info.name in mapping_initializers_1:
+            value_info.name = mapping_initializers_1[value_info.name]
+
+    # Rename nodes inputs in graph 1:
+    for node in graph1.node:
+        for j in range(len(node.input)):
+            if node.input[j] in mapping_initializers_1:
+                new_name = mapping_initializers_1[node.input[j]]
+                logger.debug(f"graph 1 rename node {node.name} input {j} from {node.input[j]} to {new_name}")
+                node.input[j] = new_name
+
+    # Rename shared initializers in graph 2
+    for initializer in shared_initializers_2:
+        initializer.name = mapping_initializers_2[initializer.name]
+
+    for initializer in shared_initializers_2:
+        shape = onnx.numpy_helper.to_array(initializer).shape
+        value_info = onnx.helper.make_tensor_value_info(initializer.name, initializer.data_type, shape)
+        # Need add value_info for initializers moved to parent graph. Otherwise, ORT will fail.
+        graph1.value_info.append(value_info)
+        graph2.value_info.append(value_info)
+
+    print(f"Time to modify graph :{time.time()-start_time}")
+
+    return shared_initializers_2
+
+
+def remove_shared_initializers_raw_data(
+    graph1: GraphProto,
+    graph2: GraphProto,
+    shared_prefix: str = "shared_",
+    min_elements: int = 1024,
+):
+    """Remove initializers with same value from two graphs.
+
+    Args:
+        graph1 (GraphProto): the first graph to process
+        graph2 (GraphProto): the second graph to process
+        shared_prefix (str): add prefix to the shared initializers among two graphs
+        min_elements (int, optional): minimal number of elements for initializers to be considered. Defaults to 1024.
+    """
+
+    mapping_initializers_1 = {}
+    mapping_initializers_2 = {}
+    shared_initializers_1 = []
+    shared_initializers_2 = []
+    shared_initializers_names = []
+
+    # Raw Data Initializers
+    initializers_graph1 = {}
+    initializers_graph2 = {}
+
+    # Float data lists
+    graph1_float_initializers = []
+    graph2_float_initializers = []
+    import time
+
+    start_time = time.time()
+    for initializer1 in graph1.initializer:
+        if not (initializer1.dims and sum(initializer1.dims) >= min_elements):
+            continue
+        if (initializer1.HasField("raw_data")):
+            initializers_graph1[initializer1.raw_data] = initializer1
+        elif (initializer1.float_data != []):
+            #initializers_graph1[torch.tensor(initializer1.float_data)] = initializer1
+            graph1_float_initializers.append(initializer1)
+
+    raw_data_count, float_data_count = 0, 0
+    for initializer2 in graph2.initializer:
+        if not (initializer2.dims and sum(initializer2.dims) >= min_elements):
+            continue
+        if (initializer2.HasField("raw_data")):
+            raw_data_count += 1
+            if initializer2.raw_data in initializers_graph1:
+                initializer1 = initializers_graph1[initializer2.raw_data]
+                mapping_initializers_1[initializer1.name] = shared_prefix + initializer2.name
+                shared_initializers_1.append(initializer1)
+                if initializer2.name not in mapping_initializers_2:
+                    shared_name = shared_prefix + initializer2.name
+                    mapping_initializers_2[initializer2.name] = shared_name
+                    shared_initializers_2.append(initializer2)
+                    shared_initializers_names.append(shared_name)
+                if initializer2.name not in mapping_initializers_2:
+                    shared_name = shared_prefix + initializer2.name
+                    mapping_initializers_2[initializer2.name] = shared_name
+                    shared_initializers_2.append(initializer2)
+                    shared_initializers_names.append(shared_name)
+        elif (initializer2.float_data != []):
+            if torch.tensor(initializer2.float_data) in initializers_graph1:
+                initializer1 = initializers_graph1[torch.tensor(initializer2.float_data)]
+                mapping_initializers_1[initializer1.name] = shared_prefix + initializer2.name
+                shared_initializers_1.append(initializer1)
+                if initializer2.name not in mapping_initializers_2:
+                    shared_name = shared_prefix + initializer2.name
+                    mapping_initializers_2[initializer2.name] = shared_name
+                    shared_initializers_2.append(initializer2)
+                    shared_initializers_names.append(shared_name)
+                if initializer2.name not in mapping_initializers_2:
+                    shared_name = shared_prefix + initializer2.name
+                    mapping_initializers_2[initializer2.name] = shared_name
+                    shared_initializers_2.append(initializer2)
+                    shared_initializers_names.append(shared_name)
+            for initializer1 in graph1_float_initializers:
+                if OnnxModel.has_same_value(initializer1, initializer2):
+                    float_data_count += 1
+                    mapping_initializers_1[initializer1.name] = shared_prefix + initializer2.name
+                    shared_initializers_1.append(initializer1)
+
+                    if initializer2.name not in mapping_initializers_2:
+                        shared_name = shared_prefix + initializer2.name
+                        mapping_initializers_2[initializer2.name] = shared_name
+                        shared_initializers_2.append(initializer2)
+                        shared_initializers_names.append(shared_name)
+                    break
     logger.debug(f"shared initializers:{shared_initializers_names}")
 
     # Make sure new name does not exist in graph 1
@@ -983,19 +1135,21 @@ def remove_shared_initializers(
         graph1.value_info.append(value_info)
         graph2.value_info.append(value_info)
 
+    print(f"Time to modify graph:{time.time()-start_time}")
     return shared_initializers_2
 
 
-def get_shared_initializers(encoder_model: ModelProto, decoder_model: ModelProto):
+def get_shared_initializers(encoder_model: ModelProto, decoder_model: ModelProto, greedy = False):
     encoder = OnnxModel(encoder_model)
     decoder = OnnxModel(decoder_model)
     encoder.add_prefix_to_names("e_")
     decoder.add_prefix_to_names("d_")
-    encoder.remove_duplicated_initializer()
-    decoder.remove_duplicated_initializer()
+    encoder.remove_duplicated_initializer(greedy)
+    decoder.remove_duplicated_initializer(greedy)
     initializers = remove_shared_initializers(encoder.model.graph, decoder.model.graph, "s_")
-    return initializers
 
+    print("Shared initializers: ", len(initializers))
+    return initializers
 
 def move_initializers(
     graph: GraphProto,

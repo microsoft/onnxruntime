@@ -9,7 +9,7 @@ import sys
 from collections import deque
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
-
+import pdb
 from float16 import convert_float_to_float16
 from onnx import (
     AttributeProto,
@@ -1092,7 +1092,7 @@ class OnnxModel:
         return op_count
 
     @staticmethod
-    def has_same_value(tensor1: TensorProto, tensor2: TensorProto) -> bool:
+    def has_same_value(tensor1: TensorProto, tensor2: TensorProto, greedy = False) -> bool:
         """Returns True when two tensors have same value.
            Note that name can be different.
 
@@ -1107,9 +1107,12 @@ class OnnxModel:
             return False
         if tensor1.HasField("raw_data") and tensor2.HasField("raw_data"):
             return tensor1.raw_data == tensor2.raw_data
+        if (greedy):
+            return False
+
         return (numpy_helper.to_array(tensor1) == numpy_helper.to_array(tensor2)).all()
 
-    def remove_duplicated_initializer(self):
+    def remove_duplicated_initializer(self, greedy):
         """Remove initializers with duplicated values, and only keep the first one.
         It could help reduce size of models (like ALBert) with shared weights.
         Note: this function does not process subgraph.
@@ -1124,7 +1127,7 @@ class OnnxModel:
             if same[i] >= 0:
                 continue
             for j in range(i + 1, initializer_count):
-                if OnnxModel.has_same_value(self.model.graph.initializer[i], self.model.graph.initializer[j]):
+                if OnnxModel.has_same_value(self.model.graph.initializer[i], self.model.graph.initializer[j], greedy):
                     same[j] = i
 
         count = 0

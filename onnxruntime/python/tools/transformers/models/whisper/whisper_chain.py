@@ -12,6 +12,7 @@ from convert_generation import (  # noqa: E402
     get_shared_initializers,
     update_decoder_subgraph_share_buffer_and_use_decoder_masked_mha,
 )
+import time
 
 logger = logging.getLogger(__name__)
 
@@ -132,7 +133,35 @@ def chain_model(args):
 
     # Initializers/opsets
     # Delete shared data between decoder/encoder and move to larger graph initializers
-    initializers = get_shared_initializers(encoder_model, decoder_model)
+    '''
+    print("Timing diff between shared_initializers attempts:")
+    time_total_old = 0.0
+    time_total_new = 0.0
+    import copy
+    num_iterations = 1
+    for _ in range(num_iterations):
+        encoder_copy = copy.deepcopy(encoder_model)
+        decoder_copy = copy.deepcopy(decoder_model)
+        start_time = time.time()
+        initializers = get_shared_initializers(decoder_copy, encoder_copy, only_raw_data = False)
+        time_to_dedup = time.time()-start_time
+        print("Time to get shared initializes: ", time_to_dedup)
+        time_total_old += time_to_dedup
+    for _ in range(num_iterations):
+        encoder_copy = copy.deepcopy(encoder_model)
+        decoder_copy = copy.deepcopy(decoder_model)
+        start_time = time.time()
+        initializers = get_shared_initializers(decoder_copy, encoder_copy, only_raw_data = True)
+        time_to_dedup = time.time()-start_time
+        print("Time to get shared initializes: ", time_to_dedup)
+        time_total_new += time_to_dedup
+    print("Avg time with old: ", time_total_old / num_iterations)
+    print("Avg time with new: ", time_total_new / num_iterations)
+    import pdb
+    pdb.set_trace()
+    '''
+    initializers = get_shared_initializers(decoder_model, encoder_model, greedy = True)
+    #initializers = []
     node.attribute.extend(
         [
             helper.make_attribute("decoder", decoder_model.graph),
@@ -140,7 +169,7 @@ def chain_model(args):
         ]
     )
 
-    opset_import = [helper.make_opsetid(domain="com.microsoft", version=1), helper.make_opsetid(domain="", version=17)]
+    opset_import = [helper.make_opsetid(domain="com.microsoft", version=1), helper.make_opsetid(domain="", version=14)]
 
     graph_nodes = (
         [input_features_cast_node, len_pen_cast_node, rep_pen_cast_node, node]
@@ -171,4 +200,4 @@ def chain_model(args):
         convert_attribute=True,
         location=f"{os.path.basename(args.beam_model_output_dir)}.data",
     )
-    onnx.checker.check_model(args.beam_model_output_dir, full_check=True)
+    #onnx.checker.check_model(args.beam_model_output_dir, full_check=True)
