@@ -141,6 +141,8 @@ debugging).
 - **Feature Area**: *ORTMODULE/Optimizations*
 - **Description**: By default, this is enabled. This env var can be used for enabling or disabling the input data sparsity
 based performance optimizations, including embedding sparsity and label sparsity.
+This optimization is applicable when using optimum, which has an implementation of the ModuleWithLoss class that wraps the HuggingFace Training that allows loss computation inside ONNX Runtime (ORT).
+If you're not using optimum but want to implement a similar wrapper in your codebase to compute the loss inside ONNX Runtime (ORT), you can refer to this link for detailed steps and guidelines on how to achieve this.
 
 	```bash
 	export ORTMODULE_ENABLE_SPARSE_OPTIMIZER=1 # Enable
