@@ -292,7 +292,9 @@ void IterateSubgraphFromNode(Graph& graph,
     to_visit.pop();
     visited.insert(cur);
     if (graph_utils::IsSupportedOptypeVersionAndDomain(*cur, "Add", {7, 13, 14}) ||
-        graph_utils::IsSupportedOptypeVersionAndDomain(*cur, "BiasGelu", {1}, kMSDomain)) {
+        graph_utils::IsSupportedOptypeVersionAndDomain(*cur, "BiasGelu", {1}, kMSDomain) ||
+        graph_utils::IsSupportedOptypeVersionAndDomain(*cur, "Sub", {7, 13, 14}) ||
+        graph_utils::IsSupportedOptypeVersionAndDomain(*cur, "Mul", {7, 13, 14})) {
       ORT_ENFORCE(subgraph.find(cur->MutableInputDefs()[0]) != subgraph.end() ||
                   subgraph.find(cur->MutableInputDefs()[1]) != subgraph.end());
       NodeArg* arg_in_subgraph = nullptr;
