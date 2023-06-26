@@ -230,6 +230,14 @@ int EMSCRIPTEN_KEEPALIVE OrtRun(ort_session_handle_t session,
 char* EMSCRIPTEN_KEEPALIVE OrtEndProfiling(ort_session_handle_t session);
 
 /**
+ * Loads in a checkpoint & creates an instance of a checkpoint state.
+ * @param checkpoint pointer to the checkpoint data buffer
+ * @param checkpoint_size size of the checkpoint buffer in bytes
+ * @returns a handle of the ORT checkpoint state.
+ */
+orttraining_checkpoint_handle_t EMSCRIPTEN_KEEPALIVE OrtTrainingLoadCheckpoint(void* checkpoint, size_t checkpoint_size);
+
+/**
  * Release the given CheckpointState
 */
 void EMSCRIPTEN_KEEPALIVE OrtTrainingReleaseCheckpoint(orttraining_checkpoint_handle_t checkpoint);

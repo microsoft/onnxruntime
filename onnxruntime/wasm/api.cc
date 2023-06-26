@@ -392,6 +392,9 @@ char* OrtEndProfiling(ort_session_handle_t session) {
              : nullptr;
 }
 
+#define CHECK_TRAINING_STATUS(ORT_API_NAME, ...) \
+  CheckStatus(Ort::GetTrainingApi().ORT_API_NAME(__VA_ARGS__))
+
 OrtCheckpointState* OrtTrainingLoadCheckpoint(void* checkpoint, size_t checkpoint_size) {
   OrtCheckpointState* checkpointState = nullptr;
   return (CHECK_TRAINING_STATUS(LoadCheckpointFromBuffer, checkpoint, checkpoint_size, &checkpointState) == ORT_OK)
