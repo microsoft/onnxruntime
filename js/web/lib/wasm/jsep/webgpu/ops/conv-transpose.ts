@@ -16,18 +16,16 @@ const computeTotalPad =
     (inDim: number, stride: number, adj: number, kernel: number, dilation: number, outSize: number) =>
         (inDim - 1) * stride + adj + (kernel - 1) * dilation + 1 - outSize;
 
-const distributePadding =
-    (totalPad: number, autoPad: string, pads: number[], head: number, tail: number,
-     updateConvTranspose: boolean = false) => {
-      const smallPad = Math.floor(totalPad / 2);
-      if (autoPad === 'SAME_UPPER' || (updateConvTranspose && autoPad === 'NOTSET')) {
-        pads[head] = smallPad;
-        pads[tail] = totalPad - smallPad;
-      } else if (autoPad === 'SAME_LOWER') {
-        pads[head] = totalPad - smallPad;
-        pads[tail] = smallPad;
-      }
-    };
+const distributePadding = (totalPad: number, autoPad: string, pads: number[], head: number, tail: number) => {
+  const smallPad = Math.floor(totalPad / 2);
+  if (autoPad === 'SAME_UPPER') {
+    pads[head] = smallPad;
+    pads[tail] = totalPad - smallPad;
+  } else if (autoPad === 'SAME_LOWER') {
+    pads[head] = totalPad - smallPad;
+    pads[tail] = smallPad;
+  }
+};
 
 const calculateOutputShapeAndPads =
     (inputShape: readonly number[], kernelShape: readonly number[], dilations: readonly number[], autoPad: string,
@@ -35,7 +33,6 @@ const calculateOutputShapeAndPads =
      outputShape: number[]) => {
       const spatialRank = inputShape.length - 2;
       const updateOutputShape = outputShape.length === 0;
-      const padsNotSet = pads.length === 0 || pads.reduce((a, b) => a + b, 0) === 0;
       if (outputPadding.length === 0) {
         for (let i = 0; i < spatialRank; ++i) {
           outputPadding.push(0);
@@ -52,10 +49,6 @@ const calculateOutputShapeAndPads =
           outputShape.push(
               strides[i] * (inSize - 1) + outputPadding[i] + (kernelShape[j] - 1) * dilations[i] + 1 - pads[i] -
               pads[i + spatialRank]);
-        }
-        if (padsNotSet) {
-          const ConvTransposeupdatedTotalPad = (kernelShape[j] - 1) * dilations[i] - pads[i] - pads[i + spatialRank];
-          distributePadding(ConvTransposeupdatedTotalPad, autoPad, pads, i, i + spatialRank, true);
         }
       }
       outputShape.splice(0, 0, batchSize);
@@ -93,6 +86,7 @@ const getAdjustedConvTransposeAttributes =
       calculateOutputShapeAndPads(
           inputShape, kernelShape, attributes.dilations, attributes.autoPad, attributes.group, pads, attributes.strides,
           isChannelsLast, outputPadding, outputShape);
+
       // always return a new object so does not modify the original attributes
       const newAttributes: T = Object.assign({}, attributes);
       Object.assign(newAttributes, {kernelShape, pads, outputPadding, outputShape, cacheKey: attributes.cacheKey});
