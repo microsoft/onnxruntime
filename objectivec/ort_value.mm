@@ -133,6 +133,7 @@ bool SafeMultiply(size_t a, size_t b, size_t& out) {
                            externalTensorData:(nullable NSMutableData*)externalTensorData
                                         error:(NSError**)error {
   if ((self = [super init]) == nil) {
+    Ort::GetApi().ReleaseValue(CAPIOrtValue);
     return nil;
   }
 
