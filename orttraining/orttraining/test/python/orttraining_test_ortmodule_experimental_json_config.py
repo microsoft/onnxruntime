@@ -49,7 +49,7 @@ def test_load_config_from_json_1():
         assert ort_model_attributes._enable_custom_autograd_function is True
 
         # test use static shape
-        assert ort_model_attributes._use_static_shape is True
+        assert ort_model_attributes.use_static_shape is True
 
         # test run symbolic shape inference
         assert ort_model_attributes.run_symbolic_shape_infer is False
@@ -102,7 +102,7 @@ def test_load_config_from_json_2():
         assert ort_model_attributes._enable_custom_autograd_function is False
 
         # test use static shape
-        assert ort_model_attributes._use_static_shape is False
+        assert ort_model_attributes.use_static_shape is False
 
         # test run symbolic shape inference
         assert ort_model_attributes.run_symbolic_shape_infer is True

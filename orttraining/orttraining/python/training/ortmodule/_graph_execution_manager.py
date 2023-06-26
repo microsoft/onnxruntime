@@ -154,7 +154,7 @@ class GraphExecutionManager(GraphExecutionInterface):
         pass
 
     def _build_graph(self, config):
-        if self._runtime_options._use_static_shape:
+        if self._runtime_options.use_static_shape:
             self._graph_builder.build(config, self._input_info.shape)
         else:
             self._graph_builder.build(config)

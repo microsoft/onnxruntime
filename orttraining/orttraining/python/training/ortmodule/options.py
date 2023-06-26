@@ -8,10 +8,9 @@ from functools import reduce
 from logging import Logger
 
 from onnxruntime.capi import _pybind_state as C
-from onnxruntime.capi._pybind_state import is_torch_interop_default_on
 from onnxruntime.training import ortmodule
 
-from ._custom_autograd_function import custom_autograd_function_enabler, enable_custom_autograd_support
+from ._custom_autograd_function import custom_autograd_function_enabler
 from ._fallback import _FallbackPolicy
 from ._logger import LogLevel
 from ._utils import parse_os_env_skip_check_flags
@@ -195,14 +194,12 @@ class _RuntimeOptions:
 
         # default execution order is priority-based for both dynamic/static shape input for now
         # if we observe the benefit of static shape, we can expose this flag to the user
-        self._use_static_shape = False
+        self.use_static_shape = False
 
         # flag to enable symbolic shape inference for dynamic shape inputs to improve performance
         self.run_symbolic_shape_infer = True
 
         # PyTorch custom Autograd function support
-        # Enable the custom autograd by default when PythonOp backend support is enabled during build.
-        enable_custom_autograd_support(is_torch_interop_default_on())
         self.enable_custom_autograd_function = custom_autograd_function_enabler.state
 
         self.use_external_gpu_allocator = True
@@ -247,9 +244,6 @@ class _RuntimeOptions:
         if self.conv_algo_search not in ["HEURISTIC", "EXHAUSTIVE"]:
             self._logger.warning("Invalid value of env CONV_ALGO_SEARCH. Must be HEURISTIC or EXHAUSTIVE.")
             self.conv_algo_search = "HEURISTIC"
-
-        if "ORTMODULE_ENABLE_CUSTOM_AUTOGRAD" in os.environ:
-            self.enable_custom_autograd_function = os.getenv("ORTMODULE_ENABLE_CUSTOM_AUTOGRAD") == 1
 
         # Configuration for compute optimization.
         compute_optimizer_reset = False

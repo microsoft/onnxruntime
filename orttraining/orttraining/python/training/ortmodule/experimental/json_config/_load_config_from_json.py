@@ -77,6 +77,10 @@ def _load_enable_custom_autograd_function(ortmodule_config_accessor, data):
     assert isinstance(
         data.EnableCustomAutogradFunction, bool
     ), f"{_load_enable_custom_autograd_function.loading_key} must be a boolean"
+
+    from onnxruntime.training.ortmodule._custom_autograd_function import enable_custom_autograd_support
+
+    enable_custom_autograd_support(data.EnableCustomAutogradFunction)
     ortmodule_config_accessor._runtime_options.enable_custom_autograd_function = data.EnableCustomAutogradFunction
 
 
@@ -111,7 +115,7 @@ def _load_use_static_shape(ortmodule_config_accessor, data):
     log.info(f"Found keyword {_load_use_static_shape.loading_key} in json. Loading attributes from file.")
 
     assert isinstance(data.UseStaticShape, bool), f"{_load_use_static_shape.loading_key} must be a boolean"
-    ortmodule_config_accessor._runtime_options._use_static_shape = data.UseStaticShape
+    ortmodule_config_accessor._runtime_options.use_static_shape = data.UseStaticShape
 
 
 def _load_skip_check(ortmodule_config_accessor, data):
