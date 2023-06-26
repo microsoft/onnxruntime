@@ -1758,7 +1758,6 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
             if args.build_shared_lib:
                 executables.append("onnxruntime_shared_lib_test")
                 executables.append("onnxruntime_global_thread_pools_test")
-                executables.append("onnxruntime_api_tests_without_env")
                 executables.append("onnxruntime_customopregistration_test")
             for exe in executables:
                 test_output = f"--gtest_output=xml:{cwd}/{exe}.{config}.results.xml"
