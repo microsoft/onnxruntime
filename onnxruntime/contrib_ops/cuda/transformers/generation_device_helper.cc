@@ -436,7 +436,7 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
       vocab_size,
       vocab_size,
       (parameters->min_length > 0 && sequences->GetSequenceLength() < parameters->min_length) ? parameters->eos_token_id : -1,
-      sequences->GetSequence(0).data(),
+      sequences->GetCurrentDeviceSequences().data(),
       parameters->max_length,
       sequences->GetSequenceLength(),
       parameters->repetition_penalty,
@@ -450,7 +450,7 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
   //    next_token_scores = next_token_scores + beam_scores[:, None].expand_as(next_token_scores)
   cuda::LaunchAddProbsKernel(next_token_scores.data(), beam_state->beam_scores.data(),
                              batch_size, num_beams, vocab_size, cuda_stream);
-
+  
 #ifdef DEBUG_GENERATION
   dumper->Print("next_token_scores adding beam_scores", next_token_scores.data(), batch_size, num_beams, vocab_size);
 #endif
@@ -487,7 +487,7 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
                          beam_state->next_tokens.data(),
                          beam_state->next_indices.data(),
                          cuda_stream);
-
+    
     // Select [batch_size, 2 * num_beams] from [batch_size * num_beams, 2 * num_beams]
 #ifdef DEBUG_GENERATION
     dumper->Print("next_tokens before scorer", beam_state->next_tokens.data(), batch_size, 2 * num_beams);
@@ -651,7 +651,7 @@ CudaBeamSearchScorer::CudaBeamSearchScorer(const transformers::IGenerationParame
   next_beam_scores_ = Allocate<float>(allocator, batch_beam_size, next_beam_scores_ptr_);
   next_beam_tokens_ = Allocate<int32_t>(allocator, batch_beam_size, next_beam_tokens_ptr_);
   next_beam_indices_ = Allocate<int32_t>(allocator, batch_beam_size, next_beam_indices_ptr_);
-  next_beam_indices_cpu_ = Allocate<int32_t>(allocator_cpu, batch_beam_size, next_beam_indices_ptr_);
+  next_beam_indices_cpu_ = Allocate<int32_t>(allocator_cpu, batch_beam_size, next_beam_indices_cpu_ptr_);
 
   // Space to store intermediate sequence with length sequence_length, sequence_length + 1, ..., max_sequence_length.
   size_t per_beam = (SafeInt<size_t>(state_cpu_->max_length_) * (state_cpu_->max_length_ + 1) - (parameters.sequence_length - 1) * parameters.sequence_length) / 2;
