@@ -4578,12 +4578,13 @@ Return true if all elements are true and false otherwise.
       .SetDoc("PadAndUnflatten operator pads zero on the first axis, and unflatten the axis into two axes according
               to given unflatten_dims. This is used by padding elimination graph transformers.
               For each index in indices, the corresponding value in output comes from input.
-              For other indices, zero are padded.
+              For other indices,  the corresponding value in output will be padded to zero.
 
-              A example:
+              An example:
                 input: [[1, 2, 3, 4], [5, 6, 7, 8]], shape is [2, 4]
                 indices: [0, 5], shape is [2]
                 unflatten_dims: [2, 3], shape is [2]
+
                 output: [[[1, 2, 3, 4], [0, 0, 0, 0], [0, 0, 0, 0]], [[0, 0, 0, 0], [0, 0, 0, 0], [5, 6, 7, 8]]],
                 shape is [2, 3, 4]
                 flatten_output_shape: [6, 4], shape is [2]")
