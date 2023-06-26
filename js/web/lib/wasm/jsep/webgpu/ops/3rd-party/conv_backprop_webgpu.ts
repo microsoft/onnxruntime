@@ -64,7 +64,7 @@ const createConvTranspose2DOpProgramShaderSource =
         let c = global_id.y * ${workPerThread};
         let d1: u32 = global_id.x * 4;
 
-        let dyCorner = vec2<u32>(r, c) - pads;
+        let dyCorner = vec2<i32>(i32(r), i32(c)) - vec2<i32>(pads);
 
         // Convolve dy(?, ?, d2) with w(:, :, d1, d2) to compute dx(xR, xC, d1).
         // ? = to be determined. : = across all values in that axis.
@@ -104,27 +104,31 @@ const createConvTranspose2DOpProgramShaderSource =
                 ${
           wIndicesHelper.indicesVariableDeclaration(
               'wIndices0',
-              [
-                'wRPerm', 'wCPerm', 'd1', 'd2'
-              ])};
+              isChannelsLast ? ['d2', 'wRPerm', 'wCPerm', 'd1'] :
+                               [
+                                 'd2', 'd1', 'wRPerm', 'wCPerm'
+                               ])};
                 ${
           wIndicesHelper.indicesVariableDeclaration(
               'wIndices1',
-              [
-                'wRPerm', 'wCPerm', 'd1+1', 'd2'
-              ])};
+              isChannelsLast ? ['d2', 'wRPerm', 'wCPerm', 'd1+1'] :
+                               [
+                                 'd2', 'd1+1', 'wRPerm', 'wCPerm'
+                               ])};
                 ${
           wIndicesHelper.indicesVariableDeclaration(
               'wIndices2',
-              [
-                'wRPerm', 'wCPerm', 'd1+2', 'd2'
-              ])};
+              isChannelsLast ? ['d2', 'wRPerm', 'wCPerm', 'd1+2'] :
+                               [
+                                 'd2', 'd1+2', 'wRPerm', 'wCPerm'
+                               ])};
                 ${
           wIndicesHelper.indicesVariableDeclaration(
               'wIndices3',
-              [
-                'wRPerm', 'wCPerm', 'd1+3', 'd2'
-              ])};
+              isChannelsLast ? ['d2', 'wRPerm', 'wCPerm', 'd1+3'] :
+                               [
+                                 'd2', 'd1+3', 'wRPerm', 'wCPerm'
+                               ])};
                 let wValue0 = W[${wIndicesHelper.i2oExpression('wIndices0')}];
                 let wValue1 = W[${wIndicesHelper.i2oExpression('wIndices1')}];
                 let wValue2 = W[${wIndicesHelper.i2oExpression('wIndices2')}];
@@ -132,9 +136,10 @@ const createConvTranspose2DOpProgramShaderSource =
                 ${
           dyIndicesHelper.indicesVariableDeclaration(
               'dyIndices',
-              [
-                'batch', 'idyR', 'idyC', 'd2'
-              ])};
+              isChannelsLast ? ['batch', 'idyR', 'idyC', 'd2'] :
+                               [
+                                 'batch', 'd2', 'idyR', 'idyC'
+                               ])};
                 var xValue =  Dy[${dyIndicesHelper.i2oExpression('dyIndices')}];
                 let tmpval = vec4<f32>(xValue * wValue0,
                                       xValue * wValue1,
@@ -152,27 +157,31 @@ const createConvTranspose2DOpProgramShaderSource =
                 ${
           wIndicesHelper.indicesVariableDeclaration(
               'wIndices0',
-              [
-                'wRPerm', 'wCPerm', 'd1', 'd2'
-              ])};
+              isChannelsLast ? ['d2', 'wRPerm', 'wCPerm', 'd1'] :
+                               [
+                                 'd2', 'd1', 'wRPerm', 'wCPerm'
+                               ])};
                 ${
           wIndicesHelper.indicesVariableDeclaration(
               'wIndices1',
-              [
-                'wRPerm', 'wCPerm', 'd1+1', 'd2'
-              ])};
+              isChannelsLast ? ['d2', 'wRPerm', 'wCPerm', 'd1+1'] :
+                               [
+                                 'd2', 'd1+1', 'wRPerm', 'wCPerm'
+                               ])};
                 ${
           wIndicesHelper.indicesVariableDeclaration(
               'wIndices2',
-              [
-                'wRPerm', 'wCPerm', 'd1+2', 'd2'
-              ])};
+              isChannelsLast ? ['d2', 'wRPerm', 'wCPerm', 'd1+2'] :
+                               [
+                                 'd2', 'd1+1', 'wRPerm', 'wCPerm'
+                               ])};
                 ${
           wIndicesHelper.indicesVariableDeclaration(
               'wIndices3',
-              [
-                'wRPerm', 'wCPerm', 'd1+3', 'd2'
-              ])};
+              isChannelsLast ? ['d2', 'wRPerm', 'wCPerm', 'd1+3'] :
+                               [
+                                 'd2', 'd1+3', 'wRPerm', 'wCPerm'
+                               ])};
                 let wValue0 = W[${wIndicesHelper.i2oExpression('wIndices0')}];
                 let wValue1 = W[${wIndicesHelper.i2oExpression('wIndices1')}];
                 let wValue2 = W[${wIndicesHelper.i2oExpression('wIndices2')}];
@@ -196,27 +205,31 @@ const createConvTranspose2DOpProgramShaderSource =
                 ${
           wIndicesHelper.indicesVariableDeclaration(
               'wIndices0',
-              [
-                'wRPerm', 'wCPerm', 'd1', 'd2'
-              ])};
+              isChannelsLast ? ['d2', 'wRPerm', 'wCPerm', 'd1'] :
+                               [
+                                 'd2', 'd1', 'wRPerm', 'wCPerm'
+                               ])};
                 ${
           wIndicesHelper.indicesVariableDeclaration(
               'wIndices1',
-              [
-                'wRPerm', 'wCPerm', 'd1+1', 'd2'
-              ])};
+              isChannelsLast ? ['d2', 'wRPerm', 'wCPerm', 'd1+1'] :
+                               [
+                                 'd2', 'd1+1', 'wRPerm', 'wCPerm'
+                               ])};
                 ${
           wIndicesHelper.indicesVariableDeclaration(
               'wIndices2',
-              [
-                'wRPerm', 'wCPerm', 'd1+2', 'd2'
-              ])};
+              isChannelsLast ? ['d2', 'wRPerm', 'wCPerm', 'd1+2'] :
+                               [
+                                 'd2', 'd1+2', 'wRPerm', 'wCPerm'
+                               ])};
                 ${
           wIndicesHelper.indicesVariableDeclaration(
               'wIndices3',
-              [
-                'wRPerm', 'wCPerm', 'd1+3', 'd2'
-              ])};
+              isChannelsLast ? ['d2', 'wRPerm', 'wCPerm', 'd1+3'] :
+                               [
+                                 'd2', 'd1+3', 'wRPerm', 'wCPerm'
+                               ])};
                 let wValue0 = W[${wIndicesHelper.i2oExpression('wIndices0')}];
                 let wValue1 = W[${wIndicesHelper.i2oExpression('wIndices1')}];
                 let wValue2 = W[${wIndicesHelper.i2oExpression('wIndices2')}];
@@ -224,9 +237,10 @@ const createConvTranspose2DOpProgramShaderSource =
                 ${
           dyIndicesHelper.indicesVariableDeclaration(
               'dyIndices',
-              [
-                'batch', 'idyR', 'idyC', 'd2'
-              ])};
+              isChannelsLast ? ['batch', 'idyR', 'idyC', 'd2'] :
+                               [
+                                 'batch', 'd2', 'idyR', 'idyC'
+                               ])};
                 var xValue =  Dy[${dyIndicesHelper.i2oExpression('dyIndices')}];
                 let tmpval = vec4<f32>(xValue * wValue0,
                                       xValue * wValue1,
@@ -250,7 +264,7 @@ const createConvTranspose2DOpProgramShaderSource =
           ${outputIndicesHelper.o2iCall('global_idx', 'outputIndices')}
           let batch = outputIndices[0];
           let d1 = outputIndices[${channelDim}];
-          let dyCorner = vec2<u32>(outputIndices[${rowDim}], outputIndices[${colDim}]) - pads;
+          let dyCorner = vec2<i32>(i32(outputIndices[${rowDim}]), i32(outputIndices[${colDim}])) - pads;
           let dyRCorner = dyCorner.x;
           let dyCCorner = dyCorner.y;
           // Convolve dy(?, ?, d2) with w(:, :, d1, d2) to compute dx(xR, xC, d1).
@@ -305,8 +319,8 @@ ${wIndicesHelper.i2oImpl}
   @group(0) @binding(${declareInputs.length}) var<storage, read_write> result: array<${isVec4 ? 'vec4<f32>' : 'f32'}>;
   const outShape : vec4<u32> = vec4<u32>(${outputShape.join(',')});
   const outBackprop : vec4<u32> = vec4<u32>(${inputs[0].dims.join(',')});
-  const pads : vec2<u32> = vec2<u32>(${attributes.pads[0] + attributes.pads[1]},${
-          attributes.pads[2] + attributes.pads[3]});
+  const pads : vec2<i32> = vec2<i32>(${attributes.pads[0] + attributes.pads[2]},${
+          attributes.pads[1] + attributes.pads[3]});
   const strides : vec2<u32> = vec2<u32>(${attributes.strides[0]}, ${attributes.strides[1]});
   const filterDims : vec2<u32> = vec2<u32>(${attributes.kernelShape[isChannelsLast ? 1 : 2]}, ${
           attributes.kernelShape[isChannelsLast ? 2 : 3]});
