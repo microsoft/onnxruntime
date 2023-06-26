@@ -677,7 +677,12 @@ nvinfer1::IExecutionContext& TensorrtExecutionProvider::PerThreadContext::GetTen
 }
 
 void TensorrtExecutionProvider::PerThreadContext::SetTensorRTContext(std::string fused_node, std::shared_ptr<nvinfer1::IExecutionContext> context) {
-  trt_context_map_.insert(std::make_pair(fused_node, context));
+  auto it = trt_context_map_.find(fused_node);
+  if (it != trt_context_map_.end()) {
+    it->second = context;
+  } else {
+    trt_context_map_.insert(std::make_pair(fused_node, context));
+  }
 }
 
 TensorrtExecutionProvider::PerThreadContext& TensorrtExecutionProvider::GetPerThreadContext() const {
