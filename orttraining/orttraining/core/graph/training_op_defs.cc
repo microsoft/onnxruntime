@@ -4583,12 +4583,6 @@ Return true if all elements are true and false otherwise.
       .Input(2, "unflatten_dims", "1D tensor with two values, [M1, M2].", "T_INT")
       .Output(0, "output", "output data of rank N+1, [M1, M2, d2, ..., dN]", "T")
       .Output(1, "unflatten_output_shape", "1D tensor with output shape, [M1*M2, d2, ..., dN]", "T_INT")
-      .Attr(
-          "axis",
-          "Which axis to gather on. Negative value means "
-          "counting dimensions from the back. Accepted range in [-r, r-1]",
-          AttributeProto::INT,
-          static_cast<int64_t>(0))
       .TypeConstraint(
           "T_INT",
           {"tensor(int32)", "tensor(int64)"},
