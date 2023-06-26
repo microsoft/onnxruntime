@@ -279,7 +279,7 @@ inline const char * const *EnumNamesTensorDataType() {
 }
 
 inline const char *EnumNameTensorDataType(TensorDataType e) {
-  if (flatbuffers::IsOutRange(e, TensorDataType::UNDEFINED, TensorDataType::BFLOAT16)) return "";
+  if (flatbuffers::IsOutRange(e, TensorDataType::UNDEFINED, TensorDataType::FLOAT8E5M2FNUZ)) return "";
   const size_t index = static_cast<size_t>(e);
   return EnumNamesTensorDataType()[index];
 }

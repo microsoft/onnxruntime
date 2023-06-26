@@ -75,11 +75,11 @@ table TensorTypeAndShape {
 
 table MapType {
   key_type:TensorDataType;
-  value_type:onnxruntime.fbs.TypeInfo;
+  value_type:TypeInfo;
 }
 
 table SequenceType {
-  elem_type:onnxruntime.fbs.TypeInfo;
+  elem_type:TypeInfo;
 }
 
 // Node
@@ -113,7 +113,7 @@ table Node {
 
   inputs:[string];
   outputs:[string];
-  attributes:[onnxruntime.fbs.Attribute];
+  attributes:[Attribute];
 
   input_arg_counts:[int32];
   implicit_inputs:[string];

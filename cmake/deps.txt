@@ -40,14 +40,5 @@ re2;https://github.com/google/re2/archive/refs/tags/2022-06-01.zip;aa77313b76e91
 safeint;https://github.com/dcleblanc/SafeInt/archive/ff15c6ada150a5018c5ef2172401cb4529eac9c0.zip;913a4046e5274d329af2806cb53194f617d8c0ab
 tensorboard;https://github.com/tensorflow/tensorboard/archive/373eb09e4c5d2b3cc2493f0949dc4be6b6a45e81.zip;67b833913605a4f3f499894ab11528a702c2b381
 cutlass;https://github.com/NVIDIA/cutlass/archive/refs/tags/v3.0.0.zip;0f95b3c1fc1bd1175c4a90b2c9e39074d1bccefd
-# below are deps introduced by triton client, might remove after 1.14 release
-openssl;https://github.com/openssl/openssl/archive/refs/tags/openssl-3.0.7.zip;dda8fc81308555410505eb4a9eab3e1da0436a1d
-rapidjson;https://github.com/Tencent/rapidjson/archive/refs/tags/v1.1.0.zip;0fe7b4f7b83df4b3d517f4a202f3a383af7a0818
-boost;https://github.com/boostorg/boost/archive/refs/tags/boost-1.81.0.zip;f6ab0da855f825b4eb1abd949967d01a4c5e4e1b
-b64;https://github.com/libb64/libb64/archive/refs/tags/v2.0.0.1.zip;815b6d31d50d9e63df55b25ce555e7b787153c28
-pthread;https://sourceforge.net/projects/pthreads4w/files/pthreads4w-code-v3.0.0.zip;3b9e417e4474c34542b76ad40529e396ac109fb4
-triton;https://github.com/triton-inference-server/server/archive/refs/tags/v2.28.0.zip;4b305570aa1e889946e20e36050b6770e4108fee
-# above are deps introduced by triton client, might remove after 1.14 release
 extensions;https://github.com/microsoft/onnxruntime-extensions/archive/94142d8391c9791ec71c38336436319a2d4ac7a0.zip;4365ac5140338b4cb75a39944a4be276e3829b3c
 eigen;https://gitlab.com/libeigen/eigen/-/archive/3.4/eigen-3.4.zip;ee201b07085203ea7bd8eb97cbcb31b07cfa3efb
-curl;https://github.com/curl/curl/archive/refs/tags/curl-8_0_1.zip;b16d1fa8ee567b52c09a0f89940b07d8491b881d

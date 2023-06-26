@@ -85,6 +85,10 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
     CreateMinMaxOpBuilder("Min", op_registrations);
   }
 
+  {
+    CreateReductionOpBuilder("ReduceMean", op_registrations);
+  }
+
   return op_registrations;
 }
 
