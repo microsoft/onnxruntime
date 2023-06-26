@@ -18,8 +18,6 @@
 
 namespace onnxruntime {
 
-constexpr const char* WEBNN = "WebNN";
-
 WebNNExecutionProvider::WebNNExecutionProvider(
     const std::string& webnn_device_flags, const std::string& webnn_power_flags)
     : IExecutionProvider{onnxruntime::kWebNNExecutionProvider, true} {
