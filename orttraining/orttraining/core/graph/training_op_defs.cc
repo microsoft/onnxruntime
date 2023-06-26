@@ -4581,7 +4581,7 @@ Return true if all elements are true and false otherwise.
           "For each index in indices, the corresponding value in output comes from input."
           "For other indices,  the corresponding value in output will be padded to zero."
 
-          "The index in indices don't allow duplicated values, otherwise, though there is no runtime check"
+          "The indices don't allow duplicated index values, otherwise, though there is no runtime check"
           "(in case of performance concern), the behaviour of output is undefined."
 
           "An example:"
