@@ -319,11 +319,11 @@ ${wIndicesHelper.i2oImpl}
   @group(0) @binding(${declareInputs.length}) var<storage, read_write> result: array<${isVec4 ? 'vec4<f32>' : 'f32'}>;
   const outShape : vec4<u32> = vec4<u32>(${outputShape.join(',')});
   const outBackprop : vec4<u32> = vec4<u32>(${inputs[0].dims.join(',')});
-  const pads : vec2<i32> = vec2<i32>(${attributes.pads[0] + attributes.pads[2]},${
-          attributes.pads[1] + attributes.pads[3]});
   const strides : vec2<u32> = vec2<u32>(${attributes.strides[0]}, ${attributes.strides[1]});
   const filterDims : vec2<u32> = vec2<u32>(${attributes.kernelShape[isChannelsLast ? 1 : 2]}, ${
           attributes.kernelShape[isChannelsLast ? 2 : 3]});
+  const pads : vec2<i32> = vec2<i32>(i32(filterDims[0]) - 1 - ${attributes.pads[0]}, i32(filterDims[1]) - 1 - ${
+          attributes.pads[1]});
     ${shaderHelper.mainStart()}
     ${outputIndicesHelper.indicesVariableDeclaration('outputIndices')}
     ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes(outputSize)};
