@@ -30,16 +30,9 @@ from transformers.modeling_outputs import SequenceClassifierOutput
 
 import onnxruntime.training.ortmodule as ortmodule_module
 from onnxruntime.training.optim import AdamWMode, FusedAdam
-from onnxruntime.training.ortmodule import (
-    DebugOptions,
-    LogLevel,
-    ORTModule,
-    _fallback,
-    _graph_execution_manager,
-    _io,
-    _utils,
-)
+from onnxruntime.training.ortmodule import DebugOptions, LogLevel, ORTModule, _fallback, _io, _utils
 from onnxruntime.training.ortmodule._custom_gradient_registry import register_gradient
+from onnxruntime.training.ortmodule.options import _SkipCheck
 
 DEFAULT_OPSET = 15
 
@@ -4879,10 +4872,10 @@ def test_ortmodule_ortmodule_method_attribute_copy():
 @pytest.mark.parametrize(
     "policy_str, policy",
     [
-        ("SKIP_CHECK_DISABLED", _graph_execution_manager._SkipCheck.SKIP_CHECK_DISABLED),
-        ("SKIP_CHECK_DEVICE", _graph_execution_manager._SkipCheck.SKIP_CHECK_DEVICE),
-        ("SKIP_CHECK_BUILD_GRADIENT", _graph_execution_manager._SkipCheck.SKIP_CHECK_BUILD_GRADIENT),
-        ("SKIP_CHECK_EXECUTION_AGENT", _graph_execution_manager._SkipCheck.SKIP_CHECK_EXECUTION_AGENT),
+        ("SKIP_CHECK_DISABLED", _SkipCheck.SKIP_CHECK_DISABLED),
+        ("SKIP_CHECK_DEVICE", _SkipCheck.SKIP_CHECK_DEVICE),
+        ("SKIP_CHECK_BUILD_GRADIENT", _SkipCheck.SKIP_CHECK_BUILD_GRADIENT),
+        ("SKIP_CHECK_EXECUTION_AGENT", _SkipCheck.SKIP_CHECK_EXECUTION_AGENT),
     ],
 )
 def test_ortmodule_skip_check_load_from_os_env(policy_str, policy):
