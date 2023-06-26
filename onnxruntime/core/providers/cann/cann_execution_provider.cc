@@ -1442,93 +1442,39 @@ Status CANNExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fuse
   return Status::OK();
 }
 
-AllocatorPtr CANNExecutionProvider::CreateCannAllocator(OrtDevice::DeviceId device_id, size_t npu_mem_limit,
-                                                        ArenaExtendStrategy arena_extend_strategy,
-                                                        OrtArenaCfg* default_memory_arena_cfg) {
+std::vector<AllocatorPtr> CANNExecutionProvider::CreatePreferredAllocators() {
   AllocatorCreationInfo default_memory_info(
       [](OrtDevice::DeviceId id) {
         return std::make_unique<CANNAllocator>(id, CANN);
       },
-      device_id,
+      cann_device.Id(),
       true,
-      {default_memory_arena_cfg ? *default_memory_arena_cfg
-                                : OrtArenaCfg(npu_mem_limit,
-                                              static_cast<int>(arena_extend_strategy),
-                                              -1,
-                                              -1,
-                                              -1,
-                                              -1L)},
+      {info_.default_memory_arena_cfg ? *info_.default_memory_arena_cfg
+                                      : OrtArenaCfg(info_.npu_mem_limit,
+                                                    static_cast<int>(info_.arena_extend_strategy),
+                                                    -1,
+                                                    -1,
+                                                    -1,
+                                                    -1L)},
       true,
       false);
 
-  return CreateAllocator(default_memory_info);
+  AllocatorCreationInfo pinned_memory_info(
+      [](OrtDevice::DeviceId device_id) {
+        return std::make_unique<CANNPinnedAllocator>(device_id, CANN_PINNED);
+      },
+      pinned_device.Id());
+
+  return std::vector<AllocatorPtr>{CreateAllocator(default_memory_info), CreateAllocator(pinned_memory_info)};
 }
 
-void CANNExecutionProvider::RegisterAllocator(AllocatorManager& allocator_manager) {
-  OrtDevice cann_device{OrtDevice::NPU, OrtDevice::MemType::DEFAULT, info_.device_id};
-  OrtDevice pinned_device{OrtDevice::CPU, OrtDevice::MemType::CANN_PINNED, DEFAULT_CPU_ALLOCATOR_DEVICE_ID};
-  OrtDevice cpu_device{OrtDevice::CPU, OrtDevice::MemType::DEFAULT, DEFAULT_CPU_ALLOCATOR_DEVICE_ID};
-
-  auto cann_alloc = IExecutionProvider::GetAllocator(OrtMemTypeDefault);
-  if (!cann_alloc) {
-    cann_alloc = allocator_manager.GetAllocator(OrtMemTypeDefault, cann_device);
-
-    if (!cann_alloc) {
-      cann_alloc = CreateCannAllocator(info_.device_id, info_.npu_mem_limit, info_.arena_extend_strategy,
-                                       info_.default_memory_arena_cfg);
-      allocator_manager.InsertAllocator(cann_alloc);
-    }
-
-    InsertAllocator(cann_alloc);
-  }
-
-  auto cann_pinned_alloc = IExecutionProvider::GetAllocator(OrtMemTypeCPUOutput);
-  if (!cann_pinned_alloc) {
-    cann_pinned_alloc = allocator_manager.GetAllocator(OrtMemTypeCPUOutput, pinned_device);
-
-    if (!cann_pinned_alloc) {
-      AllocatorCreationInfo pinned_memory_info(
-          [](OrtDevice::DeviceId device_id) {
-            return std::make_unique<CANNPinnedAllocator>(device_id, CANN_PINNED);
-          },
-          pinned_device.Id());
-
-      cann_pinned_alloc = CreateAllocator(pinned_memory_info);
-      allocator_manager.InsertAllocator(cann_pinned_alloc);
-    }
-
-    InsertAllocator(cann_pinned_alloc);
-  }
-
-  auto cann_cpu_alloc = IExecutionProvider::GetAllocator(OrtMemTypeCPUInput);
-  if (!cann_cpu_alloc) {
-    cann_cpu_alloc = allocator_manager.GetAllocator(OrtMemTypeCPUInput, cpu_device);
-
-    if (!cann_cpu_alloc) {
-      AllocatorCreationInfo cpu_memory_info(
-          [](int device_id) {
-            return std::make_unique<CPUAllocator>(
-                OrtMemoryInfo("CANN_CPU", OrtAllocatorType::OrtDeviceAllocator, OrtDevice(), device_id,
-                              OrtMemTypeCPUInput));
-          },
-          cpu_device.Id());
-
-      cann_cpu_alloc = CreateAllocator(cpu_memory_info);
-      allocator_manager.InsertAllocator(cann_cpu_alloc);
-    }
-
-    InsertAllocator(cann_cpu_alloc);
-  }
-}
-
-void CANNExecutionProvider::RegisterStreamHandlers(IStreamCommandHandleRegistry& stream_handle_registry) const {
+void CANNExecutionProvider::RegisterStreamHandlers(IStreamCommandHandleRegistry& stream_handle_registry, AllocatorMap&) const {
   RegisterCannStreamHandles(stream_handle_registry, OrtDevice::NPU);
 }
 
 OrtDevice CANNExecutionProvider::GetOrtDeviceByMemType(OrtMemType mem_type) const {
-  if (mem_type == OrtMemTypeCPUInput || mem_type == OrtMemTypeCPUOutput) {
-    return OrtDevice(OrtDevice::CPU, OrtDevice::MemType::CANN_PINNED, 0 /*CPU device id always be 0*/);
-  }
+  if (mem_type == OrtMemTypeCPUInput) return OrtDevice();
+  if (mem_type == OrtMemTypeCPUOutput) return OrtDevice(OrtDevice::CPU, OrtDevice::MemType::CANN_PINNED, 0);
   return default_device_;
 }
 
