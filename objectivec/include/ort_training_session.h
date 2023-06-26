@@ -13,7 +13,7 @@ NS_ASSUME_NONNULL_BEGIN
 @class ORTSessionOptions;
 
 /**
- * Trainer class that provides methods to train, evaluate and optimize ONNX models
+ * Trainer class that provides methods to train, evaluate and optimize ONNX models.
  *
  * The training session requires four training artifacts:
  *  1. Training onnx model
@@ -60,7 +60,7 @@ NS_ASSUME_NONNULL_BEGIN
  *
  * The training step computes the outputs of the training model and the gradients of the trainable parameters
  * for the given input values. The train step is performed based on the training model that was provided to the training session.
- * It is equivalent of running forward and backward propagation in a single step. The computed gradients are stored inside
+ * It is equivalent to running forward and backward propagation in a single step. The computed gradients are stored inside
  * the training session state so they can be later consumed by `optimizerStep`. The gradients can be lazily reset by
  * calling `lazyResetGrad` method.
  *
@@ -160,7 +160,7 @@ NS_ASSUME_NONNULL_BEGIN
                                                error:(NSError**)error;
 
 /**
- * Update the learning rate based on the registered learing rate scheduler.
+ * Update the learning rate based on the registered learning rate scheduler.
  *
  * Performs a scheduler step that updates the learning rate that is being used by the training session.
  * This function should typically be called before invoking the optimizer step for each round, or as necessary
@@ -228,9 +228,9 @@ NS_ASSUME_NONNULL_BEGIN
  * inference model's outputs align with the provided outputs. The exported model is saved at the path provided and
  * can be used for inferencing with `ORTSession`.
  *
- * @note The method reloads eval model from the path provided to initializer and expects that this path to be valid.
+ * @note The method reloads the eval model from the path provided to the initializer and expects this path to be valid.
  *
- * @param inferenceModelPath The path to serialize the inference model.
+ * @param inferenceModelPath The path to the serialized the inference model.
  * @param graphOutputNames The names of the outputs that are needed in the inference model.
  * @param error Optional error information set if an error occurs.
  * @return YES if the inference model was exported successfully, NO otherwise.
@@ -248,7 +248,7 @@ extern "C" {
  * This function sets the seed for generating random numbers.
  * Use this function to generate reproducible results. It should be noted that completely reproducible results are not guaranteed.
  *
- * @param seed Manual seed to use for random number generation
+ * @param seed Manually set seed to use for random number generation
  */
 void ORTSetSeed(int64_t seed);
 

@@ -38,7 +38,7 @@ NS_ASSUME_NONNULL_BEGIN
   return path;
 }
 
-+ (NSMutableData*)loadTensorFromFile:(NSString*)filePath skipHeader:(BOOL)skipHeader {
++ (NSMutableData*)loadTensorDataFromFile:(NSString*)filePath skipHeader:(BOOL)skipHeader {
   NSError* error = nil;
   NSString* fileContents = [NSString stringWithContentsOfFile:filePath
                                                      encoding:NSUTF8StringEncoding
@@ -107,7 +107,7 @@ NS_ASSUME_NONNULL_BEGIN
   XCTAssertTrue([outputNames containsObject:@"onnx::loss::21273"]);
 }
 
-- (void)testInintTrainingSessionWithEval {
+- (void)testInitTrainingSessionWithEval {
   NSError* error = nil;
   ORTCheckpoint* checkpoint = [[ORTCheckpoint alloc] initWithPath:[ORTTrainingSessionTest
                                                                       getFilePathFromName:@"checkpoint.ckpt"]
@@ -133,13 +133,13 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)runTrainStepWithSession:(ORTTrainingSession*)session {
   // load input and expected output
   NSError* error = nil;
-  NSMutableData* expectedOutput = [ORTTrainingSessionTest loadTensorFromFile:[ORTTrainingSessionTest
-                                                                                 getFilePathFromName:@"loss_1.out"]
-                                                                  skipHeader:YES];
+  NSMutableData* expectedOutput = [ORTTrainingSessionTest loadTensorDataFromFile:[ORTTrainingSessionTest
+                                                                                     getFilePathFromName:@"loss_1.out"]
+                                                                      skipHeader:YES];
 
-  NSMutableData* input = [ORTTrainingSessionTest loadTensorFromFile:[ORTTrainingSessionTest
-                                                                        getFilePathFromName:@"input-0.in"]
-                                                         skipHeader:YES];
+  NSMutableData* input = [ORTTrainingSessionTest loadTensorDataFromFile:[ORTTrainingSessionTest
+                                                                            getFilePathFromName:@"input-0.in"]
+                                                             skipHeader:YES];
 
   int32_t labels[] = {1, 1};
 
@@ -173,20 +173,20 @@ NS_ASSUME_NONNULL_BEGIN
   ORTAssertNullableResultSuccessful(outputs, error);
   XCTAssertTrue(outputs.count > 0);
 
-  ORTValue* outputBuffer = outputs[0];
-  ORTValueTypeInfo* typeInfo = [outputBuffer typeInfoWithError:&error];
+  ORTValue* outputValue = outputs[0];
+  ORTValueTypeInfo* typeInfo = [outputValue typeInfoWithError:&error];
   ORTAssertNullableResultSuccessful(typeInfo, error);
   XCTAssertEqual(typeInfo.type, ORTValueTypeTensor);
   XCTAssertNotNil(typeInfo.tensorTypeAndShapeInfo);
 
-  ORTTensorTypeAndShapeInfo* tensorInfo = [outputBuffer tensorTypeAndShapeInfoWithError:&error];
+  ORTTensorTypeAndShapeInfo* tensorInfo = [outputValue tensorTypeAndShapeInfoWithError:&error];
   ORTAssertNullableResultSuccessful(tensorInfo, error);
   XCTAssertEqual(tensorInfo.elementType, ORTTensorElementDataTypeFloat);
 
-  NSMutableData* tensorData = [outputBuffer tensorDataWithError:&error];
+  NSMutableData* tensorData = [outputValue tensorDataWithError:&error];
   ORTAssertNullableResultSuccessful(tensorData, error);
-  ORTAssertEqualFloatArrays(testUtils::getFloatArrayFromData(tensorData),
-                            testUtils::getFloatArrayFromData(expectedOutput));
+  ORTAssertEqualFloatArrays(test_utils::getFloatArrayFromData(tensorData),
+                            test_utils::getFloatArrayFromData(expectedOutput));
 }
 - (void)testTrainStepOutput {
   NSError* error = nil;
@@ -201,17 +201,17 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)testOptimizerStep {
   // load input and expected output
   NSError* error = nil;
-  NSMutableData* expectedOutput1 = [ORTTrainingSessionTest loadTensorFromFile:[ORTTrainingSessionTest
-                                                                                  getFilePathFromName:@"loss_1.out"]
-                                                                   skipHeader:YES];
+  NSMutableData* expectedOutput1 = [ORTTrainingSessionTest loadTensorDataFromFile:[ORTTrainingSessionTest
+                                                                                      getFilePathFromName:@"loss_1.out"]
+                                                                       skipHeader:YES];
 
-  NSMutableData* expectedOutput2 = [ORTTrainingSessionTest loadTensorFromFile:[ORTTrainingSessionTest
-                                                                                  getFilePathFromName:@"loss_2.out"]
-                                                                   skipHeader:YES];
+  NSMutableData* expectedOutput2 = [ORTTrainingSessionTest loadTensorDataFromFile:[ORTTrainingSessionTest
+                                                                                      getFilePathFromName:@"loss_2.out"]
+                                                                       skipHeader:YES];
 
-  NSMutableData* input = [ORTTrainingSessionTest loadTensorFromFile:[ORTTrainingSessionTest
-                                                                        getFilePathFromName:@"input-0.in"]
-                                                         skipHeader:YES];
+  NSMutableData* input = [ORTTrainingSessionTest loadTensorDataFromFile:[ORTTrainingSessionTest
+                                                                            getFilePathFromName:@"input-0.in"]
+                                                             skipHeader:YES];
 
   int32_t labels[] = {1, 1};
 
@@ -240,14 +240,14 @@ NS_ASSUME_NONNULL_BEGIN
   ORTAssertNullableResultSuccessful(checkpoint, error);
   ORTTrainingSession* session = [self makeTrainingSessionWithCheckPoint:checkpoint];
 
-  // run train step, optimzer steps and check loss
+  // run train step, optimizer steps and check loss
   NSArray<ORTValue*>* outputs = [session trainStepWithInputValues:inputValues error:&error];
   ORTAssertNullableResultSuccessful(outputs, error);
 
   NSMutableData* loss = [outputs[0] tensorDataWithError:&error];
   ORTAssertNullableResultSuccessful(loss, error);
-  ORTAssertEqualFloatArrays(testUtils::getFloatArrayFromData(loss),
-                            testUtils::getFloatArrayFromData(expectedOutput1));
+  ORTAssertEqualFloatArrays(test_utils::getFloatArrayFromData(loss),
+                            test_utils::getFloatArrayFromData(expectedOutput1));
 
   BOOL result = [session lazyResetGradWithError:&error];
   ORTAssertBoolResultSuccessful(result, error);
@@ -257,8 +257,8 @@ NS_ASSUME_NONNULL_BEGIN
 
   loss = [outputs[0] tensorDataWithError:&error];
   ORTAssertNullableResultSuccessful(loss, error);
-  ORTAssertEqualFloatArrays(testUtils::getFloatArrayFromData(loss),
-                            testUtils::getFloatArrayFromData(expectedOutput1));
+  ORTAssertEqualFloatArrays(test_utils::getFloatArrayFromData(loss),
+                            test_utils::getFloatArrayFromData(expectedOutput1));
 
   result = [session optimizerStepWithError:&error];
   ORTAssertBoolResultSuccessful(result, error);
@@ -267,8 +267,8 @@ NS_ASSUME_NONNULL_BEGIN
   ORTAssertNullableResultSuccessful(outputs, error);
   loss = [outputs[0] tensorDataWithError:&error];
   ORTAssertNullableResultSuccessful(loss, error);
-  ORTAssertEqualFloatArrays(testUtils::getFloatArrayFromData(loss),
-                            testUtils::getFloatArrayFromData(expectedOutput2));
+  ORTAssertEqualFloatArrays(test_utils::getFloatArrayFromData(loss),
+                            test_utils::getFloatArrayFromData(expectedOutput2));
 }
 
 - (void)testSetLearningRate {

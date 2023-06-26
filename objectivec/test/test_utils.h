@@ -10,12 +10,12 @@
 
 NS_ASSUME_NONNULL_BEGIN
 
-namespace testUtils {
+namespace test_utils {
 
 NSString* _Nullable createTemporaryDirectory(XCTestCase* testCase);
 
 NSArray<NSNumber*>* getFloatArrayFromData(NSData* data);
 
-}  // namespace testUtils
+}  // namespace test_utils
 
 NS_ASSUME_NONNULL_END

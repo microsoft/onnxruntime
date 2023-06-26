@@ -5,7 +5,7 @@
 
 NS_ASSUME_NONNULL_BEGIN
 
-namespace testUtils {
+namespace test_utils {
 
 NSString* createTemporaryDirectory(XCTestCase* testCase) {
   NSString* temporaryDirectory = NSTemporaryDirectory();
@@ -16,10 +16,8 @@ NSString* createTemporaryDirectory(XCTestCase* testCase) {
                             withIntermediateDirectories:YES
                                              attributes:nil
                                                   error:&error];
-  if (error) {
-    NSLog(@"Error creating temporary directory: %@", error.localizedDescription);
-    return nil;
-  }
+
+  XCTAssertNotNil(error, @"Error creating temporary directory: %@", error.localizedDescription);
 
   // add teardown block to delete the temporary directory
   [testCase addTeardownBlock:^{
@@ -43,6 +41,6 @@ NSArray<NSNumber*>* getFloatArrayFromData(NSData* data) {
   return array;
 }
 
-}  // namespace testUtils
+}  // namespace test_utils
 
 NS_ASSUME_NONNULL_END

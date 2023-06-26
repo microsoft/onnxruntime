@@ -21,7 +21,7 @@ NSString* _Nullable toNSString(const std::string& str) {
 
 NSString* _Nullable toNullableNSString(const std::optional<std::string>& str) {
   if (str.has_value()) {
-    return [NSString stringWithUTF8String:str.value().c_str()];
+    return [NSString stringWithUTF8String:str->c_str()];
   }
   return nil;
 }
@@ -39,6 +39,7 @@ std::optional<std::string> toStdOptionalString(NSString* _Nullable str) {
 
 std::vector<std::string> toStdStringVector(NSArray<NSString*>* strs) {
   std::vector<std::string> result;
+  result.reserve(strs.count);
   for (NSString* str in strs) {
     result.push_back([str UTF8String]);
   }
@@ -48,7 +49,12 @@ std::vector<std::string> toStdStringVector(NSArray<NSString*>* strs) {
 NSArray<NSString*>* toNSStringNSArray(const std::vector<std::string>& strs) {
   NSMutableArray<NSString*>* result = [NSMutableArray arrayWithCapacity:strs.size()];
   for (const std::string& str : strs) {
-    [result addObject:[[NSString alloc] initWithUTF8String:str.c_str()]];
+    NSString* nsStr = [NSString stringWithUTF8String:str.c_str()];
+    if (nsStr) {
+      [result addObject:nsStr];
+    } else {
+      ORT_CXX_API_THROW("Failed to convert std::string to NSString", ORT_INVALID_ARGUMENT);
+    }
   }
   return result;
 }
@@ -58,7 +64,7 @@ NSArray<ORTValue*>* _Nullable wrapUnownedCAPIOrtValues(const std::vector<OrtValu
   for (size_t i = 0; i < values.size(); ++i) {
     ORTValue* val = [[ORTValue alloc] initWithCAPIOrtValue:values[i] externalTensorData:nil error:error];
     if (!val) {
-      // clean up all the output values which haven't been wrapped by ORTValue
+      // clean up all the C APU  Ortvalues which haven't been wrapped by ORTValue
       for (size_t j = i; j < values.size(); ++j) {
         Ort::GetApi().ReleaseValue(values[j]);
       }
@@ -71,7 +77,7 @@ NSArray<ORTValue*>* _Nullable wrapUnownedCAPIOrtValues(const std::vector<OrtValu
 
 std::vector<const OrtValue*> getWrappedCAPIOrtValues(NSArray<ORTValue*>* values) {
   std::vector<const OrtValue*> result;
-  for (ORTValue* val : values) {
+  for (ORTValue* val in values) {
     result.push_back(static_cast<const OrtValue*>([val CXXAPIOrtValue]));
   }
   return result;
