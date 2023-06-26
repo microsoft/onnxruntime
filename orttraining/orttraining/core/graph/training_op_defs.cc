@@ -4576,13 +4576,13 @@ Return true if all elements are true and false otherwise.
       .SetDomain(kMSDomain)
       .SinceVersion(1)
       .SetDoc(
-          "PadAndUnflatten operator pads zero on specific axis, and unflatten the dimension on axis to given unflatten_dims."
-          "This is used by padding elimination graph transformers.")
+          "PadAndUnflatten operator pads zero on the first axis, and unflatten the axis into two axes according "
+          "to given unflatten_dims. This is used by padding elimination graph transformers.")
       .Input(0, "input", "input data of rank N, shape is [d1, d2, ..., dN]", "T")
-      .Input(1, "indices", "1D Tensor of int32/int64 indices, indexing on axis.", "T_INDEX")
+      .Input(1, "indices", "1D Tensor of int32/int64 indices, value range in [0, M1*M2).", "T_INDEX")
       .Input(2, "unflatten_dims", "1D tensor with two values, [M1, M2].", "T_INT")
       .Output(0, "output", "output data of rank N+1, [M1, M2, d2, ..., dN]", "T")
-      .Output(1, "unflatten_output_shape", "1D tensor with output shape, [M1*M2, d2, ..., dN]", "T_INT")
+      .Output(1, "flatten_output_shape", "1D tensor with output shape, [M1*M2, d2, ..., dN]", "T_INT")
       .TypeConstraint(
           "T_INT",
           {"tensor(int32)", "tensor(int64)"},
