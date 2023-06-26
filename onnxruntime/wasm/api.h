@@ -31,12 +31,6 @@ using ort_run_options_handle_t = OrtRunOptions*;
 struct OrtValue;
 using ort_tensor_handle_t = OrtValue*;
 
-struct OrtCheckpointState;
-using orttraining_checkpoint_handle_t = OrtCheckpointState*;
-
-struct OrtTrainingSession;
-using orttraining_session_handle_t = OrtTrainingSession*;
-
 OrtErrorCode CheckStatus(OrtStatusPtr status);
 
 extern "C" {

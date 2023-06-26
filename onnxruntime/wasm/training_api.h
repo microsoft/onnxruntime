@@ -13,11 +13,8 @@
 
 #include <stddef.h>
 
-struct OrtCheckpointState;
-using orttraining_checkpoint_handle_t = OrtCheckpointState*;
-
-struct OrtTrainingSession;
-using orttraining_session_handle_t = OrtTrainingSession*;
+struct OrtTrainingManager;
+using orttraining_handle_t = OrtTrainingManager*;
 
 extern "C" {
 /**
@@ -26,12 +23,12 @@ extern "C" {
  * @param checkpoint_size size of the checkpoint buffer in bytes
  * @returns a handle of the ORT checkpoint state.
  */
-orttraining_checkpoint_handle_t EMSCRIPTEN_KEEPALIVE OrtTrainingLoadCheckpoint(void* checkpoint, size_t checkpoint_size);
+orttraining_handle_t EMSCRIPTEN_KEEPALIVE OrtTrainingLoadCheckpoint(void* checkpoint, size_t checkpoint_size);
 
 /**
  * Release the given CheckpointState
 */
-void EMSCRIPTEN_KEEPALIVE OrtTrainingReleaseCheckpoint(orttraining_checkpoint_handle_t checkpoint);
+void EMSCRIPTEN_KEEPALIVE OrtTrainingReleaseCheckpoint(orttraining_handle_t trainingHandle);
 
 /**
  * Saves the specified checkpoint state to the specified filepath.
@@ -58,8 +55,8 @@ void EMSCRIPTEN_KEEPALIVE OrtTrainingReleaseCheckpoint(orttraining_checkpoint_ha
  *
 */
 
-orttraining_session_handle_t EMSCRIPTEN_KEEPALIVE OrtTrainingCreateTrainingSession(const ort_session_options_handle_t options,
-                                                                                   orttraining_checkpoint_handle_t checkpoint_state,
+orttraining_handle_t EMSCRIPTEN_KEEPALIVE OrtTrainingCreateTrainingSession(const ort_session_options_handle_t options,
+                                                                                   orttraining_handle_t trainingHandle,
                                                                                    void* train_model,
                                                                                    size_t train_size,
                                                                                    void* eval_model,
@@ -71,7 +68,7 @@ orttraining_session_handle_t EMSCRIPTEN_KEEPALIVE OrtTrainingCreateTrainingSessi
  * Resets the gradients of all trainable parameters to zero for the given training session.
  * @param session handle of the training session
 */
-void EMSCRIPTEN_KEEPALIVE OrtTrainingLazyResetGrad(orttraining_session_handle_t session);
+void EMSCRIPTEN_KEEPALIVE OrtTrainingLazyResetGrad(orttraining_handle_t trainingHandle);
 
 /**
  * Computes the outputs of the training model and the gradients of the trainable parameters for the given inputs with
@@ -84,7 +81,7 @@ void EMSCRIPTEN_KEEPALIVE OrtTrainingLazyResetGrad(orttraining_session_handle_t 
  * @param outputs user outputs computed by train step
  * @return handler to the outputs
 */
-ort_tensor_handle_t EMSCRIPTEN_KEEPALIVE OrtTrainingTrainStepWithOptions(orttraining_session_handle_t session,
+ort_tensor_handle_t EMSCRIPTEN_KEEPALIVE OrtTrainingTrainStepWithOptions(orttraining_handle_t trainingHandle,
                                                                const ort_run_options_handle_t options,
                                                                const size_t inputs_len,
                                                                const ort_tensor_handle_t* inputs,
@@ -101,7 +98,7 @@ ort_tensor_handle_t EMSCRIPTEN_KEEPALIVE OrtTrainingTrainStepWithOptions(orttrai
  * @param outputs user outputs computed by train step
  * @return handler to the outputs
 */
-ort_tensor_handle_t EMSCRIPTEN_KEEPALIVE OrtTrainingTrainStep(orttraining_session_handle_t session,
+ort_tensor_handle_t EMSCRIPTEN_KEEPALIVE OrtTrainingTrainStep(orttraining_handle_t session,
                                                                const size_t inputs_len,
                                                                const ort_tensor_handle_t* inputs,
                                                                const size_t outputs_len,
@@ -113,7 +110,7 @@ ort_tensor_handle_t EMSCRIPTEN_KEEPALIVE OrtTrainingTrainStep(orttraining_sessio
  * @param session handle of the training session
  * @param run_options optional parameter of run options for this training step
 */
-void EMSCRIPTEN_KEEPALIVE OrtTrainingOptimizerStep(orttraining_session_handle_t session,
+void EMSCRIPTEN_KEEPALIVE OrtTrainingOptimizerStep(orttraining_handle_t trainingHandle,
                                                    const ort_run_options_handle_t run_options = nullptr);
 
 // void EMSCRIPTEN_KEEPALIVE OrtTrainingExportModelForInferencing(orttraining_session_handle_t session,
@@ -124,5 +121,5 @@ void EMSCRIPTEN_KEEPALIVE OrtTrainingOptimizerStep(orttraining_session_handle_t 
 /**
  * Release the given TrainingSession
 */
-void EMSCRIPTEN_KEEPALIVE OrtTrainingReleaseSession(orttraining_session_handle_t session);
+void EMSCRIPTEN_KEEPALIVE OrtTrainingReleaseSession(orttraining_handle_t trainingHandle);
 };
