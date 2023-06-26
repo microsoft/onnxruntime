@@ -105,7 +105,7 @@ export const parseConvTransposeAttributes = (attributes: Record<string, unknown>
   const format = attributes.format as 'NHWC' | 'NCHW';
   const autoPad =
       ['NOTSET', 'VALID', 'SAME_UPPER',
-       'SAME_LOWER'][typeof attributes.auto_pad == 'undefined' ? 0 : attributes.auto_pad as number];
+       'SAME_LOWER'][typeof attributes.autoPad == 'undefined' ? 0 : attributes.autoPad as number];
   const dilations = attributes.dilations as [number, number];
   const group = attributes.group as number;
   const kernelShape = attributes.kernelShape as [number, number];
