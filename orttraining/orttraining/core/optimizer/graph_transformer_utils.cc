@@ -61,6 +61,7 @@
 #include "orttraining/core/optimizer/qdq_fusion.h"
 #include "orttraining/core/optimizer/shape_optimizer.h"
 #include "orttraining/core/optimizer/transformer_layer_recompute.h"
+#include "core/optimizer/pre_shape_node_elimination.h"
 #include "core/optimizer/compute_optimizer/upstream_gather.h"
 #include "core/optimizer/compute_optimizer/upstream_reshape.h"
 #include "orttraining/core/optimizer/compute_optimizer/padding_elimination.h"
@@ -93,6 +94,7 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
       ORT_THROW_IF_ERROR(rule_transformer->Register(std::make_unique<UnsqueezeElimination>()));
       ORT_THROW_IF_ERROR(rule_transformer->Register(std::make_unique<ExpandElimination>()));
       ORT_THROW_IF_ERROR(rule_transformer->Register(std::make_unique<CastElimination>()));
+      ORT_THROW_IF_ERROR(rule_transformer->Register(std::make_unique<PreShapeNodeElimination>()));
       ORT_THROW_IF_ERROR(rule_transformer->Register(std::make_unique<NoopElimination>()));
       ORT_THROW_IF_ERROR(rule_transformer->Register(std::make_unique<DivMulFusion>()));
       ORT_THROW_IF_ERROR(rule_transformer->Register(std::make_unique<EliminateDropout>()));
