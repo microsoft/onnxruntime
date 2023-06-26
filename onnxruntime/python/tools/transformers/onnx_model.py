@@ -9,7 +9,6 @@ import sys
 from collections import deque
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
-import pdb
 from float16 import convert_float_to_float16
 from onnx import (
     AttributeProto,
@@ -1112,7 +1111,7 @@ class OnnxModel:
 
         return (numpy_helper.to_array(tensor1) == numpy_helper.to_array(tensor2)).all()
 
-    def remove_duplicated_initializer(self, greedy):
+    def remove_duplicated_initializer(self, greedy = False):
         """Remove initializers with duplicated values, and only keep the first one.
         It could help reduce size of models (like ALBert) with shared weights.
         Note: this function does not process subgraph.
