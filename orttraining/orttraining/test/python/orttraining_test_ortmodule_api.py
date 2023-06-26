@@ -5220,10 +5220,8 @@ def test_sigmoid_grad_opset13():
     N, D_in, H, D_out = 120, 15360, 500, 15360  # noqa: N806
     pt_model = NeuralNetSigmoid(D_in, H, D_out).to(device)
 
-    old_opst_cst = ortmodule_module.ONNX_OPSET_VERSION
     old_opset = os.getenv("ORTMODULE_ONNX_OPSET_VERSION", None)
     os.environ["ORTMODULE_ONNX_OPSET_VERSION"] = "13"
-    assert ortmodule_module.ONNX_OPSET_VERSION == 15
 
     ort_model = ORTModule(copy.deepcopy(pt_model))
 
@@ -5249,8 +5247,8 @@ def test_sigmoid_grad_opset13():
         del os.environ["ORTMODULE_ONNX_OPSET_VERSION"]
     else:
         os.environ["ORTMODULE_ONNX_OPSET_VERSION"] = old_opset
-    assert ortmodule_module.ONNX_OPSET_VERSION == 13
-    ortmodule_module.ONNX_OPSET_VERSION = old_opst_cst
+
+    assert ort_model._torch_module._execution_manager(True)._runtime_options.onnx_opset_version == 13
 
 
 @pytest.mark.parametrize("opset_version", [12, 13, 14, 15])
@@ -5261,9 +5259,8 @@ def test_opset_version_change(opset_version):
     x = torch.randn(N, D_in, device=device)
     model = NeuralNetSinglePositionalArgument(D_in, H, D_out).to(device)
 
-    ort_model = ORTModule(model)
-
     ortmodule_module.ONNX_OPSET_VERSION = opset_version
+    ort_model = ORTModule(model)
 
     # Make sure model runs without any exception
     prediction = ort_model(x)

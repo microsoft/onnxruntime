@@ -125,6 +125,18 @@ class GraphExecutionManager(GraphExecutionInterface):
         # Load ATen operator executor extension.
         load_aten_op_executor_cpp_extension()
 
+        # Assign self._torch_alloc and self._torch_free if self._use_external_gpu_allocator is True
+        self._get_torch_gpu_allocator_function_addresses()
+
+    def _get_torch_gpu_allocator_function_addresses(self):
+        if self._runtime_options.use_external_gpu_allocator and torch.cuda.is_available():
+            # CPP extension to get torch GPU allocator's alloc and free function addresses
+            from onnxruntime.training.ortmodule.torch_cpp_extensions import torch_gpu_allocator
+
+            self._torch_alloc = torch_gpu_allocator.gpu_caching_allocator_raw_alloc_address()
+            self._torch_free = torch_gpu_allocator.gpu_caching_allocator_raw_delete_address()
+            self._torch_empty_cache = torch_gpu_allocator.gpu_caching_allocator_empty_cache_address()
+
     def _validate_module_type(self, module):
         """Raises ORTModuleTorchModelException if the module is not a torch.nn.Module"""
 
@@ -180,14 +192,6 @@ class GraphExecutionManager(GraphExecutionInterface):
                 provider_option_map["cudnn_conv_use_max_workspace"] = "1"
                 provider_option_map["cudnn_conv1d_pad_to_nc1d"] = "1"
             if self._runtime_options.use_external_gpu_allocator:
-                # assign self._torch_alloc and self._torch_free if self._runtime_options.use_external_gpu_allocator is True
-                # CPP extension to get torch GPU allocator's alloc and free function addresses
-                from onnxruntime.training.ortmodule.torch_cpp_extensions import torch_gpu_allocator
-
-                self._torch_alloc = torch_gpu_allocator.gpu_caching_allocator_raw_alloc_address()
-                self._torch_free = torch_gpu_allocator.gpu_caching_allocator_raw_delete_address()
-                self._torch_empty_cache = torch_gpu_allocator.gpu_caching_allocator_empty_cache_address()
-
                 provider_option_map["gpu_external_alloc"] = str(self._torch_alloc)
                 provider_option_map["gpu_external_free"] = str(self._torch_free)
                 provider_option_map["gpu_external_empty_cache"] = str(self._torch_empty_cache)
