@@ -408,8 +408,7 @@ Return Value:
                     }
                 }
 
-#ifndef __APPLE__
-
+#ifdef MLAS_AMX_SUPPORTED
                 //
                 // Check if the processor supports AMX-TILE and AMX-INT8
                 // features.
@@ -420,8 +419,7 @@ Return Value:
                         this->GemmU8S8Dispatch = &MlasGemmU8S8DispatchAmx;
                     }
                 }
-
-#endif // __APPLE__
+#endif // MLAS_AMX_SUPPORTED
 
 #endif // ORT_MINIMAL_BUILD
 

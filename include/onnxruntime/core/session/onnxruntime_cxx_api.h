@@ -433,6 +433,8 @@ struct Env : detail::Base<OrtEnv> {
   Env& UpdateEnvWithCustomLogLevel(OrtLoggingLevel log_severity_level);  ///< Wraps OrtApi::UpdateEnvWithCustomLogLevel
 
   Env& CreateAndRegisterAllocator(const OrtMemoryInfo* mem_info, const OrtArenaCfg* arena_cfg);  ///< Wraps OrtApi::CreateAndRegisterAllocator
+
+  Env& CreateAndRegisterAllocatorV2(const std::string& provider_type, const OrtMemoryInfo* mem_info, const std::unordered_map<std::string, std::string>& options, const OrtArenaCfg* arena_cfg);  ///< Wraps OrtApi::CreateAndRegisterAllocatorV2
 };
 
 /** \brief Custom Op Domain
@@ -1561,7 +1563,6 @@ struct ArenaCfg : detail::Base<OrtArenaCfg> {
    * \param arena_extend_strategy -  use -1 to allow ORT to choose the default, 0 = kNextPowerOfTwo, 1 = kSameAsRequested
    * \param initial_chunk_size_bytes - use -1 to allow ORT to choose the default
    * \param max_dead_bytes_per_chunk - use -1 to allow ORT to choose the default
-   * \param max_power_of_two_extend_bytes - use -1 to allow ORT to choose the default
    * See docs/C_API.md for details on what the following parameters mean and how to choose these values
    */
   ArenaCfg(size_t max_mem, int arena_extend_strategy, int initial_chunk_size_bytes, int max_dead_bytes_per_chunk);

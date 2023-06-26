@@ -73,14 +73,6 @@ class ExecutionProviders {
   const_iterator begin() const noexcept { return exec_providers_.cbegin(); }
   const_iterator end() const noexcept { return exec_providers_.cend(); }
 
-  const AllocatorPtr GetDefaultCpuAllocator() const {
-    return Get(onnxruntime::kCpuExecutionProvider)->GetAllocator(OrtMemTypeDefault);
-  }
-
-  OrtMemoryInfo GetDefaultCpuMemoryInfo() const {
-    return GetDefaultCpuAllocator()->Info();
-  }
-
   const std::vector<std::string>& GetIds() const { return exec_provider_ids_; }
   const ProviderOptionsMap& GetAllProviderOptions() const { return exec_provider_options_; }
 

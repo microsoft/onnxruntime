@@ -8,6 +8,7 @@
 #include "core/session/onnxruntime_c_api.h"
 #include "ortdevice.h"
 #include "ortmemoryinfo.h"
+#include <map>
 
 // This configures the arena based allocator used by ORT
 // See docs/C_API.md for details on what these mean and how to choose these values
@@ -172,6 +173,24 @@ class IAllocator {
         [allocator = std::move(allocator)](T* p) { allocator->Free(p); }};
   }
 
+  template <typename T>
+  static IAllocatorUniquePtr<T> MakeUniquePtrFromOrtAllocator(OrtAllocator* ort_allocator, size_t count_or_bytes) {
+    if (!ort_allocator) return nullptr;
+
+    size_t alloc_size = count_or_bytes;
+    // if T is not void, 'count_or_bytes' == number of items so allow for that
+    if constexpr (!std::is_void<T>::value) {
+      // sizeof(void) isn't valid, but the compiler isn't smart enough to ignore that this line isn't
+      // reachable if T is void. use std::conditional to 'use' void* in the sizeof call
+      if (!CalcMemSizeForArray(
+              count_or_bytes, sizeof(typename std::conditional<std::is_void<T>::value, void*, T>::type), &alloc_size)) {
+        return nullptr;
+      }
+    }
+    T* p = static_cast<T*>(ort_allocator->Alloc(ort_allocator, count_or_bytes));
+    return IAllocatorUniquePtr<T>{p, [ort_allocator](T* p) { ort_allocator->Free(ort_allocator, p); }};
+  }
+
  private:
   OrtMemoryInfo memory_info_;
 };
@@ -192,6 +211,7 @@ class CPUAllocator : public IAllocator {
 };
 
 using AllocatorPtr = std::shared_ptr<IAllocator>;
+using AllocatorMap = std::map<OrtDevice, AllocatorPtr>;
 
 void* AllocatorDefaultAlloc(size_t size);
 void AllocatorDefaultFree(void* p);

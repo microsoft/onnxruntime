@@ -627,9 +627,6 @@ class InferenceSession {
   template <typename T>
   void StartProfiling(const std::basic_string<T>& file_prefix);
 
-  // Updates all providers with the allocators from the env based on OrtMemoryInfo
-  void UpdateProvidersWithSharedAllocators();
-
   /*
    * Validate and parses the shrink arena request string from the user
    * List format: "device_0:device_id_0;device_1:device_id_1"

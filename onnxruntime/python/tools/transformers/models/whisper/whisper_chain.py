@@ -17,6 +17,15 @@ import time
 logger = logging.getLogger(__name__)
 
 
+def verify_inputs(beam_inputs, graph_inputs):
+    # Verify that ONNX graph's inputs match beam search op's inputs
+    beam_required_inputs = list(filter(lambda beam_input: beam_input, beam_inputs))
+    assert len(graph_inputs) == len(beam_required_inputs)
+    for graph_input, beam_input in zip(graph_inputs, beam_required_inputs):
+        # Check if graph_input is in beam_input to handle beam_input names with the "_fp16" suffix
+        assert graph_input.name in beam_input
+
+
 def chain_model(args):
     # Load encoder/decoder and insert necessary (but unused) graph inputs expected by BeamSearch op
     encoder_model = onnx.load_model(args.encoder_path, load_external_data=True)
@@ -34,7 +43,7 @@ def chain_model(args):
         "num_beams",
         "num_return_sequences",
         "length_penalty_fp16" if args.precision == Precision.FLOAT16 else "length_penalty",
-        "repetition_penalty_fp16" if args.precision == Precision.FLOAT16 else "input_features",
+        "repetition_penalty_fp16" if args.precision == Precision.FLOAT16 else "repetition_penalty",
         "vocab_mask" if args.use_prefix_vocab_mask else "",
         "prefix_vocab_mask" if args.use_prefix_vocab_mask else "",
         "",  # attention mask
@@ -99,16 +108,6 @@ def chain_model(args):
         length_penalty,
         repetition_penalty,
     ]
-    if args.use_forced_decoder_ids:
-        decoder_input_ids = helper.make_tensor_value_info(
-            "decoder_input_ids", TensorProto.INT32, ["batch_size", "initial_sequence_length"]
-        )
-        graph_inputs.append(decoder_input_ids)
-
-    if args.use_logits_processor:
-        logits_processor = helper.make_tensor_value_info("logits_processor", TensorProto.INT32, [1])
-        graph_inputs.append(logits_processor)
-
     if args.use_vocab_mask:
         vocab_mask = helper.make_tensor_value_info("vocab_mask", TensorProto.INT32, [config.vocab_size])
         graph_inputs.append(vocab_mask)
@@ -118,6 +117,16 @@ def chain_model(args):
             "prefix_vocab_mask", TensorProto.INT32, ["batch_size", config.vocab_size]
         )
         graph_inputs.append(prefix_vocab_mask)
+
+    if args.use_forced_decoder_ids:
+        decoder_input_ids = helper.make_tensor_value_info(
+            "decoder_input_ids", TensorProto.INT32, ["batch_size", "initial_sequence_length"]
+        )
+        graph_inputs.append(decoder_input_ids)
+
+    if args.use_logits_processor:
+        logits_processor = helper.make_tensor_value_info("logits_processor", TensorProto.INT32, [1])
+        graph_inputs.append(logits_processor)
 
     # graph outputs
     sequences = helper.make_tensor_value_info(
@@ -177,6 +186,10 @@ def chain_model(args):
         else [node]
     )
     beam_graph = helper.make_graph(graph_nodes, "beam-search-test", graph_inputs, graph_outputs, initializers)
+
+    # Verify graph's inputs match beam search's inputs
+    verify_inputs(beam_inputs, graph_inputs)
+
     assert decoder_model.ir_version == encoder_model.ir_version
     logger.info(f"Using IR version {decoder_model.ir_version} for chained model")
 
