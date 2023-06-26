@@ -26,6 +26,7 @@ from ._fallback import (
     ORTModuleONNXModelException,
     ORTModuleTorchModelException,
     _FallbackManager,
+    _FallbackPolicy,
     wrap_exception,
 )
 from ._gradient_accumulation_manager import GradientAccumulationManager
@@ -34,7 +35,6 @@ from ._io import _FlattenedModule, _InputInfo, _ModelInputOutputSchemaType
 from ._runtime_inspector import RuntimeInspector
 from .options import DebugOptions, LogLevel, _RuntimeOptions
 from .torch_cpp_extensions.cpu.aten_op_executor import load_aten_op_executor_cpp_extension
-from ._fallback import _FallbackPolicy
 
 
 class _RunStateInfo:
@@ -522,11 +522,13 @@ class GraphExecutionManager(GraphExecutionInterface):
         if rank != 0:
             return
 
-
         feature_map: List[Tuple[str, bool, str]] = [
             ("ATen Executor", True, "Dispatch ATen operators to ORT's ATen executor"),
-            ("Cast Propagation", self._runtime_options.propagate_cast_ops_level > 0,
-             f"Level {self._runtime_options.propagate_cast_ops_level} enabled"),
+            (
+                "Cast Propagation",
+                self._runtime_options.propagate_cast_ops_level > 0,
+                f"Level {self._runtime_options.propagate_cast_ops_level} enabled",
+            ),
             (
                 "Custom Function",
                 self._runtime_options.enable_custom_autograd_function,
@@ -556,12 +558,14 @@ class GraphExecutionManager(GraphExecutionInterface):
             )
 
             if len(self._runtime_options.label_sparsity_ratio) > 0:
-                feature_map.append((" -LabelSparsityOpt", True,
-                                    f"Input density: {self._runtime_options.label_sparsity_ratio}"))
+                feature_map.append(
+                    (" -LabelSparsityOpt", True, f"Input density: {self._runtime_options.label_sparsity_ratio}")
+                )
 
             if len(self._runtime_options.embed_sparsity_ratio) > 0:
-                feature_map.append((" -EmbedSparsityOpt", True,
-                                    f"Input density: {self._runtime_options.embed_sparsity_ratio}"))
+                feature_map.append(
+                    (" -EmbedSparsityOpt", True, f"Input density: {self._runtime_options.embed_sparsity_ratio}")
+                )
 
         feature_map.append(
             (
@@ -570,8 +574,6 @@ class GraphExecutionManager(GraphExecutionInterface):
                 "Fallback to PyTorch when encountering unsupported ops",
             )
         )
-
-
 
         mode = "training" if self._export_mode == torch.onnx.TrainingMode.TRAINING else "inference"
         mode = f"{_logger.LogColor.UNDERLINE}{mode}{_logger.LogColor.ENDC}"

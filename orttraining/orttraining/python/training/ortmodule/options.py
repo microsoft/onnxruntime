@@ -6,7 +6,6 @@ import os
 from enum import IntFlag
 from functools import reduce
 from logging import Logger
-from typing import List, Tuple
 
 from onnxruntime.capi import _pybind_state as C
 from onnxruntime.capi._pybind_state import is_torch_interop_default_on
