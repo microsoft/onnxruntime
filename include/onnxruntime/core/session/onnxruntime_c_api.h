@@ -4397,12 +4397,11 @@ struct OrtCustomOp {
 
   // Fallible kernel creation
   OrtStatusPtr(ORT_API_CALL* CreateKernelFallible)(_In_ const struct OrtCustomOp* op, _In_ const OrtApi* api,
-						   _In_ const OrtKernelInfo* info,
-						   _Out_ void** kernel);
+                                                   _In_ const OrtKernelInfo* info,
+                                                   _Out_ void** kernel);
 
   // Fallible compute call
   OrtStatusPtr(ORT_API_CALL* KernelComputeFallible)(_In_ void* op_kernel, _In_ OrtKernelContext* context);
-
 };
 
 /*

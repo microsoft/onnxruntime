@@ -405,16 +405,14 @@ struct CustomOpKernel : OpKernel {
     if (op_.version > 15 && op_.KernelCompute == 0) {
       op_kernel_ = nullptr;
       Ort::ThrowOnError(
-			op_.CreateKernelFallible(
-						 &op_,
-						 OrtGetApiBase()->GetApi(op_.version),
-						 reinterpret_cast<const OrtKernelInfo*>(&info),
-						 &op_kernel_
-						 )
-			);
+          op_.CreateKernelFallible(
+              &op_,
+              OrtGetApiBase()->GetApi(op_.version),
+              reinterpret_cast<const OrtKernelInfo*>(&info),
+              &op_kernel_));
     } else {
       op_kernel_ = op_.CreateKernel(&op_, OrtGetApiBase()->GetApi(op_.version),
-				    reinterpret_cast<const OrtKernelInfo*>(&info));
+                                    reinterpret_cast<const OrtKernelInfo*>(&info));
     }
   }
 
