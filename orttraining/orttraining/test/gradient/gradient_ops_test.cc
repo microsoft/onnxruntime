@@ -3000,10 +3000,10 @@ TEST(GradientCheckerTest, TriluGrad) {
 }
 
 #if defined(USE_CUDA) || defined(USE_ROCM)
-TEST(GradientCheckerTest, PadByAxisGrad) {
+TEST(GradientCheckerTest, PadAndUnflattenGrad) {
   float max_error;
   GradientChecker<float, float, float> gradient_checker;
-  OpDef op_def{"PadByAxis", kMSDomain, 1};
+  OpDef op_def{"PadAndUnflatten", kMSDomain, 1};
   TensorInfo shape_info({2}, false, nullptr, DataTypeImpl::GetTensorType<int64_t>());
   TensorInfo indices_info({4}, false, nullptr, DataTypeImpl::GetTensorType<int64_t>());
   TensorInfo x_info({4, 3});

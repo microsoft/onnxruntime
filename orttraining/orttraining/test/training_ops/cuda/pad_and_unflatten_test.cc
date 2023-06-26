@@ -9,7 +9,7 @@ namespace test {
 
 #if defined(USE_CUDA) || defined(USE_ROCM)
 
-TEST(PadbyAxisTest, FloatType1D) {
+TEST(PadAndUnflattenTest, FloatType1D) {
   std::vector<float> input = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.f};
   std::vector<int64_t> indices = {1, 3, 5, 7, 9, 11};
   std::vector<int64_t> unflatten_dims = {5, 3};
@@ -19,7 +19,7 @@ TEST(PadbyAxisTest, FloatType1D) {
 
   std::vector<int64_t> full_flatten_dims = {15};
 
-  OpTester test("PadByAxis", 1, onnxruntime::kMSDomain);
+  OpTester test("PadAndUnflatten", 1, onnxruntime::kMSDomain);
   test.AddInput<float>("input", {6}, input);
   test.AddInput<int64_t>("indices", {6}, indices);
   test.AddInput<int64_t>("unflatten_dims", {2}, unflatten_dims);
@@ -28,7 +28,7 @@ TEST(PadbyAxisTest, FloatType1D) {
   test.Run();
 }
 
-TEST(PadbyAxisTest, FloatType2D) {
+TEST(PadAndUnflattenTest, FloatType2D) {
   std::vector<float> input = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.f, 7.f, 8.f, 9.f};
   std::vector<int64_t> indices = {1, 3, 4};
   std::vector<int64_t> unflatten_dims = {2, 3};
@@ -38,7 +38,7 @@ TEST(PadbyAxisTest, FloatType2D) {
 
   std::vector<int64_t> full_flatten_dims = {6, 3};
 
-  OpTester test("PadByAxis", 1, onnxruntime::kMSDomain);
+  OpTester test("PadAndUnflatten", 1, onnxruntime::kMSDomain);
   test.AddInput<float>("input", {3, 3}, input);
   test.AddInput<int64_t>("indices", {3}, indices);
   test.AddInput<int64_t>("unflatten_dims", {2}, unflatten_dims);
@@ -47,7 +47,7 @@ TEST(PadbyAxisTest, FloatType2D) {
   test.Run();
 }
 
-TEST(PadbyAxisTest, MLFloat16Type1D) {
+TEST(PadAndUnflattenTest, MLFloat16Type1D) {
   std::vector<float> input = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.f};
   std::vector<int64_t> indices = {1, 3, 5, 7, 9, 11};
   std::vector<int64_t> unflatten_dims = {5, 3};
@@ -64,7 +64,7 @@ TEST(PadbyAxisTest, MLFloat16Type1D) {
   output_half.resize(output.size());
   ConvertFloatToMLFloat16(output.data(), output_half.data(), int(output.size()));
 
-  OpTester test("PadByAxis", 1, onnxruntime::kMSDomain);
+  OpTester test("PadAndUnflatten", 1, onnxruntime::kMSDomain);
   test.AddInput<MLFloat16>("input", {6}, input_half);
   test.AddInput<int64_t>("indices", {6}, indices);
   test.AddInput<int64_t>("unflatten_dims", {2}, unflatten_dims);
@@ -73,7 +73,7 @@ TEST(PadbyAxisTest, MLFloat16Type1D) {
   test.Run();
 }
 
-TEST(PadbyAxisTest, MLFloat16Type2D) {
+TEST(PadAndUnflattenTest, MLFloat16Type2D) {
   std::vector<float> input = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.f, 7.f, 8.f, 9.f};
   std::vector<int64_t> indices = {1, 3, 4};
   std::vector<int64_t> unflatten_dims = {2, 3};
@@ -90,7 +90,7 @@ TEST(PadbyAxisTest, MLFloat16Type2D) {
   output_half.resize(output.size());
   ConvertFloatToMLFloat16(output.data(), output_half.data(), int(output.size()));
 
-  OpTester test("PadByAxis", 1, onnxruntime::kMSDomain);
+  OpTester test("PadAndUnflatten", 1, onnxruntime::kMSDomain);
   test.AddInput<MLFloat16>("input", {3, 3}, input_half);
   test.AddInput<int64_t>("indices", {3}, indices);
   test.AddInput<int64_t>("unflatten_dims", {2}, unflatten_dims);

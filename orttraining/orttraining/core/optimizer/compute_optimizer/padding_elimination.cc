@@ -148,7 +148,7 @@ NodeArg* InsertNodesForInput(Graph& graph,
   return gather_out_arg;
 }
 
-// Insert PadByAxis to unflatten the shape of the in_index-th input of node.
+// Insert PadAndUnflatten to unflatten the shape of the in_index-th input of node.
 // The gathergrad_index_arg is the indices of the elements that are not padding.
 // The new_shape_arg is the shape of [batch_size * seqlen, ...]
 // gathergrad_index_arg and new_shape_arg are the arguments needed by GatherGrad.
@@ -178,8 +178,8 @@ NodeArg* InsertNodesForOutput(Graph& graph,
       0 /* new_node_input_index*/,
       0 /* new_node_output_index*/,
       graph.GenerateNodeName("PaddingRecover"),
-      "PadByAxis",
-      "PadByAxis node to recover invalid tokens.",
+      "PadAndUnflatten",
+      "PadAndUnflatten node to recover invalid tokens.",
       gathergrad_input_args,
       gathergrad_output_args,
       {},

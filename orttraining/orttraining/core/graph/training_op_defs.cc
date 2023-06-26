@@ -4572,11 +4572,11 @@ Return true if all elements are true and false otherwise.
         }
       });
 
-  ONNX_CONTRIB_OPERATOR_SCHEMA(PadByAxis)
+  ONNX_CONTRIB_OPERATOR_SCHEMA(PadAndUnflatten)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
       .SetDoc(
-          "PadByAxis operator pads zero on specific axis, and unflatten the dimension on axis to given unflatten_dims."
+          "PadAndUnflatten operator pads zero on specific axis, and unflatten the dimension on axis to given unflatten_dims."
           "This is used by padding elimination graph transformers.")
       .Input(0, "input", "input data of rank N, shape is [d1, d2, ..., dN]", "T")
       .Input(1, "indices", "1D Tensor of int32/int64 indices, indexing on axis.", "T_INDEX")

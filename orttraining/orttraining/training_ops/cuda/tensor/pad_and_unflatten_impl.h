@@ -13,9 +13,10 @@ namespace onnxruntime {
 namespace cuda {
 
 template <typename T>
-void PadByAxisImpl(cudaStream_t stream,
+void PadAndUnflattenImpl(cudaStream_t stream,
                    const int64_t total_element_count,
                    const fast_divmod output_element_stride_fdm,
+                   const int64_t index_value_upper_bound,
                    const T* input_data,
                    const int64_t* indices_data,
                    T* output_data);

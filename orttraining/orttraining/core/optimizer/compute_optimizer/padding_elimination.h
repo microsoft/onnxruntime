@@ -117,7 +117,7 @@ namespace onnxruntime {
  *                                                  |     /   ________________ (unflatten_dims), shape:[2],
  *                                                  |    /   /                 value:[batch_size, seq_length]
  *                                                  |   /   /
- *                                                 PadByAxis
+ *                                                 PadAndUnflatten
  *                                                  |
  *                                                  | [batch_size, seq_length, ...]
  *                                          candidate_output_node

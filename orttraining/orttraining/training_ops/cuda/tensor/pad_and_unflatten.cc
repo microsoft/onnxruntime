@@ -1,15 +1,15 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "orttraining/training_ops/cuda/tensor/pad_by_axis.h"
-#include "orttraining/training_ops/cuda/tensor/pad_by_axis_impl.h"
+#include "orttraining/training_ops/cuda/tensor/pad_and_unflatten.h"
+#include "orttraining/training_ops/cuda/tensor/pad_and_unflatten_impl.h"
 #include "core/providers/cuda/shared_inc/cuda_utils.h"
 
 namespace onnxruntime {
 namespace cuda {
 
 ONNX_OPERATOR_KERNEL_EX(
-    PadByAxis,
+    PadAndUnflatten,
     kMSDomain,
     1,
     kCudaExecutionProvider,
@@ -19,16 +19,17 @@ ONNX_OPERATOR_KERNEL_EX(
         .TypeConstraint("T_INDEX", DataTypeImpl::GetTensorType<int64_t>())
         .InputMemoryType(OrtMemTypeCPUInput, 2)
         .OutputMemoryType(OrtMemTypeCPUOutput, 1),
-    PadByAxis);
+    PadAndUnflatten);
 
 // Put implementation in the anonymous namespace to avoid name collision in the global namespace.
 namespace {
 
 template <typename T>
-struct PadByAxisFunctor {
+struct PadAndUnflattenFunctor {
   void operator()(cudaStream_t stream,
                   const int64_t input_element_count,
                   const fast_divmod output_element_stride_fdm,
+                  const int64_t index_value_upper_bound,
                   const Tensor& input_tensor,
                   const Tensor& indices_tensor,
                   Tensor& output_tensor) const {
@@ -36,15 +37,15 @@ struct PadByAxisFunctor {
     const CudaT* input_data = reinterpret_cast<const CudaT*>(input_tensor.Data<T>());
 
     CUDA_CALL_THROW(cudaMemset(output_tensor.MutableDataRaw(), 0, output_tensor.Shape().Size() * sizeof(CudaT)));
-    PadByAxisImpl<CudaT>(stream, input_element_count, output_element_stride_fdm,
-                         input_data, indices_tensor.Data<int64_t>(),
-                         reinterpret_cast<CudaT*>(output_tensor.MutableData<T>()));
+    PadAndUnflattenImpl<CudaT>(stream, input_element_count, output_element_stride_fdm, index_value_upper_bound,
+                               input_data, indices_tensor.Data<int64_t>(),
+                               reinterpret_cast<CudaT*>(output_tensor.MutableData<T>()));
   }
 };
 
 }  // namespace
 
-Status PadByAxis::ComputeInternal(OpKernelContext* context) const {
+Status PadAndUnflatten::ComputeInternal(OpKernelContext* context) const {
   const Tensor* input_tensor = context->Input<Tensor>(0);
   const Tensor* indices_tensor = context->Input<Tensor>(1);
   const Tensor* unflatten_dims_tensor = context->Input<Tensor>(2);  // Parse the 1-D shape tensor.
@@ -63,7 +64,8 @@ Status PadByAxis::ComputeInternal(OpKernelContext* context) const {
   output_shape_vec.push_back(dims_ptr[1]);
 
   std::vector<int64_t> full_size_flatten_shape_vec;
-  full_size_flatten_shape_vec.push_back(dims_ptr[0] * dims_ptr[1]);
+  const int64_t flatten_dim_factor = dims_ptr[0] * dims_ptr[1];
+  full_size_flatten_shape_vec.push_back(flatten_dim_factor);
 
   int64_t element_stride = 1;
   for (size_t i = 1; i < input_shape.NumDimensions(); ++i) {
@@ -77,12 +79,13 @@ Status PadByAxis::ComputeInternal(OpKernelContext* context) const {
   Tensor* output_tensor = context->Output(0, output_shape);
 
   utils::MLTypeCallDispatcher<float, MLFloat16, double, BFloat16> t_disp(input_tensor->GetElementType());
-  t_disp.Invoke<PadByAxisFunctor>(Stream(context),
-                                  input_shape.Size(),
-                                  output_element_stride_fdm,
-                                  *input_tensor,
-                                  *indices_tensor,
-                                  *output_tensor);
+  t_disp.Invoke<PadAndUnflattenFunctor>(Stream(context),
+                                        input_shape.Size(),
+                                        output_element_stride_fdm,
+                                        flatten_dim_factor,
+                                        *input_tensor,
+                                        *indices_tensor,
+                                        *output_tensor);
 
   // Set input shape output tensor.
   size_t rank = full_size_flatten_shape_vec.size();

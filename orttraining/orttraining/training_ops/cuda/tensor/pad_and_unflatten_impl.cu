@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "orttraining/training_ops/cuda/tensor/pad_by_axis_impl.h"
+#include "orttraining/training_ops/cuda/tensor/pad_and_unflatten_impl.h"
 #include "core/providers/cuda/cu_inc/common.cuh"
 
 namespace onnxruntime {
@@ -13,6 +13,7 @@ constexpr int kNumUnroll = 4;
 template <typename T>
 __global__ void FillOutputWithIndexKernel(const CUDA_LONG N,
                                           const fast_divmod output_element_stride_fdm,
+                                          const int64_t index_value_upper_bound,
                                           const T* input_data,
                                           const int64_t* indices_data,
                                           T* output_data) {
@@ -36,34 +37,38 @@ __global__ void FillOutputWithIndexKernel(const CUDA_LONG N,
     if (li < N) {
       int row_index, col_index;
       output_element_stride_fdm.divmod(li, row_index, col_index);
+      assert(indices_data[row_index] < index_value_upper_bound);
       output_data[indices_data[row_index] * output_element_stride_fdm.d_ + col_index] = input[i];
     }
   }
 }
 
 template <typename T>
-void PadByAxisImpl(cudaStream_t stream,
-                   const int64_t total_element_count,
-                   const fast_divmod output_element_stride_fdm,
-                   const T* input_data,
-                   const int64_t* indices_data,
-                   T* output_data) {
+void PadAndUnflattenImpl(cudaStream_t stream,
+                         const int64_t total_element_count,
+                         const fast_divmod output_element_stride_fdm,
+                         const int64_t index_value_upper_bound,
+                         const T* input_data,
+                         const int64_t* indices_data,
+                         T* output_data) {
   const int blocksPerGrid = static_cast<int>(CeilDiv(total_element_count, kBlockSize * kNumUnroll));
   FillOutputWithIndexKernel<T><<<blocksPerGrid, kBlockSize, 0, stream>>>(
       static_cast<CUDA_LONG>(total_element_count),
       output_element_stride_fdm,
+      index_value_upper_bound,
       input_data,
       indices_data,
       output_data);
 }
 
-#define SPECIALIZED_RESTORE_FROM_MASK_IMPL(T)                                 \
-  template void PadByAxisImpl<T>(cudaStream_t stream,                         \
-                                 const int64_t total_element_count,           \
-                                 const fast_divmod output_element_stride_fdm, \
-                                 const T* input_data,                         \
-                                 const int64_t* indices_data,                 \
-                                 T* output_data);
+#define SPECIALIZED_RESTORE_FROM_MASK_IMPL(T)                                       \
+  template void PadAndUnflattenImpl<T>(cudaStream_t stream,                         \
+                                       const int64_t total_element_count,           \
+                                       const fast_divmod output_element_stride_fdm, \
+                                       const int64_t index_value_upper_bound,       \
+                                       const T* input_data,                         \
+                                       const int64_t* indices_data,                 \
+                                       T* output_data);
 
 SPECIALIZED_RESTORE_FROM_MASK_IMPL(float)
 SPECIALIZED_RESTORE_FROM_MASK_IMPL(double)

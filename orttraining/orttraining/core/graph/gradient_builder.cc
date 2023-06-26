@@ -752,7 +752,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetGatherGradient) {
               SrcNodeAttributes())};
 }
 
-IMPLEMENT_GRADIENT_BUILDER(GetPadByAxisGradient) {
+IMPLEMENT_GRADIENT_BUILDER(GetPadAndUnflattenGradient) {
   return std::vector<NodeDef>{
       NodeDef(OpDef("Reshape"),
               {GO(0), O(1)},

@@ -9,9 +9,9 @@
 namespace onnxruntime {
 namespace cuda {
 
-class PadByAxis final : public CudaKernel {
+class PadAndUnflatten final : public CudaKernel {
  public:
-  PadByAxis(const OpKernelInfo& info) : CudaKernel(info) {
+  PadAndUnflatten(const OpKernelInfo& info) : CudaKernel(info) {
   }
 
   Status ComputeInternal(OpKernelContext* context) const override;
