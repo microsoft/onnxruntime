@@ -4,6 +4,11 @@ parameters:
   type: string
   default: x64
 
+- name: vs2022
+  displayName: Visual Studio Version
+  type: string
+  default: true
+
 steps:
 - task: CredScan@2
   displayName: 'Run CredScan'
@@ -17,11 +22,6 @@ steps:
   inputs:
     arguments: 'analyze $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\*.dll  --recurse --verbose'
   continueOnError: true
-
-- name: vs2022
-  displayName: Visual Studio Version
-  type: string
-  default: true
 
 - task: DeleteFiles@1
   displayName: 'Delete files from $(Build.BinariesDirectory)\RelWithDebInfo'
