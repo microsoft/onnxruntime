@@ -40,11 +40,6 @@ bool PreShapeNodeElimination::SatisfyCondition(const Graph& graph, const Node& n
     return false;
   }
 
-  const Node* p_input_node = graph_utils::GetInputNode(node, 0);
-  if (p_input_node == nullptr) {
-    return false;
-  }
-
   auto output_nodes = graph.GetConsumerNodes(node.OutputDefs()[0]->Name());
 
   if (output_nodes.empty()) {

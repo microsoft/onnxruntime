@@ -3199,7 +3199,7 @@ TEST_F(GraphTransformationTests, PreShapeNodeElimination) {
   };
 
   auto post_graph_checker = [&](Graph& graph) {
-    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Cast"] == 1);
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Cast"] == 0);
     return Status::OK();
   };
 
