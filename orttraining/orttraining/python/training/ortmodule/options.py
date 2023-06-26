@@ -10,7 +10,6 @@ from logging import Logger
 from onnxruntime.capi import _pybind_state as C
 from onnxruntime.training import ortmodule
 
-from ._custom_autograd_function import custom_autograd_function_enabler
 from ._fallback import _FallbackPolicy
 from ._logger import LogLevel
 from ._utils import parse_os_env_skip_check_flags
@@ -200,6 +199,8 @@ class _RuntimeOptions:
         self.run_symbolic_shape_infer = True
 
         # PyTorch custom Autograd function support
+        from ._custom_autograd_function import custom_autograd_function_enabler
+
         self.enable_custom_autograd_function = custom_autograd_function_enabler.state
 
         self.use_external_gpu_allocator = True
