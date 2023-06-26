@@ -3,6 +3,9 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
+from onnxruntime.capi._pybind_state import is_torch_interop_default_on
+from onnxruntime.training import ortmodule
+
 
 class Enabler:
     def __init__(self):
@@ -82,9 +85,6 @@ def enable_custom_autograd_support(to_enable=True):
 
         custom_autograd_function_enabler.state = False
 
-
-from onnxruntime.capi._pybind_state import is_torch_interop_default_on  # noqa: E402
-from onnxruntime.training import ortmodule  # noqa: E402
 
 # Enable the custom autograd by default when PythonOp backend support is enabled during build.
 enable_custom_autograd_support(
