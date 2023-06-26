@@ -14,12 +14,12 @@ namespace cuda {
 
 template <typename T>
 void PadAndUnflattenImpl(cudaStream_t stream,
-                   const int64_t total_element_count,
-                   const fast_divmod output_element_stride_fdm,
-                   const int64_t index_value_upper_bound,
-                   const T* input_data,
-                   const int64_t* indices_data,
-                   T* output_data);
+                         const int64_t total_element_count,
+                         const fast_divmod output_element_stride_fdm,
+                         const int64_t index_value_upper_bound,
+                         const T* input_data,
+                         const int64_t* indices_data,
+                         T* output_data);
 
 }  // namespace cuda
 }  // namespace onnxruntime
