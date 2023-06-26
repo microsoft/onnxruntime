@@ -1,10 +1,21 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "training_api.h"
-#include "api.h"
-
 #include "onnxruntime_training_cxx_api.h"
+#include "training_api.h"
+
+// OrtErrorCode CheckStatus(OrtStatusPtr status) {
+//   if (status) {
+//     std::string error_message = Ort::GetApi().GetErrorMessage(status);
+//     g_last_error_code = Ort::GetApi().GetErrorCode(status);
+//     g_last_error_message = Ort::Exception(std::move(error_message), g_last_error_code).what();
+//     Ort::GetApi().ReleaseStatus(status);
+//   } else {
+//     g_last_error_code = ORT_OK;
+//     g_last_error_message.clear();
+//   }
+//   return g_last_error_code;
+// }
 
 #define CHECK_TRAINING_STATUS(ORT_API_NAME, ...) \
   CheckStatus(Ort::GetTrainingApi().ORT_API_NAME(__VA_ARGS__))
