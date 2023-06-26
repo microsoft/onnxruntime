@@ -48,21 +48,8 @@ NS_ASSUME_NONNULL_BEGIN
   ORTCheckpoint* checkpoint = [[ORTCheckpoint alloc] initWithPath:[ORTCheckpointTest getCheckpointPath] error:&error];
   ORTAssertNullableResultSuccessful(checkpoint, error);
 
-  ORTSessionOptions* sessionOptions = [[ORTSessionOptions alloc] initWithError:&error];
-  ORTAssertNullableResultSuccessful(sessionOptions, error);
-
-  ORTTrainingSession* session = [[ORTTrainingSession alloc] initWithEnv:self.ortEnv
-                                                         sessionOptions:sessionOptions
-                                                             checkPoint:checkpoint
-                                                         trainModelPath:[ORTCheckpointTest getTrainingModelPath]
-                                                          evalModelPath:nil
-                                                     optimizerModelPath:nil
-                                                                  error:&error];
-
-  ORTAssertNullableResultSuccessful(session, error);
-
   // save checkpoint
-  NSString* path = testUtils::createTemporaryDirectory(self);
+  NSString* path = [NSTemporaryDirectory() stringByAppendingPathComponent:@"save_checkpoint.ckpt"];
   XCTAssertNotNil(path);
   BOOL result = [checkpoint saveCheckpointToPath:path withOptimizerState:NO error:&error];
 
