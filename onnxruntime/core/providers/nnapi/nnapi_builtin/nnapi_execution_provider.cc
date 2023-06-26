@@ -54,21 +54,6 @@ NnapiExecutionProvider::NnapiExecutionProvider(uint32_t nnapi_flags,
     : IExecutionProvider{onnxruntime::kNnapiExecutionProvider, true},
       nnapi_flags_(nnapi_flags),
       partitioning_stop_ops_(GetPartitioningStopOps(partitioning_stop_ops_list)) {
-  AllocatorCreationInfo device_info(
-      [](int) {
-        return std::make_unique<CPUAllocator>(OrtMemoryInfo(NNAPI, OrtAllocatorType::OrtDeviceAllocator));
-      });
-
-  InsertAllocator(CreateAllocator(device_info));
-
-  AllocatorCreationInfo cpu_memory_info(
-      [](int) {
-        return std::make_unique<CPUAllocator>(
-            OrtMemoryInfo(NNAPI, OrtAllocatorType::OrtDeviceAllocator, OrtDevice(), 0, OrtMemTypeCPUOutput));
-      });
-
-  InsertAllocator(CreateAllocator(cpu_memory_info));
-
   nnapi_handle_ = NnApiImplementation();
   ORT_ENFORCE(nnapi_handle_ != nullptr, "Failed to get NnApiImplementation");
 

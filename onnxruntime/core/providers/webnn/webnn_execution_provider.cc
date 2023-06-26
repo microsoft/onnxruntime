@@ -18,26 +18,9 @@
 
 namespace onnxruntime {
 
-constexpr const char* WEBNN = "WebNN";
-
 WebNNExecutionProvider::WebNNExecutionProvider(
     const std::string& webnn_device_flags, const std::string& webnn_power_flags)
     : IExecutionProvider{onnxruntime::kWebNNExecutionProvider, true} {
-  AllocatorCreationInfo device_info(
-      [](int) {
-        return std::make_unique<CPUAllocator>(OrtMemoryInfo(WEBNN, OrtAllocatorType::OrtDeviceAllocator));
-      });
-
-  InsertAllocator(CreateAllocator(device_info));
-
-  AllocatorCreationInfo cpu_memory_info(
-      [](int) {
-        return std::make_unique<CPUAllocator>(
-            OrtMemoryInfo(WEBNN, OrtAllocatorType::OrtDeviceAllocator, OrtDevice(), 0, OrtMemTypeCPUOutput));
-      });
-
-  InsertAllocator(CreateAllocator(cpu_memory_info));
-
   // Create WebNN context and graph builder.
   const emscripten::val ml = emscripten::val::global("navigator")["ml"];
   if (!ml.as<bool>()) {
