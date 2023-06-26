@@ -57,10 +57,10 @@ steps:
   displayName: 'Publish Security Analysis Logs'
   continueOnError: true
 
-- task: TSAUpload@2
-  displayName: 'TSA upload'
+- task: securedevelopmentteam.vss-secure-development-tools.build-task-uploadtotsa.TSAUpload@1
   #condition: and (succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+  displayName: 'TSA Upload'
   inputs:
-    GdnPublishTsaOnboard: false
-    GdnPublishTsaConfigFile: '$(Build.sourcesDirectory)\.gdn\.gdntsa'
+    tsaVersion: TsaV2
+    codeBaseName: 'onnxruntime_main'
   continueOnError: true
