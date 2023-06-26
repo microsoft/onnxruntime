@@ -10,8 +10,7 @@ from types import SimpleNamespace
 
 from onnxruntime.capi import _pybind_state as C
 from onnxruntime.training.ortmodule._fallback import _FallbackPolicy
-from onnxruntime.training.ortmodule._graph_execution_manager import _SkipCheck
-from onnxruntime.training.ortmodule.options import DebugOptions, LogLevel, _SaveOnnxOptions
+from onnxruntime.training.ortmodule.options import DebugOptions, LogLevel, _SaveOnnxOptions, _SkipCheck
 
 from . import JSON_PATH_ENVIRONMENT_KEY
 

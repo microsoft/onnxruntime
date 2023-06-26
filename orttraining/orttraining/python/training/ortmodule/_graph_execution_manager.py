@@ -84,7 +84,7 @@ class GraphExecutionManager(GraphExecutionInterface):
 
         self._first_skip_check_warning = True
 
-        self._rt_inspector = RuntimeInspector(self._logger)
+        self._runtime_inspector = RuntimeInspector(self._logger)
 
         # Value can be either torch.onnx.TrainingMode.TRAINING or torch.onnx.TrainingMode.EVAL
         # To be instantiated in the concrete implementation of GraphExecutionManager
@@ -475,7 +475,7 @@ class GraphExecutionManager(GraphExecutionInterface):
 
         # Enable data sparsity inspection if sparse optimizer is ON or user wants to print input density.
         if self._runtime_options.enable_sparse_optimizer or self._runtime_options.print_input_density:
-            self._rt_inspector.enable_input_inspector(
+            self._runtime_inspector.enable_input_inspector(
                 self._onnx_models.exported_model, self._graph_builder.get_graph_info().user_input_names
             )
 
@@ -492,7 +492,7 @@ class GraphExecutionManager(GraphExecutionInterface):
                     inputs,
                     kwargs,
                     detected_device,
-                    self._rt_inspector,
+                    self._runtime_inspector,
                 )
 
                 # Enable sparsity-based optimization when applicable.
@@ -513,10 +513,10 @@ class GraphExecutionManager(GraphExecutionInterface):
             # If users don't want to print input density, disable the input density observer to avoid overhead
             # when looping through inputs during training.
             if not self._runtime_options.print_input_density:
-                self._rt_inspector.disable_input_inspector()
+                self._runtime_inspector.disable_input_inspector()
 
         if self._runtime_options.print_memory_stat:
-            self._rt_inspector.enable_memory_inspector(self._original_module)
+            self._runtime_inspector.enable_memory_inspector(self._original_module)
 
     def _log_feature_stats(self):
         rank = 0

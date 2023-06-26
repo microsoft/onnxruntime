@@ -161,7 +161,7 @@ class InferenceManager(GraphExecutionManager):
                 inputs,
                 kwargs,
                 self._device,
-                self._rt_inspector,
+                self._runtime_inspector,
             )
 
             user_outputs, _ = InferenceManager.execution_session_run_forward(
