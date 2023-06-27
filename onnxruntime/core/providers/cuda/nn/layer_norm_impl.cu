@@ -372,9 +372,6 @@ __global__ void cuApplyLayerNorm(
       }else if (skip_vals != NULL){
         curr += static_cast<U>(skip_vals[i]);
       }
-      /*if (skip_vals != NULL){
-      curr += static_cast<U>(skip_vals[i]);
-      }*/
 
       U gamma_i = (gamma != NULL) ? (U)gamma[i] : (U)1;
       U beta_i = (beta != NULL) ? (U)beta[i] : (U)0;
