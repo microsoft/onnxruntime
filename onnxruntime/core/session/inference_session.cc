@@ -121,8 +121,8 @@ static bool IsNodeOnCpuEP(const Node& node) {
 }
 
 /* This method returns ture if all *compute* nodes are placed on the CUDA EP
-and all shape nodes are placed on the CPU EP
-*/
+   and all shape nodes are placed on the CPU EP
+ */
 static std::pair<bool, int> AreAllComputeNodesAssignedToCudaEp(const Graph& graph) {
   InlinedHashSet<NodeIndex> shape_nodes;
   InlinedHashSet<NodeIndex> bfs_visited;
