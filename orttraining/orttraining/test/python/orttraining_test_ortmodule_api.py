@@ -30,16 +30,9 @@ from transformers.modeling_outputs import SequenceClassifierOutput
 
 import onnxruntime.training.ortmodule as ortmodule_module
 from onnxruntime.training.optim import AdamWMode, FusedAdam
-from onnxruntime.training.ortmodule import (
-    DebugOptions,
-    LogLevel,
-    ORTModule,
-    _fallback,
-    _graph_execution_manager,
-    _io,
-    _utils,
-)
+from onnxruntime.training.ortmodule import DebugOptions, LogLevel, ORTModule, _fallback, _io, _utils
 from onnxruntime.training.ortmodule._custom_gradient_registry import register_gradient
+from onnxruntime.training.ortmodule.options import _SkipCheck
 
 DEFAULT_OPSET = 15
 
@@ -4454,7 +4447,7 @@ def test_ortmodule_gradient_accumulation_optimization_correctness():
 
     # model with optimization enabled
     opt_model = ORTModule(copy.deepcopy(pt_model))
-    opt_model._torch_module._execution_manager(is_training=True)._enable_grad_acc_optimization = True
+    opt_model._torch_module._execution_manager(is_training=True)._runtime_options.enable_grad_acc_optimization = True
     opt_optimizer = torch.optim.Adam(opt_model.parameters())
 
     def run_step(model, x):
@@ -4879,10 +4872,10 @@ def test_ortmodule_ortmodule_method_attribute_copy():
 @pytest.mark.parametrize(
     "policy_str, policy",
     [
-        ("SKIP_CHECK_DISABLED", _graph_execution_manager._SkipCheck.SKIP_CHECK_DISABLED),
-        ("SKIP_CHECK_DEVICE", _graph_execution_manager._SkipCheck.SKIP_CHECK_DEVICE),
-        ("SKIP_CHECK_BUILD_GRADIENT", _graph_execution_manager._SkipCheck.SKIP_CHECK_BUILD_GRADIENT),
-        ("SKIP_CHECK_EXECUTION_AGENT", _graph_execution_manager._SkipCheck.SKIP_CHECK_EXECUTION_AGENT),
+        ("SKIP_CHECK_DISABLED", _SkipCheck.SKIP_CHECK_DISABLED),
+        ("SKIP_CHECK_DEVICE", _SkipCheck.SKIP_CHECK_DEVICE),
+        ("SKIP_CHECK_BUILD_GRADIENT", _SkipCheck.SKIP_CHECK_BUILD_GRADIENT),
+        ("SKIP_CHECK_EXECUTION_AGENT", _SkipCheck.SKIP_CHECK_EXECUTION_AGENT),
     ],
 )
 def test_ortmodule_skip_check_load_from_os_env(policy_str, policy):
@@ -4893,7 +4886,7 @@ def test_ortmodule_skip_check_load_from_os_env(policy_str, policy):
     ort_model = ORTModule(model)
 
     for training_mode in [False, True]:
-        assert ort_model._torch_module._execution_manager(training_mode)._skip_check == policy
+        assert ort_model._torch_module._execution_manager(training_mode)._runtime_options.skip_check == policy
 
     del os.environ["ORTMODULE_SKIPCHECK_POLICY"]
 
@@ -5227,10 +5220,8 @@ def test_sigmoid_grad_opset13():
     N, D_in, H, D_out = 120, 15360, 500, 15360  # noqa: N806
     pt_model = NeuralNetSigmoid(D_in, H, D_out).to(device)
 
-    old_opst_cst = ortmodule_module.ONNX_OPSET_VERSION
     old_opset = os.getenv("ORTMODULE_ONNX_OPSET_VERSION", None)
     os.environ["ORTMODULE_ONNX_OPSET_VERSION"] = "13"
-    assert ortmodule_module.ONNX_OPSET_VERSION == 15
 
     ort_model = ORTModule(copy.deepcopy(pt_model))
 
@@ -5256,21 +5247,25 @@ def test_sigmoid_grad_opset13():
         del os.environ["ORTMODULE_ONNX_OPSET_VERSION"]
     else:
         os.environ["ORTMODULE_ONNX_OPSET_VERSION"] = old_opset
-    assert ortmodule_module.ONNX_OPSET_VERSION == 13
-    ortmodule_module.ONNX_OPSET_VERSION = old_opst_cst
+
+    assert ort_model._torch_module._execution_manager(True)._runtime_options.onnx_opset_version == 13
 
 
 @pytest.mark.parametrize("opset_version", [12, 13, 14, 15])
 def test_opset_version_change(opset_version):
+    original_env = None
+    if "ORTMODULE_ONNX_OPSET_VERSION" in os.environ:
+        original_env = os.environ["ORTMODULE_ONNX_OPSET_VERSION"]
+        del os.environ["ORTMODULE_ONNX_OPSET_VERSION"]
+
     device = "cuda"
 
     N, D_in, H, D_out = 64, 784, 500, 10  # noqa: N806
     x = torch.randn(N, D_in, device=device)
     model = NeuralNetSinglePositionalArgument(D_in, H, D_out).to(device)
 
-    ort_model = ORTModule(model)
-
     ortmodule_module.ONNX_OPSET_VERSION = opset_version
+    ort_model = ORTModule(model)
 
     # Make sure model runs without any exception
     prediction = ort_model(x)
@@ -5281,6 +5276,9 @@ def test_opset_version_change(opset_version):
     # Check opset version on ONNX model
     exported_model = ort_model._torch_module._execution_manager(ort_model._is_training())._onnx_models.exported_model
     assert exported_model.opset_import[0].version == opset_version
+
+    if original_env is not None:
+        os.environ["ORTMODULE_ONNX_OPSET_VERSION"] = original_env
 
 
 def test_serialize_ortmodule():
@@ -5886,12 +5884,12 @@ def test_ops_for_padding_elimination(test_cases):
         assert len([node.op_type for node in training_model.graph.node if node.op_type == "Sub"]) == 1
     assert len([node.op_type for node in training_model.graph.node if node.op_type == "NonZero"]) == 1
     assert len([node.op_type for node in training_model.graph.node if node.op_type == "Squeeze"]) == 1
-    assert len([node.op_type for node in training_model.graph.node if node.op_type == "GatherGrad"]) == 1
+    assert len([node.op_type for node in training_model.graph.node if node.op_type == "PadAndUnflatten"]) == 1
     if case == 2:
         assert len([node.op_type for node in training_model.graph.node if node.op_type == "ShrunkenGather"]) == 2
     else:
         assert len([node.op_type for node in training_model.graph.node if node.op_type == "ShrunkenGather"]) == 1
-    gathergrad_node = [node for node in training_model.graph.node if node.op_type == "GatherGrad"][0]
+    gathergrad_node = [node for node in training_model.graph.node if node.op_type == "PadAndUnflatten"][0]
 
     def find_input_node_type(model, arg):
         result = []
@@ -6057,5 +6055,5 @@ def test_e2e_padding_elimination():
 
     training_model = ort_model._torch_module._execution_manager(True)._onnx_models.optimized_model
     assert "ShrunkenGather" in [node.op_type for node in training_model.graph.node]
-    assert "GatherGrad" in [node.op_type for node in training_model.graph.node]
+    assert "PadAndUnflatten" in [node.op_type for node in training_model.graph.node]
     del os.environ["ORTMODULE_ENABLE_EMBEDDING_SPARSE_OPTIMIZER"]
