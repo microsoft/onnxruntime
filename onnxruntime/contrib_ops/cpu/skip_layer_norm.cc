@@ -45,6 +45,9 @@ Status SkipLayerNorm<T>::Compute(OpKernelContext* p_ctx) const {
 
   const auto& input_dims = input->Shape().GetDims();
   size_t input_dims_size = input_dims.size();
+  const auto& skip_dims = skip->Shape().GetDims();
+  size_t skip_dims_size = skip_dims.size();
+  /*const auto& skip_dims = skip->Shape().GetDims();*/
   if (input_dims_size != 3 && input_dims_size != 2) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "input is expected to have 3 or 2 dimensions, got ", input_dims_size);
@@ -52,10 +55,10 @@ Status SkipLayerNorm<T>::Compute(OpKernelContext* p_ctx) const {
 
   int hidden_size = static_cast<int>(input_dims[input_dims_size - 1]);
 
-  if (input->Shape() != skip->Shape()) {
+  /*if (input->Shape() != skip->Shape()) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "skip is expected to have same shape as input");
-  }
+  }*/
 
   const auto& gamma_dims = gamma->Shape().GetDims();
   if (gamma_dims.size() != 1) {
@@ -105,20 +108,27 @@ Status SkipLayerNorm<T>::Compute(OpKernelContext* p_ctx) const {
   // of the input and skip tensors
   T* skip_input_bias_add_output_data = skip_input_bias_add_output != nullptr ? skip_input_bias_add_output->MutableData<T>() : nullptr;
 
+  const bool skip_broadcasted = (nullptr != skip && skip->Shape()[0] == 1) ? true : false;
+  int skip_size = static_cast<int>(skip_dims[skip_dims_size - 1] * skip_dims[skip_dims_size - 2]);
+
   concurrency::ThreadPool::TryBatchParallelFor(
       p_ctx->GetOperatorThreadPool(), static_cast<int32_t>(task_count),
       [&](ptrdiff_t task_idx) {
         auto offset = task_idx * hidden_size;
 
+
+
         const T* p_input = input_data + offset;
-        const T* p_skip = skip_data + offset;
+        const T* p_skip = skip_data + (skip_broadcasted ? (offset % skip_size) : offset);;
         T* p_output = output_data + offset;
         T* p_skip_input_bias_add_output_data = skip_input_bias_add_output_data != nullptr ? skip_input_bias_add_output_data + offset : nullptr;
 
         T mean = 0;
         T mean_square = 0;
 
+
         for (int64_t h = 0; h < hidden_size; h++) {
+
           T value = p_input[h] + p_skip[h];
 
           if (nullptr != bias_data) {

@@ -60,17 +60,14 @@ Status SkipLayerNorm<T, Simplified>::ComputeInternal(OpKernelContext* ctx) const
   // of the input and skip tensors
   Tensor* skip_input_bias_add_output = ctx->Output(3, input->Shape());
 
-  if (input->Shape() != skip->Shape()) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "skip is expected to have same shape as input");
-  }
-
   if (input->Shape().Size() == 0) {
     return Status::OK();
   }
 
   const auto& input_dims = input->Shape().GetDims();
   size_t input_dims_size = input_dims.size();
+  const auto& skip_dims = skip->Shape().GetDims();
+  size_t skip_dims_size = skip_dims.size();
   if (input_dims_size != 3 && input_dims_size != 2) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "input is expected to have 3 or 2 dimensions, got ", input_dims_size);
@@ -114,6 +111,9 @@ Status SkipLayerNorm<T, Simplified>::ComputeInternal(OpKernelContext* ctx) const
     }
   }
 
+  const bool skip_broadcasted = (nullptr != skip && skip->Shape()[0] == 1) ? true : false;
+  const int skip_size = static_cast<int>(skip_dims[skip_dims_size - 1] * skip_dims[skip_dims_size - 2]);
+
   if (strict_) {
     int row_count = gsl::narrow<int>(input->Shape().SizeToDimension(input_dims_size - 1));
     typedef typename ToCudaType<T>::MappedType CudaT;
@@ -131,7 +131,9 @@ Status SkipLayerNorm<T, Simplified>::ComputeInternal(OpKernelContext* ctx) const
         (beta != nullptr) ? reinterpret_cast<const CudaT*>(beta->Data<T>()) : nullptr,  // beta
         reinterpret_cast<const CudaT*>(skip->Data<T>()),                                // skip or residual to add
         (bias != nullptr) ? reinterpret_cast<const CudaT*>(bias->Data<T>()) : nullptr,  // bias to add
-        skip_input_bias_add_output != nullptr ? reinterpret_cast<CudaT*>(skip_input_bias_add_output->MutableData<T>()) : nullptr);
+        skip_input_bias_add_output != nullptr ? reinterpret_cast<CudaT*>(skip_input_bias_add_output->MutableData<T>()) : nullptr,
+        skip_broadcasted,
+        skip_size);
 
     CUDA_RETURN_IF_ERROR(cudaGetLastError());
     return Status::OK();
@@ -153,7 +155,10 @@ Status SkipLayerNorm<T, Simplified>::ComputeInternal(OpKernelContext* ctx) const
       epsilon_,
       hidden_size,
       static_cast<int>(element_count),
-      element_size);
+      element_size,
+      skip_broadcasted,
+      skip_size);
+
 
   CUDA_RETURN_IF_ERROR(cudaGetLastError());
   return Status::OK();
