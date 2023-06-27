@@ -27,8 +27,6 @@ class BeamSearchWhisper : public BeamSearchBase<T> {
                     IConsoleDumper* cuda_dumper,
                     BeamSearchParameters& params,
                     const GenerationDeviceHelper::AddToFeedsFunc& add_to_feeds_func,
-                    const GenerationDeviceHelper::ReorderPastStateFunc& reorder_past_state_func,
-                    const GenerationDeviceHelper::InitCacheIndirFunc& init_cache_indir_func,
                     const GenerationDeviceHelper::TopkFunc& topk_func,
                     const GenerationDeviceHelper::ProcessLogitsFunc<T>& process_logits_func,
                     const GenerationDeviceHelper::InitBeamStateFunc<T>& init_beam_state_func,
@@ -37,9 +35,7 @@ class BeamSearchWhisper : public BeamSearchBase<T> {
                     const GenerationDeviceHelper::CreateWhisperEncoderInputsFunc& create_encoder_inputs_func,
                     const GenerationDeviceHelper::UpdateDecoderFeedsFunc<T>& update_decoder_feeds_func,
                     const GenerationDeviceHelper::ExpandBufferFunc<float>& expand_buffer_float_func,
-                    const GenerationDeviceHelper::ExpandBufferFunc<MLFloat16>& expand_buffer_float16_func,
-                    const void* cuda_device_prop,
-                    int cuda_device_arch)
+                    const GenerationDeviceHelper::ExpandBufferFunc<MLFloat16>& expand_buffer_float16_func)
       : BeamSearchBase<T>(context, decoder_session_state, thread_pool,
                           ort_stream, cuda_dumper, params,
                           topk_func, process_logits_func, device_copy_func, device_copy_int32_func),
@@ -48,22 +44,31 @@ class BeamSearchWhisper : public BeamSearchBase<T> {
         decoder_subgraph_(decoder_subgraph),
         add_to_feeds_func_(add_to_feeds_func),
         init_beam_state_func_(init_beam_state_func),
-        reorder_past_state_func_(reorder_past_state_func),
-        init_cache_indir_func_(init_cache_indir_func),
         create_encoder_inputs_func_(create_encoder_inputs_func),
         update_decoder_feeds_func_(update_decoder_feeds_func),
         expand_buffer_float_func_(expand_buffer_float_func),
-        expand_buffer_float16_func_(expand_buffer_float16_func),
-        cuda_device_prop_(cuda_device_prop),
-        cuda_device_arch_(cuda_device_arch) {
+        expand_buffer_float16_func_(expand_buffer_float16_func) {}
+
+#ifdef USE_CUDA
+  Status InitializeCuda(
+      const GenerationDeviceHelper::ReorderPastStateFunc& reorder_past_state_func,
+      const GenerationDeviceHelper::InitCacheIndirFunc& init_cache_indir_func,
+      const void* cuda_device_prop,
+      int cuda_device_arch) {
+    reorder_past_state_func_ = reorder_past_state_func;
+    init_cache_indir_func_ = init_cache_indir_func;
+    cuda_device_prop_ = cuda_device_prop;
+    cuda_device_arch_ = cuda_device_arch;
     if (decoder_subgraph_.has_decoder_masked_attention_) {
-      ORT_ENFORCE(cuda_device_arch_ >= 530,
-                  "Decoder masked multihead attention can only be used on "
-                  "GPU cards of compute capability 5.3 or higher. "
-                  "This card has compute capability ",
-                  cuda_device_arch_);
+      ORT_RETURN_IF(cuda_device_arch_ >= 530,
+                    "Decoder masked multihead attention can only be used on "
+                    "GPU cards of compute capability 5.3 or higher. "
+                    "This card has compute capability ",
+                    cuda_device_arch_);
     }
+    return Status::OK();
   }
+#endif
 
   // Execute beam search in iterations util stopping criteria is reached.
   Status Execute(const FeedsFetchesManager& encoder_feeds_fetches_manager,
@@ -78,8 +83,10 @@ class BeamSearchWhisper : public BeamSearchBase<T> {
   // Device specific functions
   GenerationDeviceHelper::AddToFeedsFunc add_to_feeds_func_;
   GenerationDeviceHelper::InitBeamStateFunc<T> init_beam_state_func_;
+#ifdef USE_CUDA
   GenerationDeviceHelper::ReorderPastStateFunc reorder_past_state_func_;
   GenerationDeviceHelper::InitCacheIndirFunc init_cache_indir_func_;
+#endif
   GenerationDeviceHelper::CreateWhisperEncoderInputsFunc create_encoder_inputs_func_;
   GenerationDeviceHelper::UpdateDecoderFeedsFunc<T> update_decoder_feeds_func_;
   GenerationDeviceHelper::ExpandBufferFunc<float> expand_buffer_float_func_;
@@ -250,6 +257,7 @@ Status BeamSearchWhisper<T>::Execute(const FeedsFetchesManager& encoder_feeds_fe
       auto cross_attention_past_key_sz = first_cross_attention_key->Shape().Size();
       beam_state.EnsurePastStateReorderStagingBuffer(this->temp_space_allocator_, cross_attention_past_key_sz);
 
+#ifdef USE_CUDA
       // Here we only need to reorder the past key for self-attention and cross-attention.
       for (size_t i = 0; i < 2 * static_cast<size_t>(decoder_subgraph_.num_layers); ++i) {
         ORT_RETURN_IF_ERROR(reorder_past_state_func_(cuda_device_prop_,
@@ -259,6 +267,7 @@ Status BeamSearchWhisper<T>::Execute(const FeedsFetchesManager& encoder_feeds_fe
       }
       size_t cache_indir_input_offset = static_cast<size_t>(decoder_subgraph_.GetFirstPastInputIndex()) + 4 * static_cast<size_t>(decoder_subgraph_.num_layers) + 2;
       ORT_RETURN_IF_ERROR(init_cache_indir_func_(*decoder_feeds[cache_indir_input_offset].GetMutable<Tensor>(), this->ort_stream_));
+#endif
     }
   }
 
