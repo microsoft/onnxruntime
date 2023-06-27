@@ -55,10 +55,6 @@ Status SkipLayerNorm<T>::Compute(OpKernelContext* p_ctx) const {
 
   int hidden_size = static_cast<int>(input_dims[input_dims_size - 1]);
 
-  /*if (input->Shape() != skip->Shape()) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "skip is expected to have same shape as input");
-  }*/
 
   const auto& gamma_dims = gamma->Shape().GetDims();
   if (gamma_dims.size() != 1) {
