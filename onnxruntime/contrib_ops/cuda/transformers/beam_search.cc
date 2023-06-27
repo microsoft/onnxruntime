@@ -44,7 +44,8 @@ BeamSearch::BeamSearch(const OpKernelInfo& info)
                    GenerationCudaDeviceHelper::ProcessLogits<float>,
                    GenerationCudaDeviceHelper::ProcessLogits<MLFloat16>,
                    GenerationCudaDeviceHelper::InitBeamState<float>,
-                   GenerationCudaDeviceHelper::InitBeamState<MLFloat16>);
+                   GenerationCudaDeviceHelper::InitBeamState<MLFloat16>,
+                   GenerationCudaDeviceHelper::CreateBeamScorer);
 
 #ifndef USE_ROCM
   SetDeviceHelpers_Cuda(GenerationCudaDeviceHelper::ReorderPastState, GenerationCudaDeviceHelper::InitCacheIndir);
