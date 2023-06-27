@@ -18,4 +18,10 @@ class WebAssemblyTrainingBackend extends OnnxruntimeWebAssemblyBackend implement
     return Promise.resolve(handler);
   }
 
+  // async createTrainingSession(checkpointState: CheckpointState, trainModel: ArrayBufferLike|string, evalModel: ArrayBufferLike|string,
+  //     optimizerModel: ArrayBufferLike|string, options?: Session.SessionOptions): Promise<TrainingSessionHandler> {
+  //   const handler = new OnnxruntimeWebAssemblyTrainingSessionHandler();
+  //   await handler.loadTrainingSession(checkpointState, trainModel, evalModel, optimizerModel, options);
+  //   return Promise.resolve(handler);
+  // }
 }

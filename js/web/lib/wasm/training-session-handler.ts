@@ -1,5 +1,5 @@
 import {readFile} from 'fs';
-import {CheckpointState, CheckpointHandler, TrainingSessionHandler} from 'onnxruntime-common';
+import {CheckpointHandler} from 'onnxruntime-common';
 import { promisify } from 'util';
 import * as core from './wasm-core-impl';
 

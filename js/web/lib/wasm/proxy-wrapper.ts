@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {Env, env, Session} from 'onnxruntime-common';
+import {Env, env, InferenceSession} from 'onnxruntime-common';
 
 import {OrtWasmMessage, SerializableModeldata, SerializableSessionMetadata, SerializableTensor} from './proxy-messages';
 import * as core from './wasm-core-impl';
@@ -203,7 +203,7 @@ export const releaseSession = async(sessionId: number): Promise<void> => {
 
 export const run = async(
     sessionId: number, inputIndices: number[], inputs: SerializableTensor[], outputIndices: number[],
-    options: Session.RunOptions): Promise<SerializableTensor[]> => {
+    options: InferenceSession.RunOptions): Promise<SerializableTensor[]> => {
   if (!BUILD_DEFS.DISABLE_WASM_PROXY && isProxy()) {
     ensureWorker();
     return new Promise<SerializableTensor[]>((resolve, reject) => {

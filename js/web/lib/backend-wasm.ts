@@ -1,12 +1,11 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {Backend, InferenceSession, TrainingBackend, env, SessionHandler, TrainingSessionHandler, CheckpointHandler} from 'onnxruntime-common';
+import {Backend, InferenceSession, env, SessionHandler} from 'onnxruntime-common';
 import {cpus} from 'os';
 
 import {initializeWebAssemblyInstance} from './wasm/proxy-wrapper';
 import {OnnxruntimeWebAssemblySessionHandler} from './wasm/session-handler';
-import {OnnxruntimeWebAssemblyCheckpointHandler} from './wasm/training-session-handler';
 
 /**
  * This function initializes all flags for WebAssembly.
@@ -50,28 +49,6 @@ class OnnxruntimeWebAssemblyBackend implements Backend {
     return Promise.resolve(handler);
   }
 
-  // async createTrainingSession(checkpointState: CheckpointState, trainModel: ArrayBufferLike|string, evalModel: ArrayBufferLike|string,
-  //     optimizerModel: ArrayBufferLike|string, options?: Session.SessionOptions): Promise<TrainingSessionHandler> {
-  //   const handler = new OnnxruntimeWebAssemblyTrainingSessionHandler();
-  //   await handler.loadTrainingSession(checkpointState, trainModel, evalModel, optimizerModel, options);
-  //   return Promise.resolve(handler);
-  // }
-
-}
-
-class OnnxruntimeWebAssemblyTrainingBackend extends OnnxruntimeWebAssemblyBackend implements TrainingBackend {
-  createSessionHandler(path: string, options?: InferenceSession.SessionOptions): Promise<SessionHandler>;
-  createSessionHandler(buffer: Uint8Array, options?: InferenceSession.SessionOptions): Promise<SessionHandler>;
-  async createSessionHandler(pathOrBuffer: string|Uint8Array, options?: InferenceSession.SessionOptions):
-      Promise<SessionHandler> {
-        throw new Error('Can\'t use the training backend to create an inference session');
-      }
-
-  async createCheckpointHandler(pathOrBuffer: string|Uint8Array): Promise<CheckpointHandler> {
-    const handler = new OnnxruntimeWebAssemblyCheckpointHandler();
-    await handler.loadCheckpoint(pathOrBuffer);
-    return Promise.resolve(handler);
-  }
 }
 
 export const wasmBackend = new OnnxruntimeWebAssemblyBackend();
