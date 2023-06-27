@@ -77,7 +77,9 @@ class ORTModule(torch.nn.Module):
 
             # Support contrib OPs
             pytorch_export_contrib_ops.register()
-            CustomOpSymbolicRegistry.register_all()
+            CustomOpSymbolicRegistry.register_all(
+                self._torch_module._execution_manager(module.training)._runtime_options.onnx_opset_version
+            )
             CustomGradientRegistry.register_all()
 
             # Warn user if there are name collisions between user model's and ORTModule attributes
@@ -320,7 +322,9 @@ class ORTModule(torch.nn.Module):
 
         # Re-register contrib OPs
         pytorch_export_contrib_ops.register()
-        CustomOpSymbolicRegistry.register_all()
+        CustomOpSymbolicRegistry.register_all(
+            self._torch_module._execution_manager(self.module.training)._runtime_options.onnx_opset_version
+        )
         CustomGradientRegistry.register_all()
 
         # Re-initialize the ORTModule forward method

@@ -5253,6 +5253,11 @@ def test_sigmoid_grad_opset13():
 
 @pytest.mark.parametrize("opset_version", [12, 13, 14, 15])
 def test_opset_version_change(opset_version):
+    original_env = None
+    if "ORTMODULE_ONNX_OPSET_VERSION" in os.environ:
+        original_env = os.environ["ORTMODULE_ONNX_OPSET_VERSION"]
+        del os.environ["ORTMODULE_ONNX_OPSET_VERSION"]
+
     device = "cuda"
 
     N, D_in, H, D_out = 64, 784, 500, 10  # noqa: N806
@@ -5271,6 +5276,9 @@ def test_opset_version_change(opset_version):
     # Check opset version on ONNX model
     exported_model = ort_model._torch_module._execution_manager(ort_model._is_training())._onnx_models.exported_model
     assert exported_model.opset_import[0].version == opset_version
+
+    if original_env is not None:
+        os.environ["ORTMODULE_ONNX_OPSET_VERSION"] = original_env
 
 
 def test_serialize_ortmodule():
