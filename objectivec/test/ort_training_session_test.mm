@@ -36,7 +36,7 @@ NS_ASSUME_NONNULL_BEGIN
                                                         getFilePathFromName:@"checkpoint.ckpt"]
                                               error:&err];
   ORTAssertNullableResultSuccessful(_checkpoint, err);
-  _session = [self makeTrainingSessionWithCheckPoint:_checkpoint];
+  _session = [self makeTrainingSessionWithCheckpoint:_checkpoint];
 }
 
 + (NSString*)getFilePathFromName:(NSString*)name {
@@ -72,7 +72,7 @@ NS_ASSUME_NONNULL_BEGIN
   return tensorData;
 }
 
-- (ORTTrainingSession*)makeTrainingSessionWithCheckPoint:(ORTCheckpoint*)checkpoint {
+- (ORTTrainingSession*)makeTrainingSessionWithCheckpoint:(ORTCheckpoint*)checkpoint {
   NSError* error = nil;
   ORTSessionOptions* sessionOptions = [[ORTSessionOptions alloc] initWithError:&error];
   ORTAssertNullableResultSuccessful(sessionOptions, error);
@@ -80,7 +80,7 @@ NS_ASSUME_NONNULL_BEGIN
   ORTTrainingSession* session = [[ORTTrainingSession alloc]
              initWithEnv:self.ortEnv
           sessionOptions:sessionOptions
-              checkPoint:checkpoint
+              checkpoint:checkpoint
           trainModelPath:[ORTTrainingSessionTest getFilePathFromName:@"training_model.onnx"]
            evalModelPath:[ORTTrainingSessionTest getFilePathFromName:@"eval_model.onnx"]
       optimizerModelPath:[ORTTrainingSessionTest getFilePathFromName:@"adamw.onnx"]

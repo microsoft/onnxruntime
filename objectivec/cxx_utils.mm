@@ -15,8 +15,13 @@ NS_ASSUME_NONNULL_BEGIN
 
 namespace utils {
 
-NSString* _Nullable toNSString(const std::string& str) {
-  return [NSString stringWithUTF8String:str.c_str()];
+NSString* toNSString(const std::string& str) {
+  NSString* nsStr = [NSString stringWithUTF8String:str.c_str()];
+  if (!nsStr) {
+    ORT_CXX_API_THROW("Failed to convert std::string to NSString", ORT_INVALID_ARGUMENT);
+  }
+
+  return nsStr;
 }
 
 NSString* _Nullable toNullableNSString(const std::optional<std::string>& str) {

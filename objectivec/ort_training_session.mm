@@ -30,7 +30,7 @@ NS_ASSUME_NONNULL_BEGIN
 
 - (nullable instancetype)initWithEnv:(ORTEnv*)env
                       sessionOptions:(ORTSessionOptions*)sessionOptions
-                          checkPoint:(ORTCheckpoint*)checkPoint
+                          checkpoint:(ORTCheckpoint*)checkpoint
                       trainModelPath:(NSString*)trainModelPath
                        evalModelPath:(nullable NSString*)evalModelPath
                   optimizerModelPath:(nullable NSString*)optimizerModelPath
@@ -43,11 +43,11 @@ NS_ASSUME_NONNULL_BEGIN
     std::optional<std::string> evalPath = utils::toStdOptionalString(evalModelPath);
     std::optional<std::string> optimizerPath = utils::toStdOptionalString(optimizerModelPath);
 
-    _checkpoint = checkPoint;
+    _checkpoint = checkpoint;
     _session = Ort::TrainingSession{
         [env CXXAPIOrtEnv],
         [sessionOptions CXXAPIOrtSessionOptions],
-        [checkPoint CXXAPIOrtCheckpoint],
+        [checkpoint CXXAPIOrtCheckpoint],
         trainModelPath.UTF8String,
         evalPath,
         optimizerPath};

@@ -14,7 +14,7 @@ NS_ASSUME_NONNULL_BEGIN
 
 namespace utils {
 
-NSString* _Nullable toNSString(const std::string& str);
+NSString* toNSString(const std::string& str);
 NSString* _Nullable toNullableNSString(const std::optional<std::string>& str);
 
 std::string toStdString(NSString* str);

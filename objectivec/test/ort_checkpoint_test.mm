@@ -43,7 +43,7 @@ NS_ASSUME_NONNULL_BEGIN
   return path;
 }
 
-- (void)testSaveCheckPoint {
+- (void)testSaveCheckpoint {
   NSError* error = nil;
   ORTCheckpoint* checkpoint = [[ORTCheckpoint alloc] initWithPath:[ORTCheckpointTest getCheckpointPath] error:&error];
   ORTAssertNullableResultSuccessful(checkpoint, error);

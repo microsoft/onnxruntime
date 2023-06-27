@@ -39,7 +39,7 @@ NS_ASSUME_NONNULL_BEGIN
  *
  * @param env The `ORTEnv` instance to use for the training session.
  * @param sessionOptions The `ORTSessionOptions` to use for the training session.
- * @param checkPoint Training states that are used as a starting point for training.
+ * @param checkpoint Training states that are used as a starting point for training.
  * @param trainModelPath The path to the training onnx model.
  * @param evalModelPath The path to the evaluation onnx model.
  * @param optimizerModelPath The path to the optimizer onnx model used to perform gradient descent.
@@ -49,7 +49,7 @@ NS_ASSUME_NONNULL_BEGIN
  */
 - (nullable instancetype)initWithEnv:(ORTEnv*)env
                       sessionOptions:(ORTSessionOptions*)sessionOptions
-                          checkPoint:(ORTCheckpoint*)checkPoint
+                          checkpoint:(ORTCheckpoint*)checkpoint
                       trainModelPath:(NSString*)trainModelPath
                        evalModelPath:(nullable NSString*)evalModelPath
                   optimizerModelPath:(nullable NSString*)optimizerModelPath
