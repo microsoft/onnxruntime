@@ -347,10 +347,6 @@ NS_ASSUME_NONNULL_BEGIN
   ORTAssertBoolResultSuccessful(result, error);
 }
 
-- (void)testSetSeed {
-  ORTSetSeed(2718);
-}
-
 - (void)tearDown {
   _ortEnv = nil;
   _checkpoint = nil;

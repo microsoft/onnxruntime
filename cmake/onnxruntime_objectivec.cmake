@@ -128,7 +128,8 @@ if(onnxruntime_BUILD_UNIT_TESTS)
     if(NOT onnxruntime_ENABLE_TRAINING_APIS)
         list(REMOVE_ITEM onnxruntime_objc_test_srcs
             "${OBJC_ROOT}/test/ort_checkpoint_test.mm"
-            "${OBJC_ROOT}/test/ort_training_session_test.mm")
+            "${OBJC_ROOT}/test/ort_training_session_test.mm"
+            "${OBJC_ROOT}/test/ort_training_utils_test.mm")
 
     endif()
 
