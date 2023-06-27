@@ -75,8 +75,10 @@ class TrainingSession {
 
   Status CopyBufferToParameters(OrtValue& parameters_buffer, const bool trainable_only = true);
 
+#if !defined(ORT_MINIMAL_BUILD)
   Status ExportModelForInferencing(const std::string& inference_model_path,
                                    gsl::span<const std::string> graph_output_names) const;
+#endif
 
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(TrainingSession);
