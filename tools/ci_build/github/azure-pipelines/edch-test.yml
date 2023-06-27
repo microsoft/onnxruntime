@@ -4,6 +4,8 @@ jobs:
     clean: all
   pool:
     vmImage: 'macOS-13'
+  strategy:
+    parallel: 10
 
   steps:
   - checkout: none
@@ -27,6 +29,9 @@ jobs:
       #${ANDROID_HOME}/tools/emulator -avd android_emulator_avd -no-snapshot -no-audio -no-boot-anim -camera-back none -camera-front none -cores 1 -qemu -m 2048 &
       # it failed!
       # start from original, add -gpu guest
+      #${ANDROID_HOME}/tools/emulator -avd android_emulator_avd -gpu guest -memory 4096 -timezone America/Los_Angeles -no-snapshot -no-audio -no-boot-anim -no-window &
+      # 9/10 passed
+      # memory 2048
       ${ANDROID_HOME}/tools/emulator -avd android_emulator_avd -gpu guest -memory 4096 -timezone America/Los_Angeles -no-snapshot -no-audio -no-boot-anim -no-window &
       
       ${ANDROID_HOME}/platform-tools/adb wait-for-device shell 'while [[ -z $(getprop sys.boot_completed | tr -d '\r') ]]; do sleep 1; done; input keyevent 82'
