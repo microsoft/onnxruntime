@@ -10,16 +10,17 @@ NS_ASSUME_NONNULL_BEGIN
 @interface ORTValue ()
 
 /**
- * Creates a value that wraps an existing C API OrtValue and takes ownership of it.
+ * Creates a value from an existing C++ API Ort::Value and takes ownership from it.
+ * Note: Ownership is guaranteed to be transferred on success but not otherwise.
  *
- * @param CAPIOrtValue The C API OrtValue to wrap.
- * @param externalTensorData Any external tensor data referenced by `CAPIOrtValue`.
+ * @param existingCXXAPIOrtValue The existing C++ API Ort::Value.
+ * @param externalTensorData Any external tensor data referenced by `existingCXXAPIOrtValue`.
  * @param error Optional error information set if an error occurs.
  * @return The instance, or nil if an error occurs.
  */
-- (nullable instancetype)initWithCAPIOrtValue:(OrtValue*)CAPIOrtValue
-                           externalTensorData:(nullable NSMutableData*)externalTensorData
-                                        error:(NSError**)error NS_DESIGNATED_INITIALIZER;
+- (nullable instancetype)initWithCXXAPIOrtValue:(Ort::Value&&)existingCXXAPIOrtValue
+                             externalTensorData:(nullable NSMutableData*)externalTensorData
+                                          error:(NSError**)error NS_DESIGNATED_INITIALIZER;
 
 - (Ort::Value&)CXXAPIOrtValue;
 
