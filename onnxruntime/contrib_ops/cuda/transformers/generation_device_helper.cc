@@ -450,7 +450,7 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
   //    next_token_scores = next_token_scores + beam_scores[:, None].expand_as(next_token_scores)
   cuda::LaunchAddProbsKernel(next_token_scores.data(), beam_state->beam_scores.data(),
                              batch_size, num_beams, vocab_size, cuda_stream);
-  
+
 #ifdef DEBUG_GENERATION
   dumper->Print("next_token_scores adding beam_scores", next_token_scores.data(), batch_size, num_beams, vocab_size);
 #endif
@@ -487,7 +487,7 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
                          beam_state->next_tokens.data(),
                          beam_state->next_indices.data(),
                          cuda_stream);
-    
+
     // Select [batch_size, 2 * num_beams] from [batch_size * num_beams, 2 * num_beams]
 #ifdef DEBUG_GENERATION
     dumper->Print("next_tokens before scorer", beam_state->next_tokens.data(), batch_size, 2 * num_beams);
