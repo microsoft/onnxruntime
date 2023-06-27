@@ -12,6 +12,13 @@ import {getInstance} from './wasm-factory';
 import {allocWasmString, checkLastError} from './wasm-utils';
 
 /**
+ *  tuple elements are: InferenceSession ID; inputNamesUTF8Encoded; outputNamesUTF8Encoded
+ */
+type SessionMetadata = [number, number[], number[]];
+
+const activeSessions = new Map<number, SessionMetadata>();
+
+/**
  * get the input/output count of the session.
  * @param sessionHandle the handle representing the session. should be non-zero.
  * @returns a tuple including 2 numbers, representing the input count and output count.
@@ -54,13 +61,6 @@ export const initRuntime = async(env: Env): Promise<void> => {
   // init JSEP if available
   await initJsep(getInstance(), env);
 };
-
-/**
- *  tuple elements are: InferenceSession ID; inputNamesUTF8Encoded; outputNamesUTF8Encoded
- */
-type SessionMetadata = [number, number[], number[]];
-
-const activeSessions = new Map<number, SessionMetadata>();
 
 /**
  * allocate the memory and memcpy the model bytes, preparing for creating an instance of InferenceSession.
@@ -388,46 +388,46 @@ export const loadCheckpoint =
 //   }
 
 export const releaseCheckpoint =
-  (checkpointId: number): void => {
+  (handlerId: number): void => {
     const wasm = getInstance();
     // TODO: determine if releasing the checkpoint id is enough -- reference the releaseSession
     // method in the same file
-    wasm._OrtReleaseCheckpoint(checkpointId);
+    wasm._OrtReleaseCheckpoint(handlerId);
   }
 
 /**
  * @returns list of fields of training-session-handler
  */
-export const createTrainingSession =
-  (checkpoint: CheckpointState, trainModel: Uint8Array, evalModel: Uint8Array, optimizerModel: Uint8Array,
-    options?: InferenceSession.SessionOptions): SerializableSessionMetadata => {
-    const wasm = getInstance();
-    const trainData: SerializableModeldata = createSessionAllocate(trainModel);
-    const evalData: SerializableModeldata = createSessionAllocate(evalModel);
-    const optimizerData: SerializableModeldata = createSessionAllocate(optimizerModel);
+// export const createTrainingSession =
+//   (checkpoint: CheckpointState, trainModel: Uint8Array, evalModel: Uint8Array, optimizerModel: Uint8Array,
+//     options?: InferenceSession.SessionOptions): SerializableSessionMetadata => {
+//     const wasm = getInstance();
+//     const trainData: SerializableModeldata = createSessionAllocate(trainModel);
+//     const evalData: SerializableModeldata = createSessionAllocate(evalModel);
+//     const optimizerData: SerializableModeldata = createSessionAllocate(optimizerModel);
 
-    let sessionHandle = 0;
-    let sessionOptionsHandle = 0;
-    let allocs: number[] = [];
+//     let sessionHandle = 0;
+//     let sessionOptionsHandle = 0;
+//     let allocs: number[] = [];
 
-    try {
-      [sessionOptionsHandle, allocs] = setSessionOptions(options);
-      // TODO: figure out correct way to pass checkpoint handle to method call
-      sessionHandle = wasm._OrtTrainingCreateSession(sessionOptionsHandle, checkpoint, trainData[0], trainData[1],
-        evalData[0], evalData[1], optimizerData[0], optimizerData[1]);
+//     try {
+//       [sessionOptionsHandle, allocs] = setSessionOptions(options);
+//       // TODO: figure out correct way to pass checkpoint handle to method call
+//       sessionHandle = wasm._OrtTrainingCreateSession(sessionOptionsHandle, checkpoint, trainData[0], trainData[1],
+//         evalData[0], evalData[1], optimizerData[0], optimizerData[1]);
 
-      if (sessionHandle=== 0) {
-        throw new Error('Can\'t create a training session');
-      }
-    } finally {
-      wasm._free(trainData[0]);
-      wasm._free(evalData[0]);
-      wasm._free(optimizerData[0]);
-      if (sessionOptionsHandle !== 0) {
-        wasm._OrtReleaseSessionOptions(sessionOptionsHandle);
-      }
-      allocs.forEach(wasm._free);
-    }
+//       if (sessionHandle=== 0) {
+//         throw new Error('Can\'t create a training session');
+//       }
+//     } finally {
+//       wasm._free(trainData[0]);
+//       wasm._free(evalData[0]);
+//       wasm._free(optimizerData[0]);
+//       if (sessionOptionsHandle !== 0) {
+//         wasm._OrtReleaseSessionOptions(sessionOptionsHandle);
+//       }
+//       allocs.forEach(wasm._free);
+//     }
 
-    // TODO: not finished writing this fucntion
-  }
+//     // TODO: not finished writing this fucntion
+//   }

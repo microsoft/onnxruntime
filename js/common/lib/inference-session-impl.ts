@@ -1,17 +1,17 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {SessionHandler} from './backend';
-import {resolveBackend} from './backend-impl';
-import {Session, InferenceSession as InferenceSessionInterface} from './inference-session';
-import {OnnxValue} from './onnx-value';
-import {Tensor} from './tensor';
+import {SessionHandler} from './backend.js';
+import {resolveBackend} from './backend-impl.js';
+import {InferenceSession as InferenceSessionInterface} from './inference-session.js';
+import {OnnxValue} from './onnx-value.js';
+import {Tensor} from './tensor.js';
 
-type SessionOptions = Session.SessionOptions;
-type RunOptions = Session.RunOptions;
-type FeedsType = Session.FeedsType;
-type FetchesType = Session.FetchesType;
-type ReturnType = Session.ReturnType;
+type SessionOptions = InferenceSessionInterface.SessionOptions;
+type RunOptions = InferenceSessionInterface.RunOptions;
+type FeedsType = InferenceSessionInterface.FeedsType;
+type FetchesType = InferenceSessionInterface.FetchesType;
+type ReturnType = InferenceSessionInterface.ReturnType;
 
 export class InferenceSession implements InferenceSessionInterface {
   private constructor(handler: SessionHandler) {
@@ -66,7 +66,7 @@ export class InferenceSession implements InferenceSessionInterface {
         const arg1Keys = Object.getOwnPropertyNames(arg1);
         for (const name of this.outputNames) {
           if (arg1Keys.indexOf(name) !== -1) {
-            const v = (arg1 as Session.NullableOnnxValueMapType)[name];
+            const v = (arg1 as InferenceSessionInterface.NullableOnnxValueMapType)[name];
             if (v === null || v instanceof Tensor) {
               isFetches = true;
               isFetchesEmpty = false;

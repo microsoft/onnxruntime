@@ -6,7 +6,7 @@ import {OnnxValue} from './onnx-value.js';
 
 /* eslint-disable @typescript-eslint/no-redeclare */
 
-export declare namespace Session {
+export declare namespace InferenceSession {
   // #region input/output types
 
   type OnnxValueMapType = {readonly [name: string]: OnnxValue};
@@ -306,7 +306,7 @@ export interface InferenceSession {
    * @param options - Optional. A set of options that controls the behavior of model inference.
    * @returns A promise that resolves to a map, which uses output names as keys and OnnxValue as corresponding values.
    */
-  run(feeds: Session.FeedsType, options?: Session.RunOptions): Promise<Session.ReturnType>;
+  run(feeds: InferenceSession.FeedsType, options?: InferenceSession.RunOptions): Promise<InferenceSession.ReturnType>;
 
   /**
    * Execute the model asynchronously with the given feeds, fetches and options.
@@ -317,8 +317,8 @@ export interface InferenceSession {
    * @param options - Optional. A set of options that controls the behavior of model inference.
    * @returns A promise that resolves to a map, which uses output names as keys and OnnxValue as corresponding values.
    */
-  run(feeds: Session.FeedsType, fetches: Session.FetchesType,
-      options?: Session.RunOptions): Promise<Session.ReturnType>;
+  run(feeds: InferenceSession.FeedsType, fetches: InferenceSession.FetchesType,
+      options?: InferenceSession.RunOptions): Promise<InferenceSession.ReturnType>;
 
   // #endregion
 
@@ -380,7 +380,7 @@ export interface InferenceSessionFactory {
    * @param options - specify configuration for creating a new inference session.
    * @returns A promise that resolves to an InferenceSession object.
    */
-  create(uri: string, options?: Session.SessionOptions): Promise<InferenceSession>;
+  create(uri: string, options?: InferenceSession.SessionOptions): Promise<InferenceSession>;
 
   /**
    * Create a new inference session and load model asynchronously from an array bufer.
@@ -389,7 +389,7 @@ export interface InferenceSessionFactory {
    * @param options - specify configuration for creating a new inference session.
    * @returns A promise that resolves to an InferenceSession object.
    */
-  create(buffer: ArrayBufferLike, options?: Session.SessionOptions): Promise<InferenceSession>;
+  create(buffer: ArrayBufferLike, options?: InferenceSession.SessionOptions): Promise<InferenceSession>;
 
   /**
    * Create a new inference session and load model asynchronously from segment of an array bufer.
@@ -400,7 +400,7 @@ export interface InferenceSessionFactory {
    * @param options - specify configuration for creating a new inference session.
    * @returns A promise that resolves to an InferenceSession object.
    */
-  create(buffer: ArrayBufferLike, byteOffset: number, byteLength?: number, options?: Session.SessionOptions):
+  create(buffer: ArrayBufferLike, byteOffset: number, byteLength?: number, options?: InferenceSession.SessionOptions):
       Promise<InferenceSession>;
 
   /**
@@ -410,7 +410,7 @@ export interface InferenceSessionFactory {
    * @param options - specify configuration for creating a new inference session.
    * @returns A promise that resolves to an InferenceSession object.
    */
-  create(buffer: Uint8Array, options?: Session.SessionOptions): Promise<InferenceSession>;
+  create(buffer: Uint8Array, options?: InferenceSession.SessionOptions): Promise<InferenceSession>;
 
   // #endregion
 }

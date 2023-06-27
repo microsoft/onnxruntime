@@ -1,9 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {Session} from './inference-session';
-import {OnnxValue} from './onnx-value';
-import {CheckpointState} from './training-session';
+import {InferenceSession} from './inference-session.js';
+import {OnnxValue} from './onnx-value.js';
 
 /**
  * @internal
@@ -29,7 +28,18 @@ export interface SessionHandler {
   endProfiling(): void;
 
   run(feeds: SessionHandler.FeedsType, fetches: SessionHandler.FetchesType,
-      options: Session.RunOptions): Promise<SessionHandler.ReturnType>;
+      options: InferenceSession.RunOptions): Promise<SessionHandler.ReturnType>;
+}
+
+export interface CheckpointHandler {
+  // save checkpoint implementation would go here
+  // need class representation of a checkpoint handler to also have the number id for handle
+  dispose(): Promise<void>;
+}
+
+export interface TrainingSessionHandler {
+  dispose(): Promise<void>;
+
 }
 
 /**
@@ -43,24 +53,15 @@ export interface Backend {
    */
   init(): Promise<void>;
 
-  createSessionHandler(uriOrBuffer: string|Uint8Array, options?: Session.SessionOptions):
+  createSessionHandler(uriOrBuffer: string|Uint8Array, options?: InferenceSession.SessionOptions):
       Promise<SessionHandler>;
-
-  createCheckpointState(pathOrBuffer: string|Uint8Array): Promise<CheckpointState>;
-
-  createTrainingSession(checkpointState: CheckpointState, trainModel: ArrayBufferLike|string, evalModel: ArrayBufferLike|string,
-      optimizerModel: ArrayBufferLike|string, options?: Session.SessionOptions): Promise<TrainingSessionHandler>;
 }
 
-export {registerBackend} from './backend-impl';
+export interface TrainingBackend extends Backend {
+  createCheckpointHandler(pathOrBuffer: string|Uint8Array): Promise<CheckpointHandler>;
 
-export interface CheckpointHandler {
-  // save checkpoint implementation would go here
-  // need class representation of a checkpoint handler to also have the number id for handle
-  dispose(): Promise<void>;
+  // createTrainingSession(checkpointState: CheckpointState, trainModel: ArrayBufferLike|string, evalModel: ArrayBufferLike|string,
+  //     optimizerModel: ArrayBufferLike|string, options?: Session.SessionOptions): Promise<TrainingSessionHandler>;
 }
 
-export interface TrainingSessionHandler {
-  dispose(): Promise<void>;
-
-}
+export {registerBackend} from './backend-impl.js';

@@ -1,10 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {Backend} from './backend.js';
+import {Backend, TrainingBackend} from './backend.js';
 
 interface BackendInfo {
-  backend: Backend;
+  backend: Backend|TrainingBackend;
   priority: number;
 
   initPromise?: Promise<void>;
