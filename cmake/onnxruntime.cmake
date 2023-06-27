@@ -219,8 +219,8 @@ target_link_libraries(onnxruntime PRIVATE
     ${onnxruntime_EXTERNAL_LIBRARIES}
 )
 
-set_property(TARGET onnxruntime APPEND_STRING PROPERTY LINK_FLAGS ${ONNXRUNTIME_SO_LINK_FLAG} ${onnxruntime_DELAYLOAD_FLAGS})
-set_target_properties(onnxruntime PROPERTIES LINK_DEPENDS ${SYMBOL_FILE})
+#set_property(TARGET onnxruntime APPEND_STRING PROPERTY LINK_FLAGS ${ONNXRUNTIME_SO_LINK_FLAG} ${onnxruntime_DELAYLOAD_FLAGS})
+#set_target_properties(onnxruntime PROPERTIES LINK_DEPENDS ${SYMBOL_FILE})
 
 
 set_target_properties(onnxruntime PROPERTIES VERSION ${ORT_VERSION})

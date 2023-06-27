@@ -34,14 +34,13 @@ class TensorShape2 {
 //  TensorShape* tensor_shape_;
 };
 
-class TensorShape3 {
- public:
+struct TensorShape3 {
   TensorShape3();
   size_t NumDimensions();
- private:
-  std::vector<int> shape_;
 };
 
 int cube(int x);
+
+int inlineCube(int x) {return x*x*x;}
 
 }  // namespace onnxruntime

@@ -29,11 +29,10 @@ bool TensorShape2::IsScalar() const {
 }
 
 TensorShape3::TensorShape3() {
-  shape_.push_back(1);
 }
 
 size_t TensorShape3::NumDimensions() {
-  return shape_.size();
+  return 4L;
 }
 
 int cube(int x) {
