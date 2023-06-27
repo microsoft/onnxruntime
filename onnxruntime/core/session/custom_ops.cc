@@ -405,7 +405,7 @@ struct CustomOpKernel : OpKernel {
     if (op_.version > 15 && op_.KernelCompute == 0) {
       op_kernel_ = nullptr;
       Ort::ThrowOnError(
-          op_.CreateKernelFallible(
+          op_.CreateKernelV2(
               &op_,
               OrtGetApiBase()->GetApi(op_.version),
               reinterpret_cast<const OrtKernelInfo*>(&info),
@@ -422,7 +422,7 @@ struct CustomOpKernel : OpKernel {
 
   Status Compute(OpKernelContext* ctx) const override {
     if (op_.version > 15 && op_.KernelCompute == 0) {
-      auto status_ptr = op_.KernelComputeFallible(op_kernel_, reinterpret_cast<OrtKernelContext*>(ctx));
+      auto status_ptr = op_.KernelComputeV2(op_kernel_, reinterpret_cast<OrtKernelContext*>(ctx));
       return ToStatus(status_ptr);
     }
 

@@ -1847,7 +1847,7 @@ struct Op : detail::Base<OrtOp> {
               size_t output_count);
 };
 
-template <typename TOp, typename TKernel, bool Fallible = false>
+template <typename TOp, typename TKernel, bool WithStatus = false>
 struct CustomOpBase : OrtCustomOp {
   CustomOpBase() {
     OrtCustomOp::version = ORT_API_VERSION;
@@ -1877,16 +1877,16 @@ struct CustomOpBase : OrtCustomOp {
     OrtCustomOp::GetVariadicInputHomogeneity = [](const OrtCustomOp* this_) { return static_cast<int>(static_cast<const TOp*>(this_)->GetVariadicInputHomogeneity()); };
     OrtCustomOp::GetVariadicOutputMinArity = [](const OrtCustomOp* this_) { return static_cast<const TOp*>(this_)->GetVariadicOutputMinArity(); };
     OrtCustomOp::GetVariadicOutputHomogeneity = [](const OrtCustomOp* this_) { return static_cast<int>(static_cast<const TOp*>(this_)->GetVariadicOutputHomogeneity()); };
-    if constexpr (Fallible) {
-      OrtCustomOp::CreateKernelFallible = [](const OrtCustomOp* this_, const OrtApi* api, const OrtKernelInfo* info, void** op_kernel) -> OrtStatusPtr {
-        return static_cast<const TOp*>(this_)->CreateKernelFallible(*api, info, op_kernel);
+    if constexpr (WithStatus) {
+      OrtCustomOp::CreateKernelV2 = [](const OrtCustomOp* this_, const OrtApi* api, const OrtKernelInfo* info, void** op_kernel) -> OrtStatusPtr {
+        return static_cast<const TOp*>(this_)->CreateKernelV2(*api, info, op_kernel);
       };
-      OrtCustomOp::KernelComputeFallible = [](void* op_kernel, OrtKernelContext* context) -> OrtStatusPtr {
-        return static_cast<TKernel*>(op_kernel)->ComputeFallible(context);
+      OrtCustomOp::KernelComputeV2 = [](void* op_kernel, OrtKernelContext* context) -> OrtStatusPtr {
+        return static_cast<TKernel*>(op_kernel)->ComputeV2(context);
       };
     } else {
-      OrtCustomOp::CreateKernelFallible = nullptr;
-      OrtCustomOp::KernelComputeFallible = nullptr;
+      OrtCustomOp::CreateKernelV2 = nullptr;
+      OrtCustomOp::KernelComputeV2 = nullptr;
 
       OrtCustomOp::CreateKernel = [](const OrtCustomOp* this_, const OrtApi* api, const OrtKernelInfo* info) { return static_cast<const TOp*>(this_)->CreateKernel(*api, info); };
       OrtCustomOp::KernelCompute = [](void* op_kernel, OrtKernelContext* context) {

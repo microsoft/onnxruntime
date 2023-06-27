@@ -4346,7 +4346,10 @@ typedef enum OrtCustomOpInputOutputCharacteristic {
 struct OrtCustomOp {
   uint32_t version;  // Must be initialized to ORT_API_VERSION
 
-  // This callback creates the kernel, which is a user defined parameter that is passed to the Kernel* callbacks below.
+  // This callback creates the kernel, which is a user defined
+  // parameter that is passed to the Kernel* callbacks below. It is
+  // recommended to use CreateKernelV2 which allows for a safe error
+  // propagation by returning an OrtStatusPtr.
   void*(ORT_API_CALL* CreateKernel)(_In_ const struct OrtCustomOp* op, _In_ const OrtApi* api,
                                     _In_ const OrtKernelInfo* info);
 
@@ -4362,7 +4365,9 @@ struct OrtCustomOp {
   ONNXTensorElementDataType(ORT_API_CALL* GetOutputType)(_In_ const struct OrtCustomOp* op, _In_ size_t index);
   size_t(ORT_API_CALL* GetOutputTypeCount)(_In_ const struct OrtCustomOp* op);
 
-  // Op kernel callbacks
+  // Perform a computation step.  It is recommended to use
+  // KernelComputeV2 which allows for a safe error propagation by
+  // returning an OrtStatusPtr.
   void(ORT_API_CALL* KernelCompute)(_In_ void* op_kernel, _In_ OrtKernelContext* context);
   void(ORT_API_CALL* KernelDestroy)(_In_ void* op_kernel);
 
@@ -4395,13 +4400,13 @@ struct OrtCustomOp {
   // Applicable only for custom ops that have a variadic output.
   int(ORT_API_CALL* GetVariadicOutputHomogeneity)(_In_ const struct OrtCustomOp* op);
 
-  // Fallible kernel creation
-  OrtStatusPtr(ORT_API_CALL* CreateKernelFallible)(_In_ const struct OrtCustomOp* op, _In_ const OrtApi* api,
+  // Create the kernel state which is passed to each compute call. 
+  OrtStatusPtr(ORT_API_CALL* CreateKernelV2)(_In_ const struct OrtCustomOp* op, _In_ const OrtApi* api,
                                                    _In_ const OrtKernelInfo* info,
                                                    _Out_ void** kernel);
 
-  // Fallible compute call
-  OrtStatusPtr(ORT_API_CALL* KernelComputeFallible)(_In_ void* op_kernel, _In_ OrtKernelContext* context);
+  // Perform the computation step.
+  OrtStatusPtr(ORT_API_CALL* KernelComputeV2)(_In_ void* op_kernel, _In_ OrtKernelContext* context);
 };
 
 /*

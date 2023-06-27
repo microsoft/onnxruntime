@@ -20,7 +20,7 @@ void cuda_add(int64_t, T3*, const T1*, const T2*, cudaStream_t compute_stream);
 static const char* c_OpDomain = "test.customop";
 
 struct KernelOne {
-  OrtStatusPtr ComputeFallible(OrtKernelContext* context) {
+  OrtStatusPtr ComputeV2(OrtKernelContext* context) {
     // Setup inputs
     Ort::KernelContext ctx(context);
     auto input_X = ctx.GetInput(0);
@@ -49,9 +49,9 @@ struct KernelOne {
   }
 };
 
-// legacy custom op registration with fallible kernel creation and compute function
+// legacy custom op registration with kernel creation and compute function that return an OrtStatusPtr
 struct CustomOpOne : Ort::CustomOpBase<CustomOpOne, KernelOne, true> {
-  OrtStatusPtr CreateKernelFallible(const OrtApi& /* api */, const OrtKernelInfo* /* info */, void** op_kernel) const {
+  OrtStatusPtr CreateKernelV2(const OrtApi& /* api */, const OrtKernelInfo* /* info */, void** op_kernel) const {
     *op_kernel = reinterpret_cast<void*>(std::make_unique<KernelOne>().release());
     return nullptr;
   };
