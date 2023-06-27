@@ -1,8 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {InferenceSession as InferenceSessionImpl} from './inference-session-impl';
-import {OnnxValue} from './onnx-value';
+import {InferenceSession as InferenceSessionImpl} from './inference-session-impl.js';
+import {OnnxValue} from './onnx-value.js';
 
 /* eslint-disable @typescript-eslint/no-redeclare */
 
@@ -167,6 +167,7 @@ export declare namespace InferenceSession {
   // Backend Node.js binding: supports 'cpu' and 'cuda'.
   // Backend WebAssembly: supports 'cpu', 'wasm', 'xnnpack' and 'webnn'.
   // Backend ONNX.js: supports 'webgl'.
+  // Backend React Native: supports 'cpu', 'xnnpack', 'coreml' (iOS), 'nnapi' (Android).
   interface ExecutionProviderOptionMap {
     cpu: CpuExecutionProviderOption;
     cuda: CudaExecutionProviderOption;
@@ -174,6 +175,8 @@ export declare namespace InferenceSession {
     webgl: WebGLExecutionProviderOption;
     xnnpack: XnnpackExecutionProviderOption;
     webnn: WebNNExecutionProviderOption;
+    coreml: CoreMLExecutionProviderOption;
+    nnapi: NnapiExecutionProviderOption;
   }
 
   type ExecutionProviderName = keyof ExecutionProviderOptionMap;
@@ -205,6 +208,19 @@ export declare namespace InferenceSession {
     readonly name: 'webnn';
     deviceType?: 'cpu'|'gpu';
     powerPreference?: 'default'|'low-power'|'high-performance';
+  }
+  export interface CoreMLExecutionProviderOption extends ExecutionProviderOption {
+    readonly name: 'coreml';
+    useCPUOnly?: boolean;
+    enableOnSubgraph?: boolean;
+    onlyEnableDeviceWithANE?: boolean;
+  }
+  export interface NnapiExecutionProviderOption extends ExecutionProviderOption {
+    readonly name: 'nnapi';
+    useFP16?: boolean;
+    useNCHW?: boolean;
+    cpuDisabled?: boolean;
+    cpuOnly?: boolean;
   }
   // #endregion
 

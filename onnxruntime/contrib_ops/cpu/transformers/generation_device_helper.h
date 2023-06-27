@@ -33,6 +33,7 @@ enum DeviceCopyDirection {
 
 namespace GenerationDeviceHelper {
 
+#ifdef USE_CUDA
 using ReorderPastStateFunc = std::function<Status(
     const void* cuda_device_prop,  // cudaDeviceProp
     Tensor& past_state,
@@ -42,6 +43,7 @@ using ReorderPastStateFunc = std::function<Status(
 using InitCacheIndirFunc = std::function<Status(
     Tensor& cache_indir,
     Stream* stream)>;
+#endif
 
 using TopkFunc = std::function<Status(
     const Tensor* input, const int axis, const unsigned k, bool largest, bool sorted,
@@ -64,11 +66,13 @@ using CreateGptInputsFunc = std::function<Status(
     OrtValue& expanded_attention_mask)>;
 
 using AddToFeedsFunc = std::function<Status(
-    const IExecutionProvider* provider,
     Stream* ort_stream,
     std::initializer_list<OrtValue> inputs,
     std::vector<OrtValue>& feeds,
-    IAllocatorUniquePtr<char>& buffer)>;
+    IAllocatorUniquePtr<char>& buffer,
+    AllocatorPtr device_allocator,
+    AllocatorPtr host_allocator,
+    const OrtMemoryInfo& location)>;
 
 template <typename T>
 using InitBeamStateFunc = std::function<void(
@@ -208,11 +212,13 @@ Status TopK(
     Tensor& output_indices);
 
 Status AddToFeeds(
-    const IExecutionProvider* execution_provider,
     Stream* ort_stream,
     std::initializer_list<OrtValue> inputs,
     std::vector<OrtValue>& feeds,
-    IAllocatorUniquePtr<char>& buffer);
+    IAllocatorUniquePtr<char>& buffer,
+    AllocatorPtr device_allocator,
+    AllocatorPtr host_allocator,
+    const OrtMemoryInfo& location);
 
 template <typename T>
 void InitBeamState(transformers::IBeamSearchState<T>* beam_state,

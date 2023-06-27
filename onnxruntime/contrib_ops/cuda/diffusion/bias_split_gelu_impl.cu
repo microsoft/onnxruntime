@@ -41,7 +41,7 @@ __global__ void biasSplitGeluKernel(T const* input, T const* bias, T* output) {
     auto value_right = (float)(input[index_input + HHS] + bias[index_bias + HHS]);
 
     // Gelu is applied to right side only: Gelu(x) = x * 0.5 * (erf(x / sqrt(2)) + 1.0)
-    float gelu_right = value_right * 0.5f * (erff(value_right / 1.41421356237f) + 1.0f);
+    float gelu_right = value_right * 0.5f * (erff(value_right / static_cast<float>(M_SQRT2)) + 1.0f);
     float result = value_left * gelu_right;
     output[index_output] = static_cast<T>(result);
     index_input += TPB;

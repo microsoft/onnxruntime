@@ -29,10 +29,9 @@ class CPUExecutionProvider : public IExecutionProvider {
   // associated with the same device
   explicit CPUExecutionProvider(const CPUExecutionProviderInfo& info, bool delay_allocator_registration = false);
 
-  void RegisterAllocator(AllocatorManager& allocator_manager) override;
-
   std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;
   std::unique_ptr<IDataTransfer> GetDataTransfer() const override;
+  std::vector<AllocatorPtr> CreatePreferredAllocators() override;
 
  private:
   CPUExecutionProviderInfo info_;

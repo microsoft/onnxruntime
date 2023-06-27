@@ -274,13 +274,14 @@ bool DeepCpuGruOp::TryPackInputWeights(const Tensor& weights, AllocatorPtr& allo
   }
 
   const size_t buffer_size = SafeInt<size_t>(packed_weights_size) * num_directions;
-  auto* packed_weights_data = alloc->Alloc(buffer_size);
+  pre_packed_input_weights_.buffer_ = IAllocator::MakeUniquePtr<void>(alloc, buffer_size, true);
+
+  std::byte* packed_weights_data = static_cast<std::byte*>(pre_packed_input_weights_.buffer_.get());
   // Initialize memory to 0 as there could be some padding associated with pre-packed
   // buffer memory and we don not want it uninitialized and generate different hashes
   // if and when we try to cache this pre-packed buffer for sharing between sessions.
   memset(packed_weights_data, 0, buffer_size);
 
-  pre_packed_input_weights_.buffer_ = BufferUniquePtr(packed_weights_data, BufferDeleter(alloc));
   pre_packed_input_weights_.buffer_size_ = buffer_size;
   pre_packed_input_weights_.shape_ = shape;
   pre_packed_input_weights_.weights_size_ = packed_weights_size;
@@ -290,7 +291,7 @@ bool DeepCpuGruOp::TryPackInputWeights(const Tensor& weights, AllocatorPtr& allo
   for (int64_t dir = 0; dir < num_directions; ++dir) {
     MlasGemmPackB(CblasTrans, N, K, weights_data, K, packed_weights_data);
     weights_data += N_x_K;
-    packed_weights_data = static_cast<uint8_t*>(packed_weights_data) + packed_weights_size;
+    packed_weights_data += packed_weights_size;
   }
 
   return true;
@@ -328,19 +329,19 @@ bool DeepCpuGruOp::TryPackRecurrentWeights(const Tensor& weights, AllocatorPtr& 
   }
   const size_t buffer_size_ZR = SafeInt<size_t>(ZR_packed_size) * num_directions;
   const size_t buffer_size_H = SafeInt<size_t>(H_packed_size) * num_directions;
+  pre_packed_recurrent_ZR_.buffer_ = IAllocator::MakeUniquePtr<void>(alloc, buffer_size_ZR, true);
 
-  auto* buffer_ZR = alloc->Alloc(buffer_size_ZR);
+  auto* buffer_ZR = pre_packed_recurrent_ZR_.buffer_.get();
   memset(buffer_ZR, 0, buffer_size_ZR);
 
-  pre_packed_recurrent_ZR_.buffer_ = BufferUniquePtr(buffer_ZR, BufferDeleter(alloc));
   pre_packed_recurrent_ZR_.buffer_size_ = buffer_size_ZR;
   pre_packed_recurrent_ZR_.shape_ = shape;  // original shape, not used in prepacked calculations, but useful for validation
   pre_packed_recurrent_ZR_.weights_size_ = ZR_packed_size;
 
-  auto* buffer_H = alloc->Alloc(buffer_size_H);
+  pre_packed_recurrent_H_.buffer_ = IAllocator::MakeUniquePtr<void>(alloc, buffer_size_H, true);
+  auto* buffer_H = pre_packed_recurrent_H_.buffer_.get();
   memset(buffer_H, 0, buffer_size_H);
 
-  pre_packed_recurrent_H_.buffer_ = BufferUniquePtr(buffer_H, BufferDeleter(alloc));
   pre_packed_recurrent_H_.buffer_size_ = buffer_size_H;
   pre_packed_recurrent_H_.shape_ = shape;  // original shape, not used in prepacked calculations, but useful for validation
   pre_packed_recurrent_H_.weights_size_ = H_packed_size;

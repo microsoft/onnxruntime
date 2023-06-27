@@ -49,21 +49,30 @@ void GetAttentionWeight(std::vector<float>& weight_data, int elements = 64 * 3 *
 void GetAttentionBias(std::vector<float>& bias_data, int elements = 3 * 64, int offset = 0, int step = 1);
 
 void GetCrossAttentionData_HeadSize40(AttentionTestData& data);
+void GetCrossAttentionData_HeadSize40_NoBias(AttentionTestData& data);
 void GetCrossAttentionData_Batch2_HeadSize32_RightSidePadding(AttentionTestData& data, bool is_mask_1d);
+void GetCrossAttentionData_Batch2_HeadSize32_RightSidePadding_NoBias(AttentionTestData& data, bool is_mask_1d);
 void GetCrossAttentionData_Batch1_HeadSize32_LeftSidePadding(AttentionTestData& data);
+void GetCrossAttentionData_Batch1_HeadSize32_LeftSidePadding_NoBias(AttentionTestData& data);
 
 void GetCrossAttentionData_Batch2_HeadSize32_NoBias_NoMask_PackedKV(AttentionTestData& data);
 void GetSelfAttentionData_Batch2_HeadSize32_NoBias_NoMask_PackedQKV(AttentionTestData& data);
 #endif
 
 void GetCrossAttentionData_HeadSize16_8(AttentionTestData& data);
+void GetCrossAttentionData_HeadSize16_8_NoBias(AttentionTestData& data);
 void GetCrossAttentionData_HeadSize16(AttentionTestData& data);
+void GetCrossAttentionData_HeadSize16_NoBias(AttentionTestData& data);
 
 void GetCrossAttentionDataWithPast(AttentionTestData& data);
 void GetSelfAttentionData_WithPast_WithRelPosBias_ForT5(AttentionTestData& data);
 
 void GetCrossAttentionData_DiffSequenceLengths(AttentionTestData& data);
+void GetCrossAttentionData_DiffSequenceLengths_HeadSize8(AttentionTestData& data);
+void GetCrossAttentionData_DiffSequenceLengths_HeadSize8_NoBias(AttentionTestData& data);
 void GetSelfAttentionData_WithPastAndPresent_NoMask_NoRelPosBias(AttentionTestData& data);
+void GetSelfAttentionData_WithPastAndPresent_HeadSize8_NoMask_NoRelPosBias(AttentionTestData& data);
+void GetSelfAttentionData_WithPastAndPresent_HeadSize8_NoMask_NoRelPosBias_NoBias(AttentionTestData& data);
 void GetCrossAttentionData_WithPastPassedInDirectly_NoMask(AttentionTestData& data);
 
 void GetAttentionDataCutlassRelPosBias(AttentionTestData& data);

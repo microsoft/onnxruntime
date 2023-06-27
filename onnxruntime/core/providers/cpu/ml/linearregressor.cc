@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/providers/cpu/ml/linearregressor.h"
+#include "core/common/narrow.h"
 #include "core/providers/cpu/math/gemm.h"
 
 namespace onnxruntime {
@@ -35,7 +36,7 @@ LinearRegressor::LinearRegressor(const OpKernelInfo& info)
 // intercepts_: optional [num_targets].
 // Output: X * coefficients_^T + intercepts_: [num_batches, num_targets]
 template <typename T>
-static Status ComputeImpl(const Tensor& input, int64_t num_batches, int64_t num_features, int64_t num_targets,
+static Status ComputeImpl(const Tensor& input, ptrdiff_t num_batches, ptrdiff_t num_features, ptrdiff_t num_targets,
                           const std::vector<float>& coefficients,
                           const std::vector<float>* intercepts, Tensor& output,
                           POST_EVAL_TRANSFORM post_transform,
@@ -79,8 +80,9 @@ Status LinearRegressor::Compute(OpKernelContext* ctx) const {
                            input_shape.NumDimensions());
   }
 
-  int64_t num_batches = input_shape.NumDimensions() <= 1 ? 1 : input_shape[0];
-  int64_t num_features = input_shape.NumDimensions() <= 1 ? input_shape.Size() : input_shape[1];
+  ptrdiff_t num_batches = input_shape.NumDimensions() <= 1 ? 1 : narrow<ptrdiff_t>(input_shape[0]);
+  ptrdiff_t num_features = input_shape.NumDimensions() <= 1 ? narrow<ptrdiff_t>(input_shape.Size())
+                                                            : narrow<ptrdiff_t>(input_shape[1]);
   Tensor& Y = *ctx->Output(0, {num_batches, num_targets_});
   concurrency::ThreadPool* tp = ctx->GetOperatorThreadPool();
 
@@ -88,7 +90,7 @@ Status LinearRegressor::Compute(OpKernelContext* ctx) const {
 
   switch (element_type) {
     case ONNX_NAMESPACE::TensorProto_DataType_FLOAT: {
-      status = ComputeImpl<float>(X, num_batches, num_features, num_targets_, coefficients_,
+      status = ComputeImpl<float>(X, num_batches, num_features, narrow<ptrdiff_t>(num_targets_), coefficients_,
                                   use_intercepts_ ? &intercepts_ : nullptr,
                                   Y, post_transform_, tp);
 
