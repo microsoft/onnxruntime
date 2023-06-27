@@ -278,6 +278,8 @@ stages:
         - template: ../../templates/compliance.yml
           parameters :
             msbuildPlatform: ${{ parameters.sln_platform }}
+            ${{ if eq(variables.vsVersion, '2019') }}:
+              vs2022: false
 
       - template: ../../templates/component-governance-component-detection-steps.yml
         parameters :
