@@ -1814,7 +1814,7 @@ inline std::vector<std::string> GetAvailableProviders() {
 
 template <typename TOp, typename TKernel, bool WithStatus>
 void CustomOpBase<TOp, TKernel, WithStatus>::GetSessionConfigs(std::unordered_map<std::string, std::string>& out,
-                                                             ConstSessionOptions options) const {
+                                                               ConstSessionOptions options) const {
   const TOp* derived = static_cast<const TOp*>(this);
   std::vector<std::string> keys = derived->GetSessionConfigKeys();
 

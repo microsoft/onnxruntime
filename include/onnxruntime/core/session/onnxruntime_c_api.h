@@ -4400,10 +4400,10 @@ struct OrtCustomOp {
   // Applicable only for custom ops that have a variadic output.
   int(ORT_API_CALL* GetVariadicOutputHomogeneity)(_In_ const struct OrtCustomOp* op);
 
-  // Create the kernel state which is passed to each compute call. 
+  // Create the kernel state which is passed to each compute call.
   OrtStatusPtr(ORT_API_CALL* CreateKernelV2)(_In_ const struct OrtCustomOp* op, _In_ const OrtApi* api,
-                                                   _In_ const OrtKernelInfo* info,
-                                                   _Out_ void** kernel);
+                                             _In_ const OrtKernelInfo* info,
+                                             _Out_ void** kernel);
 
   // Perform the computation step.
   OrtStatusPtr(ORT_API_CALL* KernelComputeV2)(_In_ void* op_kernel, _In_ OrtKernelContext* context);
