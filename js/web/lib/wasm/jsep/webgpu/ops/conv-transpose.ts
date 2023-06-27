@@ -203,12 +203,6 @@ const convTranspose2d =
       // const hasPreluActivationWeights = false; /* TODO: add support for prelu activation weights */
       const isChannelsLast = adjustedAttributes.format === 'NHWC';
 
-      // const batchSize = context.inputs[0].dims[0];
-      const inputHeight = inputs[0].dims[isChannelsLast ? 1 : 2];
-      const inputWidth = inputs[0].dims[isChannelsLast ? 2 : 3];
-      const weightHeight = inputs[1].dims[2];
-      const weightWidth = inputs[1].dims[3];
-
       const outputShape = adjustedAttributes.outputShape;
 
       // STEP.1: transpose weight
