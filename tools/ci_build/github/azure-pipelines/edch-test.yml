@@ -6,6 +6,7 @@ jobs:
     vmImage: 'macOS-13'
   strategy:
     parallel: 10
+  timeoutInMinutes: 10
 
   steps:
   - checkout: none
