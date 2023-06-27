@@ -1092,7 +1092,7 @@ class OnnxModel:
         return op_count
 
     @staticmethod
-    def has_same_value(tensor1: TensorProto, tensor2: TensorProto, greedy = False) -> bool:
+    def has_same_value(tensor1: TensorProto, tensor2: TensorProto, greedy=False) -> bool:
         """Returns True when two tensors have same value.
            Note that name can be different.
 
@@ -1107,12 +1107,12 @@ class OnnxModel:
             return False
         if tensor1.HasField("raw_data") and tensor2.HasField("raw_data"):
             return tensor1.raw_data == tensor2.raw_data
-        if (greedy):
+        if greedy:
             return False
 
         return (numpy_helper.to_array(tensor1) == numpy_helper.to_array(tensor2)).all()
 
-    def remove_duplicated_initializer(self, greedy = False):
+    def remove_duplicated_initializer(self, greedy=False):
         """Remove initializers with duplicated values, and only keep the first one.
         It could help reduce size of models (like ALBert) with shared weights.
         Note: this function does not process subgraph.
