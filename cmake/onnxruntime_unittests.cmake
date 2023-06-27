@@ -377,25 +377,27 @@ endif()
 
 # Disable training ops test for minimal build as a lot of these depend on loading an onnx model.
 if (NOT onnxruntime_MINIMAL_BUILD)
-  file(GLOB_RECURSE orttraining_test_trainingops_cpu_src CONFIGURE_DEPENDS
-    "${ORTTRAINING_SOURCE_DIR}/test/training_ops/compare_provider_test_utils.cc"
-    "${ORTTRAINING_SOURCE_DIR}/test/training_ops/function_op_test_utils.cc"
-    "${ORTTRAINING_SOURCE_DIR}/test/training_ops/cpu/*"
-    )
-
-  if (NOT onnxruntime_ENABLE_TRAINING)
-    list(REMOVE_ITEM orttraining_test_trainingops_cpu_src
-      "${ORTTRAINING_SOURCE_DIR}/test/training_ops/cpu/tensorboard/summary_op_test.cc"
+  if (onnxruntime_ENABLE_TRAINING_OPS)
+    file(GLOB_RECURSE orttraining_test_trainingops_cpu_src CONFIGURE_DEPENDS
+      "${ORTTRAINING_SOURCE_DIR}/test/training_ops/compare_provider_test_utils.cc"
+      "${ORTTRAINING_SOURCE_DIR}/test/training_ops/function_op_test_utils.cc"
+      "${ORTTRAINING_SOURCE_DIR}/test/training_ops/cpu/*"
       )
-  endif()
 
-  list(APPEND onnxruntime_test_providers_src ${orttraining_test_trainingops_cpu_src})
+    if (NOT onnxruntime_ENABLE_TRAINING)
+      list(REMOVE_ITEM orttraining_test_trainingops_cpu_src
+        "${ORTTRAINING_SOURCE_DIR}/test/training_ops/cpu/tensorboard/summary_op_test.cc"
+        )
+    endif()
 
-  if (onnxruntime_USE_CUDA OR onnxruntime_USE_ROCM)
-    file(GLOB_RECURSE orttraining_test_trainingops_cuda_src CONFIGURE_DEPENDS
-      "${ORTTRAINING_SOURCE_DIR}/test/training_ops/cuda/*"
-      )
-    list(APPEND onnxruntime_test_providers_src ${orttraining_test_trainingops_cuda_src})
+    list(APPEND onnxruntime_test_providers_src ${orttraining_test_trainingops_cpu_src})
+
+    if (onnxruntime_USE_CUDA OR onnxruntime_USE_ROCM)
+      file(GLOB_RECURSE orttraining_test_trainingops_cuda_src CONFIGURE_DEPENDS
+        "${ORTTRAINING_SOURCE_DIR}/test/training_ops/cuda/*"
+        )
+      list(APPEND onnxruntime_test_providers_src ${orttraining_test_trainingops_cuda_src})
+    endif()
   endif()
 endif()
 
