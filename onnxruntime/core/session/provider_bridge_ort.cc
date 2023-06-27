@@ -1057,12 +1057,6 @@ struct ProviderHostImpl : ProviderHost {
   void TensorSeq__Add(TensorSeq* p, Tensor&& tensor) override { p->Add(std::move(tensor)); }
   void TensorSeq__Reserve(TensorSeq* p, size_t capacity) override { p->Reserve(capacity); }
 
-  // AllocatorManager (direct)
-  void AllocatorManager__InsertAllocator(AllocatorManager* p, AllocatorPtr allocator) override { p->AllocatorManager::InsertAllocator(allocator); }
-  AllocatorPtr AllocatorManager__GetAllocator(const AllocatorManager* p, OrtMemType mem_type, OrtDevice device) override {
-    return p->AllocatorManager::GetAllocator(mem_type, device);
-  };
-
 #if defined(ENABLE_TRAINING) && defined(ORT_USE_NCCL)
   training::DistributedRunContext& GetDistributedRunContextInstance() override { return training::DistributedRunContext::GetInstance(); }
 #endif
