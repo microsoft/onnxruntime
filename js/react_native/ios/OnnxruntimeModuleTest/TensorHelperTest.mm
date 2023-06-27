@@ -242,7 +242,7 @@ static void testCreateOutputTensorT(const std::array<T, 5> &outValues, std::func
 
 - (void)testCreateOutputTensorFloat {
   std::array<float, 5> outValues{std::numeric_limits<float>::min(), 1.0f, 2.0f, 3.0f,
-                                   std::numeric_limits<float>::max()};
+                                 std::numeric_limits<float>::max()};
   std::function<NSNumber *(float value)> convert = [](float value) { return [NSNumber numberWithFloat:value]; };
   testCreateOutputTensorT<float>(outValues, convert, JsTensorTypeFloat, @"test_types_float", @"ort");
 }
