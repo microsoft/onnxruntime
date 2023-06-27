@@ -58,7 +58,7 @@ stages:
       TODAY: $[format('{0:dd}{0:MM}{0:yyyy}', pipeline.startTime)]
       PROTO_CACHE_DIR: '$(Pipeline.Workspace)/ccache_proto'
       ORT_CACHE_DIR: '$(Pipeline.Workspace)/ccache_ort'
-    timeoutInMinutes: 150
+    timeoutInMinutes: 180
     steps:
     - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
       displayName: Clean Agent Directories
