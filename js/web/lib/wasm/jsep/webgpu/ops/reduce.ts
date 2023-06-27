@@ -36,6 +36,7 @@ const createReduceProgramInfo =
       const idxCopy: string[] = [];  // copy output indexes to input indexes
 
       const axes = ShapeUtil.normalizeAxes(attributes.axes, inputs[0].dims.length);
+      const outputDimsLength = inputs[0].dims.length - (attributes.keepDims === true ? 0 : axes.length);
       const ops = reduceOp(inputs, axes);
       const inputIndicesHelper = createIndicesHelper('input', inputShape);
       const initInputIdx = (ops[1] === '') ? '' : `let inputIdx = ${inputIndicesHelper.i2oExpression('inputIndices')};`;
@@ -56,7 +57,11 @@ const createReduceProgramInfo =
                             ${reduceOps}
                           }`;
         } else {
-          idxCopy.push(`inputIndices[${k}] = outputIndices[${outputShape.length}];`);
+          if (outputDimsLength > 1) {
+            idxCopy.push(`inputIndices[${k}] = outputIndices[${outputShape.length}];`);
+          } else {
+            idxCopy.push(`inputIndices[${k}] = outputIndices;`);
+          }
           outputShape.push(inputs[0].dims[k]);
         }
       }
