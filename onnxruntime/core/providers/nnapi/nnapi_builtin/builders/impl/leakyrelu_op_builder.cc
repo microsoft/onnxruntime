@@ -25,9 +25,6 @@ using namespace op_builder_helpers;
 
 class LeakyReluOpBuilder : public BaseOpBuilder {
   // Add operator related
-  //  public:
-  //   void AddInitializersToSkip(ModelBuilder& model_builder, const NodeUnit& node_unit) const override;
-
  private:
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const override;
 
@@ -41,12 +38,6 @@ class LeakyReluOpBuilder : public BaseOpBuilder {
 };
 
 // Add operator related
-
-// void LeakyReluOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
-//   const auto& inputs = node_unit.Inputs();
-//   // Skip the LeakyRelu input?
-//   model_builder.AddInitializerToSkip(inputs[0].node_arg.Name());
-// }
 
 Status LeakyReluOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
                                                  const NodeUnit& node_unit) const {
