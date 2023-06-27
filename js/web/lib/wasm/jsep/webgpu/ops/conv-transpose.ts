@@ -6,8 +6,8 @@ import {TensorView} from '../../tensor';
 import {createAttributeWithCacheKey} from '../attribute-with-cache-key';
 import {ComputeContext} from '../types';
 
-import {createConvTranspose2DProgramInfoLoader} from './conv-transpose-naive';
 import {ConvAttributes} from './conv';
+import {createConvTranspose2DProgramInfoLoader} from './conv-transpose-naive';
 import {parseInternalActivationAttributes} from './fuse-utils';
 import {createTransposeProgramInfo, TransposeAttributes, transposeProgramMetadata} from './transpose';
 
@@ -80,15 +80,27 @@ const getAdjustedConvTransposeAttributes =
       const outputShape = attributes.outputShape.slice();
       const outputPadding = attributes.outputPadding.slice();
       const inputShape = inputs[0].dims;
+      let dilations = attributes.dilations.slice();
+      if (dilations.reduce((a, b) => a + b, 0) === 0) {
+        const spatialRank = inputs[0].dims.length - 2;
+        dilations = new Array(spatialRank).fill(1);
+      }
+      let strides = attributes.strides.slice();
+      if (strides.reduce((a, b) => a + b, 0) === 0) {
+        const spatialRank = inputs[0].dims.length - 2;
+        strides = new Array(spatialRank).fill(1);
+      }
       // If outputShape is not specified in the attributes of this op, infer it from the parameters
       // Similarly, automatically infer pads if not specified
       calculateOutputShapeAndPads(
-          inputShape, kernelShape, attributes.dilations, attributes.autoPad, attributes.group, pads, attributes.strides,
-          isChannelsLast, outputPadding, outputShape);
+          inputShape, kernelShape, dilations, attributes.autoPad, attributes.group, pads, strides, isChannelsLast,
+          outputPadding, outputShape);
 
       // always return a new object so does not modify the original attributes
       const newAttributes: T = Object.assign({}, attributes);
-      Object.assign(newAttributes, {kernelShape, pads, outputPadding, outputShape, cacheKey: attributes.cacheKey});
+      Object.assign(
+          newAttributes,
+          {kernelShape, pads, outputPadding, outputShape, dilations, strides, cacheKey: attributes.cacheKey});
       return newAttributes;
     };
 
@@ -153,18 +165,21 @@ const validateInputs = (inputs: readonly TensorView[], attributes: ConvTranspose
   }
 
   const spatialRank = inputs[0].dims.length - 2;
+  const dilationsSet = attributes.dilations.reduce((a, b) => a + b, 0) > 0;
   // wrong dilations dimension
-  if (attributes.dilations.length !== spatialRank) {
+  if (dilationsSet && attributes.dilations.length !== spatialRank) {
     throw new Error(`dilations should be ${spatialRank}D`);
   }
 
+  const stridesSet = attributes.strides.reduce((a, b) => a + b, 0) > 0;
   // Wrong strides dimension
-  if (attributes.strides.length !== spatialRank) {
+  if (stridesSet && attributes.strides.length !== spatialRank) {
     throw new Error(`strides should be ${spatialRank}D`);
   }
 
   // Wrong pads dimension
-  if (attributes.pads.length !== spatialRank * 2) {
+  const padsSet = attributes.pads.reduce((a, b) => a + b, 0) > 0;
+  if (padsSet && attributes.pads.length !== spatialRank * 2) {
     throw new Error(`pads should be ${spatialRank * 2}D`);
   }
 
@@ -175,7 +190,9 @@ const validateInputs = (inputs: readonly TensorView[], attributes: ConvTranspose
 
   // if kernelShape is specified, it's data length must be 2 less than dims length of the weights tensor
   // (the first 2 dims are batch_size and channels)
-  if (attributes.kernelShape.length !== 0 && attributes.kernelShape.length !== inputs[1].dims.length - 2) {
+  const kernelShapeSet = attributes.kernelShape.reduce((a, b) => a + b, 0) > 0;
+  if (kernelShapeSet && attributes.kernelShape.length !== 0 &&
+      attributes.kernelShape.length !== inputs[1].dims.length - 2) {
     throw new Error('invalid kernel shape');
   }
 
