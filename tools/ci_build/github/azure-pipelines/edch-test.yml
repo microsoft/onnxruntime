@@ -24,11 +24,10 @@ jobs:
 
       ${ANDROID_SDK_ROOT}/tools/emulator \
         -avd android_emulator_avd \
-        -memory 4096 \
         -timezone America/Los_Angeles \
         -no-snapshot -no-audio -no-boot-anim -no-window \
         -partition-size 4096 \
-        -gpu guest -camera-back none -camera-front none -cores 1 -qemu -m 2048 &
+        -gpu guest -perf-stat -camera-back none -camera-front none -cores 1 -qemu -m 2048 &
 
       ${ANDROID_SDK_ROOT}/platform-tools/adb wait-for-device shell 'while [[ -z $(getprop sys.boot_completed | tr -d '\r') ]]; echo "waiting for boot to complete..."; do sleep 1; done; input keyevent 82'
     displayName: Start Android emulator
