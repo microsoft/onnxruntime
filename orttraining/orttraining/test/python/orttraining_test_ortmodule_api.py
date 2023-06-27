@@ -5886,12 +5886,12 @@ def test_ops_for_padding_elimination(test_cases):
         assert len([node.op_type for node in training_model.graph.node if node.op_type == "Sub"]) == 1
     assert len([node.op_type for node in training_model.graph.node if node.op_type == "NonZero"]) == 1
     assert len([node.op_type for node in training_model.graph.node if node.op_type == "Squeeze"]) == 1
-    assert len([node.op_type for node in training_model.graph.node if node.op_type == "GatherGrad"]) == 1
+    assert len([node.op_type for node in training_model.graph.node if node.op_type == "PadAndUnflatten"]) == 1
     if case == 2:
         assert len([node.op_type for node in training_model.graph.node if node.op_type == "ShrunkenGather"]) == 2
     else:
         assert len([node.op_type for node in training_model.graph.node if node.op_type == "ShrunkenGather"]) == 1
-    gathergrad_node = [node for node in training_model.graph.node if node.op_type == "GatherGrad"][0]
+    gathergrad_node = [node for node in training_model.graph.node if node.op_type == "PadAndUnflatten"][0]
 
     def find_input_node_type(model, arg):
         result = []
@@ -6057,5 +6057,5 @@ def test_e2e_padding_elimination():
 
     training_model = ort_model._torch_module._execution_manager(True)._onnx_models.optimized_model
     assert "ShrunkenGather" in [node.op_type for node in training_model.graph.node]
-    assert "GatherGrad" in [node.op_type for node in training_model.graph.node]
+    assert "PadAndUnflatten" in [node.op_type for node in training_model.graph.node]
     del os.environ["ORTMODULE_ENABLE_EMBEDDING_SPARSE_OPTIMIZER"]
