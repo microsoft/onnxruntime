@@ -1,5 +1,4 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
-// Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
 #include <cstdio>
@@ -41,7 +40,7 @@ ONNX_OPERATOR_KERNEL_EX(
         .TypeConstraint("T", BuildKernelDefConstraints<float, MLFloat16>()),
     QuantNbitsGemm);
 
-int iii=0;
+
 Status QuantNbitsGemm::Compute(OpKernelContext* ctx) const {
   const auto* input_x = ctx->Input<Tensor>(0);
   const auto* input_weight = ctx->Input<Tensor>(1);
