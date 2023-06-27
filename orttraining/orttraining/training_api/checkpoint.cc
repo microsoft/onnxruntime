@@ -473,9 +473,6 @@ Status FromFile(const PathString& checkpoint_path, InlinedVector<uint8_t>& check
   ORT_RETURN_IF_NOT(bytes_stream, "Loading checkpoint from ", ToUTF8String(checkpoint_path), " failed. Only ",
                     bytes_stream.gcount(), "/", num_bytes, " bytes could be read.");
 
-  flatbuffers::Verifier verifier(checkpoint_bytes.data(), checkpoint_bytes.size());
-  ORT_RETURN_IF_NOT(fbs::VerifyCheckpointBuffer(verifier), "Checkpoint verification failed.");
-
   return Status::OK();
 }
 
@@ -622,10 +619,10 @@ Status ToPropertyBag(const onnxruntime::fbs::PropertyBag& fbs_property_bag,
  * @param model_proto Model proto to be populated.
  * @return Status of the operation.
  */
-Status ToModelProto(const PathString& checkpoint_path,
+Status ToModelProto(gsl::span<const uint8_t> checkpoint_bytes,
                     ONNX_NAMESPACE::ModelProto& model_proto) {
-  InlinedVector<uint8_t> checkpoint_bytes;
-  ORT_RETURN_IF_ERROR(load::FromFile(checkpoint_path, checkpoint_bytes));
+  flatbuffers::Verifier verifier(checkpoint_bytes.data(), checkpoint_bytes.size());
+  ORT_RETURN_IF_NOT(fbs::VerifyCheckpointBuffer(verifier), "Checkpoint verification failed.");
 
   const auto* fbs_checkpoint = fbs::GetCheckpoint(checkpoint_bytes.data());
   ORT_RETURN_IF_NOT(fbs_checkpoint, "Checkpoint is invalid. Expected: Valid checkpoint flatbuffer. Actual: nullptr.");
@@ -687,9 +684,9 @@ Status ToModelProto(const PathString& checkpoint_path,
  * @param state Checkpoint state to be populated.
  * @return Status of the operation.
  */
-Status ToCheckpointState(const PathString& checkpoint_path, CheckpointState& state) {
-  InlinedVector<uint8_t> checkpoint_bytes;
-  ORT_RETURN_IF_ERROR(load::FromFile(checkpoint_path, checkpoint_bytes));
+Status ToCheckpointState(gsl::span<const uint8_t> checkpoint_bytes, CheckpointState& state) {
+  flatbuffers::Verifier verifier(checkpoint_bytes.data(), checkpoint_bytes.size());
+  ORT_RETURN_IF_NOT(fbs::VerifyCheckpointBuffer(verifier), "Checkpoint verification failed.");
 
   const auto* fbs_checkpoint = fbs::GetCheckpoint(checkpoint_bytes.data());
   ORT_RETURN_IF_NOT(fbs_checkpoint, "Checkpoint is invalid. Expected: Valid checkpoint flatbuffer. Actual: nullptr.");
@@ -737,14 +734,26 @@ Status SaveCheckpoint(const CheckpointState& states, const PathString& checkpoin
 
 Status LoadCheckpoint(const PathString& checkpoint_path, CheckpointState& checkpoint_states) {
   ORT_RETURN_IF_NOT(FLATBUFFERS_LITTLEENDIAN, "ORT training checkpoint format only supports little-endian machines");
-  return load::ToCheckpointState(checkpoint_path, checkpoint_states);
+
+  InlinedVector<uint8_t> checkpoint_bytes;
+  ORT_RETURN_IF_ERROR(load::FromFile(checkpoint_path, checkpoint_bytes));
+  return load::ToCheckpointState(checkpoint_bytes, checkpoint_states);
+}
+
+Status LoadCheckpointFromBuffer(gsl::span<const uint8_t> checkpoint_bytes, CheckpointState& checkpoint_state) {
+  ORT_RETURN_IF_NOT(FLATBUFFERS_LITTLEENDIAN, "ORT training checkpoint format only supports little-endian machines");
+
+  return load::ToCheckpointState(checkpoint_bytes, checkpoint_state);
 }
 
 #if !defined(ORT_MINIMAL_BUILD)
 Status LoadCheckpointToModel(const PathString& checkpoint_path,
                              ONNX_NAMESPACE::ModelProto& model_proto) {
   ORT_RETURN_IF_NOT(FLATBUFFERS_LITTLEENDIAN, "ORT training checkpoint format only supports little-endian machines");
-  return load::ToModelProto(checkpoint_path, model_proto);
+
+  InlinedVector<uint8_t> checkpoint_bytes;
+  ORT_RETURN_IF_ERROR(load::FromFile(checkpoint_path, checkpoint_bytes));
+  return load::ToModelProto(checkpoint_bytes, model_proto);
 }
 #endif
 

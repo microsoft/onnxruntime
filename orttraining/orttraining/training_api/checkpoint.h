@@ -66,6 +66,15 @@ Status SaveCheckpoint(gsl::span<const ONNX_NAMESPACE::TensorProto> trainable_ten
 Status LoadCheckpoint(const PathString& checkpoint_path,
                       CheckpointState& checkpoint_state);
 
+/**
+ * @brief Load training states from ORT checkpoint bytes buffer.
+ * @param checkpoint_bytes bytes buffer of the checkpoint.
+ * @param checkpoint_state parameter/optimizer and other user defined training states.
+ * @return Status
+ */
+Status LoadCheckpointFromBuffer(gsl::span<const uint8_t> checkpoint_bytes,
+                                CheckpointState& checkpoint_state);
+
 #if !defined(ORT_MINIMAL_BUILD)
 /**
  * @brief Load training states from ORT checkpoint into a ModelProto.

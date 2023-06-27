@@ -281,6 +281,22 @@ ORT_API_STATUS_IMPL(OrtTrainingApis::SaveCheckpoint, _In_ OrtCheckpointState* ch
   API_IMPL_END
 }
 
+ORT_API_STATUS_IMPL(OrtTrainingApis::LoadCheckpointFromBuffer, _In_ const void* checkpoint_buffer,
+                    _In_ const size_t num_bytes, _Outptr_ OrtCheckpointState** checkpoint_state) {
+  API_IMPL_BEGIN
+
+  *checkpoint_state = nullptr;
+  auto chkpt_state = std::make_unique<onnxruntime::training::api::CheckpointState>();
+  const auto* checkpoint_bytes = reinterpret_cast<const uint8_t*>(checkpoint_buffer);
+  gsl::span checkpoint_span(checkpoint_bytes, num_bytes);
+  ORT_API_RETURN_IF_STATUS_NOT_OK(
+      onnxruntime::training::api::LoadCheckpointFromBuffer(checkpoint_span, *chkpt_state));
+  *checkpoint_state = reinterpret_cast<OrtCheckpointState*>(chkpt_state.release());
+
+  return nullptr;
+  API_IMPL_END
+}
+
 ORT_API_STATUS_IMPL(OrtTrainingApis::GetParametersSize, _Inout_ OrtTrainingSession* sess,
                     _Out_ size_t* out, bool trainable_only) {
   API_IMPL_BEGIN
@@ -527,7 +543,7 @@ static constexpr OrtTrainingApi ort_training_api = {
     &OrtTrainingApis::TrainingSessionGetEvalModelInputName,
     &OrtTrainingApis::AddProperty,
     &OrtTrainingApis::GetProperty,
-};
+    &OrtTrainingApis::LoadCheckpointFromBuffer};
 
 ORT_API(const OrtTrainingApi*, OrtTrainingApis::GetTrainingApi, uint32_t) {
   // No constraints on the API version yet.
