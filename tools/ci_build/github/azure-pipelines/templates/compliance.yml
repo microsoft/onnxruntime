@@ -5,8 +5,8 @@ parameters:
   default: x64
 
 - name: vs2022
-  displayName: Visual Studio Version
-  type: string
+  displayName: If the Visual Studio version is 2022
+  type: boolean
   default: true
 
 steps:
