@@ -1,39 +1,23 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/session/onnxruntime_session_options_config_keys.h"
 #include "orttraining/training_api/training_session.h"
 
 namespace onnxruntime::training::api {
 
-TrainingSession::TrainingSession(Environment& session_env,
+TrainingSession::TrainingSession(const Environment& session_env,
                                  const SessionOptions& session_options,
                                  const std::vector<std::shared_ptr<IExecutionProvider>>& providers,
                                  CheckpointState* state,
                                  const ModelIdentifiers& model_identifiers)
-    : state_{state} {
-  std::vector<OrtMemoryInfo> mem_infos;
-  if (session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigUseEnvAllocators, "0") == "1") {
-    for (auto& provider : providers) {
-      auto allocators = provider->CreatePreferredAllocators();
-      for (auto& alloc : allocators) {
-        mem_infos.push_back(alloc->Info());
-        ORT_THROW_IF_ERROR(session_env.RegisterAllocator(std::move(alloc)));
-      }
-    }
-  }
-  module_ = std::make_unique<Module>(model_identifiers.train_model, state_,
-                                     session_options, session_env, providers, model_identifiers.eval_model);
-  if (model_identifiers.optim_model.has_value()) {
-    optimizer_ = std::make_unique<Optimizer>(model_identifiers.optim_model.value(), state_, session_options, session_env, providers);
-  } else {
-    optimizer_ = std::unique_ptr<Optimizer>();
-  }
-
-  for (auto& mem_info : mem_infos) {
-    ORT_THROW_IF_ERROR(session_env.UnregisterAllocator(mem_info));
-  }
-}
+    : state_{state},
+      module_{std::make_unique<Module>(model_identifiers.train_model, state_,
+                                       session_options, session_env, providers, model_identifiers.eval_model)},
+      optimizer_{model_identifiers.optim_model.has_value()
+                     ? std::make_unique<Optimizer>(
+                           model_identifiers.optim_model.value(), state_,
+                           session_options, session_env, providers)
+                     : std::unique_ptr<Optimizer>()} {}
 
 Status TrainingSession::RegisterScheduler(
     const std::function<std::unique_ptr<LRSchedulerBase>(std::shared_ptr<Optimizer>)>& get_scheduler,

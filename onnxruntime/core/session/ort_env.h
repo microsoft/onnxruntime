@@ -49,7 +49,7 @@ struct OrtEnv {
 
   static void Release(OrtEnv* env_ptr);
 
-  onnxruntime::Environment& GetEnvironment() const {
+  const onnxruntime::Environment& GetEnvironment() const {
     return *(value_.get());
   }
 
