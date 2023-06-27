@@ -17,6 +17,8 @@ NS_ASSUME_NONNULL_BEGIN
 
 @interface ORTTrainingSessionTest : XCTestCase
 @property(readonly, nullable) ORTEnv* ortEnv;
+@property(readonly, nullable) ORTCheckpoint* checkpoint;
+@property(readonly, nullable) ORTTrainingSession* session;
 @end
 
 @implementation ORTTrainingSessionTest
@@ -30,6 +32,11 @@ NS_ASSUME_NONNULL_BEGIN
   _ortEnv = [[ORTEnv alloc] initWithLoggingLevel:ORTLoggingLevelWarning
                                            error:&err];
   ORTAssertNullableResultSuccessful(_ortEnv, err);
+  _checkpoint = [[ORTCheckpoint alloc] initWithPath:[ORTTrainingSessionTest
+                                                        getFilePathFromName:@"checkpoint.ckpt"]
+                                              error:&err];
+  ORTAssertNullableResultSuccessful(_checkpoint, err);
+  _session = [self makeTrainingSessionWithCheckPoint:_checkpoint];
 }
 
 + (NSString*)getFilePathFromName:(NSString*)name {
@@ -86,21 +93,15 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)testInitTrainingSession {
   NSError* error = nil;
 
-  ORTCheckpoint* checkpoint = [[ORTCheckpoint alloc] initWithPath:[ORTTrainingSessionTest
-                                                                      getFilePathFromName:@"checkpoint.ckpt"]
-                                                            error:&error];
-  ORTAssertNullableResultSuccessful(checkpoint, error);
-  ORTTrainingSession* session = [self makeTrainingSessionWithCheckPoint:checkpoint];
-
   // check that inputNames contains input-0
-  NSArray<NSString*>* inputNames = [session getTrainInputNamesWithError:&error];
+  NSArray<NSString*>* inputNames = [self.session getTrainInputNamesWithError:&error];
   ORTAssertNullableResultSuccessful(inputNames, error);
 
   XCTAssertTrue(inputNames.count > 0);
   XCTAssertTrue([inputNames containsObject:@"input-0"]);
 
   // check that outNames contains onnx::loss::21273
-  NSArray<NSString*>* outputNames = [session getTrainOutputNamesWithError:&error];
+  NSArray<NSString*>* outputNames = [self.session getTrainOutputNamesWithError:&error];
   ORTAssertNullableResultSuccessful(outputNames, error);
 
   XCTAssertTrue(outputNames.count > 0);
@@ -109,28 +110,23 @@ NS_ASSUME_NONNULL_BEGIN
 
 - (void)testInitTrainingSessionWithEval {
   NSError* error = nil;
-  ORTCheckpoint* checkpoint = [[ORTCheckpoint alloc] initWithPath:[ORTTrainingSessionTest
-                                                                      getFilePathFromName:@"checkpoint.ckpt"]
-                                                            error:&error];
-  ORTAssertNullableResultSuccessful(checkpoint, error);
-  ORTTrainingSession* session = [self makeTrainingSessionWithCheckPoint:checkpoint];
 
   // check that inputNames contains input-0
-  NSArray<NSString*>* inputNames = [session getEvalInputNamesWithError:&error];
+  NSArray<NSString*>* inputNames = [self.session getEvalInputNamesWithError:&error];
   ORTAssertNullableResultSuccessful(inputNames, error);
 
   XCTAssertTrue(inputNames.count > 0);
   XCTAssertTrue([inputNames containsObject:@"input-0"]);
 
   // check that outNames contains onnx::loss::21273
-  NSArray<NSString*>* outputNames = [session getEvalOutputNamesWithError:&error];
+  NSArray<NSString*>* outputNames = [self.session getEvalOutputNamesWithError:&error];
   ORTAssertNullableResultSuccessful(outputNames, error);
 
   XCTAssertTrue(outputNames.count > 0);
   XCTAssertTrue([outputNames containsObject:@"onnx::loss::21273"]);
 }
 
-- (void)runTrainStepWithSession:(ORTTrainingSession*)session {
+- (void)runTrainStep {
   // load input and expected output
   NSError* error = nil;
   NSMutableData* expectedOutput = [ORTTrainingSessionTest loadTensorDataFromFile:[ORTTrainingSessionTest
@@ -162,14 +158,14 @@ NS_ASSUME_NONNULL_BEGIN
   ORTAssertNullableResultSuccessful(labelTensor, error);
   [inputValues addObject:labelTensor];
 
-  NSArray<ORTValue*>* outputs = [session trainStepWithInputValues:inputValues error:&error];
+  NSArray<ORTValue*>* outputs = [self.session trainStepWithInputValues:inputValues error:&error];
   ORTAssertNullableResultSuccessful(outputs, error);
   XCTAssertTrue(outputs.count > 0);
 
-  BOOL result = [session lazyResetGradWithError:&error];
+  BOOL result = [self.session lazyResetGradWithError:&error];
   ORTAssertBoolResultSuccessful(result, error);
 
-  outputs = [session trainStepWithInputValues:inputValues error:&error];
+  outputs = [self.session trainStepWithInputValues:inputValues error:&error];
   ORTAssertNullableResultSuccessful(outputs, error);
   XCTAssertTrue(outputs.count > 0);
 
@@ -188,14 +184,9 @@ NS_ASSUME_NONNULL_BEGIN
   ORTAssertEqualFloatArrays(test_utils::getFloatArrayFromData(tensorData),
                             test_utils::getFloatArrayFromData(expectedOutput));
 }
+
 - (void)testTrainStepOutput {
-  NSError* error = nil;
-  ORTCheckpoint* checkpoint = [[ORTCheckpoint alloc] initWithPath:[ORTTrainingSessionTest
-                                                                      getFilePathFromName:@"checkpoint.ckpt"]
-                                                            error:&error];
-  ORTAssertNullableResultSuccessful(checkpoint, error);
-  ORTTrainingSession* session = [self makeTrainingSessionWithCheckPoint:checkpoint];
-  [self runTrainStepWithSession:session];
+  [self runTrainStep];
 }
 
 - (void)testOptimizerStep {
@@ -233,15 +224,8 @@ NS_ASSUME_NONNULL_BEGIN
   ORTAssertNullableResultSuccessful(labelTensor, error);
   [inputValues addObject:labelTensor];
 
-  // create session
-  ORTCheckpoint* checkpoint = [[ORTCheckpoint alloc] initWithPath:[ORTTrainingSessionTest
-                                                                      getFilePathFromName:@"checkpoint.ckpt"]
-                                                            error:&error];
-  ORTAssertNullableResultSuccessful(checkpoint, error);
-  ORTTrainingSession* session = [self makeTrainingSessionWithCheckPoint:checkpoint];
-
   // run train step, optimizer steps and check loss
-  NSArray<ORTValue*>* outputs = [session trainStepWithInputValues:inputValues error:&error];
+  NSArray<ORTValue*>* outputs = [self.session trainStepWithInputValues:inputValues error:&error];
   ORTAssertNullableResultSuccessful(outputs, error);
 
   NSMutableData* loss = [outputs[0] tensorDataWithError:&error];
@@ -249,10 +233,10 @@ NS_ASSUME_NONNULL_BEGIN
   ORTAssertEqualFloatArrays(test_utils::getFloatArrayFromData(loss),
                             test_utils::getFloatArrayFromData(expectedOutput1));
 
-  BOOL result = [session lazyResetGradWithError:&error];
+  BOOL result = [self.session lazyResetGradWithError:&error];
   ORTAssertBoolResultSuccessful(result, error);
 
-  outputs = [session trainStepWithInputValues:inputValues error:&error];
+  outputs = [self.session trainStepWithInputValues:inputValues error:&error];
   ORTAssertNullableResultSuccessful(outputs, error);
 
   loss = [outputs[0] tensorDataWithError:&error];
@@ -260,10 +244,10 @@ NS_ASSUME_NONNULL_BEGIN
   ORTAssertEqualFloatArrays(test_utils::getFloatArrayFromData(loss),
                             test_utils::getFloatArrayFromData(expectedOutput1));
 
-  result = [session optimizerStepWithError:&error];
+  result = [self.session optimizerStepWithError:&error];
   ORTAssertBoolResultSuccessful(result, error);
 
-  outputs = [session trainStepWithInputValues:inputValues error:&error];
+  outputs = [self.session trainStepWithInputValues:inputValues error:&error];
   ORTAssertNullableResultSuccessful(outputs, error);
   loss = [outputs[0] tensorDataWithError:&error];
   ORTAssertNullableResultSuccessful(loss, error);
@@ -273,76 +257,65 @@ NS_ASSUME_NONNULL_BEGIN
 
 - (void)testSetLearningRate {
   NSError* error = nil;
-  ORTCheckpoint* checkpoint = [[ORTCheckpoint alloc] initWithPath:[ORTTrainingSessionTest
-                                                                      getFilePathFromName:@"checkpoint.ckpt"]
-                                                            error:&error];
-  ORTAssertNullableResultSuccessful(checkpoint, error);
-  ORTTrainingSession* session = [self makeTrainingSessionWithCheckPoint:checkpoint];
 
   float learningRate = 0.1f;
-  BOOL result = [session setLearningRate:learningRate error:&error];
+  BOOL result = [self.session setLearningRate:learningRate error:&error];
   ORTAssertBoolResultSuccessful(result, error);
-  float actualLearningRate = [session getLearningRateWithError:&error];
+
+  float actualLearningRate = [self.session getLearningRateWithError:&error];
   ORTAssertEqualFloatAndNoError(learningRate, actualLearningRate, error);
 }
 
 - (void)testLinearLRScheduler {
   NSError* error = nil;
-  ORTCheckpoint* checkpoint = [[ORTCheckpoint alloc] initWithPath:[ORTTrainingSessionTest
-                                                                      getFilePathFromName:@"checkpoint.ckpt"]
-                                                            error:&error];
-  ORTAssertNullableResultSuccessful(checkpoint, error);
-  ORTTrainingSession* session = [self makeTrainingSessionWithCheckPoint:checkpoint];
 
   float learningRate = 0.1f;
-  BOOL result = [session registerLinearLRSchedulerWithWarmupStepCount:2
-                                                       totalStepCount:4
-                                                            initialLr:learningRate
-                                                                error:&error];
+  BOOL result = [self.session registerLinearLRSchedulerWithWarmupStepCount:2
+                                                            totalStepCount:4
+                                                                 initialLr:learningRate
+                                                                     error:&error];
 
   ORTAssertBoolResultSuccessful(result, error);
 
-  result = [session optimizerStepWithError:&error];
-  ORTAssertBoolResultSuccessful(result, error);
-  result = [session schedulerStepWithError:&error];
-  ORTAssertBoolResultSuccessful(result, error);
-  ORTAssertEqualFloatAndNoError(0.05f, [session getLearningRateWithError:&error], error);
+  [self runTrainStep];
 
-  result = [session optimizerStepWithError:&error];
+  result = [self.session optimizerStepWithError:&error];
   ORTAssertBoolResultSuccessful(result, error);
-  result = [session schedulerStepWithError:&error];
+  result = [self.session schedulerStepWithError:&error];
   ORTAssertBoolResultSuccessful(result, error);
-  ORTAssertEqualFloatAndNoError(0.1f, [session getLearningRateWithError:&error], error);
+  ORTAssertEqualFloatAndNoError(0.05f, [self.session getLearningRateWithError:&error], error);
 
-  result = [session optimizerStepWithError:&error];
+  result = [self.session optimizerStepWithError:&error];
   ORTAssertBoolResultSuccessful(result, error);
-  result = [session schedulerStepWithError:&error];
+  result = [self.session schedulerStepWithError:&error];
   ORTAssertBoolResultSuccessful(result, error);
-  ORTAssertEqualFloatAndNoError(0.05f, [session getLearningRateWithError:&error], error);
+  ORTAssertEqualFloatAndNoError(0.1f, [self.session getLearningRateWithError:&error], error);
 
-  result = [session optimizerStepWithError:&error];
+  result = [self.session optimizerStepWithError:&error];
   ORTAssertBoolResultSuccessful(result, error);
-  result = [session schedulerStepWithError:&error];
+  result = [self.session schedulerStepWithError:&error];
   ORTAssertBoolResultSuccessful(result, error);
-  ORTAssertEqualFloatAndNoError(0.0f, [session getLearningRateWithError:&error], error);
+  ORTAssertEqualFloatAndNoError(0.05f, [self.session getLearningRateWithError:&error], error);
+
+  result = [self.session optimizerStepWithError:&error];
+  ORTAssertBoolResultSuccessful(result, error);
+  result = [self.session schedulerStepWithError:&error];
+  ORTAssertBoolResultSuccessful(result, error);
+  ORTAssertEqualFloatAndNoError(0.0f, [self.session getLearningRateWithError:&error], error);
 }
 
 - (void)testExportModelForInference {
   NSError* error = nil;
-  ORTCheckpoint* checkpoint = [[ORTCheckpoint alloc] initWithPath:[ORTTrainingSessionTest
-                                                                      getFilePathFromName:@"checkpoint.ckpt"]
-                                                            error:&error];
-  ORTAssertNullableResultSuccessful(checkpoint, error);
-  ORTTrainingSession* session = [self makeTrainingSessionWithCheckPoint:checkpoint];
 
-  NSString* inferenceModelPath = [test_utils::createTemporaryDirectory(self) stringByAppendingPathComponent:@"inference_model.onnx"];
+  NSString* inferenceModelPath = [test_utils::createTemporaryDirectory(self)
+      stringByAppendingPathComponent:@"inference_model.onnx"];
   XCTAssertNotNil(inferenceModelPath);
 
   NSArray<NSString*>* graphOutputNames = [NSArray arrayWithObjects:@"output-0", nil];
 
-  BOOL result = [session exportModelForInferenceWithOutputPath:inferenceModelPath
-                                              graphOutputNames:graphOutputNames
-                                                         error:&error];
+  BOOL result = [self.session exportModelForInferenceWithOutputPath:inferenceModelPath
+                                                   graphOutputNames:graphOutputNames
+                                                              error:&error];
 
   ORTAssertBoolResultSuccessful(result, error);
   XCTAssertTrue([[NSFileManager defaultManager] fileExistsAtPath:inferenceModelPath]);
@@ -355,13 +328,7 @@ NS_ASSUME_NONNULL_BEGIN
 
 - (void)testToBuffer {
   NSError* error = nil;
-  ORTCheckpoint* checkpoint = [[ORTCheckpoint alloc] initWithPath:[ORTTrainingSessionTest
-                                                                      getFilePathFromName:@"checkpoint.ckpt"]
-                                                            error:&error];
-  ORTAssertNullableResultSuccessful(checkpoint, error);
-  ORTTrainingSession* session = [self makeTrainingSessionWithCheckPoint:checkpoint];
-
-  ORTValue* buffer = [session toBufferWithTrainable:YES error:&error];
+  ORTValue* buffer = [self.session toBufferWithTrainable:YES error:&error];
   ORTAssertNullableResultSuccessful(buffer, error);
 
   ORTValueTypeInfo* typeInfo = [buffer typeInfoWithError:&error];
@@ -372,16 +339,11 @@ NS_ASSUME_NONNULL_BEGIN
 
 - (void)testFromBuffer {
   NSError* error = nil;
-  ORTCheckpoint* checkpoint = [[ORTCheckpoint alloc] initWithPath:[ORTTrainingSessionTest
-                                                                      getFilePathFromName:@"checkpoint.ckpt"]
-                                                            error:&error];
-  ORTAssertNullableResultSuccessful(checkpoint, error);
-  ORTTrainingSession* session = [self makeTrainingSessionWithCheckPoint:checkpoint];
 
-  ORTValue* buffer = [session toBufferWithTrainable:YES error:&error];
+  ORTValue* buffer = [self.session toBufferWithTrainable:YES error:&error];
   ORTAssertNullableResultSuccessful(buffer, error);
 
-  BOOL result = [session fromBufferWithValue:buffer error:&error];
+  BOOL result = [self.session fromBufferWithValue:buffer error:&error];
   ORTAssertBoolResultSuccessful(result, error);
 }
 
@@ -391,6 +353,8 @@ NS_ASSUME_NONNULL_BEGIN
 
 - (void)tearDown {
   _ortEnv = nil;
+  _checkpoint = nil;
+  _session = nil;
 
   [super tearDown];
 }
