@@ -61,16 +61,17 @@ Status GraphInputsAreExpected(gsl::span<std::string> actual_graph_inputs,
 }  // namespace
 
 std::unique_ptr<OptimizerAlgorithmBase> OptimizerAlorithmFactory::CreateInstance(
-    const std::string& optim_path_or_bytes, int32_t& group_count) {
+    const std::string& optim_path, int32_t& group_count) {
   std::map<std::pair<std::string, std::string>, int32_t> opt_type_to_freq_map;
 #if !defined(ORT_MINIMAL_BUILD)
-  if (fbs::utils::IsOrtFormatModel(ToWideString(optim_path_or_bytes))) {
+  if (const auto optim_path_str = ToPathString(optim_path);
+      fbs::utils::IsOrtFormatModel(optim_path_str)) {
     // TODO (baijumeswani): Figure out the best way to extract the optimizer type
     //                      from an ort format model.
     opt_type_to_freq_map[std::make_pair(kMSDomain, "AdamWOptimizer")] = 1;
   } else {
     std::shared_ptr<Model> model;
-    ORT_ENFORCE(Model::Load(ToWideString(optim_path_or_bytes), model, nullptr,
+    ORT_ENFORCE(Model::Load(optim_path_str, model, nullptr,
                             logging::LoggingManager::DefaultLogger())
                     .IsOK());
     Graph& graph = model->MainGraph();
@@ -89,7 +90,7 @@ std::unique_ptr<OptimizerAlgorithmBase> OptimizerAlorithmFactory::CreateInstance
   // TODO (baijumeswani): Figure out the best way to extract the optimizer type
   // from the model (either onnx model or ort format model) or from the checkpoint.
   // For now, assume that the optimizer type is AdamWOptimizer in a minimal build.
-  ORT_UNUSED_PARAMETER(optim_path_or_bytes);
+  ORT_UNUSED_PARAMETER(optim_path);
 
   opt_type_to_freq_map[std::make_pair(kMSDomain, "AdamWOptimizer")] = 1;
 #endif

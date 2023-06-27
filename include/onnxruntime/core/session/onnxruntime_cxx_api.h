@@ -1382,10 +1382,10 @@ struct Value : detail::ValueImpl<OrtValue> {
    * \tparam T - the type of the value.
    * \param domain - zero terminated utf-8 string. Domain of the type.
    * \param type_name - zero terminated utf-8 string. Name of the type.
-   * \return value - the value to be wrapped.
+   * \param value - the value to be wrapped.
    */
   template <typename T>
-  static Value CreateOpaque(const char* domain, const char* type_name, const T&);  ///< Wraps OrtApi::CreateOpaqueValue
+  static Value CreateOpaque(const char* domain, const char* type_name, const T& value);  ///< Wraps OrtApi::CreateOpaqueValue
 
 #if !defined(DISABLE_SPARSE_TENSORS)
   /// <summary>
