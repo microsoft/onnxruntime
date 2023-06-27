@@ -9,6 +9,7 @@ import sys
 from collections import deque
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
+
 from float16 import convert_float_to_float16
 from onnx import (
     AttributeProto,

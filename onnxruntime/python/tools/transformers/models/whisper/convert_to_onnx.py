@@ -392,6 +392,7 @@ def main(argv=None):
                 args.decoder_path = path
         chain_model(args)
         output_paths.append(args.beam_model_output_dir)
+
         # Check chained model
         ort_session = create_onnxruntime_session(
             args.beam_model_output_dir,
@@ -420,6 +421,7 @@ def main(argv=None):
         output_paths = [args.beam_model_output_dir]
 
     logger.info(f"Done! Outputs: {output_paths}")
+
 
 if __name__ == "__main__":
     main()

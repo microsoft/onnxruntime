@@ -924,6 +924,8 @@ def remove_shared_initializers(
                     shared_initializers_names.append(shared_name)
                 break
 
+    logger.debug(f"shared initializers:{shared_initializers_names}")
+
     # Make sure new name does not exist in graph 1
     for node in graph1.node:
         for j in range(len(node.input)):
@@ -983,6 +985,7 @@ def remove_shared_initializers(
 
     return shared_initializers_2
 
+
 def get_shared_initializers(encoder_model: ModelProto, decoder_model: ModelProto, greedy = False):
     encoder = OnnxModel(encoder_model)
     decoder = OnnxModel(decoder_model)
@@ -991,9 +994,8 @@ def get_shared_initializers(encoder_model: ModelProto, decoder_model: ModelProto
     encoder.remove_duplicated_initializer(greedy)
     decoder.remove_duplicated_initializer(greedy)
     initializers = remove_shared_initializers(encoder.model.graph, decoder.model.graph, "s_")
-
-    print("Shared initializers: ", len(initializers))
     return initializers
+
 
 def move_initializers(
     graph: GraphProto,
