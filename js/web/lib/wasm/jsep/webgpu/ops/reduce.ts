@@ -36,7 +36,7 @@ const createReduceProgramInfo =
       const idxCopy: string[] = [];  // copy output indexes to input indexes
 
       const axes = ShapeUtil.normalizeAxes(attributes.axes, inputs[0].dims.length);
-      const outputDimsLength = inputs[0].dims.length - (attributes.keepDims === true ? 0 : axes.length);
+      const outputDimsLength = inputs[0].dims.length - (attributes.keepDims ? 0 : axes.length);
       const ops = reduceOp(inputs, axes);
       const inputIndicesHelper = createIndicesHelper('input', inputShape);
       const initInputIdx = (ops[1] === '') ? '' : `let inputIdx = ${inputIndicesHelper.i2oExpression('inputIndices')};`;
@@ -47,7 +47,7 @@ const createReduceProgramInfo =
       for (let k = 0; k < inputs[0].dims.length; k++) {
         // if this axis is reduced
         if (axes.indexOf(k) >= 0 || axes.length === 0) {
-          if (attributes.keepDims === true) {
+          if (attributes.keepDims) {
             outputShape.push(1);
           }  // else { remove the axis from outputShape; }
 
