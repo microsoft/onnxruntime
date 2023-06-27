@@ -322,8 +322,8 @@ ${wIndicesHelper.i2oImpl}
   const strides : vec2<u32> = vec2<u32>(${attributes.strides[0]}, ${attributes.strides[1]});
   const filterDims : vec2<u32> = vec2<u32>(${attributes.kernelShape[isChannelsLast ? 1 : 2]}, ${
           attributes.kernelShape[isChannelsLast ? 2 : 3]});
-  const pads : vec2<i32> = vec2<i32>(i32(filterDims[0]) - 1 - ${attributes.pads[0]}, i32(filterDims[1]) - 1 - ${
-          attributes.pads[1]});
+  const pads : vec2<i32> = vec2<i32>(i32(filterDims[0]) - 1 - (${attributes.pads[0] + attributes.pads[2]})/2,
+                                     i32(filterDims[1]) - 1 - (${attributes.pads[1] + attributes.pads[3]})/2);
     ${shaderHelper.mainStart()}
     ${outputIndicesHelper.indicesVariableDeclaration('outputIndices')}
     ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes(outputSize)};
