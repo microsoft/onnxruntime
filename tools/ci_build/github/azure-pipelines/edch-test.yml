@@ -8,29 +8,11 @@ jobs:
   steps:
   - checkout: none
 
-  - task: JavaToolInstaller@0
-    displayName: Use jdk 11
-    inputs:
-      versionSpec: '11'
-      jdkArchitectureOption: 'x64'
-      jdkSourceOption: 'PreInstalled'
-
   - bash: |
       set -e -x
-
-      ${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager --install 'system-images;android-31;default;x86_64'
-
-      echo "no" | ${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/avdmanager create avd --name android_emulator_avd --package 'system-images;android-31;default;x86_64' --force
-
+      ${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager --install 'system-images;android-33;google_apis_playstore;x86_64'
+      echo "no" | ${ANDROID_HOME}/cmdline-tools/latest/bin/avdmanager create avd --name android_emulator_avd --package 'system-images;android-33;google_apis_playstore;x86_64' --force
       ${ANDROID_HOME}/tools/emulator -gpu guest -avd android_emulator_avd -perf-stat -no-snapshot -no-audio -no-boot-anim -camera-back none -camera-front none -cores 1 -qemu -m 2048 &
-
-      #${ANDROID_SDK_ROOT}/tools/emulator \
-      #  -avd android_emulator_avd \
-      #  -timezone America/Los_Angeles \
-      #  -no-snapshot -no-audio -no-boot-anim -no-window \
-      #  -partition-size 4096 \
-      #  -gpu guest -perf-stat -camera-back none -camera-front none -cores 1 -qemu -m 2048 &
-
-      ${ANDROID_SDK_ROOT}/platform-tools/adb wait-for-device shell 'while [[ -z $(getprop sys.boot_completed | tr -d '\r') ]]; echo "waiting for boot to complete..."; do sleep 1; done; input keyevent 82'
+      ${ANDROID_HOME}/platform-tools/adb wait-for-device shell 'while [[ -z $(getprop sys.boot_completed | tr -d '\r') ]]; do sleep 1; done; input keyevent 82'
     displayName: Start Android emulator
     timeoutInMinutes: 10
