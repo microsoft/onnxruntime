@@ -130,8 +130,7 @@ NS_ASSUME_NONNULL_BEGIN
 
     NSMutableDictionary<NSString*, ORTValue*>* outputs = [[NSMutableDictionary alloc] init];
     for (NSUInteger i = 0; i < outputNameArray.count; ++i) {
-      Ort::Value outputCXXAPIValue{outputCAPIValues[i]};
-      ORTValue* outputValue = [[ORTValue alloc] initWithCXXAPIOrtValue:std::move(outputCXXAPIValue)
+      ORTValue* outputValue = [[ORTValue alloc] initWithCXXAPIOrtValue:Ort::Value{outputCAPIValues[i]}
                                                     externalTensorData:nil
                                                                  error:error];
       if (!outputValue) {
