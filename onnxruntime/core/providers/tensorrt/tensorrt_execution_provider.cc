@@ -2365,7 +2365,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
           // Deserialize engine
           trt_state->engine->reset();
           *(trt_state->engine) = std::unique_ptr<nvinfer1::ICudaEngine>(trt_state->runtime->deserializeCudaEngine(engine_buf.get(), engine_size, nullptr));
-          if (trt_state->engine == nullptr) {
+          if (*(trt_state->engine) == nullptr) {
             return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
                                    "TensorRT EP could not deserialize engine from encrypted cache: " + engine_cache_path);
           }
@@ -2493,7 +2493,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
             LOGS_DEFAULT(INFO) << "TensorRT engine build for " << trt_state->trt_node_name_with_precision << " took: " << std::chrono::duration_cast<std::chrono::milliseconds>(engine_build_stop - engine_build_start).count() << "ms" << std::endl;
           }
         }
-        if (trt_state->engine == nullptr) {
+        if (*(trt_state->engine) == nullptr) {
           return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "TensorRT EP Failed to Build Engine.");
         }
         trt_engine = trt_state->engine->get();
@@ -2533,7 +2533,10 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
         context_update = true;
       }
 
-      // Build context if needed
+      // Build execution context if needed
+      //
+      // Note: Creating an execution context from an engine is thread safe per TRT doc
+      // https://docs.nvidia.com/deeplearning/tensorrt/developer-guide/index.html#threading
       std::unique_ptr<nvinfer1::IExecutionContext> trt_context_updated = nullptr;
       if (context_update) {
         if (trt_state->context_memory_sharing_enable) {
@@ -2548,7 +2551,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
         GetPerThreadContext().SetTensorRTContext(fused_node_name, move(trt_context_updated));
       }
 
-      // Get the reference to the IExecutionContext object that is maintained on a per thread basis and ready to be configured to perform inference
+      // Get the reference to the IExecutionContext object that is maintained on a per thread basis
       nvinfer1::IExecutionContext& trt_context = GetPerThreadContext().GetTensorRTContext(fused_node_name);
 
       // Get input and output binding names
