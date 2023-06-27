@@ -34,13 +34,24 @@ void SYMMQGEMM(benchmark::State& state, bool a_signed) {
   std::unique_ptr<onnxruntime::concurrency::ThreadPool> tp(
       onnxruntime::concurrency::CreateThreadPool(&onnxruntime::Env::Default(),
                                                  tpo, onnxruntime::concurrency::ThreadPoolType::INTRA_OP));
+  void* a_data = nullptr;
+  std::vector<int8_t> signed_a;
+  std::vector<uint8_t> unsigned_a;
+  if (a_signed) {
+    signed_a = RandomVectorUniform<int8_t>(static_cast<size_t>(M * K * batch) + 512, int8_t(-120), int8_t(120));
+    a_data = signed_a.data();
+  } else {
+    unsigned_a = RandomVectorUniform<uint8_t>(static_cast<size_t>(M * K * batch) + 512, uint8_t(7), uint8_t(248));
+    a_data = unsigned_a.data();
+  }
 
-  auto A_holder = RandomVectorUniform<int8_t>(static_cast<size_t>(M * K * batch) + 16, int8_t(-120), int8_t(120));
   auto B_holder = RandomVectorUniform<int8_t>(static_cast<size_t>(N * K * batch), int8_t(-122), int8_t(122));
   std::vector<int32_t> C_holder(static_cast<size_t>(M * N * batch));
   std::vector<uint8_t> pack_b_holder;
 
   size_t packed_b_size = MlasSymmQgemmPackBSize(N, K, a_signed);
+  if (packed_b_size == 0) return;
+
   pack_b_holder.resize(packed_b_size * batch);
 
   MLAS_GEMM_QUANT_SHAPE_PARAMS gemm_shape;
@@ -48,7 +59,7 @@ void SYMMQGEMM(benchmark::State& state, bool a_signed) {
   gemm_shape.M = static_cast<size_t>(M);
   gemm_shape.N = static_cast<size_t>(N);
   gemm_shape.K = static_cast<size_t>(K);
-  gemm_shape.AIsSigned = true;
+  gemm_shape.AIsSigned = a_signed;
   gemm_shape.BIsSigned = true;
 
   std::vector<MLAS_SYMM_QGEMM_DATA_PARAMS> gemm_data_vec(batch);
@@ -56,50 +67,26 @@ void SYMMQGEMM(benchmark::State& state, bool a_signed) {
     auto& gemm_params = gemm_data_vec[i];
     gemm_params.lda = gemm_shape.K;
     gemm_params.ldc = gemm_shape.N;
-    gemm_params.A = A_holder.data() + M * K * i;
+    gemm_params.A = (uint8_t*)a_data + M * K * i;
     gemm_params.C = C_holder.data() + M * N * i;
+    gemm_params.B = (void*)(pack_b_holder.data() + packed_b_size * i);
 
     MlasSymmQgemmPackB(N, K, (const int8_t*)gemm_params.B, N, a_signed, a_zero_point, (void*)(pack_b_holder.data() + packed_b_size * i));
-    gemm_params.B = (void*)(pack_b_holder.data() + packed_b_size * i);
   }
   for (auto _ : state) {
     MlasSymmQgemmBatch(gemm_shape, gemm_data_vec.data(), batch, tp.get());
   }
 }
 
-#if defined(MLAS_TARGET_ARM64)
 static void SymmQGemmSize(benchmark::internal::Benchmark* b) {
   b->ArgNames(qgemm_arg_names);
   // Args for  "M", "N", "K", "Batch",
 
-  b->Args({512, 32128, 768, 1, 1});
-  b->Args({512, 32128, 768, 1, 4});
-  b->Args({512, 32128, 768, 1, 6});
-
-  b->Args({512, 3072, 768, 1, 1});
-  b->Args({512, 3072, 768, 1, 4});
-  b->Args({512, 3072, 768, 1, 6});
-
-  b->Args({512, 768, 3072, 1, 1});
-  b->Args({512, 768, 3072, 1, 4});
-  b->Args({512, 768, 3072, 1, 6});
-
-  b->Args({512, 768, 768, 1, 1});
-  b->Args({512, 768, 768, 1, 4});
-  b->Args({512, 768, 768, 1, 6});
-
-  b->Args({512, 64, 512, 1, 1});
-  b->Args({512, 64, 512, 1, 4});
-  b->Args({512, 64, 512, 1, 6});
-
-  b->Args({512, 512, 64, 12, 1});
-  b->Args({512, 512, 64, 12, 4});
-  b->Args({512, 512, 64, 12, 6});
-
-  b->Args({512, 64, 512, 12, 1});
-  b->Args({512, 64, 512, 12, 4});
-  b->Args({512, 64, 512, 12, 6});
+  b->Args({1, 4096, 4096, 1, 8});
+  b->Args({1, 12288, 4096, 1, 8});
+  b->Args({1024, 4096, 4096, 1, 8});
+  b->Args({1024, 12288, 4096, 1, 8});
 }
 
-BENCHMARK_CAPTURE(SYMMQGEMM, SignedActivation, true)->Apply(SymmQGemmSize)->UseRealTime();
-#endif
+BENCHMARK_CAPTURE(SYMMQGEMM, U8S8, false)->Apply(SymmQGemmSize)->UseRealTime();
+

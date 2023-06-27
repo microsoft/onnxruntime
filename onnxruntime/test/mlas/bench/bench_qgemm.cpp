@@ -82,22 +82,10 @@ static void QGemmSize(benchmark::internal::Benchmark* b) {
   b->ArgNames(qgemm_arg_names);
   // Args for  "M", "N", "K", "Batch", "Threads"
 
-  b->Args({384, 1024, 1024, 1, 4});
-  b->Args({384, 1024, 3072, 1, 4});
-  b->Args({384, 1024, 4096, 1, 4});
-  b->Args({384, 4096, 1024, 1, 4});
-  b->Args({384, 1024, 1024, 1, 16});
-  b->Args({384, 1024, 3072, 1, 16});
-  b->Args({384, 1024, 4096, 1, 16});
-  b->Args({384, 4096, 1024, 1, 16});
-  b->Args({1536, 1024, 1024, 1, 16});
-  b->Args({1536, 1024, 3072, 1, 16});
-  b->Args({1536, 1024, 4096, 1, 16});
-  b->Args({1536, 4096, 1024, 1, 16});
-  b->Args({3072, 1024, 1024, 1, 16});
-  b->Args({3072, 1024, 3072, 1, 16});
-  b->Args({3072, 1024, 4096, 1, 16});
-  b->Args({3072, 4096, 1024, 1, 16});
+  b->Args({1, 4096, 4096, 1, 8});
+  b->Args({1, 12288, 4096, 1, 8});
+  b->Args({1024, 4096, 4096, 1, 8});
+  b->Args({1024, 12288, 4096, 1, 8});
 }
 
 BENCHMARK_CAPTURE(QGEMM, UnsignedAPackB, true, false)->Apply(QGemmSize)->UseRealTime();

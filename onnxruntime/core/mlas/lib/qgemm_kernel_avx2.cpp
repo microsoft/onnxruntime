@@ -273,3 +273,80 @@ const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8U8DispatchAvx2 = {
     MLAS_GEMM_U8U8_KERNEL_AVX2::PackedStrides.K,
     6 // assembly kernel M stride
 };
+
+
+/**
+ * @brief Type parameter for symmetric qgemm
+ */
+struct MLAS_SYMM_GEMM_U8S8_KERNEL_AVX512VNNI {
+    typedef uint8_t PackedAType;
+    typedef uint8_t PackedBType;
+    typedef int8_t OffsetAType;
+    typedef int8_t OffsetBType;
+
+    static constexpr size_t PackedK = 4;
+    static constexpr size_t SymmStrideN = 96;
+};
+
+constexpr size_t MLAS_SYMM_GEMM_U8S8_KERNEL_AVX512VNNI::PackedK;
+constexpr size_t MLAS_SYMM_GEMM_U8S8_KERNEL_AVX512VNNI::SymmStrideN;
+
+template <>
+void
+MlasGemmQuantCopyPackB<MLAS_SYMM_GEMM_U8S8_KERNEL_AVX512VNNI>(
+    MLAS_SYMM_GEMM_U8S8_KERNEL_AVX512VNNI::PackedBType* Dst,
+    const uint8_t* B,
+    size_t ldb,
+    size_t CountN,
+    size_t CountK,
+    int32_t* ColumnSumBuffer,
+    bool BIsSigned)
+{
+    MlasGemmU8S8CopyPackBAvx2(Dst, B, ldb, CountN, CountK, ColumnSumBuffer, BIsSigned);
+}
+
+extern "C" {
+    // Prototype of SDOT symmetric qgemm kernel in assembly
+
+    size_t
+    MLASCALL
+    MlasSymQgemmU8KernelAvx512Vnni(
+        const int8_t* A,
+        const int8_t* B,
+        int32_t* C,
+        size_t PackedCountK,
+        size_t CountM,
+        size_t CountN,
+        size_t ldc,
+        size_t lda,
+        const int32_t* ColumnSumVector
+        );
+
+}
+
+template<>
+MLAS_FORCEINLINE
+size_t MlasSymmQGemmKernel<MLAS_SYMM_GEMM_U8S8_KERNEL_AVX512VNNI>(
+    const int8_t* A,
+    const int8_t* B,
+    int32_t* C,
+    size_t PackedCountK,
+    size_t CountM,
+    size_t CountN,
+    size_t ldc,
+    size_t lda,
+    const int32_t* ColumnSumVector
+)
+{
+    return MlasSymQgemmU8KernelAvx512Vnni(A, B, C, PackedCountK, CountM, CountN, ldc, lda,
+                                    ColumnSumVector);
+}
+
+
+const MLAS_SYMM_QGEMM_DISPATCH MlasSymmQgemmU8DispatchAVX512Vnni = {
+    MlasSymmQGemmPackedOperation<MLAS_SYMM_GEMM_U8S8_KERNEL_AVX512VNNI>,
+    MlasSymmQGemmPackedOperation<MLAS_SYMM_GEMM_U8S8_KERNEL_AVX512VNNI>,
+    MlasGemmQuantCopyPackB<MLAS_SYMM_GEMM_U8S8_KERNEL_AVX512VNNI>,
+    48,  // StrideM
+    MLAS_SYMM_GEMM_U8S8_KERNEL_AVX512VNNI::PackedK
+};

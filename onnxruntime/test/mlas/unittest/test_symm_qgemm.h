@@ -88,7 +88,7 @@ class MlasSymmQgemmTest<AType, int32_t, Threaded> : public MlasSymmQgemmTestBase
     std::fill_n(CReference, M * N * BatchSize, -1);
 
     this->TestGemm(M, N, K, BatchSize, A, lda, offa, std::is_signed<AType>::value, B, ldb, C, ldc);
-    ReferenceQgemm(M, N, K, BatchSize, (const AType*)A, lda, (AType)offa, B, ldb, (const int8_t)0, CReference, ldc);
+    ReferenceQgemm(M, N, K, BatchSize, (const AType*)A, lda, offa, B, ldb, (const int8_t)0, CReference, ldc);
 
     for (size_t batch = 0, f = 0; batch < BatchSize; batch++) {
       for (size_t m = 0; m < M; m++) {
@@ -108,7 +108,7 @@ class MlasSymmQgemmTest<AType, int32_t, Threaded> : public MlasSymmQgemmTestBase
                       size_t BatchSize,
                       const AType* A,
                       size_t lda,
-                      AType offa,
+                      int32_t offa,
                       const int8_t* B,
                       size_t ldb,
                       int8_t offb,

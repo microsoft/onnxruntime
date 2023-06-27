@@ -261,6 +261,7 @@ MlasSymmQgemmBatch(
     if (TargetThreadCount >= MaximumThreadCount) {
         TargetThreadCount = MaximumThreadCount;
     }
+    TargetThreadCount *= 4;
 
     ptrdiff_t ThreadsPerGemm = TargetThreadCount / BatchN;
     if (ThreadsPerGemm < 1) {
@@ -276,7 +277,7 @@ MlasSymmQgemmBatch(
         const size_t BlockedM = MlasDivRoundup(M, StrideM);
         const size_t max_nc = MlasDivRoundup(N * BlockedM, ThreadsPerGemm);
         if (max_nc < nc) {
-            nc = std::min(nc, MlasDivRoundup(nc, max_nc * MLAS_QGEMM_STRIDEN_THREAD_ALIGN) *
+            nc = std::min(nc, MlasDivRoundup(max_nc, MLAS_QGEMM_STRIDEN_THREAD_ALIGN) *
                                   MLAS_QGEMM_STRIDEN_THREAD_ALIGN);
         }
     }
