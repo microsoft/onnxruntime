@@ -335,7 +335,7 @@ NS_ASSUME_NONNULL_BEGIN
   ORTAssertNullableResultSuccessful(checkpoint, error);
   ORTTrainingSession* session = [self makeTrainingSessionWithCheckPoint:checkpoint];
 
-  NSString* inferenceModelPath = [NSTemporaryDirectory() stringByAppendingPathComponent:@"inference_model.onnx"];
+  NSString* inferenceModelPath = [test_utils::createTemporaryDirectory(self) stringByAppendingPathComponent:@"inference_model.onnx"];
   XCTAssertNotNil(inferenceModelPath);
 
   NSArray<NSString*>* graphOutputNames = [NSArray arrayWithObjects:@"output-0", nil];

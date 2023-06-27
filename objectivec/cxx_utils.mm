@@ -64,7 +64,7 @@ NSArray<ORTValue*>* _Nullable wrapUnownedCAPIOrtValues(const std::vector<OrtValu
   for (size_t i = 0; i < values.size(); ++i) {
     ORTValue* val = [[ORTValue alloc] initWithCAPIOrtValue:values[i] externalTensorData:nil error:error];
     if (!val) {
-      // clean up all the C APU  Ortvalues which haven't been wrapped by ORTValue
+      // clean up all the C API Ortvalues which haven't been wrapped by ORTValue
       for (size_t j = i; j < values.size(); ++j) {
         Ort::GetApi().ReleaseValue(values[j]);
       }

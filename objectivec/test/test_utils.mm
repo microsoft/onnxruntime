@@ -17,15 +17,13 @@ NSString* createTemporaryDirectory(XCTestCase* testCase) {
                                              attributes:nil
                                                   error:&error];
 
-  XCTAssertNotNil(error, @"Error creating temporary directory: %@", error.localizedDescription);
+  XCTAssertNil(error, @"Error creating temporary directory: %@", error.localizedDescription);
 
   // add teardown block to delete the temporary directory
   [testCase addTeardownBlock:^{
     NSError* error = nil;
     [[NSFileManager defaultManager] removeItemAtPath:directoryPath error:&error];
-    if (error) {
-      NSLog(@"Error deleting temporary directory: %@", error.localizedDescription);
-    }
+    XCTAssertNil(error, @"Error removing temporary directory: %@", error.localizedDescription);
   }];
 
   return directoryPath;

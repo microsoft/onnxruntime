@@ -107,7 +107,7 @@ NS_ASSUME_NONNULL_BEGIN
 
 /**
  * Returns the names of the user inputs for the training model that can be associated with
- * the `ORTValue` provided to the `trainStep`
+ * the `ORTValue` provided to the `trainStep`.
  *
  * @param error Optional error information set if an error occurs.
  * @return The names of the user inputs for the training model.
@@ -116,7 +116,7 @@ NS_ASSUME_NONNULL_BEGIN
 
 /**
  * Returns the names of the user inputs for the evaluation model that can be associated with
- * the `ORTValue` provided to the `evalStep`
+ * the `ORTValue` provided to the `evalStep`.
  *
  * @param error Optional error information set if an error occurs.
  * @return The names of the user inputs for the evaluation model.
@@ -125,7 +125,7 @@ NS_ASSUME_NONNULL_BEGIN
 
 /**
  * Returns the names of the user outputs for the training model that can be associated with
- * the `ORTValue` returned by the `trainStep`
+ * the `ORTValue` returned by the `trainStep`.
  *
  * @param error Optional error information set if an error occurs.
  * @return The names of the user outputs for the training model.
@@ -134,7 +134,7 @@ NS_ASSUME_NONNULL_BEGIN
 
 /**
  * Returns the names of the user outputs for the evaluation model that can be associated with
- * the `ORTValue` returned by the `evalStep`
+ * the `ORTValue` returned by the `evalStep`.
  *
  * @param error Optional error information set if an error occurs.
  * @return The names of the user outputs for the evaluation model.
@@ -200,7 +200,7 @@ NS_ASSUME_NONNULL_BEGIN
                   error:(NSError**)error;
 
 /**
- * Loads the training session model parameters from a contiguous buffer
+ * Loads the training session model parameters from a contiguous buffer.
  *
  * @param buffer Contiguous buffer to load the parameters from.
  * @param error Optional error information set if an error occurs.
@@ -248,7 +248,7 @@ extern "C" {
  * This function sets the seed for generating random numbers.
  * Use this function to generate reproducible results. It should be noted that completely reproducible results are not guaranteed.
  *
- * @param seed Manually set seed to use for random number generation
+ * @param seed Manually set seed to use for random number generation.
  */
 void ORTSetSeed(int64_t seed);
 

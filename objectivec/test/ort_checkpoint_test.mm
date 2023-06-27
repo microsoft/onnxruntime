@@ -49,7 +49,7 @@ NS_ASSUME_NONNULL_BEGIN
   ORTAssertNullableResultSuccessful(checkpoint, error);
 
   // save checkpoint
-  NSString* path = [NSTemporaryDirectory() stringByAppendingPathComponent:@"save_checkpoint.ckpt"];
+  NSString* path = [test_utils::createTemporaryDirectory(self) stringByAppendingPathComponent:@"save_checkpoint.ckpt"];
   XCTAssertNotNil(path);
   BOOL result = [checkpoint saveCheckpointToPath:path withOptimizerState:NO error:&error];
 
