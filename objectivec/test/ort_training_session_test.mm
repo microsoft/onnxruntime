@@ -348,9 +348,9 @@ NS_ASSUME_NONNULL_BEGIN
 }
 
 - (void)tearDown {
-  _ortEnv = nil;
-  _checkpoint = nil;
   _session = nil;
+  _checkpoint = nil;
+  _ortEnv = nil;
 
   [super tearDown];
 }
