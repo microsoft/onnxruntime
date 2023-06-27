@@ -49,7 +49,9 @@ inline void TestActivationOp(const char* szOp, const std::vector<std::vector<T>>
 // Disabled because of NNAPI treat float::inf as float::max
 #if defined(USE_NNAPI)
     int relu = strcmp(szOp, "Relu");
-    if (relu == 0) {
+    int leaky = strcmp(szOp, "LeakyRelu");  
+    // disabled LeakyRelu as nnapi supports input to be an initializer
+    if (relu == 0 || leaky == 0) {
       excluded_providers.insert(kNnapiExecutionProvider);
     }
 #endif

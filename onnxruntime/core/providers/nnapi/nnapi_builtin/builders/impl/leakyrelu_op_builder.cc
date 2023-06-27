@@ -52,6 +52,7 @@ Status LeakyReluOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
                                                  const NodeUnit& node_unit) const {
   auto& shaper(model_builder.GetShaper());
   const auto& operand_types(model_builder.GetOperandTypes());
+  const auto& operand_indices(model_builder.GetOperandIndices());
   const auto& initializers(model_builder.GetInitializerTensors());
 
   const auto& input = node_unit.Inputs()[0].node_arg.Name();
@@ -74,6 +75,7 @@ Status LeakyReluOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   // Construct the boolean type mask array for ANEURALNETWORKS_SELECT - input0
   std::vector<bool> mask(input_shape.size());
   const auto& input_tensor = *initializers.at(input);
+
   // Note: by default NNAPI only supports float type input, so uses a float type gsl::span here
   // See BaseOpBuilder::HasSupportedInputOutputsImpl.
   Initializer unpacked_tensor(input_tensor);
@@ -96,7 +98,8 @@ Status LeakyReluOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   Shape input_dimen = {static_cast<uint32_t>(input_shape.size())};
 
   const OperandType mask_operand_type(operand_types.at(input).type, input_dimen);
-  ORT_RETURN_IF_ERROR(model_builder.AddOperandFromPersistMemoryBuffer(mask_tensor_name, mask.data(), mask_operand_type));
+  std::vector<char> mask_char(mask.begin(), mask.end());  // Convert to vector of char
+  ORT_RETURN_IF_ERROR(model_builder.AddOperandFromPersistMemoryBuffer(mask_tensor_name, mask_char.data(), mask_operand_type));
   const OperandType input2_operand_type(operand_types.at(input).type, input_dimen);
   ORT_RETURN_IF_ERROR(model_builder.AddOperandFromPersistMemoryBuffer(input2_tensor_name, input2.data(), input2_operand_type));
 
