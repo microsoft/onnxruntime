@@ -113,10 +113,17 @@ inline std::basic_string<T> GetCurrentTimeString() {
 
 #if !defined(ORT_MINIMAL_BUILD)
 
+static bool IsNodeOnCpuEP(const Node& node) {
+  const auto& node_provider = node.GetExecutionProviderType();
+
+  // Empty EP string means CPU EP
+  return node_provider.empty() || node_provider == onnxruntime::kCpuExecutionProvider;
+}
+
 /* This method returns ture if all *compute* nodes are placed on the CUDA EP
-   and all shape nodes are placed on the CPU EP
- */
-std::pair<bool, int> AreAllComputeNodesAssignedToCudaEp(const Graph& graph) {
+and all shape nodes are placed on the CPU EP
+*/
+static std::pair<bool, int> AreAllComputeNodesAssignedToCudaEp(const Graph& graph) {
   InlinedHashSet<NodeIndex> shape_nodes;
   InlinedHashSet<NodeIndex> bfs_visited;
   std::queue<NodeIndex> bfs_queue;
@@ -143,9 +150,9 @@ std::pair<bool, int> AreAllComputeNodesAssignedToCudaEp(const Graph& graph) {
     shape_nodes.insert(node_index);
 
     for (auto iter = node->OutputNodesBegin(), end = node->OutputNodesEnd(); iter != end; ++iter) {
-      // If the child is not a Reshape node and we haven't processed/visited the node already,
+      // If the child is on CPU and we haven't processed/visited the node already,
       // add the node for further processing
-      if (iter->OpType() != "Reshape" && (bfs_visited.find(iter->Index()) == bfs_visited.end())) {
+      if (IsNodeOnCpuEP(*iter) && (bfs_visited.find(iter->Index()) == bfs_visited.end())) {
         bfs_visited.insert(iter->Index());
         bfs_queue.push(iter->Index());
       }
@@ -177,7 +184,7 @@ std::pair<bool, int> AreAllComputeNodesAssignedToCudaEp(const Graph& graph) {
   return std::make_pair(true, static_cast<int>(shape_nodes.size()));
 }
 
-bool AreAllNodesInMainGraphAssignedToOneEp(const Graph& graph, ProviderType provider) {
+static bool AreAllNodesInMainGraphAssignedToOneEp(const Graph& graph, ProviderType provider) {
   for (const auto& node : graph.Nodes()) {
     const auto& node_provider = node.GetExecutionProviderType();
 
@@ -189,7 +196,7 @@ bool AreAllNodesInMainGraphAssignedToOneEp(const Graph& graph, ProviderType prov
   return true;
 }
 
-bool HasControlflowNodes(const Graph& graph) {
+static bool HasControlflowNodes(const Graph& graph) {
   for (const auto& node : graph.Nodes()) {
     if (node.ContainsSubgraph()) {
       return true;
