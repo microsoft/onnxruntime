@@ -34,9 +34,7 @@ GemmFloat8::GemmFloat8(const OpKernelInfo& info) : CudaKernel(info) {
   transB_ = info.GetAttrOrDefault<int64_t>("transB", 0);
   dtype_ = info.GetAttrOrDefault<int64_t>("dtype", ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
   fast_accumulation_mode_ = info.GetAttrOrDefault<int64_t>("fastAccumulationMode", 1) != 0;
-  bool row_major = info.GetAttrOrDefault<int64_t>("rowMajor", 1) != 0;
-  // TODO: extend the support to the order storage orders.
-  storage_order_ = row_major ? CUBLASLT_ORDER_ROW : CUBLASLT_ORDER_COL;
+  row_major_ = info.GetAttrOrDefault<int64_t>("rowMajor", 1) != 0;
   sm_count_ = info.GetAttrOrDefault<int64_t>("smCount", 0);
   alpha_ = info.GetAttrOrDefault<float>("alpha", 1);
   beta_ = info.GetAttrOrDefault<float>("beta", 0);

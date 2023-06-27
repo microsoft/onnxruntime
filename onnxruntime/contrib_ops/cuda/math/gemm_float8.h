@@ -22,10 +22,32 @@ class GemmFloat8 final : public onnxruntime::cuda::CudaKernel {
   void set(const TensorShape& shape_a,
            const TensorShape& shape_b,
            int& M, int& N, int& K,
-           int& lda, int& ldb, int& ldd) const;
+           int& lda, int& ldb, int& ldd, bool row_major) const;
   Status set_check(const TensorShape& shape_a,
                    const TensorShape& shape_b,
                    int& M, int& N, int& K) const;
+
+  Status ComputeRowMajor(OpKernelContext* ctx, int n_inputs, bool has_bias,
+                         bool has_scales, const Tensor* input_A,
+                         const Tensor* input_B, const Tensor* input_C,
+                         const Tensor* scale_A, const Tensor* scale_B,
+                         const Tensor* scale_Y) const;
+  Status ComputeColMajor(OpKernelContext* ctx, int n_inputs, bool has_bias,
+                         bool has_scales, const Tensor* input_A,
+                         const Tensor* input_B, const Tensor* input_C,
+                         const Tensor* scale_A, const Tensor* scale_B,
+                         const Tensor* scale_Y) const;
+
+  Status ComputeGemm(
+      OpKernelContext* ctx, int n_inputs, bool has_bias, bool has_scales,
+      int32_t dtype_A, int32_t dtype_b,
+      int32_t dtype_c, int32_t dtype_Y,
+      const TensorShape& shape_A, const TensorShape& shape_B,
+      const TensorShape& shape_C, const TensorShape& shape_Y,
+      bool transa, bool transb, const void* p_input_a, const void* p_input_b,
+      const void* p_input_c, const void* p_scale_a, const void* p_scale_b,
+      const void* p_scale_y, void* p_output_y, int M, int N, int K, int lda,
+      int ldb, int ldd) const;
 
   float alpha_;
   float beta_;
@@ -34,10 +56,7 @@ class GemmFloat8 final : public onnxruntime::cuda::CudaKernel {
   bool fast_accumulation_mode_;
   int64_t sm_count_;
   int64_t dtype_;
-  // TODO: update the design when a decision is made about storage_order_.
-  // The current implementation assumes the input tensor are stored based
-  // on that order but that's not the case in onnxruntime. Tensor are always row major.
-  cublasLtOrder_t storage_order_;
+  bool row_major_;
   cublasComputeType_t compute_type_;
 
   // TODO: add epilogue (= activation function, Relu or Gelu are available).

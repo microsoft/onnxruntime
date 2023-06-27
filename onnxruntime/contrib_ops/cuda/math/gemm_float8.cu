@@ -46,7 +46,7 @@ static const char* CudaDataTypeToString(cudaDataType_t dt) {
       return "CUDA_R_16BF";
     case CUDA_R_32F:
       return "CUDA_R_32F";
-#if(CUDA_VERSION >= 11080)
+#if (CUDA_VERSION >= 11080)
     case CUDA_R_8F_E4M3:
       return "CUDA_R_8F_E4M3";
     case CUDA_R_8F_E5M2:
@@ -85,7 +85,7 @@ cudaDataType_t ToCudaDataType(int32_t element_type) {
       return CUDA_R_16F;
     case ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16:
       return CUDA_R_16BF;
-#if(!defined(DISABLE_FLOAT8_TYPES) && (CUDA_VERSION >= 11080))
+#if (!defined(DISABLE_FLOAT8_TYPES) && (CUDA_VERSION >= 11080))
     case ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E4M3FN:
       return CUDA_R_8F_E4M3;
     case ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E5M2:
@@ -104,7 +104,7 @@ int32_t TypeSize(int32_t element_type) {
     case ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16:
     case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16:
       return 2;
-#if(!defined(DISABLE_FLOAT8_TYPES) && (CUDA_VERSION >= 11080))
+#if (!defined(DISABLE_FLOAT8_TYPES) && (CUDA_VERSION >= 11080))
     case ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E4M3FN:
     case ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E5M2:
       return 1;
@@ -114,8 +114,7 @@ int32_t TypeSize(int32_t element_type) {
   }
 }
 
-void GemmFloat8::set(const TensorShape& a_shape, const TensorShape& b_shape, int& M, int& N, int& K, int& lda, int& ldb, int& ldd) const {
-  bool row_major = storage_order_ == CUBLASLT_ORDER_ROW;
+void GemmFloat8::set(const TensorShape& a_shape, const TensorShape& b_shape, int& M, int& N, int& K, int& lda, int& ldb, int& ldd, bool row_major) const {
   constexpr int ir = 0;
   constexpr int ic = 1 - ir;
   if (transA_ && !transB_) {  // TN
@@ -149,65 +148,132 @@ void GemmFloat8::set(const TensorShape& a_shape, const TensorShape& b_shape, int
   }
 }
 
+template <typename TValue>
+int32_t GetTypeAndShape(const TValue* input,
+                        TensorShape& shape,
+                        bool swap = false) {
+  shape = input->Shape();
+  ORT_ENFORCE(shape.NumDimensions() == 2);
+  if (swap) {
+    std::swap(shape[0], shape[1]);
+  }
+  return input->GetElementType();
+}
+
 Status GemmFloat8::ComputeInternal(OpKernelContext* ctx) const {
-  const Tensor* A = nullptr;
-  const Tensor* B = nullptr;
-  const Tensor* C = nullptr;
+  const Tensor* input_A = nullptr;
+  const Tensor* input_B = nullptr;
+  const Tensor* input_C = nullptr;
   const Tensor* scale_A = nullptr;
   const Tensor* scale_B = nullptr;
   const Tensor* scale_Y = nullptr;
   bool has_scales = false;
+  bool has_bias = false;
   int n_inputs = ctx->InputCount();
   ORT_ENFORCE(n_inputs >= 2, "A and/or B is missing.");
-  A = ctx->Input<Tensor>(0);
-  B = ctx->Input<Tensor>(1);
+  input_A = ctx->Input<Tensor>(0);
+  input_B = ctx->Input<Tensor>(1);
   if (n_inputs == 3) {
-    C = ctx->Input<Tensor>(2);
-  }
-  else if (n_inputs > 3) {
+    input_C = ctx->Input<Tensor>(2);
+    has_bias = true;
+  } else if (n_inputs > 3) {
+    ORT_ENFORCE(n_inputs == 6, "Unexpected number of inputs=", n_inputs, ".");
     has_scales = true;
-    if (n_inputs == 6) {
-      C = ctx->Input<Tensor>(2);
-      scale_A = ctx->Input<Tensor>(3);
-      scale_B = ctx->Input<Tensor>(4);
-      scale_Y = ctx->Input<Tensor>(5);
-      ORT_ENFORCE(C->GetElementType() == dtype_, "Bias type must be equal to dtype.");
-    } else if(n_inputs == 5) {
-      scale_A = ctx->Input<Tensor>(2);
-      scale_B = ctx->Input<Tensor>(3);
-      scale_Y = ctx->Input<Tensor>(4);
-    } else {
-      ORT_THROW("Unexpected number of inputs=", n_inputs, ".");
-    }
+    scale_A = ctx->Input<Tensor>(3);
+    scale_B = ctx->Input<Tensor>(4);
+    scale_Y = ctx->Input<Tensor>(5);
     ORT_ENFORCE(scale_A->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
     ORT_ENFORCE(scale_B->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
     ORT_ENFORCE(scale_Y->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+    if (ctx->Input<Tensor>(2) != nullptr) {
+      input_C = ctx->Input<Tensor>(2);
+      has_bias = true;
+      ORT_ENFORCE(input_C->GetElementType() == dtype_, "Bias type must be equal to dtype.");
+    }
   }
 
-  auto a_shape = A->Shape();
-  auto b_shape = B->Shape();
+  if (row_major_)
+    return ComputeColMajor(ctx, n_inputs, has_bias, has_scales, input_A, input_B,
+                           input_C, scale_A, scale_B, scale_Y);
+  return ComputeRowMajor(ctx, n_inputs, has_bias, has_scales, input_A, input_B,
+                         input_C, scale_A, scale_B, scale_Y);
+}
 
-  ORT_ENFORCE(a_shape.GetDims().size() == 2);
-  ORT_ENFORCE(b_shape.GetDims().size() == 2);
-  ORT_ENFORCE(C == nullptr || C->Shape().GetDims().size() == 2);
+Status GemmFloat8::ComputeRowMajor(
+    OpKernelContext* ctx, int n_inputs, bool has_bias, bool has_scales,
+    const Tensor* input_A, const Tensor* input_B,
+    const Tensor* input_C, const Tensor* scale_A,
+    const Tensor* scale_B, const Tensor* scale_Y) const {
+  TensorShape shape_A, shape_B, shape_C, shape_Y;
+  int32_t dtype_A, dtype_B, dtype_C, dtype_Y;
+  dtype_A = GetTypeAndShape(input_A, shape_A);
+  dtype_B = GetTypeAndShape(input_B, shape_B);
 
-  int Md, Nd, Kd;
-  auto check = set_check(a_shape, b_shape, Md, Nd, Kd);
-  if (!check.IsOK())
-    return check;
   int M, N, K, lda, ldb, ldd;
-  set(a_shape, b_shape, M, N, K, lda, ldb, ldd);
-  ORT_ENFORCE(M == Md);
-  ORT_ENFORCE(N == Nd);
-  ORT_ENFORCE(K == Kd);
+  set(shape_A, shape_B, M, N, K, lda, ldb, ldd, true);
 
-  auto dtype_A = A->GetElementType();
-  auto dtype_B = B->GetElementType();
+  TensorShape dimensions{M, N};
+  Tensor* Y = ctx->Output(0, dimensions);
+  dtype_Y = GetTypeAndShape(Y, shape_Y);
+  dtype_C = has_bias ? GetTypeAndShape(input_C, shape_C)
+                     : ONNX_NAMESPACE::TensorProto_DataType_FLOAT;
+  return ComputeGemm(ctx, n_inputs, has_bias, has_scales, dtype_A, dtype_B, dtype_C,
+                     dtype_Y, shape_A, shape_B, shape_C, shape_Y, transA_, transB_,
+                     input_A->DataRaw(), input_B->DataRaw(),
+                     has_bias ? input_C->DataRaw() : nullptr,
+                     has_scales ? scale_A->DataRaw() : nullptr,
+                     has_scales ? scale_B->DataRaw() : nullptr,
+                     has_scales ? scale_Y->DataRaw() : nullptr,
+                     Y->MutableDataRaw(), M, N, K, lda, ldb, ldd);
+}
 
-  auto* Y = ctx->Output(0, {M, N});
+Status GemmFloat8::ComputeColMajor(
+    OpKernelContext* ctx, int n_inputs, bool has_bias, bool has_scales,
+    const Tensor* input_A, const Tensor* input_B,
+    const Tensor* input_C, const Tensor* scale_A,
+    const Tensor* scale_B, const Tensor* scale_Y) const {
+  TensorShape shape_A, shape_B, shape_C, shape_Y;
+  int32_t dtype_A, dtype_B, dtype_C, dtype_Y;
+  dtype_A = GetTypeAndShape(input_A, shape_A);
+  dtype_B = GetTypeAndShape(input_B, shape_B);
 
+  int M, N, K, lda, ldb, ldd;
+  set(shape_A, shape_B, M, N, K, lda, ldb, ldd, true);
+
+  std::swap(shape_A[0], shape_A[1]);
+  std::swap(shape_B[0], shape_B[1]);
+
+  TensorShape dimensions{M, N};
+  Tensor* Y = ctx->Output(0, dimensions);
+  dtype_Y = GetTypeAndShape(Y, shape_Y);
+  dtype_C = has_bias ? GetTypeAndShape(input_C, shape_C, true)
+                     : ONNX_NAMESPACE::TensorProto_DataType_FLOAT;
+
+  return ComputeGemm(ctx, n_inputs, has_bias, has_scales, dtype_B, dtype_A, dtype_C,
+                     dtype_Y, shape_B, shape_A, shape_C, shape_Y, transB_, transA_,
+                     input_B->DataRaw(), input_A->DataRaw(),
+                     has_bias ? input_C->DataRaw() : nullptr,
+                     has_scales ? scale_B->DataRaw() : nullptr,
+                     has_scales ? scale_A->DataRaw() : nullptr,
+                     has_scales ? scale_Y->DataRaw() : nullptr,
+                     Y->MutableDataRaw(), N, M, K, ldb, lda, ldd);
+}
+
+Status GemmFloat8::ComputeGemm(
+    OpKernelContext* ctx, int n_inputs, bool has_bias, bool has_scales,
+    int32_t dtype_A, int32_t dtype_B,
+    int32_t dtype_C, int32_t dtype_Y,
+    const TensorShape& shape_A, const TensorShape& shape_B,
+    const TensorShape& shape_C, const TensorShape& shape_Y,
+    bool trans_A, bool trans_B, const void* p_input_a, const void* p_input_b,
+    const void* p_input_c, const void* p_scale_a, const void* p_scale_b,
+    const void* p_scale_y, void* p_output_y, int M, int N, int K, int lda,
+    int ldb, int ldd) const {
   cudaStream_t stream = Stream(ctx);
-  cublasLtHandle_t cublasLt = CublasLtHandle();
+  CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream));
+
+  cublasLtHandle_t cublasLt;
+  CUBLAS_RETURN_IF_ERROR(cublasLtCreate(&cublasLt));
 
   cublasLtMatmulDesc_t operationDesc = nullptr;
   cublasLtMatrixLayout_t Adesc = nullptr, Bdesc = nullptr, Cdesc = nullptr,
@@ -216,41 +282,44 @@ Status GemmFloat8::ComputeInternal(OpKernelContext* ctx) const {
   // Create matrix descriptors. Not setting any extra attributes.
   cudaDataType_t a_cuda_type = ToCudaDataType(dtype_A);
   cudaDataType_t b_cuda_type = ToCudaDataType(dtype_B);
-  cudaDataType_t d_cuda_type = ToCudaDataType(dtype_);
-  cudaDataType_t bias_cuda_type = ToCudaDataType(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT);
-  cudaDataType_t scale_cuda_type = bias_cuda_type;
+  cudaDataType_t d_cuda_type = ToCudaDataType(dtype_Y);
+  cudaDataType_t scale_cuda_type =
+      ToCudaDataType(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT);
+  cudaDataType_t bias_cuda_type = ToCudaDataType(dtype_C);
 
-  CUBLAS_RETURN_IF_ERROR(cublasLtMatrixLayoutCreate(&Adesc, a_cuda_type, transA_ ? K : M, transA_ ? M : K, lda));
-  CUBLAS_RETURN_IF_ERROR(cublasLtMatrixLayoutCreate(&Bdesc, b_cuda_type, transB_ ? N : K, transB_ ? K : N, ldb));
-  CUBLAS_RETURN_IF_ERROR(cublasLtMatrixLayoutCreate(&Ddesc, d_cuda_type, M, N, ldd));
+  CUBLAS_RETURN_IF_ERROR(cublasLtMatrixLayoutCreate(
+      &Adesc, a_cuda_type, trans_A ? K : M, trans_A ? M : K, lda));
+  CUBLAS_RETURN_IF_ERROR(cublasLtMatrixLayoutCreate(
+      &Bdesc, b_cuda_type, trans_B ? N : K, trans_B ? K : N, ldb));
+  CUBLAS_RETURN_IF_ERROR(
+      cublasLtMatrixLayoutCreate(&Ddesc, d_cuda_type, M, N, ldd));
 
-  if (storage_order_ == CUBLASLT_ORDER_ROW) {
+  if (row_major_) {
+    cublasLtOrder_t matrixOrder = CUBLASLT_ORDER_ROW;
     CUBLAS_RETURN_IF_ERROR(
         cublasLtMatrixLayoutSetAttribute(Adesc, CUBLASLT_MATRIX_LAYOUT_ORDER,
-                                         &storage_order_, sizeof(storage_order_)));
+                                         &matrixOrder, sizeof(matrixOrder)));
     CUBLAS_RETURN_IF_ERROR(
         cublasLtMatrixLayoutSetAttribute(Bdesc, CUBLASLT_MATRIX_LAYOUT_ORDER,
-                                         &storage_order_, sizeof(storage_order_)));
+                                         &matrixOrder, sizeof(matrixOrder)));
   }
 
   CUBLAS_RETURN_IF_ERROR(
       cublasLtMatmulDescCreate(&operationDesc, compute_type_, scale_cuda_type));
-  cublasOperation_t transa = transA_ ? CUBLAS_OP_T : CUBLAS_OP_N;
-  cublasOperation_t transb = transB_ ? CUBLAS_OP_T : CUBLAS_OP_N;
+  cublasOperation_t ctransa = trans_A ? CUBLAS_OP_T : CUBLAS_OP_N;
+  cublasOperation_t ctransb = trans_B ? CUBLAS_OP_T : CUBLAS_OP_N;
   CUBLAS_RETURN_IF_ERROR(cublasLtMatmulDescSetAttribute(
-      operationDesc, CUBLASLT_MATMUL_DESC_TRANSA, &transa, sizeof(transa)));
+      operationDesc, CUBLASLT_MATMUL_DESC_TRANSA, &ctransa, sizeof(ctransa)));
   CUBLAS_RETURN_IF_ERROR(cublasLtMatmulDescSetAttribute(
-      operationDesc, CUBLASLT_MATMUL_DESC_TRANSB, &transb, sizeof(transb)));
+      operationDesc, CUBLASLT_MATMUL_DESC_TRANSB, &ctransb, sizeof(ctransb)));
 
   if (sm_count_ != 0) {
     int math_sm_count = static_cast<int>(sm_count_);
     CUBLAS_RETURN_IF_ERROR(cublasLtMatmulDescSetAttribute(
-        operationDesc, CUBLASLT_MATMUL_DESC_SM_COUNT_TARGET, &math_sm_count, sizeof(math_sm_count)));
+        operationDesc, CUBLASLT_MATMUL_DESC_SM_COUNT_TARGET, &math_sm_count,
+        sizeof(math_sm_count)));
   }
 
-  const void* p_scale_a = nullptr;
-  const void* p_scale_b = nullptr;
-  const void* p_scale_y = nullptr;
   if (has_scales) {
     // gemm float 8
     const int8_t ifast_accumulation_mode = fast_accumulation_mode_ ? 1 : 0;
@@ -258,23 +327,20 @@ Status GemmFloat8::ComputeInternal(OpKernelContext* ctx) const {
         operationDesc,
         cublasLtMatmulDescAttributes_t::CUBLASLT_MATMUL_DESC_FAST_ACCUM,
         &ifast_accumulation_mode, sizeof(ifast_accumulation_mode)));
-    p_scale_a = scale_A->DataRaw();
     CUBLAS_RETURN_IF_ERROR(cublasLtMatmulDescSetAttribute(
         operationDesc, CUBLASLT_MATMUL_DESC_A_SCALE_POINTER, &p_scale_a,
         sizeof(p_scale_a)));
-    p_scale_b = scale_B->DataRaw();
     CUBLAS_RETURN_IF_ERROR(cublasLtMatmulDescSetAttribute(
         operationDesc, CUBLASLT_MATMUL_DESC_B_SCALE_POINTER, &p_scale_b,
         sizeof(p_scale_b)));
-    p_scale_y = scale_Y->DataRaw();
     CUBLAS_RETURN_IF_ERROR(cublasLtMatmulDescSetAttribute(
         operationDesc, CUBLASLT_MATMUL_DESC_D_SCALE_POINTER, &p_scale_y,
         sizeof(p_scale_b)));
 
     // float 8
-#if !defined(DISABLE_FLOAT8_TYPES)
-    if (dtype_ == ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E4M3FN ||
-        dtype_ == ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E5M2) {
+#if CUDA_VERSION >= 11080
+    if (dtype_Y == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E4M3FN ||
+        dtype_Y == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E5M2) {
       // For FP8 output, cuBLAS requires C_type to be same as bias_type
       CUBLAS_RETURN_IF_ERROR(
           cublasLtMatrixLayoutCreate(&Cdesc, bias_cuda_type, M, N, ldd));
@@ -295,8 +361,7 @@ Status GemmFloat8::ComputeInternal(OpKernelContext* ctx) const {
         cublasLtMatrixLayoutCreate(&Cdesc, d_cuda_type, M, N, ldd));
 #endif
 
-  bool row_major = storage_order_ == CUBLASLT_ORDER_ROW;
-  if (row_major) {
+  if (row_major_) {
     cublasLtOrder_t matrixOrder = CUBLASLT_ORDER_ROW;
     CUBLAS_RETURN_IF_ERROR(
         cublasLtMatrixLayoutSetAttribute(Cdesc, CUBLASLT_MATRIX_LAYOUT_ORDER,
@@ -310,8 +375,12 @@ Status GemmFloat8::ComputeInternal(OpKernelContext* ctx) const {
   cublasLtMatmulDescSetAttribute(operationDesc, CUBLASLT_MATMUL_DESC_EPILOGUE,
                                  &epilogue, sizeof(epilogue));
 
-  // TODO: use the context to store the buffer
-  size_t workspaceSize = 1 << 25;  // suggested fixed value 32Mb
+  // See
+  // https://docs.nvidia.com/cuda/cublas/index.html?highlight=cublasLtMatmulPreferenceAttributes_t#cublasltmatmulpreferenceattributes-t
+  // The workspace should be allocated once from OpKernelContext assuming
+  // only one cuda function is running at a time (which is not necessarily true
+  // with H100).
+  size_t workspaceSize = (size_t)(1 << 25);  // suggested fixed value 32Mb
   cublasLtMatmulPreference_t preference = nullptr;
   cublasLtMatmulPreferenceCreate(&preference);
   cublasLtMatmulPreferenceSetAttribute(preference,
@@ -328,20 +397,22 @@ Status GemmFloat8::ComputeInternal(OpKernelContext* ctx) const {
       returnedResults > 0 && cuda_status == CUBLAS_STATUS_SUCCESS,
       " Unable to find any suitable algorithm due to ",
       cublasGetErrorEnum(cuda_status), ", returnedResults=", returnedResults,
-      ", alpha=", alpha_,
-      ", n_inputs=", n_inputs, ", A_type=", CudaDataTypeToString(a_cuda_type),
+      ", alpha=", alpha_, ", beta=", beta_, ", n_inputs=", n_inputs,
+      ", A_type=", CudaDataTypeToString(a_cuda_type),
       ", B_type=", CudaDataTypeToString(b_cuda_type),
+      ", C_type=", CudaDataTypeToString(bias_cuda_type),
       ", result_type=", CudaDataTypeToString(d_cuda_type),
       ", bias_type=", CudaDataTypeToString(bias_cuda_type),
       ", scale_type=", CudaDataTypeToString(scale_cuda_type),
       ", computeType=", CublasComputeTypeToString(compute_type_),
-      ", epilogue=", epilogue, ", smCount=", sm_count_, ", transA=", transA_,
-      ", transB=", transB_,
+      ", epilogue=", epilogue, ", smCount=", sm_count_, ", transA=", trans_A,
+      ", transB=", trans_B,
       ", fastAccumulationMode=", (fast_accumulation_mode_ ? 1 : 0),
-      ", a_shape=", a_shape[0], "x", a_shape[1], ", b_shape=", b_shape[0], "x",
-      b_shape[1], ", M=", M, ", N=", N, ", K=", K, ", lda=", lda, ", ldb=", ldb,
-      ", ldd=", ldd, ", workspaceSize=", workspaceSize,
-      ", rowMajor=", (row_major ? 1 : 0),
+      ", shape_A=", shape_A[0], "x", shape_A[1], ", shape_B=", shape_B[0], "x",
+      shape_B[1], ", shape_C=", (shape_C.NumDimensions() > 0 ? shape_C[0] : 0), "x",
+      (shape_C.NumDimensions() > 1 ? shape_C[1] : 0), ", M=", M, ", N=", N, ", K=", K,
+      ", lda=", lda, ", ldb=", ldb, ", ldd=", ldd,
+      ", workspaceSize=", workspaceSize, ", rowMajor=", (row_major_ ? 1 : 0),
       ". Check NVIDIA documentation to see what combination is valid: ",
       "https://docs.nvidia.com/cuda/cublas/"
       "index.html?highlight=cublasLtMatmulAlgoGetHeuristic#"
@@ -349,45 +420,40 @@ Status GemmFloat8::ComputeInternal(OpKernelContext* ctx) const {
 
   void* workspace = nullptr;
   if (workspaceSize > 0) {
-    CUDA_CALL_THROW(cudaMalloc((void**)&workspace, workspaceSize));
+    CUDA_RETURN_IF_ERROR(cudaMalloc((void**)&workspace, workspaceSize));
   }
-
-  // TODO: This is only part changing. Everything before only depends on the input dimensions, type, and storage.
   // https://docs.nvidia.com/cuda/cublas/index.html?highlight=cublasLtMatmul#cublasltmatmul
-  float beta = 0;
-  const void* bias_ptr = C == nullptr ? nullptr : C->DataRaw();
+  const void* bias = has_bias ? p_input_c : p_output_y;
   cuda_status = cublasLtMatmul(
       cublasLt, operationDesc, static_cast<const void*>(&alpha_), /* alpha */
-      A->DataRaw(),                                               /* A */
-      Adesc, B->DataRaw(),                                        /* B */
-      Bdesc, static_cast<const void*>(&beta),                     /* beta */
-      bias_ptr,                                                   /* C */
-      Cdesc, Y->MutableDataRaw(),                                 /* Y */
+      p_input_a,                                                  /* A */
+      Adesc, p_input_b,                                           /* B */
+      Bdesc, static_cast<const void*>(&beta_),                    /* beta */
+      bias,                                                       /* C */
+      Cdesc, p_output_y,                                          /* Y */
       Ddesc, &heuristicResult.algo,                               /* algo */
       workspace,                                                  /* workspace */
       workspaceSize, stream);                                     /* stream */
   ORT_ENFORCE(
       cuda_status == CUBLAS_STATUS_SUCCESS,
-      " Unable to run cublasLtMatmul due to ",
-      cublasGetErrorEnum(cuda_status), ", returnedResults=", returnedResults,
-      ", alpha=", alpha_,
+      " Unable to run cublasLtMatmul due to ", cublasGetErrorEnum(cuda_status),
+      ", returnedResults=", returnedResults, ", alpha=", alpha_,
       ", n_inputs=", n_inputs, ", A_type=", CudaDataTypeToString(a_cuda_type),
       ", B_type=", CudaDataTypeToString(b_cuda_type),
       ", result_type=", CudaDataTypeToString(d_cuda_type),
       ", bias_type=", CudaDataTypeToString(bias_cuda_type),
       ", scale_type=", CudaDataTypeToString(scale_cuda_type),
       ", computeType=", CublasComputeTypeToString(compute_type_),
-      ", epilogue=", epilogue, ", smCount=", sm_count_, ", transA=", transA_,
-      ", transB=", transB_,
+      ", epilogue=", epilogue, ", smCount=", sm_count_, ", transA=", trans_A,
+      ", transB=", trans_B,
       ", fastAccumulationMode=", (fast_accumulation_mode_ ? 1 : 0),
-      ", a_shape=", a_shape[0], "x", a_shape[1], ", b_shape=", b_shape[0], "x",
-      b_shape[1], ", M=", M, ", N=", N, ", K=", K, ", lda=", lda, ", ldb=", ldb,
+      ", shape_A=", shape_A[0], "x", shape_A[1], ", shape_B=", shape_B[0], "x",
+      shape_B[1], ", M=", M, ", N=", N, ", K=", K, ", lda=", lda, ", ldb=", ldb,
       ", ldd=", ldd, ", workspaceSize=", workspaceSize,
-      ", rowMajor=", (row_major ? 1 : 0),
-      ".");
+      ", rowMajor=", (row_major_ ? 1 : 0), ".");
 
   if (workspaceSize > 0) {
-    CUDA_CALL_THROW(cudaFree(workspace));
+    CUDA_RETURN_IF_ERROR(cudaFree(workspace));
   }
 
   CUBLAS_RETURN_IF_ERROR(cublasLtMatmulPreferenceDestroy(preference));

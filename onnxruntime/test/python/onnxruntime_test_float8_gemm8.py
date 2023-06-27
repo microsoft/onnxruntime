@@ -23,14 +23,13 @@ class TestFloat8Gemm8(unittest.TestCase):
         float_name,
         alpha=1.0,
         beta=0.0,
-        transA=1,
+        transA=0,
         transB=0,
         row_major=1,
         fast_accumulation_mode=0,
         compute_type="CUBLAS_COMPUTE_32F",
         domain="",
         dtype=TensorProto.FLOAT,
-        bias=False,
     ):
         proto_type = getattr(TensorProto, float_name)
         use_f8 = proto_type in (TensorProto.FLOAT8E4M3FN, TensorProto.FLOAT8E5M2)
@@ -43,6 +42,7 @@ class TestFloat8Gemm8(unittest.TestCase):
         kwargs = {}
         node_inputs = ["Af", "Bf"]
         inputs = [a, b]
+        bias = beta != 0
         if bias:
             inputs.append(make_tensor_value_info("C", TensorProto.FLOAT, [None, None]))
             node_inputs = ["Af", "Bf", "Cf"]
@@ -97,48 +97,59 @@ class TestFloat8Gemm8(unittest.TestCase):
             check_model(onnx_model)
         return onnx_model
 
-    def common_test_model_gemm(self, float_type, mul=0.33, atol=0, rtol=0, bias=False, **kwargs):
-        n = 16
-        a = np.arange(n**2).reshape((-1, n)).astype(np.float32)
-        b = (a * mul).astype(np.float32)
-
-        if kwargs.get("row_major", 1):
-            feeds_1 = {"A": a, "B": b}
-            feeds_2 = feeds_1
-            if bias:
-                c = -a.copy()
-                feeds_1["C"] = c
-                feeds_2["C"] = c
-                expected = a.T @ b + c
-            else:
-                expected = a.T @ b
-
+    def common_test_model_gemm(self, float_type, mul=0.33, atol=0, rtol=0, square=True, **kwargs):
+        if square:
+            a = (np.arange(256) / 256).astype(np.float32).reshape((-1, 16))
+            b = (np.arange(256) / 256).astype(np.float32).reshape((-1, 16))
+            c = (np.arange(256) / 256).astype(np.float32).reshape((-1, 16))
         else:
-            feeds_1 = {"A": a, "B": b}
-            feeds_2 = {"A": a.T, "B": b.T}
-            expected = (a.T @ b).T
-            if bias:
-                c = -a.copy()
-                feeds_1["C"] = c.T
-                feeds_2["C"] = c.T
-                expected = a.T @ b + c
-            else:
-                expected = a.T @ b
+            a = (np.arange(256) / 256).astype(np.float32).reshape((32, -1))
+            b = (np.arange(512) / 512).astype(np.float32).reshape((32, -1))
+            c = (np.arange(128) / 128).astype(np.float32).reshape((8, 16))
 
-        onnx_model = self.get_model_gemm("FLOAT", bias=bias, beta=1.0 if bias else 0.0)
+        feeds = {"A": a, "B": b}
+
+        expected = (a.T if kwargs.get("transA", 0) else a) @ (b.T if kwargs.get("transB", 0) else b)
+        expected *= kwargs.get("alpha", 1.0)
+        if kwargs.get("beta", 0) != 0:
+            expected += kwargs["beta"] * c
+
+        onnx_model = self.get_model_gemm("FLOAT", **kwargs)
 
         ref = InferenceSession(
             onnx_model.SerializeToString(), providers=["CUDAExecutionProvider", "CPUExecutionProvider"]
         )
-        y = ref.run(None, feeds_1)[0]
+        y = ref.run(None, feeds)[0]
         if float_type in ("FLOAT", "FLOAT16"):
-            assert_allclose(expected, y, atol=atol, rtol=rtol)
+            try:
+                assert_allclose(expected, y, atol=atol, rtol=rtol)
+            except Exception as e:
+
+                def check(f):
+                    try:
+                        return f()[:2, :2]
+                    except Exception as e:
+                        return str(e)
+
+                raise AssertionError(
+                    f"Gemm ERROR len(inputs)={len(feeds)}"
+                    f"\na@b=\n{check(lambda:a@b)}"
+                    f"\na.T@b=\n{check(lambda:a.T@b)}"
+                    f"\na@b.T=\n{check(lambda:a@b.T)}"
+                    f"\na.T@b.T=\n{check(lambda:a.T@b.T)}"
+                    f"\n----\nb@a=\n{check(lambda:b@a)}"
+                    f"\nb.T@a=\n{check(lambda:b.T@a)}"
+                    f"\nb@a.T=\n{check(lambda:b@a.T)}"
+                    f"\nb.T@a.T=\n{check(lambda:b.T@a.T)}"
+                    f"\n----\nexpected=\n{expected[:2,:2]}"
+                    f"\n----\ngot=\n{y[:2,:2]}"
+                    f"\nkwargs={kwargs}"
+                ) from e
+
         self.assertEqual(expected.shape, y.shape)
         self.assertEqual(expected.dtype, y.dtype)
 
-        onnx_model_f8 = self.get_model_gemm(
-            float_type, bias=bias, beta=1.0 if bias else 0.0, domain="com.microsoft", **kwargs
-        )
+        onnx_model_f8 = self.get_model_gemm(float_type, domain="com.microsoft", **kwargs)
         try:
             ref8 = InferenceSession(
                 onnx_model_f8.SerializeToString(), providers=["CUDAExecutionProvider", "CPUExecutionProvider"]
@@ -148,30 +159,66 @@ class TestFloat8Gemm8(unittest.TestCase):
                 return
             raise AssertionError(f"Could not load model {onnx_model_f8}") from e
         try:
-            y = ref8.run(None, feeds_2)[0]
+            y = ref8.run(None, feeds)[0]
         except Exception as e:
             raise AssertionError(f"Could not execute model {onnx_model_f8}") from e
-        assert_allclose(expected, y, atol=atol, rtol=rtol)
+        try:
+            assert_allclose(expected, y, atol=atol, rtol=rtol)
+        except Exception as e:
+
+            def check(f):
+                try:
+                    return f()[:2, :2]
+                except Exception as e:
+                    return str(e)
+
+            raise AssertionError(
+                f"Gemm ERROR len(inputs)={len(feeds)}"
+                f"\na@b=\n{check(lambda:a@b)}"
+                f"\na.T@b=\n{check(lambda:a.T@b)}"
+                f"\na@b.T=\n{check(lambda:a@b.T)}"
+                f"\na.T@b.T=\n{check(lambda:a.T@b.T)}"
+                f"\n----\nb@a=\n{check(lambda:b@a)}"
+                f"\nb.T@a=\n{check(lambda:b.T@a)}"
+                f"\nb@a.T=\n{check(lambda:b@a.T)}"
+                f"\nb.T@a.T=\n{check(lambda:b.T@a.T)}"
+                f"\n----\nexpected=\n{expected[:2,:2]}"
+                f"\n----\ngot=\n{y[:2,:2]}"
+                f"\nkwargs={kwargs}"
+            ) from e
         self.assertEqual(expected.shape, y.shape)
         self.assertEqual(expected.dtype, y.dtype)
 
     def test_model_gemm_float(self):
-        self.common_test_model_gemm("FLOAT", row_major=1, rtol=1e-5)
+        self.common_test_model_gemm("FLOAT", transA=1, row_major=1, rtol=1e-5)
 
     def test_model_gemm_float_bias(self):
-        self.common_test_model_gemm("FLOAT", row_major=1, rtol=1e-5, bias=True)
+        self.common_test_model_gemm("FLOAT", transA=1, row_major=1, beta=1, rtol=1e-5)
 
     def test_model_gemm_float_col_major(self):
-        self.common_test_model_gemm("FLOAT", row_major=0, rtol=1e-5)
+        self.common_test_model_gemm("FLOAT", transB=1, row_major=0, rtol=1e-5)
+
+    def test_model_gemm_float_col_major_bias(self):
+        self.common_test_model_gemm("FLOAT", transB=1, row_major=0, beta=1.0, rtol=1e-5)
 
     def test_model_gemm_float16(self):
         self.common_test_model_gemm(
             "FLOAT16",
-            row_major=True,
+            row_major=1,
             compute_type="CUBLAS_COMPUTE_32F",
             rtol=1e-3,
             dtype=TensorProto.FLOAT16,
-            mul=0.0001,
+            transB=1,
+        )
+
+    def test_model_gemm_float16_col_major(self):
+        self.common_test_model_gemm(
+            "FLOAT16",
+            row_major=0,
+            compute_type="CUBLAS_COMPUTE_32F",
+            rtol=1e-3,
+            dtype=TensorProto.FLOAT16,
+            transB=1,
         )
 
     def test_model_gemm_float8_e4m3(self):
@@ -181,8 +228,5 @@ class TestFloat8Gemm8(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    TestFloat8Gemm8().test_model_gemm_float_bias()
-    # TestFloat8Gemm8().test_model_gemm_float_col_major()
-    # TestFloat8Gemm8().test_model_gemm_float16()
-    # stop
+    TestFloat8Gemm8().test_model_gemm_float()
     unittest.main(verbosity=2)

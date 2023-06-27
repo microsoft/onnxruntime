@@ -2332,12 +2332,12 @@ for beta != 0.)DOC")
                                 .TypeConstraint("TS", {"tensor(float)"}, "Constrain input type for all input scales (scaleA, scaleB, scaleY).")
                                 .Attr(
                                     "transA",
-                                    "Whether A should be transposed",
+                                    "Whether A should be transposed. Float 8 only supprted transA=0.",
                                     AttributeProto::INT,
                                     static_cast<int64_t>(0))
                                 .Attr(
                                     "transB",
-                                    "Whether B should be transposed",
+                                    "Whether B should be transposed. Float 8 only supprted transB=1.",
                                     AttributeProto::INT,
                                     static_cast<int64_t>(0))
                                 .Attr(
@@ -2368,7 +2368,7 @@ for beta != 0.)DOC")
                                     "CUBLAS_COMPUTE_32F_FAST_TF32")
                                 .Attr(
                                     "rowMajor",
-                                    "Matrices are stored as row major or column major. "
+                                    "Storage order used to run the computation (inputs are always row moajor). "
                                     "Float 8 types only supports column major.",
                                     AttributeProto::INT,
                                     static_cast<int64_t>(0))
