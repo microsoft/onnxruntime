@@ -6,7 +6,7 @@ import {TensorView} from '../../tensor';
 import {createAttributeWithCacheKey} from '../attribute-with-cache-key';
 import {ComputeContext} from '../types';
 
-import {createConvTranspose2DProgramInfoLoader} from './3rd-party/conv_backprop_webgpu';
+import {createConvTranspose2DProgramInfoLoader} from './conv-transpose-naive';
 import {ConvAttributes} from './conv';
 import {createGroupedConvProgramInfoLoader} from './conv-grouped';
 import {parseInternalActivationAttributes} from './fuse-utils';

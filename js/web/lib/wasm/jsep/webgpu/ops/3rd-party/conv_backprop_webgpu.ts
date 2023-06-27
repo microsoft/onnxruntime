@@ -20,7 +20,6 @@
 import {LOG_DEBUG} from '../../../log';
 import {TensorView} from '../../../tensor';
 import {ShapeUtil} from '../../../util';
-import {GpuDataType, ProgramInfo, ProgramInfoLoader, ProgramMetadata} from '../../types';
 import {createIndicesHelper, ShaderHelper} from '../common';
 import {ConvTransposeAttributes} from '../conv-transpose';
 
@@ -363,22 +362,5 @@ export const createConvTranspose2DProgramInfo =
         dispatchGroup: () => ({x: dispatch[0], y: dispatch[1], z: dispatch[2]}),
         getShaderSource: (shaderHelper: ShaderHelper) => createConvTranspose2DOpProgramShaderSource(
             shaderHelper, inputs, attributes, outputShape, hasBias, elementsPerThread),
-      };
-    };
-
-const createConvTranspose2DProgramMetadata = (hasBias: boolean, cacheHint: string): ProgramMetadata => ({
-  name: 'ConvTranspose2D',
-  inputTypes: hasBias ? [GpuDataType.default, GpuDataType.default, GpuDataType.default] :
-                        [GpuDataType.default, GpuDataType.default],
-  cacheHint
-});
-
-export const createConvTranspose2DProgramInfoLoader =
-    (inputs: readonly TensorView[], attributes: ConvTransposeAttributes, outputShape: readonly number[],
-     hasBias: boolean): ProgramInfoLoader => {
-      const metadata = createConvTranspose2DProgramMetadata(hasBias, attributes.cacheKey);
-      return {
-        ...metadata,
-        get: () => createConvTranspose2DProgramInfo(inputs, metadata, attributes, outputShape, hasBias)
       };
     };
