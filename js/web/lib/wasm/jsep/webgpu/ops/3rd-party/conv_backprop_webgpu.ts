@@ -270,18 +270,24 @@ const createConvTranspose2DOpProgramShaderSource =
           // Convolve dy(?, ?, d2) with w(:, :, d1, d2) to compute dx(xR, xC, d1).
           // ? = to be determined. : = across all values in that axis.
           var dotProd = 0.0;
-          for (var wR: u32 = 0; wR < filterDims.x; wR = wR + 1) {
+          for (var wR: u32 = 0; wR < effectiveFilterDims.x; wR = wR + 1) {
+            if (wR % dilations.x != 0) {
+              continue;
+            }
             let dyR = (f32(dyRCorner) + f32(wR)) / f32(strides[0]);
-            let wRPerm = filterDims.x - 1 - wR;
+            let wRPerm = filterDims.x - 1 - wR / dilations.x;
             if (dyR < 0.0 || dyR >= f32(outBackprop[1]) || fract(dyR) > 0.0 ||
                 wRPerm < 0) {
               continue;
             }
             let idyR: u32 = u32(dyR);
 
-            for (var wC: u32 = 0; wC < filterDims.y; wC = wC + 1) {
+            for (var wC: u32 = 0; wC < effectiveFilterDims.y; wC = wC + 1) {
+              if (wC % dilations.y != 0) {
+                continue;
+              }
               let dyC = (f32(dyCCorner) + f32(wC)) / f32(strides.y);
-              let wCPerm = filterDims.y - 1 - wC;
+              let wCPerm = filterDims.y - 1 - wC / dilations.y;
               if (dyC < 0.0 || dyC >= f32(outBackprop[2]) ||
                   fract(dyC) > 0.0 || wCPerm < 0) {
                 continue;
@@ -322,8 +328,18 @@ ${wIndicesHelper.i2oImpl}
   const strides : vec2<u32> = vec2<u32>(${attributes.strides[0]}, ${attributes.strides[1]});
   const filterDims : vec2<u32> = vec2<u32>(${attributes.kernelShape[isChannelsLast ? 1 : 2]}, ${
           attributes.kernelShape[isChannelsLast ? 2 : 3]});
-  const pads : vec2<i32> = vec2<i32>(i32(filterDims[0]) - 1 - (${attributes.pads[0] + attributes.pads[2]})/2,
-                                     i32(filterDims[1]) - 1 - (${attributes.pads[1] + attributes.pads[3]})/2);
+  const dilations : vec2<u32> = vec2<u32>(${attributes.dilations[0]}, ${attributes.dilations[1]});
+  const effectiveFilterDims : vec2<u32> = filterDims + vec2<u32>(
+          ${
+          attributes.dilations[0] <= 1 ?
+              0 :
+              (attributes.kernelShape[isChannelsLast ? 1 : 2] - 1) * (attributes.dilations[0] - 1)},
+          ${
+          attributes.dilations[1] <= 1 ?
+              0 :
+              (attributes.kernelShape[isChannelsLast ? 2 : 3] - 1) * (attributes.dilations[1] - 1)});
+  const pads : vec2<i32> = vec2<i32>(i32(effectiveFilterDims[0]) - 1 - (${attributes.pads[0] + attributes.pads[2]})/2,
+                                     i32(effectiveFilterDims[1]) - 1 - (${attributes.pads[1] + attributes.pads[3]})/2);
     ${shaderHelper.mainStart()}
     ${outputIndicesHelper.indicesVariableDeclaration('outputIndices')}
     ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes(outputSize)};
