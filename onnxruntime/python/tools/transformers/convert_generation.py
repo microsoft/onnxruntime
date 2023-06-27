@@ -1527,11 +1527,23 @@ def generate_gpt2_init_decoder(
     output_name_to_node = gpt2_init_decoder_model.output_name_to_node()
     assert logits_output_name in output_name_to_node
 
-    logits_matmul_node = output_name_to_node[logits_output_name]
+    last_node = output_name_to_node[logits_output_name]
 
+    logits_matmul_node = None
     # Sanity check - the logits need to be produced by a MatMul node
-    if logits_matmul_node.op_type != "MatMul":
-        return False
+    if last_node.op_type != "MatMul":
+        # TNLGv4: may change later
+        if last_node.op_type == "Reshape":
+            logits_matmul_node_path = gpt2_init_decoder_model.match_parent_path(
+                last_node, ["Mul", "MatMul"], [0, 0]
+            )
+            if logits_matmul_node_path is None:
+                return False
+            logits_matmul_node = logits_matmul_node_path[1]
+        else:
+            return False
+    else:
+        logits_matmul_node = last_node
 
     # Try to find the last residual Add
     # For fp16, there are Casts along the way
@@ -1599,6 +1611,21 @@ def generate_gpt2_init_decoder(
                 [0, 1, 0, 0, 0],
             )
 
+        # TNLGv4
+        if logits_matmul_to_residual_add_path is None:
+            logits_matmul_to_residual_add_path = gpt2_init_decoder_model.match_parent_path(
+                logits_matmul_node,
+                [
+                    "SkipLayerNormalization",
+                    "Add",
+                    "MatMul",
+                    "FastGelu",
+                    "MatMul",
+                    "SkipLayerNormalization",
+                ],
+                [0, 1, 0, 0, 0, 0],
+            )
+
     # TODO(hasesh): Are there more permutations to try before returning ?
     if logits_matmul_to_residual_add_path is None:
         return False
@@ -1664,6 +1691,13 @@ def generate_gpt2_init_decoder(
             residual_add_to_attention_parent_index = 1
             residual_add_to_attention_path = gpt2_init_decoder_model.match_parent_path(
                 residual_add_node, ["MatMul", "Attention"], [residual_add_to_attention_parent_index, 0]
+            )
+
+        # TNLGv4
+        if residual_add_to_attention_path is None:
+            residual_add_to_attention_parent_index = 1
+            residual_add_to_attention_path = gpt2_init_decoder_model.match_parent_path(
+                residual_add_node, ["Add", "MatMul", "Attention"], [residual_add_to_attention_parent_index, 0, 0]
             )
 
     # TODO(hasesh): Are there more permutations to try before returning ?
