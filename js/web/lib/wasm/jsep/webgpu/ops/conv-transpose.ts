@@ -8,7 +8,6 @@ import {ComputeContext} from '../types';
 
 import {createConvTranspose2DProgramInfoLoader} from './conv-transpose-naive';
 import {ConvAttributes} from './conv';
-import {createGroupedConvProgramInfoLoader} from './conv-grouped';
 import {parseInternalActivationAttributes} from './fuse-utils';
 import {createTransposeProgramInfo, TransposeAttributes, transposeProgramMetadata} from './transpose';
 
@@ -211,24 +210,6 @@ const convTranspose2d =
       const weightWidth = inputs[1].dims[3];
 
       const outputShape = adjustedAttributes.outputShape;
-
-      const sameSize = isChannelsLast && weightHeight === inputHeight && weightWidth === inputWidth &&
-          attributes.autoPad === 'VALID';
-      if (sameSize ||
-          (weightHeight === 1 && weightWidth === 1 && attributes.dilations[0] === 1 && attributes.dilations[1] === 1 &&
-           attributes.strides[0] === 1 && attributes.strides[1] === 1 &&
-           (attributes.autoPad === 'SAME_UPPER' || attributes.autoPad === 'SAME_LOWER' ||
-            attributes.autoPad === 'VALID'))) {
-        // TODO: implement conv2dByMatMul()
-        context.compute(createGroupedConvProgramInfoLoader(inputs, adjustedAttributes));
-        return;
-      }
-
-      if (!isChannelsLast || attributes.group !== 1) {
-        context.compute(createGroupedConvProgramInfoLoader(inputs, adjustedAttributes));
-        return;
-      }
-
 
       // STEP.1: transpose weight
       const transposedWeight = (context.customData.wT as TensorView | undefined) ??

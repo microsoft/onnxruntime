@@ -20,6 +20,7 @@
 import {LOG_DEBUG} from '../../../log';
 import {TensorView} from '../../../tensor';
 import {ShapeUtil} from '../../../util';
+import {GpuDataType, ProgramInfo, ProgramMetadata} from '../../types';
 import {createIndicesHelper, ShaderHelper} from '../common';
 import {ConvTransposeAttributes} from '../conv-transpose';
 
@@ -339,10 +340,7 @@ export const createConvTranspose2DProgramInfo =
       const outChannels = outputShape[isChannelsLast ? 3 : 1];
       const inChannels = inputs[0].dims[isChannelsLast ? 3 : 1];
       const isVec4 = inChannels % 4 === 0 && outChannels % 4 === 0;
-      // const workPerThread = isVec4 ? 2 : 1;
-      // const inWidth = inputs[0].dims[isChannelsLast ? 1 : 2];
-      // const inHeight = inputs[0].dims[isChannelsLast ? 2 : 3];
-      // TODO: fine tune size
+
       const dispatchX = isChannelsLast ? outChannels : outWidth * outHeight;
       const dispatchY = isChannelsLast ? outWidth * outHeight : outChannels;
       const workGroupSize: [number, number, number] =

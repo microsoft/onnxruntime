@@ -1,5 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
+
 import {TensorView} from '../../tensor';
 import {GpuDataType, ProgramInfoLoader, ProgramMetadata} from '../types';
 
