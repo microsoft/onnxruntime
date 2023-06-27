@@ -420,7 +420,7 @@ def main():
         )
 
         model = ORTModule(model, debug_options)
-        model._torch_module._execution_manager(is_training=True)._enable_grad_acc_optimization = True
+        model._torch_module._execution_manager(is_training=True)._runtime_options.enable_grad_acc_optimization = True
 
     # Tell pytorch to run this model on the GPU.
     if torch.cuda.is_available() and not args.no_cuda:
