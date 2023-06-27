@@ -4,7 +4,7 @@
 import {TensorView} from '../../tensor';
 import {GpuDataType, ProgramInfoLoader, ProgramMetadata} from '../types';
 
-import {createConvTranspose2DProgramInfo} from './3rd-party/conv_backprop_webgpu'
+import {createConvTranspose2DProgramInfo} from './3rd-party/conv_backprop_webgpu';
 import {ConvTransposeAttributes} from './conv-transpose';
 
 
