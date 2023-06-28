@@ -3,7 +3,6 @@
 
 #include "api.h"
 
-#include "onnxruntime_training_cxx_api.h"
 #include "core/session/onnxruntime_cxx_api.h"
 
 #include <iostream>
