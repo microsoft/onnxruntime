@@ -193,9 +193,9 @@ Status GemmFloat8::ComputeInternal(OpKernelContext* ctx) const {
   }
 
   if (row_major_)
-    return ComputeColMajor(ctx, n_inputs, has_bias, has_scales, input_A, input_B,
+    return ComputeRowMajor(ctx, n_inputs, has_bias, has_scales, input_A, input_B,
                            input_C, scale_A, scale_B, scale_Y);
-  return ComputeRowMajor(ctx, n_inputs, has_bias, has_scales, input_A, input_B,
+  return ComputeColMajor(ctx, n_inputs, has_bias, has_scales, input_A, input_B,
                          input_C, scale_A, scale_B, scale_Y);
 }
 

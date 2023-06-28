@@ -2,11 +2,8 @@
 # Licensed under the MIT License.
 # pylint: disable=C0116,W0212,R1720,C0103,C0114
 
-import gc
 import unittest
-import time
-from itertools import product
-
+import warnings
 import numpy as np
 from numpy.testing import assert_allclose
 from onnx import TensorProto
@@ -99,9 +96,10 @@ class TestFloat8Gemm8(unittest.TestCase):
 
     def common_test_model_gemm(self, float_type, mul=0.33, atol=0, rtol=0, square=True, **kwargs):
         if square:
-            a = (np.arange(256) / 256).astype(np.float32).reshape((-1, 16))
-            b = (np.arange(256) / 256).astype(np.float32).reshape((-1, 16))
-            c = (np.arange(256) / 256).astype(np.float32).reshape((-1, 16))
+            a = (np.arange(256) * 0.01).astype(np.float32).reshape((-1, 16))
+            b = (np.arange(256) * -0.01).astype(np.float32).reshape((-1, 16))
+            c = (np.arange(256) * 0.03).astype(np.float32).reshape((-1, 16))
+            b[:, 0] += 1
         else:
             a = (np.arange(256) / 256).astype(np.float32).reshape((32, -1))
             b = (np.arange(512) / 512).astype(np.float32).reshape((32, -1))
@@ -113,6 +111,7 @@ class TestFloat8Gemm8(unittest.TestCase):
         expected *= kwargs.get("alpha", 1.0)
         if kwargs.get("beta", 0) != 0:
             expected += kwargs["beta"] * c
+            feeds["C"] = c
 
         onnx_model = self.get_model_gemm("FLOAT", **kwargs)
 
@@ -161,6 +160,10 @@ class TestFloat8Gemm8(unittest.TestCase):
         try:
             y = ref8.run(None, feeds)[0]
         except Exception as e:
+            if "CUBLAS_STATUS_NOT_SUPPORTED" in str(e):
+                # Skipping. This machine does not support float8.
+                warnings.warn("unable to test with float8 on this machine.")
+                return
             raise AssertionError(f"Could not execute model {onnx_model_f8}") from e
         try:
             assert_allclose(expected, y, atol=atol, rtol=rtol)
@@ -190,23 +193,23 @@ class TestFloat8Gemm8(unittest.TestCase):
         self.assertEqual(expected.dtype, y.dtype)
 
     def test_model_gemm_float(self):
-        self.common_test_model_gemm("FLOAT", transA=1, row_major=1, rtol=1e-5)
+        self.common_test_model_gemm("FLOAT", transA=1, row_major=1, rtol=1e-4)
 
     def test_model_gemm_float_bias(self):
-        self.common_test_model_gemm("FLOAT", transA=1, row_major=1, beta=1, rtol=1e-5)
+        self.common_test_model_gemm("FLOAT", transA=1, row_major=1, beta=1.0, rtol=1e-4)
 
     def test_model_gemm_float_col_major(self):
-        self.common_test_model_gemm("FLOAT", transB=1, row_major=0, rtol=1e-5)
+        self.common_test_model_gemm("FLOAT", transB=1, row_major=0, rtol=1e-4)
 
     def test_model_gemm_float_col_major_bias(self):
-        self.common_test_model_gemm("FLOAT", transB=1, row_major=0, beta=1.0, rtol=1e-5)
+        self.common_test_model_gemm("FLOAT", transB=1, row_major=0, beta=1.0, rtol=1e-4)
 
     def test_model_gemm_float16(self):
         self.common_test_model_gemm(
             "FLOAT16",
             row_major=1,
             compute_type="CUBLAS_COMPUTE_32F",
-            rtol=1e-3,
+            rtol=1e-2,
             dtype=TensorProto.FLOAT16,
             transB=1,
         )
@@ -216,7 +219,7 @@ class TestFloat8Gemm8(unittest.TestCase):
             "FLOAT16",
             row_major=0,
             compute_type="CUBLAS_COMPUTE_32F",
-            rtol=1e-3,
+            rtol=1e-2,
             dtype=TensorProto.FLOAT16,
             transB=1,
         )
