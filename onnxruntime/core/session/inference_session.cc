@@ -17,7 +17,6 @@
 #include "core/common/path_string.h"
 #include "core/flatbuffers/flatbuffers_utils.h"
 #include "core/flatbuffers/ort_format_version.h"
-#include "core/framework/allocatormgr.h"
 #include "core/framework/bfc_arena.h"
 #include "core/framework/error_code_helper.h"
 #include "core/framework/execution_frame.h"

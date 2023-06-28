@@ -6,7 +6,6 @@
 #include "core/common/common.h"
 #include "core/common/logging/logging.h"
 #include "core/common/string_utils.h"
-#include "core/framework/allocatormgr.h"
 #include "core/framework/compute_capability.h"
 #include "core/graph/graph_viewer.h"
 #include "core/platform/env.h"
