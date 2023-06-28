@@ -20,6 +20,21 @@ class MultiHeadAttention final : public RocmKernel {
   Status ComputeInternal(OpKernelContext* context) const override;
 
  protected:
+  AttentionType attn_type_;
+  int num_heads_;  // number of attention heads
+  float mask_filter_value_;
+  float scale_;
+  bool past_present_share_buffer_{false};
+};
+
+template <typename T>
+class DecoderMaskedMultiHeadAttention final : public RocmKernel {
+ public:
+  DecoderMaskedMultiHeadAttention(const OpKernelInfo& info);
+  Status ComputeInternal(OpKernelContext* context) const override;
+
+ protected:
+  AttentionType mha_type;
   int num_heads_;  // number of attention heads
   float mask_filter_value_;
   float scale_;
