@@ -26,8 +26,9 @@ from .quant_utils import (
     get_qmin_qmax_for_qType,
     get_qrange_for_qType,
     model_has_infer_metadata,
+    ms_domain,
     quantize_data,
-    save_and_reload_model,
+    save_and_reload_model_with_shape_infer,
     tensor_proto_to_array,
 )
 from .registry import CreateOpQuantizer
@@ -50,7 +51,7 @@ class ONNXQuantizer:
         extra_options=None,
     ):
         if not model_has_infer_metadata(model):
-            model = save_and_reload_model(model)
+            model = save_and_reload_model_with_shape_infer(model)
         self.value_infos = {vi.name: vi for vi in model.graph.value_info}
         self.value_infos.update({ot.name: ot for ot in model.graph.output})
         self.value_infos.update({it.name: it for it in model.graph.input})
@@ -285,6 +286,14 @@ class ONNXQuantizer:
 
         self.model.model.producer_name = __producer__
         self.model.model.producer_version = __version__
+        # Add ms domain if needed
+        ms_opset = [opset for opset in self.model.model.opset_import if opset.domain == ms_domain]
+        if not ms_opset:
+            ms_nodes = [node for node in self.new_nodes if node.domain == "com.microsoft"]
+            if ms_nodes:
+                opset = self.model.model.opset_import.add()
+                opset.version = 1
+                opset.domain = ms_domain
 
         return self.model.model
 

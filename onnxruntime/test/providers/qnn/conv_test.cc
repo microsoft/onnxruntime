@@ -20,7 +20,7 @@ namespace test {
 // It has to be QDQ model, because the DQ node with initializer on Conv gets processed first
 // and DQ node requires its node unit to be processed
 // So, Conv gets processed before Mul node
-TEST_F(QnnCPUBackendTests, Test_QDQConvWithDynamicWeightsFromMul) {
+TEST_F(QnnHTPBackendTests, Test_QDQConvWithDynamicWeightsFromMul) {
   ProviderOptions provider_options;
 
 #if defined(_WIN32)

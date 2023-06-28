@@ -116,14 +116,6 @@ AllocatorPtr CreateAllocator(const AllocatorCreationInfo& info) {
   return g_host->CreateAllocator(info);
 }
 
-void AllocatorManager::InsertAllocator(AllocatorPtr allocator) {
-  return g_host->AllocatorManager__InsertAllocator(this, allocator);
-}
-
-AllocatorPtr AllocatorManager::GetAllocator(OrtMemType mem_type, OrtDevice device) const {
-  return g_host->AllocatorManager__GetAllocator(this, mem_type, device);
-}
-
 template <>
 MLDataType DataTypeImpl::GetType<Tensor>() { return Provider_GetHost()->DataTypeImpl__GetType_Tensor(); }
 #if !defined(DISABLE_SPARSE_TENSORS)
@@ -324,14 +316,6 @@ bool IAllocator::CalcMemSizeForArrayWithAlignment(size_t nmemb, size_t size, siz
   return g_host->IAllocator__CalcMemSizeForArrayWithAlignment(nmemb, size, alignment, out);
 }
 
-AllocatorPtr IExecutionProvider::GetAllocator(OrtMemType mem_type) const {
-  return g_host->IExecutionProvider__GetAllocator(this, mem_type);
-}
-
-void IExecutionProvider::InsertAllocator(AllocatorPtr allocator) {
-  g_host->IExecutionProvider__InsertAllocator(this, allocator);
-}
-
 std::vector<std::unique_ptr<ComputeCapability>> IExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer,
                                                                                   const IKernelLookup& kernel_lookup) const {
   return g_host->IExecutionProvider__GetCapability(this, graph_viewer, kernel_lookup);
@@ -343,10 +327,6 @@ common::Status IExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>&
 
 int IExecutionProvider::GenerateMetaDefId(const onnxruntime::GraphViewer& graph_viewer, HashValue& model_hash) const {
   return g_host->IExecutionProvider__GenerateMetaDefId(this, graph_viewer, model_hash);
-}
-
-void IExecutionProvider::RegisterAllocator(AllocatorManager& allocator_manager) {
-  return g_host->IExecutionProvider__RegisterAllocator(this, allocator_manager);
 }
 
 #ifdef USE_TENSORRT
