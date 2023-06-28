@@ -45,10 +45,10 @@ auto GetSoftmaxTritonOps() {
     }
     auto impl = [i, block_size](const SoftmaxParams<T, OutputT>* params) -> Status {
       if (params->is_log_softmax) {
-        TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(true, "log_softmax not support");
+        TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(true, "log_softmax is not supported.");
       }
       if (block_size < params->softmax_elements) {
-        TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(true, "BLOCK_SIZE not support");
+        TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(true, "BLOCK_SIZE (", block_size, ") is not supported.");
       }
       // construct args for launch kernel
       struct {

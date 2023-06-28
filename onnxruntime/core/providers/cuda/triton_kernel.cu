@@ -18,7 +18,7 @@
     if (status != CUDA_SUCCESS) {                                     \
       auto get_status_err_str = cuGetErrorString(status, &error_str); \
       ORT_UNUSED_PARAMETER(get_status_err_str);                       \
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, msg, error_str);      \
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, msg, " ", error_str); \
     }                                                                 \
   } while (0)
 
@@ -50,6 +50,8 @@ static std::unordered_map<std::string, int> ort_triton_kernel_map;
 
 const int GPU_WARP_SIZE = 32;
 constexpr int kMaxThreadsPerBlock = 1024;
+// Currently the max shared memory per block is hardcoded to 64KB.
+constexpr int kMaxSharedMemoryPerBlock = 64 * 1024;
 
 Status GetSymbolFromLibrary(const std::string& symbol_name, void** symbol) {
   dlerror();  // Clear any old error str
@@ -161,7 +163,13 @@ Status LaunchTritonKernel(cudaStream_t stream, size_t idx,
 
   int threads_per_block = GPU_WARP_SIZE * metadata.num_warps;
   TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(
-    threads_per_block > kMaxThreadsPerBlock, "The max threads_per_block is ", std::to_string(kMaxThreadsPerBlock));
+      threads_per_block > kMaxThreadsPerBlock,
+      "The threads_per_block (", threads_per_block, ") exceeds the max allowed value (", kMaxThreadsPerBlock, ").");
+  TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(
+      metadata.shared_mem_size > kMaxSharedMemoryPerBlock,
+      "The shared_mem_size (", metadata.shared_mem_size, ") exceeds the max allowed value (",
+      kMaxSharedMemoryPerBlock, " bytes).");
+
   void* config[] = {CU_LAUNCH_PARAM_BUFFER_POINTER, args, CU_LAUNCH_PARAM_BUFFER_SIZE, &args_size,
                     CU_LAUNCH_PARAM_END};
 
@@ -171,7 +179,8 @@ Status LaunchTritonKernel(cudaStream_t stream, size_t idx,
                                   metadata.shared_mem_size,
                                   stream,
                                   nullptr,
-                                  (void**)&config), "Launching kernel failed.");
+                                  (void**)&config),
+                   "Launching kernel failed.");
 #endif
 
   return Status::OK();

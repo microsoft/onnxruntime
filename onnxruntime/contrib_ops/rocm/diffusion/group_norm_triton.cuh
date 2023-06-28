@@ -48,12 +48,13 @@ auto GetTritonGroupNormNHWCTypeStringAndOps() {
     auto impl = [i, block_size, hw_size](const GroupNormNHWCParams<T>* params) -> Status {
       TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(
           params->cPerGroup > block_size || params->cPerGroup * 2 <= block_size,
-          "Arg block_size should be the next power of 2 of cPerGroup");
-      TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(params->hw % hw_size != 0, "Arg hw_size should be a divisor of hw");
+          "Arg block_size (", block_size, ") is not the next power of 2 of cPerGroup (", params->cPerGroup, ").");
+      TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(
+          params->hw % hw_size != 0, "Arg hw_size (", hw_size ") is not a divisor of hw (", params->hw, ").");
       if constexpr (WithSwish) {
-        TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(!params->withSwish, "Swish version only supports GN w/ swish");
+        TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(!params->withSwish, "Swish version does not support GN w/o swish.");
       } else {
-        TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(params->withSwish, "Pass version only supports GN w/o swish");
+        TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(params->withSwish, "Pass version does not support GN w/ swish.");
       }
       // Construct args for launch kernel
       struct {

@@ -45,10 +45,11 @@ def group_norm_kernel(
         _sum += a
         _square_sum += a * a
 
-    _sum = tl.sum(_sum, axis=0)
-    _square_sum = tl.sum(_square_sum, axis=0)
-    group_mean = tl.sum(_sum, axis=0) / (img_size * c_per_group)
-    group_var = tl.sum(_square_sum, axis=0) / (img_size * c_per_group) - group_mean * group_mean
+    # Set axis=None (or leave it unspecified) to reduce all axes.
+    # TODO: In older Triton we have to reduce an axis at a time, but in our case
+    # for some configs it may have some issue when reducing sequentially along the axes.
+    group_mean = tl.sum(_sum, axis=None) / (img_size * c_per_group)
+    group_var = tl.sum(_square_sum, axis=None) / (img_size * c_per_group) - group_mean * group_mean
 
     rstd = 1 / tl.sqrt(group_var + eps)
 

@@ -155,12 +155,11 @@ template <typename T, bool WithSwish>
 class GroupNormNHWCTriton : public IKernelExplorer {
  public:
   GroupNormNHWCTriton(DeviceArray& output, DeviceArray& workspace, DeviceArray& input, DeviceArray& gamma, DeviceArray& beta,
-                       int batch_size, int height, int width, int num_channels, int num_groups, float epsilon, bool use_swish)
+                      int batch_size, int height, int width, int num_channels, int num_groups, float epsilon, bool use_swish)
       : params_(TuningContext(), Stream(), static_cast<T*>(output.ptr()), static_cast<float*>(workspace.ptr()),
                 static_cast<T*>(input.ptr()), static_cast<float*>(gamma.ptr()), static_cast<float*>(beta.ptr()),
                 batch_size, height, width, num_channels, num_groups, epsilon, use_swish) {
     for (auto&& [name, op] : contrib::rocm::GetTritonGroupNormNHWCTypeStringAndOps<T, WithSwish>()) {
-      // printf("TritonGN op %s\n", name.c_str());
       name_strings_.emplace_back(name);
       ops_.emplace_back(std::move(op));
     }
