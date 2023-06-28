@@ -270,7 +270,6 @@ stages:
         script: |
           python "$(Build.SourcesDirectory)/tools/ci_build/build.py" \
             --use_xcode \
-            --enable_language_interop_ops \
             --build_wheel \
             --build_shared_lib \
             --build_objc \
