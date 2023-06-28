@@ -1,7 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#ifdef ENABLE_TRAINING_APIS
 #import "ort_training_session_internal.h"
 
 #import <vector>
@@ -223,5 +222,3 @@ void ORTSetSeed(int64_t seed) {
 }
 
 NS_ASSUME_NONNULL_END
-
-#endif  // ENABLE_TRAINING_APIS

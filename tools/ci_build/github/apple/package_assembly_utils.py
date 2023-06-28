@@ -16,6 +16,7 @@ repo_root = _script_dir.parents[3]
 class PackageVariant(enum.Enum):
     Full = 0  # full ORT build with all opsets, ops, and types
     Mobile = 1  # minimal ORT build with reduced ops
+    Training = 2  # full ORT build with all opsets, ops, and types, plus training APIs
     Test = -1  # for testing purposes only
 
     @classmethod
@@ -68,6 +69,26 @@ def gen_file_from_template(
 
     with open(output_file, mode="w") as output:
         output.write(content)
+
+
+def filter_files(file_list, exclude_list):
+    """
+    Filters file paths based on inclusion and exclusion patterns
+
+    :param file_list The list of file paths to filter.
+    :param exclude_list The list of exclusion patterns.
+
+    :return The filtered list of file paths
+    """
+    # get all files matching the patterns in file_list
+    all_files = [str(path.relative_to(repo_root)) for pattern in file_list for path in repo_root.glob(pattern)]
+
+    # get all files matching the patterns in exclude_list
+    exclude_files = [str(path.relative_to(repo_root)) for pattern in exclude_list for path in repo_root.glob(pattern)]
+
+    # return the difference
+    return list(set(all_files) - set(exclude_files))
+
 
 
 def copy_repo_relative_to_dir(patterns: List[str], dest_dir: pathlib.Path):
