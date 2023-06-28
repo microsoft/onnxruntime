@@ -148,7 +148,7 @@ static Ort::Value createInputTensorT(OrtAllocator *ortAllocator, const std::vect
                     allocations:(std::vector<Ort::MemoryAllocation> &)allocations {
   switch (tensorType) {
   case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT:
-    return createInputTensorT<float_t>(ortAllocator, dims, buffer, allocations);
+    return createInputTensorT<float>(ortAllocator, dims, buffer, allocations);
   case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8:
     return createInputTensorT<uint8_t>(ortAllocator, dims, buffer, allocations);
   case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8:
@@ -193,7 +193,7 @@ template <typename T> static NSData *createOutputTensorT(const Ort::Value &tenso
 
   switch (tensorType) {
   case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT:
-    return createOutputTensorT<float_t>(tensor);
+    return createOutputTensorT<float>(tensor);
   case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8:
     return createOutputTensorT<uint8_t>(tensor);
   case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8:

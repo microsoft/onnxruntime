@@ -11,8 +11,8 @@ NS_ASSUME_NONNULL_BEGIN
  * An ORT checkpoint is a snapshot of the state of a model at a given point in time.
  *
  * This class holds the entire training session state that includes model parameters,
- * their gradients, optimizer parameters, and user properties. The ORTTrainingSession leverages the
- * ORTCheckpointState by accessing and updating the contained training state.
+ * their gradients, optimizer parameters, and user properties. The `ORTTrainingSession` leverages the
+ * `ORTCheckpoint` by accessing and updating the contained training state.
  *
  * Available since v1.16.0.
  *
