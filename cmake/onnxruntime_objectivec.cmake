@@ -42,11 +42,14 @@ file(GLOB onnxruntime_objc_srcs CONFIGURE_DEPENDS
 
 if(NOT onnxruntime_ENABLE_TRAINING_APIS)
     list(REMOVE_ITEM onnxruntime_objc_headers
-        "${OBJC_ROOT}/include/ort_checkpoint.h")
+        "${OBJC_ROOT}/include/ort_checkpoint.h"
+        "${OBJC_ROOT}/include/ort_training_session.h")
 
     list(REMOVE_ITEM onnxruntime_objc_srcs
         "${OBJC_ROOT}/ort_checkpoint_internal.h"
-        "${OBJC_ROOT}/ort_checkpoint.mm")
+        "${OBJC_ROOT}/ort_checkpoint.mm"
+        "${OBJC_ROOT}/ort_training_session_internal.h"
+        "${OBJC_ROOT}/ort_training_session.mm")
 endif()
 
 
@@ -124,7 +127,9 @@ if(onnxruntime_BUILD_UNIT_TESTS)
 
     if(NOT onnxruntime_ENABLE_TRAINING_APIS)
         list(REMOVE_ITEM onnxruntime_objc_test_srcs
-            "${OBJC_ROOT}/test/ort_checkpoint_test.mm")
+            "${OBJC_ROOT}/test/ort_checkpoint_test.mm"
+            "${OBJC_ROOT}/test/ort_training_session_test.mm"
+            "${OBJC_ROOT}/test/ort_training_utils_test.mm")
 
     endif()
 
