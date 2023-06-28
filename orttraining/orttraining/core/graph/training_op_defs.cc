@@ -4072,8 +4072,7 @@ Return true if all elements are true and false otherwise.
           ORT_ENFORCE(ctx.getNumOutputs() == ctx.getNumInputs() - 1);  // inputs contains one extra context input
           for (size_t i = 0; i < static_cast<size_t>(ctx.getNumOutputs()); ++i) {
             size_t input_idx = i + static_cast<size_t>(1);
-            // propagateElemTypeFromInputToOutput(ctx, input_idx, i);
-            updateOutputElemType(ctx, i, static_cast<int32_t>(output_tensor_types_proto->ints().at(i)));
+            propagateElemTypeFromInputToOutput(ctx, input_idx, i);
             propagateShapeFromInputToOutput(ctx, input_idx, i);
           }
         } else {

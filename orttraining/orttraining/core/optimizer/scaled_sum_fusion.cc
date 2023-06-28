@@ -52,8 +52,7 @@ bool IsScaleOperator(Graph& graph, Node& node,
                      const ONNX_NAMESPACE::TensorShapeProto* output_shape,
                      float& scale_value) {
   if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "Div", {7, 13, 14})) {
-    const Node* div_input_1 = graph_utils::GetInputNode(node, 0);
-    bool first_input_check = (div_input_1 && node.InputDefs()[0]->Shape() &&
+    bool first_input_check = (node.InputDefs()[0]->Shape() &&
                               IsShapeEqual(node.InputDefs()[0]->Shape(), output_shape));
 
     if (first_input_check) {
@@ -61,7 +60,7 @@ bool IsScaleOperator(Graph& graph, Node& node,
       auto div_input_2_shape = node.InputDefs()[1]->Shape();
       bool second_input_check = div_input_2 == nullptr && div_input_2_shape &&
                                 graph_utils::IsConstantInitializer(graph, node.InputDefs()[1]->Name(), false) &&
-                                (div_input_2_shape->dim_size() == 0  //scalar
+                                (div_input_2_shape->dim_size() == 0  // scalar
                                  || (div_input_2_shape->dim_size() == 1 &&
                                      div_input_2_shape->dim(0).has_dim_value() &&
                                      div_input_2_shape->dim(0).dim_value() == 1)  // 1d with 1 element
@@ -77,9 +76,9 @@ bool IsScaleOperator(Graph& graph, Node& node,
         const auto data_type = tensor_proto->data_type();
         if (data_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
           const MLFloat16* val = init_const.data<MLFloat16>();
-          scale_value = math::halfToFloat(val[0].val);
+          scale_value = 1.0f / math::halfToFloat(val[0].val);
         } else if (data_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
-          scale_value = *init_const.data<float>();
+          scale_value = 1.0f / *init_const.data<float>();
         } else {
           return false;
         }
@@ -171,16 +170,18 @@ Status ScaledSumFusion::ApplyImpl(Graph& graph, bool& modified, int /*graph_leve
     if (node.GetOutputEdgesCount() == 1) {
       Node& output_node = *graph.GetNode(node.OutputEdgesBegin()->GetNode().Index());
       int output_node_port = node.OutputEdgesBegin()->GetDstArgIndex();
-      if (graph_utils::IsSupportedOptypeVersionAndDomain(output_node, "Add", {6, 7, 13, 14})) {
+      if (graph_utils::IsSupportedOptypeVersionAndDomain(output_node, "Add", {6, 7, 13, 14}) &&
+          !graph.IsOutput(output_node.OutputDefs()[0]) /*this Add cannot generate graph output */
+      ) {
         int the_other_input_port = 1 - output_node_port;
         NodeArg* the_other_input_arg = output_node.MutableInputDefs()[the_other_input_port];
         const Node* the_other_input_node = graph.GetProducerNode(the_other_input_arg->Name());
         Node* mutable_the_other_input_node = the_other_input_node ? graph.GetNode(the_other_input_node->Index()) : nullptr;
 
-        bool the_ther_node_output_edge_check = mutable_the_other_input_node == nullptr ||
-                                               mutable_the_other_input_node->GetOutputEdgesCount() == 1;
+        bool the_other_node_output_edge_check = mutable_the_other_input_node == nullptr ||
+                                                mutable_the_other_input_node->GetOutputEdgesCount() == 1;
 
-        if (the_ther_node_output_edge_check &&
+        if (the_other_node_output_edge_check &&
             the_other_input_arg->Shape() && IsShapeEqual(the_other_input_arg->Shape(), output_shape)) {
           last_node = &output_node;
           nodes_to_remove.push_back(node);
