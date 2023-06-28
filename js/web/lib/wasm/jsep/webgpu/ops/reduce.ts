@@ -26,7 +26,7 @@ export interface ReduceAttributes extends AttributeWithCacheKey {
 }
 
 type ReduceOp = (inputs: readonly TensorView[], axes: number[]) => string[];
-
+const noOp: ReduceOp = (): string[] => ['', '', 'value = _A[inputIdx];', ''];
 const createReduceProgramInfo =
     (metadata: ProgramMetadata, inputs: readonly TensorView[], attributes: ReduceAttributes,
      reduceOp: ReduceOp): ProgramInfo => {
@@ -43,10 +43,10 @@ const createReduceProgramInfo =
       let reduceOps = `
           let inputIdx = ${inputIndicesHelper.i2oExpression('inputIndices')};
           ${ops[2]};`;
-
+      const reduceOnAllAxes = !attributes.noopWithEmptyAxes && attributes.axes.length === 0;
       for (let k = 0; k < inputs[0].dims.length; k++) {
         // if this axis is reduced
-        if (axes.indexOf(k) >= 0 || axes.length === 0) {
+        if (reduceOnAllAxes || axes.indexOf(k) >= 0) {
           if (attributes.keepDims) {
             outputShape.push(1);
           }  // else { remove the axis from outputShape; }
@@ -104,21 +104,29 @@ const createReduceProgramInfo =
 
 const createReduceAttributesFromInput = (input: TensorView, attributes: ReduceAttributes): ReduceAttributes => {
   const axes: number[] = [];
-  input.getBigInt64Array().forEach(v => axes.push(Number(v)));
-  const keepDims = attributes.keepDims;
+  // Handle empty axes, zero-sized input and zero input.
+  const sum = input.dims.reduce((sum, v) => sum + v, 0);
+  const prod = input.dims.reduce((prod, v) => prod * v, 1);
+  if (prod > 0 && sum > 0) {
+    input.getBigInt64Array().forEach(v => axes.push(Number(v)));
+  } else {
+    axes.push(...attributes.axes);
+  }
   const noopWithEmptyAxes = attributes.noopWithEmptyAxes;
+  const keepDims = (noopWithEmptyAxes && sum === 0) || attributes.keepDims;
   return createAttributeWithCacheKey({axes, keepDims, noopWithEmptyAxes});
 };
 
 const createReduceProgramInfoLoader =
     (inputs: readonly TensorView[], name: string, attributes: ReduceAttributes, reduceOp: ReduceOp):
         ProgramInfoLoader => {
-          const metadata: ProgramMetadata = {name, inputTypes: [GpuDataType.default]};
+          const metadata: ProgramMetadata = {name, inputTypes: [GpuDataType.default], cacheHint: attributes.cacheKey};
           return {
             ...metadata,
             get: () => createReduceProgramInfo(
                 metadata, [inputs[0]],
-                (inputs.length === 1) ? attributes : createReduceAttributesFromInput(inputs[1], attributes), reduceOp)
+                (inputs.length === 1) ? attributes : createReduceAttributesFromInput(inputs[1], attributes),
+                attributes.noopWithEmptyAxes && attributes.axes.length === 0 ? noOp : reduceOp)
           };
         };
 
