@@ -202,7 +202,7 @@ namespace Microsoft.ML.OnnxRuntime
         public int DimensionsCount { get { return Shape.Length; } }
 
         /// <summary>
-        /// Tensor integer dimensions. Symbolic dimensions are represented as -1.
+        /// Tensor dimensions.
         /// </summary>
         /// <value>array of dims</value>
         public long[] Shape { get; private set; }
