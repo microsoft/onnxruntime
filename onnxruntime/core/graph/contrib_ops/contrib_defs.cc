@@ -2252,6 +2252,14 @@ ONNX_MS_OPERATOR_SET_SCHEMA(CropAndResize, 1,
         a fixed size = [crop_height, crop_width]. The result is a 4-D tensor [num_boxes, crop_height, crop_width, depth].
         The resizing is corner aligned.)DOC"));
 
+
+#if !defined(DISABLE_FLOAT8_TYPES)
+#define GEMM_FLOAT8_TYPES {"tensor(float8e4m3fn)", "tensor(float8e5m2)", "tensor(float16)", "tensor(bfloat16)", "tensor(float)"}
+#else
+#define GEMM_FLOAT8_TYPES {"tensor(float16)", "tensor(bfloat16)", "tensor(float)"}
+#endif
+
+
 ONNX_MS_OPERATOR_SET_SCHEMA(GemmFloat8, 1,
                             OpSchema()
                                 .SetDoc(R"DOC(
@@ -2262,74 +2270,6 @@ shows the error message 'CUBLAS_STATUS_NOT_SUPPORTED'. NVIDIA documentation prov
 information on what attribute or type must be modified.
 This operator requires CUDA_VERSION >= 11.8 for float 8 and CUDA_VERSION >= 12.0
 for beta != 0.)DOC")
-                                .Input(
-                                    0,
-                                    "A",
-                                    "Input tensor A. "
-                                    "The shape of A should be (M, K) if transA is 0, "
-                                    "or (K, M) if transA is non-zero.",
-                                    "TA")
-                                .Input(
-                                    1,
-                                    "B",
-                                    "Input tensor B. "
-                                    "The shape of B should be (K, N) if transB is 0, "
-                                    "or (N, K) if transB is non-zero.",
-                                    "TB")
-                                .Input(
-                                    2,
-                                    "C",
-                                    "Input tensor C.",
-                                    "TC",
-                                    OpSchema::Optional)
-                                .Input(
-                                    3,
-                                    "scaleA",
-                                    "Scale of tensor A if A is float 8 tensor",
-                                    "TS",
-                                    OpSchema::Optional)
-                                .Input(
-                                    4,
-                                    "scaleB",
-                                    "Scale of tensor B if B is float 8 tensor",
-                                    "TS",
-                                    OpSchema::Optional)
-                                .Input(
-                                    5,
-                                    "scaleY",
-                                    "Scale of the output tensor if A or B is float 8.",
-                                    "TS",
-                                    OpSchema::Optional)
-                                .Output(0, "Y", "Output tensor of shape (M, N).", "TR")
-                                .TypeConstraint(
-                                    "TA",
-#if !defined(DISABLE_FLOAT8_TYPES)
-                                    {"tensor(float8e4m3fn)", "tensor(float8e5m2)", "tensor(float16)", "tensor(bfloat16)", "tensor(float)"},
-#else
-                                    {"tensor(float16)", "tensor(bfloat16)", "tensor(float)"},
-#endif
-                                    "Constrain input type to input A.")
-                                .TypeConstraint(
-                                    "TB",
-#if !defined(DISABLE_FLOAT8_TYPES)
-                                    {"tensor(float8e4m3fn)", "tensor(float8e5m2)", "tensor(float16)", "tensor(bfloat16)", "tensor(float)"},
-#else
-                                    {"tensor(float16)", "tensor(bfloat16)", "tensor(float)"},
-#endif
-                                    "Constrain input type to input B.")
-                                .TypeConstraint(
-                                    "TC",
-                                    {"tensor(float16)", "tensor(bfloat16)", "tensor(float)"},
-                                    "Constrain input type to input C.")
-                                .TypeConstraint(
-                                    "TR",
-#if !defined(DISABLE_FLOAT8_TYPES)
-                                    {"tensor(float8e4m3fn)", "tensor(float8e5m2)", "tensor(float16)", "tensor(bfloat16)", "tensor(float)"},
-#else
-                                    {"tensor(float16)", "tensor(bfloat16)", "tensor(float)"},
-#endif
-                                    "Constrain input type to input result type.")
-                                .TypeConstraint("TS", {"tensor(float)"}, "Constrain input type for all input scales (scaleA, scaleB, scaleY).")
                                 .Attr(
                                     "transA",
                                     "Whether A should be transposed. Float 8 only supprted transA=0.",
@@ -2377,6 +2317,62 @@ for beta != 0.)DOC")
                                     "Output Type. Same definition as attribute to from operator Cast.",
                                     AttributeProto::INT,
                                     static_cast<int64_t>(1))
+                                .Input(
+                                    0,
+                                    "A",
+                                    "Input tensor A. "
+                                    "The shape of A should be (M, K) if transA is 0, "
+                                    "or (K, M) if transA is non-zero.",
+                                    "TA")
+                                .Input(
+                                    1,
+                                    "B",
+                                    "Input tensor B. "
+                                    "The shape of B should be (K, N) if transB is 0, "
+                                    "or (N, K) if transB is non-zero.",
+                                    "TB")
+                                .Input(
+                                    2,
+                                    "C",
+                                    "Input tensor C.",
+                                    "TC",
+                                    OpSchema::Optional)
+                                .Input(
+                                    3,
+                                    "scaleA",
+                                    "Scale of tensor A if A is float 8 tensor",
+                                    "TS",
+                                    OpSchema::Optional)
+                                .Input(
+                                    4,
+                                    "scaleB",
+                                    "Scale of tensor B if B is float 8 tensor",
+                                    "TS",
+                                    OpSchema::Optional)
+                                .Input(
+                                    5,
+                                    "scaleY",
+                                    "Scale of the output tensor if A or B is float 8.",
+                                    "TS",
+                                    OpSchema::Optional)
+                                .Output(0, "Y", "Output tensor of shape (M, N).", "TR")
+                                .TypeConstraint(
+                                    "TA",
+                                    GEMM_FLOAT8_TYPES,
+                                    "Constrain input type to input A.")
+                                .TypeConstraint(
+                                    "TB",
+                                    GEMM_FLOAT8_TYPES,
+                                    "Constrain input type to input B.")
+                                .TypeConstraint(
+                                    "TC",
+                                    {"tensor(float16)", "tensor(bfloat16)", "tensor(float)"},
+                                    "Constrain input type to input C.")
+                                .TypeConstraint(
+                                    "TR",
+                                    GEMM_FLOAT8_TYPES,
+                                    "Constrain input type to input result type.")
+                                .TypeConstraint("TS", {"tensor(float)"}, "Constrain input type for all input scales (scaleA, scaleB, scaleY).")
                                 .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
                                   propagateElemTypeFromAttributeToOutput(ctx, "dtype", 0, TensorProto::FLOAT);
                                   if (!hasNInputShapes(ctx, 2)) {
