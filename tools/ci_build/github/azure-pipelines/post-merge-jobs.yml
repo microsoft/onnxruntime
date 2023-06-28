@@ -268,7 +268,7 @@ stages:
       displayName: 'Build ORT on Mac with Xcode'
       inputs:
         script: |
-          "$(Build.SourcesDirectory)/tools/ci_build/build.py" \
+          python "$(Build.SourcesDirectory)/tools/ci_build/build.py" \
             --use_xcode \
             --enable_language_interop_ops \
             --build_wheel \
