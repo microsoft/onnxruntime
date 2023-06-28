@@ -152,7 +152,8 @@ static bool AreAllComputeNodesAssignedToCudaEp(const Graph& graph) {
   // (or) if there are Memcpy nodes, then all compute nodes have
   // not been parititoned to the CUDA EP.
   // We allow CPU EPs to show up in the EP list as long as thre is no Memcpy
-  // involved as shape subgraphs will be forced onto CPU.
+  // involved as shape subgraphs will be forced onto CPU and these will not have
+  // Memcpy nodes involved.
   return nodes_on_cpu_and_cuda_eps_only && !HasMemcpyNodes(graph);
 }
 
