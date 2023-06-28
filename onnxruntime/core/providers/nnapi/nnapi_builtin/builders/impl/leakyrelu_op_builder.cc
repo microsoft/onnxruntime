@@ -4,7 +4,6 @@
 #include <onnx/onnx_pb.h>
 
 #include "core/common/logging/logging.h"
-#include "core/common/safeint.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/graph/graph_viewer.h"
 #include "core/optimizer/initializer.h"
@@ -13,15 +12,12 @@
 #include "core/providers/nnapi/nnapi_builtin/builders/helper.h"
 #include "core/providers/nnapi/nnapi_builtin/builders/model_builder.h"
 #include "core/providers/nnapi/nnapi_builtin/builders/op_builder_factory.h"
-#include "core/providers/nnapi/nnapi_builtin/builders/op_builder_helpers.h"
 #include "core/providers/nnapi/nnapi_builtin/builders/impl/base_op_builder.h"
 
 using namespace android::nn::wrapper;
 
 namespace onnxruntime {
 namespace nnapi {
-
-using namespace op_builder_helpers;
 
 class LeakyReluOpBuilder : public BaseOpBuilder {
   // Add operator related
@@ -54,7 +50,7 @@ Status LeakyReluOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   NodeAttrHelper helper(node_unit);
   const auto alpha = helper.Get("alpha", 0.01f);
 
-  // TODO: We will use the NNAPI Select to simulate the behavior here
+  // We will use the NNAPI ANEURALNETWORKS_SELECT to simulate the behavior here:
   // input x = [-1, 0, 1]
   // iterate and multiply by the alpha value from attribute: z = alpha * x = [-0.1, 0, 0.1]
   // then construct the mask  c = [false, true, true] , true means select the element from the first input, and false vice versa.
@@ -64,15 +60,16 @@ Status LeakyReluOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   InlinedVector<uint32_t> input_indices;
 
   // Construct the boolean type mask array for ANEURALNETWORKS_SELECT - input0
-  std::vector<bool> mask(input_shape.size());
-  const auto& input_tensor = *initializers.at(input);
+  std::vector<int8_t> mask(input_shape.size());
+  // how do I get the input data on the fly here?
+  
 
   // Note: by default NNAPI only supports float type input, so uses a float type gsl::span here
   // See BaseOpBuilder::HasSupportedInputOutputsImpl.
   Initializer unpacked_tensor(input_tensor);
   auto raw_input_data = unpacked_tensor.DataAsSpan<float>();
   std::transform(raw_input_data.begin(), raw_input_data.end(), mask.begin(),
-                 [](auto value) { return value >= 0; });
+                 [](auto value) { return value >= 0 ? 1 : 0; });
 
   // Iterate and multiply by alpha to construct ANEURALNETWORKS_SELECT - input2
   std::vector<float> input2;
@@ -88,14 +85,12 @@ Status LeakyReluOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 
   Shape input_dimen = {static_cast<uint32_t>(input_shape.size())};
 
-  const OperandType mask_operand_type(operand_types.at(input).type, input_dimen);
-  std::vector<char> mask_char(mask.begin(), mask.end());  // Convert to vector of char
-  ORT_RETURN_IF_ERROR(model_builder.AddOperandFromPersistMemoryBuffer(mask_tensor_name, mask_char.data(), mask_operand_type));
+  const OperandType mask_operand_type(Type::TENSOR_BOOL8, input_dimen);
+  ORT_RETURN_IF_ERROR(model_builder.AddOperandFromPersistMemoryBuffer(mask_tensor_name, mask.data(), mask_operand_type));
   const OperandType input2_operand_type(operand_types.at(input).type, input_dimen);
   ORT_RETURN_IF_ERROR(model_builder.AddOperandFromPersistMemoryBuffer(input2_tensor_name, input2.data(), input2_operand_type));
 
   input_indices.push_back(operand_indices.at(mask_tensor_name));    // input0
-  input_indices.push_back(operand_indices.at(input));               // input1
   input_indices.push_back(operand_indices.at(input2_tensor_name));  // input2
 
   const OperandType output_operand_type(operand_types.at(input).type, input_dimen);

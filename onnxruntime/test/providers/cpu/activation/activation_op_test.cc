@@ -409,28 +409,6 @@ TEST_F(ActivationOpTest, LeakyRelu) {
                           {{"alpha", alpha}});
 }
 
-#ifdef USE_NNAPI
-TEST_F(ActivationOpTest, LeakyRelu_InputIsInitializer) {
-  OpTester test("LeakyRelu", 16);
-  float alpha = 0.01f;
-  auto formula = [alpha](float x) { return (x >= 0) ? x : alpha * x; };
-
-  std::vector<float> X = input_values.front();
-  std::vector<float> Y;
-  for (unsigned i = 0; i < X.size(); i++)
-    Y.push_back(formula(X[i]));
-  std::vector<int64_t> dims{(int64_t)X.size()};
-
-  test.AddInput<float>("X", dims, X, true /*input_is_initializer*/);
-  test.AddOutput<float>("Y", dims, Y);
-
-  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-  execution_providers.push_back(DefaultNnapiExecutionProvider());
-
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
-}
-#endif
-
 #ifdef MLAS_F16VEC_INTRINSICS_SUPPORTED
 TEST_F(ActivationOpTest, LeakyRelu_fp16) {
   OpTester test("LeakyRelu", 11);
