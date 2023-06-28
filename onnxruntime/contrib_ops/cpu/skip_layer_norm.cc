@@ -48,7 +48,7 @@ Status SkipLayerNorm<T>::Compute(OpKernelContext* p_ctx) const {
   const auto& skip_dims = skip->Shape().GetDims();
   size_t skip_dims_size = skip_dims.size();
 
-  if (input->Shape() != skip->Shape() || skip_dims[0] != 1) {
+  if (input->Shape() != skip->Shape() && skip_dims[0] != 1) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "skip is expected to have same shape as input or a batch size of 1");
   }
@@ -57,6 +57,22 @@ Status SkipLayerNorm<T>::Compute(OpKernelContext* p_ctx) const {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "input is expected to have 3 or 2 dimensions, got ", input_dims_size);
   }
+
+  if (skip_dims_size != 3 && skip_dims_size != 2) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "skip is expected to have 3 or 2 dimensions, got ", skip_dims_size);
+  }
+
+  if (skip_dims[1] != input_dims[1] && skip_dims[1] != 1) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "sequence length needs to be 1 or same as input");
+  }
+
+  if (skip_dims[2] != input_dims[2] && skip_dims[2] != 1) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "hidden size needs to be 1 or same as input");
+  }
+    
 
   int hidden_size = static_cast<int>(input_dims[input_dims_size - 1]);
 
