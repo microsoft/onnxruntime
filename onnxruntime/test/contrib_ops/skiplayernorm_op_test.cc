@@ -32,7 +32,7 @@ static void RunTest(
     bool no_batch_size = false) {
   // Input and output shapes
   //   Input 0 - input: (batch_size, sequence_length, hidden_size) or (batch_size * sequence_length, hidden_size)
-  //   Input 1 - skip : (batch_size, sequence_length, hidden_size) or (batch_size * sequence_length, hidden_size) or (1, sequence_lemgth, hidden_size)
+  //   Input 1 - skip : (batch_size, sequence_length, hidden_size) or (batch_size * sequence_length, hidden_size) or (1, sequence_length, hidden_size) or (sequence_length, hidden_size)
   //   Input 2 - gamma: (hidden_size)
   //   Input 3 - beta : (hidden_size)
   //   Output         : (batch_size, sequence_length, hidden_size) or (batch_size * sequence_length, hidden_size)
