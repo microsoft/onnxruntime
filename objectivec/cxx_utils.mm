@@ -26,7 +26,7 @@ NSString* toNSString(const std::string& str) {
 
 NSString* _Nullable toNullableNSString(const std::optional<std::string>& str) {
   if (str.has_value()) {
-    return [NSString stringWithUTF8String:str->c_str()];
+    return toNSString(*str);
   }
   return nil;
 }
