@@ -12,12 +12,15 @@
 #include "core/providers/nnapi/nnapi_builtin/builders/helper.h"
 #include "core/providers/nnapi/nnapi_builtin/builders/model_builder.h"
 #include "core/providers/nnapi/nnapi_builtin/builders/op_builder_factory.h"
+#include "core/providers/nnapi/nnapi_builtin/builders/op_builder_helpers.h"
 #include "core/providers/nnapi/nnapi_builtin/builders/impl/base_op_builder.h"
 
 using namespace android::nn::wrapper;
 
 namespace onnxruntime {
 namespace nnapi {
+
+using namespace onnxruntime::nnapi::op_builder_helpers;
 
 class LeakyReluOpBuilder : public BaseOpBuilder {
   // Add operator related
@@ -40,7 +43,6 @@ Status LeakyReluOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   auto& shaper(model_builder.GetShaper());
   const auto& operand_types(model_builder.GetOperandTypes());
   const auto& operand_indices(model_builder.GetOperandIndices());
-  const auto& initializers(model_builder.GetInitializerTensors());
 
   const auto& input = node_unit.Inputs()[0].node_arg.Name();
   const auto& output = node_unit.Outputs()[0].node_arg.Name();
@@ -50,59 +52,70 @@ Status LeakyReluOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   NodeAttrHelper helper(node_unit);
   const auto alpha = helper.Get("alpha", 0.01f);
 
-  // We will use the NNAPI ANEURALNETWORKS_SELECT to simulate the behavior here:
-  // input x = [-1, 0, 1]
-  // iterate and multiply by the alpha value from attribute: z = alpha * x = [-0.1, 0, 0.1]
-  // then construct the mask  c = [false, true, true] , true means select the element from the first input, and false vice versa.
-  // output y = [-0.1, 0, 1]
-  // the inputs for Select operation will be prepared.
+  // We will use multiple operations to simulate LeakyRelu here. including NNAPI ANEURALNETWORKS_SELECT/LESS/MUL.
+  // input X = [-1, 0, 1]
+  // multiply by the alpha value got from attribute: Z = alpha * X = [-0.1, 0, 0.1]
+  // then construct the bool input XLESSTHANZERO = [false, true, true] , true means select the element from the first input, and false vice versa.
+  // output Y = [-0.1, 0, 1]
 
   InlinedVector<uint32_t> input_indices;
+  input_indices.push_back(operand_indices.at(input));
 
-  // Construct the boolean type mask array for ANEURALNETWORKS_SELECT - input0
-  std::vector<int8_t> mask(input_shape.size());
-  // how do I get the input data on the fly here?
-  
+  // Step 1: Add Less operation - Less(X, Zero)
+  int count = std::accumulate(input_shape.begin(), input_shape.end(), 1, std::multiplies<int>());
+  std::vector<float> zero_vec(count, 0.0f);
 
-  // Note: by default NNAPI only supports float type input, so uses a float type gsl::span here
-  // See BaseOpBuilder::HasSupportedInputOutputsImpl.
-  Initializer unpacked_tensor(input_tensor);
-  auto raw_input_data = unpacked_tensor.DataAsSpan<float>();
-  std::transform(raw_input_data.begin(), raw_input_data.end(), mask.begin(),
-                 [](auto value) { return value >= 0 ? 1 : 0; });
+  std::string zero_vec_name = model_builder.GetUniqueName(node_unit.Name() + input + "_zero_cast");
+  std::string less_output_name = model_builder.GetUniqueName(node_unit.Name() + input + "_less_than_zero");
 
-  // Iterate and multiply by alpha to construct ANEURALNETWORKS_SELECT - input2
-  std::vector<float> input2;
-  input2.reserve(raw_input_data.size());
-  std::transform(raw_input_data.begin(), raw_input_data.end(), std::back_inserter(input2),
-                 [alpha](float value) { return alpha * value; });
+  // Add zero vector as second input
+  const OperandType zero_operand_type(Type::TENSOR_FLOAT32, input_shape);
+  ORT_RETURN_IF_ERROR(model_builder.AddOperandFromPersistMemoryBuffer(zero_vec_name, zero_vec.data(),
+                                                                      zero_operand_type));
+  input_indices.push_back(operand_indices.at(zero_vec_name));
 
-  const auto mask_tensor_name = model_builder.GetUniqueName(node_unit.Name() + input + "_select_c");
-  const auto input2_tensor_name = model_builder.GetUniqueName(node_unit.Name() + input + "_select_y");
+  OperandType less_output_operand_type(Type::TENSOR_BOOL8, input_shape);
+  shaper.AddShape(less_output_name, input_shape);
+  ORT_RETURN_IF_ERROR(model_builder.AddOperation(ANEURALNETWORKS_LESS,
+                                                 input_indices, {less_output_name}, {less_output_operand_type}));
 
-  shaper.AddShape(mask_tensor_name, input_shape);
-  shaper.AddShape(input2_tensor_name, input_shape);
+  // Step 2: Add Mul operation - Mul(Alpha, X)
+  input_indices.clear();
+  std::vector<float> alpha_vec(count);
+  std::fill(alpha_vec.begin(), alpha_vec.end(), alpha);
 
-  Shape input_dimen = {static_cast<uint32_t>(input_shape.size())};
+  std::string alpha_vec_name = model_builder.GetUniqueName(node_unit.Name() + input + "_alpha_cast");
+  const OperandType alpha_operand_type(Type::TENSOR_FLOAT32, input_shape);
+  ORT_RETURN_IF_ERROR(model_builder.AddOperandFromPersistMemoryBuffer(alpha_vec_name, alpha_vec.data(),
+                                                                      alpha_operand_type));
+  input_indices.push_back(operand_indices.at(alpha_vec_name));
 
-  const OperandType mask_operand_type(Type::TENSOR_BOOL8, input_dimen);
-  ORT_RETURN_IF_ERROR(model_builder.AddOperandFromPersistMemoryBuffer(mask_tensor_name, mask.data(), mask_operand_type));
-  const OperandType input2_operand_type(operand_types.at(input).type, input_dimen);
-  ORT_RETURN_IF_ERROR(model_builder.AddOperandFromPersistMemoryBuffer(input2_tensor_name, input2.data(), input2_operand_type));
+  input_indices.push_back(operand_indices.at(input));
 
-  input_indices.push_back(operand_indices.at(mask_tensor_name));    // input0
-  input_indices.push_back(operand_indices.at(input2_tensor_name));  // input2
+  std::string mul_output_name = model_builder.GetUniqueName(node_unit.Name() + input + "_multiply_alpha");
+  Shape mul_output_shape;
+  ORT_RETURN_IF_ERROR(op_builder_helpers::PerformBroadcasting(input_shape, input_shape, mul_output_shape));
+  const OperandType mul_output_operand_type(operand_types.at(input).type, mul_output_shape);
+  shaper.AddShape(mul_output_name, mul_output_shape);
+  ORT_RETURN_IF_ERROR(model_builder.AddOperation(ANEURALNETWORKS_MUL, input_indices,
+                                                 {mul_output_name}, {mul_output_operand_type}));
 
-  const OperandType output_operand_type(operand_types.at(input).type, input_dimen);
+  // Step 3: Add Select Operation - Select(XLessThanZero, AlphaMulX, X)
+  input_indices.clear();
+  input_indices.push_back(operand_indices.at(less_output_name));
+  input_indices.push_back(operand_indices.at(mul_output_name));
+  input_indices.push_back(operand_indices.at(input));
+
+  const OperandType select_output_operand_type(operand_types.at(input).type, input_shape);
   ORT_RETURN_IF_ERROR(model_builder.AddOperation(ANEURALNETWORKS_SELECT, input_indices,
-                                                 {output}, {output_operand_type}));
+                                                 {output}, {select_output_operand_type}));
 
   return Status::OK();
 }
 
 // Operator support related
 
-bool LeakyReluOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
+bool LeakyReluOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& /*initializers*/, const NodeUnit& node_unit,
                                            const OpSupportCheckParams& /* params */) const {
   Shape input_shape;
   if (!GetShape(node_unit.Inputs()[0].node_arg, input_shape))
