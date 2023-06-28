@@ -1994,5 +1994,22 @@ IMPLEMENT_GRADIENT_BUILDER(GetLSTMGradient) {
   return {NodeDef(OpDef{"LSTMGrad", kMSDomain, 1}, input_args, output_args, SrcNodeAttributes())};
 }
 
+IMPLEMENT_GRADIENT_BUILDER(GetScaledSumGradient) {
+  int input_count = GetSrcNodeInputSize();
+  ORT_ENFORCE(input_count >= 4, "ScaledSum node must have at least 4 inputs");
+  if (input_count == 4)
+    return std::vector<NodeDef>{
+        NodeDef(OpDef{"BatchScale", kMSDomain, 1},
+                {GO(0), I(1), I(3)},
+                {GI(0), GI(2)},
+                SrcNodeAttributes())};
+  else
+    return std::vector<NodeDef>{
+        NodeDef(OpDef{"BatchScale", kMSDomain, 1},
+                {GO(0), I(1), I(3), I(5)},
+                {GI(0), GI(2), GI(4)},
+                SrcNodeAttributes())};
+}
+
 }  // namespace training
 }  // namespace onnxruntime

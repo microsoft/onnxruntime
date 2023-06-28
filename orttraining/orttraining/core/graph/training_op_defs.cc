@@ -4052,7 +4052,8 @@ Return true if all elements are true and false otherwise.
           ORT_ENFORCE(inferred_input_type->value_case() == TypeProto::kTensorType,
                       "PythonOpGrad's ", i, "-th input type must be a tensor.");
           ORT_ENFORCE(inferred_input_type->tensor_type().elem_type() == input_tensor_types_proto->ints().at(i - 1),
-                      "PythonOpGrad's ", i, "-th input type must be ", input_tensor_types_proto->ints().at(i - 1));
+                      "PythonOpGrad's ", i, "-th input type must be ", input_tensor_types_proto->ints().at(i - 1),
+                      ", but inferred to be ", inferred_input_type->tensor_type().elem_type());
         }
 
         // Load expected output types.
@@ -4071,7 +4072,8 @@ Return true if all elements are true and false otherwise.
           ORT_ENFORCE(ctx.getNumOutputs() == ctx.getNumInputs() - 1);  // inputs contains one extra context input
           for (size_t i = 0; i < static_cast<size_t>(ctx.getNumOutputs()); ++i) {
             size_t input_idx = i + static_cast<size_t>(1);
-            propagateElemTypeFromInputToOutput(ctx, input_idx, i);
+            // propagateElemTypeFromInputToOutput(ctx, input_idx, i);
+            updateOutputElemType(ctx, i, static_cast<int32_t>(output_tensor_types_proto->ints().at(i)));
             propagateShapeFromInputToOutput(ctx, input_idx, i);
           }
         } else {
@@ -4433,6 +4435,54 @@ Return true if all elements are true and false otherwise.
         if (num_outputs > 4)
           // IOFC gate computations
           updateOutputShape(ctx, 4, {sequence_length, num_directions, batch_size, hidden_size_x4});
+      });
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(ScaledSum)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc("Compute scaled sum of multiple tensors in same shape (no broadcasting).")
+      .Input(0, "input_0", "input tensor", "T", OpSchema::Optional)
+      .Input(1, "scale_0", "scale tensor", "T", OpSchema::Optional)
+      .Input(2, "input_1", "input tensor", "T", OpSchema::Optional)
+      .Input(3, "scale_1", "scale tensor", "T", OpSchema::Optional)
+      .Input(4, "input_2", "input tensor", "T", OpSchema::Optional)
+      .Input(5, "scale_2", "scale tensor", "T", OpSchema::Optional)
+      .Output(0, "output", "output tensor", "T")
+      .TypeConstraint(
+          "T",
+          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          "Constrain input types to float tensors.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        if (ctx.getNumInputs() % 2 != 0)
+          fail_shape_inference("Input count must be equal with scale input count.");
+        propagateShapeAndTypeFromFirstInput(ctx);
+      });
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(BatchScale)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc("Compute scaled sum of multiple tensors in same shape (no broadcasting).")
+      .Input(0, "input", "output tensor", "T")
+      .Input(1, "scale_0", "scale tensor", "T", OpSchema::Optional)
+      .Input(2, "scale_1", "scale tensor", "T", OpSchema::Optional)
+      .Input(3, "scale_2", "scale tensor", "T", OpSchema::Optional)
+      .Output(0, "output_0", "input tensor", "T", OpSchema::Optional)
+      .Output(1, "output_1", "input tensor", "T", OpSchema::Optional)
+      .Output(2, "output_2", "input tensor", "T", OpSchema::Optional)
+      .TypeConstraint(
+          "T",
+          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          "Constrain input types to float tensors.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        if (ctx.getNumInputs() != ctx.getNumOutputs() + 1)
+          fail_shape_inference("Output count must be equal with scale input count.");
+
+        for (size_t i = 0; i < ctx.getNumOutputs(); ++i) {
+          propagateElemTypeFromInputToOutput(ctx, 0, i);
+          if (hasInputShape(ctx, 0)) {
+            propagateShapeFromInputToOutput(ctx, 0, i);
+          }
+        }
       });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(LSTMGrad)

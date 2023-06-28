@@ -61,6 +61,7 @@
 #include "orttraining/core/optimizer/qdq_fusion.h"
 #include "orttraining/core/optimizer/shape_optimizer.h"
 #include "orttraining/core/optimizer/transformer_layer_recompute.h"
+#include "orttraining/core/optimizer/scaled_sum_fusion.h"
 
 // Only enabled in full training build. Not in on device training builds
 #ifdef ENABLE_TRAINING
@@ -154,7 +155,7 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
       // potentially will optimize out some nodes defined in the subgraph patterns. So we put it after ReshapeFusion.
       transformers.emplace_back(std::make_unique<ShapeOptimizer>(compatible_eps));
       transformers.emplace_back(std::make_unique<ConcatSliceElimination>(compatible_eps));
-
+      transformers.emplace_back(std::make_unique<ScaledSumFusion>(compatible_eps));
       if (config.gelu_recompute) {
         transformers.emplace_back(std::make_unique<GeluRecompute>());
       }
