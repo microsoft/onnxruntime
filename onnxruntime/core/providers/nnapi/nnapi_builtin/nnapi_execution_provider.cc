@@ -184,22 +184,24 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
   result = utils::CreateSupportedPartitions(graph_viewer, is_node_supported, on_group_closed,
                                             gen_metadef_name, NNAPI, kNnapiExecutionProvider);
 
-  // Generally, NNAPI support graph with inputs and outputs except constant initializer.
-  // So far, we have a few cases that sub-graph has zero inputs,
+  // Generally, NNAPI support graph with at least one input and one output except constant initializer.
+  // So far, we have a few cases that sub-graph has zero valid inputs, like `CastLike`
   // a) A sub-graph has only initializer as inputs
-  // b) A sub-graph has zero inputs
+  // b) A sub-graph has zero inputs, `Constant` Node
   // So we just remove these sub-graph which is captured by NNAPI.
   // A existing example is CastLike, as which can't be fold in constant folding pass.
-  // CastLike Op will be inlined into Cast after Pass transform.
-  // Can we remove it if support CastLike in CF or support Pass transform after InlineNodes?
+  // CastLike Op will be inlined into Cast after constant folding optimizer.
+  // Can we remove it if support CastLike in constant folding
+  // or support doing constant folding optimizer after InlineNodes?
   std::for_each(result.begin(), result.end(), [&graph_viewer](auto& capability) {
     if (capability && capability->sub_graph && capability->sub_graph->GetMetaDef()) {
       const auto* meta_def = capability->sub_graph->GetMetaDef();
-      bool not_empty_inputs = std::any_of(meta_def->inputs.begin(), meta_def->inputs.end(), [&graph_viewer](const auto& input) {
+      bool has_any_non_constant_inputs = std::any_of(meta_def->inputs.begin(), meta_def->inputs.end(), [&graph_viewer](const auto& input) {
         return !graph_viewer.IsConstantInitializer(input, true);
       });
 
-      if (!not_empty_inputs || meta_def->outputs.empty()) {
+      // ALL inputs are constant
+      if (!has_any_non_constant_inputs) {
         capability.reset();
       }
     }
