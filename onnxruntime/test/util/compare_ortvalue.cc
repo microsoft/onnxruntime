@@ -487,10 +487,12 @@ float ParseValueToFloat(T data_value) {
   return static_cast<float>(data_value);
 }
 
+template <>
 float ParseValueToFloat(MLFloat16 data_value) {
   return Eigen::half_impl::half_to_float(Eigen::half_impl::__half_raw(data_value.val));
 }
 
+template <>
 float ParseValueToFloat(float data_value) {
   // Covert float to half and then convert back to float to simulate rounding to half
   return ParseValueToFloat(MLFloat16(math::floatToHalf(data_value)));
