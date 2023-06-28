@@ -8,7 +8,6 @@
 namespace onnxruntime {
 namespace cuda {
 
-namespace {
 #ifdef USE_ROCM
 constexpr int kElementsPerThread = 2;
 constexpr int kThreadsPerBlock = 512;
@@ -40,7 +39,6 @@ __global__ void ElementwiseKernel(T* output_data, const FuncT functor, TIndex N)
     }
   }
 }
-}  // namespace
 
 template <typename T, typename FuncT, typename TIndex>
 void LaunchElementwiseKernel(cudaStream_t stream, T* output_data, const FuncT& functor, TIndex output_size) {

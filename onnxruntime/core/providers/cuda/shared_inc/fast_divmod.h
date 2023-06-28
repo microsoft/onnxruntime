@@ -84,7 +84,7 @@ struct DivMod<int> {
   uint32_t l_;  // l_ = ceil(log2(d_))
 };
 
-typedef DivMod<int> fast_divmod;  // Keep the old name for backward compatibility.
+using fast_divmod = DivMod<int>;  // Keep the old name for backward compatibility.
 
 }  // namespace cuda
 }  // namespace onnxruntime

@@ -69,25 +69,25 @@ const char* ElementTypeToString(MLDataType type) {
  * @brief Check if two values are closely matched with given tolerance.
 
  * Definition of closely match:
- * > If any of real_value and expected_value is nan, real_value and expected_value must both be nan.
- * > If any of real_value and expected_value is inf, then real_value and expected_value
+ * > If any of actual_value and expected_value is nan, actual_value and expected_value must both be nan.
+ * > If any of actual_value and expected_value is inf, then actual_value and expected_value
  *   must both be inf with same sign.
  * > Otherwise, diff <= tol.
 
- * @param real_value The value to be checked.
+ * @param actual_value The value to be checked.
  * @param expected_value The baseline value used to check against.
- * @param diff The absolute difference calculated by the caller from real_value and expected_value.
+ * @param diff The absolute difference calculated by the caller from actual_value and expected_value.
  * @param tol The absolute tolerance.
  * @return True when closely matched; False otherwise.
  */
 template <typename T>
-bool IsResultCloselyMatch(const T& real_value, const T& expected_value, const double diff, const double tol) {
-  if (std::isnan(real_value) || std::isnan(expected_value))
-    return std::isnan(real_value) && std::isnan(expected_value);  // not possible both are not nan if diff is nan.
+bool IsResultCloselyMatch(const T& actual_value, const T& expected_value, const double diff, const double tol) {
+  if (std::isnan(actual_value) || std::isnan(expected_value))
+    return std::isnan(actual_value) && std::isnan(expected_value);  // not possible both are not nan if diff is nan.
 
-  if (std::isinf(real_value) || std::isinf(expected_value)) {
-    if (std::isinf(real_value) && std::isinf(expected_value))
-      return (real_value > 0 && expected_value > 0) || (real_value < 0 && expected_value < 0);
+  if (std::isinf(actual_value) || std::isinf(expected_value)) {
+    if (std::isinf(actual_value) && std::isinf(expected_value))
+      return (actual_value > 0 && expected_value > 0) || (actual_value < 0 && expected_value < 0);
     else
       return false;
   }
