@@ -28,7 +28,7 @@ static void RunTest(
     bool simplified = false,
     bool use_token_count = false,
     bool strict = false,
-    bool batch_size_1 = false,
+    bool broadcast_skip = false,
     bool no_batch_size = false) {
   // Input and output shapes
   //   Input 0 - input: (batch_size, sequence_length, hidden_size) or (batch_size * sequence_length, hidden_size)
