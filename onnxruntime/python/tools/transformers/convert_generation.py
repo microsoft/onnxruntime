@@ -889,7 +889,7 @@ def remove_shared_initializers(
     graph2: GraphProto,
     shared_prefix: str = "shared_",
     min_elements: int = 1024,
-    require_raw_data=False,
+    require_raw_data: bool = False,
 ):
     """Remove initializers with same value from two graphs.
 
@@ -898,6 +898,7 @@ def remove_shared_initializers(
         graph2 (GraphProto): the second graph to process
         shared_prefix (str): add prefix to the shared initializers among two graphs
         min_elements (int, optional): minimal number of elements for initializers to be considered. Defaults to 1024.
+        require_raw_data (bool, optional): Only remove tensors with raw_data field to speed up method
     """
 
     mapping_initializers_1 = {}
