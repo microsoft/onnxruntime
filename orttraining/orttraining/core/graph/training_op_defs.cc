@@ -4441,20 +4441,20 @@ Return true if all elements are true and false otherwise.
       .SetDomain(kMSDomain)
       .SinceVersion(1)
       .SetDoc("Compute scaled sum of multiple tensors in same shape (no broadcasting).")
-      .Input(0, "input_0", "input tensor", "T", OpSchema::Optional)
-      .Input(1, "scale_0", "scale tensor", "T", OpSchema::Optional)
-      .Input(2, "input_1", "input tensor", "T", OpSchema::Optional)
-      .Input(3, "scale_1", "scale tensor", "T", OpSchema::Optional)
-      .Input(4, "input_2", "input tensor", "T", OpSchema::Optional)
-      .Input(5, "scale_2", "scale tensor", "T", OpSchema::Optional)
+      .Attr("scale_0", "Scale for input_0.", AttributeProto::FLOAT)
+      .Attr("scale_1", "Scale for input_1.", AttributeProto::FLOAT)
+      .Attr("scale_2", "(Optional) Scale for input_2.", AttributeProto::FLOAT, OPTIONAL_VALUE)
+      .Input(0, "input_0", "input tensor", "T")
+      .Input(1, "input_1", "input tensor", "T")
+      .Input(2, "input_2", "input tensor", "T", OpSchema::Optional)
       .Output(0, "output", "output tensor", "T")
       .TypeConstraint(
           "T",
           {"tensor(float16)", "tensor(float)", "tensor(double)"},
           "Constrain input types to float tensors.")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-        if (ctx.getNumInputs() % 2 != 0)
-          fail_shape_inference("Input count must be equal with scale input count.");
+        if (ctx.getNumInputs() == 3 && nullptr == ctx.getAttribute("scale_2"))
+          fail_shape_inference("Input count must be equal with scale count.");
         propagateShapeAndTypeFromFirstInput(ctx);
       });
 
@@ -4462,20 +4462,20 @@ Return true if all elements are true and false otherwise.
       .SetDomain(kMSDomain)
       .SinceVersion(1)
       .SetDoc("Compute scaled sum of multiple tensors in same shape (no broadcasting).")
+      .Attr("scale_0", "Scale for input_0.", AttributeProto::FLOAT)
+      .Attr("scale_1", "Scale for input_1.", AttributeProto::FLOAT)
+      .Attr("scale_2", "(Optional) Scale for input_2.", AttributeProto::FLOAT, OPTIONAL_VALUE)
       .Input(0, "input", "output tensor", "T")
-      .Input(1, "scale_0", "scale tensor", "T", OpSchema::Optional)
-      .Input(2, "scale_1", "scale tensor", "T", OpSchema::Optional)
-      .Input(3, "scale_2", "scale tensor", "T", OpSchema::Optional)
-      .Output(0, "output_0", "input tensor", "T", OpSchema::Optional)
-      .Output(1, "output_1", "input tensor", "T", OpSchema::Optional)
+      .Output(0, "output_0", "input tensor", "T")
+      .Output(1, "output_1", "input tensor", "T")
       .Output(2, "output_2", "input tensor", "T", OpSchema::Optional)
       .TypeConstraint(
           "T",
           {"tensor(float16)", "tensor(float)", "tensor(double)"},
           "Constrain input types to float tensors.")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-        if (ctx.getNumInputs() != ctx.getNumOutputs() + 1)
-          fail_shape_inference("Output count must be equal with scale input count.");
+        if (ctx.getNumOutputs() == 3 && nullptr == ctx.getAttribute("scale_2"))
+          fail_shape_inference("Output count must be equal with scale count.");
 
         for (size_t i = 0; i < ctx.getNumOutputs(); ++i) {
           propagateElemTypeFromInputToOutput(ctx, 0, i);

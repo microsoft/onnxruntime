@@ -1996,19 +1996,20 @@ IMPLEMENT_GRADIENT_BUILDER(GetLSTMGradient) {
 
 IMPLEMENT_GRADIENT_BUILDER(GetScaledSumGradient) {
   int input_count = GetSrcNodeInputSize();
-  ORT_ENFORCE(input_count >= 4, "ScaledSum node must have at least 4 inputs");
-  if (input_count == 4)
+  if (input_count == 2)
     return std::vector<NodeDef>{
         NodeDef(OpDef{"BatchScale", kMSDomain, 1},
-                {GO(0), I(1), I(3)},
-                {GI(0), GI(2)},
+                {GO(0)},
+                {GI(0), GI(1)},
+                SrcNodeAttributes())};
+  else if (input_count == 3)
+    return std::vector<NodeDef>{
+        NodeDef(OpDef{"BatchScale", kMSDomain, 1},
+                {GO(0)},
+                {GI(0), GI(1), GI(2)},
                 SrcNodeAttributes())};
   else
-    return std::vector<NodeDef>{
-        NodeDef(OpDef{"BatchScale", kMSDomain, 1},
-                {GO(0), I(1), I(3), I(5)},
-                {GI(0), GI(2), GI(4)},
-                SrcNodeAttributes())};
+    ORT_THROW("ScaledSum gradient builder does not support ", input_count, " inputs");
 }
 
 }  // namespace training

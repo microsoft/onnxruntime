@@ -140,7 +140,7 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
       // as the session is not initialized yet. So using macro for now.
       transformers.emplace_back(std::make_unique<BiasGeluFusion>(compatible_eps));
       transformers.emplace_back(std::make_unique<IsInfReduceSumFusion>(compatible_eps));
-      transformers.emplace_back(std::make_unique<ScaledSumFusion>(compatible_eps));  // No CPU kernel for ScaledSumFusion
+      transformers.emplace_back(std::make_unique<ScaledSumFusion>(compatible_eps));
 #endif
 
       if (config.enable_gelu_approximation) {

@@ -11,29 +11,17 @@ namespace cuda {
 constexpr int kBlockSize = 256;
 constexpr int kNumUnroll = 4;
 
-namespace {
-template <typename T>
-float ToFloat(const T& value) {
-  return static_cast<float>(value);
-}
-
-template <>
-float ToFloat(const half& value) {
-  return math::halfToFloat(*reinterpret_cast<const uint16_t*>(&value));
-}
-}  // namespace
-
 template <typename T, int NumUnroll, int OutputCount, bool IsVectorized>
 struct BatchScaleFunctor {
   BatchScaleFunctor(const T* input,
-                    const std::vector<const T*>& scales,
+                    const std::vector<float>& scales,
                     int64_t N,
                     const std::vector<T*>& outputs)
       : N_(static_cast<CUDA_LONG>(N)),
         input_data_(input) {
     for (int i = 0; i < OutputCount; i++) {
       outputs_[i] = outputs[i];
-      scales_[i] = 1.0f / ToFloat(*scales[i]);
+      scales_[i] = scales[i];
     }
   }
 
@@ -108,7 +96,7 @@ template <typename T>
 void BatchScaleImpl(cudaStream_t stream,
                     int64_t input_element_count,
                     const T* input_data,
-                    const std::vector<const T*>& scales,
+                    const std::vector<float>& scales,
                     const std::vector<T*>& outputs) {
   const int blocksPerGrid = static_cast<int>(CeilDiv(input_element_count, kBlockSize * kNumUnroll));
 
@@ -145,11 +133,11 @@ void BatchScaleImpl(cudaStream_t stream,
   }
 }
 
-#define SPECIALIZE_BATCH_SCALE_IMPL(T)                                 \
-  template void BatchScaleImpl<T>(cudaStream_t stream,                 \
-                                  int64_t input_element_count,         \
-                                  const T* input_data,                 \
-                                  const std::vector<const T*>& scales, \
+#define SPECIALIZE_BATCH_SCALE_IMPL(T)                              \
+  template void BatchScaleImpl<T>(cudaStream_t stream,              \
+                                  int64_t input_element_count,      \
+                                  const T* input_data,              \
+                                  const std::vector<float>& scales, \
                                   const std::vector<T*>& outputs);
 
 SPECIALIZE_BATCH_SCALE_IMPL(half);

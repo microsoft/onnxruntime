@@ -12,7 +12,7 @@ template <typename T>
 void BatchScaleImpl(cudaStream_t stream,
                     int64_t input_element_count,
                     const T* input_data,
-                    const std::vector<const T*>& scales,
+                    const std::vector<float>& scales,
                     const std::vector<T*>& outputs);
 
 }  // namespace cuda

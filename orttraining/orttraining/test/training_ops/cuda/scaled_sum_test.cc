@@ -1,123 +1,129 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#if defined(USE_CUDA) || defined(USE_ROCM)
+
 #include "test/common/tensor_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
 
 namespace onnxruntime {
 namespace test {
 
-TEST(ScaledSumTest, FloatType1D) {
-  std::vector<float> input = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.f};
-  std::vector<float> scale_0 = {4.f};
-  std::vector<float> scale_1 = {4.f};
-  std::vector<float> scale_2 = {2.f};
-
-  std::vector<float> output = input;
-
-  OpTester test("ScaledSum", 1, onnxruntime::kMSDomain);
-  test.AddInput<float>("input0", {6}, input);
-  test.AddInput<float>("scale0", {}, scale_0);
-  test.AddInput<float>("input1", {6}, input);
-  test.AddInput<float>("scale1", {}, scale_1);
-  test.AddInput<float>("input2", {6}, input);
-  test.AddInput<float>("scale2", {}, scale_2);
-  test.AddOutput<float>("output", {6}, output);
-  test.Run();
+static void PrepareInputAndOutputData(const std::vector<std::vector<float>>& input,
+                                      const std::vector<float>& scales,
+                                      std::vector<float>& output) {
+  output.resize(input[0].size());
+  size_t scale_size = scales.size();
+  for (size_t i = 0; i < input[0].size(); ++i) {
+    output[i] = input[0][i] * scales[0] + input[1][i] * scales[1] + (scale_size == 3 ? input[2][i] * scales[2] : 0.0f);
+  }
 }
 
-TEST(ScaledSumTest, FloatTypeVectorized1D) {
+template <typename T>
+static void RunScaledSumOpTester(const std::vector<std::vector<T>>& inputs,
+                                 const std::vector<float>& scales,
+                                 const std::vector<T>& output,
+                                 const std::vector<int64_t>& shape) {
+  OpTester test("ScaledSum", 1, onnxruntime::kMSDomain);
+  test.AddInput<T>("input0", shape, inputs[0]);
+  test.AddInput<T>("input1", shape, inputs[1]);
+  if (scales.size() == 3) {
+    test.AddInput<T>("input2", shape, inputs[2]);
+  }
+
+  test.AddOutput<T>("output", shape, output);
+  test.AddAttribute<float>("scale_0", scales[0]);
+  test.AddAttribute<float>("scale_1", scales[1]);
+  if (scales.size() == 3) {
+    test.AddAttribute<float>("scale_2", scales[2]);
+  }
+
+  // Exclude CPU EP since it is not implemented yet.
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCpuExecutionProvider});
+}
+
+static void RunScaledSumWithFloatAndMLFloat16(const std::vector<std::vector<float>>& inputs,
+                                              const std::vector<float>& scales,
+                                              const std::vector<int64_t>& shape) {
+  std::vector<float> output;
+  PrepareInputAndOutputData(inputs, scales, output);
+  RunScaledSumOpTester(inputs, scales, output, shape);
+
+  std::vector<std::vector<MLFloat16>> inputs_half;
+  inputs_half.resize(inputs.size());
+  for (size_t i = 0; i < inputs.size(); ++i) {
+    inputs_half[i].resize(inputs[i].size());
+    ConvertFloatToMLFloat16(inputs[i].data(), inputs_half[i].data(), int(inputs[i].size()));
+  }
+
+  std::vector<MLFloat16> output_half;
+  output_half.resize(output.size());
+  ConvertFloatToMLFloat16(output.data(), output_half.data(), int(output.size()));
+
+  RunScaledSumOpTester(inputs_half, scales, output_half, shape);
+}
+
+TEST(ScaledSumTest, SmallTensor1D) {
+  std::vector<std::vector<float>> inputs = {{1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.f},
+                                            {0.1f, 0.2f, 0.3f, 0.4f, 0.5f, 0.6f},
+                                            {0.01f, 0.02f, 0.03f, 0.04f, 0.05f, 0.06f}};
+
+  float scale_0 = 0.25f;
+  float scale_1 = 0.25f;
+  float scale_2 = 0.5f;
+
+  std::vector<int64_t> shape{static_cast<int64_t>(inputs[0].size())};
+  RunScaledSumWithFloatAndMLFloat16(inputs, {scale_0, scale_1, scale_2}, shape);
+
+  RunScaledSumWithFloatAndMLFloat16(inputs, {scale_0, scale_1}, shape);
+}  // namespace test
+
+TEST(ScaledSumTest, SmallTensorVectorized1D) {
   std::vector<float> input = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.f, 7.0f, 8.0f,
                               9.0f, 10.0f, 11.0f, 12.f, 13.0f, 14.0f, 15.0f, 16.0f,
                               17.0f, 18.0f, 19.0f, 20.0f, 21.0f, 22.f, 23.0f, 24.0f,
                               25.0f, 26.0f, 27.0f, 28.0f, 29.0f, 30.f, 31.0f, 32.0f};
-  std::vector<float> scale_0 = {4.f};
-  std::vector<float> scale_1 = {4.f};
-  std::vector<float> scale_2 = {2.f};
+  std::vector<std::vector<float>> inputs{input, input, input};
+  float scale_0 = 0.25f;
+  float scale_1 = 0.25f;
+  float scale_2 = 0.5f;
 
-  std::vector<float> output = input;
-  int64_t N = static_cast<int64_t>(input.size());
-  OpTester test("ScaledSum", 1, onnxruntime::kMSDomain);
-  test.AddInput<float>("input0", {N}, input);
-  test.AddInput<float>("scale0", {}, scale_0);
-  test.AddInput<float>("input1", {N}, input);
-  test.AddInput<float>("scale1", {}, scale_1);
-  test.AddInput<float>("input2", {N}, input);
-  test.AddInput<float>("scale2", {}, scale_2);
-  test.AddOutput<float>("output", {N}, output);
-  test.Run();
+  std::vector<int64_t> shape{static_cast<int64_t>(input.size())};
+  RunScaledSumWithFloatAndMLFloat16(inputs, {scale_0, scale_1, scale_2}, shape);
+
+  RunScaledSumWithFloatAndMLFloat16(inputs, {scale_0, scale_1}, shape);
 }
 
-// TEST(ScaledSumTest, FloatType2D) {
-//   std::vector<float> input = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.f, 7.f, 8.f, 9.f};
-//   std::vector<int64_t> indices = {1, 3, 4};
-//   std::vector<int64_t> unflatten_dims = {2, 3};
+TEST(ScaledSumTest, SmallTensor2D) {
+  std::vector<float> input = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.f, 7.f, 8.f, 9.f};
+  std::vector<std::vector<float>> inputs{input, input, input};
+  float scale_0 = 0.25f;
+  float scale_1 = 0.25f;
+  float scale_2 = 0.5f;
 
-//   std::vector<float> output = {0.0f, 0.0f, 0.0f, 1.0f, 2.0f, 3.0f, 0.0f, 0.0f, 0.0f,
-//                                4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f, 0.0f, 0.0f, 0.0f};
+  std::vector<int64_t> shape{3, 3};
+  RunScaledSumWithFloatAndMLFloat16(inputs, {scale_0, scale_1, scale_2}, shape);
 
-//   std::vector<int64_t> full_flatten_dims = {6, 3};
+  RunScaledSumWithFloatAndMLFloat16(inputs, {scale_0, scale_1}, shape);
+}
 
-//   OpTester test("ScaledSum", 1, onnxruntime::kMSDomain);
-//   test.AddInput<float>("input", {3, 3}, input);
-//   test.AddInput<int64_t>("indices", {3}, indices);
-//   test.AddInput<int64_t>("unflatten_dims", {2}, unflatten_dims);
-//   test.AddOutput<float>("output", {2, 3, 3}, output);
-//   test.AddOutput<int64_t>("full_flatten_dims", {2}, full_flatten_dims);
-//   test.Run();
-// }
+TEST(ScaledSumTest, SmallTensorVectorized2D) {
+  std::vector<float> input = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.f, 7.0f, 8.0f,
+                              9.0f, 10.0f, 11.0f, 12.f, 13.0f, 14.0f, 15.0f, 16.0f,
+                              17.0f, 18.0f, 19.0f, 20.0f, 21.0f, 22.f, 23.0f, 24.0f,
+                              25.0f, 26.0f, 27.0f, 28.0f, 29.0f, 30.f, 31.0f, 32.0f};
+  std::vector<std::vector<float>> inputs{input, input, input};
+  float scale_0 = 0.25f;
+  float scale_1 = 0.25f;
+  float scale_2 = 0.5f;
 
-// TEST(ScaledSumTest, MLFloat16Type1D) {
-//   std::vector<float> input = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.f};
-//   std::vector<int64_t> indices = {1, 3, 5, 7, 9, 11};
-//   std::vector<int64_t> unflatten_dims = {5, 3};
+  std::vector<int64_t> shape{4, 8};
+  RunScaledSumWithFloatAndMLFloat16(inputs, {scale_0, scale_1, scale_2}, shape);
 
-//   std::vector<float> output = {0.0f, 1.0f, 0.0f, 2.0f, 0.0f, 3.0f, 0.0f, 4.0f,
-//                                0.0f, 5.0f, 0.0f, 6.0f, 0.0f, 0.0f, 0.0f};
-
-//   std::vector<int64_t> full_flatten_dims = {15};
-
-//   std::vector<MLFloat16> input_half;
-//   input_half.resize(input.size());
-//   ConvertFloatToMLFloat16(input.data(), input_half.data(), int(input.size()));
-//   std::vector<MLFloat16> output_half;
-//   output_half.resize(output.size());
-//   ConvertFloatToMLFloat16(output.data(), output_half.data(), int(output.size()));
-
-//   OpTester test("ScaledSum", 1, onnxruntime::kMSDomain);
-//   test.AddInput<MLFloat16>("input", {6}, input_half);
-//   test.AddInput<int64_t>("indices", {6}, indices);
-//   test.AddInput<int64_t>("unflatten_dims", {2}, unflatten_dims);
-//   test.AddOutput<MLFloat16>("output", {5, 3}, output_half);
-//   test.AddOutput<int64_t>("full_flatten_dims", {1}, full_flatten_dims);
-//   test.Run();
-// }
-
-// TEST(ScaledSumTest, MLFloat16Type2D) {
-//   std::vector<float> input = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.f, 7.f, 8.f, 9.f};
-//   std::vector<int64_t> indices = {1, 3, 4};
-//   std::vector<int64_t> unflatten_dims = {2, 3};
-
-//   std::vector<float> output = {0.0f, 0.0f, 0.0f, 1.0f, 2.0f, 3.0f, 0.0f, 0.0f, 0.0f,
-//                                4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f, 0.0f, 0.0f, 0.0f};
-
-//   std::vector<int64_t> full_flatten_dims = {6, 3};
-
-//   std::vector<MLFloat16> input_half;
-//   input_half.resize(input.size());
-//   ConvertFloatToMLFloat16(input.data(), input_half.data(), int(input.size()));
-//   std::vector<MLFloat16> output_half;
-//   output_half.resize(output.size());
-//   ConvertFloatToMLFloat16(output.data(), output_half.data(), int(output.size()));
-
-//   OpTester test("ScaledSum", 1, onnxruntime::kMSDomain);
-//   test.AddInput<MLFloat16>("input", {3, 3}, input_half);
-//   test.AddInput<int64_t>("indices", {3}, indices);
-//   test.AddInput<int64_t>("unflatten_dims", {2}, unflatten_dims);
-//   test.AddOutput<MLFloat16>("output", {2, 3, 3}, output_half);
-//   test.AddOutput<int64_t>("full_flatten_dims", {2}, full_flatten_dims);
-//   test.Run();
-// }
+  RunScaledSumWithFloatAndMLFloat16(inputs, {scale_0, scale_1}, shape);
+}
 
 }  // namespace test
 }  // namespace onnxruntime
+
+#endif

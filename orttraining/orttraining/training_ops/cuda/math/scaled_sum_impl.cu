@@ -11,33 +11,17 @@ namespace cuda {
 constexpr int kBlockSize = 256;
 constexpr int kNumUnroll = 4;
 
-namespace {
-template <typename T>
-float ToFloat(const T& value) {
-  return static_cast<float>(value);
-}
-
-template <>
-float ToFloat(const half& value) {
-  return math::halfToFloat(*reinterpret_cast<const uint16_t*>(&value));
-}
-
-}  // namespace
-
 template <typename T, int NumUnroll, int InputCount, bool IsVectorized>
 struct ScaledSumFunctor {
   ScaledSumFunctor(const std::vector<const T*>& inputs,
-                   const std::vector<const T*>& scales,
+                   const std::vector<float>& scales,
                    int64_t N,
                    T* output) {
-    // std::cout << "enter ScaledSumFunctor N: " << N << std::endl;
     output_data_ = output;
     N_ = static_cast<CUDA_LONG>(N);
     for (int i = 0; i < InputCount; i++) {
-      // std::cout << "enter ScaledSumFunctor InputCount: " << InputCount << ", i: " << i << std::endl;
       inputs_[i] = inputs[i];
-      scales_[i] = 1.0f / ToFloat(*scales[i]);
-      // std::cout << "enter ScaledSumFunctor scales_[i]: " << scales_[i] << ", i: " << i << std::endl;
+      scales_[i] = scales[i];
     }
   }
 
@@ -48,7 +32,6 @@ struct ScaledSumFunctor {
       return;
     }
 
-    // printf("start id: %d\n", static_cast<int>(id));
     using LoadT = aligned_vector<T, NumUnroll>;
     T input_values[InputCount][NumUnroll];
     if (IsVectorized) {
@@ -122,7 +105,6 @@ struct ScaledSumFunctor {
 template <typename FuncT>
 __global__ void ScaledSumKernel(const FuncT functor) {
   CUDA_LONG idx = blockDim.x * blockIdx.x + threadIdx.x;
-  // printf("idx: %d\n", static_cast<int>(idx));
   functor(idx);
 }
 
@@ -130,7 +112,7 @@ template <typename T>
 void ScaledSumImpl(cudaStream_t stream,
                    int64_t input_element_count,
                    const std::vector<const T*>& inputs,
-                   const std::vector<const T*>& scales,
+                   const std::vector<float>& scales,
                    T* output_data) {
   const int blocksPerGrid = static_cast<int>(CeilDiv(input_element_count, kBlockSize * kNumUnroll));
 
@@ -148,9 +130,7 @@ void ScaledSumImpl(cudaStream_t stream,
 
   if (input_count == 2) {
     if (use_vectorized) {
-      // std::cout << "use vectorized for input_count==2" << std::endl;
       auto functor = TwoInputTVectorizedFunctorType(inputs, scales, input_element_count, output_data);
-      // std::cout << "functor created, blocksPerGrid, kBlockSize :" << blocksPerGrid << "," << kBlockSize << std::endl;
       ScaledSumKernel<TwoInputTVectorizedFunctorType><<<blocksPerGrid, kBlockSize, 0, stream>>>(functor);
     } else
       ScaledSumKernel<TwoInputTNonVectorizedFunctorType><<<blocksPerGrid, kBlockSize, 0, stream>>>(
@@ -172,7 +152,7 @@ void ScaledSumImpl(cudaStream_t stream,
   template void ScaledSumImpl<T>(cudaStream_t stream,                 \
                                  int64_t input_element_count,         \
                                  const std::vector<const T*>& inputs, \
-                                 const std::vector<const T*>& scales, \
+                                 const std::vector<float>& scales,    \
                                  T* output_data);
 
 SPECIALIZE_SCALED_SUM_IMPL(half);
