@@ -3025,6 +3025,69 @@ TEST(GradientCheckerTest, PadAndUnflattenGrad) {
                                                          x_datas, {}, true, false, &execution_providers));
   EXPECT_IS_TINY(max_error);
 }
+
+TEST(GradientCheckerTest, ScaledSumGrad) {
+  // Two inputs.
+  {
+    float max_error;
+    GradientChecker<float, float, float> gradient_checker;
+    OpDef op_def{"ScaledSum", kMSDomain, 1};
+    TensorInfo x_info({4, 3});
+    TensorInfo y_info({4, 3});
+    std::vector<std::vector<float>> x_datas = {
+        {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11},
+        {0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 1.1, 1.2},
+    };
+
+    TensorInfo output0_info({4, 3}, true);
+    std::vector<ONNX_NAMESPACE::AttributeProto> attributes = {};
+    attributes.push_back(MakeAttribute("scale_0", float(0.5)));
+    attributes.push_back(MakeAttribute("scale_1", float(0.3)));
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+#ifdef USE_CUDA
+    execution_providers.emplace_back(DefaultCudaExecutionProvider());
+#elif USE_ROCM
+    execution_providers.emplace_back(DefaultRocmExecutionProvider());
+#endif
+
+    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {x_info, y_info},
+                                                           {output0_info}, &max_error,
+                                                           x_datas, attributes, true, false, &execution_providers));
+    EXPECT_IS_TINY(max_error);
+  }
+
+  // Three inputs.
+  {
+    float max_error;
+    GradientChecker<float, float, float> gradient_checker;
+    OpDef op_def{"ScaledSum", kMSDomain, 1};
+    TensorInfo x_info({4, 3});
+    TensorInfo y_info({4, 3});
+    TensorInfo z_info({4, 3});
+    std::vector<std::vector<float>> x_datas = {
+        {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11},
+        {0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 1.1, 1.2},
+        {0.01, 0.02, 0.03, 0.04, 0.05, 0.06, -0.07, -0.08, -0.09, -0.10, -0.11, -0.12},
+    };
+
+    TensorInfo output0_info({4, 3}, true);
+    std::vector<ONNX_NAMESPACE::AttributeProto> attributes = {};
+    attributes.push_back(MakeAttribute("scale_0", float(0.2)));
+    attributes.push_back(MakeAttribute("scale_1", float(0.3)));
+    attributes.push_back(MakeAttribute("scale_2", float(0.5)));
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+#ifdef USE_CUDA
+    execution_providers.emplace_back(DefaultCudaExecutionProvider());
+#elif USE_ROCM
+    execution_providers.emplace_back(DefaultRocmExecutionProvider());
+#endif
+
+    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {x_info, y_info, z_info},
+                                                           {output0_info}, &max_error,
+                                                           x_datas, attributes, true, false, &execution_providers));
+    EXPECT_IS_TINY(max_error);
+  }
+}
 #endif
 
 }  // namespace test
