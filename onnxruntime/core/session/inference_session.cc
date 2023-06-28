@@ -113,71 +113,51 @@ inline std::basic_string<T> GetCurrentTimeString() {
 
 #if !defined(ORT_MINIMAL_BUILD)
 
-/* This method returns ture if all *compute* nodes are placed on the CUDA EP
-   and all shape nodes are placed on the CPU EP
- */
-std::pair<bool, int> AreAllComputeNodesAssignedToCudaEp(const Graph& graph) {
-  InlinedHashSet<NodeIndex> shape_nodes;
-  InlinedHashSet<NodeIndex> bfs_visited;
-  std::queue<NodeIndex> bfs_queue;
-
-  // Perform BFS to collect all nodes between all Shape -> Reshape node pairs
+static bool HasControlflowNodes(const Graph& graph) {
   for (const auto& node : graph.Nodes()) {
-    if (node.OpType() == "Shape") {
-      for (auto iter = node.OutputNodesBegin(), end = node.OutputNodesEnd(); iter != end; ++iter) {
-        // If we haven't picked this node for BFS processing yet, then pick it up
-        if ((bfs_visited.find(iter->Index()) == bfs_visited.end())) {
-          bfs_visited.insert(iter->Index());
-          bfs_queue.push(iter->Index());
-        }
-      }
+    if (node.ContainsSubgraph()) {
+      return true;
     }
   }
 
-  while (!bfs_queue.empty()) {
-    auto node_index = bfs_queue.front();
-    bfs_queue.pop();
+  return false;
+}
 
-    const auto* node = graph.GetNode(node_index);
-
-    shape_nodes.insert(node_index);
-
-    for (auto iter = node->OutputNodesBegin(), end = node->OutputNodesEnd(); iter != end; ++iter) {
-      // If the child is not a Reshape node and we haven't processed/visited the node already,
-      // add the node for further processing
-      if (iter->OpType() != "Reshape" && (bfs_visited.find(iter->Index()) == bfs_visited.end())) {
-        bfs_visited.insert(iter->Index());
-        bfs_queue.push(iter->Index());
-      }
+static bool HasMemcpyNodes(const Graph& graph) {
+  for (const auto& node : graph.Nodes()) {
+    if (node.OpType() == "MemcpyFromHost" || node.OpType() == "MemcpyToHost") {
+      return true;
     }
   }
+
+  return false;
+}
+
+static bool AreAllComputeNodesAssignedToCudaEp(const Graph& graph) {
+  bool nodes_on_cpu_and_cuda_eps_only = true;
 
   for (const auto& node : graph.Nodes()) {
     const auto& node_provider = node.GetExecutionProviderType();
 
-    // This node is not partitioned to the CUDA EP
-    // Ensure that this is a shape node assigned to the CPU EP
-    if (node_provider != onnxruntime::kCudaExecutionProvider) {
-      // If this node is partitioned to any other EP other
-      // than the CPU EP, then this isn't a shape node.
-      // Empty provider string means CPU EP.
-      if (!node_provider.empty() &&
-          node_provider != onnxruntime::kCpuExecutionProvider) {
-        return std::make_pair(false, -1);
-      }
-
-      // Check if this node is a shape node - If it isn't then we
-      // have found a compute node assigned to the CPU EP
-      if (shape_nodes.find(node.Index()) == shape_nodes.end()) {
-        return std::make_pair(false, -1);
-      }
+    // Empty node provider means CPU EP
+    if (!node_provider.empty() &&
+        node_provider != kCudaExecutionProvider &&
+        node_provider != kCpuExecutionProvider) {
+      nodes_on_cpu_and_cuda_eps_only = false;
+      break;
     }
   }
 
-  return std::make_pair(true, static_cast<int>(shape_nodes.size()));
+  // If we see nodes assigned to EPs other than CPU or CUDA
+  // (or) if there are Memcpy nodes, then all compute nodes have
+  // not been parititoned to the CUDA EP.
+  // We allow CPU EPs to show up in the EP list as long as thre is no Memcpy
+  // involved as shape subgraphs will be forced onto CPU and these will not have
+  // Memcpy nodes involved.
+  return nodes_on_cpu_and_cuda_eps_only && !HasMemcpyNodes(graph);
 }
 
-bool AreAllNodesInMainGraphAssignedToOneEp(const Graph& graph, ProviderType provider) {
+static bool AreAllNodesInMainGraphAssignedToOneEp(const Graph& graph, ProviderType provider) {
   for (const auto& node : graph.Nodes()) {
     const auto& node_provider = node.GetExecutionProviderType();
 
@@ -189,14 +169,27 @@ bool AreAllNodesInMainGraphAssignedToOneEp(const Graph& graph, ProviderType prov
   return true;
 }
 
-bool HasControlflowNodes(const Graph& graph) {
+static bool HasShapeSubgraphNodes(const Graph& graph) {
+  bool has_shape_nodes = false;
+  bool has_cpu_ep_nodes = false;
+
   for (const auto& node : graph.Nodes()) {
-    if (node.ContainsSubgraph()) {
-      return true;
+    if (node.OpType() == "Shape") {
+      has_shape_nodes = true;
+      break;
     }
   }
 
-  return false;
+  for (const auto& node : graph.Nodes()) {
+    const auto& node_provider = node.GetExecutionProviderType();
+
+    if (node_provider.empty() || node_provider == kCpuExecutionProvider) {
+      has_cpu_ep_nodes = true;
+      break;
+    }
+  }
+
+  return has_shape_nodes && has_cpu_ep_nodes;
 }
 
 Status GetMinimalBuildOptimizationHandling(
@@ -1585,12 +1578,11 @@ common::Status InferenceSession::Initialize() {
         auto* target_ep = execution_providers_.Get(it);
 
         if (target_ep && target_ep->IsGraphCaptureEnabled()) {
+          // CUDA Graphs can't work with control flow nodes
           if (HasControlflowNodes(graph)) {
             LOGS(*session_logger_, ERROR) << "This session cannot use the CUDA Graph feature as requested by the user "
                                           << "as the model has control flow nodes which can't be supported by CUDA Graphs.";
 
-            // Return error status as we don't want the session initialization to complete successfully
-            // if the user has requested usage of CUDA Graph feature and we cannot honor that.
             ORT_RETURN_IF_ERROR_SESSIONID_(
                 ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                                 "This session cannot use the CUDA Graph feature as requested by the user "
@@ -1598,21 +1590,22 @@ common::Status InferenceSession::Initialize() {
           }
 
           if (strcmp(target_ep->Type().c_str(), onnxruntime::kCudaExecutionProvider) == 0) {
-            auto res = AreAllComputeNodesAssignedToCudaEp(graph);
-
-            if (!res.first) {
+            // Ensure that all nodes have been partitioned to CUDA or CPU EP && there are no memcpy nodes
+            // The reasoning behind this logic is that certain shape nodes will be forced onto CPU
+            // and as long as there are no memcpy nodes this is confirmation that no compute nodes have been placed on the CPU EP
+            // which is all we care about.
+            if (!AreAllComputeNodesAssignedToCudaEp(graph)) {
               LOGS(*session_logger_, ERROR) << "This session cannot use the CUDA Graph feature as requested by the user "
                                             << " as all compute graph nodes have not been partitioned to the CUDA EP.";
 
-              // Return error status as we don't want the session initialization to complete successfully
-              // if the user has requested usage of CUDA Graph feature and we cannot honor that.
               ORT_RETURN_IF_ERROR_SESSIONID_(
                   ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                                   "This session cannot use the CUDA Graph feature as requested by the user "
                                   " as all compute graph nodes have not been partitioned to the CUDA EP."));
             }
 
-            if (res.second > 0) {
+            // Log a warning for the user to know that there are shape subgraphs that will execute on CPU
+            if (HasShapeSubgraphNodes(graph)) {
               LOGS(*session_logger_, WARNING) << "This model has shape massaging nodes that will execute on CPU. "
                                               << "Use the CUDA Graph feature with caution. "
                                               << "As long as the intermediate shapes produced in the model "
