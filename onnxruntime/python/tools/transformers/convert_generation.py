@@ -889,6 +889,7 @@ def remove_shared_initializers(
     graph2: GraphProto,
     shared_prefix: str = "shared_",
     min_elements: int = 1024,
+    require_raw_data=False,
 ):
     """Remove initializers with same value from two graphs.
 
@@ -913,7 +914,7 @@ def remove_shared_initializers(
             if not (initializer2.dims and sum(initializer2.dims) >= min_elements):
                 continue
 
-            if OnnxModel.has_same_value(initializer1, initializer2, greedy=True):
+            if OnnxModel.has_same_value(initializer1, initializer2, require_raw_data=True):
                 mapping_initializers_1[initializer1.name] = shared_prefix + initializer2.name
                 shared_initializers_1.append(initializer1)
 
@@ -986,14 +987,14 @@ def remove_shared_initializers(
     return shared_initializers_2
 
 
-def get_shared_initializers(encoder_model: ModelProto, decoder_model: ModelProto, greedy=False):
+def get_shared_initializers(encoder_model: ModelProto, decoder_model: ModelProto, require_raw_data=False):
     encoder = OnnxModel(encoder_model)
     decoder = OnnxModel(decoder_model)
     encoder.add_prefix_to_names("e_")
     decoder.add_prefix_to_names("d_")
-    encoder.remove_duplicated_initializer(greedy)
-    decoder.remove_duplicated_initializer(greedy)
-    initializers = remove_shared_initializers(encoder.model.graph, decoder.model.graph, "s_")
+    encoder.remove_duplicated_initializer(require_raw_data)
+    decoder.remove_duplicated_initializer(require_raw_data)
+    initializers = remove_shared_initializers(encoder.model.graph, decoder.model.graph, "s_", require_raw_data)
     return initializers
 
 
