@@ -264,6 +264,15 @@ stages:
         addToPath: true
         architecture: x64
 
+    - template: templates/use-xcode-version.yml
+
+    - task: CmdLine@2
+      displayName: 'Install Python dependencies'
+      inputs:
+        script: |
+          python -m pip install -r \
+            "$(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/scripts/requirements.txt"
+
     - task: CmdLine@2
       displayName: 'Build ORT on Mac with Xcode'
       inputs:
