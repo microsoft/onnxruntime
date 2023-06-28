@@ -8,12 +8,6 @@
 #include <iostream>
 #include <vector>
 
-namespace {
-OrtEnv* g_env;
-OrtErrorCode g_last_error_code;
-std::string g_last_error_message;
-}  // namespace
-
 static_assert(sizeof(const char*) == sizeof(size_t), "size of a pointer and a size_t value should be the same.");
 static_assert(sizeof(size_t) == 4, "size of size_t should be 4 in this build (wasm32).");
 
