@@ -244,3 +244,41 @@ stages:
         script: docker image rm $(dockerImageTag)
         workingDirectory: '$(Build.BinariesDirectory)'
       condition: succeededOrFailed()
+
+# This build verifies that Xcode builds work. Xcode builds may have different warnings enabled.
+- stage: MacXcodeBuild
+  dependsOn: [ ]
+  jobs:
+  - job: MacXcodeBuild
+    workspace:
+      clean: all
+    pool:
+      vmImage: 'macOS-13'
+    steps:
+    - checkout: self
+      submodules: false
+
+    - task: UsePythonVersion@0
+      inputs:
+        versionSpec: '3.8'
+        addToPath: true
+        architecture: x64
+
+    - task: CmdLine@2
+      displayName: 'Build ORT on Mac with Xcode'
+      inputs:
+        script: |
+          "$(Build.SourcesDirectory)/tools/ci_build/build.py" \
+            --use_xcode \
+            --enable_language_interop_ops \
+            --build_wheel \
+            --build_shared_lib \
+            --build_objc \
+            --build_nodejs \
+            --build_java \
+            --use_coreml \
+            --use_xnnpack \
+            --build_dir $(Build.BinariesDirectory) \
+            --update --skip_submodule_sync \
+            --build --parallel \
+            --test
