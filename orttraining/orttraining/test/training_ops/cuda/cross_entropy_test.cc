@@ -640,6 +640,7 @@ TEST(CrossEntropyTest, DISABLED_SoftmaxCrossEntropyLoss_LargeSizeTensor) {
 
 #ifndef _WIN32
 // Disable the large size tests for Windows because it is too slow, running on Linux would be enough.
+// This test requires lots of memory, currently, it can run with 16GB V100 GPU.
 TEST(CrossEntropyTest, SoftmaxCrossEntropyLossInternal_LargeSizeTensorUInt64Index) {
   // The element count is bigger than the upper limit of int32_t.
   constexpr int64_t bsz = 419431;
@@ -1071,6 +1072,7 @@ TEST(CrossEntropyTest, SoftmaxCrossEntropyLossInternalGrad_TinySizeTensorFloatIn
 
 #ifndef _WIN32
 // Disable the large size tests for Windows because it is too slow, running on Linux would be enough.
+// This test requires lots of memory, currently, it can run with 16GB V100 GPU.
 TEST(CrossEntropyTest, SoftmaxCrossEntropyLossInternalGrad_LargeSizeTensorUInt64Index) {
   // The element count is bigger than the upper limit of int32_t.
   constexpr int64_t bsz = 419431;
