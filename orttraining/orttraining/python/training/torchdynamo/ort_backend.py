@@ -28,6 +28,8 @@ from torch.onnx._globals import GLOBALS as ONNX_GLOBALS
 import onnxruntime  # type: ignore
 from onnxruntime.capi import _pybind_state as ORTC
 
+from . import custom_symbols
+
 _NP_DTYPE = {
     torch.float16: np.float16,
     torch.float32: np.float32,
@@ -84,11 +86,15 @@ def _get_onnx_supported_table() -> Set[str]:
         # TODO(wechi): aten_op_name could be prim::add in addition to aten::add.
         # We should build another dictionary for storing support table for prim ops.
         # Currently, we only consider aten ops as before.
-        if not aten_op_name.startswith("aten::"):
-            logger.info("Skip %s in support table because it's not in aten domain.", aten_op_name)
+        if aten_op_name not in custom_symbols and not aten_op_name.startswith("aten::"):
+            logger.info(
+                "Skip %s in support table because it's not in aten domain or supported custom ops %s",
+                aten_op_name,
+                custom_symbols,
+            )
             continue
-        short_op_name = aten_op_name.split("aten::")[1]
-        if not hasattr(torch.ops.aten, short_op_name):  # type: ignore
+        short_op_name = aten_op_name.split("::")[1]
+        if aten_op_name.startswith("aten::") and not hasattr(torch.ops.aten, short_op_name):  # type: ignore
             # Some aten ops are not in torch.ops.aten. Those are excluded until we
             # figure out why.
             logger.info("Skip %s in support table because it's not found in torch.ops.aten.", aten_op_name)
@@ -124,16 +130,27 @@ def _get_support_dictionaries_and_decomposition_tables() -> (
     #     qualified name using _get_qualified_name is not needed.
     support_dictionary: Dict[torch._ops.OpOverload, Any] = {}
     for aten_op_name in _get_onnx_supported_table():
-        short_op_name = aten_op_name.split("aten::")[1]
-        op_overload_packet = getattr(torch.ops.aten, short_op_name)  # type: ignore
-        # Due to the lack of overload name in exporting function's name, assume
-        # each exporting function (e.g., torch.onnx.symbolic_opset9.add) support
-        # all overloads (e.g., in torch.ops.aten.add).
-        # Thus, we register all torch._ops.OpOverload's for the same exporting function.
-        # Please manually exclude torch._ops.OpOverload if exporter fails.
-        for overload in op_overload_packet.overloads():
-            op_overload = getattr(op_overload_packet, overload)
-            support_dictionary[op_overload] = None
+        if aten_op_name.startswith("aten::"):
+            short_op_name = aten_op_name.split("aten::")[1]
+            op_overload_packet = getattr(torch.ops.aten, short_op_name)  # type: ignore
+            # Due to the lack of overload name in exporting function's name, assume
+            # each exporting function (e.g., torch.onnx.symbolic_opset9.add) support
+            # all overloads (e.g., in torch.ops.aten.add).
+            # Thus, we register all torch._ops.OpOverload's for the same exporting function.
+            # Please manually exclude torch._ops.OpOverload if exporter fails.
+            for overload in op_overload_packet.overloads():
+                op_overload = getattr(op_overload_packet, overload)
+                support_dictionary[op_overload] = None
+
+        elif aten_op_name in custom_symbols:
+            op_namespace = aten_op_name.split("::")[0]
+            short_op_name = aten_op_name.split("::")[1]
+            # Get the custom ops from: torch.ops.custom_namespace
+            custom_op_namespace = getattr(torch.ops, op_namespace)
+            op_overload_packet = getattr(custom_op_namespace, short_op_name)  # type: ignore
+            for overload in op_overload_packet.overloads():
+                op_overload = getattr(op_overload_packet, overload)
+                support_dictionary[op_overload] = None
 
     # No decomposition table. OpOverload in this table shouldn't be found
     # in aten2aten_decomposition_table.
@@ -339,10 +356,10 @@ def _create_onnx_model(onnx_proto):
     return onnx.ModelProto.FromString(onnx_proto)
 
 
-def _create_onnx_session(onnx_proto, ep: str):
+def _create_onnx_session(onnx_proto, ep: str, session_options):
     # TODO(wechi): Add more EPs per PyTorch device types.
     # TODO(wechi): enable external allocators.
-    return onnxruntime.InferenceSession(onnx_proto, providers=[ep])
+    return onnxruntime.InferenceSession(onnx_proto, providers=[ep], sess_options=session_options)
 
 
 def _infer_ep_from_device(device):
@@ -486,7 +503,7 @@ class OrtBackend:
         3. Inside _ort_accelerated_call, it creates onnxruntime.InferenceSession and calls it to execute the sub-graph.
     """
 
-    def __init__(self, ep: str = "", preallocate_output: bool = False):
+    def __init__(self, ep: str = "", preallocate_output: bool = False, session_options=None):
         self._supported_ops = OrtOperatorSupport()
         # TODO: this is a naive implementation of cache without proper guard
         self._partitioner_cache: Dict[torch.fx.GraphModule, torch.fx.GraphModule] = {}
@@ -494,6 +511,7 @@ class OrtBackend:
         self._ort_execution_info = OrtExecutionInfo()
 
         self.ep = ep
+        self.session_options = session_options
 
         # preallocate_output allows for allocating output torch Tensor buffers and feeding them to InferenceSession
         # in order to avoid internal allocation of output buffers in InferenceSession.
@@ -553,7 +571,7 @@ class OrtBackend:
             # so we add execution provider only based on the first input's device.
             ep = self.ep or _infer_ep_from_device(args[0].device)
 
-            onnx_session = _create_onnx_session(onnx_proto, ep)
+            onnx_session = _create_onnx_session(onnx_proto, ep, self.session_options)
             # Cache ORT session. It's reused for the same "graph_module".
             self._ort_execution_info.sessions[graph_module] = onnx_session
             # Generate ONNX model and extract its input and output names.
@@ -630,7 +648,7 @@ class OrtBackend:
             # TODO(wechi): this is required for removing aten::_to_copy in _replace_to_copy_with_to.
             _replace_to_copy_with_to(prim_graph_module)
             partitioner = CapabilityBasedPartitioner(
-                prim_graph_module, self._supported_ops, allows_single_node_partition=False
+                prim_graph_module, self._supported_ops, allows_single_node_partition=True
             )
             partitioned_prim_graph_module = partitioner.partition_and_fuse()
             self._partitioner_cache[graph_module] = partitioned_prim_graph_module
