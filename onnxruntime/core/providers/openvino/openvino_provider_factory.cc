@@ -8,14 +8,45 @@
 
 namespace onnxruntime {
 struct OpenVINOProviderFactory : IExecutionProviderFactory {
-  OpenVINOProviderFactory(const char* device_type, bool enable_vpu_fast_compile,
-                          const char* device_id, size_t num_of_threads,
-                          const char* cache_dir, void* context,
-                          bool enable_opencl_throttling, bool enable_dynamic_shapes)
-      : enable_vpu_fast_compile_(enable_vpu_fast_compile), num_of_threads_(num_of_threads), context_(context), enable_opencl_throttling_(enable_opencl_throttling), enable_dynamic_shapes_(enable_dynamic_shapes) {
+  // OpenVINOProviderFactory(const char* device_type, bool enable_vpu_fast_compile,
+  //                         const char* device_id, size_t num_of_threads,
+  //                         const char* cache_dir, int num_streams, void* context,
+  //                         bool enable_opencl_throttling, bool enable_dynamic_shapes)
+  //     : enable_vpu_fast_compile_(enable_vpu_fast_compile), num_of_threads_(num_of_threads), num_streams_(num_streams),context_(context), enable_opencl_throttling_(enable_opencl_throttling), enable_dynamic_shapes_(enable_dynamic_shapes) {
+  //   device_type_ = (device_type == nullptr) ? "" : device_type;
+  //   device_id_ = (device_id == nullptr) ? "" : device_id;
+  //   cache_dir_ = (cache_dir == nullptr) ? "" : cache_dir;
+  // }
+  OpenVINOProviderFactory(const ProviderOptions& provider_options_map){
+    const char* device_type = provider_options_map.at("device_type").c_str();
+    const char* device_id = provider_options_map.at("device_id").c_str();
+    const char* cache_dir = provider_options_map.at("cache_dir").c_str();
     device_type_ = (device_type == nullptr) ? "" : device_type;
     device_id_ = (device_id == nullptr) ? "" : device_id;
     cache_dir_ = (cache_dir == nullptr) ? "" : cache_dir;
+    context_ = (void*) provider_options_map.at("context").c_str();
+    num_of_threads_ = std::stoi(provider_options_map.at("num_of_threads"));
+    num_streams_ = std::stoi(provider_options_map.at("num_streams"));
+    std::string bool_flag="";
+    bool_flag = provider_options_map.at("enable_vpu_fast_compile");
+    if(bool_flag=="true" || bool_flag=="True")
+      enable_vpu_fast_compile_ = true;
+    else if(bool_flag=="false" || bool_flag=="False")
+      enable_vpu_fast_compile_ = false;
+
+    bool_flag="";
+    bool_flag = provider_options_map.at("enable_opencl_throttling");
+    if(bool_flag=="true" || bool_flag=="True")
+      enable_opencl_throttling_ = true;
+    else if(bool_flag=="false" || bool_flag=="False")
+      enable_opencl_throttling_ = false;
+
+    bool_flag="";
+    bool_flag = provider_options_map.at("enable_dynamic_shapes");
+    if(bool_flag=="true" || bool_flag=="True")
+      enable_dynamic_shapes_ = true;
+    else if(bool_flag=="false" || bool_flag=="False")
+      enable_dynamic_shapes_ = false;
   }
   ~OpenVINOProviderFactory() override {
   }
@@ -28,6 +59,7 @@ struct OpenVINOProviderFactory : IExecutionProviderFactory {
   std::string device_id_;
   size_t num_of_threads_;
   std::string cache_dir_;
+  int num_streams_;
   void* context_;
   bool enable_opencl_throttling_;
   bool enable_dynamic_shapes_;
@@ -35,84 +67,85 @@ struct OpenVINOProviderFactory : IExecutionProviderFactory {
 
 std::unique_ptr<IExecutionProvider> OpenVINOProviderFactory::CreateProvider() {
   OpenVINOExecutionProviderInfo info(device_type_, enable_vpu_fast_compile_, device_id_, num_of_threads_,
-                                     cache_dir_, context_, enable_opencl_throttling_,
+                                     cache_dir_, num_streams_, context_, enable_opencl_throttling_,
                                      enable_dynamic_shapes_);
   return std::make_unique<OpenVINOExecutionProvider>(info);
 }
 
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_OpenVINO(
-    const char* device_type, bool enable_vpu_fast_compile, const char* device_id, size_t num_of_threads,
-    const char* cache_dir, void* context, bool enable_opencl_throttling,
-    bool enable_dynamic_shapes) {
-  return std::make_shared<onnxruntime::OpenVINOProviderFactory>(device_type, enable_vpu_fast_compile,
-                                                                device_id, num_of_threads, cache_dir, context, enable_opencl_throttling,
-                                                                enable_dynamic_shapes);
-}
+// std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_OpenVINO(
+//     const char* device_type, bool enable_vpu_fast_compile, const char* device_id, size_t num_of_threads,
+//     const char* cache_dir, void* context, bool enable_opencl_throttling,
+//     bool enable_dynamic_shapes) {
+//   return std::make_shared<onnxruntime::OpenVINOProviderFactory>(device_type, enable_vpu_fast_compile,
+//                                                                 device_id, num_of_threads, cache_dir, context, enable_opencl_throttling,
+//                                                                 enable_dynamic_shapes);
+// }
 
 std::shared_ptr<IExecutionProviderFactory> OpenVINOProviderFactoryCreator::Create(const ProviderOptions& provider_options_map) {
   // auto& provider_options_map = *reinterpret_cast<const ProviderOptions*>(void_params);
     // std::cout << " provider_map device_type = " << provider_options_map.at("device_type") << std::endl;
     // std::cout << " provider_map cache dir = " << provider_options_map.at("cache_dir") << std::endl;
 
-    std::string device_type = "";           // [device_type]: Overrides the accelerator hardware type and precision
-                                            //   with these values at runtime.
-    bool enable_vpu_fast_compile = false;   // [enable_vpu_fast_compile]: Fast-compile may be optionally enabled to
-                                            // speeds up the model's compilation to VPU device specific format.
-    std::string device_id = "";             // [device_id]: Selects a particular hardware device for inference.
-    size_t num_of_threads = 8;              // [num_of_threads]: Overrides the accelerator default value of number of
-                                            //  threads with this value at runtime.
-    std::string cache_dir = "";             // [cache_dir]: specify the path to
-                                            // dump and load the blobs for the model caching/kernel caching (GPU)
-                                            // feature. If blob files are already present, it will be directly loaded.
-    int num_streams = 1;                    // [num_streams]: Option that specifies the number of parallel inference
-                                            // requests to be processed on a given `device_type`. Overrides the
-                                            // accelerator default value of number of streams with this value at runtime.
-    bool enable_opencl_throttling = false;  // [enable_opencl_throttling]: Enables OpenCL queue throttling for GPU
-                                            // device (Reduces CPU Utilization when using GPU)
-    bool enable_dynamic_shapes = false;     // [enable_dynamic_shapes]: Enables Dynamic Shapes feature for CPU device)
-    void* context;
+    // const char* device_type = "";           // [device_type]: Overrides the accelerator hardware type and precision
+    //                                         //   with these values at runtime.
+    // bool enable_vpu_fast_compile = false;   // [enable_vpu_fast_compile]: Fast-compile may be optionally enabled to
+    //                                         // speeds up the model's compilation to VPU device specific format.
+    // const char* device_id = "";             // [device_id]: Selects a particular hardware device for inference.
+    // size_t num_of_threads = 8;              // [num_of_threads]: Overrides the accelerator default value of number of
+    //                                         //  threads with this value at runtime.
+    // const char* cache_dir = "";             // [cache_dir]: specify the path to
+    //                                         // dump and load the blobs for the model caching/kernel caching (GPU)
+    //                                         // feature. If blob files are already present, it will be directly loaded.
+    // int num_streams = 1;                    // [num_streams]: Option that specifies the number of parallel inference
+    //                                         // requests to be processed on a given `device_type`. Overrides the
+    //                                         // accelerator default value of number of streams with this value at runtime.
+    // bool enable_opencl_throttling = false;  // [enable_opencl_throttling]: Enables OpenCL queue throttling for GPU
+    //                                         // device (Reduces CPU Utilization when using GPU)
+    // bool enable_dynamic_shapes = false;     // [enable_dynamic_shapes]: Enables Dynamic Shapes feature for CPU device)
+    // void* context;
 
-    device_type = provider_options_map.at("device_type").c_str();
-    device_id = provider_options_map.at("device_id").c_str();
-    cache_dir = provider_options_map.at("cache_dir").c_str();
-    context = (void*) provider_options_map.at("context").c_str();
+    // device_type = provider_options_map.at("device_type").c_str();
+    // device_id = provider_options_map.at("device_id").c_str();
+    // cache_dir = provider_options_map.at("cache_dir").c_str();
+    // context = (void*) provider_options_map.at("context").c_str();
 
-    // std::stringstream sstream(provider_options_map.at("num_of_threads"));
-    // sstream >> num_of_threads;
-    num_of_threads = std::stoi(provider_options_map.at("num_of_threads"));
-    // std::stringstream nstream(provider_options_map.at("num_streams"));
-    // nstream >> num_streams;
-    num_streams = std::stoi(provider_options_map.at("num_streams"));
-    std::string bool_flag="";
-    bool_flag = provider_options_map.at("enable_vpu_fast_compile");
-    if(bool_flag=="true" || bool_flag=="True")
-      enable_vpu_fast_compile = true;
-    else if(bool_flag=="false" || bool_flag=="False")
-      enable_vpu_fast_compile = false;
+    // // std::stringstream sstream(provider_options_map.at("num_of_threads"));
+    // // sstream >> num_of_threads;
+    // num_of_threads = std::stoi(provider_options_map.at("num_of_threads"));
+    // // std::stringstream nstream(provider_options_map.at("num_streams"));
+    // // nstream >> num_streams;
+    // num_streams = std::stoi(provider_options_map.at("num_streams"));
+    // std::string bool_flag="";
+    // bool_flag = provider_options_map.at("enable_vpu_fast_compile");
+    // if(bool_flag=="true" || bool_flag=="True")
+    //   enable_vpu_fast_compile = true;
+    // else if(bool_flag=="false" || bool_flag=="False")
+    //   enable_vpu_fast_compile = false;
 
-    bool_flag="";
-    bool_flag = provider_options_map.at("enable_opencl_throttling");
-    if(bool_flag=="true" || bool_flag=="True")
-      enable_opencl_throttling = true;
-    else if(bool_flag=="false" || bool_flag=="False")
-      enable_opencl_throttling = false;
+    // bool_flag="";
+    // bool_flag = provider_options_map.at("enable_opencl_throttling");
+    // if(bool_flag=="true" || bool_flag=="True")
+    //   enable_opencl_throttling = true;
+    // else if(bool_flag=="false" || bool_flag=="False")
+    //   enable_opencl_throttling = false;
 
-    bool_flag="";
-    bool_flag = provider_options_map.at("enable_dynamic_shapes");
-    if(bool_flag=="true" || bool_flag=="True")
-      enable_dynamic_shapes = true;
-    else if(bool_flag=="false" || bool_flag=="False")
-      enable_dynamic_shapes = false;
+    // bool_flag="";
+    // bool_flag = provider_options_map.at("enable_dynamic_shapes");
+    // if(bool_flag=="true" || bool_flag=="True")
+    //   enable_dynamic_shapes = true;
+    // else if(bool_flag=="false" || bool_flag=="False")
+    //   enable_dynamic_shapes = false;
 
-    return std::make_shared<OpenVINOProviderFactory>(device_type,
-                                                     enable_vpu_fast_compile,
-                                                     device_id,
-                                                     num_of_threads,
-                                                     cache_dir,
-                                                     num_streams,
-                                                     context,
-                                                     enable_opencl_throttling,
-                                                     enable_dynamic_shapes);
+    // return std::make_shared<OpenVINOProviderFactory>(device_type,
+    //                                                  enable_vpu_fast_compile,
+    //                                                  device_id,
+    //                                                  num_of_threads,
+    //                                                  cache_dir,
+    //                                                  num_streams,
+    //                                                  context,
+    //                                                  enable_opencl_throttling,
+    //                                                  enable_dynamic_shapes);
+    return std::make_shared<onnxruntime::OpenVINOProviderFactory>(provider_options_map);
 }
 
 }  // namespace onnxruntime
@@ -128,14 +161,14 @@ struct ProviderInfo_OpenVINO_Impl : ProviderInfo_OpenVINO {
 struct OpenVINO_Provider : Provider {
   void* GetInfo() override { return &g_info; }
 
-  std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory(const void* void_params) override {
-    auto& params = *reinterpret_cast<const OrtOpenVINOProviderOptions*>(void_params);
-    return std::make_shared<OpenVINOProviderFactory>(params.device_type, params.enable_vpu_fast_compile,
-                                                     params.device_id, params.num_of_threads,
-                                                     params.cache_dir,
-                                                     params.context, params.enable_opencl_throttling,
-                                                     params.enable_dynamic_shapes);
-  }
+  // std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory(const void* void_params) override {
+  //   auto& params = *reinterpret_cast<const OrtOpenVINOProviderOptions*>(void_params);
+  //   return std::make_shared<OpenVINOProviderFactory>(params.device_type, params.enable_vpu_fast_compile,
+  //                                                    params.device_id, params.num_of_threads,
+  //                                                    params.cache_dir, params.num_streams,
+  //                                                    params.context, params.enable_opencl_throttling,
+  //                                                    params.enable_dynamic_shapes);
+  // }
 
   void Initialize() override {
   }

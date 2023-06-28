@@ -56,6 +56,7 @@ class OVCore {
   ov::Core& Get() {
     return oe;
   }
+  void SetStreams(const std::string& device_type, int num_streams);
 };
 
 class OVExeNetwork {

@@ -35,6 +35,7 @@ class BasicBackend : public IBackend {
   void PopulateConfigValue(ov::AnyMap& device_config);
   void EnableCaching();
   void EnableGPUThrottling(ov::AnyMap& device_config);
+  void EnableStreams();
   void StartAsyncInference(Ort::KernelContext& context, std::shared_ptr<OVInferRequest> infer_request);
 
 #ifdef IO_BUFFER_ENABLED

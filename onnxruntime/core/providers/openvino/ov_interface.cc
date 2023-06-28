@@ -79,6 +79,10 @@ std::vector<std::string> OVCore::GetAvailableDevices() {
   return obj;
 }
 
+void OVCore::SetStreams(const std::string& device_type, int num_streams) {
+  oe.set_property(device_type, {ov::num_streams(num_streams)});
+}
+
 OVInferRequest OVExeNetwork::CreateInferRequest() {
   try {
     auto infReq = obj.create_infer_request();

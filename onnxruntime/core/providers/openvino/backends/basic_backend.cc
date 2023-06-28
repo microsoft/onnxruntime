@@ -37,6 +37,11 @@ BasicBackend::BasicBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
   // Setting OpenCL queue throttling for GPU
   EnableGPUThrottling(device_config);
 
+
+  // Enable streams; default=1 unless ovverriden by user config
+  EnableStreams();
+
+
 #ifndef NDEBUG
   if (IsDebugEnabled()) {
     std::string file_name = subgraph_context.subgraph_name + "_static.onnx";
@@ -158,22 +163,28 @@ void BasicBackend::EnableGPUThrottling(ov::AnyMap& device_config) {
   }
 }
 
-// Starts an asynchronous inference request for data in slice indexed by batch_slice_idx on
-// an Infer Request indexed by infer_req_idx
-void BasicBackend::StartAsyncInference(Ort::KernelContext& context, OVInferRequestPtr infer_request) {
-  try {
-    auto graph_input_info = exe_network_.Get().inputs();
-    int input_idx = 0;
-    for (auto input_info_iter = graph_input_info.begin();
-         input_info_iter != graph_input_info.end(); ++input_info_iter) {
-      auto input_names = input_info_iter->get_names();
-      std::string onnx_input_name;
-      std::string input_name;
-      // use names retrieved from original ONNX model to assign the right onnx input name for the graph
-      for (auto it = subgraph_context_.input_names.begin(); it != subgraph_context_.input_names.end(); ++it) {
-        if (it->second == input_idx) {
-          onnx_input_name = it->first;
-          break;
+void BasicBackend::EnableStreams() {
+  global_context_.ie_core.SetStreams(global_context_.device_type, global_context_.num_streams);
+}
+
+
+  // Starts an asynchronous inference request for data in slice indexed by batch_slice_idx on
+  // an Infer Request indexed by infer_req_idx
+  void BasicBackend::StartAsyncInference(Ort::KernelContext & context, OVInferRequestPtr infer_request) {
+    try {
+      auto graph_input_info = exe_network_.Get().inputs();
+      int input_idx = 0;
+      for (auto input_info_iter = graph_input_info.begin();
+           input_info_iter != graph_input_info.end(); ++input_info_iter) {
+        auto input_names = input_info_iter->get_names();
+        std::string onnx_input_name;
+        std::string input_name;
+        // use names retrieved from original ONNX model to assign the right onnx input name for the graph
+        for (auto it = subgraph_context_.input_names.begin(); it != subgraph_context_.input_names.end(); ++it) {
+          if (it->second == input_idx) {
+            onnx_input_name = it->first;
+            break;
+          }
         }
       }
       // using the input name retrieved from ONNX original to match with the input names returned by OV tensors

@@ -73,6 +73,7 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
     status = create_not_supported_status();
 #endif
   } else if (strcmp(provider_name, "QNN") == 0) {
+  // if (strcmp(provider_name, "QNN") == 0) {
 #if defined(USE_QNN)
     options->provider_factories.push_back(QNNProviderFactoryCreator::Create(provider_options, &(options->value)));
 #else

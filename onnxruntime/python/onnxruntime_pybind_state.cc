@@ -792,24 +792,29 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
           // params.device_type = openvino_device_type.c_str();
           continue;
         } else if (option.first == "enable_vpu_fast_compile") {
-          if !(option.second == "True" || option.second == "true" ||
-              option.second == "False" || option.second == "false") {
+          if (!(option.second == "True" || option.second == "true" ||
+              option.second == "False" || option.second == "false")) {
             ORT_THROW("Invalid value passed for enable_vpu_fast_compile: ", option.second);
           }
         } else if (option.first == "enable_opencl_throttling") {
-          if !(option.second == "True" || option.second == "true" ||
-              option.second == "False" || option.second == "false") {
+          if (!(option.second == "True" || option.second == "true" ||
+              option.second == "False" || option.second == "false")) {
             ORT_THROW("Invalid value passed for enable_opencl_throttling: ", option.second);
           }
         } else if (option.first == "enable_dynamic_shapes") {
-          if !(option.second == "True" || option.second == "true" ||
-              option.second == "False" || option.second == "false") {
+          if (!(option.second == "True" || option.second == "true" ||
+              option.second == "False" || option.second == "false")) {
             ORT_THROW("Invalid value passed for enable_dynamic_shapes: ", option.second);
           }
         } else if (option.first == "device_id") {
-          params.device_id = option.second.c_str();
+          continue;
+          // params.device_id = option.second.c_str();
         } else if (option.first == "num_of_threads") {
-          params.num_of_threads = std::stoi(option.second);
+          // params.num_of_threads = std::stoi(option.second);
+          continue;
+        } else if (option.first == "num_streams") {
+          // params.num_streams = std::stoi(option.second);
+          continue;
         } else if (option.first == "cache_dir") {
           // cache_dir = option.second;
           // params.cache_dir = cache_dir.c_str();
@@ -822,8 +827,9 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
         }
       }
     }
-
-    if (std::shared_ptr<IExecutionProviderFactory> openvino_provider_factory = onnxruntime::OpenVINOProviderFactoryCreator::Create(provider_options_map)) {
+    auto cit = provider_options_map.find(type);
+    if (std::shared_ptr<IExecutionProviderFactory> openvino_provider_factory = onnxruntime::OpenVINOProviderFactoryCreator::Create(
+      cit == provider_options_map.end() ? ProviderOptions{} : cit->second)) {
       auto p = openvino_provider_factory->CreateProvider();
       // Reset global variables config to avoid it being accidentally passed on to the next session
       openvino_device_type.clear();
