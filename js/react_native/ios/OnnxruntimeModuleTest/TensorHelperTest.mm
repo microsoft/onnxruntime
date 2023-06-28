@@ -66,9 +66,9 @@ static void testCreateInputTensorT(const std::array<T, 3> &outValues, std::funct
 }
 
 - (void)testCreateInputTensorFloat {
-  std::array<float_t, 3> outValues{std::numeric_limits<float_t>::min(), 2.0f, std::numeric_limits<float_t>::max()};
-  std::function<NSNumber *(float_t value)> convert = [](float_t value) { return [NSNumber numberWithFloat:value]; };
-  testCreateInputTensorT<float_t>(outValues, convert, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, JsTensorTypeFloat);
+  std::array<float, 3> outValues{std::numeric_limits<float>::min(), 2.0f, std::numeric_limits<float>::max()};
+  std::function<NSNumber *(float value)> convert = [](float value) { return [NSNumber numberWithFloat:value]; };
+  testCreateInputTensorT<float>(outValues, convert, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, JsTensorTypeFloat);
 }
 
 - (void)testCreateInputTensorDouble {
@@ -241,10 +241,10 @@ static void testCreateOutputTensorT(const std::array<T, 5> &outValues, std::func
 }
 
 - (void)testCreateOutputTensorFloat {
-  std::array<float_t, 5> outValues{std::numeric_limits<float_t>::min(), 1.0f, 2.0f, 3.0f,
-                                   std::numeric_limits<float_t>::max()};
-  std::function<NSNumber *(float_t value)> convert = [](float_t value) { return [NSNumber numberWithFloat:value]; };
-  testCreateOutputTensorT<float_t>(outValues, convert, JsTensorTypeFloat, @"test_types_float", @"ort");
+  std::array<float, 5> outValues{std::numeric_limits<float>::min(), 1.0f, 2.0f, 3.0f,
+                                 std::numeric_limits<float>::max()};
+  std::function<NSNumber *(float value)> convert = [](float value) { return [NSNumber numberWithFloat:value]; };
+  testCreateOutputTensorT<float>(outValues, convert, JsTensorTypeFloat, @"test_types_float", @"ort");
 }
 
 - (void)testCreateOutputTensorDouble {

@@ -58,7 +58,7 @@ stages:
       TODAY: $[format('{0:dd}{0:MM}{0:yyyy}', pipeline.startTime)]
       PROTO_CACHE_DIR: '$(Pipeline.Workspace)/ccache_proto'
       ORT_CACHE_DIR: '$(Pipeline.Workspace)/ccache_ort'
-    timeoutInMinutes: 150
+    timeoutInMinutes: 180
     steps:
     - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
       displayName: Clean Agent Directories
@@ -268,9 +268,9 @@ stages:
       displayName: Bootstrap Android and iOS e2e tests
 
     - script: |
-        # # Mobile build:
-        # # ORT_MOBILE_C_LOCAL_POD_PATH=$(Build.BinariesDirectory)/staging/onnxruntime-mobile-c \
-        # ORT_C_LOCAL_POD_PATH=$(Build.BinariesDirectory)/staging/onnxruntime-c \
+        # Mobile build:
+        # ORT_MOBILE_C_LOCAL_POD_PATH=$(Build.BinariesDirectory)/staging/onnxruntime-mobile-c \
+        ORT_C_LOCAL_POD_PATH=$(Build.BinariesDirectory)/staging/onnxruntime-c \
         pod install
       workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e/ios'
       displayName: Pod install for onnxruntime react native ios e2e tests
