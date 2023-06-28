@@ -135,10 +135,12 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
       transformers.emplace_back(std::make_unique<QDQFusion>(compatible_eps));
 
 #if defined(USE_CUDA) || defined(USE_ROCM)
-      // We are supposed to use execution provider as indicator, but here we don't have access to the registered EP at this point
+      // We are supposed to use the execution provider as an indicator,
+      //  but here we don't have access to the registered EP at this point
       // as the session is not initialized yet. So using macro for now.
       transformers.emplace_back(std::make_unique<BiasGeluFusion>(compatible_eps));
       transformers.emplace_back(std::make_unique<IsInfReduceSumFusion>(compatible_eps));
+      transformers.emplace_back(std::make_unique<ScaledSumFusion>(compatible_eps));  // No CPU kernel for ScaledSumFusion
 #endif
 
       if (config.enable_gelu_approximation) {
@@ -153,7 +155,7 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
       // potentially will optimize out some nodes defined in the subgraph patterns. So we put it after ReshapeFusion.
       transformers.emplace_back(std::make_unique<ShapeOptimizer>(compatible_eps));
       transformers.emplace_back(std::make_unique<ConcatSliceElimination>(compatible_eps));
-      transformers.emplace_back(std::make_unique<ScaledSumFusion>(compatible_eps));
+
       if (config.gelu_recompute) {
         transformers.emplace_back(std::make_unique<GeluRecompute>());
       }
