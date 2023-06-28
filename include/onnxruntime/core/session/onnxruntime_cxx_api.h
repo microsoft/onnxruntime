@@ -1385,7 +1385,7 @@ struct Value : detail::ValueImpl<OrtValue> {
    * \param value - the value to be wrapped.
    */
   template <typename T>
-  static Value CreateOpaque(const char* domain, const char* type_name, const T&);  ///< Wraps OrtApi::CreateOpaqueValue
+  static Value CreateOpaque(const char* domain, const char* type_name, const T& value);  ///< Wraps OrtApi::CreateOpaqueValue
 
 #if !defined(DISABLE_SPARSE_TENSORS)
   /// <summary>
