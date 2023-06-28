@@ -20,9 +20,9 @@ const validateInputs = (inputs: readonly TensorView[]): void => {
 };
 
 export interface ReduceAttributes extends AttributeWithCacheKey {
-  axes: number[];
   keepDims: boolean;
   noopWithEmptyAxes: boolean;
+  axes: number[];
 }
 
 type ReduceOp = (inputs: readonly TensorView[], axes: number[]) => string[];
