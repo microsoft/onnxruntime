@@ -120,13 +120,15 @@ const createReduceAttributesFromInput = (input: TensorView, attributes: ReduceAt
 const createReduceProgramInfoLoader =
     (inputs: readonly TensorView[], name: string, attributes: ReduceAttributes, reduceOp: ReduceOp):
         ProgramInfoLoader => {
-          const metadata: ProgramMetadata = {name, inputTypes: [GpuDataType.default], cacheHint: attributes.cacheKey};
+          const updatedAttributes: ReduceAttributes =
+              inputs.length === 1 ? attributes : createReduceAttributesFromInput(inputs[1], attributes);
+          const metadata:
+              ProgramMetadata = {name, inputTypes: [GpuDataType.default], cacheHint: updatedAttributes.cacheKey};
           return {
             ...metadata,
             get: () => createReduceProgramInfo(
-                metadata, [inputs[0]],
-                (inputs.length === 1) ? attributes : createReduceAttributesFromInput(inputs[1], attributes),
-                attributes.noopWithEmptyAxes && attributes.axes.length === 0 ? noOp : reduceOp)
+                metadata, [inputs[0]], updatedAttributes,
+                updatedAttributes.noopWithEmptyAxes && updatedAttributes.axes.length === 0 ? noOp : reduceOp)
           };
         };
 
