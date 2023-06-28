@@ -377,7 +377,7 @@ endif()
 
 # Disable training ops test for minimal build as a lot of these depend on loading an onnx model.
 if (NOT onnxruntime_MINIMAL_BUILD)
-  if (onnxruntime_ENABLE_TRAINING_CORE)
+  if (onnxruntime_ENABLE_TRAINING_OPS)
     file(GLOB_RECURSE orttraining_test_trainingops_cpu_src CONFIGURE_DEPENDS
       "${ORTTRAINING_SOURCE_DIR}/test/training_ops/compare_provider_test_utils.cc"
       "${ORTTRAINING_SOURCE_DIR}/test/training_ops/function_op_test_utils.cc"

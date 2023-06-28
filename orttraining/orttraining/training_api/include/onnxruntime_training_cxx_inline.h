@@ -175,6 +175,12 @@ inline CheckpointState CheckpointState::LoadCheckpoint(const std::basic_string<O
   return CheckpointState(checkpoint_state);
 }
 
+inline CheckpointState CheckpointState::LoadCheckpointFromBuffer(const std::vector<uint8_t>& buffer) {
+  OrtCheckpointState* checkpoint_state;
+  ThrowOnError(GetTrainingApi().LoadCheckpointFromBuffer(buffer.data(), buffer.size(), &checkpoint_state));
+  return CheckpointState(checkpoint_state);
+}
+
 inline void CheckpointState::SaveCheckpoint(const CheckpointState& checkpoint_states,
                                             const std::basic_string<ORTCHAR_T>& path_to_checkpoint,
                                             const bool include_optimizer_state) {

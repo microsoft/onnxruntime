@@ -11,7 +11,7 @@ namespace test {
 TEST(TensorGenerator, DiscreteFloat) {
   FixedPatternValueGenerator random{};
   const std::vector<int64_t> shape = {2, 3};
-  std::vector<float> data = random.Discrete<float>(shape, {-1.f, 0.f, 1.f});
+  std::vector<float> data = random.Discrete<float>(shape, AsSpan({-1.f, 0.f, 1.f}));
 
   ASSERT_EQ(data.size(), static_cast<size_t>(6));
   for (float value : data) {
@@ -22,7 +22,7 @@ TEST(TensorGenerator, DiscreteFloat) {
 TEST(TensorGenerator, DiscreteInt) {
   FixedPatternValueGenerator random{};
   const std::vector<int64_t> shape = {2, 3};
-  std::vector<int> data = random.Discrete<int>(shape, {-1, 0, 1});
+  std::vector<int> data = random.Discrete<int>(shape, AsSpan({-1, 0, 1}));
 
   ASSERT_EQ(data.size(), static_cast<size_t>(6));
   for (int value : data) {
@@ -34,7 +34,7 @@ TEST(TensorGenerator, DiscreteInt) {
 TEST(TensorGenerator, CircularFloat) {
   FixedPatternValueGenerator random{};
   const std::vector<int64_t> shape = {3, 2};
-  std::vector<float> data = random.Circular<float>(shape, {-1.f, 0.f, 1.f});
+  std::vector<float> data = random.Circular<float>(shape, AsSpan({-1.f, 0.f, 1.f}));
 
   ASSERT_EQ(data.size(), static_cast<size_t>(6));
   EXPECT_EQ(data[0], -1.f);
@@ -48,7 +48,7 @@ TEST(TensorGenerator, CircularFloat) {
 TEST(TensorGenerator, CircularInt) {
   FixedPatternValueGenerator random{};
   const std::vector<int64_t> shape = {3, 2};
-  std::vector<int> data = random.Circular<int>(shape, {-1, 0, 1});
+  std::vector<int> data = random.Circular<int>(shape, AsSpan({-1, 0, 1}));
 
   ASSERT_EQ(data.size(), static_cast<size_t>(6));
   EXPECT_EQ(data[0], -1);
@@ -62,7 +62,7 @@ TEST(TensorGenerator, CircularInt) {
 TEST(TensorGenerator, CircularBool) {
   FixedPatternValueGenerator random{};
   const std::vector<int64_t> shape = {3, 2};
-  std::vector<bool> data = random.Circular<bool>(shape, {false, true});
+  std::vector<bool> data = random.Circular<bool>(shape, AsSpan({false, true}));
 
   ASSERT_EQ(data.size(), static_cast<size_t>(6));
   EXPECT_EQ(data[0], false);
