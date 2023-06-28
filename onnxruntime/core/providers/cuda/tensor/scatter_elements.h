@@ -1,5 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
+
 #pragma once
 
 #include "core/providers/shared_library/provider_api.h"

@@ -61,12 +61,13 @@ Status GraphInputsAreExpected(gsl::span<std::string> actual_graph_inputs,
 
 std::unique_ptr<OptimizerAlgorithmBase> OptimizerAlorithmFactory::CreateInstance(
     const std::string& optim_path_or_bytes, int32_t& group_count) {
+  std::map<std::pair<std::string, std::string>, int32_t> opt_type_to_freq_map;
+#if !defined(ORT_MINIMAL_BUILD)
   std::shared_ptr<Model> model;
   ORT_ENFORCE(Model::Load(ToWideString(optim_path_or_bytes), model, nullptr,
                           logging::LoggingManager::DefaultLogger())
                   .IsOK());
   Graph& graph = model->MainGraph();
-  std::map<std::pair<std::string, std::string>, int32_t> opt_type_to_freq_map;
   for (auto& node : graph.Nodes()) {
     if (node.Domain() == kMSDomain && (node.OpType() == "AdamWOptimizer" || node.OpType() == "SGDOptimizerV2")) {
       auto domain_type_pair = std::make_pair(node.Domain(), node.OpType());
@@ -77,6 +78,14 @@ std::unique_ptr<OptimizerAlgorithmBase> OptimizerAlorithmFactory::CreateInstance
       opt_type_to_freq_map[domain_type_pair] += 1;
     }
   }
+#else
+  // TODO (baijumeswani): Figure out the best way to extract the optimizer type
+  // from the model (either onnx model or ort format model) or from the checkpoint.
+  // For now, assume that the optimizer type is AdamWOptimizer in a minimal build.
+  ORT_UNUSED_PARAMETER(optim_path_or_bytes);
+
+  opt_type_to_freq_map[std::make_pair(kMSDomain, "AdamWOptimizer")] = 1;
+#endif
 
   ORT_ENFORCE(opt_type_to_freq_map.size() == 1U, "Only support one type of optimizer algorithm, but got: " +
                                                      std::to_string(opt_type_to_freq_map.size()));
@@ -189,7 +198,7 @@ Optimizer::Optimizer(const std::string& optim_path_or_bytes,
                      const Environment& env,
                      const std::vector<std::shared_ptr<IExecutionProvider>>& providers)
     : optim_sess_(std::make_unique<InferenceSession>(session_options, env)), state_(state) {
-  Initialize(optim_path_or_bytes, session_options, env, providers);
+  Initialize(optim_path_or_bytes, providers);
 
   ORT_ENFORCE(state != nullptr, "Checkpoint state cannot be null.");
   auto g_it = state_->optimizer_checkpoint_state.group_named_optimizer_states.find(GROUP_ZERO_NAME);
@@ -206,11 +215,7 @@ Optimizer::Optimizer(const std::string& optim_path_or_bytes,
 }
 
 void Optimizer::Initialize(const std::string& optim_path_or_bytes,
-                           const onnxruntime::SessionOptions& session_options,
-                           const Environment& env,
                            const std::vector<std::shared_ptr<IExecutionProvider>>& providers) {
-  optim_sess_ = std::make_unique<InferenceSession>(session_options, env);
-
   for (const auto& execution_provider : providers) {
     ORT_THROW_IF_ERROR(optim_sess_->RegisterExecutionProvider(execution_provider));
   }
