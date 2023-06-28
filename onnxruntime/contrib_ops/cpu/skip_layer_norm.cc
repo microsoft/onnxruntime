@@ -48,6 +48,11 @@ Status SkipLayerNorm<T>::Compute(OpKernelContext* p_ctx) const {
   const auto& skip_dims = skip->Shape().GetDims();
   size_t skip_dims_size = skip_dims.size();
 
+  if (input->Shape() != skip->Shape() || skip_dims[0] != 1) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "skip is expected to have same shape as input or a batch size of 1");
+  }
+
   if (input_dims_size != 3 && input_dims_size != 2) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "input is expected to have 3 or 2 dimensions, got ", input_dims_size);
