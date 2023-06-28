@@ -3,7 +3,7 @@
 
 #include "internal_testing_execution_provider.h"
 
-#include "core/framework/allocatormgr.h"
+#include "core/framework/allocator_utils.h"
 #include "core/framework/compute_capability.h"
 #include "core/framework/feeds_fetches_manager.h"
 #include "core/framework/op_kernel_context_internal.h"

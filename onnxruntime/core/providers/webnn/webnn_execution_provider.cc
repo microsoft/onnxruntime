@@ -4,7 +4,6 @@
 
 #include "webnn_execution_provider.h"
 
-#include "core/framework/allocatormgr.h"
 #include "core/framework/compute_capability.h"
 #include "core/framework/memcpy.h"
 #include "core/framework/kernel_registry.h"
