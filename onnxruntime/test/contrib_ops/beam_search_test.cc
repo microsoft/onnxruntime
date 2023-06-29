@@ -116,6 +116,18 @@ TEST(BeamSearchTest, GptBeamSearchFp16) {
   RunBeamSearchTest(ORT_TSTR("testdata/transformers/tiny_gpt2_beamsearch_fp16.onnx"));
 }
 
+TEST(BeamSearchTest, GptBeamSearchFp16DecoderMaskedSelfAttention) {
+  // The ONNX model is generated like the following:
+  // python convert_generation.py --model_type gpt2 -m hf-internal-testing/tiny-random-gpt2
+  //        --output tiny_gpt2_beamsearch_fp16_dmsa.onnx  -p fp16 --use_gpu --max_length 20
+  //        --past_present_share_buffer --use_decoder_masked_attention
+  // (with separate_gpt2_decoder_for_init_run set to False as it is now set to True by default)
+#ifdef USE_ROCM
+  GTEST_SKIP_("ROCm EP does not support DecoderMaskedSelfAttention");
+#endif
+  RunBeamSearchTest(ORT_TSTR("testdata/transformers/tiny_gpt2_beamsearch_fp16_dmsa.onnx"));
+}
+
 TEST(BeamSearchTest, GptBeamSearchWithInitDecoderFp16) {
   // The ONNX model is generated like the following:
   // python convert_generation.py --model_type gpt2 -m hf-internal-testing/tiny-random-gpt2
