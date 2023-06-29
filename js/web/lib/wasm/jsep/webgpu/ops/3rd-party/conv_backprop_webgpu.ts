@@ -347,8 +347,10 @@ ${wIndicesHelper.i2oImpl}
 
 export const createConvTranspose2DProgramInfo =
     (inputs: readonly TensorView[], metadata: ProgramMetadata, attributes: ConvTransposeAttributes,
-     outputShape: readonly number[], hasBias: boolean): ProgramInfo => {
+     squeezeOutputShapeFunction?: (shape: readonly number[]) => number[]): ProgramInfo => {
+      const hasBias = inputs.length > 2;
       const isChannelsLast = attributes.format === 'NHWC';
+      const outputShape = attributes.outputShape;
       const batchSize = outputShape[0];
       const outWidth = outputShape[isChannelsLast ? 1 : 2];
       const outHeight = outputShape[isChannelsLast ? 2 : 3];
@@ -371,7 +373,11 @@ export const createConvTranspose2DProgramInfo =
 
       return {
         ...metadata,
-        outputs: [{dims: outputShape, dataType: inputs[0].dataType, gpuDataType: GpuDataType.default}],
+        outputs: [{
+          dims: squeezeOutputShapeFunction ? squeezeOutputShapeFunction(outputShape) : outputShape,
+          dataType: inputs[0].dataType,
+          gpuDataType: GpuDataType.default
+        }],
         dispatchGroup: () => ({x: dispatch[0], y: dispatch[1], z: dispatch[2]}),
         getShaderSource: (shaderHelper: ShaderHelper) => createConvTranspose2DOpProgramShaderSource(
             shaderHelper, inputs, attributes, outputShape, hasBias, elementsPerThread),

@@ -139,7 +139,7 @@ const validateInputs = (inputs: readonly TensorView[], attributes: ConvTranspose
   }
 
   // TODO : Need to add support for multi-dimensional conv
-  if (inputs[0].dims.length !== 4 || inputs[1].dims.length !== 4) {
+  if (inputs[0].dims.length !== 4 && inputs[0].dims.length !== 3) {
     throw new Error('currently only support 2-dimensional conv');
   }
 
@@ -148,7 +148,7 @@ const validateInputs = (inputs: readonly TensorView[], attributes: ConvTranspose
   }
 
   // FILTER_IN_CHANNEL should be equal to DATA_CHANNEL
-  const dataChannel = attributes.format === 'NHWC' ? inputs[0].dims[3] : inputs[0].dims[1];
+  const dataChannel = inputs[0].dims[attributes.format === 'NHWC' ? inputs[0].dims.length - 1 : 1];
   const filterInChannel = inputs[1].dims[0];
   if (dataChannel !== filterInChannel) {
     throw new Error('FILTER_IN_CHANNEL should be equal to DATA_CHANNEL');
@@ -213,12 +213,57 @@ const convTranspose2d =
     (context: ComputeContext, inputs: readonly TensorView[], attributes: ConvTransposeAttributes): void => {
       const adjustedAttributes = getAdjustedConvTransposeAttributes(attributes, inputs);
 
-      const outputShape = adjustedAttributes.outputShape;
-
-      context.compute(createConvTranspose2DProgramInfoLoader(inputs, adjustedAttributes, outputShape));
+      context.compute(createConvTranspose2DProgramInfoLoader(inputs, adjustedAttributes));
     };
+const convTranspose1d = (context: ComputeContext, attributes: ConvTransposeAttributes): void => {
+  // extend the input to 2D by adding H dimension
+  const isChannelLast = attributes.format === 'NHWC';
+
+  const inputs = [
+    context.inputs[0].reshape(
+        isChannelLast ?
+            // [N, W, C] -> [N, H=1, W, C]
+            [context.inputs[0].dims[0], 1, context.inputs[0].dims[1], context.inputs[0].dims[2]] :
+            // [N, C, W] -> [N, C, H=1, W]
+            [context.inputs[0].dims[0], context.inputs[0].dims[1], 1, context.inputs[0].dims[2]]),
+    //[FILTER_OUT_CHANNEL, FILTER_IN_CHANNEL, kW] -> [FILTER_OUT_CHANNEL, FILTER_IN_CHANNEL, kH=1, kW]
+    context.inputs[1].reshape([context.inputs[1].dims[0], context.inputs[1].dims[1], 1, context.inputs[1].dims[2]])
+  ];
+  if (inputs.length === 3) {
+    inputs.push(context.inputs[2]);
+  }
+  let kernelShape = attributes.kernelShape;
+  if (kernelShape.length === 0 || kernelShape[0] === 0) {
+    kernelShape = [context.inputs[1].dims[2]];
+  }
+  let dilations = attributes.dilations;
+  if (dilations.length === 0 || dilations[0] === 0) {
+    dilations = [1];
+  }
+  let strides = attributes.strides;
+  if (strides.length === 0 || strides[0] === 0) {
+    strides = [1];
+  }
+  let pads = attributes.pads;
+  if (pads.length === 0) {
+    pads = [0, 0];
+  }
+  pads = [0, attributes.pads[0], 0, attributes.pads[1]];
+  strides = [1].concat(strides);
+  dilations = [1].concat(dilations);
+  kernelShape = [1].concat(kernelShape);
+  const adjustedAttributes =
+      getAdjustedConvTransposeAttributes({...attributes, pads, strides, dilations, kernelShape}, inputs);
+  context.compute(createConvTranspose2DProgramInfoLoader(
+      inputs, adjustedAttributes,
+      outputShape => isChannelLast ? [outputShape[0], outputShape[2], outputShape[3]] : []));
+};
 
 export const convTranspose = (context: ComputeContext, attributes: ConvTransposeAttributes): void => {
   validateInputs(context.inputs, attributes);
-  convTranspose2d(context, context.inputs, attributes);
+  if (context.inputs[0].dims.length === 3) {
+    convTranspose1d(context, attributes);
+  } else {
+    convTranspose2d(context, context.inputs, attributes);
+  }
 };

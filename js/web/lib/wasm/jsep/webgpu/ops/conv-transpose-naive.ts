@@ -16,12 +16,12 @@ const createConvTranspose2DProgramMetadata = (hasBias: boolean, cacheHint: strin
 });
 
 export const createConvTranspose2DProgramInfoLoader =
-    (inputs: readonly TensorView[], attributes: ConvTransposeAttributes, outputShape: readonly number[]):
-        ProgramInfoLoader => {
-          const hasBias = inputs.length === 3;
-          const metadata = createConvTranspose2DProgramMetadata(hasBias, attributes.cacheKey);
-          return {
-            ...metadata,
-            get: () => createConvTranspose2DProgramInfo(inputs, metadata, attributes, outputShape, hasBias)
-          };
-        };
+    (inputs: readonly TensorView[], attributes: ConvTransposeAttributes,
+     squeezeOutputShapeFunction?: (shape: readonly number[]) => number[]): ProgramInfoLoader => {
+      const hasBias = inputs.length === 3;
+      const metadata = createConvTranspose2DProgramMetadata(hasBias, attributes.cacheKey);
+      return {
+        ...metadata,
+        get: () => createConvTranspose2DProgramInfo(inputs, metadata, attributes, squeezeOutputShapeFunction)
+      };
+    };
