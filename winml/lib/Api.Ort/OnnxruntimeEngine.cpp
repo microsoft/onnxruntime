@@ -428,6 +428,17 @@ HRESULT OnnxruntimeEngine::RuntimeClassInitialize(OnnxruntimeEngineFactory* engi
   return S_OK;
 }
 
+OnnxruntimeEngine::~OnnxruntimeEngine() {
+  for (auto& handle : custom_op_library_handles_) {
+    FreeLibrary((HMODULE)handle);
+  }
+}
+
+HRESULT OnnxruntimeEngine::RegisterCustomOpLibraryHandles(const std::vector<void*>& handles) {
+  custom_op_library_handles_.insert(custom_op_library_handles_.end(), handles.begin(), handles.end());
+  return S_OK;
+}
+
 HRESULT OnnxruntimeEngine::LoadModel(_In_ IModel* model) {
   Microsoft::WRL::ComPtr<IOnnxruntimeModel> onnxruntime_model;
   RETURN_IF_FAILED(model->QueryInterface(IID_PPV_ARGS(&onnxruntime_model)));
