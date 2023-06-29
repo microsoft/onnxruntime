@@ -25,6 +25,7 @@
     "test:e2e": "node ./test/e2e/run",
     "build": "node ./script/build",
     "test": "tsc --build ../scripts && node ../scripts/prepare-onnx-node-tests && node ./script/test-runner-cli",
+    "test-local": "tsc --build ../scripts && node ../scripts/prepare-onnx-node-tests && node ./script/test-runner-cli -e=node",
     "prepack": "node ./script/build && node ./script/prepack"
   },
   "keywords": [
