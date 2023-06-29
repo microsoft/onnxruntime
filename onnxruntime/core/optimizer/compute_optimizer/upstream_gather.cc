@@ -381,11 +381,6 @@ std::optional<SliceInfo> IsSupportedSlice(Graph& graph, Node& node,
     return std::nullopt;
   }
 
-  if (!graph_utils::IsConstantInitializer(graph, current_node.InputDefs()[1]->Name())) {
-    LOG_DEBUG_INFO(logger, "Skip handle the Reshape, because the new shape is not constant.");
-    return false;
-  }
-
   // Try to parse the 'axes' value.
   int axis = 0;
   if (axes_input) {
