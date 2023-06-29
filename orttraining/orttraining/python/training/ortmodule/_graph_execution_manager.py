@@ -601,7 +601,7 @@ class GraphExecutionManager(GraphExecutionInterface):
         stat += f"Please enable INFO level logging with DebugOptions to view all warnings and errors.{_logger.LogColor.ENDC}\n\n"
 
         # Collect ORTModule overheads for different phases.
-        stat += f"{self._time_tracker.to_string(self._logger.level < LogLevel.WARNING)}\n"
+        stat += f"{self._time_tracker.to_string(self._debug_options.logging.log_level < LogLevel.WARNING)}\n"
 
         stat += f"Versions: ONNX Runtime - {onnxruntime.__version__}, ONNX - {onnx.__version__}\n\n"
         stat += f"{_logger.LogColor.HEADER}************************************************************************{_logger.LogColor.ENDC}\n\n"
