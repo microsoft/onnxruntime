@@ -107,8 +107,9 @@ See more information on the TensorRT Execution Provider [here](../execution-prov
    * To use open-sourced [onnx-tensorrt](https://github.com/onnx/onnx-tensorrt/tree/main) parser instead, add `--use_tensorrt_oss_parser` parameter in build commands below.
        * The default version of open-sourced onnx-tensorrt parser is encoded in [cmake/deps.txt](https://github.com/microsoft/onnxruntime/blob/main/cmake/deps.txt).
        * To specify a different version of onnx-tensorrt parser:
-         * update the commit link for the [onnx-tensorrt repository](https://github.com/onnx/onnx-tensorrt/commits/release/8.6-EA);
-         * run `sha1sum` command on the onnx-tensorrt zip file to acquire the SHA1 hash and update [deps.txt](https://github.com/microsoft/onnxruntime/blob/main/cmake/deps.txt).
+         * Select the commit of [onnx-tensorrt](https://github.com/onnx/onnx-tensorrt/commits) that you preferred;
+         * Run `sha1sum` command with downloaded onnx-tensorrt zip file to acquire the SHA1 hash 
+         * Update [cmake/deps.txt](https://github.com/microsoft/onnxruntime/blob/main/cmake/deps.txt) with updated onnx-tensorrt commit and hash info.
 
 ### Build Instructions
 {: .no_toc }
