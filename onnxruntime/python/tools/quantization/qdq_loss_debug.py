@@ -23,15 +23,10 @@ Example Usage:
 
     input_data_reader = ExampleDataReader()
 
-    aug_model = modify_model_output_intermediate_tensors (path_to_onnx_model)
     augmented_model_path = str(Path(self._tmp_model_dir.name).joinpath("augmented_model.onnx"))
-    onnx.save(
-        aug_model,
-        augmented_model_path,
-        save_as_external_data=False,
-    )
+    modify_model_output_intermediate_tensors (path_to_onnx_model, augmented_model_path)
 
-    tensor_dict = collect_activations(augmented_model_path, data_reader)
+    tensor_dict = collect_activations(augmented_model_path, input_data_reader)
 ```
 
 `tensor_dict` points to a dictionary where the keys are tensor names and each value
@@ -47,7 +42,7 @@ from typing import Callable, Dict, List, Optional, Sequence, Union
 
 import numpy
 import onnx
-from onnx import ModelProto, TensorProto, helper, numpy_helper
+from onnx import TensorProto, helper, numpy_helper
 
 import onnxruntime
 
@@ -58,9 +53,8 @@ from .quant_utils import (
     DEQUANT_OUTPUT_SUFFIX,
     QUANT_INPUT_SUFFIX,
     TENSOR_NAME_QUANT_SUFFIX,
-    clone_model_with_shape_infer,
     find_by_name,
-    load_model,
+    load_model_with_shape_infer,
 )
 
 _TENSOR_SAVE_POSTFIX = "_ReshapedSavedOutput"
@@ -68,15 +62,18 @@ _TENSOR_SAVE_POSTFIX_LEN = len(_TENSOR_SAVE_POSTFIX)
 
 
 def modify_model_output_intermediate_tensors(
-    onnx_model: Union[str, Path, ModelProto], op_types_for_saving: Optional[Sequence[str]] = None
-) -> ModelProto:
+    input_model_path: Union[str, Path],
+    output_model_path: Union[str, Path],
+    op_types_for_saving: Optional[Sequence[str]] = None,
+    save_as_external_data: bool = False,
+) -> None:
     """Augment a given ONNX model to save node input/output tensors.
 
     Add all input/output tensors of operator nodes to model outputs
     so that their values can be retrieved for debugging purposes.
 
     Args:
-        model: An ONNX model or the path to load the model.
+        input_model: the path to load the model.
         op_types_for_saving: Operator types for which the
                 input/output should be saved. By default, saving all the
                 float32/float16 tensors.
@@ -87,12 +84,12 @@ def modify_model_output_intermediate_tensors(
 
     if op_types_for_saving is None:
         op_types_for_saving = []
-    saver = CalibraterBase(onnx_model, op_types_to_calibrate=op_types_for_saving)
-    model: ModelProto = clone_model_with_shape_infer(saver.model)
-    tensors, _ = saver.select_tensors_to_calibrate(model)
+    saver = CalibraterBase(input_model_path, op_types_to_calibrate=op_types_for_saving)
+    model_to_augment = saver.model
+    tensors, _ = saver.select_tensors_to_calibrate(model_to_augment)
     reshape_shape_name = "LinearReshape_" + str(time.time())
     reshape_shape = numpy_helper.from_array(numpy.array([-1], dtype=numpy.int64), reshape_shape_name)
-    model.graph.initializer.append(reshape_shape)
+    model_to_augment.graph.initializer.append(reshape_shape)
 
     for tensor_name in tensors:
         reshape_output = tensor_name + _TENSOR_SAVE_POSTFIX
@@ -102,10 +99,15 @@ def modify_model_output_intermediate_tensors(
             outputs=[reshape_output],
             name=reshape_output,
         )
-        model.graph.node.append(reshape_node)
+        model_to_augment.graph.node.append(reshape_node)
         reshape_output_value_info = helper.make_tensor_value_info(reshape_output, TensorProto.FLOAT, [-1])
-        model.graph.output.append(reshape_output_value_info)
-    return model
+        model_to_augment.graph.output.append(reshape_output_value_info)
+
+    onnx.save(
+        model_to_augment,
+        output_model_path,
+        save_as_external_data=save_as_external_data,
+    )
 
 
 def collect_activations(
@@ -281,8 +283,8 @@ def create_weight_matching(float_model_path: str, qdq_model_path: str) -> Dict[s
         print(qdq_weight_cmp['activation1']['dequantized'])
         ```
     """
-    float_onnx_model = ONNXModel(load_model(Path(float_model_path), need_optimize=False))
-    qdq_onnx_model = ONNXModel(load_model(Path(qdq_model_path), need_optimize=False))
+    float_onnx_model = ONNXModel(load_model_with_shape_infer(Path(float_model_path)))
+    qdq_onnx_model = ONNXModel(load_model_with_shape_infer(Path(qdq_model_path)))
 
     matched_weights: Dict[str, Dict[str, numpy.ndarray]] = {}
     initializers = qdq_onnx_model.initializer()

@@ -9,7 +9,7 @@ import itertools
 import uuid
 from enum import Enum
 from pathlib import Path
-from typing import Optional, Sequence
+from typing import Optional, Sequence, Union
 
 import numpy as np
 import onnx
@@ -17,7 +17,7 @@ from onnx import ModelProto, TensorProto, helper, numpy_helper
 
 import onnxruntime
 
-from .quant_utils import apply_plot, clone_model_with_shape_infer, load_model, smooth_distribution
+from .quant_utils import apply_plot, load_model_with_shape_infer, smooth_distribution
 
 
 class CalibrationMethod(Enum):
@@ -49,27 +49,25 @@ class CalibrationDataReader(metaclass=abc.ABCMeta):
 class CalibraterBase:
     def __init__(
         self,
-        model,
+        model_path: Union[str, Path],
         op_types_to_calibrate: Optional[Sequence[str]] = None,
         augmented_model_path="augmented_model.onnx",
         symmetric=False,
         use_external_data_format=False,
     ):
         """
-        :param model: ONNX model to calibrate. It can be a ModelProto or a model path
+        :param model_path: ONNX model to calibrate. It should be a model file path
         :param op_types_to_calibrate: operator types to calibrate. By default, calibrate all the float32/float16 tensors.
         :param augmented_model_path: save augmented model to this path.
         :param symmetric: make range of tensor symmetric (central point is 0).
         :param use_external_data_format: use external data format to store model which size is >= 2Gb
         """
-        if isinstance(model, str):
-            self.model = load_model(Path(model), False)
-        elif isinstance(model, Path):
-            self.model = load_model(model, False)
-        elif isinstance(model, ModelProto):
-            self.model = model
+        if isinstance(model_path, str):
+            self.model = load_model_with_shape_infer(Path(model_path))
+        elif isinstance(model_path, Path):
+            self.model = load_model_with_shape_infer(model_path)
         else:
-            raise ValueError("model should be either model path or onnx.ModelProto.")
+            raise ValueError("model_path should be model path.")
 
         self.op_types_to_calibrate = op_types_to_calibrate
         self.augmented_model_path = augmented_model_path
@@ -99,9 +97,9 @@ class CalibraterBase:
             providers=self.execution_providers,
         )
 
-    def select_tensors_to_calibrate(self, model):
+    def select_tensors_to_calibrate(self, model: ModelProto):
         """
-        select all quantization_candidates op type nodes' input/output tensors.
+        select input/output tensors of candidate nodes to calibrate.
         returns:
             tensors (set): set of tensor name.
             value_infos (dict): tensor name to value info.
@@ -130,15 +128,15 @@ class CalibraterBase:
 
     def get_augment_model(self):
         """
-        return: augmented onnx model
+        return: augmented onnx model. Call after calling augment_graph
         """
-        return self.augment_model
+        return self.model
 
     def augment_graph(self):
         """
         abstract method: augment the input model to prepare for collecting data. It will:
-            1. save augmented model to augmented_model_path.
-            2. set the self.augment_model
+            1. augment the model to be able to collect desired statistics data
+            2. save augmented model to augmented_model_path
         """
         raise NotImplementedError
 
@@ -158,7 +156,7 @@ class CalibraterBase:
 class MinMaxCalibrater(CalibraterBase):
     def __init__(
         self,
-        model,
+        model_path: Union[str, Path],
         op_types_to_calibrate: Optional[Sequence[str]] = None,
         augmented_model_path="augmented_model.onnx",
         symmetric=False,
@@ -167,7 +165,7 @@ class MinMaxCalibrater(CalibraterBase):
         averaging_constant=0.01,
     ):
         """
-        :param model: ONNX model to calibrate. It can be a ModelProto or a model path
+        :param model_path: ONNX model to calibrate. It is a model path
         :param op_types_to_calibrate: operator types to calibrate. By default, calibrate all the float32/float16 tensors.
         :param augmented_model_path: save augmented model to this path.
         :param symmetric: make range of tensor symmetric (central point is 0).
@@ -176,7 +174,7 @@ class MinMaxCalibrater(CalibraterBase):
         :param averaging_constant: constant smoothing factor to use when computing the moving average.
         """
         super().__init__(
-            model,
+            model_path,
             op_types_to_calibrate=op_types_to_calibrate,
             augmented_model_path=augmented_model_path,
             symmetric=symmetric,
@@ -197,12 +195,10 @@ class MinMaxCalibrater(CalibraterBase):
         model and ensures their outputs are stored as part of the graph output
         :return: augmented ONNX model
         """
-        model = clone_model_with_shape_infer(self.model)
-
-        tensors, _ = self.select_tensors_to_calibrate(model)
+        tensors, _ = self.select_tensors_to_calibrate(self.model)
         reshape_shape_name = str(uuid.uuid4())
         reshape_shape = numpy_helper.from_array(np.array([1], dtype=np.int64), reshape_shape_name)
-        model.graph.initializer.append(reshape_shape)
+        self.model.graph.initializer.append(reshape_shape)
 
         def add_reduce_min_max(tensor_name, reduce_op_name):
             # When doing ReduceMax/ReduceMin, ORT can't reduce on dim with value of 0 if 'keepdims' is false.
@@ -223,19 +219,18 @@ class MinMaxCalibrater(CalibraterBase):
                 name=intermediate_output,
             )
 
-            model.graph.node.extend([reduce_node, reshape_node])
-            model.graph.output.append(helper.make_tensor_value_info(reduce_output, TensorProto.FLOAT, [1]))
+            self.model.graph.node.extend([reduce_node, reshape_node])
+            self.model.graph.output.append(helper.make_tensor_value_info(reduce_output, TensorProto.FLOAT, [1]))
 
         for tensor in tensors:
             add_reduce_min_max(tensor, "ReduceMin")
             add_reduce_min_max(tensor, "ReduceMax")
 
         onnx.save(
-            model,
+            self.model,
             self.augmented_model_path,
             save_as_external_data=self.use_external_data_format,
         )
-        self.augment_model = model
 
     def clear_collected_data(self):
         self.intermediate_outputs = []
@@ -328,7 +323,7 @@ class MinMaxCalibrater(CalibraterBase):
 class HistogramCalibrater(CalibraterBase):
     def __init__(
         self,
-        model,
+        model_path: Union[str, Path],
         op_types_to_calibrate: Optional[Sequence[str]] = None,
         augmented_model_path="augmented_model.onnx",
         use_external_data_format=False,
@@ -339,7 +334,7 @@ class HistogramCalibrater(CalibraterBase):
         percentile=99.999,
     ):
         """
-        :param model: ONNX model to calibrate. It can be a ModelProto or a model path
+        :param model_path: ONNX model to calibrate. It is a model path.
         :param op_types_to_calibrate: operator types to calibrate. By default, calibrate all the float32/float16 tensors.
         :param augmented_model_path: save augmented model to this path.
         :param use_external_data_format: use external data format to store model which size is >= 2Gb
@@ -350,7 +345,7 @@ class HistogramCalibrater(CalibraterBase):
         :param percentile: A float number between [0, 100]. Default 99.99.
         """
         super().__init__(
-            model,
+            model_path,
             op_types_to_calibrate=op_types_to_calibrate,
             augmented_model_path=augmented_model_path,
             symmetric=symmetric,
@@ -372,19 +367,16 @@ class HistogramCalibrater(CalibraterBase):
         make all quantization_candidates op type nodes as part of the graph output.
         :return: augmented ONNX model
         """
-        model = clone_model_with_shape_infer(self.model)
-
-        self.tensors_to_calibrate, value_infos = self.select_tensors_to_calibrate(model)
+        self.tensors_to_calibrate, value_infos = self.select_tensors_to_calibrate(self.model)
         for tensor in self.tensors_to_calibrate:
             if tensor not in self.model_original_outputs:
-                model.graph.output.append(value_infos[tensor])
+                self.model.graph.output.append(value_infos[tensor])
 
         onnx.save(
-            model,
+            self.model,
             self.augmented_model_path,
             save_as_external_data=self.use_external_data_format,
         )
-        self.augment_model = model
 
     def clear_collected_data(self):
         self.intermediate_outputs = []
@@ -440,7 +432,7 @@ class HistogramCalibrater(CalibraterBase):
 class EntropyCalibrater(HistogramCalibrater):
     def __init__(
         self,
-        model,
+        model_path: Union[str, Path],
         op_types_to_calibrate: Optional[Sequence[str]] = None,
         augmented_model_path="augmented_model.onnx",
         use_external_data_format=False,
@@ -450,7 +442,7 @@ class EntropyCalibrater(HistogramCalibrater):
         num_quantized_bins=128,
     ):
         """
-        :param model: ONNX model to calibrate. It can be a ModelProto or a model path
+        :param model_path: ONNX model to calibrate. It is a model path
         :param op_types_to_calibrate: operator types to calibrate. By default, calibrate all the float32/float16 tensors.
         :param augmented_model_path: save augmented model to this path.
         :param use_external_data_format: use external data format to store model which size is >= 2Gb
@@ -460,7 +452,7 @@ class EntropyCalibrater(HistogramCalibrater):
         :param num_quantized_bins: number of quantized bins. Default 128.
         """
         super().__init__(
-            model,
+            model_path,
             op_types_to_calibrate,
             augmented_model_path,
             use_external_data_format,
@@ -474,7 +466,7 @@ class EntropyCalibrater(HistogramCalibrater):
 class PercentileCalibrater(HistogramCalibrater):
     def __init__(
         self,
-        model,
+        model_path: Union[str, Path],
         op_types_to_calibrate: Optional[Sequence[str]] = None,
         augmented_model_path="augmented_model.onnx",
         use_external_data_format=False,
@@ -484,7 +476,7 @@ class PercentileCalibrater(HistogramCalibrater):
         percentile=99.999,
     ):
         """
-        :param model: ONNX model to calibrate. It can be a ModelProto or a model path
+        :param model_path: ONNX model to calibrate. It is a model path
         :param op_types_to_calibrate: operator types to calibrate. By default, calibrate all the float32/float16 tensors.
         :param augmented_model_path: save augmented model to this path.
         :param use_external_data_format: use external data format to store model which size is >= 2Gb
@@ -494,7 +486,7 @@ class PercentileCalibrater(HistogramCalibrater):
         :param percentile: A float number between [0, 100]. Default 99.99.
         """
         super().__init__(
-            model,
+            model_path,
             op_types_to_calibrate,
             augmented_model_path,
             use_external_data_format,
@@ -840,7 +832,7 @@ class HistogramCollector(CalibrationDataCollector):
 
 
 def create_calibrator(
-    model,
+    model: Union[str, Path],
     op_types_to_calibrate: Optional[Sequence[str]] = None,
     augmented_model_path="augmented_model.onnx",
     calibrate_method=CalibrationMethod.MinMax,

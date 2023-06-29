@@ -17,7 +17,7 @@
 #ifdef ORT_ENABLE_EXTENSIONS
 #include "onnxruntime_cxx_api.h"
 #else
-#include "onnxruntime/onnxruntime_cxx_api.h"
+#include <onnxruntime/onnxruntime_cxx_api.h>
 #endif
 
 @interface TensorHelper : NSObject

@@ -17,7 +17,6 @@
 #include "core/common/path_string.h"
 #include "core/flatbuffers/flatbuffers_utils.h"
 #include "core/flatbuffers/ort_format_version.h"
-#include "core/framework/allocatormgr.h"
 #include "core/framework/bfc_arena.h"
 #include "core/framework/error_code_helper.h"
 #include "core/framework/execution_frame.h"
@@ -113,71 +112,7 @@ inline std::basic_string<T> GetCurrentTimeString() {
 
 #if !defined(ORT_MINIMAL_BUILD)
 
-/* This method returns ture if all *compute* nodes are placed on the CUDA EP
-   and all shape nodes are placed on the CPU EP
- */
-std::pair<bool, int> AreAllComputeNodesAssignedToCudaEp(const Graph& graph) {
-  InlinedHashSet<NodeIndex> shape_nodes;
-  InlinedHashSet<NodeIndex> bfs_visited;
-  std::queue<NodeIndex> bfs_queue;
-
-  // Perform BFS to collect all nodes between all Shape -> Reshape node pairs
-  for (const auto& node : graph.Nodes()) {
-    if (node.OpType() == "Shape") {
-      for (auto iter = node.OutputNodesBegin(), end = node.OutputNodesEnd(); iter != end; ++iter) {
-        // If we haven't picked this node for BFS processing yet, then pick it up
-        if ((bfs_visited.find(iter->Index()) == bfs_visited.end())) {
-          bfs_visited.insert(iter->Index());
-          bfs_queue.push(iter->Index());
-        }
-      }
-    }
-  }
-
-  while (!bfs_queue.empty()) {
-    auto node_index = bfs_queue.front();
-    bfs_queue.pop();
-
-    const auto* node = graph.GetNode(node_index);
-
-    shape_nodes.insert(node_index);
-
-    for (auto iter = node->OutputNodesBegin(), end = node->OutputNodesEnd(); iter != end; ++iter) {
-      // If the child is not a Reshape node and we haven't processed/visited the node already,
-      // add the node for further processing
-      if (iter->OpType() != "Reshape" && (bfs_visited.find(iter->Index()) == bfs_visited.end())) {
-        bfs_visited.insert(iter->Index());
-        bfs_queue.push(iter->Index());
-      }
-    }
-  }
-
-  for (const auto& node : graph.Nodes()) {
-    const auto& node_provider = node.GetExecutionProviderType();
-
-    // This node is not partitioned to the CUDA EP
-    // Ensure that this is a shape node assigned to the CPU EP
-    if (node_provider != onnxruntime::kCudaExecutionProvider) {
-      // If this node is partitioned to any other EP other
-      // than the CPU EP, then this isn't a shape node.
-      // Empty provider string means CPU EP.
-      if (!node_provider.empty() &&
-          node_provider != onnxruntime::kCpuExecutionProvider) {
-        return std::make_pair(false, -1);
-      }
-
-      // Check if this node is a shape node - If it isn't then we
-      // have found a compute node assigned to the CPU EP
-      if (shape_nodes.find(node.Index()) == shape_nodes.end()) {
-        return std::make_pair(false, -1);
-      }
-    }
-  }
-
-  return std::make_pair(true, static_cast<int>(shape_nodes.size()));
-}
-
-bool HasControlflowNodes(const Graph& graph) {
+static bool HasControlflowNodes(const Graph& graph) {
   for (const auto& node : graph.Nodes()) {
     if (node.ContainsSubgraph()) {
       return true;
@@ -185,6 +120,75 @@ bool HasControlflowNodes(const Graph& graph) {
   }
 
   return false;
+}
+
+static bool HasMemcpyNodes(const Graph& graph) {
+  for (const auto& node : graph.Nodes()) {
+    if (node.OpType() == "MemcpyFromHost" || node.OpType() == "MemcpyToHost") {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+static bool AreAllComputeNodesAssignedToCudaEp(const Graph& graph) {
+  bool nodes_on_cpu_and_cuda_eps_only = true;
+
+  for (const auto& node : graph.Nodes()) {
+    const auto& node_provider = node.GetExecutionProviderType();
+
+    // Empty node provider means CPU EP
+    if (!node_provider.empty() &&
+        node_provider != kCudaExecutionProvider &&
+        node_provider != kCpuExecutionProvider) {
+      nodes_on_cpu_and_cuda_eps_only = false;
+      break;
+    }
+  }
+
+  // If we see nodes assigned to EPs other than CPU or CUDA
+  // (or) if there are Memcpy nodes, then all compute nodes have
+  // not been parititoned to the CUDA EP.
+  // We allow CPU EPs to show up in the EP list as long as thre is no Memcpy
+  // involved as shape subgraphs will be forced onto CPU and these will not have
+  // Memcpy nodes involved.
+  return nodes_on_cpu_and_cuda_eps_only && !HasMemcpyNodes(graph);
+}
+
+static bool AreAllNodesInMainGraphAssignedToOneEp(const Graph& graph, ProviderType provider) {
+  for (const auto& node : graph.Nodes()) {
+    const auto& node_provider = node.GetExecutionProviderType();
+
+    if (node_provider.empty() || node_provider != provider) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+static bool HasShapeSubgraphNodes(const Graph& graph) {
+  bool has_shape_nodes = false;
+  bool has_cpu_ep_nodes = false;
+
+  for (const auto& node : graph.Nodes()) {
+    if (node.OpType() == "Shape") {
+      has_shape_nodes = true;
+      break;
+    }
+  }
+
+  for (const auto& node : graph.Nodes()) {
+    const auto& node_provider = node.GetExecutionProviderType();
+
+    if (node_provider.empty() || node_provider == kCpuExecutionProvider) {
+      has_cpu_ep_nodes = true;
+      break;
+    }
+  }
+
+  return has_shape_nodes && has_cpu_ep_nodes;
 }
 
 Status GetMinimalBuildOptimizationHandling(
@@ -1446,37 +1450,6 @@ common::Status InferenceSession::Initialize() {
     }
 #endif
 
-    // Ensure all registered EPs have created their allocators and shared them where possible.
-    // Allocator creation may be delayed until IExecutionProvider::RegisterAllocator is called.
-    {
-      AllocatorManager allocator_manager;
-      for (const auto& provider : execution_providers_) {
-        provider->RegisterAllocator(allocator_manager);
-      }
-    }
-
-    // At this time we know all the providers that will be part of this session.
-    // Read shared allocators from the environment and update them in the respective providers.
-    //
-    // The reason for updating the providers is so that when the session state is created the allocators
-    // are setup appropriately keyed by OrtMemoryInfo with delegates going to the respective providers.
-    // Secondly, the GetAllocator() method inside IExecutionProvider is still used in various places, hence
-    // it doesn't make sense to just update the allocator map inside session state with these shared allocators; doing
-    // so would cause inconsistency between the allocator map inside session sate and that inside the providers.
-    // TODO: we could refactor the allocators to not require the call to GetAllocator but that change is much bigger
-    // since we've to take into account the per-thread cuda allocators.
-    // TODO (contd.) We could also possibly absorb the per-thread logic in a new allocator decorator that derives
-    // from IAllocator to keep things clean.
-    //
-    // NOTE: UpdateProvidersWithSharedAllocators is replace-only and will not insert a new allocator into the EP, so
-    // it must be called after RegisterAllocator.
-    bool use_env_allocators =
-        session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigUseEnvAllocators, "0") == "1";
-    if (use_env_allocators) {
-      LOGS(*session_logger_, INFO) << "This session will use the allocator registered with the environment.";
-      UpdateProvidersWithSharedAllocators();
-    }
-
 #ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
     TraceLoggingWriteStart(session_activity, "OrtInferenceSessionActivity");
     session_activity_started_ = true;
@@ -1493,6 +1466,13 @@ common::Status InferenceSession::Initialize() {
         session_profiler_,
         session_options_,
         prepacked_weights_container_);
+
+    bool use_env_allocators =
+        session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigUseEnvAllocators, "0") == "1";
+    if (use_env_allocators) {
+      LOGS(*session_logger_, INFO) << "This session will use the allocator registered with the environment.";
+      session_state_->UpdateAllocatorsWithEnvAllocators(environment_.GetRegisteredSharedAllocators());
+    }
 
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
     // Don't want to pollute SessionState constructor since memory profile is enabled optionally.
@@ -1578,51 +1558,82 @@ common::Status InferenceSession::Initialize() {
       // now that all the transforms are done, call Resolve on the main graph. this will recurse into the subgraphs.
       ORT_RETURN_IF_ERROR_SESSIONID_(graph.Resolve());
 
-      // Currently only the CUDA EP is considered.
+      // Currently CUDA graph is only considered by CUDA EP and TRT EP.
+      //
+      // Check for CUDA EP:
       // If the CUDA EP is part of the providers list for this session AND
       // The CUDA EP is configured to do a graph capture AND
-      // All the graph nodes have been assigned to the CUDA EP,
+      // All the "compute" graph nodes have been assigned to the CUDA EP,
       // Then the CUDA EP is cached for triggering a ReplayGraph() in Run().
-      auto* cuda_ep = execution_providers_.Get(onnxruntime::kCudaExecutionProvider);
-      if (cuda_ep && cuda_ep->IsGraphCaptureEnabled()) {
-        if (HasControlflowNodes(graph)) {
-          LOGS(*session_logger_, ERROR) << "This session cannot use the CUDA Graph feature as requested by the user "
-                                        << " as the model has control flow nodes which can't be supported by CUDA Graphs.";
+      //
+      // Check for TRT EP:
+      // If the TRT EP is part of the providers list for this session AND
+      // The TRT EP is configured to do a graph capture AND
+      // All the graph nodes have been assigned to the TRT EP,
+      // Then the TRT EP is cached for triggering a ReplayGraph() in Run().
+      std::vector<const char*> cuda_graph_support_ep_list = {onnxruntime::kTensorrtExecutionProvider, onnxruntime::kCudaExecutionProvider};
 
-          // Return error status as we don't want the session initialization to complete successfully
-          // if the user has requested usage of CUDA Graph feature and we cannot honor that.
-          ORT_RETURN_IF_ERROR_SESSIONID_(
-              ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                              "This session cannot use the CUDA Graph feature as requested by the user "
-                              " as the model has control flow nodes which can't be supported by CUDA Graphs."));
+      for (auto& it : cuda_graph_support_ep_list) {
+        auto* target_ep = execution_providers_.Get(it);
+
+        if (target_ep && target_ep->IsGraphCaptureEnabled()) {
+          // CUDA Graphs can't work with control flow nodes
+          if (HasControlflowNodes(graph)) {
+            LOGS(*session_logger_, ERROR) << "This session cannot use the CUDA Graph feature as requested by the user "
+                                          << "as the model has control flow nodes which can't be supported by CUDA Graphs.";
+
+            ORT_RETURN_IF_ERROR_SESSIONID_(
+                ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                                "This session cannot use the CUDA Graph feature as requested by the user "
+                                "as the model has control flow nodes which can't be supported by CUDA Graphs."));
+          }
+
+          if (strcmp(target_ep->Type().c_str(), onnxruntime::kCudaExecutionProvider) == 0) {
+            // Ensure that all nodes have been partitioned to CUDA or CPU EP && there are no memcpy nodes
+            // The reasoning behind this logic is that certain shape nodes will be forced onto CPU
+            // and as long as there are no memcpy nodes this is confirmation that no compute nodes have been placed on the CPU EP
+            // which is all we care about.
+            if (!AreAllComputeNodesAssignedToCudaEp(graph)) {
+              LOGS(*session_logger_, ERROR) << "This session cannot use the CUDA Graph feature as requested by the user "
+                                            << " as all compute graph nodes have not been partitioned to the CUDA EP.";
+
+              ORT_RETURN_IF_ERROR_SESSIONID_(
+                  ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                                  "This session cannot use the CUDA Graph feature as requested by the user "
+                                  " as all compute graph nodes have not been partitioned to the CUDA EP."));
+            }
+
+            // Log a warning for the user to know that there are shape subgraphs that will execute on CPU
+            if (HasShapeSubgraphNodes(graph)) {
+              LOGS(*session_logger_, WARNING) << "This model has shape massaging nodes that will execute on CPU. "
+                                              << "Use the CUDA Graph feature with caution. "
+                                              << "As long as the intermediate shapes produced in the model "
+                                              << "using the representative input used to capture the CUDA graph, "
+                                              << "will match the shapes produced in the model for other inputs "
+                                              << "of the same shape as the representative input (common case), "
+                                              << "it is safe to use the CUDA Graph feature.";
+            }
+          } else {
+            // Following code path is for TRT EP currently.
+            if (!AreAllNodesInMainGraphAssignedToOneEp(graph, target_ep->Type())) {
+              LOGS(*session_logger_, ERROR) << "This session cannot use the CUDA Graph feature as requested by the user "
+                                            << "as all the graph nodes have not been assigned to "
+                                            << target_ep->Type();
+
+              // Return error status as we don't want the session initialization to complete successfully
+              // if the user has requested usage of CUDA Graph feature and we cannot honor that.
+              ORT_RETURN_IF_ERROR_SESSIONID_(
+                  ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                                  "This session cannot use the CUDA Graph feature as requested by the user "
+                                  "as all the graph nodes have not been assigned to " +
+                                      target_ep->Type()));
+            }
+          }
+
+          LOGS(*session_logger_, INFO) << "This session will use the CUDA Graph feature as requested by the user.";
+          cached_execution_provider_for_graph_replay_.SetExecutionProvider(target_ep);
+          break;  // Make sure only one ep can run CUDA graph.
         }
-
-        auto res = AreAllComputeNodesAssignedToCudaEp(graph);
-
-        if (!res.first) {
-          LOGS(*session_logger_, ERROR) << "This session cannot use the CUDA Graph feature as requested by the user "
-                                        << " as all compute graph nodes have not been partitioned to the CUDA EP.";
-
-          // Return error status as we don't want the session initialization to complete successfully
-          // if the user has requested usage of CUDA Graph feature and we cannot honor that.
-          ORT_RETURN_IF_ERROR_SESSIONID_(
-              ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                              "This session cannot use the CUDA Graph feature as requested by the user "
-                              " as all compute graph nodes have not been partitioned to the CUDA EP."));
-        }
-
-        if (res.second > 0) {
-          LOGS(*session_logger_, WARNING) << "This model has shape massaging nodes that will execute on CPU. "
-                                          << "Use the CUDA Graph feature with caution. "
-                                          << "As long as the intermediate shapes produced in the model "
-                                          << "using the representative input used to capture the CUDA graph, "
-                                          << "will match the shapes produced in the model for other inputs "
-                                          << "of the same shape as the representative input (common case), "
-                                          << "it is safe to use the CUDA Graph feature.";
-        }
-
-        LOGS(*session_logger_, INFO) << "This session will use the CUDA Graph feature as requested by the user.";
-        cached_execution_provider_for_graph_replay_.SetExecutionProvider(cuda_ep);
       }
 
       const bool disable_cpu_ep_fallback = session_options_.config_options.GetConfigOrDefault(
@@ -1675,8 +1686,7 @@ common::Status InferenceSession::Initialize() {
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
       const auto& cpu_ep = *execution_providers_.Get(onnxruntime::kCpuExecutionProvider);
       ORT_RETURN_IF_ERROR_SESSIONID_(
-          ApplyOrtFormatModelRuntimeOptimizations(graph, *session_logger_, session_options_, optimizers_to_disable_,
-                                                  cpu_ep));
+          ApplyOrtFormatModelRuntimeOptimizations(graph, *session_logger_, session_options_, optimizers_to_disable_, cpu_ep));
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
     }
 
@@ -1707,7 +1717,20 @@ common::Status InferenceSession::Initialize() {
       if (saving_ort_format) {
         ORT_RETURN_IF_ERROR_SESSIONID_(SaveToOrtFormat(session_options_.optimized_model_filepath));
       } else {
-        ORT_RETURN_IF_ERROR_SESSIONID_(Model::Save(*model_, session_options_.optimized_model_filepath));
+        const std::string optimized_model_external_initializers_file_name =
+            session_options_.config_options.GetConfigOrDefault(
+                kOrtSessionOptionsOptimizedModelExternalInitializersFileName, "");
+        if (optimized_model_external_initializers_file_name.empty()) {
+          ORT_RETURN_IF_ERROR_SESSIONID_(Model::Save(*model_, session_options_.optimized_model_filepath));
+        } else {
+          const size_t optimized_model_external_initializers_min_size_in_bytes =
+              ParseStringWithClassicLocale<size_t>(session_options_.config_options.GetConfigOrDefault(
+                  kOrtSessionOptionsOptimizedModelExternalInitializersMinSizeInBytes, "1024"));
+          ORT_RETURN_IF_ERROR_SESSIONID_(Model::SaveWithExternalInitializers(*model_,
+                                                                             session_options_.optimized_model_filepath,
+                                                                             optimized_model_external_initializers_file_name,
+                                                                             optimized_model_external_initializers_min_size_in_bytes));
+        }
       }
     }
 
@@ -1777,18 +1800,6 @@ common::Status InferenceSession::Initialize() {
 #if defined(_MSC_VER) && !defined(__clang__)
 #pragma warning(pop)
 #endif
-
-// This method should be called from within Initialize() only and before the creation of the session state.
-// This ensures all providers have been registered in the session and the session state is consistent with the providers.
-void InferenceSession::UpdateProvidersWithSharedAllocators() {
-  const auto& provider_ids = execution_providers_.GetIds();
-  for (const auto& one_shared_alloc : environment_.GetRegisteredSharedAllocators()) {
-    for (const auto& id : provider_ids) {
-      auto* provider_ptr = execution_providers_.Get(id);
-      provider_ptr->ReplaceAllocator(one_shared_alloc);
-    }
-  }
-}
 
 int InferenceSession::GetCurrentNumRuns() const {
   return current_num_runs_.load();

@@ -160,6 +160,12 @@ class CompatRocblasMathModeSetter {
   }
 };
 
+enum AttentionType {
+  kAttention,
+  kMultiHeadAttention,
+  kDecoderMaskedMultiHeadAttention,
+};
+
 enum AttentionMode {
   // Q,K,V,PastK,PastV,PresentK,PresentV
   QFMT_KFMT_VFMT_NONE_NONE_NONE_NONE,
@@ -185,7 +191,7 @@ struct RocmAttentionParameters : AttentionParameters {
   AttentionMode mode;
 };
 
-Status ClassifyAttentionMode(const std::string& op,
+Status ClassifyAttentionMode(AttentionType type,
                              RocmAttentionParameters* attn,
                              const std::vector<const Tensor*>& qkv,
                              const std::vector<const Tensor*>& past,
