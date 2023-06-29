@@ -995,7 +995,7 @@ def get_shared_initializers(encoder_model: ModelProto, decoder_model: ModelProto
     decoder.add_prefix_to_names("d_")
     encoder.remove_duplicated_initializer(require_raw_data)
     decoder.remove_duplicated_initializer(require_raw_data)
-    initializers = remove_shared_initializers(encoder.model.graph, decoder.model.graph, "s_", require_raw_data)
+    initializers = remove_shared_initializers(decoder.model.graph, encoder.model.graph, "s_", require_raw_data)
     return initializers
 
 
