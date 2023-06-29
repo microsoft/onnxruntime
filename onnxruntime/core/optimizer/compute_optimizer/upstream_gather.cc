@@ -386,8 +386,8 @@ std::optional<SliceInfo> IsSupportedSlice(Graph& graph, Node& node,
   if (axes_input) {
     InlinedVector<int64_t> axes_values;
     if (!graph_utils::IsConstantInitializer(graph, axes_input->Name()) ||
-        optimizer_utils::AppendTensorFromInitializer(graph, *axes_input, axes_values, true) ||
-        axes_values.size() == 1) {
+        !optimizer_utils::AppendTensorFromInitializer(graph, *axes_input, axes_values, true) ||
+        axes_values.size() != 1) {
       return std::nullopt;
     }
     axis = static_cast<int>(axes_values[0]);
