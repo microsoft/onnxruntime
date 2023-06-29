@@ -988,7 +988,7 @@ def remove_shared_initializers(
     return shared_initializers_2
 
 
-def get_shared_initializers(encoder_model: ModelProto, decoder_model: ModelProto, require_raw_data=False):
+def get_shared_initializers(encoder_model: ModelProto, decoder_model: ModelProto, require_raw_data: bool = False):
     encoder = OnnxModel(encoder_model)
     decoder = OnnxModel(decoder_model)
     encoder.add_prefix_to_names("e_")

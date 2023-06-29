@@ -1092,7 +1092,7 @@ class OnnxModel:
         return op_count
 
     @staticmethod
-    def has_same_value(tensor1: TensorProto, tensor2: TensorProto, require_raw_data=False) -> bool:
+    def has_same_value(tensor1: TensorProto, tensor2: TensorProto, require_raw_data: bool = False) -> bool:
         """Returns True when two tensors have same value.
            Note that name can be different.
 
@@ -1114,7 +1114,7 @@ class OnnxModel:
 
         return (numpy_helper.to_array(tensor1) == numpy_helper.to_array(tensor2)).all()
 
-    def remove_duplicated_initializer(self, require_raw_data=False):
+    def remove_duplicated_initializer(self, require_raw_data: bool = False):
         """Remove initializers with duplicated values, and only keep the first one.
         It could help reduce size of models (like ALBert) with shared weights.
         If require_raw_data passed, method will only compare raw_data initializers to speed runtime
