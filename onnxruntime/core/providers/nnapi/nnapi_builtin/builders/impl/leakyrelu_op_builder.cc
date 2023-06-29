@@ -127,6 +127,7 @@ bool LeakyReluOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& /*initial
   // Note: We will use ANEURALNETWORKS_SELECT/LESS to simulate LeakyRelu op, ANEURALNETWORKS_SELECT/LESS has supported
   // tensor rank from 1:
   // https://developer.android.com/ndk/reference/group/neural-networks#group___neural_networks_1ggaabbe492c60331b13038e39d4207940e0a49b2dc37ea9219789a6d82f281499dbb
+  // And ANEURALNETWORKS_MUL has supported tensor rank up to 4
   if (input_shape.empty() || input_shape.size() > 4) {
     LOGS_DEFAULT(VERBOSE) << "NNAPI LeakyRelu supports tensor rank from 1-4d. Empty shape is not supported. Input is "
                           << input_shape.size() << "d shape";
