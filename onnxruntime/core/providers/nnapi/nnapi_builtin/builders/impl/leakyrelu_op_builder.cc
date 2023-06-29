@@ -62,7 +62,7 @@ Status LeakyReluOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   InlinedVector<uint32_t> input_indices;
   input_indices.push_back(operand_indices.at(input));
 
-  // Step 1: Add Less operation - Less(X, Zero)
+  // Add Less operation - Less(X, Zero)
   int count = std::accumulate(input_shape.begin(), input_shape.end(), 1, std::multiplies<int>());
   std::vector<float> zero_vec(count, 0.0f);
 
@@ -79,7 +79,7 @@ Status LeakyReluOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   ORT_RETURN_IF_ERROR(model_builder.AddOperation(ANEURALNETWORKS_LESS,
                                                  input_indices, {less_output_name}, {less_output_operand_type}));
 
-  // Step 2: Add Mul operation - Mul(Alpha, X)
+  // Add Mul operation - Mul(Alpha, X)
   input_indices.clear();
   std::vector<float> alpha_vec(count);
   std::fill(alpha_vec.begin(), alpha_vec.end(), alpha);
@@ -103,7 +103,7 @@ Status LeakyReluOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   ORT_RETURN_IF_ERROR(model_builder.AddOperation(ANEURALNETWORKS_MUL, input_indices,
                                                  {mul_output_name}, {mul_output_operand_type}));
 
-  // Step 3: Add Select Operation - Select(XLessThanZero, AlphaMulX, X)
+  // Add Select Operation - Select(XLessThanZero, AlphaMulX, X)
   input_indices.clear();
   input_indices.push_back(operand_indices.at(less_output_name));
   input_indices.push_back(operand_indices.at(mul_output_name));
