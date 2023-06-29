@@ -16,7 +16,7 @@ from ._execution_agent import InferenceAgent
 from ._fallback import ORTModuleFallbackException, _FallbackManager, _FallbackPolicy
 from ._graph_execution_manager import GraphExecutionManager, _RunStateInfo
 from ._logger import TimeTrackerPhase, TrackTime
-from ._utils import save_tuning_results
+from ._utils import save_tuning_results, set_tuning_results
 from .options import DebugOptions, _SkipCheck
 
 
@@ -176,8 +176,14 @@ class InferenceManager(GraphExecutionManager):
                 *prepared_input_list,
             )
 
-            if create_execution_session:
-                save_tuning_results(self._execution_agent._inference_session, False)
+            if (
+                create_execution_session
+                and self._runtime_options.enable_tuning
+                and self._runtime_options.tuning_results_path
+            ):
+                save_tuning_results(
+                    self._execution_agent._inference_session, False, self._runtime_options.tuning_results_path
+                )
 
             return _io.unflatten_user_output(self._module_output_schema, user_outputs)
         except ORTModuleFallbackException as e:
@@ -216,3 +222,8 @@ class InferenceManager(GraphExecutionManager):
         self._execution_agent = InferenceAgent(
             self._onnx_models.optimized_model.SerializeToString(), session_options, providers, provider_options
         )
+
+        if not self._runtime_options.enable_tuning and self._runtime_options.tuning_results_path:
+            set_tuning_results(
+                self._execution_agent._inference_session, False, self._runtime_options.tuning_results_path
+            )

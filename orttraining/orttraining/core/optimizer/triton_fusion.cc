@@ -162,11 +162,12 @@ TritonFusionConfig::TritonFusionConfig(std::string_view config_json) {
 
 bool TritonFusionConfig::IsSupported(const Graph& graph, const Node& node) const {
   const auto& op_type = node.OpType();
-  if (ops.find(op_type) == ops.end()) {
+  auto it = ops.find(op_type);
+  if (it == ops.end()) {
     return false;
   }
 
-  const auto& op_info = ops.at(op_type);
+  const auto& op_info = it->second;
   if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, op_type, op_info.versions, op_info.domain)) {
     return false;
   }

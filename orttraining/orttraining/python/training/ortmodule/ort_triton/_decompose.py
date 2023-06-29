@@ -17,6 +17,10 @@ from onnx import GraphProto, NodeProto, TensorProto, helper
 from ._utils import get_attribute, get_reduce_info, to_numpy_type
 
 
+def _is_half_dtype(dtype: int):
+    return dtype in [TensorProto.FLOAT16, TensorProto.BFLOAT16]
+
+
 class DecomposeDispatch:
     """
     A node does only responsible for a single computation or a type of triton ops.
@@ -57,7 +61,7 @@ class DecomposeDispatch:
     def _decompose_elementwise_precision(self, node: NodeProto, graph: GraphProto, **kwargs):
         x = node.input[0]
         dtype, _ = self._get_dtype_and_shape(x, **kwargs)
-        if dtype != TensorProto.FLOAT16 and dtype != TensorProto.BFLOAT16:
+        if not _is_half_dtype(dtype):
             return [node]
         node_name = node.name
         y = node.output[0]
@@ -66,7 +70,7 @@ class DecomposeDispatch:
         cast_nodes = []
         for idx, input in enumerate(inputs):
             dtype, _ = self._get_dtype_and_shape(input, **kwargs)
-            if dtype == TensorProto.FLOAT16 or dtype == TensorProto.BFLOAT16:
+            if _is_half_dtype(dtype):
                 cast_node, cast_out = self._new_node(node_name, "Cast", [input], to=TensorProto.FLOAT)
                 cast_nodes.append(cast_node)
                 inputs[idx] = cast_out
@@ -95,8 +99,8 @@ class DecomposeDispatch:
         epsilon = get_attribute(node, "epsilon", 1e-05)
         xdtype, shape = self._get_dtype_and_shape(x, **kwargs)
         wdtype, _ = self._get_dtype_and_shape(w, **kwargs)
-        is_x_half = xdtype == TensorProto.FLOAT16 or xdtype == TensorProto.BFLOAT16
-        is_w_half = wdtype == TensorProto.FLOAT16 or wdtype == TensorProto.BFLOAT16
+        is_x_half = _is_half_dtype(xdtype)
+        is_w_half = _is_half_dtype(wdtype)
         if is_x_half or is_w_half:
             decomposed_nodes = []
             if is_x_half:
@@ -161,8 +165,8 @@ class DecomposeDispatch:
         axis = get_attribute(node, "axis", -1)
         xdtype, shape = self._get_dtype_and_shape(x, **kwargs)
         wdtype, _ = self._get_dtype_and_shape(w, **kwargs)
-        is_x_half = xdtype == TensorProto.FLOAT16 or xdtype == TensorProto.BFLOAT16
-        is_w_half = wdtype == TensorProto.FLOAT16 or wdtype == TensorProto.BFLOAT16
+        is_x_half = _is_half_dtype(xdtype)
+        is_w_half = _is_half_dtype(wdtype)
         if is_x_half or is_w_half:
             decomposed_nodes = []
             if is_x_half:
@@ -242,7 +246,7 @@ class DecomposeDispatch:
         y = node.output[0]
         axis = get_attribute(node, "axis", -1)
         dtype, _ = self._get_dtype_and_shape(x, **kwargs)
-        if dtype == TensorProto.FLOAT16 or dtype == TensorProto.BFLOAT16:
+        if _is_half_dtype(dtype):
             cast_node, x = self._new_node(node_name, "Cast", [x], to=TensorProto.FLOAT)
             softmax_node, softmax_out = self._new_node(node_name, "Softmax", [x], axis=axis)
             cast_node1, _ = self._new_node(node_name, "Cast", [softmax_out], outputs=[y], to=dtype)
@@ -261,7 +265,7 @@ class DecomposeDispatch:
         dx = node.output[0]
         axis = get_attribute(node, "axis", -1)
         dtype, _ = self._get_dtype_and_shape(dy, **kwargs)
-        if dtype == TensorProto.FLOAT16 or dtype == TensorProto.BFLOAT16:
+        if _is_half_dtype(dtype):
             cast_node, dy = self._new_node(node_name, "Cast", [dy], to=TensorProto.FLOAT)
             cast_node1, y = self._new_node(node_name, "Cast", [y], to=TensorProto.FLOAT)
             softmax_grad_node, softmax_grad_out = self._new_node(node_name, "SoftmaxGrad_13", [dy, y], axis=axis)
@@ -312,7 +316,7 @@ class DecomposeDispatch:
     def _decompose_reduce_precision(self, node: NodeProto, graph: GraphProto, **kwargs):
         x = node.input[0]
         dtype, shape = self._get_dtype_and_shape(x, **kwargs)
-        if dtype != TensorProto.FLOAT16 and dtype != TensorProto.BFLOAT16:
+        if not _is_half_dtype(dtype):
             return [node]
         node_name = node.name
         rank = len(shape)

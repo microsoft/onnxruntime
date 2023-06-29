@@ -8,8 +8,6 @@ from onnxruntime.capi import _pybind_state as C
 from onnxruntime.capi._pybind_state import TrainingAgent as C_TrainingAgent
 from onnxruntime.capi.onnxruntime_inference_collection import IOBinding, OrtValue  # noqa: F401
 
-from ._utils import set_tuning_results
-
 
 class ExecutionAgentOutput:  # pylint: disable=R0903
     "Wraps an OrtValue and adds an ID."
@@ -61,7 +59,6 @@ class InferenceAgent:
         self._inference_session = onnxruntime.InferenceSession(
             path_or_bytes, session_options, providers, provider_options
         )
-        set_tuning_results(self._inference_session, False)
 
     def io_binding(self):
         """Return an onnxruntime.IOBinding object`."""
@@ -136,7 +133,6 @@ class TrainingAgent:
         self._inference_session = onnxruntime.InferenceSession(
             path_or_bytes, session_options, providers, provider_options
         )
-        set_tuning_results(self._inference_session, True)
 
         self._training_agent = C_TrainingAgent(
             self._inference_session._sess,

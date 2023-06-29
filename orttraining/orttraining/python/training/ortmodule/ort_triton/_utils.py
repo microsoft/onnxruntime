@@ -10,6 +10,7 @@ from typing import Any, List, Tuple
 
 import numpy as np
 from onnx import GraphProto, NodeProto, TensorProto, helper, numpy_helper
+from onnx.mapping import TENSOR_TYPE_TO_NP_TYPE
 
 
 def gen_unique_name(prefix: str) -> str:
@@ -81,29 +82,8 @@ def to_numpy_array(node: Any) -> np.ndarray:
     return numpy_helper.to_array(tensor)
 
 
-_TENSOR_TYPE_TO_NP_TYPE = {
-    int(TensorProto.FLOAT): np.dtype("float32"),
-    int(TensorProto.UINT8): np.dtype("uint8"),
-    int(TensorProto.INT8): np.dtype("int8"),
-    int(TensorProto.UINT16): np.dtype("uint16"),
-    int(TensorProto.INT16): np.dtype("int16"),
-    int(TensorProto.INT32): np.dtype("int32"),
-    int(TensorProto.INT64): np.dtype("int64"),
-    int(TensorProto.BOOL): np.dtype("bool"),
-    int(TensorProto.FLOAT16): np.dtype("float16"),
-    # Native numpy does not support bfloat16 so now use float32 for bf16 values
-    int(TensorProto.BFLOAT16): np.dtype("float32"),
-    int(TensorProto.DOUBLE): np.dtype("float64"),
-    int(TensorProto.COMPLEX64): np.dtype("complex64"),
-    int(TensorProto.COMPLEX128): np.dtype("complex128"),
-    int(TensorProto.UINT32): np.dtype("uint32"),
-    int(TensorProto.UINT64): np.dtype("uint64"),
-    int(TensorProto.STRING): np.dtype("object"),
-}
-
-
 def to_numpy_type(tensor_type: TensorProto.DataType) -> np.dtype:
-    return _TENSOR_TYPE_TO_NP_TYPE[tensor_type] if not isinstance(tensor_type, np.dtype) else tensor_type
+    return TENSOR_TYPE_TO_NP_TYPE[tensor_type] if not isinstance(tensor_type, np.dtype) else tensor_type
 
 
 # Generate a unique variable name based on the node arg name.

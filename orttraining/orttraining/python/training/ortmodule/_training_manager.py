@@ -21,7 +21,7 @@ from ._graph_transformer_registry import GraphTransformerRegistry
 from ._io import _FlattenedModule, _InputInfo
 from ._logger import TimeTrackerPhase, TrackTime
 from ._runtime_inspector import Phase
-from ._utils import save_tuning_results
+from ._utils import save_tuning_results, set_tuning_results
 from .options import DebugOptions, _SkipCheck
 
 
@@ -323,8 +323,14 @@ class TrainingManager(GraphExecutionManager):
                 self._forward_class.apply(*prepared_input_list),
             )
 
-            if create_execution_session:
-                save_tuning_results(self._execution_agent._inference_session, True)
+            if (
+                create_execution_session
+                and self._runtime_options.enable_tuning
+                and self._runtime_options.tuning_results_path
+            ):
+                save_tuning_results(
+                    self._execution_agent._inference_session, True, self._runtime_options.tuning_results_path
+                )
 
             return outputs
         except ORTModuleFallbackException as e:
@@ -432,6 +438,11 @@ class TrainingManager(GraphExecutionManager):
             provider_options,
             local_device_rank,
         )
+
+        if not self._runtime_options.enable_tuning and self._runtime_options.tuning_results_path:
+            set_tuning_results(
+                self._execution_agent._inference_session, True, self._runtime_options.tuning_results_path
+            )
 
     def _reinitialize_graph_builder(self, input_info: _InputInfo):
         """Return true if the module graph builder was reinitialized"""

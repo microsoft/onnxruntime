@@ -24,10 +24,12 @@ struct MatMulParams : OpParams {
   bool trans_b_;
   bool trans_batch_a_;
   bool trans_batch_b_;
-  bool has_triton_support_ = false;
   MatMulComputeHelper& helper_;
   const MatMul<T>* matmul_kernel_;
   OpKernelContext* ctx_;
+#ifdef ENABLE_TRITON
+  bool has_triton_support_ = false;
+#endif
 };
 
 template <typename T>
