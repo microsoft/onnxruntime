@@ -52,12 +52,13 @@ Status LeakyReluOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   NodeAttrHelper helper(node_unit);
   const auto alpha = helper.Get("alpha", 0.01f);
 
-  // We will use multiple operations to simulate LeakyRelu here. including NNAPI ANEURALNETWORKS_SELECT/LESS/MUL.
+  // We will use multiple operations to simulate LeakyRelu here, including NNAPI ANEURALNETWORKS_SELECT/
+  // ANEURALNETWORKS_LESS/ANEURALNETWORKS_MUL.
   // input X = [-1, 0, 1]
-  // multiply by the alpha value got from attribute: Z = alpha * X = [-0.1, 0, 0.1]
-  // then construct the bool input XLESSTHANZERO = [false, true, true] , true means select the element from the first input, and false vice versa.
+  // multiply by the alpha value: Z = alpha * X = [-0.1, 0, 0.1]
+  // then construct the boolean input X less than zero: C = [false, true, true], true means selecting element from the first input,
+  // and false vice versa.
   // output Y = [-0.1, 0, 1]
-
   InlinedVector<uint32_t> input_indices;
   input_indices.push_back(operand_indices.at(input));
 
@@ -68,7 +69,6 @@ Status LeakyReluOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   std::string zero_vec_name = model_builder.GetUniqueName(node_unit.Name() + input + "_zero_cast");
   std::string less_output_name = model_builder.GetUniqueName(node_unit.Name() + input + "_less_than_zero");
 
-  // Add zero vector as second input
   const OperandType zero_operand_type(Type::TENSOR_FLOAT32, input_shape);
   ORT_RETURN_IF_ERROR(model_builder.AddOperandFromPersistMemoryBuffer(zero_vec_name, zero_vec.data(),
                                                                       zero_operand_type));
@@ -124,11 +124,12 @@ bool LeakyReluOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& /*initial
   if (!GetShape(node_unit.Inputs()[0].node_arg, input_shape))
     return false;
 
-  // Note: We use NNAPI ANEURALNETWORKS_SELECT operation to simulate LeakyRelu op, ANEURALNETWORKS_SELECT has supported
+  // Note: We will use ANEURALNETWORKS_SELECT/LESS to simulate LeakyRelu op, ANEURALNETWORKS_SELECT/LESS has supported
   // tensor rank from 1:
   // https://developer.android.com/ndk/reference/group/neural-networks#group___neural_networks_1ggaabbe492c60331b13038e39d4207940e0a49b2dc37ea9219789a6d82f281499dbb
-  if (input_shape.empty()) {
-    LOGS_DEFAULT(VERBOSE) << "NNAPI LeakyRelu supports tensor rank starting from 1. Empty shape is not supported.";
+  if (input_shape.empty() || input_shape.size() > 4) {
+    LOGS_DEFAULT(VERBOSE) << "NNAPI LeakyRelu supports tensor rank from 1-4d. Empty shape is not supported. Input is "
+                          << input_shape.size() << "d shape";
     return false;
   }
 
