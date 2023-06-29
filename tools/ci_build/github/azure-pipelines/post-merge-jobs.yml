@@ -272,22 +272,3 @@ stages:
         script: |
           python -m pip install -r \
             "$(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/scripts/requirements.txt"
-
-    - task: CmdLine@2
-      displayName: 'Build ORT on Mac with Xcode'
-      inputs:
-        script: |
-          python "$(Build.SourcesDirectory)/tools/ci_build/build.py" \
-            --use_xcode \
-            --enable_training \
-            --build_shared_lib \
-            --build_wheel \
-            --build_objc \
-            --build_nodejs \
-            --build_java \
-            --use_coreml \
-            --use_xnnpack \
-            --build_dir $(Build.BinariesDirectory) \
-            --update --skip_submodule_sync \
-            --build --parallel \
-            --test
