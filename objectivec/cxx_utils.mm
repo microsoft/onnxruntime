@@ -59,16 +59,19 @@ NSArray<NSString*>* toNSStringNSArray(const std::vector<std::string>& strs) {
   return result;
 }
 
-NSArray<ORTValue*>* _Nullable wrapUnownedCAPIOrtValues(const std::vector<OrtValue*>& values, NSError** error) {
-  NSMutableArray<ORTValue*>* result = [NSMutableArray arrayWithCapacity:values.size()];
-  for (size_t i = 0; i < values.size(); ++i) {
-    ORTValue* val = [[ORTValue alloc] initWithCXXAPIOrtValue:Ort::Value{values[i]}
+NSArray<ORTValue*>* _Nullable wrapUnownedCAPIOrtValues(const std::vector<OrtValue*>& CAPIValues, NSError** error) {
+  NSMutableArray<ORTValue*>* result = [NSMutableArray arrayWithCapacity:CAPIValues.size()];
+  for (size_t i = 0; i < CAPIValues.size(); ++i) {
+    // Wrap the C OrtValue in a C++ Ort::Value to automatically handle its release.
+    // Then, transfer that C++ Ort::Value to a new ORTValue.
+    Ort::Value CXXAPIValue{CAPIValues[i]};
+    ORTValue* val = [[ORTValue alloc] initWithCXXAPIOrtValue:std::move(CXXAPIValue)
                                           externalTensorData:nil
                                                        error:error];
     if (!val) {
-      // clean up all the C API Ortvalues which haven't been wrapped by ORTValue
-      for (size_t j = i + 1; j < values.size(); ++j) {
-        Ort::GetApi().ReleaseValue(values[j]);
+      // clean up remaining C OrtValues which haven't been wrapped by a C++ Ort::Value yet
+      for (size_t j = i + 1; j < CAPIValues.size(); ++j) {
+        Ort::GetApi().ReleaseValue(CAPIValues[j]);
       }
       return nil;
     }
