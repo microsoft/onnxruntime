@@ -127,8 +127,7 @@ Status SkipLayerNorm<T>::Compute(OpKernelContext* p_ctx) const {
   // of the input and skip tensors
   T* skip_input_bias_add_output_data = skip_input_bias_add_output != nullptr ? skip_input_bias_add_output->MutableData<T>() : nullptr;
 
-  const bool skip_broadcasted = (skip->Shape()[0] == 1 || skip->Shape()[skip_dims_size-2] == skip_sequence_length) ? true : false;
-  int skip_size = static_cast<int>(skip_dims[skip_dims_size - 1] * skip_dims[skip_dims_size - 2]);
+  skip_size = skip->Shape().Size();
 
   concurrency::ThreadPool::TryBatchParallelFor(
       p_ctx->GetOperatorThreadPool(), static_cast<int32_t>(task_count),
@@ -138,7 +137,7 @@ Status SkipLayerNorm<T>::Compute(OpKernelContext* p_ctx) const {
 
 
         const T* p_input = input_data + offset;
-        const T* p_skip = skip_data + (skip_broadcasted ? (offset % skip_size) : offset);;
+        const T* p_skip = skip_data + (offset % skip_size);
         T* p_output = output_data + offset;
         T* p_skip_input_bias_add_output_data = skip_input_bias_add_output_data != nullptr ? skip_input_bias_add_output_data + offset : nullptr;
 
