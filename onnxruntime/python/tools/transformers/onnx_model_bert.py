@@ -2,7 +2,6 @@
 # Copyright (c) Microsoft Corporation.  All rights reserved.
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
-import pdb
 from logging import getLogger
 from typing import List, Optional
 
@@ -48,8 +47,6 @@ class BertOnnxModel(OnnxModel):
             num_heads (int, optional): number of attention heads. Defaults to 0 (detect the parameter automatically).
             hidden_size (int, optional): hidden dimension. Defaults to 0 (detect the parameter automatically).
         """
-        #pdb.set_trace()
-        #assert (num_heads == 0 and hidden_size == 0) or (num_heads > 0 and hidden_size % num_heads == 0)
 
         super().__init__(model)
         self.num_heads = num_heads
