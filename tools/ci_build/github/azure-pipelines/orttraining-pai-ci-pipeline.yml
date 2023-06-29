@@ -26,6 +26,10 @@ jobs:
       value: $[format('{0:dd}{0:MM}{0:yyyy}', pipeline.startTime)]
 
   steps:
+  - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
+    displayName: 'Clean Agent Directories'
+    condition: always()
+
   - checkout: self
     clean: true
     submodules: recursive
@@ -82,8 +86,9 @@ jobs:
           -e CCACHE_DIR=/cache \
           --workdir /onnxruntime_src \
           onnxruntimetrainingrocm-cibuild-rocm$(RocmVersion) \
-            /bin/bash -c "
-            ccache -s && ccache -z; \
+          /bin/bash -c "
+            set -ex; \
+            ccache -s; \
             python tools/ci_build/build.py \
               --config $(BuildConfig) \
               --enable_training \
@@ -149,6 +154,7 @@ jobs:
           --volume $(Build.BinariesDirectory):/build \
           onnxruntimetrainingrocm-cibuild-rocm$(RocmVersion) \
             /bin/bash -c "
+              set -ex; \
               export KERNEL_EXPLORER_BUILD_DIR=/build/$(BuildConfig); \
               pytest /onnxruntime_src/onnxruntime/python/tools/kernel_explorer/ -n 16 --reruns 1"
       workingDirectory: $(Build.SourcesDirectory)
@@ -171,6 +177,7 @@ jobs:
           --workdir /build/$(BuildConfig) \
           onnxruntimetrainingrocm-cibuild-rocm$(RocmVersion) \
             /bin/bash -c "
+              set -ex; \
               export PYTHONPATH=/build/$(BuildConfig); \
               python -m onnxruntime.training.ortmodule.torch_cpp_extensions.install; \
               python \
@@ -196,18 +203,6 @@ jobs:
     condition: and(succeededOrFailed(), eq(variables.onnxruntimeBuildSucceeded, 'true'))
 
 
-  - bash: tools/ci_build/github/linux/docker/scripts/training/azure_scale_set_vm_mount_test_data.sh -p $(orttrainingtestdatascus-storage-key) -s "//orttrainingtestdatascus.file.core.windows.net/mnist" -d "$(Build.SourcesDirectory)/mnist"
-    displayName: 'Mount MNIST'
-    condition: and(succeededOrFailed(), eq(variables.onnxruntimeBuildSucceeded, 'true'))
-
-  - bash: tools/ci_build/github/linux/docker/scripts/training/azure_scale_set_vm_mount_test_data.sh -p $(orttrainingtestdatascus-storage-key) -s "//orttrainingtestdatascus.file.core.windows.net/bert-data" -d "$(Build.SourcesDirectory)/bert_data"
-    displayName: 'Mount bert-data'
-    condition: and(succeededOrFailed(), eq(variables.onnxruntimeBuildSucceeded, 'true'))
-
-  - bash: tools/ci_build/github/linux/docker/scripts/training/azure_scale_set_vm_mount_test_data.sh -p $(orttrainingtestdatascus-storage-key) -s "//orttrainingtestdatascus.file.core.windows.net/hf-models-cache" -d "$(Build.SourcesDirectory)/hf_models_cache"
-    displayName: 'Mount hf-models-cache'
-    condition: and(succeededOrFailed(), eq(variables.onnxruntimeBuildSucceeded, 'true'))
-
   # Entry point for all ORTModule tests
   # The onnxruntime folder is deleted in the build directory
   # to enforce use of the onnxruntime wheel
@@ -220,43 +215,38 @@ jobs:
         whlfilename=$(basename ${files[0]})
         echo $whlfilename
         docker run --rm \
+          -e HIP_VISIBLE_DEVICES \
           --security-opt seccomp=unconfined \
           --shm-size=1024m \
           --device=/dev/kfd \
-          --device=/dev/dri/renderD$DRIVER_RENDER \
+          --device=/dev/dri \
+          --privileged \
           --group-add $(video) \
           --group-add $(render) \
           --user onnxruntimedev \
           --volume $(Build.BinariesDirectory):/build \
-          --volume $(Build.SourcesDirectory)/mnist:/mnist \
-          --volume $(Build.SourcesDirectory)/bert_data:/bert_data \
-          --volume $(Build.SourcesDirectory)/hf_models_cache:/hf_models_cache \
+          --volume $(Build.SourcesDirectory):/onnxruntime_src \
           --workdir /build/$(BuildConfig) \
           onnxruntimetrainingrocm-cibuild-rocm$(RocmVersion) \
             /bin/bash -c "
+              set -ex; \
               unset PYTHONPATH; \
+              /onnxruntime_src/tools/ci_build/github/linux/docker/scripts/training/azure_scale_set_vm_mount_test_data.sh -p $(orttrainingtestdatascus-storage-key) -s "//orttrainingtestdatascus.file.core.windows.net/mnist" -d "/mnist"; \
+              /onnxruntime_src/tools/ci_build/github/linux/docker/scripts/training/azure_scale_set_vm_mount_test_data.sh -p $(orttrainingtestdatascus-storage-key) -s "//orttrainingtestdatascus.file.core.windows.net/bert-data" -d "/bert_data"; \
               pip install /build/$(BuildConfig)/dist/$whlfilename; \
               python -m onnxruntime.training.ortmodule.torch_cpp_extensions.install; \
               python orttraining_ortmodule_tests.py \
                 --mnist /mnist \
-                --bert_data /bert_data/hf_data/glue_data/CoLA/original/raw \
-                --transformers_cache /hf_models_cache/huggingface/transformers"
+                --bert_data /bert_data/hf_data/glue_data/CoLA/original/raw"
       workingDirectory: $(Build.SourcesDirectory)
     displayName: 'Run orttraining_ortmodule_tests.py'
     condition: and(succeededOrFailed(), eq(variables.onnxruntimeBuildSucceeded, 'true'))
 
-  - task: CmdLine@2
-    inputs:
-      script: |-
-        if [ -d $(Build.SourcesDirectory)/mnist ]; then
-          sudo umount $(Build.SourcesDirectory)/mnist
-        fi
-        if [ -d $(Build.SourcesDirectory)/bert_data ]; then
-          sudo umount $(Build.SourcesDirectory)/bert_data
-        fi
-        if [ -d $(Build.SourcesDirectory)/hf_models_cache ]; then
-          sudo umount $(Build.SourcesDirectory)/hf_models_cache
-        fi
-      workingDirectory: $(Build.SourcesDirectory)
-    displayName: 'Umount dataset'
-    condition: succeededOrFailed()
+  - template: templates/component-governance-component-detection-steps.yml
+    parameters :
+      condition : 'succeeded'
+
+  - script: docker image prune -f
+    displayName: Clean docker images
+    condition: eq(variables['Agent.OS'], 'Linux')
+    continueOnError: true

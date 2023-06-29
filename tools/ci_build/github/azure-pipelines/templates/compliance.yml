@@ -5,8 +5,8 @@ parameters:
   default: x64
 
 - name: vs2022
-  displayName: Visual Studio Version
-  type: string
+  displayName: If the Visual Studio version is 2022
+  type: boolean
   default: true
 
 steps:
@@ -31,7 +31,6 @@ steps:
      **/*.obj
      **/*.pdb
      **/*.dll
-
 #Manually set msBuildCommandline so that we can also set CAExcludePath
 - task: securedevelopmentteam.vss-secure-development-tools.build-task-prefast.SDLNativeRules@2
   displayName: 'Run the PREfast SDL Native Rules for MSBuild'
@@ -63,5 +62,5 @@ steps:
   displayName: 'TSA Upload'
   inputs:
     tsaVersion: TsaV2
-    codeBaseName: 'onnxruntime_master'
+    codeBaseName: 'onnxruntime_main'
   continueOnError: true
