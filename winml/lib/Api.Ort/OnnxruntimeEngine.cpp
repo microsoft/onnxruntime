@@ -582,7 +582,7 @@ HRESULT OnnxruntimeEngine::CreateTensorValue(const int64_t* shape, size_t count,
                           engine_factory_->UseOrtApi());
 
   OrtAllocator* ort_allocator;
-  RETURN_HR_IF_NOT_OK_MSG(winml_adapter_api->GetProviderAllocator(ort_provider, &ort_allocator),
+  RETURN_HR_IF_NOT_OK_MSG(winml_adapter_api->GetProviderAllocator(session_.get(), ort_provider, &ort_allocator),
                           engine_factory_->UseOrtApi());
 
   auto unique_allocator = UniqueOrtAllocator(

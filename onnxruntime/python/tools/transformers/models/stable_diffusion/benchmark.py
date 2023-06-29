@@ -19,6 +19,7 @@ SD_MODELS = {
 PROVIDERS = {
     "cuda": "CUDAExecutionProvider",
     "rocm": "ROCMExecutionProvider",
+    "migraphx": "MIGraphXExecutionProvider",
 }
 
 
@@ -570,7 +571,7 @@ def parse_arguments():
         "--batch_size",
         type=int,
         default=1,
-        choices=[1, 2, 4, 8, 10, 16, 32],
+        choices=[1, 2, 3, 4, 8, 10, 16, 32],
         help="Number of images per batch. Default is 1.",
     )
 
@@ -639,6 +640,11 @@ def main():
     provider = PROVIDERS[args.provider]
     if args.engine == "onnxruntime":
         assert args.pipeline, "--pipeline should be specified for onnxruntime engine"
+
+        if args.version in ["2.1"]:
+            # Set a flag to avoid overflow in attention, which causes black image output in SD 2.1 model
+            # This shall be done before the first inference run.
+            os.environ["ORT_DISABLE_TRT_FLASH_ATTENTION"] = "1"
 
         result = run_ort(
             sd_model,

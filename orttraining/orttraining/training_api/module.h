@@ -54,6 +54,21 @@ struct ModuleCheckpointState {
 
 struct CheckpointState;
 
+/**
+ * @brief Module class for running training forward and backward.
+ *
+ * This class is responsible for running forward and backward.
+ * It does NOT own the parameters but only holds a weak reference to the passed
+ * 'CheckpointState' in the constructor.
+ *
+ * During initialization, if the Parameter (stored in `CheckpointState`)'s
+ * device does not match the target device, it will re-create the tensor on the
+ * target device and update the Parameter's data in place. The 'target device'
+ * is extracted from node placement.
+ *
+ * Currently, we only support load checkpoints from the constructor;
+ * no public API to load state dict after Module instance is created.
+ */
 struct Module {
  public:
   // Initialize a module from an ORT inference session with loaded
@@ -102,10 +117,12 @@ struct Module {
   // Copy parameter values from contiguous buffer held by parameters_buffer onto parameters
   Status CopyBufferToParameters(OrtValue& parameters_buffer, const bool trainable_only = true);
 
+#if !defined(ORT_MINIMAL_BUILD)
   // Load the eval model from eval_model_path_or_bytes and transform it for the purpose of
   // inferencing, and serialize to given path
   Status ExportModelForInferencing(const std::string& inference_model_path,
                                    gsl::span<const std::string> graph_output_names) const;
+#endif
 
   // Returns the user input count for training graph
   size_t GetTrainingModelInputCount() const noexcept;
@@ -122,18 +139,22 @@ struct Module {
  private:
   std::unique_ptr<onnxruntime::InferenceSession> train_sess_{nullptr};
   std::unique_ptr<onnxruntime::InferenceSession> eval_sess_{nullptr};
-  std::vector<std::string> train_input_names_;
-  std::vector<std::string> train_output_names_;
-  std::vector<std::string> eval_input_names_;
-  std::vector<std::string> eval_output_names_;
-  std::vector<std::string> weight_names_;
-  std::vector<OrtValue> weights_;
-  std::vector<OrtValue> gradients_;
-  bool accumulate_gradient_ = false;
+
+  InlinedVector<std::string> train_input_names_;
+  InlinedVector<std::string> train_output_names_;
+  InlinedVector<std::string> eval_input_names_;
+  InlinedVector<std::string> eval_output_names_;
+  InlinedVector<std::string> weight_names_;
+
+  InlinedVector<OrtValue> weights_;
+  InlinedVector<OrtValue> gradients_;
+
   CheckpointState* state_;  // Non owning pointer to the state.
+
+  bool accumulate_gradient_ = false;
   std::string eval_model_path_;
-  size_t train_user_input_count_ = 0U;
-  size_t eval_user_input_count_ = 0U;
+  size_t train_user_input_count_{0U};
+  size_t eval_user_input_count_{0U};
 };
 
 }  // namespace api

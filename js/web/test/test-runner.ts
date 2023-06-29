@@ -2,11 +2,10 @@
 // Licensed under the MIT License.
 
 import {expect} from 'chai';
-import {readFile} from 'fs';
 import {onnx} from 'onnx-proto';
 import * as ort from 'onnxruntime-common';
 import {extname} from 'path';
-import {inspect, promisify} from 'util';
+import {inspect} from 'util';
 
 import {Attribute} from '../lib/onnxjs/attribute';
 import {InferenceHandler, resolveBackend, SessionHandler} from '../lib/onnxjs/backend';
@@ -16,7 +15,7 @@ import {Operator} from '../lib/onnxjs/operators';
 import {Tensor} from '../lib/onnxjs/tensor';
 import {ProtoUtil} from '../lib/onnxjs/util';
 
-import {base64toBuffer, createMockGraph} from './test-shared';
+import {base64toBuffer, createMockGraph, readFile} from './test-shared';
 import {Test} from './test-types';
 
 // the threshold that used to compare 2 float numbers. See above for TensorResultValidator.floatEqual().
@@ -46,19 +45,8 @@ function fromInternalTensor(tensor: Tensor): ort.Tensor {
   return new ort.Tensor(tensor.type, tensor.data as ort.Tensor.DataType, tensor.dims);
 }
 
-async function loadFile(uri: string): Promise<Uint8Array> {
-  if (typeof fetch === 'undefined') {
-    // node
-    return promisify(readFile)(uri);
-  } else {
-    // browser
-    const response = await fetch(uri);
-    return new Uint8Array(await response.arrayBuffer());
-  }
-}
-
 async function loadTensorProto(uriOrData: string|Uint8Array, allowInt64 = false): Promise<Test.NamedTensor> {
-  const buf = (typeof uriOrData === 'string') ? await loadFile(uriOrData) : uriOrData;
+  const buf = (typeof uriOrData === 'string') ? await readFile(uriOrData) : uriOrData;
   const tensorProto = onnx.TensorProto.decode(buf);
 
   let tensor: ort.Tensor;
@@ -311,7 +299,7 @@ export class TensorResultValidator {
     } else if (backend === 'webgpu') {
       this.absoluteThreshold = WEBGPU_THRESHOLD_ABSOLUTE_ERROR;
       this.relativeThreshold = WEBGPU_THRESHOLD_RELATIVE_ERROR;
-    } else if (backend === 'wasm' || backend === 'xnnpack') {
+    } else if (backend === 'wasm' || backend === 'xnnpack' || backend === 'webnn') {
       this.absoluteThreshold = WASM_THRESHOLD_ABSOLUTE_ERROR;
       this.relativeThreshold = WASM_THRESHOLD_RELATIVE_ERROR;
     } else if (backend === 'onnxruntime') {

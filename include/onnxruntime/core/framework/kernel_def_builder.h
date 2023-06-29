@@ -43,11 +43,9 @@ class KernelDef {
     *end = op_since_version_end_;
   }
 
-#ifdef onnxruntime_PYBIND_EXPORT_OPSCHEMA
   const std::pair<int, int> SinceVersion() const {
     return std::pair<int, int>(op_since_version_start_, op_since_version_end_);
   }
-#endif
 
   onnxruntime::ProviderType Provider() const {
     return provider_type_;

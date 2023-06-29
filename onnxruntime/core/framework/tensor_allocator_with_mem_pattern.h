@@ -18,12 +18,12 @@ class TensorAllocatorWithMemPattern : public ITensorAllocator {
   OrtValuePatternPlanner planner_;
   MemoryPatternGroup mem_patterns_;
   InlinedVector<BufferUniquePtr>& weights_buffers_;
-  InlinedHashMap<OrtMemoryInfo, void*> buffers_;
+  InlinedHashMap<OrtDevice, void*> buffers_;
   bool is_sealed_ = false;
   const ExecutionPlanBase& seq_plan_;
 
   common::Status AllocatePlannedBuffersAndReportTotalSize(
-      InlinedHashMap<std::string, size_t>& planned_memory_sizes_in_byte) {
+      InlinedHashMap<OrtDevice, size_t>& planned_memory_sizes_in_byte) {
     const size_t location_len = mem_patterns_.locations.size();
     planned_memory_sizes_in_byte.reserve(location_len);
     for (size_t i = 0; i < location_len; ++i) {
@@ -54,7 +54,7 @@ class TensorAllocatorWithMemPattern : public ITensorAllocator {
         return Status(common::ONNXRUNTIME, common::FAIL, "duplicated location");
       }
 
-      planned_memory_sizes_in_byte[location.name] += peak_size;
+      planned_memory_sizes_in_byte[location] += peak_size;
     }
     return Status::OK();
   }
@@ -67,7 +67,7 @@ class TensorAllocatorWithMemPattern : public ITensorAllocator {
         weights_buffers_(weights_buffers),
         seq_plan_(execution_plan) {}
 
-  common::Status FinalizePlan(InlinedHashMap<std::string, size_t>& planned_memory_sizes_in_byte) override {
+  common::Status FinalizePlan(InlinedHashMap<OrtDevice, size_t>& planned_memory_sizes_in_byte) override {
     ORT_RETURN_IF_ERROR(planner_.GeneratePatterns(mem_patterns_));
     ORT_RETURN_IF_ERROR(AllocatePlannedBuffersAndReportTotalSize(planned_memory_sizes_in_byte));
     is_sealed_ = true;
@@ -79,7 +79,7 @@ class TensorAllocatorWithMemPattern : public ITensorAllocator {
     if (!is_sealed_) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Internal error.");
     }
-    const struct OrtMemoryInfo& location = seq_plan_.GetLocation(ort_value_index);
+    const struct OrtDevice& location = seq_plan_.GetLocation(ort_value_index);
     auto pattern = mem_patterns_.GetPatterns(location);
     if (pattern == nullptr) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Mem pattern for initializer ", name, " is not found");
@@ -97,7 +97,7 @@ class TensorAllocatorWithMemPattern : public ITensorAllocator {
     if (it == buffers_.end()) {
       if (block != nullptr && block->size_ == 0) {
         // Because the size is 0, this miss find is expected. we won't allocate a buffer with size of zero.
-        buf_out.emplace(nullptr, 0, location);
+        buf_out.emplace(nullptr, 0, GetAllocator(location)->Info());
         return Status::OK();
       }
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Weight buffer for initializer '", name, "' is not found");
@@ -107,7 +107,7 @@ class TensorAllocatorWithMemPattern : public ITensorAllocator {
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Get preallocated buffer for initializer '", name, "' failed");
     }
 
-    buf_out.emplace(reinterpret_cast<char*>(it->second) + block->offset_, block->size_, location);
+    buf_out.emplace(reinterpret_cast<char*>(it->second) + block->offset_, block->size_, GetAllocator(location)->Info());
     return Status::OK();
   }
   common::Status Trace(int id, const ONNX_NAMESPACE::TensorProto* value) override {

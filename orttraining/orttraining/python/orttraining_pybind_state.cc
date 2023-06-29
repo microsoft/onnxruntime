@@ -736,7 +736,8 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
       .def_readwrite("transformer_layer_recompute", &TrainingGraphTransformerConfiguration::transformer_layer_recompute)
       .def_readwrite("number_recompute_layers", &TrainingGraphTransformerConfiguration::number_recompute_layers)
       .def_readwrite("enable_compute_optimizer", &TrainingGraphTransformerConfiguration::enable_compute_optimizer)
-      .def_readwrite("enable_label_sparsity_optimization", &TrainingGraphTransformerConfiguration::enable_label_sparsity_optimization)
+      .def_readwrite("sparse_embedding_input_names", &TrainingGraphTransformerConfiguration::sparse_embedding_input_names)
+      .def_readwrite("sparse_label_input_names", &TrainingGraphTransformerConfiguration::sparse_label_input_names)
       .def_readwrite("propagate_cast_ops_config", &TrainingGraphTransformerConfiguration::GraphTransformerConfiguration::propagate_cast_ops_config);
 
   py::class_<OrtModuleGraphBuilderConfiguration> module_graph_builder_config(
@@ -757,7 +758,6 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
       .def_readwrite("use_memory_efficient_gradient",
                      &OrtModuleGraphBuilderConfiguration::use_memory_efficient_gradient)
       .def_readwrite("build_gradient_graph", &OrtModuleGraphBuilderConfiguration::build_gradient_graph)
-      .def_readwrite("graph_transformer_config", &OrtModuleGraphBuilderConfiguration::graph_transformer_config)
       .def_readwrite("enable_caching", &OrtModuleGraphBuilderConfiguration::enable_caching)
       .def_readwrite("loglevel", &OrtModuleGraphBuilderConfiguration::loglevel);
 
@@ -786,13 +786,15 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
              ORT_THROW_IF_ERROR(ortmodule_graph_builder->Initialize(buffer, config));
            })
       .def("build",
-           [](OrtModuleGraphBuilder* ortmodule_graph_builder) {
-             ORT_THROW_IF_ERROR(ortmodule_graph_builder->Build());
+           [](OrtModuleGraphBuilder* ortmodule_graph_builder,
+              const TrainingGraphTransformerConfiguration& config) {
+             ORT_THROW_IF_ERROR(ortmodule_graph_builder->Build(config));
            })
       .def("build",
            [](OrtModuleGraphBuilder* ortmodule_graph_builder,
+              const TrainingGraphTransformerConfiguration& config,
               const std::vector<std::vector<int64_t>>& input_shapes) {
-             ORT_THROW_IF_ERROR(ortmodule_graph_builder->Build(&input_shapes));
+             ORT_THROW_IF_ERROR(ortmodule_graph_builder->Build(config, &input_shapes));
            })
       .def("get_gradient_model",
            [](OrtModuleGraphBuilder* ortmodule_graph_builder) {

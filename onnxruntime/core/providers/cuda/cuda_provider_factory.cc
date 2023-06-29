@@ -16,9 +16,6 @@
 #include "core/providers/cuda/cuda_allocator.h"
 #include "core/providers/cuda/gpu_data_transfer.h"
 #include "core/providers/cuda/math/unary_elementwise_ops_impl.h"
-#ifndef NDEBUG
-#include "core/providers/cuda/test/all_tests.h"
-#endif
 
 #ifdef ENABLE_NVTX_PROFILE
 #include "nvtx_profile.h"
@@ -86,7 +83,8 @@ struct ProviderInfo_CUDA_Impl final : ProviderInfo_CUDA {
   }
 
   std::unique_ptr<IAllocator> CreateCUDAPinnedAllocator(int16_t device_id, const char* name) override {
-    return std::make_unique<CUDAPinnedAllocator>(device_id, name);
+    ORT_UNUSED_PARAMETER(device_id);
+    return std::make_unique<CUDAPinnedAllocator>(name);
   }
 
   std::unique_ptr<IDataTransfer> CreateGPUDataTransfer() override {
@@ -179,38 +177,9 @@ struct ProviderInfo_CUDA_Impl final : ProviderInfo_CUDA {
     return std::make_shared<CUDAProviderFactory>(info);
   }
 
-  std::shared_ptr<IAllocator> CreateCudaAllocator(int16_t device_id, size_t gpu_mem_limit, onnxruntime::ArenaExtendStrategy arena_extend_strategy, onnxruntime::CUDAExecutionProviderExternalAllocatorInfo& external_allocator_info, OrtArenaCfg* default_memory_arena_cfg) override {
+  std::shared_ptr<IAllocator> CreateCudaAllocator(int16_t device_id, size_t gpu_mem_limit, onnxruntime::ArenaExtendStrategy arena_extend_strategy, onnxruntime::CUDAExecutionProviderExternalAllocatorInfo& external_allocator_info, const OrtArenaCfg* default_memory_arena_cfg) override {
     return CUDAExecutionProvider::CreateCudaAllocator(device_id, gpu_mem_limit, arena_extend_strategy, external_allocator_info, default_memory_arena_cfg);
   }
-
-#ifndef NDEBUG
-  bool TestAll() override {
-    // TestAll is the entry point of CUDA EP's insternal tests.
-    // Those internal tests are not directly callable from onnxruntime_test_all
-    // because CUDA EP is a shared library now.
-
-    // This is just one test. Call other test functions below.
-    if (!onnxruntime::cuda::test::TestDeferredRelease()) {
-      return false;
-    }
-
-    if (!onnxruntime::cuda::test::TestDeferredReleaseWithoutArena()) {
-      return false;
-    }
-
-    if (!onnxruntime::cuda::test::TestBeamSearchTopK()) {
-      return false;
-    }
-
-    if (!onnxruntime::cuda::test::TestGreedySearchTopOne()) {
-      return false;
-    }
-
-    // TODO(wechi): brings disabled tests in onnxruntime/test/providers/cuda/*
-    // back alive here.
-    return true;
-  }
-#endif
 } g_info;
 
 struct CUDA_Provider : Provider {
@@ -252,6 +221,8 @@ struct CUDA_Provider : Provider {
     info.cudnn_conv1d_pad_to_nc1d = params->cudnn_conv1d_pad_to_nc1d != 0;
     info.tunable_op.enable = params->tunable_op_enable;
     info.tunable_op.tuning_enable = params->tunable_op_tuning_enable;
+    info.tunable_op.max_tuning_duration_ms = params->tunable_op_max_tuning_duration_ms;
+    info.enable_skip_layer_norm_strict_mode = params->enable_skip_layer_norm_strict_mode != 0;
 
     return std::make_shared<CUDAProviderFactory>(info);
   }
@@ -271,6 +242,7 @@ struct CUDA_Provider : Provider {
     cuda_options.cudnn_conv_use_max_workspace = internal_options.cudnn_conv_use_max_workspace;
     cuda_options.enable_cuda_graph = internal_options.enable_cuda_graph;
     cuda_options.cudnn_conv1d_pad_to_nc1d = internal_options.cudnn_conv1d_pad_to_nc1d;
+    cuda_options.enable_skip_layer_norm_strict_mode = internal_options.enable_skip_layer_norm_strict_mode;
   }
 
   ProviderOptions GetProviderOptions(const void* provider_options) override {
@@ -288,11 +260,8 @@ struct CUDA_Provider : Provider {
 
 } g_provider;
 
+CUDA_Provider* GetProvider() {
+  return &g_provider;
+}
+
 }  // namespace onnxruntime
-
-extern "C" {
-
-ORT_API(onnxruntime::Provider*, GetProvider) {
-  return &onnxruntime::g_provider;
-}
-}

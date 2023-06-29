@@ -632,6 +632,12 @@ public class InferenceTest {
     runProvider(OrtProvider.XNNPACK);
   }
 
+  @Test
+  @EnabledIfSystemProperty(named = "USE_COREML", matches = "1")
+  public void testCoreML() throws OrtException {
+    runProvider(OrtProvider.CORE_ML);
+  }
+
   private void runProvider(OrtProvider provider) throws OrtException {
     EnumSet<OrtProvider> providers = OrtEnvironment.getAvailableProviders();
     assertTrue(providers.size() > 1);
@@ -1168,8 +1174,11 @@ public class InferenceTest {
         OrtSession session = env.createSession(modelPath, options)) {
       String inputName = session.getInputNames().iterator().next();
       Map<String, OnnxTensor> container = new HashMap<>();
+      long[] shape = new long[] {1, 5};
+
+      // Test array input
       boolean[] flatInput = new boolean[] {true, false, true, false, true};
-      Object tensorIn = OrtUtil.reshape(flatInput, new long[] {1, 5});
+      Object tensorIn = OrtUtil.reshape(flatInput, shape);
       OnnxTensor ov = OnnxTensor.createTensor(env, tensorIn);
       container.put(inputName, ov);
       try (OrtSession.Result res = session.run(container)) {
@@ -1177,6 +1186,41 @@ public class InferenceTest {
         assertArrayEquals(flatInput, resultArray);
       }
       OnnxValue.close(container);
+      container.clear();
+
+      // Test direct buffer input
+      ByteBuffer dirBuf = ByteBuffer.allocateDirect(5).order(ByteOrder.nativeOrder());
+      dirBuf.put((byte) 1);
+      dirBuf.put((byte) 0);
+      dirBuf.put((byte) 1);
+      dirBuf.put((byte) 0);
+      dirBuf.put((byte) 1);
+      dirBuf.rewind();
+      ov = OnnxTensor.createTensor(env, dirBuf, shape, OnnxJavaType.BOOL);
+      container.put(inputName, ov);
+      try (OrtSession.Result res = session.run(container)) {
+        boolean[] resultArray = TestHelpers.flattenBoolean(res.get(0).getValue());
+        assertArrayEquals(flatInput, resultArray);
+      }
+      OnnxValue.close(container);
+      container.clear();
+
+      // Test non-direct buffer input
+      ByteBuffer buf = ByteBuffer.allocate(5);
+      buf.put((byte) 1);
+      buf.put((byte) 0);
+      buf.put((byte) 1);
+      buf.put((byte) 0);
+      buf.put((byte) 1);
+      buf.rewind();
+      ov = OnnxTensor.createTensor(env, buf, shape, OnnxJavaType.BOOL);
+      container.put(inputName, ov);
+      try (OrtSession.Result res = session.run(container)) {
+        boolean[] resultArray = TestHelpers.flattenBoolean(res.get(0).getValue());
+        assertArrayEquals(flatInput, resultArray);
+      }
+      OnnxValue.close(container);
+      container.clear();
     }
   }
 

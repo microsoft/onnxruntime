@@ -81,7 +81,8 @@ elif parse_arg_remove_boolean(sys.argv, "--use_armnn"):
 elif parse_arg_remove_boolean(sys.argv, "--use_cann"):
     package_name = "onnxruntime-cann"
 elif parse_arg_remove_boolean(sys.argv, "--use_azure"):
-    package_name = "onnxruntime-azure"
+    # keep the same name since AzureEP will release with CpuEP by default.
+    package_name = "onnxruntime"
 elif parse_arg_remove_boolean(sys.argv, "--use_qnn"):
     package_name = "onnxruntime-qnn"
 
@@ -175,21 +176,6 @@ try:
                     f.write("except OSError:\n")
                     f.write("    import os\n")
                     f.write('    os.environ["ORT_TENSORRT_UNAVAILABLE"] = "1"\n')
-
-        def _rewrite_ld_preload_azure(self):
-            with open("onnxruntime/capi/_ld_preload.py", "a") as f:
-                f.write("import os\n")
-                f.write("from ctypes import CDLL, RTLD_GLOBAL, util\n")
-                f.write("def LoadLib(lib_name):\n")
-                f.write("    lib_path = util.find_library(lib_name)\n")
-                f.write("    if lib_path: _ = CDLL(lib_path, mode=RTLD_GLOBAL)\n")
-                f.write("    else: _ = CDLL(lib_name, mode=RTLD_GLOBAL)\n")
-                f.write('for lib_name in ["RE2", "ZLIB1"]:\n')
-                f.write("    try:\n")
-                f.write("        LoadLib(lib_name)\n")
-                f.write("    except OSError:\n")
-                f.write('        print("Could not load ort azure-ep dependency: " + lib_name)\n')
-                f.write('        os.environ["ORT_" + lib_name + "_UNAVAILABLE"] = "1"\n')
 
         def run(self):
             if is_manylinux:
@@ -315,8 +301,7 @@ try:
                 self._rewrite_ld_preload(to_preload_cann)
 
             else:
-                if package_name == "onnxruntime-azure":
-                    self._rewrite_ld_preload_azure()
+                pass
 
             _bdist_wheel.run(self)
             if is_manylinux and not disable_auditwheel_repair and not is_openvino:
@@ -488,6 +473,7 @@ packages = [
     "onnxruntime.transformers.models.longformer",
     "onnxruntime.transformers.models.t5",
     "onnxruntime.transformers.models.stable_diffusion",
+    "onnxruntime.transformers.models.whisper",
 ]
 
 package_data = {"onnxruntime.tools.mobile_helpers": ["*.md", "*.config"]}

@@ -63,6 +63,8 @@ module.exports = function (config) {
       { pattern: 'dist/ort-wasm-threaded.wasm', included: false },
       { pattern: 'dist/ort-wasm-simd.wasm', included: false },
       { pattern: 'dist/ort-wasm-simd-threaded.wasm', included: false },
+      { pattern: 'dist/ort-wasm-simd.jsep.wasm', included: false },
+      { pattern: 'dist/ort-wasm-simd-threaded.jsep.wasm', included: false },
       { pattern: 'dist/ort-wasm-threaded.worker.js', included: false },
     ],
     proxies: {
@@ -70,6 +72,8 @@ module.exports = function (config) {
       '/base/test/ort-wasm-threaded.wasm': '/base/dist/ort-wasm-threaded.wasm',
       '/base/test/ort-wasm-simd.wasm': '/base/dist/ort-wasm-simd.wasm',
       '/base/test/ort-wasm-simd-threaded.wasm': '/base/dist/ort-wasm-simd-threaded.wasm',
+      '/base/test/ort-wasm-simd.jsep.wasm': '/base/dist/ort-wasm-simd.jsep.wasm',
+      '/base/test/ort-wasm-simd-threaded.jsep.wasm': '/base/dist/ort-wasm-simd-threaded.jsep.wasm',
       '/base/test/ort-wasm-threaded.worker.js': '/base/dist/ort-wasm-threaded.worker.js',
     },
     plugins: karmaPlugins,
@@ -86,13 +90,51 @@ module.exports = function (config) {
     hostname,
     listenAddress,
     customLaunchers: {
-      ChromeTest: { base: 'ChromeHeadless', flags: ['--enable-features=SharedArrayBuffer'] },
-      ChromePerf: { base: 'Chrome', flags: ['--window-size=1,1', '--enable-features=SharedArrayBuffer'] },
-      ChromeDebug: { debug: true, base: 'Chrome', flags: ['--remote-debugging-port=9333', '--enable-features=SharedArrayBuffer'] },
-      ChromeCanaryTest: { base: 'ChromeCanary', flags: ['--window-size=1,1', '--enable-features=SharedArrayBuffer', '--enable-unsafe-webgpu'] },
-      ChromeCanaryProfileTest: { base: 'ChromeCanary', flags: ['--window-size=1,1', '--enable-features=SharedArrayBuffer', '--enable-unsafe-webgpu', '--disable-dawn-features=disallow_unsafe_apis'] },
-      ChromeCanaryDebug: { debug: true, base: 'ChromeCanary', flags: ['--remote-debugging-port=9333', '--enable-features=SharedArrayBuffer', '--enable-unsafe-webgpu'] },
-      ChromeCanaryProfileDebug: { debug: true, base: 'ChromeCanary', flags: ['--remote-debugging-port=9333', '--enable-features=SharedArrayBuffer', '--enable-unsafe-webgpu', '--disable-dawn-features=disallow_unsafe_apis'] },
+      ChromeTest: {
+        base: 'Chrome',
+        flags: ['--enable-features=SharedArrayBuffer']
+      },
+      ChromeTestHeadless: {
+        base: 'ChromeHeadless',
+        flags: ['--enable-features=SharedArrayBuffer']
+      },
+      ChromeDebug: {
+        debug: true,
+        base: 'Chrome', flags: ['--remote-debugging-port=9333', '--enable-features=SharedArrayBuffer']
+      },
+      ChromeCanaryTest: {
+        base: 'ChromeCanary',
+        flags: [
+          '--enable-features=SharedArrayBuffer',
+          '--enable-experimental-web-platform-features'
+        ]
+      },
+      ChromeCanaryDebug: {
+        debug: true,
+        base: 'ChromeCanary',
+        flags: [
+          '--remote-debugging-port=9333',
+          '--enable-features=SharedArrayBuffer',
+          '--enable-experimental-web-platform-features'
+        ]
+      },
+      ChromeWebGpuProfileTest: {
+        base: 'Chrome',
+        flags: [
+          '--window-size=1,1',
+          '--enable-features=SharedArrayBuffer',
+          '--disable-dawn-features=disallow_unsafe_apis'
+        ]
+      },
+      ChromeWebGpuProfileDebug: {
+        debug: true,
+        base: 'Chrome',
+        flags: [
+          '--remote-debugging-port=9333',
+          '--enable-features=SharedArrayBuffer',
+          '--disable-dawn-features=disallow_unsafe_apis',
+        ]
+      },
       //
       // ==== BrowserStack browsers ====
       //

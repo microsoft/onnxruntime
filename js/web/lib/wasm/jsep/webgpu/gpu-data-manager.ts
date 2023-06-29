@@ -134,8 +134,11 @@ class GpuDataManagerImpl implements GpuDataManager {
       throw new Error('inconsistent source and destination gpu data size');
     }
     const size = calcNormalizedBufferSize(sourceGpuDataCache.originalSize);
+
     // GPU copy
-    this.backend.getCommandEncoder().copyBufferToBuffer(
+    const commandEncoder = this.backend.getCommandEncoder();
+    this.backend.endComputePass();
+    commandEncoder.copyBufferToBuffer(
         sourceGpuDataCache.gpuData.buffer, 0, destinationGpuDataCache.gpuData.buffer, 0, size);
   }
 
@@ -195,12 +198,13 @@ class GpuDataManagerImpl implements GpuDataManager {
 
     const commandEncoder = this.backend.getCommandEncoder();
     this.backend.endComputePass();
+    const bufferSize = calcNormalizedBufferSize(cachedData.originalSize);
     const gpuReadBuffer = this.backend.device.createBuffer(
         // eslint-disable-next-line no-bitwise
-        {size: cachedData.originalSize, usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ});
+        {size: bufferSize, usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ});
     commandEncoder.copyBufferToBuffer(
         cachedData.gpuData.buffer /* source buffer */, 0 /* source offset */, gpuReadBuffer /* destination buffer */,
-        0 /* destination offset */, cachedData.originalSize /* size */
+        0 /* destination offset */, bufferSize /* size */
     );
     this.backend.flush();
 

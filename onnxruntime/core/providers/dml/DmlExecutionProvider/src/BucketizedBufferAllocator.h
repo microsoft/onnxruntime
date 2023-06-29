@@ -66,8 +66,6 @@ namespace Dml
 
         AllocationInfo* GetAllocationInfo(const TaggedPointer& taggedPointer);
 
-        void* Alloc(size_t size_in_bytes);
-        void Free(void* ptr);
         void FreeResource(AllocationInfo* allocInfo, uint64_t pooledResourceId);
         uint64_t ComputeRequiredSize(size_t size);
         bool TilingEnabled() const { return tiling_enabled_; };
@@ -82,6 +80,8 @@ namespace Dml
             std::unique_ptr<BucketizedBufferAllocator>&& subAllocator);
 
         void SetDefaultRoundingMode(AllocatorRoundingMode roundingMode);
+        void* Alloc(size_t size);
+        void Free(void* p);
 
     private:
         static const uint32_t c_minResourceSizeExponent = 16; // 2^16 = 64KB

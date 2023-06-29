@@ -53,6 +53,7 @@
 #include "core/optimizer/nchwc_transformer.h"
 #include "core/optimizer/noop_elimination.h"
 #include "core/optimizer/not_where_fusion.h"
+#include "core/optimizer/pre_shape_node_elimination.h"
 #ifdef MLAS_TARGET_AMD64_IX86
 #include "core/optimizer/qdq_transformer/avx2_weight_s8_to_u8.h"
 #endif
@@ -112,6 +113,7 @@ InlinedVector<std::unique_ptr<RewriteRule>> GenerateRewriteRules(
       rules.push_back(std::make_unique<EliminateDropout>());
       rules.push_back(std::make_unique<ExpandElimination>());
       rules.push_back(std::make_unique<CastElimination>());
+      rules.push_back(std::make_unique<PreShapeNodeElimination>());
       rules.push_back(std::make_unique<NoopElimination>());
       rules.push_back(std::make_unique<DivMulFusion>());
       rules.push_back(std::make_unique<FuseReluClip>());
@@ -234,7 +236,9 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
 
       // run TransposeOptimizer last as it works in a slightly different way by moving Transpose nodes around.
       // shouldn't affect the end result - just easier to debug any issue if it's last.
-      auto cpu_allocator = cpu_execution_provider.GetAllocator(OrtMemTypeDefault);
+      // local CPU allocator is enough as this allocator is finally passed to a local tensor.
+      // We will also benefit by using a local allocator as we don't need to pass allocator as parameter for EP API refactor
+      AllocatorPtr cpu_allocator = std::make_shared<CPUAllocator>();
       transformers.emplace_back(std::make_unique<TransposeOptimizer>(std::move(cpu_allocator)));
     } break;
 
@@ -349,8 +353,12 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       if (MlasNchwcGetBlockSize() > 1) {
         transformers.emplace_back(std::make_unique<NchwcTransformer>());
       }
-      auto cpu_allocator = cpu_execution_provider.GetAllocator(OrtMemTypeDefault);
-      transformers.emplace_back(std::make_unique<NhwcTransformer>(std::move(cpu_allocator)));
+      AllocatorPtr cpu_allocator = std::make_shared<CPUAllocator>();
+      auto cpu_registry = cpu_execution_provider.GetKernelRegistry();
+      auto nhwc_transformer = std::make_unique<NhwcTransformer>(std::move(cpu_allocator), std::move(cpu_registry));
+      if (nhwc_transformer->IsActive()) {
+        transformers.emplace_back(std::move(nhwc_transformer));
+      }
       // NCHWCtransformer should have a higher priority versus this. Because NCHWCtransformer also do the similar things
       // of fusion patterns and target on CPU. However, NCHWCtransformer will reorder the layout to nchwc which is only available for
       // x86-64 cpu, not edge cpu like arm. But This transformer could be used by opencl-ep/cpu-ep. So
@@ -421,9 +429,12 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformersForMinimalB
       // currently the only level 3 optimizer is the NhwcTransformer which is fully supported at runtime
       if (!saving) {
 #ifndef DISABLE_CONTRIB_OPS
-        const InlinedHashSet<std::string_view> cpu_ep = {onnxruntime::kCpuExecutionProvider};
-        auto cpu_allocator = cpu_execution_provider.GetAllocator(OrtMemTypeDefault);
-        transformers.emplace_back(std::make_unique<NhwcTransformer>(std::move(cpu_allocator)));
+        AllocatorPtr cpu_allocator = std::make_shared<CPUAllocator>();
+        auto cpu_registry = cpu_execution_provider.GetKernelRegistry();
+        auto nhwc_transformer = std::make_unique<NhwcTransformer>(std::move(cpu_allocator), std::move(cpu_registry));
+        if (nhwc_transformer->IsActive()) {
+          transformers.emplace_back(std::move(nhwc_transformer));
+        }
 #else
         ORT_UNUSED_PARAMETER(cpu_execution_provider);
 #endif

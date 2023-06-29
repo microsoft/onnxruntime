@@ -660,17 +660,21 @@ namespace Microsoft.ML.OnnxRuntime.Tensors
         }
 
         /// <summary>
-        /// Initialize an n-dimensional tensor with the specified dimensions and layout.  ReverseStride=true gives a stride of 1-element width to the first dimension (0).  ReverseStride=false gives a stride of 1-element width to the last dimension (n-1).
+        /// Initialize an n-dimensional tensor with the specified dimensions and layout.  
+        /// ReverseStride=true gives a stride of 1-element width to the first dimension (0).  
+        /// ReverseStride=false gives a stride of 1-element width to the last dimension (n-1).
         /// </summary>
-        /// <param name="dimensions">An span of integers that represent the size of each dimension of the Tensor to create.</param>
-        /// <param name="reverseStride">False (default) to indicate that the first dimension is most major (farthest apart) and the last dimension is most minor (closest together): akin to row-major in a rank-2 tensor.  True to indicate that the last dimension is most major (farthest apart) and the first dimension is most minor (closest together): akin to column-major in a rank-2 tensor.</param>
+        /// <param name="dimensions">
+        /// An span of integers that represent the size of each dimension of the Tensor to create.</param>
+        /// <param name="reverseStride">
+        /// False (default) to indicate that the first dimension is most major (farthest apart) and the last dimension 
+        /// is most minor (closest together): akin to row-major in a rank-2 tensor.  
+        /// True to indicate that the last dimension is most major (farthest apart) and the first dimension is most 
+        /// minor (closest together): akin to column-major in a rank-2 tensor.</param>
+        /// <remarks>If you pass `null` for dimensions it will implicitly convert to an empty ReadOnlySpan, which is 
+        /// equivalent to the dimensions for a scalar value.</remarks>
         protected Tensor(ReadOnlySpan<int> dimensions, bool reverseStride) : base(typeof(T))
         {
-            if (dimensions == null)
-            {
-                throw new ArgumentNullException(nameof(dimensions));
-            }
-
             this.dimensions = new int[dimensions.Length];
             long size = 1;
             for (int i = 0; i < dimensions.Length; i++)

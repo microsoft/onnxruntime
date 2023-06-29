@@ -22,17 +22,12 @@ DmlCpuAllocator::DmlCpuAllocator(OrtMemType memType)
 
 void* DmlCpuAllocator::Alloc(size_t size)
 {
-    if (size <= 0)
-    {
-        return nullptr;
-    }
-    void* p = malloc(size);
-    return p;
+    return onnxruntime::AllocatorDefaultAlloc(size);
 }
 
 void DmlCpuAllocator::Free(void* p)
 {
-    free(p);
+    return onnxruntime::AllocatorDefaultFree(p);
 }
 
 } // namespace Dml

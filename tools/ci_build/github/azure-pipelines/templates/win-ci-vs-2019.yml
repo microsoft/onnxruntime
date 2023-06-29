@@ -131,6 +131,10 @@ jobs:
     workingDirectory: '$(Build.BinariesDirectory)'
     displayName: 'Install python modules'
 
+  - ${{ if contains(parameters.additionalBuildFlags, 'use_cuda') }}:
+    - powershell: |
+       azcopy.exe cp --recursive "https://lotusscus.blob.core.windows.net/models/cuda_sdk/v11.8" $(Agent.TempDirectory)
+
   - ${{ if eq(parameters.WITH_CACHE, true) }}:
     - powershell: |
         if ([string]::IsNullOrEmpty((Get-Command ccache -errorAction SilentlyContinue)))
@@ -232,7 +236,7 @@ jobs:
         CCACHE_DIR: $(ORT_CACHE_DIR)
 
   - powershell: |
-      Get-Volume D
+      Get-Volume $("$(Build.BinariesDirectory)")[0]
     displayName: check disk size
 
   - task: DeleteFiles@1
@@ -243,7 +247,7 @@ jobs:
         **/*.obj
 
   - powershell: |
-      Get-Volume D
+      Get-Volume $("$(Build.BinariesDirectory)")[0]
     displayName: check disk size
 
   - ${{ if eq(parameters.EnablePython, true) }}:

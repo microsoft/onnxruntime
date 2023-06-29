@@ -149,9 +149,6 @@ extern std::string openvino_device_type;
 #ifdef USE_TVM
 #include "core/providers/tvm/tvm_ep_options.h"
 #endif
-#ifdef USE_VITISAI
-#include "core/providers/vitisai/vitisai_provider_factory.h"
-#endif
 #ifdef USE_ACL
 #include "core/providers/acl/acl_provider_factory.h"
 #endif
@@ -402,13 +399,11 @@ void addIoBindingMethods(pybind11::module& m);
 
 void addSparseTensorMethods(pybind11::module& m);
 
-#ifdef onnxruntime_PYBIND_EXPORT_OPSCHEMA
 void addGlobalSchemaFunctions(pybind11::module& m);
 
 void addOpKernelSubmodule(pybind11::module& m);
 
 void addOpSchemaSubmodule(pybind11::module& m);
-#endif
 
 const char* GetDeviceName(const OrtDevice& device);
 

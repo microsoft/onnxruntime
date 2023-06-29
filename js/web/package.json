@@ -8,7 +8,7 @@
     "type": "git"
   },
   "author": "fs-eire",
-  "version": "1.15.0",
+  "version": "1.16.0",
   "jsdelivr": "dist/ort.min.js",
   "dependencies": {
     "flatbuffers": "^1.12.0",
@@ -20,7 +20,7 @@
   },
   "scripts": {
     "prepare": "tsc",
-    "build:doc": "node ./script/generate-operator-md",
+    "build:doc": "node ./script/generate-webgl-operator-md && node ./script/generate-webgpu-operator-md",
     "pull:wasm": "node ./script/pull-prebuilt-wasm-artifacts",
     "test:e2e": "node ./test/e2e/run",
     "build": "node ./script/build",
@@ -66,6 +66,22 @@
     "strip-json-comments": "^5.0.0"
   },
   "main": "dist/ort-web.node.js",
-  "types": "./types/lib/index.d.ts",
+  "exports": {
+    ".": {
+      "node": {
+        "types": "./types.d.ts",
+        "default": "./dist/ort-web.node.js"
+      },
+      "default": {
+        "types": "./types.d.ts",
+        "default": "./dist/ort.min.js"
+      }
+    },
+    "./webgpu": {
+      "types": "./types.d.ts",
+      "default": "./dist/ort.webgpu.min.js"
+    }
+  },
+  "types": "./types.d.ts",
   "description": "A Javascript library for running ONNX models on browsers"
 }
