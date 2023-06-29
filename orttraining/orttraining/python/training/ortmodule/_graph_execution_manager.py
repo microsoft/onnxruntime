@@ -65,7 +65,9 @@ class GraphExecutionManager(GraphExecutionInterface):
 
         self._logger = logger
 
+        # Management for ORTModule configuration.
         self._runtime_options = _RuntimeOptions(self._logger)
+
         # Original and flattened (transformed) output module
         self._flattened_module = module
 
@@ -84,7 +86,11 @@ class GraphExecutionManager(GraphExecutionInterface):
 
         self._first_skip_check_warning = True
 
+        # Inspector for runtime information, for example input data, memory usage, etc.
         self._runtime_inspector = RuntimeInspector(self._logger)
+
+        # Tracker for ORTModule model export, session creation overhead.
+        self._time_tracker = _logger.TimeTracker()
 
         # Value can be either torch.onnx.TrainingMode.TRAINING or torch.onnx.TrainingMode.EVAL
         # To be instantiated in the concrete implementation of GraphExecutionManager
@@ -98,7 +104,6 @@ class GraphExecutionManager(GraphExecutionInterface):
         self._input_info: Optional[_InputInfo] = None
         self._module_output_schema: Optional[_ModelInputOutputSchemaType] = None
         self._warning_log_detected_during_export = False
-        self._export_duration_in_ms = 0
 
         # Device where the model is placed.
         self._device: Optional[torch.device] = _utils.get_device_from_module(module)
@@ -234,6 +239,8 @@ class GraphExecutionManager(GraphExecutionInterface):
         return session_options, providers, provider_options
 
     def _export_model(self, *inputs, **kwargs) -> bool:
+        self._time_tracker.start(_logger.TimeTrackerPhase.EXPORT)
+
         # 1. Set the self._device from the user module
         # 2. Verify input schema matches the schema used on the previous model export
         # 3. Export the user model under self._export_training_flag mode
@@ -275,6 +282,7 @@ class GraphExecutionManager(GraphExecutionInterface):
         # Restore the recorded random states
         _utils.set_random_states(random_states)
 
+        self._time_tracker.end(_logger.TimeTrackerPhase.EXPORT)
         return True
 
     def _get_exported_model(self, input_schema: _ModelInputOutputSchemaType, *inputs, **kwargs) -> onnx.ModelProto:
@@ -284,10 +292,6 @@ class GraphExecutionManager(GraphExecutionInterface):
         TODO: How to support dynamic axes? Dimensions are determined by samples
         """
         with _logger.suppress_os_stream_output(log_level=self._debug_options.logging.log_level) as suppress_output:
-            from datetime import datetime
-
-            start = datetime.now()
-
             # Setup dynamic axes for onnx model
             self._input_info = _io.parse_inputs_for_onnx_export(
                 self._module_parameters, None, input_schema, inputs, kwargs
@@ -363,9 +367,6 @@ class GraphExecutionManager(GraphExecutionInterface):
             if suppress_output.tell() > 0:
                 self._warning_log_detected_during_export = True
 
-            end = datetime.now()
-            self._export_duration_in_ms = (end - start).total_seconds() * 1000
-
         return exported_model
 
     def _set_device_from_module(self, inputs, kwargs):
@@ -390,6 +391,8 @@ class GraphExecutionManager(GraphExecutionInterface):
 
     def _initialize_graph_builder(self):
         """Creates a new OrtModuleGraphBuilder, initializes it and saves it to self._graph_builder"""
+
+        self._time_tracker.start(_logger.TimeTrackerPhase.GRAPH_BUILDER_INIT)
 
         # All initializer names along with user inputs are a part of the onnx graph inputs
         # since the onnx model was exported with the flag keep_initializers_as_inputs=True
@@ -433,6 +436,8 @@ class GraphExecutionManager(GraphExecutionInterface):
             param for name, param in self._flattened_module.named_parameters() if name in self._graph_initializer_names
         ]
 
+        self._time_tracker.end(_logger.TimeTrackerPhase.GRAPH_BUILDER_INIT)
+
     def signal_model_changed(self):
         """Signals the execution manager to re-export the model on the next forward call"""
         self._original_model_has_changed = True
@@ -472,6 +477,8 @@ class GraphExecutionManager(GraphExecutionInterface):
            enable sparsity-based optimization.
 
         """
+
+        self._time_tracker.start(_logger.TimeTrackerPhase.DETECTION)
 
         # Enable data sparsity inspection if sparse optimizer is ON or user wants to print input density.
         if self._runtime_options.enable_sparse_optimizer or self._runtime_options.print_input_density:
@@ -517,6 +524,8 @@ class GraphExecutionManager(GraphExecutionInterface):
 
         if self._runtime_options.print_memory_stat:
             self._runtime_inspector.enable_memory_inspector(self._original_module)
+
+        self._time_tracker.end(_logger.TimeTrackerPhase.DETECTION)
 
     def _log_feature_stats(self):
         rank = 0
@@ -590,7 +599,10 @@ class GraphExecutionManager(GraphExecutionInterface):
 
         stat += f"\n{_logger.LogColor.WARNING}There were one or more warnings or errors raised while exporting the PyTorch model.\n"
         stat += f"Please enable INFO level logging with DebugOptions to view all warnings and errors.{_logger.LogColor.ENDC}\n\n"
-        stat += f"Export duration: {self._export_duration_in_ms:.0f} milliseconds\n"
+
+        # Collect ORTModule overheads for different phases.
+        stat += f"{self._time_tracker.to_string(self._logger.level < LogLevel.WARNING)}\n"
+
         stat += f"Versions: ONNX Runtime - {onnxruntime.__version__}, ONNX - {onnx.__version__}\n\n"
         stat += f"{_logger.LogColor.HEADER}************************************************************************{_logger.LogColor.ENDC}\n\n"
 

@@ -18,6 +18,7 @@ from ._fallback import ORTModuleFallbackException, _FallbackManager, _FallbackPo
 from ._gradient_accumulation_manager import GradientAccumulationManager
 from ._graph_execution_manager import GraphExecutionManager, _RunStateInfo
 from ._io import _FlattenedModule, _InputInfo
+from ._logger import TimeTrackerPhase
 from ._runtime_inspector import Phase
 from .options import DebugOptions, _SkipCheck
 
@@ -243,6 +244,8 @@ class TrainingManager(GraphExecutionManager):
                 self._runtime_options.skip_check.is_set(_SkipCheck.SKIP_CHECK_BUILD_GRADIENT) is False
                 or not self._onnx_models.exported_model
             ):
+                self._time_tracker.start(TimeTrackerPhase.EndToEnd)
+
                 build_gradient_graph = self._export_model(*inputs, **kwargs)
                 if build_gradient_graph:
                     # If model was exported, then initialize the graph builder
@@ -268,8 +271,6 @@ class TrainingManager(GraphExecutionManager):
 
                     # Build the gradient graph
                     self._build_graph(graph_transformer_config)
-
-                    self._log_feature_stats()
 
             # If creating the execution agent for the first time, this skip check will not take effect.
             # It will only take effect on subsequent forward calls.
@@ -297,6 +298,9 @@ class TrainingManager(GraphExecutionManager):
                 self._gradient_accumulation_manager.initialize(
                     self._runtime_options.enable_grad_acc_optimization, self._flattened_module, self._graph_info
                 )
+
+                self._time_tracker.end(TimeTrackerPhase.EndToEnd)
+                self._log_feature_stats()
 
             self._gradient_accumulation_manager.maybe_update_cache_before_run()
 
@@ -333,6 +337,7 @@ class TrainingManager(GraphExecutionManager):
 
     def _build_graph(self, graph_transformer_config):
         """Build an optimized gradient graph using the module_graph_builder"""
+        self._time_tracker.start(TimeTrackerPhase.BUILD_GRAPH)
 
         super()._build_graph(graph_transformer_config)
         self._onnx_models.optimized_model = onnx.load_model_from_string(self._graph_builder.get_gradient_model())
@@ -366,8 +371,12 @@ class TrainingManager(GraphExecutionManager):
             else:
                 self._gradient_map.append(-1)
 
+        self._time_tracker.end(TimeTrackerPhase.BUILD_GRAPH)
+
     def _create_execution_agent(self):
         """Creates a TrainingAgent that can run the forward and backward graph on the training model"""
+
+        self._time_tracker.start(TimeTrackerPhase.CREATE_SESSION)
 
         session_options, providers, provider_options = self._get_session_config()
         fw_feed_names = [input.name for input in self._onnx_models.optimized_model.graph.input]
@@ -409,6 +418,8 @@ class TrainingManager(GraphExecutionManager):
             provider_options,
             local_device_rank,
         )
+
+        self._time_tracker.end(TimeTrackerPhase.CREATE_SESSION)
 
     def _reinitialize_graph_builder(self, input_info: _InputInfo):
         """Return true if the module graph builder was reinitialized"""

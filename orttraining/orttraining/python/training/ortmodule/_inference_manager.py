@@ -15,6 +15,7 @@ from . import _are_deterministic_algorithms_enabled, _io, _use_deterministic_alg
 from ._execution_agent import InferenceAgent
 from ._fallback import ORTModuleFallbackException, _FallbackManager, _FallbackPolicy
 from ._graph_execution_manager import GraphExecutionManager, _RunStateInfo
+from ._logger import TimeTrackerPhase
 from .options import DebugOptions, _SkipCheck
 
 
@@ -109,6 +110,8 @@ class InferenceManager(GraphExecutionManager):
                 self._runtime_options.skip_check.is_set(_SkipCheck.SKIP_CHECK_BUILD_GRADIENT) is False
                 or not self._onnx_models.exported_model
             ):
+                self._time_tracker.start(TimeTrackerPhase.EndToEnd)
+
                 # Exporting module to ONNX for the first time
                 build_graph = self._export_model(*inputs, **kwargs)
                 if build_graph:
@@ -123,8 +126,6 @@ class InferenceManager(GraphExecutionManager):
 
                     # Build the gradient graph
                     self._build_graph(graph_transformer_config)
-
-                    self._log_feature_stats()
 
             # If creating the execution agent for the first time, this skip check will not take effect.
             # It will only take effect on subsequent forward calls.
@@ -148,6 +149,8 @@ class InferenceManager(GraphExecutionManager):
             if create_execution_session:
                 # Create execution session creates the inference_session
                 self._create_execution_agent()
+                self._log_feature_stats()
+                self._time_tracker.end(TimeTrackerPhase.EndToEnd)
 
             if self._runtime_options.skip_check.is_set(_SkipCheck.SKIP_CHECK_DEVICE) is False:
                 # Assert that the input and model device match
@@ -189,6 +192,7 @@ class InferenceManager(GraphExecutionManager):
 
     def _build_graph(self, graph_transformer_config):
         """Build an inference graph using the module_graph_builder"""
+        self._time_tracker.start(TimeTrackerPhase.BUILD_GRAPH)
 
         super()._build_graph(graph_transformer_config)
         self._onnx_models.optimized_model = onnx.load_model_from_string(self._graph_builder.get_forward_model())
@@ -199,10 +203,15 @@ class InferenceManager(GraphExecutionManager):
                 self._export_mode,
             )
 
+        self._time_tracker.end(TimeTrackerPhase.BUILD_GRAPH)
+
     def _create_execution_agent(self):
         """Creates an InferenceAgent that can run forward graph on an inference model"""
+        self._time_tracker.start(TimeTrackerPhase.CREATE_SESSION)
 
         session_options, providers, provider_options = self._get_session_config()
         self._execution_agent = InferenceAgent(
             self._onnx_models.optimized_model.SerializeToString(), session_options, providers, provider_options
         )
+
+        self._time_tracker.end(TimeTrackerPhase.CREATE_SESSION)

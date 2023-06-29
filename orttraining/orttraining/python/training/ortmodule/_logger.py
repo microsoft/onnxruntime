@@ -6,6 +6,7 @@
 import io
 import logging
 import sys
+import time
 from contextlib import contextmanager
 from enum import IntEnum
 from typing import Dict, List
@@ -76,3 +77,70 @@ class LogColor:
     ENDC = "\033[0m"
     BOLD = "\033[1m"
     UNDERLINE = "\033[4m"
+
+
+class TimeTrackerPhase(IntEnum):
+    EndToEnd = 0
+    EXPORT = 1
+    GRAPH_BUILDER_INIT = 2
+    DETECTION = 3
+    BUILD_GRAPH = 4
+    CREATE_SESSION = 5
+
+    def to_string(self) -> str:
+        if self == TimeTrackerPhase.EndToEnd:
+            return "end to end"
+        if self == TimeTrackerPhase.EXPORT:
+            return "export"
+        elif self == TimeTrackerPhase.GRAPH_BUILDER_INIT:
+            return "graph builder init"
+        elif self == TimeTrackerPhase.DETECTION:
+            return "runtime detection"
+        elif self == TimeTrackerPhase.BUILD_GRAPH:
+            return "build gradient"
+        elif self == TimeTrackerPhase.CREATE_SESSION:
+            return "create session"
+        else:
+            return "invalid"
+
+
+class TimeTracker:
+    """A simple class to track time spent in different phases of ORT backend first-time initialization."""
+
+    NOT_RECORD = -1.0
+
+    def __init__(self):
+        self.starts_: List[float] = [TimeTracker.NOT_RECORD] * len(TimeTrackerPhase)
+        self.ends_: List[float] = [TimeTracker.NOT_RECORD] * len(TimeTrackerPhase)
+
+    def start(self, phase: TimeTrackerPhase):
+        self.starts_[phase] = time.time()
+
+    def end(self, phase: TimeTrackerPhase):
+        self.ends_[phase] = time.time()
+
+    def duration(self, phase: TimeTrackerPhase):
+        if self.ends_[phase] == TimeTracker.NOT_RECORD or self.starts_[phase] == TimeTracker.NOT_RECORD:
+            return TimeTracker.NOT_RECORD
+        return self.ends_[phase] - self.starts_[phase]
+
+    def to_string(self, log_details=False) -> str:
+        end_to_end_str = self.duration(TimeTrackerPhase.EndToEnd)
+        end_to_end_str = f"{end_to_end_str * 1000:.0f}" if end_to_end_str != TimeTracker.NOT_RECORD else "N/A"
+        export_str = self.duration(TimeTrackerPhase.EXPORT)
+        export_str = f"{export_str * 1000:.0f}" if export_str != TimeTracker.NOT_RECORD else "N/A"
+        overhead_title_str = f"Total overhead: {end_to_end_str}ms where export takes {export_str}ms.\n"
+
+        duration_summaries = []
+        for phase in TimeTrackerPhase:
+            duration = self.duration(phase)
+            if phase in [TimeTrackerPhase.EndToEnd, TimeTrackerPhase.EXPORT]:
+                continue
+
+            val = f" {phase.to_string()} takes {duration * 1000:.0f}ms" if duration != TimeTracker.NOT_RECORD else "N/A"
+            duration_summaries.append(f"{val}")
+
+        if log_details:
+            return f"{overhead_title_str}Other overhead details: {','.join(duration_summaries)}\n"
+
+        return overhead_title_str
