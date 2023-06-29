@@ -5,9 +5,10 @@ import {DataType} from '../../../wasm-common';
 import {TensorView} from '../../tensor';
 import {createAttributeWithCacheKey} from '../attribute-with-cache-key';
 import {ComputeContext} from '../types';
+import {GpuDataType, ProgramInfoLoader, ProgramMetadata} from '../types'
 
+import {createConvTranspose2DProgramInfo} from './3rd-party/conv_backprop_webgpu'
 import {ConvAttributes} from './conv';
-import {createConvTranspose2DProgramInfoLoader} from './conv-transpose-naive';
 import {parseInternalActivationAttributes} from './fuse-utils';
 
 const computeTotalPad =
@@ -208,6 +209,23 @@ const validateInputs = (inputs: readonly TensorView[], attributes: ConvTranspose
   }
 };
 
+const createConvTranspose2DProgramMetadata = (hasBias: boolean, cacheHint: string): ProgramMetadata => ({
+  name: 'ConvTranspose2D',
+  inputTypes: hasBias ? [GpuDataType.default, GpuDataType.default, GpuDataType.default] :
+                        [GpuDataType.default, GpuDataType.default],
+  cacheHint
+});
+
+const createConvTranspose2DProgramInfoLoader =
+    (inputs: readonly TensorView[], attributes: ConvTransposeAttributes,
+     squeezeOutputShapeFunction?: (shape: readonly number[]) => number[]): ProgramInfoLoader => {
+      const hasBias = inputs.length === 3;
+      const metadata = createConvTranspose2DProgramMetadata(hasBias, attributes.cacheKey);
+      return {
+        ...metadata,
+        get: () => createConvTranspose2DProgramInfo(inputs, metadata, attributes, squeezeOutputShapeFunction)
+      };
+    };
 
 const convTranspose2d =
     (context: ComputeContext, inputs: readonly TensorView[], attributes: ConvTransposeAttributes): void => {
