@@ -236,7 +236,7 @@ jobs:
         --locale "en_US" \
         --build-dir $(Build.BinariesDirectory)/app_center_test_training/ios_package_test/DerivedData/Build/Products/Debug-iphoneos \
         --token $(app_center_api_token)
-  displayName: "[Training] Run E2E tests on App Center"
+    displayName: "[Training] Run E2E tests on App Center"
 
   - task: AzureCLI@2
     inputs:
