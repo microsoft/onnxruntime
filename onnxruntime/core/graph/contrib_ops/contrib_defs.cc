@@ -2252,13 +2252,13 @@ ONNX_MS_OPERATOR_SET_SCHEMA(CropAndResize, 1,
         a fixed size = [crop_height, crop_width]. The result is a 4-D tensor [num_boxes, crop_height, crop_width, depth].
         The resizing is corner aligned.)DOC"));
 
-
 #if !defined(DISABLE_FLOAT8_TYPES)
-#define GEMM_FLOAT8_TYPES {"tensor(float8e4m3fn)", "tensor(float8e5m2)", "tensor(float16)", "tensor(bfloat16)", "tensor(float)"}
+#define GEMM_FLOAT8_TYPES \
+  { "tensor(float8e4m3fn)", "tensor(float8e5m2)", "tensor(float16)", "tensor(bfloat16)", "tensor(float)" }
 #else
-#define GEMM_FLOAT8_TYPES {"tensor(float16)", "tensor(bfloat16)", "tensor(float)"}
+#define GEMM_FLOAT8_TYPES \
+  { "tensor(float16)", "tensor(bfloat16)", "tensor(float)" }
 #endif
-
 
 ONNX_MS_OPERATOR_SET_SCHEMA(GemmFloat8, 1,
                             OpSchema()

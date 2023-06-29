@@ -118,33 +118,33 @@ void GemmFloat8::set(const TensorShape& a_shape, const TensorShape& b_shape, int
   constexpr int ir = 0;
   constexpr int ic = 1 - ir;
   if (transA_ && !transB_) {  // TN
-    M = a_shape[ic];
-    N = b_shape[ic];
-    K = a_shape[ir];
-    lda = a_shape[row_major ? ic : ir];
-    ldb = b_shape[row_major ? ic : ir];
-    ldd = b_shape[row_major ? ic : ir];
+    M = static_cast<int>(a_shape[ic]);
+    N = static_cast<int>(b_shape[ic]);
+    K = static_cast<int>(a_shape[ir]);
+    lda = static_cast<int>(a_shape[row_major ? ic : ir]);
+    ldb = static_cast<int>(b_shape[row_major ? ic : ir]);
+    ldd = static_cast<int>(b_shape[row_major ? ic : ir]);
   } else if (!transA_ && !transB_) {  // NN
-    M = a_shape[ir];
-    N = b_shape[ic];
-    K = a_shape[ic];
-    lda = a_shape[row_major ? ic : ir];
-    ldb = b_shape[row_major ? ic : ir];
-    ldd = b_shape[row_major ? ic : ir];
+    M = static_cast<int>(a_shape[ir]);
+    N = static_cast<int>(b_shape[ic]);
+    K = static_cast<int>(a_shape[ic]);
+    lda = static_cast<int>(a_shape[row_major ? ic : ir]);
+    ldb = static_cast<int>(b_shape[row_major ? ic : ir]);
+    ldd = static_cast<int>(b_shape[row_major ? ic : ir]);
   } else if (!transA_ && transB_) {  // NT
-    M = a_shape[ir];
-    N = b_shape[ir];
-    K = a_shape[ic];
-    lda = a_shape[row_major ? ic : ir];
-    ldb = b_shape[row_major ? ic : ir];
-    ldd = b_shape[row_major ? ir : ic];
+    M = static_cast<int>(a_shape[ir]);
+    N = static_cast<int>(b_shape[ir]);
+    K = static_cast<int>(a_shape[ic]);
+    lda = static_cast<int>(a_shape[row_major ? ic : ir]);
+    ldb = static_cast<int>(b_shape[row_major ? ic : ir]);
+    ldd = static_cast<int>(b_shape[row_major ? ir : ic]);
   } else {  // TT
-    M = a_shape[ic];
-    N = b_shape[ir];
-    K = a_shape[ir];
-    lda = a_shape[row_major ? ir : ic];
-    ldb = b_shape[row_major ? ir : ic];
-    ldd = b_shape[row_major ? ic : ir];
+    M = static_cast<int>(a_shape[ic]);
+    N = static_cast<int>(b_shape[ir]);
+    K = static_cast<int>(a_shape[ir]);
+    lda = static_cast<int>(a_shape[row_major ? ir : ic]);
+    ldb = static_cast<int>(b_shape[row_major ? ir : ic]);
+    ldd = static_cast<int>(b_shape[row_major ? ic : ir]);
   }
 }
 

@@ -4,11 +4,12 @@
 
 import unittest
 import warnings
+
 import numpy as np
 from numpy.testing import assert_allclose
 from onnx import TensorProto
 from onnx.checker import check_model
-from onnx.helper import make_graph, make_model, make_node, make_opsetid, make_tensor, make_tensor_value_info
+from onnx.helper import make_graph, make_model, make_node, make_opsetid, make_tensor_value_info
 from onnx.numpy_helper import from_array
 
 from onnxruntime import InferenceSession
