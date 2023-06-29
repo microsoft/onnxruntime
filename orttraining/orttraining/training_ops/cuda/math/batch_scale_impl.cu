@@ -121,7 +121,6 @@ void BatchScaleImpl(cudaStream_t stream,
           TwoOutputNonVectorizedFunctorType(input_data, scales, input_element_count, outputs));
   } else if (output_count == 3) {
     if (use_vectorized) {
-      // std::cout << "use vectorized for output_count == 3" << std::endl;
       BatchScaleKernel<ThreeOutputVectorizedFunctorType><<<blocksPerGrid, kBlockSize, 0, stream>>>(
           ThreeOutputVectorizedFunctorType(input_data, scales, input_element_count, outputs));
     } else

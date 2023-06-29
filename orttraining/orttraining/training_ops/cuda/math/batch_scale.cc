@@ -48,7 +48,7 @@ Status BatchScale::ComputeInternal(OpKernelContext* context) const {
   std::vector<Tensor*> output_tensors;
   output_tensors.reserve(output_count);
   for (size_t i = 0; i < output_count; ++i) {
-    output_tensors.push_back(context->Output(i, input_tensor_shape));
+    output_tensors.push_back(context->Output(static_cast<int>(i), input_tensor_shape));
   }
 
   std::vector<float> scales{scale_0_, scale_1_};

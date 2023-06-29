@@ -45,7 +45,7 @@ Status ScaledSum::ComputeInternal(OpKernelContext* context) const {
   input_tensors.reserve(3);
 
   for (size_t i = 0; i < 3; ++i) {
-    const Tensor* input_tensor = context->Input<Tensor>(i);
+    const Tensor* input_tensor = context->Input<Tensor>(static_cast<int>(i));
     if (!input_tensor)
       continue;
     input_tensors.push_back(input_tensor);
