@@ -15,9 +15,9 @@ from c.assemble_c_pod_package import get_pod_config_file as get_c_pod_config_fil
 from package_assembly_utils import (  # noqa: E402
     PackageVariant,
     copy_repo_relative_to_dir,
+    filter_files,
     gen_file_from_template,
     load_json_config,
-    filter_files,
 )
 
 # these variables contain paths or path patterns that are relative to the repo root
@@ -132,7 +132,9 @@ def assemble_objc_pod_package(
     pod_files = get_pod_files(package_variant)
 
     # copy the necessary files to the staging directory
-    copy_repo_relative_to_dir([license_file, *pod_files["source_files"], *pod_files["test_source_files"], *test_resource_files], staging_dir)
+    copy_repo_relative_to_dir(
+        [license_file, *pod_files["source_files"], *pod_files["test_source_files"], *test_resource_files], staging_dir
+    )
 
     # generate the podspec file from the template
 

@@ -90,7 +90,6 @@ def filter_files(file_list, exclude_list):
     return list(set(all_files) - set(exclude_files))
 
 
-
 def copy_repo_relative_to_dir(patterns: List[str], dest_dir: pathlib.Path):
     """
     Copies file paths relative to the repo root to a directory.
