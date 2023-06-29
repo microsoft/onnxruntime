@@ -49,7 +49,11 @@ assemble_and_upload_pod() {
   popd
 }
 
-assemble_and_upload_pod "onnxruntime-mobile-c"
-assemble_and_upload_pod "onnxruntime-mobile-objc"
-assemble_and_upload_pod "onnxruntime-c"
-assemble_and_upload_pod "onnxruntime-objc"
+// upload the pod archives and podspecs for each pod in parallel
+assemble_and_upload_pod "onnxruntime-mobile-c" &
+assemble_and_upload_pod "onnxruntime-mobile-objc" &
+assemble_and_upload_pod "onnxruntime-c" &
+assemble_and_upload_pod "onnxruntime-objc" &
+assemble_and_upload_pod "onnxruntime-training-c" &
+assemble_and_upload_pod "onnxruntime-training-objc" &
+wait
