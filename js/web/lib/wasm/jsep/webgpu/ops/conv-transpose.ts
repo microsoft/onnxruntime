@@ -248,7 +248,7 @@ const convTranspose1d = (context: ComputeContext, attributes: ConvTransposeAttri
   if (pads.length === 0) {
     pads = [0, 0];
   }
-  pads = [0, attributes.pads[0], 0, attributes.pads[1]];
+  pads = [0, pads[0], 0, pads[1]];
   strides = [1].concat(strides);
   dilations = [1].concat(dilations);
   kernelShape = [1].concat(kernelShape);
