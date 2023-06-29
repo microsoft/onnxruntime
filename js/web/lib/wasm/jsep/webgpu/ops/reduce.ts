@@ -102,26 +102,27 @@ const createReduceProgramInfo =
       };
     };
 
-const createReduceAttributesFromInput = (input: TensorView, attributes: ReduceAttributes): ReduceAttributes => {
-  const axes: number[] = [];
-  // Handle empty axes, zero-sized input and zero input.
-  const sum = input.dims.reduce((sum, v) => sum + v, 0);
-  const prod = input.dims.reduce((prod, v) => prod * v, 1);
-  if (prod > 0 && sum > 0) {
-    input.getBigInt64Array().forEach(v => axes.push(Number(v)));
-  } else {
-    axes.push(...attributes.axes);
-  }
-  const noopWithEmptyAxes = attributes.noopWithEmptyAxes;
-  const keepDims = (noopWithEmptyAxes && sum === 0) || attributes.keepDims;
-  return createAttributeWithCacheKey({axes, keepDims, noopWithEmptyAxes});
-};
+const createReduceAttributesFromInputs =
+    (inputs: readonly TensorView[], attributes: ReduceAttributes): ReduceAttributes => {
+      const axes: number[] = [];
+      // Handle empty axes, zero-sized input and zero input.
+      const sum = inputs[1].dims.reduce((sum, v) => sum + v, 0);
+      const prod = inputs[1].dims.reduce((prod, v) => prod * v, 1);
+      if (prod > 0 && sum > 0) {
+        inputs[1].getBigInt64Array().forEach(v => axes.push(Number(v)));
+      } else {
+        axes.push(...attributes.axes);
+      }
+      const noopWithEmptyAxes = attributes.noopWithEmptyAxes;
+      const keepDims = (noopWithEmptyAxes && sum === 0) || attributes.keepDims;
+      return createAttributeWithCacheKey({axes, keepDims, noopWithEmptyAxes});
+    };
 
 const createReduceProgramInfoLoader =
     (inputs: readonly TensorView[], name: string, attributes: ReduceAttributes, reduceOp: ReduceOp):
         ProgramInfoLoader => {
           const updatedAttributes: ReduceAttributes =
-              inputs.length === 1 ? attributes : createReduceAttributesFromInput(inputs[1], attributes);
+              inputs.length === 1 ? attributes : createReduceAttributesFromInputs(inputs, attributes);
           const metadata:
               ProgramMetadata = {name, inputTypes: [GpuDataType.default], cacheHint: updatedAttributes.cacheKey};
           return {
