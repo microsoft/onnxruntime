@@ -195,6 +195,7 @@ def optimize_model(
     num_heads: int = 0,
     hidden_size: int = 0,
     optimization_options: Optional[FusionOptions] = None,
+    optimized_model_path: Optional[str] = None,
     opt_level: Optional[int] = None,
     use_gpu: bool = False,
     only_onnxruntime: bool = False,
@@ -230,6 +231,7 @@ def optimize_model(
             0 allows detect the parameter from graph automatically.
         optimization_options (FusionOptions, optional): optimization options that turn on/off some fusions.
             Defaults to None.
+        optimized_model_path (str, optional): output optimized model path. Defaults to None.
         opt_level (int, optional): onnxruntime graph optimization level (0, 1, 2 or 99) or None. Defaults to None.
             When the value is None, default value (1 for bert and gpt2, 0 for other model types) will be used.
             When the level > 0, onnxruntime will be used to optimize model first.
@@ -268,6 +270,7 @@ def optimize_model(
         temp_model_path = optimize_by_onnxruntime(
             input,
             use_gpu=use_gpu,
+            optimized_model_path=optimized_model_path,
             opt_level=opt_level,
             disabled_optimizers=disabled_optimizers,
             verbose=verbose,
@@ -278,6 +281,7 @@ def optimize_model(
         temp_model_path = optimize_by_onnxruntime(
             input,
             use_gpu=False,
+            optimized_model_path=optimized_model_path,
             opt_level=1,
             disabled_optimizers=disabled_optimizers,
             verbose=verbose,
