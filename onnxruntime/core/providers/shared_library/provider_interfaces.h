@@ -157,7 +157,7 @@ struct ProviderHost {
 
 #ifdef USE_CUDA
   virtual std::unique_ptr<IAllocator> CreateCUDAAllocator(int16_t device_id, const char* name) = 0;
-  virtual std::unique_ptr<IAllocator> CreateCUDAPinnedAllocator(int16_t device_id, const char* name) = 0;
+  virtual std::unique_ptr<IAllocator> CreateCUDAPinnedAllocator(const char* name) = 0;
   virtual std::unique_ptr<IDataTransfer> CreateGPUDataTransfer() = 0;
 
   virtual void cuda__Impl_Cast(void* stream, const int64_t* input_data, int32_t* output_data, size_t count) = 0;
@@ -171,7 +171,7 @@ struct ProviderHost {
 
 #ifdef USE_ROCM
   virtual std::unique_ptr<IAllocator> CreateROCMAllocator(int16_t device_id, const char* name) = 0;
-  virtual std::unique_ptr<IAllocator> CreateROCMPinnedAllocator(int16_t device_id, const char* name) = 0;
+  virtual std::unique_ptr<IAllocator> CreateROCMPinnedAllocator(const char* name) = 0;
   virtual std::unique_ptr<IDataTransfer> CreateGPUDataTransfer() = 0;
 
   virtual void rocm__Impl_Cast(void* stream, const int64_t* input_data, int32_t* output_data, size_t count) = 0;
