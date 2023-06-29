@@ -187,7 +187,7 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
   // Generally, NNAPI supports sub-graphs with at least one non-constant initializer input and one output.
   // So far, we have a few cases that sub-graph has zero valid inputs, like `CastLike`
   // a) A sub-graph has only initializer as inputs
-  // b) A sub-graph has zero inputs, `Constant` Node
+  // b) A sub-graph has zero inputs, like a `Constant` node
   // So we just remove these sub-graph which is captured by NNAPI.
   // A existing example is CastLike, as which can't be fold in constant folding pass.
   // CastLike Op will be inlined into Cast after constant folding optimizer.
