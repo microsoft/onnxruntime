@@ -64,11 +64,17 @@ Status SkipLayerNorm<T, Simplified>::ComputeInternal(OpKernelContext* ctx) const
   size_t input_dims_size = input_dims.size();
   const auto& skip_dims = skip->Shape().GetDims();
   size_t skip_dims_size = skip_dims.size();
-  int skip_sequence_length = static_cast<int>(skip_dims[skip_dims_size - 2]);
   
-  if (input->Shape() != skip->Shape() && skip_dims[0] != 1 && skip_dims[skip_dims_size - 2] != skip_sequence_length) {
+  if (skip_dims_size != 3 && skip_dims_size != 2) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "skip is expected to have same shape as input or a batch size of 1");
+                           "skip is expected to have 3 or 2 dimensions, got ", skip_dims_size);
+  }
+  
+  int skip_sequence_length = static_cast<int>(skip_dims[skip_dims_size - 2]);
+
+  if (input->Shape() != skip->Shape() && skip_dims[0] != 1 && skip_dims[0] != skip_sequence_length) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "skip is expected to have same shape as input or a batch size of 1 or no batch size");
   }
 
   if (input_dims_size != 3 && input_dims_size != 2) {
@@ -76,26 +82,18 @@ Status SkipLayerNorm<T, Simplified>::ComputeInternal(OpKernelContext* ctx) const
                            "input is expected to have 3 or 2 dimensions, got ", input_dims_size);
   }
 
-  if (skip_dims_size != 3 && skip_dims_size != 2) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "skip is expected to have 3 or 2 dimensions, got ", skip_dims_size);
-  }
 
-  if (skip_dims[skip_dims_size - 2] != input_dims[1] && skip_dims[skip_dims_size - 2] != 1) {
+  if (skip_sequence_length != input_dims[1] && skip_dims[skip_dims_size - 2] != 1) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "sequence length needs to be 1 or same as input");
   }
 
-  if (skip_dims[skip_dims_size - 1] != input_dims[2] && skip_dims[skip_dims_size - 1] != 1) {
+  int hidden_size = static_cast<int>(input_dims[input_dims_size - 1]);
+
+  if (skip_dims[skip_dims_size - 1] != hidden_size && skip_dims[skip_dims_size - 1] != 1) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "hidden size needs to be 1 or same as input");
   }
-
-  if (input->Shape().Size() == 0) {
-    return Status::OK();
-  }
-
-  int hidden_size = static_cast<int>(input_dims[input_dims_size - 1]);
 
   const auto& gamma_dims = gamma->Shape().GetDims();
   if (gamma_dims.size() != 1) {
