@@ -9,7 +9,6 @@ import {ComputeContext} from '../types';
 import {ConvAttributes} from './conv';
 import {createConvTranspose2DProgramInfoLoader} from './conv-transpose-naive';
 import {parseInternalActivationAttributes} from './fuse-utils';
-import {createTransposeProgramInfo, TransposeAttributes, transposeProgramMetadata} from './transpose';
 
 const computeTotalPad =
     (inDim: number, stride: number, adj: number, kernel: number, dilation: number, outSize: number) =>
@@ -59,8 +58,6 @@ export interface ConvTransposeAttributes extends ConvAttributes {
   readonly outputShape: readonly number[];
 }
 
-// for transposing weight tensor from [C, M/group, kH, kW] to [kH, kW, C, M/group]
-const weightTransposeAttribute: TransposeAttributes = createAttributeWithCacheKey({perm: [0, 2, 3, 1]});
 
 const getAdjustedConvTransposeAttributes =
     <T extends ConvTransposeAttributes>(attributes: T, inputs: readonly TensorView[]): T => {
@@ -216,39 +213,9 @@ const convTranspose2d =
     (context: ComputeContext, inputs: readonly TensorView[], attributes: ConvTransposeAttributes): void => {
       const adjustedAttributes = getAdjustedConvTransposeAttributes(attributes, inputs);
 
-      const hasBias = inputs.length === 3;
-      // const hasPreluActivationWeights = false; /* TODO: add support for prelu activation weights */
-      const isChannelsLast = adjustedAttributes.format === 'NHWC';
-
       const outputShape = adjustedAttributes.outputShape;
 
-      // STEP.1: transpose weight
-      const transposedWeight = (context.customData.wT as TensorView | undefined) ??
-          context.compute(
-              {
-                ...transposeProgramMetadata,
-                cacheHint: weightTransposeAttribute.cacheKey,
-                get: () => createTransposeProgramInfo(inputs[1], weightTransposeAttribute.perm)
-              },
-              {inputs: [1], outputs: [attributes.wIsConst ? -2 : -1]})[0];
-      if (attributes.wIsConst && !context.customData.wT) {
-        context.customData.wT = transposedWeight;
-      }
-
-      // STEP.2: prepare reshaped inputs
-      const convInputs = [inputs[0], transposedWeight];
-      if (hasBias) {
-        if (!isChannelsLast && inputs[2].dims.length === 1) {
-          convInputs.push(inputs[2].reshape([inputs[2].dims[0], 1, 1]));
-        } else {
-          convInputs.push(inputs[2]);
-        }
-      }
-
-      // STEP.3: compute matmul
-      context.compute(
-          createConvTranspose2DProgramInfoLoader(convInputs, adjustedAttributes, outputShape, hasBias),
-          {inputs: convInputs});
+      context.compute(createConvTranspose2DProgramInfoLoader(inputs, adjustedAttributes, outputShape));
     };
 
 export const convTranspose = (context: ComputeContext, attributes: ConvTransposeAttributes): void => {
