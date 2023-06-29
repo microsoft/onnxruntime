@@ -3036,7 +3036,7 @@ TEST(GradientCheckerTest, ScaledSumGrad) {
     TensorInfo y_info({4, 3});
     std::vector<std::vector<float>> x_datas = {
         {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11},
-        {0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 1.1, 1.2},
+        {0.1f, 0.2f, 0.3f, 0.4f, 0.5f, 0.6f, 0.7f, 0.8f, 0.9f, 1.0f, 1.1f, 1.2f},
     };
 
     TensorInfo output0_info({4, 3}, true);
@@ -3066,8 +3066,8 @@ TEST(GradientCheckerTest, ScaledSumGrad) {
     TensorInfo z_info({4, 3});
     std::vector<std::vector<float>> x_datas = {
         {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11},
-        {0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 1.1, 1.2},
-        {0.01, 0.02, 0.03, 0.04, 0.05, 0.06, -0.07, -0.08, -0.09, -0.10, -0.11, -0.12},
+        {0.1f, 0.2f, 0.3f, 0.4f, 0.5f, 0.6f, 0.7f, 0.8f, 0.9f, 1.0f, 1.1f, 1.2f},
+        {0.01f, 0.02f, 0.03f, 0.04f, 0.05f, 0.06f, -0.07f, -0.08f, -0.09f, -0.10f, -0.11f, -0.12f},
     };
 
     TensorInfo output0_info({4, 3}, true);
