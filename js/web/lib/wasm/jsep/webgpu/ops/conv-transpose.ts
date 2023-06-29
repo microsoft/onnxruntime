@@ -4,8 +4,7 @@
 import {DataType} from '../../../wasm-common';
 import {TensorView} from '../../tensor';
 import {createAttributeWithCacheKey} from '../attribute-with-cache-key';
-import {ComputeContext} from '../types';
-import {GpuDataType, ProgramInfoLoader, ProgramMetadata} from '../types';
+import {ComputeContext, GpuDataType, ProgramInfoLoader, ProgramMetadata} from '../types';
 
 import {createConvTranspose2DProgramInfo} from './3rd-party/conv_backprop_webgpu';
 import {ConvAttributes} from './conv';
