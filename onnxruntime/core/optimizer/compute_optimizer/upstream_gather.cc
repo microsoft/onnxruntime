@@ -371,7 +371,7 @@ std::optional<SliceInfo> IsSupportedSlice(Graph& graph, Node& node,
     return std::nullopt;
   }
 
-  // Make sure starts/ends/axes/steps are all 1D tensors, since we only support single dimension slicing.
+  // Make sure starts/ends/axes/steps are all 1D tensors, since we only support single-dimension slicing.
   if (starts_input->Shape()->dim_size() != 1 || ends_input->Shape()->dim_size() != 1 ||
       (axes_input && axes_input->Shape()->dim_size() != 1)) {
     LOG_DEBUG_INFO(logger, "Skip Slice node " + node.Name() + " due to unsupported dim size: " +
@@ -381,14 +381,28 @@ std::optional<SliceInfo> IsSupportedSlice(Graph& graph, Node& node,
     return std::nullopt;
   }
 
-  // Try to parse the axes value.
-  InlinedVector<int64_t> axes_values;
-  if (axes_input && !(optimizer_utils::AppendTensorFromInitializer(graph, *axes_input, axes_values, true) &&
-                      axes_values.size() == 1)) {
-    return std::nullopt;
+  if (!graph_utils::IsConstantInitializer(graph, current_node.InputDefs()[1]->Name())) {
+    LOG_DEBUG_INFO(logger, "Skip handle the Reshape, because the new shape is not constant.");
+    return false;
   }
 
-  int axis = axes_values[0];
+  // Try to parse the 'axes' value.
+  int axis = 0;
+  if (axes_input) {
+    InlinedVector<int64_t> axes_values;
+    if (!graph_utils::IsConstantInitializer(graph, axes_input->Name()) ||
+        optimizer_utils::AppendTensorFromInitializer(graph, *axes_input, axes_values, true) ||
+        axes_values.size() == 1) {
+      return std::nullopt;
+    }
+    axis = static_cast<int>(axes_values[0]);
+  } else {
+    // If 'axes' is not specified, then it is [0, .., r-1], so we force data rank to be 1.
+    if (data_input->Shape()->dim_size() != 1) {
+      return std::nullopt;
+    }
+  }
+
   if (axis < 0)
     axis += data_input->Shape()->dim_size();
 
@@ -408,7 +422,7 @@ std::optional<SliceInfo> UpStreamGatherGraphTransformer::IsSupportedForUpstream(
   if (!gather_info.has_value()) {
     gather_info = IsSupportedShrunkenGather(graph, node, GetCompatibleExecutionProviders(), logger);
   }
-  if (!gather_info.has_value() && true) {
+  if (!gather_info.has_value()) {
     gather_info = IsSupportedSlice(graph, node, GetCompatibleExecutionProviders(), logger);
   }
   return gather_info;
