@@ -22,8 +22,8 @@ set(onnxruntime_common_src_patterns
     "${ONNXRUNTIME_ROOT}/core/platform/telemetry.cc"
     "${ONNXRUNTIME_ROOT}/core/platform/logging/make_platform_default_log_sink.h"
     "${ONNXRUNTIME_ROOT}/core/platform/logging/make_platform_default_log_sink.cc"
-    "$(ONNXRUNTIME_ROOT}/core/quantization/*.h"
-    "$(ONNXRUNTIME_ROOT}/core/quantization/*.cc"
+    "${ONNXRUNTIME_ROOT}/core/quantization/*.h"
+    "${ONNXRUNTIME_ROOT}/core/quantization/*.cc"
 )
 
 if(WIN32)
@@ -119,7 +119,6 @@ target_link_libraries(onnxruntime_common PUBLIC safeint_interface ${GSL_TARGET} 
 
 add_dependencies(onnxruntime_common ${onnxruntime_EXTERNAL_DEPENDENCIES})
 
-install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/common  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core)
 set_target_properties(onnxruntime_common PROPERTIES LINKER_LANGUAGE CXX)
 set_target_properties(onnxruntime_common PROPERTIES FOLDER "ONNXRuntime")
 
@@ -201,7 +200,8 @@ if (ARM64 OR ARM OR X86 OR X64 OR X86_64)
 endif()
 
 if (NOT onnxruntime_BUILD_SHARED_LIB)
-    install(TARGETS onnxruntime_common
+  install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/common  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core)
+  install(TARGETS onnxruntime_common
             ARCHIVE   DESTINATION ${CMAKE_INSTALL_LIBDIR}
             LIBRARY   DESTINATION ${CMAKE_INSTALL_LIBDIR}
             RUNTIME   DESTINATION ${CMAKE_INSTALL_BINDIR}
