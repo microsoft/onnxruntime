@@ -3,7 +3,7 @@
 
 // NOTE: This file contains declarations of exported functions as WebAssembly API.
 // Unlike a normal C-API, the purpose of this API is to make emcc to generate correct exports for the WebAssembly. The
-// macro "EMSCRIPTEN_KEEPALIVE" helps the compiler to mark the function as an exported funtion of the WebAssembly
+// macro "EMSCRIPTEN_KEEPALIVE" helps the compiler to mark the function as an exported function of the WebAssembly
 // module. Users are expected to consume those functions from JavaScript side.
 
 #pragma once
@@ -27,7 +27,7 @@ orttraining_handle_t EMSCRIPTEN_KEEPALIVE OrtTrainingLoadCheckpoint(void* checkp
 
 /**
  * Release the given CheckpointState
-*/
+ */
 void EMSCRIPTEN_KEEPALIVE OrtTrainingReleaseCheckpoint(orttraining_handle_t trainingHandle);
 
 /**
@@ -35,7 +35,7 @@ void EMSCRIPTEN_KEEPALIVE OrtTrainingReleaseCheckpoint(orttraining_handle_t trai
  * @param checkpoint_state handle of specified checkpoint state to save
  * @param path_to_checkpoint filepath to the directory where the checkpoint should be saved to
  * @param include_optimizer_state (optional; defaults to false) indicates whether to save the optimizer state
-*/
+ */
 // void EMSCRIPTEN_KEEPALIVE OrtTrainingSaveCheckpoint(const orttraining_checkpoint_handle_t checkpoint_state,
 //                                                     const char** path_to_checkpoint,
 //                                                     const bool include_optimizer_state = false);
@@ -53,21 +53,21 @@ void EMSCRIPTEN_KEEPALIVE OrtTrainingReleaseCheckpoint(orttraining_handle_t trai
  * @param optimizer_size size of the optimizer_model buffer in bytes
  * @return a handle of the ORT training session
  *
-*/
+ */
 
 orttraining_handle_t EMSCRIPTEN_KEEPALIVE OrtTrainingCreateTrainingSession(const ort_session_options_handle_t options,
-                                                                                   orttraining_handle_t trainingHandle,
-                                                                                   void* train_model,
-                                                                                   size_t train_size,
-                                                                                   void* eval_model,
-                                                                                   size_t eval_size,
-                                                                                   void* optimizer_model,
-                                                                                   size_t optimizer_size);
+                                                                           orttraining_handle_t trainingHandle,
+                                                                           void* train_model,
+                                                                           size_t train_size,
+                                                                           void* eval_model,
+                                                                           size_t eval_size,
+                                                                           void* optimizer_model,
+                                                                           size_t optimizer_size);
 
 /**
  * Resets the gradients of all trainable parameters to zero for the given training session.
  * @param session handle of the training session
-*/
+ */
 void EMSCRIPTEN_KEEPALIVE OrtTrainingLazyResetGrad(orttraining_handle_t trainingHandle);
 
 /**
@@ -80,14 +80,13 @@ void EMSCRIPTEN_KEEPALIVE OrtTrainingLazyResetGrad(orttraining_handle_t training
  * @param outputs_len number of user outputs expected from this training setp
  * @param outputs user outputs computed by train step
  * @return handler to the outputs
-*/
+ */
 ort_tensor_handle_t EMSCRIPTEN_KEEPALIVE OrtTrainingTrainStepWithOptions(orttraining_handle_t trainingHandle,
-                                                               const ort_run_options_handle_t options,
-                                                               const size_t inputs_len,
-                                                               const ort_tensor_handle_t* inputs,
-                                                               const size_t outputs_len,
-                                                               ort_tensor_handle_t* outputs
-                                                               );
+                                                                         const ort_run_options_handle_t options,
+                                                                         const size_t inputs_len,
+                                                                         const ort_tensor_handle_t* inputs,
+                                                                         const size_t outputs_len,
+                                                                         ort_tensor_handle_t* outputs);
 
 /**
  * Computes the outputs of the training model and the gradients of the trainable parameters for the given inputs.
@@ -97,19 +96,18 @@ ort_tensor_handle_t EMSCRIPTEN_KEEPALIVE OrtTrainingTrainStepWithOptions(orttrai
  * @param outputs_len number of user outputs expected from this training setp
  * @param outputs user outputs computed by train step
  * @return handler to the outputs
-*/
+ */
 ort_tensor_handle_t EMSCRIPTEN_KEEPALIVE OrtTrainingTrainStep(orttraining_handle_t session,
-                                                               const size_t inputs_len,
-                                                               const ort_tensor_handle_t* inputs,
-                                                               const size_t outputs_len,
-                                                               ort_tensor_handle_t* outputs
-                                                               );
+                                                              const size_t inputs_len,
+                                                              const ort_tensor_handle_t* inputs,
+                                                              const size_t outputs_len,
+                                                              ort_tensor_handle_t* outputs);
 
 /**
  * Performs weight updates for the trainable parameters in the given training session using the optimizer model.
  * @param session handle of the training session
  * @param run_options optional parameter of run options for this training step
-*/
+ */
 void EMSCRIPTEN_KEEPALIVE OrtTrainingOptimizerStep(orttraining_handle_t trainingHandle,
                                                    const ort_run_options_handle_t run_options = nullptr);
 
@@ -120,6 +118,6 @@ void EMSCRIPTEN_KEEPALIVE OrtTrainingOptimizerStep(orttraining_handle_t training
 
 /**
  * Release the given TrainingSession
-*/
+ */
 void EMSCRIPTEN_KEEPALIVE OrtTrainingReleaseSession(orttraining_handle_t trainingHandle);
 };

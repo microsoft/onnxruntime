@@ -21,7 +21,6 @@ OrtTrainingManager* OrtTrainingLoadCheckpoint(void* checkpoint, size_t checkpoin
              : nullptr;
 }
 
-
 // void EMSCRIPTEN_KEEPALIVE OrtTrainingSaveCheckpoint(const orttraining_checkpoint_handle_t checkpoint_state,
 //                                                     const ORTCHAR_T* path_to_checkpoint,
 //                                                     const bool include_optimizer_state) {
@@ -31,7 +30,6 @@ OrtTrainingManager* OrtTrainingLoadCheckpoint(void* checkpoint, size_t checkpoin
 void EMSCRIPTEN_KEEPALIVE OrtTrainingReleaseCheckpoint(orttraining_handle_t trainingHandle) {
   Ort::GetTrainingApi().ReleaseCheckpointState(trainingHandle->checkpointState);
 }
-
 
 OrtTrainingManager* EMSCRIPTEN_KEEPALIVE OrtTrainingCreateTrainingSession(const ort_session_options_handle_t options,
                                                                           orttraining_handle_t trainingHandle,
@@ -46,8 +44,8 @@ OrtTrainingManager* EMSCRIPTEN_KEEPALIVE OrtTrainingCreateTrainingSession(const 
                                 train_model, train_size, eval_model, eval_size, optimizer_model,
                                 optimizer_size,
                                 &trainingHandle->trainingSession) == ORT_OK)
-                                ? trainingHandle
-                                : nullptr;
+             ? trainingHandle
+             : nullptr;
 }
 
 void EMSCRIPTEN_KEEPALIVE OrtTrainingLazyResetGrad(orttraining_handle_t trainingHandle) {
@@ -59,19 +57,17 @@ OrtValue* EMSCRIPTEN_KEEPALIVE OrtTrainingTrainStepWithOptions(orttraining_handl
                                                                const size_t inputs_len,
                                                                const ort_tensor_handle_t* inputs,
                                                                const size_t outputs_len,
-                                                               ort_tensor_handle_t* outputs
-                                                               ) {
+                                                               ort_tensor_handle_t* outputs) {
   return (CHECK_TRAINING_STATUS(TrainStep, trainingHandle->trainingSession, options, inputs_len, inputs, outputs_len, outputs) == ORT_OK)
-                                ? *outputs
-                                : nullptr;
+             ? *outputs
+             : nullptr;
 }
 
 OrtValue* EMSCRIPTEN_KEEPALIVE OrtTrainingTrainStep(orttraining_handle_t trainingHandle,
-                                                               const size_t inputs_len,
-                                                               const ort_tensor_handle_t* inputs,
-                                                               const size_t outputs_len,
-                                                               ort_tensor_handle_t* outputs
-                                                               ) {
+                                                    const size_t inputs_len,
+                                                    const ort_tensor_handle_t* inputs,
+                                                    const size_t outputs_len,
+                                                    ort_tensor_handle_t* outputs) {
   OrtRunOptions* run_options = nullptr;
   return OrtTrainingTrainStepWithOptions(trainingHandle, run_options, inputs_len, inputs, outputs_len, outputs);
 }
