@@ -638,6 +638,7 @@ struct OrtTrainingApi {
    * As a result, it is required that the checkpoint state outlive the lifetime of the training session.
    *
    * \param[in] checkpoint_buffer Path to the checkpoint bytes buffer.
+   * \param[in] num_bytes Number of bytes in the checkpoint buffer.
    * \param[out] checkpoint_state Checkpoint state that contains the states of the training session.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value

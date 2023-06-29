@@ -3,7 +3,6 @@
 
 #include "core/providers/coreml/coreml_execution_provider.h"
 
-#include "core/framework/allocatormgr.h"
 #include "core/framework/compute_capability.h"
 #include "core/graph/graph_viewer.h"
 #include "core/providers/partitioning_utils.h"
