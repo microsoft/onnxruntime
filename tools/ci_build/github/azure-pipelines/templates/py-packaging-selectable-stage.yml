@@ -392,7 +392,7 @@ stages:
       variables:
         CUDA_VERSION: '11.8'
         buildArch: x64
-        EpBuildFlags: --use_tensorrt --tensorrt_home="C:\local\TensorRT-8.6.0.12.Windows10.x86_64.cuda-11.8" --cuda_version=$(CUDA_VERSION) --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v$(CUDA_VERSION)" --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=37;50;52;60;61;70;75;80"
+        EpBuildFlags: --use_tensorrt --tensorrt_home="C:\local\TensorRT-8.6.1.6.Windows10.x86_64.cuda-11.8" --cuda_version=$(CUDA_VERSION) --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v$(CUDA_VERSION)" --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=37;50;52;60;61;70;75;80"
         EnvSetupScript: setup_env_gpu.bat
         EP_NAME: gpu
         ${{if contains(Agent.Name, 'onnxruntime-gpu-winbuild-t4')}}:

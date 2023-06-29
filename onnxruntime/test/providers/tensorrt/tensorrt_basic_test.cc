@@ -108,7 +108,6 @@ void RunWithOneSessionSingleThreadInference(std::string model_name, std::string 
   RunOptions run_options;
   run_options.run_tag = so.session_logid;
   InferenceSession session_object{so, GetEnvironment()};
-  onnxruntime::AllocatorManager allocator_manager;
   auto cuda_provider = DefaultCudaExecutionProvider();
   auto cpu_allocator = cuda_provider->CreatePreferredAllocators()[1];
   std::vector<int64_t> dims_mul_x = {1, 3, 2};
@@ -164,7 +163,8 @@ void RunWithOneSessionSingleThreadInference(std::string model_name, std::string 
       nullptr,
       nullptr,
       nullptr,
-      nullptr};
+      nullptr,
+      0};
 
   params.trt_engine_cache_enable = 1;
   std::unique_ptr<IExecutionProvider> execution_provider = TensorrtExecutionProviderWithOptions(&params);
@@ -190,7 +190,6 @@ void RunWithOneSessionMultiThreadsInference(std::string model_name, std::string 
   RunOptions run_options;
   run_options.run_tag = so.session_logid;
   InferenceSession session_object{so, GetEnvironment()};
-  onnxruntime::AllocatorManager allocator_manager;
   auto cuda_provider = DefaultCudaExecutionProvider();
   auto cpu_allocator = cuda_provider->CreatePreferredAllocators()[1];
   std::vector<int64_t> dims_mul_x = {1, 3, 2};
@@ -246,7 +245,8 @@ void RunWithOneSessionMultiThreadsInference(std::string model_name, std::string 
       nullptr,
       nullptr,
       nullptr,
-      nullptr};
+      nullptr,
+      0};
 
   params.trt_engine_cache_enable = 1;
   std::unique_ptr<IExecutionProvider> execution_provider = TensorrtExecutionProviderWithOptions(&params);
@@ -346,7 +346,6 @@ TEST(TensorrtExecutionProviderTest, TRTPluginsCustomOpTest) {
   RunOptions run_options;
   run_options.run_tag = so.session_logid;
   InferenceSession session_object{so, GetEnvironment()};
-  onnxruntime::AllocatorManager allocator_manager;
   auto cuda_provider = DefaultCudaExecutionProvider();
   auto cpu_allocator = cuda_provider->CreatePreferredAllocators()[1];
   std::vector<int64_t> dims_op_x = {12, 256, 256};
@@ -399,7 +398,8 @@ TEST(TensorrtExecutionProviderTest, TRTPluginsCustomOpTest) {
       nullptr,
       nullptr,
       nullptr,
-      nullptr};
+      nullptr,
+      0};
 
   std::unique_ptr<IExecutionProvider> execution_provider = TensorrtExecutionProviderWithOptions(&params);
   EXPECT_TRUE(session_object.RegisterExecutionProvider(std::move(execution_provider)).IsOK());
@@ -436,7 +436,6 @@ TEST_P(TensorrtExecutionProviderCacheTest, Run) {
   RunOptions run_options;
   run_options.run_tag = so.session_logid;
   InferenceSession session_object{so, GetEnvironment()};
-  onnxruntime::AllocatorManager allocator_manager;
   auto cuda_provider = DefaultCudaExecutionProvider();
   auto cpu_allocator = cuda_provider->CreatePreferredAllocators()[1];
   std::vector<int64_t> dims_mul_x = {1, 3, 2};
@@ -493,7 +492,8 @@ TEST_P(TensorrtExecutionProviderCacheTest, Run) {
       nullptr,
       nullptr,
       nullptr,
-      nullptr};
+      nullptr,
+      0};
 
   if (cache_type.compare("engine") == 0) {
     /* Following code block tests the functionality of engine and optimization profile of ORT TRT, including:
@@ -778,7 +778,6 @@ TEST(TensorrtExecutionProviderTest, FunctionTest) {
   run_options.run_tag = so.session_logid;
   InferenceSession session_object{so, GetEnvironment()};
 
-  onnxruntime::AllocatorManager allocator_manager;
   auto cuda_provider = DefaultCudaExecutionProvider();
   auto cpu_allocator = cuda_provider->CreatePreferredAllocators()[1];
 
@@ -881,7 +880,6 @@ TEST(TensorrtExecutionProviderTest, DISABLED_NodeIndexMappingTest) {  //  [W:onn
   run_options.run_tag = so.session_logid;
   InferenceSession session_object{so, GetEnvironment()};
 
-  onnxruntime::AllocatorManager allocator_manager;
   auto cuda_provider = DefaultCudaExecutionProvider();
   auto cpu_allocator = cuda_provider->CreatePreferredAllocators()[1];
 
@@ -1001,7 +999,6 @@ TEST(TensorrtExecutionProviderTest, RemoveCycleTest) {
   run_options.run_tag = so.session_logid;
   InferenceSession session_object{so, GetEnvironment()};
 
-  onnxruntime::AllocatorManager allocator_manager;
   auto cuda_provider = DefaultCudaExecutionProvider();
   auto cpu_allocator = cuda_provider->CreatePreferredAllocators()[1];
 

@@ -5,7 +5,7 @@
 // It implements onnxruntime::ProviderHost
 
 #include "core/common/inlined_containers.h"
-#include "core/framework/allocatormgr.h"
+#include "core/framework/allocator_utils.h"
 #include "core/framework/compute_capability.h"
 #include "core/framework/data_types.h"
 #include "core/framework/data_transfer_manager.h"
@@ -1057,12 +1057,6 @@ struct ProviderHostImpl : ProviderHost {
   void TensorSeq__Add(TensorSeq* p, Tensor&& tensor) override { p->Add(std::move(tensor)); }
   void TensorSeq__Reserve(TensorSeq* p, size_t capacity) override { p->Reserve(capacity); }
 
-  // AllocatorManager (direct)
-  void AllocatorManager__InsertAllocator(AllocatorManager* p, AllocatorPtr allocator) override { p->AllocatorManager::InsertAllocator(allocator); }
-  AllocatorPtr AllocatorManager__GetAllocator(const AllocatorManager* p, OrtMemType mem_type, OrtDevice device) override {
-    return p->AllocatorManager::GetAllocator(mem_type, device);
-  };
-
 #if defined(ENABLE_TRAINING) && defined(ORT_USE_NCCL)
   training::DistributedRunContext& GetDistributedRunContextInstance() override { return training::DistributedRunContext::GetInstance(); }
 #endif
@@ -1378,6 +1372,7 @@ OrtTensorRTProviderOptionsV2 OrtTensorRTProviderOptionsToOrtTensorRTProviderOpti
   trt_options_converted.trt_profile_min_shapes = "";
   trt_options_converted.trt_profile_max_shapes = "";
   trt_options_converted.trt_profile_opt_shapes = "";
+  trt_options_converted.trt_cuda_graph_enable = 0;
 
   return trt_options_converted;
 }
@@ -1748,6 +1743,7 @@ ORT_API_STATUS_IMPL(OrtApis::CreateTensorRTProviderOptions, _Outptr_ OrtTensorRT
   options->trt_profile_min_shapes = nullptr;
   options->trt_profile_max_shapes = nullptr;
   options->trt_profile_opt_shapes = nullptr;
+  options->trt_cuda_graph_enable = false;
   *out = options.release();
   return nullptr;
 #else

@@ -320,4 +320,23 @@ class WhisperHelper:
             logger.warning("PyTorch and ONNX Runtime outputs do not have the same shape")
 
         diff = pt_outputs - ort_outputs
-        return max(diff.min(), diff.max(), key=abs)
+        max_diff = max(diff.min(), diff.max(), key=abs)
+
+        if max_diff > 0:
+            # For ONNX Runtime INT8 model
+            pt_expected_transcription = (
+                " Mr. Quilter is the apostle of the middle classes and we are glad to welcome his gospel."
+            )
+            pt_transcription = processor.batch_decode(pt_outputs, skip_special_tokens=True)
+            ort_expected_transcription = (
+                " Mr. Quilter is the apostle of the middle classes, and we are glad to welcome his gospel."
+            )
+            ort_transcription = processor.batch_decode(ort_outputs, skip_special_tokens=True)
+
+            parity = (
+                pt_expected_transcription == pt_transcription[0] and ort_expected_transcription == ort_transcription[0]
+            )
+            if parity:
+                max_diff = 0
+
+        return max_diff

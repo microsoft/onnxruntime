@@ -703,6 +703,7 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
     profile_min_shapes = info.profile_min_shapes;
     profile_max_shapes = info.profile_max_shapes;
     profile_opt_shapes = info.profile_opt_shapes;
+    cuda_graph_enable_ = info.cuda_graph_enable;
   } else {
     try {
       const std::string max_partition_iterations_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kMaxPartitionIterations);
@@ -842,6 +843,11 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
       profile_min_shapes = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kProfilesMinShapes);
       profile_max_shapes = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kProfilesMaxShapes);
       profile_opt_shapes = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kProfilesOptShapes);
+
+      const std::string cuda_graph_enable_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kCudaGraphEnable);
+      if (!cuda_graph_enable_env.empty()) {
+        cuda_graph_enable_ = (std::stoi(cuda_graph_enable_env) == 0 ? false : true);
+      }
     } catch (const std::invalid_argument& ex) {
       LOGS_DEFAULT(WARNING) << "[TensorRT EP] Invalid Argument (from environment variables): " << ex.what();
     } catch (const std::out_of_range& ex) {
@@ -893,6 +899,10 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
 
   if (int8_enable_) {
     int8_calibration_cache_available_ = !int8_calibration_cache_name_.empty();
+  }
+
+  if (cuda_graph_enable_) {
+    cuda_graph_ = std::make_unique<CUDAGraph>();
   }
 
   /*
@@ -968,7 +978,8 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
                         << ", trt_tactic_sources: " << tactic_sources_
                         << ", trt_profile_min_shapes: " << profile_min_shapes
                         << ", trt_profile_max_shapes: " << profile_max_shapes
-                        << ", trt_profile_opt_shapes: " << profile_opt_shapes;
+                        << ", trt_profile_opt_shapes: " << profile_opt_shapes
+                        << ", trt_cuda_graph_enable: " << cuda_graph_enable_;
 }
 
 TensorrtExecutionProvider::~TensorrtExecutionProvider() {
@@ -980,6 +991,43 @@ TensorrtExecutionProvider::~TensorrtExecutionProvider() {
     ORT_IGNORE_RETURN_VALUE(CUDA_CALL(cudaStreamDestroy(stream_)));
   }
   ReleaseTensorRTCustomOpDomainList(info_.custom_op_domain_list);
+}
+
+bool TensorrtExecutionProvider::IsGraphCaptureEnabled() const {
+  return cuda_graph_enable_;
+}
+
+bool TensorrtExecutionProvider::IsGraphCaptureAllowed() const {
+  return regular_run_count_before_graph_capture_ >= min_num_runs_before_cuda_graph_capture_;
+}
+
+void TensorrtExecutionProvider::CaptureBegin() {
+  cuda_graph_->Reset();
+  cuda_graph_->CaptureBegin();
+}
+
+void TensorrtExecutionProvider::CaptureEnd() {
+  cuda_graph_->CaptureEnd();
+  is_graph_captured_ = true;
+}
+
+bool TensorrtExecutionProvider::IsGraphCaptured() const {
+  return is_graph_captured_;
+}
+
+Status TensorrtExecutionProvider::ReplayGraph() {
+  ORT_ENFORCE(IsGraphCaptured());
+  // Please note that CUDAGraph::Replay() is not thread safe.
+  // ORT TRT calls ReplayGraph() in compute_func() where synchromization is enforced due to lock_guard(),
+  // therefore calling CUDAGraph::Replay() here is guaranteed to be thread safe.
+  return cuda_graph_->Replay();
+}
+
+void TensorrtExecutionProvider::IncrementRegularRunCountBeforeGraphCapture() {
+  // Please note that this function is not thread safe.
+  // ORT TRT calls this function in compute_func() where synchronization is enforced due to lock_guard(),
+  // therefore following increment is guaranteed to be thread safe.
+  ++regular_run_count_before_graph_capture_;
 }
 
 std::vector<AllocatorPtr> TensorrtExecutionProvider::CreatePreferredAllocators() {
@@ -997,6 +1045,10 @@ std::vector<AllocatorPtr> TensorrtExecutionProvider::CreatePreferredAllocators()
 
 std::unique_ptr<IDataTransfer> TensorrtExecutionProvider::GetDataTransfer() const {
   return onnxruntime::CreateGPUDataTransfer();
+}
+
+Status TensorrtExecutionProvider::OnRunStart() {
+  return Status::OK();
 }
 
 Status TensorrtExecutionProvider::OnRunEnd(bool sync_stream) {
@@ -1929,15 +1981,20 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
     // Otherwise engine will be handled at inference time.
     std::unique_ptr<nvinfer1::ICudaEngine> trt_engine;
     std::unique_ptr<nvinfer1::IExecutionContext> trt_context;
+
+    // Name the engine cache based on GPU compute capacity and reduce the chance of loading an incompatible cache
+    // Note: Engine cache generated on a GPU with large memory might not be loadable on a GPU with smaller memory, even if they share the same compute capacity
+    cudaDeviceProp prop;
+    CUDA_CALL_THROW(cudaGetDeviceProperties(&prop, device_id_));
+    std::string compute_capability = GetComputeCapacity(prop);
+
     if (!has_dynamic_shape) {
       const std::string cache_path = GetCachePath(cache_path_, trt_node_name_with_precision);
-      const std::string engine_cache_path = cache_path + ".engine";
-      const std::string profile_cache_path = cache_path + ".profile";
+      const std::string engine_cache_path = cache_path + "_sm" + compute_capability + ".engine";
+      const std::string profile_cache_path = cache_path + "_sm" + compute_capability + ".profile";
       std::string timing_cache_path = "";
       bool engine_update = false;
       if (timing_cache_enable_) {
-        cudaDeviceProp prop;
-        CUDA_CALL_THROW(cudaGetDeviceProperties(&prop, device_id_));
         timing_cache_path = GetTimingCachePath(cache_path_, prop);
       }
       {
@@ -2169,14 +2226,18 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
       Ort::ThrowOnError(api->KernelContext_GetGPUComputeStream(context, &cuda_stream));
       cudaStream_t stream = static_cast<cudaStream_t>(cuda_stream);
 
+      // Name the engine cache based on GPU compute capacity and reduce the chance of loading an incompatible cache
+      // Note: Engine cache generated on a GPU with large memory might not be loadable on a GPU with smaller memory, even if they share the same compute capacity
+      cudaDeviceProp prop;
+      CUDA_CALL_THROW(cudaGetDeviceProperties(&prop, device_id_));
+      std::string compute_capability = GetComputeCapacity(prop);
+
       // Load serialized engine
       const std::string cache_path = GetCachePath(trt_state->engine_cache_path, trt_state->trt_node_name_with_precision);
-      const std::string engine_cache_path = cache_path + ".engine";
-      const std::string profile_cache_path = cache_path + ".profile";
+      const std::string engine_cache_path = cache_path + "_sm" + compute_capability + ".engine";
+      const std::string profile_cache_path = cache_path + "_sm" + compute_capability + ".profile";
       std::string timing_cache_path = "";
       if (timing_cache_enable_) {
-        cudaDeviceProp prop;
-        CUDA_CALL_THROW(cudaGetDeviceProperties(&prop, device_id_));
         timing_cache_path = GetTimingCachePath(cache_path_, prop);
       }
       if (trt_state->engine_cache_enable && trt_engine == nullptr) {
@@ -2196,7 +2257,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
           engine_file.read((char*)engine_buf.get(), engine_size);
           *(trt_state->engine) = std::unique_ptr<nvinfer1::ICudaEngine>(
               trt_state->runtime->deserializeCudaEngine(engine_buf.get(), engine_size, nullptr));
-          if (trt_state->engine == nullptr) {
+          if (*(trt_state->engine) == nullptr) {
             return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "TensorRT EP Failed to Build Engine.");
           }
           LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] DeSerialized " + engine_cache_path;
@@ -2208,7 +2269,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
             *(trt_state->context) = std::unique_ptr<nvinfer1::IExecutionContext>(
                 trt_state->engine->get()->createExecutionContext());
           }
-          if (trt_state->context == nullptr) {
+          if (*(trt_state->context) == nullptr) {
             return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "TensorRT EP failed to create context.");
           }
           trt_context = trt_state->context->get();
@@ -2230,7 +2291,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
           trt_state->context->reset();
           trt_state->engine->reset();
           *(trt_state->engine) = std::unique_ptr<nvinfer1::ICudaEngine>(trt_state->runtime->deserializeCudaEngine(engine_buf.get(), engine_size, nullptr));
-          if (trt_state->engine == nullptr) {
+          if (*(trt_state->engine) == nullptr) {
             return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
                                    "TensorRT EP could not deserialize engine from encrypted cache: " + engine_cache_path);
           }
@@ -2243,7 +2304,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
             *(trt_state->context) = std::unique_ptr<nvinfer1::IExecutionContext>(
                 trt_state->engine->get()->createExecutionContext());
           }
-          if (trt_state->context == nullptr) {
+          if (*(trt_state->context) == nullptr) {
             return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "TensorRT EP failed to create context.");
           }
           trt_context = trt_state->context->get();
@@ -2369,7 +2430,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
             LOGS_DEFAULT(INFO) << "TensorRT engine build for " << trt_state->trt_node_name_with_precision << " took: " << std::chrono::duration_cast<std::chrono::milliseconds>(engine_build_stop - engine_build_start).count() << "ms" << std::endl;
           }
         }
-        if (trt_state->engine == nullptr) {
+        if (*(trt_state->engine) == nullptr) {
           return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "TensorRT EP Failed to Build Engine.");
         }
         trt_engine = trt_state->engine->get();
@@ -2415,7 +2476,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
           *(trt_state->context) = std::unique_ptr<nvinfer1::IExecutionContext>(
               trt_state->engine->get()->createExecutionContext());
         }
-        if (trt_state->context == nullptr) {
+        if (*(trt_state->context) == nullptr) {
           return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "TensorRT EP failed to create context.");
         }
         trt_context = trt_state->context->get();
@@ -2737,6 +2798,15 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
         trt_context->setDeviceMemory(IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, *max_context_mem_size_ptr).get());
       }
 
+      // Start CUDA graph capture.
+      // Note: The reason we don't put graph capture in OnRunStart() like CUDA EP does is because
+      // current ORT TRT doesn't get cuda stream until compute time and graph capture requires cuda stream.
+      if (cuda_graph_enable_ && IsGraphCaptureAllowed() && !IsGraphCaptured()) {
+        LOGS_DEFAULT(INFO) << "Capturing the cuda graph for this model";
+        cuda_graph_->SetStream(stream);
+        CaptureBegin();
+      }
+
       // Run TRT inference
       if (!trt_context->enqueueV2(&buffers[0], stream, nullptr)) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "TensorRT EP execution context enqueue failed.");
@@ -2764,6 +2834,23 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
           }
         }
       }
+
+      // End CUDA graph capture.
+      // Note: One reason we don't put end of graph capture in OnRunEnd() like CUDA EP does is because of cuda stream mentioned in graph capture
+      // above, another reason is because OnRunEnd() is not synchronized with OnRunStart() and ExecuteGraph() per inference_session.cc,
+      // which might end up with many cuda graphs are captured by multiple threads if running with multithreading.
+      // It's safe to start/end CUDA graph capture in compute_func() here since the whole function is protected by the lock_guard().
+      if (cuda_graph_enable_ && !IsGraphCaptured()) {
+        if (IsGraphCaptureAllowed()) {
+          CaptureEnd();
+          // CUDA work issued to a capturing stream doesn’t actually run on the GPU,
+          // so run the captured graph here to actually execute the work.
+          ORT_RETURN_IF_ERROR(ReplayGraph());
+        } else {
+          IncrementRegularRunCountBeforeGraphCapture();
+        }
+      }
+
       return Status::OK();
     };
 
