@@ -279,8 +279,9 @@ stages:
         script: |
           python "$(Build.SourcesDirectory)/tools/ci_build/build.py" \
             --use_xcode \
-            --build_wheel \
+            --enable_training \
             --build_shared_lib \
+            --build_wheel \
             --build_objc \
             --build_nodejs \
             --build_java \
