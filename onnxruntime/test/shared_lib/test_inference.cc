@@ -41,6 +41,10 @@
 #include <cuda_runtime.h>
 #endif
 
+#ifdef USE_DML
+#include "core/providers/dml/dml_provider_factory.h"
+#endif
+
 // Once we use C++17 this could be replaced with std::size
 template <typename T, size_t N>
 constexpr size_t countof(T (&)[N]) { return N; }
@@ -124,6 +128,10 @@ static void TestInference(Ort::Env& env, const std::basic_string<ORTCHAR_T>& mod
 #else
     return;
 #endif
+  } else if (provider_type == 3) {
+#ifdef USE_DML
+   
+#endif
   } else {
     std::cout << "Running simple inference with default provider" << std::endl;
   }
@@ -193,6 +201,7 @@ static constexpr PATH_TYPE VARIADIC_UNDEF_INPUT_OUTPUT_CUSTOM_OP_MODEL_URI = TST
     "testdata/custom_op_variadic_undef_io.onnx");
 static constexpr PATH_TYPE CUSTOM_OP_MODEL_WITH_ATTRIBUTES_URI = TSTR("testdata/foo_bar_3.onnx");
 static constexpr PATH_TYPE CUSTOM_OP_SINGLE_SCHEMA_MULTI_KERNEL = TSTR("testdata/custom_op_single_schema_multi_kernel.onnx");
+static constexpr PATH_TYPE CUSTOM_OP_IDENTITY_DML = TSTR("testdata/identity_dml.onnx");
 #if !defined(DISABLE_SPARSE_TENSORS)
 static constexpr PATH_TYPE SPARSE_OUTPUT_MODEL_URI = TSTR("testdata/sparse_initializer_as_output.onnx");
 #ifndef DISABLE_CONTRIB_OPS
@@ -3134,4 +3143,40 @@ TEST(MultiKernelSingleSchemaTest, DuplicateKernel) {
   EXPECT_NO_THROW(Ort::Session session(*ort_env, CUSTOM_OP_SINGLE_SCHEMA_MULTI_KERNEL, session_options));
 }
 
+#endif
+
+#ifdef USE_DML
+TEST(LiteCustomOpTest, IdentityDML) {
+  Ort::SessionOptions session_options;
+  Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_DML(session_options, 0));
+
+#if defined(_WIN32)
+  session_options.RegisterCustomOpsLibrary(ORT_TSTR("custom_op_library.dll"));
+#elif defined(__APPLE__)
+  session_options.RegisterCustomOpsLibrary(ORT_TSTR("libcustom_op_library.dylib"));
+#else
+  session_options.RegisterCustomOpsLibrary(ORT_TSTR("./libcustom_op_library.so"));
+#endif
+
+  Ort::Session session(*ort_env, CUSTOM_OP_IDENTITY_DML, session_options);
+
+  const char* input_names[] = {"X", "Y"};
+  const char* output_names[] = {"Z"};
+  float x_value[] = {0.f, 1.f, 2.f};
+  float y_value[] = {3.f, 4.f, 5.f};
+
+  int64_t x_dim[] = {3};
+  int64_t y_dim[] = {3};
+
+  auto memory_info = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
+
+  Ort::Value input_tensors[2] = {
+      Ort::Value::CreateTensor<float>(memory_info, x_value, 3, x_dim, 1),
+      Ort::Value::CreateTensor<float>(memory_info, y_value, 3, y_dim, 1)
+  };
+
+  Ort::RunOptions run_optoins;
+  auto output_tensors = session.Run(run_optoins, input_names, input_tensors, 2, output_names, 1);
+  ASSERT_TRUE(*output_tensors[0].GetTensorData<float>() == 3.f);
+}
 #endif

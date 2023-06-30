@@ -24,6 +24,12 @@ void cuda_add(int64_t, T3*, const T1*, const T2*, cudaStream_t compute_stream);
 
 static const char* c_OpDomain = "test.customop";
 
+#ifdef USE_DML
+void IdentityDML(const Ort::Custom::Tensor<float>&,
+                 Ort::Custom::Tensor<float>&) {
+}
+#endif
+
 #include <iostream>
 #ifdef USE_CUDA
 void KernelOne(Ort::Custom::OrtCudaContext* cuda_ctx,
@@ -199,6 +205,10 @@ OrtStatus* ORT_API_CALL RegisterCustomOps(OrtSessionOptions* options, const OrtA
   static const std::unique_ptr<LiteOp> fil_op_ptr{Ort::Custom::CreateLiteCustomOp("Filter", "CPUExecutionProvider", Filter)};
   static const std::unique_ptr<LiteOp> box_op_ptr{Ort::Custom::CreateLiteCustomOp("Box", "CPUExecutionProvider", Box)};
 
+#ifdef USE_DML
+  static const std::unique_ptr<LiteOp> identity_dml_op_ptr{Ort::Custom::CreateLiteCustomOp("IdentityDML", "DmlExecutionProvider", IdentityDML)};
+#endif
+
   OrtStatus* result = nullptr;
 
   ORT_TRY {
@@ -209,6 +219,9 @@ OrtStatus* ORT_API_CALL RegisterCustomOps(OrtSessionOptions* options, const OrtA
     domain.Add(&c_CustomOpOne);
 #endif
     domain.Add(c_CustomOpTwo.get());
+#ifdef USE_DML
+    domain.Add(identity_dml_op_ptr.get());
+#endif
 
     Ort::CustomOpDomain domain_v2{"v2"};
     domain_v2.Add(c_MulTopOpFloat.get());
