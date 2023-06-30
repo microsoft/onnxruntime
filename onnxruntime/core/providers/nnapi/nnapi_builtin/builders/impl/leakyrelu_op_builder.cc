@@ -63,14 +63,14 @@ Status LeakyReluOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   input_indices.push_back(operand_indices.at(input));
 
   // Add Less operation - Less(X, Zero)
-  int count = ShapeSize(input_shape);
-  std::vector<float> zero_vec(count, 0.0f);
+  float zero_value = 0.0f;
+  InlinedVector<uint32_t> value_shape{1};
 
   std::string zero_vec_name = model_builder.GetUniqueName(node_unit.Name() + input + "_zero");
   std::string less_output_name = model_builder.GetUniqueName(node_unit.Name() + input + "_less_than_zero");
 
-  const OperandType zero_operand_type(Type::TENSOR_FLOAT32, input_shape);
-  ORT_RETURN_IF_ERROR(model_builder.AddOperandFromPersistMemoryBuffer(zero_vec_name, zero_vec.data(),
+  const OperandType zero_operand_type(Type::TENSOR_FLOAT32, value_shape);
+  ORT_RETURN_IF_ERROR(model_builder.AddOperandFromPersistMemoryBuffer(zero_vec_name, &zero_value,
                                                                       zero_operand_type));
   input_indices.push_back(operand_indices.at(zero_vec_name));
 
@@ -81,13 +81,11 @@ Status LeakyReluOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 
   // Add Mul operation - Mul(Alpha, X)
   input_indices.clear();
-  std::vector<float> alpha_vec(count, alpha);
-
   input_indices.push_back(operand_indices.at(input));
 
   std::string alpha_vec_name = model_builder.GetUniqueName(node_unit.Name() + input + "_alpha");
-  const OperandType alpha_operand_type(Type::TENSOR_FLOAT32, input_shape);
-  ORT_RETURN_IF_ERROR(model_builder.AddOperandFromPersistMemoryBuffer(alpha_vec_name, alpha_vec.data(),
+  const OperandType alpha_operand_type(Type::TENSOR_FLOAT32, value_shape);
+  ORT_RETURN_IF_ERROR(model_builder.AddOperandFromPersistMemoryBuffer(alpha_vec_name, &alpha,
                                                                       alpha_operand_type));
   input_indices.push_back(operand_indices.at(alpha_vec_name));
 
