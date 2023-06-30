@@ -5,64 +5,88 @@ This document provides instructions on implementing a wrapper similar to the Mod
 
 Follow these steps to create your own ModuleWithLoss for computing loss inside ONNX Runtime:
 
-### Step 1: Define `ModuleWithLoss` Class
+Certainly! Here are the steps to fit the provided example:
+
+### Step 1: Define `PretrainedModel` Class
+
+1. Implement the `PretrainedModel` class by extending `nn.Module`.
+2. Define the `forward` method inside `PretrainedModel` to perform the forward pass of the model.
+3. Use the model's transformer layers and head layers to compute the logits.
+4. Return the logits as the output of the `forward` method.
+
+### Step 2: Define `ModuleWithLoss` Class
 
 1. Create a class named `ModuleWithLoss` that extends `nn.Module`.
 2. Implement the `__init__` method to initialize the wrapper with the original model.
-3. Implement the `forward` method to perform the forward pass of the model and return the outputs.
-
-### Step 2: Compute Loss Function
-
-1. Implement a function named `compute_loss` that takes the model, inputs, and targets as arguments.
-2. Inside the function, compute the forward pass of the model using the inputs.
-3. Compute the loss between the model outputs and the targets.
-4. Return the computed loss.
+3. Implement the `forward` method to perform the forward pass of the model and compute the loss.
+4. Use the model's `forward` method to compute the logits.
+5. Compute the loss between the logits and the labels.
+6. Return the computed loss.
 
 ### Step 3: Training Loop
 
-1. Create an instance of `ModuleWithLoss` by passing the original model as an argument.
-2. Initialize the optimizer for training.
-3. Enter the training loop and iterate over the training data.
-4. Zero the gradients of the optimizer.
-5. Compute the loss by calling the `compute_loss` function and passing the model, inputs, and targets.
-6. Perform the backward pass and optimization step by calling `loss.backward()` and `optimizer.step()`.
+1. Create an instance of `PretrainedModel` as the original model.
+2. Create an instance of `ModuleWithLoss` by passing the original model as an argument.
+3. Initialize the optimizer for training.
+4. Enter the training loop and iterate over the training data.
+5. Zero the gradients of the optimizer.
+6. Compute the forward pass and cross-entropy loss by calling the `forward` method of the `ModuleWithLoss` instance and passing the inputs and labels.
+7. Perform the backward pass by calling `loss.backward()` and optimization step by calling `optimizer.step()`.
+
+Make sure to fill in the appropriate details and customize the code as per your specific requirements and implementation.
 
 
 ## Full Example
 
 ```python
+# Define the model architecture
+class PretrainedModel(nn.Module):
+    ...
+
+    def forward(self, input_ids, attention_mask):
+        ...
+        transformer_outputs = self.transformer(
+            input_ids,
+            attention_mask=attention_mask,
+            ...
+        )
+        hidden_states = transformer_outputs[0]
+        lm_logits = self.lm_head(hidden_states)
+        return lm_logits
+
+
 class ModuleWithLoss(nn.Module):
     def __init__(self, model):
         super().__init__()
         self.model = model
 
-    def forward(self, inputs):
-        # Perform the forward pass of the model and return the outputs
-        outputs = self.model(inputs)
-        return outputs
+    def forward(self, inputs, labels):
+        # Perform the forward pass of the model
+        lm_logits = self.model(inputs)
 
-def compute_loss(model, inputs, targets):
-    # Compute the forward pass of the model
-    outputs = model(inputs)
+        # Compute the cross-entropy loss
+        loss = nn.CrossEntropyLoss()(lm_logits, labels)
+        return loss
 
-    # Compute the cross-entropy loss
-    loss = nn.CrossEntropyLoss()(outputs, targets)
-
-    return loss
 
 # Training loop
-model = ModuleWithLoss(original_model)
+model = PretrainedModel(...)
+model = ModuleWithLoss(model)
+
 optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
 
-for inputs, targets in dataloader:
+model = ORTModule(model)
+
+for inputs, labels in dataloader:
     optimizer.zero_grad()
 
-    # Compute loss
-    loss = compute_loss(model, inputs, targets)
+    # Compute the forward pass and cross-entropy loss
+    loss = model(inputs, labels)
 
     # Backward pass and optimization step
     loss.backward()
     optimizer.step()
+
 ```
 
 By following these steps, you can create a wrapper that computes the loss inside ONNX Runtime (ORT) using the `ModuleWithLoss` class and the `compute_loss` function. Make sure to customize the code snippets according to your specific codebase and requirements.
