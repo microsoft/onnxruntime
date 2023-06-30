@@ -34,7 +34,7 @@ steps:
         key: ' "${{parameters.TODAY}}" |  ${{parameters.AdditionalKey}}  | merge '
       ${{else}}:
         key: '"${{parameters.TODAY}}" |  ${{parameters.AdditionalKey}}  | $(Build.SourceVersion) '
-      path: ${{parameters.CacheDir}}}
+      path: ${{parameters.CacheDir}}
       restoreKeys: |
         "${{parameters.TODAY}}" |  ${{parameters.AdditionalKey}}
     displayName: Cache Task
@@ -63,7 +63,7 @@ steps:
     displayName: ${{parameters.DisplayName}}
     env:
       CCACHE_SLOPPINESS: include_file_ctime,include_file_mtime,time_macros
-      CCACHE_DIR: ${{parameters.CacheDir}}}
+      CCACHE_DIR: ${{parameters.CacheDir}}
       _EMCC_CCACHE: 1
       EM_COMPILER_WRAPPER: ccache
       EM_DIR: '$(Build.SourcesDirectory)/cmake/external/emsdk/upstream/emscripten'
