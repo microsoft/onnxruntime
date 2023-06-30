@@ -70,8 +70,8 @@ Status BatchNorm<T>::ComputeInternal(OpKernelContext* p_op_kernel_context) const
   Tensor* Y = p_op_kernel_context->Output(0, x_shape);
   Tensor* running_mean = p_op_kernel_context->Output(1, channel_shape);
   Tensor* running_var = p_op_kernel_context->Output(2, channel_shape);
-  Tensor* saved_mean = p_op_kernel_context->Output(3, channel_shape);
-  Tensor* saved_var = p_op_kernel_context->Output(4, channel_shape);
+  Tensor* saved_mean = is_training_mode_ ? p_op_kernel_context->Output(3, channel_shape) : nullptr;
+  Tensor* saved_var = is_training_mode_ ? p_op_kernel_context->Output(4, channel_shape) : nullptr;
 
   auto x_data = reinterpret_cast<const CudaT*>(X->Data<T>());
   auto scale_data = reinterpret_cast<const CudaT*>(scale->Data<T>());
@@ -91,6 +91,7 @@ Status BatchNorm<T>::ComputeInternal(OpKernelContext* p_op_kernel_context) const
 
   // For half data type, the alpha, beta, scale, B, mean, var need to be float type
   if (X->IsDataType<MLFloat16>()) {
+    ORT_ENFORCE(!is_training_mode_, "Training mode does not support BN opset 14 (or higher) with MLFLOAT16 yet.");
     CudnnTensor scale_desc;
     ORT_RETURN_IF_ERROR(scale_desc.Set(new_dims, CudnnTensor::GetDataType<float>()));
     CudnnTensor bn_tensor_desc;
@@ -129,12 +130,22 @@ Status BatchNorm<T>::ComputeInternal(OpKernelContext* p_op_kernel_context) const
   CudnnTensor bn_tensor_desc;
   ORT_RETURN_IF_ERROR(bn_tensor_desc.Set(data_desc, cudnn_batch_norm_mode_));
 
-  // in BatchNorm Forward Training mode if all 5 outputs present
-  if (running_mean && running_var && saved_mean && saved_var) {
+  // In BatchNorm Forward Training mode if
+  // - all 5 outputs present, when opset < 14
+  // - all 3 outputs present and is_training_mode_ == true, when opset >= 14
+  if (running_mean && running_var && ((saved_mean && saved_var) || (is_training_mode_ && !saved_mean && !saved_var))) {
     auto running_mean_data = reinterpret_cast<CudaT*>(running_mean->MutableData<T>());
     auto running_var_data = reinterpret_cast<CudaT*>(running_var->MutableData<T>());
-    auto saved_mean_data = reinterpret_cast<CudaT*>(saved_mean->MutableData<T>());
-    auto saved_inv_var_data = reinterpret_cast<CudaT*>(saved_var->MutableData<T>());
+    auto _get_or_create_cudat_from_tensor = [this, &p_op_kernel_context](Tensor* t, const size_t numel) -> CudaT* {
+      if (!t) {
+        auto buffer = GetScratchBuffer<T>(numel, p_op_kernel_context->GetComputeStream());
+        return reinterpret_cast<CudaT*>(buffer.get());
+      }
+      return reinterpret_cast<CudaT*>(t->MutableData<T>());
+    };
+    const size_t numel = static_cast<size_t>(channel_shape.Size());
+    auto saved_mean_data = _get_or_create_cudat_from_tensor(saved_mean, numel);
+    auto saved_inv_var_data = _get_or_create_cudat_from_tensor(saved_var, numel);
 
     CUDNN_RETURN_IF_ERROR(BatchNormalizationForwardTrainingHelper(
         GetCudnnHandle(p_op_kernel_context),

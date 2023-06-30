@@ -904,11 +904,10 @@ TEST(BatchNormTest, ForwardTrainingTestOpset14) {
   test.AddOutput<float>("running_mean", channel_dims, {-0.1754f, 0.303106f});
   test.AddOutput<float>("running_var", channel_dims, {0.696052f, 1.41316f});
 
-  // exclude CUDA Execution Provider due to flakiness
   // exclude TRT and OpenVINO for same reasons as seen in TestBatchNorm()
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kCudaExecutionProvider, kRocmExecutionProvider,
-            kTensorrtExecutionProvider, kOpenVINOExecutionProvider, kDnnlExecutionProvider});
+           {kRocmExecutionProvider, kTensorrtExecutionProvider,
+            kOpenVINOExecutionProvider, kDnnlExecutionProvider});
 }
 
 TEST(BatchNormTest, ForwardTrainingTestOpset15) {
@@ -934,8 +933,8 @@ TEST(BatchNormTest, ForwardTrainingTestOpset15) {
 
   // Same exclusions as the opset 14 test
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kCudaExecutionProvider, kRocmExecutionProvider,
-            kTensorrtExecutionProvider, kOpenVINOExecutionProvider, kDnnlExecutionProvider});
+           {kRocmExecutionProvider, kTensorrtExecutionProvider,
+            kOpenVINOExecutionProvider, kDnnlExecutionProvider});
 }
 #endif  // BATCHNORM_INCLUDE_TRAINING_SUPPORT
 
