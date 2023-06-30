@@ -14,6 +14,7 @@
 #include "core/providers/cuda/shared_inc/cuda_call.h"
 #include "core/providers/cuda/math/unary_elementwise_ops_impl.h"
 #include "core/providers/cuda/gpu_data_transfer.h"
+#include "core/session/allocator_adapters.h"
 #include "cuda_runtime_api.h"
 #include "core/common/gsl.h"
 #include <unordered_map>
@@ -991,8 +992,11 @@ TensorrtExecutionProvider::~TensorrtExecutionProvider() {
     ORT_IGNORE_RETURN_VALUE(CUDA_CALL(cudaStreamDestroy(stream_)));
   }
   ReleaseTensorRTCustomOpDomainList(info_.custom_op_domain_list);
+
   if (alloc_ != nullptr) {
-    delete alloc_;
+    // This code is same as OrtApis::ReleaseAllocator defined in allocator_adapters.cc.
+    // We can't get api inside destructor so that's why we duplicate the code here. 
+    delete static_cast<OrtAllocatorImpl*>(alloc_);
   }
 }
 
@@ -2222,19 +2226,11 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
       std::unordered_set<std::string> input_names;
       std::unordered_map<std::string, std::vector<int32_t>> tensor_shape_values;
       OrtMemoryInfo mem_info("", OrtAllocatorType::OrtDeviceAllocator, OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, 0));
-      //OrtAllocator* alloc = nullptr;
-      //Ort::ThrowOnError(api->KernelContext_GetAllocator(context, &mem_info, &alloc));
 
       if (alloc_ == nullptr) {
         Ort::ThrowOnError(api->KernelContext_GetAllocator(context, &mem_info, &alloc_));
       }
       OrtAllocator* alloc = alloc_;
-
-      //OrtAllocator* alloc = alloc_.get();
-      //if (alloc == nullptr) {
-        //Ort::ThrowOnError(api->KernelContext_GetAllocator(context, &mem_info, &alloc));
-        //alloc_.reset(alloc);
-      //}
 
       void* cuda_stream;
       Ort::ThrowOnError(api->KernelContext_GetGPUComputeStream(context, &cuda_stream));
