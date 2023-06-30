@@ -3,7 +3,7 @@
 
 #include "core/session/environment.h"
 #include "core/session/allocator_adapters.h"
-#include "core/framework/allocatormgr.h"
+#include "core/framework/allocator_utils.h"
 #include "core/graph/constants.h"
 #include "core/graph/op.h"
 
