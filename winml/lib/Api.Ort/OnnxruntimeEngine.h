@@ -130,7 +130,7 @@ class OnnxruntimeEngine : public Microsoft::WRL::RuntimeClass<
   OnnxruntimeEngineFactory* GetEngineFactory();
   HRESULT CreateTensorValueFromDefaultAllocator(const int64_t* shape, size_t count, winml::TensorKind kind, _Out_ IValue** out);
 
-  HRESULT RegisterCustomOpLibraryHandles(const std::vector<void*>& handles);
+  HRESULT RegisterCustomOpLibraryHandles(const gsl::span<void*> handles);
 
  private:
   Microsoft::WRL::ComPtr<OnnxruntimeEngineFactory> engine_factory_;

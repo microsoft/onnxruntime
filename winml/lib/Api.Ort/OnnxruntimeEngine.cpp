@@ -434,7 +434,7 @@ OnnxruntimeEngine::~OnnxruntimeEngine() {
   }
 }
 
-HRESULT OnnxruntimeEngine::RegisterCustomOpLibraryHandles(const std::vector<void*>& handles) {
+HRESULT OnnxruntimeEngine::RegisterCustomOpLibraryHandles(const gsl::span<void*> handles) {
   custom_op_library_handles_.insert(custom_op_library_handles_.end(), handles.begin(), handles.end());
   return S_OK;
 }
