@@ -94,11 +94,9 @@ __global__ void SkipLayerNormKernel(
   for (int i = threadIdx.x; i < ld; i += TPB) {
     const int idx = offset + i;
 
-    const T val = (bias == nullptr) ? input[idx] + skip[idx] : input[idx] + skip[idx] + bias[i];
+    const T skip_data = skip_broadcasted ? skip[idx % skip_size] : skip[idx]
+    const T val = (bias == nullptr) ? input[idx] + skip_data : input[idx] + skip_data + bias[i];
 
-    if (skip_broadcasted){
-      val = (bias == nullptr) ? input[idx] + skip[offset % skip_size] : input[idx] + skip[offset % skip_size] + bias[i];
-    }
     const T rldval = reverse_ld * val;
     thread_data = pair_sum(thread_data, cub::KeyValuePair<T, T>(rldval, rldval * val));
 
