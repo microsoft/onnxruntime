@@ -20,8 +20,6 @@ using namespace android::nn::wrapper;
 namespace onnxruntime {
 namespace nnapi {
 
-using namespace onnxruntime::nnapi::op_builder_helpers;
-
 class LeakyReluOpBuilder : public BaseOpBuilder {
   // Add operator related
  private:
