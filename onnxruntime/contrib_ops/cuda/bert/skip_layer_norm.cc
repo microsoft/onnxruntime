@@ -120,7 +120,7 @@ Status SkipLayerNorm<T, Simplified>::ComputeInternal(OpKernelContext* ctx) const
     }
   }
 
-  const bool skip_broadcasted = (skip->Shape()[0] == 1 || skip->Shape()[skip_dims_size-2] == skip_sequence_length) ? true : false;
+  const bool skip_broadcasted = (skip_dims[0] == 1 || skip_dims_size == 2) ? true : false;
   const int skip_size = static_cast<int>(skip_dims[skip_dims_size - 1] * skip_dims[skip_dims_size - 2]);
 
   if (strict_) {
