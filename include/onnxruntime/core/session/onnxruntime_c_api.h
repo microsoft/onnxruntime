@@ -4220,7 +4220,7 @@ struct OrtApi {
    */
   ORT_API2_STATUS(GetResizedStringTensorElementBuffer, _Inout_ OrtValue* value, _In_ size_t index, _In_ size_t length_in_bytes, _Inout_ char** buffer);
 
-  /** \brief Get Allocator from KernelContext for a specific memoryInfo. The returned out is responsible for releasing memory
+  /** \brief Get Allocator from KernelContext for a specific memoryInfo. Please use C API ReleaseAllocator to release out object
    *
    * \param[in] context OrtKernelContext instance
    * \param[in] mem_info OrtMemoryInfo instance
