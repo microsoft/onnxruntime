@@ -430,7 +430,7 @@ HRESULT OnnxruntimeEngine::RuntimeClassInitialize(OnnxruntimeEngineFactory* engi
 
 OnnxruntimeEngine::~OnnxruntimeEngine() {
   for (auto& handle : custom_op_library_handles_) {
-    FreeLibrary((HMODULE)handle);
+    FreeLibrary(reinterpret_cast<HMODULE>(handle));
   }
 }
 

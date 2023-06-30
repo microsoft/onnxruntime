@@ -53,7 +53,7 @@ STDMETHODIMP LearningModelSessionOptions::SetIntraOpThreadSpinning(boolean allow
   return S_OK;
 }
 
-const std::vector<winrt::hstring>& LearningModelSessionOptions::GetCustomOpLibraryPaths() noexcept {
+const gsl::span<const winrt::hstring> LearningModelSessionOptions::GetCustomOpLibraryPaths() noexcept {
   return custom_ops_lib_paths_;
 }
 

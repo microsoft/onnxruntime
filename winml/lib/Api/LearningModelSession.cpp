@@ -138,8 +138,7 @@ void LearningModelSession::Initialize() {
     num_intra_op_threads = session_options_impl->GetIntraOpNumThreads();
 
     const auto& paths = session_options_impl->GetCustomOpLibraryPaths();
-    for (const auto& path : paths)
-    {
+    for (const auto& path : paths) {
       auto path_str = _winml::Strings::UTF8FromHString(path);
       WINML_THROW_IF_FAILED(engine_builder->RegisterCustomOpsLibrary(path_str.c_str()));
     }

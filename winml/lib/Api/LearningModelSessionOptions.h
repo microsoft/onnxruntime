@@ -31,7 +31,7 @@ struct LearningModelSessionOptions : LearningModelSessionOptionsT<LearningModelS
 
   bool GetIntraOpThreadSpinning();
 
-  const std::vector<winrt::hstring>&
+  const gsl::span<const winrt::hstring>
   GetCustomOpLibraryPaths() noexcept;
 
   void

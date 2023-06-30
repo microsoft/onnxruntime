@@ -58,7 +58,7 @@ STDMETHODIMP OnnxruntimeEngineBuilder::CreateEngine(_Outptr_ _winml::IEngine** o
   }
 
   std::vector<void*> handles;
-  for (auto& path : custom_ops_lib_paths_) {
+  for (const auto& path : custom_ops_lib_paths_) {
     void* handle = nullptr;
     RETURN_HR_IF_NOT_OK_MSG(ort_api->RegisterCustomOpsLibrary(session_options.get(), path.c_str(), &handle),
                             ort_api);
