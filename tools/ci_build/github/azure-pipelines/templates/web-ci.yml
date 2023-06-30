@@ -117,6 +117,7 @@ stages:
         PoolName: ${{ parameters.PoolName }}
         SkipPublish: true
         TimeoutInMinutes: 270
+        BuildStaticLib: true
 
 - stage: Build_web_Release
   dependsOn: Build_wasm_Release

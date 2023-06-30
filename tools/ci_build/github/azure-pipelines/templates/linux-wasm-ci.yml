@@ -26,6 +26,11 @@ parameters:
   type: boolean
   default: false
 
+# In fact, it's only used on Linux for compiler cache.
+- name: BuildStaticLib
+  type: boolean
+  default: false
+
 jobs:
 - job: build_WASM
   pool:
@@ -90,7 +95,10 @@ jobs:
   - template: build-wasm-with-cache.yml
     parameters:
       Today: $(Today)
-      AdditionalKey: wasm | ${{ parameters.BuildConfig }}
+      ${{ if eq(parameters.BuildStaticLib, true)}}:
+        AdditionalKey: wasm | ${{ parameters.BuildConfig }} | static
+      ${{ else }}:
+        AdditionalKey: wasm | ${{ parameters.BuildConfig }}
       CacheDir: $(ORT_CACHE_DIR)/wasm
       Arguments: '$(CommonBuildArgs) --build_dir $(Build.BinariesDirectory)/wasm'
       ChangeEveryCommit: true
@@ -99,7 +107,10 @@ jobs:
   - template: build-wasm-with-cache.yml
     parameters:
       Today: $(Today)
-      AdditionalKey: wasm | ${{ parameters.BuildConfig }}
+      ${{ if eq(parameters.BuildStaticLib, true)}}:
+        AdditionalKey: wasm_threads | ${{ parameters.BuildConfig }} | static
+      ${{ else }}:
+        AdditionalKey: wasm_threads | ${{ parameters.BuildConfig }}
       CacheDir: $(ORT_CACHE_DIR)/wasm_threads
       Arguments: '$(CommonBuildArgs) --build_dir $(Build.BinariesDirectory)/wasm_threads --enable_wasm_threads'
       ChangeEveryCommit: true
@@ -108,7 +119,10 @@ jobs:
   - template: build-wasm-with-cache.yml
     parameters:
       Today: $(Today)
-      AdditionalKey: wasm_simd_threads | ${{ parameters.BuildConfig }}
+      ${{ if eq(parameters.BuildStaticLib, true)}}:
+        AdditionalKey: wasm_simd_threads | ${{ parameters.BuildConfig }} | static
+      ${{ else }}:
+        AdditionalKey: wasm_simd_threads | ${{ parameters.BuildConfig }}
       CacheDir: $(ORT_CACHE_DIR)/wasm_simd_threads
       Arguments: '$(CommonBuildArgs) --build_dir $(Build.BinariesDirectory)\wasm_simd_threads --enable_wasm_simd --enable_wasm_threads --wasm_run_tests_in_browser'
       ChangeEveryCommit: true
@@ -117,7 +131,10 @@ jobs:
   - template: build-wasm-with-cache.yml
     parameters:
       Today: $(Today)
-      AdditionalKey: wasm_simd | ${{ parameters.BuildConfig }}
+      ${{ if eq(parameters.BuildStaticLib, true)}}:
+        AdditionalKey: wasm_simd | ${{ parameters.BuildConfig }} | static
+      ${{ else }}:
+        AdditionalKey: wasm_simd | ${{ parameters.BuildConfig }}
       CacheDir: $(ORT_CACHE_DIR)/wasm_simd
       Arguments: '$(CommonBuildArgs) --build_dir $(Build.BinariesDirectory)/wasm_simd --enable_wasm_simd'
       ChangeEveryCommit: true
@@ -127,7 +144,10 @@ jobs:
     - template: build-wasm-with-cache.yml
       parameters:
         Today: $(Today)
-        AdditionalKey: wasm_simd_jsep | ${{ parameters.BuildConfig }}
+        ${{ if eq(parameters.BuildStaticLib, true)}}:
+          AdditionalKey: wasm_simd_jsep | ${{ parameters.BuildConfig }} | static
+        ${{ else }}:
+          AdditionalKey: wasm_simd_jsep | ${{ parameters.BuildConfig }}
         CacheDir: $(ORT_CACHE_DIR)/wasm_simd_jsep
         Arguments: '$(CommonBuildArgs) --build_dir $(Build.BinariesDirectory)/wasm_simd_jsep --enable_wasm_simd --use_jsep --target onnxruntime_webassembly --skip_tests'
         ChangeEveryCommit: true
@@ -135,7 +155,10 @@ jobs:
     - template: build-wasm-with-cache.yml
       parameters:
         Today: $(Today)
-        AdditionalKey: wasm_simd_threads_jsep | ${{ parameters.BuildConfig }}
+        ${{ if eq(parameters.BuildStaticLib, true)}}:
+          AdditionalKey: wasm_simd_threads_jsep | ${{ parameters.BuildConfig }} | static
+        ${{ else }}:
+          AdditionalKey: wasm_simd_threads_jsep | ${{ parameters.BuildConfig }}
         CacheDir: $(ORT_CACHE_DIR)/wasm_simd_threads_jsep
         Arguments: '$(CommonBuildArgs) --build_dir $(Build.BinariesDirectory)/wasm_simd_threads_jsep --enable_wasm_simd --enable_wasm_threads --use_jsep --target onnxruntime_webassembly --skip_tests'
         ChangeEveryCommit: true
