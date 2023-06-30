@@ -88,17 +88,22 @@ class TimeTrackerPhase(IntEnum):
     CREATE_SESSION = 5
 
     def to_string(self) -> str:
-        if self == TimeTrackerPhase.EndToEnd:
+        if self == TimeTrackerPhase.EndToEnd:  # The total overhead of ORT first-time initialization
             return "end to end"
         if self == TimeTrackerPhase.EXPORT:
+            # The latency of preparing and exporting the model to ONNX
             return "export"
         elif self == TimeTrackerPhase.GRAPH_BUILDER_INIT:
+            # The latency of initializing the graph builder
             return "graph builder init"
         elif self == TimeTrackerPhase.DETECTION:
+            # The latency of runtime detection
             return "runtime detection"
         elif self == TimeTrackerPhase.BUILD_GRAPH:
+            # The latency of optimizing forward graph (and building the gradient graph for training).
             return "building grad"
         elif self == TimeTrackerPhase.CREATE_SESSION:
+            # The latency of creating the session
             return "session creation"
         else:
             return "invalid"
@@ -131,6 +136,9 @@ class TimeTracker:
         export_str = f"{export_str * 1000:.0f}" if export_str != TimeTracker.NOT_RECORD else "N/A"
         overhead_title_str = f"Total overhead: {end_to_end_str}ms where export takes {export_str}ms.\n"
 
+        if log_details is False:
+            return overhead_title_str
+
         duration_summaries = []
         for phase in TimeTrackerPhase:
             duration = self.duration(phase)
@@ -140,7 +148,13 @@ class TimeTracker:
             val = f" {phase.to_string()} takes {duration * 1000:.0f}ms" if duration != TimeTracker.NOT_RECORD else "N/A"
             duration_summaries.append(f"{val}")
 
-        if log_details:
             return f"{overhead_title_str}Other overhead details: {','.join(duration_summaries)}\n"
 
-        return overhead_title_str
+
+@contextmanager
+def collect_timer(tracker: TimeTracker, phase: TimeTrackerPhase):
+    try:
+        tracker.start(phase)
+        yield
+    finally:
+        tracker.end(phase)

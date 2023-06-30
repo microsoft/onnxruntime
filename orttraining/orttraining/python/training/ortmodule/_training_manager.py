@@ -18,7 +18,7 @@ from ._fallback import ORTModuleFallbackException, _FallbackManager, _FallbackPo
 from ._gradient_accumulation_manager import GradientAccumulationManager
 from ._graph_execution_manager import GraphExecutionManager, _RunStateInfo
 from ._io import _FlattenedModule, _InputInfo
-from ._logger import TimeTrackerPhase
+from ._logger import TimeTrackerPhase, collect_timer
 from ._runtime_inspector import Phase
 from .options import DebugOptions, _SkipCheck
 
@@ -246,10 +246,13 @@ class TrainingManager(GraphExecutionManager):
             ):
                 self._time_tracker.start(TimeTrackerPhase.EndToEnd)
 
-                build_gradient_graph = self._export_model(*inputs, **kwargs)
+                with collect_timer(self._time_tracker, TimeTrackerPhase.EXPORT):
+                    build_gradient_graph = self._export_model(*inputs, **kwargs)
+
                 if build_gradient_graph:
                     # If model was exported, then initialize the graph builder
-                    self._initialize_graph_builder()
+                    with collect_timer(self._time_tracker, TimeTrackerPhase.GRAPH_BUILDER_INIT):
+                        self._initialize_graph_builder()
 
                 # Since the schema was just extracted while trying to export the model and it was either
                 # saved to self._input_info.schema or checked for equality with the self._input_info.schema
@@ -267,10 +270,12 @@ class TrainingManager(GraphExecutionManager):
                 if build_gradient_graph:
                     graph_transformer_config = self._get_graph_transformer_config()
                     # Set the config according to input inspection.
-                    self._enable_conditional_optimizations(graph_transformer_config, inputs, kwargs)
+                    with collect_timer(self._time_tracker, TimeTrackerPhase.DETECTION):
+                        self._enable_conditional_optimizations(graph_transformer_config, inputs, kwargs)
 
                     # Build the gradient graph
-                    self._build_graph(graph_transformer_config)
+                    with collect_timer(self._time_tracker, TimeTrackerPhase.BUILD_GRAPH):
+                        self._build_graph(graph_transformer_config)
 
             # If creating the execution agent for the first time, this skip check will not take effect.
             # It will only take effect on subsequent forward calls.
@@ -293,11 +298,12 @@ class TrainingManager(GraphExecutionManager):
 
             if create_execution_session:
                 # Create execution session creates the training_session
-                self._create_execution_agent()
+                with collect_timer(self._time_tracker, TimeTrackerPhase.CREATE_SESSION):
+                    self._create_execution_agent()
 
-                self._gradient_accumulation_manager.initialize(
-                    self._runtime_options.enable_grad_acc_optimization, self._flattened_module, self._graph_info
-                )
+                    self._gradient_accumulation_manager.initialize(
+                        self._runtime_options.enable_grad_acc_optimization, self._flattened_module, self._graph_info
+                    )
 
                 self._time_tracker.end(TimeTrackerPhase.EndToEnd)
                 self._log_feature_stats()

@@ -15,7 +15,7 @@ from . import _are_deterministic_algorithms_enabled, _io, _use_deterministic_alg
 from ._execution_agent import InferenceAgent
 from ._fallback import ORTModuleFallbackException, _FallbackManager, _FallbackPolicy
 from ._graph_execution_manager import GraphExecutionManager, _RunStateInfo
-from ._logger import TimeTrackerPhase
+from ._logger import TimeTrackerPhase, collect_timer
 from .options import DebugOptions, _SkipCheck
 
 
@@ -113,19 +113,23 @@ class InferenceManager(GraphExecutionManager):
                 self._time_tracker.start(TimeTrackerPhase.EndToEnd)
 
                 # Exporting module to ONNX for the first time
-                build_graph = self._export_model(*inputs, **kwargs)
+                with collect_timer(self._time_tracker, TimeTrackerPhase.EXPORT):
+                    build_graph = self._export_model(*inputs, **kwargs)
                 if build_graph:
-                    # If model was exported, then initialize the graph builder
-                    self._initialize_graph_builder()
+                    # If model was exported, then initialize the graph builder.
+                    with collect_timer(self._time_tracker, TimeTrackerPhase.GRAPH_BUILDER_INIT):
+                        self._initialize_graph_builder()
 
                 # Build the inference graph
                 if build_graph:
                     graph_transformer_config = self._get_graph_transformer_config()
                     # Set the config according to input inspection.
-                    self._enable_conditional_optimizations(graph_transformer_config, inputs, kwargs)
+                    with collect_timer(self._time_tracker, TimeTrackerPhase.DETECTION):
+                        self._enable_conditional_optimizations(graph_transformer_config, inputs, kwargs)
 
                     # Build the gradient graph
-                    self._build_graph(graph_transformer_config)
+                    with collect_timer(self._time_tracker, TimeTrackerPhase.BUILD_GRAPH):
+                        self._build_graph(graph_transformer_config)
 
             # If creating the execution agent for the first time, this skip check will not take effect.
             # It will only take effect on subsequent forward calls.
@@ -148,9 +152,11 @@ class InferenceManager(GraphExecutionManager):
 
             if create_execution_session:
                 # Create execution session creates the inference_session
-                self._create_execution_agent()
-                self._log_feature_stats()
+                with collect_timer(self._time_tracker, TimeTrackerPhase.CREATE_SESSION):
+                    self._create_execution_agent()
+
                 self._time_tracker.end(TimeTrackerPhase.EndToEnd)
+                self._log_feature_stats()
 
             if self._runtime_options.skip_check.is_set(_SkipCheck.SKIP_CHECK_DEVICE) is False:
                 # Assert that the input and model device match

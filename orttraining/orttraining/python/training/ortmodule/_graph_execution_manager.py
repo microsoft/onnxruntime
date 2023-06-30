@@ -239,8 +239,6 @@ class GraphExecutionManager(GraphExecutionInterface):
         return session_options, providers, provider_options
 
     def _export_model(self, *inputs, **kwargs) -> bool:
-        self._time_tracker.start(_logger.TimeTrackerPhase.EXPORT)
-
         # 1. Set the self._device from the user module
         # 2. Verify input schema matches the schema used on the previous model export
         # 3. Export the user model under self._export_training_flag mode
@@ -282,7 +280,6 @@ class GraphExecutionManager(GraphExecutionInterface):
         # Restore the recorded random states
         _utils.set_random_states(random_states)
 
-        self._time_tracker.end(_logger.TimeTrackerPhase.EXPORT)
         return True
 
     def _get_exported_model(self, input_schema: _ModelInputOutputSchemaType, *inputs, **kwargs) -> onnx.ModelProto:
@@ -392,8 +389,6 @@ class GraphExecutionManager(GraphExecutionInterface):
     def _initialize_graph_builder(self):
         """Creates a new OrtModuleGraphBuilder, initializes it and saves it to self._graph_builder"""
 
-        self._time_tracker.start(_logger.TimeTrackerPhase.GRAPH_BUILDER_INIT)
-
         # All initializer names along with user inputs are a part of the onnx graph inputs
         # since the onnx model was exported with the flag keep_initializers_as_inputs=True
         onnx_initializer_names = {p.name for p in self._onnx_models.exported_model.graph.input}
@@ -436,8 +431,6 @@ class GraphExecutionManager(GraphExecutionInterface):
             param for name, param in self._flattened_module.named_parameters() if name in self._graph_initializer_names
         ]
 
-        self._time_tracker.end(_logger.TimeTrackerPhase.GRAPH_BUILDER_INIT)
-
     def signal_model_changed(self):
         """Signals the execution manager to re-export the model on the next forward call"""
         self._original_model_has_changed = True
@@ -477,8 +470,6 @@ class GraphExecutionManager(GraphExecutionInterface):
            enable sparsity-based optimization.
 
         """
-
-        self._time_tracker.start(_logger.TimeTrackerPhase.DETECTION)
 
         # Enable data sparsity inspection if sparse optimizer is ON or user wants to print input density.
         if self._runtime_options.enable_sparse_optimizer or self._runtime_options.print_input_density:
@@ -524,8 +515,6 @@ class GraphExecutionManager(GraphExecutionInterface):
 
         if self._runtime_options.print_memory_stat:
             self._runtime_inspector.enable_memory_inspector(self._original_module)
-
-        self._time_tracker.end(_logger.TimeTrackerPhase.DETECTION)
 
     def _log_feature_stats(self):
         rank = 0
