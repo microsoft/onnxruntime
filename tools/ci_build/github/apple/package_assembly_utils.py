@@ -71,20 +71,22 @@ def gen_file_from_template(
         output.write(content)
 
 
-def filter_files(file_list, exclude_list):
+def filter_files(all_file_patterns: List[str], excluded_file_patterns: List[str]):
     """
     Filters file paths based on inclusion and exclusion patterns
 
-    :param file_list The list of file paths to filter.
-    :param exclude_list The list of exclusion patterns.
+    :param all_file_patterns The list of file paths to filter.
+    :param excluded_file_patterns The list of exclusion patterns.
 
     :return The filtered list of file paths
     """
-    # get all files matching the patterns in file_list
-    all_files = [str(path.relative_to(repo_root)) for pattern in file_list for path in repo_root.glob(pattern)]
+    # get all files matching the patterns in all_file_patterns
+    all_files = [str(path.relative_to(repo_root)) for pattern in all_file_patterns for path in repo_root.glob(pattern)]
 
-    # get all files matching the patterns in exclude_list
-    exclude_files = [str(path.relative_to(repo_root)) for pattern in exclude_list for path in repo_root.glob(pattern)]
+    # get all files matching the patterns in excluded_file_patterns
+    exclude_files = [
+        str(path.relative_to(repo_root)) for pattern in excluded_file_patterns for path in repo_root.glob(pattern)
+    ]
 
     # return the difference
     return list(set(all_files) - set(exclude_files))

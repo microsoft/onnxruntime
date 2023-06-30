@@ -12,7 +12,7 @@
         "--ios",
         "--parallel",
         "--use_xcode",
-        "--enable_training",
+        "--enable_training_apis",
         "--build_apple_framework",
         "--use_coreml",
         "--skip_tests",

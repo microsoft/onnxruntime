@@ -45,6 +45,10 @@ all_objc_files = {
         "objectivec/test/*.m",
         "objectivec/test/*.mm",
     ],
+    "test_resource_files": [
+        "objectivec/test/testdata/*.ort",
+        "onnxruntime/test/testdata/training_api/*",
+    ],
 }
 
 training_only_objc_files = {
@@ -67,13 +71,10 @@ training_only_objc_files = {
         "objectivec/test/ort_checkpoint_test.mm",
         "objectivec/test/ort_training_utils_test.mm",
     ],
+    "test_resource_files": [
+        "onnxruntime/test/testdata/training_api/*",
+    ],
 }
-
-# pod test resource files
-test_resource_files = [
-    "objectivec/test/testdata/*.ort",
-    "onnxruntime/test/testdata/training_api/*",
-]
 
 
 def get_pod_files(package_variant: PackageVariant):
@@ -133,7 +134,8 @@ def assemble_objc_pod_package(
 
     # copy the necessary files to the staging directory
     copy_repo_relative_to_dir(
-        [license_file, *pod_files["source_files"], *pod_files["test_source_files"], *test_resource_files], staging_dir
+        [license_file, *pod_files["source_files"], *pod_files["test_source_files"], *pod_files["test_resource_files"]],
+        staging_dir,
     )
 
     # generate the podspec file from the template
@@ -151,7 +153,7 @@ def assemble_objc_pod_package(
         "PUBLIC_HEADER_FILE_LIST": path_patterns_as_variable_value(pod_files["public_header_files"]),
         "SOURCE_FILE_LIST": path_patterns_as_variable_value(pod_files["source_files"]),
         "SUMMARY": pod_config["summary"],
-        "TEST_RESOURCE_FILE_LIST": path_patterns_as_variable_value(test_resource_files),
+        "TEST_RESOURCE_FILE_LIST": path_patterns_as_variable_value(pod_files["test_resource_files"]),
         "TEST_SOURCE_FILE_LIST": path_patterns_as_variable_value(pod_files["test_source_files"]),
         "VERSION": pod_version,
     }
