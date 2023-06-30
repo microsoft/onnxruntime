@@ -10,6 +10,8 @@
 # license information.
 # -------------------------------------------------------------------------
 
+import unittest
+
 import numpy as np
 import torch
 from torch import nn
@@ -285,25 +287,30 @@ class GPTNeoXAttention(nn.Module):
         return attn_output
 
 
-if __name__ == "__main__":
-    for batch_size in [1, 2, 4, 8]:
-        for seq_len in [32, 128, 512, 1024, 2048]:
-            for num_head in [12]:
-                for hidden_size in [768]:
-                    attn = GPTNeoXAttention(batch_size, seq_len, num_head, hidden_size, use_rotary=True)
+class TestGPTNeoXAttention(unittest.TestCase):
+    def test_gpt_neox_attention(self):
+        for batch_size in [1, 2, 4, 8]:
+            for seq_len in [32, 128, 512, 1024, 2048]:
+                for num_head in [12]:
+                    for hidden_size in [768]:
+                        attn = GPTNeoXAttention(batch_size, seq_len, num_head, hidden_size, use_rotary=True)
 
-                    hidden_states = torch.normal(mean=0.5, std=0.1, size=(batch_size, seq_len, hidden_size)).to(
-                        torch.float32
-                    )
-
-                    torch_output = attn.torch_forward(hidden_states)
-                    ort_output = attn.onnx_forward(hidden_states)
-                    print(
-                        "Parity check with shape BNSH = ({},{},{},{})".format(
-                            batch_size, seq_len, num_head, hidden_size
+                        hidden_states = torch.normal(mean=0.5, std=0.1, size=(batch_size, seq_len, hidden_size)).to(
+                            torch.float32
                         )
-                    )
-                    if torch.allclose(torch_output, ort_output, atol=1e-6):
-                        print("Success!")
-                    else:
-                        print("Failure!")
+
+                        torch_output = attn.torch_forward(hidden_states)
+                        ort_output = attn.onnx_forward(hidden_states)
+                        print(
+                            "Parity check with shape BNSH = ({},{},{},{})".format(
+                                batch_size, seq_len, num_head, hidden_size
+                            )
+                        )
+                        if torch.allclose(torch_output, ort_output, atol=1e-6):
+                            print("Success!")
+                        else:
+                            print("Failure!")
+
+
+if __name__ == "__main__":
+    unittest.main()

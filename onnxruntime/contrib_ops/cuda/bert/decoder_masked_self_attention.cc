@@ -185,6 +185,12 @@ Status DecoderMaskedSelfAttention<T1, T2>::ComputeInternal(OpKernelContext* cont
     parameters.cache_indir = cache_indir->Data<int32_t>();
   }
 
+  // NeoX rotary embedding
+  if (do_rotary_) {
+    parameters.rotary_embedding_dim = parameters.head_size;
+    parameters.t_step = parameters.original_past_sequence_length + 1;
+  }
+
   switch (parameters.head_size) {
     case 32:
       mmha_launch_kernel<T2, 32>(parameters, cuda_stream);
