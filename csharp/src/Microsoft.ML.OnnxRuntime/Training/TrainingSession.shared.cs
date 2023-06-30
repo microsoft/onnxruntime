@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Linq.Expressions;
 using System.Runtime.InteropServices;
 
 namespace Microsoft.ML.OnnxRuntime
@@ -68,7 +69,7 @@ namespace Microsoft.ML.OnnxRuntime
         private LRScheduler _scheduler = LRScheduler.None;
         private bool _disposed = false;
 
-    #region Public API
+        #region Public API
 
         /// <summary>
         /// Create a training session that can be used to begin or resume training.
@@ -162,7 +163,7 @@ namespace Microsoft.ML.OnnxRuntime
             IReadOnlyCollection<FixedBufferOnnxValue> inputValues,
             IReadOnlyCollection<FixedBufferOnnxValue> outputValues)
         {
-            if (_trainOutputCount!= (ulong)outputValues.Count())
+            if (_trainOutputCount != (ulong)outputValues.Count())
             {
                 throw new ArgumentException($"Length of {nameof(outputValues)} ({outputValues.Count}) must match that of train model ({_trainOutputCount}).");
             }
@@ -190,25 +191,25 @@ namespace Microsoft.ML.OnnxRuntime
         public IDisposableReadOnlyCollection<DisposableNamedOnnxValue> TrainStep(
             IReadOnlyCollection<FixedBufferOnnxValue> inputValues)
         {
-            using (var ortValues = new DisposableList<OrtValue>((int)_trainOutputCount))
+            IntPtr[] inputValuesArray = GetOrtValuesHandles(inputValues, true);
+            IntPtr[] outputValuesArray = new IntPtr[(int)_trainOutputCount];
+
+            NativeApiStatus.VerifySuccess(NativeTrainingMethods.OrtTrainStep(_nativeHandle, _builtInRunOptions.Handle, (UIntPtr)inputValues.Count,
+                inputValuesArray, (UIntPtr)_trainOutputCount, outputValuesArray));
+
+            // On success ortValues would contain nulls that will be
+            // ignored. On failure, ortValues would contain at least
+            // some valid OrtValue instances that need to be disposed.
+            // It would be nice to use using() clause, but we need to upgrade to C# 8.0 for that.
+            var ortValueDisposer = ConvertNativeHandlesToOrtValues(outputValuesArray);
+            try
             {
-                IntPtr[] inputValuesArray = GetOrtValuesHandles(inputValues, true);
-                IntPtr[] outputValuesArray = new IntPtr[(int)_trainOutputCount];
-
-                NativeApiStatus.VerifySuccess(NativeTrainingMethods.OrtTrainStep(_nativeHandle, _builtInRunOptions.Handle, (UIntPtr)inputValues.Count,
-                    inputValuesArray, (UIntPtr)_trainOutputCount, outputValuesArray));
-                foreach (var v in outputValuesArray)
-                {
-                    ortValues.Add(new OrtValue(v));
-                }
-
                 var result = new DisposableList<DisposableNamedOnnxValue>(_trainOutputNames.Count);
                 try
                 {
-                    for (int i = 0; i < ortValues.Count; i++)
+                    for (int i = 0; i < ortValueDisposer.Span.Length; i++)
                     {
-                        var ortValue = ortValues[i];
-                        result.Add(DisposableNamedOnnxValue.CreateFromOrtValue(_trainOutputNames[i], ortValue));
+                        result.Add(DisposableNamedOnnxValue.CreateFromOrtValue(_trainOutputNames[i], ref ortValueDisposer.Span[i]));
                     }
                 }
                 catch (OnnxRuntimeException)
@@ -217,6 +218,13 @@ namespace Microsoft.ML.OnnxRuntime
                     throw;
                 }
                 return result;
+            }
+            finally
+            {
+                // On success ortValues would contain nulls that will be
+                // ignored. On failure, ortValues would contain at least
+                // some valid OrtValue instances that need to be disposed.
+                ortValueDisposer.Dispose();
             }
         }
 
@@ -239,25 +247,26 @@ namespace Microsoft.ML.OnnxRuntime
             RunOptions options,
             IReadOnlyCollection<FixedBufferOnnxValue> inputValues)
         {
-            using (var ortValues = new DisposableList<OrtValue>((int)_trainOutputCount))
+            IntPtr[] inputValuesArray = GetOrtValuesHandles(inputValues, true);
+            IntPtr[] outputValuesArray = new IntPtr[(int)_trainOutputCount];
+
+            NativeApiStatus.VerifySuccess(NativeTrainingMethods.OrtTrainStep(_nativeHandle, options.Handle, (UIntPtr)inputValues.Count,
+                inputValuesArray, (UIntPtr)_trainOutputCount, outputValuesArray));
+
+
+            // On success ortValues would contain nulls that will be
+            // ignored. On failure, ortValues would contain at least
+            // some valid OrtValue instances that need to be disposed.
+            // It would be nice to use using() clause, but we need to upgrade to C# 8.0 for that.
+            var ortValueDisposer = ConvertNativeHandlesToOrtValues(outputValuesArray);
+            try
             {
-                IntPtr[] inputValuesArray = GetOrtValuesHandles(inputValues, true);
-                IntPtr[] outputValuesArray = new IntPtr[(int)_trainOutputCount];
-
-                NativeApiStatus.VerifySuccess(NativeTrainingMethods.OrtTrainStep(_nativeHandle, options.Handle, (UIntPtr)inputValues.Count,
-                    inputValuesArray, (UIntPtr)_trainOutputCount, outputValuesArray));
-                foreach (var v in outputValuesArray)
-                {
-                    ortValues.Add(new OrtValue(v));
-                }
-
                 var result = new DisposableList<DisposableNamedOnnxValue>(_trainOutputNames.Count);
                 try
                 {
-                    for (int i = 0; i < ortValues.Count; i++)
+                    for (int i = 0; i < ortValueDisposer.Span.Length; i++)
                     {
-                        var ortValue = ortValues[i];
-                        result.Add(DisposableNamedOnnxValue.CreateFromOrtValue(_trainOutputNames[i], ortValue));
+                        result.Add(DisposableNamedOnnxValue.CreateFromOrtValue(_trainOutputNames[i], ref ortValueDisposer.Span[i]));
                     }
                 }
                 catch (OnnxRuntimeException)
@@ -266,6 +275,47 @@ namespace Microsoft.ML.OnnxRuntime
                     throw;
                 }
                 return result;
+            }
+            finally
+            {
+                ortValueDisposer.Dispose();
+            }
+        }
+
+        /// <summary>
+        /// Convert native OrtValue handles to OrtValue instances
+        /// in an exceptions safe manner.
+        /// </summary>
+        /// <param name="nativeHandles"></param>
+        /// <returns></returns>
+        private DisposableArray<OrtValue> ConvertNativeHandlesToOrtValues(IntPtr[] nativeHandles)
+        {
+            var diposableArray = new DisposableOrtValueHandleArray(nativeHandles);
+            try
+            {
+                var ortValues = new OrtValue[nativeHandles.Length];
+                var ortValueDisposer = new DisposableArray<OrtValue>(ortValues);
+                try
+                {
+                    for (int i = 0; i < nativeHandles.Length; i++)
+                    {
+                        ortValues[i] = new OrtValue(nativeHandles[i]);
+                        nativeHandles[i] = IntPtr.Zero;
+                    }
+                    return ortValueDisposer;
+                }
+                catch (Exception)
+                {
+                    // ortValues is the result, dispose only on exception
+                    ortValueDisposer.Dispose();
+                    throw;
+                }
+            }
+            catch (Exception)
+            {
+                // No need to dispose on exception since the ownership is transferred to ortValues
+                diposableArray.Dispose();
+                throw;
             }
         }
 
@@ -380,7 +430,7 @@ namespace Microsoft.ML.OnnxRuntime
                 throw new InvalidOperationException("Cannot set LR scheduler while using constant LR.");
             }
 
-            NativeApiStatus.VerifySuccess(NativeTrainingMethods.OrtRegisterLinearLRScheduler(_nativeHandle, warmupStepCount,totalStepCount, initialLearningRate));
+            NativeApiStatus.VerifySuccess(NativeTrainingMethods.OrtRegisterLinearLRScheduler(_nativeHandle, warmupStepCount, totalStepCount, initialLearningRate));
             _scheduler = LRScheduler.Linear;
         }
 
@@ -467,7 +517,7 @@ namespace Microsoft.ML.OnnxRuntime
             float[] bufferMemory = new float[bufferSize.ToUInt64()];
 
             var memInfo = OrtMemoryInfo.DefaultInstance; // CPU
-            var shape = new long[] {(long)bufferSize.ToUInt64()};
+            var shape = new long[] { (long)bufferSize.ToUInt64() };
             var buffer = FixedBufferOnnxValue.CreateFromMemory<float>(memInfo, bufferMemory, Tensors.TensorElementType.Float, shape, (long)bufferSize.ToUInt64() * sizeof(float));
 
             NativeApiStatus.VerifySuccess(NativeTrainingMethods.OrtCopyParametersToBuffer(_nativeHandle, buffer.Value.Handle, onlyTrainable));
@@ -497,13 +547,12 @@ namespace Microsoft.ML.OnnxRuntime
             }
 
             // Here buffer size represents the number of elements in the buffer
-            IntPtr bufferSize = IntPtr.Zero;
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtGetTensorShapeElementCount(typeAndShapeInfo, out bufferSize));
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtGetTensorShapeElementCount(typeAndShapeInfo, out UIntPtr bufferSize));
 
             // OrtGetParametersSize returns the total number of elements in the model's parameters.
             UIntPtr numElementsTrainingOnly = UIntPtr.Zero;
             NativeApiStatus.VerifySuccess(NativeTrainingMethods.OrtGetParametersSize(_nativeHandle, out numElementsTrainingOnly, true));
-            if (bufferSize.ToInt64() == (long)numElementsTrainingOnly.ToUInt64())
+            if ((ulong)bufferSize == (ulong)numElementsTrainingOnly)
             {
                 NativeApiStatus.VerifySuccess(NativeTrainingMethods.OrtCopyBufferToParameters(_nativeHandle, buffer.Value.Handle, true));
                 return;
@@ -511,7 +560,7 @@ namespace Microsoft.ML.OnnxRuntime
 
             UIntPtr numElements = UIntPtr.Zero;
             NativeApiStatus.VerifySuccess(NativeTrainingMethods.OrtGetParametersSize(_nativeHandle, out numElements, false));
-            if (bufferSize.ToInt64() != (long)numElements.ToUInt64())
+            if ((ulong)bufferSize != (ulong)numElements)
             {
                 string errorMessage = "Incorrect buffer size received. Expected size to be one of " + numElementsTrainingOnly.ToString() + " (training only) or " + numElements.ToString() + " (all parameters). Actual size: " + bufferSize.ToString();
                 throw new ArgumentException(errorMessage);
@@ -538,8 +587,8 @@ namespace Microsoft.ML.OnnxRuntime
             return training ? _trainInputNames : _evalInputNames;
         }
 
-    #endregion
-    #region private methods
+        #endregion
+        #region private methods
 
         private void Init(SessionOptions sessOptions, CheckpointState state, byte[] trainModelPath, byte[] evalModelPath, byte[] optimizerModelPath)
         {
@@ -697,9 +746,9 @@ namespace Microsoft.ML.OnnxRuntime
             }
         }
 
-    #endregion
+        #endregion
 
-    #region IDisposable
+        #region IDisposable
 
         /// <summary>
         /// Finalizer.
@@ -757,7 +806,7 @@ namespace Microsoft.ML.OnnxRuntime
             }
         }
 
-    #endregion
+        #endregion
     }
 #endif
 }
