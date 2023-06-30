@@ -63,10 +63,11 @@ Status LeakyReluOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   input_indices.push_back(operand_indices.at(input));
 
   // Add Less operation - Less(X, Zero)
-  int count = std::accumulate(input_shape.begin(), input_shape.end(), 1, std::multiplies<int>());
+  // int count = std::accumulate(input_shape.begin(), input_shape.end(), 1, std::multiplies<int>());
+  int count = ShapeSize(input_shape);
   std::vector<float> zero_vec(count, 0.0f);
 
-  std::string zero_vec_name = model_builder.GetUniqueName(node_unit.Name() + input + "_zero_cast");
+  std::string zero_vec_name = model_builder.GetUniqueName(node_unit.Name() + input + "_zero");
   std::string less_output_name = model_builder.GetUniqueName(node_unit.Name() + input + "_less_than_zero");
 
   const OperandType zero_operand_type(Type::TENSOR_FLOAT32, input_shape);
@@ -81,12 +82,11 @@ Status LeakyReluOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 
   // Add Mul operation - Mul(Alpha, X)
   input_indices.clear();
-  std::vector<float> alpha_vec(count);
-  std::fill(alpha_vec.begin(), alpha_vec.end(), alpha);
+  std::vector<float> alpha_vec(count, alpha);
 
   input_indices.push_back(operand_indices.at(input));
 
-  std::string alpha_vec_name = model_builder.GetUniqueName(node_unit.Name() + input + "_alpha_cast");
+  std::string alpha_vec_name = model_builder.GetUniqueName(node_unit.Name() + input + "_alpha");
   const OperandType alpha_operand_type(Type::TENSOR_FLOAT32, input_shape);
   ORT_RETURN_IF_ERROR(model_builder.AddOperandFromPersistMemoryBuffer(alpha_vec_name, alpha_vec.data(),
                                                                       alpha_operand_type));
@@ -95,10 +95,8 @@ Status LeakyReluOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   ADD_SCALAR_OPERAND(model_builder, input_indices, ANEURALNETWORKS_FUSED_NONE);
 
   std::string mul_output_name = model_builder.GetUniqueName(node_unit.Name() + input + "_multiply_alpha");
-  Shape mul_output_shape;
-  ORT_RETURN_IF_ERROR(op_builder_helpers::PerformBroadcasting(input_shape, input_shape, mul_output_shape));
-  const OperandType mul_output_operand_type(operand_types.at(input).type, mul_output_shape);
-  shaper.AddShape(mul_output_name, mul_output_shape);
+  const OperandType mul_output_operand_type(operand_types.at(input).type, input_shape);
+  shaper.AddShape(mul_output_name, input_shape);
 
   ORT_RETURN_IF_ERROR(model_builder.AddOperation(ANEURALNETWORKS_MUL, input_indices,
                                                  {mul_output_name}, {mul_output_operand_type}));
