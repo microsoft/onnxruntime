@@ -26,7 +26,7 @@ class TestOpGemm(unittest.TestCase):
         dr = TestDataFeeds(input_data_list)
         return dr
 
-    def construct_model_gemm(self, output_model_path):
+    def construct_model_gemm(self, output_model_path, add_clip=True):
         #      (input)
         #         |
         #        Gemm
@@ -67,15 +67,20 @@ class TestOpGemm(unittest.TestCase):
             gemm1_output_name,
         )
 
-        # make Clip
-        clip_min_name = "clip_min"
-        clip_max_name = "clip_max"
-        clip_output_name = "clip_output"
-        clip_inputs = [gemm1_output_name, clip_min_name, clip_max_name]
-        clip_outputs = [clip_output_name]
-        initializers.append(onnx.numpy_helper.from_array(np.array(-1.0, dtype=np.float32), name=clip_min_name))
-        initializers.append(onnx.numpy_helper.from_array(np.array(1.0, dtype=np.float32), name=clip_max_name))
-        clip_node = onnx.helper.make_node("Clip", clip_inputs, clip_outputs)
+        if add_clip:
+            # make Clip
+            clip_min_name = "clip_min"
+            clip_max_name = "clip_max"
+            clip_output_name = "clip_output"
+            clip_inputs = [gemm1_output_name, clip_min_name, clip_max_name]
+            clip_outputs = [clip_output_name]
+            initializers.append(onnx.numpy_helper.from_array(np.array(-1.0, dtype=np.float32), name=clip_min_name))
+            initializers.append(onnx.numpy_helper.from_array(np.array(1.0, dtype=np.float32), name=clip_max_name))
+            clip_node = onnx.helper.make_node("Clip", clip_inputs, clip_outputs)
+
+        else:
+            clip_output_name = "clip_output"
+            clip_node = onnx.helper.make_node("Identity", [gemm1_output_name], [clip_output_name])
 
         # make gemm2 node
         gemm2_node = make_gemm(
@@ -103,6 +108,26 @@ class TestOpGemm(unittest.TestCase):
 
         onnx.save(model, output_model_path)
 
+    @staticmethod
+    def tensor_type(qtype):
+        if qtype == QuantType.QUInt8:
+            return TensorProto.UINT8
+        if qtype == QuantType.QInt8:
+            return TensorProto.INT8
+        if qtype == QuantType.QFLOAT8E4M3FN:
+            return TensorProto.FLOAT8E4M3FN
+        raise ValueError(f"Unexpected value for qtype={qtype}")
+
+    @staticmethod
+    def str_type(qtype):
+        if qtype == QuantType.QUInt8:
+            return "u8"
+        if qtype == QuantType.QInt8:
+            return "s8"
+        if qtype == QuantType.QFLOAT8E4M3FN:
+            return "f8e4m3fn"
+        raise ValueError(f"Unexpected value for qtype={qtype}")
+
     def static_quant_test(
         self,
         model_fp32_path,
@@ -111,9 +136,9 @@ class TestOpGemm(unittest.TestCase):
         weight_type,
         extra_options={},  # noqa: B006
     ):
-        activation_proto_qtype = TensorProto.UINT8 if activation_type == QuantType.QUInt8 else TensorProto.INT8
-        activation_type_str = "u8" if (activation_type == QuantType.QUInt8) else "s8"
-        weight_type_str = "u8" if (weight_type == QuantType.QUInt8) else "s8"
+        activation_proto_qtype = self.tensor_type(activation_type)
+        activation_type_str = self.str_type(activation_type)
+        weight_type_str = self.str_type(weight_type)
         model_int8_path = f"gemm_fp32.quant_{activation_type_str}{weight_type_str}.onnx"
 
         data_reader.rewind()
@@ -127,16 +152,32 @@ class TestOpGemm(unittest.TestCase):
             extra_options=extra_options,
         )
 
-        qdq_count = 1 if activation_type == QuantType.QUInt8 else 2
-        clip_count = 0 if activation_type == QuantType.QUInt8 else 1
-        quant_nodes = {"QGemm": 2, "QuantizeLinear": qdq_count, "DequantizeLinear": qdq_count, "Clip": clip_count}
+        if activation_type == QuantType.QFLOAT8E4M3FN or weight_type == QuantType.QFLOAT8E4M3FN:
+            quant_nodes = {"QGemm": 2, "QuantizeLinear": 2, "DequantizeLinear": 2, "Identity": 1}
+            qnode_io_qtypes = {
+                "QuantizeLinear": [
+                    ["i", 2, activation_proto_qtype],
+                    ["o", 0, activation_proto_qtype],
+                ]
+            }
+        else:
+            qdq_count = 1 if activation_type != QuantType.QInt8 else 2
+            clip_count = 0 if activation_type != QuantType.QInt8 else 1
+            quant_nodes = {"QGemm": 2, "QuantizeLinear": qdq_count, "DequantizeLinear": qdq_count, "Clip": clip_count}
+            qnode_io_qtypes = {
+                "QuantizeLinear": [
+                    ["i", 2, activation_proto_qtype],
+                    ["o", 0, activation_proto_qtype],
+                ]
+            }
+
+        with open(model_int8_path, "rb") as f:
+            onx = onnx.load(f)
+            from onnx_array_api.plotting.text_plot import onnx_simple_text_plot
+
+            print(onnx_simple_text_plot(onx))
+
         check_op_type_count(self, model_int8_path, **quant_nodes)
-        qnode_io_qtypes = {
-            "QuantizeLinear": [
-                ["i", 2, activation_proto_qtype],
-                ["o", 0, activation_proto_qtype],
-            ]
-        }
         qnode_io_qtypes.update({"DequantizeLinear": [["i", 2, activation_proto_qtype]]})
         check_qtype_by_node_type(self, model_int8_path, qnode_io_qtypes)
         data_reader.rewind()
@@ -150,9 +191,9 @@ class TestOpGemm(unittest.TestCase):
         weight_type,
         extra_options={},  # noqa: B006
     ):
-        activation_proto_qtype = TensorProto.UINT8 if activation_type == QuantType.QUInt8 else TensorProto.INT8
-        activation_type_str = "u8" if (activation_type == QuantType.QUInt8) else "s8"
-        weight_type_str = "u8" if (weight_type == QuantType.QUInt8) else "s8"
+        activation_proto_qtype = self.tensor_type(activation_type)
+        activation_type_str = self.str_type(activation_type)
+        weight_type_str = self.str_type(weight_type)
         model_int8_path = f"gemm_fp32.quant_dqd_{activation_type_str}{weight_type_str}.onnx"
 
         data_reader.rewind()
@@ -166,9 +207,10 @@ class TestOpGemm(unittest.TestCase):
             extra_options=extra_options,
         )
 
-        clip_count = 0 if activation_type == QuantType.QUInt8 else 1
-        q_count = 3 if activation_type == QuantType.QUInt8 else 4
-        dq_count = 7 if activation_type == QuantType.QUInt8 else 8
+        clip_count = 0 if activation_type != QuantType.QInt8 else 1
+        q_count = 3 if activation_type != QuantType.QInt8 else 4
+        dq_count = 7 if activation_type != QuantType.QInt8 else 8
+
         quant_nodes = {"Gemm": 2, "QuantizeLinear": q_count, "DequantizeLinear": dq_count, "Clip": clip_count}
         check_op_type_count(self, model_int8_path, **quant_nodes)
         qnode_io_qtypes = {
@@ -262,6 +304,29 @@ class TestOpGemm(unittest.TestCase):
         # self.dynamic_quant_test(model_fp32_path, data_reader, activation_type=QuantType.QInt8, weight_type=QuantType.QInt8,
         #                        extra_options={'ActivationSymmetric': True})
 
+    def test_quantize_gemm_e4m3fn(self):
+        np.random.seed(1)
+        model_fp32_path = "gemm_fp32.onnx"
+        self.construct_model_gemm(model_fp32_path, add_clip=False)
+        data_reader = self.input_feeds(1, {"input": [5, 10]})
+
+        self.static_quant_test(
+            model_fp32_path,
+            data_reader,
+            activation_type=QuantType.QFLOAT8E4M3FN,
+            weight_type=QuantType.QFLOAT8E4M3FN,
+            extra_options={"ActivationSymmetric": True},
+        )
+        self.static_quant_test_qdq(
+            model_fp32_path,
+            data_reader,
+            activation_type=QuantType.QFLOAT8E4M3FN,
+            weight_type=QuantType.QFLOAT8E4M3FN,
+            extra_options={"ActivationSymmetric": True},
+        )
+
 
 if __name__ == "__main__":
+    TestOpGemm().test_quantize_gemm_e4m3fn()
+    stop
     unittest.main()

@@ -9,6 +9,8 @@ import numpy as np
 import onnx
 import onnx.numpy_helper
 from onnx import onnx_pb as onnx_proto
+from onnx.helper import make_graph, make_model, make_node, make_tensor_value_info
+from onnx.reference import ReferenceEvaluator
 
 from .onnx_model import ONNXModel
 from .quant_utils import (
@@ -74,20 +76,17 @@ class ONNXQuantizer:
             "ForceQuantizeNoInputCheck" in self.extra_options and self.extra_options["ForceQuantizeNoInputCheck"]
         )
         self.q_matmul_const_b_only = "MatMulConstBOnly" in self.extra_options and self.extra_options["MatMulConstBOnly"]
-        is_weight_int8 = weight_qType == QuantType.QInt8
         self.is_weight_symmetric = (
-            is_weight_int8 if "WeightSymmetric" not in self.extra_options else self.extra_options["WeightSymmetric"]
+            weight_qType in (QuantType.QInt8, QuantType.QFLOAT8E4M3FN)
+            if "WeightSymmetric" not in self.extra_options
+            else self.extra_options["WeightSymmetric"]
         )
         self.is_activation_symmetric = (
             False if "ActivationSymmetric" not in self.extra_options else self.extra_options["ActivationSymmetric"]
         )
 
-        self.activation_qType = (
-            onnx_proto.TensorProto.INT8 if activation_qType == QuantType.QInt8 else onnx_proto.TensorProto.UINT8
-        )
-        self.weight_qType = (
-            onnx_proto.TensorProto.INT8 if weight_qType == QuantType.QInt8 else onnx_proto.TensorProto.UINT8
-        )
+        self.activation_qType = QuantType.to_proto(activation_qType)
+        self.weight_qType = QuantType.to_proto(weight_qType)
         """
             Dictionary specifying the min and max values for tensors. It has following format:
                 {
@@ -135,6 +134,26 @@ class ONNXQuantizer:
         self.generated_value_names = self.model.get_non_initializer_inputs()
         # to store specified scale and zeropoint instead of calculated value, tensor_name->(scale, zeropoint)
         self.used_scale_zp_map = {}
+
+        onnx_model = make_model(
+            make_graph(
+                [make_node("Cast", ["X"], ["Y"], to=self.weight_qType)],
+                "cast",
+                [make_tensor_value_info("X", onnx_proto.TensorProto.FLOAT, None)],
+                [make_tensor_value_info("Y", onnx_proto.TensorProto.FLOAT, None)],
+            )
+        )
+        self.weight_qtype_caster = ReferenceEvaluator(onnx_model)
+
+    def cast_to_weight_qtype(self, weights: np.array, name: str) -> onnx_proto.TensorProto:
+        cast = self.weight_qtype_caster.run(None, {"X": weights})[0]
+        init = onnx.helper.make_tensor(
+            name,
+            self.weight_qType,
+            list(cast.shape),
+            list(cast.ravel().astype(np.uint8)),
+        )
+        return init
 
     # routines for subgraph support
     def quantize_subgraph(self, subgraph, graph_key):
@@ -227,6 +246,12 @@ class ONNXQuantizer:
             self.model.model.opset_import.remove(ai_onnx_domain[0])
             self.model.model.opset_import.extend([onnx.helper.make_opsetid("", 11)])
             opset_version = 11
+
+        if opset_version < 19 and self.weight_qType == onnx_proto.TensorProto.FLOAT8E4M3FN:
+            self.model.model.opset_import.remove(ai_onnx_domain[0])
+            self.model.model.opset_import.extend([onnx.helper.make_opsetid("", 19)])
+            self.model.model.ir_version = 9
+            opset_version = 19
 
         self.fuse_dynamic_quant = True
         return opset_version
@@ -356,8 +381,11 @@ class ONNXQuantizer:
         """
         if qType == onnx_proto.TensorProto.INT8:
             return self._get_dynamic_input_quantization_params_int8(input_name, nodes_list)
-
-        return self._get_dynamic_input_quantization_params_uint8(input_name, nodes_list)
+        if qType == onnx_proto.TensorProto.UINT8:
+            return self._get_dynamic_input_quantization_params_uint8(input_name, nodes_list)
+        if qType == onnx_proto.TensorProto.FLOAT8E4M3FN:
+            return self._get_dynamic_input_quantization_params_float8e4m3fn(input_name, nodes_list)
+        raise ValueError(f"Unexpected value for qType={qType}.")
 
     def _get_dynamic_input_quantization_params_int8(self, input_name, nodes_list):
         """
@@ -689,12 +717,16 @@ class ONNXQuantizer:
         bias_scale = input_scale * weight_scale * beta
 
         # quantize bias
-        quantized_data = (np.asarray(bias_data) / bias_scale).round().astype(np.int32)
+        if self.weight_qType == onnx_proto.TensorProto.FLOAT8E4M3FN:
+            packed_bias_initializer = onnx.helper.make_tensor(quantized_bias_name, self.weight_qType, [1], [0.0])
+            self.model.initializer().extend([packed_bias_initializer])
+        else:
+            quantized_data = (np.asarray(bias_data) / bias_scale).round().astype(np.int32)
 
-        # update bias initializer
-        bias_np_data = np.asarray(quantized_data, dtype=np.int32).reshape(bias_initializer.dims)
-        packed_bias_initializer = onnx.numpy_helper.from_array(bias_np_data, quantized_bias_name)
-        self.model.initializer().extend([packed_bias_initializer])
+            # update bias initializer
+            bias_np_data = np.asarray(quantized_data, dtype=np.int32).reshape(bias_initializer.dims)
+            packed_bias_initializer = onnx.numpy_helper.from_array(bias_np_data, quantized_bias_name)
+            self.model.initializer().extend([packed_bias_initializer])
 
         # update scale initializer
         quantized_bias_scale_name = quantized_bias_name + "_scale"
@@ -708,14 +740,19 @@ class ONNXQuantizer:
         self.model.initializer().extend([packed_bias_scale_initializer])
 
         # update zero initializer
+        if self.weight_qType == onnx_proto.TensorProto.FLOAT8E4M3FN:
+            tensor_type = self.weight_qType
+        else:
+            tensor_type = onnx_proto.TensorProto.INT32
+
         quantized_bias_zp_name = quantized_bias_name + "_zero_point"
-        bias_zp_data = np.zeros(bias_scale.shape, dtype=np.int32).reshape(-1)
-        if self.is_per_channel():
+        if self.weight_qType == onnx_proto.TensorProto.FLOAT8E4M3FN:
+            packed_bias_zp_initializer = onnx.helper.make_tensor(quantized_bias_zp_name, self.weight_qType, [1], [0.0])
+        elif self.is_per_channel():
+            bias_zp_data = np.zeros(bias_scale.shape, dtype=np.int32).reshape(-1)
             packed_bias_zp_initializer = onnx.numpy_helper.from_array(bias_zp_data, quantized_bias_zp_name)
         else:
-            packed_bias_zp_initializer = onnx.helper.make_tensor(
-                quantized_bias_zp_name, onnx_proto.TensorProto.INT32, [], bias_zp_data
-            )
+            packed_bias_zp_initializer = onnx.helper.make_tensor(quantized_bias_zp_name, tensor_type, [], [0])
         self.model.initializer().extend([packed_bias_zp_initializer])
 
         assert bias_name not in self.quantized_value_map
@@ -922,10 +959,15 @@ class ONNXQuantizer:
         self.model.initializer().extend([scale_initializer, zero_initializer])
 
         if not keep_float_weight:
-            q_weight_data = np.asarray(q_weight_data, dtype=onnx.mapping.TENSOR_TYPE_TO_NP_TYPE[qType]).reshape(
-                weight.dims
-            )
-            q_weight_initializer = onnx.numpy_helper.from_array(q_weight_data, q_weight_name)
+            if self.weight_qType == onnx_proto.TensorProto.FLOAT8E4M3FN:
+                q_weight_initializer = onnx.helper.make_tensor(
+                    q_weight_name, self.weight_qType, weight.dims, q_weight_data.tobytes(), raw=True
+                )
+            else:
+                q_weight_data = np.asarray(q_weight_data, dtype=onnx.mapping.TENSOR_TYPE_TO_NP_TYPE[qType]).reshape(
+                    weight.dims
+                )
+                q_weight_initializer = onnx.numpy_helper.from_array(q_weight_data, q_weight_name)
             self.model.initializer().extend([q_weight_initializer])
 
         # Log entry for this quantized weight
@@ -974,7 +1016,8 @@ class ONNXQuantizer:
             rmin, rmax, zero_point, scale, quantized_per_channel_data = quantize_data(
                 per_channel_data.flatten().tolist(),
                 weight_qType,
-                self.is_weight_symmetric or weight_qType == onnx_proto.TensorProto.INT8,
+                self.is_weight_symmetric
+                or weight_qType in (onnx_proto.TensorProto.INT8, onnx_proto.TensorProto.FLOAT8E4M3FN),
                 self.reduce_range and reduce_range,
             )
             rmin_list.append(rmin)

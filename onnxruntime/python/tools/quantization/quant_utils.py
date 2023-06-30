@@ -7,8 +7,16 @@ import numpy
 import onnx
 from onnx import ModelProto, TensorProto, external_data_helper
 from onnx import onnx_pb as onnx_proto
+from onnx.helper import make_graph, make_model, make_node, make_tensor_value_info
+from onnx.reference import ReferenceEvaluator
 
 from onnxruntime import GraphOptimizationLevel, InferenceSession, SessionOptions
+
+try:
+    from onnx.reference.custom_element_types import float8e4m3fn
+except ImportError:
+    float8e4m3fn = None
+
 
 __producer__ = "onnx.quantize"
 __version__ = "0.1.0"
@@ -21,23 +29,7 @@ DEQUANT_OUTPUT_SUFFIX = "_DequantizeLinear_Output"
 TENSOR_NAME_QUANT_SUFFIX = "_quantized"
 
 
-type_to_name = {
-    1: "FLOAT",
-    2: "UINT8",
-    3: "INT8",
-    4: "UINT16",
-    5: "INT16",
-    6: "INT32",
-    7: "INT64",
-    8: "STRING",
-    9: "BOOL",
-    10: "FLOAT16",
-    11: "DOUBLE",
-    12: "UINT32",
-    13: "UINT64",
-    14: "COMPLEX64",
-    15: "COMPLEX128",
-}
+type_to_name = {getattr(TensorProto, k): k for k in dir(TensorProto) if isinstance(getattr(TensorProto, k), int)}
 
 # Quantization mode
 # IntegerOps: Use IntegerOps in quantized model. Only ConvInteger and MatMulInteger ops are supported now.
@@ -77,6 +69,7 @@ class QuantizedValueType(Enum):
 class QuantType(Enum):
     QInt8 = 0
     QUInt8 = 1
+    QFLOAT8E4M3FN = 2
 
     def __str__(self):
         return self.name
@@ -87,6 +80,16 @@ class QuantType(Enum):
             return QuantType[t]
         except KeyError:
             raise ValueError()  # noqa: B904
+
+    @staticmethod
+    def to_proto(qtype):
+        if qtype == QuantType.QInt8:
+            return TensorProto.INT8
+        if qtype == QuantType.QUInt8:
+            return TensorProto.UINT8
+        if qtype == QuantType.QFLOAT8E4M3FN:
+            return TensorProto.FLOAT8E4M3FN
+        raise ValueError(f"Unexpected value qtype={qtype!r}.")
 
 
 class QuantFormat(Enum):
@@ -107,17 +110,30 @@ class QuantFormat(Enum):
 ONNX_TYPE_TO_NP_TYPE = {
     onnx_proto.TensorProto.INT8: numpy.dtype("int8"),
     onnx_proto.TensorProto.UINT8: numpy.dtype("uint8"),
+    onnx_proto.TensorProto.FLOAT8E4M3FN: float8e4m3fn,
 }
 
 
 def quantize_nparray(qType, arr, scale, zero_point, low=None, high=None):
     assert qType in ONNX_TYPE_TO_NP_TYPE, f"Unexpected data type {qType} requested. Only INT8 and UINT8 are supported."
-    dtype = ONNX_TYPE_TO_NP_TYPE[qType]
-    cliplow = max(0 if dtype == numpy.uint8 else -127, -127 if low is None else low)
-    cliphigh = min(255 if dtype == numpy.uint8 else 127, 255 if high is None else high)
-    arr_fp32 = numpy.asarray((arr.astype(numpy.float32) / scale).round() + zero_point)
-    numpy.clip(arr_fp32, cliplow, cliphigh, out=arr_fp32)
-    return arr_fp32.astype(dtype)
+    if qType == onnx_proto.TensorProto.FLOAT8E4M3FN:
+        onnx_model = make_model(
+            make_graph(
+                [make_node("Cast", ["X"], ["Y"], to=qType)],
+                "cast",
+                [make_tensor_value_info("X", TensorProto.FLOAT, None)],
+                [make_tensor_value_info("Y", TensorProto.FLOAT, None)],
+            )
+        )
+        ref = ReferenceEvaluator(onnx_model)
+        return ref.run(None, {"X": arr.astype(numpy.float32)})[0]
+    else:
+        dtype = ONNX_TYPE_TO_NP_TYPE[qType]
+        cliplow = max(0 if dtype == numpy.uint8 else -127, -127 if low is None else low)
+        cliphigh = min(255 if dtype == numpy.uint8 else 127, 255 if high is None else high)
+        arr_fp32 = numpy.asarray((arr.astype(numpy.float32) / scale).round() + zero_point)
+        numpy.clip(arr_fp32, cliplow, cliphigh, out=arr_fp32)
+        return arr_fp32.astype(dtype)
 
 
 def compute_scale_zp(rmin, rmax, qmin, qmax, symmetric=False):
@@ -215,6 +231,11 @@ def get_qmin_qmax_for_qType(qType, reduce_range=False, symmetric=False):  # noqa
             (qmin, qmax) = (-64, 64) if reduce_range else (-127, 127)
         else:
             (qmin, qmax) = (-64, 64) if reduce_range else (-128, 127)
+    elif qType == onnx_proto.TensorProto.FLOAT8E4M3FN:
+        if symmetric:
+            (qmin, qmax) = (-224, 224) if reduce_range else (-448, 448)
+        else:
+            (qmin, qmax) = (-224, 224) if reduce_range else (-448, 448)
     else:
         raise ValueError(f"Unexpected data type {qType} requested. Only INT8 and UINT8 are supported.")
     return qmin, qmax
@@ -465,8 +486,8 @@ def smooth_distribution(p, eps=0.0001):
     """
     import numpy as np
 
-    is_zeros = (p == 0).astype(np.float32)
-    is_nonzeros = (p != 0).astype(np.float32)
+    is_zeros = (p == 0).astype(numpy.float32)
+    is_nonzeros = (p != 0).astype(numpy.float32)
     n_zeros = is_zeros.sum()
     n_nonzeros = p.size - n_zeros
 
@@ -480,7 +501,7 @@ def smooth_distribution(p, eps=0.0001):
         eps1,
     )
 
-    hist = p.astype(np.float32)
+    hist = p.astype(numpy.float32)
     hist += eps * is_zeros + (-eps1) * is_nonzeros
     assert (hist <= 0).sum() == 0
 

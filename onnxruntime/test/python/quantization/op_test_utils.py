@@ -118,7 +118,7 @@ def check_qtype_by_node_type(testcase, model_to_check, check_list):
                     testcase.assertTrue(vi.type.tensor_type.elem_type == check_item[2])
                 else:  # if (tensor_name in initializers):
                     init = initializers[tensor_name]
-                    testcase.assertTrue(init.data_type == check_item[2])
+                    testcase.assertEqual(init.data_type, check_item[2])
 
 
 def create_clip_node(input_name, output_name, node_name, initializers, min_value=-1.0, max_value=1.0):

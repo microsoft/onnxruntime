@@ -397,12 +397,16 @@ class TestInferenceSession(unittest.TestCase):
         self.assertEqual(expect.shape, y.shape)
         self.assertEqual(expect.dtype, y.dtype)
 
-    def model_qdq(self, to, float_name, saturate, castq=False, castdq=False, like=False):
+    def model_qdq(self, to, float_name, saturate, castq=False, castdq=False, like=False, initializer=False):
         fltype = getattr(TensorProto, float_name)
         x = make_tensor_value_info("X", fltype, [None])
         y = make_tensor_value_info("Y", fltype, [None])
-        scale = make_node("Constant", [], ["scale"], value=make_tensor("scale", fltype, [1], [1.0]))
-        zero = make_node("Constant", [], ["zero"], value=make_tensor("zero", to, [1], [0.0]))
+        if initializer:
+            scale = make_tensor("scale", fltype, [1], [1.0])
+            zero = make_tensor("zero", to, [1], [0.0])
+        else:
+            scale = make_node("Constant", [], ["scale"], value=make_tensor("scale", fltype, [1], [1.0]))
+            zero = make_node("Constant", [], ["zero"], value=make_tensor("zero", to, [1], [0.0]))
         if castq:
             if like:
                 node1 = make_node("CastLike", ["X", "zero"], ["Temp"], saturate=saturate)
@@ -417,7 +421,10 @@ class TestInferenceSession(unittest.TestCase):
                 node2 = make_node("Cast", ["Temp"], ["Y"], to=fltype)
         else:
             node2 = make_node("DequantizeLinear", ["Temp", "scale"], ["Y"], axis=0)
-        graph = make_graph([scale, zero, node1, node2], "lr", [x], [y])
+        if initializer:
+            graph = make_graph([node1, node2], "lr", [x], [y], [scale, zero])
+        else:
+            graph = make_graph([scale, zero, node1, node2], "lr", [x], [y])
         onnx_model = make_model(graph, opset_imports=[make_opsetid("", 19)])
         check_model(onnx_model)
         return onnx_model
@@ -490,6 +497,58 @@ class TestInferenceSession(unittest.TestCase):
         expect = expected[to].astype(TestInferenceSession.dtypes[float_name])
 
         onnx_model = self.model_qdq(to, float_name, saturate)
+        try:
+            sess = onnxruntime.InferenceSession(
+                onnx_model.SerializeToString(), so, providers=["CPUExecutionProvider"], read_config_from_model=1
+            )
+        except Exception as e:
+            raise AssertionError(
+                f"Cannot build InferenceSession with name={name}, float_name={float_name}, saturate={saturate}."
+            ) from e
+        try:
+            y = sess.run(None, {"X": x})[0]
+        except Exception as e:
+            if "Quantization from float16 is not supported yet for CPU provider" in str(e):
+                return
+            raise AssertionError(
+                f"Unable to run qdq for name={name!r}, float_name={float_name!r}, saturate={saturate!r}."
+            ) from e
+        assert_allclose(expect, y)
+        self.assertEqual(expect.shape, y.shape)
+        self.assertEqual(expect.dtype, y.dtype)
+
+    @unittest.skipIf(not hasattr(TensorProto, "FLOAT8E4M3FN"), reason="needs onnx>=1.14.0")
+    @parameterized.parameterized.expand(
+        [
+            ("FLOAT8E4M3FN", "FLOAT", 1),
+            ("FLOAT8E4M3FNUZ", "FLOAT", 1),
+            ("FLOAT8E5M2", "FLOAT", 1),
+            ("FLOAT8E5M2FNUZ", "FLOAT", 1),
+            ("FLOAT8E4M3FN", "FLOAT", 0),
+            ("FLOAT8E4M3FNUZ", "FLOAT", 0),
+            ("FLOAT8E5M2", "FLOAT", 0),
+            ("FLOAT8E5M2FNUZ", "FLOAT", 0),
+            ("FLOAT8E4M3FN", "FLOAT16", 1),
+            ("FLOAT8E4M3FNUZ", "FLOAT16", 1),
+            ("FLOAT8E5M2", "FLOAT16", 1),
+            ("FLOAT8E5M2FNUZ", "FLOAT16", 1),
+            ("FLOAT8E4M3FN", "FLOAT16", 0),
+            ("FLOAT8E4M3FNUZ", "FLOAT16", 0),
+            ("FLOAT8E5M2", "FLOAT16", 0),
+            ("FLOAT8E5M2FNUZ", "FLOAT16", 0),
+        ]
+    )
+    def test_model_qdq_cpu_init(self, name: str, float_name: str, saturate: int):
+        so = onnxruntime.SessionOptions()
+        so.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_DISABLE_ALL
+        so.add_session_config_entry("session.allow_released_opsets_only", "0")
+
+        to = getattr(TensorProto, name)
+        expected = TestInferenceSession.expected_saturate if saturate else TestInferenceSession.expected_no_saturate
+        x = TestInferenceSession.x.astype(TestInferenceSession.dtypes[float_name])
+        expect = expected[to].astype(TestInferenceSession.dtypes[float_name])
+
+        onnx_model = self.model_qdq(to, float_name, saturate, initializer=True)
         try:
             sess = onnxruntime.InferenceSession(
                 onnx_model.SerializeToString(), so, providers=["CPUExecutionProvider"], read_config_from_model=1
