@@ -63,7 +63,6 @@ Status LeakyReluOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   input_indices.push_back(operand_indices.at(input));
 
   // Add Less operation - Less(X, Zero)
-  // int count = std::accumulate(input_shape.begin(), input_shape.end(), 1, std::multiplies<int>());
   int count = ShapeSize(input_shape);
   std::vector<float> zero_vec(count, 0.0f);
 
