@@ -213,10 +213,6 @@ class DynamicQuantConfig(QuantConfig):
 
 
 def check_static_quant_arguments(quant_format: QuantFormat, activation_type: QuantType, weight_type: QuantType):
-    if weight_type != QuantType.QFLOAT8E4M3FN:
-        stop
-    if activation_type != QuantType.QFLOAT8E4M3FN:
-        stop
     if activation_type == QuantType.QInt8 and weight_type == QuantType.QUInt8:
         raise ValueError(
             "ONNXRuntime quantization doesn't support data format:"

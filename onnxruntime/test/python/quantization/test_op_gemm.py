@@ -327,6 +327,5 @@ class TestOpGemm(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    TestOpGemm().test_quantize_gemm_e4m3fn()
-    stop
+    # TestOpGemm().test_quantize_gemm_e4m3fn()
     unittest.main()
