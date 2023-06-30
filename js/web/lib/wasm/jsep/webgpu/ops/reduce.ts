@@ -14,6 +14,10 @@ const validateInputs = (inputs: readonly TensorView[]): void => {
     throw new Error('Reduce op requires 1 or 2 inputs.');
   }
 
+  if (inputs.length === 2 && inputs[1].dims.length !== 1) {
+    throw new Error('Invalid axes input dims.');
+  }
+
   if (inputs[0].dataType !== DataType.float) {
     throw new Error('Invalid input type.');
   }
@@ -105,17 +109,11 @@ const createReduceProgramInfo =
 const createReduceAttributesFromInputs =
     (inputs: readonly TensorView[], attributes: ReduceAttributes): ReduceAttributes => {
       const axes: number[] = [];
-      // Handle empty axes, zero-sized input and zero input.
-      const sum = inputs[1].dims.reduce((sum, v) => sum + v, 0);
-      const prod = inputs[1].dims.reduce((prod, v) => prod * v, 1);
-      if (prod > 0 && sum > 0) {
+      if (inputs[1].dims[0] > 0) {
         inputs[1].getBigInt64Array().forEach(v => axes.push(Number(v)));
-      } else {
-        axes.push(...attributes.axes);
       }
-      const noopWithEmptyAxes = attributes.noopWithEmptyAxes;
-      const keepDims = (noopWithEmptyAxes && sum === 0) || attributes.keepDims;
-      return createAttributeWithCacheKey({axes, keepDims, noopWithEmptyAxes});
+      return createAttributeWithCacheKey(
+          {axes: axes, keepDims: attributes.keepDims, noopWithEmptyAxes: attributes.noopWithEmptyAxes});
     };
 
 const createReduceProgramInfoLoader =
