@@ -20,6 +20,7 @@
 import argparse
 import logging
 import os
+import tempfile
 from typing import Dict, Optional
 
 import coloredlogs
@@ -195,7 +196,6 @@ def optimize_model(
     num_heads: int = 0,
     hidden_size: int = 0,
     optimization_options: Optional[FusionOptions] = None,
-    optimized_model_path: Optional[str] = None,
     opt_level: Optional[int] = None,
     use_gpu: bool = False,
     only_onnxruntime: bool = False,
@@ -231,7 +231,6 @@ def optimize_model(
             0 allows detect the parameter from graph automatically.
         optimization_options (FusionOptions, optional): optimization options that turn on/off some fusions.
             Defaults to None.
-        optimized_model_path (str, optional): output optimized model path. Defaults to None.
         opt_level (int, optional): onnxruntime graph optimization level (0, 1, 2 or 99) or None. Defaults to None.
             When the value is None, default value (1 for bert and gpt2, 0 for other model types) will be used.
             When the level > 0, onnxruntime will be used to optimize model first.
@@ -254,6 +253,9 @@ def optimize_model(
     # stable.
     disabled_optimizers = ["ConstantSharing"]
     temp_model_path = None
+    temp_dir = tempfile.TemporaryDirectory()
+    optimized_model_name = "{}_o{}_{}.onnx".format(input[:-5], opt_level, "gpu" if use_gpu else "cpu")
+    optimized_model_path = os.path.join(temp_dir.name, optimized_model_name)
     if opt_level > 1:
         # Disable some optimizers that might cause failure in symbolic shape inference or attention fusion.
         disabled_optimizers += (
@@ -270,10 +272,10 @@ def optimize_model(
         temp_model_path = optimize_by_onnxruntime(
             input,
             use_gpu=use_gpu,
-            optimized_model_path=optimized_model_path,
             opt_level=opt_level,
             disabled_optimizers=disabled_optimizers,
             verbose=verbose,
+            optimized_model_path=optimized_model_path,
         )
     elif opt_level == 1:
         # basic optimizations (like constant folding and cast elimination) are not specified to execution provider.
@@ -281,10 +283,10 @@ def optimize_model(
         temp_model_path = optimize_by_onnxruntime(
             input,
             use_gpu=False,
-            optimized_model_path=optimized_model_path,
             opt_level=1,
             disabled_optimizers=disabled_optimizers,
             verbose=verbose,
+            optimized_model_path=optimized_model_path,
         )
 
     if only_onnxruntime and not temp_model_path:
@@ -301,6 +303,9 @@ def optimize_model(
     if temp_model_path:
         os.remove(temp_model_path)
         logger.debug(f"Remove temporary model: {temp_model_path}")
+
+    # remove the temporary directory
+    temp_dir.cleanup()
 
     return optimizer
 
