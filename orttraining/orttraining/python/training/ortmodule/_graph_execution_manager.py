@@ -543,22 +543,23 @@ class GraphExecutionManager(GraphExecutionInterface):
             ),
         ]
 
-        if self._runtime_options.enable_compute_optimizer:
-            feature_map.extend(
-                [
-                    (
-                        "Compute Optimizer",
-                        self._runtime_options.enable_compute_optimizer,
-                        "Enable/Disable with env ORTMODULE_ENABLE_COMPUTE_OPTIMIZER=1/0",
-                    ),
-                    (
-                        " -FLOPReduction",
-                        self._runtime_options.enable_compute_optimizer,
-                        "Reduce FLOPs by upstreaming shrinking-sized ops",
-                    ),
-                ]
-            )
+        # Add compute optimizer
+        feature_map.extend(
+            [
+                (
+                    "Compute Optimizer",
+                    self._runtime_options.enable_compute_optimizer,
+                    "Enable/Disable with env ORTMODULE_ENABLE_COMPUTE_OPTIMIZER=1/0",
+                ),
+                (
+                    " -FLOPReduction",
+                    self._runtime_options.enable_compute_optimizer,
+                    "Reduce FLOPs by upstreaming shrinking-sized ops",
+                ),
+            ]
+        )
 
+        if self._runtime_options.enable_compute_optimizer:
             if len(self._runtime_options.label_sparsity_ratio) > 0:
                 feature_map.append(
                     (" -LabelSparsityOpt", True, f"Input density: {self._runtime_options.label_sparsity_ratio}")
@@ -569,6 +570,7 @@ class GraphExecutionManager(GraphExecutionInterface):
                     (" -EmbedSparsityOpt", True, f"Input density: {self._runtime_options.embed_sparsity_ratio}")
                 )
 
+        # Add fallback
         feature_map.append(
             (
                 "Auto Fallback",
