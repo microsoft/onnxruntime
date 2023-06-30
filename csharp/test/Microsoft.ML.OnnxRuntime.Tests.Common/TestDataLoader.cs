@@ -486,7 +486,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 case Onnx.SequenceProto.Types.DataType.Optional:
                     {
                         SequenceCheckMatchOnnxType(nodeName, sequenceMeta, OnnxValueType.ONNX_TYPE_OPTIONAL);
-                        using (var seqOfSequences = new DisposableList<OrtValue>(sequence.TensorValues.Count))
+                        using (var seqOfSequences = new DisposableListTest<OrtValue>(sequence.TensorValues.Count))
                         {
                             foreach (var opt in sequence.OptionalValues)
                             {
