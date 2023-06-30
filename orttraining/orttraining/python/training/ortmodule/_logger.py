@@ -124,31 +124,31 @@ class TimeTracker:
     def end(self, phase: TimeTrackerPhase):
         self.ends_[phase] = time.time()
 
-    def duration(self, phase: TimeTrackerPhase):
+    def _get_duration(self, phase: TimeTrackerPhase):
         if self.ends_[phase] == TimeTracker.NOT_RECORD or self.starts_[phase] == TimeTracker.NOT_RECORD:
             return TimeTracker.NOT_RECORD
         return self.ends_[phase] - self.starts_[phase]
 
     def to_string(self, log_details=False) -> str:
-        end_to_end_str = self.duration(TimeTrackerPhase.EndToEnd)
-        end_to_end_str = f"{end_to_end_str * 1000:.0f}" if end_to_end_str != TimeTracker.NOT_RECORD else "N/A"
-        export_str = self.duration(TimeTrackerPhase.EXPORT)
-        export_str = f"{export_str * 1000:.0f}" if export_str != TimeTracker.NOT_RECORD else "N/A"
-        overhead_title_str = f"Total overhead: {end_to_end_str}ms where export takes {export_str}ms.\n"
+        end_to_end_str = self._get_duration(TimeTrackerPhase.EndToEnd)
+        end_to_end_str = f"{end_to_end_str:.2f}" if end_to_end_str != TimeTracker.NOT_RECORD else "N/A"
+        export_str = self._get_duration(TimeTrackerPhase.EXPORT)
+        export_str = f"{export_str:.2f}" if export_str != TimeTracker.NOT_RECORD else "N/A"
+        overhead_title_str = f"Total overhead: {end_to_end_str}s where export takes {export_str}s.\n"
 
         if log_details is False:
             return overhead_title_str
 
-        duration_summaries = []
+        _get_duration_summaries = []
         for phase in TimeTrackerPhase:
-            duration = self.duration(phase)
+            _get_duration = self._get_duration(phase)
             if phase in [TimeTrackerPhase.EndToEnd, TimeTrackerPhase.EXPORT]:
                 continue
 
-            val = f" {phase.to_string()} takes {duration * 1000:.0f}ms" if duration != TimeTracker.NOT_RECORD else "N/A"
-            duration_summaries.append(f"{val}")
+            val = f" {phase.to_string()} takes {_get_duration:.2f}s" if _get_duration != TimeTracker.NOT_RECORD else "N/A"
+            _get_duration_summaries.append(f"{val}")
 
-            return f"{overhead_title_str}Other overhead details: {','.join(duration_summaries)}\n"
+            return f"{overhead_title_str}Other overhead details: {','.join(_get_duration_summaries)}\n"
 
 
 @contextmanager
