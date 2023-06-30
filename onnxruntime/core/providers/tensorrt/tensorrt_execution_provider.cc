@@ -2225,8 +2225,8 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
       bool engine_update = false;
       std::unordered_set<std::string> input_names;
       std::unordered_map<std::string, std::vector<int32_t>> tensor_shape_values;
-      OrtMemoryInfo mem_info("", OrtAllocatorType::OrtDeviceAllocator, OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, 0));
 
+      OrtMemoryInfo mem_info("", OrtAllocatorType::OrtDeviceAllocator, OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, 0));
       if (alloc_ == nullptr) {
         Ort::ThrowOnError(api->KernelContext_GetAllocator(context, &mem_info, &alloc_));
       }
