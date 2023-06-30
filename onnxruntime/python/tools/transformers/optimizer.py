@@ -254,7 +254,7 @@ def optimize_model(
     disabled_optimizers = ["ConstantSharing"]
     temp_model_path = None
     temp_dir = tempfile.TemporaryDirectory()
-    optimized_model_name = "{}_o{}_{}.onnx".format(input[:-5], opt_level, "gpu" if use_gpu else "cpu")
+    optimized_model_name = "model_o{}_{}.onnx".format(opt_level, "gpu" if use_gpu else "cpu")
     optimized_model_path = os.path.join(temp_dir.name, optimized_model_name)
     if opt_level > 1:
         # Disable some optimizers that might cause failure in symbolic shape inference or attention fusion.
