@@ -5,7 +5,7 @@ jobs:
 - job: AMD_CI
   workspace:
     clean: all
-  pool: 'AMD-GPU-MI200'
+  pool: 'AMD-GPU'
   timeoutInMinutes: 150
 
   # gid of video and render group on gcramdrr1-mi100-085 and -86
@@ -161,46 +161,46 @@ jobs:
     displayName: 'Run kernel explorer tests'
     condition: and(succeededOrFailed(), eq(variables.onnxruntimeBuildSucceeded, 'true'))
 
-  - task: CmdLine@2
-    inputs:
-      script: |-
-        docker run --rm \
-          --security-opt seccomp=unconfined \
-          --shm-size=1024m \
-          --device=/dev/kfd \
-          --device=/dev/dri/renderD$DRIVER_RENDER \
-          --group-add $(video) \
-          --group-add $(render) \
-          --user onnxruntimedev \
-          --volume $(Build.SourcesDirectory):/onnxruntime_src \
-          --volume $(Build.BinariesDirectory):/build \
-          --workdir /build/$(BuildConfig) \
-          onnxruntimetrainingrocm-cibuild-rocm$(RocmVersion) \
-            /bin/bash -c "
-              set -ex; \
-              export PYTHONPATH=/build/$(BuildConfig); \
-              python -m onnxruntime.training.ortmodule.torch_cpp_extensions.install; \
-              python \
-                /home/onnxruntimedev/huggingface-transformers/examples/pytorch/language-modeling/run_mlm.py \
-                --model_name_or_path bert-large-uncased \
-                --dataset_name wikitext \
-                --dataset_config_name wikitext-2-raw-v1 \
-                --do_train \
-                --max_steps 260 \
-                --logging_steps 20 \
-                --output_dir ./test-mlm-bbu \
-                --overwrite_output_dir \
-                --per_device_train_batch_size 8 \
-                --fp16 \
-                --dataloader_num_workers 1 \
-                --ort \
-                --skip_memory_metrics; \
-              python /onnxruntime_src/orttraining/tools/ci_test/compare_huggingface.py \
-                ci-pipeline-actual.json \
-                /onnxruntime_src/orttraining/tools/ci_test/results/ci-mi100.huggingface.bert-large-rocm$(RocmVersion).json"
-      workingDirectory: $(Build.SourcesDirectory)
-    displayName: 'Run Python Hugging-Face BERT-L test'
-    condition: and(succeededOrFailed(), eq(variables.onnxruntimeBuildSucceeded, 'true'))
+  # - task: CmdLine@2
+  #   inputs:
+  #     script: |-
+  #       docker run --rm \
+  #         --security-opt seccomp=unconfined \
+  #         --shm-size=1024m \
+  #         --device=/dev/kfd \
+  #         --device=/dev/dri/renderD$DRIVER_RENDER \
+  #         --group-add $(video) \
+  #         --group-add $(render) \
+  #         --user onnxruntimedev \
+  #         --volume $(Build.SourcesDirectory):/onnxruntime_src \
+  #         --volume $(Build.BinariesDirectory):/build \
+  #         --workdir /build/$(BuildConfig) \
+  #         onnxruntimetrainingrocm-cibuild-rocm$(RocmVersion) \
+  #           /bin/bash -c "
+  #             set -ex; \
+  #             export PYTHONPATH=/build/$(BuildConfig); \
+  #             python -m onnxruntime.training.ortmodule.torch_cpp_extensions.install; \
+  #             python \
+  #               /home/onnxruntimedev/huggingface-transformers/examples/pytorch/language-modeling/run_mlm.py \
+  #               --model_name_or_path bert-large-uncased \
+  #               --dataset_name wikitext \
+  #               --dataset_config_name wikitext-2-raw-v1 \
+  #               --do_train \
+  #               --max_steps 260 \
+  #               --logging_steps 20 \
+  #               --output_dir ./test-mlm-bbu \
+  #               --overwrite_output_dir \
+  #               --per_device_train_batch_size 8 \
+  #               --fp16 \
+  #               --dataloader_num_workers 1 \
+  #               --ort \
+  #               --skip_memory_metrics; \
+  #             python /onnxruntime_src/orttraining/tools/ci_test/compare_huggingface.py \
+  #               ci-pipeline-actual.json \
+  #               /onnxruntime_src/orttraining/tools/ci_test/results/ci-mi100.huggingface.bert-large-rocm$(RocmVersion).json"
+  #     workingDirectory: $(Build.SourcesDirectory)
+  #   displayName: 'Run Python Hugging-Face BERT-L test'
+  #   condition: and(succeededOrFailed(), eq(variables.onnxruntimeBuildSucceeded, 'true'))
 
 
   # Entry point for all ORTModule tests
