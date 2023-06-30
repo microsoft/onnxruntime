@@ -10,12 +10,10 @@ from typing import Tuple
 
 import torch
 
-from onnxruntime.training import ortmodule
-
 from .._cache import ModuleCache, PyCodeCache
 from .._utils import next_power_of_2
 
-_DEBUG_MODE = ortmodule._defined_from_envvar("ORTMODULE_TRITON_DEBUG", 0) != 0
+_DEBUG_MODE = "ORTMODULE_TRITON_DEBUG" in os.environ and int(os.getenv("ORTMODULE_TRITON_DEBUG")) == 1
 
 
 _MM_TEMPLATE = """

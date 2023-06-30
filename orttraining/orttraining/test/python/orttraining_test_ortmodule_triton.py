@@ -14,8 +14,8 @@ from onnx import TensorProto, helper
 from torch._C import _from_dlpack
 from torch.utils.dlpack import to_dlpack
 
+from onnxruntime.training.ort_triton import call_triton_by_name, call_triton_by_onnx
 from onnxruntime.training.ortmodule import DebugOptions, ORTModule
-from onnxruntime.training.ortmodule.ort_triton import call_triton_by_name, call_triton_by_onnx
 
 pytest.importorskip("triton")
 

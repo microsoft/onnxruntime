@@ -14,8 +14,6 @@ import onnx
 from torch._C import _from_dlpack
 from torch.utils.dlpack import to_dlpack
 
-from onnxruntime.training import ortmodule
-
 from ._cache import ModuleCache, PyCodeCache
 from ._codegen import codegen
 from ._op_config import get_supported_ops
@@ -23,7 +21,7 @@ from ._sorted_graph import SortedGraph
 from ._sympy_utils import parse_shape
 from ._utils import gen_unique_name
 
-_DEBUG_MODE = ortmodule._defined_from_envvar("ORTMODULE_TRITON_DEBUG", 0) != 0
+_DEBUG_MODE = "ORTMODULE_TRITON_DEBUG" in os.environ and int(os.getenv("ORTMODULE_TRITON_DEBUG")) == 1
 
 
 @functools.lru_cache(None)

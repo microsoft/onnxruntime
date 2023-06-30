@@ -119,7 +119,8 @@ class TritonCodegen(NodeVisitor):
 
         if node.is_load:
             code_buffer += f"{space_indent}{internal_var_name} = tl.load({var_name}{offset_str}{mask_str})\n"
-        code_buffer += f"{space_indent}tl.store({var_name}{offset_str}, {internal_var_name}{mask_str})\n"
+        else:
+            code_buffer += f"{space_indent}tl.store({var_name}{offset_str}, {internal_var_name}{mask_str})\n"
 
     def _gen_kernel_signature(self, node: KernelNode, context: CodegenContext, code_buffer: CodeBuffer, indent: int):
         is_reduction = node.offset_calc.is_reduction
@@ -305,7 +306,8 @@ class TritonCodegen(NodeVisitor):
         if op_type == "Sum":
             output_var = kwargs["o0"]
             formula = " + ".join([kwargs[f"i{idx}"] for idx in range(len(node.inputs))])
-            return f"{space_indent}{output_var} = {formula}\n"
+            code_buffer += f"{space_indent}{output_var} = {formula}\n"
+            return
 
         code_buffer += TritonCodegen._COMPUTE_CODE_TEMPLATES[op_type].format(indent=space_indent, **kwargs)
 

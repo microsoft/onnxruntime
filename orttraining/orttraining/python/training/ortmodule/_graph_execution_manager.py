@@ -135,7 +135,7 @@ class GraphExecutionManager(GraphExecutionInterface):
         self._get_torch_gpu_allocator_function_addresses()
 
         if self._runtime_options.enable_triton:
-            from .ort_triton import register_triton_op_executor
+            from onnxruntime.training.ort_triton import register_triton_op_executor
 
             register_triton_op_executor()
 

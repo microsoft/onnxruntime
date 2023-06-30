@@ -11,7 +11,8 @@ import triton
 import triton.language as tl
 from onnx import TensorProto, helper
 
-from ..._graph_transformer_registry import register_graph_transformer
+from onnxruntime.training.ortmodule import register_graph_transformer
+
 from .._utils import get_attribute, to_numpy_array
 
 

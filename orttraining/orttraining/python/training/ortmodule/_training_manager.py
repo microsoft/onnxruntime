@@ -17,11 +17,11 @@ from ._execution_agent import TrainingAgent
 from ._fallback import ORTModuleFallbackException, _FallbackManager, _FallbackPolicy
 from ._gradient_accumulation_manager import GradientAccumulationManager
 from ._graph_execution_manager import GraphExecutionManager, _RunStateInfo
-from ._graph_transformer_registry import GraphTransformerRegistry
 from ._io import _FlattenedModule, _InputInfo
 from ._logger import TimeTrackerPhase, TrackTime
 from ._runtime_inspector import Phase
 from ._utils import save_tuning_results, set_tuning_results
+from .graph_transformer_registry import GraphTransformerRegistry
 from .options import DebugOptions, _SkipCheck
 
 
