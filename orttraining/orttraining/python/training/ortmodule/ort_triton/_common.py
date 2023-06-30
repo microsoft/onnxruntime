@@ -31,9 +31,21 @@ class CodegenContext:
         return self._var_map[var_name] if var_name in self._var_map else var_name
 
 
+class CodeBuffer:
+    def __init__(self):
+        self.buffer: List[str] = []
+
+    def __iadd__(self, other: str):
+        self.buffer.append(other)
+        return self
+
+    def __str__(self):
+        return "".join(self.buffer)
+
+
 class NodeVisitor:
     @abstractmethod
-    def codegen(self, node: Any, context: CodegenContext, indent: int) -> str:
+    def codegen(self, node: Any, context: CodegenContext, code_buffer: CodeBuffer, indent: int):
         pass
 
 

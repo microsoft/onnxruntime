@@ -23,7 +23,6 @@ from torch.utils.dlpack import to_dlpack
 
 from onnxruntime.capi import _pybind_state as C
 from onnxruntime.capi.onnxruntime_inference_collection import OrtValue
-from onnxruntime.training import ortmodule
 
 from . import _onnx_models
 from ._fallback_exceptions import ORTModuleDeviceException, ORTModuleIOError, wrap_exception

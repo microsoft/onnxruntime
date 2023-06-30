@@ -10,7 +10,7 @@ from typing import Dict, List, Optional, Set, Tuple
 import numpy as np
 import sympy
 
-from ._common import AutotuneConfigs, CodegenContext, NodeVisitor, TensorInfo
+from ._common import AutotuneConfigs, CodeBuffer, CodegenContext, NodeVisitor, TensorInfo
 from ._sympy_utils import parse_shape
 from ._utils import gen_unique_name, gen_variable_name, sort_reduce_axes, to_numpy_type
 
@@ -175,8 +175,8 @@ class IRNode:
         self.outputs: List[TensorArg] = outputs
 
     @abstractmethod
-    def codegen(self, visitor: NodeVisitor, context: CodegenContext, indent: int = 0) -> str:
-        return visitor.codegen(self, context, indent)
+    def codegen(self, visitor: NodeVisitor, context: CodegenContext, code_buffer: CodeBuffer, indent: int = 0):
+        visitor.codegen(self, context, code_buffer, indent)
 
 
 class ComputeNode(IRNode):
