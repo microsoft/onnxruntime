@@ -75,7 +75,7 @@ Status SkipLayerNorm<T>::Compute(OpKernelContext* p_ctx) const {
 
   if (skip_dims[skip_dims_size - 1] != hidden_size && skip_dims[skip_dims_size - 1] != 1) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "hidden size needs to be 1 or same as input");
+                           "last dimension of skip needs to be 1 or same as input");
   }
 
     
