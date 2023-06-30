@@ -66,21 +66,9 @@ Status SkipLayerNorm<T>::Compute(OpKernelContext* p_ctx) const {
   }
 
 
-  if (skip_sequence_length != input_dims[1] && skip_dims[skip_dims_size - 2] != 1) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "sequence length needs to be 1 or same as input");
-  }
-
   int hidden_size = static_cast<int>(input_dims[input_dims_size - 1]);
 
-  if (skip_dims[skip_dims_size - 1] != hidden_size && skip_dims[skip_dims_size - 1] != 1) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "last dimension of skip needs to be 1 or same as input");
-  }
-
-    
-
-
+  
   const auto& gamma_dims = gamma->Shape().GetDims();
   if (gamma_dims.size() != 1) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
