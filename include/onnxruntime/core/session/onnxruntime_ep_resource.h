@@ -9,3 +9,10 @@ enum CudaResource: int {
   cudnn_handle_t,
   cublas_handle_t
 };
+
+#define ORT_DML_RESOUCE_VERSION 1
+
+enum DmlResource : int {
+  dml_device_t = 0,
+  d3d12_device_t
+};

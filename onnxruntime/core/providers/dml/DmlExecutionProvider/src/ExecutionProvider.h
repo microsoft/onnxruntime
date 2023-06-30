@@ -5,6 +5,7 @@
 
 #include "GraphTransformer.h"
 #include "core/providers/dml/DmlExecutionProvider/inc/IWinmlExecutionProvider.h"
+#include "core/session/onnxruntime_ep_resource.h"
 
 #include <wrl/client.h>
 #include <wrl/implements.h>
@@ -171,6 +172,8 @@ namespace Dml
 
         onnxruntime::common::Status OnSessionInitializationEnd();
 
+        void RegisterStreamHandlers(onnxruntime::IStreamCommandHandleRegistry& stream_handle_registry) const;
+
     private:
         void Initialize(ID3D12CommandQueue* queue, ExecutionProvider& executionProvider);
 
@@ -310,6 +313,10 @@ namespace Dml
         void MetacommandsEnabled()
         {
             m_impl->MetacommandsEnabled();
+        }
+
+        void RegisterStreamHandlers(onnxruntime::IStreamCommandHandleRegistry& stream_handle_registry) const override {
+             m_impl->RegisterStreamHandlers(stream_handle_registry);
         }
 
     private:

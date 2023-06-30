@@ -100,6 +100,42 @@ namespace Dml
 #endif
     }
 
+//////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+    struct DmlStream : public onnxruntime::Stream {
+
+         DmlStream(IDMLDevice* dml_device, ID3D12Device* d3d12_device, const OrtDevice& ort_device):
+             onnxruntime::Stream(reinterpret_cast<void*>(dml_device), ort_device),
+             dmlDevice(dml_device),
+             d3d12Device(d3d12_device) {}
+
+         void* GetResource(int version, int id) const override {
+            ORT_ENFORCE(version <= ORT_DML_RESOUCE_VERSION, "versions incompatible");
+            void* resource = {};
+            switch(id) {
+                case DmlResource::dml_device_t:
+                    resource = reinterpret_cast<void*>(dmlDevice);
+                    break;
+                case DmlResource::d3d12_device_t:
+                    resource = reinterpret_cast<void*>(d3d12Device);
+                    break;
+                default:
+                    break;
+            }
+            return resource;
+         }
+
+        IDMLDevice* dmlDevice = {};
+        ID3D12Device* d3d12Device = {};
+    };
+
+    void ExecutionProviderImpl::RegisterStreamHandlers(onnxruntime::IStreamCommandHandleRegistry& stream_handle_registry) const {
+        stream_handle_registry.RegisterCreateStreamFn(OrtDevice::GPU, [this](const OrtDevice& device) {
+            return std::make_unique<DmlStream>(this->m_dmlDevice.Get(), this->m_d3d12Device.Get(), device);});
+    }
+
+//////////////////////////////////////////////////////////////////////////////////////////////////////////
+
     void ExecutionProviderImpl::Close()
     {
         m_context->Close();

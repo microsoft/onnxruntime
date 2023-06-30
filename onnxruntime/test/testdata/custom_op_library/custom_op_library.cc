@@ -20,13 +20,24 @@ void cuda_add(int64_t, T3*, const T1*, const T2*, cudaStream_t compute_stream);
 #ifdef USE_CUDA
 #include "onnxruntime_cuda_context.h"
 #endif
+
+#ifdef USE_DML
+#include "onnxruntime_dml_context.h"
+#endif
+
 #include "onnxruntime_lite_custom_op.h"
 
 static const char* c_OpDomain = "test.customop";
 
 #ifdef USE_DML
-void IdentityDML(const Ort::Custom::Tensor<float>&,
-                 Ort::Custom::Tensor<float>&) {
+void IdentityDML(Ort::Custom::OrtDmlContext* dml_ctx,
+                 const Ort::Custom::Tensor<float>& /*input*/,
+                 Ort::Custom::Tensor<float>& /*output*/) {
+  // todo - implement identity for dml here
+  auto* dml_device = dml_ctx->m_dmlDevice;
+  auto* d2d12_device = dml_ctx->m_d3d12Device;
+  ORT_UNUSED_PARAMETER(dml_device);
+  ORT_UNUSED_PARAMETER(d2d12_device);
 }
 #endif
 

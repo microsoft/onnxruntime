@@ -28,21 +28,21 @@ struct OrtCudaContext {
 
     status = ort_api.KernelContext_GetResource(&kernel_ctx, ORT_CUDA_RESOUCE_VERSION, CudaResource::cuda_stream_t, &resource);
     if (status) {
-      ORT_CXX_API_THROW("failed to fetch raw stream", OrtErrorCode::ORT_RUNTIME_EXCEPTION);
+      ORT_CXX_API_THROW("failed to fetch cuda stream", OrtErrorCode::ORT_RUNTIME_EXCEPTION);
     }
     cuda_stream = reinterpret_cast<cudaStream_t>(resource);
 
     //resource = {};
     //status = ort_api.Stream_GetResource(raw_stream, "cudnn_handle", &resource);
     //if (status) {
-    //  ORT_CXX_API_THROW("failed to fetch cudnn stream", OrtErrorCode::ORT_RUNTIME_EXCEPTION);
+    //  ORT_CXX_API_THROW("failed to fetch cudnn handle", OrtErrorCode::ORT_RUNTIME_EXCEPTION);
     //}
     //cudnn_handle = reinterpret_cast<cudnnHandle_t>(resource);
 
     resource = {};
     status = ort_api.KernelContext_GetResource(&kernel_ctx, ORT_CUDA_RESOUCE_VERSION, CudaResource::cublas_handle_t, &resource);
     if (status) {
-      ORT_CXX_API_THROW("failed to fetch cublas stream", OrtErrorCode::ORT_RUNTIME_EXCEPTION);
+      ORT_CXX_API_THROW("failed to fetch cublas handle", OrtErrorCode::ORT_RUNTIME_EXCEPTION);
     }
     cublas_handle = reinterpret_cast<cublasHandle_t>(resource);
   }
