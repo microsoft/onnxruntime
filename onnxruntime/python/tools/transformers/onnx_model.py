@@ -1092,13 +1092,15 @@ class OnnxModel:
         return op_count
 
     @staticmethod
-    def has_same_value(tensor1: TensorProto, tensor2: TensorProto) -> bool:
+    def has_same_value(tensor1: TensorProto, tensor2: TensorProto, require_raw_data: bool = False) -> bool:
         """Returns True when two tensors have same value.
            Note that name can be different.
 
         Args:
             tensor1 (TensorProto): initializer 1
             tensor2 (TensorProto): initializer 2
+            require_raw_data (bool): ignore tensors without raw_data
+                Note: Flag can speed up runtime significantly
 
         Returns:
             bool: True when two intializers has same value.
@@ -1107,11 +1109,15 @@ class OnnxModel:
             return False
         if tensor1.HasField("raw_data") and tensor2.HasField("raw_data"):
             return tensor1.raw_data == tensor2.raw_data
+        if require_raw_data:
+            return False
+
         return (numpy_helper.to_array(tensor1) == numpy_helper.to_array(tensor2)).all()
 
-    def remove_duplicated_initializer(self):
+    def remove_duplicated_initializer(self, require_raw_data: bool = False):
         """Remove initializers with duplicated values, and only keep the first one.
         It could help reduce size of models (like ALBert) with shared weights.
+        If require_raw_data passed, method will only compare raw_data initializers to speed runtime
         Note: this function does not process subgraph.
         """
         if len(self.graphs()) > 1:
@@ -1124,7 +1130,9 @@ class OnnxModel:
             if same[i] >= 0:
                 continue
             for j in range(i + 1, initializer_count):
-                if OnnxModel.has_same_value(self.model.graph.initializer[i], self.model.graph.initializer[j]):
+                if OnnxModel.has_same_value(
+                    self.model.graph.initializer[i], self.model.graph.initializer[j], require_raw_data
+                ):
                     same[j] = i
 
         count = 0
