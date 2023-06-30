@@ -113,7 +113,7 @@ const createReduceAttributesFromInputs =
         inputs[1].getBigInt64Array().forEach(v => axes.push(Number(v)));
       }
       return createAttributeWithCacheKey(
-          {axes: axes, keepDims: attributes.keepDims, noopWithEmptyAxes: attributes.noopWithEmptyAxes});
+          {axes, keepDims: attributes.keepDims, noopWithEmptyAxes: attributes.noopWithEmptyAxes});
     };
 
 const createReduceProgramInfoLoader =
