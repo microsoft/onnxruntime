@@ -36,11 +36,6 @@ class BatchNorm final : public CudaKernel {
     }
 
     is_training_mode_ = (op_kernel_info.GetAttrOrDefault<int64_t>("training_mode", 0) == 1);
-    const auto& node = op_kernel_info.node();
-    auto opset = node.SinceVersion();
-
-    // batch norm opset 14 (or higher) is not implemented for training mode
-    ORT_ENFORCE(!(is_training_mode_ && opset >= 14), "Training mode does not support BN opset 14 (or higher) yet.");
   }
 
   Status ComputeInternal(OpKernelContext* context) const override;
