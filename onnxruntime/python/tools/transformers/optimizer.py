@@ -299,11 +299,6 @@ def optimize_model(
     else:
         optimizer = optimize_by_fusion(model, model_type, num_heads, hidden_size, optimization_options)
 
-    # Remove the temporary model.
-    if temp_model_path:
-        os.remove(temp_model_path)
-        logger.debug(f"Remove temporary model: {temp_model_path}")
-
     # remove the temporary directory
     temp_dir.cleanup()
 
