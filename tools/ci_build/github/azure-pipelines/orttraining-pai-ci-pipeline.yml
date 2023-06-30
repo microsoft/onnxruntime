@@ -5,7 +5,7 @@ jobs:
 - job: AMD_CI
   workspace:
     clean: all
-  pool: 'AMD-GPU'
+  pool: 'AMD-GPU-MI200'
   timeoutInMinutes: 150
 
   # gid of video and render group on gcramdrr1-mi100-085 and -86
