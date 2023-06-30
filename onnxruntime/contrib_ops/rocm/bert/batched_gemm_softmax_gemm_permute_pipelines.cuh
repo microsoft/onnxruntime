@@ -409,6 +409,20 @@ struct GemmSoftmaxGemmPermuteParams : onnxruntime::rocm::tunable::OpParams {
   void* workspace_buffer{nullptr};
 };
 
+inline bool IsKVBNMH(AttentionMode mode) {
+  switch (mode) {
+    case QFMT_KFMT_VFMT_NONE_NONE_2BNMH_NONE:
+    case QFMT_KFMT_VFMT_2BNMH_NONE_2BNMH_NONE:
+    case BSNH_BLNH_BLNH_NONE_NONE_BNMH_BNMH:
+    case BSNH_BNLH_BNLH_NONE_NONE_BNMH_BNMH:
+    case BSNH_BLNH_BLNH_BNMH_BNMH_BNMH_BNMH:
+    case BSNH_BNLH_BNLH_BNMH_BNMH_BNMH_BNMH:
+      return true;
+    default:
+      return false;
+  }
+}
+
 template <typename T>
 struct GemmSoftmaxGemmPermuteGenericPipeline {
   static bool UseRawAttentionMask(const GemmSoftmaxGemmPermuteParams<T>* params) {
@@ -441,6 +455,12 @@ struct GemmSoftmaxGemmPermuteGenericPipeline {
   inline static Status Gemm1(const GemmSoftmaxGemmPermuteParams<T>* params) {
     auto [m, n, k, o, batch] = params->GetGemmsMNKOBatch();
     auto [gemm1_out, softmax_out, gemm2_out] = GetWorkspacePlan(params);
+
+    int k_buffer_stride = n * k;
+    if (IsKVBNMH(params->attention->mode)) {
+      k_buffer_stride = params->attention->max_sequence_length * params->attention->head_size;
+    }
+
     // GEMM1 [m,k] * [n,k]' -> [m,n]
     return blas::row_major::StridedBatchedGemm(
         params->TuningContext(), params->Stream(), params->handle,
@@ -449,7 +469,7 @@ struct GemmSoftmaxGemmPermuteGenericPipeline {
         // For raw attention mask, the scalar is moved to softmax computation.
         /*alpha=*/UseRawAttentionMask(params) ? 1.0f : params->scale,
         params->q_buffer, k, m * k,
-        params->k_buffer, k, n * k,
+        params->k_buffer, k, k_buffer_stride,
         /*beta=*/0.0f,
         gemm1_out, n, m * n,
         batch);
@@ -494,6 +514,12 @@ struct GemmSoftmaxGemmPermuteGenericPipeline {
   inline static Status Gemm2(const GemmSoftmaxGemmPermuteParams<T>* params) {
     auto [m, n, k, o, batch] = params->GetGemmsMNKOBatch();
     auto [gemm1_out, softmax_out, gemm2_out] = GetWorkspacePlan(params);
+
+    int v_buffer_stride = n * o;
+    if (IsKVBNMH(params->attention->mode)) {
+      v_buffer_stride = params->attention->max_sequence_length * params->attention->v_head_size;
+    }
+
     // GEMM2 [m,n] * [n,o] -> [m,o]
     // semantically, the output buffer contains B*N matrices of shape [S,H], compactly, thus B,N,S,H.
     return blas::row_major::StridedBatchedGemm(
@@ -502,7 +528,7 @@ struct GemmSoftmaxGemmPermuteGenericPipeline {
         m, o, n,
         /*alpha=*/1.0f,
         softmax_out, n, m * n,
-        params->v_buffer, o, n * o,
+        params->v_buffer, o, v_buffer_stride,
         /*beta=*/0.0f,
         gemm2_out, o, m * o,
         batch);
@@ -526,15 +552,14 @@ struct GemmSoftmaxGemmPermuteGenericPipeline {
       case QFMT_KFMT_VFMT_NONE_NONE_NONE_NONE:
       case QFMT_KFMT_VFMT_NONE_NONE_2BNTH_NONE:
       case QFMT_KFMT_VFMT_2BNPH_NONE_2BNTH_NONE:
+      case QFMT_KFMT_VFMT_NONE_NONE_2BNMH_NONE:
+      case QFMT_KFMT_VFMT_2BNMH_NONE_2BNMH_NONE:
         if (attn->qkv_format == Q_K_V_BNSH) {
           return Status::OK();
         } else {
           return TUNABLE_OP_UNSUPPORTED("GenericPipeline only supports qkv_format as Q_K_V_BNSH, got ",
                                         attn->qkv_format);
         }
-      case QFMT_KFMT_VFMT_NONE_NONE_2BNMH_NONE:
-      case QFMT_KFMT_VFMT_2BNMH_NONE_2BNMH_NONE:
-        return TUNABLE_OP_UNSUPPORTED("GenericPipeline only supports qkv_format as Q_K_V_BNSH but k, v are BNMH");
       case BSNH_BLNH_BLNH_NONE_NONE_NONE_NONE:
         return TUNABLE_OP_UNSUPPORTED("GenericPipeline only supports qkv_format as Q_K_V_BNSH but k, v are BLNH");
       case BSNH_BNLH_BNLH_NONE_NONE_NONE_NONE:
@@ -542,6 +567,10 @@ struct GemmSoftmaxGemmPermuteGenericPipeline {
       case BSNH_BNLH_BNLH_NONE_NONE_BNTH_BNTH:
       case BSNH_BLNH_BLNH_BNPH_BNPH_BNTH_BNTH:
       case BSNH_BNLH_BNLH_BNPH_BNPH_BNTH_BNTH:
+      case BSNH_BLNH_BLNH_NONE_NONE_BNMH_BNMH:
+      case BSNH_BLNH_BLNH_BNMH_BNMH_BNMH_BNMH:
+      case BSNH_BNLH_BNLH_NONE_NONE_BNMH_BNMH:
+      case BSNH_BNLH_BNLH_BNMH_BNMH_BNMH_BNMH:
         // If sequence_length is 1, query of B1NH can be simply viewed as BN1H.
         if (attn->sequence_length == 1) {
           return Status::OK();
@@ -549,11 +578,6 @@ struct GemmSoftmaxGemmPermuteGenericPipeline {
           return TUNABLE_OP_UNSUPPORTED("GenericPipeline only supports qkv_format as Q_K_V_BNSH, ",
                                         "only if sequence_length is 1, query of BSNH can be viewed as BNSH");
         }
-      case BSNH_BLNH_BLNH_NONE_NONE_BNMH_BNMH:
-      case BSNH_BLNH_BLNH_BNMH_BNMH_BNMH_BNMH:
-      case BSNH_BNLH_BNLH_NONE_NONE_BNMH_BNMH:
-      case BSNH_BNLH_BNLH_BNMH_BNMH_BNMH_BNMH:
-        return TUNABLE_OP_UNSUPPORTED("GenericPipeline only supports qkv_format as Q_K_V_BNSH but k, v are BNMH");
       case BLN3H_NONE_NONE_NONE_NONE_NONE_NONE:
       case BSNH_BLN2H_NONE_NONE_NONE_NONE_NONE:
         return TUNABLE_OP_UNSUPPORTED("GenericPipeline only supports qkv_format as Q_K_V_BNSH");
@@ -561,7 +585,6 @@ struct GemmSoftmaxGemmPermuteGenericPipeline {
         return TUNABLE_OP_UNSUPPORTED("unknonw");
     }
     return TUNABLE_OP_UNSUPPORTED("unknonw case");
-
   }
 
   static Status Run(const GemmSoftmaxGemmPermuteParams<T>* params, bool use_persistent_softmax) {
