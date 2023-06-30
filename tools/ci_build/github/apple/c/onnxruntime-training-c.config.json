@@ -1,5 +1,5 @@
 {
     "name": "onnxruntime-training-c",
     "summary": "ONNX Runtime Training C/C++ Pod",
-    "description": "A pod for the ONNX Runtime C/C++ library. This pod supprorts additional training features."
+    "description": "A pod for the ONNX Runtime C/C++ library. This pod supports additional training features."
 }
