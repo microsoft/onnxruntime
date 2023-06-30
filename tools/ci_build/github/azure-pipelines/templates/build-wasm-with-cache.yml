@@ -24,6 +24,9 @@ parameters:
 - name: Arguments
   type: string
 
+- name: DisplayName
+  type: string
+
 steps:
   - task: Cache@2
     inputs:
@@ -57,7 +60,7 @@ steps:
       fi
       ccache -s
       popd
-    displayName: 'Build and test (browser) (simd + threads)'
+    displayName: ${{parameters.DisplayName}}
     env:
       CCACHE_SLOPPINESS: include_file_ctime,include_file_mtime,time_macros
       CCACHE_DIR: ${{parameters.CacheDir}}}
