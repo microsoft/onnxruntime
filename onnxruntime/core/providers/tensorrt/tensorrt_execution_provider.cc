@@ -995,7 +995,7 @@ TensorrtExecutionProvider::~TensorrtExecutionProvider() {
 
   if (alloc_ != nullptr) {
     // This code is same as OrtApis::ReleaseAllocator defined in allocator_adapters.cc.
-    // We can't get api inside destructor so that's why we duplicate the code here. 
+    // We can't get api inside destructor so that's why we duplicate the code here.
     delete static_cast<OrtAllocatorImpl*>(alloc_);
   }
 }
