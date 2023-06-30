@@ -108,7 +108,7 @@ jobs:
   - template: build-wasm-with-cache.yml
     parameters:
       Today: $(Today)
-      AdditionalKey: wasm_simd_threads
+      AdditionalKey: wasm_simd_threads | ${{ parameters.BuildConfig }}
       CacheDir: $(ORT_CACHE_DIR)/wasm_simd_threads
       Arguments: '$(CommonBuildArgs) --build_dir $(Build.BinariesDirectory)\wasm_simd_threads --enable_wasm_simd --enable_wasm_threads --wasm_run_tests_in_browser'
       ChangeEveryCommit: true
