@@ -343,7 +343,6 @@ class TrainingManager(GraphExecutionManager):
 
     def _build_graph(self, graph_transformer_config):
         """Build an optimized gradient graph using the module_graph_builder"""
-        self._time_tracker.start(TimeTrackerPhase.BUILD_GRAPH)
 
         super()._build_graph(graph_transformer_config)
         self._onnx_models.optimized_model = onnx.load_model_from_string(self._graph_builder.get_gradient_model())
@@ -377,12 +376,8 @@ class TrainingManager(GraphExecutionManager):
             else:
                 self._gradient_map.append(-1)
 
-        self._time_tracker.end(TimeTrackerPhase.BUILD_GRAPH)
-
     def _create_execution_agent(self):
         """Creates a TrainingAgent that can run the forward and backward graph on the training model"""
-
-        self._time_tracker.start(TimeTrackerPhase.CREATE_SESSION)
 
         session_options, providers, provider_options = self._get_session_config()
         fw_feed_names = [input.name for input in self._onnx_models.optimized_model.graph.input]
@@ -424,8 +419,6 @@ class TrainingManager(GraphExecutionManager):
             provider_options,
             local_device_rank,
         )
-
-        self._time_tracker.end(TimeTrackerPhase.CREATE_SESSION)
 
     def _reinitialize_graph_builder(self, input_info: _InputInfo):
         """Return true if the module graph builder was reinitialized"""

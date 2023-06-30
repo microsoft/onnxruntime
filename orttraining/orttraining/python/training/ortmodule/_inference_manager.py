@@ -198,7 +198,6 @@ class InferenceManager(GraphExecutionManager):
 
     def _build_graph(self, graph_transformer_config):
         """Build an inference graph using the module_graph_builder"""
-        self._time_tracker.start(TimeTrackerPhase.BUILD_GRAPH)
 
         super()._build_graph(graph_transformer_config)
         self._onnx_models.optimized_model = onnx.load_model_from_string(self._graph_builder.get_forward_model())
@@ -209,15 +208,10 @@ class InferenceManager(GraphExecutionManager):
                 self._export_mode,
             )
 
-        self._time_tracker.end(TimeTrackerPhase.BUILD_GRAPH)
-
     def _create_execution_agent(self):
         """Creates an InferenceAgent that can run forward graph on an inference model"""
-        self._time_tracker.start(TimeTrackerPhase.CREATE_SESSION)
 
         session_options, providers, provider_options = self._get_session_config()
         self._execution_agent = InferenceAgent(
             self._onnx_models.optimized_model.SerializeToString(), session_options, providers, provider_options
         )
-
-        self._time_tracker.end(TimeTrackerPhase.CREATE_SESSION)
