@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 using System;
+using System.Collections.Generic;
 using Xunit;
 
 namespace Microsoft.ML.OnnxRuntime.Tests
@@ -9,29 +10,30 @@ namespace Microsoft.ML.OnnxRuntime.Tests
     [Collection("Ort Float16 tests")]
     public class OrtFloat16Tests
     {
-        [Fact(DisplayName = "ConvertShortToFloat16")]
-        public void ConvertShortToFloat16()
-        {
-            ushort[] shortValues = { 0, 1, 2, 3, 4, 5, 6, 7 };
-            float[] floatValues = { 0, 1, 2, 3, 4, 5, 6, 7 };
-            for (int i = 0; i < shortValues.Length; i++)
-            {
-                Float16 v = (Float16)shortValues[i];
-                Assert.Equal(shortValues[i], (ushort)v);
-                Assert.Equal(floatValues[i], v.ToFloat());
-                Assert.NotEmpty(v.ToString());
-            }
-        }
+        const float oneThird = 1 / 3.0f;
+        const float oneSeventh = 1 / 7.0f;
+        const float oneTenth = 1 / 10.0f;
 
         [Fact(DisplayName = "ConvertFloatToFloat16")]
         public void ConvertFloatToFloat16()
         {
-            float[] floatValues = { 0, 1, 2, 3, 4, 5, 6, 7 };
-            for (int i = 0; i < floatValues.Length; i++)
+            // Generate integer floats and insert between them
+            // fractions.  This will test the rounding logic.
+            float start = -10;
+
+            var floatValues = new float[21 * 4];
+            for (int i = 0; i < floatValues.Length; i += 4)
             {
-                Float16 v = (Float16)floatValues[i];
-                Assert.Equal(floatValues[i], v.ToFloat());
+                floatValues[i] = start;
+                floatValues[i + 1] = start + oneThird;
+                floatValues[i + 2] = start + oneSeventh;
+                floatValues[i + 3] = start + oneTenth;
+                start += 1;
             }
+
+            var f16Converted = Array.ConvertAll(floatValues, f => (Float16)f);
+            var backConverted = Array.ConvertAll(f16Converted, f16 => (float)f16);
+            Assert.Equal(floatValues, backConverted, new FloatComparer());
 
             var positiveZero = new Float16(0);
             Assert.False(Float16.IsNegative(positiveZero));
@@ -50,8 +52,8 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 #endif
         }
 
-        [Fact(DisplayName = "TestComparisionOperators")]
-        public void TestComparisionOperators()
+        [Fact(DisplayName = "TestComparisonOperators")]
+        public void TestComparisonOperators()
         {
             Float16 left = (Float16)(float)-33.33f;
             Float16 leftSame = (Float16)(float)-33.33f;
@@ -260,29 +262,31 @@ namespace Microsoft.ML.OnnxRuntime.Tests
     [Collection("Ort BFloat16 tests")]
     public class OrtBFloat16Tests
     {
-        [Fact(DisplayName = "ConvertShortToBFloat16")]
-        public void ConvertShortToBFloat16()
-        {
-            ushort[] shortValues = { 0, 1, 2, 3, 4, 5, 6, 7 };
-            float[] floatValues = { 0, 1, 2, 3, 4, 5, 6, 7 };
-            for (int i = 0; i < shortValues.Length; i++)
-            {
-                BFloat16 v = (BFloat16)shortValues[i];
-                Assert.Equal(shortValues[i], (ushort)v);
-                Assert.Equal(floatValues[i], v.ToFloat());
-                Assert.NotEmpty(v.ToString());
-            }
-        }
+        const float oneThird = 1 / 3.0f;
+        const float oneSeventh = 1 / 7.0f;
+        const float oneTenth = 1 / 10.0f;
 
         [Fact(DisplayName = "ConvertFloatToBFloat16")]
         public void ConvertFloatToBFloat16()
         {
-            float[] floatValues = { 0, 1, 2, 3, 4, 5, 6, 7 };
-            for (int i = 0; i < floatValues.Length; i++)
+            // Generate integer floats and insert between them
+            // fractions.  This will test the rounding logic.
+            float start = -10;
+
+            var floatValues = new float[21 * 4];
+            for (int i = 0; i < floatValues.Length; i += 4)
             {
-                BFloat16 v = (BFloat16)floatValues[i];
-                Assert.Equal(floatValues[i], v.ToFloat());
+                floatValues[i] = start;
+                floatValues[i + 1] = start + oneThird;
+                floatValues[i + 2] = start + oneSeventh;
+                floatValues[i + 3] = start + oneTenth;
+                start += 1;
             }
+
+            var f16Converted = Array.ConvertAll(floatValues, f => (BFloat16)f);
+            var backConverted = Array.ConvertAll(f16Converted, f16 => (float)f16);
+            Assert.Equal(floatValues, backConverted, new FloatComparer());
+
 
             var positiveZero = new BFloat16(0);
             Assert.False(BFloat16.IsNegative(positiveZero));
@@ -301,7 +305,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 #endif
         }
 
-        [Fact(DisplayName = "TestComparisionOperators")]
+        [Fact(DisplayName = "TestComparisonOperators")]
         public void TestComparisionOperators()
         {
             BFloat16 left = (BFloat16)(float)-33.33f;

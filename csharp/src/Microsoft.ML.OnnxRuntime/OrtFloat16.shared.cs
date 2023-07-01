@@ -171,9 +171,6 @@ namespace Microsoft.ML.OnnxRuntime
         internal const sbyte MinExponent = -14;
         internal const sbyte MaxExponent = +15;
 
-        //internal const ushort MinTrailingSignificand = 0x0000;
-        //internal const ushort MaxTrailingSignificand = 0x03FF;
-
         // Constants representing the private bit-representation for various default values
 
         private const ushort PositiveZeroBits = 0x0000;
@@ -620,18 +617,6 @@ namespace Microsoft.ML.OnnxRuntime
             return (float)this;
         }
 
-        /// <summary>
-        /// Converts a 16-bit unsigned integer to a float and then to Float16
-        /// </summary>
-        /// <param name="value">A 16-bit unsigned integer.</param>
-        /// <returns>A Float16 that represents the converted 16-bit unsigned integer.</returns>
-        public static explicit operator Float16(ushort value) => (Float16)(float)value;
-
-        /// <summary>Explicitly converts a half-precision floating-point value to its nearest representable <see cref="ushort" /> value.</summary>
-        /// <param name="value">The value to convert.</param>
-        /// <returns><paramref name="value" /> converted to its nearest representable <see cref="ushort" /> value.</returns>
-        public static explicit operator ushort(Float16 value) => (ushort)(float)value;
-
         /// <summary>Explicitly converts a <see cref="float" /> value to its nearest representable half-precision floating-point value.</summary>
         /// <param name="value">The value to convert.</param>
         /// <returns><paramref name="value" /> converted to its nearest representable half-precision floating-point value.</returns>
@@ -832,8 +817,7 @@ namespace Microsoft.ML.OnnxRuntime
         private const ushort PositiveInfinityBits = 0x7F80;
         private const ushort NegativeInfinityBits = 0xFF80;
 
-        // sNaN
-        // private const ushort PositiveQNaNBits = 0x7FC1;
+        private const ushort PositiveQNaNBits = 0x7FC1;
         private const ushort NegativeQNaNBits = 0xFFC1;
 
         private const ushort MinValueBits = 0xFF7F; // 1b0_11111110_1111111
@@ -1245,20 +1229,6 @@ namespace Microsoft.ML.OnnxRuntime
         {
             return (float)this;
         }
-
-        /// <summary>
-        /// Converts a 16-bit unsigned integer to a float and then to BFloat16
-        /// </summary>
-        /// <param name="value">A 16-bit unsigned integer.</param>
-        /// <returns>A BFloat16 that represents the converted 16-bit unsigned integer.</returns>
-        public static explicit operator BFloat16(ushort value) => (BFloat16)(float)value;
-
-        /// <summary>
-        /// Converts to ushort
-        /// </summary>
-        /// <param name="value">instance of BFloat16</param>
-        /// <returns><paramref name="value" /> converted to its nearest representable <see cref="ushort" /> value.</returns>
-        public static explicit operator ushort(BFloat16 value) => (ushort)(float)value;
 
         /// <summary>Explicitly converts a <see cref="float" /> value to its nearest representable bfloat16 value.</summary>
         /// <param name="value">The value to convert.</param>

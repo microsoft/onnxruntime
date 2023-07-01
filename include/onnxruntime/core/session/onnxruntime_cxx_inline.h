@@ -320,7 +320,7 @@ inline BFloat16_t::BFloat16_t(float v) noexcept {
   } else {
     auto get_msb_half = [](float fl) {
       uint16_t result;
-      if constexpr (detail::endian::native == detail::endian::little) {
+      if (detail::endian::native == detail::endian::little) {
         std::memcpy(&result, reinterpret_cast<char*>(&fl) + sizeof(uint16_t), sizeof(uint16_t));
       } else {
         std::memcpy(&result, &fl, sizeof(uint16_t));
@@ -346,7 +346,7 @@ inline float BFloat16_t::ToFloat() const noexcept {
   float result;
   char* const first = reinterpret_cast<char*>(&result);
   char* const second = first + sizeof(uint16_t);
-  if constexpr (detail::endian::native == detail::endian::little) {
+  if (detail::endian::native == detail::endian::little) {
     std::memset(first, 0, sizeof(uint16_t));
     std::memcpy(second, &value, sizeof(uint16_t));
   } else {

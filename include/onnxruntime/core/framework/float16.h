@@ -23,18 +23,16 @@ namespace onnxruntime {
 
 // MLFloat16
 struct MLFloat16 {
-  // uint16_t values for some special values
-  enum Constants : uint16_t {
-    kSignMask = 0x8000U,
-    kBiasedExponentMask = 0x7C00U,
-    kPositiveInfinityBits = 0x7C00U,
-    kNegativeInfinityBits = 0xFC00U,
-    kPositiveQNaNBits = 0x7E00U,
-    kNegativeQNaNBits = 0xFE00U,
-    kEpsilonBits = 0x4170U,
-    kMinValueBits = 0xFBFFU,
-    kMaxValueBits = 0x7BFFU
-  };
+  // uint16_t special values
+  static constexpr uint16_t kSignMask = 0x8000U;
+  static constexpr uint16_t kBiasedExponentMask = 0x7C00U;
+  static constexpr uint16_t kPositiveInfinityBits = 0x7C00U;
+  static constexpr uint16_t kNegativeInfinityBits = 0xFC00U;
+  static constexpr uint16_t kPositiveQNaNBits = 0x7E00U;
+  static constexpr uint16_t kNegativeQNaNBits = 0xFE00U;
+  static constexpr uint16_t kEpsilonBits = 0x4170U;
+  static constexpr uint16_t kMinValueBits = 0xFBFFU;
+  static constexpr uint16_t kMaxValueBits = 0x7BFFU;
 
   uint16_t val{0};
 
@@ -145,20 +143,18 @@ inline bool operator<(const MLFloat16& lhs, const MLFloat16& rhs) noexcept {
 
 // BFloat16
 struct BFloat16 {
-  // uint16_t values for some special values
-  enum Constants : uint16_t {
-    kSignMask = 0x8000U,
-    kBiasedExponentMask = 0x7F80U,
-    kPositiveInfinityBits = 0x7F80U,
-    kNegativeInfinityBits = 0xFF80U,
-    kPositiveQNaNBits = 0x7FC1U,
-    kNegativeQNaNBits = 0xFFC1U,
-    kSignaling_NaNBits = 0x7F80U,
-    kEpsilonBits = 0x0080U,
-    kMinValueBits = 0xFF7FU,
-    kMaxValueBits = 0x7F7FU,
-    kRoundToNearest = 0x7FFFU
-  };
+  // uint16_t special values
+  static constexpr uint16_t kSignMask = 0x8000U;
+  static constexpr uint16_t kBiasedExponentMask = 0x7F80U;
+  static constexpr uint16_t kPositiveInfinityBits = 0x7F80U;
+  static constexpr uint16_t kNegativeInfinityBits = 0xFF80U;
+  static constexpr uint16_t kPositiveQNaNBits = 0x7FC1U;
+  static constexpr uint16_t kNegativeQNaNBits = 0xFFC1U;
+  static constexpr uint16_t kSignaling_NaNBits = 0x7F80U;
+  static constexpr uint16_t kEpsilonBits = 0x0080U;
+  static constexpr uint16_t kMinValueBits = 0xFF7FU;
+  static constexpr uint16_t kMaxValueBits = 0x7F7FU;
+  static constexpr uint16_t kRoundToNearest = 0x7FFFU;
 
   uint16_t val{0};
 #if defined(__HIP__)
@@ -309,7 +305,7 @@ struct BFloat16 {
     return IsNaN() ? *this : BFloat16::FromBits(static_cast<uint16_t>(val ^ kSignMask));
   }
 
-  inline ORT_HOST_DEVICE operator float() const noexcept { return ToFloat(); }
+  ORT_HOST_DEVICE operator float() const noexcept { return ToFloat(); }
 
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
   ORT_HOST_DEVICE BFloat16(const __nv_bfloat16& value) { val = *reinterpret_cast<const unsigned short*>(&value); }

@@ -163,15 +163,15 @@ __device__ __forceinline__ float& operator/=(float& a, const BFloat16& b) { retu
 
 /// Arithmetic with doubles
 
-__device__ __forceinline__ double operator+(BFloat16 a, double b) { return static_cast<double>(a) + b; }
-__device__ __forceinline__ double operator-(BFloat16 a, double b) { return static_cast<double>(a) - b; }
-__device__ __forceinline__ double operator*(BFloat16 a, double b) { return static_cast<double>(a) * b; }
-__device__ __forceinline__ double operator/(BFloat16 a, double b) { return static_cast<double>(a) / b; }
+__device__ __forceinline__ double operator+(BFloat16 a, double b) { return static_cast<float>(a) + b; }
+__device__ __forceinline__ double operator-(BFloat16 a, double b) { return static_cast<float>(a) - b; }
+__device__ __forceinline__ double operator*(BFloat16 a, double b) { return static_cast<float>(a) * b; }
+__device__ __forceinline__ double operator/(BFloat16 a, double b) { return static_cast<float>(a) / b; }
 
-__device__ __forceinline__ double operator+(double a, BFloat16 b) { return a + static_cast<double>(b); }
-__device__ __forceinline__ double operator-(double a, BFloat16 b) { return a - static_cast<double>(b); }
-__device__ __forceinline__ double operator*(double a, BFloat16 b) { return a * static_cast<double>(b); }
-__device__ __forceinline__ double operator/(double a, BFloat16 b) { return a / static_cast<double>(b); }
+__device__ __forceinline__ double operator+(double a, BFloat16 b) { return a + static_cast<float>(b); }
+__device__ __forceinline__ double operator-(double a, BFloat16 b) { return a - static_cast<float>(b); }
+__device__ __forceinline__ double operator*(double a, BFloat16 b) { return a * static_cast<float>(b); }
+__device__ __forceinline__ double operator/(double a, BFloat16 b) { return a / static_cast<float>(b); }
 
 // Overloading < and > operators
 

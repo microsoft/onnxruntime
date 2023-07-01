@@ -51,7 +51,9 @@
   <ItemGroup>
     <Compile Remove="InferenceTest.cs" />
     <Compile Remove="OrtIoBindingAllocationTest.cs" />
+    <Compile Remove="OrtEnvTests.cs" />
     <Compile Remove="OrtValueTests.cs" />
+    <Compile Remove="OrtFloat16Tests.cs" />
     <Compile Remove="Tensors\TensorTests.cs" />
     <Compile Remove="TrainingTest.cs" />
   </ItemGroup>
@@ -82,6 +84,7 @@
     <None Include="OnnxData.cs" />
     <None Include="OrtIoBindingAllocationTest.cs" Condition=" '$(EnableDefaultCompileItems)' == 'true' " />
     <None Include="OrtValueTests.cs" />
+    <None Include="OrtFloat16Tests.cs" />
     <None Include="Tensors\TensorTests.cs" Condition=" '$(EnableDefaultCompileItems)' == 'true' " />
     <None Include="Tensors\ArrayTensorExtensionTests.cs" Condition=" '$(EnableDefaultCompileItems)' == 'true' " />
     <None Include="TrainingTest.cs" />

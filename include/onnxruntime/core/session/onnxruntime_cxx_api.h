@@ -285,11 +285,6 @@ struct Float16_t {
   /// </summary>
   explicit operator float() const noexcept { return ToFloat(); }
 
-  /// <summary>
-  /// User defined conversion to uint16_t representation of Float16_t.
-  /// </summary>
-  constexpr explicit operator uint16_t() const noexcept { return value; }
-
   bool operator==(const Float16_t& rhs) const noexcept;
   bool operator!=(const Float16_t& rhs) const noexcept { return !(*this == rhs); }
   bool operator<(const Float16_t& rhs) const noexcept;
@@ -444,11 +439,6 @@ struct BFloat16_t {
   /// User defined conversion operator. Converts BFloat16_t to float.
   /// </summary>
   explicit operator float() const noexcept { return ToFloat(); }
-
-  /// <summary>
-  /// User defined conversion to uint16_t representation of Bfloat16_t.
-  /// </summary>
-  constexpr explicit operator uint16_t() const noexcept { return value; }
 
   bool operator==(const BFloat16_t& rhs) const noexcept;
   bool operator!=(const BFloat16_t& rhs) const noexcept { return !(*this == rhs); }
