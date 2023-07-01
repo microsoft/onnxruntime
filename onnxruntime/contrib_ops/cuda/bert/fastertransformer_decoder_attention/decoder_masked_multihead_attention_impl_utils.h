@@ -165,7 +165,7 @@ inline size_t CalcDynamicBlockMemory(const DecoderMaskedMultiHeadAttentionParams
 
   size_t transpose_rotary_size = 0;
   if (params.rotary_embedding_dim > 0) {
-      transpose_rotary_size = 2 * params.rotary_embedding_dim * sizeof(T);
+    transpose_rotary_size = 2 * params.rotary_embedding_dim * sizeof(T);
   }
 
   // The max.
