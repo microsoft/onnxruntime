@@ -2002,7 +2002,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetScaledSumGradient) {
   if (input_count == 2) {
     if (scale_0 == scale_1) {
       // Specialized branch to avoid duplicated data write.
-      NodeDef scale_node = ConstantScalarNode(static_cast<float>(scale_0), Name("Scale"), IElemType(0));
+      NodeDef scale_node = ConstantScalarNode(scale_0, Name("Scale"), IElemType(0));
       return std::vector<NodeDef>{
           scale_node,
           NodeDef(OpDef{"Mul"},
@@ -2022,7 +2022,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetScaledSumGradient) {
     float scale_2 = attributes.at("scale_2").f();
     if (scale_0 == scale_1 && scale_1 == scale_2) {
       // Specialized branch to avoid duplicated data write.
-      NodeDef scale_node = ConstantScalarNode(static_cast<float>(scale_0), Name("Scale"), IElemType(0));
+      NodeDef scale_node = ConstantScalarNode(scale_0, Name("Scale"), IElemType(0));
       return std::vector<NodeDef>{
           scale_node,
           NodeDef(OpDef{"Mul"},

@@ -66,12 +66,12 @@ struct ScaledSumFunctor {
         CUDA_LONG li = id + i;
         if (li < N_) {
           if (InputCount == 3)
-            output_value[i] = static_cast<T>(static_cast<float>(input_values[0][i]) * scales_[0] +
-                                             static_cast<float>(input_values[1][i]) * scales_[1] +
-                                             static_cast<float>(input_values[2][i]) * scales_[2]);
+            output_value[i] = input_values[0][i] * static_cast<T>(scales_[0]) +
+                              input_values[1][i] * static_cast<T>(scales_[1]) +
+                              input_values[2][i] * static_cast<T>(scales_[2]);
           else
-            output_value[i] = static_cast<T>(static_cast<float>(input_values[0][i]) * scales_[0] +
-                                             static_cast<float>(input_values[1][i]) * scales_[1]);
+            output_value[i] = input_values[0][i] * static_cast<T>(scales_[0]) +
+                              input_values[1][i] * static_cast<T>(scales_[1]);
         }
       }
 
@@ -83,13 +83,13 @@ struct ScaledSumFunctor {
         CUDA_LONG li = id + i;
         if (li < N_) {
           if (InputCount == 3)
-            output_value[i] = static_cast<T>(static_cast<float>(input_values[0][i]) * scales_[0] +
-                                             static_cast<float>(input_values[1][i]) * scales_[1] +
-                                             static_cast<float>(input_values[2][i]) * scales_[2]);
+            output_value[i] = input_values[0][i] * static_cast<T>(scales_[0]) +
+                              input_values[1][i] * static_cast<T>(scales_[1]) +
+                              input_values[2][i] * static_cast<T>(scales_[2]);
 
           else
-            output_value[i] = static_cast<T>(static_cast<float>(input_values[0][i]) * scales_[0] +
-                                             static_cast<float>(input_values[1][i]) * scales_[1]);
+            output_value[i] = input_values[0][i] * static_cast<T>(scales_[0]) +
+                              input_values[1][i] * static_cast<T>(scales_[1]);
         }
       }
     }

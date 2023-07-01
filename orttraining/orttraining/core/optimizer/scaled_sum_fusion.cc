@@ -166,7 +166,7 @@ Status ScaledSumFusion::ApplyImpl(Graph& graph, bool& modified, int /*graph_leve
     }
 
     Node* last_node = &node;
-    // Handle three pairs of inputs.
+    // Handle three inputs.
     if (node.GetOutputEdgesCount() == 1) {
       Node& output_node = *graph.GetNode(node.OutputEdgesBegin()->GetNode().Index());
       int output_node_port = node.OutputEdgesBegin()->GetDstArgIndex();
@@ -176,7 +176,9 @@ Status ScaledSumFusion::ApplyImpl(Graph& graph, bool& modified, int /*graph_leve
         int the_other_input_port = 1 - output_node_port;
         NodeArg* the_other_input_arg = output_node.MutableInputDefs()[the_other_input_port];
         const Node* the_other_input_node = graph.GetProducerNode(the_other_input_arg->Name());
-        Node* mutable_the_other_input_node = the_other_input_node ? graph.GetNode(the_other_input_node->Index()) : nullptr;
+        Node* mutable_the_other_input_node = the_other_input_node
+                                                 ? graph.GetNode(the_other_input_node->Index())
+                                                 : nullptr;
 
         bool the_other_node_output_edge_check = mutable_the_other_input_node == nullptr ||
                                                 mutable_the_other_input_node->GetOutputEdgesCount() == 1;

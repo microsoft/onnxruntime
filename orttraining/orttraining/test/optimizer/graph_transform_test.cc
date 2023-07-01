@@ -1267,7 +1267,7 @@ TEST_F(GraphTransformationTests, ScaledSumFusionThreeInputs) {
     return Status::OK();
   };
 
-  InlinedVector<bool> switch_orders{false};
+  InlinedVector<bool> switch_orders{false, true};
   for (bool switch_order : switch_orders) {
     auto build_test_case = [switch_order](ModelTestBuilder& builder) {
       auto* input_0_arg = builder.MakeInput<float>({{1, 1, 256, 256}});
@@ -1358,7 +1358,7 @@ TEST_F(GraphTransformationTests, ScaledSumFusionTwoInputs) {
     return Status::OK();
   };
 
-  InlinedVector<bool> switch_orders{false};
+  InlinedVector<bool> switch_orders{false, true};
   for (bool switch_order : switch_orders) {
     auto build_test_case = [switch_order](ModelTestBuilder& builder) {
       auto* input_0_arg = builder.MakeInput<float>({{1, 1, 256, 256}});
