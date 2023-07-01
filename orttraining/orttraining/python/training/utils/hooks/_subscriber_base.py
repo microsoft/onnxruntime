@@ -5,9 +5,44 @@
 
 
 import sys
-from typing import Union
+from typing import Optional, Union
 
 import torch
+
+
+class _RuntimeStates:
+    """
+    A data struct holding states for runtime context. Tho kinds of states are included:
+    > Global states that are one-time collected during model hook registration. A global execution step is
+      also initialized to reflect how many steps have been executed, it will get updated after each step
+      completes its forward path.
+    > Intra-execution step states, initialized and cleaned up intended only for current execution step.
+      Usually, it carries intermediate information during the model execution.
+    """
+
+    class _GlobalStates:
+        def __init__(self):
+            # Used to track current execution step, e.g. how many forward/backward path is called.
+            self.execution_step = 0
+            # Used to store the depth of each module, which indicate the indentation level of the module.
+            self.module_index_to_depth = {}
+            # Used to store the unique id of each sequential activation.
+            self.module_to_module_index = {}
+
+            self.subscribers = set()
+
+    class _ExecutionStepStates:
+        def __init__(self):
+            # Used to store the activation tensor names, if already handled, then skipped.
+            # Need to clear after each step.
+            self.observed_activation_names = {}
+
+    def __init__(self):
+        self.global_states = _RuntimeStates._GlobalStates()
+        self.reset_step_states()
+
+    def reset_step_states(self):
+        self.execution_step_states = _RuntimeStates._ExecutionStepStates()
 
 
 class SubscriberBase:
@@ -40,34 +75,42 @@ class SubscriberBase:
         self._start_step: int = start_step if start_step is not None else 0
         self._end_step: int = end_step if end_step is not None else sys.maxsize
 
-    def module_post_forward(self, activation: torch.Tensor, depth: int, name: str, step: int):
-        """
-        This function will be run after the torch Module forward is completed.
-
-        Args:
-            activation: Tensor to be inspected.
-            depth: The indent level of the torch Module generating `activation`.
-            name: The unique name for the `activation`.
-            step: Current execution step.
-        """
-        if self._start_step <= step < self._end_step:
-            self.module_post_forward_impl(activation, depth, name, step)
-
-    def module_pre_backward(self, activation: torch.Tensor, depth: int, name: str, step: int):
-        """
-        This function will be run before the torch Module backward run.
-
-        Args:
-            activation: Tensor to be inspected.
-            depth: The indent level of the torch Module generating `activation`.
-            name: The unique name for the `activation`.
-            step: Current execution step.
-        """
-        if self._start_step <= step < self._end_step:
-            self.module_pre_backward_impl(activation, depth, name, step)
-
-    def module_post_forward_impl(self, activation: torch.Tensor, depth: int, name: str, step: int):
+    def post_forward_module_func(self, module: torch.nn.Module, module_inputs, module_outputs):
         raise NotImplementedError()
 
-    def module_pre_backward_impl(self, activation: torch.Tensor, depth: int, name: str, step: int):
+    def post_forward_tensor_func(
+        self, activation_name: str, module_idx: Optional[int], run_ctx: _RuntimeStates, tensor: torch.Tensor
+    ) -> torch.Tensor:
         raise NotImplementedError()
+
+    # def module_post_forward(self, activation: torch.Tensor, depth: int, name: str, step: int):
+    #     """
+    #     This function will be run after the torch Module forward is completed.
+
+    #     Args:
+    #         activation: Tensor to be inspected.
+    #         depth: The indent level of the torch Module generating `activation`.
+    #         name: The unique name for the `activation`.
+    #         step: Current execution step.
+    #     """
+    #     if self._start_step <= step < self._end_step:
+    #         self.module_post_forward_impl(activation, depth, name, step)
+
+    # def module_pre_backward(self, activation: torch.Tensor, depth: int, name: str, step: int):
+    #     """
+    #     This function will be run before the torch Module backward run.
+
+    #     Args:
+    #         activation: Tensor to be inspected.
+    #         depth: The indent level of the torch Module generating `activation`.
+    #         name: The unique name for the `activation`.
+    #         step: Current execution step.
+    #     """
+    #     if self._start_step <= step < self._end_step:
+    #         self.module_pre_backward_impl(activation, depth, name, step)
+
+    # def module_post_forward_impl(self, activation: torch.Tensor, depth: int, name: str, step: int):
+    #     raise NotImplementedError()
+
+    # def module_pre_backward_impl(self, activation: torch.Tensor, depth: int, name: str, step: int):
+    #     raise NotImplementedError()

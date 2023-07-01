@@ -7,11 +7,96 @@ import os
 import shutil
 import warnings
 from pathlib import Path
-from typing import Union
+from typing import Optional, Union
 
 import torch
 
-from ._subscriber_base import SubscriberBase
+from ._subscriber_base import SubscriberBase, _RuntimeStates
+
+
+class _InspectActivation(torch.autograd.Function):
+    """
+    This class is used to run the subscriber's forward and backward functions.
+    The function will be called by two kinds of callers:
+        1. SubscriberManager calls it for each registered nn.Module.
+        2. Users who want to inspect the activation tensor at any place of model definition code.
+    """
+
+    @staticmethod
+    def forward(
+        ctx,
+        activation_name: str,
+        module_idx: Optional[int],
+        run_ctx: _RuntimeStates,
+        input_tensor: torch.Tensor,
+        output_dir: str,
+        run_on_cpu: bool,
+        bucket_size: int,
+    ):
+        """
+        Args:
+            ctx: context object to store intermediate information.
+            activation_name: the name of the activation tensor.
+            module_idx:
+                For call case 1 - the unique id of the module that the activation belongs to, it is detected by the
+                    SubscriberManager automatically.
+                For call case 2 - e.g, _InspectActivation is called by users (NOT by SubscriberManager), module_idx can
+                    be None.
+            run_ctx: runtime context.
+                For call case 2 - need retrieve the runtime state from GlobalSubscriberManager.
+            input_tensor: the activation tensor.
+
+        Make sure there is a same number of `tensor` type inputs and outputs.
+        This is enforced by ORT's PythonOp's schema check.
+        """
+        depth = -1
+        if module_idx is not None:
+            depth = run_ctx.global_states.module_index_to_depth[module_idx]
+
+        input_tensor_copied = None
+        if input_tensor is None or not isinstance(input_tensor, torch.Tensor):
+            input_tensor_copied = input_tensor
+        else:
+            input_tensor_copied = input_tensor.detach().clone()
+
+        ctx.current_step = run_ctx.global_states.execution_step
+        ctx.name = activation_name
+        ctx.id = module_idx
+        ctx.depth = depth
+        ctx.subscribers = run_ctx.global_states.subscribers
+        ctx.output_dir = output_dir
+        ctx.run_on_cpu = run_on_cpu
+        ctx.bucket_size = bucket_size
+
+        output_file_path = os.path.join(f"{output_dir}", f"step_{ctx.current_step}")
+        StatisticsSubscriber._summarize_activations(
+            input_tensor_copied, depth, activation_name, output_file_path, True, run_on_cpu, bucket_size
+        )
+
+        # # Run subscribers sequentially.
+        # for subscriber in run_ctx.global_states.subscribers:
+        #     subscriber.module_post_forward(input_tensor_copied, depth, activation_name, ctx.current_step)
+
+        return input_tensor.detach() if input_tensor is not None else None
+
+    @staticmethod
+    def backward(ctx, grad_output: torch.Tensor):
+        val = None
+        if grad_output is None or not isinstance(grad_output, torch.Tensor):
+            val = grad_output
+        else:
+            val = grad_output.detach().clone()
+
+        output_file_path = os.path.join(f"{ctx.output_dir}", f"step_{ctx.current_step}")
+
+        StatisticsSubscriber._summarize_activations(
+            val, ctx.depth, ctx.name, output_file_path, False, ctx.run_on_cpu, ctx.bucket_size
+        )
+
+        # for subscriber in ctx.subscribers:
+        #     subscriber.module_pre_backward(val, ctx.depth, ctx.name, ctx.current_step)
+
+        return None, None, None, grad_output.detach() if grad_output is not None else None, None, None, None
 
 
 class StatisticsSubscriber(SubscriberBase):
@@ -58,6 +143,7 @@ class StatisticsSubscriber(SubscriberBase):
         self._output_dir = output_dir
         self._run_on_cpu = run_on_cpu
         self._bucket_size = bucket_size
+
         if os.path.exists(self._output_dir):
             if override_output_dir:
                 warnings.warn(f"Output directory {self._output_dir} already exists, overriding it.")
@@ -68,15 +154,35 @@ class StatisticsSubscriber(SubscriberBase):
                     "Set override_output_dir=True for StatisticsSubscriber if this is the intention."
                 )
 
-    def module_post_forward_impl(self, activation: torch.Tensor, depth: int, name: str, step: int):
-        output_file_path = os.path.join(f"{self._output_dir}", f"step_{step}")
-        return self._summarize_activations(activation, depth, name, output_file_path, True)
+    def inspect_adhoc_activation(
+        self, activation_name: str, tensor: torch.Tensor, run_ctx: _RuntimeStates
+    ) -> torch.Tensor:
+        return _InspectActivation.apply(
+            activation_name, None, run_ctx, tensor, self._output_dir, self._run_on_cpu, self._bucket_size
+        )
 
-    def module_pre_backward_impl(self, activation: torch.Tensor, depth: int, name: str, step: int):
-        output_file_path = os.path.join(f"{self._output_dir}", f"step_{step}")
-        return self._summarize_activations(activation, depth, name, output_file_path, False)
+    def post_forward_module_func(self, module: torch.nn.Module, module_inputs, module_outputs):
+        return module_outputs
 
-    def _summarize_activations(self, tensor: torch.Tensor, depth: int, name: str, step_folder: str, is_forward: bool):
+    def post_forward_tensor_func(
+        self, activation_name: str, module_idx: Optional[int], run_ctx: _RuntimeStates, tensor: torch.Tensor
+    ) -> torch.Tensor:
+        if self._start_step <= run_ctx.global_states.execution_step < self._end_step:
+            return _InspectActivation.apply(
+                activation_name, module_idx, run_ctx, tensor, self._output_dir, self._run_on_cpu, self._bucket_size
+            )
+        return tensor
+
+    @staticmethod
+    def _summarize_activations(
+        tensor: torch.Tensor,
+        depth: int,
+        name: str,
+        step_folder: str,
+        is_forward: bool,
+        run_on_cpu: bool,
+        bucket_size: int,
+    ):
         display_name = name + " forward run" if is_forward is True else name + " backward run"
         output_file_name = name + "_forward" if is_forward is True else name + "_backward"
 
@@ -98,10 +204,10 @@ class StatisticsSubscriber(SubscriberBase):
         tensor_dtype = tensor.dtype
         flatten_array = tensor.flatten().view(-1)
 
-        if self._run_on_cpu:
+        if run_on_cpu:
             flatten_array = flatten_array.to("cpu")
 
-        if self._run_on_cpu:
+        if run_on_cpu:
             num_nan = torch.isnan(flatten_array).sum()
             num_inf = torch.isinf(flatten_array).sum()
             num_neg = (flatten_array < 0).sum()
@@ -114,7 +220,7 @@ class StatisticsSubscriber(SubscriberBase):
         else:
             # Split the calculation for each bucket, then do another round of calculation on the bucket results.
             # This can at the best effort reduce the peak memory impact.
-            bucket_size = self._bucket_size
+            bucket_size = bucket_size
             element_count = flatten_array.numel()
             ceil_bucket_count = (element_count + bucket_size - 1) // (bucket_size)
             nan_buckets = torch.zeros(ceil_bucket_count, dtype=torch.int64, device=flatten_array.device)
