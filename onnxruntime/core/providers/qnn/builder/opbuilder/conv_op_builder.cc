@@ -124,6 +124,7 @@ Status ConvOpBuilder::GetInputChannelNumber(QnnModelWrapper& qnn_model_wrapper,
 
 // TODO: bias is not required in QNN, but it failed for some case if remove this. That case has Weight as dynamic input
 // e.g. the Conv node test in Onnx repo like test_conv_with_autopad_same. Could be QNN issue, Still need to dig out more
+// TODO(adrian): Remove now???
 Status ConvOpBuilder::AddDefaultBias(QnnModelWrapper& qnn_model_wrapper,
                                      const uint32_t weight_m,
                                      const std::string& node_name,
@@ -164,7 +165,7 @@ Status ConvOpBuilder::GetOnnxInputInfo(const QnnModelWrapper& qnn_model_wrapper,
   // Fill in QNN data type.
   input_info.qnn_data_type = QNN_DATATYPE_FLOAT_32;
   // TODO: Doesn't need to be a method in BaseOpBuilder!!!!
-  ORT_RETURN_IF_ERROR(GetQnnDataType(is_quantized_model, input.node_arg.TypeAsProto(), input_info.qnn_data_type));
+  ORT_RETURN_IF_ERROR(utils::GetQnnDataType(is_quantized_model, input.node_arg.TypeAsProto(), input_info.qnn_data_type));
 
   // Fill in shape.
   ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(input.node_arg, input_info.shape), "Cannot get shape");
@@ -615,7 +616,7 @@ Status ConvOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wra
 
   const auto* type_proto = outputs[0].node_arg.TypeAsProto();
   Qnn_DataType_t qnn_data_type = QNN_DATATYPE_FLOAT_32;
-  ORT_RETURN_IF_ERROR(GetQnnDataType(is_quantized_model, type_proto, qnn_data_type));
+  ORT_RETURN_IF_ERROR(utils::GetQnnDataType(is_quantized_model, type_proto, qnn_data_type));
   ORT_RETURN_IF_NOT(qnn_model_wrapper.ProcessQuantizationParameter(outputs[0].quant_param,
                                                                    output_quantize_param.scaleOffsetEncoding.scale,
                                                                    output_quantize_param.scaleOffsetEncoding.offset),

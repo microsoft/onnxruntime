@@ -69,21 +69,6 @@ class BaseOpBuilder : public IOpBuilder {
                       bool is_quantized_model,
                       std::vector<std::string>& input_names) const ORT_MUST_USE_RESULT;
 
-  bool OnnxDataTypeToQnnDataType(const int32_t data_type, Qnn_DataType_t& qnn_data_type, bool is_quantized = false) const;
-
-  Status GetQnnDataType(const bool is_quantized_node, const ONNX_NAMESPACE::TypeProto* type_proto,
-                        Qnn_DataType_t& tensor_data_type) const {
-    if (!type_proto || !type_proto->tensor_type().has_elem_type()) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "The tensor doesn't have elem_type.");
-    }
-
-    int32_t onnx_data_type = type_proto->tensor_type().elem_type();
-    ORT_RETURN_IF_NOT(OnnxDataTypeToQnnDataType(onnx_data_type, tensor_data_type, is_quantized_node),
-                      "Failed to map Onnx data type to Qnn data type!");
-
-    return Status::OK();
-  }
-
   const std::string& GetNodeName(const NodeUnit& node_unit) const {
     const std::string& node_name(node_unit.Name());
     if (node_name.empty()) {
