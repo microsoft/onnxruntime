@@ -79,7 +79,7 @@ Status GemmOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
     ORT_RETURN_IF_ERROR(ExplictOpCheck(node_unit));
   }
   Qnn_QuantizeParams_t quantize_param = QNN_QUANTIZE_PARAMS_INIT;
-  InitializeQuantizeParam(quantize_param, is_quantized_model);
+  utils::InitializeQuantizeParam(quantize_param, is_quantized_model);
   Qnn_DataType_t qnn_data_type = QNN_DATATYPE_FLOAT_32;
 
   // for Input A, B, C: 1 -- need transpose, 0 -- not needed

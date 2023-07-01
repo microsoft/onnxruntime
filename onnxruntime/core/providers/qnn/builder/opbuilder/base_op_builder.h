@@ -228,13 +228,6 @@ class BaseOpBuilder : public IOpBuilder {
     return TransposeInitializer(qnn_model_wrapper, initializer, two_dim_trans_perm, transposed_data);
   }
 
-  void InitializeQuantizeParam(Qnn_QuantizeParams_t& quantize_param, bool is_quantized_model, float scale = 0.0f, int32_t offset = 0) const {
-    quantize_param.encodingDefinition = is_quantized_model ? QNN_DEFINITION_DEFINED : QNN_DEFINITION_UNDEFINED;
-    quantize_param.quantizationEncoding = is_quantized_model ? QNN_QUANTIZATION_ENCODING_SCALE_OFFSET : QNN_QUANTIZATION_ENCODING_UNDEFINED;
-    quantize_param.scaleOffsetEncoding.scale = scale;
-    quantize_param.scaleOffsetEncoding.offset = offset;
-  }
-
   // Onnx Pads is [x1_begin, x2_begin, x1_end, x2_end], QNN requires [x1_begin, x1_end, x2_begin, x2_end]
   void ReArranagePads(std::vector<int32_t>& pads) const {
     auto pads_size = pads.size();

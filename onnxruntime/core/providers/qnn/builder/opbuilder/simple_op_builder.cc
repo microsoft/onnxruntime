@@ -133,7 +133,7 @@ Status SimpleOpBuilder::ProcessAlphaAttributeAsInput(QnnModelWrapper& qnn_model_
     GetQuantizationParameter(&tensor_data.alpha, num_of_elements, scale, zero_point, thread_pool);
     unpacked_data.resize(1);
     ParQuantizeLinearStd(&tensor_data.alpha, unpacked_data.data(), num_of_elements, scale, zero_point, thread_pool);
-    InitializeQuantizeParam(quantize_param, is_quantized_model, scale, static_cast<int32_t>(zero_point));
+    utils::InitializeQuantizeParam(quantize_param, is_quantized_model, scale, static_cast<int32_t>(zero_point));
     qnn_data_type = QNN_DATATYPE_UFIXED_POINT_8;
   } else {
     unpacked_data.assign(tensor_data.unpack, tensor_data.unpack + sizeof(float));

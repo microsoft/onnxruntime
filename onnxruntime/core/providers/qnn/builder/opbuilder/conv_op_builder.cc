@@ -14,14 +14,6 @@
 namespace onnxruntime {
 namespace qnn {
 
-struct OnnxInputInfo {
-  std::vector<uint32_t> shape;
-  Qnn_DataType_t qnn_data_type;
-  Qnn_QuantizeParams_t quant_param;
-  bool is_initializer;
-  const ONNX_NAMESPACE::TensorProto* initializer_tensor;
-};
-
 class ConvOpBuilder : public BaseOpBuilder {
  public:
   ConvOpBuilder() : BaseOpBuilder("ConvOpBuilder") {}
@@ -62,16 +54,14 @@ class ConvOpBuilder : public BaseOpBuilder {
   Status GetInputChannelNumber(QnnModelWrapper& qnn_model_wrapper,
                                const NodeUnit& node_unit,
                                uint32_t& input_channel_number) const;
+#if 0
   Status AddDefaultBias(QnnModelWrapper& qnn_model_wrapper,
                         const uint32_t weight_m,
                         const std::string& node_name,
                         const bool is_quantized_model,
                         const logging::Logger& logger,
                         std::vector<std::string>& input_names) const;
-
-  // TODO: Does not need to be a method in this class. Remove GetQnnDataType from base class.
-  Status GetOnnxInputInfo(const QnnModelWrapper& qnn_model_wrapper, bool is_quantized_model, const NodeUnitIODef& input,
-                          OnnxInputInfo& input_info) const;
+#endif
 };
 
 // Conv, ConvTranspose ops are sensitive with data layout, no special validation so far
@@ -125,6 +115,7 @@ Status ConvOpBuilder::GetInputChannelNumber(QnnModelWrapper& qnn_model_wrapper,
 // TODO: bias is not required in QNN, but it failed for some case if remove this. That case has Weight as dynamic input
 // e.g. the Conv node test in Onnx repo like test_conv_with_autopad_same. Could be QNN issue, Still need to dig out more
 // TODO(adrian): Remove now???
+#if 0
 Status ConvOpBuilder::AddDefaultBias(QnnModelWrapper& qnn_model_wrapper,
                                      const uint32_t weight_m,
                                      const std::string& node_name,
@@ -141,7 +132,7 @@ Status ConvOpBuilder::AddDefaultBias(QnnModelWrapper& qnn_model_wrapper,
   LOGS(logger, VERBOSE) << "Add default bias: " << bias_name;
   Qnn_TensorType_t tensor_type = QNN_TENSOR_TYPE_STATIC;
   Qnn_QuantizeParams_t quantize_param = QNN_QUANTIZE_PARAMS_INIT;
-  InitializeQuantizeParam(quantize_param, is_quantized_model);
+  utils::InitializeQuantizeParam(quantize_param, is_quantized_model);
   QnnTensorWrapper bias_tensorwrapper(bias_name, tensor_type, qnn_data_type, quantize_param,
                                       std::move(bias_shape), std::move(default_bias_data));
 
@@ -149,35 +140,7 @@ Status ConvOpBuilder::AddDefaultBias(QnnModelWrapper& qnn_model_wrapper,
   input_names.push_back(bias_name);
   return Status::OK();
 }
-
-Status ConvOpBuilder::GetOnnxInputInfo(const QnnModelWrapper& qnn_model_wrapper, bool is_quantized_model, const NodeUnitIODef& input,
-                                       OnnxInputInfo& input_info) const {
-  const std::string& name = input.node_arg.Name();
-
-  // Fill in quantization param info.
-  input_info.quant_param = QNN_QUANTIZE_PARAMS_INIT;
-  InitializeQuantizeParam(input_info.quant_param, is_quantized_model);
-
-  // TODO: Doesn't need to be a method in QnnModelWrapper!!!!
-  ORT_RETURN_IF_NOT(qnn_model_wrapper.ProcessQuantizationParameter(input.quant_param,
-                                                                   input_info.quant_param.scaleOffsetEncoding.scale,
-                                                                   input_info.quant_param.scaleOffsetEncoding.offset));
-  // Fill in QNN data type.
-  input_info.qnn_data_type = QNN_DATATYPE_FLOAT_32;
-  // TODO: Doesn't need to be a method in BaseOpBuilder!!!!
-  ORT_RETURN_IF_ERROR(utils::GetQnnDataType(is_quantized_model, input.node_arg.TypeAsProto(), input_info.qnn_data_type));
-
-  // Fill in shape.
-  ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(input.node_arg, input_info.shape), "Cannot get shape");
-
-  // Fill in initializer info.
-  input_info.is_initializer = qnn_model_wrapper.IsInitializerInput(name);
-  if (input_info.is_initializer) {
-    input_info.initializer_tensor = qnn_model_wrapper.GetInitializerTensors().at(name);
-  }
-
-  return Status::OK();
-}
+#endif
 
 Status ConvOpBuilder::ProcessConv2DInputs(QnnModelWrapper& qnn_model_wrapper,
                                           const NodeUnit& node_unit,
@@ -203,7 +166,7 @@ Status ConvOpBuilder::ProcessConv2DInputs(QnnModelWrapper& qnn_model_wrapper,
   {
     const std::string& input1_name = inputs[1].node_arg.Name();
     OnnxInputInfo input_info = {};
-    ORT_RETURN_IF_ERROR(GetOnnxInputInfo(qnn_model_wrapper, is_quantized_model, inputs[1], input_info));
+    ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetOnnxInputInfo(inputs[1], is_quantized_model, input_info));
 
     std::string actual_name = input_info.is_initializer ? input1_name : input1_name + "_trans";
     input_names.push_back(actual_name);
@@ -295,7 +258,7 @@ Status ConvOpBuilder::ProcessConv1DInputs(QnnModelWrapper& qnn_model_wrapper,
   {
     const std::string& input0_name = inputs[0].node_arg.Name();
     OnnxInputInfo input0_info = {};
-    ORT_RETURN_IF_ERROR(GetOnnxInputInfo(qnn_model_wrapper, is_quantized_model, inputs[0], input0_info));
+    ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetOnnxInputInfo(inputs[0], is_quantized_model, input0_info));
 
     const std::string conv_input0_name = input0_info.is_initializer ? input0_name
                                                                     : input0_name + "_reshape_as_conv2d";
@@ -347,7 +310,7 @@ Status ConvOpBuilder::ProcessConv1DInputs(QnnModelWrapper& qnn_model_wrapper,
   {
     const std::string& input1_name = inputs[1].node_arg.Name();
     OnnxInputInfo input_info = {};
-    ORT_RETURN_IF_ERROR(GetOnnxInputInfo(qnn_model_wrapper, is_quantized_model, inputs[1], input_info));
+    ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetOnnxInputInfo(inputs[1], is_quantized_model, input_info));
 
     std::string conv_weight_input_name = input_info.is_initializer ? input1_name : input1_name + "_trans_qnn_ep";
     input_names.push_back(conv_weight_input_name);
@@ -612,7 +575,7 @@ Status ConvOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wra
   qnn_model_wrapper.AddParamWrapper(std::move(pad_amount_paramwrapper));
 
   Qnn_QuantizeParams_t output_quantize_param = QNN_QUANTIZE_PARAMS_INIT;
-  InitializeQuantizeParam(output_quantize_param, is_quantized_model);
+  utils::InitializeQuantizeParam(output_quantize_param, is_quantized_model);
 
   const auto* type_proto = outputs[0].node_arg.TypeAsProto();
   Qnn_DataType_t qnn_data_type = QNN_DATATYPE_FLOAT_32;

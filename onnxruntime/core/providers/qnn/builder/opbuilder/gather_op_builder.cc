@@ -162,7 +162,7 @@ Status GatherOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_w
   const auto& output_name = gather_output.node_arg.Name();
 
   Qnn_QuantizeParams_t quantize_param = QNN_QUANTIZE_PARAMS_INIT;
-  InitializeQuantizeParam(quantize_param, is_quantized_model);
+  utils::InitializeQuantizeParam(quantize_param, is_quantized_model);
 
   const auto* type_proto = gather_output.node_arg.TypeAsProto();
   Qnn_DataType_t qnn_data_type = QNN_DATATYPE_FLOAT_32;
