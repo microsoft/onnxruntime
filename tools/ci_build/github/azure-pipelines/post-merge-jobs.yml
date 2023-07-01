@@ -285,8 +285,6 @@ stages:
             --build_objc \
             --build_nodejs \
             --build_java \
-            --use_coreml \
-            --use_xnnpack \
             --build_dir $(Build.BinariesDirectory) \
             --update --skip_submodule_sync \
             --build --parallel \
