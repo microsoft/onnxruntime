@@ -355,6 +355,47 @@ bool QnnModelWrapper::ProcessQuantizationParameter(const std::optional<NodeUnitI
   return true;
 }
 
+Status QnnModelWrapper::AddReshapeNode(const std::string& input_name,
+                                       const std::string& output_name,
+                                       const std::vector<uint32_t>& input_shape,
+                                       const std::vector<uint32_t>& output_shape,
+                                       const Qnn_DataType_t& tensor_data_type,
+                                       const Qnn_QuantizeParams_t& quantize_param,
+                                       bool do_op_validation,
+                                       const bool is_for_input,
+                                       const bool is_for_output) {
+  // No need to add this for output nodes as it is added as output tensor for previous node
+  if (is_for_input) {
+    QnnTensorWrapper input_tensorwrapper(input_name,
+                                         QNN_TENSOR_TYPE_APP_WRITE,
+                                         tensor_data_type,
+                                         quantize_param,
+                                         std::vector<uint32_t>(input_shape));
+    ORT_RETURN_IF_NOT(AddTensorWrapper(std::move(input_tensorwrapper)),
+                      "QNN EP: Failed to add input tensor for inserted Reshape.");
+  }
+
+  Qnn_TensorType_t tensor_type = is_for_output ? QNN_TENSOR_TYPE_APP_READ : QNN_TENSOR_TYPE_NATIVE;
+  QnnTensorWrapper output_tensorwrapper(output_name,
+                                        tensor_type,
+                                        tensor_data_type,
+                                        quantize_param,
+                                        std::vector<uint32_t>(output_shape));
+  ORT_RETURN_IF_NOT(AddTensorWrapper(std::move(output_tensorwrapper)),
+                    "QNN EP: Failed to add output tensor for inserted Reshape.");
+
+  ORT_RETURN_IF_NOT(CreateQnnNode(output_name,
+                                  qnn_def::package_name,
+                                  QNN_OP_RESHAPE,
+                                  {input_name},
+                                  {output_name},
+                                  {},
+                                  do_op_validation),
+                    "QNN EP: Failed to create manually inserted Qnn Reshape node.");
+
+  return Status::OK();
+}
+
 Status QnnModelWrapper::AddTransposeNode(NodeIndex node_index,
                                          const std::string& input_name,
                                          const std::string& output_name,

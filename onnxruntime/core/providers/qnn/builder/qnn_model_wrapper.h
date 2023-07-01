@@ -105,6 +105,16 @@ class QnnModelWrapper {
     return input_index_map_.find(tensor_name) != input_index_map_.end();
   }
 
+  Status AddReshapeNode(const std::string& input_name,
+                        const std::string& output_name,
+                        const std::vector<uint32_t>& input_shape,
+                        const std::vector<uint32_t>& output_shape,
+                        const Qnn_DataType_t& tensor_data_type,
+                        const Qnn_QuantizeParams_t& quantize_param,
+                        bool do_op_validation,
+                        const bool is_for_input = true,
+                        const bool is_for_output = false);
+
   Status AddTransposeNode(NodeIndex node_index,
                           const std::string& input_name,
                           const std::string& output_name,
