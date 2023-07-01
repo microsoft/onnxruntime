@@ -571,7 +571,11 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             string[] strArray = new string[strings.Count];
             for (int i = 0; i < strings.Count; ++i)
             {
-                strArray[i] = System.Text.Encoding.UTF8.GetString(strings[i].ToByteArray());
+#if NET6_0_OR_GREATER
+                strArray[i] = Encoding.UTF8.GetString(strings[i].Span);
+#else
+                strArray[i] = Encoding.UTF8.GetString(strings[i].ToByteArray());
+#endif
             }
 
             var dt = new DenseTensor<string>(strArray, dimensions);
@@ -585,8 +589,10 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             {
                 for (int i = 0; i < strings.Count; ++i)
                 {
-                    var str = Encoding.UTF8.GetString(strings[i].ToByteArray());
-                    ortValue.FillStringTensorElement(str.AsSpan(), i);
+                    var srcSpan = strings[i].Span;
+                    var destSpan = ortValue.GetMutableStringElementAsSpan(srcSpan.Length, i);
+                    Assert.Equal(srcSpan.Length, destSpan.Length);
+                    srcSpan.CopyTo(destSpan);
                 }
                 return ortValue;
             }

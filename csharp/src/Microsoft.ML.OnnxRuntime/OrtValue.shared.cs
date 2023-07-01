@@ -261,6 +261,23 @@ namespace Microsoft.ML.OnnxRuntime
             }
         }
 
+        /// <summary>
+        /// This API resizes String Tensor element to the requested amount of bytes (UTF-8)
+        /// and returns a span to the resized buffer. This API is useful when you have UTF-8 data
+        /// that you want to quickly stick into the OrtValue native memory.
+        /// </summary>
+        /// <param name="bytesCount">requested buffer size in bytes</param>
+        /// <param name="index">flat index of the element in the string tensor</param>
+        /// <returns></returns>
+        public Span<byte> GetMutableStringElementAsSpan(int bytesCount, int index)
+        {
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtGetResizedStringTensorElementBuffer(Handle,
+                                  (UIntPtr)index, (UIntPtr)bytesCount, out IntPtr buffer));
+            unsafe
+            {
+                return new Span<byte>(buffer.ToPointer(), bytesCount);
+            }
+        }
 
         /// <summary>
         /// Convenience method to obtain all string tensor elements as a string array.
@@ -953,7 +970,7 @@ namespace Microsoft.ML.OnnxRuntime
 
             Debug.Assert(_handle != IntPtr.Zero);
             NativeMethods.OrtReleaseValue(_handle);
-           _handle = IntPtr.Zero;
+            _handle = IntPtr.Zero;
             _disposed = true;
         }
 
