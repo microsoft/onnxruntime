@@ -23,14 +23,18 @@ class TensorViewImpl implements TensorView {
     if (this.dataType !== DataType.float) {
       throw new Error('Invalid data type');
     }
-    return new Float32Array(this.module.HEAP8.buffer, this.data, ShapeUtil.size(this.dims));
+    const elementCount = ShapeUtil.size(this.dims);
+    return elementCount === 0 ? new Float32Array() :
+                                new Float32Array(this.module.HEAP8.buffer, this.data, elementCount);
   }
 
   getBigInt64Array(): BigInt64Array {
     if (this.dataType !== DataType.int64) {
       throw new Error('Invalid data type');
     }
-    return new BigInt64Array(this.module.HEAP8.buffer, this.data, ShapeUtil.size(this.dims));
+    const elementCount = ShapeUtil.size(this.dims);
+    return elementCount === 0 ? new BigInt64Array() :
+                                new BigInt64Array(this.module.HEAP8.buffer, this.data, elementCount);
   }
 
   reshape(newDims: readonly number[]): TensorView {
