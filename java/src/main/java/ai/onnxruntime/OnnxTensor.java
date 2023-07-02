@@ -4,6 +4,9 @@
  */
 package ai.onnxruntime;
 
+import java.lang.invoke.MethodHandle;
+import java.lang.invoke.MethodHandles;
+import java.lang.invoke.MethodType;
 import java.nio.Buffer;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
@@ -12,12 +15,49 @@ import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
 import java.nio.LongBuffer;
 import java.nio.ShortBuffer;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 /**
  * A Java object wrapping an OnnxTensor. Tensors are the main input to the library, and can also be
  * returned as outputs.
  */
 public class OnnxTensor extends OnnxTensorLike {
+  private static final Logger logger = Logger.getLogger(OnnxTensor.class.getName());
+
+  private static final MethodHandle fp16Tofp32;
+  private static final MethodHandle fp32ToFp16;
+
+  static {
+    MethodHandle tmp16 = null;
+    MethodHandle tmp32 = null;
+    MethodHandles.Lookup lookup = MethodHandles.lookup();
+    try {
+      // Attempt to lookup the Java 20 fp16 conversion methods.
+      tmp16 =
+          lookup.findStatic(
+              Float.class, "float16ToFloat", MethodType.methodType(float.class, short.class));
+      tmp32 =
+          lookup.findStatic(
+              Float.class, "floatToFloat16", MethodType.methodType(short.class, float.class));
+    } catch (IllegalAccessException | NoSuchMethodException e) {
+      // Must be on Java 19 or earlier, create handles for our methods.
+      try {
+        tmp16 =
+            lookup.findStatic(
+                OnnxTensor.class, "fp16ToFloat", MethodType.methodType(float.class, short.class));
+        tmp32 =
+            lookup.findStatic(
+                OnnxTensor.class, "floatToFp16", MethodType.methodType(short.class, float.class));
+      } catch (IllegalAccessException | NoSuchMethodException ex) {
+        // Should not happen
+        logger.log(Level.SEVERE, "Failed to find fp16 conversion methods on OnnxTensor", e);
+      }
+    }
+    fp16Tofp32 = tmp16;
+    fp32ToFp16 = tmp32;
+  }
+
   /**
    * This reference is held for OnnxTensors backed by a Java nio buffer to ensure the buffer does
    * not go out of scope while the OnnxTensor exists.
@@ -135,13 +175,7 @@ public class OnnxTensor extends OnnxTensorLike {
       if (info.onnxType == TensorInfo.OnnxTensorType.ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16) {
         // if it's fp16 we need to copy it out by hand.
         ShortBuffer buffer = getBuffer().asShortBuffer();
-        int bufferCap = buffer.capacity();
-        FloatBuffer output = FloatBuffer.allocate(bufferCap);
-        for (int i = 0; i < bufferCap; i++) {
-          output.put(fp16ToFloat(buffer.get(i)));
-        }
-        output.rewind();
-        return output;
+        return convertFp16BufferToFloatBuffer(buffer);
       } else {
         // if it's fp32 use the efficient copy.
         FloatBuffer buffer = getBuffer().asFloatBuffer();
@@ -153,6 +187,19 @@ public class OnnxTensor extends OnnxTensorLike {
     } else {
       return null;
     }
+  }
+
+  private static FloatBuffer convertFp16BufferToFloatBuffer(ShortBuffer buf) {
+    int bufferCap = buf.capacity();
+    FloatBuffer output = FloatBuffer.allocate(bufferCap);
+    try {
+      for (int i = 0; i < bufferCap; i++) {
+        output.put(i, (float) fp16Tofp32.invokeExact(buf.get(i)));
+      }
+    } catch (Throwable e) {
+      throw new RuntimeException(e);
+    }
+    return output;
   }
 
   /**
@@ -281,6 +328,37 @@ public class OnnxTensor extends OnnxTensorLike {
     int output =
         ((input & 0x8000) << 16) | (((input & 0x7c00) + 0x1C000) << 13) | ((input & 0x03FF) << 13);
     return Float.intBitsToFloat(output);
+  }
+
+  /**
+   * Rounds a float value to fp16.
+   *
+   * @param input A float value.
+   * @return The value rounded to an fp16 value.
+   */
+  static short floatToFp16(float input) {
+    return 0;
+  }
+
+  /**
+   * Converts a bf16 value stored in a short into a float value.
+   *
+   * @param input A uint16_t representing a bfloat16 value.
+   * @return A float.
+   */
+  static float bf16ToFloat(short input) {
+    int bits = input << 16;
+    return Float.intBitsToFloat(bits);
+  }
+
+  /**
+   * Converts a float into bf16 by truncation. May not produce correct values for subnormal floats.
+   *
+   * @param input The float input.
+   * @return A bfloat16 value which is closest to the float.
+   */
+  static short floatToBf16(float input) {
+    return (short) (Float.floatToIntBits(input) >> 16);
   }
 
   /**

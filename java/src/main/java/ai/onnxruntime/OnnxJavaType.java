@@ -1,12 +1,12 @@
 /*
- * Copyright (c) 2019, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2019, 2023, Oracle and/or its affiliates. All rights reserved.
  * Licensed under the MIT License.
  */
 package ai.onnxruntime;
 
 import ai.onnxruntime.TensorInfo.OnnxTensorType;
 
-/** An enum representing onnxruntime supported Java primitive types (and String). */
+/** An enum representing ONNX Runtime supported Java primitive types (and String). */
 public enum OnnxJavaType {
   FLOAT(1, float.class, 4),
   DOUBLE(2, double.class, 8),
