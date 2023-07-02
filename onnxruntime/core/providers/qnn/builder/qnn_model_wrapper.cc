@@ -395,16 +395,13 @@ Status QnnModelWrapper::AddReshapeNode(const std::string& input_name,
                                        bool do_op_validation,
                                        const bool is_for_input,
                                        const bool is_for_output) {
-  // No need to add this for output nodes as it is added as output tensor for previous node
-  if (is_for_input) {
-    QnnTensorWrapper input_tensorwrapper(input_name,
-                                         QNN_TENSOR_TYPE_APP_WRITE,
-                                         tensor_data_type,
-                                         quantize_param,
-                                         std::vector<uint32_t>(input_shape));
-    ORT_RETURN_IF_NOT(AddTensorWrapper(std::move(input_tensorwrapper)),
-                      "QNN EP: Failed to add input tensor for inserted Reshape.");
-  }
+  QnnTensorWrapper input_tensorwrapper(input_name,
+                                       is_for_input ? QNN_TENSOR_TYPE_APP_WRITE : QNN_TENSOR_TYPE_NATIVE,
+                                       tensor_data_type,
+                                       quantize_param,
+                                       std::vector<uint32_t>(input_shape));
+  ORT_RETURN_IF_NOT(AddTensorWrapper(std::move(input_tensorwrapper)),
+                    "QNN EP: Failed to add input tensor for inserted Reshape.");
 
   Qnn_TensorType_t tensor_type = is_for_output ? QNN_TENSOR_TYPE_APP_READ : QNN_TENSOR_TYPE_NATIVE;
   QnnTensorWrapper output_tensorwrapper(output_name,

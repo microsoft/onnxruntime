@@ -351,6 +351,22 @@ TEST_F(QnnHTPBackendTests, TestConvU8U8S32_AutoPadUpper) {
       1e-4f);
 }
 
+// Tests Conv1d auto_pad value "SAME_UPPER" on HTP backend (compares to CPU EP).
+TEST_F(QnnHTPBackendTests, TestConv1DU8U8S32_AutoPadUpper) {
+  RunHTPConvOpTest<uint8_t, uint8_t, int32_t, uint8_t>(
+      {1, 2, 4},     // input_shape
+      {1, 2, 2},     // weights_shape
+      true,          // is_bias_initializer
+      {1},           // strides
+      {0},           // pads
+      {1},           // dilations
+      "SAME_UPPER",  // auto_pad
+      ExpectedEPNodeAssignment::All,
+      "TestConv1DU8U8S32_AutoPadUpper",
+      13,
+      1e-4f);
+}
+
 // Tests auto_pad value "SAME_LOWER" on HTP backend (compares to CPU EP).
 TEST_F(QnnHTPBackendTests, TestConvU8U8S32_AutoPadLower) {
   RunHTPConvOpTest<uint8_t, uint8_t, int32_t, uint8_t>(
