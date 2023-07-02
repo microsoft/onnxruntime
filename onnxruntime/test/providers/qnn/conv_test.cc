@@ -335,6 +335,21 @@ TEST_F(QnnHTPBackendTests, TestQDQConvU8U8S32_bias_initializer) {
                                                        "TestQDQConvU8U8S32_bias_initializer");
 }
 
+// Check that QNN compiles DQ -> 1D Conv -> Q as a single unit.
+// Tests bias as an initializer.
+TEST_F(QnnHTPBackendTests, TestQDQConv1DU8U8S32_bias_initializer) {
+  RunHTPConvOpTest<uint8_t, uint8_t, int32_t, uint8_t>(
+      {1, 2, 4},  // input_shape
+      {1, 2, 2},  // filter_shape
+      true,       // is_bias_initializer
+      {1},        // strides
+      {0, 0},     // pads
+      {1},        // dilations
+      "NOTSET",
+      ExpectedEPNodeAssignment::All,
+      "TestQDQConv1DU8U8S32_bias_initializer");
+}
+
 // Tests auto_pad value "SAME_UPPER" on HTP backend (compares to CPU EP).
 TEST_F(QnnHTPBackendTests, TestConvU8U8S32_AutoPadUpper) {
   RunHTPConvOpTest<uint8_t, uint8_t, int32_t, uint8_t>(

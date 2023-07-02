@@ -135,7 +135,6 @@ Status ConvOpBuilder::ProcessConv2DInputs(QnnModelWrapper& qnn_model_wrapper,
   //
   // Input 1: weight
   //
-  uint32_t weight_m = 0;
   {
     const std::string& input1_name = inputs[1].node_arg.Name();
     OnnxInputInfo input_info = {};
@@ -155,7 +154,6 @@ Status ConvOpBuilder::ProcessConv2DInputs(QnnModelWrapper& qnn_model_wrapper,
     } else {
       ORT_THROW("Unexpected operator %s", onnx_op_type);
     }
-    weight_m = actual_shape.at(3);
 
     std::vector<uint8_t> unpacked_tensor;
     if (input_info.is_initializer) {
@@ -205,7 +203,7 @@ Status ConvOpBuilder::ProcessConv2DInputs(QnnModelWrapper& qnn_model_wrapper,
   //
   // Input 2: bias
   //
-  if (inputs.size() == 3) {
+  if (num_inputs == 3) {
     ORT_RETURN_IF_ERROR(ProcessInput(qnn_model_wrapper, inputs[2], logger, is_quantized_model, input_names));
   }
 
@@ -395,7 +393,7 @@ Status ConvOpBuilder::ProcessConv1DInputs(QnnModelWrapper& qnn_model_wrapper,
   //
   // Input 2: bias
   //
-  if (inputs.size() == 3) {
+  if (num_inputs == 3) {
     ORT_RETURN_IF_ERROR(ProcessInput(qnn_model_wrapper, inputs[2], logger, is_quantized_model, input_names));
   }
 
@@ -693,7 +691,7 @@ Status ConvOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wra
                                                       {conv_output_name},
                                                       std::move(param_tensor_names)),
                       "Failed to add node.");
-    // Add Reshape to convert QNN Conv2d/TransposeConv2d/DepthWiseConv2d output to 1D.
+    // Add Reshape to convert QNN Conv2d/TransposeConv2d/DepthWiseConv2d output back to 1D.
     ORT_RETURN_IF_ERROR(qnn_model_wrapper.AddReshapeNode(conv_output_name,
                                                          output_name,
                                                          output_shape_2d,
