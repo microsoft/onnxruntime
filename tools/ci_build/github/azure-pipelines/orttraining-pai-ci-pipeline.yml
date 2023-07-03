@@ -180,7 +180,7 @@ jobs:
               set -ex; \
               export PYTHONPATH=/build/$(BuildConfig); \
               python -m onnxruntime.training.ortmodule.torch_cpp_extensions.install; \
-              /onnxruntime_src/tools/ci_build/github/pai/pai_huggingface_bert_large_test.sh $(RocmVersion)"
+              bash /onnxruntime_src/tools/ci_build/github/pai/pai_huggingface_bert_large_test.sh $(RocmVersion)"
       workingDirectory: $(Build.SourcesDirectory)
     displayName: 'Run Python Hugging-Face BERT-L test'
     condition: and(succeededOrFailed(), eq(variables.onnxruntimeBuildSucceeded, 'true'))
