@@ -1,7 +1,8 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
-using Microsoft.ML.OnnxRuntime.Tensors;
+using System.Linq;
 
 namespace Microsoft.ML.OnnxRuntime.InferenceSample
 {
@@ -9,10 +10,10 @@ namespace Microsoft.ML.OnnxRuntime.InferenceSample
     {
         public InferenceSampleApi()
         {
-            model = LoadModelFromEmbeddedResource("TestData.squeezenet.onnx");
+            _model = LoadModelFromEmbeddedResource("TestData.squeezenet.onnx");
 
             // this is the data for only one input tensor for this model
-            var inputTensor = LoadTensorFromEmbeddedResource("TestData.bench.in");
+            var inputData = LoadTensorFromEmbeddedResource("TestData.bench.in");
 
             // create default session with default session options
             // Creating an InferenceSession and loading the model is an expensive operation, so generally you would
@@ -20,13 +21,21 @@ namespace Microsoft.ML.OnnxRuntime.InferenceSample
             CreateInferenceSession();
 
             // setup sample input data
-            inputData = new List<NamedOnnxValue>();
-            var inputMeta = inferenceSession.InputMetadata;
+            var inputMeta = _inferenceSession.InputMetadata;
+            _inputData = new List<OrtValue>(inputMeta.Count);
+            _orderedInputNames = new List<string>(inputMeta.Count);
+
             foreach (var name in inputMeta.Keys)
             {
-                // note: DenseTensor takes a copy of the provided data
-                var tensor = new DenseTensor<float>(inputTensor, inputMeta[name].Dimensions);
-                inputData.Add(NamedOnnxValue.CreateFromTensor<float>(name, tensor));
+                // We create an OrtValue in this case over the buffer of potentially different shapes.
+                // It is Okay as long as the specified shape does not exceed the actual length of the buffer
+                var shape = Array.ConvertAll<int, long>(inputMeta[name].Dimensions, Convert.ToInt64);
+                Debug.Assert(shape.Aggregate(1L, (a, v) => a * v) <= inputData.LongLength);
+
+                var ortValue = OrtValue.CreateTensorValueFromMemory(inputData, shape);
+                _inputData.Add(ortValue);
+
+                _orderedInputNames.Add(name);
             }
         }
 
@@ -40,30 +49,47 @@ namespace Microsoft.ML.OnnxRuntime.InferenceSample
                 options = new SessionOptions { LogId = "Sample" };
             }
 
-            inferenceSession = new InferenceSession(model, options);
+            _inferenceSession = new InferenceSession(_model, options);
         }
 
         public void Execute()
         {
             // Run the inference
-            // 'results' is an IDisposableReadOnlyCollection<DisposableNamedOnnxValue> container
-            using (var results = inferenceSession.Run(inputData))
+            // 'results' is an IDisposableReadOnlyCollection<OrtValue> container
+            using (var results = _inferenceSession.Run(null, _orderedInputNames, _inputData, _inferenceSession.OutputNames))
             {
                 // dump the results
-                foreach (var r in results)
+                for (int i = 0; i < results.Count; ++i)
                 {
-                    Console.WriteLine("Output for {0}", r.Name);
-                    Console.WriteLine(r.AsTensor<float>().GetArrayString());
+                    var name = _inferenceSession.OutputNames[i];
+                    Console.WriteLine("Output for {0}", name);
+                    // We can now access the native buffer directly from the OrtValue, no copy is involved.
+                    // Spans are structs and are stack allocated. They do not add any GC pressure.
+                    ReadOnlySpan<float> span = results[i].GetTensorDataAsSpan<float>();
+                    Console.Write($"Input {i} results:");
+                    for(int k = 0; k < span.Length; ++k)
+                    {
+                        Console.Write($" {span[k]}");
+                    }
+                    Console.WriteLine();
                 }
             }
         }
 
         protected virtual void Dispose(bool disposing)
         {
-            if (disposing && inferenceSession != null)
+            if (disposing && !_disposed)
             {
-                inferenceSession.Dispose();
-                inferenceSession = null;
+                _inferenceSession?.Dispose();
+                _inferenceSession = null;
+
+                if (_inputData != null)
+                    foreach(var v in _inputData)
+                    {
+                        v?.Dispose();
+                    }
+
+                _disposed = true;
             }
         }
 
@@ -110,8 +136,10 @@ namespace Microsoft.ML.OnnxRuntime.InferenceSample
             return model;
         }
 
-        private readonly byte[] model;
-        private readonly List<NamedOnnxValue> inputData;
-        private InferenceSession inferenceSession;
+        private bool _disposed = false;
+        private readonly byte[] _model;
+        private readonly List<string> _orderedInputNames;
+        private readonly List<OrtValue> _inputData;
+        private InferenceSession _inferenceSession;
     }
 }

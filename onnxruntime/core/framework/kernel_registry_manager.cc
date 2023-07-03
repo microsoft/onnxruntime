@@ -23,7 +23,8 @@ Status KernelRegistryManager::CreateKernel(const Node& node,
   OpKernelInfo kernel_info(node, *kernel_create_info.kernel_def, execution_provider,
                            session_state.GetConstantInitializedTensors(),
                            session_state.GetOrtValueNameIdxMap(),
-                           session_state.GetDataTransferMgr());
+                           session_state.GetDataTransferMgr(),
+                           session_state.GetAllocators());
 
   return kernel_create_info.kernel_create_func(session_state.GetMutableFuncMgr(), kernel_info, out);
 }

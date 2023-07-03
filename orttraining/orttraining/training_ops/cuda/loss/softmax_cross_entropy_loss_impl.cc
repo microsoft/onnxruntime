@@ -214,7 +214,7 @@ Status SoftmaxCrossEntropyLossGrad<T, TLabel, TOut>::ComputeInternal(OpKernelCon
                                                        p_weight ? &p_weight->Shape() : nullptr);
 
   // N_D = N * D1 * D2...Dk
-  int64_t N_D, C;
+  int64_t N_D = 0, C = 0;
   onnxruntime::contrib::GetNDCFromLogitAndLabelShape(probability_shape, label_shape, N_D, C);
   Tensor* d_logit = ctx->Output(0, probability_shape);
   const T* dY_data = dY.Data<T>();
@@ -295,8 +295,8 @@ Status SoftmaxCrossEntropyLossGrad<T, TLabel, TOut>::ComputeInternal(OpKernelCon
     onnxruntime::contrib::GetPermutationAndShape(false, logit_shape, new_shape, permutations);
     transpose_output.GetMutable<Tensor>()->Reshape(d_logit->Shape());
     d_logit->Reshape(logit_shape);
-    ORT_RETURN_IF_ERROR(cuda::Transpose::DoTranspose(cuda::Transpose(info), ctx->GetComputeStream(), permutations, *d_logit,
-                                                     *transpose_output.GetMutable<Tensor>()));
+    ORT_RETURN_IF_ERROR(cuda::Transpose::DoTranspose(cuda::Transpose(info), ctx->GetComputeStream(), permutations,
+                                                     *d_logit, *transpose_output.GetMutable<Tensor>()));
     auto* transposed_data = (*transpose_output.GetMutable<Tensor>()).template Data<TOut>();
     CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(d_logit_data, transposed_data, sizeof(TOut) * probability_shape.Size(),
                                          cudaMemcpyDeviceToDevice, Stream(ctx)));

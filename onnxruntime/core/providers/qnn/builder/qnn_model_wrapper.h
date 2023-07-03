@@ -113,6 +113,7 @@ class QnnModelWrapper {
                           const std::vector<uint32_t>& output_shape,
                           const Qnn_DataType_t& tensor_data_type,
                           const Qnn_QuantizeParams_t& quantize_param,
+                          bool do_op_validation,
                           const bool is_for_input = true,
                           const bool is_for_output = false);
 
@@ -124,12 +125,13 @@ class QnnModelWrapper {
                                 const std::vector<uint32_t>& output_shape,
                                 const Qnn_DataType_t& tensor_data_type,
                                 const Qnn_QuantizeParams_t& quantize_param,
+                                bool do_op_validation,
                                 const bool is_for_input = true,
                                 const bool is_for_output = false) {
     LOGS(logger_, VERBOSE) << "Add NCHW->HWCN Transpose node after Conv weight input: " << input_name
                            << " -> " << output_name;
     return AddTransposeNode(node_index, input_name, output_name, input_shape, nchw2hwcn_perm_, output_shape,
-                            tensor_data_type, quantize_param, is_for_input, is_for_output);
+                            tensor_data_type, quantize_param, do_op_validation, is_for_input, is_for_output);
   }
 
   // Tranpose CNHW->HWCN for QNN weight
@@ -140,12 +142,13 @@ class QnnModelWrapper {
                                 const std::vector<uint32_t>& output_shape,
                                 const Qnn_DataType_t& tensor_data_type,
                                 const Qnn_QuantizeParams_t& quantize_param,
+                                bool do_op_validation,
                                 const bool is_for_input = true,
                                 const bool is_for_output = false) {
     LOGS(logger_, VERBOSE) << "Add CNHW->HWCN Transpose node after ConvTranspose weight input: " << input_name
                            << " -> " << output_name;
     return AddTransposeNode(node_index, input_name, output_name, input_shape, cnhw2hwcn_perm_, output_shape,
-                            tensor_data_type, quantize_param, is_for_input, is_for_output);
+                            tensor_data_type, quantize_param, do_op_validation, is_for_input, is_for_output);
   }
 
   Status UnpackInitializerData(const ONNX_NAMESPACE::TensorProto& initializer,

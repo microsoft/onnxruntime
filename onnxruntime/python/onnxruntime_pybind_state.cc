@@ -151,7 +151,11 @@ const char* GetDeviceName(const OrtDevice& device) {
     case OrtDevice::FPGA:
       return "FPGA";
     case OrtDevice::NPU:
+#ifdef USE_CANN
+      return CANN;
+#else
       return "NPU";
+#endif
     default:
       ORT_THROW("Unknown device type: ", device.Type());
   }
@@ -380,7 +384,7 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
             nullptr,
             nullptr,
             nullptr,
-            nullptr};
+            0};
         for (auto option : it->second) {
           if (option.first == "device_id") {
             if (!option.second.empty()) {
@@ -597,6 +601,14 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
               params.trt_profile_opt_shapes = opt_profile.c_str();
             } else {
               ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_profile_opt_shapes' should be a string of 'input1:dim1xdimd2...,input2:dim1xdim2...,...'.\n");
+            }
+          } else if (option.first == "trt_cuda_graph_enable") {
+            if (option.second == "True" || option.second == "true") {
+              params.trt_cuda_graph_enable = true;
+            } else if (option.second == "False" || option.second == "false") {
+              params.trt_cuda_graph_enable = false;
+            } else {
+              ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_cuda_graph_enable' should be 'True' or 'False'. Default value is 'False'.\n");
             }
           } else {
             ORT_THROW("Invalid TensorRT EP option: ", option.first);
@@ -1020,6 +1032,14 @@ void addGlobalMethods(py::module& m) {
           throw std::runtime_error("Error when creating and registering allocator: " + st.ErrorMessage());
         }
       });
+  m.def(
+      "create_and_register_allocator_v2", [](const std::string& provider_type, const OrtMemoryInfo& mem_info, const ProviderOptions& options, const OrtArenaCfg* arena_cfg = nullptr) -> void {
+        auto env = GetEnv();
+        auto st = env->CreateAndRegisterAllocatorV2(provider_type, mem_info, options, arena_cfg);
+        if (!st.IsOK()) {
+          throw std::runtime_error("Error when creating and registering allocator in create_and_register_allocator_v2: " + st.ErrorMessage());
+        }
+      });
 
 #ifdef USE_OPENVINO
   m.def(
@@ -1143,6 +1163,7 @@ void addObjectMethods(py::module& m, ExecutionProviderRegistrationFn ep_registra
       .def("device_type", &OrtDevice::Type, R"pbdoc(Device Type.)pbdoc")
       .def_static("cpu", []() { return OrtDevice::CPU; })
       .def_static("cuda", []() { return OrtDevice::GPU; })
+      .def_static("cann", []() { return OrtDevice::NPU; })
       .def_static("fpga", []() { return OrtDevice::FPGA; })
       .def_static("npu", []() { return OrtDevice::NPU; })
       .def_static("default_memory", []() { return OrtDevice::MemType::DEFAULT; });

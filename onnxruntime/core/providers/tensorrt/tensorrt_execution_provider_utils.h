@@ -444,13 +444,22 @@ std::string GetCachePath(const std::string& root, const std::string& name) {
 }
 
 /*
+ * Get compute capability
+ *
+ */
+std::string GetComputeCapacity(const cudaDeviceProp& prop) {
+  const std::string compute_capability = std::to_string(prop.major * 10 + prop.minor);
+  return compute_capability;
+}
+
+/*
  * Get Timing by compute capability
  *
  */
 std::string GetTimingCachePath(const std::string& root, cudaDeviceProp prop) {
   // append compute capability of the GPU as this invalidates the cache and TRT will throw when loading the cache
-  const std::string timing_cache_name = "TensorrtExecutionProvider_cache_cc" +
-                                        std::to_string(prop.major * 10 + prop.minor) + ".timing";
+  const std::string timing_cache_name = "TensorrtExecutionProvider_cache_sm" +
+                                        GetComputeCapacity(prop) + ".timing";
   return GetCachePath(root, timing_cache_name);
 }
 

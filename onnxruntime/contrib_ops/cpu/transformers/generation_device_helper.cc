@@ -223,11 +223,13 @@ Status CreateGptInputs(
   return Status::OK();
 }
 
-Status AddToFeeds(const IExecutionProvider* /*execution_provider*/,
-                  Stream* /*ort_stream*/,
+Status AddToFeeds(Stream* /*ort_stream*/,
                   std::initializer_list<OrtValue> inputs,
                   std::vector<OrtValue>& feeds,
-                  IAllocatorUniquePtr<char>& /*buffer*/) {
+                  IAllocatorUniquePtr<char>& /*buffer*/,
+                  AllocatorPtr /*device_allocator*/,
+                  AllocatorPtr /*host_allocator*/,
+                  const OrtMemoryInfo& /*location*/) {
   for (auto& input : inputs) {
     if (input.IsAllocated()) {
       feeds.push_back(input);
@@ -278,7 +280,6 @@ void InitGreedyState(transformers::IGreedySearchState<T>* greedy_state,
 template <typename T>
 Status ProcessLogits(const OrtValue& logits,                                 // logits output of subgraph
                      transformers::IBeamSearchState<T>* beam_state,          // state
-                     transformers::IBeamSearchCpuState* cpu_state,           // state in CPU
                      transformers::ISequences* sequences,                    // sequences
                      AllocatorPtr& allocator,                                // default allocator
                      onnxruntime::concurrency::ThreadPool* thread_pool,      // thread pool (for CPU only)
@@ -288,7 +289,6 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
                      int step,                                               // iteration counter
                      Stream* stream,                                         // cuda stream (for CUDA only)
                      const transformers::IConsoleDumper* dumper) {           // tensor dumper
-  ORT_UNUSED_PARAMETER(cpu_state);
 #ifndef DEBUG_GENERATION
   ORT_UNUSED_PARAMETER(dumper);
 #endif
@@ -944,7 +944,6 @@ template void InitGreedyState<float>(
 template Status ProcessLogits<float>(
     const OrtValue& logits,
     transformers::IBeamSearchState<float>* beam_state,
-    transformers::IBeamSearchCpuState* cpu_state,
     transformers::ISequences* sequences,
     AllocatorPtr& allocator,
     onnxruntime::concurrency::ThreadPool* thread_pool,

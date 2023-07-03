@@ -5,6 +5,7 @@
 
 #include "core/providers/rocm/rocm_kernel.h"
 #include "contrib_ops/cpu/bert/attention_base.h"
+#include "contrib_ops/rocm/bert/attention_impl.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -17,6 +18,9 @@ class Attention final : public RocmKernel, public AttentionBase {
  public:
   Attention(const OpKernelInfo& info);
   Status ComputeInternal(OpKernelContext* context) const override;
+
+ public:
+  AttentionType attn_type_;
 };
 
 }  // namespace rocm

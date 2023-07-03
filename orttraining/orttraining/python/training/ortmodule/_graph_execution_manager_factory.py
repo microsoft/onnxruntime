@@ -10,7 +10,7 @@ from ._fallback import _FallbackManager
 from ._inference_manager import InferenceManager
 from ._io import _FlattenedModule
 from ._training_manager import TrainingManager
-from .debug_options import DebugOptions
+from .options import DebugOptions
 
 
 class GraphExecutionManagerFactory:

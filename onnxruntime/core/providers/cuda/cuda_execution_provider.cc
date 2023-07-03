@@ -128,7 +128,7 @@ AllocatorPtr CUDAExecutionProvider::CreateCudaAllocator(OrtDevice::DeviceId devi
                                                         size_t gpu_mem_limit,
                                                         ArenaExtendStrategy arena_extend_strategy,
                                                         CUDAExecutionProviderExternalAllocatorInfo external_allocator_info,
-                                                        OrtArenaCfg* default_memory_arena_cfg) {
+                                                        const OrtArenaCfg* default_memory_arena_cfg) {
   if (external_allocator_info.UseExternalAllocator()) {
     AllocatorCreationInfo default_memory_info(
         [external_allocator_info](OrtDevice::DeviceId id) {
@@ -172,11 +172,7 @@ CUDAExecutionProvider::PerThreadContext::PerThreadContext(OrtDevice::DeviceId de
   CUDNN_CALL_THROW(cudnnCreate(&cudnn_handle_));
   CUDNN_CALL_THROW(cudnnSetStream(cudnn_handle_, stream));
 
-#if defined(CUDA_VERSION) && CUDA_VERSION >= 10000
   cuda_graph_.SetStream(stream);
-#else
-  ORT_UNUSED_PARAMETER(stream);
-#endif
 }
 
 CUDAExecutionProvider::PerThreadContext::~PerThreadContext() {
@@ -185,7 +181,6 @@ CUDAExecutionProvider::PerThreadContext::~PerThreadContext() {
   ORT_IGNORE_RETURN_VALUE(CUDNN_CALL(cudnnDestroy(cudnn_handle_)));
 }
 
-#if defined(CUDA_VERSION) && CUDA_VERSION >= 10000
 bool CUDAExecutionProvider::PerThreadContext::IsGraphCaptureAllowed() const {
   return regular_run_count_before_graph_capture_ >= min_num_runs_before_cuda_graph_capture_;
 }
@@ -212,7 +207,6 @@ Status CUDAExecutionProvider::PerThreadContext::ReplayGraph() {
 void CUDAExecutionProvider::PerThreadContext::IncrementRegularRunCountBeforeGraphCapture() {
   ++regular_run_count_before_graph_capture_;
 }
-#endif
 
 void OverrideTunableOpInfoByEnv(CUDAExecutionProviderInfo& info) {
   if (auto env_tunable_op_enable = onnxruntime::ParseTestOnlyEnvironmentVariable<bool>(
@@ -370,22 +364,6 @@ void CUDAExecutionProvider::ReleasePerThreadContext() const {
   per_thread_context_cache->erase(cached_context_it);
 }
 
-AllocatorPtr CUDAExecutionProvider::GetAllocator(OrtMemType mem_type) const {
-  if (mem_type == OrtMemTypeDefault) {
-    auto cuda_alloc = IExecutionProvider::GetAllocator(mem_type);
-    if (!cuda_alloc) {
-      // this means the program invoke GetAllocator before RegsiterAllocators,
-      // which only happnens in some UTs.
-      // here is a hack to return another allocator instance.
-      // need to fix this in the future.
-      return CreateCudaAllocator(info_.device_id, info_.gpu_mem_limit, info_.arena_extend_strategy,
-                                 info_.external_allocator_info, info_.default_memory_arena_cfg);
-    }
-  }
-
-  return IExecutionProvider::GetAllocator(mem_type);
-}
-
 Status CUDAExecutionProvider::Sync() const {
   CUDA_RETURN_IF_ERROR(cudaDeviceSynchronize());
   return Status::OK();
@@ -434,7 +412,6 @@ Status CUDAExecutionProvider::OnRunEnd(bool sync_stream) {
   return Status::OK();
 }
 
-#if defined(CUDA_VERSION) && CUDA_VERSION >= 10000
 bool CUDAExecutionProvider::IsGraphCaptureEnabled() const {
   return info_.enable_cuda_graph;
 }
@@ -446,7 +423,6 @@ bool CUDAExecutionProvider::IsGraphCaptured() const {
 Status CUDAExecutionProvider::ReplayGraph() {
   return GetPerThreadContext().ReplayGraph();
 }
-#endif
 
 namespace cuda {
 // opset 1 to 9
@@ -2561,86 +2537,10 @@ CUDAExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
   return result;
 }
 
-void CUDAExecutionProvider::RegisterAllocator(AllocatorManager& allocator_manager) {
-  OrtDevice cuda_device{OrtDevice::GPU, OrtDevice::MemType::DEFAULT, info_.device_id};
-  OrtDevice pinned_device{OrtDevice::CPU, OrtDevice::MemType::CUDA_PINNED, DEFAULT_CPU_ALLOCATOR_DEVICE_ID};
-  OrtDevice cpu_device{OrtDevice::CPU, OrtDevice::MemType::DEFAULT, DEFAULT_CPU_ALLOCATOR_DEVICE_ID};
-
-  // setup CUDA allocator
-  // if EP is used in multiple inference sessions we may already have an allocator. if so use that.
-  // NOTE: We call IExecutionProvider::GetAllocator as CUDAExecutionProvider::GetAllocator will return
-  //       a per-thread allocator for OrtMemTypeDefault.
-  auto cuda_alloc = IExecutionProvider::GetAllocator(OrtMemTypeDefault);
-  if (!cuda_alloc) {
-    // use shared allocator if available
-    cuda_alloc = allocator_manager.GetAllocator(OrtMemTypeDefault, cuda_device);
-
-    if (!cuda_alloc) {
-      cuda_alloc = CreateCudaAllocator(info_.device_id, info_.gpu_mem_limit, info_.arena_extend_strategy,
-                                       info_.external_allocator_info, info_.default_memory_arena_cfg);
-      // enable sharing of our allocator
-      allocator_manager.InsertAllocator(cuda_alloc);
-    }
-
-    InsertAllocator(cuda_alloc);
-  }
-
-  // OrtMemTypeCPUOutput -- allocated by cudaMallocHost, used to copy CUDA device memory to CPU
-  // Use pinned memory instead of pageable memory make the data transfer faster
-  // Used by node MemcpyToHost only
-  auto cuda_pinned_alloc = IExecutionProvider::GetAllocator(OrtMemTypeCPUOutput);
-  if (!cuda_pinned_alloc) {
-    cuda_pinned_alloc = allocator_manager.GetAllocator(OrtMemTypeCPUOutput, pinned_device);
-
-    if (!cuda_pinned_alloc) {
-      AllocatorCreationInfo pinned_memory_info(
-          [](OrtDevice::DeviceId device_id) {
-            return std::make_unique<CUDAPinnedAllocator>(device_id, CUDA_PINNED);
-          },
-          // TODO: should we use info_.device_id instead of DEFAULT_CPU_ALLOCATOR_DEVICE_ID?
-          // https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__DEVICE.html#group__CUDART__DEVICE_1g159587909ffa0791bbe4b40187a4c6bb
-          // says the pinned memory allocated by cudaMallocHost is associated with a specific device, so it may be more
-          // correct to use the GPU device id, unless we wanted to share the pinned memory allocator across devices,
-          // at the risk the lifetime isn't managed correctly if one of those devices go away.
-          pinned_device.Id());
-
-      cuda_pinned_alloc = CreateAllocator(pinned_memory_info);
-      allocator_manager.InsertAllocator(cuda_pinned_alloc);
-    }
-
-    InsertAllocator(cuda_pinned_alloc);
-  }
-
-  // OrtMemTypeCPUInput -- op place the input on CPU and will not be accessed by CUDA kernel, no sync issue
-  auto cuda_cpu_alloc = IExecutionProvider::GetAllocator(OrtMemTypeCPUInput);
-  if (!cuda_cpu_alloc) {
-    cuda_cpu_alloc = allocator_manager.GetAllocator(OrtMemTypeCPUInput, cpu_device);
-
-    if (!cuda_cpu_alloc) {
-      // TODO: this is actually used for the cuda kernels which explicitly ask for inputs from CPU.
-      // This will be refactored/removed when allocator and execution provider are decoupled.
-      // Need to move the OrtMemoryType out of Allocator, that's one thing blocking us to share it with CPU EP
-      // CPUAllocator is OrtMemTypeDefault for CPU EP
-      AllocatorCreationInfo cpu_memory_info(
-          [](int device_id) {
-            return std::make_unique<CPUAllocator>(
-                OrtMemoryInfo("CUDA_CPU", OrtAllocatorType::OrtDeviceAllocator, OrtDevice(), device_id,
-                              OrtMemTypeCPUInput));
-          },
-          cpu_device.Id());
-
-      cuda_cpu_alloc = CreateAllocator(cpu_memory_info);
-      allocator_manager.InsertAllocator(cuda_cpu_alloc);
-    }
-
-    InsertAllocator(cuda_cpu_alloc);
-  }
-}
-
-void CUDAExecutionProvider::RegisterStreamHandlers(IStreamCommandHandleRegistry& stream_handle_registry) const {
+void CUDAExecutionProvider::RegisterStreamHandlers(IStreamCommandHandleRegistry& stream_handle_registry, AllocatorMap& allocators) const {
   // This allocator must be the same to the allocator
   // used in AllocateBufferOnCPUPinned.
-  auto allocator = GetAllocator(OrtMemTypeCPU);
+  auto allocator = allocators[GetOrtDeviceByMemType(OrtMemTypeCPU)];
   RegisterCudaStreamHandles(stream_handle_registry,
                             OrtDevice::GPU,
                             allocator,
@@ -2652,9 +2552,29 @@ void CUDAExecutionProvider::RegisterStreamHandlers(IStreamCommandHandleRegistry&
 }
 
 OrtDevice CUDAExecutionProvider::GetOrtDeviceByMemType(OrtMemType mem_type) const {
+  // TODO(leca): For CpuInput, return default OrtDevice to make it consistent with previous logic, otherwise, it will fail GradientCheckerTest.TileGrad
+  // in Windows training scenario. However, we need to figure out why PINNED memType fails
   if (mem_type == OrtMemTypeCPUInput) return OrtDevice();
   if (mem_type == OrtMemTypeCPUOutput) return OrtDevice(OrtDevice::CPU, OrtDevice::MemType::CUDA_PINNED, 0 /*CPU device id always be 0*/);
   return default_device_;
+}
+
+std::vector<AllocatorPtr> CUDAExecutionProvider::CreatePreferredAllocators() {
+  AllocatorCreationInfo pinned_memory_info(
+      [](OrtDevice::DeviceId) {
+        return std::make_unique<CUDAPinnedAllocator>(CUDA_PINNED);
+      },
+      // TODO: should we use info_.device_id instead of DEFAULT_CPU_ALLOCATOR_DEVICE_ID?
+      // https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__DEVICE.html#group__CUDART__DEVICE_1g159587909ffa0791bbe4b40187a4c6bb
+      // says the pinned memory allocated by cudaMallocHost is associated with a specific device, so it may be more
+      // correct to use the GPU device id, unless we wanted to share the pinned memory allocator across devices,
+      // at the risk the lifetime isn't managed correctly if one of those devices go away.
+      0);
+  return std::vector<AllocatorPtr>{
+      CreateCudaAllocator(info_.device_id, info_.gpu_mem_limit, info_.arena_extend_strategy,
+                          info_.external_allocator_info, info_.default_memory_arena_cfg),
+      CreateAllocator(pinned_memory_info),
+  };
 }
 
 }  // namespace onnxruntime

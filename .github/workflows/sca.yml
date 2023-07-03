@@ -3,10 +3,11 @@ on:
   push:
     branches:
       - main
+      - rel-*
   pull_request:
 
 concurrency:
-  group: ${{ github.head_ref || github.run_id }}
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
   cancel-in-progress: true
 
 env:
@@ -14,13 +15,13 @@ env:
   AZCOPY_MSI_CLIENT_ID: 63b63039-6328-442f-954b-5a64d124e5b4
 
 jobs:
-  Onnxruntime-SCA:
+  Onnxruntime-SCA-training-CUDA:
     runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-vs2022-mms"]
     steps:
       - uses: actions/checkout@v3
         with:
           submodules: false
-      - uses: actions/setup-python@v3
+      - uses: actions/setup-python@v4
         with:
           python-version: '3.11.x'
           architecture: 'x64'
@@ -32,6 +33,11 @@ jobs:
       - name: Download cuda
         run: azcopy.exe cp --recursive "https://lotusscus.blob.core.windows.net/models/cuda_sdk/v11.8" cuda_sdk
 
+
+      - name: Delete build folder
+        run: |
+          if (Test-Path D:\b) { Remove-Item -Recurse -Force D:\b }
+          &tools\ci_build\github\windows\install_third_party_deps.ps1 -cpu_arch x64 -install_prefix D:\b\Debug\installed -build_config Debug
 
       # The build machine doesn't have a GPU. So the value of CMAKE_CUDA_ARCHITECTURES doesn't matter.
       - name: Build code
@@ -49,3 +55,79 @@ jobs:
         with:
           sarif_file: ${{ github.workspace }}\output\MergeResult.sarif
           category: VS_SCA
+
+  # No python
+  Onnxruntime-SCA-win32-WINML-x64:
+    runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-vs2022-mms"]
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          submodules: false
+      - uses: actions/setup-python@v4
+        with:
+          python-version: '3.11.x'
+          architecture: 'x64'
+
+      - uses: actions/setup-node@v3
+        with:
+          node-version: 18
+
+      - name: Delete build folder
+        run: |
+          if (Test-Path D:\b) { Remove-Item -Recurse -Force D:\b }
+          &tools\ci_build\github\windows\install_third_party_deps.ps1 -cpu_arch x64 -install_prefix D:\b\Debug\installed -build_config Debug
+
+      # The build machine doesn't have a GPU. So the value of CMAKE_CUDA_ARCHITECTURES doesn't matter.
+      - name: Build code
+        env:
+           CAExcludePath: 'C:\Program Files;D:\b;${{ github.workspace }}\cmake'
+        run:  python tools\ci_build\build.py --enable_training --build_java --compile_no_warning_as_error --config Debug --build_dir D:\b --skip_submodule_sync --build_csharp --update --build --parallel --cmake_generator "Visual Studio 17 2022" --build_shared_lib --cmake_extra_defines onnxruntime_USE_CUSTOM_STATIC_ANALYSIS_RULES=ON --cmake_extra_defines onnxruntime_ENABLE_STATIC_ANALYSIS=ON --cmake_extra_defines onnxruntime_REDIRECT_STATIC_ANALYSIS_OUTPUTS_TO_FILE=ON --ms_experimental --use_dml --use_winml --disable_rtti --enable_wcos --build_shared_lib
+        
+      - name: Generate sarif
+        working-directory: D:\b
+        run: npx @microsoft/sarif-multitool merge *.sarif --recurse --output-directory=${{ github.workspace }}\output --output-file=MergeResult.sarif --merge-runs && dir ${{ github.workspace }}\output
+
+      - name: Upload SARIF to GitHub
+        uses: github/codeql-action/upload-sarif@v2
+        continue-on-error: true
+        with:
+          sarif_file: ${{ github.workspace }}\output\MergeResult.sarif
+          category: VS_SCA_WIN32_WINML_X64
+
+  # No java, No python
+  Onnxruntime-SCA-win32-WINML-x86:
+    runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-vs2022-mms"]
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          submodules: false
+      - uses: actions/setup-python@v4
+        with:
+          python-version: '3.11.x'
+          architecture: 'x86'
+
+      - uses: actions/setup-node@v3
+        with:
+          node-version: 18
+
+      - name: Delete build folder
+        run: |
+          if (Test-Path D:\b) { Remove-Item -Recurse -Force D:\b }
+          &tools\ci_build\github\windows\install_third_party_deps.ps1 -cpu_arch x86 -install_prefix D:\b\Debug\installed -build_config Debug
+
+      # The build machine doesn't have a GPU. So the value of CMAKE_CUDA_ARCHITECTURES doesn't matter.
+      - name: Build code
+        env:
+           CAExcludePath: 'C:\Program Files;D:\b;${{ github.workspace }}\cmake'
+        run:  python tools\ci_build\build.py --enable_training --compile_no_warning_as_error --config Debug --build_dir D:\b --skip_submodule_sync --build_csharp --update --build --parallel --cmake_generator "Visual Studio 17 2022" --build_shared_lib --cmake_extra_defines onnxruntime_USE_CUSTOM_STATIC_ANALYSIS_RULES=ON --cmake_extra_defines onnxruntime_ENABLE_STATIC_ANALYSIS=ON --cmake_extra_defines onnxruntime_REDIRECT_STATIC_ANALYSIS_OUTPUTS_TO_FILE=ON --ms_experimental --use_dml --use_winml --disable_rtti --enable_wcos --build_shared_lib
+        
+      - name: Generate sarif
+        working-directory: D:\b
+        run: npx @microsoft/sarif-multitool merge *.sarif --recurse --output-directory=${{ github.workspace }}\output --output-file=MergeResult.sarif --merge-runs && dir ${{ github.workspace }}\output
+
+      - name: Upload SARIF to GitHub
+        uses: github/codeql-action/upload-sarif@v2
+        continue-on-error: true
+        with:
+          sarif_file: ${{ github.workspace }}\output\MergeResult.sarif
+          category: VS_SCA_WIN32_WINML_X86

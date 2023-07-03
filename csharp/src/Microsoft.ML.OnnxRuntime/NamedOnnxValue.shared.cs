@@ -18,16 +18,19 @@ namespace Microsoft.ML.OnnxRuntime
     /// </summary>
     internal class MapHelper
     {
-        internal MapHelper(object keys, object values)
+        internal MapHelper(TensorBase keys, TensorBase values)
         {
             Keys = keys;
             Values = values;
         }
-        internal Object Keys { get; }   // DenseTensor<K>
-        internal Object Values { get; } // DenseTensor<V>
+        internal TensorBase Keys { get; }   // DenseTensor<K>
+        internal TensorBase Values { get; } // DenseTensor<V>
     }
 
     /// <summary>
+    /// This is a legacy class that is kept for backward compatibility.
+    /// Use OrtValue based API.
+    /// 
     /// The class associates a name with an Object. 
     /// The name of the class is a misnomer, it does not hold any Onnx values,
     /// just managed representation of them.
@@ -36,7 +39,7 @@ namespace Microsoft.ML.OnnxRuntime
     /// disposable, it can not hold on to any native objects.
     /// 
     /// When used as input, we temporarily create OrtValues that map managed inputs
-    /// directly. Thus we are able to avoid copying.
+    /// directly. Thus we are able to avoid copying of contiguous data.
     /// 
     /// For outputs, tensor buffers works the same as input, providing it matches
     /// the expected output shape. For other types (maps and sequences) we create a copy of the data.
@@ -44,7 +47,7 @@ namespace Microsoft.ML.OnnxRuntime
     /// the underlying OrtValues that must be destroyed before Run() returns.
     /// 
     /// To avoid data copying on output, use DisposableNamedOnnxValue class that is returned from Run() methods.
-    /// This provides access to the native memory and avoids copying.
+    /// This provides access to the native memory tensors and avoids copying.
     /// 
     /// It is a recursive structure that may contain Tensors (base case)
     /// Other sequences and maps. Although the OnnxValueType is exposed,
@@ -162,12 +165,14 @@ namespace Microsoft.ML.OnnxRuntime
             // The order in which Keys and Values are unspecified,
             // but it is guaranteed to be the same order
             // These tensors are 1-D
-            var keysMemory = new Memory<K>(value.Keys.ToArray<K>());
-            var keysTensor = new DenseTensor<K>(keysMemory, new int[1] { keysMemory.Length });
+            return CreateFromMap<K, V>(name, value.Keys, value.Values);
+        }
 
-            var valuesMemory = new Memory<V>(value.Values.ToArray<V>());
-            var valuesTensor = new DenseTensor<V>(valuesMemory, new int[1] { valuesMemory.Length });
-            return new NamedOnnxValue(name, value, new MapHelper(keysTensor, valuesTensor));
+        internal static NamedOnnxValue CreateFromMap<K, V>(string name, ICollection<K> keys, ICollection<V> values)
+        {
+            var keysTensor = new DenseTensor<K>(keys.ToArray(), new int[1] { keys.Count });
+            var valuesTensor = new DenseTensor<V>(values.ToArray(), new int[1] { values.Count });
+            return new NamedOnnxValue(name, values, new MapHelper(keysTensor, valuesTensor));
         }
 
         /// <summary>
@@ -221,12 +226,12 @@ namespace Microsoft.ML.OnnxRuntime
         /// both OrtValue and pinnedMemoryHandle
         /// </summary>
         /// <param name="pinnedMemoryHandle">dispose after returned OrtValus is disposed</param>
-        /// <returns>an instance of OrtValue. The lifespan of OrtValue must overlap pinnedMemoryHandle</returns>
-        internal virtual OrtValue InputToOrtValue(NodeMetadata metadata, out IDisposable memoryOwner)
+        /// <returns>The native OrtValue handle</returns>
+        internal virtual IntPtr InputToOrtValueHandle(NodeMetadata metadata, out IDisposable memoryOwner)
         {
-            var projection = new ManagedTypeProjection(this, metadata);
+            var projection = ManagedTypeProjection.CreateProjection(this, metadata);
             memoryOwner = projection;
-            return projection.Value;
+            return projection.Handle;
         }
 
         /// <summary>
@@ -239,15 +244,15 @@ namespace Microsoft.ML.OnnxRuntime
         /// <param name="metadata"></param>
         /// <param name="memoryOwner"></param>
         /// <returns></returns>
-        internal virtual OrtValue OutputToOrtValue(NodeMetadata metadata, out IDisposable memoryOwner)
+        internal virtual IntPtr OutputToOrtValueHandle(NodeMetadata metadata, out IDisposable memoryOwner)
         {
             // For NamedOnnxValue for output we only allow to produce OrtValue for tensors
             // or optional type that may contain a tensor
             if (metadata.OnnxValueType == OnnxValueType.ONNX_TYPE_TENSOR)
             {
-                var projection = new ManagedTypeProjection(this, metadata);
+                var projection = ManagedTypeProjection.CreateProjection(this, metadata);
                 memoryOwner = projection;
-                return projection.Value;
+                return projection.Handle;
             }
 
             if (metadata.OnnxValueType == OnnxValueType.ONNX_TYPE_OPTIONAL)
@@ -255,9 +260,9 @@ namespace Microsoft.ML.OnnxRuntime
                 var meta = metadata.AsOptionalMetadata().ElementMeta;
                 if (meta.OnnxValueType == OnnxValueType.ONNX_TYPE_TENSOR)
                 {
-                    var projection = new ManagedTypeProjection(this, meta);
+                    var projection = ManagedTypeProjection.CreateProjection(this, metadata);
                     memoryOwner = projection;
-                    return projection.Value;
+                    return projection.Handle;
                 }
             }
 
@@ -273,7 +278,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// </summary>
         /// <typeparam name="K"></typeparam>
         /// <returns>DenseTensor<K>"</returns>
-        internal Object GetDictionaryKeys()
+        internal TensorBase GetDictionaryKeys()
         {
             if (ValueType != OnnxValueType.ONNX_TYPE_MAP)
             {
@@ -289,7 +294,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// </summary>
         /// <typeparam name="V"></typeparam>
         /// <returns>DenseTensor<V>"</returns>
-        internal Object GetDictionaryValues()
+        internal TensorBase GetDictionaryValues()
         {
             if (ValueType != OnnxValueType.ONNX_TYPE_MAP)
             {
@@ -299,8 +304,5 @@ namespace Microsoft.ML.OnnxRuntime
             Debug.Assert(_mapHelper != null);
             return _mapHelper.Values;
         }
-
-        // may expose different types of getters in future
-
     }
 }

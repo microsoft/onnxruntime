@@ -116,7 +116,7 @@ Status T5EncoderSubgraph::CreateInitialFeeds(
   AllocatorPtr cpu_allocator = session_state_->GetAllocator(original_encoder_input_ids.Location());
   if (cpu_allocator == nullptr) {
     const IExecutionProvider* provider = GetProvider();
-    cpu_allocator = provider->GetAllocator(OrtMemTypeDefault);
+    cpu_allocator = session_state_->GetAllocator(provider->GetOrtDeviceByMemType(OrtMemTypeDefault));
   }
   ORT_RETURN_IF(cpu_allocator == nullptr, "cpu_allocator shouldn't be nullptr");
 
@@ -133,12 +133,17 @@ Status T5EncoderSubgraph::CreateInitialFeeds(
                                                  decoder_input_ids));
 
   const IExecutionProvider* provider = GetProvider();
+  AllocatorPtr default_allocator = session_state_->GetAllocator(provider->GetOrtDeviceByMemType(OrtMemTypeDefault));
+  AllocatorPtr pinned_allocator = session_state_->GetAllocator(provider->GetOrtDeviceByMemType(OrtMemTypeCPU));
+  const OrtMemoryInfo& location = default_allocator->Info();
   ORT_RETURN_IF_ERROR(add_to_feeds_func(
-      provider,
       ort_stream,
       {encoder_input_ids, encoder_attention_mask, decoder_input_ids},
       feeds,
-      buffer));
+      buffer,
+      default_allocator,
+      pinned_allocator,
+      location));
 
   for (const auto* entry : implicit_inputs) {
     feeds.push_back(*entry);
