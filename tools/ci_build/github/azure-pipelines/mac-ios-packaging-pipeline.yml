@@ -191,44 +191,6 @@ jobs:
         --token $(app_center_api_token)
     displayName: "[Full] Run E2E tests on App Center"
 
-  # create and test training pods
-  - script: |
-      python tools/ci_build/github/apple/build_and_assemble_ios_pods.py \
-        --build-dir "$(Build.BinariesDirectory)/ios_framework_training" \
-        --staging-dir "$(Build.BinariesDirectory)/staging" \
-        --pod-version "${ORT_POD_VERSION}" \
-        --test \
-        --variant Training \
-        --build-settings-file tools/ci_build/github/apple/default_full_ios_training_framework_build_settings.json \
-        -b="--path_to_protoc_exe" -b "$(Build.BinariesDirectory)/protobuf_install/bin/protoc"
-    displayName: "[Training] Build iOS framework and assemble pod package files"
-
-  - script: |
-      python tools/ci_build/github/apple/test_ios_packages.py \
-        --fail_if_cocoapods_missing \
-        --framework_info_file "$(Build.BinariesDirectory)/ios_framework_training/framework_info.json" \
-        --c_framework_dir "$(Build.BinariesDirectory)/ios_framework_training/framework_out" \
-        --variant Training \
-        --test_project_stage_dir "$(Build.BinariesDirectory)/app_center_test_training" \
-        --prepare_test_project_only
-    displayName: "[Training] Assemble test project for App Center"
-
-  - task: Xcode@5
-    inputs:
-      actions: 'build-for-testing'
-      configuration: 'Debug'
-      xcWorkspacePath: '$(Build.BinariesDirectory)/app_center_test_training/ios_package_test/ios_package_test.xcworkspace'
-      sdk: 'iphoneos'
-      scheme: 'ios_package_test'
-      xcodeVersion: 'specifyPath'
-      xcodeDeveloperDir: '/Applications/Xcode_${{ variables.xcodeVersion }}.app/Contents/Developer'
-      signingOption: 'manual'
-      signingIdentity: '$(APPLE_CERTIFICATE_SIGNING_IDENTITY)'
-      provisioningProfileName: 'iOS Team Provisioning Profile'
-      args: '-derivedDataPath $(Build.BinariesDirectory)/app_center_test_training/ios_package_test/DerivedData'
-      workingDirectory: $(Build.BinariesDirectory)/app_center_test_training/ios_package_test/
-    displayName: '[Training] Build iphone arm64 tests'
-
   - script: |
       set -e -x
       appcenter test run xcuitest \
