@@ -2544,7 +2544,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
       // Check whether the IExecutionContext object is existed in the map for specific thread.
       // Note: The first inference run for specific thread has not have the IExecutionContext object yet,
       // so it needs to build the execution context.
-      if (!GetPerThreadContext().IsTensorRTContextInMap(fsued_node_name)) {
+      if (!GetPerThreadContext().IsTensorRTContextInMap(fused_node_name)) {
         context_update = true;
       }
 
