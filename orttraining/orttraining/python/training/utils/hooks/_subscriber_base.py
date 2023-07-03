@@ -75,13 +75,23 @@ class SubscriberBase:
         self._start_step: int = start_step if start_step is not None else 0
         self._end_step: int = end_step if end_step is not None else sys.maxsize
 
+    # Pre-forward hooks
+    def pre_forward_module_func(self, module: torch.nn.Module, module_inputs):
+        return module, module_inputs
+
+    def pre_forward_tensor_func(
+        self, activation_name: str, module_idx: Optional[int], run_ctx: _RuntimeStates, input_tensor: torch.Tensor
+    ) -> torch.Tensor:
+        return input_tensor
+
+    # Post-forward hooks
     def post_forward_module_func(self, module: torch.nn.Module, module_inputs, module_outputs):
-        raise NotImplementedError()
+        return module, module_inputs, module_outputs
 
     def post_forward_tensor_func(
-        self, activation_name: str, module_idx: Optional[int], run_ctx: _RuntimeStates, tensor: torch.Tensor
+        self, activation_name: str, module_idx: Optional[int], run_ctx: _RuntimeStates, output_tensor: torch.Tensor
     ) -> torch.Tensor:
-        raise NotImplementedError()
+        return output_tensor
 
     # def module_post_forward(self, activation: torch.Tensor, depth: int, name: str, step: int):
     #     """
@@ -114,3 +124,46 @@ class SubscriberBase:
 
     # def module_pre_backward_impl(self, activation: torch.Tensor, depth: int, name: str, step: int):
     #     raise NotImplementedError()
+
+
+class _ORTTensorInspector(torch.autograd.Function):
+    """
+    This class is used to run the subscriber's forward and backward functions.
+    The function will be called by two kinds of callers:
+        1. SubscriberManager calls it for each registered nn.Module.
+        2. Users who want to inspect the activation tensor at any place of model definition code.
+    """
+
+    @staticmethod
+    def forward(
+        ctx,
+        forward_tensor_func,
+        backward_tensor_func,
+        activation_name: str,
+        module_idx: Optional[int],
+        run_ctx: _RuntimeStates,
+        tensor: torch.Tensor,
+        *args,
+    ):
+        """
+        Args:
+            ctx: context object to store intermediate information.
+            activation_name: the name of the activation tensor.
+            module_idx:
+                For call case 1 - the unique id of the module that the activation belongs to, it is detected by the
+                    SubscriberManager automatically.
+                For call case 2 - e.g, _ORTTensorInspector is called by users (NOT by SubscriberManager), module_idx can
+                    be None.
+            run_ctx: runtime context.
+                For call case 2 - need retrieve the runtime state from GlobalSubscriberManager.
+            input_tensor: the activation tensor.
+
+        Make sure there is a same number of `tensor` type inputs and outputs.
+        This is enforced by ORT's PythonOp's schema check.
+        """
+        ctx.backward_tensor_func = backward_tensor_func
+        return forward_tensor_func(ctx, activation_name, module_idx, run_ctx, tensor, *args)
+
+    @staticmethod
+    def backward(ctx, grad_output: torch.Tensor):
+        return ctx.backward_tensor_func(ctx, grad_output)

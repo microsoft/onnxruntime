@@ -309,7 +309,7 @@ void IterateSubgraphFromNode(Graph& graph,
         continue;
       }
       auto func_name = static_cast<std::string>(cur->GetAttributes().at("name").s());
-      if (func_name == "_InspectActivation" || func_name == "_IncrementStep") {
+      if (func_name == "_ORTTensorInspector" || func_name == "_IncrementStep") {
         subgraph.insert(cur->MutableOutputDefs()[1]);
         PushAllOutputNode(graph, to_visit, cur, visited);
       } else {

@@ -131,8 +131,8 @@ def _export_pt_1_10(g, n, *args, **kwargs):
                             ORTModuleONNXModelException, Exception(f"Unknown argument type found: {type(arg)}.")
                         )
                 else:
-                    if name == "_InspectActivation" and isinstance(arg, str):
-                        # _InspectActivation is a special case where the first argument is a string
+                    if name == "_ORTTensorInspector" and isinstance(arg, str):
+                        # _ORTTensorInspector is a special case where the first argument is a string
                         # that is used to determine the activation name to be inspected.
                         debug_comment += arg
 

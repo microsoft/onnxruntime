@@ -44,12 +44,12 @@ class _IncrementStep(torch.autograd.Function):
         #                                 /                         \
         #  OuterMostModuleOutputs_0_0th_output             OuterMostModuleOutputs_0_1th_output
         #                    |                                            |
-        #         PythonOp(_InspectActivation)                  PythonOp(_InspectActivation)
+        #         PythonOp(_ORTTensorInspector)                  PythonOp(_ORTTensorInspector)
         #                    |                                            |
         #          PythonOp(_IncrementStep)                           graph output
         #                    |
         #                graph output
-        # The PythonOp(_InspectActivation) (who relies on global step) after 1th output is possible
+        # The PythonOp(_ORTTensorInspector) (who relies on global step) after 1th output is possible
         # to run before or after PythonOp(_IncrementStep), so increasing the step is not safe.
 
         return input_tensor.detach() if isinstance(input_tensor, torch.Tensor) else input_tensor
@@ -122,7 +122,7 @@ class SubscriberManager:
 
         next_module_index = [0]
         # Register post forward hook for every module, inside the hook, we loop every tensor output of the module,
-        # and wrap it with an autograd Function called _InspectActivation (which takes in a tensor and returns the same
+        # and wrap it with an autograd Function called _ORTTensorInspector (which takes in a tensor and returns the same
         # tensor). In this way, we keep ORT and PyTorch run have the same boundary to check activation equality.
         self._register_hooks_recursively(module, 1, next_module_index)
 
@@ -165,14 +165,16 @@ class SubscriberManager:
 
                 # First call post_forward_module_func for all subscribers
                 for subscriber in self._run_ctx.global_states.subscribers:
-                    module_outputs = subscriber.post_forward_module_func(module, module_inputs, module_outputs)
+                    module, module_inputs, module_outputs = subscriber.post_forward_module_func(
+                        module, module_inputs, module_outputs
+                    )
 
                 # Then call post_forward_tensor_func for all subscribers
                 def _apply_to_tensors_func(index, activation_tensor):
                     name = f"{module.__class__.__name__}_{module_index}_{index}th_output"
                     if name not in self._run_ctx.execution_step_states.observed_activation_names:
                         self._run_ctx.execution_step_states.observed_activation_names[name] = True
-                        # return _InspectActivation.apply(name, module_index, self._run_ctx, activation_tensor)
+                        # return _ORTTensorInspector.apply(name, module_index, self._run_ctx, activation_tensor)
                         for subscriber in self._run_ctx.global_states.subscribers:
                             activation_tensor = subscriber.post_forward_tensor_func(
                                 name, module_index, self._run_ctx, activation_tensor

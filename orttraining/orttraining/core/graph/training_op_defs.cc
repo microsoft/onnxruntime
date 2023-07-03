@@ -3918,8 +3918,8 @@ Return true if all elements are true and false otherwise.
         ORT_ENFORCE(output_tensor_types_proto, "PythonOp's must have \"output_tensor_types\" attribute.");
 
         std::string func_name = getAttribute(ctx, "name", "");
-        if (func_name == "_InspectActivation" || func_name == "_IncrementStep") {
-          // PythonOp with the name attribute being "_InspectActivation" or "_IncrementStep" will behave exactly the
+        if (func_name == "_ORTTensorInspector" || func_name == "_IncrementStep") {
+          // PythonOp with the name attribute being "_ORTTensorInspector" or "_IncrementStep" will behave exactly the
           // same as a normal PythonOp when execution. The only difference is that:
           // 1). those ops having the same number of tensor inputs and tensor outputs;
           // 2). and the i-th output tensor's shape is the same as i-th input tensor's shape.
@@ -4063,8 +4063,8 @@ Return true if all elements are true and false otherwise.
         ORT_ENFORCE(output_tensor_types_proto, "PythonOpGrad's must have \"output_tensor_types\" attribute.");
 
         std::string func_name = getAttribute(ctx, "name", "");
-        if (func_name == "_InspectActivation" || func_name == "_IncrementStep") {
-          // PythonOpGrad with name attribute being "_InspectActivation" or "_IncrementStep" will behave exactly
+        if (func_name == "_ORTTensorInspector" || func_name == "_IncrementStep") {
+          // PythonOpGrad with name attribute being "_ORTTensorInspector" or "_IncrementStep" will behave exactly
           // the same as a normal PythonOpGrad when execution. The only difference is that:
           // 1). those ops having the same number of tensor inputs and tensor outputs;
           // 2). and the i-th output tensor's shape is same as i-th input tensor's shape.
