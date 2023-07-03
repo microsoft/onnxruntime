@@ -40,7 +40,7 @@ A [demonstration](https://github.com/amd/RyzenAI-cloud-to-client-demo) is availa
 ## Install
 
 ### AMD Adaptable SoC Installation
-For AMD Adaptable SoC targets, a pre-built package is provided to deploy ONNX models on embedded Linux.  Users should refer to the standard Vitis AI [Target Setup Instructions](https://xilinx.github.io/Vitis-AI/docs/board_setup/board_setup.html) to enable Vitis AI on the target.  Once Vitis AI has been enabled on the target, the developer can refer to [this section](https://docs.xilinx.com/r/en-US/ug1414-vitis-ai/Programming-with-VOE) of the Vitis AI documentation for installation and API details.
+For AMD Adaptable SoC targets, a pre-built package is provided to deploy ONNX models on embedded Linux.  Users should refer to the standard Vitis AI [Target Setup Instructions](https://xilinx.github.io/Vitis-AI/3.0/html/docs/workflow.html) to enable Vitis AI on the target.  Once Vitis AI has been enabled on the target, the developer can refer to [this section](https://docs.xilinx.com/r/en-US/ug1414-vitis-ai/Programming-with-VOE) of the Vitis AI documentation for installation and API details.
 
 For more complete examples, developers should refer to [ONNX Runtime Vitis AI Execution Provider examples](https://github.com/Xilinx/Vitis-AI/tree/master/examples/vai_library/samples_onnx).
 
@@ -124,7 +124,7 @@ In the current release (3.0), the Vitis AI Quantizer supports quantization of Py
 
 With the future release of Vitis AI 3.5, available mid 2023, the Vitis AI Quantizer will enable parsing and quantization of ONNX models, enabling an end-to-end ONNX model -> ONNX Runtime workflow.  Also, in a future release, the Vitis AI ONNX Runtime Execution Provider will support on-the-fly quantization, enabling direct deployment of FP32 ONNX models.
 
-See [Vitis AI Model Quantization](https://xilinx.github.io/Vitis-AI/docs/workflow-model-development.html#model-quantization) for details.
+See [Vitis AI Model Quantization](https://xilinx.github.io/Vitis-AI/3.0/html/docs/workflow-model-development.html#model-quantization) for details.
 
 ### Olive
 
