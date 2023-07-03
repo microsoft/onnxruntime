@@ -611,7 +611,7 @@ else()
     endif()
   endif()
 
-  # enable shorten-64-to-32
+  # enable warning(s) that may not be on by default
   if (HAS_SHORTEN_64_TO_32)
     list(APPEND ORT_WARNING_FLAGS -Wshorten-64-to-32)
   endif()
