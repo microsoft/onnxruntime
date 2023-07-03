@@ -7,10 +7,10 @@ import {iterateExtraOptions} from './options-utils';
 import {allocWasmString} from './string-utils';
 import {getInstance} from './wasm-factory';
 
-export const setRunOptions = (options: InferenceSession.RunOptions): [number, number[]] => {
+export const setRunOptions = (options: InferenceSession.RunOptions): [bigint, bigint[]] => {
   const wasm = getInstance();
-  let runOptionsHandle = 0;
-  const allocs: number[] = [];
+  let runOptionsHandle = BigInt(0);
+  const allocs: bigint[] = [];
 
   const runOptions: InferenceSession.RunOptions = options || {};
 
@@ -33,7 +33,7 @@ export const setRunOptions = (options: InferenceSession.RunOptions): [number, nu
       runOptions.terminate = false;
     }
 
-    let tagDataOffset = 0;
+    let tagDataOffset = BigInt(0);
     if (options?.tag !== undefined) {
       tagDataOffset = allocWasmString(options.tag, allocs);
     }
@@ -42,7 +42,7 @@ export const setRunOptions = (options: InferenceSession.RunOptions): [number, nu
         // @ts-ignore
         BigInt(runOptions.logSeverityLevel!), BigInt(runOptions.logVerbosityLevel!), !!runOptions.terminate!,
         BigInt(tagDataOffset));
-    if (runOptionsHandle === 0) {
+    if (runOptionsHandle === BigInt(0)) {
       throw new Error('Can\'t create run options');
     }
 

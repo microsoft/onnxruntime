@@ -54,8 +54,8 @@ const appendDefaultOptions = (options: InferenceSession.SessionOptions): void =>
 };
 
 const setExecutionProviders =
-    (sessionOptionsHandle: number, executionProviders: readonly InferenceSession.ExecutionProviderConfig[],
-     allocs: number[]): void => {
+    (sessionOptionsHandle: bigint, executionProviders: readonly InferenceSession.ExecutionProviderConfig[],
+     allocs: bigint[]): void => {
       for (const ep of executionProviders) {
         let epName = typeof ep === 'string' ? ep : ep.name;
 
@@ -72,7 +72,7 @@ const setExecutionProviders =
                 const keyDataOffset = allocWasmString('deviceType', allocs);
                 const valueDataOffset = allocWasmString(webnnOptions.deviceType, allocs);
                 if (getInstance()._OrtAddSessionConfigEntry(sessionOptionsHandle, keyDataOffset, valueDataOffset) !==
-                    0) {
+                    BigInt(0)) {
                   throw new Error(`Can't set a session config entry: 'deviceType' - ${webnnOptions.deviceType}`);
                 }
               }
@@ -80,7 +80,7 @@ const setExecutionProviders =
                 const keyDataOffset = allocWasmString('powerPreference', allocs);
                 const valueDataOffset = allocWasmString(webnnOptions.powerPreference, allocs);
                 if (getInstance()._OrtAddSessionConfigEntry(sessionOptionsHandle, keyDataOffset, valueDataOffset) !==
-                    0) {
+                    BigInt(0)) {
                   throw new Error(
                       `Can't set a session config entry: 'powerPreference' - ${webnnOptions.powerPreference}`);
                 }
@@ -105,10 +105,10 @@ const setExecutionProviders =
       }
     };
 
-export const setSessionOptions = (options?: InferenceSession.SessionOptions): [number, number[]] => {
+export const setSessionOptions = (options?: InferenceSession.SessionOptions): [bigint, bigint[]] => {
   const wasm = getInstance();
-  let sessionOptionsHandle = 0;
-  const allocs: number[] = [];
+  let sessionOptionsHandle = BigInt(0);
+  const allocs: bigint[] = [];
 
   const sessionOptions: InferenceSession.SessionOptions = options || {};
   appendDefaultOptions(sessionOptions);
@@ -141,7 +141,7 @@ export const setSessionOptions = (options?: InferenceSession.SessionOptions): [n
         !!sessionOptions.enableProfiling, BigInt(0), logIdDataOffset, BigInt(logSeverityLevel),
         BigInt(logVerbosityLevel),
         optimizedModelFilePathOffset);
-    if (sessionOptionsHandle === 0) {
+    if (sessionOptionsHandle === BigInt(0)) {
       throw new Error('Can\'t create session options');
     }
 
@@ -165,7 +165,8 @@ export const setSessionOptions = (options?: InferenceSession.SessionOptions): [n
 
     return [sessionOptionsHandle, allocs];
   } catch (e) {
-    if (sessionOptionsHandle !== 0) {
+    console.log('got error', e);
+    if (sessionOptionsHandle !== BigInt(0)) {
       wasm._OrtReleaseSessionOptions(sessionOptionsHandle);
     }
     allocs.forEach(wasm._free);

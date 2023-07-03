@@ -67,7 +67,10 @@ const checkBigInt = () => {
 const calculateSize = (dims: readonly unknown[]): number => {
   let size = 1;
   for (let i = 0; i < dims.length; i++) {
-    const dim = dims[i];
+    let dim = dims[i];
+    if (typeof dim === 'bigint') {
+      dim = Number(dim);
+    }
     if (typeof dim !== 'number' || !Number.isSafeInteger(dim)) {
       throw new TypeError(`dims[${i}] must be an integer, got: ${dim}`);
     }

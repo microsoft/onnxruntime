@@ -27,36 +27,36 @@ export interface OrtWasmModule extends EmscriptenModule {
   _OrtInit(numThreads: number, loggingLevel: number): number;
 
   _OrtCreateSession(dataOffset: number, dataLength: number, sessionOptionsHandle: number): number;
-  _OrtReleaseSession(sessionHandle: number): void;
-  _OrtGetInputCount(sessionHandle: number): number;
-  _OrtGetOutputCount(sessionHandle: number): number;
-  _OrtGetInputName(sessionHandle: number, index: number): number;
-  _OrtGetOutputName(sessionHandle: number, index: number): number;
+  _OrtReleaseSession(sessionHandle: bigint): void;
+  _OrtGetInputCount(sessionHandle: bigint): number;
+  _OrtGetOutputCount(sessionHandle: bigint): number;
+  _OrtGetInputName(sessionHandle: bigint, index: number): bigint;
+  _OrtGetOutputName(sessionHandle: bigint, index: number): bigint;
 
-  _OrtFree(stringHandle: number): void;
+  _OrtFree(stringHandle: bigint): void;
 
-  _OrtCreateTensor(dataType: number, dataOffset: number, dataLength: number, dimsOffset: number, dimsLength: number):
+  _OrtCreateTensor(dataType: number, dataOffset: bigint, dataLength: bigint, dimsOffset: bigint, dimsLength: bigint):
+      bigint;
+  _OrtGetTensorData(tensorHandle: bigint, dataType: bigint, dataOffset: bigint, dimsOffset: bigint, dimsLength: bigint):
       number;
-  _OrtGetTensorData(tensorHandle: number, dataType: number, dataOffset: number, dimsOffset: number, dimsLength: number):
-      number;
-  _OrtReleaseTensor(tensorHandle: number): void;
+  _OrtReleaseTensor(tensorHandle: bigint): void;
   _OrtRun(
-      sessionHandle: number, inputNamesOffset: number, inputsOffset: number, inputCount: number,
-      outputNamesOffset: number, outputCount: number, outputsOffset: number, runOptionsHandle: number): number;
+      sessionHandle: bigint, inputNamesOffset: bigint, inputsOffset: bigint, inputCount: bigint,
+      outputNamesOffset: bigint, outputCount: bigint, outputsOffset: bigint, runOptionsHandle: bigint): number;
 
   _OrtCreateSessionOptions(
       graphOptimizationLevel: number, enableCpuMemArena: boolean, enableMemPattern: boolean, executionMode: number,
       enableProfiling: boolean, profileFilePrefix: number, logId: number, logSeverityLevel: number,
-      logVerbosityLevel: number, optimizedModelFilePath: number): number;
-  _OrtAppendExecutionProvider(sessionOptionsHandle: number, name: number): number;
-  _OrtAddSessionConfigEntry(sessionOptionsHandle: number, configKey: number, configValue: number): number;
-  _OrtReleaseSessionOptions(sessionOptionsHandle: number): void;
+      logVerbosityLevel: number, optimizedModelFilePath: number): bigint;
+  _OrtAppendExecutionProvider(sessionOptionsHandle: bigint, name: number): bigint;
+  _OrtAddSessionConfigEntry(sessionOptionsHandle: bigint, configKey: bigint, configValue: bigint): bigint;
+  _OrtReleaseSessionOptions(sessionOptionsHandle: bigint): void;
 
-  _OrtCreateRunOptions(logSeverityLevel: number, logVerbosityLevel: number, terminate: boolean, tag: number): number;
-  _OrtAddRunConfigEntry(runOptionsHandle: number, configKey: number, configValue: number): number;
-  _OrtReleaseRunOptions(runOptionsHandle: number): void;
+  _OrtCreateRunOptions(logSeverityLevel: number, logVerbosityLevel: number, terminate: boolean, tag: number): bigint;
+  _OrtAddRunConfigEntry(runOptionsHandle: bigint, configKey: bigint, configValue: bigint): number;
+  _OrtReleaseRunOptions(runOptionsHandle: bigint): void;
 
-  _OrtEndProfiling(sessionHandle: number): number;
+  _OrtEndProfiling(sessionHandle: bigint): bigint;
   // #endregion
 
   // #region config

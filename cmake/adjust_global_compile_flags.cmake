@@ -45,8 +45,8 @@ if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
   endif()
 
   if (onnxruntime_ENABLE_WEBASSEMBLY_EXCEPTION_CATCHING)
-    string(APPEND CMAKE_C_FLAGS " -s DISABLE_EXCEPTION_CATCHING=0")
-    string(APPEND CMAKE_CXX_FLAGS " -s DISABLE_EXCEPTION_CATCHING=0")
+    string(APPEND CMAKE_C_FLAGS " -fwasm-exceptions")
+    string(APPEND CMAKE_CXX_FLAGS " -fwasm-exceptions")
   endif()
 
   # Build WebAssembly with multi-threads support.

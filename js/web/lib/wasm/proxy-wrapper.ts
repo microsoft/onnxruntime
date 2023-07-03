@@ -188,12 +188,12 @@ export const createSession =
   }
 };
 
-export const releaseSession = async(sessionId: number): Promise<void> => {
+export const releaseSession = async(sessionId: bigint): Promise<void> => {
   if (!BUILD_DEFS.DISABLE_WASM_PROXY && isProxy()) {
     ensureWorker();
     return new Promise<void>((resolve, reject) => {
       releaseSessionCallbacks.push([resolve, reject]);
-      const message: OrtWasmMessage = {type: 'release', in : sessionId};
+      const message: OrtWasmMessage = {type: 'release', in : Number(sessionId)};
       proxyWorker!.postMessage(message);
     });
   } else {
@@ -202,13 +202,13 @@ export const releaseSession = async(sessionId: number): Promise<void> => {
 };
 
 export const run = async(
-    sessionId: number, inputIndices: number[], inputs: SerializableTensor[], outputIndices: number[],
+    sessionId: bigint, inputIndices: number[], inputs: SerializableTensor[], outputIndices: number[],
     options: InferenceSession.RunOptions): Promise<SerializableTensor[]> => {
   if (!BUILD_DEFS.DISABLE_WASM_PROXY && isProxy()) {
     ensureWorker();
     return new Promise<SerializableTensor[]>((resolve, reject) => {
       runCallbacks.push([resolve, reject]);
-      const message: OrtWasmMessage = {type: 'run', in : {sessionId, inputIndices, inputs, outputIndices, options}};
+      const message: OrtWasmMessage = {type: 'run', in : {sessionId: Number(sessionId), inputIndices, inputs, outputIndices, options}};
       proxyWorker!.postMessage(message, core.extractTransferableBuffers(inputs));
     });
   } else {
@@ -216,12 +216,12 @@ export const run = async(
   }
 };
 
-export const endProfiling = async(sessionId: number): Promise<void> => {
+export const endProfiling = async(sessionId: bigint): Promise<void> => {
   if (!BUILD_DEFS.DISABLE_WASM_PROXY && isProxy()) {
     ensureWorker();
     return new Promise<void>((resolve, reject) => {
       endProfilingCallbacks.push([resolve, reject]);
-      const message: OrtWasmMessage = {type: 'end-profiling', in : sessionId};
+      const message: OrtWasmMessage = {type: 'end-profiling', in : Number(sessionId)};
       proxyWorker!.postMessage(message);
     });
   } else {

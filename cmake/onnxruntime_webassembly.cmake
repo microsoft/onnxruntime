@@ -94,7 +94,7 @@ if (NOT onnxruntime_ENABLE_WEBASSEMBLY_THREADS)
 endif()
 
 set(MEMORY_FLAG "MEMORY64")
-set(SMEMORY_FLAG -s${MEMORY_FLAG})
+set(SMEMORY_FLAG "-s${MEMORY_FLAG}")
 
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${SMEMORY_FLAG}")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${SMEMORY_FLAG}")
@@ -202,9 +202,9 @@ else()
       "${ONNXRUNTIME_ROOT}/wasm/api.cc"
       "${ONNXRUNTIME_ROOT}/core/session/onnxruntime_c_api.cc"
     )
-    set (WASM_API_EXCEPTION_CATCHING "-s DISABLE_EXCEPTION_CATCHING=0")
-    message(STATUS "onnxruntime_ENABLE_WEBASSEMBLY_EXCEPTION_CATCHING_ON_API set")
-    set_source_files_properties(${onnxruntime_webassembly_src_exc} PROPERTIES COMPILE_FLAGS ${WASM_API_EXCEPTION_CATCHING})
+#    set (WASM_API_EXCEPTION_CATCHING "-s DISABLE_EXCEPTION_CATCHING=0")
+#    message(STATUS "onnxruntime_ENABLE_WEBASSEMBLY_EXCEPTION_CATCHING_ON_API set")
+#    set_source_files_properties(${onnxruntime_webassembly_src_exc} PROPERTIES COMPILE_FLAGS ${WASM_API_EXCEPTION_CATCHING})
   endif()
 
   target_link_libraries(onnxruntime_webassembly PRIVATE
@@ -248,9 +248,10 @@ else()
   target_link_options(onnxruntime_webassembly PRIVATE
     "SHELL:-s EXPORTED_RUNTIME_METHODS=${EXPORTED_RUNTIME_METHODS}"
     "SHELL:-s EXPORTED_FUNCTIONS=${EXPORTED_FUNCTIONS}"
+    "SHELL:-s INITIAL_MEMORY=8589934592"
     "SHELL:-s MAXIMUM_MEMORY=17179869184"
     "SHELL:-s EXIT_RUNTIME=0"
-    "SHELL:-s ALLOW_MEMORY_GROWTH=1"
+#    "SHELL:-s ALLOW_MEMORY_GROWTH=1"
     "SHELL:-s MODULARIZE=1"
     "SHELL:-s EXPORT_ALL=0"
     "SHELL:-s VERBOSE=0"
@@ -270,8 +271,8 @@ else()
     target_compile_definitions(onnxruntime_webassembly PRIVATE USE_JSEP=1)
     target_link_options(onnxruntime_webassembly PRIVATE
       --pre-js "${ONNXRUNTIME_ROOT}/wasm/js_internal_api.js"
-      "SHELL:-s ASYNCIFY=1"
-      "SHELL:-s ASYNCIFY_STACK_SIZE=65536"
+      "SHELL:-s ASYNCIFY=2"
+#      "SHELL:-s ASYNCIFY_STACK_SIZE=65536"
       "SHELL:-s ${MEMORY_FLAG}"
     )
   endif()
@@ -297,7 +298,7 @@ else()
       "SHELL:-s STACK_OVERFLOW_CHECK=0"
       "SHELL:-s DEMANGLE_SUPPORT=0"
       "SHELL:-s ${MEMORY_FLAG}"
-      --closure 1
+#      --closure 1
     )
   endif()
 
@@ -306,7 +307,7 @@ else()
   endif()
 
   # Set link flag to enable exceptions support, this will override default disabling exception throwing behavior when disable exceptions.
-  target_link_options(onnxruntime_webassembly PRIVATE "SHELL:-s DISABLE_EXCEPTION_THROWING=0")
+  target_link_options(onnxruntime_webassembly PRIVATE "-fwasm-exceptions")
 
   if (onnxruntime_ENABLE_WEBASSEMBLY_PROFILING)
     target_link_options(onnxruntime_webassembly PRIVATE --profiling --profiling-funcs)

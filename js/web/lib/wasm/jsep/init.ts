@@ -122,7 +122,7 @@ export const init = async(module: OrtWasmModule, env: Env): Promise<void> => {
             backend.memcpy(src, dst);
           } else {
             LOG_DEBUG('verbose', () => `[WebGPU] jsepCopyCpuToGpu: dataOffset=${src}, gpuDataId=${dst}, size=${size}`);
-            const data = module.HEAPU8.subarray(src, src + size);
+            const data = module.HEAPU8.subarray(Number(src), Number(src) + Number(size));
             backend.upload(dst, data);
           }
         },

@@ -59,7 +59,7 @@ interface DownloadCacheValue {
 /**
  * normalize the buffer size so that it fits the 128-bits (16 bytes) alignment.
  */
-const calcNormalizedBufferSize = (size: number) => Math.ceil(size / 16) * 16;
+const calcNormalizedBufferSize = (size: number) => Math.ceil(Number(size) / 16) * 16;
 
 let guid = 0;
 const createNewGpuDataId = () => guid++;
@@ -152,7 +152,7 @@ class GpuDataManagerImpl implements GpuDataManager {
     const gpuBuffer = this.backend.device.createBuffer({size: bufferSize, usage});
 
     const gpuData = {id: createNewGpuDataId(), type: GpuDataType.default, buffer: gpuBuffer};
-    this.storageCache.set(gpuData.id, {gpuData, originalSize: size});
+    this.storageCache.set(gpuData.id, {gpuData, originalSize: Number(size)});
 
     LOG_DEBUG('verbose', () => `[WebGPU] GpuDataManager.create(size=${size}) => id=${gpuData.id}`);
     return gpuData;
@@ -183,6 +183,9 @@ class GpuDataManagerImpl implements GpuDataManager {
   }
 
   async download(id: GpuDataId): Promise<ArrayBufferLike> {
+    if (typeof id === 'bigint') {
+      id = Number(id);
+    }
     const downloadData = this.downloadCache.get(id);
     if (downloadData) {
       return downloadData.data;

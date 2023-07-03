@@ -3,12 +3,12 @@
 
 import {getInstance} from './wasm-factory';
 
-export const allocWasmString = (data: string, allocs: number[]): number => {
+export const allocWasmString = (data: string, allocs: bigint[]): bigint => {
   const wasm = getInstance();
 
-  const dataLength = wasm.lengthBytesUTF8(data) + 1;
-  const dataOffset = wasm._malloc(dataLength);
-  wasm.stringToUTF8(data, dataOffset, dataLength);
+  const dataLength = wasm.lengthBytesUTF8(data) * 4;
+  const dataOffset = wasm._malloc(BigInt(dataLength));
+  wasm.stringToUTF8(data, Number(dataOffset), dataLength);
   allocs.push(dataOffset);
 
   return dataOffset;

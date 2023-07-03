@@ -38,22 +38,22 @@ export const initRuntime = async(env: Env): Promise<void> => {
 /**
  *  tuple elements are: InferenceSession ID; inputNamesUTF8Encoded; outputNamesUTF8Encoded
  */
-type SessionMetadata = [number, number[], number[]];
+type SessionMetadata = [bigint, bigint[], bigint[]];
 
-const activeSessions = new Map<number, SessionMetadata>();
+const activeSessions = new Map<bigint, SessionMetadata>();
 
 /**
  * create an instance of InferenceSession.
  * @returns the metadata of InferenceSession. 0-value handle for failure.
  */
-export const createSessionAllocate = async (model: Uint8Array | { reader: ReadableStreamDefaultReader<Uint8Array>; size: number }): Promise<[number, number]> => {
+export const createSessionAllocate = async (model: Uint8Array | { reader: ReadableStreamDefaultReader<Uint8Array>; size: number }): Promise<[bigint, number]> => {
   const wasm = getInstance();
   if (model instanceof Uint8Array) {
-    const modelDataOffset = wasm._malloc(model.byteLength);
-    wasm.HEAPU8.set(model, modelDataOffset);
+    const modelDataOffset = wasm._malloc(BigInt(model.byteLength));
+    // wasm.HEAPU8.set(model, modelDataOffset);
     return [modelDataOffset, model.byteLength];
   } else {
-    const modelDataOffset = wasm._malloc(model.size) >>> 0;
+    const modelDataOffset = wasm._malloc(BigInt(model.size));
     let offset = 0;
     while (true) {
       const { done, value } = await model.reader.read();
@@ -62,7 +62,7 @@ export const createSessionAllocate = async (model: Uint8Array | { reader: Readab
         break;
       }
 
-      const memory = new Uint8Array(wasm.HEAPU8.buffer, modelDataOffset + offset, value.byteLength);
+      const memory = new Uint8Array(wasm.HEAPU8.buffer, Number(modelDataOffset) + offset, value.byteLength);
       memory.set(new Uint8Array(value.buffer));
 
       offset += value.byteLength;
@@ -76,9 +76,9 @@ export const createSessionFinalize =
     (modelData: SerializableModeldata, options?: InferenceSession.SessionOptions): SerializableSessionMetadata => {
       const wasm = getInstance();
 
-      let sessionHandle = 0;
-      let sessionOptionsHandle = 0;
-      let allocs: number[] = [];
+      let sessionHandle = BigInt(0);
+      let sessionOptionsHandle = BigInt(0);
+      let allocs: bigint[] = [];
 
       try {
         [sessionOptionsHandle, allocs] = setSessionOptions(options);
@@ -87,13 +87,14 @@ export const createSessionFinalize =
         // @ts-ignore
         sessionHandle = BigInt(wasm._OrtCreateSession(BigInt(modelData[0]), BigInt(modelData[1]),
             BigInt(sessionOptionsHandle)));
-        if (sessionHandle === 0) {
+        if (sessionHandle === BigInt(0)) {
           throw new Error('Can\'t create a session');
         }
       } finally {
+        console.log('free', modelData[0], Number(modelData[0]) >>> 0, Number(modelData[0]), sessionOptionsHandle);
         wasm._free(modelData[0]);
         console.log('FREED MEMORY');
-        if (sessionOptionsHandle !== 0) {
+        if (sessionOptionsHandle !== BigInt(0)) {
           wasm._OrtReleaseSessionOptions(sessionOptionsHandle);
         }
         allocs.forEach(wasm._free);
@@ -110,26 +111,26 @@ export const createSessionFinalize =
         // eslint-disable-next-line @typescript-eslint/ban-ts-comment
         // @ts-ignore
         const name = wasm._OrtGetInputName(sessionHandle, BigInt(i));
-        if (name === 0) {
+        if (name === BigInt(0)) {
           throw new Error('Can\'t get an input name');
         }
         inputNamesUTF8Encoded.push(name);
         // eslint-disable-next-line @typescript-eslint/ban-ts-comment
         // @ts-ignore
-        inputNames.push(wasm.UTF8ToString(BigInt(name)));
+        inputNames.push(wasm.UTF8ToString(Number(name)));
       }
-      console.log('inputs', inputNames, inputNamesUTF8Encoded)
+      console.log('inputs', inputNames, inputNamesUTF8Encoded);
       for (let i = 0; i < outputCount; i++) {
         // eslint-disable-next-line @typescript-eslint/ban-ts-comment
         // @ts-ignore
         const name = wasm._OrtGetOutputName(sessionHandle, BigInt(i));
-        if (name === 0) {
+        if (name === BigInt(0)) {
           throw new Error('Can\'t get an output name');
         }
         outputNamesUTF8Encoded.push(name);
         // eslint-disable-next-line @typescript-eslint/ban-ts-comment
         // @ts-ignore
-        outputNames.push(wasm.UTF8ToString(BigInt(name)));
+        outputNames.push(wasm.UTF8ToString(Number(name)));
       }
 
       activeSessions.set(sessionHandle, [sessionHandle, inputNamesUTF8Encoded, outputNamesUTF8Encoded]);
@@ -147,7 +148,7 @@ export const createSession =
       return createSessionFinalize(modelData, options);
     };
 
-export const releaseSession = (sessionId: number): void => {
+export const releaseSession = (sessionId: bigint): void => {
   const wasm = getInstance();
   const session = activeSessions.get(sessionId);
   if (!session) {
@@ -167,7 +168,7 @@ export const releaseSession = (sessionId: number): void => {
  * perform inference run
  */
 export const run = async(
-    sessionId: number, inputIndices: number[], inputs: SerializableTensor[], outputIndices: number[],
+    sessionId: bigint, inputIndices: number[], inputs: SerializableTensor[], outputIndices: number[],
     options: InferenceSession.RunOptions): Promise<SerializableTensor[]> => {
   const wasm = getInstance();
   const session = activeSessions.get(sessionId);
@@ -181,11 +182,11 @@ export const run = async(
   const inputCount = inputIndices.length;
   const outputCount = outputIndices.length;
 
-  let runOptionsHandle = 0;
-  let runOptionsAllocs: number[] = [];
+  let runOptionsHandle = BigInt(0);
+  let runOptionsAllocs: bigint[] = [];
 
-  const inputValues: unknown[] = [];
-  const inputAllocs: unknown[] = [];
+  const inputValues: bigint[] = [];
+  const inputAllocs: bigint[] = [];
 
   try {
     [runOptionsHandle, runOptionsAllocs] = setRunOptions(options);
@@ -197,60 +198,50 @@ export const run = async(
       const data = inputs[i][2];
 
       let dataOffset: bigint;
-      let dataByteLength: number;
+      let dataByteLength: bigint;
 
       if (Array.isArray(data)) {
         // string tensor
-        dataByteLength = 4 * data.length;
-        dataOffset = BigInt(wasm._malloc(dataByteLength));
+        dataByteLength = BigInt(4 * data.length);
+        dataOffset = wasm._malloc(dataByteLength);
         inputAllocs.push(BigInt(dataOffset));
-        let dataIndex = Number(dataOffset / BigInt(4));
+        let dataIndex = Number(dataOffset) / 4;
         for (let i = 0; i < data.length; i++) {
           if (typeof data[i] !== 'string') {
             throw new TypeError(`tensor data at index ${i} is not a string`);
           }
-          // @ts-ignore
-          wasm.HEAPU32[dataIndex++] = allocWasmString(data[i], inputAllocs);
+
+          wasm.HEAPU32[dataIndex++] = Number(allocWasmString(data[i], inputAllocs));
         }
       } else {
-        dataByteLength = data.byteLength;
-        // @ts-ignore
+        dataByteLength = BigInt(data.byteLength);
         dataOffset = wasm._malloc(dataByteLength);
         inputAllocs.push(dataOffset);
-
-        // console.log('SETTING INPUT OFFSET', dataOffset, dataOffset >>> 0);
-        // eslint-disable-next-line no-bitwise
-        // @ts-ignore
-        wasm.HEAPU8.set(new Uint8Array(data.buffer, data.byteOffset, dataByteLength), dataOffset >>> 0);
-        // console.log('SET INPUT OFFSET');
+        wasm.HEAPU8.set(new Uint8Array(data.buffer, data.byteOffset, Number(dataByteLength)), Number(dataOffset));
       }
 
-      const stack = wasm.stackSave();
-      const dimsOffset = BigInt(wasm.stackAlloc(8 * dims.length));
+      // const stack = wasm.stackSave();
+      const dimsOffset = wasm._malloc(BigInt(8 * dims.length));
       try {
-        console.log('creating tensor', tensorDataTypeStringToEnum(dataType), dataOffset, dataByteLength,
-            dimsOffset, dims.length);
-        dims.forEach((d, idx) => wasm.HEAPU64[Number(dimsOffset / BigInt(8) + BigInt(idx))] = BigInt(d));
+        let dimIndex = Number(dimsOffset) / 8;
+        dims.forEach(d => wasm.HEAPU64[dimIndex++] = BigInt(d));
         const tensor = wasm._OrtCreateTensor(
-            // eslint-disable-next-line no-bitwise
-            // @ts-ignore
             tensorDataTypeStringToEnum(dataType), BigInt(dataOffset), BigInt(dataByteLength), BigInt(dimsOffset),
             BigInt(dims.length));
-        if (tensor === 0) {
+        if (tensor === BigInt(0)) {
           throw new Error('Can\'t create a tensor');
         }
         inputValues.push(tensor);
-        console.log('created tensor');
       } finally {
-        wasm.stackRestore(stack);
+        // wasm.stackRestore(stack);
       }
     }
 
-    const beforeRunStack = wasm.stackSave();
-    const inputValuesOffset = BigInt(wasm.stackAlloc(inputCount * 8));
-    const inputNamesOffset = BigInt(wasm.stackAlloc(inputCount * 8));
-    const outputValuesOffset = BigInt(wasm.stackAlloc(outputCount * 8));
-    const outputNamesOffset = BigInt(wasm.stackAlloc(outputCount * 8));
+    // const beforeRunStack = wasm.stackSave();
+    const inputValuesOffset = BigInt(wasm._malloc(BigInt(inputCount * 8)));
+    const inputNamesOffset = BigInt(wasm._malloc(BigInt(inputCount * 8)));
+    const outputValuesOffset = BigInt(wasm._malloc(BigInt(outputCount * 8)));
+    const outputNamesOffset = BigInt(wasm._malloc(BigInt(outputCount * 8)));
 
     try {
       let inputValuesIndex = Number(inputValuesOffset / BigInt(8));
@@ -258,7 +249,6 @@ export const run = async(
       let outputValuesIndex = Number(outputValuesOffset / BigInt(8));
       let outputNamesIndex = Number(outputNamesOffset / BigInt(8));
       for (let i = 0; i < inputCount; i++) {
-        // @ts-ignore
         wasm.HEAPU64[inputValuesIndex++] = inputValues[i];
         wasm.HEAPU64[inputNamesIndex++] = BigInt(inputNamesUTF8Encoded[inputIndices[i]]);
       }
@@ -272,8 +262,9 @@ export const run = async(
       // support RunOptions
       let errorCode = wasm._OrtRun(
           // @ts-ignore
-          sessionHandle, inputNamesOffset, inputValuesOffset, BigInt(inputCount), outputNamesOffset, BigInt(outputCount),
-          outputValuesOffset, runOptionsHandle);
+          sessionHandle, BigInt(inputNamesOffset), BigInt(inputValuesOffset), BigInt(inputCount),
+          BigInt(outputNamesOffset), BigInt(outputCount),
+          BigInt(outputValuesOffset), runOptionsHandle);
       console.log('run', errorCode);
 
       // eslint-disable-next-line @typescript-eslint/naming-convention
@@ -288,22 +279,24 @@ export const run = async(
         for (let i = 0; i < outputCount; i++) {
           const tensor = wasm.HEAPU64[Number(outputValuesOffset / BigInt(8)) + i];
 
-          const beforeGetTensorDataStack = wasm.stackSave();
+          // const beforeGetTensorDataStack = wasm.stackSave();
           // stack allocate 4 pointer value
-          const tensorDataOffset = wasm.stackAlloc(4 * 8);
+          const tensorDataOffset = wasm._malloc(BigInt(4 * 8));
 
-          let type: Tensor.Type|undefined, dataOffset = 0;
+          let type: Tensor.Type|undefined, dataOffset = BigInt(0);
           try {
+            console.log('get tensor data', tensorDataOffset)
             errorCode = wasm._OrtGetTensorData(
                 // @ts-ignore
                 tensor, BigInt(tensorDataOffset), BigInt(tensorDataOffset + 8),
+                // @ts-ignore
                 BigInt(tensorDataOffset + 16), BigInt(tensorDataOffset + 24));
-            if (errorCode !== 0) {
+            if (errorCode) {
               throw new Error(`Can't access output tensor data. error code = ${errorCode}`);
             }
-            let tensorDataIndex = tensorDataOffset / 8;
+            let tensorDataIndex = Number(tensorDataOffset) / 8;
             const dataType = wasm.HEAPU64[tensorDataIndex++];
-            // @ts-ignore
+
             dataOffset = wasm.HEAPU64[tensorDataIndex++];
             const dimsOffset = wasm.HEAPU64[tensorDataIndex++];
             const dimsLength = wasm.HEAPU64[tensorDataIndex++];
@@ -311,14 +304,15 @@ export const run = async(
             for (let i = 0; i < dimsLength; i++) {
               dims.push(wasm.HEAPU64[Number(dimsOffset / BigInt(8)) + i]);
             }
-            // @ts-ignore
+
             wasm._OrtFree(dimsOffset);
 
             const size = dims.length === 0 ? BigInt(1) : dims.reduce((a, b) => a * b);
             type = tensorDataTypeEnumToString(Number(dataType));
             if (type === 'string') {
+              console.log('STRING TENSOR')
               const stringData: string[] = [];
-              let dataIndex = dataOffset / 4;
+              let dataIndex = Number(dataOffset) / 4;
               for (let i = 0; i < size; i++) {
                 const offset = wasm.HEAPU32[dataIndex++];
                 const maxBytesToRead = BigInt(i) === size - BigInt(1) ? undefined : wasm.HEAPU32[dataIndex] - offset;
@@ -330,17 +324,16 @@ export const run = async(
               const typedArrayConstructor = tensorTypeToTypedArrayConstructor(type);
               const data = new typedArrayConstructor(Number(size));
               new Uint8Array(data.buffer, data.byteOffset, data.byteLength)
-                  .set(wasm.HEAPU8.subarray(dataOffset, dataOffset + data.byteLength));
+                  // @ts-ignore
+                  .set(wasm.HEAPU8.subarray(Number(dataOffset), Number(dataOffset) + data.byteLength));
               // @ts-ignore
               output.push([type, dims, data]);
             }
           } finally {
-            wasm.stackRestore(beforeGetTensorDataStack);
+            // wasm.stackRestore(beforeGetTensorDataStack);
             if (type === 'string' && dataOffset) {
-              // @ts-ignore
               wasm._free(dataOffset);
             }
-            // @ts-ignore
             wasm._OrtReleaseTensor(tensor);
           }
         }
@@ -352,7 +345,7 @@ export const run = async(
         throw new Error(`failed to call OrtRun(). error code = ${errorCode}.`);
       }
     } finally {
-      wasm.stackRestore(beforeRunStack);
+      // wasm.stackRestore(beforeRunStack);
     }
   } finally {
     // @ts-ignore
@@ -368,7 +361,7 @@ export const run = async(
 /**
  * end profiling
  */
-export const endProfiling = (sessionId: number): void => {
+export const endProfiling = (sessionId: bigint): void => {
   const wasm = getInstance();
   const session = activeSessions.get(sessionId);
   if (!session) {
@@ -378,7 +371,7 @@ export const endProfiling = (sessionId: number): void => {
 
   // profile file name is not used yet, but it must be freed.
   const profileFileName = wasm._OrtEndProfiling(sessionHandle);
-  if (profileFileName === 0) {
+  if (profileFileName === BigInt(0)) {
     throw new Error('Can\'t get an profile file name');
   }
   wasm._OrtFree(profileFileName);

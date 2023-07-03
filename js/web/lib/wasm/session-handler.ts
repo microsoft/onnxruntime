@@ -7,11 +7,12 @@ import {promisify} from 'util';
 
 import {SerializableModeldata} from './proxy-messages';
 import {createSession, createSessionAllocate, createSessionFinalize, endProfiling, initializeRuntime, releaseSession, run} from './proxy-wrapper';
+import {getInstance} from "./wasm-factory";
 
 let runtimeInitialized: boolean;
 
 export class OnnxruntimeWebAssemblySessionHandler implements SessionHandler {
-  private sessionId: number;
+  private sessionId: bigint;
 
   inputNames: string[];
   outputNames: string[];
@@ -95,7 +96,9 @@ export class OnnxruntimeWebAssemblySessionHandler implements SessionHandler {
 
     const result: SessionHandler.ReturnType = {};
     for (let i = 0; i < outputs.length; i++) {
-      result[this.outputNames[outputIndices[i]]] = new Tensor(outputs[i][0], outputs[i][2], outputs[i][1]);
+      result[this.outputNames[outputIndices[i]]] = new Tensor(
+          outputs[i][0], outputs[i][2], outputs[i][1].map(i => Number(i))
+      );
     }
     return result;
   }
@@ -106,5 +109,9 @@ export class OnnxruntimeWebAssemblySessionHandler implements SessionHandler {
 
   endProfiling(): void {
     void endProfiling(this.sessionId);
+  }
+
+  getWasm () {
+    return getInstance();
   }
 }
