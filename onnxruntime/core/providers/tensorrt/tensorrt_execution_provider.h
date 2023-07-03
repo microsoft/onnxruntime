@@ -255,6 +255,7 @@ class TensorrtExecutionProvider : public IExecutionProvider {
       return external_cudnn_handle_;
     }
 
+    bool IsTensorRTContextInMap(std::string fused_node);
     nvinfer1::IExecutionContext& GetTensorRTContext(std::string fused_node);
     void SetTensorRTContext(std::string fused_node, std::shared_ptr<nvinfer1::IExecutionContext> context); 
 
