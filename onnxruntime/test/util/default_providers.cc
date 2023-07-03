@@ -8,6 +8,7 @@
 #ifdef USE_COREML
 #include "core/providers/coreml/coreml_provider_factory.h"
 #endif
+#include "core/providers/openvino/openvino_provider_factory_creator.h"
 #include "core/session/onnxruntime_cxx_api.h"
 
 namespace onnxruntime {
@@ -90,7 +91,7 @@ std::unique_ptr<IExecutionProvider> DefaultOpenVINOExecutionProvider() {
 #ifdef USE_OPENVINO
   // OrtOpenVINOProviderOptions params;
   ProviderOptions provider_options_map;
-  return OpenVINOProviderFactoryCreator::Create(provider_options_map)->CreateProvider();
+  return OpenVINOProviderFactoryCreator::Create(&provider_options_map)->CreateProvider();
 #else
   return nullptr;
 #endif
