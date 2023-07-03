@@ -171,35 +171,50 @@ public class OnnxTensor extends OnnxTensorLike {
 
   /**
    * Returns a copy of the underlying OnnxTensor as a FloatBuffer if it can be losslessly converted
-   * into a float (i.e. it's a float or fp16), otherwise it returns null.
+   * into a float (i.e. it's a float, fp16 or bf16), otherwise it returns null.
    *
    * @return A FloatBuffer copy of the OnnxTensor.
    */
   public FloatBuffer getFloatBuffer() {
     if (info.type == OnnxJavaType.FLOAT) {
-      if (info.onnxType == TensorInfo.OnnxTensorType.ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16) {
-        // if it's fp16 we need to copy it out by hand.
-        ShortBuffer buffer = getBuffer().asShortBuffer();
-        return convertFp16BufferToFloatBuffer(buffer);
-      } else {
-        // if it's fp32 use the efficient copy.
-        FloatBuffer buffer = getBuffer().asFloatBuffer();
-        FloatBuffer output = FloatBuffer.allocate(buffer.capacity());
-        output.put(buffer);
-        output.rewind();
-        return output;
-      }
+      // if it's fp32 use the efficient copy.
+      FloatBuffer buffer = getBuffer().asFloatBuffer();
+      FloatBuffer output = FloatBuffer.allocate(buffer.capacity());
+      output.put(buffer);
+      output.rewind();
+      return output;
+    } else if (info.type == OnnxJavaType.FLOAT16) {
+      // if it's fp16 we need to copy it out by hand.
+      ShortBuffer buffer = getBuffer().asShortBuffer();
+      return convertFp16BufferToFloatBuffer(buffer);
+    } else if (info.type == OnnxJavaType.BFLOAT16) {
+      // if it's bf16 we need to copy it out by hand.
+      ShortBuffer buffer = getBuffer().asShortBuffer();
+      return convertBf16BufferToFloatBuffer(buffer);
     } else {
       return null;
     }
   }
 
-  private static FloatBuffer convertFp16BufferToFloatBuffer(ShortBuffer buf) {
+  static FloatBuffer convertFp16BufferToFloatBuffer(ShortBuffer buf) {
     int bufferCap = buf.capacity();
     FloatBuffer output = FloatBuffer.allocate(bufferCap);
     try {
       for (int i = 0; i < bufferCap; i++) {
         output.put(i, (float) fp16Tofp32.invokeExact(buf.get(i)));
+      }
+    } catch (Throwable e) {
+      throw new RuntimeException(e);
+    }
+    return output;
+  }
+
+  static FloatBuffer convertBf16BufferToFloatBuffer(ShortBuffer buf) {
+    int bufferCap = buf.capacity();
+    FloatBuffer output = FloatBuffer.allocate(bufferCap);
+    try {
+      for (int i = 0; i < bufferCap; i++) {
+        output.put(i, bf16ToFloat(buf.get(i)));
       }
     } catch (Throwable e) {
       throw new RuntimeException(e);

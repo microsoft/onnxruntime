@@ -92,6 +92,10 @@ public class TensorInfo implements ValueInfo {
           return OnnxTensorType.ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL;
         case STRING:
           return OnnxTensorType.ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING;
+        case FLOAT16:
+          return OnnxTensorType.ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16;
+        case BFLOAT16:
+          return OnnxTensorType.ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16;
         case UNKNOWN:
         default:
           return OnnxTensorType.ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;

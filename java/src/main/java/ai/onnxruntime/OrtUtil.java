@@ -532,6 +532,8 @@ public final class OrtUtil {
           tmp = buffer.put((ByteBuffer) data);
           break;
         case INT16:
+        case FLOAT16:
+        case BFLOAT16:
           tmp = buffer.asShortBuffer().put((ShortBuffer) data);
           break;
         case INT32:
