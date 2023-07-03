@@ -58,6 +58,7 @@ Do not modify directly.*
 | Sigmoid | ai.onnx(6-12,13+) |  |
 | Sin | ai.onnx(7+) |  |
 | Sinh | ai.onnx(9+) |  |
+| Split | ai.onnx(1,2-10,11-12,13-17,18+) |  |
 | Sqrt | ai.onnx(6-12,13+) |  |
 | Squeeze | ai.onnx(1-10,11-12,13+) |  |
 | Sub | ai.onnx(7-12,13,14+) |  |
