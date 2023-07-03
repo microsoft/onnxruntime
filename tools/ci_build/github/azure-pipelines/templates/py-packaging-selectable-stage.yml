@@ -83,14 +83,13 @@ stages:
               onnxruntimeubuntupython$(PythonVersion)cpubuild \
                 python3 /onnxruntime_src/tools/ci_build/build.py \
                   --build_dir /build \
-                  --config Release --update --build \
+                  --config Release --build_shared_lib \
                   --skip_submodule_sync \
                   --parallel \
-                  --enable_lto \
                   --build_wheel \
                   --enable_onnx_tests \
-                  --test \
-                  --ctest_path '' \
+                  --ctest_path /usr/bin/ctest \
+                  --cmake_path /usr/bin/cmake \
                   ${{ parameters.cpu_build_py_parameters }}
           workingDirectory: $(Build.SourcesDirectory)
 
