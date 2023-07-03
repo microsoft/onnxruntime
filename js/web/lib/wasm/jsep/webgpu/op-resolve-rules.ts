@@ -11,6 +11,7 @@ import * as pool from './ops/pool';
 import {parseReduceAttributes, reduceL1, reduceL2, reduceLogSum, reduceLogSumExp, reduceMax, reduceMean, reduceMin, reduceProd, reduceSum, reduceSumSquare} from './ops/reduce';
 import {parseSplitAttributes, split} from './ops/split';
 import {parseTransposeAttributes, transpose} from './ops/transpose';
+import {expand} from './ops/expand';
 import * as unaryOps from './ops/unary-op';
 import {ComputeContext} from './types';
 
@@ -41,6 +42,7 @@ export const WEBGPU_OP_RESOLVE_RULES: Map<string, OperatorImplementation> = new 
   ['Elu', [unaryOps.elu, unaryOps.parseAlphaAttributes]],
   ['Erf', [unaryOps.erf]],
   ['Exp', [unaryOps.exp]],
+  ['Expand', [expand]],
   ['Floor', [unaryOps.floor]],
   ['Gemm', [gemm, parseGemmAttributes]],
   ['GlobalAveragePool', [pool.globalAveragePool, pool.parseGlobalAveragePoolAttributes]],
