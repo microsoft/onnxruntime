@@ -2643,12 +2643,12 @@ TEST(QDQTransformerTests, QDQPropagation_Per_Layer_No_Propagation) {
                       check_graph,
                       TransformerLevel::Default,
                       TransformerLevel::Level1,
-                      18);    // disable TransposeOptimizer for simplicity
+                      18);  // disable TransposeOptimizer for simplicity
     TransformerTester(build_test_case,
                       check_graph,
                       TransformerLevel::Default,
                       TransformerLevel::Level1,
-                      19);    // disable TransposeOptimizer for simplicity
+                      19);  // disable TransposeOptimizer for simplicity
   };
 
   test_case({1, 13, 13, 23}, {0, 2, 3, 1});
