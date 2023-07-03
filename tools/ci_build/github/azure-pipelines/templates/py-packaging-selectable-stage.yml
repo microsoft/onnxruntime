@@ -80,6 +80,7 @@ stages:
               --volume /data/models:/build/models:ro \
               --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
               -e BUILD_BUILDNUMBER \
+              -e ALLOW_RELEASED_ONNX_OPSET_ONLY=1 \
               onnxruntimeubuntupython$(PythonVersion)cpubuild \
                 python3 /onnxruntime_src/tools/ci_build/build.py \
                   --build_dir /build \
