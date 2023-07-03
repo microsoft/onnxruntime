@@ -241,7 +241,7 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   std::unordered_map<std::string, std::vector<nvinfer1::IOptimizationProfile*>> profiles_;
 
   // TRT or CUDA objects that must be maintained on a per thread basis will be put under the PerThreadContext data structure.
-  // For example TensorRT execution context and CUDA graph are the ones to be put here.
+  // For example, TensorRT execution context and CUDA graph are the ones to be put here.
   class PerThreadContext final {
    public:
     PerThreadContext(OrtDevice::DeviceId device_id, bool has_user_compute_stream, cudaStream_t stream);

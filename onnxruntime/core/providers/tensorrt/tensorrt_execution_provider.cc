@@ -666,6 +666,14 @@ TensorrtExecutionProvider::PerThreadContext::~PerThreadContext() {
   }
 }
 
+bool TensorrtExecutionProvider::PerThreadContext::IsTensorRTContextInMap(std::string fused_node) {
+  auto it = trt_context_map_.find(fused_node);
+  if (it != trt_context_map_.end()) {
+    return true;
+  }
+  return false;
+}
+
 nvinfer1::IExecutionContext& TensorrtExecutionProvider::PerThreadContext::GetTensorRTContext(std::string fused_node) {
   auto it = trt_context_map_.find(fused_node);
   if (it != trt_context_map_.end()) {
@@ -2533,12 +2541,24 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
         context_update = true;
       }
 
-      // Build execution context if needed
+      // Check whether the IExecutionContext object is existed in the map for specific thread.
+      // Note: The first inference run for specific thread has not have the IExecutionContext object yet,
+      // so it needs to build the execution context.
+      if (!GetPerThreadContext().IsTensorRTContextInMap(fsued_node_name)) {
+        context_update = true;
+      }
+
+      // Get the reference to the IExecutionContext object that is maintained on a per thread basis.
+      nvinfer1::IExecutionContext& trt_context = GetPerThreadContext().GetTensorRTContext(fused_node_name);
+
+      // Build execution context if either of the following conditions is true:
+      // (1) Engine is rebuilt. 
+      // (2) The first inference run for this thread where there is no real IExecutionContext object yet. 
       //
       // Note: Creating an execution context from an engine is thread safe per TRT doc
       // https://docs.nvidia.com/deeplearning/tensorrt/developer-guide/index.html#threading
-      std::unique_ptr<nvinfer1::IExecutionContext> trt_context_updated = nullptr;
       if (context_update) {
+        std::unique_ptr<nvinfer1::IExecutionContext> trt_context_updated = nullptr;
         if (trt_state->context_memory_sharing_enable) {
           trt_context_updated.reset(trt_state->engine->get()->createExecutionContextWithoutDeviceMemory());
         } else {
@@ -2550,9 +2570,6 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
         // Update the IExecutionContext object that is maintained on a per thread basis
         GetPerThreadContext().SetTensorRTContext(fused_node_name, move(trt_context_updated));
       }
-
-      // Get the reference to the IExecutionContext object that is maintained on a per thread basis
-      nvinfer1::IExecutionContext& trt_context = GetPerThreadContext().GetTensorRTContext(fused_node_name);
 
       // Get input and output binding names
       int total_bindings = trt_engine->getNbBindings();
