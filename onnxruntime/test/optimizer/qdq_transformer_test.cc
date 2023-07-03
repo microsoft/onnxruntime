@@ -2170,7 +2170,7 @@ TEST(QDQTransformerTests, Clip) {
                       epsilon);
   };
 
-  std::vector<int64_t> opsets{12, 18, 19};
+  std::vector<int> opsets{12, 18, 19};
   for (auto opset : opsets) {
     test_case(.0235294122248888f, static_cast<int8_t>(-128), 0, opset);  // [0, 6]
     test_case(.02f, static_cast<int8_t>(-128), 0, opset);                // [0, 5.1]

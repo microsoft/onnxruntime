@@ -175,6 +175,12 @@ inline CheckpointState CheckpointState::LoadCheckpoint(const std::basic_string<O
   return CheckpointState(checkpoint_state);
 }
 
+inline CheckpointState CheckpointState::LoadCheckpointFromBuffer(const std::vector<uint8_t>& buffer) {
+  OrtCheckpointState* checkpoint_state;
+  ThrowOnError(GetTrainingApi().LoadCheckpointFromBuffer(buffer.data(), buffer.size(), &checkpoint_state));
+  return CheckpointState(checkpoint_state);
+}
+
 inline void CheckpointState::SaveCheckpoint(const CheckpointState& checkpoint_states,
                                             const std::basic_string<ORTCHAR_T>& path_to_checkpoint,
                                             const bool include_optimizer_state) {
@@ -208,9 +214,12 @@ inline void CheckpointState::AddProperty(const std::string& property_name, const
     ThrowOnError(GetTrainingApi().AddProperty(p_, property_name.c_str(), OrtPropertyType::OrtFloatProperty, value_p));
   } else if (std::holds_alternative<std::string>(property_value)) {
     std::string value = std::get<std::string>(property_value);
-    auto buffer = std::make_unique<char[]>(value.length() + 1).release();
-    memcpy(buffer, value.c_str(), value.length());
-    ThrowOnError(GetTrainingApi().AddProperty(p_, property_name.c_str(), OrtPropertyType::OrtStringProperty, buffer));
+    auto buffer = std::make_unique<char[]>(value.length() + 1);
+    memcpy(buffer.get(), value.c_str(), value.length());
+    // AddProperty takes a char* and calls PropertyBag::AddProperty which takes a std::string. The data will be
+    // copied at that point so buffer can free the local allocation once the call is made.
+    ThrowOnError(GetTrainingApi().AddProperty(p_, property_name.c_str(), OrtPropertyType::OrtStringProperty,
+                                              buffer.get()));
   } else {
     ThrowStatus(Status("Unknown property type received.", OrtErrorCode::ORT_INVALID_ARGUMENT));
   }

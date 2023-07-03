@@ -181,7 +181,7 @@ test {
 	if (cmakeBuildDir != null) {
 		workingDir cmakeBuildDir
 	}
-	systemProperties System.getProperties().subMap(['USE_CUDA', 'USE_ROCM', 'USE_TENSORRT', 'USE_DNNL', 'USE_OPENVINO', 'JAVA_FULL_TEST', 'ENABLE_TRAINING_APIS'])
+	systemProperties System.getProperties().subMap(['USE_CUDA', 'USE_ROCM', 'USE_TENSORRT', 'USE_DNNL', 'USE_OPENVINO', 'USE_COREML', 'JAVA_FULL_TEST', 'ENABLE_TRAINING_APIS'])
 	testLogging {
 		events "passed", "skipped", "failed"
 		showStandardStreams = true

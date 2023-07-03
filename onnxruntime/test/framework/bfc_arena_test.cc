@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/framework/bfc_arena.h"
-#include "core/framework/allocatormgr.h"
+#include "core/framework/allocator_utils.h"
 #include "gtest/gtest.h"
 #include "gmock/gmock.h"
 #include <cstdlib>

@@ -1341,7 +1341,7 @@ static void TestSumMultipleInputsNoBroadcasting(size_t num_inputs, const TensorS
 
   OpTester test{"Sum", 8};
 
-  const auto dims = GetShapeVector(shape);
+  const auto dims = shape.AsShapeVector();
   const std::vector<element_type> input_data(shape.Size(), 1);
 
   for (size_t i = 0; i < num_inputs; ++i) {

@@ -5,7 +5,7 @@
 
 
 from collections import abc
-from typing import Callable, List, Union
+from typing import Callable, List, Optional, Union
 
 import torch
 
@@ -52,15 +52,34 @@ class _RuntimeStates:
 class _InspectActivation(torch.autograd.Function):
     """
     This class is used to run the subscriber's forward and backward functions.
+    The function will be called by two kinds of callers:
+        1. SubscriberManager calls it for each registered nn.Module.
+        2. Users who want to inspect the activation tensor at any place of model definition code.
     """
 
     @staticmethod
-    def forward(ctx, activation_name: str, module_idx: int, run_ctx: _RuntimeStates, input_tensor):
+    def forward(
+        ctx, activation_name: str, module_idx: Optional[int], run_ctx: _RuntimeStates, input_tensor: torch.Tensor
+    ):
         """
+        Args:
+            ctx: context object to store intermediate information.
+            activation_name: the name of the activation tensor.
+            module_idx:
+                For call case 1 - the unique id of the module that the activation belongs to, it is detected by the
+                    SubscriberManager automatically.
+                For call case 2 - e.g, _InspectActivation is called by users (NOT by SubscriberManager), module_idx can
+                    be None.
+            run_ctx: runtime context.
+                For call case 2 - need retrieve the runtime state from GlobalSubscriberManager.
+            input_tensor: the activation tensor.
+
         Make sure there is a same number of `tensor` type inputs and outputs.
         This is enforced by ORT's PythonOp's schema check.
         """
-        depth = run_ctx.global_states.module_index_to_depth[module_idx]
+        depth = -1
+        if module_idx is not None:
+            depth = run_ctx.global_states.module_index_to_depth[module_idx]
 
         input_tensor_copied = None
         if input_tensor is None or not isinstance(input_tensor, torch.Tensor):
@@ -81,7 +100,7 @@ class _InspectActivation(torch.autograd.Function):
         return input_tensor.detach() if input_tensor is not None else None
 
     @staticmethod
-    def backward(ctx, grad_output):
+    def backward(ctx, grad_output: torch.Tensor):
         val = None
         if grad_output is None or not isinstance(grad_output, torch.Tensor):
             val = grad_output
@@ -105,7 +124,7 @@ class _IncrementStep(torch.autograd.Function):
     """
 
     @staticmethod
-    def forward(ctx, run_ctx, input_tensor):
+    def forward(ctx, run_ctx: _RuntimeStates, input_tensor: torch.Tensor):
         """
         Make sure there is a same number of `tensor` inputs and outputs.
         This is enforced by ORT's PythonOp's schema check.
@@ -135,7 +154,7 @@ class _IncrementStep(torch.autograd.Function):
         return input_tensor.detach() if isinstance(input_tensor, torch.Tensor) else input_tensor
 
     @staticmethod
-    def backward(ctx, grad_output):
+    def backward(ctx, grad_output: torch.Tensor):
         # In case there are multiple backward calls for multiple outputs of the outside-most module.
         if ctx.current_step == ctx.run_ctx.global_states.execution_step:
             if ctx.current_step >= 0:
@@ -182,6 +201,9 @@ class SubscriberManager:
             self._run_ctx.global_states.subscribers.add(subscriber)
 
         self._initialize(module)
+
+    def get_run_context(self) -> _RuntimeStates:
+        return self._run_ctx
 
     def _reset_all_states(self):
         self._run_ctx = _RuntimeStates()

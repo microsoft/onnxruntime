@@ -53,6 +53,7 @@
 #include "core/optimizer/nchwc_transformer.h"
 #include "core/optimizer/noop_elimination.h"
 #include "core/optimizer/not_where_fusion.h"
+#include "core/optimizer/pre_shape_node_elimination.h"
 #ifdef MLAS_TARGET_AMD64_IX86
 #include "core/optimizer/qdq_transformer/avx2_weight_s8_to_u8.h"
 #endif
@@ -112,6 +113,7 @@ InlinedVector<std::unique_ptr<RewriteRule>> GenerateRewriteRules(
       rules.push_back(std::make_unique<EliminateDropout>());
       rules.push_back(std::make_unique<ExpandElimination>());
       rules.push_back(std::make_unique<CastElimination>());
+      rules.push_back(std::make_unique<PreShapeNodeElimination>());
       rules.push_back(std::make_unique<NoopElimination>());
       rules.push_back(std::make_unique<DivMulFusion>());
       rules.push_back(std::make_unique<FuseReluClip>());

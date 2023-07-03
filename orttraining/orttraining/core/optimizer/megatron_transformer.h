@@ -16,7 +16,7 @@ class MegatronTransformer : public GraphTransformer {
                       std::unordered_set<std::string>& weights_to_train,
                       std::unordered_map<std::string, training::TrainingSession::PartitionInfo>& weight_partition_info,
                       training::TrainingSession::OptimizerState& initial_optimizer_states,
-                      const IExecutionProvider& cpu_execution_provider,  // Required to get allocator for optimizer partitioning by Col
+                      IExecutionProvider& cpu_execution_provider,  // Required to get allocator for optimizer partitioning by Col
                       const InlinedHashSet<std::string_view>& compatible_execution_providers = {}) noexcept
       : GraphTransformer("MegatronTransformer", compatible_execution_providers),
         horizontal_parallel_rank_(horizontal_parallel_rank),
@@ -88,7 +88,7 @@ class MegatronTransformer : public GraphTransformer {
   std::unordered_set<std::string>& weights_to_train_;
   std::unordered_map<std::string, training::TrainingSession::PartitionInfo>& weight_partition_info_;
   training::TrainingSession::OptimizerState& initial_optimizer_states_;
-  const IExecutionProvider& cpu_execution_provider_;
+  IExecutionProvider& cpu_execution_provider_;
 };
 
 }  // namespace onnxruntime

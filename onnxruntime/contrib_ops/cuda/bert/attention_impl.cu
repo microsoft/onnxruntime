@@ -420,7 +420,7 @@ Status PrepareQkv(contrib::AttentionParameters& parameters,
       // temp_k_workspace (BxSxNxH) => present_k (BxNxSxH)
       ORT_RETURN_IF_ERROR(LaunchTransQkv(stream, 1, kv_sequence_length, batch_size, qk_head_size, num_heads,
                           max_threads_per_block, false, data.temp_k_workspace, data.present_key));
-      
+
       // temp_v_workspace (BxSxNxH_v) => present_v (BxNxSxH_v)
       ORT_RETURN_IF_ERROR(LaunchTransQkv(stream, 1, kv_sequence_length, batch_size, v_head_size, num_heads,
                           max_threads_per_block, false, data.temp_v_workspace, data.present_value));
@@ -460,7 +460,7 @@ Status PrepareQkv(contrib::AttentionParameters& parameters,
         DUMP_TENSOR_D("k(BNSH)", k_dest, batch_size * num_heads, kv_sequence_length, qk_head_size);
         DUMP_TENSOR_D("v(BNSH)", v_dest, batch_size * num_heads, kv_sequence_length, v_head_size);
       }
-      qkv_format = AttentionQkvFormat::Q_K_V_BNSH; 
+      qkv_format = AttentionQkvFormat::Q_K_V_BNSH;
     }
   } else if (data.key == nullptr) {  // gemm_buffer == nullptr and packed qkv
     assert(data.bias == nullptr);
@@ -515,14 +515,19 @@ Status PrepareQkv(contrib::AttentionParameters& parameters,
       qkv_format = AttentionQkvFormat::Q_KV_BSNH_BSN2H;
     }
   } else {  // gemm_buffer == nullptr and not packed
-    assert(data.query != nullptr && data.key != nullptr && data.value != nullptr && data.bias != nullptr);
+    assert(data.query != nullptr && data.key != nullptr && data.value != nullptr);
 
     DUMP_TENSOR_D("query", data.query, batch_size * sequence_length, num_heads, qk_head_size);
-    DUMP_TENSOR_D("query_bias", data.bias, num_heads, qk_head_size);
     DUMP_TENSOR_D("key", data.key, batch_size * kv_sequence_length, num_heads, qk_head_size);
-    DUMP_TENSOR_D("key_bias", data.bias + num_heads * qk_head_size, num_heads, qk_head_size);
     DUMP_TENSOR_D("value", data.value, batch_size * kv_sequence_length, num_heads, v_head_size);
-    DUMP_TENSOR_D("value_bias", data.bias + 2 * num_heads * qk_head_size, num_heads, v_head_size);
+
+#if DUMP_TENSOR_LEVEL > 1
+    if (data.bias != nullptr) {
+      DUMP_TENSOR_D("query_bias", data.bias, num_heads, qk_head_size);
+      DUMP_TENSOR_D("key_bias", data.bias + num_heads * qk_head_size, num_heads, qk_head_size);
+      DUMP_TENSOR_D("value_bias", data.bias + 2 * num_heads * qk_head_size, num_heads, v_head_size);
+    }
+#endif
 
     if (data.relative_position_bias != nullptr && parameters.broadcast_res_pos_bias) {
       DUMP_TENSOR_D("relative_position_bias", data.relative_position_bias, num_heads, sequence_length, kv_sequence_length);
@@ -583,13 +588,13 @@ Status PrepareQkv(contrib::AttentionParameters& parameters,
       // Key (BxLxNxH) => K (BxNxLxH)
       LaunchAddBiasTranspose<T>(stream, 1, format, max_threads_per_block,
                                 batch_size, kv_sequence_length, num_heads, qk_head_size,
-                                data.key, data.bias + num_heads * qk_head_size, k,
+                                data.key, nullptr == data.bias ? nullptr : data.bias + num_heads * qk_head_size, k,
                                 true, -1);
 
       // Value (BxLxNxH_v) => K (BxNxLxH_v)
       LaunchAddBiasTranspose<T>(stream, 1, format, max_threads_per_block,
                                 batch_size, kv_sequence_length, num_heads, v_head_size,
-                                data.value, data.bias + 2 * num_heads * qk_head_size, v,
+                                data.value, nullptr == data.bias ? nullptr : data.bias + 2 * num_heads * qk_head_size, v,
                                 true, -1);
 
       DUMP_TENSOR_D("q(BNSH)", q, batch_size * num_heads, sequence_length, qk_head_size);
