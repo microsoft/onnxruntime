@@ -283,7 +283,6 @@ stages:
             --build_shared_lib \
             --build_wheel \
             --build_objc \
-            --build_nodejs \
             --build_java \
             --build_dir $(Build.BinariesDirectory) \
             --update --skip_submodule_sync \
