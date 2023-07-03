@@ -5,8 +5,6 @@
 if(WIN32)
   # TODO: actually we need cmake 3.26+ on Windows but QNN EP's build machine doesn't have it
   cmake_minimum_required(VERSION 3.25)
-elseif(onnxruntime_USE_ROCM)
-  cmake_minimum_required(VERSION 3.24)
 else()
   cmake_minimum_required(VERSION 3.26)
 endif()
