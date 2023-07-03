@@ -1,5 +1,5 @@
 rocm_version=$1
-mi200_machines=${rocm-smi --showproductname | grep "MI250" | wc -l}
+mi200_machines=$(rocm-smi --showproductname | grep "MI250" | wc -l)
 
 echo "mi200_machines: $mi200_machines"
 
