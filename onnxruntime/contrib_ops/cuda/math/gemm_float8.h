@@ -58,6 +58,7 @@ class GemmFloat8 final : public onnxruntime::cuda::CudaKernel {
   int64_t dtype_;
   bool row_major_;
   cublasComputeType_t compute_type_;
+  cublasLtEpilogue_t epilogue_;
 
   // TODO: add epilogue (= activation function, Relu or Gelu are available).
 };

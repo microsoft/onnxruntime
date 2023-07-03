@@ -371,9 +371,8 @@ Status GemmFloat8::ComputeGemm(
                                          &matrixOrder, sizeof(matrixOrder)));
   }
 
-  cublasLtEpilogue_t epilogue = CUBLASLT_EPILOGUE_DEFAULT;
   cublasLtMatmulDescSetAttribute(operationDesc, CUBLASLT_MATMUL_DESC_EPILOGUE,
-                                 &epilogue, sizeof(epilogue));
+                                 &epilogue_, sizeof(epilogue_));
 
   // See
   // https://docs.nvidia.com/cuda/cublas/index.html?highlight=cublasLtMatmulPreferenceAttributes_t#cublasltmatmulpreferenceattributes-t
@@ -405,7 +404,7 @@ Status GemmFloat8::ComputeGemm(
       ", bias_type=", CudaDataTypeToString(bias_cuda_type),
       ", scale_type=", CudaDataTypeToString(scale_cuda_type),
       ", computeType=", CublasComputeTypeToString(compute_type_),
-      ", epilogue=", epilogue, ", smCount=", sm_count_, ", transA=", trans_A,
+      ", epilogue=", epilogue_, ", smCount=", sm_count_, ", transA=", trans_A,
       ", transB=", trans_B,
       ", fastAccumulationMode=", (fast_accumulation_mode_ ? 1 : 0),
       ", shape_A=", shape_A[0], "x", shape_A[1], ", shape_B=", shape_B[0], "x",
@@ -444,7 +443,7 @@ Status GemmFloat8::ComputeGemm(
       ", bias_type=", CudaDataTypeToString(bias_cuda_type),
       ", scale_type=", CudaDataTypeToString(scale_cuda_type),
       ", computeType=", CublasComputeTypeToString(compute_type_),
-      ", epilogue=", epilogue, ", smCount=", sm_count_, ", transA=", trans_A,
+      ", epilogue=", epilogue_, ", smCount=", sm_count_, ", transA=", trans_A,
       ", transB=", trans_B,
       ", fastAccumulationMode=", (fast_accumulation_mode_ ? 1 : 0),
       ", shape_A=", shape_A[0], "x", shape_A[1], ", shape_B=", shape_B[0], "x",

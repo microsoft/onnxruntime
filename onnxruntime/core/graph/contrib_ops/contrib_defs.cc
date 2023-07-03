@@ -2305,7 +2305,7 @@ for beta != 0.)DOC")
                                     "See documentation of cublasLtMatMul. This parameter contains "
                                     "one of the possible value as a string.",
                                     AttributeProto::STRING,
-                                    "CUBLAS_COMPUTE_32F_FAST_TF32")
+                                    OPTIONAL_VALUE)
                                 .Attr(
                                     "rowMajor",
                                     "Storage order used to run the computation (inputs are always row moajor). "
@@ -2317,6 +2317,11 @@ for beta != 0.)DOC")
                                     "Output Type. Same definition as attribute to from operator Cast.",
                                     AttributeProto::INT,
                                     static_cast<int64_t>(1))
+                                .Attr(
+                                    "activation",
+                                    "Activation function, RELU or GELU or NONE (default).",
+                                    AttributeProto::STRING,
+                                    OPTIONAL_VALUE)
                                 .Input(
                                     0,
                                     "A",

@@ -43,7 +43,7 @@ GemmFloat8::GemmFloat8(const OpKernelInfo& info) : CudaKernel(info) {
   ORT_ENFORCE(beta_ == 0, "CUDA < 12.0 does not support bias, beta must be 0.");
 #endif
 
-  std::string stemp = info.GetAttrOrDefault<std::string>("computeType", "CUBLAS_COMPUTE_32F");
+  std::string stemp = info.GetAttrOrDefault<std::string>("computeType", "CUBLAS_COMPUTE_32F_FAST_TF32");
   if (stemp == "CUBLAS_COMPUTE_16F") {
     compute_type_ = CUBLAS_COMPUTE_16F;
   } else if (stemp == "CUBLAS_COMPUTE_32F") {
@@ -56,6 +56,17 @@ GemmFloat8::GemmFloat8(const OpKernelInfo& info) : CudaKernel(info) {
     compute_type_ = CUBLAS_COMPUTE_32F_FAST_TF32;
   } else {
     ORT_THROW("Unexpected value for compute_type: '", stemp, "'.");
+  }
+
+  stemp = info.GetAttrOrDefault<std::string>("activation", "NONE");
+  if (stemp == "NONE") {
+    epilogue_ = CUBLASLT_EPILOGUE_DEFAULT;
+  } else if (stemp == "RELU") {
+    epilogue_ = CUBLASLT_EPILOGUE_RELU;
+  } else if (stemp == "GELU") {
+    epilogue_ = CUBLASLT_EPILOGUE_GELU;
+  } else {
+    ORT_THROW("Unexpected value for activation: '", stemp, "'.");
   }
 }
 
