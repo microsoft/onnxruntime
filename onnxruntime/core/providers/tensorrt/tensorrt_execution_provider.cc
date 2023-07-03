@@ -2541,15 +2541,12 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
         context_update = true;
       }
 
-      // Check whether the IExecutionContext object is existed in the map for specific thread.
-      // Note: The first inference run for specific thread has not have the IExecutionContext object yet,
-      // so it needs to build the execution context.
+      // Check the IExecutionContext object for specific thread is existed or not.
+      // If it's the first inference run for specific thread, the IExecutionContext object hasn't been built yet,
+      // otherwise the object is in the map/cache.
       if (!GetPerThreadContext().IsTensorRTContextInMap(fused_node_name)) {
         context_update = true;
       }
-
-      // Get the reference to the IExecutionContext object that is maintained on a per thread basis.
-      nvinfer1::IExecutionContext& trt_context = GetPerThreadContext().GetTensorRTContext(fused_node_name);
 
       // Build execution context if either of the following conditions is true:
       // (1) Engine is rebuilt. 
@@ -2570,6 +2567,9 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
         // Update the IExecutionContext object that is maintained on a per thread basis
         GetPerThreadContext().SetTensorRTContext(fused_node_name, move(trt_context_updated));
       }
+
+      // Get the reference to the IExecutionContext object that is maintained on a per thread basis.
+      nvinfer1::IExecutionContext& trt_context = GetPerThreadContext().GetTensorRTContext(fused_node_name);
 
       // Get input and output binding names
       int total_bindings = trt_engine->getNbBindings();
