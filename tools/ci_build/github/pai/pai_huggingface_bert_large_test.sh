@@ -1,5 +1,8 @@
 rocm_version=$1
 mi200_machines=${rocm-smi --showproductname | grep "MI250" | wc -l}
+
+echo "mi200_machines: $mi200_machines"
+
 if [ "$mi200_machines" -gt "0" ]; then
   result_file=ci-mi200.huggingface.bert-large-rocm${rocm_version}.json
 else
