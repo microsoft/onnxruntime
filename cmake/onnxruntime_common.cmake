@@ -104,15 +104,16 @@ if(NOT onnxruntime_DISABLE_ABSEIL)
     target_sources(
         onnxruntime_common
         INTERFACE $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/external/${ABSEIL_NATVIS_FILE}>)
+  endif()
+endif()
 
+if (MSVC)
     set(EIGEN_NATVIS_FILE ${eigen_SOURCE_DIR}/debug/msvc/eigen.natvis)
     if (EXISTS ${EIGEN_NATVIS_FILE})
       target_sources(
           onnxruntime_common
           INTERFACE $<BUILD_INTERFACE:${EIGEN_NATVIS_FILE}>)
     endif()
-
-  endif()
 endif()
 
 onnxruntime_add_include_to_target(onnxruntime_common date_interface WIL::WIL)

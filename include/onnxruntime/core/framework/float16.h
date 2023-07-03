@@ -12,6 +12,7 @@
 #endif
 
 #include "core/common/common.h"
+#include <limits>
 
 namespace onnxruntime {
 

@@ -11,10 +11,14 @@ using System.Runtime.InteropServices;
 
 namespace Microsoft.ML.OnnxRuntime
 {
+    // Utilities class created to fill in the gaps
+    // of functionality that is absent in BitConverter class in NETSTANDARD 2.0
+    // as well as some Single precision bit constants.
     internal class BitOpsUtils
     {
         // Lifted from .NET source code internal code
         // Constants for Single precision format
+        // https://source.dot.net/#System.Private.CoreLib/src/libraries/System.Private.CoreLib/src/System/Single.cs,dda909df0f8d2fd0
         internal const uint SingleBiasedExponentMask = 0x7F80_0000;
         internal const int SingleBiasedExponentShift = 23;
 
@@ -54,14 +58,33 @@ namespace Microsoft.ML.OnnxRuntime
         }
 
         /// <summary>
-        /// Needed because BitConverter impl is not available until
-        /// later versions. Assumes that the bits are constructed in a proper
+        /// Extracts single precision number bit representation as uint
+        /// so its bits can be manipulated.
         /// 
-        /// The alternatives as BitConverter.GetBytes(src) and then BitConverter.ToSingle()
-        /// produces extra bytes array which may be too much for the amount of elements in a tensor.
-        /// layout.
+        /// This API is the reverse of UInt32BitsToSingle().
+        /// 
         /// </summary>
-        /// <param name="singleBits"></param>
+        /// <param name="single">float value</param>
+        /// <returns></returns>
+        internal static uint SingleToUInt32Bits(float single)
+        {
+            uint result;
+            unsafe
+            {
+                Buffer.MemoryCopy(&single, &result, sizeof(uint), sizeof(uint));
+            }
+            return result;
+        }
+
+        /// <summary>
+        /// Needed because BitConverter impl is not available until
+        /// later versions. This API is the reverse of SingleToUInt32Bits().
+        /// 
+        /// For the exact bit representation of float see IEEE 754 standard for single precision.
+        /// 
+        /// </summary>
+        /// <param name="singleBits">bit representation of float either obtained from 
+        /// SingleToUInt32Bits or assembled using bitwise operators</param>
         /// <returns></returns>
         internal static float UInt32BitsToSingle(uint singleBits)
         {
@@ -73,16 +96,13 @@ namespace Microsoft.ML.OnnxRuntime
             return result;
         }
 
-        internal static uint SingleToUInt32Bits(float single)
-        {
-            uint result;
-            unsafe
-            {
-                Buffer.MemoryCopy(&single, &result, sizeof(uint), sizeof(uint));
-            }
-            return result;
-        }
-
+        /// <summary>
+        /// Converts single precision bits representation which can be obtained using
+        /// SingleToUInt32Bits() or manually constructed according to IEEE 754 standard.
+        /// 
+        /// </summary>
+        /// <param name="singleBits">bits representation of a single precision number (float)</param>
+        /// <returns></returns>
         internal static ushort SingleBitsToBFloat16Bits(uint singleBits)
         {
             if (!BitConverter.IsLittleEndian)
@@ -95,6 +115,12 @@ namespace Microsoft.ML.OnnxRuntime
             }
         }
 
+        /// <summary>
+        /// Converts bfloat16 ushort bits repreentation to single precision bits which then in turn can be
+        /// manipulated or converted to float using UInt32BitsToSingle()
+        /// </summary>
+        /// <param name="bfloatBits">ushort bits representation of bfloat16</param>
+        /// <returns></returns>
         internal static uint BFloat16BitsToSingleBits(ushort bfloatBits)
         {
             if (!BitConverter.IsLittleEndian)
@@ -125,6 +151,14 @@ namespace Microsoft.ML.OnnxRuntime
 
             return UInt32BitsToSingle(singleBits);
         }
+
+        /// <summary>
+        /// Creates float from sign, exponent and significand
+        /// </summary>
+        /// <param name="sign"></param>
+        /// <param name="exp"></param>
+        /// <param name="sig"></param>
+        /// <returns></returns>
         internal static float CreateSingle(bool sign, byte exp, uint sig)
         {
             uint signInt = (sign ? 1U : 0U) << SingleSignShift;
@@ -143,6 +177,9 @@ namespace Microsoft.ML.OnnxRuntime
     /// do not have to be copied to be passed to native memory but simply pinned and read by native code. Thus,
     /// one can create a Tensor on top of an array of these structures and feed it directly to Onnxruntime library.
     /// Binary wise, it is the same as ushort[] (uint16_t in C++). However, we would like a separate type for type dispatching.
+    /// 
+    /// The implementation is derived from 
+    /// https://source.dot.net/#System.Private.CoreLib/src/libraries/System.Private.CoreLib/src/System/Half.cs,7895d5942d33f974
     /// </summary>
     [StructLayout(LayoutKind.Sequential)]
     public readonly struct Float16 :
@@ -773,7 +810,9 @@ namespace Microsoft.ML.OnnxRuntime
     }
 
     /// <summary>
-    /// This value type represents A BFloat16 value
+    /// This value type represents A BFloat16 value.
+    /// See https://cloud.google.com/blog/products/ai-machine-learning/bfloat16-the-secret-to-high-performance-on-cloud-tpus
+    /// for details.
     /// it is blittable as defined in https://docs.microsoft.com/en-us/dotnet/framework/interop/blittable-and-non-blittable-types
     /// and as such, represented the same way in managed and native memories. This means that arrays of this type
     /// do not have to be copied to be passed to native memory but simply pinnned and read by native code. Thus,
@@ -1243,7 +1282,9 @@ namespace Microsoft.ML.OnnxRuntime
             uint singleBits = BitOpsUtils.SingleToUInt32Bits(value);
             ushort bfloatBits = BitOpsUtils.SingleBitsToBFloat16Bits(singleBits);
 
-            // Round this up
+            // Round this up to the nearest even.
+            // We use RoundingBase that is 0x7FFF + (1), so we carry the 1 to the next bit.
+            // either the last bfloat bit is 1 or singleBits have some bits set.
             singleBits += ((uint)bfloatBits & 1) + RoundingBase;
             bfloatBits = BitOpsUtils.SingleBitsToBFloat16Bits(singleBits);
             return new BFloat16(bfloatBits);
