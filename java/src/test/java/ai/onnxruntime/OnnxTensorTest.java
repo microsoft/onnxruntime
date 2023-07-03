@@ -154,7 +154,10 @@ public class OnnxTensorTest {
       short output = OnnxTensor.floatToFp16(upcast);
       if (!Float.isNaN(upcast)) {
         // We coerce NaNs to the same value.
-        Assertions.assertEquals(curVal, output, "Expected " + curVal + " received " + output + ", intermediate float was " + upcast);
+        Assertions.assertEquals(
+            curVal,
+            output,
+            "Expected " + curVal + " received " + output + ", intermediate float was " + upcast);
       }
     }
   }
@@ -168,7 +171,10 @@ public class OnnxTensorTest {
       short output = OnnxTensor.floatToBf16(upcast);
       if (!Float.isNaN(upcast)) {
         // We coerce NaNs to the same value.
-        Assertions.assertEquals(curVal, output, "Expected " + curVal + " received " + output + ", intermediate float was " + upcast);
+        Assertions.assertEquals(
+            curVal,
+            output,
+            "Expected " + curVal + " received " + output + ", intermediate float was " + upcast);
       }
     }
   }

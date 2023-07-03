@@ -395,7 +395,7 @@ public class OnnxTensor extends OnnxTensorLike {
         // and one integer subtract of the bias later, we have our final float!
         output = (short) (Float.floatToIntBits(tmp) - DENORM_MAGIC);
       } else {
-        int mant_odd = (bits >> 13) & 1;  // resulting mantissa is odd
+        int mant_odd = (bits >> 13) & 1; // resulting mantissa is odd
 
         // update exponent, rounding bias part 1
         bits += ROUNDING_CONST;
