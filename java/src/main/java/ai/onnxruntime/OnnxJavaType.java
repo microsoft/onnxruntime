@@ -17,6 +17,8 @@ public enum OnnxJavaType {
   BOOL(7, boolean.class, 1),
   STRING(8, String.class, 4),
   UINT8(9, byte.class, 1),
+  FLOAT16(10, short.class, 2),
+  BFLOAT16(11, short.class, 2),
   UNKNOWN(0, Object.class, 0);
 
   private static final OnnxJavaType[] values = new OnnxJavaType[10];
@@ -76,6 +78,9 @@ public enum OnnxJavaType {
       case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64:
         return OnnxJavaType.INT64;
       case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16:
+        return OnnxJavaType.FLOAT16;
+      case ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16:
+        return OnnxJavaType.BFLOAT16;
       case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT:
         return OnnxJavaType.FLOAT;
       case ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE:
@@ -87,7 +92,6 @@ public enum OnnxJavaType {
       case ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED:
       case ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX64:
       case ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX128:
-      case ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16:
       default:
         return OnnxJavaType.UNKNOWN;
     }

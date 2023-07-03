@@ -9,7 +9,7 @@ import java.nio.FloatBuffer;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 
-public class TensorCreationTest {
+public class OnnxTensorTest {
 
   @Test
   public void testScalarCreation() throws OrtException {
@@ -142,6 +142,34 @@ public class TensorCreationTest {
       Assertions.assertArrayEquals(shape, t.getInfo().getShape());
       float[][] output = (float[][]) t.getValue();
       Assertions.assertEquals(0, output.length);
+    }
+  }
+
+  @Test
+  public void testFp16RoundTrip() {
+    for (int i = 0; i < 0xffff; i++) {
+      // Round trip every value
+      short curVal = (short) (0xffff & i);
+      float upcast = OnnxTensor.fp16ToFloat(curVal);
+      short output = OnnxTensor.floatToFp16(upcast);
+      if (!Float.isNaN(upcast)) {
+        // We coerce NaNs to the same value.
+        Assertions.assertEquals(curVal, output, "Expected " + curVal + " received " + output + ", intermediate float was " + upcast);
+      }
+    }
+  }
+
+  @Test
+  public void testBf16RoundTrip() {
+    for (int i = 0; i < 0xffff; i++) {
+      // Round trip every value
+      short curVal = (short) (0xffff & i);
+      float upcast = OnnxTensor.bf16ToFloat(curVal);
+      short output = OnnxTensor.floatToBf16(upcast);
+      if (!Float.isNaN(upcast)) {
+        // We coerce NaNs to the same value.
+        Assertions.assertEquals(curVal, output, "Expected " + curVal + " received " + output + ", intermediate float was " + upcast);
+      }
     }
   }
 }
