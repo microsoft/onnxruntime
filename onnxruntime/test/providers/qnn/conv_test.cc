@@ -343,7 +343,7 @@ TEST_F(QnnCPUBackendTests, TestCPUConvf32_large_input2_nopad_bias_initializer) {
                    fp32_abs_err);
 }
 
-// Test 1D Conv (implemented in QNN EP as 2D convolution with height of 1).
+// Test 1D Conv with static weights (implemented in QNN EP as 2D convolution with height of 1).
 TEST_F(QnnCPUBackendTests, TestCPUConv1Df32_StaticWeights_DefaultBias) {
   RunCPUConvOpTest("Conv",
                    TestInputDef<float>({1, 2, 4}, false, {0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f}),  // Dynamic input
@@ -357,7 +357,21 @@ TEST_F(QnnCPUBackendTests, TestCPUConv1Df32_StaticWeights_DefaultBias) {
                    "TestCPUConv1Df32_StaticWeights_DefaultBias");
 }
 
-// Test 1D ConvTranspose (implemented in QNN EP as 2D convolution with height of 1).
+// Test 1D Conv with dynamic weights (implemented in QNN EP as 2D convolution with height of 1).
+TEST_F(QnnCPUBackendTests, TestCPUConv1Df32_DynamicWeights_DefaultBias) {
+  RunCPUConvOpTest("Conv",
+                   TestInputDef<float>({1, 2, 4}, false, {0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f}),  // Dynamic input
+                   TestInputDef<float>({1, 2, 2}, false, {1.0f, 2.0f, 3.0f, 4.0f}),                          // Dynamic weights
+                   TestInputDef<float>({1}, true, {0.0f}),                                                   // Zero bias
+                   {1},                                                                                      // Strides
+                   {0, 0},                                                                                   // Pads
+                   {1},                                                                                      // Dilations
+                   "NOTSET",
+                   ExpectedEPNodeAssignment::All,
+                   "TestCPUConv1Df32_DynamicWeights_DefaultBias");
+}
+
+// Test 1D ConvTranspose with static weights (implemented in QNN EP as 2D convolution with height of 1).
 TEST_F(QnnCPUBackendTests, TestCPUConvTranspose1Df32_StaticWeights_DefaultBias) {
   RunCPUConvOpTest("ConvTranspose",
                    TestInputDef<float>({1, 2, 4}, false, {0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f}),  // Dynamic input
@@ -369,6 +383,20 @@ TEST_F(QnnCPUBackendTests, TestCPUConvTranspose1Df32_StaticWeights_DefaultBias) 
                    "NOTSET",
                    ExpectedEPNodeAssignment::All,
                    "TestCPUConvTranspose1Df32_StaticWeights_DefaultBias");
+}
+
+// Test 1D ConvTranspose with dynamic weights (implemented in QNN EP as 2D convolution with height of 1).
+TEST_F(QnnCPUBackendTests, TestCPUConvTranspose1Df32_DynamicWeights_DefaultBias) {
+  RunCPUConvOpTest("ConvTranspose",
+                   TestInputDef<float>({1, 2, 4}, false, {0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f}),  // Dynamic input
+                   TestInputDef<float>({2, 1, 2}, false, {1.0f, 2.0f, 3.0f, 4.0f}),                          // Dynamic weights
+                   TestInputDef<float>({1}, true, {0.0f}),                                                   // Zero bias
+                   {1},                                                                                      // Strides
+                   {0, 0},                                                                                   // Pads
+                   {1},                                                                                      // Dilations
+                   "NOTSET",
+                   ExpectedEPNodeAssignment::All,
+                   "TestCPUConvTranspose1Df32_DynamicWeights_DefaultBias");
 }
 
 #if defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
