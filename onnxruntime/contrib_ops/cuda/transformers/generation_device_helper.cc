@@ -147,6 +147,7 @@ Status TopK(const Tensor* input, const int axis, const unsigned k, bool largest,
   Status result;
   if (input->IsDataType<float>()) {
     result = TopKImpl<float>(nullptr,  // We limit number of beams in BeamSearchParameters, so K <= 256 and use NULL here
+                             false /*use_deterministic_compute*/,
                              stream,
                              input->Data<float>(),
                              static_cast<float*>(output_values.MutableDataRaw()),
@@ -161,6 +162,7 @@ Status TopK(const Tensor* input, const int axis, const unsigned k, bool largest,
                              dimension);
   } else if (input->IsDataType<MLFloat16>()) {
     result = TopKImpl<MLFloat16>(nullptr,
+                                 false /*use_deterministic_compute*/,
                                  stream,
                                  input->Data<MLFloat16>(),
                                  static_cast<MLFloat16*>(output_values.MutableDataRaw()),
