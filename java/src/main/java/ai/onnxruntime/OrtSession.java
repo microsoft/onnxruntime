@@ -800,17 +800,18 @@ public class OrtSession implements AutoCloseable {
     public void addExternalInitializers(Map<String, OnnxTensorLike> initializers)
         throws OrtException {
       checkClosed();
-      if (!initializers.isEmpty()) {
-        String[] names = new String[initializers.size()];
-        long[] handles = new long[initializers.size()];
-        int i = 0;
-        for (Map.Entry<String, OnnxTensorLike> e : initializers.entrySet()) {
-          names[i] = e.getKey();
-          handles[i] = e.getValue().nativeHandle;
-          i++;
-        }
-        addExternalInitializers(OnnxRuntime.ortApiHandle, nativeHandle, names, handles);
+      if (initializers.isEmpty()) {
+        return;
       }
+      String[] names = new String[initializers.size()];
+      long[] handles = new long[initializers.size()];
+      int i = 0;
+      for (Map.Entry<String, OnnxTensorLike> e : initializers.entrySet()) {
+        names[i] = e.getKey();
+        handles[i] = e.getValue().nativeHandle;
+        i++;
+      }
+      addExternalInitializers(OnnxRuntime.ortApiHandle, nativeHandle, names, handles);
     }
 
     /**
