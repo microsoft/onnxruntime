@@ -159,7 +159,6 @@ static GetTestModelFn BuildQDQConvTestCase(const std::string& conv_op_type, cons
     auto* output = builder.MakeOutput();
 
     using InputQLimits = std::numeric_limits<InputQType>;
-    using BiasQLimits = std::numeric_limits<uint32_t>;
 
     const float input_scale = 0.004f;
     const float weight_scale = 0.004f;
@@ -366,7 +365,7 @@ TEST_F(QnnCPUBackendTests, TestCPUConv1Df32_StaticWeights_DefaultBias) {
   RunCPUConvOpTest("Conv",
                    TestInputDef<float>({1, 2, 4}, false, {0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f}),  // Dynamic input
                    TestInputDef<float>({1, 2, 2}, true, {1.0f, 2.0f, 3.0f, 4.0f}),                           // Static weights
-                   TestInputDef<float>({1}, true, {0.0f}),                                                   // Zero bias
+                   TestInputDef<float>({1}, true, {1.0f}),                                                   // Bias of 1.f
                    {1},                                                                                      // Strides
                    {0, 0},                                                                                   // Pads
                    {1},                                                                                      // Dilations
