@@ -48,7 +48,7 @@ stages:
       timeoutInMinutes: 90
       workspace:
         clean: all
-      pool: Linux-CPU-2019
+      pool: onnxruntime-Ubuntu2004-AMD-CPU
       strategy:
         matrix:
           ${{ each PythonVersion in parameters.python_version }}:
