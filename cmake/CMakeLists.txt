@@ -32,6 +32,17 @@ endif()
 # Project
 project(onnxruntime C CXX ASM)
 
+# Disable fast-math for Intel oneAPI compiler
+if("${CMAKE_CXX_COMPILER_ID}" MATCHES "IntelLLVM")
+  if("${CMAKE_CXX_COMPILER_ID}" MATCHES "MSVC-like")
+    # Using icx-cl compiler driver with MSVC-like arguments
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /fp:precise")
+  else()
+    # Using icpx compiler driver
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-fast-math")
+  endif()
+endif()
+
 # Needed for Java
 set(CMAKE_C_STANDARD 99)
 
