@@ -37,7 +37,7 @@ class StreamExecutionContext {
    public:
     CountDownBarrier() : v_{0} {};
 
-    void Set(int32_t v) {
+    void Set(int_fast32_t v) {
       ORT_ENFORCE(v >= 0);
       v_.store(v, std::memory_order_relaxed);
     }
@@ -46,7 +46,7 @@ class StreamExecutionContext {
       return v_.fetch_sub(1, std::memory_order_relaxed) == 1;
     }
 
-    int32_t Get() { return v_.load(std::memory_order_relaxed); }
+    int_fast32_t Get() { return v_.load(std::memory_order_relaxed); }
 
     void Inc() {
       ++v_;
