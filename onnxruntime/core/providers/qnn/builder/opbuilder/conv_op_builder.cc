@@ -56,7 +56,7 @@ class ConvOpBuilder : public BaseOpBuilder {
                                uint32_t& input_channel_number) const;
 };
 
-// Conv, ConvTranspose ops are sensitive with data layout, no special validation so far
+// Conv ops are sensitive with data layout, no special validation so far
 // The nodes from 1st call of GetCapability do not get layout transformer applied, it's still NCHW
 // The nodes from 2nd call of GetCapability get layout transformer applied, it's NHWC
 // Need to do op validation in 1st call of GetCapability
@@ -69,7 +69,7 @@ Status ConvOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
   }
 
   const auto& inputs = node_unit.Inputs();
-  ORT_RETURN_IF(inputs.size() < 2, "QNN Conv and ConvTranspose must have at least 2 inputs.");
+  ORT_RETURN_IF(inputs.size() < 2, "QNN Conv must have at least 2 inputs.");
 
   const auto& input_0 = inputs[0];
   std::vector<uint32_t> input_shape;

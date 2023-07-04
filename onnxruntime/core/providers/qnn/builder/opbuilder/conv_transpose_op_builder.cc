@@ -51,7 +51,7 @@ class ConvTransposeBuilder : public BaseOpBuilder {
                                      bool do_op_validation) const override ORT_MUST_USE_RESULT;
 };
 
-// Conv, ConvTranspose ops are sensitive with data layout, no special validation so far
+// ConvTranspose ops are sensitive with data layout, no special validation so far
 // The nodes from 1st call of GetCapability do not get layout transformer applied, it's still NCHW
 // The nodes from 2nd call of GetCapability get layout transformer applied, it's NHWC
 // Need to do op validation in 1st call of GetCapability
@@ -64,24 +64,24 @@ Status ConvTransposeBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
   }
 
   const auto& inputs = node_unit.Inputs();
-  ORT_RETURN_IF(inputs.size() < 2, "QNN Conv and ConvTranspose must have at least 2 inputs.");
+  ORT_RETURN_IF(inputs.size() < 2, "QNN TransposeConv2d must have at least 2 inputs.");
 
   const auto& input_0 = inputs[0];
   std::vector<uint32_t> input_shape;
   ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(input_0.node_arg, input_shape), "Cannot get shape");
   if (input_shape.size() != 4 && input_shape.size() != 3) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "QNN Conv only supports 2D (rank 4) or 1D (rank 3) inputs.");
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "QNN TransposeConv2d only supports 2D (rank 4) or 1D (rank 3) inputs.");
   }
 
   ONNX_NAMESPACE::DataType input_data_type = input_0.node_arg.Type();
   ORT_RETURN_IF(!is_quantized_model && input_data_type != ONNX_NAMESPACE::Utils::DataTypeUtils::ToType("float"),
                 "QNN EP: Data type ", input_data_type->c_str(),
-                " is not supported for Conv operator in CPU backend.");
+                " is not supported for TransposeConv2d operator in CPU backend.");
 
   NodeAttrHelper node_helper(node_unit);
   auto auto_pad = node_helper.Get("auto_pad", std::string("NOTSET"));
   ORT_RETURN_IF(auto_pad != "NOTSET" && auto_pad != "SAME_LOWER" && auto_pad != "SAME_UPPER",
-                "QNN Conv operators do not support 'auto_pad' value: ", auto_pad.c_str());
+                "QNN TransposeConv2d operators do not support 'auto_pad' value: ", auto_pad.c_str());
 
   // QNN's TransposeConv2d only supports default dilation values of 1.
   constexpr int32_t default_dilation = 1;
@@ -437,7 +437,7 @@ Status ConvTransposeBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_mo
     std::vector<uint32_t> pads = node_helper.Get("pads", std::vector<uint32_t>({0, 0, 0, 0}));
     auto auto_pad = node_helper.Get("auto_pad", std::string("NOTSET"));
     ORT_RETURN_IF(auto_pad != "NOTSET" && auto_pad != "SAME_LOWER" && auto_pad != "SAME_UPPER",
-                  "QNN Conv operators do not support 'auto_pad' value: ", auto_pad.c_str());
+                  "QNN TransposeConv2d operators do not support 'auto_pad' value: ", auto_pad.c_str());
 
     if (auto_pad != "NOTSET") {
       const auto& input_0 = node_unit.Inputs()[0];
