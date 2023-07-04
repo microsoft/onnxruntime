@@ -5,9 +5,6 @@
  */
 package ai.onnxruntime;
 
-import java.lang.invoke.MethodHandle;
-import java.lang.invoke.MethodHandles;
-import java.lang.invoke.MethodType;
 import java.nio.Buffer;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
@@ -16,48 +13,12 @@ import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
 import java.nio.LongBuffer;
 import java.nio.ShortBuffer;
-import java.util.logging.Level;
-import java.util.logging.Logger;
 
 /**
  * A Java object wrapping an OnnxTensor. Tensors are the main input to the library, and can also be
  * returned as outputs.
  */
 public class OnnxTensor extends OnnxTensorLike {
-  private static final Logger logger = Logger.getLogger(OnnxTensor.class.getName());
-
-  private static final MethodHandle fp16Tofp32;
-  private static final MethodHandle fp32ToFp16;
-
-  static {
-    MethodHandle tmp16 = null;
-    MethodHandle tmp32 = null;
-    MethodHandles.Lookup lookup = MethodHandles.lookup();
-    try {
-      // Attempt to lookup the Java 20 fp16 conversion methods.
-      tmp16 =
-          lookup.findStatic(
-              Float.class, "float16ToFloat", MethodType.methodType(float.class, short.class));
-      tmp32 =
-          lookup.findStatic(
-              Float.class, "floatToFloat16", MethodType.methodType(short.class, float.class));
-    } catch (IllegalAccessException | NoSuchMethodException e) {
-      // Must be on Java 19 or earlier, create handles for our methods.
-      try {
-        tmp16 =
-            lookup.findStatic(
-                OnnxTensor.class, "fp16ToFloat", MethodType.methodType(float.class, short.class));
-        tmp32 =
-            lookup.findStatic(
-                OnnxTensor.class, "floatToFp16", MethodType.methodType(short.class, float.class));
-      } catch (IllegalAccessException | NoSuchMethodException ex) {
-        // Should not happen
-        logger.log(Level.SEVERE, "Failed to find fp16 conversion methods on OnnxTensor", e);
-      }
-    }
-    fp16Tofp32 = tmp16;
-    fp32ToFp16 = tmp32;
-  }
 
   /**
    * This reference is held for OnnxTensors backed by a Java nio buffer to ensure the buffer does
@@ -112,9 +73,11 @@ public class OnnxTensor extends OnnxTensorLike {
         case STRING:
           return getString(OnnxRuntime.ortApiHandle, nativeHandle);
         case FLOAT16:
-          return fp16ToFloat(getShort(OnnxRuntime.ortApiHandle, nativeHandle, info.onnxType.value));
+          return OrtUtil.mlasFp16ToFloat(
+              getShort(OnnxRuntime.ortApiHandle, nativeHandle, info.onnxType.value));
         case BFLOAT16:
-          return bf16ToFloat(getShort(OnnxRuntime.ortApiHandle, nativeHandle, info.onnxType.value));
+          return OrtUtil.bf16ToFloat(
+              getShort(OnnxRuntime.ortApiHandle, nativeHandle, info.onnxType.value));
         case UNKNOWN:
         default:
           throw new OrtException("Extracting the value of an invalid Tensor.");
@@ -186,40 +149,14 @@ public class OnnxTensor extends OnnxTensorLike {
     } else if (info.type == OnnxJavaType.FLOAT16) {
       // if it's fp16 we need to copy it out by hand.
       ShortBuffer buffer = getBuffer().asShortBuffer();
-      return convertFp16BufferToFloatBuffer(buffer);
+      return OrtUtil.convertFp16BufferToFloatBuffer(buffer);
     } else if (info.type == OnnxJavaType.BFLOAT16) {
       // if it's bf16 we need to copy it out by hand.
       ShortBuffer buffer = getBuffer().asShortBuffer();
-      return convertBf16BufferToFloatBuffer(buffer);
+      return OrtUtil.convertBf16BufferToFloatBuffer(buffer);
     } else {
       return null;
     }
-  }
-
-  static FloatBuffer convertFp16BufferToFloatBuffer(ShortBuffer buf) {
-    int bufferCap = buf.capacity();
-    FloatBuffer output = FloatBuffer.allocate(bufferCap);
-    try {
-      for (int i = 0; i < bufferCap; i++) {
-        output.put(i, (float) fp16Tofp32.invokeExact(buf.get(i)));
-      }
-    } catch (Throwable e) {
-      throw new RuntimeException(e);
-    }
-    return output;
-  }
-
-  static FloatBuffer convertBf16BufferToFloatBuffer(ShortBuffer buf) {
-    int bufferCap = buf.capacity();
-    FloatBuffer output = FloatBuffer.allocate(bufferCap);
-    try {
-      for (int i = 0; i < bufferCap; i++) {
-        output.put(i, bf16ToFloat(buf.get(i)));
-      }
-    } catch (Throwable e) {
-      throw new RuntimeException(e);
-    }
-    return output;
   }
 
   /**
@@ -241,13 +178,15 @@ public class OnnxTensor extends OnnxTensorLike {
   }
 
   /**
-   * Returns a copy of the underlying OnnxTensor as a ShortBuffer if the underlying type is int16 or
-   * uint16, otherwise it returns null.
+   * Returns a copy of the underlying OnnxTensor as a ShortBuffer if the underlying type is int16,
+   * uint16, fp16 or bf16, otherwise it returns null.
    *
    * @return A ShortBuffer copy of the OnnxTensor.
    */
   public ShortBuffer getShortBuffer() {
-    if (info.type == OnnxJavaType.INT16) {
+    if ((info.type == OnnxJavaType.INT16)
+        || (info.type == OnnxJavaType.FLOAT16)
+        || (info.type == OnnxJavaType.BFLOAT16)) {
       ShortBuffer buffer = getBuffer().asShortBuffer();
       ShortBuffer output = ShortBuffer.allocate(buffer.capacity());
       output.put(buffer);
@@ -336,117 +275,6 @@ public class OnnxTensor extends OnnxTensorLike {
       throws OrtException;
 
   private native void close(long apiHandle, long nativeHandle);
-
-  /**
-   * Upcasts a fp16 value to a float. Mirrors the conversion in MLAS.
-   *
-   * @param input A uint16_t representing an IEEE half precision float.
-   * @return A float.
-   */
-  static float fp16ToFloat(short input) {
-    // Port of MLAS_Half2Float from onnxruntime/core/mlas/inc/mlas_float16.h
-    final int MAGIC = 113 << 23;
-    // exponent mask after shift
-    final int SHIFTED_EXP = 0x7c00 << 13;
-
-    // exponent/mantissa bits
-    int bits = (input & 0x7fff) << 13;
-    // just the exponent
-    final int exp = SHIFTED_EXP & bits;
-    // exponent adjust
-    bits += (127 - 15) << 23;
-
-    // handle exponent special cases
-    if (exp == SHIFTED_EXP) {
-      // Inf/NaN?
-      // extra exp adjust
-      bits += (128 - 16) << 23;
-    } else if (exp == 0) {
-      // Zero/Denormal?
-      // extra exp adjust
-      bits += (1 << 23);
-      // renormalize
-      float tmp = Float.intBitsToFloat(bits) - Float.intBitsToFloat(MAGIC);
-      bits = Float.floatToIntBits(tmp);
-    }
-
-    // sign bit
-    bits |= (input & 0x8000) << 16;
-
-    return Float.intBitsToFloat(bits);
-  }
-
-  /**
-   * Rounds a float value to fp16. Mirrors the conversion in MLAS.
-   *
-   * @param input A float value.
-   * @return The value rounded to an IEEE half precision value.
-   */
-  static short floatToFp16(float input) {
-    // Port of MLAS_Float2Half from onnxruntime/core/mlas/inc/mlas_float16.h
-    int bits = Float.floatToIntBits(input);
-    final int F32_INFINITY = Float.floatToIntBits(Float.POSITIVE_INFINITY);
-    final int F16_MAX = (127 + 16) << 23;
-    final int DENORM_MAGIC = ((127 - 15) + (23 - 10) + 1) << 23;
-    final int SIGN_MASK = 0x80000000;
-    final int ROUNDING_CONST = ((15 - 127) << 23) + 0xfff;
-
-    int sign = bits & SIGN_MASK;
-    // mask out sign bit
-    bits ^= sign;
-
-    short output;
-    if (bits >= F16_MAX) {
-      // Inf or NaN (all exponent bits set)
-      output = (bits > F32_INFINITY) ? (short) 0x7e00 : (short) 0x7c00;
-    } else {
-      if (bits < (113 << 23)) {
-        // Subnormal or zero
-        // use a magic value to align our 10 mantissa bits at the bottom of
-        // the float. as long as FP addition is round-to-nearest-even this
-        // just works.
-        float tmp = Float.intBitsToFloat(bits) + Float.intBitsToFloat(DENORM_MAGIC);
-
-        // and one integer subtract of the bias later, we have our final float!
-        output = (short) (Float.floatToIntBits(tmp) - DENORM_MAGIC);
-      } else {
-        int mant_odd = (bits >> 13) & 1; // resulting mantissa is odd
-
-        // update exponent, rounding bias part 1
-        bits += ROUNDING_CONST;
-        // rounding bias part 2
-        bits += mant_odd;
-        // take the bits!
-        output = (short) (bits >> 13);
-      }
-    }
-
-    // Add the sign back in
-    output = (short) (output | ((short) (sign >> 16)));
-
-    return output;
-  }
-
-  /**
-   * Converts a bf16 value stored in a short into a float value.
-   *
-   * @param input A uint16_t representing a bfloat16 value.
-   * @return A float.
-   */
-  static float bf16ToFloat(short input) {
-    int bits = input << 16;
-    return Float.intBitsToFloat(bits);
-  }
-
-  /**
-   * Converts a float into bf16 by truncation. May not produce correct values for subnormal floats.
-   *
-   * @param input The float input.
-   * @return A bfloat16 value which is closest to the float.
-   */
-  static short floatToBf16(float input) {
-    return (short) (Float.floatToIntBits(input) >> 16);
-  }
 
   /**
    * Create a Tensor from a Java primitive, primitive multidimensional array or String

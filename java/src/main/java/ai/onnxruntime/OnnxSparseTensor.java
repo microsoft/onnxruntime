@@ -312,22 +312,24 @@ public final class OnnxSparseTensor extends OnnxTensorLike {
     ByteBuffer buffer =
         getValuesBuffer(OnnxRuntime.ortApiHandle, nativeHandle).order(ByteOrder.nativeOrder());
     switch (info.type) {
-      case FLOAT: {
-        // regular fp32
-        FloatBuffer floatBuf = buffer.asFloatBuffer();
-        FloatBuffer output = FloatBuffer.allocate(floatBuf.capacity());
-        output.put(floatBuf);
-        output.rewind();
-        return output;
-      }
-      case FLOAT16: {
-        ShortBuffer shortBuffer = buffer.asShortBuffer();
-        return OnnxTensor.convertFp16BufferToFloatBuffer(shortBuffer);
-      }
-      case BFLOAT16: {
-        ShortBuffer shortBuffer = buffer.asShortBuffer();
-        return OnnxTensor.convertBf16BufferToFloatBuffer(shortBuffer);
-      }
+      case FLOAT:
+        {
+          FloatBuffer floatBuf = buffer.asFloatBuffer();
+          FloatBuffer output = FloatBuffer.allocate(floatBuf.capacity());
+          output.put(floatBuf);
+          output.rewind();
+          return output;
+        }
+      case FLOAT16:
+        {
+          ShortBuffer shortBuffer = buffer.asShortBuffer();
+          return OrtUtil.convertFp16BufferToFloatBuffer(shortBuffer);
+        }
+      case BFLOAT16:
+        {
+          ShortBuffer shortBuffer = buffer.asShortBuffer();
+          return OrtUtil.convertBf16BufferToFloatBuffer(shortBuffer);
+        }
       case DOUBLE:
         {
           DoubleBuffer doubleBuf = buffer.asDoubleBuffer();

@@ -150,8 +150,8 @@ public class OnnxTensorTest {
     for (int i = 0; i < 0xffff; i++) {
       // Round trip every value
       short curVal = (short) (0xffff & i);
-      float upcast = OnnxTensor.fp16ToFloat(curVal);
-      short output = OnnxTensor.floatToFp16(upcast);
+      float upcast = OrtUtil.mlasFp16ToFloat(curVal);
+      short output = OrtUtil.mlasFloatToFp16(upcast);
       if (!Float.isNaN(upcast)) {
         // We coerce NaNs to the same value.
         Assertions.assertEquals(
@@ -167,8 +167,8 @@ public class OnnxTensorTest {
     for (int i = 0; i < 0xffff; i++) {
       // Round trip every value
       short curVal = (short) (0xffff & i);
-      float upcast = OnnxTensor.bf16ToFloat(curVal);
-      short output = OnnxTensor.floatToBf16(upcast);
+      float upcast = OrtUtil.bf16ToFloat(curVal);
+      short output = OrtUtil.floatToBf16(upcast);
       if (!Float.isNaN(upcast)) {
         // We coerce NaNs to the same value.
         Assertions.assertEquals(
