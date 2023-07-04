@@ -48,8 +48,6 @@ class ITuningContext {
   virtual TuningResults GetTuningResults() const;
   virtual Status LoadTuningResults(const TuningResults& tr);
 
-  virtual const IExecutionProvider* GetExecutionProvider() const;
-
  protected:
   IExecutionProvider* ep_;
 };

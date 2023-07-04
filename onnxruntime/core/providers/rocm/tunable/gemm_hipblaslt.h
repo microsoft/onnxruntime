@@ -218,18 +218,9 @@ auto GetHipBlasLtTypeStringAndOps(ActivationType activation_type = ActivationTyp
 
       TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(
           status != HIPBLAS_STATUS_SUCCESS, "hipBLASLt find_all: algo not supported, index ", std::to_string(i));
-
-      void* workspace;
-      const auto* ep = static_cast<const ROCMExecutionProvider*>(params->TuningContext()->GetExecutionProvider());
-      IAllocatorUniquePtr<void> buffer;
-      if (workspace_size > 0) {
-        onnxruntime::Stream ort_stream(
-            static_cast<StreamHandle>(params->stream), ep->GetOrtDeviceByMemType(OrtMemTypeDefault));
-        buffer = ep->GetScratchBuffer<void>(
-            workspace_size, &ort_stream, onnxruntime::WaitRocmNotificationOnDevice);
-        using HipT = typename ToHipType<T>::MappedType;
-        workspace = reinterpret_cast<HipT*>(buffer.get());
-      }
+      // TODO: support workspace in next PR
+      TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(
+          workspace_size > 0, "hipBLASLt find_all: extra workspace not supported for now.");
 
       HIPBLASLT_RETURN_IF_ERROR(hipblasLtMatmul(op_handle,
                                                 matmul,
@@ -244,8 +235,8 @@ auto GetHipBlasLtTypeStringAndOps(ActivationType activation_type = ActivationTyp
                                                 params->c,
                                                 mat_c,
                                                 &algo_i,
-                                                workspace,
-                                                workspace_size,
+                                                nullptr,
+                                                0,
                                                 params->stream));
 
       HIPBLASLT_RETURN_IF_ERROR(hipblasLtMatmulDescDestroy(matmul));
