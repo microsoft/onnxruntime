@@ -31,6 +31,10 @@ parameters:
   type: boolean
   default: false
 
+- name: WithCache
+  type: boolean
+  default: false
+
 jobs:
 - job: build_WASM
   pool: ${{ parameters.PoolName }}
