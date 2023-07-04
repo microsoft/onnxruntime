@@ -17,10 +17,6 @@ parameters:
   type: string
   default: ""
 
-- name: ChangeEveryCommit
-  type: boolean
-  default: true
-
 - name: Arguments
   type: string
 

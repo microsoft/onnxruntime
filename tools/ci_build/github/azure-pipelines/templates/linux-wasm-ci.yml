@@ -105,7 +105,6 @@ jobs:
         AdditionalKey: wasm | ${{ parameters.BuildConfig }}
       CacheDir: $(ORT_CACHE_DIR)/wasm
       Arguments: '$(CommonBuildArgs) --build_dir $(Build.BinariesDirectory)/wasm'
-      ChangeEveryCommit: true
       DisplayName: 'Build and test (node)'
       WithCache: ${{ parameters.WithCache }}
 
@@ -118,7 +117,6 @@ jobs:
         AdditionalKey: wasm_threads | ${{ parameters.BuildConfig }}
       CacheDir: $(ORT_CACHE_DIR)/wasm_threads
       Arguments: '$(CommonBuildArgs) --build_dir $(Build.BinariesDirectory)/wasm_threads --enable_wasm_threads'
-      ChangeEveryCommit: true
       DisplayName: 'Build and test (node) (threads)'
       WithCache: ${{ parameters.WithCache }}
 
@@ -131,7 +129,6 @@ jobs:
         AdditionalKey: wasm_simd_threads | ${{ parameters.BuildConfig }}
       CacheDir: $(ORT_CACHE_DIR)/wasm_simd_threads
       Arguments: '$(CommonBuildArgs) --build_dir $(Build.BinariesDirectory)/wasm_simd_threads --enable_wasm_simd --enable_wasm_threads --wasm_run_tests_in_browser'
-      ChangeEveryCommit: true
       DisplayName: 'Build and test (node) (simd + threads)'
       WithCache: ${{ parameters.WithCache }}
 
@@ -144,7 +141,6 @@ jobs:
         AdditionalKey: wasm_simd | ${{ parameters.BuildConfig }}
       CacheDir: $(ORT_CACHE_DIR)/wasm_simd
       Arguments: '$(CommonBuildArgs) --build_dir $(Build.BinariesDirectory)/wasm_simd --enable_wasm_simd'
-      ChangeEveryCommit: true
       DisplayName: 'Build and test (node) (simd)'
       WithCache: ${{ parameters.WithCache }}
 
@@ -158,7 +154,6 @@ jobs:
           AdditionalKey: wasm_simd_jsep | ${{ parameters.BuildConfig }}
         CacheDir: $(ORT_CACHE_DIR)/wasm_simd_jsep
         Arguments: '$(CommonBuildArgs) --build_dir $(Build.BinariesDirectory)/wasm_simd_jsep --enable_wasm_simd --use_jsep --target onnxruntime_webassembly --skip_tests'
-        ChangeEveryCommit: true
         DisplayName: 'Build (simd + JSEP)'
         WithCache: ${{ parameters.WithCache }}
     - template: build-linux-wasm-step.yml
@@ -170,7 +165,6 @@ jobs:
           AdditionalKey: wasm_simd_threads_jsep | ${{ parameters.BuildConfig }}
         CacheDir: $(ORT_CACHE_DIR)/wasm_simd_threads_jsep
         Arguments: '$(CommonBuildArgs) --build_dir $(Build.BinariesDirectory)/wasm_simd_threads_jsep --enable_wasm_simd --enable_wasm_threads --use_jsep --target onnxruntime_webassembly --skip_tests'
-        ChangeEveryCommit: true
         DisplayName: 'Build (simd + threads + JSEP)'
         WithCache: ${{ parameters.WithCache }}
 
