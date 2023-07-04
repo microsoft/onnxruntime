@@ -467,7 +467,7 @@ Status TensorProtoToMLValue(const onnx::TensorProto& tensor_proto, const MemBuff
             deleter.param = new UnInitializeParam{preallocated, preallocated_size, ele_type};
           }
           ::onnxruntime::test::UnpackTensor<std::string>(tensor_proto, raw_data, raw_data_len,
-                                                         (std::string*)preallocated, tensor_size);
+                                                         (std::string*)preallocated, static_cast<size_t>(tensor_size));
           break;
         default: {
           std::ostringstream ostr;
