@@ -3,6 +3,7 @@
 
 #import <Foundation/Foundation.h>
 
+#import "ort_custom_op_registration.h"
 #import "ort_enums.h"
 
 NS_ASSUME_NONNULL_BEGIN
@@ -207,6 +208,26 @@ NS_ASSUME_NONNULL_BEGIN
  * @return Whether the registration function was successfully called.
  */
 - (BOOL)registerCustomOpsUsingFunction:(NSString*)registrationFuncName
+                                 error:(NSError**)error;
+
+/**
+ * Registers custom ops for use with `ORTSession`s using this SessionOptions by calling the specified C function
+ * pointed to by `registerCustomOpsFn`.
+ *
+ * Available since 1.16.
+ *
+ * The registration function must have the signature:
+ *    OrtStatus* (*fn)(OrtSessionOptions* options, const OrtApiBase* api);
+ *
+ * See https://onnxruntime.ai/docs/reference/operators/add-custom-op.html for more information on custom ops.
+ * See https://github.com/microsoft/onnxruntime/blob/342a5bf2b756d1a1fc6fdc582cfeac15182632fe/onnxruntime/test/testdata/custom_op_library/custom_op_library.cc#L115
+ * for an example of a custom op library registration function.
+ *
+ * @param registerCustomOpsFn A pointer to the C registration function.
+ * @param error Optional error information set if an error occurs.
+ * @return Whether the registration function was successfully called.
+ */
+- (BOOL)registerCustomOpsWithCFunction:(ORTCAPIRegisterCustomOpsFnPtr)registerCustomOpsFn
                                  error:(NSError**)error;
 
 @end

@@ -238,6 +238,29 @@ NS_ASSUME_NONNULL_BEGIN
                                                   error:&err];
   ORTAssertNullableResultSuccessful(session, err);
 }
+
+static bool gDummyRegisterCustomOpsFnCalled = false;
+
+// dummy custom op registration C function
+// we can avoid including onnxruntime_c_api.h if we just use incomplete types
+static OrtStatus* _Nullable DummyRegisterCustomOpsFn(OrtSessionOptions* /*session_options*/,
+                                                     const OrtApiBase* /*api*/) {
+  gDummyRegisterCustomOpsFnCalled = true;
+  return nullptr;
+}
+
+- (void)testRegisterCustomOpsWithCFunction {
+  NSError* err = nil;
+  ORTSessionOptions* sessionOptions = [ORTSessionTest makeSessionOptions];
+
+  gDummyRegisterCustomOpsFnCalled = false;
+  BOOL registerResult = [sessionOptions registerCustomOpsWithCFunction:&DummyRegisterCustomOpsFn
+                                                                 error:&err];
+  ORTAssertBoolResultSuccessful(registerResult, err);
+
+  XCTAssertEqual(gDummyRegisterCustomOpsFnCalled, true);
+}
+
 @end
 
 NS_ASSUME_NONNULL_END
