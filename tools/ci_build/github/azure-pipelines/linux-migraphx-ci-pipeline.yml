@@ -20,7 +20,7 @@ jobs:
   workspace:
     clean: all
   pool: onnxruntime-Ubuntu2004-AMD-CPU
-  timeoutInMinutes: 60
+  timeoutInMinutes: 120
 
   steps:
   - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
@@ -113,7 +113,7 @@ jobs:
   pool: AMD-GPU
   dependsOn:
   - Linux_Build
-  timeoutInMinutes: 60
+  timeoutInMinutes: 120
 
   steps:
   - task: DownloadPipelineArtifact@2
