@@ -2,7 +2,9 @@
 
 #include <algorithm>
 #include <cstdlib>
+#ifdef _WIN32
 #include <malloc.h>
+#endif
 #include <new>
 #include <random>
 

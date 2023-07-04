@@ -1,7 +1,5 @@
-﻿using Microsoft.ML.OnnxRuntime;
-using System;
+﻿using System;
 using Xunit;
-using Xunit.Abstractions;
 
 
 namespace Microsoft.ML.OnnxRuntime.Tests
@@ -82,7 +80,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 logLevel = OrtLoggingLevel.ORT_LOGGING_LEVEL_FATAL
             };
 
-            ortEnvInstance = OrtEnv.CreateInstanceWithOptions(envOptions);
+            ortEnvInstance = OrtEnv.CreateInstanceWithOptions(ref envOptions);
             Assert.True(OrtEnv.IsCreated);
             Assert.Equal(OrtLoggingLevel.ORT_LOGGING_LEVEL_FATAL, ortEnvInstance.EnvLogLevel);
 
@@ -94,7 +92,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 logId = "CSharpOnnxRuntimeTestLogid"
             };
 
-            ortEnvInstance = OrtEnv.CreateInstanceWithOptions(envOptions);
+            ortEnvInstance = OrtEnv.CreateInstanceWithOptions(ref envOptions);
             Assert.Equal(OrtLoggingLevel.ORT_LOGGING_LEVEL_WARNING, ortEnvInstance.EnvLogLevel);
 
             // Change and see if this takes effect
@@ -120,13 +118,13 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 };
 
                 // Make sure we start anew
-                var env = OrtEnv.CreateInstanceWithOptions(envOptions);
+                var env = OrtEnv.CreateInstanceWithOptions(ref envOptions);
                 Assert.True(OrtEnv.IsCreated);
             }
         }
     }
 
-    public class CustomLoggerBase
+    public class CustomLoggingFunctionTestBase
     {
         // Custom logging constants
         protected static readonly string TestLogId = "CSharpTestLogId";
@@ -148,9 +146,8 @@ namespace Microsoft.ML.OnnxRuntime.Tests
     }
 
     [Collection("Ort Inference Tests")]
-    public class OrtEnvWithCustomLogger : CustomLoggerBase
+    public class OrtEnvWithCustomLogger : CustomLoggingFunctionTestBase
     {
-
         [Fact(DisplayName = "TesEnvWithCustomLogger")]
         public void TesEnvWithCustomLogger()
         {
@@ -167,18 +164,21 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 
             LoggingInvokes = 0;
 
-            var env = OrtEnv.CreateInstanceWithOptions(envOptions);
+            var env = OrtEnv.CreateInstanceWithOptions(ref envOptions);
             Assert.True(OrtEnv.IsCreated);
 
             var model = TestDataLoader.LoadModelFromEmbeddedResource("squeezenet.onnx");
             // Trigger some logging
-            using (var session = new InferenceSession(model)) ;
+            // Empty stmt intentional
+            using (var session = new InferenceSession(model))
+            { }
+
             Assert.True(LoggingInvokes > 0);
         }
     }
 
     [Collection("Ort Inference Tests")]
-    public class OrtEnvWithCustomLoggerAndThreadindOptions : CustomLoggerBase
+    public class OrtEnvWithCustomLoggerAndThreadindOptions : CustomLoggingFunctionTestBase
     {
         [Fact(DisplayName = "TestEnvWithCustomLoggerAndThredingOptions")]
         public void TestEnvWithCustomLoggerAndThredingOptions()
@@ -199,12 +199,15 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 
                 LoggingInvokes = 0;
 
-                var env = OrtEnv.CreateInstanceWithOptions(envOptions);
+                var env = OrtEnv.CreateInstanceWithOptions(ref envOptions);
                 Assert.True(OrtEnv.IsCreated);
 
                 var model = TestDataLoader.LoadModelFromEmbeddedResource("squeezenet.onnx");
                 // Trigger some logging
-                using (var session = new InferenceSession(model)) ;
+                // Empty stmt intentional
+                using (var session = new InferenceSession(model))
+                { }
+
                 Assert.True(LoggingInvokes > 0);
             }
         }

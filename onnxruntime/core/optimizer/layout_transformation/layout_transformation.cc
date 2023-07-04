@@ -6,7 +6,7 @@
 #include "core/optimizer/layout_transformation/layout_transformation.h"
 
 #include "core/common/common.h"
-#include "core/optimizer/transpose_optimization/ort_transpose_optimizer.h"
+#include "core/optimizer/transpose_optimization/ort_transpose_optimization.h"
 #include "core/optimizer/transpose_optimization/ort_optimizer_utils.h"
 
 using namespace onnx_transpose_optimization;
@@ -67,9 +67,12 @@ PostLayoutTransformCostCheck(const api::GraphRef& graph, const api::NodeRef& nod
 }
 
 Status TransformLayoutForEP(Graph& graph, bool& modified, const IExecutionProvider& execution_provider,
+                            AllocatorPtr cpu_allocator,
                             const DebugGraphFn& debug_graph_fn) {
+  // We pass in nullptr for the new_node_ep param as new nodes will be assigned by the graph partitioner after
+  // TransformLayoutForEP returns.
   // sub graph recurse will be added later
-  auto api_graph = MakeApiGraph(graph, execution_provider.GetAllocator(OrtMemTypeDefault), nullptr);
+  auto api_graph = MakeApiGraph(graph, cpu_allocator, /*new_node_ep*/ nullptr);
   const auto& layout_sensitive_ops = GetEPLayoutSensitiveOps(execution_provider);
 
   CostCheckFn cost_check;

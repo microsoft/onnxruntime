@@ -11,11 +11,11 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using Xunit;
-using System;
 
 namespace Microsoft.ML.OnnxRuntime.Tensors.Tests
 {
@@ -159,7 +159,12 @@ namespace Microsoft.ML.OnnxRuntime.Tensors.Tests
             Assert.Equal(24, tensor.Length);
             Assert.Equal(tensorConstructor.IsReversedStride, tensor.IsReversedStride);
 
-            Assert.Throws<ArgumentNullException>("dimensions", () => tensorConstructor.CreateFromDimensions<int>(dimensions: null));
+            // The null is converted to a 'null' ReadOnlySpan<T> which is a valid instance with length zero.
+            // https://learn.microsoft.com/en-us/dotnet/api/system.readonlyspan-1.-ctor?view=netstandard-2.1#system-readonlyspan-1-ctor(-0())
+            // Such a span is valid as dimensions as it represents a scalar. 
+            // If we need to differentiate between the two we'd need to change the Tensor ctor to accept a
+            // nullable span in order to tell the user that's invalid. 
+            // Assert.Throws<ArgumentNullException>("dimensions", () => tensorConstructor.CreateFromDimensions<int>(dimensions: null));
             Assert.Throws<ArgumentOutOfRangeException>("dimensions", () => tensorConstructor.CreateFromDimensions<int>(dimensions: new[] { 1, -1 }));
 
             // ensure dimensions are immutable

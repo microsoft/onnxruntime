@@ -184,7 +184,6 @@
     <Rule Id="C33020" Action="Error" />
     <Rule Id="C33022" Action="Error" />
     <Rule Id="C6001" Action="Error" />
-    <Rule Id="C6011" Action="Error" />
     <Rule Id="C6029" Action="Error" />
     <Rule Id="C6031" Action="Error" />
     <Rule Id="C6053" Action="Error" />

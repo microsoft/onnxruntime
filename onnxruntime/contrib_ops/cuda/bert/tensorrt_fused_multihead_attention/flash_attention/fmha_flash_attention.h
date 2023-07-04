@@ -269,7 +269,7 @@ class FusedMultiHeadFlashAttentionKernel
     ORT_ENFORCE(headsize <= 0x3FFFFFFF);
     ORT_ENFORCE(qStep <= 0xFFFF);
     ORT_ENFORCE(kvStep <= 0xFFFF);
-    return static_cast<uint64_t>(qStep << 16 | kvStep) << 32 | (headsize << 2) | (interleaved ? 2U : 0U) | (unroll ? 1U : 0U);
+    return static_cast<uint64_t>(qStep << 16 | kvStep) << 32 | (static_cast<uint64_t>(headsize) << 2) | (interleaved ? 2U : 0U) | (unroll ? 1U : 0U);
   }
 
   void updateSteps(Fused_multihead_attention_params_v2 const& param, int32_t& qStep, int32_t& kvStep) const {

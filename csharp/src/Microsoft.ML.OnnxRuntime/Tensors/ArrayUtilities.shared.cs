@@ -23,7 +23,7 @@ namespace Microsoft.ML.OnnxRuntime.Tensors
         public static long GetSizeForShape(long[] shape)
         {
             long product = 1;
-            foreach( var dim in shape)
+            foreach (var dim in shape)
             {
                 if (dim < 0)
                 {
@@ -245,7 +245,7 @@ namespace Microsoft.ML.OnnxRuntime.Tensors
             for (int i = 0; i < sourceStrides.Length; i++)
             {
                 // reverse the index for reverseStride so that we divide by largest stride first
-                var nIndex = sourceReverseStride ? sourceStrides.Length - 1 - i: i;
+                var nIndex = sourceReverseStride ? sourceStrides.Length - 1 - i : i;
 
                 var sourceStride = sourceStrides[nIndex];
                 var transformStride = transformStrides[nIndex];
@@ -255,6 +255,19 @@ namespace Microsoft.ML.OnnxRuntime.Tensors
             }
 
             return transformIndex;
+        }
+
+        public static T[] GetEmpty<T>()
+        {
+            // Match the implementation of Array.GetEmpty<T>()
+            // from dotnet/runtime. Having it as a static in a
+            // nested class ensures we only allocate the empty
+            // array once and only when actually necessary.
+            return EmptyArray<T>.Value;
+        }
+        private static class EmptyArray<T>
+        {
+            public static readonly T[] Value = new T[0];
         }
     }
 }

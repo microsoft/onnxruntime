@@ -7,14 +7,14 @@ set(MLAS_SRC_DIR ${ONNXRUNTIME_ROOT}/core/mlas/lib)
 set(MLAS_AMX_SUPPORTED FALSE)
 
 if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" AND CMAKE_C_COMPILER_VERSION VERSION_GREATER_EQUAL 11)
-  # match assembler version, AMX instructions are supported from 2.40
-  if (CMAKE_ASM-ATT_COMPILER_ID STREQUAL "GNU")
+  # match assembler version, AMX instructions are supported from 2.38
+  if (CMAKE_ASM_COMPILER_ID STREQUAL "GNU")
     execute_process(
-        COMMAND ${CMAKE_ASM-ATT_COMPILER} --version
-        OUTPUT_VARIABLE _gas_version
+        COMMAND as --version
+        OUTPUT_VARIABLE _as_version
     )
-    # 2.40 or later
-    if (_gas_version MATCHES "GNU.[Aa]ssembler.*(2\\.[4-9][0-9])")
+    # 2.38 or later
+    if (_as_version MATCHES "GNU.[Aa]ssembler.*(2\\.38|2\\.39|2\\.[4-9][0-9]|[3-9]\\.[0-9][0-9])")
         set(MLAS_AMX_SUPPORTED TRUE)
     endif()
   endif()
@@ -220,7 +220,7 @@ function(setup_mlas_source_for_windows)
   endif()
 endfunction()
 
-if (onnxruntime_BUILD_WEBASSEMBLY)
+if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
   if (onnxruntime_ENABLE_WEBASSEMBLY_SIMD)
     file(GLOB_RECURSE mlas_platform_srcs
       "${MLAS_SRC_DIR}/wasm_simd/*.cpp"
@@ -584,7 +584,7 @@ set_target_properties(onnxruntime_mlas PROPERTIES FOLDER "ONNXRuntime")
 if (WIN32)
   target_compile_options(onnxruntime_mlas PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:/wd6385>" "$<$<COMPILE_LANGUAGE:CXX>:/wd4127>")
   if (onnxruntime_ENABLE_STATIC_ANALYSIS)
-    target_compile_options(onnxruntime_mlas PRIVATE  "$<$<COMPILE_LANGUAGE:CXX>:/analyze:stacksize 131072">)
+    target_compile_options(onnxruntime_mlas PRIVATE  "$<$<COMPILE_LANGUAGE:CXX>:/analyze:stacksize" 131072>)
   endif()
 endif()
 

@@ -21,8 +21,9 @@
  */
 
 #include "core/common/status.h"
+#include "core/framework/allocator.h"
 #include "core/framework/transform_layout_functions.h"
-#include "core/optimizer/transpose_optimization/ort_transpose_optimizer.h"
+#include "core/optimizer/transpose_optimization/ort_transpose_optimization.h"
 
 namespace onnxruntime {
 class Graph;
@@ -47,11 +48,13 @@ namespace layout_transformation {
 /// <param name="graph">graph to transform</param>
 /// <param name="modified">indicates whether the graph is modified during transformation</param>
 /// <param name="execution_provider">execution provider for which the transformation needs to be performed</param>
+/// <param name="cpu_allocator">a CPU allocator used in layout transformation.
 /// <param name="debug_graph_fn">Optional functor to debug the graph produced during layout transformation.
 /// This is called after layout transformation if new nodes are inserted, and again after those are optimized.
 /// </param>
 Status TransformLayoutForEP(onnxruntime::Graph& graph, bool& modified,
                             const onnxruntime::IExecutionProvider& execution_provider,
+                            onnxruntime::AllocatorPtr cpu_allocator,
                             const onnxruntime::layout_transformation::DebugGraphFn& debug_graph_fn = {});
 
 /// <summary>
@@ -80,7 +83,7 @@ const std::unordered_set<std::string_view>& GetORTLayoutSensitiveOps();
 ///   Conv inputs/outputs have new shape. Shapes of * and ** are unchanged (carrying NCHW data).
 ///
 /// input_perms/output_perms are matched with node inputs/outputs positionally. Their lengths must be at most equal to
-/// the number of inputs/outputs, respectively. nullptr entires indicate an input or output should not be transposed.
+/// the number of inputs/outputs, respectively. nullptr entries indicate an input or output should not be transposed.
 /// </summary>
 /// <param name="graph">Graph containing the node</param>
 /// <param name="node">Node to modify</param>

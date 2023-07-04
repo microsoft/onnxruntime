@@ -19,7 +19,10 @@ jobs:
   displayName: "iOS Packaging"
 
   pool:
-    vmImage: "macOS-12"
+    vmImage: "macOS-13"
+
+  variables:
+    xcodeVersion: "14.3"
 
   timeoutInMinutes: 300
 
@@ -44,11 +47,19 @@ jobs:
       addToPath: true
       architecture: "x64"
 
+  - template: templates/use-xcode-version.yml
+    parameters:
+      xcodeVersion: ${{ variables.xcodeVersion }}
+
+  - template: templates/install-appcenter.yml
+
   - script: |
       pip install -r tools/ci_build/github/apple/ios_packaging.requirements.txt
     displayName: "Install Python requirements"
 
   - bash: |
+      set -e
+
       BUILD_TYPE="${{ parameters.BuildType }}"
       BASE_VERSION="$(cat ./VERSION_NUMBER)"
       SHORT_COMMIT_HASH="$(git rev-parse --short HEAD)"
@@ -64,6 +75,9 @@ jobs:
         (*)
           echo "Invalid build type: ${BUILD_TYPE}"; exit 1 ;;
       esac
+
+      # Do not output ##vso[] commands with `set -x` or they may be parsed again and include a trailing quote.
+      set +x
 
       set_var() {
         local VAR_NAME=${1:?}
@@ -110,11 +124,13 @@ jobs:
       xcWorkspacePath: '$(Build.BinariesDirectory)/app_center_test_mobile/ios_package_test/ios_package_test.xcworkspace'
       sdk: 'iphoneos'
       scheme: 'ios_package_test'
+      xcodeVersion: 'specifyPath'
+      xcodeDeveloperDir: '/Applications/Xcode_${{ variables.xcodeVersion }}.app/Contents/Developer'
       signingOption: 'manual'
       signingIdentity: '$(APPLE_CERTIFICATE_SIGNING_IDENTITY)'
       provisioningProfileName: 'iOS Team Provisioning Profile'
       args: '-derivedDataPath $(Build.BinariesDirectory)/app_center_test_mobile/ios_package_test/DerivedData'
-      workingDirectory: $(Build.BinariesDirectory)/app_center_test_mobile/ios_package_test/
+      workingDirectory: '$(Build.BinariesDirectory)/app_center_test_mobile/ios_package_test/'
     displayName: '[Mobile] Build iphone arm64 tests'
 
   - script: |
@@ -187,6 +203,28 @@ jobs:
         "$(ORT_POD_VERSION)"
         "$(ORT_SHOULD_UPLOAD_ARCHIVES)"
     displayName: "Assemble artifacts"
+
+  - script: |
+      set -e -x
+      ls -R "$(Build.ArtifactStagingDirectory)"
+    displayName: "List staged artifacts"
+
+  - script: |
+      set -e -x
+      shasum -a 256 "$(Build.ArtifactStagingDirectory)/pod-archive-onnxruntime-c-${ORT_POD_VERSION}.zip"
+    displayName: "Print ORT iOS Pod checksum"
+
+
+  # copy the pod archive to a path relative to Package.swift and set the env var required by Package.swift to use that.
+  # xcodebuild will implicitly use Package.swift and build/run the .testTarget (tests in swift/onnxTests).
+  # once that's done cleanup the copy of the pod zip file
+  - script: |
+      set -e -x
+      cp "$(Build.ArtifactStagingDirectory)/pod-archive-onnxruntime-c-${ORT_POD_VERSION}.zip" swift/
+      export ORT_IOS_POD_LOCAL_PATH="swift/pod-archive-onnxruntime-c-${ORT_POD_VERSION}.zip"
+      xcodebuild test -scheme onnxruntime -destination 'platform=iOS Simulator,name=iPhone 14'
+      rm swift/pod-archive-onnxruntime-c-*.zip
+    displayName: "Test Package.swift usage"
 
   - publish: "$(Build.ArtifactStagingDirectory)"
     artifact: ios_packaging_artifacts

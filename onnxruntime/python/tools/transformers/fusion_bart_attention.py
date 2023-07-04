@@ -398,6 +398,15 @@ class FusionBartAttention(FusionAttention):
                     k_nodes.pop()
                 if v_nodes[-1].op_type == "MatMul":
                     v_nodes.pop()
+                if self.disable_multi_head_attention_bias and (
+                    decoder_cross_attention or decoder_cross_attention_with_past
+                ):
+                    if q_nodes[-1].op_type == "Add":
+                        q_nodes.pop()
+                    if k_nodes[-1].op_type == "Add":
+                        k_nodes.pop()
+                    if v_nodes[-1].op_type == "Add":
+                        v_nodes.pop()
 
             self.nodes_to_remove.extend(q_nodes)
             self.nodes_to_remove.extend(k_nodes)

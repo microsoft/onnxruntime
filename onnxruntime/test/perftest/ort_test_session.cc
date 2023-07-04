@@ -126,10 +126,14 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
     bool trt_detailed_build_log = false;
     bool trt_build_heuristics_enable = false;
     bool trt_sparsity_enable = false;
-    int trt_builder_optimization_level = 2;
+    int trt_builder_optimization_level = 3;
     int trt_auxiliary_streams = -1;
     std::string trt_tactic_sources = "";
     std::string trt_extra_plugin_lib_paths = "";
+    std::string trt_profile_min_shapes = "";
+    std::string trt_profile_max_shapes = "";
+    std::string trt_profile_opt_shapes = "";
+    bool trt_cuda_graph_enable = false;
 
 #ifdef _MSC_VER
     std::string ov_string = ToUTF8String(performance_test_config.run_config.ep_runtime_config_string);
@@ -193,7 +197,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
         if (!value.empty()) {
           trt_int8_calibration_table_name = value;
         } else {
-          ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_int8_calibration_table_name' should be a non-emtpy string.\n");
+          ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_int8_calibration_table_name' should be a non-empty string.\n");
         }
       } else if (key == "trt_int8_use_native_calibration_table") {
         if (value == "true" || value == "True") {
@@ -237,7 +241,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
         if (!value.empty()) {
           trt_engine_cache_path = value;
         } else {
-          ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_engine_cache_path' should be a non-emtpy string.\n");
+          ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_engine_cache_path' should be a non-empty string.\n");
         }
       } else if (key == "trt_engine_decryption_enable") {
         if (value == "true" || value == "True") {
@@ -251,7 +255,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
         if (!value.empty()) {
           trt_engine_decryption_lib_path = value;
         } else {
-          ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_engine_decryption_lib_path' should be a non-emtpy string.\n");
+          ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_engine_decryption_lib_path' should be a non-empty string.\n");
         }
       } else if (key == "trt_force_sequential_engine_build") {
         if (value == "true" || value == "True") {
@@ -333,16 +337,42 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
         if (!value.empty()) {
           trt_tactic_sources = value;
         } else {
-          ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_tactic_sources' should be a non-emtpy string.\n");
+          ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_tactic_sources' should be a non-empty string.\n");
         }
       } else if (key == "trt_extra_plugin_lib_paths") {
         if (!value.empty()) {
           trt_extra_plugin_lib_paths = value;
         } else {
-          ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_extra_plugin_lib_paths' should be a non-emtpy string.\n");
+          ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_extra_plugin_lib_paths' should be a non-empty string.\n");
+        }
+      } else if (key == "trt_profile_min_shapes") {
+        if (!value.empty()) {
+          trt_profile_min_shapes = value;
+        } else {
+          ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_profile_min_shapes' should be a non-empty string.\n");
+        }
+      } else if (key == "trt_profile_max_shapes") {
+        if (!value.empty()) {
+          trt_profile_max_shapes = value;
+        } else {
+          ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_profile_max_shapes' should be a non-empty string.\n");
+        }
+      } else if (key == "trt_profile_opt_shapes") {
+        if (!value.empty()) {
+          trt_profile_opt_shapes = value;
+        } else {
+          ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_profile_opt_shapes' should be a non-empty string.\n");
+        }
+      } else if (key == "trt_cuda_graph_enable") {
+        if (value == "true" || value == "True") {
+          trt_cuda_graph_enable = true;
+        } else if (value == "false" || value == "False") {
+          trt_cuda_graph_enable = false;
+        } else {
+          ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_cuda_graph_enable' should be a boolean i.e. true or false. Default value is false.\n");
         }
       } else {
-        ORT_THROW("[ERROR] [TensorRT] wrong key type entered. Choose from the following runtime key options that are available for TensorRT. ['device_id', 'trt_max_partition_iterations', 'trt_min_subgraph_size', 'trt_max_workspace_size', 'trt_fp16_enable', 'trt_int8_enable', 'trt_int8_calibration_table_name', 'trt_int8_use_native_calibration_table', 'trt_dla_enable', 'trt_dla_core', 'trt_dump_subgraphs', 'trt_engine_cache_enable', 'trt_engine_cache_path', 'trt_engine_decryption_enable', 'trt_engine_decryption_lib_path', 'trt_force_sequential_engine_build', 'trt_context_memory_sharing_enable', 'trt_layer_norm_fp32_fallback', 'trt_extra_plugin_lib_paths'] \n");
+        ORT_THROW("[ERROR] [TensorRT] wrong key type entered. Choose from the following runtime key options that are available for TensorRT. ['device_id', 'trt_max_partition_iterations', 'trt_min_subgraph_size', 'trt_max_workspace_size', 'trt_fp16_enable', 'trt_int8_enable', 'trt_int8_calibration_table_name', 'trt_int8_use_native_calibration_table', 'trt_dla_enable', 'trt_dla_core', 'trt_dump_subgraphs', 'trt_engine_cache_enable', 'trt_engine_cache_path', 'trt_engine_decryption_enable', 'trt_engine_decryption_lib_path', 'trt_force_sequential_engine_build', 'trt_context_memory_sharing_enable', 'trt_layer_norm_fp32_fallback', 'trt_timing_cache_enable', 'trt_force_timing_cache', 'trt_detailed_build_log', 'trt_build_heuristics_enable', 'trt_sparsity_enable', 'trt_builder_optimization_level', 'trt_auxiliary_streams', 'trt_tactic_sources', 'trt_extra_plugin_lib_paths', 'trt_profile_min_shapes', 'trt_profile_max_shapes', 'trt_profile_opt_shapes', 'trt_cuda_graph_enable'] \n");
       }
     }
     OrtTensorRTProviderOptionsV2 tensorrt_options;
@@ -375,6 +405,11 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
     tensorrt_options.trt_auxiliary_streams = trt_auxiliary_streams;
     tensorrt_options.trt_tactic_sources = trt_tactic_sources.c_str();
     tensorrt_options.trt_extra_plugin_lib_paths = trt_extra_plugin_lib_paths.c_str();
+    tensorrt_options.trt_profile_min_shapes = trt_profile_min_shapes.c_str();
+    tensorrt_options.trt_profile_max_shapes = trt_profile_max_shapes.c_str();
+    tensorrt_options.trt_profile_opt_shapes = trt_profile_opt_shapes.c_str();
+    tensorrt_options.trt_cuda_graph_enable = trt_cuda_graph_enable;
+
     session_options.AppendExecutionProvider_TensorRT_V2(tensorrt_options);
 
     OrtCUDAProviderOptions cuda_options;
@@ -423,8 +458,8 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
       if (key == "device_type") {
         std::set<std::string> ov_supported_device_types = {"CPU_FP32", "CPU_FP16", "GPU_FP32",
                                                            "GPU.0_FP32", "GPU.1_FP32", "GPU_FP16",
-                                                           "GPU.0_FP16", "GPU.1_FP16", "VAD-M_FP16",
-                                                           "MYRIAD_FP16", "VAD-F_FP32"};
+                                                           "GPU.0_FP16", "GPU.1_FP16",
+                                                           "VPUX_FP16", "VPUX_U8"};
         if (ov_supported_device_types.find(value) != ov_supported_device_types.end()) {
           device_type = value;
         } else if (value.find("HETERO:") == 0) {
@@ -437,7 +472,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
           ORT_THROW(
               "[ERROR] [OpenVINO] You have selcted wrong configuration value for the key 'device_type'. "
               "Select from 'CPU_FP32', 'CPU_FP16', 'GPU_FP32', 'GPU.0_FP32', 'GPU.1_FP32', 'GPU_FP16', "
-              "'GPU.0_FP16', 'GPU.1_FP16', 'VAD-M_FP16', 'MYRIAD_FP16', 'VAD-F_FP32' or from"
+              "'GPU.0_FP16', 'GPU.1_FP16', 'VPUX_FP16', 'VPUX_U8', or from"
               " HETERO/MULTI/AUTO options available. \n");
         }
       } else if (key == "device_id") {
@@ -516,20 +551,39 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
       std::string value(token.substr(pos + 1));
 
       if (key == "backend_path") {
-        std::set<std::string> qnn_backend_path;
         if (value.empty()) {
           ORT_THROW("Please provide the QNN backend path.");
-        } else {
-          qnn_options[key] = value;
         }
+      } else if (key == "qnn_context_cache_enable") {
+        if (value != "1") {
+          ORT_THROW("Set to 1 to enable qnn_context_cache_enable.");
+        }
+      } else if (key == "qnn_context_cache_path") {
+        // no validation
       } else if (key == "profiling_level") {
-        qnn_options[key] = value;
+        std::set<std::string> supported_profiling_level = {"off", "basic", "detailed"};
+        if (supported_profiling_level.find(value) == supported_profiling_level.end()) {
+          ORT_THROW("Supported profiling_level: off, basic, detailed");
+        }
       } else if (key == "rpc_control_latency") {
-        qnn_options[key] = value;
+        // no validation
+      } else if (key == "htp_performance_mode") {
+        std::set<std::string> supported_htp_perf_mode = {"burst", "balanced", "default", "high_performance",
+                                                         "high_power_saver", "low_balanced", "low_power_saver",
+                                                         "power_saver", "sustained_high_performance"};
+        if (supported_htp_perf_mode.find(value) == supported_htp_perf_mode.end()) {
+          std::ostringstream str_stream;
+          std::copy(supported_htp_perf_mode.begin(), supported_htp_perf_mode.end(),
+                    std::ostream_iterator<std::string>(str_stream, ","));
+          std::string str = str_stream.str();
+          ORT_THROW("Supported htp_performance_mode: " + str);
+        }
       } else {
-        ORT_THROW(R"(Wrong key type entered. Choose from options:
-['backend_path', 'profiling_level', 'rpc_control_latency'])");
+        ORT_THROW(R"(Wrong key type entered. Choose from options: ['backend_path', 'qnn_context_cache_enable', 
+'qnn_context_cache_path', 'profiling_level', 'rpc_control_latency', 'htp_performance_mode'])");
       }
+
+      qnn_options[key] = value;
     }
     session_options.AppendExecutionProvider("QNN", qnn_options);
 #else
@@ -572,8 +626,12 @@ select from 'CPU', 'GPU_FP32', 'GPU', 'GPU_FLOAT16', 'DSP', 'AIP_FIXED_TF'. \n)"
           ORT_THROW(R"(Wrong configuration value for the key 'buffer_type'.
 select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
         }
+      } else if (key == "enable_init_cache") {
+        if (value != "1") {
+          ORT_THROW("Set to 1 to enable_init_cache.");
+        }
       } else {
-        ORT_THROW("Wrong key type entered. Choose from options: ['runtime', 'priority', 'buffer_type'] \n");
+        ORT_THROW("Wrong key type entered. Choose from options: ['runtime', 'priority', 'buffer_type', 'enable_init_cache'] \n");
       }
 
       snpe_options[key] = value;
@@ -665,6 +723,34 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
         "XNNPACK", {{"intra_op_num_threads", std::to_string(performance_test_config.run_config.intra_op_num_threads)}});
 #else
     ORT_THROW("Xnnpack is not supported in this build\n");
+#endif
+  } else if (provider_name == onnxruntime::kVitisAIExecutionProvider) {
+#ifdef USE_VITISAI
+#ifdef _MSC_VER
+    std::string option_string = ToUTF8String(performance_test_config.run_config.ep_runtime_config_string);
+#else
+    std::string option_string = performance_test_config.run_config.ep_runtime_config_string;
+#endif
+    std::istringstream ss(option_string);
+    std::string token;
+    std::unordered_map<std::string, std::string> vitisai_session_options;
+
+    while (ss >> token) {
+      if (token == "") {
+        continue;
+      }
+      auto pos = token.find("|");
+      if (pos == std::string::npos || pos == 0 || pos == token.length()) {
+        ORT_THROW("[ERROR] [VitisAI] Use a '|' to separate the key and value for the run-time option you are trying to use.\n");
+      }
+
+      std::string key(token.substr(0, pos));
+      std::string value(token.substr(pos + 1));
+      vitisai_session_options[key] = value;
+    }
+    session_options.AppendExecutionProvider("VitisAI", vitisai_session_options);
+#else
+    ORT_THROW("VitisAI is not supported in this build\n");
 #endif
   } else if (!provider_name.empty() && provider_name != onnxruntime::kCpuExecutionProvider) {
     ORT_THROW("This backend is not included in perf test runner.\n");

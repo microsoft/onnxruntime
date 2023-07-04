@@ -34,6 +34,7 @@ jobs:
       inputs:
         targetType: filePath
         filePath: tools/ci_build/github/linux/run_python_dockerbuild.sh
+        # please check ONNXRUNTIME_CUDA_VERSION in tools/ci_build/github/linux/build_linux_arm64_python_package.sh
         arguments: -i onnxruntimecuda118xtrt86build${{ parameters.arch }} -x "-d GPU"
 
     - task: PublishBuildArtifacts@1

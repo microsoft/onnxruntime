@@ -52,6 +52,9 @@ public:
         TensorDesc inputTensorDesc = TensorDesc(m_inputTensorDescs[0].GetDmlDataType(), inputShape, inputStrides);
         const DML_TENSOR_DESC inputDmlTensorDesc = inputTensorDesc.GetDmlDesc();
 
+        TensorDesc transposedInputTensorDesc = TensorDesc(m_inputTensorDescs[0].GetDmlDataType(), inputShape);
+        const DML_TENSOR_DESC transposedInputDmlTensorDesc = transposedInputTensorDesc.GetDmlDesc();
+
         // 1. Reshape the gamma and beta from [channels] to [groups, channelsPerGroup]
         // 2. Broadcast the gamma and beta from [groups, channelsPerGroup] to [batch, height * width, groups, channelsPerGroup]
         // 3. Stride the brodcasted gamma and beta from [batch, height * width, groups, channelsPerGroup] to [batch, groups, channelsPerGroup, height * width]
@@ -69,12 +72,17 @@ public:
         }
         DML_OPERATOR_DESC dmlCastGammaBetaDesc = { DML_OPERATOR_CAST, &castGammaBetaDesc };
 
+        DML_ELEMENT_WISE_IDENTITY_OPERATOR_DESC transposeInputDesc{};
+        transposeInputDesc.InputTensor = &inputDmlTensorDesc;
+        transposeInputDesc.OutputTensor = &transposedInputDmlTensorDesc;
+        DML_OPERATOR_DESC dmlTransposeInputDesc = { DML_OPERATOR_ELEMENT_WISE_IDENTITY, &transposeInputDesc };
+
         // Then, perform MVN
         DML_MEAN_VARIANCE_NORMALIZATION_OPERATOR_DESC mvnDesc{};
-        mvnDesc.InputTensor = &inputDmlTensorDesc;
+        mvnDesc.InputTensor = &transposedInputDmlTensorDesc;
         mvnDesc.ScaleTensor = gammaBetaCastNeeded ? &inputDmlTensorDesc : &gammaBetaDmlTensorDesc;
         mvnDesc.BiasTensor = gammaBetaCastNeeded ? &inputDmlTensorDesc : &gammaBetaDmlTensorDesc;
-        mvnDesc.OutputTensor = &inputDmlTensorDesc;
+        mvnDesc.OutputTensor = &transposedInputDmlTensorDesc;
         mvnDesc.NormalizeVariance = true;
         mvnDesc.CrossChannel = false;
         mvnDesc.Epsilon = epsilon;
@@ -83,17 +91,25 @@ public:
         // Finally, execute the Swish activation function (x * sigmoid(x)) if provided
         DML_ACTIVATION_SIGMOID_OPERATOR_DESC swishSigmoidDesc{};
         DML_ELEMENT_WISE_MULTIPLY_OPERATOR_DESC swishMulDesc{};
+        DML_ELEMENT_WISE_IDENTITY_OPERATOR_DESC transposeOutputDesc{};
         if (activation)
         {
-            swishSigmoidDesc.InputTensor = &inputDmlTensorDesc;
+            swishSigmoidDesc.InputTensor = &transposedInputDmlTensorDesc;
             swishSigmoidDesc.OutputTensor = &inputDmlTensorDesc;
 
-            swishMulDesc.ATensor = &inputDmlTensorDesc;
+            swishMulDesc.ATensor = &transposedInputDmlTensorDesc;
             swishMulDesc.BTensor = &inputDmlTensorDesc;
             swishMulDesc.OutputTensor = &inputDmlTensorDesc;
         }
+        else
+        {
+            // Transpose the output to the layout that ORT expects
+            transposeOutputDesc.InputTensor = &transposedInputDmlTensorDesc;
+            transposeOutputDesc.OutputTensor = &inputDmlTensorDesc;
+        }
         DML_OPERATOR_DESC dmlSwishSigmoidDesc = { DML_OPERATOR_ACTIVATION_SIGMOID, &swishSigmoidDesc };
         DML_OPERATOR_DESC dmlSwishMulDesc = { DML_OPERATOR_ELEMENT_WISE_MULTIPLY, &swishMulDesc };
+        DML_OPERATOR_DESC dmlTransposeOutputDesc = { DML_OPERATOR_ELEMENT_WISE_IDENTITY, &transposeOutputDesc };
 
         // Construct the graph
         std::vector<const DML_OPERATOR_DESC*> opDescs;
@@ -103,14 +119,24 @@ public:
 
         uint32_t currentNodeIndex = 0;
 
+        const uint32_t transposeInputIndex = currentNodeIndex++;
+        opDescs.push_back(&dmlTransposeInputDesc);
+
         const uint32_t mvnNodeIndex = currentNodeIndex++;
         opDescs.push_back(&dmlMvnDesc);
 
         DML_INPUT_GRAPH_EDGE_DESC inputEdge{};
         inputEdge.GraphInputIndex = 0;
-        inputEdge.ToNodeIndex = mvnNodeIndex;
+        inputEdge.ToNodeIndex = transposeInputIndex;
         inputEdge.ToNodeInputIndex = 0;
         inputEdges.push_back(inputEdge);
+
+        DML_INTERMEDIATE_GRAPH_EDGE_DESC transposeInputToMvnEdge = {};
+        transposeInputToMvnEdge.FromNodeIndex = transposeInputIndex;
+        transposeInputToMvnEdge.FromNodeOutputIndex = 0;
+        transposeInputToMvnEdge.ToNodeIndex = mvnNodeIndex;
+        transposeInputToMvnEdge.ToNodeInputIndex = 0;
+        intermediateEdges.push_back(transposeInputToMvnEdge);
 
         if (gammaBetaCastNeeded)
         {
@@ -198,11 +224,21 @@ public:
         }
         else
         {
-            DML_OUTPUT_GRAPH_EDGE_DESC mvnToOutputEdge{};
-            mvnToOutputEdge.FromNodeIndex = mvnNodeIndex;
-            mvnToOutputEdge.FromNodeOutputIndex = 0;
-            mvnToOutputEdge.GraphOutputIndex = 0;
-            outputEdges.push_back(mvnToOutputEdge);
+            const uint32_t transposeOutputNodeIndex = currentNodeIndex++;
+            opDescs.push_back(&dmlTransposeOutputDesc);
+
+            DML_INTERMEDIATE_GRAPH_EDGE_DESC mvnToTransposeOutputEdge = {};
+            mvnToTransposeOutputEdge.FromNodeIndex = mvnNodeIndex;
+            mvnToTransposeOutputEdge.FromNodeOutputIndex = 0;
+            mvnToTransposeOutputEdge.ToNodeIndex = transposeOutputNodeIndex;
+            mvnToTransposeOutputEdge.ToNodeInputIndex = 0;
+            intermediateEdges.push_back(mvnToTransposeOutputEdge);
+
+            DML_OUTPUT_GRAPH_EDGE_DESC transposeOutputToOutputEdge{};
+            transposeOutputToOutputEdge.FromNodeIndex = transposeOutputNodeIndex;
+            transposeOutputToOutputEdge.FromNodeOutputIndex = 0;
+            transposeOutputToOutputEdge.GraphOutputIndex = 0;
+            outputEdges.push_back(transposeOutputToOutputEdge);
         }
 
         MLOperatorGraphDesc operatorGraphDesc = {};

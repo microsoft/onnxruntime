@@ -121,6 +121,18 @@ TEST_F(ActivationOpTest, Relu) {
       {},
       /*is_tensorrt_supported=*/false,
       /*opset_version= */ 14);
+#ifdef MLAS_F16VEC_INTRINSICS_SUPPORTED
+  TestActivationOp<MLFloat16>(
+      "Relu",
+      input_values_fp16,
+      [](MLFloat16 x) {
+        if (x.ToFloat() > 0.0f) return x;
+        return MLFloat16();
+      },
+      {},
+      /*is_tensorrt_supported=*/false,
+      /*opset_version= */ 11);
+#endif  // MLAS_F16VEC_INTRINSICS_SUPPORTED
 }
 
 #if defined(USE_CUDA) || defined(USE_ROCM)
@@ -395,6 +407,29 @@ TEST_F(ActivationOpTest, LeakyRelu) {
                           [alpha](float x) { return (x >= 0) ? x : alpha * x; },
                           {{"alpha", alpha}});
 }
+
+#ifdef MLAS_F16VEC_INTRINSICS_SUPPORTED
+TEST_F(ActivationOpTest, LeakyRelu_fp16) {
+  OpTester test("LeakyRelu", 11);
+  float alpha = 0.01f;  // oneDNN set alpha equal to 0.01
+  auto formula = [alpha](float x) { return (x >= 0) ? x : alpha * x; };
+
+  std::vector<float> X = input_values.front();
+  std::vector<float> Y;
+  for (unsigned i = 0; i < X.size(); i++)
+    Y.push_back(formula(X[i]));
+  std::vector<int64_t> dims{(int64_t)X.size()};
+
+  std::vector<MLFloat16> bf_X(X.size());
+  ConvertFloatToMLFloat16(X.data(), bf_X.data(), (int)X.size());
+  std::vector<MLFloat16> bf_Y(Y.size());
+  ConvertFloatToMLFloat16(Y.data(), bf_Y.data(), (int)Y.size());
+
+  test.AddInput<MLFloat16>("X", dims, bf_X);
+  test.AddOutput<MLFloat16>("Y", dims, bf_Y);
+  test.Run();
+}
+#endif  // MLAS_F16VEC_INTRINSICS_SUPPORTED
 
 TEST_F(ActivationOpTest, ThresholdedRelu) {
   float alpha = 0.1f;

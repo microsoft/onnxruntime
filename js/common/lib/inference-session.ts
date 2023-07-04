@@ -1,8 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {InferenceSession as InferenceSessionImpl} from './inference-session-impl';
-import {OnnxValue} from './onnx-value';
+import {InferenceSession as InferenceSessionImpl} from './inference-session-impl.js';
+import {OnnxValue} from './onnx-value.js';
 
 /* eslint-disable @typescript-eslint/no-redeclare */
 
@@ -165,14 +165,18 @@ export declare namespace InferenceSession {
 
   // Currently, we have the following backends to support execution providers:
   // Backend Node.js binding: supports 'cpu' and 'cuda'.
-  // Backend WebAssembly: supports 'cpu', 'wasm' and 'xnnpack'.
+  // Backend WebAssembly: supports 'cpu', 'wasm', 'xnnpack' and 'webnn'.
   // Backend ONNX.js: supports 'webgl'.
+  // Backend React Native: supports 'cpu', 'xnnpack', 'coreml' (iOS), 'nnapi' (Android).
   interface ExecutionProviderOptionMap {
     cpu: CpuExecutionProviderOption;
     cuda: CudaExecutionProviderOption;
     wasm: WebAssemblyExecutionProviderOption;
     webgl: WebGLExecutionProviderOption;
     xnnpack: XnnpackExecutionProviderOption;
+    webnn: WebNNExecutionProviderOption;
+    coreml: CoreMLExecutionProviderOption;
+    nnapi: NnapiExecutionProviderOption;
   }
 
   type ExecutionProviderName = keyof ExecutionProviderOptionMap;
@@ -199,6 +203,24 @@ export declare namespace InferenceSession {
   }
   export interface XnnpackExecutionProviderOption extends ExecutionProviderOption {
     readonly name: 'xnnpack';
+  }
+  export interface WebNNExecutionProviderOption extends ExecutionProviderOption {
+    readonly name: 'webnn';
+    deviceType?: 'cpu'|'gpu';
+    powerPreference?: 'default'|'low-power'|'high-performance';
+  }
+  export interface CoreMLExecutionProviderOption extends ExecutionProviderOption {
+    readonly name: 'coreml';
+    useCPUOnly?: boolean;
+    enableOnSubgraph?: boolean;
+    onlyEnableDeviceWithANE?: boolean;
+  }
+  export interface NnapiExecutionProviderOption extends ExecutionProviderOption {
+    readonly name: 'nnapi';
+    useFP16?: boolean;
+    useNCHW?: boolean;
+    cpuDisabled?: boolean;
+    cpuOnly?: boolean;
   }
   // #endregion
 
@@ -297,6 +319,15 @@ export interface InferenceSession {
    */
   run(feeds: InferenceSession.FeedsType, fetches: InferenceSession.FetchesType,
       options?: InferenceSession.RunOptions): Promise<InferenceSession.ReturnType>;
+
+  // #endregion
+
+  // #region release()
+
+  /**
+   * Release the inference session and the underlying resources.
+   */
+  release(): Promise<void>;
 
   // #endregion
 

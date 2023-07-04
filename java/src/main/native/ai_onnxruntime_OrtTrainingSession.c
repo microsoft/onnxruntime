@@ -115,42 +115,6 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtTrainingSession_closeSession
 
 /*
  * Class:     ai_onnxruntime_OrtTrainingSession
- * Method:    saveCheckpoint
- * Signature: (JJJLjava/lang/String;Z)V
- */
-JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtTrainingSession_saveCheckpoint
-  (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong trainingApiHandle, jlong nativeHandle, jstring outputPath, jboolean overwrite) {
-  (void) jobj; // Required JNI parameters not needed by functions which don't need to access their host object.
-  const OrtApi* api = (const OrtApi*) apiHandle;
-  const OrtTrainingApi* trainApi = (const OrtTrainingApi*) trainingApiHandle;
-
-  const OrtTrainingSession* trainSession = (const OrtTrainingSession*) nativeHandle;
-
-#ifdef _WIN32
-  // The output of GetStringChars is not null-terminated, so we copy it and add a terminator
-  const jchar* cPath = (*jniEnv)->GetStringChars(jniEnv, outputPath, NULL);
-  size_t stringLength = (*jniEnv)->GetStringLength(jniEnv, outputPath);
-  wchar_t* newString = (wchar_t*)calloc(stringLength + 1, sizeof(wchar_t));
-  if (newString == NULL) {
-    (*jniEnv)->ReleaseStringChars(jniEnv, outputPath, cPath);
-    throwOrtException(jniEnv, 1, "Not enough memory");
-  } else {
-    wcsncpy_s(newString, stringLength + 1, (const wchar_t*)cPath, stringLength);
-    checkOrtStatus(jniEnv, api,
-                   trainApi->SaveCheckpoint(newString, trainSession, overwrite));
-    free(newString);
-    (*jniEnv)->ReleaseStringChars(jniEnv, outputPath, cPath);
-  }
-#else
-  // GetStringUTFChars is null terminated, so can be used directly
-  const char* cPath = (*jniEnv)->GetStringUTFChars(jniEnv, outputPath, NULL);
-  checkOrtStatus(jniEnv, api, trainApi->SaveCheckpoint(cPath, trainSession, overwrite));
-  (*jniEnv)->ReleaseStringUTFChars(jniEnv, outputPath, cPath);
-#endif
-}
-
-/*
- * Class:     ai_onnxruntime_OrtTrainingSession
  * Method:    getTrainInputNames
  * Signature: (JJJJ)[Ljava/lang/String;
  */
@@ -702,12 +666,6 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtTrainingSession_schedulerStep
  * Method:    exportModelForInference
  * Signature: (JJJJLjava/lang/String;[Ljava/lang/String;)V
  */
-#ifdef _MSC_VER
-#pragma warning(push)
-// C4090: 'operation' : different 'modifier' qualifiers
-// Freeing 'outputNames' erroneously triggers this warning, it is fixed in VC 2022 and can be removed when that is the baseline compiler.
-#pragma warning(disable : 4090)
-#endif  // _MSC_VER
 JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtTrainingSession_exportModelForInference
   (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong trainApiHandle, jlong nativeHandle, jstring outputPath, jlong numOutputs, jobjectArray outputNamesArr) {
   (void)jobj;  // Required JNI parameter not needed by functions which don't need to access their host object.
@@ -757,6 +715,3 @@ cleanup_array:
   free(javaOutputStrings);
   free(outputNames);
 }
-#ifdef _MSC_VER
-#pragma warning(pop)
-#endif  // _MSC_VER

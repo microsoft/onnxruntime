@@ -69,6 +69,10 @@ class TestInferenceSession(unittest.TestCase):
     def testGetVersionString(self):  # noqa: N802
         self.assertIsNot(onnxrt.get_version_string(), None)
 
+    def testGetBuildInfo(self):  # noqa: N802
+        self.assertIsNot(onnxrt.get_build_info(), None)
+        self.assertIn("Build Info", onnxrt.get_build_info())
+
     def testModelSerialization(self):  # noqa: N802
         try:
             so = onnxrt.SessionOptions()
@@ -81,6 +85,33 @@ class TestInferenceSession(unittest.TestCase):
                 providers=["CPUExecutionProvider"],
             )
             self.assertTrue(os.path.isfile(so.optimized_model_filepath))
+        except Fail as onnxruntime_error:
+            if (
+                str(onnxruntime_error) == "[ONNXRuntimeError] : 1 : FAIL : Unable to serialize model as it contains"
+                " compiled nodes. Please disable any execution providers which generate compiled nodes."
+            ):
+                pass
+            else:
+                raise onnxruntime_error
+
+    def testModelSerializationWithExternalInitializers(self):  # noqa: N802
+        try:
+            so = onnxrt.SessionOptions()
+            so.log_severity_level = 1
+            so.logid = "TestModelSerializationWithExternalInitializers"
+            so.optimized_model_filepath = "./model_with_external_initializers.onnx"
+            external_initializers_file = "external_initializers.bin"
+            so.add_session_config_entry(
+                "session.optimized_model_external_initializers_file_name", external_initializers_file
+            )
+            so.add_session_config_entry("session.optimized_model_external_initializers_min_size_in_bytes", "100")
+            onnxrt.InferenceSession(
+                get_name("mnist.onnx"),
+                sess_options=so,
+                providers=["CPUExecutionProvider"],
+            )
+            self.assertTrue(os.path.isfile(so.optimized_model_filepath))
+            self.assertTrue(os.path.isfile(external_initializers_file))
         except Fail as onnxruntime_error:
             if (
                 str(onnxruntime_error) == "[ONNXRuntimeError] : 1 : FAIL : Unable to serialize model as it contains"
@@ -255,6 +286,8 @@ class TestInferenceSession(unittest.TestCase):
 
                 test_get_and_set_option_with_values("tunable_op_tuning_enable", ["1", "0"])
 
+                test_get_and_set_option_with_values("tunable_op_max_tuning_duration_ms", ["-1", "1"])
+
                 option["gpu_external_alloc"] = "0"
                 option["gpu_external_free"] = "0"
                 option["gpu_external_empty_cache"] = "0"
@@ -390,6 +423,8 @@ class TestInferenceSession(unittest.TestCase):
                 test_get_and_set_option_with_values("tunable_op_enable", ["1", "0"])
 
                 test_get_and_set_option_with_values("tunable_op_tuning_enable", ["1", "0"])
+
+                test_get_and_set_option_with_values("tunable_op_max_tuning_duration_ms", ["-1", "1"])
 
             runRocmOptionsTest()
 
@@ -1310,7 +1345,7 @@ class TestInferenceSession(unittest.TestCase):
         # Create and register an arena based allocator
 
         # To create an OrtArenaCfg using non-default parameters, use one of below templates:
-        # ort_arena_cfg = onnxrt.OrtArenaCfg(0, -1, -1, -1) - Note: doesn't expose initial_growth_chunk_size_bytes option
+        # ort_arena_cfg = onnxrt.OrtArenaCfg(0, -1, -1, -1) - Note: doesn't expose initial_growth_chunk_size_bytes/max_power_of_two_extend_bytes option
         # ort_arena_cfg = onnxrt.OrtArenaCfg({"max_mem": -1, ""arena_extend_strategy": 1, etc..})
         ort_memory_info = onnxrt.OrtMemoryInfo(
             "Cpu",
@@ -1339,6 +1374,24 @@ class TestInferenceSession(unittest.TestCase):
             sess_options=so2,
             providers=onnxrt.get_available_providers(),
         )
+
+        if "CUDAExecutionProvider" in available_providers:
+            cuda_mem_info = onnxrt.OrtMemoryInfo(
+                "Cuda",
+                onnxrt.OrtAllocatorType.ORT_ARENA_ALLOCATOR,
+                0,
+                onnxrt.OrtMemType.DEFAULT,
+            )
+            ort_arena_cfg = onnxrt.OrtArenaCfg(0, -1, -1, -1)
+            onnxrt.create_and_register_allocator_v2("CUDAExecutionProvider", cuda_mem_info, {}, ort_arena_cfg)
+            so3 = onnxrt.SessionOptions()
+            so3.log_severity_level = 1
+            so3.add_session_config_entry("session.use_env_allocators", "1")
+            onnxrt.InferenceSession(
+                get_name("mul_1.onnx"),
+                sess_options=so3,
+                providers=onnxrt.get_available_providers(),
+            )
 
     def testMemoryArenaShrinkage(self):  # noqa: N802
         if platform.architecture()[0] == "32bit" or "ppc" in platform.machine() or "powerpc" in platform.machine():
@@ -1478,6 +1531,8 @@ class TestInferenceSession(unittest.TestCase):
                     self.assertEqual(allocator.max_dead_bytes_per_chunk, val)
                 elif key == "initial_growth_chunk_size_bytes":
                     self.assertEqual(allocator.initial_growth_chunk_size_bytes, val)
+                elif key == "max_power_of_two_extend_bytes":
+                    self.assertEqual(allocator.max_power_of_two_extend_bytes, val)
                 else:
                     raise ValueError("Invalid OrtArenaCfg option: " + key)
 
@@ -1498,6 +1553,18 @@ class TestInferenceSession(unittest.TestCase):
             "initial_chunk_size_bytes": 8,
             "max_dead_bytes_per_chunk": 4,
             "initial_growth_chunk_size_bytes": 2,
+        }
+        ort_arena_cfg_kvp = onnxrt.OrtArenaCfg(expected_kvp_allocator)
+        verify_allocator(ort_arena_cfg_kvp, expected_kvp_allocator)
+
+        # Verify key-value pair initialization
+        expected_kvp_allocator = {
+            "max_mem": 32,
+            "arena_extend_strategy": 11,
+            "initial_chunk_size_bytes": 18,
+            "max_dead_bytes_per_chunk": 14,
+            "initial_growth_chunk_size_bytes": 12,
+            "max_power_of_two_extend_bytes": 17,
         }
         ort_arena_cfg_kvp = onnxrt.OrtArenaCfg(expected_kvp_allocator)
         verify_allocator(ort_arena_cfg_kvp, expected_kvp_allocator)

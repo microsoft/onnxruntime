@@ -8,7 +8,7 @@
 #include "core/optimizer/utils.h"
 #include "core/providers/cpu/tensor/transpose.h"
 #include "core/optimizer/transpose_optimization/ort_optimizer_utils.h"
-#include "core/optimizer/transpose_optimization/ort_transpose_optimizer.h"
+#include "core/optimizer/transpose_optimization/ort_transpose_optimization.h"
 
 using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::common;

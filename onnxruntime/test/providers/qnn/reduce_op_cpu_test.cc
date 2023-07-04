@@ -104,7 +104,7 @@ static void RunReduceOpCpuTest(const std::string& op_type, int opset, const char
 //
 // - The input and output data type is int32.
 // - Uses opset 13, which has "axes" as an input.
-TEST(QnnCPUBackendTests, TestInt32ReduceSumOpset13) {
+TEST_F(QnnCPUBackendTests, TestInt32ReduceSumOpset13) {
   RunReduceOpCpuTest<int32_t>("ReduceSum", 13, "TestInt32ReduceSumOpset13");
 }
 
@@ -113,7 +113,7 @@ TEST(QnnCPUBackendTests, TestInt32ReduceSumOpset13) {
 //
 // - The input and output data type is int32.
 // - Uses opset 11, which has "axes" as an attribute.
-TEST(QnnCPUBackendTests, TestInt32ReduceSumOpset11) {
+TEST_F(QnnCPUBackendTests, TestInt32ReduceSumOpset11) {
   RunReduceOpCpuTest<int32_t>("ReduceSum", 11, "TestInt32ReduceSumOpset11");
 }
 
@@ -122,7 +122,7 @@ TEST(QnnCPUBackendTests, TestInt32ReduceSumOpset11) {
 //
 // - The input and output data type is float.
 // - Uses opset 13, which has "axes" as an input.
-TEST(QnnCPUBackendTests, TestFloatReduceSumOpset13) {
+TEST_F(QnnCPUBackendTests, TestFloatReduceSumOpset13) {
   RunReduceOpCpuTest<float>("ReduceSum", 13, "TestFloatReduceSumOpset13");
 }
 
@@ -131,7 +131,7 @@ TEST(QnnCPUBackendTests, TestFloatReduceSumOpset13) {
 //
 // - The input and output data type is float.
 // - Uses opset 11, which has "axes" as an attribute.
-TEST(QnnCPUBackendTests, TestFloatReduceSumOpset11) {
+TEST_F(QnnCPUBackendTests, TestFloatReduceSumOpset11) {
   RunReduceOpCpuTest<float>("ReduceSum", 11, "TestFloatReduceSumOpset11");
 }
 
@@ -144,7 +144,7 @@ TEST(QnnCPUBackendTests, TestFloatReduceSumOpset11) {
 //
 // - The input and output data type is float.
 // - Uses opset 18, which has "axes" as an input.
-TEST(QnnCPUBackendTests, TestReduceProdOpset18) {
+TEST_F(QnnCPUBackendTests, TestReduceProdOpset18) {
   RunReduceOpCpuTest<float>("ReduceProd", 18, "TestReduceProdOpset18");
 }
 
@@ -153,7 +153,7 @@ TEST(QnnCPUBackendTests, TestReduceProdOpset18) {
 //
 // - The input and output data type is float.
 // - Uses opset 13, which has "axes" as an attribute.
-TEST(QnnCPUBackendTests, TestReduceProdOpset13) {
+TEST_F(QnnCPUBackendTests, TestReduceProdOpset13) {
   RunReduceOpCpuTest<float>("ReduceProd", 13, "TestReduceProdOpset13");
 }
 
@@ -166,7 +166,7 @@ TEST(QnnCPUBackendTests, TestReduceProdOpset13) {
 //
 // - The input and output data type is float.
 // - Uses opset 18, which has "axes" as an input.
-TEST(QnnCPUBackendTests, TestReduceMaxOpset18) {
+TEST_F(QnnCPUBackendTests, TestReduceMaxOpset18) {
   RunReduceOpCpuTest<float>("ReduceMax", 18, "TestReduceMaxOpset18");
 }
 
@@ -175,7 +175,7 @@ TEST(QnnCPUBackendTests, TestReduceMaxOpset18) {
 //
 // - The input and output data type is float.
 // - Uses opset 13, which has "axes" as an attribute.
-TEST(QnnCPUBackendTests, TestReduceMaxOpset13) {
+TEST_F(QnnCPUBackendTests, TestReduceMaxOpset13) {
   RunReduceOpCpuTest<float>("ReduceMax", 13, "TestReduceMaxOpset13");
 }
 
@@ -188,7 +188,7 @@ TEST(QnnCPUBackendTests, TestReduceMaxOpset13) {
 //
 // - The input and output data type is float.
 // - Uses opset 18, which has "axes" as an input.
-TEST(QnnCPUBackendTests, TestReduceMinOpset18) {
+TEST_F(QnnCPUBackendTests, TestReduceMinOpset18) {
   RunReduceOpCpuTest<float>("ReduceMin", 18, "TestReduceMinOpset18");
 }
 
@@ -197,7 +197,7 @@ TEST(QnnCPUBackendTests, TestReduceMinOpset18) {
 //
 // - The input and output data type is float.
 // - Uses opset 13, which has "axes" as an attribute.
-TEST(QnnCPUBackendTests, TestReduceMinOpset13) {
+TEST_F(QnnCPUBackendTests, TestReduceMinOpset13) {
   RunReduceOpCpuTest<float>("ReduceMin", 13, "TestReduceMinOpset18");
 }
 
@@ -210,7 +210,7 @@ TEST(QnnCPUBackendTests, TestReduceMinOpset13) {
 //
 // - The input and output data type is float.
 // - Uses opset 18, which has "axes" as an input.
-TEST(QnnCPUBackendTests, TestReduceMeanOpset18) {
+TEST_F(QnnCPUBackendTests, TestReduceMeanOpset18) {
   RunReduceOpCpuTest<float>("ReduceMean", 18, "TestReduceMeanOpset18");
 }
 
@@ -219,7 +219,7 @@ TEST(QnnCPUBackendTests, TestReduceMeanOpset18) {
 //
 // - The input and output data type is float.
 // - Uses opset 13, which has "axes" as an attribute.
-TEST(QnnCPUBackendTests, TestReduceMeanOpset13) {
+TEST_F(QnnCPUBackendTests, TestReduceMeanOpset13) {
   RunReduceOpCpuTest<float>("ReduceMean", 13, "TestReduceMeanOpset13");
 }
 

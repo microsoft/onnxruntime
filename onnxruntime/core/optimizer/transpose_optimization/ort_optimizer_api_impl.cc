@@ -16,7 +16,7 @@
 #include "core/graph/graph_viewer.h"
 #include "core/optimizer/layout_transformation/layout_transformation_potentially_added_ops.h"
 #include "core/optimizer/transpose_optimization/ort_optimizer_utils.h"
-#include "core/optimizer/transpose_optimization/transpose_optimizer.h"
+#include "core/optimizer/transpose_optimization/ort_transpose_optimization.h"
 #include "core/providers/cpu/tensor/transpose.h"
 
 using namespace ONNX_NAMESPACE;
@@ -176,6 +176,10 @@ std::optional<std::vector<int64_t>> ApiValueInfo::Shape() const {
 
 api::DataType ApiValueInfo::DType() const {
   const auto* type = node_arg_.TypeAsProto();
+  if (!type) {
+    return api::DataType::UNDEFINED;
+  }
+
   if (!utils::HasTensorType(*type)) {
     return api::DataType::UNDEFINED;
   }

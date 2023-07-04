@@ -134,7 +134,8 @@ Status SnpeLib::InitializeSnpe(zdl::DlContainer::IDlContainer* container,
   snpe_builder.setOutputTensors(dl_output_tensor_names)
       .setRuntimeProcessor(snpe_settings.GetRuntimeTarget().Get())
       .setExecutionPriorityHint(snpe_settings.GetExecutionPriority())
-      .setUseUserSuppliedBuffers(use_user_buffer);
+      .setUseUserSuppliedBuffers(use_user_buffer)
+      .setInitCacheMode(snpe_settings.GetInitCacheMode());
 #ifdef __ANDROID__
   // use sustained performance mode on android variants.
   LOGS_DEFAULT(INFO) << "setPerformanceProfile to SUSTAINED_HIGH_PERFORMANCE for Android environment!";

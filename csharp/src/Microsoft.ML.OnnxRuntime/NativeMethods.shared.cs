@@ -3,7 +3,6 @@
 
 using System;
 using System.Runtime.InteropServices;
-using static Microsoft.ML.OnnxRuntime.NativeMethods;
 
 namespace Microsoft.ML.OnnxRuntime
 {
@@ -286,6 +285,13 @@ namespace Microsoft.ML.OnnxRuntime
         public IntPtr KernelInfoGetConstantInput_tensor;
         public IntPtr CastTypeInfoToOptionalTypeInfo;
         public IntPtr GetOptionalContainedTypeInfo;
+        public IntPtr GetResizedStringTensorElementBuffer;
+        public IntPtr KernelContext_GetAllocator;
+        public IntPtr GetBuildInfoString;
+        public IntPtr CreateROCMProviderOptions;
+        public IntPtr UpdateROCMProviderOptions;
+        public IntPtr GetROCMProviderOptionsAsString;
+        public IntPtr ReleaseROCMProviderOptions;
     }
 
     internal static class NativeMethods
@@ -305,7 +311,7 @@ namespace Microsoft.ML.OnnxRuntime
             DOrtGetApi OrtGetApi = (DOrtGetApi)Marshal.GetDelegateForFunctionPointer(OrtGetApiBase().GetApi, typeof(DOrtGetApi));
 
             // TODO: Make this save the pointer, and not copy the whole structure across
-            api_ = (OrtApi)OrtGetApi(4 /*ORT_API_VERSION*/);
+            api_ = (OrtApi)OrtGetApi(14 /*ORT_API_VERSION*/);
             OrtGetVersionString = (DOrtGetVersionString)Marshal.GetDelegateForFunctionPointer(OrtGetApiBase().GetVersionString, typeof(DOrtGetVersionString));
 
             OrtCreateEnv = (DOrtCreateEnv)Marshal.GetDelegateForFunctionPointer(api_.CreateEnv, typeof(DOrtCreateEnv));
@@ -361,6 +367,7 @@ namespace Microsoft.ML.OnnxRuntime
             OrtSetIntraOpNumThreads = (DOrtSetIntraOpNumThreads)Marshal.GetDelegateForFunctionPointer(api_.SetIntraOpNumThreads, typeof(DOrtSetIntraOpNumThreads));
             OrtSetSessionGraphOptimizationLevel = (DOrtSetSessionGraphOptimizationLevel)Marshal.GetDelegateForFunctionPointer(api_.SetSessionGraphOptimizationLevel, typeof(DOrtSetSessionGraphOptimizationLevel));
             OrtRegisterCustomOpsLibrary = (DOrtRegisterCustomOpsLibrary)Marshal.GetDelegateForFunctionPointer(api_.RegisterCustomOpsLibrary, typeof(DOrtRegisterCustomOpsLibrary));
+            OrtRegisterCustomOpsLibrary_V2 = (DOrtRegisterCustomOpsLibrary_V2)Marshal.GetDelegateForFunctionPointer(api_.RegisterCustomOpsLibrary_V2, typeof(DOrtRegisterCustomOpsLibrary_V2));
             OrtAddSessionConfigEntry = (DOrtAddSessionConfigEntry)Marshal.GetDelegateForFunctionPointer(api_.AddSessionConfigEntry, typeof(DOrtAddSessionConfigEntry));
             OrtAddInitializer = (DOrtAddInitializer)Marshal.GetDelegateForFunctionPointer(api_.AddInitializer, typeof(DOrtAddInitializer));
             SessionOptionsAppendExecutionProvider_TensorRT = (DSessionOptionsAppendExecutionProvider_TensorRT)Marshal.GetDelegateForFunctionPointer(
@@ -421,6 +428,7 @@ namespace Microsoft.ML.OnnxRuntime
             OrtCreateAndRegisterAllocator = (DOrtCreateAndRegisterAllocator)Marshal.GetDelegateForFunctionPointer(api_.CreateAndRegisterAllocator, typeof(DOrtCreateAndRegisterAllocator));
             OrtSetLanguageProjection = (DOrtSetLanguageProjection)Marshal.GetDelegateForFunctionPointer(api_.SetLanguageProjection, typeof(DOrtSetLanguageProjection));
 
+            OrtHasValue = (DOrtHasValue)Marshal.GetDelegateForFunctionPointer(api_.HasValue, typeof(DOrtHasValue));
             OrtGetValue = (DOrtGetValue)Marshal.GetDelegateForFunctionPointer(api_.GetValue, typeof(DOrtGetValue));
             OrtGetValueCount = (DOrtGetValueCount)Marshal.GetDelegateForFunctionPointer(api_.GetValueCount, typeof(DOrtGetValueCount));
             OrtCreateValue = (DOrtCreateValue)Marshal.GetDelegateForFunctionPointer(api_.CreateValue, typeof(DOrtCreateValue));
@@ -429,10 +437,15 @@ namespace Microsoft.ML.OnnxRuntime
             OrtGetTypeInfo = (DOrtGetTypeInfo)Marshal.GetDelegateForFunctionPointer(api_.GetTypeInfo, typeof(DOrtGetTypeInfo));
             OrtCreateTensorAsOrtValue = (DOrtCreateTensorAsOrtValue)Marshal.GetDelegateForFunctionPointer(api_.CreateTensorAsOrtValue, typeof(DOrtCreateTensorAsOrtValue));
             OrtCreateTensorWithDataAsOrtValue = (DOrtCreateTensorWithDataAsOrtValue)Marshal.GetDelegateForFunctionPointer(api_.CreateTensorWithDataAsOrtValue, typeof(DOrtCreateTensorWithDataAsOrtValue));
+            OrtValueIsTensor = (DOrtValueIsTensor)Marshal.GetDelegateForFunctionPointer(api_.IsTensor, typeof(DOrtValueIsTensor));
+            OrtValueIsSparseTensor = (DOrtValueIsSparseTensor)Marshal.GetDelegateForFunctionPointer(api_.IsSparseTensor, typeof(DOrtValueIsSparseTensor));
             OrtGetTensorMutableData = (DOrtGetTensorMutableData)Marshal.GetDelegateForFunctionPointer(api_.GetTensorMutableData, typeof(DOrtGetTensorMutableData));
             OrtFillStringTensor = (DOrtFillStringTensor)Marshal.GetDelegateForFunctionPointer(api_.FillStringTensor, typeof(DOrtFillStringTensor));
+            OrtGetResizedStringTensorElementBuffer = (DOrtGetResizedStringTensorElementBuffer)Marshal.GetDelegateForFunctionPointer(api_.GetResizedStringTensorElementBuffer, typeof(DOrtGetResizedStringTensorElementBuffer));
             OrtGetStringTensorContent = (DOrtGetStringTensorContent)Marshal.GetDelegateForFunctionPointer(api_.GetStringTensorContent, typeof(DOrtGetStringTensorContent));
             OrtGetStringTensorDataLength = (DOrtGetStringTensorDataLength)Marshal.GetDelegateForFunctionPointer(api_.GetStringTensorDataLength, typeof(DOrtGetStringTensorDataLength));
+            OrtGetStringTensorElementLength = (DOrtGetStringTensorElementLength)Marshal.GetDelegateForFunctionPointer(api_.GetStringTensorElementLength, typeof(DOrtGetStringTensorElementLength));
+            OrtGetStringTensorElement = (DOrtGetStringTensorElement)Marshal.GetDelegateForFunctionPointer(api_.GetStringTensorElement, typeof(DOrtGetStringTensorElement));
             OrtCastTypeInfoToTensorInfo = (DOrtCastTypeInfoToTensorInfo)Marshal.GetDelegateForFunctionPointer(api_.CastTypeInfoToTensorInfo, typeof(DOrtCastTypeInfoToTensorInfo));
             OrtGetTensorTypeAndShape = (DOrtGetTensorTypeAndShape)Marshal.GetDelegateForFunctionPointer(api_.GetTensorTypeAndShape, typeof(DOrtGetTensorTypeAndShape));
             OrtReleaseTensorTypeAndShapeInfo = (DOrtReleaseTensorTypeAndShapeInfo)Marshal.GetDelegateForFunctionPointer(api_.ReleaseTensorTypeAndShapeInfo, typeof(DOrtReleaseTensorTypeAndShapeInfo));
@@ -441,6 +454,7 @@ namespace Microsoft.ML.OnnxRuntime
             OrtGetDimensions = (DOrtGetDimensions)Marshal.GetDelegateForFunctionPointer(api_.GetDimensions, typeof(DOrtGetDimensions));
             OrtGetSymbolicDimensions = (DOrtGetSymbolicDimensions)Marshal.GetDelegateForFunctionPointer(api_.GetSymbolicDimensions, typeof(DOrtGetSymbolicDimensions));
             OrtGetTensorShapeElementCount = (DOrtGetTensorShapeElementCount)Marshal.GetDelegateForFunctionPointer(api_.GetTensorShapeElementCount, typeof(DOrtGetTensorShapeElementCount));
+            OrtGetTensorMemoryInfo = (DOrtGetTensorMemoryInfo)Marshal.GetDelegateForFunctionPointer(api_.GetTensorMemoryInfo, typeof(DOrtGetTensorMemoryInfo));
             // MapTypeInfo
             OrtGetMapKeyType = (DGetMapKeyType)Marshal.GetDelegateForFunctionPointer(api_.GetMapKeyType, typeof(DGetMapKeyType));
             OrtCastTypeInfoToMapTypeInfo = (DCastTypeInfoToMapTypeInfo)Marshal.GetDelegateForFunctionPointer(api_.CastTypeInfoToMapTypeInfo, typeof(DCastTypeInfoToMapTypeInfo));
@@ -490,22 +504,26 @@ namespace Microsoft.ML.OnnxRuntime
                     api_.SessionOptionsAppendExecutionProvider,
                     typeof(DSessionOptionsAppendExecutionProvider));
             OrtUpdateEnvWithCustomLogLevel = (DOrtUpdateEnvWithCustomLogLevel)Marshal.GetDelegateForFunctionPointer(api_.UpdateEnvWithCustomLogLevel, typeof(DOrtUpdateEnvWithCustomLogLevel));
+            SessionOptionsAppendExecutionProvider_ROCM = (DSessionOptionsAppendExecutionProvider_ROCM)Marshal.GetDelegateForFunctionPointer(
+                                                 api_.SessionOptionsAppendExecutionProvider_ROCM, typeof(DSessionOptionsAppendExecutionProvider_ROCM));
+            OrtCreateROCMProviderOptions = (DOrtCreateROCMProviderOptions)Marshal.GetDelegateForFunctionPointer(api_.CreateROCMProviderOptions, typeof(DOrtCreateROCMProviderOptions));
+            OrtUpdateROCMProviderOptions = (DOrtUpdateROCMProviderOptions)Marshal.GetDelegateForFunctionPointer(api_.UpdateROCMProviderOptions, typeof(DOrtUpdateROCMProviderOptions));
+            OrtGetROCMProviderOptionsAsString = (DOrtGetROCMProviderOptionsAsString)Marshal.GetDelegateForFunctionPointer(api_.GetROCMProviderOptionsAsString, typeof(DOrtGetROCMProviderOptionsAsString));
+            OrtReleaseROCMProviderOptions = (DOrtReleaseROCMProviderOptions)Marshal.GetDelegateForFunctionPointer(api_.ReleaseROCMProviderOptions, typeof(DOrtReleaseROCMProviderOptions));
         }
 
         internal class NativeLib
         {
 #if __ANDROID__
-        // define the library name required for android
-        internal const string DllName = "libonnxruntime.so";
+            // define the library name required for android
+            internal const string DllName = "libonnxruntime.so";
 #elif __IOS__
-        // define the library name required for iOS
-        internal const string DllName = "__Internal";
+            // define the library name required for iOS
+            internal const string DllName = "__Internal";
 #else
             internal const string DllName = "onnxruntime";
 #endif
-            // TODO: Does macos need special handling or will 'onnxruntime' -> libonnxruntime.dylib?
         }
-
 
         [DllImport(NativeLib.DllName, CharSet = CharSet.Ansi)]
         public static extern ref OrtApiBase OrtGetApiBase();
@@ -658,6 +676,51 @@ namespace Microsoft.ML.OnnxRuntime
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
         public delegate void DOrtReleaseCUDAProviderOptions(IntPtr /*(OrtCUDAProviderOptions*)*/ cudaProviderOptionsInstance);
         public static DOrtReleaseCUDAProviderOptions OrtReleaseCUDAProviderOptions;
+
+        /// <summary>
+        /// Creates native OrtROCMProviderOptions instance
+        /// </summary>
+        /// <param name="rocmProviderOptionsInstance">(output) native instance of OrtROCMProviderOptions</param>
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate IntPtr /* OrtStatus* */DOrtCreateROCMProviderOptions(
+            out IntPtr /*(OrtROCMProviderOptions**)*/ rocmProviderOptionsInstance);
+        public static DOrtCreateROCMProviderOptions OrtCreateROCMProviderOptions;
+
+        /// <summary>
+        /// Updates native OrtROCMProviderOptions instance using given key/value pairs
+        /// </summary>
+        /// <param name="rocmProviderOptionsInstance">native instance of OrtROCMProviderOptions</param>
+        /// <param name="providerOptionsKeys">configuration keys of OrtROCMProviderOptions</param>
+        /// <param name="providerOptionsValues">configuration values of OrtROCMProviderOptions</param>
+        /// <param name="numKeys">number of configuration keys</param>
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate IntPtr /* OrtStatus* */DOrtUpdateROCMProviderOptions(
+            IntPtr /*(OrtROCMProviderOptions*)*/ rocmProviderOptionsInstance,
+            IntPtr[] /*(const char* const *)*/ providerOptionsKeys,
+            IntPtr[] /*(const char* const *)*/ providerOptionsValues,
+            UIntPtr /*(size_t)*/ numKeys);
+        public static DOrtUpdateROCMProviderOptions OrtUpdateROCMProviderOptions;
+
+        /// <summary>
+        /// Get native OrtROCMProviderOptions in serialized string
+        /// </summary>
+        /// <param name="allocator">instance of OrtAllocator</param>
+        /// <param name="ptr">is a UTF-8 null terminated string allocated using 'allocator'</param>
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate IntPtr /* OrtStatus* */DOrtGetROCMProviderOptionsAsString(
+            IntPtr /*(OrtROCMProviderOptions**)*/ rocmProviderOptionsInstance,
+            IntPtr /*(OrtAllocator*)*/ allocator,
+            out IntPtr /*(char**)*/ptr);
+        public static DOrtGetROCMProviderOptionsAsString OrtGetROCMProviderOptionsAsString;
+
+        /// <summary>
+        /// Releases native OrtROCMProviderOptions instance
+        /// </summary>
+        /// <param name="rocmProviderOptionsInstance">native instance of OrtROCMProviderOptions to be released</param>
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate void DOrtReleaseROCMProviderOptions(IntPtr /*(OrtROCMProviderOptions*)*/ rocmProviderOptionsInstance);
+        public static DOrtReleaseROCMProviderOptions OrtReleaseROCMProviderOptions;
+
         #endregion
 
         #region Status API
@@ -903,7 +966,7 @@ namespace Microsoft.ML.OnnxRuntime
         public static DOrtDisableCpuMemArena OrtDisableCpuMemArena;
 
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
-        public delegate IntPtr /*(OrtStatus*)*/ DOrtSetSessionLogId(IntPtr /* OrtSessionOptions* */ options, IntPtr /* const char* */logId);
+        public delegate IntPtr /*(OrtStatus*)*/ DOrtSetSessionLogId(IntPtr /* OrtSessionOptions* */ options, byte[] /* const char* */logId);
         public static DOrtSetSessionLogId OrtSetSessionLogId;
 
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
@@ -934,8 +997,8 @@ namespace Microsoft.ML.OnnxRuntime
         /// <param name="configValue">Config value</param>
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
         public delegate IntPtr /*(OrtStatus*)*/ DOrtAddSessionConfigEntry(IntPtr /* OrtSessionOptions* */ options,
-                                                                          IntPtr /* const char* */configKey,
-                                                                          IntPtr /* const char* */ configValue);
+                                                                          byte[] /* const char* */configKey,
+                                                                          byte[] /* const char* */ configValue);
         public static DOrtAddSessionConfigEntry OrtAddSessionConfigEntry;
 
         //
@@ -980,7 +1043,7 @@ namespace Microsoft.ML.OnnxRuntime
         public static extern IntPtr /*(OrtStatus*)*/ OrtSessionOptionsAppendExecutionProvider_DML(IntPtr /*(OrtSessionOptions*) */ options, int device_id);
 
         [DllImport(NativeLib.DllName, CharSet = CharSet.Ansi)]
-        public static extern IntPtr /*(OrtStatus*)*/ OrtSessionOptionsAppendExecutionProvider_OpenVINO(IntPtr /*(OrtSessionOptions*)*/ options, IntPtr /*(const char*)*/ device_id);
+        public static extern IntPtr /*(OrtStatus*)*/ OrtSessionOptionsAppendExecutionProvider_OpenVINO(IntPtr /*(OrtSessionOptions*)*/ options, byte[] /*(const char*)*/ device_id);
 
         [DllImport(NativeLib.DllName, CharSet = CharSet.Ansi)]
         public static extern IntPtr /*(OrtStatus*)*/ OrtSessionOptionsAppendExecutionProvider_Tensorrt(IntPtr /*(OrtSessionOptions*)*/ options, int device_id);
@@ -989,7 +1052,7 @@ namespace Microsoft.ML.OnnxRuntime
         public static extern IntPtr /*(OrtStatus*)*/ OrtSessionOptionsAppendExecutionProvider_MIGraphX(IntPtr /*(OrtSessionOptions*)*/ options, int device_id);
 
         [DllImport(NativeLib.DllName, CharSet = CharSet.Ansi)]
-        public static extern IntPtr /*(OrtStatus*)*/ OrtSessionOptionsAppendExecutionProvider_Tvm(IntPtr /*(OrtSessionOptions*) */ options, IntPtr /*(char char*)*/ settings);
+        public static extern IntPtr /*(OrtStatus*)*/ OrtSessionOptionsAppendExecutionProvider_Tvm(IntPtr /*(OrtSessionOptions*) */ options, byte[] /*(char char*)*/ settings);
 #endif
         /// <summary>
         /// Append a TensorRT EP instance (configured based on given provider options) to the native OrtSessionOptions instance
@@ -1040,6 +1103,18 @@ namespace Microsoft.ML.OnnxRuntime
         public static DSessionOptionsAppendExecutionProvider_CUDA_V2 SessionOptionsAppendExecutionProvider_CUDA_V2;
 
         /// <summary>
+        /// Append a ROCm EP instance (configured based on given provider options) to the native OrtSessionOptions instance
+        /// </summary>
+        /// <param name="options">Native OrtSessionOptions instance</param>
+        /// <param name="rocmProviderOptions">Native OrtROCMProviderOptions instance</param>
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate IntPtr /*(OrtStatus*)*/DSessionOptionsAppendExecutionProvider_ROCM(
+                                               IntPtr /*(OrtSessionOptions*)*/ options,
+                                               IntPtr /*(const OrtROCMProviderOptions*)*/ rocmProviderOptions);
+
+        public static DSessionOptionsAppendExecutionProvider_ROCM SessionOptionsAppendExecutionProvider_ROCM;
+
+        /// <summary>
         /// Free Dimension override (by denotation)
         /// </summary>
         /// <param name="options">Native SessionOptions instance</param>
@@ -1047,7 +1122,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// <param name="dimValue">Dimension value</param>
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
         public delegate IntPtr /*(OrtStatus*)*/DOrtAddFreeDimensionOverride(IntPtr /*(OrtSessionOptions*)*/ options,
-                                                                            IntPtr /*(const char*)*/ dimDenotation,
+                                                                            byte[] /*(const char*)*/ dimDenotation,
                                                                             long dimValue);
 
         public static DOrtAddFreeDimensionOverride OrtAddFreeDimensionOverride;
@@ -1060,7 +1135,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// <param name="dimValue">Dimension value</param>
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
         public delegate IntPtr /*(OrtStatus*)*/DOrtAddFreeDimensionOverrideByName(IntPtr /*(OrtSessionOptions*)*/ options,
-                                                                                  IntPtr /*(const char*)*/ dimName,
+                                                                                  byte[] /*(const char*)*/ dimName,
                                                                                   long dimValue);
 
         public static DOrtAddFreeDimensionOverrideByName OrtAddFreeDimensionOverrideByName;
@@ -1073,10 +1148,21 @@ namespace Microsoft.ML.OnnxRuntime
         /// <param name="libraryHandle">(out) Native library handle</param>
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
         public delegate IntPtr /*(OrtStatus*)*/DOrtRegisterCustomOpsLibrary(IntPtr /*(OrtSessionOptions*) */ options,
-                                                                            IntPtr /*(const char*)*/ libraryPath,
+                                                                            byte[] /*(const char*)*/ libraryPath,
                                                                             out IntPtr /*(void**)*/ libraryHandle);
 
         public static DOrtRegisterCustomOpsLibrary OrtRegisterCustomOpsLibrary;
+
+        /// <summary>
+        /// Register custom op library. ORT will manage freeing the library.
+        /// </summary>
+        /// <param name="options">Native SessionOptions instance</param>
+        /// <param name="libraryPath">Library path</param>
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate IntPtr /*(OrtStatus*)*/DOrtRegisterCustomOpsLibrary_V2(IntPtr /*(OrtSessionOptions*) */ options,
+                                                                               byte[] /*(const ORTCHAR_T*)*/ libraryPath);
+
+        public static DOrtRegisterCustomOpsLibrary_V2 OrtRegisterCustomOpsLibrary_V2;
 
         /// <summary>
         /// Add initializer that is shared across Sessions using this SessionOptions (by denotation)
@@ -1086,7 +1172,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// <param name="ortValue">Native OrtValue instnce</param>
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
         public delegate IntPtr /*(OrtStatus*)*/DOrtAddInitializer(IntPtr /*(OrtSessionOptions*)*/ options,
-                                                                  IntPtr /*(const char*)*/ name,
+                                                                  byte[] /*(const char*)*/ name,
                                                                   IntPtr /*(OrtValue*)*/ ortValue);
 
         public static DOrtAddInitializer OrtAddInitializer;
@@ -1106,7 +1192,7 @@ namespace Microsoft.ML.OnnxRuntime
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
         public delegate IntPtr /*(OrtStatus*)*/DSessionOptionsAppendExecutionProvider(
                                                IntPtr /*(OrtSessionOptions*)*/ options,
-                                               IntPtr /*(const char*)*/ providerName,
+                                               byte[] /*(const char*)*/ providerName,
                                                IntPtr[] /*(const char* const *)*/ providerOptionsKeys,
                                                IntPtr[] /*(const char* const *)*/ providerOptionsValues,
                                                UIntPtr /*(size_t)*/ numKeys);
@@ -1134,7 +1220,7 @@ namespace Microsoft.ML.OnnxRuntime
         public static DOrtRunOptionsSetRunLogSeverityLevel OrtRunOptionsSetRunLogSeverityLevel;
 
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
-        public delegate IntPtr /*(OrtStatus*)*/ DOrtRunOptionsSetRunTag(IntPtr /* OrtRunOptions* */ options, IntPtr /* const char* */ runTag);
+        public delegate IntPtr /*(OrtStatus*)*/ DOrtRunOptionsSetRunTag(IntPtr /* OrtRunOptions* */ options, byte[] /* const char* */ runTag);
         public static DOrtRunOptionsSetRunTag OrtRunOptionsSetRunTag;
 
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
@@ -1169,8 +1255,8 @@ namespace Microsoft.ML.OnnxRuntime
         /// <param name="configValue">Config value</param>
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
         public delegate IntPtr /*(OrtStatus*)*/ DOrtAddRunConfigEntry(IntPtr /* OrtRunOptions* */ options,
-                                                                      IntPtr /* const char* */configKey,
-                                                                      IntPtr /* const char* */ configValue);
+                                                                      byte[] /* const char* */configKey,
+                                                                      byte[] /* const char* */ configValue);
         public static DOrtAddRunConfigEntry OrtAddRunConfigEntry;
 
         #endregion
@@ -1206,7 +1292,7 @@ namespace Microsoft.ML.OnnxRuntime
 
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
         public delegate IntPtr /* (OrtStatus*)*/ DOrtCreateMemoryInfo(
-                                                            IntPtr /*(const char*) */name,
+                                                            byte[] /*(const char*) */name,
                                                             OrtAllocatorType allocatorType,
                                                             int identifier,
                                                             OrtMemType memType,
@@ -1377,7 +1463,7 @@ namespace Microsoft.ML.OnnxRuntime
         ///      The param instance is copied internally so this argument may be released.
         /// </param>
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
-        public delegate IntPtr /* OrtStatus*/ DOrtBindInput(IntPtr /*(OrtIoBinding)*/ io_binding, IntPtr /*(const char*)*/ name, IntPtr /*const OrtValue**/ ort_value);
+        public delegate IntPtr /* OrtStatus*/ DOrtBindInput(IntPtr /*(OrtIoBinding)*/ io_binding, byte[] /*(const char*)*/ name, IntPtr /*const OrtValue**/ ort_value);
 
         public static DOrtBindInput OrtBindInput;
 
@@ -1405,7 +1491,7 @@ namespace Microsoft.ML.OnnxRuntime
         ///      The param instance is copied internally so this argument may be released.
         /// </param>
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
-        public delegate IntPtr /* OrtStatus*/ DOrtBindOutput(IntPtr /*(OrtIoBinding)*/ io_binding, IntPtr /*(const char*) */ name, IntPtr /*const OrtValue**/ ort_value);
+        public delegate IntPtr /* OrtStatus*/ DOrtBindOutput(IntPtr /*(OrtIoBinding)*/ io_binding, byte[] /*(const char*) */ name, IntPtr /*const OrtValue**/ ort_value);
 
         public static DOrtBindOutput OrtBindOutput;
 
@@ -1419,7 +1505,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// <param name="mem_info">OrtMemoryInfo instance that contains device id. May be obtained from the device specific allocator instance</param>
         /// <returns></returns>
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
-        public delegate IntPtr /* OrtStatus*/ DOrtBindOutputToDevice(IntPtr /*(OrtIoBinding)*/ io_binding, IntPtr /*(const char*) */ name, IntPtr /* const OrtMemoryInfo */ mem_info);
+        public delegate IntPtr /* OrtStatus*/ DOrtBindOutputToDevice(IntPtr /*(OrtIoBinding)*/ io_binding, byte[] /*(const char*) */ name, IntPtr /* const OrtMemoryInfo */ mem_info);
 
         public static DOrtBindOutputToDevice OrtBindOutputToDevice;
 
@@ -1643,7 +1729,6 @@ namespace Microsoft.ML.OnnxRuntime
 
         public static DOrtModelMetadataLookupCustomMetadataMap OrtModelMetadataLookupCustomMetadataMap;
 
-
         /// <summary>
         /// Frees ModelMetadata instance
         /// </summary>
@@ -1655,7 +1740,12 @@ namespace Microsoft.ML.OnnxRuntime
 
         #endregion ModelMetadata API
 
-        #region Tensor/OnnxValue API
+        #region OrtValue API
+
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate IntPtr /*(OrtStatus*)*/ DOrtHasValue(IntPtr /*(OrtValue*)*/ value, out IntPtr /*(int*)*/ hasValue);
+
+        public static DOrtHasValue OrtHasValue;
 
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
         public delegate IntPtr /*(OrtStatus*)*/ DOrtGetValue(IntPtr /*(OrtValue*)*/ value,
@@ -1687,7 +1777,7 @@ namespace Microsoft.ML.OnnxRuntime
         public static DOrtCreateValue OrtCreateValue;
 
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
-        public delegate IntPtr /*(OrtStatus*)*/ DOrtGetTypeInfo(IntPtr /*(OrtValue*)*/ value, IntPtr /*(OrtValue**)*/ typeInfo);
+        public delegate IntPtr /*(OrtStatus*)*/ DOrtGetTypeInfo(IntPtr /*(OrtValue*)*/ value, out IntPtr /*(OrtValue**)*/ typeInfo);
 
         public static DOrtGetTypeInfo OrtGetTypeInfo;
 
@@ -1713,6 +1803,16 @@ namespace Microsoft.ML.OnnxRuntime
 
         public static DOrtCreateTensorWithDataAsOrtValue OrtCreateTensorWithDataAsOrtValue;
 
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate IntPtr /* OrtStatus */ DOrtValueIsTensor(IntPtr /*(OrtValue*)*/ ortValue, out IntPtr val);
+
+        public static DOrtValueIsTensor OrtValueIsTensor;
+
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate IntPtr /* OrtStatus */ DOrtValueIsSparseTensor(IntPtr /*(OrtValue*)*/ ortValue, out IntPtr val);
+
+        public static DOrtValueIsSparseTensor OrtValueIsSparseTensor;
+
         /// This function doesn't work with string tensor
         /// this is a no-copy method whose pointer is only valid until the backing OrtValue* is free'd.
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
@@ -1730,12 +1830,21 @@ namespace Microsoft.ML.OnnxRuntime
 
         public static DOrtFillStringTensor OrtFillStringTensor;
 
+        public delegate IntPtr /*(OrtStatus*)*/ DOrtGetResizedStringTensorElementBuffer(
+                IntPtr /* OrtValue */ value,
+                UIntPtr /* size_t */ index,
+                UIntPtr /* size_t */ length_in_bytes,
+                out IntPtr /* char** */ buffer
+            );
+
+        public static DOrtGetResizedStringTensorElementBuffer OrtGetResizedStringTensorElementBuffer;
+
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
         public delegate IntPtr /*(OrtStatus*)*/ DOrtGetStringTensorContent(
                                                         IntPtr /*(OrtValue*)*/ value,
-                                                        IntPtr /*(void*)*/  dst_buffer,
+                                                        byte[] /*(void*)*/  dst_buffer,
                                                         UIntPtr dst_buffer_len,
-                                                        IntPtr offsets,
+                                                        UIntPtr[] offsets,
                                                         UIntPtr offsets_len);
 
         public static DOrtGetStringTensorContent OrtGetStringTensorContent;
@@ -1745,6 +1854,21 @@ namespace Microsoft.ML.OnnxRuntime
                                                         out UIntPtr /*(size_t*)*/ len);
 
         public static DOrtGetStringTensorDataLength OrtGetStringTensorDataLength;
+
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate IntPtr /*(OrtStatus*)*/ DOrtGetStringTensorElementLength(IntPtr /*(OrtValue*)*/ value,
+                                                        UIntPtr /*(size_t)*/ index,
+                                                        out UIntPtr /*(size_t*)*/ len);
+
+        public static DOrtGetStringTensorElementLength OrtGetStringTensorElementLength;
+
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate IntPtr /*(OrtStatus*)*/ DOrtGetStringTensorElement(IntPtr /*(OrtValue*)*/ value,
+                                                UIntPtr /*(size_t)*/ bufferLength,
+                                                UIntPtr /*(size_t)*/ elementIndex,
+                                                byte[] buffer);
+
+        public static DOrtGetStringTensorElement OrtGetStringTensorElement;
 
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
         public delegate IntPtr /*(OrtStatus*)*/
@@ -1809,9 +1933,18 @@ namespace Microsoft.ML.OnnxRuntime
          * [-1,3,4] -> -1
          */
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
-        public delegate IntPtr /*(OrtStatus*)*/ DOrtGetTensorShapeElementCount(IntPtr /*(const struct OrtTensorTypeAndShapeInfo*)*/ typeAndShapeInfo, out IntPtr /*(long*)*/ output);
+        public delegate IntPtr /*(OrtStatus*)*/ DOrtGetTensorShapeElementCount(IntPtr /*(const struct OrtTensorTypeAndShapeInfo*)*/ typeAndShapeInfo,
+            out UIntPtr /* size_t */ output);
 
         public static DOrtGetTensorShapeElementCount OrtGetTensorShapeElementCount;
+
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        // The out ortMemoryInfo must not be destroyed/deallocated. The pointer points to an object owned by
+        // the contained Tensor/SparseTensor.
+        public delegate IntPtr /*(OrtStatus*)*/ DOrtGetTensorMemoryInfo(IntPtr /* const OrtValue* */ ortValue,
+            out IntPtr /* const OrtMemoryInfo** */ ortMemoryInfo);
+
+        public static DOrtGetTensorMemoryInfo OrtGetTensorMemoryInfo;
 
         ///  Map Type API
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
@@ -1855,6 +1988,7 @@ namespace Microsoft.ML.OnnxRuntime
 
         #endregion
 
+
         #region Misc API
 
         /// <summary>
@@ -1897,4 +2031,27 @@ namespace Microsoft.ML.OnnxRuntime
 
         #endregion
     } //class NativeMethods
+
+    // onnxruntime-extensions helpers to make usage simpler.
+    // The onnxruntime-extensions nuget package containing the native library can be optionally added to the app.
+    // If added, SessionOptions.RegisterOrtExtensions can be called to add the custom ops to the session options.
+    // We handle the DllImport and platform specific aspects so the user code doesn't require that.
+    // adjust the library name based on platform.
+    internal static class OrtExtensionsNativeMethods
+    {
+#if __ANDROID__
+        internal const string ExtensionsDllName = "libortextensions.so";
+#elif __IOS__
+        internal const string ExtensionsDllName = "__Internal";
+#else
+        internal const string ExtensionsDllName = "ortextensions";
+#endif
+
+        [DllImport(ExtensionsDllName, CharSet = CharSet.Ansi,
+                   CallingConvention = CallingConvention.Winapi)]
+        public static extern IntPtr /* OrtStatus* */ RegisterCustomOps(IntPtr /* OrtSessionOptions* */ sessionOptions,
+                                                                       ref OrtApiBase /* OrtApiBase* */ ortApiBase);
+
+
+    }
 } //namespace

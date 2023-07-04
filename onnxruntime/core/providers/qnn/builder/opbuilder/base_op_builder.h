@@ -8,6 +8,8 @@
 #include "core/providers/qnn/builder/op_builder.h"
 #include "core/framework/allocator.h"
 
+#include "QnnOpDef.h"
+
 namespace onnxruntime {
 namespace qnn {
 
@@ -58,7 +60,8 @@ class BaseOpBuilder : public IOpBuilder {
                                 std::vector<std::string>&& param_tensor_names,
                                 const logging::Logger& logger,
                                 bool is_quantized_model,
-                                bool do_op_validation) const ORT_MUST_USE_RESULT;
+                                bool do_op_validation,
+                                const std::string& qnn_op_type) const ORT_MUST_USE_RESULT;
 
   Status ProcessInput(QnnModelWrapper& qnn_model_wrapper,
                       const NodeUnitIODef& input,
@@ -91,11 +94,13 @@ class BaseOpBuilder : public IOpBuilder {
   }
 
   static const std::string& GetQnnOpType(const std::string& onnx_op_type) {
+    // TODO: Use QNN operator names defined in "QnnOpDef.h"
     static const std::unordered_map<std::string, std::string> onnx_op_type_to_qnn_op_type = {
         {"Add", "ElementWiseAdd"},
         {"Mul", "ElementWiseMultiply"},
         {"Abs", "ElementWiseAbs"},
         {"And", "ElementWiseAnd"},
+        {"Atan", "ElementWiseAtan"},
         {"Ceil", "ElementWiseCeil"},
         {"Cast", "Cast"},
         {"Clip", "ReluMinMax"},
@@ -135,10 +140,17 @@ class BaseOpBuilder : public IOpBuilder {
         {"Tanh", "Tanh"},
         {"Transpose", "Transpose"},
 
+        {"DequantizeLinear", "Dequantize"},
+        {"QuantizeLinear", "Quantize"},
+
         {"MatMul", "MatMul"},
 
+        {"Elu", "Elu"},
         {"Relu", "Relu"},
+        {"Gelu", "Gelu"},
         {"Sigmoid", "Sigmoid"},
+
+        {"HardSwish", "HardSwish"},
 
         {"Conv", "Conv2d"},
 
@@ -163,7 +175,9 @@ class BaseOpBuilder : public IOpBuilder {
         {"Tile", "Tile"},
         {"TopK", "TopK"},
         {"InstanceNormalization", "InstanceNorm"},
-        {"BatchNormalization", "Batchnorm"}};
+        {"BatchNormalization", "Batchnorm"},
+
+        {"LRN", QNN_OP_LRN}};
     auto it = onnx_op_type_to_qnn_op_type.find(onnx_op_type);
     ORT_ENFORCE(it != onnx_op_type_to_qnn_op_type.end());
     return it->second;
@@ -201,32 +215,32 @@ class BaseOpBuilder : public IOpBuilder {
 
     return Status::OK();
   }
-  Status TransposeInitializer(const onnx::TensorProto& initializer,
+  Status TransposeInitializer(const QnnModelWrapper& qnn_model_wrapper,
+                              const onnx::TensorProto& initializer,
                               const std::vector<size_t>& perm,
-                              const AllocatorPtr& cpu_allocator,
                               std::vector<uint8_t>& transposed_data) const;
 
-  Status TransposeFromNchwToHwcn(const onnx::TensorProto& initializer,
-                                 const AllocatorPtr& cpu_allocator,
+  Status TransposeFromNchwToHwcn(const QnnModelWrapper& qnn_model_wrapper,
+                                 const onnx::TensorProto& initializer,
                                  std::vector<uint8_t>& transposed_data) const {
-    return TransposeInitializer(initializer, nchw2hwcn_perm, cpu_allocator, transposed_data);
+    return TransposeInitializer(qnn_model_wrapper, initializer, nchw2hwcn_perm, transposed_data);
   }
 
-  Status TransposeFromCnhwToHwcn(const onnx::TensorProto& initializer,
-                                 const AllocatorPtr& cpu_allocator,
+  Status TransposeFromCnhwToHwcn(const QnnModelWrapper& qnn_model_wrapper,
+                                 const onnx::TensorProto& initializer,
                                  std::vector<uint8_t>& transposed_data) const {
-    return TransposeInitializer(initializer, cnhw2hwcn_perm, cpu_allocator, transposed_data);
+    return TransposeInitializer(qnn_model_wrapper, initializer, cnhw2hwcn_perm, transposed_data);
   }
 
-  Status TwoDimensionTranspose(std::vector<uint32_t>& data_shape,
+  Status TwoDimensionTranspose(const QnnModelWrapper& qnn_model_wrapper,
+                               std::vector<uint32_t>& data_shape,
                                const onnx::TensorProto& initializer,
-                               const AllocatorPtr& cpu_allocator,
                                std::vector<uint8_t>& transposed_data) const {
     auto tmp = data_shape[0];
     data_shape[0] = data_shape[1];
     data_shape[1] = tmp;
     std::vector<size_t> two_dim_trans_perm{1, 0};
-    return TransposeInitializer(initializer, two_dim_trans_perm, cpu_allocator, transposed_data);
+    return TransposeInitializer(qnn_model_wrapper, initializer, two_dim_trans_perm, transposed_data);
   }
 
   void InitializeQuantizeParam(Qnn_QuantizeParams_t& quantize_param, bool is_quantized_model, float scale = 0.0f, int32_t offset = 0) const {

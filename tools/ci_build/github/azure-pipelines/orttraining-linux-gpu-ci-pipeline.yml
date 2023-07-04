@@ -14,7 +14,7 @@ jobs:
       -x "
       --enable_training
       --config $(buildConfig)
-      --use_cuda --cuda_version=11.6 --cuda_home=/usr/local/cuda-11.6 --cudnn_home=/usr/local/cuda-11.6
+      --use_cuda --cuda_version=11.8 --cuda_home=/usr/local/cuda-11.8 --cudnn_home=/usr/local/cuda-11.8
       --build_wheel
       --enable_nvtx_profile
       --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=70

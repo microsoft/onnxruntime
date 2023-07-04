@@ -421,6 +421,12 @@ void HostApplyLayerNorm(
   //     * Do not using maxTreads as it will cause resource issue.
   int threads_y = std::min(round_up_power_of_2((n2 + 4 * warp_size - 1) / (4 * warp_size)),
                            prop.maxThreadsPerBlock / (warp_size * 2));
+  // threads_y could be 16, 8, 4, 2, 1. Calculate total number of rows that could be run in parallel.
+  int parallel_rows = prop.multiProcessorCount * ((prop.maxThreadsPerBlock / 2) / warp_size / threads_y);
+  while (threads_y > 2 && parallel_rows < n1) {
+    threads_y /= 2;
+    parallel_rows *= 2;
+  }
   dim3 threads(warp_size, threads_y, 1);
 #ifdef __HIP_PLATFORM_HCC__
   // Optimization for ROCm MI100

@@ -61,6 +61,10 @@ enum class DataType : int32_t {
   COMPLEX64 = 14,
   COMPLEX128 = 15,
   BFLOAT16 = 16,
+  FLOAT8E4M3FN = 17,
+  FLOAT8E4M3FNUZ = 18,
+  FLOAT8E5M2 = 19,
+  FLOAT8E5M2FNUZ = 20,
 };
 
 /// <summary>
@@ -489,9 +493,8 @@ using HandlerMap = std::unordered_map<std::string_view, const HandlerInfo&>;
 /// total cost of Transpose ops and only push Transposes when doing so has some benefit.
 /// </summary>
 /// <param name="graph">The graph to optimize (or a portion of a graph, see api::GraphRef docs)</param>
-/// <param name="provider_type">Execution provider if applicable.
-///   If not specified, unassigned nodes will be considered for optimization.
-///   If specified, unassigned nodes and nodes assigned to the specified EP will be considered for optimization.
+/// <param name="provider_type">Execution provider to assign new nodes to.
+///   If not specified, graph partitioning must be run later to assign nodes to EPs.
 /// </param>
 /// <param name="cost_check_fn">Optional cost checking function to determine whether it is worth pushing a Transpose
 /// through a node.

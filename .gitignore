@@ -79,7 +79,6 @@ dist/
 downloads/
 eggs/
 .eggs/
-lib/
 lib64/
 parts/
 sdist/
@@ -189,3 +188,10 @@ dmypy.json
 
 # Cython debug symbols
 cython_debug/
+
+# Swift Package Manager
+Packages/
+Package.pins
+Package.resolved
+.build/
+.swiftpm/

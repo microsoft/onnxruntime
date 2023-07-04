@@ -6,7 +6,7 @@
 #include <vector>
 
 #include <inference_engine.hpp>
-#if defined(OPENVINO_2022_1) || (OPENVINO_2022_2) || (OPENVINO_2022_3)
+#if defined(OPENVINO_2022_1) || (OPENVINO_2022_2) || (OPENVINO_2022_3) || (OPENVINO_2023_0)
 #define OV_API_20
 #include "openvino/openvino.hpp"
 #include "openvino/pass/convert_fp32_to_fp16.hpp"
@@ -44,7 +44,10 @@ class OVCore {
 
  public:
   std::shared_ptr<OVNetwork> ReadModel(const std::string& model_stream) const;
-  OVExeNetwork LoadNetwork(std::shared_ptr<OVNetwork>& ie_cnn_network, std::string& hw_target, OVConfig& config, ov::AnyMap& device_config, std::string name);
+  OVExeNetwork LoadNetwork(std::shared_ptr<OVNetwork>& ie_cnn_network, std::string& hw_target, ov::AnyMap& device_config, std::string name);
+#if defined(OPENVINO_2023_0)
+  OVExeNetwork LoadNetwork(const std::string& model_stream, std::string& hw_target, ov::AnyMap& device_config, std::string name);
+#endif
   void SetCache(std::string cache_dir_path);
 #ifdef IO_BUFFER_ENABLED
   OVExeNetwork LoadNetwork(std::shared_ptr<OVNetwork>& model, OVRemoteContextPtr context, std::string& name);
@@ -72,6 +75,7 @@ class OVInferRequest {
   OVTensorPtr GetTensor(const std::string& name);
   void SetTensor(const std::string& name, OVTensorPtr& blob);
   void StartAsync();
+  void Infer();
   void WaitRequest();
   void QueryStatus();
   explicit OVInferRequest(ov::InferRequest obj) { ovInfReq = obj; }

@@ -20,7 +20,9 @@ class ForwardBlock(blocks.Block):
     must subclass this class. The subclass's implementation of the build method must return the
     name of the graph output. This block will automatically register the output as a graph output
     and build the model.
+
     Example:
+
     >>> class MyForwardBlock(ForwardBlock):
     >>>     def __init__(self):
     >>>         super().__init__()
@@ -84,7 +86,9 @@ class TrainingBlock(blocks.Block):
     must subclass this class. The subclass's implementation of the build method must return
     the name of the output from where backpropagation must begin (typically the name of the
     output from the loss function).
+
     Example:
+
     >>> class MyTrainingBlock(TrainingBlock):
     >>>     def __init__(self):
     >>>         super().__init__()

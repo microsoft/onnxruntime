@@ -43,7 +43,6 @@ NonCudaOps non_cuda;
 #endif
 
 namespace onnxruntime {
-using namespace layout_transformation;
 
 namespace {
 
@@ -54,8 +53,8 @@ struct PartitionParams {
   std::reference_wrapper<FuncManager> func_mgr;
   std::reference_wrapper<KernelRegistry> fused_kernel_registry;
   std::reference_wrapper<int> fused_node_unique_id;
-  std::reference_wrapper<const TransformLayoutFunction> transform_layout_function;
-  std::reference_wrapper<const DebugGraphFn> debug_graph_fn;
+  std::reference_wrapper<const layout_transformation::TransformLayoutFunction> transform_layout_function;
+  std::reference_wrapper<const layout_transformation::DebugGraphFn> debug_graph_fn;
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 };
 }  // namespace
@@ -126,8 +125,8 @@ struct GetCapabilityForEPParams {
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   GraphPartitioner::Mode mode;
-  std::reference_wrapper<const TransformLayoutFunction> transform_layout;
-  std::reference_wrapper<const DebugGraphFn> debug_graph_fn;
+  std::reference_wrapper<const layout_transformation::TransformLayoutFunction> transform_layout;
+  std::reference_wrapper<const layout_transformation::DebugGraphFn> debug_graph_fn;
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 };
 }  // namespace
@@ -338,8 +337,8 @@ static Status PartitionOnnxFormatModelImpl(Graph& graph, FuncManager& func_mgr,
                                            IExecutionProvider& current_ep,
                                            GraphPartitioner::Mode mode,
                                            int& fused_node_unique_id,
-                                           const TransformLayoutFunction& transform_layout_function,
-                                           const DebugGraphFn& debug_graph_fn) {
+                                           const layout_transformation::TransformLayoutFunction& transform_layout_fn,
+                                           const layout_transformation::DebugGraphFn& debug_graph_fn) {
   // handle testing edge case where optimizers or constant lifting results in graph with no nodes.
   // doing it here saves all providers checking for this in GetCapability
   if (graph.NumberOfNodes() == 0) {
@@ -353,7 +352,7 @@ static Status PartitionOnnxFormatModelImpl(Graph& graph, FuncManager& func_mgr,
       // we pass through the FuncManager from the top level graph
       ORT_RETURN_IF_ERROR(PartitionOnnxFormatModelImpl(*subgraph, func_mgr, kernel_registry_mgr,
                                                        fused_kernel_registry, current_ep, mode, fused_node_unique_id,
-                                                       transform_layout_function, debug_graph_fn));
+                                                       transform_layout_fn, debug_graph_fn));
     }
   }
 
@@ -375,7 +374,7 @@ static Status PartitionOnnxFormatModelImpl(Graph& graph, FuncManager& func_mgr,
       std::ref(current_ep),
       std::ref(capabilities),
       mode,
-      std::cref(transform_layout_function),
+      std::cref(transform_layout_fn),
       std::cref(debug_graph_fn)};
 
   ORT_RETURN_IF_ERROR(GetCapabilityForEP(get_capability_params));
@@ -670,10 +669,11 @@ static Status PartitionOrtFormatModelImpl(const PartitionParams& partition_param
 
     auto& fused_kernel_registry = partition_params.fused_kernel_registry.get();
     ORT_RETURN_IF_ERROR(fused_kernel_registry.Register(
-        KernelCreateInfo(std::move(kernel_def),
-                         [](FuncManager& func_mgr, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status {
-                           return FunctionKernel::Create(func_mgr, info, out);
-                         })));
+        KernelCreateInfo(
+            std::move(kernel_def),
+            [](FuncManager& func_mgr, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status {
+              return FunctionKernel::Create(func_mgr, info, out);
+            })));
 
     // now that we're done compiling we can remove the original nodes from the Graph and wire in the new one
     graph.FinalizeFuseSubGraph(indexed_sub_graph, node);
@@ -696,9 +696,9 @@ static Status PartitionOrtFormatModel(const PartitionParams& partition_params,
 }
 
 Status GraphPartitioner::Partition(Graph& graph, FuncManager& func_mgr,
-                                   const TransformLayoutFunction& transform_layout_function,
+                                   const layout_transformation::TransformLayoutFunction& transform_layout_function,
                                    Mode mode,
-                                   const DebugGraphFn& debug_graph_fn) const {
+                                   const layout_transformation::DebugGraphFn& debug_graph_fn) const {
   // It is a greedy partitioning algorithm per provider preferences user provided when calling ONNX RUNTIME right now.
   // 1. Execution providers' capabilities are checked one by one.
   // 2. All sub-graphs that an execution provider returns will be assigned to it if it's not assigned yet.

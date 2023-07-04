@@ -14,13 +14,21 @@ import torch
 from whisper_chain import chain_model
 from whisper_helper import PRETRAINED_WHISPER_MODELS, WhisperHelper
 
+from onnxruntime import quantization
+
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 from benchmark_helper import Precision, create_onnxruntime_session, prepare_environment, setup_logger  # noqa: E402
 
 logger = logging.getLogger("")
 
+PROVIDERS = {
+    "cpu": "CPUExecutionProvider",
+    "cuda": "CUDAExecutionProvider",
+    "rocm": "ROCMExecutionProvider",
+}
 
-def parse_arguments():
+
+def parse_arguments(argv=None):
     parser = argparse.ArgumentParser()
 
     pretrained_models = PRETRAINED_WHISPER_MODELS
@@ -67,8 +75,8 @@ def parse_arguments():
         required=False,
         type=Precision,
         default=Precision.FLOAT32,
-        choices=[Precision.FLOAT32, Precision.FLOAT16],
-        help="Precision of model to run. fp32 for full precision, fp16 for half precision",
+        choices=[Precision.FLOAT32, Precision.FLOAT16, Precision.INT8],
+        help="Precision of model to run. fp32 for full precision, fp16 for half precision, int8 for quantization",
     )
 
     parser.add_argument("--verbose", required=False, action="store_true")
@@ -82,9 +90,46 @@ def parse_arguments():
         "--use_decoder_start_token",
         required=False,
         action="store_true",
-        help="Use config.decoder_start_token_id. Otherwise, add an extra graph input for decoder_input_ids.",
+        help="Use config.decoder_start_token_id. Otherwise, add an extra graph input to \
+              the encoder-decoder-init subgraph for decoder_input_ids.",
     )
     parser.set_defaults(use_decoder_start_token=False)
+
+    parser.add_argument(
+        "-f",
+        "--use_forced_decoder_ids",
+        required=False,
+        action="store_true",
+        help="Use decoder_input_ids as an extra graph input to the beam search op",
+    )
+    parser.set_defaults(use_forced_decoder_ids=False)
+
+    parser.add_argument(
+        "-l",
+        "--use_logits_processor",
+        required=False,
+        action="store_true",
+        help="Use logits_processor as an extra graph input to enable specific logits processing",
+    )
+    parser.set_defaults(use_specific_logits_processor=False)
+
+    parser.add_argument(
+        "-v",
+        "--use_vocab_mask",
+        required=False,
+        action="store_true",
+        help="Use vocab_mask as an extra graph input to enable specific logits processing",
+    )
+    parser.set_defaults(use_vocab_mask=False)
+
+    parser.add_argument(
+        "-u",
+        "--use_prefix_vocab_mask",
+        required=False,
+        action="store_true",
+        help="Use prefix_vocab_mask as an extra graph input to enable specific logits processing",
+    )
+    parser.set_defaults(use_prefix_vocab_mask=False)
 
     parser.add_argument(
         "-w",
@@ -134,9 +179,47 @@ def parse_arguments():
         help="default name is whisper_beamsearch.onnx.",
     )
 
-    parser.add_argument("--no_repeat_ngram_size", type=int, default=3, help="default to 3")
+    parser.add_argument(
+        "--quantize_embedding_layer",
+        required=False,
+        action="store_true",
+        help="Produce beam search model with chained encdecinit and decoder.",
+    )
 
-    args = parser.parse_args()
+    parser.add_argument(
+        "--quantize_per_channel",
+        required=False,
+        action="store_true",
+        help="Produce beam search model with chained encdecinit and decoder.",
+    )
+
+    parser.add_argument(
+        "--quantize_reduce_range",
+        required=False,
+        action="store_true",
+        help="Produce beam search model with chained encdecinit and decoder.",
+    )
+
+    parser.add_argument("--no_repeat_ngram_size", type=int, default=0, help="default to 0")
+
+    parser.add_argument(
+        "--state_dict_path",
+        type=str,
+        default="",
+        help="filepath to load pre-trained model with custom state dictionary (e.g. pytorch_model.bin)",
+    )
+
+    parser.add_argument(
+        "-r",
+        "--provider",
+        required=False,
+        type=str,
+        default="cpu",
+        choices=list(PROVIDERS.keys()),
+        help="Provider to benchmark. Default is CPUExecutionProvider.",
+    )
+
+    args = parser.parse_args(argv)
 
     return args
 
@@ -155,17 +238,25 @@ def export_onnx_models(
     overwrite: bool = False,
     disable_auto_mixed_precision: bool = False,
     use_int32_inputs: bool = True,
+    quantize_embedding_layer: bool = False,
+    quantize_per_channel: bool = False,
+    quantize_reduce_range: bool = False,
+    state_dict_path: str = "",
+    provider: str = "cpu",
 ):
     device = torch.device("cuda:0" if use_gpu else "cpu")
 
-    models = WhisperHelper.load_model(model_name_or_path, cache_dir, device, merge_encoder_and_decoder_init)
+    models = WhisperHelper.load_model(
+        model_name_or_path, cache_dir, device, merge_encoder_and_decoder_init, state_dict_path
+    )
     config = models["decoder"].config
 
-    if (not use_external_data_format) and (config.num_layers > 24):
+    if (not use_external_data_format) and (config.num_hidden_layers > 24):
         logger.info("Try use_external_data_format when model size > 2GB")
 
     output_paths = []
     for name, model in models.items():
+        print(f"========> Handling {name} model......")
         model.to(device)
         filename_suffix = "_" + name
 
@@ -179,10 +270,11 @@ def export_onnx_models(
         if overwrite or not os.path.exists(onnx_path):
             logger.info(f"Exporting ONNX model to {onnx_path}")
             # We have to clone model before exporting onnx, otherwise verify_onnx will report large difference.
-            cloned_model = copy.deepcopy(model).to(device)
+            device_to_export = torch.device("cpu")
+            cloned_model = copy.deepcopy(model).to(device_to_export)
             WhisperHelper.export_onnx(
                 cloned_model,
-                device,
+                device_to_export,
                 onnx_path,
                 verbose,
                 use_external_data_format,
@@ -202,17 +294,34 @@ def export_onnx_models(
             )
 
             if overwrite or not os.path.exists(output_path):
-                logger.info(f"Optimizing model to {output_path}")
-                WhisperHelper.optimize_onnx(
-                    onnx_path,
-                    output_path,
-                    precision == Precision.FLOAT16,
-                    config.encoder_attention_heads,
-                    config.d_model,
-                    use_external_data_format,
-                    auto_mixed_precision=not disable_auto_mixed_precision,
-                    use_gpu=use_gpu,
-                )
+                if optimize_onnx:
+                    logger.info(f"Optimizing model to {output_path}")
+                    WhisperHelper.optimize_onnx(
+                        onnx_path,
+                        output_path,
+                        precision == Precision.FLOAT16,
+                        config.encoder_attention_heads,
+                        config.d_model,
+                        use_external_data_format,
+                        auto_mixed_precision=not disable_auto_mixed_precision,
+                        use_gpu=use_gpu,
+                        provider=provider,
+                    )
+                    onnx_path = output_path
+
+                if precision == Precision.INT8:
+                    quantization.quantize_dynamic(
+                        onnx_path,
+                        output_path,
+                        op_types_to_quantize=["MatMul", "Gemm", "Gather"]
+                        if quantize_embedding_layer
+                        else ["MatMul", "Gemm"],
+                        use_external_data_format=use_external_data_format,
+                        per_channel=quantize_per_channel,
+                        reduce_range=quantize_reduce_range,
+                        optimize_model=False,
+                        extra_options={"MatMulConstBOnly": True},
+                    )
             else:
                 logger.info(f"Skip optimizing: existed ONNX model {onnx_path}")
         else:
@@ -221,22 +330,17 @@ def export_onnx_models(
         ort_session = create_onnxruntime_session(
             output_path,
             use_gpu=use_gpu,
-            provider=["CUDAExecutionProvider", "CPUExecutionProvider"] if use_gpu else ["CPUExecutionProvider"],
+            provider=provider,
         )
-
-        with torch.no_grad():
-            max_diff = WhisperHelper.verify_onnx(model, ort_session, device, use_int32_inputs)
-        logger.info(f"PyTorch and OnnxRuntime results max difference = {max_diff}")
-        if max_diff > 1e-4:
-            logger.warning("PyTorch and OnnxRuntime results are NOT close")
+        assert ort_session is not None
 
         output_paths.append(output_path)
 
     return output_paths
 
 
-def main():
-    args = parse_arguments()
+def main(argv=None):
+    args = parse_arguments(argv)
 
     setup_logger(args.verbose)
 
@@ -246,14 +350,11 @@ def main():
     output_dir = args.output if not args.output.endswith(".onnx") else os.path.dirname(args.output)
     prepare_environment(cache_dir, output_dir, args.use_gpu)
 
-    if args.precision != Precision.FLOAT32:
-        assert args.optimize_onnx, "fp16/int8 requires --optimize_onnx"
-
     if args.precision == Precision.FLOAT16:
         assert args.use_gpu, "fp16 requires --use_gpu"
 
     if args.optimize_onnx:
-        logger.warning("Graph optimization for Whisper is not implemented yet.")
+        logger.warning("Applying graph optimization for Whisper...")
 
     output_paths = export_onnx_models(
         args.model_name_or_path,
@@ -269,6 +370,11 @@ def main():
         args.overwrite,
         args.disable_auto_mixed_precision,
         not args.use_int64_inputs,
+        args.quantize_embedding_layer,
+        args.quantize_per_channel,
+        args.quantize_reduce_range,
+        args.state_dict_path,
+        args.provider,
     )
 
     if args.chain_model:
@@ -286,6 +392,33 @@ def main():
                 args.decoder_path = path
         chain_model(args)
         output_paths.append(args.beam_model_output_dir)
+
+        # Check chained model
+        ort_session = create_onnxruntime_session(
+            args.beam_model_output_dir,
+            use_gpu=args.use_gpu,
+            provider=["CUDAExecutionProvider", "CPUExecutionProvider"] if args.use_gpu else ["CPUExecutionProvider"],
+        )
+        device = torch.device("cuda:0" if args.use_gpu else "cpu")
+
+        # Wrap parity check in try-except to allow export to continue in case this produces an error
+        try:
+            with torch.no_grad():
+                max_diff = WhisperHelper.verify_onnx(args.model_name_or_path, ort_session, device)
+            if max_diff > 1e-4:
+                logger.warning("PyTorch and ONNX Runtime results are NOT close")
+            else:
+                logger.info("PyTorch and ONNX Runtime results are close")
+        except Exception as e:
+            logger.warning(
+                f"An error occurred while trying to verify parity between PyTorch and ONNX Runtime: {e}", exc_info=True
+            )
+
+        # Remove extra ONNX models saved in output directory
+        for fle in os.listdir(output_dir):
+            if "_beamsearch" not in fle:
+                os.remove(os.path.join(output_dir, fle))
+        output_paths = [args.beam_model_output_dir]
 
     logger.info(f"Done! Outputs: {output_paths}")
 

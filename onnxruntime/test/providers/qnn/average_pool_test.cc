@@ -163,7 +163,7 @@ static void RunQDQAveragePoolOpTest(const std::vector<int64_t>& shape,
 //
 
 // AveragePool with kernel size equal to the spatial dimension of input tensor.
-TEST(QnnCPUBackendTests, TestAveragePool_Global) {
+TEST_F(QnnCPUBackendTests, TestAveragePool_Global) {
   RunAveragePoolOpTest({1, 2, 3, 3},  // shape
                        {3, 3},        // kernel_shape
                        {3, 3},        // strides
@@ -174,7 +174,7 @@ TEST(QnnCPUBackendTests, TestAveragePool_Global) {
 }
 
 // AveragePool that counts padding.
-TEST(QnnCPUBackendTests, TestAveragePool_CountIncludePad) {
+TEST_F(QnnCPUBackendTests, TestAveragePool_CountIncludePad) {
   RunAveragePoolOpTest({1, 2, 3, 3},  // shape
                        {1, 1},        // kernel_shape
                        {1, 1},        // strides
@@ -185,7 +185,7 @@ TEST(QnnCPUBackendTests, TestAveragePool_CountIncludePad) {
 }
 
 // AveragePool that use auto_pad 'SAME_UPPER'.
-TEST(QnnCPUBackendTests, TestAveragePool_AutopadSameUpper) {
+TEST_F(QnnCPUBackendTests, TestAveragePool_AutopadSameUpper) {
   RunAveragePoolOpTest({1, 2, 3, 3},  // shape
                        {1, 1},        // kernel_shape
                        {1, 1},        // strides
@@ -196,7 +196,7 @@ TEST(QnnCPUBackendTests, TestAveragePool_AutopadSameUpper) {
 }
 
 // AveragePool that use auto_pad 'SAME_LOWER'.
-TEST(QnnCPUBackendTests, TestAveragePool_AutopadSameLower) {
+TEST_F(QnnCPUBackendTests, TestAveragePool_AutopadSameLower) {
   RunAveragePoolOpTest({1, 2, 3, 3},  // shape
                        {1, 1},        // kernel_shape
                        {1, 1},        // strides

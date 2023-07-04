@@ -8,6 +8,8 @@
 #include <vector>
 
 #ifdef USE_COMPOSABLE_KERNEL
+#include "core/providers/rocm/composable_kernel_common.h"
+
 #include "ck/ck.hpp"
 #include "ck/library/tensor_operation_instance/gpu/batched_gemm.hpp"
 #include "ck/library/tensor_operation_instance/gpu/gemm.hpp"
@@ -27,21 +29,6 @@ namespace internal {
 
 #ifdef USE_COMPOSABLE_KERNEL
 
-template <typename T>
-struct DataTypeAdaptor {
-  using type = T;
-};
-
-template <>
-struct DataTypeAdaptor<half> {
-  using type = ck::half_t;
-};
-
-template <>
-struct DataTypeAdaptor<BFloat16> {
-  using type = ck::bhalf16_t;
-};
-
 using Row = ck::tensor_layout::gemm::RowMajor;
 using Col = ck::tensor_layout::gemm::ColumnMajor;
 
@@ -49,7 +36,7 @@ using Nop = ck::tensor_operation::element_wise::PassThrough;
 
 template <typename T, typename ALayout, typename BLayout>
 auto GetCKGemmTypeStringAndOps() {
-  using CKDataType = typename DataTypeAdaptor<T>::type;
+  using CKDataType = typename CKDataTypeAdaptor<T>::type;
   using DeviceGemm = ck::tensor_operation::device::DeviceGemm<
       ALayout, BLayout, Row,
       CKDataType, CKDataType, CKDataType,
@@ -95,7 +82,7 @@ auto GetCKGemmTypeStringAndOps() {
 
 template <typename T, typename ALayout, typename BLayout>
 auto GetCKStridedBatchedGemmTypeStringAndOps() {
-  using CKDataType = typename DataTypeAdaptor<T>::type;
+  using CKDataType = typename CKDataTypeAdaptor<T>::type;
   using DeviceStridedBatchedGemm = ck::tensor_operation::device::DeviceBatchedGemm<
       ALayout, BLayout, Row,
       CKDataType, CKDataType, CKDataType,

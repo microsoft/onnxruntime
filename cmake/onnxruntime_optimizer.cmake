@@ -48,12 +48,12 @@ if (onnxruntime_MINIMAL_BUILD)
       "${ONNXRUNTIME_ROOT}/core/optimizer/layout_transformation/layout_transformation_potentially_added_ops.h"
       # files required for transpose optimization post-layout transformation
       "${ONNXRUNTIME_ROOT}/core/optimizer/transpose_optimization/optimizer_api.h"
-      "${ONNXRUNTIME_ROOT}/core/optimizer/transpose_optimization/transpose_optimizer.h"
-      "${ONNXRUNTIME_ROOT}/core/optimizer/transpose_optimization/transpose_optimizer.cc"
+      "${ONNXRUNTIME_ROOT}/core/optimizer/transpose_optimization/onnx_transpose_optimization.h"
+      "${ONNXRUNTIME_ROOT}/core/optimizer/transpose_optimization/onnx_transpose_optimization.cc"
       "${ONNXRUNTIME_ROOT}/core/optimizer/transpose_optimization/ort_optimizer_api_impl.cc"
       "${ONNXRUNTIME_ROOT}/core/optimizer/transpose_optimization/ort_optimizer_utils.h"
-      "${ONNXRUNTIME_ROOT}/core/optimizer/transpose_optimization/ort_transpose_optimizer.h"
-      "${ONNXRUNTIME_ROOT}/core/optimizer/transpose_optimization/ort_transpose_optimizer.cc"
+      "${ONNXRUNTIME_ROOT}/core/optimizer/transpose_optimization/ort_transpose_optimization.h"
+      "${ONNXRUNTIME_ROOT}/core/optimizer/transpose_optimization/ort_transpose_optimization.cc"
       "${ONNXRUNTIME_ROOT}/core/optimizer/utils.cc"
       "${ONNXRUNTIME_ROOT}/core/optimizer/utils.h"
     )
@@ -80,9 +80,7 @@ else()
   )
 endif()
 
-if (onnxruntime_ENABLE_TRAINING_APIS)
-  # we need optimizers for both full build as well as training api only build.
-  # Using onnxruntime_ENABLE_TRAINING_APIS since it is always ON in a full training build.
+if (onnxruntime_ENABLE_TRAINING)
   list(APPEND onnxruntime_optimizer_src_patterns
     "${ORTTRAINING_SOURCE_DIR}/core/optimizer/*.h"
     "${ORTTRAINING_SOURCE_DIR}/core/optimizer/*.cc"
@@ -107,17 +105,17 @@ endif()
 
 onnxruntime_add_static_library(onnxruntime_optimizer ${onnxruntime_optimizer_srcs})
 
-install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/optimizer  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core)
 onnxruntime_add_include_to_target(onnxruntime_optimizer onnxruntime_common onnxruntime_framework onnx onnx_proto ${PROTOBUF_LIB} flatbuffers::flatbuffers Boost::mp11 safeint_interface)
 target_include_directories(onnxruntime_optimizer PRIVATE ${ONNXRUNTIME_ROOT})
-if (onnxruntime_ENABLE_TRAINING_APIS)
+if (onnxruntime_ENABLE_TRAINING)
   target_include_directories(onnxruntime_optimizer PRIVATE ${ORTTRAINING_ROOT})
 endif()
 add_dependencies(onnxruntime_optimizer ${onnxruntime_EXTERNAL_DEPENDENCIES})
 set_target_properties(onnxruntime_optimizer PROPERTIES FOLDER "ONNXRuntime")
 
 if (NOT onnxruntime_BUILD_SHARED_LIB)
-    install(TARGETS onnxruntime_optimizer
+  install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/optimizer  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core)
+  install(TARGETS onnxruntime_optimizer
             ARCHIVE   DESTINATION ${CMAKE_INSTALL_LIBDIR}
             LIBRARY   DESTINATION ${CMAKE_INSTALL_LIBDIR}
             RUNTIME   DESTINATION ${CMAKE_INSTALL_BINDIR}
