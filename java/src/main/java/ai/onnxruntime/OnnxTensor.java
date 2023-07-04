@@ -48,25 +48,23 @@ public class OnnxTensor extends OnnxTensorLike {
    * <p>A consequence of being a copy is that users cannot mutate the state of this buffer without
    * first getting the reference via {@link #getBufferRef()} (if available).
    *
-   * @return True if the buffer in this OnnxTensor is a copy.
+   * @return True if the buffer in this OnnxTensor is a copy of a user buffer.
    */
   public boolean isCopy() {
     return this.isCopy;
   }
 
   /**
-   * Returns a reference to the buffer which backs this {@code OnnxTensor}.
-   *
-   * <p>If the tensor is not backed by a buffer (i.e., it was created from a Java array, or is
-   * backed by memory allocated by ORT) this method returns an empty {@link Optional}.
+   * Returns a reference to the buffer which backs this {@code OnnxTensor}. If the tensor is not
+   * backed by a buffer (i.e., it was created from a Java array, or is backed by memory allocated by
+   * ORT) this method returns an empty {@link Optional}.
    *
    * <p>Changes to the buffer elements will be reflected in the native {@code OrtValue}, this can be
-   * used to repeatedly update a single input for multiple different inferences without allocating
+   * used to repeatedly update a single tensor for multiple different inferences without allocating
    * new tensors, though the inputs *must* remain the same size and shape.
    *
-   * <p>Note: the tensor could be referring to a contiguous range of elements in this buffer, not
-   * the whole buffer. It is up to the user to manage this information by respecting the position
-   * and limit.
+   * <p>Note: the tensor could refer to a contiguous range of elements in this buffer, not the whole
+   * buffer. It is up to the user to manage this information by respecting the position and limit.
    *
    * @return A reference to the buffer.
    */
@@ -84,7 +82,7 @@ public class OnnxTensor extends OnnxTensorLike {
    * primitives if it has multiple dimensions.
    *
    * <p>Java multidimensional arrays are quite slow for more than 2 dimensions, in that case it is
-   * recommended you use the {@link java.nio.Buffer} extractors below (e.g. {@link
+   * recommended you use the {@link java.nio.Buffer} extractors below (e.g., {@link
    * #getFloatBuffer}).
    *
    * @return A Java value.

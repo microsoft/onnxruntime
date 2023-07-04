@@ -150,7 +150,7 @@ public class OnnxTensorTest {
       buf.put(0, 25);
       Assertions.assertArrayEquals(arrValues, output);
 
-      // Can modify the tensor through getBuffer Ref.
+      // Can modify the tensor through getBufferRef.
       FloatBuffer ref = (FloatBuffer) t.getBufferRef().get();
       ref.put(0, 25);
       buf = t.getFloatBuffer();
