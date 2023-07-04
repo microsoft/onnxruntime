@@ -15,5 +15,5 @@ class Expand : public JsKernel {
   }
 };
 
-} // namespace js
-} // namespace onnxruntime
+}  // namespace js
+}  // namespace onnxruntime

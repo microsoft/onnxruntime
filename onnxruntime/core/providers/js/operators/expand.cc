@@ -6,25 +6,25 @@
 
 namespace onnxruntime {
 namespace js {
-    ONNX_OPERATOR_VERSIONED_KERNEL_EX(
-        Expand,
-        kOnnxDomain,
-        8,
-        12,
-        kJsExecutionProvider,
-        KernelDefBuilder()
-            .TypeConstraint("T", DataTypeImpl::GetTensorType<float>())
-            .InputMemoryType(OrtMemTypeCPU, 1),
-        Expand);
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(
+    Expand,
+    kOnnxDomain,
+    8,
+    12,
+    kJsExecutionProvider,
+    KernelDefBuilder()
+        .TypeConstraint("T", DataTypeImpl::GetTensorType<float>())
+        .InputMemoryType(OrtMemTypeCPU, 1),
+    Expand);
 
-    ONNX_OPERATOR_KERNEL_EX(
-        Expand,
-        kOnnxDomain,
-        13,
-        kJsExecutionProvider,
-        KernelDefBuilder()
-            .TypeConstraint("T", DataTypeImpl::GetTensorType<float>())
-            .InputMemoryType(OrtMemTypeCPU, 1),
-        Expand);
-} // namespace js
-} // namespace onnxruntime
+ONNX_OPERATOR_KERNEL_EX(
+    Expand,
+    kOnnxDomain,
+    13,
+    kJsExecutionProvider,
+    KernelDefBuilder()
+        .TypeConstraint("T", DataTypeImpl::GetTensorType<float>())
+        .InputMemoryType(OrtMemTypeCPU, 1),
+    Expand);
+}  // namespace js
+}  // namespace onnxruntime
