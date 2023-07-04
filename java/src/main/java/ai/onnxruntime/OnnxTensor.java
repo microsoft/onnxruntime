@@ -61,7 +61,7 @@ public class OnnxTensor extends OnnxTensorLike {
    *
    * <p>Changes to the buffer elements will be reflected in the native {@code OrtValue}, this can be
    * used to repeatedly update a single tensor for multiple different inferences without allocating
-   * new tensors, though the inputs *must* remain the same size and shape.
+   * new tensors, though the inputs <b>must</b> remain the same size and shape.
    *
    * <p>Note: the tensor could refer to a contiguous range of elements in this buffer, not the whole
    * buffer. It is up to the user to manage this information by respecting the position and limit.
