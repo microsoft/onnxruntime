@@ -42,6 +42,10 @@ parameters:
   displayName: 'Extra build command line arguments'
   type: string
 
+- name: WithCache
+  displayName: Build with Cache
+  type: boolean
+  default: false
 
 stages:
 - stage: Extract_commit
@@ -79,6 +83,7 @@ stages:
       ExtraBuildArgs: '--use_extensions --cmake_extra_defines onnxruntime_WEBASSEMBLY_DEFAULT_EXTENSION_FLAGS=ON ${{ parameters.ExtraBuildArgs }}'
       PoolName: ${{ parameters.PoolName }}
       BuildJsep: ${{ parameters.BuildJsep }}
+      WithCache: ${{ parameters.WithCache }}
 
 - stage: Build_web_Debug
   dependsOn: Build_wasm_Debug
@@ -104,6 +109,7 @@ stages:
       ExtraBuildArgs: '--target onnxruntime_webassembly --skip_tests --enable_wasm_api_exception_catching --disable_rtti --use_extensions --cmake_extra_defines onnxruntime_WEBASSEMBLY_DEFAULT_EXTENSION_FLAGS=ON ${{ parameters.ExtraBuildArgs }}'
       PoolName: ${{ parameters.PoolName }}
       BuildJsep: ${{ parameters.BuildJsep }}
+      WithCache: ${{ parameters.WithCache }}
 
 - ${{ if eq(parameters.BuildStaticLib, 'true') }}:
   - stage: Build_wasm_Release_static_library
@@ -118,6 +124,7 @@ stages:
         SkipPublish: true
         TimeoutInMinutes: 270
         BuildStaticLib: true
+        WithCache: ${{ parameters.WithCache }}
 
 - stage: Build_web_Release
   dependsOn: Build_wasm_Release

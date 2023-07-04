@@ -31,6 +31,10 @@ parameters:
   type: boolean
   default: false
 
+- name: WithCache
+  type: boolean
+  default: false
+
 jobs:
 - job: build_WASM
   pool:
@@ -92,7 +96,7 @@ jobs:
       ./emsdk activate 3.1.37 ccache-git-emscripten-64bit
     displayName: 'emsdk install and activate ccached emscripten'
 
-  - template: build-wasm-with-cache.yml
+  - template: build-linux-wasm-step.yml
     parameters:
       Today: $(Today)
       ${{ if eq(parameters.BuildStaticLib, true)}}:
@@ -103,8 +107,9 @@ jobs:
       Arguments: '$(CommonBuildArgs) --build_dir $(Build.BinariesDirectory)/wasm'
       ChangeEveryCommit: true
       DisplayName: 'Build and test (node)'
+      WithCache: ${{ parameters.WithCache }}
 
-  - template: build-wasm-with-cache.yml
+  - template: build-linux-wasm-step.yml
     parameters:
       Today: $(Today)
       ${{ if eq(parameters.BuildStaticLib, true)}}:
@@ -115,8 +120,9 @@ jobs:
       Arguments: '$(CommonBuildArgs) --build_dir $(Build.BinariesDirectory)/wasm_threads --enable_wasm_threads'
       ChangeEveryCommit: true
       DisplayName: 'Build and test (node) (threads)'
+      WithCache: ${{ parameters.WithCache }}
 
-  - template: build-wasm-with-cache.yml
+  - template: build-linux-wasm-step.yml
     parameters:
       Today: $(Today)
       ${{ if eq(parameters.BuildStaticLib, true)}}:
@@ -127,8 +133,9 @@ jobs:
       Arguments: '$(CommonBuildArgs) --build_dir $(Build.BinariesDirectory)/wasm_simd_threads --enable_wasm_simd --enable_wasm_threads --wasm_run_tests_in_browser'
       ChangeEveryCommit: true
       DisplayName: 'Build and test (node) (simd + threads)'
+      WithCache: ${{ parameters.WithCache }}
 
-  - template: build-wasm-with-cache.yml
+  - template: build-linux-wasm-step.yml
     parameters:
       Today: $(Today)
       ${{ if eq(parameters.BuildStaticLib, true)}}:
@@ -139,9 +146,10 @@ jobs:
       Arguments: '$(CommonBuildArgs) --build_dir $(Build.BinariesDirectory)/wasm_simd --enable_wasm_simd'
       ChangeEveryCommit: true
       DisplayName: 'Build and test (node) (simd)'
+      WithCache: ${{ parameters.WithCache }}
 
   - ${{ if eq(parameters.BuildJsep, true) }}:
-    - template: build-wasm-with-cache.yml
+    - template: build-linux-wasm-step.yml
       parameters:
         Today: $(Today)
         ${{ if eq(parameters.BuildStaticLib, true)}}:
@@ -152,7 +160,8 @@ jobs:
         Arguments: '$(CommonBuildArgs) --build_dir $(Build.BinariesDirectory)/wasm_simd_jsep --enable_wasm_simd --use_jsep --target onnxruntime_webassembly --skip_tests'
         ChangeEveryCommit: true
         DisplayName: 'Build (simd + JSEP)'
-    - template: build-wasm-with-cache.yml
+        WithCache: ${{ parameters.WithCache }}
+    - template: build-linux-wasm-step.yml
       parameters:
         Today: $(Today)
         ${{ if eq(parameters.BuildStaticLib, true)}}:
@@ -163,6 +172,7 @@ jobs:
         Arguments: '$(CommonBuildArgs) --build_dir $(Build.BinariesDirectory)/wasm_simd_threads_jsep --enable_wasm_simd --enable_wasm_threads --use_jsep --target onnxruntime_webassembly --skip_tests'
         ChangeEveryCommit: true
         DisplayName: 'Build (simd + threads + JSEP)'
+        WithCache: ${{ parameters.WithCache }}
 
   - ${{ if eq(parameters.SkipPublish, false) }}:
     - script: |
