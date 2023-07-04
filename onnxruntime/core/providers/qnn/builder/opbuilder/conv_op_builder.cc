@@ -115,6 +115,28 @@ Status ConvOpBuilder::GetInputChannelNumber(QnnModelWrapper& qnn_model_wrapper,
   return Status::OK();
 }
 
+Status ConvOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
+                                    const NodeUnit& node_unit,
+                                    const logging::Logger& logger,
+                                    bool is_quantized_model,
+                                    std::vector<std::string>& input_names,
+                                    bool do_op_validation) const {
+  const auto& inputs = node_unit.Inputs();
+  assert(inputs.size() >= 2);
+
+  std::vector<uint32_t> input0_shape;
+  ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(inputs[0].node_arg, input0_shape),
+                    "QNN EP: Cannot get shape for first input");
+
+  const bool is_1d_conv = input0_shape.size() == 3;
+
+  if (is_1d_conv) {
+    return ProcessConv1DInputs(qnn_model_wrapper, node_unit, logger, is_quantized_model, input_names, do_op_validation);
+  }
+
+  return ProcessConv2DInputs(qnn_model_wrapper, node_unit, logger, is_quantized_model, input_names, do_op_validation);
+}
+
 Status ConvOpBuilder::ProcessConv2DInputs(QnnModelWrapper& qnn_model_wrapper,
                                           const NodeUnit& node_unit,
                                           const logging::Logger& logger,
@@ -152,7 +174,7 @@ Status ConvOpBuilder::ProcessConv2DInputs(QnnModelWrapper& qnn_model_wrapper,
     } else if (node_unit.OpType() == "ConvTranspose") {
       ORT_RETURN_IF_ERROR(CnhwShapeToHwcn(input_info.shape, actual_shape));
     } else {
-      ORT_THROW("Unexpected operator %s", onnx_op_type);
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unexpected operator %s", onnx_op_type);
     }
 
     std::vector<uint8_t> unpacked_tensor;
@@ -163,7 +185,7 @@ Status ConvOpBuilder::ProcessConv2DInputs(QnnModelWrapper& qnn_model_wrapper,
       } else if (node_unit.OpType() == "ConvTranspose") {
         ORT_RETURN_IF_ERROR(TransposeFromCnhwToHwcn(qnn_model_wrapper, *input_info.initializer_tensor, unpacked_tensor));
       } else {
-        ORT_THROW("Unexpected operator %s", node_unit.OpType());
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unexpected operator %s", node_unit.OpType());
       }
     } else {
       // Add transpose node above weight input.
@@ -190,7 +212,7 @@ Status ConvOpBuilder::ProcessConv2DInputs(QnnModelWrapper& qnn_model_wrapper,
                                                                      do_op_validation,
                                                                      is_graph_input));
       } else {
-        ORT_THROW("Unexpected operator %s", node_unit.OpType());
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unexpected operator %s", node_unit.OpType());
       }
     }
 
@@ -303,7 +325,7 @@ Status ConvOpBuilder::ProcessConv1DInputs(QnnModelWrapper& qnn_model_wrapper,
     } else if (node_unit.OpType() == "ConvTranspose") {
       ORT_RETURN_IF_ERROR(CnhwShapeToHwcn(shape_2d, final_shape));
     } else {
-      ORT_THROW("Unexpected operator %s", onnx_op_type);
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unexpected operator %s", onnx_op_type);
     }
 
     const std::string reshape_output = input1_name + "_reshape_qnn_ep";
@@ -337,7 +359,7 @@ Status ConvOpBuilder::ProcessConv1DInputs(QnnModelWrapper& qnn_model_wrapper,
       } else if (node_unit.OpType() == "ConvTranspose") {
         ORT_RETURN_IF_ERROR(TransposeFromCnhwToHwcn(qnn_model_wrapper, reshaped_initializer, unpacked_tensor));
       } else {
-        ORT_THROW("Unexpected operator %s", node_unit.OpType());
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unexpected operator %s", node_unit.OpType());
       }
     } else {
       // Dynamic weight: Add nodes to reshape to 2D, and then transpose.
@@ -380,7 +402,7 @@ Status ConvOpBuilder::ProcessConv1DInputs(QnnModelWrapper& qnn_model_wrapper,
                                                                      do_op_validation,
                                                                      false));
       } else {
-        ORT_THROW("Unexpected operator %s", node_unit.OpType());
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unexpected operator %s", node_unit.OpType());
       }
     }
 
@@ -398,28 +420,6 @@ Status ConvOpBuilder::ProcessConv1DInputs(QnnModelWrapper& qnn_model_wrapper,
   }
 
   return Status::OK();
-}
-
-Status ConvOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
-                                    const NodeUnit& node_unit,
-                                    const logging::Logger& logger,
-                                    bool is_quantized_model,
-                                    std::vector<std::string>& input_names,
-                                    bool do_op_validation) const {
-  const auto& inputs = node_unit.Inputs();
-  assert(inputs.size() >= 2);
-
-  std::vector<uint32_t> input0_shape;
-  ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(inputs[0].node_arg, input0_shape),
-                    "QNN EP: Cannot get shape for first input");
-
-  const bool is_1d_conv = input0_shape.size() == 3;
-
-  if (is_1d_conv) {
-    return ProcessConv1DInputs(qnn_model_wrapper, node_unit, logger, is_quantized_model, input_names, do_op_validation);
-  }
-
-  return ProcessConv2DInputs(qnn_model_wrapper, node_unit, logger, is_quantized_model, input_names, do_op_validation);
 }
 
 static Status GetAutoPadding(std::vector<int32_t>& pads, const std::string& op_type, const std::string& auto_pad,
@@ -540,7 +540,7 @@ Status ConvOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wra
     param_tensor_names.push_back(output_padding_paramwrapper.GetParamTensorName());
     qnn_model_wrapper.AddParamWrapper(std::move(output_padding_paramwrapper));
   } else {
-    ORT_THROW("Unexpected operator %s", node_unit.OpType());
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unexpected operator %s", node_unit.OpType());
   }
   // Conv/ConvTranspose output
   const auto& outputs = node_unit.Outputs();
