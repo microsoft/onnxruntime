@@ -1,0 +1,222 @@
+#include "custom_op_library.h"
+
+#define ORT_API_MANUAL_INIT
+#include "onnxruntime_cxx_api.h"
+#undef ORT_API_MANUAL_INIT
+#include "core/session/onnxruntime_lite_custom_op.h"
+
+#include <vector>
+#include <cmath>
+#include <mutex>
+#include <iostream>
+
+#include <hip/hip_runtime.h>
+
+#include "core/common/gsl.h"
+#include "core/common/common.h"
+#include "core/common/narrow.h"
+
+// used by DummyGemm
+#include "core/framework/tensor_shape.h"
+#include "core/framework/op_kernel_info.h"
+#include "core/providers/cpu/math/gemm_helper.h"
+#include "core/providers/rocm/rocm_stream_handle.h"
+#include "core/providers/rocm/rocm_common.h"
+#include "core/providers/rocm/shared_inc/fpgeneric.h"
+#include "core/providers/rocm/tunable/gemm.h"
+#include "core/providers/rocm/rocm_execution_provider.h"
+
+
+static const char* c_OpDomain = "com.custom";
+
+// lite custom op as a function
+template<typename T>
+void FuseMatMulGeluMatMul(
+    OrtKernelContext* context,
+    const Ort::Custom::Tensor<T>& data,
+    const Ort::Custom::Tensor<T>& weight1,
+    const Ort::Custom::Tensor<T>& bias1,
+    const Ort::Custom::Tensor<T>& weight2,
+    const Ort::Custom::Tensor<T>& bias2,
+    Ort::Custom::Tensor<T>& output) {
+  ORT_UNUSED_PARAMETER(weight1);
+  ORT_UNUSED_PARAMETER(bias1);
+  ORT_UNUSED_PARAMETER(weight2);
+  ORT_UNUSED_PARAMETER(bias2);
+  Ort::KernelContext ctx(context);
+  auto stream = reinterpret_cast<hipStream_t>(ctx.GetGPUComputeStream());
+  ORT_UNUSED_PARAMETER(stream);
+  const auto &shape = data.Shape();
+  output.Allocate(shape);
+  // LOGS_DEFAULT(VERBOSE) << "Here run into FuseMatMulGeluMatMul";
+  std::cout << "Here run into FuseMatMulGeluMatMul" << std::endl;
+}
+
+template<typename T>
+struct DummyGemm {
+  DummyGemm(const OrtApi* ort_api, const OrtKernelInfo* info) {
+    float alpha;
+    ORT_ENFORCE(ort_api->KernelInfoGetAttribute_float(info, "alpha", &alpha) == nullptr);
+    alpha_ = alpha;
+    
+    float beta;
+    ORT_ENFORCE(ort_api->KernelInfoGetAttribute_float(info, "beta", &beta) == nullptr);
+    beta_ = beta;
+
+    int64_t transA;
+    ORT_ENFORCE(ort_api->KernelInfoGetAttribute_int64(info, "transA", &transA) == nullptr);
+    transA_ = transA;
+
+    int64_t transB;
+    ORT_ENFORCE(ort_api->KernelInfoGetAttribute_int64(info, "transB", &transB) = nullptr);
+    transB_ = transB;
+
+    // OrtKernelInfo is a pointer to OpKernelInfo
+    auto* op_info = reinterpret_cast<onnxruntime::OpKernelInfo*>(info);
+    provider_ = const_cast<onnxruntime::ROCMExecutionProvider*>(static_cast<const onnxruntime::ROCMExecutionProvider*>(op_info->GetExecutionProvider()));
+  }
+
+  onnxruntime::rocm::tunable::RocmTuningContext* GetTuningContext() const {
+    return static_cast<onnxruntime::rocm::tunable::RocmTuningContext*>(provider_->GetTuningContext());
+  }
+
+  void Compute(OrtKernelContext *context,
+		  const Ort::Custom::Tensor<T>& A,
+		  const Ort::Custom::Tensor<T>& B,
+		  std::optional<const Ort::Custom::Tensor<T>&> C,
+		  Ort::Custom::Tensor<T>& Y) {
+    typedef typename onnxruntime::rocm::ToHipType<T>::MappedType HipT;
+
+    std::cout << "Here run into DummyGemm" << std::endl;
+    Ort::KernelContext ctx(context);
+    auto* rocm_stream = reinterpret_cast<onnxruntime::RocmStream*>(ctx.GetGPUComputeStream());
+    auto rocblas_handle = rocm_stream->rocblas_handle_;
+    hipStream_t stream = static_cast<hipStream_t>(rocm_stream->GetHandle());
+
+    // Tensor.Shape() return vector<int64_t> and GemmHelper use TensorShape, and TensorShape can use span<int64_t>
+    onnxruntime::GemmHelper helper(A.Shape(), transA_, B.Shape(), transB_, C.has_value() ? C.value().Shape() : TensorShape({})); 
+    if (!helper.State().IsOK()) {
+      return;
+    }
+
+    ptrdiff_t M = helper.M();
+    ptrdiff_t N = helper.N();
+    ptrdiff_t K = helper.K();
+    HipT* out_data = reinterpret_cast<HipT*>(Y.Allocate({M, N}));
+
+    // broadcast bias if needed and is present
+    if (beta_ != 0.0 && C.has_value()) {
+      auto& c_shape = C.value().Shape();
+      const HipT* c_data = reinterpret_cast<const HipT*>(C.value().Data());
+
+      if (c_shape.Size() == 1) {
+        // if B is (), (1,) or (1, 1), broadcast the scalar
+        rocblasCopyHelper(
+            stream,
+            rocblas_handle,
+            M * N,
+            c_data,
+            0,
+            out_data,
+            1);
+      } else if (c_shape.NumDimensions() == 1 || c_shape[0] == 1) {
+        // B is (N,) or (1, N), broadcast using Y(N,M) = 1 * B(N,1) x ones(1,M) + 0 * Y
+	onnxruntime::rocm::tunable::blas::column_major::Gemm(
+            GetTuningContext(), stream, rocblas_handle,
+            tunable::blas::BlasOp::NonTrans,
+            tunable::blas::BlasOp::NonTrans,
+            N, M, 1,
+            /*alpha=*/1.0f,
+            c_data, N,
+            provider_->GetConstOnes<HipT>(M, stream), 1,
+            /*beta=*/0.0f,
+            out_data, N);
+      } else if (c_shape.NumDimensions() == 2 && c_shape[1] == 1) {
+        // B is (M, 1), broadcast using Y(N,M) = 1 * ones(N,1) x B(1,M) + 0 * Y
+	onnxruntime::rocm::tunable::blas::column_major::Gemm(
+            GetTuningContext(), stream, rocblas_handle,
+            tunable::blas::BlasOp::NonTrans,
+            tunable::blas::BlasOp::NonTrans,
+            N, M, 1,
+            /*alpha=*/1.0f,
+            provider_->GetConstOnes<HipT>(N, stream), N,
+            c_data, 1,
+            /*beta=*/0.0f,
+            out_data, N);
+      } else {
+        // B is (M, N), no broadcast needed.
+        hipMemcpyAsync(out_data, c_data, M * N * sizeof(T), hipMemcpyDeviceToDevice, stream);
+      }
+    }
+
+    using onnxruntime::rocm::tunable::blas::BlasOp;
+
+    onnxruntime::rocm::tunable::blas::column_major::Gemm(
+        GetTuningContext(), stream,
+        rocblas_handle,
+        transB_ ? BlasOp::Trans : BlasOp::NonTrans,
+        transA_ ? BlasOp::Trans : BlasOp::NonTrans,
+        N, M, K,
+        alpha_,
+        reinterpret_cast<const HipT*>(B.Data()), (transB_ ? K : N),
+        reinterpret_cast<const HipT*>(A.Data()), (transA_ ? M : K),
+        // ideally we need to set the output buffer contents to 0 if bias is missing,
+        // but passing 0 for beta is cheaper and it will ignore any junk in the output buffer
+        C.has_value() ? beta_ : 0.0f,
+        out_data, N);
+    std::cout << "Here DummyGemm done." << std::endl;
+  }
+
+  float alpha_;
+  float beta_;
+  int64_t transA_;
+  int64_t transB_;
+  onnxruntime::ROCMExecutionProvider* provider_;
+};
+
+
+
+static void AddOrtCustomOpDomainToContainer(Ort::CustomOpDomain&& domain) {
+  static std::vector<Ort::CustomOpDomain> ort_custom_op_domain_container;
+  static std::mutex ort_custom_op_domain_mutex;
+  std::lock_guard<std::mutex> lock(ort_custom_op_domain_mutex);
+  ort_custom_op_domain_container.push_back(std::move(domain));
+}
+
+OrtStatus* ORT_API_CALL RegisterCustomOps(OrtSessionOptions* options, const OrtApiBase* api) {
+  Ort::Global<void>::api_ = api->GetApi(ORT_API_VERSION);
+
+  using LiteOp = Ort::Custom::OrtLiteCustomOp;
+
+  // DummyGemm
+  static const std::unique_ptr<LiteOp> c_DummyGemm_rocm_f16{Ort::Custom::CreateLiteCustomOp<DummyGemm<Ort::Float16_t>>("DummyGemm", "ROCMExecutionProvider")};
+  static const std::unique_ptr<LiteOp> c_DummyGemm_rocm_f32{Ort::Custom::CreateLiteCustomOp<DummyGemm<float>>("DummyGemm", "ROCMExecutionProvider")};
+
+  static const std::unique_ptr<LiteOp> c_DummyGemm_cpu_f16{Ort::Custom::CreateLiteCustomOp<DummyGemm<Ort::Float16_t>>("DummyGemm", "CPUExecutionProvider")};
+  static const std::unique_ptr<LiteOp> c_DummyGemm_cpu_f32{Ort::Custom::CreateLiteCustomOp<DummyGemm<float>>("DummyGemm", "CPUExecutionProvider")};
+
+  OrtStatus* result = nullptr;
+
+  ORT_TRY {
+    Ort::CustomOpDomain domain{c_OpDomain};
+    domain.Add(c_DummyGemm_rocm_f32.get());
+    domain.Add(c_DummyGemm_rocm_f16.get());
+    domain.Add(c_DummyGemm_cpu_f16.get());
+    domain.Add(c_DummyGemm_cpu_f32.get());
+
+    Ort::UnownedSessionOptions session_options(options);
+    session_options.Add(domain);
+    AddOrtCustomOpDomainToContainer(std::move(domain));
+  }
+  ORT_CATCH(const std::exception& e) {
+    ORT_HANDLE_EXCEPTION([&]() {
+      Ort::Status status{e};
+      result = status.release();
+    });
+  }
+  return result;
+}
+
+OrtStatus* ORT_API_CALL RegisterCustomOpsAltName(OrtSessionOptions* options, const OrtApiBase* api) {
+  return RegisterCustomOps(options, api);
+}

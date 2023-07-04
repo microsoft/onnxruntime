@@ -1,0 +1,116 @@
+#include "custom_op_library.h"
+
+#define ORT_API_MANUAL_INIT
+#include "onnxruntime_cxx_api.h"
+#undef ORT_API_MANUAL_INIT
+#include "core/session/onnxruntime_lite_custom_op.h"
+
+#include <vector>
+#include <cmath>
+#include <mutex>
+#include <iostream>
+
+#include <hip/hip_runtime.h>
+
+#include "core/common/gsl.h"
+#include "core/common/common.h"
+#include "core/common/narrow.h"
+
+// used by DummyGemm
+#include "core/providers/rocm/math/gemm.h"
+
+
+static const char* c_OpDomain = "com.custom";
+
+// lite custom op as a function
+template<typename T>
+void FuseMatMulGeluMatMul(
+    OrtKernelContext* context,
+    const Ort::Custom::Tensor<T>& data,
+    const Ort::Custom::Tensor<T>& weight1,
+    const Ort::Custom::Tensor<T>& bias1,
+    const Ort::Custom::Tensor<T>& weight2,
+    const Ort::Custom::Tensor<T>& bias2,
+    Ort::Custom::Tensor<T>& output) {
+  ORT_UNUSED_PARAMETER(weight1);
+  ORT_UNUSED_PARAMETER(bias1);
+  ORT_UNUSED_PARAMETER(weight2);
+  ORT_UNUSED_PARAMETER(bias2);
+  Ort::KernelContext ctx(context);
+  auto stream = reinterpret_cast<hipStream_t>(ctx.GetGPUComputeStream());
+  ORT_UNUSED_PARAMETER(stream);
+  const auto &shape = data.Shape();
+  output.Allocate(shape);
+  // LOGS_DEFAULT(VERBOSE) << "Here run into FuseMatMulGeluMatMul";
+  std::cout << "Here run into FuseMatMulGeluMatMul" << std::endl;
+}
+
+namespace onnxruntime {
+namespace rocm {
+
+template<typename T>
+struct DummyGemm {
+  DummyGemm(const OrtApi* ort_api, const OrtKernelInfo* info) : gemm_(*reinterpret_cast<const OpKernelInfo*>(info)) {
+    // OrtKernelInfo is a pointer to OpKernelInfo
+    ORT_UNUSED_PARAMETER(ort_api);
+  }
+
+  void Compute(OrtKernelContext *context) {
+    std::cout << "Here run into DummyGemm" << std::endl;
+    auto* ctx = reinterpret_cast<OpKernelContext*>(context);
+    auto ret = gemm_.Compute(ctx);
+    ORT_UNUSED_PARAMETER(ret);
+    std::cout << "Here DummyGemm done." << std::endl;
+  }
+
+  Gemm<T> gemm_;  
+};
+
+}  // namespace rocm
+}  // namespace onnxruntime
+
+
+static void AddOrtCustomOpDomainToContainer(Ort::CustomOpDomain&& domain) {
+  static std::vector<Ort::CustomOpDomain> ort_custom_op_domain_container;
+  static std::mutex ort_custom_op_domain_mutex;
+  std::lock_guard<std::mutex> lock(ort_custom_op_domain_mutex);
+  ort_custom_op_domain_container.push_back(std::move(domain));
+}
+
+OrtStatus* ORT_API_CALL RegisterCustomOps(OrtSessionOptions* options, const OrtApiBase* api) {
+  Ort::Global<void>::api_ = api->GetApi(ORT_API_VERSION);
+
+  using LiteOp = Ort::Custom::OrtLiteCustomOp;
+
+  // DummyGemm
+  static const std::unique_ptr<LiteOp> c_DummyGemm_rocm_f16{Ort::Custom::CreateLiteCustomOp<onnxruntime::rocm::DummyGemm<Ort::Float16_t>>("DummyGemm", "ROCMExecutionProvider")};
+  static const std::unique_ptr<LiteOp> c_DummyGemm_rocm_f32{Ort::Custom::CreateLiteCustomOp<onnxruntime::rocm::DummyGemm<float>>("DummyGemm", "ROCMExecutionProvider")};
+
+  static const std::unique_ptr<LiteOp> c_DummyGemm_cpu_f16{Ort::Custom::CreateLiteCustomOp<onnxruntime::rocm::DummyGemm<Ort::Float16_t>>("DummyGemm", "CPUExecutionProvider")};
+  static const std::unique_ptr<LiteOp> c_DummyGemm_cpu_f32{Ort::Custom::CreateLiteCustomOp<onnxruntime::rocm::DummyGemm<float>>("DummyGemm", "CPUExecutionProvider")};
+
+  OrtStatus* result = nullptr;
+
+  ORT_TRY {
+    Ort::CustomOpDomain domain{c_OpDomain};
+    domain.Add(c_DummyGemm_rocm_f32.get());
+    domain.Add(c_DummyGemm_rocm_f16.get());
+    domain.Add(c_DummyGemm_cpu_f16.get());
+    domain.Add(c_DummyGemm_cpu_f32.get());
+
+    Ort::UnownedSessionOptions session_options(options);
+    session_options.Add(domain);
+    AddOrtCustomOpDomainToContainer(std::move(domain));
+  }
+  ORT_CATCH(const std::exception& e) {
+    ORT_HANDLE_EXCEPTION([&]() {
+      Ort::Status status{e};
+      result = status.release();
+    });
+  }
+  return result;
+}
+
+OrtStatus* ORT_API_CALL RegisterCustomOpsAltName(OrtSessionOptions* options, const OrtApiBase* api) {
+  return RegisterCustomOps(options, api);
+}
