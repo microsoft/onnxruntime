@@ -722,7 +722,7 @@ static void DiscreteFourierTransform(
 template <typename T>
 static auto MakePureFrequency(float frequency_in_hertz, size_t signal_size, size_t sample_rate) {
   float amplitude = 4;
-  float angular_velocity = frequency_in_hertz * 2 * 3.1415f;
+  float angular_velocity = frequency_in_hertz * 2 * static_cast<float>(M_PI);
   std::vector<T> signal(signal_size);
   for (size_t i = 0; i < signal_size; i++) {
     T time = i / static_cast<T>(sample_rate);

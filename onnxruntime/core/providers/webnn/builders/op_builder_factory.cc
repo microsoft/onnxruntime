@@ -16,12 +16,17 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
   OpBuilderRegistrations op_registrations;
 
   {  // Unary
+    CreateUnaryOpBuilder("Ceil", op_registrations);
     CreateUnaryOpBuilder("Cos", op_registrations);
     CreateUnaryOpBuilder("Erf", op_registrations);
+    CreateUnaryOpBuilder("Exp", op_registrations);
     CreateUnaryOpBuilder("Floor", op_registrations);
+    CreateUnaryOpBuilder("Identity", op_registrations);
     CreateUnaryOpBuilder("Not", op_registrations);
+    CreateUnaryOpBuilder("Reciprocal", op_registrations);
     CreateUnaryOpBuilder("Sin", op_registrations);
     CreateUnaryOpBuilder("Sqrt", op_registrations);
+    CreateUnaryOpBuilder("Tan", op_registrations);
   }
 
   {  // Binary
@@ -30,6 +35,10 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
     CreateBinaryOpBuilder("Mul", op_registrations);
     CreateBinaryOpBuilder("Div", op_registrations);
     CreateBinaryOpBuilder("Pow", op_registrations);
+  }
+
+  {  // Ternary
+    CreateTernaryOpBuilder("Where", op_registrations);
   }
 
   {  // Activations
@@ -105,6 +114,10 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
     CreateResizeOpBuilder("Resize", op_registrations);
   }
 
+  {  // Shape
+    CreateShapeOpBuilder("Shape", op_registrations);
+  }
+
   {  // Slice
     CreateSliceOpBuilder("Slice", op_registrations);
   }
@@ -117,12 +130,13 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
     CreateSplitOpBuilder("Split", op_registrations);
   }
 
-  {  // Transpose
-    CreateTransposeOpBuilder("Transpose", op_registrations);
+  {  // Squeeze/Unsqueeze
+    CreateSqueezeUnsqueezeOpBuilder("Squeeze", op_registrations);
+    CreateSqueezeUnsqueezeOpBuilder("Unsqueeze", op_registrations);
   }
 
-  {  // Unsqueeze
-    CreateUnsqueezeOpBuilder("Unsqueeze", op_registrations);
+  {  // Transpose
+    CreateTransposeOpBuilder("Transpose", op_registrations);
   }
 
   return op_registrations;

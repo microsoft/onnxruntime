@@ -4,7 +4,7 @@
 import {Env} from 'onnxruntime-common';
 
 import {OrtWasmModule} from '../binding/ort-wasm';
-import {getTensorElementSize} from '../wasm-common';
+import {DataType, getTensorElementSize} from '../wasm-common';
 
 import {WebGpuBackend} from './backend-webgpu';
 import {LOG_DEBUG} from './log';
@@ -20,7 +20,21 @@ class TensorViewImpl implements TensorView {
       public readonly dims: readonly number[]) {}
 
   getFloat32Array(): Float32Array {
-    return new Float32Array(this.module.HEAP8.buffer, this.data, ShapeUtil.size(this.dims));
+    if (this.dataType !== DataType.float) {
+      throw new Error('Invalid data type');
+    }
+    const elementCount = ShapeUtil.size(this.dims);
+    return elementCount === 0 ? new Float32Array() :
+                                new Float32Array(this.module.HEAP8.buffer, this.data, elementCount);
+  }
+
+  getBigInt64Array(): BigInt64Array {
+    if (this.dataType !== DataType.int64) {
+      throw new Error('Invalid data type');
+    }
+    const elementCount = ShapeUtil.size(this.dims);
+    return elementCount === 0 ? new BigInt64Array() :
+                                new BigInt64Array(this.module.HEAP8.buffer, this.data, elementCount);
   }
 
   reshape(newDims: readonly number[]): TensorView {

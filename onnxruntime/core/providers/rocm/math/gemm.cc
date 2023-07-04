@@ -72,9 +72,9 @@ Status Gemm<T>::ComputeInternal(OpKernelContext* ctx) const {
   if (!helper.State().IsOK())
     return helper.State();
 
-  int M = gsl::narrow_cast<int>(helper.M());
-  int N = gsl::narrow_cast<int>(helper.N());
-  int K = gsl::narrow_cast<int>(helper.K());
+  ptrdiff_t M = helper.M();
+  ptrdiff_t N = helper.N();
+  ptrdiff_t K = helper.K();
   auto* Y = ctx->Output(0, {M, N});
   HipT* out_data = reinterpret_cast<HipT*>(Y->MutableData<T>());
 

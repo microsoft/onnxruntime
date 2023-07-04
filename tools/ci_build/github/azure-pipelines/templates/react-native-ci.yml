@@ -58,7 +58,7 @@ stages:
       TODAY: $[format('{0:dd}{0:MM}{0:yyyy}', pipeline.startTime)]
       PROTO_CACHE_DIR: '$(Pipeline.Workspace)/ccache_proto'
       ORT_CACHE_DIR: '$(Pipeline.Workspace)/ccache_ort'
-    timeoutInMinutes: 150
+    timeoutInMinutes: 180
     steps:
     - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
       displayName: Clean Agent Directories
@@ -189,7 +189,7 @@ stages:
         python3 tools/python/run_android_emulator.py \
           --android-sdk-root $(ANDROID_SDK_ROOT) \
           --create-avd --system-image "system-images;android-30;default;x86_64" \
-          --start --emulator-extra-args="-partition-size 4096" \
+          --start --emulator-extra-args="-partition-size 4096 -verbose" \
           --emulator-pid-file $(Build.BinariesDirectory)/emulator.pid
       displayName: Start Android Emulator
 
@@ -268,6 +268,9 @@ stages:
       displayName: Bootstrap Android and iOS e2e tests
 
     - script: |
+        # Mobile build:
+        # ORT_MOBILE_C_LOCAL_POD_PATH=$(Build.BinariesDirectory)/staging/onnxruntime-mobile-c \
+        ORT_C_LOCAL_POD_PATH=$(Build.BinariesDirectory)/staging/onnxruntime-c \
         pod install
       workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e/ios'
       displayName: Pod install for onnxruntime react native ios e2e tests
@@ -300,7 +303,7 @@ stages:
 
     - script: |
         JEST_JUNIT_OUTPUT_FILE=$(Build.SourcesDirectory)/js/react_native/e2e/android-test-results.xml \
-        detox test --record-logs all  --configuration android.emu.release
+        detox test --record-logs all --configuration android.emu.release
       workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e'
       displayName: Run React Native Detox Android e2e Tests
 
@@ -333,8 +336,10 @@ stages:
 
     - task: PublishPipelineArtifact@1
       inputs:
-        targetPath:  '$(Build.SourcesDirectory)/js/react_native/e2e/artifacts'
-      displayName: Publish React Native Detox E2E test artifacts
+        artifact: e2e_test_logs
+        targetPath: '$(Build.SourcesDirectory)/js/react_native/e2e/artifacts'
+      condition: succeededOrFailed()
+      displayName: Publish React Native Detox E2E test logs
 
     - script: |
         python3 tools/python/run_android_emulator.py \
