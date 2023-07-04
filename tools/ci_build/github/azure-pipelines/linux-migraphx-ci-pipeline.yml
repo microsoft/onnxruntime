@@ -45,7 +45,7 @@ jobs:
       restoreKeys: |
         "$(TODAY)" | "$(Build.SourceBranch)"
         "$(TODAY)" |
-    displayName: Cach Task
+    displayName: Cache Task
 
   - script: mkdir -p $(CCACHE_DIR)
     condition: ne(variables.CACHE_RESTORED, 'true')
@@ -57,11 +57,11 @@ jobs:
         docker run --rm \
           --security-opt seccomp=unconfined \
           --shm-size=1024m \
-          --group-add $(video) \
-          --group-add $(render) \
           --user $UID:$(id -g $USER) \
           --volume $(Build.SourcesDirectory):/onnxruntime_src \
           --volume $(Build.BinariesDirectory):/build \
+          --volume $(CCACHE_DIR):/cache \
+          -e CCACHE_DIR=/cache \
           --workdir /onnxruntime_src \
           onnxruntimetrainingmigraphx-cibuild-rocm$(RocmVersion) \
           /bin/bash -c "
