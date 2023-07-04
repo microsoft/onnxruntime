@@ -5,13 +5,13 @@ import * as binaryOps from './ops/binary-op';
 import {concat, parseConcatAttributes} from './ops/concat';
 import {conv, parseConvAttributes} from './ops/conv';
 import {convTranspose, parseConvTransposeAttributes} from './ops/conv-transpose';
+import {expand} from './ops/expand';
 import {gemm, parseGemmAttributes} from './ops/gemm';
 import {matMul} from './ops/matmul';
 import * as pool from './ops/pool';
 import {parseReduceAttributes, reduceL1, reduceL2, reduceLogSum, reduceLogSumExp, reduceMax, reduceMean, reduceMin, reduceProd, reduceSum, reduceSumSquare} from './ops/reduce';
 import {parseSplitAttributes, split} from './ops/split';
 import {parseTransposeAttributes, transpose} from './ops/transpose';
-import {expand} from './ops/expand';
 import * as unaryOps from './ops/unary-op';
 import {ComputeContext} from './types';
 
