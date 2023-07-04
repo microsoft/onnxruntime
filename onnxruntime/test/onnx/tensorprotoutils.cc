@@ -360,9 +360,10 @@ ORT_API(void, OrtUninitializeBuffer, _In_opt_ void* input, size_t input_len, enu
   }
 }
 
-#define CASE_PROTO(X, Y)                                                                                       \
-  case onnx::TensorProto_DataType::TensorProto_DataType_##X:                                                   \
-    ::onnxruntime::test::UnpackTensor<Y>(tensor_proto, raw_data, raw_data_len, (Y*)preallocated, tensor_size); \
+#define CASE_PROTO(X, Y)                                                                      \
+  case onnx::TensorProto_DataType::TensorProto_DataType_##X:                                  \
+    ::onnxruntime::test::UnpackTensor<Y>(tensor_proto, raw_data, raw_data_len,                \
+                                         (Y*)preallocated, static_cast<size_t>(tensor_size)); \
     break;
 
 #define CASE_TYPE(X)                   \
