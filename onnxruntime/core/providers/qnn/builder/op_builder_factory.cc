@@ -112,7 +112,7 @@ OpBuilderRegistrations::OpBuilderRegistrations() {
   }
 
   {
-    CreateConvOpBuilder("ConvTranspose", *this);
+    CreateConvTransposeOpBuilder("ConvTranspose", *this);
   }
 
   {

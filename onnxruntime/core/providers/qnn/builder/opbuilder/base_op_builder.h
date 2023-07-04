@@ -138,6 +138,7 @@ class BaseOpBuilder : public IOpBuilder {
         {"HardSwish", "HardSwish"},
 
         {"Conv", "Conv2d"},
+        {"ConvTranspose", "TransposeConv2d"},
 
         {"GlobalAveragePool", "PoolAvg2d"},
         {"AveragePool", "PoolAvg2d"},
@@ -156,7 +157,6 @@ class BaseOpBuilder : public IOpBuilder {
 
         {"ArgMax", "Argmax"},
         {"ArgMin", "Argmin"},
-        {"ConvTranspose", "TransposeConv2d"},
         {"Tile", "Tile"},
         {"TopK", "TopK"},
         {"InstanceNormalization", "InstanceNorm"},
@@ -229,10 +229,10 @@ class BaseOpBuilder : public IOpBuilder {
   }
 
   // Onnx Pads is [x1_begin, x2_begin, x1_end, x2_end], QNN requires [x1_begin, x1_end, x2_begin, x2_end]
-  void ReArranagePads(std::vector<int32_t>& pads) const {
+  void ReArranagePads(std::vector<uint32_t>& pads) const {
     auto pads_size = pads.size();
     auto middle_pos = pads_size / 2;
-    std::vector<int32_t> first_half(pads.begin(), pads.begin() + middle_pos);
+    std::vector<uint32_t> first_half(pads.begin(), pads.begin() + middle_pos);
     for (size_t i = 0; i < middle_pos; ++i) {
       pads[2 * i] = first_half[i];
       pads[2 * i + 1] = pads[middle_pos + i];
