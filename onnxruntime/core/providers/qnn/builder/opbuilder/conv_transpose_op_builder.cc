@@ -49,11 +49,6 @@ class ConvTransposeBuilder : public BaseOpBuilder {
                                      const logging::Logger& logger,
                                      bool is_quantized_model,
                                      bool do_op_validation) const override ORT_MUST_USE_RESULT;
-
- private:
-  Status GetInputChannelNumber(QnnModelWrapper& qnn_model_wrapper,
-                               const NodeUnit& node_unit,
-                               uint32_t& input_channel_number) const;
 };
 
 // Conv, ConvTranspose ops are sensitive with data layout, no special validation so far
@@ -96,19 +91,6 @@ Status ConvTransposeBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
     ORT_RETURN_IF(dilation != default_dilation,
                   "QNN EP: QNN's TransposeConv2d operator only supports default dilation values of 1.");
   }
-
-  return Status::OK();
-}
-
-Status ConvTransposeBuilder::GetInputChannelNumber(QnnModelWrapper& qnn_model_wrapper,
-                                                   const NodeUnit& node_unit,
-                                                   uint32_t& input_channel_number) const {
-  const auto& input_0 = node_unit.Inputs()[0];
-  input_channel_number = 0;
-  std::vector<uint32_t> input_shape;
-  ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(input_0.node_arg, input_shape), "Cannot get shape");
-  // Conv input 0 is NHWC layout now, get the channel data from the last dim.
-  input_channel_number = input_shape.back();
 
   return Status::OK();
 }
