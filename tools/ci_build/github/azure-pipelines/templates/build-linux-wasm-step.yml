@@ -42,7 +42,6 @@ steps:
         source ./emsdk_env.sh
         export PATH=$(Build.SourcesDirectory)/cmake/external/emsdk/:$PATH
         export PATH=$(Build.SourcesDirectory)/cmake/external/emsdk/ccache/git-emscripten_64bit/bin:$PATH
-        ln -s $(Build.SourcesDirectory)/cmake/external/emsdk/ccache/git-emscripten_64bit/bin/ccache /usr/local/bin/ccache
         echo $PATH
         ccache -s
         ccache -z
