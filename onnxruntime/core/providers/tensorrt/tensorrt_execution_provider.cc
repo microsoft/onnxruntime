@@ -2582,13 +2582,13 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
       // Note: Creating an execution context from an engine is thread safe per TRT doc
       // https://docs.nvidia.com/deeplearning/tensorrt/developer-guide/index.html#threading
       if (context_update) {
-        std::unique_ptr<nvinfer1::IExecutionContext> trt_context_updated = nullptr;
+        std::unique_ptr<nvinfer1::IExecutionContext> trt_context_updated;
         if (trt_state->context_memory_sharing_enable) {
           trt_context_updated.reset(trt_state->engine->get()->createExecutionContextWithoutDeviceMemory());
         } else {
           trt_context_updated.reset(trt_state->engine->get()->createExecutionContext());
         }
-        if (trt_context_updated == nullptr) {
+        if (!trt_context_updated) {
           return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "TensorRT EP failed to create context.");
         }
         // Update the IExecutionContext object that is maintained on a per thread basis
