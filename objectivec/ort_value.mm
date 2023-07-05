@@ -85,9 +85,9 @@ bool SafeMultiply(size_t a, size_t b, size_t& out) {
         memoryInfo, tensorData.mutableBytes, tensorData.length,
         shapeVector.data(), shapeVector.size(), ONNXElementType);
 
-    return [self initWithCAPIOrtValue:ortValue.release()
-                   externalTensorData:tensorData
-                                error:error];
+    return [self initWithCXXAPIOrtValue:std::move(ortValue)
+                     externalTensorData:tensorData
+                                  error:error];
   }
   ORT_OBJC_API_IMPL_CATCH_RETURNING_NULLABLE(error)
 }
@@ -129,17 +129,19 @@ bool SafeMultiply(size_t a, size_t b, size_t& out) {
 
 #pragma mark - Internal
 
-- (nullable instancetype)initWithCAPIOrtValue:(OrtValue*)CAPIOrtValue
-                           externalTensorData:(nullable NSMutableData*)externalTensorData
-                                        error:(NSError**)error {
+- (nullable instancetype)initWithCXXAPIOrtValue:(Ort::Value&&)existingCXXAPIOrtValue
+                             externalTensorData:(nullable NSMutableData*)externalTensorData
+                                          error:(NSError**)error {
   if ((self = [super init]) == nil) {
     return nil;
   }
 
   try {
-    _value = Ort::Value{CAPIOrtValue};
-    _typeInfo = _value->GetTypeInfo();
+    _typeInfo = existingCXXAPIOrtValue.GetTypeInfo();
     _externalTensorData = externalTensorData;
+
+    // transfer C++ Ort::Value ownership to this instance
+    _value = std::move(existingCXXAPIOrtValue);
     return self;
   }
   ORT_OBJC_API_IMPL_CATCH_RETURNING_NULLABLE(error);

@@ -222,6 +222,10 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   bool detailed_build_log_ = false;
   bool cuda_graph_enable_ = false;
 
+  // The OrtAllocator object will be get during ep compute time
+  // and should be kept for the lifetime of TRT EP object.
+  OrtAllocator* alloc_ = nullptr;
+
   // Following maps that hold TRT objects will be accessible by different threads if ORT is using multithreading.
   // In general, TensorRT objects are not thread safe. Accesses to an object from different threads using non thread safe operations must be synchronized.
   // TRT EP uses lock_guard to make sure synchronization when calling non thread safe operations.

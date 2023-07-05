@@ -14,12 +14,38 @@
 namespace onnxruntime {
 namespace rocm {
 
+// DivMod is a helper class for integer division and modulo operation.
+// There is a fast version for int type and a slow version for other type.
+template <typename T>
+struct DivMod {
+  DivMod(T d = 1) {
+    d_ = d == 0 ? 1 : d;
+    ORT_ENFORCE(d_ >= 1 && d_ <= std::numeric_limits<T>::max());
+  }
+
+  __host__ __device__ inline T div(T n) const {
+    return n / d_;
+  }
+
+  __host__ __device__ inline T mod(T n) const {
+    return n % d_;
+  }
+
+  __host__ __device__ inline void divmod(T n, T& q, T& r) const {
+    q = div(n);
+    r = n - q * d_;
+  }
+
+  T d_;  // divisor
+};
+
 // The code below is based on section 4 Unsigned division of paper https://gmplib.org/~tege/divcnst-pldi94.pdf
 // In current ORT, fast_divmod is used for calculating the position of a element in tensor,
 // so unsigned integer division from the paper is good enough for ORT. The advantage is that div is very simple,
 // then GPU compiler can do loop unroll easilly when divmod is called in a loop.
-struct fast_divmod {
-  fast_divmod(int d = 1) {
+template <>
+struct DivMod<int> {
+  DivMod(int d = 1) {
     d_ = d == 0 ? 1 : d;
     ORT_ENFORCE(d_ >= 1 && d_ <= static_cast<uint32_t>(std::numeric_limits<int>::max()));
 
@@ -57,6 +83,8 @@ struct fast_divmod {
   uint32_t M_;  // m' in the paper.
   uint32_t l_;  // l_ = ceil(log2(d_))
 };
+
+using fast_divmod = DivMod<int>;  // Keep the old name for backward compatibility.
 
 }  // namespace rocm
 }  // namespace onnxruntime

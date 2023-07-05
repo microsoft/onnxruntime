@@ -68,10 +68,10 @@ FakeRCTBlobManager *fakeBlobManager = nil;
     inputTensorMap[@"type"] = JsTensorTypeFloat;
 
     // data
-    std::array<float_t, 5> outValues{std::numeric_limits<float_t>::min(), 1.0f, -2.0f, 3.0f,
-                                     std::numeric_limits<float_t>::max()};
+    std::array<float, 5> outValues{std::numeric_limits<float>::min(), 1.0f, -2.0f, 3.0f,
+                                   std::numeric_limits<float>::max()};
 
-    const NSInteger byteBufferSize = outValues.size() * sizeof(float_t);
+    const NSInteger byteBufferSize = outValues.size() * sizeof(float);
     unsigned char *byteBuffer = static_cast<unsigned char *>(malloc(byteBufferSize));
     NSData *byteBufferRef = [NSData dataWithBytesNoCopy:byteBuffer length:byteBufferSize];
     float *floatPtr = (float *)[byteBufferRef bytes];

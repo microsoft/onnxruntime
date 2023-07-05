@@ -10,7 +10,6 @@
 #include <unordered_map>
 
 #include "core/providers/shared_library/provider_api.h"
-#include "core/framework/allocatormgr.h"
 #include "core/framework/arena_extend_strategy.h"
 #include "core/framework/execution_provider.h"
 #include "core/platform/ort_mutex.h"

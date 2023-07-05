@@ -377,7 +377,7 @@ endif()
 
 # Disable training ops test for minimal build as a lot of these depend on loading an onnx model.
 if (NOT onnxruntime_MINIMAL_BUILD)
-  if (onnxruntime_ENABLE_TRAINING_CORE)
+  if (onnxruntime_ENABLE_TRAINING_OPS)
     file(GLOB_RECURSE orttraining_test_trainingops_cpu_src CONFIGURE_DEPENDS
       "${ORTTRAINING_SOURCE_DIR}/test/training_ops/compare_provider_test_utils.cc"
       "${ORTTRAINING_SOURCE_DIR}/test/training_ops/function_op_test_utils.cc"
@@ -1306,10 +1306,11 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
         "${TEST_SRC_DIR}/framework/test_utils.cc"
         "${TEST_SRC_DIR}/providers/base_tester.h"
         "${TEST_SRC_DIR}/providers/base_tester.cc"
+        "${TEST_SRC_DIR}/providers/checkers.h"
+        "${TEST_SRC_DIR}/providers/checkers.cc"
         "${TEST_SRC_DIR}/providers/op_tester.h"
         "${TEST_SRC_DIR}/providers/op_tester.cc"
         "${TEST_SRC_DIR}/providers/provider_test_utils.h"
-        "${TEST_SRC_DIR}/providers/provider_test_utils.cc"
         "${TEST_SRC_DIR}/providers/tester_types.h"
         ${onnxruntime_unittest_main_src}
       LIBS ${onnxruntime_test_providers_libs} ${onnxruntime_test_common_libs}

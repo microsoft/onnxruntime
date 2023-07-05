@@ -20,7 +20,7 @@ void cuda_add(int64_t, T3*, const T1*, const T2*, cudaStream_t compute_stream);
 static const char* c_OpDomain = "test.customop";
 
 struct KernelOne {
-  void Compute(OrtKernelContext* context) {
+  OrtStatusPtr ComputeV2(OrtKernelContext* context) {
     // Setup inputs
     Ort::KernelContext ctx(context);
     auto input_X = ctx.GetInput(0);
@@ -45,13 +45,15 @@ struct KernelOne {
       out[i] = X[i] + Y[i];
     }
 #endif
+    return nullptr;
   }
 };
 
-// legacy custom op registration
-struct CustomOpOne : Ort::CustomOpBase<CustomOpOne, KernelOne> {
-  void* CreateKernel(const OrtApi& /* api */, const OrtKernelInfo* /* info */) const {
-    return std::make_unique<KernelOne>().release();
+// legacy custom op registration with kernel creation and compute function that return an OrtStatusPtr
+struct CustomOpOne : Ort::CustomOpBase<CustomOpOne, KernelOne, true> {
+  OrtStatusPtr CreateKernelV2(const OrtApi& /* api */, const OrtKernelInfo* /* info */, void** op_kernel) const {
+    *op_kernel = reinterpret_cast<void*>(std::make_unique<KernelOne>().release());
+    return nullptr;
   };
 
   const char* GetName() const { return "CustomOpOne"; };

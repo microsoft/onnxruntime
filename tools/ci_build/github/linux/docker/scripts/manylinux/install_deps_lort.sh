@@ -31,6 +31,16 @@ fi
 export ONNX_ML=1
 export CMAKE_ARGS="-DONNX_GEN_PB_TYPE_STUBS=OFF -DONNX_WERROR=OFF"
 
+/opt/python/cp39-cp39/bin/python3.9 -m pip install transformers
+
+cd /usr/local/
+echo "Cloning ONNX Script"
+git clone --recursive https://github.com/microsoft/onnxscript.git
+cd onnxscript
+/opt/python/cp39-cp39/bin/python3.9 -m pip install -r requirements-dev.txt
+/opt/python/cp39-cp39/bin/python3.9 setup.py install
+cd ~ && /opt/python/cp39-cp39/bin/python3.9 -c "import onnxscript; print(f'Installed ONNX Script: {onnxscript.__version__}')"
+
 cd /usr/local
 echo "Cloning Pytorch"
 git clone --recursive https://github.com/pytorch/pytorch.git
@@ -41,18 +51,6 @@ echo "Installing Pytorch requirements"
 echo "Building and installing Pytorch"
 VERBOSE=1 BUILD_LAZY_TS_BACKEND=1 /opt/python/cp39-cp39/bin/python3.9 setup.py install
 cd ~ && /opt/python/cp39-cp39/bin/python3.9 -c "import torch; print(f'Installed Pytorch: {torch.__version__}')"
-
-cd /usr/local/
-echo "Cloning TorchDynamo"
-git clone --recursive https://github.com/pytorch/torchdynamo.git
-cd torchdynamo
-echo "Installing TorchDynamo requirements"
-/opt/python/cp39-cp39/bin/python3.9 -m pip install transformers
-/opt/python/cp39-cp39/bin/python3.9 -m pip install -r requirements.txt
-echo "Installing TorchDynamo"
-/opt/python/cp39-cp39/bin/python3.9 setup.py install
-cd ~ && /opt/python/cp39-cp39/bin/python3.9 -c "import torch; print(f'Installed Pytorch: {torch.__version__}')"
-cd ~ && /opt/python/cp39-cp39/bin/python3.9 -c "import torchdynamo; print(f'Installed TorchDynamo: {torchdynamo.__path__}')"
 
 cd /
 rm -rf /tmp/src

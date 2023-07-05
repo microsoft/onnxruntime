@@ -6,6 +6,7 @@
 #include "core/framework/error_code_helper.h"
 #include "core/framework/random_seed.h"
 #include "core/session/abi_session_options_impl.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/session/ort_apis.h"
 #include "core/session/ort_env.h"
 #include "orttraining/training_api/checkpoint.h"
@@ -32,6 +33,9 @@ ORT_API_STATUS_IMPL(OrtTrainingApis::CreateTrainingSession, _In_ const OrtEnv* e
                     _In_ const ORTCHAR_T* train_model_path, _In_ const ORTCHAR_T* eval_model_path,
                     _In_ const ORTCHAR_T* optimizer_model_path, _Outptr_ OrtTrainingSession** out) {
   API_IMPL_BEGIN
+  if (options != nullptr && options->value.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigUseEnvAllocators, "0") == "1") {
+    return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "Use Env Allocators is not supported for on device training.");
+  }
   std::unique_ptr<onnxruntime::training::api::TrainingSession> train_sess;
   auto chkpt_state = reinterpret_cast<onnxruntime::training::api::CheckpointState*>(checkpoint_state);
   OrtStatus* status = nullptr;
@@ -276,6 +280,22 @@ ORT_API_STATUS_IMPL(OrtTrainingApis::SaveCheckpoint, _In_ OrtCheckpointState* ch
   auto chkpt_state = reinterpret_cast<onnxruntime::training::api::CheckpointState*>(checkpoint_state);
   ORT_API_RETURN_IF_STATUS_NOT_OK(
       onnxruntime::training::api::SaveCheckpoint(*chkpt_state, checkpoint_path, include_optimizer_state));
+
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtTrainingApis::LoadCheckpointFromBuffer, _In_ const void* checkpoint_buffer,
+                    _In_ const size_t num_bytes, _Outptr_ OrtCheckpointState** checkpoint_state) {
+  API_IMPL_BEGIN
+
+  *checkpoint_state = nullptr;
+  auto chkpt_state = std::make_unique<onnxruntime::training::api::CheckpointState>();
+  const auto* checkpoint_bytes = reinterpret_cast<const uint8_t*>(checkpoint_buffer);
+  gsl::span checkpoint_span(checkpoint_bytes, num_bytes);
+  ORT_API_RETURN_IF_STATUS_NOT_OK(
+      onnxruntime::training::api::LoadCheckpointFromBuffer(checkpoint_span, *chkpt_state));
+  *checkpoint_state = reinterpret_cast<OrtCheckpointState*>(chkpt_state.release());
 
   return nullptr;
   API_IMPL_END
@@ -527,7 +547,7 @@ static constexpr OrtTrainingApi ort_training_api = {
     &OrtTrainingApis::TrainingSessionGetEvalModelInputName,
     &OrtTrainingApis::AddProperty,
     &OrtTrainingApis::GetProperty,
-};
+    &OrtTrainingApis::LoadCheckpointFromBuffer};
 
 ORT_API(const OrtTrainingApi*, OrtTrainingApis::GetTrainingApi, uint32_t) {
   // No constraints on the API version yet.
