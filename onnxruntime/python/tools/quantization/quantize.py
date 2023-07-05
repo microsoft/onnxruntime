@@ -220,14 +220,14 @@ def check_static_quant_arguments(quant_format: QuantFormat, activation_type: Qua
         )
     if activation_type != QuantType.QFLOAT8E4M3FN and weight_type == QuantType.QFLOAT8E4M3FN:
         raise ValueError(
-            "ONNXRuntime quantization doesn't support data format:"
-            "activation_type!=QuantType.QFLOAT8E4M3FN, weight_type=QuantType.QFLOAT8E4M3FN"
+            f"ONNXRuntime quantization doesn't support data format: activation_type={activation_type} "
+            f"!=QuantType.QFLOAT8E4M3FN, weight_type=QuantType.QFLOAT8E4M3FN."
         )
 
     if activation_type == QuantType.QFLOAT8E4M3FN and weight_type != QuantType.QFLOAT8E4M3FN:
         raise ValueError(
-            "ONNXRuntime quantization doesn't support data format:"
-            "activation_type=QuantType.QFLOAT8E4M3FN, weight_type!=QuantType.QFLOAT8E4M3FN"
+            "ONNXRuntime quantization doesn't support data format: activation_type=QuantType.QFLOAT8E4M3FN, "
+            f"weight_type={weight_type}!=QuantType.QFLOAT8E4M3FN"
         )
 
     if activation_type == QuantType.QInt8 and weight_type == QuantType.QInt8 and quant_format != QuantFormat.QDQ:

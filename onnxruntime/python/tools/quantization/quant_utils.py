@@ -484,8 +484,6 @@ def smooth_distribution(p, eps=0.0001):
     Ref: http://web.engr.illinois.edu/~hanj/cs412/bk3/KL-divergence.pdf
          https://github.com//apache/incubator-mxnet/blob/master/python/mxnet/contrib/quantization.py
     """
-    import numpy as np
-
     is_zeros = (p == 0).astype(numpy.float32)
     is_nonzeros = (p != 0).astype(numpy.float32)
     n_zeros = is_zeros.sum()

@@ -1,8 +1,10 @@
 import uuid
 from pathlib import Path
+import packaging.version as pv
 
 import numpy as np
 import onnx
+from onnx.reference import ReferenceEvaluator
 
 import onnxruntime
 from onnxruntime.quantization import CalibrationDataReader
@@ -68,25 +70,49 @@ def check_op_type_count(testcase, model_path, **kwargs):
         )
 
 
-def check_model_correctness(testcase, model_path_origin, model_path_to_check, inputs, rtol=1e-2, atol=0.05):
+def check_model_correctness(
+    testcase, model_path_origin, model_path_to_check, inputs, rtol=1e-2, atol=0.05, providers=None
+):
+    if providers is None:
+        providers = ["CPUExecutionProvider"]
     sess_options = onnxruntime.SessionOptions()
     sess_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_DISABLE_ALL
-    origin_sess = onnxruntime.InferenceSession(
-        model_path_origin, sess_options=sess_options, providers=["CPUExecutionProvider"]
-    )
+    sess_options.optimized_model_filepath = model_path_to_check + ".optimized.onnx"
+    origin_sess = onnxruntime.InferenceSession(model_path_origin, sess_options=sess_options, providers=providers)
     origin_results = origin_sess.run([], inputs)
+
+    if pv.Version(onnx.__version__) >= pv.Version("1.15.0"):
+        ref = ReferenceEvaluator(model_path_to_check, verbose=10)
+        target_results = ref.run(None, inputs)
+        testcase.assertEqual(len(origin_results), len(target_results), "result count are different")
+        for idx, ref_output in enumerate(origin_results):
+            output = target_results[idx]
+            np.testing.assert_allclose(
+                ref_output,
+                output,
+                rtol=rtol,
+                atol=atol,
+                err_msg=f"Model {model_path_to_check!r} failed for providers={providers!r}.",
+            )
+
     # enable QDQ transformers
     # sess_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_EXTENDED
     target_sess = onnxruntime.InferenceSession(
         model_path_to_check,
         sess_options=sess_options,
-        providers=["CPUExecutionProvider"],
+        providers=providers,
     )
     target_results = target_sess.run([], inputs)
     testcase.assertEqual(len(origin_results), len(target_results), "result count are different")
     for idx, ref_output in enumerate(origin_results):
         output = target_results[idx]
-        np.testing.assert_allclose(ref_output, output, rtol=rtol, atol=atol)
+        np.testing.assert_allclose(
+            ref_output,
+            output,
+            rtol=rtol,
+            atol=atol,
+            err_msg=f"Model {model_path_to_check!r} failed for providers={providers!r}.",
+        )
 
 
 def check_op_nodes(testcase, model_path, node_checker):
