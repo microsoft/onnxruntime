@@ -34,9 +34,10 @@ pip install onnxruntime-gpu
 
 import gc
 import os
+import shutil
 from collections import OrderedDict
 from typing import List, Optional, Union
-import shutil
+
 import onnx
 import onnx_graphsurgeon as gs
 import torch
@@ -61,7 +62,7 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
 class Engine:
-    def __init__(self, engine_path):
+    def __init__(self, engine_path, device_id=0):
         self.engine_path = engine_path
         self.output_tensors = OrderedDict()
 
@@ -70,6 +71,8 @@ class Engine:
         self.io_binding = None
         self.input_names = None
         self.output_names = None
+
+        self.device_id = device_id
 
     def __del__(self):
         del self.output_tensors
@@ -83,7 +86,9 @@ class Engine:
         input_profile=None,
         workspace_size=0,
     ):
-        self.ort_trt_provider_options = self.get_tensorrt_provider_options(input_profile, workspace_size, fp16)
+        self.ort_trt_provider_options = self.get_tensorrt_provider_options(
+            input_profile, workspace_size, fp16, self.device_id
+        )
         sess_options = ort.SessionOptions()
         sess_options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_DISABLE_ALL
         self.ort_session = ort.InferenceSession(
@@ -142,9 +147,9 @@ class Engine:
 
         return self.output_tensors
 
-    def get_tensorrt_provider_options(self, input_profile, workspace_size, fp16):
+    def get_tensorrt_provider_options(self, input_profile, workspace_size, fp16, device_id: int = 0):
         trt_ep_options = {
-            "device_id": 0,
+            "device_id": device_id,
             "trt_fp16_enable": fp16,
             "trt_engine_cache_enable": True,
             "trt_timing_cache_enable": True,
@@ -356,6 +361,7 @@ def build_engines(
     static_batch=False,
     static_image_shape=True,
     max_workspace_size=0,
+    device_id=0,
 ):
     if force_engine_rebuild:
         if os.path.isdir(onnx_dir):
@@ -419,7 +425,7 @@ def build_engines(
 
         engine_path = get_engine_path(engine_dir, model_name, profile_id)
 
-        engine = Engine(engine_path)
+        engine = Engine(engine_path, device_id)
         onnx_opt_path = get_onnx_path(model_name, onnx_dir)
 
         if not has_engine_file(engine_path):
@@ -457,7 +463,7 @@ def run_engine(engine, feed_dict):
 
 class CLIP(BaseModel):
     def __init__(self, model, device, max_batch_size, embedding_dim):
-        super(CLIP, self).__init__(
+        super().__init__(
             model=model, name="CLIP", device=device, max_batch_size=max_batch_size, embedding_dim=embedding_dim
         )
 
@@ -509,7 +515,7 @@ class UNet(BaseModel):
     def __init__(
         self, model, fp16=False, device="cuda", max_batch_size=16, embedding_dim=768, text_maxlen=77, unet_dim=4
     ):
-        super(UNet, self).__init__(
+        super().__init__(
             model=model,
             name="UNet",
             fp16=fp16,
@@ -594,7 +600,7 @@ def make_UNet(model, device, max_batch_size, embedding_dim, inpaint=False):
 
 class VAE(BaseModel):
     def __init__(self, model, device, max_batch_size, embedding_dim):
-        super(VAE, self).__init__(
+        super().__init__(
             model=model, name="VAE decoder", device=device, max_batch_size=max_batch_size, embedding_dim=embedding_dim
         )
 
@@ -768,6 +774,7 @@ class OnnxruntimeTensorRTStableDiffusionPipeline(StableDiffusionPipeline):
             force_engine_rebuild=self.force_engine_rebuild,
             static_batch=self.build_static_batch,
             static_image_shape=not self.build_dynamic_shape,
+            device_id=self.torch_device.index,
         )
 
         return self
@@ -825,7 +832,7 @@ class OnnxruntimeTensorRTStableDiffusionPipeline(StableDiffusionPipeline):
     ):
         if not isinstance(timesteps, torch.Tensor):
             timesteps = self.scheduler.timesteps
-        for step_index, timestep in enumerate(timesteps):
+        for _step_index, timestep in enumerate(timesteps):
             # Expand the latents if we are doing classifier free guidance
             latent_model_input = torch.cat([latents] * 2)
             latent_model_input = self.scheduler.scale_model_input(latent_model_input, timestep)

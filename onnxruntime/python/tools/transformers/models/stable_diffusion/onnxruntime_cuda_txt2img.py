@@ -52,35 +52,24 @@ from huggingface_hub import snapshot_download
 from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
 
 import onnxruntime as ort
-
-if os.path.isfile(os.path.join(os.path.dirname(__file__), "..", "..", "onnx_model_clip.py")):
-    sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
-    from fusion_options import FusionOptions  # noqa: E402
-    from io_binding_helper import TypeHelper  # noqa: E402
-    from onnx_model_clip import ClipOnnxModel  # noqa: E402
-    from onnx_model_unet import UnetOnnxModel  # noqa: E402
-    from onnx_model_vae import VaeOnnxModel  # noqa: E402
-    from optimizer import optimize_by_onnxruntime, optimize_model  # noqa: E402
-else:
-    from onnxruntime.transformers.fusion_options import FusionOptions  # noqa: E402
-    from onnxruntime.transformers.io_binding_helper import TypeHelper  # noqa: E402
-    from onnxruntime.transformers.onnx_model_clip import ClipOnnxModel  # noqa: E402
-    from onnxruntime.transformers.onnx_model_unet import UnetOnnxModel  # noqa: E402
-    from onnxruntime.transformers.onnx_model_vae import VaeOnnxModel  # noqa: E402
-    from onnxruntime.transformers.optimizer import optimize_by_onnxruntime, optimize_model  # noqa: E402
-
+from onnxruntime.transformers.fusion_options import FusionOptions
+from onnxruntime.transformers.io_binding_helper import TypeHelper
+from onnxruntime.transformers.onnx_model_clip import ClipOnnxModel
+from onnxruntime.transformers.onnx_model_unet import UnetOnnxModel
+from onnxruntime.transformers.onnx_model_vae import VaeOnnxModel
+from onnxruntime.transformers.optimizer import optimize_by_onnxruntime, optimize_model
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
 class Engine:
-    def __init__(self, engine_path, provider, provider_options=None):
+    def __init__(self, engine_path, provider, device_id=0, provider_options=None):
         self.engine_path = engine_path
         self.output_tensors = OrderedDict()
 
         self.ort_session = None
         self.provider = provider
-        self.provider_options = provider_options if provider_options else self.get_cuda_provider_options()
+        self.provider_options = provider_options if provider_options else self.get_cuda_provider_options(device_id)
         self.io_binding = None
         self.input_names = None
         self.output_names = None
@@ -151,11 +140,10 @@ class Engine:
 
         return self.output_tensors
 
-    def get_cuda_provider_options(self):
+    def get_cuda_provider_options(self, device_id):
         cuda_ep_options = {
-            # TODO: "device_id": 0,
+            "device_id": device_id,
             "arena_extend_strategy": "kSameAsRequested",
-            # "gpu_mem_limit": workspace_size,
             # TODO: "enable_cuda_graph": True,
         }
 
@@ -323,6 +311,7 @@ def build_engines(
     force_engine_rebuild: bool = False,
     fp16: bool = True,
     provider: str = "CUDAExecutionProvider",
+    device_id: int = 0,
 ):
     profile_id = "_fp16" if fp16 else "_fp32"
 
@@ -376,11 +365,10 @@ def build_engines(
     built_engines = {}
     for model_name, model_obj in models.items():
         engine_path = get_engine_path(engine_dir, model_name, profile_id)
-        engine = Engine(engine_path, provider)
-
-        disable_graph_optimization = fp16 or (model_obj.model_type != "unet")
+        engine = Engine(engine_path, provider, device_id=device_id)
         logger.info("%s options for %s: %s", provider, model_name, engine.provider_options)
 
+        disable_graph_optimization = fp16 or (model_obj.model_type != "unet")
         engine.build(disable_graph_optimization)
         built_engines[model_name] = engine
 
@@ -393,7 +381,7 @@ def run_engine(engine, feed_dict):
 
 class CLIP(BaseModel):
     def __init__(self, model, device, max_batch_size, embedding_dim):
-        super(CLIP, self).__init__(
+        super().__init__(
             model=model,
             name="CLIP",
             device=device,
@@ -437,7 +425,7 @@ class UNet(BaseModel):
         text_maxlen=77,
         unet_dim=4,
     ):
-        super(UNet, self).__init__(
+        super().__init__(
             model=model,
             name="UNet",
             device=device,
@@ -492,7 +480,7 @@ def make_UNet(model, device, max_batch_size, embedding_dim, inpaint=False):
 
 class VAE(BaseModel):
     def __init__(self, model, device, max_batch_size, embedding_dim):
-        super(VAE, self).__init__(
+        super().__init__(
             model=model,
             name="VAE Decoder",
             device=device,
@@ -636,6 +624,7 @@ class OnnxruntimeCudaStableDiffusionPipeline(StableDiffusionPipeline):
             force_engine_rebuild=self.force_engine_rebuild,
             fp16=self.fp16,
             provider=self.provider,
+            device_id=self.torch_device.index,
         )
 
         # Load the remaining modules to GPU.
@@ -700,7 +689,7 @@ class OnnxruntimeCudaStableDiffusionPipeline(StableDiffusionPipeline):
         if not isinstance(timesteps, torch.Tensor):
             timesteps = self.scheduler.timesteps
 
-        for step_index, timestep in enumerate(timesteps):
+        for _step_index, timestep in enumerate(timesteps):
             # Expand the latents if we are doing classifier free guidance
             latent_model_input = torch.cat([latents] * 2)
             latent_model_input = self.scheduler.scale_model_input(latent_model_input, timestep)

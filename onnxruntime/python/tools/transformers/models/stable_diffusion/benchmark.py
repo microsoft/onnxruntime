@@ -905,7 +905,7 @@ def print_loaded_libraries(cuda_related_only=True):
 
     p = psutil.Process(os.getpid())
     for lib in p.memory_maps():
-        if (not cuda_related_only) or (True in ["libcu" in path, "libnv" in path, "tensorrt" in path]):
+        if (not cuda_related_only) or any(x in lib.path for x in ("libcu", "libnv", "tensorrt")):
             print(lib.path)
 
 
@@ -1048,6 +1048,7 @@ def main():
     # Show loaded DLLs when steps == 1 for debugging purpose.
     if args.steps == 1:
         print_loaded_libraries(args.provider in ["cuda", "tensorrt"])
+
 
 if __name__ == "__main__":
     try:
