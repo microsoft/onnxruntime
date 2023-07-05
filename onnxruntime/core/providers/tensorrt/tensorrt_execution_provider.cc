@@ -489,10 +489,6 @@ Status ApplyProfileShapesFromInputTensorValue(std::vector<nvinfer1::IOptimizatio
                                               std::unordered_map<std::string, std::vector<int32_t>>& tensor_shape_values,
                                               cudaStream_t stream,
                                               bool* engine_update) {
-  // This function updates the IOptimizationProfile objects as well as the tensor_shape_values map,
-  // therefore we should synchronize these operations across different threads when ORT is using multithreading.
-  std::lock_guard<OrtMutex> lock(*(trt_state->tensorrt_mu_ptr));
-
   for (size_t i = 0; i < trt_profiles.size(); i++) {
     const std::string& input_name = input->getName();
     nvinfer1::Dims dims = input->getDimensions();
@@ -2405,6 +2401,9 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
         // If there is any input tensor in shape_ranges, it means this input tensor has dynamic shape and its profile shape values have not yet resolved.
         // TRT EP will help determine the min/max/opt profile values based on current input tensor value.
         if (shape_ranges.find(input_name) != shape_ranges.end()) {
+          // Following function updates the IOptimizationProfile objects as well as the tensor_shape_values map,
+          // therefore we should synchronize these operations across different threads when ORT is using multithreading.
+          std::lock_guard<OrtMutex> lock(*(trt_state->tensorrt_mu_ptr));
           auto status = ApplyProfileShapesFromInputTensorValue(trt_profiles, ctx, input, shape_ranges, input_indexes, tensor_shape_values, stream, &engine_update);
           if (status != Status::OK()) {
             return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "TensorRT EP failed to parse input tensor and generate optimization profiles.");
