@@ -141,10 +141,6 @@ class DataTypeImpl {
     return type_ == GeneralType::kNonTensor;
   }
 
-  bool IsInvalidType() const {
-    return type_ == GeneralType::kInvalid;
-  }
-
   bool IsPrimitiveDataType() const {
     return type_ == GeneralType::kPrimitive;
   }

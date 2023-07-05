@@ -213,6 +213,7 @@ static_assert(sizeof(BFloat16_t) == sizeof(uint16_t), "Sizes must match");
 /** \brief float8e4m3fn (Float8 Floating Point) data type
  * \details It is necessary for type dispatching to make use of C++ API
  * The type is implicitly convertible to/from uint8_t.
+ * See https://onnx.ai/onnx/technical/float8.html for further details.
  */
 struct Float8E4M3FN_t {
   uint8_t value;
@@ -229,6 +230,7 @@ static_assert(sizeof(Float8E4M3FN_t) == sizeof(uint8_t), "Sizes must match");
 /** \brief float8e4m3fnuz (Float8 Floating Point) data type
  * \details It is necessary for type dispatching to make use of C++ API
  * The type is implicitly convertible to/from uint8_t.
+ * See https://onnx.ai/onnx/technical/float8.html for further details.
  */
 struct Float8E4M3FNUZ_t {
   uint8_t value;
@@ -245,6 +247,7 @@ static_assert(sizeof(Float8E4M3FNUZ_t) == sizeof(uint8_t), "Sizes must match");
 /** \brief float8e5m2 (Float8 Floating Point) data type
  * \details It is necessary for type dispatching to make use of C++ API
  * The type is implicitly convertible to/from uint8_t.
+ * See https://onnx.ai/onnx/technical/float8.html for further details.
  */
 struct Float8E5M2_t {
   uint8_t value;
@@ -261,6 +264,7 @@ static_assert(sizeof(Float8E5M2_t) == sizeof(uint8_t), "Sizes must match");
 /** \brief float8e5m2fnuz (Float8 Floating Point) data type
  * \details It is necessary for type dispatching to make use of C++ API
  * The type is implicitly convertible to/from uint8_t.
+ * See https://onnx.ai/onnx/technical/float8.html for further details.
  */
 struct Float8E5M2FNUZ_t {
   uint8_t value;

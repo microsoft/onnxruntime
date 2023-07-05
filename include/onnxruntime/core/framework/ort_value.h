@@ -75,10 +75,6 @@ struct OrtValue {
 #endif
   }
 
-  bool IsInvalid() const noexcept {
-    return (type_ != nullptr && type_->IsInvalidType());
-  }
-
   onnxruntime::MLDataType Type() const {
     return type_;
   }
