@@ -489,6 +489,10 @@ Status ApplyProfileShapesFromInputTensorValue(std::vector<nvinfer1::IOptimizatio
                                               std::unordered_map<std::string, std::vector<int32_t>>& tensor_shape_values,
                                               cudaStream_t stream,
                                               bool* engine_update) {
+  // This function updates the IOptimizationProfile objects as well as the tensor_shape_values map,
+  // therefore we should synchronize these operations across different threads when ORT is using multithreading.
+  std::lock_guard<OrtMutex> lock(*(trt_state->tensorrt_mu_ptr));
+
   for (size_t i = 0; i < trt_profiles.size(); i++) {
     const std::string& input_name = input->getName();
     nvinfer1::Dims dims = input->getDimensions();
@@ -2212,6 +2216,8 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
       }
 
       // Build context
+      // Note: Creating an execution context from an engine is thread safe per TRT doc
+      // https://docs.nvidia.com/deeplearning/tensorrt/developer-guide/index.html#threading
       if (context_memory_sharing_enable_) {
         size_t mem_size = trt_engine->getDeviceMemorySize();
         if (mem_size > max_ctx_mem_size_) {
@@ -2249,7 +2255,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
       output_types[output_name] = tensor_type.elem_type();
     }
 
-    // Save engine and input/output info to map
+    // Save engine, other TRT objects as well as input/output info to map
     parsers_.emplace(fused_node.Name(), std::move(trt_parser));
     engines_.emplace(fused_node.Name(), std::move(trt_engine));
     builders_.emplace(fused_node.Name(), std::move(trt_builder));
@@ -2260,7 +2266,8 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
     input_shape_ranges_[fused_node.Name()] = input_implicit_shape_ranges;
     profiles_.emplace(fused_node.Name(), std::move(trt_profiles));
 
-    // Save context to PerThreadContext map since one execution context per thread is suggested to avoid synchronization issue.
+    // Save context to PerThreadContext map since maintaining execution context in a per thread basis
+    // is suggested by TRT doc to avoid synchronization issue
     GetPerThreadContext().SetTensorRTContext(fused_node.Name(), std::move(trt_context));
 
     // Create function state
@@ -2296,7 +2303,6 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
       Ort::KernelContext ctx(context);
 
       TensorrtFuncState* trt_state = reinterpret_cast<TensorrtFuncState*>(state);
-      std::lock_guard<OrtMutex> lock(*(trt_state->tensorrt_mu_ptr));
       const std::unordered_map<std::string, size_t>& input_indexes = (trt_state->input_info)[0];
       const std::unordered_map<std::string, size_t>& output_indexes = (trt_state->output_info)[0];
       const std::unordered_map<std::string, size_t>& output_types = (trt_state->output_info)[1];
@@ -2341,13 +2347,18 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
           // Deserialize profile
           shape_ranges = DeserializeProfileV2(profile_file);
           LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] DeSerialized " + profile_cache_path;
-          // Deserialize engine
-          trt_state->engine->reset();
+
+          // Prepare buffer
           engine_file.seekg(0, std::ios::end);
           size_t engine_size = engine_file.tellg();
           engine_file.seekg(0, std::ios::beg);
           std::unique_ptr<char[]> engine_buf{new char[engine_size]};
           engine_file.read((char*)engine_buf.get(), engine_size);
+
+          // Deserialize engine
+          // Note: Deserializing an engine from a TensorRT runtime is thread safe per TRT doc
+          // https://docs.nvidia.com/deeplearning/tensorrt/developer-guide/index.html#threading
+          trt_state->engine->reset();
           *(trt_state->engine) = std::unique_ptr<nvinfer1::ICudaEngine>(
               trt_state->runtime->deserializeCudaEngine(engine_buf.get(), engine_size, nullptr));
           if (*(trt_state->engine) == nullptr) {
@@ -2371,6 +2382,8 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
                                    "TensorRT EP could not call engine decryption function decrypt");
           }
           // Deserialize engine
+          // Note: Deserializing an engine from a TensorRT runtime is thread safe per TRT doc
+          // https://docs.nvidia.com/deeplearning/tensorrt/developer-guide/index.html#threading
           trt_state->engine->reset();
           *(trt_state->engine) = std::unique_ptr<nvinfer1::ICudaEngine>(trt_state->runtime->deserializeCudaEngine(engine_buf.get(), engine_size, nullptr));
           if (*(trt_state->engine) == nullptr) {
@@ -2401,6 +2414,11 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
 
       // Regenerate engine
       if (engine_update) {
+        // Accessing one builder, engine creation/serialization/saving, profile saving and timing cache serialization/saving
+        // should be synchronized across different threads when ORT is using multithreading.
+        // More details here, https://docs.nvidia.com/deeplearning/tensorrt/developer-guide/index.html#threading
+        std::lock_guard<OrtMutex> lock(*(trt_state->tensorrt_mu_ptr));
+
         trt_state->engine->reset();
         auto trt_config = std::unique_ptr<nvinfer1::IBuilderConfig>(trt_builder->createBuilderConfig());
         trt_config->setMaxWorkspaceSize(*(trt_state->max_workspace_size_ptr));
