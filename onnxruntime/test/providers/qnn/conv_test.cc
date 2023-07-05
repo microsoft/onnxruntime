@@ -293,7 +293,7 @@ TEST_F(QnnCPUBackendTests, TestCPUConvf32_bias_initializer) {
                    "TestCPUConvf32_bias_initializer");
 }
 
-// Tests auto_pad value "SAME_UPPER" (compares to CPU EP).
+// Tests Conv's auto_pad value "SAME_UPPER" (compares to CPU EP).
 TEST_F(QnnCPUBackendTests, TestCPUConvf32_AutoPadUpper) {
   RunCPUConvOpTest("Conv",
                    TestInputDef<float>({1, 1, 3, 3}, false, -3.0f, 3.0f),  // Random dynamic input
@@ -307,7 +307,21 @@ TEST_F(QnnCPUBackendTests, TestCPUConvf32_AutoPadUpper) {
                    "TestCPUConvf32_AutoPadUpper");
 }
 
-// Tests auto_pad value "SAME_LOWER" (compares to CPU EP).
+// Tests ConvTranspose's auto_pad value "SAME_UPPER" (compares to CPU EP).
+TEST_F(QnnCPUBackendTests, TestCPUConvTransposef32_AutoPadUpper) {
+  RunCPUConvOpTest("ConvTranspose",
+                   TestInputDef<float>({1, 1, 3, 3}, false, -3.0f, 3.0f),  // Random dynamic input
+                   TestInputDef<float>({1, 2, 2, 2}, true, -1.0f, 1.0f),   // Random static weights
+                   TestInputDef<float>({2}, true, -1.0f, 1.0f),            // Random static bias
+                   {1, 1},                                                 // strides
+                   {},                                                     // pads
+                   {1, 1},                                                 // dilations
+                   "SAME_UPPER",                                           // auto_pad
+                   ExpectedEPNodeAssignment::All,
+                   "TestCPUConvTransposef32_AutoPadUpper");
+}
+
+// Tests Conv's auto_pad value "SAME_LOWER" (compares to CPU EP).
 TEST_F(QnnCPUBackendTests, TestCPUConvf32_AutoPadLower) {
   RunCPUConvOpTest("Conv",
                    TestInputDef<float>({1, 1, 3, 3}, false, -3.0f, 3.0f),  // Random dynamic input
@@ -319,6 +333,20 @@ TEST_F(QnnCPUBackendTests, TestCPUConvf32_AutoPadLower) {
                    "SAME_LOWER",                                           // auto_pad
                    ExpectedEPNodeAssignment::All,
                    "TestCPUConvf32_AutoPadLower");
+}
+
+// Tests ConvTranspose's auto_pad value "SAME_LOWER" (compares to CPU EP).
+TEST_F(QnnCPUBackendTests, TestCPUConvTransposef32_AutoPadLower) {
+  RunCPUConvOpTest("ConvTranspose",
+                   TestInputDef<float>({1, 1, 3, 3}, false, -3.0f, 3.0f),  // Random dynamic input
+                   TestInputDef<float>({1, 2, 2, 2}, false, -1.0f, 1.0f),  // Random dynamic weights
+                   TestInputDef<float>({2}, true, -1.0f, 1.0f),            // Random static bias
+                   {1, 1},                                                 // strides
+                   {},                                                     // pads
+                   {1, 1},                                                 // dilations
+                   "SAME_LOWER",                                           // auto_pad
+                   ExpectedEPNodeAssignment::All,
+                   "TestCPUConvTransposef32_AutoPadLower");
 }
 
 // large input,output, pads
@@ -508,7 +536,23 @@ TEST_F(QnnHTPBackendTests, TestQDQConv1DU8U8S32_AutoPadUpper) {
                             1e-4f);
 }
 
-// Tests auto_pad value "SAME_LOWER" on HTP backend (compares to CPU EP).
+// Tests TransposeConv1d auto_pad value "SAME_UPPER" on HTP backend (compares to CPU EP).
+TEST_F(QnnHTPBackendTests, TestQDQConvTranspose1DU8U8S32_AutoPadUpper) {
+  RunHTPConvOpTest<uint8_t>("ConvTranspose",
+                            TestInputDef<float>({1, 2, 4}, false, {0.f, 1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f}),  // Dynamic input
+                            TestInputDef<float>({2, 1, 2}, true, {1.f, 2.f, 3.f, 4.f}),                       // Static weight
+                            TestInputDef<float>({1}, true, {1.0f}),                                           // Initializer bias = 1.0f
+                            {1},                                                                              // strides
+                            {0},                                                                              // pads
+                            {1},                                                                              // dilations
+                            "SAME_UPPER",                                                                     // auto_pad
+                            ExpectedEPNodeAssignment::All,
+                            "TestConvTranspose1DU8U8S32_AutoPadUpper",
+                            13,
+                            1e-4f);
+}
+
+// Tests Conv's auto_pad value "SAME_LOWER" on HTP backend (compares to CPU EP).
 TEST_F(QnnHTPBackendTests, TestQDQConvU8U8S32_AutoPadLower) {
   RunHTPConvOpTest<uint8_t>("Conv",
                             TestInputDef<float>({1, 1, 5, 5}, false, 0.f, 10.f),  // Dynamic input
@@ -520,6 +564,54 @@ TEST_F(QnnHTPBackendTests, TestQDQConvU8U8S32_AutoPadLower) {
                             "SAME_LOWER",                                         // auto_pad
                             ExpectedEPNodeAssignment::All,
                             "TestConvU8U8S32_AutoPadLower",
+                            13,
+                            1e-4f);
+}
+
+// Tests ConvTranspose's auto_pad value "SAME_LOWER" on HTP backend (compares to CPU EP).
+TEST_F(QnnHTPBackendTests, TestQDQConvTransposeU8U8S32_AutoPadLower) {
+  RunHTPConvOpTest<uint8_t>("ConvTranspose",
+                            TestInputDef<float>({1, 1, 5, 5}, false, 0.f, 10.f),  // Dynamic input
+                            TestInputDef<float>({1, 1, 4, 4}, true, -1.f, 1.f),   // Static weights
+                            TestInputDef<float>({1}, true, {1.0f}),               // Initializer bias = 1.0f
+                            {1, 1},                                               // strides
+                            {},                                                   // pads
+                            {1, 1},                                               // dilations
+                            "SAME_LOWER",                                         // auto_pad
+                            ExpectedEPNodeAssignment::All,
+                            "TestConvU8U8S32_AutoPadLower",
+                            13,
+                            1e-4f);
+}
+
+// Tests Conv1d auto_pad value "SAME_LOWER" on HTP backend (compares to CPU EP).
+TEST_F(QnnHTPBackendTests, TestQDQConv1DU8U8S32_AutoPadLower) {
+  RunHTPConvOpTest<uint8_t>("Conv",
+                            TestInputDef<float>({1, 2, 4}, false, {0.f, 1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f}),  // Dynamic input
+                            TestInputDef<float>({1, 2, 2}, true, {1.f, 2.f, 3.f, 4.f}),                       // Static weight
+                            TestInputDef<float>({1}, true, {1.0f}),                                           // Initializer bias = 1.0f
+                            {1},                                                                              // strides
+                            {0},                                                                              // pads
+                            {1},                                                                              // dilations
+                            "SAME_LOWER",                                                                     // auto_pad
+                            ExpectedEPNodeAssignment::All,
+                            "TestConv1DU8U8S32_AutoPadLower",
+                            13,
+                            1e-4f);
+}
+
+// Tests ConvTranspose 1d auto_pad value "SAME_LOWER" on HTP backend (compares to CPU EP).
+TEST_F(QnnHTPBackendTests, TestQDQConvTranspose1DU8U8S32_AutoPadLower) {
+  RunHTPConvOpTest<uint8_t>("ConvTranspose",
+                            TestInputDef<float>({1, 2, 4}, false, {0.f, 1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f}),  // Dynamic input
+                            TestInputDef<float>({2, 1, 2}, true, {1.f, 2.f, 3.f, 4.f}),                       // Static weight
+                            TestInputDef<float>({1}, true, {1.0f}),                                           // Initializer bias = 1.0f
+                            {1},                                                                              // strides
+                            {0},                                                                              // pads
+                            {1},                                                                              // dilations
+                            "SAME_LOWER",                                                                     // auto_pad
+                            ExpectedEPNodeAssignment::All,
+                            "TestConvTranspose1DU8U8S32_AutoPadLower",
                             13,
                             1e-4f);
 }
