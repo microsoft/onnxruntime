@@ -1,3 +1,6 @@
+# !/bin/bash
+set -ex
+
 rocm_version=$1
 mi200_gpus=$(rocm-smi --showproductname | grep "MI250" | wc -l)
 

@@ -1,4 +1,5 @@
 #!/bin/bash
+set -ex
 
 agentName=$1
 target_device=$2
