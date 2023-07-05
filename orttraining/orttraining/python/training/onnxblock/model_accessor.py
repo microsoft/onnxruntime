@@ -4,8 +4,8 @@
 from __future__ import annotations
 
 import copy
-from contextlib import contextmanager
 import os
+from contextlib import contextmanager
 
 import onnx
 

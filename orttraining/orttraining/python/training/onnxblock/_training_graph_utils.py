@@ -2,13 +2,13 @@
 # Licensed under the MIT License.
 
 import copy
+import os
 from typing import List, Optional, Set, Tuple, Union
 
 import onnx
-import os
 
-from onnxruntime.capi._pybind_state import GradientGraphBuilder, get_optimized_model
 from onnxruntime import SessionOptions
+from onnxruntime.capi._pybind_state import GradientGraphBuilder, get_optimized_model
 
 
 def _disable_training_mode(model: onnx.ModelProto) -> None:
