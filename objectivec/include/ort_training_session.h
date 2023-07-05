@@ -1,7 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#ifdef ENABLE_TRAINING_APIS
 #import <Foundation/Foundation.h>
 #include <stdint.h>
 
@@ -257,5 +256,3 @@ void ORTSetSeed(int64_t seed);
 #endif
 
 NS_ASSUME_NONNULL_END
-
-#endif  // ENABLE_TRAINING_APIS
