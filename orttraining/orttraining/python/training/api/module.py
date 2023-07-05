@@ -9,7 +9,7 @@ import numpy as np
 
 from onnxruntime.capi import _pybind_state as C
 from onnxruntime.capi.onnxruntime_inference_collection import OrtValue, get_ort_device_type
-from onnxruntime.capi.onnxruntime_pybind11_state import OrtValueVector
+from onnxruntime.capi.onnxruntime_pybind11_state import OrtValueVector, SessionOptions
 from onnxruntime.training.api.checkpoint_state import CheckpointState
 
 
@@ -33,6 +33,7 @@ class Module:
         state: The checkpoint state object.
         eval_model_uri: The path to the evaluation model.
         device: The device to run the model on. Default is "cpu".
+        session_options: The session options to use for the model.
     """
 
     training: bool
@@ -43,11 +44,13 @@ class Module:
         state: CheckpointState,
         eval_model_uri: os.PathLike | None = None,
         device: str = "cpu",
+        session_options: SessionOptions | None = None,
     ) -> None:
         self.training = True
         options = device.split(":")
         self._device_type = options[0]
         device_id = 0 if len(options) < 2 else int(options[1])
+        self._session_options = session_options if session_options is not None else SessionOptions()
 
         self._device = C.OrtDevice(
             get_ort_device_type(self._device_type, device_id),
@@ -59,6 +62,7 @@ class Module:
             state._state,
             os.fspath(eval_model_uri) if eval_model_uri is not None else None,
             self._device,
+            self._session_options,
         )
         self._state = state
 
