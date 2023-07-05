@@ -241,8 +241,6 @@ NS_ASSUME_NONNULL_BEGIN
 
 static bool gDummyRegisterCustomOpsFnCalled = false;
 
-// dummy custom op registration C function
-// we can avoid including onnxruntime_c_api.h if we just use incomplete types
 static OrtStatus* _Nullable DummyRegisterCustomOpsFn(OrtSessionOptions* /*session_options*/,
                                                      const OrtApiBase* /*api*/) {
   gDummyRegisterCustomOpsFnCalled = true;
