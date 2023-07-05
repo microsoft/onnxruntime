@@ -24,6 +24,10 @@ using ort_run_options_handle_t = OrtRunOptions*;
 struct OrtValue;
 using ort_tensor_handle_t = OrtValue*;
 
+struct OrtStatus;
+
+typedef OrtStatus* OrtStatusPtr;
+
 OrtErrorCode CheckStatus(OrtStatusPtr status);
 
 extern "C" {

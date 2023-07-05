@@ -1,9 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "api.h"
-
 #include "core/session/onnxruntime_cxx_api.h"
+#include "api.h"
 
 #include <iostream>
 #include <vector>
