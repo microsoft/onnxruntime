@@ -423,12 +423,13 @@ public class TestHelpers {
   }
 
   public static OnnxTensor makeIdentityMatrixBuf(OrtEnvironment env, int size) throws OrtException {
-    FloatBuffer buf = ByteBuffer.allocateDirect(size*size*4).order(ByteOrder.LITTLE_ENDIAN).asFloatBuffer();
+    FloatBuffer buf =
+        ByteBuffer.allocateDirect(size * size * 4).order(ByteOrder.LITTLE_ENDIAN).asFloatBuffer();
     for (int i = 0; i < size; i++) {
-      buf.put(i*size + i, 1.0f);
+      buf.put(i * size + i, 1.0f);
     }
 
-    return OnnxTensor.createTensor(env, buf, new long[]{size,size});
+    return OnnxTensor.createTensor(env, buf, new long[] {size, size});
   }
 
   private static class TypeWidth {

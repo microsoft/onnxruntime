@@ -5,6 +5,7 @@
 package ai.onnxruntime;
 
 import ai.onnxruntime.OnnxMl.StringStringEntryProto;
+import ai.onnxruntime.OnnxMl.TensorProto.DataLocation;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.ByteBuffer;
@@ -14,12 +15,7 @@ import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.Arrays;
 
-import ai.onnxruntime.OnnxMl.TensorProto.DataLocation;
-import org.junit.jupiter.api.Test;
-
-/**
- * Methods to generate test models.
- */
+/** Methods to generate test models. */
 public final class ModelGenerators {
   private ModelGenerators() {}
 
