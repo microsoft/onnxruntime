@@ -1785,6 +1785,11 @@ if (onnxruntime_USE_XNNPACK)
             RUNTIME   DESTINATION ${CMAKE_INSTALL_BINDIR}
             FRAMEWORK DESTINATION ${CMAKE_INSTALL_BINDIR})
   endif()
+
+  # TODO fix these warnings
+  if (HAS_SHORTEN_64_TO_32)
+    target_compile_options(onnxruntime_providers_xnnpack PRIVATE -Wno-error=shorten-64-to-32)
+  endif()
 endif()
 
 if (onnxruntime_USE_CANN)
