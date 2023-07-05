@@ -7,11 +7,11 @@
 #include <iostream>
 #include <vector>
 
-namespace {
-OrtEnv* g_env;
-OrtErrorCode g_last_error_code;
-std::string g_last_error_message;
-}  // namespace
+namespace OrtGlobals {
+    OrtEnv* g_env;
+    OrtErrorCode g_last_error_code;
+    std::string g_last_error_message;
+};
 
 static_assert(sizeof(const char*) == sizeof(size_t), "size of a pointer and a size_t value should be the same.");
 static_assert(sizeof(size_t) == 4, "size of size_t should be 4 in this build (wasm32).");
@@ -19,14 +19,14 @@ static_assert(sizeof(size_t) == 4, "size of size_t should be 4 in this build (wa
 OrtErrorCode CheckStatus(OrtStatusPtr status) {
   if (status) {
     std::string error_message = Ort::GetApi().GetErrorMessage(status);
-    g_last_error_code = Ort::GetApi().GetErrorCode(status);
-    g_last_error_message = Ort::Exception(std::move(error_message), g_last_error_code).what();
+    OrtGlobals::g_last_error_code = Ort::GetApi().GetErrorCode(status);
+    OrtGlobals::g_last_error_message = Ort::Exception(std::move(error_message), OrtGlobals::g_last_error_code).what();
     Ort::GetApi().ReleaseStatus(status);
   } else {
-    g_last_error_code = ORT_OK;
-    g_last_error_message.clear();
+    OrtGlobals::g_last_error_code = ORT_OK;
+    OrtGlobals::g_last_error_message.clear();
   }
-  return g_last_error_code;
+  return OrtGlobals::g_last_error_code;
 }
 
 #define CHECK_STATUS(ORT_API_NAME, ...) \
@@ -74,15 +74,15 @@ int OrtInit(int num_threads, int logging_level) {
                       static_cast<OrtLoggingLevel>(logging_level),
                       "Default",
                       tp_options,
-                      &g_env);
+                      &OrtGlobals::g_env);
 #else
-  return CHECK_STATUS(CreateEnv, static_cast<OrtLoggingLevel>(logging_level), "Default", &g_env);
+  return CHECK_STATUS(CreateEnv, static_cast<OrtLoggingLevel>(logging_level), "Default", &OrtGlobals::g_env);
 #endif
 }
 
 void OrtGetLastError(int* error_code, const char** error_message) {
-  *error_code = g_last_error_code;
-  *error_message = g_last_error_message.empty() ? nullptr : g_last_error_message.c_str();
+  *error_code = OrtGlobals::g_last_error_code;
+  *error_message = OrtGlobals::g_last_error_message.empty() ? nullptr : OrtGlobals::g_last_error_message.c_str();
 }
 
 OrtSessionOptions* OrtCreateSessionOptions(size_t graph_optimization_level,
@@ -176,7 +176,7 @@ OrtSession* OrtCreateSession(void* data, size_t data_length, OrtSessionOptions* 
 #endif
 
   OrtSession* session = nullptr;
-  return (CHECK_STATUS(CreateSessionFromArray, g_env, data, data_length, session_options, &session) == ORT_OK)
+  return (CHECK_STATUS(CreateSessionFromArray, OrtGlobals::g_env, data, data_length, session_options, &session) == ORT_OK)
              ? session
              : nullptr;
 }

@@ -24,9 +24,11 @@ using ort_run_options_handle_t = OrtRunOptions*;
 struct OrtValue;
 using ort_tensor_handle_t = OrtValue*;
 
-struct OrtStatus;
-
-typedef OrtStatus* OrtStatusPtr;
+namespace OrtGlobals {
+    extern OrtEnv* g_env;
+    extern OrtErrorCode g_last_error_code;
+    extern std::string g_last_error_message;
+};
 
 OrtErrorCode CheckStatus(OrtStatusPtr status);
 
