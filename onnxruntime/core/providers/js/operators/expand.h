@@ -8,12 +8,7 @@
 namespace onnxruntime {
 namespace js {
 
-class Expand : public JsKernel {
- public:
-  Expand(const OpKernelInfo& info) : JsKernel(info) {
-    JSEP_INIT_KERNEL(Expand);
-  }
-};
+JSEP_KERNEL_IMPL(Expand, Expand);
 
 }  // namespace js
 }  // namespace onnxruntime
