@@ -1116,14 +1116,13 @@ bool TensorrtExecutionProvider::PerThreadContext::IsGraphCaptured() const {
 Status TensorrtExecutionProvider::PerThreadContext::ReplayGraph() {
   ORT_ENFORCE(IsGraphCaptured());
   // Please note that CUDAGraph::Replay() is not thread safe.
-  // ORT TRT calls ReplayGraph() in compute_func() where synchromization is enforced due to lock_guard(),
+  // The cuda graph object is maintained by a per thread basis,
   // therefore calling CUDAGraph::Replay() here is guaranteed to be thread safe.
   return cuda_graph_->Replay();
 }
 
 void TensorrtExecutionProvider::PerThreadContext::IncrementRegularRunCountBeforeGraphCapture() {
-  // Please note that this function is not thread safe.
-  // ORT TRT calls this function in compute_func() where synchronization is enforced due to lock_guard(),
+  // The cuda graph object is maintained by a per thread basis,
   // therefore following increment is guaranteed to be thread safe.
   ++regular_run_count_before_graph_capture_;
 }
@@ -2416,9 +2415,9 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
           {
             std::lock_guard<OrtMutex> lock(*(trt_state->tensorrt_mu_ptr));
             auto status = ApplyProfileShapesFromInputTensorValue(trt_profiles, ctx, input, shape_ranges, input_indexes, tensor_shape_values, stream, &engine_update);
-          }
-          if (status != Status::OK()) {
-            return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "TensorRT EP failed to parse input tensor and generate optimization profiles.");
+            if (status != Status::OK()) {
+              return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "TensorRT EP failed to parse input tensor and generate optimization profiles.");
+            }
           }
         }
       }
@@ -2954,9 +2953,8 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
 
       // End CUDA graph capture.
       // Note: One reason we don't put end of graph capture in OnRunEnd() like CUDA EP does is because of cuda stream mentioned in graph capture
-      // above, another reason is because OnRunEnd() is not synchronized with OnRunStart() and ExecuteGraph() per inference_session.cc,
-      // which might end up with many cuda graphs are captured by multiple threads if running with multithreading.
-      // It's safe to start/end CUDA graph capture in compute_func() here since the whole function is protected by the lock_guard().
+      // above, another reason is because OnRunEnd() is not synchronized with OnRunStart() and ExecuteGraph() per inference_session.cc.
+      // It's safe to start/end CUDA graph capture in compute_func() here since cuda graph object is maintained by a per thread basis.
       if (cuda_graph_enable_ && !GetPerThreadContext().IsGraphCaptured()) {
         if (GetPerThreadContext().IsGraphCaptureAllowed()) {
           GetPerThreadContext().CaptureEnd();
