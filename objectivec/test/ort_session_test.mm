@@ -249,13 +249,13 @@ static OrtStatus* _Nullable DummyRegisterCustomOpsFn(OrtSessionOptions* /*sessio
   return nullptr;
 }
 
-- (void)testRegisterCustomOpsWithCFunction {
+- (void)testRegisterCustomOpsUsingFunctionPointer {
   NSError* err = nil;
   ORTSessionOptions* sessionOptions = [ORTSessionTest makeSessionOptions];
 
   gDummyRegisterCustomOpsFnCalled = false;
-  BOOL registerResult = [sessionOptions registerCustomOpsWithCFunction:&DummyRegisterCustomOpsFn
-                                                                 error:&err];
+  BOOL registerResult = [sessionOptions registerCustomOpsUsingFunctionPointer:&DummyRegisterCustomOpsFn
+                                                                        error:&err];
   ORTAssertBoolResultSuccessful(registerResult, err);
 
   XCTAssertEqual(gDummyRegisterCustomOpsFnCalled, true);

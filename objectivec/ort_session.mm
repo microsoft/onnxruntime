@@ -309,8 +309,8 @@ NS_ASSUME_NONNULL_BEGIN
   ORT_OBJC_API_IMPL_CATCH_RETURNING_BOOL(error)
 }
 
-- (BOOL)registerCustomOpsWithCFunction:(ORTCAPIRegisterCustomOpsFnPtr)registerCustomOpsFn
-                                 error:(NSError**)error {
+- (BOOL)registerCustomOpsUsingFunctionPointer:(ORTCAPIRegisterCustomOpsFnPtr)registerCustomOpsFn
+                                        error:(NSError**)error {
   try {
     if (!registerCustomOpsFn) {
       ORT_CXX_API_THROW("registerCustomOpsFn must not be null", ORT_INVALID_ARGUMENT);
