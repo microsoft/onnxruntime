@@ -589,10 +589,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             {
                 for (int i = 0; i < strings.Count; ++i)
                 {
-                    var srcSpan = strings[i].Span;
-                    var destSpan = ortValue.GetMutableStringElementAsSpan(srcSpan.Length, i);
-                    Assert.Equal(srcSpan.Length, destSpan.Length);
-                    srcSpan.CopyTo(destSpan);
+                    ortValue.FillStringTensorElement(strings[i].Span, i);
                 }
                 return ortValue;
             }

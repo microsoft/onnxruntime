@@ -262,24 +262,6 @@ namespace Microsoft.ML.OnnxRuntime
         }
 
         /// <summary>
-        /// This API resizes String Tensor element to the requested amount of bytes (UTF-8)
-        /// and returns a span to the resized buffer. This API is useful when you have UTF-8 data
-        /// that you want to quickly stick into the OrtValue native memory.
-        /// </summary>
-        /// <param name="bytesCount">requested buffer size in bytes</param>
-        /// <param name="index">flat index of the element in the string tensor</param>
-        /// <returns></returns>
-        public Span<byte> GetMutableStringElementAsSpan(int bytesCount, int index)
-        {
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtGetResizedStringTensorElementBuffer(Handle,
-                                  (UIntPtr)index, (UIntPtr)bytesCount, out IntPtr buffer));
-            unsafe
-            {
-                return new Span<byte>(buffer.ToPointer(), bytesCount);
-            }
-        }
-
-        /// <summary>
         /// Convenience method to obtain all string tensor elements as a string array.
         /// </summary>
         /// <returns>string[]</returns>
@@ -789,6 +771,31 @@ namespace Microsoft.ML.OnnxRuntime
         public void FillStringTensorElement(ReadOnlyMemory<char> rom, int index)
         {
             FillStringTensorElement(rom.Span, index);
+        }
+
+        /// <summary>
+        /// This API resizes String Tensor element to the requested amount of bytes (UTF-8)
+        /// and copies the bytes from the supplied ReadOnlySpan into the native tensor memory (resized buffer).
+        /// 
+        /// The API is useful for quick loading of utf8 data into the native tensor memory.
+        /// </summary>
+        /// <param name="utf8Bytes">read only span of bytes</param>
+        /// <param name="index">flat index of the element in the string tensor</param>
+        public void FillStringTensorElement(ReadOnlySpan<byte> utf8Bytes, int index)
+        {
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtGetResizedStringTensorElementBuffer(Handle,
+                                  (UIntPtr)index, (UIntPtr)utf8Bytes.Length, out IntPtr buffer));
+
+            if (utf8Bytes.Length == 0)
+            {
+                return;
+            }
+
+            unsafe
+            {
+                var destSpan = new Span<byte>(buffer.ToPointer(), utf8Bytes.Length);
+                utf8Bytes.CopyTo(destSpan);
+            }
         }
 
         /// <summary>
