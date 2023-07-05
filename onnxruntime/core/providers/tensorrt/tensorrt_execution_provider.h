@@ -261,7 +261,7 @@ class TensorrtExecutionProvider : public IExecutionProvider {
 
     bool IsTensorRTContextInMap(std::string fused_node);
     nvinfer1::IExecutionContext& GetTensorRTContext(std::string fused_node);
-    void SetTensorRTContext(std::string fused_node, std::shared_ptr<nvinfer1::IExecutionContext> context); 
+    void SetTensorRTContext(std::string fused_node, std::shared_ptr<nvinfer1::IExecutionContext> context);
 
     void InitCUDAGraph();
     void SetGraphStream(cudaStream_t stream);
@@ -363,6 +363,5 @@ class TensorrtExecutionProvider : public IExecutionProvider {
 
   /**Check whether all the nodes of subgraph are supported*/
   bool IsSubGraphFullySupported(SubGraphCollection_t supported_nodes_vector, const int number_of_ort_nodes) const;
-
 };
 }  // namespace onnxruntime
