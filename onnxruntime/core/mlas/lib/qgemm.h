@@ -817,6 +817,11 @@ MlasSymmQGemmPackedOperation(
             size_t RowsHandled = MlasSymmQGemmKernel<KernelType>(
                 pa, b, c, PackedCountK, RowsRemaining, CountN, ldc, lda, ColumnSumBuffer);
 
+            if (Data->OutputProcessor != nullptr) {
+                Data->OutputProcessor->Process((int32_t*)(Data->C),
+                                               RangeStartM + RangeCountM - RowsRemaining,
+                                               RangeStartN + n, RowsHandled, CountN, ldc);
+            }
             c += ldc * RowsHandled;
             pa += lda * RowsHandled;
             RowsRemaining -= RowsHandled;

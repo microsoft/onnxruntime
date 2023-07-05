@@ -256,12 +256,11 @@ MlasSymmQgemmBatch(
 
     ptrdiff_t TargetThreadCount = ptrdiff_t(Complexity / double(MLAS_QGEMM_THREAD_COMPLEXITY)) + 1;
 
-    ptrdiff_t MaximumThreadCount = MlasGetMaximumThreadCount(ThreadPool);
+    ptrdiff_t MaximumThreadCount = MlasGetMaximumThreadCount(ThreadPool) * 4;
 
     if (TargetThreadCount >= MaximumThreadCount) {
         TargetThreadCount = MaximumThreadCount;
     }
-    TargetThreadCount *= 4;
 
     ptrdiff_t ThreadsPerGemm = TargetThreadCount / BatchN;
     if (ThreadsPerGemm < 1) {
@@ -317,7 +316,7 @@ size_t
 MLASCALL
 MlasGemmPackBSize(
     size_t N,
-    size_t K, 
+    size_t K,
     bool AIsSigned,
     bool BIsSigned
     )
@@ -482,7 +481,7 @@ size_t
 MLASCALL
 MlasSymmQgemmPackBSize(
     size_t N,
-    size_t K, 
+    size_t K,
     bool AIsSigned
     )
 {
