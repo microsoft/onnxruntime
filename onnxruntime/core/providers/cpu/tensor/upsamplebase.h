@@ -202,6 +202,19 @@ class UpsampleBase {
               UpsampleModeNN + "(default) or " + UpsampleModeLinear + " or " + UpsampleModeCubic + ".");
   }
 
+  std::string UpsampleModeToString(UpsampleMode mode) {
+    switch (mode) {
+      case UpsampleMode::NN:
+        return UpsampleModeNN;
+      case UpsampleMode::LINEAR:
+        return UpsampleModeLinear;
+      case UpsampleMode::CUBIC:
+        return UpsampleModeCubic;
+      default:
+        ORT_THROW("UpsampleMode is not supported!");
+    }
+  }
+
   AspectRatioPolicy StringToKeepAspectRatioPolicy(const std::string& policy) {
     const static std::unordered_map<std::string_view, AspectRatioPolicy> policy_map{
         {"stretch", AspectRatioPolicy::STRETCH},
@@ -213,6 +226,19 @@ class UpsampleBase {
       return it->second;
     } else {
       ORT_THROW("keep_aspect_ratio of [" + policy + "] is not supported!");
+    }
+  }
+
+  std::string KeepAspectRatioPolicyToString(AspectRatioPolicy policy) {
+    switch (policy) {
+      case AspectRatioPolicy::STRETCH:
+        return "stretch";
+      case AspectRatioPolicy::NOT_LARGER:
+        return "not_larger";
+      case AspectRatioPolicy::NOT_SMALLER:
+        return "not_smaller";
+      default:
+        ORT_THROW("AspectRatioPolicy is not supported!");
     }
   }
 
@@ -240,6 +266,27 @@ class UpsampleBase {
       return HALF_PIXEL_SYMMETRIC;
     }
     ORT_THROW("coordinate_transform_mode:[" + coordinate_transform_mode_name + "] is not supportted!");
+  }
+
+  std::string ResizeCoordinateTransformationModeToString(const ResizeCoordinateTransformationMode mode) {
+    switch (mode) {
+      case ASYMMETRIC:
+        return "asymmetric";
+      case PYTORCH_HALF_PIXEL:
+        return "pytorch_half_pixel";
+      case TF_HALF_PIXEL_FOR_NN:
+        return "tf_half_pixel_for_nn";
+      case ALIGN_CORNERS:
+        return "align_corners";
+      case TF_CROP_AND_RESIZE:
+        return "tf_crop_and_resize";
+      case HALF_PIXEL:
+        return "half_pixel";
+      case HALF_PIXEL_SYMMETRIC:
+        return "half_pixel_symmetric";
+      default:
+        ORT_THROW("ResizeCoordinateTransformationMode is not supported!");
+    }
   }
 
   GetOriginalCoordinateFunc GetOriginalCoordinateFromResizedCoordinate(
@@ -298,6 +345,21 @@ class UpsampleBase {
       return SIMPLE;
     }
     ORT_THROW("nearest_mode:[" + nearest_mode_name + "] is not supported!");
+  }
+
+  std::string NearestModeToString(const ResizeNearestMode mode) {
+    switch (mode) {
+      case ROUND_PREFER_FLOOR:
+        return "round_prefer_floor";
+      case ROUND_PREFER_CEIL:
+        return "round_prefer_ceil";
+      case FLOOR:
+        return "floor";
+      case CEIL:
+        return "ceil";
+      default:
+        return "";
+    }
   }
 
   GetNearestPixelFunc GetNearestPixelFromOriginal(ResizeNearestMode nearest_mode) {
