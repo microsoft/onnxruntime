@@ -1,3 +1,4 @@
 EXPORTS
    GetProvider
    ProviderHashFunc
+   RegisterCustomOp
