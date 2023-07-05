@@ -3,7 +3,6 @@
 
 #pragma once
 
-#include "core/framework/op_kernel.h"
 #include "core/framework/tensor.h"
 #include "core/providers/cpu/tensor/split.h"
 #include "core/providers/js/js_kernel.h"
@@ -45,8 +44,6 @@ class Split : public JsKernel, public SplitBase {
       ORT_ENFORCE(split_size_sum == total_split_size,
                   "Sum of split sizes (", split_size_sum, ") does not match input size (", total_split_size, ")");
     }
-
-    LOGS_DEFAULT(VERBOSE) << ss.str();
 
     JSEP_INIT_KERNEL_ATTRIBUTE(Split, ({"axis" : $1,
                                         "numOutputs" : $2,
