@@ -8,13 +8,21 @@
 
 #pragma once
 
-#include "api.h"
 #include <emscripten.h>
 
 #include <stddef.h>
 
 struct OrtTrainingManager;
 using orttraining_handle_t = OrtTrainingManager*;
+
+struct OrtSessionOptions;
+using ort_session_options_handle_t = OrtSessionOptions*;
+
+struct OrtRunOptions;
+using ort_run_options_handle_t = OrtRunOptions*;
+
+struct OrtValue;
+using ort_tensor_handle_t = OrtValue*;
 
 extern "C" {
 /**

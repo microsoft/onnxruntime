@@ -8,6 +8,12 @@
 #include <iostream>
 #include <vector>
 
+namespace {
+OrtEnv* g_env;
+OrtErrorCode g_last_error_code;
+std::string g_last_error_message;
+}  // namespace
+
 static_assert(sizeof(const char*) == sizeof(size_t), "size of a pointer and a size_t value should be the same.");
 static_assert(sizeof(size_t) == 4, "size of size_t should be 4 in this build (wasm32).");
 
@@ -26,9 +32,6 @@ OrtErrorCode CheckStatus(OrtStatusPtr status) {
 
 #define CHECK_STATUS(ORT_API_NAME, ...) \
   CheckStatus(Ort::GetApi().ORT_API_NAME(__VA_ARGS__))
-
-#define CHECK_TRAINING_STATUS(ORT_API_NAME, ...) \
-  CheckStatus(Ort::GetTrainingApi().ORT_API_NAME(__VA_ARGS__))
 
 #define RETURN_ERROR_CODE_IF_ERROR(ORT_API_NAME, ...)         \
   do {                                                        \

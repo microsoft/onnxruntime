@@ -1,3 +1,4 @@
+
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
@@ -14,17 +15,6 @@
 
 struct OrtSession;
 using ort_session_handle_t = OrtSession*;
-
-struct OrtSessionOptions;
-using ort_session_options_handle_t = OrtSessionOptions*;
-
-struct OrtRunOptions;
-using ort_run_options_handle_t = OrtRunOptions*;
-
-struct OrtValue;
-using ort_tensor_handle_t = OrtValue*;
-
-OrtErrorCode CheckStatus(OrtStatusPtr status);
 
 extern "C" {
 
