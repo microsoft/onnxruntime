@@ -13,7 +13,7 @@ else
 fi
 
 python \
-  /home/onnxruntimedev/huggingface-transformers/examples/pytorch/language-modeling/run_mlm.py \
+  /stage/huggingface-transformers/examples/pytorch/language-modeling/run_mlm.py \
   --model_name_or_path bert-large-uncased \
   --dataset_name wikitext \
   --dataset_config_name wikitext-2-raw-v1 \
