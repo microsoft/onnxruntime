@@ -187,7 +187,7 @@ class Optimizer:
     def cleanup(self):
         self.graph.cleanup().toposort()
 
-    def get_optimized_onnx_graph():
+    def get_optimized_onnx_graph(self):
         return gs.export_onnx(self.graph)
 
     def select_outputs(self, keep, names=None):
