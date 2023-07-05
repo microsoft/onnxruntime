@@ -3,6 +3,7 @@
 
 #include "onnxruntime_training_cxx_api.h"
 #include "training_api.h"
+#include "api.h"
 
 struct OrtTrainingManager {
   OrtTrainingSession* trainingSession;
@@ -40,7 +41,7 @@ OrtTrainingManager* EMSCRIPTEN_KEEPALIVE OrtTrainingCreateTrainingSession(const 
                                                                           void* optimizer_model,
                                                                           size_t optimizer_size) {
   trainingHandle->trainingSession = nullptr;
-  return (CHECK_TRAINING_STATUS(CreateTrainingSessionFromArray, g_env, options, trainingHandle->checkpointState,
+  return (CHECK_TRAINING_STATUS(CreateTrainingSessionFromArray, OrtGlobals::g_env, options, trainingHandle->checkpointState,
                                 train_model, train_size, eval_model, eval_size, optimizer_model,
                                 optimizer_size,
                                 &trainingHandle->trainingSession) == ORT_OK)

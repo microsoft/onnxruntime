@@ -8,16 +8,9 @@
 
 #pragma once
 
-#include "core/session/onnxruntime_cxx_api.h"
 #include <emscripten.h>
 
 #include <stddef.h>
-
-namespace {
-OrtEnv* g_env;
-OrtErrorCode g_last_error_code;
-std::string g_last_error_message;
-}  // namespace
 
 struct OrtSession;
 using ort_session_handle_t = OrtSession*;
@@ -30,6 +23,12 @@ using ort_run_options_handle_t = OrtRunOptions*;
 
 struct OrtValue;
 using ort_tensor_handle_t = OrtValue*;
+
+namespace OrtGlobals {
+extern OrtEnv* g_env;
+extern OrtErrorCode g_last_error_code;
+extern std::string g_last_error_message;
+};  // namespace OrtGlobals
 
 OrtErrorCode CheckStatus(OrtStatusPtr status);
 
