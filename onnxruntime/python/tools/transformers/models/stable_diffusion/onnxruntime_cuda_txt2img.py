@@ -210,7 +210,7 @@ class OrtStableDiffusionOptimizer:
         )
 
         if self.model_type == "clip":
-            m.prune_graph(outputs=["text_embeddings"])  # only keep first input
+            m.prune_graph(outputs=["text_embeddings"])  # remove the pooler_output, and only keep the first output.
 
         if float16:
             logger.info("Convert to float16 ...")
@@ -230,9 +230,11 @@ class OrtStableDiffusionOptimizer:
 
 
 class BaseModel:
-    def __init__(self, model, device="cuda", max_batch_size=16, embedding_dim=768, text_maxlen=77, model_type=None):
+    def __init__(
+        self, model, name, device="cuda", max_batch_size=16, embedding_dim=768, text_maxlen=77, model_type=None
+    ):
         self.model = model
-        self.name = "SD Model"
+        self.name = name
         self.device = device
 
         self.min_batch = 1
@@ -245,7 +247,8 @@ class BaseModel:
         self.embedding_dim = embedding_dim
         self.text_maxlen = text_maxlen
 
-        self.optimizer = OrtStableDiffusionOptimizer(model_type)
+        self.model_type = name.lower() if name in ["CLIP", "UNet"] else "vae"
+        self.optimizer = OrtStableDiffusionOptimizer(self.model_type)
 
     def get_model(self):
         return self.model
@@ -312,15 +315,6 @@ def get_engine_path(engine_dir, model_name, profile_id):
     return os.path.join(engine_dir, model_name + profile_id + ".onnx")
 
 
-def has_engine_file(engine_path):
-    if os.path.isdir(engine_path):
-        children = os.scandir(engine_path)
-        for entry in children:
-            if entry.is_file() and entry.name.endswith(".engine"):
-                return True
-    return False
-
-
 def build_engines(
     models,
     engine_dir,
@@ -350,9 +344,13 @@ def build_engines(
     for model_name, model_obj in models.items():
         onnx_path = get_onnx_path(model_name, onnx_dir)
         onnx_opt_path = get_engine_path(engine_dir, model_name, profile_id)
-        if not os.path.exists(onnx_opt_path):
-            if not os.path.exists(onnx_path):
-                logger.info(f"Exporting model: {onnx_path}")
+        if os.path.exists(onnx_opt_path):
+            logger.info("Found cached optimized model: %s", onnx_opt_path)
+        else:
+            if os.path.exists(onnx_path):
+                logger.info("Found cached model: %s", onnx_path)
+            else:
+                logger.info("Exporting model: %s", onnx_path)
                 model = model_obj.get_model().to(model_obj.device)
                 with torch.inference_mode():
                     inputs = model_obj.get_sample_input(1, 512, 512)
@@ -370,22 +368,16 @@ def build_engines(
                 del model
                 torch.cuda.empty_cache()
                 gc.collect()
-            else:
-                logger.info("Found cached model: %s", onnx_path)
 
             # Optimize onnx
-            if not os.path.exists(onnx_opt_path):
-                logger.info("Generating optimizing model: %s", onnx_opt_path)
-                model_obj.optimize(onnx_path, onnx_opt_path, fp16)
-            else:
-                logger.info("Found cached optimized model: %s", onnx_opt_path)
+            logger.info("Generating optimized model: %s", onnx_opt_path)
+            model_obj.optimize(onnx_path, onnx_opt_path, fp16)
 
     built_engines = {}
     for model_name, model_obj in models.items():
         engine_path = get_engine_path(engine_dir, model_name, profile_id)
         engine = Engine(engine_path, provider)
 
-        # We create session within build() so it always needed to run.
         disable_graph_optimization = fp16 or (model_obj.model_type != "unet")
         logger.info("%s options for %s: %s", provider, model_name, engine.provider_options)
 
@@ -402,9 +394,12 @@ def run_engine(engine, feed_dict):
 class CLIP(BaseModel):
     def __init__(self, model, device, max_batch_size, embedding_dim):
         super(CLIP, self).__init__(
-            model=model, device=device, max_batch_size=max_batch_size, embedding_dim=embedding_dim, model_type="clip"
+            model=model,
+            name="CLIP",
+            device=device,
+            max_batch_size=max_batch_size,
+            embedding_dim=embedding_dim,
         )
-        self.name = "CLIP"
 
     def get_input_names(self):
         return ["input_ids"]
@@ -444,14 +439,13 @@ class UNet(BaseModel):
     ):
         super(UNet, self).__init__(
             model=model,
+            name="UNet",
             device=device,
             max_batch_size=max_batch_size,
             embedding_dim=embedding_dim,
             text_maxlen=text_maxlen,
-            model_type="unet",
         )
         self.unet_dim = unet_dim
-        self.name = "UNet"
 
     def get_input_names(self):
         return ["sample", "timestep", "encoder_hidden_states"]
@@ -499,9 +493,12 @@ def make_UNet(model, device, max_batch_size, embedding_dim, inpaint=False):
 class VAE(BaseModel):
     def __init__(self, model, device, max_batch_size, embedding_dim):
         super(VAE, self).__init__(
-            model=model, device=device, max_batch_size=max_batch_size, embedding_dim=embedding_dim, model_type="vae"
+            model=model,
+            name="VAE Decoder",
+            device=device,
+            max_batch_size=max_batch_size,
+            embedding_dim=embedding_dim,
         )
-        self.name = "VAE decoder"
 
     def get_input_names(self):
         return ["latent"]
@@ -641,7 +638,7 @@ class OnnxruntimeCudaStableDiffusionPipeline(StableDiffusionPipeline):
             provider=self.provider,
         )
 
-        # ONNX export was done in CPU. Here we load the other modules to GPU.
+        # Load the remaining modules to GPU.
         self.text_encoder = None
         self.vae = None
         self.unet = None

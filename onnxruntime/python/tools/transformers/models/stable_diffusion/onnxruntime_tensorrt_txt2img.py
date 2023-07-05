@@ -37,7 +37,6 @@ import os
 from collections import OrderedDict
 from typing import List, Optional, Union
 import shutil
-import numpy as np
 import onnx
 import onnx_graphsurgeon as gs
 import torch
@@ -185,10 +184,11 @@ class Optimizer:
     def __init__(self, onnx_graph):
         self.graph = gs.import_onnx(onnx_graph)
 
-    def cleanup(self, return_onnx=False):
+    def cleanup(self):
         self.graph.cleanup().toposort()
-        if return_onnx:
-            return gs.export_onnx(self.graph)
+
+    def get_optimized_onnx_graph():
+        return gs.export_onnx(self.graph)
 
     def select_outputs(self, keep, names=None):
         self.graph.outputs = [self.graph.outputs[o] for o in keep]
@@ -196,13 +196,11 @@ class Optimizer:
             for i, name in enumerate(names):
                 self.graph.outputs[i].name = name
 
-    def fold_constants(self, return_onnx=False):
+    def fold_constants(self):
         onnx_graph = fold_constants(gs.export_onnx(self.graph), allow_onnxruntime_shape_inference=True)
         self.graph = gs.import_onnx(onnx_graph)
-        if return_onnx:
-            return onnx_graph
 
-    def infer_shapes(self, return_onnx=False):
+    def infer_shapes(self):
         onnx_graph = gs.export_onnx(self.graph)
         if onnx_graph.ByteSize() > 2147483648:
             raise TypeError("ERROR: model size exceeds supported 2GB limit")
@@ -210,14 +208,12 @@ class Optimizer:
             onnx_graph = shape_inference.infer_shapes(onnx_graph)
 
         self.graph = gs.import_onnx(onnx_graph)
-        if return_onnx:
-            return onnx_graph
 
 
 class BaseModel:
-    def __init__(self, model, fp16=False, device="cuda", max_batch_size=16, embedding_dim=768, text_maxlen=77):
+    def __init__(self, model, name, fp16=False, device="cuda", max_batch_size=16, embedding_dim=768, text_maxlen=77):
         self.model = model
-        self.name = "SD Model"
+        self.name = name
         self.fp16 = fp16
         self.device = device
 
@@ -281,8 +277,8 @@ class BaseModel:
         opt.cleanup()
         opt.fold_constants()
         opt.infer_shapes()
-        onnx_opt_graph = opt.cleanup(return_onnx=True)
-        return onnx_opt_graph
+        opt.cleanup()
+        return opt.get_optimized_onnx_graph()
 
     def check_dims(self, batch_size, image_height, image_width):
         assert batch_size >= self.min_batch and batch_size <= self.max_batch
@@ -462,9 +458,8 @@ def run_engine(engine, feed_dict):
 class CLIP(BaseModel):
     def __init__(self, model, device, max_batch_size, embedding_dim):
         super(CLIP, self).__init__(
-            model=model, device=device, max_batch_size=max_batch_size, embedding_dim=embedding_dim
+            model=model, name="CLIP", device=device, max_batch_size=max_batch_size, embedding_dim=embedding_dim
         )
-        self.name = "CLIP"
 
     def get_input_names(self):
         return ["input_ids"]
@@ -502,8 +497,8 @@ class CLIP(BaseModel):
         opt.fold_constants()
         opt.infer_shapes()
         opt.select_outputs([0], names=["text_embeddings"])  # rename network output
-        opt_onnx_graph = opt.cleanup(return_onnx=True)
-        return opt_onnx_graph
+        opt.cleanup()
+        return opt.get_optimized_onnx_graph()
 
 
 def make_CLIP(model, device, max_batch_size, embedding_dim, inpaint=False):
@@ -516,6 +511,7 @@ class UNet(BaseModel):
     ):
         super(UNet, self).__init__(
             model=model,
+            name="UNet",
             fp16=fp16,
             device=device,
             max_batch_size=max_batch_size,
@@ -523,7 +519,6 @@ class UNet(BaseModel):
             text_maxlen=text_maxlen,
         )
         self.unet_dim = unet_dim
-        self.name = "UNet"
 
     def get_input_names(self):
         return ["sample", "timestep", "encoder_hidden_states"]
@@ -600,9 +595,8 @@ def make_UNet(model, device, max_batch_size, embedding_dim, inpaint=False):
 class VAE(BaseModel):
     def __init__(self, model, device, max_batch_size, embedding_dim):
         super(VAE, self).__init__(
-            model=model, device=device, max_batch_size=max_batch_size, embedding_dim=embedding_dim
+            model=model, name="VAE decoder", device=device, max_batch_size=max_batch_size, embedding_dim=embedding_dim
         )
-        self.name = "VAE decoder"
 
     def get_input_names(self):
         return ["latent"]
