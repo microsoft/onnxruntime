@@ -182,6 +182,7 @@ jobs:
               set -ex; \
               export KERNEL_EXPLORER_BUILD_DIR=/build/$(BuildConfig); \
               export KERNEL_EXPLORER_BATCHED_GEMM_MAX_BATCH_SIZE=8; \
+              export KERNEL_EXPLORER_TEST_USE_CUPY=1; \
               pytest /onnxruntime_src/onnxruntime/python/tools/kernel_explorer/ -n 8 --reruns 1 --durations=100"
       workingDirectory: $(Build.SourcesDirectory)
     displayName: 'Run kernel explorer tests'

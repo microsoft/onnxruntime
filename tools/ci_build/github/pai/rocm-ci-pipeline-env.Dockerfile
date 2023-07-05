@@ -1,4 +1,4 @@
-FROM rocm/pytorch:rocm5.5_ubuntu20.04_py3.8_pytorch_1.13.1
+FROM rocm/cupy:rocm5.5.0_ubuntu20.04_py3.8_pytorch2.0.0_cupy13.0.0
 
 RUN apt-get update -y && apt-get upgrade -y
 
