@@ -35,3 +35,4 @@ stages:
     WebTemplate: win-web-ci.yml
     UseWebPoolName: true
     WebPoolName: 'onnxruntime-Win2019-GPU-dml-A10'
+    WithCache: true
