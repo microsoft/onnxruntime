@@ -117,8 +117,7 @@ static common::Status AllocateHelper(const AllocatorPtr& allocator,
     const TensorSeq& source_tensor_seq = source_mlvalue.Get<TensorSeq>();
     TensorSeq::InitOrtValue(source_tensor_seq, allocator, target_mlvalue);
   } else {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                           source_mlvalue.IsInvalid() ? "Unsupported OrtValue type." : "Invalid OrtValue type.");
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unsupported OrtValue type.");
   }
   return Status::OK();
 }
