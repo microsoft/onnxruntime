@@ -1,14 +1,14 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
-# debug_options.py
+# _hierarchical_ortmodule.py
 import tempfile
 import warnings
 
 import torch
 
-from .... import ortmodule
-from ... import ORTModule
-from ...debug_options import DebugOptions, LogLevel
+from onnxruntime.training import ortmodule
+from onnxruntime.training.ortmodule import ORTModule
+from onnxruntime.training.ortmodule.options import DebugOptions, LogLevel
 
 # nn.Module's in this set are considered exportable to ONNX.
 # For other nn.Module's, torch.onnx.export is called to check if

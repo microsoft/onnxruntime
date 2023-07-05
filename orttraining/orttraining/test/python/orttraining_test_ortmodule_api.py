@@ -30,16 +30,9 @@ from transformers.modeling_outputs import SequenceClassifierOutput
 
 import onnxruntime.training.ortmodule as ortmodule_module
 from onnxruntime.training.optim import AdamWMode, FusedAdam
-from onnxruntime.training.ortmodule import (
-    DebugOptions,
-    LogLevel,
-    ORTModule,
-    _fallback,
-    _graph_execution_manager,
-    _io,
-    _utils,
-)
+from onnxruntime.training.ortmodule import DebugOptions, LogLevel, ORTModule, _fallback, _io, _utils
 from onnxruntime.training.ortmodule._custom_gradient_registry import register_gradient
+from onnxruntime.training.ortmodule.options import _SkipCheck
 
 DEFAULT_OPSET = 15
 
@@ -4454,7 +4447,7 @@ def test_ortmodule_gradient_accumulation_optimization_correctness():
 
     # model with optimization enabled
     opt_model = ORTModule(copy.deepcopy(pt_model))
-    opt_model._torch_module._execution_manager(is_training=True)._enable_grad_acc_optimization = True
+    opt_model._torch_module._execution_manager(is_training=True)._runtime_options.enable_grad_acc_optimization = True
     opt_optimizer = torch.optim.Adam(opt_model.parameters())
 
     def run_step(model, x):
@@ -4879,10 +4872,10 @@ def test_ortmodule_ortmodule_method_attribute_copy():
 @pytest.mark.parametrize(
     "policy_str, policy",
     [
-        ("SKIP_CHECK_DISABLED", _graph_execution_manager._SkipCheck.SKIP_CHECK_DISABLED),
-        ("SKIP_CHECK_DEVICE", _graph_execution_manager._SkipCheck.SKIP_CHECK_DEVICE),
-        ("SKIP_CHECK_BUILD_GRADIENT", _graph_execution_manager._SkipCheck.SKIP_CHECK_BUILD_GRADIENT),
-        ("SKIP_CHECK_EXECUTION_AGENT", _graph_execution_manager._SkipCheck.SKIP_CHECK_EXECUTION_AGENT),
+        ("SKIP_CHECK_DISABLED", _SkipCheck.SKIP_CHECK_DISABLED),
+        ("SKIP_CHECK_DEVICE", _SkipCheck.SKIP_CHECK_DEVICE),
+        ("SKIP_CHECK_BUILD_GRADIENT", _SkipCheck.SKIP_CHECK_BUILD_GRADIENT),
+        ("SKIP_CHECK_EXECUTION_AGENT", _SkipCheck.SKIP_CHECK_EXECUTION_AGENT),
     ],
 )
 def test_ortmodule_skip_check_load_from_os_env(policy_str, policy):
@@ -4893,7 +4886,7 @@ def test_ortmodule_skip_check_load_from_os_env(policy_str, policy):
     ort_model = ORTModule(model)
 
     for training_mode in [False, True]:
-        assert ort_model._torch_module._execution_manager(training_mode)._skip_check == policy
+        assert ort_model._torch_module._execution_manager(training_mode)._runtime_options.skip_check == policy
 
     del os.environ["ORTMODULE_SKIPCHECK_POLICY"]
 
@@ -5227,10 +5220,8 @@ def test_sigmoid_grad_opset13():
     N, D_in, H, D_out = 120, 15360, 500, 15360  # noqa: N806
     pt_model = NeuralNetSigmoid(D_in, H, D_out).to(device)
 
-    old_opst_cst = ortmodule_module.ONNX_OPSET_VERSION
     old_opset = os.getenv("ORTMODULE_ONNX_OPSET_VERSION", None)
     os.environ["ORTMODULE_ONNX_OPSET_VERSION"] = "13"
-    assert ortmodule_module.ONNX_OPSET_VERSION == 15
 
     ort_model = ORTModule(copy.deepcopy(pt_model))
 
@@ -5256,21 +5247,25 @@ def test_sigmoid_grad_opset13():
         del os.environ["ORTMODULE_ONNX_OPSET_VERSION"]
     else:
         os.environ["ORTMODULE_ONNX_OPSET_VERSION"] = old_opset
-    assert ortmodule_module.ONNX_OPSET_VERSION == 13
-    ortmodule_module.ONNX_OPSET_VERSION = old_opst_cst
+
+    assert ort_model._torch_module._execution_manager(True)._runtime_options.onnx_opset_version == 13
 
 
 @pytest.mark.parametrize("opset_version", [12, 13, 14, 15])
 def test_opset_version_change(opset_version):
+    original_env = None
+    if "ORTMODULE_ONNX_OPSET_VERSION" in os.environ:
+        original_env = os.environ["ORTMODULE_ONNX_OPSET_VERSION"]
+        del os.environ["ORTMODULE_ONNX_OPSET_VERSION"]
+
     device = "cuda"
 
     N, D_in, H, D_out = 64, 784, 500, 10  # noqa: N806
     x = torch.randn(N, D_in, device=device)
     model = NeuralNetSinglePositionalArgument(D_in, H, D_out).to(device)
 
-    ort_model = ORTModule(model)
-
     ortmodule_module.ONNX_OPSET_VERSION = opset_version
+    ort_model = ORTModule(model)
 
     # Make sure model runs without any exception
     prediction = ort_model(x)
@@ -5281,6 +5276,9 @@ def test_opset_version_change(opset_version):
     # Check opset version on ONNX model
     exported_model = ort_model._torch_module._execution_manager(ort_model._is_training())._onnx_models.exported_model
     assert exported_model.opset_import[0].version == opset_version
+
+    if original_env is not None:
+        os.environ["ORTMODULE_ONNX_OPSET_VERSION"] = original_env
 
 
 def test_serialize_ortmodule():
@@ -5752,10 +5750,16 @@ def test_runtime_inspector_label_and_embed_sparsity_detection(embed_is_sparse, l
         ("Add", 0),
         ("Add", 1),
         ("Add", 2),
+        ("Sub", 0),
+        ("Sub", 1),
+        ("Sub", 2),
+        ("Mul", 0),
+        ("Mul", 1),
+        ("Mul", 2),
         ("MatMul", 0),
         ("MatMul", 1),
         ("Dropout", 0),
-        ("LayerNorm", 0),
+        ("LayerNormalization", 0),
         ("Cast", 0),
         ("BiasGelu", 0),
     ],
@@ -5764,38 +5768,47 @@ def test_ops_for_padding_elimination(test_cases):
     os.environ["ORTMODULE_ENABLE_EMBEDDING_SPARSE_OPTIMIZER"] = "1"
     test_op = test_cases[0]
     case = test_cases[1]
+    # test_op = "Sub"
+    # case = 2
 
     class ToyModel(torch.nn.Module):
         def __init__(self, vocab_size, hidden_size, pad_token_id):
             super().__init__()
             self.word_embeddings = nn.Embedding(vocab_size, hidden_size, padding_idx=pad_token_id)
-            if test_op == "LayerNorm":
+            if test_op == "LayerNormalization":
                 self.LayerNorm = nn.LayerNorm(hidden_size, eps=1e-05)
             self.hidden_size = hidden_size
 
-        # test Add op for padding elimination
-        # in case 0, the shapes of inputs of Add are [batch_size, seqlen, hidden_size] and [hidden_size],
-        #            the Add should be included in padding elimination subgraph and the GatherGrad should be added to
-        #            output of Add.
-        # in case 1, the shapes of inputs of Add are [batch_size, seqlen, hidden_size] and [batch_size, 1, hidden_size],
-        #            this case is not support in padding elimination, so the Add should not be included in padding
-        #            elimination subgraph and the GatherGrad should be added before Add.
-        # in case 2, the shapes of inputs of Add are [batch_size, seqlen, hidden_size] and [batch_size, seqlen, hidden_size],
-        #            the Add should be included in padding elimination subgraph and the GatherGrad should be added to
-        #            output of Add. Besides, the other input of Add should be added 'Reshape + ShrunkenGather' to
+        # test test_elementwise op for padding elimination
+        # in case 0, the shapes of inputs of test_op are [batch_size, seqlen, hidden_size] and [hidden_size],
+        #            the test_op should be included in padding elimination subgraph and the GatherGrad should be added to
+        #            output of test_op.
+        # in case 1, the shapes of inputs of test_op are [batch_size, seqlen, hidden_size] and [batch_size, 1, hidden_size],
+        #            this case is not support in padding elimination, so the test_op should not be included in padding
+        #            elimination subgraph and the GatherGrad should be added before test_op.
+        # in case 2, the shapes of inputs of test_op are [batch_size, seqlen, hidden_size] and [batch_size, seqlen, hidden_size],
+        #            the test_op should be included in padding elimination subgraph and the GatherGrad should be added to
+        #            output of test_op. Besides, the other input of Add should be added 'Reshape + ShrunkenGather' to
         #            flatten and elimination padding.
-        def test_add(self, input_ids):
+        def test_elementwise(self, input_ids):
             input_shape = input_ids.size()
-            add_input = None
+            one_input = None
             if case == 0:
-                add_input = torch.ones(self.hidden_size, dtype=torch.long).to(device)
+                one_input = torch.ones(self.hidden_size, dtype=torch.long).to(device)
             elif case == 1:
-                add_input = torch.ones((input_shape[0], 1, self.hidden_size), dtype=torch.long).to(device)
+                one_input = torch.ones((input_shape[0], 1, self.hidden_size), dtype=torch.long).to(device)
             elif case == 2:
-                add_input = torch.ones(input_shape, dtype=torch.long).to(device)
-                add_input = add_input.unsqueeze(-1).expand(-1, -1, self.hidden_size)
+                one_input = torch.ones(input_shape, dtype=torch.long).to(device)
+                one_input = one_input.unsqueeze(-1).expand(-1, -1, self.hidden_size)
             inputs_embeds = self.word_embeddings(input_ids)
-            output = add_input + inputs_embeds
+            if test_op == "Add":
+                output = one_input + inputs_embeds
+            elif test_op == "Sub":
+                output = one_input - inputs_embeds
+            elif test_op == "Mul":
+                output = one_input * inputs_embeds
+            else:
+                output = None
             return output
 
         # test MatMul op for padding elimination
@@ -5824,7 +5837,7 @@ def test_ops_for_padding_elimination(test_cases):
             output = None
             if test_op == "Dropout":
                 output = torch.nn.functional.dropout(inputs_embeds, p=0.5, training=True)
-            elif test_op == "LayerNorm":
+            elif test_op == "LayerNormalization":
                 output = self.LayerNorm(inputs_embeds)
             elif test_op == "Cast":
                 output = inputs_embeds.to(torch.float16)
@@ -5834,8 +5847,8 @@ def test_ops_for_padding_elimination(test_cases):
             return output
 
         def forward(self, input_ids):
-            if test_op == "Add":
-                output = self.test_add(input_ids)
+            if test_op in ["Add", "Mul", "Sub"]:
+                output = self.test_elementwise(input_ids)
             elif test_op == "MatMul":
                 output = self.test_matmul(input_ids)
             else:
@@ -5865,34 +5878,39 @@ def test_ops_for_padding_elimination(test_cases):
     model(x)
 
     training_model = model._torch_module._execution_manager(True)._onnx_models.optimized_model
-    assert len([node.op_type for node in training_model.graph.node if node.op_type == "Sub"]) == 1
+    if test_op == "Sub":
+        assert len([node.op_type for node in training_model.graph.node if node.op_type == "Sub"]) == 2
+    else:
+        assert len([node.op_type for node in training_model.graph.node if node.op_type == "Sub"]) == 1
     assert len([node.op_type for node in training_model.graph.node if node.op_type == "NonZero"]) == 1
     assert len([node.op_type for node in training_model.graph.node if node.op_type == "Squeeze"]) == 1
-    assert len([node.op_type for node in training_model.graph.node if node.op_type == "GatherGrad"]) == 1
+    assert len([node.op_type for node in training_model.graph.node if node.op_type == "PadAndUnflatten"]) == 1
     if case == 2:
         assert len([node.op_type for node in training_model.graph.node if node.op_type == "ShrunkenGather"]) == 2
     else:
         assert len([node.op_type for node in training_model.graph.node if node.op_type == "ShrunkenGather"]) == 1
-    gathergrad_node = [node for node in training_model.graph.node if node.op_type == "GatherGrad"][0]
-    if test_op == "Add":
+    gathergrad_node = [node for node in training_model.graph.node if node.op_type == "PadAndUnflatten"][0]
+
+    def find_input_node_type(model, arg):
+        result = []
+        for node in model.graph.node:
+            if arg in node.output:
+                result.append(node)
+        return result[0].op_type if len(result) == 1 else None
+
+    gathergrad_input_optypes = [find_input_node_type(training_model, arg) for arg in gathergrad_node.input]
+    if test_op == "Add" or test_op == "Mul" or test_op == "Sub":
         if case == 0:
-            assert "/_original_module/Add_output_0" in gathergrad_node.input
+            assert test_op in gathergrad_input_optypes
         elif case == 1:
-            assert "/_original_module/word_embeddings/ATen_output_0" in gathergrad_node.input
+            assert "ATen" in gathergrad_input_optypes
     elif test_op == "MatMul":
         if case == 0:
-            assert "/_original_module/word_embeddings/ATen_output_0" in gathergrad_node.input
+            assert "ATen" in gathergrad_input_optypes
         elif case == 1:
-            assert "/_original_module/MatMul_output_0" in gathergrad_node.input
+            assert "MatMul" in gathergrad_input_optypes
     else:
-        if test_op == "Dropout":
-            assert "/_original_module/Dropout_output_0" in gathergrad_node.input
-        elif test_op == "LayerNorm":
-            assert "/_original_module/LayerNorm/Add_1_output_0" in gathergrad_node.input
-        elif test_op == "Cast":
-            assert "/_original_module/Cast_output_0" in gathergrad_node.input
-        elif test_op == "BiasGelu":
-            assert "/_original_module/Mul_1_output_0" in gathergrad_node.input
+        assert test_op in gathergrad_input_optypes
 
     del os.environ["ORTMODULE_ENABLE_EMBEDDING_SPARSE_OPTIMIZER"]
 
@@ -6037,5 +6055,5 @@ def test_e2e_padding_elimination():
 
     training_model = ort_model._torch_module._execution_manager(True)._onnx_models.optimized_model
     assert "ShrunkenGather" in [node.op_type for node in training_model.graph.node]
-    assert "GatherGrad" in [node.op_type for node in training_model.graph.node]
+    assert "PadAndUnflatten" in [node.op_type for node in training_model.graph.node]
     del os.environ["ORTMODULE_ENABLE_EMBEDDING_SPARSE_OPTIMIZER"]

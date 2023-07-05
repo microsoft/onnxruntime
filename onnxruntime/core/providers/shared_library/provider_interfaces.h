@@ -916,11 +916,6 @@ struct ProviderHost {
   virtual void TensorSeq__Add(TensorSeq* p, Tensor&& tensor) = 0;
   virtual void TensorSeq__Reserve(TensorSeq* p, size_t capacity) = 0;
 
-  // AllocatorManager
-  virtual void AllocatorManager__InsertAllocator(AllocatorManager* p, AllocatorPtr allocator) = 0;
-  virtual AllocatorPtr AllocatorManager__GetAllocator(const AllocatorManager* p,
-                                                      OrtMemType mem_type, OrtDevice device) = 0;
-
 #if defined(ENABLE_TRAINING) && defined(ORT_USE_NCCL)
   virtual training::DistributedRunContext& GetDistributedRunContextInstance() = 0;
 #endif

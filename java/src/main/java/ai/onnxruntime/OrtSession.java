@@ -517,6 +517,14 @@ public class OrtSession implements AutoCloseable {
       }
     }
 
+    static {
+      try {
+        OnnxRuntime.init();
+      } catch (IOException e) {
+        throw new RuntimeException("Failed to load onnx-runtime library", e);
+      }
+    }
+
     private final long nativeHandle;
 
     private final List<Long> customLibraryHandles;
@@ -1163,6 +1171,14 @@ public class OrtSession implements AutoCloseable {
 
   /** Used to control logging and termination of a call to {@link OrtSession#run}. */
   public static class RunOptions implements AutoCloseable {
+
+    static {
+      try {
+        OnnxRuntime.init();
+      } catch (IOException e) {
+        throw new RuntimeException("Failed to load onnx-runtime library", e);
+      }
+    }
 
     private final long nativeHandle;
 

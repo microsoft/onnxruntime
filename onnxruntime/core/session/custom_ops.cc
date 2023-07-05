@@ -408,13 +408,30 @@ struct CustomOpKernel : OpKernel {
       ORT_THROW("Unsupported version '" + std::to_string(op_.version) + "' in custom op '" + op.GetName(&op));
     }
 
-    op_kernel_ = op_.CreateKernel(&op_, OrtGetApiBase()->GetApi(op_.version),
-                                  reinterpret_cast<const OrtKernelInfo*>(&info));
+    if (op_.version > 15 && op_.KernelCompute == 0) {
+      op_kernel_ = nullptr;
+      Ort::ThrowOnError(
+          op_.CreateKernelV2(
+              &op_,
+              OrtGetApiBase()->GetApi(op_.version),
+              reinterpret_cast<const OrtKernelInfo*>(&info),
+              &op_kernel_));
+    } else {
+      op_kernel_ = op_.CreateKernel(&op_, OrtGetApiBase()->GetApi(op_.version),
+                                    reinterpret_cast<const OrtKernelInfo*>(&info));
+    }
   }
 
-  ~CustomOpKernel() override { op_.KernelDestroy(op_kernel_); }
+  ~CustomOpKernel() override {
+    op_.KernelDestroy(op_kernel_);
+  }
 
   Status Compute(OpKernelContext* ctx) const override {
+    if (op_.version > 15 && op_.KernelCompute == 0) {
+      auto status_ptr = op_.KernelComputeV2(op_kernel_, reinterpret_cast<OrtKernelContext*>(ctx));
+      return ToStatus(status_ptr);
+    }
+
     op_.KernelCompute(op_kernel_, reinterpret_cast<OrtKernelContext*>(ctx));
     return Status::OK();
   }
