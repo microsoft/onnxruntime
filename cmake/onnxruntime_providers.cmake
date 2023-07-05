@@ -1786,7 +1786,8 @@ if (onnxruntime_USE_XNNPACK)
             FRAMEWORK DESTINATION ${CMAKE_INSTALL_BINDIR})
   endif()
 
-  # TODO fix these warnings
+  # TODO fix shorten-64-to-32 warnings
+  # there are some in builds where sizeof(size_t) != sizeof(int64_t), e.g., in 'ONNX Runtime Web CI Pipeline'
   if (HAS_SHORTEN_64_TO_32)
     target_compile_options(onnxruntime_providers_xnnpack PRIVATE -Wno-error=shorten-64-to-32)
   endif()
