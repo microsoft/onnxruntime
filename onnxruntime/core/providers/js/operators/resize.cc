@@ -5,37 +5,53 @@
 
 namespace onnxruntime {
 namespace js {
-#define REGISTER_RESIZE_ELEMENTWISE_VERSIONED_KERNEL(sinceVersion, endVersion) \
-  ONNX_OPERATOR_VERSIONED_KERNEL_EX(                                           \
-      Resize,                                                                  \
-      kOnnxDomain,                                                             \
-      sinceVersion, endVersion,                                                \
-      kJsExecutionProvider,                                                    \
-      (*KernelDefBuilder::Create())                                            \
-          .TypeConstraint("T1", DataTypeImpl::GetTensorType<float>())          \
-          .InputMemoryType(OrtMemTypeCPU, 1)                                   \
-              Resize);                                                         \
-                                                                               \
-  ONNX_OPERATOR_VERSIONED_KERNEL_EX(                                           \
-      Resize,                                                                  \
-      kOnnxDomain,                                                             \
-      sinceVersion, endVersion,                                                \
-      kJsExecutionProvider,                                                    \
-      (*KernelDefBuilder::Create())                                            \
-          .TypeConstraint("T1", DataTypeImpl::GetTensorType<float>())          \
-          .TypeConstraint("T2", DataTypeImpl::GetTensorType<float>())          \
-          .InputMemoryType(OrtMemTypeCPU, 1)                                   \
-          .InputMemoryType(OrtMemTypeCPU, 2)                                   \
-              Resize);
 
-ONNX_OPERATOR_KERNEL_EX(
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     Resize,
     kOnnxDomain,
-    19,
+    10, 10,
     kJsExecutionProvider,
     (*KernelDefBuilder::Create())
-        .TypeConstraint("T1", DataTypeImpl::GetTensorType<float>())
-        .InputMemoryType(OrtMemTypeCPU, 1)  // scales or size
+        .InputMemoryType(OrtMemTypeCPUInput, 1)
+        .TypeConstraint("T", DataTypeImpl::GetTensorType<float>()), // Scales
+    Resize);
+
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(
+    Resize,
+    kOnnxDomain,
+    11, 12,
+    kJsExecutionProvider,
+    (*KernelDefBuilder::Create())
+        .InputMemoryType(OrtMemTypeCPUInput, 1)  // roi
+        .InputMemoryType(OrtMemTypeCPUInput, 2)  // scales
+        .InputMemoryType(OrtMemTypeCPUInput, 3)  // sizes
+        .TypeConstraint("T1", DataTypeImpl::GetTensorType<float>()),
+    Resize);
+
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(
+    Resize,
+    kOnnxDomain,
+    13,
+    17,
+    kJsExecutionProvider,
+    (*KernelDefBuilder::Create())
+        .InputMemoryType(OrtMemTypeCPUInput, 1)
+        .InputMemoryType(OrtMemTypeCPUInput, 2)
+        .InputMemoryType(OrtMemTypeCPUInput, 3)
+        .TypeConstraint("T1", DataTypeImpl::GetTensorType<float>()),
+    Resize);
+
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(
+    Resize,
+    kOnnxDomain,
+    18,
+    18,
+    kJsExecutionProvider,
+    (*KernelDefBuilder::Create())
+        .InputMemoryType(OrtMemTypeCPUInput, 1)
+        .InputMemoryType(OrtMemTypeCPUInput, 2)
+        .InputMemoryType(OrtMemTypeCPUInput, 3)
+        .TypeConstraint("T1", DataTypeImpl::GetTensorType<float>()),
     Resize);
 
 ONNX_OPERATOR_KERNEL_EX(
@@ -44,16 +60,11 @@ ONNX_OPERATOR_KERNEL_EX(
     19,
     kJsExecutionProvider,
     (*KernelDefBuilder::Create())
-        .TypeConstraint("T1", DataTypeImpl::GetTensorType<float>())
-        .TypeConstraint("T2", DataTypeImpl::GetTensorType<float>())
-        .InputMemoryType(OrtMemTypeCPU, 1)  // roi
-        .InputMemoryType(OrtMemTypeCPU, 2)  // scales or size
+        .InputMemoryType(OrtMemTypeCPUInput, 1)
+        .InputMemoryType(OrtMemTypeCPUInput, 2)
+        .InputMemoryType(OrtMemTypeCPUInput, 3)
+        .TypeConstraint("T1", DataTypeImpl::GetTensorType<float>()),
     Resize);
-
-REGISTER_RESIZE_ELEMENTWISE_VERSIONED_KERNEL(10, 10);
-REGISTER_RESIZE_ELEMENTWISE_VERSIONED_KERNEL(11, 12);
-REGISTER_RESIZE_ELEMENTWISE_VERSIONED_KERNEL(13, 17);
-REGISTER_RESIZE_ELEMENTWISE_VERSIONED_KERNEL(18, 18);
 
 }  // namespace js
 }  // namespace onnxruntime
