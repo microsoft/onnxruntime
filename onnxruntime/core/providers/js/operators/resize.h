@@ -21,8 +21,7 @@ class Resize : public JsKernel, public UpsampleBase {
     auto nearest_mode = NearestModeToString(nearest_mode_);
     auto mode = UpsampleModeToString(mode_);
     std::vector<int32_t> axes;
-    std::transform(axes_.begin(), axes_.end(),std::back_inserter(axes),[](auto& axis) {
-      return gsl::narrow_cast<int32_t>(axis); });
+    std::transform(axes_.begin(), axes_.end(), std::back_inserter(axes), [](auto& axis) { return gsl::narrow_cast<int32_t>(axis); });
     JSEP_INIT_KERNEL_ATTRIBUTE(Resize, ({
                                  "antialias" : $1,
                                  "axes" : $2 ? Array.from(HEAP32.subarray($3, $3 + $2)) : [],
@@ -31,7 +30,7 @@ class Resize : public JsKernel, public UpsampleBase {
                                  "excludeOutside" : !!$7,
                                  "extrapolationValue" : $8,
                                  "keepAspectRatioPolicy" : String.fromCharCode.apply(null, Array.from(HEAP8.subarray($9, $9 + $10))),
-                                 "mode" :String.fromCharCode.apply(null, Array.from(HEAP8.subarray($11, $11 + $12))),
+                                 "mode" : String.fromCharCode.apply(null, Array.from(HEAP8.subarray($11, $11 + $12))),
                                  "nearestMode" : String.fromCharCode.apply(null, Array.from(HEAP8.subarray($13, $13 + $14))),
                                }),
                                static_cast<int32_t>(antialias_),
