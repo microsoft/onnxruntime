@@ -54,8 +54,6 @@ void CreateCastOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_
 
 void CreateConvOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 
-void CreateConvTransposeOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
-
 void CreatePoolOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 
 void CreateReshapeOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
