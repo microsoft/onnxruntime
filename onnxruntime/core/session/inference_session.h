@@ -73,8 +73,6 @@ struct ModelMetadata {
   std::unordered_map<std::string, std::string> custom_metadata_map;
 };
 
-using SessionRunAsyncCallbackFn = void(*)(std::vector<OrtValue>*, Status);
-
 /**
  * @brief This is the main class used to Run a model.
  * Sample simple usage:
@@ -317,11 +315,6 @@ class InferenceSession {
                                         const char* const* output_names1, size_t output_names_len,
                                         RunAsyncCallbackFn callback);
 
-  //_In_opt_ const OrtRunOptions* /*run_options*/,
-  //                  _In_reads_(input_len) const char* const* /*input_names*/,
-  //                  _In_reads_(input_len) const OrtValue* const* /*input*/, size_t /*input_len*/,
-  //                  _In_reads_(output_names_len) const char* const* /*output_names1*/, size_t /*output_names_len*/,
-  //                  _In_ RunAsyncCallbackFn /*run_async_callback*/)
   /**
    * Run a pre-loaded and pre-intialized model.
    * Multiple threads are allowed to run this function; hence its thread-safe.

@@ -2378,16 +2378,16 @@ Status InferenceSession::Run(const OrtRunOptions* run_options,
 
 Status InferenceSession::RunAsync(const OrtRunOptions* run_options, const char* const* input_names,
                                   const OrtValue* const* input, size_t input_len,
-                                  const char* const* output_name1, size_t output_names_len,
+                                  const char* const* output_name, size_t output_names_len,
                                   RunAsyncCallbackFn callback) {
   InferenceSession* sess = this;
   std::function<void()> run_fn = [&]() {
     OrtValue* outputs{};
-    auto status = sess->Run(run_options, input_names, input, input_len, output_name1, output_names_len, &outputs);
+    auto status = sess->Run(run_options, input_names, input, input_len, output_name, output_names_len, &outputs);
     if (status.IsOK()) {
-      callback(outputs, {});
+      callback(outputs, 0, {});
     } else {
-      callback({}, ToOrtStatus(status));
+      callback({}, output_names_len, ToOrtStatus(status));
     }
   };
   concurrency::ThreadPool::Schedule(inter_op_thread_pool_.get(), run_fn);

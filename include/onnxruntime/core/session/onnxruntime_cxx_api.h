@@ -781,6 +781,9 @@ struct SessionImpl : ConstSessionImpl<T> {
 
   void Run(const RunOptions& run_options, const IoBinding&);  ///< Wraps OrtApi::RunWithBinding
 
+  void RunAsync(const RunOptions& run_options, const char* const* input_names, const Value* input_values, size_t input_count,
+                const char* const* output_names, size_t output_count, RunAsyncCallbackFn callback);
+
   /** \brief End profiling and return a copy of the profiling file name.
    *
    * \param allocator to allocate memory for the copy of the string returned

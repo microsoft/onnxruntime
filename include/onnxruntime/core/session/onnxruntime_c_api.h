@@ -696,7 +696,7 @@ typedef void (*OrtCustomJoinThreadFn)(OrtCustomThreadHandle ort_custom_thread_ha
 
 typedef OrtStatus*(ORT_API_CALL* RegisterCustomOpsFn)(OrtSessionOptions* options, const OrtApiBase* api);
 
-typedef void (*RunAsyncCallbackFn)(OrtValue*, OrtStatusPtr);
+typedef void (*RunAsyncCallbackFn)(OrtValue*, size_t, OrtStatusPtr);
 
 /** \brief The C API
  *
