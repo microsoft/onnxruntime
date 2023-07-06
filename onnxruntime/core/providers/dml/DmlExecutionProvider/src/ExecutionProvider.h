@@ -28,6 +28,7 @@ namespace Dml
     class DmlCpuAllocator;
     class ExecutionProvider;
     class DmlGpuAllocator;
+    class DmlExternalGpuAllocator;
     struct TaggedPointer;
 
     class ExecutionProviderImpl : public WRL::Base<Dml::IExecutionProvider,
@@ -183,6 +184,7 @@ namespace Dml
         std::shared_ptr<BucketizedBufferAllocator> m_subAllocator;
         std::shared_ptr<onnxruntime::IAllocator> m_bfcAllocator;
         std::shared_ptr<DmlGpuAllocator> m_gpuAllocator;
+        std::shared_ptr<DmlExternalGpuAllocator> m_externalGpuAllocator;
         std::shared_ptr<DmlCpuAllocator> m_cpuInputAllocator;
         std::shared_ptr<onnxruntime::KernelRegistry> m_kernelRegistry;
         std::shared_ptr<const Windows::AI::MachineLearning::Adapter::InternalRegistrationInfoMap> m_internalRegInfoMap;

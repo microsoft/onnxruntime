@@ -212,9 +212,10 @@ namespace Dml
             m_context->SetAllocator(m_gpuAllocator);
             // CPU Allocator used to create buffers for the MemcpyFromHost, Shape and Size operators.
             m_cpuInputAllocator = std::make_shared<DmlCpuAllocator>(OrtMemType::OrtMemTypeCPUInput);
+            m_externalGpuAllocator = std::make_shared<DmlExternalGpuAllocator>();
         }
 
-        return std::vector<onnxruntime::AllocatorPtr>{m_gpuAllocator, m_cpuInputAllocator,};
+        return std::vector<onnxruntime::AllocatorPtr>{m_gpuAllocator, m_externalGpuAllocator, m_cpuInputAllocator};
     }
 
     HRESULT __stdcall ExecutionProviderImpl::GetD3DDevice(_COM_Outptr_ ID3D12Device** d3dDevice) const noexcept
