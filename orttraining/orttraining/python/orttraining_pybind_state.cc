@@ -829,41 +829,44 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
                        const std::unordered_set<std::string>& y_node_arg_names,
                        const std::unordered_set<std::string>& x_node_arg_names,
                        const std::string loss_node_arg_name,
-                       PySessionOptions* options = nullptr) {
-        std::shared_ptr<CustomRegistry> custom_registry;
-        IOnnxRuntimeOpSchemaRegistryList local_registries;
-        if (options && !options->custom_op_domains_.empty()) {
-          // Register all custom op domains that will be needed for the session
-          ORT_THROW_IF_ERROR(onnxruntime::CreateCustomRegistry(options->custom_op_domains_, custom_registry));
-          local_registries.push_back(custom_registry->GetOpschemaRegistry());
-        }
+                       PySessionOptions* options) {
+             std::shared_ptr<CustomRegistry> custom_registry;
+             IOnnxRuntimeOpSchemaRegistryList local_registries;
+             if (options && !options->custom_op_domains_.empty()) {
+               // Register all custom op domains that will be needed for the session
+               ORT_THROW_IF_ERROR(onnxruntime::CreateCustomRegistry(options->custom_op_domains_, custom_registry));
+               local_registries.push_back(custom_registry->GetOpschemaRegistry());
+             }
 
-        std::shared_ptr<Model> model;
-        auto logger_ptr = std::make_unique<logging::Logger>(logging::LoggingManager::DefaultLogger());
-        logger_ptr->SetSeverity(logging::Severity::kINFO);
-        ONNX_NAMESPACE::ModelProto model_proto;
-        std::istringstream model_istream(serialized_model);
-        ORT_THROW_IF_ERROR(Model::Load(model_istream, &model_proto));
-        ORT_THROW_IF_ERROR(Model::Load(model_proto, model,
-                                       local_registries.empty() ? nullptr : &local_registries,
-                                       *logger_ptr));
-        GradientGraphConfiguration gradient_graph_config{};
-        gradient_graph_config.set_gradients_as_graph_outputs = true;
-        // Save some objects, otherwise they get lost.
-        auto gradient_graph_config_ptr = std::make_unique<GradientGraphConfiguration>(gradient_graph_config);
+             std::shared_ptr<Model> model;
+             auto logger_ptr = std::make_unique<logging::Logger>(logging::LoggingManager::DefaultLogger());
+             logger_ptr->SetSeverity(logging::Severity::kINFO);
+             ONNX_NAMESPACE::ModelProto model_proto;
+             std::istringstream model_istream(serialized_model);
+             ORT_THROW_IF_ERROR(Model::Load(model_istream, &model_proto));
+             ORT_THROW_IF_ERROR(Model::Load(model_proto, model,
+                                            local_registries.empty() ? nullptr : &local_registries,
+                                            *logger_ptr));
+             GradientGraphConfiguration gradient_graph_config{};
+             gradient_graph_config.set_gradients_as_graph_outputs = true;
+             // Save some objects, otherwise they get lost.
+             auto gradient_graph_config_ptr = std::make_unique<GradientGraphConfiguration>(gradient_graph_config);
 
-        auto builder = std::make_unique<GradientGraphBuilder>(
-            &model->MainGraph(),
-            y_node_arg_names,
-            x_node_arg_names,
-            loss_node_arg_name,
-            *gradient_graph_config_ptr,
-            *logger_ptr);
+             auto builder = std::make_unique<GradientGraphBuilder>(
+                 &model->MainGraph(),
+                 y_node_arg_names,
+                 x_node_arg_names,
+                 loss_node_arg_name,
+                 *gradient_graph_config_ptr,
+                 *logger_ptr);
 
-        return std::make_unique<PyGradientGraphBuilder>(std::move(builder), std::move(model),
-                                                        std::move(logger_ptr), std::move(gradient_graph_config_ptr),
-                                                        custom_registry, std::move(local_registries));
-      }))
+             return std::make_unique<PyGradientGraphBuilder>(std::move(builder), std::move(model),
+                                                             std::move(logger_ptr), std::move(gradient_graph_config_ptr),
+                                                             custom_registry, std::move(local_registries));
+           }),
+           py::arg("serialized_model"), py::arg("y_node_arg_names"),
+           py::arg("x_node_arg_names"), py::arg("loss_node_arg_name"),
+           py::arg("options") = nullptr)
       .def("build", [](PyGradientGraphBuilder* gradient_graph_builder) {
         ORT_THROW_IF_ERROR(gradient_graph_builder->builder_->Build());
       })
