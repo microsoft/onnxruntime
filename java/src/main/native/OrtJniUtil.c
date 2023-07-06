@@ -146,6 +146,14 @@ jint convertFromONNXDataFormat(ONNXTensorElementDataType type) {
             return 15;
         case ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16:    // Non-IEEE floating-point format based on IEEE754 single-precision
             return 16;
+        case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E4M3FN:
+            return 17;
+        case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E4M3FNUZ:
+            return 18;
+        case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E5M2:
+            return 19;
+        case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E5M2FNUZ:
+            return 20;
         default:
             return -1;
     }
@@ -190,6 +198,14 @@ ONNXTensorElementDataType convertToONNXDataFormat(jint type) {
             return ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX128;  // complex with float64 real and imaginary components
         case 16:
             return ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16;    // Non-IEEE floating-point format based on IEEE754 single-precision
+        case 17:
+          return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E4M3FN;
+        case 18:
+          return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E4M3FNUZ;
+        case 19:
+          return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E5M2;
+        case 20:
+          return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E5M2FNUZ;
         default:
             return ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
     }

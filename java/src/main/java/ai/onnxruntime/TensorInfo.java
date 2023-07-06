@@ -35,12 +35,20 @@ public class TensorInfo implements ValueInfo {
     ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX128(
         15), // complex with float64 real and imaginary components
     ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16(
-        16); // Non-IEEE floating-point format based on IEEE754 single-precision
+        16), // Non-IEEE floating-point format based on IEEE754 single-precision
+    ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E4M3FN(
+        17), // Non-IEEE floating-point format based on IEEE754 single-precision
+    ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E4M3FNUZ(
+        18), // Non-IEEE floating-point format based on IEEE754 single-precision
+    ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E5M2(
+        19), // Non-IEEE floating-point format based on IEEE754 single-precision
+    ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E5M2FNUZ(
+        20); // Non-IEEE floating-point format based on IEEE754 single-precisio
 
     /** The int id on the native side. */
     public final int value;
 
-    private static final OnnxTensorType[] values = new OnnxTensorType[17];
+    private static final OnnxTensorType[] values = new OnnxTensorType[21];
 
     static {
       for (OnnxTensorType ot : OnnxTensorType.values()) {
