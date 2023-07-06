@@ -82,7 +82,7 @@ pip install torch==1.13.1+cu117 --extra-index-url https://download.pytorch.org/w
 pip install -r requirements-cuda.txt
 ```
 
-ONNX Runtime requires CUDA and [cuDNN](https://developer.nvidia.com/rdp/cudnn-download) for GPU inference. See https://onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html for compatible versions.
+ONNX Runtime requires CUDA and [cuDNN](https://developer.nvidia.com/rdp/cudnn-download) for GPU inference. CUDA 11.7 and cuDNN 8.5 are used in our tests.
 
 #### Install Nightly (Optional)
 
@@ -249,13 +249,13 @@ Common settings for below test results:
 
 | engine      | version                 | provider              | batch size | average latency | first run memory MB | second run memory MB |
 | ----------- | ----------------------- | --------------------- | ---------- | --------------- | ------------------- | -------------------- |
-| onnxruntime | 1.14.1                  | CUDAExecutionProvider | 1          | 4.8             | 4,117               | 4,625                |
+| onnxruntime | 1.14.1                  | CUDA                  | 1          | 4.8             | 4,117               | 4,625                |
 | torch       | 2.0.0+cu117             | default               | 1          | 5.6             | 4,325               | 4,047                |
 | torch       | 1.13.1+cu117            | xformers              | 1          | 6.0             | 9,124               | 9,130                |
-| onnxruntime | 1.14.1                  | CUDAExecutionProvider | 4          | 17.7            | 6,659               | 6,659                |
+| onnxruntime | 1.14.1                  | CUDA                  | 4          | 17.7            | 6,659               | 6,659                |
 | torch       | 2.0.0+cu117             | default               | 4          | 20.1            | 6,421               | 6,907                |
 | torch       | 1.13.1+cu117            | xformers              | 4          | 21.6            | 10,407              | 10,409               |
-| onnxruntime | 1.14.1                  | CUDAExecutionProvider | 8          | 33.5            | 6,663               | 6,663                |
+| onnxruntime | 1.14.1                  | CUDA                  | 8          | 33.5            | 6,663               | 6,663                |
 | torch       | 2.0.0+cu117             | default               | 8          | 39.5            | 10,767              | 10,813               |
 | torch       | 1.13.1+cu117            | xformers              | 8          | 41.1            | 10,825              | 9,255                |
 
@@ -263,16 +263,16 @@ Common settings for below test results:
 #### Results of A100-SXM4-40GB (Ubuntu 20.04)
 | engine      | version                 | provider              | batch size | average latency | first run memory MB | second run memory MB |
 | ----------- | ----------------------- | --------------------- | ---------- | --------------- | ------------------- | -------------------- |
-| onnxruntime | 1.14.1                  | CUDAExecutionProvider | 1          | 1.1             | 6,883               | 7,395                |
+| onnxruntime | 1.14.1                  | CUDA                  | 1          | 1.1             | 6,883               | 7,395                |
 | torch       | 2.0.0+cu117             | default               | 1          | 1.5             | 13,828              | 4,400                |
 | torch       | 2.0.0+cu117             | compile               | 1          | 1.8             | 13,892              | 4,386                |
-| onnxruntime | 1.14.1                  | CUDAExecutionProvider | 4          | 3.7             | 7,381               | 7,381                |
+| onnxruntime | 1.14.1                  | CUDA                  | 4          | 3.7             | 7,381               | 7,381                |
 | torch       | 2.0.0+cu117             | default               | 4          | 3.9             | 31,278              | 6,870                |
 | torch       | 2.0.0+cu117             | compile               | 4          | 3.4             | 31,364              | 6,880                |
-| onnxruntime | 1.14.1                  | CUDAExecutionProvider | 8          | 6.9             | 7,411               | 7,411                |
+| onnxruntime | 1.14.1                  | CUDA                  | 8          | 6.9             | 7,411               | 7,411                |
 | torch       | 2.0.0+cu117             | default               | 8          | 7.6             | 31,660              | 10,122               |
 | torch       | 2.0.0+cu117             | compile               | 8          | 6.5             | 31,800              | 10,308               |
-| onnxruntime | 1.14.1                  | CUDAExecutionProvider | 16         | 13.6            | 11,479              | 11,479               |
+| onnxruntime | 1.14.1                  | CUDA                  | 16         | 13.6            | 11,479              | 11,479               |
 | torch       | 2.0.0+cu117             | default               | 16         | 14.8            | 32,306              | 16,520               |
 | torch       | 2.0.0+cu117             | compile               | 16         | 12.6            | 32,636              | 16,898               |
 
@@ -282,15 +282,15 @@ Results from Standard_NC6s_v3 Azure virtual machine:
 
 | engine      | version                 | provider              | batch size | average latency | first run memory MB | second run memory MB |
 | ----------- | ----------------------- | --------------------- | ---------- | --------------- | ------------------- | -------------------- |
-| onnxruntime | 1.14.1                  | CUDAExecutionProvider | 1          | 2.7             | 12,646              | 7,152                |
+| onnxruntime | 1.14.1                  | CUDA                  | 1          | 2.7             | 12,646              | 7,152                |
 | torch       | 2.0.0+cu117             | compile               | 1          | 3.2             | 13,317              | 3,909                |
 | torch       | 2.0.0+cu117             | default               | 1          | 2.7             | 13,343              | 3,921                |
 | torch       | 1.13.1+cu117            | xformers              | 1          | 3.5             | 14,979              | 10,449               |
-| onnxruntime | 1.14.1                  | CUDAExecutionProvider | 4          | 8.4             | 7,114               | 7,114                |
+| onnxruntime | 1.14.1                  | CUDA                  | 4          | 8.4             | 7,114               | 7,114                |
 | torch       | 2.0.0+cu117             | compile               | 4          | 8.0             | 13,897              | 6,821                |
 | torch       | 2.0.0+cu117             | default               | 4          | 8.7             | 13,873              | 6,607                |
 | torch       | 1.13.1+cu117            | xformers              | 4          | 9.1             | 12,969              | 8,421                |
-| onnxruntime | 1.14.1                  | CUDAExecutionProvider | 8          | 15.9            | 7,120               | 7,120                |
+| onnxruntime | 1.14.1                  | CUDA                  | 8          | 15.9            | 7,120               | 7,120                |
 | torch       | 2.0.0+cu117             | compile               | 8          | 15.5            | 14,669              | 10,355               |
 | torch       | 2.0.0+cu117             | default               | 8          | 17.0            | 14,469              | 9,657                |
 | torch       | 1.13.1+cu117            | xformers              | 8          | 17.4            | 15,593              | 9,133                |
@@ -304,21 +304,23 @@ Results are from Standard_NC4as_T4_v3 Azure virtual machine:
 
 | engine      | version                 | provider              | batch size | average latency | first run memory MB | second run memory MB |
 | ----------- | ----------------------- | --------------------- | ---------- | --------------- | ------------------- | -------------------- |
-| onnxruntime | 1.14.1                  | CUDAExecutionProvider | 1          | 5.6             | 4,925               | 4,925                |
-| onnxruntime | 1.15.1                  | CUDAExecutionProvider | 1          | 5.5             | 3,738               | 4,250                |
-| onnxruntime | 1.15.1 (tensorrt 8.6.1) | TensorrtExecutionProvider | 1      | 4.8             | 10,710              | 10,710               |
+| onnxruntime | 1.14.1                  | CUDA                  | 1          | 5.6             | 4,925               | 4,925                |
+| onnxruntime | 1.15.1                  | CUDA                  | 1          | 5.5             | 3,738               | 4,250                |
+| onnxruntime | 1.16.0 (nightly)        | CUDA (cuda graph)     | 1          | 5.3             | 5,278               | 5,438                |
+| onnxruntime | 1.15.1 (tensorrt 8.6.1) | Tensorrt              | 1          | 4.8             | 10,710              | 10,710               |
+| onnxruntime | 1.16.0 (tensorrt 8.6.1) | Tensorrt (cuda graph) | 1          | 4.7             | 11,746              | 10,746               |
 | tensorrt    | 8.6.1                   | default               | 1          | 5.0             | 8,530               | 8,530                |
 | torch       | 1.13.1+cu117            | xformers              | 1          | 6.9             | 14,845              | 10,317               |
 | torch       | 2.0.0+cu117             | compile               | 1          | 6.0             | 12,989              | 3,841                |
 | torch       | 2.0.0+cu117             | default               | 1          | 6.4             | 12,987              | 3,841                |
-| onnxruntime | 1.14.1                  | CUDAExecutionProvider | 4          | 23.0            | 6,977               | 6,977                |
-| onnxruntime | 1.15.1                  | CUDAExecutionProvider | 4          | 22.6            | 6,298               | 6,298                |
-| onnxruntime | 1.15.1 (tensorrt 8.6.1) | TensorrtExecutionProvider | 4      | 21.8            | 10,746              | 10,746               |
+| onnxruntime | 1.14.1                  | CUDA                  | 4          | 23.0            | 6,977               | 6,977                |
+| onnxruntime | 1.15.1                  | CUDA                  | 4          | 22.6            | 6,298               | 6,298                |
+| onnxruntime | 1.15.1 (tensorrt 8.6.1) | Tensorrt              | 4          | 21.8            | 10,746              | 10,746               |
 | tensorrt    | 8.6.1                   | default               | 4          | 22.2            | 8,542               | 8,542                |
 | torch       | 1.13.1+cu117            | xformers              | 4          | 25.8            | 12,819              | 8,269                |
 | torch       | 2.0.0+cu117             | compile               | 4          | 22.2            | 14,637              | 6,583                |
 | torch       | 2.0.0+cu117             | default               | 4          | 25.2            | 14,409              | 6,355                |
-| onnxruntime | 1.14.1                  | CUDAExecutionProvider | 8          | 46.4            | 6,779               | 6,779                |
+| onnxruntime | 1.14.1                  | CUDA                  | 8          | 46.4            | 6,779               | 6,779                |
 | torch       | 1.13.1+cu117            | xformers              | 8          | 51.4            | 14,827              | 9,001                |
 | torch       | 2.0.0+cu117             | compile               | 8          | 46.5            | 12,595              | 10,171               |
 | torch       | 2.0.0+cu117             | default               | 8          | 50.7            | 11,955              | 9,531                |
@@ -327,15 +329,15 @@ Results are from Standard_NC4as_T4_v3 Azure virtual machine:
 
 | engine      | version                 | provider              | batch size | average latency | first run memory MB | second run memory MB |
 | ----------- | ----------------------- | --------------------- | ---------- | --------------- | ------------------- | -------------------- |
-| onnxruntime | 1.15.0+rocm5.4.2        | ROCMExecutionProvider | 1          | 2.2             | 5,548               | 4,908                |
+| onnxruntime | 1.15.0+rocm5.4.2        | ROCM                  | 1          | 2.2             | 5,548               | 4,908                |
 | torch       | 1.12.1+rocm5.4          | -                     | 1          | 3.4             | 6,653               | 4,613                |
 | torch       | 2.0.0+rocm5.4.2         | default               | 1          | 3.2             | 5,977               | 4,368                |
 | torch       | 2.0.0+rocm5.4.2         | compile               | 1          | 3.0             | 5,869               | 4,266                |
-| onnxruntime | 1.15.0+rocm5.4.2        | ROCMExecutionProvider | 4          | 6.6             | 5,546               | 4,906                |
+| onnxruntime | 1.15.0+rocm5.4.2        | ROCM                  | 4          | 6.6             | 5,546               | 4,906                |
 | torch       | 1.12.1+rocm5.4          | -                     | 4          | 10.1            | 19,477              | 11,325               |
 | torch       | 2.0.0+rocm5.4.2         | default               | 4          | 10.5            | 13,051              | 7,300                |
 | torch       | 2.0.0+rocm5.4.2         | compile               | 4          | 9.2             | 12,879              | 7,190                |
-| onnxruntime | 1.15.0+rocm5.4.2        | ROCMExecutionProvider | 8          | 12.5            | 9,778               | 9,006                |
+| onnxruntime | 1.15.0+rocm5.4.2        | ROCM                  | 8          | 12.5            | 9,778               | 9,006                |
 | torch       | 1.12.1+rocm5.4          | -                     | 8          | 19.3            | 55,851              | 20,014               |
 | torch       | 2.0.0+rocm5.4.2         | default               | 8          | 20.3            | 23,551              | 11,930               |
 | torch       | 2.0.0+rocm5.4.2         | compile               | 8          | 17.8            | 23,303              | 11,800               |
@@ -344,15 +346,15 @@ Results are from Standard_NC4as_T4_v3 Azure virtual machine:
 
 | engine      | version                 | provider              | batch size | average latency | first run memory MB | second run memory MB |
 | ----------- | ----------------------- | --------------------- | ---------- | --------------- | ------------------- | -------------------- |
-| onnxruntime | 1.15.0+rocm5.4.2        | ROCMExecutionProvider | 1          | 2.4             | 5,254               | 4,614                |
+| onnxruntime | 1.15.0+rocm5.4.2        | ROCM                  | 1          | 2.4             | 5,254               | 4,614                |
 | torch       | 1.12.1+rocm5.4          | -                     | 1          | 3.5             | 5,771               | 4,672                |
 | torch       | 2.0.0+rocm5.4.2         | default               | 1          | 3.5             | 5,811               | 4,206                |
 | torch       | 2.0.0+rocm5.4.2         | compile               | 1          | 3.1             | 5,774               | 4,168                |
-| onnxruntime | 1.15.0+rocm5.4.2        | ROCMExecutionProvider | 4          | 7.5             | 7,290               | 6,646                |
+| onnxruntime | 1.15.0+rocm5.4.2        | ROCM                  | 4          | 7.5             | 7,290               | 6,646                |
 | torch       | 1.12.1+rocm5.4          | -                     | 4          | 10.7            | 19,334              | 11,181               |
 | torch       | 2.0.0+rocm5.4.2         | default               | 4          | 11.5            | 12,881              | 7,151                |
 | torch       | 2.0.0+rocm5.4.2         | compile               | 4          | 10.0            | 12,740              | 7,073                |
-| onnxruntime | 1.15.0+rocm5.4.2        | ROCMExecutionProvider | 8          | 14.4            | 7,320               | 6,676                |
+| onnxruntime | 1.15.0+rocm5.4.2        | ROCM                  | 8          | 14.4            | 7,320               | 6,676                |
 | torch       | 1.12.1+rocm5.4          | -                     | 8          | 20.2            | 31,820              | 19,908               |
 | torch       | 2.0.0+rocm5.4.2         | default               | 8          | 22.2            | 23,415              | 11,815               |
 | torch       | 2.0.0+rocm5.4.2         | compile               | 8          | 19.3            | 23,154              | 11,667               |

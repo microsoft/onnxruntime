@@ -35,8 +35,7 @@ pip install onnxruntime-gpu
 import gc
 import os
 import shutil
-from collections import OrderedDict
-from typing import Dict, List, Optional, Union
+from typing import List, Optional, Union
 
 import onnx
 import onnx_graphsurgeon as gs
@@ -52,47 +51,29 @@ from diffusers.schedulers import DDIMScheduler
 from diffusers.utils import DIFFUSERS_CACHE, logging
 from huggingface_hub import snapshot_download
 from onnx import shape_inference
+from ort_utils import OrtCudaSession
 from polygraphy.backend.onnx.loader import fold_constants
 from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
 
 import onnxruntime as ort
-from onnxruntime.transformers.io_binding_helper import TypeHelper
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
-class Engine:
-    def __init__(self, engine_path, device_id=0):
+class Engine(OrtCudaSession):
+    def __init__(self, engine_path, device_id, onnx_path, fp16, input_profile, workspace_size, enable_cuda_graph):
         self.engine_path = engine_path
-        self.output_tensors = OrderedDict()
-
-        self.ort_session = None
-        self.ort_trt_provider_options = None
-        self.io_binding = None
-        self.input_names = None
-        self.output_names = None
-        self.output_name_to_numpy_type = None
-
-        self.device_id = device_id
-
-    def __del__(self):
-        del self.output_tensors
-        del self.io_binding
-        del self.ort_session
-
-    def build(
-        self,
-        onnx_path,
-        fp16,
-        input_profile=None,
-        workspace_size=0,
-    ):
         self.ort_trt_provider_options = self.get_tensorrt_provider_options(
-            input_profile, workspace_size, fp16, self.device_id
+            input_profile,
+            workspace_size,
+            fp16,
+            device_id,
+            enable_cuda_graph,
         )
+
         sess_options = ort.SessionOptions()
         sess_options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_DISABLE_ALL
-        self.ort_session = ort.InferenceSession(
+        ort_session = ort.InferenceSession(
             onnx_path,
             sess_options,
             providers=[
@@ -100,54 +81,10 @@ class Engine:
             ],
         )
 
-        self.input_names = [input.name for input in self.ort_session.get_inputs()]
-        self.output_names = [output.name for output in self.ort_session.get_outputs()]
-        self.output_name_to_numpy_type = TypeHelper.get_io_numpy_type_map(self.ort_session)
-        self.io_binding = self.ort_session.io_binding()
+        device = torch.device("cuda", device_id)
+        super().__init__(ort_session, device, enable_cuda_graph)
 
-    def allocate_output_buffers(self, shape_dict: Dict[str, tuple], device: torch.device):
-        """Allocate output tensors for I/O Binding"""
-
-        for name, shape in shape_dict.items():
-            if name in self.output_names:
-                # Reuse allocated buffer when the shape is same
-                if name in self.output_tensors and tuple(self.output_tensors[name].shape) == tuple(shape):
-                    continue
-
-                numpy_dtype = self.output_name_to_numpy_type[name]
-                tensor = torch.empty(tuple(shape), dtype=TypeHelper.numpy_type_to_torch_type(numpy_dtype)).to(
-                    device=device
-                )
-                self.output_tensors[name] = tensor
-
-                self.io_binding.bind_output(
-                    name,
-                    tensor.device.type,
-                    tensor.device.index,
-                    numpy_dtype,
-                    list(tensor.size()),
-                    tensor.data_ptr(),
-                )
-
-    def infer(self, feed_dict):
-        """Bind input tensors and run inference"""
-        for name, tensor in feed_dict.items():
-            assert isinstance(tensor, torch.Tensor) and tensor.is_contiguous()
-            if name in self.input_names:
-                self.io_binding.bind_input(
-                    name,
-                    tensor.device.type,
-                    tensor.device.index,
-                    TypeHelper.torch_type_to_numpy_type(tensor.dtype),
-                    [1] if len(tensor.shape) == 0 else list(tensor.shape),
-                    tensor.data_ptr(),
-                )
-
-        self.ort_session.run_with_iobinding(self.io_binding)
-
-        return self.output_tensors
-
-    def get_tensorrt_provider_options(self, input_profile, workspace_size, fp16, device_id: int = 0):
+    def get_tensorrt_provider_options(self, input_profile, workspace_size, fp16, device_id, enable_cuda_graph):
         trt_ep_options = {
             "device_id": device_id,
             "trt_fp16_enable": fp16,
@@ -155,8 +92,10 @@ class Engine:
             "trt_timing_cache_enable": True,
             "trt_detailed_build_log": True,
             "trt_engine_cache_path": self.engine_path,
-            # TODO: "trt_cuda_graph_enable": True,
         }
+
+        if enable_cuda_graph:
+            trt_ep_options["trt_cuda_graph_enable"] = True
 
         if workspace_size > 0:
             trt_ep_options["trt_max_workspace_size"] = workspace_size
@@ -339,13 +278,13 @@ def has_engine_file(engine_path):
 
 
 def get_work_space_size(model_name, max_workspace_size):
-    GiB = 2**30
-    workspace_size = 4 * GiB if model_name == "clip" else max_workspace_size
+    gibibyte = 2**30
+    workspace_size = 4 * gibibyte if model_name == "clip" else max_workspace_size
     if workspace_size == 0:
         _, free_mem, _ = cudart.cudaMemGetInfo()
         # The following logic are adopted from TensorRT demo diffusion.
-        if free_mem > 6 * GiB:
-            workspace_size = free_mem - 4 * GiB
+        if free_mem > 6 * gibibyte:
+            workspace_size = free_mem - 4 * gibibyte
     return workspace_size
 
 
@@ -362,6 +301,7 @@ def build_engines(
     static_image_shape=True,
     max_workspace_size=0,
     device_id=0,
+    enable_cuda_graph=False,
 ):
     if force_engine_rebuild:
         if os.path.isdir(onnx_dir):
@@ -424,8 +364,6 @@ def build_engines(
         )
 
         engine_path = get_engine_path(engine_dir, model_name, profile_id)
-
-        engine = Engine(engine_path, device_id)
         onnx_opt_path = get_onnx_path(model_name, onnx_dir)
 
         if not has_engine_file(engine_path):
@@ -438,18 +376,22 @@ def build_engines(
         else:
             logger.info("Reuse cached TensorRT engine in directory %s", engine_path)
 
-        # We create session within build() so it always needed to run.
-        engine.build(
+        input_profile = model_obj.get_input_profile(
+            opt_batch_size,
+            opt_image_height,
+            opt_image_width,
+            static_batch=static_batch,
+            static_image_shape=static_image_shape,
+        )
+
+        engine = Engine(
+            engine_path,
+            device_id,
             onnx_opt_path,
             fp16=True,
-            input_profile=model_obj.get_input_profile(
-                opt_batch_size,
-                opt_image_height,
-                opt_image_width,
-                static_batch=static_batch,
-                static_image_shape=static_image_shape,
-            ),
+            input_profile=input_profile,
             workspace_size=get_work_space_size(model_name, max_workspace_size),
+            enable_cuda_graph=enable_cuda_graph,
         )
 
         built_engines[model_name] = engine
@@ -658,6 +600,7 @@ class OnnxruntimeTensorRTStableDiffusionPipeline(StableDiffusionPipeline):
         # TensorRT engine build parameters
         engine_dir: str = "onnxruntime_tensorrt_engine",
         force_engine_rebuild: bool = False,
+        enable_cuda_graph: bool = False,
     ):
         super().__init__(
             vae, text_encoder, tokenizer, unet, scheduler, safety_checker, feature_extractor, requires_safety_checker
@@ -672,10 +615,13 @@ class OnnxruntimeTensorRTStableDiffusionPipeline(StableDiffusionPipeline):
         self.onnx_dir = onnx_dir
         self.engine_dir = engine_dir
         self.force_engine_rebuild = force_engine_rebuild
+        self.enable_cuda_graph = enable_cuda_graph
+
+        # Although cuda graph requires static input shape, engine built with dyamic batch gets better performance in T4.
+        # Use static batch could reduce GPU memory footprint.
         self.build_static_batch = False
 
         # TODO: support dynamic image shape.
-        # That need add a config for opt_image_height and opt_image_width, and image_height and image_width in __call__.
         self.build_dynamic_shape = False
 
         self.max_batch_size = max_batch_size
@@ -758,6 +704,7 @@ class OnnxruntimeTensorRTStableDiffusionPipeline(StableDiffusionPipeline):
             static_batch=self.build_static_batch,
             static_image_shape=not self.build_dynamic_shape,
             device_id=self.torch_device.index,
+            enable_cuda_graph=self.enable_cuda_graph,
         )
 
         return self
@@ -845,9 +792,7 @@ class OnnxruntimeTensorRTStableDiffusionPipeline(StableDiffusionPipeline):
     def __allocate_buffers(self, image_height, image_width, batch_size):
         # Allocate output tensors for I/O bindings
         for model_name, obj in self.models.items():
-            self.engines[model_name].allocate_output_buffers(
-                shape_dict=obj.get_shape_dict(batch_size, image_height, image_width), device=self.torch_device
-            )
+            self.engines[model_name].allocate_buffers(obj.get_shape_dict(batch_size, image_height, image_width))
 
     @torch.no_grad()
     def __call__(

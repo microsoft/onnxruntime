@@ -265,8 +265,7 @@ def run_ort_pipeline(
     first_run_memory = measure_gpu_memory(memory_monitor_type, warmup, start_memory)
     second_run_memory = measure_gpu_memory(memory_monitor_type, warmup, start_memory)
 
-    if memory_monitor_type is None:
-        warmup()
+    warmup()
 
     latency_list = []
     for i, prompt in enumerate(prompts):
@@ -332,8 +331,7 @@ def run_torch_pipeline(
     first_run_memory = measure_gpu_memory(memory_monitor_type, warmup, start_memory)
     second_run_memory = measure_gpu_memory(memory_monitor_type, warmup, start_memory)
 
-    if memory_monitor_type is None:
-        warmup()
+    warmup()
 
     torch.set_grad_enabled(False)
 
@@ -421,8 +419,9 @@ def run_ort(
         {
             "model_name": model_name,
             "directory": directory,
-            "provider": provider,
+            "provider": provider.replace("ExecutionProvider", ""),
             "disable_safety_checker": disable_safety_checker,
+            "enable_cuda_graph": False,
         }
     )
     return result
@@ -440,6 +439,7 @@ def export_and_run_ort(
     batch_count: int,
     start_memory,
     memory_monitor_type,
+    enable_cuda_graph: bool,
 ):
     assert provider == "CUDAExecutionProvider"
 
@@ -453,6 +453,7 @@ def export_and_run_ort(
         model_name,
         scheduler=scheduler,
         requires_safety_checker=not disable_safety_checker,
+        enable_cuda_graph=enable_cuda_graph,
     )
 
     # re-use cached folder to save ONNX models
@@ -461,15 +462,15 @@ def export_and_run_ort(
     pipe = pipe.to("cuda", torch_dtype=torch.float16)
 
     def warmup():
-        pipe(["warm up"] * batch_size, num_inference_steps=steps)
+        pipe(["warm up"] * batch_size, image_height=height, image_width=width, num_inference_steps=steps)
 
     # Run warm up, and measure GPU memory of two runs
     # The first run has algo search so it might need more memory
     first_run_memory = measure_gpu_memory(memory_monitor_type, warmup, start_memory)
     second_run_memory = measure_gpu_memory(memory_monitor_type, warmup, start_memory)
 
-    if memory_monitor_type is None:
-        warmup()
+    # An extra warm up run is needed for cuda graph
+    warmup()
 
     image_filename_prefix = get_image_filename_prefix("ort_cuda", model_name, batch_size, disable_safety_checker)
 
@@ -497,7 +498,7 @@ def export_and_run_ort(
         "model_name": model_name,
         "engine": "onnxruntime",
         "version": ort_version,
-        "provider": provider,
+        "provider": provider.replace("ExecutionProvider", ""),
         "directory": pipe.engine_dir,
         "height": height,
         "width": width,
@@ -510,6 +511,7 @@ def export_and_run_ort(
         "first_run_memory_MB": first_run_memory,
         "second_run_memory_MB": second_run_memory,
         "disable_safety_checker": disable_safety_checker,
+        "enable_cuda_graph": enable_cuda_graph,
     }
 
 
@@ -525,6 +527,7 @@ def run_ort_trt(
     start_memory,
     memory_monitor_type,
     max_batch_size: int,
+    enable_cuda_graph: bool,
 ):
     import torch
     from diffusers import DDIMScheduler
@@ -543,6 +546,7 @@ def run_ort_trt(
         image_width=width,
         max_batch_size=max_batch_size,
         onnx_opset=17,
+        enable_cuda_graph=enable_cuda_graph,
     )
 
     # re-use cached folder to save ONNX models and TensorRT Engines
@@ -558,8 +562,7 @@ def run_ort_trt(
     first_run_memory = measure_gpu_memory(memory_monitor_type, warmup, start_memory)
     second_run_memory = measure_gpu_memory(memory_monitor_type, warmup, start_memory)
 
-    if memory_monitor_type is None:
-        warmup()
+    warmup()
 
     image_filename_prefix = get_image_filename_prefix("ort_trt", model_name, batch_size, disable_safety_checker)
 
@@ -602,6 +605,7 @@ def run_ort_trt(
         "first_run_memory_MB": first_run_memory,
         "second_run_memory_MB": second_run_memory,
         "disable_safety_checker": disable_safety_checker,
+        "enable_cuda_graph": enable_cuda_graph,
     }
 
 
@@ -650,8 +654,7 @@ def run_tensorrt(
     first_run_memory = measure_gpu_memory(memory_monitor_type, warmup, start_memory)
     second_run_memory = measure_gpu_memory(memory_monitor_type, warmup, start_memory)
 
-    if memory_monitor_type is None:
-        warmup()
+    warmup()
 
     image_filename_prefix = get_image_filename_prefix("trt", model_name, batch_size, disable_safety_checker)
 
@@ -678,6 +681,7 @@ def run_tensorrt(
     return {
         "engine": "tensorrt",
         "version": trt_version,
+        "provider": "default",
         "height": height,
         "width": width,
         "steps": steps,
@@ -688,6 +692,7 @@ def run_tensorrt(
         "median_latency": statistics.median(latency_list),
         "first_run_memory_MB": first_run_memory,
         "second_run_memory_MB": second_run_memory,
+        "enable_cuda_graph": False,
     }
 
 
@@ -753,6 +758,7 @@ def run_torch(
             "directory": None,
             "provider": "compile" if enable_torch_compile else "xformers" if use_xformers else "default",
             "disable_safety_checker": disable_safety_checker,
+            "enable_cuda_graph": False,
         }
     )
     return result
@@ -895,6 +901,15 @@ def parse_arguments():
         help="Maximum batch size for TensorRT. Change the value may trigger TensorRT engine rebuild. Default is 4.",
     )
 
+    parser.add_argument(
+        "-g",
+        "--enable_cuda_graph",
+        required=False,
+        action="store_true",
+        help="Enable Cuda Graph. Requires onnxruntime >= 1.16",
+    )
+    parser.set_defaults(enable_cuda_graph=False)
+
     args = parser.parse_args()
 
     return args
@@ -912,6 +927,16 @@ def print_loaded_libraries(cuda_related_only=True):
 def main():
     args = parse_arguments()
     print(args)
+
+    if args.enable_cuda_graph:
+        assert args.engine == "onnxruntime" and args.provider in ["cuda", "tensorrt"] and args.pipeline is None
+        from packaging import version
+
+        from onnxruntime import __version__ as ort_version
+
+        assert version.parse(ort_version) >= version.parse(
+            "1.16"
+        ), "pip install ort-nightly-gpu -i https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT-Nightly/pypi/simple/"
 
     coloredlogs.install(fmt="%(funcName)20s: %(message)s")
 
@@ -939,6 +964,7 @@ def main():
             start_memory,
             memory_monitor_type,
             args.max_trt_batch_size,
+            args.enable_cuda_graph,
         )
     elif args.engine == "onnxruntime" and provider == "CUDAExecutionProvider" and args.pipeline is None:
         print("Pipeline is not specified. Trying export and optimize onnx models...")
@@ -954,6 +980,7 @@ def main():
             args.batch_count,
             start_memory,
             memory_monitor_type,
+            args.enable_cuda_graph,
         )
     elif args.engine == "onnxruntime":
         assert args.pipeline and os.path.isdir(
@@ -1040,6 +1067,7 @@ def main():
             "median_latency",
             "first_run_memory_MB",
             "second_run_memory_MB",
+            "enable_cuda_graph",
         ]
         csv_writer = csv.DictWriter(csv_file, fieldnames=column_names)
         csv_writer.writeheader()

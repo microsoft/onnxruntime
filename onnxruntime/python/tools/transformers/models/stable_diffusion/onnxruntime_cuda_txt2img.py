@@ -35,8 +35,7 @@ pip install onnxruntime-gpu
 import gc
 import os
 import shutil
-from collections import OrderedDict
-from typing import Dict, List, Optional, Union
+from typing import List, Optional, Union
 
 import torch
 from diffusers.models import AutoencoderKL, UNet2DConditionModel
@@ -48,11 +47,11 @@ from diffusers.pipelines.stable_diffusion import (
 from diffusers.schedulers import DDIMScheduler
 from diffusers.utils import DIFFUSERS_CACHE, logging
 from huggingface_hub import snapshot_download
+from ort_utils import OrtCudaSession
 from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
 
 import onnxruntime as ort
 from onnxruntime.transformers.fusion_options import FusionOptions
-from onnxruntime.transformers.io_binding_helper import TypeHelper
 from onnxruntime.transformers.onnx_model_clip import ClipOnnxModel
 from onnxruntime.transformers.onnx_model_unet import UnetOnnxModel
 from onnxruntime.transformers.onnx_model_vae import VaeOnnxModel
@@ -61,91 +60,29 @@ from onnxruntime.transformers.optimizer import optimize_by_onnxruntime, optimize
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
-class Engine:
-    def __init__(self, engine_path, provider, device_id: int = 0, provider_options=None):
+class Engine(OrtCudaSession):
+    def __init__(self, engine_path, provider, device_id: int = 0, enable_cuda_graph=False):
         self.engine_path = engine_path
-        self.output_tensors = OrderedDict()
-
-        self.ort_session = None
         self.provider = provider
-        self.provider_options = provider_options if provider_options else self.get_cuda_provider_options(device_id)
-        self.io_binding = None
-        self.input_names = None
-        self.output_names = None
-        self.output_name_to_numpy_type = None
+        self.provider_options = self.get_cuda_provider_options(device_id, enable_cuda_graph)
 
-    def __del__(self):
-        del self.output_tensors
-        del self.io_binding
-        del self.ort_session
-
-    def build(self, disable_graph_optimization):
-        sess_options = ort.SessionOptions()
-        if disable_graph_optimization:
-            sess_options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_DISABLE_ALL
-        self.ort_session = ort.InferenceSession(
+        device = torch.device("cuda", device_id)
+        ort_session = ort.InferenceSession(
             self.engine_path,
-            sess_options,
             providers=[
-                (self.provider, self.provider_options),
+                (provider, self.provider_options),
                 "CPUExecutionProvider",
             ],
         )
 
-        self.input_names = [input.name for input in self.ort_session.get_inputs()]
-        self.output_names = [output.name for output in self.ort_session.get_outputs()]
-        self.output_name_to_numpy_type = TypeHelper.get_io_numpy_type_map(self.ort_session)
-        self.io_binding = self.ort_session.io_binding()
+        super().__init__(ort_session, device, enable_cuda_graph)
 
-    def allocate_output_buffers(self, shape_dict: Dict[str, tuple], device: torch.device):
-        """Allocate output tensors for I/O Binding"""
-        for name, shape in shape_dict.items():
-            if name in self.output_names:
-                # Reuse allocated buffer when the shape is same
-                if name in self.output_tensors and tuple(self.output_tensors[name].shape) == tuple(shape):
-                    continue
-
-                numpy_dtype = self.output_name_to_numpy_type[name]
-                tensor = torch.empty(tuple(shape), dtype=TypeHelper.numpy_type_to_torch_type(numpy_dtype)).to(
-                    device=device
-                )
-                self.output_tensors[name] = tensor
-
-                self.io_binding.bind_output(
-                    name,
-                    tensor.device.type,
-                    tensor.device.index,
-                    numpy_dtype,
-                    list(tensor.size()),
-                    tensor.data_ptr(),
-                )
-
-    def infer(self, feed_dict):
-        """Bind input tensors and run inference"""
-        for name, tensor in feed_dict.items():
-            assert isinstance(tensor, torch.Tensor) and tensor.is_contiguous()
-            if name in self.input_names:
-                self.io_binding.bind_input(
-                    name,
-                    tensor.device.type,
-                    tensor.device.index,
-                    TypeHelper.torch_type_to_numpy_type(tensor.dtype),
-                    [1] if len(tensor.shape) == 0 else list(tensor.shape),
-                    tensor.data_ptr(),
-                )
-
-        self.ort_session.run_with_iobinding(self.io_binding)
-
-        return self.output_tensors
-
-    def get_cuda_provider_options(self, device_id: int):
-        cuda_ep_options = {
+    def get_cuda_provider_options(self, device_id: int, enable_cuda_graph: bool):
+        return {
             "device_id": device_id,
             "arena_extend_strategy": "kSameAsRequested",
-            # TODO: "enable_cuda_graph": True,
+            "enable_cuda_graph": enable_cuda_graph,
         }
-
-        return cuda_ep_options
 
 
 class OrtStableDiffusionOptimizer:
@@ -308,6 +245,7 @@ def build_engines(
     fp16: bool = True,
     provider: str = "CUDAExecutionProvider",
     device_id: int = 0,
+    enable_cuda_graph: bool = False,
 ):
     profile_id = "_fp16" if fp16 else "_fp32"
 
@@ -359,13 +297,10 @@ def build_engines(
             model_obj.optimize(onnx_path, onnx_opt_path, fp16)
 
     built_engines = {}
-    for model_name, model_obj in models.items():
+    for model_name in models:
         engine_path = get_engine_path(engine_dir, model_name, profile_id)
-        engine = Engine(engine_path, provider, device_id=device_id)
+        engine = Engine(engine_path, provider, device_id=device_id, enable_cuda_graph=enable_cuda_graph)
         logger.info("%s options for %s: %s", provider, model_name, engine.provider_options)
-
-        disable_graph_optimization = fp16 or (model_obj.model_type != "unet")
-        engine.build(disable_graph_optimization)
         built_engines[model_name] = engine
 
     return built_engines
@@ -513,6 +448,7 @@ class OnnxruntimeCudaStableDiffusionPipeline(StableDiffusionPipeline):
         # Onnxruntime execution provider parameters
         engine_dir: str = "onnxruntime_optimized_onnx",
         force_engine_rebuild: bool = False,
+        enable_cuda_graph: bool = False,
     ):
         super().__init__(
             vae, text_encoder, tokenizer, unet, scheduler, safety_checker, feature_extractor, requires_safety_checker
@@ -526,6 +462,7 @@ class OnnxruntimeCudaStableDiffusionPipeline(StableDiffusionPipeline):
         self.onnx_dir = onnx_dir
         self.engine_dir = engine_dir
         self.force_engine_rebuild = force_engine_rebuild
+        self.enable_cuda_graph = enable_cuda_graph
 
         self.max_batch_size = 16
 
@@ -606,6 +543,7 @@ class OnnxruntimeCudaStableDiffusionPipeline(StableDiffusionPipeline):
             fp16=self.fp16,
             provider=self.provider,
             device_id=self.torch_device.index or torch.cuda.current_device(),
+            enable_cuda_graph=self.enable_cuda_graph,
         )
 
         # Load the remaining modules to GPU.
@@ -703,9 +641,7 @@ class OnnxruntimeCudaStableDiffusionPipeline(StableDiffusionPipeline):
     def __allocate_buffers(self, image_height, image_width, batch_size):
         # Allocate output tensors for I/O bindings
         for model_name, obj in self.models.items():
-            self.engines[model_name].allocate_output_buffers(
-                shape_dict=obj.get_shape_dict(batch_size, image_height, image_width), device=self.torch_device
-            )
+            self.engines[model_name].allocate_buffers(obj.get_shape_dict(batch_size, image_height, image_width))
 
     @torch.no_grad()
     def __call__(
