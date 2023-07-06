@@ -371,13 +371,9 @@ Some kernels are enabled by MIOpen. We hereby thank for the AMD developers' coll
 ### Future Works
 
 There are other optimizations might improve the performance or reduce memory footprint:
-
-* Use IO Binding in the pipeline. Currently the input and output of each model is in CPU, and extra data copy between GPU and CPU slows down the pipeline.
-* Use CUDA graph to speed up inference.
 * Export the whole pipeline into a single ONNX model. Currently, there are multiple ONNX models (CLIP, VAE and U-Net etc). Each model uses separated thread pool and memory allocator. Combine them into one model could share thread pool and memory allocator. The end result is more efficient and less memory footprint.
-* For Stable Diffusion 2.1, we force Attention in fp32 to avoid black image. That slows down the inference significantly. We could potentially change attention kernel (like fp32 accumulation) to avoid the issue.
+* For Stable Diffusion 2.1, we diabled TensorRT flash attention kernel and use only memory efficient attention. It is possible to add flash attention using Triton compiler to improve performance.
 * Reduce GPU memory footprint by actively deleting buffers for intermediate results.
-* Reduce GPU memory footprint by providing options for CPU RAM Offloading.
 * Attention fusion in CLIP
 * Safety Checker Optimization
 * Leverage FP8 in latest GPU
