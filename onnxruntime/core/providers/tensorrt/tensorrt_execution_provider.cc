@@ -667,6 +667,10 @@ TensorrtExecutionProvider::PerThreadContext::~PerThreadContext() {
   }
 }
 
+std::unordered_map<std::string, std::shared_ptr<nvinfer1::IExecutionContext>>* TensorrtExecutionProvider::PerThreadContext::GetTensorRTContextCache() {
+  return &trt_context_map_;
+}
+
 bool TensorrtExecutionProvider::PerThreadContext::IsTensorRTContextInMap(std::string fused_node) {
   auto it = trt_context_map_.find(fused_node);
   if (it != trt_context_map_.end()) {
@@ -683,15 +687,6 @@ nvinfer1::IExecutionContext& TensorrtExecutionProvider::PerThreadContext::GetTen
   auto context = std::make_shared<nvinfer1::IExecutionContext>();
   trt_context_map_.insert(std::make_pair(fused_node, context));
   return *context;  // dereference shared pointer
-}
-
-void TensorrtExecutionProvider::PerThreadContext::SetTensorRTContext(std::string fused_node, std::shared_ptr<nvinfer1::IExecutionContext> context) {
-  auto it = trt_context_map_.find(fused_node);
-  if (it != trt_context_map_.end()) {
-    it->second = context;
-  } else {
-    trt_context_map_.insert(std::make_pair(fused_node, context));
-  }
 }
 
 TensorrtExecutionProvider::PerThreadContext& TensorrtExecutionProvider::GetPerThreadContext() const {
@@ -2280,7 +2275,8 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
 
     // Save context to PerThreadContext map since maintaining execution context in a per thread basis
     // is suggested by TRT doc to avoid synchronization issue
-    GetPerThreadContext().SetTensorRTContext(fused_node.Name(), std::move(trt_context));
+    auto trt_context_map = GetPerThreadContext().GetTensorRTContextCache();
+    (*trt_context_map).insert(std::make_pair(fused_node.Name(), std::move(trt_context)));
 
     // Create function state
     // TODO: remove default capture
@@ -2578,12 +2574,13 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
         context_update = true;
       }
 
-      // Check the IExecutionContext object for specific thread is existed or not.
-      // If it's the first inference run for specific thread, the IExecutionContext object hasn't been created yet
-      // and it needs to be created later.
+      // Check whether IExecutionContext object is existed for specific thread.
+      // If it's the first inference run for this thread, the object has not yet been created.
       if (!GetPerThreadContext().IsTensorRTContextInMap(fused_node_name)) {
+        auto trt_context_map = GetPerThreadContext().GetTensorRTContextCache();
+        (*trt_context_map).insert(std::make_pair(fused_node_name, std::make_shared<nvinfer1::IExecutionContext>()));
         context_update = true;
-      }
+      } 
 
       // Build execution context if either of the following conditions is true:
       // (1) Engine is rebuilt.
@@ -2592,7 +2589,8 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
       // Note: Creating an execution context from an engine is thread safe per TRT doc
       // https://docs.nvidia.com/deeplearning/tensorrt/developer-guide/index.html#threading
       if (context_update) {
-        std::unique_ptr<nvinfer1::IExecutionContext> trt_context_updated;
+        auto trt_context_map = GetPerThreadContext().GetTensorRTContextCache();
+        auto trt_context_updated = (*trt_context_map).at(fused_node_name);
         if (trt_state->context_memory_sharing_enable) {
           trt_context_updated.reset(trt_state->engine->get()->createExecutionContextWithoutDeviceMemory());
         } else {
@@ -2601,8 +2599,6 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
         if (!trt_context_updated) {
           return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "TensorRT EP failed to create context.");
         }
-        // Update the IExecutionContext object that is maintained on a per thread basis
-        GetPerThreadContext().SetTensorRTContext(fused_node_name, move(trt_context_updated));
       }
 
       // Get the reference to the IExecutionContext object that is maintained on a per thread basis.
