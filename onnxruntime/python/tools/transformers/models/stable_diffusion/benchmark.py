@@ -929,14 +929,19 @@ def main():
     print(args)
 
     if args.enable_cuda_graph:
-        assert args.engine == "onnxruntime" and args.provider in ["cuda", "tensorrt"] and args.pipeline is None
+        if not (args.engine == "onnxruntime" and args.provider in ["cuda", "tensorrt"] and args.pipeline is None):
+            raise ValueError("The stable diffusion pipeline does not support CUDA graph.")
+
         from packaging import version
 
         from onnxruntime import __version__ as ort_version
 
-        assert version.parse(ort_version) >= version.parse(
-            "1.16"
-        ), "pip install ort-nightly-gpu -i https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT-Nightly/pypi/simple/"
+        if version.parse(ort_version) < version.parse("1.16"):
+            raise ValueError(
+                "CUDA graph requires ONNX Runtime 1.16. You can install nightly like the following:\n"
+                " pip uninstall onnxruntime-gpu\n"
+                " pip install ort-nightly-gpu -i https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT-Nightly/pypi/simple/"
+            )
 
     coloredlogs.install(fmt="%(funcName)20s: %(message)s")
 
