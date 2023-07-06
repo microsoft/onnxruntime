@@ -482,6 +482,6 @@ ORT_API_STATUS_IMPL(CreateAndRegisterAllocatorV2, _Inout_ OrtEnv* env, _In_ cons
 ORT_API_STATUS_IMPL(RunAsync, _Inout_ OrtSession* sess, _In_opt_ const OrtRunOptions* run_options,
                     _In_reads_(input_len) const char* const* input_names,
                     _In_reads_(input_len) const OrtValue* const* input, size_t input_len,
-                    _In_reads_(output_names_len) const char* const* output_names1, size_t output_names_len,
+                    _In_reads_(output_names_len) const char* const* output_names, size_t output_names_len,
                     _In_ RunAsyncCallbackFn run_async_callback);
 }  // namespace OrtApis

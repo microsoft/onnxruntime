@@ -307,12 +307,12 @@ class InferenceSession {
 
   [[nodiscard]] common::Status Run(const OrtRunOptions* run_options, const char* const* input_names,
                                    const OrtValue* const* input, size_t input_len,
-                                   const char* const* output_names1, size_t output_names_len,
+                                   const char* const* output_names, size_t output_names_len,
                                    OrtValue** output);
 
   [[nodiscard]] common::Status RunAsync(const OrtRunOptions* run_options, const char* const* input_names,
                                         const OrtValue* const* input, size_t input_len,
-                                        const char* const* output_names1, size_t output_names_len,
+                                        const char* const* output_names, size_t output_names_len,
                                         RunAsyncCallbackFn callback);
 
   /**
