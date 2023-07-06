@@ -4,6 +4,7 @@
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 import type {InferenceSession} from 'onnxruntime-common';
 import {NativeModules} from 'react-native';
+import Onnxruntime from './NativeOnnxruntimeSpec';
 
 /**
  * model loading information
@@ -78,7 +79,7 @@ export declare namespace Binding {
 }
 
 // export native binding
-const {Onnxruntime, OnnxruntimeJSIHelper} = NativeModules;
+const {OnnxruntimeJSIHelper} = NativeModules;
 export const binding = Onnxruntime as Binding.InferenceSession;
 
 // install JSI helper global functions
