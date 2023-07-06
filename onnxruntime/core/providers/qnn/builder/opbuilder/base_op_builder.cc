@@ -149,8 +149,8 @@ Status BaseOpBuilder::ProcessOutputs(QnnModelWrapper& qnn_model_wrapper,
     Qnn_DataType_t supported_qnn_data_type = GetSupportedOutputDataType(output_i, qnn_data_type);
     bool is_graph_output = qnn_model_wrapper.IsGraphOutput(output_name);
     if (supported_qnn_data_type != qnn_data_type && is_graph_output && !do_op_validation) {
-      std::string cast_node_name = output_name + "_cast";
-      std::string cast_input_name = output_name + "_aux";
+      std::string cast_node_name = output_name + "_ort_qnn_ep_cast";
+      std::string cast_input_name = output_name + "_ort_qnn_ep_aux";
       std::vector<uint32_t> cast_output_shape = output_shape;
       QnnTensorWrapper cast_input_tensorwrapper(cast_input_name,
                                                 QNN_TENSOR_TYPE_NATIVE,

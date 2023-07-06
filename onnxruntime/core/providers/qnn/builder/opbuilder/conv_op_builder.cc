@@ -185,7 +185,7 @@ Status ConvOpBuilder::ProcessConv2DInputs(QnnModelWrapper& qnn_model_wrapper,
     OnnxInputInfo input_info = {};
     ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetOnnxInputInfo(inputs[1], is_quantized_model, input_info));
 
-    std::string actual_name = input_info.is_initializer ? input1_name : input1_name + "_trans";
+    std::string actual_name = input_info.is_initializer ? input1_name : input1_name + "_ort_qnn_ep_transpose";
     input_names.push_back(actual_name);
 
     std::vector<uint32_t> actual_shape;
@@ -279,7 +279,7 @@ Status ConvOpBuilder::ProcessConv1DInputs(QnnModelWrapper& qnn_model_wrapper,
     ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetOnnxInputInfo(inputs[0], is_quantized_model, input0_info));
 
     const std::string conv_input0_name = input0_info.is_initializer ? input0_name
-                                                                    : input0_name + "_reshape_as_conv2d";
+                                                                    : input0_name + "_ort_qnn_ep_reshape";
     input_names.push_back(conv_input0_name);
 
     if (!qnn_model_wrapper.IsQnnTensorWrapperExist(conv_input0_name)) {
@@ -329,7 +329,7 @@ Status ConvOpBuilder::ProcessConv1DInputs(QnnModelWrapper& qnn_model_wrapper,
     OnnxInputInfo input_info = {};
     ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetOnnxInputInfo(inputs[1], is_quantized_model, input_info));
 
-    std::string conv_weight_input_name = input_info.is_initializer ? input1_name : input1_name + "_trans_qnn_ep";
+    std::string conv_weight_input_name = input_info.is_initializer ? input1_name : input1_name + "_ort_qnn_ep_transpose";
     input_names.push_back(conv_weight_input_name);
 
     // Create the shape after reshaping.
@@ -354,7 +354,7 @@ Status ConvOpBuilder::ProcessConv1DInputs(QnnModelWrapper& qnn_model_wrapper,
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "QNN EP: Unexpected convolution op type: ", node_unit.OpType().c_str());
     }
 
-    const std::string reshape_output = input1_name + "_reshape_qnn_ep";
+    const std::string reshape_output = input1_name + "_ort_qnn_ep_reshape";
     std::vector<uint8_t> unpacked_tensor;
     if (input_info.is_initializer) {
       //
@@ -676,7 +676,7 @@ Status ConvOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wra
         output_shape[1],  // W
         output_shape[2],  // C
     };
-    const std::string conv_output_name = output_name + "_2d_qnn_ep";
+    const std::string conv_output_name = output_name + "_ort_qnn_ep_conv2d";
     QnnTensorWrapper output_tensorwrapper(conv_output_name, QNN_TENSOR_TYPE_NATIVE, qnn_data_type, output_quantize_param,
                                           std::vector<uint32_t>(output_shape_2d));
     ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(output_tensorwrapper)), "Failed to add tensor.");

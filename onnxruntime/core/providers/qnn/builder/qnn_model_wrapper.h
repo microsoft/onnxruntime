@@ -124,8 +124,8 @@ class QnnModelWrapper {
                         const Qnn_DataType_t& tensor_data_type,
                         const Qnn_QuantizeParams_t& quantize_param,
                         bool do_op_validation,
-                        const bool is_for_input = true,
-                        const bool is_for_output = false);
+                        bool is_for_input = true,
+                        bool is_for_output = false);
 
   Status AddTransposeNode(NodeIndex node_index,
                           const std::string& input_name,
@@ -136,8 +136,8 @@ class QnnModelWrapper {
                           const Qnn_DataType_t& tensor_data_type,
                           const Qnn_QuantizeParams_t& quantize_param,
                           bool do_op_validation,
-                          const bool is_for_input = true,
-                          const bool is_for_output = false);
+                          bool is_for_input = true,
+                          bool is_for_output = false);
 
   // Tranpose NCHW->HWCN for QNN weight
   Status AddNchwToHwcnTranspose(NodeIndex node_index,
@@ -148,8 +148,8 @@ class QnnModelWrapper {
                                 const Qnn_DataType_t& tensor_data_type,
                                 const Qnn_QuantizeParams_t& quantize_param,
                                 bool do_op_validation,
-                                const bool is_for_input = true,
-                                const bool is_for_output = false) {
+                                bool is_for_input = true,
+                                bool is_for_output = false) {
     LOGS(logger_, VERBOSE) << "Add NCHW->HWCN Transpose node after Conv weight input: " << input_name
                            << " -> " << output_name;
     return AddTransposeNode(node_index, input_name, output_name, input_shape, nchw2hwcn_perm_, output_shape,
@@ -165,8 +165,8 @@ class QnnModelWrapper {
                                 const Qnn_DataType_t& tensor_data_type,
                                 const Qnn_QuantizeParams_t& quantize_param,
                                 bool do_op_validation,
-                                const bool is_for_input = true,
-                                const bool is_for_output = false) {
+                                bool is_for_input = true,
+                                bool is_for_output = false) {
     LOGS(logger_, VERBOSE) << "Add CNHW->HWCN Transpose node after ConvTranspose weight input: " << input_name
                            << " -> " << output_name;
     return AddTransposeNode(node_index, input_name, output_name, input_shape, cnhw2hwcn_perm_, output_shape,

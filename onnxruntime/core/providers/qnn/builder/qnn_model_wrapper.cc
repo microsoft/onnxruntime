@@ -393,8 +393,8 @@ Status QnnModelWrapper::AddReshapeNode(const std::string& input_name,
                                        const Qnn_DataType_t& tensor_data_type,
                                        const Qnn_QuantizeParams_t& quantize_param,
                                        bool do_op_validation,
-                                       const bool is_for_input,
-                                       const bool is_for_output) {
+                                       bool is_for_input,
+                                       bool is_for_output) {
   QnnTensorWrapper input_tensorwrapper(input_name,
                                        is_for_input ? QNN_TENSOR_TYPE_APP_WRITE : QNN_TENSOR_TYPE_NATIVE,
                                        tensor_data_type,
@@ -433,8 +433,8 @@ Status QnnModelWrapper::AddTransposeNode(NodeIndex node_index,
                                          const Qnn_DataType_t& tensor_data_type,
                                          const Qnn_QuantizeParams_t& quantize_param,
                                          bool do_op_validation,
-                                         const bool is_for_input,
-                                         const bool is_for_output) {
+                                         bool is_for_input,
+                                         bool is_for_output) {
   // No need to add this for output nodes as it is added as output tensor for previous node
   if (is_for_input) {
     Qnn_TensorType_t tensor_type = QNN_TENSOR_TYPE_APP_WRITE;

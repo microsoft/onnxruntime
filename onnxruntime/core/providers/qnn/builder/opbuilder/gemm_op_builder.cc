@@ -131,7 +131,7 @@ Status GemmOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
       input_shape[0] = old_input_shape[1];
       input_shape[1] = old_input_shape[0];
       const std::string& node_input_name(input_name);
-      input_tensor_name = input_tensor_name + "_trans";
+      input_tensor_name = input_tensor_name + "_ort_qnn_ep_transpose";
       std::vector<uint32_t> perm{1, 0};
       ORT_RETURN_IF_ERROR(qnn_model_wrapper.AddTransposeNode(node_unit.Index(), node_input_name, input_tensor_name,
                                                              old_input_shape, perm, input_shape,

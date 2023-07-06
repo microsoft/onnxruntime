@@ -98,7 +98,7 @@ Status GatherOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
     // Insert cast node int64 -> int32
     if (qnn_data_type == QNN_DATATYPE_INT_64) {
       // Add Cast node for indices
-      indices_input_name = input_name + "_cast";
+      indices_input_name = input_name + "_ort_qnn_ep_cast";
       QnnTensorWrapper cast_output(indices_input_name, QNN_TENSOR_TYPE_NATIVE, QNN_DATATYPE_INT_32, quantize_param,
                                    std::move(cast_output_shape));
       ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(cast_output)), "Failed to add tensor.");
@@ -177,7 +177,7 @@ Status GatherOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_w
 
   bool is_graph_output = qnn_model_wrapper.IsGraphOutput(output_name);
   bool reshape_required = (qnn_output_shape.size() != target_output_shape.size());
-  std::string gather_output_name = output_name + (reshape_required ? "_reshape" : "");
+  std::string gather_output_name = output_name + (reshape_required ? "_ort_qnn_ep_reshape" : "");
   Qnn_TensorType_t tensor_type = (!reshape_required && is_graph_output) ? QNN_TENSOR_TYPE_APP_READ : QNN_TENSOR_TYPE_NATIVE;
   QnnTensorWrapper gather_output_wrapper(gather_output_name, tensor_type, qnn_data_type, quantize_param,
                                          std::move(qnn_output_shape));
