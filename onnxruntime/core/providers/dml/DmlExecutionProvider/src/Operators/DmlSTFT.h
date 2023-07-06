@@ -192,9 +192,7 @@ private:
         ComPtr<ID3D12DescriptorHeap> descriptorHeap;
         ComPtr<IDMLBindingTable> bindingTable;
         ComPtr<IDMLCommandRecorder> commandRecorder;
-        ComPtr<ID3D12Resource> persistentResource;
-        ComPtr<IUnknown> persistentResourcePoolingUnk;
-        std::optional<DML_BUFFER_BINDING> persistentResourceBinding;
+        std::optional<Dml::DmlBuffer> persistentBufferRegion;
         bool hasWindowTensor = false;
         uint64_t signalBufferSizeInBytes = 0;
         uint64_t windowBufferSizeInBytes = 0;
@@ -315,20 +313,29 @@ public:
 
         // Initialize
         {
+            std::vector<DML_BUFFER_BINDING> initializationInputBindings(params.hasWindowTensor ? 2 : 1);
+
             uint64_t persistentResourceSize = m_framingOperator.op->GetBindingProperties().PersistentResourceSize;
             if (persistentResourceSize > 0)
             {
-                auto buffer = m_dmlProvider->AllocatePooledResource(persistentResourceSize);
-                m_framingOperator.persistentResource = buffer.ResourceInUavState();
-                m_framingOperator.persistentResourceBinding = buffer.GetBufferBinding();
+                m_framingOperator.persistentBufferRegion = m_dmlProvider->AllocatePooledResource(persistentResourceSize);
+                auto binding = m_framingOperator.persistentBufferRegion->GetBufferBinding();
+                ORT_THROW_IF_FAILED(m_dmlProvider->InitializeOperator(
+                    m_framingOperator.op.Get(),
+                    &binding,
+                    gsl::make_span(initializationInputBindings)
+                ));
+            }
+            else
+            {
+                ORT_THROW_IF_FAILED(m_dmlProvider->InitializeOperator(
+                    m_framingOperator.op.Get(),
+                    nullptr,
+                    gsl::make_span(initializationInputBindings)
+                ));
             }
 
-            std::vector<DML_BUFFER_BINDING> initializationInputBindings(params.hasWindowTensor ? 2 : 1);
-            ORT_THROW_IF_FAILED(m_dmlProvider->InitializeOperator(
-                m_framingOperator.op.Get(),
-                m_framingOperator.persistentResourceBinding ? &*m_framingOperator.persistentResourceBinding : nullptr,
-                gsl::make_span(initializationInputBindings)
-            ));
+
         }
 
         auto execBindingProps = m_framingOperator.op->GetBindingProperties();
@@ -398,11 +405,6 @@ public:
         std::array<DML_BINDING_DESC, 2> inputBindings;
         uint32_t inputBindingsCount = 1;
 
-        // NOTE: avoiding std::array for barriers to avoid buggy code analysis thinking
-        // barrierCount is outside the valid range.
-        D3D12_RESOURCE_BARRIER barriers[3];
-        uint32_t barrierCount = 0;
-
         Dml::D3D12BufferRegion signalBufferRegion = DmlSTFTHelpers::GetInputBufferRegionFromKernelContext(context, DmlSTFTKernelInputIndex::Signal);
         inputBuffers[0] = signalBufferRegion.GetBufferBinding();
         inputBindings[0] = { DML_BINDING_TYPE_BUFFER, &inputBuffers[0] };
@@ -435,17 +437,11 @@ public:
         auto persistentBufferSize = bindingProps.PersistentResourceSize;
         if (persistentBufferSize > 0)
         {
-            DML_BINDING_DESC bindingDesc = { DML_BINDING_TYPE_BUFFER, &*m_framingOperator.persistentResourceBinding };
+            assert(m_framingOperator.persistentBufferRegion.has_value());
+            auto persistentResourceBinding = m_framingOperator.persistentBufferRegion->GetBufferBinding();
+            DML_BINDING_DESC bindingDesc = { DML_BINDING_TYPE_BUFFER, &persistentResourceBinding };
             m_framingOperator.bindingTable->BindPersistentResource(&bindingDesc);
         }
-
-        // Transition resources COMMON -> UAV
-        D3D12_RESOURCE_BARRIER uav_barriers[4];
-        uav_barriers[0] = CD3DX12_RESOURCE_BARRIER::UAV(signalBufferRegion.ResourceInUavState());
-        uav_barriers[1] = CD3DX12_RESOURCE_BARRIER::UAV(windowBufferRegion.ResourceInUavState());
-        uav_barriers[2] = CD3DX12_RESOURCE_BARRIER::UAV(outputBufferRegion.ResourceInUavState());
-        uav_barriers[3] = CD3DX12_RESOURCE_BARRIER::Aliasing(nullptr, nullptr);
-        commandList->ResourceBarrier(barrierCount, barriers);
 
         m_framingOperator.commandRecorder->RecordDispatch(
             commandList,
@@ -453,13 +449,10 @@ public:
             m_framingOperator.bindingTable.Get()
         );
 
-        // Transition resources UAV -> COMMON
-        for (uint32_t barrierIndex = 0; barrierIndex < barrierCount; barrierIndex++)
-        {
-            std::swap(barriers[barrierIndex].Transition.StateBefore, barriers[barrierIndex].Transition.StateAfter);
-        }
-
-        commandList->ResourceBarrier(barrierCount, barriers);
+        D3D12_RESOURCE_BARRIER barriers[] = {
+            CD3DX12_RESOURCE_BARRIER::UAV(nullptr),
+            CD3DX12_RESOURCE_BARRIER::Aliasing(nullptr, nullptr)};
+        commandList->ResourceBarrier(2, barriers);
     }
 };
 

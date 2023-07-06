@@ -838,15 +838,6 @@ public:
         TConstants& constants,
         ID3D12GraphicsCommandList* commandList)
     {
-        D3D12_RESOURCE_BARRIER uav_barriers[TSize+1];
-
-        std::transform(
-            bufferRegions.begin(), bufferRegions.end(),
-            uav_barriers,
-            [](auto& bufferRegion) { return CD3DX12_RESOURCE_BARRIER::UAV(bufferRegion.ResourceInUavState()); } );
-        uav_barriers[TSize] = CD3DX12_RESOURCE_BARRIER::Aliasing(nullptr, nullptr);
-        commandList->ResourceBarrier(TSize, uav_barriers);
-
         for (uint32_t i = 0; i < TSize; i++)
         {
             // Set resource views
@@ -895,7 +886,10 @@ public:
             commandList->Dispatch(dispatchSizeX, 1, 1);
         }
 
-        commandList->ResourceBarrier(3, uav_barriers);
+        D3D12_RESOURCE_BARRIER barriers[] = {
+            CD3DX12_RESOURCE_BARRIER::UAV(nullptr),
+            CD3DX12_RESOURCE_BARRIER::Aliasing(nullptr, nullptr)};
+        commandList->ResourceBarrier(2, barriers);
     }
 };
 
