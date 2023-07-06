@@ -437,6 +437,23 @@ inline bool BFloat16_t::operator<(const BFloat16_t& rhs) const noexcept {
   return (value != rhs.value) && ((value < rhs.value) ^ left_is_negative);
 }
 
+template <>
+struct TypeToTensorType<Float8E4M3FN_t> {
+  static constexpr ONNXTensorElementDataType type = ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E4M3FN;
+};
+template <>
+struct TypeToTensorType<Float8E4M3FNUZ_t> {
+  static constexpr ONNXTensorElementDataType type = ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E4M3FNUZ;
+};
+template <>
+struct TypeToTensorType<Float8E5M2_t> {
+  static constexpr ONNXTensorElementDataType type = ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E5M2;
+};
+template <>
+struct TypeToTensorType<Float8E5M2FNUZ_t> {
+  static constexpr ONNXTensorElementDataType type = ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E5M2FNUZ;
+};
+
 inline MemoryAllocation::MemoryAllocation(OrtAllocator* allocator, void* p, size_t size)
     : allocator_(allocator), p_(p), size_(size) {
 }

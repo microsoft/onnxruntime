@@ -586,6 +586,7 @@ struct ProviderHost {
 #if !defined(DISABLE_SPARSE_TENSORS)
   virtual bool DataTypeImpl__IsSparseTensorType(const DataTypeImpl* p) = 0;
 #endif
+
   virtual DeleteFunc DataTypeImpl__GetDeleteFunc(const DataTypeImpl* p) = 0;
 
   virtual const std::vector<MLDataType>& DataTypeImpl__AllFixedSizeTensorTypes() = 0;
