@@ -2299,6 +2299,101 @@ Status InferenceSession::Run(const RunOptions& run_options,
   return retval;
 }
 
+Status InferenceSession::Run(const OrtRunOptions* run_options,
+                             const char* const* input_names,
+                             const OrtValue* const* input, size_t input_len,
+                             const char* const* output_names1, size_t output_names_len,
+                             OrtValue** output) {
+
+  InlinedVector<std::string> feed_names;
+  feed_names.reserve(input_len);
+  InlinedVector<OrtValue> feeds;
+  feeds.reserve(input_len);
+
+  for (size_t i = 0; i != input_len; ++i) {
+    if (input_names[i] == nullptr || input_names[i][0] == '\0') {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "input name cannot be empty");
+    }
+
+    if (!input[i]) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, MakeString("NULL input supplied for input ", input_names[i]).c_str());
+    }
+
+    feed_names.emplace_back(input_names[i]);
+    feeds.emplace_back(*input[i]);
+  }
+
+  // Create output feed
+  InlinedVector<std::string> output_names;
+  output_names.reserve(output_names_len);
+  for (size_t i = 0; i != output_names_len; ++i) {
+    if (output_names1[i] == nullptr || output_names1[i][0] == '\0') {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "output name cannot be empty");
+    }
+    output_names.emplace_back(output_names1[i]);
+  }
+
+  std::vector<OrtValue> fetches;
+  fetches.reserve(output_names_len);
+  for (size_t i = 0; i != output_names_len; ++i) {
+    if (output[i] != nullptr) {
+      fetches.emplace_back(*output[i]);
+    } else {
+      fetches.emplace_back();
+    }
+  }
+
+  Status status;
+  if (run_options == nullptr) {
+    OrtRunOptions op;
+    status = Run(op, feed_names, feeds, output_names, &fetches, nullptr);
+  } else {
+    status = Run(*run_options, feed_names, feeds, output_names, &fetches, nullptr);
+  }
+
+  if (!status.IsOK())
+    return status;
+
+  // We do it in two loops to make sure copy __ctors does not throw
+  InlinedVector<std::unique_ptr<OrtValue>> output_unique_ptrs;
+  output_unique_ptrs.reserve(output_names_len);
+  for (size_t i = 0; i != output_names_len; ++i) {
+    if (output[i] == nullptr) {
+      output_unique_ptrs.emplace_back(std::make_unique<OrtValue>(fetches[i]));
+    } else {
+      output_unique_ptrs.emplace_back();
+    }
+  }
+
+  ORT_ENFORCE(output_unique_ptrs.size() == output_names_len);
+
+  for (size_t i = 0; i != output_names_len; ++i) {
+    if (output[i] == nullptr) {
+      ORT_ENFORCE(output_unique_ptrs[i] != nullptr);
+      output[i] = output_unique_ptrs[i].release();
+    }
+  }
+  return Status::OK();
+}
+
+Status InferenceSession::RunAsync(const OrtRunOptions* run_options, const char* const* input_names,
+                                  const OrtValue* const* input, size_t input_len,
+                                  const char* const* output_name1, size_t output_names_len,
+                                  RunAsyncCallbackFn callback) {
+  InferenceSession* sess = this;
+  std::function<void()> run_fn = [&]() {
+    OrtValue* outputs{};
+    auto status = sess->Run(run_options, input_names, input, input_len, output_name1, output_names_len, &outputs);
+    if (status.IsOK()) {
+      callback(outputs, {});
+    } else {
+      callback({}, ToOrtStatus(status));
+    }
+  };
+  concurrency::ThreadPool::Schedule(inter_op_thread_pool_.get(), run_fn);
+  return Status::OK();
+}
+
 common::Status InferenceSession::Run(const NameMLValMap& feeds, gsl::span<const std::string> output_names,
                                      std::vector<OrtValue>* p_fetches) {
   return Run(RunOptions(), feeds, output_names, p_fetches);

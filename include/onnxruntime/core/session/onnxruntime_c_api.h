@@ -696,6 +696,8 @@ typedef void (*OrtCustomJoinThreadFn)(OrtCustomThreadHandle ort_custom_thread_ha
 
 typedef OrtStatus*(ORT_API_CALL* RegisterCustomOpsFn)(OrtSessionOptions* options, const OrtApiBase* api);
 
+typedef void (*RunAsyncCallbackFn)(OrtValue*, OrtStatusPtr);
+
 /** \brief The C API
  *
  * All C API functions are defined inside this structure as pointers to functions.
@@ -4316,6 +4318,12 @@ struct OrtApi {
    */
   ORT_API2_STATUS(CreateAndRegisterAllocatorV2, _Inout_ OrtEnv* env, _In_ const char* provider_type, _In_ const OrtMemoryInfo* mem_info, _In_ const OrtArenaCfg* arena_cfg,
                   _In_reads_(num_keys) const char* const* provider_options_keys, _In_reads_(num_keys) const char* const* provider_options_values, _In_ size_t num_keys);
+
+  ORT_API2_STATUS(RunAsync, _Inout_ OrtSession* session, _In_opt_ const OrtRunOptions* run_options,
+                  _In_reads_(input_len) const char* const* input_names,
+                  _In_reads_(input_len) const OrtValue* const* inputs, size_t input_len,
+                  _In_reads_(output_names_len) const char* const* output_names, size_t output_names_len,
+                  _In_ RunAsyncCallbackFn run_async_callback);
 };
 
 /*
