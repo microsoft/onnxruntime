@@ -919,7 +919,7 @@ template <typename T>
 inline void SessionImpl<T>::RunAsync(const RunOptions& run_options, const char* const* input_names, const Value* input_values, size_t input_count,
                                      const char* const* output_names, size_t output_count, RunAsyncCallbackFn callback) {
   auto ort_input_values = reinterpret_cast<const OrtValue* const*>(input_values);
-  ThrowOnError(GetApi().RunAsync(this->p_, &run_options, input_names, ort_input_values, input_count, output_names, output_count, callback));
+  ThrowOnError(GetApi().RunAsync(this->p_, run_options, input_names, ort_input_values, input_count, output_names, output_count, callback));
 }
 
 template <typename T>

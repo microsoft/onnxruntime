@@ -3140,8 +3140,8 @@ TEST(MultiKernelSingleSchemaTest, valid) {
       Ort::Value::CreateTensor<float>(memory_info, x_value, 10, x_dim, 1),
   };
 
-  Ort::RunOptions run_optoins;
-  auto output_tensors = session.Run(run_optoins, input_names, input_tensors, 1, output_names, 2);
+  Ort::RunOptions run_options;
+  auto output_tensors = session.Run(run_options, input_names, input_tensors, 1, output_names, 2);
   ASSERT_TRUE(*output_tensors[1].GetTensorData<int32_t>() == 72);
 }
 
@@ -3219,3 +3219,44 @@ TEST(MultiKernelSingleSchemaTest, DuplicateKernel) {
 }
 
 #endif
+
+const static std::thread::id tid = std::this_thread::get_id();
+static std::atomic_bool atomic_wait{false};
+
+void RunAsyncCallBack(OrtValue* outputs, size_t num_outputs, OrtStatusPtr status) {
+  auto caller_tid = std::this_thread::get_id();
+  EXPECT_EQ(status, nullptr);
+  EXPECT_EQ(num_outputs, 1);
+  EXPECT_NE(tid, caller_tid);
+  Ort::Value output_value(outputs);
+  EXPECT_EQ(output_value.At<float>({1, 0}), 9.f);
+  atomic_wait.store(true);
+}
+
+TEST(CApiTest, RunAsync) {
+
+  Ort::SessionOptions session_options;
+  session_options.SetIntraOpNumThreads(2);
+  Ort::Session session(*ort_env, MODEL_URI, session_options);
+
+  const char* input_names[] = {"X"};
+  float x_value[] = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+  int64_t x_dim[] = {3, 2};
+
+  auto memory_info = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
+
+  Ort::Value input_tensors[1] = {
+      Ort::Value::CreateTensor<float>(memory_info, x_value, 6, x_dim, 2),
+  };
+
+  const char* output_names[] = {"Y"};
+
+  Ort::RunOptions run_options;
+  EXPECT_NO_THROW(session.RunAsync(run_options, input_names, input_tensors, 1, output_names, 1, RunAsyncCallBack));
+
+  while (!atomic_wait.load()) {
+    _mm_pause();
+  }
+
+  EXPECT_EQ(atomic_wait.load(), true);
+}

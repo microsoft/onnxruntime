@@ -2382,15 +2382,23 @@ Status InferenceSession::RunAsync(const OrtRunOptions* run_options, const char* 
                                   RunAsyncCallbackFn callback) {
   InferenceSession* sess = this;
   std::function<void()> run_fn = [&]() {
-    OrtValue* outputs{};
-    auto status = sess->Run(run_options, input_names, input, input_len, output_name, output_names_len, &outputs);
-    if (status.IsOK()) {
-      callback(outputs, 0, {});
-    } else {
-      callback({}, output_names_len, ToOrtStatus(status));
+    ORT_TRY {
+      OrtValue* outputs{};
+      auto status = sess->Run(run_options, input_names, input, input_len, output_name, output_names_len, &outputs);
+      if (status.IsOK()) {
+        callback(outputs, output_names_len, {});
+      } else {
+        callback({}, 0, ToOrtStatus(status));
+      }
+    }
+    ORT_CATCH(const std::exception& e) {
+      callback({}, 0, ToOrtStatus(ORT_MAKE_STATUS(ONNXRUNTIME, RUNTIME_EXCEPTION, e.what())));
+    }
+    ORT_CATCH(...) {
+      callback({}, 0, ToOrtStatus(ORT_MAKE_STATUS(ONNXRUNTIME, RUNTIME_EXCEPTION)));
     }
   };
-  concurrency::ThreadPool::Schedule(inter_op_thread_pool_.get(), run_fn);
+  concurrency::ThreadPool::Schedule(thread_pool_.get(), run_fn);
   return Status::OK();
 }
 
