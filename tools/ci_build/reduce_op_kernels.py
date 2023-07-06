@@ -162,16 +162,12 @@ class _ExcludingRegistrationProcessor(op_registration_utils.RegistrationProcesso
                     reason = "Specific typed registration is not required."
         else:
             log.warning(
-                f"Keeping {registration_identifier} registration from unknown domain: "
-                f"{constant_for_domain}, operator={operator}, type={type}, "
-                f"start_version={start_version}"
+                f"Keeping {registration_identifier} registration from unknown domain."
             )
 
         if exclude:
             log.info(
-                f"Disabling {registration_identifier} registration: {reason}, "
-                f"{constant_for_domain}, operator={operator}, type={type}, "
-                f"start_version={start_version}"
+                f"Disabling {registration_identifier} registration: {reason}"
             )
             for line in lines:
                 self._output_file.write("// " + line)
