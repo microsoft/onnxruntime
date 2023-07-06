@@ -25,15 +25,14 @@ struct HypothesisScore {
 };
 
 struct BeamHypotheses {
-  void Init(const IGenerationParameters& parameters, gsl::span<HypothesisScore> beams);
-
-  // Number of hypotheses
-  int Size() const { return beams_used_; }
+  // As these are constructed as an uninitialized array of memory, we need an Init method
+  void Init(float length_penalty, gsl::span<HypothesisScore> beams);
 
   // Add a new hypothesis
   void Add(gsl::span<const int32_t>& hypothesis, float sum_logprobs);
 
-  bool IsDone(float best_sum_logprobs, int current_length) const;
+  // Return true if this beats the worst score in the hypothesis
+  bool CanImprove(float best_sum_logprobs, int current_length) const;
 
   // Output results
   void Output(int top_k,                            // number of sequences to return
@@ -41,15 +40,13 @@ struct BeamHypotheses {
               gsl::span<int32_t>& sequences,        // buffer with pad token, shape (num_return_sequences, max_length)
               gsl::span<float>& sequences_scores);  // buffer for sequence scores, with shape (num_return_sequences)
 
- private:
-  float length_penalty_;
-  bool early_stopping_;
   gsl::span<HypothesisScore> beams_;  // Beam width sized array of hypotheses, sorted by highest scoring
   int beams_used_;                    // Number of elements used in beams_
+  float length_penalty_;
+  bool done_;
 };
 
-class BeamSearchScorer : public IBeamScorer {
- public:
+struct BeamSearchScorer : IBeamScorer {
   BeamSearchScorer(const IGenerationParameters& parameters,
                    AllocatorPtr& allocator);
 
@@ -63,22 +60,21 @@ class BeamSearchScorer : public IBeamScorer {
                 Tensor* output_sequences,
                 Tensor* output_sequence_scores) override;
 
-  bool IsDone() const;
+  bool IsDone() const override { return not_done_count_ == 0; }
 
-  gsl::span<float>& GetNextScores() { return next_beam_scores_; }
-  gsl::span<int32_t>& GetNextTokens() { return next_beam_tokens_; }
-  gsl::span<int32_t>& GetNextIndices() override { return next_beam_indices_; }
+  gsl::span<float> GetNextScores() override { return next_beam_scores_; }
+  gsl::span<int32_t> GetNextTokens() override { return next_beam_tokens_; }
+  gsl::span<int32_t> GetNextIndicesCPU() override { return next_beam_indices_; }
 
  private:
   size_t batch_size_;
   size_t num_beams_;
   size_t max_length_;
-  size_t num_beam_hyps_to_keep_;
+  size_t num_return_sequences_;
   int pad_token_id_;
   int eos_token_id_;
-
-  IAllocatorUniquePtr<bool> done_ptr_;  // Allocated buffer for done_
-  gsl::span<bool> done_;                // Flags indicates whether each batch is finished or not. Shape is (batch_size).
+  bool early_stopping_;
+  int not_done_count_;  // When zero, every batch entry is done (starts at batch_size_)
 
   IAllocatorUniquePtr<float> next_beam_scores_ptr_;
   gsl::span<float> next_beam_scores_;
@@ -91,12 +87,11 @@ class BeamSearchScorer : public IBeamScorer {
 
   IAllocatorUniquePtr<int32_t> hypothesis_buffer_ptr_;  // Allocated buffer to hold all hypotheses
   gsl::span<int32_t> hypothesis_buffer_;                // Span of the allocated buffer
-  size_t hypothesis_buffer_length_{};                   // Total number of elements
-  size_t hypothesis_buffer_offset_{};                   // Offset of available buffer, or length of used buffer.
+  int hypothesis_buffer_used_{};                        // Offset of available buffer, or length of used buffer.
 
   IAllocatorUniquePtr<HypothesisScore> hypothesis_scores_ptr_;  // num_beams_ * batch_size_, divided into num_beams_ chunks per BeamHypothesis in beam_hyps_
   IAllocatorUniquePtr<BeamHypotheses> beam_hyps_ptr_;
-  gsl::span<BeamHypotheses> beam_hyps_;  // batch_size_ count
+  gsl::span<BeamHypotheses> beam_hyps_;  // Shape is batch_size_
 };
 
 }  // namespace transformers

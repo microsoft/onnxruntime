@@ -78,8 +78,7 @@ Status GptSubgraph::CreateInitialFeeds(
   auto past_type = IsOutputFloat16() ? DataTypeImpl::GetType<MLFloat16>() : DataTypeImpl::GetType<float>();
   if (!past_present_share_buffer_) {
     // Initialize empty past state
-    int64_t past_state_dims[] = {2, batch_size * num_beams, num_heads, 0, head_size};
-    TensorShape past_shape(&past_state_dims[0], 5);
+    TensorShape past_shape{2, batch_size * num_beams, num_heads, 0, head_size};
     OrtValue empty_past;
     Tensor::InitOrtValue(past_type, past_shape, default_allocator, empty_past);
 
@@ -89,8 +88,7 @@ Status GptSubgraph::CreateInitialFeeds(
     }
   } else {
     // Past state feeds
-    int64_t past_state_dims[] = {2, batch_size * num_beams, num_heads, past_present_share_buffer_max_seq_len, head_size};
-    TensorShape past_shape(&past_state_dims[0], 5);
+    TensorShape past_shape{2, batch_size * num_beams, num_heads, past_present_share_buffer_max_seq_len, head_size};
 
     // The remaining inputs are past state except the last one or three (see below for details)
     // If `need_cache_indir` is false, then the last input is `past_sequence_length`

@@ -629,6 +629,8 @@ def test_load_checkpoint():
     # When
     simple_block.requires_grad("fc2.weight", True)
     simple_block.requires_grad("fc1.bias", True)
+    simple_block.requires_grad("fc1.weight", True)
+    simple_block.requires_grad("fc2.bias", True)
 
     with onnxblock.base(onnx_model):
         _ = simple_block(onnx_model.graph.output[0].name)

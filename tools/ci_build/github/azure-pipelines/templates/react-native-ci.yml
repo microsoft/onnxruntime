@@ -58,7 +58,7 @@ stages:
       TODAY: $[format('{0:dd}{0:MM}{0:yyyy}', pipeline.startTime)]
       PROTO_CACHE_DIR: '$(Pipeline.Workspace)/ccache_proto'
       ORT_CACHE_DIR: '$(Pipeline.Workspace)/ccache_ort'
-    timeoutInMinutes: 150
+    timeoutInMinutes: 180
     steps:
     - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
       displayName: Clean Agent Directories
@@ -189,7 +189,7 @@ stages:
         python3 tools/python/run_android_emulator.py \
           --android-sdk-root $(ANDROID_SDK_ROOT) \
           --create-avd --system-image "system-images;android-30;default;x86_64" \
-          --start --emulator-extra-args="-partition-size 4096" \
+          --start --emulator-extra-args="-partition-size 4096 -verbose" \
           --emulator-pid-file $(Build.BinariesDirectory)/emulator.pid
       displayName: Start Android Emulator
 

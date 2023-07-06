@@ -42,23 +42,4 @@ struct AllocatorCreationInfo {
 // Valid values can be found in onnxruntime_c_api.h.
 AllocatorPtr CreateAllocator(const AllocatorCreationInfo& info);
 
-// Used for sharing allocators across EPs. e.g. CUDA with TensorRT, CPU with XNNPACK
-// NOTE: This isn't managing the lifetime of the allocators (they're all in shared_ptr instances anyway).
-// It really just provides a way to collect and pass around allocators between the calls to
-// IExecutionProvider::RegisterAllocator for each registered EP. Once those calls complete it is no longer needed.
-class AllocatorManager {
-  //
- public:
-  AllocatorManager() = default;
-  void InsertAllocator(AllocatorPtr allocator);
-  void ReplaceAllocator(AllocatorPtr allocator);
-  // Get an allocator for the device. Return nullptr if it doesn't exist
-  AllocatorPtr GetAllocator(OrtMemType mem_type, OrtDevice device) const;
-
- private:
-  // key from OrtMemType+OrtDevice mapped to AllocatorPtr
-  using AllocatorMap = std::unordered_map<int32_t, AllocatorPtr>;
-  AllocatorMap allocators_;
-};
-
 }  // namespace onnxruntime
