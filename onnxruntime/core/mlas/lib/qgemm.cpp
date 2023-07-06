@@ -256,7 +256,7 @@ MlasSymmQgemmBatch(
 
     ptrdiff_t TargetThreadCount = ptrdiff_t(Complexity / double(MLAS_QGEMM_THREAD_COMPLEXITY)) + 1;
 
-    ptrdiff_t MaximumThreadCount = MlasGetMaximumThreadCount(ThreadPool) * 4;
+    ptrdiff_t MaximumThreadCount = MlasGetMaximumThreadCount(ThreadPool) * 8;
 
     if (TargetThreadCount >= MaximumThreadCount) {
         TargetThreadCount = MaximumThreadCount;

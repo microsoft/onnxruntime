@@ -89,4 +89,3 @@ static void SymmQGemmSize(benchmark::internal::Benchmark* b) {
 }
 
 BENCHMARK_CAPTURE(SYMMQGEMM, U8S8, false)->Apply(SymmQGemmSize)->UseRealTime();
-
