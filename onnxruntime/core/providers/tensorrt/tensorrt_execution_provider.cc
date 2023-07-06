@@ -1063,6 +1063,16 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
 }
 
 TensorrtExecutionProvider::~TensorrtExecutionProvider() {
+  // clean up thread local context caches
+  {
+    std::lock_guard<OrtMutex> lock(context_state_.mutex);
+    for (const auto& cache_weak : context_state_.caches_to_update_on_destruction) {
+      const auto cache = cache_weak.lock();
+      if (!cache) continue;
+      ORT_IGNORE_RETURN_VALUE(cache->erase(this));
+    }
+  }
+
   if (!external_stream_ && stream_) {
     ORT_IGNORE_RETURN_VALUE(CUDA_CALL(cudaStreamDestroy(stream_)));
   }
