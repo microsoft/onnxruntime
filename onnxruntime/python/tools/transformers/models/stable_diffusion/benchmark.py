@@ -941,7 +941,7 @@ def main():
             args.max_trt_batch_size,
         )
     elif args.engine == "onnxruntime" and provider == "CUDAExecutionProvider" and args.pipeline is None:
-        print("Pipeline is not specified. Try export and optimize onnx models...")
+        print("Pipeline is not specified. Trying export and optimize onnx models...")
         result = export_and_run_ort(
             sd_model,
             provider,

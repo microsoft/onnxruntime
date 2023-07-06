@@ -36,7 +36,7 @@ import gc
 import os
 import shutil
 from collections import OrderedDict
-from typing import List, Optional, Union
+from typing import Dict, List, Optional, Union
 
 import onnx
 import onnx_graphsurgeon as gs
@@ -71,6 +71,7 @@ class Engine:
         self.io_binding = None
         self.input_names = None
         self.output_names = None
+        self.output_name_to_numpy_type = None
 
         self.device_id = device_id
 
@@ -99,22 +100,21 @@ class Engine:
             ],
         )
 
-    def allocate_output_buffers(self, shape_dict=None, device="cuda"):
-        """Allocate output tensors for I/O Binding"""
         self.input_names = [input.name for input in self.ort_session.get_inputs()]
-        for name in self.input_names:
-            assert name in shape_dict
-
         self.output_names = [output.name for output in self.ort_session.get_outputs()]
-        for name in self.output_names:
-            assert name in shape_dict
-
-        output_name_to_numpy_type = TypeHelper.get_io_numpy_type_map(self.ort_session)
-
+        self.output_name_to_numpy_type = TypeHelper.get_io_numpy_type_map(self.ort_session)
         self.io_binding = self.ort_session.io_binding()
+
+    def allocate_output_buffers(self, shape_dict: Dict[str, tuple], device: torch.device):
+        """Allocate output tensors for I/O Binding"""
+
         for name, shape in shape_dict.items():
             if name in self.output_names:
-                numpy_dtype = output_name_to_numpy_type[name]
+                # Reuse allocated buffer when the shape is same
+                if name in self.output_tensors and tuple(self.output_tensors[name].shape) == tuple(shape):
+                    continue
+
+                numpy_dtype = self.output_name_to_numpy_type[name]
                 tensor = torch.empty(tuple(shape), dtype=TypeHelper.numpy_type_to_torch_type(numpy_dtype)).to(
                     device=device
                 )
@@ -507,10 +507,6 @@ class CLIP(BaseModel):
         return opt.get_optimized_onnx_graph()
 
 
-def make_CLIP(model, device, max_batch_size, embedding_dim, inpaint=False):
-    return CLIP(model, device=device, max_batch_size=max_batch_size, embedding_dim=embedding_dim)
-
-
 class UNet(BaseModel):
     def __init__(
         self, model, fp16=False, device="cuda", max_batch_size=16, embedding_dim=768, text_maxlen=77, unet_dim=4
@@ -587,17 +583,6 @@ class UNet(BaseModel):
         )
 
 
-def make_UNet(model, device, max_batch_size, embedding_dim, inpaint=False):
-    return UNet(
-        model,
-        fp16=True,
-        device=device,
-        max_batch_size=max_batch_size,
-        embedding_dim=embedding_dim,
-        unet_dim=(9 if inpaint else 4),
-    )
-
-
 class VAE(BaseModel):
     def __init__(self, model, device, max_batch_size, embedding_dim):
         super().__init__(
@@ -647,10 +632,6 @@ class VAE(BaseModel):
         return torch.randn(batch_size, 4, latent_height, latent_width, dtype=torch.float32, device=self.device)
 
 
-def make_VAE(model, device, max_batch_size, embedding_dim, inpaint=False):
-    return VAE(model, device=device, max_batch_size=max_batch_size, embedding_dim=embedding_dim)
-
-
 class OnnxruntimeTensorRTStableDiffusionPipeline(StableDiffusionPipeline):
     r"""
     Pipeline for text-to-image generation using TensorRT execution provider in ONNX Runtime.
@@ -668,7 +649,6 @@ class OnnxruntimeTensorRTStableDiffusionPipeline(StableDiffusionPipeline):
         safety_checker: StableDiffusionSafetyChecker,
         feature_extractor: CLIPFeatureExtractor,
         requires_safety_checker: bool = True,
-        stages=["clip", "unet", "vae"],
         image_height: int = 768,
         image_width: int = 768,
         max_batch_size: int = 16,
@@ -685,7 +665,6 @@ class OnnxruntimeTensorRTStableDiffusionPipeline(StableDiffusionPipeline):
 
         self.vae.forward = self.vae.decode
 
-        self.stages = stages
         self.image_height = image_height
         self.image_width = image_width
         self.inpaint = False
@@ -704,27 +683,33 @@ class OnnxruntimeTensorRTStableDiffusionPipeline(StableDiffusionPipeline):
         if self.build_dynamic_shape or self.image_height > 512 or self.image_width > 512:
             self.max_batch_size = 4
 
-        self.models = {}  # loaded in __loadModels()
+        self.models = {}  # loaded in __load_models()
         self.engines = {}  # loaded in build_engines()
 
-    def __loadModels(self):
-        # Load pipeline models
+    def __load_models(self):
         self.embedding_dim = self.text_encoder.config.hidden_size
-        models_args = {
-            "device": self.torch_device,
-            "max_batch_size": self.max_batch_size,
-            "embedding_dim": self.embedding_dim,
-            "inpaint": self.inpaint,
-        }
-        if "clip" in self.stages:
-            self.models["clip"] = make_CLIP(self.text_encoder, **models_args)
-        if "unet" in self.stages:
-            self.models["unet"] = make_UNet(self.unet, **models_args)
-        if "vae" in self.stages:
-            self.models["vae"] = make_VAE(self.vae, **models_args)
+
+        self.models["clip"] = CLIP(
+            self.text_encoder,
+            device=self.torch_device,
+            max_batch_size=self.max_batch_size,
+            embedding_dim=self.embedding_dim,
+        )
+
+        self.models["unet"] = UNet(
+            self.unet,
+            device=self.torch_device,
+            max_batch_size=self.max_batch_size,
+            embedding_dim=self.embedding_dim,
+            unet_dim=(9 if self.inpaint else 4),
+        )
+
+        self.models["vae"] = VAE(
+            self.vae, device=self.torch_device, max_batch_size=self.max_batch_size, embedding_dim=self.embedding_dim
+        )
 
     @classmethod
-    def set_cached_folder(cls, pretrained_model_name_or_path: Optional[Union[str, os.PathLike]], **kwargs):
+    def set_cached_folder(cls, pretrained_model_name_or_path: Union[str, os.PathLike], **kwargs):
         cache_dir = kwargs.pop("cache_dir", DIFFUSERS_CACHE)
         resume_download = kwargs.pop("resume_download", False)
         proxies = kwargs.pop("proxies", None)
@@ -760,10 +745,8 @@ class OnnxruntimeTensorRTStableDiffusionPipeline(StableDiffusionPipeline):
         self.torch_device = self._execution_device
         logger.info(f"Running inference on device: {self.torch_device}")
 
-        # load models
-        self.__loadModels()
+        self.__load_models()
 
-        # build engines
         self.engines = build_engines(
             self.models,
             self.engine_dir,
@@ -827,9 +810,7 @@ class OnnxruntimeTensorRTStableDiffusionPipeline(StableDiffusionPipeline):
 
         return text_embeddings
 
-    def __denoise_latent(
-        self, latents, text_embeddings, timesteps=None, step_offset=0, mask=None, masked_image_latents=None
-    ):
+    def __denoise_latent(self, latents, text_embeddings, timesteps=None, mask=None, masked_image_latents=None):
         if not isinstance(timesteps, torch.Tensor):
             timesteps = self.scheduler.timesteps
         for _step_index, timestep in enumerate(timesteps):
@@ -861,7 +842,7 @@ class OnnxruntimeTensorRTStableDiffusionPipeline(StableDiffusionPipeline):
         images = (images / 2 + 0.5).clamp(0, 1)
         return images.cpu().permute(0, 2, 3, 1).float().numpy()
 
-    def __loadResources(self, image_height, image_width, batch_size):
+    def __allocate_buffers(self, image_height, image_width, batch_size):
         # Allocate output tensors for I/O bindings
         for model_name, obj in self.models.items():
             self.engines[model_name].allocate_output_buffers(
@@ -931,8 +912,7 @@ class OnnxruntimeTensorRTStableDiffusionPipeline(StableDiffusionPipeline):
                 f"Batch size {len(prompt)} is larger than allowed {self.max_batch_size}. If dynamic shape is used, then maximum batch size is 4"
             )
 
-        # load resources
-        self.__loadResources(self.image_height, self.image_width, batch_size)
+        self.__allocate_buffers(self.image_height, self.image_width, batch_size)
 
         with torch.inference_mode(), torch.autocast("cuda"):
             # CLIP text encoder
