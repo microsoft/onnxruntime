@@ -106,6 +106,30 @@ struct StridedBatchedGemmParams : tunable::OpParams {
   int64_t batch;
 };
 
+template <typename T>
+struct GroupedGemmParams : tunable::OpParams {
+  std::string Signature() const override {
+    return MakeString(BlasOpToString(opa), BlasOpToString(opb), "_", m, "_", n, "_", k, "_", num_matrix);
+  }
+
+  rocblas_handle handle;
+  BlasOp opa;
+  BlasOp opb;
+  int64_t m;
+  int64_t n;
+  int64_t k;
+  int64_t num_matrix;
+  T alpha;
+  const T* a;
+  int64_t lda;
+  const int64_t* msizes;
+  const T* b;
+  int64_t ldb;
+  T beta;
+  T* c;
+  int64_t ldc;
+};
+
 }  // namespace blas
 }  // namespace tunable
 }  // namespace rocm

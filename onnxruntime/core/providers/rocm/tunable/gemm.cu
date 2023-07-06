@@ -155,6 +155,48 @@ inline STRIDED_BATCHED_GEMM(T, ScalarT) {
   return internal::RocBlasStridedBatchedGemmOp(&params);
 }
 
+template <typename T, typename ScalarT>
+inline GROUPED_GEMM(T, ScalarT) {
+  GroupedGemmParams<T> params;
+  params.tuning_ctx = tuning_ctx;
+  params.stream = stream;
+  params.handle = handle;
+
+  params.opa = opa;
+  params.opb = opb;
+  params.m = m;
+  params.n = n;
+  params.k = k;
+  params.num_matrix = num_matrix;
+  params.alpha = NormalizeScalar<T>(alpha);
+  params.a = a;
+  params.lda = lda;
+  params.msizes = msizes;
+  params.b = b;
+  params.ldb = ldb;
+  params.beta = NormalizeScalar<T>(beta);
+  params.c = c;
+  params.ldc = ldc;
+
+  if (tuning_ctx->IsTunableOpEnabled()) {
+    if (opa == BlasOp::N && opb == BlasOp::N) {
+      static internal::GroupedGemmTunableOp<T, internal::Row, internal::Row> gemm{};
+      return gemm(&params);
+    } else if (opa == BlasOp::T && opb == BlasOp::N) {
+      static internal::GroupedGemmTunableOp<T, internal::Col, internal::Row> gemm{};
+      return gemm(&params);
+    } else if (opa == BlasOp::N && opb == BlasOp::T) {
+      static internal::GroupedGemmTunableOp<T, internal::Row, internal::Col> gemm{};
+      return gemm(&params);
+    } else /*if (opa == BlasOp::T && opb == BlasOp::T)*/ {
+      static internal::GroupedGemmTunableOp<T, internal::Col, internal::Col> gemm{};
+      return gemm(&params);
+    }
+  }
+
+  return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "GroupedGemm: not implement non tunable.");
+}
+
 #define CALL_GEMM(T, ScalarT)                  \
   Gemm<T, ScalarT>(tuning_ctx, stream, handle, \
                    opa, opb,                   \
@@ -181,6 +223,14 @@ inline STRIDED_BATCHED_GEMM(T, ScalarT) {
       beta, c, ldc, stride_c,                 \
       batch)
 
+#define CALL_GROUPED_GEMM(T, ScalarT)                  \
+  GroupedGemm<T, ScalarT>(tuning_ctx, stream, handle, \
+                   opa, opb,                   \
+                   m, n, k, num_matrix,        \
+                   alpha, a, lda, msizes, b, ldb,      \
+                   beta, c, ldc)
+
+
 // clang-format off
 GEMM(double,   double  ) { return CALL_GEMM(double,   double  ); }
 GEMM(float,    float   ) { return CALL_GEMM(float,    float   ); }
@@ -205,11 +255,16 @@ STRIDED_BATCHED_GEMM(BFloat16, BFloat16) { return CALL_STRIDED_BATCHED_GEMM(BFlo
 STRIDED_BATCHED_GEMM(double,   float   ) { return CALL_STRIDED_BATCHED_GEMM(double,   float   ); }
 STRIDED_BATCHED_GEMM(half,     float   ) { return CALL_STRIDED_BATCHED_GEMM(half,     float   ); }
 STRIDED_BATCHED_GEMM(BFloat16, float   ) { return CALL_STRIDED_BATCHED_GEMM(BFloat16, float   ); }
+
+GROUPED_GEMM(float,    float   ) { return CALL_GROUPED_GEMM(float,    float   ); }
+GROUPED_GEMM(half,     half    ) { return CALL_GROUPED_GEMM(half,     half    ); }
+
 // clang-format on
 
 #undef CALL_GEMM
 #undef CALL_BATCHED_GEMM
 #undef CALL_STRIDED_BATCHED_GEMM
+#undef CALL_GROUPED_GEMM
 
 }  // namespace row_major
 
@@ -242,6 +297,13 @@ namespace column_major {
       c, ldc, stride_c,                                       \
       batch)
 
+#define CALL_GROUPED_GEMM_WITH_AB_SWAPPED(T, ScalarT)             \
+  row_major::GroupedGemm<T, ScalarT>(tuning_ctx, stream, handle, \
+                              opb, opa,                   \
+                              n, m, k, num_matrix,        \
+                              alpha, b, ldb, msizes, a, lda,      \
+                              beta, c, ldc)
+
 // clang-format off
 GEMM(double,   double  ) { return CALL_GEMM_WITH_AB_SWAPPED(double,   double  ); }
 GEMM(float,    float   ) { return CALL_GEMM_WITH_AB_SWAPPED(float,    float   ); }
@@ -266,11 +328,16 @@ STRIDED_BATCHED_GEMM(BFloat16, BFloat16) { return CALL_STRIDED_BATCHED_GEMM_WITH
 STRIDED_BATCHED_GEMM(double,   float   ) { return CALL_STRIDED_BATCHED_GEMM_WITH_AB_SWAPPED(double,   float   ); }
 STRIDED_BATCHED_GEMM(half,     float   ) { return CALL_STRIDED_BATCHED_GEMM_WITH_AB_SWAPPED(half,     float   ); }
 STRIDED_BATCHED_GEMM(BFloat16, float   ) { return CALL_STRIDED_BATCHED_GEMM_WITH_AB_SWAPPED(BFloat16, float   ); }
+
+GROUPED_GEMM(float,    float   ) { return CALL_GROUPED_GEMM_WITH_AB_SWAPPED(float,    float   ); }
+GROUPED_GEMM(half,     half    ) { return CALL_GROUPED_GEMM_WITH_AB_SWAPPED(half,     half    ); }
+
 // clang-format on
 
 #undef CALL_GEMM_WITH_AB_SWAPPED
 #undef CALL_BATCHED_GEMM_WITH_AB_SWAPPED
 #undef CALL_STRIDED_BATCHED_GEMM_WITH_AB_SWAPPED
+#undef CALL_GROUPED_GEMM
 
 }  // namespace column_major
 

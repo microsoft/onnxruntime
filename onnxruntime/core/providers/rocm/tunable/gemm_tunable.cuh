@@ -11,6 +11,7 @@
 #include "core/providers/rocm/tunable/gemm_hipblaslt.h"
 #include "core/providers/rocm/tunable/gemm_rocblas.h"
 #include "core/providers/rocm/tunable/rocm_tunable.h"
+#include "core/providers/rocm/tunable/grouped_gemm_triton.cuh"
 
 namespace onnxruntime {
 namespace rocm {
@@ -184,6 +185,45 @@ class StridedBatchedGemmTunableOp : public TunableOp<StridedBatchedGemmParams<T>
     }
   }
 };
+
+template <typename T, typename ALayout, typename BLayout>
+class GroupedGemmTunableOp : public TunableOp<GroupedGemmParams<T>> {
+ public:
+  GroupedGemmTunableOp() {
+#ifdef USE_TRITON_KERNEL
+    for (auto && [_, op] : GetGroupedGemmTritonOps()) {
+      ORT_UNUSED_PARAMETER(_);
+      this->RegisterOp(std::move(op));
+    }
+#endif
+  }
+
+  const GroupedGemmParams<T>* PreTuning(const GroupedGemmParams<T>* params) override {
+    if (!IsZero(params->beta)) {
+      // When beta != 0, C buffer is used as an input as well as an output. We need to create a proxy params for the
+      // tuning process. Otherwise, tuning will cause the C buffer been updated accumulatedly, say, we tune it for n
+      // iterations, then during tuning C^(1) = alpha A B + beta C^(0), ..., C^(n) = alpha A B + beta C^(n-1). And for
+      // the actual run after tuning, the result will be C^(n+1), whereas what we want is C^(1). This only happens if
+      // the tuning's FindFastest is invoked.
+      //
+      // Note, C^(i) is the C at i-th iteration.
+      GroupedGemmParams<T>* proxy = new GroupedGemmParams<T>();
+      *proxy = *params;
+      HIP_CALL_THROW(hipMalloc(&(proxy->c), proxy->m * proxy->ldc * sizeof(T)));
+      return proxy;
+    }
+
+    return params;
+  }
+
+  void PostTuning(const GroupedGemmParams<T>* params) override {
+    if (!IsZero(params->beta)) {
+      HIP_CALL_THROW(hipFree(params->c));
+      delete params;
+    }
+  }
+};
+
 
 }  // namespace internal
 }  // namespace blas
