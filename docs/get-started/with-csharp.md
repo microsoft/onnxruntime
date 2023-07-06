@@ -16,7 +16,7 @@ nav_order: 4
 ## Install the Nuget Packages with the .NET CLI
 
 ```bash
-dotnet add package Microsoft.ML.OnnxRuntime --version 1.2.0
+dotnet add package Microsoft.ML.OnnxRuntime --version 1.16.0
 dotnet add package System.Numerics.Tensors --version 0.1.0
 ```
 
@@ -127,18 +127,26 @@ namespace Samples
 ```
 ### Multiple inference runs with fixed sized input(s) and output(s)
 
-If the model have fixed sized inputs and outputs of numeric tensors, you can use "FixedBufferOnnxValue" to accelerate the inference speed. By using "FixedBufferOnnxValue", the container objects only need to be allocated/disposed one time during multiple InferenceSession.Run() calls. This avoids some overhead which may be beneficial for smaller models where the time is noticeable in the overall running time.
+If the model have fixed sized inputs and outputs of numeric tensors,
+use the preferable **OrtValue** and its API to accelerate the inference speed and minimize data transfer.
+**OrtValue** class makes it possible to reuse the underlying buffer for the input and output tensors.
+It pins the managed buffers and makes use of them for inference. It also provides direct access
+to the native buffers for outputs. You can also preallocate `OrtValue` for outputs or create it on top
+of the existing buffers.
+This avoids some overhead which may be beneficial for smaller models
+where the time is noticeable in the overall running time.
 
-<!-- FIXME!: This test is no longer in the repo. Needs to be fixed. -->
-<!-- An example can be found at `TestReusingFixedBufferOnnxValueNonStringTypeMultiInferences()`:
-* [Microsoft.ML.OnnxRuntime.Tests/InferenceTest.cs#L1047](https://github.com/microsoft/onnxruntime/blob/main/csharp/test/Microsoft.ML.OnnxRuntime.Tests.Common/InferenceTest.cs#L1047) -->
+Keep in mind that **OrtValue** class, like many other classes in Onnruntime C# API is **IDisposable**.
+It needs to be properly disposed to either unpin the managed buffers or release the native buffers
+to avoid memory leaks.
 
 ## Running on GPU (Optional)
 If using the GPU package, simply use the appropriate SessionOptions when creating an InferenceSession.
 
 ```cs
 int gpuDeviceId = 0; // The GPU device ID to execute on
-var session = new InferenceSession("model.onnx", SessionOptions.MakeSessionOptionWithCudaProvider(gpuDeviceId));
+using var gpuSessionOptoins = SessionOptions.MakeSessionOptionWithCudaProvider(gpuDeviceId);
+using var session = new InferenceSession("model.onnx", gpuSessionOptoins);
 ```
 # ONNX Runtime C# API
 {: .no_toc }
