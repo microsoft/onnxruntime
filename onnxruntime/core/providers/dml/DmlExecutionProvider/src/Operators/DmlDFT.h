@@ -402,16 +402,6 @@ public:
             auto outputDims = GetTensorDimensions(outputTensor.Get());
             ORT_THROW_HR_IF(E_FAIL, inputDims.size() != outputDims.size());
 
-            ComPtr<IUnknown> inputUnknown;
-            ComPtr<ID3D12Resource> inputResource;
-            inputTensor->GetDataInterface(inputUnknown.GetAddressOf());
-            ORT_THROW_IF_FAILED(inputUnknown.As(&inputResource));
-
-            ComPtr<IUnknown> outputUnknown;
-            ComPtr<ID3D12Resource> outputResource;
-            outputTensor->GetDataInterface(outputUnknown.GetAddressOf());
-            ORT_THROW_IF_FAILED(outputUnknown.As(&outputResource));
-
             // Get optional dft_length input
             uint32_t dftLength = inputDims[onnxruntime::narrow<size_t>(m_axis)];
             ComPtr<IMLOperatorTensor> dftLengthTensor;
@@ -685,8 +675,10 @@ public:
             // Padding should be handled by the shader.
             PrepareStockhamFFTParams(
                 context,
-                inputBufferRegion, inputDims,
-                zChirpBufferRegion, params.BluesteinZChirpParams.AFFT.Sizes,
+                inputBufferRegion,
+                inputDims,
+                aFFTBufferRegion,
+                params.BluesteinZChirpParams.AFFT.Sizes,
                 M,
                 m_axis,
                 1,
@@ -698,8 +690,10 @@ public:
             // Therefore the window function logic shold hangle complex multiplication, and B_FTT should be used like a window function.
             PrepareStockhamFFTParams(
                 context,
-                zChirpBufferRegion, params.BluesteinZChirpParams.AFFT.Sizes,
-                outputBufferRegion, outputDims,
+                aFFTBufferRegion,
+                params.BluesteinZChirpParams.AFFT.Sizes,
+                outputBufferRegion,
+                outputDims,
                 M,
                 1,
                 m_axis,
@@ -715,8 +709,10 @@ public:
             // The BFFT call takes input B, and produces output B_FFT.
             PrepareStockhamFFTParams(
                 context,
-                bBufferRegion, params.BluesteinZChirpParams.B.Sizes,
-                bFFTBufferRegion, params.BluesteinZChirpParams.BFFT.Sizes,
+                bBufferRegion,
+                params.BluesteinZChirpParams.B.Sizes,
+                bFFTBufferRegion,
+                params.BluesteinZChirpParams.BFFT.Sizes,
                 M,
                 2,
                 2,
