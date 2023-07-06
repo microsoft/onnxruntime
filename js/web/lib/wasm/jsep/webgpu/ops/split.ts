@@ -119,12 +119,12 @@ const createSplitProgramInfoLoader =
       const updatedAttributes = inputs.length === 1 ? attributes : createSplitAttributesFromInputs(inputs, attributes);
       const metadata:
           ProgramMetadata = {name: 'Split', inputTypes: [GpuDataType.default], cacheHint: updatedAttributes.cacheKey};
-      return {...metadata, get: () => createSplitProgramInfo(metadata, inputs, attributes)};
+      return {...metadata, get: () => createSplitProgramInfo(metadata, [inputs[0]], attributes)};
     };
 
 export const split = (context: ComputeContext, attributes: SplitAttributes): void => {
   validateInputs(context.inputs);
-  context.compute(createSplitProgramInfoLoader(context.inputs, attributes));
+  context.compute(createSplitProgramInfoLoader(context.inputs, attributes), {inputs: [0]});
 };
 
 export const parseSplitAttributes = (attributes: Record<string, unknown>): SplitAttributes => {
