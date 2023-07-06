@@ -3,11 +3,10 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
+import os
 from itertools import product
 
 import numpy as np
-
-import os
 
 
 def dtype_to_bytes(dtype):

@@ -10,7 +10,7 @@ from itertools import product
 import kernel_explorer as ke
 import numpy as np
 import pytest
-from utils import get_gemm_basic_sizes, get_gemm_bert_sizes, get_gemm_bound, transab_to_suffix, matmul
+from utils import get_gemm_basic_sizes, get_gemm_bert_sizes, get_gemm_bound, matmul, transab_to_suffix
 
 
 def dtype_to_suffix(dtype):

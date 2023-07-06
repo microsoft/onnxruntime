@@ -12,7 +12,7 @@ from itertools import product
 import kernel_explorer as ke
 import numpy as np
 import pytest
-from utils import dtype_to_suffix, softmax, matmul
+from utils import dtype_to_suffix, matmul, softmax
 
 
 def multinormal_distribution(num_distribution, num_element_per_dist):

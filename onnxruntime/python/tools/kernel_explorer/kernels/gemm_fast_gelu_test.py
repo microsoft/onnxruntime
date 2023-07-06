@@ -12,12 +12,12 @@ import numpy as np
 import pytest
 from utils import (
     dtype_to_suffix,
+    fast_gelu,
     get_gemm_basic_sizes,
     get_gemm_bert_sizes,
     get_gemm_bound,
-    transab_to_suffix,
     matmul,
-    fast_gelu,
+    transab_to_suffix,
 )
 
 
