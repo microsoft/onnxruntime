@@ -11,7 +11,7 @@ from itertools import product
 import kernel_explorer as ke
 import numpy as np
 import pytest
-from utils import dtype_to_bytes
+from utils import dtype_to_bytes, fast_gelu
 
 
 def get_bert_sizes():
@@ -28,12 +28,6 @@ def dtype_to_funcs(dtype):
         "float64": list(filter(lambda x: re.match("FastGelu.*_double.*", x), dir(ke))),
     }
     return type_map[dtype]
-
-
-def fast_gelu(x, bias):
-    x = x + bias
-    y = 0.5 * x * (1 + np.tanh(0.797885 * x + 0.035677 * x * x * x))
-    return y
 
 
 def run_fast_gelu(x_size, bias_size, dtype, func):

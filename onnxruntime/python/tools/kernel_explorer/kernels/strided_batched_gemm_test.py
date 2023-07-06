@@ -10,7 +10,7 @@ from itertools import product
 import kernel_explorer as ke
 import numpy as np
 import pytest
-from utils import get_gemm_basic_sizes, get_gemm_bert_sizes, get_gemm_bound, transab_to_suffix
+from utils import get_gemm_basic_sizes, get_gemm_bert_sizes, get_gemm_bound, transab_to_suffix, matmul
 
 
 def dtype_to_suffix(dtype):
@@ -31,7 +31,9 @@ def _test_strided_batched_gemm(
     np.random.seed(0)
     a = (np.random.rand(batch, *a_shape) + 0.5).astype(dtype).astype("float64")
     b = (np.random.rand(batch, *b_shape) + 0.5).astype(dtype).astype("float64")
-    intermediate_c = (a.swapaxes(1, 2) if transa else a) @ (b.swapaxes(1, 2) if transb else b)
+    tmp_a = a.swapaxes(1, 2) if transa else a
+    tmp_b = b.swapaxes(1, 2) if transb else b
+    intermediate_c = matmul(tmp_a, tmp_b)
     if alpha == 1.0 and beta == 0.0:  # fast path
         ref_c = intermediate_c
     else:
