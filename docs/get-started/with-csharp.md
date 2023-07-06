@@ -73,31 +73,57 @@ In some scenarios, you may want to reuse input/output tensors. This often happen
 ### Chaining: Feed model A's output(s) as input(s) to model B
 
 ```cs
-InferenceSession session1, session2;  // let's say 2 sessions are initialized
+using Microsoft.ML.OnnxRuntime.Tensors;
+using Microsoft.ML.OnnxRuntime;
 
-Tensor<long> input = new DenseTensor<long>(new[] { 1, inputDimension });  // let's say data is fed into the Tensor objects
-var inputs1 = new List<NamedOnnxValue>()
-              {
-                  NamedOnnxValue.CreateFromTensor("name1", input)
-              };
-// session1 inference
-using (var outputs1 = session1.Run(inputs1))
+namespace Samples
 {
-    // get intermediate value
-    var input2 = outputs1.First();
-    
-    // modify the name of the ONNX value
-    input2.Name = "name2";
-
-    // create input list for session2
-    var inputs2 = new List<NamedOnnxValue>() { input2 };
-
-    // session2 inference
-    using (var results = session2.Run(inputs2))
+    class FeedModelAToModelB
     {
-        // manipulate the results
+        static void Program()
+        {
+            const string modelAPath = "./modelA.onnx";
+            const string modelBPath = "./modelB.onnx";
+            using InferenceSession session1 = new InferenceSession(modelAPath);
+            using InferenceSession session2 = new InferenceSession(modelBPath);
+
+            // Illustration only
+            float[] inputData = { 1, 2, 3, 4 };
+            long[] inputShape = { 1, 4 };
+
+            using var inputOrtValue = OrtValue.CreateTensorValueFromMemory(inputData, inputShape);
+
+            // Create input data for session. Request all outputs in this case.
+            var inputs1 = new Dictionary<string, OrtValue>
+            {
+                { "input", inputOrtValue }
+            };
+
+            using var runOptions = new RunOptions();
+
+            // session1 inference
+            using (var outputs1 = session1.Run(runOptions, inputs1, session1.OutputNames))
+            {
+                // get intermediate value
+                var outputToFeed = outputs1.First();
+
+                // modify the name of the ONNX value
+                // create input list for session2
+                var inputs2 = new Dictionary<string, OrtValue>
+                {
+                    { "inputNameForModelB", outputToFeed }
+                };
+
+                // session2 inference
+                using (var results = session2.Run(runOptions, inputs2, session2.OutputNames))
+                {
+                    // manipulate the results
+                }
+            }
+        }
     }
 }
+
 ```
 ### Multiple inference runs with fixed sized input(s) and output(s)
 
