@@ -54,6 +54,34 @@ __global__ void BiasGeluGradDxKernel(int64_t bias_size, const T* dY, const T* X,
   }
 }
 
+template <typename T, typename GeluComputationMode, int num_elements_per_thread>
+__global__ void VectorizedBiasGeluGradDxKernel(int64_t bias_size, const T* dY, const T* X, const T* B, T* dX) {
+  const auto num_elements_per_block = num_elements_per_thread * blockDim.x;
+  const auto input_base_idx =
+      bias_size * blockIdx.x + num_elements_per_block * blockIdx.y + threadIdx.x * num_elements_per_thread;
+  const auto bias_base_idx = num_elements_per_block * blockIdx.y + threadIdx.x * num_elements_per_thread;
+
+  using LoadT = aligned_vector<T, num_elements_per_thread>;
+
+  T reg_dY[num_elements_per_thread];
+  T reg_X[num_elements_per_thread];
+  T reg_B[num_elements_per_thread];
+  T reg_dX[num_elements_per_thread];
+  LoadT* value_dY = reinterpret_cast<LoadT*>(&reg_dY);
+  LoadT* value_X = reinterpret_cast<LoadT*>(&reg_X);
+  LoadT* value_B = reinterpret_cast<LoadT*>(&reg_B);
+  *value_dY = *reinterpret_cast<const LoadT*>(&dY[input_base_idx]);
+  *value_X = *reinterpret_cast<const LoadT*>(&X[input_base_idx]);
+  *value_B = *reinterpret_cast<const LoadT*>(&B[bias_base_idx]);
+
+#pragma unroll
+  for (int element_idx = 0; element_idx < num_elements_per_thread; ++element_idx) {
+    reg_dX[element_idx] =
+        ComputeGeluGradScalar(reg_dY[element_idx], reg_X[element_idx] + reg_B[element_idx], GeluComputationMode{});
+  }
+  *(reinterpret_cast<LoadT*>(&dX[input_base_idx])) = *reinterpret_cast<LoadT*>(&reg_dX[0]);
+}
+
 template <typename T, typename GeluComputationMode>
 void LaunchBiasGeluGradDxKernel(
     cudaStream_t stream,
@@ -79,8 +107,16 @@ void LaunchBiasGeluGradDxKernel(
 
   const dim3 grid_dim{static_cast<uint32_t>(grid_height), static_cast<uint32_t>(grid_width)};
 
-  BiasGeluGradDxKernel<T, GeluComputationMode, num_elements_per_thread>
-      <<<grid_dim, num_threads_per_block, 0, stream>>>(bias_size, dY, X, B, dX);
+  constexpr int vec4_alignment = std::alignment_of<aligned_vector<T, num_elements_per_thread>>::value;
+  if (bias_size % num_elements_per_thread == 0 && reinterpret_cast<uint64_t>(dY) % vec4_alignment == 0 &&
+      reinterpret_cast<uint64_t>(X) % vec4_alignment == 0 && reinterpret_cast<uint64_t>(B) % vec4_alignment == 0 &&
+      reinterpret_cast<uint64_t>(dX) % vec4_alignment == 0) {
+    VectorizedBiasGeluGradDxKernel<T, GeluComputationMode, num_elements_per_thread>
+        <<<grid_dim, num_threads_per_block, 0, stream>>>(bias_size, dY, X, B, dX);
+  } else {
+    BiasGeluGradDxKernel<T, GeluComputationMode, num_elements_per_thread>
+        <<<grid_dim, num_threads_per_block, 0, stream>>>(bias_size, dY, X, B, dX);
+  }
 }
 
 // explicit instantiations
