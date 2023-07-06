@@ -63,8 +63,12 @@ __global__ void BiasGeluKernel(int64_t bias_size, const T* X, const T* B, T* Y) 
 template <typename T>
 __global__ void VectorizedBiasGeluKernel(int64_t bias_size, const T* X, const T* B, T* Y) {
   const auto kElementsPerBlock = kElementsPerThread * blockDim.x;
-  const auto input_idx = bias_size * blockIdx.x + kElementsPerBlock * blockIdx.y + kElementsPerThread * threadIdx.x;
   const auto bias_idx = kElementsPerBlock * blockIdx.y + kElementsPerThread * threadIdx.x;
+  if (bias_idx >= bias_size) {
+    return;
+  }
+
+  const auto input_idx = bias_size * blockIdx.x + kElementsPerBlock * blockIdx.y + kElementsPerThread * threadIdx.x;
 
   using LoadT = aligned_vector<T, kElementsPerThread>;
 
@@ -95,9 +99,9 @@ void LaunchBiasGeluKernel(cudaStream_t stream, int64_t input_size, int64_t bias_
   const auto grid_height = input_size / bias_size;
   const dim3 grid_dim{static_cast<uint32_t>(grid_height), static_cast<uint32_t>(grid_width)};
 
-  constexpr int vec4_alignment = std::alignment_of<aligned_vector<T, kElementsPerThread>>::value;
-  if (bias_size % kElementsPerThread == 0 && reinterpret_cast<uint64_t>(X) % vec4_alignment == 0 &&
-      reinterpret_cast<uint64_t>(B) % vec4_alignment == 0 && reinterpret_cast<uint64_t>(Y) % vec4_alignment == 0) {
+  constexpr int vec_alignment = std::alignment_of<aligned_vector<T, kElementsPerThread>>::value;
+  if (bias_size % kElementsPerThread == 0 && reinterpret_cast<uint64_t>(X) % vec_alignment == 0 &&
+      reinterpret_cast<uint64_t>(B) % vec_alignment == 0 && reinterpret_cast<uint64_t>(Y) % vec_alignment == 0) {
     VectorizedBiasGeluKernel<T><<<grid_dim, num_threads_per_block, 0, stream>>>(bias_size, X, B, Y);
   } else {
     BiasGeluKernel<T><<<grid_dim, num_threads_per_block, 0, stream>>>(bias_size, X, B, Y);
