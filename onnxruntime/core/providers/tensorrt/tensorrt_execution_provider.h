@@ -226,11 +226,12 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   // and should be kept for the lifetime of TRT EP object.
   OrtAllocator* alloc_ = nullptr;
 
-  // Following maps that hold TRT objects will be accessible by different threads if ORT is using multithreading.
-  // In general, TensorRT objects are not thread safe. Accesses to an object from different threads using non thread safe operations must be synchronized.
-  // TRT EP uses lock_guard to make sure synchronization when calling non thread safe operations.
-  // Note: See doc for more details. https://docs.nvidia.com/deeplearning/tensorrt/developer-guide/index.html#threading
   std::unordered_set<std::string> control_flow_op_set_ = {"If", "Loop", "Scan"};
+
+  // Following maps that hold TRT objects will be accessible by different threads if ORT is using multithreading.
+  // In general, TensorRT objects are not thread safe; accesses to an object from different threads must be serialized by the client.
+  // But there are still some thread safe operations, please see here https://docs.nvidia.com/deeplearning/tensorrt/developer-guide/index.html#threading
+  // For those non thread safe operations, TRT EP uses (1) lock_guard or (2) PerThreadContext to make sure synchronization.
   std::unordered_map<std::string, tensorrt_ptr::unique_pointer<nvonnxparser::IParser>> parsers_;
   std::unordered_map<std::string, std::unique_ptr<nvinfer1::ICudaEngine>> engines_;
   std::unordered_map<std::string, std::unique_ptr<nvinfer1::IExecutionContext>> contexts_;
