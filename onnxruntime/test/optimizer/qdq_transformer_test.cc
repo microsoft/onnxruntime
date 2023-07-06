@@ -2616,7 +2616,7 @@ TEST(QDQTransformerTests, QDQPropagation_Per_Layer_No_Propagation) {
                                                    std::numeric_limits<uint8_t>::max());
       auto* output_arg = builder.MakeOutput();
 
-      // add DQ
+      // add DQ with per layer scale and zp values
       auto* dq_output = builder.MakeIntermediate();
       auto* dq_scale = builder.Make1DInitializer(std::vector<float>(input_shape[1], 0.0035f));
       auto* dq_zp = builder.Make1DInitializer(std::vector<uint8_t>(input_shape[1], 135));
@@ -2628,31 +2628,27 @@ TEST(QDQTransformerTests, QDQPropagation_Per_Layer_No_Propagation) {
     };
 
     auto check_graph = [&](InferenceSessionWrapper& session) {
-      const std::vector<std::string> expected_op_types_in_order{
-          "DequantizeLinear",
-          "Transpose"};
-      const auto op_types_in_order = GetNodeOpTypesInTopologicalOrder(session.GetGraph());
-      EXPECT_EQ(op_types_in_order, expected_op_types_in_order);
+      // transpose optimization will change the order of the nodes,
+      // but as we're testing there's no propagation of the DQ what matters is the op counts.
+      auto op_counts = CountOpsInGraph(session.GetGraph());
+      EXPECT_EQ(op_counts["DequantizeLinear"], 1);
+      EXPECT_EQ(op_counts["Transpose"], 1);
     };
 
     TransformerTester(build_test_case,
                       check_graph,
                       TransformerLevel::Default,
-                      TransformerLevel::Level1,
-                      12, 0.0, 0.0, nullptr, {},  // defaults that we're not overriding
-                      {"TransposeOptimizer"});    // disable TransposeOptimizer for simplicity
+                      TransformerLevel::Level1);
     TransformerTester(build_test_case,
                       check_graph,
                       TransformerLevel::Default,
                       TransformerLevel::Level1,
-                      18, 0.0, 0.0, nullptr, {},  // defaults that we're not overriding
-                      {"TransposeOptimizer"});    // disable TransposeOptimizer for simplicity
+                      18);  // disable TransposeOptimizer for simplicity
     TransformerTester(build_test_case,
                       check_graph,
                       TransformerLevel::Default,
                       TransformerLevel::Level1,
-                      19, 0.0, 0.0, nullptr, {},  // defaults that we're not overriding
-                      {"TransposeOptimizer"});    // disable TransposeOptimizer for simplicity
+                      19);  // disable TransposeOptimizer for simplicity
   };
 
   test_case({1, 13, 13, 23}, {0, 2, 3, 1});
