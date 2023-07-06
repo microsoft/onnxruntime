@@ -609,12 +609,11 @@ public final class OrtUtil {
         ByteBuffer.allocateDirect(remaining * 2).order(ByteOrder.nativeOrder()).asShortBuffer();
     try {
       for (int i = 0; i < remaining; i++) {
-        output.put(i, (short) fp32ToFp16.invokeExact(buf.get()));
+        output.put(i, (short) fp32ToFp16.invokeExact(buf.get(i + pos)));
       }
     } catch (Throwable e) {
       throw new RuntimeException(e);
     }
-    buf.position(pos);
     return output;
   }
 
@@ -633,12 +632,11 @@ public final class OrtUtil {
         ByteBuffer.allocateDirect(remaining * 4).order(ByteOrder.nativeOrder()).asFloatBuffer();
     try {
       for (int i = 0; i < remaining; i++) {
-        output.put(i, (float) fp16ToFp32.invokeExact(buf.get(i)));
+        output.put(i, (float) fp16ToFp32.invokeExact(buf.get(i + pos)));
       }
     } catch (Throwable e) {
       throw new RuntimeException(e);
     }
-    buf.position(pos);
     return output;
   }
 
@@ -655,14 +653,9 @@ public final class OrtUtil {
     int remaining = buf.remaining();
     ShortBuffer output =
         ByteBuffer.allocateDirect(remaining * 2).order(ByteOrder.nativeOrder()).asShortBuffer();
-    try {
-      for (int i = 0; i < remaining; i++) {
-        output.put(i, floatToBf16(buf.get()));
-      }
-    } catch (Throwable e) {
-      throw new RuntimeException(e);
+    for (int i = 0; i < remaining; i++) {
+      output.put(i, floatToBf16(buf.get(i + pos)));
     }
-    buf.position(pos);
     return output;
   }
 
@@ -679,14 +672,9 @@ public final class OrtUtil {
     int remaining = buf.remaining();
     FloatBuffer output =
         ByteBuffer.allocateDirect(remaining * 4).order(ByteOrder.nativeOrder()).asFloatBuffer();
-    try {
-      for (int i = 0; i < remaining; i++) {
-        output.put(i, bf16ToFloat(buf.get(i)));
-      }
-    } catch (Throwable e) {
-      throw new RuntimeException(e);
+    for (int i = 0; i < remaining; i++) {
+      output.put(i, bf16ToFloat(buf.get(i + pos)));
     }
-    buf.position(pos);
     return output;
   }
 
