@@ -20,7 +20,7 @@ The TensorRT execution provider in the ONNX Runtime makes use of NVIDIA's [Tenso
 {:toc}
 
 ## Install
-Please select the GPU (CUDA/TensorRT) version of OnnxRuntime: https://onnxruntime.ai/docs/install
+Please select the GPU (CUDA/TensorRT) version of OnnxRuntime: https://onnxruntime.ai/docs/install. Pre-built packages and Docker images are available for Jetpack in the [Jetson Zoo](https://elinux.org/Jetson_Zoo#ONNX_Runtime).
 
 ## Build from source
 See [Build instructions](../build/eps.md#tensorrt).
