@@ -99,5 +99,10 @@
   "bugs": {
     "url": "https://github.com/Microsoft/onnxruntime/issues"
   },
-  "packageManager": "yarn@1.22.19"
+  "packageManager": "yarn@1.22.19",
+  "codegenConfig": {
+    "name": "Onnxruntime",
+    "type": "modules",
+    "jsSrcsDir": "./lib/"
+  }
 }

@@ -14,6 +14,14 @@ buildscript {
 
 apply plugin: 'com.android.library'
 
+def isNewArchitectureEnabled() {
+  return rootProject.hasProperty("newArchEnabled") && rootProject.getProperty("newArchEnabled") == "true"
+}
+
+if (isNewArchitectureEnabled()) {
+  apply plugin: "com.facebook.react"
+}
+
 def getExtOrDefault(name) {
   return rootProject.ext.has(name) ? rootProject.ext.get(name) : project.properties['OnnxruntimeModule_' + name]
 }
@@ -90,6 +98,7 @@ android {
         abiFilters (*reactNativeArchitectures())
       }
     }
+    buildConfigField "boolean", "IS_NEW_ARCHITECTURE_ENABLED", isNewArchitectureEnabled().toString()
   }
 
   if (rootProject.hasProperty("ndkPath")) {
@@ -138,6 +147,12 @@ android {
         java.exclude '**/OnnxruntimeExtensionsDisabled.java'
       } else {
         java.exclude '**/OnnxruntimeExtensionsEnabled.java'
+      }
+
+      if (isNewArchitectureEnabled()) {
+        java.srcDirs += ['src/newarch']
+      } else {
+        java.srcDirs += ['src/oldarch']
       }
     }
   }
@@ -236,5 +251,13 @@ dependencies {
   // By default it will just include onnxruntime full aar package
   if (ortExtensionsEnabled) {
     implementation "com.microsoft.onnxruntime:onnxruntime-extensions-android:latest.integration@aar"
+  }
+}
+
+if (isNewArchitectureEnabled()) {
+  react {
+    jsRootDir = file("../lib/")
+    libraryName = "Onnxruntime"
+    codegenJavaPackageName = "ai.onnxruntime.reactnative"
   }
 }
