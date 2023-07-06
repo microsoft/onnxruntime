@@ -15,15 +15,6 @@ static bool EPAwareHandleResize(HandlerArgs& args) {
   // Whilst Resize is not technically layout sensitive, some execution providers implement handling for only one
   // layout. Due to that, only push a Transpose through a Resize once it is assigned and we know it's not being handled
   // by an EP that only supports a single layout.
-
-  // EPs that require Resize to stay in the current layout
-  // The CUDA Resize kernel requires that the input is NCHW, so we can't push a Transpose through a Resize
-  // in ORT builds with CUDA enabled.
-  // The ROCm EP is generated from the CUDA EP kernel so the same applies to builds with ROCm enabled.
-  // TODO: Remove this special case once the CUDA Resize kernel is implemented "generically" (i.e.) aligning with the
-  // generic nature of the ONNX spec.
-  // See https://github.com/microsoft/onnxruntime/pull/10824 for a similar fix applied to the CPU Resize kernel.
-
   const auto& layout_sensitive_eps = EPsWithLayoutSensitiveResize();
 
   const auto& provider = args.ctx.provider_type;
@@ -146,6 +137,16 @@ const HandlerMap& OrtExtendedHandlers() {
   return extended_handler_map;
 }
 
+// EPs that require Resize to stay in the current layout.
+//   The CUDA Resize kernel requires that the input is NCHW
+//   The ROCm EP is generated from the CUDA EP kernel so the same applies to it.
+//     TODO: Remove this special case once the CUDA Resize kernel is implemented "generically"
+//           i.e. aligning with the generic nature of the ONNX spec.
+//           See https://github.com/microsoft/onnxruntime/pull/10824 for a similar fix applied to the CPU Resize.
+//   The QNN EP requires the Resize to remain in NHWC once the layout transformer makes that adjustment
+//   and moves the node to the kMSInternalNHWCDomain domain.
+//      TODO: Does it need to be listed here? The new node shouldn't match onnx Resize due to the domain change
+//            so the ep_aware_resize_handler shouldn't be applicable.
 const std::unordered_set<std::string_view> EPsWithLayoutSensitiveResize() {
   static std::unordered_set<std::string_view> eps = {kCudaExecutionProvider,
                                                      kRocmExecutionProvider,

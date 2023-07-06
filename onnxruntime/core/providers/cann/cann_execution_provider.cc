@@ -1282,7 +1282,7 @@ CANNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewe
         continue;
 
       const auto& node = *p_node;
-    if (!node.GetExecutionProviderType().empty() && node.GetExecutionProviderType() != kCannExecutionProvider) {
+      if (!node.GetExecutionProviderType().empty() && node.GetExecutionProviderType() != kCannExecutionProvider) {
         continue;
       }
 
