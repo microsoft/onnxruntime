@@ -10,27 +10,59 @@ import {ComputeContext, GpuDataType, ProgramInfo, ProgramInfoLoader, ProgramMeta
 
 import {createIndicesHelper, ShaderHelper} from './common';
 
+class CoordinateTransformMode {
+  static halfPixel = Symbol('half_pixel');
+  static pytorchHalfPixel = Symbol('pytorch_half_pixel');
+  static asymmetric = Symbol('asymmetric');
+  static halfPixelSymmetric = Symbol('half_pixel_symmetric');
+  static tfCropAndResize = Symbol('tf_crop_and_resize');
+}
+
+class KeepAspectRatioPolicy {
+  streach = Symbol('streach');
+  notSmaller = Symbol('not_smaller');
+  notLarger = Symbol('not_larger');
+}
+
+class Mode {
+  nearest = Symbol('nearest');
+  linear = Symbol('linear');
+  cubic = Symbol('cubic')
+}
+
+class NearestMode {
+  roundPreferFloor = Symbol('round_prefer_floor');
+  roundPreferCeil = Symbol('round_prefer_ceil');
+  floor = Symbol('floor');
+  ceil = Symbol('ceil');
+}
+
 export interface ResizeAttributes extends AttributeWithCacheKey {
   antialias: number;
   axes: number[];
-  coordinateTransformationMode: string;
+  coordinateTransformMode: CoordinateTransformMode;
   cubicCoeffA: number;
   excludeOutsize: number;
   extrapolationValue: number;
-  keepAspectRatioPolicy: string;
-  mode: string;
-  nearestMode: string;
+  keepAspectRatioPolicy: KeepAspectRatioPolicy;
+  mode: Mode;
+  nearestMode: NearestMode;
+  opsetVersion: number;
 }
 
 const validateInputs = (inputs: readonly TensorView[], attributes: ResizeAttributes): void => {
+  const roiInputIndex = attributes.opsetVersion > 10 ? 1 : -1;
+  const scalesInputIndex = attributes.opsetVersion > 10 ? 2 : 1;
+  const sizesInputIndex = attributes.opsetVersion > 10 ? 3 : -1;
+
   const rank = inputs[0].dims.length;
-  if (inputs.length > 1) {
-    if (inputs[1].dims.length !== 2 * rank) {
+  if (roiInputIndex > 0 && inputs.length > 1) {
+    if (inputs[roiInputIndex].dims.length !== 2 * rank) {
       throw new Error('Resize requires RoI input to be of rank 2*rank');
     }
   }
   if (inputs.length > 2) {
-    if (inputs[2].dataType === DataType.float) {
+    if (inputs[scalesInputIndex].dataType === DataType.float) {
       // The input is scales
       if (attributes.axes.length > 0) {
         if (inputs[2].dims.length !== attributes.axes.length) {
@@ -54,6 +86,7 @@ const validateInputs = (inputs: readonly TensorView[], attributes: ResizeAttribu
     }
   }
 };
+
 const createResizeProgramInfo =
     (metadata: ProgramMetadata, inputs: readonly TensorView[], attributes: ResizeAttributes): ProgramInfo => {
       const inputShape = inputs[0].dims;
@@ -125,5 +158,27 @@ export const resize = (context: ComputeContext, attributes: ResizeAttributes): v
   context.compute(createResizeProgramInfoLoader(context.inputs, attributes), {inputs: [0]});
 };
 
-export const parseResizeAttributes = (attributes: Record<string, unknown>): ResizeAttributes =>
-    createAttributeWithCacheKey(attributes as Omit<ResizeAttributes, keyof AttributeWithCacheKey>);
+export const parseResizeAttributes = (attributes: Record<string, unknown>): ResizeAttributes => {
+  const antialias = attributes.antialias as number;
+  const axes = attributes.axes as number[];
+  const coordinateTransformMode = attributes.coordinateTransformMode as CoordinateTransformMode;
+  const cubicCoeffA = attributes.cubicCoeffA as number;
+  const excludeOutsize = attributes.excludeOutsize as number;
+  const extrapolationValue = attributes.extrapolationValue as number;
+  const keepAspectRatioPolicy = attributes.keepAspectRatioPolicy as KeepAspectRatioPolicy;
+  const mode = attributes.mode as Mode;
+  const nearestMode = attributes.nearestMode as NearestMode;
+  const opsetVersion = attributes.opsetVersion as number;
+  return createAttributeWithCacheKey({
+    antialias,
+    axes,
+    coordinateTransformMode,
+    cubicCoeffA,
+    excludeOutsize,
+    extrapolationValue,
+    keepAspectRatioPolicy,
+    mode,
+    nearestMode,
+    opsetVersion
+  });
+};
