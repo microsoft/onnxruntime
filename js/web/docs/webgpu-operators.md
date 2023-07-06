@@ -21,6 +21,7 @@ Do not modify directly.*
 | AveragePool | ai.onnx(7-9,10,11+); com.ms.internal.nhwc(11+) | need perf optimization; need implementing activation |
 | Ceil | ai.onnx(6-12,13+) |  |
 | Clip | ai.onnx(6-10,11,12,13+) |  |
+| Concat | ai.onnx(1-3,4-10,11-12,13+) |  |
 | Conv | ai.onnx(1-10,11+); com.ms.internal.nhwc(11+) | need perf optimization; conv3d not supported; need implementing activation |
 | Cos | ai.onnx(7+) |  |
 | Cosh | ai.onnx(9+) |  |

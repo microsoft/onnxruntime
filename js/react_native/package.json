@@ -17,7 +17,6 @@
     "ONNX Runtime"
   ],
   "devDependencies": {
-    "@types/fs-extra": "^9.0.13",
     "@types/jest": "^27.4.0",
     "@types/react": "^18.0.9",
     "@types/react-native": "^0.67.7",
@@ -26,8 +25,7 @@
     "prettier": "^2.6.2",
     "react": "^18.1.0",
     "react-native": "^0.69.7",
-    "react-native-builder-bob": "^0.18.2",
-    "typescript": "^4.9.4"
+    "react-native-builder-bob": "^0.18.2"
   },
   "peerDependencies": {
     "react": "*",
@@ -70,7 +68,8 @@
       [
         "typescript",
         {
-          "project": "tsconfig.build.json"
+          "project": "tsconfig.build.json",
+          "tsc": "../node_modules/.bin/tsc"
         }
       ]
     ],
