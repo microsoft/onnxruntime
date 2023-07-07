@@ -24,6 +24,8 @@ NS_ASSUME_NONNULL_BEGIN
  * can be used to generate above training artifacts.
  *
  * Available since 1.16.
+ *
+ * @note This class is only available when the training APIs are enabled.
  */
 @interface ORTTrainingSession : NSObject
 
