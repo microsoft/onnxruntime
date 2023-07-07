@@ -607,12 +607,8 @@ public final class OrtUtil {
     int remaining = buf.remaining();
     ShortBuffer output =
         ByteBuffer.allocateDirect(remaining * 2).order(ByteOrder.nativeOrder()).asShortBuffer();
-    try {
-      for (int i = 0; i < remaining; i++) {
-        output.put(i, (short) fp32ToFp16.invokeExact(buf.get(i + pos)));
-      }
-    } catch (Throwable e) {
-      throw new RuntimeException(e);
+    for (int i = 0; i < remaining; i++) {
+      output.put(i, floatToFp16(buf.get(i + pos)));
     }
     return output;
   }
@@ -630,12 +626,8 @@ public final class OrtUtil {
     int remaining = buf.remaining();
     FloatBuffer output =
         ByteBuffer.allocateDirect(remaining * 4).order(ByteOrder.nativeOrder()).asFloatBuffer();
-    try {
-      for (int i = 0; i < remaining; i++) {
-        output.put(i, (float) fp16ToFp32.invokeExact(buf.get(i + pos)));
-      }
-    } catch (Throwable e) {
-      throw new RuntimeException(e);
+    for (int i = 0; i < remaining; i++) {
+      output.put(i, fp16ToFloat(buf.get(i + pos)));
     }
     return output;
   }
@@ -693,7 +685,7 @@ public final class OrtUtil {
       float ret = (float) fp16ToFp32.invokeExact(input);
       return ret;
     } catch (Throwable e) {
-      throw new RuntimeException(e);
+      throw new AssertionError("Should not reach here", e);
     }
   }
 
@@ -712,7 +704,7 @@ public final class OrtUtil {
       short ret = (short) fp32ToFp16.invokeExact(input);
       return ret;
     } catch (Throwable e) {
-      throw new RuntimeException(e);
+      throw new AssertionError("Should not reach here", e);
     }
   }
 
@@ -812,7 +804,7 @@ public final class OrtUtil {
    * @param input A uint16_t representing a bfloat16 value.
    * @return A float.
    */
-  static float bf16ToFloat(short input) {
+  public static float bf16ToFloat(short input) {
     int bits = input << 16;
     return Float.intBitsToFloat(bits);
   }
@@ -823,7 +815,7 @@ public final class OrtUtil {
    * @param input The float input.
    * @return A bfloat16 value which is closest to the float.
    */
-  static short floatToBf16(float input) {
+  public static short floatToBf16(float input) {
     return (short) (Float.floatToIntBits(input) >> 16);
   }
 
