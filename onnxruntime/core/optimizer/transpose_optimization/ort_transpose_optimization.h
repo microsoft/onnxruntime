@@ -23,6 +23,7 @@ const onnx_transpose_optimization::HandlerMap& OrtExtendedHandlers();
 
 /// <summary>
 /// Return set of execution providers that are known to have a layout sensitive implementation of Resize.
+/// If the Resize is layout sensitive we do not push a Transpose through it.as that would change the layout.
 /// </summary>
 /// <returns>Set of execution provider names.</returns>
 const std::unordered_set<std::string_view> EPsWithLayoutSensitiveResize();

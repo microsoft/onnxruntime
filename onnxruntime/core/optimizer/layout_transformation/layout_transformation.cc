@@ -40,7 +40,10 @@ const std::unordered_set<std::string_view> GetEPLayoutSensitiveOps(const IExecut
   const auto& ep = execution_provider.Type();
 
   // EPs where the Resize implementation only handles one layout - either NCHW or NHWC. The ONNX spec for Resize is
-  // not layout specific.
+  // not layout specific. We assume if the EP has a layout sensitive Resize it only handles its preferred layout,
+  // so when doing layout transformation we consider the Resize to be layout sensitive and can wrap the Resize 
+  // in Transpose nodes to convert to the preferred layout, but we can't push any Transpose operations through the 
+  // Resize in the general transpose optimization. 
   const auto& layout_sensitive_eps = EPsWithLayoutSensitiveResize();
   if (layout_sensitive_eps.find(ep) != layout_sensitive_eps.end()) {
     layout_sensitive_ops.insert("Resize");
@@ -77,7 +80,7 @@ Status TransformLayoutForEP(Graph& graph, bool& modified, const IExecutionProvid
 
   CostCheckFn cost_check;
 
-  // if convert to NHWC we need to wrap layout sensitive nodes to Transpose from NCHW to NHWC and back.
+  // if converting to NHWC we need to wrap layout sensitive nodes to Transpose from NCHW to NHWC and back.
   if (execution_provider.GetPreferredLayout() == DataLayout::NHWC) {
     for (auto& node : api_graph->Nodes()) {
       if (layout_sensitive_ops.count(node->OpType())) {

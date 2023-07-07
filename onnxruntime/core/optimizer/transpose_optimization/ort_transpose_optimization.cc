@@ -145,12 +145,13 @@ const HandlerMap& OrtExtendedHandlers() {
 //           See https://github.com/microsoft/onnxruntime/pull/10824 for a similar fix applied to the CPU Resize.
 //   The QNN EP requires the Resize to remain in NHWC once the layout transformer makes that adjustment
 //   and moves the node to the kMSInternalNHWCDomain domain.
-//      TODO: Does it need to be listed here? The new node shouldn't match onnx Resize due to the domain change
-//            so the ep_aware_resize_handler shouldn't be applicable.
+//     TODO: Not sure it needs to be in this list with the change to ignore Resize until it's assigned to an EP
+//           because once that happens it would be in the internal NHWC domain. Commenting out to validate in CI.
 const std::unordered_set<std::string_view> EPsWithLayoutSensitiveResize() {
   static std::unordered_set<std::string_view> eps = {kCudaExecutionProvider,
                                                      kRocmExecutionProvider,
-                                                     kQnnExecutionProvider};
+                                                     // kQnnExecutionProvider,
+                                                     };
 
   return eps;
 }
