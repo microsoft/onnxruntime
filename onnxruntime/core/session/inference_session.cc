@@ -2302,7 +2302,7 @@ Status InferenceSession::Run(const RunOptions& run_options,
 Status InferenceSession::Run(const OrtRunOptions* run_options,
                              const char* const* input_names,
                              const OrtValue* const* input, size_t input_len,
-                             const char* const* output_names1, size_t output_names_len,
+                             const char* const* output_names, size_t output_names_len,
                              OrtValue** output) {
 
   InlinedVector<std::string> feed_names;
@@ -2324,13 +2324,13 @@ Status InferenceSession::Run(const OrtRunOptions* run_options,
   }
 
   // Create output feed
-  InlinedVector<std::string> output_names;
-  output_names.reserve(output_names_len);
+  InlinedVector<std::string> output_name_vec;
+  output_name_vec.reserve(output_names_len);
   for (size_t i = 0; i != output_names_len; ++i) {
-    if (output_names1[i] == nullptr || output_names1[i][0] == '\0') {
+    if (output_names[i] == nullptr || output_names[i][0] == '\0') {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "output name cannot be empty");
     }
-    output_names.emplace_back(output_names1[i]);
+    output_name_vec.emplace_back(output_names[i]);
   }
 
   std::vector<OrtValue> fetches;
@@ -2346,9 +2346,9 @@ Status InferenceSession::Run(const OrtRunOptions* run_options,
   Status status;
   if (run_options == nullptr) {
     OrtRunOptions op;
-    status = Run(op, feed_names, feeds, output_names, &fetches, nullptr);
+    status = Run(op, feed_names, feeds, output_name_vec, &fetches, nullptr);
   } else {
-    status = Run(*run_options, feed_names, feeds, output_names, &fetches, nullptr);
+    status = Run(*run_options, feed_names, feeds, output_name_vec, &fetches, nullptr);
   }
 
   if (!status.IsOK())
@@ -2381,18 +2381,22 @@ Status InferenceSession::RunAsync(const OrtRunOptions* run_options, const char* 
                                   const char* const* output_name, size_t output_names_len,
                                   RunAsyncCallbackFn callback) {
   InferenceSession* sess = this;
-  std::function<void()> run_fn = [&]() {
+  std::function<void()> run_fn = [=]() {
     ORT_TRY {
-      OrtValue* outputs{};
-      auto status = sess->Run(run_options, input_names, input, input_len, output_name, output_names_len, &outputs);
+      using OrtValuePtr = OrtValue*;
+      std::unique_ptr<OrtValuePtr[]> outputs = std::make_unique<OrtValuePtr[]>(output_names_len);
+      memset(outputs.get(), 0x0, sizeof(OrtValuePtr) * output_names_len);
+      auto status = sess->Run(run_options, input_names, input, input_len, output_name, output_names_len, outputs.get());
       if (status.IsOK()) {
-        callback(outputs, output_names_len, {});
+        callback(outputs.get(), output_names_len, {});
       } else {
         callback({}, 0, ToOrtStatus(status));
       }
     }
     ORT_CATCH(const std::exception& e) {
-      callback({}, 0, ToOrtStatus(ORT_MAKE_STATUS(ONNXRUNTIME, RUNTIME_EXCEPTION, e.what())));
+      std::string what = "unknown";
+      ORT_HANDLE_EXCEPTION([&]() { what = e.what(); });
+      callback({}, 0, ToOrtStatus(ORT_MAKE_STATUS(ONNXRUNTIME, RUNTIME_EXCEPTION, what.c_str())));
     }
     ORT_CATCH(...) {
       callback({}, 0, ToOrtStatus(ORT_MAKE_STATUS(ONNXRUNTIME, RUNTIME_EXCEPTION)));

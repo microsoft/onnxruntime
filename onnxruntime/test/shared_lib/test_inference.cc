@@ -3223,12 +3223,12 @@ TEST(MultiKernelSingleSchemaTest, DuplicateKernel) {
 const static std::thread::id caller_tid = std::this_thread::get_id();
 static std::atomic_bool atomic_wait{false};
 
-void RunAsyncCallBack(OrtValue* outputs, size_t num_outputs, OrtStatusPtr status) {
+void RunAsyncCallBack(OrtValue** outputs, size_t num_outputs, OrtStatusPtr status) {
   auto callee_tid = std::this_thread::get_id();
   EXPECT_EQ(status, nullptr);
   EXPECT_EQ(num_outputs, 1);
   EXPECT_NE(caller_tid, callee_tid);
-  Ort::Value output_value(outputs);
+  Ort::Value output_value(outputs[0]);
   EXPECT_EQ(output_value.At<float>({1, 0}), 9.f);
   atomic_wait.store(true);
 }
@@ -3253,8 +3253,9 @@ TEST(CApiTest, RunAsync) {
   Ort::RunOptions run_options;
   EXPECT_NO_THROW(session.RunAsync(run_options, input_names, input_tensors, 1, output_names, 1, RunAsyncCallBack));
 
-  while (!atomic_wait.load())
-    ;
+  while (!atomic_wait.load()) {
+    std::this_thread::yield();
+  }
 
   EXPECT_EQ(atomic_wait.load(), true);
 }
