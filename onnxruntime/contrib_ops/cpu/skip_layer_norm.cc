@@ -117,7 +117,7 @@ Status SkipLayerNorm<T>::Compute(OpKernelContext* p_ctx) const {
   // of the input and skip tensors
   T* skip_input_bias_add_output_data = skip_input_bias_add_output != nullptr ? skip_input_bias_add_output->MutableData<T>() : nullptr;
 
-  skip_size = skip->Shape().Size();
+  const auto& skip_size = skip->Shape().Size();
 
   concurrency::ThreadPool::TryBatchParallelFor(
       p_ctx->GetOperatorThreadPool(), static_cast<int32_t>(task_count),
