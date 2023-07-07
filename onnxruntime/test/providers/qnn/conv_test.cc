@@ -461,6 +461,36 @@ TEST_F(QnnHTPBackendTests, TestQDQConvU8S32_bias_dynamic_input) {
                             "TestQDQConvU8S32_bias_dynamic_input");
 }
 
+// Test that dynamic weights with default bias works for Conv. This was previously not working
+// on older versions of QNN sdk.
+TEST_F(QnnHTPBackendTests, TestQDQConvU8S32_DynamicWeight_NoBias) {
+  RunHTPConvOpTest<uint8_t>("Conv",
+                            TestInputDef<float>({1, 3, 32, 32}, false, 0.0f, 10.0f),  // Random dynamic input
+                            TestInputDef<float>({1, 3, 4, 4}, false, -10.0f, 10.0f),  // Random dynamic weights
+                            TestInputDef<float>(),                                    // Default bias
+                            {1, 1},                                                   // Strides
+                            {0, 0, 0, 0},                                             // Pads
+                            {1, 1},                                                   // Dilations
+                            "NOTSET",
+                            ExpectedEPNodeAssignment::All,
+                            "TestQDQConvU8S32_DynamicWeight_NoBias");
+}
+
+// Test that dynamic weights with default bias works for ConvTranspose. This was previously not working
+// on older versions of QNN sdk.
+TEST_F(QnnHTPBackendTests, TestQDQConvTransposeU8S32_DynamicWeight_NoBias) {
+  RunHTPConvOpTest<uint8_t>("ConvTranspose",
+                            TestInputDef<float>({1, 3, 32, 32}, false, 0.0f, 100.0f),  // Random dynamic input
+                            TestInputDef<float>({3, 1, 4, 4}, false, -10.0f, 10.0f),   // Random dynamic weights
+                            TestInputDef<float>(),                                     // Default bias
+                            {1, 1},                                                    // Strides
+                            {0, 0, 0, 0},                                              // Pads
+                            {1, 1},                                                    // Dilations
+                            "NOTSET",
+                            ExpectedEPNodeAssignment::All,
+                            "TestQDQConvTransposeU8S32_DynamicWeight_NoBias");
+}
+
 // Check that QNN compiles DQ -> Conv -> Q as a single unit.
 // Tests bias as an initializer.
 TEST_F(QnnHTPBackendTests, TestQDQConvU8U8S32_bias_initializer) {
