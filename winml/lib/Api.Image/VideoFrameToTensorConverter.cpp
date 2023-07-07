@@ -588,7 +588,7 @@ D3D12_UNORDERED_ACCESS_VIEW_DESC VideoFrameToTensorConverter::CreateUAVDescripti
   D3D12_UNORDERED_ACCESS_VIEW_DESC uavDesc = {};
   uavDesc.ViewDimension = D3D12_UAV_DIMENSION_BUFFER;
   UINT singleImageSize = static_cast<UINT>(desc.sizes[1] * desc.sizes[2] * desc.sizes[3]);
-  uavDesc.Buffer.FirstElement = offset + batchIdx * desc.sizes[1] * desc.sizes[2] * desc.sizes[3];
+  uavDesc.Buffer.FirstElement = offset / uiTensorElementSize + batchIdx * desc.sizes[1] * desc.sizes[2] * desc.sizes[3];
   uavDesc.Buffer.NumElements = singleImageSize;
   uavDesc.Buffer.CounterOffsetInBytes = 0;
   uavDesc.Buffer.Flags = D3D12_BUFFER_UAV_FLAG_NONE;

@@ -395,6 +395,9 @@ namespace Dml
         size_in_bytes =
             (1 + (size_in_bytes - 1) / DML_ALIGNMENT) * DML_ALIGNMENT;
 
+        // Make sure the region we're trying to create fits entirely in the resource
+        assert(it->second->GetUavResource()->GetDesc().Width >= taggedPointer.offset + size_in_bytes);
+
         return D3D12BufferRegion(
             taggedPointer.offset,
             size_in_bytes,
