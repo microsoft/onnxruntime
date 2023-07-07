@@ -259,7 +259,8 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
                                                              decoder_subgraph_.has_decoder_masked_attention_));
 
     if (decoder_subgraph_.past_present_share_buffer_) {
-      decoder_fetches.reserve(static_cast<int64_t>(decoder_subgraph_.GetFirstPresentOutputIndex()) + 2 * static_cast<int64_t>(decoder_subgraph_.num_layers));
+      decoder_fetches.reserve(static_cast<size_t>(decoder_subgraph_.GetFirstPresentOutputIndex()) +
+                              2 * static_cast<size_t>(decoder_subgraph_.num_layers));
       decoder_fetches.resize(decoder_subgraph_.GetFirstPresentOutputIndex(), OrtValue());
       for (int layer = 0; layer < 2 * decoder_subgraph_.num_layers; layer++) {
         int feed_idx = decoder_subgraph_.GetFirstPastInputIndex() + layer;

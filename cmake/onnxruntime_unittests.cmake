@@ -839,6 +839,12 @@ else()
   target_compile_options(onnxruntime_test_all PRIVATE "-Wno-parentheses")
 endif()
 
+# TODO fix shorten-64-to-32 warnings
+# there are some in builds where sizeof(size_t) != sizeof(int64_t), e.g., in 'ONNX Runtime Web CI Pipeline'
+if (HAS_SHORTEN_64_TO_32 AND NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
+  target_compile_options(onnxruntime_test_all PRIVATE -Wno-error=shorten-64-to-32)
+endif()
+
 if (UNIX AND onnxruntime_USE_TENSORRT)
     set_property(TARGET onnxruntime_test_all APPEND_STRING PROPERTY COMPILE_FLAGS "-Wno-deprecated-declarations")
 endif()
