@@ -2275,8 +2275,10 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
 
     // Save context to PerThreadContext map since maintaining execution context in a per thread basis
     // is suggested by TRT doc to avoid synchronization issue
-    auto trt_context_map = GetPerThreadContext().GetTensorRTContextCache();
-    (*trt_context_map).insert(std::make_pair(fused_node.Name(), std::move(trt_context)));
+    if (trt_context) {
+      auto trt_context_map = GetPerThreadContext().GetTensorRTContextCache();
+      (*trt_context_map).insert(std::make_pair(fused_node.Name(), std::move(trt_context)));
+    }
 
     // Create function state
     // TODO: remove default capture
@@ -2430,6 +2432,12 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
 
       // Regenerate engine
       if (engine_update) {
+        // Destroying the IExecutionContext objects before destroying an engine object, otherwises it will lead to undefined behavior.
+        if (GetPerThreadContext().IsTensorRTContextInMap(fused_node_name)) {
+          auto trt_context_map = GetPerThreadContext().GetTensorRTContextCache();
+          (*trt_context_map)[fused_node_name].reset();
+        }
+
         // Accessing one builder, engine creation/serialization/saving, profile saving and timing cache serialization/saving
         // should be synchronized across different threads when ORT is using multithreading.
         // More details here, https://docs.nvidia.com/deeplearning/tensorrt/developer-guide/index.html#threading
@@ -2580,7 +2588,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
         auto trt_context_map = GetPerThreadContext().GetTensorRTContextCache();
         (*trt_context_map).insert(std::make_pair(fused_node_name, std::make_shared<nvinfer1::IExecutionContext>()));
         context_update = true;
-      } 
+      }
 
       // Build execution context if either of the following conditions is true:
       // (1) Engine is rebuilt.
@@ -2589,14 +2597,16 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
       // Note: Creating an execution context from an engine is thread safe per TRT doc
       // https://docs.nvidia.com/deeplearning/tensorrt/developer-guide/index.html#threading
       if (context_update) {
-        auto trt_context_map = GetPerThreadContext().GetTensorRTContextCache();
-        auto trt_context_updated = (*trt_context_map).at(fused_node_name);
+        std::shared_ptr<nvinfer1::IExecutionContext> new_context;
         if (trt_state->context_memory_sharing_enable) {
-          trt_context_updated.reset(trt_state->engine->get()->createExecutionContextWithoutDeviceMemory());
+          new_context.reset(trt_state->engine->get()->createExecutionContextWithoutDeviceMemory());
         } else {
-          trt_context_updated.reset(trt_state->engine->get()->createExecutionContext());
+          new_context.reset(trt_state->engine->get()->createExecutionContext());
         }
-        if (!trt_context_updated) {
+        auto trt_context_map = GetPerThreadContext().GetTensorRTContextCache();
+        (*trt_context_map)[fused_node_name] = std::move(new_context);
+
+        if (!(*trt_context_map).at(fused_node_name)) {
           return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "TensorRT EP failed to create context.");
         }
       }

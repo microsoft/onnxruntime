@@ -262,7 +262,7 @@ class TensorrtExecutionProvider : public IExecutionProvider {
 
     bool IsTensorRTContextInMap(std::string fused_node);
     nvinfer1::IExecutionContext& GetTensorRTContext(std::string fused_node);
-    std::unordered_map<std::string, std::shared_ptr<nvinfer1::IExecutionContext>>* GetTensorRTContextCache(); 
+    std::unordered_map<std::string, std::shared_ptr<nvinfer1::IExecutionContext>>* GetTensorRTContextCache();
 
     void InitCUDAGraph();
     void SetGraphStream(cudaStream_t stream);
