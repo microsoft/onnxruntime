@@ -47,7 +47,9 @@ torch.cuda.is_available()
 - Now you can enable GPU in the C# ONNX Runtime API with the following code:
 
 ```cs
-var session = new InferenceSession(modelPath, SessionOptions.MakeSessionOptionWithCudaProvider(0));
+// keep in mind almost all of the classes are disposable.
+using var gpuSessionOptions = SessionOptions.MakeSessionOptionWithCudaProvider(0);
+using var session = new InferenceSession(modelPath, gpuSessionOptions);
 ```
 
 ## Checkout more C# ONNX Runtime resources
