@@ -4319,6 +4319,19 @@ struct OrtApi {
   ORT_API2_STATUS(CreateAndRegisterAllocatorV2, _Inout_ OrtEnv* env, _In_ const char* provider_type, _In_ const OrtMemoryInfo* mem_info, _In_ const OrtArenaCfg* arena_cfg,
                   _In_reads_(num_keys) const char* const* provider_options_keys, _In_reads_(num_keys) const char* const* provider_options_values, _In_ size_t num_keys);
 
+  /** \brief Run the model asynchronously in an ::OrtSession
+   *
+   * Will return immediately. Model runs in a separate thread. Callback will be invoked on completion.
+   *
+   * \param[in] session
+   * \param[in] run_options If nullptr, will use a default ::OrtRunOptions
+   * \param[in] input_names Array of null terminated UTF8 encoded strings of the input names
+   * \param[in] inputs Array of ::OrtValue%s of the input values
+   * \param[in] input_len Number of elements in the input_names and inputs arrays
+   * \param[in] output_names Array of null terminated UTF8 encoded strings of the output names
+   * \param[in] output_names_len Number of elements in the output_names and outputs array
+   * \param[in] run_async_callback Callback function on model run completion
+   */
   ORT_API2_STATUS(RunAsync, _Inout_ OrtSession* session, _In_opt_ const OrtRunOptions* run_options,
                   _In_reads_(input_len) const char* const* input_names,
                   _In_reads_(input_len) const OrtValue* const* inputs, size_t input_len,

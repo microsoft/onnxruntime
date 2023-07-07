@@ -781,6 +781,10 @@ struct SessionImpl : ConstSessionImpl<T> {
 
   void Run(const RunOptions& run_options, const IoBinding&);  ///< Wraps OrtApi::RunWithBinding
 
+  /** \brief Run the model in a separate thread.
+   * Callback will be invoked on run completion, with output values as arguments,
+   * on error, status could be used to see detail.
+   */
   void RunAsync(const RunOptions& run_options, const char* const* input_names, const Value* input_values, size_t input_count,
                 const char* const* output_names, size_t output_count, RunAsyncCallbackFn callback);
 
