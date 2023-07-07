@@ -237,17 +237,20 @@ stages:
           --emulator-pid-file $(Build.BinariesDirectory)/emulator.pid
         displayName: Start Android emulator
 
-      - script: |
-          python3 tools/ci_build/build.py \
-          --android \
-          --build_dir build \
-          --android_sdk_path $ANDROID_HOME \
-          --android_ndk_path $ANDROID_NDK_HOME \
-          --android_abi=x86_64 \
-          --android_api=30 \
-          --build_java \
-          --test
-        displayName: CPU EP, Test on Android Emulator
+      - template: templates/android-dump-logs-from-steps.yml
+        parameters:
+          steps:
+          - script: |
+              python3 tools/ci_build/build.py \
+              --android \
+              --build_dir build \
+              --android_sdk_path $ANDROID_HOME \
+              --android_ndk_path $ANDROID_NDK_HOME \
+              --android_abi=x86_64 \
+              --android_api=30 \
+              --build_java \
+              --test
+            displayName: CPU EP, Test on Android Emulator
 
       - script: |
           python3 tools/python/run_android_emulator.py \
