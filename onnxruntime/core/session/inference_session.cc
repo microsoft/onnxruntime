@@ -1436,7 +1436,7 @@ common::Status InferenceSession::Initialize() {
     if (!have_cpu_ep) {
       LOGS(*session_logger_, INFO) << "Adding default CPU execution provider.";
       CPUExecutionProviderInfo epi{session_options_.enable_cpu_mem_arena};
-      auto p_cpu_exec_provider = std::make_unique<CPUExecutionProvider>(epi, true /* delay allocator registration to allow sharing */);
+      auto p_cpu_exec_provider = std::make_unique<CPUExecutionProvider>(epi);
       ORT_RETURN_IF_ERROR_SESSIONID_(RegisterExecutionProvider(std::move(p_cpu_exec_provider)));
       execution_providers_.SetCpuProviderWasImplicitlyAdded(true);
     }
