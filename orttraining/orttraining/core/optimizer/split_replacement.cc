@@ -25,7 +25,13 @@ bool SplitReplacement::SatisfyCondition(const Graph& graph, const Node& node, co
   if ((nullptr != attr_proto) && attr_proto->has_i()) {
     axis = attr_proto->i();
   }
+
   if (axis != 0) {
+    return false;
+  }
+
+  // SplitView need to set Alias from input 0 to all outputs, currently we only support at most 16 outputs.
+  if (node.OutputDefs().size() > 16) {
     return false;
   }
 

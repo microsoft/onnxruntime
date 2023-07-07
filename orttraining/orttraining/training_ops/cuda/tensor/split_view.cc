@@ -26,6 +26,7 @@ Status SplitView::ComputeInternal(OpKernelContext* context) const {
   InlinedVector<TensorShape> output_shapes;
   InlinedVector<size_t> output_offsets;
   ORT_RETURN_IF_ERROR(PrepareForSplitView(input_tensor, num_outputs, p_split_tensor, output_shapes, output_offsets));
+  ORT_ENFORCE(output_shapes.size() <= KSplitViewMaxOutputCount, "Output count exceeds limit.");
   ORT_ENFORCE(static_cast<size_t>(context->OutputCount()) <= output_shapes.size(), "Output count mismatch.");
 
   const void* input_data = input_tensor.DataRaw();
