@@ -237,6 +237,13 @@ stages:
           --emulator-pid-file $(Build.BinariesDirectory)/emulator.pid
         displayName: Start Android emulator
 
+      - script: |
+          set -e
+          python3 tools/python/run_adb.py root
+          python3 tools/python/run_adb.py shell setenforce 0
+          python3 tools/python/run_adb.py unroot
+        displayName: adb shell setenforce 0
+
       - template: templates/android-dump-logs-from-steps.yml
         parameters:
           steps:
