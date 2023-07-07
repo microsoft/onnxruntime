@@ -27,6 +27,7 @@
 #include "orttraining/core/optimizer/loss_rewriter.h"
 #include "orttraining/core/optimizer/bias_softmax_dropout_fusion.h"
 #include "orttraining/core/optimizer/sce_loss_grad_bias_fusion.h"
+#include "orttraining/core/optimizer/split_replacement.h"
 #include "orttraining/core/optimizer/qdq_fusion.h"
 #include "orttraining/core/optimizer/lstm_replacement.h"
 
@@ -523,6 +524,110 @@ Node* GetNodeByName(Graph& graph, std::string node_name) {
   }
 
   return nullptr;
+}
+
+TEST_F(GraphTransformationTests, SplitReplacement) {
+  auto pre_graph_checker = [&](Graph& graph) {
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Split"] == 1);
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["com.microsoft.SplitView"] == 0);
+    return Status::OK();
+  };
+
+  auto post_graph_checker = [&](Graph& graph) {
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Split"] == 0);
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["com.microsoft.SplitView"] == 1);
+    return Status::OK();
+  };
+
+  // axis = 0, num_outputs = 2, replace
+  {
+    auto build_test_case = [&](ModelTestBuilder& builder) {
+      auto* x_arg = builder.MakeInput<float>({{8, 2}});
+      auto* y_arg = builder.MakeInput<float>({{2}});
+      auto* split_out_0_arg = builder.MakeIntermediate<float>({{4, 2}});
+      auto* split_out_1_arg = builder.MakeIntermediate<float>({{4, 2}});
+      auto* out_0_arg = builder.MakeOutput();
+      auto* out_1_arg = builder.MakeOutput();
+      Node& split_node = builder.AddNode("Split", {x_arg}, {split_out_0_arg, split_out_1_arg});
+      split_node.AddAttribute("axis", static_cast<int64_t>(0));
+      split_node.AddAttribute("num_outputs", static_cast<int64_t>(2));
+      builder.AddNode("Add", {split_out_0_arg, y_arg}, {out_0_arg});
+      builder.AddNode("Add", {split_out_1_arg, y_arg}, {out_1_arg});
+    };
+
+    std::unique_ptr<RuleBasedGraphTransformer> transformer =
+        std::make_unique<RuleBasedGraphTransformer>("SplitReplacement");
+    ASSERT_STATUS_OK(transformer->Register(std::make_unique<SplitReplacement>()));
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 18, *logger_, std::move(transformer),
+                                          TransformerLevel::Level1, 1, pre_graph_checker, post_graph_checker));
+  }
+
+  // axis = -1, num_outputs = 2, not replace
+  {
+    auto build_test_case = [&](ModelTestBuilder& builder) {
+      auto* x_arg = builder.MakeInput<float>({{2, 8}});
+      auto* y_arg = builder.MakeInput<float>({{4}});
+      auto* split_out_0_arg = builder.MakeIntermediate<float>({{2, 4}});
+      auto* split_out_1_arg = builder.MakeIntermediate<float>({{2, 4}});
+      auto* out_0_arg = builder.MakeOutput();
+      auto* out_1_arg = builder.MakeOutput();
+      Node& split_node = builder.AddNode("Split", {x_arg}, {split_out_0_arg, split_out_1_arg});
+      split_node.AddAttribute("axis", static_cast<int64_t>(-1));
+      split_node.AddAttribute("num_outputs", static_cast<int64_t>(2));
+      builder.AddNode("Add", {split_out_0_arg, y_arg}, {out_0_arg});
+      builder.AddNode("Add", {split_out_1_arg, y_arg}, {out_1_arg});
+    };
+
+    std::unique_ptr<RuleBasedGraphTransformer> transformer =
+        std::make_unique<RuleBasedGraphTransformer>("SplitReplacement");
+    ASSERT_STATUS_OK(transformer->Register(std::make_unique<SplitReplacement>()));
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 18, *logger_, std::move(transformer),
+                                          TransformerLevel::Level1, 1, pre_graph_checker, pre_graph_checker));
+  }
+
+  // axis = 0, num_outputs = 2, graph output, not replace
+  {
+    auto build_test_case = [&](ModelTestBuilder& builder) {
+      auto* x_arg = builder.MakeInput<float>({{8, 2}});
+      auto* y_arg = builder.MakeInput<float>({{2}});
+      auto* split_out_0_arg = builder.MakeIntermediate<float>({{4, 2}});
+      auto* out_0_arg = builder.MakeOutput();
+      auto* out_1_arg = builder.MakeOutput();
+      Node& split_node = builder.AddNode("Split", {x_arg}, {split_out_0_arg, out_1_arg});
+      split_node.AddAttribute("axis", static_cast<int64_t>(0));
+      split_node.AddAttribute("num_outputs", static_cast<int64_t>(2));
+      builder.AddNode("Add", {split_out_0_arg, y_arg}, {out_0_arg});
+    };
+
+    std::unique_ptr<RuleBasedGraphTransformer> transformer =
+        std::make_unique<RuleBasedGraphTransformer>("SplitReplacement");
+    ASSERT_STATUS_OK(transformer->Register(std::make_unique<SplitReplacement>()));
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 18, *logger_, std::move(transformer),
+                                          TransformerLevel::Level1, 1, pre_graph_checker, pre_graph_checker));
+  }
+
+  // axis = 0, split_inputs = [1, 2, 3], replace
+  {
+    auto build_test_case = [&](ModelTestBuilder& builder) {
+      auto* x_arg = builder.MakeInput<float>({{5, 2}});
+      auto* split_input_arg = builder.MakeInitializer<int64_t>({2}, {2, 3});
+      auto* y_arg = builder.MakeInput<float>({{2}});
+      auto* split_out_0_arg = builder.MakeIntermediate<float>({{2, 2}});
+      auto* split_out_1_arg = builder.MakeIntermediate<float>({{3, 2}});
+      auto* out_0_arg = builder.MakeOutput();
+      auto* out_1_arg = builder.MakeOutput();
+      Node& split_node = builder.AddNode("Split", {x_arg, split_input_arg}, {split_out_0_arg, split_out_1_arg});
+      split_node.AddAttribute("axis", static_cast<int64_t>(0));
+      builder.AddNode("Add", {split_out_0_arg, y_arg}, {out_0_arg});
+      builder.AddNode("Add", {split_out_1_arg, y_arg}, {out_1_arg});
+    };
+
+    std::unique_ptr<RuleBasedGraphTransformer> transformer =
+        std::make_unique<RuleBasedGraphTransformer>("SplitReplacement");
+    ASSERT_STATUS_OK(transformer->Register(std::make_unique<SplitReplacement>()));
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 13, *logger_, std::move(transformer),
+                                          TransformerLevel::Level1, 1, pre_graph_checker, post_graph_checker));
+  }
 }
 
 // MegatronF/G and ConcatTraining is defined only for training, and in msdomain.

@@ -4610,6 +4610,18 @@ Return true if all elements are true and false otherwise.
           "T_INDEX",
           {"tensor(int32)", "tensor(int64)"},
           "Constrain indices to integer types");
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(SplitView)
+      .SetDoc("SplitView. The output tensors are views of the input.")
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .Attr("num_outputs", "Number of outputs to split parts of the tensor into. ", AttributeProto::INT, false)
+      .AllowUncheckedAttributes()
+      .Input(0, "input", "Input tensor.", "T")
+      .Input(1, "split", "Optional length of each output. Values should be >= 0.", "tensor(int64)", OpSchema::Optional)
+      .Output(0, "outputs", "Output tensors viewed according the split input.", "T", OpSchema::Variadic)
+      .TypeConstraint("T", {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
+                      "Constrain input and output types to float tensors.");
 }
 
 }  // namespace training

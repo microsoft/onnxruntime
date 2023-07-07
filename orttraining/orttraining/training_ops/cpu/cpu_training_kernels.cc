@@ -99,6 +99,8 @@ class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSDomain, 1,
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSDomain, 1, float, LSTMTraining);
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSDomain, 1, float, LSTMGrad);
 
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSDomain, 1, SplitView);
+
 // the kernels within the following ifdef are not included in a build with
 // --enable_training_ops but without --enable_training
 #ifdef ENABLE_TRAINING
@@ -226,6 +228,8 @@ Status RegisterCpuTrainingKernels(KernelRegistry& kernel_registry) {
           kCpuExecutionProvider, kMSDomain, 1, float, LSTMTraining)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(
           kCpuExecutionProvider, kMSDomain, 1, float, LSTMGrad)>,
+
+      BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSDomain, 1, SplitView)>,
 
 // the kernels within the following ifdef are not included in a build with
 // --enable_training_ops but without --enable_training

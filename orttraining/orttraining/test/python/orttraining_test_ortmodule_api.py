@@ -6057,3 +6057,46 @@ def test_e2e_padding_elimination():
     assert "ShrunkenGather" in [node.op_type for node in training_model.graph.node]
     assert "PadAndUnflatten" in [node.op_type for node in training_model.graph.node]
     del os.environ["ORTMODULE_ENABLE_EMBEDDING_SPARSE_OPTIMIZER"]
+
+
+@pytest.mark.parametrize("device", ["cuda", "cpu"])
+@pytest.mark.parametrize("fix_size", [True, False])
+def test_correctness_split(device, fix_size):
+    class NeuralNetSplit(torch.nn.Module):
+        def forward(self, x, y):
+            a, b, c = torch.split(x, 12, dim=0) if fix_size else torch.split(x, [12, 11, 13], dim=0)
+            return torch.cat((a + y, b, c * y), dim=0)
+
+    N, M = 36, 32  # noqa: N806
+    pt_model = NeuralNetSplit().to(device)
+    ort_model = ORTModule(copy.deepcopy(pt_model), DebugOptions(save_onnx=True, onnx_prefix="split_model"))
+
+    def run_step(model, x, y):
+        prediction = model(x, y)
+        loss = prediction.sum()
+        loss.backward()
+        return prediction
+
+    for _ in range(10):
+        x = torch.rand(N, M, device=device, requires_grad=True)
+        y = torch.rand(M, device=device, requires_grad=True)
+        pt_prediction = run_step(pt_model, x, y)
+        ort_prediction = run_step(ort_model, x, y)
+        _test_helpers.assert_values_are_close(ort_prediction, pt_prediction)
+        _test_helpers.assert_gradients_match_and_reset_gradient(ort_model, pt_model)
+
+    assert os.path.exists(os.path.join(os.getcwd(), "split_model_torch_exported_training.onnx"))
+    assert os.path.exists(os.path.join(os.getcwd(), "split_model_optimized_training.onnx"))
+    assert os.path.exists(os.path.join(os.getcwd(), "split_model_optimized_pre_grad_training.onnx"))
+    assert os.path.exists(os.path.join(os.getcwd(), "split_model_execution_model_training.onnx"))
+    model = onnx.load(os.path.join(os.getcwd(), "split_model_execution_model_training.onnx"))
+    has_split_view = False
+    for node in model.graph.node:
+        if node.op_type == "SplitView":
+            has_split_view = True
+            break
+    assert has_split_view
+    os.remove(os.path.join(os.getcwd(), "split_model_torch_exported_training.onnx"))
+    os.remove(os.path.join(os.getcwd(), "split_model_optimized_training.onnx"))
+    os.remove(os.path.join(os.getcwd(), "split_model_optimized_pre_grad_training.onnx"))
+    os.remove(os.path.join(os.getcwd(), "split_model_execution_model_training.onnx"))

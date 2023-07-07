@@ -74,8 +74,9 @@
 #ifdef ENABLE_TRAINING
 #include "orttraining/core/optimizer/bias_softmax_dropout_fusion.h"
 #include "orttraining/core/optimizer/bitmask_dropout_replacement.h"
-#include "orttraining/core/optimizer/sce_loss_grad_bias_fusion.h"
 #include "orttraining/core/optimizer/memory_optimizer.h"
+#include "orttraining/core/optimizer/sce_loss_grad_bias_fusion.h"
+#include "orttraining/core/optimizer/split_replacement.h"
 #endif
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
@@ -132,6 +133,9 @@ InlinedVector<std::unique_ptr<RewriteRule>> GenerateRewriteRules(
       break;
 
     case TransformerLevel::Level3:
+#ifdef ENABLE_TRAINING
+      rules.push_back(std::make_unique<SplitReplacement>());
+#endif
       break;
 
     default:
@@ -185,16 +189,17 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
   const InlinedHashSet<std::string_view> cpu_ep = {onnxruntime::kCpuExecutionProvider};
 #endif
   const InlinedHashSet<std::string_view> dml_ep = {onnxruntime::kDmlExecutionProvider};
+
+  // RewriteRule optimizations are the simplest (they generally remove unnecessary nodes and are cheap to run)
+  // so run them first so there is potentially less for the more intensive optimizations like ConstantFolding,
+  // CommonSubexpressionElimination and TransposeOptimizer to do.
+  auto rule_transformer = GenerateRuleBasedGraphTransformer(level, rules_and_transformers_to_disable, {});
+  if (rule_transformer != nullptr) {
+    transformers.emplace_back(std::move(rule_transformer));
+  }
+
   switch (level) {
     case TransformerLevel::Level1: {
-      // RewriteRule optimizations are the simplest (they generally remove unnecessary nodes and are cheap to run)
-      // so run them first so there is potentially less for the more intensive optimizations like ConstantFolding,
-      // CommonSubexpressionElimination and TransposeOptimizer to do.
-      auto rule_transformer = GenerateRuleBasedGraphTransformer(level, rules_and_transformers_to_disable, {});
-      if (rule_transformer != nullptr) {
-        transformers.emplace_back(std::move(rule_transformer));
-      }
-
       // no filtering on execution provider for L1 optimizations as they only use official ONNX operators
 
       if (session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsDisableDoubleQDQRemover, "0") == "0") {
@@ -233,13 +238,6 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       // add __backwardpass attribute to nodes after YieldOp, ROCm-only
       const InlinedHashSet<std::string_view> rocm_ep = {onnxruntime::kRocmExecutionProvider};
       transformers.emplace_back(std::make_unique<RocmBlasAltImpl>(rocm_ep));
-
-      // run TransposeOptimizer last as it works in a slightly different way by moving Transpose nodes around.
-      // shouldn't affect the end result - just easier to debug any issue if it's last.
-      // local CPU allocator is enough as this allocator is finally passed to a local tensor.
-      // We will also benefit by using a local allocator as we don't need to pass allocator as parameter for EP API refactor
-      AllocatorPtr cpu_allocator = std::make_shared<CPUAllocator>();
-      transformers.emplace_back(std::make_unique<TransposeOptimizer>(std::move(cpu_allocator)));
     } break;
 
     case TransformerLevel::Level2: {
@@ -345,6 +343,12 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       transformers.emplace_back(std::make_unique<MemoryOptimizer>(enable_memory_optimizer, probe_level));
 #endif
 
+      // run TransposeOptimizer last as it works in a slightly different way by moving Transpose nodes around.
+      // shouldn't affect the end result - just easier to debug any issue if it's last.
+      // local CPU allocator is enough as this allocator is finally passed to a local tensor.
+      // We will also benefit by using a local allocator as we don't need to pass allocator as parameter for EP API refactor
+      AllocatorPtr cpu_allocator = std::make_shared<CPUAllocator>();
+      transformers.emplace_back(std::make_unique<TransposeOptimizer>(std::move(cpu_allocator)));
     } break;
 
     case TransformerLevel::Level3: {
