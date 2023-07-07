@@ -2,6 +2,7 @@
   {
     "name": "constant 2D",
     "operator": "Pad",
+    "opsets": [{"domain": "", "version": 10}],
     "attributes": [
       { "name": "mode", "data": "reflect", "type": "string" },
       { "name": "pads", "data": [0, 0, 1, 1, 0, 0, 1, 1], "type": "ints" }
