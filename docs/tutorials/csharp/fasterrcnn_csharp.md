@@ -73,8 +73,10 @@ Next, we will preprocess the image according to the [requirements of the model](
 ```cs
 var paddedHeight = (int)(Math.Ceiling(image.Height / 32f) * 32f);
 var paddedWidth = (int)(Math.Ceiling(image.Width / 32f) * 32f);
-Tensor<float> input = new DenseTensor<float>(new[] { 3, paddedHeight, paddedWidth });
 var mean = new[] { 102.9801f, 115.9465f, 122.7717f };
+//Preprocessing image
+//We use Tensor for multi-dimensional access
+DenseTensor<float> input = new(new[] { 3, paddedHeight, paddedWidth });
 image.ProcessPixelRows(accessor =>
 {
     for (int y = paddedHeight - accessor.Height; y < accessor.Height; y++)
@@ -97,10 +99,16 @@ Here, we're creating a Tensor of the required size `(channels, paddedHeight, pad
 Next, we will create the inputs to the model:
 
 ```cs
-var inputs = new List<NamedOnnxValue>
+// Pin tensor memory and use it directly
+// It will be unpinned on ortValue disposal
+using var inputOrtValue = OrtValue.CreateTensorValueFromMemory(OrtMemoryInfo.DefaultInstance,
+    input.Buffer, new long[] { 3, paddedHeight, paddedWidth });
+
+var inputs = new Dictionary<string, OrtValue>
 {
-    NamedOnnxValue.CreateFromTensor("image", input)
+    { "image", inputOrtValue }
 };
+
 ```
 
 To check the input node names for an ONNX model, you can use [Netron](https://github.com/lutzroeder/netron) to visualise the model and see input/output names. In this case, this model has `image` as the input node name.
@@ -111,7 +119,9 @@ Next, we will create an inference session and run the input through it:
 
 ```cs
 using var session = new InferenceSession(modelFilePath);
-using IDisposableReadOnlyCollection<DisposableNamedOnnxValue> results = session.Run(inputs);
+using var runOptions = new RunOptions();
+using IDisposableReadOnlyCollection<OrtValue> results = session.Run(runOptions, inputs, session.OutputNames);
+
 ```
 
 ### Postprocess output
@@ -119,22 +129,23 @@ using IDisposableReadOnlyCollection<DisposableNamedOnnxValue> results = session.
 Next, we will need to postprocess the output to get boxes and associated label and confidence scores for each box:
 
 ```cs
-var resultsArray = results.ToArray();
-float[] boxes = resultsArray[0].AsEnumerable<float>().ToArray();
-long[] labels = resultsArray[1].AsEnumerable<long>().ToArray();
-float[] confidences = resultsArray[2].AsEnumerable<float>().ToArray();
+var boxesSpan = results[0].GetTensorDataAsSpan<float>();
+var labelsSpan = results[1].GetTensorDataAsSpan<long>();
+var confidencesSpan = results[2].GetTensorDataAsSpan<float>();
+
+const float minConfidence = 0.7f;
 var predictions = new List<Prediction>();
-var minConfidence = 0.7f;
-for (int i = 0; i < boxes.Length - 4; i += 4)
+
+for (int i = 0; i < boxesSpan.Length - 4; i += 4)
 {
     var index = i / 4;
-    if (confidences[index] >= minConfidence)
+    if (confidencesSpan[index] >= minConfidence)
     {
         predictions.Add(new Prediction
         {
-            Box = new Box(boxes[i], boxes[i + 1], boxes[i + 2], boxes[i + 3]),
-            Label = LabelMap.Labels[labels[index]],
-            Confidence = confidences[index]
+            Box = new Box(boxesSpan[i], boxesSpan[i + 1], boxesSpan[i + 2], boxesSpan[i + 3]),
+            Label = LabelMap.Labels[labelsSpan[index]],
+            Confidence = confidencesSpan[index]
         });
     }
 }
