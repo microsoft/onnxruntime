@@ -1909,7 +1909,6 @@ TEST(CApiTest, cuda_graph_with_shape_nodes) {
   // Successful loading of the ONNX model with shape nodes with cuda graph feature enabled
   Ort::Session session(*ort_env, TSTR("testdata/cuda_graph_with_shape_nodes.onnx"), session_options);
 }
-#endif
 
 #endif
 
