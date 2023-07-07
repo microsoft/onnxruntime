@@ -255,6 +255,7 @@ ORT_API_STATUS_IMPL(GetD3D12ResourceRegionFromAllocation,
   } else {
     ORT_THROW_HR_IF(E_INVALIDARG, wrapping_allocator->Info()->device.MemType() != OrtDevice::MemType::DEFAULT);
     auto bufferRegion = Dml::GetD3D12ResourceRegionFromAllocation(allocator.get(), Dml::TaggedPointer::Unpack(allocation), size_in_bytes);
+    *offset = bufferRegion.Offset();
     *d3d_resource = bufferRegion.ResourceInUavState();
   }
 
