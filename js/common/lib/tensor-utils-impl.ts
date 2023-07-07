@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {Tensor} from './tensor.js';
+import {Tensor, TensorFromCpuPinnedParameters, TensorFromGpuBufferParameters, TensorFromTextureParameters} from './tensor-impl.js';
 
 /**
  * calculate size from dims.
@@ -26,5 +26,32 @@ export const calculateSize = (dims: readonly unknown[]): number => {
 /**
  * implementation of Tensor.reshape()
  */
-export const tensorReshape = (tensor: Tensor, dims: readonly number[]): Tensor =>
-    new Tensor(tensor.type, tensor.data, dims);
+export const tensorReshape = (tensor: Tensor, dims: readonly number[]): Tensor => {
+  switch (tensor.location) {
+    case 'cpu':
+      return new Tensor(tensor.type, tensor.data, dims);
+    case 'cpu-pinned':
+      return new Tensor({
+        location: 'cpu-pinned',
+        data: tensor.data as TensorFromCpuPinnedParameters['data'],
+        type: tensor.type as TensorFromCpuPinnedParameters['type'],
+        dims,
+      });
+    case 'texture':
+      return new Tensor({
+        location: 'texture',
+        texture: tensor.texture,
+        type: tensor.type as TensorFromTextureParameters['type'],
+        dims,
+      });
+    case 'gpu-buffer':
+      return new Tensor({
+        location: 'gpu-buffer',
+        gpuBuffer: tensor.gpuBuffer,
+        type: tensor.type as TensorFromGpuBufferParameters['type'],
+        dims,
+      });
+    default:
+      throw new Error(`tensorReshape: tensor location ${tensor.location} is not supported`);
+  }
+};

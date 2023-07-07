@@ -34,7 +34,13 @@ interface TypedTensorBase<T extends Tensor.Type> {
    *
    * If the data is not on GPU, throw error.
    */
-  readonly texture: WebGLTexture;
+  readonly texture: Tensor.TextureType;
+  /**
+   * Get the WebGPU buffer that holds the tensor data.
+   *
+   * If the data is not on GPU, throw error.
+   */
+  readonly gpuBuffer: Tensor.GpuBufferType;
 
   /**
    * Get the buffer data of the tensor.
@@ -90,9 +96,26 @@ export declare namespace Tensor {
   type ElementType = ElementTypeMap[Type];
 
   /**
+   * type alias for WebGL texture
+   */
+  export type TextureType = WebGLTexture;
+
+  /**
+   * type alias for WebGPU buffer
+   *
+   * The reason why we don't use type "GPUBuffer" defined in webgpu.d.ts from @webgpu/types is because "@webgpu/types"
+   * requires "@types/dom-webcodecs" as peer dependency when using TypeScript < v5.1 and its version need to be chosen
+   * carefully according to the TypeScript version being used. This means so far there is not a way to keep every
+   * TypeScript version happy. It turns out that we will easily broke users on some TypeScript version.
+   *
+   * for more info see https://github.com/gpuweb/types/issues/127
+   */
+  export type GpuBufferType = {size: number; mapState: 'unmapped' | 'pending' | 'mapped'};
+
+  /**
    * represent where the tensor data is stored
    */
-  export type DataLocation = 'cpu'|'cpu-pinned'|'texture';
+  export type DataLocation = 'cpu'|'cpu-pinned'|'texture'|'gpu-buffer';
 
   /**
    * represent the data type of a tensor

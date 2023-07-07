@@ -6,6 +6,8 @@ import {Tensor, TypedTensor} from './tensor.js';
 export type ImageFormat = 'RGB'|'RGBA'|'BGR'|'RBG';
 export type ImageTensorLayout = 'NHWC'|'NCHW';
 
+export type TensorFromGpuBufferSupportedDataTypes = 'float32'|'int32';
+
 // the following session contains type definitions of each individual options.
 // the tensor factory functions use a composition of those options as the parameter type.
 
@@ -92,6 +94,8 @@ export interface OptionsNormalizationParameters {
 
 // #endregion
 
+// #region Options composition
+
 export interface TensorFromImageDataOptions extends OptionResizedDimensions, OptionsTensorFormat, OptionsTensorLayout,
                                                     OptionsTensorDataType, OptionsNormalizationParameters {}
 
@@ -107,6 +111,16 @@ export interface TensorFromImageBitmapOptions extends OptionResizedDimensions, O
                                                       OptionsTensorDataType, OptionsNormalizationParameters {}
 
 export interface TensorFromTextureOptions extends Required<OptionsDimensions>, OptionsFormat /* TODO: add more */ {}
+
+export interface TensorFromGpuBufferOptions<T extends TensorFromGpuBufferSupportedDataTypes> extends
+    Pick<Tensor, 'dims'> {
+  /**
+   * Describes the data type of the tensor.
+   */
+  dataType?: T;
+}
+
+// #endregion
 
 export interface TensorFactory {
   /**
@@ -174,9 +188,20 @@ export interface TensorFactory {
    * @param texture - the WebGLTexture object to create tensor from
    * @param options - An optional object representing options for creating tensor from WebGL texture.
    *
-   * @returns A promise that resolves to a tensor object
+   * @returns a tensor object
    */
-  fromTexture(texture: WebGLTexture, options: TensorFromTextureOptions): Promise<TypedTensor<'float32'>>;
+  fromTexture(texture: Tensor.TextureType, options: TensorFromTextureOptions): TypedTensor<'float32'>;
+
+  /**
+   * create a tensor from a WebGPU buffer
+   *
+   * @param buffer - the GPUBuffer object to create tensor from
+   * @param options - An optional object representing options for creating tensor from WebGPU buffer.
+   *
+   * @returns a tensor object
+   */
+  fromGpuBuffer<T extends TensorFromGpuBufferSupportedDataTypes = 'float32'>(
+      buffer: Tensor.GpuBufferType, options: TensorFromGpuBufferOptions<T>): TypedTensor<T>;
 
   /**
    * create a tensor from a pre-allocated buffer. The buffer will be used as a pinned buffer.
@@ -185,7 +210,7 @@ export interface TensorFactory {
    * @param buffer - a TypedArray corresponding to the type.
    * @param dims - specify the dimension of the tensor. If omitted, a 1-D tensor is assumed.
    *
-   * @returns A tensor object
+   * @returns a tensor object
    */
   fromPinnedBuffer<T extends Exclude<Tensor.Type, 'string'>>(
       type: T, buffer: Tensor.DataTypeMap[T], dims?: readonly number[]): TypedTensor<T>;
