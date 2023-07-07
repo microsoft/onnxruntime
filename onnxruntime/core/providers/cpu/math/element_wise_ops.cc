@@ -855,7 +855,12 @@ struct Max_8::ComputeImpl {
         }};
 
     int input_count = inst.Node().InputArgCount().front();
-    UntypedBroadcastVariadic(input_count, *context, typed_allocator, funcs);
+    // TODO: Parallelize across spans in UntypedBroadcastVariadic to avoid specific logic here
+    if (input_count == 2) {
+      UntypedBroadcastTwo(*context, funcs, 1.0);
+    } else {
+      UntypedBroadcastVariadic(input_count, *context, typed_allocator, funcs);
+    }
 
     return Status::OK();
   }
