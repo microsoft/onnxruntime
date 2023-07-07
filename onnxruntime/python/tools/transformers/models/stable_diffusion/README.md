@@ -235,6 +235,7 @@ pip install -r requirements-tensorrt.txt
 export CUDA_MODULE_LOADING=LAZY
 python benchmark.py -e tensorrt -b 1 -v 1.5
 python benchmark.py -e onnxruntime -r tensorrt -b 1 -v 1.5
+python benchmark.py -e onnxruntime -r tensorrt -b 1 -v 1.5 --enable_cuda_graph
 ```
 
 ### Example Benchmark output
@@ -306,9 +307,8 @@ Results are from Standard_NC4as_T4_v3 Azure virtual machine:
 | ----------- | ----------------------- | --------------------- | ---------- | --------------- | ------------------- | -------------------- |
 | onnxruntime | 1.14.1                  | CUDA                  | 1          | 5.6             | 4,925               | 4,925                |
 | onnxruntime | 1.15.1                  | CUDA                  | 1          | 5.5             | 3,738               | 4,250                |
-| onnxruntime | 1.16.0 (nightly)        | CUDA (cuda graph)     | 1          | 5.3             | 5,278               | 5,438                |
 | onnxruntime | 1.15.1 (tensorrt 8.6.1) | Tensorrt              | 1          | 4.8             | 10,710              | 10,710               |
-| onnxruntime | 1.16.0 (tensorrt 8.6.1) | Tensorrt (cuda graph) | 1          | 4.7             | 11,746              | 10,746               |
+| onnxruntime | 1.16.0 nightly          | Tensorrt (cuda graph) | 1          | 4.7             | 11,746              | 10,746               |
 | tensorrt    | 8.6.1                   | default               | 1          | 5.0             | 8,530               | 8,530                |
 | torch       | 1.13.1+cu117            | xformers              | 1          | 6.9             | 14,845              | 10,317               |
 | torch       | 2.0.0+cu117             | compile               | 1          | 6.0             | 12,989              | 3,841                |
@@ -372,7 +372,7 @@ Some kernels are enabled by MIOpen. We hereby thank for the AMD developers' coll
 
 There are other optimizations might improve the performance or reduce memory footprint:
 * Export the whole pipeline into a single ONNX model. Currently, there are multiple ONNX models (CLIP, VAE and U-Net etc). Each model uses separated thread pool and memory allocator. Combine them into one model could share thread pool and memory allocator. The end result is more efficient and less memory footprint.
-* For Stable Diffusion 2.1, we diabled TensorRT flash attention kernel and use only memory efficient attention. It is possible to add flash attention using Triton compiler to improve performance.
+* For Stable Diffusion 2.1, we disable TensorRT flash attention kernel and use only memory efficient attention. It is possible to add flash attention using Triton compiler to improve performance.
 * Reduce GPU memory footprint by actively deleting buffers for intermediate results.
 * Attention fusion in CLIP
 * Safety Checker Optimization

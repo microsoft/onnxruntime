@@ -12,6 +12,9 @@ import time
 
 import coloredlogs
 
+# import torch before onnxruntime so that onnxruntime uses the cuDNN in the torch package.
+import torch
+
 SD_MODELS = {
     "1.5": "runwayml/stable-diffusion-v1-5",
     "2.0": "stabilityai/stable-diffusion-2",
@@ -217,8 +220,6 @@ def get_torch_pipeline(model_name: str, disable_safety_checker: bool, enable_tor
         pipe.enable_xformers_memory_efficient_attention()
 
     if enable_torch_compile:
-        import torch
-
         pipe.unet = torch.compile(pipe.unet)
         pipe.vae = torch.compile(pipe.vae)
         pipe.text_encoder = torch.compile(pipe.text_encoder)
@@ -319,8 +320,6 @@ def run_torch_pipeline(
     start_memory,
     memory_monitor_type,
 ):
-    import torch
-
     prompts = example_prompts()
 
     # total 2 runs of warm up, and measure GPU memory for CUDA EP
@@ -443,7 +442,6 @@ def export_and_run_ort(
 ):
     assert provider == "CUDAExecutionProvider"
 
-    import torch
     from diffusers import DDIMScheduler
     from onnxruntime_cuda_txt2img import OnnxruntimeCudaStableDiffusionPipeline
 
@@ -529,7 +527,6 @@ def run_ort_trt(
     max_batch_size: int,
     enable_cuda_graph: bool,
 ):
-    import torch
     from diffusers import DDIMScheduler
     from onnxruntime_tensorrt_txt2img import OnnxruntimeTensorRTStableDiffusionPipeline
 
@@ -622,15 +619,15 @@ def run_tensorrt(
     memory_monitor_type,
     max_batch_size: int,
 ):
-    import torch
     from diffusers import DDIMScheduler
-    from stable_diffusion_tensorrt_txt2img import TensorRTStableDiffusionPipeline
+    from diffusers.pipelines.stable_diffusion import StableDiffusionPipeline
 
     assert batch_size <= max_batch_size
 
     scheduler = DDIMScheduler.from_pretrained(model_name, subfolder="scheduler")
-    pipe = TensorRTStableDiffusionPipeline.from_pretrained(
+    pipe = StableDiffusionPipeline.from_pretrained(
         model_name,
+        custom_pipeline="stable_diffusion_tensorrt_txt2img",
         revision="fp16",
         torch_dtype=torch.float16,
         scheduler=scheduler,
@@ -638,7 +635,6 @@ def run_tensorrt(
         image_height=height,
         image_width=width,
         max_batch_size=max_batch_size,
-        onnx_opset=17,
     )
 
     # re-use cached folder to save ONNX models and TensorRT Engines
@@ -710,8 +706,6 @@ def run_torch(
     start_memory,
     memory_monitor_type,
 ):
-    import torch
-
     torch.backends.cudnn.enabled = True
     torch.backends.cudnn.benchmark = True
 
@@ -1013,16 +1007,6 @@ def main():
             args.tuning,
         )
     elif args.engine == "tensorrt":
-        # We cannot import TensorRTStableDiffusionPipeline from diffusers so we have to download the pipeline script.
-        # You may need retry if you see error like `No module named stable_diffusion_tensorrt_txt2img`.
-        if not os.path.exists("stable_diffusion_tensorrt_txt2img.py"):
-            print("Downloading stable_diffusion_tensorrt_txt2img.py from huggingface/diffusers examples in github...")
-            import wget
-
-            wget.download(
-                "https://raw.githubusercontent.com/huggingface/diffusers/main/examples/community/stable_diffusion_tensorrt_txt2img.py"
-            )
-
         result = run_tensorrt(
             sd_model,
             args.batch_size,
