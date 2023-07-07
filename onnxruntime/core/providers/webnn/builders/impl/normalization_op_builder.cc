@@ -131,7 +131,7 @@ Status NormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder
     options.set("axes", emscripten::val::array(axes));
     output = model_builder.GetBuilder().call<emscripten::val>("meanVarianceNormalization", input, options);
   } else if (op_type == "GroupNormalization") {
-    ORT_RETURN_IF_NOT(helper.HasAttr("num_groups"), "group must be provided.");
+    ORT_RETURN_IF_NOT(helper.HasAttr("num_groups"), "GroupNormalization num_group must be provided.");
     int32_t group_count = helper.Get("num_groups", -1);
     std::vector<int32_t> orig_shape, new_shape;
     std::transform(input_shape.cbegin(), input_shape.cend(),
