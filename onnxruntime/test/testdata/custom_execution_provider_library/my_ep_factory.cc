@@ -80,6 +80,11 @@ extern "C" {
 
 //ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_MyEP, _In_ OrtSessionOptions* options, int device_id) {
 //  ORT_UNUSED_PARAMETER(device_id);
+//  const ProviderOptions& provider_option = {};
+//  std::shared_ptr<IExecutionProviderFactory> factory = onnxruntime::g_provider.CreateExecutionProviderFactory(&provider_option);
+//  options->provider_factories.push_back(std::move(factory));
+//
+//
 //  using LiteOp = Ort::Custom::OrtLiteCustomOp;
 //  static const std::unique_ptr<LiteOp> c_CustomOpTwo{Ort::Custom::CreateLiteCustomOp("CustomOpTwo", onnxruntime::kMyProvider, KernelTwo)};
 //  Ort::CustomOpDomain domain{"test.customop"};

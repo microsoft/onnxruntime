@@ -2161,3 +2161,24 @@ ORT_API(void, OrtApis::ReleaseROCMProviderOptions, _Frees_ptr_opt_ OrtROCMProvid
   ORT_UNUSED_PARAMETER(ptr);
 #endif
 }
+
+ORT_API_STATUS_IMPL(OrtApis::RegisterCustomEPAndCustomOp, _In_ const char* library_path, _In_ OrtSessionOptions* options) {
+  auto path_str = onnxruntime::ToPathString(library_path);
+  void* library_handle;
+  ORT_API_RETURN_IF_STATUS_NOT_OK(onnxruntime::Env::Default().LoadDynamicLibrary(path_str, false, &library_handle));
+  if (!library_handle)
+    return OrtApis::CreateStatus(ORT_FAIL, "RegisterCustomEPAndCustomOp: Failed to load library");
+
+  onnxruntime::Provider* (*PGetProvider)();
+  ORT_API_RETURN_IF_STATUS_NOT_OK(onnxruntime::Env::Default().GetSymbolFromLibrary(library_handle, "GetProvider", (void**)&PGetProvider));
+  const onnxruntime::ProviderOptions& provider_option = {};
+  onnxruntime::Provider* provider = PGetProvider();
+  std::shared_ptr<onnxruntime::IExecutionProviderFactory> factory = provider->CreateExecutionProviderFactory(&provider_option);
+  options->provider_factories.push_back(std::move(factory));
+
+  OrtStatus* (*PRegisterCustomOp)(OrtSessionOptions*);
+  ORT_API_RETURN_IF_STATUS_NOT_OK(onnxruntime::Env::Default().GetSymbolFromLibrary(library_handle, "RegisterCustomOp", (void**)&PRegisterCustomOp));
+  PRegisterCustomOp(options);
+
+  return nullptr;
+}
