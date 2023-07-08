@@ -23,6 +23,7 @@ import com.facebook.react.bridge.ReadableMap;
 import com.facebook.react.bridge.ReadableType;
 import com.facebook.react.bridge.WritableArray;
 import com.facebook.react.bridge.WritableMap;
+import com.facebook.react.modules.blob.BlobModule;
 import java.io.BufferedReader;
 import java.io.InputStream;
 import java.io.InputStreamReader;
@@ -52,9 +53,14 @@ public class Onnxruntime {
     return key;
   }
 
+  private BlobModule blobModule;
+
   public Onnxruntime(ReactApplicationContext context) {
-    super(context);
     reactContext = context;
+  }
+
+  protected void setBlobModule(BlobModule blobModule) {
+    this.blobModule = blobModule;
   }
 
   protected Map<String, OrtSession> getSessionMap() {

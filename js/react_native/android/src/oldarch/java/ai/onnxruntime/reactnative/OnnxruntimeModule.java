@@ -22,14 +22,14 @@ import java.util.Map;
 
 public class OnnxruntimeModule extends ReactContextBaseJavaModule implements LifecycleEventListener {
   private static ReactApplicationContext reactContext;
-  private static OnnxruntimeModuleImpl onnxruntimeModuleImpl;
+  private static Onnxruntime onnxruntime;
 
   protected BlobModule blobModule;
 
   public OnnxruntimeModule(ReactApplicationContext context) {
     super(context);
     reactContext = context;
-    onnxruntimeModuleImpl = new OnnxruntimeModuleImpl(context);
+    onnxruntime = new Onnxruntime(context);
   }
 
   @NonNull
@@ -44,6 +44,7 @@ public class OnnxruntimeModule extends ReactContextBaseJavaModule implements Lif
       if (blobModule == null) {
         throw new RuntimeException("BlobModule is not initialized");
       }
+      onnxruntime.setBlobModule(blobModule);
     }
   }
 
@@ -59,7 +60,7 @@ public class OnnxruntimeModule extends ReactContextBaseJavaModule implements Lif
   @ReactMethod
   public void loadModel(String uri, ReadableMap options, Promise promise) {
     try {
-      WritableMap resultMap = onnxruntimeModuleImpl.loadModel(uri, options);
+      WritableMap resultMap = onnxruntime.loadModel(uri, options);
       promise.resolve(resultMap);
     } catch (Exception e) {
       promise.reject("Failed to load model \"" + uri + "\": " + e.getMessage(), e);
@@ -82,7 +83,7 @@ public class OnnxruntimeModule extends ReactContextBaseJavaModule implements Lif
       String blobId = data.getString("blobId");
       byte[] bytes = blobModule.resolve(blobId, data.getInt("offset"), data.getInt("size"));
       blobModule.remove(blobId);
-      WritableMap resultMap = onnxruntimeModuleImpl.loadModel(bytes, options);
+      WritableMap resultMap = onnxruntime.loadModel(bytes, options);
       promise.resolve(resultMap);
     } catch (Exception e) {
       promise.reject("Failed to load model from buffer: " + e.getMessage(), e);
@@ -98,7 +99,7 @@ public class OnnxruntimeModule extends ReactContextBaseJavaModule implements Lif
   @ReactMethod
   public void dispose(String key, Promise promise) {
     try {
-      onnxruntimeModuleImpl.dispose(key);
+      onnxruntime.dispose(key);
       promise.resolve(null);
     } catch (OrtException e) {
       promise.reject("Failed to dispose session: " + e.getMessage(), e);
@@ -118,7 +119,7 @@ public class OnnxruntimeModule extends ReactContextBaseJavaModule implements Lif
   public void run(String key, ReadableMap input, ReadableArray output, ReadableMap options, Promise promise) {
     try {
       checkBlobModule();
-      WritableMap resultMap = onnxruntimeModuleImpl.run(key, input, output, options);
+      WritableMap resultMap = onnxruntime.run(key, input, output, options);
       promise.resolve(resultMap);
     } catch (Exception e) {
       promise.reject("Fail to inference: " + e.getMessage(), e);
@@ -134,10 +135,10 @@ public class OnnxruntimeModule extends ReactContextBaseJavaModule implements Lif
 
   @Override
   public void onHostDestroy() {
-    Map<String, OrtSession> sessionMap = onnxruntimeModuleImpl.getSessionMap();
+    Map<String, OrtSession> sessionMap = onnxruntime.getSessionMap();
     for (String key : sessionMap.keySet()) {
       try {
-        dispose(key);
+        onnxruntime.dispose(key);
       } catch (Exception e) {
         Log.e("onHostDestroy", "Failed to dispose session: " + key, e);
       }

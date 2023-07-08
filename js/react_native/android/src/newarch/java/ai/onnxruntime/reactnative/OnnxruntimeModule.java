@@ -43,6 +43,7 @@ public class OnnxruntimeModule extends NativeOnnxruntimeSpec implements Lifecycl
       if (blobModule == null) {
         throw new RuntimeException("BlobModule is not initialized");
       }
+      onnxruntime.setBlobModule(blobModule);
     }
   }
 
@@ -136,7 +137,7 @@ public class OnnxruntimeModule extends NativeOnnxruntimeSpec implements Lifecycl
     Map<String, OrtSession> sessionMap = onnxruntime.getSessionMap();
     for (String key : sessionMap.keySet()) {
       try {
-        dispose(key);
+        onnxruntime.dispose(key);
       } catch (Exception e) {
         Log.e("onHostDestroy", "Failed to dispose session: " + key, e);
       }
