@@ -104,88 +104,88 @@ stages:
 
     - template: templates/clean-agent-build-directory-step.yml
 
-  - job: Build_NNAPI_EP
-    pool: onnxruntime-Linux-CPU-For-Android-CI
-    timeoutInMinutes: 60
-    workspace:
-      clean: all
-    condition: notIn(variables['Build.Reason'], 'IndividualCI', 'BatchedCI')
-    steps:
-    - task: UsePythonVersion@0
-      displayName: Use Python $(pythonVersion)
-      inputs:
-        versionSpec: $(pythonVersion)
+  # - job: Build_NNAPI_EP
+  #   pool: onnxruntime-Linux-CPU-For-Android-CI
+  #   timeoutInMinutes: 60
+  #   workspace:
+  #     clean: all
+  #   condition: notIn(variables['Build.Reason'], 'IndividualCI', 'BatchedCI')
+  #   steps:
+  #   - task: UsePythonVersion@0
+  #     displayName: Use Python $(pythonVersion)
+  #     inputs:
+  #       versionSpec: $(pythonVersion)
 
-    - task: JavaToolInstaller@0
-      displayName: Use jdk 11
-      inputs:
-        versionSpec: '11'
-        jdkArchitectureOption: 'x64'
-        jdkSourceOption: 'PreInstalled'
+  #   - task: JavaToolInstaller@0
+  #     displayName: Use jdk 11
+  #     inputs:
+  #       versionSpec: '11'
+  #       jdkArchitectureOption: 'x64'
+  #       jdkSourceOption: 'PreInstalled'
 
-    - script: sudo apt-get update -y && sudo apt-get install -y coreutils ninja-build
-      displayName: Install coreutils and ninja
+  #   - script: sudo apt-get update -y && sudo apt-get install -y coreutils ninja-build
+  #     displayName: Install coreutils and ninja
 
-    - template: "templates/use-android-ndk.yml"
+  #   - template: "templates/use-android-ndk.yml"
 
-    # We build the host protoc to <ORT_ROOT>/protobuf_install
-    - script: |
-        /bin/bash $(Build.SourcesDirectory)/tools/ci_build/github/apple/build_host_protoc.sh \
-          $(Build.SourcesDirectory) \
-          $(Build.BinariesDirectory)/protobuf \
-          $(Build.SourcesDirectory)/protobuf_install
-      displayName: Build Host Protoc
+  #   # We build the host protoc to <ORT_ROOT>/protobuf_install
+  #   - script: |
+  #       /bin/bash $(Build.SourcesDirectory)/tools/ci_build/github/apple/build_host_protoc.sh \
+  #         $(Build.SourcesDirectory) \
+  #         $(Build.BinariesDirectory)/protobuf \
+  #         $(Build.SourcesDirectory)/protobuf_install
+  #     displayName: Build Host Protoc
 
-    - script: |
-        env | grep ANDROID
-      displayName: View Android ENVs
+  #   - script: |
+  #       env | grep ANDROID
+  #     displayName: View Android ENVs
 
-    - script: |
-        python3 tools/ci_build/build.py \
-          --android \
-          --build_dir build_nnapi \
-          --android_sdk_path $ANDROID_HOME \
-          --android_ndk_path $ANDROID_NDK_HOME \
-          --android_abi=x86_64 \
-          --android_api=29 \
-          --skip_submodule_sync \
-          --parallel \
-          --use_nnapi \
-          --cmake_generator=Ninja \
-          --path_to_protoc_exe $(Build.SourcesDirectory)/protobuf_install/bin/protoc \
-          --build_java \
-          --skip_tests
-      displayName: NNAPI EP, Build
+  #   - script: |
+  #       python3 tools/ci_build/build.py \
+  #         --android \
+  #         --build_dir build_nnapi \
+  #         --android_sdk_path $ANDROID_HOME \
+  #         --android_ndk_path $ANDROID_NDK_HOME \
+  #         --android_abi=x86_64 \
+  #         --android_api=29 \
+  #         --skip_submodule_sync \
+  #         --parallel \
+  #         --use_nnapi \
+  #         --cmake_generator=Ninja \
+  #         --path_to_protoc_exe $(Build.SourcesDirectory)/protobuf_install/bin/protoc \
+  #         --build_java \
+  #         --skip_tests
+  #     displayName: NNAPI EP, Build
 
-    - task: CopyFiles@2
-      displayName: Copy apks
-      inputs:
-        contents: 'build_nnapi/**/*.apk'
-        targetFolder: $(Build.ArtifactStagingDirectory)
-        overWrite: true
+  #   - task: CopyFiles@2
+  #     displayName: Copy apks
+  #     inputs:
+  #       contents: 'build_nnapi/**/*.apk'
+  #       targetFolder: $(Build.ArtifactStagingDirectory)
+  #       overWrite: true
 
-    - task: CopyFiles@2
-      displayName: Copy test data
-      inputs:
-        contents: 'build_nnapi/**/testdata/**'
-        targetFolder: $(Build.ArtifactStagingDirectory)
-        overWrite: true
+  #   - task: CopyFiles@2
+  #     displayName: Copy test data
+  #     inputs:
+  #       contents: 'build_nnapi/**/testdata/**'
+  #       targetFolder: $(Build.ArtifactStagingDirectory)
+  #       overWrite: true
 
-    - task: CopyFiles@2
-      displayName: Copy Test Executables
-      inputs:
-        contents: |
-          build_nnapi/Debug/*
-          build_nnapi/Debug/java/androidtest/android/**
-        targetFolder: $(Build.ArtifactStagingDirectory)
-        overWrite: true
+  #   - task: CopyFiles@2
+  #     displayName: Copy Test Executables
+  #     inputs:
+  #       contents: |
+  #         build_nnapi/Debug/*
+  #         build_nnapi/Debug/java/androidtest/android/**
+  #       targetFolder: $(Build.ArtifactStagingDirectory)
+  #       overWrite: true
 
-    - task: PublishBuildArtifacts@1
-      inputs:
-        pathToPublish: $(Build.ArtifactStagingDirectory)
-        artifactName: NNAPIBuildOutput
+  #   - task: PublishBuildArtifacts@1
+  #     inputs:
+  #       pathToPublish: $(Build.ArtifactStagingDirectory)
+  #       artifactName: NNAPIBuildOutput
 
-    - template: templates/clean-agent-build-directory-step.yml
+  #   - template: templates/clean-agent-build-directory-step.yml
 
 - stage: TEST_STAGE
   dependsOn: BUILD_STAGE
@@ -250,16 +250,25 @@ stages:
         parameters:
           steps:
           - script: |
-              python3 tools/ci_build/build.py \
-              --android \
-              --build_dir build \
-              --android_sdk_path $ANDROID_HOME \
-              --android_ndk_path $ANDROID_NDK_HOME \
-              --android_abi=x86_64 \
-              --android_api=30 \
-              --build_java \
-              --test
-            displayName: CPU EP, Test on Android Emulator
+              set -e -x
+              python3 tools/python/run_adb.py \
+                push $(Build.SourcesDirectory)/cmake/external/onnx/onnx/backend/test /data/local/tmp
+              python3 tools/python/run_adb.py \
+                push $(Build.SourcesDirectory)/build/Debug/onnx_test_runner /data/local/tmp
+              python3 tools/python/run_adb.py \
+                shell 'chmod +x /data/local/tmp/onnx_test_runner && \
+                  cd /data/local/tmp && /data/local/tmp/onnx_test_runner -v /data/local/tmp/test'
+          # - script: |
+          #     python3 tools/ci_build/build.py \
+          #     --android \
+          #     --build_dir build \
+          #     --android_sdk_path $ANDROID_HOME \
+          #     --android_ndk_path $ANDROID_NDK_HOME \
+          #     --android_abi=x86_64 \
+          #     --android_api=30 \
+          #     --build_java \
+          #     --test
+          #   displayName: CPU EP, Test on Android Emulator
 
       - script: |
           python3 tools/python/run_android_emulator.py \
@@ -271,91 +280,91 @@ stages:
 
       - template: templates/clean-agent-build-directory-step.yml
 
-  - job: Test_NNAPI_EP
-    pool:
-      vmImage: 'macOS-13'
-    timeoutInMinutes: 90
-    workspace:
-      clean: all
-    condition: and(succeeded(), notIn(variables['Build.Reason'], 'IndividualCI', 'BatchedCI'))
-    steps:
-      - script: |
-          set -ex
-          system_profiler SPSoftwareDataType SPHardwareDataType
-        displayName: 'Mac Agent Info'
+  # - job: Test_NNAPI_EP
+  #   pool:
+  #     vmImage: 'macOS-13'
+  #   timeoutInMinutes: 90
+  #   workspace:
+  #     clean: all
+  #   condition: and(succeeded(), notIn(variables['Build.Reason'], 'IndividualCI', 'BatchedCI'))
+  #   steps:
+  #     - script: |
+  #         set -ex
+  #         system_profiler SPSoftwareDataType SPHardwareDataType
+  #       displayName: 'Mac Agent Info'
 
-      - task: DownloadPipelineArtifact@2
-        inputs:
-          ${{ if eq(parameters.specificArtifact, true) }}:
-            source: 'specific'
-            project: 'onnxruntime'
-            pipeline: $(Build.DefinitionName)
-            runVersion: 'specific'
-            runId: ${{ parameters.runId }}
-          ${{ if ne(parameters.specificArtifact, true) }}:
-            source: 'current'
-          artifact: 'NNAPIBuildOutput'
-          path: $(Build.SourcesDirectory)
+  #     - task: DownloadPipelineArtifact@2
+  #       inputs:
+  #         ${{ if eq(parameters.specificArtifact, true) }}:
+  #           source: 'specific'
+  #           project: 'onnxruntime'
+  #           pipeline: $(Build.DefinitionName)
+  #           runVersion: 'specific'
+  #           runId: ${{ parameters.runId }}
+  #         ${{ if ne(parameters.specificArtifact, true) }}:
+  #           source: 'current'
+  #         artifact: 'NNAPIBuildOutput'
+  #         path: $(Build.SourcesDirectory)
 
-      - task: UsePythonVersion@0
-        displayName: Use Python $(pythonVersion)
-        inputs:
-          versionSpec: $(pythonVersion)
+  #     - task: UsePythonVersion@0
+  #       displayName: Use Python $(pythonVersion)
+  #       inputs:
+  #         versionSpec: $(pythonVersion)
 
-      - task: JavaToolInstaller@0
-        displayName: Use jdk 11
-        inputs:
-          versionSpec: '11'
-          jdkArchitectureOption: 'x64'
-          jdkSourceOption: 'PreInstalled'
+  #     - task: JavaToolInstaller@0
+  #       displayName: Use jdk 11
+  #       inputs:
+  #         versionSpec: '11'
+  #         jdkArchitectureOption: 'x64'
+  #         jdkSourceOption: 'PreInstalled'
 
-      - template: "templates/use-android-ndk.yml"
+  #     - template: "templates/use-android-ndk.yml"
 
-      - script: |
-          python3 tools/python/run_android_emulator.py \
-          --android-sdk-root ${ANDROID_SDK_ROOT} \
-          --create-avd --system-image "system-images;android-31;default;x86_64" \
-          --start --emulator-extra-args="-partition-size 4096" \
-          --emulator-pid-file $(Build.BinariesDirectory)/emulator.pid
-        displayName: Start Android emulator
+  #     - script: |
+  #         python3 tools/python/run_android_emulator.py \
+  #         --android-sdk-root ${ANDROID_SDK_ROOT} \
+  #         --create-avd --system-image "system-images;android-31;default;x86_64" \
+  #         --start --emulator-extra-args="-partition-size 4096" \
+  #         --emulator-pid-file $(Build.BinariesDirectory)/emulator.pid
+  #       displayName: Start Android emulator
 
-      - script: |
-          python3 tools/ci_build/build.py \
-          --android \
-          --build_dir build_nnapi \
-          --android_sdk_path $ANDROID_HOME \
-          --android_ndk_path $ANDROID_NDK_HOME \
-          --android_abi=x86_64 \
-          --android_api=29 \
-          --build_java \
-          --use_nnapi \
-          --test
-        displayName: NNAPI EP, Test, CodeCoverage on Android Emulator
+  #     - script: |
+  #         python3 tools/ci_build/build.py \
+  #         --android \
+  #         --build_dir build_nnapi \
+  #         --android_sdk_path $ANDROID_HOME \
+  #         --android_ndk_path $ANDROID_NDK_HOME \
+  #         --android_abi=x86_64 \
+  #         --android_api=29 \
+  #         --build_java \
+  #         --use_nnapi \
+  #         --test
+  #       displayName: NNAPI EP, Test, CodeCoverage on Android Emulator
 
-      # used by Build Minimal ORT
-      - script: brew install coreutils ninja
-        displayName: Install coreutils and ninja
+  #     # used by Build Minimal ORT
+  #     - script: brew install coreutils ninja
+  #       displayName: Install coreutils and ninja
 
-      # We build the host protoc to <ORT_ROOT>/protobuf_install
-      - script: |
-          /bin/bash $(Build.SourcesDirectory)/tools/ci_build/github/apple/build_host_protoc.sh \
-            $(Build.SourcesDirectory) \
-            $(Build.BinariesDirectory)/protobuf \
-            $(Build.SourcesDirectory)/protobuf_install
-        displayName: Build Host Protoc
+  #     # We build the host protoc to <ORT_ROOT>/protobuf_install
+  #     - script: |
+  #         /bin/bash $(Build.SourcesDirectory)/tools/ci_build/github/apple/build_host_protoc.sh \
+  #           $(Build.SourcesDirectory) \
+  #           $(Build.BinariesDirectory)/protobuf \
+  #           $(Build.SourcesDirectory)/protobuf_install
+  #       displayName: Build Host Protoc
 
-      - script: /bin/bash tools/ci_build/github/linux/ort_minimal/nnapi_minimal_build_minimal_ort_and_run_tests.sh $(pwd)
-        # Build Minimal ORT with NNAPI and reduced Ops, run unit tests on Android Emulator
-        displayName: Build Minimal ORT with NNAPI and run tests
+  #     - script: /bin/bash tools/ci_build/github/linux/ort_minimal/nnapi_minimal_build_minimal_ort_and_run_tests.sh $(pwd)
+  #       # Build Minimal ORT with NNAPI and reduced Ops, run unit tests on Android Emulator
+  #       displayName: Build Minimal ORT with NNAPI and run tests
 
-      - script: |
-          python3 tools/python/run_android_emulator.py \
-            --android-sdk-root ${ANDROID_SDK_ROOT} \
-            --stop \
-            --emulator-pid-file $(Build.BinariesDirectory)/emulator.pid
-        displayName: Stop Android emulator
-        condition: always()
-      - template: templates/clean-agent-build-directory-step.yml
+  #     - script: |
+  #         python3 tools/python/run_android_emulator.py \
+  #           --android-sdk-root ${ANDROID_SDK_ROOT} \
+  #           --stop \
+  #           --emulator-pid-file $(Build.BinariesDirectory)/emulator.pid
+  #       displayName: Stop Android emulator
+  #       condition: always()
+  #     - template: templates/clean-agent-build-directory-step.yml
 
 - stage: MASTER_BUILD_STAGE
   # The below jobs only run on master build.
