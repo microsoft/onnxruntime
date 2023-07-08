@@ -120,7 +120,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             }
         }
         static void VerifyTensorCreateWithData<T>(OrtValue tensor, TensorElementType dataType, long[] shape,
-            ReadOnlySpan<T> originalData) where T : struct
+            ReadOnlySpan<T> originalData) where T : unmanaged
         {
             // Verify invocation
             var dataTypeInfo = TensorBase.GetTypeInfo(typeof(T));
@@ -215,7 +215,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             }
         }
 
-        private static void PopulateAndCheck<T>(T[] data) where T : struct
+        private static void PopulateAndCheck<T>(T[] data) where T : unmanaged
         {
             var typeInfo = TensorBase.GetTypeInfo(typeof(T));
             Assert.NotNull(typeInfo);

@@ -5,6 +5,7 @@ using Microsoft.ML.OnnxRuntime.Tensors;
 using System;
 using System.Buffers;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.Linq;
 using System.Runtime.InteropServices;
@@ -165,7 +166,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// <typeparam name="T"></typeparam>
         /// <returns>ReadOnlySpan<typeparamref name="T"/></returns>
         /// <exception cref="OnnxRuntimeException"></exception>
-        public ReadOnlySpan<T> GetTensorDataAsSpan<T>() where T : struct
+        public ReadOnlySpan<T> GetTensorDataAsSpan<T>() where T : unmanaged
         {
             var byteSpan = GetTensorBufferRawData(typeof(T));
             return MemoryMarshal.Cast<byte, T>(byteSpan);
@@ -185,7 +186,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// </summary>
         /// <typeparam name="T"></typeparam>
         /// <returns>Typed Span over the native buffer</returns>
-        public Span<T> GetTensorMutableDataAsSpan<T>() where T : struct
+        public Span<T> GetTensorMutableDataAsSpan<T>() where T : unmanaged
         {
             var byteSpan = GetTensorBufferRawData(typeof(T));
             return MemoryMarshal.Cast<byte, T>(byteSpan);
@@ -505,6 +506,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// <returns>A disposable OrtValue instance</returns>
         /// <exception cref="OnnxRuntimeException"></exception>
         public static OrtValue CreateTensorValueFromMemory<T>(OrtMemoryInfo memoryInfo, Memory<T> memory, long[] shape)
+            where T: unmanaged
         {
             var typeInfo = TensorBase.GetTypeInfo(typeof(T)) ??
                 throw new OnnxRuntimeException(ErrorCode.InvalidArgument, $"Tensor of type: {typeof(T)} is not supported");
@@ -561,7 +563,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// <param name="data">managed data buffer</param>
         /// <param name="shape">shape that describes the buffer</param>
         /// <returns>A disposable OrtValue instance</returns>
-        public static OrtValue CreateTensorValueFromMemory<T>(T[] data, long[] shape)
+        public static OrtValue CreateTensorValueFromMemory<T>(T[] data, long[] shape) where T: unmanaged
         {
             return OrtValue.CreateTensorValueFromMemory(OrtMemoryInfo.DefaultInstance, new Memory<T>(data), shape);
         }
@@ -872,6 +874,33 @@ namespace Microsoft.ML.OnnxRuntime
             return new OrtValue(sequenceHandle, OnnxValueType.ONNX_TYPE_SEQUENCE);
         }
 
+        /// <summary>
+        /// A delegate type that is expected to process each OrtValue in a sequence.
+        /// </summary>
+        /// <param name="ortValue"></param>
+        public delegate void SequenceElementVisitor(OrtValue ortValue);
+
+        /// <summary>
+        /// Feeds each OrtValue in a sequence to the visitor delegate.
+        /// This helps users to avoid dealing each value life-span
+        /// </summary>
+        /// <param name="visitor">visitor delegate</param>
+        /// <param name="allocator"></param>
+        /// <exception cref="OnnxRuntimeException"></exception>
+        public void ProcessSequence(SequenceElementVisitor visitor, OrtAllocator allocator)
+        {
+            if (OnnxType != OnnxValueType.ONNX_TYPE_SEQUENCE)
+            {
+                throw new OnnxRuntimeException(ErrorCode.InvalidArgument, "This OrtValue does not represent a sequence");
+            }
+
+            int count = GetValueCount();
+            for (int i = 0; i < count; i++)
+            {
+                using var ortValue = GetValue(i, allocator);
+                visitor(ortValue);
+            }
+        }
 
         /// <summary>
         /// Creates a map OrtValue with keys and values.
@@ -889,7 +918,7 @@ namespace Microsoft.ML.OnnxRuntime
         {
             if (keys is null || values is null)
             {
-                throw new ArgumentNullException($"keys or/and values are null");
+                throw new ArgumentNullException("keys or/and values are null");
             }
 
             IntPtr[] handles = { keys.Handle, values.Handle };
@@ -897,6 +926,142 @@ namespace Microsoft.ML.OnnxRuntime
                 NativeMethods.OrtCreateValue(handles, (UIntPtr)handles.Length, (IntPtr)OnnxValueType.ONNX_TYPE_MAP,
                                out IntPtr mapHandle));
             return new OrtValue(mapHandle, OnnxValueType.ONNX_TYPE_MAP);
+        }
+
+        /// <summary>
+        /// Creates a map OrtValue with keys and values specified as arrays.
+        /// This helps the user not to create OrtValues for keys and values separately.
+        /// 
+        /// The OrtValues would be created on top of the managed memory using it directly.
+        /// The number of elements in keys and values must be the same and they must be in order.
+        /// 
+        /// The types must be unmanaged.
+        /// </summary>
+        /// <typeparam name="K">keys type</typeparam>
+        /// <typeparam name="V">values type</typeparam>
+        /// <param name="keys">array of keys of K type</param>
+        /// <param name="values">array of values of V type</param>
+        /// <returns>OrtValue instance</returns>
+        /// <exception cref="ArgumentNullException"></exception>
+        /// <exception cref="ArgumentException"></exception>
+        public static OrtValue CreateMap<K, V>(K[] keys, V[] values) where K : unmanaged where V : unmanaged
+        {
+            if (keys is null || values is null)
+            {
+                throw new ArgumentNullException("Keys or/and values are null");
+            }
+
+            if (keys.Length != values.Length)
+            {
+                throw new ArgumentException("Expecting keys and values same len. " +
+                    $"Received keys: {keys.Length}, Values: {values.Length}");
+            }
+
+            long[] shape = { keys.Length };
+            using var keysOrtValue = CreateTensorValueFromMemory(keys, shape);
+            using var valuesOrtValue = CreateTensorValueFromMemory(values, shape);
+
+            return CreateMap(keysOrtValue, valuesOrtValue);
+        }
+
+        /// <summary>
+        /// Creates a map OrtValue with string keys and non-string values.
+        /// This helps the user not to create OrtValues for keys and values separately.
+        /// The number of elements in keys and values must be the same and they must be in order.
+        /// 
+        /// string keys would be converted to UTF-8 encoding and copied to managed memory.
+        /// The OrtValue for values would be created on top of the managed memory using it directly.
+        /// 
+        /// The values type must be unmanaged.
+        /// </summary>
+        /// <typeparam name="V"></typeparam>
+        /// <param name="keys">Collection of strings</param>
+        /// <param name="values"></param>
+        /// <returns>OrtValue instance</returns>
+        /// <exception cref="ArgumentNullException"></exception>
+        /// <exception cref="ArgumentException"></exception>
+        public static OrtValue CreateMap<V>(ReadOnlyCollection<string> keys, V[] values) where V: unmanaged
+        {
+            if (keys is null || values is null)
+            {
+                throw new ArgumentNullException("Keys or/and values are null");
+            }
+
+            if (keys.Count != values.Length)
+            {
+                throw new ArgumentException("Expecting keys and values same len. " +
+                    $"Received keys: {keys.Count}, Values: {values.Length}");
+            }
+            long[] shape = { keys.Count };
+
+            using var keysOrtValue = CreateTensorWithEmptyStrings(OrtAllocator.DefaultInstance, shape);
+            for(int i = 0; i < keys.Count; ++i)
+            {
+                keysOrtValue.FillStringTensorElement(keys[i].AsSpan(), i);
+            }
+
+            using var valuesOrtValue = CreateTensorValueFromMemory(values, shape);
+            return CreateMap(keysOrtValue, valuesOrtValue);
+        }
+
+        /// <summary>
+        /// A public delegate that will be invoked map keys and values.
+        /// The delegate helps not to deal with the lifespan of intermediate OrtValues.
+        /// </summary>
+        /// <param name="keys">This would always represent a tensor</param>
+        /// <param name="values">Can be any of the Onnx types, but they would all reduce to tensors eventually</param>
+        /// <returns></returns>
+        public delegate void MapVisitor(OrtValue keys, OrtValue values);
+
+        public void ProcessMap(MapVisitor visitor, OrtAllocator allocator)
+        {
+            if (OnnxType != OnnxValueType.ONNX_TYPE_MAP)
+            {
+                throw new OnnxRuntimeException(ErrorCode.InvalidArgument, "This OrtValue does not represent a map");
+            }
+
+            using var keys = GetValue(0, allocator);
+            using var values = GetValue(1, allocator);
+            visitor(keys, values);
+        }
+
+        /// <summary>
+        /// Creates a map OrtValue with non-string keys and string values.
+        /// 
+        /// This helps the user not to create OrtValues for keys and values separately.
+        /// The number of elements in keys and values must be the same and they must be in order.
+        /// 
+        /// The OrtValue for keys would be created on top of the managed memory using it directly.
+        /// string values would be converted to UTF-8 encoding and copied to managed memory.
+        /// 
+        /// </summary>
+        /// <typeparam name="K">unmanaged type of keys</typeparam>
+        /// <param name="keys"></param>
+        /// <param name="values">string values</param>
+        /// <returns>Instance of OrtValue</returns>
+        /// <exception cref="ArgumentNullException"></exception>
+        /// <exception cref="ArgumentException"></exception>
+        public static OrtValue CreateMap<K>(K[] keys, string[] values) where K : unmanaged
+        {
+            if (keys is null || values is null)
+            {
+                throw new ArgumentNullException("Keys or/and values are null");
+            }
+
+            if (keys.Length != values.Length)
+            {
+                throw new ArgumentException("Expecting keys and values same len. " +
+                    $"Received keys: {keys.Length}, Values: {values.Length}");
+            }
+
+            long[] shape = { keys.Length };
+            using var keysOrtValue = CreateTensorValueFromMemory(keys, shape);
+            using var valuesOrtValue = CreateTensorWithEmptyStrings(OrtAllocator.DefaultInstance, shape);
+            for (int i = 0; i < values.Length; ++i)
+            {
+                keysOrtValue.FillStringTensorElement(values[i].AsSpan(), i);
+            }
+            return CreateMap(keysOrtValue, valuesOrtValue);
         }
 
         private unsafe void FillStringTensorElement(char* strPtr, int strLength, int index)
