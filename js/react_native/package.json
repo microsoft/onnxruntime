@@ -19,7 +19,7 @@
   "devDependencies": {
     "@types/jest": "^27.4.0",
     "@types/react": "^18.0.9",
-    "@types/react-native": "^0.67.7",
+    "@types/react-native": "^0.71.3",
     "jest": "^27.4.7",
     "pod-install": "^0.1.36",
     "prettier": "^2.6.2",

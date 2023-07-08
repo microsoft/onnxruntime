@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 // eslint-disable-next-line import/no-internal-modules
-import type { TurboModule } from 'react-native/Libraries/TurboModule/RCTExport.js';
+import type { TurboModule } from 'react-native/Libraries/TurboModule/RCTExport';
 import { TurboModuleRegistry } from 'react-native';
 
 // NOTE: Currently we can't use types import from another files
