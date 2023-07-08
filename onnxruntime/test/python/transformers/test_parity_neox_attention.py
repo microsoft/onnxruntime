@@ -26,7 +26,6 @@ def create_neox_attention_graph(
     qkv_weight,
     qkv_bias,
     num_heads,
-    use_rotary,
 ):
     from onnx import TensorProto, helper
 
@@ -42,7 +41,7 @@ def create_neox_attention_graph(
             "NeoXAttention_0",
             num_heads=num_heads,
             unidirectional=1,
-            do_rotary=(use_rotary is True),
+            do_rotary=1,
             domain="com.microsoft",
         ),
     ]
@@ -60,6 +59,69 @@ def create_neox_attention_graph(
         ],
         [
             helper.make_tensor_value_info("output", TensorProto.FLOAT, [batch_size, seq_len, hidden_size]),
+        ],
+        initializers,
+    )
+
+    model = helper.make_model(graph)
+    return model.SerializeToString()
+
+
+def create_neox_decoder_masked_self_attention_graph(
+    batch_size,
+    seq_len,
+    past_seq_len,
+    hidden_size,
+    qkv_weight,
+    qkv_bias,
+    num_heads,
+):
+    from onnx import TensorProto, helper
+
+    nodes = [
+        helper.make_node(
+            "DecoderMaskedSelfAttention",
+            [
+                "input",
+                "weight",
+                "bias",
+                "mask_index",
+                "past",
+                "",  # relative_position_bias
+                "past_sequence_length",
+            ],
+            ["output", "present"],
+            "NeoXDecoderMaskedSelfAttention_0",
+            num_heads=num_heads,
+            past_present_share_buffer=1,
+            do_rotary=1,
+            domain="com.microsoft",
+        ),
+    ]
+
+    initializers = [
+        helper.make_tensor("weight", TensorProto.FLOAT, [hidden_size, 3 * hidden_size], qkv_weight.flatten().tolist()),
+        helper.make_tensor("bias", TensorProto.FLOAT, [3 * hidden_size], qkv_bias.flatten().tolist()),
+    ]
+
+    total_seq_len = seq_len + past_seq_len
+
+    graph = helper.make_graph(
+        nodes,
+        "NeoXAttention_Graph",
+        [
+            helper.make_tensor_value_info("input", TensorProto.FLOAT, [batch_size, seq_len, hidden_size]),
+            helper.make_tensor_value_info("mask_index", TensorProto.INT32, [batch_size, total_seq_len]),
+            helper.make_tensor_value_info(
+                "past", TensorProto.FLOAT, [2, batch_size, num_heads, total_seq_len, hidden_size // num_heads]
+            ),
+            helper.make_tensor_value_info("past_sequence_length", TensorProto.INT32, [1]),
+        ],
+        [
+            helper.make_tensor_value_info("output", TensorProto.FLOAT, [batch_size, seq_len, hidden_size]),
+            helper.make_tensor_value_info(
+                "present", TensorProto.FLOAT, [2, batch_size, num_heads, total_seq_len, hidden_size // num_heads]
+            ),
         ],
         initializers,
     )
@@ -113,9 +175,8 @@ def apply_rotary_pos_emb(q, k, cos, sin, offset: int = 0):
 
 
 class GPTNeoXAttention(nn.Module):
-    def __init__(self, batch_size, seq_len, num_head, hidden_size, use_rotary):
+    def __init__(self, batch_size, seq_len, num_head, hidden_size, past_seq_len=0):
         super().__init__()
-        self.use_rotary = use_rotary
         self.num_attention_heads = num_head
         self.hidden_size = hidden_size
         self.head_size = self.hidden_size // self.num_attention_heads
@@ -135,18 +196,31 @@ class GPTNeoXAttention(nn.Module):
         # self.query_key_value.weight.data.copy_(torch.tensor(np.ones((3 * hidden_size, hidden_size))))
         # self.query_key_value.bias.data.copy_(torch.tensor(np.zeros((3 * hidden_size))))
 
-        self.onnx_graph = create_neox_attention_graph(
-            batch_size,
-            seq_len,
-            self.hidden_size,
-            self.query_key_value.weight.reshape(self.num_attention_heads, 3, -1)
-            .transpose(0, 1)
-            .reshape(3 * self.hidden_size, -1)
-            .transpose(0, 1),
-            self.query_key_value.bias.reshape(self.num_attention_heads, 3, -1).transpose(0, 1).reshape(-1),
-            self.num_attention_heads,
-            self.use_rotary,
-        )
+        if past_seq_len > 0:
+            self.onnx_graph = create_neox_decoder_masked_self_attention_graph(
+                batch_size,
+                seq_len,
+                past_seq_len,
+                self.hidden_size,
+                self.query_key_value.weight.reshape(self.num_attention_heads, 3, -1)
+                .transpose(0, 1)
+                .reshape(3 * self.hidden_size, -1)
+                .transpose(0, 1),
+                self.query_key_value.bias.reshape(self.num_attention_heads, 3, -1).transpose(0, 1).reshape(-1),
+                self.num_attention_heads,
+            )
+        else:
+            self.onnx_graph = create_neox_attention_graph(
+                batch_size,
+                seq_len,
+                self.hidden_size,
+                self.query_key_value.weight.reshape(self.num_attention_heads, 3, -1)
+                .transpose(0, 1)
+                .reshape(3 * self.hidden_size, -1)
+                .transpose(0, 1),
+                self.query_key_value.bias.reshape(self.num_attention_heads, 3, -1).transpose(0, 1).reshape(-1),
+                self.num_attention_heads,
+            )
 
     @classmethod
     def _merge_heads(cls, tensor, num_attention_heads, attn_head_size):
@@ -206,13 +280,71 @@ class GPTNeoXAttention(nn.Module):
         attn_output = torch.matmul(attn_weights, value)
         return attn_output, attn_weights
 
+    # Reorder 'K' from [B, N, S, H] to [B, N, H/4, S, 4]
+    def reorder_key_cache(self, key_cache, batch_size, num_heads, sequence_length, head_size, max_sequence_length):
+        ordered = np.zeros_like(key_cache)
+
+        # assume float
+        num_inner_elements = 4
+        chunks = int(head_size / num_inner_elements)
+
+        for b in range(batch_size):
+            for h in range(num_heads):
+                for c in range(chunks):
+                    for s in range(sequence_length):
+                        base_offset = (b * num_heads * max_sequence_length * head_size) + (
+                            h * max_sequence_length * head_size
+                        )
+                        input_base_offset = base_offset + (s * head_size) + (c * num_inner_elements)
+                        output_base_offset = (
+                            base_offset + (c * max_sequence_length * num_inner_elements) + (s * num_inner_elements)
+                        )
+                        for e in range(num_inner_elements):
+                            ordered[output_base_offset + e] = key_cache[input_base_offset + e]
+
+        return ordered
+
     def onnx_forward(
         self,
         hidden_states,
+        attention_mask=None,
+        layer_past=None,
     ):
         ort_inputs = {
             "input": np.ascontiguousarray(hidden_states.cpu().numpy()),
         }
+
+        if attention_mask is not None:
+            ort_inputs["mask_index"] = np.ascontiguousarray(attention_mask.cpu().numpy())
+
+        if layer_past is not None:
+            past_key = np.ascontiguousarray(layer_past[0].detach().numpy())
+            past_value = np.ascontiguousarray(layer_past[1].detach().numpy())
+
+            past_seq_len = past_key.shape[2]
+            max_seq_len = past_seq_len + hidden_states.shape[1]
+
+            past_key_padded = np.zeros(
+                [past_key.shape[0], past_key.shape[1], max_seq_len, past_key.shape[3]],
+                dtype=np.float32,
+            )
+            past_value_padded = np.zeros(
+                [past_value.shape[0], past_value.shape[1], max_seq_len, past_value.shape[3]],
+                dtype=np.float32,
+            )
+            past_key_padded[:, :, : past_key.shape[2], :] = past_key
+            past_value_padded[:, :, : past_value.shape[2], :] = past_value
+            reordered_past_key = self.reorder_key_cache(
+                past_key_padded.flatten(),
+                batch_size=past_key_padded.shape[0],
+                num_heads=self.num_attention_heads,
+                sequence_length=past_seq_len,
+                head_size=self.head_size,
+                max_sequence_length=max_seq_len,
+            )
+            reordered_past_key = reordered_past_key.reshape(past_key_padded.shape)
+            ort_inputs["past"] = np.stack((reordered_past_key, past_value_padded), axis=0)
+            ort_inputs["past_sequence_length"] = np.array([past_seq_len], dtype=np.int32)
 
         from onnxruntime import InferenceSession, SessionOptions
 
@@ -220,7 +352,7 @@ class GPTNeoXAttention(nn.Module):
         ort_session = InferenceSession(self.onnx_graph, sess_options, providers=["CUDAExecutionProvider"])
         ort_output = ort_session.run(None, ort_inputs)
 
-        output = torch.tensor(ort_output)
+        output = torch.tensor(ort_output[0])
 
         return output
 
@@ -228,10 +360,7 @@ class GPTNeoXAttention(nn.Module):
         self,
         hidden_states,
         attention_mask=None,
-        head_mask=None,
         layer_past=None,
-        use_cache=False,
-        output_attentions=False,
     ):
         has_layer_past = layer_past is not None
 
@@ -250,26 +379,22 @@ class GPTNeoXAttention(nn.Module):
         key = qkv[..., self.head_size : 2 * self.head_size].permute(0, 2, 1, 3)
         value = qkv[..., 2 * self.head_size :].permute(0, 2, 1, 3)
 
-        if self.use_rotary:
-            # Compute rotary embeddings on rotary_ndims
-            query_rot = query[..., : self.rotary_ndims]
-            query_pass = query[..., self.rotary_ndims :]
-            key_rot = key[..., : self.rotary_ndims]
-            key_pass = key[..., self.rotary_ndims :]
+        # Compute rotary embeddings on rotary_ndims
+        query_rot = query[..., : self.rotary_ndims]
+        query_pass = query[..., self.rotary_ndims :]
+        key_rot = key[..., : self.rotary_ndims]
+        key_pass = key[..., self.rotary_ndims :]
 
-            # Compute token offset for rotary embeddings (when decoding)
-            seq_len = key.shape[-2]
-            offset = 0
-            if has_layer_past:
-                offset = layer_past[0].shape[-2]
-                seq_len += offset
-            cos, sin = self.rotary_emb(value, seq_len=seq_len)
-            query, key = apply_rotary_pos_emb(query_rot, key_rot, cos, sin, offset=offset)
-            query = torch.cat((query, query_pass), dim=-1)
-            key = torch.cat((key, key_pass), dim=-1)
-            # print("query", query.shape, query)
-            # print("key", key.shape, key)
-            # print("value", value.shape, value)
+        # Compute token offset for rotary embeddings (when decoding)
+        seq_len = key.shape[-2]
+        offset = 0
+        if has_layer_past:
+            offset = layer_past[0].shape[-2]
+            seq_len += offset
+        cos, sin = self.rotary_emb(value, seq_len=seq_len)
+        query, key = apply_rotary_pos_emb(query_rot, key_rot, cos, sin, offset=offset)
+        query = torch.cat((query, query_pass), dim=-1)
+        key = torch.cat((key, key_pass), dim=-1)
 
         # Cache QKV values
         if has_layer_past:
@@ -279,7 +404,7 @@ class GPTNeoXAttention(nn.Module):
             value = torch.cat((past_value, value), dim=-2)
 
         # Compute attention
-        attn_output, _ = self._attn(query, key, value, attention_mask, head_mask)
+        attn_output, _ = self._attn(query, key, value, attention_mask, head_mask=None)
 
         # Reshape outputs
         attn_output = self._merge_heads(attn_output, self.num_attention_heads, self.head_size)
@@ -293,7 +418,7 @@ class TestGPTNeoXAttention(unittest.TestCase):
             for seq_len in [32, 128, 512, 1024, 2048]:
                 for num_head in [12]:
                     for hidden_size in [768]:
-                        attn = GPTNeoXAttention(batch_size, seq_len, num_head, hidden_size, use_rotary=True)
+                        attn = GPTNeoXAttention(batch_size, seq_len, num_head, hidden_size)
 
                         hidden_states = torch.normal(mean=0.5, std=0.1, size=(batch_size, seq_len, hidden_size)).to(
                             torch.float32
@@ -303,13 +428,48 @@ class TestGPTNeoXAttention(unittest.TestCase):
                         ort_output = attn.onnx_forward(hidden_states)
                         print(
                             "Parity check with shape BNSH = ({},{},{},{})".format(
-                                batch_size, seq_len, num_head, hidden_size
+                                batch_size, num_head, seq_len, hidden_size
                             )
                         )
-                        if torch.allclose(torch_output, ort_output, atol=1e-6):
-                            print("Success!")
-                        else:
-                            print("Failure!")
+                        assert torch.allclose(torch_output, ort_output, atol=1e-6)
+
+    def test_gpt_neox_decoder_masked_self_attention(self):
+        for batch_size in [1, 2, 4, 8]:
+            for past_seq_len in [1, 4, 32, 128, 512, 1024]:
+                total_seq_len = past_seq_len + 1
+                for num_head in [2]:
+                    for hidden_size in [64]:
+                        attn = GPTNeoXAttention(batch_size, 1, num_head, hidden_size, past_seq_len)
+
+                        hidden_states = torch.normal(mean=0.5, std=0.1, size=(batch_size, 1, hidden_size)).to(
+                            torch.float32
+                        )
+
+                        attention_mask = torch.ones((batch_size, total_seq_len)).to(torch.int32)
+                        past_key = torch.normal(
+                            mean=0.5,
+                            std=0.1,
+                            size=(batch_size, num_head, past_seq_len, hidden_size // num_head),
+                        ).to(torch.float32)
+                        past_value = torch.normal(
+                            mean=0.5,
+                            std=0.1,
+                            size=(batch_size, num_head, past_seq_len, hidden_size // num_head),
+                        ).to(torch.float32)
+                        layer_past = (past_key, past_value)
+
+                        torch_output = attn.torch_forward(
+                            hidden_states, attention_mask=attention_mask, layer_past=layer_past
+                        )
+                        ort_output = attn.onnx_forward(
+                            hidden_states, attention_mask=attention_mask, layer_past=layer_past
+                        )
+                        print(
+                            "Parity check with shape BNSH = ({},{},{},{})".format(
+                                batch_size, num_head, total_seq_len, hidden_size
+                            )
+                        )
+                        assert torch.allclose(torch_output, ort_output, atol=1e-6)
 
 
 if __name__ == "__main__":
