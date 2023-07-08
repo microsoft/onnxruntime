@@ -15,22 +15,15 @@ import ai.onnxruntime.providers.NNAPIFlags;
 import android.net.Uri;
 import android.os.Build;
 import android.util.Log;
-import androidx.annotation.NonNull;
 import androidx.annotation.RequiresApi;
 import com.facebook.react.bridge.Arguments;
-import com.facebook.react.bridge.LifecycleEventListener;
-import com.facebook.react.bridge.Promise;
 import com.facebook.react.bridge.ReactApplicationContext;
-import com.facebook.react.bridge.ReactContextBaseJavaModule;
-import com.facebook.react.bridge.ReactMethod;
 import com.facebook.react.bridge.ReadableArray;
 import com.facebook.react.bridge.ReadableMap;
 import com.facebook.react.bridge.ReadableType;
 import com.facebook.react.bridge.WritableArray;
 import com.facebook.react.bridge.WritableMap;
-import com.facebook.react.modules.blob.BlobModule;
 import java.io.BufferedReader;
-import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.Reader;
@@ -46,7 +39,7 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 @RequiresApi(api = Build.VERSION_CODES.N)
-public class OnnxruntimeModule extends ReactContextBaseJavaModule implements LifecycleEventListener {
+public class Onnxruntime {
   private static ReactApplicationContext reactContext;
 
   private static OrtEnvironment ortEnvironment = OrtEnvironment.getEnvironment();
@@ -59,103 +52,13 @@ public class OnnxruntimeModule extends ReactContextBaseJavaModule implements Lif
     return key;
   }
 
-  protected BlobModule blobModule;
-
-  public OnnxruntimeModule(ReactApplicationContext context) {
+  public Onnxruntime(ReactApplicationContext context) {
     super(context);
     reactContext = context;
   }
 
-  @NonNull
-  @Override
-  public String getName() {
-    return "Onnxruntime";
-  }
-
-  public void checkBlobModule() {
-    if (blobModule == null) {
-      blobModule = getReactApplicationContext().getNativeModule(BlobModule.class);
-      if (blobModule == null) {
-        throw new RuntimeException("BlobModule is not initialized");
-      }
-    }
-  }
-
-  /**
-   * React native binding API to load a model using given uri.
-   *
-   * @param uri a model file location
-   * @param options onnxruntime session options
-   * @param promise output returning back to react native js
-   * @note the value provided to `promise` includes a key representing the session.
-   *       when run() is called, the key must be passed into the first parameter.
-   */
-  @ReactMethod
-  public void loadModel(String uri, ReadableMap options, Promise promise) {
-    try {
-      WritableMap resultMap = loadModel(uri, options);
-      promise.resolve(resultMap);
-    } catch (Exception e) {
-      promise.reject("Failed to load model \"" + uri + "\": " + e.getMessage(), e);
-    }
-  }
-
-  /**
-   * React native binding API to load a model using blob object that data stored in BlobModule.
-   *
-   * @param data the blob object
-   * @param options onnxruntime session options
-   * @param promise output returning back to react native js
-   * @note the value provided to `promise` includes a key representing the session.
-   *       when run() is called, the key must be passed into the first parameter.
-   */
-  @ReactMethod
-  public void loadModelFromBlob(ReadableMap data, ReadableMap options, Promise promise) {
-    try {
-      checkBlobModule();
-      String blobId = data.getString("blobId");
-      byte[] bytes = blobModule.resolve(blobId, data.getInt("offset"), data.getInt("size"));
-      blobModule.remove(blobId);
-      WritableMap resultMap = loadModel(bytes, options);
-      promise.resolve(resultMap);
-    } catch (Exception e) {
-      promise.reject("Failed to load model from buffer: " + e.getMessage(), e);
-    }
-  }
-
-  /**
-   * React native binding API to dispose a session.
-   *
-   * @param key session key representing a session given at loadModel()
-   * @param promise output returning back to react native js
-   */
-  @ReactMethod
-  public void dispose(String key, Promise promise) {
-    try {
-      dispose(key);
-      promise.resolve(null);
-    } catch (OrtException e) {
-      promise.reject("Failed to dispose session: " + e.getMessage(), e);
-    }
-  }
-
-  /**
-   * React native binding API to run a model using given uri.
-   *
-   * @param key session key representing a session given at loadModel()
-   * @param input an input tensor
-   * @param output an output names to be returned
-   * @param options onnxruntime run options
-   * @param promise output returning back to react native js
-   */
-  @ReactMethod
-  public void run(String key, ReadableMap input, ReadableArray output, ReadableMap options, Promise promise) {
-    try {
-      WritableMap resultMap = run(key, input, output, options);
-      promise.resolve(resultMap);
-    } catch (Exception e) {
-      promise.reject("Fail to inference: " + e.getMessage(), e);
-    }
+  protected Map<String, OrtSession> getSessionMap() {
+    return sessionMap;
   }
 
   /**
@@ -258,8 +161,6 @@ public class OnnxruntimeModule extends ReactContextBaseJavaModule implements Lif
     }
 
     RunOptions runOptions = parseRunOptions(options);
-
-    checkBlobModule();
 
     long startTime = System.currentTimeMillis();
     Map<String, OnnxTensor> feed = new HashMap<>();
@@ -435,23 +336,5 @@ public class OnnxruntimeModule extends ReactContextBaseJavaModule implements Lif
     }
 
     return runOptions;
-  }
-
-  @Override
-  public void onHostResume() {}
-
-  @Override
-  public void onHostPause() {}
-
-  @Override
-  public void onHostDestroy() {
-    for (String key : sessionMap.keySet()) {
-      try {
-        dispose(key);
-      } catch (Exception e) {
-        Log.e("onHostDestroy", "Failed to dispose session: " + key, e);
-      }
-    }
-    sessionMap.clear();
   }
 }
