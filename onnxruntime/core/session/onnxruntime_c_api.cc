@@ -846,17 +846,6 @@ ORT_API_STATUS_IMPL(OrtApis::RunAsync, _Inout_ OrtSession* sess, _In_opt_ const 
   API_IMPL_END
 }
 
-using RunAsyncCallbackStdFn = std::function<void(std::vector<Ort::Value>&, Ort::Status)>;
-
-//void CallbackBridge(void* user_data, OrtValue** outputs, size_t num_outputs, OrtStatusPtr status) {
-//  RunAsyncCallbackStdFn* callback = reinterpret_cast<RunAsyncCallbackStdFn*>(user_data);
-//  std::vector<Ort::Value> output_values;
-//  for (int ith = 0; ith < num_outputs; ++ith) {
-//    output_values.emplace_back(outputs[ith]);
-//  }
-//  (*callback)(output_values, Ort::Status{status});
-//}
-
 struct OrtIoBinding {
   std::unique_ptr<::onnxruntime::IOBinding> binding_;
   explicit OrtIoBinding(std::unique_ptr<::onnxruntime::IOBinding>&& binding) : binding_(std::move(binding)) {}
