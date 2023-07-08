@@ -29,6 +29,7 @@ struct TaggedPointer
         uint32_t allocation_id,
         uint64_t offset);
     static TaggedPointer Unpack(const void* ptr);
+    uint64_t GetUniqueId() const;
 };
 
 static_assert(

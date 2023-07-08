@@ -1040,7 +1040,7 @@ namespace Dml
     uint64_t ExecutionProviderImpl::TryGetPooledAllocationId(const TaggedPointer& taggedPointer, bool isInternalOperator)
     {
         assert(!isInternalOperator);
-        return m_gpuAllocator->GetAllocationInfo(taggedPointer)->GetPooledResourceId();
+        return taggedPointer.GetUniqueId();
     }
 
     void ExecutionProviderImpl::GetABIExecutionInterfaceAndInvalidateState(
@@ -1193,12 +1193,10 @@ namespace Dml
 
     void* CreateGPUAllocationFromD3DResource(ID3D12Resource* pResource)
     {
-        uint64_t pooledResourceId = 0; // Not a pooled resource
-
         ComPtr<DmlResourceWrapper> resourceWrapper;
         wil::MakeOrThrow<DmlCommittedResourceWrapper>(pResource).As(&resourceWrapper);
 
-        ComPtr<AllocationInfo> allocInfo = wil::MakeOrThrow<AllocationInfo>(nullptr, 0, pooledResourceId, resourceWrapper.Get(), (size_t)pResource->GetDesc().Width);
+        ComPtr<AllocationInfo> allocInfo = wil::MakeOrThrow<AllocationInfo>(nullptr, 0, resourceWrapper.Get(), (size_t)pResource->GetDesc().Width);
         return allocInfo.Detach();
     }
     void FreeGPUAllocation(void* ptr)

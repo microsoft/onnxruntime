@@ -38,4 +38,10 @@ namespace Dml
 
     return reinterpret_cast<void*>(ptr);
 }
+
+uint64_t TaggedPointer::GetUniqueId() const
+{
+    return reinterpret_cast<uint64_t>(TaggedPointer::Pack(device_id, allocation_id, offset));
+}
+
 } // namespace tfdml

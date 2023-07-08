@@ -66,7 +66,7 @@ namespace Dml
 
         AllocationInfo* GetAllocationInfo(const TaggedPointer& taggedPointer);
 
-        void FreeResource(AllocationInfo* allocInfo, uint64_t pooledResourceId);
+        void FreeResource(AllocationInfo* allocInfo);
         uint64_t ComputeRequiredSize(size_t size);
         bool TilingEnabled() const { return tiling_enabled_; };
 

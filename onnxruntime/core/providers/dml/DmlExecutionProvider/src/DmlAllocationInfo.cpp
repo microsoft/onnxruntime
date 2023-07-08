@@ -12,7 +12,7 @@ namespace Dml
     {
         if (m_owner)
         {
-            m_owner->FreeResource(this, m_pooledResourceId);
+            m_owner->FreeResource(this);
         }
     }
 
