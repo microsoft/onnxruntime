@@ -2304,7 +2304,6 @@ Status InferenceSession::Run(const OrtRunOptions* run_options,
                              const OrtValue* const* input, size_t input_len,
                              const char* const* output_names, size_t output_names_len,
                              OrtValue** output) {
-
   InlinedVector<std::string> feed_names;
   feed_names.reserve(input_len);
   InlinedVector<OrtValue> feeds;
@@ -2379,7 +2378,7 @@ Status InferenceSession::Run(const OrtRunOptions* run_options,
 Status InferenceSession::RunAsync(const OrtRunOptions* run_options, const char* const* input_names,
                                   const OrtValue* const* input, size_t input_len,
                                   const char* const* output_name, size_t output_names_len,
-                                  RunAsyncCallbackFn callback) {
+                                  RunAsyncCallbackFn callback, void* user_data) {
   InferenceSession* sess = this;
   std::function<void()> run_fn = [=]() {
     ORT_TRY {
@@ -2388,18 +2387,18 @@ Status InferenceSession::RunAsync(const OrtRunOptions* run_options, const char* 
       memset(outputs.get(), 0x0, sizeof(OrtValuePtr) * output_names_len);
       auto status = sess->Run(run_options, input_names, input, input_len, output_name, output_names_len, outputs.get());
       if (status.IsOK()) {
-        callback(outputs.get(), output_names_len, {});
+        callback(user_data, outputs.get(), output_names_len, {});
       } else {
-        callback({}, 0, ToOrtStatus(status));
+        callback(user_data, {}, 0, ToOrtStatus(status));
       }
     }
     ORT_CATCH(const std::exception& e) {
       std::string what = "unknown";
       ORT_HANDLE_EXCEPTION([&]() { what = e.what(); });
-      callback({}, 0, ToOrtStatus(ORT_MAKE_STATUS(ONNXRUNTIME, RUNTIME_EXCEPTION, what.c_str())));
+      callback(user_data, {}, 0, ToOrtStatus(ORT_MAKE_STATUS(ONNXRUNTIME, RUNTIME_EXCEPTION, what.c_str())));
     }
     ORT_CATCH(...) {
-      callback({}, 0, ToOrtStatus(ORT_MAKE_STATUS(ONNXRUNTIME, RUNTIME_EXCEPTION)));
+      callback(user_data, {}, 0, ToOrtStatus(ORT_MAKE_STATUS(ONNXRUNTIME, RUNTIME_EXCEPTION)));
     }
   };
   concurrency::ThreadPool::Schedule(thread_pool_.get(), run_fn);

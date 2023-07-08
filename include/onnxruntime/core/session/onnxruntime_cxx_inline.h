@@ -916,13 +916,6 @@ inline std::vector<Value> SessionImpl<T>::Run(const RunOptions& run_options, con
 }
 
 template <typename T>
-inline void SessionImpl<T>::RunAsync(const RunOptions& run_options, const char* const* input_names, const Value* input_values, size_t input_count,
-                                     const char* const* output_names, size_t output_count, RunAsyncCallbackFn callback) {
-  auto ort_input_values = reinterpret_cast<const OrtValue* const*>(input_values);
-  ThrowOnError(GetApi().RunAsync(this->p_, run_options, input_names, ort_input_values, input_count, output_names, output_count, callback));
-}
-
-template <typename T>
 inline void SessionImpl<T>::Run(const RunOptions& run_options, const char* const* input_names, const Value* input_values, size_t input_count,
                                 const char* const* output_names, Value* output_values, size_t output_count) {
   static_assert(sizeof(Value) == sizeof(OrtValue*), "Value is really just an array of OrtValue* in memory, so we can reinterpret_cast safely");
@@ -934,6 +927,22 @@ inline void SessionImpl<T>::Run(const RunOptions& run_options, const char* const
 template <typename T>
 inline void SessionImpl<T>::Run(const RunOptions& run_options, const IoBinding& io_binding) {
   ThrowOnError(GetApi().RunWithBinding(this->p_, run_options, io_binding));
+}
+
+inline void CallbackBridge(void* user_data, OrtValue** outputs, size_t num_outputs, OrtStatusPtr status) {
+  RunAsyncCallbackStdFn* callback = reinterpret_cast<RunAsyncCallbackStdFn*>(user_data);
+  std::vector<Ort::Value> output_values;
+  for (int ith = 0; ith < num_outputs; ++ith) {
+    output_values.emplace_back(outputs[ith]);
+  }
+  (*callback)(output_values, Ort::Status{status});
+}
+
+template <typename T>
+inline void SessionImpl<T>::RunAsync(const RunOptions& run_options, const char* const* input_names, const Value* input_values, size_t input_count,
+                                     const char* const* output_names, size_t output_count, RunAsyncCallbackStdFn& callback) {
+  auto ort_input_values = reinterpret_cast<const OrtValue* const*>(input_values);
+  ThrowOnError(GetApi().RunAsync(this->p_, run_options, input_names, ort_input_values, input_count, output_names, output_count, CallbackBridge, &callback));
 }
 
 template <typename T>

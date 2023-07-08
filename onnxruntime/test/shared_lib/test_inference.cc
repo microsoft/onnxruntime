@@ -3223,16 +3223,6 @@ TEST(MultiKernelSingleSchemaTest, DuplicateKernel) {
 const static std::thread::id caller_tid = std::this_thread::get_id();
 static std::atomic_bool atomic_wait{false};
 
-void RunAsyncCallBack(OrtValue** outputs, size_t num_outputs, OrtStatusPtr status) {
-  auto callee_tid = std::this_thread::get_id();
-  EXPECT_EQ(status, nullptr);
-  EXPECT_EQ(num_outputs, 1UL);
-  EXPECT_NE(caller_tid, callee_tid);
-  Ort::Value output_value(outputs[0]);
-  EXPECT_EQ(output_value.At<float>({1, 0}), 9.f);
-  atomic_wait.store(true);
-}
-
 TEST(CApiTest, RunAsync) {
   Ort::SessionOptions session_options;
   session_options.SetIntraOpNumThreads(2);
@@ -3251,10 +3241,22 @@ TEST(CApiTest, RunAsync) {
   const char* output_names[] = {"Y"};
 
   Ort::RunOptions run_options;
-  EXPECT_NO_THROW(session.RunAsync(run_options, input_names, input_tensors, 1, output_names, 1, RunAsyncCallBack));
 
-  while (!atomic_wait.load()) {
-    std::this_thread::yield();
+  Ort::detail::RunAsyncCallbackStdFn callback = [&](std::vector<Ort::Value>& outputs, Ort::Status status) {
+    auto callee_tid = std::this_thread::get_id();
+    EXPECT_NE(caller_tid, callee_tid);
+    EXPECT_TRUE(status.IsOK());
+    EXPECT_EQ(outputs.size(), 1UL);
+    EXPECT_EQ(outputs[0].At<float>({1, 0}), 9.f);
+    atomic_wait.store(true);
+  };
+
+  EXPECT_NO_THROW(session.RunAsync(run_options, input_names, input_tensors, 1, output_names, 1, callback));
+
+  std::chrono::duration<double, std::milli> dur{100};
+  // timeout in about 10 secs
+  for (int i = 0; i < 100 && !atomic_wait.load(); ++i) {
+    std::this_thread::sleep_for(dur);
   }
 
   EXPECT_EQ(atomic_wait.load(), true);

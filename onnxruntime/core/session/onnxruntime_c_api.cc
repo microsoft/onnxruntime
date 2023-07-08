@@ -834,10 +834,10 @@ ORT_API_STATUS_IMPL(OrtApis::RunAsync, _Inout_ OrtSession* sess, _In_opt_ const 
                     _In_reads_(input_len) const char* const* input_names,
                     _In_reads_(input_len) const OrtValue* const* input, size_t input_len,
                     _In_reads_(output_names_len) const char* const* output_names, size_t output_names_len,
-                    _In_ RunAsyncCallbackFn run_async_callback) {
+                    _In_ RunAsyncCallbackFn run_async_callback, _In_opt_ void* user_data) {
   API_IMPL_BEGIN
   auto session = reinterpret_cast<::onnxruntime::InferenceSession*>(sess);
-  auto status = session->RunAsync(run_options, input_names, input, input_len, output_names, output_names_len, run_async_callback);
+  auto status = session->RunAsync(run_options, input_names, input, input_len, output_names, output_names_len, run_async_callback, user_data);
   if (status.IsOK()) {
     return nullptr;
   } else {
@@ -845,6 +845,17 @@ ORT_API_STATUS_IMPL(OrtApis::RunAsync, _Inout_ OrtSession* sess, _In_opt_ const 
   }
   API_IMPL_END
 }
+
+using RunAsyncCallbackStdFn = std::function<void(std::vector<Ort::Value>&, Ort::Status)>;
+
+//void CallbackBridge(void* user_data, OrtValue** outputs, size_t num_outputs, OrtStatusPtr status) {
+//  RunAsyncCallbackStdFn* callback = reinterpret_cast<RunAsyncCallbackStdFn*>(user_data);
+//  std::vector<Ort::Value> output_values;
+//  for (int ith = 0; ith < num_outputs; ++ith) {
+//    output_values.emplace_back(outputs[ith]);
+//  }
+//  (*callback)(output_values, Ort::Status{status});
+//}
 
 struct OrtIoBinding {
   std::unique_ptr<::onnxruntime::IOBinding> binding_;

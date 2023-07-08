@@ -696,7 +696,9 @@ typedef void (*OrtCustomJoinThreadFn)(OrtCustomThreadHandle ort_custom_thread_ha
 
 typedef OrtStatus*(ORT_API_CALL* RegisterCustomOpsFn)(OrtSessionOptions* options, const OrtApiBase* api);
 
-typedef void (*RunAsyncCallbackFn)(OrtValue**, size_t, OrtStatusPtr);
+typedef void (*RunAsyncCallbackFn)(void*, OrtValue**, size_t, OrtStatusPtr);
+
+// void CallbackBridge(void* user_data, OrtValue** outputs, size_t num_outputs, OrtStatusPtr status);
 
 /** \brief The C API
  *
@@ -4331,12 +4333,13 @@ struct OrtApi {
    * \param[in] output_names Array of null terminated UTF8 encoded strings of the output names
    * \param[in] output_names_len Number of elements in the output_names and outputs array
    * \param[in] run_async_callback Callback function on model run completion
+   * \param[in] user_data User data that pass back to run_async_callback
    */
   ORT_API2_STATUS(RunAsync, _Inout_ OrtSession* session, _In_opt_ const OrtRunOptions* run_options,
                   _In_reads_(input_len) const char* const* input_names,
                   _In_reads_(input_len) const OrtValue* const* inputs, size_t input_len,
                   _In_reads_(output_names_len) const char* const* output_names, size_t output_names_len,
-                  _In_ RunAsyncCallbackFn run_async_callback);
+                  _In_ RunAsyncCallbackFn run_async_callback, _In_opt_ void* user_data);
 };
 
 /*
