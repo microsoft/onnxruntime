@@ -23,6 +23,7 @@ Do not modify directly.*
 | Clip | ai.onnx(6-10,11,12,13+) |  |
 | Concat | ai.onnx(1-3,4-10,11-12,13+) |  |
 | Conv | ai.onnx(1-10,11+); com.ms.internal.nhwc(11+) | need perf optimization; conv3d not supported; need implementing activation |
+| ConvTranspose | ai.onnx(1-10,11+); com.ms.internal.nhwc(11+) |  |
 | Cos | ai.onnx(7+) |  |
 | Cosh | ai.onnx(9+) |  |
 | Div | ai.onnx(7-12,13,14+) |  |
