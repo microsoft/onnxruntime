@@ -8,6 +8,7 @@
 #include "core/common/logging/logging.h"
 #include "core/common/logging/macros.h"
 
+#include <thread>
 #include <utility>
 
 namespace onnxruntime {
@@ -86,9 +87,11 @@ void TestCaseRequestContext::Request(const Callback& cb, PThreadPool tpool,
   }
 
   std::unique_ptr<TestCaseRequestContext> self = std::make_unique<TestCaseRequestContext>(cb, tpool, c, env, session_opts, test_case_id);
+  LOGS_DEFAULT(VERBOSE) << "tid: " << std::this_thread::get_id() << " - self: " << self.get();
   CallableFactory<TestCaseRequestContext, void, size_t> f(self.get());
   auto runnable = f.GetCallable<&TestCaseRequestContext::RunAsync>();
   onnxruntime::concurrency::ThreadPool::Schedule(tpool, [runnable, concurrent_runs]() { runnable.Invoke(concurrent_runs); });
+  LOGS_DEFAULT(VERBOSE) << "tid: " << std::this_thread::get_id() << " - calling self.release";
   self.release();
 }
 
@@ -142,6 +145,7 @@ void TestCaseRequestContext::OnDataTaskComplete(size_t task_id, EXECUTE_RESULT r
 void TestCaseRequestContext::OnTestCaseComplete() {
   if (cb_) {
     std::unique_ptr<TestCaseRequestContext> self(this);
+    LOGS_DEFAULT(VERBOSE) << "tid: " << std::this_thread::get_id() << " - self: " << self.get();
     cb_.Invoke(test_case_id_, std::move(result_));
     // No member access beyond this point
   } else {
