@@ -169,7 +169,14 @@ module.exports = {
     }
   }, {
     files: ['react_native/lib/**/*.ts'], rules: {
-      '@typescript-eslint/naming-convention': 'off'
+      '@typescript-eslint/naming-convention': 'off',
+      'unicorn/filename-case': [
+        'error',
+        {
+          case: 'kebabCase',
+          ignore: ['NativeOnnxruntimeSpec\\.ts$'],
+        },
+      ],
     }
   }, {
     files: ['react_native/scripts/**/*.ts'], rules: {
