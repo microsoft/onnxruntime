@@ -35,4 +35,4 @@ stages:
     WebTemplate: win-web-ci.yml
     UseWebPoolName: true
     WebPoolName: 'onnxruntime-Win-CPU-2022-web'
-    WithCache: true
+    WithCache: false
