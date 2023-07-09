@@ -112,7 +112,7 @@ if (onnxruntime_USE_NCCL)
 endif()
 
 if(APPLE)
-  set(ONNXRUNTIME_SO_LINK_FLAG "-Xlinker -exported_symbols_list ${ONNXRUNTIME_ROOT}/python/exported_symbols.lst")
+  set(ONNXRUNTIME_SO_LINK_FLAG "-Xlinker -exported_symbols_list -Xlinker ${ONNXRUNTIME_ROOT}/python/exported_symbols.lst")
 elseif(UNIX)
   if (onnxruntime_ENABLE_EXTERNAL_CUSTOM_OP_SCHEMAS)
     set(ONNXRUNTIME_SO_LINK_FLAG "-Xlinker --version-script=${ONNXRUNTIME_ROOT}/python/version_script_expose_onnx_protobuf.lds -Xlinker --gc-sections")
@@ -223,7 +223,7 @@ if (MSVC)
   # Explicitly use the release version of the python library to make the project file consistent with this.
   target_link_libraries(onnxruntime_pybind11_state PRIVATE ${Python_LIBRARY_RELEASE})
 elseif (APPLE)
-  set_target_properties(onnxruntime_pybind11_state PROPERTIES LINK_FLAGS "${ONNXRUNTIME_SO_LINK_FLAG} -undefined dynamic_lookup")
+  set_target_properties(onnxruntime_pybind11_state PROPERTIES LINK_FLAGS "${ONNXRUNTIME_SO_LINK_FLAG} -Xlinker -undefined -Xlinker dynamic_lookup")
   set_target_properties(onnxruntime_pybind11_state PROPERTIES
     INSTALL_RPATH "@loader_path"
     BUILD_WITH_INSTALL_RPATH TRUE

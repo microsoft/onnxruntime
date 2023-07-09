@@ -610,6 +610,11 @@ else()
       target_compile_options(libprotobuf-lite PRIVATE "-Wno-enum-constexpr-conversion")
     endif()
   endif()
+
+  # enable warning(s) that may not be on by default
+  if (HAS_SHORTEN_64_TO_32)
+    list(APPEND ORT_WARNING_FLAGS -Wshorten-64-to-32)
+  endif()
 endif()
 
 #names in this var must match the directory names under onnxruntime/core/providers

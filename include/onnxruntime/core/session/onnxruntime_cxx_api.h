@@ -210,6 +210,74 @@ struct BFloat16_t {
 
 static_assert(sizeof(BFloat16_t) == sizeof(uint16_t), "Sizes must match");
 
+/** \brief float8e4m3fn (Float8 Floating Point) data type
+ * \details It is necessary for type dispatching to make use of C++ API
+ * The type is implicitly convertible to/from uint8_t.
+ * See https://onnx.ai/onnx/technical/float8.html for further details.
+ */
+struct Float8E4M3FN_t {
+  uint8_t value;
+  constexpr Float8E4M3FN_t() noexcept : value(0) {}
+  constexpr Float8E4M3FN_t(uint8_t v) noexcept : value(v) {}
+  constexpr operator uint8_t() const noexcept { return value; }
+  // nan values are treated like any other value for operator ==, !=
+  constexpr bool operator==(const Float8E4M3FN_t& rhs) const noexcept { return value == rhs.value; };
+  constexpr bool operator!=(const Float8E4M3FN_t& rhs) const noexcept { return value != rhs.value; };
+};
+
+static_assert(sizeof(Float8E4M3FN_t) == sizeof(uint8_t), "Sizes must match");
+
+/** \brief float8e4m3fnuz (Float8 Floating Point) data type
+ * \details It is necessary for type dispatching to make use of C++ API
+ * The type is implicitly convertible to/from uint8_t.
+ * See https://onnx.ai/onnx/technical/float8.html for further details.
+ */
+struct Float8E4M3FNUZ_t {
+  uint8_t value;
+  constexpr Float8E4M3FNUZ_t() noexcept : value(0) {}
+  constexpr Float8E4M3FNUZ_t(uint8_t v) noexcept : value(v) {}
+  constexpr operator uint8_t() const noexcept { return value; }
+  // nan values are treated like any other value for operator ==, !=
+  constexpr bool operator==(const Float8E4M3FNUZ_t& rhs) const noexcept { return value == rhs.value; };
+  constexpr bool operator!=(const Float8E4M3FNUZ_t& rhs) const noexcept { return value != rhs.value; };
+};
+
+static_assert(sizeof(Float8E4M3FNUZ_t) == sizeof(uint8_t), "Sizes must match");
+
+/** \brief float8e5m2 (Float8 Floating Point) data type
+ * \details It is necessary for type dispatching to make use of C++ API
+ * The type is implicitly convertible to/from uint8_t.
+ * See https://onnx.ai/onnx/technical/float8.html for further details.
+ */
+struct Float8E5M2_t {
+  uint8_t value;
+  constexpr Float8E5M2_t() noexcept : value(0) {}
+  constexpr Float8E5M2_t(uint8_t v) noexcept : value(v) {}
+  constexpr operator uint8_t() const noexcept { return value; }
+  // nan values are treated like any other value for operator ==, !=
+  constexpr bool operator==(const Float8E5M2_t& rhs) const noexcept { return value == rhs.value; };
+  constexpr bool operator!=(const Float8E5M2_t& rhs) const noexcept { return value != rhs.value; };
+};
+
+static_assert(sizeof(Float8E5M2_t) == sizeof(uint8_t), "Sizes must match");
+
+/** \brief float8e5m2fnuz (Float8 Floating Point) data type
+ * \details It is necessary for type dispatching to make use of C++ API
+ * The type is implicitly convertible to/from uint8_t.
+ * See https://onnx.ai/onnx/technical/float8.html for further details.
+ */
+struct Float8E5M2FNUZ_t {
+  uint8_t value;
+  constexpr Float8E5M2FNUZ_t() noexcept : value(0) {}
+  constexpr Float8E5M2FNUZ_t(uint8_t v) noexcept : value(v) {}
+  constexpr operator uint8_t() const noexcept { return value; }
+  // nan values are treated like any other value for operator ==, !=
+  constexpr bool operator==(const Float8E5M2FNUZ_t& rhs) const noexcept { return value == rhs.value; };
+  constexpr bool operator!=(const Float8E5M2FNUZ_t& rhs) const noexcept { return value != rhs.value; };
+};
+
+static_assert(sizeof(Float8E5M2FNUZ_t) == sizeof(uint8_t), "Sizes must match");
+
 namespace detail {
 // This is used internally by the C++ API. This macro is to make it easy to generate overloaded methods for all of the various OrtRelease* functions for every Ort* type
 // This can't be done in the C API since C doesn't have function overloading.

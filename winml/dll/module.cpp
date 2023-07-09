@@ -132,6 +132,13 @@ STDAPI DllGetExperimentalActivationFactory(void* classId, void** factory) noexce
       return 0;
     }
 
+    std::wostringstream learning_model_session_options_experimental_class;
+    learning_model_session_options_experimental_class << XSTRINGIFY(WINML_ROOT_NS) << ".AI.MachineLearning.Experimental.LearningModelSessionOptionsExperimental";
+    if (requal(name, learning_model_session_options_experimental_class.str())) {
+      *factory = winrt::detach_abi(winrt::make<WINML_EXPERIMENTAL::factory_implementation::LearningModelSessionOptionsExperimental>());
+      return 0;
+    }
+
     return winrt::hresult_class_not_available(name).to_abi();
   } catch (...) {
     return winrt::to_hresult();

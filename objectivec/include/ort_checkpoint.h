@@ -1,7 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#ifdef ENABLE_TRAINING_APIS
 #import <Foundation/Foundation.h>
 #include <stdint.h>
 
@@ -14,12 +13,9 @@ NS_ASSUME_NONNULL_BEGIN
  * their gradients, optimizer parameters, and user properties. The `ORTTrainingSession` leverages the
  * `ORTCheckpoint` by accessing and updating the contained training state.
  *
- * Available since v1.16.0.
+ * Available since 1.16.
  *
- * @note Note that the training session created with a checkpoint state uses this state to store the entire training
- * state (including model parameters, its gradients, the optimizer states and the properties). The ORTTraingSession
- * does not hold a copy of the checkpoint state. Therefore, it is required that the checkpoint state outlive the
- * lifetime of the training session.
+ * @note This class is only available when the training APIs are enabled.
  */
 @interface ORTCheckpoint : NSObject
 
@@ -121,5 +117,3 @@ NS_ASSUME_NONNULL_BEGIN
 @end
 
 NS_ASSUME_NONNULL_END
-
-#endif  // ENABLE_TRAINING_APIS

@@ -261,7 +261,6 @@ namespace Microsoft.ML.OnnxRuntime
             }
         }
 
-
         /// <summary>
         /// Convenience method to obtain all string tensor elements as a string array.
         /// </summary>
@@ -775,6 +774,31 @@ namespace Microsoft.ML.OnnxRuntime
         }
 
         /// <summary>
+        /// This API resizes String Tensor element to the requested amount of bytes (UTF-8)
+        /// and copies the bytes from the supplied ReadOnlySpan into the native tensor memory (resized buffer).
+        /// 
+        /// The API is useful for quick loading of utf8 data into the native tensor memory.
+        /// </summary>
+        /// <param name="utf8Bytes">read only span of bytes</param>
+        /// <param name="index">flat index of the element in the string tensor</param>
+        public void FillStringTensorElement(ReadOnlySpan<byte> utf8Bytes, int index)
+        {
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtGetResizedStringTensorElementBuffer(Handle,
+                                  (UIntPtr)index, (UIntPtr)utf8Bytes.Length, out IntPtr buffer));
+
+            if (utf8Bytes.Length == 0)
+            {
+                return;
+            }
+
+            unsafe
+            {
+                var destSpan = new Span<byte>(buffer.ToPointer(), utf8Bytes.Length);
+                utf8Bytes.CopyTo(destSpan);
+            }
+        }
+
+        /// <summary>
         /// Creates an OrtValue that contains a string tensor.
         /// String tensors are always allocated on CPU.
         /// String data will be converted to UTF-8 and copied to native memory.
@@ -953,7 +977,7 @@ namespace Microsoft.ML.OnnxRuntime
 
             Debug.Assert(_handle != IntPtr.Zero);
             NativeMethods.OrtReleaseValue(_handle);
-           _handle = IntPtr.Zero;
+            _handle = IntPtr.Zero;
             _disposed = true;
         }
 
