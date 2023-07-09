@@ -1138,7 +1138,8 @@ std::vector<AllocatorPtr> TensorrtExecutionProvider::CreatePreferredAllocators()
 
   AllocatorCreationInfo pinned_allocator_info(
       [](OrtDevice::DeviceId device_id) {
-        return CreateCUDAPinnedAllocator(device_id, onnxruntime::CUDA_PINNED);
+        ORT_UNUSED_PARAMETER(device_id);
+        return CreateCUDAPinnedAllocator(onnxruntime::CUDA_PINNED);
       },
       0);
 
