@@ -5,6 +5,7 @@ using Microsoft.ML.OnnxRuntime.Tensors;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
 
 namespace Microsoft.ML.OnnxRuntime
 {
@@ -84,9 +85,9 @@ namespace Microsoft.ML.OnnxRuntime
                 capacity = collection.Count;
             }
 
-            // Record all the ortValues belonging to the sequence locally
-            using (var sequenceOrtValues = new DisposableList<OrtValue>(capacity))
+            using (DisposableList<OrtValue> sequenceOrtValues = new(capacity))
             {
+                int elementIdx = 0;
                 foreach (var element in seqContainer)
                 {
                     if (elementOnnxValue != element.ValueType)
@@ -96,8 +97,11 @@ namespace Microsoft.ML.OnnxRuntime
                     }
 
                     sequenceOrtValues.Add(CreateProjection(element, elementMeta));
+                    elementIdx++;
                 }
-                return OrtValue.CreateSequence(sequenceOrtValues);
+                var result = OrtValue.CreateSequence(sequenceOrtValues);
+                sequenceOrtValues.Clear();
+                return result;
             }
         }
 
@@ -123,9 +127,13 @@ namespace Microsoft.ML.OnnxRuntime
                     $"Node: {node.Name} onnxruntime only supports maps with primitive types values");
             }
 
-            TensorBase keys = node.GetDictionaryKeys();
-            using (OrtValue ortValueKeys = OrtValue.CreateFromTensorObject(keys, out TensorElementType elementTypeKeys))
+            Span<OrtValue> ortValues = new OrtValue[2];
+            var disposableGuard = new DisposableArray<OrtValue>(ortValues);
+            try
             {
+                TensorBase keys = node.GetDictionaryKeys();
+                ortValues[0] = OrtValue.CreateFromTensorObject(keys, out TensorElementType elementTypeKeys);
+
                 if (elementTypeKeys != mapMeta.KeyDataType)
                 {
                     throw new OnnxRuntimeException(ErrorCode.InvalidArgument,
@@ -133,20 +141,22 @@ namespace Microsoft.ML.OnnxRuntime
                 }
 
                 TensorBase values = node.GetDictionaryValues();
-                using (OrtValue ortValueValues = OrtValue.CreateFromTensorObject(values, out TensorElementType elementTypeValues))
+                ortValues[1] = OrtValue.CreateFromTensorObject(values, out TensorElementType elementTypeValues);
+                if (elementTypeValues != mapValuesMeta.ElementDataType)
                 {
-                    if (elementTypeValues != mapValuesMeta.ElementDataType)
-                    {
-                        throw new OnnxRuntimeException(ErrorCode.InvalidArgument,
-                                                       $"Map value data type supplied: {elementTypeValues} metadata expected: {mapValuesMeta.ElementDataType}");
-                    }
-
-                    // Create Map OrtValue
-                    return OrtValue.CreateMap(ortValueKeys, ortValueValues);
+                    throw new OnnxRuntimeException(ErrorCode.InvalidArgument,
+                                                   $"Map value data type supplied: {elementTypeValues} metadata expected: {mapValuesMeta.ElementDataType}");
                 }
+
+                // Create Map OrtValue
+                return OrtValue.CreateMap(ortValues[0], ortValues[1]);
+            }
+            catch (Exception)
+            {
+                disposableGuard.Dispose();
+                throw;
             }
         }
-
 
         /// <summary>
         /// This pins memory that is contained within DenseTensor.
@@ -158,14 +168,14 @@ namespace Microsoft.ML.OnnxRuntime
         /// <exception cref="OnnxRuntimeException"></exception>
         private static OrtValue CreateTensorProjection(NamedOnnxValue node, NodeMetadata elementMeta)
         {
-            if (!(node.Value is TensorBase))
+            if (node.Value is not TensorBase)
             {
                 throw new OnnxRuntimeException(ErrorCode.InvalidArgument,
                     $"NamedOnnxValue contains: {node.Value.GetType()}, expecting a Tensor<T>");
             }
 
             OrtValue ortValue = OrtValue.CreateFromTensorObject(node.Value as TensorBase, out TensorElementType elementType);
-            try 
+            try
             {
                 if (elementType != elementMeta.ElementDataType)
                 {
@@ -173,7 +183,7 @@ namespace Microsoft.ML.OnnxRuntime
                         $"Tensor element data type discovered: {elementType} metadata expected: {elementMeta.ElementDataType}");
                 }
             }
-            catch(Exception)
+            catch (Exception)
             {
                 ortValue.Dispose();
                 throw;
