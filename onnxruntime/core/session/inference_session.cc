@@ -2379,6 +2379,10 @@ Status InferenceSession::RunAsync(const OrtRunOptions* run_options, const char* 
                                   const OrtValue* const* input, size_t input_len,
                                   const char* const* output_name, size_t output_names_len,
                                   RunAsyncCallbackFn callback, void* user_data) {
+  if (!thread_pool_.get() || concurrency::ThreadPool::DegreeOfParallelism(thread_pool_.get()) < 2) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "intra op thread pool must have at least one thread for RunAsync");
+  }
+
   InferenceSession* sess = this;
   std::function<void()> run_fn = [=]() {
     ORT_TRY {
@@ -2393,15 +2397,22 @@ Status InferenceSession::RunAsync(const OrtRunOptions* run_options, const char* 
       }
     }
     ORT_CATCH(const std::exception& e) {
-      std::string what = "unknown";
+      std::string what = "unknown exception";
       ORT_HANDLE_EXCEPTION([&]() { what = e.what(); });
       callback(user_data, {}, 0, ToOrtStatus(ORT_MAKE_STATUS(ONNXRUNTIME, RUNTIME_EXCEPTION, what.c_str())));
     }
     ORT_CATCH(...) {
-      callback(user_data, {}, 0, ToOrtStatus(ORT_MAKE_STATUS(ONNXRUNTIME, RUNTIME_EXCEPTION)));
+      callback(user_data, {}, 0, ToOrtStatus(ORT_MAKE_STATUS(ONNXRUNTIME, RUNTIME_EXCEPTION, "unknown exception")));
     }
-  };
-  concurrency::ThreadPool::Schedule(thread_pool_.get(), run_fn);
+  }; // run_fn
+
+  ORT_TRY {
+    concurrency::ThreadPool::Schedule(thread_pool_.get(), run_fn);
+  }
+  ORT_CATCH(...) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, RUNTIME_EXCEPTION, "failed to schedule task for RunAsync");
+  }
+
   return Status::OK();
 }
 

@@ -696,9 +696,17 @@ typedef void (*OrtCustomJoinThreadFn)(OrtCustomThreadHandle ort_custom_thread_ha
 
 typedef OrtStatus*(ORT_API_CALL* RegisterCustomOpsFn)(OrtSessionOptions* options, const OrtApiBase* api);
 
-typedef void (*RunAsyncCallbackFn)(void*, OrtValue**, size_t, OrtStatusPtr);
-
-// void CallbackBridge(void* user_data, OrtValue** outputs, size_t num_outputs, OrtStatusPtr status);
+/** \brief Callback function for RunAsync
+ * 
+ * \param[in] user_data A customized handle passed in by RunAsync.
+ * \param[out] outputs On succeed, outputs host inference results.
+               NOTE:
+               1. Ort is in charge of the lifetime of "outputs" array, but NOT each of its element, which is a OrtValue*.
+               2. Customer is expected to release each element of "outputs", which is a OrtValue*.
+ * \param[out] num_outputs Number of output.
+ * \param[out] status On error, status will provide details.
+ */
+typedef void (*RunAsyncCallbackFn)(void* user_data, OrtValue** outputs, size_t num_outputs, OrtStatusPtr status);
 
 /** \brief The C API
  *
