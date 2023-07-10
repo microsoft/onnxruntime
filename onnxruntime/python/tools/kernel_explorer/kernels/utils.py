@@ -122,7 +122,7 @@ def fast_gelu(x, bias):
     return y
 
 
-def normalization(x, axis, epsilon):
+def standardization(x, axis, epsilon):
     mean = np.mean(x, axis=axis, keepdims=True)
     variance = np.var(x, axis=axis, keepdims=True)
     return (x - mean) / np.sqrt(variance + epsilon)
