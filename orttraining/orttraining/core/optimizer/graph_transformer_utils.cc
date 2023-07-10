@@ -68,6 +68,7 @@
 #include "core/optimizer/pre_shape_node_elimination.h"
 #include "orttraining/core/optimizer/compute_optimizer/padding_elimination.h"
 #include "orttraining/core/optimizer/compute_optimizer/sceloss_compute_optimization.h"
+#include "core/optimizer/lora_conv1d_replacement.h"
 
 namespace onnxruntime {
 namespace training {
@@ -187,6 +188,7 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
         // Once we have a CPU kernel for PadAndUnflatten, we can remove the guard.
         transformers.emplace_back(std::make_unique<PaddingElimination>(compatible_eps,
                                                                        config.sparse_embedding_input_names));
+        transformers.emplace_back(std::make_unique<LoRAConv1dReplacement>(compatible_eps));
 #endif
       }
 
