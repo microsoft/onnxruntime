@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "internal_nhwc_onnx_opset.h"
+#include "core/graph/contrib_ops/internal_nhwc_onnx_schemas.h"
 
 #include "onnx/defs/operator_sets.h"
 

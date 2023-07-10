@@ -11,7 +11,7 @@ from itertools import product
 import kernel_explorer as ke
 import numpy as np
 import pytest
-from utils import dtype_to_bytes
+from utils import dtype_to_bytes, standardization
 
 
 def get_bert_sizes_test():
@@ -38,10 +38,7 @@ def dtype_to_funcs(dtype):
 
 def skip_layer_norm(input_x, skip, bias, gamma, beta, epsilon):
     val = input_x + skip + bias
-    x_u = np.mean(val, axis=(2,))
-    x_s = np.var(val, axis=(2,))
-    output = val - x_u[..., None]
-    output = output / np.sqrt(x_s + epsilon)[..., None]
+    output = standardization(val, 2, epsilon)
     output = output * gamma + beta
     return output, val
 

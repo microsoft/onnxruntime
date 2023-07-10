@@ -12,7 +12,7 @@
 #include <unordered_set>
 #include <vector>
 
-namespace onnx_layout_transformation {
+namespace onnx_transpose_optimization {
 namespace api {
 
 /* This file defines the API for the transpose optimizer and layout transformation tool. The API consists of a set of
@@ -468,11 +468,6 @@ using CostCheckFn =
                                   const std::vector<int64_t>& perm,
                                   const std::unordered_set<std::string>& outputs_leading_to_transpose)>;
 
-enum class OptimizerMode {
-  OPTIMIZE_TRANSPOSE,        // simple transpose optimization
-  OPTIMIZE_LAYOUT_TRANSFORM  // transpose optimization post layout transformation
-};
-
 /// <summary>
 /// Gets a list of layout sensitive ops defined by ONNX standard.
 /// </summary>
@@ -484,6 +479,10 @@ struct OptimizeResult {
   bool graph_modified{false};
 };
 
+// see transpose_optimizer.h if you wish to provide extended handlers
+struct HandlerInfo;
+using HandlerMap = std::unordered_map<std::string_view, const HandlerInfo&>;
+
 /// <summary>
 /// Performs transpose optimization on a graph. Returns true if the graph was modified.
 ///
@@ -494,106 +493,20 @@ struct OptimizeResult {
 /// total cost of Transpose ops and only push Transposes when doing so has some benefit.
 /// </summary>
 /// <param name="graph">The graph to optimize (or a portion of a graph, see api::GraphRef docs)</param>
-/// <param name="allow_extended_ops">Whether com.microsoft ops can be used for optimization</param>
-/// <param name="provider_type">Execution provider if applicable.</param>
-/// <param name="mode">Current mode. Optimizer can be called in the context of transpose optimizations or during
-/// layout transformations.</param>
+/// <param name="provider_type">Execution provider to assign new nodes to.
+///   If not specified, graph partitioning must be run later to assign nodes to EPs.
+/// </param>
 /// <param name="cost_check_fn">Optional cost checking function to determine whether it is worth pushing a Transpose
-/// through a node.</param>
-/// <param name="layout_sensitive_ops">List of ops which are treated as layout sensitive by the ONNX standard
-/// as well as any runtime specific ops. These ops should be provided when mode is set to OPTIMIZE_LAYOUT_TRANSFORM.
-/// If these ops are not provided, transpose optimizer may convert the layout for these ops </param>
+/// through a node.
+/// </param>
+/// <param name="extended_handlers">Map of handlers for non-ONNX operators and/or ONNX operators where special handling
+/// is required (e.g. ONNX Resize is layout agnostic but may be implemented in a layout sensitive way).
+/// </param>
 /// <returns>OptimizeResult. If error_msg is set the Optimize failed. If not set, graph_modified indicates whether
 /// any changes were required during optimization.</returns>
-OptimizeResult Optimize(api::GraphRef& graph, bool allow_extended_ops,
+OptimizeResult Optimize(api::GraphRef& graph,
                         const std::string& provider_type = "",
-                        OptimizerMode mode = OptimizerMode::OPTIMIZE_TRANSPOSE,
                         CostCheckFn cost_check_fn = nullptr,
-                        const std::unordered_set<std::string_view>& layout_sensitive_ops = {});
+                        const HandlerMap& extended_handlers = {});
 
-/* Layout Transformation Tools
- * These methods help change the channel ordering of layout sensitive ops (like Conv). ONNX currently only supports
- * channel first ordering for ops, so this requires changing the op type and domain to a contrib op supporting
- * the new ordering. The existence of a robust transpose optimizer means that we can freely add transpose ops during
- * conversion and then call Optimize to remove as many as possible. To change the channel ordering of some/all ops
- * in a model, a user of this tool should do the following:
- *
- * 1. Iterate over the graph nodes and identify nodes to convert. For each one:
- *    a. Change the op type and domain (and possibly attributes) to the op/contrib op with the desired ordering.
- *    b. The model is now invalid since the input tensors are in the original ordering (and all consumers
- *       expect the original ordering). Use WrapTransposesAroundNode helper to insert transposes around the
- *       inputs/outputs of the op to correct this.
- * 2. The model is now correct but has many unnecessary Transpose ops. Call Optimize on the graph.
- *
- * After step 1, the Transpose ops will wrap converted ops in a similar manner to q/dq ops in quantization.
- * The perm attributes essentially encode the information about which ops are being reordered.
- */
-
-/// <summary>
-/// Inserts transposes around op inputs/outputs. Alternatively transposes initializers or uses existing Transpose
-/// nodes if possible. Populates shape information on affected node inputs/outputs to reflect the change.
-///
-/// Ex:
-///   * -> NhwcConv -> **
-///   becomes
-///   * -> Transpose -> NhwcConv -> Transpose -> **
-///   Conv inputs/outputs have new shape. Shapes of * and ** are unchanged (carrying NCHW data).
-///
-/// input_perms/output_perms are matched with node inputs/outputs positionally. Their lengths must be at most equal to
-/// the number of inputs/outputs, respectively. nullptr entires indicate an input or output should not be transposed.
-/// </summary>
-/// <param name="graph">Graph containing the node</param>
-/// <param name="node">Node to modify</param>
-/// <param name="input_perms">Input permutations. nullptr entries indicate to skip corresponding input.</param>
-/// <param name="output_perms">Output permutations. nullptr entries indicate to skip corresponding output.</param>
-void WrapTransposesAroundNode(api::GraphRef& graph, api::NodeRef& node,
-                              const std::vector<const std::vector<int64_t>*>& input_perms,
-                              const std::vector<const std::vector<int64_t>*>& output_perms);
-
-/// <summary>
-/// Computes the perm attribute needed to transpose a tensor from channel-first ordering (NCHW or NCD...D) to
-/// channel-last ordering (NHWC or ND...DC). rank must be >= 2.
-/// </summary>
-/// <param name="rank">Rank of the tensor</param>
-/// <returns>perm attribute to transpose from channel first to channel last. Ex: [0, 2, 3, 1]</returns>
-std::vector<int64_t> ChannelFirstToLastPerm(size_t rank);
-
-/// <summary>
-/// Computes the perm attribute needed to transpose a tensor from channel-last ordering (NHWC or ND...DC) to
-/// channel-last ordering (NCHW or NCD...D). rank must be >= 2.
-/// </summary>
-/// <param name="rank">Rank of the tensor</param>
-/// <returns>perm attribute to transpose from channel last to channel first. Ex: [0, 3, 1, 2]</returns>
-std::vector<int64_t> ChannelLastToFirstPerm(size_t rank);
-
-/// <summary>
-/// Swaps out a node for a new copy of that node with the specified op type and domain.
-/// Current API does not allow nodes to have their op types or domains changed, so a new node is needed. All
-/// attributes, inputs, and outputs are moved to the new node. The old node is removed from the graph and should no
-/// longer be accessed.
-/// </summary>
-/// <param name="graph">Graph containing the node</param>
-/// <param name="node">Node to copy and remove</param>
-/// <param name="op_type">New node op_type</param>
-/// <param name="domain">New node domain. "" for the default domain.</param>
-/// <returns>The newly created node.</returns>
-std::unique_ptr<api::NodeRef> SwapNodeOpTypeAndDomain(api::GraphRef& graph, api::NodeRef& node,
-                                                      std::string_view op_type, std::string_view domain);
-
-/// <summary>
-/// Swaps out a node for a new copy of that node with the specified op type, domain, and since version.
-/// Current API does not allow nodes to have their op types or domains changed, so a new node is needed. All
-/// attributes, inputs, and outputs are moved to the new node. The old node is removed from the graph and should no
-/// longer be accessed.
-/// </summary>
-/// <param name="graph">Graph containing the node</param>
-/// <param name="node">Node to copy and remove</param>
-/// <param name="op_type">New node op_type</param>
-/// <param name="domain">New node domain. "" for the default domain.</param>
-/// <param name="op_type">New node since version.</param>
-/// <returns>The newly created node.</returns>
-std::unique_ptr<api::NodeRef> SwapNodeOpTypeDomainAndSinceVersion(api::GraphRef& graph, api::NodeRef& node,
-                                                                  std::string_view op_type, std::string_view domain,
-                                                                  int since_version);
-
-}  // namespace onnx_layout_transformation
+}  // namespace onnx_transpose_optimization
