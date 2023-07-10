@@ -1887,6 +1887,8 @@ TEST(CApiTest, basic_cuda_graph) {
   binding.ClearBoundOutputs();
 }
 
+#ifndef REDUCED_OPS_BUILD
+// The following test uses some ops not supported in the reduced ops build
 TEST(CApiTest, cuda_graph_with_shape_nodes) {
   const auto& api = Ort::GetApi();
 
@@ -1907,6 +1909,8 @@ TEST(CApiTest, cuda_graph_with_shape_nodes) {
   // Successful loading of the ONNX model with shape nodes with cuda graph feature enabled
   Ort::Session session(*ort_env, TSTR("testdata/cuda_graph_with_shape_nodes.onnx"), session_options);
 }
+
+#endif
 
 #endif
 

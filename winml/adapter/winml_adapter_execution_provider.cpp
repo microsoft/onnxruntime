@@ -49,7 +49,7 @@ ORT_API_STATUS_IMPL(winmla::GetProviderAllocator, _In_ OrtSession* session, _In_
   auto inference_session = reinterpret_cast<::onnxruntime::InferenceSession*>(session);
   const auto execution_provider = reinterpret_cast<onnxruntime::IExecutionProvider*>(provider);
   OrtMemoryInfo mem_info("", OrtAllocatorType::OrtDeviceAllocator, execution_provider->GetOrtDeviceByMemType(::OrtMemType::OrtMemTypeDefault));
-  auto allocator_ptr = inference_session->GetAllocator(mem_info);  // TODO(leca): REVIEW
+  auto allocator_ptr = inference_session->GetAllocator(mem_info);
   *allocator = new (std::nothrow) OrtAllocatorWrapper(allocator_ptr);
   if (*allocator == nullptr) {
     return OrtApis::CreateStatus(ORT_FAIL, "Out of memory");
@@ -63,7 +63,7 @@ ORT_API_STATUS_IMPL(winmla::GetProviderMemoryInfo, _In_ OrtExecutionProvider* pr
   const auto execution_provider = reinterpret_cast<onnxruntime::IExecutionProvider*>(provider);
 
   auto device = execution_provider->GetOrtDeviceByMemType(::OrtMemType::OrtMemTypeDefault);
-  *memory_info = new (std::nothrow) OrtMemoryInfo("", ::OrtAllocatorType::OrtDeviceAllocator, device);    // TODO(leca): REVIEW
+  *memory_info = new (std::nothrow) OrtMemoryInfo("", ::OrtAllocatorType::OrtDeviceAllocator, device);
   if (*memory_info == nullptr) {
     return OrtApis::CreateStatus(ORT_FAIL, "Out of memory");
   }

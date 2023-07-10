@@ -4,10 +4,12 @@
 import * as binaryOps from './ops/binary-op';
 import {concat, parseConcatAttributes} from './ops/concat';
 import {conv, parseConvAttributes} from './ops/conv';
+import {convTranspose, parseConvTransposeAttributes} from './ops/conv-transpose';
 import {gemm, parseGemmAttributes} from './ops/gemm';
 import {matMul} from './ops/matmul';
 import * as pool from './ops/pool';
 import {parseReduceAttributes, reduceL1, reduceL2, reduceLogSum, reduceLogSumExp, reduceMax, reduceMean, reduceMin, reduceProd, reduceSum, reduceSumSquare} from './ops/reduce';
+import {parseSplitAttributes, split} from './ops/split';
 import {parseTransposeAttributes, transpose} from './ops/transpose';
 import * as unaryOps from './ops/unary-op';
 import {ComputeContext} from './types';
@@ -32,6 +34,7 @@ export const WEBGPU_OP_RESOLVE_RULES: Map<string, OperatorImplementation> = new 
   ['Clip', [unaryOps.clip]],
   ['Concat', [concat, parseConcatAttributes]],
   ['Conv', [conv, parseConvAttributes]],
+  ['ConvTranspose', [convTranspose, parseConvTransposeAttributes]],
   ['Cos', [unaryOps.cos]],
   ['Cosh', [unaryOps.cosh]],
   ['Div', [binaryOps.div]],
@@ -64,6 +67,7 @@ export const WEBGPU_OP_RESOLVE_RULES: Map<string, OperatorImplementation> = new 
   ['Sigmoid', [unaryOps.sigmoid]],
   ['Sin', [unaryOps.sin]],
   ['Sinh', [unaryOps.sinh]],
+  ['Split', [split, parseSplitAttributes]],
   ['Sqrt', [unaryOps.sqrt]],
   ['Sub', [binaryOps.sub]],
   ['Tan', [unaryOps.tan]],

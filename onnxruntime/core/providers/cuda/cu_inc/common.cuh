@@ -382,6 +382,14 @@ __device__ __inline__ T _Gelu(T a) {
   return a * _Normcdf(a);
 }
 
+template <>
+__device__ __inline__ half _Gelu(half a) {
+  const half kHalf = half(0.5);
+  const half kOne = half(1.0);
+  const half kAlpha = half(M_SQRT1_2);
+  return a * kHalf * (kOne + _Erf(kAlpha * a));
+}
+
 template <typename T>
 __device__ __inline__ T _Mod(T a, T b) {
   T r = a % b;
