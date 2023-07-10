@@ -97,7 +97,7 @@ class TimeTrackerPhase(IntEnum):
         elif self == TimeTrackerPhase.DETECTION:
             return "runtime detection"
         elif self == TimeTrackerPhase.BUILD_GRAPH:
-            return "building grad"
+            return "graph building"
         elif self == TimeTrackerPhase.CREATE_SESSION:
             return "session creation"
         else:
