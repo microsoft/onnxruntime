@@ -124,7 +124,7 @@ jobs:
     workingDirectory: '$(Build.SourcesDirectory)\js\web'
     displayName: 'Check out of dated documents'
   - script: |
-     if exist 'C:\local\data\onnx\test\data\node\__generated_onnx_node_tests (
+     if exist "C:\local\data\onnx\test\data\node\__generated_onnx_node_tests" (
       xcopy C:\local\data\onnx\test\ $(Build.SourcesDirectory)\js\test\ /E
      )
     workingDirectory: '$(Build.SourcesDirectory)\js\web'
