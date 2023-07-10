@@ -3,7 +3,7 @@
 set -ex
 
 rocm_version=$1
-mi200_gpus=$(rocm-smi --showproductname | grep -c "MI250")
+mi200_gpus=$(rocm-smi --showproductname | grep -c "MI250" | xargs)
 
 echo "mi200_gpus: $mi200_gpus"
 
