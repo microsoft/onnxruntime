@@ -4,14 +4,17 @@
 from __future__ import annotations
 
 import os
+import pathlib
 import tempfile
 
 import numpy as np
+import onnx
 import pytest
 import torch
 from orttraining_test_onnxblock import _get_models
 
 import onnxruntime.training.onnxblock as onnxblock
+from onnxruntime import SessionOptions
 from onnxruntime.training import artifacts
 from onnxruntime.training.api import CheckpointState, LinearLRScheduler, Module, Optimizer
 
@@ -368,3 +371,109 @@ def test_get_input_output_names():
 
         assert model.input_names() == ["input-0", "labels"]
         assert model.output_names() == ["onnx::loss::128"]
+
+
+def test_ort_custom_ops():
+    def _create_custom_op_trainable_onnx_model():
+        """This function takes in a pre generated custom op model and adds a trainable linear layer to it"""
+        onnx_model = onnx.load(os.path.join("testdata", "custom_op_library", "custom_op_test.onnx"))
+
+        class CustomOpBlockWithGemm(onnxblock.ForwardBlock):
+            def __init__(self):
+                super().__init__()
+                self.gemm = onnxblock.blocks.Gemm(5, 10)
+
+            def build(self, gemm_input):
+                return self.gemm(gemm_input)
+
+        custom_op_block = CustomOpBlockWithGemm()
+        with onnxblock.base(onnx_model) as model_accessor:
+            model_accessor.model.opset_import.append(onnx.helper.make_opsetid("test.customop", 1))
+            model_accessor.model.opset_import.append(onnx.helper.make_opsetid("", 14))
+            model_accessor.model.ir_version = 7
+            # TODO(baijumeswani): Add a way to register output shape (even if it is symbolic)
+            model_accessor.model.graph.value_info.append(
+                onnx.helper.make_tensor_value_info("onnx::gemm.output::135", onnx.TensorProto.FLOAT, [3, 10])
+            )
+            _ = custom_op_block("output_1")
+
+        return custom_op_block.to_model_proto()
+
+    onnx_model = _create_custom_op_trainable_onnx_model()
+    custom_op_library = os.path.join(os.getcwd(), "libcustom_op_library.so")
+    with tempfile.TemporaryDirectory() as temp_dir:
+        artifacts.generate_artifacts(
+            onnx_model,
+            optimizer=artifacts.OptimType.AdamW,
+            loss=artifacts.LossType.CrossEntropyLoss,
+            requires_grad=[param.name for param in onnx_model.graph.initializer],
+            artifact_directory=temp_dir,
+            custom_op_library=custom_op_library,
+        )
+
+        session_options = SessionOptions()
+        session_options.register_custom_ops_library(custom_op_library)
+
+        training_model_file_path = pathlib.Path(temp_dir) / "training_model.onnx"
+        eval_model_file_path = pathlib.Path(temp_dir) / "eval_model.onnx"
+        checkpoint_file_path = pathlib.Path(temp_dir) / "checkpoint"
+
+        # Create Checkpoint State.
+        state = CheckpointState.load_checkpoint(checkpoint_file_path)
+
+        # Create a Module.
+        model = Module(training_model_file_path, state, eval_model_file_path, session_options=session_options)
+
+        x = np.random.randn(3, 5).astype(np.float32)
+        y = np.random.randn(3, 5).astype(np.float32)
+        labels = np.random.randint(0, 10, size=(3,), dtype=np.int64)
+        _ = model(x, y, labels)
+
+
+def test_string_inputs():
+    def _create_string_input_trainable_model():
+        """This function creates an onnx model with string inputs"""
+
+        class BlockWithStringInputs(onnxblock.ForwardBlock):
+            def __init__(self):
+                super().__init__()
+                self.cast = onnxblock.blocks.Cast(to=onnx.TensorProto.FLOAT)
+                self.gemm = onnxblock.blocks.Gemm(4, 2)
+
+            def build(self, string_input):
+                return self.gemm(self.cast(string_input))
+
+        string_block = BlockWithStringInputs()
+        with onnxblock.empty_base() as model_accessor:
+            model_accessor.model.graph.input.extend(
+                [
+                    onnx.helper.make_tensor_value_info("input", onnx.TensorProto.STRING, [1, 4]),
+                ]
+            )
+            _ = string_block("input")
+
+        return string_block.to_model_proto()
+
+    onnx_model = _create_string_input_trainable_model()
+    with tempfile.TemporaryDirectory() as temp_dir:
+        artifacts.generate_artifacts(
+            onnx_model,
+            optimizer=artifacts.OptimType.AdamW,
+            loss=artifacts.LossType.CrossEntropyLoss,
+            requires_grad=[param.name for param in onnx_model.graph.initializer],
+            artifact_directory=temp_dir,
+        )
+
+        training_model_file_path = pathlib.Path(temp_dir) / "training_model.onnx"
+        eval_model_file_path = pathlib.Path(temp_dir) / "eval_model.onnx"
+        checkpoint_file_path = pathlib.Path(temp_dir) / "checkpoint"
+
+        # Create Checkpoint State.
+        state = CheckpointState.load_checkpoint(checkpoint_file_path)
+
+        # Create a Module.
+        model = Module(training_model_file_path, state, eval_model_file_path)
+
+        strs = np.array([["1.0", "2.0", "3.0", "4.0"]], dtype=str)
+        labels = np.random.randint(0, 2, size=(1,), dtype=np.int64)
+        _ = model(strs, labels)

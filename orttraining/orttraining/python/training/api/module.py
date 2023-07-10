@@ -74,17 +74,7 @@ class Module:
         Returns:
             The outputs of the model.
         """
-        is_np_input = False
-        forward_inputs = OrtValueVector()
-        forward_inputs.reserve(len(user_inputs))
-        for tensor in user_inputs:
-            if isinstance(tensor, np.ndarray):
-                is_np_input = True
-                forward_inputs.push_back(OrtValue.ortvalue_from_numpy(tensor)._ortvalue)
-            elif isinstance(tensor, OrtValue):
-                forward_inputs.push_back(tensor._ortvalue)
-            else:
-                raise ValueError(f"Expected input of type: numpy array or OrtValue, actual: {type(tensor)}")
+        forward_inputs = [user_input for user_input in user_inputs]
         fetches = OrtValueVector()
 
         if self.training:
@@ -93,12 +83,9 @@ class Module:
             self._model.eval_step(forward_inputs, fetches)
 
         if len(fetches) == 1:
-            if is_np_input:
-                return fetches[0].numpy()
+            return fetches[0].numpy()
 
-            return fetches[0]
-
-        return tuple(val.numpy() for val in fetches) if is_np_input else tuple(fetches)
+        return tuple(val.numpy() for val in fetches)
 
     def train(self, mode: bool = True) -> Module:
         """Sets the Module in training mode.

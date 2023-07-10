@@ -137,6 +137,12 @@ struct Module {
   // Returns the user input name for eval graph at given index
   std::string GetEvalModelInputName(size_t index) const;
 
+  // Returns the input definitions of the Training model
+  std::pair<common::Status, const InputDefList*> GetTrainingModelInputs() const noexcept;
+
+  // Returns the input definitions of the Eval model
+  std::pair<common::Status, const InputDefList*> GetEvalModelInputs() const noexcept;
+
  private:
   std::unique_ptr<onnxruntime::InferenceSession> train_sess_{nullptr};
   std::unique_ptr<onnxruntime::InferenceSession> eval_sess_{nullptr};

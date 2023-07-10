@@ -7,6 +7,7 @@ import logging
 from abc import ABC, abstractmethod
 from typing import Any, List, Optional
 
+import numpy as np
 import onnx
 
 import onnxruntime.training.onnxblock._graph_utils as _graph_utils
@@ -427,3 +428,45 @@ class Cast(Block):
         self.base.graph.node.append(cast_node)
 
         return cast_output_name
+
+
+class Gemm(Block):
+    def __init__(self, in_features, out_features, alpha=1.0, beta=1.0):
+        super().__init__()
+
+        self._in_features = in_features
+        self._out_features = out_features
+        self._alpha = alpha
+        self._beta = beta
+
+    def build(self, gemm_input_name: str):
+        # Weight initializer
+        gemm_node_weight_name = _graph_utils.generate_graph_name("gemm.weight")
+
+        self.base.graph.initializer.append(
+            onnx.numpy_helper.from_array(
+                np.random.randn(self._in_features, self._out_features).astype(np.float32), gemm_node_weight_name
+            )
+        )
+
+        # Bias initializer
+        gemm_node_bias_name = _graph_utils.generate_graph_name("gemm.bias")
+        self.base.graph.initializer.append(
+            onnx.numpy_helper.from_array(np.random.randn(self._out_features).astype(np.float32), gemm_node_bias_name)
+        )
+
+        gemm_node_input_names = [gemm_input_name, gemm_node_weight_name, gemm_node_bias_name]
+        gemm_node_output_name = _graph_utils.generate_graph_name("gemm.output")
+        gemm_node_output_names = [gemm_node_output_name]
+        gemm_node = onnx.helper.make_node(
+            "Gemm",
+            gemm_node_input_names,
+            gemm_node_output_names,
+            _graph_utils.generate_graph_name("Gemm"),
+            alpha=self._alpha,
+            beta=self._beta,
+        )
+
+        self.base.graph.node.append(gemm_node)
+
+        return gemm_node_output_name

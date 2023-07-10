@@ -532,6 +532,14 @@ std::string Module::GetEvalModelInputName(size_t index) const {
   return eval_input_names_.at(index);
 }
 
+std::pair<common::Status, const InputDefList*> Module::GetTrainingModelInputs() const noexcept {
+  return train_sess_->GetModelInputs();
+}
+
+std::pair<common::Status, const InputDefList*> Module::GetEvalModelInputs() const noexcept {
+  return eval_sess_->GetModelInputs();
+}
+
 }  // namespace api
 }  // namespace training
 }  // namespace onnxruntime

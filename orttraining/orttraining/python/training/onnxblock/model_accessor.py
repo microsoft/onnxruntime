@@ -141,6 +141,9 @@ def custom_op_library(custom_op_library_path: os.PathLike):
     if _GLOBAL_CUSTOM_OP_LIBRARY is not None:
         raise RuntimeError("CustomOp library already set. Cannot set multiple custom op libraries.")
 
+    if not os.path.exists(custom_op_library_path):
+        raise RuntimeError(f"Custom op library path {custom_op_library_path} does not exist.")
+
     _GLOBAL_CUSTOM_OP_LIBRARY = copy.copy(custom_op_library_path)  # noqa: PLW0603
     try:
         yield _GLOBAL_CUSTOM_OP_LIBRARY
