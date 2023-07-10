@@ -249,4 +249,12 @@ jobs:
     displayName: 'Run orttraining_ortmodule_tests.py'
     condition: succeededOrFailed()
 
+  - task: CmdLine@2
+    inputs:
+      script: |-
+        bash $(Build.SourcesDirectory)/tools/ci_build/github/pai/pai_clean_device.sh $(Agent.Name) $HIP_VISIBLE_DEVICES
+      workingDirectory: $(Build.SourcesDirectory)
+    displayName: 'Clean ROCm Environment'
+    condition: always()
+
   - template: templates/clean-agent-build-directory-step.yml
