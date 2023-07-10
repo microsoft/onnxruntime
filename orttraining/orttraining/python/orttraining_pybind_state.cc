@@ -954,7 +954,7 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
              ORT_ENFORCE(model_inputs_with_error.second, "Eval model graph inputs are not defined.");
              for (size_t idx = 0; idx < user_inputs.size(); ++idx) {
                auto& feed = user_inputs[idx];
-               const auto feed_name = model->GetEvalgModelInputName(idx);
+               const auto feed_name = model->GetEvalModelInputName(idx);
                // No need to process 'None's sent in by the user
                // to feed Optional inputs in the graph.
                // We just won't include anything in the feed and ORT

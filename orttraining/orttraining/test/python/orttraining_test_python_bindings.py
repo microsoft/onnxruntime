@@ -476,4 +476,9 @@ def test_string_inputs():
 
         strs = np.array([["1.0", "2.0", "3.0", "4.0"]], dtype=str)
         labels = np.random.randint(0, 2, size=(1,), dtype=np.int64)
+
+        model.train()
+        _ = model(strs, labels)
+
+        model.eval()
         _ = model(strs, labels)
