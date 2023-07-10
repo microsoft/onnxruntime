@@ -707,7 +707,7 @@ nvinfer1::IExecutionContext& TensorrtExecutionProvider::PerThreadContext::GetTen
   }
   auto context = std::make_unique<nvinfer1::IExecutionContext>();
   trt_context_map_[fused_node] = std::move(context);
-  return *(trt_context_map[fused_node]);  // dereference shared pointer
+  return *(trt_context_map_[fused_node]);  // dereference shared pointer
 }
 
 void TensorrtExecutionProvider::ReleasePerThreadContext() const {
