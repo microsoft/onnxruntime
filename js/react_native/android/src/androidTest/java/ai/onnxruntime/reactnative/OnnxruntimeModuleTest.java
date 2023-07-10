@@ -76,7 +76,7 @@ public class OnnxruntimeModuleTest {
 
         JavaOnlyMap options = new JavaOnlyMap();
         try {
-          ReadableMap resultMap = ortModule.loadModel(modelBuffer, options);
+          ReadableMap resultMap = ortModule.getOnnxruntime().loadModel(modelBuffer, options);
           sessionKey = resultMap.getString("key");
           ReadableArray inputNames = resultMap.getArray("inputNames");
           ReadableArray outputNames = resultMap.getArray("outputNames");
@@ -125,7 +125,7 @@ public class OnnxruntimeModuleTest {
         options.putBoolean("encodeTensorData", true);
 
         try {
-          ReadableMap resultMap = ortModule.run(sessionKey, inputDataMap, outputNames, options);
+          ReadableMap resultMap = ortModule.getOnnxruntime().run(sessionKey, inputDataMap, outputNames, options);
 
           ReadableMap outputMap = resultMap.getMap("output");
           for (int i = 0; i < 2; ++i) {
@@ -144,7 +144,7 @@ public class OnnxruntimeModuleTest {
       }
 
       // test dispose
-      ortModule.dispose(sessionKey);
+      ortModule.getOnnxruntime().dispose(sessionKey);
     } finally {
       mockSession.finishMocking();
     }

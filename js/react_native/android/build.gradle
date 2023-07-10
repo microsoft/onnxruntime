@@ -124,6 +124,7 @@ android {
       "META-INF",
       "META-INF/**",
       "**/libjsi.so",
+      "**/libc++_shared.so",
     ]
   }
 
@@ -234,7 +235,10 @@ repositories {
 }
 
 dependencies {
-  api "com.facebook.react:react-native:" + REACT_NATIVE_VERSION
+  // For < 0.71, this will be from the local maven repo
+  // For > 0.71, this will be replaced by `com.facebook.react:react-android:$version` by react gradle plugin
+  //noinspection GradleDynamicVersion
+  implementation "com.facebook.react:react-native:+"
   api "org.mockito:mockito-core:2.28.2"
 
   androidTestImplementation "androidx.test:runner:1.1.0"

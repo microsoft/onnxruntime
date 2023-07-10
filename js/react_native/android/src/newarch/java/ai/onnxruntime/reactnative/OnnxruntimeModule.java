@@ -38,6 +38,8 @@ public class OnnxruntimeModule extends NativeOnnxruntimeSpec implements Lifecycl
     return NAME;
   }
 
+  public Onnxruntime getOnnxruntime() { return onnxruntime; }
+
   public void checkBlobModule() {
     if (blobModule == null) {
       blobModule = getReactApplicationContext().getNativeModule(BlobModule.class);

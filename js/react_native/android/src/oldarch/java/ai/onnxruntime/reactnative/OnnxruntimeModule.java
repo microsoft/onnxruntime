@@ -39,6 +39,8 @@ public class OnnxruntimeModule extends ReactContextBaseJavaModule implements Lif
     return NAME;
   }
 
+  public Onnxruntime getOnnxruntime() { return onnxruntime; }
+
   public void checkBlobModule() {
     if (blobModule == null) {
       blobModule = getReactApplicationContext().getNativeModule(BlobModule.class);

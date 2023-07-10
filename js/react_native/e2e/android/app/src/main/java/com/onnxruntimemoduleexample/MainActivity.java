@@ -1,4 +1,4 @@
-package com.onnxruntimemoduleexample;
+package com.example.reactnativeonnxruntimemodule;
 
 import com.facebook.react.ReactActivity;
 import com.facebook.react.ReactActivityDelegate;

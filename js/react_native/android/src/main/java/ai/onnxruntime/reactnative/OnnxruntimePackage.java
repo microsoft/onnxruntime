@@ -3,32 +3,53 @@
 
 package ai.onnxruntime.reactnative;
 
-import android.os.Build;
 import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 import androidx.annotation.RequiresApi;
-import com.facebook.react.ReactPackage;
+import com.facebook.react.TurboReactPackage;
 import com.facebook.react.bridge.NativeModule;
 import com.facebook.react.bridge.ReactApplicationContext;
-import com.facebook.react.modules.blob.BlobModule;
-import com.facebook.react.uimanager.ViewManager;
-import java.util.ArrayList;
-import java.util.Collections;
+import com.facebook.react.module.model.ReactModuleInfo;
+import com.facebook.react.module.model.ReactModuleInfoProvider;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
-public class OnnxruntimePackage implements ReactPackage {
-  @RequiresApi(api = Build.VERSION_CODES.N)
-  @NonNull
+public class OnnxruntimePackage extends TurboReactPackage {
+
+  @Nullable
   @Override
-  public List<NativeModule> createNativeModules(@NonNull ReactApplicationContext reactContext) {
-    List<NativeModule> modules = new ArrayList<>();
-    modules.add(new OnnxruntimeModule(reactContext));
-    modules.add(new OnnxruntimeJSIHelper(reactContext));
-    return modules;
+  public NativeModule getModule(String name, ReactApplicationContext reactContext) {
+    if (name.equals(OnnxruntimeModule.NAME)) {
+      return new ai.onnxruntime.reactnative.OnnxruntimeModule(reactContext);
+    } else if (name.equals(OnnxruntimeJSIHelper.NAME)) {
+      return new ai.onnxruntime.reactnative.OnnxruntimeJSIHelper(reactContext);
+    } else {
+      return null;
+    }
   }
 
-  @NonNull
   @Override
-  public List<ViewManager> createViewManagers(@NonNull ReactApplicationContext reactContext) {
-    return Collections.emptyList();
+  public ReactModuleInfoProvider getReactModuleInfoProvider() {
+    return () -> {
+      final Map<String, ReactModuleInfo> moduleInfos = new HashMap<>();
+      boolean isTurboModule = BuildConfig.IS_NEW_ARCHITECTURE_ENABLED;
+      moduleInfos.put(OnnxruntimeModule.NAME, new ReactModuleInfo(OnnxruntimeModule.NAME, OnnxruntimeModule.NAME,
+                                                                  false,        // canOverrideExistingModule
+                                                                  false,        // needsEagerInit
+                                                                  true,         // hasConstants
+                                                                  false,        // isCxxModule
+                                                                  isTurboModule // isTurboModule
+                                                                  ));
+      moduleInfos.put(OnnxruntimeJSIHelper.NAME,
+                      new ReactModuleInfo(OnnxruntimeJSIHelper.NAME, OnnxruntimeJSIHelper.NAME,
+                                          false,        // canOverrideExistingModule
+                                          false,        // needsEagerInit
+                                          true,         // hasConstants
+                                          false,        // isCxxModule
+                                          isTurboModule // isTurboModule
+                                          ));
+      return moduleInfos;
+    };
   }
 }
