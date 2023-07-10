@@ -3,6 +3,8 @@
 
 import {Tensor} from 'onnxruntime-common';
 
+// This file includes common definitions. They do NOT have dependency on the WebAssembly instance.
+
 /**
  * Copied from ONNX definition. Use this to drop dependency 'onnx_proto' to decrease compiled .js file size.
  */

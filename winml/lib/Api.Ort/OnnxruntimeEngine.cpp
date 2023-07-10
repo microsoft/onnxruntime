@@ -428,6 +428,17 @@ HRESULT OnnxruntimeEngine::RuntimeClassInitialize(OnnxruntimeEngineFactory* engi
   return S_OK;
 }
 
+OnnxruntimeEngine::~OnnxruntimeEngine() {
+  for (auto& handle : custom_op_library_handles_) {
+    FreeLibrary(reinterpret_cast<HMODULE>(handle));
+  }
+}
+
+HRESULT OnnxruntimeEngine::RegisterCustomOpLibraryHandles(const gsl::span<void*> handles) {
+  custom_op_library_handles_.insert(custom_op_library_handles_.end(), handles.begin(), handles.end());
+  return S_OK;
+}
+
 HRESULT OnnxruntimeEngine::LoadModel(_In_ IModel* model) {
   Microsoft::WRL::ComPtr<IOnnxruntimeModel> onnxruntime_model;
   RETURN_IF_FAILED(model->QueryInterface(IID_PPV_ARGS(&onnxruntime_model)));
@@ -583,7 +594,7 @@ HRESULT OnnxruntimeEngine::CreateTensorValue(const int64_t* shape, size_t count,
                           engine_factory_->UseOrtApi());
 
   OrtAllocator* ort_allocator;
-  RETURN_HR_IF_NOT_OK_MSG(winml_adapter_api->GetProviderAllocator(ort_provider, &ort_allocator),
+  RETURN_HR_IF_NOT_OK_MSG(winml_adapter_api->GetProviderAllocator(session_.get(), ort_provider, &ort_allocator),
                           engine_factory_->UseOrtApi());
 
   auto unique_allocator = UniqueOrtAllocator(

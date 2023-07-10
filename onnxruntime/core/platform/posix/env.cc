@@ -355,7 +355,7 @@ class PosixEnv : public Env {
         micros -= static_cast<int64_t>(sleep_time.tv_sec) * OneMillion;
       }
       if (micros < OneMillion) {
-        sleep_time.tv_nsec = 1000 * micros;
+        sleep_time.tv_nsec = static_cast<decltype(timespec::tv_nsec)>(1000 * micros);
         micros = 0;
       }
       while (nanosleep(&sleep_time, &sleep_time) != 0 && errno == EINTR) {
@@ -457,9 +457,9 @@ class PosixEnv : public Env {
       return Status::OK();
     }
 
-    static const long page_size = sysconf(_SC_PAGESIZE);
+    static const size_t page_size = narrow<size_t>(sysconf(_SC_PAGESIZE));
     const FileOffsetType offset_to_page = offset % static_cast<FileOffsetType>(page_size);
-    const size_t mapped_length = length + offset_to_page;
+    const size_t mapped_length = length + static_cast<size_t>(offset_to_page);
     const FileOffsetType mapped_offset = offset - offset_to_page;
     void* const mapped_base =
         mmap(nullptr, mapped_length, PROT_READ | PROT_WRITE, MAP_PRIVATE, file_descriptor.Get(), mapped_offset);

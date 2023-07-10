@@ -3,9 +3,8 @@
 
 import {InferenceSession} from 'onnxruntime-common';
 
-import {iterateExtraOptions} from './options-utils';
-import {allocWasmString} from './string-utils';
 import {getInstance} from './wasm-factory';
+import {allocWasmString, checkLastError, iterateExtraOptions} from './wasm-utils';
 
 export const setRunOptions = (options: InferenceSession.RunOptions): [bigint, bigint[]] => {
   const wasm = getInstance();
@@ -43,7 +42,7 @@ export const setRunOptions = (options: InferenceSession.RunOptions): [bigint, bi
         BigInt(runOptions.logSeverityLevel!), BigInt(runOptions.logVerbosityLevel!), !!runOptions.terminate!,
         BigInt(tagDataOffset));
     if (runOptionsHandle === BigInt(0)) {
-      throw new Error('Can\'t create run options');
+      checkLastError('Can\'t create run options.');
     }
 
     if (options?.extra !== undefined) {
@@ -52,7 +51,7 @@ export const setRunOptions = (options: InferenceSession.RunOptions): [bigint, bi
         const valueDataOffset = allocWasmString(value, allocs);
 
         if (wasm._OrtAddRunConfigEntry(runOptionsHandle, keyDataOffset, valueDataOffset) !== 0) {
-          throw new Error(`Can't set a run config entry: ${key} - ${value}`);
+          checkLastError(`Can't set a run config entry: ${key} - ${value}.`);
         }
       });
     }
@@ -64,7 +63,7 @@ export const setRunOptions = (options: InferenceSession.RunOptions): [bigint, bi
       // @ts-ignore
       wasm._OrtReleaseRunOptions(BigInt(runOptionsHandle));
     }
-    allocs.forEach(wasm._free);
+    allocs.forEach(alloc => wasm._free(alloc));
     throw e;
   }
 };

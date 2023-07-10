@@ -69,21 +69,6 @@ class BaseOpBuilder : public IOpBuilder {
                       bool is_quantized_model,
                       std::vector<std::string>& input_names) const ORT_MUST_USE_RESULT;
 
-  bool OnnxDataTypeToQnnDataType(const int32_t data_type, Qnn_DataType_t& qnn_data_type, bool is_quantized = false) const;
-
-  Status GetQnnDataType(const bool is_quantized_node, const ONNX_NAMESPACE::TypeProto* type_proto,
-                        Qnn_DataType_t& tensor_data_type) const {
-    if (!type_proto || !type_proto->tensor_type().has_elem_type()) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "The tensor doesn't have elem_type.");
-    }
-
-    int32_t onnx_data_type = type_proto->tensor_type().elem_type();
-    ORT_RETURN_IF_NOT(OnnxDataTypeToQnnDataType(onnx_data_type, tensor_data_type, is_quantized_node),
-                      "Failed to map Onnx data type to Qnn data type!");
-
-    return Status::OK();
-  }
-
   const std::string& GetNodeName(const NodeUnit& node_unit) const {
     const std::string& node_name(node_unit.Name());
     if (node_name.empty()) {
@@ -153,6 +138,7 @@ class BaseOpBuilder : public IOpBuilder {
         {"HardSwish", "HardSwish"},
 
         {"Conv", "Conv2d"},
+        {"ConvTranspose", "TransposeConv2d"},
 
         {"GlobalAveragePool", "PoolAvg2d"},
         {"AveragePool", "PoolAvg2d"},
@@ -171,7 +157,6 @@ class BaseOpBuilder : public IOpBuilder {
 
         {"ArgMax", "Argmax"},
         {"ArgMin", "Argmin"},
-        {"ConvTranspose", "TransposeConv2d"},
         {"Tile", "Tile"},
         {"TopK", "TopK"},
         {"InstanceNormalization", "InstanceNorm"},
@@ -243,18 +228,11 @@ class BaseOpBuilder : public IOpBuilder {
     return TransposeInitializer(qnn_model_wrapper, initializer, two_dim_trans_perm, transposed_data);
   }
 
-  void InitializeQuantizeParam(Qnn_QuantizeParams_t& quantize_param, bool is_quantized_model, float scale = 0.0f, int32_t offset = 0) const {
-    quantize_param.encodingDefinition = is_quantized_model ? QNN_DEFINITION_DEFINED : QNN_DEFINITION_UNDEFINED;
-    quantize_param.quantizationEncoding = is_quantized_model ? QNN_QUANTIZATION_ENCODING_SCALE_OFFSET : QNN_QUANTIZATION_ENCODING_UNDEFINED;
-    quantize_param.scaleOffsetEncoding.scale = scale;
-    quantize_param.scaleOffsetEncoding.offset = offset;
-  }
-
   // Onnx Pads is [x1_begin, x2_begin, x1_end, x2_end], QNN requires [x1_begin, x1_end, x2_begin, x2_end]
-  void ReArranagePads(std::vector<int32_t>& pads) const {
+  void ReArranagePads(std::vector<uint32_t>& pads) const {
     auto pads_size = pads.size();
     auto middle_pos = pads_size / 2;
-    std::vector<int32_t> first_half(pads.begin(), pads.begin() + middle_pos);
+    std::vector<uint32_t> first_half(pads.begin(), pads.begin() + middle_pos);
     for (size_t i = 0; i < middle_pos; ++i) {
       pads[2 * i] = first_half[i];
       pads[2 * i + 1] = pads[middle_pos + i];

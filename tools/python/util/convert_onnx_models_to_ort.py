@@ -2,13 +2,14 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
+from __future__ import annotations
+
 import argparse
 import contextlib
 import enum
 import os
 import pathlib
 import tempfile
-import typing
 
 import onnxruntime as ort
 
@@ -32,7 +33,7 @@ def _optimization_suffix(optimization_level_str: str, optimization_style: Optimi
 
 def _create_config_file_path(
     model_path_or_dir: pathlib.Path,
-    output_dir: typing.Optional[pathlib.Path],
+    output_dir: pathlib.Path | None,
     optimization_level_str: str,
     optimization_style: OptimizationStyle,
     enable_type_reduction: bool,
@@ -57,7 +58,7 @@ def _create_session_options(
     optimization_level: ort.GraphOptimizationLevel,
     output_model_path: pathlib.Path,
     custom_op_library: pathlib.Path,
-    session_options_config_entries: typing.Dict[str, str],
+    session_options_config_entries: dict[str, str],
 ):
     so = ort.SessionOptions()
     so.optimized_model_filepath = str(output_model_path)
@@ -74,15 +75,15 @@ def _create_session_options(
 
 def _convert(
     model_path_or_dir: pathlib.Path,
-    output_dir: typing.Optional[pathlib.Path],
+    output_dir: pathlib.Path | None,
     optimization_level_str: str,
     optimization_style: OptimizationStyle,
     custom_op_library: pathlib.Path,
     create_optimized_onnx_model: bool,
     allow_conversion_failures: bool,
     target_platform: str,
-    session_options_config_entries: typing.Dict[str, str],
-) -> typing.List[pathlib.Path]:
+    session_options_config_entries: dict[str, str],
+) -> list[pathlib.Path]:
     model_dir = model_path_or_dir if model_path_or_dir.is_dir() else model_path_or_dir.parent
     output_dir = output_dir or model_dir
 
@@ -258,24 +259,33 @@ def parse_args():
         "processed.",
     )
 
-    return parser.parse_args()
+    parsed_args = parser.parse_args()
+    parsed_args.optimization_style = [OptimizationStyle[style_str] for style_str in parsed_args.optimization_style]
+    return parsed_args
 
 
-def convert_onnx_models_to_ort():
-    args = parse_args()
+def convert_onnx_models_to_ort(
+    model_path_or_dir: pathlib.Path,
+    output_dir: pathlib.Path | None = None,
+    optimization_styles: list[OptimizationStyle] | None = None,
+    custom_op_library_path: pathlib.Path | None = None,
+    target_platform: str | None = None,
+    save_optimized_onnx_model: bool = False,
+    allow_conversion_failures: bool = False,
+    enable_type_reduction: bool = False,
+):
+    if output_dir is not None:
+        if not output_dir.is_dir():
+            output_dir.mkdir(parents=True)
+        output_dir = output_dir.resolve(strict=True)
 
-    output_dir = None
-    if args.output_dir is not None:
-        if not args.output_dir.is_dir():
-            args.output_dir.mkdir(parents=True)
-        output_dir = args.output_dir.resolve(strict=True)
+    optimization_styles = optimization_styles or []
 
-    optimization_styles = [OptimizationStyle[style_str] for style_str in args.optimization_style]
     # setting optimization level is not expected to be needed by typical users, but it can be set with this
     # environment variable
     optimization_level_str = os.getenv("ORT_CONVERT_ONNX_MODELS_TO_ORT_OPTIMIZATION_LEVEL", "all")
-    model_path_or_dir = args.model_path_or_dir.resolve()
-    custom_op_library = args.custom_op_library.resolve() if args.custom_op_library else None
+    model_path_or_dir = model_path_or_dir.resolve()
+    custom_op_library = custom_op_library_path.resolve() if custom_op_library_path else None
 
     if not model_path_or_dir.is_dir() and not model_path_or_dir.is_file():
         raise FileNotFoundError(f"Model path '{model_path_or_dir}' is not a file or directory.")
@@ -285,7 +295,7 @@ def convert_onnx_models_to_ort():
 
     session_options_config_entries = {}
 
-    if args.target_platform == "arm":
+    if target_platform is not None and target_platform == "arm":
         session_options_config_entries["session.qdqisint8allowed"] = "1"
     else:
         session_options_config_entries["session.qdqisint8allowed"] = "0"
@@ -303,9 +313,9 @@ def convert_onnx_models_to_ort():
             optimization_level_str=optimization_level_str,
             optimization_style=optimization_style,
             custom_op_library=custom_op_library,
-            create_optimized_onnx_model=args.save_optimized_onnx_model,
-            allow_conversion_failures=args.allow_conversion_failures,
-            target_platform=args.target_platform,
+            create_optimized_onnx_model=save_optimized_onnx_model,
+            allow_conversion_failures=allow_conversion_failures,
+            target_platform=target_platform,
             session_options_config_entries=session_options_config_entries,
         )
 
@@ -335,8 +345,8 @@ def convert_onnx_models_to_ort():
                     optimization_style=OptimizationStyle.Fixed,
                     custom_op_library=custom_op_library,
                     create_optimized_onnx_model=False,  # not useful as they would be created in a temp directory
-                    allow_conversion_failures=args.allow_conversion_failures,
-                    target_platform=args.target_platform,
+                    allow_conversion_failures=allow_conversion_failures,
+                    target_platform=target_platform,
                     session_options_config_entries=session_options_config_entries_for_second_conversion,
                 )
 
@@ -351,11 +361,21 @@ def convert_onnx_models_to_ort():
                 output_dir,
                 optimization_level_str,
                 optimization_style,
-                args.enable_type_reduction,
+                enable_type_reduction,
             )
 
-            create_config_from_models(converted_models, config_file, args.enable_type_reduction)
+            create_config_from_models(converted_models, config_file, enable_type_reduction)
 
 
 if __name__ == "__main__":
-    convert_onnx_models_to_ort()
+    args = parse_args()
+    convert_onnx_models_to_ort(
+        args.model_path_or_dir,
+        output_dir=args.output_dir,
+        optimization_styles=args.optimization_style,
+        custom_op_library_path=args.custom_op_library,
+        target_platform=args.target_platform,
+        save_optimized_onnx_model=args.save_optimized_onnx_model,
+        allow_conversion_failures=args.allow_conversion_failures,
+        enable_type_reduction=args.enable_type_reduction,
+    )

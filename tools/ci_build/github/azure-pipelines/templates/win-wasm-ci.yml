@@ -26,6 +26,15 @@ parameters:
   type: boolean
   default: false
 
+# In fact, it's only used on Linux for compiler cache.
+- name: BuildStaticLib
+  type: boolean
+  default: false
+
+- name: WithCache
+  type: boolean
+  default: false
+
 jobs:
 - job: build_WASM
   pool: ${{ parameters.PoolName }}

@@ -108,7 +108,7 @@ __device__ inline void SoftmaxSmall(const int all_sequence_length,
                                     const bool broadcast_rel_pos_bias,
                                     const T* input,
                                     T* output,
-                                    bool is_unidirectional) {
+                                    bool causal) {
   using BlockReduce = cub::BlockReduce<float, TPB>;
   __shared__ typename BlockReduce::TempStorage tmp_storage;
 
@@ -119,23 +119,16 @@ __device__ inline void SoftmaxSmall(const int all_sequence_length,
   const int offset = (blockIdx.y * gridDim.x + blockIdx.x) * all_sequence_length;
   const int index = offset + threadIdx.x;
 
-  bool is_valid = false;  // whether it has attention mask == 1.
-
-  // Update end position for unidirectional.
+  // Update end position for causal.
   int end = valid_end;
-  if (is_unidirectional) {
-    int end_unid = all_sequence_length - sequence_length + (blockIdx.x % sequence_length) + 1;
-    if (end_unid <= valid_start) {
-      // In this situation, mask of [0, end_unid) and [valid_start, valid_end) has -10000,
-      //              and [end_unid, valid_start) and [valid_end, all_seq_len) has -20000.
-      // So [0, end_unid) will also have value after softmax.
-      is_valid = threadIdx.x < end_unid;
-    } else {
-      end = min(valid_end, end_unid);
+  if (causal) {
+    const int end_causal = all_sequence_length - sequence_length + (blockIdx.x % sequence_length) + 1;
+    if (end_causal < end) {
+      end = end_causal;
     }
   }
 
-  is_valid = is_valid || (threadIdx.x >= valid_start && threadIdx.x < end);
+  const bool is_valid = (threadIdx.x >= valid_start && threadIdx.x < end);
 
   // e^x is represented as infinity if x is large enough, like 100.f.
   // Infinity divided by Infinity is a NAN. Thus, softmax gets a NAN if one or more item are large enough.
@@ -172,7 +165,7 @@ __device__ inline void SoftmaxSmall(const int all_sequence_length,
 
   // threadIdx.x might be larger than all_sequence_length due to alignment to 32x.
   if (threadIdx.x < all_sequence_length) {
-    output[index] = T(thread_data_exp * sum_reverse_block);
+    output[index] = is_valid ? T(thread_data_exp * sum_reverse_block) : T(0.f);
   }
 }
 
@@ -185,7 +178,7 @@ __global__ void SoftmaxLargeKernel(const int all_sequence_length,
                                    const bool broadcast_rel_pos_bias,
                                    const T* input,
                                    T* output,
-                                   bool is_unidirectional) {
+                                   bool causal) {
   extern __shared__ float cached_data[];  // float[all_sequence_length]
 
   using BlockReduce = cub::BlockReduce<float, TPB>;
@@ -194,20 +187,12 @@ __global__ void SoftmaxLargeKernel(const int all_sequence_length,
   __shared__ float sum_reverse_block;
   __shared__ float max_block;
 
-  // Update end position for unidirectional.
+  // Update end position for causal.
   int end = valid_end;
-  int end_unid = -1;
-  if (is_unidirectional) {
-    end_unid = all_sequence_length - sequence_length + (blockIdx.x % sequence_length) + 1;
-    if (end_unid <= valid_start) {
-      ;
-      // In this situation, mask of [0, end_unid) and [valid_start, valid_end) has -10000,
-      //              and [end_unid, valid_start) and [valid_end, all_seq_len) has -20000.
-      // So [0, end_unid) will also have value after softmax.
-      // KEEP SMALL KERNEL CODE LOGIC HERE as COMMENT
-      // is_valid = threadIdx.x < end_unid; // is_valid initialized with false
-    } else {
-      end = min(valid_end, end_unid);
+  if (causal) {
+    int end_causal = all_sequence_length - sequence_length + (blockIdx.x % sequence_length) + 1;
+    if (end_causal < end) {
+      end = end_causal;
     }
   }
 
@@ -218,7 +203,7 @@ __global__ void SoftmaxLargeKernel(const int all_sequence_length,
   float thread_data_max = -CUDART_INF_F;
   for (int seq_idx = threadIdx.x; seq_idx < all_sequence_length; seq_idx += TPB) {
     const int index = offset + seq_idx;
-    bool is_valid = (seq_idx < end_unid) || (seq_idx >= valid_start && seq_idx < end);
+    const bool is_valid = (seq_idx >= valid_start && seq_idx < end);
 
     // e^x is represented as infinity if x is large enough, like 100.f.
     // Infinity divided by Infinity is a NAN. Thus, softmax gets a NAN if one or more item are large enough.
@@ -244,7 +229,7 @@ __global__ void SoftmaxLargeKernel(const int all_sequence_length,
 
   float thread_data_exp(0.f);
   for (int seq_idx = threadIdx.x; seq_idx < all_sequence_length; seq_idx += TPB) {
-    bool is_valid = (seq_idx < end_unid) || (seq_idx >= valid_start && seq_idx < end);
+    const bool is_valid = (seq_idx >= valid_start && seq_idx < end);
     cached_data[seq_idx] = is_valid ? expf(cached_data[seq_idx] - max_block) : 0.0f;
     thread_data_exp += cached_data[seq_idx];
   }
@@ -258,7 +243,8 @@ __global__ void SoftmaxLargeKernel(const int all_sequence_length,
 
   // threadIdx.x might be larger than all_sequence_length due to alignment to 32x.
   for (int seq_idx = threadIdx.x; seq_idx < all_sequence_length; seq_idx += TPB) {
-    output[offset + seq_idx] = T(cached_data[seq_idx] * sum_reverse_block);
+    const bool is_valid = (seq_idx >= valid_start && seq_idx < end);
+    output[offset + seq_idx] = is_valid ? T(cached_data[seq_idx] * sum_reverse_block) : T(0.f);
   }
 }
 
@@ -271,7 +257,7 @@ __global__ void SoftmaxWithRawMaskLargeKernel(const int all_sequence_length,
                                               const bool broadcast_rel_pos_bias,
                                               const T* input,
                                               T* output,
-                                              const bool is_unidirectional,
+                                              const bool causal,
                                               const float rsqrt_head_size,
                                               const int mask_dimension,
                                               const int max_sequence_length,
@@ -301,10 +287,10 @@ __global__ void SoftmaxWithRawMaskLargeKernel(const int all_sequence_length,
     }
 
     const int sequence_index = blockIdx.x % sequence_length;
-    if (is_unidirectional) {
+    if (causal) {
       int from_index = all_sequence_length - sequence_length + sequence_index;  // offset in all sequence length.
       if (seq_idx > from_index) {
-        thread_data = mask_filter_value;
+        thread_data = -CUDART_INF_F;
       }
     }
 
@@ -377,7 +363,7 @@ __device__ inline void SoftmaxWithRawMaskSmall(const int all_sequence_length,
                                                const bool broadcast_rel_pos_bias,
                                                const T* input,
                                                T* output,
-                                               const bool is_unidirectional,
+                                               const bool causal,
                                                const float rsqrt_head_size,
                                                const int mask_dimension,
                                                const int max_sequence_length,
@@ -398,10 +384,10 @@ __device__ inline void SoftmaxWithRawMaskSmall(const int all_sequence_length,
     thread_data = float(input[index]) * rsqrt_head_size;
 
     const int sequence_index = blockIdx.x % sequence_length;
-    if (is_unidirectional) {
+    if (causal) {
       int from_index = all_sequence_length - sequence_length + sequence_index;  // offset in all sequence length.
       if (threadIdx.x > from_index) {
-        thread_data = mask_filter_value;
+        thread_data = -CUDART_INF_F;
       }
     }
 
@@ -469,9 +455,9 @@ __global__ void SoftmaxKernelSmall(const int all_sequence_length,
                                    const bool broadcast_rel_pos_bias,
                                    const T* input,
                                    T* output,
-                                   bool is_unidirectional) {
+                                   bool causal) {
   SoftmaxSmall<T, TPB>(all_sequence_length, sequence_length, all_sequence_length, 0,
-                       rel_pos_bias, broadcast_rel_pos_bias, input, output, is_unidirectional);
+                       rel_pos_bias, broadcast_rel_pos_bias, input, output, causal);
 }
 
 template <typename T, unsigned TPB>
@@ -487,33 +473,33 @@ __global__ void SoftmaxKernel(const int all_sequence_length,
 template <typename T>
 Status ComputeSoftmax(cudaStream_t stream, const int all_sequence_length, const int sequence_length,
                       const int batch_size, const int num_heads, const T* rel_pos_bias,
-                      const bool broadcast_rel_pos_bias, T* input, T* output, bool is_unidirectional) {
+                      const bool broadcast_rel_pos_bias, T* input, T* output, bool causal) {
   const dim3 grid(sequence_length * num_heads, batch_size, 1);
   if (all_sequence_length <= 32) {
     const int blockSize = 32;
     SoftmaxKernelSmall<T, blockSize><<<grid, blockSize, 0, stream>>>(
-        all_sequence_length, sequence_length, rel_pos_bias, broadcast_rel_pos_bias, input, output, is_unidirectional);
+        all_sequence_length, sequence_length, rel_pos_bias, broadcast_rel_pos_bias, input, output, causal);
   } else if (all_sequence_length <= 64) {
     const int blockSize = 64;
     SoftmaxKernelSmall<T, blockSize><<<grid, blockSize, 0, stream>>>(
-        all_sequence_length, sequence_length, rel_pos_bias, broadcast_rel_pos_bias, input, output, is_unidirectional);
+        all_sequence_length, sequence_length, rel_pos_bias, broadcast_rel_pos_bias, input, output, causal);
   } else if (all_sequence_length <= 128) {
     const int blockSize = 128;
     SoftmaxKernelSmall<T, blockSize><<<grid, blockSize, 0, stream>>>(
-        all_sequence_length, sequence_length, rel_pos_bias, broadcast_rel_pos_bias, input, output, is_unidirectional);
+        all_sequence_length, sequence_length, rel_pos_bias, broadcast_rel_pos_bias, input, output, causal);
   } else if (all_sequence_length <= 256) {
     const int blockSize = 256;
     SoftmaxKernelSmall<T, blockSize><<<grid, blockSize, 0, stream>>>(
-        all_sequence_length, sequence_length, rel_pos_bias, broadcast_rel_pos_bias, input, output, is_unidirectional);
+        all_sequence_length, sequence_length, rel_pos_bias, broadcast_rel_pos_bias, input, output, causal);
   } else if (all_sequence_length <= 512) {
     const int blockSize = 512;
     SoftmaxKernelSmall<T, blockSize><<<grid, blockSize, 0, stream>>>(
-        all_sequence_length, sequence_length, rel_pos_bias, broadcast_rel_pos_bias, input, output, is_unidirectional);
+        all_sequence_length, sequence_length, rel_pos_bias, broadcast_rel_pos_bias, input, output, causal);
   } else if (all_sequence_length <= 1024) {
     const int blockSize = 1024;
     SoftmaxKernelSmall<T, blockSize><<<grid, blockSize, 0, stream>>>(
-        all_sequence_length, sequence_length, rel_pos_bias, broadcast_rel_pos_bias, input, output, is_unidirectional);
-  } else if (!is_unidirectional) {
+        all_sequence_length, sequence_length, rel_pos_bias, broadcast_rel_pos_bias, input, output, causal);
+  } else if (!causal) {
     const int blockSize = 1024;
     SoftmaxKernel<T, blockSize><<<grid, blockSize, 0, stream>>>(
         all_sequence_length, rel_pos_bias, broadcast_rel_pos_bias, input, output);
@@ -537,7 +523,7 @@ __global__ void MaskedSoftmaxKernelSmall(const int all_sequence_length,
                                          const bool broadcast_rel_pos_bias,
                                          const T* input,
                                          T* output,
-                                         bool is_unidirectional) {
+                                         bool causal) {
   __shared__ int start_position;
   __shared__ int end_position;
 
@@ -555,7 +541,7 @@ __global__ void MaskedSoftmaxKernelSmall(const int all_sequence_length,
   __syncthreads();
 
   SoftmaxSmall<T, TPB>(all_sequence_length, sequence_length, end_position, start_position,
-                       rel_pos_bias, broadcast_rel_pos_bias, input, output, is_unidirectional);
+                       rel_pos_bias, broadcast_rel_pos_bias, input, output, causal);
 }
 
 template <typename T, unsigned TPB>
@@ -688,7 +674,7 @@ __global__ void SoftmaxWithRawMaskSmallKernel(const int all_sequence_length,
                                               const bool broadcast_rel_pos_bias,
                                               const T* input,
                                               T* output,
-                                              const bool is_unidirectional,
+                                              const bool causal,
                                               const float rsqrt_head_size,
                                               const int mask_dimension,
                                               const int max_sequence_length,
@@ -697,7 +683,7 @@ __global__ void SoftmaxWithRawMaskSmallKernel(const int all_sequence_length,
   SoftmaxWithRawMaskSmall<T, TPB>(
       all_sequence_length, sequence_length,
       attention_mask, key_padding_mask, rel_pos_bias, broadcast_rel_pos_bias, input, output,
-      is_unidirectional, rsqrt_head_size, mask_dimension, max_sequence_length,
+      causal, rsqrt_head_size, mask_dimension, max_sequence_length,
       skip_softmax, mask_filter_value);
 }
 
@@ -765,40 +751,40 @@ Status ComputeSoftmaxWithMask1D(cudaStream_t stream,
                                 const bool broadcast_rel_pos_bias,
                                 const T* input,
                                 T* output,
-                                const bool is_unidirectional) {
+                                const bool causal) {
   const dim3 grid(sequence_length * num_heads, batch_size, 1);
 
   if (all_sequence_length <= 32) {
     const int blockSize = 32;
     MaskedSoftmaxKernelSmall<T, blockSize>
         <<<grid, blockSize, 0, stream>>>(all_sequence_length, sequence_length, mask_index, mask_start,
-                                         rel_pos_bias, broadcast_rel_pos_bias, input, output, is_unidirectional);
+                                         rel_pos_bias, broadcast_rel_pos_bias, input, output, causal);
   } else if (all_sequence_length <= 64) {
     const int blockSize = 64;
     MaskedSoftmaxKernelSmall<T, blockSize>
         <<<grid, blockSize, 0, stream>>>(all_sequence_length, sequence_length, mask_index, mask_start,
-                                         rel_pos_bias, broadcast_rel_pos_bias, input, output, is_unidirectional);
+                                         rel_pos_bias, broadcast_rel_pos_bias, input, output, causal);
   } else if (all_sequence_length <= 128) {
     const int blockSize = 128;
     MaskedSoftmaxKernelSmall<T, blockSize>
         <<<grid, blockSize, 0, stream>>>(all_sequence_length, sequence_length, mask_index, mask_start,
-                                         rel_pos_bias, broadcast_rel_pos_bias, input, output, is_unidirectional);
+                                         rel_pos_bias, broadcast_rel_pos_bias, input, output, causal);
   } else if (all_sequence_length <= 256) {
     const int blockSize = 256;
     MaskedSoftmaxKernelSmall<T, blockSize>
         <<<grid, blockSize, 0, stream>>>(all_sequence_length, sequence_length, mask_index, mask_start,
-                                         rel_pos_bias, broadcast_rel_pos_bias, input, output, is_unidirectional);
+                                         rel_pos_bias, broadcast_rel_pos_bias, input, output, causal);
   } else if (all_sequence_length <= 512) {
     const int blockSize = 512;
     MaskedSoftmaxKernelSmall<T, blockSize>
         <<<grid, blockSize, 0, stream>>>(all_sequence_length, sequence_length, mask_index, mask_start,
-                                         rel_pos_bias, broadcast_rel_pos_bias, input, output, is_unidirectional);
+                                         rel_pos_bias, broadcast_rel_pos_bias, input, output, causal);
   } else if (all_sequence_length <= 1024) {
     const int blockSize = 1024;
     MaskedSoftmaxKernelSmall<T, blockSize>
         <<<grid, blockSize, 0, stream>>>(all_sequence_length, sequence_length, mask_index, mask_start,
-                                         rel_pos_bias, broadcast_rel_pos_bias, input, output, is_unidirectional);
-  } else if (!is_unidirectional) {
+                                         rel_pos_bias, broadcast_rel_pos_bias, input, output, causal);
+  } else if (!causal) {
     const int blockSize = 1024;
     MaskedSoftmaxKernel<T, blockSize>
         <<<grid, blockSize, 0, stream>>>(all_sequence_length, mask_index, mask_start,
@@ -822,7 +808,7 @@ Status ComputeSoftmaxWithRawMask(cudaStream_t stream,
                                  const bool broadcast_rel_pos_bias,
                                  const T* input,
                                  T* output,
-                                 const bool is_unidirectional,
+                                 const bool causal,
                                  const float rsqrt_head_size,
                                  const int mask_dimension,
                                  const int max_sequence_length,
@@ -837,42 +823,42 @@ Status ComputeSoftmaxWithRawMask(cudaStream_t stream,
     SoftmaxWithRawMaskSmallKernel<T, blockSize>
         <<<grid, blockSize, 0, stream>>>(all_sequence_length, sequence_length,
                                          attention_mask, key_padding_mask, rel_pos_bias, broadcast_rel_pos_bias, input,
-                                         out, is_unidirectional, rsqrt_head_size, mask_dimension, max_sequence_length,
+                                         out, causal, rsqrt_head_size, mask_dimension, max_sequence_length,
                                          use_persistent_softmax, mask_filter_value);
   } else if (all_sequence_length <= 64) {
     const int blockSize = 64;
     SoftmaxWithRawMaskSmallKernel<T, blockSize>
         <<<grid, blockSize, 0, stream>>>(all_sequence_length, sequence_length,
                                          attention_mask, key_padding_mask, rel_pos_bias, broadcast_rel_pos_bias, input,
-                                         out, is_unidirectional, rsqrt_head_size, mask_dimension, max_sequence_length,
+                                         out, causal, rsqrt_head_size, mask_dimension, max_sequence_length,
                                          use_persistent_softmax, mask_filter_value);
   } else if (all_sequence_length <= 128) {
     const int blockSize = 128;
     SoftmaxWithRawMaskSmallKernel<T, blockSize>
         <<<grid, blockSize, 0, stream>>>(all_sequence_length, sequence_length,
                                          attention_mask, key_padding_mask, rel_pos_bias, broadcast_rel_pos_bias, input,
-                                         out, is_unidirectional, rsqrt_head_size, mask_dimension, max_sequence_length,
+                                         out, causal, rsqrt_head_size, mask_dimension, max_sequence_length,
                                          use_persistent_softmax, mask_filter_value);
   } else if (all_sequence_length <= 256) {
     const int blockSize = 256;
     SoftmaxWithRawMaskSmallKernel<T, blockSize>
         <<<grid, blockSize, 0, stream>>>(all_sequence_length, sequence_length,
                                          attention_mask, key_padding_mask, rel_pos_bias, broadcast_rel_pos_bias, input,
-                                         out, is_unidirectional, rsqrt_head_size, mask_dimension, max_sequence_length,
+                                         out, causal, rsqrt_head_size, mask_dimension, max_sequence_length,
                                          use_persistent_softmax, mask_filter_value);
   } else if (all_sequence_length <= 512) {
     const int blockSize = 512;
     SoftmaxWithRawMaskSmallKernel<T, blockSize>
         <<<grid, blockSize, 0, stream>>>(all_sequence_length, sequence_length,
                                          attention_mask, key_padding_mask, rel_pos_bias, broadcast_rel_pos_bias, input,
-                                         out, is_unidirectional, rsqrt_head_size, mask_dimension, max_sequence_length,
+                                         out, causal, rsqrt_head_size, mask_dimension, max_sequence_length,
                                          use_persistent_softmax, mask_filter_value);
   } else if (all_sequence_length <= 1024) {
     const int blockSize = 1024;
     SoftmaxWithRawMaskSmallKernel<T, blockSize>
         <<<grid, blockSize, 0, stream>>>(all_sequence_length, sequence_length,
                                          attention_mask, key_padding_mask, rel_pos_bias, broadcast_rel_pos_bias, input,
-                                         out, is_unidirectional, rsqrt_head_size, mask_dimension, max_sequence_length,
+                                         out, causal, rsqrt_head_size, mask_dimension, max_sequence_length,
                                          use_persistent_softmax, mask_filter_value);
   } else {
     const int blockSize = 256;
@@ -881,7 +867,7 @@ Status ComputeSoftmaxWithRawMask(cudaStream_t stream,
         <<<grid, blockSize, sh_bytes, stream>>>(
             all_sequence_length, sequence_length,
             attention_mask, key_padding_mask, rel_pos_bias, broadcast_rel_pos_bias, input,
-            out, is_unidirectional, rsqrt_head_size, mask_dimension, max_sequence_length,
+            out, causal, rsqrt_head_size, mask_dimension, max_sequence_length,
             use_persistent_softmax, mask_filter_value);
   }
 
@@ -902,12 +888,12 @@ Status ComputeSoftmaxWithRawMask(cudaStream_t stream,
 template Status ComputeSoftmax<float>(
     cudaStream_t stream, const int all_sequence_length, const int sequence_length,
     const int batch_size, const int num_heads, const float* rel_pos_bias,
-    const bool broadcast_rel_pos_bias, float* input, float* output, bool is_unidirectional);
+    const bool broadcast_rel_pos_bias, float* input, float* output, bool causal);
 
 template Status ComputeSoftmax<half>(
     cudaStream_t stream, const int all_sequence_length, const int sequence_length,
     const int batch_size, const int num_heads, const half* rel_pos_bias,
-    const bool broadcast_rel_pos_bias, half* input, half* output, bool is_unidirectional);
+    const bool broadcast_rel_pos_bias, half* input, half* output, bool causal);
 
 template Status ComputeSoftmaxWithCumSeqLength<float>(
     const float* input,
@@ -940,7 +926,7 @@ template Status ComputeSoftmaxWithMask1D<float>(cudaStream_t stream,
                                                 const bool broadcast_rel_pos_bias,
                                                 const float* input,
                                                 float* output,
-                                                const bool is_unidirectional);
+                                                const bool causal);
 
 template Status ComputeSoftmaxWithMask1D<half>(cudaStream_t stream,
                                                const int all_sequence_length,
@@ -953,7 +939,7 @@ template Status ComputeSoftmaxWithMask1D<half>(cudaStream_t stream,
                                                const bool broadcast_rel_pos_bias,
                                                const half* input,
                                                half* output,
-                                               const bool is_unidirectional);
+                                               const bool causal);
 
 template Status ComputeSoftmaxWithRawMask<float>(cudaStream_t stream,
                                                  const int all_sequence_length,
@@ -966,7 +952,7 @@ template Status ComputeSoftmaxWithRawMask<float>(cudaStream_t stream,
                                                  const bool broadcast_rel_pos_bias,
                                                  const float* input,
                                                  float* output,
-                                                 const bool is_unidirectional,
+                                                 const bool causal,
                                                  const float rsqrt_head_size,
                                                  const int mask_dimension,
                                                  const int max_sequence_length,
@@ -985,7 +971,7 @@ template Status ComputeSoftmaxWithRawMask<half>(cudaStream_t stream,
                                                 const bool broadcast_rel_pos_bias,
                                                 const half* input,
                                                 half* output,
-                                                const bool is_unidirectional,
+                                                const bool causal,
                                                 const float rsqrt_head_size,
                                                 const int mask_dimension,
                                                 const int max_sequence_length,

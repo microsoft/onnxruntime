@@ -9,7 +9,6 @@
 #include <functional>
 #include "rknpu_execution_provider.h"
 #include "core/common/logging/logging.h"
-#include "core/framework/allocatormgr.h"
 #include "core/framework/compute_capability.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/session/inference_session.h"
@@ -39,20 +38,6 @@ struct RknpuFuncState {
 
 RknpuExecutionProvider::RknpuExecutionProvider()
     : IExecutionProvider{onnxruntime::kRknpuExecutionProvider} {
-  AllocatorCreationInfo default_memory_info{
-      [](int) {
-        return std::make_unique<CPUAllocator>(OrtMemoryInfo(RKNPU, OrtAllocatorType::OrtDeviceAllocator));
-      }};
-
-  InsertAllocator(CreateAllocator(default_memory_info));
-
-  AllocatorCreationInfo cpu_memory_info{
-      [](int) {
-        return std::make_unique<CPUAllocator>(
-            OrtMemoryInfo(RKNPU, OrtAllocatorType::OrtDeviceAllocator, OrtDevice(), 0, OrtMemTypeCPUOutput));
-      }};
-
-  InsertAllocator(CreateAllocator(cpu_memory_info));
 }
 
 RknpuExecutionProvider::~RknpuExecutionProvider() {}

@@ -4,7 +4,7 @@
 import {Env} from 'onnxruntime-common';
 
 import {OrtWasmModule} from '../binding/ort-wasm';
-import {getTensorElementSize} from '../wasm-common';
+import {DataType, getTensorElementSize} from '../wasm-common';
 
 import {WebGpuBackend} from './backend-webgpu';
 import {LOG_DEBUG} from './log';
@@ -20,7 +20,21 @@ class TensorViewImpl implements TensorView {
       public readonly dims: readonly number[]) {}
 
   getFloat32Array(): Float32Array {
-    return new Float32Array(this.module.HEAP8.buffer, this.data, ShapeUtil.size(this.dims));
+    if (this.dataType !== DataType.float) {
+      throw new Error('Invalid data type');
+    }
+    const elementCount = ShapeUtil.size(this.dims);
+    return elementCount === 0 ? new Float32Array() :
+                                new Float32Array(this.module.HEAP8.buffer, this.data, elementCount);
+  }
+
+  getBigInt64Array(): BigInt64Array {
+    if (this.dataType !== DataType.int64) {
+      throw new Error('Invalid data type');
+    }
+    const elementCount = ShapeUtil.size(this.dims);
+    return elementCount === 0 ? new BigInt64Array() :
+                                new BigInt64Array(this.module.HEAP8.buffer, this.data, elementCount);
   }
 
   reshape(newDims: readonly number[]): TensorView {
@@ -34,15 +48,23 @@ class TensorViewImpl implements TensorView {
 class ComputeContextImpl implements ComputeContext {
   readonly opKernelContext: number;
   readonly inputs: readonly TensorView[];
-  get customData(): {[key: string]: unknown} {
+  get kernelCustomData(): {[key: string]: unknown} {
     return this.backend.currentKernelCustomData;
   }
+  get customDataBuffer(): Uint8Array {
+    return this.module.HEAPU8.subarray(this.customDataOffset, this.customDataOffset + this.customDataSize);
+  }
+  private customDataOffset = 0;
+  private customDataSize = 0;
   constructor(private module: OrtWasmModule, private backend: WebGpuBackend, contextDataOffset: number) {
     const heapU32 = module.HEAPU64;
+
     // extract context data
     let dataIndex = (contextDataOffset / 2**3);
     this.opKernelContext = Number(heapU32[dataIndex++]);
     const inputCount = Number(heapU32[dataIndex++]);
+    this.customDataOffset = Number(heapU32[dataIndex++]);
+    this.customDataSize = Number(heapU32[dataIndex++]);
 
     const inputs: TensorView[] = [];
     for (let i = 0; i < inputCount; i++) {
@@ -82,7 +104,7 @@ class ComputeContextImpl implements ComputeContext {
     const stack = this.module.stackSave();
     try {
       const data = this.module.stackAlloc((1 + dims.length) * 8 /* sizeof(size_t) */);
-      let offset = data >> 3;
+      let offset = data / 2**3;
       this.module.HEAPU64[offset++] = BigInt(dims.length);
       for (let i = 0; i < dims.length; i++) {
         this.module.HEAPU64[offset++] = BigInt(dims[i]);

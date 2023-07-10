@@ -6,7 +6,7 @@
 #endif
 
 // LotusRT
-#include "core/framework/allocatormgr.h"
+#include "core/framework/allocator_utils.h"
 #include "core/common/logging/logging.h"
 #include "core/common/logging/sinks/clog_sink.h"
 #include "protobufHelpers.h"
