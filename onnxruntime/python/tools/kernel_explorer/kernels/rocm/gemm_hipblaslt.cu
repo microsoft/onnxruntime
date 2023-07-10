@@ -16,13 +16,15 @@
 #include "python/tools/kernel_explorer/kernel_explorer_interface.h"
 
 using namespace onnxruntime::rocm::tunable::blas;
-using namespace onnxruntime::rocm::tunable::blas::internal;
 
 namespace py = pybind11;
 
 namespace onnxruntime {
 
 #ifdef USE_HIPBLASLT
+
+using namespace rocm::tunable::blas::internal;
+
 template <typename T, typename ALayout, typename BLayout>
 class GemmHipBlasLt : public IKernelExplorer {
  public:
