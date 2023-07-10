@@ -7,7 +7,6 @@
 
 #include "core/providers/rocm/rocm_common.h"
 #include "contrib_ops/rocm/bert/grouped_gemm.h"
-#include "contrib_ops/rocm/bert/grouped_gemm_tunable.cuh"
 #include "core/providers/rocm/tunable/gemm.h"
 
 namespace onnxruntime {
@@ -34,7 +33,7 @@ using namespace ONNX_NAMESPACE;
 
 
 template<typename T>
-Status GroupedGemm::ComputeInternal(OpKernelContext* ctx) const {
+Status GroupedGemm<T>::ComputeInternal(OpKernelContext* ctx) const {
   typedef typename ToHipType<T>::MappedType HipT;
 
   const Tensor* A = ctx->Input<Tensor>(0);
@@ -42,7 +41,7 @@ Status GroupedGemm::ComputeInternal(OpKernelContext* ctx) const {
   const Tensor* B = ctx->Input<Tensor>(2);
   const Tensor* C = ctx->Input<Tensor>(3);
 
-  GroupedGemmHelper helper(A->Shape(), trans_A_, B->Shape(), trans_B_, C != nullptr ? C->Shape(): TensorShape({}));
+  GroupedGemmHelper helper(A->Shape(), trans_A_, B->Shape(), trans_B_, C != nullptr ? C->Shape(): TensorShape({}), msizes->Shape());
 
   if (!helper.State().IsOK()) {
     return helper.State();
@@ -60,7 +59,7 @@ Status GroupedGemm::ComputeInternal(OpKernelContext* ctx) const {
   // broadcast bias if it is present
   if (beta_ != 0. && C != nullptr) {
     auto bias_shape = C->Shape();
-    const auto* bias_data = reinterpret_cast<HipT*>(C->Data<t>());
+    const auto* bias_data = reinterpret_cast<const HipT*>(C->Data<T>());
 
     if (bias_shape[0] == M) {
       // has same shape of output, directly copy bias into output buffer
@@ -73,15 +72,15 @@ Status GroupedGemm::ComputeInternal(OpKernelContext* ctx) const {
 
   // call grouped_gemm kernel to compute grouped_gemm
   return tunable::blas::column_major::GroupedGemm(
-      GetTunningContext(), Stream(ctx),
+      GetTuningContext(), Stream(ctx),
       GetRocblasHandle(ctx),
-      trans_B_ ? BlasOp::Trans : BlasOp::NonTrans,
-      trans_A_ ? BlasOp::Trans : BlasOp::NonTrans,
+      trans_B_ ? tunable::blas::BlasOp::Trans : tunable::blas::BlasOp::NonTrans,
+      trans_A_ ? tunable::blas::BlasOp::Trans : tunable::blas::BlasOp::NonTrans,
       N, M, K, num_matrix,
       alpha_,
-      reinterpret_cast<HipT*>(B->Data<T>()), (trans_B_ ? K : N),
+      reinterpret_cast<const HipT*>(B->Data<T>()), (trans_B_ ? K : N),
       msizes->Data<std::int64_t>(),
-      reinterpret_cast<HipT*>(A->Data<T>()), (trans_A_ ? M : K),
+      reinterpret_cast<const HipT*>(A->Data<T>()), (trans_A_ ? M : K),
       C != nullptr ? beta_ : 0.0f,
       out_data, N);
 }

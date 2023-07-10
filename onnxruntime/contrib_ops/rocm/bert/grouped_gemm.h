@@ -35,7 +35,7 @@ class GroupedGemmHelper {
       K_ = static_cast<ptrdiff_t>(left[0]);
     } else {
       M_ = static_cast<ptrdiff_t>(left[0]);
-      K_ = static_cast<ptrdiff_t>(left[1];)
+      K_ = static_cast<ptrdiff_t>(left[1]);
     }
 
     int k_dim;
@@ -67,18 +67,18 @@ class GroupedGemmHelper {
   ptrdiff_t M() const { return M_; }
   ptrdiff_t N() const { return N_; }
   ptrdiff_t K() const { return K_; }
-  ptrdiff_t num_matrix const { return num_matrix_; }
+  ptrdiff_t num_matrix() const { return num_matrix_; }
   Status State() const { return status_; }
 
  private:
-  static bool IsValidBroadcast(const TensorShape& bias_shape, const TensorShape& msizes_shape) {
+  bool IsValidBroadcast(const TensorShape& bias_shape, const TensorShape& msizes_shape) {
     if (bias_shape.NumDimensions() != 2) {
       return false;
     }
 
     // valid shape is (M, N) or (m, N) where m is number of elements in msizes
     return (bias_shape[0] == M_ && bias_shape[1] == N_) ||
-	    (bias_shape[0] == msizes_shape[0] && bias_shape[1] == N);
+	    (bias_shape[0] == msizes_shape[0] && bias_shape[1] == N_);
   }
 
   GroupedGemmHelper() = default;
@@ -92,7 +92,7 @@ class GroupedGemmHelper {
 template<typename T>
 class GroupedGemm final : public RocmKernel {
  public:
-  GroupedGemm(const OpKernelInfo& op_kernel_info) {
+  GroupedGemm(const OpKernelInfo& info) : RocmKernel(info) {
     int64_t temp;
     ORT_ENFORCE(info.GetAttr<int64_t>("transA", &temp).IsOK());
     trans_A_ = (temp != 0);

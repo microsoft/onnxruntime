@@ -2456,6 +2456,9 @@ ONNX_MS_OPERATOR_SET_SCHEMA(GroupedGemm, 1,
                                   if (B_shape.dim_size() != 2) {
                                     fail_shape_inference("second input tensor does not have rank 2.");
                                   }
+
+                                  auto transA = ctx.getAttribute("transA")->i();
+                                  auto transB = ctx.getAttribute("transB")->i();
                                   updateOutputShape(ctx, 0, {A_shape.dim(transA ? 1 : 0), B_shape.dim(transB ? 0 : 1)});
                                 })
                                 .SetDoc(R"DOC(used for grouped_gemm.)DOC"));
