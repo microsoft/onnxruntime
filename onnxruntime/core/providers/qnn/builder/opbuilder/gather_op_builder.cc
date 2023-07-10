@@ -57,7 +57,7 @@ Status GatherOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
   std::string indices_input_name(input_name);
   Qnn_DataType_t qnn_data_type = QNN_DATATYPE_INT_32;
   const auto* type_proto = inputs[1].node_arg.TypeAsProto();
-  ORT_RETURN_IF_ERROR(GetQnnDataType(false, type_proto, qnn_data_type));
+  ORT_RETURN_IF_ERROR(utils::GetQnnDataType(false, type_proto, qnn_data_type));
 
   std::vector<uint8_t> unpacked_tensor;
   std::vector<uint8_t> gather_indices;
@@ -98,7 +98,7 @@ Status GatherOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
     // Insert cast node int64 -> int32
     if (qnn_data_type == QNN_DATATYPE_INT_64) {
       // Add Cast node for indices
-      indices_input_name = input_name + "_cast";
+      indices_input_name = input_name + "_ort_qnn_ep_cast";
       QnnTensorWrapper cast_output(indices_input_name, QNN_TENSOR_TYPE_NATIVE, QNN_DATATYPE_INT_32, quantize_param,
                                    std::move(cast_output_shape));
       ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(cast_output)), "Failed to add tensor.");
@@ -162,11 +162,11 @@ Status GatherOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_w
   const auto& output_name = gather_output.node_arg.Name();
 
   Qnn_QuantizeParams_t quantize_param = QNN_QUANTIZE_PARAMS_INIT;
-  InitializeQuantizeParam(quantize_param, is_quantized_model);
+  utils::InitializeQuantizeParam(quantize_param, is_quantized_model);
 
   const auto* type_proto = gather_output.node_arg.TypeAsProto();
   Qnn_DataType_t qnn_data_type = QNN_DATATYPE_FLOAT_32;
-  ORT_RETURN_IF_ERROR(GetQnnDataType(is_quantized_model, type_proto, qnn_data_type));
+  ORT_RETURN_IF_ERROR(utils::GetQnnDataType(is_quantized_model, type_proto, qnn_data_type));
   ORT_RETURN_IF_NOT(qnn_model_wrapper.ProcessQuantizationParameter(gather_output.quant_param,
                                                                    quantize_param.scaleOffsetEncoding.scale,
                                                                    quantize_param.scaleOffsetEncoding.offset),
@@ -177,7 +177,7 @@ Status GatherOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_w
 
   bool is_graph_output = qnn_model_wrapper.IsGraphOutput(output_name);
   bool reshape_required = (qnn_output_shape.size() != target_output_shape.size());
-  std::string gather_output_name = output_name + (reshape_required ? "_reshape" : "");
+  std::string gather_output_name = output_name + (reshape_required ? "_ort_qnn_ep_reshape" : "");
   Qnn_TensorType_t tensor_type = (!reshape_required && is_graph_output) ? QNN_TENSOR_TYPE_APP_READ : QNN_TENSOR_TYPE_NATIVE;
   QnnTensorWrapper gather_output_wrapper(gather_output_name, tensor_type, qnn_data_type, quantize_param,
                                          std::move(qnn_output_shape));

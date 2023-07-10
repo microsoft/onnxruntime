@@ -5,8 +5,6 @@
 if(WIN32)
   # TODO: actually we need cmake 3.26+ on Windows but QNN EP's build machine doesn't have it
   cmake_minimum_required(VERSION 3.25)
-elseif(onnxruntime_USE_ROCM)
-  cmake_minimum_required(VERSION 3.24)
 else()
   cmake_minimum_required(VERSION 3.26)
 endif()
@@ -609,6 +607,11 @@ else()
     if (TARGET libprotobuf-lite)
       target_compile_options(libprotobuf-lite PRIVATE "-Wno-enum-constexpr-conversion")
     endif()
+  endif()
+
+  # enable warning(s) that may not be on by default
+  if (HAS_SHORTEN_64_TO_32)
+    list(APPEND ORT_WARNING_FLAGS -Wshorten-64-to-32)
   endif()
 endif()
 
