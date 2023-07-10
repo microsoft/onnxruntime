@@ -6051,7 +6051,7 @@ def test_e2e_padding_elimination():
             if pt_param.grad is not None:
                 _test_helpers.assert_values_are_close(pt_param.grad, ort_param.grad, atol=1e-4, rtol=1e-5)
 
-        if os.getenv("ORTMODULE_ORT_TEST", "0") == "1":
+        if os.getenv("ORTMODULE_ROCM_TEST", "0") == "1":
             # For ROCm EP, the difference between ORT and PyTorch is larger than CUDA EP.
             _test_helpers.assert_values_are_close(ort_prediction, pt_prediction, atol=2e-3, rtol=2e-4)
         else:

@@ -179,14 +179,14 @@ def main():
 
     run_ortmodule_poc_net(cwd, log, no_cuda=False, data_dir=args.mnist)
 
-    if os.getenv("ORTMODULE_ROCM_TEST", "0") == "0":
+    if os.getenv("ORTMODULE_DISABLE_CPU_TRAINING_TEST", "0") != "1":
         run_ortmodule_poc_net(cwd, log, no_cuda=True, data_dir=args.mnist)
 
     run_ortmodule_hf_bert_for_sequence_classification_from_pretrained(
         cwd, log, no_cuda=False, data_dir=args.bert_data, transformers_cache=args.transformers_cache
     )
 
-    if os.getenv("ORTMODULE_ROCM_TEST", "0") == "0":
+    if os.getenv("ORTMODULE_DISABLE_CPU_TRAINING_TEST", "0") != "1":
         run_ortmodule_hf_bert_for_sequence_classification_from_pretrained(
             cwd, log, no_cuda=True, data_dir=args.bert_data, transformers_cache=args.transformers_cache
         )
