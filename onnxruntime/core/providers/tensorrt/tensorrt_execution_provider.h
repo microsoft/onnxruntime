@@ -10,6 +10,7 @@
 #include "core/platform/ort_mutex.h"
 #include "core/providers/cuda/cuda_graph.h"
 #include "tensorrt_execution_provider_info.h"
+#include <iostream>
 
 namespace onnxruntime {
 
@@ -263,6 +264,7 @@ class TensorrtExecutionProvider : public IExecutionProvider {
     bool IsTensorRTContextInMap(std::string fused_node);
     nvinfer1::IExecutionContext& GetTensorRTContext(std::string fused_node);
     std::unordered_map<std::string, std::shared_ptr<nvinfer1::IExecutionContext>>* GetTensorRTContextCache();
+    void SetTensorRTContext(std::string fused_node, std::unique_ptr<nvinfer1::IExecutionContext> context); 
 
     void InitCUDAGraph();
     void SetGraphStream(cudaStream_t stream);
@@ -289,7 +291,8 @@ class TensorrtExecutionProvider : public IExecutionProvider {
     const int min_num_runs_before_cuda_graph_capture_ = 0;  // required min regular runs before graph capture for the necessary memory allocations.
 
     // Maintaining one execution context on a per thread basis is suggested per TRT doc to avoid synchronization issue.
-    std::unordered_map<std::string, std::shared_ptr<nvinfer1::IExecutionContext>> trt_context_map_;
+    //std::unordered_map<std::string, std::shared_ptr<nvinfer1::IExecutionContext>> trt_context_map_;
+    std::unordered_map<std::string, std::unique_ptr<nvinfer1::IExecutionContext>> trt_context_map_;
   };
 
   using PerThreadContextMap = std::unordered_map<const TensorrtExecutionProvider*, std::weak_ptr<PerThreadContext>>;
@@ -298,10 +301,11 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   struct ContextCacheHolder {
     ContextCacheHolder() {
       // Keep a weak pointer to the object, if the weak pointer can be locked, then the shared pointer is still around, so we can reset it
-      //RunOnUnload([&, weak_p_ = std::weak_ptr<PerThreadContextMap>(p)] {
-        //if (auto lock = weak_p_.lock())
-          //lock.reset();
-      //});
+      RunOnUnload([&, weak_p_ = std::weak_ptr<PerThreadContextMap>(p)] {
+        std::cout << "In RunOnUnload()" << std::endl;
+        if (auto lock = weak_p_.lock())
+          lock.reset();
+      });
     }
     std::shared_ptr<PerThreadContextMap> p = std::make_shared<PerThreadContextMap>();
   };
