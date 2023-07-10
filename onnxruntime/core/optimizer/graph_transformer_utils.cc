@@ -238,6 +238,13 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       // add __backwardpass attribute to nodes after YieldOp, ROCm-only
       const InlinedHashSet<std::string_view> rocm_ep = {onnxruntime::kRocmExecutionProvider};
       transformers.emplace_back(std::make_unique<RocmBlasAltImpl>(rocm_ep));
+
+      // run TransposeOptimizer last as it works in a slightly different way by moving Transpose nodes around.
+      // shouldn't affect the end result - just easier to debug any issue if it's last.
+      // local CPU allocator is enough as this allocator is finally passed to a local tensor.
+      // We will also benefit by using a local allocator as we don't need to pass allocator as parameter for EP API refactor
+      AllocatorPtr cpu_allocator = std::make_shared<CPUAllocator>();
+      transformers.emplace_back(std::make_unique<TransposeOptimizer>(std::move(cpu_allocator)));
     } break;
 
     case TransformerLevel::Level2: {
@@ -342,13 +349,6 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
           session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsMemoryOptimizerProbeLevel, "0");
       transformers.emplace_back(std::make_unique<MemoryOptimizer>(enable_memory_optimizer, probe_level));
 #endif
-
-      // run TransposeOptimizer last as it works in a slightly different way by moving Transpose nodes around.
-      // shouldn't affect the end result - just easier to debug any issue if it's last.
-      // local CPU allocator is enough as this allocator is finally passed to a local tensor.
-      // We will also benefit by using a local allocator as we don't need to pass allocator as parameter for EP API refactor
-      AllocatorPtr cpu_allocator = std::make_shared<CPUAllocator>();
-      transformers.emplace_back(std::make_unique<TransposeOptimizer>(std::move(cpu_allocator)));
     } break;
 
     case TransformerLevel::Level3: {
