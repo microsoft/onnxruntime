@@ -153,7 +153,31 @@ export const createResizeProgramInfoLoader =
       return {...metadata, get: () => createResizeProgramInfo(metadata, inputs, attributes)};
     };
 
+const readCustomDataBuffer = (context: ComputeContext): void => {
+  const customDataBuffer = context.customDataBuffer;
+  const customDataBuffer32 = new Uint32Array(customDataBuffer, customDataBuffer.byteOffset, 10);
+  useExtrapolation = customDataBuffer32[0] === 1;
+  opset = customDataBuffer32[1];
+  const outputShapeSize = customDataBuffer32[2];
+  const scalesSize = customDataBuffer32[3];
+  const roiSize = customDataBuffer32[4];
+  let offset = customDataBuffer.byteOffset;
+  offset += 20;
+  if (outputShapeSize > 0) {
+    outputShapeArray = new Uint32Array(customDataBuffer, offset, outputShapeSize);
+  }
+  offset += 4 * outputShapeSize;  // adjust offset to read scales
+  if (scalesSize > 0) {
+    scalesArray = new Float32Array(customDataBuffer, offset, scalesSize);
+  }
+  offset += 4 * scalesSize;  // adjust offset to read roi
+  if (roiSize > 0) {
+    roiArray = new Float32Array(customDataBuffer, offset, roiSize);
+  }
+};
+
 export const resize = (context: ComputeContext, attributes: ResizeAttributes): void => {
+  readCustomDataBuffer(context);
   validateInputs(context.inputs, attributes);
   context.compute(createResizeProgramInfoLoader(context.inputs, attributes), {inputs: [0]});
 };
