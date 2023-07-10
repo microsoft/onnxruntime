@@ -517,6 +517,14 @@ public class OrtSession implements AutoCloseable {
       }
     }
 
+    static {
+      try {
+        OnnxRuntime.init();
+      } catch (IOException e) {
+        throw new RuntimeException("Failed to load onnx-runtime library", e);
+      }
+    }
+
     private final long nativeHandle;
 
     private final List<Long> customLibraryHandles;
@@ -783,6 +791,54 @@ public class OrtSession implements AutoCloseable {
     public Map<String, String> getConfigEntries() {
       checkClosed();
       return Collections.unmodifiableMap(configEntries);
+    }
+
+    /**
+     * Adds in the supplied externally loaded initializers.
+     *
+     * <p>Note the initializers are copied into the session once it has been created, and the native
+     * references are removed from this {@code SessionOptions}. Once the session has been created
+     * those initializers can be closed. This is a different lifetime to initializers added via
+     * {@link #addInitializer(String, OnnxTensorLike)}. The initializers must be created from {@link
+     * java.nio.Buffer} objects.
+     *
+     * @param initializers The map of names to initializers.
+     * @throws OrtException If the initializers could not be loaded.
+     */
+    public void addExternalInitializers(Map<String, OnnxTensorLike> initializers)
+        throws OrtException {
+      checkClosed();
+      if (initializers.isEmpty()) {
+        return;
+      }
+      String[] names = new String[initializers.size()];
+      long[] handles = new long[initializers.size()];
+      int i = 0;
+      for (Map.Entry<String, OnnxTensorLike> e : initializers.entrySet()) {
+        names[i] = e.getKey();
+        handles[i] = e.getValue().nativeHandle;
+        i++;
+      }
+      addExternalInitializers(OnnxRuntime.ortApiHandle, nativeHandle, names, handles);
+    }
+
+    /**
+     * Adds an initializer to override one from the ONNX model.
+     *
+     * <p>Note the initializer lifetime must outlive the session and session options. This is a
+     * different lifetime to initializers added via {@link #addExternalInitializers(Map)}. The
+     * initializers must be created from {@link java.nio.Buffer} objects.
+     *
+     * @param name The initializer name.
+     * @param initializer The initializer value.
+     * @throws OrtException If the initializer could not be loaded into the session options.
+     */
+    public void addInitializer(String name, OnnxTensorLike initializer) throws OrtException {
+      checkClosed();
+      if (name.trim().isEmpty()) {
+        throw new IllegalArgumentException("Initializer name was blank");
+      }
+      addInitializer(OnnxRuntime.ortApiHandle, nativeHandle, name, initializer.getNativeHandle());
     }
 
     /**
@@ -1088,6 +1144,13 @@ public class OrtSession implements AutoCloseable {
         long apiHandle, long nativeHandle, String dimensionName, long dimensionValue)
         throws OrtException;
 
+    private native void addExternalInitializers(
+        long apiHandle, long nativeHandle, String[] names, long[] tensorHandles)
+        throws OrtException;
+
+    private native void addInitializer(
+        long apiHandle, long nativeHandle, String name, long tensorHandle) throws OrtException;
+
     private native void disablePerSessionThreads(long apiHandle, long nativeHandle)
         throws OrtException;
 
@@ -1163,6 +1226,14 @@ public class OrtSession implements AutoCloseable {
 
   /** Used to control logging and termination of a call to {@link OrtSession#run}. */
   public static class RunOptions implements AutoCloseable {
+
+    static {
+      try {
+        OnnxRuntime.init();
+      } catch (IOException e) {
+        throw new RuntimeException("Failed to load onnx-runtime library", e);
+      }
+    }
 
     private final long nativeHandle;
 

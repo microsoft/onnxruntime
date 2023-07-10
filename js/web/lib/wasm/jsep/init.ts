@@ -48,9 +48,14 @@ class TensorViewImpl implements TensorView {
 class ComputeContextImpl implements ComputeContext {
   readonly opKernelContext: number;
   readonly inputs: readonly TensorView[];
-  get customData(): {[key: string]: unknown} {
+  get kernelCustomData(): {[key: string]: unknown} {
     return this.backend.currentKernelCustomData;
   }
+  get customDataBuffer(): Uint8Array {
+    return this.module.HEAPU8.subarray(this.customDataOffset, this.customDataOffset + this.customDataSize);
+  }
+  private customDataOffset = 0;
+  private customDataSize = 0;
   constructor(private module: OrtWasmModule, private backend: WebGpuBackend, contextDataOffset: number) {
     const heapU32 = module.HEAPU32;
 
@@ -58,6 +63,8 @@ class ComputeContextImpl implements ComputeContext {
     let dataIndex = (contextDataOffset >> 2);
     this.opKernelContext = heapU32[dataIndex++];
     const inputCount = heapU32[dataIndex++];
+    this.customDataOffset = heapU32[dataIndex++];
+    this.customDataSize = heapU32[dataIndex++];
 
     const inputs: TensorView[] = [];
     for (let i = 0; i < inputCount; i++) {
