@@ -15,6 +15,7 @@
 #include "gmock/gmock.h"
 
 #include "core/common/common.h"
+#include "core/common/narrow.h"
 #include "core/graph/constants.h"
 #include "core/session/onnxruntime_c_api.h"
 #include "core/session/onnxruntime_cxx_api.h"
@@ -1916,7 +1917,7 @@ TEST(CApiTest, cuda_graph_with_shape_nodes) {
 
 TEST(CApiTest, create_tensor) {
   const char* s[] = {"abc", "kmp"};
-  int64_t expected_len = 2;
+  constexpr int64_t expected_len = 2;
   auto default_allocator = std::make_unique<MockedOrtAllocator>();
 
   Ort::Value tensor = Ort::Value::CreateTensor(default_allocator.get(), &expected_len, 1,
@@ -1925,7 +1926,7 @@ TEST(CApiTest, create_tensor) {
   Ort::ThrowOnError(Ort::GetApi().FillStringTensor(tensor, s, expected_len));
   auto shape_info = tensor.GetTensorTypeAndShapeInfo();
 
-  int64_t len = shape_info.GetElementCount();
+  const auto len = shape_info.GetElementCount();
   ASSERT_EQ(len, expected_len);
   std::vector<int64_t> shape_array(len);
 
@@ -1937,19 +1938,19 @@ TEST(CApiTest, create_tensor) {
 
 TEST(CApiTest, fill_string_tensor) {
   const char* s[] = {"abc", "kmp"};
-  int64_t expected_len = 2;
+  constexpr int64_t expected_len = 2;
   auto default_allocator = std::make_unique<MockedOrtAllocator>();
 
   Ort::Value tensor = Ort::Value::CreateTensor(default_allocator.get(), &expected_len, 1,
                                                ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING);
 
-  for (int64_t i = 0; i < expected_len; i++) {
+  for (size_t i = 0; i < expected_len; i++) {
     tensor.FillStringTensorElement(s[i], i);
   }
 
   auto shape_info = tensor.GetTensorTypeAndShapeInfo();
 
-  int64_t len = shape_info.GetElementCount();
+  const auto len = shape_info.GetElementCount();
   ASSERT_EQ(len, expected_len);
 }
 
@@ -1961,7 +1962,7 @@ TEST(CApiTest, fill_string_tensor_directly) {
   Ort::Value tensor = Ort::Value::CreateTensor(&default_allocator, &expected_len, 1U,
                                                ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING);
 
-  for (size_t i = 0; i < static_cast<size_t>(expected_len); i++) {
+  for (size_t i = 0; i < expected_len; i++) {
     auto* buffer = tensor.GetResizedStringTensorElementBuffer(i, s[i].size());
     memcpy(buffer, s[i].data(), s[i].size());
   }
@@ -1970,7 +1971,7 @@ TEST(CApiTest, fill_string_tensor_directly) {
   int64_t len = shape_info.GetElementCount();
   ASSERT_EQ(len, expected_len);
 
-  for (size_t i = 0; i < static_cast<size_t>(expected_len); i++) {
+  for (size_t i = 0; i < expected_len; i++) {
     auto element = tensor.GetStringTensorElement(i);
     ASSERT_EQ(s[i], element);
   }
@@ -1978,8 +1979,8 @@ TEST(CApiTest, fill_string_tensor_directly) {
 
 TEST(CApiTest, get_string_tensor_element) {
   const char* s[] = {"abc", "kmp"};
-  int64_t expected_len = 2;
-  int64_t element_index = 0;
+  constexpr int64_t expected_len = 2;
+  constexpr int64_t element_index = 0;
   auto default_allocator = std::make_unique<MockedOrtAllocator>();
 
   Ort::Value tensor = Ort::Value::CreateTensor(default_allocator.get(), &expected_len, 1,
@@ -2559,7 +2560,7 @@ TEST(CApiTest, TestSharingOfInitializerAndItsPrepackedVersion) {
   ASSERT_TRUE(model_file_stream.good());
 
   model_file_stream.seekg(0, std::ios::end);
-  size_t size = model_file_stream.tellg();
+  const auto size = onnxruntime::narrow<size_t>(model_file_stream.tellg());
   model_file_stream.seekg(0, std::ios::beg);
   std::vector<char> file_contents(size, 0);
   model_file_stream.read(&file_contents[0], size);
@@ -3144,8 +3145,10 @@ TEST(LiteCustomOpTest, MissingOptional) {
   auto memory_info = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
 
   Ort::Value input_tensors[] = {
-      Ort::Value::CreateTensor<float>(memory_info, vector_1_value, vector_1_dim[0], vector_1_dim, 1),
-      Ort::Value::CreateTensor<float>(memory_info, vector_2_value, vector_2_dim[0], vector_2_dim, 1)};
+      Ort::Value::CreateTensor<float>(memory_info, vector_1_value, gsl::narrow_cast<size_t>(vector_1_dim[0]),
+                                      vector_1_dim, 1),
+      Ort::Value::CreateTensor<float>(memory_info, vector_2_value, gsl::narrow_cast<size_t>(vector_2_dim[0]),
+                                      vector_2_dim, 1)};
 
   Ort::RunOptions run_options;
   auto output_tensors = session.Run(run_options, input_names, input_tensors, 2, output_names, 1);
@@ -3182,9 +3185,12 @@ TEST(LiteCustomOpTest, HasOptional) {
   auto memory_info = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
 
   Ort::Value input_tensors[] = {
-      Ort::Value::CreateTensor<float>(memory_info, vector_1_value, vector_1_dim[0], vector_1_dim, 1),
-      Ort::Value::CreateTensor<float>(memory_info, vector_2_value, vector_2_dim[0], vector_2_dim, 1),
-      Ort::Value::CreateTensor<float>(memory_info, vector_3_value, vector_3_dim[0], vector_3_dim, 1),
+      Ort::Value::CreateTensor<float>(memory_info, vector_1_value, gsl::narrow_cast<size_t>(vector_1_dim[0]),
+                                      vector_1_dim, 1),
+      Ort::Value::CreateTensor<float>(memory_info, vector_2_value, gsl::narrow_cast<size_t>(vector_2_dim[0]),
+                                      vector_2_dim, 1),
+      Ort::Value::CreateTensor<float>(memory_info, vector_3_value, gsl::narrow_cast<size_t>(vector_3_dim[0]),
+                                      vector_3_dim, 1),
   };
 
   Ort::RunOptions run_options;
