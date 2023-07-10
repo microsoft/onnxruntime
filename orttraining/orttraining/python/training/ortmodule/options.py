@@ -239,6 +239,7 @@ class _RuntimeOptions:
         # Triton support.
         self.enable_triton = False
         self.enable_tuning = False
+        self.max_tuning_duration_ms = 0
         self.tuning_results_path = ""
 
         # Override the feature config if it exists in os env.
@@ -307,5 +308,9 @@ class _RuntimeOptions:
 
         if "ORTMODULE_ENABLE_TUNING" in os.environ and int(os.getenv("ORTMODULE_ENABLE_TUNING")) == 1:
             self.enable_tuning = True
+        if "ORTMODULE_MAX_TUNING_DURATION_MS" in os.environ:
+            max_tuning_duration_ms = int(os.getenv("ORTMODULE_MAX_TUNING_DURATION_MS"))
+            if max_tuning_duration_ms > 0:
+                self.max_tuning_duration_ms = max_tuning_duration_ms
         if "ORTMODULE_TUNING_RESULTS_PATH" in os.environ:
             self.tuning_results_path = os.getenv("ORTMODULE_TUNING_RESULTS_PATH")

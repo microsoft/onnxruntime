@@ -205,6 +205,10 @@ class GraphExecutionManager(GraphExecutionInterface):
                 if self._runtime_options.enable_tuning:
                     provider_option_map["tunable_op_enable"] = "1"
                     provider_option_map["tunable_op_tuning_enable"] = "1"
+                    if self._runtime_options.max_tuning_duration_ms:
+                        provider_option_map["tunable_op_max_tuning_duration_ms"] = str(
+                            self._runtime_options.max_tuning_duration_ms
+                        )
                 elif self._runtime_options.tuning_results_path:
                     provider_option_map["tunable_op_enable"] = "1"
             if self._runtime_options.use_external_gpu_allocator:
@@ -603,7 +607,13 @@ class GraphExecutionManager(GraphExecutionInterface):
         )
 
         if self._runtime_options.enable_triton:
-            feature_map.append(("Triton Op", True, "Enable Triton Op."))
+            feature_map.append(
+                (
+                    "TritonOp Enabled",
+                    True,
+                    "ORT will switch to Triton for executing some ops to further accelerate training.",
+                )
+            )
 
         if self._runtime_options.enable_tuning:
             desc = "Enable tunning Ops online"

@@ -107,16 +107,16 @@ bool CheckAxes(const Graph& graph, const Node& node, bool single_axis, const std
   return axes_values == expected_axes_values;
 }
 
-// A partition contains connected supporting nodes.
-// When building the Partition, we keep all the dependencies and output ref counts so that to make sure
+// A TritonOpPartition contains all connected nodes in ONNX graph which are supported by ORTModule's Triton module.
+// When building the TritonOpPartition, we keep all the dependencies and output ref counts so that to make sure
 // there is no dependency between two nodes in the partition through any node outside the partition.
-struct Partition {
+struct TritonOpPartition {
   NodeVec nodes;
   NodeArgSet outputs;
   NodeArgSet dependencies;
   size_t output_ref_count;
 
-  void MergeFrom(const Partition& other) {
+  void MergeFrom(const TritonOpPartition& other) {
     nodes.insert(nodes.end(), other.nodes.begin(), other.nodes.end());
     outputs.insert(other.outputs.begin(), other.outputs.end());
     dependencies.insert(other.dependencies.begin(), other.dependencies.end());
@@ -239,8 +239,8 @@ Status TritonFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, co
   GraphViewer graph_viewer(graph);
   const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
   size_t global_id = 0;
-  InlinedHashMap<size_t, Partition> partitions;
-  InlinedHashMap<size_t, Partition> partitions_to_fuse;
+  InlinedHashMap<size_t, TritonOpPartition> partitions;
+  InlinedHashMap<size_t, TritonOpPartition> partitions_to_fuse;
   InlinedHashMap<NodeArg*, size_t> active_outputs;
   for (auto node_index : node_topology_list) {
     auto* p_node = graph.GetNode(node_index);
@@ -274,7 +274,7 @@ Status TritonFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, co
 
     if (!partitions_to_merge.empty()) {
       std::sort(partitions_to_merge.begin(), partitions_to_merge.end());
-      Partition& dst = partitions.at(partitions_to_merge[0]);
+      TritonOpPartition& dst = partitions.at(partitions_to_merge[0]);
       for (size_t i = partitions_to_merge.size() - 1; i > 0; --i) {
         dst.MergeFrom(partitions.at(partitions_to_merge[i]));
         partitions.erase(partitions_to_merge[i]);
@@ -286,7 +286,7 @@ Status TritonFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, co
       }
       dst.output_ref_count += node.GetOutputEdgesCount();
     } else if (is_supported) {
-      Partition partition;
+      TritonOpPartition partition;
       partition.nodes.emplace_back(&node);
       for (auto& node_def : node.MutableOutputDefs()) {
         partition.outputs.emplace(node_def);

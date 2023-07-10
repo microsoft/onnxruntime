@@ -507,16 +507,16 @@ class GraphLowering:
         visited = set()
         sorted_indices = []
 
-        def _topological_soft_internal(idx):
+        def _topological_sort_internal(idx):
             visited.add(idx)
             for next_idx in dependency[idx]:
                 if next_idx not in visited:
-                    _topological_soft_internal(next_idx)
+                    _topological_sort_internal(next_idx)
             sorted_indices.insert(0, idx)
 
         for idx in range(len(self._kernel_io_list)):
             if idx not in visited:
-                _topological_soft_internal(idx)
+                _topological_sort_internal(idx)
 
         self._kernel_nodes = [self._kernel_nodes[idx] for idx in sorted_indices]
         self._kernel_io_list = [self._kernel_io_list[idx] for idx in sorted_indices]

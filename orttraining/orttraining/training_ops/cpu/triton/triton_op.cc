@@ -71,4 +71,4 @@ Status ExecuteTritonOpByFuncName(OpKernelContext* p_ctx, const std::string& func
 }  // namespace contrib
 }  // namespace onnxruntime
 
-#endif  // ENABLE_TRITON
+#endif

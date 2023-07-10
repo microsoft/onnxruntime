@@ -110,7 +110,7 @@ class SortedGraph:
         for node_idx, node in enumerate(self._sorted_nodes):
             inputs = []
             for input in node.input:
-                inputs.append(name_map[input] if input in name_map else input)
+                inputs.append(name_map.get(input, input))
             inputs_str = ",".join(inputs)
             outputs = []
             for idx, output in enumerate(node.output):

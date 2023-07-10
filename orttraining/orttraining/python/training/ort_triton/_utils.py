@@ -17,11 +17,11 @@ def gen_unique_name(prefix: str) -> str:
     return prefix + "_" + uuid.uuid4().hex[:8]
 
 
-def _topological_soft_internal(node, visited, output_consumers, sorted_nodes):
+def _topological_sort_internal(node, visited, output_consumers, sorted_nodes):
     visited.add(node.name)
     for next_node in output_consumers[node.name]:
         if next_node.name not in visited:
-            _topological_soft_internal(next_node, visited, output_consumers, sorted_nodes)
+            _topological_sort_internal(next_node, visited, output_consumers, sorted_nodes)
 
     sorted_nodes.insert(0, node)
 
@@ -60,7 +60,7 @@ def topological_sort(inputs: List[str], nodes: List[NodeProto]) -> List[NodeProt
     for input in inputs:
         for node in graph_input_consumers[input]:
             if node.name not in visited:
-                _topological_soft_internal(node, visited, output_consumers, sorted_nodes)
+                _topological_sort_internal(node, visited, output_consumers, sorted_nodes)
 
     return const_nodes + sorted_nodes
 

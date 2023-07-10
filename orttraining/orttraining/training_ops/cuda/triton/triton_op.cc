@@ -17,4 +17,4 @@ ONNX_OPERATOR_KERNEL_EX(TritonOp, kMSDomain, 1, kCudaExecutionProvider,
 }  // namespace cuda
 }  // namespace onnxruntime
 
-#endif  // ENABLE_TRITON
+#endif

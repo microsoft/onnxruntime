@@ -4098,14 +4098,23 @@ Return true if all elements are true and false otherwise.
   ONNX_CONTRIB_OPERATOR_SCHEMA(TritonOp)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
-      .SetDoc("Triton Op.")
-      .Attr("func_name", "Function name of the triton kernel.", AttributeProto::STRING, std::string(""))
+      .SetDoc(
+          "Calling an existing Python Triton kernel by function name, "
+          "or compute an ONNX graph through Python code to codegen, compile and execute Triton kernels.")
+      .Attr("func_name", "Function name of the Python Triton kernel.", AttributeProto::STRING, std::string(""))
       .Attr("onnx_key", "The hash key for the ONNX graph.", AttributeProto::INT, static_cast<int64_t>(0))
       .Attr("onnx_string", "The onnx string of the triton kernel.", AttributeProto::STRING, std::string(""))
-      .Input(0, "inputs", "Input tensors.", "T", OpSchema::Variadic,
+      .Input(0, "inputs",
+             "Input tensors. If to call an existing Python Triton kernel, "
+             "the input count and order should match the arguments of the function. If to compute an ONNX graph, "
+             "the input count and order should match the input count and order of the ONNX graph.",
+             "T", OpSchema::Variadic,
              /*is_homogeneous*/ false,
              /*min_arity*/ 0)
-      .Output(0, "outputs", "Output tensors.", "T", OpSchema::Variadic,
+      .Output(0, "outputs",
+              "Output tensors. If to compute an ONNX graph, "
+              "the output count and order should match the output count and order of the ONNX graph.",
+              "T", OpSchema::Variadic,
               /*is_homogeneous*/ false,
               /*min_arity*/ 1)
       .TypeConstraint("T", OpSchema::all_tensor_types_with_bfloat(),

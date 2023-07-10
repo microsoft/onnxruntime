@@ -32,9 +32,11 @@ class TritonOpExecutor final {
 
   std::string GetConfigJson();
 
+  // Execute ONNX graph by codegening, compiling and executing Triton kernels.
   void ExecuteByOnnx(int64_t onnx_key, const std::string& onnx_string, const InlinedVector<const OrtValue*>& inputs,
                      InlinedVector<OrtValue>& outputs, const InlinedHashSet<size_t>& bool_outputs = {});
 
+  // Execute existing Triton kernel by Python function name.
   void ExecuteByFuncName(const std::string& func_name, const InlinedVector<const OrtValue*>& inputs,
                          InlinedVector<OrtValue>& outputs, const InlinedHashSet<size_t>& bool_outputs = {},
                          const InlinedHashMap<std::string, std::pair<std::string, int>>& kwargs = {});

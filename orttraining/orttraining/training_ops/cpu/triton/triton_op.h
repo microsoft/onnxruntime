@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#if ENABLE_TRITON
+#ifdef ENABLE_TRITON
 
 #pragma once
 
@@ -38,4 +38,4 @@ Status ExecuteTritonOpByFuncName(OpKernelContext* p_ctx, const std::string& func
 }  // namespace contrib
 }  // namespace onnxruntime
 
-#endif  // ENABLE_TRITON
+#endif

@@ -815,7 +815,6 @@ if (onnxruntime_ENABLE_TRAINING)
       COMMAND ${CMAKE_COMMAND} -E copy
         ${onnxruntime_python_api_srcs}
         $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/api/
-
     )
   endif()
 endif()
