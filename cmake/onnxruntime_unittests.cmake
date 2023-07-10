@@ -1429,6 +1429,11 @@ if (NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
   else()
     onnxruntime_add_shared_library(custom_op_library ${TEST_SRC_DIR}/testdata/custom_op_library/custom_op_library.cc)
   endif()
+  
+  if (onnxruntime_USE_DML)
+    target_include_directories(custom_op_library PRIVATE WIL::WIL)
+	target_link_libraries(custom_op_library PRIVATE dxguid.lib d3d12.lib dxgi.lib)
+  endif()
 
   target_include_directories(custom_op_library PRIVATE ${REPO_ROOT}/include)
   target_link_libraries(custom_op_library PRIVATE ${GSL_TARGET})

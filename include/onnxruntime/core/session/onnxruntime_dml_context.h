@@ -13,8 +13,9 @@ namespace Ort {
 namespace Custom {
 
 struct OrtDmlContext {
-  IDMLDevice* m_dmlDevice = {};
-  ID3D12Device* m_d3d12Device = {};
+  IDMLDevice* dml_device = {};
+  ID3D12Device* d3d12_device = {};
+  ID3D12GraphicsCommandList* cmd_list = {};
 
   void Init(const OrtKernelContext& kernel_ctx) {
     const auto& ort_api = GetApi();
@@ -25,14 +26,21 @@ struct OrtDmlContext {
     if (status) {
       ORT_CXX_API_THROW("failed to fetch dml device", OrtErrorCode::ORT_RUNTIME_EXCEPTION);
     }
-    m_dmlDevice = reinterpret_cast<IDMLDevice*>(resource);
+    dml_device = reinterpret_cast<IDMLDevice*>(resource);
 
     resource = {};
     status = ort_api.KernelContext_GetResource(&kernel_ctx, ORT_DML_RESOUCE_VERSION, DmlResource::d3d12_device_t, &resource);
     if (status) {
       ORT_CXX_API_THROW("failed to fetch dml d3d12 device", OrtErrorCode::ORT_RUNTIME_EXCEPTION);
     }
-    m_d3d12Device = reinterpret_cast<ID3D12Device*>(resource);
+    d3d12_device = reinterpret_cast<ID3D12Device*>(resource);
+
+    resource = {};
+    status = ort_api.KernelContext_GetResource(&kernel_ctx, ORT_DML_RESOUCE_VERSION, DmlResource::cmd_list_t, &resource);
+    if (status) {
+      ORT_CXX_API_THROW("failed to fetch command list", OrtErrorCode::ORT_RUNTIME_EXCEPTION);
+    }
+    cmd_list = reinterpret_cast<ID3D12GraphicsCommandList*>(resource);
   }
 };
 

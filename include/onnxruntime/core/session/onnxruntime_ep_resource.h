@@ -14,5 +14,6 @@ enum CudaResource: int {
 
 enum DmlResource : int {
   dml_device_t = 0,
-  d3d12_device_t
+  d3d12_device_t,
+  cmd_list_t
 };

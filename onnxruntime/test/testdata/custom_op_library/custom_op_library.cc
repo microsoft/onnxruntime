@@ -9,6 +9,8 @@
 #include <mutex>
 
 #include "core/common/common.h"
+#include "core/framework/ortdevice.h"
+#include "core/framework/ortmemoryinfo.h"
 
 #ifdef USE_CUDA
 #include <cuda.h>
@@ -30,15 +32,246 @@ void cuda_add(int64_t, T3*, const T1*, const T2*, cudaStream_t compute_stream);
 static const char* c_OpDomain = "test.customop";
 
 #ifdef USE_DML
-void IdentityDML(Ort::Custom::OrtDmlContext* dml_ctx,
-                 const Ort::Custom::Tensor<float>& /*input*/,
-                 Ort::Custom::Tensor<float>& /*output*/) {
-  // todo - implement identity for dml here
-  auto* dml_device = dml_ctx->m_dmlDevice;
-  auto* d2d12_device = dml_ctx->m_d3d12Device;
-  ORT_UNUSED_PARAMETER(dml_device);
-  ORT_UNUSED_PARAMETER(d2d12_device);
-}
+#include <wrl/client.h>
+#include <core/providers/dml/dml_provider_factory.h>
+using Microsoft::WRL::ComPtr;
+
+struct IdentityDML {
+
+  IdentityDML(const OrtApi* ort_api, const OrtKernelInfo* /*info*/) : api(ort_api) {
+
+    dml_buffer_tensor_desc.DataType = DML_TENSOR_DATA_TYPE_FLOAT32;
+    dml_buffer_tensor_desc.Flags = DML_TENSOR_FLAG_NONE;
+    dml_buffer_tensor_desc.Sizes = tensor_shape;
+    dml_buffer_tensor_desc.Strides = nullptr;
+
+    dml_tensor_desc.Type = DML_TENSOR_TYPE_BUFFER;
+    dml_tensor_desc.Desc = &dml_buffer_tensor_desc;
+    
+    dml_identity_op_desc.InputTensor = &dml_tensor_desc;
+    dml_identity_op_desc.OutputTensor = &dml_tensor_desc;
+
+    dml_op_desc.Type = DML_OPERATOR_ELEMENT_WISE_IDENTITY;
+    dml_op_desc.Desc = &dml_identity_op_desc;
+
+  }
+
+  void Compute(OrtKernelContext* ctx, Ort::Custom::OrtDmlContext* dml_ctx,
+               const Ort::Custom::Tensor<float>& input,
+               Ort::Custom::Tensor<float>& output) {
+
+    auto* dml_device = dml_ctx->dml_device;
+    auto* d3d12_device = dml_ctx->d3d12_device;
+    auto* cmd_list = dml_ctx->cmd_list;
+    ORT_UNUSED_PARAMETER(dml_device);
+    ORT_UNUSED_PARAMETER(d3d12_device);
+    ORT_UNUSED_PARAMETER(cmd_list);
+
+    const auto& shape = input.Shape();
+    // ORT_ENFORCE(shape.size() <= 8U);
+    dml_buffer_tensor_desc.DimensionCount = static_cast<UINT>(shape.size());
+    dml_buffer_tensor_desc.TotalTensorSizeInBytes = static_cast<UINT64>(input.NumberOfElement() * sizeof(float));
+    for (size_t i = 0; i < shape.size(); ++i) {
+      tensor_shape[i] = static_cast<UINT>(shape[i]);
+    }
+
+    // Compute will only be called once in the unit test
+    dml_device->CreateOperator(
+      &dml_op_desc,
+      IID_PPV_ARGS(dml_op.GetAddressOf()));
+
+    dml_device->CompileOperator(
+      dml_op.Get(),
+      DML_EXECUTION_FLAG_NONE,
+      IID_PPV_ARGS(dml_compiled_op.GetAddressOf()));
+
+    dml_device->CreateOperatorInitializer(1U,
+        &dml_compiled_op,
+        IID_PPV_ARGS(dml_op_initializer.GetAddressOf()));
+
+    desc_heap_desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
+    desc_heap_desc.NumDescriptors = 1;
+    desc_heap_desc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
+
+    d3d12_device->CreateDescriptorHeap(
+        &desc_heap_desc,
+        IID_PPV_ARGS(d3d12_desc_heap.GetAddressOf()));
+
+    // now bind input and output to the op
+    // question - should get d3d12_desc_heap from cmd_list?
+    dml_binding_table_desc.Dispatchable = dml_op_initializer.Get();
+    //dml_binding_table_desc.Dispatchable = dml_op.Get();
+    dml_binding_table_desc.CPUDescriptorHandle = d3d12_desc_heap->GetCPUDescriptorHandleForHeapStart();
+    dml_binding_table_desc.GPUDescriptorHandle = d3d12_desc_heap->GetGPUDescriptorHandleForHeapStart();
+    dml_binding_table_desc.SizeInDescriptors = 1;
+
+    dml_device->CreateBindingTable(
+        &dml_binding_table_desc,
+        IID_PPV_ARGS(dml_binding_table.GetAddressOf()));
+
+    OrtMemoryInfo mem_info("", OrtAllocatorType::OrtDeviceAllocator, OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, 0));
+    OrtAllocator* allocator = {};
+    api->KernelContext_GetAllocator(ctx, &mem_info, &allocator);
+    //assert(allocator)
+
+    const OrtDmlApi* dml_api;
+    api->GetExecutionProviderApi("DML", ORT_API_VERSION, reinterpret_cast<const void**>(&dml_api));
+
+    ID3D12Resource* input_resource = {};
+    auto* input_addr = const_cast<float*>(input.Data());
+    dml_api->GetD3D12ResourceFromAllocation(allocator, input_addr, &input_resource);
+    //assert(input_resource)
+
+    UINT64 tensorBufferSize = input.NumberOfElement() * sizeof(float);
+    DML_BUFFER_BINDING inputBufferBinding{input_resource, 0, tensorBufferSize};
+    DML_BINDING_DESC inputBindingDesc{DML_BINDING_TYPE_BUFFER, &inputBufferBinding};
+    dml_binding_table->BindInputs(1, &inputBindingDesc);
+
+    ID3D12Resource* output_resource = {};
+    auto* output_addr = const_cast<float*>(output.Allocate(input.Shape()));
+    dml_api->GetD3D12ResourceFromAllocation(allocator, output_addr, &output_resource);
+    //assert(output_resource)
+
+    DML_BUFFER_BINDING outputBufferBinding{output_resource, 0, tensorBufferSize};
+    DML_BINDING_DESC outputBindingDesc{DML_BINDING_TYPE_BUFFER, &outputBufferBinding};
+    dml_binding_table->BindOutputs(1, &outputBindingDesc);
+
+    dml_cmd_recorder->RecordDispatch(
+        cmd_list,
+        dml_op_initializer.Get(),
+        dml_binding_table.Get());
+  }
+
+  UINT tensor_shape[8U] = {};
+  DML_TENSOR_DESC dml_tensor_desc{};
+  DML_BUFFER_TENSOR_DESC dml_buffer_tensor_desc = {};
+  DML_ELEMENT_WISE_IDENTITY_OPERATOR_DESC dml_identity_op_desc = {};
+  DML_OPERATOR_DESC dml_op_desc = {};
+  ComPtr<IDMLOperator> dml_op = {};
+  ComPtr<IDMLCompiledOperator> dml_compiled_op = {};
+  ComPtr<IDMLOperatorInitializer> dml_op_initializer = {};
+
+  DML_BINDING_TABLE_DESC dml_binding_table_desc = {};
+  ComPtr<IDMLBindingTable> dml_binding_table = {};
+
+  D3D12_DESCRIPTOR_HEAP_DESC desc_heap_desc = {};
+  ComPtr<ID3D12DescriptorHeap> d3d12_desc_heap = {};
+
+  //ComPtr<ID3D12Resource> input_resource = {};
+
+  ComPtr<IDMLCommandRecorder> dml_cmd_recorder = {};
+
+  const OrtApi* api{};
+};
+
+  //constexpr UINT tensorSizes[] = {2, 3};
+  //DML_BUFFER_TENSOR_DESC dmlBufferTensorDesc = {};
+  //dmlBufferTensorDesc.DataType = DML_TENSOR_DATA_TYPE_FLOAT32;
+  //dmlBufferTensorDesc.Flags = DML_TENSOR_FLAG_NONE;
+  //dmlBufferTensorDesc.DimensionCount = 2;
+  //dmlBufferTensorDesc.Sizes = tensorSizes;
+  //dmlBufferTensorDesc.Strides = nullptr;
+  //dmlBufferTensorDesc.TotalTensorSizeInBytes = 2 * 3 * sizeof(float);
+
+  //ComPtr<IDMLOperator> dmlOperator;
+  //DML_TENSOR_DESC dmlTensorDesc{};
+  //dmlTensorDesc.Type = DML_TENSOR_TYPE_BUFFER;
+  //dmlTensorDesc.Desc = &dmlBufferTensorDesc;
+
+  //DML_ELEMENT_WISE_IDENTITY_OPERATOR_DESC dmlIdentityOperatorDesc{};
+  //dmlIdentityOperatorDesc.InputTensor = &dmlTensorDesc;
+  //dmlIdentityOperatorDesc.OutputTensor = &dmlTensorDesc;
+
+  //DML_OPERATOR_DESC dmlOperatorDesc{};
+  //dmlOperatorDesc.Type = DML_OPERATOR_ELEMENT_WISE_IDENTITY;
+  //dmlOperatorDesc.Desc = &dmlIdentityOperatorDesc;
+
+  //dml_device->CreateOperator(
+  //    &dmlOperatorDesc,
+  //    IID_PPV_ARGS(dmlOperator.GetAddressOf()));
+
+  //ComPtr<IDMLCompiledOperator> dmlCompiledOperator;
+  //dml_device->CompileOperator(
+  //    dmlOperator.Get(),
+  //    DML_EXECUTION_FLAG_NONE,
+  //    IID_PPV_ARGS(dmlCompiledOperator.GetAddressOf()));
+
+  //UINT64 tensorBufferSize{dmlBufferTensorDesc.TotalTensorSizeInBytes};
+
+  //ComPtr<IDMLOperatorInitializer> dmlOperatorInitializer;
+  //IDMLCompiledOperator* dmlCompiledOperators[] = {dmlCompiledOperator.Get()};
+  //dml_device->CreateOperatorInitializer(
+  //    ARRAYSIZE(dmlCompiledOperators),
+  //    dmlCompiledOperators,
+  //    IID_PPV_ARGS(dmlOperatorInitializer.GetAddressOf()));
+
+  //DML_BINDING_PROPERTIES initializeBindingProperties = dmlOperatorInitializer->GetBindingProperties();
+  //DML_BINDING_PROPERTIES executeBindingProperties = dmlCompiledOperator->GetBindingProperties();
+  //UINT descriptorCount = std::max(
+  //    initializeBindingProperties.RequiredDescriptorCount,
+  //    executeBindingProperties.RequiredDescriptorCount);
+
+  //ComPtr<ID3D12DescriptorHeap> descriptorHeap;
+
+  //D3D12_DESCRIPTOR_HEAP_DESC descriptorHeapDesc{};
+  //descriptorHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
+  //descriptorHeapDesc.NumDescriptors = descriptorCount;
+  //descriptorHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
+
+  //d3d12_device->CreateDescriptorHeap(
+  //    &descriptorHeapDesc,
+  //    IID_PPV_ARGS(descriptorHeap.GetAddressOf()));
+
+  //ID3D12DescriptorHeap* d3D12DescriptorHeaps[] = {descriptorHeap.Get()};
+  //ComPtr<ID3D12GraphicsCommandList> command_list;
+
+  //ComPtr<ID3D12CommandAllocator> command_allocator;
+  //d3d12_device->CreateCommandAllocator(
+  //    D3D12_COMMAND_LIST_TYPE_DIRECT,
+  //    IID_PPV_ARGS(command_allocator.ReleaseAndGetAddressOf()));
+
+  //d3d12_device->CreateCommandList(
+  //    0,
+  //    D3D12_COMMAND_LIST_TYPE_DIRECT,
+  //    command_allocator.Get(),
+  //    nullptr,
+  //    IID_PPV_ARGS(command_list.ReleaseAndGetAddressOf()));
+
+  //command_list->SetDescriptorHeaps(ARRAYSIZE(d3D12DescriptorHeaps), d3D12DescriptorHeaps);
+
+  //DML_BINDING_TABLE_DESC dmlBindingTableDesc{};
+  //dmlBindingTableDesc.Dispatchable = dmlOperatorInitializer.Get();
+  //dmlBindingTableDesc.CPUDescriptorHandle = descriptorHeap->GetCPUDescriptorHandleForHeapStart();
+  //dmlBindingTableDesc.GPUDescriptorHandle = descriptorHeap->GetGPUDescriptorHandleForHeapStart();
+  //dmlBindingTableDesc.SizeInDescriptors = descriptorCount;
+
+  //ComPtr<IDMLBindingTable> dmlBindingTable;
+  //dml_device->CreateBindingTable(
+  //    &dmlBindingTableDesc,
+  //    IID_PPV_ARGS(dmlBindingTable.GetAddressOf()));
+
+  //UINT64 temporaryResourceSize = std::max(
+  //    initializeBindingProperties.TemporaryResourceSize,
+  //    executeBindingProperties.TemporaryResourceSize);
+  //UINT64 persistentResourceSize = executeBindingProperties.PersistentResourceSize;
+
+  //ComPtr<ID3D12Resource> temporaryBuffer;
+  //if (temporaryResourceSize != 0) {
+  //  d3d12_device->CreateCommittedResource(
+  //      &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
+  //      D3D12_HEAP_FLAG_NONE,
+  //      &CD3DX12_RESOURCE_DESC::Buffer(temporaryResourceSize, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS),
+  //      D3D12_RESOURCE_STATE_COMMON,
+  //      nullptr,
+  //      IID_GRAPHICS_PPV_ARGS(temporaryBuffer.GetAddressOf())));
+
+  //  if (initializeBindingProperties.TemporaryResourceSize != 0) {
+  //    DML_BUFFER_BINDING bufferBinding{temporaryBuffer.Get(), 0, temporaryResourceSize};
+  //    DML_BINDING_DESC bindingDesc{DML_BINDING_TYPE_BUFFER, &bufferBinding};
+  //    dmlBindingTable->BindTemporaryResource(&bindingDesc);
+  //  }
+  //}
+//}
 #endif
 
 #include <iostream>
@@ -217,7 +450,7 @@ OrtStatus* ORT_API_CALL RegisterCustomOps(OrtSessionOptions* options, const OrtA
   static const std::unique_ptr<LiteOp> box_op_ptr{Ort::Custom::CreateLiteCustomOp("Box", "CPUExecutionProvider", Box)};
 
 #ifdef USE_DML
-  static const std::unique_ptr<LiteOp> identity_dml_op_ptr{Ort::Custom::CreateLiteCustomOp("IdentityDML", "DmlExecutionProvider", IdentityDML)};
+  static const std::unique_ptr<LiteOp> identity_dml_op_ptr{Ort::Custom::CreateLiteCustomOp<IdentityDML>("IdentityDML", "DmlExecutionProvider")};
 #endif
 
   OrtStatus* result = nullptr;
