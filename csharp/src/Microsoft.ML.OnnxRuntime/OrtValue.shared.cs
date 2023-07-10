@@ -890,7 +890,8 @@ namespace Microsoft.ML.OnnxRuntime
         /// <summary>
         /// A delegate type that is expected to process each OrtValue in a sequence.
         /// </summary>
-        /// <param name="ortValue"></param>
+        /// <param name="ortValue">Ortvalue that holds sequence element</param>
+        /// <param name="index">ordinal of the value</param>
         public delegate void SequenceElementVisitor(OrtValue ortValue, int index);
 
         /// <summary>
@@ -898,7 +899,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// This helps users to avoid dealing each value life-span
         /// </summary>
         /// <param name="visitor">visitor delegate</param>
-        /// <param name="allocator"></param>
+        /// <param name="allocator">allocator to use for intermediate ort values</param>
         /// <exception cref="OnnxRuntimeException"></exception>
         public void ProcessSequence(SequenceElementVisitor visitor, OrtAllocator allocator)
         {
@@ -1100,9 +1101,17 @@ namespace Microsoft.ML.OnnxRuntime
         /// </summary>
         /// <param name="keys">This would always represent a tensor</param>
         /// <param name="values">Can be any of the Onnx types, but they would all reduce to tensors eventually</param>
-        /// <returns></returns>
         public delegate void MapVisitor(OrtValue keys, OrtValue values);
 
+        /// <summary>
+        /// This API helps the user to process a map OrtValue without
+        /// having to deal with the lifespan of intermediate OrtValues.
+        /// 
+        /// each API value is fed to the vistor functor.
+        /// </summary>
+        /// <param name="visitor">visitor function</param>
+        /// <param name="allocator">Allocator to use for intermediate values</param>
+        /// <exception cref="OnnxRuntimeException"></exception>
         public void ProcessMap(MapVisitor visitor, OrtAllocator allocator)
         {
             if (OnnxType != OnnxValueType.ONNX_TYPE_MAP)
