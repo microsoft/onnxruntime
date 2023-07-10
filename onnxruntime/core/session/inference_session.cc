@@ -2387,11 +2387,10 @@ Status InferenceSession::RunAsync(const OrtRunOptions* run_options, const char* 
   std::function<void()> run_fn = [=]() {
     ORT_TRY {
       using OrtValuePtr = OrtValue*;
-      std::unique_ptr<OrtValuePtr[]> outputs = std::make_unique<OrtValuePtr[]>(output_names_len);
-      memset(outputs.get(), 0x0, sizeof(OrtValuePtr) * output_names_len);
-      auto status = sess->Run(run_options, input_names, input, input_len, output_name, output_names_len, outputs.get());
+      InlinedVector<OrtValuePtr> outputs(output_names_len, nullptr);
+      auto status = sess->Run(run_options, input_names, input, input_len, output_name, output_names_len, outputs.data());
       if (status.IsOK()) {
-        callback(user_data, outputs.get(), output_names_len, {});
+        callback(user_data, outputs.data(), output_names_len, {});
       } else {
         callback(user_data, {}, 0, ToOrtStatus(status));
       }
@@ -2404,15 +2403,8 @@ Status InferenceSession::RunAsync(const OrtRunOptions* run_options, const char* 
     ORT_CATCH(...) {
       callback(user_data, {}, 0, ToOrtStatus(ORT_MAKE_STATUS(ONNXRUNTIME, RUNTIME_EXCEPTION, "unknown exception")));
     }
-  }; // run_fn
-
-  ORT_TRY {
-    concurrency::ThreadPool::Schedule(thread_pool_.get(), run_fn);
-  }
-  ORT_CATCH(...) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, RUNTIME_EXCEPTION, "failed to schedule task for RunAsync");
-  }
-
+  };
+  concurrency::ThreadPool::Schedule(thread_pool_.get(), run_fn);
   return Status::OK();
 }
 
