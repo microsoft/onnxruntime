@@ -114,7 +114,7 @@ class Resize : public JsKernel, public UpsampleBase {
 
     // Compute the size of the custom data
     size_t customDataSize = 0;
-    customDataSize += sizeof(int32_t) * 4;                           // roi_input_index_, scales_input_index, sizes_input_index
+    customDataSize += sizeof(int32_t) * 2;                           // use_extrapolation_, opset_
     customDataSize += sizeof(output_dims.size() * sizeof(int32_t));  // output_dims.size()
     customDataSize += sizeof(scales_array.size() * sizeof(float));   // scales_
     customDataSize += sizeof(roi_array.size() * sizeof(float));      // roi_input_index_
@@ -129,7 +129,7 @@ class Resize : public JsKernel, public UpsampleBase {
 
     // Serialize the custom data
     int32_t* p_int32 = reinterpret_cast<int32_t*>(p_custom_data);
-    *p_int32++ = use_extrapolation_ ? 1 : 0;
+    *p_int32++ = static_cast<int32_t>(use_extrapolation_ ? 1 : 0);
     *p_int32++ = static_cast<int32_t>(opset_);
     *p_int32++ = static_cast<int32_t>(output_dims.size());
     *p_int32++ = static_cast<int32_t>(scales_array.size());
