@@ -63,6 +63,7 @@
 #include "core/optimizer/rule_based_graph_transformer.h"
 #include "core/optimizer/slice_elimination.h"
 #include "core/optimizer/unsqueeze_elimination.h"
+#include "core/optimizer/lora_conv1d_replacement.h"
 #include "core/optimizer/utils.h"
 #include "core/platform/env.h"
 #include "core/session/inference_session.h"
@@ -6555,6 +6556,48 @@ TEST_F(GraphTransformationTests, GatherToSliceFusion) {
     std::unique_ptr<GraphTransformer> transformer = std::make_unique<GatherToSliceFusion>();
     ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer), TransformerLevel::Level1, 1,
                                           pre_graph_checker, post_graph_checker));
+  }
+}
+
+TEST_F(GraphTransformationTests, LoRAConv1dReplacement) {
+  auto pre_graph_checker = [&](Graph& graph) {
+    auto op_count_map = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_count_map["Conv"] == 1);
+    return Status::OK();
+  };
+
+  for (auto opset : {11, 12, 13, 14, 15, 16, 17, 18}) {
+    for (auto group : {1, 2}) {
+      auto build_test_case = [&](ModelTestBuilder& builder) {
+        auto [batch_size, in_channel, in_length] = std::make_tuple(8, 16, 128);
+        auto out_channel = 64;
+        auto* data_arg = builder.MakeInput<float>({{batch_size, in_channel, in_length}});
+
+        auto* weight_arg = builder.MakeInitializer<float>({out_channel, in_channel / group, 1}, {-1.0f, 1.0f});
+        auto* conv_output = builder.MakeOutput();
+
+        auto& conv_node = builder.AddNode("Conv", {data_arg, weight_arg}, {conv_output});
+        conv_node.AddAttribute("dilations", std::vector<int64_t>{1});
+        conv_node.AddAttribute("kernel_shape", std::vector<int64_t>{1});
+        conv_node.AddAttribute("strides", std::vector<int64_t>{1});
+        conv_node.AddAttribute("group", static_cast<int64_t>(group));
+      };
+
+      auto post_graph_checker = [&](Graph& graph) {
+        auto op_count_map = CountOpsInGraph(graph);
+        TEST_RETURN_IF_NOT(op_count_map["Conv"] == 0);
+        // after graph transformation, the graph should have 1 squeeze, 2 split, group matmul, 1 concat
+        TEST_RETURN_IF_NOT(op_count_map["Squeeze"] == 1);
+        TEST_RETURN_IF_NOT(op_count_map["Split"] == 2);
+        TEST_RETURN_IF_NOT(op_count_map["MatMul"] == group);
+        TEST_RETURN_IF_NOT(op_count_map["Concat"] == 1);
+        return Status::OK();
+      };
+
+      std::unique_ptr<GraphTransformer> transformer = std::make_unique<LoRAConv1dReplacement>();
+      ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, opset, *logger_, std::move(transformer), TransformerLevel::Level1, 1,
+                                            pre_graph_checker, post_graph_checker));
+    }
   }
 }
 
