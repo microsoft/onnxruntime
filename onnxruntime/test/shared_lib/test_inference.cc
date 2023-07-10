@@ -3261,3 +3261,29 @@ TEST(CApiTest, RunAsync) {
 
   EXPECT_EQ(atomic_wait.load(), true);
 }
+
+TEST(CApiTest, RunAsyncFail) {
+  Ort::SessionOptions session_options;
+  session_options.SetIntraOpNumThreads(1);  // This will cause RunAsync fail
+  Ort::Session session(*ort_env, MODEL_URI, session_options);
+
+  const char* input_names[] = {"X"};
+  float x_value[] = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+  int64_t x_dim[] = {3, 2};
+
+  auto memory_info = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
+
+  Ort::Value input_tensors[1] = {
+      Ort::Value::CreateTensor<float>(memory_info, x_value, 6, x_dim, 2),
+  };
+
+  const char* output_names[] = {"Y"};
+
+  Ort::RunOptions run_options;
+
+  Ort::detail::RunAsyncCallbackStdFn callback = [&](std::vector<Ort::Value>& /*outputs*/, Ort::Status /*status*/) {
+    EXPECT_TRUE(false);  // the callback is not supposed to be invoked
+  };
+
+  EXPECT_THROW(session.RunAsync(run_options, input_names, input_tensors, 1, output_names, 1, callback), std::exception);
+}
