@@ -422,7 +422,12 @@ def test_ort_custom_ops():
         state = CheckpointState.load_checkpoint(checkpoint_file_path)
 
         # Create a Module.
-        model = Module(training_model_file_path, state, eval_model_file_path, session_options=session_options)
+        # The custom op library is built either for cuda or cpu (but not for both).
+        # Since the training api pipeline build uses cuda, we need to specify the device as cuda.
+        # Otherwise the custom op library will not have the required kernels.
+        model = Module(
+            training_model_file_path, state, eval_model_file_path, device="cuda", session_options=session_options
+        )
 
         x = np.random.randn(3, 5).astype(np.float32)
         y = np.random.randn(3, 5).astype(np.float32)
