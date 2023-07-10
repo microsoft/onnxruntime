@@ -48,7 +48,7 @@ struct ProviderInfo_CUDA_TestImpl : ProviderInfo_CUDA {
     return nullptr;
   }
 
-  std::unique_ptr<IAllocator> CreateCUDAPinnedAllocator(int16_t, const char*) override {
+  std::unique_ptr<IAllocator> CreateCUDAPinnedAllocator(const char*) override {
     return nullptr;
   }
 
