@@ -177,21 +177,6 @@ bool NormalizationOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initi
     return false;
   }
 
-  const auto& scale_name = input_defs[1]->Name();
-  if (!Contains(initializers, scale_name)) {
-    LOGS(logger, VERBOSE) << "The scale must be a constant initializer.";
-    return false;
-  }
-
-  if (input_defs.size() == 3) {
-    // Inputs contain optional bias
-    const auto& bias_name = input_defs[2]->Name();
-    if (!Contains(initializers, bias_name)) {
-      LOGS(logger, VERBOSE) << "The bias must be a constant initializer.";
-      return false;
-    }
-  }
-
   const auto& output_defs = node.OutputDefs();
   if (output_defs.size() != 1) {
     LOGS(logger, VERBOSE) << node.OpType() << " output count must be one.";
