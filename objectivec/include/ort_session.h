@@ -206,8 +206,9 @@ NS_ASSUME_NONNULL_BEGIN
  * See https://github.com/microsoft/onnxruntime/blob/342a5bf2b756d1a1fc6fdc582cfeac15182632fe/onnxruntime/test/testdata/custom_op_library/custom_op_library.cc#L115
  * for an example of a custom op library registration function.
  *
- * @note The caller should ensure that `registrationFuncName` names a valid function that does what they want it to do.
- * This method will just call it.
+ * @note The caller must ensure that `registrationFuncName` names a valid function that is visible to the native ONNX
+ * Runtime code and has the correct signature.
+ * They must ensure that the function does what they expect it to do because this method will just call it.
  *
  * @param registrationFuncName The name of the registration function to call.
  * @param error Optional error information set if an error occurs.
@@ -232,8 +233,8 @@ NS_ASSUME_NONNULL_BEGIN
  * See https://github.com/microsoft/onnxruntime/blob/342a5bf2b756d1a1fc6fdc582cfeac15182632fe/onnxruntime/test/testdata/custom_op_library/custom_op_library.cc#L115
  * for an example of a custom op library registration function.
  *
- * @note The caller should ensure that `registerCustomOpsFn` is a valid function that does what they want it to do.
- * This method will just call it.
+ * @note The caller must ensure that `registerCustomOpsFn` is a valid function pointer and has the correct signature.
+ * They must ensure that the function does what they expect it to do because this method will just call it.
  *
  * @param registerCustomOpsFn A pointer to the registration function to call.
  * @param error Optional error information set if an error occurs.
