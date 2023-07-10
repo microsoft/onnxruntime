@@ -2403,7 +2403,7 @@ Status InferenceSession::RunAsync(const OrtRunOptions* run_options, const char* 
     ORT_CATCH(...) {
       callback(user_data, {}, 0, ToOrtStatus(ORT_MAKE_STATUS(ONNXRUNTIME, RUNTIME_EXCEPTION, "unknown exception")));
     }
-  }; // run_fn
+  };
 
   ORT_TRY {
     concurrency::ThreadPool::Schedule(thread_pool_.get(), run_fn);
