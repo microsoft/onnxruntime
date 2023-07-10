@@ -63,6 +63,8 @@ class OnnxruntimeEngine : public Microsoft::WRL::RuntimeClass<
                               IEngine> {
  public:
   OnnxruntimeEngine();
+  ~OnnxruntimeEngine();
+
   HRESULT RuntimeClassInitialize(OnnxruntimeEngineFactory* engine_factory, UniqueOrtSession&& session, IOrtSessionBuilder* session_builder);
 
   STDMETHOD(LoadModel)
@@ -128,10 +130,13 @@ class OnnxruntimeEngine : public Microsoft::WRL::RuntimeClass<
   OnnxruntimeEngineFactory* GetEngineFactory();
   HRESULT CreateTensorValueFromDefaultAllocator(const int64_t* shape, size_t count, winml::TensorKind kind, _Out_ IValue** out);
 
+  HRESULT RegisterCustomOpLibraryHandles(const gsl::span<void*> handles);
+
  private:
   Microsoft::WRL::ComPtr<OnnxruntimeEngineFactory> engine_factory_;
   Microsoft::WRL::ComPtr<IOrtSessionBuilder> session_builder_;
   UniqueOrtSession session_;
+  std::vector<void*> custom_op_library_handles_;
 };
 
 class OnnxruntimeEngineFactory : public Microsoft::WRL::RuntimeClass<

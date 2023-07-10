@@ -52,4 +52,14 @@ STDMETHODIMP LearningModelSessionOptions::SetIntraOpThreadSpinning(boolean allow
   telemetry_helper.SetIntraOpThreadSpinning(allowSpinning != 0);
   return S_OK;
 }
+
+const gsl::span<const winrt::hstring> LearningModelSessionOptions::GetCustomOpLibraryPaths() noexcept {
+  return custom_ops_lib_paths_;
+}
+
+void LearningModelSessionOptions::RegisterCustomOpsLibrary(const winrt::hstring& path) noexcept {
+  custom_ops_lib_paths_.push_back(path);
+}
+
+
 }  // namespace WINMLP

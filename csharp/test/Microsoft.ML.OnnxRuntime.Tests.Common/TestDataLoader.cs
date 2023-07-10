@@ -11,6 +11,49 @@ using Xunit;
 
 namespace Microsoft.ML.OnnxRuntime.Tests
 {
+    // Copy of the class that is internal in the main package
+    public class DisposableListTest<T> : List<T>, IDisposableReadOnlyCollection<T>
+        where T : IDisposable
+    {
+        public DisposableListTest() { }
+        public DisposableListTest(int count) : base(count) { }
+
+        #region IDisposable Support
+        private bool disposedValue = false; // To detect redundant calls
+
+        protected virtual void Dispose(bool disposing)
+        {
+            if (!disposedValue)
+            {
+                if (disposing)
+                {
+                    // Dispose in the reverse order.
+                    // Objects should typically be destroyed/disposed
+                    // in the reverse order of its creation
+                    // especially if the objects created later refer to the
+                    // objects created earlier. For homogeneous collections of objects
+                    // it would not matter.
+                    for (int i = this.Count - 1; i >= 0; --i)
+                    {
+                        this[i]?.Dispose();
+                    }
+                    this.Clear();
+                }
+
+                disposedValue = true;
+            }
+        }
+
+        // This code added to correctly implement the disposable pattern.
+        public void Dispose()
+        {
+            // Do not change this code. Put cleanup code in Dispose(bool disposing) above.
+            Dispose(true);
+            GC.SuppressFinalize(this);
+        }
+        #endregion
+    }
+
     internal struct DisposableTestPair<TValue> : IDisposable
         where TValue : IDisposable
     {
@@ -184,7 +227,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                         }
                     case OnnxValueType.ONNX_TYPE_MAP:
                         {
-                            throw new OnnxRuntimeException(ErrorCode.NotImplemented,
+                            throw new NotImplementedException(
                                 "Map test data format requires clarification: https://github.com/onnx/onnx/issues/5072");
                         }
 
@@ -220,7 +263,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                         }
                     case OnnxValueType.ONNX_TYPE_MAP:
                         {
-                            throw new OnnxRuntimeException(ErrorCode.NotImplemented,
+                            throw new NotImplementedException(
                                 "Map test data format requires clarification: https://github.com/onnx/onnx/issues/5072");
                         }
 
@@ -411,7 +454,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 case Onnx.SequenceProto.Types.DataType.Tensor:
                     {
                         SequenceCheckMatchOnnxType(nodeName, sequenceMeta, OnnxValueType.ONNX_TYPE_TENSOR);
-                        using (var sequenceOfTensors = new DisposableList<OrtValue>(sequence.TensorValues.Count))
+                        using (var sequenceOfTensors = new DisposableListTest<OrtValue>(sequence.TensorValues.Count))
                         {
                             foreach (var tensor in sequence.TensorValues)
                             {
@@ -424,7 +467,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 case Onnx.SequenceProto.Types.DataType.Sequence: // Sequence of sequences
                     {
                         SequenceCheckMatchOnnxType(nodeName, sequenceMeta, OnnxValueType.ONNX_TYPE_SEQUENCE);
-                        using (var seqOfSequences = new DisposableList<OrtValue>(sequence.TensorValues.Count))
+                        using (var seqOfSequences = new DisposableListTest<OrtValue>(sequence.TensorValues.Count))
                         {
                             foreach (var s in sequence.SequenceValues)
                             {
@@ -437,13 +480,13 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                     }
                 case Onnx.SequenceProto.Types.DataType.Map:
                     {
-                        throw new OnnxRuntimeException(ErrorCode.NotImplemented,
+                        throw new NotImplementedException(
                             "Test data format for maps is under investigation");
                     }
                 case Onnx.SequenceProto.Types.DataType.Optional:
                     {
                         SequenceCheckMatchOnnxType(nodeName, sequenceMeta, OnnxValueType.ONNX_TYPE_OPTIONAL);
-                        using (var seqOfSequences = new DisposableList<OrtValue>(sequence.TensorValues.Count))
+                        using (var seqOfSequences = new DisposableListTest<OrtValue>(sequence.TensorValues.Count))
                         {
                             foreach (var opt in sequence.OptionalValues)
                             {
@@ -478,7 +521,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                     }
                 case Onnx.OptionalProto.Types.DataType.Map:
                     {
-                        throw new OnnxRuntimeException(ErrorCode.NotImplemented,
+                        throw new NotImplementedException(
                                 "Test data format for maps is under investigation");
 
                     }
@@ -499,7 +542,8 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             var typeInfo = TensorBase.GetElementTypeInfo(elementType);
             Assert.NotNull(typeInfo);
 
-            var shapeSize = ArrayUtilities.GetSizeForShape(shape);
+            // ArrayUtilities not accessible in all builds
+            var shapeSize = shape.Aggregate(1L, (a, v) => a * v);
             var inferredSize = rawData.Length / typeInfo.TypeSize;
             Assert.Equal(shapeSize, inferredSize);
             Assert.Equal(0, rawData.Length % typeInfo.TypeSize);
@@ -527,7 +571,11 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             string[] strArray = new string[strings.Count];
             for (int i = 0; i < strings.Count; ++i)
             {
-                strArray[i] = System.Text.Encoding.UTF8.GetString(strings[i].ToByteArray());
+#if NET6_0_OR_GREATER
+                strArray[i] = Encoding.UTF8.GetString(strings[i].Span);
+#else
+                strArray[i] = Encoding.UTF8.GetString(strings[i].ToByteArray());
+#endif
             }
 
             var dt = new DenseTensor<string>(strArray, dimensions);
@@ -541,8 +589,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             {
                 for (int i = 0; i < strings.Count; ++i)
                 {
-                    var str = Encoding.UTF8.GetString(strings[i].ToByteArray());
-                    ortValue.FillStringTensorElement(str.AsSpan(), i);
+                    ortValue.FillStringTensorElement(strings[i].Span, i);
                 }
                 return ortValue;
             }

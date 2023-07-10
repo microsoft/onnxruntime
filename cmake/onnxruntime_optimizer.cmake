@@ -42,12 +42,18 @@ if (onnxruntime_MINIMAL_BUILD)
       "${ONNXRUNTIME_ROOT}/core/optimizer/selectors_actions/selector_action_transformer_apply_contexts.h"
       "${ONNXRUNTIME_ROOT}/core/optimizer/selectors_actions/selector_action_transformer.cc"
       "${ONNXRUNTIME_ROOT}/core/optimizer/selectors_actions/selector_action_transformer.h"
-      "${ONNXRUNTIME_ROOT}/core/optimizer/transpose_optimizer/optimizer_api_impl.cc"
-      "${ONNXRUNTIME_ROOT}/core/optimizer/transpose_optimizer/optimizer_api.h"
-      "${ONNXRUNTIME_ROOT}/core/optimizer/transpose_optimizer/optimizer_utils.h"
-      "${ONNXRUNTIME_ROOT}/core/optimizer/transpose_optimizer/ort_transpose_optimizer.cc"
-      "${ONNXRUNTIME_ROOT}/core/optimizer/transpose_optimizer/ort_transpose_optimizer.h"
-      "${ONNXRUNTIME_ROOT}/core/optimizer/transpose_optimizer/transpose_optimizer.cc"
+      # files required for layout transformation
+      "${ONNXRUNTIME_ROOT}/core/optimizer/layout_transformation/layout_transformation.h"
+      "${ONNXRUNTIME_ROOT}/core/optimizer/layout_transformation/layout_transformation.cc"
+      "${ONNXRUNTIME_ROOT}/core/optimizer/layout_transformation/layout_transformation_potentially_added_ops.h"
+      # files required for transpose optimization post-layout transformation
+      "${ONNXRUNTIME_ROOT}/core/optimizer/transpose_optimization/optimizer_api.h"
+      "${ONNXRUNTIME_ROOT}/core/optimizer/transpose_optimization/onnx_transpose_optimization.h"
+      "${ONNXRUNTIME_ROOT}/core/optimizer/transpose_optimization/onnx_transpose_optimization.cc"
+      "${ONNXRUNTIME_ROOT}/core/optimizer/transpose_optimization/ort_optimizer_api_impl.cc"
+      "${ONNXRUNTIME_ROOT}/core/optimizer/transpose_optimization/ort_optimizer_utils.h"
+      "${ONNXRUNTIME_ROOT}/core/optimizer/transpose_optimization/ort_transpose_optimization.h"
+      "${ONNXRUNTIME_ROOT}/core/optimizer/transpose_optimization/ort_transpose_optimization.cc"
       "${ONNXRUNTIME_ROOT}/core/optimizer/utils.cc"
       "${ONNXRUNTIME_ROOT}/core/optimizer/utils.h"
     )
@@ -59,6 +65,8 @@ else()
     "${ONNXRUNTIME_ROOT}/core/optimizer/*.cc"
     "${ONNXRUNTIME_ROOT}/core/optimizer/compute_optimizer/*.h"
     "${ONNXRUNTIME_ROOT}/core/optimizer/compute_optimizer/*.cc"
+    "${ONNXRUNTIME_ROOT}/core/optimizer/layout_transformation/*.h"
+    "${ONNXRUNTIME_ROOT}/core/optimizer/layout_transformation/*.cc"
     "${ONNXRUNTIME_ROOT}/core/optimizer/qdq_transformer/*.h"
     "${ONNXRUNTIME_ROOT}/core/optimizer/qdq_transformer/*.cc"
     "${ONNXRUNTIME_ROOT}/core/optimizer/qdq_transformer/selectors_actions/*.h"
@@ -67,8 +75,8 @@ else()
     "${ONNXRUNTIME_ROOT}/core/optimizer/qdq_transformer/selectors_actions/shared/utils.cc"
     "${ONNXRUNTIME_ROOT}/core/optimizer/selectors_actions/*.h"
     "${ONNXRUNTIME_ROOT}/core/optimizer/selectors_actions/*.cc"
-    "${ONNXRUNTIME_ROOT}/core/optimizer/transpose_optimizer/*.h"
-    "${ONNXRUNTIME_ROOT}/core/optimizer/transpose_optimizer/*.cc"
+    "${ONNXRUNTIME_ROOT}/core/optimizer/transpose_optimization/*.h"
+    "${ONNXRUNTIME_ROOT}/core/optimizer/transpose_optimization/*.cc"
   )
 endif()
 

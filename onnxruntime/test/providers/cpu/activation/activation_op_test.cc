@@ -400,6 +400,7 @@ TEST_F(ActivationOpTest, Celu) {
       // Disable on TensorRT as it seems like it doesn't yet support Celu
       {{"alpha", alpha}}, false, 12);
 }
+
 TEST_F(ActivationOpTest, LeakyRelu) {
   float alpha = 0.1f;
   TestActivationOp<float>("LeakyRelu",
