@@ -780,16 +780,11 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
 #endif
   } else if (type == kOpenVINOExecutionProvider) {
 #ifdef USE_OPENVINO
-    // OrtOpenVINOProviderOptions params;
-    // params.device_type = openvino_device_type.c_str();
-    // std::string cache_dir;
     ProviderOptions OV_provider_options_map;
     auto it = provider_options_map.find(type);
     if (it != provider_options_map.end()) {
       for (auto option : it->second) {
         if (option.first == "device_type") {
-          // openvino_device_type = option.second;
-          // params.device_type = openvino_device_type.c_str();
           OV_provider_options_map[option.first] = option.second;
           continue;
         } else if (option.first == "enable_vpu_fast_compile") {
@@ -813,30 +808,23 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
         } else if (option.first == "device_id") {
           OV_provider_options_map[option.first] = option.second;
           continue;
-          // params.device_id = option.second.c_str();
         } else if (option.first == "num_of_threads") {
           OV_provider_options_map[option.first] = option.second;
-          // params.num_of_threads = std::stoi(option.second);
           continue;
         } else if (option.first == "num_streams") {
           OV_provider_options_map[option.first] = option.second;
-          // params.num_streams = std::stoi(option.second);
           continue;
         } else if (option.first == "cache_dir") {
           OV_provider_options_map[option.first] = option.second;
-          // cache_dir = option.second;
-          // params.cache_dir = cache_dir.c_str();
           continue;
         } else if (option.first == "context") {
           OV_provider_options_map[option.first] = option.second;
           continue;
-          // params.context = (void*)(option.second.c_str());
         } else {
           ORT_THROW("Invalid OpenVINO EP option: ", option.first);
         }
       }
     }
-    // auto cit = provider_options_map.find(type);
     if (std::shared_ptr<IExecutionProviderFactory> openvino_provider_factory = onnxruntime::OpenVINOProviderFactoryCreator::Create(
                                                                                 &OV_provider_options_map)) {
       auto p = openvino_provider_factory->CreateProvider();

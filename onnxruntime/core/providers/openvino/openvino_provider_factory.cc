@@ -42,15 +42,6 @@ std::unique_ptr<IExecutionProvider> OpenVINOProviderFactory::CreateProvider() {
   return std::make_unique<OpenVINOExecutionProvider>(info);
 }
 
-// std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_OpenVINO(
-//     const char* device_type, bool enable_vpu_fast_compile, const char* device_id, size_t num_of_threads,
-//     const char* cache_dir, void* context, bool enable_opencl_throttling,
-//     bool enable_dynamic_shapes) {
-//   return std::make_shared<onnxruntime::OpenVINOProviderFactory>(device_type, enable_vpu_fast_compile,
-//                                                                 device_id, num_of_threads, cache_dir, context, enable_opencl_throttling,
-//                                                                 enable_dynamic_shapes);
-// }
-
 }  // namespace onnxruntime
 
 namespace onnxruntime {
@@ -63,15 +54,6 @@ struct ProviderInfo_OpenVINO_Impl : ProviderInfo_OpenVINO {
 
 struct OpenVINO_Provider : Provider {
   void* GetInfo() override { return &g_info; }
-
-  // std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory(const void* void_params) override {
-  //   auto& params = *reinterpret_cast<const OrtOpenVINOProviderOptions*>(void_params);
-  //   return std::make_shared<OpenVINOProviderFactory>(params.device_type, params.enable_vpu_fast_compile,
-  //                                                    params.device_id, params.num_of_threads,
-  //                                                    params.cache_dir, params.num_streams,
-  //                                                    params.context, params.enable_opencl_throttling,
-  //                                                    params.enable_dynamic_shapes);
-  // }
 
   std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory(const void* void_params) override {
     auto& provider_options_map = *reinterpret_cast<const ProviderOptions*>(void_params);
@@ -113,7 +95,6 @@ struct OpenVINO_Provider : Provider {
 
     if(provider_options_map.find("num_streams") != provider_options_map.end()){
       num_streams = std::stoi(provider_options_map.at("num_streams"));
-      std::cout << " Num streams = " << num_streams << std::endl;
     }
     std::string bool_flag="";
     if(provider_options_map.find("enable_vpu_fast_compile") != provider_options_map.end()){
