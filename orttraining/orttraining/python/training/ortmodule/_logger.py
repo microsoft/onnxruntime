@@ -9,7 +9,7 @@ import sys
 import time
 from contextlib import contextmanager
 from enum import IntEnum
-from typing import Dict, List
+from typing import Callable, Dict, List
 
 from onnxruntime.capi._pybind_state import Severity
 
@@ -109,7 +109,9 @@ class TimeTracker:
 
     NOT_RECORD = -1.0
 
-    def __init__(self):
+    def __init__(
+        self,
+    ):
         self.starts_: List[float] = [TimeTracker.NOT_RECORD] * len(TimeTrackerPhase)
         self.ends_: List[float] = [TimeTracker.NOT_RECORD] * len(TimeTrackerPhase)
 
@@ -129,7 +131,9 @@ class TimeTracker:
         end_to_end_str = f"{end_to_end_str:.2f}" if end_to_end_str != TimeTracker.NOT_RECORD else "N/A"
         export_str = self._get_duration(TimeTrackerPhase.EXPORT)
         export_str = f"{export_str:.2f}" if export_str != TimeTracker.NOT_RECORD else "N/A"
-        overhead_title_str = f"Total overhead: {end_to_end_str}s where export takes {export_str}s.\n"
+        overhead_title_str = (
+            f"Total ORT initialization overhead is {end_to_end_str}s where export takes {export_str}s.\n"
+        )
 
         if log_details is False:
             return overhead_title_str
@@ -148,10 +152,20 @@ class TimeTracker:
         return f"{overhead_title_str}Other overhead details: {','.join(duration_summaries)}\n"
 
 
-@contextmanager
-def collect_timer(tracker: TimeTracker, phase: TimeTrackerPhase):
-    try:
-        tracker.start(phase)
-        yield
-    finally:
-        tracker.end(phase)
+class TrackTime:
+    """A function decorator to track time spent in different phases of ORT backend first-time initialization."""
+
+    def __init__(self, phase: TimeTrackerPhase):
+        self.phase = phase
+
+    def __call__(self, func: Callable):
+        def wrapper(*args, **kwargs):
+            _self = args[0]
+            if not hasattr(_self, "_time_tracker"):
+                raise RuntimeError("The class of the function to be tracked must have a '_time_tracker' attribute.")
+            _self._time_tracker.start(self.phase)
+            result = func(*args, **kwargs)
+            _self._time_tracker.end(self.phase)
+            return result
+
+        return wrapper
