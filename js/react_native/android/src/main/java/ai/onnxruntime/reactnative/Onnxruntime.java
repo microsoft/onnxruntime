@@ -55,17 +55,11 @@ public class Onnxruntime {
 
   private BlobModule blobModule;
 
-  public Onnxruntime(ReactApplicationContext context) {
-    reactContext = context;
-  }
+  public Onnxruntime(ReactApplicationContext context) { reactContext = context; }
 
-  protected void setBlobModule(BlobModule blobModule) {
-    this.blobModule = blobModule;
-  }
+  protected void setBlobModule(BlobModule blobModule) { this.blobModule = blobModule; }
 
-  protected Map<String, OrtSession> getSessionMap() {
-    return sessionMap;
-  }
+  protected Map<String, OrtSession> getSessionMap() { return sessionMap; }
 
   /**
    * Load a model from raw resource directory.

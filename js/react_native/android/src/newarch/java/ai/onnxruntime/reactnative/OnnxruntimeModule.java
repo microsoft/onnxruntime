@@ -20,6 +20,7 @@ import com.facebook.react.modules.blob.BlobModule;
 import java.util.Map;
 
 public class OnnxruntimeModule extends NativeOnnxruntimeSpec implements LifecycleEventListener {
+  public static final String NAME = "Onnxruntime";
   private static ReactApplicationContext reactContext;
   private static Onnxruntime onnxruntime;
 
@@ -34,7 +35,7 @@ public class OnnxruntimeModule extends NativeOnnxruntimeSpec implements Lifecycl
   @NonNull
   @Override
   public String getName() {
-    return "Onnxruntime";
+    return NAME;
   }
 
   public void checkBlobModule() {
@@ -124,7 +125,6 @@ public class OnnxruntimeModule extends NativeOnnxruntimeSpec implements Lifecycl
       promise.reject("Fail to inference: " + e.getMessage(), e);
     }
   }
-
 
   @Override
   public void onHostResume() {}
