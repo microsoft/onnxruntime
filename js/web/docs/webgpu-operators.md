@@ -21,7 +21,9 @@ Do not modify directly.*
 | AveragePool | ai.onnx(7-9,10,11+); com.ms.internal.nhwc(11+) | need perf optimization; need implementing activation |
 | Ceil | ai.onnx(6-12,13+) |  |
 | Clip | ai.onnx(6-10,11,12,13+) |  |
+| Concat | ai.onnx(1-3,4-10,11-12,13+) |  |
 | Conv | ai.onnx(1-10,11+); com.ms.internal.nhwc(11+) | need perf optimization; conv3d not supported; need implementing activation |
+| ConvTranspose | ai.onnx(1-10,11+); com.ms.internal.nhwc(11+) |  |
 | Cos | ai.onnx(7+) |  |
 | Cosh | ai.onnx(9+) |  |
 | Div | ai.onnx(7-12,13,14+) |  |
@@ -57,6 +59,7 @@ Do not modify directly.*
 | Sigmoid | ai.onnx(6-12,13+) |  |
 | Sin | ai.onnx(7+) |  |
 | Sinh | ai.onnx(9+) |  |
+| Split | ai.onnx(1,2-10,11-12,13-17,18+) |  |
 | Sqrt | ai.onnx(6-12,13+) |  |
 | Squeeze | ai.onnx(1-10,11-12,13+) |  |
 | Sub | ai.onnx(7-12,13,14+) |  |

@@ -214,6 +214,10 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   bool detailed_build_log_ = false;
   bool cuda_graph_enable_ = false;
 
+  // The OrtAllocator object will be get during ep compute time
+  // and should be kept for the lifetime of TRT EP object.
+  OrtAllocator* alloc_ = nullptr;
+
   std::unique_ptr<CUDAGraph> cuda_graph_;  // ORT TRT only supports CUDA graph when whole model is supported by TRT, so simply maintaining a CUDAGraph pointer is enough (no need to maintain one CUDAGraph pointer per TRT subgraph)
   bool is_graph_captured_ = false;
   int regular_run_count_before_graph_capture_ = 0;
