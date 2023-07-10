@@ -158,7 +158,7 @@ public class OnnxruntimeModuleTest {
   }
 
   @Test
-  public void onnxruntime_module_nnapi() throws Exception {
+  public void onnxruntime_module_append_nnapi() throws Exception {
     MockitoSession mockSession = mockitoSession().mockStatic(Arguments.class).startMocking();
     try {
       when(Arguments.createMap()).thenAnswer(i -> new JavaOnlyMap());
