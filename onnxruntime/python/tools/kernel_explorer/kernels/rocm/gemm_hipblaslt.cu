@@ -12,7 +12,6 @@
 
 #include "core/providers/rocm/rocm_common.h"
 #include "core/providers/rocm/tunable/gemm_common.h"
-#include "core/providers/rocm/tunable/gemm_hipblaslt.h"
 #include "python/tools/kernel_explorer/device_array.h"
 #include "python/tools/kernel_explorer/kernel_explorer_interface.h"
 

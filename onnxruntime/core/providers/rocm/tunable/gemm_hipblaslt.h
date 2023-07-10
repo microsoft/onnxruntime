@@ -198,11 +198,6 @@ auto GetHipBlasLtTypeStringAndOps(ActivationType activation_type = ActivationTyp
             matmul, HIPBLASLT_MATMUL_DESC_BIAS_POINTER, &d_bias, sizeof(void*)));
       }
 
-      // if (enable_scaleD) {
-      //   HIPBLASLT_RETURN_IF_ERROR(hipblasLtMatmulDescSetAttribute(
-      //       matmul, HIPBLASLT_MATMUL_DESC_D_SCALE_VECTOR_POINTER, &d_scaleD, sizeof(void*)));
-      // }
-
       size_t workspace_size = 0;
       hipblasLtMatmulAlgo_t algo_i = algo;
       auto status = hipblaslt_ext::matmulIsAlgoSupported(op_handle,
