@@ -697,7 +697,7 @@ typedef void (*OrtCustomJoinThreadFn)(OrtCustomThreadHandle ort_custom_thread_ha
 typedef OrtStatus*(ORT_API_CALL* RegisterCustomOpsFn)(OrtSessionOptions* options, const OrtApiBase* api);
 
 /** \brief Callback function for RunAsync
- * 
+ *
  * \param[in] user_data A customized handle passed in by RunAsync.
  * \param[out] outputs On succeed, outputs host inference results.
                NOTE:

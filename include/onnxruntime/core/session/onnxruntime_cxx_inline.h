@@ -932,6 +932,7 @@ inline void SessionImpl<T>::Run(const RunOptions& run_options, const IoBinding& 
 inline void CallbackBridge(void* user_data, OrtValue** outputs, size_t num_outputs, OrtStatusPtr status) {
   RunAsyncCallbackStdFn* callback = reinterpret_cast<RunAsyncCallbackStdFn*>(user_data);
   std::vector<Ort::Value> output_values;
+  output_values.reserve(num_outputs);
   for (size_t ith = 0; ith < num_outputs; ++ith) {
     output_values.emplace_back(outputs[ith]);
   }
