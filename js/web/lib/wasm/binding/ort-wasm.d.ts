@@ -69,7 +69,7 @@ export interface OrtWasmModule extends EmscriptenModule {
        download: JSEP.DownloadFunction, createKernel: JSEP.CreateKernelFunction,
        releaseKernel: JSEP.ReleaseKernelFunction, run: JSEP.RunFunction): void;
 
-  _JsepOutput(context: number, index: number, data: number): number;
+  _JsepOutput(context: bigint, index: bigint, data: bigint): bigint;
 
   jsepRunPromise?: Promise<number>;
   // #endregion

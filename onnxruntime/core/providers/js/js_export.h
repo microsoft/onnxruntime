@@ -10,5 +10,5 @@
 // TODO: Move to api.h
 
 extern "C" {
-const void* EMSCRIPTEN_KEEPALIVE JsepOutput(void* context, int index, void* data);
+const void* EMSCRIPTEN_KEEPALIVE JsepOutput(void* context, size_t index, void* data);
 };

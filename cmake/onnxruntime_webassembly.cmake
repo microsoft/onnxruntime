@@ -272,7 +272,8 @@ else()
     target_link_options(onnxruntime_webassembly PRIVATE
       --pre-js "${ONNXRUNTIME_ROOT}/wasm/js_internal_api.js"
       "SHELL:-s ASYNCIFY=2"
-#      "SHELL:-s ASYNCIFY_STACK_SIZE=65536"
+      "SHELL:-s ASYNCIFY_STACK_SIZE=65536"
+      "SHELL:-s ASYNCIFY_EXPORTS=['OrtRun','_OrtRun']"
       "SHELL:-s ${MEMORY_FLAG}"
     )
   endif()
@@ -308,6 +309,7 @@ else()
 
   # Set link flag to enable exceptions support, this will override default disabling exception throwing behavior when disable exceptions.
   target_link_options(onnxruntime_webassembly PRIVATE "-fwasm-exceptions")
+#  target_link_options(onnxruntime_webassembly PRIVATE "SHELL:-s DISABLE_EXCEPTION_THROWING=0")
 
   if (onnxruntime_ENABLE_WEBASSEMBLY_PROFILING)
     target_link_options(onnxruntime_webassembly PRIVATE --profiling --profiling-funcs)

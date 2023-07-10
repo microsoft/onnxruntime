@@ -38,21 +38,20 @@ class ComputeContextImpl implements ComputeContext {
     return this.backend.currentKernelCustomData;
   }
   constructor(private module: OrtWasmModule, private backend: WebGpuBackend, contextDataOffset: number) {
-    const heapU32 = module.HEAPU32;
-
+    const heapU32 = module.HEAPU64;
     // extract context data
-    let dataIndex = (contextDataOffset >> 2);
-    this.opKernelContext = heapU32[dataIndex++];
-    const inputCount = heapU32[dataIndex++];
+    let dataIndex = (contextDataOffset / 2**3);
+    this.opKernelContext = Number(heapU32[dataIndex++]);
+    const inputCount = Number(heapU32[dataIndex++]);
 
     const inputs: TensorView[] = [];
     for (let i = 0; i < inputCount; i++) {
-      const dataType = heapU32[dataIndex++];
-      const data = heapU32[dataIndex++];
-      const dim = heapU32[dataIndex++];
+      const dataType = Number(heapU32[dataIndex++]);
+      const data = Number(heapU32[dataIndex++]);
+      const dim = Number(heapU32[dataIndex++]);
       const dims: number[] = [];
       for (let d = 0; d < dim; d++) {
-        dims.push(heapU32[dataIndex++]);
+        dims.push(Number(heapU32[dataIndex++]));
       }
       inputs.push(new TensorViewImpl(module, dataType, data, dims));
     }
@@ -82,13 +81,16 @@ class ComputeContextImpl implements ComputeContext {
   output(index: number, dims: readonly number[]): number {
     const stack = this.module.stackSave();
     try {
-      const data = this.module.stackAlloc((1 + dims.length) * 4 /* sizeof(size_t) */);
-      let offset = data >> 2;
-      this.module.HEAPU32[offset++] = dims.length;
+      const data = this.module.stackAlloc((1 + dims.length) * 8 /* sizeof(size_t) */);
+      let offset = data >> 3;
+      this.module.HEAPU64[offset++] = BigInt(dims.length);
       for (let i = 0; i < dims.length; i++) {
-        this.module.HEAPU32[offset++] = dims[i];
+        this.module.HEAPU64[offset++] = BigInt(dims[i]);
       }
-      return this.module._JsepOutput(this.opKernelContext, index, data);
+      return Number(this.module._JsepOutput(BigInt(this.opKernelContext), BigInt(index), BigInt(data)));
+    } catch (e) {
+      console.error(e);
+      throw e;
     } finally {
       this.module.stackRestore(stack);
     }

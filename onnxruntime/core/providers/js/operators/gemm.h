@@ -26,8 +26,8 @@ class Gemm : public JsKernel {
                                }),
                                static_cast<double>(alpha),
                                static_cast<double>(beta),
-                               static_cast<int32_t>(transA),
-                               static_cast<int32_t>(transB));
+                               static_cast<size_t>(transA),
+                               static_cast<size_t>(transB));
   }
 };
 

@@ -134,8 +134,11 @@ class GpuDataManagerImpl implements GpuDataManager {
       throw new Error('inconsistent source and destination gpu data size');
     }
     const size = calcNormalizedBufferSize(sourceGpuDataCache.originalSize);
+
     // GPU copy
-    this.backend.getCommandEncoder().copyBufferToBuffer(
+    const commandEncoder = this.backend.getCommandEncoder();
+    this.backend.endComputePass();
+    commandEncoder.copyBufferToBuffer(
         sourceGpuDataCache.gpuData.buffer, 0, destinationGpuDataCache.gpuData.buffer, 0, size);
   }
 
