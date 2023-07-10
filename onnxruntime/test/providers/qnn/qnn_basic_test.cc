@@ -260,6 +260,67 @@ TEST_F(QnnCPUBackendTests, TestNHWCResizeShapeInference_sizes_opset18) {
 TEST_F(QnnHTPBackendTests, TestNHWCResizeShapeInference_qdq_sizes_opset18) {
   RunNHWCResizeModel(ORT_MODEL_FOLDER "nhwc_resize_sizes_opset18.quant.onnx", true);
 }
+
+TEST(QnnDEBUGTests, TestQDQ16bit_Add) {
+  Ort::SessionOptions so;
+
+  so.SetGraphOptimizationLevel(ORT_ENABLE_ALL);
+
+  onnxruntime::ProviderOptions options;
+
+#if defined(_WIN32)
+  options["backend_path"] = "QnnHtp.dll";
+#else
+  options["backend_path"] = "libQnnHtp.so";
+#endif
+
+  so.AppendExecutionProvider("QNN", options);
+  const ORTCHAR_T* ort_model_path = ORT_MODEL_FOLDER "add.quant16.onnx";
+  try {
+    Ort::Session session(*ort_env, ort_model_path, so);
+
+    std::array<float, 1 * 1 * 2 * 2> input0_data = { 1.0f, 2.0f, 3.0f, 4.0f };
+    std::array<float, 1 * 1 * 2 * 2> input1_data = { 1.0f, 2.0f, 3.0f, 4.0f };
+
+    auto memory_info = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU);
+    std::vector<Ort::Value> ort_inputs;
+    std::vector<const char*> ort_input_names;
+
+    // Add input0
+    std::array<int64_t, 4> inputs_shape{1, 1, 2, 2};
+    ort_inputs.emplace_back(Ort::Value::CreateTensor<float>(
+        memory_info, input0_data.data(), input0_data.size(), inputs_shape.data(), inputs_shape.size()));
+    ort_input_names.push_back("input0");
+
+    // Add input1
+    ort_inputs.emplace_back(Ort::Value::CreateTensor<float>(
+        memory_info, input1_data.data(), input1_data.size(), inputs_shape.data(), inputs_shape.size()));
+    ort_input_names.push_back("input1");
+
+    // Run session and get outputs
+    std::array<const char*, 1> output_names{"output"};
+    std::vector<Ort::Value> ort_outputs = session.Run(Ort::RunOptions{nullptr}, ort_input_names.data(), ort_inputs.data(),
+                                                      ort_inputs.size(), output_names.data(), output_names.size());
+
+    // Check output shape.
+    Ort::Value& ort_output = ort_outputs[0];
+    auto typeshape = ort_output.GetTensorTypeAndShapeInfo();
+    const size_t num_elems = typeshape.GetElementCount();
+    const float* elems = ort_output.GetTensorData<float>();
+    std::vector<int64_t> output_shape = typeshape.GetShape();
+
+    ASSERT_THAT(output_shape, ::testing::ElementsAre(1, 1, 2, 2));
+    auto output_span = gsl::span<const float>{elems, num_elems};
+    ASSERT_THAT(output_span, ::testing::ElementsAre(2.0f, 4.0f, 6.0f, 8.0f));
+    for (size_t i = 0; i < num_elems; i++) {
+      std::cout << elems[i] << " ";
+    }
+    std::cout << std::endl;
+  } catch (const Ort::Exception& excpt) {
+    std::cout << excpt.what() << std::endl;
+    FAIL();
+  }
+}
 #endif  // defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
 
 #endif  // !defined(ORT_MINIMAL_BUILD)

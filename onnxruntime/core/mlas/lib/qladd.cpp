@@ -654,6 +654,58 @@ MlasQLinearAdd<uint8_t>(
             InputA, ScaleA, ZeroPointA, InputB, ScaleB, ZeroPointB, ScaleC, ZeroPointC, OutputC, N, IsScalarB);
 }
 
+template<>
+void
+MLASCALL
+MlasQLinearAdd<uint16_t>(
+    const uint16_t* InputA,
+    float ScaleA,
+    int32_t ZeroPointA,
+    const uint16_t* InputB,
+    float ScaleB,
+    int32_t ZeroPointB,
+    float ScaleC,
+    int32_t ZeroPointC,
+    uint16_t* OutputC,
+    size_t N,
+    bool IsScalarB
+    )
+{
+    if (IsScalarB) {
+        MlasQLinearAddKernelRawHelper<uint16_t, true>(
+            InputA, ScaleA, ZeroPointA, InputB, ScaleB, ZeroPointB, ScaleC, ZeroPointC, OutputC, N);
+    } else {
+        MlasQLinearAddKernelRawHelper<uint16_t, false>(
+            InputA, ScaleA, ZeroPointA, InputB, ScaleB, ZeroPointB, ScaleC, ZeroPointC, OutputC, N);
+    }
+}
+
+template<>
+void
+MLASCALL
+MlasQLinearAdd<int16_t>(
+    const int16_t* InputA,
+    float ScaleA,
+    int32_t ZeroPointA,
+    const int16_t* InputB,
+    float ScaleB,
+    int32_t ZeroPointB,
+    float ScaleC,
+    int32_t ZeroPointC,
+    int16_t* OutputC,
+    size_t N,
+    bool IsScalarB
+    )
+{
+    if (IsScalarB) {
+        MlasQLinearAddKernelRawHelper<int16_t, true>(
+            InputA, ScaleA, ZeroPointA, InputB, ScaleB, ZeroPointB, ScaleC, ZeroPointC, OutputC, N);
+    } else {
+        MlasQLinearAddKernelRawHelper<int16_t, false>(
+            InputA, ScaleA, ZeroPointA, InputB, ScaleB, ZeroPointB, ScaleC, ZeroPointC, OutputC, N);
+    }
+}
+
 //
 // Function definition for platform usage
 //
@@ -697,3 +749,29 @@ MlasQLinearAddU8Kernel(
     MlasQLinearAddKernel<uint8_t>(
         InputA, ScaleA, ZeroPointA, InputB, ScaleB, ZeroPointB, ScaleC, ZeroPointC, OutputC, N, IsScalarB);
 }
+
+void
+MLASCALL
+MlasQLinearAddU16Kernel(
+    const uint16_t* InputA,
+    float ScaleA,
+    int32_t ZeroPointA,
+    const uint16_t* InputB,
+    float ScaleB,
+    int32_t ZeroPointB,
+    float ScaleC,
+    int32_t ZeroPointC,
+    uint16_t* OutputC,
+    size_t N,
+    bool IsScalarB
+    )
+{
+    if (IsScalarB) {
+        MlasQLinearAddKernelRawHelper<uint16_t, true>(
+            InputA, ScaleA, ZeroPointA, InputB, ScaleB, ZeroPointB, ScaleC, ZeroPointC, OutputC, N);
+    } else {
+        MlasQLinearAddKernelRawHelper<uint16_t, false>(
+            InputA, ScaleA, ZeroPointA, InputB, ScaleB, ZeroPointB, ScaleC, ZeroPointC, OutputC, N);
+    }
+}
+

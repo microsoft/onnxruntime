@@ -301,6 +301,11 @@ bool QnnModelWrapper::ProcessOffset(const std::string& offset_name,
       offset_value = 0 - (uint8_span.data()[0]);
       break;
     }
+    case ONNX_NAMESPACE::TensorProto_DataType_UINT16: {
+      auto uint16_span = ReinterpretAsSpan<const uint16_t>(gsl::make_span(unpacked_tensor));
+      offset_value = 0 - (uint16_span.data()[0]);
+      break;
+    }
     case ONNX_NAMESPACE::TensorProto_DataType_INT32: {
       auto int32_span = ReinterpretAsSpan<const int32_t>(gsl::make_span(unpacked_tensor));
       offset_value = -(int32_span.data()[0]);
