@@ -99,6 +99,8 @@ struct OrtDmlApi {
    * This API gets the D3D12 resource when an OrtValue has been allocated by the DML EP.
    */
   ORT_API2_STATUS(GetD3D12ResourceFromAllocation, _In_ OrtAllocator* provider, _In_ void* dml_resource, _Out_ ID3D12Resource** d3d_resource);
+
+  ORT_API2_STATUS(GetComputeOnlyDevices, _Out_ int* device_ids);
 };
 
 #ifdef __cplusplus

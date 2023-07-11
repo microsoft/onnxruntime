@@ -23,6 +23,8 @@ using Microsoft::WRL::ComPtr;
 #include "DmlExecutionProvider/inc/DmlExecutionProvider.h"
 #include "core/platform/env.h"
 
+#include <dxcore.h>
+
 namespace onnxruntime {
 
 struct DMLProviderFactory : IExecutionProviderFactory {
@@ -225,6 +227,92 @@ ORT_API_STATUS_IMPL(GetD3D12ResourceFromAllocation, _In_ OrtAllocator* ort_alloc
   return nullptr;
   API_IMPL_END
 }
+
+ORT_API_STATUS_IMPL(GetComputeOnlyDevices, _Out_ int* device_ids) {
+  API_IMPL_BEGIN
+// #ifdef USE_DML
+
+  ComPtr<IDXCoreAdapterFactory> adapterFactory;
+  ORT_THROW_IF_FAILED(::DXCoreCreateAdapterFactory(adapterFactory.GetAddressOf()));
+
+  ComPtr<IDXCoreAdapterList> d3D12CoreComputeAdapters;
+  GUID attributes[]{ DXCORE_ADAPTER_ATTRIBUTE_D3D12_CORE_COMPUTE };
+  ORT_THROW_IF_FAILED(
+      adapterFactory->CreateAdapterList(_countof(attributes),
+          attributes,
+          d3D12CoreComputeAdapters.GetAddressOf()));
+
+  const uint32_t count{ d3D12CoreComputeAdapters->GetAdapterCount() };
+  //int compute_only_device_id = -1;
+
+  // First loop to get number of compute only devices
+  int num_compute_only_devices = 0;
+  for (uint32_t i = 0; i < count; ++i)
+  {
+    ComPtr<IDXCoreAdapter> candidateAdapter;
+    ORT_THROW_IF_FAILED(
+        d3D12CoreComputeAdapters->GetAdapter(i, candidateAdapter.GetAddressOf()));
+
+    // Reject adapters that support both compute and graphics, e.g. GPUs.
+    if (candidateAdapter->IsAttributeSupported(DXCORE_ADAPTER_ATTRIBUTE_D3D12_GRAPHICS))
+    {
+        continue;
+    }
+
+    bool isHardware{ false };
+    ORT_THROW_IF_FAILED(candidateAdapter->GetProperty(
+        DXCoreAdapterProperty::IsHardware,
+        &isHardware));
+
+    if (isHardware)
+    {
+        // Choose the first hardware adapter, and stop looping.
+        //compute_only_device_id = i;
+        num_compute_only_devices++;
+    }
+  }
+
+  //*device_id = compute_only_device_id;
+
+  if (num_compute_only_devices == 0)
+  {
+      device_ids = nullptr;
+      return nullptr;
+  }
+
+  device_ids = (int*)malloc(num_compute_only_devices * sizeof(int));
+
+
+    int device_index = 0;
+    for (uint32_t i = 0; i < count; ++i)
+  {
+    ComPtr<IDXCoreAdapter> candidateAdapter;
+    ORT_THROW_IF_FAILED(
+        d3D12CoreComputeAdapters->GetAdapter(i, candidateAdapter.GetAddressOf()));
+
+    // Reject adapters that support both compute and graphics, e.g. GPUs.
+    if (candidateAdapter->IsAttributeSupported(DXCORE_ADAPTER_ATTRIBUTE_D3D12_GRAPHICS))
+    {
+        continue;
+    }
+
+    bool isHardware{ false };
+    ORT_THROW_IF_FAILED(candidateAdapter->GetProperty(
+        DXCoreAdapterProperty::IsHardware,
+        &isHardware));
+
+    if (isHardware)
+    {
+        // Choose the first hardware adapter, and stop looping.
+        device_ids[device_index] = i;
+    }
+  }
+
+// #endif  // USE_DML
+  return nullptr;
+  API_IMPL_END
+}
+
 
 static constexpr OrtDmlApi ort_dml_api_10_to_x = {
   &OrtSessionOptionsAppendExecutionProvider_DML,
