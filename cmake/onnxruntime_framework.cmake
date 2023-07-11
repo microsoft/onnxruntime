@@ -74,6 +74,9 @@ if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
   target_link_libraries(onnxruntime_framework ${ABSEIL_LIBS})
 endif()
 
+target_include_directories(onnxruntime_framework PRIVATE ${onnxruntime_ROCM_HOME}/include)
+target_link_libraries(onnxruntime_framework PRIVATE ${ROCTX_LIB})
+
 set_target_properties(onnxruntime_framework PROPERTIES FOLDER "ONNXRuntime")
 # need onnx to build to create headers that this project includes
 add_dependencies(onnxruntime_framework ${onnxruntime_EXTERNAL_DEPENDENCIES})

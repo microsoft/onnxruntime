@@ -1518,6 +1518,7 @@ if (onnxruntime_USE_ROCM)
 
   find_library(RCCL_LIB rccl REQUIRED)
   find_library(ROCTRACER_LIB roctracer64 REQUIRED)
+  find_library(ROCTX_LIB roctx64)
   set(ONNXRUNTIME_ROCM_LIBS roc::rocblas MIOpen ${RCCL_LIB} ${ROCTRACER_LIB})
 
   file(GLOB_RECURSE onnxruntime_providers_rocm_cc_srcs CONFIGURE_DEPENDS

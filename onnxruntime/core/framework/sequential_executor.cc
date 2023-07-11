@@ -7,6 +7,7 @@
 #include <thread>
 #include <vector>
 #include <sstream>
+#include <roctracer/roctx.h>
 #include "core/common/common.h"
 #include "core/common/logging/logging.h"
 #include "core/framework/allocation_planner.h"
@@ -431,12 +432,23 @@ class KernelScope {
 #endif
 };
 
+struct ScopedRange {
+  ScopedRange(const std::string& msg) {
+    roctxRangePush(msg.c_str());
+  }
+
+  ~ScopedRange() {
+    roctxRangePop();
+  }
+};
+
 onnxruntime::Status ExecuteKernel(StreamExecutionContext& ctx,
                                   NodeIndex idx,
                                   size_t stream_idx,
                                   const bool& terminate_flag,
                                   SessionScope& session_scope) {
   auto* p_kernel = ctx.GetSessionState().GetKernel(idx);
+  ScopedRange(p_kernel->Node().Name());
   if (p_kernel->KernelDef().OpName() == "YieldOp") {
     // Do not execute YieldOp (it is an no-op anyways).
     // Decrement the reference count of tensors that are not needed beyond this point.
