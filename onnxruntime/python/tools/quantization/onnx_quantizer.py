@@ -74,20 +74,22 @@ class ONNXQuantizer:
             "ForceQuantizeNoInputCheck" in self.extra_options and self.extra_options["ForceQuantizeNoInputCheck"]
         )
         self.q_matmul_const_b_only = "MatMulConstBOnly" in self.extra_options and self.extra_options["MatMulConstBOnly"]
-        is_weight_int8 = weight_qType == QuantType.QInt8
+        is_weight_signed_int = weight_qType == QuantType.QInt8 or weight_qType == QuantType.QInt16
         self.is_weight_symmetric = (
-            is_weight_int8 if "WeightSymmetric" not in self.extra_options else self.extra_options["WeightSymmetric"]
+            is_weight_signed_int if "WeightSymmetric" not in self.extra_options else self.extra_options["WeightSymmetric"]
         )
         self.is_activation_symmetric = (
             False if "ActivationSymmetric" not in self.extra_options else self.extra_options["ActivationSymmetric"]
         )
 
-        self.activation_qType = (
-            onnx_proto.TensorProto.INT8 if activation_qType == QuantType.QInt8 else onnx_proto.TensorProto.UINT8
-        )
-        self.weight_qType = (
-            onnx_proto.TensorProto.INT8 if weight_qType == QuantType.QInt8 else onnx_proto.TensorProto.UINT8
-        )
+        qtype_map = {
+            QuantType.QInt8: onnx_proto.TensorProto.INT8,
+            QuantType.QUInt8: onnx_proto.TensorProto.UINT8,
+            QuantType.QInt16: onnx_proto.TensorProto.INT16,
+            QuantType.QUInt16: onnx_proto.TensorProto.UINT16
+        }
+        self.activation_qType = qtype_map[activation_qType]
+        self.weight_qType = qtype_map[weight_qType]
         """
             Dictionary specifying the min and max values for tensors. It has following format:
                 {

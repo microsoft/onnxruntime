@@ -264,7 +264,9 @@ TEST_F(QnnHTPBackendTests, TestNHWCResizeShapeInference_qdq_sizes_opset18) {
 TEST(QnnDEBUGTests, TestQDQ16bit_Add) {
   Ort::SessionOptions so;
 
+  //so.SetLogSeverityLevel(ORT_LOGGING_LEVEL_VERBOSE);
   so.SetGraphOptimizationLevel(ORT_ENABLE_ALL);
+  so.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1");  // Disable fallback to the CPU EP.
 
   onnxruntime::ProviderOptions options;
 
