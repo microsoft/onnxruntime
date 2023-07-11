@@ -10,6 +10,7 @@
 #include "orttraining/training_api/checkpoint.h"
 
 #include "orttraining/test/training_api/core/data_utils.h"
+#include "test/util/include/asserts.h"
 #include "test/util/include/temp_dir.h"
 
 namespace onnxruntime::training::test {
@@ -36,6 +37,33 @@ TEST(TrainingCApiTest, SaveCheckpoint) {
   Ort::CheckpointState new_checkpoint_state = Ort::CheckpointState::LoadCheckpoint(checkpoint_path);
   Ort::TrainingSession new_training_session = Ort::TrainingSession(env, Ort::SessionOptions(),
                                                                    new_checkpoint_state, model_uri);
+}
+
+TEST(TrainingCApiTest, LoadCheckpointFromBuffer) {
+  Ort::Env env;
+  size_t num_bytes = 0;
+  PathString checkpoint_path = MODEL_FOLDER "checkpoint.ckpt";
+  ASSERT_STATUS_OK(Env::Default().GetFileLength(checkpoint_path.c_str(), num_bytes));
+  std::vector<uint8_t> checkpoint_bytes(num_bytes);
+
+  std::ifstream bytes_stream(checkpoint_path, std::ifstream::in | std::ifstream::binary);
+  bytes_stream.read(reinterpret_cast<char*>(checkpoint_bytes.data()), num_bytes);
+
+  ASSERT_TRUE(bytes_stream);
+
+  Ort::CheckpointState checkpoint_state = Ort::CheckpointState::LoadCheckpointFromBuffer(checkpoint_bytes);
+
+  auto test_dir = ORT_TSTR("save_checkpoint_dir");
+  if (Env::Default().FolderExists(test_dir)) {
+    ORT_ENFORCE(Env::Default().DeleteFolder(test_dir).IsOK());
+  }
+  onnxruntime::test::TemporaryDirectory tmp_dir{test_dir};
+  PathString new_checkpoint_path{
+      ConcatPathComponent<PathChar>(tmp_dir.Path(), ORT_TSTR("new_checkpoint.ckpt"))};
+
+  Ort::CheckpointState::SaveCheckpoint(checkpoint_state, new_checkpoint_path);
+
+  Ort::CheckpointState new_checkpoint_state = Ort::CheckpointState::LoadCheckpoint(new_checkpoint_path);
 }
 
 TEST(TrainingCApiTest, AddIntProperty) {

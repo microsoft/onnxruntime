@@ -68,10 +68,19 @@
   "main": "dist/ort-web.node.js",
   "exports": {
     ".": {
-      "node": "./dist/ort-web.node.js",
-      "default": "./dist/ort.min.js"
+      "node": {
+        "types": "./types.d.ts",
+        "default": "./dist/ort-web.node.js"
+      },
+      "default": {
+        "types": "./types.d.ts",
+        "default": "./dist/ort.min.js"
+      }
     },
-    "./webgpu": "./dist/ort.webgpu.min.js"
+    "./webgpu": {
+      "types": "./types.d.ts",
+      "default": "./dist/ort.webgpu.min.js"
+    }
   },
   "types": "./types.d.ts",
   "description": "A Javascript library for running ONNX models on browsers"

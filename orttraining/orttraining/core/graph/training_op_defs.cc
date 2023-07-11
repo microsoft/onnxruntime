@@ -1725,7 +1725,7 @@ void RegisterTrainingOpSchemas() {
           "Constrain input and output gradient types to float tensors.")
       .TypeConstraint(
           "T2",
-          OpSchema::all_tensor_types_with_bfloat(),
+          OpSchema::all_tensor_types_ir4(),
           "reset_signal can be of any tensor type.")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         propagateShapeAndTypeFromFirstInput(ctx);
@@ -1745,7 +1745,7 @@ void RegisterTrainingOpSchemas() {
       .Output(0, "output", "Tensor of rank q-1+r-indices[-1].", "T")
       .TypeConstraint(
           "T",
-          OpSchema::all_tensor_types_with_bfloat(),
+          OpSchema::all_tensor_types_ir4(),
           "Constrain input and output types to any tensor type.")
       .TypeConstraint(
           "Tind",
@@ -3093,7 +3093,7 @@ Example 4:
       .SetDoc("if all the inputs are available, the output will be true")
       .Input(0, "input_tensors", "list of dependency tensors", "T", OpSchema::Variadic, false)
       .Output(0, "done", "all the dependency tensors are ready", "B")
-      .TypeConstraint("T", OpSchema::all_tensor_types_with_bfloat(), "All Tensor types")
+      .TypeConstraint("T", OpSchema::all_tensor_types_ir4(), "All Tensor types")
       .TypeConstraint("B", {"tensor(bool)"}, "Only bool")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         updateOutputElemType(ctx, 0, ONNX_NAMESPACE::TensorProto::BOOL);
@@ -3106,7 +3106,7 @@ Example 4:
       .SetDoc("Barrier op with value pass through, outputs = inputs")
       .Input(0, "inputs", "input tensors", "T", OpSchema::Variadic, false)
       .Output(0, "outputs", "output tensors", "T", OpSchema::Variadic, false)
-      .TypeConstraint("T", OpSchema::all_tensor_types_with_bfloat(), "All Tensor types")
+      .TypeConstraint("T", OpSchema::all_tensor_types_ir4(), "All Tensor types")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         for (size_t i = 0; i < ctx.getNumInputs(); ++i) {
           propagateElemTypeFromInputToOutput(ctx, i, i);
@@ -3485,7 +3485,7 @@ Return true if all elements are true and false otherwise.
           "Constrain input shape to integer tensors.")
       .TypeConstraint(
           "T",
-          OpSchema::all_tensor_types_with_bfloat(),
+          OpSchema::all_tensor_types_ir4(),
           "Constrain input and output types to float tensors.")
       .TypeConstraint(
           "Tind",
@@ -3699,7 +3699,7 @@ Return true if all elements are true and false otherwise.
               /*min_arity*/ 0)
       .Attr("non_differentiable_outputs", "The indices of the module outputs that doesn't have a gradient.", AttributeProto::INTS, OPTIONAL_VALUE)
       .Attr("full_shape_outputs", "The indices of the module outputs that must have full shape.", AttributeProto::INTS)
-      .TypeConstraint("T", OpSchema::all_tensor_types_with_bfloat(), "Allow inputs and outputs to be any kind of tensor.")
+      .TypeConstraint("T", OpSchema::all_tensor_types_ir4(), "Allow inputs and outputs to be any kind of tensor.")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         auto non_differentiable_outputs = ctx.getAttribute("non_differentiable_outputs");
         std::unordered_set<size_t> non_differentiable_outputs_indices{};
@@ -4571,6 +4571,45 @@ Return true if all elements are true and false otherwise.
           updateOutputShape(ctx, 6, {num_directions, three * hidden_size});
         }
       });
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(PadAndUnflatten)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc(
+          "PadAndUnflatten operator pads zero on the first axis, and unflatten the axis into two axes according"
+          "to given unflatten_dims. This is used by padding elimination graph transformers."
+          "For each index in indices, the corresponding value in output comes from input."
+          "For other indices,  the corresponding value in output will be padded to zero."
+
+          "The indices don't allow duplicated index values, otherwise, though there is no runtime check"
+          "(in case of performance concern), the behaviour of output is undefined."
+
+          "An example:"
+          "  input: [[1, 2, 3, 4], [5, 6, 7, 8]], shape is [2, 4]"
+          "  indices: [0, 5], shape is [2]"
+          "  unflatten_dims: [2, 3], shape is [2]"
+
+          "  output: [[[1, 2, 3, 4], [0, 0, 0, 0], [0, 0, 0, 0]], [[0, 0, 0, 0], [0, 0, 0, 0], [5, 6, 7, 8]]],"
+          "  shape is [2, 3, 4]"
+          "  flatten_output_shape: [6, 4], shape is [2]")
+      .Input(0, "input", "input data of rank N, shape is [d1, d2, ..., dN]", "T")
+      .Input(1, "indices", "1D Tensor of int32/int64 indices, shape is [d1], each element's value ranges in [0, M1*M2).",
+             "T_INDEX")
+      .Input(2, "unflatten_dims", "1D tensor with two values, [M1, M2].", "T_INT")
+      .Output(0, "output", "output data of rank N+1, [M1, M2, d2, ..., dN]", "T")
+      .Output(1, "flatten_output_shape", "1D tensor with output shape, [M1*M2, d2, ..., dN]", "T_INT")
+      .TypeConstraint(
+          "T_INT",
+          {"tensor(int32)", "tensor(int64)"},
+          "Constrain shape to integer tensors.")
+      .TypeConstraint(
+          "T",
+          {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
+          "Constrain input and output types to float tensors.")
+      .TypeConstraint(
+          "T_INDEX",
+          {"tensor(int32)", "tensor(int64)"},
+          "Constrain indices to integer types");
 }
 
 }  // namespace training

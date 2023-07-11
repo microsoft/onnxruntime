@@ -3,34 +3,52 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
-import warnings
+from logging import Logger
+from typing import Tuple
 
 import onnx
 import torch
 
 from onnxruntime.capi import _pybind_state as C
 
-from . import _are_deterministic_algorithms_enabled, _io, _logger, _use_deterministic_algorithms, _utils
+from . import _are_deterministic_algorithms_enabled, _io, _use_deterministic_algorithms, _utils
 from ._execution_agent import InferenceAgent
 from ._fallback import ORTModuleFallbackException, _FallbackManager, _FallbackPolicy
-from ._graph_execution_manager import GraphExecutionManager, _RunStateInfo, _SkipCheck
-from .debug_options import DebugOptions
+from ._graph_execution_manager import GraphExecutionManager, _RunStateInfo
+from ._logger import TimeTrackerPhase, TrackTime
+from .options import DebugOptions, _SkipCheck
 
 
 class InferenceManager(GraphExecutionManager):
     """Concrete instance of GraphExecutionManager that is able to manage the inference model
 
-    InferenceManager is resposible for building and running the forward graph of the inference model
+    InferenceManager is responsible for building and running the forward graph of the inference model
     """
 
-    def __init__(self, model, debug_options: DebugOptions, fallback_manager: _FallbackManager):
-        super().__init__(model, debug_options, fallback_manager)
+    def __init__(self, model, debug_options: DebugOptions, fallback_manager: _FallbackManager, logger: Logger):
+        super().__init__(model, debug_options, fallback_manager, logger)
         self._export_mode = torch.onnx.TrainingMode.EVAL
 
     @staticmethod
-    def execution_session_run_forward(execution_session, onnx_model, device, *inputs):
-        """Runs the forward graph on execution_session with given model inputs and device"""
+    def execution_session_run_forward(
+        execution_session,
+        onnx_model: onnx.ModelProto,
+        device: torch.device,
+        *inputs,
+    ) -> Tuple[Tuple[torch.Tensor, ...], _RunStateInfo]:
+        """Runs the forward pass on `execution_session` with given `onnx_model`, `device` and `inputs`
 
+        Args:
+            execution_session InferenceAgent: Agent which runs inference
+            onnx_model (onnx.ModelProto): ONNX model
+            device (torch.device): PyTorch device
+            inputs: (torch.Tensor or a container of): User inputs passed from ORTModule.forward().
+
+        Returns:
+            Returns a tuple (user_outputs, run_info):
+                user_outputs: The model output (either torch.Tensor or a container of torch.Tensor)
+                run_info: A _RunStateInfo which contains extra information about the execution of the graph
+        """
         # TODO: Try to reuse the output buffers as some of the output tensors are same sizes,
         #   especially the backward graph outputs.
         # REVIEW(codemzs): Consolidate Training Agent with InferenceAgent on C++ side to not
@@ -58,6 +76,14 @@ class InferenceManager(GraphExecutionManager):
         ONNX model is exported the first time this method is executed.
         Next, we build an optimized inference graph with module_graph_builder.
         Finally, we instantiate the ONNX Runtime InferenceSession through the InferenceAgent.
+
+        The call stack is as follows:
+            ORTModule.forward(*inputs, **kwargs) ->
+            ORTModule._torch_module.forward(*inputs, **kwargs) where _torch_module is a TorchModuleORT instance ->
+            ORTModule._torch_module._execution_manager(is_training()).forward(*inputs, **kwargs) where:
+                TorchModuleORT._execution_manager(true) is a TrainingManager instance;
+                and TorchModuleORT._execution_manager(false) is an InferenceManager instance.
+
         """
 
         # Fallback to PyTorch due to failures *external* to forward(),
@@ -67,31 +93,29 @@ class InferenceManager(GraphExecutionManager):
 
         try:
             # Issue at most one warning message about fast path
-            if (
-                self._first_skip_check_warning is True
-                and self._skip_check.is_disabled() is False
-                and self._debug_options.logging.log_level <= _logger.LogLevel.WARNING
-            ):
+            if self._first_skip_check_warning is True and self._runtime_options.skip_check.is_disabled() is False:
                 self._first_skip_check_warning = False
-                warnings.warn(
-                    f"Fast path enabled - skipping checks."
-                    f"rebuild gradient graph: {self._skip_check.is_set(_SkipCheck.SKIP_CHECK_BUILD_GRADIENT)},"
-                    f"execution agent recreation: {self._skip_check.is_set(_SkipCheck.SKIP_CHECK_EXECUTION_AGENT)},"
-                    f"device check: {self._skip_check.is_set(_SkipCheck.SKIP_CHECK_DEVICE)}",
-                    UserWarning,
+                self._logger.warning(
+                    "Fast path enabled - skipping checks. rebuild gradient graph: %s, execution agent recreation: %s, "
+                    "device check: %s",
+                    self._runtime_options.skip_check.is_set(_SkipCheck.SKIP_CHECK_BUILD_GRADIENT),
+                    self._runtime_options.skip_check.is_set(_SkipCheck.SKIP_CHECK_EXECUTION_AGENT),
+                    self._runtime_options.skip_check.is_set(_SkipCheck.SKIP_CHECK_DEVICE),
                 )
 
             # If exporting module to ONNX for the first time, this skip check will not take effect.
             # It will only take effect on subsequent forward calls.
             build_graph = False
             if (
-                self._skip_check.is_set(_SkipCheck.SKIP_CHECK_BUILD_GRADIENT) is False
+                self._runtime_options.skip_check.is_set(_SkipCheck.SKIP_CHECK_BUILD_GRADIENT) is False
                 or not self._onnx_models.exported_model
             ):
+                self.time_tracker.start(TimeTrackerPhase.EndToEnd)
+
                 # Exporting module to ONNX for the first time
                 build_graph = self._export_model(*inputs, **kwargs)
                 if build_graph:
-                    # If model was exported, then initialize the graph builder
+                    # If model was exported, then initialize the graph builder.
                     self._initialize_graph_builder()
 
                 # Build the inference graph
@@ -100,13 +124,16 @@ class InferenceManager(GraphExecutionManager):
                     # Set the config according to input inspection.
                     self._enable_conditional_optimizations(graph_transformer_config, inputs, kwargs)
 
-                    # Build the gradient graph
+                    # Build the graph
                     self._build_graph(graph_transformer_config)
 
             # If creating the execution agent for the first time, this skip check will not take effect.
             # It will only take effect on subsequent forward calls.
             create_execution_session = False
-            if self._skip_check.is_set(_SkipCheck.SKIP_CHECK_EXECUTION_AGENT) is False or not self._execution_agent:
+            if (
+                self._runtime_options.skip_check.is_set(_SkipCheck.SKIP_CHECK_EXECUTION_AGENT) is False
+                or not self._execution_agent
+            ):
                 module_device = _utils.get_device_from_module(self._original_module)
 
                 create_execution_session = (
@@ -123,7 +150,10 @@ class InferenceManager(GraphExecutionManager):
                 # Create execution session creates the inference_session
                 self._create_execution_agent()
 
-            if self._skip_check.is_set(_SkipCheck.SKIP_CHECK_DEVICE) is False:
+                self.time_tracker.end(TimeTrackerPhase.EndToEnd)
+                self._log_feature_stats()
+
+            if self._runtime_options.skip_check.is_set(_SkipCheck.SKIP_CHECK_DEVICE) is False:
                 # Assert that the input and model device match
                 _utils._check_same_device(self._device, "Input argument to forward", *inputs)
 
@@ -135,7 +165,7 @@ class InferenceManager(GraphExecutionManager):
                 inputs,
                 kwargs,
                 self._device,
-                self._rt_inspector,
+                self._runtime_inspector,
             )
 
             user_outputs, _ = InferenceManager.execution_session_run_forward(
@@ -161,6 +191,7 @@ class InferenceManager(GraphExecutionManager):
         if self._fallback_manager.is_pending():
             return self._fallback_manager.fallback(self._debug_options.logging.log_level, *inputs, **kwargs)
 
+    @TrackTime(TimeTrackerPhase.BUILD_GRAPH)
     def _build_graph(self, graph_transformer_config):
         """Build an inference graph using the module_graph_builder"""
 
@@ -173,6 +204,7 @@ class InferenceManager(GraphExecutionManager):
                 self._export_mode,
             )
 
+    @TrackTime(TimeTrackerPhase.CREATE_SESSION)
     def _create_execution_agent(self):
         """Creates an InferenceAgent that can run forward graph on an inference model"""
 

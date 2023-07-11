@@ -41,6 +41,21 @@ namespace OperatorHelper
         }
     }
 
+    void HandleEmptyAxes(
+        /*inout*/std::vector<int32_t>& axes,
+        gsl::span<const uint32_t> inputShape,
+        bool treatEmptyAsNop
+        )
+    {
+        // If axes is not specified, reduce over all the dimensions.
+        // If empty axes should be treated as a nop, then just leave them as-is.
+        if (axes.empty() && !treatEmptyAsNop)
+        {
+            axes.resize(inputShape.size());
+            std::iota(axes.begin(), axes.end(), 0);
+        }
+    }
+
     float CastFloat16ToFloat32(uint16_t input)
     {
         // Promote float16m10e5s1 to float32m23e8s1.
@@ -1122,12 +1137,36 @@ namespace OperatorHelper
         }
 
         ML_CHECK_VALID_ARGUMENT(padding.size() % 2 == 0, "Padding must be even count, including begin/end pairs.");
+        std::vector<uint32_t> inputShape = shapeInformation.GetInputTensorShape(0);
+        uint32_t dimCount = gsl::narrow_cast<uint32_t>(inputShape.size());
+        m_startPadding.resize(dimCount, 0);
+        m_endPadding.resize(dimCount, 0);
+        std::vector<int32_t> axes;
 
-        uint32_t dimCount = gsl::narrow_cast<uint32_t>(padding.size() / 2);
-        m_startPadding.resize(dimCount);
-        m_endPadding.resize(dimCount);
-        std::copy(padding.begin(), padding.begin() + dimCount, m_startPadding.begin());
-        std::copy(padding.begin() + dimCount, padding.begin() + dimCount * 2, m_endPadding.begin());
+        // Handle possible axes input
+        if (opsetVersion >= 18)
+        {
+            if (kernelInformation.IsInputValid(3))
+            {
+                ReadCpuLocalTensorIntoInt32(kernelInformation.GetConstantInputTensor(3), /*out*/ axes);
+            }
+            HandleEmptyAxes(axes, inputShape, false);
+            ML_CHECK_VALID_ARGUMENT(axes.size() * 2 == padding.size(), "The number of elements in padding should be 2 times the number of axes.");
+            HandleNegativeAxes(axes, dimCount);
+        }
+        else
+        {
+            HandleEmptyAxes(axes, inputShape, false);
+        }
+
+        uint32_t numAxes = gsl::narrow_cast<uint32_t>(axes.size());
+        for (int32_t i = 0; i < axes.size(); i++)
+        {
+            auto xi_begin = padding[i];
+            auto xi_end = padding[i+axes.size()];
+            m_startPadding[axes[i]] = xi_begin;
+            m_endPadding[axes[i]] = xi_end;
+        }
     }
 
     std::vector<EdgeShapes> PaddingHelper::GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const
@@ -1357,21 +1396,6 @@ namespace OperatorHelper
             }
 
             return { std::move(prunedDims) };
-        }
-    }
-
-    void ReduceHelperBase::HandleEmptyAxes(
-        /*inout*/std::vector<int32_t>& axes,
-        gsl::span<const uint32_t> inputShape,
-        bool treatEmptyAsNop
-        )
-    {
-        // If axes is not specified, reduce over all the dimensions.
-        // If empty axes should be treated as a nop, then just leave them as-is.
-        if (axes.empty() && !treatEmptyAsNop)
-        {
-            axes.resize(inputShape.size());
-            std::iota(axes.begin(), axes.end(), 0);
         }
     }
 

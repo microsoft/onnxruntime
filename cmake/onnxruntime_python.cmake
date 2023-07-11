@@ -112,7 +112,7 @@ if (onnxruntime_USE_NCCL)
 endif()
 
 if(APPLE)
-  set(ONNXRUNTIME_SO_LINK_FLAG "-Xlinker -exported_symbols_list ${ONNXRUNTIME_ROOT}/python/exported_symbols.lst")
+  set(ONNXRUNTIME_SO_LINK_FLAG "-Xlinker -exported_symbols_list -Xlinker ${ONNXRUNTIME_ROOT}/python/exported_symbols.lst")
 elseif(UNIX)
   if (onnxruntime_ENABLE_EXTERNAL_CUSTOM_OP_SCHEMAS)
     set(ONNXRUNTIME_SO_LINK_FLAG "-Xlinker --version-script=${ONNXRUNTIME_ROOT}/python/version_script_expose_onnx_protobuf.lds -Xlinker --gc-sections")
@@ -223,7 +223,7 @@ if (MSVC)
   # Explicitly use the release version of the python library to make the project file consistent with this.
   target_link_libraries(onnxruntime_pybind11_state PRIVATE ${Python_LIBRARY_RELEASE})
 elseif (APPLE)
-  set_target_properties(onnxruntime_pybind11_state PROPERTIES LINK_FLAGS "${ONNXRUNTIME_SO_LINK_FLAG} -undefined dynamic_lookup")
+  set_target_properties(onnxruntime_pybind11_state PROPERTIES LINK_FLAGS "${ONNXRUNTIME_SO_LINK_FLAG} -Xlinker -undefined -Xlinker dynamic_lookup")
   set_target_properties(onnxruntime_pybind11_state PROPERTIES
     INSTALL_RPATH "@loader_path"
     BUILD_WITH_INSTALL_RPATH TRUE
@@ -504,6 +504,12 @@ file(GLOB onnxruntime_qdq_helper_srcs CONFIGURE_DEPENDS
     ${REPO_ROOT}/tools/python/util/qdq_helpers/*.py
 )
 
+if (onnxruntime_USE_OPENVINO)
+  file(GLOB onnxruntime_python_openvino_python_srcs CONFIGURE_DEPENDS
+    ${REPO_ROOT}/tools/python/util/add_openvino_win_libs.py
+  )
+endif()
+
 set(build_output_target onnxruntime_common)
 if(NOT onnxruntime_ENABLE_STATIC_ANALYSIS)
 add_custom_command(
@@ -629,6 +635,15 @@ add_custom_command(
       ${REPO_ROOT}/VERSION_NUMBER
       $<TARGET_FILE_DIR:${build_output_target}>
 )
+
+if (onnxruntime_USE_OPENVINO)
+  add_custom_command(
+    TARGET onnxruntime_pybind11_state POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy
+        ${onnxruntime_python_openvino_python_srcs}
+        $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/tools/
+  )
+endif()
 
 if (onnxruntime_ENABLE_EXTERNAL_CUSTOM_OP_SCHEMAS)
   add_custom_command(
@@ -906,7 +921,7 @@ if (onnxruntime_USE_TVM)
 endif()
 
 if (onnxruntime_USE_DML)
-  if (NOT dml_EXTERNAL_PROJECT)
+  if (NOT onnxruntime_USE_CUSTOM_DIRECTML)
     set(dml_shared_lib_path ${DML_PACKAGE_DIR}/bin/${onnxruntime_target_platform}-win/${DML_SHARED_LIB})
   else()
     set(dml_shared_lib_path ${DML_PACKAGE_DIR}/bin/${DML_SHARED_LIB})

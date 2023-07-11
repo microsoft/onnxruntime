@@ -82,12 +82,10 @@ const OrtDmlApi* GetOrtDmlApi(_In_ uint32_t version) NO_EXCEPTION;
 #pragma warning(disable : 26400)
 #endif
 using namespace onnxruntime::logging;
-using onnxruntime::BFloat16;
 using onnxruntime::DataTypeImpl;
 using onnxruntime::Environment;
 using onnxruntime::IAllocator;
 using onnxruntime::InputDefList;
-using onnxruntime::MLFloat16;
 using onnxruntime::narrow;
 using onnxruntime::OutputDefList;
 using onnxruntime::Tensor;
@@ -2233,6 +2231,7 @@ ORT_API_STATUS_IMPL(OrtApis::CreateArenaCfg, _In_ size_t max_mem, int arena_exte
   cfg->arena_extend_strategy = arena_extend_strategy;
   cfg->initial_chunk_size_bytes = initial_chunk_size_bytes;
   cfg->max_dead_bytes_per_chunk = max_dead_bytes_per_chunk;
+  cfg->max_dead_bytes_per_chunk = -1L;
   *out = cfg.release();
   return nullptr;
   API_IMPL_END
@@ -2254,6 +2253,8 @@ ORT_API_STATUS_IMPL(OrtApis::CreateArenaCfgV2, _In_reads_(num_keys) const char* 
       cfg->max_dead_bytes_per_chunk = static_cast<int>(arena_config_values[i]);
     } else if (strcmp(arena_config_keys[i], "initial_growth_chunk_size_bytes") == 0) {
       cfg->initial_growth_chunk_size_bytes = static_cast<int>(arena_config_values[i]);
+    } else if (strcmp(arena_config_keys[i], "max_power_of_two_extend_bytes") == 0) {
+      cfg->max_power_of_two_extend_bytes = static_cast<int64_t>(arena_config_values[i]);
     } else {
       std::ostringstream oss;
       oss << "Invalid key found: " << arena_config_keys[i];
@@ -2733,6 +2734,7 @@ static constexpr OrtApi ort_api_1_to_16 = {
     &OrtApis::UpdateROCMProviderOptions,
     &OrtApis::GetROCMProviderOptionsAsString,
     &OrtApis::ReleaseROCMProviderOptions,
+    &OrtApis::CreateAndRegisterAllocatorV2,
 };
 
 // OrtApiBase can never change as there is no way to know what version of OrtApiBase is returned by OrtGetApiBase.

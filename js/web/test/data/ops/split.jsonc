@@ -2,6 +2,7 @@
   {
     "name": "Split on Axis 0",
     "operator": "Split",
+    "opsets": [{"domain": "", "version": 12}],
     "attributes": [
       { "name": "axis", "data": 0, "type": "int" },
       { "name": "split", "data": [2, 4], "type": "ints" }
@@ -34,6 +35,7 @@
   {
     "name": "Split on Axis 1 - 2D",
     "operator": "Split",
+    "opsets": [{"domain": "", "version": 12}],
     "attributes": [
       { "name": "axis", "data": 1, "type": "int" },
       { "name": "split", "data": [2, 4], "type": "ints" }

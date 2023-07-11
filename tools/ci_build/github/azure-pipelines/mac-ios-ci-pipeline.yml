@@ -1,9 +1,8 @@
 jobs:
 - job: iOS_CI_on_Mac
   pool:
-    vmImage: 'macOS-12'
+    vmImage: 'macOS-13'
   variables:
-    MACOSX_DEPLOYMENT_TARGET: '10.14'
     PROTO_CACHE_DIR: $(Pipeline.Workspace)/proto_ccache
     ORT_CACHE_DIR: $(Pipeline.Workspace)/ort_ccache
     TODAY: $[format('{0:dd}{0:MM}{0:yyyy}', pipeline.startTime)]
@@ -24,6 +23,7 @@ jobs:
             env:
               CCACHE_DIR: $(PROTO_CACHE_DIR)
 
+    - template: templates/use-xcode-version.yml
     - template: templates/mac-build-step-with-cache.yml
       parameters:
         WithCache: true
@@ -33,7 +33,6 @@ jobs:
         ChangeEveryCommit: true
         BuildStep:
           - script: |
-              sudo xcode-select --switch /Applications/Xcode_13.1.app/Contents/Developer
               python3 $(Build.SourcesDirectory)/tools/ci_build/build.py \
                 --skip_submodule_sync \
                 --build_dir $(Build.BinariesDirectory)/iOS \
@@ -43,7 +42,7 @@ jobs:
                 --ios \
                 --ios_sysroot iphonesimulator  \
                 --osx_arch x86_64 \
-                --apple_deploy_target 11.0 \
+                --apple_deploy_target 12.0 \
                 --use_xcode \
                 --config RelWithDebInfo \
                 --build_apple_framework \

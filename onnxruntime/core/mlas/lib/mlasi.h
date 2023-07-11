@@ -782,7 +782,7 @@ extern "C" {
 // value.
 //
 
-#define MLAS_DEFAULT_PREFERRED_BUFFER_ALIGNMENT     32
+#define MLAS_DEFAULT_PREFERRED_BUFFER_ALIGNMENT     64
 
 //
 // Define the target number of per-thread multiplies before using another
@@ -927,7 +927,9 @@ struct MLAS_PLATFORM {
     const MLAS_GEMM_QUANT_DISPATCH* GemmU8S8Dispatch;
     const MLAS_GEMM_QUANT_DISPATCH* GemmU8U8Dispatch;
 #elif defined(MLAS_TARGET_ARM64)
-    const MLAS_GEMM_QUANT_DISPATCH* GemmU8X8Dispatch;
+    const MLAS_GEMM_QUANT_DISPATCH* GemmU8U8Dispatch;
+    const MLAS_GEMM_QUANT_DISPATCH* GemmU8S8Dispatch;
+    const MLAS_GEMM_QUANT_DISPATCH* GemmS8S8Dispatch;
 #endif
     const MLAS_SYMM_QGEMM_DISPATCH* SymmQgemmDispatch{nullptr};
 

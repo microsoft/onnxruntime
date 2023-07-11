@@ -20,11 +20,13 @@ jobs:
   workspace:
     clean: all
   pool:
+    # We need macOS-12 to run the Android emulator for now.
+    # https://github.com/actions/runner-images/issues/7671
     vmImage: 'macOS-12'
   variables:
   - name: runCodesignValidationInjection
     value: false
-  timeoutInMinutes: 60
+  timeoutInMinutes: 90
   dependsOn:
     - Android_Java_API_AAR_Packaging_${{ parameters.job_name_suffix }}
   steps:
@@ -45,6 +47,8 @@ jobs:
       jdkSourceOption: 'PreInstalled'
 
   - template: use-android-ndk.yml
+
+  - template: install-appcenter.yml
 
   - script: |
       python3 $(Build.SourcesDirectory)/tools/python/run_android_emulator.py \

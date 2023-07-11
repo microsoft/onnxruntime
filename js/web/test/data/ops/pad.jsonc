@@ -2,6 +2,7 @@
   {
     "name": "constant 2D",
     "operator": "Pad",
+    "opsets": [{"domain": "", "version": 10}],
     "attributes": [
       { "name": "mode", "data": "constant", "type": "string" },
       { "name": "value", "data": 1.2, "type": "float" },
@@ -80,6 +81,7 @@
   {
     "name": "constant 3D",
     "operator": "Pad",
+    "opsets": [{"domain": "", "version": 10}],
     "attributes": [
       { "name": "mode", "data": "constant", "type": "string" },
       { "name": "value", "data": 2.3, "type": "float" },
@@ -414,6 +416,7 @@
   {
     "name": "Reflect 1D",
     "operator": "Pad",
+    "opsets": [{"domain": "", "version": 10}],
     "attributes": [
       { "name": "mode", "data": "reflect", "type": "string" },
       { "name": "pads", "data": [5, 7], "type": "ints" }
@@ -457,6 +460,7 @@
   {
     "name": "Reflect 2D",
     "operator": "Pad",
+    "opsets": [{"domain": "", "version": 10}],
     "attributes": [
       { "name": "mode", "data": "reflect", "type": "string" },
       { "name": "pads", "data": [3, 2, 2, 5], "type": "ints" }
@@ -548,6 +552,7 @@
   {
     "name": "Reflect 3D",
     "operator": "Pad",
+    "opsets": [{"domain": "", "version": 10}],
     "attributes": [
       { "name": "mode", "data": "reflect", "type": "string" },
       { "name": "pads", "data": [1, 2, 2, 2, 3, 1], "type": "ints" }
@@ -881,6 +886,7 @@
   {
     "name": "Edge 2D",
     "operator": "Pad",
+    "opsets": [{"domain": "", "version": 10}],
     "attributes": [
       { "name": "mode", "data": "edge", "type": "string" },
       { "name": "pads", "data": [3, 2, 2, 3], "type": "ints" }
@@ -958,6 +964,7 @@
   {
     "name": "Edge 3D",
     "operator": "Pad",
+    "opsets": [{"domain": "", "version": 10}],
     "attributes": [
       { "name": "mode", "data": "edge", "type": "string" },
       { "name": "pads", "data": [1, 2, 2, 2, 3, 1], "type": "ints" }

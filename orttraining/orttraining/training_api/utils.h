@@ -34,7 +34,7 @@ void WrapInOrtValue(T value,
                     AllocatorPtr alloc = nullptr) {
   static CPUExecutionProviderInfo info;
   static CPUExecutionProvider cpu_provider(info);
-  static AllocatorPtr cpu_allocator = cpu_provider.GetAllocator(OrtMemTypeDefault);
+  static AllocatorPtr cpu_allocator = cpu_provider.CreatePreferredAllocators()[0];
 
   TensorShape shape({1});
   auto element_type = DataTypeImpl::GetType<T>();

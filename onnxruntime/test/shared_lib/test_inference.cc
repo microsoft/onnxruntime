@@ -47,9 +47,9 @@ constexpr size_t countof(T (&)[N]) { return N; }
 
 extern std::unique_ptr<Ort::Env> ort_env;
 
-template <typename OutT>
+template <typename OutT, typename InT = float, typename InputT = Input>
 void RunSession(OrtAllocator* allocator, Ort::Session& session_object,
-                const std::vector<Input>& inputs,
+                const std::vector<InputT>& inputs,
                 const char* output_name,
                 const std::vector<int64_t>& dims_y,
                 const std::vector<OutT>& values_y,
@@ -59,8 +59,8 @@ void RunSession(OrtAllocator* allocator, Ort::Session& session_object,
   for (size_t i = 0; i < inputs.size(); i++) {
     input_names.emplace_back(inputs[i].name);
     ort_inputs.emplace_back(
-        Ort::Value::CreateTensor<float>(allocator->Info(allocator), const_cast<float*>(inputs[i].values.data()),
-                                        inputs[i].values.size(), inputs[i].dims.data(), inputs[i].dims.size()));
+        Ort::Value::CreateTensor<InT>(allocator->Info(allocator), const_cast<InT*>(inputs[i].values.data()),
+                                      inputs[i].values.size(), inputs[i].dims.data(), inputs[i].dims.size()));
   }
 
   std::vector<Ort::Value> ort_outputs;
@@ -81,13 +81,17 @@ void RunSession(OrtAllocator* allocator, Ort::Session& session_object,
 
   OutT* f = output_tensor->GetTensorMutableData<OutT>();
   for (size_t i = 0; i != total_len; ++i) {
-    ASSERT_EQ(values_y[i], f[i]);
+    if constexpr (std::is_same<OutT, float>::value || std::is_same<OutT, double>::value) {
+      ASSERT_NEAR(values_y[i], f[i], 1e-3);
+    } else {
+      ASSERT_EQ(values_y[i], f[i]);
+    }
   }
 }
 
-template <typename OutT>
+template <typename OutT, typename InT = float, typename InputT = Input>
 static void TestInference(Ort::Env& env, const std::basic_string<ORTCHAR_T>& model_uri,
-                          const std::vector<Input>& inputs,
+                          const std::vector<InputT>& inputs,
                           const char* output_name,
                           const std::vector<int64_t>& expected_dims_y,
                           const std::vector<OutT>& expected_values_y,
@@ -140,26 +144,26 @@ static void TestInference(Ort::Env& env, const std::basic_string<ORTCHAR_T>& mod
     auto default_allocator = std::make_unique<MockedOrtAllocator>();
 
     // without preallocated output tensor
-    RunSession<OutT>(default_allocator.get(),
-                     session,
-                     inputs,
-                     output_name,
-                     expected_dims_y,
-                     expected_values_y,
-                     nullptr);
+    RunSession<OutT, InT, InputT>(default_allocator.get(),
+                                  session,
+                                  inputs,
+                                  output_name,
+                                  expected_dims_y,
+                                  expected_values_y,
+                                  nullptr);
     // with preallocated output tensor
-    Ort::Value value_y = Ort::Value::CreateTensor<float>(default_allocator.get(),
-                                                         expected_dims_y.data(), expected_dims_y.size());
+    Ort::Value value_y = Ort::Value::CreateTensor<InT>(default_allocator.get(),
+                                                       expected_dims_y.data(), expected_dims_y.size());
 
     // test it twice
     for (int i = 0; i != 2; ++i)
-      RunSession<OutT>(default_allocator.get(),
-                       session,
-                       inputs,
-                       output_name,
-                       expected_dims_y,
-                       expected_values_y,
-                       &value_y);
+      RunSession<OutT, InT, InputT>(default_allocator.get(),
+                                    session,
+                                    inputs,
+                                    output_name,
+                                    expected_dims_y,
+                                    expected_values_y,
+                                    &value_y);
   }
 }
 
@@ -173,6 +177,9 @@ static constexpr PATH_TYPE SEQUENCE_MODEL_URI_2 = TSTR("testdata/optional_sequen
 #endif
 static constexpr PATH_TYPE CUSTOM_OP_MODEL_URI = TSTR("testdata/foo_1.onnx");
 static constexpr PATH_TYPE CUSTOM_OP_LIBRARY_TEST_MODEL_URI = TSTR("testdata/custom_op_library/custom_op_test.onnx");
+#if !defined(DISABLE_FLOAT8_TYPES)
+static constexpr PATH_TYPE CUSTOM_OP_LIBRARY_TEST_MODEL_FLOAT8_URI = TSTR("testdata/custom_op_library/custom_op_test_float8.onnx");
+#endif
 #if defined(USE_OPENVINO) && (!defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS))
 static constexpr PATH_TYPE CUSTOM_OP_OPENVINO_WRAPPER_LIB_TEST_MODEL_URI = TSTR(
     "testdata/custom_op_openvino_wrapper_library/custom_op_mnist_ov_wrapper.onnx");
@@ -1389,6 +1396,52 @@ TEST(CApiTest, test_custom_op_library) {
 #endif
 }
 
+#if !defined(DISABLE_FLOAT8_TYPES)
+
+struct InputF8 {
+  const char* name = nullptr;
+  std::vector<int64_t> dims;
+  std::vector<Ort::Float8E4M3FN_t> values;
+};
+
+// See test test_custom_op_library_float8.
+#if defined(__ANDROID__)
+TEST(CApiTest, DISABLED_test_custom_op_library_float8) {
+#elif defined(REDUCED_OPS_BUILD) && defined(USE_CUDA)
+TEST(CApiTest, DISABLED_test_custom_op_library_float8) {
+#else
+TEST(CApiTest, test_custom_op_library_float8) {
+#endif
+  std::cout << "Running inference using custom op shared library" << std::endl;
+
+  std::vector<InputF8> inputs(2);
+  inputs[0].name = "X";
+  inputs[0].dims = {2};
+  inputs[0].values = {0, 1};
+  inputs[1].name = "Y";
+  inputs[1].dims = {2};
+  inputs[1].values = {3, 4};
+
+  // prepare expected inputs and outputs
+  std::vector<int64_t> expected_dims_y = {2};
+  std::vector<Ort::Float8E4M3FN_t> expected_values_y = {0, 1};
+
+  onnxruntime::PathString lib_name;
+#if defined(_WIN32)
+  lib_name = ORT_TSTR("custom_op_library.dll");
+#elif defined(__APPLE__)
+  lib_name = ORT_TSTR("libcustom_op_library.dylib");
+#else
+  lib_name = ORT_TSTR("./libcustom_op_library.so");
+#endif
+
+  TestInference<Ort::Float8E4M3FN_t, Ort::Float8E4M3FN_t, InputF8>(*ort_env, CUSTOM_OP_LIBRARY_TEST_MODEL_FLOAT8_URI, inputs,
+                                                                   "Z", expected_dims_y,
+                                                                   expected_values_y, 0, nullptr, lib_name.c_str());
+}
+
+#endif
+
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
 #if defined(__ANDROID__)
 // Disable on android because custom op libraries are not copied to the emulator.
@@ -1740,10 +1793,25 @@ TEST(CApiTest, io_binding_cuda) {
 }
 #endif
 
-#if defined(USE_CUDA)
-TEST(CApiTest, cuda_graph) {
+#if defined(USE_CUDA) || defined(USE_TENSORRT)
+TEST(CApiTest, basic_cuda_graph) {
   const auto& api = Ort::GetApi();
+  Ort::SessionOptions session_options;
 
+#if defined(USE_TENSORRT)
+  // Enable cuda graph in TRT provider option.
+  OrtTensorRTProviderOptionsV2* trt_options;
+  ASSERT_TRUE(api.CreateTensorRTProviderOptions(&trt_options) == nullptr);
+  std::unique_ptr<OrtTensorRTProviderOptionsV2, decltype(api.ReleaseTensorRTProviderOptions)>
+      rel_trt_options(trt_options, api.ReleaseTensorRTProviderOptions);
+  std::vector<const char*> keys{"trt_cuda_graph_enable"};
+  std::vector<const char*> values{"1"};
+  ASSERT_TRUE(api.UpdateTensorRTProviderOptions(rel_trt_options.get(), keys.data(), values.data(), keys.size()) == nullptr);
+
+  ASSERT_TRUE(api.SessionOptionsAppendExecutionProvider_TensorRT_V2(
+                  static_cast<OrtSessionOptions*>(session_options),
+                  rel_trt_options.get()) == nullptr);
+#else
   // Enable cuda graph in cuda provider option.
   OrtCUDAProviderOptionsV2* cuda_options = nullptr;
   ASSERT_TRUE(api.CreateCUDAProviderOptions(&cuda_options) == nullptr);
@@ -1753,12 +1821,11 @@ TEST(CApiTest, cuda_graph) {
   std::vector<const char*> values{"1"};
   ASSERT_TRUE(api.UpdateCUDAProviderOptions(rel_cuda_options.get(), keys.data(), values.data(), 1) == nullptr);
 
-  Ort::SessionOptions session_options;
   ASSERT_TRUE(api.SessionOptionsAppendExecutionProvider_CUDA_V2(
                   static_cast<OrtSessionOptions*>(session_options),
                   rel_cuda_options.get()) == nullptr);
+#endif
 
-  // Create IoBinding for inputs and outputs.
   Ort::Session session(*ort_env, MODEL_URI, session_options);
   Ort::MemoryInfo info_cuda("Cuda", OrtAllocatorType::OrtArenaAllocator, 0, OrtMemTypeDefault);
 
@@ -1787,6 +1854,7 @@ TEST(CApiTest, cuda_graph) {
   Ort::Value bound_y = Ort::Value::CreateTensor(info_cuda, reinterpret_cast<float*>(output_data.get()),
                                                 expected_y.size(), expected_y_shape.data(), expected_y_shape.size());
 
+  // Create IoBinding for inputs and outputs.
   Ort::IoBinding binding(session);
   binding.BindInput("X", bound_x);
   binding.BindOutput("Y", bound_y);
@@ -1818,6 +1886,32 @@ TEST(CApiTest, cuda_graph) {
   binding.ClearBoundInputs();
   binding.ClearBoundOutputs();
 }
+
+#ifndef REDUCED_OPS_BUILD
+// The following test uses some ops not supported in the reduced ops build
+TEST(CApiTest, cuda_graph_with_shape_nodes) {
+  const auto& api = Ort::GetApi();
+
+  // Enable cuda graph in cuda provider option.
+  OrtCUDAProviderOptionsV2* cuda_options = nullptr;
+  ASSERT_TRUE(api.CreateCUDAProviderOptions(&cuda_options) == nullptr);
+  std::unique_ptr<OrtCUDAProviderOptionsV2, decltype(api.ReleaseCUDAProviderOptions)>
+      rel_cuda_options(cuda_options, api.ReleaseCUDAProviderOptions);
+  std::vector<const char*> keys{"enable_cuda_graph"};
+  std::vector<const char*> values{"1"};
+  ASSERT_TRUE(api.UpdateCUDAProviderOptions(rel_cuda_options.get(), keys.data(), values.data(), 1) == nullptr);
+
+  Ort::SessionOptions session_options;
+  ASSERT_TRUE(api.SessionOptionsAppendExecutionProvider_CUDA_V2(
+                  static_cast<OrtSessionOptions*>(session_options),
+                  rel_cuda_options.get()) == nullptr);
+
+  // Successful loading of the ONNX model with shape nodes with cuda graph feature enabled
+  Ort::Session session(*ort_env, TSTR("testdata/cuda_graph_with_shape_nodes.onnx"), session_options);
+}
+
+#endif
+
 #endif
 
 TEST(CApiTest, create_tensor) {
@@ -1968,6 +2062,30 @@ TEST(CApiTest, create_tensor_with_data_bfloat16) {
   Ort::BFloat16_t value_at_1 = tensor.At<Ort::BFloat16_t>({1});
   ASSERT_EQ(values[1], value_at_1);
 }
+
+#if !defined(DISABLE_FLOAT8_TYPES)
+
+TEST(CApiTest, create_tensor_with_data_float8) {
+  Ort::Float8E4M3FN_t values[] = {0, 1, 2, 3, 4};
+  constexpr size_t values_length = sizeof(values) / sizeof(values[0]);
+  std::vector<int64_t> dims = {static_cast<int64_t>(values_length)};
+
+  Ort::MemoryInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
+
+  Ort::Value tensor = Ort::Value::CreateTensor<Ort::Float8E4M3FN_t>(info, values, values_length, dims.data(), dims.size());
+  const auto* new_pointer = tensor.GetTensorData<Ort::Float8E4M3FN_t>();
+  ASSERT_EQ(new_pointer, values);
+  auto type_info = tensor.GetTypeInfo();
+  auto tensor_info = type_info.GetTensorTypeAndShapeInfo();
+  ASSERT_NE(tensor_info, nullptr);
+  ASSERT_EQ(1u, tensor_info.GetDimensionsCount());
+  ASSERT_EQ(tensor_info.GetElementType(), ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E4M3FN);
+
+  Ort::Float8E4M3FN_t value_at_1 = tensor.At<Ort::Float8E4M3FN_t>({1});
+  ASSERT_EQ(values[1], value_at_1);
+}
+
+#endif
 
 TEST(CApiTest, access_tensor_data_elements) {
   /**
@@ -2345,6 +2463,53 @@ TEST(CApiTest, TestSharedAllocators) {
     // Ensure that there was no leak
     custom_allocator.LeakCheck();
   }
+#ifdef USE_CUDA
+  {
+    OrtMemoryInfo* cuda_meminfo = nullptr;
+    ASSERT_TRUE(api.CreateMemoryInfo("Cuda", OrtArenaAllocator, 0, OrtMemTypeDefault, &cuda_meminfo) == nullptr);
+    std::unique_ptr<OrtMemoryInfo, decltype(api.ReleaseMemoryInfo)> rel_info(cuda_meminfo, api.ReleaseMemoryInfo);
+
+    OrtArenaCfg* arena_cfg = nullptr;
+    ASSERT_TRUE(api.CreateArenaCfg(0, -1, -1, -1, &arena_cfg) == nullptr);
+    std::unique_ptr<OrtArenaCfg, decltype(api.ReleaseArenaCfg)> rel_arena_cfg(arena_cfg, api.ReleaseArenaCfg);
+
+    std::vector<const char*> keys, values;
+    ASSERT_TRUE(api.CreateAndRegisterAllocatorV2(env_ptr, onnxruntime::kCudaExecutionProvider, cuda_meminfo, arena_cfg, keys.data(), values.data(), 0) == nullptr);
+
+    // Test that duplicates are handled
+    std::unique_ptr<OrtStatus, decltype(api.ReleaseStatus)> status_releaser(
+        api.CreateAndRegisterAllocatorV2(env_ptr, onnxruntime::kCudaExecutionProvider, cuda_meminfo, arena_cfg, keys.data(), values.data(), 0),
+        api.ReleaseStatus);
+    ASSERT_FALSE(status_releaser.get() == nullptr);
+
+    {
+      // create session 1
+      Ort::SessionOptions cuda_session_options;
+      cuda_session_options.AddConfigEntry(kOrtSessionOptionsConfigUseEnvAllocators, "1");
+      cuda_session_options.AppendExecutionProvider_CUDA(OrtCUDAProviderOptions{});
+      Ort::Session session1(*ort_env, MODEL_URI, cuda_session_options);
+      RunSession<float>(allocator_for_input_memory_allocation.get(),
+                        session1,
+                        inputs,
+                        "Y",
+                        expected_dims_y,
+                        expected_values_y,
+                        nullptr);
+
+      // create session 2
+      Ort::Session session2(*ort_env, MODEL_URI, cuda_session_options);
+      RunSession<float>(allocator_for_input_memory_allocation.get(),
+                        session2,
+                        inputs,
+                        "Y",
+                        expected_dims_y,
+                        expected_values_y,
+                        nullptr);
+    }
+
+    ASSERT_TRUE(api.UnregisterAllocator(env_ptr, cuda_meminfo) == nullptr);
+  }
+#endif
 }
 
 TEST(CApiTest, TestSharingOfInitializerAndItsPrepackedVersion) {
@@ -2499,8 +2664,8 @@ TEST(CApiTest, ConfigureCudaArenaAndDemonstrateMemoryArenaShrinkage) {
 
   Ort::SessionOptions session_options;
 
-  const char* keys[] = {"max_mem", "arena_extend_strategy", "initial_chunk_size_bytes", "max_dead_bytes_per_chunk", "initial_growth_chunk_size_bytes"};
-  const size_t values[] = {0 /*let ort pick default max memory*/, 0, 1024, 0, 256};
+  const char* keys[] = {"max_mem", "arena_extend_strategy", "initial_chunk_size_bytes", "max_dead_bytes_per_chunk", "initial_growth_chunk_size_bytes", "max_power_of_two_extend_bytes"};
+  const size_t values[] = {0 /*let ort pick default max memory*/, 0, 1024, 0, 256, 1L << 24};
 
   OrtArenaCfg* arena_cfg = nullptr;
   ASSERT_TRUE(api.CreateArenaCfgV2(keys, values, 5, &arena_cfg) == nullptr);

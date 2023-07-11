@@ -21,7 +21,9 @@ Do not modify directly.*
 | AveragePool | ai.onnx(7-9,10,11+); com.ms.internal.nhwc(11+) | need perf optimization; need implementing activation |
 | Ceil | ai.onnx(6-12,13+) |  |
 | Clip | ai.onnx(6-10,11,12,13+) |  |
+| Concat | ai.onnx(1-3,4-10,11-12,13+) |  |
 | Conv | ai.onnx(1-10,11+); com.ms.internal.nhwc(11+) | need perf optimization; conv3d not supported; need implementing activation |
+| ConvTranspose | ai.onnx(1-10,11+); com.ms.internal.nhwc(11+) |  |
 | Cos | ai.onnx(7+) |  |
 | Cosh | ai.onnx(9+) |  |
 | Div | ai.onnx(7-12,13,14+) |  |
@@ -41,14 +43,27 @@ Do not modify directly.*
 | Neg | ai.onnx(6-12,13+) |  |
 | Pow | ai.onnx(7-11,12,13-14,15+) |  |
 | Reciprocal | ai.onnx(6-12,13+) |  |
+| ReduceL1 | ai.onnx(1-10,11-12,13-17,18+) |  |
+| ReduceL2 | ai.onnx(1-10,11-12,13-17,18+) |  |
+| ReduceLogSum | ai.onnx(1-10,11-12,13-17,18+) |  |
+| ReduceLogSumExp | ai.onnx(1-10,11-12,13-17,18+) |  |
+| ReduceMax | ai.onnx(1-10,11,12,13-17,18+) |  |
+| ReduceMean | ai.onnx(1-10,11-12,13-17,18+) |  |
+| ReduceMin | ai.onnx(1-10,11,12,13-17,18+) |  |
+| ReduceProd | ai.onnx(1-10,11-12,13-17,18+) |  |
+| ReduceSum | ai.onnx(1-10,11-12,13+) |  |
+| ReduceSumSquare | ai.onnx(1-10,11-12,13-17,18+) |  |
 | Relu | ai.onnx(6-12,13,14+) |  |
 | Reshape | ai.onnx(5-12,13,14+) | no GPU kernel |
 | Shape | ai.onnx(1-12,13-14,15+) | no GPU kernel; an ORT warning is generated - need to fix |
 | Sigmoid | ai.onnx(6-12,13+) |  |
 | Sin | ai.onnx(7+) |  |
 | Sinh | ai.onnx(9+) |  |
+| Split | ai.onnx(1,2-10,11-12,13-17,18+) |  |
 | Sqrt | ai.onnx(6-12,13+) |  |
+| Squeeze | ai.onnx(1-10,11-12,13+) |  |
 | Sub | ai.onnx(7-12,13,14+) |  |
 | Tan | ai.onnx(7+) |  |
 | ThresholdedRelu | ai.onnx(10+) |  |
 | Transpose | ai.onnx(1-12,13+) | need perf optimization |
+| Unsqueeze | ai.onnx(1-10,11-12,13+) |  |

@@ -3,11 +3,11 @@
 
 using Microsoft.ML.OnnxRuntime.Tensors;
 using System;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text;
-using System.Collections.Generic;
-using System.Linq;
-using System.Diagnostics;
 
 namespace Microsoft.ML.OnnxRuntime
 {
@@ -38,27 +38,20 @@ namespace Microsoft.ML.OnnxRuntime
         /// must match the required size and can be obtained in advance with
         /// System.Text.Encoding.UTF8.GetByteCount(s).
         /// 
-        /// The function is helpful when we populate native string tensor buffers directly where
-        /// the elements stored do not have zero terminator.
         /// </summary>
-        /// <param name="s">managed string</param>
-        /// <param name="ptr">natively allocated buffer</param>
-        /// <param name="totalBytesToWrite">pre-allocated buffer size</param>
-        internal static void StringToUtf8NativeMemory(string s, IntPtr ptr, int totalBytesToWrite)
+        /// <param name="strPtr">fixed char* ptr</param>
+        /// <param name="strLength">string length</param>
+        /// <param name="ptr">Native buffer to write</param>
+        /// <param name="nativeBufferSize"></param>
+        /// <exception cref="OnnxRuntimeException"></exception>
+        internal unsafe static void StringToUtf8NativeMemory(char* strPtr, int strLength, IntPtr ptr, int nativeBufferSize)
         {
-            // We throw here, because we are expecting the caller to properly calculate and allocate the right size buffer
-            unsafe
+            // total bytes to write is size of native memory buffer
+            var bytesWritten = Encoding.UTF8.GetBytes(strPtr, strLength, (byte*)ptr, nativeBufferSize);
+            if (bytesWritten != nativeBufferSize)
             {
-                fixed (char* c = s) // create char pointer to start of managed string.
-                {
-                    var nativeBytes = (byte*)ptr; // get managed byte* from native intptr
-                    var bytesWritten = Encoding.UTF8.GetBytes(c, s.Length, nativeBytes, totalBytesToWrite); // total bytes to write is size of native memory buffer
-                    if (bytesWritten != totalBytesToWrite)
-                    {
-                        throw new OnnxRuntimeException(ErrorCode.RuntimeException,
-                            $"Failed to convert to UTF8. Expected bytes: {totalBytesToWrite}, written: {bytesWritten}");
-                    }
-                }
+                throw new OnnxRuntimeException(ErrorCode.RuntimeException,
+                    $"Failed to convert to UTF8. Expected bytes: {nativeBufferSize}, written: {bytesWritten}");
             }
         }
 
@@ -159,24 +152,44 @@ namespace Microsoft.ML.OnnxRuntime
         }
     }
 
-    internal static class TensorElementTypeConverter
+    // Guards an array of disposable objects on stack and disposes them in reverse order
+    internal ref struct DisposableArray<T> where T : IDisposable
     {
-        public static bool GetTypeAndWidth(TensorElementType elemType, out Type type, out int width)
+        internal Span<T> Span { get; private set; }
+        internal DisposableArray(Span<T> disposables)
         {
-            bool result = true;
-            TensorElementTypeInfo typeInfo = TensorBase.GetElementTypeInfo(elemType);
-            if (typeInfo != null)
+            Span = disposables;
+        }
+
+        public void Dispose()
+        {
+            // Dispose in the reverse order in case there are dependencies
+            // between objects created later.
+            for (int i = Span.Length - 1; i >= 0; --i)
             {
-                type = typeInfo.TensorType;
-                width = typeInfo.TypeSize;
+                Span[i]?.Dispose();
             }
-            else
+        }
+    }
+
+    internal ref struct DisposableOrtValueHandleArray
+    {
+        internal Span<IntPtr> Span { get; private set; }
+        internal DisposableOrtValueHandleArray(Span<IntPtr> handles)
+        {
+            Span = handles;
+        }
+
+        public void Dispose()
+        {
+            // Dispose in the reverse order in case there are dependencies
+            for (int i = Span.Length - 1; i >= 0; --i)
             {
-                type = null;
-                width = 0;
-                result = false;
+                if (Span[i] != IntPtr.Zero)
+                {
+                    NativeMethods.OrtReleaseValue(Span[i]);
+                }
             }
-            return result;
         }
     }
 

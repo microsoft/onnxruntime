@@ -22,6 +22,11 @@ void Sequences::Init(gsl::span<int32_t> buffer, int batch_beam_size, int sequenc
   current_length_ = sequence_length;
 }
 
+void Sequences::InitDevice(gsl::span<int32_t> buffer) {
+  device_sequences[0] = buffer.subspan(0, buffer.size() / 2);
+  device_sequences[1] = buffer.subspan(buffer.size() / 2);
+}
+
 gsl::span<const int32_t> Sequences::GetSequence(int beam_index) const {
   gsl::span<const int32_t> buffer = sequences[current_sequences_buffer];
   return buffer.subspan(SafeInt<size_t>(beam_index) * max_length_, static_cast<gsl::index>(current_length_));
@@ -54,10 +59,8 @@ void Sequences::AppendNextTokenToSequences(
     gsl::span<int32_t> target = output.subspan(SafeInt<size_t>(i) * max_length_,
                                                static_cast<gsl::index>(current_length_));
     gsl::copy(source, target);
-  }
 
-  // Append next token to each beam.
-  for (int i = 0; i < batch_beam_size_; i++) {
+    // Append next token to each beam.
     output[SafeInt<size_t>(i) * max_length_ + current_length_] = beam_next_tokens[i];
   }
 
@@ -68,7 +71,7 @@ void Sequences::AppendNextTokenToSequences(
 }
 
 void Sequences::AppendNextTokenToSequences(gsl::span<int32_t>& next_tokens) {
-  auto output = sequences[current_sequences_buffer];
+  auto output = sequences[0];
 
   // Append next token to each sequence.
   for (int i = 0; i < batch_beam_size_; i++) {
@@ -76,6 +79,11 @@ void Sequences::AppendNextTokenToSequences(gsl::span<int32_t>& next_tokens) {
   }
 
   ++current_length_;
+}
+
+void Sequences::AfterDeviceAppendedNextToken() {
+  ++current_length_;
+  current_sequences_buffer ^= 1;
 }
 
 }  // namespace transformers

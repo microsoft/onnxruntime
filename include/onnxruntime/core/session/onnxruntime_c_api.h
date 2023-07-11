@@ -61,6 +61,8 @@ extern "C" {
 #define _Check_return_
 #define _Outptr_result_maybenull_
 #define _In_reads_(X)
+#define _Inout_updates_(X)
+#define _Out_writes_(X)
 #define _Inout_updates_all_(X)
 #define _Out_writes_bytes_all_(X)
 #define _Out_writes_all_(X)
@@ -188,7 +190,12 @@ typedef enum ONNXTensorElementDataType {
   ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT64,      // maps to c type uint64_t
   ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX64,   // complex with float32 real and imaginary components
   ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX128,  // complex with float64 real and imaginary components
-  ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16     // Non-IEEE floating-point format based on IEEE754 single-precision
+  ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16,    // Non-IEEE floating-point format based on IEEE754 single-precision
+  // float 8 types were introduced in onnx 1.14, see https://onnx.ai/onnx/technical/float8.html
+  ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E4M3FN,    // Non-IEEE floating-point format based on IEEE754 single-precision
+  ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E4M3FNUZ,  // Non-IEEE floating-point format based on IEEE754 single-precision
+  ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E5M2,      // Non-IEEE floating-point format based on IEEE754 single-precision
+  ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E5M2FNUZ   // Non-IEEE floating-point format based on IEEE754 single-precision
 } ONNXTensorElementDataType;
 
 // Synced with onnx TypeProto oneof
@@ -401,7 +408,8 @@ typedef struct OrtCUDAProviderOptions {
         user_compute_stream{},
         default_memory_arena_cfg{},
         tunable_op_enable{false},
-        tunable_op_tuning_enable{false} {}
+        tunable_op_tuning_enable{false},
+        tunable_op_max_tuning_duration_ms{} {}
 #endif
 
   /** \brief CUDA device Id
@@ -464,6 +472,11 @@ typedef struct OrtCUDAProviderOptions {
    */
   int tunable_op_tuning_enable;
 
+  /** \brief Max tuning duration time limit for each instance of TunableOp.
+   *   Defaults to 0 to disable the limit.
+   */
+  int tunable_op_max_tuning_duration_ms;
+
 } OrtCUDAProviderOptions;
 
 /** \brief ROCM Provider Options
@@ -482,7 +495,8 @@ typedef struct OrtROCMProviderOptions {
         user_compute_stream{},
         default_memory_arena_cfg{},
         tunable_op_enable{false},
-        tunable_op_tuning_enable{false} {}
+        tunable_op_tuning_enable{false},
+        tunable_op_max_tuning_duration_ms{} {}
 #endif
 
   /** \brief ROCM device Id
@@ -543,6 +557,11 @@ typedef struct OrtROCMProviderOptions {
    *   This option can be overriden by environment variable ORT_ROCM_TUNABLE_OP_TUNING_ENABLE.
    */
   int tunable_op_tuning_enable;
+
+  /** \brief Max tuning duration time limit for each instance of TunableOp.
+   *   Defaults to 0 to disable the limit.
+   */
+  int tunable_op_max_tuning_duration_ms;
 
 } OrtROCMProviderOptions;
 
@@ -2728,6 +2747,10 @@ struct OrtApi {
    *  crossing which the current chunk is chunked into 2.
    * "initial_growth_chunk_size_bytes": (Possible) Size of the second allocation in the arena.
    *  Only relevant if arena strategy is `kNextPowerOfTwo`. Use -1 to allow ORT to choose the default.
+   * "max_power_of_two_extend_bytes": The maximum enxtend size if arena strategy is `kNextPowerOfTwo`.
+   *  It is not an allocation limit, it is only a limit for extention when requested byte is less than the limit.
+   *  When requested bytes is more than the limit, allocator will still return as requested.
+   *  Use -1 to allow ORT to choose the default 1GB for max_power_of_two_extend_bytes.
    *  Ultimately, the allocation size is determined by the allocation memory request.
    *  Further allocation sizes are governed by the arena extend strategy.
    *
@@ -4197,7 +4220,7 @@ struct OrtApi {
    */
   ORT_API2_STATUS(GetResizedStringTensorElementBuffer, _Inout_ OrtValue* value, _In_ size_t index, _In_ size_t length_in_bytes, _Inout_ char** buffer);
 
-  /** \brief Get Allocator from KernelContext for a specific memoryInfo.
+  /** \brief Get Allocator from KernelContext for a specific memoryInfo. Please use C API ReleaseAllocator to release out object
    *
    * \param[in] context OrtKernelContext instance
    * \param[in] mem_info OrtMemoryInfo instance
@@ -4277,6 +4300,22 @@ struct OrtApi {
   void(ORT_API_CALL* ReleaseROCMProviderOptions)(_Frees_ptr_opt_ OrtROCMProviderOptions* input);
 
   /// @}
+
+  /** \brief Create an allocator with specific type and register it with the ::OrtEnv
+   *  This API enhance CreateAndRegisterAllocator that it can create an allocator with specific type, not just CPU allocator
+   *  Enables sharing the allocator between multiple sessions that use the same env instance.
+   *  Lifetime of the created allocator will be valid for the duration of the environment.
+   *  Returns an error if an allocator with the same ::OrtMemoryInfo is already registered.
+   *  \param[in] env OrtEnv instance
+   *  \param[in] provider_type ExecutionProvider type
+   *  \param[in] mem_info OrtMemoryInfo instance
+   *  \param[in] arena_cfg Arena configuration
+   *  \param[in] provider_options_keys key of the provider options map
+   *  \param[in] provider_options_values value of the provider options map
+   *  \param[in] num_keys Length of the provider options map
+   */
+  ORT_API2_STATUS(CreateAndRegisterAllocatorV2, _Inout_ OrtEnv* env, _In_ const char* provider_type, _In_ const OrtMemoryInfo* mem_info, _In_ const OrtArenaCfg* arena_cfg,
+                  _In_reads_(num_keys) const char* const* provider_options_keys, _In_reads_(num_keys) const char* const* provider_options_values, _In_ size_t num_keys);
 };
 
 /*
@@ -4307,7 +4346,10 @@ typedef enum OrtCustomOpInputOutputCharacteristic {
 struct OrtCustomOp {
   uint32_t version;  // Must be initialized to ORT_API_VERSION
 
-  // This callback creates the kernel, which is a user defined parameter that is passed to the Kernel* callbacks below.
+  // This callback creates the kernel, which is a user defined
+  // parameter that is passed to the Kernel* callbacks below. It is
+  // recommended to use CreateKernelV2 which allows for a safe error
+  // propagation by returning an OrtStatusPtr.
   void*(ORT_API_CALL* CreateKernel)(_In_ const struct OrtCustomOp* op, _In_ const OrtApi* api,
                                     _In_ const OrtKernelInfo* info);
 
@@ -4323,7 +4365,9 @@ struct OrtCustomOp {
   ONNXTensorElementDataType(ORT_API_CALL* GetOutputType)(_In_ const struct OrtCustomOp* op, _In_ size_t index);
   size_t(ORT_API_CALL* GetOutputTypeCount)(_In_ const struct OrtCustomOp* op);
 
-  // Op kernel callbacks
+  // Perform a computation step.  It is recommended to use
+  // KernelComputeV2 which allows for a safe error propagation by
+  // returning an OrtStatusPtr.
   void(ORT_API_CALL* KernelCompute)(_In_ void* op_kernel, _In_ OrtKernelContext* context);
   void(ORT_API_CALL* KernelDestroy)(_In_ void* op_kernel);
 
@@ -4355,6 +4399,14 @@ struct OrtCustomOp {
   // and false (zero) otherwise.
   // Applicable only for custom ops that have a variadic output.
   int(ORT_API_CALL* GetVariadicOutputHomogeneity)(_In_ const struct OrtCustomOp* op);
+
+  // Create the kernel state which is passed to each compute call.
+  OrtStatusPtr(ORT_API_CALL* CreateKernelV2)(_In_ const struct OrtCustomOp* op, _In_ const OrtApi* api,
+                                             _In_ const OrtKernelInfo* info,
+                                             _Out_ void** kernel);
+
+  // Perform the computation step.
+  OrtStatusPtr(ORT_API_CALL* KernelComputeV2)(_In_ void* op_kernel, _In_ OrtKernelContext* context);
 };
 
 /*
