@@ -54,9 +54,6 @@ class QNNExecutionProvider : public IExecutionProvider {
                              std::vector<NodeComputeInfo>& node_compute_funcs,
                              const logging::Logger& logger);
 
-  bool IsContextCacheFileExists(const onnxruntime::PathString& model_pathstring,
-                                onnxruntime::PathString& context_cache_pathstring) const;
-
   void ParseHtpPerformanceMode(std::string htp_performance_mode_string);
 
  private:
@@ -66,7 +63,6 @@ class QNNExecutionProvider : public IExecutionProvider {
   qnn::HtpPerformanceMode htp_performance_mode_ = qnn::HtpPerformanceMode::kHtpDefault;
   std::unique_ptr<qnn::QnnBackendManager> qnn_backend_manager_;
   std::unordered_map<std::string, std::unique_ptr<qnn::QnnModel>> qnn_models_;
-  AllocatorPtr cpu_allocator_;
   uint32_t rpc_control_latency_ = 0;
   bool context_cache_enabled_ = false;
   std::string context_cache_path_ = "";

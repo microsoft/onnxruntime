@@ -165,6 +165,11 @@ static const char* const kOrtSessionOptionsConfigForceSpinningStop = "session.fo
 // May be useful to expose bugs in models.
 static const char* const kOrtSessionOptionsConfigStrictShapeTypeInference = "session.strict_shape_type_inference";
 
+// "1": every model using a more recent opset than the latest released one will fail
+// "0": the model may or may not work if onnxruntime cannot find an implementation, this option
+// is used for development purpose.
+static const char* const kOrtSessionOptionsConfigStrictAllowReleasedOpsetsOnly = "session.allow_released_opsets_only";
+
 // The file saves configuration for partitioning node among logic streams
 static const char* const kNodePartitionConfigFile = "session.node_partition_config_file";
 
@@ -212,3 +217,11 @@ static const char* const kDebugLayoutTransformation = "session.debug_layout_tran
 // - "0": CPU EP fallback is not disabled. [DEFAULT]
 // - "1": CPU EP fallback is disabled.
 static const char* const kOrtSessionOptionsDisableCPUEPFallback = "session.disable_cpu_ep_fallback";
+
+// Use this config when serializing a large model after optimization to specify an external initializers file
+static const char* const kOrtSessionOptionsOptimizedModelExternalInitializersFileName =
+    "session.optimized_model_external_initializers_file_name";
+
+// Use this config to control the minimum size of the initializer when externalizing it during serialization
+static const char* const kOrtSessionOptionsOptimizedModelExternalInitializersMinSizeInBytes =
+    "session.optimized_model_external_initializers_min_size_in_bytes";

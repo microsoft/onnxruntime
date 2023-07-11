@@ -22,6 +22,8 @@ RUN mkdir -p /tmp/ccache && \
     cp /tmp/ccache/ccache /usr/bin && \
     rm -rf /tmp/ccache
 
+RUN apt-get update && apt-get install  -y cifs-utils
+
 # rocm-ci branch contains instrumentation needed for loss curves and perf
 RUN git clone https://github.com/microsoft/huggingface-transformers.git &&\
       cd huggingface-transformers &&\
@@ -50,3 +52,8 @@ RUN pip install \
 
 RUN pip install torch-ort --no-dependencies
 ENV ORTMODULE_ONNX_OPSET_VERSION=15
+
+ARG BUILD_UID=1001
+ARG BUILD_USER=onnxruntimedev
+RUN adduser --uid $BUILD_UID $BUILD_USER
+WORKDIR /home/$BUILD_USER

@@ -12,6 +12,7 @@
 #include "core/common/inlined_containers.h"
 #include "core/common/logging/logging.h"
 #include "core/common/logging/severity.h"
+#include "core/common/narrow.h"
 #include "core/common/optional.h"
 #include "core/common/path_string.h"
 #include "core/framework/arena_extend_strategy.h"
@@ -95,7 +96,7 @@ void GetPyObjFromTensor(const Tensor& rtensor, py::object& obj,
   MLDataType dtype = rtensor.DataType();
   const int numpy_type = OnnxRuntimeTensorToNumpyType(dtype);
   obj = py::reinterpret_steal<py::object>(PyArray_SimpleNew(
-      shape.NumDimensions(), npy_dims.data(), numpy_type));
+      narrow<int>(shape.NumDimensions()), npy_dims.data(), numpy_type));
 
   void* out_ptr = static_cast<void*>(
       PyArray_DATA(reinterpret_cast<PyArrayObject*>(obj.ptr())));
@@ -151,7 +152,11 @@ const char* GetDeviceName(const OrtDevice& device) {
     case OrtDevice::FPGA:
       return "FPGA";
     case OrtDevice::NPU:
+#ifdef USE_CANN
+      return CANN;
+#else
       return "NPU";
+#endif
     default:
       ORT_THROW("Unknown device type: ", device.Type());
   }
@@ -380,7 +385,7 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
             nullptr,
             nullptr,
             nullptr,
-            nullptr};
+            0};
         for (auto option : it->second) {
           if (option.first == "device_id") {
             if (!option.second.empty()) {
@@ -597,6 +602,14 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
               params.trt_profile_opt_shapes = opt_profile.c_str();
             } else {
               ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_profile_opt_shapes' should be a string of 'input1:dim1xdimd2...,input2:dim1xdim2...,...'.\n");
+            }
+          } else if (option.first == "trt_cuda_graph_enable") {
+            if (option.second == "True" || option.second == "true") {
+              params.trt_cuda_graph_enable = true;
+            } else if (option.second == "False" || option.second == "false") {
+              params.trt_cuda_graph_enable = false;
+            } else {
+              ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_cuda_graph_enable' should be 'True' or 'False'. Default value is 'False'.\n");
             }
           } else {
             ORT_THROW("Invalid TensorRT EP option: ", option.first);
@@ -1020,6 +1033,14 @@ void addGlobalMethods(py::module& m) {
           throw std::runtime_error("Error when creating and registering allocator: " + st.ErrorMessage());
         }
       });
+  m.def(
+      "create_and_register_allocator_v2", [](const std::string& provider_type, const OrtMemoryInfo& mem_info, const ProviderOptions& options, const OrtArenaCfg* arena_cfg = nullptr) -> void {
+        auto env = GetEnv();
+        auto st = env->CreateAndRegisterAllocatorV2(provider_type, mem_info, options, arena_cfg);
+        if (!st.IsOK()) {
+          throw std::runtime_error("Error when creating and registering allocator in create_and_register_allocator_v2: " + st.ErrorMessage());
+        }
+      });
 
 #ifdef USE_OPENVINO
   m.def(
@@ -1143,6 +1164,7 @@ void addObjectMethods(py::module& m, ExecutionProviderRegistrationFn ep_registra
       .def("device_type", &OrtDevice::Type, R"pbdoc(Device Type.)pbdoc")
       .def_static("cpu", []() { return OrtDevice::CPU; })
       .def_static("cuda", []() { return OrtDevice::GPU; })
+      .def_static("cann", []() { return OrtDevice::NPU; })
       .def_static("fpga", []() { return OrtDevice::FPGA; })
       .def_static("npu", []() { return OrtDevice::NPU; })
       .def_static("default_memory", []() { return OrtDevice::MemType::DEFAULT; });
@@ -1583,7 +1605,7 @@ including arg name, arg type (contains both type and shape).)pbdoc")
           if (is_arg_file_name) {
             OrtPybindThrowIfError(sess->GetSessionHandle()->Load(arg));
           } else {
-            OrtPybindThrowIfError(sess->GetSessionHandle()->Load(arg.data(), arg.size()));
+            OrtPybindThrowIfError(sess->GetSessionHandle()->Load(arg.data(), narrow<int>(arg.size())));
           }
         }
 

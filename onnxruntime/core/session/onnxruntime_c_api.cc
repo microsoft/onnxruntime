@@ -82,12 +82,10 @@ const OrtDmlApi* GetOrtDmlApi(_In_ uint32_t version) NO_EXCEPTION;
 #pragma warning(disable : 26400)
 #endif
 using namespace onnxruntime::logging;
-using onnxruntime::BFloat16;
 using onnxruntime::DataTypeImpl;
 using onnxruntime::Environment;
 using onnxruntime::IAllocator;
 using onnxruntime::InputDefList;
-using onnxruntime::MLFloat16;
 using onnxruntime::narrow;
 using onnxruntime::OutputDefList;
 using onnxruntime::Tensor;
@@ -2736,6 +2734,7 @@ static constexpr OrtApi ort_api_1_to_16 = {
     &OrtApis::UpdateROCMProviderOptions,
     &OrtApis::GetROCMProviderOptionsAsString,
     &OrtApis::ReleaseROCMProviderOptions,
+    &OrtApis::CreateAndRegisterAllocatorV2,
 };
 
 // OrtApiBase can never change as there is no way to know what version of OrtApiBase is returned by OrtGetApiBase.

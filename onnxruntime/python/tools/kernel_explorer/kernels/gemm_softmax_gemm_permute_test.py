@@ -12,7 +12,7 @@ from itertools import product
 import kernel_explorer as ke
 import numpy as np
 import pytest
-from utils import dtype_to_suffix, softmax
+from utils import dtype_to_suffix, matmul, softmax
 
 
 def multinormal_distribution(num_distribution, num_element_per_dist):
@@ -117,7 +117,7 @@ def _test_gemm_softmax_gemm_permute(
     if mask_shape is not None:
         attn_mask = (np.random.randint(0, 100, size=mask_shape) < 95).astype(np.int32)
 
-    pre_softmax_attn_scores = q @ np.swapaxes(k, 2, 3)
+    pre_softmax_attn_scores = matmul(q, np.swapaxes(k, 2, 3))
     pre_softmax_attn_scores = pre_softmax_attn_scores * scale
     if attn_bias is not None:
         pre_softmax_attn_scores = pre_softmax_attn_scores + attn_bias
@@ -130,7 +130,7 @@ def _test_gemm_softmax_gemm_permute(
             converted_mask = (1 - attn_mask.reshape(mask_shape_broadcasted)) * filter_value
         pre_softmax_attn_scores = pre_softmax_attn_scores + converted_mask
     attn_scores = softmax(pre_softmax_attn_scores, axis=-1)
-    attn = attn_scores @ v
+    attn = matmul(attn_scores, v)
     ref = np.swapaxes(attn, 2, 1)  # permute 0213
 
     out = np.empty(out_shape, dtype=dtype)
@@ -438,7 +438,6 @@ if __name__ == "__main__":
     group.add_argument("--scale", type=float, default=None, help="default to 1.0/sqrt(head_size)")
     group.add_argument(
         "--qkv_format",
-        type=lambda name: getattr(ke.qkv_format, name),
         default="Q_K_V_BNSH",
         choices=[
             "Q_K_V_BNSH",  # non-packed, permuted
@@ -462,6 +461,6 @@ if __name__ == "__main__":
             args.biased,
             args.mask_dim,
             args.scale,
-            args.qkv_format,
+            getattr(ke.qkv_format, args.qkv_format),
             sort=args.sort,
         )

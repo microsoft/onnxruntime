@@ -55,6 +55,11 @@ parameters:
   type: boolean
   default: false
 
+- name: OnnxruntimeTestGpuDeviceId
+  type: number
+  default: 0
+  
+
 jobs:
 - job: build_${{ parameters.job_name_suffix }}
   variables:
@@ -64,10 +69,12 @@ jobs:
     setVcvars: true
     ALLOW_RELEASED_ONNX_OPSET_ONLY: '0'
     DocUpdateNeeded: false  # Set to true during document generation if there are diffs
+    NVIDIA_TF32_OVERRIDE: '0'
     skipComponentGovernanceDetection: true
     DEPS_CACHE_DIR: $(Agent.TempDirectory)/deps_ccache
     ORT_CACHE_DIR: $(Agent.TempDirectory)/ort_ccache
     TODAY: $[format('{0:dd}{0:MM}{0:yyyy}', pipeline.startTime)]
+    ONNXRUNTIME_TEST_GPU_DEVICE_ID: ${{ parameters.OnnxruntimeTestGpuDeviceId }}
     ${{ if eq(parameters.WITH_CACHE, true) }}:
       PS_CACHE_ARG: '-use_cache'
       PY_CACHE_ARG: '--use_cache'

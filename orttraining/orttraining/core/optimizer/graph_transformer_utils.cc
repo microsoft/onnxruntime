@@ -61,13 +61,11 @@
 #include "orttraining/core/optimizer/qdq_fusion.h"
 #include "orttraining/core/optimizer/shape_optimizer.h"
 #include "orttraining/core/optimizer/transformer_layer_recompute.h"
-
-// Only enabled in full training build. Not in on device training builds
-#ifdef ENABLE_TRAINING
+#include "core/optimizer/pre_shape_node_elimination.h"
 #include "core/optimizer/compute_optimizer/upstream_gather.h"
 #include "core/optimizer/compute_optimizer/upstream_reshape.h"
+#include "orttraining/core/optimizer/compute_optimizer/padding_elimination.h"
 #include "orttraining/core/optimizer/compute_optimizer/sceloss_compute_optimization.h"
-#endif
 
 namespace onnxruntime {
 namespace training {
@@ -96,6 +94,7 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
       ORT_THROW_IF_ERROR(rule_transformer->Register(std::make_unique<UnsqueezeElimination>()));
       ORT_THROW_IF_ERROR(rule_transformer->Register(std::make_unique<ExpandElimination>()));
       ORT_THROW_IF_ERROR(rule_transformer->Register(std::make_unique<CastElimination>()));
+      ORT_THROW_IF_ERROR(rule_transformer->Register(std::make_unique<PreShapeNodeElimination>()));
       ORT_THROW_IF_ERROR(rule_transformer->Register(std::make_unique<NoopElimination>()));
       ORT_THROW_IF_ERROR(rule_transformer->Register(std::make_unique<DivMulFusion>()));
       ORT_THROW_IF_ERROR(rule_transformer->Register(std::make_unique<EliminateDropout>()));
@@ -173,14 +172,18 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
                                                                      cuda_execution_provider));
       }
 
-#ifdef ENABLE_TRAINING
       if (config.enable_compute_optimizer) {
         transformers.emplace_back(std::make_unique<UpStreamGatherGraphTransformer>(compatible_eps));
         transformers.emplace_back(std::make_unique<UpStreamReshapeGraphTransformer>(compatible_eps));
         transformers.emplace_back(std::make_unique<InsertGatherBeforeSceLoss>(compatible_eps,
                                                                               config.sparse_label_input_names));
-      }
+#if defined(USE_CUDA) || defined(USE_ROCM)
+        // Put this under CUDA/ROCM guard as it depends on PadAndUnflatten CUDA/ROCM kernel.
+        // Once we have a CPU kernel for PadAndUnflatten, we can remove the guard.
+        transformers.emplace_back(std::make_unique<PaddingElimination>(compatible_eps,
+                                                                       config.sparse_embedding_input_names));
 #endif
+      }
 
     } break;
 

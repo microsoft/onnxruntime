@@ -36,3 +36,10 @@ RUN cd /migraphx && git clone --depth=1 --branch ${MIGRAPHX_VERSION} https://git
 RUN cd /migraphx && rbuild package --cxx /opt/rocm/llvm/bin/clang++ -d /migraphx/deps -B /migraphx/build -S /migraphx/src/ -DPYTHON_EXECUTABLE=/usr/bin/python3
 RUN dpkg -i /migraphx/build/*.deb
 RUN rm -rf /migraphx
+
+# ccache
+RUN mkdir -p /tmp/ccache && \
+    cd /tmp/ccache && \
+    wget -q -O - https://github.com/ccache/ccache/releases/download/v4.7.4/ccache-4.7.4-linux-x86_64.tar.xz | tar --strip 1 -J -xf - && \
+    cp /tmp/ccache/ccache /usr/bin && \
+    rm -rf /tmp/ccache

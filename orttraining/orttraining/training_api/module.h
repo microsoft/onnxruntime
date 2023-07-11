@@ -117,10 +117,12 @@ struct Module {
   // Copy parameter values from contiguous buffer held by parameters_buffer onto parameters
   Status CopyBufferToParameters(OrtValue& parameters_buffer, const bool trainable_only = true);
 
+#if !defined(ORT_MINIMAL_BUILD)
   // Load the eval model from eval_model_path_or_bytes and transform it for the purpose of
   // inferencing, and serialize to given path
   Status ExportModelForInferencing(const std::string& inference_model_path,
                                    gsl::span<const std::string> graph_output_names) const;
+#endif
 
   // Returns the user input count for training graph
   size_t GetTrainingModelInputCount() const noexcept;

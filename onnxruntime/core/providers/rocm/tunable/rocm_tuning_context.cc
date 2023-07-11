@@ -114,6 +114,14 @@ bool RocmTuningContext::IsTuningEnabled() const {
   return info_->tuning_enable;
 }
 
+void RocmTuningContext::SetMaxTuningDurationMs(int max_duration_ms) {
+  info_->max_tuning_duration_ms = max_duration_ms;
+}
+
+int RocmTuningContext::GetMaxTuningDurationMs() const {
+  return info_->max_tuning_duration_ms > 0 ? info_->max_tuning_duration_ms : std::numeric_limits<int>::max();
+}
+
 TuningResultsManager& RocmTuningContext::GetTuningResultsManager() {
   return manager_;
 }

@@ -4,7 +4,6 @@
 
 #pragma once
 
-#include "core/framework/allocatormgr.h"
 #include "core/framework/execution_provider.h"
 #include "core/graph/constants.h"
 #include "core/providers/providers.h"
@@ -40,8 +39,6 @@ class JsExecutionProvider : public IExecutionProvider {
   std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;
   std::unique_ptr<onnxruntime::IDataTransfer> GetDataTransfer() const override;
 
-  void RegisterAllocator(AllocatorManager& /*allocator_manager*/) override;
-
   DataLayout GetPreferredLayout() const override { return DataLayout::NHWC; }
 
   FusionStyle GetFusionStyle() const override { return FusionStyle::FilteredGraphViewer; }
@@ -49,6 +46,8 @@ class JsExecutionProvider : public IExecutionProvider {
   // JSEP disallow concurrent run because actual implementation (eg. WebGPU backend) relies on global states to work,
   // and concurrent run with async function may mess up the states and cause undefined behavior.
   bool ConcurrentRunSupported() const override { return false; }
+
+  std::vector<AllocatorPtr> CreatePreferredAllocators() override;
 };
 
 }  // namespace onnxruntime

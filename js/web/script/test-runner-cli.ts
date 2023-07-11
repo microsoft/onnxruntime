@@ -57,6 +57,7 @@ async function main() {
   const DEFAULT_OPSET_VERSIONS = fs.readdirSync(TEST_DATA_MODEL_NODE_ROOT, {withFileTypes: true})
                                      .filter(dir => dir.isDirectory() && dir.name.startsWith('opset'))
                                      .map(dir => dir.name.slice(5));
+  const MAX_OPSET_VERSION = Math.max(...DEFAULT_OPSET_VERSIONS.map(v => Number.parseInt(v, 10)));
 
   const FILE_CACHE_ENABLED = args.fileCache;         // whether to enable file cache
   const FILE_CACHE_MAX_FILE_SIZE = 1 * 1024 * 1024;  // The max size of the file that will be put into file cache
@@ -378,6 +379,7 @@ async function main() {
       // field 'verbose' and 'backend' is not set
       for (const test of tests) {
         test.backend = backend;
+        test.opsets = test.opsets || [{domain: '', version: MAX_OPSET_VERSION}];
       }
       npmlog.verbose('TestRunnerCli.Init.Op', 'Finished preparing test data.');
       npmlog.verbose('TestRunnerCli.Init.Op', '===============================================================');

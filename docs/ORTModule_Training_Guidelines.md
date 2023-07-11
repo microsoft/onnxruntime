@@ -47,7 +47,7 @@ More options for **developers**.
 +	from onnxruntime.training.ortmodule import ORTModule, DebugOptions, LogLevel
 +	model = ORTModule(model, DebugOptions(save_onnx=True, log_level=LogLevel.VERBOSE, onnx_prefix="model_name"))
 ```
-Check [DebugOptions implementation](../orttraining/orttraining/python/training/ortmodule/debug_options.py) for more details.
+Check [DebugOptions implementation](../orttraining/orttraining/python/training/ortmodule/options.py) for more details.
 
 ### 2.1 Environment Variables
 
@@ -99,12 +99,13 @@ The output directory of the onnx models by default is set to the current working
 	> Overall users should be aware that ORT performance boost might be trivial when they explicitly allow it.
 
 
-#### ORTMODULE_DISABLE_CUSTOM_AUTOGRAD_SUPPORT
+#### ORTMODULE_ENABLE_CUSTOM_AUTOGRAD
 
 - **Feature Area**: *ORTMODULE/PythonOp (torch.autograd.Function)*
 - **Description**: By default, all torch.autograd.Function classes will be exported to ORT PythonOp. There are some cases where you might consider disable it. For example, if you confirmed those torch.autograd.Function classes defined computations that could be inline exported by PyTorch, and it is safe to use the inline exported ONNX graph to train, then you can disable it, as a result, ORT has more opportunities to optimize more.
 	```bash
-	export ORTMODULE_DISABLE_CUSTOM_AUTOGRAD_SUPPORT=1
+	export ORTMODULE_ENABLE_CUSTOM_AUTOGRAD=1 # Enable
+	export ORTMODULE_ENABLE_CUSTOM_AUTOGRAD=0 # Disable
 	```
 
 	An alternative to disable without using environment variable:
@@ -140,7 +141,9 @@ debugging).
 
 - **Feature Area**: *ORTMODULE/Optimizations*
 - **Description**: By default, this is enabled. This env var can be used for enabling or disabling the input data sparsity
-based performance optimizations.
+based performance optimizations, including embedding sparsity and label sparsity.
+This optimization is applicable when using optimum, which has an implementation of the ModuleWithLoss class that wraps the HuggingFace Training that allows loss computation inside ONNX Runtime (ORT).
+If you're not using optimum but want to implement a similar wrapper in your codebase to compute the loss inside ONNX Runtime (ORT), you can refer to this [Link](ORTModule_ModuleWithLoss_Wrapper.md) for detailed steps and guidelines on how to achieve this.
 
 	```bash
 	export ORTMODULE_ENABLE_SPARSE_OPTIMIZER=1 # Enable
@@ -150,12 +153,34 @@ based performance optimizations.
 #### ORTMODULE_PRINT_INPUT_DENSITY
 
 - **Feature Area**: *ORTMODULE/RuntimeInspector*
-- **Description**: By default, this is disabled. This env var can be used for print the input data sparsity
+- **Description**: By default, this is disabled. This env var can be used for printing the input data sparsity
 inspection results to standard outputs.
 
 	```bash
 	export ORTMODULE_PRINT_INPUT_DENSITY=1 # Enable
 	export ORTMODULE_PRINT_INPUT_DENSITY=0 # Disable
+	```
+
+#### ORTMODULE_PRINT_MEMORY_STATS
+
+- **Feature Area**: *ORTMODULE/RuntimeInspector*
+- **Description**: By default, this is disabled. This env var can be used for printing the memory inspection results
+to standard outputs.
+
+	```bash
+	export ORTMODULE_PRINT_MEMORY_STATS=1 # Enable
+	export ORTMODULE_PRINT_MEMORY_STATS=0 # Disable
+	```
+
+#### ORTMODULE_ENABLE_EMBEDDING_SPARSE_OPTIMIZER
+
+- **Feature Area**: *ORTMODULE/Optimizations*
+- **Description**: By default, this is disabled. This env var can be used for enabling or disabling the embedding input
+data sparsity based performance optimizations.
+
+	```bash
+	export ORTMODULE_ENABLE_EMBEDDING_SPARSE_OPTIMIZER=1 # Enable
+	export ORTMODULE_ENABLE_EMBEDDING_SPARSE_OPTIMIZER=0 # Disable
 	```
 
 ### 2.2 Memory Optimization

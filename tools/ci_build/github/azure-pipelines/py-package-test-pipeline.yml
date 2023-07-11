@@ -10,7 +10,7 @@ stages:
   - template: templates/py-packaging-linux-test.yml
     parameters:
       arch: 'x86_64'
-      machine_pool: 'aiinfra-Linux-CPU'
+      machine_pool: 'onnxruntime-Ubuntu2004-AMD-CPU'
       device: 'CPU'
 
 - stage: Linux_Test_CPU_aarch64_stage
@@ -29,7 +29,7 @@ stages:
       parameters:
         job_name: Test_MAC_Wheels
         machine_pool:
-          vmImage: 'macOS-12'
+          vmImage: 'macOS-13'
         itemPattern: '*/*mac*x86_64.whl'
     - template: templates/py-package-smoking-test.yml
       parameters:
