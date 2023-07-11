@@ -180,20 +180,21 @@ struct PyOptimizer {
 };
 #endif
 
-struct PyGradientGraphBuilder {
+struct PyGradientGraphBuilderContext {
   std::unique_ptr<GradientGraphBuilder> builder_;
   std::shared_ptr<Model> model_;
   std::unique_ptr<logging::Logger> logger_;
   std::unique_ptr<GradientGraphConfiguration> gradient_graph_config_;
   std::shared_ptr<CustomRegistry> custom_registry_;
   IOnnxRuntimeOpSchemaRegistryList local_registries_;
-  PyGradientGraphBuilder(std::unique_ptr<GradientGraphBuilder> builder,
-                         std::shared_ptr<Model> model, std::unique_ptr<logging::Logger> logger,
-                         std::unique_ptr<GradientGraphConfiguration> gradient_graph_config,
-                         std::shared_ptr<CustomRegistry> custom_registry,
-                         IOnnxRuntimeOpSchemaRegistryList local_registries)
+  PyGradientGraphBuilderContext(std::unique_ptr<GradientGraphBuilder> builder,
+                                std::shared_ptr<Model> model,
+                                std::unique_ptr<logging::Logger> logger,
+                                std::unique_ptr<GradientGraphConfiguration> gradient_graph_config,
+                                std::shared_ptr<CustomRegistry> custom_registry,
+                                IOnnxRuntimeOpSchemaRegistryList local_registries)
       : builder_(std::move(builder)),
-        model_(std::move(model)),
+        model_(model),
         logger_(std::move(logger)),
         gradient_graph_config_(std::move(gradient_graph_config)),
         custom_registry_(custom_registry),
@@ -822,7 +823,8 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
 
   // Provide a convenient and well-documented way to make a gradient graph.
   // It's possible to get the gradient graph through ORTModule by leveraging some "private" fields and not-so-well-documented APIs, so we provide this explicit and tested way to get the gradient graph.
-  py::class_<PyGradientGraphBuilder> gradient_graph_builder(m, "GradientGraphBuilder", R"pbdoc(A utility for making a gradient graph that can be used to help train a model.)pbdoc");
+  py::class_<PyGradientGraphBuilderContext> gradient_graph_builder(
+      m, "GradientGraphBuilder", R"pbdoc(A utility for making a gradient graph that can be used to help train a model.)pbdoc");
   // Set up methods to match the C++ `GradientGraphBuilder` interface.
   gradient_graph_builder
       .def(py::init([](const py::bytes& serialized_model,
@@ -840,7 +842,11 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
 
              std::shared_ptr<Model> model;
              auto logger_ptr = std::make_unique<logging::Logger>(logging::LoggingManager::DefaultLogger());
-             logger_ptr->SetSeverity(logging::Severity::kINFO);
+             logging::Severity severity = logging::Severity::kINFO;
+             if (options && options->value.session_log_severity_level >= 0) {
+               severity = static_cast<logging::Severity>(options->value.session_log_severity_level);
+             }
+             logger_ptr->SetSeverity(severity);
              ONNX_NAMESPACE::ModelProto model_proto;
              std::istringstream model_istream(serialized_model);
              ORT_THROW_IF_ERROR(Model::Load(model_istream, &model_proto));
@@ -860,20 +866,20 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
                  *gradient_graph_config_ptr,
                  *logger_ptr);
 
-             return std::make_unique<PyGradientGraphBuilder>(std::move(builder), std::move(model),
-                                                             std::move(logger_ptr), std::move(gradient_graph_config_ptr),
-                                                             custom_registry, std::move(local_registries));
+             return std::make_unique<PyGradientGraphBuilderContext>(std::move(builder), std::move(model),
+                                                                    std::move(logger_ptr), std::move(gradient_graph_config_ptr),
+                                                                    custom_registry, std::move(local_registries));
            }),
            py::arg("serialized_model"), py::arg("y_node_arg_names"),
            py::arg("x_node_arg_names"), py::arg("loss_node_arg_name"),
            py::arg("options") = nullptr)
-      .def("build", [](PyGradientGraphBuilder* gradient_graph_builder) {
+      .def("build", [](PyGradientGraphBuilderContext* gradient_graph_builder) {
         ORT_THROW_IF_ERROR(gradient_graph_builder->builder_->Build());
       })
-      .def("save", [](PyGradientGraphBuilder* gradient_graph_builder, const std::string& path) {
+      .def("save", [](PyGradientGraphBuilderContext* gradient_graph_builder, const std::string& path) {
         ORT_THROW_IF_ERROR(Model::Save(*(gradient_graph_builder->model_), path));
       })
-      .def("get_model", [](PyGradientGraphBuilder* gradient_graph_builder) {
+      .def("get_model", [](PyGradientGraphBuilderContext* gradient_graph_builder) {
         std::string model_str;
         gradient_graph_builder->model_->ToProto().SerializeToString(&model_str);
         return py::bytes(model_str);
@@ -916,11 +922,9 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
                        OrtDevice device, PySessionOptions* session_options) {
         std::vector<std::shared_ptr<IExecutionProvider>> provider = GetExecutionProvidersForTrainingApis(device);
         auto env = GetTrainingEnv().GetORTEnv();
-        auto model = std::make_unique<onnxruntime::training::api::Module>(
+        return std::make_unique<onnxruntime::training::api::Module>(
             model_uri, state, session_options->value, *env, provider, eval_model_uri,
             session_options->custom_op_domains_);
-
-        return model;
       }))
       .def("train_step",
            [](onnxruntime::training::api::Module* model,
@@ -1154,7 +1158,11 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
 
           // Get the ort model from ModelProto model
           auto logger_ptr = std::make_unique<logging::Logger>(logging::LoggingManager::DefaultLogger());
-          logger_ptr->SetSeverity(logging::Severity::kINFO);
+          logging::Severity severity = logging::Severity::kINFO;
+          if (options && options->value.session_log_severity_level >= 0) {
+            severity = static_cast<logging::Severity>(options->value.session_log_severity_level);
+          }
+          logger_ptr->SetSeverity(severity);
           std::shared_ptr<onnxruntime::Model> ort_model;
           ORT_THROW_IF_ERROR(Model::Load(model_proto, ort_model,
                                          local_registries.empty() ? nullptr : &local_registries,
