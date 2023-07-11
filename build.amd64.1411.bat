@@ -8,5 +8,5 @@ rem It currently defaults to amd64 but that could be made configurable if that w
 rem Use 14.11 toolset
 call "%VCINSTALLDIR%\Auxiliary\Build\vcvarsall.bat" amd64 -vcvars_ver=14.11
 
-rem Requires a python 3.6 or higher install to be available in your PATH
+rem Requires a Python install to be available in your PATH
 python %~dp0\tools\ci_build\build.py --build_dir %~dp0\build\Windows %*
