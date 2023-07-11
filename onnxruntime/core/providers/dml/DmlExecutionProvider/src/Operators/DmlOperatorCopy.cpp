@@ -29,30 +29,14 @@ public:
         ComPtr<IMLOperatorKernelCreationContextPrivate> contextPrivate;
         ORT_THROW_IF_FAILED(kernelInfo.GetInterface()->QueryInterface(contextPrivate.GetAddressOf()));
 
-        if (contextPrivate->IsDmlGraphNode())
-        {
-            std::vector<DML_TENSOR_DESC> inputDescs = GetDmlInputDescs();
-            std::vector<DML_TENSOR_DESC> outputDescs = GetDmlOutputDescs();
+        std::vector<DML_TENSOR_DESC> inputDescs = GetDmlInputDescs();
+        std::vector<DML_TENSOR_DESC> outputDescs = GetDmlOutputDescs();
 
-            DML_ELEMENT_WISE_IDENTITY_OPERATOR_DESC opDesc = {};
-            opDesc.InputTensor = inputDescs.data();
-            opDesc.OutputTensor = outputDescs.data();
+        DML_ELEMENT_WISE_IDENTITY_OPERATOR_DESC opDesc = {};
+        opDesc.InputTensor = inputDescs.data();
+        opDesc.OutputTensor = outputDescs.data();
 
-            SetDmlOperatorDesc({ DML_OPERATOR_ELEMENT_WISE_IDENTITY, &opDesc }, kernelInfo);
-        }
-    }
-
-    void Compute(const MLOperatorKernelContext& kernelContext)
-    {
-        MLOperatorTensor inputTensor = kernelContext.GetInputTensor(0);
-
-        // Reshape the output tensor.
-        MLOperatorTensor outputTensor = kernelContext.GetOutputTensor(0);
-
-        // Copy elements from input tensor to output tensor.
-        ORT_THROW_IF_FAILED(m_executionProvider->CopyTensor(
-            outputTensor.GetInterface().Get(),
-            inputTensor.GetInterface().Get()));
+        SetDmlOperatorDesc({ DML_OPERATOR_ELEMENT_WISE_IDENTITY, &opDesc }, kernelInfo);
     }
 };
 
