@@ -110,7 +110,7 @@ class InferenceManager(GraphExecutionManager):
                 self._runtime_options.skip_check.is_set(_SkipCheck.SKIP_CHECK_BUILD_GRADIENT) is False
                 or not self._onnx_models.exported_model
             ):
-                self._time_tracker.start(TimeTrackerPhase.EndToEnd)
+                self.time_tracker.start(TimeTrackerPhase.EndToEnd)
 
                 # Exporting module to ONNX for the first time
                 build_graph = self._export_model(*inputs, **kwargs)
@@ -150,7 +150,7 @@ class InferenceManager(GraphExecutionManager):
                 # Create execution session creates the inference_session
                 self._create_execution_agent()
 
-                self._time_tracker.end(TimeTrackerPhase.EndToEnd)
+                self.time_tracker.end(TimeTrackerPhase.EndToEnd)
                 self._log_feature_stats()
 
             if self._runtime_options.skip_check.is_set(_SkipCheck.SKIP_CHECK_DEVICE) is False:

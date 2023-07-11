@@ -244,7 +244,7 @@ class TrainingManager(GraphExecutionManager):
                 self._runtime_options.skip_check.is_set(_SkipCheck.SKIP_CHECK_BUILD_GRADIENT) is False
                 or not self._onnx_models.exported_model
             ):
-                self._time_tracker.start(TimeTrackerPhase.EndToEnd)
+                self.time_tracker.start(TimeTrackerPhase.EndToEnd)
 
                 build_gradient_graph = self._export_model(*inputs, **kwargs)
 
@@ -300,7 +300,7 @@ class TrainingManager(GraphExecutionManager):
                     self._runtime_options.enable_grad_acc_optimization, self._flattened_module, self._graph_info
                 )
 
-                self._time_tracker.end(TimeTrackerPhase.EndToEnd)
+                self.time_tracker.end(TimeTrackerPhase.EndToEnd)
                 self._log_feature_stats()
 
             self._gradient_accumulation_manager.maybe_update_cache_before_run()
