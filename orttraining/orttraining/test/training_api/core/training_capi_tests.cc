@@ -172,12 +172,13 @@ TEST(TrainingCApiTest, RegisterCustomOps) {
   Ort::Env env;
   Ort::CheckpointState checkpoint_state = Ort::CheckpointState::LoadCheckpoint(MODEL_FOLDER "custom_ops/checkpoint");
   Ort::SessionOptions session_options;
+
 #if defined(_WIN32)
-  session_options.RegisterCustomOpsLibrary("./libcustom_op_library.dll");
+  session_options.RegisterCustomOpsLibrary(ORT_TSTR("libcustom_op_library.dll"));
 #elif defined(__APPLE__)
-  session_options.RegisterCustomOpsLibrary("./libcustom_op_library.dylib");
+  session_options.RegisterCustomOpsLibrary(ORT_TSTR("libcustom_op_library.dylib"));
 #else
-  session_options.RegisterCustomOpsLibrary("./libcustom_op_library.so");
+  session_options.RegisterCustomOpsLibrary(ORT_TSTR("libcustom_op_library.so"));
 #endif
 
 #ifdef USE_CUDA
