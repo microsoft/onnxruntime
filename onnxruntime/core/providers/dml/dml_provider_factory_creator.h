@@ -10,6 +10,7 @@
 namespace onnxruntime {
 struct DMLProviderFactoryCreator {
   static std::shared_ptr<IExecutionProviderFactory> Create(int device_id);
+  static std::shared_ptr<IExecutionProviderFactory> CreateDXCore(int device_id);
   static std::shared_ptr<IExecutionProviderFactory> Create(int device_id, bool skip_software_device_check);
 };
 }  // namespace onnxruntime
