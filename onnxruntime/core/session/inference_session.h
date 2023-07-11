@@ -311,9 +311,9 @@ class InferenceSession {
                                    OrtValue** output);
 
   [[nodiscard]] common::Status RunAsync(const OrtRunOptions* run_options, const char* const* input_names,
-                                        const OrtValue* const* input, size_t input_len,
+                                        const OrtValue* const* inputs, size_t input_len,
                                         const char* const* output_names, size_t output_names_len,
-                                        OrtValue** output, RunAsyncCallbackFn callback, void* user_data = nullptr);
+                                        OrtValue** outputs, RunAsyncCallbackFn callback, void* user_data = nullptr);
 
   /**
    * Run a pre-loaded and pre-intialized model.

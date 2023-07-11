@@ -2376,7 +2376,7 @@ Status InferenceSession::Run(const OrtRunOptions* run_options,
 }
 
 Status InferenceSession::RunAsync(const OrtRunOptions* run_options, const char* const* input_names,
-                                  const OrtValue* const* input, size_t input_len,
+                                  const OrtValue* const* inputs, size_t input_len,
                                   const char* const* output_name, size_t output_names_len,
                                   OrtValue** outputs, RunAsyncCallbackFn callback, void* user_data) {
 
@@ -2387,8 +2387,7 @@ Status InferenceSession::RunAsync(const OrtRunOptions* run_options, const char* 
   InferenceSession* sess = this;
   std::function<void()> run_fn = [=]() {
     ORT_TRY {
-      using OrtValuePtr = OrtValue*;
-      auto status = sess->Run(run_options, input_names, input, input_len, output_name, output_names_len, outputs);
+      auto status = sess->Run(run_options, input_names, inputs, input_len, output_name, output_names_len, outputs);
       if (status.IsOK()) {
         callback(user_data, outputs, output_names_len, {});
       } else {

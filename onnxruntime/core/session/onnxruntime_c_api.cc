@@ -832,7 +832,7 @@ ORT_API_STATUS_IMPL(OrtApis::Run, _Inout_ OrtSession* sess, _In_opt_ const OrtRu
 
 ORT_API_STATUS_IMPL(OrtApis::RunAsync, _Inout_ OrtSession* sess, _In_opt_ const OrtRunOptions* run_options,
                     _In_reads_(input_len) const char* const* input_names,
-                    _In_reads_(input_len) const OrtValue* const* input, size_t input_len,
+                    _In_reads_(input_len) const OrtValue* const* inputs, size_t input_len,
                     _In_reads_(output_names_len) const char* const* output_names, size_t output_names_len,
                     _Inout_updates_all_(output_names_len) OrtValue** outputs,
                     _In_ RunAsyncCallbackFn run_async_callback, _In_opt_ void* user_data) {
@@ -840,7 +840,7 @@ ORT_API_STATUS_IMPL(OrtApis::RunAsync, _Inout_ OrtSession* sess, _In_opt_ const 
   auto session = reinterpret_cast<::onnxruntime::InferenceSession*>(sess);
   auto status = session->RunAsync(run_options,
                                   input_names,
-                                  input,
+                                  inputs,
                                   input_len,
                                   output_names,
                                   output_names_len,
