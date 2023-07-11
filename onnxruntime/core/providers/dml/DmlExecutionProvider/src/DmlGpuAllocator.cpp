@@ -6,12 +6,12 @@
 #include "precomp.h"
 #include "DmlGpuAllocator.h"
 #include "core/framework/allocator.h"
-#include "BucketizedBufferAllocator.h"
+#include "DmlReservedResourceSubAllocator.h"
 #include "DmlTaggedPointer.h"
 
 namespace Dml
 {
-    DmlGpuAllocator::DmlGpuAllocator(onnxruntime::IAllocator* bfcAllocator, std::shared_ptr<BucketizedBufferAllocator> subAllocator)
+    DmlGpuAllocator::DmlGpuAllocator(onnxruntime::IAllocator* bfcAllocator, std::shared_ptr<DmlReservedResourceSubAllocator> subAllocator)
     : onnxruntime::IAllocator(
         OrtMemoryInfo(
             onnxruntime::DML,

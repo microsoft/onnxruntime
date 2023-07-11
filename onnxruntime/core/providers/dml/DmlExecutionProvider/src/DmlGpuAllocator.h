@@ -9,14 +9,14 @@
 
 namespace Dml
 {
-    class BucketizedBufferAllocator;
+    class DmlReservedResourceSubAllocator;
     class AllocationInfo;
     struct TaggedPointer;
 
     class DmlGpuAllocator : public onnxruntime::IAllocator
     {
     public:
-        DmlGpuAllocator(onnxruntime::IAllocator* bfcAllocator, std::shared_ptr<BucketizedBufferAllocator> subAllocator);
+        DmlGpuAllocator(onnxruntime::IAllocator* bfcAllocator, std::shared_ptr<DmlReservedResourceSubAllocator> subAllocator);
 
         void* Alloc(size_t size_in_bytes) final;
         void Free(void* ptr) final;
@@ -32,6 +32,6 @@ namespace Dml
 
         // This allocator is specific to DML and is used to decode the opaque data returned by the BFC
         // allocator into objects that DML understands
-        std::shared_ptr<BucketizedBufferAllocator> m_subAllocator;
+        std::shared_ptr<DmlReservedResourceSubAllocator> m_subAllocator;
     };
 } // namespace Dml

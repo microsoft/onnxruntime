@@ -7,7 +7,7 @@
 
 namespace Dml
 {
-    class BucketizedBufferAllocator;
+    class DmlReservedResourceSubAllocator;
     class AllocationInfo;
     struct TaggedPointer;
 

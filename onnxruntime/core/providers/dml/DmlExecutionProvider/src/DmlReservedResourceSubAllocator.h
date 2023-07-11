@@ -9,8 +9,8 @@
 
 namespace Dml
 {
-    class BucketizedBufferAllocator;
-    class BucketizedBufferAllocator;
+    class DmlReservedResourceSubAllocator;
+    class DmlReservedResourceSubAllocator;
     struct TaggedPointer;
 
     // An allocator that makes logically contiguous allocations backed by D3D heaps.
@@ -36,7 +36,7 @@ namespace Dml
     // this case it is better make more but smaller allocations (resulting in
     // smaller heaps); this fallback path is only retained as a last resort for
     // older hardware.
-    class BucketizedBufferAllocator
+    class DmlReservedResourceSubAllocator
     {
     public:
         // Maximum size of a heap (in tiles) when allocations are tiled. Each tile
@@ -44,7 +44,7 @@ namespace Dml
         // local video memory fragmentation without requiring lots of heaps.
         static constexpr uint64_t kDefaultMaxHeapSizeInTiles = 512;
 
-        BucketizedBufferAllocator(
+        DmlReservedResourceSubAllocator(
             ID3D12Device* device,
             std::shared_ptr<ExecutionContext> context,
             ID3D12CommandQueue* queue,
@@ -70,14 +70,14 @@ namespace Dml
         uint64_t ComputeRequiredSize(size_t size);
         bool TilingEnabled() const { return tiling_enabled_; };
 
-        ~BucketizedBufferAllocator();
+        ~DmlReservedResourceSubAllocator();
 
-        // Constructs a BucketizedBufferAllocator which allocates D3D12 committed resources with the specified heap properties,
+        // Constructs a DmlReservedResourceSubAllocator which allocates D3D12 committed resources with the specified heap properties,
         // resource flags, and initial resource state.
-        BucketizedBufferAllocator(
+        DmlReservedResourceSubAllocator(
             ID3D12Device* device,
             std::shared_ptr<ExecutionContext> context,
-            std::unique_ptr<BucketizedBufferAllocator>&& subAllocator);
+            std::unique_ptr<DmlReservedResourceSubAllocator>&& subAllocator);
 
         void SetDefaultRoundingMode(AllocatorRoundingMode roundingMode);
         void* Alloc(size_t size);
@@ -109,7 +109,7 @@ namespace Dml
         size_t m_currentAllocationId = 0;
         uint64_t m_currentResourceId = 0;
         AllocatorRoundingMode m_defaultRoundingMode = AllocatorRoundingMode::Enabled;
-        std::unique_ptr<BucketizedBufferAllocator> m_subAllocator;
+        std::unique_ptr<DmlReservedResourceSubAllocator> m_subAllocator;
 
     #if _DEBUG
         // Useful for debugging; keeps track of all allocations that haven't been freed yet

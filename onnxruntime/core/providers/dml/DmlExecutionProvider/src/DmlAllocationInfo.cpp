@@ -3,7 +3,7 @@
 
 #include "precomp.h"
 #include "DmlAllocationInfo.h"
-#include "BucketizedBufferAllocator.h"
+#include "DmlReservedResourceSubAllocator.h"
 
 namespace Dml
 {

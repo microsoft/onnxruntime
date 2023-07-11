@@ -24,7 +24,7 @@ namespace Dml
     class PooledUploadHeap;
     class ReadbackHeap;
     class ExecutionContext;
-    class BucketizedBufferAllocator;
+    class DmlReservedResourceSubAllocator;
     class DmlCpuAllocator;
     class ExecutionProvider;
     class DmlGpuAllocator;
@@ -181,7 +181,7 @@ namespace Dml
         std::shared_ptr<ExecutionContext> m_context;
         std::unique_ptr<PooledUploadHeap> m_uploadHeap;
         std::unique_ptr<ReadbackHeap> m_readbackHeap;
-        std::shared_ptr<BucketizedBufferAllocator> m_subAllocator;
+        std::shared_ptr<DmlReservedResourceSubAllocator> m_subAllocator;
         std::shared_ptr<onnxruntime::IAllocator> m_bfcAllocator;
         std::shared_ptr<DmlGpuAllocator> m_gpuAllocator;
         std::shared_ptr<DmlExternalGpuAllocator> m_externalGpuAllocator;

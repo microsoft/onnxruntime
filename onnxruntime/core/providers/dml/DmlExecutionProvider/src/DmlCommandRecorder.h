@@ -11,7 +11,7 @@
 namespace Dml
 {
     class CommandQueue;
-    class BucketizedBufferAllocator;
+    class DmlReservedResourceSubAllocator;
 
     class DmlCommandRecorder : public ICommandRecorder
     {

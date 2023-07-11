@@ -4,18 +4,18 @@
 #include "precomp.h"
 
 #include "core/session/onnxruntime_c_api.h"
-#include "BucketizedBufferAllocator.h"
+#include "DmlReservedResourceSubAllocator.h"
 #include "DmlReservedResourceWrapper.h"
 #include "DmlBufferRegion.h"
 
 namespace Dml
 {
-    BucketizedBufferAllocator::~BucketizedBufferAllocator()
+    DmlReservedResourceSubAllocator::~DmlReservedResourceSubAllocator()
     {
 #ifdef PRINT_OUTSTANDING_ALLOCATIONS
         if (!m_outstandingAllocationsById.empty())
         {
-            printf("BucketizedBufferAllocator outstanding allocation indices:\n");
+            printf("DmlReservedResourceSubAllocator outstanding allocation indices:\n");
             for (auto& entry : m_outstandingAllocationsById)
             {
                 printf("%u\n", static_cast<int>(entry.first));
@@ -25,7 +25,7 @@ namespace Dml
 #endif
     }
 
-    /*static*/ gsl::index BucketizedBufferAllocator::GetBucketIndexFromSize(uint64_t size)
+    /*static*/ gsl::index DmlReservedResourceSubAllocator::GetBucketIndexFromSize(uint64_t size)
     {
         assert(size != 0);
 
@@ -40,12 +40,12 @@ namespace Dml
         return index;
     }
 
-    /*static*/ uint64_t BucketizedBufferAllocator::GetBucketSizeFromIndex(gsl::index index)
+    /*static*/ uint64_t DmlReservedResourceSubAllocator::GetBucketSizeFromIndex(gsl::index index)
     {
         return (1ull << (index + c_minResourceSizeExponent));
     }
 
-    void BucketizedBufferAllocator::SetDefaultRoundingMode(AllocatorRoundingMode roundingMode)
+    void DmlReservedResourceSubAllocator::SetDefaultRoundingMode(AllocatorRoundingMode roundingMode)
     {
         m_defaultRoundingMode = roundingMode;
     }
@@ -66,10 +66,10 @@ namespace Dml
 
     static uint64_t GetMaxHeapSizeInTiles()
     {
-        return BucketizedBufferAllocator::kDefaultMaxHeapSizeInTiles;
+        return DmlReservedResourceSubAllocator::kDefaultMaxHeapSizeInTiles;
     }
 
-    BucketizedBufferAllocator::BucketizedBufferAllocator(
+    DmlReservedResourceSubAllocator::DmlReservedResourceSubAllocator(
         ID3D12Device* device,
         std::shared_ptr<ExecutionContext> context,
         ID3D12CommandQueue* queue,
@@ -89,7 +89,7 @@ namespace Dml
     {
     }
 
-    absl::optional<DmlHeapAllocation> BucketizedBufferAllocator::TryCreateTiledAllocation(uint64_t size_in_bytes)
+    absl::optional<DmlHeapAllocation> DmlReservedResourceSubAllocator::TryCreateTiledAllocation(uint64_t size_in_bytes)
     {
         DmlHeapAllocation allocation = {};
 
@@ -207,7 +207,7 @@ namespace Dml
         return allocation;
     }
 
-    absl::optional<DmlHeapAllocation> BucketizedBufferAllocator::TryCreateUntiledAllocation(uint64_t size_in_bytes)
+    absl::optional<DmlHeapAllocation> DmlReservedResourceSubAllocator::TryCreateUntiledAllocation(uint64_t size_in_bytes)
     {
         DmlHeapAllocation allocation = {};
 
@@ -256,7 +256,7 @@ namespace Dml
         return allocation;
     }
 
-    uint64_t BucketizedBufferAllocator::ComputeRequiredSize(size_t size)
+    uint64_t DmlReservedResourceSubAllocator::ComputeRequiredSize(size_t size)
     {
         const uint64_t resource_size_in_tiles =
             1 + (size - 1) / D3D12_TILED_RESOURCE_TILE_SIZE_IN_BYTES;
@@ -266,7 +266,7 @@ namespace Dml
         return resource_size_in_bytes;
     }
 
-    void* BucketizedBufferAllocator::Alloc(size_t size_in_bytes)
+    void* DmlReservedResourceSubAllocator::Alloc(size_t size_in_bytes)
     {
         // For some reason lotus likes requesting 0 bytes of memory
         size_in_bytes = std::max<size_t>(1, size_in_bytes);
@@ -307,7 +307,7 @@ namespace Dml
         return TaggedPointer::Pack(device_id, *allocationId, offset);
     }
 
-    void BucketizedBufferAllocator::Free(void* ptr)
+    void DmlReservedResourceSubAllocator::Free(void* ptr)
     {
         ORT_THROW_HR_IF(E_INVALIDARG, ptr == nullptr);
 
@@ -326,7 +326,7 @@ namespace Dml
         allocations_by_id_.erase(it);
     }
 
-    void BucketizedBufferAllocator::FreeResource(AllocationInfo* allocInfo)
+    void DmlReservedResourceSubAllocator::FreeResource(AllocationInfo* allocInfo)
     {
         // Since this allocator is warapped by ORT's BFC allocator, it's possible that the context is already
         // close at this point if the application is winding down.
@@ -344,7 +344,7 @@ namespace Dml
         }
     }
 
-    absl::optional<uint32_t> BucketizedBufferAllocator::TryReserveAllocationID()
+    absl::optional<uint32_t> DmlReservedResourceSubAllocator::TryReserveAllocationID()
     {
         // The mutex must already be held
         assert(!mutex_.try_lock());
@@ -369,7 +369,7 @@ namespace Dml
         return current_allocation_id_;
     }
 
-    void BucketizedBufferAllocator::ReleaseAllocationID(uint32_t id)
+    void DmlReservedResourceSubAllocator::ReleaseAllocationID(uint32_t id)
     {
         // The mutex must already be held
         assert(!mutex_.try_lock());
@@ -378,7 +378,7 @@ namespace Dml
         free_allocation_ids_.push_back(id);
     }
 
-    D3D12BufferRegion BucketizedBufferAllocator::CreateBufferRegion(
+    D3D12BufferRegion DmlReservedResourceSubAllocator::CreateBufferRegion(
         const TaggedPointer& taggedPointer,
         uint64_t size_in_bytes)
     {
@@ -405,7 +405,7 @@ namespace Dml
             it->second->GetCopyDstResource());
     }
 
-    AllocationInfo* BucketizedBufferAllocator::GetAllocationInfo(const TaggedPointer& taggedPointer)
+    AllocationInfo* DmlReservedResourceSubAllocator::GetAllocationInfo(const TaggedPointer& taggedPointer)
     {
         // We need to access (mutable) state after this point, so we need to lock
         std::unique_lock<std::mutex> lock(mutex_);

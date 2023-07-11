@@ -8,7 +8,7 @@
 #include "PooledUploadHeap.h"
 #include "ReadbackHeap.h"
 #include "ExecutionContext.h"
-#include "BucketizedBufferAllocator.h"
+#include "DmlReservedResourceSubAllocator.h"
 #include "DmlCpuAllocator.h"
 #include "MLOperatorAuthorImpl.h"
 #include "core/providers/dml/OperatorAuthorHelper/MLOperatorAuthorHelper.h"
@@ -190,7 +190,7 @@ namespace Dml
     std::vector<onnxruntime::AllocatorPtr> ExecutionProviderImpl::CreatePreferredAllocators() {
         if (!m_gpuAllocator)
         {
-            auto subAllocator = std::make_shared<BucketizedBufferAllocator>(
+            auto subAllocator = std::make_shared<DmlReservedResourceSubAllocator>(
                 m_d3d12Device.Get(),
                 m_context, // TODO(leca): REVIEW: Will it cause memory issue when m_context is released in EP while alloc is released in sessionState?
                 m_queue.Get(),
