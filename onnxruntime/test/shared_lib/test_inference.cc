@@ -3223,16 +3223,16 @@ TEST(MultiKernelSingleSchemaTest, DuplicateKernel) {
 static std::thread::id caller_tid = std::this_thread::get_id();
 static std::atomic_bool atomic_wait{false};
 
-void callback_succeed(void* user_data, OrtValue** outputs, size_t num_outputs, OrtStatusPtr status_ptr) {
-    auto callee_tid = std::this_thread::get_id();
-    EXPECT_NE(*(reinterpret_cast<std::thread::id*>(user_data)), callee_tid);
-    Ort::Status status(status_ptr);
-    EXPECT_TRUE(status.IsOK());
-    EXPECT_EQ(num_outputs, 1UL);
-    Ort::Value output_value(outputs[0]);
-    EXPECT_EQ(output_value.At<float>({1, 0}), 9.f);
-    output_value.release();
-    atomic_wait.store(true);
+void CallbackSucceed(void* user_data, OrtValue** outputs, size_t num_outputs, OrtStatusPtr status_ptr) {
+  auto callee_tid = std::this_thread::get_id();
+  EXPECT_NE(*(reinterpret_cast<std::thread::id*>(user_data)), callee_tid);
+  Ort::Status status(status_ptr);
+  EXPECT_TRUE(status.IsOK());
+  EXPECT_EQ(num_outputs, 1UL);
+  Ort::Value output_value(outputs[0]);
+  EXPECT_EQ(output_value.At<float>({1, 0}), 9.f);
+  output_value.release();
+  atomic_wait.store(true);
 }
 
 TEST(CApiTest, RunAsync) {
@@ -3260,7 +3260,7 @@ TEST(CApiTest, RunAsync) {
                                    output_names,
                                    output_values,
                                    1,
-                                   callback_succeed,
+                                   CallbackSucceed,
                                    &caller_tid));
 
   std::chrono::duration<double, std::milli> dur{100};
@@ -3272,7 +3272,7 @@ TEST(CApiTest, RunAsync) {
   EXPECT_EQ(atomic_wait.load(), true);
 }
 
-void callback_fail(void*, OrtValue**, size_t, OrtStatusPtr) {
+void CallbackFail(void*, OrtValue**, size_t, OrtStatusPtr) {
   EXPECT_TRUE(false);  // the callback is not supposed to be invoked
 }
 
@@ -3294,5 +3294,5 @@ TEST(CApiTest, RunAsyncFail) {
   const char* output_names[] = {"Y"};
 
   Ort::RunOptions run_options;
-  EXPECT_THROW(session.RunAsync(run_options, input_names, input_tensors, 1, output_names, output_values, 1, callback_fail, nullptr), std::exception);
+  EXPECT_THROW(session.RunAsync(run_options, input_names, input_tensors, 1, output_names, output_values, 1, CallbackFail, nullptr), std::exception);
 }
