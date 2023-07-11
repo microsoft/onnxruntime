@@ -428,6 +428,7 @@ namespace Microsoft.ML.OnnxRuntime
             OrtCreateAndRegisterAllocator = (DOrtCreateAndRegisterAllocator)Marshal.GetDelegateForFunctionPointer(api_.CreateAndRegisterAllocator, typeof(DOrtCreateAndRegisterAllocator));
             OrtSetLanguageProjection = (DOrtSetLanguageProjection)Marshal.GetDelegateForFunctionPointer(api_.SetLanguageProjection, typeof(DOrtSetLanguageProjection));
 
+            OrtHasValue = (DOrtHasValue)Marshal.GetDelegateForFunctionPointer(api_.HasValue, typeof(DOrtHasValue));
             OrtGetValue = (DOrtGetValue)Marshal.GetDelegateForFunctionPointer(api_.GetValue, typeof(DOrtGetValue));
             OrtGetValueCount = (DOrtGetValueCount)Marshal.GetDelegateForFunctionPointer(api_.GetValueCount, typeof(DOrtGetValueCount));
             OrtCreateValue = (DOrtCreateValue)Marshal.GetDelegateForFunctionPointer(api_.CreateValue, typeof(DOrtCreateValue));
@@ -436,11 +437,15 @@ namespace Microsoft.ML.OnnxRuntime
             OrtGetTypeInfo = (DOrtGetTypeInfo)Marshal.GetDelegateForFunctionPointer(api_.GetTypeInfo, typeof(DOrtGetTypeInfo));
             OrtCreateTensorAsOrtValue = (DOrtCreateTensorAsOrtValue)Marshal.GetDelegateForFunctionPointer(api_.CreateTensorAsOrtValue, typeof(DOrtCreateTensorAsOrtValue));
             OrtCreateTensorWithDataAsOrtValue = (DOrtCreateTensorWithDataAsOrtValue)Marshal.GetDelegateForFunctionPointer(api_.CreateTensorWithDataAsOrtValue, typeof(DOrtCreateTensorWithDataAsOrtValue));
+            OrtValueIsTensor = (DOrtValueIsTensor)Marshal.GetDelegateForFunctionPointer(api_.IsTensor, typeof(DOrtValueIsTensor));
+            OrtValueIsSparseTensor = (DOrtValueIsSparseTensor)Marshal.GetDelegateForFunctionPointer(api_.IsSparseTensor, typeof(DOrtValueIsSparseTensor));
             OrtGetTensorMutableData = (DOrtGetTensorMutableData)Marshal.GetDelegateForFunctionPointer(api_.GetTensorMutableData, typeof(DOrtGetTensorMutableData));
             OrtFillStringTensor = (DOrtFillStringTensor)Marshal.GetDelegateForFunctionPointer(api_.FillStringTensor, typeof(DOrtFillStringTensor));
             OrtGetResizedStringTensorElementBuffer = (DOrtGetResizedStringTensorElementBuffer)Marshal.GetDelegateForFunctionPointer(api_.GetResizedStringTensorElementBuffer, typeof(DOrtGetResizedStringTensorElementBuffer));
             OrtGetStringTensorContent = (DOrtGetStringTensorContent)Marshal.GetDelegateForFunctionPointer(api_.GetStringTensorContent, typeof(DOrtGetStringTensorContent));
             OrtGetStringTensorDataLength = (DOrtGetStringTensorDataLength)Marshal.GetDelegateForFunctionPointer(api_.GetStringTensorDataLength, typeof(DOrtGetStringTensorDataLength));
+            OrtGetStringTensorElementLength = (DOrtGetStringTensorElementLength)Marshal.GetDelegateForFunctionPointer(api_.GetStringTensorElementLength, typeof(DOrtGetStringTensorElementLength));
+            OrtGetStringTensorElement = (DOrtGetStringTensorElement)Marshal.GetDelegateForFunctionPointer(api_.GetStringTensorElement, typeof(DOrtGetStringTensorElement));
             OrtCastTypeInfoToTensorInfo = (DOrtCastTypeInfoToTensorInfo)Marshal.GetDelegateForFunctionPointer(api_.CastTypeInfoToTensorInfo, typeof(DOrtCastTypeInfoToTensorInfo));
             OrtGetTensorTypeAndShape = (DOrtGetTensorTypeAndShape)Marshal.GetDelegateForFunctionPointer(api_.GetTensorTypeAndShape, typeof(DOrtGetTensorTypeAndShape));
             OrtReleaseTensorTypeAndShapeInfo = (DOrtReleaseTensorTypeAndShapeInfo)Marshal.GetDelegateForFunctionPointer(api_.ReleaseTensorTypeAndShapeInfo, typeof(DOrtReleaseTensorTypeAndShapeInfo));
@@ -449,6 +454,7 @@ namespace Microsoft.ML.OnnxRuntime
             OrtGetDimensions = (DOrtGetDimensions)Marshal.GetDelegateForFunctionPointer(api_.GetDimensions, typeof(DOrtGetDimensions));
             OrtGetSymbolicDimensions = (DOrtGetSymbolicDimensions)Marshal.GetDelegateForFunctionPointer(api_.GetSymbolicDimensions, typeof(DOrtGetSymbolicDimensions));
             OrtGetTensorShapeElementCount = (DOrtGetTensorShapeElementCount)Marshal.GetDelegateForFunctionPointer(api_.GetTensorShapeElementCount, typeof(DOrtGetTensorShapeElementCount));
+            OrtGetTensorMemoryInfo = (DOrtGetTensorMemoryInfo)Marshal.GetDelegateForFunctionPointer(api_.GetTensorMemoryInfo, typeof(DOrtGetTensorMemoryInfo));
             // MapTypeInfo
             OrtGetMapKeyType = (DGetMapKeyType)Marshal.GetDelegateForFunctionPointer(api_.GetMapKeyType, typeof(DGetMapKeyType));
             OrtCastTypeInfoToMapTypeInfo = (DCastTypeInfoToMapTypeInfo)Marshal.GetDelegateForFunctionPointer(api_.CastTypeInfoToMapTypeInfo, typeof(DCastTypeInfoToMapTypeInfo));
@@ -1734,7 +1740,12 @@ namespace Microsoft.ML.OnnxRuntime
 
         #endregion ModelMetadata API
 
-        #region Tensor/OnnxValue API
+        #region OrtValue API
+
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate IntPtr /*(OrtStatus*)*/ DOrtHasValue(IntPtr /*(OrtValue*)*/ value, out IntPtr /*(int*)*/ hasValue);
+
+        public static DOrtHasValue OrtHasValue;
 
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
         public delegate IntPtr /*(OrtStatus*)*/ DOrtGetValue(IntPtr /*(OrtValue*)*/ value,
@@ -1766,7 +1777,7 @@ namespace Microsoft.ML.OnnxRuntime
         public static DOrtCreateValue OrtCreateValue;
 
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
-        public delegate IntPtr /*(OrtStatus*)*/ DOrtGetTypeInfo(IntPtr /*(OrtValue*)*/ value, IntPtr /*(OrtValue**)*/ typeInfo);
+        public delegate IntPtr /*(OrtStatus*)*/ DOrtGetTypeInfo(IntPtr /*(OrtValue*)*/ value, out IntPtr /*(OrtValue**)*/ typeInfo);
 
         public static DOrtGetTypeInfo OrtGetTypeInfo;
 
@@ -1791,6 +1802,16 @@ namespace Microsoft.ML.OnnxRuntime
                                                         out IntPtr /* OrtValue** */ outputValue);
 
         public static DOrtCreateTensorWithDataAsOrtValue OrtCreateTensorWithDataAsOrtValue;
+
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate IntPtr /* OrtStatus */ DOrtValueIsTensor(IntPtr /*(OrtValue*)*/ ortValue, out IntPtr val);
+
+        public static DOrtValueIsTensor OrtValueIsTensor;
+
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate IntPtr /* OrtStatus */ DOrtValueIsSparseTensor(IntPtr /*(OrtValue*)*/ ortValue, out IntPtr val);
+
+        public static DOrtValueIsSparseTensor OrtValueIsSparseTensor;
 
         /// This function doesn't work with string tensor
         /// this is a no-copy method whose pointer is only valid until the backing OrtValue* is free'd.
@@ -1833,6 +1854,21 @@ namespace Microsoft.ML.OnnxRuntime
                                                         out UIntPtr /*(size_t*)*/ len);
 
         public static DOrtGetStringTensorDataLength OrtGetStringTensorDataLength;
+
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate IntPtr /*(OrtStatus*)*/ DOrtGetStringTensorElementLength(IntPtr /*(OrtValue*)*/ value,
+                                                        UIntPtr /*(size_t)*/ index,
+                                                        out UIntPtr /*(size_t*)*/ len);
+
+        public static DOrtGetStringTensorElementLength OrtGetStringTensorElementLength;
+
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate IntPtr /*(OrtStatus*)*/ DOrtGetStringTensorElement(IntPtr /*(OrtValue*)*/ value,
+                                                UIntPtr /*(size_t)*/ bufferLength,
+                                                UIntPtr /*(size_t)*/ elementIndex,
+                                                byte[] buffer);
+
+        public static DOrtGetStringTensorElement OrtGetStringTensorElement;
 
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
         public delegate IntPtr /*(OrtStatus*)*/
@@ -1897,9 +1933,18 @@ namespace Microsoft.ML.OnnxRuntime
          * [-1,3,4] -> -1
          */
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
-        public delegate IntPtr /*(OrtStatus*)*/ DOrtGetTensorShapeElementCount(IntPtr /*(const struct OrtTensorTypeAndShapeInfo*)*/ typeAndShapeInfo, out IntPtr /*(long*)*/ output);
+        public delegate IntPtr /*(OrtStatus*)*/ DOrtGetTensorShapeElementCount(IntPtr /*(const struct OrtTensorTypeAndShapeInfo*)*/ typeAndShapeInfo,
+            out UIntPtr /* size_t */ output);
 
         public static DOrtGetTensorShapeElementCount OrtGetTensorShapeElementCount;
+
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        // The out ortMemoryInfo must not be destroyed/deallocated. The pointer points to an object owned by
+        // the contained Tensor/SparseTensor.
+        public delegate IntPtr /*(OrtStatus*)*/ DOrtGetTensorMemoryInfo(IntPtr /* const OrtValue* */ ortValue,
+            out IntPtr /* const OrtMemoryInfo** */ ortMemoryInfo);
+
+        public static DOrtGetTensorMemoryInfo OrtGetTensorMemoryInfo;
 
         ///  Map Type API
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
@@ -1942,6 +1987,7 @@ namespace Microsoft.ML.OnnxRuntime
         public static DOrtReleaseValue OrtReleaseValue;
 
         #endregion
+
 
         #region Misc API
 

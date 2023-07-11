@@ -210,6 +210,74 @@ struct BFloat16_t {
 
 static_assert(sizeof(BFloat16_t) == sizeof(uint16_t), "Sizes must match");
 
+/** \brief float8e4m3fn (Float8 Floating Point) data type
+ * \details It is necessary for type dispatching to make use of C++ API
+ * The type is implicitly convertible to/from uint8_t.
+ * See https://onnx.ai/onnx/technical/float8.html for further details.
+ */
+struct Float8E4M3FN_t {
+  uint8_t value;
+  constexpr Float8E4M3FN_t() noexcept : value(0) {}
+  constexpr Float8E4M3FN_t(uint8_t v) noexcept : value(v) {}
+  constexpr operator uint8_t() const noexcept { return value; }
+  // nan values are treated like any other value for operator ==, !=
+  constexpr bool operator==(const Float8E4M3FN_t& rhs) const noexcept { return value == rhs.value; };
+  constexpr bool operator!=(const Float8E4M3FN_t& rhs) const noexcept { return value != rhs.value; };
+};
+
+static_assert(sizeof(Float8E4M3FN_t) == sizeof(uint8_t), "Sizes must match");
+
+/** \brief float8e4m3fnuz (Float8 Floating Point) data type
+ * \details It is necessary for type dispatching to make use of C++ API
+ * The type is implicitly convertible to/from uint8_t.
+ * See https://onnx.ai/onnx/technical/float8.html for further details.
+ */
+struct Float8E4M3FNUZ_t {
+  uint8_t value;
+  constexpr Float8E4M3FNUZ_t() noexcept : value(0) {}
+  constexpr Float8E4M3FNUZ_t(uint8_t v) noexcept : value(v) {}
+  constexpr operator uint8_t() const noexcept { return value; }
+  // nan values are treated like any other value for operator ==, !=
+  constexpr bool operator==(const Float8E4M3FNUZ_t& rhs) const noexcept { return value == rhs.value; };
+  constexpr bool operator!=(const Float8E4M3FNUZ_t& rhs) const noexcept { return value != rhs.value; };
+};
+
+static_assert(sizeof(Float8E4M3FNUZ_t) == sizeof(uint8_t), "Sizes must match");
+
+/** \brief float8e5m2 (Float8 Floating Point) data type
+ * \details It is necessary for type dispatching to make use of C++ API
+ * The type is implicitly convertible to/from uint8_t.
+ * See https://onnx.ai/onnx/technical/float8.html for further details.
+ */
+struct Float8E5M2_t {
+  uint8_t value;
+  constexpr Float8E5M2_t() noexcept : value(0) {}
+  constexpr Float8E5M2_t(uint8_t v) noexcept : value(v) {}
+  constexpr operator uint8_t() const noexcept { return value; }
+  // nan values are treated like any other value for operator ==, !=
+  constexpr bool operator==(const Float8E5M2_t& rhs) const noexcept { return value == rhs.value; };
+  constexpr bool operator!=(const Float8E5M2_t& rhs) const noexcept { return value != rhs.value; };
+};
+
+static_assert(sizeof(Float8E5M2_t) == sizeof(uint8_t), "Sizes must match");
+
+/** \brief float8e5m2fnuz (Float8 Floating Point) data type
+ * \details It is necessary for type dispatching to make use of C++ API
+ * The type is implicitly convertible to/from uint8_t.
+ * See https://onnx.ai/onnx/technical/float8.html for further details.
+ */
+struct Float8E5M2FNUZ_t {
+  uint8_t value;
+  constexpr Float8E5M2FNUZ_t() noexcept : value(0) {}
+  constexpr Float8E5M2FNUZ_t(uint8_t v) noexcept : value(v) {}
+  constexpr operator uint8_t() const noexcept { return value; }
+  // nan values are treated like any other value for operator ==, !=
+  constexpr bool operator==(const Float8E5M2FNUZ_t& rhs) const noexcept { return value == rhs.value; };
+  constexpr bool operator!=(const Float8E5M2FNUZ_t& rhs) const noexcept { return value != rhs.value; };
+};
+
+static_assert(sizeof(Float8E5M2FNUZ_t) == sizeof(uint8_t), "Sizes must match");
+
 namespace detail {
 // This is used internally by the C++ API. This macro is to make it easy to generate overloaded methods for all of the various OrtRelease* functions for every Ort* type
 // This can't be done in the C API since C doesn't have function overloading.
@@ -433,6 +501,8 @@ struct Env : detail::Base<OrtEnv> {
   Env& UpdateEnvWithCustomLogLevel(OrtLoggingLevel log_severity_level);  ///< Wraps OrtApi::UpdateEnvWithCustomLogLevel
 
   Env& CreateAndRegisterAllocator(const OrtMemoryInfo* mem_info, const OrtArenaCfg* arena_cfg);  ///< Wraps OrtApi::CreateAndRegisterAllocator
+
+  Env& CreateAndRegisterAllocatorV2(const std::string& provider_type, const OrtMemoryInfo* mem_info, const std::unordered_map<std::string, std::string>& options, const OrtArenaCfg* arena_cfg);  ///< Wraps OrtApi::CreateAndRegisterAllocatorV2
 };
 
 /** \brief Custom Op Domain
@@ -1383,7 +1453,7 @@ struct Value : detail::ValueImpl<OrtValue> {
    * \param value - the value to be wrapped.
    */
   template <typename T>
-  static Value CreateOpaque(const char* domain, const char* type_name, const T&);  ///< Wraps OrtApi::CreateOpaqueValue
+  static Value CreateOpaque(const char* domain, const char* type_name, const T& value);  ///< Wraps OrtApi::CreateOpaqueValue
 
 #if !defined(DISABLE_SPARSE_TENSORS)
   /// <summary>
@@ -1561,7 +1631,6 @@ struct ArenaCfg : detail::Base<OrtArenaCfg> {
    * \param arena_extend_strategy -  use -1 to allow ORT to choose the default, 0 = kNextPowerOfTwo, 1 = kSameAsRequested
    * \param initial_chunk_size_bytes - use -1 to allow ORT to choose the default
    * \param max_dead_bytes_per_chunk - use -1 to allow ORT to choose the default
-   * \param max_power_of_two_extend_bytes - use -1 to allow ORT to choose the default
    * See docs/C_API.md for details on what the following parameters mean and how to choose these values
    */
   ArenaCfg(size_t max_mem, int arena_extend_strategy, int initial_chunk_size_bytes, int max_dead_bytes_per_chunk);
@@ -1846,11 +1915,10 @@ struct Op : detail::Base<OrtOp> {
               size_t output_count);
 };
 
-template <typename TOp, typename TKernel>
+template <typename TOp, typename TKernel, bool WithStatus = false>
 struct CustomOpBase : OrtCustomOp {
   CustomOpBase() {
     OrtCustomOp::version = ORT_API_VERSION;
-    OrtCustomOp::CreateKernel = [](const OrtCustomOp* this_, const OrtApi* api, const OrtKernelInfo* info) { return static_cast<const TOp*>(this_)->CreateKernel(*api, info); };
     OrtCustomOp::GetName = [](const OrtCustomOp* this_) { return static_cast<const TOp*>(this_)->GetName(); };
 
     OrtCustomOp::GetExecutionProviderType = [](const OrtCustomOp* this_) { return static_cast<const TOp*>(this_)->GetExecutionProviderType(); };
@@ -1862,7 +1930,6 @@ struct CustomOpBase : OrtCustomOp {
     OrtCustomOp::GetOutputTypeCount = [](const OrtCustomOp* this_) { return static_cast<const TOp*>(this_)->GetOutputTypeCount(); };
     OrtCustomOp::GetOutputType = [](const OrtCustomOp* this_, size_t index) { return static_cast<const TOp*>(this_)->GetOutputType(index); };
 
-    OrtCustomOp::KernelCompute = [](void* op_kernel, OrtKernelContext* context) { static_cast<TKernel*>(op_kernel)->Compute(context); };
 #if defined(_MSC_VER) && !defined(__clang__)
 #pragma warning(push)
 #pragma warning(disable : 26409)
@@ -1878,6 +1945,22 @@ struct CustomOpBase : OrtCustomOp {
     OrtCustomOp::GetVariadicInputHomogeneity = [](const OrtCustomOp* this_) { return static_cast<int>(static_cast<const TOp*>(this_)->GetVariadicInputHomogeneity()); };
     OrtCustomOp::GetVariadicOutputMinArity = [](const OrtCustomOp* this_) { return static_cast<const TOp*>(this_)->GetVariadicOutputMinArity(); };
     OrtCustomOp::GetVariadicOutputHomogeneity = [](const OrtCustomOp* this_) { return static_cast<int>(static_cast<const TOp*>(this_)->GetVariadicOutputHomogeneity()); };
+    if constexpr (WithStatus) {
+      OrtCustomOp::CreateKernelV2 = [](const OrtCustomOp* this_, const OrtApi* api, const OrtKernelInfo* info, void** op_kernel) -> OrtStatusPtr {
+        return static_cast<const TOp*>(this_)->CreateKernelV2(*api, info, op_kernel);
+      };
+      OrtCustomOp::KernelComputeV2 = [](void* op_kernel, OrtKernelContext* context) -> OrtStatusPtr {
+        return static_cast<TKernel*>(op_kernel)->ComputeV2(context);
+      };
+    } else {
+      OrtCustomOp::CreateKernelV2 = nullptr;
+      OrtCustomOp::KernelComputeV2 = nullptr;
+
+      OrtCustomOp::CreateKernel = [](const OrtCustomOp* this_, const OrtApi* api, const OrtKernelInfo* info) { return static_cast<const TOp*>(this_)->CreateKernel(*api, info); };
+      OrtCustomOp::KernelCompute = [](void* op_kernel, OrtKernelContext* context) {
+        static_cast<TKernel*>(op_kernel)->Compute(context);
+      };
+    }
   }
 
   // Default implementation of GetExecutionProviderType that returns nullptr to default to the CPU provider

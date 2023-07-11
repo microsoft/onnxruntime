@@ -1,7 +1,6 @@
 
 #include "xnnpack_init.h"
 
-#include "core/framework/allocatormgr.h"
 #include "core/graph/constants.h"
 
 #include "xnnpack.h"

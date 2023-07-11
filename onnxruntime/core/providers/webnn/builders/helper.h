@@ -129,15 +129,20 @@ static const InlinedHashMap<std::string, std::string> op_map = {
     {"GlobalAveragePool", "averagePool2d"},
     {"GlobalMaxPool", "maxPool2d"},
     {"AveragePool", "averagePool2d"},
+    {"GroupNormalization", "meanVarianceNormalization"},
+    {"InstanceNormalization", "meanVarianceNormalization"},
     {"LayerNormalization", "meanVarianceNormalization"},
     {"MaxPool", "maxPool2d"},
     {"ReduceMax", "reduceMax"},
     {"ReduceMean", "reduceMean"},
     {"Reshape", "reshape"},
     {"Resize", "resample2d"},
+    {"Shape", "slice"},
     {"Split", "split"},
+    {"Squeeze", "squeeze"},
     {"Transpose", "transpose"},
     {"Unsqueeze", "unsqueeze"},
+    {"Where", "elementwiseIf"},
 };
 
 inline bool CheckSingleOp(const std::string& op_type, const emscripten::val& wnn_builder_) {

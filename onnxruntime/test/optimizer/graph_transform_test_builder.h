@@ -66,7 +66,7 @@ class ModelTestBuilder {
     }
 
     OrtValue input_value;
-    CreateMLValue<T>(TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault),
+    CreateMLValue<T>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0],
                      shape,
                      data,
                      &input_value);

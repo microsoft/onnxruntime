@@ -2,7 +2,6 @@
 // Licensed under the MIT License.
 
 #include "core/framework/tensor.h"
-#include "core/framework/allocatormgr.h"
 #include "test_utils.h"
 
 #include "gmock/gmock.h"
@@ -16,7 +15,7 @@ template <typename T>
 void CPUTensorTest(std::vector<int64_t> dims, const int offset_elements = 0) {
   // create Tensor where we provide the buffer
   TensorShape shape(dims);  // this is the shape that will be available starting at the offset in the Tensor
-  auto alloc = TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault);
+  auto alloc = TestCPUExecutionProvider()->CreatePreferredAllocators()[0];
   // alloc extra data if needed, as anything before the offset is not covered by the shape
   auto num_elements = shape.Size() + offset_elements;
   auto num_bytes = num_elements * sizeof(T);
@@ -126,7 +125,7 @@ TEST(TensorTest, CPUUInt64TensorOffsetTest) {
 
 TEST(TensorTest, EmptyTensorTest) {
   auto type = DataTypeImpl::GetType<float>();
-  Tensor t(type, TensorShape({1, 0}), nullptr, TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault)->Info());
+  Tensor t(type, TensorShape({1, 0}), nullptr, TestCPUExecutionProvider()->CreatePreferredAllocators()[0]->Info());
   auto& shape = t.Shape();
   EXPECT_EQ(shape.Size(), 0);
   EXPECT_EQ(t.DataType(), type);
@@ -155,7 +154,7 @@ TEST(TensorTest, StringTensorTest) {
 #endif
   {
     TensorShape shape({2, 3});
-    auto alloc = TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault);
+    auto alloc = TestCPUExecutionProvider()->CreatePreferredAllocators()[0];
     Tensor t(DataTypeImpl::GetType<std::string>(), shape, alloc);
 
     auto& tensor_shape = t.Shape();
@@ -200,7 +199,7 @@ TEST(TensorTest, SizeOverflow) {
   EXPECT_THROW(TensorShape({std::numeric_limits<int64_t>::max() / 2, 3}).Size(), OnnxRuntimeException);
 
   auto type = DataTypeImpl::GetType<float>();
-  auto alloc = TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault);
+  auto alloc = TestCPUExecutionProvider()->CreatePreferredAllocators()[0];
 
   // total size overflow with 4 bytes per element
   TensorShape shape1({static_cast<int64_t>(std::numeric_limits<size_t>::max() / 3)});
@@ -213,7 +212,7 @@ TEST(TensorTest, SizeOverflow) {
 #ifdef ENABLE_STRIDED_TENSORS
 TEST(TensorTest, Strided) {
   TensorShape shape({2, 3, 4});
-  auto alloc = TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault);
+  auto alloc = TestCPUExecutionProvider()->CreatePreferredAllocators()[0];
   void* data = alloc->Alloc(shape.Size() * sizeof(float));
   Tensor t(DataTypeImpl::GetType<float>(), shape, data, alloc->Info());
   EXPECT_TRUE(t.IsContiguous());

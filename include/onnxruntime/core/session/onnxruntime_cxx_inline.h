@@ -114,6 +114,23 @@ struct TypeToTensorType<bool> {
   static constexpr ONNXTensorElementDataType type = ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL;
 };
 
+template <>
+struct TypeToTensorType<Float8E4M3FN_t> {
+  static constexpr ONNXTensorElementDataType type = ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E4M3FN;
+};
+template <>
+struct TypeToTensorType<Float8E4M3FNUZ_t> {
+  static constexpr ONNXTensorElementDataType type = ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E4M3FNUZ;
+};
+template <>
+struct TypeToTensorType<Float8E5M2_t> {
+  static constexpr ONNXTensorElementDataType type = ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E5M2;
+};
+template <>
+struct TypeToTensorType<Float8E5M2FNUZ_t> {
+  static constexpr ONNXTensorElementDataType type = ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E5M2FNUZ;
+};
+
 inline MemoryAllocation::MemoryAllocation(OrtAllocator* allocator, void* p, size_t size)
     : allocator_(allocator), p_(p), size_(size) {
 }
@@ -469,6 +486,21 @@ inline Env& Env::UpdateEnvWithCustomLogLevel(OrtLoggingLevel log_severity_level)
 
 inline Env& Env::CreateAndRegisterAllocator(const OrtMemoryInfo* mem_info, const OrtArenaCfg* arena_cfg) {
   ThrowOnError(GetApi().CreateAndRegisterAllocator(p_, mem_info, arena_cfg));
+  return *this;
+}
+
+inline Env& Env::CreateAndRegisterAllocatorV2(const std::string& provider_type, const OrtMemoryInfo* mem_info, const std::unordered_map<std::string, std::string>& options, const OrtArenaCfg* arena_cfg) {
+  std::vector<const char*> keys, values;
+  auto num_entries = options.size();
+  if (num_entries > 0) {
+    keys.reserve(num_entries);
+    values.reserve(num_entries);
+    for (const auto& entry : options) {
+      keys.push_back(entry.first.c_str());
+      values.push_back(entry.second.c_str());
+    }
+  }
+  ThrowOnError(GetApi().CreateAndRegisterAllocatorV2(p_, provider_type.c_str(), mem_info, arena_cfg, keys.data(), values.data(), num_entries));
   return *this;
 }
 
@@ -1797,9 +1829,9 @@ inline std::vector<std::string> GetAvailableProviders() {
   return available_providers;
 }
 
-template <typename TOp, typename TKernel>
-void CustomOpBase<TOp, TKernel>::GetSessionConfigs(std::unordered_map<std::string, std::string>& out,
-                                                   ConstSessionOptions options) const {
+template <typename TOp, typename TKernel, bool WithStatus>
+void CustomOpBase<TOp, TKernel, WithStatus>::GetSessionConfigs(std::unordered_map<std::string, std::string>& out,
+                                                               ConstSessionOptions options) const {
   const TOp* derived = static_cast<const TOp*>(this);
   std::vector<std::string> keys = derived->GetSessionConfigKeys();
 

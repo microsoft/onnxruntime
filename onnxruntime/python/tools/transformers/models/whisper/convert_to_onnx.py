@@ -21,6 +21,12 @@ from benchmark_helper import Precision, create_onnxruntime_session, prepare_envi
 
 logger = logging.getLogger("")
 
+PROVIDERS = {
+    "cpu": "CPUExecutionProvider",
+    "cuda": "CUDAExecutionProvider",
+    "rocm": "ROCMExecutionProvider",
+}
+
 
 def parse_arguments(argv=None):
     parser = argparse.ArgumentParser()
@@ -203,6 +209,16 @@ def parse_arguments(argv=None):
         help="filepath to load pre-trained model with custom state dictionary (e.g. pytorch_model.bin)",
     )
 
+    parser.add_argument(
+        "-r",
+        "--provider",
+        required=False,
+        type=str,
+        default="cpu",
+        choices=list(PROVIDERS.keys()),
+        help="Provider to benchmark. Default is CPUExecutionProvider.",
+    )
+
     args = parser.parse_args(argv)
 
     return args
@@ -226,6 +242,7 @@ def export_onnx_models(
     quantize_per_channel: bool = False,
     quantize_reduce_range: bool = False,
     state_dict_path: str = "",
+    provider: str = "cpu",
 ):
     device = torch.device("cuda:0" if use_gpu else "cpu")
 
@@ -288,6 +305,7 @@ def export_onnx_models(
                         use_external_data_format,
                         auto_mixed_precision=not disable_auto_mixed_precision,
                         use_gpu=use_gpu,
+                        provider=provider,
                     )
                     onnx_path = output_path
 
@@ -312,14 +330,9 @@ def export_onnx_models(
         ort_session = create_onnxruntime_session(
             output_path,
             use_gpu=use_gpu,
-            provider=["CUDAExecutionProvider", "CPUExecutionProvider"] if use_gpu else ["CPUExecutionProvider"],
+            provider=provider,
         )
-
-        with torch.no_grad():
-            max_diff = WhisperHelper.verify_onnx(model, ort_session, device, use_int32_inputs)
-        logger.info(f"PyTorch and OnnxRuntime results max difference = {max_diff}")
-        if max_diff > 1e-4:
-            logger.warning("PyTorch and OnnxRuntime results are NOT close")
+        assert ort_session is not None
 
         output_paths.append(output_path)
 
@@ -360,6 +373,8 @@ def main(argv=None):
         args.quantize_embedding_layer,
         args.quantize_per_channel,
         args.quantize_reduce_range,
+        args.state_dict_path,
+        args.provider,
     )
 
     if args.chain_model:
@@ -377,6 +392,33 @@ def main(argv=None):
                 args.decoder_path = path
         chain_model(args)
         output_paths.append(args.beam_model_output_dir)
+
+        # Check chained model
+        ort_session = create_onnxruntime_session(
+            args.beam_model_output_dir,
+            use_gpu=args.use_gpu,
+            provider=args.provider,
+        )
+        device = torch.device("cuda:0" if args.use_gpu else "cpu")
+
+        # Wrap parity check in try-except to allow export to continue in case this produces an error
+        try:
+            with torch.no_grad():
+                max_diff = WhisperHelper.verify_onnx(args.model_name_or_path, ort_session, device)
+            if max_diff > 1e-4:
+                logger.warning("PyTorch and ONNX Runtime results are NOT close")
+            else:
+                logger.info("PyTorch and ONNX Runtime results are close")
+        except Exception as e:
+            logger.warning(
+                f"An error occurred while trying to verify parity between PyTorch and ONNX Runtime: {e}", exc_info=True
+            )
+
+        # Remove extra ONNX models saved in output directory
+        for fle in os.listdir(output_dir):
+            if "_beamsearch" not in fle:
+                os.remove(os.path.join(output_dir, fle))
+        output_paths = [args.beam_model_output_dir]
 
     logger.info(f"Done! Outputs: {output_paths}")
 

@@ -50,7 +50,9 @@ class TestWhereModel(unittest.TestCase):
             [out_put],
             initializer=initializers,
         )
-        model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 16)])
+        model = helper.make_model(
+            graph, opset_imports=[helper.make_opsetid("", 16), helper.make_opsetid("com.microsoft", 1)]
+        )
         save(model, model_path)
 
     def quantize_where_test(self, activation_type, weight_type, extra_options={}):  # noqa: B006
