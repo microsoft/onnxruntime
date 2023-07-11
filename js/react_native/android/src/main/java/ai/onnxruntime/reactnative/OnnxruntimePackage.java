@@ -43,11 +43,11 @@ public class OnnxruntimePackage extends TurboReactPackage {
                                                                   ));
       moduleInfos.put(OnnxruntimeJSIHelper.NAME,
                       new ReactModuleInfo(OnnxruntimeJSIHelper.NAME, OnnxruntimeJSIHelper.NAME,
-                                          false,        // canOverrideExistingModule
-                                          false,        // needsEagerInit
-                                          true,         // hasConstants
-                                          false,        // isCxxModule
-                                          false // isTurboModule
+                                          false, // canOverrideExistingModule
+                                          false, // needsEagerInit
+                                          true,  // hasConstants
+                                          false, // isCxxModule
+                                          false  // isTurboModule
                                           ));
       return moduleInfos;
     };
