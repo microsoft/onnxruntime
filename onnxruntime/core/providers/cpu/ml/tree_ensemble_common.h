@@ -7,6 +7,7 @@
 #include "core/platform/ort_mutex.h"
 #include "core/platform/threadpool.h"
 #include "tree_ensemble_helper.h"
+#include "absl/hash/hash.h"
 
 namespace onnxruntime {
 namespace ml {
@@ -214,7 +215,7 @@ Status TreeEnsembleCommon<InputType, ThresholdType, OutputType>::Init(
   nodes_.clear();
   nodes_.reserve(limit);
   roots_.clear();
-  std::unordered_map<TreeNodeElementId, uint32_t, TreeNodeElementId::hash_fn> idi;
+  std::unordered_map<TreeNodeElementId, uint32_t, absl::Hash<TreeNodeElementId>> idi;
   idi.reserve(limit);
   max_feature_id_ = 0;
 

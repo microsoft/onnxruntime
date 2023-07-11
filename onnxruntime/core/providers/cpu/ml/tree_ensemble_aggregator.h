@@ -21,24 +21,10 @@ struct TreeNodeElementId {
   bool operator<(const TreeNodeElementId& xyz) const {
     return ((tree_id < xyz.tree_id) || (tree_id == xyz.tree_id && node_id < xyz.node_id));
   }
-  struct hash_fn {
-    std::size_t operator()(const TreeNodeElementId& key) const {
-      // Employs Elegant Pairing function to produce a unique non-negative integer from two non-negative integers.
-      // Reference: http://szudzik.com/ElegantPairing.pdf
-
-      u_int64_t combined_id;
-      // Use absolute value, before casting, to reduce overflow chance if any of the values is negative.
-      // In the worst (and also unlike) case, we will map 4 pairs of tree_id and node_id to the same value
-      u_int64_t x = static_cast<u_int64_t>(std::abs(key.tree_id));
-      u_int64_t y = static_cast<u_int64_t>(std::abs(key.node_id));
-      if (x >= y) {
-        combined_id = x * x + x + y;
-      } else {
-        combined_id = y * y + x;
-      }
-      return std::hash<u_int64_t>()(combined_id);
-    }
-  };
+  template <typename H>
+  friend H AbslHashValue(H h, const TreeNodeElementId& xyz) {
+    return H::combine(std::move(h), xyz.tree_id, xyz.node_id);
+  }
 };
 
 template <typename T>
