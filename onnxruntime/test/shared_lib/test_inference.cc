@@ -3220,8 +3220,20 @@ TEST(MultiKernelSingleSchemaTest, DuplicateKernel) {
 
 #endif
 
-const static std::thread::id caller_tid = std::this_thread::get_id();
+static std::thread::id caller_tid = std::this_thread::get_id();
 static std::atomic_bool atomic_wait{false};
+
+void callback_succeed(void* user_data, OrtValue** outputs, size_t num_outputs, OrtStatusPtr status_ptr) {
+    auto callee_tid = std::this_thread::get_id();
+    EXPECT_NE(*(reinterpret_cast<std::thread::id*>(user_data)), callee_tid);
+    Ort::Status status(status_ptr);
+    EXPECT_TRUE(status.IsOK());
+    EXPECT_EQ(num_outputs, 1UL);
+    Ort::Value output_value(outputs[0]);
+    EXPECT_EQ(output_value.At<float>({1, 0}), 9.f);
+    output_value.release();
+    atomic_wait.store(true);
+}
 
 TEST(CApiTest, RunAsync) {
   Ort::SessionOptions session_options;
@@ -3231,7 +3243,6 @@ TEST(CApiTest, RunAsync) {
   const char* input_names[] = {"X"};
   float x_value[] = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
   int64_t x_dim[] = {3, 2};
-
   auto memory_info = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
 
   Ort::Value input_tensors[1] = {
@@ -3239,19 +3250,18 @@ TEST(CApiTest, RunAsync) {
   };
 
   const char* output_names[] = {"Y"};
-
   Ort::RunOptions run_options;
+  Ort::Value output_values[1] = {Ort::Value{nullptr}};
 
-  Ort::detail::RunAsyncCallbackStdFn callback = [&](std::vector<Ort::Value>& outputs, Ort::Status status) {
-    auto callee_tid = std::this_thread::get_id();
-    EXPECT_NE(caller_tid, callee_tid);
-    EXPECT_TRUE(status.IsOK());
-    EXPECT_EQ(outputs.size(), 1UL);
-    EXPECT_EQ(outputs[0].At<float>({1, 0}), 9.f);
-    atomic_wait.store(true);
-  };
-
-  EXPECT_NO_THROW(session.RunAsync(run_options, input_names, input_tensors, 1, output_names, 1, callback));
+  EXPECT_NO_THROW(session.RunAsync(run_options,
+                                   input_names,
+                                   input_tensors,
+                                   1,
+                                   output_names,
+                                   output_values,
+                                   1,
+                                   callback_succeed,
+                                   &caller_tid));
 
   std::chrono::duration<double, std::milli> dur{100};
   // timeout in about 10 secs
@@ -3260,6 +3270,10 @@ TEST(CApiTest, RunAsync) {
   }
 
   EXPECT_EQ(atomic_wait.load(), true);
+}
+
+void callback_fail(void*, OrtValue**, size_t, OrtStatusPtr) {
+  EXPECT_TRUE(false);  // the callback is not supposed to be invoked
 }
 
 TEST(CApiTest, RunAsyncFail) {
@@ -3276,14 +3290,9 @@ TEST(CApiTest, RunAsyncFail) {
   Ort::Value input_tensors[1] = {
       Ort::Value::CreateTensor<float>(memory_info, x_value, 6, x_dim, 2),
   };
-
+  Ort::Value output_values[1] = {Ort::Value{nullptr}};
   const char* output_names[] = {"Y"};
 
   Ort::RunOptions run_options;
-
-  Ort::detail::RunAsyncCallbackStdFn callback = [&](std::vector<Ort::Value>& /*outputs*/, Ort::Status /*status*/) {
-    EXPECT_TRUE(false);  // the callback is not supposed to be invoked
-  };
-
-  EXPECT_THROW(session.RunAsync(run_options, input_names, input_tensors, 1, output_names, 1, callback), std::exception);
+  EXPECT_THROW(session.RunAsync(run_options, input_names, input_tensors, 1, output_names, output_values, 1, callback_fail, nullptr), std::exception);
 }

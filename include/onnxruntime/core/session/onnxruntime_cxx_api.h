@@ -749,8 +749,6 @@ struct ConstSessionImpl : Base<T> {
   TypeInfo GetOverridableInitializerTypeInfo(size_t index) const;  ///< Wraps OrtApi::SessionGetOverridableInitializerTypeInfo
 };
 
-using RunAsyncCallbackStdFn = std::function<void(std::vector<Value>&, Status)>;
-
 template <typename T>
 struct SessionImpl : ConstSessionImpl<T> {
   using B = ConstSessionImpl<T>;
@@ -789,7 +787,7 @@ struct SessionImpl : ConstSessionImpl<T> {
    * on error, a status could be returned.
    */
   void RunAsync(const RunOptions& run_options, const char* const* input_names, const Value* input_values, size_t input_count,
-                const char* const* output_names, size_t output_count, RunAsyncCallbackStdFn& callback);
+                const char* const* output_names, Value* output_values, size_t output_count, RunAsyncCallbackFn callback, void* user_data);
 
   /** \brief End profiling and return a copy of the profiling file name.
    *

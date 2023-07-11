@@ -4329,9 +4329,7 @@ struct OrtApi {
   ORT_API2_STATUS(CreateAndRegisterAllocatorV2, _Inout_ OrtEnv* env, _In_ const char* provider_type, _In_ const OrtMemoryInfo* mem_info, _In_ const OrtArenaCfg* arena_cfg,
                   _In_reads_(num_keys) const char* const* provider_options_keys, _In_reads_(num_keys) const char* const* provider_options_values, _In_ size_t num_keys);
 
-  /** \brief Run the model asynchronously in an ::OrtSession
-   *
-   * Will return immediately. Model runs in a separate thread. Callback will be invoked on completion.
+  /** \brief Run the model asynchronously in a thread owned by intra op thread pool
    *
    * \param[in] session
    * \param[in] run_options If nullptr, will use a default ::OrtRunOptions
@@ -4340,6 +4338,9 @@ struct OrtApi {
    * \param[in] input_len Number of elements in the input_names and inputs arrays
    * \param[in] output_names Array of null terminated UTF8 encoded strings of the output names
    * \param[in] output_names_len Number of elements in the output_names and outputs array
+   * \param[out] outputs Array of ::OrtValue%s that the outputs are stored in. This can also be
+   *     an array of nullptr values, in this case ::OrtValue objects will be allocated and pointers
+   *     to them will be set into the `outputs` array.
    * \param[in] run_async_callback Callback function on model run completion
    * \param[in] user_data User data that pass back to run_async_callback
    */
@@ -4347,6 +4348,7 @@ struct OrtApi {
                   _In_reads_(input_len) const char* const* input_names,
                   _In_reads_(input_len) const OrtValue* const* inputs, size_t input_len,
                   _In_reads_(output_names_len) const char* const* output_names, size_t output_names_len,
+                  _Inout_updates_all_(output_names_len) OrtValue** outputs,
                   _In_ RunAsyncCallbackFn run_async_callback, _In_opt_ void* user_data);
 };
 

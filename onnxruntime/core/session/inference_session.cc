@@ -2378,7 +2378,8 @@ Status InferenceSession::Run(const OrtRunOptions* run_options,
 Status InferenceSession::RunAsync(const OrtRunOptions* run_options, const char* const* input_names,
                                   const OrtValue* const* input, size_t input_len,
                                   const char* const* output_name, size_t output_names_len,
-                                  RunAsyncCallbackFn callback, void* user_data) {
+                                  OrtValue** outputs, RunAsyncCallbackFn callback, void* user_data) {
+
   if (!thread_pool_.get() || concurrency::ThreadPool::DegreeOfParallelism(thread_pool_.get()) < 2) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "intra op thread pool must have at least one thread for RunAsync");
   }
@@ -2387,10 +2388,9 @@ Status InferenceSession::RunAsync(const OrtRunOptions* run_options, const char* 
   std::function<void()> run_fn = [=]() {
     ORT_TRY {
       using OrtValuePtr = OrtValue*;
-      InlinedVector<OrtValuePtr> outputs(output_names_len, nullptr);
-      auto status = sess->Run(run_options, input_names, input, input_len, output_name, output_names_len, outputs.data());
+      auto status = sess->Run(run_options, input_names, input, input_len, output_name, output_names_len, outputs);
       if (status.IsOK()) {
-        callback(user_data, outputs.data(), output_names_len, {});
+        callback(user_data, outputs, output_names_len, {});
       } else {
         callback(user_data, {}, 0, ToOrtStatus(status));
       }
