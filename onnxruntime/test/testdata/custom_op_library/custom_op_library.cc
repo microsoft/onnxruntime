@@ -7,6 +7,7 @@
 #include <vector>
 #include <cmath>
 #include <mutex>
+#include <system_error>
 
 #include "core/common/common.h"
 #include "core/framework/ortdevice.h"
@@ -41,18 +42,16 @@ using Microsoft::WRL::ComPtr;
     throw std::runtime_error(msg); \
   }
 
-#define DML_CALL(call, nm)                                                                                  \
-  {                                                                                                         \
-    HRESULT ret = (call);                                                                                   \
-    if (FAILED(ret)) {                                                                                      \
-      throw std::runtime_error(std::string{nm} + std::string{" failed, err code: "} + std::to_string(ret)); \
-    }                                                                                                       \
+#define DML_CALL(call, nm)                                                                                        \
+  {                                                                                                               \
+    HRESULT ret = (call);                                                                                         \
+    if (FAILED(ret)) {                                                                                            \
+      throw std::runtime_error(std::string{nm} + std::string{" failed, "} + std::system_category().message(ret)); \
+    }                                                                                                             \
   }
 
 struct IdentityDML {
-
   IdentityDML(const OrtApi* ort_api, const OrtKernelInfo*) : api(ort_api) {
-
     dml_buffer_tensor_desc.DataType = DML_TENSOR_DATA_TYPE_FLOAT32;
     dml_buffer_tensor_desc.Flags = DML_TENSOR_FLAG_NONE;
     dml_buffer_tensor_desc.Sizes = tensor_shape;
@@ -60,19 +59,17 @@ struct IdentityDML {
 
     dml_tensor_desc.Type = DML_TENSOR_TYPE_BUFFER;
     dml_tensor_desc.Desc = &dml_buffer_tensor_desc;
-    
+
     dml_identity_op_desc.InputTensor = &dml_tensor_desc;
     dml_identity_op_desc.OutputTensor = &dml_tensor_desc;
 
     dml_op_desc.Type = DML_OPERATOR_ELEMENT_WISE_IDENTITY;
     dml_op_desc.Desc = &dml_identity_op_desc;
-
   }
 
   void Compute(OrtKernelContext* ctx, Ort::Custom::OrtDmlContext* dml_ctx,
                const Ort::Custom::Tensor<float>& input,
                Ort::Custom::Tensor<float>& output) {
-
     // step 1: get resources from dml context
     auto* dml_device = dml_ctx->dml_device;
     CUSTOM_ENFORCE(dml_device, "failed to get dml device");
@@ -82,6 +79,9 @@ struct IdentityDML {
 
     auto* cmd_list = dml_ctx->cmd_list;
     CUSTOM_ENFORCE(cmd_list, "failed to get cmd list");
+
+    auto* cmd_recorder = dml_ctx->cmd_recorder;
+    CUSTOM_ENFORCE(cmd_recorder, "failed to get cmd recorder");
 
     const auto& shape = input.Shape();
     CUSTOM_ENFORCE(shape.size() <= 8U, "input shape dimension must not exceed 8");
@@ -106,9 +106,11 @@ struct IdentityDML {
                  IID_PPV_ARGS(dml_compiled_op.GetAddressOf())),
              "dml_device->CompileOperato");
 
+    IDMLCompiledOperator* dml_compiled_ops[] = {dml_compiled_op.Get()};
+
     DML_CALL(dml_device->CreateOperatorInitializer(
                  1U,
-                 &dml_compiled_op,
+                 dml_compiled_ops,
                  IID_PPV_ARGS(dml_op_initializer.GetAddressOf())),
              "dml_device->CreateOperatorInitialize");
 
@@ -160,11 +162,15 @@ struct IdentityDML {
     DML_BINDING_DESC outputBindingDesc{DML_BINDING_TYPE_BUFFER, &outputBufferBinding};
     dml_binding_table->BindOutputs(1, &outputBindingDesc);
 
+    // DML_CALL(dml_device->CreateCommandRecorder(
+    //              IID_PPV_ARGS(dml_cmd_recorder.GetAddressOf())),
+    //          "dml_device->CreateCommandRecorder");
+
     // finally, submit op to cmd list
-    dml_cmd_recorder->RecordDispatch(
-                 cmd_list,
-                 dml_op_initializer.Get(),
-                 dml_binding_table.Get());
+    cmd_recorder->RecordDispatch(
+        cmd_list,
+        dml_op_initializer.Get(),
+        dml_binding_table.Get());
   }
 
   UINT tensor_shape[8U] = {};
@@ -179,7 +185,7 @@ struct IdentityDML {
   ComPtr<IDMLBindingTable> dml_binding_table = {};
   D3D12_DESCRIPTOR_HEAP_DESC desc_heap_desc = {};
   ComPtr<ID3D12DescriptorHeap> d3d12_desc_heap = {};
-  ComPtr<IDMLCommandRecorder> dml_cmd_recorder = {};
+  // ComPtr<IDMLCommandRecorder> dml_cmd_recorder = {};
   const OrtApi* api{};
 };
 #endif

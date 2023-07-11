@@ -16,6 +16,7 @@ struct OrtDmlContext {
   IDMLDevice* dml_device = {};
   ID3D12Device* d3d12_device = {};
   ID3D12GraphicsCommandList* cmd_list = {};
+  IDMLCommandRecorder* cmd_recorder = {};
 
   void Init(const OrtKernelContext& kernel_ctx) {
     const auto& ort_api = GetApi();
@@ -41,6 +42,13 @@ struct OrtDmlContext {
       ORT_CXX_API_THROW("failed to fetch command list", OrtErrorCode::ORT_RUNTIME_EXCEPTION);
     }
     cmd_list = reinterpret_cast<ID3D12GraphicsCommandList*>(resource);
+
+    resource = {};
+    status = ort_api.KernelContext_GetResource(&kernel_ctx, ORT_DML_RESOUCE_VERSION, DmlResource::cmd_recorder_t, &resource);
+    if (status) {
+      ORT_CXX_API_THROW("failed to fetch command recorder", OrtErrorCode::ORT_RUNTIME_EXCEPTION);
+    }
+    cmd_recorder = reinterpret_cast<IDMLCommandRecorder*>(resource);
   }
 };
 

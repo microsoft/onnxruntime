@@ -107,10 +107,12 @@ namespace Dml
          DmlStream(IDMLDevice* dml_device,
              ID3D12Device* d3d12_device,
              ID3D12GraphicsCommandList* cmd_list,
+             IDMLCommandRecorder* cmd_recorder,
              const OrtDevice& ort_device): onnxruntime::Stream(reinterpret_cast<void*>(dml_device), ort_device),
                                            dmlDevice(dml_device),
                                            d3d12Device(d3d12_device),
-                                           cmdList(cmd_list) {}
+                                           cmdList(cmd_list),
+                                           cmdRecorder(cmd_recorder) {}
 
          void* GetResource(int version, int id) const override {
             ORT_ENFORCE(version <= ORT_DML_RESOUCE_VERSION, "versions incompatible");
@@ -125,6 +127,9 @@ namespace Dml
                 case DmlResource::cmd_list_t:
                     resource = reinterpret_cast<void*>(cmdList);
                     break;
+                case DmlResource::cmd_recorder_t:
+                    resource = reinterpret_cast<void*>(cmdRecorder);
+                    break;
                 default:
                     break;
             }
@@ -134,13 +139,16 @@ namespace Dml
         IDMLDevice* dmlDevice = {};
         ID3D12Device* d3d12Device = {};
         ID3D12GraphicsCommandList* cmdList = {};
+        IDMLCommandRecorder* cmdRecorder = {};
     };
 
     void ExecutionProviderImpl::RegisterStreamHandlers(onnxruntime::IStreamCommandHandleRegistry& stream_handle_registry) const {
         stream_handle_registry.RegisterCreateStreamFn(OrtDevice::GPU, [this](const OrtDevice& device) {
-            ID3D12GraphicsCommandList* conext_cmd_list = {};
-            this->m_context->GetCommandListForRecordingAndInvalidateState(&conext_cmd_list);
-            return std::make_unique<DmlStream>(this->m_dmlDevice.Get(), this->m_d3d12Device.Get(), conext_cmd_list, device);});
+            ID3D12GraphicsCommandList* conextCmdList = {};
+            this->m_context->GetCommandListForRecordingAndInvalidateState(&conextCmdList);
+            IDMLCommandRecorder* cmdRecorder = {};
+            this->m_context->GetCommandRecorder(&cmdRecorder);
+            return std::make_unique<DmlStream>(this->m_dmlDevice.Get(), this->m_d3d12Device.Get(), conextCmdList, cmdRecorder, device);});
     }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////
