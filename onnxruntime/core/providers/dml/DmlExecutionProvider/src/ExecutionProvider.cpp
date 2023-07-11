@@ -476,6 +476,8 @@ namespace Dml
         }
         else if (!src->IsCpuData() && !dst->IsCpuData())
         {
+            printf("*****************DmlCommandRecorder::CopyBufferRegion\n");
+
             //
             // GPU -> GPU copy
             //

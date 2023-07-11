@@ -173,7 +173,6 @@ void DmlCommandRecorder::CopyBufferRegion(
     uint64_t srcOffset,
     uint64_t byteCount)
 {
-    printf("*****************DmlCommandRecorder::CopyBufferRegion\n");
     m_currentCommandList->CopyBufferRegion(dstBuffer, dstOffset, srcBuffer, srcOffset, byteCount);
     m_operationsRecordedInCurrentCommandList = true;
 }
