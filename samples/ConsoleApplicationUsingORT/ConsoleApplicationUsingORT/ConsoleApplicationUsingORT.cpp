@@ -42,9 +42,14 @@ int main()
 
   OrtSession* session;
   g_ort->CreateSession(env, "/bert_ort/leca/code/onnxruntime2/onnxruntime/test/testdata/custom_op_library/custom_op_test.onnx", so, &session);
-  g_ort->RegisterCustomEPAndCustomOp("/bert_ort/leca/code/onnxruntime2/build/Linux/Debug/libtest_execution_provider.so", so);
+
+  // demo 1
+  //g_ort->RegisterCustomEPAndCustomOp("/bert_ort/leca/code/onnxruntime2/build/Linux/Debug/libtest_execution_provider.so", so);
   //void* library_path = nullptr;
   //g_ort->RegisterCustomOpsLibrary(so, "/bert_ort/leca/code/onnxruntime2/build/Linux/Debug/libcustom_op_library.so", &library_path);
+  
+  // demo 2
+  g_ort->RegisterCustomEPAndCustomOp2("/bert_ort/leca/code/onnxruntime2/samples/customEP/build/libcustomep.so", so);
 }
 
 // Run program: Ctrl + F5 or Debug > Start Without Debugging menu

@@ -2736,6 +2736,7 @@ static constexpr OrtApi ort_api_1_to_16 = {
     &OrtApis::ReleaseROCMProviderOptions,
     &OrtApis::CreateAndRegisterAllocatorV2,
     &OrtApis::RegisterCustomEPAndCustomOp,
+    &OrtApis::RegisterCustomEPAndCustomOp2,
 };
 
 // OrtApiBase can never change as there is no way to know what version of OrtApiBase is returned by OrtGetApiBase.

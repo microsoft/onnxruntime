@@ -2182,3 +2182,22 @@ ORT_API_STATUS_IMPL(OrtApis::RegisterCustomEPAndCustomOp, _In_ const char* libra
 
   return nullptr;
 }
+
+ORT_API_STATUS_IMPL(OrtApis::RegisterCustomEPAndCustomOp2, _In_ const char* library_path, _In_ OrtSessionOptions* options) {
+  auto path_str = onnxruntime::ToPathString(library_path);
+  void* library_handle;
+  ORT_API_RETURN_IF_STATUS_NOT_OK(onnxruntime::Env::Default().LoadDynamicLibrary(path_str, false, &library_handle));
+  if (!library_handle)
+    return OrtApis::CreateStatus(ORT_FAIL, "RegisterCustomEPAndCustomOp2: Failed to load library");
+
+  onnxruntime::IExecutionProviderFactory* (*PGetEPFactory)();
+  ORT_API_RETURN_IF_STATUS_NOT_OK(onnxruntime::Env::Default().GetSymbolFromLibrary(library_handle, "GetEPFactory", (void**)&PGetEPFactory));
+  onnxruntime::IExecutionProviderFactory* ep_factory = PGetEPFactory();
+  std::unique_ptr<onnxruntime::IExecutionProvider> ep = ep_factory->CreateProvider();
+
+  OrtStatus* (*PRegisterCustomOp)(OrtSessionOptions*);
+  ORT_API_RETURN_IF_STATUS_NOT_OK(onnxruntime::Env::Default().GetSymbolFromLibrary(library_handle, "RegisterCustomOp", (void**)&PRegisterCustomOp));
+  PRegisterCustomOp(options);
+
+  return nullptr;
+}
