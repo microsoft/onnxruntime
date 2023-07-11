@@ -49,8 +49,8 @@ public class OnnxruntimeModule extends ReactContextBaseJavaModule implements Lif
       if (blobModule == null) {
         throw new RuntimeException("BlobModule is not initialized");
       }
-      onnxruntime.setBlobModule(blobModule);
     }
+    onnxruntime.setBlobModule(blobModule);
   }
 
   /**

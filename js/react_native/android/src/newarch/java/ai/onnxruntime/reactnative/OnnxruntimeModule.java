@@ -48,8 +48,8 @@ public class OnnxruntimeModule extends NativeOnnxruntimeSpec implements Lifecycl
       if (blobModule == null) {
         throw new RuntimeException("BlobModule is not initialized");
       }
-      onnxruntime.setBlobModule(blobModule);
     }
+    onnxruntime.setBlobModule(blobModule);
   }
 
   /**

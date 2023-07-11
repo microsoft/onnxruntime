@@ -56,6 +56,7 @@ public class OnnxruntimeModuleTest {
 
       OnnxruntimeModule ortModule = new OnnxruntimeModule(reactContext);
       ortModule.blobModule = blobModule;
+      ortModule.checkBlobModule();
       String sessionKey = "";
 
       // test loadModel()
