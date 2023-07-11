@@ -1,0 +1,11 @@
+---
+Language: Cpp
+BasedOnStyle: Google
+ColumnLimit: 120
+SortIncludes: false
+DerivePointerAlignment: false
+AlignAfterOpenBracket: BlockIndent
+BinPackArguments: false
+BinPackParameters: false
+InsertTrailingCommas: Wrapped
+...
