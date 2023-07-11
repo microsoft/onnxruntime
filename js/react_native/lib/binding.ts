@@ -4,7 +4,7 @@
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 import type {InferenceSession} from 'onnxruntime-common';
 import {NativeModules} from 'react-native';
-import Onnxruntime from './NativeOnnxruntimeSpec';
+import Onnxruntime from './NativeOnnxruntime';
 
 /**
  * model loading information

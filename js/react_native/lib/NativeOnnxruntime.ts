@@ -8,10 +8,10 @@ import {TurboModuleRegistry} from 'react-native';
 // NOTE: Currently we can't use types import from another files
 // ref: https://github.com/facebook/react-native/issues/36431
 export interface Spec extends TurboModule {
-  loadModel(modelPath: string, options: object): Promise<object>;
-  loadModelFromBlob?(blob: object, options: object): Promise<object>;
+  loadModel(modelPath: string, options: {}): Promise<{}>;
+  loadModelFromBlob?(blob: {}, options: {}): Promise<{}>;
   dispose(key: string): Promise<void>;
-  run(key: string, feeds: object, fetches: object, options: object): Promise<object>;
+  run(key: string, feeds: {}, fetches: Array<{}>, options: {}): Promise<{}>;
 }
 
 export default TurboModuleRegistry.get<Spec>('Onnxruntime');
