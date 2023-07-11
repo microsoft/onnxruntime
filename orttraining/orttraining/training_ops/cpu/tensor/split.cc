@@ -28,14 +28,13 @@ Status PrepareForTrainingCompute(const TensorShape& input_shape, int num_outputs
   const auto num_dimensions = gsl::narrow_cast<int64_t>(input_shape.NumDimensions());
   const int64_t original_axis_value = axis;
   axis = HandleNegativeAxis(original_axis_value, num_dimensions);  // handle negative and enforce axis is valid
-  const size_t axis_value = gsl::narrow_cast<size_t>(axis);
-  const int64_t split_dim_size = input_dims[axis_value];
+  const int64_t split_dim_size = input_dims[gsl::narrow_cast<size_t>(axis)];
 
-  before_dims = narrow<int>(input_shape.SizeToDimension(axis_value));
-  after_dims_including_split_axis = narrow<int>(input_shape.SizeFromDimension(axis_value));
-  after_dims_excluding_split = (axis_value + 1 == num_dimensions)
+  before_dims = narrow<int>(input_shape.SizeToDimension(gsl::narrow_cast<size_t>(axis)));
+  after_dims_including_split_axis = narrow<int>(input_shape.SizeFromDimension(gsl::narrow_cast<size_t>(axis)));
+  after_dims_excluding_split = (axis + 1 == num_dimensions)
                                    ? 1  // we multiply by this value so must be 1 not 0
-                                   : narrow<int>(input_shape.SizeFromDimension(axis_value + 1));
+                                   : narrow<int>(input_shape.SizeFromDimension(gsl::narrow_cast<size_t>(axis) + 1));
 
   std::vector<int64_t> split_sizes_values(split_sizes);
   split_sizes.clear();
