@@ -12,7 +12,6 @@ from enum import IntEnum
 from typing import Callable, Dict, List
 
 from onnxruntime.capi._pybind_state import Severity
-from onnxruntime.training.ortmodule._graph_execution_manager import GraphExecutionManager
 
 
 class LogLevel(IntEnum):
@@ -164,7 +163,7 @@ class TrackTime:
             if not hasattr(graph_execution_manager, "time_tracker"):
                 raise RuntimeError("The class of the function to be tracked must have a 'time_tracker' attribute.")
             graph_execution_manager.time_tracker.start(self.phase)
-            result = func(*args, **kwargs)
+            result = func(graph_execution_manager, *args, **kwargs)
             graph_execution_manager.time_tracker.end(self.phase)
             return result
 
