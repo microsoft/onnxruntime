@@ -9,6 +9,10 @@
 #import <React/RCTBridge+Private.h>
 #import <React/RCTLog.h>
 
+#ifdef RCT_NEW_ARCH_ENABLED
+#import <OnnxruntimeSpec/OnnxruntimeSpec.h>
+#endif
+
 // Note: Using below syntax for including ort c api and ort extensions headers to resolve a compiling error happened
 // in an expo react native ios app when ort extensions enabled (a redefinition error of multiple object types defined
 // within ORT C API header). It's an edge case that compiler allows both ort c api headers to be included when #include
@@ -447,5 +451,13 @@ static NSDictionary *executionModeTable = @{@"sequential" : @(ORT_SEQUENTIAL), @
   }
   blobManager = nullptr;
 }
+
+#ifdef RCT_NEW_ARCH_ENABLED
+- (std::shared_ptr<facebook::react::TurboModule>)getTurboModule:
+    (const facebook::react::ObjCTurboModule::InitParams &)params
+{
+    return std::make_shared<facebook::react::NativeOnnxruntimeSpecJSI>(params);
+}
+#endif
 
 @end

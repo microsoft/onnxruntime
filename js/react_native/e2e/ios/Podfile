@@ -21,6 +21,9 @@ if linkage != nil
   use_frameworks! :linkage => linkage.to_sym
 end
 
+# Use New Architecture
+# ENV['RCT_NEW_ARCH_ENABLED'] = '1'
+
 target 'OnnxruntimeModuleExample' do
   config = use_native_modules!
 

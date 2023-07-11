@@ -101,7 +101,7 @@
   },
   "packageManager": "yarn@1.22.19",
   "codegenConfig": {
-    "name": "Onnxruntime",
+    "name": "OnnxruntimeSpec",
     "type": "modules",
     "jsSrcsDir": "./lib/"
   }
