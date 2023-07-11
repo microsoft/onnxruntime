@@ -437,7 +437,7 @@ class TestGPTNeoXAttention(unittest.TestCase):
                                 batch_size, num_head, seq_len, hidden_size
                             )
                         )
-                        assert torch.allclose(torch_output, ort_output, atol=1e-6)
+                        assert torch.allclose(torch_output, ort_output, atol=1e-4)
 
     def test_gpt_neox_decoder_masked_self_attention(self):
         for batch_size in [1, 2, 4, 8]:

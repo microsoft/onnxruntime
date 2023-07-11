@@ -44,7 +44,6 @@ class IGemmSoftmaxGemmPermuteKernelExplorer : public IKernelExplorer {
     // total_sequence_length == kv_sequence_length
     attn_.kv_sequence_length = total_seqlen;
     attn_.past_sequence_length = 0;
-    attn_.original_past_sequence_length = 0;  // NOTE: not used
     attn_.total_sequence_length = total_seqlen;
     attn_.max_sequence_length = 0;
     attn_.hidden_size = num_heads * head_size;
