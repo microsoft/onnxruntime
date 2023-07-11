@@ -5,7 +5,7 @@ BasedOnStyle:  Google
 # Setting ColumnLimit to 0 so developer choices about where to break lines are maintained.
 # Developers are responsible for adhering to the 120 character maximum.
 ColumnLimit:     0
-SortIncludes: false
+SortIncludes: true
 DerivePointerAlignment: false
 
 # if you want to customize when working locally see https://clang.llvm.org/docs/ClangFormatStyleOptions.html for options.
