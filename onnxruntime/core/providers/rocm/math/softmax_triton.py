@@ -41,7 +41,7 @@ sig_pattern = "*{},*{},i32,i32,i32"
 group_pattern = "softmax_{}"
 
 
-def get_funcion_table():
+def get_function_table():
     func_table = []
 
     def get_num_warps(block_size):
