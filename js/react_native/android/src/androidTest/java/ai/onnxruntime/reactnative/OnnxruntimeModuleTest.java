@@ -81,6 +81,8 @@ public class OnnxruntimeModuleTest {
 
         byte[] modelBuffer = getInputModelBuffer(modelStream);
 
+        modelStream.close();
+
         JavaOnlyMap options = new JavaOnlyMap();
         try {
           ReadableMap resultMap = ortModule.loadModel(modelBuffer, options);
@@ -174,6 +176,8 @@ public class OnnxruntimeModuleTest {
             reactContext.getResources().openRawResource(ai.onnxruntime.reactnative.test.R.raw.test_types_float);
 
         byte[] modelBuffer = getInputModelBuffer(modelStream);
+
+        modelStream.close();
 
         JavaOnlyMap options = new JavaOnlyMap();
 
