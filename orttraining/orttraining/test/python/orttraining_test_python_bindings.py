@@ -377,6 +377,9 @@ def test_ort_custom_ops():
     def _create_custom_op_trainable_onnx_model():
         """This function takes in a pre generated custom op model and adds a trainable linear layer to it"""
         onnx_model = onnx.load(os.path.join("testdata", "custom_op_library", "custom_op_test.onnx"))
+        onnx_model.graph.value_info.append(
+            onnx.helper.make_tensor_value_info("output_1", onnx.TensorProto.FLOAT, [3, 5])
+        )
 
         class CustomOpBlockWithGemm(onnxblock.ForwardBlock):
             def __init__(self):
@@ -391,10 +394,6 @@ def test_ort_custom_ops():
             model_accessor.model.opset_import.append(onnx.helper.make_opsetid("test.customop", 1))
             model_accessor.model.opset_import.append(onnx.helper.make_opsetid("", 14))
             model_accessor.model.ir_version = 7
-            # TODO(baijumeswani): Add a way to register output shape (even if it is symbolic)
-            model_accessor.model.graph.value_info.append(
-                onnx.helper.make_tensor_value_info("onnx::gemm.output::135", onnx.TensorProto.FLOAT, [3, 10])
-            )
             _ = custom_op_block("output_1")
 
         return custom_op_block.to_model_proto()
