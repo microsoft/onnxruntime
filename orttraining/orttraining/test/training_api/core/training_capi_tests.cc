@@ -174,7 +174,7 @@ TEST(TrainingCApiTest, RegisterCustomOps) {
   Ort::SessionOptions session_options;
 
 #if defined(_WIN32)
-  session_options.RegisterCustomOpsLibrary(ORT_TSTR("libcustom_op_library.dll"));
+  session_options.RegisterCustomOpsLibrary(ORT_TSTR("custom_op_library.dll"));
 #elif defined(__APPLE__)
   session_options.RegisterCustomOpsLibrary(ORT_TSTR("libcustom_op_library.dylib"));
 #else
