@@ -152,7 +152,7 @@ ParQuantizeLinearStd(const MLFloat16* Input,
     auto begin_idx = begin * block_size;
     auto end_idx = std::min(static_cast<std::ptrdiff_t>(N), end * block_size);
     float fscale = Scale.ToFloat();
-    for(; begin_idx != end_idx; ++begin_idx) {
+    for (; begin_idx != end_idx; ++begin_idx) {
       Output[begin_idx] = static_cast<OutputType>(Input[begin_idx].ToFloat() / fscale) + ZeroPoint;
     }
   });

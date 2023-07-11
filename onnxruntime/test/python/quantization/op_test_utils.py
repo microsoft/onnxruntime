@@ -1,9 +1,9 @@
 import uuid
 from pathlib import Path
-import packaging.version as pv
 
 import numpy as np
 import onnx
+import packaging.version as pv
 from onnx.reference import ReferenceEvaluator
 
 import onnxruntime
