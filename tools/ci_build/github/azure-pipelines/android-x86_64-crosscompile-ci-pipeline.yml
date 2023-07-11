@@ -240,6 +240,7 @@ stages:
       - script: |
           set -e
           python3 tools/python/run_adb.py root
+          python3 tools/python/run_adb.py wait-for-device
           python3 tools/python/run_adb.py shell setenforce 0
           python3 tools/python/run_adb.py wait-for-device
           python3 tools/python/run_adb.py unroot
