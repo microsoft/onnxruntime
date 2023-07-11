@@ -102,7 +102,7 @@ struct OrtDmlApi {
 
   ORT_API2_STATUS(GetComputeOnlyDevices, _Out_ int* device_ids);
 
-  ORT_API2_STATUS(SessionOptionsAppendExecutionProvider_DML2, _In_ OrtSessionOptions* options, int device_id);
+  ORT_API2_STATUS(OrtSessionOptionsAppendExecutionProvider_DML2, _In_ OrtSessionOptions* options, int device_id);
 };
 
 #ifdef __cplusplus

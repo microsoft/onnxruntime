@@ -297,10 +297,11 @@ ORT_API_STATUS_IMPL(GetComputeOnlyDevices, _Out_ int* device_ids) {
           d3D12CoreComputeAdapters.GetAddressOf()));
 
   const uint32_t count{ d3D12CoreComputeAdapters->GetAdapterCount() };
-  //int compute_only_device_id = -1;
+  int compute_only_device_id = -1;
 
   // First loop to get number of compute only devices
-  int num_compute_only_devices = 0;
+  //int num_compute_only_devices = 0;
+
   for (uint32_t i = 0; i < count; ++i)
   {
     ComPtr<IDXCoreAdapter> candidateAdapter;
@@ -321,46 +322,47 @@ ORT_API_STATUS_IMPL(GetComputeOnlyDevices, _Out_ int* device_ids) {
     if (isHardware)
     {
         // Choose the first hardware adapter, and stop looping.
-        //compute_only_device_id = i;
-        num_compute_only_devices++;
+        compute_only_device_id = i;
+        break;
+        //num_compute_only_devices++;
     }
   }
 
-  //*device_id = compute_only_device_id;
+  *device_ids = compute_only_device_id;
 
-  if (num_compute_only_devices == 0)
-  {
-      device_ids = nullptr;
-      return nullptr;
-  }
+  //if (num_compute_only_devices == 0)
+  //{
+  //    device_ids = nullptr;
+  //    return nullptr;
+  //}
 
-  device_ids = (int*)malloc(num_compute_only_devices * sizeof(int));
+  //device_ids = (int*)malloc(num_compute_only_devices * sizeof(int));
 
 
-    int device_index = 0;
-    for (uint32_t i = 0; i < count; ++i)
-  {
-    ComPtr<IDXCoreAdapter> candidateAdapter;
-    ORT_THROW_IF_FAILED(
-        d3D12CoreComputeAdapters->GetAdapter(i, candidateAdapter.GetAddressOf()));
+  //  int device_index = 0;
+  //  for (uint32_t i = 0; i < count; ++i)
+  //{
+  //  ComPtr<IDXCoreAdapter> candidateAdapter;
+  //  ORT_THROW_IF_FAILED(
+  //      d3D12CoreComputeAdapters->GetAdapter(i, candidateAdapter.GetAddressOf()));
 
-    // Reject adapters that support both compute and graphics, e.g. GPUs.
-    if (candidateAdapter->IsAttributeSupported(DXCORE_ADAPTER_ATTRIBUTE_D3D12_GRAPHICS))
-    {
-        continue;
-    }
+  //  // Reject adapters that support both compute and graphics, e.g. GPUs.
+  //  if (candidateAdapter->IsAttributeSupported(DXCORE_ADAPTER_ATTRIBUTE_D3D12_GRAPHICS))
+  //  {
+  //      continue;
+  //  }
 
-    bool isHardware{ false };
-    ORT_THROW_IF_FAILED(candidateAdapter->GetProperty(
-        DXCoreAdapterProperty::IsHardware,
-        &isHardware));
+  //  bool isHardware{ false };
+  //  ORT_THROW_IF_FAILED(candidateAdapter->GetProperty(
+  //      DXCoreAdapterProperty::IsHardware,
+  //      &isHardware));
 
-    if (isHardware)
-    {
-        // Choose the first hardware adapter, and stop looping.
-        device_ids[device_index] = i;
-    }
-  }
+  //  if (isHardware)
+  //  {
+  //      // Choose the first hardware adapter, and stop looping.
+  //      device_ids[device_index] = i;
+  //  }
+  //}
 
     
 
@@ -375,7 +377,8 @@ static constexpr OrtDmlApi ort_dml_api_10_to_x = {
   &CreateGPUAllocationFromD3DResource,
   &FreeGPUAllocation,
   &GetD3D12ResourceFromAllocation,
-  &GetComputeOnlyDevices
+  &GetComputeOnlyDevices,
+  &OrtSessionOptionsAppendExecutionProvider_DML2,
 };
 
 const OrtDmlApi* GetOrtDmlApi(_In_ uint32_t /*version*/) NO_EXCEPTION {
