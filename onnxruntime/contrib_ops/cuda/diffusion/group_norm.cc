@@ -111,6 +111,13 @@ Status GroupNorm::ComputeInternal(OpKernelContext* context) const {
                            "number of channels should be divisiable by num_groups");
   }
 
+  if (context->GetUseDeterministicCompute()) {
+    static std::once_flag log_warning;
+    std::call_once(log_warning, []() {
+      LOGS_DEFAULT(WARNING) << "GroupNorm has no deterministic CUDA kernel, its outputs may still be nondeterministic.";
+    });
+  }
+
   auto workspace = GetScratchBuffer<void>(GetGroupNormWorkspaceSizeInBytes(), context->GetComputeStream());
 
   utils::MLTypeCallDispatcher<GROUP_NORM_TYPES> dispatcher(input->GetElementType());

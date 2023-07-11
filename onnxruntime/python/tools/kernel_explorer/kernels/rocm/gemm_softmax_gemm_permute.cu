@@ -276,8 +276,11 @@ class GemmSoftmaxGemmPermuteTunable : public IGemmSoftmaxGemmPermuteKernelExplor
   }
 
   void Run() override {
-    ORT_THROW_IF_ERROR(GemmSoftmaxGemmPermuteTunableOp<T>{}(&this->params_));
+    ORT_THROW_IF_ERROR(op_(&this->params_));
   }
+
+  // NOTE: this op is expensive to construct
+  GemmSoftmaxGemmPermuteTunableOp<T> op_{};
 };
 
 #define REGISTER_COMMON(name, type, ...)                                                          \

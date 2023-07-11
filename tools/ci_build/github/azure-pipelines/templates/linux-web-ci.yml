@@ -115,6 +115,12 @@ jobs:
      node -e "a=require('child_process').execSync('git diff --name-only').toString();if(a)throw new Error('Following documents are not up-to-date: (did you run \"npm run build:doc\"?)\n'+a)"
     workingDirectory: '$(Build.SourcesDirectory)/js/web'
     displayName: 'Check out of dated documents'
+  - script: |
+     if [[ -e "/data/onnx/test/data/node/__generated_onnx_node_tests" ]] then
+      cp -r /data/onnx/test/ $(Build.SourcesDirectory)/js/test/
+     fi
+    workingDirectory: '$(Build.SourcesDirectory)/js/web'
+    displayName: 'Copy pre-downloaded test data'
   - task: PowerShell@2
     inputs:
       filePath: '$(Build.SourcesDirectory)/tools/ci_build/github/js/pack-npm-packages.ps1'

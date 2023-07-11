@@ -65,7 +65,9 @@ class GraphExecutionManager(GraphExecutionInterface):
 
         self._logger = logger
 
+        # Management for ORTModule configuration.
         self._runtime_options = _RuntimeOptions(self._logger)
+
         # Original and flattened (transformed) output module
         self._flattened_module = module
 
@@ -84,7 +86,11 @@ class GraphExecutionManager(GraphExecutionInterface):
 
         self._first_skip_check_warning = True
 
+        # Inspector for runtime information, for example input data, memory usage, etc.
         self._runtime_inspector = RuntimeInspector(self._logger)
+
+        # Tracker for ORTModule model export, session creation overhead.
+        self.time_tracker = _logger.TimeTracker()
 
         # Value can be either torch.onnx.TrainingMode.TRAINING or torch.onnx.TrainingMode.EVAL
         # To be instantiated in the concrete implementation of GraphExecutionManager
@@ -98,7 +104,6 @@ class GraphExecutionManager(GraphExecutionInterface):
         self._input_info: Optional[_InputInfo] = None
         self._module_output_schema: Optional[_ModelInputOutputSchemaType] = None
         self._warning_log_detected_during_export = False
-        self._export_duration_in_ms = 0
 
         # Device where the model is placed.
         self._device: Optional[torch.device] = _utils.get_device_from_module(module)
@@ -233,6 +238,7 @@ class GraphExecutionManager(GraphExecutionInterface):
 
         return session_options, providers, provider_options
 
+    @_logger.TrackTime(_logger.TimeTrackerPhase.EXPORT)
     def _export_model(self, *inputs, **kwargs) -> bool:
         # 1. Set the self._device from the user module
         # 2. Verify input schema matches the schema used on the previous model export
@@ -284,10 +290,6 @@ class GraphExecutionManager(GraphExecutionInterface):
         TODO: How to support dynamic axes? Dimensions are determined by samples
         """
         with _logger.suppress_os_stream_output(log_level=self._debug_options.logging.log_level) as suppress_output:
-            from datetime import datetime
-
-            start = datetime.now()
-
             # Setup dynamic axes for onnx model
             self._input_info = _io.parse_inputs_for_onnx_export(
                 self._module_parameters, None, input_schema, inputs, kwargs
@@ -363,9 +365,6 @@ class GraphExecutionManager(GraphExecutionInterface):
             if suppress_output.tell() > 0:
                 self._warning_log_detected_during_export = True
 
-            end = datetime.now()
-            self._export_duration_in_ms = (end - start).total_seconds() * 1000
-
         return exported_model
 
     def _set_device_from_module(self, inputs, kwargs):
@@ -388,6 +387,7 @@ class GraphExecutionManager(GraphExecutionInterface):
         graph_transformer_config.enable_compute_optimizer = self._runtime_options.enable_compute_optimizer
         return graph_transformer_config
 
+    @_logger.TrackTime(_logger.TimeTrackerPhase.GRAPH_BUILDER_INIT)
     def _initialize_graph_builder(self):
         """Creates a new OrtModuleGraphBuilder, initializes it and saves it to self._graph_builder"""
 
@@ -459,6 +459,7 @@ class GraphExecutionManager(GraphExecutionInterface):
 
         _utils.reinitialize_graph_execution_manager(self)
 
+    @_logger.TrackTime(_logger.TimeTrackerPhase.DETECTION)
     def _enable_conditional_optimizations(
         self, graph_transformer_config: C.TrainingGraphTransformerConfiguration, inputs: Tuple, kwargs: Dict
     ):
@@ -545,22 +546,23 @@ class GraphExecutionManager(GraphExecutionInterface):
             ),
         ]
 
-        if self._runtime_options.enable_compute_optimizer:
-            feature_map.extend(
-                [
-                    (
-                        "Compute Optimizer",
-                        self._runtime_options.enable_compute_optimizer,
-                        "Enable/Disable with env ORTMODULE_ENABLE_COMPUTE_OPTIMIZER=1/0",
-                    ),
-                    (
-                        " -FLOPReduction",
-                        self._runtime_options.enable_compute_optimizer,
-                        "Reduce FLOPs by upstreaming shrinking-sized ops",
-                    ),
-                ]
-            )
+        # Add compute optimizer
+        feature_map.extend(
+            [
+                (
+                    "Compute Optimizer",
+                    self._runtime_options.enable_compute_optimizer,
+                    "Enable/Disable with env ORTMODULE_ENABLE_COMPUTE_OPTIMIZER=1/0",
+                ),
+                (
+                    " -FLOPReduction",
+                    self._runtime_options.enable_compute_optimizer,
+                    "Reduce FLOPs by upstreaming shrinking-sized ops",
+                ),
+            ]
+        )
 
+        if self._runtime_options.enable_compute_optimizer:
             if len(self._runtime_options.label_sparsity_ratio) > 0:
                 feature_map.append(
                     (" -LabelSparsityOpt", True, f"Input density: {self._runtime_options.label_sparsity_ratio}")
@@ -571,6 +573,7 @@ class GraphExecutionManager(GraphExecutionInterface):
                     (" -EmbedSparsityOpt", True, f"Input density: {self._runtime_options.embed_sparsity_ratio}")
                 )
 
+        # Add fallback
         feature_map.append(
             (
                 "Auto Fallback",
@@ -590,7 +593,10 @@ class GraphExecutionManager(GraphExecutionInterface):
 
         stat += f"\n{_logger.LogColor.WARNING}There were one or more warnings or errors raised while exporting the PyTorch model.\n"
         stat += f"Please enable INFO level logging with DebugOptions to view all warnings and errors.{_logger.LogColor.ENDC}\n\n"
-        stat += f"Export duration: {self._export_duration_in_ms:.0f} milliseconds\n"
+
+        # Collect ORTModule overheads for different phases.
+        stat += f"{self.time_tracker.to_string(self._debug_options.logging.log_level < LogLevel.WARNING)}\n"
+
         stat += f"Versions: ONNX Runtime - {onnxruntime.__version__}, ONNX - {onnx.__version__}\n\n"
         stat += f"{_logger.LogColor.HEADER}************************************************************************{_logger.LogColor.ENDC}\n\n"
 
