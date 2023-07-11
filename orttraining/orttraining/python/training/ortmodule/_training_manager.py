@@ -18,6 +18,7 @@ from ._fallback import ORTModuleFallbackException, _FallbackManager, _FallbackPo
 from ._gradient_accumulation_manager import GradientAccumulationManager
 from ._graph_execution_manager import GraphExecutionManager, _RunStateInfo
 from ._io import _FlattenedModule, _InputInfo
+from ._logger import TimeTrackerPhase, TrackTime
 from ._runtime_inspector import Phase
 from .options import DebugOptions, _SkipCheck
 
@@ -243,7 +244,10 @@ class TrainingManager(GraphExecutionManager):
                 self._runtime_options.skip_check.is_set(_SkipCheck.SKIP_CHECK_BUILD_GRADIENT) is False
                 or not self._onnx_models.exported_model
             ):
+                self.time_tracker.start(TimeTrackerPhase.EndToEnd)
+
                 build_gradient_graph = self._export_model(*inputs, **kwargs)
+
                 if build_gradient_graph:
                     # If model was exported, then initialize the graph builder
                     self._initialize_graph_builder()
@@ -268,8 +272,6 @@ class TrainingManager(GraphExecutionManager):
 
                     # Build the gradient graph
                     self._build_graph(graph_transformer_config)
-
-                    self._log_feature_stats()
 
             # If creating the execution agent for the first time, this skip check will not take effect.
             # It will only take effect on subsequent forward calls.
@@ -297,6 +299,9 @@ class TrainingManager(GraphExecutionManager):
                 self._gradient_accumulation_manager.initialize(
                     self._runtime_options.enable_grad_acc_optimization, self._flattened_module, self._graph_info
                 )
+
+                self.time_tracker.end(TimeTrackerPhase.EndToEnd)
+                self._log_feature_stats()
 
             self._gradient_accumulation_manager.maybe_update_cache_before_run()
 
@@ -331,6 +336,7 @@ class TrainingManager(GraphExecutionManager):
         if self._fallback_manager.is_pending():
             return self._fallback_manager.fallback(self._debug_options.logging.log_level, *inputs, **kwargs)
 
+    @TrackTime(TimeTrackerPhase.BUILD_GRAPH)
     def _build_graph(self, graph_transformer_config):
         """Build an optimized gradient graph using the module_graph_builder"""
 
@@ -366,6 +372,7 @@ class TrainingManager(GraphExecutionManager):
             else:
                 self._gradient_map.append(-1)
 
+    @TrackTime(TimeTrackerPhase.CREATE_SESSION)
     def _create_execution_agent(self):
         """Creates a TrainingAgent that can run the forward and backward graph on the training model"""
 

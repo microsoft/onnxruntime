@@ -11,6 +11,7 @@
 #include "contrib_ops/rocm/diffusion/group_norm_common.h"
 #include "contrib_ops/rocm/diffusion/group_norm_impl.h"
 #include "contrib_ops/rocm/diffusion/group_norm_impl_kernel.cuh"
+#include "contrib_ops/rocm/diffusion/group_norm_triton.cuh"
 
 namespace onnxruntime {
 namespace contrib {
@@ -192,6 +193,17 @@ class GroupNormNHWCTunableOp : public TunableOp<GroupNormNHWCParams<T>> {
       this->RegisterOp(std::move(op));
     }
 #endif  // USE_COMPOSABLE_KERNEL
+
+#ifdef USE_TRITON_KERNEL
+    for (auto&& [_, op] : GetTritonGroupNormNHWCTypeStringAndOps<T, /*WithSwish=*/false>()) {
+      ORT_UNUSED_PARAMETER(_);
+      this->RegisterOp(std::move(op));
+    }
+    for (auto&& [_, op] : GetTritonGroupNormNHWCTypeStringAndOps<T, /*WithSwish=*/true>()) {
+      ORT_UNUSED_PARAMETER(_);
+      this->RegisterOp(std::move(op));
+    }
+#endif
   }
 };
 

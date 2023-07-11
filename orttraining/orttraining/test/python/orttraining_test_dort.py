@@ -24,11 +24,11 @@ class TestTorchDynamoOrt(unittest.TestCase):
         def run_elementwise_model():
             # A function to test DORT.
             def elementwise_model(tensor_x: torch.Tensor):
-                tensor_w = tensor_x.relu()
+                tensor_w = tensor_x.sigmoid()
                 tensor_y = tensor_w * tensor_w + 1.5
                 tensor_z = tensor_y + tensor_x
                 tensor_p = tensor_z * tensor_x
-                tensor_q = tensor_p.relu()
+                tensor_q = tensor_p.sigmoid()
                 return tensor_q
 
             @torch._dynamo.optimize(aot_ort)

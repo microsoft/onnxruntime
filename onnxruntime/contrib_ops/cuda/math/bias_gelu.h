@@ -3,10 +3,7 @@
 
 #pragma once
 
-#include "core/providers/cuda/math/binary_elementwise_ops.h"
-#include "core/providers/cuda/cuda_common.h"
-#include "core/providers/cuda/shared_inc/fast_divmod.h"
-#include "core/providers/cpu/tensor/utils.h"
+#include "core/providers/cuda/cuda_kernel.h"
 
 using namespace onnxruntime::cuda;
 
@@ -15,13 +12,17 @@ namespace contrib {
 namespace cuda {
 
 // AddGelu fuse Add + Gelu
-template <typename T>
-class BiasGelu final : public BinaryElementwise<ShouldBroadcast> {
+class BiasGelu final : public CudaKernel {
  public:
-  BiasGelu(const OpKernelInfo& info) : BinaryElementwise(info) {
-  }
-
+  BiasGelu(const OpKernelInfo& info) : CudaKernel(info) {}
   Status ComputeInternal(OpKernelContext* context) const override;
+
+ private:
+  template <typename T>
+  struct KernelLaunchDispatcher {
+    void operator()(cudaStream_t stream, int64_t input_size, int64_t bias_size, const Tensor& X, const Tensor& B,
+                    Tensor& Y) const;
+  };
 };
 
 }  // namespace cuda

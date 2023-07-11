@@ -238,6 +238,9 @@ IEngineBuilder : IUnknown {
   STDMETHOD(SetThreadPool)
   (IThreading* thread_pool) PURE;
 
+  STDMETHOD(RegisterCustomOpsLibrary)
+  (const char* name) PURE;
+
   STDMETHOD(CreateEngine)
   (_Outptr_ IEngine * *out) PURE;
 };
