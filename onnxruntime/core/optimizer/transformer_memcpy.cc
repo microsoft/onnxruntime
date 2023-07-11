@@ -2,8 +2,9 @@
 // Licensed under the MIT License.
 
 #include "transformer_memcpy.h"
-#include "core/framework/kernel_registry_manager.h"
+
 #include "core/framework/execution_providers.h"
+#include "core/framework/kernel_registry_manager.h"
 #include "core/framework/utils.h"
 
 using namespace ONNX_NAMESPACE;

@@ -3,10 +3,11 @@
 
 #pragma once
 
-#include "cudnn_rnn_base.h"
+#include <cudnn.h>
+
 #include "core/common/gsl.h"
 #include "core/providers/cuda/cuda_common.h"
-#include <cudnn.h>
+#include "cudnn_rnn_base.h"
 
 namespace onnxruntime {
 namespace cuda {

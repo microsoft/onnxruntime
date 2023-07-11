@@ -3,9 +3,9 @@
 #include "core/providers/xnnpack/nn/average_pool.h"
 
 #include "core/common/status.h"
+#include "core/framework/tensorprotoutils.h"
 #include "core/graph/graph.h"
 #include "core/providers/utils.h"
-#include "core/framework/tensorprotoutils.h"
 #include "core/providers/xnnpack/detail/utils.h"
 
 namespace onnxruntime {

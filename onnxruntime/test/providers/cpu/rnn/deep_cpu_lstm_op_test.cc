@@ -1,14 +1,13 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "gtest/gtest.h"
-
 #include <iterator>
 #include <vector>
 
 #include "core/providers/cpu/rnn/deep_cpu_lstm.h"
-#include "test/providers/provider_test_utils.h"
 #include "default_providers.h"
+#include "gtest/gtest.h"
+#include "test/providers/provider_test_utils.h"
 
 using namespace std;
 namespace onnxruntime {

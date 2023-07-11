@@ -5,9 +5,10 @@
 #pragma once
 
 #include <memory>
-#include "onnxruntime_c_api.h"
+
 #include "core/framework/provider_options.h"
 #include "core/providers/cann/cann_provider_options.h"
+#include "onnxruntime_c_api.h"
 
 namespace onnxruntime {
 class IAllocator;

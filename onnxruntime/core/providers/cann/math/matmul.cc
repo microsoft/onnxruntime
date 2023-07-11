@@ -3,6 +3,7 @@
 // Licensed under the MIT License.
 
 #include "core/providers/cann/math/matmul.h"
+
 #include "core/providers/cpu/math/matmul_helper.h"
 
 namespace onnxruntime {

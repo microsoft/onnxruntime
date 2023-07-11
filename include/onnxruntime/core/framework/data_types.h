@@ -5,24 +5,25 @@
 
 #include <cstdint>
 #include <cstring>
+#include <map>
 #include <string>
 #include <type_traits>
-#include <map>
 #include <unordered_map>
-#include "core/common/gsl.h"
+
 #include "core/common/common.h"
 #include "core/common/exceptions.h"
+#include "core/common/gsl.h"
 #include "core/framework/endian.h"
-#include "core/framework/float8.h"
 #include "core/framework/float16.h"
+#include "core/framework/float8.h"
 #include "core/framework/to_tensor_proto_element_type.h"
 #if !defined(ORT_MINIMAL_BUILD)
 #include "onnx/defs/schema.h"
 #else
 #include "onnx/defs/data_type_utils.h"
 #endif
-#include "onnx/onnx_pb.h"
 #include "onnx/onnx-operators_pb.h"
+#include "onnx/onnx_pb.h"
 
 struct OrtValue;
 

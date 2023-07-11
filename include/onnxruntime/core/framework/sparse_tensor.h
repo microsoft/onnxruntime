@@ -6,8 +6,8 @@
 #if !defined(DISABLE_SPARSE_TENSORS)
 
 #include "core/framework/data_types.h"
-#include "core/framework/tensor_shape.h"
 #include "core/framework/tensor.h"
+#include "core/framework/tensor_shape.h"
 
 struct OrtValue;
 

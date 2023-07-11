@@ -8,17 +8,16 @@
 #endif
 
 #include "core/common/common.h"
+#include "core/common/gsl.h"
 #include "core/common/logging/logging.h"
+#include "core/common/safeint.h"
 #include "core/framework/allocator.h"
 #include "core/framework/tensor.h"
+#include "core/mlas/inc/mlas.h"
+#include "core/platform/threadpool.h"
 #include "core/util/math.h"
 #include "core/util/math_cpuonly.h"
 #include "core/util/qmath.h"
-#include "core/mlas/inc/mlas.h"
-#include "core/common/safeint.h"
-#include "core/platform/threadpool.h"
-
-#include "core/common/gsl.h"
 
 namespace onnxruntime {
 namespace rnn {

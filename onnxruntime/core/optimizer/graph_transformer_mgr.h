@@ -5,8 +5,8 @@
 
 #include "core/common/inlined_containers.h"
 #include "core/common/logging/logging.h"
-#include "core/optimizer/graph_transformer.h"
 #include "core/optimizer/constant_folding.h"
+#include "core/optimizer/graph_transformer.h"
 #include "core/optimizer/rewrite_rule.h"
 
 namespace onnxruntime {

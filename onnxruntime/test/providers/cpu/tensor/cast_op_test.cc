@@ -4,13 +4,9 @@
 #include <type_traits>
 
 #include "boost/mp11.hpp"
-
 #include "core/common/gsl.h"
-
-#include "gtest/gtest.h"
-
 #include "core/framework/data_types_internal.h"
-
+#include "gtest/gtest.h"
 #include "test/common/cuda_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
 

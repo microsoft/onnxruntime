@@ -3,8 +3,8 @@
 
 #include "core/optimizer/qdq_transformer/selectors_actions/qdq_actions.h"
 
-#include "core/optimizer/qdq_transformer/qdq_util.h"
 #include "core/graph/node_attr_utils.h"
+#include "core/optimizer/qdq_transformer/qdq_util.h"
 namespace onnxruntime {
 namespace QDQ {
 

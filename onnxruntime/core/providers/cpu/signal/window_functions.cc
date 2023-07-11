@@ -3,8 +3,9 @@
 
 #include "core/providers/cpu/signal/window_functions.h"
 
-#include <cmath>
 #include <core/common/safeint.h>
+
+#include <cmath>
 
 #include "core/providers/common.h"
 #include "core/providers/cpu/signal/utils.h"

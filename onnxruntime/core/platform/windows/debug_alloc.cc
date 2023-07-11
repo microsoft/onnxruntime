@@ -28,11 +28,13 @@ constexpr int c_callstack_limit = 16;  // Maximum depth of callstack in leak tra
 #pragma warning(disable : 26490)  // type.1 Don't use reinterpret_cast
 #pragma warning(disable : 26493)  // type.4 Don't use C-style casts
 
-#include <windows.h>
-#include <sstream>
-#include <iostream>
 #include "debug_alloc.h"
+
 #include <DbgHelp.h>
+#include <windows.h>
+
+#include <iostream>
+#include <sstream>
 #pragma comment(lib, "Dbghelp.lib")
 
 // If you are seeing errors of

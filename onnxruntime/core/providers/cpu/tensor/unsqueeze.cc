@@ -2,8 +2,9 @@
 // Licensed under the MIT License.
 
 #include "core/providers/cpu/tensor/unsqueeze.h"
-#include "utils.h"
+
 #include "core/providers/common.h"
+#include "utils.h"
 
 using namespace ::onnxruntime::common;
 

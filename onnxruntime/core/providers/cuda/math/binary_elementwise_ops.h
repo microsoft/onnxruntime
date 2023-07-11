@@ -3,9 +3,9 @@
 
 #pragma once
 
+#include "core/providers/cpu/tensor/utils.h"
 #include "core/providers/cuda/cuda_kernel.h"
 #include "core/providers/cuda/shared_inc/fast_divmod.h"
-#include "core/providers/cpu/tensor/utils.h"
 
 namespace onnxruntime {
 namespace cuda {

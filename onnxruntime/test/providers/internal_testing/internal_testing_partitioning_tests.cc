@@ -3,22 +3,20 @@
 
 #if !defined(REDUCED_OPS_BUILD)  // may not work with excluded op kernel implementations
 
+#include <queue>
+
 #include "core/common/logging/logging.h"
 #include "core/framework/compute_capability.h"
 #include "core/framework/utils.h"
 #include "core/session/inference_session.h"
-
+#include "gmock/gmock.h"
+#include "gtest/gtest.h"
 #include "test/framework/test_utils.h"
-#include "test/test_environment.h"
 #include "test/providers/internal_testing/internal_testing_execution_provider.h"
+#include "test/test_environment.h"
 #include "test/util/include/asserts.h"
 #include "test/util/include/inference_session_wrapper.h"
 #include "test/util/include/test_utils.h"
-
-#include "gtest/gtest.h"
-#include "gmock/gmock.h"
-
-#include <queue>
 
 using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::logging;

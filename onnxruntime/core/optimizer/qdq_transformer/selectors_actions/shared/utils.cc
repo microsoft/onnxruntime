@@ -5,12 +5,12 @@
 
 #include "utils.h"
 
+#include <core/graph/graph_viewer.h>
+#include <core/providers/common.h>
+
 #include <iostream>
 #include <string>
 #include <vector>
-
-#include <core/graph/graph_viewer.h>
-#include <core/providers/common.h>
 
 #include "core/optimizer/qdq_transformer/selectors_actions/qdq_selectors.h"
 

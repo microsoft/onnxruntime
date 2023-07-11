@@ -3,10 +3,11 @@
 
 #include "core/codegen/mti/mti_tvm_utils.h"
 
-#include "core/codegen/common/settings.h"
-#include "core/codegen/mti/tensor/reshape_ops.h"
 #include <topi/detail/extern.h>
 #include <tvm/ir_pass.h>
+
+#include "core/codegen/common/settings.h"
+#include "core/codegen/mti/tensor/reshape_ops.h"
 
 namespace onnxruntime {
 namespace tvm_codegen {

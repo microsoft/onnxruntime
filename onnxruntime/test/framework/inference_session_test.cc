@@ -1,21 +1,22 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/graph/onnx_protobuf.h"
 #include "core/session/inference_session.h"
+
+#include <google/protobuf/io/zero_copy_stream_impl.h>
 
 #include <algorithm>
 #include <cfloat>
+#include <fstream>
 #include <functional>
 #include <iterator>
 #include <thread>
-#include <fstream>
 
-#include <google/protobuf/io/zero_copy_stream_impl.h>
 #include "core/common/denormal.h"
 #include "core/common/logging/logging.h"
 #include "core/common/logging/sinks/clog_sink.h"
 #include "core/common/profiler.h"
+#include "core/framework/bfc_arena.h"
 #include "core/framework/compute_capability.h"
 #include "core/framework/data_transfer_manager.h"
 #include "core/framework/execution_provider.h"
@@ -23,9 +24,9 @@
 #include "core/framework/op_kernel.h"
 #include "core/framework/session_state.h"
 #include "core/framework/tensorprotoutils.h"
-#include "core/framework/bfc_arena.h"
 #include "core/graph/graph_viewer.h"
 #include "core/graph/model.h"
+#include "core/graph/onnx_protobuf.h"
 #include "core/graph/op.h"
 #include "core/optimizer/rule_based_graph_transformer.h"
 #include "core/platform/env.h"
@@ -39,25 +40,24 @@
 #include "core/providers/tensorrt/tensorrt_provider_options.h"
 #endif
 #ifdef USE_ROCM
-#include "core/providers/rocm/rocm_provider_factory.h"
 #include "core/providers/rocm/gpu_data_transfer.h"
+#include "core/providers/rocm/rocm_provider_factory.h"
 #endif
-#include "core/session/environment.h"
 #include "core/session/IOBinding.h"
+#include "core/session/environment.h"
 #include "core/session/inference_session_utils.h"
-#include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/session/onnxruntime_run_options_config_keys.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 #include "dummy_provider.h"
-#include "test_utils.h"
+#include "gmock/gmock.h"
+#include "gtest/gtest.h"
 #include "test/capturing_sink.h"
-#include "test/test_environment.h"
-#include "test/providers/provider_test_utils.h"
 #include "test/optimizer/dummy_graph_transformer.h"
+#include "test/providers/provider_test_utils.h"
+#include "test/test_environment.h"
 #include "test/util/include/default_providers.h"
 #include "test/util/include/inference_session_wrapper.h"
-
-#include "gtest/gtest.h"
-#include "gmock/gmock.h"
+#include "test_utils.h"
 
 using namespace std;
 using namespace ONNX_NAMESPACE;

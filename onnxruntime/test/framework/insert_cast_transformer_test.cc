@@ -1,15 +1,16 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/framework/allocator.h"
 #include "core/optimizer/insert_cast_transformer.h"
+
+#include "core/framework/allocator.h"
 #include "core/graph/model.h"
 #include "gtest/gtest.h"
-#include "test_utils.h"
 #include "test/test_environment.h"
+#include "test/util/include/asserts.h"
 #include "test/util/include/default_providers.h"
 #include "test/util/include/inference_session_wrapper.h"
-#include "test/util/include/asserts.h"
+#include "test_utils.h"
 
 using namespace ONNX_NAMESPACE;
 namespace onnxruntime {

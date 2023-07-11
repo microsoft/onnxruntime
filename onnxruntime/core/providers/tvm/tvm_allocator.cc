@@ -1,9 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "tvm_allocator.h"
+
 #include <tvm/runtime/device_api.h>
 
-#include "tvm_allocator.h"
 #include "core/framework/session_state.h"
 #include "xpu_data_transfer.h"
 

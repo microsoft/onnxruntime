@@ -3,14 +3,13 @@
 
 #pragma once
 
+#include <cstdint>
+#include <string>
 #include <unordered_map>
 #include <unordered_set>
-#include <string>
-#include <cstdint>
-
-#include "core/framework/buffer_deleter.h"
 
 #include "core/framework/allocator.h"
+#include "core/framework/buffer_deleter.h"
 #include "core/platform/ort_mutex.h"
 #include "prepacked_weights.h"
 

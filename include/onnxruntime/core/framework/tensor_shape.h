@@ -2,11 +2,12 @@
 // Licensed under the MIT License.
 
 #pragma once
-#include <iosfwd>
-#include <vector>
 #include <algorithm>
-#include <string>
 #include <cstring>
+#include <iosfwd>
+#include <string>
+#include <vector>
+
 #include "core/common/gsl.h"
 #include "onnxruntime_config.h"
 

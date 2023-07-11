@@ -4,17 +4,16 @@
 #include "qnn_execution_provider.h"
 
 #include <filesystem>
-#include "core/providers/common.h"
+
 #include "core/framework/compute_capability.h"
-#include "core/graph/graph_viewer.h"
-#include "core/session/onnxruntime_session_options_config_keys.h"
-#include "core/session/onnxruntime_cxx_api.h"
 #include "core/framework/kernel_registry.h"
+#include "core/graph/graph_viewer.h"
+#include "core/providers/common.h"
 #include "core/providers/partitioning_utils.h"
 #include "core/providers/qnn/builder/op_builder_factory.h"
-#include "core/providers/partitioning_utils.h"
 #include "core/providers/qnn/builder/qnn_model_wrapper.h"
-#include "core/providers/qnn/builder/op_builder_factory.h"
+#include "core/session/onnxruntime_cxx_api.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 
 namespace onnxruntime {
 

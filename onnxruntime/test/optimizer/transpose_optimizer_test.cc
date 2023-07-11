@@ -4,17 +4,15 @@
 #include <random>
 #include <vector>
 
-#include "gtest/gtest.h"
-#include "gmock/gmock.h"
-
-#include "core/graph/graph.h"
 #include "core/framework/op_node_proto_helper.h"
 #include "core/framework/utils.h"
+#include "core/graph/graph.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
-
-#include "test/test_environment.h"
+#include "gmock/gmock.h"
+#include "gtest/gtest.h"
 #include "test/optimizer/graph_transform_test_builder.h"
 #include "test/providers/internal_testing/internal_testing_execution_provider.h"
+#include "test/test_environment.h"
 #include "test/util/include/asserts.h"
 #include "test/util/include/inference_session_wrapper.h"
 

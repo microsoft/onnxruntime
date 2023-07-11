@@ -1,11 +1,12 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/shared_library/provider_api.h"
 #include "core/providers/cuda/nn/pool.h"
+
 #include "core/providers/cuda/cudnn_common.h"
-#include "core/providers/cuda/nn/max_pool_with_index.h"
 #include "core/providers/cuda/math/unary_elementwise_ops_impl.h"
+#include "core/providers/cuda/nn/max_pool_with_index.h"
+#include "core/providers/shared_library/provider_api.h"
 
 using namespace onnxruntime::common;
 namespace onnxruntime {

@@ -2,6 +2,7 @@
 // Licensed under the MIT License
 
 #include "dnnl_node_capability.h"
+
 #include "dnnl.hpp"
 #include "subgraph/dnnl_util.h"
 

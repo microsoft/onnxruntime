@@ -4,9 +4,9 @@
 #include <stdio.h>
 
 #ifdef _WIN32
-#include <io.h>
 #include <Windows.h>
 #include <fcntl.h>
+#include <io.h>
 #endif
 
 namespace onnxruntime {

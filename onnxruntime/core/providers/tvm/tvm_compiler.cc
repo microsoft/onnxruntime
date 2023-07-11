@@ -1,9 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "tvm_compiler.h"
+
 #include <utility>
 
-#include "tvm_compiler.h"
 #include "tvm_api.h"
 
 namespace onnxruntime {

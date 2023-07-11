@@ -1,9 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#import "ort_enums.h"
-
 #import "cxx_api.h"
+#import "ort_enums.h"
 
 OrtLoggingLevel PublicToCAPILoggingLevel(ORTLoggingLevel logging_level);
 

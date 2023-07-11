@@ -4,10 +4,9 @@
 
 #include "orttraining/training_ops/cpu/communication/recv.h"
 
-#include "orttraining/core/framework/communication/mpi/mpi_include.h"
-
-#include "orttraining/training_ops/communication_common.h"
 #include "orttraining/core/framework/communication/mpi/mpi_context.h"
+#include "orttraining/core/framework/communication/mpi/mpi_include.h"
+#include "orttraining/training_ops/communication_common.h"
 
 namespace onnxruntime {
 namespace contrib {

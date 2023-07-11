@@ -1,8 +1,9 @@
-#include "core/optimizer/rewrite_rule.h"
-#include "orttraining/core/optimizer/graph_transformer_registry.h"
-#include "onnx/defs/schema.h"
-#include <memory>
 #include <iostream>
+#include <memory>
+
+#include "core/optimizer/rewrite_rule.h"
+#include "onnx/defs/schema.h"
+#include "orttraining/core/optimizer/graph_transformer_registry.h"
 
 namespace onnxruntime {
 namespace training {

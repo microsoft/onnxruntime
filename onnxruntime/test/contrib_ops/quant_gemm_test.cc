@@ -1,10 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "gtest/gtest.h"
-#include "test/common/cuda_op_test_utils.h"
-#include "test/common/quantization_test_utils.h"
-#include "test/providers/provider_test_utils.h"
+#include <algorithm>
+#include <random>
+#include <type_traits>
 
 #include "core/common/common.h"
 #include "core/common/safeint.h"
@@ -12,10 +11,10 @@
 #include "core/quantization/quantization.h"
 #include "core/util/math_cpuonly.h"
 #include "core/util/qmath.h"
-
-#include <algorithm>
-#include <random>
-#include <type_traits>
+#include "gtest/gtest.h"
+#include "test/common/cuda_op_test_utils.h"
+#include "test/common/quantization_test_utils.h"
+#include "test/providers/provider_test_utils.h"
 
 namespace onnxruntime {
 namespace test {

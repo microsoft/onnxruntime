@@ -3,8 +3,9 @@
 
 #pragma once
 
-#include "core/codegen/passes/weight_layout/weight_layout.h"
 #include <tvm/tvm.h>
+
+#include "core/codegen/passes/weight_layout/weight_layout.h"
 
 namespace onnxruntime {
 namespace tvm_codegen {

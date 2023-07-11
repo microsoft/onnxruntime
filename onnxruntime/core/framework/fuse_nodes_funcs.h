@@ -1,7 +1,7 @@
 #pragma once
 #include "core/common/common.h"
-#include "core/framework/execution_provider.h"
 #include "core/framework/ex_lib_loader.h"
+#include "core/framework/execution_provider.h"
 
 namespace onnxruntime {
 

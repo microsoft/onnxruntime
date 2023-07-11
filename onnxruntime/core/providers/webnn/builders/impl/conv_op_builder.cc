@@ -2,6 +2,8 @@
 // Copyright (c) Intel Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "base_op_builder.h"
+#include "builder_utils.h"
 #include "core/common/safeint.h"
 #include "core/optimizer/initializer.h"
 #include "core/providers/common.h"
@@ -9,9 +11,6 @@
 #include "core/providers/webnn/builders/helper.h"
 #include "core/providers/webnn/builders/model_builder.h"
 #include "core/providers/webnn/builders/op_builder_factory.h"
-
-#include "base_op_builder.h"
-#include "builder_utils.h"
 
 namespace onnxruntime {
 namespace webnn {

@@ -2,13 +2,13 @@
 // Licensed under the MIT License.
 
 #include "testenv.h"
+
 #include "TestCase.h"
 #include "TestCaseResult.h"
 #include "TestResultStat.h"
-#include "testcase_driver.h"
-
 #include "core/platform/env.h"
 #include "core/platform/threadpool.h"
+#include "testcase_driver.h"
 
 using onnxruntime::Status;
 

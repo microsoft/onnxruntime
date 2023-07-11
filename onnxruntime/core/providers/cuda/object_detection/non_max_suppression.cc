@@ -2,9 +2,10 @@
 // Licensed under the MIT License.
 
 #include "non_max_suppression.h"
+
 #include "core/providers/cpu/object_detection/non_max_suppression_helper.h"
-#include "non_max_suppression_impl.h"
 #include "core/providers/cuda/tensor/concat_impl.h"
+#include "non_max_suppression_impl.h"
 
 namespace onnxruntime {
 namespace cuda {

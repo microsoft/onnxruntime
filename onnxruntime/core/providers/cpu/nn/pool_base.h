@@ -9,8 +9,8 @@
 #include "core/framework/op_kernel.h"
 #include "core/util/math.h"
 #endif
-#include "core/providers/cpu/nn/pool_attributes.h"
 #include "core/mlas/inc/mlas.h"
+#include "core/providers/cpu/nn/pool_attributes.h"
 
 namespace onnxruntime {
 

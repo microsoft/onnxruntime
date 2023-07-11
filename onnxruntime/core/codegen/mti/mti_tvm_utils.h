@@ -3,11 +3,13 @@
 
 #pragma once
 
+#include <tvm/tvm.h>
+
 #include <string>
 #include <vector>
-#include "core/common/gsl.h"
-#include <tvm/tvm.h>
+
 #include "core/codegen/mti/common.h"
+#include "core/common/gsl.h"
 
 namespace onnxruntime {
 namespace tvm_codegen {

@@ -2,16 +2,16 @@
 // Copyright (c) 2020, NXP Semiconductor, Inc. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/providers/armnn/nn/pool.h"
+
 #include <cmath>
 
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
-#include "core/util/math.h"
-#include "core/util/math_cpuonly.h"
-
-#include "core/providers/armnn/nn/pool.h"
 #include "core/providers/armnn/armnn_common.h"
 #include "core/providers/armnn/armnn_fwd.h"
+#include "core/util/math.h"
+#include "core/util/math_cpuonly.h"
 
 #define PREF_DIM 4
 

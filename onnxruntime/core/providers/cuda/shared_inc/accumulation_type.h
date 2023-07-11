@@ -4,6 +4,7 @@
 #pragma once
 
 #include <cuda_fp16.h>
+
 #include "core/framework/float16.h"
 
 namespace onnxruntime {

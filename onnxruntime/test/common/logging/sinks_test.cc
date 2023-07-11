@@ -7,7 +7,6 @@
 #include "core/common/logging/sinks/clog_sink.h"
 #include "core/common/logging/sinks/composite_sink.h"
 #include "core/common/logging/sinks/file_sink.h"
-
 #include "test/common/logging/helpers.h"
 
 using namespace ::onnxruntime::logging;

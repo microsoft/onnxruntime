@@ -2,17 +2,19 @@
 // Licensed under the MIT License.
 
 #include "qnn_backend_manager.h"
-#include "qnn_model.h"
-#include <iostream>
-#include <fstream>
+
 #include <filesystem>
-#include "QnnOpDef.h"
-#include "HTP/QnnHtpPerfInfrastructure.h"
+#include <fstream>
+#include <iostream>
+
 #include "DSP/QnnDspCommon.h"
 #include "HTP/QnnHtpCommon.h"
+#include "HTP/QnnHtpPerfInfrastructure.h"
+#include "QnnOpDef.h"
 #include "core/common/gsl.h"
-#include "core/framework/endian_utils.h"
 #include "core/common/logging/capture.h"
+#include "core/framework/endian_utils.h"
+#include "qnn_model.h"
 
 // Flag to determine if Backend should do node validation for each opNode added
 #define DO_GRAPH_NODE_VALIDATIONS 1

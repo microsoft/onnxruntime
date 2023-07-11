@@ -3,8 +3,8 @@
 
 #include "openvino_wrapper.h"
 
-#include <iostream>
 #include <cassert>
+#include <iostream>
 
 static ov::element::Type ConvertONNXToOVType(ONNXTensorElementDataType onnx_type) {
   switch (onnx_type) {

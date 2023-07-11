@@ -3,10 +3,11 @@
 
 #pragma once
 
-#include "core/common/common.h"
-#include "core/framework/op_kernel.h"
 #include <memory>
 #include <vector>
+
+#include "core/common/common.h"
+#include "core/framework/op_kernel.h"
 
 namespace onnxruntime {
 

@@ -2,9 +2,9 @@
 // Licensed under the MIT License.
 
 #include "orttraining/training_ops/cuda/nn/layer_norm.h"
-#include "orttraining/training_ops/cuda/nn/layer_norm_impl.h"
 
 #include "core/providers/common.h"
+#include "orttraining/training_ops/cuda/nn/layer_norm_impl.h"
 
 namespace onnxruntime {
 namespace cuda {

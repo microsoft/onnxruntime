@@ -1,14 +1,14 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "mlas.h"
-#include "bench_util.h"
-#include "core/util/thread_utils.h"
-
-#include <stdexcept>
+#include <algorithm>
 #include <memory>
 #include <numeric>
-#include <algorithm>
+#include <stdexcept>
+
+#include "bench_util.h"
+#include "core/util/thread_utils.h"
+#include "mlas.h"
 
 static const std::vector<std::string> qgemm_arg_names = {"M", "N", "K", "Batch", "Threads"};
 

@@ -3,9 +3,8 @@
 
 #include "test/util/include/temp_dir.h"
 
-#include "gtest/gtest.h"
-
 #include "core/platform/env.h"
+#include "gtest/gtest.h"
 
 namespace onnxruntime {
 namespace test {

@@ -1,6 +1,6 @@
 #pragma once
-#include "core/framework/op_kernel.h"
 #include "core/framework/func_api.h"
+#include "core/framework/op_kernel.h"
 #include "core/framework/op_kernel_context_internal.h"
 #include "core/graph/function.h"
 

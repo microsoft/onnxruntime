@@ -5,9 +5,8 @@
 
 #include <vector>
 
-#include "gtest/gtest.h"
-
 #include "core/common/span_utils.h"
+#include "gtest/gtest.h"
 
 namespace onnxruntime {
 namespace utils {

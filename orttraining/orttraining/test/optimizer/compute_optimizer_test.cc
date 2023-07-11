@@ -4,10 +4,6 @@
 // Only enabled in training full build, not in on device training build.
 #ifdef ENABLE_TRAINING
 #include <random>
-#include "core/graph/onnx_protobuf.h"
-
-#include "gtest/gtest.h"
-#include "gmock/gmock.h"
 
 #include "asserts.h"
 #include "core/common/span_utils.h"
@@ -16,10 +12,12 @@
 #include "core/graph/graph_utils.h"
 #include "core/graph/graph_viewer.h"
 #include "core/graph/model.h"
+#include "core/graph/onnx_protobuf.h"
 #include "core/optimizer/utils.h"
 #include "core/util/math.h"
+#include "gmock/gmock.h"
+#include "gtest/gtest.h"
 #include "orttraining/core/optimizer/compute_optimizer/sceloss_compute_optimization.h"
-
 #include "test/common/tensor_op_test_utils.h"
 #include "test/compare_ortvalue.h"
 #include "test/framework/test_utils.h"
@@ -27,9 +25,9 @@
 #include "test/optimizer/graph_transform_test_fixture.h"
 #include "test/optimizer/test_optimizer_utils.h"
 #include "test/providers/provider_test_utils.h"
-#include "test/util/include/temp_dir.h"
 #include "test/util/include/asserts.h"
 #include "test/util/include/default_providers.h"
+#include "test/util/include/temp_dir.h"
 
 namespace onnxruntime {
 namespace test {

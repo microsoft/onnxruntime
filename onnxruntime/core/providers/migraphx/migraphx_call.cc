@@ -1,14 +1,16 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/shared_library/provider_api.h"
-#include <unistd.h>
-#include <string.h>
+#include "migraphx_call.h"
+
 #include <miopen/miopen.h>
 #include <rocblas/rocblas.h>
-#include "migraphx_call.h"
+#include <string.h>
+#include <unistd.h>
+
 #include "core/common/common.h"
 #include "core/common/status.h"
+#include "core/providers/shared_library/provider_api.h"
 
 namespace onnxruntime {
 

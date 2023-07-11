@@ -5,9 +5,9 @@
 #pragma once
 
 #include "core/framework/execution_provider.h"
+#include "core/framework/session_options.h"
 #include "core/graph/constants.h"
 #include "core/providers/providers.h"
-#include "core/framework/session_options.h"
 
 struct pthreadpool;
 namespace onnxruntime {

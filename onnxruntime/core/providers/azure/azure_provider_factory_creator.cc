@@ -1,7 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
-#include <unordered_map>
 #include "core/providers/azure/azure_provider_factory_creator.h"
+
+#include <unordered_map>
+
 #include "core/providers/azure/azure_execution_provider.h"
 
 namespace onnxruntime {

@@ -1,12 +1,13 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include <core/common/safeint.h>
 #include "word_conv_embedding.h"
 
+#include <core/common/safeint.h>
+
+#include "core/mlas/inc/mlas.h"
 #include "core/util/math.h"
 #include "core/util/math_cpuonly.h"
-#include "core/mlas/inc/mlas.h"
 
 namespace onnxruntime {
 namespace contrib {

@@ -2,8 +2,10 @@
 // Licensed under the MIT License.
 
 #include "expand.h"
-#include <cmath>
+
 #include <core/common/safeint.h>
+
+#include <cmath>
 
 namespace onnxruntime {
 

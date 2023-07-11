@@ -3,8 +3,9 @@
 
 #pragma once
 
-#include <atomic>
 #include <stdint.h>
+
+#include <atomic>
 #include <utility>
 
 #include "core/platform/ort_mutex.h"

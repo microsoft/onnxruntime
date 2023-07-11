@@ -1,19 +1,21 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/session/onnxruntime_cxx_api.h"
-#include "core/graph/constants.h"
-#include "providers.h"
-#include <memory>
-#include <vector>
-#include <iostream>
-#include <fstream>
-#include <sstream>
-#include <atomic>
 #include <gtest/gtest.h>
-#include "test_allocator.h"
-#include "../shared_lib/test_fixture.h"
 #include <stdlib.h>
+
+#include <atomic>
+#include <fstream>
+#include <iostream>
+#include <memory>
+#include <sstream>
+#include <vector>
+
+#include "../shared_lib/test_fixture.h"
+#include "core/graph/constants.h"
+#include "core/session/onnxruntime_cxx_api.h"
+#include "providers.h"
+#include "test_allocator.h"
 
 struct Input {
   const char* name = nullptr;

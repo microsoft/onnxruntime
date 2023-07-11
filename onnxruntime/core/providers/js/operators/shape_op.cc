@@ -1,8 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/js/js_kernel.h"
 #include "core/providers/cpu/tensor/shape_op.h"
+
+#include "core/providers/js/js_kernel.h"
 
 namespace onnxruntime {
 namespace js {

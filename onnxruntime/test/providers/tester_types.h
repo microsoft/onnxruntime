@@ -2,8 +2,8 @@
 // Licensed under the MIT License.
 
 #pragma once
-#include "core/framework/tensor.h"
 #include "core/framework/TensorSeq.h"
+#include "core/framework/tensor.h"
 
 namespace onnxruntime {
 namespace test {

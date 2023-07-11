@@ -1,18 +1,18 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include <typeinfo>
+#include "core/framework/data_types.h"
+
 #include <cmath>
+#include <ostream>
+#include <typeinfo>
 
 #include "core/common/inlined_containers.h"
-#include "core/framework/data_types.h"
 #include "core/framework/data_types_internal.h"
 #include "core/framework/float16.h"
 #include "core/graph/onnx_protobuf.h"
-#include "gtest/gtest.h"
-
 #include "core/util/math.h"
-#include <ostream>
+#include "gtest/gtest.h"
 
 #ifdef __GNUC__
 #pragma GCC diagnostic push

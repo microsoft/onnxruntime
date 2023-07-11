@@ -2,7 +2,9 @@
 // Licensed under the MIT License.
 
 #include "debug.h"
+
 #include <sstream>
+
 #include "core/common/common.h"
 #include "flags.h"
 

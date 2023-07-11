@@ -1,10 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "test/providers/provider_test_utils.h"
-#include "onnx/shape_inference/implementation.h"
 #include "onnx/checker.h"
+#include "onnx/shape_inference/implementation.h"
 #include "test/providers/cpu/tensor/shape_inference_test_helper.h"
+#include "test/providers/provider_test_utils.h"
 
 namespace onnxruntime {
 namespace test {

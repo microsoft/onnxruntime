@@ -1,7 +1,8 @@
 #include "shaper.h"
-#include <numeric>
+
 #include <algorithm>
 #include <functional>
+#include <numeric>
 
 namespace onnxruntime {
 namespace rknpu {

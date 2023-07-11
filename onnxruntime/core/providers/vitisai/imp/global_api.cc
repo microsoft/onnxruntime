@@ -2,31 +2,26 @@
 // Copyright (c) 2023 Advanced Micro Devices, Inc. All rights reserved.
 // Licensed under the MIT License.
 #include "vaip/global_api.h"
-#include "./vai_assert.h"
-#include "core/common/exceptions.h"
-#include "core/common/logging/logging.h"
-
-#include "core/framework/error_code_helper.h"
-
-#include "core/graph/model.h"
-#include "core/session/ort_env.h"
 
 #include <atomic>
 
+#include "./attr_proto.h"
+#include "./register_xir_ops.h"
+#include "./tensor_proto.h"
+#include "./vai_assert.h"
+#include "core/common/exceptions.h"
+#include "core/common/logging/logging.h"
+#include "core/framework/error_code_helper.h"
+#include "core/graph/model.h"
 #include "core/session/onnxruntime_cxx_api.h"
+#include "core/session/ort_env.h"
+#include "onnxruntime_config.h"
+#include "onnxruntime_vitisai_ep/onnxruntime_vitisai_ep.h"
 #include "vaip/dll_safe.h"
-#include "vaip/vaip_ort_api.h"
 #include "vaip/graph.h"
 #include "vaip/node.h"
 #include "vaip/node_arg.h"
-
-#include "./tensor_proto.h"
-#include "./attr_proto.h"
-#include "./register_xir_ops.h"
-
-#include "onnxruntime_vitisai_ep/onnxruntime_vitisai_ep.h"
-
-#include "onnxruntime_config.h"
+#include "vaip/vaip_ort_api.h"
 #include "version_info.h"  // version_info.hpp.in
 
 using namespace onnxruntime;

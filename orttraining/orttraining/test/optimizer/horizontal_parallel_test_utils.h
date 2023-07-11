@@ -3,10 +3,10 @@
 
 #pragma once
 
-#include "core/graph/model.h"
-#include "gtest/gtest.h"
 #include "core/graph/graph_utils.h"
+#include "core/graph/model.h"
 #include "core/optimizer/initializer.h"
+#include "gtest/gtest.h"
 
 using namespace std;
 using namespace ONNX_NAMESPACE;

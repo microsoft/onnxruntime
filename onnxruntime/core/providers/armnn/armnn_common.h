@@ -3,10 +3,9 @@
 // Licensed under the MIT License.
 
 #pragma once
+#include "armnn/ArmNN.hpp"
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
-
-#include "armnn/ArmNN.hpp"
 
 namespace onnxruntime {
 namespace armnn_ep {

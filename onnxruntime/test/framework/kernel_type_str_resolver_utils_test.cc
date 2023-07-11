@@ -6,10 +6,9 @@
 #include <iostream>
 #include <sstream>
 
-#include "gtest/gtest.h"
-
 #include "core/flatbuffers/schema/ort.fbs.h"
 #include "core/graph/schema_registry.h"
+#include "gtest/gtest.h"
 #include "test/util/include/asserts.h"
 
 namespace onnxruntime::test {

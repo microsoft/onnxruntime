@@ -2,9 +2,10 @@
 // Licensed under the MIT License.
 
 #pragma once
+#include <tvm/tvm.h>
+
 #include "core/codegen/common/common.h"
 #include "core/codegen/passes/weight_layout/weight_layout.h"
-#include <tvm/tvm.h>
 
 namespace onnxruntime {
 namespace tvm_codegen {

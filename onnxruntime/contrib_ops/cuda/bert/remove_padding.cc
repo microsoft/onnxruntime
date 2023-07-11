@@ -1,9 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/cuda/cuda_common.h"
 #include "contrib_ops/cuda/bert/remove_padding.h"
+
 #include "contrib_ops/cuda/bert/bert_padding.h"
+#include "core/providers/cuda/cuda_common.h"
 
 namespace onnxruntime {
 namespace contrib {

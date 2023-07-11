@@ -19,10 +19,10 @@
 
 #include "core/framework/data_types_internal.h"
 #include "core/framework/element_type_lists.h"
-#include "core/framework/utils.h"
+#include "core/framework/op_kernel_type_control_utils.h"
 #include "core/framework/tensor.h"
 #include "core/framework/tensor_shape.h"
-#include "core/framework/op_kernel_type_control_utils.h"
+#include "core/framework/utils.h"
 #include "core/providers/op_kernel_type_control.h"
 
 namespace onnxruntime {

@@ -7,12 +7,12 @@
 #pragma once
 
 #include "core/providers/cpu/math/einsum_utils/einsum_auxiliary_ops.h"
-#include "core/providers/rocm/tensor/transpose.h"
-#include "core/providers/rocm/reduction/reduction_ops.h"
-#include "core/providers/rocm/shared_inc/fpgeneric.h"
 #include "core/providers/cpu/tensor/utils.h"
-#include "einsum_auxiliary_ops_diagonal.h"
+#include "core/providers/rocm/reduction/reduction_ops.h"
 #include "core/providers/rocm/rocm_common.h"
+#include "core/providers/rocm/shared_inc/fpgeneric.h"
+#include "core/providers/rocm/tensor/transpose.h"
+#include "einsum_auxiliary_ops_diagonal.h"
 
 namespace onnxruntime {
 

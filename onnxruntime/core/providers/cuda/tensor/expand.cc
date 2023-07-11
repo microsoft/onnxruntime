@@ -2,8 +2,9 @@
 // Licensed under the MIT License.
 
 #include "expand.h"
-#include "expand_impl.h"
+
 #include "core/providers/cpu/tensor/utils.h"
+#include "expand_impl.h"
 
 namespace onnxruntime {
 namespace cuda {

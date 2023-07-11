@@ -4,10 +4,11 @@
 #if defined(USE_CUDA) && defined(ORT_USE_NCCL) && defined(USE_NCCL_P2P) && defined(ENABLE_TRAINING)
 
 #include "orttraining/training_ops/cuda/communication/nccl_service.h"
+
 #include "core/common/common.h"
-#include "core/providers/cuda/nvtx_profile_context.h"
 #include "core/providers/cuda/cuda_check_memory.h"
 #include "core/providers/cuda/cuda_common.h"
+#include "core/providers/cuda/nvtx_profile_context.h"
 #include "orttraining/core/framework/communication/mpi/mpi_context.h"
 
 namespace onnxruntime {

@@ -2,10 +2,11 @@
 // Licensed under the MIT License.
 
 #include "instance_norm.h"
-#include "instance_norm_impl.h"
-#include "core/providers/cpu/nn/instance_norm_helper.h"
+
 #include "core/providers/cpu/nn/batch_norm_helper.h"
+#include "core/providers/cpu/nn/instance_norm_helper.h"
 #include "core/providers/cuda/math/unary_elementwise_ops_impl.h"
+#include "instance_norm_impl.h"
 
 namespace onnxruntime {
 namespace cuda {

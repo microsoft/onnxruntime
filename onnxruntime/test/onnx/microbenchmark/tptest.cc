@@ -1,8 +1,8 @@
 #include <benchmark/benchmark.h>
-#include <core/platform/threadpool.h>
-#include <core/util/thread_utils.h>
-#include <core/session/onnxruntime_c_api.h>
 #include <core/platform/Barrier.h>
+#include <core/platform/threadpool.h>
+#include <core/session/onnxruntime_c_api.h>
+#include <core/util/thread_utils.h>
 
 #ifdef _WIN32
 #include <Windows.h>

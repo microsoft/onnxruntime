@@ -2,8 +2,9 @@
 // Licensed under the MIT License.
 
 #include "core/providers/cuda/tensor/trilu.h"
-#include "core/providers/cuda/tensor/trilu_impl.h"
+
 #include "core/providers/cpu/tensor/utils.h"
+#include "core/providers/cuda/tensor/trilu_impl.h"
 
 using namespace onnxruntime::common;
 

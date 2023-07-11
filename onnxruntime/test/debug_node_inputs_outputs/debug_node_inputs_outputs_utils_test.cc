@@ -5,11 +5,10 @@
 
 #include <fstream>
 
-#include "gtest/gtest.h"
-
 #include "core/framework/tensorprotoutils.h"
 #include "core/platform/env.h"
 #include "core/platform/path_lib.h"
+#include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/util/include/scoped_env_vars.h"
 #include "test/util/include/temp_dir.h"

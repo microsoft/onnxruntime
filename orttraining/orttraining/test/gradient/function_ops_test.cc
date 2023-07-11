@@ -1,11 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "gtest/gtest.h"
-
 #include "core/graph/contrib_ops/contrib_defs.h"
+#include "gtest/gtest.h"
 #include "orttraining/core/graph/training_op_defs.h"
-
 #include "test/contrib_ops/function_test_util.h"
 
 using namespace ::onnxruntime::common;

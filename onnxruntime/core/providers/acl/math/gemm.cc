@@ -2,8 +2,9 @@
 // Copyright (c) 2019, NXP Semiconductor, Inc. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/acl/acl_common.h"
 #include "core/providers/acl/math/gemm.h"
+
+#include "core/providers/acl/acl_common.h"
 #include "core/providers/acl/acl_fwd.h"
 
 namespace onnxruntime {

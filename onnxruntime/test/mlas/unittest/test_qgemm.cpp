@@ -1,4 +1,5 @@
 #include "test_qgemm.h"
+
 #include "test_qgemm_fixture.h"
 
 template <>

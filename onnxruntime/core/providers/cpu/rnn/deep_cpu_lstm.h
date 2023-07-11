@@ -5,10 +5,9 @@
 
 #include <limits>
 
-#include "lstm_base.h"
-
 #include "core/framework/op_kernel.h"
 #include "core/providers/cpu/rnn/rnn_helpers.h"
+#include "lstm_base.h"
 
 namespace onnxruntime {
 

@@ -6,10 +6,10 @@
 #include <variant>
 
 #include "core/common/common.h"
-#include "core/framework/tensor_shape.h"
 #include "core/framework/float16.h"
 #include "core/framework/framework_common.h"
 #include "core/framework/ort_value.h"
+#include "core/framework/tensor_shape.h"
 #include "test/framework/test_utils.h"
 
 namespace onnxruntime {

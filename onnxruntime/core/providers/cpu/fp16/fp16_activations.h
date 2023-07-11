@@ -3,8 +3,8 @@
 
 #pragma once
 
-#include "core/mlas/inc/mlas.h"
 #include "core/framework/float16.h"
+#include "core/mlas/inc/mlas.h"
 #include "core/providers/cpu/activation/activations.h"
 
 #ifdef MLAS_F16VEC_INTRINSICS_SUPPORTED

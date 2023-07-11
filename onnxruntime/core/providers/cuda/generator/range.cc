@@ -1,9 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/shared_library/provider_api.h"
-#include "core/providers/cuda/cuda_common.h"
 #include "range.h"
+
+#include "core/providers/cuda/cuda_common.h"
+#include "core/providers/shared_library/provider_api.h"
 #include "range_impl.h"
 
 using namespace onnxruntime::cuda;

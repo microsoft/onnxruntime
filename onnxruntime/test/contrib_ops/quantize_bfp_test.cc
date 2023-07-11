@@ -1,11 +1,11 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "gtest/gtest.h"
-#include "test/providers/provider_test_utils.h"
-#include "core/graph/contrib_ops/quantization_defs.h"
 #include "core/graph/contrib_ops/contrib_defs.h"
 #include "core/graph/contrib_ops/ms_opset.h"
+#include "core/graph/contrib_ops/quantization_defs.h"
+#include "gtest/gtest.h"
+#include "test/providers/provider_test_utils.h"
 
 namespace onnxruntime {
 namespace test {

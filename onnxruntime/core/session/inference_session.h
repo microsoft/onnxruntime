@@ -14,23 +14,24 @@
 #include "core/common/status.h"
 #include "core/framework/execution_providers.h"
 #include "core/framework/framework_common.h"
+#include "core/framework/framework_provider_common.h"
 #include "core/framework/iexecutor.h"
 #include "core/framework/kernel_registry_manager.h"
 #include "core/framework/prepacked_weights_container.h"
+#include "core/framework/session_options.h"
 #include "core/framework/session_state.h"
 #include "core/framework/tuning_results.h"
-#include "core/framework/framework_provider_common.h"
 #include "core/graph/basic_types.h"
 #include "core/optimizer/graph_transformer_level.h"
 #include "core/optimizer/graph_transformer_mgr.h"
 #include "core/optimizer/insert_cast_transformer.h"
-#include "core/framework/session_options.h"
 #ifdef ENABLE_LANGUAGE_INTEROP_OPS
 #include "core/language_interop_ops/language_interop_ops.h"
 #endif
 #ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
-#include "core/platform/tracing.h"
 #include <TraceLoggingActivity.h>
+
+#include "core/platform/tracing.h"
 #endif
 
 namespace ONNX_NAMESPACE {

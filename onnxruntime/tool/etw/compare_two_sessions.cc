@@ -2,8 +2,9 @@
 // Licensed under the MIT License.
 
 #include <iostream>
-#include "eparser.h"
+
 #include "TraceSession.h"
+#include "eparser.h"
 
 #ifdef _WIN32
 #include <tchar.h>
@@ -16,6 +17,7 @@
 #include "getopt.h"
 #else
 #include <getopt.h>
+
 #include <thread>
 #endif
 

@@ -4,8 +4,8 @@
 #pragma once
 
 #if !defined(ORT_MINIMAL_BUILD)
-#include "onnx/defs/schema.h"
 #include "core/graph/contrib_ops/ms_schema.h"
+#include "onnx/defs/schema.h"
 #else
 #include "onnx/defs/data_type_utils.h"
 #endif

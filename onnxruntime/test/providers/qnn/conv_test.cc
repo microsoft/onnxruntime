@@ -4,11 +4,10 @@
 #if !defined(ORT_MINIMAL_BUILD)
 
 #include <string>
+
 #include "core/graph/graph.h"
-
-#include "test/providers/qnn/qnn_test_utils.h"
-
 #include "gtest/gtest.h"
+#include "test/providers/qnn/qnn_test_utils.h"
 
 namespace onnxruntime {
 namespace test {

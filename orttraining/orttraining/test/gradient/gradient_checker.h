@@ -16,9 +16,9 @@ limitations under the License.
 /* Modifications Copyright (c) Microsoft. */
 
 #pragma once
-#include "test/providers/provider_test_utils.h"
 #include "orttraining/core/session/training_session.h"
 #include "orttraining/test/gradient/gradient_op_test_utils.h"
+#include "test/providers/provider_test_utils.h"
 
 namespace onnxruntime {
 namespace test {

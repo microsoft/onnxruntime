@@ -5,9 +5,8 @@
 // is enabled. As we're really testing the symbol lookup, keep it simple and skip if USE_CUDA is defined.
 #if !defined(ORT_MINIMAL_BUILD) && !defined(USE_CUDA)
 
-#include "gtest/gtest.h"
-
 #include "core/session/onnxruntime_cxx_api.h"
+#include "gtest/gtest.h"
 #include "test/testdata/custom_op_library/custom_op_library.h"
 
 #ifdef _WIN32

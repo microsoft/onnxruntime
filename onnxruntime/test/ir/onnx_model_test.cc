@@ -2,17 +2,19 @@
 // Licensed under the MIT License.
 
 #include <google/protobuf/io/zero_copy_stream_impl.h>
+
 #include <memory>
-#include "core/platform/env.h"
+
 #include "core/graph/graph_viewer.h"
 #include "core/graph/model.h"
 #include "core/graph/op.h"
+#include "core/platform/env.h"
 #include "core/session/onnxruntime_c_api.h"
-#include "test/providers/provider_test_utils.h"  //For ASSERT_STATUS_OK
-#include "test/test_environment.h"
 #include "gtest/gtest.h"
 #include "onnx/defs/function.h"
 #include "onnx/defs/parser.h"
+#include "test/providers/provider_test_utils.h"  //For ASSERT_STATUS_OK
+#include "test/test_environment.h"
 
 using namespace onnxruntime;
 using namespace ONNX_NAMESPACE;

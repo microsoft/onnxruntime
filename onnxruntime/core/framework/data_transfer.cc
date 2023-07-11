@@ -3,16 +3,16 @@
 
 #include "core/framework/data_transfer.h"
 #ifndef SHARED_PROVIDER
-#include "core/framework/tensor.h"
 #include "core/framework/sparse_tensor.h"
+#include "core/framework/tensor.h"
 #endif
 #include "core/framework/ortdevice.h"
 #ifdef ENABLE_STRIDED_TENSORS
-#include "core/framework/copy.h"
-#include "core/session/environment.h"
 #include "core/common/logging/logging.h"
 #include "core/common/logging/sinks/clog_sink.h"
+#include "core/framework/copy.h"
 #include "core/framework/element_type_lists.h"
+#include "core/session/environment.h"
 #endif
 
 namespace onnxruntime {

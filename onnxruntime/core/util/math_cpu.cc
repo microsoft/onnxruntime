@@ -15,13 +15,13 @@
  */
 // Modifications Copyright (c) Microsoft.
 
-#include "core/util/math_cpuonly.h"
-#include "core/util/math.h"
-#include "core/framework/float16.h"
-
 #include <algorithm>
+
 #include "core/common/narrow.h"
+#include "core/framework/float16.h"
 #include "core/mlas/inc/mlas.h"
+#include "core/util/math.h"
+#include "core/util/math_cpuonly.h"
 #if defined(__GNUC__)
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-parameter"

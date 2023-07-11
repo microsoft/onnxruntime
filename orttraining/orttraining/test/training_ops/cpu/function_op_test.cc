@@ -1,13 +1,13 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "gtest/gtest.h"
-#include "test/providers/provider_test_utils.h"
+#include "core/graph/graph.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
 #include "core/session/inference_session.h"
-#include "core/graph/graph.h"
-#include "orttraining/test/training_ops/function_op_test_utils.h"
+#include "gtest/gtest.h"
 #include "orttraining/core/graph/graph_augmenter.h"
+#include "orttraining/test/training_ops/function_op_test_utils.h"
+#include "test/providers/provider_test_utils.h"
 
 namespace onnxruntime {
 namespace test {

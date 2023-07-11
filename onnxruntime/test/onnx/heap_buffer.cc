@@ -2,8 +2,9 @@
 // Licensed under the MIT License.
 
 #include "heap_buffer.h"
-#include "core/session/onnxruntime_c_api.h"
+
 #include "callback.h"
+#include "core/session/onnxruntime_c_api.h"
 
 namespace onnxruntime {
 namespace test {

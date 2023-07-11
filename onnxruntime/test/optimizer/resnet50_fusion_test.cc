@@ -1,18 +1,18 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 #include <vector>
-#include "core/graph/graph.h"
-#include "core/optimizer/conv_activation_fusion.h"
-#include "core/optimizer/conv_add_fusion.h"
-#include "core/optimizer/conv_add_act_fusion.h"
-#include "core/mlas/inc/mlas.h"
-#include "gtest/gtest.h"
-#include "graph_transform_test_builder.h"
-#include "test/test_environment.h"
-#include "test/util/include/asserts.h"
 
+#include "core/graph/graph.h"
+#include "core/mlas/inc/mlas.h"
+#include "core/optimizer/conv_activation_fusion.h"
+#include "core/optimizer/conv_add_act_fusion.h"
+#include "core/optimizer/conv_add_fusion.h"
+#include "graph_transform_test_builder.h"
+#include "gtest/gtest.h"
 #include "test/optimizer/graph_transform_test_builder.h"
 #include "test/optimizer/graph_transform_test_fixture.h"
+#include "test/test_environment.h"
+#include "test/util/include/asserts.h"
 
 namespace onnxruntime {
 namespace test {

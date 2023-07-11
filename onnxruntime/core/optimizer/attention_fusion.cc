@@ -1,13 +1,14 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/graph/graph_utils.h"
-#include "core/optimizer/initializer.h"
 #include "core/optimizer/attention_fusion.h"
-#include "core/optimizer/utils.h"
-#include "core/optimizer/attention_fusion_helper.h"
-#include "core/graph/graph_utils.h"
+
 #include <cmath>
+
+#include "core/graph/graph_utils.h"
+#include "core/optimizer/attention_fusion_helper.h"
+#include "core/optimizer/initializer.h"
+#include "core/optimizer/utils.h"
 
 namespace onnxruntime {
 

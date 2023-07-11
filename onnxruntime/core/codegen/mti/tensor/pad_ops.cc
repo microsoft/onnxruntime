@@ -3,8 +3,9 @@
 
 #include "core/codegen/mti/tensor/pad_ops.h"
 
-#include "core/codegen/mti/mti_tvm_utils.h"
 #include <topi/nn.h>
+
+#include "core/codegen/mti/mti_tvm_utils.h"
 
 namespace onnxruntime {
 namespace tvm_codegen {

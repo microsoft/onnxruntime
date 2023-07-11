@@ -3,10 +3,10 @@
 
 #pragma once
 
-#include "core/providers/xnnpack/xnnpack_kernel.h"
+#include "core/common/common.h"
 #include "core/framework/allocator.h"
 #include "core/providers/xnnpack/detail/utils.h"
-#include "core/common/common.h"
+#include "core/providers/xnnpack/xnnpack_kernel.h"
 #include "core/util/math.h"
 
 namespace onnxruntime {

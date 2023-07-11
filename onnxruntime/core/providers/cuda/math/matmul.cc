@@ -2,9 +2,10 @@
 // Licensed under the MIT License.
 
 #include "core/providers/cuda/math/matmul.h"
+
 #include "core/providers/cpu/math/matmul_helper.h"
-#include "core/providers/cuda/shared_inc/fpgeneric.h"
 #include "core/providers/cuda/cuda_allocator.h"
+#include "core/providers/cuda/shared_inc/fpgeneric.h"
 
 namespace onnxruntime {
 namespace cuda {

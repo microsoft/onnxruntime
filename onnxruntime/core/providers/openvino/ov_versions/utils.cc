@@ -9,8 +9,8 @@
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-parameter"
 #endif
-#include <ngraph/ngraph.hpp>
 #include <ngraph/frontend/onnx_import/onnx.hpp>
+#include <ngraph/ngraph.hpp>
 #if defined(_MSC_VER)
 #pragma warning(default : 4244 4245)
 #elif __GNUC__

@@ -1,8 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
+#include "core/framework/tensorprotoutils.h"
 #include "onnx/defs/shape_inference.h"
 #include "onnx/defs/tensor_proto_util.h"
-#include "core/framework/tensorprotoutils.h"
 
 #pragma once
 

@@ -2,11 +2,11 @@
 // Licensed under the MIT License.
 
 #include "bias_gelu.h"
-#include "core/framework/tensorprotoutils.h"
-#include "onnx/defs/tensor_proto_util.h"
 #include "core/common/safeint.h"
 #include "core/framework/tensor.h"
+#include "core/framework/tensorprotoutils.h"
 #include "core/providers/common.h"
+#include "onnx/defs/tensor_proto_util.h"
 
 namespace onnxruntime {
 namespace contrib {

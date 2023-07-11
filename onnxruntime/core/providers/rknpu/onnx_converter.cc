@@ -1,17 +1,19 @@
 // Copyright 2020 rock-chips.com Inc.
 
+#include "onnx_converter.h"
+
+#include <algorithm>
 #include <fstream>
+#include <functional>
 #include <map>
+#include <memory>
 #include <numeric>
 #include <string>
-#include <utility>
 #include <unordered_map>
-#include <functional>
-#include <algorithm>
-#include <memory>
+#include <utility>
 #include <vector>
+
 #include "core/common/logging/logging.h"
-#include "onnx_converter.h"
 #include "node_attr_helper.h"
 
 using std::string;

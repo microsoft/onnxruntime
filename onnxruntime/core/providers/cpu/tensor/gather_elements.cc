@@ -1,8 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include <string>
 #include "gather_elements.h"
+
+#include <string>
+
 #include "onnxruntime_config.h"
 
 namespace onnxruntime {

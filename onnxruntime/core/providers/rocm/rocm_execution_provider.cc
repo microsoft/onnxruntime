@@ -1,15 +1,16 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/shared_library/provider_api.h"
-#include "core/platform/env_var_utils.h"
 #include "core/providers/rocm/rocm_execution_provider.h"
-#include "core/providers/rocm/rocm_common.h"
-#include "core/providers/rocm/rocm_allocator.h"
-#include "core/providers/rocm/rocm_fwd.h"
+
+#include "core/platform/env_var_utils.h"
 #include "core/providers/rocm/gpu_data_transfer.h"
+#include "core/providers/rocm/rocm_allocator.h"
+#include "core/providers/rocm/rocm_common.h"
+#include "core/providers/rocm/rocm_fwd.h"
 #include "core/providers/rocm/rocm_profiler.h"
 #include "core/providers/rocm/rocm_stream_handle.h"
+#include "core/providers/shared_library/provider_api.h"
 
 #ifndef DISABLE_CONTRIB_OPS
 #include "contrib_ops/rocm/rocm_contrib_kernels.h"

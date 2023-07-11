@@ -1,4 +1,5 @@
 #include "dnnl_binary.h"
+
 #include "dnnl_subgraph.h"
 #include "dnnl_subgraph_primitive.h"
 #include "dnnl_util.h"

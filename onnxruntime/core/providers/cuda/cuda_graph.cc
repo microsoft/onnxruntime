@@ -3,9 +3,10 @@
 
 #include "core/providers/cuda/cuda_graph.h"
 
-#include "core/providers/cuda/cuda_common.h"
 #include <cuda_runtime_api.h>
 #include <driver_types.h>
+
+#include "core/providers/cuda/cuda_common.h"
 
 namespace onnxruntime {
 

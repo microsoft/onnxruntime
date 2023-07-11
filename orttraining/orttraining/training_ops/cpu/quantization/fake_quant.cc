@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "orttraining/training_ops/cpu/quantization/fake_quant.h"
+
 #include "core/providers/common.h"
 #include "core/providers/cpu/math/element_wise_ops.h"
 

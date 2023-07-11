@@ -2,13 +2,14 @@
 // Licensed under the MIT License.
 
 #pragma once
-#include "gtest/gtest.h"
-#include <vector>
-#include <unordered_map>
 #include <functional>
 #include <random>
-#include "core/mlas/inc/mlas.h"
+#include <unordered_map>
+#include <vector>
+
 #include "core/graph/constants.h"
+#include "core/mlas/inc/mlas.h"
+#include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
 
 namespace onnxruntime {

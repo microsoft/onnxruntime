@@ -2,13 +2,15 @@
 // Licensed under the MIT License.
 
 #include "qlinear_global_average_pool.h"
-#include "core/common/narrow.h"
-#include "core/util/math_cpuonly.h"
-#include "core/providers/common.h"
-#include "core/platform/threadpool.h"
-#include "core/util/math.h"
-#include "core/mlas/inc/mlas.h"
+
 #include <functional>
+
+#include "core/common/narrow.h"
+#include "core/mlas/inc/mlas.h"
+#include "core/platform/threadpool.h"
+#include "core/providers/common.h"
+#include "core/util/math.h"
+#include "core/util/math_cpuonly.h"
 
 using onnxruntime::concurrency::ThreadPool;
 

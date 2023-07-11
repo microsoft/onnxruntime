@@ -11,14 +11,14 @@
 
 #pragma once
 
-#include "core/common/gsl.h"
-
 #include <onnxruntime_cxx_api.h>
 
 #include <memory>
 #include <utility>
 #include <variant>
 #include <vector>
+
+#include "core/common/gsl.h"
 
 namespace onnxruntime {
 namespace training {

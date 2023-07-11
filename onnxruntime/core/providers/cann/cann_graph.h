@@ -4,15 +4,15 @@
 
 #pragma once
 
-#include <vector>
-#include <utility>
 #include <iomanip>
 #include <string>
+#include <utility>
+#include <vector>
 
 #include "core/providers/cann/cann_common.h"
+#include "core/providers/cann/cann_execution_provider_info.h"
 #include "core/providers/cann/cann_inc.h"
 #include "core/providers/cann/cann_utils.h"
-#include "core/providers/cann/cann_execution_provider_info.h"
 
 namespace onnxruntime {
 namespace cann {

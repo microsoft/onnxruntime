@@ -1,10 +1,11 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 #ifdef USE_MPI
-#include "core/providers/shared_library/provider_api.h"
 #include "orttraining/training_ops/cuda/collective/adasum_kernels.h"
-#include "orttraining/training_ops/communication_common.h"
+
+#include "core/providers/shared_library/provider_api.h"
 #include "orttraining/core/framework/communication/mpi/mpi_context.h"
+#include "orttraining/training_ops/communication_common.h"
 
 namespace onnxruntime {
 namespace cuda {

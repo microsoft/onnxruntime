@@ -3,6 +3,7 @@
 
 #pragma once
 #include <vector>
+
 #include "data_ops.h"
 
 namespace onnxruntime {

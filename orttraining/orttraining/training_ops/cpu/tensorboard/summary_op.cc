@@ -15,10 +15,11 @@ limitations under the License.
 
 /* Modifications Copyright (c) Microsoft. */
 
-#include <cmath>
 #include "summary_op.h"
-#include "core/providers/cpu/tensor/utils.h"
 
+#include <cmath>
+
+#include "core/providers/cpu/tensor/utils.h"
 #include "tensorboard/compat/proto/summary.pb.h"
 
 namespace onnxruntime {

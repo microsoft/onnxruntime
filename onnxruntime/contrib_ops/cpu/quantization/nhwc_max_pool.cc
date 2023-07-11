@@ -2,11 +2,11 @@
 // Licensed under the MIT License.
 
 #include "core/common/common.h"
-#include "core/framework/op_kernel.h"
-#include "core/providers/cpu/nn/pool_attributes.h"
 #include "core/common/safeint.h"
-#include "core/util/math.h"
+#include "core/framework/op_kernel.h"
 #include "core/mlas/inc/mlas.h"
+#include "core/providers/cpu/nn/pool_attributes.h"
+#include "core/util/math.h"
 
 namespace onnxruntime {
 namespace contrib {

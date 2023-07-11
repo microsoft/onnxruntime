@@ -1,11 +1,10 @@
 #include "qlinear_where.h"
-#include "qlinear_lookup_table.h"
 
-#include "core/providers/common.h"
 #include "core/mlas/inc/mlas.h"
 #include "core/platform/threadpool.h"
-
+#include "core/providers/common.h"
 #include "core/providers/cpu/math/element_wise_ops.h"
+#include "qlinear_lookup_table.h"
 
 namespace onnxruntime {
 namespace {

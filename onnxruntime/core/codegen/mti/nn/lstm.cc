@@ -4,9 +4,9 @@
 #include "core/codegen/mti/nn/lstm.h"
 
 #include "core/codegen/mti/math/binary_ops.h"
-#include "core/codegen/mti/math/unary_ops.h"
 #include "core/codegen/mti/math/matmul_ops.h"
 #include "core/codegen/mti/math/reduce_ops.h"
+#include "core/codegen/mti/math/unary_ops.h"
 #include "core/codegen/mti/mti_tvm_utils.h"
 #include "core/codegen/mti/tensor/reshape_ops.h"
 #include "core/codegen/mti/tensor/split.h"

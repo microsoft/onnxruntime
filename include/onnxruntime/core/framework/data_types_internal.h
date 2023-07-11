@@ -11,7 +11,6 @@
 #include <vector>
 
 #include "boost/mp11.hpp"
-
 #include "core/common/common.h"
 #include "core/framework/to_tensor_proto_element_type.h"
 #ifndef SHARED_PROVIDER
@@ -22,8 +21,8 @@
 #else
 #include "onnx/defs/data_type_utils.h"
 #endif
-#include "onnx/onnx_pb.h"
 #include "onnx/onnx-operators_pb.h"
+#include "onnx/onnx_pb.h"
 #endif
 
 namespace onnxruntime {

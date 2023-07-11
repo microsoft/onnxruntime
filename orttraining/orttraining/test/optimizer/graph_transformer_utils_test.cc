@@ -1,13 +1,14 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "test/framework/test_utils.h"
-#include "test/capturing_sink.h"
-#include "test/test_environment.h"
-#include "gtest/gtest.h"
 #include "orttraining/core/optimizer/graph_transformer_utils.h"
+
 #include "core/optimizer/graph_transformer_utils.h"
 #include "core/session/inference_session.h"
+#include "gtest/gtest.h"
+#include "test/capturing_sink.h"
+#include "test/framework/test_utils.h"
+#include "test/test_environment.h"
 
 using namespace std;
 using namespace ONNX_NAMESPACE;

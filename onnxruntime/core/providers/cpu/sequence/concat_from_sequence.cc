@@ -2,9 +2,10 @@
 // Licensed under the MIT License.
 
 #include "core/providers/cpu/sequence/concat_from_sequence.h"
+
+#include "core/framework/TensorSeq.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/providers/cpu/tensor/utils.h"
-#include "core/framework/TensorSeq.h"
 
 using namespace onnxruntime::common;
 

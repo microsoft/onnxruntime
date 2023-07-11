@@ -14,8 +14,8 @@
 #include "core/common/gsl.h"
 #include "core/common/inlined_containers.h"
 #include "core/common/status.h"
-#include "core/graph/op_identifier.h"
 #include "core/graph/graph.h"
+#include "core/graph/op_identifier.h"
 #include "core/platform/ort_mutex.h"
 
 namespace flatbuffers {

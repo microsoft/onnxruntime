@@ -3,11 +3,12 @@
 
 #pragma once
 
-#include <utility>
 #include <random>
+#include <utility>
+
+#include "contrib_ops/cpu/utils/console_dumper.h"
 #include "core/common/gsl.h"
 #include "core/framework/allocator.h"
-#include "contrib_ops/cpu/utils/console_dumper.h"
 
 namespace onnxruntime {
 

@@ -5,6 +5,7 @@
 
 #pragma once
 #include <stdbool.h>
+
 #include "onnxruntime_c_api.h"
 
 /** \page training_c_cpp_api Training C & C++ APIs

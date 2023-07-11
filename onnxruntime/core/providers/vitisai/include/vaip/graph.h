@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 #pragma once
 #include <core/graph/graph.h>
+
 #include "./node.h"
 namespace vaip {
 using namespace onnxruntime;

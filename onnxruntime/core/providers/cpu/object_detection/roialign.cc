@@ -17,12 +17,14 @@
 
 #include "roialign.h"
 
-#include <cmath>
 #include <core/common/safeint.h>
-#include "core/util/math_cpuonly.h"
+
+#include <cmath>
+
 #include "core/common/common.h"
 #include "core/framework/tensor.h"
 #include "core/platform/threadpool.h"
+#include "core/util/math_cpuonly.h"
 
 using namespace onnxruntime::concurrency;
 

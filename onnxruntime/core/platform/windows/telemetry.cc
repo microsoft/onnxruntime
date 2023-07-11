@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/platform/windows/telemetry.h"
+
 #include "onnxruntime_config.h"
 
 // ETW includes

@@ -1,15 +1,15 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 #pragma once
+#include "core/common/inlined_containers.h"
 #include "core/common/logging/logging.h"
 #include "core/framework/device_stream_collection.h"
 #include "core/framework/execution_frame.h"
-#include "core/framework/ort_value.h"
 #include "core/framework/iexecutor.h"
+#include "core/framework/memory_info.h"
+#include "core/framework/ort_value.h"
 #include "core/framework/stream_handles.h"
 #include "core/graph/basic_types.h"
-#include "core/common/inlined_containers.h"
-#include "core/framework/memory_info.h"
 #ifdef ENABLE_TRAINING
 #include "core/framework/partial_graph_execution_state.h"
 #endif

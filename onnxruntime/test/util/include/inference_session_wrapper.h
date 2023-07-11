@@ -3,8 +3,8 @@
 
 #pragma once
 
-#include "core/session/inference_session.h"
 #include "core/graph/model.h"
+#include "core/session/inference_session.h"
 
 namespace onnxruntime {
 namespace test {

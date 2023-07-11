@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 #include "orttraining/core/graph/loss_function_builder.h"
+
 #include "orttraining/core/session/training_session.h"
 
 // TODO: solve the op version issue in the entire training framework

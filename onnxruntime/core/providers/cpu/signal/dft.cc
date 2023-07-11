@@ -3,19 +3,20 @@
 
 #include "core/providers/cpu/signal/dft.h"
 
+#include <core/common/safeint.h>
+
 #include <cmath>
 #include <complex>
 #include <functional>
 #include <limits>
 #include <vector>
-#include <core/common/safeint.h>
 
+#include "Eigen/src/Core/Map.h"
 #include "core/framework/op_kernel.h"
 #include "core/platform/threadpool.h"
 #include "core/providers/common.h"
 #include "core/providers/cpu/signal/utils.h"
 #include "core/util/math_cpuonly.h"
-#include "Eigen/src/Core/Map.h"
 
 namespace onnxruntime {
 

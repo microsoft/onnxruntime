@@ -3,14 +3,13 @@
 
 #include "core/optimizer/rule_based_graph_transformer.h"
 
-#include "gtest/gtest.h"
-
 #include "asserts.h"
 #include "core/graph/graph_viewer.h"
 #include "core/graph/model.h"
 #include "core/optimizer/graph_transformer.h"
 #include "core/optimizer/graph_transformer_mgr.h"
 #include "dummy_graph_transformer.h"
+#include "gtest/gtest.h"
 #include "test/framework/test_utils.h"
 #include "test/test_environment.h"
 

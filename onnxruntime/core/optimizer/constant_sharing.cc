@@ -1,12 +1,13 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/optimizer/constant_sharing.h"
+
 #include <variant>
 
 #include "core/framework/tensorprotoutils.h"
 #include "core/graph/graph_utils.h"
 #include "core/optimizer/initializer.h"
-#include "core/optimizer/constant_sharing.h"
 #include "core/optimizer/utils.h"
 
 namespace onnxruntime {

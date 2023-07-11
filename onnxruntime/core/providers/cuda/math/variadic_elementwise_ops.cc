@@ -1,17 +1,17 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/shared_library/provider_api.h"
 #include "core/providers/cuda/math/variadic_elementwise_ops.h"
 
-#include <cassert>
 #include <algorithm>
+#include <cassert>
 
 #include "core/framework/data_types_internal.h"
 #include "core/providers/cuda/math/binary_elementwise_ops.h"
 #include "core/providers/cuda/math/binary_elementwise_ops_impl.h"
 #include "core/providers/cuda/math/variadic_elementwise_ops_impl.h"
 #include "core/providers/cuda/math/variadic_elementwise_ops_tags.h"
+#include "core/providers/shared_library/provider_api.h"
 
 namespace onnxruntime {
 namespace cuda {

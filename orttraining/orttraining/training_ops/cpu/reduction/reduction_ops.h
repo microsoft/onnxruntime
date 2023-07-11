@@ -3,10 +3,10 @@
 
 #pragma once
 
-#include "core/providers/cpu/reduction/reduction_ops.h"
 #include "core/common/common.h"
 #include "core/common/optional.h"
 #include "core/framework/op_kernel.h"
+#include "core/providers/cpu/reduction/reduction_ops.h"
 
 namespace onnxruntime {
 namespace contrib {

@@ -4,9 +4,10 @@
 
 #pragma once
 
-#include "test_fgemm.h"
 #include <memory>
 #include <sstream>
+
+#include "test_fgemm.h"
 
 //
 // Short Execute() test helper to register each test seperately by all parameters.

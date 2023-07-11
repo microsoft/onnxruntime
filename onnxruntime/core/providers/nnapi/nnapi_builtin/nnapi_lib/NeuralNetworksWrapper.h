@@ -21,7 +21,6 @@
 #include <vector>
 
 #include "NeuralNetworksTypes.h"
-
 #include "core/providers/nnapi/nnapi_builtin/builders/shaper.h"
 
 using Shape = onnxruntime::nnapi::Shaper::Shape;

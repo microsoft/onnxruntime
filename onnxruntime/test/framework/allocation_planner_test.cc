@@ -1,10 +1,11 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <sstream>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
-#include <sstream>
+
 #include "gtest/gtest.h"
 
 #ifdef ORT_ENABLE_STREAM
@@ -12,16 +13,15 @@
 using json = nlohmann::json;
 #endif
 
-#include "core/framework/session_state.h"
+#include "core/framework/allocation_planner.h"
 #include "core/framework/kernel_registry.h"
 #include "core/framework/op_kernel.h"
-#include "test/framework/model_builder_utils.h"
-#include "core/framework/allocation_planner.h"
-#include "core/session/inference_session.h"
+#include "core/framework/session_state.h"
 #include "core/graph/model.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
+#include "core/session/inference_session.h"
 #include "core/util/thread_utils.h"
-
+#include "test/framework/model_builder_utils.h"
 #include "test/test_environment.h"
 #include "test/util/include/asserts.h"
 #include "test/util/include/default_providers.h"

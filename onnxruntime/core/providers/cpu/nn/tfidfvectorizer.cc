@@ -2,13 +2,15 @@
 // Licensed under the MIT License.
 
 #include "tfidfvectorizer.h"
-#include "core/common/common.h"
-#include "core/framework/tensor.h"
-#include "core/platform/threadpool.h"
+
+#include <core/common/safeint.h>
 
 #include <functional>
 #include <unordered_map>
-#include <core/common/safeint.h>
+
+#include "core/common/common.h"
+#include "core/framework/tensor.h"
+#include "core/platform/threadpool.h"
 
 namespace onnxruntime {
 

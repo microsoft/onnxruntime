@@ -3,10 +3,9 @@
 
 #pragma once
 
-#include "core/common/gsl.h"
-
 #include <cudnn.h>
 
+#include "core/common/gsl.h"
 #include "core/providers/cuda/cuda_kernel.h"
 #include "core/providers/cuda/cudnn_common.h"
 

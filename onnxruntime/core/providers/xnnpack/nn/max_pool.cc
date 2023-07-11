@@ -3,9 +3,9 @@
 
 #include "max_pool.h"
 
+#include "core/framework/tensorprotoutils.h"
 #include "core/graph/graph.h"
 #include "core/providers/utils.h"
-#include "core/framework/tensorprotoutils.h"
 
 // to sanity check output shape
 #include "core/framework/tensorprotoutils.h"

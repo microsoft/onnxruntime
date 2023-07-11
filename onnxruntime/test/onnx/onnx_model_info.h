@@ -2,8 +2,8 @@
 // Licensed under the MIT License.
 #pragma once
 
-#include "core/graph/onnx_protobuf.h"
 #include "TestCase.h"
+#include "core/graph/onnx_protobuf.h"
 
 class OnnxModelInfo : public TestModelInfo {
  private:

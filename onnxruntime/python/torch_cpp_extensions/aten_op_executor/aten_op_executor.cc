@@ -1,8 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include <torch/torch.h>
 #include <ATen/DLConvertor.h>
+#include <torch/torch.h>
+
 #include <unordered_map>
 #include <vector>
 

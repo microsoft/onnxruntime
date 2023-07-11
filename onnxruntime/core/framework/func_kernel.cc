@@ -1,5 +1,6 @@
-#include "core/common/safeint.h"
 #include "core/framework/func_kernel.h"
+
+#include "core/common/safeint.h"
 #include "core/framework/allocator.h"
 
 namespace onnxruntime {

@@ -3,15 +3,15 @@
 
 #pragma once
 
-#include <vector>
-#include <utility>
 #include <string>
+#include <utility>
+#include <vector>
 
-#include "core/providers/xnnpack/xnnpack_kernel.h"
 #include "core/framework/allocator.h"
 #include "core/providers/cpu/nn/pool_attributes.h"
 #include "core/providers/utils.h"
 #include "core/providers/xnnpack/detail/utils.h"
+#include "core/providers/xnnpack/xnnpack_kernel.h"
 
 namespace onnxruntime {
 class GraphViewer;

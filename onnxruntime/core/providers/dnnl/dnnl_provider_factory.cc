@@ -6,11 +6,10 @@
 #include <atomic>
 #include <cassert>
 
-#include "core/providers/shared_library/provider_api.h"
-
-#include "core/providers/dnnl/dnnl_provider_factory_creator.h"
 #include "core/providers/dnnl/dnnl_execution_provider.h"
 #include "core/providers/dnnl/dnnl_execution_provider_info.h"
+#include "core/providers/dnnl/dnnl_provider_factory_creator.h"
+#include "core/providers/shared_library/provider_api.h"
 
 using namespace onnxruntime;
 

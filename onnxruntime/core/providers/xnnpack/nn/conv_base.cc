@@ -4,13 +4,13 @@
 #include "conv_base.h"
 
 #include "core/common/inlined_containers_fwd.h"
+#include "core/framework/tensorprotoutils.h"
+#include "core/framework/transpose_helper.h"
 #include "core/graph/constants.h"
 #include "core/graph/graph.h"
 #include "core/graph/graph_utils.h"
-#include "core/framework/transpose_helper.h"
 #include "core/providers/utils.h"
 #include "core/providers/xnnpack/detail/utils.h"
-#include "core/framework/tensorprotoutils.h"
 #include "core/providers/xnnpack/xnnpack_kernel.h"
 
 namespace onnxruntime {

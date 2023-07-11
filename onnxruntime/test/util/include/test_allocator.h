@@ -1,11 +1,13 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 #pragma once
+#include <assert.h>
+
 #include <atomic>
 #include <stdexcept>
+
 #include "core/session/onnxruntime_c_api.h"
 #include "core/session/onnxruntime_cxx_api.h"
-#include <assert.h>
 
 struct MockedOrtAllocator : OrtAllocator {
   MockedOrtAllocator();

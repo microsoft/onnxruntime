@@ -4,12 +4,12 @@
 #include "qnn_model.h"
 
 #include <iostream>
-#include "QnnOpDef.h"
 
-#include "core/providers/qnn/builder/op_builder_factory.h"
-#include "core/providers/shared/utils/utils.h"
+#include "QnnOpDef.h"
 #include "core/framework/utils.h"
+#include "core/providers/qnn/builder/op_builder_factory.h"
 #include "core/providers/qnn/builder/qnn_utils.h"
+#include "core/providers/shared/utils/utils.h"
 
 namespace onnxruntime {
 namespace qnn {

@@ -2,12 +2,14 @@
 // Licensed under the MIT License.
 
 #pragma once
-#include <vector>
 #include <math.h>
+
+#include <vector>
+
 #include "constant.h"
 #include "core/framework/callback.h"
-#include "core/framework/ort_value.h"
 #include "core/framework/framework_common.h"
+#include "core/framework/ort_value.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
 
 #define RETURN_IF_FAIL(expr)                                \

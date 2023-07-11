@@ -2,12 +2,12 @@
 // Licensed under the MIT License.
 #include "./attr_proto.h"
 
-#include "./vai_assert.h"
-
 #include <cmath>
 #include <functional>
 #include <string>
 #include <unordered_map>
+
+#include "./vai_assert.h"
 
 namespace vaip {
 

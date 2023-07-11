@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "grid_sample.h"
+
 #include "grid_sample_impl.h"
 
 using namespace onnxruntime::cuda;

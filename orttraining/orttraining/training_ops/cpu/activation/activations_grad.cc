@@ -20,7 +20,6 @@
 #endif
 
 #include "core/util/math_cpuonly.h"
-
 #include "orttraining/training_ops/cpu/activation/gelu_computation_mode.h"
 
 namespace onnxruntime {

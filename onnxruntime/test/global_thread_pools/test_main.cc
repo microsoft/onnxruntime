@@ -14,10 +14,11 @@
 #endif
 #endif
 
+#include <thread>
+
 #include "core/session/onnxruntime_cxx_api.h"
 #include "gtest/gtest.h"
 #include "test/test_environment.h"
-#include <thread>
 
 std::unique_ptr<Ort::Env> ort_env;
 

@@ -1,11 +1,11 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "mlas.h"
-#include "bench_util.h"
-
-#include <stdexcept>
 #include <numeric>
+#include <stdexcept>
+
+#include "bench_util.h"
+#include "mlas.h"
 
 static const std::vector<std::string> sgemm_bench_arg_names = {"M", "N", "K"};
 

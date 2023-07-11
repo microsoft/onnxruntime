@@ -3,10 +3,10 @@
 
 #pragma once
 
-#include "optimizer_api.h"
-#include "core/graph/graph.h"
 #include "core/framework/execution_provider.h"
 #include "core/framework/transform_layout_functions.h"
+#include "core/graph/graph.h"
+#include "optimizer_api.h"
 
 namespace onnxruntime {
 /// <summary>

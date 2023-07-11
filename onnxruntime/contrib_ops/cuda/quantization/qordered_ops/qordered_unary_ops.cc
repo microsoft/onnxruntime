@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "contrib_ops/cuda/quantization/qordered_ops/qordered_unary_ops.h"
+
 #include "contrib_ops/cuda/quantization/qordered_ops/qordered_unary_ops_impl.h"
 
 using namespace onnxruntime::cuda;

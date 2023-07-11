@@ -5,11 +5,10 @@
 
 #include <type_traits>
 
-#include "core/common/gsl.h"
-
 #include "core/common/common.h"
-#include "core/framework/tensor.h"
+#include "core/common/gsl.h"
 #include "core/framework/data_transfer_manager.h"
+#include "core/framework/tensor.h"
 
 namespace onnxruntime {
 

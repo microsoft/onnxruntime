@@ -17,11 +17,12 @@ limitations under the License.
 #include "contrib_ops/cpu/crop_and_resize.h"
 
 #include <cmath>
-#include "core/util/math_cpuonly.h"
+
 #include "core/common/common.h"
 #include "core/framework/tensor.h"
 #include "core/platform/threadpool.h"
 #include "core/providers/cpu/object_detection/roialign.h"
+#include "core/util/math_cpuonly.h"
 // TODO: fix the warnings
 #if defined(_MSC_VER) && !defined(__clang__)
 // Chance of arithmetic overflow could be reduced

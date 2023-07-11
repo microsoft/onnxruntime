@@ -3,20 +3,19 @@
 
 #include <thread>
 
+#include "core/framework/tensorprotoutils.h"
+#include "default_providers.h"
 #include "gtest/gtest.h"
 #include "nlohmann/json.hpp"
-
-#include "test/util/include/asserts.h"
-#include "core/framework/tensorprotoutils.h"
-#include "orttraining/training_api/utils.h"
+#include "orttraining/test/training_api/core/data_utils.h"
+#include "orttraining/training_api/checkpoint.h"
+#include "orttraining/training_api/checkpoint_property.h"
+#include "orttraining/training_api/lr_scheduler.h"
 #include "orttraining/training_api/module.h"
 #include "orttraining/training_api/optimizer.h"
-#include "orttraining/training_api/checkpoint_property.h"
-#include "orttraining/training_api/checkpoint.h"
-#include "orttraining/training_api/lr_scheduler.h"
-#include "orttraining/test/training_api/core/data_utils.h"
+#include "orttraining/training_api/utils.h"
+#include "test/util/include/asserts.h"
 #include "test/util/include/temp_dir.h"
-#include "default_providers.h"
 
 using json = nlohmann::json;
 using namespace onnxruntime::training::api;

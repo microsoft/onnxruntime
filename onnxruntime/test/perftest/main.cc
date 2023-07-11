@@ -3,10 +3,12 @@
 
 // onnxruntime dependencies
 #include <core/session/onnxruntime_c_api.h>
+#include <google/protobuf/stubs/common.h>
+
 #include <random>
+
 #include "command_args_parser.h"
 #include "performance_runner.h"
-#include <google/protobuf/stubs/common.h>
 
 using namespace onnxruntime;
 const OrtApi* g_ort = NULL;

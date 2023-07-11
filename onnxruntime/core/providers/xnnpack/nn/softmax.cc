@@ -6,8 +6,8 @@
 #include <utility>
 
 #include "core/framework/op_kernel.h"
-#include "core/providers/cpu/math/softmax_shared.h"
 #include "core/optimizer/initializer.h"
+#include "core/providers/cpu/math/softmax_shared.h"
 
 namespace onnxruntime {
 namespace xnnpack {

@@ -4,6 +4,7 @@
 #pragma once
 
 #include <sstream>
+
 #include "core/common/hash_combine.h"
 
 // Struct to represent a physical device.

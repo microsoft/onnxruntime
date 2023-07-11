@@ -3,9 +3,9 @@
 
 #pragma once
 
+#include "contrib_ops/cpu/bert/attention_base.h"
 #include "core/common/common.h"
 #include "core/providers/cuda/cuda_kernel.h"
-#include "contrib_ops/cpu/bert/attention_base.h"
 
 namespace onnxruntime {
 namespace contrib {

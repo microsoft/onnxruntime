@@ -3,17 +3,18 @@
 
 #pragma once
 
-#include <cstring>
 #include <float.h>
+
 #include <cmath>
+#include <cstring>
 
 #ifndef SHARED_PROVIDER
-#include "core/framework/tensor.h"
 #include "core/framework/op_kernel.h"
+#include "core/framework/tensor.h"
 #endif
 
-#include "orttraining/core/graph/optimizer_config.h"
 #include "orttraining/core/framework/distributed_run_context.h"
+#include "orttraining/core/graph/optimizer_config.h"
 
 #ifdef ENABLE_CPU_FP16_TRAINING_OPS
 #include "orttraining/core/framework/adasum/m256_utils.h"

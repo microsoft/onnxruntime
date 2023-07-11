@@ -10,6 +10,7 @@
 #endif
 
 #include "core/providers/cpu/rnn/deep_cpu_gru.h"
+
 #include "core/common/narrow.h"
 
 #ifdef _MSC_VER

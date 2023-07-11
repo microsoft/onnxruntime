@@ -5,11 +5,9 @@
 #pragma warning(disable : 4244)
 #endif
 
-#include <random>
-#include "core/graph/onnx_protobuf.h"
+#include "orttraining/core/optimizer/memory_optimizer.h"
 
-#include "gtest/gtest.h"
-#include "gmock/gmock.h"
+#include <random>
 
 #include "asserts.h"
 #include "core/common/span_utils.h"
@@ -18,15 +16,17 @@
 #include "core/graph/graph_utils.h"
 #include "core/graph/graph_viewer.h"
 #include "core/graph/model.h"
+#include "core/graph/onnx_protobuf.h"
 #include "core/optimizer/utils.h"
 #include "core/platform/env.h"
 #include "core/session/inference_session.h"
 #include "core/util/math.h"
-#include "test/framework/test_utils.h"
+#include "gmock/gmock.h"
+#include "gtest/gtest.h"
 #include "test/capturing_sink.h"
+#include "test/framework/test_utils.h"
 #include "test/test_environment.h"
 #include "test/util/include/asserts.h"
-#include "orttraining/core/optimizer/memory_optimizer.h"
 
 using namespace std;
 using namespace ONNX_NAMESPACE;

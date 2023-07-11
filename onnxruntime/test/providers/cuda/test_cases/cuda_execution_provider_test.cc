@@ -5,8 +5,10 @@
 // extra code in the core of CUDA EP and that code may
 //  1. slow down performance critical applications and
 //  2. increase binary size of ORT.
-#include <iostream>
 #include "core/providers/cuda/cuda_execution_provider.h"
+
+#include <iostream>
+
 #include "core/providers/cuda/cuda_allocator.h"
 #include "core/providers/cuda/cuda_stream_handle.h"
 #include "gtest/gtest.h"

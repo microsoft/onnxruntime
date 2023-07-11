@@ -10,8 +10,8 @@
 #include "core/framework/execution_providers.h"
 #include "core/framework/func_kernel.h"
 #include "core/framework/kernel_lookup.h"
-#include "core/framework/kernel_registry_manager.h"
 #include "core/framework/kernel_registry.h"
+#include "core/framework/kernel_registry_manager.h"
 #include "core/graph/function.h"
 #include "core/graph/graph_viewer.h"
 

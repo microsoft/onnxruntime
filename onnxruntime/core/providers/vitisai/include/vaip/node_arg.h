@@ -3,8 +3,10 @@
 
 #pragma once
 #include <core/graph/graph.h>
-#include "vaip/dll_safe.h"
+
 #include <cstdint>
+
+#include "vaip/dll_safe.h"
 namespace vaip {
 using namespace onnxruntime;
 

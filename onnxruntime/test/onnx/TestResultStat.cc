@@ -1,11 +1,12 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "TestResultStat.h"
+
+#include <algorithm>
 #include <cstdio>
 #include <sstream>
-#include <algorithm>
 #include <vector>
-#include "TestResultStat.h"
 
 namespace {
 

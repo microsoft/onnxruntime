@@ -3,8 +3,9 @@
 
 #include "core/codegen/mti/tensor/gather_elements.h"
 
-#include "core/codegen/mti/mti_tvm_utils.h"
 #include <topi/transform.h>
+
+#include "core/codegen/mti/mti_tvm_utils.h"
 
 namespace onnxruntime {
 namespace tvm_codegen {

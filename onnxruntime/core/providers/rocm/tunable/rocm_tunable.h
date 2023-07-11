@@ -3,11 +3,11 @@
 
 #pragma once
 
-#include <hip/hip_runtime.h>
 #include <hip/hip_fp16.h>
+#include <hip/hip_runtime.h>
 
-#include "core/providers/rocm/rocm_common.h"  // avoid provider_api.h ODR violation
 #include "core/framework/tunable.h"
+#include "core/providers/rocm/rocm_common.h"  // avoid provider_api.h ODR violation
 #include "core/providers/rocm/rocm_execution_provider_info.h"
 #include "core/providers/rocm/tunable/rocm_tuning_context.h"
 #include "core/providers/rocm/tunable/util.h"

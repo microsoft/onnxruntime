@@ -2,8 +2,8 @@
 // Licensed under the MIT License.
 
 #pragma once
-#include "onnx/defs/schema.h"
 #include "core/graph/contrib_ops/ms_schema.h"
+#include "onnx/defs/schema.h"
 
 namespace onnxruntime {
 namespace contrib {

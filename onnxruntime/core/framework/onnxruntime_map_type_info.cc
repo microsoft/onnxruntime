@@ -2,10 +2,11 @@
 // Licensed under the MIT License.
 
 #include "core/framework/onnxruntime_map_type_info.h"
+
+#include "core/framework/error_code_helper.h"
 #include "core/framework/onnxruntime_typeinfo.h"
 #include "core/graph/onnx_protobuf.h"
 #include "core/session/ort_apis.h"
-#include "core/framework/error_code_helper.h"
 
 OrtMapTypeInfo::OrtMapTypeInfo(ONNXTensorElementDataType map_key_type,
                                std::unique_ptr<OrtTypeInfo> map_value_type) noexcept

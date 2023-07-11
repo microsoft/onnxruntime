@@ -22,9 +22,10 @@
 #define EIGEN_USE_THREADS
 #endif
 
-#include <unsupported/Eigen/CXX11/ThreadPool>
-#include <unsupported/Eigen/CXX11/Tensor>
 #include <unsupported/Eigen/CXX11/src/Tensor/TensorDeviceThreadPool.h>
+
+#include <unsupported/Eigen/CXX11/Tensor>
+#include <unsupported/Eigen/CXX11/ThreadPool>
 #if defined(__GNUC__) && !defined(__clang__)
 #pragma GCC diagnostic pop
 #elif defined(_MSC_VER)

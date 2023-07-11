@@ -1,16 +1,16 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/common/common.h"
+#include <DbgHelp.h>
+#include <windows.h>
+
 #include <iostream>
 #include <mutex>
 #include <sstream>
 
-#include <windows.h>
-#include <DbgHelp.h>
-
-#include "core/common/logging/logging.h"
+#include "core/common/common.h"
 #include "core/common/gsl.h"
+#include "core/common/logging/logging.h"
 
 namespace onnxruntime {
 

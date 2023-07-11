@@ -1,9 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/providers/rocm/shared_inc/integer_gemm.h"
+
 #include <hip/hip_runtime.h>
 #include <rocblas/rocblas.h>
-#include "core/providers/rocm/shared_inc/integer_gemm.h"
 
 #include "core/providers/rocm/rocm_common.h"
 #include "core/providers/rocm/shared_inc/rocm_call.h"

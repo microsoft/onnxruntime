@@ -4,17 +4,17 @@
 #pragma once
 #define NPY_NO_DEPRECATED_API NPY_1_7_API_VERSION
 
-#include "onnxruntime_pybind.h"  // must use this for the include of <pybind11/pybind11.h>
 #include <pybind11/iostream.h>
 #include <pybind11/numpy.h>
 #include <pybind11/stl.h>
 
 #include "core/common/logging/logging.h"
-#include "core/common/logging/sinks/clog_sink.h"
 #include "core/common/logging/sinks/cerr_sink.h"
-#include "core/session/environment.h"
+#include "core/common/logging/sinks/clog_sink.h"
 #include "core/framework/ort_value.h"
+#include "core/session/environment.h"
 #include "core/session/inference_session.h"
+#include "onnxruntime_pybind.h"  // must use this for the include of <pybind11/pybind11.h>
 
 PYBIND11_MAKE_OPAQUE(std::vector<OrtValue>);
 

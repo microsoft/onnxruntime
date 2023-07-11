@@ -2,11 +2,12 @@
 // Licensed under the MIT License.
 
 #ifdef __ANDROID__
+#include "core/platform/android/logging/android_log_sink.h"
+
 #include <android/log.h>
 
 #include "core/common/logging/capture.h"
 #include "core/common/logging/isink.h"
-#include "core/platform/android/logging/android_log_sink.h"
 
 namespace onnxruntime {
 namespace logging {

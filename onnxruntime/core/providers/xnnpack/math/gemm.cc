@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "gemm.h"
+
 #include "core/framework/transpose_helper.h"
 #include "core/providers/utils.h"
 

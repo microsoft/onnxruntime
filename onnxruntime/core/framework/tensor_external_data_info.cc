@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "tensor_external_data_info.h"
+
 #include "core/common/common.h"
 #include "core/platform/path_lib.h"
 

@@ -3,9 +3,10 @@
 
 #pragma once
 #include <stdint.h>
+
+#include "core/framework/stream_handles.h"
 #include "core/providers/cuda/cuda_kernel.h"
 #include "core/providers/cuda/shared_inc/cuda_utils.h"
-#include "core/framework/stream_handles.h"
 
 namespace onnxruntime {
 namespace cuda {

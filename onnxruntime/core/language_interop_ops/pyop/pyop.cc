@@ -27,16 +27,16 @@
 #endif
 
 #define NPY_NO_DEPRECATED_API NPY_1_7_API_VERSION
-#include "numpy/arrayobject.h"
 #include <functional>
 #include <iostream>
-#include <sstream>
-#include <numeric>
-#include <vector>
 #include <memory>
 #include <mutex>
-#include <functional>
+#include <numeric>
+#include <sstream>
 #include <unordered_map>
+#include <vector>
+
+#include "numpy/arrayobject.h"
 
 namespace onnxruntime {
 

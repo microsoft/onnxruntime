@@ -3,9 +3,9 @@
 
 #include <numeric>
 
+#include "core/common/gsl.h"
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
-#include "core/common/gsl.h"
 using namespace std;
 namespace onnxruntime {
 namespace test {

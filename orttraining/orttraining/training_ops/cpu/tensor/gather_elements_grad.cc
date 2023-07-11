@@ -2,8 +2,9 @@
 // Licensed under the MIT License.
 
 #include "orttraining/training_ops/cpu/tensor/gather_elements_grad.h"
-#include "orttraining/training_ops/cpu/tensor/gather_elements_grad_impl.h"
+
 #include "core/providers/common.h"
+#include "orttraining/training_ops/cpu/tensor/gather_elements_grad_impl.h"
 
 namespace onnxruntime {
 namespace contrib {

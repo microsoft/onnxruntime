@@ -2,8 +2,9 @@
 // Licensed under the MIT License.
 
 #include "rocm_allocator.h"
-#include "rocm_common.h"
+
 #include "gpu_data_transfer.h"
+#include "rocm_common.h"
 
 namespace onnxruntime {
 

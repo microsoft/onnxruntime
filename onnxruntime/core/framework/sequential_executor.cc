@@ -4,16 +4,17 @@
 #include "core/framework/sequential_executor.h"
 
 #include <chrono>
+#include <sstream>
 #include <thread>
 #include <vector>
-#include <sstream>
+
 #include "core/common/common.h"
 #include "core/common/logging/logging.h"
 #include "core/framework/allocation_planner.h"
 #include "core/framework/execution_frame.h"
-#include "core/framework/stream_execution_context.h"
-#include "core/framework/session_state.h"
 #include "core/framework/op_kernel_context_internal.h"
+#include "core/framework/session_state.h"
+#include "core/framework/stream_execution_context.h"
 #include "core/framework/utils.h"
 
 #if defined DEBUG_NODE_INPUTS_OUTPUTS
@@ -40,6 +41,7 @@ using namespace Concurrency;
 
 #ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
 #include <Windows.h>
+
 #include "core/platform/tracing.h"
 namespace {
 LARGE_INTEGER OrtGetPerformanceFrequency() {

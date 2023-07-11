@@ -6,15 +6,13 @@
 #include "core/common/narrow.h"
 #include "core/common/span_utils.h"
 #include "core/framework/ort_value.h"
+#include "core/framework/tensorprotoutils.h"
 #include "core/graph/onnx_protobuf.h"
 #include "core/session/inference_session.h"
-#include "core/framework/tensorprotoutils.h"
-
-#include "test/util/include/asserts.h"
-#include "test/util/include/test/test_environment.h"
-#include "test/util/include/inference_session_wrapper.h"
-
 #include "gmock/gmock.h"
+#include "test/util/include/asserts.h"
+#include "test/util/include/inference_session_wrapper.h"
+#include "test/util/include/test/test_environment.h"
 
 namespace onnxruntime {
 namespace test {

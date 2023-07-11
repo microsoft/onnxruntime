@@ -3,10 +3,9 @@
 
 #pragma once
 
-#include "core/graph/op_identifier.h"
-
 #include "core/common/status.h"
 #include "core/graph/graph.h"
+#include "core/graph/op_identifier.h"
 
 #if !defined(ORT_MINIMAL_BUILD)
 

@@ -3,12 +3,12 @@
 
 #include "conv.h"
 
+#include "core/common/gsl.h"
 #include "core/common/inlined_containers_fwd.h"
+#include "core/framework/tensorprotoutils.h"
 #include "core/framework/transpose_helper.h"
 #include "core/providers/utils.h"
 #include "core/providers/xnnpack/detail/utils.h"
-#include "core/framework/tensorprotoutils.h"
-#include "core/common/gsl.h"
 
 namespace onnxruntime {
 namespace xnnpack {

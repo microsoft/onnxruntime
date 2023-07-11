@@ -2,12 +2,12 @@
 // Licensed under the MIT License.
 
 #include "core/platform/Barrier.h"
-#include "core/platform/threadpool.h"
-
-#include "gtest/gtest.h"
 
 #include <atomic>
 #include <thread>
+
+#include "core/platform/threadpool.h"
+#include "gtest/gtest.h"
 
 namespace {
 

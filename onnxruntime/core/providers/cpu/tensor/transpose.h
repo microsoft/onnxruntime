@@ -6,12 +6,13 @@
 #ifndef SHARED_PROVIDER
 #include "core/common/common.h"
 #include "core/common/inlined_containers.h"
-#include "core/framework/tensor_shape.h"
 #include "core/framework/op_kernel.h"
+#include "core/framework/tensor_shape.h"
 #endif
 
-#include "core/common/gsl.h"
 #include <sstream>
+
+#include "core/common/gsl.h"
 
 namespace onnxruntime {
 

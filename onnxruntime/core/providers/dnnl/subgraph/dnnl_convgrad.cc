@@ -2,9 +2,11 @@
 // Licensed under the MIT License
 
 #include "dnnl_convgrad.h"
+
+#include <cassert>
+
 #include "dnnl_subgraph.h"
 #include "dnnl_subgraph_primitive.h"
-#include <cassert>
 
 namespace onnxruntime {
 namespace ort_dnnl {

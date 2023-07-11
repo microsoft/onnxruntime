@@ -3,7 +3,6 @@
 
 #include "core/common/common.h"
 #include "core/providers/cuda/cuda_common.h"
-
 #include "gtest/gtest.h"
 
 namespace onnxruntime {

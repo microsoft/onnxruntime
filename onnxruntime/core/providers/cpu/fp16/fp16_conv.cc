@@ -9,12 +9,11 @@
 
 #ifdef MLAS_F16VEC_INTRINSICS_SUPPORTED
 
+#include "contrib_ops/cpu/fused_activation.h"
 #include "core/common/safeint.h"
 #include "core/framework/float16.h"
 #include "core/framework/op_kernel.h"
 #include "core/providers/cpu/nn/conv_attributes.h"
-
-#include "contrib_ops/cpu/fused_activation.h"
 
 namespace onnxruntime {
 

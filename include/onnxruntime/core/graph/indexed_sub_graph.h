@@ -13,8 +13,8 @@
 #else
 #include "onnx/defs/data_type_utils.h"
 #endif
-#include "onnx/onnx_pb.h"
 #include "onnx/onnx-operators_pb.h"
+#include "onnx/onnx_pb.h"
 
 namespace onnxruntime {
 

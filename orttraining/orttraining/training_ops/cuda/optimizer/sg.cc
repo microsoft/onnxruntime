@@ -2,10 +2,10 @@
 // Licensed under the MIT License.
 
 #include "sg.h"
-#include "sg_impl.h"
 
-#include "core/providers/cuda/reduction/reduction_functions.h"
 #include "core/providers/cuda/math/binary_elementwise_ops.h"
+#include "core/providers/cuda/reduction/reduction_functions.h"
+#include "sg_impl.h"
 
 namespace onnxruntime {
 namespace cuda {

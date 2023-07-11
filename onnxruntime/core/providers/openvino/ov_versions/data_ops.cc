@@ -1,14 +1,16 @@
 // Copyright (C) 2019-2022 Intel Corporation
 // Licensed under the MIT License
 
-#include <unordered_set>
-#include "core/providers/shared_library/provider_api.h"
-#include "../backend_utils.h"
-#include "../backend_manager.h"
-#include <string>
-#include <vector>
 #include "data_ops.h"
+
+#include <string>
+#include <unordered_set>
+#include <vector>
+
+#include "../backend_manager.h"
+#include "../backend_utils.h"
 #include "capabilities.h"
+#include "core/providers/shared_library/provider_api.h"
 #include "utils.h"
 
 #if defined(_MSC_VER)
@@ -17,8 +19,8 @@
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-parameter"
 #endif
-#include <ngraph/ngraph.hpp>
 #include <ngraph/frontend/onnx_import/onnx.hpp>
+#include <ngraph/ngraph.hpp>
 #if defined(_MSC_VER)
 #pragma warning(default : 4244 4245)
 #elif __GNUC__

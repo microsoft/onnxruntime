@@ -2,8 +2,9 @@
 // Licensed under the MIT License.
 
 #pragma once
-#include <string>
 #include <tvm/tvm.h>
+
+#include <string>
 
 // A bubble now. But don't remove it
 // TODO: refactor the LSTMcell building to a tvm function

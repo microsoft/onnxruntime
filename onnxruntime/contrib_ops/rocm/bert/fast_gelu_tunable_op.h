@@ -4,12 +4,14 @@
 #pragma once
 
 #include <hip/hip_runtime.h>
+
 #include <memory>
 #include <string>
 #include <vector>
-#include "core/providers/rocm/tunable/rocm_tunable.h"
-#include "core/providers/rocm/cu_inc/common.cuh"
+
 #include "contrib_ops/rocm/bert/fast_gelu_impl_kernel.h"
+#include "core/providers/rocm/cu_inc/common.cuh"
+#include "core/providers/rocm/tunable/rocm_tunable.h"
 
 using onnxruntime::rocm::CeilDiv;
 using onnxruntime::rocm::GPU_WARP_SIZE;

@@ -1,11 +1,12 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/framework/TensorSeq.h"
 #include "orttraining/training_ops/cpu/optimizer/clip_grad_norm/clip_grad_norm.h"
+
+#include "core/framework/TensorSeq.h"
 #include "core/providers/cpu/math/element_wise_ops.h"
-#include "core/providers/cpu/tensor/utils.h"
 #include "core/providers/cpu/reduction/reduction_ops.h"
+#include "core/providers/cpu/tensor/utils.h"
 
 namespace onnxruntime {
 namespace contrib {

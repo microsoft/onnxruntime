@@ -3,8 +3,8 @@
 
 #pragma once
 
-#include <thread>
 #include <string>
+#include <thread>
 #include <unordered_map>
 
 #include "core/platform/ort_mutex.h"

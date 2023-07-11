@@ -3,9 +3,9 @@
 
 #pragma once
 #define ORT_API_MANUAL_INIT
+#include "core/providers/shared_library/provider_api.h"
 #include "core/session/onnxruntime_c_api.h"
 #include "core/session/onnxruntime_cxx_api.h"
-#include "core/providers/shared_library/provider_api.h"
 #include "tensorrt_execution_provider_info.h"
 
 using namespace onnxruntime;

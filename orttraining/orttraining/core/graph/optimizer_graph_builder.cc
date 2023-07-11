@@ -3,8 +3,8 @@
 
 #include "orttraining/core/graph/optimizer_graph_builder.h"
 
-#include <cassert>
 #include <algorithm>
+#include <cassert>
 #include <functional>
 #include <iterator>
 
@@ -12,10 +12,10 @@
 #include "core/framework/tensorprotoutils.h"
 #include "core/graph/graph.h"
 #include "core/graph/model.h"
+#include "onnx/defs/attr_proto_util.h"
 #include "orttraining/core/graph/gradient_builder_base.h"
 #include "orttraining/core/graph/graph_augmenter.h"
 #include "orttraining/core/graph/optimizer_builder.h"
-#include "onnx/defs/attr_proto_util.h"
 
 namespace onnxruntime {
 namespace training {

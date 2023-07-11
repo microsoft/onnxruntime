@@ -12,8 +12,8 @@
 #include "core/providers/cuda/cuda_execution_provider_info.h"
 #include "core/providers/cuda/cuda_graph.h"
 #include "core/providers/cuda/cuda_pch.h"
-#include "core/providers/cuda/shared_inc/cuda_utils.h"
 #include "core/providers/cuda/shared_inc/cuda_call.h"
+#include "core/providers/cuda/shared_inc/cuda_utils.h"
 #include "core/providers/cuda/tunable/cuda_tuning_context.h"
 
 namespace onnxruntime {

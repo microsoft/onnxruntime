@@ -3,15 +3,16 @@
 
 #include <core/common/safeint.h>
 #include <core/framework/tensorprotoutils.h>
+
+#include "core/optimizer/initializer.h"
 #include "core/providers/common.h"
-#include "core/providers/shared/utils/utils.h"
 #include "core/providers/coreml/builders/helper.h"
 #include "core/providers/coreml/builders/op_builder_factory.h"
-#include "core/optimizer/initializer.h"
+#include "core/providers/shared/utils/utils.h"
 
 #ifdef __APPLE__
-#include "core/providers/coreml/builders/model_builder.h"
 #include "builder_utils.h"
+#include "core/providers/coreml/builders/model_builder.h"
 #endif
 
 #include "base_op_builder.h"

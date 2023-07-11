@@ -1,9 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/optimizer/reshape_fusion.h"
+
 #include "core/graph/graph_utils.h"
 #include "core/optimizer/initializer.h"
-#include "core/optimizer/reshape_fusion.h"
 #include "core/optimizer/utils.h"
 
 using namespace ONNX_NAMESPACE;

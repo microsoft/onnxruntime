@@ -13,9 +13,9 @@
 #endif
 #endif
 
-#include "gtest/gtest.h"
-#include "core/session/onnxruntime_cxx_api.h"
 #include "core/session/abi_session_options_impl.h"
+#include "core/session/onnxruntime_cxx_api.h"
+#include "gtest/gtest.h"
 
 TEST(TestSessionOptions, SetIntraOpNumThreadsWithoutEnv) {
   Ort::SessionOptions session_options;

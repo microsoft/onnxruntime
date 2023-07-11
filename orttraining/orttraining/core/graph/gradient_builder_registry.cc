@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "orttraining/core/graph/gradient_builder_registry.h"
+
 #include "orttraining/core/graph/gradient_builder.h"
 #include "orttraining/core/graph/gradient_config.h"
 

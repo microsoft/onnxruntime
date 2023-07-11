@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/optimizer/rule_based_graph_transformer.h"
+
 #include "core/graph/graph_utils.h"
 #include "core/optimizer/rewrite_rule.h"
 

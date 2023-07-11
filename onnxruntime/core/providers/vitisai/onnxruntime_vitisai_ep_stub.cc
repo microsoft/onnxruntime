@@ -1,11 +1,12 @@
 // Copyright (c) 2023 Advanced Micro Devices, Inc. All rights reserved.
 // Licensed under the MIT License.
-#include "vaip/dll_safe.h"
-#include "vaip/vaip_ort_api.h"
-#include "vaip/custom_op.h"
-#include "onnxruntime_vitisai_ep/onnxruntime_vitisai_ep.h"
 #include <cstdlib>
 #include <iostream>
+
+#include "onnxruntime_vitisai_ep/onnxruntime_vitisai_ep.h"
+#include "vaip/custom_op.h"
+#include "vaip/dll_safe.h"
+#include "vaip/vaip_ort_api.h"
 using namespace std;
 
 namespace onnxruntime_vitisai_ep {

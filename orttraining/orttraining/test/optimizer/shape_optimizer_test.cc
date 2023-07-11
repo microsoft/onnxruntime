@@ -1,16 +1,16 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/graph/model.h"
-#include "test/framework/test_utils.h"
-#include "test/test_environment.h"
+#include "orttraining/core/optimizer/shape_optimizer.h"
 
-#include "gtest/gtest.h"
+#include "core/graph/model.h"
 #include "core/optimizer/utils.h"
+#include "gtest/gtest.h"
+#include "test/framework/test_utils.h"
 #include "test/optimizer/graph_transform_test_builder.h"
 #include "test/optimizer/graph_transform_test_fixture.h"
+#include "test/test_environment.h"
 #include "test/util/include/asserts.h"
-#include "orttraining/core/optimizer/shape_optimizer.h"
 
 using namespace std;
 using namespace ONNX_NAMESPACE;

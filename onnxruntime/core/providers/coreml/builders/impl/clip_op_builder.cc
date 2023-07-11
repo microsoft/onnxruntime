@@ -4,10 +4,9 @@
 #ifdef __APPLE__
 #include "core/providers/coreml/builders/model_builder.h"
 #endif
+#include "base_op_builder.h"
 #include "core/providers/coreml/builders/op_builder_factory.h"
 #include "core/providers/shared/utils/utils.h"
-
-#include "base_op_builder.h"
 
 namespace onnxruntime {
 namespace coreml {

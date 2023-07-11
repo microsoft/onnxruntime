@@ -4,10 +4,10 @@
 #import <XCTest/XCTest.h>
 
 #import "ort_coreml_execution_provider.h"
-#import "ort_xnnpack_execution_provider.h"
 #import "ort_env.h"
 #import "ort_session.h"
 #import "ort_value.h"
+#import "ort_xnnpack_execution_provider.h"
 
 #import "test/assertion_utils.h"
 

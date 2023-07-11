@@ -1,14 +1,14 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include <unordered_set>
+#include "tvm_ep_options.h"
+
 #include <regex>
+#include <unordered_set>
 
 #include "core/common/common.h"
 #include "core/common/cpuid_info.h"
 #include "core/framework/provider_options_utils.h"
-
-#include "tvm_ep_options.h"
 
 namespace onnxruntime {
 namespace tvm {

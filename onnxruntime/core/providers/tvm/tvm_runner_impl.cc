@@ -1,11 +1,11 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/framework/tensorprotoutils.h"
-
 #include "tvm_runner_impl.h"
-#include "tvm_utils.h"
+
+#include "core/framework/tensorprotoutils.h"
 #include "tvm_api.h"
+#include "tvm_utils.h"
 
 namespace onnxruntime {
 namespace tvm {

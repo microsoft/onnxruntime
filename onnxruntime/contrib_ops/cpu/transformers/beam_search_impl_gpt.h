@@ -4,7 +4,6 @@
 #pragma once
 
 #include "contrib_ops/cpu/transformers/beam_search_impl_base.h"
-
 #include "core/common/span_utils.h"
 
 namespace onnxruntime {

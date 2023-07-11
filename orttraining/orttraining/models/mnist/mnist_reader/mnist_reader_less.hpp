@@ -15,12 +15,12 @@
 #ifndef MNIST_READER_HPP
 #define MNIST_READER_HPP
 
+#include <cstdint>
 #include <fstream>
 #include <iostream>
+#include <memory>
 #include <string>
 #include <vector>
-#include <cstdint>
-#include <memory>
 
 #include "mnist_reader_common.hpp"
 

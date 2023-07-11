@@ -3,8 +3,8 @@
 
 #pragma once
 
-#include "core/optimizer/graph_transformer.h"
 #include "core/graph/graph_utils.h"
+#include "core/optimizer/graph_transformer.h"
 #include "orttraining/core/session/training_session.h"
 
 namespace onnxruntime {

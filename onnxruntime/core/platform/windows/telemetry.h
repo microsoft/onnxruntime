@@ -2,10 +2,11 @@
 // Licensed under the MIT License.
 
 #pragma once
-#include "core/platform/telemetry.h"
-#include "core/platform/ort_mutex.h"
-#include "core/platform/windows/TraceLoggingConfig.h"
 #include <atomic>
+
+#include "core/platform/ort_mutex.h"
+#include "core/platform/telemetry.h"
+#include "core/platform/windows/TraceLoggingConfig.h"
 
 namespace onnxruntime {
 

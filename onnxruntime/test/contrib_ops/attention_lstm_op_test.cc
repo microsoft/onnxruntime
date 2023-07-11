@@ -1,13 +1,13 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <algorithm>
+#include <iterator>
+#include <string>
+#include <vector>
+
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
-
-#include <iterator>
-#include <vector>
-#include <string>
-#include <algorithm>
 
 namespace onnxruntime {
 namespace test {

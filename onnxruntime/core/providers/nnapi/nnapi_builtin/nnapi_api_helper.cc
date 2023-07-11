@@ -4,9 +4,9 @@
 #include "core/providers/nnapi/nnapi_builtin/nnapi_api_helper.h"
 
 #include "core/common/inlined_containers_fwd.h"
+#include "core/common/logging/logging.h"
 #include "core/providers/nnapi/nnapi_builtin/builders/model_builder.h"
 #include "core/providers/nnapi/nnapi_builtin/nnapi_lib/nnapi_implementation.h"
-#include "core/common/logging/logging.h"
 
 #ifdef __ANDROID__
 #include <android/api-level.h>

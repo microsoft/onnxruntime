@@ -2,8 +2,9 @@
 // Copyright (c) Huawei. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/shared_library/provider_api.h"
 #include "core/providers/cann/npu_data_transfer.h"
+
+#include "core/providers/shared_library/provider_api.h"
 
 namespace onnxruntime {
 NPUDataTransfer::NPUDataTransfer() {}

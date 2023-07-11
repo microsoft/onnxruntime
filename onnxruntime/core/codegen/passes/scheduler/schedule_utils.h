@@ -2,8 +2,8 @@
 // Licensed under the MIT License.
 
 #pragma once
-#include <tvm/tvm.h>
 #include <core/codegen/passes/scheduler/tvm_scheduler.h>
+#include <tvm/tvm.h>
 
 namespace onnxruntime {
 namespace tvm_codegen {

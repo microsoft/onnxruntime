@@ -2,17 +2,16 @@
 // Licensed under the MIT License.
 
 #include <benchmark/benchmark.h>
-#include <core/graph/onnx_protobuf.h>
 #include <core/common/logging/logging.h>
+#include <core/common/logging/sinks/clog_sink.h>
+#include <core/framework/kernel_def_builder.h>
+#include <core/graph/graph.h>
+#include <core/graph/model.h>
+#include <core/graph/onnx_protobuf.h>
+#include <core/platform/Barrier.h>
 #include <core/platform/env.h>
 #include <core/platform/threadpool.h>
 #include <core/providers/cpu/cpu_execution_provider.h>
-#include "core/session/environment.h"
-#include <core/common/logging/sinks/clog_sink.h>
-#include <core/platform/Barrier.h>
-#include <core/graph/model.h>
-#include <core/graph/graph.h>
-#include <core/framework/kernel_def_builder.h>
 #include <core/session/onnxruntime_c_api.h>
 #include <core/session/onnxruntime_cxx_api.h>
 #include <core/session/ort_env.h>
@@ -20,6 +19,8 @@
 
 #include <iostream>
 #include <unordered_map>
+
+#include "core/session/environment.h"
 
 const OrtApi* g_ort = OrtGetApiBase()->GetApi(ORT_API_VERSION);
 OrtEnv* env = nullptr;

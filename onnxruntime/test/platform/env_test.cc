@@ -5,9 +5,8 @@
 
 #include <fstream>
 
-#include "gtest/gtest.h"
-
 #include "core/common/path_string.h"
+#include "gtest/gtest.h"
 #include "test/util/include/asserts.h"
 
 namespace onnxruntime {

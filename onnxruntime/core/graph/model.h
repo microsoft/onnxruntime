@@ -2,11 +2,12 @@
 // Licensed under the MIT License.
 
 #pragma once
-#include <list>
-#include <unordered_map>
-#include <memory>
 #include <climits>
+#include <list>
+#include <memory>
 #include <string>
+#include <unordered_map>
+
 #include "core/common/path.h"
 #include "core/graph/graph_viewer.h"
 #include "core/graph/ort_format_load_options.h"

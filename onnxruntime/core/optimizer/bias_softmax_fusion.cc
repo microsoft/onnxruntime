@@ -7,10 +7,10 @@
 
 #include "core/common/logging/logging.h"
 #include "core/framework/tensorprotoutils.h"
+#include "core/graph/graph_utils.h"
 #include "core/optimizer/initializer.h"
 #include "core/optimizer/utils.h"
 #include "core/providers/common.h"
-#include "core/graph/graph_utils.h"
 
 using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::common;

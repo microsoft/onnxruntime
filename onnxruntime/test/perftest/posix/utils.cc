@@ -3,10 +3,10 @@
 
 #include "test/perftest/utils.h"
 
-#include <cstddef>
-
-#include <sys/times.h>
 #include <sys/resource.h>
+#include <sys/times.h>
+
+#include <cstddef>
 
 #include "core/platform/env.h"
 

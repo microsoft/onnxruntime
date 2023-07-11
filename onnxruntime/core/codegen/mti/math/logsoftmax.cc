@@ -3,8 +3,9 @@
 
 #include "core/codegen/mti/math/logsoftmax.h"
 
-#include "core/codegen/mti/tensor/reshape_ops.h"
 #include <topi/nn/softmax.h>
+
+#include "core/codegen/mti/tensor/reshape_ops.h"
 
 namespace onnxruntime {
 namespace tvm_codegen {

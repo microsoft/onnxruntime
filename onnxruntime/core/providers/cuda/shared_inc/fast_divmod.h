@@ -5,10 +5,12 @@
 
 #pragma once
 
+#include <cuda_runtime.h>
+
+#include <cmath>
 #include <iostream>
 #include <limits>
-#include <cuda_runtime.h>
-#include <cmath>
+
 #include "core/common/common.h"
 
 namespace onnxruntime {

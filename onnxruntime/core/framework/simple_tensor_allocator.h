@@ -3,11 +3,13 @@
 
 #pragma once
 
-#include <unordered_map>
 #include <core/common/inlined_containers.h>
-#include "tensor_allocator.h"
+
+#include <unordered_map>
+
 #include "mem_pattern.h"
 #include "ort_value_pattern_planner.h"
+#include "tensor_allocator.h"
 #include "utils.h"
 
 namespace onnxruntime {

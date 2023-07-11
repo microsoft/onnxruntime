@@ -1,13 +1,16 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "test/providers/cpu/activation/activation_op_test.h"
+
+#include <test/util/include/default_providers.h>
+
+#include <random>
+
+#include "core/common/cpuid_info.h"
 #include "core/providers/cpu/activation/activations.h"
 #include "gtest/gtest.h"
-#include "core/common/cpuid_info.h"
 #include "test/providers/provider_test_utils.h"
-#include "test/providers/cpu/activation/activation_op_test.h"
-#include <random>
-#include <test/util/include/default_providers.h>
 
 #if defined(USE_DNNL)
 #include "test/common/dnnl_op_test_utils.h"

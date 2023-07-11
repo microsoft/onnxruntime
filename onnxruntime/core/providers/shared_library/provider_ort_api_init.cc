@@ -14,9 +14,9 @@
 
 #include "provider_api.h"
 #define ORT_API_MANUAL_INIT
-#include "core/session/onnxruntime_cxx_api.h"
-
 #include <mutex>
+
+#include "core/session/onnxruntime_cxx_api.h"
 
 namespace onnxruntime {
 namespace {

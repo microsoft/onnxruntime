@@ -3,8 +3,8 @@
 
 #include "core/framework/tensor.h"
 #include "core/session/inference_session.h"
-#include "test/util/include/default_providers.h"
 #include "test/providers/provider_test_utils.h"
+#include "test/util/include/default_providers.h"
 
 namespace onnxruntime {
 namespace contrib {

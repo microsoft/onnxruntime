@@ -1,37 +1,35 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "orttraining/training_api/checkpoint.h"
+
 #include <unordered_map>
 #include <vector>
-
-#include "gtest/gtest.h"
 
 #include "core/common/common.h"
 #include "core/common/logging/logging.h"
 #include "core/common/logging/sinks/clog_sink.h"
-#include "core/framework/framework_common.h"
 #include "core/framework/data_transfer.h"
+#include "core/framework/framework_common.h"
 #include "core/framework/ort_value.h"
 #include "core/framework/tensor.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/graph/graph_viewer.h"
 #include "core/graph/model.h"
 #include "core/platform/path_lib.h"
-
+#include "default_providers.h"
+#include "gtest/gtest.h"
 #include "orttraining/core/framework/checkpoint_common.h"
+#include "orttraining/test/training_api/common/synthetic_data_loader.h"
+#include "orttraining/test/training_api/core/data_utils.h"
+#include "orttraining/training_api/checkpoint_property.h"
+#include "orttraining/training_api/lr_scheduler.h"
 #include "orttraining/training_api/module.h"
 #include "orttraining/training_api/optimizer.h"
-#include "orttraining/training_api/checkpoint_property.h"
-#include "orttraining/training_api/checkpoint.h"
-#include "orttraining/training_api/lr_scheduler.h"
-
 #include "test/test_environment.h"
 #include "test/util/include/asserts.h"
 #include "test/util/include/temp_dir.h"
 #include "test/util/include/test_environment.h"
-#include "orttraining/test/training_api/common/synthetic_data_loader.h"
-#include "orttraining/test/training_api/core/data_utils.h"
-#include "default_providers.h"
 
 using onnxruntime::test::TemporaryDirectory;
 using namespace onnxruntime::training::api;

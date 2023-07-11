@@ -6,8 +6,8 @@
 #include <unordered_map>
 
 #include "core/common/common.h"
-#include "core/platform/ort_mutex.h"
 #include "core/framework/tuning_results.h"
+#include "core/platform/ort_mutex.h"
 
 namespace onnxruntime {
 

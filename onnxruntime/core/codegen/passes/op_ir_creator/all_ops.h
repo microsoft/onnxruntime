@@ -2,9 +2,9 @@
 // Licensed under the MIT License.
 
 #pragma once
-#include "core/codegen/passes/utils/codegen_context.h"
 #include "core/codegen/common/op_macro.h"
 #include "core/codegen/passes/op_ir_creator/tvm_op_creator.h"
+#include "core/codegen/passes/utils/codegen_context.h"
 
 namespace onnxruntime {
 namespace tvm_codegen {

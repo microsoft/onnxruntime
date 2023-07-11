@@ -2,9 +2,9 @@
 // Licensed under the MIT License
 
 #pragma once
-#include "dnnl_subgraph.h"
-#include "dnnl.hpp"
 #include "core/platform/ort_mutex.h"
+#include "dnnl.hpp"
+#include "dnnl_subgraph.h"
 
 namespace onnxruntime {
 namespace ort_dnnl {

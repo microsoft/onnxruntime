@@ -3,8 +3,9 @@
 #pragma once
 
 #include <string>
-#include <vector>
 #include <utility>
+#include <vector>
+
 #include "core/graph/graph.h"
 #include "orttraining/core/graph/loss_function_registry.h"
 

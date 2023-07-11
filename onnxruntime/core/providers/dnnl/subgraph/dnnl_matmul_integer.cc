@@ -2,13 +2,14 @@
 // Licensed under the MIT License
 
 #include "dnnl_matmul_integer.h"
+
+#include <string>
+#include <unordered_set>
+#include <vector>
+
 #include "dnnl_subgraph.h"
 #include "dnnl_subgraph_primitive.h"
 #include "dnnl_util.h"
-
-#include <unordered_set>
-#include <vector>
-#include <string>
 
 namespace onnxruntime {
 namespace ort_dnnl {

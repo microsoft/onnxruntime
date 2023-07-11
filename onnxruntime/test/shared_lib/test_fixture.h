@@ -1,8 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/session/onnxruntime_cxx_api.h"
 #include <gtest/gtest.h>
+
+#include "core/session/onnxruntime_cxx_api.h"
 
 #ifdef _WIN32
 typedef const wchar_t* PATH_TYPE;

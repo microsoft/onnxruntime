@@ -1,10 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/platform/env.h"
-
 #include <fstream>
 
+#include "core/platform/env.h"
 #include "gtest/gtest.h"
 
 extern "C" char* __cxa_demangle(const char* mangled_name, char* buf, size_t* n, int* status);

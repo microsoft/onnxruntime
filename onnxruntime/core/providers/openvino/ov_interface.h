@@ -3,9 +3,8 @@
 
 #pragma once
 
-#include <vector>
-
 #include <inference_engine.hpp>
+#include <vector>
 #if defined(OPENVINO_2022_1) || (OPENVINO_2022_2) || (OPENVINO_2022_3) || (OPENVINO_2023_0)
 #define OV_API_20
 #include "openvino/openvino.hpp"
@@ -13,8 +12,8 @@
 #endif
 
 #ifdef IO_BUFFER_ENABLED
-#include <gpu/gpu_context_api_ocl.hpp>
 #include <gpu/gpu_config.hpp>
+#include <gpu/gpu_context_api_ocl.hpp>
 #include <openvino/runtime/intel_gpu/ocl/ocl.hpp>
 #endif
 

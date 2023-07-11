@@ -2,9 +2,10 @@
 // Licensed under the MIT License.
 
 #include "core/session/IOBinding.h"
+
 #include "core/common/logging/logging.h"
-#include "core/framework/session_state.h"
 #include "core/framework/op_kernel.h"
+#include "core/framework/session_state.h"
 #include "core/framework/utils.h"
 
 namespace onnxruntime {

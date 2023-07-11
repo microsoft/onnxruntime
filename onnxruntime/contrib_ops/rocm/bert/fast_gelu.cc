@@ -5,12 +5,13 @@
 // Copyright (c) Advanced Micro Devices, Inc. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/rocm/rocm_common.h"
-#include "core/providers/rocm/miopen_common.h"
 #include "contrib_ops/rocm/bert/fast_gelu.h"
-#include "contrib_ops/rocm/bert/fast_gelu_impl.h"
+
 #include "contrib_ops/cpu/bert/bias_gelu_helper.h"
+#include "contrib_ops/rocm/bert/fast_gelu_impl.h"
 #include "contrib_ops/rocm/bert/transformer_common.h"
+#include "core/providers/rocm/miopen_common.h"
+#include "core/providers/rocm/rocm_common.h"
 
 namespace onnxruntime {
 namespace contrib {

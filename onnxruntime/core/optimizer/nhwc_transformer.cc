@@ -1,15 +1,17 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include <deque>
-#include "core/mlas/inc/mlas.h"
-#include "core/graph/graph_utils.h"
-#include "core/optimizer/initializer.h"
 #include "core/optimizer/nhwc_transformer.h"
-#include "core/optimizer/utils.h"
+
+#include <deque>
+
+#include "core/graph/graph_utils.h"
+#include "core/mlas/inc/mlas.h"
+#include "core/optimizer/initializer.h"
 #include "core/optimizer/layout_transformation/layout_transformation.h"
 #include "core/optimizer/transpose_optimization/ort_optimizer_utils.h"
 #include "core/optimizer/transpose_optimization/ort_transpose_optimization.h"
+#include "core/optimizer/utils.h"
 
 using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::common;

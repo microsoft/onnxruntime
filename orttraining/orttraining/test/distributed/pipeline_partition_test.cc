@@ -1,15 +1,12 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "orttraining/core/graph/pipeline_transformer.h"
-#include "core/graph/model.h"
-
 #include "core/common/path_utils.h"
-#include "test/test_environment.h"
-
+#include "core/graph/model.h"
 #include "gtest/gtest.h"
-
+#include "orttraining/core/graph/pipeline_transformer.h"
 #include "partition_utils.h"
+#include "test/test_environment.h"
 
 namespace onnxruntime {
 namespace test {

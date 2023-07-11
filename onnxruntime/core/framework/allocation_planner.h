@@ -4,12 +4,12 @@
 #pragma once
 
 #include "core/common/status.h"
-#include "core/platform/path_lib.h"
 #include "core/framework/alloc_kind.h"
 #include "core/framework/allocator.h"
 #include "core/framework/sequential_execution_plan.h"
-#include "core/graph/graph_viewer.h"
 #include "core/framework/session_options.h"
+#include "core/graph/graph_viewer.h"
+#include "core/platform/path_lib.h"
 
 namespace ONNX_NAMESPACE {
 class TensorShapeProto;

@@ -1,8 +1,8 @@
 // Copyright (c) 2023 Advanced Micro Devices, Inc. All rights reserved.
 // Licensed under the MIT License.
 #include "vaip/node.h"
-#include "./vai_assert.h"
 
+#include "./vai_assert.h"
 #include "attr_proto.h"
 #include "core/graph/graph_utils.h"
 #include "core/graph/node_arg.h"

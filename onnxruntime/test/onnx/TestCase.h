@@ -2,13 +2,14 @@
 // Licensed under the MIT License.
 
 #pragma once
-#include <vector>
-#include <mutex>
-#include <unordered_map>
-#include <unordered_set>
 #include <core/common/common.h>
 #include <core/common/status.h>
 #include <core/platform/path_lib.h>
+
+#include <mutex>
+#include <unordered_map>
+#include <unordered_set>
+#include <vector>
 
 namespace Ort {
 struct Value;

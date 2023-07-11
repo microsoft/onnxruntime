@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "test_pool3d.h"
+
 #include "test_pool3d_fixture.h"
 
 template <>

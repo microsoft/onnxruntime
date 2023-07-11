@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/optimizer/insert_cast_transformer.h"
+
 #include "core/framework/data_types.h"
 #include "core/graph/graph_utils.h"
 

@@ -9,24 +9,26 @@
 #pragma once
 #define SHARED_PROVIDER 1
 
-#include <vector>
-#include <string>
+#include <stddef.h>
+
 #include <map>
-#include "core/common/gsl.h"
+#include <string>
 #include <unordered_map>
 #include <unordered_set>
-#include <stddef.h>
+#include <vector>
+
 #include "core/common/common.h"
 #include "core/common/const_pointer_container.h"
+#include "core/common/gsl.h"
 #include "core/common/inlined_containers_fwd.h"
-#include "core/common/type_list.h"
 #include "core/common/logging/severity.h"
+#include "core/common/path_string.h"
+#include "core/common/type_list.h"
 #include "core/framework/allocator.h"
-#include "core/framework/float8.h"
 #include "core/framework/float16.h"
+#include "core/framework/float8.h"
 #include "core/framework/tensor_shape.h"
 #include "core/providers/providers.h"
-#include "core/common/path_string.h"
 
 namespace ONNX_NAMESPACE {
 
@@ -197,19 +199,19 @@ using NodeArgInfo = ONNX_NAMESPACE::ValueInfoProto;
 using NameMLValMap = std::unordered_map<std::string, OrtValue>;
 }  // namespace onnxruntime
 
-#include "core/platform/threadpool.h"
-#include "core/providers/cpu/math/einsum_utils/einsum_compute_preprocessor.h"
-#include "core/providers/cpu/cpu_provider_shared.h"
 #include "core/framework/data_transfer.h"
+#include "core/framework/data_types_internal.h"
 #include "core/framework/execution_provider.h"
+#include "core/framework/op_kernel.h"
+#include "core/framework/op_kernel_type_control_utils.h"
+#include "core/framework/tensorprotoutils.h"
+#include "core/platform/threadpool.h"
+#include "core/providers/common.h"
+#include "core/providers/cpu/cpu_provider_shared.h"
+#include "core/providers/cpu/math/einsum_utils/einsum_compute_preprocessor.h"
+#include "core/util/math.h"
 #include "provider_interfaces.h"
 #include "provider_wrappedtypes.h"
-#include "core/framework/op_kernel.h"
-#include "core/framework/data_types_internal.h"
-#include "core/framework/tensorprotoutils.h"
-#include "core/framework/op_kernel_type_control_utils.h"
-#include "core/providers/common.h"
-#include "core/util/math.h"
 
 namespace onnxruntime {
 

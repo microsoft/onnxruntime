@@ -3,13 +3,13 @@
 
 #include "attention_cpu_base.h"
 #include "attention_helper.h"
-#include "core/framework/tensorprotoutils.h"
-#include "core/graph/onnx_protobuf.h"
-#include "core/util/math.h"
-#include "core/util/math_cpuonly.h"
 #include "core/common/safeint.h"
 #include "core/common/span_utils.h"
+#include "core/framework/tensorprotoutils.h"
+#include "core/graph/onnx_protobuf.h"
 #include "core/platform/threadpool.h"
+#include "core/util/math.h"
+#include "core/util/math_cpuonly.h"
 
 using onnxruntime::narrow;
 using onnxruntime::concurrency::ThreadPool;

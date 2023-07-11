@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "orttraining/test/training_ops/cuda/optimizer/common.h"
+
 #include <algorithm>
 #include <string>
 #include <unordered_map>
@@ -8,9 +10,7 @@
 #include <vector>
 
 #include "gtest/gtest.h"
-
 #include "test/providers/provider_test_utils.h"
-#include "orttraining/test/training_ops/cuda/optimizer/common.h"
 
 namespace onnxruntime {
 namespace test {

@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "orttraining/core/graph/optimizer_graph_builder.h"
+
 #include <algorithm>
 #include <iterator>
 #include <unordered_map>
@@ -8,25 +10,23 @@
 #include <utility>
 #include <vector>
 
-#include "gtest/gtest.h"
-
 #include "core/common/common.h"
 #include "core/common/span_utils.h"
 #include "core/graph/graph.h"
 #include "core/graph/model.h"
+#include "gtest/gtest.h"
+#include "orttraining/core/graph/allreduce_optimizer_graph_builder.h"
 #include "orttraining/core/graph/gradient_builder_base.h"
 #include "orttraining/core/graph/optimizer_builder.h"
-#include "orttraining/core/graph/optimizer_graph_builder.h"
-#include "orttraining/core/graph/allreduce_optimizer_graph_builder.h"
 #if defined(USE_MPI)
 #include "orttraining/core/graph/adasum_optimizer_graph_builder.h"
 #endif
-#include "orttraining/core/graph/zero_optimizer_graph_builder.h"
-#include "test/framework/test_utils.h"
-#include "test/util/include/asserts.h"
-#include "test/test_environment.h"
-#include "orttraining/test/session/training_session_test_utils.h"
 #include "orttraining/core/graph/optimizer_builder.h"
+#include "orttraining/core/graph/zero_optimizer_graph_builder.h"
+#include "orttraining/test/session/training_session_test_utils.h"
+#include "test/framework/test_utils.h"
+#include "test/test_environment.h"
+#include "test/util/include/asserts.h"
 
 using onnxruntime::test::CountOpsInGraph;
 using onnxruntime::test::CreateMLValue;

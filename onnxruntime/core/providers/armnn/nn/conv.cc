@@ -6,14 +6,14 @@
 #pragma warning(disable : 4244)
 #endif
 
+#include "core/providers/armnn/nn/conv.h"
+
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
-#include "core/util/math.h"
-#include "core/util/math_cpuonly.h"
-
-#include "core/providers/armnn/nn/conv.h"
 #include "core/providers/armnn/armnn_common.h"
 #include "core/providers/armnn/armnn_fwd.h"
+#include "core/util/math.h"
+#include "core/util/math_cpuonly.h"
 
 #define PREF_DIM 4
 

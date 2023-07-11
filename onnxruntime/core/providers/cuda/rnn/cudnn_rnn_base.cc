@@ -1,8 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/shared_library/provider_api.h"
 #include "cudnn_rnn_base.h"
+
+#include "core/providers/shared_library/provider_api.h"
 #include "rnn_impl.h"
 
 namespace onnxruntime {

@@ -4,16 +4,17 @@
 #pragma once
 
 #include <vector>
+
 #include "core/common/common.h"
-#include "core/common/status.h"
+#include "core/common/inlined_containers.h"
 #include "core/common/logging/logging.h"
-#include "core/framework/iexecutor.h"
+#include "core/common/status.h"
 #include "core/framework/framework_common.h"
+#include "core/framework/iexecutor.h"
+#include "core/framework/op_kernel_context_internal.h"
 #include "core/framework/ort_value.h"
 #include "core/framework/session_state.h"
 #include "core/graph/graph_viewer.h"
-#include "core/framework/op_kernel_context_internal.h"
-#include "core/common/inlined_containers.h"
 
 #ifdef ENABLE_TRAINING
 #include "core/framework/partial_graph_execution_state.h"

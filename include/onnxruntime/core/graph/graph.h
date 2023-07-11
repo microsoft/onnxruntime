@@ -17,27 +17,26 @@
 #endif
 
 #if !defined(ORT_MINIMAL_BUILD)
-#include "onnx/defs/schema.h"
 #include "core/common/inlined_containers.h"
+#include "onnx/defs/schema.h"
 #else
 #include "onnx/defs/data_type_utils.h"
 #endif
-#include "onnx/onnx_pb.h"
 #include "onnx/onnx-operators_pb.h"
+#include "onnx/onnx_pb.h"
 
 #ifdef _WIN32
 #pragma warning(pop)
 #endif
 
-#include "core/common/gsl.h"
-
 #include "core/common/common.h"
 #include "core/common/const_pointer_container.h"
+#include "core/common/gsl.h"
 #include "core/common/inlined_containers_fwd.h"
+#include "core/common/logging/logging.h"
 #include "core/common/path.h"
 #include "core/common/span_utils.h"
 #include "core/common/status.h"
-#include "core/common/logging/logging.h"
 #include "core/graph/basic_types.h"
 #include "core/graph/constants.h"
 #include "core/graph/function.h"

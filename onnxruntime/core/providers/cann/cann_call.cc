@@ -2,9 +2,11 @@
 // Copyright (c) Huawei. All rights reserved.
 // Licensed under the MIT License.
 
-#include <string.h>
-#include "core/providers/shared_library/provider_api.h"
 #include "cann_call.h"
+
+#include <string.h>
+
+#include "core/providers/shared_library/provider_api.h"
 
 namespace onnxruntime {
 

@@ -2,11 +2,12 @@
 // Licensed under the MIT License.
 
 #include "core/providers/cpu/math/matmul.h"
+
+#include "core/mlas/inc/mlas.h"
 #include "core/providers/cpu/math/gemm_matmul_common.h"
 #include "core/providers/cpu/math/matmul_helper.h"
 #include "core/util/math.h"
 #include "core/util/math_cpuonly.h"
-#include "core/mlas/inc/mlas.h"
 
 namespace onnxruntime {
 

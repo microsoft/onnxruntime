@@ -4,12 +4,12 @@
 #ifndef __TEST_LOG_H__
 #define __TEST_LOG_H__
 
-#include <iostream>
-#include <sstream>
-#include <vector>
-#include <map>
 #include <fstream>
+#include <iostream>
+#include <map>
+#include <sstream>
 #include <unordered_map>
+#include <vector>
 
 // Forward declarartions
 //

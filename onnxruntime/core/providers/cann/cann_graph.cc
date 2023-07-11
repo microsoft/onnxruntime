@@ -2,10 +2,10 @@
 // Copyright (c) Huawei. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/providers/cann/cann_graph.h"
+
 #include <map>
 #include <set>
-
-#include "core/providers/cann/cann_graph.h"
 
 namespace onnxruntime {
 namespace cann {

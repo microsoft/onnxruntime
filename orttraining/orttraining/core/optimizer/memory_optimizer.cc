@@ -1,12 +1,13 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "orttraining/core/optimizer/memory_optimizer.h"
+
 #include "core/framework/random_seed.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/graph/graph_utils.h"
 #include "core/optimizer/utils.h"
 #include "orttraining/core/graph/recompute_graph_utils.h"
-#include "orttraining/core/optimizer/memory_optimizer.h"
 
 namespace onnxruntime {
 

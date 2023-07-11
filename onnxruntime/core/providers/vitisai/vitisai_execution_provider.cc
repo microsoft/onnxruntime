@@ -1,6 +1,5 @@
 // Copyright (c) 2023 Advanced Micro Devices, Inc. All rights reserved.
 // Licensed under the MIT License.
-#include "core/graph/graph_utils.h"
 #include "vitisai_execution_provider.h"
 
 #include <cassert>
@@ -9,13 +8,12 @@
 #include <istream>
 
 #include "core/common/common.h"
-
-#include "vaip/capability.h"
-#include "vaip/global_api.h"
+#include "core/graph/graph_utils.h"
 #include "core/session/custom_ops.h"
 #include "core/session/inference_session.h"
-
 #include "onnxruntime_vitisai_ep/onnxruntime_vitisai_ep.h"
+#include "vaip/capability.h"
+#include "vaip/global_api.h"
 
 using namespace ONNX_NAMESPACE;
 

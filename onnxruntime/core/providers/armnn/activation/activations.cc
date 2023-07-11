@@ -8,8 +8,9 @@
 #pragma warning(disable : 4244)
 #endif
 
-#include "core/providers/armnn/armnn_common.h"
 #include "core/providers/armnn/activation/activations.h"
+
+#include "core/providers/armnn/armnn_common.h"
 #include "core/providers/armnn/armnn_fwd.h"
 
 namespace onnxruntime {

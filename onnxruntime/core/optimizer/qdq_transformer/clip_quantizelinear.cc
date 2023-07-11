@@ -1,10 +1,11 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/optimizer/initializer.h"
 #include "core/optimizer/qdq_transformer/clip_quantizelinear.h"
-#include "core/optimizer/utils.h"
+
 #include "core/graph/graph_utils.h"
+#include "core/optimizer/initializer.h"
+#include "core/optimizer/utils.h"
 
 using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::common;

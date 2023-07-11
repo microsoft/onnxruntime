@@ -2,29 +2,25 @@
 // Copyright (c) 2020, NXP Semiconductor, Inc. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/providers/acl/nn/batch_norm.h"
+
+#include <mutex>
+#include <thread>
+
 #include "core/common/common.h"
 #include "core/common/exceptions.h"
 #include "core/framework/op_kernel.h"
-#include "core/providers/common.h"
 #include "core/framework/tensor.h"
-#include "core/util/math_cpuonly.h"
-
-#include <thread>
-#include <mutex>
-
-#include "core/common/common.h"
-#include "core/framework/op_kernel.h"
+#include "core/providers/acl/acl_common.h"
+#include "core/providers/acl/acl_fwd.h"
+#include "core/providers/common.h"
+#include "core/providers/cpu/nn/batch_norm_helper.h"
 #include "core/util/math.h"
 #include "core/util/math_cpuonly.h"
 
-#include "core/providers/acl/nn/batch_norm.h"
-#include "core/providers/acl/acl_common.h"
-#include "core/providers/acl/acl_fwd.h"
-#include "core/providers/cpu/nn/batch_norm_helper.h"
-
 // ACL
-#include "arm_compute/runtime/Tensor.h"
 #include "arm_compute/core/TensorInfo.h"
+#include "arm_compute/runtime/Tensor.h"
 #include "arm_compute/runtime/TensorAllocator.h"
 
 // NEON

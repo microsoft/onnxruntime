@@ -3,9 +3,9 @@
 
 #if USE_DUMMY_EXA_DEMANGLE
 
+#include <limits.h>
 #include <stdlib.h>
 #include <string.h>
-#include <limits.h>
 
 #define DEMANGLE_INVALID_ARGUMENTS -3
 #define DEMANGLE_INVALID_MANGLED_NAME -2

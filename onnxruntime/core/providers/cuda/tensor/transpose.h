@@ -3,10 +3,10 @@
 
 #pragma once
 
-#include "core/providers/shared_library/provider_api.h"
 #include "core/common/gsl.h"
-#include "core/providers/cuda/cuda_kernel.h"
 #include "core/providers/cpu/tensor/transpose.h"
+#include "core/providers/cuda/cuda_kernel.h"
+#include "core/providers/shared_library/provider_api.h"
 
 namespace onnxruntime {
 namespace cuda {

@@ -1,17 +1,18 @@
 // Copyright (C) 2019-2022 Intel Corporation
 // Licensed under the MIT License
 
-#include <map>
-#include <string>
-#include <memory>
-#include <sstream>
-#include <fstream>
-
-#include "core/providers/shared_library/provider_api.h"
-#include "../backend_utils.h"
-#include <ngraph/pass/constant_folding.hpp>
 #include "basic_backend.h"
+
+#include <fstream>
+#include <map>
+#include <memory>
+#include <ngraph/pass/constant_folding.hpp>
+#include <sstream>
+#include <string>
+
 #include "../backend_manager.h"
+#include "../backend_utils.h"
+#include "core/providers/shared_library/provider_api.h"
 
 namespace onnxruntime {
 

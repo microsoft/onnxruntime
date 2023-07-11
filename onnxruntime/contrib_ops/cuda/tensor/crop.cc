@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "crop.h"
+
 #include "crop_impl.h"
 
 namespace onnxruntime {

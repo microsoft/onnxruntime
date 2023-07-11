@@ -3,12 +3,12 @@
 
 #pragma once
 
-#include "core/platform/threadpool.h"
-#include "core/common/common.h"
-#include "core/framework/tensor.h"
-#include "core/framework/op_kernel_type_control_utils.h"
-
 #include <vector>
+
+#include "core/common/common.h"
+#include "core/framework/op_kernel_type_control_utils.h"
+#include "core/framework/tensor.h"
+#include "core/platform/threadpool.h"
 
 namespace onnxruntime {
 

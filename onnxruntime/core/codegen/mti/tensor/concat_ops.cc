@@ -3,9 +3,10 @@
 
 #include "core/codegen/mti/tensor/concat_ops.h"
 
+#include <topi/transform.h>
+
 #include "core/codegen/mti/mti_tvm_utils.h"
 #include "core/common/gsl.h"
-#include <topi/transform.h>
 
 namespace onnxruntime {
 namespace tvm_codegen {

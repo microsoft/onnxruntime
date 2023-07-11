@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 #pragma once
 #include <vector>
+
 #include "contrib_ops/cpu/bert/attention_common.h"
 
 namespace onnxruntime {

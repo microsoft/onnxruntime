@@ -10,8 +10,8 @@
 #include "onnx/onnx_pb.h"
 #endif
 
-#include "core/framework/float8.h"
 #include "core/framework/float16.h"
+#include "core/framework/float8.h"
 
 namespace onnxruntime {
 namespace utils {

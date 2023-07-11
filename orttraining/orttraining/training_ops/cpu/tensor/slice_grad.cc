@@ -2,8 +2,9 @@
 // Licensed under the MIT License.
 
 #include "orttraining/training_ops/cpu/tensor/slice_grad.h"
-#include "core/providers/cpu/tensor/utils.h"
+
 #include "core/common/common.h"
+#include "core/providers/cpu/tensor/utils.h"
 
 namespace onnxruntime {
 namespace contrib {

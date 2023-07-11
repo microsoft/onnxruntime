@@ -2,12 +2,13 @@
 // Licensed under the MIT License.
 
 #include "orttraining/training_ops/cuda/controlflow/record.h"
+
 #include "core/providers/cpu/tensor/utils.h"
 // Include event mechanism shared by CPU and GPU implementations.
-#include "orttraining/training_ops/cpu/controlflow/event_pool.h"
-#include "orttraining/training_ops/cpu/controlflow/record.h"
 #include "core/providers/cuda/nvtx_profile.h"
 #include "core/providers/cuda/nvtx_profile_context.h"
+#include "orttraining/training_ops/cpu/controlflow/event_pool.h"
+#include "orttraining/training_ops/cpu/controlflow/record.h"
 
 namespace onnxruntime {
 namespace cuda {

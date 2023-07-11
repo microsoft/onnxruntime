@@ -2,9 +2,10 @@
 // Licensed under the MIT License.
 
 #include "OnnxPrediction.h"
-#include "onnxruntime_session_options_config_keys.h"
 
 #include <vector>
+
+#include "onnxruntime_session_options_config_keys.h"
 
 // Uses the onnxruntime to load the model
 // into a session.

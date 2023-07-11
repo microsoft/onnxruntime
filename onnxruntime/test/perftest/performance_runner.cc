@@ -7,12 +7,13 @@
 #endif
 
 #include "performance_runner.h"
+
 #include <iostream>
 
-#include "TestCase.h"
 #include "TFModelInfo.h"
-#include "utils.h"
+#include "TestCase.h"
 #include "ort_test_session.h"
+#include "utils.h"
 #ifdef HAVE_TENSORFLOW
 #include "tf_test_session.h"
 #endif

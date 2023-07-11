@@ -1,10 +1,11 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "orttraining/training_ops/cuda/quantization/fake_quant.h"
+
 #include <memory>
 #include <utility>
 
-#include "orttraining/training_ops/cuda/quantization/fake_quant.h"
 #include "orttraining/training_ops/cuda/quantization/fake_quant_impl.h"
 
 namespace onnxruntime {

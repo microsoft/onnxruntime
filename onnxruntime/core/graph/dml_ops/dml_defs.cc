@@ -1,12 +1,13 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/graph/constants.h"
 #include "core/graph/dml_ops/dml_defs.h"
+
+#include "core/graph/constants.h"
 #include "core/graph/op.h"
+#include "core/providers/dml/OperatorAuthorHelper/Attributes.h"
 #include "onnx/defs/schema.h"
 #include "onnx/defs/shape_inference.h"
-#include "core/providers/dml/OperatorAuthorHelper/Attributes.h"
 
 namespace ONNX_NAMESPACE {
 void convPoolShapeInference(

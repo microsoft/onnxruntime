@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "cuda_allocator.h"
+
 #include "cuda_common.h"
 #include "gpu_data_transfer.h"
 

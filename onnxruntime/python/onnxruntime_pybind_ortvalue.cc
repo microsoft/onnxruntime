@@ -9,12 +9,12 @@
 #define NPY_NO_DEPRECATED_API NPY_1_7_API_VERSION
 #define PY_ARRAY_UNIQUE_SYMBOL onnxruntime_python_ARRAY_API
 #include <numpy/arrayobject.h>
-#include "python/numpy_helper.h"
 
-#include "core/framework/ort_value.h"
-#include "core/framework/tensor.h"
-#include "core/framework/sparse_tensor.h"
 #include "core/framework/TensorSeq.h"
+#include "core/framework/ort_value.h"
+#include "core/framework/sparse_tensor.h"
+#include "core/framework/tensor.h"
+#include "python/numpy_helper.h"
 #ifdef ENABLE_TRAINING
 #include "core/dlpack/dlpack_converter.h"
 #endif

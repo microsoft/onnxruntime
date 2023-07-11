@@ -1,9 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <vector>
+
 #include "gtest/gtest.h"
 #include "test/common/tensor_op_test_utils.h"
-#include <vector>
 
 namespace onnxruntime {
 namespace test {

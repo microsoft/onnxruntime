@@ -12,6 +12,7 @@
 #include <algorithm>
 #include <cmath>  // for round
 #include <vector>
+
 #include "core/framework/tensor.h"
 #include "gsl/span"
 #ifndef SHARED_PROVIDER

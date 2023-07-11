@@ -1,4 +1,5 @@
 #include "core/providers/rocm/rocm_stream_handle.h"
+
 #include "core/providers/rocm/rocm_common.h"
 // #include "core/common/spin_pause.h"
 

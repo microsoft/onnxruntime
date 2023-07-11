@@ -5,14 +5,13 @@
 #ifdef BN_ARMNN
 
 #pragma once
-#include "core/framework/op_kernel.h"
-#include "core/providers/cpu/nn/batch_norm.h"
-#include "core/providers/armnn/armnn_execution_provider.h"
+#include <mutex>
+#include <thread>
 
 #include "armnn/ArmNN.hpp"
-
-#include <thread>
-#include <mutex>
+#include "core/framework/op_kernel.h"
+#include "core/providers/armnn/armnn_execution_provider.h"
+#include "core/providers/cpu/nn/batch_norm.h"
 
 namespace onnxruntime {
 namespace armnn_ep {

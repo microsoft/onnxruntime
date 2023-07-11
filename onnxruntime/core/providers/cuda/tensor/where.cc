@@ -2,8 +2,9 @@
 // Licensed under the MIT License.
 
 #include "where.h"
-#include "where_impl.h"
+
 #include "core/providers/cpu/tensor/utils.h"
+#include "where_impl.h"
 
 namespace onnxruntime {
 namespace cuda {

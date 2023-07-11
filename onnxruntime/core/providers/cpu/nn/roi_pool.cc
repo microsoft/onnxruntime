@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/providers/cpu/nn/roi_pool.h"
+
 #include <cmath>
 
 namespace onnxruntime {

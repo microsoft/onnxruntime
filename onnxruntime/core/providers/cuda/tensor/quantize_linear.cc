@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "quantize_linear.h"
+
 #include "quantize_linear.cuh"
 
 namespace onnxruntime {

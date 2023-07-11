@@ -4,12 +4,12 @@
 #import <XCTest/XCTest.h>
 
 #import "ort_checkpoint.h"
-#import "ort_training_session.h"
 #import "ort_env.h"
 #import "ort_session.h"
+#import "ort_training_session.h"
 
-#import "test/test_utils.h"
 #import "test/assertion_utils.h"
+#import "test/test_utils.h"
 
 NS_ASSUME_NONNULL_BEGIN
 

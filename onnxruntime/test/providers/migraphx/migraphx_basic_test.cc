@@ -1,15 +1,16 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
-#include "core/graph/onnx_protobuf.h"
-#include "core/session/inference_session.h"
-#include "test/providers/provider_test_utils.h"
-#include "test/framework/test_utils.h"
-#include "gtest/gtest.h"
-#include "test/util/include/default_providers.h"
-#include "test/util/include/scoped_env_vars.h"
-#include "core/providers/migraphx/migraphx_execution_provider_utils.h"
 #include <string>
 #include <thread>
+
+#include "core/graph/onnx_protobuf.h"
+#include "core/providers/migraphx/migraphx_execution_provider_utils.h"
+#include "core/session/inference_session.h"
+#include "gtest/gtest.h"
+#include "test/framework/test_utils.h"
+#include "test/providers/provider_test_utils.h"
+#include "test/util/include/default_providers.h"
+#include "test/util/include/scoped_env_vars.h"
 
 using namespace std;
 using namespace ONNX_NAMESPACE;

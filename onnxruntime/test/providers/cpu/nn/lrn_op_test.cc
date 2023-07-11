@@ -1,8 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "gtest/gtest.h"
 #include "default_providers.h"
+#include "gtest/gtest.h"
 #include "test/common/dnnl_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
 using namespace std;

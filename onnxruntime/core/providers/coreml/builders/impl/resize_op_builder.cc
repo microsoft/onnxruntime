@@ -3,19 +3,18 @@
 
 #include <math.h>
 
-#include "core/providers/common.h"
 #include "core/framework/tensorprotoutils.h"
+#include "core/optimizer/initializer.h"
+#include "core/providers/common.h"
 #include "core/providers/coreml/builders/helper.h"
 #include "core/providers/cpu/tensor/reshape_helper.h"
 #include "core/providers/shared/utils/utils.h"
-#include "core/optimizer/initializer.h"
 
 #ifdef __APPLE__
 #include "core/providers/coreml/builders/model_builder.h"
 #endif
-#include "core/providers/coreml/builders/op_builder_factory.h"
-
 #include "base_op_builder.h"
+#include "core/providers/coreml/builders/op_builder_factory.h"
 
 namespace onnxruntime {
 namespace coreml {

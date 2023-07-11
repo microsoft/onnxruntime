@@ -3,8 +3,8 @@
 
 #pragma once
 
-#include "core/optimizer/transpose_optimization/optimizer_api.h"
 #include "core/optimizer/transpose_optimization/onnx_transpose_optimization.h"
+#include "core/optimizer/transpose_optimization/optimizer_api.h"
 
 namespace onnxruntime {
 /// <summary>

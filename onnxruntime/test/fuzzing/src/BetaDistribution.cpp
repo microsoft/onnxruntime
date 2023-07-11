@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "BetaDistribution.h"
+
 #include <iostream>
 
 void unittestBetaDistribution() {

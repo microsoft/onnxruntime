@@ -2,8 +2,9 @@
 // Licensed under the MIT License.
 
 #include "core/providers/cuda/cuda_stream_handle.h"
-#include "core/providers/cuda/cuda_common.h"
+
 #include "core/common/spin_pause.h"
+#include "core/providers/cuda/cuda_common.h"
 
 namespace onnxruntime {
 

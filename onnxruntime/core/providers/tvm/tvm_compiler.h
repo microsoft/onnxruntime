@@ -4,8 +4,8 @@
 #ifndef TVM_COMPILER_H
 #define TVM_COMPILER_H
 
-#include <string>
 #include <memory>
+#include <string>
 
 #include "tvm_common.h"
 #include "tvm_ep_options.h"

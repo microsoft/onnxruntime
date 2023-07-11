@@ -2,12 +2,13 @@
 // Licensed under the MIT License.
 
 #include "orttraining/training_ops/cuda/reduction/reduction_ops.h"
+
 #include "core/providers/common.h"
-#include "core/providers/cuda/cudnn_common.h"
-#include "core/providers/cuda/math/unary_elementwise_ops_impl.h"
-#include "core/providers/cuda/math/binary_elementwise_ops_impl.h"
-#include "core/providers/cuda/math/binary_elementwise_ops.h"
 #include "core/providers/cpu/tensor/utils.h"
+#include "core/providers/cuda/cudnn_common.h"
+#include "core/providers/cuda/math/binary_elementwise_ops.h"
+#include "core/providers/cuda/math/binary_elementwise_ops_impl.h"
+#include "core/providers/cuda/math/unary_elementwise_ops_impl.h"
 
 using namespace onnxruntime::common;
 namespace onnxruntime {

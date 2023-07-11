@@ -2,9 +2,10 @@
 // Licensed under the MIT License.
 
 #pragma once
+#include <core/common/common.h>
+
 #include <atomic>
 #include <vector>
-#include <core/common/common.h>
 
 class ITestCase;
 class TestCaseResult;

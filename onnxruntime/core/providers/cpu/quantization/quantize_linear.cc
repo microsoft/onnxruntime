@@ -1,13 +1,15 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include <core/common/safeint.h>
-#include "core/framework/element_type_lists.h"
-#include "core/framework/float8.h"
-#include "core/framework/float16.h"
 #include "core/providers/cpu/quantization/quantize_linear.h"
-#include "core/providers/common.h"
+
+#include <core/common/safeint.h>
+
+#include "core/framework/element_type_lists.h"
+#include "core/framework/float16.h"
+#include "core/framework/float8.h"
 #include "core/mlas/inc/mlas.h"
+#include "core/providers/common.h"
 #include "core/util/qmath.h"
 
 namespace onnxruntime {

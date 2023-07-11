@@ -2,23 +2,23 @@
 // Copyright (c) Huawei. All rights reserved.
 // Licensed under the MIT License.
 
-#include <utility>
-#include <fstream>
 #include <algorithm>
+#include <fstream>
 #include <iterator>
 #include <map>
 #include <unordered_set>
+#include <utility>
 
 #include "core/providers/shared_library/provider_api.h"
 #define ORT_API_MANUAL_INIT
-#include "core/session/onnxruntime_cxx_api.h"
-#include "core/providers/cann/cann_execution_provider.h"
-#include "core/providers/cann/cann_inc.h"
-#include "core/providers/cann/cann_call.h"
 #include "core/providers/cann/cann_allocator.h"
+#include "core/providers/cann/cann_call.h"
+#include "core/providers/cann/cann_execution_provider.h"
 #include "core/providers/cann/cann_fwd.h"
+#include "core/providers/cann/cann_inc.h"
 #include "core/providers/cann/cann_stream_handle.h"
 #include "core/providers/cann/npu_data_transfer.h"
+#include "core/session/onnxruntime_cxx_api.h"
 
 using onnxruntime::cann::BuildONNXModel;
 using onnxruntime::cann::CannModelPreparation;

@@ -1,10 +1,12 @@
 
-#include <core/graph/onnx_protobuf.h>
-#include <core/framework/tensor.h>
-#include <core/util/math_cpuonly.h>
-#include "core/platform/threadpool.h"
 #include <benchmark/benchmark.h>
+#include <core/framework/tensor.h>
+#include <core/graph/onnx_protobuf.h>
+#include <core/util/math_cpuonly.h>
+
 #include <random>
+
+#include "core/platform/threadpool.h"
 
 using namespace onnxruntime;
 

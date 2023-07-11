@@ -3,9 +3,10 @@
 
 #include "core/codegen/mti/tensor/cast_ops.h"
 
-#include "core/codegen/mti/mti_tvm_utils.h"
 #include <topi/broadcast.h>
 #include <topi/elemwise.h>
+
+#include "core/codegen/mti/mti_tvm_utils.h"
 
 namespace onnxruntime {
 namespace tvm_codegen {

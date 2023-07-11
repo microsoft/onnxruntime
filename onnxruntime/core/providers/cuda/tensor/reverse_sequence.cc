@@ -2,9 +2,9 @@
 // Licensed under the MIT License.
 
 #include "reverse_sequence.h"
-#include "reverse_sequence_impl.h"
 
 #include "core/providers/cpu/tensor/utils.h"
+#include "reverse_sequence_impl.h"
 
 namespace onnxruntime {
 namespace cuda {

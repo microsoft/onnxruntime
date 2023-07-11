@@ -1,15 +1,18 @@
 #include "ort_test_session.h"
+
+#include <assert.h>
+#include <core/session/onnxruntime_cxx_api.h>
+
 #include <algorithm>
 #include <limits>
 #include <set>
 #include <type_traits>
-#include <core/session/onnxruntime_cxx_api.h>
-#include "core/session/onnxruntime_session_options_config_keys.h"
-#include "core/providers/tensorrt/tensorrt_provider_options.h"
-#include "core/providers/dnnl/dnnl_provider_options.h"
-#include <assert.h>
-#include "providers.h"
+
 #include "TestCase.h"
+#include "core/providers/dnnl/dnnl_provider_options.h"
+#include "core/providers/tensorrt/tensorrt_provider_options.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
+#include "providers.h"
 
 #ifdef _WIN32
 #define strdup _strdup

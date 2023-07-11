@@ -3,9 +3,9 @@
 
 #ifndef __BETADISTRIBUTION_H__
 #define __BETADISTRIBUTION_H__
-#include <random>
-#include <map>
 #include <chrono>
+#include <map>
+#include <random>
 
 // Default parameter will produce a shape with alpha = 0.5
 // and beta = 0.5.

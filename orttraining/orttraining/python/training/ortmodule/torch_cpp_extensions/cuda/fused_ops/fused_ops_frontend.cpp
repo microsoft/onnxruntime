@@ -1,10 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 
-#include <torch/extension.h>
-
+#include <pybind11/pytypes.h>
 #include <pybind11/stl.h>
 #include <pybind11/stl_bind.h>
-#include <pybind11/pytypes.h>
+#include <torch/extension.h>
 
 #define MTA_CHUNK_SIZE 2048 * 32
 

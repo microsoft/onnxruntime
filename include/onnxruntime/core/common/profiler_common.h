@@ -3,10 +3,10 @@
 
 #pragma once
 
-#include "core/common/common.h"
-
 #include <string>
 #include <unordered_map>
+
+#include "core/common/common.h"
 
 namespace onnxruntime {
 namespace profiling {

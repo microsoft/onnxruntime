@@ -3,8 +3,9 @@
 #pragma once
 #include <string>
 #include <vector>
-#include "core/graph/basic_types.h"
+
 #include "core/common/status.h"
+#include "core/graph/basic_types.h"
 #include "core/graph/graph.h"
 
 namespace onnxruntime {

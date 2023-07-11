@@ -2,9 +2,11 @@
 // Licensed under the MIT License.
 
 #include "random_seed.h"
-#include "random_generator.h"
+
 #include <atomic>
 #include <chrono>
+
+#include "random_generator.h"
 
 namespace onnxruntime {
 namespace utils {

@@ -3,12 +3,13 @@
 
 #pragma once
 
-#include <unordered_map>
 #include <functional>
-#include "orttraining/core/graph/generic_registry.h"
+#include <unordered_map>
+
 #include "core/optimizer/graph_transformer.h"
 #include "core/optimizer/graph_transformer_level.h"
 #include "core/optimizer/rule_based_graph_transformer.h"
+#include "orttraining/core/graph/generic_registry.h"
 
 namespace onnxruntime {
 namespace training {

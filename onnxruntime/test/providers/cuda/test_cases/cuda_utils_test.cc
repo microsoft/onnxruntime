@@ -1,14 +1,14 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/providers/cuda/shared_inc/cuda_utils.h"
+
 #include <memory>
 #include <vector>
 
-#include "gtest/gtest.h"
-
 #include "core/common/common.h"
 #include "core/providers/cuda/shared_inc/cuda_call.h"
-#include "core/providers/cuda/shared_inc/cuda_utils.h"
+#include "gtest/gtest.h"
 
 namespace onnxruntime {
 namespace cuda {

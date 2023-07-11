@@ -3,12 +3,12 @@
 
 #pragma once
 
-#include <map>
 #include <cstdint>
+#include <map>
 #include <string>
 
-#include "core/graph/constants.h"
 #include "core/framework/session_options.h"
+#include "core/graph/constants.h"
 
 namespace onnxruntime {
 namespace perftest {

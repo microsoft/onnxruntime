@@ -4,52 +4,52 @@
 // This is the Onnxruntime side of the bridge to allow providers to be built as a DLL
 // It implements onnxruntime::ProviderHost
 
+#include "core/session/provider_bridge_ort.h"
+
 #include "core/common/inlined_containers.h"
+#include "core/common/string_helper.h"
+#include "core/framework/TensorSeq.h"
 #include "core/framework/allocator_utils.h"
 #include "core/framework/compute_capability.h"
-#include "core/framework/data_types.h"
 #include "core/framework/data_transfer_manager.h"
+#include "core/framework/data_types.h"
 #include "core/framework/error_code_helper.h"
 #include "core/framework/execution_provider.h"
-#include "core/framework/kernel_registry.h"
-#include "core/framework/provider_shutdown.h"
-#include "core/framework/tensorprotoutils.h"
-#include "core/framework/TensorSeq.h"
-#include "core/framework/provider_options.h"
 #include "core/framework/fallback_cpu_capability.h"
+#include "core/framework/kernel_registry.h"
+#include "core/framework/murmurhash3.h"
+#include "core/framework/provider_options.h"
+#include "core/framework/provider_shutdown.h"
 #include "core/framework/random_generator.h"
+#include "core/framework/sparse_utils.h"
+#include "core/framework/tensorprotoutils.h"
+#include "core/graph/graph_proto_serializer.h"
 #include "core/graph/model.h"
 #include "core/platform/env.h"
 #include "core/providers/common.h"
-#include "core/session/inference_session.h"
 #include "core/session/abi_session_options_impl.h"
-#include "core/session/ort_apis.h"
-#include "core/session/provider_bridge_ort.h"
-#include "core/util/math.h"
-#include "core/framework/sparse_utils.h"
-#include "core/graph/graph_proto_serializer.h"
-#include "core/framework/murmurhash3.h"
-
+#include "core/session/inference_session.h"
 #include "core/session/onnxruntime_c_api.h"
-#include "core/common/string_helper.h"
+#include "core/session/ort_apis.h"
+#include "core/util/math.h"
 
 #ifdef ENABLE_TRAINING
 #ifdef ENABLE_TRAINING_TORCH_INTEROP
-#include "orttraining/training_ops/cpu/torch/torch_custom_function_kernel_base.h"
 #include "orttraining/core/framework/torch/refcount_tracker.h"
+#include "orttraining/training_ops/cpu/torch/torch_custom_function_kernel_base.h"
 #endif
 #endif
 #ifdef ENABLE_NVTX_PROFILE
 #include "core/providers/cuda/nvtx_profile.h"
 #endif
 #if defined(ORT_USE_NCCL) && defined(ENABLE_TRAINING)
-#include "orttraining/training_ops/cuda/communication/nccl_service.h"
 #include "orttraining/core/framework/distributed_run_context.h"
+#include "orttraining/training_ops/cuda/communication/nccl_service.h"
 #endif
 
 #if defined(USE_ROCM) && defined(ORT_USE_NCCL) && defined(ENABLE_TRAINING)
-#include "orttraining/training_ops/rocm/communication/nccl_service.h"
 #include "orttraining/core/framework/distributed_run_context.h"
+#include "orttraining/training_ops/rocm/communication/nccl_service.h"
 #endif
 
 namespace ONNX_NAMESPACE {
@@ -66,27 +66,25 @@ using IndexedSubGraph_MetaDef = IndexedSubGraph::MetaDef;
 
 #include "core/common/cpuid_info.h"
 #include "core/common/logging/logging.h"
-#include "core/providers/shared_library/provider_interfaces.h"
-
-#include "core/providers/cuda/cuda_provider_factory_creator.h"
-#include "core/providers/cann/cann_provider_factory_creator.h"
-#include "core/providers/rocm/rocm_provider_factory_creator.h"
-#include "core/providers/dnnl/dnnl_provider_factory_creator.h"
-#include "core/providers/migraphx/migraphx_provider_factory_creator.h"
-#include "core/providers/openvino/openvino_provider_factory_creator.h"
-#include "core/providers/tensorrt/tensorrt_provider_factory_creator.h"
-
-#include "core/providers/cuda/cuda_provider_factory.h"
 #include "core/providers/cann/cann_provider_factory.h"
-#include "core/providers/rocm/rocm_provider_factory.h"
-#include "core/providers/dnnl/dnnl_provider_factory.h"
-#include "core/providers/migraphx/migraphx_provider_factory.h"
-#include "core/providers/openvino/openvino_provider_factory.h"
-#include "core/providers/tensorrt/tensorrt_provider_factory.h"
-#include "core/providers/tensorrt/tensorrt_provider_options.h"
-#include "core/providers/cuda/cuda_provider_options.h"
+#include "core/providers/cann/cann_provider_factory_creator.h"
 #include "core/providers/cann/cann_provider_options.h"
+#include "core/providers/cuda/cuda_provider_factory.h"
+#include "core/providers/cuda/cuda_provider_factory_creator.h"
+#include "core/providers/cuda/cuda_provider_options.h"
+#include "core/providers/dnnl/dnnl_provider_factory.h"
+#include "core/providers/dnnl/dnnl_provider_factory_creator.h"
 #include "core/providers/dnnl/dnnl_provider_options.h"
+#include "core/providers/migraphx/migraphx_provider_factory.h"
+#include "core/providers/migraphx/migraphx_provider_factory_creator.h"
+#include "core/providers/openvino/openvino_provider_factory.h"
+#include "core/providers/openvino/openvino_provider_factory_creator.h"
+#include "core/providers/rocm/rocm_provider_factory.h"
+#include "core/providers/rocm/rocm_provider_factory_creator.h"
+#include "core/providers/shared_library/provider_interfaces.h"
+#include "core/providers/tensorrt/tensorrt_provider_factory.h"
+#include "core/providers/tensorrt/tensorrt_provider_factory_creator.h"
+#include "core/providers/tensorrt/tensorrt_provider_options.h"
 
 // The filename extension for a shared library is different per platform
 #ifdef _WIN32

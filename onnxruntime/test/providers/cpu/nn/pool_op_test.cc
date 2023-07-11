@@ -3,8 +3,8 @@
 
 #include "core/providers/cpu/nn/pool.h"
 #include "gtest/gtest.h"
-#include "test/providers/provider_test_utils.h"
 #include "test/common/cuda_op_test_utils.h"
+#include "test/providers/provider_test_utils.h"
 using namespace std;
 namespace onnxruntime {
 namespace test {

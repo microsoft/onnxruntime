@@ -2,17 +2,17 @@
 // Copyright (c) Intel Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include <fstream>
-
 #include "model_builder.h"
-#include "model.h"
-#include "helper.h"
-#include "op_builder_factory.h"
+
+#include <fstream>
 
 #include "core/common/safeint.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/providers/common.h"
 #include "core/providers/shared/utils/utils.h"
+#include "helper.h"
+#include "model.h"
+#include "op_builder_factory.h"
 
 namespace onnxruntime {
 namespace webnn {

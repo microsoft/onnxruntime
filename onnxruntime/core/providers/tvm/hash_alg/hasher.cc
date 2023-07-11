@@ -1,9 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/common/common.h"
+#include "hasher.h"  // NOLINT(build/include_subdir)
 
-#include "hasher.h"       // NOLINT(build/include_subdir)
+#include "core/common/common.h"
 #include "hasher_impl.h"  // NOLINT(build/include_subdir)
 
 namespace onnxruntime {

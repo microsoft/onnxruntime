@@ -6,9 +6,9 @@
 #include <queue>
 #include <string>
 
-#include "core/optimizer/graph_transformer.h"
 #include "core/graph/graph_utils.h"
 #include "core/optimizer/compute_optimizer/shared_utils.h"
+#include "core/optimizer/graph_transformer.h"
 
 namespace onnxruntime {
 

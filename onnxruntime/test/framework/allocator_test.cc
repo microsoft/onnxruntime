@@ -3,8 +3,8 @@
 
 #include "core/framework/allocator.h"
 
-#include "test_utils.h"
 #include "gtest/gtest.h"
+#include "test_utils.h"
 
 namespace onnxruntime {
 namespace test {

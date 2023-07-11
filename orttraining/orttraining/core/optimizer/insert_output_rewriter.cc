@@ -1,8 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/graph/graph_utils.h"
 #include "orttraining/core/optimizer/insert_output_rewriter.h"
+
+#include "core/graph/graph_utils.h"
 
 using namespace ONNX_NAMESPACE;
 

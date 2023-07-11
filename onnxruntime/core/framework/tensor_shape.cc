@@ -2,7 +2,9 @@
 // Licensed under the MIT License.
 
 #include "core/framework/tensor_shape.h"
+
 #include <iostream>
+
 #include "core/common/common.h"
 #include "core/common/safeint.h"
 #include "core/framework/tensorprotoutils.h"

@@ -4,9 +4,9 @@
 #pragma once
 
 #include <random>
-#include "core/common/gsl.h"
 
 #include "core/common/common.h"
+#include "core/common/gsl.h"
 #include "core/framework/op_kernel.h"
 #include "core/framework/random_seed.h"
 #include "core/platform/ort_mutex.h"

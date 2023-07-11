@@ -3,6 +3,7 @@
 #pragma once
 
 #include <string>
+
 #include "core/common/status.h"
 #include "core/graph/onnx_protobuf.h"
 #include "core/session/onnxruntime_c_api.h"

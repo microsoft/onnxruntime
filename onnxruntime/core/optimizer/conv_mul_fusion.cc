@@ -1,9 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/optimizer/conv_mul_fusion.h"
+
 #include "core/graph/graph_utils.h"
 #include "core/optimizer/initializer.h"
-#include "core/optimizer/conv_mul_fusion.h"
 #include "core/optimizer/utils.h"
 
 using namespace ONNX_NAMESPACE;

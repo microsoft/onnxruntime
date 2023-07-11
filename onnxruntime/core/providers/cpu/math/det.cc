@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/providers/cpu/math/det.h"
+
 #include "core/util/math_cpuonly.h"
 // TODO: fix the warnings
 #if defined(_MSC_VER) && !defined(__clang__)

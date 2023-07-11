@@ -2,10 +2,11 @@
 // Licensed under the MIT License.
 
 #include "cumsum.h"
-#include "core/providers/common.h"
-#include "core/providers/cpu/tensor/utils.h"
+
 #include "core/framework/op_kernel.h"
 #include "core/framework/tensorprotoutils.h"
+#include "core/providers/common.h"
+#include "core/providers/cpu/tensor/utils.h"
 
 using namespace onnxruntime;
 

@@ -1,16 +1,16 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "asserts.h"
 #include "core/graph/graph_viewer.h"
 #include "core/graph/model.h"
+#include "core/optimizer/free_dim_override_transformer.h"
 #include "core/optimizer/graph_transformer.h"
 #include "core/optimizer/graph_transformer_mgr.h"
+#include "core/session/inference_session.h"
+#include "gtest/gtest.h"
 #include "test/framework/test_utils.h"
 #include "test/test_environment.h"
-#include "gtest/gtest.h"
-#include "core/optimizer/free_dim_override_transformer.h"
-#include "core/session/inference_session.h"
-#include "asserts.h"
 
 using namespace std;
 using namespace ONNX_NAMESPACE;

@@ -1,11 +1,12 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "gtest/gtest.h"
+#include <random>
+
 #include "core/framework/tensor.h"
 #include "core/providers/cpu/ml/ml_common.h"
+#include "gtest/gtest.h"
 #include "test/framework/dummy_allocator.h"
-#include <random>
 
 using namespace onnxruntime;
 using namespace onnxruntime::ml;

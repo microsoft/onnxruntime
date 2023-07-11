@@ -5,7 +5,6 @@
 
 #include <sstream>
 
-#include "core/platform/ort_mutex.h"
 #include "core/common/logging/logging.h"
 #include "core/common/safeint.h"
 #include "core/flatbuffers/schema/ort.fbs.h"
@@ -15,6 +14,7 @@
 #include "core/framework/ort_value_pattern_planner.h"
 #include "core/framework/session_state_utils.h"
 #include "core/framework/utils.h"
+#include "core/platform/ort_mutex.h"
 #include "core/providers/cpu/controlflow/utils.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 

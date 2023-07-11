@@ -1,9 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/codegen/passes/op_ir_creator/all_ops.h"
-
 #include "core/codegen/mti/math/softmax.h"
+
+#include "core/codegen/passes/op_ir_creator/all_ops.h"
 #include "core/framework/op_kernel_info.h"
 #include "core/providers/common.h"
 

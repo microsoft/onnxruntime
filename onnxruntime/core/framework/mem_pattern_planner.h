@@ -17,9 +17,10 @@ limitations under the License.
 
 #pragma once
 #include <list>
+
 #include "core/common/safeint.h"
-#include "core/framework/mem_pattern.h"
 #include "core/framework/allocation_planner.h"
+#include "core/framework/mem_pattern.h"
 #include "core/platform/ort_mutex.h"
 
 namespace onnxruntime {

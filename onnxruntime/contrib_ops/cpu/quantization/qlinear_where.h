@@ -3,11 +3,11 @@
 
 #pragma once
 
-#include "qlinear_util.h"
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
-#include "core/util/math_cpuonly.h"
 #include "core/providers/cpu/tensor/where_op.h"
+#include "core/util/math_cpuonly.h"
+#include "qlinear_util.h"
 
 namespace onnxruntime {
 namespace contrib {

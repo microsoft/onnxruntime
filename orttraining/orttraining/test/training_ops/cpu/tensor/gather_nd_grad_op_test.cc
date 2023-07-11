@@ -6,9 +6,9 @@
 // Need more debugging to find the root cause.
 #ifdef ENABLE_TRAINING
 #include "gtest/gtest.h"
-#include "test/providers/provider_test_utils.h"
 #include "test/common/cuda_op_test_utils.h"
 #include "test/common/tensor_op_test_utils.h"
+#include "test/providers/provider_test_utils.h"
 
 namespace onnxruntime {
 namespace test {

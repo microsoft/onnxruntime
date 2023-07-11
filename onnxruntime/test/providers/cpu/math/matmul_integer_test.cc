@@ -1,19 +1,18 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "gtest/gtest.h"
-#include "test/common/cuda_op_test_utils.h"
-#include "test/common/quantization_test_utils.h"
-#include "test/providers/provider_test_utils.h"
+#include <algorithm>
+#include <random>
 
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
 #include "core/mlas/inc/mlas.h"
 #include "core/util/math_cpuonly.h"
 #include "core/util/qmath.h"
-
-#include <algorithm>
-#include <random>
+#include "gtest/gtest.h"
+#include "test/common/cuda_op_test_utils.h"
+#include "test/common/quantization_test_utils.h"
+#include "test/providers/provider_test_utils.h"
 
 namespace onnxruntime {
 namespace test {

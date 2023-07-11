@@ -3,9 +3,9 @@
 
 #pragma once
 
-#include "core/providers/js/js_kernel.h"
 #include "core/common/gsl.h"
 #include "core/providers/cpu/tensor/transpose.h"
+#include "core/providers/js/js_kernel.h"
 
 namespace onnxruntime {
 namespace js {

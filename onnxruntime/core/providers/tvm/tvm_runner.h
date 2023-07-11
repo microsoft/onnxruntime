@@ -4,8 +4,8 @@
 #ifndef TVM_RUNNER_H
 #define TVM_RUNNER_H
 
-#include <vector>
 #include <memory>
+#include <vector>
 
 #include "tvm_runner_impl.h"
 

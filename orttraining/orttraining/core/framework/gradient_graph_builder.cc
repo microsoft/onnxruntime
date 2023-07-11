@@ -1,17 +1,18 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/common/logging/logging.h"
-#include "core/graph/op.h"
-#include "core/graph/graph_utils.h"
-#include "core/graph/schema_registry.h"
 #include "orttraining/core/framework/gradient_graph_builder.h"
-#include "orttraining/core/graph/gradient_builder_registry.h"
-#include "orttraining/core/graph/gradient_config.h"
-#include "orttraining/core/optimizer/insert_output_rewriter.h"
-#include "orttraining/core/optimizer/batchnorm_replacement.h"
+
+#include "core/common/logging/logging.h"
+#include "core/graph/graph_utils.h"
+#include "core/graph/op.h"
+#include "core/graph/schema_registry.h"
 #include "core/optimizer/gelu_fusion.h"
 #include "core/optimizer/rule_based_graph_transformer.h"
+#include "orttraining/core/graph/gradient_builder_registry.h"
+#include "orttraining/core/graph/gradient_config.h"
+#include "orttraining/core/optimizer/batchnorm_replacement.h"
+#include "orttraining/core/optimizer/insert_output_rewriter.h"
 
 using namespace ONNX_NAMESPACE;
 

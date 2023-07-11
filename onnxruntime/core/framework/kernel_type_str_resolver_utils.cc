@@ -5,11 +5,10 @@
 
 #include "core/framework/kernel_type_str_resolver_utils.h"
 
-#include "flatbuffers/flatbuffers.h"
-
 #include "core/common/common.h"
 #include "core/flatbuffers/schema/ort.fbs.h"
 #include "core/optimizer/layout_transformation/layout_transformation_potentially_added_ops.h"
+#include "flatbuffers/flatbuffers.h"
 
 namespace onnxruntime::kernel_type_str_resolver_utils {
 

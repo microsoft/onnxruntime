@@ -3,25 +3,27 @@
 #include <fstream>
 #include <list>
 #include <unordered_set>
+
 #include "core/providers/shared_library/provider_api.h"
 #define ORT_API_MANUAL_INIT
-#include "core/session/onnxruntime_cxx_api.h"
-#include "core/common/common.h"
-#include "core/common/safeint.h"
-#include "tensorrt_execution_provider.h"
-#include "tensorrt_execution_provider_utils.h"
-#include "tensorrt_execution_provider_custom_ops.h"
-#include "core/providers/cuda/shared_inc/cuda_call.h"
-#include "core/providers/cuda/math/unary_elementwise_ops_impl.h"
-#include "core/providers/cuda/gpu_data_transfer.h"
-#include "core/session/allocator_adapters.h"
-#include "cuda_runtime_api.h"
-#include "core/common/gsl.h"
-#include <unordered_map>
-#include <utility>
 #include <limits>
 #include <map>
 #include <memory>
+#include <unordered_map>
+#include <utility>
+
+#include "core/common/common.h"
+#include "core/common/gsl.h"
+#include "core/common/safeint.h"
+#include "core/providers/cuda/gpu_data_transfer.h"
+#include "core/providers/cuda/math/unary_elementwise_ops_impl.h"
+#include "core/providers/cuda/shared_inc/cuda_call.h"
+#include "core/session/allocator_adapters.h"
+#include "core/session/onnxruntime_cxx_api.h"
+#include "cuda_runtime_api.h"
+#include "tensorrt_execution_provider.h"
+#include "tensorrt_execution_provider_custom_ops.h"
+#include "tensorrt_execution_provider_utils.h"
 // TODO: find a better way to share this
 #include "core/providers/cuda/cuda_stream_handle.h"
 

@@ -1,15 +1,13 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include <algorithm>
-
 #include "core/common/denormal.h"
 
-#include "gtest/gtest.h"
-
-#include "test/util/include/asserts.h"
-
+#include <algorithm>
 #include <array>
+
+#include "gtest/gtest.h"
+#include "test/util/include/asserts.h"
 
 namespace onnxruntime {
 namespace test {

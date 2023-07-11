@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "compress.h"
+
 #include "compress_impl.h"
 
 namespace onnxruntime {

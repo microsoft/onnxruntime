@@ -2,13 +2,12 @@
 // Licensed under the MIT License.
 
 #include "core/framework/fallback_cpu_capability.h"
-#include "core/common/inlined_containers.h"
 
 #include <queue>
 
-#include "onnx/defs/data_type_utils.h"
-
+#include "core/common/inlined_containers.h"
 #include "core/framework/op_kernel.h"
+#include "onnx/defs/data_type_utils.h"
 
 using namespace ONNX_NAMESPACE::Utils;
 

@@ -3,8 +3,8 @@
 
 #pragma once
 
-#include <thread>
 #include <future>
+#include <thread>
 
 #include "core/common/common.h"
 #include "core/common/logging/logging.h"

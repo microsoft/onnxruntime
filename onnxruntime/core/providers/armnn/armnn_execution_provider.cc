@@ -3,12 +3,13 @@
 // Licensed under the MIT License.
 
 #include "armnn_execution_provider.h"
-#include "core/framework/allocator.h"
-#include "core/framework/op_kernel.h"
-#include "core/framework/kernel_registry.h"
-#include "core/framework/compute_capability.h"
-#include "contrib_ops/cpu/cpu_contrib_kernels.h"
+
 #include "armnn_fwd.h"
+#include "contrib_ops/cpu/cpu_contrib_kernels.h"
+#include "core/framework/allocator.h"
+#include "core/framework/compute_capability.h"
+#include "core/framework/kernel_registry.h"
+#include "core/framework/op_kernel.h"
 
 namespace onnxruntime {
 

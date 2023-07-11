@@ -7,8 +7,10 @@
 #endif
 
 #include "core/providers/cpu/tensor/space_depth_ops.h"
-#include "core/common/eigen_common_wrapper.h"
+
 #include <array>
+
+#include "core/common/eigen_common_wrapper.h"
 
 namespace onnxruntime {
 

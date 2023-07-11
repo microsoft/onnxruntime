@@ -2,23 +2,26 @@
 // Licensed under the MIT License.
 
 #include "string_normalizer.h"
+
 #include "core/common/common.h"
 #include "core/framework/tensor.h"
 #include "onnxruntime_config.h"
 
 #ifdef _MSC_VER
-#include <codecvt>
 #include <locale.h>
+
+#include <codecvt>
 #elif defined(__APPLE__) || defined(__ANDROID__)
 #include <codecvt>
 #else
-#include <limits>
 #include <iconv.h>
+
+#include <limits>
 
 #endif  // _MSC_VER
 
-#include <locale>
 #include <functional>
+#include <locale>
 #include <unordered_set>
 
 #if defined(__GNUC__)

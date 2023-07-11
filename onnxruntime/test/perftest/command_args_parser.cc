@@ -4,6 +4,7 @@
 #include "command_args_parser.h"
 
 #include <string.h>
+
 #include <iostream>
 
 // Windows Specific
@@ -15,8 +16,8 @@
 #endif
 
 #include <core/graph/constants.h>
-#include <core/platform/path_lib.h>
 #include <core/optimizer/graph_transformer_level.h>
+#include <core/platform/path_lib.h>
 
 #include "test_configuration.h"
 

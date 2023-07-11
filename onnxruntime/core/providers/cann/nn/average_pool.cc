@@ -2,9 +2,11 @@
 // Copyright (c) Huawei. All rights reserved.
 // Licensed under the MIT License.
 
-#include <unordered_map>
-#include "core/providers/shared_library/provider_api.h"
 #include "core/providers/cann/nn/average_pool.h"
+
+#include <unordered_map>
+
+#include "core/providers/shared_library/provider_api.h"
 
 using onnxruntime::common::Status;
 namespace onnxruntime {

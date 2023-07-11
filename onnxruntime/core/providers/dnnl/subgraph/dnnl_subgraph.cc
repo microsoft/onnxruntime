@@ -2,6 +2,7 @@
 // Licensed under the MIT License
 
 #include "dnnl_subgraph.h"
+
 #include <queue>
 
 namespace onnxruntime {

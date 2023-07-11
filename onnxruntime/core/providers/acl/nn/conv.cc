@@ -5,17 +5,17 @@
 #ifdef _WIN32
 #pragma warning(disable : 4244)
 #endif
-#include <thread>
+#include "core/providers/acl/nn/conv.h"
+
 #include <mutex>
+#include <thread>
 
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
-#include "core/util/math.h"
-#include "core/util/math_cpuonly.h"
-
-#include "core/providers/acl/nn/conv.h"
 #include "core/providers/acl/acl_common.h"
 #include "core/providers/acl/acl_fwd.h"
+#include "core/util/math.h"
+#include "core/util/math_cpuonly.h"
 
 // ACL
 #include "arm_compute/core/TensorInfo.h"

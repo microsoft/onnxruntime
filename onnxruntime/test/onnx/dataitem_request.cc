@@ -3,17 +3,17 @@
 
 #include "dataitem_request.h"
 
-#include "heap_buffer.h"
-#include "TestCase.h"
-#include "test/compare_ortvalue.h"
-
-#include "core/common/logging/logging.h"
-#include "core/common/common.h"
-#include "core/platform/env.h"
-#include "core/platform/threadpool.h"
 #include <core/session/onnxruntime_cxx_api.h>
 
 #include <memory>
+
+#include "TestCase.h"
+#include "core/common/common.h"
+#include "core/common/logging/logging.h"
+#include "core/platform/env.h"
+#include "core/platform/threadpool.h"
+#include "heap_buffer.h"
+#include "test/compare_ortvalue.h"
 
 namespace onnxruntime {
 namespace test {

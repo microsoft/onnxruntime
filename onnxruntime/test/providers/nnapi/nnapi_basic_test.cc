@@ -3,13 +3,14 @@
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 #include "core/common/logging/logging.h"
+#include "core/framework/data_types_internal.h"
+#include "core/framework/tensorprotoutils.h"
 #include "core/providers/nnapi/nnapi_builtin/builders/op_builder.h"
+#include "core/providers/nnapi/nnapi_builtin/nnapi_api_helper.h"
 #include "core/providers/nnapi/nnapi_builtin/nnapi_execution_provider.h"
 #include "core/providers/nnapi/nnapi_builtin/nnapi_lib/NeuralNetworksTypes.h"
 #include "core/providers/nnapi/nnapi_builtin/nnapi_lib/nnapi_implementation.h"
-#include "core/providers/nnapi/nnapi_builtin/nnapi_api_helper.h"
 #include "core/session/inference_session.h"
-#include "core/framework/tensorprotoutils.h"
 #include "test/common/tensor_op_test_utils.h"
 #include "test/framework/test_utils.h"
 #include "test/util/include/asserts.h"
@@ -17,16 +18,15 @@
 #include "test/util/include/inference_session_wrapper.h"
 #include "test/util/include/test/test_environment.h"
 #include "test/util/include/test_utils.h"
-#include "core/framework/data_types_internal.h"
 
 #if !defined(ORT_MINIMAL_BUILD)
 // if this is a full build we need the provider test utils
-#include "test/providers/provider_test_utils.h"
 #include "test/optimizer/qdq_test_utils.h"
+#include "test/providers/provider_test_utils.h"
 #endif
 
-#include "gtest/gtest.h"
 #include "gmock/gmock.h"
+#include "gtest/gtest.h"
 
 using namespace std;
 using namespace ONNX_NAMESPACE;

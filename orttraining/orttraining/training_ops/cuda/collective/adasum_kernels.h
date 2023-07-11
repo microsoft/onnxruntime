@@ -3,9 +3,9 @@
 #ifdef USE_MPI
 
 #pragma once
-#include "orttraining/training_ops/cuda/collective/nccl_common.h"
 #include "orttraining/core/framework/adasum/adasum_interface.h"
 #include "orttraining/core/framework/adasum/adasum_mpi.h"
+#include "orttraining/training_ops/cuda/collective/nccl_common.h"
 
 namespace onnxruntime {
 namespace cuda {

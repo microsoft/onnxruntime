@@ -2,9 +2,11 @@
 // Licensed under the MIT License.
 
 #include "orttraining/training_ops/cpu/nn/dropout_op.h"
-#include "core/providers/cpu/nn/dropout_op.h"
+
 #include <chrono>
 #include <random>
+
+#include "core/providers/cpu/nn/dropout_op.h"
 #include "core/util/math_cpuonly.h"
 
 namespace onnxruntime {

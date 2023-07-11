@@ -2,9 +2,9 @@
 // Licensed under the MIT License.
 #pragma once
 
-#include "onnxruntime_c_api.h"
-
 #include <memory>
+
+#include "onnxruntime_c_api.h"
 
 namespace ONNX_NAMESPACE {
 class TypeProto;

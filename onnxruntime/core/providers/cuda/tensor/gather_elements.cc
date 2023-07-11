@@ -3,8 +3,8 @@
 
 #include "core/providers/cuda/tensor/gather_elements.h"
 
-#include "core/providers/cuda/tensor/gather_elements_impl.h"
 #include "core/providers/cpu/tensor/utils.h"
+#include "core/providers/cuda/tensor/gather_elements_impl.h"
 
 namespace onnxruntime {
 namespace cuda {

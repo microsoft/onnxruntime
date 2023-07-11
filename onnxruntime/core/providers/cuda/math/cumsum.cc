@@ -2,9 +2,10 @@
 // Licensed under the MIT License.
 
 #include "cumsum.h"
-#include "cumsum_impl.h"
-#include "core/providers/cpu/math/cumsum.h"
+
 #include "core/providers/common.h"
+#include "core/providers/cpu/math/cumsum.h"
+#include "cumsum_impl.h"
 
 namespace onnxruntime {
 namespace cuda {

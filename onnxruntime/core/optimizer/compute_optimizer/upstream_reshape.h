@@ -6,8 +6,8 @@
 #ifdef ENABLE_TRAINING
 #pragma once
 
-#include "core/optimizer/compute_optimizer/upstream_transformer_base.h"
 #include "core/optimizer/compute_optimizer/upstream_reshape_actors.h"
+#include "core/optimizer/compute_optimizer/upstream_transformer_base.h"
 
 namespace onnxruntime {
 

@@ -6,8 +6,9 @@
 #include <string>
 #include <utility>
 #include <vector>
-#include "core/common/span_utils.h"
+
 #include "contrib_ops/cpu/transformers/generation_shared.h"
+#include "core/common/span_utils.h"
 
 namespace onnxruntime {
 namespace contrib {

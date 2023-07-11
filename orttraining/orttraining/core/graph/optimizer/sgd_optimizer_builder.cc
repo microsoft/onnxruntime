@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "orttraining/core/graph/optimizer/sgd_optimizer_builder.h"
+
 #include "orttraining/core/graph/graph_augmenter.h"
 
 namespace onnxruntime {

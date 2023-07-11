@@ -1,10 +1,11 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/rocm/miopen_common.h"
 #include "core/providers/rocm/nn/pool.h"
-#include "core/providers/rocm/nn/max_pool_with_index.h"
+
 #include "core/providers/rocm/math/unary_elementwise_ops_impl.h"
+#include "core/providers/rocm/miopen_common.h"
+#include "core/providers/rocm/nn/max_pool_with_index.h"
 #include "core/providers/rocm/reduction/reduction_ops.h"
 
 using namespace onnxruntime::common;

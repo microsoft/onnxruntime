@@ -3,12 +3,13 @@
 
 #pragma once
 
-#include <vector>
-#include <string>
-#include <map>
 #include <limits>
-#include "dnnl.hpp"
+#include <map>
+#include <string>
+#include <vector>
+
 #include "core/providers/shared_library/provider_api.h"
+#include "dnnl.hpp"
 
 namespace onnxruntime {
 namespace ort_dnnl {

@@ -5,9 +5,9 @@
 #pragma once
 
 #include "core/framework/data_transfer.h"
-#include "core/providers/cann/cann_inc.h"
 #include "core/providers/cann/cann_call.h"
 #include "core/providers/cann/cann_common.h"
+#include "core/providers/cann/cann_inc.h"
 
 namespace onnxruntime {
 

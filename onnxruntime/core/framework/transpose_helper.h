@@ -32,11 +32,10 @@ We fall back to the default implementation in all other cases, and if the input 
 #include <sstream>
 
 #include "core/common/common.h"
-#include "core/common/inlined_containers.h"
-#include "core/framework/tensor_shape.h"
-#include "core/framework/tensor.h"
-
 #include "core/common/gsl.h"
+#include "core/common/inlined_containers.h"
+#include "core/framework/tensor.h"
+#include "core/framework/tensor_shape.h"
 
 namespace onnxruntime {
 bool IsTransposeMovingSingleAxis(gsl::span<const size_t> permutations, size_t& from, size_t& to);

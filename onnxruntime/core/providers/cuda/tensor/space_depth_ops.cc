@@ -1,9 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "space_depth_ops.h"
+
 #include <vector>
 
-#include "space_depth_ops.h"
 #include "core/providers/cuda/tensor/transpose.h"
 
 namespace onnxruntime {

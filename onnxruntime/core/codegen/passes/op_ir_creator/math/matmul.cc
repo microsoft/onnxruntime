@@ -1,9 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/codegen/passes/op_ir_creator/all_ops.h"
-
 #include "core/codegen/mti/math/matmul_ops.h"
+#include "core/codegen/passes/op_ir_creator/all_ops.h"
 
 namespace onnxruntime {
 namespace tvm_codegen {

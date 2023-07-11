@@ -3,20 +3,20 @@
 
 #include "tensorprotoutils.h"
 
-#include <memory>
 #include <algorithm>
 #include <limits>
+#include <memory>
 
-#include "mem_buffer.h"
+#include "callback.h"
+#include "core/common/make_string.h"
 #include "core/common/safeint.h"
 #include "core/common/status.h"
-#include "core/common/make_string.h"
+#include "core/framework/allocator.h"
 #include "core/framework/data_types.h"
 #include "core/framework/endian.h"
-#include "core/framework/allocator.h"
-#include "core/session/onnxruntime_cxx_api.h"
 #include "core/graph/onnx_protobuf.h"
-#include "callback.h"
+#include "core/session/onnxruntime_cxx_api.h"
+#include "mem_buffer.h"
 
 struct OrtStatus {
   OrtErrorCode code;

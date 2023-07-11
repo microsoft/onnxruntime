@@ -1,7 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
-#include <algorithm>
 #include "test/contrib_ops/attention_op_test_helper.h"
+
+#include <algorithm>
+
 #include "gtest/gtest.h"
 
 namespace onnxruntime {

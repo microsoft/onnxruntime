@@ -2,10 +2,11 @@
 // Licensed under the MIT License.
 
 #include "test_fgemm.h"
-#include "test_fgemm_fixture.h"
 
 #include <memory>
 #include <sstream>
+
+#include "test_fgemm_fixture.h"
 
 template <>
 MlasFgemmTest<float, false, false>* MlasTestFixture<MlasFgemmTest<float, false, false>>::mlas_tester(nullptr);

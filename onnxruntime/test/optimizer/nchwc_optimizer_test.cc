@@ -1,19 +1,19 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <cmath>
+
 #include "core/graph/model.h"
 #include "core/graph/onnx_protobuf.h"
 #include "core/mlas/inc/mlas.h"
 #include "core/session/environment.h"
 #include "core/session/inference_session.h"
+#include "gtest/gtest.h"
 #include "test/compare_ortvalue.h"
-#include "test/test_environment.h"
 #include "test/framework/test_utils.h"
+#include "test/test_environment.h"
 #include "test/util/include/asserts.h"
 #include "test/util/include/inference_session_wrapper.h"
-#include <cmath>
-
-#include "gtest/gtest.h"
 
 namespace onnxruntime {
 namespace test {

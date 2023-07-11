@@ -1,11 +1,12 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/common/inlined_containers.h"
 #include "core/providers/cuda/tensor/transpose.h"
-#include "core/providers/cuda/tensor/transpose_impl.h"
+
+#include "core/common/inlined_containers.h"
 #include "core/providers/cpu/tensor/utils.h"
 #include "core/providers/cuda/shared_inc/fpgeneric.h"
+#include "core/providers/cuda/tensor/transpose_impl.h"
 
 namespace onnxruntime {
 namespace cuda {

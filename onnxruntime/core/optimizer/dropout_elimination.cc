@@ -1,13 +1,14 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/optimizer/dropout_elimination.h"
+
 #include "core/common/logging/logging.h"
+#include "core/graph/graph_utils.h"
 #include "core/graph/graph_viewer.h"
 #include "core/graph/op.h"
-#include "core/graph/graph_utils.h"
-#include "core/optimizer/rewrite_rule.h"
-#include "core/optimizer/dropout_elimination.h"
 #include "core/optimizer/initializer.h"
+#include "core/optimizer/rewrite_rule.h"
 
 namespace onnxruntime {
 

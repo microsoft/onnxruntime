@@ -1,12 +1,14 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/optimizer/initializer.h"
 #include "core/optimizer/fast_gelu_fusion.h"
-#include "core/optimizer/utils.h"
-#include "core/graph/graph_utils.h"
-#include "float.h"
+
 #include <deque>
+
+#include "core/graph/graph_utils.h"
+#include "core/optimizer/initializer.h"
+#include "core/optimizer/utils.h"
+#include "float.h"
 
 using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::common;

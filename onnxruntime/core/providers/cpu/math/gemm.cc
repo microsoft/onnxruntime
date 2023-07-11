@@ -1,14 +1,16 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include <onnxruntime_config.h>
 #include "core/providers/cpu/math/gemm.h"
+
+#include <onnxruntime_config.h>
+
 #include "core/common/narrow.h"
 #include "core/common/safeint.h"
+#include "core/mlas/inc/mlas.h"
 #include "core/providers/cpu/math/gemm_matmul_common.h"
 #include "core/util/math_cpuonly.h"
 #include "gemm_helper.h"
-#include "core/mlas/inc/mlas.h"
 
 namespace onnxruntime {
 

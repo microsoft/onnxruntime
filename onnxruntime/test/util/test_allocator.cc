@@ -1,8 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/common/common.h"
 #include "test_allocator.h"
+
+#include "core/common/common.h"
 
 MockedOrtAllocator::MockedOrtAllocator() {
   OrtAllocator::version = ORT_API_VERSION;

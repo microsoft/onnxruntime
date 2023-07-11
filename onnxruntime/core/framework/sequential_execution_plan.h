@@ -3,11 +3,11 @@
 
 #pragma once
 
-#include "core/graph/basic_types.h"
 #include "core/common/inlined_containers.h"
 #include "core/framework/alloc_kind.h"
 #include "core/framework/data_types.h"
 #include "core/framework/execution_plan_base.h"
+#include "core/graph/basic_types.h"
 #include "core/graph/graph.h"
 
 namespace onnxruntime {

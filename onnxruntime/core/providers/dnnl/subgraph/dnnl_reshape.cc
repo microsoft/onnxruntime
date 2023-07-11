@@ -2,9 +2,10 @@
 // Licensed under the MIT License
 
 #include "dnnl_reshape.h"
+
+#include "core/providers/cpu/tensor/reshape_helper.h"
 #include "dnnl_subgraph.h"
 #include "dnnl_subgraph_primitive.h"
-#include "core/providers/cpu/tensor/reshape_helper.h"
 
 namespace onnxruntime {
 namespace ort_dnnl {

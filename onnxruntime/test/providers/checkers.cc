@@ -3,11 +3,9 @@
 
 #include "test/providers/checkers.h"
 
-#include "gtest/gtest.h"
-
-#include "core/graph/constants.h"
 #include "core/framework/TensorSeq.h"
-
+#include "core/graph/constants.h"
+#include "gtest/gtest.h"
 #include "test/framework/test_utils.h"
 #include "test/providers/provider_test_utils.h"
 

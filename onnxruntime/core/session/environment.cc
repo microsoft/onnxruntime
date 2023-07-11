@@ -2,17 +2,18 @@
 // Licensed under the MIT License.
 
 #include "core/session/environment.h"
-#include "core/session/allocator_adapters.h"
+
 #include "core/framework/allocator_utils.h"
 #include "core/graph/constants.h"
 #include "core/graph/op.h"
+#include "core/session/allocator_adapters.h"
 
 #if !defined(ORT_MINIMAL_BUILD)
-#include "onnx/defs/operator_sets.h"
-#include "onnx/defs/operator_sets_ml.h"
 #include "core/graph/contrib_ops/internal_nhwc_onnx_schemas.h"
 #include "core/graph/contrib_ops/ms_opset.h"
 #include "core/graph/contrib_ops/onnx_deprecated_opset.h"
+#include "onnx/defs/operator_sets.h"
+#include "onnx/defs/operator_sets_ml.h"
 #if defined(ENABLE_TRAINING_OPS)
 #include "onnx/defs/operator_sets_training.h"
 #endif
@@ -36,15 +37,15 @@
 #endif
 #ifdef ENABLE_TRAINING
 #include "orttraining/core/graph/gradient_builder_registry.h"
+#include "orttraining/core/graph/loss_function_registry.h"
 #include "orttraining/core/graph/optimizer_builder.h"
 #include "orttraining/core/graph/optimizer_graph_builder_registry.h"
-#include "orttraining/core/graph/loss_function_registry.h"
 #include "orttraining/core/optimizer/graph_transformer_registry.h"
 #endif
 
 #ifdef USE_CUDA
-#include "core/providers/cuda/cuda_provider_factory.h"
 #include "core/providers/cuda/cuda_execution_provider_info.h"
+#include "core/providers/cuda/cuda_provider_factory.h"
 #endif
 namespace onnxruntime {
 using namespace ::onnxruntime::common;

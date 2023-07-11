@@ -1,10 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "test_util.h"
-
-#include <list>
 #include <algorithm>
+#include <list>
+
+#include "test_util.h"
 
 #if !defined(BUILD_MLAS_NO_ONNXRUNTIME)
 

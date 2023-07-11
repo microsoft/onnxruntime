@@ -3,8 +3,8 @@
 
 #pragma once
 
-#include <initializer_list>
 #include <functional>
+#include <initializer_list>
 
 #include "test/providers/provider_test_utils.h"
 

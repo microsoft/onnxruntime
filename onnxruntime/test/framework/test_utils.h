@@ -5,11 +5,10 @@
 #include <map>
 #include <string>
 
-#include "core/framework/execution_provider.h"
-#include "core/providers/cpu/cpu_execution_provider.h"
-#include "core/framework/ort_value.h"
-
 #include "core/common/gsl.h"
+#include "core/framework/execution_provider.h"
+#include "core/framework/ort_value.h"
+#include "core/providers/cpu/cpu_execution_provider.h"
 
 #ifdef USE_CUDA
 #include "core/providers/providers.h"

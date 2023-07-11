@@ -2,8 +2,10 @@
 // Licensed under the MIT License.
 
 #include "flags.h"
+
 #include <cstdlib>
 #include <cstring>
+
 #include "core/common/common.h"
 
 namespace onnxruntime {

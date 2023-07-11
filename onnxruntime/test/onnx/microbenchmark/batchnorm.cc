@@ -1,6 +1,7 @@
+#include <benchmark/benchmark.h>
+
 #include "core/platform/threadpool.h"
 #include "core/util/thread_utils.h"
-#include <benchmark/benchmark.h>
 
 #if defined(__GNUC__) && !defined(__clang__)
 #pragma GCC diagnostic push

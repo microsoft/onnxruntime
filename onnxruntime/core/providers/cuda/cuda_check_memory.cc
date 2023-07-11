@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/providers/cuda/cuda_check_memory.h"
+
 #include "core/providers/cuda/cuda_common.h"
 
 namespace onnxruntime {

@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "orttraining/core/framework/checkpoint_common.h"
+
 #include "core/common/logging/logging.h"
 #include "core/common/logging/sinks/clog_sink.h"
 #include "core/common/status.h"

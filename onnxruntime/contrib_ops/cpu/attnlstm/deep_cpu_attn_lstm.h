@@ -6,7 +6,6 @@
 #include <limits>
 
 #include "attention_wrapper.h"
-
 #include "core/common/narrow.h"
 #include "core/framework/op_kernel.h"
 #include "core/providers/cpu/rnn/rnn_helpers.h"

@@ -2,11 +2,12 @@
 // Licensed under the MIT License.
 
 #pragma once
-#include "core/codegen/common/handle.h"
+#include <tvm/tvm.h>
+
 #include "core/codegen/common/common.h"
+#include "core/codegen/common/handle.h"
 #include "core/common/common.h"
 #include "core/framework/data_types.h"
-#include <tvm/tvm.h>
 
 namespace onnxruntime {
 namespace tvm_codegen {

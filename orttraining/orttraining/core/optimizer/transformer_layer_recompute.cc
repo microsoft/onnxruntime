@@ -2,11 +2,12 @@
 // Licensed under the MIT License.
 
 #include "orttraining/core/optimizer/transformer_layer_recompute.h"
-#include "orttraining/core/optimizer/dropout_recompute.h"
-#include "orttraining/core/graph/recompute_graph_utils.h"
-#include "core/common/common.h"
 
 #include <deque>
+
+#include "core/common/common.h"
+#include "orttraining/core/graph/recompute_graph_utils.h"
+#include "orttraining/core/optimizer/dropout_recompute.h"
 
 namespace onnxruntime {
 Status TransformerLayerRecompute::IdentifyTransformerLayerEdges(

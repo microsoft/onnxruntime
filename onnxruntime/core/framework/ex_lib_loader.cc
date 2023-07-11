@@ -1,7 +1,8 @@
 #include "core/framework/ex_lib_loader.h"
-#include "core/platform/env.h"
+
 #include "core/common/logging/logging.h"
 #include "core/common/logging/severity.h"
+#include "core/platform/env.h"
 namespace onnxruntime {
 ExLibLoader::~ExLibLoader() {
   ORT_TRY {

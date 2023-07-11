@@ -1,9 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "orttraining/core/optimizer/localized_recompute.h"
+
 #include "core/graph/graph_utils.h"
 #include "orttraining/core/graph/recompute_graph_utils.h"
-#include "orttraining/core/optimizer/localized_recompute.h"
 #include "orttraining/core/optimizer/dropout_recompute.h"
 
 using namespace ONNX_NAMESPACE;

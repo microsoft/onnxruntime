@@ -2,8 +2,8 @@
 // Licensed under the MIT License.
 
 #include "core/providers/cpu/quantization/quantize_linear_matmul.h"
-#include "core/mlas/inc/mlas.h"
 
+#include "core/mlas/inc/mlas.h"
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/util/include/default_providers.h"

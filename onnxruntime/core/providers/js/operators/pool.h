@@ -3,8 +3,8 @@
 
 #pragma once
 
-#include "core/providers/js/js_kernel.h"
 #include "core/providers/cpu/nn/pool_base.h"
+#include "core/providers/js/js_kernel.h"
 
 namespace onnxruntime {
 namespace js {

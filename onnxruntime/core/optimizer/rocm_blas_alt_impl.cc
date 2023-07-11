@@ -1,10 +1,11 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
+#include "core/optimizer/rocm_blas_alt_impl.h"
+
 #include <thread>
 
-#include "core/optimizer/initializer.h"
-#include "core/optimizer/rocm_blas_alt_impl.h"
 #include "core/graph/graph_utils.h"
+#include "core/optimizer/initializer.h"
 
 using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::common;

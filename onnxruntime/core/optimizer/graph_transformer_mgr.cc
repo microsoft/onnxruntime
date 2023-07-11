@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/optimizer/graph_transformer_mgr.h"
+
 #include "core/optimizer/rule_based_graph_transformer.h"
 
 using namespace onnxruntime;

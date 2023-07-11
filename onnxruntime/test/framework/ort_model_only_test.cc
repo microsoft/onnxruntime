@@ -6,21 +6,19 @@
 #include "core/framework/tensorprotoutils.h"
 #include "core/graph/model.h"
 #include "core/graph/onnx_protobuf.h"
-#include "core/session/onnxruntime_cxx_api.h"
 #include "core/session/inference_session.h"
+#include "core/session/onnxruntime_cxx_api.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
-#include "test_utils.h"
+#include "flatbuffers/idl.h"
+#include "flatbuffers/util.h"
+#include "gmock/gmock.h"
+#include "gtest/gtest.h"
 #include "test/common/tensor_op_test_utils.h"
 #include "test/providers/checkers.h"
 #include "test/test_environment.h"
 #include "test/util/include/asserts.h"
 #include "test/util/include/inference_session_wrapper.h"
-
-#include "flatbuffers/idl.h"
-#include "flatbuffers/util.h"
-
-#include "gmock/gmock.h"
-#include "gtest/gtest.h"
+#include "test_utils.h"
 
 using namespace ONNX_NAMESPACE;
 

@@ -4,7 +4,6 @@
 #pragma once
 
 #include <emscripten.h>
-
 #include <stddef.h>
 
 // TODO: Move to api.h

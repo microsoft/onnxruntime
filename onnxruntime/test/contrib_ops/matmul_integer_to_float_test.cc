@@ -1,22 +1,21 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <chrono>
+#include <random>
+
 #include "core/common/span_utils.h"
 #include "core/framework/tensor.h"
 #include "core/mlas/inc/mlas.h"
 #include "core/session/inference_session.h"
+#include "core/util/qmath.h"
+#include "gmock/gmock.h"
+#include "gtest/gtest.h"
 #include "test/common/tensor_op_test_utils.h"
 #include "test/framework/test_utils.h"
 #include "test/optimizer/graph_transform_test_builder.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/util/include/default_providers.h"
-#include "core/util/qmath.h"
-
-#include <chrono>
-#include <random>
-
-#include "gtest/gtest.h"
-#include "gmock/gmock.h"
 
 using namespace std;
 

@@ -20,13 +20,13 @@ limitations under the License.
 #include <dlfcn.h>
 #include <fcntl.h>
 #include <ftw.h>
-#include <sys/types.h>
-#include <sys/stat.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/mman.h>
+#include <sys/stat.h>
 #include <sys/syscall.h>
+#include <sys/types.h>
 #include <unistd.h>
 
 #include <iostream>
@@ -47,8 +47,8 @@ limitations under the License.
 #include "core/common/gsl.h"
 #include "core/common/logging/logging.h"
 #include "core/common/narrow.h"
-#include "core/platform/scoped_resource.h"
 #include "core/platform/EigenNonBlockingThreadPool.h"
+#include "core/platform/scoped_resource.h"
 
 namespace onnxruntime {
 

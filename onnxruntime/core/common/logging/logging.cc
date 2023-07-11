@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/common/logging/logging.h"
+
 #include <ctime>
 #include <exception>
 #include <type_traits>
@@ -8,7 +10,6 @@
 
 #include "core/common/exceptions.h"
 #include "core/common/logging/isink.h"
-#include "core/common/logging/logging.h"
 
 #ifdef _WIN32
 #include <Windows.h>

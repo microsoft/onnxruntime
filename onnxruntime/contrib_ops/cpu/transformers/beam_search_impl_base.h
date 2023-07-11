@@ -3,8 +3,9 @@
 
 #pragma once
 #include <memory>
-#include <vector>
 #include <utility>
+#include <vector>
+
 #include "contrib_ops/cpu/transformers/generate_impl_base.h"
 
 namespace onnxruntime {

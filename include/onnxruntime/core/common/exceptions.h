@@ -10,8 +10,8 @@
 #include <string>
 #include <vector>
 
-#include "core/common/common.h"
 #include "core/common/code_location.h"
+#include "core/common/common.h"
 
 namespace onnxruntime {
 

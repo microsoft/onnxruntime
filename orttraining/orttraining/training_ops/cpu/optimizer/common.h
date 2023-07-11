@@ -3,9 +3,10 @@
 
 #pragma once
 
+#include <cmath>
+
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
-#include <cmath>
 
 namespace onnxruntime {
 namespace contrib {

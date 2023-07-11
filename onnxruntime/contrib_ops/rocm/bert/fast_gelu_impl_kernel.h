@@ -3,8 +3,8 @@
 
 #pragma once
 
-#include "core/providers/rocm/tunable/util.h"
 #include "core/providers/rocm/cu_inc/common.cuh"
+#include "core/providers/rocm/tunable/util.h"
 
 namespace onnxruntime {
 namespace contrib {

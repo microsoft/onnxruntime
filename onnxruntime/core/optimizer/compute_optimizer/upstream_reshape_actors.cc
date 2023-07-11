@@ -3,8 +3,9 @@
 
 #ifdef ENABLE_TRAINING
 
-#include "core/optimizer/utils.h"
 #include "core/optimizer/compute_optimizer/upstream_reshape_actors.h"
+
+#include "core/optimizer/utils.h"
 
 using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::common;

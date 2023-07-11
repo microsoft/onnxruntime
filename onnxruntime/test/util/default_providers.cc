@@ -1,10 +1,12 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include <memory>
 #include "default_providers.h"
-#include "providers.h"
+
+#include <memory>
+
 #include "core/providers/cpu/cpu_provider_factory_creator.h"
+#include "providers.h"
 #ifdef USE_COREML
 #include "core/providers/coreml/coreml_provider_factory.h"
 #endif

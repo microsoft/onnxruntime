@@ -1,26 +1,26 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
-#include "core/graph/onnx_protobuf.h"
 #include "core/framework/utils.h"
 
 #include <iomanip>
 
-#include "core/graph/graph_viewer.h"
-#include "core/framework/data_transfer_manager.h"
+#include "core/framework/TensorSeq.h"
 #include "core/framework/bfc_arena.h"
+#include "core/framework/data_transfer_manager.h"
 #include "core/framework/execution_frame.h"
-#include "core/framework/stream_execution_context.h"
 #include "core/framework/execution_providers.h"
 #include "core/framework/feeds_fetches_manager.h"
 #include "core/framework/kernel_def_builder.h"
 #include "core/framework/kernel_registry_manager.h"
 #include "core/framework/op_kernel_context_internal.h"
-#include "core/framework/session_state.h"
-#include "core/framework/sequential_executor.h"
-#include "core/framework/tensorprotoutils.h"
-#include "core/mlas/inc/mlas.h"
-#include "core/framework/TensorSeq.h"
 #include "core/framework/run_options.h"
+#include "core/framework/sequential_executor.h"
+#include "core/framework/session_state.h"
+#include "core/framework/stream_execution_context.h"
+#include "core/framework/tensorprotoutils.h"
+#include "core/graph/graph_viewer.h"
+#include "core/graph/onnx_protobuf.h"
+#include "core/mlas/inc/mlas.h"
 #include "core/session/onnxruntime_run_options_config_keys.h"
 #ifdef ENABLE_TRAINING
 #include "core/framework/partial_graph_execution_state.h"

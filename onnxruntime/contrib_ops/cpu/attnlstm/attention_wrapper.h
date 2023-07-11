@@ -4,7 +4,6 @@
 #pragma once
 
 #include "attention_mechanism.h"
-
 #include "core/common/common.h"
 #include "core/common/logging/logging.h"
 #include "core/framework/allocator.h"

@@ -3,11 +3,12 @@
 
 #pragma once
 
+#include <utility>
+#include <vector>
+
 #include "core/framework/data_types.h"
 #include "core/framework/ort_value.h"
 #include "core/framework/tensor.h"
-#include <vector>
-#include <utility>
 
 namespace onnxruntime {
 // Put this in a separate file to avoid circular dependency between tensor.h and data_types.h

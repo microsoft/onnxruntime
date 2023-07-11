@@ -3,13 +3,14 @@
 
 #pragma once
 
-#include <stdlib.h>
-#include <unordered_set>
-#include <string>
-#include <atomic>
 #include <core/platform/ort_mutex.h>
+#include <stdlib.h>
+
+#include <atomic>
 #include <cstring>
 #include <set>
+#include <string>
+#include <unordered_set>
 
 class TestResultStat {
  public:

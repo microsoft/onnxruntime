@@ -9,8 +9,8 @@
 #include <iostream>
 #include <tuple>
 
-#include "core/common/profiler_common.h"
 #include "core/common/logging/logging.h"
+#include "core/common/profiler_common.h"
 #include "core/platform/ort_mutex.h"
 
 namespace onnxruntime {

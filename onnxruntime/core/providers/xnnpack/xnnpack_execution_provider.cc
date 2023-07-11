@@ -1,21 +1,20 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "xnnpack_execution_provider.h"
+
 #include <string_view>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
 
-#include "core/graph/function_utils.h"
-#include "xnnpack_execution_provider.h"
-#include "detail/utils.h"
-#include "detail/node_support_checker.h"
-
 #include "core/framework/compute_capability.h"
 #include "core/framework/kernel_registry.h"
+#include "core/graph/function_utils.h"
 #include "core/providers/shared/node_unit/node_unit.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
-
+#include "detail/node_support_checker.h"
+#include "detail/utils.h"
 #include "xnnpack_init.h"
 
 namespace onnxruntime {

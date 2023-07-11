@@ -2,8 +2,10 @@
 // Licensed under the MIT License.
 
 #include "core/framework/library_handles.h"
-#include "core/common/logging/logging.h"
+
 #include <utility>
+
+#include "core/common/logging/logging.h"
 
 namespace onnxruntime {
 LibraryHandles::~LibraryHandles() noexcept {

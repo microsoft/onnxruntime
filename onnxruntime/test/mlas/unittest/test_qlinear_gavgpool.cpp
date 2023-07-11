@@ -1,9 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "test_util.h"
-
 #include <vector>
+
+#include "test_util.h"
 
 template <typename T8Bits>
 class MlasQLinearGlobalAveragePoolTest : public MlasTestBase {

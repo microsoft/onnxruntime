@@ -3,8 +3,8 @@
 
 #pragma once
 
-#include "core/common/gsl.h"
 #include "contrib_ops/cpu/transformers/generation_shared.h"
+#include "core/common/gsl.h"
 
 namespace onnxruntime {
 namespace contrib {

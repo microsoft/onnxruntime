@@ -3,9 +3,9 @@
 
 #pragma once
 
-#include "core/providers/shared_library/provider_api.h"
-#include "core/providers/cuda/cuda_kernel.h"
 #include "core/providers/cpu/tensor/scatter_nd.h"
+#include "core/providers/cuda/cuda_kernel.h"
+#include "core/providers/shared_library/provider_api.h"
 
 namespace onnxruntime {
 namespace cuda {

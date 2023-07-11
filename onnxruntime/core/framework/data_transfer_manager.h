@@ -3,8 +3,8 @@
 
 #pragma once
 
-#include "core/common/status.h"
 #include "core/common/common.h"
+#include "core/common/status.h"
 #include "core/framework/data_transfer.h"
 
 namespace onnxruntime {

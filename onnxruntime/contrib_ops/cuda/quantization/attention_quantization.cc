@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "attention_quantization.h"
+
 #include "attention_quantization_impl.cuh"
 #include "contrib_ops/cuda/bert/attention_impl.h"
 #include "core/common/safeint.h"

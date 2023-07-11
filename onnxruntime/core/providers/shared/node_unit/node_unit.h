@@ -3,8 +3,8 @@
 
 #pragma once
 
-#include <string>
 #include <optional>
+#include <string>
 #include <vector>
 
 #include "core/graph/basic_types.h"

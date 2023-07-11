@@ -6,14 +6,13 @@
 
 #include <map>
 #include <memory>
+#include <string>
+#include <unordered_map>
 #include <utility>
 #include <vector>
-#include <unordered_map>
-#include <string>
-
-#include "shaper.h"
 
 #include "rknpu/rknpu_pub.h"
+#include "shaper.h"
 
 namespace onnxruntime {
 namespace rknpu {

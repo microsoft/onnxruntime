@@ -2,9 +2,9 @@
 // Licensed under the MIT License
 #include "dnnl_execution_provider_info.h"
 
-#include "core/providers/dnnl/dnnl_provider_options.h"
-#include "core/framework/provider_options_utils.h"
 #include "core/common/common.h"
+#include "core/framework/provider_options_utils.h"
+#include "core/providers/dnnl/dnnl_provider_options.h"
 
 namespace onnxruntime::dnnl::provider_option_names {
 constexpr const char* kUseArena = "use_arena";

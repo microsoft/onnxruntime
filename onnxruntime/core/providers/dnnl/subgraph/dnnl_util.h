@@ -3,8 +3,9 @@
 
 #pragma once
 
-#include "dnnl.hpp"
 #include <string>
+
+#include "dnnl.hpp"
 
 namespace onnxruntime {
 namespace ort_dnnl {

@@ -8,8 +8,8 @@
 
 #include "core/providers/acl/acl_common.h"
 
-#include "arm_compute/runtime/PoolManager.h"
 #include "arm_compute/runtime/BlobLifetimeManager.h"
+#include "arm_compute/runtime/PoolManager.h"
 
 #undef ACL_1902
 

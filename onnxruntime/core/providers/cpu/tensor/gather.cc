@@ -3,6 +3,7 @@
 
 // https://github.com/onnx/onnx/blob/main/docs/Operators.md#Gather
 #include "core/providers/cpu/tensor/gather.h"
+
 #include "core/common/common.h"
 #include "core/common/narrow.h"
 #include "core/common/safeint.h"

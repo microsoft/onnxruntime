@@ -3,11 +3,11 @@
 
 #pragma once
 
-#include "core/providers/xnnpack/xnnpack_kernel.h"
+#include "core/common/common.h"
 #include "core/framework/allocator.h"
 #include "core/providers/cpu/math/gemm_base.h"
 #include "core/providers/xnnpack/detail/utils.h"
-#include "core/common/common.h"
+#include "core/providers/xnnpack/xnnpack_kernel.h"
 
 namespace onnxruntime {
 class GraphViewer;

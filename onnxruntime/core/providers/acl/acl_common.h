@@ -7,9 +7,9 @@
 #include "core/framework/op_kernel.h"
 
 // ACL
+#include "arm_compute/runtime/MemoryManagerOnDemand.h"
 #include "arm_compute/runtime/Tensor.h"
 #include "arm_compute/runtime/TensorAllocator.h"
-#include "arm_compute/runtime/MemoryManagerOnDemand.h"
 
 namespace onnxruntime {
 namespace acl {

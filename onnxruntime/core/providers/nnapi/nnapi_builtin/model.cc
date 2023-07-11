@@ -6,8 +6,8 @@
 #include "core/common/logging/logging.h"
 #include "core/providers/common.h"
 #include "core/providers/nnapi/nnapi_builtin/builders/helper.h"
-#include "core/providers/nnapi/nnapi_builtin/nnapi_lib/nnapi_implementation.h"
 #include "core/providers/nnapi/nnapi_builtin/nnapi_api_helper.h"
+#include "core/providers/nnapi/nnapi_builtin/nnapi_lib/nnapi_implementation.h"
 
 #ifdef USENNAPISHAREDMEM
 #include <sys/mman.h>

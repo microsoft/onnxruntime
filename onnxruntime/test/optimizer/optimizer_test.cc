@@ -1,22 +1,22 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "asserts.h"
 #include "core/common/logging/logging.h"
+#include "core/framework/data_types.h"
+#include "core/framework/op_kernel.h"
+#include "core/framework/ort_value.h"
 #include "core/graph/graph_viewer.h"
 #include "core/graph/model.h"
-#include "core/optimizer/optimizer_execution_frame.h"
 #include "core/optimizer/graph_transformer.h"
 #include "core/optimizer/graph_transformer_mgr.h"
-#include "core/framework/data_types.h"
-#include "core/framework/ort_value.h"
-#include "core/framework/op_kernel.h"
-#include "core/util/math.h"
+#include "core/optimizer/optimizer_execution_frame.h"
 #include "core/platform/env.h"
-#include "test/framework/test_utils.h"
-#include "test/capturing_sink.h"
-#include "test/test_environment.h"
-#include "asserts.h"
+#include "core/util/math.h"
 #include "gtest/gtest.h"
+#include "test/capturing_sink.h"
+#include "test/framework/test_utils.h"
+#include "test/test_environment.h"
 
 using namespace std;
 using namespace ONNX_NAMESPACE;

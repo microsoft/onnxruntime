@@ -2,8 +2,10 @@
 // Licensed under the MIT License.
 
 #include "TestCaseResult.h"
-#include "core/common/common.h"
+
 #include <iostream>
+
+#include "core/common/common.h"
 
 void TestCaseResult::SetResult(size_t task_id, EXECUTE_RESULT r) {
   ORT_ENFORCE(task_id < execution_result_.size(), "Index out of bounds");

@@ -4,10 +4,10 @@
 #include <random>
 #include <vector>
 
-#include "gtest/gtest.h"
-#include "graph_transform_test_builder.h"
-#include "core/mlas/inc/mlas.h"
 #include "core/graph/graph.h"
+#include "core/mlas/inc/mlas.h"
+#include "graph_transform_test_builder.h"
+#include "gtest/gtest.h"
 
 namespace onnxruntime {
 namespace test {

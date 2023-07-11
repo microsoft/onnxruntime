@@ -2,9 +2,9 @@
 // Licensed under the MIT License.
 
 #include "gtest/gtest.h"
-#include "test/providers/provider_test_utils.h"
 #include "test/common/cuda_op_test_utils.h"
 #include "test/common/dnnl_op_test_utils.h"
+#include "test/providers/provider_test_utils.h"
 
 namespace onnxruntime {
 namespace test {

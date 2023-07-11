@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "test/platform/windows/env.h"
+
 #include <vector>
 
 namespace onnxruntime {

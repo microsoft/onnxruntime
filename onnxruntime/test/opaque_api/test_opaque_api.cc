@@ -1,21 +1,23 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include <algorithm>
 #include <core/common/logging/logging.h>
+
+#include <algorithm>
+
 #include "core/framework/data_types.h"
 #include "core/framework/execution_providers.h"
 #include "core/framework/kernel_registry.h"
 #include "core/framework/op_kernel.h"
 #include "core/framework/session_state.h"
 #include "core/graph/model.h"
+#include "core/graph/onnx_protobuf.h"
 #include "core/graph/op.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "gtest/gtest.h"
-#include "core/graph/onnx_protobuf.h"
-#include "test/providers/provider_test_utils.h"
 #include "test/framework/test_utils.h"
+#include "test/providers/provider_test_utils.h"
 
 using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::common;

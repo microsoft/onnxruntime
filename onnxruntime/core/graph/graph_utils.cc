@@ -5,8 +5,8 @@
 
 #include <queue>
 
-#include "core/graph/graph.h"
 #include "core/common/logging/logging.h"
+#include "core/graph/graph.h"
 
 namespace onnxruntime {
 

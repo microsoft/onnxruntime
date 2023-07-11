@@ -6,10 +6,11 @@
 #include "core/platform/env.h"
 #define LOAD_PYOP_SYM(n, v, m) ORT_ENFORCE(Env::Default().GetSymbolFromLibrary(handle_, n, reinterpret_cast<void**>(&v)) == Status::OK(), m)
 
-#include "core/session/onnxruntime_cxx_api.h"
 #include <iostream>
-#include <vector>
 #include <unordered_map>
+#include <vector>
+
+#include "core/session/onnxruntime_cxx_api.h"
 #ifdef _WIN32
 #include <Windows.h>
 #else

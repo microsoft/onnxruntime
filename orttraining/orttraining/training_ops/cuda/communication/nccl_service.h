@@ -4,16 +4,16 @@
 #if defined(USE_CUDA) && defined(ORT_USE_NCCL) && defined(USE_NCCL_P2P)
 
 #pragma once
+#include <nccl.h>
+
 #include <condition_variable>
-#include <list>
-#include <mutex>
-#include <map>
-#include <vector>
 #include <iostream>
+#include <list>
+#include <map>
+#include <mutex>
 #include <string>
 #include <thread>
-
-#include <nccl.h>
+#include <vector>
 
 #include "orttraining/core/framework/communication/mpi/mpi_include.h"
 

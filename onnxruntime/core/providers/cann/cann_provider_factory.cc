@@ -2,15 +2,16 @@
 // Copyright (c) Huawei. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/shared_library/provider_api.h"
 #include "core/providers/cann/cann_provider_factory.h"
+
+#include "core/providers/cann/cann_allocator.h"
+#include "core/providers/cann/cann_call.h"
+#include "core/providers/cann/cann_execution_provider.h"
+#include "core/providers/cann/cann_execution_provider_info.h"
 #include "core/providers/cann/cann_provider_factory_creator.h"
 #include "core/providers/cann/cann_provider_options.h"
-#include "core/providers/cann/cann_execution_provider_info.h"
-#include "core/providers/cann/cann_execution_provider.h"
-#include "core/providers/cann/cann_allocator.h"
 #include "core/providers/cann/npu_data_transfer.h"
-#include "core/providers/cann/cann_call.h"
+#include "core/providers/shared_library/provider_api.h"
 
 namespace onnxruntime {
 

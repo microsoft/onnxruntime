@@ -4,11 +4,12 @@
 #pragma once
 #include <atomic>
 #include <string>
-#include "core/session/onnxruntime_c_api.h"
+
 #include "core/common/logging/isink.h"
-#include "core/platform/ort_mutex.h"
 #include "core/common/status.h"
 #include "core/framework/allocator.h"
+#include "core/platform/ort_mutex.h"
+#include "core/session/onnxruntime_c_api.h"
 
 namespace onnxruntime {
 class Environment;

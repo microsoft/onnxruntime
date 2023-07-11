@@ -2,9 +2,11 @@
 // Licensed under the MIT License
 
 #include "test/common/dnnl_op_test_utils.h"
+
+#include <mutex>
+
 #include "core/common/cpuid_info.h"
 #include "core/platform/env.h"
-#include <mutex>
 
 namespace onnxruntime {
 namespace test {

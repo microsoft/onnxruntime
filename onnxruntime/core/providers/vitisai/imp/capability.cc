@@ -1,11 +1,10 @@
 // Copyright (c) 2023 Advanced Micro Devices, Inc. All rights reserved.
 // Licensed under the MIT License.
 #include "vaip/capability.h"
-#include "./vai_assert.h"
-
-#include "core/graph/basic_types.h"
 
 #include "./attr_proto.h"
+#include "./vai_assert.h"
+#include "core/graph/basic_types.h"
 
 namespace vaip {
 using namespace ::onnxruntime;

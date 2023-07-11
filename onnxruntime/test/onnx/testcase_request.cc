@@ -2,13 +2,13 @@
 // Licensed under the MIT License.
 
 #include "testcase_request.h"
-#include "dataitem_request.h"
-#include "TestCase.h"
-
-#include "core/common/logging/logging.h"
-#include "core/common/logging/macros.h"
 
 #include <utility>
+
+#include "TestCase.h"
+#include "core/common/logging/logging.h"
+#include "core/common/logging/macros.h"
+#include "dataitem_request.h"
 
 namespace onnxruntime {
 namespace test {

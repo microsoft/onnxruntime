@@ -3,12 +3,13 @@
 
 #pragma once
 
-#include "core/mlas/inc/mlas.h"
-#include "core/platform/threadpool.h"
+#include <cmath>
+
 #include "core/common/narrow.h"
 #include "core/framework/element_type_lists.h"
 #include "core/framework/float8.h"
-#include <cmath>
+#include "core/mlas/inc/mlas.h"
+#include "core/platform/threadpool.h"
 
 namespace onnxruntime {
 

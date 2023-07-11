@@ -1,22 +1,22 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "test/framework/test_utils.h"
-#include "test/test_environment.h"
 #include "core/graph/model.h"
 #include "core/optimizer/common_subexpression_elimination.h"
 #include "core/optimizer/graph_transformer_mgr.h"
+#include "test/framework/test_utils.h"
+#include "test/test_environment.h"
 
 #ifdef ENABLE_TRAINING
 #include "orttraining/core/optimizer/graph_transformer_utils.h"
 #include "orttraining/core/session/training_session.h"
 #endif
 
-#include "gtest/gtest.h"
-
 #include <algorithm>
 #include <string>
 #include <vector>
+
+#include "gtest/gtest.h"
 
 namespace onnxruntime {
 namespace test {

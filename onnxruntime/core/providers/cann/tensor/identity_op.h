@@ -6,8 +6,9 @@
 
 #include <memory>
 #include <utility>
-#include "core/providers/shared_library/provider_api.h"
+
 #include "core/providers/cann/cann_kernel.h"
+#include "core/providers/shared_library/provider_api.h"
 
 namespace onnxruntime {
 namespace cann {

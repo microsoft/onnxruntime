@@ -3,6 +3,7 @@
 
 #ifdef USE_MPI
 #include "orttraining/core/framework/adasum/adasum_mpi.h"
+
 #include "orttraining/core/framework/communication/mpi/mpi_context.h"
 
 namespace onnxruntime {

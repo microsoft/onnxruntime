@@ -5,16 +5,15 @@
 
 #include <limits>
 #include <memory>
-#include <unordered_map>
-#include <vector>
 #include <string>
+#include <unordered_map>
 #include <utility>
+#include <vector>
 
 #include "core/framework/op_kernel.h"
 #include "core/graph/indexed_sub_graph.h"
 #include "core/providers/common.h"
 #include "core/providers/shared/node_unit/node_unit.h"
-
 #include "xnnpack.h"
 
 namespace onnxruntime {

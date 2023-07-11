@@ -1,14 +1,13 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "../common/synthetic_data_loader.h"
+#include "core/common/path_string.h"
+#include "core/platform/path_lib.h"
+#include "cxxopts.hpp"
 #include "onnxruntime_c_api.h"
 #include "onnxruntime_training_c_api.h"
 #include "onnxruntime_training_cxx_api.h"
-
-#include "cxxopts.hpp"
-#include "core/common/path_string.h"
-#include "core/platform/path_lib.h"
-#include "../common/synthetic_data_loader.h"
 
 #if defined(USE_CUDA) && defined(ENABLE_NVTX_PROFILE)
 // This header is for profile using Nvidia's visual profiler.

@@ -3,9 +3,9 @@
 
 #pragma once
 
-#include "core/providers/js/js_kernel.h"
 #include "core/framework/data_transfer_manager.h"
 #include "core/providers/cpu/tensor/reshape_helper.h"
+#include "core/providers/js/js_kernel.h"
 
 namespace onnxruntime {
 namespace js {

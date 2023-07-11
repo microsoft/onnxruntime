@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/util/distance.h"
+
 #include <gtest/gtest.h>
 using testing::Types;
 

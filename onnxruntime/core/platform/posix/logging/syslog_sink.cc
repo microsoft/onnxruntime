@@ -1,9 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/common/logging/logging.h"
-#include "core/common/logging/capture.h"
 #include "syslog_sink.h"
+
+#include "core/common/logging/capture.h"
+#include "core/common/logging/logging.h"
 #include "date/date.h"
 
 namespace onnxruntime {

@@ -3,8 +3,8 @@
 
 #include "core/optimizer/selectors_actions/selector_action_transformer.h"
 
-#include <cassert>
 #include <algorithm>
+#include <cassert>
 #include <iterator>
 #include <utility>
 

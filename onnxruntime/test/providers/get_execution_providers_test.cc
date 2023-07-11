@@ -7,9 +7,8 @@
 #include <iterator>
 #include <unordered_set>
 
-#include "gtest/gtest.h"
-
 #include "core/graph/constants.h"
+#include "gtest/gtest.h"
 
 namespace onnxruntime {
 namespace test {

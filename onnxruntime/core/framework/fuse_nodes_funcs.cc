@@ -1,4 +1,5 @@
 #include "core/framework/fuse_nodes_funcs.h"
+
 #include "core/platform/env.h"
 
 namespace onnxruntime {

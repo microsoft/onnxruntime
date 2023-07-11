@@ -1,12 +1,13 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "orttraining/training_ops/cuda/optimizer/clip_grad_norm/clip_grad_norm.h"
+
 #include <memory>
 #include <utility>
 
-#include "orttraining/training_ops/cuda/optimizer/clip_grad_norm/clip_grad_norm.h"
-#include "orttraining/training_ops/cuda/reduction/reduction_all_impl.h"
 #include "orttraining/training_ops/cuda/optimizer/clip_grad_norm/clip_grad_norm_impl.h"
+#include "orttraining/training_ops/cuda/reduction/reduction_all_impl.h"
 
 namespace onnxruntime {
 namespace cuda {

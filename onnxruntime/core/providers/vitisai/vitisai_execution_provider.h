@@ -5,8 +5,8 @@
 
 #include <ctime>
 
-#include "core/framework/execution_provider.h"
 #include "core/framework/customregistry.h"
+#include "core/framework/execution_provider.h"
 #include "core/session/onnxruntime_c_api.h"
 
 // we cannot include vaip/vaip.hpp here because header file referred by

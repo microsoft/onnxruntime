@@ -5,7 +5,6 @@
 
 #include "core/optimizer/insert_cast_transformer.h"
 #include "core/session/inference_session.h"
-
 #include "test/util/include/asserts.h"
 #include "test/util/include/compare_ortvalue.h"
 #include "test/util/include/default_providers.h"

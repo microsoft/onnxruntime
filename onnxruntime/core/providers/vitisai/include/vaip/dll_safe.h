@@ -1,8 +1,9 @@
 // Copyright (c) 2023 Advanced Micro Devices, Inc. All rights reserved.
 // Licensed under the MIT License.
 #pragma once
-#include "./_sanity_check.h"
 #include <memory>
+
+#include "./_sanity_check.h"
 namespace vaip_core {
 template <typename T>
 class DllSafe {

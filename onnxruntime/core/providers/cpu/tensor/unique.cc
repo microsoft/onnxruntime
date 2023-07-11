@@ -2,8 +2,11 @@
 // Licensed under the MIT License.
 
 #include "core/providers/cpu/tensor/unique.h"
-#include <map>
+
 #include <core/common/safeint.h>
+
+#include <map>
+
 #include "core/common/gsl.h"
 #include "core/framework/op_kernel_type_control_utils.h"
 #include "core/providers/common.h"

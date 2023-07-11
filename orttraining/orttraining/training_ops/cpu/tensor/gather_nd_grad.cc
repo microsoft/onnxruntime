@@ -2,8 +2,9 @@
 // Licensed under the MIT License.
 
 #include "orttraining/training_ops/cpu/tensor/gather_nd_grad.h"
-#include "core/providers/cpu/tensor/gather_nd.h"
+
 #include "core/common/common.h"
+#include "core/providers/cpu/tensor/gather_nd.h"
 namespace onnxruntime {
 
 #ifndef DISABLE_CONTRIB_OPS

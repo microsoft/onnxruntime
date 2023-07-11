@@ -1,13 +1,13 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "QnnTypes.h"
-#include "core/session/onnxruntime_cxx_api.h"
-
 #include <functional>
 #include <numeric>
-#include <vector>
 #include <string>
+#include <vector>
+
+#include "QnnTypes.h"
+#include "core/session/onnxruntime_cxx_api.h"
 
 namespace onnxruntime {
 namespace qnn {

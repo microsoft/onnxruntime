@@ -2,12 +2,14 @@
 // Licensed under the MIT License.
 
 #include "cross_entropy.h"
+
+#include <unsupported/Eigen/SpecialFunctions>
+
+#include "core/common/gsl.h"
+#include "core/providers/common.h"
+#include "core/providers/cpu/math/matmul_helper.h"
 #include "core/util/math.h"
 #include "core/util/math_cpuonly.h"
-#include "core/providers/common.h"
-#include <unsupported/Eigen/SpecialFunctions>
-#include "core/providers/cpu/math/matmul_helper.h"
-#include "core/common/gsl.h"
 
 namespace onnxruntime {
 namespace contrib {

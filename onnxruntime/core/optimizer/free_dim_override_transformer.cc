@@ -1,10 +1,11 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/optimizer/free_dim_override_transformer.h"
+
 #include "core/common/logging/logging.h"
 #include "core/framework/session_options.h"
 #include "core/graph/graph_utils.h"
-#include "core/optimizer/free_dim_override_transformer.h"
 
 using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::common;

@@ -2,10 +2,12 @@
 // Licensed under the MIT License.
 
 #include "bahdanau_attention.h"
-#include "core/providers/cpu/rnn/rnn_helpers.h"
+
+#include <memory.h>
 
 #include <stdexcept>
-#include <memory.h>
+
+#include "core/providers/cpu/rnn/rnn_helpers.h"
 
 using onnxruntime::rnn::detail::Allocate;
 // TODO: fix the warnings

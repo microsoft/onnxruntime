@@ -1,9 +1,9 @@
-#include "core/session/inference_session.h"
-#include "test/providers/provider_test_utils.h"
-#include "test/framework/test_utils.h"
-#include "gtest/gtest.h"
-#include "core/providers/rknpu/rknpu_execution_provider.h"
 #include "core/common/logging/logging.h"
+#include "core/providers/rknpu/rknpu_execution_provider.h"
+#include "core/session/inference_session.h"
+#include "gtest/gtest.h"
+#include "test/framework/test_utils.h"
+#include "test/providers/provider_test_utils.h"
 
 using namespace std;
 using namespace ONNX_NAMESPACE;

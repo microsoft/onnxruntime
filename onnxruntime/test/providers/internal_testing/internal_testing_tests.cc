@@ -10,16 +10,14 @@
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/session/ort_env.h"
-
+#include "gmock/gmock.h"
+#include "gtest/gtest.h"
 #include "test/framework/test_utils.h"
-#include "test/test_environment.h"
 #include "test/providers/internal_testing/internal_testing_execution_provider.h"
+#include "test/test_environment.h"
 #include "test/util/include/asserts.h"
 #include "test/util/include/inference_session_wrapper.h"
 #include "test/util/include/test_utils.h"
-
-#include "gtest/gtest.h"
-#include "gmock/gmock.h"
 
 using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::logging;

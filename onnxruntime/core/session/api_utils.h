@@ -3,7 +3,8 @@
 
 #pragma once
 
-#include "core/common/common.h"
 #include <string_view>
+
+#include "core/common/common.h"
 
 onnxruntime::common::Status CopyStringToOutputArg(std::string_view str, const char* err_msg, char* out, size_t* size);

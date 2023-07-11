@@ -3,9 +3,8 @@
 
 #include "core/framework/provider_options_utils.h"
 
-#include "gtest/gtest.h"
-
 #include "asserts.h"
+#include "gtest/gtest.h"
 
 namespace onnxruntime {
 namespace test {

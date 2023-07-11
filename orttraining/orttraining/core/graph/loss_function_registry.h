@@ -1,12 +1,13 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 #pragma once
-#include <string>
-#include <vector>
 #include <functional>
+#include <string>
 #include <unordered_map>
-#include "graph_augmenter.h"
+#include <vector>
+
 #include "generic_registry.h"
+#include "graph_augmenter.h"
 #include "loss_func/loss_func_common.h"
 
 namespace onnxruntime {

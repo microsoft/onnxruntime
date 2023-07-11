@@ -1,15 +1,14 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/graph/onnx_protobuf.h"
 #include "core/session/inference_session.h"
 
-#include <memory>
-#include <sstream>
 #include <list>
+#include <memory>
+#include <queue>
+#include <sstream>
 #include <string>
 #include <thread>
-#include <queue>
 
 #include "core/common/denormal.h"
 #include "core/common/logging/logging.h"
@@ -17,6 +16,7 @@
 #include "core/common/path_string.h"
 #include "core/flatbuffers/flatbuffers_utils.h"
 #include "core/flatbuffers/ort_format_version.h"
+#include "core/framework/TensorSeq.h"
 #include "core/framework/bfc_arena.h"
 #include "core/framework/error_code_helper.h"
 #include "core/framework/execution_frame.h"
@@ -27,19 +27,19 @@
 #include "core/framework/kernel_type_str_resolver.h"
 #include "core/framework/kernel_type_str_resolver_utils.h"
 #include "core/framework/mldata_type_utils.h"
-#include "core/framework/TensorSeq.h"
-#include "core/framework/tensorprotoutils.h"
-#include "core/framework/tensor_type_and_shape.h"
 #include "core/framework/op_kernel_context_internal.h"
 #include "core/framework/ort_value_pattern_planner.h"
+#include "core/framework/tensor_type_and_shape.h"
+#include "core/framework/tensorprotoutils.h"
 #include "core/framework/transform_layout_functions.h"
 #include "core/framework/utils.h"
 #include "core/graph/graph_viewer.h"
 #include "core/graph/model.h"
-#include "core/optimizer/graph_transformer_utils.h"
+#include "core/graph/onnx_protobuf.h"
 #include "core/optimizer/graph_transformer.h"
-#include "core/optimizer/layout_transformation/layout_transformation.h"
+#include "core/optimizer/graph_transformer_utils.h"
 #include "core/optimizer/insert_cast_transformer.h"
+#include "core/optimizer/layout_transformation/layout_transformation.h"
 #include "core/optimizer/qdq_transformer/ensure_unique_dq_for_node_unit.h"
 #include "core/optimizer/rule_based_graph_transformer.h"
 #include "core/optimizer/selectors_actions/selector_action_transformer_apply_contexts.h"
@@ -55,11 +55,11 @@
 #include "core/providers/dml/DmlExecutionProvider/src/GraphTransformer.h"
 #include "core/providers/dml/dml_session_options_config_keys.h"
 #endif
-#include "core/session/environment.h"
 #include "core/session/IOBinding.h"
+#include "core/session/environment.h"
 #include "core/session/inference_session_utils.h"
-#include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/session/onnxruntime_run_options_config_keys.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/util/protobuf_parsing_utils.h"
 #include "core/util/thread_utils.h"
 

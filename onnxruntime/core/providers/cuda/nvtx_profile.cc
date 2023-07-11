@@ -3,9 +3,11 @@
 
 #ifdef ENABLE_NVTX_PROFILE
 #include "nvtx_profile.h"
-#include "core/common/common.h"
+
 #include <nvToolsExt.h>
 #include <nvToolsExtCuda.h>
+
+#include "core/common/common.h"
 
 namespace onnxruntime {
 namespace profile {

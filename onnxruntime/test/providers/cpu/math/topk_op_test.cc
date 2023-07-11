@@ -3,8 +3,8 @@
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
-#include "test/providers/provider_test_utils.h"
 #include "test/common/cuda_op_test_utils.h"
+#include "test/providers/provider_test_utils.h"
 
 namespace onnxruntime {
 namespace test {

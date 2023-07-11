@@ -9,9 +9,8 @@
 #include "core/graph/graph.h"
 #include "core/graph/graph_utils.h"
 #include "core/optimizer/initializer.h"
-#include "orttraining/core/graph/graph_augmenter.h"
-
 #include "orttraining/core/framework/distributed_run_context.h"
+#include "orttraining/core/graph/graph_augmenter.h"
 
 namespace onnxruntime {
 namespace training {

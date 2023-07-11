@@ -1,14 +1,14 @@
 ﻿// Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "gtest/gtest.h"
+#include "orttraining/models/runner/data_loader.h"
 
 #include "core/framework/callback.h"
 #include "core/platform/env.h"
-#include "core/util/protobuf_parsing_utils.h"
-#include "orttraining/models/runner/training_util.h"
 #include "core/platform/path_lib.h"  // TODO fix include ordering dependency
-#include "orttraining/models/runner/data_loader.h"
+#include "core/util/protobuf_parsing_utils.h"
+#include "gtest/gtest.h"
+#include "orttraining/models/runner/training_util.h"
 #include "test/util/include/asserts.h"
 #include "test/util/include/temp_dir.h"
 

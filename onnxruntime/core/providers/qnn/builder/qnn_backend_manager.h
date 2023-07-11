@@ -3,9 +3,9 @@
 
 #pragma once
 #ifdef _WIN32
-#include <windows.h>
-#include <psapi.h>
 #include <libloaderapi.h>
+#include <psapi.h>
+#include <windows.h>
 #else
 #include <dlfcn.h>
 #endif
@@ -13,9 +13,9 @@
 #include "HTP/QnnHtpDevice.h"
 #include "QnnLog.h"
 #include "System/QnnSystemInterface.h"
-#include "core/common/status.h"
 #include "core/common/logging/logging.h"
 #include "core/common/path_string.h"
+#include "core/common/status.h"
 #include "core/providers/qnn/builder/qnn_def.h"
 
 namespace onnxruntime {

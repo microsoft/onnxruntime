@@ -3,8 +3,9 @@
 
 #pragma once
 
-#include <cstdint>
 #include <cuda_runtime.h>
+
+#include <cstdint>
 
 namespace onnxruntime {
 namespace cuda {

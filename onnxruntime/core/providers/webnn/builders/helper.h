@@ -5,14 +5,14 @@
 #pragma once
 
 #include <core/common/status.h>
-#include "core/common/inlined_containers.h"
 #include <core/graph/basic_types.h>
+#include <emscripten.h>
+#include <emscripten/val.h>
+
+#include "core/common/inlined_containers.h"
 #include "core/optimizer/initializer.h"
 #include "core/providers/common.h"
 #include "core/providers/shared/utils/utils.h"
-
-#include <emscripten.h>
-#include <emscripten/val.h>
 
 namespace onnxruntime {
 

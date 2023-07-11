@@ -2,6 +2,7 @@
 // Licensed under the MIT License
 
 #include "dnnl_op_manager.h"
+
 #include <iostream>
 
 namespace onnxruntime {

@@ -2,11 +2,13 @@
 // Licensed under the MIT License.
 
 #include "language_interop_ops.h"
+
+#include <google/protobuf/io/zero_copy_stream_impl.h>
+
 #include "core/framework/tensorprotoutils.h"
 #include "core/platform/env.h"
 #include "core/session/inference_session.h"
 #include "pyop/pyop.h"
-#include <google/protobuf/io/zero_copy_stream_impl.h>
 
 namespace onnxruntime {
 

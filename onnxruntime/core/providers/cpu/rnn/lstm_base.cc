@@ -2,8 +2,9 @@
 // Licensed under the MIT License.
 
 #include "lstm_base.h"
-#include "uni_directional_lstm.h"
+
 #include "core/common/narrow.h"
+#include "uni_directional_lstm.h"
 // TODO: fix the warnings
 #if defined(_MSC_VER) && !defined(__clang__)
 #pragma warning(disable : 26451)

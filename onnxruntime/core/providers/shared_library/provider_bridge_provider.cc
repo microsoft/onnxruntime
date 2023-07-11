@@ -3,10 +3,9 @@
 
 // This is the provider DLL side of the provider API to let providers be built as a DLL
 
-#include "provider_api.h"
 #include <assert.h>
+
 #include <mutex>
-#include "core/providers/shared/common.h"
 
 #include "core/common/inlined_containers.h"
 #include "core/framework/murmurhash3.h"
@@ -17,14 +16,16 @@
 #include "core/providers/cpu/math/einsum.h"
 #include "core/providers/cpu/object_detection/non_max_suppression.h"
 #include "core/providers/cpu/tensor/concatbase.h"
-#include "core/providers/cpu/tensor/padbase.h"
 #include "core/providers/cpu/tensor/gatherbase.h"
+#include "core/providers/cpu/tensor/padbase.h"
+#include "core/providers/cpu/tensor/scatter_nd.h"
+#include "core/providers/cpu/tensor/size.h"
 #include "core/providers/cpu/tensor/slice.h"
 #include "core/providers/cpu/tensor/split.h"
-#include "core/providers/cpu/tensor/size.h"
-#include "core/providers/cpu/tensor/scatter_nd.h"
-#include "core/providers/cpu/tensor/unsqueeze.h"
 #include "core/providers/cpu/tensor/tile.h"
+#include "core/providers/cpu/tensor/unsqueeze.h"
+#include "core/providers/shared/common.h"
+#include "provider_api.h"
 
 #ifndef DISABLE_CONTRIB_OPS
 #include "contrib_ops/cpu/bert/attention_base.h"
@@ -53,8 +54,8 @@
 #include "orttraining/training_ops/cpu/controlflow/yield.h"
 
 #ifdef ENABLE_TRAINING_TORCH_INTEROP
-#include "orttraining/training_ops/cpu/torch/torch_custom_function_kernel_base.h"
 #include "orttraining/core/framework/torch/refcount_tracker.h"
+#include "orttraining/training_ops/cpu/torch/torch_custom_function_kernel_base.h"
 #endif
 
 #endif

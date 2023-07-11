@@ -3,10 +3,9 @@
 #if defined(USE_MPI)
 #include "orttraining/training_ops/cpu/communication/send.h"
 
-#include "orttraining/core/framework/communication/mpi/mpi_include.h"
-
-#include "orttraining/training_ops/communication_common.h"
 #include "orttraining/core/framework/communication/mpi/mpi_context.h"
+#include "orttraining/core/framework/communication/mpi/mpi_include.h"
+#include "orttraining/training_ops/communication_common.h"
 
 namespace onnxruntime {
 namespace contrib {

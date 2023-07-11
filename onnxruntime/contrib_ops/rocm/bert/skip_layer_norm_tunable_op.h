@@ -4,6 +4,7 @@
 #pragma once
 
 #include <hip/hip_runtime.h>
+
 #include <memory>
 #include <string>
 #include <vector>

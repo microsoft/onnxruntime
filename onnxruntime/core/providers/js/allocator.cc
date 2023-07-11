@@ -1,10 +1,11 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/providers/js/allocator.h"
+
 #include <emscripten.h>
 
 #include "core/framework/session_state.h"
-#include "core/providers/js/allocator.h"
 
 namespace onnxruntime {
 namespace js {

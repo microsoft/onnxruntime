@@ -5,8 +5,9 @@
 
 #include <memory>
 #include <string>
-#include "SNPE/SNPEFactory.hpp"
+
 #include "DlSystem/RuntimeList.hpp"
+#include "SNPE/SNPEFactory.hpp"
 
 namespace onnxruntime {
 namespace contrib {

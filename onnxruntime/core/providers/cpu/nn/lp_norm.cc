@@ -1,10 +1,12 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include <core/common/safeint.h>
 #include "core/providers/cpu/nn/lp_norm.h"
-#include "core/util/math_cpuonly.h"
+
+#include <core/common/safeint.h>
+
 #include "core/providers/common.h"
+#include "core/util/math_cpuonly.h"
 
 namespace onnxruntime {
 #define REGISTER_LPNORMALISATION_KERNEL(type, sinceVersion)                        \

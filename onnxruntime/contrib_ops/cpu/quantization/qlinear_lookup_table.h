@@ -3,10 +3,12 @@
 
 #pragma once
 
-#include "core/framework/tensor.h"
-#include <functional>
 #include <stdint.h>
+
+#include <functional>
 #include <vector>
+
+#include "core/framework/tensor.h"
 
 // TODO(kreeger): Move this folder to a quantization utils/toolkit folder.
 namespace onnxruntime {

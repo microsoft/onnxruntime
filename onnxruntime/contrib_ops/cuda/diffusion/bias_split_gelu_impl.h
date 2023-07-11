@@ -2,9 +2,10 @@
 // Licensed under the MIT License.
 
 #pragma once
+#include <cuda.h>
+
 #include "core/common/common.h"
 #include "core/common/status.h"
-#include <cuda.h>
 
 namespace onnxruntime {
 namespace contrib {

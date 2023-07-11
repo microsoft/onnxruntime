@@ -3,13 +3,15 @@
 
 #pragma once
 
-#include <optional>
-#include <core/common/status.h>
 #include <core/common/common.h>
 #include <core/common/inlined_containers_fwd.h>
-#include <core/graph/onnx_protobuf.h>
+#include <core/common/status.h>
 #include <core/framework/allocator.h>
 #include <core/framework/tensor.h>
+#include <core/graph/onnx_protobuf.h>
+
+#include <optional>
+
 #include "execution_plan_base.h"
 
 namespace onnxruntime {

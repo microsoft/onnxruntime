@@ -8,7 +8,6 @@
 #include <algorithm>
 
 #include "core/common/gsl.h"
-
 #include "core/flatbuffers/flatbuffers_utils.h"
 #include "core/flatbuffers/schema/ort.fbs.h"
 #include "core/graph/op_identifier_utils.h"

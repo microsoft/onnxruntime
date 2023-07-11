@@ -1,12 +1,12 @@
-#include "common.h"
-
 #include <benchmark/benchmark.h>
-#include <core/util/math_cpuonly.h>
+#include <core/providers/cpu/nn/pool_functors.h>
 #include <core/session/onnxruntime_c_api.h>
 #include <core/session/onnxruntime_cxx_api.h>
+#include <core/util/math_cpuonly.h>
 #include <core/util/thread_utils.h>
-#include <core/providers/cpu/nn/pool_functors.h>
 #include <mlas.h>
+
+#include "common.h"
 
 using namespace onnxruntime;
 using namespace onnxruntime::concurrency;

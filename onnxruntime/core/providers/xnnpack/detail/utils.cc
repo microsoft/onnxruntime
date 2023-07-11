@@ -2,18 +2,18 @@
 // Licensed under the MIT License.
 
 #include "utils.h"
+
 #include <unordered_map>
 #include <vector>
 
 #include "core/common/common.h"
+#include "core/common/safeint.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/graph/indexed_sub_graph.h"
 #include "core/graph/node_attr_utils.h"
-
+#include "core/optimizer/initializer.h"
 #include "core/providers/shared/node_unit/node_unit.h"
 #include "onnx/defs/attr_proto_util.h"
-#include "core/common/safeint.h"
-#include "core/optimizer/initializer.h"
 
 namespace onnxruntime {
 namespace xnnpack {

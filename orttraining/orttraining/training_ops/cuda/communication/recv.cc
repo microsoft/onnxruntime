@@ -4,15 +4,15 @@
 #if defined(ORT_USE_NCCL) || defined(USE_MPI)
 
 #include "orttraining/training_ops/cuda/communication/recv.h"
-#include "orttraining/training_ops/communication_common.h"
-#include "orttraining/training_ops/cuda/communication/nccl_service.h"
-#include "core/providers/cuda/nvtx_profile.h"
-#include "core/providers/cuda/nvtx_profile_context.h"
+
 #include "core/providers/cuda/cuda_check_memory.h"
 #include "core/providers/cuda/cuda_common.h"
-
-#include "orttraining/core/framework/communication/mpi/mpi_include.h"
+#include "core/providers/cuda/nvtx_profile.h"
+#include "core/providers/cuda/nvtx_profile_context.h"
 #include "orttraining/core/framework/communication/mpi/mpi_context.h"
+#include "orttraining/core/framework/communication/mpi/mpi_include.h"
+#include "orttraining/training_ops/communication_common.h"
+#include "orttraining/training_ops/cuda/communication/nccl_service.h"
 
 namespace onnxruntime {
 namespace cuda {

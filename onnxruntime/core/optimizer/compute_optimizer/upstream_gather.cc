@@ -3,13 +3,15 @@
 
 #ifdef ENABLE_TRAINING
 
+#include "core/optimizer/compute_optimizer/upstream_gather.h"
+
 #include <onnx/defs/attr_proto_util.h>
+
 #include "core/graph/graph_utils.h"
+#include "core/optimizer/compute_optimizer/upstream_gather_actors.h"
+#include "core/optimizer/compute_optimizer/upstream_transformer_base.h"
 #include "core/optimizer/initializer.h"
 #include "core/optimizer/utils.h"
-#include "core/optimizer/compute_optimizer/upstream_gather_actors.h"
-#include "core/optimizer/compute_optimizer/upstream_gather.h"
-#include "core/optimizer/compute_optimizer/upstream_transformer_base.h"
 
 using namespace onnxruntime::optimizer::compute_optimizer;
 

@@ -2,10 +2,11 @@
 // Licensed under the MIT License.
 
 #pragma once
-#include "core/common/common.h"
 #include <functional>
 #include <string>
 #include <unordered_map>
+
+#include "core/common/common.h"
 
 namespace onnxruntime {
 namespace codegen {

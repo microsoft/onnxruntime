@@ -1,12 +1,12 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/shared_library/provider_api.h"
 #include "core/providers/cuda/controlflow/scan.h"
 
+#include "core/framework/ort_value.h"
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/tensor/transpose.h"
-#include "core/framework/ort_value.h"
+#include "core/providers/shared_library/provider_api.h"
 
 // TODO: It's ugly to include a .cc file but this .cc file defines the implementation of some templates which we need.
 #include "core/framework/ort_value_tensor_slicer.cc"

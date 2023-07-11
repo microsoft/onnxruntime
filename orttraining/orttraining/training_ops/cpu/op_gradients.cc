@@ -3,6 +3,8 @@
 
 #include "orttraining/training_ops/cpu/op_gradients.h"
 
+#include <unsupported/Eigen/SpecialFunctions>
+
 #include "core/common/gsl.h"
 #include "core/mlas/inc/mlas.h"
 #include "core/providers/common.h"
@@ -11,7 +13,6 @@
 #include "core/providers/cpu/tensor/transpose.h"
 #include "core/util/math.h"
 #include "core/util/math_cpuonly.h"
-#include <unsupported/Eigen/SpecialFunctions>
 
 namespace onnxruntime {
 namespace contrib {

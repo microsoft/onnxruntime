@@ -1,11 +1,12 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/framework/tensor.h"
-#include "core/util/math_cpuonly.h"
-#include "core/providers/common.h"
-#include "core/platform/threadpool.h"
 #include "skip_layer_norm.h"
+
+#include "core/framework/tensor.h"
+#include "core/platform/threadpool.h"
+#include "core/providers/common.h"
+#include "core/util/math_cpuonly.h"
 
 namespace onnxruntime {
 namespace contrib {

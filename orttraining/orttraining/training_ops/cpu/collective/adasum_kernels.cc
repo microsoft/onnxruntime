@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 #ifdef USE_MPI
 #include "orttraining/training_ops/cpu/collective/adasum_kernels.h"
+
 #include "orttraining/core/framework/communication/mpi/mpi_context.h"
 #include "orttraining/training_ops/communication_common.h"
 

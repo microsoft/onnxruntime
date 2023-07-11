@@ -5,8 +5,9 @@
 #pragma warning(disable : 4244)
 #endif
 
-#include "core/providers/acl/acl_common.h"
 #include "core/providers/acl/activation/activations.h"
+
+#include "core/providers/acl/acl_common.h"
 #include "core/providers/acl/acl_fwd.h"
 
 // ACL

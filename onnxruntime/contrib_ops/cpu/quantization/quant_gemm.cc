@@ -1,8 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/common/safeint.h"
 #include "core/common/narrow.h"
+#include "core/common/safeint.h"
 #include "core/providers/cpu/math/gemm_base.h"
 #include "core/providers/cpu/math/gemm_helper.h"
 #include "core/providers/cpu/quantization/matmul_integer_base.h"

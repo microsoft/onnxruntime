@@ -3,13 +3,14 @@
 
 // onnxruntime dependencies
 #include <random>
-#include "core/graph/model.h"
+
 #include "core/common/logging/logging.h"
-#include "core/framework/environment.h"
 #include "core/common/logging/sinks/clog_sink.h"
-#include "orttraining/core/session/training_session.h"
+#include "core/framework/environment.h"
+#include "core/graph/model.h"
 #include "mnist_reader/mnist_reader.hpp"
 #include "mnist_reader/mnist_utils.hpp"
+#include "orttraining/core/session/training_session.h"
 
 using namespace onnxruntime;
 using namespace onnxruntime::training;

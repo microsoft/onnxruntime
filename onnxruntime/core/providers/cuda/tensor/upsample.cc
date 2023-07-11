@@ -2,9 +2,10 @@
 // Licensed under the MIT License.
 
 #include "upsample.h"
-#include "upsample_impl.h"
-#include "core/providers/cuda/tensor/resize_impl.h"
+
 #include "core/providers/cpu/tensor/utils.h"
+#include "core/providers/cuda/tensor/resize_impl.h"
+#include "upsample_impl.h"
 
 using namespace onnxruntime::common;
 

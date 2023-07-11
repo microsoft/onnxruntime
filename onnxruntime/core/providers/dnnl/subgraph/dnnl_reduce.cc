@@ -1,9 +1,10 @@
 // Copyright(C) 2021 Intel Corporation
 // Licensed under the MIT License
 #include "dnnl_reduce.h"
+
+#include "core/providers/common.h"
 #include "dnnl_subgraph.h"
 #include "dnnl_subgraph_primitive.h"
-#include "core/providers/common.h"
 #include "dnnl_util.h"
 
 namespace onnxruntime {

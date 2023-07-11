@@ -3,7 +3,9 @@
 
 #pragma once
 #include <core/session/onnxruntime_cxx_api.h>
+
 #include <random>
+
 #include "test_configuration.h"
 #include "test_session.h"
 class TestModelInfo;

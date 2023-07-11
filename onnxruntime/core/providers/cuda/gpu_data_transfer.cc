@@ -1,9 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/shared_library/provider_api.h"
-
 #include "core/providers/cuda/gpu_data_transfer.h"
+
+#include "core/providers/shared_library/provider_api.h"
 #include "cuda_common.h"
 
 namespace onnxruntime {

@@ -2,27 +2,29 @@
 // Licensed under the MIT License.
 
 #include "core/framework/allocation_planner.h"
-#include <list>
+
 #include <algorithm>
-#include <deque>
-#include <sstream>
 #include <ctime>
+#include <deque>
 #include <iomanip>
+#include <list>
+#include <sstream>
+
 #include "core/common/exceptions.h"
 #include "core/common/inlined_containers.h"
 #include "core/common/safeint.h"
-#include "core/platform/env.h"
 #include "core/framework/data_types.h"
 #include "core/framework/execution_steps.h"
-#include "core/framework/stream_execution_context.h"
 #include "core/framework/kernel_def_builder.h"
 #include "core/framework/mldata_type_utils.h"
 #include "core/framework/op_kernel.h"
-#include "core/framework/session_state.h"
-#include "core/framework/tensorprotoutils.h"
-#include "core/framework/utils.h"
 #include "core/framework/op_kernel_context_internal.h"
 #include "core/framework/sequential_executor.h"
+#include "core/framework/session_state.h"
+#include "core/framework/stream_execution_context.h"
+#include "core/framework/tensorprotoutils.h"
+#include "core/framework/utils.h"
+#include "core/platform/env.h"
 
 #ifdef ORT_ENABLE_STREAM
 #include "nlohmann/json.hpp"

@@ -2,8 +2,11 @@
 // Licensed under the MIT License.
 
 #include "testlog.h"
+
 #include <string.h>
+
 #include <filesystem>
+
 #include "core/common/common.h"
 namespace Logger {
 // Initialize static variable for the whole

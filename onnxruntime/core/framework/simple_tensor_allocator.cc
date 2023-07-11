@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "simple_tensor_allocator.h"
+
 #include "tensorprotoutils.h"
 
 namespace onnxruntime {

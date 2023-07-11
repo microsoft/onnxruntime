@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/platform/telemetry.h"
+
 #include "core/platform/env.h"
 
 namespace onnxruntime {

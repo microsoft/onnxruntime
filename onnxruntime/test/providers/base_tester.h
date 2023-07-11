@@ -8,13 +8,12 @@
 #include <variant>
 #include <vector>
 
+#include "core/framework/TensorSeq.h"
 #include "core/framework/customregistry.h"
 #include "core/framework/prepacked_weights_container.h"
 #include "core/framework/run_options.h"
 #include "core/framework/tensor.h"
-#include "core/framework/TensorSeq.h"
 #include "core/graph/model.h"
-
 #include "test/framework/TestAllocatorManager.h"
 #include "test/providers/checkers.h"
 #include "test/providers/tester_types.h"

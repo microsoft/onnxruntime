@@ -4,8 +4,8 @@
 #pragma once
 #include <list>
 #include <memory>
-#include <variant>
 #include <unordered_map>
+#include <variant>
 
 #include "core/common/gsl.h"
 #include "core/common/inlined_containers.h"

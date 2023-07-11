@@ -5,9 +5,9 @@
 // Should remove the shrunken_gather include from ENABLE_TRAINING_OPS once 1). compute optimizer is enabled for inference or
 // 2). this is needed by inference for other purpose.
 
-#include "core/providers/shared_library/provider_api.h"
-#include "core/providers/cuda/tensor/gather.h"
 #include "contrib_ops/cpu/tensor/shrunken_gather.h"
+#include "core/providers/cuda/tensor/gather.h"
+#include "core/providers/shared_library/provider_api.h"
 
 namespace onnxruntime {
 namespace contrib {

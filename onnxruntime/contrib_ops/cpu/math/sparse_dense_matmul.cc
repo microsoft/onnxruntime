@@ -3,8 +3,8 @@
 
 #if !defined(DISABLE_SPARSE_TENSORS)
 
-#include "core/framework/sparse_tensor.h"
 #include "core/common/narrow.h"
+#include "core/framework/sparse_tensor.h"
 #include "core/providers/cpu/math/gemm_matmul_common.h"
 #include "core/providers/cpu/math/matmul_helper.h"
 #include "core/util/math.h"

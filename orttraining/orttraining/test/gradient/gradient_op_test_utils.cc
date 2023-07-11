@@ -3,15 +3,12 @@
 
 #include "orttraining/test/gradient/gradient_op_test_utils.h"
 
-#include "gmock/gmock.h"
-
 #include "core/framework/kernel_type_str_resolver.h"
 #include "core/session/inference_session.h"
-
-#include "orttraining/core/session/training_session.h"
+#include "gmock/gmock.h"
 #include "orttraining/core/framework/gradient_graph_builder.h"
 #include "orttraining/core/graph/gradient_config.h"
-
+#include "orttraining/core/session/training_session.h"
 #include "test/util/include/default_providers.h"
 
 namespace onnxruntime {

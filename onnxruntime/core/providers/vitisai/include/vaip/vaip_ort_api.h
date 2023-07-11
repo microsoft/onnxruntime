@@ -1,13 +1,14 @@
 // Copyright (c) 2023 Advanced Micro Devices, Inc. All rights reserved.
 // Licensed under the MIT License.
 #pragma once
+#include <cassert>
+#include <functional>
+#include <vector>
+
 #include "./_sanity_check.h"
 #include "./dll_safe.h"
 #include "./my_ort.h"
 #include "./vaip_gsl.h"
-#include <cassert>
-#include <functional>
-#include <vector>
 struct OrtApi;
 
 namespace vaip_core {

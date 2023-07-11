@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "matmul_integer16.h"
+
 #include "core/providers/cpu/math/matmul_helper.h"
 
 namespace onnxruntime {

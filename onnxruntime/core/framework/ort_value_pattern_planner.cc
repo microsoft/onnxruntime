@@ -1,8 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include <set>
 #include "core/framework/ort_value_pattern_planner.h"
+
+#include <set>
+
 #include "core/framework/execution_plan_base.h"
 
 namespace onnxruntime {

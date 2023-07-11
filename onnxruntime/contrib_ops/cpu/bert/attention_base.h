@@ -4,9 +4,10 @@
 #pragma once
 
 #include <vector>
+
+#include "contrib_ops/cpu/bert/attention_common.h"
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
-#include "contrib_ops/cpu/bert/attention_common.h"
 
 namespace onnxruntime {
 namespace contrib {

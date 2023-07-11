@@ -2,19 +2,18 @@
 // Licensed under the MIT License.
 #pragma once
 
-#include "gtest/gtest.h"
-#include "orttraining/core/optimizer/gist_encode_decode.h"
-#include "test/providers/provider_test_utils.h"
-#include "test/framework/test_utils.h"
 #include "core/common/path_utils.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
 #include "core/session/environment.h"
+#include "gtest/gtest.h"
 #include "orttraining/core/framework/distributed_run_context.h"
-#include "orttraining/models/runner/training_runner.h"
+#include "orttraining/core/optimizer/gist_encode_decode.h"
 #include "orttraining/core/session/training_session.h"
+#include "orttraining/models/runner/training_runner.h"
 #include "orttraining/test/optimizer/horizontal_parallel_test_utils.h"
-
 #include "orttraining/training_ops/cpu/controlflow/event_pool.h"  // TODO: move with PipelineBatchPlanner
+#include "test/framework/test_utils.h"
+#include "test/providers/provider_test_utils.h"
 
 #ifdef USE_CUDA
 #include "core/providers/cuda/cuda_execution_provider_info.h"

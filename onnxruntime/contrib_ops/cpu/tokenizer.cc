@@ -4,8 +4,8 @@
 #include "core/common/common.h"
 #include "core/common/narrow.h"
 #include "core/common/utf8_util.h"
-#include "core/framework/tensor.h"
 #include "core/framework/op_kernel.h"
+#include "core/framework/tensor.h"
 #include "re2/re2.h"
 
 namespace onnxruntime {

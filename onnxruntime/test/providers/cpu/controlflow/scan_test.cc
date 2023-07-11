@@ -1,12 +1,12 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "gtest/gtest.h"
-#include "gmock/gmock.h"
 #include "core/framework/session_state.h"
-#include "core/session/inference_session.h"
 #include "core/providers/common.h"
 #include "core/providers/cpu/controlflow/scan_utils.h"
+#include "core/session/inference_session.h"
+#include "gmock/gmock.h"
+#include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/util/include/default_providers.h"
 

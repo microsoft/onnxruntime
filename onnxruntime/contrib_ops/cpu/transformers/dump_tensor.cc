@@ -2,7 +2,9 @@
 // Licensed under the MIT License.
 
 #include "dump_tensor.h"
+
 #include <iomanip>
+
 #include "core/framework/print_tensor_utils.h"
 
 namespace onnxruntime {

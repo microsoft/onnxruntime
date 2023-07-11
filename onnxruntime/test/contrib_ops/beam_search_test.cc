@@ -3,9 +3,10 @@
 
 #include <memory>
 #include <vector>
-#include "gtest/gtest.h"
+
 #include "core/common/gsl.h"
 #include "core/session/onnxruntime_cxx_api.h"
+#include "gtest/gtest.h"
 #include "test/common/cuda_op_test_utils.h"
 
 extern std::unique_ptr<Ort::Env> ort_env;

@@ -1,31 +1,27 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <Eigen/SparseCore>
+
+#include "asserts.h"
 #include "core/common/span_utils.h"
+#include "core/framework/data_transfer.h"
 #include "core/framework/data_types.h"
-
-#include "core/graph/onnx_protobuf.h"
-
-#include "core/graph/constants.h"
 #include "core/framework/op_kernel.h"
 #include "core/framework/sparse_tensor.h"
-#include "core/framework/tensorprotoutils.h"
 #include "core/framework/sparse_utils.h"
-#include "core/framework/data_transfer.h"
-
+#include "core/framework/tensorprotoutils.h"
+#include "core/graph/constants.h"
 #include "core/graph/model.h"
+#include "core/graph/onnx_protobuf.h"
 #include "core/session/inference_session.h"
-#include "test/providers/provider_test_utils.h"
-#include "asserts.h"
-#include "test_utils.h"
-#include "file_util.h"
-#include "default_providers.h"
-
-#include "gtest/gtest.h"
-#include "gmock/gmock.h"
-
 #include "core/util/math_cpuonly.h"
-#include <Eigen/SparseCore>
+#include "default_providers.h"
+#include "file_util.h"
+#include "gmock/gmock.h"
+#include "gtest/gtest.h"
+#include "test/providers/provider_test_utils.h"
+#include "test_utils.h"
 
 using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::common;

@@ -2,9 +2,10 @@
 // Copyright (c) Huawei. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/providers/cann/nn/conv.h"
+
 #include <string>
 #include <unordered_map>
-#include "core/providers/cann/nn/conv.h"
 
 using onnxruntime::common::Status;
 namespace onnxruntime {

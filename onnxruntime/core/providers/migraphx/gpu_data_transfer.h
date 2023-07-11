@@ -3,8 +3,8 @@
 
 #pragma once
 
-#include "migraphx_inc.h"
 #include "core/framework/data_transfer.h"
+#include "migraphx_inc.h"
 
 namespace onnxruntime {
 

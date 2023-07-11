@@ -2,7 +2,6 @@
 // Licensed under the MIT License.
 
 #include "Eigen/Core"
-
 #include "test/providers/compare_provider_test_utils.h"
 
 namespace onnxruntime {

@@ -1,12 +1,14 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include <iostream>
 #include "core/graph/graph_viewer.h"
+
+#include <iostream>
+
+#include "gmock/gmock.h"
+#include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/util/include/asserts.h"
-#include "gtest/gtest.h"
-#include "gmock/gmock.h"
 
 using namespace ONNX_NAMESPACE;
 namespace onnxruntime {

@@ -4,10 +4,10 @@
 #ifndef TVM_UTILS_H
 #define TVM_UTILS_H
 
+#include "tvm_utils.h"  // NOLINT(build/include_subdir)
+
 #include <fstream>
 #include <streambuf>
-
-#include "tvm_utils.h"  // NOLINT(build/include_subdir)
 
 namespace onnxruntime {
 namespace tvm {

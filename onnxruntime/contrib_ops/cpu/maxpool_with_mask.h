@@ -10,8 +10,8 @@
 #include "core/common/narrow.h"
 #include "core/framework/op_kernel.h"
 #include "core/framework/tensor.h"
-#include "core/providers/cpu/nn/pool_base.h"
 #include "core/platform/threadpool.h"
+#include "core/providers/cpu/nn/pool_base.h"
 
 namespace onnxruntime {
 namespace contrib {

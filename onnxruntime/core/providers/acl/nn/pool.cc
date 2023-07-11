@@ -2,17 +2,17 @@
 // Copyright (c) 2019, NXP Semiconductor, Inc. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/providers/acl/nn/pool.h"
+
 #include <cmath>
 
 #include "core/common/common.h"
 #include "core/common/inlined_containers.h"
 #include "core/framework/op_kernel.h"
-#include "core/util/math.h"
-#include "core/util/math_cpuonly.h"
-
-#include "core/providers/acl/nn/pool.h"
 #include "core/providers/acl/acl_common.h"
 #include "core/providers/acl/acl_fwd.h"
+#include "core/util/math.h"
+#include "core/util/math_cpuonly.h"
 
 // NEON
 #include "arm_compute/runtime/NEON/functions/NEPoolingLayer.h"

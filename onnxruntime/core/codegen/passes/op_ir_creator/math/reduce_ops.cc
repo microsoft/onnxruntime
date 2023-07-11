@@ -1,12 +1,12 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/codegen/passes/op_ir_creator/all_ops.h"
+#include "core/codegen/mti/math/reduce_ops.h"
 
 #include "core/codegen/common/op_macro.h"
-#include "core/codegen/mti/math/reduce_ops.h"
 #include "core/codegen/mti/tensor/cast_ops.h"
 #include "core/codegen/mti/tensor/reshape_ops.h"
+#include "core/codegen/passes/op_ir_creator/all_ops.h"
 #include "core/framework/op_kernel_info.h"
 #include "core/providers/common.h"
 

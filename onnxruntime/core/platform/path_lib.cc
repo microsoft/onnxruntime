@@ -3,12 +3,12 @@
 
 #include "core/platform/path_lib.h"
 
-#include <cassert>
-#include <array>
 #include <algorithm>
+#include <array>
+#include <cassert>
 
-#include "core/common/status.h"
 #include "core/common/common.h"
+#include "core/common/status.h"
 #ifdef _WIN32
 
 #if _GAMING_XBOX
@@ -27,8 +27,8 @@
 #else
 #include <libgen.h>
 #include <stdlib.h>
-#include <sys/stat.h>
 #include <string.h>
+#include <sys/stat.h>
 #endif
 
 #ifdef _WIN32

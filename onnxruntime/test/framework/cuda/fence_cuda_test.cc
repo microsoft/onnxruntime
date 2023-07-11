@@ -1,32 +1,30 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
-#include "core/graph/onnx_protobuf.h"
-
-#include "core/session/inference_session.h"
-
 #include <algorithm>
 #include <functional>
 #include <iterator>
 #include <thread>
 
-#include "core/common/status.h"
+#include "asserts.h"
 #include "core/common/logging/logging.h"
+#include "core/common/status.h"
 #include "core/framework/execution_provider.h"
 #include "core/framework/op_kernel.h"
 #include "core/framework/session_state.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/graph/graph_viewer.h"
 #include "core/graph/model.h"
+#include "core/graph/onnx_protobuf.h"
 #include "core/graph/op.h"
 #include "core/providers/cpu/math/element_wise_ops.h"
-#include "test/capturing_sink.h"
-#include "test/test_environment.h"
-#include "test/framework/test_utils.h"
-#include "gtest/gtest.h"
+#include "core/session/inference_session.h"
 #include "core/util/protobuf_parsing_utils.h"
-#include "test/providers/provider_test_utils.h"
 #include "default_providers.h"
-#include "asserts.h"
+#include "gtest/gtest.h"
+#include "test/capturing_sink.h"
+#include "test/framework/test_utils.h"
+#include "test/providers/provider_test_utils.h"
+#include "test/test_environment.h"
 
 using namespace std;
 using namespace ONNX_NAMESPACE;

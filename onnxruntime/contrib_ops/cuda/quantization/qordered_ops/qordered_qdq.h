@@ -3,11 +3,11 @@
 
 #pragma once
 
+#include <string>
+#include <unordered_map>
+
 #include "core/common/common.h"
 #include "core/providers/cuda/cuda_kernel.h"
-
-#include <unordered_map>
-#include <string>
 
 namespace onnxruntime {
 namespace contrib {

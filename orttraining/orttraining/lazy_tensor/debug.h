@@ -1,8 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include <string>
 #include <torch/torch.h>
+
+#include <string>
 
 namespace onnxruntime {
 namespace lazytensor {

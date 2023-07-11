@@ -3,18 +3,18 @@
 
 #include "core/providers/shared_library/provider_api.h"
 #define ORT_API_MANUAL_INIT
-#include "core/session/onnxruntime_cxx_api.h"
-#include "core/common/safeint.h"
+#include <algorithm>
+#include <fstream>
+#include <iterator>
+
 #include "core/common/logging/severity.h"
+#include "core/common/safeint.h"
+#include "core/session/onnxruntime_cxx_api.h"
+#include "gpu_data_transfer.h"
+#include "hip_allocator.h"
 #include "migraphx_execution_provider.h"
 #include "migraphx_execution_provider_utils.h"
-#include "hip_allocator.h"
-#include "gpu_data_transfer.h"
 #include "migraphx_inc.h"
-
-#include <fstream>
-#include <algorithm>
-#include <iterator>
 
 // TODO: find a better way to share this
 #include "core/providers/rocm/rocm_stream_handle.h"

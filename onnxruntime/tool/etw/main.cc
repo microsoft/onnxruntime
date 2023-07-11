@@ -1,8 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "eparser.h"
 #include "TraceSession.h"
+#include "eparser.h"
 
 // Turns the DEFINE_GUID for EventTraceGuid into a const.
 #define INITGUID

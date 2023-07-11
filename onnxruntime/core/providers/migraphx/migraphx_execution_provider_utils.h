@@ -2,8 +2,8 @@
 // Licensed under the MIT License
 
 #pragma once
-#include "core/session/onnxruntime_cxx_api.h"
 #include "core/framework/execution_provider.h"
+#include "core/session/onnxruntime_cxx_api.h"
 
 namespace onnxruntime {
 

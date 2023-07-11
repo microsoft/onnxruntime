@@ -20,12 +20,14 @@ limitations under the License.
 
 #pragma once
 
-#include <type_traits>
-#include <hipcub/hipcub.hpp>
 #include <hip/hip_fp16.h>
+
+#include <hipcub/hipcub.hpp>
+#include <type_traits>
+
 #include "core/providers/rocm/cu_inc/common.cuh"
-#include "core/providers/rocm/rocm_common.h"
 #include "core/providers/rocm/math/softmax.h"
+#include "core/providers/rocm/rocm_common.h"
 
 #define ROCMRT_INF_F __int_as_float(0x7f800000)
 

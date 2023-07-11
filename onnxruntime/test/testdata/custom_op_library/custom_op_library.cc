@@ -3,13 +3,12 @@
 #define ORT_API_MANUAL_INIT
 #include "onnxruntime_cxx_api.h"
 #undef ORT_API_MANUAL_INIT
-#include "onnxruntime_lite_custom_op.h"
-
-#include <vector>
 #include <cmath>
 #include <mutex>
+#include <vector>
 
 #include "core/common/common.h"
+#include "onnxruntime_lite_custom_op.h"
 
 #ifdef USE_CUDA
 #include <cuda_runtime.h>

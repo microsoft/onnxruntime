@@ -1,15 +1,15 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/optimizer/constant_folding.h"
+
 #include <limits>
 
-#include "core/optimizer/constant_folding.h"
-#include "core/optimizer/utils.h"
+#include "core/framework/op_kernel.h"
+#include "core/framework/tensorprotoutils.h"
 #include "core/graph/graph_utils.h"
 #include "core/optimizer/optimizer_execution_frame.h"
 #include "core/optimizer/utils.h"
-#include "core/framework/op_kernel.h"
-#include "core/framework/tensorprotoutils.h"
 
 using namespace onnxruntime::common;
 

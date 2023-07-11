@@ -6,10 +6,10 @@
 #include <string>
 #include <vector>
 
-#include "onnx/onnx-operators_pb.h"
-#include "onnx/defs/schema.h"
 #include "onnx/defs/function.h"
 #include "onnx/defs/parser.h"
+#include "onnx/defs/schema.h"
+#include "onnx/onnx-operators_pb.h"
 
 namespace ONNX_NAMESPACE {
 

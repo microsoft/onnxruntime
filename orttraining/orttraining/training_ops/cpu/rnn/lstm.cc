@@ -2,8 +2,9 @@
 // Licensed under the MIT License.
 
 #include "orttraining/training_ops/cpu/rnn/lstm.h"
-#include "core/providers/cpu/rnn/uni_directional_lstm.h"
+
 #include "core/providers/cpu/rnn/rnn_helpers.h"
+#include "core/providers/cpu/rnn/uni_directional_lstm.h"
 
 namespace onnxruntime::contrib {
 

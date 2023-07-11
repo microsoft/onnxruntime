@@ -3,11 +3,12 @@
 
 #pragma once
 
-#include <vector>
 #include <string>
+#include <vector>
+
 #include "DlSystem/DlError.hpp"
-#include "core/providers/snpe/snpe_runtime_options.h"
 #include "core/common/status.h"
+#include "core/providers/snpe/snpe_runtime_options.h"
 
 namespace onnxruntime {
 namespace contrib {

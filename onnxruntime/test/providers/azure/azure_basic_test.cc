@@ -1,11 +1,11 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/session/onnxruntime_cxx_api.h"
 #include "core/session/inference_session.h"
+#include "core/session/onnxruntime_cxx_api.h"
+#include "gtest/gtest.h"
 #include "test/util/include/inference_session_wrapper.h"
 #include "test/util/include/test_allocator.h"
-#include "gtest/gtest.h"
 
 // defined in test_main.cc
 extern std::unique_ptr<Ort::Env> ort_env;

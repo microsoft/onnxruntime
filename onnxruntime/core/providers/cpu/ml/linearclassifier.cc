@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/providers/cpu/ml/linearclassifier.h"
+
 #include "core/common/narrow.h"
 #include "core/providers/cpu/math/gemm.h"
 

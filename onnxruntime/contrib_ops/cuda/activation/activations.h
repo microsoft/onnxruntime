@@ -3,11 +3,11 @@
 
 #pragma once
 
-#include "core/providers/cuda/cuda_common.h"
-#include "core/providers/cuda/math/unary_elementwise_ops.h"
-#include "core/providers/cuda/math/binary_elementwise_ops.h"
-#include "core/providers/cuda/activation/activations.h"
 #include "activations_impl.h"
+#include "core/providers/cuda/activation/activations.h"
+#include "core/providers/cuda/cuda_common.h"
+#include "core/providers/cuda/math/binary_elementwise_ops.h"
+#include "core/providers/cuda/math/unary_elementwise_ops.h"
 
 using namespace onnxruntime::cuda;
 

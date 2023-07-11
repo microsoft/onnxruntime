@@ -1,14 +1,16 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/shared_library/provider_api.h"
 #include "shared_inc/rocm_call.h"
+
 #include <core/platform/env.h>
+
+#include "core/providers/shared_library/provider_api.h"
 
 #ifdef _WIN32
 #else  // POSIX
-#include <unistd.h>
 #include <string.h>
+#include <unistd.h>
 #endif
 
 namespace onnxruntime {

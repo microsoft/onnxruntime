@@ -6,18 +6,18 @@
 #pragma warning(disable : 4244)
 #endif
 
+#include "test/optimizer/test_optimizer_utils.h"
+
 #include <random>
+
 #include "core/framework/ort_value.h"
 #include "core/graph/model.h"
-
 #include "core/platform/env.h"
 #include "core/session/inference_session.h"
-
+#include "test/common/tensor_op_test_utils.h"
 #include "test/test_environment.h"
 #include "test/util/include/asserts.h"
 #include "test/util/include/default_providers.h"
-#include "test/optimizer/test_optimizer_utils.h"
-#include "test/common/tensor_op_test_utils.h"
 
 namespace onnxruntime {
 namespace test {

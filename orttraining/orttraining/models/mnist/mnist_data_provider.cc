@@ -1,9 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "mnist_data_provider.h"
+
 #include "mnist_reader/mnist_reader.hpp"
 #include "mnist_reader/mnist_utils.hpp"
-#include "mnist_data_provider.h"
 #include "orttraining/models/runner/training_util.h"
 
 using namespace onnxruntime;

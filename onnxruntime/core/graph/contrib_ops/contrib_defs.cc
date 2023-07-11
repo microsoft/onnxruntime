@@ -8,17 +8,16 @@
 #else
 #include "onnx/defs/data_type_utils.h"
 #endif
-#include "onnx/defs/shape_inference.h"
-#include "onnx/defs/tensor_proto_util.h"
-
+#include "contrib_ops/cpu/transformers/beam_search_parameters.h"
 #include "core/graph/constants.h"
 #include "core/graph/contrib_ops/attn_lstm_schema_defs.h"
+#include "core/graph/contrib_ops/onnx_function_util.h"
 #include "core/graph/contrib_ops/range_schema_defs.h"
 #include "core/graph/op.h"
 #include "core/mlas/inc/mlas.h"
-#include "core/graph/contrib_ops/onnx_function_util.h"
-#include "contrib_ops/cpu/transformers/beam_search_parameters.h"
 #include "onnx/defs/function.h"
+#include "onnx/defs/shape_inference.h"
+#include "onnx/defs/tensor_proto_util.h"
 // Suppress a warning: global initializer calls a non-constexpr function 'symbol' which is from
 // ONNX_OPERATOR_SET_SCHEMA_EX macro and only happens in debug build
 #if defined(_WIN32) && !defined(NDEBUG)

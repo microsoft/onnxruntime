@@ -4,8 +4,8 @@
 #ifndef TVM_API_H
 #define TVM_API_H
 
-#include <vector>
 #include <string>
+#include <vector>
 
 #include "tvm_common.h"
 #include "tvm_defaults.h"

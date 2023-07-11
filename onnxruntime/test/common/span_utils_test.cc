@@ -1,11 +1,11 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "gtest/gtest.h"
-
-#include "test/util/include/asserts.h"
 #include "core/common/span_utils.h"
+
 #include "core/common/inlined_containers.h"
+#include "gtest/gtest.h"
+#include "test/util/include/asserts.h"
 
 namespace onnxruntime {
 namespace test {

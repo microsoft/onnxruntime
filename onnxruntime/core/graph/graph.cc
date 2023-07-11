@@ -7,8 +7,8 @@
 #include <fstream>
 #include <iostream>
 #include <numeric>
-#include <stack>
 #include <queue>
+#include <stack>
 
 #include "core/common/common.h"
 #include "core/common/gsl.h"
@@ -20,6 +20,7 @@
 #include "core/framework/tensor_shape.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/framework/utils.h"
+#include "core/graph/function_utils.h"
 #include "core/graph/graph_flatbuffers_utils.h"
 #include "core/graph/graph_viewer.h"
 #include "core/graph/indexed_sub_graph.h"
@@ -28,7 +29,6 @@
 #include "core/graph/node_attr_utils.h"
 #include "core/graph/op.h"
 #include "core/graph/runtime_optimization_record_container.h"
-#include "core/graph/function_utils.h"
 
 #if !defined(ORT_MINIMAL_BUILD)
 #include "core/graph/function.h"

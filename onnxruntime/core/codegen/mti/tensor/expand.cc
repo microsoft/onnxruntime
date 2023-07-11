@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/codegen/mti/tensor/expand.h"
+
 #include "core/codegen/mti/common.h"
 
 namespace onnxruntime {

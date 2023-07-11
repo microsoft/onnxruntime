@@ -2,14 +2,14 @@
 // Licensed under the MIT License.
 
 #include "orttraining/training_ops/cuda/optimizer/lamb.h"
-#include "orttraining/training_ops/cuda/optimizer/lamb_impl.h"
-
-#include "core/providers/cuda/reduction/reduction_functions.h"
-#include "core/providers/cuda/math/binary_elementwise_ops.h"
-#include "orttraining/training_ops/cpu/optimizer/common.h"
-#include "orttraining/training_ops/cuda/optimizer/common.h"
 
 #include <cmath>
+
+#include "core/providers/cuda/math/binary_elementwise_ops.h"
+#include "core/providers/cuda/reduction/reduction_functions.h"
+#include "orttraining/training_ops/cpu/optimizer/common.h"
+#include "orttraining/training_ops/cuda/optimizer/common.h"
+#include "orttraining/training_ops/cuda/optimizer/lamb_impl.h"
 
 namespace onnxruntime {
 namespace cuda {

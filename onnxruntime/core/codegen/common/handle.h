@@ -2,9 +2,11 @@
 // Licensed under the MIT License.
 
 #pragma once
-#include "core/codegen/common/target_info.h"
-#include <functional>
 #include <limits.h>
+
+#include <functional>
+
+#include "core/codegen/common/target_info.h"
 
 namespace onnxruntime {
 namespace codegen {

@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 #include "bridge.h"
+
 #include <torch/torch.h>
 
 namespace onnxruntime {

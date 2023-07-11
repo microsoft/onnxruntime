@@ -1,12 +1,14 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include <memory>
-#include "core/common/logging/logging.h"
-#include "core/flatbuffers/schema/ort.fbs.h"
-#include "core/flatbuffers/flatbuffers_utils.h"
-#include "core/framework/tensorprotoutils.h"
 #include "core/graph/model.h"
+
+#include <memory>
+
+#include "core/common/logging/logging.h"
+#include "core/flatbuffers/flatbuffers_utils.h"
+#include "core/flatbuffers/schema/ort.fbs.h"
+#include "core/framework/tensorprotoutils.h"
 #include "core/graph/model_load_utils.h"
 
 #ifdef _MSC_VER
@@ -18,15 +20,13 @@
 #ifdef _MSC_VER
 #pragma warning(pop)
 #endif
+#include "core/common/gsl.h"
+#include "core/platform/env.h"
 #include "core/util/protobuf_parsing_utils.h"
 
-#include "core/common/gsl.h"
-
-#include "core/platform/env.h"
-
 #if !defined(ORT_MINIMAL_BUILD)
-#include "core/graph/schema_registry.h"
 #include "core/graph/function_utils.h"
+#include "core/graph/schema_registry.h"
 #endif
 
 #if defined(__wasm__)

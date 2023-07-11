@@ -4,8 +4,9 @@
 #if !defined(DISABLE_OPTIONAL_TYPE)
 
 #include "optional_ops.h"
-#include "core/framework/ort_value.h"
+
 #include "core/framework/TensorSeq.h"
+#include "core/framework/ort_value.h"
 #include "core/providers/cpu/tensor/utils.h"
 
 namespace onnxruntime {

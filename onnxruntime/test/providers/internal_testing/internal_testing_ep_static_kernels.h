@@ -5,8 +5,8 @@
 
 #if !defined(ORT_MINIMAL_BUILD)
 
-#include "core/framework/op_kernel.h"
 #include "core/framework/allocator.h"
+#include "core/framework/op_kernel.h"
 
 namespace onnxruntime {
 namespace internal_testing_ep {

@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "orttraining/core/graph/adasum_optimizer_graph_builder.h"
+
 #include "orttraining/core/framework/distributed_run_context.h"
 
 namespace onnxruntime {

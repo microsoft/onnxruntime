@@ -2,9 +2,8 @@
 // Licensed under the MIT License.
 
 #include "gtest/gtest.h"
-#include "test/providers/provider_test_utils.h"
-
 #include "tensorboard/compat/proto/summary.pb.h"
+#include "test/providers/provider_test_utils.h"
 
 namespace onnxruntime {
 namespace test {

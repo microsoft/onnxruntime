@@ -4,9 +4,10 @@
 #pragma once
 
 #include <memory>
-#include "core/providers/cuda/cuda_kernel.h"
+
 #include "contrib_ops/cpu/bert/attention_base.h"
 #include "contrib_ops/cuda/bert/tensorrt_fused_multihead_attention/mha_runner.h"
+#include "core/providers/cuda/cuda_kernel.h"
 
 namespace onnxruntime {
 namespace contrib {

@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/optimizer/relu_clip_fusion.h"
+
 #include "core/graph/graph.h"
 #include "core/graph/graph_utils.h"
 #include "core/graph/op.h"

@@ -1,14 +1,15 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/framework/tensor_shape.h"
 #include "contrib_ops/cuda/quantization/qordered_ops/qordered_qdq.h"
-#include "contrib_ops/cuda/quantization/qordered_ops/qordered_qdq_impl.h"
-#include "gsl/gsl"
 
-#include <numeric>
 #include <functional>
+#include <numeric>
 #include <sstream>
+
+#include "contrib_ops/cuda/quantization/qordered_ops/qordered_qdq_impl.h"
+#include "core/framework/tensor_shape.h"
+#include "gsl/gsl"
 
 using namespace onnxruntime::cuda;
 

@@ -3,8 +3,8 @@
 
 #pragma once
 
-#include "core/providers/cuda/cuda_kernel.h"
 #include "core/providers/cpu/tensor/space_depth_ops.h"
+#include "core/providers/cuda/cuda_kernel.h"
 
 namespace onnxruntime {
 namespace cuda {

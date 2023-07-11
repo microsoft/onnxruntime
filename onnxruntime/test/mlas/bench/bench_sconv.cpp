@@ -1,11 +1,11 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "mlas.h"
-#include "bench_util.h"
-
-#include <stdexcept>
 #include <numeric>
+#include <stdexcept>
+
+#include "bench_util.h"
+#include "mlas.h"
 
 static std::vector<std::string> BuildArgNamesForConv(size_t rank) {
   std::vector<std::string> names = {"Rank", "N", "G", "Cpg", "Fpg"};

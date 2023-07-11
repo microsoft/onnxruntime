@@ -2,9 +2,9 @@
 // Licensed under the MIT License.
 #pragma once
 #include "core/common/optional.h"
-#include "core/providers/providers.h"
-#include "core/providers/provider_factory_creators.h"
 #include "core/framework/execution_provider.h"
+#include "core/providers/provider_factory_creators.h"
+#include "core/providers/providers.h"
 
 namespace onnxruntime {
 

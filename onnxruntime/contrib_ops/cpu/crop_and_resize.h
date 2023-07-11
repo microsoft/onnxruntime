@@ -3,8 +3,9 @@
 
 #pragma once
 
-#include "core/framework/op_kernel.h"
 #include <cctype>
+
+#include "core/framework/op_kernel.h"
 
 namespace onnxruntime {
 namespace contrib {

@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 #include "test_utils.h"
+
 #include "core/graph/graph.h"
 
 namespace onnxruntime {

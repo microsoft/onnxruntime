@@ -3,11 +3,10 @@
 
 #pragma once
 
-#include "onnx/onnx_pb.h"
-
-#include "core/graph/basic_types.h"
-#include "core/common/status.h"
 #include "core/common/logging/logging.h"
+#include "core/common/status.h"
+#include "core/graph/basic_types.h"
+#include "onnx/onnx_pb.h"
 
 namespace onnxruntime {
 

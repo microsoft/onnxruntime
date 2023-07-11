@@ -3,8 +3,9 @@
 
 #pragma once
 
-#include <cstdint>
 #include <hip/hip_runtime.h>
+
+#include <cstdint>
 
 #include "core/common/common.h"
 #include "core/common/status.h"

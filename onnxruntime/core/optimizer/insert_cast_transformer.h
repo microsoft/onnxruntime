@@ -3,11 +3,11 @@
 
 #pragma once
 #include "core/common/common.h"
-#include "core/graph/graph_viewer.h"
-#include "core/framework/op_kernel.h"
-#include "core/optimizer/graph_transformer.h"
-#include "core/framework/kernel_registry_manager.h"
 #include "core/framework/kernel_registry.h"
+#include "core/framework/kernel_registry_manager.h"
+#include "core/framework/op_kernel.h"
+#include "core/graph/graph_viewer.h"
+#include "core/optimizer/graph_transformer.h"
 
 namespace onnxruntime {
 

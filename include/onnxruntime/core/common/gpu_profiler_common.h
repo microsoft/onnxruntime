@@ -1,15 +1,15 @@
 #pragma once
 
-#include "core/common/profiler_common.h"
-#include "core/common/inlined_containers.h"
-
 #include <map>
 #include <memory>
 #include <mutex>
 #include <sstream>
 #include <string>
-#include <vector>
 #include <utility>
+#include <vector>
+
+#include "core/common/inlined_containers.h"
+#include "core/common/profiler_common.h"
 
 namespace onnxruntime {
 namespace profiling {

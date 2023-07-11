@@ -3,11 +3,12 @@
 
 #include "core/providers/cpu/rnn/rnn_helpers.h"
 
+#include <stdlib.h>
+
 #include <cmath>
 #include <cstring>
 #include <iomanip>
 #include <iostream>
-#include <stdlib.h>
 #include <string>
 #include <unordered_map>
 

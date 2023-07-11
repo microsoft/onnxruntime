@@ -3,6 +3,7 @@
 // Licensed under the MIT License.
 
 #include "core/providers/cann/cann_stream_handle.h"
+
 #include "core/common/spin_pause.h"
 
 namespace onnxruntime {

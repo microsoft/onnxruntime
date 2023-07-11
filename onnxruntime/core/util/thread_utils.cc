@@ -9,9 +9,10 @@
 #include <Windows.h>
 #endif
 #include <thread>
-#include "core/session/ort_apis.h"
-#include "core/common/string_utils.h"
+
 #include "core/common/logging/logging.h"
+#include "core/common/string_utils.h"
+#include "core/session/ort_apis.h"
 
 namespace onnxruntime {
 namespace concurrency {

@@ -2,9 +2,11 @@
 // Licensed under the MIT License.
 
 #include "core/providers/cpu/math/softmax.h"
-#include "core/providers/cpu/tensor/transpose.h"
-#include <vector>
+
 #include <numeric>
+#include <vector>
+
+#include "core/providers/cpu/tensor/transpose.h"
 
 namespace onnxruntime {
 

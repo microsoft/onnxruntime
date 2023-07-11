@@ -2,12 +2,13 @@
 // Licensed under the MIT License.
 
 #pragma once
-#include "core/common/common.h"
+#include <tvm/tvm.h>
+
 #include "core/codegen/common/creator.h"
 #include "core/codegen/common/registry.h"
 #include "core/codegen/passes/utils/codegen_context.h"
+#include "core/common/common.h"
 #include "core/graph/graph.h"
-#include <tvm/tvm.h>
 
 namespace onnxruntime {
 namespace tvm_codegen {

@@ -1,13 +1,13 @@
 
 #include "contrib_ops/cuda/transformers/greedy_search_top_one.h"
-#include "core/providers/cuda/shared_inc/cuda_call.h"
+
+#include <cuda_runtime.h>
 
 #include <algorithm>
 #include <numeric>
 #include <random>
 
-#include <cuda_runtime.h>
-
+#include "core/providers/cuda/shared_inc/cuda_call.h"
 #include "gtest/gtest.h"
 
 namespace onnxruntime {

@@ -1,14 +1,13 @@
 
-#include "gtest/gtest.h"
-
 #include <algorithm>
 #include <vector>
 
 #include "core/providers/cpu/rnn/deep_cpu_lstm.h"
 #include "core/util/qmath.h"
+#include "gtest/gtest.h"
 #include "test/common/tensor_op_test_utils.h"
-#include "test/util/include/default_providers.h"
 #include "test/providers/provider_test_utils.h"
+#include "test/util/include/default_providers.h"
 
 namespace onnxruntime {
 namespace test {

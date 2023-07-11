@@ -4,8 +4,9 @@
 #pragma once
 
 #include <memory>
-#include "core/providers/rocm/rocm_kernel.h"
+
 #include "contrib_ops/rocm/bert/attention_impl.h"
+#include "core/providers/rocm/rocm_kernel.h"
 
 namespace onnxruntime {
 namespace contrib {

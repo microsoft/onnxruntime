@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "orttraining/training_ops/cuda/tensor/concat.h"
+
 #include "core/providers/cuda/tensor/concat_impl.h"
 
 namespace onnxruntime {

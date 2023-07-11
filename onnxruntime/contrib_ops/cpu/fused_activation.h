@@ -4,8 +4,8 @@
 #pragma once
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
-#include "core/util/math.h"
 #include "core/mlas/inc/mlas.h"
+#include "core/util/math.h"
 
 namespace onnxruntime {
 

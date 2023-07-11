@@ -3,8 +3,8 @@
 
 #pragma once
 
-#include "contrib_ops/cpu/transformers/subgraph_base.h"
 #include "contrib_ops/cpu/transformers/sequences.h"
+#include "contrib_ops/cpu/transformers/subgraph_base.h"
 #include "contrib_ops/cpu/transformers/subgraph_t5_decoder.h"
 
 namespace onnxruntime {

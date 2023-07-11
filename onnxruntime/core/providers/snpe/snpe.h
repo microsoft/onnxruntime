@@ -3,17 +3,18 @@
 
 #pragma once
 
-#include <sstream>
 #include <iostream>
 #include <memory>
-#include <unordered_map>
+#include <sstream>
 #include <string>
+#include <unordered_map>
 #include <vector>
+
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
 #include "core/framework/tensor.h"
-#include "core/providers/snpe/snpe_lib.h"
 #include "core/providers/snpe/snpe_execution_provider.h"
+#include "core/providers/snpe/snpe_lib.h"
 
 namespace onnxruntime {
 namespace contrib {

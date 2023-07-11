@@ -3,9 +3,9 @@
 
 #include "TFModelInfo.h"
 
-#include <memory>
-
 #include <core/platform/env.h>
+
+#include <memory>
 
 std::unique_ptr<TestModelInfo> TFModelInfo::Create(_In_ const PATH_CHAR_TYPE* model_url) {
   std::unique_ptr<TFModelInfo> model_info = std::make_unique<TFModelInfo>();

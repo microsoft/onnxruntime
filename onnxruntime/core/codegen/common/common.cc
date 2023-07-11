@@ -3,12 +3,13 @@
 
 #include "core/codegen/common/common.h"
 
-#include "core/framework/tensorprotoutils.h"
-#include "core/common/inlined_containers.h"
-#include "core/graph/graph.h"
-#include "core/graph/schema_registry.h"
 #include <algorithm>
 #include <string_view>
+
+#include "core/common/inlined_containers.h"
+#include "core/framework/tensorprotoutils.h"
+#include "core/graph/graph.h"
+#include "core/graph/schema_registry.h"
 
 namespace onnxruntime {
 

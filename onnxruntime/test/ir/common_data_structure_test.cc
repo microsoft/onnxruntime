@@ -1,9 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "asserts.h"
 #include "core/graph/record.h"
 #include "gtest/gtest.h"
-#include "asserts.h"
 
 using namespace ::onnxruntime::common;
 

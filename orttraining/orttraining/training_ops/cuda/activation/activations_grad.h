@@ -3,9 +3,9 @@
 
 #pragma once
 
+#include "core/providers/cuda/activation/activations.h"
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/math/binary_elementwise_ops.h"
-#include "core/providers/cuda/activation/activations.h"
 #include "orttraining/training_ops/cuda/activation/activations_grad_impl.h"
 
 namespace onnxruntime {

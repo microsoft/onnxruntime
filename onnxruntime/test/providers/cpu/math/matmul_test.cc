@@ -1,13 +1,13 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "default_providers.h"
 #include "gtest/gtest.h"
+#include "test/common/cuda_op_test_utils.h"
+#include "test/common/dnnl_op_test_utils.h"
+#include "test/common/tensor_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/providers/run_options_config_keys.h"
-#include "test/common/dnnl_op_test_utils.h"
-#include "test/common/cuda_op_test_utils.h"
-#include "test/common/tensor_op_test_utils.h"
-#include "default_providers.h"
 
 namespace onnxruntime {
 namespace test {

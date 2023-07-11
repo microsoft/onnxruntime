@@ -1,9 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 #if !defined(ORT_MINIMAL_BUILD)
+#include <gtest/gtest.h>
+
 #include "core/session/onnxruntime_c_api.h"
 #include "core/session/onnxruntime_cxx_api.h"
-#include <gtest/gtest.h>
 
 extern std::unique_ptr<Ort::Env> ort_env;
 

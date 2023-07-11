@@ -8,12 +8,12 @@
 
 #include "core/common/common.h"
 #include "core/framework/allocator.h"
-#include "core/framework/tensor.h"
 #include "core/framework/execution_provider.h"
-#include "core/graph/constants.h"
-#include "core/session/environment.h"
+#include "core/framework/tensor.h"
 #include "core/graph/basic_types.h"
+#include "core/graph/constants.h"
 #include "core/graph/model.h"
+#include "core/session/environment.h"
 
 namespace onnxruntime {
 #ifdef __GNUC__

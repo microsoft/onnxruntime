@@ -3,10 +3,12 @@
 
 #pragma once
 
+#include <stdint.h>
+#include <stdlib.h>
+
 #include <memory>
 #include <vector>
-#include <stdlib.h>
-#include <stdint.h>
+
 #include "callback.h"
 namespace onnxruntime {
 namespace test {

@@ -1,10 +1,12 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/optimizer/initializer.h"
 #include "core/optimizer/bias_dropout_fusion.h"
-#include "core/graph/graph_utils.h"
+
 #include <deque>
+
+#include "core/graph/graph_utils.h"
+#include "core/optimizer/initializer.h"
 
 using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::common;

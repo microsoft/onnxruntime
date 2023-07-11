@@ -1,12 +1,12 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/platform/env.h"
-
 #include <fstream>
 #include <random>
 #include <utility>
 #include <vector>
+
+#include "core/platform/env.h"
 
 #ifndef _WIN32
 #include <unistd.h>  // for sysconf() and _SC_PAGESIZE
@@ -15,10 +15,8 @@
 #endif
 
 #include "core/common/gsl.h"
-
-#include "gtest/gtest.h"
-
 #include "core/common/span_utils.h"
+#include "gtest/gtest.h"
 #include "test/util/include/file_util.h"
 
 namespace onnxruntime {

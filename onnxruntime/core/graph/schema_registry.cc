@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/graph/schema_registry.h"
+
 #include "core/common/logging/logging.h"
 
 namespace onnxruntime {

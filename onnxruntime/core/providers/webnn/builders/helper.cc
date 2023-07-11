@@ -2,10 +2,11 @@
 // Copyright (c) Intel Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include <vector>
-
 #include "helper.h"
+
 #include <core/graph/graph_viewer.h>
+
+#include <vector>
 
 #include "op_builder_factory.h"
 

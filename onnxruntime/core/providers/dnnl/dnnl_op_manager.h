@@ -2,10 +2,11 @@
 // Licensed under the MIT License
 
 #pragma once
-#include "dnnl_node_capability.h"
 #include <map>
-#include <string>
 #include <memory>
+#include <string>
+
+#include "dnnl_node_capability.h"
 
 namespace onnxruntime {
 class DnnlOpManager {

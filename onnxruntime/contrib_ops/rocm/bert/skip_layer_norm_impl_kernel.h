@@ -4,6 +4,7 @@
 #pragma once
 
 #include <hip/hip_fp16.h>
+
 #include "contrib_ops/rocm/bert/layer_norm.cuh"
 
 namespace onnxruntime {

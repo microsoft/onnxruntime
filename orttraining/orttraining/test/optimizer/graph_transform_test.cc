@@ -1,36 +1,34 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/session/inference_session.h"
+#include <random>
+
 #include "core/graph/model.h"
-
-#include "test/framework/test_utils.h"
-#include "test/test_environment.h"
-
-#include "gtest/gtest.h"
+#include "core/optimizer/bias_gelu_fusion.h"
+#include "core/optimizer/dropout_elimination.h"
+#include "core/optimizer/gelu_fusion.h"
 #include "core/optimizer/rule_based_graph_transformer.h"
 #include "core/optimizer/utils.h"
-#include "core/optimizer/bias_gelu_fusion.h"
-#include "core/optimizer/gelu_fusion.h"
-#include "core/optimizer/dropout_elimination.h"
-#include "orttraining/core/optimizer/gist_encode_decode.h"
-#include "orttraining/core/optimizer/megatron_transformer.h"
-#include "orttraining/core/optimizer/concat_replacement.h"
+#include "core/session/inference_session.h"
+#include "gtest/gtest.h"
 #include "orttraining/core/optimizer/batchnorm_replacement.h"
+#include "orttraining/core/optimizer/bias_softmax_dropout_fusion.h"
+#include "orttraining/core/optimizer/concat_replacement.h"
+#include "orttraining/core/optimizer/gist_encode_decode.h"
 #include "orttraining/core/optimizer/localized_recompute.h"
+#include "orttraining/core/optimizer/loss_rewriter.h"
+#include "orttraining/core/optimizer/lstm_replacement.h"
+#include "orttraining/core/optimizer/megatron_transformer.h"
+#include "orttraining/core/optimizer/qdq_fusion.h"
+#include "orttraining/core/optimizer/sce_loss_grad_bias_fusion.h"
+#include "orttraining/core/session/training_session.h"
+#include "orttraining/test/optimizer/horizontal_parallel_test_utils.h"
+#include "test/framework/test_utils.h"
 #include "test/optimizer/graph_transform_test_builder.h"
 #include "test/optimizer/graph_transform_test_fixture.h"
-#include "test/util/include/default_providers.h"
+#include "test/test_environment.h"
 #include "test/util/include/asserts.h"
-#include "orttraining/test/optimizer/horizontal_parallel_test_utils.h"
-#include "orttraining/core/session/training_session.h"
-#include "orttraining/core/optimizer/loss_rewriter.h"
-#include "orttraining/core/optimizer/bias_softmax_dropout_fusion.h"
-#include "orttraining/core/optimizer/sce_loss_grad_bias_fusion.h"
-#include "orttraining/core/optimizer/qdq_fusion.h"
-#include "orttraining/core/optimizer/lstm_replacement.h"
-
-#include <random>
+#include "test/util/include/default_providers.h"
 
 using namespace std;
 using namespace ONNX_NAMESPACE;

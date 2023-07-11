@@ -4,7 +4,6 @@
 #pragma once
 
 #include "core/framework/op_kernel.h"
-
 #include "orttraining/core/framework/adasum/adasum_mpi.h"
 
 namespace onnxruntime {

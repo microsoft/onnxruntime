@@ -4,8 +4,8 @@
 #import <Foundation/Foundation.h>
 #import <XCTest/XCTest.h>
 
-#import "ort_session.h"
 #import "ort_env.h"
+#import "ort_session.h"
 #import "ort_value.h"
 
 NS_ASSUME_NONNULL_BEGIN

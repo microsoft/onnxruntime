@@ -5,9 +5,9 @@ Copyright(c) 2016 Facebook Inc.
 
 #pragma once
 #include "core/providers/cuda/cuda_kernel.h"
-#include "cufft_plan_cache.h"
 #include "cufft.h"
 #include "cufftXt.h"
+#include "cufft_plan_cache.h"
 
 namespace onnxruntime {
 namespace contrib {

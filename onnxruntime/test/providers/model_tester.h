@@ -6,7 +6,6 @@
 #include "core/common/path_string.h"
 #include "core/graph/model.h"
 #include "core/session/environment.h"
-
 #include "test/providers/base_tester.h"
 #include "test/util/include/asserts.h"
 #include "test/util/include/test_environment.h"

@@ -1,11 +1,12 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "orttraining/core/optimizer/gist_encode_decode.h"
+
 #include "core/common/logging/logging.h"
+#include "core/graph/graph_utils.h"
 #include "core/graph/op.h"
 #include "core/optimizer/rewrite_rule.h"
-#include "orttraining/core/optimizer/gist_encode_decode.h"
-#include "core/graph/graph_utils.h"
 
 namespace onnxruntime {
 struct GraphEdgeHelper {

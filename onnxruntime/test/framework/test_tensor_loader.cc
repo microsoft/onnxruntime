@@ -4,8 +4,8 @@
 #include "core/common/common.h"
 #include "core/framework/callback.h"
 #include "core/framework/tensorprotoutils.h"
-#include "gtest/gtest.h"
 #include "file_util.h"
+#include "gtest/gtest.h"
 
 #ifdef _WIN32
 #include <Windows.h>

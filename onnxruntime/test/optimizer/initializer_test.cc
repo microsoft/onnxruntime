@@ -8,12 +8,10 @@
 #include <numeric>
 #include <type_traits>
 
-#include "core/common/gsl.h"
-
-#include "gtest/gtest.h"
-
 #include "core/common/common.h"
+#include "core/common/gsl.h"
 #include "core/framework/endian_utils.h"
+#include "gtest/gtest.h"
 #include "test/util/include/asserts.h"
 #include "test/util/include/file_util.h"
 

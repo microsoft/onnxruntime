@@ -9,9 +9,9 @@
 #include <unordered_map>
 #include <vector>
 
+#include "core/common/logging/logging.h"
 #include "core/framework/execution_provider.h"
 #include "core/graph/graph_viewer.h"
-#include "core/common/logging/logging.h"
 
 namespace onnxruntime {
 

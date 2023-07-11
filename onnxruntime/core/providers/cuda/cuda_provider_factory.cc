@@ -1,21 +1,20 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/shared_library/provider_api.h"
 #include "core/providers/cuda/cuda_provider_factory.h"
-#include "core/providers/cuda/cuda_provider_factory_creator.h"
-#include "core/providers/cuda/cuda_provider_options.h"
 
-#include <memory>
 #include <chrono>
+#include <memory>
 
 #include "core/common/gsl.h"
-
+#include "core/providers/cuda/cuda_allocator.h"
 #include "core/providers/cuda/cuda_execution_provider.h"
 #include "core/providers/cuda/cuda_execution_provider_info.h"
-#include "core/providers/cuda/cuda_allocator.h"
+#include "core/providers/cuda/cuda_provider_factory_creator.h"
+#include "core/providers/cuda/cuda_provider_options.h"
 #include "core/providers/cuda/gpu_data_transfer.h"
 #include "core/providers/cuda/math/unary_elementwise_ops_impl.h"
+#include "core/providers/shared_library/provider_api.h"
 
 #ifdef ENABLE_NVTX_PROFILE
 #include "nvtx_profile.h"

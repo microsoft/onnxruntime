@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include <gtest/gtest.h>
+
 #include "core/platform/threadpool.h"
 #include "core/util/math.h"
 #include "core/util/thread_utils.h"

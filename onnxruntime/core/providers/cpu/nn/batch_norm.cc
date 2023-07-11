@@ -16,6 +16,7 @@
 /* Modifications Copyright (c) Microsoft. */
 
 #include "core/providers/cpu/nn/batch_norm.h"
+
 #include "core/providers/cpu/nn/batch_norm_helper.h"
 
 namespace onnxruntime {

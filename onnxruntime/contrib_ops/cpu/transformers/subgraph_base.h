@@ -3,12 +3,13 @@
 
 #pragma once
 
-#include <vector>
 #include <string>
+#include <vector>
+
+#include "contrib_ops/cpu/transformers/generation_device_helper.h"
 #include "core/common/gsl.h"
 #include "core/framework/allocator.h"
 #include "core/framework/feeds_fetches_manager.h"
-#include "contrib_ops/cpu/transformers/generation_device_helper.h"
 
 namespace onnxruntime {
 class SessionState;

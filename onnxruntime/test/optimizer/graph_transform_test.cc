@@ -6,10 +6,6 @@
 #endif
 
 #include <random>
-#include "core/graph/onnx_protobuf.h"
-
-#include "gtest/gtest.h"
-#include "gmock/gmock.h"
 
 #include "asserts.h"
 #include "core/common/span_utils.h"
@@ -18,6 +14,7 @@
 #include "core/graph/graph_utils.h"
 #include "core/graph/graph_viewer.h"
 #include "core/graph/model.h"
+#include "core/graph/onnx_protobuf.h"
 #include "core/optimizer/attention_fusion.h"
 #include "core/optimizer/bias_dropout_fusion.h"
 #include "core/optimizer/bias_gelu_fusion.h"
@@ -56,6 +53,7 @@
 #include "core/optimizer/matmul_transpose_fusion.h"
 #include "core/optimizer/noop_elimination.h"
 #include "core/optimizer/not_where_fusion.h"
+#include "core/optimizer/pre_shape_node_elimination.h"
 #include "core/optimizer/propagate_cast_ops.h"
 #include "core/optimizer/quick_gelu_fusion.h"
 #include "core/optimizer/relu_clip_fusion.h"
@@ -68,6 +66,8 @@
 #include "core/session/inference_session.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/util/math.h"
+#include "gmock/gmock.h"
+#include "gtest/gtest.h"
 #include "test/capturing_sink.h"
 #include "test/common/tensor_op_test_utils.h"
 #include "test/compare_ortvalue.h"
@@ -81,7 +81,6 @@
 #include "test/util/include/inference_session_wrapper.h"
 #include "test/util/include/temp_dir.h"
 #include "test/util/include/test_utils.h"
-#include "core/optimizer/pre_shape_node_elimination.h"
 #ifdef ENABLE_TRAINING
 #include "orttraining/core/optimizer/bitmask_dropout_replacement.h"
 #endif

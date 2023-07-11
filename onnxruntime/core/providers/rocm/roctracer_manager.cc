@@ -1,8 +1,9 @@
-#include <time.h>
-#include <cstring>
-#include <chrono>
-
 #include "roctracer_manager.h"
+
+#include <time.h>
+
+#include <chrono>
+#include <cstring>
 
 namespace onnxruntime {
 namespace profiling {

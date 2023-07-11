@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "orttraining/models/runner/training_runner.h"
+
 #include <algorithm>
 #include <memory>
 #include <sstream>

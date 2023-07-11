@@ -7,18 +7,17 @@
 #include <glob.h>  // glob(), globfree()
 #endif
 #include <string.h>  // memset()
-#include <unordered_map>
-#include <fstream>
-#include <sstream>
-
-#include <tvm/runtime/registry.h>
 #include <tvm/runtime/device_api.h>
+#include <tvm/runtime/registry.h>
 #include <tvm/target/codegen.h>
 
-#include "core/common/common.h"
-#include "core/common/path.h"
-#include "core/common/gsl.h"
+#include <fstream>
+#include <sstream>
+#include <unordered_map>
 
+#include "core/common/common.h"
+#include "core/common/gsl.h"
+#include "core/common/path.h"
 #include "tvm_api.h"
 
 namespace onnxruntime {

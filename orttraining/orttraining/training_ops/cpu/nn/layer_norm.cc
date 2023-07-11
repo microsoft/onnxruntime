@@ -2,9 +2,10 @@
 // Licensed under the MIT License.
 
 #include "orttraining/training_ops/cpu/nn/layer_norm.h"
+
 #include "core/framework/tensor.h"
-#include "core/util/math_cpuonly.h"
 #include "core/providers/common.h"
+#include "core/util/math_cpuonly.h"
 
 namespace onnxruntime {
 namespace contrib {

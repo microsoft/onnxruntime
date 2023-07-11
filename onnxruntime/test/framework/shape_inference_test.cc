@@ -4,11 +4,11 @@
 #include <string>
 #include <unordered_map>
 
-#include "gtest/gtest.h"
 #include "core/graph/model.h"
+#include "gtest/gtest.h"
 #include "test/framework/model_builder_utils.h"
-#include "test/util/include/test_utils.h"
 #include "test/test_environment.h"
+#include "test/util/include/test_utils.h"
 
 using namespace ONNX_NAMESPACE;
 using namespace std;

@@ -1,11 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "matmul_integer_base.h"
-
 #include "core/providers/cpu/math/matmul_helper.h"
 #include "core/util/math_cpuonly.h"
 #include "core/util/qmath.h"
+#include "matmul_integer_base.h"
 
 namespace onnxruntime {
 

@@ -29,8 +29,8 @@
  */
 
 #pragma once
-#include <stdlib.h>
 #include <stdint.h>
+#include <stdlib.h>
 #include <string.h>
 
 /** \brief The API version defined in this header

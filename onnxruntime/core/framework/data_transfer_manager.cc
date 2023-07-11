@@ -2,8 +2,9 @@
 // Licensed under the MIT License.
 
 #include "core/framework/data_transfer_manager.h"
-#include "core/framework/tensor.h"
+
 #include "core/framework/sparse_tensor.h"
+#include "core/framework/tensor.h"
 
 namespace onnxruntime {
 using namespace common;

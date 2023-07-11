@@ -11,10 +11,11 @@
 
 #pragma once
 
-#include <windows.h>
-#include <tchar.h>
 #include <evntcons.h>  // must be after windows.h
 #include <stdint.h>
+#include <tchar.h>
+#include <windows.h>
+
 #include <unordered_map>
 
 typedef void (*EventHandlerFn)(EVENT_RECORD* pEventRecord, void* pContext);

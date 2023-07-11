@@ -16,26 +16,26 @@ limitations under the License.
 
 #include "core/platform/windows/env.h"
 
-#include <iostream>
+#include <fcntl.h>
+#include <io.h>
+#include <process.h>
+#include <wil/Resource.h>
+
+#include <climits>
 #include <fstream>
+#include <iostream>
 #include <optional>
 #include <string>
 #include <thread>
-#include <climits>
-#include <process.h>
-#include <fcntl.h>
-#include <io.h>
 
 #include "core/common/gsl.h"
 #include "core/common/logging/logging.h"
 #include "core/common/narrow.h"
 #include "core/common/span_utils.h"
 #include "core/platform/env.h"
+#include "core/platform/path_lib.h"  // for LoopDir()
 #include "core/platform/scoped_resource.h"
 #include "unsupported/Eigen/CXX11/src/ThreadPool/ThreadPoolInterface.h"
-#include <wil/Resource.h>
-
-#include "core/platform/path_lib.h"  // for LoopDir()
 
 EXTERN_C IMAGE_DOS_HEADER __ImageBase;
 

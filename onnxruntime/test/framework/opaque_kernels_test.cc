@@ -3,6 +3,7 @@
 
 #include <iostream>
 
+#include "asserts.h"
 #include "core/framework/data_types.h"
 #include "core/framework/execution_providers.h"
 #include "core/framework/op_kernel.h"
@@ -13,9 +14,7 @@
 #include "core/providers/cpu/cpu_execution_provider.h"
 #include "core/session/inference_session.h"
 #include "gtest/gtest.h"
-
 #include "test/providers/provider_test_utils.h"
-#include "asserts.h"
 #include "test_utils.h"
 
 using namespace ONNX_NAMESPACE;

@@ -5,11 +5,11 @@
 
 #ifdef MLAS_F16VEC_INTRINSICS_SUPPORTED
 
-#include "core/framework/op_kernel.h"
-#include "core/util/math.h"
-#include "core/providers/cpu/nn/pool_attributes.h"
-#include "core/platform/threadpool.h"
 #include "core/common/safeint.h"
+#include "core/framework/op_kernel.h"
+#include "core/platform/threadpool.h"
+#include "core/providers/cpu/nn/pool_attributes.h"
+#include "core/util/math.h"
 
 namespace onnxruntime {
 

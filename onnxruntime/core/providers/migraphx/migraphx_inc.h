@@ -5,4 +5,5 @@
 
 #include <hip/hip_runtime.h>
 #include <migraphx/migraphx.h>
+
 #include <migraphx/migraphx.hpp>

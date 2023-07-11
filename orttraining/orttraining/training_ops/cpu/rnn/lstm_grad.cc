@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "orttraining/training_ops/cpu/rnn/lstm_grad.h"
+
 #include "orttraining/training_ops/cpu/rnn/lstm_grad_compute.h"
 
 namespace onnxruntime::contrib {

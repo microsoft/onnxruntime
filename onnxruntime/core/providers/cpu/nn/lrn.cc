@@ -16,9 +16,9 @@
 /* Modifications Copyright (c) Microsoft. */
 
 #include "core/providers/cpu/nn/lrn.h"
-#include "core/providers/cpu/element_wise_ranged_transform.h"
 
 #include "core/common/safeint.h"
+#include "core/providers/cpu/element_wise_ranged_transform.h"
 #include "core/util/math.h"
 #include "core/util/math_cpuonly.h"
 // TODO: fix the warnings

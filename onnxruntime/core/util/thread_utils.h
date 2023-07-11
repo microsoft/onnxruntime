@@ -2,10 +2,11 @@
 // Licensed under the MIT License.
 
 #pragma once
-#include "core/platform/threadpool.h"
-#include "core/session/onnxruntime_c_api.h"
 #include <memory>
 #include <string>
+
+#include "core/platform/threadpool.h"
+#include "core/session/onnxruntime_c_api.h"
 
 struct OrtThreadPoolParams {
   // 0: Use default setting. (All the physical cores or half of the logical cores)

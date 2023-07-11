@@ -1,14 +1,16 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "orttraining/core/optimizer/megatron_transformer.h"
+
+#include <deque>
+
+#include "core/framework/random_seed.h"
+#include "core/graph/graph_utils.h"
 #include "core/optimizer/initializer.h"
+#include "core/optimizer/utils.h"
 #include "orttraining/core/framework/distributed_run_context.h"
 #include "orttraining/core/graph/optimizer_builder.h"
-#include "orttraining/core/optimizer/megatron_transformer.h"
-#include "core/graph/graph_utils.h"
-#include "core/optimizer/utils.h"
-#include "core/framework/random_seed.h"
-#include <deque>
 
 using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::common;

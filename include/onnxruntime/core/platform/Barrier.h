@@ -9,11 +9,11 @@
 
 #include <assert.h>
 
+#include <atomic>
+#include <mutex>
+
 #include "core/common/spin_pause.h"
 #include "core/platform/ort_mutex.h"
-
-#include <mutex>
-#include <atomic>
 
 namespace onnxruntime {
 class Barrier {

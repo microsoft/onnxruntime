@@ -2,12 +2,12 @@
 // Licensed under the MIT License.
 #include "core/framework/execution_provider.h"
 
-#include "core/graph/graph_viewer.h"
 #include "core/framework/compute_capability.h"
 #include "core/framework/kernel_registry.h"
 #include "core/framework/kernel_registry_manager.h"
 #include "core/framework/murmurhash3.h"
 #include "core/framework/op_kernel.h"
+#include "core/graph/graph_viewer.h"
 
 namespace onnxruntime {
 

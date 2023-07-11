@@ -3,26 +3,25 @@
 
 #ifndef __ONNX_PREDICTION_H__
 #define __ONNX_PREDICTION_H__
-#include <iostream>
-#include <fstream>
 #include <algorithm>
+#include <ctime>
+#include <cwchar>
+#include <filesystem>
+#include <fstream>
+#include <functional>
+#include <iostream>
+#include <list>
 #include <set>
-#include <string>
 #include <sstream>
+#include <string>
+#include <string_view>
 #include <tuple>
 #include <utility>
 #include <vector>
-#include <list>
-#include <functional>
-#include <ctime>
-#include <string_view>
-#include <cwchar>
-#include <filesystem>
 
 #include "BetaDistribution.h"
 #include "onnx/onnx_pb.h"
 #include "onnxruntime_cxx_api.h"
-
 #include "testlog.h"
 
 class OnnxPrediction {

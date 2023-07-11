@@ -3,16 +3,16 @@
 
 #include <chrono>
 #include <random>
+
 #include "core/framework/tensor.h"
 #include "core/session/inference_session.h"
+#include "gmock/gmock.h"
+#include "gtest/gtest.h"
 #include "test/common/dnnl_op_test_utils.h"
 #include "test/common/tensor_op_test_utils.h"
 #include "test/framework/test_utils.h"
-#include "test/util/include/default_providers.h"
 #include "test/providers/provider_test_utils.h"
-
-#include "gtest/gtest.h"
-#include "gmock/gmock.h"
+#include "test/util/include/default_providers.h"
 
 using namespace std;
 

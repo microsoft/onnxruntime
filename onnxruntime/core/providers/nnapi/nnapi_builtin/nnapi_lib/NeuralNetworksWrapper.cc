@@ -13,10 +13,10 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+#include "NeuralNetworksWrapper.h"
+
 #include <core/common/common.h>
 #include <core/common/safeint.h>
-
-#include "NeuralNetworksWrapper.h"
 
 namespace android {
 namespace nn {

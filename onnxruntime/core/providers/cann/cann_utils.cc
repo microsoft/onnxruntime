@@ -2,10 +2,11 @@
 // Copyright (c) Huawei. All rights reserved.
 // Licensed under the MIT License.
 
-#include <unistd.h>
-#include <algorithm>
-
 #include "core/providers/cann/cann_utils.h"
+
+#include <unistd.h>
+
+#include <algorithm>
 
 namespace onnxruntime {
 namespace cann {

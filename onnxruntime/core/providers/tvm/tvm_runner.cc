@@ -1,10 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/graph/model.h"
-#include "core/framework/tensorprotoutils.h"
-
 #include "tvm_runner.h"
+
+#include "core/framework/tensorprotoutils.h"
+#include "core/graph/model.h"
 
 using namespace ONNX_NAMESPACE;
 namespace onnxruntime {

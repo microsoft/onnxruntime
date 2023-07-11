@@ -2,10 +2,11 @@
 // Licensed under the MIT License.
 
 #include "core/providers/cpu/math/hardmax.h"
+
 #include "core/providers/common.h"
-#include "core/util/math_cpuonly.h"
-#include "core/util/math.h"
 #include "core/providers/cpu/tensor/transpose.h"
+#include "core/util/math.h"
+#include "core/util/math_cpuonly.h"
 
 namespace onnxruntime {
 

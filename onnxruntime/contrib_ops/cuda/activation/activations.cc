@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "activations.h"
+
 #include "core/framework/op_kernel.h"
 
 using namespace onnxruntime::cuda;

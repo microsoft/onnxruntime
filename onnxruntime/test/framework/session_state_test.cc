@@ -1,26 +1,27 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/framework/session_state.h"
+
 #include <iostream>
 
 #include "asserts.h"
+#include "core/framework/bfc_arena.h"
 #include "core/framework/execution_providers.h"
 #include "core/framework/graph_partitioner.h"
 #include "core/framework/kernel_registry.h"
 #include "core/framework/op_kernel.h"
-#include "core/framework/bfc_arena.h"
-#include "core/framework/session_state.h"
 #include "core/graph/graph_utils.h"
 #include "core/graph/graph_viewer.h"
 #include "core/graph/model.h"
 #include "core/graph/op.h"
+#include "core/optimizer/layout_transformation/layout_transformation.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/util/thread_utils.h"
 #include "gtest/gtest.h"
 #include "test/test_environment.h"
 #include "test/util/include/default_providers.h"
-#include "core/optimizer/layout_transformation/layout_transformation.h"
 
 using namespace ONNX_NAMESPACE;
 using namespace std;

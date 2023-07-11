@@ -1,12 +1,14 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include <deque>
-#include "core/graph/graph_utils.h"
-#include "core/optimizer/initializer.h"
 #include "core/optimizer/conv_add_act_fusion.h"
-#include "core/mlas/inc/mlas.h"
+
+#include <deque>
+
+#include "core/graph/graph_utils.h"
 #include "core/graph/node_attr_utils.h"
+#include "core/mlas/inc/mlas.h"
+#include "core/optimizer/initializer.h"
 #include "core/optimizer/utils.h"
 
 using namespace ONNX_NAMESPACE;

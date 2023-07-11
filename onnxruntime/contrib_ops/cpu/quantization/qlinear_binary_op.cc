@@ -2,10 +2,11 @@
 // Licensed under the MIT License.
 
 #include "qlinear_binary_op.h"
-#include "core/providers/cpu/math/element_wise_ops.h"
-#include "core/providers/common.h"
+
 #include "core/mlas/inc/mlas.h"
 #include "core/platform/threadpool.h"
+#include "core/providers/common.h"
+#include "core/providers/cpu/math/element_wise_ops.h"
 
 using onnxruntime::concurrency::ThreadPool;
 

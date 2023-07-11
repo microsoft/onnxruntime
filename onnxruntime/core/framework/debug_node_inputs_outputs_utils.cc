@@ -4,10 +4,12 @@
 #ifdef DEBUG_NODE_INPUTS_OUTPUTS
 
 #include "core/framework/debug_node_inputs_outputs_utils.h"
-#include "core/framework/print_tensor_utils.h"
-#include <iomanip>
+
 #include <cctype>
+#include <iomanip>
 #include <string>
+
+#include "core/framework/print_tensor_utils.h"
 
 #ifdef DEBUG_NODE_INPUTS_OUTPUTS_ENABLE_DUMP_TO_SQLDB
 #include <sqlite3.h>

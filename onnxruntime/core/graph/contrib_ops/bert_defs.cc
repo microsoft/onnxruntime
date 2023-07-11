@@ -3,8 +3,8 @@
 
 #include "core/graph/constants.h"
 #include "core/graph/contrib_ops/contrib_defs.h"
-#include "core/graph/contrib_ops/quantization_defs.h"
 #include "core/graph/contrib_ops/onnx_function_util.h"
+#include "core/graph/contrib_ops/quantization_defs.h"
 #include "core/graph/contrib_ops/shape_inference_functions.h"
 // Suppress a warning: global initializer calls a non-constexpr function 'symbol' which is from
 // ONNX_OPERATOR_SET_SCHEMA_EX macro and only happens in debug build

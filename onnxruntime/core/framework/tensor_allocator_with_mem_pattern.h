@@ -4,12 +4,13 @@
 #pragma once
 
 #include <core/common/inlined_containers.h>
-#include "tensor_allocator.h"
+
+#include "bfc_arena.h"
 #include "mem_pattern.h"
 #include "ort_value_pattern_planner.h"
-#include "utils.h"
+#include "tensor_allocator.h"
 #include "tensorprotoutils.h"
-#include "bfc_arena.h"
+#include "utils.h"
 
 namespace onnxruntime {
 

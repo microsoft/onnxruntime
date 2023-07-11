@@ -3,8 +3,9 @@
 
 #pragma once
 #include <string>
-#include "core/framework/tensorprotoutils.h"
+
 #include "contrib_ops/cpu/transformers/generation_shared.h"
+#include "core/framework/tensorprotoutils.h"
 
 namespace onnxruntime {
 namespace contrib {

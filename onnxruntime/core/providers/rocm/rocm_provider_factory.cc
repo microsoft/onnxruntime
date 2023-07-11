@@ -1,19 +1,18 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/shared_library/provider_api.h"
 #include "core/providers/rocm/rocm_provider_factory.h"
 
 #include <memory>
 
 #include "core/common/gsl.h"
-
-#include "core/providers/rocm/rocm_execution_provider.h"
-#include "core/providers/rocm/rocm_execution_provider_info.h"
-#include "core/providers/rocm/rocm_allocator.h"
-#include "core/providers/rocm/rocm_provider_factory_creator.h"
 #include "core/providers/rocm/gpu_data_transfer.h"
 #include "core/providers/rocm/math/unary_elementwise_ops_impl.h"
+#include "core/providers/rocm/rocm_allocator.h"
+#include "core/providers/rocm/rocm_execution_provider.h"
+#include "core/providers/rocm/rocm_execution_provider_info.h"
+#include "core/providers/rocm/rocm_provider_factory_creator.h"
+#include "core/providers/shared_library/provider_api.h"
 
 #if defined(USE_ROCM) && defined(ORT_USE_NCCL) && defined(USE_NCCL_P2P)
 #include "orttraining/training_ops/rocm/communication/nccl_service.h"

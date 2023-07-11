@@ -3,10 +3,11 @@
 
 #pragma once
 
-#include <string>
 #include <atomic>
-#include "core/session/onnxruntime_c_api.h"
+#include <string>
+
 #include "core/framework/config_options.h"
+#include "core/session/onnxruntime_c_api.h"
 
 /**
  * Configuration information for a Run call.

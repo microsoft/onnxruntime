@@ -8,8 +8,8 @@
 #include <vector>
 
 #include "core/framework/stream_handles.h"
-#include "core/providers/cann/cann_inc.h"
 #include "core/providers/cann/cann_call.h"
+#include "core/providers/cann/cann_inc.h"
 
 namespace onnxruntime {
 

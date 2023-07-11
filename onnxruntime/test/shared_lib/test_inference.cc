@@ -1,35 +1,33 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include <memory>
-#include <vector>
-#include <iostream>
-#include <fstream>
-#include <sstream>
-#include <atomic>
-#include <mutex>
 #include <algorithm>
+#include <atomic>
+#include <fstream>
+#include <iostream>
+#include <memory>
+#include <mutex>
+#include <sstream>
 #include <thread>
-
-#include "gtest/gtest.h"
-#include "gmock/gmock.h"
+#include <vector>
 
 #include "core/common/common.h"
+#include "core/common/gsl.h"
 #include "core/graph/constants.h"
 #include "core/session/onnxruntime_c_api.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/session/onnxruntime_lite_custom_op.h"
-#include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/session/onnxruntime_run_options_config_keys.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/util/thread_utils.h"
-
+#include "custom_op_utils.h"
+#include "gmock/gmock.h"
+#include "gtest/gtest.h"
 #include "onnxruntime_config.h"
 #include "providers.h"
 #include "test_allocator.h"
 #include "test_fixture.h"
 #include "utils.h"
-#include "custom_op_utils.h"
-#include "core/common/gsl.h"
 
 #ifdef _WIN32
 #include <Windows.h>

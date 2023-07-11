@@ -5,8 +5,9 @@
 #pragma once
 
 #include <memory>
-#include "core/providers/cann/cann_kernel.h"
+
 #include "core/framework/random_generator.h"
+#include "core/providers/cann/cann_kernel.h"
 
 namespace onnxruntime {
 namespace cann {

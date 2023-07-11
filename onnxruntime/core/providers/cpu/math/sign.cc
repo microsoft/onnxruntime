@@ -3,9 +3,8 @@
 
 #include <type_traits>
 
-#include "core/common/gsl.h"
-
 #include "core/common/common.h"
+#include "core/common/gsl.h"
 #include "core/framework/data_types.h"
 #include "core/framework/element_type_lists.h"
 #include "core/framework/math.h"

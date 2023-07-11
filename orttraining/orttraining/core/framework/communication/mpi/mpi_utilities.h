@@ -4,8 +4,8 @@
 #pragma once
 
 #ifndef SHARED_PROVIDER
-#include "core/framework/tensor.h"
 #include "core/framework/op_kernel.h"
+#include "core/framework/tensor.h"
 #endif
 
 #include "orttraining/core/framework/communication/mpi/mpi_include.h"

@@ -1,15 +1,18 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/shared_library/provider_api.h"
 #include "core/providers/tensorrt/tensorrt_provider_factory.h"
+
+#include <string.h>
+
 #include <atomic>
+
+#include "core/framework/provider_options.h"
+#include "core/providers/shared_library/provider_api.h"
+#include "core/providers/tensorrt/tensorrt_execution_provider_custom_ops.h"
+#include "core/providers/tensorrt/tensorrt_provider_options.h"
 #include "tensorrt_execution_provider.h"
 #include "tensorrt_provider_factory_creator.h"
-#include "core/framework/provider_options.h"
-#include "core/providers/tensorrt/tensorrt_provider_options.h"
-#include "core/providers/tensorrt/tensorrt_execution_provider_custom_ops.h"
-#include <string.h>
 
 using namespace onnxruntime;
 

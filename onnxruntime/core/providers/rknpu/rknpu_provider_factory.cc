@@ -1,9 +1,10 @@
 // Copyright 2020 rock-chips.com Inc.
 
 #include "core/providers/rknpu/rknpu_provider_factory.h"
+
+#include "core/session/abi_session_options_impl.h"
 #include "rknpu_execution_provider.h"
 #include "rknpu_provider_factory_creator.h"
-#include "core/session/abi_session_options_impl.h"
 
 using namespace onnxruntime;
 

@@ -3,12 +3,11 @@
 
 #pragma once
 
-#include "gemm_base.h"
-
-#include "core/framework/op_kernel.h"
 #include "core/common/common.h"
-#include "core/util/math.h"
+#include "core/framework/op_kernel.h"
 #include "core/providers/cpu/activation/activations.h"
+#include "core/util/math.h"
+#include "gemm_base.h"
 
 namespace onnxruntime {
 

@@ -1,16 +1,16 @@
 #pragma once
 
+#include <hip/hip_runtime_api.h>
+#include <roctracer/roctracer.h>
+#include <roctracer/roctracer_ext.h>
+#include <roctracer/roctracer_hcc.h>
+#include <roctracer/roctracer_hip.h>
+#include <roctracer/roctracer_roctx.h>
+
 #include <atomic>
 #include <map>
 #include <memory>
 #include <mutex>
-
-#include <hip/hip_runtime_api.h>
-#include <roctracer/roctracer.h>
-#include <roctracer/roctracer_hcc.h>
-#include <roctracer/roctracer_hip.h>
-#include <roctracer/roctracer_ext.h>
-#include <roctracer/roctracer_roctx.h>
 
 #include "core/common/gpu_profiler_common.h"
 #include "core/common/inlined_containers.h"

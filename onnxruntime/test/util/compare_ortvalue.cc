@@ -4,8 +4,8 @@
 #include "test/compare_ortvalue.h"
 
 #include <cmath>
-#include <sstream>
 #include <mutex>
+#include <sstream>
 #include <thread>
 
 #ifdef __GNUC__
@@ -21,18 +21,20 @@
 #pragma GCC diagnostic ignored "-Wclass-memaccess"
 #endif
 #endif
-#include <google/protobuf/message_lite.h>
-#include <Eigen/Core>
 #include <Eigen/src/Core/arch/Default/Half.h>
+#include <google/protobuf/message_lite.h>
+
+#include <Eigen/Core>
 #ifdef __GNUC__
 #pragma GCC diagnostic pop
 #endif
 
+#include <core/session/onnxruntime_cxx_api.h>
+
+#include "core/framework/TensorSeq.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/framework/utils.h"
-#include "core/framework/TensorSeq.h"
 #include "core/graph/onnx_protobuf.h"
-#include <core/session/onnxruntime_cxx_api.h>
 #include "core/util/math.h"
 
 using namespace onnxruntime;

@@ -2,8 +2,9 @@
 // Copyright (c) Huawei. All rights reserved.
 // Licensed under the MIT License.
 
-#include <vector>
 #include "core/providers/cann/tensor/cast.h"
+
+#include <vector>
 
 using onnxruntime::common::Status;
 namespace onnxruntime {

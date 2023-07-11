@@ -3,11 +3,13 @@
 
 #include "core/codegen/mti/tensor/slice.h"
 
-#include "core/codegen/mti/mti_tvm_utils.h"
-#include <climits>
-#include "core/common/gsl.h"
 #include <topi/transform.h>
 #include <tvm/ir_pass.h>
+
+#include <climits>
+
+#include "core/codegen/mti/mti_tvm_utils.h"
+#include "core/common/gsl.h"
 
 namespace onnxruntime {
 namespace tvm_codegen {

@@ -1,11 +1,12 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 #include "core/framework/stream_execution_context.h"
-#include "core/framework/execution_provider.h"
-#include "core/framework/execution_frame.h"
-#include "core/framework/bfc_arena.h"
-#include "core/framework/session_state.h"
+
 #include "core/common/spin_pause.h"
+#include "core/framework/bfc_arena.h"
+#include "core/framework/execution_frame.h"
+#include "core/framework/execution_provider.h"
+#include "core/framework/session_state.h"
 
 namespace onnxruntime {
 #ifdef ORT_ENABLE_STREAM

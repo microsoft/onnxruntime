@@ -9,13 +9,12 @@
 #include <utility>
 
 #include "core/common/common.h"
+#include "core/common/gsl.h"
 #include "core/framework/tensorprotoutils.h"
-#include "core/providers/common.h"
-#include "core/providers/cpu/tensor/transpose.h"
-
 #include "core/mlas/inc/mlas.h"
 #include "core/platform/threadpool.h"
-#include "core/common/gsl.h"
+#include "core/providers/common.h"
+#include "core/providers/cpu/tensor/transpose.h"
 
 namespace onnxruntime {
 namespace contrib {

@@ -1,19 +1,19 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "js_execution_provider.h"
+
 #include <string_view>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
 
-#include "js_execution_provider.h"
-
-#include "core/graph/function_utils.h"
+#include "allocator.h"
 #include "core/framework/compute_capability.h"
 #include "core/framework/data_transfer_manager.h"
 #include "core/framework/kernel_registry.h"
+#include "core/graph/function_utils.h"
 #include "core/providers/shared/node_unit/node_unit.h"
-#include "allocator.h"
 #include "data_transfer.h"
 
 namespace onnxruntime {

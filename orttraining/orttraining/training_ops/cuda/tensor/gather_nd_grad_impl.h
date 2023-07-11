@@ -3,8 +3,8 @@
 
 #pragma once
 
-#include <stdint.h>
 #include <cuda_runtime.h>
+#include <stdint.h>
 
 namespace onnxruntime {
 namespace cuda {

@@ -3,19 +3,19 @@
 
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
 #pragma once
-#include "core/graph/basic_types.h"
-#include "core/framework/alloc_kind.h"
-#include "core/framework/data_types.h"
-#include "core/framework/execution_plan_base.h"
-#include "core/framework/mem_pattern.h"
-#include "core/framework/tensor.h"
-#include "core/framework/ort_value_name_idx_map.h"
-#include "core/common/inlined_containers_fwd.h"
-
 #include <iomanip>
 #include <string>
 #include <unordered_map>
 #include <vector>
+
+#include "core/common/inlined_containers_fwd.h"
+#include "core/framework/alloc_kind.h"
+#include "core/framework/data_types.h"
+#include "core/framework/execution_plan_base.h"
+#include "core/framework/mem_pattern.h"
+#include "core/framework/ort_value_name_idx_map.h"
+#include "core/framework/tensor.h"
+#include "core/graph/basic_types.h"
 
 namespace onnxruntime {
 using OrtValueIndex = int;

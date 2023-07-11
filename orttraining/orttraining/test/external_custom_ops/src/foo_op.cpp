@@ -1,11 +1,12 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
-#include <iostream>
-#include <onnx/defs/schema.h>
 #include <onnx/defs/function.h>
+#include <onnx/defs/schema.h>
 #include <onnx/defs/shape_inference.h>
 #include <pybind11/pybind11.h>
+
+#include <iostream>
 namespace ONNX_NAMESPACE {
 void FooShapeInference(InferenceContext& ctx) {
   propagateShapeAndTypeFromFirstInput(ctx);

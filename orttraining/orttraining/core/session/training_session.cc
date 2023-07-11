@@ -5,29 +5,28 @@
 
 #include "core/framework/data_transfer_utils.h"
 #include "core/graph/model.h"
-#include "core/session/IOBinding.h"
 #include "core/optimizer/rule_based_graph_transformer.h"
 #include "core/providers/cpu/controlflow/utils.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
-#include "orttraining/core/graph/loss_function_builder.h"
-#include "orttraining/core/graph/optimizer_builder.h"
+#include "core/session/IOBinding.h"
 #include "orttraining/core/framework/checkpointing.h"
-#include "orttraining/core/framework/gradient_graph_builder.h"
-#include "orttraining/core/framework/distributed_run_context.h"
 #include "orttraining/core/framework/communication/mpi/mpi_context.h"
-#include "orttraining/core/graph/optimizer_graph_builder_registry.h"
-#include "orttraining/core/optimizer/graph_transformer_utils.h"
-#include "orttraining/core/graph/mixed_precision_transformer.h"
-#include "orttraining/core/graph/tensorboard_transformer.h"
-#include "orttraining/core/graph/pipeline_transformer.h"
+#include "orttraining/core/framework/distributed_run_context.h"
+#include "orttraining/core/framework/gradient_graph_builder.h"
 #include "orttraining/core/graph/gradient_builder_base.h"
+#include "orttraining/core/graph/loss_function_builder.h"
+#include "orttraining/core/graph/mixed_precision_transformer.h"
+#include "orttraining/core/graph/optimizer_builder.h"
+#include "orttraining/core/graph/optimizer_graph_builder_registry.h"
+#include "orttraining/core/graph/pipeline_transformer.h"
+#include "orttraining/core/graph/tensorboard_transformer.h"
+#include "orttraining/core/optimizer/graph_transformer_utils.h"
+#include "orttraining/core/optimizer/megatron_transformer.h"
 #include "orttraining/core/session/tensor_helper.h"
 #include "orttraining/models/runner/training_util.h"
-#include "orttraining/core/optimizer/megatron_transformer.h"
 
 // Gist Encoding
 #include "orttraining/core/optimizer/gist_encode_decode.h"
-
 #include "orttraining/training_ops/cpu/controlflow/event_pool.h"
 #if defined(USE_CUDA) && defined(ORT_USE_NCCL) && defined(USE_NCCL_P2P)
 #include "orttraining/training_ops/cuda/communication/nccl_service.h"
@@ -36,6 +35,7 @@
 #ifdef ENABLE_NVTX_PROFILE
 #include <set>
 #include <thread>
+
 #include "core/providers/cuda/nvtx_profile_context.h"
 #endif
 

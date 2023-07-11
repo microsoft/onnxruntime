@@ -1,9 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/codegen/passes/op_ir_creator/all_ops.h"
-
 #include "core/codegen/mti/tensor/cast_ops.h"
+#include "core/codegen/passes/op_ir_creator/all_ops.h"
 #include "core/codegen/passes/utils/ort_tvm_utils.h"
 #include "core/framework/op_kernel_info.h"
 

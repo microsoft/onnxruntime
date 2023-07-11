@@ -3,10 +3,11 @@
 
 #pragma once
 
-#include "backend_manager.h"
-#include <map>
 #include <algorithm>
 #include <iostream>
+#include <map>
+
+#include "backend_manager.h"
 
 namespace onnxruntime {
 

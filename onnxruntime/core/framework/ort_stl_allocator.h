@@ -4,6 +4,7 @@
 #pragma once
 
 #include <memory>
+
 #include "core/framework/allocator.h"
 
 namespace onnxruntime {

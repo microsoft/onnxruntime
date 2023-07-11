@@ -7,9 +7,11 @@
 #pragma warning(disable : 4996)
 #endif
 #include "core/providers/cpu/nn/unpool.h"
+
+#include <cmath>
+
 #include "core/common/narrow.h"
 #include "core/providers/cpu/tensor/utils.h"
-#include <cmath>
 
 using namespace ::onnxruntime::common;
 

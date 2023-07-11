@@ -7,12 +7,10 @@
 #include "core/common/common.h"
 #include "core/graph/constants.h"
 #include "core/session/onnxruntime_cxx_api.h"
-
+#include "custom_op_utils.h"
+#include "gtest/gtest.h"
 #include "test_allocator.h"
 #include "utils.h"
-#include "custom_op_utils.h"
-
-#include "gtest/gtest.h"
 
 extern std::unique_ptr<Ort::Env> ort_env;
 

@@ -2,10 +2,10 @@
 // Licensed under the MIT License.
 
 #include <stdexcept>
-#include "gtest/gtest.h"
-#include "test/providers/provider_test_utils.h"
 
 #include "core/util/math.h"
+#include "gtest/gtest.h"
+#include "test/providers/provider_test_utils.h"
 
 namespace onnxruntime {
 namespace test {

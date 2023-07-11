@@ -3,16 +3,17 @@
 
 #pragma once
 
-#include "mlas.h"
-#include "gtest/gtest.h"
-
-#include <stdio.h>
 #include <memory.h>
+#include <stdio.h>
+
 #include <algorithm>
 #include <limits>
 #include <memory>
 #include <random>
 #include <sstream>
+
+#include "gtest/gtest.h"
+#include "mlas.h"
 #if defined(_WIN32)
 #include <windows.h>
 #else

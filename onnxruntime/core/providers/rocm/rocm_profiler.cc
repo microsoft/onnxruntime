@@ -2,10 +2,11 @@
 // Licensed under the MIT License.
 #if defined(USE_ROCM) && defined(ENABLE_ROCM_PROFILING)
 
-#include <chrono>
+#include "core/providers/rocm/rocm_profiler.h"
+
 #include <time.h>
 
-#include "core/providers/rocm/rocm_profiler.h"
+#include <chrono>
 
 namespace onnxruntime {
 namespace profiling {

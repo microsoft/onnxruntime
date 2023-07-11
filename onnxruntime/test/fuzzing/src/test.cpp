@@ -1,12 +1,12 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "src/mutator.h"
-#include "testlog.h"
+#include <type_traits>
+
 #include "OnnxPrediction.h"
 #include "onnxruntime_session_options_config_keys.h"
-
-#include <type_traits>
+#include "src/mutator.h"
+#include "testlog.h"
 
 using user_options = struct
 {

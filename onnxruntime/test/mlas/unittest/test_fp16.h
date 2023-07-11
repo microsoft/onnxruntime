@@ -16,8 +16,8 @@ Abstract:
 
 #pragma once
 
-#include "test_util.h"
 #include "mlas_float16.h"
+#include "test_util.h"
 
 //
 // Define our own fp16 type to avoid dragging in big dependencies

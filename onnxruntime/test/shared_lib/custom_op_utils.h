@@ -1,8 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/session/onnxruntime_cxx_api.h"
 #include <vector>
+
+#include "core/session/onnxruntime_cxx_api.h"
 
 #ifdef USE_CUDA
 #include <cuda_runtime.h>

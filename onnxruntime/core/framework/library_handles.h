@@ -4,11 +4,12 @@
 #pragma once
 
 #include <string>
-#include <vector>
 #include <utility>
-#include "core/platform/env.h"
-#include "core/common/path_string.h"
+#include <vector>
+
 #include "core/common/inlined_containers_fwd.h"
+#include "core/common/path_string.h"
+#include "core/platform/env.h"
 
 namespace onnxruntime {
 

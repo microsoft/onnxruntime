@@ -2,9 +2,11 @@
 // Licensed under the MIT License.
 
 #include "orttraining/training_ops/cpu/nn/pool_gradient_op.h"
-#include "core/util/math_cpuonly.h"
-#include "core/providers/common.h"
+
 #include <algorithm>
+
+#include "core/providers/common.h"
+#include "core/util/math_cpuonly.h"
 
 using namespace ::onnxruntime::common;
 

@@ -1,9 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "python/onnxruntime_pybind_state_common.h"
-#include "core/framework/kernel_registry.h"
 #include <pybind11/stl.h>
+
+#include "core/framework/kernel_registry.h"
+#include "python/onnxruntime_pybind_state_common.h"
 
 namespace py = pybind11;
 

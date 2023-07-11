@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "orttraining/training_ops/cuda/math/scale.h"
+
 #include "orttraining/training_ops/cuda/math/scale_impl.h"
 
 using namespace ONNX_NAMESPACE;

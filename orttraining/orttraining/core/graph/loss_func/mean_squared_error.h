@@ -3,6 +3,7 @@
 #pragma once
 
 #include <string>
+
 #include "orttraining/core/graph/loss_func/loss_func_common.h"
 
 namespace onnxruntime {

@@ -1,22 +1,25 @@
 // Copyright 2020 rock-chips.com Inc.
 
+#include "rknpu_execution_provider.h"
+
 #include <unistd.h>
+
+#include <functional>
 #include <limits>
+#include <map>
 #include <set>
 #include <unordered_set>
-#include <map>
 #include <utility>
-#include <functional>
-#include "rknpu_execution_provider.h"
+
 #include "core/common/logging/logging.h"
 #include "core/framework/compute_capability.h"
-#include "core/session/onnxruntime_cxx_api.h"
-#include "core/session/inference_session.h"
-#include "core/graph/model.h"
 #include "core/framework/memcpy.h"
+#include "core/graph/model.h"
+#include "core/session/inference_session.h"
+#include "core/session/onnxruntime_cxx_api.h"
 #include "node_attr_helper.h"
-#include "rknpu/rknpu_pub.h"
 #include "onnx_converter.h"
+#include "rknpu/rknpu_pub.h"
 
 using std::string;
 using std::vector;

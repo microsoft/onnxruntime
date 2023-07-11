@@ -5,14 +5,14 @@
 #include <cfenv>
 #include <vector>
 
-#include "gtest/gtest.h"
 #include "core/common/span_utils.h"
+#include "core/quantization/quantization.h"
+#include "core/util/qmath.h"
+#include "gtest/gtest.h"
+#include "test/common/cuda_op_test_utils.h"
 #include "test/common/quantization_test_utils.h"
 #include "test/common/tensor_op_test_utils.h"
-#include "test/common/cuda_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
-#include "core/util/qmath.h"
-#include "core/quantization/quantization.h"
 
 namespace onnxruntime {
 namespace test {

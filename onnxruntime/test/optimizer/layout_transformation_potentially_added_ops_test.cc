@@ -3,11 +3,9 @@
 
 #include "core/optimizer/layout_transformation/layout_transformation_potentially_added_ops.h"
 
-#include "gtest/gtest.h"
-
-#include "onnx/defs/schema.h"
-
 #include "core/graph/constants.h"
+#include "gtest/gtest.h"
+#include "onnx/defs/schema.h"
 
 namespace onnxruntime::test {
 

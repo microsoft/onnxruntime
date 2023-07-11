@@ -1,7 +1,7 @@
-#include "onnxruntime_pybind_exceptions.h"
 #include "onnxruntime_pybind_state_common.h"
 
 #include "core/framework/arena_extend_strategy.h"
+#include "onnxruntime_pybind_exceptions.h"
 
 namespace onnxruntime {
 namespace python {

@@ -6,7 +6,6 @@
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
 #include "core/framework/tensor.h"
-
 #include "core/providers/cpu/controlflow/if.h"
 #include "core/providers/cpu/controlflow/loop.h"
 #include "core/providers/cpu/controlflow/scan.h"
@@ -15,15 +14,15 @@
 #include "core/providers/cpu/object_detection/non_max_suppression.h"
 #include "core/providers/cpu/object_detection/roialign.h"
 #include "core/providers/cpu/tensor/concatbase.h"
+#include "core/providers/cpu/tensor/gather_elements.h"
 #include "core/providers/cpu/tensor/gatherbase.h"
+#include "core/providers/cpu/tensor/onehot.h"
 #include "core/providers/cpu/tensor/padbase.h"
 #include "core/providers/cpu/tensor/scatter_nd.h"
-#include "core/providers/cpu/tensor/split.h"
 #include "core/providers/cpu/tensor/size.h"
 #include "core/providers/cpu/tensor/slice.h"
-#include "core/providers/cpu/tensor/onehot.h"
+#include "core/providers/cpu/tensor/split.h"
 #include "core/providers/cpu/tensor/tile.h"
-#include "core/providers/cpu/tensor/gather_elements.h"
 #include "core/providers/cpu/tensor/unsqueeze.h"
 
 #ifndef DISABLE_CONTRIB_OPS
@@ -42,9 +41,9 @@
 #ifdef ENABLE_TRAINING_OPS
 #include "orttraining/training_ops/cpu/controlflow/group.h"
 #include "orttraining/training_ops/cpu/loss/softmax_cross_entropy_loss.h"
-#include "orttraining/training_ops/cpu/tensor/split.h"
 #include "orttraining/training_ops/cpu/optimizer/adamw/adamwbase.h"
 #include "orttraining/training_ops/cpu/optimizer/sgd/sgdbase.h"
+#include "orttraining/training_ops/cpu/tensor/split.h"
 
 // Should remove the shrunken_gather include from ENABLE_TRAINING_OPS once 1). compute optimizer is enabled for inference or
 // 2). this is needed by inference for other purpose.

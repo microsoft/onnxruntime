@@ -3,9 +3,9 @@
 
 #pragma once
 
-#include <stdint.h>
 #include <cuda_fp16.h>
 #include <curand_kernel.h>
+#include <stdint.h>
 
 namespace onnxruntime {
 namespace contrib {

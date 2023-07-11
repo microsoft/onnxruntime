@@ -2,8 +2,9 @@
 // Licensed under the MIT License.
 
 #include "shrink.h"
-#include "shrink_impl.h"
+
 #include "core/providers/common.h"
+#include "shrink_impl.h"
 
 using namespace std;
 namespace onnxruntime {

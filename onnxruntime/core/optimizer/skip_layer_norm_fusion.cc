@@ -1,11 +1,13 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
-#include "core/optimizer/initializer.h"
 #include "core/optimizer/skip_layer_norm_fusion.h"
+
+#include <deque>
+
 #include "core/graph/contrib_ops/contrib_defs.h"
 #include "core/graph/graph_utils.h"
+#include "core/optimizer/initializer.h"
 #include "float.h"
-#include <deque>
 
 using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::common;

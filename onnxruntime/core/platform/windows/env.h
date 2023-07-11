@@ -14,10 +14,11 @@ limitations under the License.
 ==============================================================================*/
 // Portions Copyright (c) Microsoft Corporation
 
+#include <Windows.h>
+
+#include "core/common/inlined_containers.h"
 #include "core/platform/env.h"
 #include "core/platform/windows/telemetry.h"
-#include "core/common/inlined_containers.h"
-#include <Windows.h>
 
 namespace onnxruntime {
 

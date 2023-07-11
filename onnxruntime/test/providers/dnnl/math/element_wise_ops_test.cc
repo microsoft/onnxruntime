@@ -1,12 +1,14 @@
 // Copyright (c)Intel. All rights reserved.
 // Licensed under the MIT License.
 
+#include <math.h>
+
+#include <algorithm>
+
+#include "core/util/math.h"
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/util/include/default_providers.h"
-#include "core/util/math.h"
-#include <algorithm>
-#include <math.h>
 
 namespace onnxruntime {
 namespace test {

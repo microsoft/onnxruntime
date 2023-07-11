@@ -2,8 +2,9 @@
 // Licensed under the MIT License.
 
 #include "nccl_kernels.h"
-#include "mpi_include.h"
+
 #include "core/providers/cuda/tensor/transpose.h"
+#include "mpi_include.h"
 
 namespace onnxruntime {
 namespace contrib {

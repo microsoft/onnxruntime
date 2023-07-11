@@ -3,11 +3,12 @@
 
 #pragma once
 
-#include "core/platform/ort_mutex.h"
-#include "core/providers/rocm/rocm_kernel.h"
-#include "core/providers/rocm/miopen_common.h"
-#include "core/providers/cpu/nn/conv_attributes.h"
 #include <list>
+
+#include "core/platform/ort_mutex.h"
+#include "core/providers/cpu/nn/conv_attributes.h"
+#include "core/providers/rocm/miopen_common.h"
+#include "core/providers/rocm/rocm_kernel.h"
 
 namespace onnxruntime {
 namespace rocm {

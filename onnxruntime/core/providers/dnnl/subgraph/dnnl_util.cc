@@ -1,13 +1,14 @@
 // Copyright(C) 2022 Intel Corporation
 // Licensed under the MIT License
-#include <unordered_map>
-#include <mutex>
-
 #include "dnnl_util.h"
-#include "dnnl.hpp"
-#include "dnnl_types.h"
+
+#include <mutex>
+#include <unordered_map>
+
 #include "core/common/common.h"
 #include "core/providers/shared_library/provider_api.h"
+#include "dnnl.hpp"
+#include "dnnl_types.h"
 
 namespace onnxruntime {
 namespace ort_dnnl {

@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/providers/cuda/math/clip.h"
+
 #include "core/providers/cuda/math/clip_impl.h"
 
 namespace onnxruntime {

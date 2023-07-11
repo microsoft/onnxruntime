@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "orttraining/training_ops/cpu/reduction/reduction_all.h"
+
 #include "core/providers/cpu/reduction/reduction_ops.h"
 
 namespace onnxruntime {

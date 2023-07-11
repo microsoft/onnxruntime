@@ -4,16 +4,15 @@
 
 #include "webnn_execution_provider.h"
 
+#include "builders/helper.h"
+#include "builders/model.h"
+#include "builders/model_builder.h"
+#include "core/common/safeint.h"
 #include "core/framework/compute_capability.h"
-#include "core/framework/memcpy.h"
 #include "core/framework/kernel_registry.h"
+#include "core/framework/memcpy.h"
 #include "core/graph/graph_viewer.h"
 #include "core/session/onnxruntime_cxx_api.h"
-#include "core/common/safeint.h"
-
-#include "builders/model.h"
-#include "builders/helper.h"
-#include "builders/model_builder.h"
 
 namespace onnxruntime {
 

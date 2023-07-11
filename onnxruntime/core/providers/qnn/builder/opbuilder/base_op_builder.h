@@ -3,12 +3,11 @@
 
 #pragma once
 
-#include "core/providers/shared/utils/utils.h"
-#include "core/providers/qnn/builder/qnn_model_wrapper.h"
-#include "core/providers/qnn/builder/op_builder.h"
-#include "core/framework/allocator.h"
-
 #include "QnnOpDef.h"
+#include "core/framework/allocator.h"
+#include "core/providers/qnn/builder/op_builder.h"
+#include "core/providers/qnn/builder/qnn_model_wrapper.h"
+#include "core/providers/shared/utils/utils.h"
 
 namespace onnxruntime {
 namespace qnn {

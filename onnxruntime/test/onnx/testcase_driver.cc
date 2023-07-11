@@ -1,12 +1,13 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "TestCaseResult.h"
 #include "testcase_driver.h"
-#include "testcase_request.h"
-#include "testenv.h"
 
 #include <core/common/logging/logging.h>
+
+#include "TestCaseResult.h"
+#include "testcase_request.h"
+#include "testenv.h"
 
 namespace onnxruntime {
 namespace test {

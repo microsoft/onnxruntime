@@ -5,13 +5,14 @@
 
 #include <hip/hip_fp16.h>
 #include <hip/hip_runtime_api.h>
-#include "core/providers/rocm/cu_inc/common.cuh"
-#include "core/providers/rocm/rocm_common.h"
+
 #include "contrib_ops/rocm/diffusion/group_norm_ck.cuh"
 #include "contrib_ops/rocm/diffusion/group_norm_common.h"
 #include "contrib_ops/rocm/diffusion/group_norm_impl.h"
 #include "contrib_ops/rocm/diffusion/group_norm_impl_kernel.cuh"
 #include "contrib_ops/rocm/diffusion/group_norm_triton.cuh"
+#include "core/providers/rocm/cu_inc/common.cuh"
+#include "core/providers/rocm/rocm_common.h"
 
 namespace onnxruntime {
 namespace contrib {

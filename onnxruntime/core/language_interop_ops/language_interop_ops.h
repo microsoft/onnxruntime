@@ -1,9 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 #pragma once
+#include <memory>
 #include <string>
 #include <vector>
-#include <memory>
+
 #include "core/graph/graph.h"
 #include "core/session/onnxruntime_cxx_api.h"
 

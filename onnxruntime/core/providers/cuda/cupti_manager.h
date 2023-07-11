@@ -5,11 +5,11 @@
 
 #if defined(USE_CUDA) && defined(ENABLE_CUDA_PROFILING)
 
+#include <cupti.h>
+
 #include <atomic>
 #include <mutex>
 #include <vector>
-
-#include <cupti.h>
 
 // Do not move the check for CUDA_VERSION above #include <cupti.h>
 // the macros are defined in cupti.h

@@ -1,8 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/mlas/inc/mlas.h"
 #include "core/providers/cpu/activation/activations.h"
+
+#include "core/mlas/inc/mlas.h"
 #include "core/providers/cpu/fp16/fp16_activations.h"
 #include "core/providers/cpu/math/element_wise_ops.h"
 #ifndef DISABLE_CONTRIB_OPS

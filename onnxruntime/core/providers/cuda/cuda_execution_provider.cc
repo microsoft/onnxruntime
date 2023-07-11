@@ -1,15 +1,16 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/common/inlined_containers.h"
-#include "core/providers/shared_library/provider_api.h"
-#include "core/platform/env_var_utils.h"
 #include "core/providers/cuda/cuda_execution_provider.h"
-#include "core/providers/cuda/cuda_common.h"
+
+#include "core/common/inlined_containers.h"
+#include "core/platform/env_var_utils.h"
 #include "core/providers/cuda/cuda_allocator.h"
+#include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/cuda_fwd.h"
-#include "core/providers/cuda/gpu_data_transfer.h"
 #include "core/providers/cuda/cuda_profiler.h"
+#include "core/providers/cuda/gpu_data_transfer.h"
+#include "core/providers/shared_library/provider_api.h"
 
 #ifndef DISABLE_CONTRIB_OPS
 #include "contrib_ops/cuda/cuda_contrib_kernels.h"

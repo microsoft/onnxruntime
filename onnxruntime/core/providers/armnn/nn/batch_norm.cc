@@ -4,16 +4,16 @@
 
 #ifdef BN_ARMNN
 
-#include "core/common/common.h"
-#include "core/util/math.h"
-#include "core/util/math_cpuonly.h"
-
 #include "core/providers/armnn/nn/batch_norm.h"
+
+#include <mutex>
+#include <thread>
+
+#include "core/common/common.h"
 #include "core/providers/armnn/armnn_common.h"
 #include "core/providers/armnn/armnn_fwd.h"
-
-#include <thread>
-#include <mutex>
+#include "core/util/math.h"
+#include "core/util/math_cpuonly.h"
 
 #define PREF_DIM 4
 

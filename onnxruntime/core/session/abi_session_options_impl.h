@@ -3,14 +3,15 @@
 
 #pragma once
 
+#include <atomic>
 #include <string>
 #include <vector>
-#include <atomic>
-#include "core/common/status.h"
+
 #include "core/common/path_string.h"
+#include "core/common/status.h"
 #include "core/framework/session_options.h"
-#include "core/session/onnxruntime_c_api.h"
 #include "core/providers/providers.h"
+#include "core/session/onnxruntime_c_api.h"
 
 struct OrtSessionOptions {
   onnxruntime::SessionOptions value;

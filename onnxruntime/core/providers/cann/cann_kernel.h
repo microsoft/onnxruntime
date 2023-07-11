@@ -5,12 +5,12 @@
 #pragma once
 
 #include "core/platform/ort_mutex.h"
-#include "core/providers/cann/cann_inc.h"
 #include "core/providers/cann/cann_call.h"
 #include "core/providers/cann/cann_execution_provider.h"
 #include "core/providers/cann/cann_fwd.h"
-#include "core/providers/cann/cann_utils.h"
+#include "core/providers/cann/cann_inc.h"
 #include "core/providers/cann/cann_stream_handle.h"
+#include "core/providers/cann/cann_utils.h"
 
 namespace onnxruntime {
 namespace cann {

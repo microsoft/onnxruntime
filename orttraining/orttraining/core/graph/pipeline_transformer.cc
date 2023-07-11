@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "orttraining/core/graph/pipeline_transformer.h"
+
 #include <queue>
 
 #include "core/graph/graph_utils.h"

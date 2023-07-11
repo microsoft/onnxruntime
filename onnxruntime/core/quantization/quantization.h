@@ -4,8 +4,9 @@
 #pragma once
 
 #include <cmath>
-#include <vector>
 #include <optional>
+#include <vector>
+
 #include "core/common/common.h"
 #include "core/framework/tensor.h"
 #include "core/mlas/inc/mlas.h"

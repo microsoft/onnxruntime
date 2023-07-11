@@ -1,8 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "cxxopts.hpp"
-#include "core/util/math.h"
 #include "core/common/common.h"
 #include "core/common/logging/logging.h"
 #include "core/common/logging/sinks/clog_sink.h"
@@ -12,14 +10,15 @@
 #include "core/providers/provider_factory_creators.h"
 #include "core/session/environment.h"
 #include "core/session/onnxruntime_c_api.h"
-
-#include "orttraining/core/session/training_session.h"
-#include "orttraining/core/framework/tensorboard/event_writer.h"
+#include "core/util/math.h"
+#include "cxxopts.hpp"
 #include "orttraining/core/framework/communication/mpi/mpi_context.h"
+#include "orttraining/core/framework/tensorboard/event_writer.h"
+#include "orttraining/core/session/training_session.h"
 #include "orttraining/models/runner/constant.h"
+#include "orttraining/models/runner/data_loader.h"
 #include "orttraining/models/runner/training_runner.h"
 #include "orttraining/models/runner/training_util.h"
-#include "orttraining/models/runner/data_loader.h"
 
 #ifdef USE_CUDA
 namespace onnxruntime {

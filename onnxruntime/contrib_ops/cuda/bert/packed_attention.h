@@ -6,9 +6,9 @@
 #include <memory>
 #include <vector>
 
-#include "core/providers/cuda/cuda_kernel.h"
-#include "contrib_ops/cuda/bert/tensorrt_fused_multihead_attention/mha_runner.h"
 #include "contrib_ops/cpu/bert/attention_common.h"
+#include "contrib_ops/cuda/bert/tensorrt_fused_multihead_attention/mha_runner.h"
+#include "core/providers/cuda/cuda_kernel.h"
 
 namespace onnxruntime {
 namespace contrib {

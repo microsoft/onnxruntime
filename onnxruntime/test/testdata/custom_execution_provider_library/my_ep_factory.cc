@@ -1,11 +1,13 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 #include "my_ep_factory.h"
-#include "my_execution_provider.h"
-#include "core/common/gsl.h"
-#include "core/providers/shared/common.h"
+
 #include <iostream>
+
+#include "core/common/gsl.h"
 #include "core/framework/provider_options_utils.h"
+#include "core/providers/shared/common.h"
+#include "my_execution_provider.h"
 
 using namespace onnxruntime;
 

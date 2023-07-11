@@ -2,11 +2,11 @@
 // Licensed under the MIT License.
 
 #include "core/common/common.h"
+#include "core/common/gsl.h"
 #include "core/framework/op_kernel.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/graph/onnx_protobuf.h"
 #include "core/graph/op.h"
-#include "core/common/gsl.h"
 
 using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::common;

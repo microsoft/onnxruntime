@@ -8,9 +8,8 @@
 #include "core/framework/utils.h"
 #include "core/graph/graph.h"
 #include "core/providers/xnnpack/xnnpack_execution_provider.h"
-#include "core/session/onnxruntime_cxx_api.h"
 #include "core/session/inference_session.h"
-
+#include "core/session/onnxruntime_cxx_api.h"
 #include "test/common/tensor_op_test_utils.h"
 #include "test/framework/test_utils.h"
 #include "test/test_environment.h"

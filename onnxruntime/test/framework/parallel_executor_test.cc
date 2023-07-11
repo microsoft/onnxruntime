@@ -3,11 +3,10 @@
 
 #include "core/framework/data_types.h"
 #include "core/framework/op_kernel.h"
+#include "core/session/inference_session.h"
+#include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
 #include "test_utils.h"
-#include "core/session/inference_session.h"
-
-#include "gtest/gtest.h"
 
 using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::common;

@@ -4,7 +4,6 @@
 #include "test/providers/base_tester.h"
 
 #include <csignal>
-#include "gmock/gmock.h"
 
 #include "core/common/logging/logging.h"
 #include "core/framework/tensorprotoutils.h"
@@ -12,13 +11,13 @@
 #include "core/graph/model_load_utils.h"
 #include "core/session/inference_session.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
-
+#include "gmock/gmock.h"
 #include "test/framework/TestAllocatorManager.h"
 #include "test/providers/run_options_config_keys.h"
 #include "test/util/include/asserts.h"
 #include "test/util/include/default_providers.h"
-#include "test/util/include/test_utils.h"
 #include "test/util/include/test_environment.h"
+#include "test/util/include/test_utils.h"
 
 #ifdef ENABLE_TRAINING
 #include "orttraining/core/session/training_session.h"

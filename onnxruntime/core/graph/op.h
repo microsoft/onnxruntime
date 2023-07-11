@@ -10,10 +10,10 @@
 #else
 #include "onnx/defs/data_type_utils.h"
 #endif
-#include "onnx/onnx_pb.h"
-#include "onnx/onnx-operators_pb.h"
 #include "core/common/status.h"
 #include "core/graph/constants.h"
+#include "onnx/onnx-operators_pb.h"
+#include "onnx/onnx_pb.h"
 
 namespace onnxruntime {
 using AttrType = ONNX_NAMESPACE::AttributeProto_AttributeType;

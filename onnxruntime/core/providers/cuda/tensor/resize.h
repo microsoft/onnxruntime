@@ -3,8 +3,8 @@
 
 #pragma once
 
-#include "core/providers/shared_library/provider_api.h"
 #include "core/providers/cuda/tensor/upsample.h"
+#include "core/providers/shared_library/provider_api.h"
 
 namespace onnxruntime {
 namespace cuda {

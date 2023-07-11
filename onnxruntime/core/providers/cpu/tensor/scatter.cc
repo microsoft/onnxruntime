@@ -2,8 +2,9 @@
 // Licensed under the MIT License.
 
 // https://github.com/onnx/onnx/blob/main/docs/Operators.md#Scatter
-#include <type_traits>
 #include <core/common/safeint.h>
+
+#include <type_traits>
 
 #include "core/common/common.h"
 #include "core/common/narrow.h"

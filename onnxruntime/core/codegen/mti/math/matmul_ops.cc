@@ -3,9 +3,10 @@
 
 #include "core/codegen/mti/math/matmul_ops.h"
 
+#include <topi/transform.h>
+
 #include "core/codegen/mti/common.h"
 #include "core/codegen/mti/mti_tvm_utils.h"
-#include <topi/transform.h>
 
 namespace onnxruntime {
 namespace tvm_codegen {

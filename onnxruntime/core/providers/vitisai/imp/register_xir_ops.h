@@ -3,6 +3,7 @@
 #pragma once
 
 #include <vector>
+
 #include "core/session/onnxruntime_c_api.h"
 
 namespace vaip {

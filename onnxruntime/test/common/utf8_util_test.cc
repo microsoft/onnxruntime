@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/common/utf8_util.h"
+
 #include "gtest/gtest.h"
 
 namespace onnxruntime {

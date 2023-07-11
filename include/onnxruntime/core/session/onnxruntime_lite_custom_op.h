@@ -15,10 +15,11 @@
 // Note - all APIs in this header are ABI.
 
 #pragma once
-#include "onnxruntime_cxx_api.h"
-#include <optional>
 #include <numeric>
+#include <optional>
 #include <unordered_set>
+
+#include "onnxruntime_cxx_api.h"
 
 namespace Ort {
 namespace Custom {

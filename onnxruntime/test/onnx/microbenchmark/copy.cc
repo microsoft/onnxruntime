@@ -1,9 +1,9 @@
+#include <benchmark/benchmark.h>
+#include <core/framework/copy.h>
+#include <core/platform/threadpool.h>
+
 #include "common.h"
 #include "core/util/thread_utils.h"
-
-#include <core/framework/copy.h>
-#include <benchmark/benchmark.h>
-#include <core/platform/threadpool.h>
 
 using namespace onnxruntime;
 using namespace onnxruntime::concurrency;

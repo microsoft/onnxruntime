@@ -7,17 +7,14 @@
 
 #include <algorithm>
 
-#include "gtest/gtest.h"
-
 #include "core/graph/graph_utils.h"
 #include "core/graph/graph_viewer.h"
 #include "core/graph/model.h"
-#include "core/optimizer/initializer.h"
-
 #include "core/optimizer/embed_layer_norm_fusion.h"
+#include "core/optimizer/initializer.h"
 #include "core/optimizer/layer_norm_fusion.h"
 #include "core/optimizer/skip_layer_norm_fusion.h"
-
+#include "gtest/gtest.h"
 #include "test/capturing_sink.h"
 #include "test/framework/test_utils.h"
 #include "test/optimizer/graph_transform_test_builder.h"

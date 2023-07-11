@@ -3,6 +3,7 @@
 #pragma once
 
 #include <string>
+
 #include "core/framework/data_types.h"
 #include "orttraining/core/graph/graph_augmenter.h"
 

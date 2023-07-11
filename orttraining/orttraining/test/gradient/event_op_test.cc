@@ -8,13 +8,11 @@
 #include <thread>
 
 #include "gtest/gtest.h"
-
+#include "onnx/defs/attr_proto_util.h"
 #include "test/common/tensor_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
-#include "test/util/include/test_random_seed.h"
 #include "test/util/include/default_providers.h"
-
-#include "onnx/defs/attr_proto_util.h"
+#include "test/util/include/test_random_seed.h"
 
 namespace onnxruntime {
 namespace test {

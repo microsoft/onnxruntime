@@ -1,17 +1,19 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include <fstream>
-#include <unordered_map>
-#include <string>
-#include <iostream>
-#include <experimental/filesystem>
-#include "flatbuffers/idl.h"
-#include "ort_trt_int8_cal_table.fbs.h"
 #include <NvInferVersion.h>
-#include "core/providers/cuda/cuda_pch.h"
+
+#include <experimental/filesystem>
+#include <fstream>
+#include <iostream>
+#include <string>
+#include <unordered_map>
+
 #include "core/common/path_string.h"
 #include "core/framework/murmurhash3.h"
+#include "core/providers/cuda/cuda_pch.h"
+#include "flatbuffers/idl.h"
+#include "ort_trt_int8_cal_table.fbs.h"
 
 namespace fs = std::experimental::filesystem;
 

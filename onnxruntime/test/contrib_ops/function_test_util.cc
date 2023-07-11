@@ -1,19 +1,18 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include <iostream>
-#include <sstream>
-#include <memory>
-#include <cstdlib>
-
 #include "function_test_util.h"
 
-#include "gtest/gtest.h"
+#include <cstdlib>
+#include <iostream>
+#include <memory>
+#include <sstream>
 
-#include "test/test_environment.h"
-#include "test/framework/test_utils.h"
-#include "test/common/tensor_op_test_utils.h"
 #include "asserts.h"
+#include "gtest/gtest.h"
+#include "test/common/tensor_op_test_utils.h"
+#include "test/framework/test_utils.h"
+#include "test/test_environment.h"
 
 namespace onnxruntime {
 namespace test {

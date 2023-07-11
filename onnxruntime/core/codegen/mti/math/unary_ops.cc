@@ -3,12 +3,14 @@
 
 #include "core/codegen/mti/math/unary_ops.h"
 
-#include "core/codegen/common/settings.h"
-#include "core/codegen/mti/mti_tvm_utils.h"
-#include <stdexcept>
 #include <topi/broadcast.h>
 #include <topi/elemwise.h>
 #include <topi/transform.h>
+
+#include <stdexcept>
+
+#include "core/codegen/common/settings.h"
+#include "core/codegen/mti/mti_tvm_utils.h"
 
 // Using namespace topi for override operator +-*/
 using namespace topi;

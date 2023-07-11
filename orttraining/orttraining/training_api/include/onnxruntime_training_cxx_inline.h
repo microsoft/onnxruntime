@@ -2,8 +2,8 @@
 // Licensed under the MIT License.
 
 #pragma once
-#include "onnxruntime_training_c_api.h"
 #include "onnxruntime_cxx_api.h"
+#include "onnxruntime_training_c_api.h"
 
 namespace Ort {
 

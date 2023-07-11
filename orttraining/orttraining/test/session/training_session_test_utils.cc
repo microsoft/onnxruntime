@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "orttraining/test/session/training_session_test_utils.h"
+
 #include "core/common/span_utils.h"
 #include "orttraining/core/graph/optimizer_builder.h"
 #include "test/util/include/default_providers.h"

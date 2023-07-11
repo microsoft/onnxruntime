@@ -5,11 +5,12 @@
 
 #include <atomic>
 #include <memory>
+
 #include "core/common/common.h"
-#include "core/common/status.h"
-#include "core/platform/threadpool.h"
 #include "core/common/logging/logging.h"
+#include "core/common/status.h"
 #include "core/framework/allocator.h"
+#include "core/platform/threadpool.h"
 
 struct OrtThreadingOptions;
 namespace onnxruntime {

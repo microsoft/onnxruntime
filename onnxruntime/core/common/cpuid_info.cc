@@ -1,21 +1,22 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 #include "core/common/cpuid_info.h"
+
 #include "core/common/logging/logging.h"
 #include "core/common/logging/severity.h"
 
 #ifdef __linux__
 
-#include <unistd.h>
 #include <sys/syscall.h>
+#include <unistd.h>
 #if !defined(__NR_getcpu)
 #include <asm-generic/unistd.h>
 #endif
 
 #if defined(CPUIDINFO_ARCH_ARM)
 
-#include <sys/auxv.h>
 #include <asm/hwcap.h>
+#include <sys/auxv.h>
 // N.B. Support building with older versions of asm/hwcap.h that do not define
 // this capability bit.
 #ifndef HWCAP_ASIMDDP

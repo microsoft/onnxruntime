@@ -2,8 +2,9 @@
 // Licensed under the MIT License.
 
 #include "orttraining/core/graph/tensorboard_transformer.h"
-#include "orttraining/core/graph/graph_augmenter.h"
+
 #include "onnx/defs/attr_proto_util.h"
+#include "orttraining/core/graph/graph_augmenter.h"
 
 using namespace onnxruntime::common;
 

@@ -3,9 +3,9 @@
 
 #pragma once
 
+#include "core/providers/cpu/nn/pool_base.h"
 #include "core/providers/cuda/cuda_kernel.h"
 #include "core/providers/cuda/cudnn_common.h"
-#include "core/providers/cpu/nn/pool_base.h"
 
 namespace onnxruntime {
 namespace cuda {

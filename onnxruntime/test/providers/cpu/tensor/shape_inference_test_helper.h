@@ -2,10 +2,10 @@
 // Licensed under the MIT License.
 
 #include "gtest/gtest.h"
+#include "onnx/checker.h"
+#include "onnx/shape_inference/implementation.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/util/include/test_utils.h"
-#include "onnx/shape_inference/implementation.h"
-#include "onnx/checker.h"
 
 namespace onnxruntime {
 namespace test {

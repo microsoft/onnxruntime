@@ -2,13 +2,12 @@
 // Licensed under the MIT License.
 
 #include "core/framework/data_types.h"
-#include "core/graph/model.h"
 #include "core/framework/tensorprotoutils.h"
-#include "test/test_environment.h"
-#include "test_utils.h"
-#include "test/util/include/asserts.h"
-
+#include "core/graph/model.h"
 #include "gtest/gtest.h"
+#include "test/test_environment.h"
+#include "test/util/include/asserts.h"
+#include "test_utils.h"
 
 using namespace ONNX_NAMESPACE;
 using namespace onnxruntime;

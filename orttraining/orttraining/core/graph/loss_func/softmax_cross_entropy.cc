@@ -1,8 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include <vector>
 #include "orttraining/core/graph/loss_func/softmax_cross_entropy.h"
+
+#include <vector>
 
 namespace onnxruntime {
 namespace training {

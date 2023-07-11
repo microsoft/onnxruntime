@@ -4,8 +4,8 @@
 #pragma once
 
 #include <limits>
-#include <vector>
 #include <type_traits>
+#include <vector>
 
 #ifdef _WIN32
 #pragma warning(push)

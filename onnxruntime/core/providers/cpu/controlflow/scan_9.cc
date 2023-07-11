@@ -8,20 +8,17 @@
 #pragma warning(push)
 #pragma warning(disable : 4996)
 #endif
-#include "core/providers/cpu/controlflow/scan.h"
-#include "core/providers/cpu/controlflow/scan_utils.h"
-#include "core/providers/cpu/controlflow/utils.h"
-
+#include "core/common/gsl.h"
 #include "core/framework/framework_common.h"
 #include "core/framework/op_kernel_context_internal.h"
 #include "core/framework/session_state.h"
 #include "core/framework/tensorprotoutils.h"
-
 #include "core/providers/common.h"
-#include "core/providers/cpu/tensor/utils.h"
+#include "core/providers/cpu/controlflow/scan.h"
+#include "core/providers/cpu/controlflow/scan_utils.h"
+#include "core/providers/cpu/controlflow/utils.h"
 #include "core/providers/cpu/tensor/transpose.h"
-
-#include "core/common/gsl.h"
+#include "core/providers/cpu/tensor/utils.h"
 
 #ifdef _MSC_VER
 #pragma warning(pop)

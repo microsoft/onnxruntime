@@ -4,8 +4,8 @@
 #pragma once
 
 #include "core/graph/model.h"
-#include "core/session/inference_session.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
+#include "core/session/inference_session.h"
 
 namespace onnxruntime {
 namespace training {

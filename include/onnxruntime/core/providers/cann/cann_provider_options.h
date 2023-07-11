@@ -6,8 +6,8 @@
 
 #include <string>
 
-#include "onnxruntime_c_api.h"
 #include "core/framework/arena_extend_strategy.h"
+#include "onnxruntime_c_api.h"
 
 struct OrtCANNProviderOptions {
   int device_id;                                           // CANN device id

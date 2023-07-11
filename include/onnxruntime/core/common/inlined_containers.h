@@ -18,11 +18,10 @@
 #pragma warning(disable : 4324)
 #endif  // _MSC_VER
 
-#include <absl/container/flat_hash_set.h>
 #include <absl/container/flat_hash_map.h>
-
-#include <absl/container/node_hash_set.h>
+#include <absl/container/flat_hash_set.h>
 #include <absl/container/node_hash_map.h>
+#include <absl/container/node_hash_set.h>
 
 #ifdef _MSC_VER
 #pragma warning(pop)
@@ -30,10 +29,10 @@
 
 #else  // DISABLE_ABSEIL
 
-#include <unordered_set>
-#include <unordered_map>
-#include <set>
 #include <map>
+#include <set>
+#include <unordered_map>
+#include <unordered_set>
 
 #endif  // DISABLE_ABSEIL
 

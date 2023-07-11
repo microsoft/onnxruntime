@@ -1,11 +1,12 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/graph/model.h"
+#include "horizontal_parallel_test_utils.h"
+
 #include "core/graph/graph_utils.h"
+#include "core/graph/model.h"
 #include "core/optimizer/initializer.h"
 #include "test/providers/provider_test_utils.h"
-#include "horizontal_parallel_test_utils.h"
 
 using namespace std;
 using namespace ONNX_NAMESPACE;

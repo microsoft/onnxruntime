@@ -6,21 +6,19 @@
 #include <string>
 #include <type_traits>
 
-#include "core/common/gsl.h"
-
+#include "Eigen/src/Core/arch/Default/BFloat16.h"
+#include "Eigen/src/Core/arch/Default/Half.h"
 #include "core/common/common.h"
+#include "core/common/gsl.h"
 #include "core/common/narrow.h"
 #include "core/common/type_list.h"
-#include "core/framework/data_types_internal.h"
 #include "core/framework/data_types.h"
+#include "core/framework/data_types_internal.h"
 #include "core/framework/element_type_lists.h"
 #include "core/framework/op_kernel.h"
 #include "core/providers/cpu/tensor/utils.h"
 #include "core/providers/op_kernel_type_control.h"
 #include "core/util/math_cpuonly.h"
-
-#include "Eigen/src/Core/arch/Default/BFloat16.h"
-#include "Eigen/src/Core/arch/Default/Half.h"
 
 #if defined(_M_AMD64) && !defined(_M_ARM64EC)
 #include "core/mlas/inc/mlas.h"

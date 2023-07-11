@@ -6,8 +6,8 @@
 #include "core/common/common.h"
 #include "core/common/logging/logging.h"
 #endif
-#include "orttraining/core/framework/distributed_run_context.h"
 #include "orttraining/core/framework/communication/mpi/mpi_include.h"
+#include "orttraining/core/framework/distributed_run_context.h"
 
 namespace onnxruntime {
 namespace training {

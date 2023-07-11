@@ -6,8 +6,8 @@
 #include "core/optimizer/layout_transformation/layout_transformation.h"
 
 #include "core/common/common.h"
-#include "core/optimizer/transpose_optimization/ort_transpose_optimization.h"
 #include "core/optimizer/transpose_optimization/ort_optimizer_utils.h"
+#include "core/optimizer/transpose_optimization/ort_transpose_optimization.h"
 
 using namespace onnx_transpose_optimization;
 

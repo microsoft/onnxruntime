@@ -3,10 +3,10 @@
 
 #include "api.h"
 
-#include "core/session/onnxruntime_cxx_api.h"
-
 #include <iostream>
 #include <vector>
+
+#include "core/session/onnxruntime_cxx_api.h"
 
 namespace {
 OrtEnv* g_env;

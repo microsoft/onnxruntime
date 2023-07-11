@@ -4,6 +4,7 @@
 #pragma once
 
 #include <assert.h>
+
 #include <string>
 #include <tuple>
 #include <vector>

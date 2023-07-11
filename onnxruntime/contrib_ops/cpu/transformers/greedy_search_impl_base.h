@@ -4,8 +4,9 @@
 #pragma once
 #include <random>
 #include <vector>
-#include "contrib_ops/cpu/transformers/generation_shared.h"
+
 #include "contrib_ops/cpu/transformers/generate_impl_base.h"
+#include "contrib_ops/cpu/transformers/generation_shared.h"
 
 namespace onnxruntime {
 namespace contrib {

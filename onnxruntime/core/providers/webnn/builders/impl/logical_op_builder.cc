@@ -4,11 +4,10 @@
 
 #include <core/providers/common.h>
 
+#include "base_op_builder.h"
+#include "core/providers/webnn/builders/helper.h"
 #include "core/providers/webnn/builders/model_builder.h"
 #include "core/providers/webnn/builders/op_builder_factory.h"
-#include "core/providers/webnn/builders/helper.h"
-
-#include "base_op_builder.h"
 
 namespace onnxruntime {
 namespace webnn {

@@ -2,9 +2,11 @@
 // Licensed under the MIT License.
 
 #pragma once
-#include <ctime>
-#include <cudnn.h>
 #include <cublas_v2.h>
+#include <cudnn.h>
+
+#include <ctime>
+
 #include "NvInfer.h"
 #include "NvOnnxParser.h"
 #include "core/platform/ort_mutex.h"

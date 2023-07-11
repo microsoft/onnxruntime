@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "contrib_ops/cpu/bert/attention_base.h"
+
 #include "core/providers/common.h"
 
 namespace onnxruntime {

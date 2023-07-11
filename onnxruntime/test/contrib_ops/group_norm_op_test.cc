@@ -2,13 +2,13 @@
 // Licensed under the MIT License.
 
 #include <random>
-#include "test/common/tensor_op_test_utils.h"
+
+#include "gmock/gmock.h"
+#include "gtest/gtest.h"
 #include "test/common/cuda_op_test_utils.h"
+#include "test/common/tensor_op_test_utils.h"
 #include "test/framework/test_utils.h"
 #include "test/providers/provider_test_utils.h"
-
-#include "gtest/gtest.h"
-#include "gmock/gmock.h"
 
 using namespace std;
 

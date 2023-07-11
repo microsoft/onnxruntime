@@ -3,22 +3,21 @@
 
 #include "internal_testing_execution_provider.h"
 
+#include <queue>
+
 #include "core/framework/allocator_utils.h"
 #include "core/framework/compute_capability.h"
 #include "core/framework/feeds_fetches_manager.h"
+#include "core/framework/kernel_registry.h"
+#include "core/framework/op_kernel.h"
 #include "core/framework/op_kernel_context_internal.h"
 #include "core/framework/session_state.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/framework/utils.h"
 #include "core/graph/model.h"
+#include "core/optimizer/layout_transformation/layout_transformation.h"
 #include "core/providers/partitioning_utils.h"
 #include "core/session/onnxruntime_cxx_api.h"
-#include "core/optimizer/layout_transformation/layout_transformation.h"
-
-#include <queue>
-
-#include "core/framework/op_kernel.h"
-#include "core/framework/kernel_registry.h"
 #include "internal_testing_ep_static_kernels.h"  // for BuildKernelCreateInfo declaration
 
 namespace onnxruntime {

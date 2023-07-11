@@ -13,10 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "core/platform/threadpool.h"
+
 #include <memory>
 #include <optional>
 
-#include "core/platform/threadpool.h"
 #include "core/common/common.h"
 #include "core/common/cpuid_info.h"
 #include "core/common/eigen_common_wrapper.h"
@@ -24,9 +25,10 @@ limitations under the License.
 #include "core/platform/ort_mutex.h"
 #if !defined(ORT_MINIMAL_BUILD)
 #ifdef _WIN32
-#include "processthreadsapi.h"
 #include <codecvt>
 #include <locale>
+
+#include "processthreadsapi.h"
 #elif defined(__APPLE__)
 #if defined(__x86_64__) || defined(__i386__)
 #include <cpuid.h>

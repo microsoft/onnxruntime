@@ -1,6 +1,6 @@
-#include "common.h"
-
 #include <benchmark/benchmark.h>
+
+#include "common.h"
 #include "core/util/qmath.h"
 #include "core/util/thread_utils.h"
 

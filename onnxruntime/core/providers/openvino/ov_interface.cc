@@ -2,10 +2,11 @@
 // Licensed under the MIT License
 
 #include "ov_interface.h"
+
 #include <fstream>
 #define ORT_API_MANUAL_INIT
-#include "core/session/onnxruntime_cxx_api.h"
 #include "core/providers/shared_library/provider_api.h"
+#include "core/session/onnxruntime_cxx_api.h"
 
 #if defined(OV_API_20)
 using Exception = ov::Exception;

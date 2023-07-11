@@ -3,6 +3,7 @@
 
 #pragma once
 #include <functional>
+
 #include "core/common/gsl.h"
 
 #ifndef SHARED_PROVIDER
@@ -11,8 +12,8 @@
 #endif
 
 #include "core/framework/feeds_fetches_manager.h"
-#include "core/providers/cpu/controlflow/utils.h"
 #include "core/framework/ort_value_tensor_slicer.h"
+#include "core/providers/cpu/controlflow/utils.h"
 
 namespace onnxruntime {
 namespace scan {

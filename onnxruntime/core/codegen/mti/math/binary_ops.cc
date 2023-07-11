@@ -3,10 +3,11 @@
 
 #include "core/codegen/mti/math/binary_ops.h"
 
+#include <topi/broadcast.h>
+
 #include "core/codegen/mti/math/unary_ops.h"
 #include "core/codegen/mti/mti_tvm_utils.h"
 #include "core/codegen/mti/tensor/cast_ops.h"
-#include <topi/broadcast.h>
 
 // Using namespace topi for override operator +-*/
 using namespace topi;

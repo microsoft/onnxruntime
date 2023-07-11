@@ -3,11 +3,11 @@
 
 #pragma once
 
+#include <miopen/miopen.h>
+
 #include <cfloat>
 
 #include "core/providers/rocm/rocm_common.h"
-
-#include <miopen/miopen.h>
 
 const double MIOPEN_BN_MIN_EPSILON = 1e-5;
 

@@ -2,19 +2,18 @@
 // Licensed under the MIT License.
 
 #include <algorithm>
-#include <string>
 #include <array>
+#include <string>
 #include <vector>
 
-#include "core/providers/common.h"
-#include "core/providers/shared/utils/utils.h"
-#include "core/framework/endian_utils.h"
-#include "core/providers/qnn/builder/qnn_model_wrapper.h"
-#include "core/providers/qnn/builder/op_builder_factory.h"
-#include "core/common/safeint.h"
-#include "onnx/defs/data_type_utils.h"
-
 #include "base_op_builder.h"
+#include "core/common/safeint.h"
+#include "core/framework/endian_utils.h"
+#include "core/providers/common.h"
+#include "core/providers/qnn/builder/op_builder_factory.h"
+#include "core/providers/qnn/builder/qnn_model_wrapper.h"
+#include "core/providers/shared/utils/utils.h"
+#include "onnx/defs/data_type_utils.h"
 
 namespace onnxruntime {
 namespace qnn {

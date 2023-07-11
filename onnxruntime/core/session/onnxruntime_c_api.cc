@@ -2,46 +2,46 @@
 // Licensed under the MIT License.
 
 #include "core/session/onnxruntime_c_api.h"
-#include "core/session/allocator_adapters.h"
-#include "core/session/inference_session_utils.h"
-#include "core/session/IOBinding.h"
-#include "core/framework/allocator.h"
-#include "core/framework/error_code_helper.h"
-#include "core/framework/execution_provider.h"
-#include "core/framework/tensor_type_and_shape.h"
-#include "core/framework/utils.h"
+
 #include <cassert>
 #include <cstring>
 #include <functional>
 #include <sstream>
 
+#include "abi_session_options_impl.h"
 #include "core/common/common.h"
 #include "core/common/logging/logging.h"
 #include "core/common/narrow.h"
-#include "core/common/status.h"
 #include "core/common/safeint.h"
+#include "core/common/status.h"
+#include "core/common/string_helper.h"
+#include "core/framework/TensorSeq.h"
+#include "core/framework/allocator.h"
+#include "core/framework/callback.h"
+#include "core/framework/data_types.h"
+#include "core/framework/error_code_helper.h"
+#include "core/framework/execution_provider.h"
+#include "core/framework/onnxruntime_typeinfo.h"
+#include "core/framework/ort_value.h"
+#include "core/framework/tensor.h"
+#include "core/framework/tensor_type_and_shape.h"
+#include "core/framework/tensorprotoutils.h"
+#include "core/framework/utils.h"
 #include "core/graph/constants.h"
 #include "core/graph/graph.h"
-#include "core/framework/allocator.h"
-#include "core/framework/tensor.h"
-#include "core/framework/ort_value.h"
+#include "core/platform/ort_mutex.h"
 #include "core/providers/get_execution_providers.h"
+#include "core/session/IOBinding.h"
+#include "core/session/allocator_adapters.h"
 #include "core/session/environment.h"
-#include "core/framework/callback.h"
-#include "core/framework/tensorprotoutils.h"
-#include "core/framework/onnxruntime_typeinfo.h"
 #include "core/session/inference_session.h"
+#include "core/session/inference_session_utils.h"
 #include "core/session/ort_apis.h"
 #include "core/session/ort_env.h"
-#include "core/framework/data_types.h"
-#include "abi_session_options_impl.h"
-#include "core/framework/TensorSeq.h"
-#include "core/platform/ort_mutex.h"
-#include "core/common/string_helper.h"
 
 #ifdef USE_CUDA
-#include "core/providers/cuda/cuda_provider_factory.h"
 #include "core/providers/cuda/cuda_execution_provider_info.h"
+#include "core/providers/cuda/cuda_provider_factory.h"
 namespace onnxruntime {
 ProviderInfo_CUDA* TryGetProviderInfo_CUDA();
 }
@@ -53,16 +53,16 @@ ProviderInfo_CUDA* TryGetProviderInfo_CUDA();
 #endif
 
 #ifdef USE_CANN
-#include "core/providers/cann/cann_provider_factory.h"
 #include "core/providers/cann/cann_execution_provider_info.h"
+#include "core/providers/cann/cann_provider_factory.h"
 namespace onnxruntime {
 ProviderInfo_CANN* TryGetProviderInfo_CANN();
 }
 #endif
 
 #ifdef USE_DNNL
-#include "core/providers/dnnl/dnnl_provider_factory.h"
 #include "core/providers/dnnl/dnnl_execution_provider_info.h"
+#include "core/providers/dnnl/dnnl_provider_factory.h"
 namespace onnxruntime {
 ProviderInfo_Dnnl* TryGetProviderInfo_Dnnl();
 }

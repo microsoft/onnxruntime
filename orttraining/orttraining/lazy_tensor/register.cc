@@ -4,14 +4,15 @@
 #include <iostream>
 // Instead of torch/torch.h, include torch torch/extension.h
 // for extra Python headers.
-#include <torch/extension.h>
 #include <torch/csrc/jit/passes/pass_manager.h>
-#include "torch/csrc/jit/passes/shape_analysis.h"
 #include <torch/csrc/jit/runtime/custom_operator.h>
+#include <torch/extension.h>
+
 #include "accelerator.h"
+#include "core/common/logging/logging.h"
 #include "flags.h"
 #include "fusion.h"
-#include "core/common/logging/logging.h"
+#include "torch/csrc/jit/passes/shape_analysis.h"
 
 namespace onnxruntime {
 namespace lazytensor {

@@ -3,12 +3,11 @@
 
 #if defined(_MSC_VER) && !defined(NDEBUG)
 
-#include "core/common/common.h"
-
 #include <iostream>
 
-#include "gtest/gtest.h"
+#include "core/common/common.h"
 #include "gmock/gmock.h"
+#include "gtest/gtest.h"
 
 namespace onnxruntime {
 namespace test {

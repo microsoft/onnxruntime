@@ -1,13 +1,14 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
+#include "core/graph/function_utils.h"
+
 #include <unordered_map>
 
-#include "core/graph/function_utils.h"
 #include "core/common/inlined_containers.h"
 #include "core/framework/tensorprotoutils.h"
-#include "onnx/shape_inference/implementation.h"
 #include "core/graph/function_impl.h"
 #include "core/graph/model_load_utils.h"
+#include "onnx/shape_inference/implementation.h"
 
 namespace onnxruntime {
 namespace function_utils {

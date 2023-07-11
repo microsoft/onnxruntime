@@ -2,10 +2,11 @@
 // Licensed under the MIT License.
 
 #include "attention_wrapper.h"
-#include "core/providers/cpu/rnn/rnn_helpers.h"
 
-#include <stdexcept>
 #include <memory>
+#include <stdexcept>
+
+#include "core/providers/cpu/rnn/rnn_helpers.h"
 
 using onnxruntime::rnn::detail::Allocate;
 // TODO: fix the warnings

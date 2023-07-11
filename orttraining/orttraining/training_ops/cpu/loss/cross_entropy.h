@@ -4,8 +4,8 @@
 #pragma once
 
 #include "core/framework/op_kernel.h"
-#include "orttraining/training_ops/cpu/loss/reduction_type.h"
 #include "core/util/math_cpuonly.h"
+#include "orttraining/training_ops/cpu/loss/reduction_type.h"
 
 namespace onnxruntime {
 namespace contrib {

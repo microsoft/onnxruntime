@@ -2,12 +2,12 @@
 // Licensed under the MIT License.
 
 #include "core/framework/tensor.h"
-#include "test_utils.h"
+
+#include <sstream>
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
-
-#include <sstream>
+#include "test_utils.h"
 
 namespace onnxruntime {
 namespace test {

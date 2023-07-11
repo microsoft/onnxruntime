@@ -5,19 +5,19 @@
 #pragma once
 
 #include "core/framework/op_kernel.h"
-#include "core/util/math.h"
-#include "core/util/math_cpuonly.h"
+#include "core/providers/acl/acl_execution_provider.h"
 #include "core/providers/cpu/math/gemm.h"
 #include "core/providers/cpu/math/gemm_helper.h"
-#include "core/providers/acl/acl_execution_provider.h"
+#include "core/util/math.h"
+#include "core/util/math_cpuonly.h"
 
 // ACL
 #include "arm_compute/core/TensorInfo.h"
-#include "arm_compute/runtime/TensorAllocator.h"
 #include "arm_compute/runtime/Allocator.h"
-#include "arm_compute/runtime/PoolManager.h"
 #include "arm_compute/runtime/BlobLifetimeManager.h"
 #include "arm_compute/runtime/MemoryManagerOnDemand.h"
+#include "arm_compute/runtime/PoolManager.h"
+#include "arm_compute/runtime/TensorAllocator.h"
 
 // NEON
 #include "arm_compute/runtime/NEON/functions/NEFullyConnectedLayer.h"

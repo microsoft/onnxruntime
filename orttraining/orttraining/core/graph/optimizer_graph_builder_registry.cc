@@ -4,10 +4,10 @@
 #include "orttraining/core/graph/optimizer_graph_builder_registry.h"
 
 // optimizer graph builders to register
-#include "orttraining/core/graph/optimizer_graph_builder.h"
-#include "orttraining/core/graph/allreduce_optimizer_graph_builder.h"
-#include "orttraining/core/graph/zero_optimizer_graph_builder.h"
 #include "orttraining/core/graph/adasum_optimizer_graph_builder.h"
+#include "orttraining/core/graph/allreduce_optimizer_graph_builder.h"
+#include "orttraining/core/graph/optimizer_graph_builder.h"
+#include "orttraining/core/graph/zero_optimizer_graph_builder.h"
 
 namespace onnxruntime {
 namespace training {

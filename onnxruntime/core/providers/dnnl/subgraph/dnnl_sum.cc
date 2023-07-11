@@ -2,6 +2,7 @@
 // Licensed under the MIT License
 
 #include "dnnl_sum.h"
+
 #include "dnnl_subgraph.h"
 #include "dnnl_subgraph_primitive.h"
 

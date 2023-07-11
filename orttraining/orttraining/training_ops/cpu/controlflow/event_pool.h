@@ -3,12 +3,13 @@
 
 #pragma once
 
-#include "core/common/common.h"
 #include <atomic>
-#include <cstdint>
-#include <mutex>
-#include <memory>
 #include <condition_variable>
+#include <cstdint>
+#include <memory>
+#include <mutex>
+
+#include "core/common/common.h"
 
 namespace onnxruntime {
 namespace contrib {

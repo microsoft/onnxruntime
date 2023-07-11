@@ -3,14 +3,13 @@
 
 #pragma once
 
-#include <memory>
 #include <map>
+#include <memory>
 #include <unordered_map>
 #include <vector>
 
-#include "core/common/gsl.h"
-
 #include "core/common/common.h"
+#include "core/common/gsl.h"
 #include "core/common/inlined_containers.h"
 #include "core/common/logging/logging.h"
 #include "core/common/profiler.h"
@@ -18,17 +17,17 @@
 #include "core/framework/callback.h"
 #include "core/framework/data_transfer_manager.h"
 #include "core/framework/execution_providers.h"
-#include "core/framework/stream_execution_context.h"
 #include "core/framework/feeds_fetches_manager.h"
 #include "core/framework/framework_common.h"
-#include "core/framework/prepacked_weights_container.h"
 #include "core/framework/fuse_nodes_funcs.h"
 #include "core/framework/kernel_registry_manager.h"
 #include "core/framework/mem_pattern.h"
-#include "core/framework/ort_value.h"
 #include "core/framework/node_index_info.h"
 #include "core/framework/op_kernel.h"
+#include "core/framework/ort_value.h"
 #include "core/framework/ort_value_name_idx_map.h"
+#include "core/framework/prepacked_weights_container.h"
+#include "core/framework/stream_execution_context.h"
 #include "core/graph/graph_viewer.h"
 #include "core/graph/onnx_protobuf.h"
 #include "core/platform/ort_mutex.h"

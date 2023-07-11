@@ -5,9 +5,9 @@
 
 #include "orttraining/training_ops/rocm/nn/conv_grad.h"
 
+#include "core/platform/ort_mutex.h"
 #include "core/providers/common.h"
 #include "core/providers/rocm/shared_inc/fpgeneric.h"
-#include "core/platform/ort_mutex.h"
 
 namespace onnxruntime {
 namespace rocm {

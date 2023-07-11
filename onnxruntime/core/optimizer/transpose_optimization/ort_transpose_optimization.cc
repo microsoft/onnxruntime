@@ -4,6 +4,7 @@
 #include "core/optimizer/transpose_optimization/ort_transpose_optimization.h"
 
 #include <algorithm>
+
 #include "core/graph/constants.h"
 #include "core/optimizer/transpose_optimization/ort_optimizer_utils.h"
 

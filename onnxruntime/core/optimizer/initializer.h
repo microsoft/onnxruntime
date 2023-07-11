@@ -4,17 +4,17 @@
 #pragma once
 
 #include <algorithm>
+#include <cmath>
 #include <functional>
 #include <vector>
-#include <cmath>
 
 #include "core/common/common.h"
 #include "core/common/path.h"
 #include "core/framework/allocator.h"
-#include "core/optimizer/graph_transformer.h"
 #include "core/framework/tensor_shape.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/graph/onnx_protobuf.h"
+#include "core/optimizer/graph_transformer.h"
 #include "core/util/math.h"
 
 namespace onnxruntime {

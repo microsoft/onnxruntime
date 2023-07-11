@@ -7,11 +7,10 @@
 
 #include "core/common/span_utils.h"
 #include "core/common/status.h"
-#include "core/framework/tensor.h"
-#include "core/framework/data_types_internal.h"
 #include "core/framework/data_transfer_manager.h"
+#include "core/framework/data_types_internal.h"
 #include "core/framework/sparse_tensor.h"
-
+#include "core/framework/tensor.h"
 #include "core/util/math_cpuonly.h"
 
 namespace onnxruntime {

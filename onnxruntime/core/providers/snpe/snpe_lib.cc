@@ -2,16 +2,18 @@
 // Licensed under the MIT License.
 
 #include "core/providers/snpe/snpe_lib.h"
+
 #include <iostream>
-#include <unordered_map>
 #include <memory>
-#include "core/common/common.h"
-#include "core/common/logging/logging.h"
-#include "core/common/safeint.h"
+#include <unordered_map>
+
 #include "DlContainer/IDlContainer.hpp"
 #include "DlSystem/ITensorFactory.hpp"
 #include "DlSystem/IUserBufferFactory.hpp"
 #include "SNPE/SNPEBuilder.hpp"
+#include "core/common/common.h"
+#include "core/common/logging/logging.h"
+#include "core/common/safeint.h"
 
 namespace onnxruntime {
 namespace contrib {

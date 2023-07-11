@@ -4,9 +4,9 @@
 
 #pragma once
 
-#include "core/providers/shared_library/provider_api.h"
-#include "core/providers/cpu/tensor/reshape_helper.h"
 #include "core/providers/cann/cann_kernel.h"
+#include "core/providers/cpu/tensor/reshape_helper.h"
+#include "core/providers/shared_library/provider_api.h"
 #include "gsl/gsl"
 
 namespace onnxruntime {

@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "dummy_allocator.h"
+
 #include "core/session/onnxruntime_cxx_api.h"
 namespace onnxruntime {
 namespace test {

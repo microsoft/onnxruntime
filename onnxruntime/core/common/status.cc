@@ -12,6 +12,7 @@ limitations under the License.
 // Modifications Copyright (c) Microsoft.
 
 #include "core/common/status.h"
+
 #include "core/common/common.h"
 
 namespace onnxruntime {

@@ -2,10 +2,11 @@
 // Licensed under the MIT License.
 
 #pragma once
-#include "core/common/common.h"
 #include <cassert>
 #include <memory>
 #include <vector>
+
+#include "core/common/common.h"
 
 namespace onnxruntime {
 

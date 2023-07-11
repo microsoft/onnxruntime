@@ -3,11 +3,13 @@
 
 #ifdef ENABLE_TRAINING
 
+#include "core/optimizer/compute_optimizer/upstream_gather_actors.h"
+
 #include <onnx/defs/attr_proto_util.h>
+
 #include "core/graph/graph_utils.h"
 #include "core/optimizer/initializer.h"
 #include "core/optimizer/utils.h"
-#include "core/optimizer/compute_optimizer/upstream_gather_actors.h"
 
 using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::common;

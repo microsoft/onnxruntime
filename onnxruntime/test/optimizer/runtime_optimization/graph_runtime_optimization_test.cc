@@ -4,9 +4,8 @@
 #include <algorithm>
 #include <string>
 
-#include "gtest/gtest.h"
-
 #include "core/session/onnxruntime_session_options_config_keys.h"
+#include "gtest/gtest.h"
 #include "test/framework/test_utils.h"
 #include "test/util/include/asserts.h"
 #include "test/util/include/inference_session_wrapper.h"
@@ -15,8 +14,8 @@
 #if !defined(ORT_MINIMAL_BUILD)
 #include "core/flatbuffers/ort_format_version.h"
 #include "core/flatbuffers/schema/ort.fbs.h"
-#include "core/framework/kernel_registry_manager.h"
 #include "core/framework/kernel_registry.h"
+#include "core/framework/kernel_registry_manager.h"
 #include "core/graph/graph_utils.h"
 #include "core/graph/model.h"
 #include "core/optimizer/graph_transformer_mgr.h"

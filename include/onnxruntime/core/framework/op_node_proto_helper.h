@@ -4,10 +4,10 @@
 #pragma once
 
 #ifndef SHARED_PROVIDER
+#include "core/common/gsl.h"
 #include "core/common/status.h"
 #include "core/framework/tensor_shape.h"
 #include "core/graph/graph_viewer.h"
-#include "core/common/gsl.h"
 #endif
 
 #ifdef __has_attribute

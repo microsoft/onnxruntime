@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 #include "custom_op.h"
+
 #include "common.h"
 
 void simple_assert(const bool cond, const std::string& text) {

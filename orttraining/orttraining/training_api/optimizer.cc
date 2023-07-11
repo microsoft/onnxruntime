@@ -2,13 +2,13 @@
 // Licensed under the MIT License.
 
 #include "orttraining/training_api/optimizer.h"
-#include "core/flatbuffers/flatbuffers_utils.h"
-#include "core/framework/execution_provider.h"
-#include "core/framework/TensorSeq.h"
-#include "core/providers/cpu/cpu_execution_provider.h"
-#include "core/session/inference_session.h"
-#include "core/session/environment.h"
 
+#include "core/flatbuffers/flatbuffers_utils.h"
+#include "core/framework/TensorSeq.h"
+#include "core/framework/execution_provider.h"
+#include "core/providers/cpu/cpu_execution_provider.h"
+#include "core/session/environment.h"
+#include "core/session/inference_session.h"
 #include "orttraining/training_api/checkpoint.h"
 #include "orttraining/training_api/utils.h"
 

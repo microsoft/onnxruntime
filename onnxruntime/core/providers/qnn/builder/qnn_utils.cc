@@ -1,15 +1,16 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "qnn_utils.h"
+
 #include <functional>
+#include <map>
 #include <numeric>
 #include <string>
 #include <vector>
-#include <map>
 
 #include "core/common/common.h"
 #include "core/framework/data_types.h"
-#include "qnn_utils.h"
 #include "core/providers/qnn/builder/qnn_def.h"
 
 namespace onnxruntime {

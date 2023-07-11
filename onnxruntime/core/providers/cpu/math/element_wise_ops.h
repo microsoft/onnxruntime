@@ -7,8 +7,8 @@
 #include "core/common/inlined_containers.h"
 #include "core/common/narrow.h"
 #include "core/framework/op_kernel.h"
-#include "core/util/math_cpuonly.h"
 #include "core/providers/cpu/element_wise_ranged_transform.h"
+#include "core/util/math_cpuonly.h"
 
 namespace onnxruntime {
 namespace functors {

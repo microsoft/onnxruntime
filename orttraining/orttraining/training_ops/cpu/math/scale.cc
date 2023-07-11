@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "orttraining/training_ops/cpu/math/scale.h"
+
 #include "core/framework/math.h"
 #include "core/providers/common.h"
 

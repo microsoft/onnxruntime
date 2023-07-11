@@ -4,15 +4,16 @@
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
 
 #include "core/framework/memory_info.h"
-#include "core/framework/mem_pattern.h"
-#include "core/framework/ort_value.h"
-#include "core/common/inlined_containers.h"
 
 #include <fstream>
 #include <map>
 #include <numeric>
 #include <queue>
 #include <set>
+
+#include "core/common/inlined_containers.h"
+#include "core/framework/mem_pattern.h"
+#include "core/framework/ort_value.h"
 
 namespace onnxruntime {
 

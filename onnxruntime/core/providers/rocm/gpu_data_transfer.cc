@@ -1,9 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/shared_library/provider_api.h"
-#include "core/providers/rocm/rocm_common.h"
 #include "core/providers/rocm/gpu_data_transfer.h"
+
+#include "core/providers/rocm/rocm_common.h"
+#include "core/providers/shared_library/provider_api.h"
 
 // use default stream for copy for now, to avoid racing in BFC arena as in issue #4829
 // note this may cause some models to run slower if there are ops running on CPU

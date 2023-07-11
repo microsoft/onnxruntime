@@ -1,20 +1,19 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "qlinear_global_average_pool.h"
-#include "qlinear_lookup_table.h"
 #include "qlinear_pool.h"
 
-#include "core/common/safeint.h"
-#include "core/util/math_cpuonly.h"
-#include "core/providers/common.h"
-#include "core/platform/threadpool.h"
-#include "core/util/math.h"
-#include "core/mlas/inc/mlas.h"
-
 #include <functional>
-
 #include <iostream>
+
+#include "core/common/safeint.h"
+#include "core/mlas/inc/mlas.h"
+#include "core/platform/threadpool.h"
+#include "core/providers/common.h"
+#include "core/util/math.h"
+#include "core/util/math_cpuonly.h"
+#include "qlinear_global_average_pool.h"
+#include "qlinear_lookup_table.h"
 
 namespace onnxruntime {
 

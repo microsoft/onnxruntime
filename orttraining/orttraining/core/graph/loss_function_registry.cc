@@ -1,12 +1,13 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
-#include <unordered_map>
 #include <mutex>
-#include "loss_function_builder.h"
-#include "loss_func/mean_squared_error.h"
+#include <unordered_map>
+
 #include "loss_func/bert_loss.h"
 #include "loss_func/bert_loss_legacy.h"
+#include "loss_func/mean_squared_error.h"
 #include "loss_func/softmax_cross_entropy.h"
+#include "loss_function_builder.h"
 
 namespace onnxruntime {
 namespace training {

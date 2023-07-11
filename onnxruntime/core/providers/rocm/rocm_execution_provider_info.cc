@@ -1,13 +1,13 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/shared_library/provider_api.h"
 #include "core/providers/rocm/rocm_execution_provider_info.h"
 
 #include "core/common/make_string.h"
 #include "core/common/parse_string.h"
 #include "core/framework/provider_options_utils.h"
 #include "core/providers/rocm/rocm_common.h"
+#include "core/providers/shared_library/provider_api.h"
 
 namespace onnxruntime {
 namespace rocm {

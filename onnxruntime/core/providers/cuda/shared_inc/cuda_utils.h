@@ -7,6 +7,7 @@
 #pragma once
 
 #include <cuda_fp16.h>
+
 #include <memory>
 #include <type_traits>
 #include <vector>

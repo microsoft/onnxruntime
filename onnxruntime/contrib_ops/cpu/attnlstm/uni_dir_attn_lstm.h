@@ -5,13 +5,11 @@
 
 #include "activation_info.h"
 #include "attention_wrapper.h"
-#include "core/providers/cpu/rnn/rnn_helpers.h"
-
 #include "core/common/common.h"
+#include "core/common/gsl.h"
 #include "core/common/logging/logging.h"
 #include "core/framework/allocator.h"
-
-#include "core/common/gsl.h"
+#include "core/providers/cpu/rnn/rnn_helpers.h"
 
 namespace onnxruntime {
 namespace contrib {

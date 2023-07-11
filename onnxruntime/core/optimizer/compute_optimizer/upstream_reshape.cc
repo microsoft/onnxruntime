@@ -3,11 +3,12 @@
 
 #ifdef ENABLE_TRAINING
 
+#include "core/optimizer/compute_optimizer/upstream_reshape.h"
+
 #include "core/framework/tensorprotoutils.h"
 #include "core/graph/graph_utils.h"
-#include "core/optimizer/utils.h"
 #include "core/optimizer/compute_optimizer/upstream_reshape_actors.h"
-#include "core/optimizer/compute_optimizer/upstream_reshape.h"
+#include "core/optimizer/utils.h"
 
 using namespace onnxruntime::optimizer::compute_optimizer;
 namespace onnxruntime {

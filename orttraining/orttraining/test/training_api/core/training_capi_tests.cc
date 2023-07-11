@@ -2,14 +2,11 @@
 // Licensed under the MIT License.
 
 #include "gtest/gtest.h"
-
 #include "onnxruntime_c_api.h"
 #include "onnxruntime_training_c_api.h"
 #include "onnxruntime_training_cxx_api.h"
-
-#include "orttraining/training_api/checkpoint.h"
-
 #include "orttraining/test/training_api/core/data_utils.h"
+#include "orttraining/training_api/checkpoint.h"
 #include "test/util/include/asserts.h"
 #include "test/util/include/temp_dir.h"
 

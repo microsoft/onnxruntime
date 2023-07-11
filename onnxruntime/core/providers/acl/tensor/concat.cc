@@ -3,12 +3,12 @@
 // Licensed under the MIT License.
 
 #include "core/providers/acl/tensor/concat.h"
-#include "core/providers/common.h"
-#include "core/framework/TensorSeq.h"
-#include "arm_compute/core/utils/misc/ShapeCalculator.h"
 
+#include "arm_compute/core/utils/misc/ShapeCalculator.h"
+#include "core/framework/TensorSeq.h"
 #include "core/providers/acl/acl_common.h"
 #include "core/providers/acl/acl_fwd.h"
+#include "core/providers/common.h"
 
 #define PREF_DIM 4
 

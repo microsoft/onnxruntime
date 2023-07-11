@@ -2,10 +2,11 @@
 // Licensed under the MIT License.
 
 #pragma once
-#include <core/session/onnxruntime_cxx_api.h>
 #include <core/platform/env.h>
-#include "test_configuration.h"
+#include <core/session/onnxruntime_cxx_api.h>
+
 #include "tensorflow/c/c_api.h"
+#include "test_configuration.h"
 #include "test_session.h"
 extern const OrtApi* g_ort;
 

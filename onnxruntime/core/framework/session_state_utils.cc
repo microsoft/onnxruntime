@@ -1,31 +1,32 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/framework/session_state_utils.h"
+
+#include <core/common/status.h>
+
 #include <functional>
 #include <limits>
 #include <utility>
 
-#include <core/common/status.h>
-
-#include "core/framework/ortdevice.h"
-#include "core/graph/onnx_protobuf.h"
-#include "core/framework/session_state_utils.h"
 #include "core/common/common.h"
 #include "core/common/logging/logging.h"
-#include "core/graph/graph_viewer.h"
+#include "core/framework/bfc_arena.h"
 #include "core/framework/data_transfer_manager.h"
 #include "core/framework/graph_partitioner.h"
+#include "core/framework/mem_buffer.h"
 #include "core/framework/ort_value.h"
-#include "core/framework/ort_value_pattern_planner.h"
 #include "core/framework/ort_value_name_idx_map.h"
+#include "core/framework/ort_value_pattern_planner.h"
+#include "core/framework/ortdevice.h"
 #include "core/framework/sequential_execution_plan.h"
 #include "core/framework/session_state.h"
+#include "core/framework/tensor_allocator.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/framework/utils.h"
-#include "core/framework/bfc_arena.h"
+#include "core/graph/graph_viewer.h"
+#include "core/graph/onnx_protobuf.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
-#include "core/framework/mem_buffer.h"
-#include "core/framework/tensor_allocator.h"
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
 #include "core/framework/memory_info.h"
 #endif

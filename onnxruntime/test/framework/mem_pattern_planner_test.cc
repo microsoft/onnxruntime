@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/framework/mem_pattern_planner.h"
+
 #include "gtest/gtest.h"
 
 namespace onnxruntime {

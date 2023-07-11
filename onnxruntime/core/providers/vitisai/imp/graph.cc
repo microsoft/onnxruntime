@@ -4,13 +4,14 @@
 
 #include <core/graph/graph_viewer.h>
 
-#include "./vai_assert.h"
 #include <codecvt>
-#include <fstream>
 #include <filesystem>
+#include <fstream>
 #include <limits>
 #include <locale>
 #include <string>
+
+#include "./vai_assert.h"
 #include "onnx/onnx-ml.pb.h"
 #ifdef _MSC_VER
 #pragma warning(push)

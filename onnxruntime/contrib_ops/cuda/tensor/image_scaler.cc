@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "image_scaler.h"
+
 #include "image_scaler_impl.h"
 
 using namespace onnxruntime::cuda;

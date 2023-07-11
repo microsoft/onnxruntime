@@ -3,10 +3,9 @@
 
 #pragma once
 
+#include "attention_mechanism.h"
 #include "core/framework/allocator.h"
 #include "core/providers/cpu/rnn/rnn_helpers.h"
-
-#include "attention_mechanism.h"
 
 namespace onnxruntime {
 namespace contrib {

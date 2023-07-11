@@ -4,9 +4,9 @@
 #include "core/optimizer/noop_elimination.h"
 
 #include "core/common/logging/logging.h"
+#include "core/graph/graph_utils.h"
 #include "core/graph/graph_viewer.h"
 #include "core/graph/op.h"
-#include "core/graph/graph_utils.h"
 #include "core/optimizer/initializer.h"
 #include "core/optimizer/rewrite_rule.h"
 

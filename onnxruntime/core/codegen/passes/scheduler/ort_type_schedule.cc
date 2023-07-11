@@ -2,7 +2,6 @@
 // Licensed under the MIT License.
 
 #include "core/codegen/passes/scheduler/all_schedules.h"
-
 #include "core/codegen/passes/scheduler/schedule_utils.h"
 
 namespace onnxruntime {

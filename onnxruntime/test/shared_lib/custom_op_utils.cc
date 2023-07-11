@@ -1,12 +1,12 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "gtest/gtest.h"
-
 #include "custom_op_utils.h"
+
 #include "core/common/common.h"
 #include "core/framework/ortdevice.h"
 #include "core/framework/ortmemoryinfo.h"
+#include "gtest/gtest.h"
 
 #ifdef USE_CUDA
 #include <cuda_runtime.h>

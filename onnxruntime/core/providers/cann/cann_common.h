@@ -4,9 +4,9 @@
 
 #pragma once
 
-#include "core/providers/shared_library/provider_api.h"
-#include "core/providers/cann/cann_call.h"
 #include "core/framework/float16.h"
+#include "core/providers/cann/cann_call.h"
+#include "core/providers/shared_library/provider_api.h"
 
 namespace onnxruntime {
 namespace cann {

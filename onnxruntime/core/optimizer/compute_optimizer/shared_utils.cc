@@ -3,12 +3,14 @@
 
 #ifdef ENABLE_TRAINING
 
+#include "core/optimizer/compute_optimizer/shared_utils.h"
+
 #include <onnx/defs/attr_proto_util.h>
+
 #include "core/framework/random_seed.h"
 #include "core/graph/graph_utils.h"
 #include "core/optimizer/initializer.h"
 #include "core/optimizer/utils.h"
-#include "core/optimizer/compute_optimizer/shared_utils.h"
 
 namespace onnxruntime::optimizer::compute_optimizer {
 

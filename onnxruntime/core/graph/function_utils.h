@@ -5,11 +5,11 @@
 #include <string>
 
 #include "core/common/common.h"
-#include "onnx/onnx_pb.h"
+#include "core/graph/function.h"
 #include "core/graph/graph.h"
 #include "core/graph/indexed_sub_graph.h"
-#include "core/graph/function.h"
 #include "core/graph/schema_registry.h"
+#include "onnx/onnx_pb.h"
 
 namespace onnxruntime {
 namespace function_utils {

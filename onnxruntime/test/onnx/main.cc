@@ -1,29 +1,30 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include <set>
-#include <iostream>
 #include <fstream>
+#include <iostream>
+#include <set>
 #include <string>
 #include <unordered_map>
 #ifdef _WIN32
 #include "getopt.h"
 #else
 #include <getopt.h>
+
 #include <thread>
 #endif
-#include "TestResultStat.h"
-#include "TestCase.h"
-#include "testenv.h"
-#include "providers.h"
-
 #include <google/protobuf/stubs/common.h>
+
+#include "TestCase.h"
+#include "TestResultStat.h"
+#include "core/framework/session_options.h"
+#include "core/optimizer/graph_transformer_level.h"
 #include "core/platform/path_lib.h"
 #include "core/session/onnxruntime_cxx_api.h"
-#include "core/optimizer/graph_transformer_level.h"
-#include "core/framework/session_options.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "nlohmann/json.hpp"
+#include "providers.h"
+#include "testenv.h"
 
 using namespace onnxruntime;
 

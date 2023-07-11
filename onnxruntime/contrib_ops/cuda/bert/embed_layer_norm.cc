@@ -1,9 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/cuda/cuda_common.h"
-#include "contrib_ops/cpu/bert/embed_layer_norm_helper.h"
 #include "embed_layer_norm.h"
+
+#include "contrib_ops/cpu/bert/embed_layer_norm_helper.h"
+#include "core/providers/cuda/cuda_common.h"
 #include "embed_layer_norm_impl.h"
 
 namespace onnxruntime {

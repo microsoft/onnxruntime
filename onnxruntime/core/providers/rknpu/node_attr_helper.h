@@ -5,8 +5,9 @@
 #pragma once
 
 #include <onnx/onnx_pb.h>
-#include <vector>
+
 #include <string>
+#include <vector>
 
 namespace onnxruntime {
 namespace rknpu {

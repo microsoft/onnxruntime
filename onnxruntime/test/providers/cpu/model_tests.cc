@@ -1,21 +1,22 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include <iterator>
+#include <core/platform/path_lib.h>
 #include <gtest/gtest.h>
 
+#include <codecvt>
+#include <iterator>
+#include <locale>
+#include <string>
+
+#include "asserts.h"
+#include "core/providers/tensorrt/tensorrt_provider_options.h"
+#include "core/session/inference_session.h"
 #include "core/session/onnxruntime_c_api.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/session/ort_apis.h"
-#include "core/session/inference_session.h"
 #include "core/session/ort_env.h"
-#include "core/providers/tensorrt/tensorrt_provider_options.h"
-#include "asserts.h"
-#include <core/platform/path_lib.h>
 #include "default_providers.h"
-#include <string>
-#include <codecvt>
-#include <locale>
 
 #ifdef USE_DNNL
 #include "core/providers/dnnl/dnnl_provider_factory.h"
@@ -38,13 +39,13 @@
 #endif
 
 // test infrastructure
-#include "test/onnx/testenv.h"
-#include "test/onnx/TestCase.h"
 #include "test/compare_ortvalue.h"
+#include "test/onnx/TestCase.h"
+#include "test/onnx/callback.h"
 #include "test/onnx/heap_buffer.h"
 #include "test/onnx/onnx_model_info.h"
-#include "test/onnx/callback.h"
 #include "test/onnx/testcase_request.h"
+#include "test/onnx/testenv.h"
 
 extern std::unique_ptr<Ort::Env> ort_env;
 

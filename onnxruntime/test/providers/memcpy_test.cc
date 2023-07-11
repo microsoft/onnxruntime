@@ -1,18 +1,19 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "gtest/gtest.h"
+#include <google/protobuf/io/zero_copy_stream_impl.h>
+
 #include "../framework/test_utils.h"
-#include "core/graph/model.h"
-#include "core/graph/onnx_protobuf.h"
+#include "asserts.h"
 #include "core/framework/execution_providers.h"
 #include "core/framework/op_kernel.h"
 #include "core/framework/session_state.h"
 #include "core/framework/utils.h"
+#include "core/graph/model.h"
+#include "core/graph/onnx_protobuf.h"
 #include "core/platform/path_lib.h"
-#include <google/protobuf/io/zero_copy_stream_impl.h>
+#include "gtest/gtest.h"
 #include "test/test_environment.h"
-#include "asserts.h"
 
 namespace onnxruntime {
 namespace {

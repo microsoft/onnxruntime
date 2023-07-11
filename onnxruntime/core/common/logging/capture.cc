@@ -2,8 +2,9 @@
 // Licensed under the MIT License.
 
 #include "core/common/logging/capture.h"
-#include "core/common/logging/logging.h"
+
 #include "core/common/gsl.h"
+#include "core/common/logging/logging.h"
 
 namespace onnxruntime {
 namespace logging {

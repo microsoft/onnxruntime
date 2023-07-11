@@ -5,23 +5,22 @@
 
 #if defined(USE_CUDA) && defined(USE_MPI)
 
-#include "cxxopts.hpp"
+#include <condition_variable>
+#include <mutex>
+#include <tuple>
+
 #include "core/common/logging/logging.h"
 #include "core/common/logging/sinks/clog_sink.h"
 #include "core/providers/provider_factory_creators.h"
 #include "core/session/onnxruntime_c_api.h"
-
-#include "orttraining/core/session/training_session.h"
-#include "orttraining/core/framework/tensorboard/event_writer.h"
+#include "cxxopts.hpp"
 #include "orttraining/core/framework/communication/mpi/mpi_context.h"
+#include "orttraining/core/framework/tensorboard/event_writer.h"
+#include "orttraining/core/session/training_session.h"
 #include "orttraining/models/runner/constant.h"
+#include "orttraining/models/runner/data_loader.h"
 #include "orttraining/models/runner/training_runner.h"
 #include "orttraining/models/runner/training_util.h"
-#include "orttraining/models/runner/data_loader.h"
-
-#include <condition_variable>
-#include <mutex>
-#include <tuple>
 
 using namespace onnxruntime;
 using namespace onnxruntime::training;

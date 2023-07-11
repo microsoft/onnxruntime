@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "gist.h"
+
 #include "gist_impl.h"
 
 namespace onnxruntime {

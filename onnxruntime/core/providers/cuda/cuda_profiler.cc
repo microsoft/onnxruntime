@@ -1,11 +1,11 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "cuda_profiler.h"
+
+#include <iostream>
 #include <map>
 #include <string>
-#include <iostream>
-
-#include "cuda_profiler.h"
 
 namespace onnxruntime {
 namespace profiling {

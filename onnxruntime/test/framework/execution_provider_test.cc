@@ -2,14 +2,14 @@
 // Licensed under the MIT License.
 
 #include "core/framework/execution_provider.h"
-#include "core/graph/model.h"
-#include "test_utils.h"
-#include "test/test_environment.h"
-#include "test/util/include/asserts.h"
-
-#include "gtest/gtest.h"
 
 #include <fstream>
+
+#include "core/graph/model.h"
+#include "gtest/gtest.h"
+#include "test/test_environment.h"
+#include "test/util/include/asserts.h"
+#include "test_utils.h"
 
 namespace onnxruntime {
 namespace test {

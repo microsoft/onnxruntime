@@ -1,14 +1,14 @@
 // Copyright (c Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "qlinear_util.h"
 #include "qlinear_concat.h"
-#include "qlinear_lookup_table.h"
 
 #include "core/common/narrow.h"
-#include "core/providers/common.h"
 #include "core/mlas/inc/mlas.h"
 #include "core/platform/threadpool.h"
+#include "core/providers/common.h"
+#include "qlinear_lookup_table.h"
+#include "qlinear_util.h"
 
 namespace onnxruntime {
 namespace contrib {

@@ -21,7 +21,6 @@ limitations under the License.
 
 #include "orttraining/core/framework/gradient_graph_builder.h"
 #include "orttraining/core/graph/gradient_config.h"
-
 #include "test/util/include/default_providers.h"
 #include "test/util/include/test_random_seed.h"
 

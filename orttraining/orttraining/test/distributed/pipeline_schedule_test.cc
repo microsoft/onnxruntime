@@ -2,8 +2,8 @@
 // Licensed under the MIT License.
 
 #include "gtest/gtest.h"
-#include "orttraining/core/framework/pipeline.h"
 #include "orttraining/core/framework/distributed_run_context.h"
+#include "orttraining/core/framework/pipeline.h"
 
 namespace onnxruntime {
 namespace test {

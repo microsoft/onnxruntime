@@ -4,9 +4,9 @@
 #pragma once
 #include "core/common/common.h"
 #include "core/common/narrow.h"
-#include "core/util/math_cpuonly.h"
 #include "core/framework/tensor_shape.h"
 #include "core/session/onnxruntime_c_api.h"
+#include "core/util/math_cpuonly.h"
 
 namespace onnxruntime {
 

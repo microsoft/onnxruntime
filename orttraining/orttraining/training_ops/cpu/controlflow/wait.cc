@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "orttraining/training_ops/cpu/controlflow/wait.h"
+
 #include "core/providers/cpu/tensor/utils.h"
 
 namespace onnxruntime {

@@ -1,11 +1,12 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/codegen/mti/mti_tvm_utils.h"
 #include "core/codegen/mti/tensor/where.h"
 
 #include <topi/broadcast.h>
 #include <topi/transform.h>
+
+#include "core/codegen/mti/mti_tvm_utils.h"
 
 namespace onnxruntime {
 namespace tvm_codegen {

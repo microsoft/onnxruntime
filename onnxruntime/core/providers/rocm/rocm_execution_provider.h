@@ -11,8 +11,8 @@
 #include "core/platform/ort_mutex.h"
 #include "core/providers/rocm/rocm_execution_provider_info.h"
 #include "core/providers/rocm/rocm_pch.h"
-#include "core/providers/rocm/shared_inc/rocm_utils.h"
 #include "core/providers/rocm/shared_inc/rocm_call.h"
+#include "core/providers/rocm/shared_inc/rocm_utils.h"
 #include "core/providers/rocm/tunable/rocm_tuning_context.h"
 
 namespace onnxruntime {

@@ -2,9 +2,10 @@
 // Copyright (c) Huawei. All rights reserved.
 // Licensed under the MIT License.
 
-#include <vector>
-#include <iostream>
 #include "core/providers/cann/math/gemm.h"
+
+#include <iostream>
+#include <vector>
 
 using onnxruntime::common::Status;
 namespace onnxruntime {

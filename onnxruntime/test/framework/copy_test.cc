@@ -1,11 +1,12 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "gtest/gtest.h"
-#include "gmock/gmock.h"
 #include "core/framework/copy.h"
+
 #include "core/platform/threadpool.h"
 #include "core/util/thread_utils.h"
+#include "gmock/gmock.h"
+#include "gtest/gtest.h"
 
 namespace onnxruntime {
 namespace test {

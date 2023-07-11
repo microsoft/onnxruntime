@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/providers/cpu/tensor/compress.h"
+
 #include "core/providers/common.h"
 using namespace ::onnxruntime::common;
 

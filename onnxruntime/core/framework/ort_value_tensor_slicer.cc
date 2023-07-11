@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/framework/ort_value_tensor_slicer.h"
+
 #include <cassert>
 
 namespace onnxruntime {

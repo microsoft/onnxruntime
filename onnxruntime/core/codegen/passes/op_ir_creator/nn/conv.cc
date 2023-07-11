@@ -1,12 +1,11 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/codegen/passes/op_ir_creator/all_ops.h"
-
-#include "core/codegen/mti/nn/conv_ops.h"
 #include "core/codegen/mti/mti_tvm_utils.h"
+#include "core/codegen/mti/nn/conv_ops.h"
 #include "core/codegen/mti/tensor/concat_ops.h"
 #include "core/codegen/mti/tensor/split.h"
+#include "core/codegen/passes/op_ir_creator/all_ops.h"
 #include "core/codegen/passes/utils/ort_tvm_utils.h"
 #include "core/framework/op_kernel_info.h"
 

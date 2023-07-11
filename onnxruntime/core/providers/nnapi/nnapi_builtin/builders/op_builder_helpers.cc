@@ -9,20 +9,19 @@
 #include <utility>
 
 #include "core/common/gsl.h"
-
 #include "core/common/inlined_containers_fwd.h"
 #include "core/common/logging/logging.h"
 #include "core/common/narrow.h"
 #include "core/common/safeint.h"
 #include "core/common/span_utils.h"
 #include "core/framework/tensorprotoutils.h"
-#include "core/graph/node_arg.h"
 #include "core/graph/graph_viewer.h"
+#include "core/graph/node_arg.h"
 #include "core/optimizer/initializer.h"
 #include "core/providers/common.h"
-#include "core/providers/shared/utils/utils.h"
-#include "core/providers/shared/node_unit/node_unit.h"
 #include "core/providers/nnapi/nnapi_builtin/builders/impl/base_op_builder.h"
+#include "core/providers/shared/node_unit/node_unit.h"
+#include "core/providers/shared/utils/utils.h"
 
 namespace onnxruntime::nnapi::op_builder_helpers {
 

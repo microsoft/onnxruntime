@@ -4,7 +4,6 @@
 #pragma once
 
 #include "boost/mp11.hpp"
-
 #include "core/common/basic_types.h"
 #include "core/common/type_list.h"
 #include "core/common/type_set_utils.h"

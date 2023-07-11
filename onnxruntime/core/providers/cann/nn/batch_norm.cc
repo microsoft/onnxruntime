@@ -3,6 +3,7 @@
 // Licensed under the MIT License.
 
 #include "core/providers/cann/nn/batch_norm.h"
+
 #include "core/providers/cpu/nn/batch_norm_helper.h"
 
 using namespace onnxruntime::common;

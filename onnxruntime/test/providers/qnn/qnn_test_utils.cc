@@ -4,12 +4,12 @@
 #if !defined(ORT_MINIMAL_BUILD)
 
 #include "test/providers/qnn/qnn_test_utils.h"
+
+#include "core/framework/compute_capability.h"
+#include "core/graph/graph.h"
 #include "test/util/include/asserts.h"
 #include "test/util/include/default_providers.h"
 #include "test/util/include/test/test_environment.h"
-
-#include "core/graph/graph.h"
-#include "core/framework/compute_capability.h"
 
 namespace onnxruntime {
 namespace test {

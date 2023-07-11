@@ -1,8 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 #pragma once
-#include "core/common/spin_pause.h"
 #include <atomic>
+
+#include "core/common/spin_pause.h"
 
 namespace onnxruntime {
 /*

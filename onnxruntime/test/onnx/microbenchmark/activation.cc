@@ -1,20 +1,21 @@
-#include "common.h"
-
-#include "core/common/status.h"
-#include "core/session/ort_env.h"
-#include "core/graph/model.h"
-#include "core/graph/graph.h"
-#include "core/framework/ort_value_name_idx_map.h"
-#include "core/framework/fuse_nodes_funcs.h"
-#include "core/framework/data_transfer_manager.h"
-#include "core/util/thread_utils.h"
-#include "core/framework/node_index_info.h"
-#include "core/framework/execution_frame.h"
-#include "contrib_ops/cpu/activations.h"
-#include "core/providers/cpu/activation/activations.h"
-#include <onnx/defs/attr_proto_util.h>
 #include <benchmark/benchmark.h>
+#include <onnx/defs/attr_proto_util.h>
+
 #include <random>
+
+#include "common.h"
+#include "contrib_ops/cpu/activations.h"
+#include "core/common/status.h"
+#include "core/framework/data_transfer_manager.h"
+#include "core/framework/execution_frame.h"
+#include "core/framework/fuse_nodes_funcs.h"
+#include "core/framework/node_index_info.h"
+#include "core/framework/ort_value_name_idx_map.h"
+#include "core/graph/graph.h"
+#include "core/graph/model.h"
+#include "core/providers/cpu/activation/activations.h"
+#include "core/session/ort_env.h"
+#include "core/util/thread_utils.h"
 
 using namespace onnxruntime::common;
 using namespace onnxruntime;

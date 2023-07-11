@@ -1,10 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/common/safeint.h"
 #include "core/framework/op_kernel.h"
 #include "core/mlas/inc/mlas.h"
 #include "core/providers/common.h"
-#include "core/common/safeint.h"
 #include "core/quantization/quantization.h"
 
 namespace onnxruntime {

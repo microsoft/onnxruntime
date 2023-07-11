@@ -3,9 +3,10 @@
 //
 
 #include <assert.h>
-#include <vector>
 #include <onnxruntime_cxx_api.h>
 #include <tensorrt_provider_factory.h>
+
+#include <vector>
 
 std::unique_ptr<OrtTensorRTProviderOptions> get_default_trt_provider_options() {
   auto tensorrt_options = std::make_unique<OrtTensorRTProviderOptions>();

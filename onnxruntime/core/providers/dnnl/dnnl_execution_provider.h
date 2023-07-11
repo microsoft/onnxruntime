@@ -3,14 +3,15 @@
 
 #pragma once
 
-#include <map>
-#include <list>
-#include <memory>
 #include <memory.h>
 
+#include <list>
+#include <map>
+#include <memory>
+
 #include "core/providers/dnnl/dnnl_execution_provider_info.h"
-#include "core/providers/dnnl/dnnl_threadpool.h"
 #include "core/providers/dnnl/dnnl_op_manager.h"
+#include "core/providers/dnnl/dnnl_threadpool.h"
 #include "core/providers/dnnl/subgraph/dnnl_subgraph.h"
 #include "core/providers/dnnl/subgraph/dnnl_subgraph_primitive.h"
 

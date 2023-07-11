@@ -2,8 +2,9 @@
 // Copyright (c) 2020, NXP Semiconductor, Inc. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/armnn/armnn_common.h"
 #include "core/providers/armnn/math/gemm.h"
+
+#include "core/providers/armnn/armnn_common.h"
 #include "core/providers/armnn/armnn_fwd.h"
 
 namespace onnxruntime {

@@ -2,15 +2,15 @@
 // Licensed under the MIT License.
 
 #include "deep_cpu_attn_lstm.h"
+
 #include "activation_info.h"
 #include "bahdanau_attention.h"
-#include "uni_dir_attn_lstm.h"
-
 #include "core/common/common.h"
 #include "core/common/logging/logging.h"
 #include "core/common/narrow.h"
-#include "core/platform/threadpool.h"
 #include "core/framework/allocator.h"
+#include "core/platform/threadpool.h"
+#include "uni_dir_attn_lstm.h"
 // TODO: fix the warnings
 #if defined(_MSC_VER) && !defined(__clang__)
 // Chance of arithmetic overflow could be reduced

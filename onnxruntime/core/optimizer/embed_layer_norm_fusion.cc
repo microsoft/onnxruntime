@@ -2,14 +2,14 @@
 // Licensed under the MIT License.
 #include "core/optimizer/embed_layer_norm_fusion.h"
 
+#include "core/common/safeint.h"
 #include "core/common/span_utils.h"
-#include "core/optimizer/initializer.h"
+#include "core/framework/tensorprotoutils.h"
 #include "core/graph/contrib_ops/contrib_defs.h"
 #include "core/graph/graph_utils.h"
+#include "core/optimizer/initializer.h"
 #include "core/optimizer/utils.h"
-#include "core/framework/tensorprotoutils.h"
 #include "float.h"
-#include "core/common/safeint.h"
 
 #define DEBUG_LOG(x) LOGS(logger, VERBOSE) << x
 

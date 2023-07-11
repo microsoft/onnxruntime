@@ -3,14 +3,14 @@
 
 #include "orttraining/core/framework/tensorboard/event_writer.h"
 
-#include "onnxruntime_config.h"
-#include "orttraining/core/framework/tensorboard/crc32c.h"
-#include "core/platform/env.h"
-
 #include <ctime>
 #include <fstream>
 #include <iomanip>
 #include <sstream>
+
+#include "core/platform/env.h"
+#include "onnxruntime_config.h"
+#include "orttraining/core/framework/tensorboard/crc32c.h"
 
 #if defined(__GNUC__)
 #pragma GCC diagnostic push

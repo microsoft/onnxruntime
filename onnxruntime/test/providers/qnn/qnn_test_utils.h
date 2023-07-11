@@ -6,12 +6,11 @@
 #if !defined(ORT_MINIMAL_BUILD)
 #include <string>
 #include <unordered_map>
-#include "core/framework/provider_options.h"
 
+#include "core/framework/provider_options.h"
+#include "gtest/gtest.h"
 #include "test/optimizer/qdq_test_utils.h"
 #include "test/util/include/test_utils.h"
-
-#include "gtest/gtest.h"
 
 namespace onnxruntime {
 namespace test {

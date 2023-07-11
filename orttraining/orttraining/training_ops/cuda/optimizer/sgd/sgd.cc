@@ -1,8 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "orttraining/training_ops/cuda/optimizer/common.h"
 #include "orttraining/training_ops/cuda/optimizer/sgd/sgd.h"
+
+#include "orttraining/training_ops/cuda/optimizer/common.h"
 #include "orttraining/training_ops/cuda/optimizer/sgd/sgd_impl.h"
 
 namespace onnxruntime {

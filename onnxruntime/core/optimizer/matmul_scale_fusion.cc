@@ -3,14 +3,13 @@
 
 #include "core/optimizer/matmul_scale_fusion.h"
 
-#include "onnx/defs/attr_proto_util.h"
-
 #include "core/common/optional.h"
 #include "core/framework/data_types_internal.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/graph/graph_utils.h"
 #include "core/graph/graph_viewer.h"
 #include "core/optimizer/utils.h"
+#include "onnx/defs/attr_proto_util.h"
 
 namespace onnxruntime {
 

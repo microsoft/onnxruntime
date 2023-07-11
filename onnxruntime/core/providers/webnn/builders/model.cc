@@ -2,6 +2,8 @@
 // Copyright (c) Intel Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "model.h"
+
 #include <cstdint>
 #include <vector>
 
@@ -12,7 +14,6 @@
 #include "core/graph/onnx_protobuf.h"
 #include "core/providers/common.h"
 #include "core/providers/webnn/builders/helper.h"
-#include "model.h"
 
 namespace onnxruntime {
 namespace webnn {

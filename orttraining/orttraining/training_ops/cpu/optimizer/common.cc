@@ -2,8 +2,9 @@
 // Licensed under the MIT License.
 
 #include "core/common/common.h"
-#include "core/framework/op_kernel.h"
+
 #include "core/framework/TensorSeq.h"
+#include "core/framework/op_kernel.h"
 #include "core/providers/cpu/tensor/utils.h"
 #include "orttraining/training_ops/cpu/optimizer/common.h"
 

@@ -3,8 +3,8 @@
 
 #pragma once
 
-#include "core/framework/op_kernel.h"
 #include "core/common/common.h"
+#include "core/framework/op_kernel.h"
 #include "core/util/math.h"
 
 namespace onnxruntime {

@@ -2,10 +2,10 @@
 // Licensed under the MIT License.
 
 #include "core/framework/endian.h"
-#include "core/framework/endian_utils.h"
 
 #include <vector>
 
+#include "core/framework/endian_utils.h"
 #include "gtest/gtest.h"
 
 namespace onnxruntime {

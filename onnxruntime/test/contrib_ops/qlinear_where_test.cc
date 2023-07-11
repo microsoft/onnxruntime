@@ -1,8 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
+#include <array>
+
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
-#include <array>
 
 namespace onnxruntime {
 namespace test {

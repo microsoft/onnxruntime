@@ -1,11 +1,13 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "orttraining/models/runner/data_loader.h"
+
+#include <fstream>
+
 #include "core/common/logging/logging.h"
 #include "core/platform/env.h"
 #include "core/util/protobuf_parsing_utils.h"
-#include "orttraining/models/runner/data_loader.h"
-#include <fstream>
 
 namespace onnxruntime {
 namespace training {

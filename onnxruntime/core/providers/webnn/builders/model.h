@@ -4,12 +4,12 @@
 
 #pragma once
 
+#include <emscripten.h>
+#include <emscripten/val.h>
+
 #include "core/common/inlined_containers.h"
 #include "core/common/status.h"
 #include "core/platform/ort_mutex.h"
-
-#include <emscripten.h>
-#include <emscripten/val.h>
 
 namespace onnxruntime {
 namespace webnn {

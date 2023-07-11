@@ -1,6 +1,6 @@
-#include "common.h"
-
 #include <benchmark/benchmark.h>
+
+#include "common.h"
 #include "core/mlas/lib/mlasi.h"
 #include "core/util/math_cpuonly.h"
 #include "core/util/qmath.h"

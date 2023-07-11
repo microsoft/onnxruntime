@@ -2,9 +2,10 @@
 // Licensed under the MIT License.
 
 #include "orttraining/training_ops/cuda/tensor/split.h"
-#include "core/providers/cuda/tensor/split_impl.h"
-#include "core/providers/cpu/tensor/utils.h"
+
 #include "core/providers/common.h"
+#include "core/providers/cpu/tensor/utils.h"
+#include "core/providers/cuda/tensor/split_impl.h"
 
 namespace onnxruntime {
 namespace cuda {

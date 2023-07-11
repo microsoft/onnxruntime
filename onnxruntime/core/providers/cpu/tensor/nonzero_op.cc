@@ -3,9 +3,11 @@
 
 #include "core/providers/cpu/tensor/nonzero_op.h"
 
+#include <core/common/safeint.h>
+
 #include <cassert>
 #include <vector>
-#include <core/common/safeint.h>
+
 #include "core/util/math_cpuonly.h"
 
 namespace onnxruntime {

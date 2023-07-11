@@ -3,12 +3,12 @@
 
 #include "core/optimizer/isinf_reducesum_fusion.h"
 
-#include "onnx/defs/attr_proto_util.h"
-
-#include "core/optimizer/initializer.h"
-#include "core/graph/graph_utils.h"
-#include "core/framework/tensorprotoutils.h"
 #include <deque>
+
+#include "core/framework/tensorprotoutils.h"
+#include "core/graph/graph_utils.h"
+#include "core/optimizer/initializer.h"
+#include "onnx/defs/attr_proto_util.h"
 
 using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::common;

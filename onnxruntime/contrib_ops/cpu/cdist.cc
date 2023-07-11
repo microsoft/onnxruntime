@@ -2,12 +2,13 @@
 // Licensed under the MIT License.
 
 #include "cdist.h"
+
 #include "core/common/common.h"
 #include "core/common/safeint.h"
 #include "core/framework/op_kernel.h"
+#include "core/mlas/inc/mlas.h"
 #include "core/util/math.h"
 #include "core/util/math_cpuonly.h"
-#include "core/mlas/inc/mlas.h"
 using onnxruntime::narrow;
 namespace onnxruntime {
 namespace contrib {

@@ -1,16 +1,14 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "gtest/gtest.h"
-#include "gmock/gmock.h"
-
-#include "model_builder_utils.h"
-
-#include "core/framework/onnxruntime_optional_type_info.h"
 #include "core/framework/onnxruntime_map_type_info.h"
+#include "core/framework/onnxruntime_optional_type_info.h"
 #include "core/framework/onnxruntime_sequence_type_info.h"
-#include "core/framework/tensor_type_and_shape.h"
 #include "core/framework/onnxruntime_typeinfo.h"
+#include "core/framework/tensor_type_and_shape.h"
+#include "gmock/gmock.h"
+#include "gtest/gtest.h"
+#include "model_builder_utils.h"
 
 namespace onnxruntime {
 namespace test {

@@ -1,13 +1,15 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/common/safeint.h"
 #include "core/framework/allocator.h"
-#include "core/mlas/inc/mlas.h"
-#include "core/framework/utils.h"
-#include "core/session/ort_apis.h"
+
 #include <cstdlib>
 #include <sstream>
+
+#include "core/common/safeint.h"
+#include "core/framework/utils.h"
+#include "core/mlas/inc/mlas.h"
+#include "core/session/ort_apis.h"
 
 #if defined(USE_MIMALLOC)
 #include <mimalloc.h>

@@ -6,10 +6,9 @@
 #include <string>
 #include <unordered_map>
 
+#include "gtest/gtest.h"
 #include "test/optimizer/qdq_test_utils.h"
 #include "test/providers/qnn/qnn_test_utils.h"
-
-#include "gtest/gtest.h"
 
 namespace onnxruntime {
 namespace test {

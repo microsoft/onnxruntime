@@ -3,11 +3,11 @@
 
 #include "core/platform/env_var_utils.h"
 #include "gtest/gtest.h"
-#include "test/common/tensor_op_test_utils.h"
 #include "test/common/cuda_op_test_utils.h"
+#include "test/common/tensor_op_test_utils.h"
+#include "test/contrib_ops/attention_op_test_helper.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/util/include/scoped_env_vars.h"
-#include "test/contrib_ops/attention_op_test_helper.h"
 
 #if defined(USE_ROCM) && defined(USE_COMPOSABLE_KERNEL) && !defined(USE_MIGRAPHX)
 #define DISABLE_ROCM false

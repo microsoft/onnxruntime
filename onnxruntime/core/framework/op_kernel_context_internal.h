@@ -4,6 +4,7 @@
 #pragma once
 
 #include <functional>
+
 #include "core/framework/op_kernel.h"
 #include "core/framework/session_state.h"
 #include "core/session/onnxruntime_c_api.h"

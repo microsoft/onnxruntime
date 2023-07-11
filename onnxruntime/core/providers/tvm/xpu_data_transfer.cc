@@ -1,9 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/framework/tensor.h"
-
 #include "xpu_data_transfer.h"
+
+#include "core/framework/tensor.h"
 #include "tvm_utils.h"
 
 namespace onnxruntime {

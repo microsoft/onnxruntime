@@ -3,10 +3,10 @@
 
 #include "core/providers/cpu/tensor/isnan.h"
 
+#include "Eigen/src/Core/arch/Default/Half.h"
 #include "core/common/common.h"
 #include "core/framework/math.h"
 #include "core/framework/tensor.h"
-#include "Eigen/src/Core/arch/Default/Half.h"
 
 namespace onnxruntime {
 // https://github.com/onnx/onnx/blob/main/docs/Operators.md#IsNaN

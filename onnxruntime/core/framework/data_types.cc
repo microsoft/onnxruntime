@@ -4,12 +4,11 @@
 #include "core/framework/data_types.h"
 
 #include "boost/mp11.hpp"
-
+#include "core/framework/TensorSeq.h"
 #include "core/framework/data_types_internal.h"
 #include "core/framework/element_type_lists.h"
 #include "core/framework/sparse_tensor.h"
 #include "core/framework/tensor.h"
-#include "core/framework/TensorSeq.h"
 #include "core/graph/onnx_protobuf.h"
 #include "core/util/math.h"
 

@@ -3,10 +3,11 @@
 
 #include "core/codegen/mti/math/reduce_ops.h"
 
+#include <topi/reduction.h>
+
 #include "core/codegen/mti/math/binary_ops.h"
 #include "core/codegen/mti/math/unary_ops.h"
 #include "core/codegen/mti/mti_tvm_utils.h"
-#include <topi/reduction.h>
 
 namespace onnxruntime {
 namespace tvm_codegen {

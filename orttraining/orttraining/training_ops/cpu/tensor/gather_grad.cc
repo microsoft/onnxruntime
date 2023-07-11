@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "orttraining/training_ops/cpu/tensor/gather_grad.h"
+
 #include "core/common/common.h"
 #include "core/platform/threadpool.h"
 

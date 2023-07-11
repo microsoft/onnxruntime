@@ -3,13 +3,13 @@
 
 #include "core/codegen/passes/utils/ort_tvm_utils.h"
 
+#include <topi/detail/extern.h>
+
 #include "core/codegen/common/profile.h"
 #include "core/codegen/passes/utils/codegen_context.h"
+#include "core/common/gsl.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/providers/common.h"
-#include "core/common/gsl.h"
-
-#include <topi/detail/extern.h>
 
 namespace onnxruntime {
 namespace tvm_codegen {

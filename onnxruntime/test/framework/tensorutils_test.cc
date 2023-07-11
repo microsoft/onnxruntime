@@ -3,11 +3,10 @@
 
 #include "core/framework/tensorprotoutils.h"
 #include "core/graph/onnx_protobuf.h"
-#include "test/util/include/asserts.h"
 #include "file_util.h"
-
-#include "gtest/gtest.h"
 #include "gmock/gmock.h"
+#include "gtest/gtest.h"
+#include "test/util/include/asserts.h"
 
 #ifdef _WIN32
 #include <Windows.h>

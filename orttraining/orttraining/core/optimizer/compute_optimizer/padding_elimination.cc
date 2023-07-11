@@ -3,12 +3,13 @@
 
 #ifdef ENABLE_TRAINING
 
+#include "orttraining/core/optimizer/compute_optimizer/padding_elimination.h"
+
 #include <onnx/defs/attr_proto_util.h>
 
 #include "core/framework/random_seed.h"
 #include "core/graph/graph_utils.h"
 #include "core/optimizer/initializer.h"
-#include "orttraining/core/optimizer/compute_optimizer/padding_elimination.h"
 
 using namespace onnxruntime::optimizer::compute_optimizer;
 

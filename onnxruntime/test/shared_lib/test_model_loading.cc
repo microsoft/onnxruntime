@@ -1,14 +1,14 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <fstream>
+
 #include "core/session/onnxruntime_cxx_api.h"
+#include "file_util.h"
+#include "gmock/gmock.h"
 #include "onnxruntime_session_options_config_keys.h"
 #include "test/util/include/asserts.h"
-#include <fstream>
 #include "test_fixture.h"
-#include "file_util.h"
-
-#include "gmock/gmock.h"
 
 extern std::unique_ptr<Ort::Env> ort_env;
 

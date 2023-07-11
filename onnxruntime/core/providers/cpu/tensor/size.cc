@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/providers/cpu/tensor/size.h"
+
 #include <cassert>
 
 namespace onnxruntime {

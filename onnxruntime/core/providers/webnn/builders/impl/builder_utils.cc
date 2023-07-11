@@ -2,11 +2,12 @@
 // Copyright (c) Intel Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "builder_utils.h"
+
 #include <core/common/safeint.h>
 #include <core/providers/common.h>
-#include "core/providers/shared/utils/utils.h"
 
-#include "builder_utils.h"
+#include "core/providers/shared/utils/utils.h"
 #include "core/providers/webnn/builders/helper.h"
 
 namespace onnxruntime {

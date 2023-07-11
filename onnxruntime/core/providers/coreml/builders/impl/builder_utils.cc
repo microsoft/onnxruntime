@@ -7,10 +7,9 @@
 
 #include "core/common/safeint.h"
 #include "core/framework/tensorprotoutils.h"
+#include "core/optimizer/initializer.h"
 #include "core/providers/coreml/builders/helper.h"
 #include "core/providers/shared/utils/utils.h"
-#include "core/optimizer/initializer.h"
-
 #include "coreml/NeuralNetwork.pb.h"
 
 namespace onnxruntime {

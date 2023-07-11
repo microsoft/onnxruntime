@@ -4,6 +4,7 @@
 #pragma once
 #ifdef _WIN32
 #include <Windows.h>
+
 #include <mutex>
 namespace onnxruntime {
 // Q: Why OrtMutex is better than std::mutex
@@ -102,9 +103,10 @@ std::cv_status OrtCondVar::wait_for(std::unique_lock<OrtMutex>& cond_mutex,
 }
 }  // namespace onnxruntime
 #else
-#include "nsync.h"
-#include <mutex>               //for unique_lock
 #include <condition_variable>  //for cv_status
+#include <mutex>               //for unique_lock
+
+#include "nsync.h"
 namespace onnxruntime {
 
 class OrtMutex {

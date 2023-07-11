@@ -1,17 +1,20 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include <memory>
+#include "contrib_ops/cpu/transformers/logits_processor.h"
+
 #include <assert.h>
+
+#include <algorithm>
+#include <memory>
+#include <numeric>
+#include <vector>
+
+#include "contrib_ops/cpu/transformers/dump_tensor.h"
 #include "core/common/narrow.h"
 #include "core/common/safeint.h"
 #include "core/common/span_utils.h"
 #include "core/providers/cpu/math/softmax_shared.h"
-#include "contrib_ops/cpu/transformers/logits_processor.h"
-#include "contrib_ops/cpu/transformers/dump_tensor.h"
-#include <vector>
-#include <numeric>
-#include <algorithm>
 
 namespace onnxruntime {
 namespace contrib {

@@ -10,18 +10,17 @@
 #include "core/common/span_utils.h"
 #include "core/graph/model.h"
 #include "core/session/inference_session.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/util/math_cpuonly.h"
 #include "core/util/qmath.h"
-#include "test/compare_ortvalue.h"
-#include "test/test_environment.h"
 #include "test/common/quantization_test_utils.h"
+#include "test/compare_ortvalue.h"
 #include "test/optimizer/graph_transform_test_builder.h"
 #include "test/providers/provider_test_utils.h"
+#include "test/test_environment.h"
 #include "test/util/include/asserts.h"
 #include "test/util/include/default_providers.h"
 #include "test/util/include/inference_session_wrapper.h"
-
-#include "core/session/onnxruntime_session_options_config_keys.h"
 
 #ifndef DISABLE_CONTRIB_OPS
 

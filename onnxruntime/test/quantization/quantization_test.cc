@@ -1,10 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "gtest/gtest.h"
+#include "core/quantization/quantization.h"
 
 #include "core/framework/tensor.h"
-#include "core/quantization/quantization.h"
+#include "gtest/gtest.h"
 #include "test/framework/test_utils.h"
 
 namespace onnxruntime {

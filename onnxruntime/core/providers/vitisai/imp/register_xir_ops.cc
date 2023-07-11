@@ -3,16 +3,14 @@
 // Copyright (c) 2023 Advanced Micro Devices, Inc. All rights reserved.
 // Licensed under the MIT License.
 #include "./register_xir_ops.h"
-#include "./vai_assert.h"
 
+#include "./vai_assert.h"
 #include "core/common/logging/logging.h"
 #include "core/common/status.h"
-
 #include "core/framework/customregistry.h"
-
-#include "core/session/onnxruntime_c_api.h"
 #include "core/session/custom_ops.h"
 #include "core/session/inference_session.h"
+#include "core/session/onnxruntime_c_api.h"
 #include "onnx/defs/schema.h"
 #include "onnx/defs/shape_inference.h"
 

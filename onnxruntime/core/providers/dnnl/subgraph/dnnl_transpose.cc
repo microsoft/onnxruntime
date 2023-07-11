@@ -2,10 +2,11 @@
 // Licensed under the MIT License
 
 #include "dnnl_transpose.h"
-#include "dnnl_subgraph.h"
-#include "dnnl_subgraph_primitive.h"
 
 #include <iostream>
+
+#include "dnnl_subgraph.h"
+#include "dnnl_subgraph_primitive.h"
 
 namespace onnxruntime {
 namespace ort_dnnl {

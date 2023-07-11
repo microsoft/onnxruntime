@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "contrib_ops/cuda/quantization/qordered_ops/qordered_matmul_utils.h"
+
 #include "contrib_ops/cuda/quantization/qordered_ops/qordered_qdq_impl.h"
 
 using namespace onnxruntime::cuda;

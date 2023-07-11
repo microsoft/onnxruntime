@@ -3,9 +3,8 @@
 
 #include "core/common/path.h"
 
-#include "gtest/gtest.h"
-
 #include "core/common/optional.h"
+#include "gtest/gtest.h"
 #include "test/util/include/asserts.h"
 
 namespace onnxruntime {

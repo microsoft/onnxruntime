@@ -4,7 +4,6 @@
 #pragma once
 
 #include "core/common/gsl.h"
-
 #include "core/optimizer/graph_transformer.h"
 #include "orttraining/core/optimizer/graph_transformer_config.h"
 #include "orttraining/core/session/training_session.h"

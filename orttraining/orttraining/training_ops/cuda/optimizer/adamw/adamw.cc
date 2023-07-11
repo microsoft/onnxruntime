@@ -1,10 +1,12 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "orttraining/training_ops/cuda/optimizer/adamw/adamw.h"
+
 #include <memory>
 #include <utility>
+
 #include "core/providers/shared_library/provider_api.h"
-#include "orttraining/training_ops/cuda/optimizer/adamw/adamw.h"
 #include "orttraining/training_ops/cuda/optimizer/adamw/adamw_impl.h"
 #include "orttraining/training_ops/cuda/optimizer/common.h"
 

@@ -3,9 +3,10 @@
 
 #include "core/codegen/mti/math/gemm.h"
 
+#include <topi/broadcast.h>
+
 #include "core/codegen/mti/math/matmul_ops.h"
 #include "core/codegen/mti/mti_tvm_utils.h"
-#include <topi/broadcast.h>
 
 // Using namespace topi for override operator +-*/
 using namespace topi;

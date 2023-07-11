@@ -1,16 +1,18 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/util/math.h"
-#include "core/util/math_cpuonly.h"
-#include "core/providers/common.h"
+#include "orttraining/training_ops/cpu/loss/softmax_cross_entropy_loss.h"
+
 #include <unsupported/Eigen/SpecialFunctions>
+
+#include "core/common/gsl.h"
+#include "core/providers/common.h"
+#include "core/providers/cpu/controlflow/scan_utils.h"
 #include "core/providers/cpu/math/matmul_helper.h"
 #include "core/providers/cpu/tensor/transpose.h"
-#include "core/providers/cpu/controlflow/scan_utils.h"
+#include "core/util/math.h"
+#include "core/util/math_cpuonly.h"
 #include "orttraining/training_ops/cpu/loss/cross_entropy.h"
-#include "orttraining/training_ops/cpu/loss/softmax_cross_entropy_loss.h"
-#include "core/common/gsl.h"
 
 namespace onnxruntime {
 namespace contrib {

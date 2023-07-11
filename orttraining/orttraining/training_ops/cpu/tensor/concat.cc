@@ -2,8 +2,9 @@
 // Licensed under the MIT License.
 
 #include "orttraining/training_ops/cpu/tensor/concat.h"
-#include "core/providers/common.h"
+
 #include "core/framework/TensorSeq.h"
+#include "core/providers/common.h"
 
 namespace onnxruntime {
 namespace contrib {

@@ -6,13 +6,11 @@
 #include <set>
 
 #include "core/common/common.h"
-#include "core/session/onnxruntime_cxx_api.h"
-#include "test_allocator.h"
-
 #include "core/common/gsl.h"
-
+#include "core/session/onnxruntime_cxx_api.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
+#include "test_allocator.h"
 
 template <typename T>
 struct RelAllocations {

@@ -1,8 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/framework/execution_provider.h"
 #include <memory>
+
+#include "core/framework/execution_provider.h"
 #include "dummy_allocator.h"
 
 namespace onnxruntime {

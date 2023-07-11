@@ -3,14 +3,13 @@
 
 #include "graph_flatbuffers_utils.h"
 
-#include "flatbuffers/flatbuffers.h"
-
 #include "core/common/narrow.h"
 #include "core/flatbuffers/flatbuffers_utils.h"
 #include "core/flatbuffers/schema/ort.fbs.h"
-#include "core/framework/tensorprotoutils.h"
 #include "core/framework/tensor_external_data_info.h"
+#include "core/framework/tensorprotoutils.h"
 #include "core/graph/graph.h"
+#include "flatbuffers/flatbuffers.h"
 
 using namespace ONNX_NAMESPACE;
 

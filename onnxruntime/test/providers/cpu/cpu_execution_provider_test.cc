@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/providers/cpu/cpu_execution_provider.h"
+
 #include "gtest/gtest.h"
 
 namespace onnxruntime {

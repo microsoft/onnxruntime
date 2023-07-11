@@ -14,10 +14,12 @@ limitations under the License.
 ==============================================================================*/
 // Portions Copyright (c) Microsoft Corporation
 
-#include <sys/time.h>
-#include <ctime>
-#include <cstring>
 #include "core/platform/env_time.h"
+
+#include <sys/time.h>
+
+#include <cstring>
+#include <ctime>
 
 namespace onnxruntime {
 

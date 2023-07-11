@@ -2,12 +2,13 @@
 // Licensed under the MIT License.
 
 #if !defined(ORT_MINIMAL_BUILD)
-#include "core/graph/constants.h"
-#include "core/graph/onnx_protobuf.h"
-#include "core/graph/graph_utils.h"
-#include "core/framework/tensorprotoutils.h"
-#include "core/optimizer/initializer.h"
 #include "core/framework/utils.h"
+
+#include "core/framework/tensorprotoutils.h"
+#include "core/graph/constants.h"
+#include "core/graph/graph_utils.h"
+#include "core/graph/onnx_protobuf.h"
+#include "core/optimizer/initializer.h"
 #include "core/optimizer/utils.h"
 #include "float.h"
 // #include <deque>

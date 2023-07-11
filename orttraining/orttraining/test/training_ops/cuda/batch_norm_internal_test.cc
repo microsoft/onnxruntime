@@ -3,10 +3,9 @@
 
 #include "core/framework/tensor.h"
 #include "core/session/inference_session.h"
-#include "test/providers/provider_test_utils.h"
-
-#include "gtest/gtest.h"
 #include "gmock/gmock.h"
+#include "gtest/gtest.h"
+#include "test/providers/provider_test_utils.h"
 
 namespace onnxruntime {
 namespace contrib {

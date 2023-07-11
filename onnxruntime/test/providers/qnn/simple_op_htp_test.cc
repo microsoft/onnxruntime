@@ -3,15 +3,14 @@
 
 #if !defined(ORT_MINIMAL_BUILD)
 
-#include <string>
 #include <filesystem>
+#include <string>
 #include <variant>
-#include "core/graph/graph.h"
 
+#include "core/graph/graph.h"
+#include "gtest/gtest.h"
 #include "test/optimizer/qdq_test_utils.h"
 #include "test/providers/qnn/qnn_test_utils.h"
-
-#include "gtest/gtest.h"
 
 namespace onnxruntime {
 namespace test {

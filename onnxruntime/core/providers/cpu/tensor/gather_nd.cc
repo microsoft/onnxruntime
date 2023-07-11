@@ -1,7 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
-#include <core/common/safeint.h>
 #include "gather_nd.h"
+
+#include <core/common/safeint.h>
+
 #include "core/platform/threadpool.h"
 
 namespace onnxruntime {

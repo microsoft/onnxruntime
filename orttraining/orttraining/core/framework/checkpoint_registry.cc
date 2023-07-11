@@ -6,10 +6,9 @@
 #include <algorithm>
 #include <sstream>
 
-#include "re2/re2.h"
-
-#include "core/platform/path_lib.h"
 #include "core/platform/env.h"
+#include "core/platform/path_lib.h"
+#include "re2/re2.h"
 
 namespace onnxruntime {
 namespace training {

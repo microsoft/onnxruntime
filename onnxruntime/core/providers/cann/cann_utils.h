@@ -4,11 +4,11 @@
 
 #pragma once
 
-#include <vector>
-#include <utility>
 #include <iomanip>
-#include <string>
 #include <memory>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "core/framework/murmurhash3.h"
 #include "core/providers/cann/cann_common.h"

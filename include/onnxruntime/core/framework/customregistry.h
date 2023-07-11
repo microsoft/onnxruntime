@@ -3,11 +3,11 @@
 
 #pragma once
 
-#include "core/common/status.h"
 #include "core/common/logging/logging.h"
-#include "core/framework/op_kernel.h"
+#include "core/common/status.h"
 #include "core/framework/kernel_def_builder.h"
 #include "core/framework/kernel_registry.h"
+#include "core/framework/op_kernel.h"
 
 #if !defined(ORT_MINIMAL_BUILD)
 #include "core/graph/schema_registry.h"

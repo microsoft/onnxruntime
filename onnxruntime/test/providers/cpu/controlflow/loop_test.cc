@@ -3,16 +3,15 @@
 
 #include <future>
 #include <thread>
-#include "gtest/gtest.h"
-#include "gmock/gmock.h"
 
 #include "core/common/logging/logging.h"
 #include "core/framework/session_state.h"
 #include "core/session/inference_session.h"
-
+#include "gmock/gmock.h"
+#include "gtest/gtest.h"
+#include "test/framework/test_utils.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/util/include/default_providers.h"
-#include "test/framework/test_utils.h"
 
 using namespace ONNX_NAMESPACE;
 

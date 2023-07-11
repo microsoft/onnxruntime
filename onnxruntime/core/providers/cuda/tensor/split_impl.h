@@ -3,8 +3,9 @@
 
 #pragma once
 #include <stdint.h>
-#include "core/providers/cuda/shared_inc/cuda_utils.h"
+
 #include "core/common/common.h"
+#include "core/providers/cuda/shared_inc/cuda_utils.h"
 
 namespace onnxruntime {
 namespace cuda {

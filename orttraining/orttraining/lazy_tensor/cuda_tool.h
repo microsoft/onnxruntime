@@ -2,9 +2,10 @@
 // Licensed under the MIT License.
 
 #ifdef USE_CUDA
+#include <memory>
 #include <string>
 #include <vector>
-#include <memory>
+
 #include "core/framework/execution_providers.h"
 
 namespace onnxruntime {

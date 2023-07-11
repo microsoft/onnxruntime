@@ -6,16 +6,15 @@
 #pragma warning(disable : 4244)
 #endif
 
-#include "core/providers/armnn/armnn_execution_provider.h"
-#include "core/providers/armnn/nn/conv.h"
-#include "core/providers/armnn/armnn_common.h"
-#include "core/providers/armnn/armnn_fwd.h"
-#include "contrib_ops/cpu/fused_activation.h"
+#include <mutex>
+#include <thread>
 
 #include "armnn/ArmNN.hpp"
-
-#include <thread>
-#include <mutex>
+#include "contrib_ops/cpu/fused_activation.h"
+#include "core/providers/armnn/armnn_common.h"
+#include "core/providers/armnn/armnn_execution_provider.h"
+#include "core/providers/armnn/armnn_fwd.h"
+#include "core/providers/armnn/nn/conv.h"
 
 namespace onnxruntime {
 namespace armnn_ep {

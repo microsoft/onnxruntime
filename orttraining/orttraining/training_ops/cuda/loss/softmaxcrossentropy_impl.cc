@@ -1,9 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/cuda/reduction/reduction_functions.h"
-#include "core/providers/cuda/math/softmax.h"
 #include "orttraining/training_ops/cuda/loss/softmaxcrossentropy_impl.h"
+
+#include "core/providers/cuda/math/softmax.h"
+#include "core/providers/cuda/reduction/reduction_functions.h"
 
 namespace onnxruntime {
 namespace cuda {

@@ -4,13 +4,12 @@
 #ifndef TVM_RUNNER_IMPL_H
 #define TVM_RUNNER_IMPL_H
 
-#include <string>
-#include <memory>
 #include <map>
+#include <memory>
+#include <string>
 
 #include "core/framework/func_api.h"
 #include "core/session/onnxruntime_cxx_api.h"
-
 #include "tvm_common.h"
 #include "tvm_ep_options.h"
 

@@ -2,11 +2,12 @@
 // Licensed under the MIT License.
 
 #include "core/codegen/common/utils.h"
-#include "core/common/cpuid_info.h"
-#include "core/common/safeint.h"
 
 #include <stdlib.h>
 #include <string.h>
+
+#include "core/common/cpuid_info.h"
+#include "core/common/safeint.h"
 
 namespace onnxruntime {
 

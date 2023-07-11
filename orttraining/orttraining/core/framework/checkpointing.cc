@@ -18,9 +18,9 @@
 #include "core/framework/tensorprotoutils.h"
 #include "core/platform/env.h"
 #include "core/platform/path_lib.h"
-#include "orttraining/core/framework/protobuf_message_sequence.h"
 #include "core/util/protobuf_parsing_utils.h"
 #include "orttraining/core/framework/checkpoint_common.h"
+#include "orttraining/core/framework/protobuf_message_sequence.h"
 
 namespace onnxruntime {
 namespace training {

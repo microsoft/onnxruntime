@@ -4,12 +4,12 @@
 #ifndef TVM_COMMON_H
 #define TVM_COMMON_H
 
-#include <vector>
-#include <map>
-
 #include <dlpack/dlpack.h>
 #include <tvm/runtime/module.h>
 #include <tvm/runtime/vm/vm.h>
+
+#include <map>
+#include <vector>
 
 namespace onnxruntime {
 namespace tvm {

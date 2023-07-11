@@ -3,10 +3,11 @@
 
 #include "dynamic_quantize_matmul_fusion.h"
 
+#include <deque>
+
 #include "core/graph/graph_utils.h"
 #include "core/optimizer/initializer.h"
 #include "core/optimizer/utils.h"
-#include <deque>
 
 using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::common;

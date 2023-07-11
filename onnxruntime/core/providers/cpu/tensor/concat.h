@@ -3,10 +3,10 @@
 
 #pragma once
 
+#include "concatbase.h"
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
 #include "core/framework/tensor.h"
-#include "concatbase.h"
 
 namespace onnxruntime {
 

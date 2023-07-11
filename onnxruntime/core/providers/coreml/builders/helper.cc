@@ -7,8 +7,8 @@
 #include <vector>
 
 #ifdef __APPLE__
-#include <sys/utsname.h>
 #include <TargetConditionals.h>
+#include <sys/utsname.h>
 #endif
 
 #include "core/graph/graph_viewer.h"

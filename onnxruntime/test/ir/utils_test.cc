@@ -1,11 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "gtest/gtest.h"
-#include "core/graph/onnx_protobuf.h"
 #include "core/graph/graph_utils.h"
 #include "core/graph/model.h"
-
+#include "core/graph/onnx_protobuf.h"
+#include "gtest/gtest.h"
 #include "test/test_environment.h"
 
 using ONNX_NAMESPACE::Utils::DataTypeUtils;

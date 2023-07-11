@@ -1,18 +1,15 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "gtest/gtest.h"
-
-#include "onnx/defs/parser.h"
-
 #include "core/common/span_utils.h"
 #include "core/graph/model.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
 #include "core/session/inference_session.h"
-
-#include "test/test_environment.h"
-#include "test/framework/test_utils.h"
+#include "gtest/gtest.h"
+#include "onnx/defs/parser.h"
 #include "test/common/tensor_op_test_utils.h"
+#include "test/framework/test_utils.h"
+#include "test/test_environment.h"
 #include "test/util/include/asserts.h"
 
 // Unit tests to check the implementation of functions, model-local functions,

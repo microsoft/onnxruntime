@@ -5,11 +5,11 @@
 #pragma once
 
 #include "core/framework/op_kernel.h"
-#include "core/util/math.h"
-#include "core/util/math_cpuonly.h"
+#include "core/providers/armnn/armnn_execution_provider.h"
 #include "core/providers/cpu/math/gemm.h"
 #include "core/providers/cpu/math/gemm_helper.h"
-#include "core/providers/armnn/armnn_execution_provider.h"
+#include "core/util/math.h"
+#include "core/util/math_cpuonly.h"
 
 namespace onnxruntime {
 namespace armnn_ep {

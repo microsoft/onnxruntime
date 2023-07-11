@@ -12,8 +12,8 @@
 #include "core/optimizer/graph_transformer.h"
 
 #if !defined(ORT_MINIMAL_BUILD)
-#include "core/optimizer/rule_based_graph_transformer.h"
 #include "core/optimizer/rewrite_rule.h"
+#include "core/optimizer/rule_based_graph_transformer.h"
 #endif
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)

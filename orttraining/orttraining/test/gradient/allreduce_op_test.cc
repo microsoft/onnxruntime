@@ -3,15 +3,13 @@
 #ifdef USE_MPI
 #include <random>
 
-#include "gtest/gtest.h"
 #include "core/framework/execution_providers.h"
 #include "core/providers/provider_factory_creators.h"
 #include "core/session/environment.h"
 #include "core/session/onnxruntime_c_api.h"
-
+#include "gtest/gtest.h"
 #include "orttraining/core/framework/communication/mpi/mpi_context.h"
 #include "orttraining/models/runner/training_runner.h"
-
 #include "test/framework/test_utils.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/test_environment.h"

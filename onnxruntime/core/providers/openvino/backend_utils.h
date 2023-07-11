@@ -4,9 +4,10 @@
 #pragma once
 
 #define ORT_API_MANUAL_INIT
-#include "core/session/onnxruntime_cxx_api.h"
-#include "contexts.h"
 #include <iomanip>
+
+#include "contexts.h"
+#include "core/session/onnxruntime_cxx_api.h"
 #include "ov_interface.h"
 #ifdef _WIN32
 #include <direct.h>

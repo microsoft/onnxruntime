@@ -5,12 +5,11 @@
 
 #include <sstream>
 
+#include "core/common/logging/capture.h"
+#include "core/common/logging/isink.h"
 #include "date/date.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
-
-#include "core/common/logging/capture.h"
-#include "core/common/logging/isink.h"
 
 class MockSink : public ::onnxruntime::logging::ISink {
  public:

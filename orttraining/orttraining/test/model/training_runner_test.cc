@@ -6,11 +6,10 @@
 
 #include "orttraining/models/runner/training_runner.h"
 
-#include "gtest/gtest.h"
-
 #include "core/common/path_string.h"
 #include "core/platform/path_lib.h"
 #include "core/session/environment.h"
+#include "gtest/gtest.h"
 #include "orttraining/models/runner/data_loader.h"
 #include "orttraining/models/runner/training_util.h"
 #include "test/util/include/default_providers.h"

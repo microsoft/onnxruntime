@@ -1,9 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include <emscripten.h>
-
 #include "core/providers/js/data_transfer.h"
+
+#include <emscripten.h>
 
 EM_ASYNC_JS(void, jsepDownload, (const void* src_data, void* dst_data, size_t bytes), {
   await Module.jsepCopyAsync(src_data, dst_data, bytes);

@@ -1,11 +1,11 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/codegen/passes/op_ir_creator/all_ops.h"
+#include "core/codegen/mti/math/binary_ops.h"
 
 #include "core/codegen/common/op_macro.h"
-#include "core/codegen/mti/math/binary_ops.h"
 #include "core/codegen/mti/tensor/cast_ops.h"
+#include "core/codegen/passes/op_ir_creator/all_ops.h"
 
 namespace onnxruntime {
 namespace tvm_codegen {

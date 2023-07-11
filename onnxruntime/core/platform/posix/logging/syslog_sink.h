@@ -4,9 +4,11 @@
 #pragma once
 
 #include <syslog.h>
+
 #include <iostream>
-#include "core/common/logging/logging.h"
+
 #include "core/common/logging/isink.h"
+#include "core/common/logging/logging.h"
 
 namespace onnxruntime {
 namespace logging {

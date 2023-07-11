@@ -4,9 +4,9 @@
 #pragma once
 
 #include "core/framework/allocator.h"
-#include "core/providers/xnnpack/xnnpack_kernel.h"
 #include "core/providers/cpu/nn/conv_transpose_attributes.h"
 #include "core/providers/xnnpack/detail/utils.h"
+#include "core/providers/xnnpack/xnnpack_kernel.h"
 
 namespace onnxruntime {
 class GraphViewer;

@@ -2,15 +2,16 @@
 // Licensed under the MIT License.
 
 #pragma once
-#include "QnnInterface.h"
-#include <mutex>
-#include <vector>
-#include <string>
-#include <memory>
 #include <climits>
+#include <memory>
+#include <mutex>
+#include <string>
 #include <type_traits>
-#include "core/graph/basic_types.h"
+#include <vector>
+
+#include "QnnInterface.h"
 #include "core/common/common.h"
+#include "core/graph/basic_types.h"
 
 namespace onnxruntime {
 namespace qnn {

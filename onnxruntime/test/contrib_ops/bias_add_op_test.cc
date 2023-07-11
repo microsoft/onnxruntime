@@ -3,9 +3,10 @@
 
 #include <algorithm>
 #include <functional>
+
 #include "gtest/gtest.h"
-#include "test/common/tensor_op_test_utils.h"
 #include "test/common/cuda_op_test_utils.h"
+#include "test/common/tensor_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
 
 using namespace onnxruntime::test;

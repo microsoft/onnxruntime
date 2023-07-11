@@ -3,22 +3,23 @@
 
 #pragma once
 
-#include <windows.h>
-#include <stdio.h>
-#include <wbemidl.h>
-#include <wmistr.h>
-#include <evntrace.h>
 #include <assert.h>
-#include <tdh.h>
-#include <stdexcept>
-#include <vector>
-#include <sstream>
+#include <evntrace.h>
 #include <in6addr.h>
-#include <unordered_map>
+#include <stdio.h>
+#include <tdh.h>
+#include <wbemidl.h>
+#include <windows.h>
+#include <wmistr.h>
+
 #include <algorithm>
-#include <numeric>
-#include <iostream>
 #include <iomanip>
+#include <iostream>
+#include <numeric>
+#include <sstream>
+#include <stdexcept>
+#include <unordered_map>
+#include <vector>
 
 void OrtEventHandler(EVENT_RECORD* pEventRecord, void* pContext);
 

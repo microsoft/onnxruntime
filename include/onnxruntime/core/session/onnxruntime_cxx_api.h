@@ -23,17 +23,18 @@
 // have to fallback to C types and the API with the usual pitfalls. In general, do not use C API from your C++ code.
 
 #pragma once
-#include "onnxruntime_c_api.h"
+#include <array>
 #include <cstddef>
 #include <cstdio>
-#include <array>
 #include <memory>
 #include <stdexcept>
 #include <string>
-#include <vector>
+#include <type_traits>
 #include <unordered_map>
 #include <utility>
-#include <type_traits>
+#include <vector>
+
+#include "onnxruntime_c_api.h"
 
 #ifdef ORT_NO_EXCEPTIONS
 #include <iostream>

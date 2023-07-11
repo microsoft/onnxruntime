@@ -1,10 +1,11 @@
 // Copyright (C) 2019-2022 Intel Corporation
 // Licensed under the MIT License
 
-#include "core/providers/shared_library/provider_api.h"
 #include "openvino_execution_provider.h"
-#include "contexts.h"
+
 #include "backend_manager.h"
+#include "contexts.h"
+#include "core/providers/shared_library/provider_api.h"
 #include "ov_versions/capabilities.h"
 
 #define MEMCPY_S(dest, src, destsz, srcsz) memcpy(dest, src, std::min(destsz, srcsz))

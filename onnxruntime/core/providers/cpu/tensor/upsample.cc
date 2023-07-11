@@ -1,9 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/providers/cpu/tensor/upsample.h"
+
 #include "core/common/safeint.h"
 #include "core/platform/threadpool.h"
-#include "core/providers/cpu/tensor/upsample.h"
 #include "core/providers/cpu/tensor/upsample_antialias.h"
 using namespace onnxruntime::common;
 using namespace std;

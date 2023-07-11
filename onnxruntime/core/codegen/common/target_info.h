@@ -2,8 +2,8 @@
 // Licensed under the MIT License.
 
 #pragma once
-#include <string>
 #include <memory>
+#include <string>
 
 namespace onnxruntime {
 

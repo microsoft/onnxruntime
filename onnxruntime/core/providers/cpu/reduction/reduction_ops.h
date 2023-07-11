@@ -11,10 +11,11 @@
 #include "core/providers/cpu/containers.h"
 #include "core/util/math.h"
 #endif
-#include "core/util/math_cpuonly.h"
-#include "core/platform/threadpool.h"
-#include "core/common/safeint.h"
 #include <cmath>
+
+#include "core/common/safeint.h"
+#include "core/platform/threadpool.h"
+#include "core/util/math_cpuonly.h"
 
 namespace onnxruntime {
 

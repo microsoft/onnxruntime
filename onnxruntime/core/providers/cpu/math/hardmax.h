@@ -3,9 +3,8 @@
 
 #pragma once
 
-#include "core/common/gsl.h"
-
 #include "core/common/common.h"
+#include "core/common/gsl.h"
 #include "core/framework/op_kernel.h"
 
 namespace onnxruntime {

@@ -6,6 +6,7 @@
 // 2). this is needed by inference for other purpose.
 
 #include "contrib_ops/cuda/tensor/shrunken_gather.h"
+
 #include "contrib_ops/cpu/tensor/shrunken_gather.h"
 
 namespace onnxruntime {

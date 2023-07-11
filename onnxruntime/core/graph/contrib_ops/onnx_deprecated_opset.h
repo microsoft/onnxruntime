@@ -3,8 +3,8 @@
 
 #pragma once
 
-#include "onnx/defs/schema.h"
 #include "core/graph/contrib_ops/ms_schema.h"
+#include "onnx/defs/schema.h"
 
 // This file contains deprecated ONNX operators that have been removed from ONNX spec, but we still need to keep them
 // to maintain backward compatibility. Strictly speaking, this file doesn't define an opset. It only contains a group

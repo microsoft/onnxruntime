@@ -10,20 +10,19 @@
 #endif
 
 #include "core/providers/cpu/controlflow/loop.h"
-#include "core/providers/cpu/controlflow/utils.h"
 
+#include "core/common/gsl.h"
+#include "core/framework/TensorSeq.h"
 #include "core/framework/allocator.h"
 #include "core/framework/framework_common.h"
 #include "core/framework/op_kernel_context_internal.h"
+#include "core/framework/session_options.h"
 #include "core/framework/session_state.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/framework/utils.h"
+#include "core/providers/cpu/controlflow/utils.h"
 #include "core/providers/cpu/tensor/utils.h"
-#include "core/framework/session_options.h"
-#include "core/framework/TensorSeq.h"
 #include "core/providers/utils.h"
-
-#include "core/common/gsl.h"
 
 #ifdef _MSC_VER
 #pragma warning(pop)

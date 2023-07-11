@@ -6,15 +6,15 @@
 #ifdef ENABLE_TRAINING
 #pragma once
 
-#include "core/optimizer/graph_transformer.h"
-#include "core/optimizer/utils.h"
-#include "core/graph/graph_utils.h"
-#include "core/optimizer/compute_optimizer/shared_utils.h"
-
 #include <initializer_list>
 #include <memory>
 #include <string>
 #include <vector>
+
+#include "core/graph/graph_utils.h"
+#include "core/optimizer/compute_optimizer/shared_utils.h"
+#include "core/optimizer/graph_transformer.h"
+#include "core/optimizer/utils.h"
 
 namespace onnxruntime::optimizer::compute_optimizer {
 

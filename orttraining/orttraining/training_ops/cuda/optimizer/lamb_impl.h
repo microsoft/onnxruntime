@@ -4,9 +4,10 @@
 #pragma once
 
 #include <cuda_runtime.h>
+
+#include "core/framework/stream_handles.h"
 #include "core/providers/cuda/cuda_kernel.h"
 #include "core/providers/cuda/multi_tensor/common.cuh"
-#include "core/framework/stream_handles.h"
 
 namespace onnxruntime {
 namespace cuda {

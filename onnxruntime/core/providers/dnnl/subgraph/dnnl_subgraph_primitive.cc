@@ -37,8 +37,9 @@
 
 #include <inttypes.h>
 #include <stdio.h>
-#include <iostream>
+
 #include <iomanip>
+#include <iostream>
 
 /*
 * The DNNL_TENSOR_PRINT_MEMORY should always be 0 unless debugging

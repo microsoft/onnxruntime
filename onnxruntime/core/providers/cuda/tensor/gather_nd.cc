@@ -2,8 +2,9 @@
 // Licensed under the MIT License.
 
 #include "core/providers/cuda/tensor/gather_nd.h"
-#include "core/providers/cuda/tensor/gather_nd_impl.h"
+
 #include "core/providers/cuda/shared_inc/cuda_utils.h"
+#include "core/providers/cuda/tensor/gather_nd_impl.h"
 
 namespace onnxruntime {
 namespace cuda {

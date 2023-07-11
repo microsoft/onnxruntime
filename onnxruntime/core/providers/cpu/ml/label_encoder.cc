@@ -2,7 +2,9 @@
 // Licensed under the MIT License.
 
 #include "core/providers/cpu/ml/label_encoder.h"
+
 #include <algorithm>
+
 #include "core/common/gsl.h"
 using namespace ::onnxruntime::common;
 

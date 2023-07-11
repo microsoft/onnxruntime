@@ -4,9 +4,10 @@
 #pragma once
 
 #include <cstdarg>
-#include "core/common/gsl.h"
-#include "core/common/common.h"
+
 #include "core/common/code_location.h"
+#include "core/common/common.h"
+#include "core/common/gsl.h"
 #include "core/common/logging/severity.h"
 
 namespace onnxruntime {

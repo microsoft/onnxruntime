@@ -3,8 +3,8 @@
 
 #include "core/providers/cpu/tensor/split.h"
 
-#include "core/common/narrow.h"
 #include "core/common/gsl.h"
+#include "core/common/narrow.h"
 #include "core/common/safeint.h"
 #include "core/framework/copy.h"
 #include "core/framework/element_type_lists.h"

@@ -3,9 +3,10 @@
 
 #pragma once
 
-#include "TestCase.h"
 #include <string>
 #include <vector>
+
+#include "TestCase.h"
 
 class TFModelInfo : public TestModelInfo {
  public:

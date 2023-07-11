@@ -3,8 +3,8 @@
 
 #include "core/session/inference_session.h"
 #include "core/util/math.h"
-#include "test/providers/provider_test_utils.h"
 #include "gtest/gtest.h"
+#include "test/providers/provider_test_utils.h"
 
 namespace onnxruntime {
 namespace test {

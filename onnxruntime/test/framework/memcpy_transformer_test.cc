@@ -3,14 +3,14 @@
 
 #include <iterator>
 
+#include "asserts.h"
 #include "core/framework/execution_providers.h"
-#include "core/optimizer/transformer_memcpy.h"
 #include "core/graph/model.h"
+#include "core/optimizer/transformer_memcpy.h"
 #include "default_providers.h"
 #include "gtest/gtest.h"
-#include "test_utils.h"
 #include "test/test_environment.h"
-#include "asserts.h"
+#include "test_utils.h"
 
 using namespace ONNX_NAMESPACE;
 namespace onnxruntime {

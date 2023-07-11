@@ -15,11 +15,10 @@
 #endif  // defined(DNNL_OPENMP)
 
 #include "core/platform/ort_mutex.h"
-#include "core/providers/shared_library/provider_api.h"
-
 #include "core/providers/dnnl/dnnl_fwd.h"
 #include "core/providers/dnnl/dnnl_node_capability.h"
 #include "core/providers/dnnl/subgraph/dnnl_subgraph_transformer.h"
+#include "core/providers/shared_library/provider_api.h"
 
 #define ORT_API_MANUAL_INIT
 #include "core/session/onnxruntime_cxx_api.h"

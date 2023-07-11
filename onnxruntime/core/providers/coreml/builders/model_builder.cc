@@ -1,17 +1,18 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include <fstream>
+#include "model_builder.h"
+
 #include <core/common/safeint.h>
 
-#include "model_builder.h"
-#include "helper.h"
-#include "op_builder_factory.h"
+#include <fstream>
 
 #include "core/providers/common.h"
-#include "core/providers/coreml/model/model.h"
-#include "core/providers/coreml/model/host_utils.h"
 #include "core/providers/coreml/builders/impl/builder_utils.h"
+#include "core/providers/coreml/model/host_utils.h"
+#include "core/providers/coreml/model/model.h"
+#include "helper.h"
+#include "op_builder_factory.h"
 
 namespace onnxruntime {
 namespace coreml {

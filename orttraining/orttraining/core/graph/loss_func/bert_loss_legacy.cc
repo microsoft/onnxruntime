@@ -1,8 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include <vector>
 #include "orttraining/core/graph/loss_func/bert_loss_legacy.h"
+
+#include <vector>
+
 #include "onnx/defs/attr_proto_util.h"
 #include "onnx/defs/tensor_proto_util.h"
 

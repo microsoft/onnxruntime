@@ -6,17 +6,15 @@
 #include <random>
 #include <type_traits>
 
-#include "core/common/gsl.h"
-
-#include "gtest/gtest.h"
-
 #include "core/common/common.h"
+#include "core/common/gsl.h"
 #include "core/common/optional.h"
 #include "core/common/type_utils.h"
 #include "core/framework/tensor.h"
-#include "core/util/math.h"
 #include "core/platform/threadpool.h"
+#include "core/util/math.h"
 #include "core/util/thread_utils.h"
+#include "gtest/gtest.h"
 #include "test/common/random_generator.h"
 
 namespace onnxruntime {

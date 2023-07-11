@@ -3,20 +3,21 @@
 
 // this file contains implementations of the C API
 
-#include <cassert>
 #include "onnxruntime_typeinfo.h"
-#include "core/framework/tensor.h"
-#include "core/framework/tensorprotoutils.h"
+
+#include <cassert>
+
+#include "core/framework/TensorSeq.h"
+#include "core/framework/error_code_helper.h"
+#include "core/framework/onnxruntime_map_type_info.h"
+#include "core/framework/onnxruntime_optional_type_info.h"
+#include "core/framework/onnxruntime_sequence_type_info.h"
 #include "core/framework/sparse_tensor.h"
+#include "core/framework/tensor.h"
+#include "core/framework/tensor_type_and_shape.h"
+#include "core/framework/tensorprotoutils.h"
 #include "core/graph/onnx_protobuf.h"
 #include "core/session/ort_apis.h"
-#include "core/framework/error_code_helper.h"
-
-#include "core/framework/tensor_type_and_shape.h"
-#include "core/framework/onnxruntime_map_type_info.h"
-#include "core/framework/onnxruntime_sequence_type_info.h"
-#include "core/framework/onnxruntime_optional_type_info.h"
-#include "core/framework/TensorSeq.h"
 
 using onnxruntime::DataTypeImpl;
 #if !defined(DISABLE_SPARSE_TENSORS)

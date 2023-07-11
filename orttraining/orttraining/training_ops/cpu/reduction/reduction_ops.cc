@@ -2,10 +2,11 @@
 // Licensed under the MIT License.
 
 #include "orttraining/training_ops/cpu/reduction/reduction_ops.h"
-#include "core/providers/common.h"
-#include "core/util/math_cpuonly.h"
-#include "core/providers/cpu/containers.h"
+
 #include "core/platform/threadpool.h"
+#include "core/providers/common.h"
+#include "core/providers/cpu/containers.h"
+#include "core/util/math_cpuonly.h"
 
 using namespace std;
 namespace onnxruntime {

@@ -5,6 +5,7 @@
 #pragma once
 
 #include <string>
+
 #include "core/providers/cann/cann_kernel.h"
 
 namespace onnxruntime {

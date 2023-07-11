@@ -3,15 +3,13 @@
 
 #include <string>
 
-#include "core/session/onnxruntime_cxx_api.h"
-#include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/providers/cpu/cpu_provider_factory.h"  // For OrtSessionOptionsAppendExecutionProvider_CPU
 #include "core/session/inference_session.h"
-
-#include "test/providers/qnn/qnn_test_utils.h"
-
-#include "gtest/gtest.h"
+#include "core/session/onnxruntime_cxx_api.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 #include "gmock/gmock.h"
+#include "gtest/gtest.h"
+#include "test/providers/qnn/qnn_test_utils.h"
 
 using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::logging;

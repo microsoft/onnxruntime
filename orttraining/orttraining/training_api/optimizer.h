@@ -4,9 +4,8 @@
 #pragma once
 
 #include "core/providers/cpu/cpu_execution_provider.h"
-#include "core/session/inference_session.h"
 #include "core/session/environment.h"
-
+#include "core/session/inference_session.h"
 #include "orttraining/training_api/module.h"
 
 namespace onnxruntime {

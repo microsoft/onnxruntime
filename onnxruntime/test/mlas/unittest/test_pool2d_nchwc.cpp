@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "test_pool2d_nchwc.h"
+
 #include "test_pool2d_fixture.h"
 
 template <>

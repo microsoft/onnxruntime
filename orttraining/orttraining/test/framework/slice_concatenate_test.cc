@@ -7,9 +7,9 @@
 #include "core/session/inference_session.h"
 #include "gtest/gtest.h"
 #include "orttraining/core/session/tensor_helper.h"
-#include "test/util/include/default_providers.h"
 #include "test/framework/test_utils.h"
 #include "test/test_environment.h"
+#include "test/util/include/default_providers.h"
 
 namespace onnxruntime {
 #ifdef USE_CUDA

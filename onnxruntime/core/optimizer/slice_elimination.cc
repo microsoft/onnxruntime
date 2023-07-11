@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/optimizer/slice_elimination.h"
+
 #include "core/graph/graph.h"
 #include "core/graph/graph_utils.h"
 #include "core/graph/op.h"

@@ -9,7 +9,6 @@
 #pragma once
 
 #include <emscripten.h>
-
 #include <stddef.h>
 
 struct OrtSession;

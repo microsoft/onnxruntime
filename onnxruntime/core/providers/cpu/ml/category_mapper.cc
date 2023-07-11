@@ -2,7 +2,9 @@
 // Licensed under the MIT License.
 
 #include "core/providers/cpu/ml/category_mapper.h"
+
 #include <algorithm>
+
 #include "core/common/gsl.h"
 using namespace ::onnxruntime::common;
 

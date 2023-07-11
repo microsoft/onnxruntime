@@ -2,11 +2,12 @@
 // Licensed under the MIT License.
 
 #include "fusion.h"
-#include <torch/extension.h>
+
 #include <torch/csrc/jit/ir/alias_analysis.h>
 #include <torch/csrc/jit/passes/common_subexpression_elimination.h>
 #include <torch/csrc/jit/passes/constant_pooling.h>
 #include <torch/csrc/jit/passes/dead_code_elimination.h>
+#include <torch/extension.h>
 
 namespace onnxruntime {
 namespace lazytensor {

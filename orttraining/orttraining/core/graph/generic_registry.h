@@ -2,11 +2,12 @@
 // Licensed under the MIT License.
 #pragma once
 
-#include <string>
-#include <vector>
 #include <functional>
-#include <unordered_map>
 #include <memory>
+#include <string>
+#include <unordered_map>
+#include <vector>
+
 #include "core/common/common.h"
 
 namespace onnxruntime {

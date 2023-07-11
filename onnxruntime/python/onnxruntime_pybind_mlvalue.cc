@@ -2,28 +2,28 @@
 // Licensed under the MIT License.
 
 #include "onnxruntime_pybind_mlvalue.h"
-#include "python/onnxruntime_pybind_state_common.h"
+
 #include "pybind11/numpy.h"
+#include "python/onnxruntime_pybind_state_common.h"
 
 #define NO_IMPORT_ARRAY
 #define NPY_NO_DEPRECATED_API NPY_1_7_API_VERSION
 #define PY_ARRAY_UNIQUE_SYMBOL onnxruntime_python_ARRAY_API
 #include <numpy/arrayobject.h>
-#include "python/numpy_helper.h"
 
-#include "core/graph/graph.h"
-#include "core/framework/tensor_shape.h"
-#include "core/framework/tensor.h"
-#include "core/framework/allocator.h"
 #include "core/framework/TensorSeq.h"
-#include "core/framework/data_types.h"
-#include "core/framework/onnxruntime_typeinfo.h"
-
+#include "core/framework/allocator.h"
 #include "core/framework/data_transfer_utils.h"
+#include "core/framework/data_types.h"
 #include "core/framework/data_types_internal.h"
-#include "core/providers/get_execution_providers.h"
 #include "core/framework/kernel_registry.h"
+#include "core/framework/onnxruntime_typeinfo.h"
 #include "core/framework/provider_options_utils.h"
+#include "core/framework/tensor.h"
+#include "core/framework/tensor_shape.h"
+#include "core/graph/graph.h"
+#include "core/providers/get_execution_providers.h"
+#include "python/numpy_helper.h"
 
 namespace onnxruntime {
 namespace python {

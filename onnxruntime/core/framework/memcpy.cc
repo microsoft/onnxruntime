@@ -1,8 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/framework/data_transfer_manager.h"
 #include "memcpy.h"
+
+#include "core/framework/data_transfer_manager.h"
 using namespace ONNX_NAMESPACE;
 namespace onnxruntime {
 

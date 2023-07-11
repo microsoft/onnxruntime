@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "bench_util.h"
+
 #include <numeric>
 #include <stdexcept>
 

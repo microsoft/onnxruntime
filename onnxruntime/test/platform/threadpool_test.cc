@@ -2,18 +2,21 @@
 // Licensed under the MIT License.
 
 #include "core/platform/threadpool.h"
+
 #include "core/platform/EigenNonBlockingThreadPool.h"
 #include "core/platform/ort_mutex.h"
 #include "core/util/thread_utils.h"
 #ifdef _WIN32
-#include "test/platform/windows/env.h"
 #include <Windows.h>
+
+#include "test/platform/windows/env.h"
 #endif
 
-#include "gtest/gtest.h"
 #include <algorithm>
-#include <memory>
 #include <functional>
+#include <memory>
+
+#include "gtest/gtest.h"
 
 #ifdef _WIN32
 #include <Windows.h>

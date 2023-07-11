@@ -15,17 +15,20 @@
  */
 
 #include "core/providers/cpu/math/top_k.h"
-#include "core/providers/common.h"
+
+#include <core/common/safeint.h>
+
+#include <algorithm>
+#include <cmath>
+#include <queue>
+
 #include "core/common/common.h"
 #include "core/common/exceptions.h"
 #include "core/framework/op_kernel.h"
 #include "core/framework/tensor.h"
 #include "core/platform/threadpool.h"
+#include "core/providers/common.h"
 #include "core/util/math_cpuonly.h"
-#include <queue>
-#include <algorithm>
-#include <cmath>
-#include <core/common/safeint.h>
 
 namespace onnxruntime {
 

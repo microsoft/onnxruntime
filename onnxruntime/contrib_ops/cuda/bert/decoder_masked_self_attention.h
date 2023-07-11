@@ -3,8 +3,8 @@
 
 #pragma once
 
-#include "core/providers/cuda/cuda_kernel.h"
 #include "contrib_ops/cpu/bert/attention_base.h"
+#include "core/providers/cuda/cuda_kernel.h"
 
 namespace onnxruntime {
 namespace contrib {

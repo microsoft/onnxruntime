@@ -3,8 +3,8 @@
 
 #pragma once
 
-#include "orttraining/training_ops/cpu/loss/reduction_type.h"
 #include "core/providers/cuda/reduction/reduction_ops.h"
+#include "orttraining/training_ops/cpu/loss/reduction_type.h"
 
 namespace onnxruntime {
 namespace cuda {

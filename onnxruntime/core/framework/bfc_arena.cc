@@ -1,9 +1,11 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/framework/allocator.h"
 #include "core/framework/bfc_arena.h"
+
 #include <type_traits>
+
+#include "core/framework/allocator.h"
 
 namespace onnxruntime {
 BFCArena::BFCArena(std::unique_ptr<IAllocator> resource_allocator,

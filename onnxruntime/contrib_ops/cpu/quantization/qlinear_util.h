@@ -4,6 +4,7 @@
 #ifndef ONNXRUNTIME_QLINEAR_UTIL_H
 #define ONNXRUNTIME_QLINEAR_UTIL_H
 #include <cstdint>
+
 #include "core/framework/tensor.h"
 
 namespace onnxruntime {

@@ -4,18 +4,19 @@
 #pragma once
 
 #include <stddef.h>
+
 #include <iostream>
 #include <string>
 #include <vector>
 
-#include "core/common/gsl.h"
 #include "core/common/common.h"
+#include "core/common/gsl.h"
 #include "core/framework/allocator.h"
-#include "core/framework/tensor_shape.h"
 #include "core/framework/buffer_deleter.h"
-#include "onnxruntime_config.h"
 #include "core/framework/data_types.h"
 #include "core/framework/data_types_internal.h"
+#include "core/framework/tensor_shape.h"
+#include "onnxruntime_config.h"
 
 struct OrtValue;
 

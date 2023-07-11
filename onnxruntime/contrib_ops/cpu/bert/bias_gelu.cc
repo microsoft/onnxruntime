@@ -2,15 +2,16 @@
 // Licensed under the MIT License.
 
 #include "bias_gelu.h"
+
 #include "bias_gelu_helper.h"
-#include "core/framework/tensorprotoutils.h"
-#include "onnx/defs/tensor_proto_util.h"
 #include "core/common/safeint.h"
 #include "core/framework/tensor.h"
+#include "core/framework/tensorprotoutils.h"
+#include "core/mlas/inc/mlas.h"
 #include "core/platform/threadpool.h"
 #include "core/providers/common.h"
 #include "core/util/math_cpuonly.h"
-#include "core/mlas/inc/mlas.h"
+#include "onnx/defs/tensor_proto_util.h"
 using onnxruntime::narrow;
 namespace onnxruntime {
 namespace contrib {

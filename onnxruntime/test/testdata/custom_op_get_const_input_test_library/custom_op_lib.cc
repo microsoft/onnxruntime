@@ -1,10 +1,11 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "custom_op_lib.h"
+
 #include <mutex>
 #include <vector>
 
-#include "custom_op_lib.h"
 #include "custom_op.h"
 
 static const char* c_OpDomain = "test.customop";

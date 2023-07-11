@@ -2,11 +2,12 @@
 // Licensed under the MIT License.
 
 #include "embed_layer_norm.h"
-#include "embed_layer_norm_helper.h"
-#include "core/util/math_cpuonly.h"
-#include "core/platform/threadpool.h"
 
 #include <atomic>
+
+#include "core/platform/threadpool.h"
+#include "core/util/math_cpuonly.h"
+#include "embed_layer_norm_helper.h"
 
 namespace onnxruntime {
 namespace contrib {

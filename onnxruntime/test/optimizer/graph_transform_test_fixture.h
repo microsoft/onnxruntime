@@ -6,7 +6,6 @@
 #include <memory>
 
 #include "gtest/gtest.h"
-
 #include "test/test_environment.h"
 
 namespace onnxruntime {

@@ -1,8 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "tensor_allocator_with_mem_pattern.h"
 #include "simple_tensor_allocator.h"
+#include "tensor_allocator_with_mem_pattern.h"
 
 namespace onnxruntime {
 

@@ -1,20 +1,21 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/common/span_utils.h"
 #include "core/framework/execution_frame.h"
+
+#include "asserts.h"
+#include "core/common/span_utils.h"
 #include "core/framework/op_kernel.h"
 #include "core/framework/session_state.h"
 #include "core/graph/model.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
 #include "core/session/inference_session.h"
-#include "test_utils.h"
-#include "test/test_environment.h"
-#include "test/framework/TestAllocatorManager.h"
-#include "test/util/include/inference_session_wrapper.h"
-#include "asserts.h"
-#include "gtest/gtest.h"
 #include "gmock/gmock.h"
+#include "gtest/gtest.h"
+#include "test/framework/TestAllocatorManager.h"
+#include "test/test_environment.h"
+#include "test/util/include/inference_session_wrapper.h"
+#include "test_utils.h"
 
 #ifdef ENABLE_TRAINING
 #include "core/session/IOBinding.h"

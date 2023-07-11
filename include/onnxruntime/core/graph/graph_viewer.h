@@ -3,9 +3,10 @@
 
 #pragma once
 
-#include "core/graph/graph.h"
-#include "core/framework/session_options.h"
 #include <unordered_set>
+
+#include "core/framework/session_options.h"
+#include "core/graph/graph.h"
 
 namespace onnxruntime {
 class Function;

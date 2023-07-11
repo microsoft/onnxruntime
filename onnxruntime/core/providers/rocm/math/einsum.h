@@ -4,10 +4,10 @@
 #pragma once
 
 #include "core/platform/threadpool.h"
-#include "core/providers/rocm/rocm_common.h"
 #include "core/providers/cpu/math/einsum.h"
-#include "einsum_utils/einsum_auxiliary_ops.h"
+#include "core/providers/rocm/rocm_common.h"
 #include "core/providers/rocm/rocm_execution_provider.h"
+#include "einsum_utils/einsum_auxiliary_ops.h"
 
 namespace onnxruntime {
 namespace rocm {

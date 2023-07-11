@@ -3,9 +3,10 @@
 
 #include "core/codegen/common/settings.h"
 
-#include "core/common/logging/logging.h"
 #include <algorithm>
 #include <cctype>
+
+#include "core/common/logging/logging.h"
 
 namespace onnxruntime {
 namespace codegen {

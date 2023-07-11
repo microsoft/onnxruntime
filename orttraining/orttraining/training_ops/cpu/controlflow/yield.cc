@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "orttraining/training_ops/cpu/controlflow/yield.h"
+
 #include "core/framework/op_kernel_context_internal.h"
 
 namespace onnxruntime {

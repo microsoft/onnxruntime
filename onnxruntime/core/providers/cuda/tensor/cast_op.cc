@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "cast_op.h"
+
 #include "core/providers/cuda/math/unary_elementwise_ops_impl.h"
 
 using namespace ONNX_NAMESPACE;

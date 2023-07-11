@@ -1,8 +1,8 @@
+#include <benchmark/benchmark.h>
+
 #include <limits>
 
 #include "common.h"
-
-#include <benchmark/benchmark.h>
 #include "core/common/safeint.h"
 #include "core/framework/allocator.h"
 #include "core/mlas/lib/mlasi.h"

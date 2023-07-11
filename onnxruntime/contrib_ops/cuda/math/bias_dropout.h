@@ -3,9 +3,9 @@
 
 #pragma once
 
-#include "core/providers/cuda/cuda_kernel.h"
-#include "core/providers/cuda/cuda_common.h"
 #include "core/framework/random_generator.h"
+#include "core/providers/cuda/cuda_common.h"
+#include "core/providers/cuda/cuda_kernel.h"
 
 using namespace onnxruntime::cuda;
 

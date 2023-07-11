@@ -8,8 +8,8 @@
 #include "core/common/optional.h"
 #include "core/framework/allocator.h"
 #include "core/framework/session_options.h"
-#include "core/session/environment.h"
 #include "core/session/abi_session_options_impl.h"
+#include "core/session/environment.h"
 #include "core/session/inference_session.h"
 #ifdef ENABLE_TRAINING
 #include "core/dlpack/dlpack_converter.h"
@@ -24,10 +24,10 @@ struct OrtStatus {
 };
 
 #define BACKEND_DEVICE BACKEND_PROC BACKEND_DNNL BACKEND_OPENVINO BACKEND_TVM BACKEND_OPENBLAS BACKEND_MIGRAPHX BACKEND_ACL BACKEND_ARMNN BACKEND_DML BACKEND_CANN
-#include "core/session/onnxruntime_cxx_api.h"
-#include "core/providers/providers.h"
 #include "core/providers/provider_factory_creators.h"
+#include "core/providers/providers.h"
 #include "core/providers/tensorrt/tensorrt_provider_options.h"
+#include "core/session/onnxruntime_cxx_api.h"
 
 #if defined(USE_CUDA) || defined(USE_ROCM)
 #define BACKEND_PROC "GPU"
@@ -123,12 +123,12 @@ struct OrtStatus {
 #endif
 
 #ifdef USE_CUDA
-#include "core/providers/cuda/cuda_provider_factory.h"
 #include "core/providers/cuda/cuda_execution_provider_info.h"
+#include "core/providers/cuda/cuda_provider_factory.h"
 #endif
 #ifdef USE_ROCM
-#include "core/providers/rocm/rocm_provider_factory.h"
 #include "core/providers/rocm/rocm_execution_provider_info.h"
+#include "core/providers/rocm/rocm_provider_factory.h"
 #endif
 #ifdef USE_TENSORRT
 #include "core/providers/tensorrt/tensorrt_provider_factory.h"
@@ -159,8 +159,8 @@ extern std::string openvino_device_type;
 #include "core/providers/dml/dml_provider_factory.h"
 #endif
 #ifdef USE_CANN
-#include "core/providers/cann/cann_provider_factory.h"
 #include "core/providers/cann/cann_execution_provider_info.h"
+#include "core/providers/cann/cann_provider_factory.h"
 #endif
 
 #ifdef USE_CUDA

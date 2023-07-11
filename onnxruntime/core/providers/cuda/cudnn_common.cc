@@ -2,10 +2,11 @@
 // Licensed under the MIT License.
 
 #include "cudnn_common.h"
-#include "core/common/inlined_containers.h"
+
 #include "core/common/gsl.h"
-#include "shared_inc/cuda_call.h"
+#include "core/common/inlined_containers.h"
 #include "core/providers/cpu/tensor/utils.h"
+#include "shared_inc/cuda_call.h"
 
 namespace onnxruntime {
 namespace cuda {

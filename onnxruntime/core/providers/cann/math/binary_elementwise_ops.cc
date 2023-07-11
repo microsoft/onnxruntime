@@ -3,9 +3,10 @@
 // Licensed under the MIT License.
 
 #include "core/providers/cann/math/binary_elementwise_ops.h"
-#include <vector>
+
 #include <algorithm>
 #include <string>
+#include <vector>
 
 using onnxruntime::common::Status;
 namespace onnxruntime {

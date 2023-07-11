@@ -1,15 +1,17 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include <random>
+#include "core/providers/cpu/reduction/reduction_ops.h"
+
 #include <cmath>
+#include <random>
 #include <type_traits>
+
 #include "gtest/gtest.h"
 #include "test/common/dnnl_op_test_utils.h"
 #include "test/common/tensor_op_test_utils.h"
-#include "test/providers/provider_test_utils.h"
 #include "test/providers/cpu/reduction/reduction_test_cases.h"
-#include "core/providers/cpu/reduction/reduction_ops.h"
+#include "test/providers/provider_test_utils.h"
 #include "test/util/include/default_providers.h"
 
 namespace onnxruntime {

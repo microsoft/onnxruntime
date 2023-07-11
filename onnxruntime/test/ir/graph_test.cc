@@ -2,18 +2,19 @@
 // Licensed under the MIT License.
 
 #include <iostream>
+
 #include "core/common/inlined_containers.h"
 #include "core/common/span_utils.h"
 #include "core/framework/tensorprotoutils.h"
+#include "core/graph/function_impl.h"
 #include "core/graph/graph_viewer.h"
 #include "core/graph/model.h"
 #include "core/graph/op.h"
-#include "test/providers/provider_test_utils.h"
-#include "gtest/gtest.h"
 #include "gmock/gmock.h"
+#include "gtest/gtest.h"
 #include "onnx/defs/function.h"
-#include "core/graph/function_impl.h"
 #include "test/framework/test_utils.h"
+#include "test/providers/provider_test_utils.h"
 
 #ifdef __GNUC__
 #define UNUSED __attribute__((unused))

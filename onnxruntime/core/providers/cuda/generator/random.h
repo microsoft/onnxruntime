@@ -3,9 +3,10 @@
 
 #pragma once
 
+#include <optional>
+
 #include "core/framework/random_generator.h"
 #include "core/providers/cuda/cuda_kernel.h"
-#include <optional>
 
 namespace onnxruntime {
 namespace cuda {

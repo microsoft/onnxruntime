@@ -7,9 +7,9 @@
 #pragma once
 
 #ifndef SHARED_PROVIDER
-#include "core/util/math.h"
-#include "core/providers/cpu/tensor/transpose.h"
 #include "core/providers/cpu/reduction/reduction_ops.h"
+#include "core/providers/cpu/tensor/transpose.h"
+#include "core/util/math.h"
 #endif
 
 #include <vector>

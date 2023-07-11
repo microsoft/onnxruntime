@@ -3,10 +3,11 @@
 
 #pragma once
 
-#include <stdint.h>
-#include "core/providers/cuda/shared_inc/cuda_utils.h"
-#include "core/framework/float8.h"
 #include <cuda_runtime.h>
+#include <stdint.h>
+
+#include "core/framework/float8.h"
+#include "core/providers/cuda/shared_inc/cuda_utils.h"
 
 namespace onnxruntime {
 namespace cuda {

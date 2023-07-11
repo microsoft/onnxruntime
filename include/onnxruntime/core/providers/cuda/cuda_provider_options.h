@@ -3,8 +3,8 @@
 
 #pragma once
 
-#include "onnxruntime_c_api.h"
 #include "core/framework/arena_extend_strategy.h"
+#include "onnxruntime_c_api.h"
 
 /// <summary>
 /// Options for the CUDA provider that are passed to SessionOptionsAppendExecutionProvider_CUDA_V2.

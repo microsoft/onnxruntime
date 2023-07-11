@@ -3,17 +3,18 @@
 
 #pragma once
 
-#include "callables.h"
-#include "TestCaseResult.h"
-#include "test_allocator.h"
 #include <core/platform/env_time.h>
-#include "core/platform/threadpool.h"
 #include <core/session/onnxruntime_cxx_api.h>
 
 #include <atomic>
+#include <condition_variable>
 #include <memory>
 #include <mutex>
-#include <condition_variable>
+
+#include "TestCaseResult.h"
+#include "callables.h"
+#include "core/platform/threadpool.h"
+#include "test_allocator.h"
 
 class ITestCase;
 

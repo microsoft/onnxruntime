@@ -3,10 +3,11 @@
 
 #pragma once
 
+#include <unordered_map>
+
 #include "core/common/common.h"
 #include "core/framework/allocator.h"
 #include "core/session/onnxruntime_c_api.h"
-#include <unordered_map>
 
 namespace onnxruntime {
 

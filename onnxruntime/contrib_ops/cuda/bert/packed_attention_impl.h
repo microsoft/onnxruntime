@@ -2,10 +2,11 @@
 // Licensed under the MIT License.
 
 #pragma once
-#include "core/providers/cuda/shared_inc/cuda_utils.h"
-#include <cuda_fp16.h>
 #include <cublas_v2.h>
+#include <cuda_fp16.h>
+
 #include "contrib_ops/cpu/bert/attention_common.h"
+#include "core/providers/cuda/shared_inc/cuda_utils.h"
 
 namespace onnxruntime {
 namespace contrib {

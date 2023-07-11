@@ -1,22 +1,22 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "tvm_so_execution_provider.h"  // NOLINT(build/include_subdir)
+
 #include <map>
 #include <unordered_set>
 #include <utility>
 
-#include "core/framework/execution_provider.h"
-#include "core/framework/tensorprotoutils.h"
-#include "core/framework/kernel_registry.h"
 #include "core/framework/compute_capability.h"
-#include "core/platform/env.h"
+#include "core/framework/execution_provider.h"
+#include "core/framework/kernel_registry.h"
+#include "core/framework/tensorprotoutils.h"
 #include "core/graph/model.h"
-
-#include "tvm_so_execution_provider.h"  // NOLINT(build/include_subdir)
-#include "xpu_data_transfer.h"          // NOLINT(build/include_subdir)
-#include "tvm_allocator.h"              // NOLINT(build/include_subdir)
-#include "tvm_utils.h"                  // NOLINT(build/include_subdir)
-#include "tvm_api.h"                    // NOLINT(build/include_subdir)
+#include "core/platform/env.h"
+#include "tvm_allocator.h"      // NOLINT(build/include_subdir)
+#include "tvm_api.h"            // NOLINT(build/include_subdir)
+#include "tvm_utils.h"          // NOLINT(build/include_subdir)
+#include "xpu_data_transfer.h"  // NOLINT(build/include_subdir)
 #ifdef USE_TVM_HASH
 #include "hash_alg/hasher.h"  // NOLINT(build/include_subdir)
 #endif

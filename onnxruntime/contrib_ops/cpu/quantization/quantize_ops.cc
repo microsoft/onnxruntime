@@ -1,8 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/cpu/quantization/quantize_linear.h"
 #include "core/providers/common.h"
+#include "core/providers/cpu/quantization/quantize_linear.h"
 
 namespace onnxruntime {
 namespace contrib {

@@ -2,11 +2,12 @@
 // Licensed under the MIT License.
 
 #pragma once
-#include "core/common/inlined_containers.h"
+#include <math.h>
+
 #include "core/common/common.h"
+#include "core/common/inlined_containers.h"
 #include "core/framework/op_kernel.h"
 #include "ml_common.h"
-#include <math.h>
 
 namespace onnxruntime {
 namespace ml {

@@ -2,10 +2,11 @@
 // Licensed under the MIT License.
 
 #pragma once
-#include "core/providers/cuda/shared_inc/cuda_utils.h"
-#include <stdio.h>
 #include <assert.h>
 #include <cuda_runtime.h>
+#include <stdio.h>
+
+#include "core/providers/cuda/shared_inc/cuda_utils.h"
 
 namespace onnxruntime {
 namespace cuda {

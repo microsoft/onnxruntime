@@ -5,14 +5,14 @@
 #ifdef _WIN32
 #pragma warning(disable : 4244)
 #endif
-#include <thread>
 #include <mutex>
+#include <thread>
 
-#include "core/providers/acl/nn/conv.h"
-#include "core/providers/acl/acl_common.h"
-#include "core/providers/acl/acl_fwd.h"
-#include "core/providers/acl/acl_execution_provider.h"
 #include "contrib_ops/cpu/fused_activation.h"
+#include "core/providers/acl/acl_common.h"
+#include "core/providers/acl/acl_execution_provider.h"
+#include "core/providers/acl/acl_fwd.h"
+#include "core/providers/acl/nn/conv.h"
 
 namespace onnxruntime {
 namespace acl {

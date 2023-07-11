@@ -1,15 +1,15 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/framework/op_kernel.h"
 #include "contrib_ops/cpu/bert/attention_cpu_base.h"
+#include "core/common/safeint.h"
+#include "core/framework/op_kernel.h"
+#include "core/mlas/inc/mlas.h"
+#include "core/platform/threadpool.h"
 #include "core/providers/common.h"
 #include "core/util/math.h"
-#include "core/util/qmath.h"
 #include "core/util/math_cpuonly.h"
-#include "core/common/safeint.h"
-#include "core/platform/threadpool.h"
-#include "core/mlas/inc/mlas.h"
+#include "core/util/qmath.h"
 
 using onnxruntime::concurrency::ThreadPool;
 

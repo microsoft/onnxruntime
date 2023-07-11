@@ -4,12 +4,12 @@
 
 #pragma once
 
+#include <emscripten.h>
+#include <emscripten/val.h>
+
 #include "core/common/inlined_containers.h"
 #include "core/framework/execution_provider.h"
 #include "core/providers/webnn/builders/helper.h"
-
-#include <emscripten.h>
-#include <emscripten/val.h>
 
 namespace onnxruntime {
 namespace webnn {

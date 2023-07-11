@@ -5,12 +5,11 @@
 
 #include <fstream>
 
+#include "core/flatbuffers/flatbuffers_utils.h"
+#include "core/flatbuffers/schema/ort.fbs.h"
+#include "core/platform/env.h"
 #include "pb_helper.h"
 #include "re2/re2.h"
-
-#include "core/flatbuffers/schema/ort.fbs.h"
-#include "core/flatbuffers/flatbuffers_utils.h"
-#include "core/platform/env.h"
 
 using namespace onnxruntime;
 

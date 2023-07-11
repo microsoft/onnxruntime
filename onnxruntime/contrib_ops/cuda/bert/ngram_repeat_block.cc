@@ -1,8 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/cuda/cuda_common.h"
 #include "ngram_repeat_block.h"
+
+#include "core/providers/cuda/cuda_common.h"
 #include "ngram_repeat_block_impl.h"
 
 namespace onnxruntime {

@@ -16,15 +16,13 @@ limitations under the License.
 /* Modifications Copyright (c) Microsoft. */
 
 #pragma once
+#include <functional>
+#include <memory>
 #include <string>
 #include <vector>
-#include <functional>
-#include <memory>
+
 #include "core/common/common.h"
 #include "core/platform/env.h"
-
-#include <functional>
-#include <memory>
 
 // ORT thread pool overview
 // ------------------------

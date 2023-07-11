@@ -3,14 +3,16 @@
 
 #pragma once
 
+#include <core/common/narrow.h>
+#include <core/common/safeint.h>
+
 #include <string>
 #include <string_view>
 #include <unordered_map>
-#include <vector>
 #include <unordered_set>
+#include <vector>
+
 #include "core/common/status.h"
-#include <core/common/safeint.h>
-#include <core/common/narrow.h>
 #ifndef SHARED_PROVIDER
 #include "core/framework/op_kernel.h"
 #endif

@@ -4,11 +4,10 @@
 #include <fstream>
 
 #include "gtest/gtest.h"
-
 #include "nlohmann/json.hpp"
+#include "orttraining/test/training_ops/cuda/optimizer/common.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/util/include/default_providers.h"
-#include "orttraining/test/training_ops/cuda/optimizer/common.h"
 
 namespace onnxruntime {
 namespace test {

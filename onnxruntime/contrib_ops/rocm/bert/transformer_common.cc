@@ -1,9 +1,11 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
-#include <iostream>
-#include "core/providers/shared_library/provider_api.h"  // Include this otherwise Windows build complains Env::Default() missing
-#include "core/platform/env_var_utils.h"
 #include "contrib_ops/rocm/bert/transformer_common.h"
+
+#include <iostream>
+
+#include "core/platform/env_var_utils.h"
+#include "core/providers/shared_library/provider_api.h"  // Include this otherwise Windows build complains Env::Default() missing
 
 namespace onnxruntime {
 namespace contrib {

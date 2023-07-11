@@ -3,15 +3,16 @@
 
 // this file contains implementations of the C API
 
+#include "ort_env.h"
+
 #include <cassert>
 
-#include "ort_env.h"
-#include "core/session/ort_apis.h"
-#include "core/session/environment.h"
-#include "core/session/allocator_adapters.h"
 #include "core/common/logging/logging.h"
 #include "core/framework/provider_shutdown.h"
 #include "core/platform/logging/make_platform_default_log_sink.h"
+#include "core/session/allocator_adapters.h"
+#include "core/session/environment.h"
+#include "core/session/ort_apis.h"
 
 using namespace onnxruntime;
 using namespace onnxruntime::logging;

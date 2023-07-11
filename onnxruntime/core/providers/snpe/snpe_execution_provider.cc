@@ -2,13 +2,15 @@
 // Licensed under the MIT License.
 
 #include "core/providers/snpe/snpe_execution_provider.h"
-#include <vector>
+
 #include <memory>
 #include <utility>
+#include <vector>
+
 #include "core/framework/compute_capability.h"
+#include "core/framework/kernel_registry.h"
 #include "core/graph/graph_viewer.h"
 #include "core/session/onnxruntime_cxx_api.h"
-#include "core/framework/kernel_registry.h"
 
 namespace {
 struct KernelRegistryAndStatus {

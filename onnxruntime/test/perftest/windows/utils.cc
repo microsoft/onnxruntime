@@ -3,10 +3,10 @@
 
 #include "test/perftest/utils.h"
 
-#include <cstdint>
-
 #include <Windows.h>
 #include <psapi.h>
+
+#include <cstdint>
 
 namespace onnxruntime {
 namespace perftest {

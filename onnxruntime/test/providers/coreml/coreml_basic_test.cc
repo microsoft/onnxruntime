@@ -18,8 +18,8 @@
 #include "test/providers/provider_test_utils.h"
 #endif  // !(ORT_MINIMAL_BUILD)
 
-#include "gtest/gtest.h"
 #include "gmock/gmock.h"
+#include "gtest/gtest.h"
 
 using namespace std;
 using namespace ONNX_NAMESPACE;

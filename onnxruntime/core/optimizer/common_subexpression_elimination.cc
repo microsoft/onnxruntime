@@ -2,14 +2,15 @@
 // Licensed under the MIT License.
 
 #include "common_subexpression_elimination.h"
-#include "core/optimizer/utils.h"
-#include "core/graph/graph_utils.h"
 
 #include <memory>
 #include <type_traits>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
+
+#include "core/graph/graph_utils.h"
+#include "core/optimizer/utils.h"
 
 // This optimization pass will collapse expressions that always evaluate to the same value
 // into one node. As an example, consider the following abstract function where x1, x2,...

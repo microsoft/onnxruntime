@@ -3,10 +3,11 @@
 
 #include <iostream>
 #include <memory>
+
 #include "test/compare_ortvalue.h"
+#include "test/providers/compare_provider_test_utils.h"
 #include "test/util/include/default_providers.h"
 #include "test/util/include/test_utils.h"
-#include "test/providers/compare_provider_test_utils.h"
 
 using namespace std;
 

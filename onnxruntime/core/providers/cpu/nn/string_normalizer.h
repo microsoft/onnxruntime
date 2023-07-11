@@ -3,11 +3,11 @@
 
 #pragma once
 
-#include "core/common/inlined_containers.h"
-#include "core/framework/op_kernel.h"
-
 #include <locale>
 #include <string>
+
+#include "core/common/inlined_containers.h"
+#include "core/framework/op_kernel.h"
 
 namespace onnxruntime {
 

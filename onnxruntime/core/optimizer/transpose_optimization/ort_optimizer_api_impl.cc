@@ -3,8 +3,6 @@
 
 // The ONNX Runtime specific implementation of the generic transpose optimizer API.
 
-#include "core/optimizer/transpose_optimization/optimizer_api.h"
-
 #include <algorithm>
 #include <deque>
 #include <iterator>
@@ -15,6 +13,7 @@
 #include "core/graph/graph_utils.h"
 #include "core/graph/graph_viewer.h"
 #include "core/optimizer/layout_transformation/layout_transformation_potentially_added_ops.h"
+#include "core/optimizer/transpose_optimization/optimizer_api.h"
 #include "core/optimizer/transpose_optimization/ort_optimizer_utils.h"
 #include "core/optimizer/transpose_optimization/ort_transpose_optimization.h"
 #include "core/providers/cpu/tensor/transpose.h"

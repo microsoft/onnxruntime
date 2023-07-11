@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "nchwc_ops.h"
+
 #include "core/common/narrow.h"
 #include "core/common/safeint.h"
 #include "core/mlas/inc/mlas.h"

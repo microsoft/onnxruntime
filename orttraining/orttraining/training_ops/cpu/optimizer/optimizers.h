@@ -3,9 +3,9 @@
 
 #pragma once
 
-#include "orttraining/training_ops/cpu/optimizer/common.h"
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
+#include "orttraining/training_ops/cpu/optimizer/common.h"
 
 namespace onnxruntime {
 namespace contrib {

@@ -2,9 +2,11 @@
 // Licensed under the MIT License.
 
 #include "core/providers/qnn/builder/qnn_def.h"
-#include "core/providers/qnn/builder/qnn_utils.h"
-#include <memory>
+
 #include <cstring>
+#include <memory>
+
+#include "core/providers/qnn/builder/qnn_utils.h"
 
 namespace onnxruntime {
 namespace qnn {

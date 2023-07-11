@@ -3,9 +3,8 @@
 
 #include "test/providers/op_tester.h"
 
-#include "gtest/gtest.h"
 #include "gmock/gmock.h"
-
+#include "gtest/gtest.h"
 #include "test/util/include/test_environment.h"
 namespace onnxruntime {
 namespace test {

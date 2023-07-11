@@ -5,8 +5,8 @@
 #include <algorithm>
 #include <vector>
 
-#include "core/common/span_utils.h"
 #include "contrib_ops/cpu/transformers/greedy_search_impl_base.h"
+#include "core/common/span_utils.h"
 
 namespace onnxruntime {
 namespace contrib {

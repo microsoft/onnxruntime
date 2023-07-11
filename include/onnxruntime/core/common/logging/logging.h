@@ -12,11 +12,10 @@
 #include <string>
 
 #include "core/common/common.h"
-#include "core/common/profiler_common.h"
 #include "core/common/logging/capture.h"
-#include "core/common/logging/severity.h"
-
 #include "core/common/logging/macros.h"
+#include "core/common/logging/severity.h"
+#include "core/common/profiler_common.h"
 
 /*
 

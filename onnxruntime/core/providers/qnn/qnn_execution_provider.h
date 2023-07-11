@@ -3,9 +3,10 @@
 
 #pragma once
 
+#include <string>
+
 #include "core/framework/execution_provider.h"
 #include "core/framework/session_options.h"
-#include <string>
 #include "core/providers/qnn/builder/qnn_backend_manager.h"
 #include "core/providers/qnn/builder/qnn_model.h"
 

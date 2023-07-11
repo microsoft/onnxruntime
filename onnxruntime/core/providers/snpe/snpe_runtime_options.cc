@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/providers/snpe/snpe_runtime_options.h"
+
 #include "core/common/logging/logging.h"
 
 namespace onnxruntime {

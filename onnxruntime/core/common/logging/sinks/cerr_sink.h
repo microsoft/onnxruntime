@@ -4,6 +4,7 @@
 #pragma once
 
 #include <iostream>
+
 #include "core/common/logging/sinks/ostream_sink.h"
 
 namespace onnxruntime {

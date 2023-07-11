@@ -16,8 +16,8 @@ limitations under the License.
 
 #pragma once
 
-#include <ctime>
 #include <cstdint>
+#include <ctime>
 
 namespace onnxruntime {
 

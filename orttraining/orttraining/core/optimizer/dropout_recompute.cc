@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "orttraining/core/optimizer/dropout_recompute.h"
+
 #include "orttraining/core/graph/recompute_graph_utils.h"
 
 namespace onnxruntime {

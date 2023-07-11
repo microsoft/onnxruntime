@@ -5,9 +5,9 @@
 
 #include "core/framework/compute_capability.h"
 #include "core/graph/graph_viewer.h"
+#include "core/providers/coreml/builders/helper.h"
 #include "core/providers/partitioning_utils.h"
 #include "core/session/onnxruntime_cxx_api.h"
-#include "core/providers/coreml/builders/helper.h"
 
 #ifdef __APPLE__
 #include "core/providers/coreml/builders/model_builder.h"

@@ -2,17 +2,18 @@
 // Licensed under the MIT License
 
 #include "dnnl_subgraph_transformer.h"
+
 #include "core/providers/shared_library/provider_api.h"
 #ifndef _USE_MATH_DEFINES
 #define _USE_MATH_DEFINES
 #endif
 #include <cmath>
 #include <iostream>
-#include <string>
+#include <memory>
 #include <sstream>
+#include <string>
 #include <unordered_set>
 #include <utility>
-#include <memory>
 
 namespace onnxruntime {
 namespace ort_dnnl {

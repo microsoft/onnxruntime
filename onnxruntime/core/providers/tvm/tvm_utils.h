@@ -6,11 +6,10 @@
 
 #include <string>
 
-#include "tvm_common.h"
-
-#include "core/session/onnxruntime_cxx_api.h"
-#include "core/framework/ortdevice.h"
 #include "core/common/common.h"
+#include "core/framework/ortdevice.h"
+#include "core/session/onnxruntime_cxx_api.h"
+#include "tvm_common.h"
 
 namespace onnxruntime {
 namespace tvm {

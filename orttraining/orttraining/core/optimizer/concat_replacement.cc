@@ -4,10 +4,10 @@
 #include "orttraining/core/optimizer/concat_replacement.h"
 
 #include "core/common/logging/logging.h"
-#include "core/optimizer/rewrite_rule.h"
-#include "core/optimizer/utils.h"
 #include "core/graph/graph.h"
 #include "core/graph/graph_utils.h"
+#include "core/optimizer/rewrite_rule.h"
+#include "core/optimizer/utils.h"
 
 namespace onnxruntime {
 

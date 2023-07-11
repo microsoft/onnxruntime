@@ -3,12 +3,12 @@
 
 #if defined(USE_CUDA) || defined(USE_ROCM)
 
-#include <ctime>
 #include <cstdlib>
+#include <ctime>
 
 #include "gtest/gtest.h"
-#include "test/providers/provider_test_utils.h"
 #include "test/common/tensor_op_test_utils.h"
+#include "test/providers/provider_test_utils.h"
 #include "test/util/include/default_providers.h"
 #ifdef USE_ROCM
 #include "core/providers/rocm/shared_inc/rocm_utils.h"
