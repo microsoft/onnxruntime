@@ -1927,7 +1927,7 @@ TEST(CApiTest, create_tensor) {
   auto shape_info = tensor.GetTensorTypeAndShapeInfo();
 
   const auto len = shape_info.GetElementCount();
-  ASSERT_EQ(len, expected_len);
+  ASSERT_EQ(len, static_cast<size_t>(expected_len));
   std::vector<int64_t> shape_array(len);
 
   size_t data_len = tensor.GetStringTensorDataLength();
@@ -1951,7 +1951,7 @@ TEST(CApiTest, fill_string_tensor) {
   auto shape_info = tensor.GetTensorTypeAndShapeInfo();
 
   const auto len = shape_info.GetElementCount();
-  ASSERT_EQ(len, expected_len);
+  ASSERT_EQ(len, static_cast<size_t>(expected_len));
 }
 
 TEST(CApiTest, fill_string_tensor_directly) {
@@ -1968,8 +1968,8 @@ TEST(CApiTest, fill_string_tensor_directly) {
   }
 
   auto shape_info = tensor.GetTensorTypeAndShapeInfo();
-  int64_t len = shape_info.GetElementCount();
-  ASSERT_EQ(len, expected_len);
+  const auto len = shape_info.GetElementCount();
+  ASSERT_EQ(len, static_cast<size_t>(expected_len));
 
   for (size_t i = 0; i < expected_len; i++) {
     auto element = tensor.GetStringTensorElement(i);
