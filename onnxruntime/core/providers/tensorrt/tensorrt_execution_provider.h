@@ -263,8 +263,8 @@ class TensorrtExecutionProvider : public IExecutionProvider {
 
     bool IsTensorRTContextInMap(std::string fused_node);
     nvinfer1::IExecutionContext& GetTensorRTContext(std::string fused_node);
-    std::unordered_map<std::string, std::shared_ptr<nvinfer1::IExecutionContext>>* GetTensorRTContextCache();
-    void SetTensorRTContext(std::string fused_node, std::unique_ptr<nvinfer1::IExecutionContext> context); 
+    bool SetTensorRTContext(std::string fused_node, std::unique_ptr<nvinfer1::IExecutionContext> context); 
+    void ResetTensorRTContext(std::string fused_node); 
 
     void InitCUDAGraph();
     void SetGraphStream(cudaStream_t stream);
@@ -302,10 +302,14 @@ class TensorrtExecutionProvider : public IExecutionProvider {
     ContextCacheHolder() {
       // Keep a weak pointer to the object, if the weak pointer can be locked, then the shared pointer is still around, so we can reset it
       RunOnUnload([&, weak_p_ = std::weak_ptr<PerThreadContextMap>(p)] {
-        std::cout << "In RunOnUnload()" << std::endl;
         if (auto lock = weak_p_.lock())
-          lock.reset();
+          p.reset();
       });
+    }
+
+    ~ContextCacheHolder() {
+      // [Debug] why this destructor not being called upon thread exits?
+      std::cout << "Thread local destructor!!!!!!!!!!!!!!!" << std::endl;
     }
     std::shared_ptr<PerThreadContextMap> p = std::make_shared<PerThreadContextMap>();
   };
