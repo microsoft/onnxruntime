@@ -160,7 +160,7 @@ class TrackTime:
         self.phase = phase
 
     def __call__(self, func: Callable):
-        def wrapper(graph_execution_manager: GraphExecutionManager, *args, **kwargs):
+        def wrapper(graph_execution_manager, *args, **kwargs):
             if not hasattr(graph_execution_manager, "time_tracker"):
                 raise RuntimeError("The class of the function to be tracked must have a 'time_tracker' attribute.")
             graph_execution_manager.time_tracker.start(self.phase)
