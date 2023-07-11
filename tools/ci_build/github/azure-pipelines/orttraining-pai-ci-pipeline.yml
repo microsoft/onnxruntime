@@ -162,7 +162,7 @@ jobs:
             /onnxruntime_src/tools/ci_build/github/pai/pai_test_launcher.sh"
       workingDirectory: $(Build.SourcesDirectory)
     displayName: 'Run onnxruntime unit tests'
-    condition: succeededOrFailed()
+    condition: succeeded()
 
   - task: CmdLine@2
     inputs:
