@@ -110,16 +110,6 @@ class TestOpGemm(unittest.TestCase):
         onnx.save(model, output_model_path)
 
     @staticmethod
-    def tensor_type(qtype):
-        if qtype == QuantType.QUInt8:
-            return TensorProto.UINT8
-        if qtype == QuantType.QInt8:
-            return TensorProto.INT8
-        if qtype == QuantType.QFLOAT8E4M3FN:
-            return TensorProto.FLOAT8E4M3FN
-        raise ValueError(f"Unexpected value for qtype={qtype}")
-
-    @staticmethod
     def str_type(qtype):
         if qtype == QuantType.QUInt8:
             return "u8"
@@ -137,7 +127,7 @@ class TestOpGemm(unittest.TestCase):
         weight_type,
         extra_options={},  # noqa: B006
     ):
-        activation_proto_qtype = self.tensor_type(activation_type)
+        activation_proto_qtype = activation_type.tensor_type
         activation_type_str = self.str_type(activation_type)
         weight_type_str = self.str_type(weight_type)
         model_int8_path = f"gemm_fp32.quant_{activation_type_str}{weight_type_str}.onnx"
@@ -197,7 +187,7 @@ class TestOpGemm(unittest.TestCase):
                     model_fp32_path,
                     model_int8_path,
                     data_reader.get_next(),
-                    ["CUDAExecutionProvider", "CPUExecutionProvider"],
+                    providers=["CUDAExecutionProvider", "CPUExecutionProvider"],
                 )
             except Exception as e:
                 if (
@@ -365,5 +355,5 @@ class TestOpGemm(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    TestOpGemm().test_quantize_gemm_e4m3fn()
+    TestOpGemm().test_quantize_gemm()
     unittest.main()
