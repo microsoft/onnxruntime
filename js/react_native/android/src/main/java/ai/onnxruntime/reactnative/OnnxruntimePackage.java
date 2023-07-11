@@ -47,7 +47,7 @@ public class OnnxruntimePackage extends TurboReactPackage {
                                           false,        // needsEagerInit
                                           true,         // hasConstants
                                           false,        // isCxxModule
-                                          isTurboModule // isTurboModule
+                                          false // isTurboModule
                                           ));
       return moduleInfos;
     };

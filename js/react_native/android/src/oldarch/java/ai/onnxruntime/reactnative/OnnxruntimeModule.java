@@ -18,8 +18,10 @@ import com.facebook.react.bridge.ReadableMap;
 import com.facebook.react.bridge.ReadableType;
 import com.facebook.react.bridge.WritableMap;
 import com.facebook.react.modules.blob.BlobModule;
+import com.facebook.react.module.annotations.ReactModule;
 import java.util.Map;
 
+@ReactModule(name = OnnxruntimeModule.NAME)
 public class OnnxruntimeModule extends ReactContextBaseJavaModule implements LifecycleEventListener {
   public static final String NAME = "Onnxruntime";
   private static ReactApplicationContext reactContext;
