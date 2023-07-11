@@ -16,15 +16,18 @@ namespace onnxruntime {
  * @Class PaddingElimination
  *
  * @brief Graph transformer that eliminates unnecessary padding computation caused by embedding sparsity.
+ *
+ * In transformer trainings, input_ids are usually padded to the same length, which is the max sequence length,
+ * so its shape is [batch_size, sequence_length] or [sequence_length, batch_size]. This graph transformer
+ * tries to MERGE the leading two dimensions and REMOVE the padding on the merged
+ * dimension, i.e, [batch_size, sequence_length, ...] -> [batch_size * sequence_length, ...] ->
+
+ *
  * This transformer is implemented in the following steps:
  * 1. Iterate the graph and find the Embedding node that matches these requirements:
- *     (1) Its 2nd input is a graph input and its rank > 2 with the first two dimensions are dim_params which are
- *         actually batch_size and sequence_length.
- * Note: Now only support the case of the first two dimensions to merged and remove the padding on the merged
- *       dimension, i.e, [batch_size, sequence_length, ...] -> [batch_size * sequence_length, ...] ->
- *       [valid_token, ... ]. In the future, we may support the case of any two consecutive dimensions to merged,
- *       such as [..., batch_size, sequence_length, ...].
- *     (2) Its 3nd input is a scalar constant initializer which is the padding idx that should >= 0.
+ *    1.1 The 2nd input is a graph input and its rank > 2, with the first two dimensions, are:
+ *        [batch_size, sequence_length]. Both dimensions can be symbolic or concrete dim values.
+ *    1.2 The 3rd input(padding idx) is a scalar constant initializer, and should >= 0.
  * 2. Append embedding node in node_to_scan_list.
  *    Iterate the node_to_scan_list, for each node,
  *    2.1 Check if it is supported for pad elimination (from a pre-defined op list). If no, record this node as output
@@ -42,6 +45,8 @@ namespace onnxruntime {
  *    This is needed to ensure not to affect subsequent computations
  *
  * For example, given the following graph:
+ * 1. `input_0` is a tensor that is an in-direct output of ATen embedding node.
+ * 2. `input_1` is a tensor that is NOT a direct or in-direct output of ATen embedding node.
  *
  *  embed.weight    input_ids [batch_size, seq_length]   padding_idx [1]    scale_grad_by_freq   sparse
  *       \                 \                               /                /                      /
@@ -49,11 +54,14 @@ namespace onnxruntime {
  *         \                 \                           /                /                      /
  *          \_________________\_________________________/________________/______________________/
  *                                         |
- *                                   Aten:embedding
+ *                                   ATen:embedding
  *                                         |
- *                                         |
- *                     input               |
- *                             \
+ *                  - - - - - - - - - - - -|
+ *                  |                      |
+ *                 input_0                 |                  input_1
+ *                      \                  |                   /
+ *                       \__________       |       ___________/
+ *                                  \      |      /
  *                                     Subgraph
  *
  *                                         |
@@ -83,40 +91,36 @@ namespace onnxruntime {
  *        \______________________\________________________________/__________________/________________/
  *                                                  |
  *                                            Aten:embedding
- *                _ _   _   _  _  __ _  _  _  __ _ _|
- *               /                                  |
- *    input_node                                    |
- *          \ [batch_size, seq_length]              |
- *           \                                      |
- *            \     [-1]                            |
- *             \    /                               |
- *             Reshape       (valid_token_index)    |
- *                  \           /                   |
- *                   ShrunkenGather                 |  shape:[valid_token, ...]
- *                             \                    |
- *         shape:[valid_token]  \                   |
- *                               \                  |
- *                         candidate_input_node     |
- *                                 \                |
- *                                  \               |
+ *          - - - - - - - - - - - - - - - - - - - - |
+ *         |                                        |
+ *       input_0                                    |            input_1
+ *          \ [batch_size, seq_length, ...]         |               |
+ *           \                                      |     [batch_size, seq_length, ...]
+ *            \     [-1]                            |               |
+ *             \    /                               |               |
+ *             Reshape       (valid_token_index)    |              Reshape      (valid_token_index)
+ *                  \           /                   |                 \           /
+ *                   ShrunkenGather       shape:[valid_token, ...]     ShrunkenGather
+ *                             \                    |                    /
+ *    shape:[valid_token, ...]  \                   |                   /
+ *                               \                  |                  /
+ *                         candidate_input_node     |       candidate_input_node
+ *                                 \                |                /
+ *                                  \               |               /
  *
  *                                             Subgraph
  *
  *                                                  |
- *                                                  | shape:[valid_token]
+ *                                                  | shape:[valid_token, ...]
  *                                                  |
+ *                                                  |  (valid_token_index)
+ *                                                  |     /   ________________ (unflatten_dims), shape:[2],
+ *                                                  |    /   /                 value:[batch_size, seq_length]
+ *                                                  |   /   /
+ *                                                 PadAndUnflatten
  *                                                  |
- * [batch_size*seq_length]   (valid_token_index)    |
- *             \                  |                 /
- *              \                 |                /
- *                \               |              /
- *
- *                         GatherGrad
- *                              |
- *                           Reshape
- *                              |
- *                              | [batch_size, valid_token]
- *                      candidate_output_node
+ *                                                  | [batch_size, seq_length, ...]
+ *                                          candidate_output_node
  *
  *
  *

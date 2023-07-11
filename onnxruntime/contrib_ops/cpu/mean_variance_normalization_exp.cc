@@ -13,6 +13,6 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     1,
     8,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
-    MeanVarianceNormalization_0<float>);
+    MeanVarianceNormalization);
 }  // namespace contrib
 }  // namespace onnxruntime

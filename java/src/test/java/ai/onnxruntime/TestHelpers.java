@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019, 2022, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2019, 2023, Oracle and/or its affiliates. All rights reserved.
  * Licensed under the MIT License.
  */
 package ai.onnxruntime;
@@ -13,6 +13,8 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.UncheckedIOException;
 import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
+import java.nio.FloatBuffer;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -409,6 +411,25 @@ public class TestHelpers {
     OnnxTensor onnxTensor = OnnxTensor.createTensor(env, buffer, intDims, tensorElemType);
 
     return new StringTensorPair(nodeName, onnxTensor);
+  }
+
+  public static OnnxTensor makeIdentityMatrix(OrtEnvironment env, int size) throws OrtException {
+    float[][] values = new float[size][size];
+    for (int i = 0; i < values.length; i++) {
+      values[i][i] = 1.0f;
+    }
+
+    return OnnxTensor.createTensor(env, values);
+  }
+
+  public static OnnxTensor makeIdentityMatrixBuf(OrtEnvironment env, int size) throws OrtException {
+    FloatBuffer buf =
+        ByteBuffer.allocateDirect(size * size * 4).order(ByteOrder.LITTLE_ENDIAN).asFloatBuffer();
+    for (int i = 0; i < size; i++) {
+      buf.put(i * size + i, 1.0f);
+    }
+
+    return OnnxTensor.createTensor(env, buf, new long[] {size, size});
   }
 
   private static class TypeWidth {

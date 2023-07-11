@@ -377,7 +377,7 @@ endif()
 
 # Disable training ops test for minimal build as a lot of these depend on loading an onnx model.
 if (NOT onnxruntime_MINIMAL_BUILD)
-  if (onnxruntime_ENABLE_TRAINING_CORE)
+  if (onnxruntime_ENABLE_TRAINING_OPS)
     file(GLOB_RECURSE orttraining_test_trainingops_cpu_src CONFIGURE_DEPENDS
       "${ORTTRAINING_SOURCE_DIR}/test/training_ops/compare_provider_test_utils.cc"
       "${ORTTRAINING_SOURCE_DIR}/test/training_ops/function_op_test_utils.cc"
@@ -837,6 +837,12 @@ if (MSVC)
   target_compile_options(onnxruntime_test_all PRIVATE "/wd26451" "/wd4244")
 else()
   target_compile_options(onnxruntime_test_all PRIVATE "-Wno-parentheses")
+endif()
+
+# TODO fix shorten-64-to-32 warnings
+# there are some in builds where sizeof(size_t) != sizeof(int64_t), e.g., in 'ONNX Runtime Web CI Pipeline'
+if (HAS_SHORTEN_64_TO_32 AND NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
+  target_compile_options(onnxruntime_test_all PRIVATE -Wno-error=shorten-64-to-32)
 endif()
 
 if (UNIX AND onnxruntime_USE_TENSORRT)
@@ -1306,10 +1312,11 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
         "${TEST_SRC_DIR}/framework/test_utils.cc"
         "${TEST_SRC_DIR}/providers/base_tester.h"
         "${TEST_SRC_DIR}/providers/base_tester.cc"
+        "${TEST_SRC_DIR}/providers/checkers.h"
+        "${TEST_SRC_DIR}/providers/checkers.cc"
         "${TEST_SRC_DIR}/providers/op_tester.h"
         "${TEST_SRC_DIR}/providers/op_tester.cc"
         "${TEST_SRC_DIR}/providers/provider_test_utils.h"
-        "${TEST_SRC_DIR}/providers/provider_test_utils.cc"
         "${TEST_SRC_DIR}/providers/tester_types.h"
         ${onnxruntime_unittest_main_src}
       LIBS ${onnxruntime_test_providers_libs} ${onnxruntime_test_common_libs}

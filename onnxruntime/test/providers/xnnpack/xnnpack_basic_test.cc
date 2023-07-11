@@ -109,10 +109,10 @@ TEST(XnnpackEP, TestAllocatorSharing) {
   // and use the same EP instances in both
   std::vector<std::shared_ptr<IExecutionProvider>> eps{
       std::make_shared<XnnpackExecutionProvider>(XnnpackExecutionProviderInfo{}),
-      std::make_shared<CPUExecutionProvider>(CPUExecutionProviderInfo{}, true /* delay allocator creation to allow sharing */)};
+      std::make_shared<CPUExecutionProvider>(CPUExecutionProviderInfo{})};
   std::vector<std::shared_ptr<IExecutionProvider>> eps1{
       std::make_shared<XnnpackExecutionProvider>(XnnpackExecutionProviderInfo{}),
-      std::make_shared<CPUExecutionProvider>(CPUExecutionProviderInfo{}, true /* delay allocator creation to allow sharing */)};
+      std::make_shared<CPUExecutionProvider>(CPUExecutionProviderInfo{})};
 
   // check RegisterAllocator is implemented properly and supports calls from multiple inference sessions
   init_session(eps, session1);

@@ -145,7 +145,7 @@ def main(args):
         spec = importlib.util.spec_from_file_location(f"module_{i}", f)
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
-        func_tb = module.get_funcion_table()
+        func_tb = module.get_function_table()
         m = compile(func_tb, out_dir)
         metadata.extend(m)
 

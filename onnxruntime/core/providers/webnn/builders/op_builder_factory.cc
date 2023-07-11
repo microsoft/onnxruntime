@@ -90,7 +90,9 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
     CreateLogicalOpBuilder("Equal", op_registrations);
   }
 
-  {  // LayerNormalization
+  {  // Normalization
+    CreateNormalizationOpBuilder("GroupNormalization", op_registrations);
+    CreateNormalizationOpBuilder("InstanceNormalization", op_registrations);
     CreateNormalizationOpBuilder("LayerNormalization", op_registrations);
   }
 

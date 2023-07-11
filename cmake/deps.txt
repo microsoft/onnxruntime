@@ -24,8 +24,8 @@ microsoft_wil;https://github.com/microsoft/wil/archive/5f4caba4e7a9017816e47becd
 mimalloc;https://github.com/microsoft/mimalloc/archive/refs/tags/v2.1.1.zip;d5ee7d34223d0567892db5179849939c8769dc41
 mp11;https://github.com/boostorg/mp11/archive/refs/tags/boost-1.79.0.zip;c8f04e378535ededbe5af52c8f969d2dedbe73d5
 onnx;https://github.com/onnx/onnx/archive/refs/tags/v1.14.0.zip;3c6e43a36f94addc15afe939860127a1d74a9488
-#use the last commit of 8.6-EA branch (https://github.com/onnx/onnx-tensorrt/commit/ba6a4fb34fdeaa3613bf981610c657e7b663a699)
-onnx_tensorrt;https://github.com/onnx/onnx-tensorrt/archive/ba6a4fb34fdeaa3613bf981610c657e7b663a699.zip;5a474ed86e2c4ee4085d3daeff8222866e933dc0
+#use the last commit of 8.6-GA branch (https://github.com/onnx/onnx-tensorrt/commit/6ba67d3428e05f690145373ca87fb8d32f98df45)
+onnx_tensorrt;https://github.com/onnx/onnx-tensorrt/archive/6ba67d3428e05f690145373ca87fb8d32f98df45.zip;805902b4f03f09f07151e03b5ccc49968c9cc896
 protobuf;https://github.com/protocolbuffers/protobuf/archive/refs/tags/v21.12.zip;7cf2733949036c7d52fda017badcab093fe73bfa
 protoc_win64;https://github.com/protocolbuffers/protobuf/releases/download/v21.12/protoc-21.12-win64.zip;b4521f7ada5b260380f94c4bd7f1b7684c76969a
 protoc_win32;https://github.com/protocolbuffers/protobuf/releases/download/v21.12/protoc-21.12-win32.zip;3688010318192c46ce73213cdfb6b3e5656da874

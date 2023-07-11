@@ -31,7 +31,7 @@ LearningModelSession::LearningModelSession(_winml::IEngine* engine) : operator_r
                                                                       model_(nullptr),
                                                                       device_(LearningModelDeviceKind::Cpu),
                                                                       session_options_(nullptr)
-{ 
+{
     engine_.copy_from(engine);
 }
 
@@ -136,8 +136,14 @@ void LearningModelSession::Initialize() {
 
     allow_spinning = session_options_impl->GetIntraOpThreadSpinning();
     num_intra_op_threads = session_options_impl->GetIntraOpNumThreads();
+
+    const auto& paths = session_options_impl->GetCustomOpLibraryPaths();
+    for (const auto& path : paths) {
+      auto path_str = _winml::Strings::UTF8FromHString(path);
+      WINML_THROW_IF_FAILED(engine_builder->RegisterCustomOpsLibrary(path_str.c_str()));
+    }
   }
-  
+
   bool create_local_thread_pool = allow_spinning != device_impl->AllowSpinning() ||
                                   num_intra_op_threads != device_impl->NumberOfIntraOpThreads();
   if (create_local_thread_pool) {
@@ -195,6 +201,13 @@ WINML_CATCH_ALL
 winml::LearningModelDevice
 LearningModelSession::Device() try {
   return device_;
+}
+WINML_CATCH_ALL
+
+
+winml::LearningModelSessionOptions
+LearningModelSession::Options() try {
+  return session_options_;
 }
 WINML_CATCH_ALL
 

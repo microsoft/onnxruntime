@@ -23,14 +23,18 @@ class TensorViewImpl implements TensorView {
     if (this.dataType !== DataType.float) {
       throw new Error('Invalid data type');
     }
-    return new Float32Array(this.module.HEAP8.buffer, this.data, ShapeUtil.size(this.dims));
+    const elementCount = ShapeUtil.size(this.dims);
+    return elementCount === 0 ? new Float32Array() :
+                                new Float32Array(this.module.HEAP8.buffer, this.data, elementCount);
   }
 
   getBigInt64Array(): BigInt64Array {
     if (this.dataType !== DataType.int64) {
       throw new Error('Invalid data type');
     }
-    return new BigInt64Array(this.module.HEAP8.buffer, this.data, ShapeUtil.size(this.dims));
+    const elementCount = ShapeUtil.size(this.dims);
+    return elementCount === 0 ? new BigInt64Array() :
+                                new BigInt64Array(this.module.HEAP8.buffer, this.data, elementCount);
   }
 
   reshape(newDims: readonly number[]): TensorView {
@@ -44,9 +48,14 @@ class TensorViewImpl implements TensorView {
 class ComputeContextImpl implements ComputeContext {
   readonly opKernelContext: number;
   readonly inputs: readonly TensorView[];
-  get customData(): {[key: string]: unknown} {
+  get kernelCustomData(): {[key: string]: unknown} {
     return this.backend.currentKernelCustomData;
   }
+  get customDataBuffer(): Uint8Array {
+    return this.module.HEAPU8.subarray(this.customDataOffset, this.customDataOffset + this.customDataSize);
+  }
+  private customDataOffset = 0;
+  private customDataSize = 0;
   constructor(private module: OrtWasmModule, private backend: WebGpuBackend, contextDataOffset: number) {
     const heapU32 = module.HEAPU32;
 
@@ -54,6 +63,8 @@ class ComputeContextImpl implements ComputeContext {
     let dataIndex = (contextDataOffset >> 2);
     this.opKernelContext = heapU32[dataIndex++];
     const inputCount = heapU32[dataIndex++];
+    this.customDataOffset = heapU32[dataIndex++];
+    this.customDataSize = heapU32[dataIndex++];
 
     const inputs: TensorView[] = [];
     for (let i = 0; i < inputCount; i++) {

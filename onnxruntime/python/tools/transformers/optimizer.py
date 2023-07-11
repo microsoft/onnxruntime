@@ -20,6 +20,7 @@
 import argparse
 import logging
 import os
+import tempfile
 from typing import Dict, Optional
 
 import coloredlogs
@@ -252,6 +253,9 @@ def optimize_model(
     # stable.
     disabled_optimizers = ["ConstantSharing"]
     temp_model_path = None
+    temp_dir = tempfile.TemporaryDirectory()
+    optimized_model_name = "model_o{}_{}.onnx".format(opt_level, "gpu" if use_gpu else "cpu")
+    optimized_model_path = os.path.join(temp_dir.name, optimized_model_name)
     if opt_level > 1:
         # Disable some optimizers that might cause failure in symbolic shape inference or attention fusion.
         disabled_optimizers += (
@@ -271,6 +275,7 @@ def optimize_model(
             opt_level=opt_level,
             disabled_optimizers=disabled_optimizers,
             verbose=verbose,
+            optimized_model_path=optimized_model_path,
         )
     elif opt_level == 1:
         # basic optimizations (like constant folding and cast elimination) are not specified to execution provider.
@@ -281,6 +286,7 @@ def optimize_model(
             opt_level=1,
             disabled_optimizers=disabled_optimizers,
             verbose=verbose,
+            optimized_model_path=optimized_model_path,
         )
 
     if only_onnxruntime and not temp_model_path:
@@ -293,10 +299,8 @@ def optimize_model(
     else:
         optimizer = optimize_by_fusion(model, model_type, num_heads, hidden_size, optimization_options)
 
-    # Remove the temporary model.
-    if temp_model_path:
-        os.remove(temp_model_path)
-        logger.debug(f"Remove temporary model: {temp_model_path}")
+    # remove the temporary directory
+    temp_dir.cleanup()
 
     return optimizer
 
