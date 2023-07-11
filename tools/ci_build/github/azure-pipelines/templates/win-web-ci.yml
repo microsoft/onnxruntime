@@ -128,9 +128,11 @@ jobs:
     displayName: 'Check out of dated documents'
   - task: Cache@2
     inputs:
+      # once the test data is changed, we need to update the cache key.
       key: onnxtestdata | opset18
       restoreKeys: onnxtestdata | opset18
       path: $(Build.SourcesDirectory)/js/test/
+    displayName: 'Cache ONNX test data'
   - task: PowerShell@2
     inputs:
       filePath: '$(Build.SourcesDirectory)\tools\ci_build\github\js\pack-npm-packages.ps1'
