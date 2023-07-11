@@ -313,6 +313,14 @@ class GPTNeoXAttention(nn.Module):
         attention_mask=None,
         layer_past=None,
     ):
+        import onnxruntime
+
+        sess_options = onnxruntime.SessionOptions()
+        cuda_providers = ["CUDAExecutionProvider"]
+        if cuda_providers[0] not in onnxruntime.get_available_providers():
+            return None
+        ort_session = onnxruntime.InferenceSession(self.onnx_graph, sess_options, providers=["CUDAExecutionProvider"])
+
         ort_inputs = {
             "input": np.ascontiguousarray(hidden_states.cpu().numpy()),
         }
@@ -349,10 +357,6 @@ class GPTNeoXAttention(nn.Module):
             ort_inputs["past"] = np.stack((reordered_past_key, past_value_padded), axis=0)
             ort_inputs["past_sequence_length"] = np.array([past_seq_len], dtype=np.int32)
 
-        from onnxruntime import InferenceSession, SessionOptions
-
-        sess_options = SessionOptions()
-        ort_session = InferenceSession(self.onnx_graph, sess_options, providers=["CUDAExecutionProvider"])
         ort_output = ort_session.run(None, ort_inputs)
 
         output = torch.tensor(ort_output[0])
@@ -430,12 +434,8 @@ class TestGPTNeoXAttention(unittest.TestCase):
 
                         torch_output = attn.torch_forward(hidden_states)
                         ort_output = attn.onnx_forward(hidden_states)
-                        print(
-                            "Parity check with shape BNSH = ({},{},{},{})".format(
-                                batch_size, num_head, seq_len, hidden_size
-                            )
-                        )
-                        assert torch.allclose(torch_output, ort_output, atol=1e-4)
+                        if ort_output is not None:
+                            assert torch.allclose(torch_output, ort_output, atol=1e-4)
 
     def test_gpt_neox_decoder_masked_self_attention(self):
         for batch_size in [1, 2, 4, 8]:
@@ -468,12 +468,8 @@ class TestGPTNeoXAttention(unittest.TestCase):
                         ort_output = attn.onnx_forward(
                             hidden_states, attention_mask=attention_mask, layer_past=layer_past
                         )
-                        print(
-                            "Parity check with shape BNSH = ({},{},{},{})".format(
-                                batch_size, num_head, total_seq_len, hidden_size
-                            )
-                        )
-                        assert torch.allclose(torch_output, ort_output, atol=1e-4)
+                        if ort_output is not None:
+                            assert torch.allclose(torch_output, ort_output, atol=1e-4)
 
 
 if __name__ == "__main__":

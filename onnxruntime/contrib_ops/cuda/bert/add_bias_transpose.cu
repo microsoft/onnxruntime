@@ -651,6 +651,9 @@ void InvokeAddBiasTranspose(
     if (format != 1 && format != 2 && format != 3) {
       ORT_THROW("format must be 1, 2 or 3 for rotary attention");
     }
+    if (qk_head_size != 64 && qk_head_size !=128) {
+      ORT_THROW("qk_head_size must be 64 or 128 for rotary attention");
+    }
     if (v_head_size != -1 && qk_head_size != v_head_size) {
       ORT_THROW("qk_head_size must be equal to v_head_size for rotary attention");
     }
