@@ -47,43 +47,48 @@ export interface ResizeAttributes extends AttributeWithCacheKey {
   keepAspectRatioPolicy: KeepAspectRatioPolicy;
   mode: Mode;
   nearestMode: NearestMode;
-  opsetVersion: number;
 }
 
+var opsetVersion = 10;
+var scales: Float32Array;
+var sizes: BigInt64Array;
+var roi: Float32Array;
+
 const validateInputs = (inputs: readonly TensorView[], attributes: ResizeAttributes): void => {
-  const roiInputIndex = attributes.opsetVersion > 10 ? 1 : -1;
-  const scalesInputIndex = attributes.opsetVersion > 10 ? 2 : 1;
-  const sizesInputIndex = attributes.opsetVersion > 10 ? 3 : -1;
+  const roiInputIndex = opsetVersion > 10 ? 1 : -1;
+  const scalesInputIndex = opsetVersion > 10 ? 2 : 1;
+  const sizesInputIndex = opsetVersion > 10 ? 3 : -1;
 
   const rank = inputs[0].dims.length;
-  if (roiInputIndex > 0 && inputs.length > 1) {
-    if (inputs[roiInputIndex].dims.length !== 2 * rank) {
+  if (roiInputIndex > 0 && inputs.length > roiInputIndex) {
+    roi = inputs[roiInputIndex].getFloat32Array();
+    if (roi.length !== 2 * rank) {
       throw new Error('Resize requires RoI input to be of rank 2*rank');
     }
   }
-  if (inputs.length > 2) {
-    if (inputs[scalesInputIndex].dataType === DataType.float) {
-      // The input is scales
-      if (attributes.axes.length > 0) {
-        if (inputs[2].dims.length !== attributes.axes.length) {
-          throw new Error('Resize requires "scales" input size to be of axes rank when axes attributes is specified');
-        }
-      } else {
-        if (inputs[2].dims.length !== rank) {
-          throw new Error('Resize requires scales size to be of input rank');
-        }
-      }
-    } else if (inputs[2].dataType === DataType.int64) {
-      // The input is sizes
-      if (attributes.axes.length > 0) {
-        if (inputs[2].dims.length !== attributes.axes.length) {
-          throw new Error(
-              'Resize requires "sizes" input size to be of rank axes rank when axes attributes is specified');
-        }
-      } else if (inputs[2].dims.length !== rank) {
-        throw new Error('Resize requires sizes size to be of rank input rank');
-      }
+  if (scalesInputIndex > 0 && inputs.length > scalesInputIndex) {
+    scales = inputs[scalesInputIndex].getFloat32Array();
+    if (ShapeUtil.size(inputs[scalesInputIndex].dims) !== 2 * rank) {
+      throw new Error('Resize requires scales input to be of 2 time rank');
     }
+  }
+  if (sizesInputIndex > 0 && inputs.length > sizesInputIndex) {
+    sizes = inputs[sizesInputIndex].getBigInt64Array();
+    if (sizes.length !== rank || (opsetVersion >= 18 && sizes.length === attributes.axes.length)) {
+      throw new Error('Resize requires sizes input to be of rank');
+    }
+  }
+
+  if (attributes.axes.length > 0) {
+    if (scales.length !== attributes.axes.length) {
+      throw new Error('Resize requires "scales" input size to be of axes rank when axes attributes is specified');
+    }
+    if (sizes.length !== attributes.axes.length) {
+      throw new Error('Resize requires "sizes" input size to be of rank axes rank when axes attributes is specified');
+    }
+  }
+  if (scales.length > 0 && sizes.length !== rank) {
+    throw new Error('Resize requires only of scales or sizes to be specified');
   }
 };
 
@@ -155,25 +160,8 @@ export const createResizeProgramInfoLoader =
 
 const readCustomDataBuffer = (context: ComputeContext): void => {
   const customDataBuffer = context.customDataBuffer;
-  const customDataBuffer32 = new Uint32Array(customDataBuffer, customDataBuffer.byteOffset, 10);
-  useExtrapolation = customDataBuffer32[0] === 1;
-  opset = customDataBuffer32[1];
-  const outputShapeSize = customDataBuffer32[2];
-  const scalesSize = customDataBuffer32[3];
-  const roiSize = customDataBuffer32[4];
-  let offset = customDataBuffer.byteOffset;
-  offset += 20;
-  if (outputShapeSize > 0) {
-    outputShapeArray = new Uint32Array(customDataBuffer, offset, outputShapeSize);
-  }
-  offset += 4 * outputShapeSize;  // adjust offset to read scales
-  if (scalesSize > 0) {
-    scalesArray = new Float32Array(customDataBuffer, offset, scalesSize);
-  }
-  offset += 4 * scalesSize;  // adjust offset to read roi
-  if (roiSize > 0) {
-    roiArray = new Float32Array(customDataBuffer, offset, roiSize);
-  }
+  const customDataBuffer32 = new Uint32Array(customDataBuffer, customDataBuffer.byteOffset, 1);
+  opsetVersion = customDataBuffer32[0];
 };
 
 export const resize = (context: ComputeContext, attributes: ResizeAttributes): void => {
@@ -192,7 +180,6 @@ export const parseResizeAttributes = (attributes: Record<string, unknown>): Resi
   const keepAspectRatioPolicy = attributes.keepAspectRatioPolicy as KeepAspectRatioPolicy;
   const mode = attributes.mode as Mode;
   const nearestMode = attributes.nearestMode as NearestMode;
-  const opsetVersion = attributes.opsetVersion as number;
   return createAttributeWithCacheKey({
     antialias,
     axes,
@@ -202,7 +189,6 @@ export const parseResizeAttributes = (attributes: Record<string, unknown>): Resi
     extrapolationValue,
     keepAspectRatioPolicy,
     mode,
-    nearestMode,
-    opsetVersion
+    nearestMode
   });
 };

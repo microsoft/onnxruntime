@@ -12,6 +12,9 @@ namespace js {
 class Resize : public JsKernel, public UpsampleBase {
  public:
   Resize(const OpKernelInfo& info) : JsKernel(info), UpsampleBase(info) {
+    const auto& node = info.node();
+    auto opset_ = node.SinceVersion();
+
     auto resize_coordinate_transformation_mode = ResizeCoordinateTransformationModeToString(coordinate_transform_mode_);
     auto keep_aspect_ratio_policy = KeepAspectRatioPolicyToString(keep_aspect_ratio_policy_);
     auto nearest_mode = NearestModeToString(nearest_mode_);
@@ -108,14 +111,8 @@ class Resize : public JsKernel, public UpsampleBase {
     std::vector<float> roi_array;
     std::vector<float> scales_array;
 
-    ORT_RETURN_IF_ERROR(Precompute(context, OpKernel::Node().InputDefs().size(), roi_array, scales_array, output_dims));
-
     // Compute the size of the custom data
-    size_t customDataSize = 0;
-    customDataSize += sizeof(int32_t) * 4;                           // roi_input_index_, scales_input_index, sizes_input_index
-    customDataSize += sizeof(output_dims.size() * sizeof(int32_t));  // output_dims.size()
-    customDataSize += sizeof(scales_array.size() * sizeof(float));   // scales_
-    customDataSize += sizeof(roi_array.size() * sizeof(float));      // roi_input_index_
+    size_t customDataSize = sizeof(int32_t);
 
     // Allocate memory for custom data
     void* p_custom_data = alloc->Alloc(customDataSize);
@@ -127,20 +124,10 @@ class Resize : public JsKernel, public UpsampleBase {
 
     // Serialize the custom data
     int32_t* p_int32 = reinterpret_cast<int32_t*>(p_custom_data);
-    *p_int32++ = use_extrapolation_ ? 1 : 0;
     *p_int32++ = static_cast<int32_t>(opset_);
-    *p_int32++ = static_cast<int32_t>(output_dims.size());
-    *p_int32++ = static_cast<int32_t>(scales_array.size());
-    *p_int32 = static_cast<int32_t>(roi_array.size());
-    p_int32 += 5;
-    memcpy(p_int32, output_dims.data(), output_dims.size() * sizeof(int32_t));
-    p_int32 += output_dims.size();
-    float* p_float = reinterpret_cast<float*>(p_int32);
-    memcpy(p_float, scales_array.data(), scales_array.size() * sizeof(float));
-    p_float += scales_.size();
-    memcpy(p_float, roi_array.data(), roi_array.size() * sizeof(float));
     return Status::OK();
   }
+
   int opset_;
 };
 
