@@ -261,7 +261,7 @@ dependencies {
 if (isNewArchitectureEnabled()) {
   react {
     jsRootDir = file("../lib/")
-    libraryName = "Onnxruntime"
+    libraryName = "OnnxruntimeSpec"
     codegenJavaPackageName = "ai.onnxruntime.reactnative"
   }
 }
