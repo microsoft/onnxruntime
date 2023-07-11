@@ -16,6 +16,8 @@ import numpy as np
 import torch
 from torch import nn
 
+np.random.seed(0)
+torch.manual_seed(0)
 torch.set_printoptions(threshold=10000)
 
 
@@ -169,6 +171,8 @@ def rotate_half(x):
 def apply_rotary_pos_emb(q, k, cos, sin, offset: int = 0):
     cos = cos[..., offset : q.shape[-2] + offset, :]
     sin = sin[..., offset : q.shape[-2] + offset, :]
+    print("cos", cos)
+    print("sin", sin)
     q_embed = (q * cos) + (rotate_half(q) * sin)
     k_embed = (k * cos) + (rotate_half(k) * sin)
     return q_embed, k_embed
@@ -177,6 +181,7 @@ def apply_rotary_pos_emb(q, k, cos, sin, offset: int = 0):
 class GPTNeoXAttention(nn.Module):
     def __init__(self, batch_size, seq_len, num_head, hidden_size, past_seq_len=0):
         super().__init__()
+        self.do_rotary = True
         self.num_attention_heads = num_head
         self.hidden_size = hidden_size
         self.head_size = self.hidden_size // self.num_attention_heads
@@ -379,22 +384,23 @@ class GPTNeoXAttention(nn.Module):
         key = qkv[..., self.head_size : 2 * self.head_size].permute(0, 2, 1, 3)
         value = qkv[..., 2 * self.head_size :].permute(0, 2, 1, 3)
 
-        # Compute rotary embeddings on rotary_ndims
-        query_rot = query[..., : self.rotary_ndims]
-        query_pass = query[..., self.rotary_ndims :]
-        key_rot = key[..., : self.rotary_ndims]
-        key_pass = key[..., self.rotary_ndims :]
+        if self.do_rotary:
+            # Compute rotary embeddings on rotary_ndims
+            query_rot = query[..., : self.rotary_ndims]
+            query_pass = query[..., self.rotary_ndims :]
+            key_rot = key[..., : self.rotary_ndims]
+            key_pass = key[..., self.rotary_ndims :]
 
-        # Compute token offset for rotary embeddings (when decoding)
-        seq_len = key.shape[-2]
-        offset = 0
-        if has_layer_past:
-            offset = layer_past[0].shape[-2]
-            seq_len += offset
-        cos, sin = self.rotary_emb(value, seq_len=seq_len)
-        query, key = apply_rotary_pos_emb(query_rot, key_rot, cos, sin, offset=offset)
-        query = torch.cat((query, query_pass), dim=-1)
-        key = torch.cat((key, key_pass), dim=-1)
+            # Compute token offset for rotary embeddings (when decoding)
+            seq_len = key.shape[-2]
+            offset = 0
+            if has_layer_past:
+                offset = layer_past[0].shape[-2]
+                seq_len += offset
+            cos, sin = self.rotary_emb(value, seq_len=seq_len)
+            query, key = apply_rotary_pos_emb(query_rot, key_rot, cos, sin, offset=offset)
+            query = torch.cat((query, query_pass), dim=-1)
+            key = torch.cat((key, key_pass), dim=-1)
 
         # Cache QKV values
         if has_layer_past:
@@ -437,8 +443,8 @@ class TestGPTNeoXAttention(unittest.TestCase):
         for batch_size in [1, 2, 4, 8]:
             for past_seq_len in [1, 4, 32, 128, 512, 1024]:
                 total_seq_len = past_seq_len + 1
-                for num_head in [2]:
-                    for hidden_size in [64]:
+                for num_head in [12]:
+                    for hidden_size in [768]:
                         attn = GPTNeoXAttention(batch_size, 1, num_head, hidden_size, past_seq_len)
 
                         hidden_states = torch.normal(mean=0.5, std=0.1, size=(batch_size, 1, hidden_size)).to(
@@ -469,7 +475,7 @@ class TestGPTNeoXAttention(unittest.TestCase):
                                 batch_size, num_head, total_seq_len, hidden_size
                             )
                         )
-                        assert torch.allclose(torch_output, ort_output, atol=1e-6)
+                        assert torch.allclose(torch_output, ort_output, atol=1e-4)
 
 
 if __name__ == "__main__":

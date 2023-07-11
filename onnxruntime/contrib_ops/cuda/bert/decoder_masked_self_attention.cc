@@ -188,7 +188,7 @@ Status DecoderMaskedSelfAttention<T1, T2>::ComputeInternal(OpKernelContext* cont
   // NeoX rotary embedding
   if (do_rotary_) {
     parameters.rotary_embedding_dim = parameters.head_size;
-    parameters.t_step = parameters.original_past_sequence_length + 1;
+    parameters.t_step = parameters.past_sequence_length;
   }
 
   switch (parameters.head_size) {
