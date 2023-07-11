@@ -12,7 +12,8 @@
 #endif
 
 #include "core/common/common.h"
-#include <limits>
+
+#include "core/session/onnxruntime_float16.h"
 
 namespace onnxruntime {
 
@@ -23,23 +24,16 @@ namespace onnxruntime {
 #endif
 
 // MLFloat16
-struct MLFloat16 {
-  // uint16_t special values
-  static constexpr uint16_t kSignMask = 0x8000U;
-  static constexpr uint16_t kBiasedExponentMask = 0x7C00U;
-  static constexpr uint16_t kPositiveInfinityBits = 0x7C00U;
-  static constexpr uint16_t kNegativeInfinityBits = 0xFC00U;
-  static constexpr uint16_t kPositiveQNaNBits = 0x7E00U;
-  static constexpr uint16_t kNegativeQNaNBits = 0xFE00U;
-  static constexpr uint16_t kEpsilonBits = 0x4170U;
-  static constexpr uint16_t kMinValueBits = 0xFBFFU;
-  static constexpr uint16_t kMaxValueBits = 0x7BFFU;
+struct MLFloat16 : onnxruntime_float16::Float16Impl {
+ private:
+  explicit constexpr MLFloat16(uint16_t x) noexcept { val = x; }
 
-  uint16_t val{0};
+ public:
+  using Base = onnxruntime_float16::Float16Impl;
 
   MLFloat16() = default;
-  explicit constexpr MLFloat16(uint16_t x) noexcept : val(x) {}
   constexpr static MLFloat16 FromBits(uint16_t x) noexcept { return MLFloat16(x); }
+  // We continue to use math impl instead of inherited one
   explicit MLFloat16(float f);
 
   static const MLFloat16 NaN;
@@ -49,115 +43,50 @@ struct MLFloat16 {
   static const MLFloat16 Epsilon;
   static const MLFloat16 MinValue;
   static const MLFloat16 MaxValue;
+  static const MLFloat16 Zero;
+  static const MLFloat16 One;
+  static const MLFloat16 MinusOne;
 
+  // We continue to use math impl instead of inherited one
   float ToFloat() const;
 
-  bool IsNegative() const noexcept {
-    return static_cast<int16_t>(val) < 0;
-  }
+  using Base::IsNegative;
 
-  bool IsNaN() const noexcept {
-    return Abs().val > kPositiveInfinityBits;
-  }
+  using Base::IsNaN;
 
-  bool IsFinite() const noexcept {
-    return Abs().val < kPositiveInfinityBits;
-  }
+  using Base::IsFinite;
 
-  bool IsPositiveInfinity() const noexcept {
-    return val == kPositiveInfinityBits;
-  }
+  using Base::IsPositiveInfinity;
 
-  bool IsNegativeInfinity() const noexcept {
-    return val == kNegativeInfinityBits;
-  }
+  using Base::IsNegativeInfinity;
 
-  bool IsInfinity() const noexcept {
-    return Abs().val == kPositiveInfinityBits;
-  }
+  using Base::IsInfinity;
 
-  bool IsNaNOrZero() const noexcept {
-    return ((val - 1) & ~kSignMask) >= kPositiveInfinityBits;
-  }
+  using Base::IsNaNOrZero;
 
-  bool IsNormal() const noexcept {
-    auto abs = Abs();
-    return (abs.val < kPositiveInfinityBits)           // is finite
-           && (abs.val != 0)                           // is not zero
-           && ((abs.val & kBiasedExponentMask) != 0);  // is not subnormal (has a non-zero exponent)
-  }
+  using Base::IsNormal;
 
-  bool IsSubnormal() const noexcept {
-    auto abs = Abs();
-    return (abs.val < kPositiveInfinityBits)           // is finite
-           && (abs.val != 0)                           // is not zero
-           && ((abs.val & kBiasedExponentMask) == 0);  // is subnormal (has a zero exponent)
-  }
+  using Base::IsSubnormal;
 
   constexpr MLFloat16 Abs() const noexcept {
-    return MLFloat16::FromBits(static_cast<uint16_t>(val & ~kSignMask));
+    return MLFloat16::FromBits(Base::AbsImpl());
   }
 
   MLFloat16 Negate() const noexcept {
-    return IsNaN() ? *this : MLFloat16::FromBits(static_cast<uint16_t>(val ^ kSignMask));
+    return MLFloat16::FromBits(Base::NegateImpl());
   }
 
   operator float() const noexcept { return ToFloat(); }
+
+  using Base::operator==;
+  using Base::operator!=;
+  using Base::operator<;
 };
 
-inline bool AreZero(const MLFloat16& lhs, const MLFloat16& rhs) noexcept {
-  // IEEE defines that positive and negative zero are equal, this gives us a quick equality check
-  // for two values by or'ing the private bits together and stripping the sign. They are both zero,
-  // and therefore equivalent, if the resulting value is still zero.
-  return static_cast<uint16_t>((lhs.val | rhs.val) & ~MLFloat16::kSignMask) == 0;
-}
-
-inline bool operator==(const MLFloat16& lhs, const MLFloat16& rhs) noexcept {
-  if (lhs.IsNaN() || rhs.IsNaN()) {
-    // IEEE defines that NaN is not equal to anything, including itself.
-    return false;
-  }
-  return lhs.val == rhs.val;
-}
-
-inline bool operator!=(const MLFloat16& lhs, const MLFloat16& rhs) noexcept {
-  return !(lhs == rhs);
-}
-
-inline bool operator<(const MLFloat16& lhs, const MLFloat16& rhs) noexcept {
-  if (lhs.IsNaN() || rhs.IsNaN()) {
-    // IEEE defines that NaN is unordered with respect to everything, including itself.
-    return false;
-  }
-
-  const bool left_is_negative = lhs.IsNegative();
-
-  if (left_is_negative != rhs.IsNegative()) {
-    // When the signs of left and right differ, we know that left is less than right if it is
-    // the negative value. The exception to this is if both values are zero, in which case IEEE
-    // says they should be equal, even if the signs differ.
-    return left_is_negative && !AreZero(lhs, rhs);
-  }
-
-  return (lhs.val != rhs.val) && ((lhs.val < rhs.val) ^ left_is_negative);
-}
-
 // BFloat16
-struct BFloat16 {
-  // uint16_t special values
-  static constexpr uint16_t kSignMask = 0x8000U;
-  static constexpr uint16_t kBiasedExponentMask = 0x7F80U;
-  static constexpr uint16_t kPositiveInfinityBits = 0x7F80U;
-  static constexpr uint16_t kNegativeInfinityBits = 0xFF80U;
-  static constexpr uint16_t kPositiveQNaNBits = 0x7FC1U;
-  static constexpr uint16_t kNegativeQNaNBits = 0xFFC1U;
-  static constexpr uint16_t kSignaling_NaNBits = 0x7F80U;
-  static constexpr uint16_t kEpsilonBits = 0x0080U;
-  static constexpr uint16_t kMinValueBits = 0xFF7FU;
-  static constexpr uint16_t kMaxValueBits = 0x7F7FU;
-  static constexpr uint16_t kRoundToNearest = 0x7FFFU;
+struct BFloat16 : onnxruntime_float16::BFloat16Impl {
+  using Base = onnxruntime_float16::BFloat16Impl;
 
-  uint16_t val{0};
 #if defined(__HIP__)
   ORT_HOST_DEVICE BFloat16() = default;
 #else
@@ -166,7 +95,7 @@ struct BFloat16 {
 
   struct FromBitsT {};
   static constexpr ORT_HOST_DEVICE FromBitsT FromBits() noexcept { return FromBitsT(); }
-  constexpr ORT_HOST_DEVICE BFloat16(unsigned short bits, FromBitsT) noexcept : val(bits) {}
+  constexpr ORT_HOST_DEVICE BFloat16(unsigned short bits, FromBitsT) noexcept { val = bits; }
 
   static constexpr ORT_HOST_DEVICE BFloat16 FromBits(uint16_t bits) noexcept {
     return BFloat16(bits, FromBits());
@@ -190,7 +119,6 @@ struct BFloat16 {
       val = static_cast<uint16_t>((U32 + rounding_bias) >> 16);
     }
 #else
-
     if (v != v) {
       val = kPositiveQNaNBits;
     } else {
@@ -228,11 +156,10 @@ struct BFloat16 {
     result = *tempRes;
     return result;
 #else
-
     // float NaN encodings are not specified and encoded
     // differently on different processors, so we use limits
     // Infinities will be propagated as is.
-    if (IsNaN()) {
+    if (val != val) {
       return std::numeric_limits<float>::quiet_NaN();
     }
 
@@ -255,55 +182,34 @@ struct BFloat16 {
   static const BFloat16 Epsilon;
   static const BFloat16 MinValue;
   static const BFloat16 MaxValue;
+  static const BFloat16 Zero;
+  static const BFloat16 One;
+  static const BFloat16 MinusOne;
 
-  ORT_HOST_DEVICE bool IsNegative() const noexcept {
-    return static_cast<int16_t>(val) < 0;
+  using Base::IsNegative;
+
+  using Base::IsNaN;
+
+  using Base::IsFinite;
+
+  using Base::IsPositiveInfinity;
+
+  using Base::IsNegativeInfinity;
+
+  using Base::IsInfinity;
+
+  using Base::IsNaNOrZero;
+
+  using Base::IsNormal;
+
+  using Base::IsSubnormal;
+
+  BFloat16 Abs() const noexcept {
+    return BFloat16::FromBits(Base::AbsImpl());
   }
 
-  ORT_HOST_DEVICE bool IsNaN() const noexcept {
-    return Abs().val > kPositiveInfinityBits;
-  }
-
-  ORT_HOST_DEVICE bool IsFinite() const noexcept {
-    return Abs().val < kPositiveInfinityBits;
-  }
-
-  ORT_HOST_DEVICE bool IsPositiveInfinity() const noexcept {
-    return val == kPositiveInfinityBits;
-  }
-
-  ORT_HOST_DEVICE bool IsNegativeInfinity() const noexcept {
-    return val == kNegativeInfinityBits;
-  }
-
-  ORT_HOST_DEVICE bool IsInfinity() const noexcept {
-    return Abs().val == kPositiveInfinityBits;
-  }
-
-  ORT_HOST_DEVICE bool IsNaNOrZero() const noexcept {
-    return ((val - 1) & ~kSignMask) >= kPositiveInfinityBits;
-  }
-
-  ORT_HOST_DEVICE bool IsNormal() const noexcept {
-    auto abs = Abs();
-    return (abs.val < kPositiveInfinityBits)           // is finite
-           && (abs.val != 0)                           // is not zero
-           && ((abs.val & kBiasedExponentMask) != 0);  // is not subnormal (has a non-zero exponent)
-  }
-
-  ORT_HOST_DEVICE bool IsSubnormal() const noexcept {
-    auto abs = Abs();
-    return (abs.val < kPositiveInfinityBits)           // is finite
-           && (abs.val != 0)                           // is not zero
-           && ((abs.val & kBiasedExponentMask) == 0);  // is subnormal (has a zero exponent)
-  }
-
-  ORT_HOST_DEVICE BFloat16 Abs() const noexcept {
-    return BFloat16::FromBits(static_cast<uint16_t>(val & ~kSignMask));
-  }
-
-  ORT_HOST_DEVICE BFloat16 Negate() const noexcept {
-    return IsNaN() ? *this : BFloat16::FromBits(static_cast<uint16_t>(val ^ kSignMask));
+  BFloat16 Negate() const noexcept {
+    return BFloat16::FromBits(Base::NegateImpl());
   }
 
   ORT_HOST_DEVICE operator float() const noexcept { return ToFloat(); }
@@ -312,51 +218,18 @@ struct BFloat16 {
   ORT_HOST_DEVICE BFloat16(const __nv_bfloat16& value) { val = *reinterpret_cast<const unsigned short*>(&value); }
   explicit ORT_HOST_DEVICE operator __nv_bfloat16() const { return *reinterpret_cast<const __nv_bfloat16*>(&val); }
 #endif
+
+  using Base::operator==;
+  using Base::operator!=;
+  using Base::operator<;
 };
-
-inline ORT_HOST_DEVICE bool AreZero(const BFloat16& lhs, const BFloat16& rhs) noexcept {
-  // IEEE defines that positive and negative zero are equal, this gives us a quick equality check
-  // for two values by or'ing the private bits together and stripping the sign. They are both zero,
-  // and therefore equivalent, if the resulting value is still zero.
-  return static_cast<uint16_t>((lhs.val | rhs.val) & ~BFloat16::kSignMask) == 0;
-}
-
-inline ORT_HOST_DEVICE bool operator==(const BFloat16& lhs, const BFloat16& rhs) noexcept {
-  if (lhs.IsNaN() || rhs.IsNaN()) {
-    // IEEE defines that NaN is not equal to anything, including itself.
-    return false;
-  }
-  return lhs.val == rhs.val;
-}
-
-inline ORT_HOST_DEVICE bool operator!=(const BFloat16& lhs, const BFloat16& rhs) noexcept {
-  return !(lhs == rhs);
-}
-
-inline ORT_HOST_DEVICE bool operator<(const BFloat16& lhs, const BFloat16& rhs) noexcept {
-  if (lhs.IsNaN() || rhs.IsNaN()) {
-    // IEEE defines that NaN is unordered with respect to everything, including itself.
-    return false;
-  }
-
-  const bool left_is_negative = lhs.IsNegative();
-
-  if (left_is_negative != rhs.IsNegative()) {
-    // When the signs of left and right differ, we know that left is less than right if it is
-    // the negative value. The exception to this is if both values are zero, in which case IEEE
-    // says they should be equal, even if the signs differ.
-    return left_is_negative && !AreZero(lhs, rhs);
-  }
-
-  return (lhs.val != rhs.val) && ((lhs.val < rhs.val) ^ left_is_negative);
-}
 
 // User defined suffixes to make it easier to declare
 // initializers with MLFloat16 and BFloat16 from unsigned short
 // E.g 10_f16 or 10_b16
 #if !defined(__CUDACC__) && !defined(__HIPCC__)
 inline MLFloat16 operator"" _f16(unsigned long long int v) noexcept {
-  return MLFloat16(narrow<uint16_t>(v));
+  return MLFloat16::FromBits(narrow<uint16_t>(v));
 }
 
 inline MLFloat16 operator"" _fp16(long double v) noexcept {

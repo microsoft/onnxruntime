@@ -24,6 +24,8 @@
 
 #pragma once
 #include "onnxruntime_c_api.h"
+#include "onnxruntime_float16.h"
+
 #include <cstddef>
 #include <cstdio>
 #include <array>
@@ -159,30 +161,21 @@ std::vector<std::string> GetAvailableProviders();
  *
  * \endcode
  */
-struct Float16_t {
+struct Float16_t : onnxruntime_float16::Float16Impl {
  private:
   /// <summary>
   /// Constructor from a 16-bit representation of a float16 value
   /// No conversion is done here.
   /// </summary>
   /// <param name="v">16-bit representation</param>
-  constexpr explicit Float16_t(uint16_t v) noexcept : value(v) {}
+  constexpr explicit Float16_t(uint16_t v) noexcept { val = v; }
 
  public:
-  enum Constants : uint16_t {
-    kSignMask = 0x8000U,
-    kBiasedExponentMask = 0x7C00,
-    kPositiveInfinityBits = 0x7C00,
-    kNegativeInfinityBits = 0xFC00,
-    kPositiveQNaNBits = 0x7E00,
-    kNegativeQNaNBits = 0xFE00,
-    kEpsilonBits = 0x4170,
-    kMinValueBits = 0xFBFF,
-    kMaxValueBits = 0x7BFF
-  };
+  using Base = onnxruntime_float16::Float16Impl;
 
-  uint16_t value{0};
-
+  /// <summary>
+  /// Default constructor
+  /// </summary>
   Float16_t() = default;
 
   /// <summary>
@@ -196,79 +189,79 @@ struct Float16_t {
   /// __ctor from float. Float is converted into float16 16-bit representation.
   /// </summary>
   /// <param name="v">float value</param>
-  explicit Float16_t(float v);
+  explicit Float16_t(float v) { val = Base::ToUint16Impl(v); }
 
   /// <summary>
   /// Converts bfloat16 to float
   /// </summary>
   /// <returns>float representation of bfloat16 value</returns>
-  float ToFloat() const noexcept;
+  float ToFloat() const { return Base::ToFloatImpl(); }
 
   /// <summary>
   /// Checks if the value is negative
   /// </summary>
   /// <returns>true if negative</returns>
-  bool IsNegative() const noexcept;
+  using Base::IsNegative;
 
   /// <summary>
   /// Tests if the value is NaN
   /// </summary>
   /// <returns>true if NaN</returns>
-  bool IsNaN() const noexcept;
+  using Base::IsNaN;
 
   /// <summary>
   /// Tests if the value is finite
   /// </summary>
   /// <returns>true if finite</returns>
-  bool IsFinite() const noexcept;
+  using Base::IsFinite;
 
   /// <summary>
   /// Tests if the value represents positive infinity.
   /// </summary>
   /// <returns>true if positive infinity</returns>
-  bool IsPositiveInfinity() const noexcept;
+  using Base::IsPositiveInfinity;
 
   /// <summary>
   /// Tests if the value represents negative infinity
   /// </summary>
   /// <returns>true if negative infinity</returns>
-  bool IsNegativeInfinity() const noexcept;
+  using Base::IsNegativeInfinity;
 
   /// <summary>
   /// Tests if the value is either positive or negative infinity.
   /// </summary>
   /// <returns>True if absolute value is infinity</returns>
-  bool IsInfinity() const noexcept;
+  using Base::IsInfinity;
 
   /// <summary>
   /// Tests if the value is NaN or zero. Useful for comparisons.
   /// </summary>
   /// <returns>True if NaN or zero.</returns>
-  bool IsNaNOrZero() const noexcept;
+  using Base::IsNaNOrZero;
 
   /// <summary>
   /// Tests if the value is normal (not zero, subnormal, infinite, or NaN).
   /// </summary>
   /// <returns>True if so</returns>
-  bool IsNormal() const noexcept;
+  using Base::IsNormal;
 
   /// <summary>
   /// Tests if the value is subnormal (denormal).
   /// </summary>
   /// <returns>True if so</returns>
-  bool IsSubnormal() const noexcept;
+  using Base::IsSubnormal;
 
   /// <summary>
   /// Creates an instance that represents absolute value.
   /// </summary>
   /// <returns>Absolute value</returns>
-  Float16_t Abs() const noexcept;
+  Float16_t Abs() const noexcept { return Float16_t::FromBits(Base::AbsImpl()); }
 
   /// <summary>
   /// Creates a new instance with the sign flipped.
   /// </summary>
   /// <returns>Flipped sign instance</returns>
-  Float16_t Negate() const noexcept;
+  Float16_t Negate() const noexcept { return Float16_t::FromBits(Base::NegateImpl()); }
 
   /// <summary>
   /// IEEE defines that positive and negative zero are equal, this gives us a quick equality check
@@ -278,16 +271,16 @@ struct Float16_t {
   /// <param name="lhs">first value</param>
   /// <param name="rhs">second value</param>
   /// <returns>True if both arguments represent zero</returns>
-  static bool AreZero(const Float16_t& lhs, const Float16_t& rhs) noexcept;
+  using Base::AreZero;
 
   /// <summary>
   /// User defined conversion operator. Converts Float16_t to float.
   /// </summary>
   explicit operator float() const noexcept { return ToFloat(); }
 
-  bool operator==(const Float16_t& rhs) const noexcept;
-  bool operator!=(const Float16_t& rhs) const noexcept { return !(*this == rhs); }
-  bool operator<(const Float16_t& rhs) const noexcept;
+  using Base::operator==;
+  using Base::operator!=;
+  using Base::operator<;
 };
 
 static_assert(sizeof(Float16_t) == sizeof(uint16_t), "Sizes must match");
@@ -310,7 +303,7 @@ static_assert(sizeof(Float16_t) == sizeof(uint16_t), "Sizes must match");
  *
  * \endcode
  */
-struct BFloat16_t {
+struct BFloat16_t : onnxruntime_float16::BFloat16Impl {
  private:
   /// <summary>
   /// Constructor from a uint16_t representation of bfloat16
@@ -319,24 +312,10 @@ struct BFloat16_t {
   /// No conversion is done.
   /// </summary>
   /// <param name="v">16-bit bfloat16 value</param>
-  constexpr explicit BFloat16_t(uint16_t v) noexcept : value(v) {}
+  constexpr explicit BFloat16_t(uint16_t v) noexcept { val = v; }
 
  public:
-  enum Constants : uint16_t {
-    kSignMask = 0x8000U,
-    kBiasedExponentMask = 0x7F80U,
-    kPositiveInfinityBits = 0x7F80U,
-    kNegativeInfinityBits = 0xFF80U,
-    kPositiveQNaNBits = 0x7FC1U,
-    kNegativeQNaNBits = 0xFFC1U,
-    kSignaling_NaN = 0x7F80U,
-    kEpsilonBits = 0x0080U,
-    kMinValueBits = 0xFF7FU,
-    kMaxValueBits = 0x7F7FU,
-    kRoundToNearest = 0x7FFFU
-  };
-
-  uint16_t value{0};
+  using Base = onnxruntime_float16::BFloat16Impl;
 
   BFloat16_t() = default;
 
@@ -351,79 +330,79 @@ struct BFloat16_t {
   /// __ctor from float. Float is converted into bfloat16 16-bit representation.
   /// </summary>
   /// <param name="v">float value</param>
-  explicit BFloat16_t(float v) noexcept;
+  explicit BFloat16_t(float v) noexcept { val = Base::ToUint16Impl(v); }
 
   /// <summary>
   /// Converts bfloat16 to float
   /// </summary>
   /// <returns>float representation of bfloat16 value</returns>
-  float ToFloat() const noexcept;
+  float ToFloat() const noexcept { return Base::ToFloatImpl(); }
 
   /// <summary>
   /// Checks if the value is negative
   /// </summary>
   /// <returns>true if negative</returns>
-  bool IsNegative() const noexcept;
+  using Base::IsNegative;
 
   /// <summary>
   /// Tests if the value is NaN
   /// </summary>
   /// <returns>true if NaN</returns>
-  bool IsNaN() const noexcept;
+  using Base::IsNaN;
 
   /// <summary>
   /// Tests if the value is finite
   /// </summary>
   /// <returns>true if finite</returns>
-  bool IsFinite() const noexcept;
+  using Base::IsFinite;
 
   /// <summary>
   /// Tests if the value represents positive infinity.
   /// </summary>
   /// <returns>true if positive infinity</returns>
-  bool IsPositiveInfinity() const noexcept;
+  using Base::IsPositiveInfinity;
 
   /// <summary>
   /// Tests if the value represents negative infinity
   /// </summary>
   /// <returns>true if negative infinity</returns>
-  bool IsNegativeInfinity() const noexcept;
+  using Base::IsNegativeInfinity;
 
   /// <summary>
   /// Tests if the value is either positive or negative infinity.
   /// </summary>
   /// <returns>True if absolute value is infinity</returns>
-  bool IsInfinity() const noexcept;
+  using Base::IsInfinity;
 
   /// <summary>
   /// Tests if the value is NaN or zero. Useful for comparisons.
   /// </summary>
   /// <returns>True if NaN or zero.</returns>
-  bool IsNaNOrZero() const noexcept;
+  using Base::IsNaNOrZero;
 
   /// <summary>
   /// Tests if the value is normal (not zero, subnormal, infinite, or NaN).
   /// </summary>
   /// <returns>True if so</returns>
-  bool IsNormal() const noexcept;
+  using Base::IsNormal;
 
   /// <summary>
   /// Tests if the value is subnormal (denormal).
   /// </summary>
   /// <returns>True if so</returns>
-  bool IsSubnormal() const noexcept;
+  using Base::IsSubnormal;
 
   /// <summary>
   /// Creates an instance that represents absolute value.
   /// </summary>
   /// <returns>Absolute value</returns>
-  BFloat16_t Abs() const noexcept;
+  BFloat16_t Abs() const noexcept { return FromBits(Base::AbsImpl()); }
 
   /// <summary>
   /// Creates a new instance with the sign flipped.
   /// </summary>
   /// <returns>Flipped sign instance</returns>
-  BFloat16_t Negate() const noexcept;
+  BFloat16_t Negate() const noexcept { return FromBits(Base::NegateImpl()); }
 
   /// <summary>
   /// IEEE defines that positive and negative zero are equal, this gives us a quick equality check
@@ -433,16 +412,16 @@ struct BFloat16_t {
   /// <param name="lhs">first value</param>
   /// <param name="rhs">second value</param>
   /// <returns>True if both arguments represent zero</returns>
-  static bool AreZero(const BFloat16_t& lhs, const BFloat16_t& rhs) noexcept;
+  using Base::AreZero;
 
   /// <summary>
   /// User defined conversion operator. Converts BFloat16_t to float.
   /// </summary>
   explicit operator float() const noexcept { return ToFloat(); }
 
-  bool operator==(const BFloat16_t& rhs) const noexcept;
-  bool operator!=(const BFloat16_t& rhs) const noexcept { return !(*this == rhs); }
-  bool operator<(const BFloat16_t& rhs) const noexcept;
+  using Base::operator==;
+  using Base::operator!=;
+  using Base::operator<;
 };
 
 static_assert(sizeof(BFloat16_t) == sizeof(uint16_t), "Sizes must match");
