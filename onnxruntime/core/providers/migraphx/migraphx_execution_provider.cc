@@ -1050,8 +1050,20 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
           migraphx::quantize_fp16(prog);
         }
 
-        if (int8_enable) {
-          migraphx::quantize_int8(prog);
+        if (int8_enable)
+        {
+          std::vector<float> calib_dig;
+          migraphx::quantize_int8_options quant_opts;
+          migraphx::program_parameters quant_params;
+
+          auto param_shapes = prog.get_parameter_shapes();
+          for(auto&& name : param_shapes.names())
+          {
+              quant_params.add(name, migraphx::argument(param_shapes[name], calib_dig.data()));
+          }
+
+          quant_opts.add_calibration_data(quant_params);
+          migraphx::quantize_int8(prog, targ, quant_opts);
         }
 
         prog.compile(t);
