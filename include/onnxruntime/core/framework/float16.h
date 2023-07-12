@@ -70,7 +70,7 @@ struct MLFloat16 : onnxruntime_float16::Float16Impl {
 
   using Base::IsSubnormal;
 
-  constexpr MLFloat16 Abs() const noexcept {
+  MLFloat16 Abs() const noexcept {
     return MLFloat16::FromBits(Base::AbsImpl());
   }
 
