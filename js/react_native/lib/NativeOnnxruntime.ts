@@ -56,7 +56,9 @@ export type EncodedTensor = {
   readonly data: JSIBlob|string[];
 };
 
-export type Feeds = {[name: string]: EncodedTensor};
+export type Feeds = {
+  [name: string]: EncodedTensor;
+};
 
 // SessionHanlder FetchesType is different from native module's one.
 // It's because Java API doesn't support preallocated output values.
