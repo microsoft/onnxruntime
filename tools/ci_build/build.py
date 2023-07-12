@@ -46,9 +46,12 @@ class UsageError(BaseError):
 
 
 def _check_python_version():
-    if (sys.version_info.major, sys.version_info.minor) < (3, 7):
+    # TODO Upgrade this, Python 3.6 is no longer supported. However, some packaging pipelines are still using it.
+    required_minor_version = 6
+    if (sys.version_info.major, sys.version_info.minor) < (3, required_minor_version):
         raise UsageError(
-            f"Invalid Python version. At least Python 3.7 is required. Actual Python version: {sys.version}"
+            f"Invalid Python version. At least Python 3.{required_minor_version} is required. "
+            f"Actual Python version: {sys.version}"
         )
 
 

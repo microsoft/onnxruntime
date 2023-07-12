@@ -30,9 +30,13 @@ Status ReluGrad<T>::Compute(OpKernelContext* context) const {
   auto& X = *context->Input<Tensor>(1);
   auto& dX = *context->Output(0, dY.Shape());
 
-  EigenVectorArrayMap<float>(dX.template MutableData<T>(), dX.Shape().Size()) =
-      (ConstEigenVectorArrayMap<float>(X.template Data<T>(), X.Shape().Size()) > T(0))
-          .select(ConstEigenVectorArrayMap<float>(dY.template Data<T>(), dY.Shape().Size()), T(0));
+  auto dY_span = dY.template DataAsSpan<T>();
+  auto X_span = X.template DataAsSpan<T>();
+  auto dX_span = dX.template MutableDataAsSpan<T>();
+
+  EigenVectorArrayMap<float>(dX_span.data(), dX_span.size()) =
+      (ConstEigenVectorArrayMap<float>(X_span.data(), X_span.size()) > T(0))
+          .select(ConstEigenVectorArrayMap<float>(dY_span.data(), dY_span.size()), T(0));
 
   return Status::OK();
 }
@@ -63,8 +67,8 @@ Status SoftmaxGrad<T>::Compute(OpKernelContext* context) const {
   size_t rank = input_shape.NumDimensions();
   const size_t axis = static_cast<size_t>(HandleNegativeAxis(axis_, rank));
 
-  size_t N = input_shape.SizeToDimension(axis);
-  size_t D = input_shape.SizeFromDimension(axis);
+  size_t N = narrow<size_t>(input_shape.SizeToDimension(axis));
+  size_t D = narrow<size_t>(input_shape.SizeFromDimension(axis));
 
   if (N == 0) {
     return Status::OK();
@@ -94,8 +98,8 @@ Status SoftmaxGrad<T>::Compute(OpKernelContext* context) const {
     for (auto e : permutation) {
       transposed_input_dims.push_back(input_shape[e]);
     }
-    N = TensorShape(transposed_input_dims).SizeToDimension(rank - 1);
-    D = TensorShape(transposed_input_dims).SizeFromDimension(rank - 1);
+    N = narrow<size_t>(TensorShape(transposed_input_dims).SizeToDimension(rank - 1));
+    D = narrow<size_t>(TensorShape(transposed_input_dims).SizeFromDimension(rank - 1));
 
     // Allocate a temporary tensor to hold transposed input
     auto temp_input0 = Tensor(Y.DataType(), TensorShape(transposed_input_dims), alloc);
@@ -185,9 +189,12 @@ Status SigmoidGrad<T>::Compute(OpKernelContext* context) const {
   auto& dY = *context->Input<Tensor>(0);
   auto& Y = *context->Input<Tensor>(1);
   auto& dX = *context->Output(0, dY.Shape());
-  EigenVectorArrayMap<float> dx = EigenVectorArrayMap<float>(dX.template MutableData<T>(), dX.Shape().Size());
-  ConstEigenVectorArrayMap<float> y = ConstEigenVectorArrayMap<float>(Y.template Data<T>(), Y.Shape().Size());
-  ConstEigenVectorArrayMap<float> dy = ConstEigenVectorArrayMap<float>(dY.template Data<T>(), dY.Shape().Size());
+  EigenVectorArrayMap<float> dx = EigenVectorArrayMap<float>(dX.template MutableData<T>(),
+                                                             narrow<Eigen::Index>(dX.Shape().Size()));
+  ConstEigenVectorArrayMap<float> y = ConstEigenVectorArrayMap<float>(Y.template Data<T>(),
+                                                                      narrow<Eigen::Index>(Y.Shape().Size()));
+  ConstEigenVectorArrayMap<float> dy = ConstEigenVectorArrayMap<float>(dY.template Data<T>(),
+                                                                       narrow<Eigen::Index>(dY.Shape().Size()));
   dx = dy * y * (1 - y);
   return Status::OK();
 }
@@ -205,9 +212,12 @@ Status TanhGrad<T>::Compute(OpKernelContext* context) const {
   auto& dY = *context->Input<Tensor>(0);
   auto& Y = *context->Input<Tensor>(1);
   auto& dX = *context->Output(0, dY.Shape());
-  EigenVectorArrayMap<float> dx = EigenVectorArrayMap<float>(dX.template MutableData<T>(), dX.Shape().Size());
-  ConstEigenVectorArrayMap<float> y = ConstEigenVectorArrayMap<float>(Y.template Data<T>(), Y.Shape().Size());
-  ConstEigenVectorArrayMap<float> dy = ConstEigenVectorArrayMap<float>(dY.template Data<T>(), dY.Shape().Size());
+  EigenVectorArrayMap<float> dx = EigenVectorArrayMap<float>(dX.template MutableData<T>(),
+                                                             narrow<Eigen::Index>(dX.Shape().Size()));
+  ConstEigenVectorArrayMap<float> y = ConstEigenVectorArrayMap<float>(Y.template Data<T>(),
+                                                                      narrow<Eigen::Index>(Y.Shape().Size()));
+  ConstEigenVectorArrayMap<float> dy = ConstEigenVectorArrayMap<float>(dY.template Data<T>(),
+                                                                       narrow<Eigen::Index>(dY.Shape().Size()));
   dx = dy * (1 - y * y);
   return Status::OK();
 }
@@ -240,7 +250,7 @@ Status QuickGeluGrad<T>::Compute(OpKernelContext* context) const {
           p_dx[i] = p_x[i] * alpha_;
         }
 
-        MlasComputeLogistic(p_dx, p_dx, count);
+        MlasComputeLogistic(p_dx, p_dx, narrow<size_t>(count));
 
         for (int64_t i = 0; i < count; i++) {
           p_dx[i] = p_dy[i] * p_dx[i] * (1.f + alpha_ * p_x[i] * (1.f - p_dx[i]));
