@@ -89,7 +89,7 @@ void EMSCRIPTEN_KEEPALIVE OrtTrainingReleaseSession(orttraining_handle_t trainin
   Ort::GetTrainingApi().ReleaseTrainingSession(training_handle->trainingSession);
 }
 
-void EMSCRIPTEN_KEEPALIVE OrtTrainingReleaseSession(orttraining_handle_t training_handle) {
+void EMSCRIPTEN_KEEPALIVE OrtTrainingReleaseHandle(orttraining_handle_t training_handle) {
   // TODO: ask somebody how to free the struct :(
     if (training_handle->checkpointState)
       OrtTrainingReleaseCheckpoint(training_handle);
@@ -109,7 +109,7 @@ size_t* EMSCRIPTEN_KEEPALIVE OrtTrainingGetParametersSize(orttraining_handle_t t
 
 ort_tensor_handle_t EMSCRIPTEN_KEEPALIVE OrtTrainingCopyParametersToBuffer(orttraining_handle_t training_handle,
                                                                             ort_tensor_handle_t parameters_buffer,
-                                                                            bool trainableOnly) {
+                                                                            bool trainable_only) {
   return (CHECK_TRAINING_STATUS(CopyParametersToBuffer, training_handle->trainingSession, parameters_buffer, trainable_only) == ORT_OK)
              ? parameters_buffer
              : nullptr;
@@ -117,7 +117,7 @@ ort_tensor_handle_t EMSCRIPTEN_KEEPALIVE OrtTrainingCopyParametersToBuffer(orttr
 
 ort_tensor_handle_t EMSCRIPTEN_KEEPALIVE OrtTrainingCopyBufferToParameters(orttraining_handle_t training_handle,
                                                                             ort_tensor_handle_t parameters_buffer,
-                                                                            bool trainableOnly) {
+                                                                            bool trainable_only) {
   return (CHECK_TRAINING_STATUS(CopyBufferToParameters, training_handle->trainingSession, parameters_buffer, trainable_only) == ORT_OK)
              ? parameters_buffer
              : nullptr;
