@@ -935,12 +935,12 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
              ORT_ENFORCE(model_inputs_with_error.second, "Training model graph inputs are not defined.");
              for (size_t idx = 0; idx < user_inputs.size(); ++idx) {
                auto& feed = user_inputs[idx];
-               const auto feed_name = model->GetTrainingModelInputName(idx);
                // No need to process 'None's sent in by the user
                // to feed Optional inputs in the graph.
                // We just won't include anything in the feed and ORT
                // will handle such implicit 'None's internally.
                if (!feed.is(py::none())) {
+                 const auto feed_name = model->GetTrainingModelInputName(idx);
                  OrtValue ort_value;
                  CreateGenericMLValue(model_inputs_with_error.second, GetAllocator(), feed_name, feed, &ort_value);
                  ThrowIfPyErrOccured();
@@ -948,6 +948,11 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
                }
              }
              ORT_THROW_IF_ERROR(model->TrainStep(feeds, user_outputs));
+           })
+      .def("train_step_with_ort_values",
+           [](onnxruntime::training::api::Module* model,
+              const std::vector<OrtValue>& user_inputs, std::vector<OrtValue>& user_outputs) -> void {
+             ORT_THROW_IF_ERROR(model->TrainStep(user_inputs, user_outputs));
            })
       .def("eval_step",
            [](onnxruntime::training::api::Module* model,
@@ -958,12 +963,12 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
              ORT_ENFORCE(model_inputs_with_error.second, "Eval model graph inputs are not defined.");
              for (size_t idx = 0; idx < user_inputs.size(); ++idx) {
                auto& feed = user_inputs[idx];
-               const auto feed_name = model->GetEvalModelInputName(idx);
                // No need to process 'None's sent in by the user
                // to feed Optional inputs in the graph.
                // We just won't include anything in the feed and ORT
                // will handle such implicit 'None's internally.
                if (!feed.is(py::none())) {
+                 const auto feed_name = model->GetEvalModelInputName(idx);
                  OrtValue ort_value;
                  CreateGenericMLValue(model_inputs_with_error.second, GetAllocator(), feed_name, feed, &ort_value);
                  ThrowIfPyErrOccured();
@@ -971,6 +976,11 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
                }
              }
              ORT_THROW_IF_ERROR(model->EvalStep(feeds, user_outputs));
+           })
+      .def("eval_step_with_ort_values",
+           [](onnxruntime::training::api::Module* model,
+              const std::vector<OrtValue>& user_inputs, std::vector<OrtValue>& user_outputs) -> void {
+             ORT_THROW_IF_ERROR(model->EvalStep(user_inputs, user_outputs));
            })
       .def("lazy_reset_grad",
            [](onnxruntime::training::api::Module* model) -> void {

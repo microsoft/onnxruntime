@@ -30,7 +30,7 @@ class TrainingSession {
                   const std::vector<std::shared_ptr<IExecutionProvider>>& providers,
                   CheckpointState* state,
                   const ModelIdentifiers& model_identifiers,
-                  gsl::span<OrtCustomOpDomain* const> custom_op_domains);
+                  gsl::span<OrtCustomOpDomain* const> custom_op_domains = gsl::span<OrtCustomOpDomain* const>());
 
   Status RegisterScheduler(const std::function<
                                std::unique_ptr<LRSchedulerBase>(std::shared_ptr<Optimizer>)>& get_scheduler,

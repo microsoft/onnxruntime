@@ -66,26 +66,53 @@ class Module:
         )
         self._state = state
 
-    def __call__(self, *user_inputs) -> tuple[np.ndarray] | np.ndarray:
+    def __call__(self, *user_inputs) -> tuple[np.ndarray] | np.ndarray | tuple[OrtValue] | OrtValue:
         """Invokes either the training or the evaluation step of the model.
 
         Args:
             *user_inputs: The inputs to the model.
+                          The user inputs can be either numpy arrays or OrtValues.
         Returns:
             The outputs of the model.
         """
-        forward_inputs = [user_input for user_input in user_inputs]
-        fetches = OrtValueVector()
 
-        if self.training:
-            self._model.train_step(forward_inputs, fetches)
-        else:
-            self._model.eval_step(forward_inputs, fetches)
+        def _has_np_input(user_inputs):
+            return any(isinstance(user_input, np.ndarray) for user_input in user_inputs)
 
-        if len(fetches) == 1:
-            return fetches[0].numpy()
+        def _take_generic_step(forward_inputs):
+            fetches = OrtValueVector()
+            if self.training:
+                self._model.train_step(forward_inputs, fetches)
+            else:
+                self._model.eval_step(forward_inputs, fetches)
 
-        return tuple(val.numpy() for val in fetches)
+            if len(fetches) == 1:
+                return fetches[0].numpy()
+
+            return tuple(val.numpy() for val in fetches)
+
+        def _take_step_with_ortvalues(forward_inputs):
+            ort_values = OrtValueVector()
+            ort_values.reserve(len(forward_inputs))
+            fetches = OrtValueVector()
+
+            for tensor in forward_inputs:
+                ort_values.push_back(tensor._ortvalue)
+
+            if self.training:
+                self._model.train_step_with_ort_values(ort_values, fetches)
+            else:
+                self._model.eval_step_with_ort_values(ort_values, fetches)
+
+            if len(fetches) == 1:
+                return OrtValue(fetches[0])
+
+            return tuple(OrtValue(val) for val in fetches)
+
+        if _has_np_input(user_inputs):
+            return _take_generic_step([*user_inputs])
+
+        return _take_step_with_ortvalues(user_inputs)
 
     def train(self, mode: bool = True) -> Module:
         """Sets the Module in training mode.

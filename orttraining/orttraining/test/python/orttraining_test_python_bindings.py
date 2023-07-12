@@ -14,7 +14,7 @@ import torch
 from orttraining_test_onnxblock import _get_models
 
 import onnxruntime.training.onnxblock as onnxblock
-from onnxruntime import SessionOptions
+from onnxruntime import OrtValue, SessionOptions
 from onnxruntime.training import artifacts
 from onnxruntime.training.api import CheckpointState, LinearLRScheduler, Module, Optimizer
 
@@ -381,15 +381,15 @@ def test_ort_custom_ops():
             onnx.helper.make_tensor_value_info("output_1", onnx.TensorProto.FLOAT, [3, 5])
         )
 
-        class CustomOpBlockWithGemm(onnxblock.ForwardBlock):
+        class CustomOpBlockWithLinear(onnxblock.ForwardBlock):
             def __init__(self):
                 super().__init__()
-                self.gemm = onnxblock.blocks.Gemm(5, 10)
+                self.linear = onnxblock.blocks.Linear(5, 10)
 
-            def build(self, gemm_input):
-                return self.gemm(gemm_input)
+            def build(self, linear_input):
+                return self.linear(linear_input)
 
-        custom_op_block = CustomOpBlockWithGemm()
+        custom_op_block = CustomOpBlockWithLinear()
         with onnxblock.base(onnx_model) as model_accessor:
             model_accessor.model.opset_import.append(onnx.helper.make_opsetid("test.customop", 1))
             model_accessor.model.opset_import.append(onnx.helper.make_opsetid("", 14))
@@ -442,10 +442,10 @@ def test_string_inputs():
             def __init__(self):
                 super().__init__()
                 self.cast = onnxblock.blocks.Cast(to=onnx.TensorProto.FLOAT)
-                self.gemm = onnxblock.blocks.Gemm(4, 2)
+                self.linear = onnxblock.blocks.Linear(4, 2)
 
             def build(self, string_input):
-                return self.gemm(self.cast(string_input))
+                return self.linear(self.cast(string_input))
 
         string_block = BlockWithStringInputs()
         with onnxblock.empty_base() as model_accessor:
@@ -486,3 +486,63 @@ def test_string_inputs():
 
         model.eval()
         _ = model(strs, labels)
+
+
+def test_train_step_with_ort_values():
+    # Generating random data for testing.
+    inputs_np = torch.randn(64, 784).numpy()
+    inputs = OrtValue.ortvalue_from_numpy(inputs_np)
+    labels_np = torch.randint(high=10, size=(64,), dtype=torch.int64).numpy()
+    labels = OrtValue.ortvalue_from_numpy(labels_np)
+
+    with tempfile.TemporaryDirectory() as temp_dir:
+        (
+            checkpoint_file_path,
+            training_model_file_path,
+            _,
+            _,
+            pt_model,
+        ) = _create_training_artifacts(temp_dir)
+        # Create Checkpoint State.
+        state = CheckpointState.load_checkpoint(checkpoint_file_path)
+        # Create a Module.
+        print(training_model_file_path)
+        model = Module(training_model_file_path, state)
+        model.train()
+        ort_loss = model(inputs, labels)
+        assert isinstance(ort_loss, OrtValue)
+
+        # Calculate loss using pytorch model to compare it with Module's output.
+        pt_outputs = pt_model(torch.from_numpy(inputs_np))
+        loss_fn = torch.nn.CrossEntropyLoss()
+        pt_loss = loss_fn(pt_outputs, torch.from_numpy(labels_np).long())
+
+        assert np.allclose(ort_loss.numpy(), pt_loss.detach().numpy())
+
+
+def test_eval_step_with_ort_values():
+    # Generating random data for testing.
+    inputs_np = torch.randn(64, 784).numpy()
+    inputs = OrtValue.ortvalue_from_numpy(inputs_np)
+    labels_np = torch.randint(high=10, size=(64,), dtype=torch.int64).numpy()
+    labels = OrtValue.ortvalue_from_numpy(labels_np)
+
+    with tempfile.TemporaryDirectory() as temp_dir:
+        (
+            checkpoint_file_path,
+            training_model_file_path,
+            eval_model_file_path,
+            _,
+            _,
+        ) = _create_training_artifacts(temp_dir)
+        # Create Checkpoint State.
+        state = CheckpointState.load_checkpoint(checkpoint_file_path)
+        # Create a Module.
+        model = Module(training_model_file_path, state, eval_model_file_path)
+        model.train()
+        model(inputs, labels)
+
+        model.eval()
+        fetches = model(inputs, labels)
+        assert isinstance(fetches, OrtValue)
+        assert fetches
