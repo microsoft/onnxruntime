@@ -2,7 +2,6 @@
 // Licensed under the MIT License.
 
 
-import {DataType} from '../../../wasm-common';
 import {TensorView} from '../../tensor';
 import {ShapeUtil} from '../../util';
 import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-with-cache-key';
@@ -10,31 +9,34 @@ import {ComputeContext, GpuDataType, ProgramInfo, ProgramInfoLoader, ProgramMeta
 
 import {createIndicesHelper, ShaderHelper} from './common';
 
-class CoordinateTransformMode {
-  static halfPixel = Symbol('half_pixel');
-  static pytorchHalfPixel = Symbol('pytorch_half_pixel');
-  static asymmetric = Symbol('asymmetric');
-  static halfPixelSymmetric = Symbol('half_pixel_symmetric');
-  static tfCropAndResize = Symbol('tf_crop_and_resize');
+enum CoordinateTransformMode {
+  halfPixel = 'half_pixel',
+  asymmetric = 'asymmetric',
+  pytorchHalfPixel = 'pytorch_half_pixel',
+  tfHalfPixelForNN = 'tf_half_pixel_for_nn',
+  alignCorners = 'align_corners',
+  tfCropAndResize = 'tf_crop_and_resize',
+  halfPixelSymmetric = 'half_pixel_symmetric'
 }
 
-class KeepAspectRatioPolicy {
-  streach = Symbol('streach');
-  notSmaller = Symbol('not_smaller');
-  notLarger = Symbol('not_larger');
+enum KeepAspectRatioPolicy {
+  streach = 'streach',
+  notSmaller = 'not_smaller',
+  notLarger = 'not_larger'
 }
 
-class Mode {
-  nearest = Symbol('nearest');
-  linear = Symbol('linear');
-  cubic = Symbol('cubic')
+enum Mode {
+  nearest = 'nearest',
+  linear = 'linear',
+  cubic = 'cubic'
 }
 
-class NearestMode {
-  roundPreferFloor = Symbol('round_prefer_floor');
-  roundPreferCeil = Symbol('round_prefer_ceil');
-  floor = Symbol('floor');
-  ceil = Symbol('ceil');
+enum NearestMode {
+  roundPreferFloor = 'round_prefer_floor',
+  roundPreferCeil = 'round_prefer_ceil',
+  floor = 'floor',
+  ceil = 'ceil',
+  simple = ''  // Opset 10 doesn't have this attribute
 }
 
 export interface ResizeAttributes extends AttributeWithCacheKey {
@@ -49,33 +51,56 @@ export interface ResizeAttributes extends AttributeWithCacheKey {
   nearestMode: NearestMode;
 }
 
-var opsetVersion = 10;
-var scales: Float32Array;
-var sizes: BigInt64Array;
-var roi: Float32Array;
+let opsetVersion = 10;
+let scales: number[] = [];
+const sizes: number[] = [];
+let roi: number[] = [];
+let roiInputIndex: number;
+let scalesInputIndex: number;
+let sizesInputIndex: number;
+
+const validateScales = (scales: number[]): void => {
+  scales.every((value) => value > 0 || (() => {
+                            throw new Error('Resize requires scales input values to be positive');
+                          }));
+  // Check scales dims based on mode: LINEAR, CUBIC
+};
+
+const updateScales = (scales: number[], axes: number[], rank: number): number[] => {
+  axes.every((value) => value >= 0 && value < rank || (() => {
+                          throw new Error('Resize requires axes input values to be positive and less than rank');
+                        }));
+  const newScales = new Array(rank).fill(1.0);
+  axes.forEach((value, index) => newScales[value] = scales[index]);
+  return newScales;
+};
 
 const validateInputs = (inputs: readonly TensorView[], attributes: ResizeAttributes): void => {
-  const roiInputIndex = opsetVersion > 10 ? 1 : -1;
-  const scalesInputIndex = opsetVersion > 10 ? 2 : 1;
-  const sizesInputIndex = opsetVersion > 10 ? 3 : -1;
-
+  [roiInputIndex, scalesInputIndex, sizesInputIndex] =
+      (opsetVersion > 10) ? [1, 2, 3] : [-1, (inputs.length > 1) ? 1 : -1, -1];
   const rank = inputs[0].dims.length;
   if (roiInputIndex > 0 && inputs.length > roiInputIndex) {
-    roi = inputs[roiInputIndex].getFloat32Array();
-    if (roi.length !== 2 * rank) {
-      throw new Error('Resize requires RoI input to be of rank 2*rank');
-    }
+    inputs[roiInputIndex].getFloat32Array().forEach((value) => roi.push(value));
+
+  } else if (attributes.coordinateTransformMode === CoordinateTransformMode.tfCropAndResize) {
+    throw new Error('Resize requires RoI input to be specified when coordinateTransformMode is tfCropAndResize');
   }
+
   if (scalesInputIndex > 0 && inputs.length > scalesInputIndex) {
-    scales = inputs[scalesInputIndex].getFloat32Array();
-    if (ShapeUtil.size(inputs[scalesInputIndex].dims) !== 2 * rank) {
-      throw new Error('Resize requires scales input to be of 2 time rank');
+    inputs[scalesInputIndex].getFloat32Array().forEach((value) => scales.push(value));
+    if (scales.length !== 0 &&
+        (scales.length !== rank && (opsetVersion >= 18 && scales.length === attributes.axes.length))) {
+      throw new Error('Resize requires scales input size to be same as input rank or axes size for opset 18 and up');
+    }
+    validateScales(scales);
+    if (attributes.axes.length > 0) {
+      scales = updateScales(scales, attributes.axes, rank);
     }
   }
   if (sizesInputIndex > 0 && inputs.length > sizesInputIndex) {
-    sizes = inputs[sizesInputIndex].getBigInt64Array();
+    inputs[sizesInputIndex].getBigInt64Array().forEach((value) => sizes.push(Number(value)));
     if (sizes.length !== rank || (opsetVersion >= 18 && sizes.length === attributes.axes.length)) {
-      throw new Error('Resize requires sizes input to be of rank');
+      throw new Error('Resize requires sizes input size to be same as input rank or axes size for opset 18 and up');
     }
   }
 
@@ -87,57 +112,180 @@ const validateInputs = (inputs: readonly TensorView[], attributes: ResizeAttribu
       throw new Error('Resize requires "sizes" input size to be of rank axes rank when axes attributes is specified');
     }
   }
-  if (scales.length > 0 && sizes.length !== rank) {
+  if (typeof scales !== 'undefined' && typeof sizes !== 'undefined' && scales.length > 0 && sizes.length > rank) {
     throw new Error('Resize requires only of scales or sizes to be specified');
   }
 };
 
+const getOriginalCoordinateFromResizedCoordinate = (coordinateTransferMode: CoordinateTransformMode): string =>
+    'fn getOriginalCoordinateFromResizedCoordinate(xResized: u32, xScale: f32, lengthResized: u32,\
+    llengthOriginal: f32, roiStart: f32, roiEnd: f32) -> f32 { ' +
+    (() => {
+      switch (coordinateTransferMode) {
+        case CoordinateTransformMode.asymmetric:
+          return 'return f32(xResized) / xScale;';
+        case CoordinateTransformMode.pytorchHalfPixel:
+          return 'return lengthResized > 1 ? (xResized + 0.5) / xScale - 0.5 : 0.0;';
+        case CoordinateTransformMode.tfHalfPixelForNN:
+          return 'return (xResized + 0.5) / xScale';
+        case CoordinateTransformMode.alignCorners:
+          return 'return lengthResized === 1 ? 0 : xResized * (llengthOriginal - 1) / (lengthResized - 1);';
+        case CoordinateTransformMode.tfCropAndResize:
+          return 'return lengthResized > 1 ? \
+          (xResized * (roiEnd - roiStart) / (lengthResized - 1)) / (lengthResized - 1) : \
+          0.5 * (roiStart + roiEnd) * (llengthOriginal - 1);';
+        case CoordinateTransformMode.halfPixelSymmetric:
+          return [
+            'const outputWidth = xScale * lengthResized;', 'const adjustment = lengthResized / outputWidth;',
+            'const center = llengthOriginal / 2;', 'const offset = center * (1 - adjustment);',
+            'return offset + (xResized + 0.5) / xScale - 0.5;'
+          ].join('\n');
+        case CoordinateTransformMode.halfPixel:
+          return 'return (xResized + 0.5) / xScale - 0.5;';
+        default:
+          throw new Error(`Coordinate transform mode ${coordinateTransferMode} is not supported`);
+      }
+    })() +
+    '}';
+
+const getNearstPixelFromOriginal = (nearestMode: NearestMode): string =>
+    'fn getNearstPixelFromOriginal(xOriginal: f32, isDownSample: bool) -> f32 {' + (() => {
+      switch (nearestMode) {
+        case NearestMode.simple:
+          return 'if (isDownSample)\n {\nreturn ceil(xOriginal);\n} else {\n return xOriginal;\n}';
+        case NearestMode.roundPreferCeil:
+          return 'return round(xOriginal);';
+        case NearestMode.floor:
+          return 'return floor(xOriginal);';
+        case NearestMode.ceil:
+          return 'return ceil(xOriginal);';
+        case NearestMode.roundPreferFloor:
+          return 'return floor(xOriginal - 0.5);';
+        default:
+          throw new Error(`Nearest mode ${nearestMode} is not supported`);
+      }
+    })() +
+    '}';
+
+const updateRoI = (roi: readonly number[], axes: readonly number[], rank: number): number[] => {
+  const roiTmp = new Array(rank).fill(0).concat(new Array(rank).fill(1));
+  let roiLocal = roi.slice();
+  if (roi.length === 0) {
+    roiLocal = roiTmp;
+  }
+  if (axes.length > 0) {
+    axes.forEach((v, i) => {
+      roiTmp[v] = roiLocal[i];
+      roiTmp[i + rank] = roiLocal[axes.length + i];
+    });
+    roiLocal = roiTmp;
+  }
+  return roiLocal;
+};
+
+const initOutputShape =
+    (inputShape: readonly number[], scales: readonly number[], sizes: readonly number[], axes: readonly number[]):
+        number[] => {
+          let outputShape: number[] = [];
+          if (sizes.length > 0) {
+            if (axes.length > 0) {
+              inputShape.forEach((v) => outputShape.push(v));
+              if (Math.max(...axes) > inputShape.length) {
+                throw new Error('axes is out of bound');
+              }
+              axes.forEach((v, i) => outputShape[v] = sizes[i]);
+            } else {
+              sizes.forEach((v) => outputShape.push(v));
+            }
+          } else {
+            if (scales.length === 0) {
+              throw new Error('Resize requires either scales or sizes.');
+            } else {
+              outputShape = inputShape.map((value, index) => Math.round(value * scales[index]));
+            }
+          }
+          return outputShape;
+        };
+
+const adjustOutputShape =
+    (inputShape: readonly number[], outputShape: readonly number[], attributes: ResizeAttributes): number[] => {
+      scales = inputShape.map((value, index) => value === 0 ? 1.0 : outputShape[index] / value);
+      if (attributes.keepAspectRatioPolicy !== KeepAspectRatioPolicy.streach) {
+        const scaleInPolicy = (() => {
+          switch (attributes.keepAspectRatioPolicy) {
+            case KeepAspectRatioPolicy.notLarger:
+              return Math.min(...scales);
+            case KeepAspectRatioPolicy.notSmaller:
+              return Math.max(
+                  attributes.axes.length > 0 ? Math.min(...attributes.axes.map(i => scales[i])) : Math.min(...scales));
+            default:
+              throw new Error(`Keep aspect ratio policy ${attributes.keepAspectRatioPolicy} is not supported`);
+          }
+        })();
+        scales = scales.fill(1.0, 0, scales.length);
+        const adjustedOutputShape = inputShape.slice();
+        if (attributes.axes.length > 0) {
+          attributes.axes.forEach((v, i) => adjustedOutputShape[v] = Math.round(inputShape[v] * scales[i]));
+          attributes.axes.forEach((v) => scales[v] = scaleInPolicy);
+        }
+        return adjustedOutputShape;
+      } else {
+        return outputShape.slice();
+      }
+    };
+
 const createResizeProgramInfo =
     (metadata: ProgramMetadata, inputs: readonly TensorView[], attributes: ResizeAttributes): ProgramInfo => {
       const inputShape = inputs[0].dims;
-      const outputShape: number[] = [];
-      const roi: number[] = [];
-      const scales: number[] = [];
-      const sizes: number[] = [];
+      roi = updateRoI(roi, attributes.axes, inputShape.length);
 
-      if (inputs.length > 1) {
-        inputs[1].getFloat32Array().forEach(value => roi.push(value));
+      let outputShape = initOutputShape(inputShape, scales, sizes, attributes.axes);
+      if (scales.length === 0) {
+        outputShape = adjustOutputShape(inputShape, outputShape, attributes);
       }
-      if (inputs.length > 2) {
-        if (inputs[2].dataType === DataType.float) {
-          inputs[2].getFloat32Array().forEach(value => scales.push(value));
-        } else if (inputs[2].dataType === DataType.int64) {
-          inputs[2].getBigInt64Array().forEach(value => sizes.push(Number(value)));
-        }
-      }
-
-      if (sizes.length > 0) {
-        sizes.forEach(value => scales.push(value));
-      } else if (roi.length > 0 && scales.length > 0) {
-        for (let i = 0; i < inputs[0].dims.length; i++) {
-          outputShape.push(Math.floor(inputs[0].dims[i] * (roi[2 * i + 1] - roi[2 * i]) * scales[i]));
-        }
-      } else {
-        inputShape.forEach(value => outputShape.push(value));
-      }
-
       const outputIndicesHelper = createIndicesHelper('output', outputShape);
       const inputIndicesHelper = createIndicesHelper('input', inputShape);
       const outputSize = ShapeUtil.size(outputShape);
       const dataType = 'f32';
+      const noScale = inputShape.length === outputShape.length && inputShape.every((d, i) => d === outputShape[i]);
+      const useNearest2xOptimization =
+          ((opsetVersion < 11) ? true :
+                                 (attributes.mode === Mode.nearest &&
+                                  attributes.coordinateTransformMode === CoordinateTransformMode.asymmetric &&
+                                  attributes.nearestMode === NearestMode.floor)) &&
+          scales.toString() === '1,1,2,2';
+      const useNearest2xOptimizationSnippet = `
+        inputIndices[0] = outputIndices[0]; // batch size
+        inputIndices[1] = outputIndices[1]; // channel
+        inputIndices[2] = outputIndices[2] / 2; // height
+        inputIndices[3] = outputIndices[3] / 2; // width
+      `;
       const getShaderSource = (shaderHelper: ShaderHelper) => `
+      ${attributes.mode === Mode.nearest ? getNearstPixelFromOriginal(attributes.nearestMode) : ';'};
+      ${getOriginalCoordinateFromResizedCoordinate(attributes.coordinateTransformMode)};
       @group(0) @binding(0) var<storage, read> input : array<${dataType}>;
       @group(0) @binding(1) var<storage, read_write> output : array<${dataType}>;
       ${outputIndicesHelper.o2iImpl}
       ${inputIndicesHelper.i2oImpl}
       ${shaderHelper.mainStart()}
         ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes(outputSize)}
-
-        ${outputIndicesHelper.indicesVariableDeclaration('indices')}
-        ${outputIndicesHelper.o2iCall('global_idx', 'indices')}
-        ${inputIndicesHelper.indicesVariableDeclaration('aIndices')}
-
-        output[global_idx] = input[${inputIndicesHelper.i2oExpression('inputIndices')}];
+        if (${noScale}) {
+          output[global_idx] = input[global_idx];
+        }
+        else
+        {
+          ${outputIndicesHelper.indicesVariableDeclaration('outputIndices')}
+          ${outputIndicesHelper.o2iCall('global_idx', 'outputIndices')}
+          ${inputIndicesHelper.indicesVariableDeclaration('inputIndices')}
+          if (${useNearest2xOptimization}) {
+            ${useNearest2xOptimizationSnippet}
+          } else {
+            var value = ${dataType}(0);
+            // TODO: calculate mapping input indices
+            value += input[${inputIndicesHelper.i2oExpression('inputIndices')}];
+            output[global_idx] = value;
+          }
+        }
       }`;
 
       return {
@@ -173,13 +321,18 @@ export const resize = (context: ComputeContext, attributes: ResizeAttributes): v
 export const parseResizeAttributes = (attributes: Record<string, unknown>): ResizeAttributes => {
   const antialias = attributes.antialias as number;
   const axes = attributes.axes as number[];
-  const coordinateTransformMode = attributes.coordinateTransformMode as CoordinateTransformMode;
+  const coordinateTransformMode: CoordinateTransformMode =
+      CoordinateTransformMode[attributes.coordinateTransformMode as keyof typeof CoordinateTransformMode];
   const cubicCoeffA = attributes.cubicCoeffA as number;
   const excludeOutsize = attributes.excludeOutsize as number;
   const extrapolationValue = attributes.extrapolationValue as number;
-  const keepAspectRatioPolicy = attributes.keepAspectRatioPolicy as KeepAspectRatioPolicy;
-  const mode = attributes.mode as Mode;
-  const nearestMode = attributes.nearestMode as NearestMode;
+  const keepAspectRatioPolicy: KeepAspectRatioPolicy =
+      KeepAspectRatioPolicy[attributes.keepAspectRatioPolicy as keyof typeof KeepAspectRatioPolicy];
+  const mode: Mode = Mode[attributes.mode as keyof typeof Mode];
+  // If nearestMode is not specified, use simple mode.
+  const nearestMode: NearestMode = attributes.nearestMode === '' ?
+      NearestMode.simple :
+      NearestMode[attributes.nearestMode as keyof typeof NearestMode];
   return createAttributeWithCacheKey({
     antialias,
     axes,

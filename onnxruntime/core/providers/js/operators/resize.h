@@ -13,7 +13,7 @@ class Resize : public JsKernel, public UpsampleBase {
  public:
   Resize(const OpKernelInfo& info) : JsKernel(info), UpsampleBase(info) {
     const auto& node = info.node();
-    auto opset_ = node.SinceVersion();
+    opset_ = node.SinceVersion();
 
     auto resize_coordinate_transformation_mode = ResizeCoordinateTransformationModeToString(coordinate_transform_mode_);
     auto keep_aspect_ratio_policy = KeepAspectRatioPolicyToString(keep_aspect_ratio_policy_);
@@ -124,7 +124,10 @@ class Resize : public JsKernel, public UpsampleBase {
 
     // Serialize the custom data
     int32_t* p_int32 = reinterpret_cast<int32_t*>(p_custom_data);
-    *p_int32++ = static_cast<int32_t>(opset_);
+    *p_int32 = static_cast<int32_t>(opset_);
+
+    *ptr = p_custom_data;
+    *size = customDataSize;
     return Status::OK();
   }
 
