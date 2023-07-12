@@ -10,7 +10,7 @@ from itertools import product
 import kernel_explorer as ke
 import numpy as np
 import pytest
-from utils import get_gemm_basic_sizes, get_gemm_bert_sizes, get_gemm_bound, transab_to_suffix
+from utils import get_gemm_basic_sizes, get_gemm_bert_sizes, get_gemm_bound, matmul, transab_to_suffix
 
 
 def dtype_to_suffix(dtype):
@@ -31,7 +31,7 @@ def _test_batched_gemm(
     np.random.seed(0)
     as_ = [(np.random.rand(*a_shape) + 0.5).astype(dtype).astype("float64") for i in range(batch)]
     bs = [(np.random.rand(*b_shape) + 0.5).astype(dtype).astype("float64") for i in range(batch)]
-    intermediate_cs = [(as_[i].T if transa else as_[i]) @ (bs[i].T if transb else bs[i]) for i in range(batch)]
+    intermediate_cs = [matmul(as_[i], bs[i], transa, transb) for i in range(batch)]
     if alpha == 1.0 and beta == 0.0:  # fast path
         ref_cs = intermediate_cs
     else:
