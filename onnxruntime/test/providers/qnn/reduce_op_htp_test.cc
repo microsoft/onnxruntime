@@ -21,12 +21,11 @@ namespace test {
  *
  * \param op_type The ReduceOp type (e.g., ReduceSum).
  * \param opset The opset version. Some opset versions have "axes" as an attribute or input.
- * \param test_description Description of the test for error reporting.
  * \param expected_ep_assignment How many nodes are expected to be assigned to QNN (All, Some, or None)
  * \param keepdims Common attribute for all reduce operations.
  */
 template <typename QuantType>
-static void RunReduceOpQDQTest(const std::string& op_type, int opset, const char* test_description,
+static void RunReduceOpQDQTest(const std::string& op_type, int opset,
                                ExpectedEPNodeAssignment expected_ep_assignment = ExpectedEPNodeAssignment::All,
                                bool keepdims = true) {
   ProviderOptions provider_options;
@@ -46,8 +45,7 @@ static void RunReduceOpQDQTest(const std::string& op_type, int opset, const char
                   provider_options,
                   opset,
                   expected_ep_assignment,
-                  expected_nodes_in_partition,
-                  test_description);
+                  expected_nodes_in_partition);
 }
 
 //
@@ -60,7 +58,7 @@ static void RunReduceOpQDQTest(const std::string& op_type, int opset, const char
 // - Uses uint8 as the quantization type.
 // - Uses opset 13, which has "axes" as an input.
 TEST_F(QnnHTPBackendTests, TestQDQReduceSumU8Opset13) {
-  RunReduceOpQDQTest<uint8_t>("ReduceSum", 13, "TestQDQReduceSumU8Opset13");
+  RunReduceOpQDQTest<uint8_t>("ReduceSum", 13);
 }
 
 // Test creates a Q -> DQ -> ReduceSum -> Q -> DQ graph, and checks that all
@@ -69,7 +67,7 @@ TEST_F(QnnHTPBackendTests, TestQDQReduceSumU8Opset13) {
 // - Uses uint8 as the quantization type.
 // - Uses opset 11, which has "axes" as an attribute.
 TEST_F(QnnHTPBackendTests, TestQDQReduceSumU8Opset11) {
-  RunReduceOpQDQTest<uint8_t>("ReduceSum", 11, "TestQDQReduceSumU8Opset11");
+  RunReduceOpQDQTest<uint8_t>("ReduceSum", 11);
 }
 
 // Test creates a Q -> DQ -> ReduceSum -> Q -> DQ graph, and checks that all
@@ -78,7 +76,7 @@ TEST_F(QnnHTPBackendTests, TestQDQReduceSumU8Opset11) {
 // - Uses int8 as the quantization type.
 // - Uses opset 13, which has "axes" as an input.
 TEST_F(QnnHTPBackendTests, TestQDQReduceSumS8Opset13) {
-  RunReduceOpQDQTest<int8_t>("ReduceSum", 13, "TestQDQReduceSumS8Opset13");
+  RunReduceOpQDQTest<int8_t>("ReduceSum", 13);
 }
 
 //
@@ -94,7 +92,7 @@ TEST_F(QnnHTPBackendTests, TestQDQReduceSumS8Opset13) {
 // - Uses uint8 as the quantization type.
 // - Uses opset 18, which has "axes" as an input.
 TEST_F(QnnHTPBackendTests, TestQDQReduceMaxU8Opset18) {
-  RunReduceOpQDQTest<uint8_t>("ReduceMax", 18, "TestQDQReduceMaxU8Opset18");
+  RunReduceOpQDQTest<uint8_t>("ReduceMax", 18);
 }
 
 // Test creates a Q -> DQ -> ReduceMax -> Q -> DQ graph, and checks that all
@@ -103,7 +101,7 @@ TEST_F(QnnHTPBackendTests, TestQDQReduceMaxU8Opset18) {
 // - Uses uint8 as the quantization type.
 // - Uses opset 13, which has "axes" as an attribute.
 TEST_F(QnnHTPBackendTests, TestQDQReduceMaxU8Opset13) {
-  RunReduceOpQDQTest<uint8_t>("ReduceMax", 13, "TestQDQReduceMaxU8Opset13");
+  RunReduceOpQDQTest<uint8_t>("ReduceMax", 13);
 }
 
 // Test creates a Q -> DQ -> ReduceMax -> Q -> DQ graph, and checks that all
@@ -112,7 +110,7 @@ TEST_F(QnnHTPBackendTests, TestQDQReduceMaxU8Opset13) {
 // - Uses int8 as the quantization type.
 // - Uses opset 18, which has "axes" as an input.
 TEST_F(QnnHTPBackendTests, TestQDQReduceMaxS8Opset18) {
-  RunReduceOpQDQTest<int8_t>("ReduceMax", 18, "TestQDQReduceMaxS8Opset18");
+  RunReduceOpQDQTest<int8_t>("ReduceMax", 18);
 }
 #endif  // !defined(__linux__)
 
@@ -128,7 +126,7 @@ TEST_F(QnnHTPBackendTests, TestQDQReduceMaxS8Opset18) {
 // - Uses uint8 as the quantization type.
 // - Uses opset 18, which has "axes" as an input.
 TEST_F(QnnHTPBackendTests, TestQDQReduceMinU8Opset18) {
-  RunReduceOpQDQTest<uint8_t>("ReduceMin", 18, "TestQDQReduceMinU8Opset18");
+  RunReduceOpQDQTest<uint8_t>("ReduceMin", 18);
 }
 
 // Test creates a Q -> DQ -> ReduceMin -> Q -> DQ graph, and checks that all
@@ -137,7 +135,7 @@ TEST_F(QnnHTPBackendTests, TestQDQReduceMinU8Opset18) {
 // - Uses uint8 as the quantization type.
 // - Uses opset 13, which has "axes" as an attribute.
 TEST_F(QnnHTPBackendTests, TestQDQReduceMinU8Opset13) {
-  RunReduceOpQDQTest<uint8_t>("ReduceMin", 13, "TestQDQReduceMinU8Opset13");
+  RunReduceOpQDQTest<uint8_t>("ReduceMin", 13);
 }
 
 // Test creates a Q -> DQ -> ReduceMin -> Q -> DQ graph, and checks that all
@@ -145,7 +143,7 @@ TEST_F(QnnHTPBackendTests, TestQDQReduceMinU8Opset13) {
 //
 // Uses int8 as the quantization type.
 TEST_F(QnnHTPBackendTests, TestQDQReduceMinS8Opset18) {
-  RunReduceOpQDQTest<int8_t>("ReduceMin", 18, "TestQDQReduceMinS8Opset18");
+  RunReduceOpQDQTest<int8_t>("ReduceMin", 18);
 }
 #endif  // !defined(__linux__)
 
@@ -159,7 +157,7 @@ TEST_F(QnnHTPBackendTests, TestQDQReduceMinS8Opset18) {
 // - Uses uint8 as the quantization type.
 // - Uses opset 18, which has "axes" as an input.
 TEST_F(QnnHTPBackendTests, TestQDQReduceMeanU8Opset18) {
-  RunReduceOpQDQTest<uint8_t>("ReduceMean", 18, "TestQDQReduceMeanU8Opset18");
+  RunReduceOpQDQTest<uint8_t>("ReduceMean", 18);
 }
 
 // Test creates a Q -> DQ -> ReduceMean -> Q -> DQ graph, and checks that all
@@ -168,7 +166,7 @@ TEST_F(QnnHTPBackendTests, TestQDQReduceMeanU8Opset18) {
 // - Uses uint8 as the quantization type.
 // - Uses opset 13, which has "axes" as an attribute.
 TEST_F(QnnHTPBackendTests, TestQDQReduceMeanU8Opset13) {
-  RunReduceOpQDQTest<uint8_t>("ReduceMean", 13, "TestQDQReduceMeanU8Opset13");
+  RunReduceOpQDQTest<uint8_t>("ReduceMean", 13);
 }
 
 // Test creates a Q -> DQ -> ReduceMean -> Q -> DQ graph, and checks that all
@@ -177,7 +175,7 @@ TEST_F(QnnHTPBackendTests, TestQDQReduceMeanU8Opset13) {
 // - Uses int8 as the quantization type.
 // - Uses opset 18, which has "axes" as an input.
 TEST_F(QnnHTPBackendTests, TestQDQReduceMeanS8Opset18) {
-  RunReduceOpQDQTest<int8_t>("ReduceMean", 18, "TestQDQReduceMeanS8Opset18");
+  RunReduceOpQDQTest<int8_t>("ReduceMean", 18);
 }
 
 #endif  // defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
