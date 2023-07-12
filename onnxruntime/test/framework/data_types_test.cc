@@ -458,17 +458,20 @@ TEST_F(DataTypeTest, MlFloat16ConvertFloatToMLFloat16) {
 }
 
 TEST_F(DataTypeTest, MLFloat16Zeros) {
-  const auto positive_zero = MLFloat16::FromBits(0x0000);
+  const auto positive_zero = MLFloat16::FromBits(0U);
   EXPECT_FALSE(positive_zero.IsNegative());
   const float float_positive_zero = static_cast<float>(positive_zero);
   EXPECT_EQ(+0.0f, float_positive_zero);
   EXPECT_FALSE(std::signbit(float_positive_zero));
 
-  const auto negative_zero = MLFloat16::FromBits(0x8000);
+  const auto negative_zero = positive_zero.Negate();
   EXPECT_TRUE(negative_zero.IsNegative());
   const float float_positive_negzero = static_cast<float>(negative_zero);
   EXPECT_EQ(-0.0f, float_positive_negzero);
   EXPECT_TRUE(std::signbit(float_positive_negzero));
+
+  EXPECT_TRUE(positive_zero.IsNaNOrZero());
+  EXPECT_TRUE(negative_zero.IsNaNOrZero());
 }
 
 TEST_F(DataTypeTest, MLFloat16Comparision) {
@@ -493,6 +496,8 @@ TEST_F(DataTypeTest, MLFloat16Comparision) {
 TEST_F(DataTypeTest, MLFloat16TestNAN) {
   const MLFloat16 fp16NANFromSingle(std::numeric_limits<float>::quiet_NaN());
   EXPECT_TRUE(fp16NANFromSingle.IsNaN());
+  EXPECT_TRUE(fp16NANFromSingle.IsNaNOrZero());
+
   // NaN are not equal to each other
   EXPECT_NE(MLFloat16::NaN, fp16NANFromSingle);
 
@@ -598,17 +603,20 @@ TEST_F(DataTypeTest, BFloat16ConvertFloatToBFloat16) {
 }
 
 TEST_F(DataTypeTest, BFloat16Zeros) {
-  const auto positive_zero = BFloat16::FromBits(0x0000);
+  const auto positive_zero = BFloat16::FromBits(0U);
   EXPECT_FALSE(positive_zero.IsNegative());
   const float float_positive_zero = static_cast<float>(positive_zero);
   EXPECT_EQ(+0.0f, float_positive_zero);
   EXPECT_FALSE(std::signbit(float_positive_zero));
 
-  const auto negative_zero = BFloat16::FromBits(0x8000);
+  const auto negative_zero = positive_zero.Negate();
   EXPECT_TRUE(negative_zero.IsNegative());
   const float float_positive_negzero = static_cast<float>(negative_zero);
   EXPECT_EQ(-0.0f, float_positive_negzero);
   EXPECT_TRUE(std::signbit(float_positive_negzero));
+
+  EXPECT_TRUE(positive_zero.IsNaNOrZero());
+  EXPECT_TRUE(negative_zero.IsNaNOrZero());
 }
 
 TEST_F(DataTypeTest, BFloat16Comparision) {
@@ -633,6 +641,7 @@ TEST_F(DataTypeTest, BFloat16Comparision) {
 TEST_F(DataTypeTest, BFloat16TestNAN) {
   const BFloat16 fp16NANFromSingle = std::numeric_limits<float>::quiet_NaN();
   EXPECT_TRUE(fp16NANFromSingle.IsNaN());
+  EXPECT_TRUE(fp16NANFromSingle.IsNaNOrZero());
   // NaN are not equal to each other
   EXPECT_NE(BFloat16::NaN, fp16NANFromSingle);
 
@@ -940,7 +949,7 @@ TEST(InlinedVectorTests, TestDefaultInlinedCapacity) {
 TEST(TypeLiterals, Tests) {
   {
     // uint16_t test
-    MLFloat16 mlfloat{static_cast<uint16_t>(16)};
+    MLFloat16 mlfloat = MLFloat16::FromBits(static_cast<uint16_t>(16));
     auto mlfloat_literal = 16_f16;
     ASSERT_EQ(mlfloat, mlfloat_literal);
 

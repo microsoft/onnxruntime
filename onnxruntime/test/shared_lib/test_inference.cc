@@ -2031,7 +2031,7 @@ TEST(CApiTest, create_tensor_with_data_float16) {
                  [](float fl) { return Ort::Float16_t(fl); });
 
   for (size_t i = 0; i < values_length; ++i) {
-    ASSERT_EQ(expected_values[i], fp16_values[i].value);
+    ASSERT_EQ(expected_values[i], fp16_values[i].val);
   }
 
   constexpr int64_t dims = static_cast<int64_t>(values_length);
@@ -2050,7 +2050,7 @@ TEST(CApiTest, create_tensor_with_data_float16) {
   ASSERT_EQ(tensor_info.GetElementType(), ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16);
 
   const Ort::Float16_t& value_at_1 = tensor.At<Ort::Float16_t>({1});
-  ASSERT_EQ(expected_values[1], value_at_1.value);
+  ASSERT_EQ(expected_values[1], value_at_1.val);
 
   std::vector<float> output_values;
   output_values.reserve(values_length);
@@ -2079,7 +2079,7 @@ TEST(CApiTest, create_tensor_with_data_bfloat16) {
                  [](float fl) { return Ort::BFloat16_t(fl); });
 
   for (size_t i = 0; i < values_length; ++i) {
-    ASSERT_EQ(expected_values[i], b16_values[i].value);
+    ASSERT_EQ(expected_values[i], b16_values[i].val);
   }
 
   Ort::MemoryInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
@@ -2095,7 +2095,7 @@ TEST(CApiTest, create_tensor_with_data_bfloat16) {
   ASSERT_EQ(tensor_info.GetElementType(), ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16);
 
   const Ort::BFloat16_t& value_at_1 = tensor.At<Ort::BFloat16_t>({1});
-  ASSERT_EQ(expected_values[1], value_at_1.value);
+  ASSERT_EQ(expected_values[1], value_at_1.val);
 
   std::vector<float> output_values;
   output_values.reserve(values_length);

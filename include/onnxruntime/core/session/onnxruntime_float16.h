@@ -270,7 +270,8 @@ inline bool Float16Impl::IsInfinity() const noexcept {
 }
 
 inline bool Float16Impl::IsNaNOrZero() const noexcept {
-  return ((val - 1) & ~kSignMask) >= kPositiveInfinityBits;
+  auto abs = AbsImpl();
+  return (abs == 0 || abs > kPositiveInfinityBits);
 }
 
 inline bool Float16Impl::IsNormal() const noexcept {
@@ -516,7 +517,8 @@ inline bool BFloat16Impl::IsInfinity() const noexcept {
 }
 
 inline bool BFloat16Impl::IsNaNOrZero() const noexcept {
-  return ((val - 1) & ~kSignMask) >= kPositiveInfinityBits;
+  auto abs = AbsImpl();
+  return (abs == 0 || abs > kPositiveInfinityBits);
 }
 
 inline bool BFloat16Impl::IsNormal() const noexcept {

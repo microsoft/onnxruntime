@@ -313,7 +313,7 @@ TEST(CPPApi, ConvertFloatToFloat16) {
     constexpr float sample = 1.0f;
     Ort::Float16_t flt16(sample);
     EXPECT_FALSE(flt16.IsNaN());
-    auto int_rep = flt16.value;
+    auto int_rep = flt16.val;
     const Ort::Float16_t flt_from_int = Ort::Float16_t::FromBits(int_rep);
     EXPECT_FALSE(flt_from_int.IsNaN());
     EXPECT_EQ(flt16, flt_from_int);
@@ -473,7 +473,7 @@ TEST(CPPApi, BFloat16ConvertFloatToBFloat16) {
     constexpr float sample = 1.0f;
     Ort::BFloat16_t flt16(sample);
     EXPECT_FALSE(flt16.IsNaN());
-    auto int_rep = flt16.value;
+    auto int_rep = flt16.val;
     const Ort::BFloat16_t flt_from_int = Ort::BFloat16_t::FromBits(int_rep);
     EXPECT_FALSE(flt_from_int.IsNaN());
     EXPECT_EQ(flt16, flt_from_int);

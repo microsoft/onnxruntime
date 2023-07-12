@@ -22,7 +22,7 @@ struct make_type {
 template <class A>
 struct make_type<MLFloat16, A> {
   static MLFloat16 make(A v) {
-    return MLFloat16(math::floatToHalf(float(v)));
+    return MLFloat16(float(v));
   }
 };
 

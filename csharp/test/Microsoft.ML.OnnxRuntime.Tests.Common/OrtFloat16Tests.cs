@@ -34,17 +34,25 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             var f16Converted = Array.ConvertAll(floatValues, f => (Float16)f);
             var backConverted = Array.ConvertAll(f16Converted, f16 => (float)f16);
             Assert.Equal(floatValues, backConverted, new FloatComparer());
+        }
 
+        [Fact(DisplayName = "TestZeros")]
+        public void TestZeros()
+        {
             var positiveZero = new Float16(0);
             Assert.False(Float16.IsNegative(positiveZero));
+            Assert.True(Float16.IsNaNOrZero(positiveZero));
+
             float singlePositiveZero = (float)positiveZero;
             Assert.Equal(+0.0f, singlePositiveZero);
 #if NET6_0_OR_GREATER
             Assert.False(float.IsNegative(singlePositiveZero));
 #endif
 
-            var negativeZero = new Float16(0x8000);
+            var negativeZero = Float16.Negate(positiveZero);
             Assert.True(Float16.IsNegative(negativeZero));
+            Assert.True(Float16.IsNaNOrZero(negativeZero));
+
             float singleNegativeZero = (float)negativeZero;
             Assert.Equal(-0.0f, singleNegativeZero);
 #if NET6_0_OR_GREATER
@@ -59,6 +67,9 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             Float16 leftSame = (Float16)(float)-33.33f;
             Float16 right = (Float16)(float)66.66f;
             Float16 rightSame = (Float16)(float)66.66f;
+
+            Assert.False(Float16.IsNaNOrZero(left));
+            Assert.False(Float16.IsNaNOrZero(right));
 
             Assert.True(right > Float16.Epsilon);
 
@@ -89,6 +100,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             Float16 fp16NANFromSingle = (Float16)float.NaN;
             Assert.True(Float16.IsNaN(fp16NANFromSingle));
             Assert.Equal(Float16.NaN, fp16NANFromSingle);
+            Assert.True(Float16.IsNaNOrZero(fp16NANFromSingle));
 
             float NanFromFloat16 = fp16NANFromSingle.ToFloat();
             Assert.True(float.IsNaN(NanFromFloat16));
@@ -286,18 +298,24 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             var f16Converted = Array.ConvertAll(floatValues, f => (BFloat16)f);
             var backConverted = Array.ConvertAll(f16Converted, f16 => (float)f16);
             Assert.Equal(floatValues, backConverted, new FloatComparer());
+        }
 
-
+        [Fact(DisplayName = "TestZeros")]
+        public void TestZeros()
+        {
             var positiveZero = new BFloat16(0);
             Assert.False(BFloat16.IsNegative(positiveZero));
+            Assert.True(BFloat16.IsNaNOrZero(positiveZero));
             float singlePositiveZero = (float)positiveZero;
             Assert.Equal(+0.0f, singlePositiveZero);
 #if NET6_0_OR_GREATER
             Assert.False(float.IsNegative(singlePositiveZero));
 #endif
 
-            var negativeZero = new BFloat16(0x8000);
+            var negativeZero = BFloat16.Negate(positiveZero);
             Assert.True(BFloat16.IsNegative(negativeZero));
+            Assert.True(BFloat16.IsNaNOrZero(negativeZero));
+
             float singleNegativeZero = (float)negativeZero;
             Assert.Equal(-0.0f, singleNegativeZero);
 #if NET6_0_OR_GREATER
@@ -312,6 +330,9 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             BFloat16 leftSame = (BFloat16)(float)-33.33f;
             BFloat16 right = (BFloat16)(float)66.66f;
             BFloat16 rightSame = (BFloat16)(float)66.66f;
+
+            Assert.False(BFloat16.IsNaNOrZero(left));
+            Assert.False(BFloat16.IsNaNOrZero(right));
 
             Assert.True(right > BFloat16.Epsilon);
 
@@ -342,6 +363,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             BFloat16 fp16NANFromSingle = (BFloat16)float.NaN;
             Assert.True(BFloat16.IsNaN(fp16NANFromSingle));
             Assert.Equal(BFloat16.NaN, fp16NANFromSingle);
+            Assert.True(BFloat16.IsNaNOrZero(fp16NANFromSingle));
 
             float NanFromBFloat16 = fp16NANFromSingle.ToFloat();
             Assert.True(float.IsNaN(NanFromBFloat16));

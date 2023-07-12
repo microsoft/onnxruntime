@@ -151,7 +151,7 @@ inline std::vector<MLFloat16> ToFloat16(const std::vector<float>& data) {
   std::vector<MLFloat16> result;
   result.reserve(data.size());
   for (size_t i = 0; i < data.size(); i++) {
-    result.push_back(MLFloat16(math::floatToHalf(data[i])));
+    result.push_back(MLFloat16(data[i]));
   }
   return result;
 }

@@ -2348,7 +2348,7 @@ TEST_F(GraphTransformationTests, FuseConvBnAddMulFloat16) {
   run_options.run_tag = "one session/one tag";
   OrtValue ml_value_x;
 
-  auto x_f = MLFloat16(math::floatToHalf(1.0));
+  auto x_f = MLFloat16(1.0f);
   std::vector<int64_t> dims_x = {1, 1, 3, 3};
   std::vector<MLFloat16> values_x;
   for (int i = 0; i < 9; ++i) {
@@ -2364,7 +2364,7 @@ TEST_F(GraphTransformationTests, FuseConvBnAddMulFloat16) {
 
   ASSERT_STATUS_OK(session_object.Run(run_options, feeds, output_names, &fetches));
 
-  auto prod_f = MLFloat16(math::floatToHalf(6.0));
+  auto prod_f = MLFloat16(6.0f);
   std::vector<int64_t> expected_dims_prod = {1, 1, 2, 2};
   std::vector<MLFloat16> expected_values_prod;
   for (int i = 0; i < 4; ++i) {
@@ -5477,7 +5477,7 @@ void BuildConstantSharingDivMulGraph(ModelTestBuilder& builder) {
   for (size_t i = 0; i < 12; ++i) {
     NodeArg* mul_initializer = nullptr;
     if (std::is_same<T, MLFloat16>::value) {
-      mul_initializer = builder.MakeScalarInitializer<MLFloat16>(MLFloat16(math::floatToHalf(1.0f)));
+      mul_initializer = builder.MakeScalarInitializer<MLFloat16>(MLFloat16(1.0f));
     } else if (std::is_same<T, float>::value) {
       mul_initializer = builder.MakeScalarInitializer<float>(1.0f);
     } else {
@@ -5593,7 +5593,7 @@ void BuildConstantSharingDivMulGraphFor2DInitializer(ModelTestBuilder& builder) 
   values_float16.reserve(values.size());
   if (std::is_same<T, MLFloat16>::value) {
     for (auto v : values) {
-      values_float16.push_back(MLFloat16(math::floatToHalf(v)));
+      values_float16.push_back(MLFloat16(v));
     }
   }
 
@@ -5804,7 +5804,7 @@ TEST_F(GraphTransformationTests, ConstantSharing_ShareFloatAndHalfTypedInitializ
     builder.AddNode("Cast", {div_out}, {cast_out})
         .AddAttribute("to", static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16));
     for (size_t i = 0; i < 3; ++i) {
-      NodeArg* add_initializer = builder.MakeScalarInitializer<MLFloat16>(MLFloat16(math::floatToHalf(1.0f)));
+      NodeArg* add_initializer = builder.MakeScalarInitializer<MLFloat16>(MLFloat16(1.0f));
       auto* add_out = builder.MakeOutput();
       builder.AddNode("Add", {cast_out, add_initializer}, {add_out});
     }
@@ -5930,7 +5930,7 @@ TEST_F(GraphTransformationTests, ConstantSharing_Share2DFloatAndHalfTypedInitial
   std::vector<MLFloat16> values_float16;
   values_float16.reserve(values.size());
   for (auto v : values) {
-    values_float16.push_back(MLFloat16(math::floatToHalf(v)));
+    values_float16.push_back(MLFloat16(v));
   }
 
   auto build_test_case_float = [&values, &values_float16](ModelTestBuilder& builder) {

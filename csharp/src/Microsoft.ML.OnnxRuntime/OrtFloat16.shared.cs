@@ -739,9 +739,15 @@ namespace Microsoft.ML.OnnxRuntime
             return (ushort)((left.value | right.value) & ~SignMask) == 0;
         }
 
-        private static bool IsNaNOrZero(Float16 value)
+        /// <summary>
+        /// The function returns true if the value is either NaN or zero.
+        /// </summary>
+        /// <param name="value">instance of Float16</param>
+        /// <returns>true if NaN or zero.</returns>
+        public static bool IsNaNOrZero(Float16 value)
         {
-            return ((value.value - 1) & ~SignMask) >= PositiveInfinityBits;
+            uint abs = StripSign(value);
+            return (abs == 0 || abs > PositiveInfinityBits);
         }
 
         private static uint StripSign(Float16 value)
@@ -1335,6 +1341,16 @@ namespace Microsoft.ML.OnnxRuntime
             return IsNaN(value) ? value : new BFloat16((ushort)(value.value ^ SignMask));
         }
 
+        /// <summary>
+        /// The function returns true if the value is either NaN or zero.
+        /// </summary>
+        /// <param name="value">instance of BFloat16</param>
+        /// <returns>true if NaN or zero.</returns>
+        public static bool IsNaNOrZero(BFloat16 value)
+        {
+            uint abs = StripSign(value);
+            return (abs == 0 || abs > PositiveInfinityBits);
+        }
 
         #region Utilities
 
@@ -1344,11 +1360,6 @@ namespace Microsoft.ML.OnnxRuntime
             // for two values by or'ing the private bits together and stripping the sign. They are both zero,
             // and therefore equivalent, if the resulting value is still zero.
             return (ushort)((left.value | right.value) & ~SignMask) == 0;
-        }
-
-        private static bool IsNaNOrZero(BFloat16 value)
-        {
-            return ((value.value - 1) & ~SignMask) >= PositiveInfinityBits;
         }
 
         private static uint StripSign(BFloat16 value)
