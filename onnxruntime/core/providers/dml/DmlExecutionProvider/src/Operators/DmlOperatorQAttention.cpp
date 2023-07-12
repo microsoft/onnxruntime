@@ -3,6 +3,35 @@
 
 #include "precomp.h"
 
+/*
+Abbreviations: B is batch_size, S is sequence_length, W is hidden_size
+               N is number of attention heads, H is head size, and W=N*H
+               M is mask_index tensor
+
+     M               A  B      C    // M, A, B, and C are Inputs
+     |               |  |     /
+     |            Dequantize /
+     |                \ |   /
+     |                 Gemm
+     |                / |   \
+     |               /  |    \
+     |              /   |     \
+     |          Slice  Slice  Slice
+     |            |     |       |
+     |            |     |       |
+     |      Identity Identity Identity // The identities are used to transpose NCHW -> NHCW while
+     |            |     |       |      // keeping the GEMM strides as NCHW to better target metacommands
+     |            |     |       |
+     ----------------- MHA -----
+                        |
+                        |
+                      Output  // Final output
+
+ This kernel creates a DML_GRAPH, as mentioned above.
+ For reference, refer to this Doc:
+ https://github.com/microsoft/onnxruntime/blob/main/docs/ContribOperators.md#com.microsoft.Attention
+ */
+
 namespace Dml
 {
 class DmlOperatorQAttention : public DmlOperator
@@ -11,22 +40,6 @@ public:
     DmlOperatorQAttention(const MLOperatorKernelCreationContext& kernelCreationContext)
     :   DmlOperator(kernelCreationContext)
     {
-        enum DmlInputIndex : uint32_t
-        {
-            mhaQueryIndex,
-            mhaKeyIndex,
-            mhaValueIndex,
-            mhaStackedQueryKeyIndex,
-            mhaStackedKeyValueIndex,
-            mhaStackedQueryKeyValueIndex,
-            mhaBiasIndex,
-            mhaMaskIndex,
-            mhaRelativePositionBiasIndex,
-            mhaPastKeyIndex,
-            mhaPastValueIndex,
-            mhaInputCount,
-        };
-
         enum InputIndex : uint32_t
         {
             inputIndex,
@@ -38,8 +51,6 @@ public:
             inputZeroPointIndex,
             weightZeroPointIndex,
             pastIndex,
-            // relativePositionBiasIndex,
-            // pastSequenceLengthIndex,
             inputCount,
         };
 
@@ -56,7 +67,6 @@ public:
         const uint32_t dmlWeightsIndex = weightsIndex;
         const uint32_t dmlBiasIndex = biasIndex;
         const uint32_t dmlMaskIndex = maskIndex;
-        // const uint32_t dmlRelativePositionBiasIndex = relativePositionBiasIndex;
 
         const bool hasBias = kernelCreationContext.IsInputValid(biasIndex);
         const bool hasMask = kernelCreationContext.IsInputValid(maskIndex);
@@ -106,15 +116,29 @@ public:
         const uint32_t sequenceLength = inputTensorShape[1];
 
         uint32_t desiredWeightTensorShape[3] = {batchSize, weightTensorShape[0], hiddenSize + hiddenSize + vHiddenSize};
+        MLOperatorTensorDataType promotedDataType = MLOperatorTensorDataType::Float;
         MLOperatorTensorDataType dataType = kernelCreationContext.GetInputEdgeDescription(inputIndex).tensorDataType;
 
-        m_inputTensorDescs[dmlWeightsIndex] = TensorDesc::ConstructBroadcastedTensorDesc(dataType, desiredWeightTensorShape, weightTensorShape);
-
+        m_inputTensorDescs[dmlWeightsIndex] = TensorDesc::ConstructBroadcastedTensorDesc(kernelCreationContext.GetInputEdgeDescription(weightsIndex).tensorDataType,
+                                                                                        desiredWeightTensorShape,
+                                                                                        weightTensorShape);
+        m_inputTensorDescs[inputScaleIndex] = TensorDesc::ConstructBroadcastedTensorDesc(kernelCreationContext.GetInputEdgeDescription(inputScaleIndex).tensorDataType,
+                                                                                        inputTensorShape,
+                                                                                        m_inputTensorDescs[inputScaleIndex].GetSizes());
+        m_inputTensorDescs[inputZeroPointIndex] = TensorDesc::ConstructBroadcastedTensorDesc(kernelCreationContext.GetInputEdgeDescription(inputZeroPointIndex).tensorDataType,
+                                                                                            inputTensorShape,
+                                                                                            m_inputTensorDescs[inputZeroPointIndex].GetSizes());
+        m_inputTensorDescs[weightScaleIndex] = TensorDesc::ConstructBroadcastedTensorDesc(kernelCreationContext.GetInputEdgeDescription(weightScaleIndex).tensorDataType,
+                                                                                            desiredWeightTensorShape,
+                                                                                            m_inputTensorDescs[weightScaleIndex].GetSizes());
+        m_inputTensorDescs[weightZeroPointIndex] = TensorDesc::ConstructBroadcastedTensorDesc(kernelCreationContext.GetInputEdgeDescription(weightZeroPointIndex).tensorDataType,
+                                                                                            desiredWeightTensorShape,
+                                                                                            m_inputTensorDescs[weightZeroPointIndex].GetSizes());
         uint32_t desiredBiasTensorShape[3] = {batchSize, sequenceLength, hiddenSize + hiddenSize + vHiddenSize};
         if (hasBias)
         {
             auto biasTensorShape = m_inputTensorDescs[dmlBiasIndex].GetSizes();
-            m_inputTensorDescs[dmlBiasIndex] = TensorDesc::ConstructBroadcastedTensorDesc(dataType, desiredBiasTensorShape, biasTensorShape);
+            m_inputTensorDescs[dmlBiasIndex] = TensorDesc::ConstructBroadcastedTensorDesc(kernelCreationContext.GetInputEdgeDescription(biasIndex).tensorDataType, desiredBiasTensorShape, biasTensorShape);
         }
 
         MLOperatorTensorDataType maskTensorDataType = MLOperatorTensorDataType::Undefined;
@@ -175,16 +199,16 @@ public:
         //     ML_CHECK_VALID_ARGUMENT(relativePositionBiasTensorShape[2] == inputTensorShape[1]);
         // }
 
-        TensorDesc firstGemmOutputTensorDesc = TensorDesc::ConstructDefaultTensorDesc(dataType, desiredBiasTensorShape);
+        TensorDesc firstGemmOutputTensorDesc = TensorDesc::ConstructDefaultTensorDesc(promotedDataType, desiredBiasTensorShape);
         DML_TENSOR_DESC namedFirstGemmOutputTensorDesc = firstGemmOutputTensorDesc.GetDmlDesc();
 
         std::vector<DML_TENSOR_DESC> inputDescs = GetDmlInputDescs();
         std::vector<DML_TENSOR_DESC> outputDescs = GetDmlOutputDescs();
 
         //  output edge between Dequantize and first GEMM node
-        TensorDesc intermediateInputTensorDesc = TensorDesc::ConstructDefaultTensorDesc(MLOperatorTensorDataType::Float, inputTensorShape);
+        TensorDesc intermediateInputTensorDesc = TensorDesc::ConstructDefaultTensorDesc(promotedDataType, inputTensorShape);
 
-        TensorDesc intermediateWeightTensorDesc = TensorDesc::ConstructDefaultTensorDesc(MLOperatorTensorDataType::Float, weightTensorShape);
+        TensorDesc intermediateWeightTensorDesc = TensorDesc::ConstructDefaultTensorDesc(promotedDataType, desiredWeightTensorShape);
 
         DML_TENSOR_DESC namedIntermediateInputTensorDesc = intermediateInputTensorDesc.GetDmlDesc();
         DML_TENSOR_DESC namedIntermediateWeightTensorDesc = intermediateWeightTensorDesc.GetDmlDesc();
@@ -198,10 +222,10 @@ public:
         const DML_OPERATOR_DESC inputDequantizeOpDesc{DML_OPERATOR_ELEMENT_WISE_DEQUANTIZE_LINEAR, &inputDequantizeOperatorDesc};
 
         DML_ELEMENT_WISE_DEQUANTIZE_LINEAR_OPERATOR_DESC weightDequantizeOperatorDesc = {};
-        inputDequantizeOperatorDesc.InputTensor = &inputDescs[InputIndex::weightsIndex];
-        inputDequantizeOperatorDesc.ScaleTensor = &inputDescs[InputIndex::weightScaleIndex];
-        inputDequantizeOperatorDesc.ZeroPointTensor = &inputDescs[InputIndex::weightZeroPointIndex];
-        inputDequantizeOperatorDesc.OutputTensor = &namedIntermediateWeightTensorDesc;
+        weightDequantizeOperatorDesc.InputTensor = &inputDescs[InputIndex::weightsIndex];
+        weightDequantizeOperatorDesc.ScaleTensor = &inputDescs[InputIndex::weightScaleIndex];
+        weightDequantizeOperatorDesc.ZeroPointTensor = &inputDescs[InputIndex::weightZeroPointIndex];
+        weightDequantizeOperatorDesc.OutputTensor = &namedIntermediateWeightTensorDesc;
 
         const DML_OPERATOR_DESC weightDequantizeOpDesc{DML_OPERATOR_ELEMENT_WISE_DEQUANTIZE_LINEAR, &weightDequantizeOperatorDesc};
 
@@ -223,11 +247,11 @@ public:
         const DML_OPERATOR_DESC gemmDesc {DML_OPERATOR_GEMM, &gemmOperatorDesc};
 
         std::array<uint32_t, 3> queryKeySlicedTensorShape {batchSize, sequenceLength, hiddenSize + hiddenSize};
-        TensorDesc queryKeySlicedInputTensorDesc = TensorDesc::ConstructDefaultTensorDesc(dataType, queryKeySlicedTensorShape);
+        TensorDesc queryKeySlicedInputTensorDesc = TensorDesc::ConstructDefaultTensorDesc(promotedDataType, queryKeySlicedTensorShape);
         DML_TENSOR_DESC namedQueryKeySlicedInputTensorDesc = queryKeySlicedInputTensorDesc.GetDmlDesc();
 
         std::array<uint32_t, 3> valueSlicedTensorShape {batchSize, sequenceLength, vHiddenSize};
-        TensorDesc valueSlicedInputTensorDesc = TensorDesc::ConstructDefaultTensorDesc(dataType, valueSlicedTensorShape);
+        TensorDesc valueSlicedInputTensorDesc = TensorDesc::ConstructDefaultTensorDesc(promotedDataType, valueSlicedTensorShape);
         DML_TENSOR_DESC namedValueSlicedInputTensorDesc = valueSlicedInputTensorDesc.GetDmlDesc();
 
         // Transpose slice QK from [batchSize, sequenceLength, 2, numHeads, headSize] to [batchSize, sequenceLength, numHeads, 2, headSize]
@@ -241,13 +265,13 @@ public:
         };
 
         TensorDesc queryKeyTransposedInputTensorDesc = TensorDesc(
-            m_inputTensorDescs[dmlInputIndex].GetDmlDataType(),
+            DML_TENSOR_DATA_TYPE_FLOAT32,
             queryKeyTransposedTensorShape,
             queryKeyTransposedStrides);
         DML_TENSOR_DESC namedQueryKeyTransposedInputTensorDesc = queryKeyTransposedInputTensorDesc.GetDmlDesc();
 
         TensorDesc queryKeyTransposedOutputTensorDesc = TensorDesc(
-            m_inputTensorDescs[dmlInputIndex].GetDmlDataType(),
+            DML_TENSOR_DATA_TYPE_FLOAT32,
             queryKeyTransposedTensorShape);
         DML_TENSOR_DESC namedQueryKeyTransposedOutputTensorDesc = queryKeyTransposedOutputTensorDesc.GetDmlDesc();
 
@@ -262,13 +286,13 @@ public:
         };
 
         TensorDesc queryKeyValueTransposedInputTensorDesc = TensorDesc(
-            m_inputTensorDescs[dmlInputIndex].GetDmlDataType(),
+            DML_TENSOR_DATA_TYPE_FLOAT32,
             queryKeyValueTransposedTensorShape,
             queryKeyValueTransposedStrides);
         DML_TENSOR_DESC namedQueryKeyValueTransposedInputTensorDesc = queryKeyValueTransposedInputTensorDesc.GetDmlDesc();
 
         TensorDesc queryKeyValueTransposedOutputTensorDesc = TensorDesc(
-            m_inputTensorDescs[dmlInputIndex].GetDmlDataType(),
+            DML_TENSOR_DATA_TYPE_FLOAT32,
             queryKeyValueTransposedTensorShape);
         DML_TENSOR_DESC namedQueryKeyValueTransposedOutputTensorDesc = queryKeyValueTransposedOutputTensorDesc.GetDmlDesc();
 
@@ -450,7 +474,7 @@ public:
         weightQuantizeToGemmEdge.FromNodeIndex = weightDequantizeNodeIndex;
         weightQuantizeToGemmEdge.FromNodeOutputIndex = 0;
         weightQuantizeToGemmEdge.ToNodeIndex = gemmNodeIndex;
-        weightQuantizeToGemmEdge.ToNodeInputIndex = 0;
+        weightQuantizeToGemmEdge.ToNodeInputIndex = 1;
         intermediateEdges.push_back(weightQuantizeToGemmEdge);
 
         if (hasBias)
@@ -584,31 +608,31 @@ public:
 
 void CALLBACK QueryQAttention(IMLOperatorSupportQueryContextPrivate* context, /*out*/ bool* isSupported)
 {
-    // *isSupported = false;
-    // // `past` input tensor is not supported yet
-    // if (context->IsInputValid(8))
-    // {
-    //     return;
-    // }
+    *isSupported = false;
+    // `past` input tensor is not supported yet
+    if (context->IsInputValid(8))
+    {
+        return;
+    }
 
-    // // `present` output tensor is not supported yet
-    // if (context->IsOutputValid(1))
-    // {
-    //     return;
-    // }
+    // `present` output tensor is not supported yet
+    if (context->IsOutputValid(1))
+    {
+        return;
+    }
 
-    // // `unidirectional == 1` is not supported yet
-    // MLOperatorAttributes attributes(context);
-    // if (attributes.GetOptionalAttribute<int32_t>(AttrName::Unidirectional, 0) != 0)
-    // {
-    //     return;
-    // }
+    // `unidirectional == 1` is not supported yet
+    MLOperatorAttributes attributes(context);
+    if (attributes.GetOptionalAttribute<int32_t>(AttrName::Unidirectional, 0) != 0)
+    {
+        return;
+    }
 
-    // // `do_rotary == 1` is not supported yet
-    // if (attributes.GetOptionalAttribute<int32_t>(AttrName::DoRotary, 0) != 0)
-    // {
-    //     return;
-    // }
+    // `do_rotary == 1` is not supported yet
+    if (attributes.GetOptionalAttribute<int32_t>(AttrName::DoRotary, 0) != 0)
+    {
+        return;
+    }
 
     *isSupported = true;
 }

@@ -88,7 +88,7 @@ public:
         dequantizeOperatorDesc.ScaleTensor = &inputDescs[OnnxInputIndex::X_scale];
         dequantizeOperatorDesc.ZeroPointTensor = &inputDescs[OnnxInputIndex::X_zero_point];
         dequantizeOperatorDesc.OutputTensor = &namedIntermediateOutputTensorDesc;
-        
+
         const DML_OPERATOR_DESC opDesc1{DML_OPERATOR_ELEMENT_WISE_DEQUANTIZE_LINEAR, &dequantizeOperatorDesc};
 
         DML_ACTIVATION_SIGMOID_OPERATOR_DESC sigmoidOperatorDesc = {};
@@ -124,7 +124,7 @@ public:
 
         // set intermediate edges
         std::vector<DML_INTERMEDIATE_GRAPH_EDGE_DESC> intermediateEdges;
-        
+
         DML_INTERMEDIATE_GRAPH_EDGE_DESC dequantizeToSigmoidEdge = {};
         dequantizeToSigmoidEdge.FromNodeIndex = 0;
         dequantizeToSigmoidEdge.FromNodeOutputIndex = 0;
@@ -160,7 +160,7 @@ void CALLBACK QueryQLinearSigmoid(IMLOperatorSupportQueryContextPrivate* context
 {
     *isSupported = false;
     // Right now the contract is if optional input tensors (like x_zero_point, y_zero_point) are
-    // not present, then fallback to CPU because DML Quantize_Linear and Dequantize_Linear does not support 
+    // not present, then fallback to CPU because DML Quantize_Linear and Dequantize_Linear does not support
     // optionality of the zero_point tensor. BUG: https://microsoft.visualstudio.com/OS/_queries/edit/41599005
     if (context->GetInputCount() < 5)
     {
