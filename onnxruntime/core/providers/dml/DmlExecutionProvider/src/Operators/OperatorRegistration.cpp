@@ -439,6 +439,7 @@ DML_OP_EXTERN_CREATION_FUNCTION(ConvInteger);
 DML_OP_EXTERN_CREATION_FUNCTION(Trilu);
 DML_OP_EXTERN_CREATION_FUNCTION(Shape);
 DML_OP_EXTERN_CREATION_FUNCTION(Size);
+DML_OP_EXTERN_CREATION_FUNCTION(QAttention);
 DML_OP_EXTERN_CREATION_FUNCTION(Attention);
 DML_OP_EXTERN_CREATION_FUNCTION(MultiHeadAttention);
 DML_OP_EXTERN_CREATION_FUNCTION(NonZero);
@@ -459,6 +460,7 @@ DML_OP_EXTERN_QUERY_FUNCTION(Pad);
 DML_OP_EXTERN_QUERY_FUNCTION(LayerNormalization);
 DML_OP_EXTERN_QUERY_FUNCTION(SkipLayerNormalization);
 DML_OP_EXTERN_QUERY_FUNCTION(QLinearSigmoid);
+DML_OP_EXTERN_QUERY_FUNCTION(QAttention);
 DML_OP_EXTERN_QUERY_FUNCTION(Attention);
 
 constexpr static std::array<const char*, 1> typeNameListDefault = {"T"};
@@ -533,6 +535,7 @@ constexpr static std::array<SupportedTensorDataTypes, 2> supportedTypeListLayerN
 constexpr static std::array<SupportedTensorDataTypes, 2> supportedTypeListShape = {SupportedTensorDataTypes::All, SupportedTensorDataTypes::Int64};
 constexpr static std::array<SupportedTensorDataTypes, 2> supportedTypeListSize = {SupportedTensorDataTypes::All, SupportedTensorDataTypes::Int64};
 constexpr static std::array<SupportedTensorDataTypes, 1> supportedTypeListQLinearSigmoid = {SupportedTensorDataTypes::UInt8 | SupportedTensorDataTypes::Int8};
+constexpr static std::array<SupportedTensorDataTypes, 3> supportedTypeListQAttention = {SupportedTensorDataTypes::UInt8 | SupportedTensorDataTypes::Int8, SupportedTensorDataTypes::Float16to32, SupportedTensorDataTypes::Int32};
 constexpr static std::array<SupportedTensorDataTypes, 2> supportedTypeListAttention = {SupportedTensorDataTypes::Float16to32, SupportedTensorDataTypes::Int32};
 constexpr static std::array<SupportedTensorDataTypes, 2> supportedTypeListGroupNorm = {SupportedTensorDataTypes::Float16to32, SupportedTensorDataTypes::Float16to32};
 constexpr static std::array<SupportedTensorDataTypes, 1> supportedTypeListNonZero = {SupportedTensorDataTypes::Float16to32 | SupportedTensorDataTypes::Ints8Bit | SupportedTensorDataTypes::Ints16Bit | SupportedTensorDataTypes::Ints32Bit | SupportedTensorDataTypes::Bool};
@@ -941,6 +944,7 @@ constexpr static OperatorRegistrationInformation operatorRegistrationInformation
     {REG_INFO_MS(   1,  FusedMatMul,                        typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},
     {REG_INFO_MS(   1,  FusedMatMulActivation,              typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},
     {REG_INFO_MS(   1,  QLinearSigmoid,                     typeNameListDefault,            supportedTypeListQLinearSigmoid,        DmlGraphSupport::Supported, requiredConstantCpuInputs(), std::nullopt, QueryQLinearSigmoid)},
+    {REG_INFO_MS(   1,  QAttention,                         typeNameListFour,               supportedTypeListQAttention,            DmlGraphSupport::Supported, requiredConstantCpuInputs(), std::nullopt, QueryQAttention)},
     {REG_INFO_MS(   1,  Attention,                          typeNameListAttention,          supportedTypeListAttention,             DmlGraphSupport::Supported, requiredConstantCpuInputs(), std::nullopt, QueryAttention)},
     {REG_INFO_MS(   1,  MultiHeadAttention,                 typeNameListAttention,          supportedTypeListAttention,             DmlGraphSupport::Supported)},
 
