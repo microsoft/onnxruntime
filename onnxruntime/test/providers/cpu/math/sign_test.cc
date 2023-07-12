@@ -191,7 +191,7 @@ TEST(MathOpTest, Sign_MLFloat16) {
 }
 
 // Currently BFloat16 is not enabled for Sign kernel
-//TEST(MathOpTest, Sign_BFloat16) {
+// TEST(MathOpTest, Sign_BFloat16) {
 //  using namespace test_sign_internal;
 //  OpTester test("Sign", 9);
 //

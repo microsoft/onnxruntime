@@ -58,13 +58,12 @@ struct CallSignImpl {
 template <>
 struct CallSignImpl<MLFloat16> {
   void operator()(const Tensor* input, Tensor* output) const {
+    ConstEigenVectorMap<Eigen::half> input_data(
+        reinterpret_cast<const Eigen::half*>(input->Data<MLFloat16>()),
+        narrow<ptrdiff_t>(input->Shape().Size()));
 
-    ConstEigenVectorMap<Eigen::half> input_data (
-      reinterpret_cast<const Eigen::half*>(input->Data<MLFloat16>()), 
-      narrow<ptrdiff_t>(input->Shape().Size()));
-
-    EigenVectorMap<Eigen::half>(reinterpret_cast<Eigen::half*>(output->MutableData<MLFloat16>()), 
-      narrow<ptrdiff_t>(output->Shape().Size())) = input_data.array().cwiseSign();
+    EigenVectorMap<Eigen::half>(reinterpret_cast<Eigen::half*>(output->MutableData<MLFloat16>()),
+                                narrow<ptrdiff_t>(output->Shape().Size())) = input_data.array().cwiseSign();
   }
 };
 
