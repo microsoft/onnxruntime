@@ -121,8 +121,10 @@ jobs:
   - task: Cache@2
     inputs:
       # once the test data is changed, we need to update the cache key.
-      key: onnxtestdata | opset18
-      restoreKeys: onnxtestdata | opset18
+      key: onnxtestdata | $(Build.SourcesDirectory)\tools\ci_build\github\js\scripts\prepare-onnx-node_tests.ts
+      restoreKeys: |
+        onnxtestdata | $(Build.SourcesDirectory)\tools\ci_build\github\js\scripts\prepare-onnx-node_tests.ts
+        onnxtestdata
       path: $(Build.SourcesDirectory)/js/test/
     displayName: 'Cache ONNX node test data'
   - task: PowerShell@2
