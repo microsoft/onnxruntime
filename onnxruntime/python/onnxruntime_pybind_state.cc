@@ -15,6 +15,8 @@
 #include "core/common/optional.h"
 #include "core/common/path_string.h"
 #include "core/framework/arena_extend_strategy.h"
+#include "core/framework/custom_execution_provider.h"
+#include "core/framework/custom_ep_wrapper.h"
 #include "core/framework/data_transfer_utils.h"
 #include "core/framework/data_types_internal.h"
 #include "core/framework/provider_options_utils.h"
@@ -263,10 +265,31 @@ py::object AddTensorAsPyObj(const OrtValue& val, const DataTransferManager* data
   return obj;
 }
 
-static std::unique_ptr<onnxruntime::IExecutionProvider> LoadExecutionProvider(
-    const std::string& ep_shared_lib_path,
+// static std::unique_ptr<onnxruntime::IExecutionProvider> LoadExecutionProvider(
+//     const std::string& ep_shared_lib_path,
+//     const ProviderOptions& provider_options = {},
+//     const std::string& entry_symbol_name = "GetProvider") {
+//   void* handle;
+//   const auto path_str = ToPathString(ep_shared_lib_path);
+//   auto error = Env::Default().LoadDynamicLibrary(path_str, false, &handle);
+//   if (!error.IsOK()) {
+//     throw std::runtime_error(error.ErrorMessage());
+//   }
+
+//   Provider* (*PGetProvider)();
+//   OrtPybindThrowIfError(Env::Default().GetSymbolFromLibrary(handle, entry_symbol_name, (void**)&PGetProvider));
+
+//   Provider* provider = PGetProvider();
+//   std::shared_ptr<IExecutionProviderFactory> ep_factory = provider->CreateExecutionProviderFactory(&provider_options);
+//   return ep_factory->CreateProvider();
+// }
+
+static std::unique_ptr<onnxruntime::IExecutionProvider> LoadExternalExecutionProvider(const std::string& ep_shared_lib_path,
     const ProviderOptions& provider_options = {},
-    const std::string& entry_symbol_name = "GetProvider") {
+    const std::string& entry_symbol_name = "GetExternalProvider"){
+
+  ORT_UNUSED_PARAMETER(provider_options);
+
   void* handle;
   const auto path_str = ToPathString(ep_shared_lib_path);
   auto error = Env::Default().LoadDynamicLibrary(path_str, false, &handle);
@@ -274,12 +297,10 @@ static std::unique_ptr<onnxruntime::IExecutionProvider> LoadExecutionProvider(
     throw std::runtime_error(error.ErrorMessage());
   }
 
-  Provider* (*PGetProvider)();
-  OrtPybindThrowIfError(Env::Default().GetSymbolFromLibrary(handle, entry_symbol_name, (void**)&PGetProvider));
+  CustomExecutionProvider* (*PGetExternalProvider)();
+  OrtPybindThrowIfError(Env::Default().GetSymbolFromLibrary(handle, entry_symbol_name, (void**)&PGetExternalProvider));
 
-  Provider* provider = PGetProvider();
-  std::shared_ptr<IExecutionProviderFactory> ep_factory = provider->CreateExecutionProviderFactory(&provider_options);
-  return ep_factory->CreateProvider();
+  return std::make_unique<ExternalExecutionProvider>(std::unique_ptr<CustomExecutionProvider>(PGetExternalProvider()));
 }
 
 #ifdef USE_CUDA
@@ -873,7 +894,8 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
             provider_options.insert(option);
           }
         }
-        return LoadExecutionProvider(shared_lib_path_it->second, provider_options, entry_symbol);
+        // return LoadExecutionProvider(shared_lib_path_it->second, provider_options, entry_symbol);
+        return LoadExternalExecutionProvider(shared_lib_path_it->second, provider_options, entry_symbol);
       }
     }
     // unknown provider
