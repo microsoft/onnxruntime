@@ -21,10 +21,11 @@ struct TreeNodeElementId {
   bool operator<(const TreeNodeElementId& xyz) const {
     return ((tree_id < xyz.tree_id) || (tree_id == xyz.tree_id && node_id < xyz.node_id));
   }
-  template <typename H>
-  friend H AbslHashValue(H h, const TreeNodeElementId& xyz) {
-    return H::combine(std::move(h), xyz.tree_id, xyz.node_id);
-  }
+  struct hash_fn {
+    std::size_t operator()(const TreeNodeElementId& key) const {
+      return std::hash<uint64_t>()(static_cast<uint64_t>(key.tree_id) << 32 | static_cast<uint64_t>(key.node_id));
+    }
+  };
 };
 
 template <typename T>
