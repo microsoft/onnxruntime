@@ -69,7 +69,7 @@ Status SoftmaxCrossEntropy<T>::Compute(OpKernelContext* context) const {
   int64_t D = logit_shape[logit_shape.NumDimensions() - 1];
   const int n = gsl::narrow_cast<int>(N);
   const int d = gsl::narrow_cast<int>(D);
-  const uint64_t nd = N * D;
+  const ptrdiff_t nd = narrow<ptrdiff_t>(N * D);
 
   Tensor* loss = context->Output(0, TensorShape({}));
   Tensor* log_prob = context->Output(1, logit_shape);
@@ -85,8 +85,7 @@ Status SoftmaxCrossEntropy<T>::Compute(OpKernelContext* context) const {
   // where shifted_logit = logit - max_logit
   // along classes
 
-  ORT_ENFORCE(nd <= static_cast<uint64_t>(std::numeric_limits<Eigen::Index>::max()));
-  ComputeShareSoftmaxCrossEntropyCPU(n, d, static_cast<Eigen::Index>(nd),
+  ComputeShareSoftmaxCrossEntropyCPU(n, d, nd,
                                      logit_data,
                                      shifted_logit.data(),
                                      log_prob_data);
@@ -182,7 +181,7 @@ Status SparseSoftmaxCrossEntropy<T>::Compute(OpKernelContext* context) const {
   int64_t D = logit_shape[logit_shape.NumDimensions() - 1];
   const int n = gsl::narrow_cast<int>(N);
   const int d = gsl::narrow_cast<int>(D);
-  const uint64_t nd = N * D;
+  const ptrdiff_t nd = narrow<ptrdiff_t>(N * D);
 
   Tensor* loss = context->Output(0, TensorShape({}));
   Tensor* log_prob = context->Output(1, logit_shape);
@@ -195,8 +194,7 @@ Status SparseSoftmaxCrossEntropy<T>::Compute(OpKernelContext* context) const {
   // computation begins here
   std::vector<float> shifted_logit(nd);
 
-  ORT_ENFORCE(nd <= static_cast<uint64_t>(std::numeric_limits<Eigen::Index>::max()));
-  ComputeShareSoftmaxCrossEntropyCPU(n, d, static_cast<Eigen::Index>(nd), logit_data,
+  ComputeShareSoftmaxCrossEntropyCPU(n, d, nd, logit_data,
                                      shifted_logit.data(),
                                      log_prob_data);
 
