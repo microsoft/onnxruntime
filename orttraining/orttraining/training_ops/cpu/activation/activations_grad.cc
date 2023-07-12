@@ -148,7 +148,8 @@ Status BiasGeluGrad_dX<T, GeluComputationMode>::Compute(OpKernelContext* context
   auto* dX = context->Output(0, input_shape);
   ORT_ENFORCE(dX);
 
-  const auto input_size = input_shape.Size(), bias_size = bias_shape.Size();
+  const auto input_size = narrow<Eigen::Index>(input_shape.Size()),
+             bias_size = narrow<Eigen::Index>(bias_shape.Size());
 
   // X + B, broadcasting
   AllocatorPtr allocator;
@@ -163,7 +164,7 @@ Status BiasGeluGrad_dX<T, GeluComputationMode>::Compute(OpKernelContext* context
   X_plus_B_array = X_array.colwise() + B_vector;
 
   // dX
-  const auto biased_X_span = gsl::make_span<const T>(X_plus_B_buffer.get(), X->Shape().Size());
+  const auto biased_X_span = gsl::make_span<const T>(X_plus_B_buffer.get(), narrow<size_t>(X->Shape().Size()));
   ORT_RETURN_IF_ERROR((ComputeGeluGradDX<T>(
       dY->template DataAsSpan<T>(), biased_X_span, dX->template MutableDataAsSpan<T>(),
       GeluComputationMode{})));
