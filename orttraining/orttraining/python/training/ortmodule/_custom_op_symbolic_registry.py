@@ -199,10 +199,12 @@ def embedding(g, weight, indices, padding_idx, scale_grad_by_freq, sparse):
     output = g.op(
         "org.pytorch.aten::ATen", weight, indices, padding_idx, scale_grad_by_freq, sparse, operator_s="embedding"
     )
-    indices_shape = _get_tensor_sizes(indices)
-    if indices_shape is not None and hasattr(weight.type(), "with_sizes"):
-        output_type = weight.type().with_sizes([*indices_shape, _get_tensor_dim_size(weight, 1)])
-        output.setType(output_type)
+    # indices_shape = _get_tensor_sizes(indices)
+    # if indices_shape is not None and hasattr(weight.type(), "with_sizes"):
+    #     output_type = weight.type().with_sizes([*indices_shape, _get_tensor_dim_size(weight, 1)])
+    #     output.setType(output_type)
+
+    output.setType(weight.type())
     return output
 
 

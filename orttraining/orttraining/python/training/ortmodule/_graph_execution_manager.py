@@ -370,6 +370,48 @@ class GraphExecutionManager(GraphExecutionInterface):
                 exported_model, self._runtime_options.enable_custom_autograd_function
             )
 
+            consumer_map = {}
+            for node in exported_model.graph.node:
+                for i in node.input:
+                    if i not in consumer_map:
+                        consumer_map[i] = []
+                    if node not in consumer_map[i]:
+                        consumer_map[i].append(node)
+
+            param_maps = [name for name, param in self._flattened_module.named_parameters()]
+            for graph_input in exported_model.graph.input:
+                print("handling graph input: ", graph_input.name)
+                if graph_input.name in param_maps and graph_input.name in consumer_map:
+                    print("111111111111111111111111111 for ", graph_input.name)
+                    consumers = consumer_map[graph_input.name]
+                    preforward_trigger = None
+                    for c in consumers:
+                        func_name = None
+                        for attr in c.attribute:
+                            if attr.name == "name":
+                                func_name = attr.s.decode("utf-8") if isinstance(attr.s, bytes) else attr.s
+                                break
+                        if func_name == "ORTPreForwardwardFunction":
+                            assert preforward_trigger is None, "Multiple ORTPreForwardwardFunction nodes found"
+                            preforward_trigger = c
+
+                    index_offset_on_python_op_input = -1
+                    for i, input_name in enumerate(preforward_trigger.input):
+                        if input_name == graph_input.name:
+                            index_offset_on_python_op_input = i
+                            break
+
+                    assert index_offset_on_python_op_input >= 0, "index_offset_on_python_op_input not valid"
+                    for c in consumers:
+                        if c != preforward_trigger:
+                            for i, input_name in enumerate(c.input):
+                                if input_name == graph_input.name:
+                                    c.input[i] = preforward_trigger.output[
+                                        len(preforward_trigger.output)
+                                        + index_offset_on_python_op_input
+                                        - len(preforward_trigger.input)
+                                    ]
+
             # If anything was captured by suppress_output during export, set the flag to
             # raise a single user warning letting users know in the log.
             if suppress_output.tell() > 0:
