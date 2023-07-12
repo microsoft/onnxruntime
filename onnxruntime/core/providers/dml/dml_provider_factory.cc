@@ -129,10 +129,10 @@ std::shared_ptr<IExecutionProviderFactory> DMLProviderFactoryCreator::Create(int
   // Disallow using DML with the software adapter (Microsoft Basic Display Adapter) because CPU evaluations are much
   // faster. Some scenarios though call for EP initialization without this check (as execution will not actually occur
   // anyway) such as operation kernel registry enumeration for documentation purposes.
-  if (!skip_software_device_check)
-  {
-    ORT_THROW_HR_IF(ERROR_GRAPHICS_INVALID_DISPLAY_ADAPTER, IsSoftwareAdapter(adapter.Get()));
-  }
+  //if (!skip_software_device_check)
+  //{
+  //  ORT_THROW_HR_IF(ERROR_GRAPHICS_INVALID_DISPLAY_ADAPTER, IsSoftwareAdapter(adapter.Get()));
+  //}
 
   ComPtr<ID3D12Device> d3d12_device;
   ORT_THROW_IF_FAILED(D3D12CreateDevice(adapter.Get(), D3D_FEATURE_LEVEL_11_0, IID_GRAPHICS_PPV_ARGS(d3d12_device.ReleaseAndGetAddressOf())));
