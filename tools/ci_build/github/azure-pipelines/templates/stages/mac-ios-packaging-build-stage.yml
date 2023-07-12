@@ -61,11 +61,11 @@ stages:
         addToPath: true
         architecture: "x64"
 
-    - template: templates/use-xcode-version.yml
+    - template: ../use-xcode-version.yml
       parameters:
         xcodeVersion: ${{ variables.xcodeVersion }}
 
-    - template: templates/install-appcenter.yml
+    - template: ../install-appcenter.yml
 
     - script: |
         pip install -r tools/ci_build/github/apple/ios_packaging.requirements.txt
@@ -150,6 +150,6 @@ stages:
       artifact: "ios_packaging_artifacts_${{ lower(parameters.packageVariant) }}"
       displayName: "Publish artifacts"
 
-    - template: templates/component-governance-component-detection-steps.yml
+    - template: ../component-governance-component-detection-steps.yml
       parameters :
         condition : 'succeeded'

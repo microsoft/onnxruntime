@@ -3,12 +3,10 @@ parameters:
   displayName: |-
     Type of build.
     "release": A release build to be published for an official ONNX Runtime release.
-    "prerelease": A pre-release build to be published for validation prior to release.
-    "normal": A normal build not for publication.
+    "normal": A normal build. This can be published as a pre-release build for validation prior to release.
   type: string
   values:
   - release
-  - prerelease
   - normal
   default: normal
 
@@ -38,11 +36,9 @@ stages:
 
         case "${BUILD_TYPE}" in
           ("release")
-            VERSION="${BASE_VERSION}"; SHOULD_UPLOAD_ARCHIVES="true" ;;
-          ("prerelease")
-            VERSION="${DEV_VERSION}";  SHOULD_UPLOAD_ARCHIVES="true" ;;
+            VERSION="${BASE_VERSION}" ;;
           ("normal")
-            VERSION="${DEV_VERSION}";  SHOULD_UPLOAD_ARCHIVES="false" ;;
+            VERSION="${DEV_VERSION}" ;;
           (*)
             echo "Invalid build type: ${BUILD_TYPE}"; exit 1 ;;
         esac
@@ -58,7 +54,6 @@ stages:
         }
 
         set_var "ORT_POD_VERSION" "${VERSION}"
-        set_var "ORT_SHOULD_UPLOAD_ARCHIVES" "${SHOULD_UPLOAD_ARCHIVES}"
       displayName: "Set common variables"
       name: SetCommonVariables
 
@@ -74,7 +69,7 @@ stages:
   parameters:
     packageVariant: Training
 
-- stage: IosPackaging_TestPackageSwift
+- stage: IosPackaging_TestPackageSwift_Full
   dependsOn:
   - IosPackaging_Build_Full
 
