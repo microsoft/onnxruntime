@@ -683,6 +683,29 @@ public:
         Dml::GetDescendingPackedStrides(gridDims, gridStrides);
         Dml::GetDescendingPackedStrides(outputDims, outputStrides);
 
+        // Transition resources from common to UAV state
+        D3D12_RESOURCE_BARRIER barriers[3];
+
+        barriers[0] = CD3DX12_RESOURCE_BARRIER::Transition(
+            inputBufferRegion.ResourceInUavState(),
+            D3D12_RESOURCE_STATE_COMMON,
+            D3D12_RESOURCE_STATE_UNORDERED_ACCESS
+        );
+
+        barriers[1] = CD3DX12_RESOURCE_BARRIER::Transition(
+            gridBufferRegion.ResourceInUavState(),
+            D3D12_RESOURCE_STATE_COMMON,
+            D3D12_RESOURCE_STATE_UNORDERED_ACCESS
+        );
+
+        barriers[2] = CD3DX12_RESOURCE_BARRIER::Transition(
+            outputBufferRegion.ResourceInUavState(),
+            D3D12_RESOURCE_STATE_COMMON,
+            D3D12_RESOURCE_STATE_UNORDERED_ACCESS
+        );
+
+        commandList->ResourceBarrier(3, barriers);
+
         // Set the root signature and pipeline state
         commandList->SetComputeRootSignature(m_gridSampleRootSignature.Get());
         commandList->SetPipelineState(m_gridSamplePipelineState.Get());
@@ -704,10 +727,26 @@ public:
         std::array<Dml::D3D12BufferRegion, 3> uavBufferRegions = { inputBufferRegion, gridBufferRegion, outputBufferRegion };
         Dispatch(uavBufferRegions, constants, commandList);
 
-        D3D12_RESOURCE_BARRIER barriers[] = {
-            CD3DX12_RESOURCE_BARRIER::UAV(nullptr),
-            CD3DX12_RESOURCE_BARRIER::Aliasing(nullptr, nullptr)};
-        commandList->ResourceBarrier(2, barriers);
+        // Transition resources to common state
+        barriers[0] = CD3DX12_RESOURCE_BARRIER::Transition(
+            inputBufferRegion.ResourceInUavState(),
+            D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
+            D3D12_RESOURCE_STATE_COMMON
+        );
+
+        barriers[1] = CD3DX12_RESOURCE_BARRIER::Transition(
+            gridBufferRegion.ResourceInUavState(),
+            D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
+            D3D12_RESOURCE_STATE_COMMON
+        );
+
+        barriers[2] = CD3DX12_RESOURCE_BARRIER::Transition(
+            outputBufferRegion.ResourceInUavState(),
+            D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
+            D3D12_RESOURCE_STATE_COMMON
+        );
+
+        commandList->ResourceBarrier(3, barriers);
     }
 
     std::vector<uint32_t> GetTensorDimensions(IMLOperatorTensor* tensor)
@@ -724,6 +763,14 @@ public:
         TConstants& constants,
         ID3D12GraphicsCommandList* commandList)
     {
+        D3D12_RESOURCE_BARRIER uav_barriers[TSize];
+
+        std::transform(
+            bufferRegions.begin(), bufferRegions.end(),
+            uav_barriers,
+            [](auto& bufferRegion) { return CD3DX12_RESOURCE_BARRIER::UAV(bufferRegion.ResourceInUavState()); } );
+        commandList->ResourceBarrier(TSize, uav_barriers);
+
         for (uint32_t i = 0; i < TSize; i++)
         {
             // Set resource views
@@ -772,10 +819,7 @@ public:
             commandList->Dispatch(dispatchSizeX, 1, 1);
         }
 
-        D3D12_RESOURCE_BARRIER barriers[] = {
-            CD3DX12_RESOURCE_BARRIER::UAV(nullptr),
-            CD3DX12_RESOURCE_BARRIER::Aliasing(nullptr, nullptr)};
-        commandList->ResourceBarrier(2, barriers);
+        commandList->ResourceBarrier(TSize, uav_barriers);
     }
 };
 

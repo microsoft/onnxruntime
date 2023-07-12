@@ -60,9 +60,7 @@ namespace Dml
         // the ID3D12Resource is cached, so this call typically has a lower cost
         // than a call to ID3D12Device::CreatePlacedResource or
         // CreateReservedResource.
-        D3D12BufferRegion CreateBufferRegion(
-            const TaggedPointer& taggedPointer,
-            uint64_t size_in_bytes);
+        D3D12BufferRegion CreateBufferRegion(const TaggedPointer& taggedPointer, uint64_t size_in_bytes);
 
         AllocationInfo* GetAllocationInfo(const TaggedPointer& taggedPointer);
 
