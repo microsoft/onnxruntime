@@ -41,6 +41,13 @@ stages:
     timeoutInMinutes: 120
 
     steps:
+    - script: |
+        if [[ -z "${{ variables.ortPodVersion }}" ]]; then
+          echo "ORT pod version is unspecified. Make sure that the IosPackaging_SetCommonVariables stage has run."
+          exit 1
+        fi
+      displayName: 'Ensure version is set'
+
     - task: InstallAppleCertificate@2
       inputs:
         certSecureFile: '$(ios_signing_certificate_name)'
