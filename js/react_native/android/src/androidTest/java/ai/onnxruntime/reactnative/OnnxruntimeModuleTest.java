@@ -76,26 +76,24 @@ public class OnnxruntimeModuleTest {
 
       // test loadModel()
       {
-        InputStream modelStream =
-            reactContext.getResources().openRawResource(ai.onnxruntime.reactnative.test.R.raw.test_types_float);
+        try (InputStream modelStream =
+                 reactContext.getResources().openRawResource(ai.onnxruntime.reactnative.test.R.raw.test_types_float);) {
+          byte[] modelBuffer = getInputModelBuffer(modelStream);
 
-        byte[] modelBuffer = getInputModelBuffer(modelStream);
+          JavaOnlyMap options = new JavaOnlyMap();
+          try {
+            ReadableMap resultMap = ortModule.loadModel(modelBuffer, options);
+            sessionKey = resultMap.getString("key");
+            ReadableArray inputNames = resultMap.getArray("inputNames");
+            ReadableArray outputNames = resultMap.getArray("outputNames");
 
-        modelStream.close();
-
-        JavaOnlyMap options = new JavaOnlyMap();
-        try {
-          ReadableMap resultMap = ortModule.loadModel(modelBuffer, options);
-          sessionKey = resultMap.getString("key");
-          ReadableArray inputNames = resultMap.getArray("inputNames");
-          ReadableArray outputNames = resultMap.getArray("outputNames");
-
-          Assert.assertEquals(inputNames.size(), 1);
-          Assert.assertEquals(inputNames.getString(0), "input");
-          Assert.assertEquals(outputNames.size(), 1);
-          Assert.assertEquals(outputNames.getString(0), "output");
-        } catch (Exception e) {
-          Assert.fail(e.getMessage());
+            Assert.assertEquals(inputNames.size(), 1);
+            Assert.assertEquals(inputNames.getString(0), "input");
+            Assert.assertEquals(outputNames.size(), 1);
+            Assert.assertEquals(outputNames.getString(0), "output");
+          } catch (Exception e) {
+            Assert.fail(e.getMessage());
+          }
         }
       }
 
@@ -171,17 +169,14 @@ public class OnnxruntimeModuleTest {
       String sessionKey = "";
 
       // test loadModel() with nnapi ep options
-      {
-        InputStream modelStream =
-            reactContext.getResources().openRawResource(ai.onnxruntime.reactnative.test.R.raw.test_types_float);
+
+      try (InputStream modelStream =
+               reactContext.getResources().openRawResource(ai.onnxruntime.reactnative.test.R.raw.test_types_float);) {
 
         byte[] modelBuffer = getInputModelBuffer(modelStream);
 
-        modelStream.close();
-
-        JavaOnlyMap options = new JavaOnlyMap();
-
         // register with nnapi ep options
+        JavaOnlyMap options = new JavaOnlyMap();
         JavaOnlyArray epArray = new JavaOnlyArray();
         epArray.pushString("nnapi");
         options.putArray("executionProviders", epArray);
