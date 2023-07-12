@@ -11,12 +11,8 @@ namespace Dml
     DmlResourceWrapper : public IUnknown
     {
     public:
+        // TODO (pavignol): Rename to GetResource()
         virtual ID3D12Resource* GetUavResource() const = 0;
-        virtual ID3D12Resource* GetCopySrcResource() const = 0;
-        virtual ID3D12Resource* GetCopyDstResource() const = 0;
-        virtual D3D12_RESOURCE_STATES GetDefaultUavState() const = 0;
-        virtual D3D12_RESOURCE_STATES GetDefaultCopySrcState() const = 0;
-        virtual D3D12_RESOURCE_STATES GetDefaultCopyDstState() const = 0;
         virtual ~DmlResourceWrapper(){}
     };
 }

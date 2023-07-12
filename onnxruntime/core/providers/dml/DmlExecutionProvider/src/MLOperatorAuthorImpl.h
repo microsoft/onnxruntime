@@ -512,9 +512,7 @@ class OpKernelContextWrapper : public WRL::Base<IMLOperatorKernelContext, IMLOpe
 
  protected:
     void ClearTempAllocations();
-
-    // TODO (pavignol): Fix once we go back to a single resource
-    // void TransitionResourcesForOperatorIfRequired(bool isBeforeOp);
+    void TransitionResourcesForOperatorIfRequired(bool isBeforeOp);
 
     // Lifetime is managed by the caller and guaranteed to outlive this class
     onnxruntime::OpKernelContext* m_impl = nullptr;
