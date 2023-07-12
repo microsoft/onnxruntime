@@ -95,41 +95,24 @@ namespace Dml
 
         // The allocation may be larger than the requested size to ensure a whole
         // number of tiles.
-        const uint64_t resource_size_in_tiles =
-            1 + (size_in_bytes - 1) / D3D12_TILED_RESOURCE_TILE_SIZE_IN_BYTES;
-        const uint64_t resource_size_in_bytes =
-            resource_size_in_tiles * D3D12_TILED_RESOURCE_TILE_SIZE_IN_BYTES;
-        auto resource_desc =
-            CD3DX12_RESOURCE_DESC::Buffer(resource_size_in_bytes, resource_flags_);
+        const uint64_t resource_size_in_tiles = 1 + (size_in_bytes - 1) / D3D12_TILED_RESOURCE_TILE_SIZE_IN_BYTES;
+        const uint64_t resource_size_in_bytes = resource_size_in_tiles * D3D12_TILED_RESOURCE_TILE_SIZE_IN_BYTES;
+        auto resource_desc = CD3DX12_RESOURCE_DESC::Buffer(resource_size_in_bytes, resource_flags_);
 
-        ID3D12Resource** resources[] = {
-            &allocation.resource_uav_state,
-            &allocation.resource_copy_src_state,
-            &allocation.resource_copy_dst_state};
-
-        D3D12_RESOURCE_STATES states[] = {
+        HRESULT create_resource_hr = m_device->CreateReservedResource(
+            &resource_desc,
             initial_state_,
-            D3D12_RESOURCE_STATE_COPY_SOURCE,
-            D3D12_RESOURCE_STATE_COPY_DEST};
+            nullptr,
+            IID_PPV_ARGS(&allocation.resource_uav_state));
 
-        for (int i = 0; i < ABSL_ARRAYSIZE(resources); i++)
+        if (create_resource_hr == E_OUTOFMEMORY)
         {
-            HRESULT create_resource_hr = m_device->CreateReservedResource(
-                &resource_desc,
-                states[i],
-                nullptr,
-                IID_PPV_ARGS(resources[i]));
-
-            if (create_resource_hr == E_OUTOFMEMORY)
-            {
-                return absl::nullopt;
-            }
-            ORT_THROW_IF_FAILED(create_resource_hr);
+            return absl::nullopt;
         }
+        ORT_THROW_IF_FAILED(create_resource_hr);
 
         // Reserve enough heaps to store all tiles in the resource.
-        const uint64_t heap_count =
-            1 + (resource_size_in_tiles - 1) / max_heap_size_in_tiles_;
+        const uint64_t heap_count = 1 + (resource_size_in_tiles - 1) / max_heap_size_in_tiles_;
         allocation.heaps.resize(heap_count);
 
         // Create heaps and map them to the primary reserved resource.
@@ -175,28 +158,17 @@ namespace Dml
             // guaranteed to be set (on the GPU timeline) by the time any code can
             // reference the returned resource. We only execute operations on a
             // single hardware queue so there is no need to wait or signal.
-            //
-            // All resources have identical tile mappings. The repeated call to
-            // UpdateTileMappings on all resources instead of using CopyTileMappings
-            // is intentional: the latter API is not supported by all versions of
-            // PIX.
-            for (auto resource :
-                {allocation.resource_uav_state.Get(),
-                allocation.resource_copy_src_state.Get(),
-                allocation.resource_copy_dst_state.Get()})
-            {
-                queue_->UpdateTileMappings(
-                    resource,
-                    numResourceRegions,
-                    &resource_region_start_coordinates,
-                    &resource_region_size,
-                    allocation.heaps[i].Get(),
-                    numHeapRanges,
-                    &tile_range_flags,
-                    &heap_range_start_offset,
-                    &heap_range_tile_count,
-                    D3D12_TILE_MAPPING_FLAG_NONE);
-            }
+            queue_->UpdateTileMappings(
+                allocation.resource_uav_state.Get(),
+                numResourceRegions,
+                &resource_region_start_coordinates,
+                &resource_region_size,
+                allocation.heaps[i].Get(),
+                numHeapRanges,
+                &tile_range_flags,
+                &heap_range_start_offset,
+                &heap_range_tile_count,
+                D3D12_TILE_MAPPING_FLAG_NONE);
 
             resource_region_start_coordinates.X += static_cast<uint32_t>(heap_size_in_tiles);
             unmapped_resource_tiles -= heap_size_in_tiles;
@@ -225,33 +197,20 @@ namespace Dml
         }
 
         // Create large placed resource that spans the heap.
-        D3D12_RESOURCE_DESC resource_desc =
-            CD3DX12_RESOURCE_DESC::Buffer(size_in_bytes, resource_flags_);
+        D3D12_RESOURCE_DESC resource_desc = CD3DX12_RESOURCE_DESC::Buffer(size_in_bytes, resource_flags_);
 
-        ID3D12Resource** resources[] = {
-            &allocation.resource_uav_state,
-            &allocation.resource_copy_src_state,
-            &allocation.resource_copy_dst_state};
-        D3D12_RESOURCE_STATES states[] = {
+        HRESULT create_resource_hr = m_device->CreatePlacedResource(
+            allocation.heaps.front().Get(),
+            0,
+            &resource_desc,
             initial_state_,
-            D3D12_RESOURCE_STATE_COPY_SOURCE,
-            D3D12_RESOURCE_STATE_COPY_DEST};
-
-        for (int i = 0; i < ABSL_ARRAYSIZE(resources); i++)
+            nullptr,
+            IID_PPV_ARGS(&allocation.resource_uav_state));
+        if (create_resource_hr == E_OUTOFMEMORY)
         {
-            HRESULT create_resource_hr = m_device->CreatePlacedResource(
-                allocation.heaps.front().Get(),
-                0,
-                &resource_desc,
-                states[i],
-                nullptr,
-                IID_PPV_ARGS(resources[i]));
-            if (create_resource_hr == E_OUTOFMEMORY)
-            {
-                return absl::nullopt;
-            }
-            ORT_THROW_IF_FAILED(create_resource_hr);
+            return absl::nullopt;
         }
+        ORT_THROW_IF_FAILED(create_resource_hr);
 
         return allocation;
     }

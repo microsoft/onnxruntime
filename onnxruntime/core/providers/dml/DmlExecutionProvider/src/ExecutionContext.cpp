@@ -37,104 +37,109 @@ namespace Dml
 
         SetCommandRecorder(&m_dmlRecorder);
 
-        // This type of copy is not common and is only used in rare circumstances. Because a resource
-        // cannot be both in a source and destination state at the same time (without aliasing), we copy
-        // the source resource to an intermediate one, and then copy the intermediate resource to the
-        // destination resource.
-        // TODO (pavignol): Only do the intermediate copy when both resources at the same
-
-        D3D12_HEAP_PROPERTIES heapProperties = {
-            D3D12_HEAP_TYPE_DEFAULT, D3D12_CPU_PAGE_PROPERTY_UNKNOWN, D3D12_MEMORY_POOL_UNKNOWN, 0, 0};
-
-        D3D12_RESOURCE_DESC resourceDesc = {D3D12_RESOURCE_DIMENSION_BUFFER,
-                                            0,
-                                            byteCount,
-                                            1,
-                                            1,
-                                            1,
-                                            DXGI_FORMAT_UNKNOWN,
-                                            {1, 0},
-                                            D3D12_TEXTURE_LAYOUT_ROW_MAJOR,
-                                            D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS};
-
-        ComPtr<ID3D12Resource> intermediateBuffer;
-        ORT_THROW_IF_FAILED(m_d3dDevice->CreateCommittedResource(
-            &heapProperties,
-            D3D12_HEAP_FLAG_NONE,
-            &resourceDesc,
-            D3D12_RESOURCE_STATE_COPY_DEST,
-            nullptr,
-            IID_GRAPHICS_PPV_ARGS(intermediateBuffer.GetAddressOf())));
-
-        std::vector<D3D12_RESOURCE_BARRIER> barriers;
-
-        if (!(srcState & D3D12_RESOURCE_STATE_COPY_SOURCE))
+        if (dstBuffer == srcBuffer)
         {
-            barriers.push_back(CD3DX12_RESOURCE_BARRIER::Transition(srcBuffer, srcState, D3D12_RESOURCE_STATE_COPY_SOURCE));
+            // This type of copy is not common and is only used in rare circumstances. Because a resource
+            // cannot be both in a source and destination state at the same time (without aliasing), we copy
+            // the source resource to an intermediate one, and then copy the intermediate resource to the
+            // destination resource.
+            // TODO (pavignol): Only do the intermediate copy when both resources at the same
+
+            D3D12_HEAP_PROPERTIES heapProperties = {
+                D3D12_HEAP_TYPE_DEFAULT, D3D12_CPU_PAGE_PROPERTY_UNKNOWN, D3D12_MEMORY_POOL_UNKNOWN, 0, 0};
+
+            D3D12_RESOURCE_DESC resourceDesc = {D3D12_RESOURCE_DIMENSION_BUFFER,
+                                                0,
+                                                byteCount,
+                                                1,
+                                                1,
+                                                1,
+                                                DXGI_FORMAT_UNKNOWN,
+                                                {1, 0},
+                                                D3D12_TEXTURE_LAYOUT_ROW_MAJOR,
+                                                D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS};
+
+            ComPtr<ID3D12Resource> intermediateBuffer;
+            ORT_THROW_IF_FAILED(m_d3dDevice->CreateCommittedResource(
+                &heapProperties,
+                D3D12_HEAP_FLAG_NONE,
+                &resourceDesc,
+                D3D12_RESOURCE_STATE_COPY_DEST,
+                nullptr,
+                IID_GRAPHICS_PPV_ARGS(intermediateBuffer.GetAddressOf())));
+
+            std::vector<D3D12_RESOURCE_BARRIER> barriers;
+
+            if (!(srcState & D3D12_RESOURCE_STATE_COPY_SOURCE))
+            {
+                barriers.push_back(CD3DX12_RESOURCE_BARRIER::Transition(srcBuffer, srcState, D3D12_RESOURCE_STATE_COPY_SOURCE));
+                m_dmlRecorder.ResourceBarrier(barriers);
+            }
+
+            m_dmlRecorder.CopyBufferRegion(intermediateBuffer.Get(), 0, srcBuffer, srcOffset, byteCount);
+
+            // Reset src barrier state
+            for (auto& barrier : barriers)
+            {
+                std::swap(barrier.Transition.StateBefore, barrier.Transition.StateAfter);
+            }
+
+            barriers.push_back(CD3DX12_RESOURCE_BARRIER::Transition(intermediateBuffer.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_COPY_SOURCE));
+
+            if (!(dstState & D3D12_RESOURCE_STATE_COPY_DEST))
+            {
+                barriers.push_back(CD3DX12_RESOURCE_BARRIER::Transition(dstBuffer, dstState, D3D12_RESOURCE_STATE_COPY_DEST));
+            }
+
+            m_dmlRecorder.ResourceBarrier(barriers);
+            m_dmlRecorder.CopyBufferRegion(dstBuffer, dstOffset, intermediateBuffer.Get(), 0, byteCount);
+
+            barriers.clear();
+
+            // Reset dst barrier state
+            if (!(dstState & D3D12_RESOURCE_STATE_COPY_DEST))
+            {
+                barriers.push_back(CD3DX12_RESOURCE_BARRIER::Transition(dstBuffer, D3D12_RESOURCE_STATE_COPY_DEST, dstState));
+            }
+
+            // Since this copy may write to GPU memory, we also need to perform an aliasing barrier
+            barriers.push_back(CD3DX12_RESOURCE_BARRIER::Aliasing(nullptr, nullptr));
+            m_dmlRecorder.ResourceBarrier(barriers);
+
+            // Keep the intermediate buffer alive until we're done with it
+            QueueReference(intermediateBuffer.Get());
+        }
+        else
+        {
+            std::vector<D3D12_RESOURCE_BARRIER> barriers;
+
+            if (!(dstState & D3D12_RESOURCE_STATE_COPY_DEST))
+            {
+                barriers.push_back(CD3DX12_RESOURCE_BARRIER::Transition(dstBuffer, dstState, D3D12_RESOURCE_STATE_COPY_DEST));
+            }
+            if (!(srcState & D3D12_RESOURCE_STATE_COPY_SOURCE))
+            {
+                barriers.push_back(CD3DX12_RESOURCE_BARRIER::Transition(srcBuffer, srcState, D3D12_RESOURCE_STATE_COPY_SOURCE));
+            }
+
+            if (!barriers.empty())
+            {
+                m_dmlRecorder.ResourceBarrier(barriers);
+            }
+
+            m_dmlRecorder.CopyBufferRegion(dstBuffer, dstOffset, srcBuffer, srcOffset, byteCount);
+
+            // Reset barrier state
+            for (auto& barrier : barriers)
+            {
+                std::swap(barrier.Transition.StateBefore, barrier.Transition.StateAfter);
+            }
+
+            // Since this copy may write to GPU memory, we also need to perform an
+            // aliasing barrier
+            barriers.push_back(CD3DX12_RESOURCE_BARRIER::Aliasing(nullptr, nullptr));
             m_dmlRecorder.ResourceBarrier(barriers);
         }
-
-        m_dmlRecorder.CopyBufferRegion(intermediateBuffer.Get(), 0, srcBuffer, srcOffset, byteCount);
-
-        // Reset src barrier state
-        for (auto& barrier : barriers)
-        {
-            std::swap(barrier.Transition.StateBefore, barrier.Transition.StateAfter);
-        }
-
-        barriers.push_back(CD3DX12_RESOURCE_BARRIER::Transition(intermediateBuffer.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_COPY_SOURCE));
-
-        if (!(dstState & D3D12_RESOURCE_STATE_COPY_DEST))
-        {
-            barriers.push_back(CD3DX12_RESOURCE_BARRIER::Transition(dstBuffer, dstState, D3D12_RESOURCE_STATE_COPY_DEST));
-        }
-
-        m_dmlRecorder.ResourceBarrier(barriers);
-        m_dmlRecorder.CopyBufferRegion(dstBuffer, dstOffset, intermediateBuffer.Get(), 0, byteCount);
-
-        barriers.clear();
-
-        // Reset dst barrier state
-        if (!(dstState & D3D12_RESOURCE_STATE_COPY_DEST))
-        {
-            barriers.push_back(CD3DX12_RESOURCE_BARRIER::Transition(dstBuffer, D3D12_RESOURCE_STATE_COPY_DEST, dstState));
-        }
-
-        m_dmlRecorder.ResourceBarrier(barriers);
-
-        // Keep the intermediate buffer alive until we're done with it
-        QueueReference(intermediateBuffer.Get());
-
-
-/*
-        std::vector<D3D12_RESOURCE_BARRIER> barriers;
-
-        if (!(dstState & D3D12_RESOURCE_STATE_COPY_DEST))
-        {
-            barriers.push_back(CD3DX12_RESOURCE_BARRIER::Transition(dstBuffer, dstState, D3D12_RESOURCE_STATE_COPY_DEST));
-        }
-        if (!(srcState & D3D12_RESOURCE_STATE_COPY_SOURCE))
-        {
-            barriers.push_back(CD3DX12_RESOURCE_BARRIER::Transition(srcBuffer, srcState, D3D12_RESOURCE_STATE_COPY_SOURCE));
-        }
-
-        if (!barriers.empty())
-        {
-            m_dmlRecorder.ResourceBarrier(barriers);
-        }
-
-        m_dmlRecorder.CopyBufferRegion(dstBuffer, dstOffset, srcBuffer, srcOffset, byteCount);
-
-        // Reset barrier state
-        for (auto& barrier : barriers)
-        {
-            std::swap(barrier.Transition.StateBefore, barrier.Transition.StateAfter);
-        }
-
-        // Since this copy may write to GPU memory, we also need to perform an
-        // aliasing barrier
-        m_dmlRecorder.ResourceBarrier(barriers);
-*/
     }
 
     void ExecutionContext::FillBufferWithPattern(
