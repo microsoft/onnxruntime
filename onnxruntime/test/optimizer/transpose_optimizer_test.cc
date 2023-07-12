@@ -4425,12 +4425,13 @@ TEST(TransposeOptimizerTests, RegressionTest_GitHubIssue12151) {
               testing::ContainerEq(fetches[0].Get<Tensor>().DataAsSpan<float>()));
 }
 
+// These tests uses internal testing EP with static kernels which requires a full build,
+// and the NHWC Conv with requires contrib ops
+#if !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_CONTRIB_OPS)
+
 // Test a Transpose node followed by a Reshape that is logically equivalent to an Transpose can be merged.
 // The test graph was extracted from a model we were trying to use with the QNN EP.
 TEST(TransposeOptimizerTests, QnnTransposeReshape) {
-  // test uses internal testing EP with static kernels which requires a full build,
-  // and the NHWC Conv with requires contrib ops
-#if !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_CONTRIB_OPS)
   Status status;
   auto model_uri = ORT_TSTR("testdata/layout_transform_reshape.onnx");
 
@@ -4473,13 +4474,9 @@ TEST(TransposeOptimizerTests, QnnTransposeReshape) {
     EXPECT_TRUE(node.GetExecutionProviderType() == expected_ep) << node.OpType() << " node named '" << node.Name()
                                                                 << "' was not assigned to the internal testing EP.";
   }
-#endif
 }
 
 TEST(TransposeOptimizerTests, QnnTransposeReshapeQDQ) {
-  // test uses internal testing EP with static kernels which requires a full build,
-  // and the NHWC Conv with requires contrib ops
-#if !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_CONTRIB_OPS)
   Status status;
   auto model_uri = ORT_TSTR("testdata/layout_transform_reshape.qdq.onnx");
 
@@ -4516,7 +4513,48 @@ TEST(TransposeOptimizerTests, QnnTransposeReshapeQDQ) {
     EXPECT_TRUE(node.GetExecutionProviderType() == expected_ep) << node.OpType() << " node named '" << node.Name()
                                                                 << "' was not assigned to the internal testing EP.";
   }
-#endif
 }
+
+// Validate handling for EP with layout specific Resize that prefers NHWC
+TEST(TransposeOptimizerTests, QnnResizeOpset11) {
+  Status status;
+  auto model_uri = ORT_TSTR("testdata/nhwc_resize_scales_opset11.onnx");
+
+  SessionOptions so;
+  // Uncomment to debug
+  // ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kDebugLayoutTransformation, "1"));
+
+  using InternalTestingEP = onnxruntime::internal_testing_ep::InternalTestingExecutionProvider;
+
+  // set the test EP to support all ops in the model so that the layout transform applies to all nodes
+  const std::unordered_set<std::string> empty_set;
+  auto internal_testing_ep = std::make_unique<InternalTestingEP>(empty_set, empty_set, DataLayout::NHWC);
+  internal_testing_ep->EnableStaticKernels().TakeAllNodes();
+
+  InferenceSessionWrapper session{so, GetEnvironment()};
+  ASSERT_STATUS_OK(session.RegisterExecutionProvider(std::move(internal_testing_ep)));
+  ASSERT_STATUS_OK(session.Load(model_uri));
+  ASSERT_STATUS_OK(session.Initialize());
+
+  const auto& graph = session.GetGraph();
+  // all nodes should be assigned to the internal testing EP, which also means they should be in NHWC layout
+  std::string expected_ep(onnxruntime::utils::kInternalTestingExecutionProvider);
+  for (const auto& node : graph.Nodes()) {
+    EXPECT_TRUE(node.GetExecutionProviderType() == expected_ep) << node.OpType() << " node named '" << node.Name()
+                                                                << "' was not assigned to the internal testing EP.";
+    if (node.OpType() == "Resize") {
+      EXPECT_EQ(node.Domain(), kMSInternalNHWCDomain) << "Resize was not converted to NHWC layout";
+    }
+  }
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_EQ(op_to_count["Transpose"], 2) << "Resize should have been wrapped in 2 Transpose nodes to convert to NHWC";
+
+  // And the post-Resize Transpose should have been pushed all the way to the end
+  GraphViewer viewer(graph);
+  EXPECT_EQ(graph.GetNode(viewer.GetNodesInTopologicalOrder().back())->OpType(), "Transpose");
+}
+#endif  // !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_CONTRIB_OPS)
+
 }  // namespace test
 }  // namespace onnxruntime

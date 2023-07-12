@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include "core/graph/constants.h"
+#include "core/framework/utils.h"
 #include "core/optimizer/transpose_optimization/ort_optimizer_utils.h"
 
 using namespace onnx_transpose_optimization;
@@ -144,14 +145,17 @@ const HandlerMap& OrtExtendedHandlers() {
 //           i.e. aligning with the generic nature of the ONNX spec.
 //           See https://github.com/microsoft/onnxruntime/pull/10824 for a similar fix applied to the CPU Resize.
 //   The QNN EP requires the Resize to remain in NHWC once the layout transformer makes that adjustment
-//   and moves the node to the kMSInternalNHWCDomain domain.
-//     TODO: Not sure it needs to be in this list with the change to ignore Resize until it's assigned to an EP
-//           because once that happens it would be in the internal NHWC domain. Commenting out to validate in CI.
+//   and moves the node to the kMSInternalNHWCDomain domain. We need it to be in this list so that the layout
+//   transformation inserts Transpose nodes around the Resize to convert from NCWH to NHWC. As there is no handler for
+//   the replacement Resize node in the kMSInternalNHWCDomain domain we will not push any Transpose nodes through it
+//   later.
 const std::unordered_set<std::string_view> EPsWithLayoutSensitiveResize() {
-  static std::unordered_set<std::string_view> eps = {kCudaExecutionProvider,
-                                                     kRocmExecutionProvider,
-                                                     // kQnnExecutionProvider,
-                                                     };
+  static std::unordered_set<std::string_view> eps = {
+      kCudaExecutionProvider,
+      kRocmExecutionProvider,
+      kQnnExecutionProvider,
+      onnxruntime::utils::kInternalTestingExecutionProvider,  // for testing the behavior
+  };
 
   return eps;
 }
