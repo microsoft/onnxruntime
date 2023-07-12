@@ -341,9 +341,9 @@ class GraphExecutionManager(GraphExecutionInterface):
                         # From some PyTorch version, autograd_inlining is a valid argument.
                         # We allow it to be True if custom autograd function is disabled (where autograd.Function
                         # anyway is not supported in ONNX until it can be inlined).
-                        required_export_kwargs["autograd_inlining"] = (
-                            False if self._runtime_options.enable_custom_autograd_function else True
-                        )
+                        required_export_kwargs[
+                            "autograd_inlining"
+                        ] = not self._runtime_options.enable_custom_autograd_function
 
                     invalid_args = self._export_extra_kwargs.keys() & required_export_kwargs.keys()
                     assert (
