@@ -9,8 +9,6 @@
     "start": "react-native start"
   },
   "dependencies": {
-    "onnxruntime-common": "file:./onnxruntime-common.tgz",
-    "onnxruntime-react-native": "file:./onnxruntime-react-native.tgz",
     "react": "18.2.0",
     "react-native": "0.71.12"
   },
