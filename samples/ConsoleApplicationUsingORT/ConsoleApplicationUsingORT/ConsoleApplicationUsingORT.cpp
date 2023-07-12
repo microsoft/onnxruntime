@@ -28,8 +28,8 @@ int main()
   std::cout<<"SetDenormalAsZero:"<<onnxruntime::SetDenormalAsZero(true)<<"\n";	// build error: undefined reference to
 
   // C++ API
-  Ort::Env env;
-  Ort::Session session_{env, "/bert_ort/leca/models/Detection/model.onnx", Ort::SessionOptions{nullptr}};
+//  Ort::Env env;
+//  Ort::Session session_{env, "/bert_ort/leca/models/Detection/model.onnx", Ort::SessionOptions{nullptr}};
 
   // C API
   const OrtApi* g_ort = OrtGetApiBase()->GetApi(ORT_API_VERSION);
@@ -40,16 +40,31 @@ int main()
   //OrtSessionOptions so; // build error: incomplete type
   g_ort->CreateSessionOptions(&so);
 
-  OrtSession* session;
-  g_ort->CreateSession(env, "/bert_ort/leca/code/onnxruntime2/onnxruntime/test/testdata/custom_op_library/custom_op_test.onnx", so, &session);
-
   // demo 1
   //g_ort->RegisterCustomEPAndCustomOp("/bert_ort/leca/code/onnxruntime2/build/Linux/Debug/libtest_execution_provider.so", so);
   //void* library_path = nullptr;
   //g_ort->RegisterCustomOpsLibrary(so, "/bert_ort/leca/code/onnxruntime2/build/Linux/Debug/libcustom_op_library.so", &library_path);
-  
+
   // demo 2
   g_ort->RegisterCustomEPAndCustomOp2("/bert_ort/leca/code/onnxruntime2/samples/customEP/build/libcustomep.so", so);
+
+  OrtSession* session = nullptr;
+  g_ort->CreateSession(p_env, "/bert_ort/leca/models/CustomOpTwo.onnx", so, &session);
+
+  OrtMemoryInfo* memory_info = nullptr;
+  g_ort->CreateCpuMemoryInfo(OrtArenaAllocator, OrtMemTypeDefault, &memory_info);
+  float input_data[] = {0.4f, 1.5f, 2.6f, 3.7f};
+  const size_t input_len = 4 * sizeof(float);
+  const int64_t input_shape[] = {4};
+  const size_t shape_len = sizeof(input_shape)/sizeof(input_shape[0]);
+
+  OrtValue* input_tensor = nullptr;
+  g_ort->CreateTensorWithDataAsOrtValue(memory_info, input_data, input_len, input_shape, shape_len, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, &input_tensor);
+
+  const char* input_names[] = {"x"};
+  const char* output_names[] = {"graphOut"};
+  OrtValue* output_tensor;
+  g_ort->Run(session, nullptr, input_names, (const OrtValue* const*)&input_tensor, 1, output_names, 1, &output_tensor);
 }
 
 // Run program: Ctrl + F5 or Debug > Start Without Debugging menu

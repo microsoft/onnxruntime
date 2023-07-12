@@ -747,6 +747,11 @@ static ORT_STATUS_PTR InitializeSession(_In_ const OrtSessionOptions* options,
       auto provider = factory->CreateProvider();
       provider_list.push_back(std::move(provider));
     }
+
+//    for (auto& ep : options->providers) {
+//      std::unique_ptr<IExecutionProvider> tmp(ep.get());
+//      provider_list.push_back(std::move(tmp));
+//    }
   }
 
   // register the providers
@@ -754,6 +759,10 @@ static ORT_STATUS_PTR InitializeSession(_In_ const OrtSessionOptions* options,
     if (provider) {
       ORT_API_RETURN_IF_STATUS_NOT_OK(sess->RegisterExecutionProvider(std::move(provider)));
     }
+  }
+
+  for (auto& provider : options->providers) {
+    ORT_API_RETURN_IF_STATUS_NOT_OK(sess->RegisterExecutionProvider(std::move(provider)));
   }
 
   if (prepacked_weights_container != nullptr) {

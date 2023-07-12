@@ -2194,6 +2194,7 @@ ORT_API_STATUS_IMPL(OrtApis::RegisterCustomEPAndCustomOp2, _In_ const char* libr
   ORT_API_RETURN_IF_STATUS_NOT_OK(onnxruntime::Env::Default().GetSymbolFromLibrary(library_handle, "GetEPFactory", (void**)&PGetEPFactory));
   onnxruntime::IExecutionProviderFactory* ep_factory = PGetEPFactory();
   std::unique_ptr<onnxruntime::IExecutionProvider> ep = ep_factory->CreateProvider();
+  options->providers.push_back(std::move(ep));
 
   OrtStatus* (*PRegisterCustomOp)(OrtSessionOptions*);
   ORT_API_RETURN_IF_STATUS_NOT_OK(onnxruntime::Env::Default().GetSymbolFromLibrary(library_handle, "RegisterCustomOp", (void**)&PRegisterCustomOp));
