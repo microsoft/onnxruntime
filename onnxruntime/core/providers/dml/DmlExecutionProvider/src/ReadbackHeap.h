@@ -28,7 +28,7 @@ namespace Dml
             gsl::span<const uint32_t > dstSizes,
             gsl::span<ID3D12Resource*> src,
             gsl::span<uint64_t> srcOffsets,
-            D3D12_RESOURCE_STATES srcState);
+            gsl::span<const D3D12_RESOURCE_STATES> srcStates);
 
     private:
         void EnsureReadbackHeap(size_t size);

@@ -103,7 +103,7 @@ namespace DmlGraphFusionHelper
             // The allocation is not pooled
             auto allocInfo = static_cast<AllocationInfo*>(opaqueData);
             *allocId = 0;
-            return D3D12BufferRegion(0, allocInfo->GetUavResource()->GetDesc().Width, allocInfo->GetUavResource());
+            return D3D12BufferRegion(0, allocInfo->GetUavResource()->GetDesc().Width, allocInfo->GetUavResource(), nullptr, nullptr);
         }
 
         auto taggedPointer = TaggedPointer::Unpack(opaqueData);

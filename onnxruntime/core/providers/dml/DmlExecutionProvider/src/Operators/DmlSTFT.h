@@ -405,15 +405,9 @@ public:
         std::array<DML_BINDING_DESC, 2> inputBindings;
         uint32_t inputBindingsCount = 1;
 
-        // NOTE: avoiding std::array for barriers to avoid buggy code analysis thinking
-        // barrierCount is outside the valid range.
-        D3D12_RESOURCE_BARRIER barriers[3];
-        uint32_t barrierCount = 0;
-
         Dml::D3D12BufferRegion signalBufferRegion = DmlSTFTHelpers::GetInputBufferRegionFromKernelContext(context, DmlSTFTKernelInputIndex::Signal);
         inputBuffers[0] = signalBufferRegion.GetBufferBinding();
         inputBindings[0] = { DML_BINDING_TYPE_BUFFER, &inputBuffers[0] };
-        barriers[barrierCount++] = CD3DX12_RESOURCE_BARRIER::Transition(signalBufferRegion.ResourceInUavState(), D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 
         Dml::D3D12BufferRegion windowBufferRegion;
         if (m_framingOperator.hasWindowTensor)
@@ -421,7 +415,6 @@ public:
             windowBufferRegion = DmlSTFTHelpers::GetInputBufferRegionFromKernelContext(context, DmlSTFTKernelInputIndex::Window);
             inputBuffers[1] = windowBufferRegion.GetBufferBinding();
             inputBindings[1] = { DML_BINDING_TYPE_BUFFER, &inputBuffers[1] };
-            barriers[barrierCount++] = CD3DX12_RESOURCE_BARRIER::Transition(windowBufferRegion.ResourceInUavState(), D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
             inputBindingsCount++;
         }
 
@@ -429,7 +422,6 @@ public:
 
         DML_BUFFER_BINDING outputBuffer = outputBufferRegion.GetBufferBinding();
         DML_BINDING_DESC outputBinding = { DML_BINDING_TYPE_BUFFER, &outputBuffer };
-        barriers[barrierCount++] = CD3DX12_RESOURCE_BARRIER::Transition(outputBufferRegion.ResourceInUavState(), D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 
         m_framingOperator.bindingTable->BindOutputs(1, &outputBinding);
 
@@ -451,22 +443,16 @@ public:
             m_framingOperator.bindingTable->BindPersistentResource(&bindingDesc);
         }
 
-        // Transition resources COMMON -> UAV
-        commandList->ResourceBarrier(barrierCount, barriers);
-
         m_framingOperator.commandRecorder->RecordDispatch(
             commandList,
             m_framingOperator.op.Get(),
             m_framingOperator.bindingTable.Get()
         );
 
-        // Transition resources UAV -> COMMON
-        for (uint32_t barrierIndex = 0; barrierIndex < barrierCount; barrierIndex++)
-        {
-            std::swap(barriers[barrierIndex].Transition.StateBefore, barriers[barrierIndex].Transition.StateAfter);
-        }
-
-        commandList->ResourceBarrier(barrierCount, barriers);
+        D3D12_RESOURCE_BARRIER barriers[] = {
+            CD3DX12_RESOURCE_BARRIER::UAV(nullptr),
+            CD3DX12_RESOURCE_BARRIER::Aliasing(nullptr, nullptr)};
+        commandList->ResourceBarrier(2, barriers);
     }
 };
 

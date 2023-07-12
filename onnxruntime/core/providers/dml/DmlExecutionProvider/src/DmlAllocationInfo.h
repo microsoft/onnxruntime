@@ -36,6 +36,16 @@ namespace Dml
             return m_resourceWrapper->GetUavResource();
         }
 
+        ID3D12Resource* GetCopySrcResource() const
+        {
+            return m_resourceWrapper->GetCopySrcResource();
+        }
+
+        ID3D12Resource* GetCopyDstResource() const
+        {
+            return m_resourceWrapper->GetCopyDstResource();
+        }
+
         ComPtr<DmlResourceWrapper> DetachResourceWrapper() const
         {
             return std::move(m_resourceWrapper);
