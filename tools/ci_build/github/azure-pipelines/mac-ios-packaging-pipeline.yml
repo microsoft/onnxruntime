@@ -113,5 +113,5 @@ stages:
         cp "$(Pipeline.Workspace)/ios_packaging_artifacts_full/pod-archive-onnxruntime-c-${{ variables.ortPodVersion }}.zip" swift/
         export ORT_IOS_POD_LOCAL_PATH="swift/pod-archive-onnxruntime-c-${{ variables.ortPodVersion }}.zip"
         xcodebuild test -scheme onnxruntime -destination 'platform=iOS Simulator,name=iPhone 14'
-        rm swift/pod-archive-onnxruntime-c-*.zip
+        rm swift/pod-archive-onnxruntime-c-${{ variables.ortPodVersion }}.zip
       displayName: "Test Package.swift usage"

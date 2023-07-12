@@ -20,18 +20,23 @@ stages:
 
     variables:
       xcodeVersion: "14.3"
-
       ortPodVersion: $[stageDependencies.IosPackaging_SetCommonVariables.j.outputs['SetCommonVariables.ORT_POD_VERSION']]
 
       ${{ if eq(parameters.packageVariant, 'Mobile') }}:
-        BuildSettingsFile: "tools/ci_build/github/apple/default_mobile_ios_framework_build_settings.json"
-        OptionalIncludeOpsByConfigOption: "--include-ops-by-config tools/ci_build/github/android/mobile_package.required_operators.config"
+        buildSettingsFile: "tools/ci_build/github/apple/default_mobile_ios_framework_build_settings.json"
+        optionalIncludeOpsByConfigOption: "--include-ops-by-config tools/ci_build/github/android/mobile_package.required_operators.config"
+        cPodName: onnxruntime-mobile-c
+        objcPodName: onnxruntime-mobile-objc
 
       ${{ if eq(parameters.packageVariant, 'Full') }}:
-        BuildSettingsFile: "tools/ci_build/github/apple/default_full_ios_framework_build_settings.json"
+        buildSettingsFile: "tools/ci_build/github/apple/default_full_ios_framework_build_settings.json"
+        cPodName: onnxruntime-c
+        objcPodName: onnxruntime-objc
 
       ${{ if eq(parameters.packageVariant, 'Training') }}:
-        BuildSettingsFile: "tools/ci_build/github/apple/default_training_ios_framework_build_settings.json"
+        buildSettingsFile: "tools/ci_build/github/apple/default_training_ios_framework_build_settings.json"
+        cPodName: onnxruntime-training-c
+        objcPodName: onnxruntime-training-objc
 
     timeoutInMinutes: 120
 
@@ -78,8 +83,8 @@ stages:
           --pod-version "${{ variables.ortPodVersion }}" \
           --test \
           --variant ${{ parameters.packageVariant }} \
-          --build-settings-file ${{ variables.BuildSettingsFile }} \
-          ${{ variables.OptionalIncludeOpsByConfigOption }} \
+          --build-settings-file ${{ variables.buildSettingsFile }} \
+          ${{ variables.optionalIncludeOpsByConfigOption }} \
           -b="--path_to_protoc_exe=$(Build.BinariesDirectory)/protobuf_install/bin/protoc"
       displayName: "Build iOS framework and assemble pod package files"
 
@@ -120,19 +125,20 @@ stages:
           --token $(app_center_api_token)
       displayName: "Run E2E tests on App Center"
 
-    # todo fix this part up
-    # maybe we just prepare the artifacts and move the upload to the release pipeline
-    - task: AzureCLI@2
-      inputs:
-        azureSubscription: 'AIInfraBuildOnnxRuntimeOSS'
-        scriptType: 'bash'
-        scriptLocation: 'scriptPath'
-        scriptPath: 'tools/ci_build/github/apple/assemble_ios_packaging_artifacts.sh'
-        arguments: >-
-          "$(Build.BinariesDirectory)/staging"
-          "$(Build.ArtifactStagingDirectory)"
-          "$(ORT_POD_VERSION)"
-          "$(ORT_SHOULD_UPLOAD_ARCHIVES)"
+    - script: |
+        set -e -x
+
+        for POD_NAME in "${{ variables.cPodName}}" "${{ variables.objcPodName }}";
+        do
+          ./tools/ci_build/github/apple/assemble_ios_packaging_artifacts.sh \
+            "$(Build.BinariesDirectory)/staging" \
+            "$(Build.ArtifactStagingDirectory)" \
+            "${POD_NAME}" \
+            "${{ variables.ortPodVersion }}"
+        done
+
+        # copy over helper script for use in release pipeline
+        cp tools/ci_build/github/apple/upload_pod_archive_and_update_podspec.sh "$(Build.ArtifactStagingDirectory)"
       displayName: "Assemble artifacts"
 
     - script: |
