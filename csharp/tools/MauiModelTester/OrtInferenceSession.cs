@@ -82,9 +82,7 @@ namespace MauiModelTester
                 {
                     _perfStats.WarmupTime = stopwatch.Elapsed;
 
-                    // TODO: validate the output if there's expected output and validation is enabled
-                    // If we're doing a perf test we don't need to do validation. We could possibly do a warmup request
-                    // in Create and validate there so it's clearly a one-off.
+                    // validate the expected output on the first Run only
                     if (_expectedOutputs.Count > 0)
                     {
                         // create dictionary of output name to results

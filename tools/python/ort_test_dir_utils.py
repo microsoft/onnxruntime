@@ -155,6 +155,8 @@ def create_test_dir(
             so.register_custom_ops_library(onnxruntime_extensions.get_library_path())
 
         except ImportError:
+            # ignore if onnxruntime_extensions is not available.
+            # if the model uses custom ops from there it will fail to load.
             pass
 
         sess = ort.InferenceSession(test_model_filename, so)

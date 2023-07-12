@@ -20,7 +20,7 @@
 		<ApplicationDisplayVersion>1.0</ApplicationDisplayVersion>
 		<ApplicationVersion>1</ApplicationVersion>
 
-		<SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'ios'">11.0</SupportedOSPlatformVersion>
+		<SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'ios'">12.0</SupportedOSPlatformVersion>
 		<SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android'">21.0</SupportedOSPlatformVersion>
 		<SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'windows'">10.0.17763.0</SupportedOSPlatformVersion>
 		<TargetPlatformMinVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'windows'">10.0.17763.0</TargetPlatformMinVersion>
@@ -66,10 +66,4 @@
 	<ItemGroup Condition="'$(SolutionName)'!='MauiModelTester'">
 	  	<ProjectReference Include="..\..\src\Microsoft.ML.OnnxRuntime\Microsoft.ML.OnnxRuntime.csproj" />
 	</ItemGroup>
-
-	<!-- debug output - makes finding/fixing any issues with the the conditions easy.   -->
-	<Target Name="DumpValues" BeforeTargets="PreBuildEvent">
-		<Message Text="OnnxRuntimeCsharpRoot='$(OnnxRuntimeCsharpRoot)'" />
-		<Message Text="SolutionName='$(SolutionName)'" />
-	</Target>
 </Project>

@@ -1990,15 +1990,12 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 #endif
                 var session = (deviceId.HasValue)
                     ? new InferenceSession(model, option)
-                    : new InferenceSession(model);
+                                  : new InferenceSession(model);
                 float[] inputData = TestDataLoader.LoadTensorFromEmbeddedResource("bench.in");
                 float[] expectedOutput = TestDataLoader.LoadTensorFromEmbeddedResource("bench.expected_out");
                 var inputMeta = session.InputMetadata;
                 var tensor = new DenseTensor<float>(inputData, inputMeta["data_0"].Dimensions);
                 return new Tuple<InferenceSession, float[], DenseTensor<float>, float[]>(session, inputData, tensor, expectedOutput);
-            }
-        }
-                                                                                         expectedOutput);
             }
         }
 

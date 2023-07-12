@@ -1,4 +1,6 @@
-﻿namespace MauiModelTester;
+﻿using System.Diagnostics;
+
+namespace MauiModelTester;
 
 public partial class MainPage : ContentPage
 {
@@ -35,8 +37,8 @@ public partial class MainPage : ContentPage
 
         _currentExecutionProvider = ExecutionProviders.CPU;
 
-        // start creating session in background
-        _inferenceSessionCreationTask = CreateInferenceSession();
+        // start creating session in background.
+        CreateInferenceSession();
     }
 
     private async Task CreateInferenceSession()
@@ -48,6 +50,11 @@ public partial class MainPage : ContentPage
             _inferenceSessionCreationTask = null;
         }
 
+        _inferenceSessionCreationTask = CreateInferenceSessionImpl();
+    }
+
+    private async Task CreateInferenceSessionImpl()
+    {
         var executionProvider = ExecutionProviderOptions.SelectedItem switch {
             nameof(ExecutionProviders.NNAPI) => ExecutionProviders.NNAPI,
             nameof(ExecutionProviders.CoreML) => ExecutionProviders.CoreML,
@@ -71,20 +78,17 @@ public partial class MainPage : ContentPage
 
     private void ExecutionProviderOptions_SelectedIndexChanged(object sender, EventArgs e)
     {
-        ExecutionProviderOptions.IsEnabled = false; // disable until session is created
-        _inferenceSessionCreationTask = CreateInferenceSession();
-        _inferenceSessionCreationTask.ContinueWith((task) =>
-                                                   {
-                                                       MainThread.BeginInvokeOnMainThread(
-                                                           () =>
+        UpdateExecutionProvider().ContinueWith((task) =>
+                                               {
+                                                   MainThread.BeginInvokeOnMainThread(
+                                                       () =>
+                                                       {
+                                                           if (task.IsFaulted)
                                                            {
-                                                               ExecutionProviderOptions.IsEnabled = true;
-                                                               if (task.IsFaulted)
-                                                               {
-                                                                   DisplayAlert("Error", task.Exception.Message, "OK");
-                                                               }
-                                                           });
-                                                   });
+                                                               DisplayAlert("Error", task.Exception.Message, "OK");
+                                                           }
+                                                       });
+                                               });
     }
 
     private void OnRunClicked(object sender, EventArgs e)
@@ -99,11 +103,19 @@ public partial class MainPage : ContentPage
                                 });
     }
 
+    private async Task UpdateExecutionProvider()
+    {
+        await SetBusy(true);
+        await CreateInferenceSession();
+        await SetBusy(false);
+    }
+
     private async Task RunAsync()
     {
         await ClearResult();
 
-        int iterations = Iterations.Text == string.Empty ? 10 : int.Parse(Iterations.Text);
+        var iterationsStr = Iterations.Text;
+        int iterations = iterationsStr == string.Empty ? 10 : int.Parse(iterationsStr);
 
         await SetBusy(true);
 
@@ -123,6 +135,7 @@ public partial class MainPage : ContentPage
                                                  {
                                                      BusyIndicator.IsRunning = busy;
                                                      BusyIndicator.IsVisible = busy;
+
                                                      // disable controls that would create a new session or another
                                                      // Run call until we're done with the current Run.
                                                      ExecutionProviderOptions.IsEnabled = !busy;
@@ -147,6 +160,8 @@ public partial class MainPage : ContentPage
             label.Text += $"Warmup run time: {stats.WarmupTime.TotalMilliseconds:F4} ms\n\n";
             label.Text += string.Join('\n', stats.GetRunStatsReport(true));
             TestResults.Add(label);
+
+            Debug.WriteLine(label.Text);
         };
 
         MainThread.BeginInvokeOnMainThread(createResults);

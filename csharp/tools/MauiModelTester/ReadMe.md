@@ -37,7 +37,7 @@ creates the native and managed packages at the same time and requires a native l
 
 Alternatively, you can open /csharp/OnnxRuntime.CSharp.sln and temporarily add
 /csharp/tools/MauiModelTester/MauiModelTester.csproj to it. The csproj should automatically adjust to use a project
-reference to D/csharp/src/Microsoft.ML.OnnxRuntime/Microsoft.ML.OnnxRuntime.csproj instead of a package reference to
+reference to /csharp/src/Microsoft.ML.OnnxRuntime/Microsoft.ML.OnnxRuntime.csproj instead of a package reference to
 the Microsoft.ML.OnnxRuntime.Managed nuget package. Note that you must still run build.bat/build.sh with
 `--build_csharp` to generate /csharp/Directory.Build.props, but can run with the `--update` parameter so no native build
 is done. Most likely you should grab the latest nightly native package from the packaging pipeline so the native code is

@@ -51,7 +51,7 @@ def parse_args():
     parser.add_argument(
         "--output_data",
         "-o",
-        help="Expected output data pb files created with onnx_test_data_utils.py. " "Multiple can be specified.",
+        help="Expected output data pb files created with onnx_test_data_utils.py. Multiple can be specified.",
         type=Path,
         nargs="+",
         required=False,
@@ -73,8 +73,8 @@ def parse_args():
             pieces = value.split("=")
             assert len(pieces) == 2
             name = pieces[0].strip()
-            value = int(pieces[1].strip())
-            symbolic_dims[name] = value
+            dim_value = int(pieces[1].strip())
+            symbolic_dims[name] = dim_value
 
     args.symbolic_dims = symbolic_dims
 
