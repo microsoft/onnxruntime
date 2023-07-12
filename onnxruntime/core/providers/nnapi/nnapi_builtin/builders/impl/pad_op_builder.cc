@@ -161,7 +161,7 @@ bool PadOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers, c
     const ONNX_NAMESPACE::TensorProto& pads_initializer = *pads_initializer_it->second;
     Initializer unpacked_tensor(pads_initializer);
     auto tensor_data = unpacked_tensor.DataAsSpan<int64_t>();
-    for (int64_t i = 0; i < unpacked_tensor.size(); i++) {
+    for (size_t i = 0; i < unpacked_tensor.size(); i++) {
       if (tensor_data[i] < 0) {
         LOGS_DEFAULT(VERBOSE) << "Negative pad value is not supported: pads["
                               << i << "] = " << tensor_data[i];
