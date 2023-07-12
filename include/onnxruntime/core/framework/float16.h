@@ -2,6 +2,8 @@
 // Licensed under the MIT License.
 #pragma once
 
+#include <cmath>
+
 #include "endian.h"
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
 #include "cuda_bf16.h"
@@ -119,7 +121,7 @@ struct BFloat16 : onnxruntime_float16::BFloat16Impl {
       val = static_cast<uint16_t>((U32 + rounding_bias) >> 16);
     }
 #else
-    if (v != v) {
+    if (std::isnan(v)) {
       val = kPositiveQNaNBits;
     } else {
       auto get_msb_half = [](float fl) {
@@ -156,10 +158,8 @@ struct BFloat16 : onnxruntime_float16::BFloat16Impl {
     result = *tempRes;
     return result;
 #else
-    // float NaN encodings are not specified and encoded
-    // differently on different processors, so we use limits
-    // Infinities will be propagated as is.
-    if (val != val) {
+    // Test for NaN
+    if (static_cast<uint16_t>(val & ~kSignMask) > kPositiveInfinityBits) {
       return std::numeric_limits<float>::quiet_NaN();
     }
 
