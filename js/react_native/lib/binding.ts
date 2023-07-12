@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-import type {InferenceSession} from '@fugood/onnxruntime-common';
+import type {InferenceSession} from 'onnxruntime-common';
 import {NativeModules} from 'react-native';
 import Onnxruntime from './NativeOnnxruntime';
 import type {ModelLoadInfo, EncodedTensor, Fetches, JSIBlob, Feeds, Return} from './NativeOnnxruntime';
