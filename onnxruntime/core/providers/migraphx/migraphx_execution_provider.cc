@@ -113,6 +113,12 @@ MIGraphXExecutionProvider::MIGraphXExecutionProvider(const MIGraphXExecutionProv
     fp16_enable_ = (std::stoi(fp16_enable_env) == 0 ? false : true);
   }
 
+  // whether int8 is enabled
+  const std::string int8_enable_env = onnxruntime::GetEnvironmentVar(migraphx_env_vars::kInt8Enable);
+  if (!int8_enable_env.empty()) {
+    int8_enable_ = (std::stoi(int8_enable_env) == 0 ? false : true);
+  }
+
   // dump unsupported ops
   const std::string dump_model_ops_env = onnxruntime::GetEnvironmentVar(migraphx_env_vars::dumpModelOps);
   if (!dump_model_ops_env.empty()) {
@@ -988,6 +994,7 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
       migraphx::onnx_options& cmp_options = mgx_state->options;
       bool& no_input_shape = mgx_state->no_input_shape;
       bool fp16_enable = mgx_state->fp16_enable;
+      bool int8_enable = mgx_state->int8_enable;
 
       // mean no program at all, so need to get the input shape info
       // from input data
@@ -1041,6 +1048,10 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
         prog = migraphx::parse_onnx_buffer(onnx_string, cmp_options);
         if (fp16_enable) {
           migraphx::quantize_fp16(prog);
+        }
+
+        if (int8_enable) {
+          migraphx::quantize_int8(prog);
         }
 
         prog.compile(t);
