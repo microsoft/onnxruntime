@@ -180,7 +180,7 @@ bool PadOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputParam
     Initializer unpacked_tensor(pads_initializer);
 
     auto pads_tensor_data = unpacked_tensor.DataAsSpan<int64_t>();
-    for (int64_t i = 0; i < unpacked_tensor.size(); i++) {
+    for (size_t i = 0; i < unpacked_tensor.size(); i++) {
       if (pads_tensor_data[i] < 0) {
         LOGS(logger, VERBOSE) << "Negative pad value is not supported: pads["
                               << i << "] = " << pads_tensor_data[i];

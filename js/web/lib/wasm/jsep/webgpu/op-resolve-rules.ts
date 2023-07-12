@@ -5,6 +5,7 @@ import * as binaryOps from './ops/binary-op';
 import {concat, parseConcatAttributes} from './ops/concat';
 import {conv, parseConvAttributes} from './ops/conv';
 import {convTranspose, parseConvTransposeAttributes} from './ops/conv-transpose';
+import {expand} from './ops/expand';
 import {gemm, parseGemmAttributes} from './ops/gemm';
 import {matMul} from './ops/matmul';
 import * as pool from './ops/pool';
@@ -41,6 +42,7 @@ export const WEBGPU_OP_RESOLVE_RULES: Map<string, OperatorImplementation> = new 
   ['Elu', [unaryOps.elu, unaryOps.parseAlphaAttributes]],
   ['Erf', [unaryOps.erf]],
   ['Exp', [unaryOps.exp]],
+  ['Expand', [expand]],
   ['Floor', [unaryOps.floor]],
   ['Gemm', [gemm, parseGemmAttributes]],
   ['GlobalAveragePool', [pool.globalAveragePool, pool.parseGlobalAveragePoolAttributes]],
