@@ -34,7 +34,6 @@
 #include <unordered_map>
 #include <utility>
 #include <type_traits>
-#include <functional>
 
 #ifdef ORT_NO_EXCEPTIONS
 #include <iostream>
