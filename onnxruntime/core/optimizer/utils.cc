@@ -180,7 +180,7 @@ bool AppendTensorFromInitializer(const Graph& graph, const NodeArg& input_arg, I
   } else if (data_type == ONNX_NAMESPACE::TensorProto_DataType_INT32) {
     const int32_t* val = init_const.data<int32_t>();
     data.reserve(data.size() + gsl::narrow<size_t>(init_const.size()));
-    for (int64_t i = 0; i < init_const.size(); i++) {
+    for (size_t i = 0; i < init_const.size(); i++) {
       data.push_back(static_cast<int64_t>(val[i]));
     }
   } else {

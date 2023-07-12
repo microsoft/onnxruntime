@@ -85,7 +85,7 @@ Status BatchNormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_bu
   auto mean_data = unpacked_mean_tensor.DataAsSpan<float>();
   auto var_data = unpacked_var_tensor.DataAsSpan<float>();
 
-  for (int64_t i = 0; i < size; i++) {
+  for (uint32_t i = 0; i < size; i++) {
     a.push_back(scale_data[i] / sqrt(var_data[i] + eps));
     b.push_back((scale_data[i] * -mean_data[i]) / sqrt(var_data[i] + eps) +
                 bias_data[i]);
