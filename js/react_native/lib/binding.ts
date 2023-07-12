@@ -2,55 +2,10 @@
 // Licensed under the MIT License.
 
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-import type {InferenceSession} from 'onnxruntime-common';
+import type {InferenceSession} from '@fugood/onnxruntime-common';
 import {NativeModules} from 'react-native';
 import Onnxruntime from './NativeOnnxruntime';
-
-/**
- * model loading information
- */
-interface ModelLoadInfo {
-  /**
-   * Key for an instance of InferenceSession, which is passed to run() function as parameter.
-   */
-  readonly key: string;
-
-  /**
-   * Get input names of the loaded model.
-   */
-  readonly inputNames: string[];
-
-  /**
-   * Get output names of the loaded model.
-   */
-  readonly outputNames: string[];
-}
-
-/**
- * JSIBlob is a blob object that exchange ArrayBuffer by OnnxruntimeJSIHelper.
- */
-export type JSIBlob = {
-  blobId: string; offset: number; size: number;
-};
-
-/**
- * Tensor type for react native, which doesn't allow ArrayBuffer in native bridge, so data will be stored as JSIBlob.
- */
-interface EncodedTensor {
-  /**
-   * the dimensions of the tensor.
-   */
-  readonly dims: readonly number[];
-  /**
-   * the data type of the tensor.
-   */
-  readonly type: string;
-  /**
-   * the JSIBlob object of the buffer data of the tensor.
-   * if data is string array, it won't be stored as JSIBlob.
-   */
-  readonly data: JSIBlob|string[];
-}
+import type {ModelLoadInfo, EncodedTensor, Fetches, JSIBlob, Feeds, Return} from './NativeOnnxruntime';
 
 /**
  * Binding exports a simple synchronized inference session object wrap.
@@ -62,17 +17,14 @@ export declare namespace Binding {
   type SessionOptions = InferenceSession.SessionOptions;
   type RunOptions = InferenceSession.RunOptions;
 
-  type FeedsType = {[name: string]: EncodedTensor};
-
-  // SessionHanlder FetchesType is different from native module's one.
-  // It's because Java API doesn't support preallocated output values.
-  type FetchesType = string[];
-
-  type ReturnType = {[name: string]: EncodedTensor};
+  type FeedsType = Feeds;
+  type FetchesType = Fetches;
+  type ReturnType = Return;
+  type JSIBlobType = JSIBlob;
 
   interface InferenceSession {
     loadModel(modelPath: string, options: SessionOptions): Promise<ModelLoadInfoType>;
-    loadModelFromBlob?(blob: JSIBlob, options: SessionOptions): Promise<ModelLoadInfoType>;
+    loadModelFromBlob?(blob: JSIBlobType, options: SessionOptions): Promise<ModelLoadInfoType>;
     dispose(key: string): Promise<void>;
     run(key: string, feeds: FeedsType, fetches: FetchesType, options: RunOptions): Promise<ReturnType>;
   }
