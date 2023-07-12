@@ -102,33 +102,31 @@ namespace Dml
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////
 
+    // read resources dynamically from ep and context
     struct DmlStream : public onnxruntime::Stream {
 
-         DmlStream(IDMLDevice* dml_device,
-             ID3D12Device* d3d12_device,
-             ID3D12GraphicsCommandList* cmd_list,
-             IDMLCommandRecorder* cmd_recorder,
-             const OrtDevice& ort_device): onnxruntime::Stream(reinterpret_cast<void*>(dml_device), ort_device),
-                                           dmlDevice(dml_device),
-                                           d3d12Device(d3d12_device),
-                                           cmdList(cmd_list),
-                                           cmdRecorder(cmd_recorder) {}
+         DmlStream(ExecutionProviderImpl& ep,
+                   ExecutionContext& ctx,
+                   const OrtDevice& ort_device):
+                       onnxruntime::Stream({}, ort_device),
+                       m_ep(ep),
+                       m_ctx(ctx) {}
 
          void* GetResource(int version, int id) const override {
             ORT_ENFORCE(version <= ORT_DML_RESOUCE_VERSION, "versions incompatible");
             void* resource = {};
             switch(id) {
                 case DmlResource::dml_device_t:
-                    resource = reinterpret_cast<void*>(dmlDevice);
+                    m_ep.GetDmlDevice(reinterpret_cast<IDMLDevice**>(&resource));
                     break;
-                case DmlResource::d3d12_device_t:
-                    resource = reinterpret_cast<void*>(d3d12Device);
+                case DmlResource::d3d12_device_t: // to be dropped, since it could be fetched from cmd list?
+                    m_ep.GetD3DDevice(reinterpret_cast<ID3D12Device**>(&resource));
                     break;
                 case DmlResource::cmd_list_t:
-                    resource = reinterpret_cast<void*>(cmdList);
+                    m_ctx.GetCommandListForRecordingAndInvalidateState(reinterpret_cast<ID3D12GraphicsCommandList**>(&resource));
                     break;
                 case DmlResource::cmd_recorder_t:
-                    resource = reinterpret_cast<void*>(cmdRecorder);
+                    m_ctx.GetCommandRecorder(reinterpret_cast<IDMLCommandRecorder**>(&resource));
                     break;
                 default:
                     break;
@@ -136,19 +134,13 @@ namespace Dml
             return resource;
          }
 
-        IDMLDevice* dmlDevice = {};
-        ID3D12Device* d3d12Device = {};
-        ID3D12GraphicsCommandList* cmdList = {};
-        IDMLCommandRecorder* cmdRecorder = {};
+        ExecutionProviderImpl& m_ep;
+        ExecutionContext& m_ctx;
     };
 
     void ExecutionProviderImpl::RegisterStreamHandlers(onnxruntime::IStreamCommandHandleRegistry& stream_handle_registry) const {
         stream_handle_registry.RegisterCreateStreamFn(OrtDevice::GPU, [this](const OrtDevice& device) {
-            ID3D12GraphicsCommandList* conextCmdList = {};
-            this->m_context->GetCommandListForRecordingAndInvalidateState(&conextCmdList);
-            IDMLCommandRecorder* cmdRecorder = {};
-            this->m_context->GetCommandRecorder(&cmdRecorder);
-            return std::make_unique<DmlStream>(this->m_dmlDevice.Get(), this->m_d3d12Device.Get(), conextCmdList, cmdRecorder, device);});
+            return std::make_unique<DmlStream>(const_cast<ExecutionProviderImpl&>(*this), *this->m_context, device);});
     }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////
