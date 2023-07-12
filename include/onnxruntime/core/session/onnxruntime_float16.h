@@ -4,6 +4,7 @@
 #pragma once
 
 #include <stdint.h>
+#include <cmath>
 #include <cstring>
 #include <limits>
 
@@ -442,7 +443,7 @@ struct BFloat16Impl {
 
 inline uint16_t BFloat16Impl::ToUint16Impl(float v) noexcept {
   uint16_t result;
-  if (v != v) {
+  if (std::isnan(v)) {
     result = kPositiveQNaNBits;
   } else {
     auto get_msb_half = [](float fl) {
