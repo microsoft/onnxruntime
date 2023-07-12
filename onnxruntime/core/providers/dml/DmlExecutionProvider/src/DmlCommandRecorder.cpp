@@ -94,10 +94,8 @@ void DmlCommandRecorder::InitializeOperator(
     if ((persistentResourceBinding.Type != DML_BINDING_TYPE_NONE) ||
         (temporaryResourceSize > 0))
     {
-        D3D12_RESOURCE_BARRIER barriers[] = {
-            CD3DX12_RESOURCE_BARRIER::UAV(nullptr),
-            CD3DX12_RESOURCE_BARRIER::Aliasing(nullptr, nullptr)};
-        m_currentCommandList->ResourceBarrier(ABSL_ARRAYSIZE(barriers), barriers);
+        auto uav = CD3DX12_RESOURCE_BARRIER::UAV(nullptr);
+        m_currentCommandList->ResourceBarrier(1, &uav);
     }
 }
 
@@ -156,13 +154,8 @@ void DmlCommandRecorder::ExecuteOperator(
     // Barrier all outputs.
     #pragma warning(push)
     #pragma warning(disable: 6387)
-
-    // Barrier all outputs.
-    D3D12_RESOURCE_BARRIER barriers[] = {
-        CD3DX12_RESOURCE_BARRIER::UAV(nullptr),
-        CD3DX12_RESOURCE_BARRIER::Aliasing(nullptr, nullptr)};
-    m_currentCommandList->ResourceBarrier(ABSL_ARRAYSIZE(barriers), barriers);
-
+    auto uav = CD3DX12_RESOURCE_BARRIER::UAV(nullptr);
+    m_currentCommandList->ResourceBarrier(1, &uav);
     #pragma warning(pop)
 }
 

@@ -727,8 +727,27 @@ public:
         const auto& bluesteinZChirpParams = dftParams.BluesteinZChirpParams;
 
         // Get resources
+        auto inputBufferRegion =  bluesteinZChirpParams.AFFTParams.ResourceLoopList.front().BufferRegion;
+        auto outputBufferRegion = bluesteinZChirpParams.AFFTInverseParams.ResourceLoopList[bluesteinZChirpParams.AFFTInverseParams.OutputIndex].BufferRegion;
         auto zChirpBufferRegion = bluesteinZChirpParams.ZChirp.BufferRegion;
         auto bBufferRegion = bluesteinZChirpParams.B.BufferRegion;
+
+        // Transition resources from common to UAV state
+        D3D12_RESOURCE_BARRIER barriers[2];
+
+        barriers[0] = CD3DX12_RESOURCE_BARRIER::Transition(
+            inputBufferRegion.ResourceInUavState(),
+            D3D12_RESOURCE_STATE_COMMON,
+            D3D12_RESOURCE_STATE_UNORDERED_ACCESS
+        );
+
+        barriers[1] = CD3DX12_RESOURCE_BARRIER::Transition(
+            outputBufferRegion.ResourceInUavState(),
+            D3D12_RESOURCE_STATE_COMMON,
+            D3D12_RESOURCE_STATE_UNORDERED_ACCESS
+        );
+
+        commandList->ResourceBarrier(2, barriers);
 
         // Set the root signature and pipeline state
         commandList->SetComputeRootSignature(m_bluesteinChirpRootSignature.Get());
@@ -764,6 +783,21 @@ public:
         chirpLength *= (m_isInverse ? 1 : -1);
         float scale = isInverse ? 1.f / dftParams.DFTLength : 1.f;
         StockhamFFT(fft_params, true,  chirpLength, scale, commandList);
+
+        // Transition resources to common state
+        barriers[0] = CD3DX12_RESOURCE_BARRIER::Transition(
+            inputBufferRegion.ResourceInUavState(),
+            D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
+            D3D12_RESOURCE_STATE_COMMON
+        );
+
+        barriers[1] = CD3DX12_RESOURCE_BARRIER::Transition(
+            outputBufferRegion.ResourceInUavState(),
+            D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
+            D3D12_RESOURCE_STATE_COMMON
+        );
+
+        commandList->ResourceBarrier(2, barriers);
     }
 
     void StockhamFFT(
@@ -779,7 +813,26 @@ public:
         const auto& loopList = stockhamParams.ResourceLoopList;
 
         // Get input and output resources
+        auto inputBufferRegion = loopList[0].BufferRegion;
+        auto outputBufferRegion = loopList[stockhamParams.OutputIndex].BufferRegion;
         auto windowBufferRegion = dftParams.StockhamParams.Window.BufferRegion;
+
+        // Transition resources from common to UAV state
+        D3D12_RESOURCE_BARRIER barriers[2];
+
+        barriers[0] = CD3DX12_RESOURCE_BARRIER::Transition(
+            inputBufferRegion.ResourceInUavState(),
+            D3D12_RESOURCE_STATE_COMMON,
+            D3D12_RESOURCE_STATE_UNORDERED_ACCESS
+        );
+
+        barriers[1] = CD3DX12_RESOURCE_BARRIER::Transition(
+            outputBufferRegion.ResourceInUavState(),
+            D3D12_RESOURCE_STATE_COMMON,
+            D3D12_RESOURCE_STATE_UNORDERED_ACCESS
+        );
+
+        commandList->ResourceBarrier(2, barriers);
 
         // Set the root signature and pipeline state
         commandList->SetComputeRootSignature(m_stockhamFFTRootSignature.Get());
@@ -822,6 +875,21 @@ public:
             std::array<Dml::D3D12BufferRegion, 3> uav_resources = { in, out, window };
             Dispatch(uav_resources, constants, commandList);
         }
+
+        // Transition resources to common state
+        barriers[0] = CD3DX12_RESOURCE_BARRIER::Transition(
+            inputBufferRegion.ResourceInUavState(),
+            D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
+            D3D12_RESOURCE_STATE_COMMON
+        );
+
+        barriers[1] = CD3DX12_RESOURCE_BARRIER::Transition(
+            outputBufferRegion.ResourceInUavState(),
+            D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
+            D3D12_RESOURCE_STATE_COMMON
+        );
+
+        commandList->ResourceBarrier(2, barriers);
     }
 
     std::vector<uint32_t> GetTensorDimensions(IMLOperatorTensor* tensor)
@@ -838,6 +906,14 @@ public:
         TConstants& constants,
         ID3D12GraphicsCommandList* commandList)
     {
+        D3D12_RESOURCE_BARRIER uav_barriers[TSize];
+
+        std::transform(
+            bufferRegions.begin(), bufferRegions.end(),
+            uav_barriers,
+            [](auto& bufferRegion) { return CD3DX12_RESOURCE_BARRIER::UAV(bufferRegion.ResourceInUavState()); } );
+        commandList->ResourceBarrier(TSize, uav_barriers);
+
         for (uint32_t i = 0; i < TSize; i++)
         {
             // Set resource views
@@ -886,10 +962,7 @@ public:
             commandList->Dispatch(dispatchSizeX, 1, 1);
         }
 
-        D3D12_RESOURCE_BARRIER barriers[] = {
-            CD3DX12_RESOURCE_BARRIER::UAV(nullptr),
-            CD3DX12_RESOURCE_BARRIER::Aliasing(nullptr, nullptr)};
-        commandList->ResourceBarrier(2, barriers);
+        commandList->ResourceBarrier(TSize, uav_barriers);
     }
 };
 

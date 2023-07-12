@@ -1617,7 +1617,7 @@ namespace Windows::AI::MachineLearning::Adapter
         if (m_impl->Location().device.MemType() == OrtDevice::MemType::DML_EXTERNAL)
         {
             auto allocInfo = static_cast<Dml::AllocationInfo*>(m_tensorData);
-            return Dml::D3D12BufferRegion(0, allocInfo->GetUavResource()->GetDesc().Width, allocInfo->GetUavResource(), nullptr, nullptr);
+            return Dml::D3D12BufferRegion(0, allocInfo->GetUavResource()->GetDesc().Width, allocInfo->GetUavResource());
         }
 
         auto taggedPointer = Dml::TaggedPointer::Unpack(m_tensorData);
@@ -1716,8 +1716,6 @@ namespace Windows::AI::MachineLearning::Adapter
         }
     }
 
-    // TODO (pavignol): Fix once we go back to a single resource
-    /*
     void OpKernelContextWrapper::TransitionResourcesForOperatorIfRequired(bool isBeforeOp)
     {
         if (m_winmlProvider->TransitionsRequiredForOperator(m_internalOperator))
@@ -1769,9 +1767,9 @@ namespace Windows::AI::MachineLearning::Adapter
                 }
             }
 
-            for (auto& tempAlloc : m_temporaryAbiAllocations)
+            for (auto& tempBuffer : m_temporaryBuffers)
             {
-                resourcesToTransition.push_back(tempAlloc.Get());
+                resourcesToTransition.push_back(tempBuffer.ResourceInUavState());
             }
 
             m_winmlProvider->TransitionResourcesForOperator(
@@ -1780,7 +1778,6 @@ namespace Windows::AI::MachineLearning::Adapter
                 resourcesToTransition.data());
         }
     }
-    */
 
     OpKernelContextWrapper::OpKernelContextWrapper(
         onnxruntime::OpKernelContext* context,
@@ -1828,13 +1825,10 @@ namespace Windows::AI::MachineLearning::Adapter
 
     void OpKernelContextWrapper::Close()
     {
-        // TODO (pavignol): Fix once we go back to a single resource
-        /*
         if (m_winmlProvider && m_winmlProvider->TransitionsRequiredForOperator(m_internalOperator))
         {
             TransitionResourcesForOperatorIfRequired(false);
         }
-        */
 
         for (auto& tensors : m_inputTensors)
         {

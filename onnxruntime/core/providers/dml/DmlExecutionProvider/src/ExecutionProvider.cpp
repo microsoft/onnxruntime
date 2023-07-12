@@ -443,15 +443,8 @@ namespace Dml
             // CPU -> GPU copy (upload)
             //
             auto dstBufferRegion = GetBufferForTensor(dst);
-
-            ID3D12Resource* dstData = dstBufferRegion.ResourceInCopyDstState() == nullptr
-                ? dstBufferRegion.ResourceInUavState()
-                : dstBufferRegion.ResourceInCopyDstState();
-
-            const auto dstState = dstBufferRegion.ResourceInCopyDstState() == nullptr
-                ? D3D12_RESOURCE_STATE_UNORDERED_ACCESS
-                : D3D12_RESOURCE_STATE_COPY_DEST;
-
+            ID3D12Resource* dstData = dstBufferRegion.ResourceInUavState();
+            const auto dstState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
             const uint64_t dstOffset = dstBufferRegion.Offset();
             m_uploadHeap->BeginUploadToGpu(dstData, dstOffset, dstState, AsByteSpan(src->GetData(), dataSizeInBytes));
             FlushUploadsIfReady();
@@ -462,47 +455,26 @@ namespace Dml
             // GPU -> CPU copy (readback)
             //
             auto srcBufferRegion = GetBufferForTensor(src);
-
-            ID3D12Resource* srcData = srcBufferRegion.ResourceInCopySrcState() == nullptr
-                ? srcBufferRegion.ResourceInUavState()
-                : srcBufferRegion.ResourceInCopySrcState();
-
-            const auto srcState = srcBufferRegion.ResourceInCopySrcState() == nullptr
-                ? D3D12_RESOURCE_STATE_UNORDERED_ACCESS
-                : D3D12_RESOURCE_STATE_COPY_SOURCE;
-
+            ID3D12Resource* srcData = srcBufferRegion.ResourceInUavState();
+            const auto srcState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
             const uint64_t srcOffset = srcBufferRegion.Offset();
             m_readbackHeap->ReadbackFromGpu(AsByteSpan(dst->GetData(), dataSizeInBytes), srcData, srcOffset, srcState);
         }
         else if (!src->IsCpuData() && !dst->IsCpuData())
         {
-            printf("*****************DmlCommandRecorder::CopyBufferRegion\n");
-
             //
             // GPU -> GPU copy
             //
             auto srcBufferRegion = GetBufferForTensor(src);
-
-            ID3D12Resource* srcData = srcBufferRegion.ResourceInCopySrcState() == nullptr
-                ? srcBufferRegion.ResourceInUavState()
-                : srcBufferRegion.ResourceInCopySrcState();
-
-            const auto srcState = srcBufferRegion.ResourceInCopySrcState() == nullptr
-                ? D3D12_RESOURCE_STATE_UNORDERED_ACCESS
-                : D3D12_RESOURCE_STATE_COPY_SOURCE;
+            ID3D12Resource* srcData = srcBufferRegion.ResourceInUavState();
+            const auto srcState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+            const uint64_t srcOffset = srcBufferRegion.Offset();
 
             auto dstBufferRegion = GetBufferForTensor(dst);
-
-            ID3D12Resource* dstData = dstBufferRegion.ResourceInCopyDstState() == nullptr
-                ? dstBufferRegion.ResourceInUavState()
-                : dstBufferRegion.ResourceInCopyDstState();
-
-            const auto dstState = dstBufferRegion.ResourceInCopyDstState() == nullptr
-                ? D3D12_RESOURCE_STATE_UNORDERED_ACCESS
-                : D3D12_RESOURCE_STATE_COPY_DEST;
-
-            const uint64_t srcOffset = srcBufferRegion.Offset();
+            ID3D12Resource* dstData = dstBufferRegion.ResourceInUavState();
+            const auto dstState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
             const uint64_t dstOffset = dstBufferRegion.Offset();
+
             m_context->CopyBufferRegion(dstData, dstOffset, dstState, srcData, srcOffset, srcState, dataSizeInBytes);
         }
         else
@@ -524,7 +496,6 @@ namespace Dml
 
         // Source and destination for batched GPU -> CPU copies
         std::vector<ID3D12Resource*> srcDatas;
-        std::vector<D3D12_RESOURCE_STATES> srcStates;
         std::vector<uint64_t> srcOffsets;
         std::vector<void*> dstDatas;
         std::vector<uint32_t> dataSizesInBytes;
@@ -557,21 +528,16 @@ namespace Dml
 
             auto srcBufferRegion = GetBufferForTensor(src[i]);
 
-            ID3D12Resource* srcData = srcBufferRegion.ResourceInCopySrcState() == nullptr
-                ? srcBufferRegion.ResourceInUavState()
-                : srcBufferRegion.ResourceInCopySrcState();
-
-            const auto srcState = srcBufferRegion.ResourceInCopySrcState() == nullptr
-                ? D3D12_RESOURCE_STATE_UNORDERED_ACCESS
-                : D3D12_RESOURCE_STATE_COPY_SOURCE;
+            ID3D12Resource* srcData = srcBufferRegion.ResourceInUavState();
+            const auto srcState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
 
             srcDatas.push_back(srcData);
-            srcStates.push_back(srcState);
             srcOffsets.push_back(srcBufferRegion.Offset());
         }
 
         // Performs a blocking call to synchronize and read back data from the GPU into the destination buffer
-        m_readbackHeap->ReadbackFromGpu(dstDatas, dataSizesInBytes, srcDatas, srcOffsets, srcStates);
+        const auto srcState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+        m_readbackHeap->ReadbackFromGpu(dstDatas, dataSizesInBytes, srcDatas, srcOffsets, srcState);
 
         return S_OK;
         }
@@ -941,9 +907,6 @@ namespace Dml
         std::vector<ID3D12Resource*> srcDatas;
         srcDatas.reserve(src_dst_pairs.size());
 
-        std::vector<D3D12_RESOURCE_STATES> srcStates;
-        srcStates.reserve(src_dst_pairs.size());
-
         std::vector<uint64_t> srcOffsets;
         srcOffsets.reserve(src_dst_pairs.size());
 
@@ -993,21 +956,16 @@ namespace Dml
 
             auto srcBufferRegion = GetBufferForTensor(&srcWrapper);
 
-            ID3D12Resource* srcData = srcBufferRegion.ResourceInCopySrcState() == nullptr
-                ? srcBufferRegion.ResourceInUavState()
-                : srcBufferRegion.ResourceInCopySrcState();
-
-            const auto srcState = srcBufferRegion.ResourceInCopySrcState() == nullptr
-                ? D3D12_RESOURCE_STATE_UNORDERED_ACCESS
-                : D3D12_RESOURCE_STATE_COPY_SOURCE;
+            ID3D12Resource* srcData = srcBufferRegion.ResourceInUavState();
+            const auto srcState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
 
             srcDatas.push_back(srcData);
-            srcStates.push_back(srcState);
             srcOffsets.push_back(srcBufferRegion.Offset());
         }
 
         // Performs a blocking call to synchronize and read back data from the GPU into the destination buffer
-        m_readbackHeap->ReadbackFromGpu(dstDatas, dataSizesInBytes, srcDatas, srcOffsets, srcStates);
+        const auto srcState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+        m_readbackHeap->ReadbackFromGpu(dstDatas, dataSizesInBytes, srcDatas, srcOffsets, srcState);
 
         return onnxruntime::common::Status::OK();
     }

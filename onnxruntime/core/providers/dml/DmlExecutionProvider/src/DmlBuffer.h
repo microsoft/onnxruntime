@@ -27,9 +27,8 @@ class DmlBuffer
     DmlBuffer(DmlBuffer&&);
     DmlBuffer& operator=(DmlBuffer&&);
 
+    // TODO (pavignol): Rename to Resource()
     ID3D12Resource* ResourceInUavState() const;
-    ID3D12Resource* ResourceInCopySrcState() const;
-    ID3D12Resource* ResourceInCopyDstState() const;
     uint64_t Offset() const;
     uint64_t SizeInBytes() const;
     const D3D12BufferRegion& Region() const { return buffer_region_; }
