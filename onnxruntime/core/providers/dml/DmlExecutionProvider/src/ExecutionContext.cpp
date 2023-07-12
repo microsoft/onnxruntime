@@ -94,17 +94,13 @@ namespace Dml
             m_dmlRecorder.ResourceBarrier(barriers);
             m_dmlRecorder.CopyBufferRegion(dstBuffer, dstOffset, intermediateBuffer.Get(), 0, byteCount);
 
-            barriers.clear();
-
             // Reset dst barrier state
             if (!(dstState & D3D12_RESOURCE_STATE_COPY_DEST))
             {
+                barriers.clear();
                 barriers.push_back(CD3DX12_RESOURCE_BARRIER::Transition(dstBuffer, D3D12_RESOURCE_STATE_COPY_DEST, dstState));
+                m_dmlRecorder.ResourceBarrier(barriers);
             }
-
-            // Since this copy may write to GPU memory, we also need to perform an aliasing barrier
-            barriers.push_back(CD3DX12_RESOURCE_BARRIER::Aliasing(nullptr, nullptr));
-            m_dmlRecorder.ResourceBarrier(barriers);
 
             // Keep the intermediate buffer alive until we're done with it
             QueueReference(intermediateBuffer.Get());
@@ -135,10 +131,10 @@ namespace Dml
                 std::swap(barrier.Transition.StateBefore, barrier.Transition.StateAfter);
             }
 
-            // Since this copy may write to GPU memory, we also need to perform an
-            // aliasing barrier
-            barriers.push_back(CD3DX12_RESOURCE_BARRIER::Aliasing(nullptr, nullptr));
-            m_dmlRecorder.ResourceBarrier(barriers);
+            if (!barriers.empty())
+            {
+                m_dmlRecorder.ResourceBarrier(barriers);
+            }
         }
     }
 
