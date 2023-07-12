@@ -2379,7 +2379,6 @@ Status InferenceSession::RunAsync(const OrtRunOptions* run_options, const char* 
                                   const OrtValue* const* inputs, size_t input_len,
                                   const char* const* output_name, size_t output_names_len,
                                   OrtValue** outputs, RunAsyncCallbackFn callback, void* user_data) {
-
   if (!thread_pool_.get() || concurrency::ThreadPool::DegreeOfParallelism(thread_pool_.get()) < 2) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "intra op thread pool must have at least one thread for RunAsync");
   }
