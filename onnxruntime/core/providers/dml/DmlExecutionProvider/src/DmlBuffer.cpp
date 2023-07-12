@@ -48,6 +48,16 @@ ID3D12Resource* DmlBuffer::ResourceInUavState() const
     return buffer_region_.ResourceInUavState();
 }
 
+ID3D12Resource* DmlBuffer::ResourceInCopySrcState() const
+{
+    return buffer_region_.ResourceInCopySrcState();
+}
+
+ID3D12Resource* DmlBuffer::ResourceInCopyDstState() const
+{
+    return buffer_region_.ResourceInCopyDstState();
+}
+
 uint64_t DmlBuffer::Offset() const
 {
     return buffer_region_ ? buffer_region_.Offset() : 0;

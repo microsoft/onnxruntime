@@ -124,7 +124,9 @@ namespace Dml
                         inputBufferRegions[i] = D3D12BufferRegion(
                             0,
                             m_nonOwnedGraphInputsFromInitializers[i]->GetDesc().Width,
-                            m_nonOwnedGraphInputsFromInitializers[i].Get());
+                            m_nonOwnedGraphInputsFromInitializers[i].Get(),
+                            nullptr,
+                            nullptr);
                     }
                     else if (!m_isInputsUploadedByDmlEP[i])
                     {

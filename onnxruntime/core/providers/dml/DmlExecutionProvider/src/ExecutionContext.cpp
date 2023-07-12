@@ -100,6 +100,8 @@ namespace Dml
             barriers.push_back(CD3DX12_RESOURCE_BARRIER::Transition(dstBuffer, D3D12_RESOURCE_STATE_COPY_DEST, dstState));
         }
 
+        // Since this copy may write to GPU memory, we also need to perform an aliasing barrier
+        barriers.push_back(CD3DX12_RESOURCE_BARRIER::Aliasing(nullptr, nullptr));
         m_dmlRecorder.ResourceBarrier(barriers);
 
         // Keep the intermediate buffer alive until we're done with it
@@ -133,6 +135,7 @@ namespace Dml
 
         // Since this copy may write to GPU memory, we also need to perform an
         // aliasing barrier
+        barriers.push_back(CD3DX12_RESOURCE_BARRIER::Aliasing(nullptr, nullptr));
         m_dmlRecorder.ResourceBarrier(barriers);
 */
     }

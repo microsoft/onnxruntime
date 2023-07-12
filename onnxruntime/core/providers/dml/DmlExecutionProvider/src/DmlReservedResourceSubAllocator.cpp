@@ -400,7 +400,9 @@ namespace Dml
         return D3D12BufferRegion(
             taggedPointer.offset,
             size_in_bytes,
-            it->second->GetUavResource());
+            it->second->GetUavResource(),
+            it->second->GetCopySrcResource(),
+            it->second->GetCopyDstResource());
     }
 
     AllocationInfo* DmlReservedResourceSubAllocator::GetAllocationInfo(const TaggedPointer& taggedPointer)

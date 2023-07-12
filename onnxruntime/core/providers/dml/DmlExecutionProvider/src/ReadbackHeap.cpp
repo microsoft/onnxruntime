@@ -106,7 +106,7 @@ namespace Dml
         gsl::span<const uint32_t > dstSizes,
         gsl::span<ID3D12Resource*> src,
         gsl::span<uint64_t> srcOffsets,
-        D3D12_RESOURCE_STATES srcState)
+        gsl::span<const D3D12_RESOURCE_STATES> srcStates)
     {
         assert(dst.size() == src.size());
         assert(dstSizes.size() == src.size());
@@ -134,7 +134,7 @@ namespace Dml
                 D3D12_RESOURCE_STATE_COPY_DEST,
                 src[i],
                 srcOffsets[i],
-                srcState,
+                srcStates[i],
                 dstSizes[i]);
 
             offset += dstSizes[i];
