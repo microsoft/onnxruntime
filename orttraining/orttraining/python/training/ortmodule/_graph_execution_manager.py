@@ -33,6 +33,7 @@ from ._gradient_accumulation_manager import GradientAccumulationManager
 from ._graph_execution_interface import GraphExecutionInterface
 from ._io import _FlattenedModule, _InputInfo, _ModelInputOutputSchemaType
 from ._runtime_inspector import RuntimeInspector
+from ._utils import check_function_has_param
 from .options import DebugOptions, LogLevel, _RuntimeOptions
 from .torch_cpp_extensions.cpu.aten_op_executor import load_aten_op_executor_cpp_extension
 
@@ -335,6 +336,11 @@ class GraphExecutionManager(GraphExecutionInterface):
                         "export_params": False,
                         "keep_initializers_as_inputs": True,
                     }
+
+                    if check_function_has_param(torch.onnx.export, "autograd_inlining"):
+                        # From some PyTorch version, autograd_inlining is a valid argument.
+                        required_export_kwargs["autograd_inlining"] = False
+
                     invalid_args = self._export_extra_kwargs.keys() & required_export_kwargs.keys()
                     assert (
                         len(invalid_args) == 0

@@ -12,7 +12,7 @@ import os
 import random
 import traceback
 import types
-from typing import List, Optional, Tuple, Union
+from typing import Callable, List, Optional, Tuple, Union
 
 import numpy as np
 import torch
@@ -419,3 +419,7 @@ def get_runtime_pytorch_version():
     from packaging import version
 
     return version.parse(torch.__version__.split("+")[0])
+
+
+def check_function_has_param(function: Callable, param_name: str) -> bool:
+    return param_name in inspect.signature(function).parameters
