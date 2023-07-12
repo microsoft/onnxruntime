@@ -128,10 +128,9 @@ jobs:
     displayName: 'Check out of dated documents'
   - task: Cache@2
     inputs:
-      # once the test data is changed, we need to update the cache key.
-      key: onnxtestdata | $(Build.SourcesDirectory)\tools\ci_build\github\js\scripts\prepare-onnx-node_tests.ts
+      key: onnxtestdata | $(Build.SourcesDirectory)\js\scripts\prepare-onnx-node_tests.ts
       restoreKeys: |
-        onnxtestdata | $(Build.SourcesDirectory)\tools\ci_build\github\js\scripts\prepare-onnx-node_tests.ts
+        onnxtestdata | $(Build.SourcesDirectory)\js\scripts\prepare-onnx-node_tests.ts
         onnxtestdata
       path: $(Build.SourcesDirectory)/js/test/
     displayName: 'Cache ONNX node test data'
