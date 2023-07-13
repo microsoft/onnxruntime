@@ -9,35 +9,14 @@ import {ComputeContext, GpuDataType, ProgramInfo, ProgramInfoLoader, ProgramMeta
 
 import {createIndicesHelper, ShaderHelper} from './common';
 
-enum CoordinateTransformMode {
-  halfPixel = 'half_pixel',
-  asymmetric = 'asymmetric',
-  pytorchHalfPixel = 'pytorch_half_pixel',
-  tfHalfPixelForNN = 'tf_half_pixel_for_nn',
-  alignCorners = 'align_corners',
-  tfCropAndResize = 'tf_crop_and_resize',
-  halfPixelSymmetric = 'half_pixel_symmetric'
-}
+type CoordinateTransformMode = 'half_pixel'|'asymmetric'|'pytorch_half_pixel'|'tf_half_pixel_for_nn'|'align_corners'|
+    'tf_crop_and_resize'|'half_pixel_symmetric';
 
-enum KeepAspectRatioPolicy {
-  streach = 'streach',
-  notSmaller = 'not_smaller',
-  notLarger = 'not_larger'
-}
+type KeepAspectRatioPolicy = 'streach'|'not_smaller'|'not_larger';
 
-enum Mode {
-  nearest = 'nearest',
-  linear = 'linear',
-  cubic = 'cubic'
-}
+type Mode = 'nearest'|'linear'|'cubic';
 
-enum NearestMode {
-  roundPreferFloor = 'round_prefer_floor',
-  roundPreferCeil = 'round_prefer_ceil',
-  floor = 'floor',
-  ceil = 'ceil',
-  simple = ''  // Opset 10 doesn't have this attribute
-}
+type NearestMode = 'round_prefer_floor'|'round_prefer_ceil'|'floor'|'ceil'|'simple';
 
 export interface ResizeAttributes extends AttributeWithCacheKey {
   antialias: number;
@@ -58,7 +37,7 @@ let roi: number[] = [];
 let roiInputIndex: number;
 let scalesInputIndex: number;
 let sizesInputIndex: number;
-let useExtrapolation: boolean = false;
+let useExtrapolation = false;
 
 const validateScales = (scales: number[]): void => {
   scales.every((value) => value > 0 || (() => {
@@ -83,7 +62,7 @@ const validateInputs = (inputs: readonly TensorView[], attributes: ResizeAttribu
   if (roiInputIndex > 0 && inputs.length > roiInputIndex) {
     inputs[roiInputIndex].getFloat32Array().forEach((value) => roi.push(value));
 
-  } else if (attributes.coordinateTransformMode === CoordinateTransformMode.tfCropAndResize) {
+  } else if (attributes.coordinateTransformMode === 'tf_crop_and_resize') {
     throw new Error('Resize requires RoI input to be specified when coordinateTransformMode is tfCropAndResize');
   }
 
@@ -123,26 +102,26 @@ const getOriginalCoordinateFromResizedCoordinate = (coordinateTransferMode: Coor
     llengthOriginal: u32, roiStart: f32, roiEnd: f32) -> f32 { ' +
     (() => {
       switch (coordinateTransferMode) {
-        case CoordinateTransformMode.asymmetric:
+        case 'asymmetric':
           return 'return f32(xResized) / xScale;';
-        case CoordinateTransformMode.pytorchHalfPixel:
-          return 'return lengthResized > 1 ? (xResized + 0.5) / xScale - 0.5 : 0.0;';
-        case CoordinateTransformMode.tfHalfPixelForNN:
-          return 'return (xResized + 0.5) / xScale';
-        case CoordinateTransformMode.alignCorners:
+        case 'pytorch_half_pixel':
+          return 'return lengthResized > 1 ? (f32(xResized) + 0.5) / xScale - 0.5 : 0.0;';
+        case 'tf_half_pixel_for_nn':
+          return 'return (f32(xResized) + 0.5) / xScale';
+        case 'align_corners':
           return 'return lengthResized === 1 ? 0 : xResized * (llengthOriginal - 1) / (lengthResized - 1);';
-        case CoordinateTransformMode.tfCropAndResize:
+        case 'tf_crop_and_resize':
           return 'return lengthResized > 1 ? \
           (xResized * (roiEnd - roiStart) / (lengthResized - 1)) / (lengthResized - 1) : \
           0.5 * (roiStart + roiEnd) * (llengthOriginal - 1);';
-        case CoordinateTransformMode.halfPixelSymmetric:
+        case 'half_pixel_symmetric':
           return [
             'const outputWidth = xScale * lengthResized;', 'const adjustment = lengthResized / outputWidth;',
             'const center = llengthOriginal / 2;', 'const offset = center * (1 - adjustment);',
-            'return offset + (xResized + 0.5) / xScale - 0.5;'
+            'return offset + (f32(xResized) + 0.5) / xScale - 0.5;'
           ].join('\n');
-        case CoordinateTransformMode.halfPixel:
-          return 'return (xResized + 0.5) / xScale - 0.5;';
+        case 'half_pixel':
+          return 'return (f32(xResized) + 0.5) / xScale - 0.5;';
         default:
           throw new Error(`Coordinate transform mode ${coordinateTransferMode} is not supported`);
       }
@@ -152,16 +131,16 @@ const getOriginalCoordinateFromResizedCoordinate = (coordinateTransferMode: Coor
 const getNearestPixelFromOriginal = (nearestMode: NearestMode): string =>
     'fn getNearestPixelFromOriginal(xOriginal: f32, isDownSample: bool) -> f32 {' + (() => {
       switch (nearestMode) {
-        case NearestMode.simple:
+        case 'simple':
           return 'if (isDownSample)\n {\nreturn ceil(xOriginal);\n} else {\n return xOriginal;\n}';
-        case NearestMode.roundPreferCeil:
+        case 'round_prefer_ceil':
           return 'return round(xOriginal);';
-        case NearestMode.floor:
+        case 'floor':
           return 'return floor(xOriginal);';
-        case NearestMode.ceil:
+        case 'ceil':
           return 'return ceil(xOriginal);';
-        case NearestMode.roundPreferFloor:
-          return 'return floor(xOriginal - 0.5);';
+        case 'round_prefer_floor':
+          return 'if (xOriginal == f32(u32(xOriginal)) + 0.5) {\nreturn floor(xOriginal);\n} else {\nreturn round(xOriginal);\n}';
         default:
           throw new Error(`Nearest mode ${nearestMode} is not supported`);
       }
@@ -211,12 +190,12 @@ const initOutputShape =
 const adjustOutputShape =
     (inputShape: readonly number[], outputShape: readonly number[], attributes: ResizeAttributes): number[] => {
       scales = inputShape.map((value, index) => value === 0 ? 1.0 : outputShape[index] / value);
-      if (attributes.keepAspectRatioPolicy !== KeepAspectRatioPolicy.streach) {
+      if (attributes.keepAspectRatioPolicy !== 'streach') {
         const scaleInPolicy = (() => {
           switch (attributes.keepAspectRatioPolicy) {
-            case KeepAspectRatioPolicy.notLarger:
+            case 'not_larger':
               return Math.min(...scales);
-            case KeepAspectRatioPolicy.notSmaller:
+            case 'not_smaller':
               return Math.max(
                   attributes.axes.length > 0 ? Math.min(...attributes.axes.map(i => scales[i])) : Math.min(...scales));
             default:
@@ -286,20 +265,19 @@ const createResizeProgramInfo =
       const outputSize = ShapeUtil.size(outputShape);
       const dataType = 'f32';
       const noScale = inputShape.length === outputShape.length && inputShape.every((d, i) => d === outputShape[i]);
-      const useNearest2xOptimization =
-          ((opsetVersion < 11) ? true :
-                                 (attributes.mode === Mode.nearest &&
-                                  attributes.coordinateTransformMode === CoordinateTransformMode.asymmetric &&
-                                  attributes.nearestMode === NearestMode.floor)) &&
+      const useNearest2xOptimization = ((opsetVersion < 11) ? true :
+                                                              (attributes.mode === 'nearest' &&
+                                                               attributes.coordinateTransformMode === 'asymmetric' &&
+                                                               attributes.nearestMode === 'floor')) &&
           scales.toString() === '1,1,2,2';
       const useNearest2xOptimizationSnippet = `
-        inputIndices[0] = outputIndices[0]; // batch size;
-        inputIndices[1] = outputIndices[1]; // channel;
-        inputIndices[2] = outputIndices[2] / 2; // height;
-        inputIndices[3] = outputIndices[3] / 2; // width;
+        inputIndices[0] = outputIndices[0]; // batch size
+        inputIndices[1] = outputIndices[1]; // channel
+        inputIndices[2] = outputIndices[2] / 2; // height
+        inputIndices[3] = outputIndices[3] / 2; // width
       `;
       const getShaderSource = (shaderHelper: ShaderHelper) => `
-      ${attributes.mode === Mode.nearest ? getNearestPixelFromOriginal(attributes.nearestMode) : ';'};
+      ${attributes.mode === 'nearest' ? getNearestPixelFromOriginal(attributes.nearestMode) : ';'};
       ${checkInputIndices(inputShape)};
       ${calculateInputIndicesFromOutputIndices(inputShape, outputShape, scales, roi)};
       ${getOriginalCoordinateFromResizedCoordinate(attributes.coordinateTransformMode)};
@@ -364,18 +342,15 @@ export const parseResizeAttributes = (attributes: Record<string, unknown>): Resi
   const antialias = attributes.antialias as number;
   const axes = attributes.axes as number[];
   const coordinateTransformMode: CoordinateTransformMode =
-      CoordinateTransformMode[attributes.coordinateTransformMode as keyof typeof CoordinateTransformMode];
+      attributes.coordinateTransformMode as CoordinateTransformMode;
   const cubicCoeffA = attributes.cubicCoeffA as number;
   const excludeOutsize = attributes.excludeOutsize as number;
   const extrapolationValue = attributes.extrapolationValue as number;
-  const keepAspectRatioPolicy: KeepAspectRatioPolicy =
-      KeepAspectRatioPolicy[attributes.keepAspectRatioPolicy as keyof typeof KeepAspectRatioPolicy];
-  const mode: Mode = Mode[attributes.mode as keyof typeof Mode];
+  const keepAspectRatioPolicy: KeepAspectRatioPolicy = attributes.keepAspectRatioPolicy as KeepAspectRatioPolicy;
+  const mode: Mode = attributes.mode as Mode;
   // If nearestMode is not specified, use simple mode.
-  const nearestMode: NearestMode = attributes.nearestMode === '' ?
-      NearestMode.simple :
-      NearestMode[attributes.nearestMode as keyof typeof NearestMode];
-  useExtrapolation = attributes.coordinateTransferMode === CoordinateTransformMode.tfCropAndResize;
+  const nearestMode: NearestMode = attributes.nearestMode === '' ? 'simple' : attributes.nearestMode as NearestMode;
+  useExtrapolation = attributes.coordinateTransformMode === 'tfCropAndResize';
   return createAttributeWithCacheKey({
     antialias,
     axes,
