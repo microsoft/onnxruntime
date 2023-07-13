@@ -40,6 +40,23 @@ public:
     DmlOperatorQAttention(const MLOperatorKernelCreationContext& kernelCreationContext)
     :   DmlOperator(kernelCreationContext)
     {
+
+        enum DmlInputIndex : uint32_t
+        {
+            mhaQueryIndex,
+            mhaKeyIndex,
+            mhaValueIndex,
+            mhaStackedQueryKeyIndex,
+            mhaStackedKeyValueIndex,
+            mhaStackedQueryKeyValueIndex,
+            mhaBiasIndex,
+            mhaMaskIndex,
+            mhaRelativePositionBiasIndex,
+            mhaPastKeyIndex,
+            mhaPastValueIndex,
+            mhaInputCount,
+        };
+
         enum InputIndex : uint32_t
         {
             inputIndex,
@@ -71,7 +88,6 @@ public:
         const bool hasBias = kernelCreationContext.IsInputValid(biasIndex);
         const bool hasMask = kernelCreationContext.IsInputValid(maskIndex);
         const bool hasUnpaddedBounds = hasMask && kernelCreationContext.GetInputTensorDimensionCount(maskIndex) == 1;
-        // const bool hasRelativePositionBias = kernelCreationContext.IsInputValid(relativePositionBiasIndex);
 
         DmlOperator::Initialize(kernelCreationContext, std::nullopt, std::nullopt, std::nullopt, std::nullopt, 1);
 
@@ -116,8 +132,7 @@ public:
         const uint32_t sequenceLength = inputTensorShape[1];
 
         uint32_t desiredWeightTensorShape[3] = {batchSize, weightTensorShape[0], hiddenSize + hiddenSize + vHiddenSize};
-        MLOperatorTensorDataType promotedDataType = MLOperatorTensorDataType::Float;
-        MLOperatorTensorDataType dataType = kernelCreationContext.GetInputEdgeDescription(inputIndex).tensorDataType;
+        MLOperatorTensorDataType dataType = kernelCreationContext.GetOutputEdgeDescription(outputIndex).tensorDataType;
 
         m_inputTensorDescs[dmlWeightsIndex] = TensorDesc::ConstructBroadcastedTensorDesc(kernelCreationContext.GetInputEdgeDescription(weightsIndex).tensorDataType,
                                                                                         desiredWeightTensorShape,
@@ -199,16 +214,16 @@ public:
         //     ML_CHECK_VALID_ARGUMENT(relativePositionBiasTensorShape[2] == inputTensorShape[1]);
         // }
 
-        TensorDesc firstGemmOutputTensorDesc = TensorDesc::ConstructDefaultTensorDesc(promotedDataType, desiredBiasTensorShape);
+        TensorDesc firstGemmOutputTensorDesc = TensorDesc::ConstructDefaultTensorDesc(dataType, desiredBiasTensorShape);
         DML_TENSOR_DESC namedFirstGemmOutputTensorDesc = firstGemmOutputTensorDesc.GetDmlDesc();
 
         std::vector<DML_TENSOR_DESC> inputDescs = GetDmlInputDescs();
         std::vector<DML_TENSOR_DESC> outputDescs = GetDmlOutputDescs();
 
         //  output edge between Dequantize and first GEMM node
-        TensorDesc intermediateInputTensorDesc = TensorDesc::ConstructDefaultTensorDesc(promotedDataType, inputTensorShape);
+        TensorDesc intermediateInputTensorDesc = TensorDesc::ConstructDefaultTensorDesc(dataType, inputTensorShape);
 
-        TensorDesc intermediateWeightTensorDesc = TensorDesc::ConstructDefaultTensorDesc(promotedDataType, desiredWeightTensorShape);
+        TensorDesc intermediateWeightTensorDesc = TensorDesc::ConstructDefaultTensorDesc(dataType, desiredWeightTensorShape);
 
         DML_TENSOR_DESC namedIntermediateInputTensorDesc = intermediateInputTensorDesc.GetDmlDesc();
         DML_TENSOR_DESC namedIntermediateWeightTensorDesc = intermediateWeightTensorDesc.GetDmlDesc();
@@ -247,11 +262,11 @@ public:
         const DML_OPERATOR_DESC gemmDesc {DML_OPERATOR_GEMM, &gemmOperatorDesc};
 
         std::array<uint32_t, 3> queryKeySlicedTensorShape {batchSize, sequenceLength, hiddenSize + hiddenSize};
-        TensorDesc queryKeySlicedInputTensorDesc = TensorDesc::ConstructDefaultTensorDesc(promotedDataType, queryKeySlicedTensorShape);
+        TensorDesc queryKeySlicedInputTensorDesc = TensorDesc::ConstructDefaultTensorDesc(dataType, queryKeySlicedTensorShape);
         DML_TENSOR_DESC namedQueryKeySlicedInputTensorDesc = queryKeySlicedInputTensorDesc.GetDmlDesc();
 
         std::array<uint32_t, 3> valueSlicedTensorShape {batchSize, sequenceLength, vHiddenSize};
-        TensorDesc valueSlicedInputTensorDesc = TensorDesc::ConstructDefaultTensorDesc(promotedDataType, valueSlicedTensorShape);
+        TensorDesc valueSlicedInputTensorDesc = TensorDesc::ConstructDefaultTensorDesc(dataType, valueSlicedTensorShape);
         DML_TENSOR_DESC namedValueSlicedInputTensorDesc = valueSlicedInputTensorDesc.GetDmlDesc();
 
         // Transpose slice QK from [batchSize, sequenceLength, 2, numHeads, headSize] to [batchSize, sequenceLength, numHeads, 2, headSize]
@@ -265,13 +280,13 @@ public:
         };
 
         TensorDesc queryKeyTransposedInputTensorDesc = TensorDesc(
-            DML_TENSOR_DATA_TYPE_FLOAT32,
+            GetDmlDataTypeFromMlDataType(dataType),
             queryKeyTransposedTensorShape,
             queryKeyTransposedStrides);
         DML_TENSOR_DESC namedQueryKeyTransposedInputTensorDesc = queryKeyTransposedInputTensorDesc.GetDmlDesc();
 
         TensorDesc queryKeyTransposedOutputTensorDesc = TensorDesc(
-            DML_TENSOR_DATA_TYPE_FLOAT32,
+            GetDmlDataTypeFromMlDataType(dataType),
             queryKeyTransposedTensorShape);
         DML_TENSOR_DESC namedQueryKeyTransposedOutputTensorDesc = queryKeyTransposedOutputTensorDesc.GetDmlDesc();
 
@@ -286,13 +301,13 @@ public:
         };
 
         TensorDesc queryKeyValueTransposedInputTensorDesc = TensorDesc(
-            DML_TENSOR_DATA_TYPE_FLOAT32,
+            GetDmlDataTypeFromMlDataType(dataType),
             queryKeyValueTransposedTensorShape,
             queryKeyValueTransposedStrides);
         DML_TENSOR_DESC namedQueryKeyValueTransposedInputTensorDesc = queryKeyValueTransposedInputTensorDesc.GetDmlDesc();
 
         TensorDesc queryKeyValueTransposedOutputTensorDesc = TensorDesc(
-            DML_TENSOR_DATA_TYPE_FLOAT32,
+            GetDmlDataTypeFromMlDataType(dataType),
             queryKeyValueTransposedTensorShape);
         DML_TENSOR_DESC namedQueryKeyValueTransposedOutputTensorDesc = queryKeyValueTransposedOutputTensorDesc.GetDmlDesc();
 
