@@ -351,7 +351,7 @@ TEST(CApiTest, SparseTensorUsingAPI) {
 
     {
       const auto* values = coo_st.GetSparseTensorValues<int32_t>();
-      auto val_span = gsl::make_span(values, values_shape[0]);
+      auto val_span = gsl::make_span(values, gsl::narrow_cast<size_t>(values_shape[0]));
       ASSERT_TRUE(std::equal(expected_values.cbegin(), expected_values.cend(), val_span.begin(), val_span.end()));
     }
 
@@ -537,7 +537,7 @@ TEST(CApiTest, SparseTensorFillSparseTensorFormatAPI) {
 
     {
       const auto* values = coo_st.GetSparseTensorValues<int32_t>();
-      auto val_span = gsl::make_span(values, values_shape[0]);
+      auto val_span = gsl::make_span(values, gsl::narrow_cast<size_t>(values_shape[0]));
       ASSERT_TRUE(std::equal(expected_values.cbegin(), expected_values.cend(), val_span.begin(), val_span.end()));
     }
 
@@ -811,7 +811,7 @@ TEST(CApiTest, SparseTensorFillSparseFormatStringsAPI) {
       /// XXX: Do something about this API.
       /// Need to add N + 1 terminating offset, or skip the first zero offset
       /// altogether and add the N + 1
-      csr_st.GetStringTensorContent(buffer.get(), data_len, offsets.get(), values_len);
+      csr_st.GetStringTensorContent(buffer.get(), data_len, offsets.get(), gsl::narrow_cast<size_t>(values_len));
       for (size_t i = 0, limit = expected_values.size(); i < limit; ++i) {
         const auto& ex = expected_values[i];
         const char* p = &buffer[offsets[i]];

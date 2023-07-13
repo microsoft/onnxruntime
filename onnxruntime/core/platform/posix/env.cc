@@ -351,7 +351,8 @@ class PosixEnv : public Env {
       sleep_time.tv_nsec = 0;
 
       if (micros >= OneMillion) {
-        sleep_time.tv_sec = std::min<int64_t>(micros / OneMillion, std::numeric_limits<time_t>::max());
+        sleep_time.tv_sec = static_cast<time_t>(std::min<int64_t>(micros / OneMillion,
+                                                                  std::numeric_limits<time_t>::max()));
         micros -= static_cast<int64_t>(sleep_time.tv_sec) * OneMillion;
       }
       if (micros < OneMillion) {

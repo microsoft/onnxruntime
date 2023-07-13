@@ -50,7 +50,7 @@ auto GetTritonGroupNormNHWCTypeStringAndOps() {
           params->cPerGroup > block_size || params->cPerGroup * 2 <= block_size,
           "Arg block_size (", block_size, ") is not the next power of 2 of cPerGroup (", params->cPerGroup, ").");
       TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(
-          params->hw % hw_size != 0, "Arg hw_size (", hw_size ") is not a divisor of hw (", params->hw, ").");
+          params->hw % hw_size != 0, "Arg hw_size (", hw_size, ") is not a divisor of hw (", params->hw, ").");
       if constexpr (WithSwish) {
         TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(!params->withSwish, "Swish version does not support GN w/o swish.");
       } else {
