@@ -9,10 +9,7 @@ v) ROCM_VERSION=${OPTARG};;
 esac
 done
 
-ROCM_VERSION=$1
 MI200_DEVICE_NUMBERS=$(rocm-smi --showproductname | grep -c "MI250" | xargs)
-
-echo "MI200_DEVICE_NUMBERS: $MI200_DEVICE_NUMBERS"
 
 if [ "$MI200_DEVICE_NUMBERS" -gt "0" ]; then
   RESULT_FILE=ci-mi200.huggingface.bert-large-rocm${ROCM_VERSION}.json
