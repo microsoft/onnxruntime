@@ -119,9 +119,12 @@ void LearningModelSession::Initialize() {
     WINML_THROW_IF_FAILED(engine_builder->SetD3D12Resources(device_impl->GetD3DDevice(), device_impl->GetDeviceQueue()));
     WINML_THROW_IF_FAILED(engine_builder->SetMetacommandsEnabled(device_impl->MetacommandsEnabled()));
 
-    winrt::com_ptr<IMLOperatorRegistryPrivate> registryPrivate;
-    WINML_THROW_IF_FAILED(model_impl->GetOperatorRegistry()->QueryInterface(IID_PPV_ARGS(registryPrivate.put())));
-    WINML_THROW_IF_FAILED(engine_builder->SetBfcAllocatorEnabled(!registryPrivate->HasExternalOperators()));
+    if (model_impl->GetOperatorRegistry())
+    {
+      winrt::com_ptr<IMLOperatorRegistryPrivate> registryPrivate;
+      WINML_THROW_IF_FAILED(model_impl->GetOperatorRegistry()->QueryInterface(IID_PPV_ARGS(registryPrivate.put())));
+      WINML_THROW_IF_FAILED(engine_builder->SetBfcAllocatorEnabled(!registryPrivate->HasExternalOperators()));
+    }
   }
 
   auto num_intra_op_threads = device_impl->NumberOfIntraOpThreads();
