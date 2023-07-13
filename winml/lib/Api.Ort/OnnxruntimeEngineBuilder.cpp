@@ -20,6 +20,7 @@ HRESULT OnnxruntimeEngineBuilder::RuntimeClassInitialize(_In_ OnnxruntimeEngineF
 }
 
 STDMETHODIMP OnnxruntimeEngineBuilder::CreateEngine(_Outptr_ _winml::IEngine** out) {
+  *out = nullptr;
   auto ort_api = engine_factory_->UseOrtApi();
 
   Microsoft::WRL::ComPtr<IOrtSessionBuilder> onnxruntime_session_builder;
