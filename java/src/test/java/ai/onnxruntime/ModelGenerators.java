@@ -14,6 +14,7 @@ import java.nio.FloatBuffer;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.Arrays;
+import org.junit.jupiter.api.Test;
 
 /** Methods to generate test models. */
 public final class ModelGenerators {
@@ -180,5 +181,73 @@ public final class ModelGenerators {
         Files.newOutputStream(Paths.get("src", "test", "resources", "java-matmul.onnx"))) {
       model.build().writeTo(os);
     }
+  }
+
+  private static void genCast(
+      String name,
+      OnnxMl.TensorProto.DataType inputDataType,
+      OnnxMl.TensorProto.DataType outputDataType)
+      throws IOException {
+    OnnxMl.GraphProto.Builder graph = OnnxMl.GraphProto.newBuilder();
+    graph.setName("ort-test-" + name);
+
+    // Add placeholders
+    OnnxMl.ValueInfoProto.Builder input = OnnxMl.ValueInfoProto.newBuilder();
+    input.setName("input");
+    OnnxMl.TypeProto inputType =
+        buildTensorTypeNode(new long[] {-1, 5}, new String[] {"batch_size", null}, inputDataType);
+    input.setType(inputType);
+    graph.addInput(input);
+    OnnxMl.ValueInfoProto.Builder output = OnnxMl.ValueInfoProto.newBuilder();
+    output.setName("output");
+    OnnxMl.TypeProto outputType =
+        buildTensorTypeNode(new long[] {-1, 5}, new String[] {"batch_size", null}, outputDataType);
+    output.setType(outputType);
+    graph.addOutput(output);
+
+    // Add operations
+    OnnxMl.NodeProto.Builder matmul = OnnxMl.NodeProto.newBuilder();
+    matmul.setName("cast-0");
+    matmul.setOpType("Cast");
+    matmul.addInput("input");
+    matmul.addOutput("output");
+    matmul.addAttribute(
+        OnnxMl.AttributeProto.newBuilder().setName("to").setI(outputDataType.getNumber()).build());
+    graph.addNode(matmul);
+
+    // Build model
+    OnnxMl.ModelProto.Builder model = OnnxMl.ModelProto.newBuilder();
+    model.setGraph(graph);
+    model.setDocString("ORT " + name + " test");
+    model.setModelVersion(0);
+    model.setIrVersion(8);
+    model.setDomain("ai.onnxruntime.test");
+    model.addOpsetImport(OnnxMl.OperatorSetIdProto.newBuilder().setVersion(18).build());
+    try (OutputStream os =
+        Files.newOutputStream(Paths.get("..","..","..","java","src", "test", "resources", "java-" + name + ".onnx"))) {
+      model.build().writeTo(os);
+    }
+  }
+
+  @Test
+  public void generateFp16Fp32Cast() throws IOException {
+    genCast("fp16-to-fp32", OnnxMl.TensorProto.DataType.FLOAT16, OnnxMl.TensorProto.DataType.FLOAT);
+  }
+
+  @Test
+  public void generateFp32Fp16Cast() throws IOException {
+    genCast("fp32-to-fp16", OnnxMl.TensorProto.DataType.FLOAT, OnnxMl.TensorProto.DataType.FLOAT16);
+  }
+
+  @Test
+  public void generateBf16Fp32Cast() throws IOException {
+    genCast(
+        "bf16-to-fp32", OnnxMl.TensorProto.DataType.BFLOAT16, OnnxMl.TensorProto.DataType.FLOAT);
+  }
+
+  @Test
+  public void generateFp32Bf16Cast() throws IOException {
+    genCast(
+        "fp32-to-bf16", OnnxMl.TensorProto.DataType.FLOAT, OnnxMl.TensorProto.DataType.BFLOAT16);
   }
 }

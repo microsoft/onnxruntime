@@ -21,7 +21,7 @@ public enum OnnxJavaType {
   BFLOAT16(11, short.class, 2),
   UNKNOWN(0, Object.class, 0);
 
-  private static final OnnxJavaType[] values = new OnnxJavaType[10];
+  private static final OnnxJavaType[] values = new OnnxJavaType[13];
 
   static {
     for (OnnxJavaType ot : OnnxJavaType.values()) {
