@@ -821,33 +821,52 @@ ORT_API_STATUS_IMPL(OrtApis::Run, _Inout_ OrtSession* sess, _In_opt_ const OrtRu
                     _Inout_updates_all_(output_names_len) OrtValue** output) {
   API_IMPL_BEGIN
   auto session = reinterpret_cast<::onnxruntime::InferenceSession*>(sess);
-  auto status = session->Run(run_options, input_names, input, input_len, output_names, output_names_len, output);
-  if (status.IsOK()) {
-    return nullptr;
+
+  gsl::span<const char*> input_names_span(const_cast<const char**>(input_names), input_len);
+  gsl::span<const OrtValue*> input_span(const_cast<const OrtValue**>(input), input_len);
+  gsl::span<const char*> output_name_span(const_cast<const char**>(output_names), input_len);
+  gsl::span<OrtValue*> output_span(output, output_names_len);
+
+  Status status;
+  if (run_options) {
+    status = session->Run(*run_options,
+                          input_names_span,
+                          input_span,
+                          output_name_span,
+                          output_span);
   } else {
-    return ToOrtStatus(status);
+    const RunOptions default_run_options;
+    status = session->Run(default_run_options,
+                          input_names_span,
+                          input_span,
+                          output_name_span,
+                          output_span);
   }
+  return ToOrtStatus(status);
   API_IMPL_END
 }
 
 ORT_API_STATUS_IMPL(OrtApis::RunAsync, _Inout_ OrtSession* sess, _In_opt_ const OrtRunOptions* run_options,
                     _In_reads_(input_len) const char* const* input_names,
-                    _In_reads_(input_len) const OrtValue* const* inputs, size_t input_len,
+                    _In_reads_(input_len) const OrtValue* const* input, size_t input_len,
                     _In_reads_(output_names_len) const char* const* output_names, size_t output_names_len,
-                    _Inout_updates_all_(output_names_len) OrtValue** outputs,
+                    _Inout_updates_all_(output_names_len) OrtValue** output,
                     _In_ RunAsyncCallbackFn run_async_callback, _In_opt_ void* user_data) {
   API_IMPL_BEGIN
   auto session = reinterpret_cast<::onnxruntime::InferenceSession*>(sess);
-  auto status = session->RunAsync(run_options,
-                                  input_names,
-                                  inputs,
-                                  input_len,
-                                  output_names,
-                                  output_names_len,
-                                  outputs,
-                                  run_async_callback,
-                                  user_data);
-  return ToOrtStatus(status);
+
+  gsl::span<const char*> input_names_span(const_cast<const char**>(input_names), input_len);
+  gsl::span<const OrtValue*> input_span(const_cast<const OrtValue**>(input), input_len);
+  gsl::span<const char*> output_name_span(const_cast<const char**>(output_names), input_len);
+  gsl::span<OrtValue*> output_span(output, output_names_len);
+
+  return ToOrtStatus(session->RunAsync(run_options,
+                                       input_names_span,
+                                       input_span,
+                                       output_name_span,
+                                       output_span,
+                                       run_async_callback,
+                                       user_data));
   API_IMPL_END
 }
 

@@ -2299,93 +2299,100 @@ Status InferenceSession::Run(const RunOptions& run_options,
   return retval;
 }
 
-Status InferenceSession::Run(const OrtRunOptions* run_options,
-                             const char* const* input_names,
-                             const OrtValue* const* input, size_t input_len,
-                             const char* const* output_names, size_t output_names_len,
-                             OrtValue** output) {
-  InlinedVector<std::string> feed_names;
-  feed_names.reserve(input_len);
-  InlinedVector<OrtValue> feeds;
-  feeds.reserve(input_len);
+Status InferenceSession::Run(const RunOptions& run_options,
+                             gsl::span<const char*> feed_names,
+                             gsl::span<const OrtValue*> feeds,
+                             gsl::span<const char*> fetch_names,
+                             gsl::span<OrtValue*> fetches) {
+  size_t num_feeds = feed_names.size();
+  size_t num_fetches = fetch_names.size();
+  InlinedVector<std::string> feed_name_vec;
+  feed_name_vec.reserve(num_feeds);
+  InlinedVector<OrtValue> feed_vec;
+  feed_vec.reserve(num_feeds);
 
-  for (size_t i = 0; i != input_len; ++i) {
-    if (input_names[i] == nullptr || input_names[i][0] == '\0') {
+  for (size_t i = 0; i != num_feeds; ++i) {
+    if (feed_names[i] == nullptr || feed_names[i][0] == '\0') {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "input name cannot be empty");
     }
 
-    if (!input[i]) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, MakeString("NULL input supplied for input ", input_names[i]).c_str());
+    if (!feeds[i]) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, MakeString("NULL input supplied for input ", feed_names[i]).c_str());
     }
 
-    feed_names.emplace_back(input_names[i]);
-    feeds.emplace_back(*input[i]);
+    feed_name_vec.emplace_back(feed_names[i]);
+    feed_vec.emplace_back(*feeds[i]);
   }
 
   // Create output feed
-  InlinedVector<std::string> output_name_vec;
-  output_name_vec.reserve(output_names_len);
-  for (size_t i = 0; i != output_names_len; ++i) {
-    if (output_names[i] == nullptr || output_names[i][0] == '\0') {
+  InlinedVector<std::string> fetch_name_vec;
+  fetch_name_vec.reserve(num_fetches);
+  for (size_t i = 0; i != num_fetches; ++i) {
+    if (fetch_names[i] == nullptr || fetch_names[i][0] == '\0') {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "output name cannot be empty");
     }
-    output_name_vec.emplace_back(output_names[i]);
+    fetch_name_vec.emplace_back(fetch_names[i]);
   }
 
-  std::vector<OrtValue> fetches;
-  fetches.reserve(output_names_len);
-  for (size_t i = 0; i != output_names_len; ++i) {
-    if (output[i] != nullptr) {
-      fetches.emplace_back(*output[i]);
+  std::vector<OrtValue> fetch_vec;
+  fetch_vec.reserve(num_fetches);
+  for (size_t i = 0; i != num_fetches; ++i) {
+    if (fetches[i] != nullptr) {
+      fetch_vec.emplace_back(*fetches[i]);
     } else {
-      fetches.emplace_back();
+      fetch_vec.emplace_back();
     }
   }
 
   Status status;
-  if (run_options == nullptr) {
-    OrtRunOptions op;
-    status = Run(op, feed_names, feeds, output_name_vec, &fetches, nullptr);
-  } else {
-    status = Run(*run_options, feed_names, feeds, output_name_vec, &fetches, nullptr);
-  }
+  status = Run(run_options, feed_name_vec, feed_vec, fetch_name_vec, &fetch_vec, nullptr);
 
   if (!status.IsOK())
     return status;
 
   // We do it in two loops to make sure copy __ctors does not throw
-  InlinedVector<std::unique_ptr<OrtValue>> output_unique_ptrs;
-  output_unique_ptrs.reserve(output_names_len);
-  for (size_t i = 0; i != output_names_len; ++i) {
-    if (output[i] == nullptr) {
-      output_unique_ptrs.emplace_back(std::make_unique<OrtValue>(fetches[i]));
+  InlinedVector<std::unique_ptr<OrtValue>> fetch_unique_ptrs;
+  fetch_unique_ptrs.reserve(num_fetches);
+  for (size_t i = 0; i != num_fetches; ++i) {
+    if (fetches[i] == nullptr) {
+      fetch_unique_ptrs.emplace_back(std::make_unique<OrtValue>(fetch_vec[i]));
     } else {
-      output_unique_ptrs.emplace_back();
+      fetch_unique_ptrs.emplace_back();
     }
   }
 
-  for (size_t i = 0; i != output_names_len; ++i) {
-    if (output[i] == nullptr) {
-      ORT_ENFORCE(output_unique_ptrs[i] != nullptr);
-      output[i] = output_unique_ptrs[i].release();
+  for (size_t i = 0; i != num_fetches; ++i) {
+    if (fetches[i] == nullptr) {
+      ORT_ENFORCE(fetch_unique_ptrs[i] != nullptr);
+      fetches[i] = fetch_unique_ptrs[i].release();
     }
   }
   return Status::OK();
 }
 
-Status InferenceSession::RunAsync(const OrtRunOptions* run_options, const char* const* input_names,
-                                  const OrtValue* const* inputs, size_t input_len,
-                                  const char* const* output_name, size_t output_names_len,
-                                  OrtValue** outputs, RunAsyncCallbackFn callback, void* user_data) {
+common::Status InferenceSession::RunAsync(const RunOptions* run_options,
+                                          gsl::span<const char*> feed_names,
+                                          gsl::span<const OrtValue*> feeds,
+                                          gsl::span<const char*> fetch_names,
+                                          gsl::span<OrtValue*> fetches,
+                                          RunAsyncCallbackFn callback,
+                                          void* user_data) {
+  size_t num_fetches = fetch_names.size();
   if (!thread_pool_.get() || concurrency::ThreadPool::DegreeOfParallelism(thread_pool_.get()) < 2) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "intra op thread pool must have at least one thread for RunAsync");
   }
 
   std::function<void()> run_fn = [=]() {
     ORT_TRY {
-      auto status = Run(run_options, input_names, inputs, input_len, output_name, output_names_len, outputs);
+      Status status;
+      if (run_options) {
+        status = Run(*run_options, feed_names, feeds, fetch_names, fetches);
+      } else {
+        RunOptions default_run_options;
+        status = Run(default_run_options, feed_names, feeds, fetch_names, fetches);
+      }
       if (status.IsOK()) {
-        callback(user_data, outputs, output_names_len, {});
+        callback(user_data, fetches.data(), num_fetches, {});
       } else {
         callback(user_data, {}, 0, ToOrtStatus(status));
       }

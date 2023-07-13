@@ -4331,20 +4331,20 @@ struct OrtApi {
    * \param[in] session
    * \param[in] run_options If nullptr, will use a default ::OrtRunOptions
    * \param[in] input_names Array of null terminated UTF8 encoded strings of the input names
-   * \param[in] inputs Array of ::OrtValue%s of the input values
+   * \param[in] input Array of ::OrtValue%s of the input values
    * \param[in] input_len Number of elements in the input_names and inputs arrays
    * \param[in] output_names Array of null terminated UTF8 encoded strings of the output names
    * \param[in] output_names_len Number of elements in the output_names and outputs array
-   * \param[out] outputs Array of OrtValue* owned by customers, size to output_names_len. It could simply be an array of nullptr
+   * \param[out] output Array of OrtValue* owned by customers, size to output_names_len. It could simply be an array of nullptr
    *             The array will be passed back to run_async_callback
    * \param[in] run_async_callback Callback function on model run completion
    * \param[in] user_data User data that pass back to run_async_callback
    */
   ORT_API2_STATUS(RunAsync, _Inout_ OrtSession* session, _In_opt_ const OrtRunOptions* run_options,
                   _In_reads_(input_len) const char* const* input_names,
-                  _In_reads_(input_len) const OrtValue* const* inputs, size_t input_len,
+                  _In_reads_(input_len) const OrtValue* const* input, size_t input_len,
                   _In_reads_(output_names_len) const char* const* output_names, size_t output_names_len,
-                  _Inout_updates_all_(output_names_len) OrtValue** outputs,
+                  _Inout_updates_all_(output_names_len) OrtValue** output,
                   _In_ RunAsyncCallbackFn run_async_callback, _In_opt_ void* user_data);
 };
 

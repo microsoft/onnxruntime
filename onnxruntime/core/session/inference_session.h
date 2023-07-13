@@ -305,15 +305,19 @@ class InferenceSession {
                                    std::vector<OrtValue>* p_fetches,
                                    const std::vector<OrtDevice>* p_fetches_device_info = nullptr);
 
-  [[nodiscard]] common::Status Run(const OrtRunOptions* run_options, const char* const* input_names,
-                                   const OrtValue* const* input, size_t input_len,
-                                   const char* const* output_names, size_t output_names_len,
-                                   OrtValue** output);
+  [[nodiscard]] common::Status Run(const RunOptions& run_options,
+                                   gsl::span<const char*> feed_names,
+                                   gsl::span<const OrtValue*> feeds,
+                                   gsl::span<const char*> fetch_names,
+                                   gsl::span<OrtValue*> fetches);
 
-  [[nodiscard]] common::Status RunAsync(const OrtRunOptions* run_options, const char* const* input_names,
-                                        const OrtValue* const* inputs, size_t input_len,
-                                        const char* const* output_names, size_t output_names_len,
-                                        OrtValue** outputs, RunAsyncCallbackFn callback, void* user_data = nullptr);
+  [[nodiscard]] common::Status RunAsync(const RunOptions* run_options,
+                                        gsl::span<const char*> feed_names,
+                                        gsl::span<const OrtValue*> feeds,
+                                        gsl::span<const char*> fetch_names,
+                                        gsl::span<OrtValue*> fetches,
+                                        RunAsyncCallbackFn callback,
+                                        void* user_data = nullptr);
 
   /**
    * Run a pre-loaded and pre-intialized model.
