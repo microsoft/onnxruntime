@@ -47,7 +47,7 @@ void sort_expected_and_actual_buffers(std::vector<T>& expected,
 template <typename T>
 struct TensorCheck {
   void operator()(const Tensor& expected, const Tensor& actual, const ValidateOutputParams& params,
-                  const std::string& /*provider_type*/) const {
+                  const std::string& /*provider_type*/, bool use_cosine_similarity) const {
     Tensor expected_sorted, actual_sorted;
     const T* cur_expected;
     const T* cur_actual;
@@ -78,7 +78,8 @@ struct TensorCheck<uint8_t> {
   void operator()(const Tensor& expected,
                   const Tensor& actual,
                   const ValidateOutputParams& params,
-                  const std::string& provider_type) const {
+                  const std::string& provider_type,
+                  bool  use_cosine_similarity) const {
     const bool has_abs_err = params.absolute_error.has_value();
     const bool has_rel_err = params.relative_error.has_value();
 
@@ -133,7 +134,8 @@ struct TensorCheck<int8_t> {
   void operator()(const Tensor& expected,
                   const Tensor& actual,
                   const ValidateOutputParams& params,
-                  const std::string& /*provider_type*/) const {
+                  const std::string& /*provider_type*/,
+                  bool  use_cosine_similarity) const {
     Tensor expected_sorted, actual_sorted;
     const int8_t* cur_expected;
     const int8_t* cur_actual;
@@ -173,7 +175,8 @@ struct TensorCheck<double> {
   void operator()(const Tensor& expected,
                   const Tensor& actual,
                   const ValidateOutputParams& params,
-                  const std::string& /*provider_type*/) const {
+                  const std::string& /*provider_type*/,
+                  bool  use_cosine_similarity) const {
     auto size = actual.Shape().Size();
 
     bool has_abs_err = params.absolute_error.has_value();
@@ -227,7 +230,8 @@ template <typename TypeToCheck>
 void InternalNumericalCheck(const Tensor& expected,
                             const Tensor& actual,
                             const ValidateOutputParams& params,
-                            const std::string& /*provider_type*/) {
+                            const std::string& /*provider_type*/,
+			    bool  use_cosine_similarity) {
   const bool has_abs_err = params.absolute_error.has_value();
   const bool has_rel_err = params.relative_error.has_value();
 
@@ -251,7 +255,12 @@ void InternalNumericalCheck(const Tensor& expected,
 #else
   constexpr float threshold = 0.0001f;
 #endif
+  constexpr float cosine_similarity_threshold = 0.01f;
 
+  TypeToCheck dot = 0.0;
+  TypeToCheck denom_a = 0.0;
+  TypeToCheck denom_b = 0.0;
+  size_t diff_cnt = 0;
   for (int i = 0; i < size; ++i) {
     // NOTE: Check isnan first to work around MSVC linker bug when /LTCG:incremental is specified.
     // If the isinf check is first the isnan check and branch gets omitted
@@ -259,6 +268,13 @@ void InternalNumericalCheck(const Tensor& expected,
       ASSERT_TRUE(std::isnan(cur_actual[i])) << "Expected NaN. i:" << i;
     } else if (std::isinf(cur_expected[i])) {  // Test infinity for equality
       ASSERT_EQ(cur_expected[i], cur_actual[i]) << "Expected infinity. i:" << i;
+    } else if (use_cosine_similarity) {
+      if (abs(cur_expected[i] - cur_actual[i]) > threshold) {
+        dot += cur_expected[i] * cur_actual[i] ;
+        denom_a += cur_expected[i] * cur_expected[i] ;
+        denom_b += cur_actual[i] * cur_actual[i] ;
+        diff_cnt++;
+      }
     } else {
       if (!has_abs_err && !has_rel_err) {
         // the default for existing tests
@@ -275,6 +291,11 @@ void InternalNumericalCheck(const Tensor& expected,
       }
     }
   }
+
+  if (diff_cnt) {
+    float cos_sim = dot / (sqrt(denom_a) * sqrt(denom_b));
+    ASSERT_NEAR(cos_sim, 1.0f, cosine_similarity_threshold)<< "cos_sim is not 1.0 " << cos_sim ;
+  }
 }
 
 template <>
@@ -282,8 +303,9 @@ struct TensorCheck<float> {
   void operator()(const Tensor& expected,
                   const Tensor& actual,
                   const ValidateOutputParams& params,
-                  const std::string& provider_type) const {
-    InternalNumericalCheck<float>(expected, actual, params, provider_type);
+                  const std::string& provider_type,
+                  bool  use_cosine_similarity) const {
+    InternalNumericalCheck<float>(expected, actual, params, provider_type, use_cosine_similarity);
   }
 };
 
@@ -292,7 +314,8 @@ struct TensorCheck<MLFloat16> {
   void operator()(const Tensor& expected,
                   const Tensor& actual,
                   const ValidateOutputParams& params,
-                  const std::string& /*provider_type*/) const {
+                  const std::string& /*provider_type*/,
+                  bool  use_cosine_similarity) const {
     auto* cur_expected = expected.Data<MLFloat16>();
     auto* cur_actual = actual.Data<MLFloat16>();
     auto size = actual.Shape().Size();
@@ -346,7 +369,8 @@ struct TensorCheck<BFloat16> {
   void operator()(const Tensor& expected,
                   const Tensor& actual,
                   const ValidateOutputParams& params,
-                  const std::string& /*provider_type*/) const {
+                  const std::string& /*provider_type*/,
+                  bool  use_cosine_similarity) const {
     auto* cur_expected = expected.Data<BFloat16>();
     auto* cur_actual = actual.Data<BFloat16>();
     auto size = actual.Shape().Size();
@@ -397,14 +421,14 @@ struct TensorCheck<BFloat16> {
 // default Check
 template <typename T>
 void Check(std::string_view name, const OrtValue& expected, const T& actual,
-           const ValidateOutputParams& /*params*/, const std::string& /*provider_type*/) {
+           const ValidateOutputParams& /*params*/, const std::string& /*provider_type*/, bool use_cosine_similarity) {
   EXPECT_EQ(expected.Get<T>(), actual) << "name: " << name;
 }
 
 // Check for Tensors
 template <>
 void Check<Tensor>(std::string_view name, const OrtValue& expected, const Tensor& actual,
-                   const ValidateOutputParams& params, const std::string& provider_type) {
+                   const ValidateOutputParams& params, const std::string& provider_type, bool use_cosine_similarity) {
   const Tensor& expected_tensor = expected.Get<Tensor>();
   ORT_ENFORCE(expected_tensor.Shape() == actual.Shape(),
               "Expected output shape [", expected_tensor.Shape(),
@@ -420,13 +444,13 @@ void Check<Tensor>(std::string_view name, const OrtValue& expected, const Tensor
                               MLFloat16, BFloat16>
       t_disp(actual.GetElementType());
 
-  t_disp.Invoke<TensorCheck>(expected_tensor, actual, params, provider_type);
+  t_disp.Invoke<TensorCheck>(expected_tensor, actual, params, provider_type, use_cosine_similarity);
 }
 
 // Check for sequence of tensors
 template <>
 void Check<TensorSeq>(std::string_view name, const OrtValue& expected, const TensorSeq& actual,
-                      const ValidateOutputParams& params, const std::string& provider_type) {
+                      const ValidateOutputParams& params, const std::string& provider_type, bool use_cosine_similarity) {
   const auto& exp_seq = expected.Get<TensorSeq>();
 
   // first ensure data types match
@@ -454,15 +478,15 @@ void Check<TensorSeq>(std::string_view name, const OrtValue& expected, const Ten
       t_disp(element_type);
 
   for (size_t i = 0; i < actual_num_tensors; ++i) {
-    t_disp.Invoke<TensorCheck>(exp_seq.Get(i), actual.Get(i), params, provider_type);
+    t_disp.Invoke<TensorCheck>(exp_seq.Get(i), actual.Get(i), params, provider_type, use_cosine_similarity);
   }
 }
 
 template <typename Type>
 void CheckDispatch(MLDataType type, std::string_view name, const OrtValue& expected, const OrtValue& actual,
-                   const ValidateOutputParams& params, const std::string& provider_type) {
+                   const ValidateOutputParams& params, const std::string& provider_type, bool use_cosine_similarity) {
   if (type == DataTypeImpl::GetType<Type>()) {
-    Check<Type>(name, expected, actual.Get<Type>(), params, provider_type);
+    Check<Type>(name, expected, actual.Get<Type>(), params, provider_type, use_cosine_similarity);
   } else {
     ORT_THROW("OpTester:Check() not implemented for output tensor type of ", type);
   }
@@ -470,16 +494,16 @@ void CheckDispatch(MLDataType type, std::string_view name, const OrtValue& expec
 
 template <typename Type, typename Next, typename... Types>
 void CheckDispatch(MLDataType type, std::string_view name, const OrtValue& expected, const OrtValue& actual,
-                   const ValidateOutputParams& params, const std::string& provider_type) {
+                   const ValidateOutputParams& params, const std::string& provider_type, bool use_cosine_similarity) {
   if (type == DataTypeImpl::GetType<Type>()) {
-    Check<Type>(name, expected, actual.Get<Type>(), params, provider_type);
+    Check<Type>(name, expected, actual.Get<Type>(), params, provider_type, use_cosine_similarity);
   } else {
-    CheckDispatch<Next, Types...>(type, name, expected, actual, params, provider_type);
+    CheckDispatch<Next, Types...>(type, name, expected, actual, params, provider_type, use_cosine_similarity);
   }
 }
 
 void CheckOrtValuesAreEqual(std::string_view name, const OrtValue& expected, const OrtValue& actual,
-                            const ValidateOutputParams& params, const std::string& provider_type) {
+                            const ValidateOutputParams& params, const std::string& provider_type, bool use_cosine_similarity) {
   // Include provider_type in any error output
   SCOPED_TRACE(MakeString("provider type: ", provider_type));
 
@@ -488,7 +512,7 @@ void CheckOrtValuesAreEqual(std::string_view name, const OrtValue& expected, con
 #if !defined(DISABLE_ML_OPS)
       VectorMapStringToFloat, VectorMapInt64ToFloat,
 #endif
-      TensorSeq>(expected.Type(), name, expected, actual, params, provider_type);
+      TensorSeq>(expected.Type(), name, expected, actual, params, provider_type, use_cosine_similarity);
 }
 
 }  // namespace test

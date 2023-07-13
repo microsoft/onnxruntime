@@ -65,6 +65,26 @@ const char* ElementTypeToString(MLDataType type) {
   return DataTypeImpl::ToString(type);
 }
 
+static inline bool use_cosine_similarity() {
+  static auto value = [&] {
+    const char* ptr = std::getenv("ORT_TEST_USE_COSINE_SIMILARITY");
+    return ptr != nullptr ? std::atoi(ptr) : 0;
+  }();
+  return value;
+}
+
+template <typename TypeToCheck>
+TypeToCheck cosine_similarity(const TypeToCheck *A, const TypeToCheck *B, size_t Vector_Length)
+{
+    TypeToCheck dot = 0.0, denom_a = 0.0, denom_b = 0.0 ;
+     for(size_t i = 0u; i < Vector_Length; ++i) {
+        dot += A[i] * B[i] ;
+        denom_a += A[i] * A[i] ;
+        denom_b += B[i] * B[i] ;
+    }
+    return dot / (sqrt(denom_a) * sqrt(denom_b)) ;
+}
+
 /**
  * @brief Check if two values are closely matched with given tolerance.
 
@@ -105,12 +125,24 @@ std::pair<COMPARE_RESULT, std::string> CompareFloatResult(const Tensor& outvalue
   std::pair<COMPARE_RESULT, std::string> res = std::make_pair(COMPARE_RESULT::SUCCESS, "");
   double max_diff = 0;
   size_t diff_count = 0;
+  const float cosine_similarity_threshold = 0.99;
   for (size_t di = 0; di != size1; ++di) {
     const double real_value =
         post_processing ? std::max<double>(0.0, std::min<double>(255.0, real_output[di])) : real_output[di];
     const double diff = std::fabs(expected_output[di] - real_value);
     const double tol = per_sample_tolerance + relative_per_sample_tolerance * std::fabs(expected_output[di]);
     if (!IsResultCloselyMatch<double>(real_value, expected_output[di], diff, tol)) {
+      if (use_cosine_similarity()) {
+        float cos_sim = cosine_similarity(real_output, expected_output, size1);
+        if (abs(cos_sim) < cosine_similarity_threshold) {
+          res.first = COMPARE_RESULT::RESULT_DIFFERS;
+          std::ostringstream oss;
+          oss << std::hex << "results differed, cosine similarity factor is " << cos_sim << ".";
+          res.second = oss.str();
+        }
+        return res;
+      }
+
       res.first = COMPARE_RESULT::RESULT_DIFFERS;
       // update error message if this is a larger diff
       if (diff > max_diff || (std::isnan(diff) && !std::isnan(max_diff))) {

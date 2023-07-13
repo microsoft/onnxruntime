@@ -27,7 +27,8 @@ struct ValidateOutputParams {
 /// <param name="params">Optional parameters to adjust how the check is performed.</param>
 /// <param name="provider_type">Execution provider type if relevant.</param>
 void CheckOrtValuesAreEqual(std::string_view name, const OrtValue& expected, const OrtValue& actual,
-                            const ValidateOutputParams& params = {}, const std::string& provider_type = "");
+                            const ValidateOutputParams& params = {}, const std::string& provider_type = "",
+                            bool use_cosine_similarity=false);
 
 }  // namespace test
 }  // namespace onnxruntime

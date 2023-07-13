@@ -652,7 +652,8 @@ class BaseTester {
                     const std::unordered_map<std::string, OrtValue>& feeds,
                     const std::vector<std::string>& output_names,
                     const std::string& provider_type,
-                    bool allow_released_onnx_opset_only = true);
+                    bool allow_released_onnx_opset_only = true,
+                    bool use_cosine_similarity = false);
 
   template <typename T>
   void AddData(std::vector<Data>& data, const char* name, const DimsVariant& dims_var, const T* values,
@@ -903,7 +904,8 @@ class BaseTester {
                           bool try_assign_ep_for_nodes,
                           bool allow_released_onnx_opset_only,
                           size_t* number_of_pre_packed_weights_counter,
-                          size_t* number_of_shared_pre_packed_weights_counter);
+                          size_t* number_of_shared_pre_packed_weights_counter,
+                          bool use_cosine_similarity);
 
   const std::string test_name_;
   const std::string domain_;

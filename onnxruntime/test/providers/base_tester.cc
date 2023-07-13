@@ -41,6 +41,14 @@ void DebugTrap() {
 #endif
 }  // namespace
 
+static inline bool use_cosine_similarity() {
+  static auto value = [&] {
+    const char* ptr = std::getenv("ORT_TEST_USE_COSINE_SIMILARITY");
+    return ptr != nullptr ? std::atoi(ptr) : 0;
+  }();
+  return value;
+}
+
 BaseTester::~BaseTester() {
 #ifndef NDEBUG
   if (!testing_function_called_) {
@@ -288,7 +296,8 @@ void BaseTester::ExecuteModel(Model& model, SessionType& session,
                               const std::unordered_map<std::string, OrtValue>& feeds,
                               const std::vector<std::string>& output_names,
                               const std::string& provider_type,
-                              bool allow_released_onnx_opset_only) {
+                              bool allow_released_onnx_opset_only,
+                              bool use_cosine_similarity) {
   fetches_.clear();
 
   std::string s1;
@@ -377,10 +386,10 @@ void BaseTester::ExecuteModel(Model& model, SessionType& session,
             }
 
             CheckOrtValuesAreEqual(name, expected_data.data, ort_value, expected_data.validation_params,
-                                   provider_type);
+                                   provider_type, use_cosine_similarity);
           } else {
             CheckOrtValuesAreEqual(name, expected_data.data, ort_value, expected_data.validation_params,
-                                   provider_type);
+                                   provider_type, false);
           }
 
           ++idx;
@@ -540,6 +549,7 @@ void BaseTester::Run(SessionOptions so,
   RunWithConfig(number_of_pre_packed_weights_counter, number_of_shared_pre_packed_weights_counter);
 }
 
+
 void BaseTester::RunWithConfig(size_t* number_of_pre_packed_weights_counter,
                                size_t* number_of_shared_pre_packed_weights_counter) {
   std::string cur_provider = "not set";
@@ -594,7 +604,8 @@ void BaseTester::RunWithConfig(size_t* number_of_pre_packed_weights_counter,
                          /*assign_ep_for_nodes=*/false,
                          allow_released_onnx_opset_only,
                          number_of_pre_packed_weights_counter,
-                         number_of_shared_pre_packed_weights_counter);
+                         number_of_shared_pre_packed_weights_counter,
+                         use_cosine_similarity());
     } else {
 #ifdef USE_TENSORRT
       // only run trt ep to reduce test time
@@ -677,7 +688,8 @@ void BaseTester::RunWithConfig(size_t* number_of_pre_packed_weights_counter,
             /*try_assign_ep_for_nodes=*/true,
             allow_released_onnx_opset_only,
             number_of_pre_packed_weights_counter,
-            number_of_shared_pre_packed_weights_counter);
+            number_of_shared_pre_packed_weights_counter,
+            use_cosine_similarity());
 
         // Run Models with subscribed run_options->config_options
         if (ctx_.run_options != nullptr &&
@@ -696,7 +708,8 @@ void BaseTester::RunWithConfig(size_t* number_of_pre_packed_weights_counter,
                 /*assign_ep_for_nodes=*/true,
                 allow_released_onnx_opset_only,
                 number_of_pre_packed_weights_counter,
-                number_of_shared_pre_packed_weights_counter);
+                number_of_shared_pre_packed_weights_counter,
+                use_cosine_similarity());
           }
         }
 
@@ -735,7 +748,8 @@ void BaseTester::ExecuteModelForEps(
     bool try_assign_ep_for_nodes,
     bool allow_released_onnx_opset_only,
     size_t* number_of_pre_packed_weights_counter,
-    size_t* number_of_shared_pre_packed_weights_counter) {
+    size_t* number_of_shared_pre_packed_weights_counter,
+    bool use_cosine_similarity) {
   for (auto& entry : execution_providers) {
     // Be noted, entry in execution providers passed in OpTester will be std::moved in the first BaseTester::Run(),
     // To make the error more obvious to debug (instead of a segment fault), we do check explicitly here.
@@ -783,7 +797,7 @@ void BaseTester::ExecuteModelForEps(
 
   ExecuteModel<InferenceSession>(
       model, session_object, expect_result, expected_failure_string,
-      run_options, feeds, output_names, provider_type, allow_released_onnx_opset_only);
+      run_options, feeds, output_names, provider_type, allow_released_onnx_opset_only, use_cosine_similarity);
 
   // After the model has initialized (happens in ExecuteModel),
   // we should be able to tell how many constant initializers were pre-packed
@@ -870,7 +884,8 @@ template void BaseTester::ExecuteModel<training::TrainingSession>(
     const RunOptions* run_options,
     const std::unordered_map<std::string, OrtValue>& feeds,
     const std::vector<std::string>& output_names, const std::string& provider_type,
-    bool allow_released_onnx_opset_only);
+    bool allow_released_onnx_opset_only,
+    bool use_cosine_similarity);
 #endif
 
 }  // namespace test
