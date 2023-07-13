@@ -58,6 +58,7 @@ let roi: number[] = [];
 let roiInputIndex: number;
 let scalesInputIndex: number;
 let sizesInputIndex: number;
+let useExtrapolation: boolean = false;
 
 const validateScales = (scales: number[]): void => {
   scales.every((value) => value > 0 || (() => {
@@ -119,7 +120,7 @@ const validateInputs = (inputs: readonly TensorView[], attributes: ResizeAttribu
 
 const getOriginalCoordinateFromResizedCoordinate = (coordinateTransferMode: CoordinateTransformMode): string =>
     'fn getOriginalCoordinateFromResizedCoordinate(xResized: u32, xScale: f32, lengthResized: u32,\
-    llengthOriginal: f32, roiStart: f32, roiEnd: f32) -> f32 { ' +
+    llengthOriginal: u32, roiStart: f32, roiEnd: f32) -> f32 { ' +
     (() => {
       switch (coordinateTransferMode) {
         case CoordinateTransformMode.asymmetric:
@@ -148,8 +149,8 @@ const getOriginalCoordinateFromResizedCoordinate = (coordinateTransferMode: Coor
     })() +
     '}';
 
-const getNearstPixelFromOriginal = (nearestMode: NearestMode): string =>
-    'fn getNearstPixelFromOriginal(xOriginal: f32, isDownSample: bool) -> f32 {' + (() => {
+const getNearestPixelFromOriginal = (nearestMode: NearestMode): string =>
+    'fn getNearestPixelFromOriginal(xOriginal: f32, isDownSample: bool) -> f32 {' + (() => {
       switch (nearestMode) {
         case NearestMode.simple:
           return 'if (isDownSample)\n {\nreturn ceil(xOriginal);\n} else {\n return xOriginal;\n}';
@@ -234,6 +235,43 @@ const adjustOutputShape =
       }
     };
 
+const calculateInputIndicesFromOutputIndices =
+    (inputShape: readonly number[], outputShape: readonly number[], scales: readonly number[], roi: readonly number[]):
+        string => `
+     fn calculateInputIndicesFromOutputIndices(outputIndices: array<u32, ${outputShape.length}>) -> array<u32, ${
+            inputShape.length}> {
+          const inputShape = array<u32, ${inputShape.length}>(${inputShape.map(i => `${i}u`).join(',')});
+          const outputShape = array<u32, ${outputShape.length}>(${outputShape.map(i => `${i}u`).join(',')});
+          const scales = array<f32, ${scales.length}>(${scales.map(i => `${i}f`).join(',')});
+          const roi = array<f32, ${roi.length}>(${roi.map(i => `${i}f`).join(',')});
+          var inputIndices: array<u32, ${inputShape.length}>;
+          for (var i:u32 = 0; i < ${outputShape.length}; i++) {
+            var original_idx = getOriginalCoordinateFromResizedCoordinate(outputIndices[i], scales[i],
+                     outputShape[i], inputShape[i], roi[i], roi[i + ${inputShape.length}]);
+            if (!${useExtrapolation} || (original_idx >= 0 && original_idx < f32(inputShape[i]))) {
+              if (original_idx < 0) {
+                inputIndices[i] = 0;
+              } else if (original_idx >= f32(inputShape[i])) {
+                inputIndices[i] = inputShape[i] - 1;
+              } else {
+                inputIndices[i] = u32(getNearestPixelFromOriginal(original_idx, scales[i] < 1));
+              }
+            }
+         }
+         return inputIndices;
+     }`;
+
+const checkInputIndices = (inputShape: readonly number[]): string => `
+    fn checkInputIndices(inputIndices: array<u32, ${inputShape.length}>) -> bool {
+      const inputShape = array<u32, ${inputShape.length}>(${inputShape.map(i => `${i}u`).join(',')});
+      for (var i:u32 = 0; i < ${inputShape.length}; i++) {
+        if (inputIndices[i] < 0 || inputIndices[i] >= inputShape[i]) {
+          return false;
+        }
+      }
+      return true;
+    }`;
+
 const createResizeProgramInfo =
     (metadata: ProgramMetadata, inputs: readonly TensorView[], attributes: ResizeAttributes): ProgramInfo => {
       const inputShape = inputs[0].dims;
@@ -255,13 +293,15 @@ const createResizeProgramInfo =
                                   attributes.nearestMode === NearestMode.floor)) &&
           scales.toString() === '1,1,2,2';
       const useNearest2xOptimizationSnippet = `
-        inputIndices[0] = outputIndices[0]; // batch size
-        inputIndices[1] = outputIndices[1]; // channel
-        inputIndices[2] = outputIndices[2] / 2; // height
-        inputIndices[3] = outputIndices[3] / 2; // width
+        inputIndices[0] = outputIndices[0]; // batch size;
+        inputIndices[1] = outputIndices[1]; // channel;
+        inputIndices[2] = outputIndices[2] / 2; // height;
+        inputIndices[3] = outputIndices[3] / 2; // width;
       `;
       const getShaderSource = (shaderHelper: ShaderHelper) => `
-      ${attributes.mode === Mode.nearest ? getNearstPixelFromOriginal(attributes.nearestMode) : ';'};
+      ${attributes.mode === Mode.nearest ? getNearestPixelFromOriginal(attributes.nearestMode) : ';'};
+      ${checkInputIndices(inputShape)};
+      ${calculateInputIndicesFromOutputIndices(inputShape, outputShape, scales, roi)};
       ${getOriginalCoordinateFromResizedCoordinate(attributes.coordinateTransformMode)};
       @group(0) @binding(0) var<storage, read> input : array<${dataType}>;
       @group(0) @binding(1) var<storage, read_write> output : array<${dataType}>;
@@ -280,10 +320,12 @@ const createResizeProgramInfo =
           if (${useNearest2xOptimization}) {
             ${useNearest2xOptimizationSnippet}
           } else {
-            var value = ${dataType}(0);
-            // TODO: calculate mapping input indices
-            value += input[${inputIndicesHelper.i2oExpression('inputIndices')}];
-            output[global_idx] = value;
+            inputIndices = calculateInputIndicesFromOutputIndices(outputIndices);
+            if (checkInputIndices(inputIndices)) {
+               output[global_idx] = input[${inputIndicesHelper.i2oExpression('inputIndices')}];
+            } else {
+              output[global_idx] = ${attributes.extrapolationValue};
+            }
           }
         }
       }`;
@@ -333,6 +375,7 @@ export const parseResizeAttributes = (attributes: Record<string, unknown>): Resi
   const nearestMode: NearestMode = attributes.nearestMode === '' ?
       NearestMode.simple :
       NearestMode[attributes.nearestMode as keyof typeof NearestMode];
+  useExtrapolation = attributes.coordinateTransferMode === CoordinateTransformMode.tfCropAndResize;
   return createAttributeWithCacheKey({
     antialias,
     axes,
