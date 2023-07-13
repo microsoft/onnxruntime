@@ -134,6 +134,11 @@ class GraphExecutionManager(GraphExecutionInterface):
         # Assign self._torch_alloc and self._torch_free if self._use_external_gpu_allocator is True
         self._get_torch_gpu_allocator_function_addresses()
 
+        if self._runtime_options.enable_triton:
+            from onnxruntime.training.ort_triton import register_triton_op_executor
+
+            register_triton_op_executor()
+
     def _get_torch_gpu_allocator_function_addresses(self):
         if self._runtime_options.use_external_gpu_allocator and torch.cuda.is_available():
             # CPP extension to get torch GPU allocator's alloc and free function addresses
@@ -197,6 +202,15 @@ class GraphExecutionManager(GraphExecutionInterface):
                 provider_option_map["cudnn_conv_algo_search"] = self._runtime_options.conv_algo_search
                 provider_option_map["cudnn_conv_use_max_workspace"] = "1"
                 provider_option_map["cudnn_conv1d_pad_to_nc1d"] = "1"
+                if self._runtime_options.enable_tuning:
+                    provider_option_map["tunable_op_enable"] = "1"
+                    provider_option_map["tunable_op_tuning_enable"] = "1"
+                    if self._runtime_options.max_tuning_duration_ms:
+                        provider_option_map["tunable_op_max_tuning_duration_ms"] = str(
+                            self._runtime_options.max_tuning_duration_ms
+                        )
+                elif self._runtime_options.tuning_results_path:
+                    provider_option_map["tunable_op_enable"] = "1"
             if self._runtime_options.use_external_gpu_allocator:
                 provider_option_map["gpu_external_alloc"] = str(self._torch_alloc)
                 provider_option_map["gpu_external_free"] = str(self._torch_free)
@@ -591,6 +605,29 @@ class GraphExecutionManager(GraphExecutionInterface):
                 "Fallback to PyTorch when encountering unsupported ops",
             )
         )
+
+        if self._runtime_options.enable_triton:
+            feature_map.append(
+                (
+                    "TritonOp Enabled",
+                    True,
+                    "ORT will switch to Triton for executing some ops to further accelerate training.",
+                )
+            )
+
+        if self._runtime_options.enable_tuning:
+            desc = "Enable tunning Ops online"
+            if self._runtime_options.tuning_results_path:
+                desc += f", save tuning results to {self._runtime_options.tuning_results_path}"
+            feature_map.append(("Online Op Tuning", True, desc))
+        elif self._runtime_options.tuning_results_path:
+            feature_map.append(
+                (
+                    "Offline Op Tuning",
+                    True,
+                    f"Use offline tuning results from {self._runtime_options.tuning_results_path}",
+                )
+            )
 
         mode = "training" if self._export_mode == torch.onnx.TrainingMode.TRAINING else "inference"
         mode = f"{_logger.LogColor.UNDERLINE}{mode}{_logger.LogColor.ENDC}"
