@@ -325,16 +325,6 @@ QNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer
   if (supported_nodes.empty()) {
     LOGS(logger, INFO) << "Number of partitions supported by QNN EP: 0";
     return result;
-  } else if (supported_nodes.size() == 1) {
-    const auto* node = *supported_nodes.begin();
-    if (node->OpType() == "QuantizeLinear" || node->OpType() == "DequantizeLinear") {
-      LOGS(logger, WARNING) << "It doesn't make sense just run a Q/DQ node on HTP.";
-      LOGS(logger, WARNING) << "Number of partitions supported by QNN EP: 0";
-      if (disable_cpu_ep_fallback_) {
-        LOGS(logger, ERROR) << "Unsupported nodes in QNN EP: " << get_unsupported_node_names();
-      }
-      return result;
-    }
   }
 
   const auto gen_metadef_name = [&]() {
@@ -343,17 +333,50 @@ QNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer
     return MakeString(QNN, "_", model_hash, "_", metadef_id);
   };
 
-  result = utils::CreateSupportedPartitions(graph_viewer, supported_nodes, {},
-                                            gen_metadef_name, QNN, kQnnExecutionProvider, true);
-
-  const auto num_of_partitions = result.size();
-  const auto num_of_supported_nodes = std::transform_reduce(
-      result.begin(), result.end(),
-      size_t{0}, std::plus<>{},
-      [](const auto& partition) -> size_t {
-        return partition && partition->sub_graph ? partition->sub_graph->nodes.size() : 0;
-      });
   const size_t num_nodes_in_graph = static_cast<size_t>(graph_viewer.NumberOfNodes());
+  size_t num_of_supported_nodes = 0;
+
+  // Create partitions from supported nodes.
+  {
+    std::vector<std::unique_ptr<ComputeCapability>> partitions = utils::CreateSupportedPartitions(graph_viewer,
+                                                                                                  supported_nodes, {},
+                                                                                                  gen_metadef_name, QNN,
+                                                                                                  kQnnExecutionProvider,
+                                                                                                  true);
+
+    // Filter out partitions that consist of a single QuantizeLinear or DequantizeLinear node.
+    // We also count the number of supported nodes in all valid partitions.
+    for (auto& partition : partitions) {
+      bool is_valid_partition = true;
+      size_t nodes_in_partition = 0;
+
+      if (partition && partition->sub_graph) {
+        nodes_in_partition = partition->sub_graph->nodes.size();
+
+        if (nodes_in_partition == 1) {
+          const Node* node = graph_viewer.GetNode(partition->sub_graph->nodes[0]);
+
+          if (!node) {
+            LOGS(logger, ERROR) << "QNN EP: Invalid node in partition of one node.";
+            is_valid_partition = false;
+          } else if (node->OpType() == "QuantizeLinear" || node->OpType() == "DequantizeLinear") {
+            LOGS(logger, WARNING) << "QNN EP does not support a single Quantize/Dequantize node in a partition.";
+            is_valid_partition = false;
+          }
+        }
+      } else {
+        LOGS(logger, ERROR) << "QNN EP: Invalid partition.";
+        is_valid_partition = false;
+      }
+
+      if (is_valid_partition) {
+        result.push_back(std::move(partition));
+        num_of_supported_nodes += nodes_in_partition;
+      }
+    }
+  }
+
+  const size_t num_of_partitions = result.size();
 
   if (load_from_cached_context && 1 == num_of_partitions) {
     rt = qnn_backend_manager_->ValidateWithContextFile(GetFileNameFromModelPath(graph_viewer.ModelPath()),
