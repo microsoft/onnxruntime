@@ -340,6 +340,20 @@ size_t
 
 typedef
 size_t
+(MLASCALL MLAS_SBGEMM_FLOAT_KERNEL)(
+    const float* A,
+    const bfloat16_t* B,
+    float* C,
+    size_t CountK,
+    size_t CountM,
+    size_t CountN,
+    size_t lda,
+    size_t ldc,
+    float alpha
+    );
+
+typedef
+size_t
 (MLASCALL MLAS_GEMM_FLOAT_KERNEL)(
     const float* A,
     const float* B,
@@ -666,6 +680,8 @@ extern "C" {
 #else
     MLAS_GEMM_FLOAT_KERNEL MlasSgemmKernelZero;
     MLAS_GEMM_FLOAT_KERNEL MlasSgemmKernelAdd;
+    MLAS_SBGEMM_FLOAT_KERNEL MlasSbgemmKernelZero;
+    MLAS_SBGEMM_FLOAT_KERNEL MlasSbgemmKernelAdd;
     MLAS_GEMM_DOUBLE_KERNEL MlasDgemmKernelZero;
     MLAS_GEMM_DOUBLE_KERNEL MlasDgemmKernelAdd;
 #endif
@@ -790,6 +806,7 @@ extern "C" {
 //
 
 #define MLAS_SGEMM_THREAD_COMPLEXITY                (size_t(64) * size_t(1024))
+#define MLAS_SBGEMM_THREAD_COMPLEXITY               (size_t(64) * size_t(1024))
 #define MLAS_DGEMM_THREAD_COMPLEXITY                (size_t(64) * size_t(1024))
 #define MLAS_QGEMM_THREAD_COMPLEXITY                65536
 
@@ -1179,6 +1196,7 @@ MlasConvDepthwiseFloat_CHW(
 #if defined(MLAS_NEON_INTRINSICS)
 typedef float32x4_t MLAS_FLOAT32X4;
 typedef int32x4_t MLAS_INT32X4;
+typedef bfloat16x8_t MLAS_BFLOAT16X8;
 #elif defined(MLAS_SSE2_INTRINSICS)
 typedef __m128 MLAS_FLOAT32X4;
 typedef __m128i MLAS_INT32X4;

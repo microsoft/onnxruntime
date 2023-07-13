@@ -34,6 +34,7 @@ onnxruntime_add_static_library(onnxruntime_mlas
   ${MLAS_SRC_DIR}/platform.cpp
   ${MLAS_SRC_DIR}/threading.cpp
   ${MLAS_SRC_DIR}/sgemm.cpp
+  ${MLAS_SRC_DIR}/sbgemm.cpp
   ${MLAS_SRC_DIR}/halfgemm.cpp
   ${MLAS_SRC_DIR}/qgemm.cpp
   ${MLAS_SRC_DIR}/qdwconv.cpp
@@ -338,6 +339,7 @@ else()
           ${MLAS_SRC_DIR}/aarch64/QgemmU8X8KernelUdot.S
           ${MLAS_SRC_DIR}/aarch64/QgemmS8S8KernelSdot.S
           ${MLAS_SRC_DIR}/aarch64/SgemmKernelNeon.S
+          ${MLAS_SRC_DIR}/aarch64/SbgemmKernelNeon.S
           ${MLAS_SRC_DIR}/aarch64/SgemvKernelNeon.S
           ${MLAS_SRC_DIR}/aarch64/SymQgemmS8KernelNeon.S
           ${MLAS_SRC_DIR}/aarch64/SymQgemmS8KernelSdot.S
@@ -359,6 +361,10 @@ else()
           set_source_files_properties(${MLAS_SRC_DIR}/activate_fp16.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+fp16 ")
           set_source_files_properties(${MLAS_SRC_DIR}/dwconv.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+fp16 ")
           set_source_files_properties(${MLAS_SRC_DIR}/pooling_fp16.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+fp16 ")
+          set_source_files_properties(${MLAS_SRC_DIR}/aarch64/SbgemmKernelNeon.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+bf16 ")
+          set_source_files_properties(${MLAS_SRC_DIR}/sbgemm.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+bf16 ")
+
+          set(CMAKE_ASM_FLAGS "${CMAKE_ASM_FLAGS} -march=armv8.2-a+bf16")
         endif()
 
         if(ONNXRUNTIME_MLAS_MULTI_ARCH)
@@ -584,7 +590,7 @@ set_target_properties(onnxruntime_mlas PROPERTIES FOLDER "ONNXRuntime")
 if (WIN32)
   target_compile_options(onnxruntime_mlas PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:/wd6385>" "$<$<COMPILE_LANGUAGE:CXX>:/wd4127>")
   if (onnxruntime_ENABLE_STATIC_ANALYSIS)
-    target_compile_options(onnxruntime_mlas PRIVATE  "$<$<COMPILE_LANGUAGE:CXX>:/analyze:stacksize" 131072>)
+    target_compile_options(onnxruntime_mlas PRIVATE  "$<$<COMPILE_LANGUAGE:CXX>:/analyze:stacksize 131072">)
   endif()
 endif()
 

@@ -239,6 +239,33 @@ MlasGemmBatch(
     );
 
 /**
+ * @brief  Batched bfloat16 half precision matrix/matrix multiply operation (SBGEMM)
+ *
+ * @param TransA     Supplies the transpose operation for matrix A.
+ * @param TransB     Supplies the transpose operation for matrix B.
+ * @param M          Supplies the number of rows of matrix A and matrix C.
+ * @param N          Supplies the number of columns of matrix B and matrix C.
+ * @param K          Supplies the number of columns of matrix A and the number
+                     of rows of matrix B.
+ * @param Data       A array of matrices data parameters
+ * @param BatchSize  Supplies number of multiplications in this batch
+ * @param ThreadPool Supplies the thread pool object to use, else nullptr if the
+                     base library threading support should be used.
+ */
+void
+MLASCALL
+MlasSBGemmBatch(
+    CBLAS_TRANSPOSE TransA,
+    CBLAS_TRANSPOSE TransB,
+    size_t M,
+    size_t N,
+    size_t K,
+    const MLAS_SGEMM_DATA_PARAMS* Data,
+    size_t BatchSize,
+    MLAS_THREADPOOL* ThreadPool
+    );
+
+/**
  * @brief  Single precision matrix/matrix multiply operation (SGEMM)
  *
  * @param TransA  Supplies the transpose operation for matrix A.
@@ -711,6 +738,24 @@ MlasGemmPackB(
     size_t ldb,
     bool AIsSigned,
     bool BIsSigned,
+    void* PackedB
+    );
+
+size_t
+MLASCALL
+MlasSBGemmPackBSize(
+    size_t N,
+    size_t K
+    );
+
+void
+MLASCALL
+MlasSBGemmPackB(
+    CBLAS_TRANSPOSE TransB,
+    size_t N,
+    size_t K,
+    const float* B,
+    size_t ldb,
     void* PackedB
     );
 
