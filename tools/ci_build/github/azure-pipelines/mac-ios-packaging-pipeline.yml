@@ -71,6 +71,7 @@ stages:
 
 - stage: IosPackaging_TestPackageSwift_Full
   dependsOn:
+  - IosPackaging_SetCommonVariables
   - IosPackaging_Build_Full
 
   jobs:
