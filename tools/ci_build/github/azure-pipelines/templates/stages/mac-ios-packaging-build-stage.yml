@@ -42,12 +42,7 @@ stages:
 
     steps:
     - script: |
-        set -x
-
-        echo "$(ortPodVersion)"
-        echo "$[variables.ortPodVersion]"
-
-        if [[ -z "$[variables.ortPodVersion]" ]]; then
+        if [[ -z "$(ortPodVersion)" ]]; then
           echo "ORT pod version is unspecified. Make sure that the IosPackaging_SetCommonVariables stage has run."
           exit 1
         fi
@@ -92,7 +87,7 @@ stages:
         python tools/ci_build/github/apple/build_and_assemble_ios_pods.py \
           --build-dir "$(Build.BinariesDirectory)/ios_framework" \
           --staging-dir "$(Build.BinariesDirectory)/staging" \
-          --pod-version "${{ variables.ortPodVersion }}" \
+          --pod-version "$(ortPodVersion)" \
           --test \
           --variant ${{ parameters.packageVariant }} \
           --build-settings-file "${{ variables.buildSettingsFile }}" \
@@ -146,7 +141,7 @@ stages:
             "$(Build.BinariesDirectory)/staging" \
             "$(Build.ArtifactStagingDirectory)" \
             "${POD_NAME}" \
-            "${{ variables.ortPodVersion }}"
+            "$(ortPodVersion)"
         done
 
         # copy over helper script for use in release pipeline
