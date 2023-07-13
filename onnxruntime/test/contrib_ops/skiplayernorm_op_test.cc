@@ -28,7 +28,7 @@ static void RunTest(
     bool simplified = false,
     bool use_token_count = false,
     bool strict = false,
-    bool broadcast_skip = false,
+    bool batch_size_1 = false,
     bool no_batch_size = false) {
   // Input and output shapes
   //   Input 0 - input: (batch_size, sequence_length, hidden_size) or (batch_size * sequence_length, hidden_size)
@@ -45,7 +45,7 @@ static void RunTest(
     input_dims = {batch_size * sequence_length, hidden_size};
   }
 
-  if(batch_size_1 == true){
+  if(batch_size_1){
     skip_dims = {1, sequence_length, hidden_size};
   }
 
@@ -733,7 +733,54 @@ TEST(SkipLayerNormTest, SkipSimplifiedLayerNormBatch1_Float16) {
           true);
 }
 
-TEST(SkipLayerNormTest, SkipLayerNormBatch2_Skip_Broadcast) {
+TEST(SkipLayerNormTest, SkipLayerNormBatch2_Skip_Broadcast_No_Batch_Size) {
+  int batch_size = 2;
+  int sequence_length = 2;
+  int hidden_size = 4;
+
+  std::vector<float> input_data = {
+      0.8f, -0.5f, 0.0f, 1.f,
+      0.5f, 0.2f, 0.3f, -0.6f,
+      0.8f, -0.5f, 0.0f, 1.f,
+      0.5f, 0.2f, 0.3f, -0.6f};
+
+  std::vector<float> skip_data = {
+      0.1f, -0.2f, 0.3f, 1.0f,
+      0.5f, 0.1f, 0.4f, 1.6f};
+
+  std::vector<float> gamma_data = {
+      0.3f, 0.2f, 4.0f, 2.2f};
+
+  std::vector<float> beta_data = {
+      0.2f, 0.1f, 0.4f, 1.6f};
+
+  std::vector<float> output_data = {
+      0.28433859348297119, -0.17090578377246857, -0.92897164821624756, 4.6924152374267578,
+      0.46111652255058289, -0.21333980560302734, -0.29631003737449646, 3.5148544311523438,
+      0.28433859348297119, -0.17090578377246857, -0.92897164821624756, 4.6924152374267578,
+      0.46111652255058289, -0.21333980560302734, -0.29631003737449646, 3.5148544311523438};
+
+  RunTest(input_data,
+          skip_data,
+          gamma_data,
+          beta_data,
+          std::vector<float>(),
+          output_data,
+          {},
+          epsilon_,
+          batch_size,
+          sequence_length,
+          hidden_size,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          true);
+}
+
+TEST(SkipLayerNormTest, SkipLayerNormBatch2_Skip_Broadcast_Batch_Size_1) {
   int batch_size = 2;
   int sequence_length = 2;
   int hidden_size = 4;
