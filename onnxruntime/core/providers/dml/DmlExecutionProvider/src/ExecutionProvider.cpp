@@ -148,7 +148,6 @@ namespace Dml
           m_areMetacommandsEnabled(enableMetacommands),
           m_queue(queue)
     {
-
         D3D12_FEATURE_DATA_FEATURE_LEVELS featureLevels = {};
 
         D3D_FEATURE_LEVEL featureLevelsList[] = {
@@ -218,6 +217,7 @@ namespace Dml
 
             // Wrap the BFC allocator into our own allocator
             m_gpuAllocator = std::make_shared<DmlGpuAllocator>(m_bfcAllocator.get(), m_bucketizedAllocator.get(), subAllocator);
+            DisableBfcAllocator();
             m_context->SetAllocator(m_gpuAllocator);
             // CPU Allocator used to create buffers for the MemcpyFromHost, Shape and Size operators.
             m_cpuInputAllocator = std::make_shared<DmlCpuAllocator>(OrtMemType::OrtMemTypeCPUInput);
