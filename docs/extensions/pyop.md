@@ -1,7 +1,7 @@
 ---
 title: PyOp
 description: Instructions to create a custom operator using Python functions and ORT inference integration.
-parent: ONNXRuntime Extensions
+parent: Extensions
 nav_order: 2
 ---
 # PyOp
