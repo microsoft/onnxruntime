@@ -1,7 +1,7 @@
 ---
 title: Development
 description: Instructions for building and developing ORT Extensions.
-parent: ONNXRuntime Extensions
+parent: Extensions
 nav_order: 1
 ---
 # Build and Development
