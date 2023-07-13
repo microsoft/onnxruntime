@@ -2364,8 +2364,6 @@ Status InferenceSession::Run(const OrtRunOptions* run_options,
     }
   }
 
-  ORT_ENFORCE(output_unique_ptrs.size() == output_names_len);
-
   for (size_t i = 0; i != output_names_len; ++i) {
     if (output[i] == nullptr) {
       ORT_ENFORCE(output_unique_ptrs[i] != nullptr);
@@ -2383,10 +2381,9 @@ Status InferenceSession::RunAsync(const OrtRunOptions* run_options, const char* 
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "intra op thread pool must have at least one thread for RunAsync");
   }
 
-  InferenceSession* sess = this;
   std::function<void()> run_fn = [=]() {
     ORT_TRY {
-      auto status = sess->Run(run_options, input_names, inputs, input_len, output_name, output_names_len, outputs);
+      auto status = Run(run_options, input_names, inputs, input_len, output_name, output_names_len, outputs);
       if (status.IsOK()) {
         callback(user_data, outputs, output_names_len, {});
       } else {

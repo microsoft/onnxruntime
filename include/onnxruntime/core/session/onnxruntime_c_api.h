@@ -4335,9 +4335,8 @@ struct OrtApi {
    * \param[in] input_len Number of elements in the input_names and inputs arrays
    * \param[in] output_names Array of null terminated UTF8 encoded strings of the output names
    * \param[in] output_names_len Number of elements in the output_names and outputs array
-   * \param[out] outputs Array of ::OrtValue%s that the outputs are stored in. This can also be
-   *     an array of nullptr values, in this case ::OrtValue objects will be allocated and pointers
-   *     to them will be set into the `outputs` array.
+   * \param[out] outputs Array of OrtValue* owned by customers, size to output_names_len. It could simply be an array of nullptr
+   *             The array will be passed back to run_async_callback
    * \param[in] run_async_callback Callback function on model run completion
    * \param[in] user_data User data that pass back to run_async_callback
    */

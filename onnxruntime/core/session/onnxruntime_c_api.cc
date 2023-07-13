@@ -847,11 +847,7 @@ ORT_API_STATUS_IMPL(OrtApis::RunAsync, _Inout_ OrtSession* sess, _In_opt_ const 
                                   outputs,
                                   run_async_callback,
                                   user_data);
-  if (status.IsOK()) {
-    return nullptr;
-  } else {
-    return ToOrtStatus(status);
-  }
+  return ToOrtStatus(status);
   API_IMPL_END
 }
 
@@ -2695,7 +2691,6 @@ static constexpr OrtApi ort_api_1_to_16 = {
     &OrtApis::GetROCMProviderOptionsAsString,
     &OrtApis::ReleaseROCMProviderOptions,
     &OrtApis::CreateAndRegisterAllocatorV2,
-
     &OrtApis::RunAsync,
 };
 
