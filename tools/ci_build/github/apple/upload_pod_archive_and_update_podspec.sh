@@ -27,5 +27,4 @@ az storage blob upload \
   --file ${POD_ARCHIVE_PATH} --name ${POD_ARCHIVE_BASENAME} \
   --if-none-match "*"
 
-sed -i "" -e "s|file:///http_source_placeholder|${STORAGE_URL_PREFIX}${POD_ARCHIVE_BASENAME}|" \
-  ${ARTIFACTS_STAGING_DIR}/${PODSPEC_BASENAME}
+sed -i "" -e "s|file:///http_source_placeholder|${STORAGE_URL_PREFIX}${POD_ARCHIVE_BASENAME}|" ${PODSPEC_PATH}
