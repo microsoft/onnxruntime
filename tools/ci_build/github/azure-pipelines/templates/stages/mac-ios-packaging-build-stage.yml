@@ -42,10 +42,12 @@ stages:
 
     steps:
     - script: |
-        echo $(ortPodVersion)
-        echo $[ variables.ortPodVersion ]
+        set -x
 
-        if [[ -z "$[ variables.ortPodVersion ]" ]]; then
+        echo "$(ortPodVersion)"
+        echo "$[variables.ortPodVersion]"
+
+        if [[ -z "$[variables.ortPodVersion]" ]]; then
           echo "ORT pod version is unspecified. Make sure that the IosPackaging_SetCommonVariables stage has run."
           exit 1
         fi

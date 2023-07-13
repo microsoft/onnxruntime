@@ -26,6 +26,9 @@ stages:
     timeoutInMinutes: 5
 
     steps:
+    - checkout: self
+      submodules: false
+
     - bash: |
         set -e
 
