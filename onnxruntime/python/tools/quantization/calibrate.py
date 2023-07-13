@@ -52,8 +52,7 @@ class TensorsData:
             self.data[k] = v
 
     def __iter__(self):
-        for k in self.data:
-            yield k
+        yield from self.data
 
     def __getitem__(self, key):
         return self.data[key]

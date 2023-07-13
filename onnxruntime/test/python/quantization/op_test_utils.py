@@ -5,16 +5,11 @@ import numpy as np
 import onnx
 import packaging.version as pv
 from onnx import TensorProto
-from onnx.reference import ReferenceEvaluator
-from onnx.reference.op_run import OpRun
-from onnx.reference.custom_element_types import (
-    float8e4m3fn,
-    float8e4m3fnuz,
-    float8e5m2,
-    float8e5m2fnuz,
-)
 from onnx.numpy_helper import float8e4m3_to_float32
 from onnx.helper import float32_to_float8e4m3, np_dtype_to_tensor_dtype
+from onnx.reference import ReferenceEvaluator
+from onnx.reference.custom_element_types import float8e4m3fn, float8e4m3fnuz, float8e5m2, float8e5m2fnuz
+from onnx.reference.op_run import OpRun
 
 import onnxruntime
 from onnxruntime.quantization import CalibrationDataReader
