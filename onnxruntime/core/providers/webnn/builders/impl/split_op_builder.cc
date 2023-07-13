@@ -41,9 +41,9 @@ Status SplitOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   emscripten::val options = emscripten::val::object();
 
   NodeAttrHelper helper(node);
-  int64_t axis = helper.Get("axis", 0);
-  axis = HandleNegativeAxis(axis, rank);
-  options.set("axis", static_cast<int32_t>(axis));
+  auto axis = helper.Get("axis", 0);
+  axis = SafeInt<int32_t>(HandleNegativeAxis(axis, rank));
+  options.set("axis", axis);
 
   if (input_defs.size() == 2) {
     // Inputs contains optional 'split' input
@@ -59,7 +59,7 @@ Status SplitOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
                       "The size of outputs must be equal to the size of 'split' input.");
   } else {
     if (helper.HasAttr("num_outputs")) {
-      const int64_t num_outputs = helper.Get("num_outputs", 1);
+      const auto num_outputs = helper.Get("num_outputs", 1);
       ORT_RETURN_IF_NOT(num_outputs > 0, "The 'num_outputs' must be a positive integer.");
       if (input_shape[axis] % num_outputs == 0) {
         // The 'num_outputs' evenly divide the dim value at 'axis' specified.
@@ -95,7 +95,7 @@ Status SplitOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
                         "The size of outputs must be equal to the count of output nodes.");
     }
   }
-  for (int64_t i = 0, count = output_array["length"].as<int32_t>(); i < count; i++) {
+  for (size_t i = 0, count = output_array["length"].as<int32_t>(); i < count; i++) {
     model_builder.AddOperand(node.OutputDefs()[i]->Name(), std::move(output_array[i]));
   }
   return Status::OK();
@@ -121,8 +121,8 @@ bool SplitOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers,
   const auto rank = input_shape.size();
 
   NodeAttrHelper helper(node);
-  int64_t axis = helper.Get("axis", 0);
-  axis = HandleNegativeAxis(axis, rank);
+  auto axis = helper.Get("axis", 0);
+  axis = SafeInt<int32_t>(HandleNegativeAxis(axis, rank));
 
   if (input_defs.size() == 2) {
     // Inputs contains optional 'split' input
@@ -143,7 +143,7 @@ bool SplitOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers,
       return false;
     }
     int64_t sum = 0;
-    for (int64_t i = 0; i < split.size(); i++) {
+    for (size_t i = 0; i < split.size(); i++) {
       if (split[i] < 0) {
         LOGS(logger, VERBOSE) << "Value of split should be greater than or equal to 0.";
         return false;
