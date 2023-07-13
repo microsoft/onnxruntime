@@ -22,8 +22,7 @@ struct OrtTrainingManager {
 
 OrtTrainingManager* OrtTrainingLoadCheckpoint(void* checkpoint, size_t checkpoint_size) {
   OrtTrainingManager* trainingManager = new OrtTrainingManager();
-  return (CHECK_TRAINING_STATUS(LoadCheckpointFromBuffer, checkpoint,
-                                checkpoint_size, &trainingManager->checkpoint_state) == ORT_OK)
+  return (CHECK_TRAINING_STATUS(LoadCheckpointFromBuffer, checkpoint, checkpoint_size, &trainingManager->checkpointState) == ORT_OK)
              ? trainingManager
              : nullptr;
 }
