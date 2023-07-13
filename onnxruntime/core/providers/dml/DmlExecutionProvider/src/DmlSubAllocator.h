@@ -11,5 +11,6 @@ namespace Dml
     {
     public:
         virtual void FreeResource(AllocationInfo* allocInfo, uint64_t resourceId) = 0;
+        virtual ~DmlSubAllocator() = default;
     };
 }
