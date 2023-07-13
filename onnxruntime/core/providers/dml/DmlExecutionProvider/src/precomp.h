@@ -53,6 +53,9 @@
 #include "External/DirectMLHelpers/SchemaHelpers.h"
 #include "External/DirectMLHelpers/GeneratedSchemaHelpers.h"
 #include "External/DirectMLHelpers/DirectMLX.h"
+#include "External/DirectMLHelpers/DmlSerializedGraphDesc.h"
+#include "flatbuffers/flatbuffers.h"
+#include "External/DirectMLHelpers/DmlGraphSerialization.h"
 
 using Microsoft::WRL::ComPtr;
 

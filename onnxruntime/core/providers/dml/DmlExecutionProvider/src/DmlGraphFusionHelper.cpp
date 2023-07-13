@@ -347,6 +347,8 @@ namespace DmlGraphFusionHelper
 
         ComPtr<IDMLDevice> device;
         ORT_THROW_IF_FAILED(providerImpl->GetDmlDevice(device.GetAddressOf()));
+        const DmlSerializedGraphDesc foo = {};
+        SerializeDmlGraph(foo);
         GraphDescBuilder::GraphDesc graphDesc = GraphDescBuilder::BuildGraphDesc(
             isInputsUploadedByDmlEP.data(),
             isInputsUploadedByDmlEP.size(),
