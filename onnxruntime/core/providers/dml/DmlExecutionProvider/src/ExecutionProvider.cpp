@@ -152,7 +152,7 @@ namespace Dml
         : m_d3d12Device(d3d12Device),
           m_dmlDevice(dmlDevice),
           m_areMetacommandsEnabled(enableMetacommands),
-          m_bfcAllocatorEnabled(enableBfcAllocator),
+          m_bfcAllocatorEnabled(false),
           m_queue(queue)
     {
 
