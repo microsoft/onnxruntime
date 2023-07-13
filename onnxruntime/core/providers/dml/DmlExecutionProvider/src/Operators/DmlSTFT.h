@@ -413,7 +413,7 @@ public:
         Dml::D3D12BufferRegion signalBufferRegion = DmlSTFTHelpers::GetInputBufferRegionFromKernelContext(context, DmlSTFTKernelInputIndex::Signal);
         inputBuffers[0] = signalBufferRegion.GetBufferBinding();
         inputBindings[0] = { DML_BINDING_TYPE_BUFFER, &inputBuffers[0] };
-        barriers[barrierCount++] = CD3DX12_RESOURCE_BARRIER::Transition(signalBufferRegion.ResourceInUavState(), D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+        barriers[barrierCount++] = CD3DX12_RESOURCE_BARRIER::Transition(signalBufferRegion.GetD3D12Resource(), D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 
         Dml::D3D12BufferRegion windowBufferRegion;
         if (m_framingOperator.hasWindowTensor)
@@ -421,7 +421,7 @@ public:
             windowBufferRegion = DmlSTFTHelpers::GetInputBufferRegionFromKernelContext(context, DmlSTFTKernelInputIndex::Window);
             inputBuffers[1] = windowBufferRegion.GetBufferBinding();
             inputBindings[1] = { DML_BINDING_TYPE_BUFFER, &inputBuffers[1] };
-            barriers[barrierCount++] = CD3DX12_RESOURCE_BARRIER::Transition(windowBufferRegion.ResourceInUavState(), D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+            barriers[barrierCount++] = CD3DX12_RESOURCE_BARRIER::Transition(windowBufferRegion.GetD3D12Resource(), D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
             inputBindingsCount++;
         }
 
@@ -429,7 +429,7 @@ public:
 
         DML_BUFFER_BINDING outputBuffer = outputBufferRegion.GetBufferBinding();
         DML_BINDING_DESC outputBinding = { DML_BINDING_TYPE_BUFFER, &outputBuffer };
-        barriers[barrierCount++] = CD3DX12_RESOURCE_BARRIER::Transition(outputBufferRegion.ResourceInUavState(), D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+        barriers[barrierCount++] = CD3DX12_RESOURCE_BARRIER::Transition(outputBufferRegion.GetD3D12Resource(), D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 
         m_framingOperator.bindingTable->BindOutputs(1, &outputBinding);
 

@@ -24,9 +24,9 @@ namespace Dml
         // Move-only
         D3D12BufferRegion(const D3D12BufferRegion&) = default;
         D3D12BufferRegion& operator=(const D3D12BufferRegion&) = default;
-        D3D12BufferRegion(D3D12BufferRegion&&);
-        D3D12BufferRegion& operator=(D3D12BufferRegion&&);
-        ID3D12Resource* ResourceInUavState() const;
+        D3D12BufferRegion(D3D12BufferRegion&&) noexcept;
+        D3D12BufferRegion& operator=(D3D12BufferRegion&&) noexcept;
+        ID3D12Resource* GetD3D12Resource() const;
 
         uint64_t Offset() const;
         uint64_t SizeInBytes() const;

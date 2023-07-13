@@ -687,19 +687,19 @@ public:
         D3D12_RESOURCE_BARRIER barriers[3];
 
         barriers[0] = CD3DX12_RESOURCE_BARRIER::Transition(
-            inputBufferRegion.ResourceInUavState(),
+            inputBufferRegion.GetD3D12Resource(),
             D3D12_RESOURCE_STATE_COMMON,
             D3D12_RESOURCE_STATE_UNORDERED_ACCESS
         );
 
         barriers[1] = CD3DX12_RESOURCE_BARRIER::Transition(
-            gridBufferRegion.ResourceInUavState(),
+            gridBufferRegion.GetD3D12Resource(),
             D3D12_RESOURCE_STATE_COMMON,
             D3D12_RESOURCE_STATE_UNORDERED_ACCESS
         );
 
         barriers[2] = CD3DX12_RESOURCE_BARRIER::Transition(
-            outputBufferRegion.ResourceInUavState(),
+            outputBufferRegion.GetD3D12Resource(),
             D3D12_RESOURCE_STATE_COMMON,
             D3D12_RESOURCE_STATE_UNORDERED_ACCESS
         );
@@ -729,19 +729,19 @@ public:
 
         // Transition resources to common state
         barriers[0] = CD3DX12_RESOURCE_BARRIER::Transition(
-            inputBufferRegion.ResourceInUavState(),
+            inputBufferRegion.GetD3D12Resource(),
             D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
             D3D12_RESOURCE_STATE_COMMON
         );
 
         barriers[1] = CD3DX12_RESOURCE_BARRIER::Transition(
-            gridBufferRegion.ResourceInUavState(),
+            gridBufferRegion.GetD3D12Resource(),
             D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
             D3D12_RESOURCE_STATE_COMMON
         );
 
         barriers[2] = CD3DX12_RESOURCE_BARRIER::Transition(
-            outputBufferRegion.ResourceInUavState(),
+            outputBufferRegion.GetD3D12Resource(),
             D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
             D3D12_RESOURCE_STATE_COMMON
         );
@@ -768,7 +768,7 @@ public:
         std::transform(
             bufferRegions.begin(), bufferRegions.end(),
             uav_barriers,
-            [](auto& bufferRegion) { return CD3DX12_RESOURCE_BARRIER::UAV(bufferRegion.ResourceInUavState()); } );
+            [](auto& bufferRegion) { return CD3DX12_RESOURCE_BARRIER::UAV(bufferRegion.GetD3D12Resource()); } );
         commandList->ResourceBarrier(TSize, uav_barriers);
 
         for (uint32_t i = 0; i < TSize; i++)
@@ -777,7 +777,7 @@ public:
             if (bufferRegions[i]) {
                 commandList->SetComputeRootUnorderedAccessView(
                     i, // root parameter index
-                    bufferRegions[i].ResourceInUavState()->GetGPUVirtualAddress() + bufferRegions[i].Offset()
+                    bufferRegions[i].GetD3D12Resource()->GetGPUVirtualAddress() + bufferRegions[i].Offset()
                 );
             }
             else

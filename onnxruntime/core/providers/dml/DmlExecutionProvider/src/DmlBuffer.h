@@ -24,11 +24,10 @@ class DmlBuffer
     // Move-only
     DmlBuffer(const DmlBuffer&) = delete;
     DmlBuffer& operator=(const DmlBuffer&) = delete;
-    DmlBuffer(DmlBuffer&&);
-    DmlBuffer& operator=(DmlBuffer&&);
+    DmlBuffer(DmlBuffer&&) noexcept;
+    DmlBuffer& operator=(DmlBuffer&&) noexcept;
 
-    // TODO (pavignol): Rename to Resource()
-    ID3D12Resource* ResourceInUavState() const;
+    ID3D12Resource* GetD3D12Resource() const;
     uint64_t Offset() const;
     uint64_t SizeInBytes() const;
     const D3D12BufferRegion& Region() const { return buffer_region_; }

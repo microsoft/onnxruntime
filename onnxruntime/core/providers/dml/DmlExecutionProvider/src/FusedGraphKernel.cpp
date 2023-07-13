@@ -65,7 +65,7 @@ namespace Dml
             if (persistentResourceSize > 0)
             {
                 auto buffer = m_provider->AllocatePooledResource(persistentResourceSize);
-                m_persistentResource = buffer.ResourceInUavState();
+                m_persistentResource = buffer.GetD3D12Resource();
                 m_persistentResourceBinding = buffer.GetBufferBinding();
                 m_managedPersistentBuffer = wil::MakeOrThrow<DmlManagedBuffer>(std::move(buffer));
                 m_winmlProvider->QueueReference(m_managedPersistentBuffer.Get());
@@ -187,7 +187,7 @@ namespace Dml
                 {
                     bufferBindings.push_back(bufferRegion.GetBufferBinding());
 
-                    if (bufferRegion.ResourceInUavState() != nullptr)
+                    if (bufferRegion.GetD3D12Resource() != nullptr)
                     {
                         bindingDescs.push_back({ DML_BINDING_TYPE_BUFFER, &bufferBindings.back() });
                     }

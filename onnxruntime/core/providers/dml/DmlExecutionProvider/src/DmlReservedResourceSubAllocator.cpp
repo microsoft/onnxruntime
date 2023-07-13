@@ -148,9 +148,9 @@ namespace Dml
             // Target range in the current heap to map.
             const D3D12_TILE_RANGE_FLAGS tile_range_flags =
                 D3D12_TILE_RANGE_FLAG_NONE;
-            const uint32_t heap_range_start_offset = 0;
             const uint32_t heap_range_tile_count = static_cast<uint32_t>(heap_size_in_tiles);
 
+            constexpr uint32_t heap_range_start_offset = 0;
             constexpr uint32_t numResourceRegions = 1;
             constexpr uint32_t numHeapRanges = 1;
 
@@ -262,8 +262,8 @@ namespace Dml
     #endif
 
         // DML only has a single device in ORT at the moment
-        const uint64_t device_id = 0;
-        const uint64_t offset = 0;
+        constexpr uint64_t device_id = 0;
+        constexpr uint64_t offset = 0;
         return TaggedPointer::Pack(device_id, *allocationId, offset);
     }
 

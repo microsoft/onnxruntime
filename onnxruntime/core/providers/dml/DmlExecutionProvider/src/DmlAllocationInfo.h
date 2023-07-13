@@ -38,7 +38,7 @@ namespace Dml
             return m_resourceWrapper->GetD3D12Resource();
         }
 
-        ComPtr<DmlResourceWrapper> DetachResourceWrapper() const
+        ComPtr<DmlResourceWrapper> DetachResourceWrapper()
         {
             return std::move(m_resourceWrapper);
         }

@@ -43,8 +43,6 @@ namespace Dml
             // cannot be both in a source and destination state at the same time (without aliasing), we copy
             // the source resource to an intermediate one, and then copy the intermediate resource to the
             // destination resource.
-            // TODO (pavignol): Only do the intermediate copy when both resources at the same
-
             D3D12_HEAP_PROPERTIES heapProperties = {
                 D3D12_HEAP_TYPE_DEFAULT, D3D12_CPU_PAGE_PROPERTY_UNKNOWN, D3D12_MEMORY_POOL_UNKNOWN, 0, 0};
 

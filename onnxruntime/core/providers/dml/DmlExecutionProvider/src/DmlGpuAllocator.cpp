@@ -89,8 +89,10 @@ namespace Dml
         {
         case ActiveAllocator::BfcAllocator:
             m_bfcSubAllocator->SetDefaultRoundingMode(roundingMode);
+            break;
         case ActiveAllocator::BucketizedBufferAllocator:
             m_bucketizedBufferAllocator->SetDefaultRoundingMode(roundingMode);
+            break;
         default:
             ORT_THROW_HR(E_UNEXPECTED);
         }

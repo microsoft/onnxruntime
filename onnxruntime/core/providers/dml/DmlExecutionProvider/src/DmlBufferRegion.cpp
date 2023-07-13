@@ -27,14 +27,14 @@ namespace Dml
         assert(m_resource->GetDesc().Width == buffer_size);
     }
 
-    D3D12BufferRegion::D3D12BufferRegion(D3D12BufferRegion&& that)
+    D3D12BufferRegion::D3D12BufferRegion(D3D12BufferRegion&& that) noexcept
     {
         std::swap(this->m_resource, that.m_resource);
         std::swap(this->offset_, that.offset_);
         std::swap(this->size_in_bytes_, that.size_in_bytes_);
     }
 
-    D3D12BufferRegion& D3D12BufferRegion::operator=(D3D12BufferRegion&& that)
+    D3D12BufferRegion& D3D12BufferRegion::operator=(D3D12BufferRegion&& that) noexcept
     {
         std::swap(this->m_resource, that.m_resource);
         std::swap(this->offset_, that.offset_);
@@ -42,7 +42,7 @@ namespace Dml
         return *this;
     }
 
-    ID3D12Resource* D3D12BufferRegion::ResourceInUavState() const
+    ID3D12Resource* D3D12BufferRegion::GetD3D12Resource() const
     {
         return m_resource;
     }

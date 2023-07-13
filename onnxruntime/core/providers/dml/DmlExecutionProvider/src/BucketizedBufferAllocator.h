@@ -19,8 +19,6 @@ namespace Dml
     class BucketizedBufferAllocator : public onnxruntime::IAllocator, public DmlSubAllocator
     {
     public:
-        ~BucketizedBufferAllocator();
-
         // Constructs a BucketizedBufferAllocator which allocates D3D12 committed resources with the specified heap properties,
         // resource flags, and initial resource state.
         BucketizedBufferAllocator(
@@ -45,6 +43,9 @@ namespace Dml
     public: // onnxruntime::IAllocator
         void* Alloc(size_t size) final;
         void Free(void* p) final;
+
+    protected:
+        ~BucketizedBufferAllocator();
 
     private:
         static const uint32_t c_minResourceSizeExponent = 16; // 2^16 = 64KB

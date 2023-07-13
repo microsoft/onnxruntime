@@ -564,8 +564,8 @@ void TensorToVideoFrameConverter::ConvertGPUTensorToSoftwareBitmap(
     telemetryLogger.emplace(tensorDesc);
   }
 
-  uint32_t tensorElementSize = tensorDesc.dataType == kImageTensorDataTypeFloat32 ? 4 : 2;
-  uint32_t singleVideoFramebufferSize = static_cast<uint32_t>(tensorDesc.sizes[1] * tensorDesc.sizes[2] * tensorDesc.sizes[3] * tensorElementSize);
+  uint64_t tensorElementSize = tensorDesc.dataType == kImageTensorDataTypeFloat32 ? 4 : 2;
+  uint64_t singleVideoFramebufferSize = tensorDesc.sizes[1] * tensorDesc.sizes[2] * tensorDesc.sizes[3] * tensorElementSize;
 
   // TODO: Make an allocator for readback heaps
   if (!readback_heap_ || readback_heap_->GetDesc().Width < singleVideoFramebufferSize) {
@@ -582,7 +582,7 @@ void TensorToVideoFrameConverter::ConvertGPUTensorToSoftwareBitmap(
 
   auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(pInputTensor, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COPY_SOURCE);
   command_list_->ResourceBarrier(1, &barrier);
-  command_list_->CopyBufferRegion(readback_heap_.Get(), 0, pInputTensor, inputTensorOffset + singleVideoFramebufferSize * batchIdx, singleVideoFramebufferSize);
+  command_list_->CopyBufferRegion(readback_heap_.Get(), 0, pInputTensor, inputTensorOffset + singleVideoFramebufferSize * static_cast<uint64_t>(batchIdx), singleVideoFramebufferSize);
 
   WINML_THROW_IF_FAILED(command_list_->Close());
   ID3D12CommandList* ppCommandLists[] = {command_list_.Get()};

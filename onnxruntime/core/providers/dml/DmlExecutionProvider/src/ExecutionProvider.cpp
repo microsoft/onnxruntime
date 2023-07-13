@@ -129,7 +129,7 @@ namespace Dml
     {
         ORT_TRY
         {
-            return GetBufferForTensor(tensor).ResourceInUavState();
+            return GetBufferForTensor(tensor).GetD3D12Resource();
         }
         ORT_CATCH_GENERIC
         {
@@ -152,7 +152,7 @@ namespace Dml
         : m_d3d12Device(d3d12Device),
           m_dmlDevice(dmlDevice),
           m_areMetacommandsEnabled(enableMetacommands),
-          m_bfcAllocatorEnabled(false), // TODO (pavignol): Revert
+          m_bfcAllocatorEnabled(enableBfcAllocator),
           m_queue(queue)
     {
 
@@ -222,12 +222,6 @@ namespace Dml
                 D3D12_HEAP_FLAG_ALLOW_ONLY_BUFFERS,
                 D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,
                 D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-
-            // TODO (pavignol): Remove
-            if (!m_bfcAllocatorEnabled)
-            {
-                printf("*************BFC ALLOCATOR DISABLED!\n");
-            }
 
             // Wrap the BFC allocator into our own allocator
             m_gpuAllocator = std::make_shared<DmlGpuAllocator>(
@@ -469,7 +463,7 @@ namespace Dml
             // CPU -> GPU copy (upload)
             //
             auto dstBufferRegion = GetBufferForTensor(dst);
-            ID3D12Resource* dstData = dstBufferRegion.ResourceInUavState();
+            ID3D12Resource* dstData = dstBufferRegion.GetD3D12Resource();
             const auto dstState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
             const uint64_t dstOffset = dstBufferRegion.Offset();
             m_uploadHeap->BeginUploadToGpu(dstData, dstOffset, dstState, AsByteSpan(src->GetData(), dataSizeInBytes));
@@ -481,7 +475,7 @@ namespace Dml
             // GPU -> CPU copy (readback)
             //
             auto srcBufferRegion = GetBufferForTensor(src);
-            ID3D12Resource* srcData = srcBufferRegion.ResourceInUavState();
+            ID3D12Resource* srcData = srcBufferRegion.GetD3D12Resource();
             const auto srcState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
             const uint64_t srcOffset = srcBufferRegion.Offset();
             m_readbackHeap->ReadbackFromGpu(AsByteSpan(dst->GetData(), dataSizeInBytes), srcData, srcOffset, srcState);
@@ -492,12 +486,12 @@ namespace Dml
             // GPU -> GPU copy
             //
             auto srcBufferRegion = GetBufferForTensor(src);
-            ID3D12Resource* srcData = srcBufferRegion.ResourceInUavState();
+            ID3D12Resource* srcData = srcBufferRegion.GetD3D12Resource();
             const auto srcState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
             const uint64_t srcOffset = srcBufferRegion.Offset();
 
             auto dstBufferRegion = GetBufferForTensor(dst);
-            ID3D12Resource* dstData = dstBufferRegion.ResourceInUavState();
+            ID3D12Resource* dstData = dstBufferRegion.GetD3D12Resource();
             const auto dstState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
             const uint64_t dstOffset = dstBufferRegion.Offset();
 
@@ -554,7 +548,7 @@ namespace Dml
 
             auto srcBufferRegion = GetBufferForTensor(src[i]);
 
-            ID3D12Resource* srcData = srcBufferRegion.ResourceInUavState();
+            ID3D12Resource* srcData = srcBufferRegion.GetD3D12Resource();
             const auto srcState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
 
             srcDatas.push_back(srcData);
@@ -581,7 +575,7 @@ namespace Dml
         if (mlTensor != nullptr)
         {
             auto dstBufferRegion = GetBufferForTensor(dst);
-            m_context->FillBufferWithPattern(dstBufferRegion.ResourceInUavState(), dstBufferRegion.Offset(), rawValue);
+            m_context->FillBufferWithPattern(dstBufferRegion.GetD3D12Resource(), dstBufferRegion.Offset(), rawValue);
         }
 
         return S_OK;
@@ -982,7 +976,7 @@ namespace Dml
 
             auto srcBufferRegion = GetBufferForTensor(&srcWrapper);
 
-            ID3D12Resource* srcData = srcBufferRegion.ResourceInUavState();
+            ID3D12Resource* srcData = srcBufferRegion.GetD3D12Resource();
             const auto srcState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
 
             srcDatas.push_back(srcData);

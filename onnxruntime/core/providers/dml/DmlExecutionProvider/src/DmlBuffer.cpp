@@ -25,7 +25,7 @@ DmlBuffer::~DmlBuffer()
     }
 }
 
-DmlBuffer::DmlBuffer(DmlBuffer&& other)
+DmlBuffer::DmlBuffer(DmlBuffer&& other) noexcept
 {
     m_opaqueData = other.m_opaqueData;
     allocator_ = other.allocator_;
@@ -33,7 +33,7 @@ DmlBuffer::DmlBuffer(DmlBuffer&& other)
     other.m_opaqueData = nullptr;
 }
 
-DmlBuffer& DmlBuffer::operator=(DmlBuffer&& other)
+DmlBuffer& DmlBuffer::operator=(DmlBuffer&& other) noexcept
 {
     m_opaqueData = other.m_opaqueData;
     allocator_ = other.allocator_;
@@ -42,9 +42,9 @@ DmlBuffer& DmlBuffer::operator=(DmlBuffer&& other)
     return *this;
 }
 
-ID3D12Resource* DmlBuffer::ResourceInUavState() const
+ID3D12Resource* DmlBuffer::GetD3D12Resource() const
 {
-    return buffer_region_.ResourceInUavState();
+    return buffer_region_.GetD3D12Resource();
 }
 
 uint64_t DmlBuffer::Offset() const

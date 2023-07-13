@@ -1710,8 +1710,8 @@ namespace Windows::AI::MachineLearning::Adapter
         else
         {
             auto bufferRegion = GetBufferRegion();
-            bufferRegion.ResourceInUavState()->AddRef();
-            *dataInterface = bufferRegion.ResourceInUavState();
+            bufferRegion.GetD3D12Resource()->AddRef();
+            *dataInterface = bufferRegion.GetD3D12Resource();
         }
     }
 
@@ -1768,7 +1768,7 @@ namespace Windows::AI::MachineLearning::Adapter
 
             for (auto& tempBuffer : m_temporaryBuffers)
             {
-                resourcesToTransition.push_back(tempBuffer.ResourceInUavState());
+                resourcesToTransition.push_back(tempBuffer.GetD3D12Resource());
             }
 
             m_winmlProvider->TransitionResourcesForOperator(
@@ -2146,8 +2146,8 @@ namespace Windows::AI::MachineLearning::Adapter
 
             auto dml_gpu_allocator = static_cast<Dml::DmlGpuAllocator*>(alloc.get());
             auto buffer = dml_gpu_allocator->AllocateDefaultBuffer(size);
-            buffer.ResourceInUavState()->AddRef();
-            *abiAllocation = buffer.ResourceInUavState();
+            buffer.GetD3D12Resource()->AddRef();
+            *abiAllocation = buffer.GetD3D12Resource();
 
             // Ensure the allocation is freed and transitioned when the context destructs
             m_temporaryBuffers.push_back(std::move(buffer));

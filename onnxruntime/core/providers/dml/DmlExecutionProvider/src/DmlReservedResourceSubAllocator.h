@@ -70,8 +70,6 @@ namespace Dml
         bool TilingEnabled() const { return tiling_enabled_; };
         uint64_t GetUniqueId(void* opaquePointer);
 
-        ~DmlReservedResourceSubAllocator();
-
         // Constructs a DmlReservedResourceSubAllocator which allocates D3D12 committed resources with the specified heap properties,
         // resource flags, and initial resource state.
         DmlReservedResourceSubAllocator(
@@ -82,6 +80,9 @@ namespace Dml
         void SetDefaultRoundingMode(AllocatorRoundingMode roundingMode);
         void* Alloc(size_t size);
         void Free(void* p);
+
+    protected:
+        ~DmlReservedResourceSubAllocator();
 
     private:
         static const uint32_t c_minResourceSizeExponent = 16; // 2^16 = 64KB
