@@ -66,6 +66,11 @@ def _test_batched_gemm(
         if not my_gemm.SelectOp(impl):
             continue
 
+        # Restore C Arrays
+        for my_c in my_cs:
+            my_c.fill(1.0)
+        for dev_c in dev_cs:
+            dev_c.UpdateDeviceArray()
         my_gemm.Run()
         for dev_c in dev_cs:
             dev_c.UpdateHostNumpyArray()

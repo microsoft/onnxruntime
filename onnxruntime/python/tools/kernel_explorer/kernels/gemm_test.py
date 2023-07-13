@@ -50,7 +50,9 @@ def _test_gemm(func, dtype: str, transa: bool, transb: bool, m: int, n: int, k: 
     for impl in my_gemm.ListOps():
         if not my_gemm.SelectOp(impl):
             continue
-
+        # Restore C Array
+        my_c.fill(1.0)
+        dev_c.UpdateDeviceArray()
         my_gemm.Run()
         dev_c.UpdateHostNumpyArray()
 
