@@ -15,6 +15,9 @@ name: "$(Date:yyyyMMdd)$(Rev:rrr)"  # build number format
 stages:
 - stage: IosPackaging_SetCommonVariables
   dependsOn: []
+  
+  variables:
+    skipComponentGovernanceDetection: true
 
   jobs:
   - job: j
@@ -84,6 +87,7 @@ stages:
     variables:
       xcodeVersion: "14.3"
       ortPodVersion: $[stageDependencies.IosPackaging_SetCommonVariables.j.outputs['SetCommonVariables.ORT_POD_VERSION']]
+      skipComponentGovernanceDetection: true
 
     timeoutInMinutes: 10
 
