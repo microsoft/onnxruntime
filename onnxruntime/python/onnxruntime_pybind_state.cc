@@ -300,7 +300,7 @@ static std::unique_ptr<onnxruntime::IExecutionProvider> LoadExternalExecutionPro
   CustomExecutionProvider* (*PGetExternalProvider)();
   OrtPybindThrowIfError(Env::Default().GetSymbolFromLibrary(handle, entry_symbol_name, (void**)&PGetExternalProvider));
 
-  return std::make_unique<ExternalExecutionProvider>(std::unique_ptr<CustomExecutionProvider>(PGetExternalProvider()));
+  return std::make_unique<ExternalExecutionProvider>(PGetExternalProvider());
 }
 
 #ifdef USE_CUDA
@@ -895,7 +895,7 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
           }
         }
         // return LoadExecutionProvider(shared_lib_path_it->second, provider_options, entry_symbol);
-        return LoadExternalExecutionProvider(shared_lib_path_it->second, provider_options, entry_symbol);
+        return LoadExternalExecutionProvider(shared_lib_path_it->second, provider_options);
       }
     }
     // unknown provider

@@ -1,19 +1,21 @@
+#pragma once
 #include "core/framework/custom_execution_provider.h"
 #include "core/framework/execution_provider.h"
 #include "core/framework/kernel_registry.h"
-
+#include "core/session/onnxruntime_lite_custom_op.h"
+#include "core/session/allocator_adapters.h"
+#include "core/session/custom_ops.h"
 #include <memory>
 
 namespace onnxruntime {
     class ExternalExecutionProvider : public IExecutionProvider{
     public:
-        ExternalExecutionProvider(std::unique_ptr<CustomExecutionProvider> external_ep)
-            : IExecutionProvider("test"), external_ep_impl_(std::move(external_ep)){
-                std::vector<CreateCustomKernelFunc> kernel_funcs = external_ep_impl_->GetRegisteredKernels();
+        ExternalExecutionProvider(CustomExecutionProvider* external_ep)
+            : IExecutionProvider("test"), external_ep_impl_(external_ep){
                 kernel_registry_ = std::make_shared<KernelRegistry>();
-                for (auto& kernel_func : kernel_funcs){
-                    ORT_UNUSED_PARAMETER(kernel_func);
-                    // kernel_registry.Register(ToKernelBuildInfo(kernel_func));
+                std::vector<Ort::Custom::OrtLiteCustomOp*> custom_ops = external_ep_impl_->GetCustomOps();
+                for (auto& op : custom_ops) {
+                    OrtLiteCustomOp2KernelRegistry(op);
                 }
             }
 
@@ -21,8 +23,23 @@ namespace onnxruntime {
             return kernel_registry_;
         }
 
+        std::vector<AllocatorPtr> CreatePreferredAllocators() override {
+            std::vector<AllocatorPtr> ret;
+            std::vector<OrtAllocator*> allocators = external_ep_impl_->GetAllocators();
+            for (auto& allocator : allocators) {
+                AllocatorPtr alloc_ptr = std::make_shared<onnxruntime::IAllocatorImplWrappingOrtAllocator>(allocator);
+                ret.push_back(std::move(alloc_ptr));
+            }
+            return ret;
+        }
+
     private:
-        std::unique_ptr<CustomExecutionProvider> external_ep_impl_;
+        CustomExecutionProvider* external_ep_impl_;
         std::shared_ptr<KernelRegistry> kernel_registry_;
+
+        void OrtLiteCustomOp2KernelRegistry(Ort::Custom::OrtLiteCustomOp* custom_op) {
+            KernelCreateInfo kernel_create_info = CreateKernelCreateInfo("TODO:DomainName", custom_op);
+            ORT_THROW_IF_ERROR(kernel_registry_->Register(std::move(kernel_create_info)));
+        }
     };
 }

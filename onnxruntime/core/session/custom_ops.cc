@@ -396,46 +396,34 @@ ORT_API_STATUS_IMPL(OrtApis::Logger_GetLoggingSeverityLevel, _In_ const OrtLogge
 #include "core/framework/customregistry.h"
 namespace onnxruntime {
 
-struct CustomOpKernel : OpKernel {
-  CustomOpKernel(const OpKernelInfo& info, const OrtCustomOp& op) : OpKernel(info), op_(op) {
-    if (op_.version > ORT_API_VERSION) {
-      ORT_THROW("Unsupported version '" + std::to_string(op_.version) + "' in custom op '" + op.GetName(&op));
-    }
-
-    if (op_.version > 15 && op_.KernelCompute == 0) {
-      op_kernel_ = nullptr;
-      Ort::ThrowOnError(
-          op_.CreateKernelV2(
-              &op_,
-              OrtGetApiBase()->GetApi(op_.version),
-              reinterpret_cast<const OrtKernelInfo*>(&info),
-              &op_kernel_));
-    } else {
-      op_kernel_ = op_.CreateKernel(&op_, OrtGetApiBase()->GetApi(op_.version),
-                                    reinterpret_cast<const OrtKernelInfo*>(&info));
-    }
+CustomOpKernel::CustomOpKernel(const OpKernelInfo& info, const OrtCustomOp& op) : OpKernel(info), op_(op) {
+  if (op_.version > ORT_API_VERSION) {
+    ORT_THROW("Unsupported version '" + std::to_string(op_.version) + "' in custom op '" + op.GetName(&op));
   }
 
-  ~CustomOpKernel() override {
-    op_.KernelDestroy(op_kernel_);
+  if (op_.version > 15 && op_.KernelCompute == 0) {
+    op_kernel_ = nullptr;
+    Ort::ThrowOnError(
+        op_.CreateKernelV2(
+            &op_,
+            OrtGetApiBase()->GetApi(op_.version),
+            reinterpret_cast<const OrtKernelInfo*>(&info),
+            &op_kernel_));
+  } else {
+    op_kernel_ = op_.CreateKernel(&op_, OrtGetApiBase()->GetApi(op_.version),
+                                  reinterpret_cast<const OrtKernelInfo*>(&info));
+  }
+}
+
+Status CustomOpKernel::Compute(OpKernelContext* ctx) const {
+  if (op_.version > 15 && op_.KernelCompute == 0) {
+    auto status_ptr = op_.KernelComputeV2(op_kernel_, reinterpret_cast<OrtKernelContext*>(ctx));
+    return ToStatus(status_ptr);
   }
 
-  Status Compute(OpKernelContext* ctx) const override {
-    if (op_.version > 15 && op_.KernelCompute == 0) {
-      auto status_ptr = op_.KernelComputeV2(op_kernel_, reinterpret_cast<OrtKernelContext*>(ctx));
-      return ToStatus(status_ptr);
-    }
-
-    op_.KernelCompute(op_kernel_, reinterpret_cast<OrtKernelContext*>(ctx));
-    return Status::OK();
-  }
-
- private:
-  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(CustomOpKernel);
-
-  const OrtCustomOp& op_;
-  void* op_kernel_;
-};
+  op_.KernelCompute(op_kernel_, reinterpret_cast<OrtKernelContext*>(ctx));
+  return Status::OK();
+}
 
 #if !defined(ORT_MINIMAL_BUILD)
 KernelCreateInfo CreateKernelCreateInfo(const std::string& domain, const OrtCustomOp* op) {

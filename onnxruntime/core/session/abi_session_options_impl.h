@@ -16,7 +16,7 @@ struct OrtSessionOptions {
   onnxruntime::SessionOptions value;
   std::vector<OrtCustomOpDomain*> custom_op_domains_;
   std::vector<std::shared_ptr<onnxruntime::IExecutionProviderFactory>> provider_factories;
-  std::vector<std::shared_ptr<onnxruntime::IExecutionProvider>> providers;  // unique_ptr will cause compile error: use of deleted function ‘std::unique_ptr
+  //std::vector<std::shared_ptr<onnxruntime::IExecutionProvider>> providers;  // unique_ptr will cause compile error: use of deleted function ‘std::unique_ptr
   OrtSessionOptions() = default;
   ~OrtSessionOptions();
   OrtSessionOptions(const OrtSessionOptions& other);
