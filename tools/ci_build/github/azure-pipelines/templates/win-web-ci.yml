@@ -135,7 +135,7 @@ jobs:
       cacheHitVar: CACHE_RESTORED
     displayName: 'Cache ONNX node test data'
   - script: |
-      find "$(Build.SourcesDirectory)/js/test/" -type -f
+      find "$(Build.SourcesDirectory)/js/test/" -type f
     condition: and(not(canceled()), eq(variables.CACHE_RESTORED, 'true'))
     displayName: 'List ONNX node test data'
   - task: PowerShell@2
