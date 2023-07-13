@@ -245,7 +245,7 @@ class ParallelRandomValueGenerator {
           RandomEngine generator{seed};
           std::uniform_real_distribution<float> distribution(min, max);
           for (std::ptrdiff_t di = begin; di != end; ++di) {
-            val[di] = TFloat16(math::floatToHalf(distribution(generator)));
+            val[di] = TFloat16(static_cast<float>(distribution(generator)));
             ;
           }
         });

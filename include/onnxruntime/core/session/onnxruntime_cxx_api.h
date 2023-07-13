@@ -161,7 +161,7 @@ std::vector<std::string> GetAvailableProviders();
  *
  * \endcode
  */
-struct Float16_t : onnxruntime_float16::Float16Impl {
+struct Float16_t : onnxruntime_float16::Float16Impl<Float16_t> {
  private:
   /// <summary>
   /// Constructor from a 16-bit representation of a float16 value
@@ -171,7 +171,7 @@ struct Float16_t : onnxruntime_float16::Float16Impl {
   constexpr explicit Float16_t(uint16_t v) noexcept { val = v; }
 
  public:
-  using Base = onnxruntime_float16::Float16Impl;
+  using Base = onnxruntime_float16::Float16Impl<Float16_t>;
 
   /// <summary>
   /// Default constructor
@@ -183,19 +183,19 @@ struct Float16_t : onnxruntime_float16::Float16Impl {
   /// </summary>
   /// <param name="v">uint16_t bit representation of bfloat16</param>
   /// <returns>new instance of Float16_t</returns>
-  static constexpr Float16_t FromBits(uint16_t v) noexcept { return Float16_t(v); }
+  constexpr static Float16_t FromBits(uint16_t x) noexcept { return Float16_t(x); }
 
   /// <summary>
   /// __ctor from float. Float is converted into float16 16-bit representation.
   /// </summary>
   /// <param name="v">float value</param>
-  explicit Float16_t(float v) { val = Base::ToUint16Impl(v); }
+  explicit Float16_t(float v) noexcept { val = Base::ToUint16Impl(v); }
 
   /// <summary>
   /// Converts bfloat16 to float
   /// </summary>
   /// <returns>float representation of bfloat16 value</returns>
-  float ToFloat() const { return Base::ToFloatImpl(); }
+  float ToFloat() const noexcept { return Base::ToFloatImpl(); }
 
   /// <summary>
   /// Checks if the value is negative
@@ -255,13 +255,13 @@ struct Float16_t : onnxruntime_float16::Float16Impl {
   /// Creates an instance that represents absolute value.
   /// </summary>
   /// <returns>Absolute value</returns>
-  Float16_t Abs() const noexcept { return Float16_t::FromBits(Base::AbsImpl()); }
+  using Base::Abs;
 
   /// <summary>
   /// Creates a new instance with the sign flipped.
   /// </summary>
   /// <returns>Flipped sign instance</returns>
-  Float16_t Negate() const noexcept { return Float16_t::FromBits(Base::NegateImpl()); }
+  using Base::Negate;
 
   /// <summary>
   /// IEEE defines that positive and negative zero are equal, this gives us a quick equality check
@@ -303,7 +303,7 @@ static_assert(sizeof(Float16_t) == sizeof(uint16_t), "Sizes must match");
  *
  * \endcode
  */
-struct BFloat16_t : onnxruntime_float16::BFloat16Impl {
+struct BFloat16_t : onnxruntime_float16::BFloat16Impl<BFloat16_t> {
  private:
   /// <summary>
   /// Constructor from a uint16_t representation of bfloat16
@@ -315,7 +315,7 @@ struct BFloat16_t : onnxruntime_float16::BFloat16Impl {
   constexpr explicit BFloat16_t(uint16_t v) noexcept { val = v; }
 
  public:
-  using Base = onnxruntime_float16::BFloat16Impl;
+  using Base = onnxruntime_float16::BFloat16Impl<BFloat16_t>;
 
   BFloat16_t() = default;
 
@@ -396,13 +396,13 @@ struct BFloat16_t : onnxruntime_float16::BFloat16Impl {
   /// Creates an instance that represents absolute value.
   /// </summary>
   /// <returns>Absolute value</returns>
-  BFloat16_t Abs() const noexcept { return FromBits(Base::AbsImpl()); }
+  using Base::Abs;
 
   /// <summary>
   /// Creates a new instance with the sign flipped.
   /// </summary>
   /// <returns>Flipped sign instance</returns>
-  BFloat16_t Negate() const noexcept { return FromBits(Base::NegateImpl()); }
+  using Base::Negate;
 
   /// <summary>
   /// IEEE defines that positive and negative zero are equal, this gives us a quick equality check
@@ -419,9 +419,11 @@ struct BFloat16_t : onnxruntime_float16::BFloat16Impl {
   /// </summary>
   explicit operator float() const noexcept { return ToFloat(); }
 
-  using Base::operator==;
-  using Base::operator!=;
-  using Base::operator<;
+  // We do not have an inherited impl for the below operators
+  // as the internal class implements them a little differently
+  bool operator==(const BFloat16_t& rhs) const noexcept;
+  bool operator!=(const BFloat16_t& rhs) const noexcept { return !(*this == rhs); }
+  bool operator<(const BFloat16_t& rhs) const noexcept;
 };
 
 static_assert(sizeof(BFloat16_t) == sizeof(uint16_t), "Sizes must match");

@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 #pragma once
 
-#include <cmath>
+#include <math.h>
 
 #include "endian.h"
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
@@ -26,17 +26,20 @@ namespace onnxruntime {
 #endif
 
 // MLFloat16
-struct MLFloat16 : onnxruntime_float16::Float16Impl {
+struct MLFloat16 : onnxruntime_float16::Float16Impl<MLFloat16> {
  private:
   explicit constexpr MLFloat16(uint16_t x) noexcept { val = x; }
 
  public:
-  using Base = onnxruntime_float16::Float16Impl;
+  using Base = onnxruntime_float16::Float16Impl<MLFloat16>;
 
   MLFloat16() = default;
+
   constexpr static MLFloat16 FromBits(uint16_t x) noexcept { return MLFloat16(x); }
-  // We continue to use math impl instead of inherited one
-  explicit MLFloat16(float f);
+
+  // Using inherited implementation instead of math floatToHalf allows us to use this
+  // in other shared providers without having to implement the bridge
+  explicit MLFloat16(float v) noexcept { val = Base::ToUint16Impl(v); }
 
   static const MLFloat16 NaN;
   static const MLFloat16 NegativeNaN;
@@ -49,8 +52,9 @@ struct MLFloat16 : onnxruntime_float16::Float16Impl {
   static const MLFloat16 One;
   static const MLFloat16 MinusOne;
 
-  // We continue to use math impl instead of inherited one
-  float ToFloat() const;
+  // Using inherited implementation instead of math halfToFloat allows us to use this
+  // in other shared providers without having to implement the bridge
+  float ToFloat() const noexcept { return Base::ToFloatImpl(); }
 
   using Base::IsNegative;
 
@@ -70,13 +74,9 @@ struct MLFloat16 : onnxruntime_float16::Float16Impl {
 
   using Base::IsSubnormal;
 
-  MLFloat16 Abs() const noexcept {
-    return MLFloat16::FromBits(Base::AbsImpl());
-  }
+  using Base::Abs;
 
-  MLFloat16 Negate() const noexcept {
-    return MLFloat16::FromBits(Base::NegateImpl());
-  }
+  using Base::Negate;
 
   operator float() const noexcept { return ToFloat(); }
 
@@ -86,8 +86,8 @@ struct MLFloat16 : onnxruntime_float16::Float16Impl {
 };
 
 // BFloat16
-struct BFloat16 : onnxruntime_float16::BFloat16Impl {
-  using Base = onnxruntime_float16::BFloat16Impl;
+struct BFloat16 : onnxruntime_float16::BFloat16Impl<BFloat16> {
+  using Base = onnxruntime_float16::BFloat16Impl<BFloat16>;
 
 #if defined(__HIP__)
   ORT_HOST_DEVICE BFloat16() = default;
@@ -121,12 +121,14 @@ struct BFloat16 : onnxruntime_float16::BFloat16Impl {
       val = static_cast<uint16_t>((U32 + rounding_bias) >> 16);
     }
 #else
-    if (std::isnan(v)) {
+
+    // Use C isnan to work both in host and device
+    if (::isnan(v)) {
       val = kPositiveQNaNBits;
     } else {
       auto get_msb_half = [](float fl) {
         uint16_t result;
-        if constexpr (endian::native == endian::little) {
+        if constexpr (onnxruntime_float16::detail::endian::native == onnxruntime_float16::detail::endian::little) {
           std::memcpy(&result, reinterpret_cast<char*>(&fl) + sizeof(uint16_t), sizeof(uint16_t));
         } else {
           std::memcpy(&result, &fl, sizeof(uint16_t));
@@ -158,8 +160,8 @@ struct BFloat16 : onnxruntime_float16::BFloat16Impl {
     result = *tempRes;
     return result;
 #else
-    // Test for NaN
-    if (static_cast<uint16_t>(val & ~kSignMask) > kPositiveInfinityBits) {
+
+    if (IsNaNHostDevice()) {
       return std::numeric_limits<float>::quiet_NaN();
     }
 
@@ -204,13 +206,9 @@ struct BFloat16 : onnxruntime_float16::BFloat16Impl {
 
   using Base::IsSubnormal;
 
-  BFloat16 Abs() const noexcept {
-    return BFloat16::FromBits(Base::AbsImpl());
-  }
+  using Base::Abs;
 
-  BFloat16 Negate() const noexcept {
-    return BFloat16::FromBits(Base::NegateImpl());
-  }
+  using Base::Negate;
 
   ORT_HOST_DEVICE operator float() const noexcept { return ToFloat(); }
 
@@ -219,9 +217,48 @@ struct BFloat16 : onnxruntime_float16::BFloat16Impl {
   explicit ORT_HOST_DEVICE operator __nv_bfloat16() const { return *reinterpret_cast<const __nv_bfloat16*>(&val); }
 #endif
 
-  using Base::operator==;
-  using Base::operator!=;
-  using Base::operator<;
+  ORT_HOST_DEVICE bool operator==(const BFloat16& rhs) const noexcept {
+    if (IsNaNHostDevice() || rhs.IsNaNHostDevice()) {
+      // IEEE defines that NaN is not equal to anything, including itself.
+      return false;
+    }
+    return val == rhs.val;
+  }
+
+  ORT_HOST_DEVICE bool operator!=(const BFloat16& rhs) const noexcept {
+    return !(*this == rhs);
+  }
+
+  ORT_HOST_DEVICE bool operator<(const BFloat16& rhs) const noexcept {
+    if (IsNaNHostDevice() || rhs.IsNaNHostDevice()) {
+      // IEEE defines that NaN is unordered with respect to everything, including itself.
+      return false;
+    }
+
+    const bool left_is_negative = IsNegativeHostDevice();
+    if (left_is_negative != rhs.IsNegativeHostDevice()) {
+      // When the signs of left and right differ, we know that left is less than right if it is
+      // the negative value. The exception to this is if both values are zero, in which case IEEE
+      // says they should be equal, even if the signs differ.
+      return left_is_negative && !AreZeroHostDevice(*this, rhs);
+    }
+    return (val != rhs.val) && ((val < rhs.val) ^ left_is_negative);
+  }
+
+  ORT_HOST_DEVICE bool IsNegativeHostDevice() const noexcept {
+    return (val & kSignMask) != 0;
+  }
+
+  ORT_HOST_DEVICE bool IsNaNHostDevice() const noexcept {
+    return static_cast<uint16_t>(val & ~kSignMask) > kPositiveInfinityBits;
+  }
+
+  ORT_HOST_DEVICE static bool AreZeroHostDevice(const BFloat16Impl& lhs, const BFloat16Impl& rhs) noexcept {
+    // IEEE defines that positive and negative zero are equal, this gives us a quick equality check
+    // for two values by or'ing the private bits together and stripping the sign. They are both zero,
+    // and therefore equivalent, if the resulting value is still zero.
+    return static_cast<uint16_t>((lhs.val | rhs.val) & ~kSignMask) == 0;
+  }
 };
 
 // User defined suffixes to make it easier to declare
