@@ -32,7 +32,6 @@ from torch.fx.passes.operator_support import OperatorSupport
 from torch.fx.passes.tools_common import CALLABLE_NODE_OPS
 from torch.utils import _pytree
 
-
 import onnxruntime  # type: ignore
 from onnxruntime.capi import _pybind_state as ORTC
 
@@ -445,11 +444,7 @@ class OrtBackend:
             # Initialize a ORT session to execute this ONNX model.
             # TorchDynamo assumes all inputs/outputs are on the same device,
             # so we add execution provider only based on the first input's device.
-            ep = (
-                _infer_ep_from_device(args) or
-                _infer_ep_from_graph_module(graph_module) or
-                self.ep
-            )
+            ep = _infer_ep_from_device(args) or _infer_ep_from_graph_module(graph_module) or self.ep
 
             onnx_session = _create_onnx_session(onnx_proto, ep, self.session_options)
             # Cache ORT session. It's reused for the same "graph_module".
