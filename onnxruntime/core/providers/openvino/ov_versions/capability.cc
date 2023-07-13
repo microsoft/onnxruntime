@@ -75,7 +75,7 @@ std::vector<std::unique_ptr<ComputeCapability>> GetCapability::Execute() {
     }
 
     const auto& nodes = graph_viewer_.GetNodesInTopologicalOrder();
-    
+
     // Handle cases where lone, reoccuring Ops in smaller models cannot be supported in OpenVINO
     // If only a node of the same lone,unsupported type is present, then do not proceed with the subgraph
     const auto& node = graph_viewer_.GetNode(nodes[0]);
