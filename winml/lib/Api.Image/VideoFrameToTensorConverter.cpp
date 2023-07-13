@@ -498,8 +498,8 @@ void VideoFrameToTensorConverter::ConvertSoftwareBitmapToGPUTensor(
 
   assert(convertedSoftwareBitmap != nullptr);
 
-  uint32_t tensorElementSize = tensorDesc.dataType == kImageTensorDataTypeFloat32 ? 4 : 2;
-  uint32_t bufferSize = static_cast<uint32_t>(tensorDesc.sizes[1] * tensorDesc.sizes[2] * tensorDesc.sizes[3] * tensorElementSize);
+  uint64_t tensorElementSize = tensorDesc.dataType == kImageTensorDataTypeFloat32 ? 4 : 2;
+  uint64_t bufferSize = tensorDesc.sizes[1] * tensorDesc.sizes[2] * tensorDesc.sizes[3] * tensorElementSize;
 
   // TODO: Make an allocator for upload heaps
   if (!upload_heap_ || upload_heap_->GetDesc().Width < bufferSize) {
