@@ -2,15 +2,22 @@
 
 set -ex
 
-rocm_version=$1
-mi200_gpus=$(rocm-smi --showproductname | grep -c "MI250" | xargs)
+while getopts "v" parameter_Option
+do case "${parameter_Option}"
+in
+v) ROCM_VERSION=${OPTARG};;
+esac
+done
 
-echo "mi200_gpus: $mi200_gpus"
+ROCM_VERSION=$1
+MI200_DEVICE_NUMBERS=$(rocm-smi --showproductname | grep -c "MI250" | xargs)
 
-if [ "$mi200_gpus" -gt "0" ]; then
-  result_file=ci-mi200.huggingface.bert-large-rocm${rocm_version}.json
+echo "MI200_DEVICE_NUMBERS: $MI200_DEVICE_NUMBERS"
+
+if [ "$MI200_DEVICE_NUMBERS" -gt "0" ]; then
+  RESULT_FILE=ci-mi200.huggingface.bert-large-rocm${ROCM_VERSION}.json
 else
-  result_file=ci-mi100.huggingface.bert-large-rocm${rocm_version}.json
+  RESULT_FILE=ci-mi100.huggingface.bert-large-rocm${ROCM_VERSION}.json
 fi
 
 python \
@@ -33,4 +40,4 @@ cat ci-pipeline-actual.json
 
 python /onnxruntime_src/orttraining/tools/ci_test/compare_huggingface.py \
   ci-pipeline-actual.json \
-  /onnxruntime_src/orttraining/tools/ci_test/results/${result_file}
+  /onnxruntime_src/orttraining/tools/ci_test/results/${RESULT_FILE}

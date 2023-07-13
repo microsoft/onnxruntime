@@ -1,6 +1,6 @@
-FROM rocm/cupy:rocm5.5.0_ubuntu20.04_py3.8_pytorch2.0.0_cupy13.0.0
+FROM rocm/pytorch:rocm5.6_ubuntu20.04_py3.8_pytorch_2.0.1
 
-RUN apt-get update -y && apt-get upgrade -y
+RUN apt-get update -y && apt-get upgrade -y && apt-get autoremove -y && apt-get clean -y
 
 WORKDIR /stage
 
@@ -54,6 +54,28 @@ RUN pip install \
 
 RUN pip install torch-ort --no-dependencies
 ENV ORTMODULE_ONNX_OPSET_VERSION=15
+
+# Install Cupy to decrease CPU utilization
+# Install non dev openmpi
+RUN rm -rf /opt/ompi && \
+    wget https://download.open-mpi.org/release/open-mpi/v4.1/openmpi-4.1.5.tar.bz2 && \
+    tar -jxf openmpi-4.1.5.tar.bz2 && \
+    cd openmpi-4.1.5 && \
+    ./configure --prefix=/opt/ompi && \
+    make -j4 all && \
+    make install && \
+    cd ../ && \
+    rm -r openmpi-4.1.5 && \
+    rm openmpi-4.1.5.tar.bz2
+
+# Install CuPy, No stable version is available
+RUN git clone https://github.com/ROCmSoftwarePlatform/cupy && cd cupy && \
+    git checkout fc251a808037f8a2270860c2a23a683bfc0de43e && \
+    export CUPY_INSTALL_USE_HIP=1 && \
+    export ROCM_HOME=/opt/rocm && \
+    export HCC_AMDGPU_TARGET=gfx906,gfx908,gfx90a && \
+    git submodule update --init && \
+    pip install -e . --no-cache-dir -vvvv
 
 ARG BUILD_UID=1001
 ARG BUILD_USER=onnxruntimedev
