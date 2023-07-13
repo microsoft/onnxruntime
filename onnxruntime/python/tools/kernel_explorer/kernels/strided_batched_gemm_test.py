@@ -73,6 +73,9 @@ def _test_strided_batched_gemm(
         if not my_gemm.SelectOp(impl):
             continue
 
+        # Restore C Array
+        my_c.fill(1.0)
+        dev_c.UpdateDeviceArray()
         my_gemm.Run()
         dev_c.UpdateHostNumpyArray()
 
