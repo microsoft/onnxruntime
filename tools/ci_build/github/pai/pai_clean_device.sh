@@ -1,12 +1,15 @@
 #!/bin/bash
 set -ex
 
+usage() { echo "Usage: $0 [-n <agent name>] [-d <target device>] [-r <driver render>]" 1>&2; exit 1; }
+
 while getopts "n:d:r:" parameter_Option
 do case "${parameter_Option}"
 in
 n) AGENT_NAME=${OPTARG};;
 d) TARGET_DEVICE=${OPTARG};;
 r) DRIVER_RENDER=${OPTARG};;
+*) usage ;;
 esac
 done
 
@@ -39,6 +42,6 @@ for ((i = 0; i < ${#PID_NUMBERS_LINES_ARRAY[@]}; i++)); do
     GPU_USED_BY_PID=$(echo "$GPU_USED_BY_PIDS" | sed -n "${GPU_USED_BY_PID_LINE}p" | sed -e 's/^[ ]*//g' | sed -e 's/[ ]*$//g')
     if [ "$GPU_USED_BY_PID" == "$TARGET_DEVICE" ]; then
         echo "kill pid: $PID_NUMBER, using gpu: $GPU_USED_BY_PID"
-        kill -9 $PID_NUMBER
+        kill -9 "$PID_NUMBER"
     fi
 done

@@ -2,10 +2,13 @@
 
 set -ex
 
+usage() { echo "Usage: $0 [-v <ROCm version>]" 1>&2; exit 1; }
+
 while getopts "v:" parameter_Option
 do case "${parameter_Option}"
 in
 v) ROCM_VERSION=${OPTARG};;
+*) usage ;;
 esac
 done
 
@@ -37,4 +40,4 @@ cat ci-pipeline-actual.json
 
 python /onnxruntime_src/orttraining/tools/ci_test/compare_huggingface.py \
   ci-pipeline-actual.json \
-  /onnxruntime_src/orttraining/tools/ci_test/results/${RESULT_FILE}
+  /onnxruntime_src/orttraining/tools/ci_test/results/"$RESULT_FILE"
