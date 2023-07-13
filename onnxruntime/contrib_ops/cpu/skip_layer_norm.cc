@@ -53,8 +53,6 @@ Status SkipLayerNorm<T>::Compute(OpKernelContext* p_ctx) const {
                            "skip is expected to have 3 or 2 dimensions, got ", skip_dims_size);
   }
   
-  int skip_sequence_length = static_cast<int>(skip_dims[skip_dims_size - 2]);
-
   if ((input->Shape() != skip->Shape()) && ((skip_dims[0] != 1 || skip_dims_size != 2) && input_dims_size != 3)) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                             "skip is expected to have same shape as input or, a batch size of 1 or no batch size when input has 3 dimensions");
