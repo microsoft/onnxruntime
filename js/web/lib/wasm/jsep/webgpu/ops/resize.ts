@@ -30,15 +30,6 @@ export interface ResizeAttributes extends AttributeWithCacheKey {
   nearestMode: NearestMode;
 }
 
-let opsetVersion = 10;
-let scales: number[] = [];
-const sizes: number[] = [];
-let roi: number[] = [];
-let roiInputIndex: number;
-let scalesInputIndex: number;
-let sizesInputIndex: number;
-let useExtrapolation = false;
-
 const validateScales = (scales: number[]): void => {
   scales.every((value) => value > 0 || (() => {
                             throw new Error('Resize requires scales input values to be positive');
@@ -46,7 +37,7 @@ const validateScales = (scales: number[]): void => {
   // Check scales dims based on mode: LINEAR, CUBIC
 };
 
-const updateScales = (scales: number[], axes: number[], rank: number): number[] => {
+const updateScales = (scales: readonly number[], axes: readonly number[], rank: number): number[] => {
   axes.every((value) => value >= 0 && value < rank || (() => {
                           throw new Error('Resize requires axes input values to be positive and less than rank');
                         }));
@@ -55,47 +46,51 @@ const updateScales = (scales: number[], axes: number[], rank: number): number[] 
   return newScales;
 };
 
-const validateInputs = (inputs: readonly TensorView[], attributes: ResizeAttributes): void => {
-  [roiInputIndex, scalesInputIndex, sizesInputIndex] =
-      (opsetVersion > 10) ? [1, 2, 3] : [-1, (inputs.length > 1) ? 1 : -1, -1];
-  const rank = inputs[0].dims.length;
-  if (roiInputIndex > 0 && inputs.length > roiInputIndex) {
-    inputs[roiInputIndex].getFloat32Array().forEach((value) => roi.push(value));
+const validateInputs =
+    (inputs: readonly TensorView[], attributes: ResizeAttributes, opsetVersion: number, scales: number[],
+     sizes: number[], roi: number[]): void => {
+      const [roiInputIndex, scalesInputIndex, sizesInputIndex] =
+          (opsetVersion > 10) ? [1, 2, 3] : [-1, (inputs.length > 1) ? 1 : -1, -1];
+      const rank = inputs[0].dims.length;
+      if (roiInputIndex > 0 && inputs.length > roiInputIndex) {
+        inputs[roiInputIndex].getFloat32Array().forEach((value) => roi.push(value));
 
-  } else if (attributes.coordinateTransformMode === 'tf_crop_and_resize') {
-    throw new Error('Resize requires RoI input to be specified when coordinateTransformMode is tfCropAndResize');
-  }
+      } else if (attributes.coordinateTransformMode === 'tf_crop_and_resize') {
+        throw new Error('Resize requires RoI input to be specified when coordinateTransformMode is tfCropAndResize');
+      }
 
-  if (scalesInputIndex > 0 && inputs.length > scalesInputIndex) {
-    inputs[scalesInputIndex].getFloat32Array().forEach((value) => scales.push(value));
-    if (scales.length !== 0 &&
-        (scales.length !== rank && (opsetVersion >= 18 && scales.length === attributes.axes.length))) {
-      throw new Error('Resize requires scales input size to be same as input rank or axes size for opset 18 and up');
-    }
-    validateScales(scales);
-    if (attributes.axes.length > 0) {
-      scales = updateScales(scales, attributes.axes, rank);
-    }
-  }
-  if (sizesInputIndex > 0 && inputs.length > sizesInputIndex) {
-    inputs[sizesInputIndex].getBigInt64Array().forEach((value) => sizes.push(Number(value)));
-    if (sizes.length !== rank || (opsetVersion >= 18 && sizes.length === attributes.axes.length)) {
-      throw new Error('Resize requires sizes input size to be same as input rank or axes size for opset 18 and up');
-    }
-  }
+      if (scalesInputIndex > 0 && inputs.length > scalesInputIndex) {
+        inputs[scalesInputIndex].getFloat32Array().forEach((value) => scales.push(value));
+        if (scales.length !== 0 &&
+            (scales.length !== rank && (opsetVersion >= 18 && scales.length === attributes.axes.length))) {
+          throw new Error(
+              'Resize requires scales input size to be same as input rank or axes size for opset 18 and up');
+        }
+        validateScales(scales);
+        if (attributes.axes.length > 0) {
+          updateScales(scales, attributes.axes, rank).forEach((value, index) => scales[index] = value);
+        }
+      }
+      if (sizesInputIndex > 0 && inputs.length > sizesInputIndex) {
+        inputs[sizesInputIndex].getBigInt64Array().forEach((value) => sizes.push(Number(value)));
+        if (sizes.length !== rank || (opsetVersion >= 18 && sizes.length === attributes.axes.length)) {
+          throw new Error('Resize requires sizes input size to be same as input rank or axes size for opset 18 and up');
+        }
+      }
 
-  if (attributes.axes.length > 0) {
-    if (scales.length !== attributes.axes.length) {
-      throw new Error('Resize requires "scales" input size to be of axes rank when axes attributes is specified');
-    }
-    if (sizes.length !== attributes.axes.length) {
-      throw new Error('Resize requires "sizes" input size to be of rank axes rank when axes attributes is specified');
-    }
-  }
-  if (typeof scales !== 'undefined' && typeof sizes !== 'undefined' && scales.length > 0 && sizes.length > rank) {
-    throw new Error('Resize requires only of scales or sizes to be specified');
-  }
-};
+      if (attributes.axes.length > 0) {
+        if (scales.length !== attributes.axes.length) {
+          throw new Error('Resize requires "scales" input size to be of axes rank when axes attributes is specified');
+        }
+        if (sizes.length !== attributes.axes.length) {
+          throw new Error(
+              'Resize requires "sizes" input size to be of rank axes rank when axes attributes is specified');
+        }
+      }
+      if (typeof scales !== 'undefined' && typeof sizes !== 'undefined' && scales.length > 0 && sizes.length > rank) {
+        throw new Error('Resize requires only of scales or sizes to be specified');
+      }
+    };
 
 const getOriginalCoordinateFromResizedCoordinate = (coordinateTransferMode: CoordinateTransformMode): string =>
     'fn getOriginalCoordinateFromResizedCoordinate(xResized: u32, xScale: f32, lengthResized: u32,\
@@ -140,7 +135,7 @@ const getNearestPixelFromOriginal = (nearestMode: NearestMode): string =>
         case 'ceil':
           return 'return ceil(xOriginal);';
         case 'round_prefer_floor':
-          return 'if (xOriginal == f32(u32(xOriginal)) + 0.5) {\nreturn floor(xOriginal);\n} else {\nreturn round(xOriginal);\n}';
+          return 'if (xOriginal == roudnd(xOriginal) + 0.5) {return floor(xOriginal);} else {return round(xOriginal);}';
         default:
           throw new Error(`Nearest mode ${nearestMode} is not supported`);
       }
@@ -189,7 +184,7 @@ const initOutputShape =
 
 const adjustOutputShape =
     (inputShape: readonly number[], outputShape: readonly number[], attributes: ResizeAttributes): number[] => {
-      scales = inputShape.map((value, index) => value === 0 ? 1.0 : outputShape[index] / value);
+      const scales = inputShape.map((value, index) => value === 0 ? 1.0 : outputShape[index] / value);
       if (attributes.keepAspectRatioPolicy !== 'streach') {
         const scaleInPolicy = (() => {
           switch (attributes.keepAspectRatioPolicy) {
@@ -202,7 +197,7 @@ const adjustOutputShape =
               throw new Error(`Keep aspect ratio policy ${attributes.keepAspectRatioPolicy} is not supported`);
           }
         })();
-        scales = scales.fill(1.0, 0, scales.length);
+        scales.fill(1.0, 0, scales.length);
         const adjustedOutputShape = inputShape.slice();
         if (attributes.axes.length > 0) {
           attributes.axes.forEach((v, i) => adjustedOutputShape[v] = Math.round(inputShape[v] * scales[i]));
@@ -215,10 +210,10 @@ const adjustOutputShape =
     };
 
 const calculateInputIndicesFromOutputIndices =
-    (inputShape: readonly number[], outputShape: readonly number[], scales: readonly number[], roi: readonly number[]):
-        string => `
+    (inputShape: readonly number[], outputShape: readonly number[], scales: readonly number[], roi: readonly number[],
+     useExtrapolation: boolean): string => `
      fn calculateInputIndicesFromOutputIndices(outputIndices: array<u32, ${outputShape.length}>) -> array<u32, ${
-            inputShape.length}> {
+        inputShape.length}> {
           const inputShape = array<u32, ${inputShape.length}>(${inputShape.map(i => `${i}u`).join(',')});
           const outputShape = array<u32, ${outputShape.length}>(${outputShape.map(i => `${i}u`).join(',')});
           const scales = array<f32, ${scales.length}>(${scales.map(i => `${i}f`).join(',')});
@@ -252,9 +247,10 @@ const checkInputIndices = (inputShape: readonly number[]): string => `
     }`;
 
 const createResizeProgramInfo =
-    (metadata: ProgramMetadata, inputs: readonly TensorView[], attributes: ResizeAttributes): ProgramInfo => {
-      const inputShape = inputs[0].dims;
-      roi = updateRoI(roi, attributes.axes, inputShape.length);
+    (metadata: ProgramMetadata, input: TensorView, attributes: ResizeAttributes, opsetVersion: number,
+     scales: readonly number[], sizes: readonly number[], roiInput: readonly number[]): ProgramInfo => {
+      const inputShape = input.dims;
+      const roi = updateRoI(roiInput, attributes.axes, inputShape.length);
 
       let outputShape = initOutputShape(inputShape, scales, sizes, attributes.axes);
       if (scales.length === 0) {
@@ -276,10 +272,11 @@ const createResizeProgramInfo =
         inputIndices[2] = outputIndices[2] / 2; // height
         inputIndices[3] = outputIndices[3] / 2; // width
       `;
+      const useExtrapolation = attributes.coordinateTransformMode === 'tf_crop_and_resize';
       const getShaderSource = (shaderHelper: ShaderHelper) => `
       ${attributes.mode === 'nearest' ? getNearestPixelFromOriginal(attributes.nearestMode) : ';'};
       ${checkInputIndices(inputShape)};
-      ${calculateInputIndicesFromOutputIndices(inputShape, outputShape, scales, roi)};
+      ${calculateInputIndicesFromOutputIndices(inputShape, outputShape, scales, roi, useExtrapolation)};
       ${getOriginalCoordinateFromResizedCoordinate(attributes.coordinateTransformMode)};
       @group(0) @binding(0) var<storage, read> input : array<${dataType}>;
       @group(0) @binding(1) var<storage, read_write> output : array<${dataType}>;
@@ -311,31 +308,40 @@ const createResizeProgramInfo =
       return {
         ...metadata,
         getShaderSource,
-        outputs: [{dims: outputShape, dataType: inputs[0].dataType, gpuDataType: GpuDataType.default}],
+        outputs: [{dims: outputShape, dataType: input.dataType, gpuDataType: GpuDataType.default}],
         dispatchGroup: () => ({x: Math.ceil(outputSize / 64 /* workgroup size */)})
       };
     };
 
 export const createResizeProgramInfoLoader =
-    (inputs: readonly TensorView[], attributes: ResizeAttributes): ProgramInfoLoader => {
+    (input: TensorView, attributes: ResizeAttributes, opsetVersion: number, scales: readonly number[],
+     sizes: readonly number[], roi: readonly number[]): ProgramInfoLoader => {
       const metadata: ProgramMetadata = {
         name: 'Resize',
         inputTypes: [GpuDataType.default],
         cacheHint: attributes.cacheKey,
       };
-      return {...metadata, get: () => createResizeProgramInfo(metadata, inputs, attributes)};
+      return {
+        ...metadata,
+        get: () => createResizeProgramInfo(metadata, input, attributes, opsetVersion, scales, sizes, roi)
+      };
     };
 
-const readCustomDataBuffer = (context: ComputeContext): void => {
+const getOpsetVersionFromCustomDataBuffer = (context: ComputeContext): number => {
   const customDataBuffer = context.customDataBuffer;
   const customDataBuffer32 = new Uint32Array(customDataBuffer, customDataBuffer.byteOffset, 1);
-  opsetVersion = customDataBuffer32[0];
+  const opsetVersion = customDataBuffer32[0];
+  return opsetVersion;
 };
 
 export const resize = (context: ComputeContext, attributes: ResizeAttributes): void => {
-  readCustomDataBuffer(context);
-  validateInputs(context.inputs, attributes);
-  context.compute(createResizeProgramInfoLoader(context.inputs, attributes), {inputs: [0]});
+  const scales: number[] = [];
+  const sizes: number[] = [];
+  const roi: number[] = [];
+  const opsetVersion = getOpsetVersionFromCustomDataBuffer(context);
+  validateInputs(context.inputs, attributes, opsetVersion, scales, sizes, roi);
+  context.compute(
+      createResizeProgramInfoLoader(context.inputs[0], attributes, opsetVersion, scales, sizes, roi), {inputs: [0]});
 };
 
 export const parseResizeAttributes = (attributes: Record<string, unknown>): ResizeAttributes => {
@@ -350,7 +356,6 @@ export const parseResizeAttributes = (attributes: Record<string, unknown>): Resi
   const mode: Mode = attributes.mode as Mode;
   // If nearestMode is not specified, use simple mode.
   const nearestMode: NearestMode = attributes.nearestMode === '' ? 'simple' : attributes.nearestMode as NearestMode;
-  useExtrapolation = attributes.coordinateTransformMode === 'tfCropAndResize';
   return createAttributeWithCacheKey({
     antialias,
     axes,
