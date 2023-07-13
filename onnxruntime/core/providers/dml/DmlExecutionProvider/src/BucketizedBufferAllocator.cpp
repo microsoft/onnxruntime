@@ -96,6 +96,11 @@ namespace Dml
     D3D12BufferRegion BucketizedBufferAllocator::CreateBufferRegion(void* opaquePointer, uint64_t size_in_bytes) const
     {
         auto allocationInfo = static_cast<AllocationInfo*>(opaquePointer);
+
+        // Make sure that we are aligned to 4 bytes to satisfy DML's requirements
+        constexpr uint64_t DML_ALIGNMENT = 4;
+        size_in_bytes = (1 + (size_in_bytes - 1) / DML_ALIGNMENT) * DML_ALIGNMENT;
+
         return D3D12BufferRegion(0, size_in_bytes, allocationInfo->GetD3D12Resource());
     }
 

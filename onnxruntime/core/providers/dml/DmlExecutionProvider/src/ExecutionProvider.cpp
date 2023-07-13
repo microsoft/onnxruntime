@@ -152,7 +152,7 @@ namespace Dml
         : m_d3d12Device(d3d12Device),
           m_dmlDevice(dmlDevice),
           m_areMetacommandsEnabled(enableMetacommands),
-          m_bfcAllocatorEnabled(enableBfcAllocator),
+          m_bfcAllocatorEnabled(false), // TODO (pavignol): Revert
           m_queue(queue)
     {
 
@@ -223,6 +223,7 @@ namespace Dml
                 D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,
                 D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 
+            // TODO (pavignol): Remove
             if (!m_bfcAllocatorEnabled)
             {
                 printf("*************BFC ALLOCATOR DISABLED!\n");
