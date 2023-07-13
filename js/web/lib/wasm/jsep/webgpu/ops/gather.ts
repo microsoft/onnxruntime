@@ -5,7 +5,7 @@
 import {DataType} from '../../../wasm-common';
 import {TensorView} from '../../tensor';
 import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-with-cache-key';
-import {ComputeContext, GpuDataType, ProgramInfo, ProgramInfoLoader, ProgramMetadata} from '../types';
+import {ComputeContext, GpuDataType, ProgramInfo} from '../types';
 import {ShapeUtil} from '../../util';
 import {ShaderHelper} from './common';
 import {createTransposeProgramInfo, TransposeAttributes, transposeProgramMetadata} from './transpose';
@@ -29,22 +29,22 @@ const validateInputs = (inputs: readonly TensorView[]): void => {
 export interface GatherAttributes extends AttributeWithCacheKey {
 	readonly axis: number;
 }
-
+export const gatherProgramMetadata = {
+  name: 'Gather',
+  inputTypes: [GpuDataType.default]
+};
 const createGatherProgramInfo = (
-	metadata: ProgramMetadata,
 	inputData: TensorView,
 	index: TensorView,
 ): ProgramInfo => {
 	const inputShape = inputData.dims.slice();
 	const indexShape = index.dims.slice();
 	const outputShape = new Array(inputShape.length + indexShape.length - 1);
-
 	const outputSize = ShapeUtil.size(outputShape);
 	const indexSize = ShapeUtil.size(indexShape);
 	const dataType = 'f32';  // TODO: support other data type
 
 	// Step 1: transpose input data along axis
-
 	const getShaderSource = (shaderHelper: ShaderHelper) => `
         @group(0) @binding(0) var<storage, read> inputData : array<${dataType}>;
         @group(0) @binding(1) var<storage, read> index : array<i32>;
@@ -57,29 +57,17 @@ const createGatherProgramInfo = (
         	}
     }`;
 	return {
-		...metadata,
+		...gatherProgramMetadata,
 		getShaderSource,
 		outputs: [{dims: outputShape, dataType: inputData.dataType, gpuDataType: GpuDataType.default}],
 		dispatchGroup: () => ({x: Math.ceil(outputSize / 64 /* workgroup size */)})
 	};
 };
 
-const createGatherProgramInfoLoader = (
-	inputData: TensorView,
-	index: TensorView
-):
-	ProgramInfoLoader => {
-	const metadata: ProgramMetadata = {name: 'Gather', inputTypes: [GpuDataType.default]};
-	return {
-		...metadata,
-		get: () => createGatherProgramInfo(
-			metadata, inputData, index
-		)
-	};
-};
 export const gather = (context: ComputeContext, attributes: GatherAttributes): void => {
 	validateInputs(context.inputs);
-	const inputShape = context.inputs[0].dims.slice();
+	const inputData = context.inputs[0];
+	const inputShape = inputData.dims.slice();
 	const axis = ShapeUtil.normalizeAxis(attributes.axis, inputShape.length);
 	const perm = inputShape;
 	perm[axis] = 0;
@@ -88,12 +76,16 @@ export const gather = (context: ComputeContext, attributes: GatherAttributes): v
 	const transposedInput = context.compute({
 			...transposeProgramMetadata,
 			cacheHint: weightTransposeAttribute.cacheKey,
-			get: () => createTransposeProgramInfo(context.inputs[0], weightTransposeAttribute.perm)
+			get: () => createTransposeProgramInfo(inputData, weightTransposeAttribute.perm)
 		}
 	)[0];
 
-	const gathered = context.compute(
-		createGatherProgramInfoLoader(transposedInput, context.inputs[1]))[0];
+	const gathered = context.compute({
+			...gatherProgramMetadata,
+			cacheHint: attributes.cacheKey,
+			get: () => createGatherProgramInfo(transposedInput, context.inputs[1])
+	}
+	)[0];
 	context.compute({
 		...transposeProgramMetadata,
 		cacheHint: weightTransposeAttribute.cacheKey,
