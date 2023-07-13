@@ -6,7 +6,7 @@ ARG MIGRAPHX_VERSION=rocm-5.5.0
 ENV DEBIAN_FRONTEND noninteractive
 ENV MIGRAPHX_DISABLE_FAST_GELU=1
 
-RUN apt-get clean && apt-get update && apt-get install -y locales unzip
+RUN apt-get clean && apt-get update -y && apt-get upgrade -y && apt-get install -y locales unzip
 RUN locale-gen en_US.UTF-8
 RUN update-locale LANG=en_US.UTF-8
 ENV LC_ALL C.UTF-8

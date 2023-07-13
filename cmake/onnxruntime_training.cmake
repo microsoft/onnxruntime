@@ -22,6 +22,8 @@ file(GLOB_RECURSE onnxruntime_training_srcs
 file(GLOB_RECURSE onnxruntime_training_framework_excluded_srcs CONFIGURE_DEPENDS
     "${ORTTRAINING_SOURCE_DIR}/core/framework/torch/*.h"
     "${ORTTRAINING_SOURCE_DIR}/core/framework/torch/*.cc"
+    "${ORTTRAINING_SOURCE_DIR}/core/framework/triton/*.h"
+    "${ORTTRAINING_SOURCE_DIR}/core/framework/triton/*.cc"
 )
 
 list(REMOVE_ITEM onnxruntime_training_srcs ${onnxruntime_training_framework_excluded_srcs})
