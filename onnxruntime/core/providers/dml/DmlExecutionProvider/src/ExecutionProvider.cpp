@@ -9,6 +9,7 @@
 #include "ReadbackHeap.h"
 #include "ExecutionContext.h"
 #include "DmlReservedResourceSubAllocator.h"
+#include "BucketizedBufferAllocator.h"
 #include "DmlCpuAllocator.h"
 #include "MLOperatorAuthorImpl.h"
 #include "core/providers/dml/OperatorAuthorHelper/MLOperatorAuthorHelper.h"
@@ -207,8 +208,16 @@ namespace Dml
 
             m_bfcAllocator = onnxruntime::CreateAllocator(memoryInfo);
 
+            m_bucketizedAllocator = std::make_shared<BucketizedBufferAllocator>(
+                m_d3d12Device.Get(),
+                m_context, // TODO(leca): REVIEW: Will it cause memory issue when m_context is released in EP while alloc is released in sessionState?
+                CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
+                D3D12_HEAP_FLAG_ALLOW_ONLY_BUFFERS,
+                D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,
+                D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+
             // Wrap the BFC allocator into our own allocator
-            m_gpuAllocator = std::make_shared<DmlGpuAllocator>(m_bfcAllocator.get(), subAllocator);
+            m_gpuAllocator = std::make_shared<DmlGpuAllocator>(m_bfcAllocator.get(), m_bucketizedAllocator.get(), subAllocator);
             m_context->SetAllocator(m_gpuAllocator);
             // CPU Allocator used to create buffers for the MemcpyFromHost, Shape and Size operators.
             m_cpuInputAllocator = std::make_shared<DmlCpuAllocator>(OrtMemType::OrtMemTypeCPUInput);
@@ -992,15 +1001,21 @@ namespace Dml
         m_context->QueueReference(object);
     }
 
-    D3D12BufferRegion ExecutionProviderImpl::GetBufferRegion(const TaggedPointer& taggedPointer, uint64_t size) const
+    D3D12BufferRegion ExecutionProviderImpl::GetBufferRegion(void* opaquePointer, uint64_t size) const
     {
-        return m_gpuAllocator->CreateBufferRegion(taggedPointer, size);
+        return m_gpuAllocator->CreateBufferRegion(opaquePointer, size);
     }
 
-    uint64_t ExecutionProviderImpl::TryGetPooledAllocationId(const TaggedPointer& taggedPointer, bool isInternalOperator)
+    uint64_t ExecutionProviderImpl::GetUniqueId(void* opaquePointer)
     {
-        assert(!isInternalOperator);
-        return taggedPointer.GetUniqueId();
+        return m_gpuAllocator->GetUniqueId(opaquePointer);
+    }
+
+    void ExecutionProviderImpl::DisableBfcAllocator()
+    {
+        // TODO (pavignol): Remove
+        printf("*************Disabling BFC allocator!!!\n");
+        m_gpuAllocator->SetActiveAllocator(ActiveAllocator::BucketizedBufferAllocator);
     }
 
     void ExecutionProviderImpl::GetABIExecutionInterfaceAndInvalidateState(
@@ -1117,10 +1132,10 @@ namespace Dml
         return std::make_unique<Dml::ExecutionProvider>(dmlDevice, commandQueue, enableMetacommands);
     }
 
-    D3D12BufferRegion GetD3D12ResourceRegionFromAllocation(onnxruntime::IAllocator* allocator, const TaggedPointer& taggedPointer, uint64_t sizeInBytes)
+    D3D12BufferRegion GetD3D12ResourceRegionFromAllocation(onnxruntime::IAllocator* allocator, void* opaquePointer, uint64_t sizeInBytes)
     {
-        Dml::DmlGpuAllocator* pAllocationInfo = static_cast<Dml::DmlGpuAllocator*>(allocator);
-        return pAllocationInfo->CreateBufferRegion(taggedPointer, sizeInBytes);
+        Dml::DmlGpuAllocator* gpuAllocator = static_cast<Dml::DmlGpuAllocator*>(allocator);
+        return gpuAllocator->CreateBufferRegion(opaquePointer, sizeInBytes);
     }
 
     void FlushContext(onnxruntime::IExecutionProvider* provider)
@@ -1141,6 +1156,12 @@ namespace Dml
         dmlexecutionprovider->ReleaseCompletedReferences();
     }
 
+    void DisableBfcAllocator(onnxruntime::IExecutionProvider * provider)
+    {
+        ExecutionProvider* dmlexecutionprovider = static_cast<Dml::ExecutionProvider*>(provider);
+        dmlexecutionprovider->DisableBfcAllocator();
+    }
+
     onnxruntime::common::Status CopyTensor(
         onnxruntime::IExecutionProvider* provider,
         const onnxruntime::Tensor& src,
@@ -1156,7 +1177,7 @@ namespace Dml
         ComPtr<DmlResourceWrapper> resourceWrapper;
         wil::MakeOrThrow<DmlCommittedResourceWrapper>(pResource).As(&resourceWrapper);
 
-        ComPtr<AllocationInfo> allocInfo = wil::MakeOrThrow<AllocationInfo>(nullptr, 0, resourceWrapper.Get(), (size_t)pResource->GetDesc().Width);
+        ComPtr<AllocationInfo> allocInfo = wil::MakeOrThrow<AllocationInfo>(nullptr, 0, 0, resourceWrapper.Get(), (size_t)pResource->GetDesc().Width);
         return allocInfo.Detach();
     }
     void FreeGPUAllocation(void* ptr)

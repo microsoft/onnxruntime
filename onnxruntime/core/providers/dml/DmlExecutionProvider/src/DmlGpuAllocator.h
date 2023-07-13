@@ -10,28 +10,46 @@
 namespace Dml
 {
     class DmlReservedResourceSubAllocator;
+    class BucketizedBufferAllocator;
     class AllocationInfo;
     struct TaggedPointer;
+
+    enum class ActiveAllocator
+    {
+        BfcAllocator,
+        BucketizedBufferAllocator,
+    };
 
     class DmlGpuAllocator : public onnxruntime::IAllocator
     {
     public:
-        DmlGpuAllocator(onnxruntime::IAllocator* bfcAllocator, std::shared_ptr<DmlReservedResourceSubAllocator> subAllocator);
+        DmlGpuAllocator(
+            onnxruntime::IAllocator* bfcAllocator,
+            BucketizedBufferAllocator* bucketizedBufferAllocator,
+            std::shared_ptr<DmlReservedResourceSubAllocator> bfcSubAllocator);
 
         void* Alloc(size_t size_in_bytes) final;
         void Free(void* ptr) final;
-        D3D12BufferRegion CreateBufferRegion(const TaggedPointer& taggedPointer, uint64_t size_in_bytes);
-        AllocationInfo* GetAllocationInfo(const TaggedPointer& taggedPointer);
+        D3D12BufferRegion CreateBufferRegion(void* opaquePointer, uint64_t size_in_bytes);
+        AllocationInfo* GetAllocationInfo(void* opaquePointer);
         void SetDefaultRoundingMode(AllocatorRoundingMode roundingMode);
         DmlBuffer AllocateDefaultBuffer(uint64_t num_bytes);
+        void SetActiveAllocator(ActiveAllocator activeAllocator);
+        uint64_t GetUniqueId(void* opaquePointer);
 
     private:
         // This allocator is managed by ORT and should be used to allocate/free memory in order
         // to utilize the BFC acapabilities
         onnxruntime::IAllocator* m_bfcAllocator;
 
+        // This allocator is the old bucketized allocator that is kept for backward compatibility purposes
+        // and is only used when external custom ops are registered.
+        BucketizedBufferAllocator* m_bucketizedBufferAllocator;
+
         // This allocator is specific to DML and is used to decode the opaque data returned by the BFC
         // allocator into objects that DML understands
-        std::shared_ptr<DmlReservedResourceSubAllocator> m_subAllocator;
+        std::shared_ptr<DmlReservedResourceSubAllocator> m_bfcSubAllocator;
+
+        ActiveAllocator m_activeAllocator;
     };
 } // namespace Dml

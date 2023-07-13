@@ -7,33 +7,35 @@
 
 namespace Dml
 {
-    class DmlReservedResourceSubAllocator;
+    class DmlSubAllocator;
 
     class AllocationInfo : public Microsoft::WRL::RuntimeClass<
         Microsoft::WRL::RuntimeClassFlags<Microsoft::WRL::ClassicCom>, IUnknown>
     {
     public:
         AllocationInfo(
-            DmlReservedResourceSubAllocator* owner,
+            DmlSubAllocator* owner,
             size_t id,
+            uint64_t pooledResourceId,
             DmlResourceWrapper* resourceWrapper,
             size_t requestedSize)
             : m_owner(owner)
             , m_allocationId(id)
+            , m_pooledResourceId(pooledResourceId)
             , m_resourceWrapper(resourceWrapper)
             , m_requestedSize(requestedSize)
         {}
 
         ~AllocationInfo();
 
-        DmlReservedResourceSubAllocator* GetOwner() const
+        DmlSubAllocator* GetOwner() const
         {
             return m_owner;
         }
 
-        ID3D12Resource* GetUavResource() const
+        ID3D12Resource* GetD3D12Resource() const
         {
-            return m_resourceWrapper->GetUavResource();
+            return m_resourceWrapper->GetD3D12Resource();
         }
 
         ComPtr<DmlResourceWrapper> DetachResourceWrapper() const
@@ -51,9 +53,15 @@ namespace Dml
             return m_allocationId;
         }
 
+        uint64_t GetPooledResourceId() const
+        {
+            return m_pooledResourceId;
+        }
+
     private:
-        DmlReservedResourceSubAllocator* m_owner;
+        DmlSubAllocator* m_owner;
         size_t m_allocationId; // For debugging purposes
+        uint64_t m_pooledResourceId;
         Microsoft::WRL::ComPtr<DmlResourceWrapper> m_resourceWrapper;
 
         // The size requested during Alloc(), which may be smaller than the physical resource size

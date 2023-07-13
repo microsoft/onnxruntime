@@ -6,6 +6,7 @@
 #include "ExecutionContext.h"
 #include "DmlAllocationInfo.h"
 #include "DmlBufferRegion.h"
+#include "DmlSubAllocator.h"
 
 namespace Dml
 {
@@ -36,7 +37,7 @@ namespace Dml
     // this case it is better make more but smaller allocations (resulting in
     // smaller heaps); this fallback path is only retained as a last resort for
     // older hardware.
-    class DmlReservedResourceSubAllocator
+    class DmlReservedResourceSubAllocator : public DmlSubAllocator
     {
     public:
         // Maximum size of a heap (in tiles) when allocations are tiled. Each tile
@@ -60,13 +61,14 @@ namespace Dml
         // the ID3D12Resource is cached, so this call typically has a lower cost
         // than a call to ID3D12Device::CreatePlacedResource or
         // CreateReservedResource.
-        D3D12BufferRegion CreateBufferRegion(const TaggedPointer& taggedPointer, uint64_t size_in_bytes);
+        D3D12BufferRegion CreateBufferRegion(void* opaquePointer, uint64_t size_in_bytes);
 
-        AllocationInfo* GetAllocationInfo(const TaggedPointer& taggedPointer);
+        AllocationInfo* GetAllocationInfo(void* opaquePointer);
 
-        void FreeResource(AllocationInfo* allocInfo);
+        void FreeResource(AllocationInfo* allocInfo, uint64_t resourceId) final;
         uint64_t ComputeRequiredSize(size_t size);
         bool TilingEnabled() const { return tiling_enabled_; };
+        uint64_t GetUniqueId(void* opaquePointer);
 
         ~DmlReservedResourceSubAllocator();
 
@@ -106,7 +108,6 @@ namespace Dml
         std::vector<Bucket> m_pool;
         size_t m_currentAllocationId = 0;
         uint64_t m_currentResourceId = 0;
-        AllocatorRoundingMode m_defaultRoundingMode = AllocatorRoundingMode::Enabled;
         std::unique_ptr<DmlReservedResourceSubAllocator> m_subAllocator;
 
     #if _DEBUG

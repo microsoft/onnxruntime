@@ -561,11 +561,17 @@ HRESULT STDMETHODCALLTYPE AbiCustomRegistry::RegisterOperatorKernel(
         //
         // For backward compatibility, this does not propagate errors for external operators
         static_cast<void>(m_kernelRegistry->RegisterCustomKernel(create_info));  // ignore result
+        m_hasExternalOperators = true;
     }
 
     return S_OK;
     }
     ORT_CATCH_RETURN
+}
+
+bool STDMETHODCALLTYPE AbiCustomRegistry::HasExternalOperators() const noexcept
+{
+    return m_hasExternalOperators;
 }
 
 }

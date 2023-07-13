@@ -25,6 +25,7 @@ namespace Dml
     class ReadbackHeap;
     class ExecutionContext;
     class DmlReservedResourceSubAllocator;
+    class BucketizedBufferAllocator;
     class DmlCpuAllocator;
     class ExecutionProvider;
     class DmlGpuAllocator;
@@ -42,6 +43,8 @@ namespace Dml
             bool enableMetacommands = true);
 
         void ReleaseCompletedReferences();
+        void DisableBfcAllocator();
+        uint64_t GetUniqueId(void* opaquePointer);
 
     public: // implements Dml::IExecutionProvider
         STDMETHOD(GetD3DDevice)(_COM_Outptr_ ID3D12Device** d3dDevice) const noexcept final;
@@ -100,9 +103,7 @@ namespace Dml
         // IWinmlExecutionProvider methods
         void QueueReference(IUnknown* object) override;
 
-        D3D12BufferRegion GetBufferRegion(const TaggedPointer& taggedPointer, uint64_t size) const override;
-
-        uint64_t TryGetPooledAllocationId(const TaggedPointer& taggedPointer, bool isInternalOperator) override;
+        D3D12BufferRegion GetBufferRegion(void* opaquePointer, uint64_t size) const override;
 
         void GetABIExecutionInterfaceAndInvalidateState(
             bool isInternalOperator,
@@ -181,8 +182,8 @@ namespace Dml
         std::shared_ptr<ExecutionContext> m_context;
         std::unique_ptr<PooledUploadHeap> m_uploadHeap;
         std::unique_ptr<ReadbackHeap> m_readbackHeap;
-        std::shared_ptr<DmlReservedResourceSubAllocator> m_subAllocator;
         std::shared_ptr<onnxruntime::IAllocator> m_bfcAllocator;
+        std::shared_ptr<BucketizedBufferAllocator> m_bucketizedAllocator;
         std::shared_ptr<DmlGpuAllocator> m_gpuAllocator;
         std::shared_ptr<DmlExternalGpuAllocator> m_externalGpuAllocator;
         std::shared_ptr<DmlCpuAllocator> m_cpuInputAllocator;
@@ -290,6 +291,11 @@ namespace Dml
         void ReleaseCompletedReferences()
         {
             return m_impl->ReleaseCompletedReferences();
+        }
+
+        void DisableBfcAllocator()
+        {
+            return m_impl->DisableBfcAllocator();
         }
 
         ExecutionProviderImpl* GetImpl()

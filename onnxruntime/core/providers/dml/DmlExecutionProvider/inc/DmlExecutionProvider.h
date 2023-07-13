@@ -31,10 +31,11 @@ namespace Dml
         ID3D12CommandQueue* commandQueue,
         bool enableMetacommands = true);
 
-    D3D12BufferRegion GetD3D12ResourceRegionFromAllocation(onnxruntime::IAllocator* allocator, const TaggedPointer& taggedPointer, uint64_t size_in_bytes);
+    D3D12BufferRegion GetD3D12ResourceRegionFromAllocation(onnxruntime::IAllocator* allocator, void* opaquePointer, uint64_t size_in_bytes);
     void FlushContext(onnxruntime::IExecutionProvider* provider);
     void SetDefaultRoundingMode(onnxruntime::IExecutionProvider* provider, AllocatorRoundingMode roundingMode);
     void ReleaseCompletedReferences(onnxruntime::IExecutionProvider* provider);
+    void DisableBfcAllocator(onnxruntime::IExecutionProvider* provider);
 
     onnxruntime::common::Status CopyTensor(
         onnxruntime::IExecutionProvider* provider,

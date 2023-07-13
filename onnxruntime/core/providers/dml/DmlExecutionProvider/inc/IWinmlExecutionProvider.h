@@ -40,11 +40,9 @@ namespace Windows::AI::MachineLearning::Adapter
         // the provider's underlying queues.
         virtual void QueueReference(IUnknown *object) = 0;
 
-        virtual Dml::D3D12BufferRegion GetBufferRegion(const Dml::TaggedPointer& taggedPointer, uint64_t size) const = 0;
+        virtual Dml::D3D12BufferRegion GetBufferRegion(void* opaquePointer, uint64_t size) const = 0;
 
-        virtual uint64_t TryGetPooledAllocationId(
-            const Dml::TaggedPointer& taggedPointer,
-            bool isInternalOperator) = 0;
+        virtual uint64_t GetUniqueId(void* opaquePointer) = 0;
 
         virtual void GetABIExecutionInterfaceAndInvalidateState(
             bool isInternalOperator,

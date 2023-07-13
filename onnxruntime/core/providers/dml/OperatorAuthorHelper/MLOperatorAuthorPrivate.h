@@ -177,6 +177,8 @@ IMLOperatorRegistryPrivate : public IUnknown
         _In_reads_(constantCpuInputCount) const uint32_t* constantCpuInputs = nullptr,
         uint32_t constantCpuInputCount = 0
         ) const noexcept PURE;
+
+    STDMETHOD_(bool, HasExternalOperators)() const noexcept PURE;
 };
 
 //! \interface IMLOperatorTensorShapeDescription1

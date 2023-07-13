@@ -225,7 +225,7 @@ ORT_API_STATUS_IMPL(GetD3D12ResourceFromAllocation, _In_ OrtAllocator* ort_alloc
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "The resource has been allocated with ");
   }
 
-  *d3d_resource = static_cast<Dml::AllocationInfo*>(allocation)->GetUavResource();
+  *d3d_resource = static_cast<Dml::AllocationInfo*>(allocation)->GetD3D12Resource();
   (*d3d_resource)->AddRef();
 
 #else
@@ -250,11 +250,11 @@ ORT_API_STATUS_IMPL(GetD3D12ResourceRegionFromAllocation,
   }
 
   if (wrapping_allocator->Info()->device.MemType() == OrtDevice::MemType::DML_EXTERNAL) {
-    *d3d_resource = static_cast<Dml::AllocationInfo*>(allocation)->GetUavResource();
+    *d3d_resource = static_cast<Dml::AllocationInfo*>(allocation)->GetD3D12Resource();
     *offset = 0;
   } else {
     ORT_THROW_HR_IF(E_INVALIDARG, wrapping_allocator->Info()->device.MemType() != OrtDevice::MemType::DEFAULT);
-    auto bufferRegion = Dml::GetD3D12ResourceRegionFromAllocation(allocator.get(), Dml::TaggedPointer::Unpack(allocation), size_in_bytes);
+    auto bufferRegion = Dml::GetD3D12ResourceRegionFromAllocation(allocator.get(), allocation, size_in_bytes);
     *offset = bufferRegion.Offset();
     *d3d_resource = bufferRegion.ResourceInUavState();
   }

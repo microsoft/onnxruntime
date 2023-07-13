@@ -12,7 +12,7 @@ namespace Dml
     {
     public:
         // TODO (pavignol): Rename to GetResource()
-        virtual ID3D12Resource* GetUavResource() const = 0;
+        virtual ID3D12Resource* GetD3D12Resource() const = 0;
         virtual ~DmlResourceWrapper(){}
     };
 }

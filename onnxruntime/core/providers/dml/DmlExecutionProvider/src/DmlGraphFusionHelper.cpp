@@ -103,12 +103,11 @@ namespace DmlGraphFusionHelper
             // The allocation is not pooled
             auto allocInfo = static_cast<AllocationInfo*>(opaqueData);
             *allocId = 0;
-            return D3D12BufferRegion(0, allocInfo->GetUavResource()->GetDesc().Width, allocInfo->GetUavResource());
+            return D3D12BufferRegion(0, allocInfo->GetD3D12Resource()->GetDesc().Width, allocInfo->GetD3D12Resource());
         }
 
-        auto taggedPointer = TaggedPointer::Unpack(opaqueData);
-        *allocId = winmlProvider->TryGetPooledAllocationId(taggedPointer, 0);
-        return winmlProvider->GetBufferRegion(taggedPointer, tensor->SizeInBytes());
+        *allocId = winmlProvider->GetUniqueId(opaqueData);
+        return winmlProvider->GetBufferRegion(opaqueData, tensor->SizeInBytes());
     }
 
     void ProcessInputData(

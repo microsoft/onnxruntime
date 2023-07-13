@@ -1617,11 +1617,10 @@ namespace Windows::AI::MachineLearning::Adapter
         if (m_impl->Location().device.MemType() == OrtDevice::MemType::DML_EXTERNAL)
         {
             auto allocInfo = static_cast<Dml::AllocationInfo*>(m_tensorData);
-            return Dml::D3D12BufferRegion(0, allocInfo->GetUavResource()->GetDesc().Width, allocInfo->GetUavResource());
+            return Dml::D3D12BufferRegion(0, allocInfo->GetD3D12Resource()->GetDesc().Width, allocInfo->GetD3D12Resource());
         }
 
-        auto taggedPointer = Dml::TaggedPointer::Unpack(m_tensorData);
-        return m_winmlExecutionProvider->GetBufferRegion(taggedPointer, m_impl->SizeInBytes());
+        return m_winmlExecutionProvider->GetBufferRegion(m_tensorData, m_impl->SizeInBytes());
     }
 
     uint32_t STDMETHODCALLTYPE TensorWrapper::GetDimensionCount() const noexcept

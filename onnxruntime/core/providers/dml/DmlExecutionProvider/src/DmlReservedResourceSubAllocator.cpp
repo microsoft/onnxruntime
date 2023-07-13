@@ -47,7 +47,7 @@ namespace Dml
 
     void DmlReservedResourceSubAllocator::SetDefaultRoundingMode(AllocatorRoundingMode roundingMode)
     {
-        m_defaultRoundingMode = roundingMode;
+        // Nothing to do here; kept for compatibility with the bucketized allocator
     }
 
     static bool GetTilingEnabled(ID3D12Device* device)
@@ -248,6 +248,7 @@ namespace Dml
         ComPtr<AllocationInfo> allocInfo = wil::MakeOrThrow<AllocationInfo>(
             this,
             ++m_currentAllocationId,
+            0,
             resourceWrapper.Get(),
             size_in_bytes
         );
@@ -285,7 +286,13 @@ namespace Dml
         allocations_by_id_.erase(it);
     }
 
-    void DmlReservedResourceSubAllocator::FreeResource(AllocationInfo* allocInfo)
+    uint64_t DmlReservedResourceSubAllocator::GetUniqueId(void* opaquePointer)
+    {
+        auto taggedPointer = TaggedPointer::Unpack(opaquePointer);
+        return taggedPointer.GetUniqueId();
+    }
+
+    void DmlReservedResourceSubAllocator::FreeResource(AllocationInfo* allocInfo, uint64_t resourceId)
     {
         // Since this allocator is warapped by ORT's BFC allocator, it's possible that the context is already
         // close at this point if the application is winding down.
@@ -338,9 +345,11 @@ namespace Dml
     }
 
     D3D12BufferRegion DmlReservedResourceSubAllocator::CreateBufferRegion(
-        const TaggedPointer& taggedPointer,
+        void* opaquePointer,
         uint64_t size_in_bytes)
     {
+        auto taggedPointer = TaggedPointer::Unpack(opaquePointer);
+
         // We need to access (mutable) state after this point, so we need to lock
         std::unique_lock<std::mutex> lock(mutex_);
 
@@ -354,16 +363,18 @@ namespace Dml
             (1 + (size_in_bytes - 1) / DML_ALIGNMENT) * DML_ALIGNMENT;
 
         // Make sure the region we're trying to create fits entirely in the resource
-        assert(it->second->GetUavResource()->GetDesc().Width >= taggedPointer.offset + size_in_bytes);
+        assert(it->second->GetD3D12Resource()->GetDesc().Width >= taggedPointer.offset + size_in_bytes);
 
         return D3D12BufferRegion(
             taggedPointer.offset,
             size_in_bytes,
-            it->second->GetUavResource());
+            it->second->GetD3D12Resource());
     }
 
-    AllocationInfo* DmlReservedResourceSubAllocator::GetAllocationInfo(const TaggedPointer& taggedPointer)
+    AllocationInfo* DmlReservedResourceSubAllocator::GetAllocationInfo(void* opaquePointer)
     {
+        auto taggedPointer = TaggedPointer::Unpack(opaquePointer);
+
         // We need to access (mutable) state after this point, so we need to lock
         std::unique_lock<std::mutex> lock(mutex_);
 

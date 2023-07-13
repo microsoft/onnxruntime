@@ -15,7 +15,7 @@ namespace WRL
 }
 
 namespace Windows::AI::MachineLearning::Adapter
-{ 
+{
 
 using namespace Microsoft::WRL;
 
@@ -49,6 +49,8 @@ class AbiCustomRegistry : public WRL::Base<IMLOperatorRegistry, IMLOperatorRegis
         IMLOperatorKernelFactory* operatorKernelFactory,
         _In_opt_ IMLOperatorShapeInferrer* shapeInferrer) const noexcept override;
 
+    bool STDMETHODCALLTYPE HasExternalOperators() const noexcept override;
+
     std::list<std::shared_ptr<onnxruntime::CustomRegistry>> GetRegistries()
     {
         std::list<std::shared_ptr<onnxruntime::CustomRegistry>> registries;
@@ -56,7 +58,7 @@ class AbiCustomRegistry : public WRL::Base<IMLOperatorRegistry, IMLOperatorRegis
         {
             registries.push_back(registry.second);
         }
-        
+
         registries.push_back(m_kernelRegistry);
 
         return registries;
@@ -86,7 +88,7 @@ class AbiCustomRegistry : public WRL::Base<IMLOperatorRegistry, IMLOperatorRegis
 
  private:
     static onnx::OpSchema ConvertOpSchema(
-        _In_z_ const char* domain, 
+        _In_z_ const char* domain,
         const MLOperatorSchemaDescription& abiSchema,
         IMLOperatorTypeInferrer* typeInferrer,
         IMLOperatorShapeInferrer* shapeInferrer);
@@ -94,7 +96,7 @@ class AbiCustomRegistry : public WRL::Base<IMLOperatorRegistry, IMLOperatorRegis
     static std::string ConvertFormalParameterType(const MLOperatorSchemaEdgeDescription& formalParameter);
     static onnx::OpSchema::FormalParameterOption ConvertFormalParameterOption(MLOperatorParameterOptions options);
     static void SetAttributesAndDefaults(onnx::OpSchema& schema, const MLOperatorSchemaDescription& abiSchema);
-    
+
     static AttributeMap GetDefaultAttributes(const MLOperatorKernelDescription* opKernel);
 
     std::shared_ptr<onnxruntime::CustomRegistry> m_kernelRegistry;
@@ -106,6 +108,8 @@ class AbiCustomRegistry : public WRL::Base<IMLOperatorRegistry, IMLOperatorRegis
 
     // Map between Lotus KernelDefs and extended data used during partitioning
     mutable std::shared_ptr<InternalRegistrationInfoMap> m_internalRegInfoMap;
+
+    mutable bool m_hasExternalOperators = false;
 
 };
 

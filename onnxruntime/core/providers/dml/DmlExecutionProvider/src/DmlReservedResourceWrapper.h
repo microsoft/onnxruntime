@@ -17,7 +17,7 @@ namespace Dml
         {
         }
 
-        ID3D12Resource* GetUavResource() const final { return m_allocation.resource_uav_state.Get(); }
+        ID3D12Resource* GetD3D12Resource() const final { return m_allocation.resource_uav_state.Get(); }
 
     private:
         DmlHeapAllocation m_allocation;
