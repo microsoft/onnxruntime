@@ -50,7 +50,7 @@ class SimpleOpBuilder : public BaseOpBuilder {
 Status SimpleOpBuilder::ExplictOpCheck(const QnnModelWrapper& qnn_model_wrapper, const NodeUnit& node_unit) const {
   // QNN Softmax only supports an axis value equal to input_rank - 1 (i.e., same as -1).
   if (node_unit.OpType() == "Softmax") {
-    int32_t axis = node_unit.SinceVersion() < 13 ? 1 : - 1;  // Default axis changed from 1 to -1 in opset 13.
+    int32_t axis = node_unit.SinceVersion() < 13 ? 1 : -1;  // Default axis changed from 1 to -1 in opset 13.
     Qnn_Scalar_t axis_qnn_scalar = QNN_SCALAR_INIT;
     ORT_RETURN_IF_ERROR(ProcessAxisAttribute(qnn_model_wrapper, node_unit, axis_qnn_scalar, axis));
     std::vector<uint32_t> input_shape;
