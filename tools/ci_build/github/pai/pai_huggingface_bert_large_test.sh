@@ -2,7 +2,7 @@
 
 set -ex
 
-while getopts "v" parameter_Option
+while getopts "v:" parameter_Option
 do case "${parameter_Option}"
 in
 v) ROCM_VERSION=${OPTARG};;

@@ -1,7 +1,7 @@
 #!/bin/bash
 set -ex
 
-while getopts "n:d:r" parameter_Option
+while getopts "n:d:r:" parameter_Option
 do case "${parameter_Option}"
 in
 n) AGENT_NAME=${OPTARG};;
@@ -10,7 +10,7 @@ r) DRIVER_RENDER=${OPTARG};;
 esac
 done
 
-echo "Agent Name: $AGENT_NAMEagent, Target Device: $TARGET_DEVICE, Driver Render: $DRIVER_RENDER"
+echo "Agent Name: $AGENT_NAME, Target Device: $TARGET_DEVICE, Driver Render: $DRIVER_RENDER"
 
 echo -e "\n ---- Execute rocm-smi"
 rocm-smi
