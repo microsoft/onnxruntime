@@ -132,7 +132,8 @@ ParQuantizeLinearStd(const float* Input,
   });
 }
 
-// TODO: implement an optimized version of Quantization from float16 to int8 or uint8.
+// This implementation could be more efficient however the cast from float16 to other types
+// usually happens on GPU.
 template <typename OutputType>
 #if !defined(DISABLE_FLOAT8_TYPES)
 typename std::enable_if<!boost::mp11::mp_contains<element_type_lists::AllFloat8, OutputType>::value, void>::type
@@ -182,7 +183,8 @@ ParQuantizeLinearSat(const float* Input,
 }
 
 // The implementation converts float16 to float and then do a quantization.
-// This could be more efficient.
+// This is not efficient and is mostly added to enable unittest on CPU.
+// This case usually happens on GPU.
 template <typename OutputFloat8Type>
 typename std::enable_if<boost::mp11::mp_contains<element_type_lists::AllFloat8, OutputFloat8Type>::value, void>::type
 ParQuantizeLinearSat(const MLFloat16* Input,
