@@ -42,7 +42,10 @@ stages:
 
     steps:
     - script: |
-        if [[ -z "${{ variables.ortPodVersion }}" ]]; then
+        echo $(ortPodVersion)
+        echo $[ variables.ortPodVersion ]
+
+        if [[ -z "$[ variables.ortPodVersion ]" ]]; then
           echo "ORT pod version is unspecified. Make sure that the IosPackaging_SetCommonVariables stage has run."
           exit 1
         fi
@@ -90,7 +93,7 @@ stages:
           --pod-version "${{ variables.ortPodVersion }}" \
           --test \
           --variant ${{ parameters.packageVariant }} \
-          --build-settings-file ${{ variables.buildSettingsFile }} \
+          --build-settings-file "${{ variables.buildSettingsFile }}" \
           ${{ variables.optionalIncludeOpsByConfigOption }} \
           -b="--path_to_protoc_exe=$(Build.BinariesDirectory)/protobuf_install/bin/protoc"
       displayName: "Build iOS framework and assemble pod package files"
