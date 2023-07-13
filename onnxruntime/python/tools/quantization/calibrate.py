@@ -9,7 +9,7 @@ import itertools
 import uuid
 from enum import Enum
 from pathlib import Path
-from typing import Optional, Sequence, Union
+from typing import Dict, Optional, Sequence, Tuple, Union
 
 import numpy as np
 import onnx
@@ -18,6 +18,45 @@ from onnx import ModelProto, TensorProto, helper, numpy_helper
 import onnxruntime
 
 from .quant_utils import apply_plot, load_model_with_shape_infer, smooth_distribution
+
+
+class TensorData:
+    def __init__(self, **kwargs):
+        for k, v in kwargs.items():
+            setattr(self, k, v)
+
+    @property
+    def range_value(self):
+        if not hasattr(self, "low") or not hasattr(self, "high"):
+            raise AttributeError(f"Attributes 'low' and/or 'high' missing in {dir(self)}.")
+        return (self.low, self.high)
+
+
+class TensorsData:
+    def __init__(self, calibration_method, data: Dict[str, Union[TensorData, Tuple]]):
+        self.calibration_method = calibration_method
+        self.data = {}
+        for k, v in data.items():
+            if not isinstance(k, str):
+                raise TypeError(f"Keys must be strings not {type(k)}.")
+            if isinstance(v, tuple):
+                if calibration_method == CalibrationMethod.MinMax and len(v) == 2:
+                    self.data[k] = TensorData(lowest=v[0], highest=v[1])
+                    continue
+                if len(v) == 4:
+                    self.data[k] = TensorData(lowest=v[0], highest=v[1], histogram=v[2], bins=v[3])
+                    continue
+                raise TypeError(f"Unexpected tuple for {k:r}, it has {len(v)} elements: {v}.")
+            if not isinstance(k, TensorData):
+                raise TypeError(f"Values must be TensorData not {type(v)}.")
+            self.data[k] = v
+
+    def __iter__(self):
+        for k in self.data:
+            yield k
+
+    def __getitem__(self, key):
+        return self.data[key]
 
 
 class CalibrationMethod(Enum):
@@ -146,9 +185,9 @@ class CalibraterBase:
         """
         raise NotImplementedError
 
-    def compute_range(self, data_reader: CalibrationDataReader):
+    def compute_data(self, data_reader: CalibrationDataReader) -> TensorsData:
         """
-        abstract method: compute the [min, max] range for the tensors to calibrate based on the collected data.
+        abstract method: compute data based on the calibration method stored in TensorsData
         """
         raise NotImplementedError
 
@@ -245,7 +284,9 @@ class MinMaxCalibrater(CalibraterBase):
         if len(self.intermediate_outputs) == 0:
             raise ValueError("No data is collected.")
 
-        self.compute_range()
+        t = self.compute_data()
+        if not isinstance(t, TensorsData):
+            raise TypeError(f"compute_data must return a TensorsData not {type(t)}.")
         self.clear_collected_data()
 
     def merge_range(self, old_range, new_range):
@@ -263,7 +304,7 @@ class MinMaxCalibrater(CalibraterBase):
 
         return new_range
 
-    def compute_range(self):
+    def compute_data(self) -> TensorsData:
         """
         Compute the min-max range of tensor
         :return: dictionary mapping: {added node names: (ReduceMin, ReduceMax) pairs }
@@ -317,7 +358,7 @@ class MinMaxCalibrater(CalibraterBase):
         else:
             self.calibrate_tensors_range = new_calibrate_tensors_range
 
-        return self.calibrate_tensors_range
+        return TensorsData(CalibrationMethod.MinMax, self.calibrate_tensors_range)
 
 
 class HistogramCalibrater(CalibraterBase):
@@ -418,7 +459,7 @@ class HistogramCalibrater(CalibraterBase):
 
         self.clear_collected_data()
 
-    def compute_range(self):
+    def compute_data(self) -> TensorsData:
         """
         Compute the min-max range of tensor
         :return: dictionary mapping: {tensor name: (min value, max value)}
@@ -426,7 +467,13 @@ class HistogramCalibrater(CalibraterBase):
         if not self.collector:
             raise ValueError("No collector created and can't generate calibration data.")
 
-        return self.collector.compute_collection_result()
+        if isinstance(self, EntropyCalibrater):
+            cal = CalibrationMethod.Entropy
+        elif isinstance(self, PercentileCalibrater):
+            cal = CalibrationMethod.Percentile
+        else:
+            raise TypeError(f"Unknown calibrater {type(self)}. This method must be overwritten.")
+        return TensorsData(cal, self.collector.compute_collection_result())
 
 
 class EntropyCalibrater(HistogramCalibrater):
@@ -706,6 +753,7 @@ class HistogramCollector(CalibrationDataCollector):
                 thresholds_dict[tensor] = (min_value, thresholds_dict[tensor][1])
             if thresholds_dict[tensor][1] > max_value:
                 thresholds_dict[tensor] = (thresholds_dict[tensor][0], max_value)
+            thresholds_dict[tensor] = (*thresholds_dict[tensor], *hist[:2])
             # Plot histogram for debug only
             if False:
                 apply_plot(hist, hist_edges)
@@ -729,6 +777,7 @@ class HistogramCollector(CalibrationDataCollector):
         for tensor, histogram in histogram_dict.items():
             optimal_threshold = self.get_entropy_threshold(histogram, num_quantized_bins)
             thresholds_dict[tensor] = optimal_threshold
+            thresholds_dict[tensor] = (*optimal_threshold, *histogram[:2])
 
             # Plot histogram for debug only
             if False:

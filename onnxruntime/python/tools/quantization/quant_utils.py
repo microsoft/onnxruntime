@@ -154,7 +154,6 @@ def compute_scale_zp(rmin, rmax, qmin, qmax, symmetric=False):
     :return: zero and scale [z, s]
 
     """
-
     if qmin > 0 or qmax < 0:
         raise ValueError(f"qmin and qmax must meet requirement: qmin <= 0 <= qmax while qmin:{qmin}, qmmax:{qmax}")
 
@@ -179,6 +178,13 @@ def compute_scale_zp(rmin, rmax, qmin, qmax, symmetric=False):
     return [zero_point, scale]
 
 
+def compute_scale_zp_float8(element_type, tensor_data):
+    """Calculate the scale s for a float8 type (E4M3FN).
+    :return: zero and scale [z, s]
+    """
+    raise NotImplementedError("compute_scale_zp_float8 not yet implemented.")
+
+
 def quantize_data(data, qType, symmetric, reduce_range=False):
     """
     :param data: data to quantize
@@ -201,7 +207,6 @@ def quantize_data(data, qType, symmetric, reduce_range=False):
     - *S*: scale
     - *z*: zero point
     """
-
     rmin = 0
     rmax = 0
     zero_point = 0
@@ -233,9 +238,8 @@ def get_qmin_qmax_for_qType(qType, reduce_range=False, symmetric=False):  # noqa
             (qmin, qmax) = (-64, 64) if reduce_range else (-128, 127)
     elif qType == onnx_proto.TensorProto.FLOAT8E4M3FN:
         if symmetric:
-            (qmin, qmax) = (-224, 224) if reduce_range else (-448, 448)
-        else:
-            (qmin, qmax) = (-224, 224) if reduce_range else (-448, 448)
+            raise RuntimeError("This function should not be used for float 8 types.")
+        raise NotImplementedError("Quantization to float 8 types is symmetric.")
     else:
         raise ValueError(f"Unexpected data type {qType} requested. Only INT8 and UINT8 are supported.")
     return qmin, qmax

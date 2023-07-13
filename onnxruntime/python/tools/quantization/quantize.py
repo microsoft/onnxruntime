@@ -337,6 +337,9 @@ def quantize_static(
                     minimum and maximum values. Effective only when the calibration method selected is MinMax and
                     when CalibMovingAverage is set to True.
     """
+    if activation_type == QuantType.QFLOAT8E4M3FN or weight_type == QuantType.QFLOAT8E4M3FN:
+        if calibrate_method != CalibrationMethod.Percentile:
+            raise ValueError("Only Percentile calibration method is supported for float quantization.")
 
     extra_options = extra_options or {}
     nodes_to_exclude = nodes_to_exclude or []
@@ -378,7 +381,7 @@ def quantize_static(
             extra_options=calib_extra_options,
         )
         calibrator.collect_data(calibration_data_reader)
-        tensors_range = calibrator.compute_range()
+        tensors_range = calibrator.compute_data()
         del calibrator
 
     check_static_quant_arguments(quant_format, activation_type, weight_type)

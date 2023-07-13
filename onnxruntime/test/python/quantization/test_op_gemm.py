@@ -16,7 +16,7 @@ from onnx.reference import ReferenceEvaluator
 from op_test_utils import TestDataFeeds, check_model_correctness, check_op_type_count, check_qtype_by_node_type, QGemm
 
 from onnxruntime import InferenceSession
-from onnxruntime.quantization import QuantFormat, QuantType, quantize_dynamic, quantize_static
+from onnxruntime.quantization import CalibrationMethod, QuantFormat, QuantType, quantize_dynamic, quantize_static
 
 
 class TestOpGemm(unittest.TestCase):
@@ -129,6 +129,7 @@ class TestOpGemm(unittest.TestCase):
         activation_type,
         weight_type,
         extra_options={},  # noqa: B006
+        calibrate_method=CalibrationMethod.MinMax,
     ):
         activation_proto_qtype = activation_type.tensor_type
         activation_type_str = self.str_type(activation_type)
@@ -144,6 +145,7 @@ class TestOpGemm(unittest.TestCase):
             activation_type=activation_type,
             weight_type=weight_type,
             extra_options=extra_options,
+            calibrate_method=calibrate_method,
         )
 
         if activation_type == QuantType.QFLOAT8E4M3FN or weight_type == QuantType.QFLOAT8E4M3FN:
@@ -210,6 +212,7 @@ class TestOpGemm(unittest.TestCase):
         activation_type,
         weight_type,
         extra_options={},  # noqa: B006
+        calibrate_method=CalibrationMethod.MinMax,
     ):
         activation_proto_qtype = activation_type.tensor_type
         activation_type_str = self.str_type(activation_type)
@@ -225,6 +228,7 @@ class TestOpGemm(unittest.TestCase):
             activation_type=activation_type,
             weight_type=weight_type,
             extra_options=extra_options,
+            calibrate_method=calibrate_method,
         )
 
         if activation_type == QuantType.QUInt8:
@@ -291,12 +295,6 @@ class TestOpGemm(unittest.TestCase):
         self.construct_model_gemm(model_fp32_path)
         data_reader = self.input_feeds(1, {"input": [5, 10]})
 
-        self.dynamic_quant_test(
-            model_fp32_path,
-            data_reader,
-            activation_type=QuantType.QUInt8,
-            weight_type=QuantType.QUInt8,
-        )
         self.static_quant_test(
             model_fp32_path,
             data_reader,
@@ -304,6 +302,12 @@ class TestOpGemm(unittest.TestCase):
             weight_type=QuantType.QUInt8,
         )
         self.static_quant_test_qdq(
+            model_fp32_path,
+            data_reader,
+            activation_type=QuantType.QUInt8,
+            weight_type=QuantType.QUInt8,
+        )
+        self.dynamic_quant_test(
             model_fp32_path,
             data_reader,
             activation_type=QuantType.QUInt8,
@@ -341,19 +345,21 @@ class TestOpGemm(unittest.TestCase):
         self.construct_model_gemm(model_fp32_path, add_clip=False)
         data_reader = self.input_feeds(1, {"input": [5, 10]})
 
-        self.static_quant_test(
-            model_fp32_path,
-            data_reader,
-            activation_type=QuantType.QFLOAT8E4M3FN,
-            weight_type=QuantType.QFLOAT8E4M3FN,
-            extra_options={"ActivationSymmetric": True},
-        )
         self.static_quant_test_qdq(
             model_fp32_path,
             data_reader,
             activation_type=QuantType.QFLOAT8E4M3FN,
             weight_type=QuantType.QFLOAT8E4M3FN,
             extra_options={"ActivationSymmetric": True},
+            calibrate_method=CalibrationMethod.Percentile,
+        )
+        self.static_quant_test(
+            model_fp32_path,
+            data_reader,
+            activation_type=QuantType.QFLOAT8E4M3FN,
+            weight_type=QuantType.QFLOAT8E4M3FN,
+            extra_options={"ActivationSymmetric": True},
+            calibrate_method=CalibrationMethod.Percentile,
         )
 
     def test_qgemm_ref_uint8(self):
@@ -703,64 +709,10 @@ class TestOpGemm(unittest.TestCase):
         got = ref.run(None, feeds)[0]
         assert_allclose(expected, got)
 
-    def _test_dummy(self):
-        from onnx.backend.test.loader import load_model_tests
-        from onnx.reference.reference_backend import (
-            ReferenceEvaluatorBackend,
-            create_reference_backend,
-        )
-
-        kind = "qdq_tests"
-        root = "."
-        examples = load_model_tests(root, kind)
-
-        class NewRef(InferenceSession):
-            def __init__(self, model, *args, providers=None, **kwargs):
-                InferenceSession.__init__(  # pylint: disable=non-parent-init-called
-                    self,
-                    model.SerializeToString(),
-                    *args,
-                    providers=providers or ["CPUExecutionProvider"],
-                    **kwargs,
-                )
-
-            def run(self, *args, **kwargs):
-                import pprint
-
-                pprint.pprint(args)
-                return InferenceSession.run(self, *args, **kwargs)
-
-            @property
-            def input_names(self):
-                inputs = self.get_inputs()
-                return [i.name for i in inputs]
-
-            @property
-            def output_names(self):
-                outputs = self.get_outputs()
-                return [o.name for o in outputs]
-
-        new_cls = ReferenceEvaluatorBackend[NewRef]
-        self.assertEqual(new_cls.__name__, "ReferenceEvaluatorBackendNewRef")
-        self.assertTrue(issubclass(new_cls.cls_inference, NewRef))
-
-        backend = create_reference_backend(new_cls, path_to_test=root, kind=kind)
-        backend.exclude("cuda")
-        tests = backend.tests()
-        names = []
-        for m in dir(tests):
-            print("+", m)
-            if m.startswith("test_"):
-                test = getattr(tests, m)
-                try:
-                    test()
-                    names.append(m)
-                except unittest.case.SkipTest:
-                    continue
-
 
 if __name__ == "__main__":
-    TestOpGemm().test_quantize_gemm()
+    TestOpGemm().test_qgemm_ref_uint8()
+    # TestOpGemm().test_quantize_gemm_e4m3fn()
     # TestOpGemm().test_qgemm_ref_uint8_specific_example()
     # TestOpGemm()._test_dummy()
     # stop

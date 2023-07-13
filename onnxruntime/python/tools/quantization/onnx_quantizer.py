@@ -24,6 +24,7 @@ from .quant_utils import (
     add_infer_metadata,
     attribute_to_kwarg,
     compute_scale_zp,
+    compute_scale_zp_float8,
     find_by_name,
     get_qmin_qmax_for_qType,
     get_qrange_for_qType,
@@ -168,7 +169,7 @@ class ONNXQuantizer:
             opset_imports=self.model.model.opset_import,
         )
         add_infer_metadata(warped_model)
-        sub_quanitzer = ONNXQuantizer(
+        sub_quantizer = ONNXQuantizer(
             warped_model,
             self.per_channel,
             self.reduce_range,
@@ -182,10 +183,10 @@ class ONNXQuantizer:
             self.op_types_to_quantize,
             self.extra_options,
         )
-        sub_quanitzer.parent = self
-        sub_quanitzer.graph_scope = f"{self.graph_scope}{graph_key}/"
-        sub_quanitzer.quantize_model()
-        return sub_quanitzer.model.model.graph
+        sub_quantizer.parent = self
+        sub_quantizer.graph_scope = f"{self.graph_scope}{graph_key}/"
+        sub_quantizer.quantize_model()
+        return sub_quantizer.model.model.graph
 
     def quantize_node_with_sub_graph(self, node):
         """
@@ -248,6 +249,11 @@ class ONNXQuantizer:
             opset_version = 11
 
         if opset_version < 19 and self.weight_qType == onnx_proto.TensorProto.FLOAT8E4M3FN:
+            logging.warning(
+                "The original model opset version is {}, which does not support quantization to float 8. "
+                "Please update the model to opset >= 19. Updating the model automatically to opset 19. "
+                "Please verify the quantized model.".format(opset_version)
+            )
             self.model.model.opset_import.remove(ai_onnx_domain[0])
             self.model.model.opset_import.extend([onnx.helper.make_opsetid("", 19)])
             self.model.model.ir_version = 9
@@ -1127,9 +1133,18 @@ class ONNXQuantizer:
             self.tensors_range[node.input[0]] = self.tensors_range[node.output[0]]
         quantization_params = {}
         for tensor_name in self.tensors_range:
-            rmin, rmax = self.tensors_range[tensor_name]
-            qmin, qmax = get_qmin_qmax_for_qType(self.activation_qType, symmetric=self.is_activation_symmetric)
+            if self.activation_qType == onnx.TensorProto.FLOAT8E4M3FN:
+                if not self.is_activation_symmetric:
+                    raise RuntimeError("Quantization to float 8 only supports symmetric activation.")
+                quantization_params[tensor_name] = compute_scale_zp_float8(
+                    self.activation_qType, self.tensors_range[tensor_name]
+                )
+            else:
+                rmin, rmax = self.tensors_range[tensor_name]
+                qmin, qmax = get_qmin_qmax_for_qType(self.activation_qType, symmetric=self.is_activation_symmetric)
 
-            quantization_params[tensor_name] = compute_scale_zp(rmin, rmax, qmin, qmax, self.is_activation_symmetric)
+                quantization_params[tensor_name] = compute_scale_zp(
+                    rmin, rmax, qmin, qmax, self.is_activation_symmetric
+                )
 
         return quantization_params
