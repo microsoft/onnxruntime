@@ -6,17 +6,22 @@
 #include "api.h"
 
 struct OrtTrainingManager {
-  OrtTrainingSession* trainingSession;
-  OrtCheckpointState* checkpointState;
+  OrtTrainingSession* trainingSession = nullptr;
+  OrtCheckpointState* checkpointState = nullptr;
+
+  ~OrtTrainingManager() {
+    if (checkpointState)
+      OrtTrainingReleaseCheckpoint(this);
+    if (trainingSession)
+      OrtTrainingReleaseSession(this);
+  }
 };
 
 #define CHECK_TRAINING_STATUS(ORT_API_NAME, ...) \
   CheckStatus(Ort::GetTrainingApi().ORT_API_NAME(__VA_ARGS__))
 
 OrtTrainingManager* OrtTrainingLoadCheckpoint(void* checkpoint, size_t checkpoint_size) {
-  OrtTrainingManager* trainingManager;
-  trainingManager->trainingSession = nullptr;
-  trainingManager->checkpointState = nullptr;
+  OrtTrainingManager* trainingManager = new OrtTrainingManager();
   return (CHECK_TRAINING_STATUS(LoadCheckpointFromBuffer, checkpoint, checkpoint_size, &trainingManager->checkpointState) == ORT_OK)
              ? trainingManager
              : nullptr;
@@ -90,13 +95,7 @@ void EMSCRIPTEN_KEEPALIVE OrtTrainingReleaseSession(orttraining_handle_t trainin
 }
 
 void EMSCRIPTEN_KEEPALIVE OrtTrainingReleaseHandle(orttraining_handle_t training_handle) {
-  // TODO: ask somebody how to free the struct :(
-    if (training_handle->checkpointState)
-      OrtTrainingReleaseCheckpoint(training_handle);
-    if (training_handle->trainingSession)
-      OrtTrainingReleaseSession(training_handle);
-
-    delete training_handle;
+  delete training_handle;
 }
 
 size_t* EMSCRIPTEN_KEEPALIVE OrtTrainingGetParametersSize(orttraining_handle_t training_handle,
