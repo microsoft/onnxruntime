@@ -30,6 +30,8 @@ from torch.fx.passes.fake_tensor_prop import FakeTensorProp
 from torch.fx.passes.infra.partitioner import CapabilityBasedPartitioner
 from torch.fx.passes.operator_support import OperatorSupport
 from torch.fx.passes.tools_common import CALLABLE_NODE_OPS
+from torch.utils import _pytree
+
 
 import onnxruntime  # type: ignore
 from onnxruntime.capi import _pybind_state as ORTC
@@ -205,10 +207,33 @@ def _create_onnx_session(onnx_proto, ep: str, session_options):
     return onnxruntime.InferenceSession(onnx_proto, providers=[ep], sess_options=session_options)
 
 
-def _infer_ep_from_device(device):
-    if device.type == "cuda":
-        return "CUDAExecutionProvider"
-    return "CPUExecutionProvider"
+def _infer_ep_from_device(*args) -> str:
+    """Return the first valid device (i.e., GPU or CPU) in argument list."""
+    for arg in args:
+        if hasattr(arg, "device"):
+            device = arg.device
+            if device.type == "cuda":
+                return "CUDAExecutionProvider"
+            elif device.type == "cpu":
+                return "CPUExecutionProvider"
+    return ""
+
+
+def _infer_ep_from_graph_module(graph_module: torch.fx.GraphModule) -> str:
+    """Return the first valid device (i.e., GPU or CPU) among outputs of this torch.fx.GraphModule."""
+    for node in graph_module.graph.nodes:
+        if node.op == "output":
+            # Output node is unique. Let's retrieve output values from
+            # this node's input list.
+            flattened_output_args, _ = _pytree.tree_flatten(node.args)
+            output_args = []
+            for output_arg in flattened_output_args:
+                if hasattr(output_arg, "meta") and "val" in output_arg.meta:
+                    # Select outputs with "val" information. Without "val",
+                    # it's not possible access output_arg.meta["val"].device.
+                    output_args.append(output_arg.meta["val"])
+            return _infer_ep_from_device(*output_args)
+    return ""
 
 
 def _get_onnx_devices(values: Tuple[torch.Tensor, ...]) -> Tuple[ORTC.OrtDevice, ...]:  # type: ignore
@@ -420,7 +445,11 @@ class OrtBackend:
             # Initialize a ORT session to execute this ONNX model.
             # TorchDynamo assumes all inputs/outputs are on the same device,
             # so we add execution provider only based on the first input's device.
-            ep = self.ep or _infer_ep_from_device(args[0].device)
+            ep = (
+                _infer_ep_from_device(args) or
+                _infer_ep_from_graph_module(graph_module) or
+                self.ep
+            )
 
             onnx_session = _create_onnx_session(onnx_proto, ep, self.session_options)
             # Cache ORT session. It's reused for the same "graph_module".
