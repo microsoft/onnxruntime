@@ -15,6 +15,14 @@ class MatMul final : public OpKernel {
   Status Compute(OpKernelContext* context) const override;
 };
 
+static inline bool ort_use_fastmath_mode() {
+  static auto value = [&] {
+    const char* ptr = std::getenv("ORT_USE_FASTMATH_MODE");
+    return ptr != nullptr ? std::atoi(ptr) : 0;
+  }();
+  return value;
+}
+
 template <>
 class MatMul<float> final : public OpKernel {
  public:
@@ -27,6 +35,8 @@ class MatMul<float> final : public OpKernel {
     info.GetAttrOrDefault<int64_t>("transBatchB", &trans_batch_b_attr, 0);
     trans_batch_a_ = trans_batch_a_attr != 0;
     trans_batch_b_ = trans_batch_b_attr != 0;
+
+    use_fastmath_mode = ort_use_fastmath_mode();
   }
 
   Status PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
@@ -48,6 +58,12 @@ class MatMul<float> final : public OpKernel {
   int64_t trans_b_attr_;
   bool trans_batch_a_;
   bool trans_batch_b_;
+
+  //fastmath mode state
+  bool use_fastmath_mode;
+  // sbgemm kernel is implemented as 8x8 blocks with weights pre-packed to 4 blocks of 4x2
+  // so a minimum of 32 elements is defined to outweigh the additional prepacking overhead
+  const size_t fastmath_mode_kernelsize_threshold = 32;
 };
 
 }  // namespace onnxruntime

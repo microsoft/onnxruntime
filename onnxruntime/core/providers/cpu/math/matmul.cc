@@ -126,15 +126,64 @@ Status MatMul<T>::Compute(OpKernelContext* ctx) const {
   return Status::OK();
 }
 
+bool GemmPackBbf16(AllocatorPtr& alloc,
+                   const Tensor& tensor_b,
+                   bool trans_b,
+                   IAllocatorUniquePtr<void>& packed_b,
+                   size_t& packed_b_size,
+                   TensorShape& b_shape) {
+  // Only handle the common case of a 2D weight matrix. Additional matrices
+  // could be handled by stacking the packed buffers.
+  if (tensor_b.Shape().NumDimensions() != 2) {
+    return false;
+  }
+
+  b_shape = tensor_b.Shape();
+
+  const size_t K = trans_b ? static_cast<size_t>(b_shape[1]) : static_cast<size_t>(b_shape[0]);
+  const size_t N = trans_b ? static_cast<size_t>(b_shape[0]) : static_cast<size_t>(b_shape[1]);
+
+  packed_b_size = MlasSBGemmPackBSize(N, K);
+  if (packed_b_size == 0) {
+    return false;
+  }
+
+  packed_b = IAllocator::MakeUniquePtr<void>(alloc, packed_b_size, true);
+  auto* packed_b_data = packed_b.get();
+
+  // Initialize memory to 0 as there could be some padding associated with pre-packed
+  // buffer memory and we don not want it uninitialized and generate different hashes
+  // if and when we try to cache this pre-packed buffer for sharing between sessions.
+  memset(packed_b_data, 0, packed_b_size);
+  MlasSBGemmPackB(trans_b ? CblasTrans : CblasNoTrans,
+                N,
+                K,
+                tensor_b.Data<float>(),
+                trans_b ? K : N,
+                packed_b_data);
+  return true;
+}
+
+
 Status MatMul<float>::PrePack(const Tensor& tensor, int input_idx, /*out*/ AllocatorPtr alloc,
                               /*out*/ bool& is_packed,
                               /*out*/ PrePackedWeights* prepacked_weights) {
   is_packed = false;
 
+  TensorShape b_shape = tensor.Shape();
+
+  const size_t dim1 = static_cast<size_t>(b_shape[0]);
+  const size_t dim2 = static_cast<size_t>(b_shape[1]);
+
   // only pack Matrix B
   if (input_idx == 1) {
     size_t packed_b_size;
-    is_packed = GemmPackBFp32(alloc, tensor, trans_b_attr_ != 0, packed_b_, packed_b_size, b_shape_);
+    if (use_fastmath_mode && (trans_b_attr_== 0) && ((dim1*dim2) >= fastmath_mode_kernelsize_threshold)) {
+        is_packed = GemmPackBbf16(alloc, tensor, trans_b_attr_ != 0, packed_b_, packed_b_size, b_shape_);
+    } else {
+        is_packed = GemmPackBFp32(alloc, tensor, trans_b_attr_ != 0, packed_b_, packed_b_size, b_shape_);
+    }
+
     bool share_prepacked_weights = (prepacked_weights != nullptr);
     if (is_packed && share_prepacked_weights) {
       prepacked_weights->buffers_.push_back(std::move(packed_b_));
@@ -199,9 +248,13 @@ Status MatMul<float>::Compute(OpKernelContext* ctx) const {
     data[i].alpha = alpha_attr_;
     data[i].beta = 0.0f;
   }
-  MlasGemmBatch(trans_a ? CblasTrans : CblasNoTrans, trans_b ? CblasTrans : CblasNoTrans,
+  if (use_fastmath_mode && !trans_b && ((N*K) >= fastmath_mode_kernelsize_threshold)) {
+     MlasSBGemmBatch(trans_a ? CblasTrans : CblasNoTrans, trans_b ? CblasTrans : CblasNoTrans,
                 M, N, K, data.data(), max_len, thread_pool);
-
+  } else {
+     MlasGemmBatch(trans_a ? CblasTrans : CblasNoTrans, trans_b ? CblasTrans : CblasNoTrans,
+                M, N, K, data.data(), max_len, thread_pool);
+  }
   return Status::OK();
 }
 
