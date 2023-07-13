@@ -10,7 +10,7 @@
 #if !defined(ORT_MINIMAL_BUILD)
 #include "onnx/defs/operator_sets.h"
 #include "onnx/defs/operator_sets_ml.h"
-#include "core/graph/contrib_ops/internal_nhwc_onnx_opset.h"
+#include "core/graph/contrib_ops/internal_nhwc_onnx_schemas.h"
 #include "core/graph/contrib_ops/ms_opset.h"
 #include "core/graph/contrib_ops/onnx_deprecated_opset.h"
 #if defined(ENABLE_TRAINING_OPS)

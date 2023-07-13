@@ -805,7 +805,7 @@ Status QLinearConv<ActType>::Compute(OpKernelContext* context) const {
             strides.data(),
             dilations.data(),
             pads.data(),
-            static_cast<int64_t>(kernel_rank),
+            static_cast<ptrdiff_t>(kernel_rank),
             static_cast<ActType*>(col_buffer.get()) + group_id * col_buffer_size,
             X_zero_point_value);
       }

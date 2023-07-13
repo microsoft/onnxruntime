@@ -31,7 +31,7 @@ def get_ort_device_type(device_type: str, device_index) -> C.OrtDevice:
 
 
 def check_and_normalize_provider_args(
-    providers: Sequence[str, tuple[str, dict[Any, Any]]] | None,
+    providers: Sequence[str | tuple[str, dict[Any, Any]]] | None,
     provider_options: Sequence[dict[Any, Any]] | None,
     available_provider_names: Sequence[str],
 ):
@@ -328,7 +328,7 @@ class InferenceSession(Session):
         self,
         path_or_bytes: str | bytes | os.PathLike,
         sess_options: Sequence[onnxruntime.SessionOptions] | None = None,
-        providers: Sequence[str, tuple[str, dict[Any, Any]]] | None = None,
+        providers: Sequence[str | tuple[str, dict[Any, Any]]] | None = None,
         provider_options: Sequence[dict[Any, Any]] | None = None,
         **kwargs,
     ) -> None:

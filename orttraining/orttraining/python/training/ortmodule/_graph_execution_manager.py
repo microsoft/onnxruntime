@@ -33,6 +33,7 @@ from ._gradient_accumulation_manager import GradientAccumulationManager
 from ._graph_execution_interface import GraphExecutionInterface
 from ._io import _FlattenedModule, _InputInfo, _ModelInputOutputSchemaType
 from ._runtime_inspector import RuntimeInspector
+from ._utils import check_function_has_param
 from .options import DebugOptions, LogLevel, _RuntimeOptions
 from .torch_cpp_extensions.cpu.aten_op_executor import load_aten_op_executor_cpp_extension
 
@@ -65,7 +66,9 @@ class GraphExecutionManager(GraphExecutionInterface):
 
         self._logger = logger
 
+        # Management for ORTModule configuration.
         self._runtime_options = _RuntimeOptions(self._logger)
+
         # Original and flattened (transformed) output module
         self._flattened_module = module
 
@@ -84,7 +87,11 @@ class GraphExecutionManager(GraphExecutionInterface):
 
         self._first_skip_check_warning = True
 
+        # Inspector for runtime information, for example input data, memory usage, etc.
         self._runtime_inspector = RuntimeInspector(self._logger)
+
+        # Tracker for ORTModule model export, session creation overhead.
+        self.time_tracker = _logger.TimeTracker()
 
         # Value can be either torch.onnx.TrainingMode.TRAINING or torch.onnx.TrainingMode.EVAL
         # To be instantiated in the concrete implementation of GraphExecutionManager
@@ -98,7 +105,6 @@ class GraphExecutionManager(GraphExecutionInterface):
         self._input_info: Optional[_InputInfo] = None
         self._module_output_schema: Optional[_ModelInputOutputSchemaType] = None
         self._warning_log_detected_during_export = False
-        self._export_duration_in_ms = 0
 
         # Device where the model is placed.
         self._device: Optional[torch.device] = _utils.get_device_from_module(module)
@@ -127,6 +133,11 @@ class GraphExecutionManager(GraphExecutionInterface):
 
         # Assign self._torch_alloc and self._torch_free if self._use_external_gpu_allocator is True
         self._get_torch_gpu_allocator_function_addresses()
+
+        if self._runtime_options.enable_triton:
+            from onnxruntime.training.ort_triton import register_triton_op_executor
+
+            register_triton_op_executor()
 
     def _get_torch_gpu_allocator_function_addresses(self):
         if self._runtime_options.use_external_gpu_allocator and torch.cuda.is_available():
@@ -191,6 +202,15 @@ class GraphExecutionManager(GraphExecutionInterface):
                 provider_option_map["cudnn_conv_algo_search"] = self._runtime_options.conv_algo_search
                 provider_option_map["cudnn_conv_use_max_workspace"] = "1"
                 provider_option_map["cudnn_conv1d_pad_to_nc1d"] = "1"
+                if self._runtime_options.enable_tuning:
+                    provider_option_map["tunable_op_enable"] = "1"
+                    provider_option_map["tunable_op_tuning_enable"] = "1"
+                    if self._runtime_options.max_tuning_duration_ms:
+                        provider_option_map["tunable_op_max_tuning_duration_ms"] = str(
+                            self._runtime_options.max_tuning_duration_ms
+                        )
+                elif self._runtime_options.tuning_results_path:
+                    provider_option_map["tunable_op_enable"] = "1"
             if self._runtime_options.use_external_gpu_allocator:
                 provider_option_map["gpu_external_alloc"] = str(self._torch_alloc)
                 provider_option_map["gpu_external_free"] = str(self._torch_free)
@@ -233,6 +253,7 @@ class GraphExecutionManager(GraphExecutionInterface):
 
         return session_options, providers, provider_options
 
+    @_logger.TrackTime(_logger.TimeTrackerPhase.EXPORT)
     def _export_model(self, *inputs, **kwargs) -> bool:
         # 1. Set the self._device from the user module
         # 2. Verify input schema matches the schema used on the previous model export
@@ -284,10 +305,6 @@ class GraphExecutionManager(GraphExecutionInterface):
         TODO: How to support dynamic axes? Dimensions are determined by samples
         """
         with _logger.suppress_os_stream_output(log_level=self._debug_options.logging.log_level) as suppress_output:
-            from datetime import datetime
-
-            start = datetime.now()
-
             # Setup dynamic axes for onnx model
             self._input_info = _io.parse_inputs_for_onnx_export(
                 self._module_parameters, None, input_schema, inputs, kwargs
@@ -333,6 +350,15 @@ class GraphExecutionManager(GraphExecutionInterface):
                         "export_params": False,
                         "keep_initializers_as_inputs": True,
                     }
+
+                    if check_function_has_param(torch.onnx.export, "autograd_inlining"):
+                        # From some PyTorch version, autograd_inlining is a valid argument.
+                        # We allow it to be True if custom autograd function is disabled (where autograd.Function
+                        # anyway is not supported in ONNX until it can be inlined).
+                        required_export_kwargs[
+                            "autograd_inlining"
+                        ] = not self._runtime_options.enable_custom_autograd_function
+
                     invalid_args = self._export_extra_kwargs.keys() & required_export_kwargs.keys()
                     assert (
                         len(invalid_args) == 0
@@ -363,9 +389,6 @@ class GraphExecutionManager(GraphExecutionInterface):
             if suppress_output.tell() > 0:
                 self._warning_log_detected_during_export = True
 
-            end = datetime.now()
-            self._export_duration_in_ms = (end - start).total_seconds() * 1000
-
         return exported_model
 
     def _set_device_from_module(self, inputs, kwargs):
@@ -388,6 +411,7 @@ class GraphExecutionManager(GraphExecutionInterface):
         graph_transformer_config.enable_compute_optimizer = self._runtime_options.enable_compute_optimizer
         return graph_transformer_config
 
+    @_logger.TrackTime(_logger.TimeTrackerPhase.GRAPH_BUILDER_INIT)
     def _initialize_graph_builder(self):
         """Creates a new OrtModuleGraphBuilder, initializes it and saves it to self._graph_builder"""
 
@@ -459,6 +483,7 @@ class GraphExecutionManager(GraphExecutionInterface):
 
         _utils.reinitialize_graph_execution_manager(self)
 
+    @_logger.TrackTime(_logger.TimeTrackerPhase.DETECTION)
     def _enable_conditional_optimizations(
         self, graph_transformer_config: C.TrainingGraphTransformerConfiguration, inputs: Tuple, kwargs: Dict
     ):
@@ -545,22 +570,23 @@ class GraphExecutionManager(GraphExecutionInterface):
             ),
         ]
 
-        if self._runtime_options.enable_compute_optimizer:
-            feature_map.extend(
-                [
-                    (
-                        "Compute Optimizer",
-                        self._runtime_options.enable_compute_optimizer,
-                        "Enable/Disable with env ORTMODULE_ENABLE_COMPUTE_OPTIMIZER=1/0",
-                    ),
-                    (
-                        " -FLOPReduction",
-                        self._runtime_options.enable_compute_optimizer,
-                        "Reduce FLOPs by upstreaming shrinking-sized ops",
-                    ),
-                ]
-            )
+        # Add compute optimizer
+        feature_map.extend(
+            [
+                (
+                    "Compute Optimizer",
+                    self._runtime_options.enable_compute_optimizer,
+                    "Enable/Disable with env ORTMODULE_ENABLE_COMPUTE_OPTIMIZER=1/0",
+                ),
+                (
+                    " -FLOPReduction",
+                    self._runtime_options.enable_compute_optimizer,
+                    "Reduce FLOPs by upstreaming shrinking-sized ops",
+                ),
+            ]
+        )
 
+        if self._runtime_options.enable_compute_optimizer:
             if len(self._runtime_options.label_sparsity_ratio) > 0:
                 feature_map.append(
                     (" -LabelSparsityOpt", True, f"Input density: {self._runtime_options.label_sparsity_ratio}")
@@ -571,6 +597,7 @@ class GraphExecutionManager(GraphExecutionInterface):
                     (" -EmbedSparsityOpt", True, f"Input density: {self._runtime_options.embed_sparsity_ratio}")
                 )
 
+        # Add fallback
         feature_map.append(
             (
                 "Auto Fallback",
@@ -578,6 +605,29 @@ class GraphExecutionManager(GraphExecutionInterface):
                 "Fallback to PyTorch when encountering unsupported ops",
             )
         )
+
+        if self._runtime_options.enable_triton:
+            feature_map.append(
+                (
+                    "TritonOp Enabled",
+                    True,
+                    "ORT will switch to Triton for executing some ops to further accelerate training.",
+                )
+            )
+
+        if self._runtime_options.enable_tuning:
+            desc = "Enable tunning Ops online"
+            if self._runtime_options.tuning_results_path:
+                desc += f", save tuning results to {self._runtime_options.tuning_results_path}"
+            feature_map.append(("Online Op Tuning", True, desc))
+        elif self._runtime_options.tuning_results_path:
+            feature_map.append(
+                (
+                    "Offline Op Tuning",
+                    True,
+                    f"Use offline tuning results from {self._runtime_options.tuning_results_path}",
+                )
+            )
 
         mode = "training" if self._export_mode == torch.onnx.TrainingMode.TRAINING else "inference"
         mode = f"{_logger.LogColor.UNDERLINE}{mode}{_logger.LogColor.ENDC}"
@@ -590,7 +640,10 @@ class GraphExecutionManager(GraphExecutionInterface):
 
         stat += f"\n{_logger.LogColor.WARNING}There were one or more warnings or errors raised while exporting the PyTorch model.\n"
         stat += f"Please enable INFO level logging with DebugOptions to view all warnings and errors.{_logger.LogColor.ENDC}\n\n"
-        stat += f"Export duration: {self._export_duration_in_ms:.0f} milliseconds\n"
+
+        # Collect ORTModule overheads for different phases.
+        stat += f"{self.time_tracker.to_string(self._debug_options.logging.log_level < LogLevel.WARNING)}\n"
+
         stat += f"Versions: ONNX Runtime - {onnxruntime.__version__}, ONNX - {onnx.__version__}\n\n"
         stat += f"{_logger.LogColor.HEADER}************************************************************************{_logger.LogColor.ENDC}\n\n"
 
