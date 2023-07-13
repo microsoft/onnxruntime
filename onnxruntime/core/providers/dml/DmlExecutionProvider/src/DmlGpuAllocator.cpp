@@ -16,7 +16,8 @@ namespace Dml
     DmlGpuAllocator::DmlGpuAllocator(
         onnxruntime::IAllocator* bfcAllocator,
         BucketizedBufferAllocator* bucketizedBufferAllocator,
-        std::shared_ptr<DmlReservedResourceSubAllocator> bfcSubAllocator)
+        std::shared_ptr<DmlReservedResourceSubAllocator> bfcSubAllocator,
+        ActiveAllocator activeAllocator)
     : onnxruntime::IAllocator(
         OrtMemoryInfo(
             onnxruntime::DML,
@@ -28,7 +29,7 @@ namespace Dml
     m_bfcAllocator(bfcAllocator),
     m_bucketizedBufferAllocator(bucketizedBufferAllocator),
     m_bfcSubAllocator(bfcSubAllocator),
-    m_activeAllocator(ActiveAllocator::BfcAllocator) {}
+    m_activeAllocator(activeAllocator) {}
 
     void* DmlGpuAllocator::Alloc(size_t size_in_bytes)
     {
@@ -111,11 +112,6 @@ namespace Dml
         default:
             ORT_THROW_HR(E_UNEXPECTED);
         }
-    }
-
-    void DmlGpuAllocator::SetActiveAllocator(ActiveAllocator activeAllocator)
-    {
-        m_activeAllocator = activeAllocator;
     }
 
 } // namespace Dml

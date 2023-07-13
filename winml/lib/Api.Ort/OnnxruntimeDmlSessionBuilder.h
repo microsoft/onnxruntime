@@ -13,7 +13,12 @@ class OnnxruntimeDmlSessionBuilder : public Microsoft::WRL::RuntimeClass<
                                          Microsoft::WRL::RuntimeClassFlags<Microsoft::WRL::ClassicCom>,
                                          IOrtSessionBuilder> {
  public:
-  HRESULT RuntimeClassInitialize(OnnxruntimeEngineFactory* engine_factory, ID3D12Device* device, ID3D12CommandQueue* queue, bool metacommands_enabled_);
+  HRESULT RuntimeClassInitialize(
+    OnnxruntimeEngineFactory* engine_factory,
+    ID3D12Device* device,
+    ID3D12CommandQueue* queue,
+    bool metacommands_enabled,
+    bool bfc_allocator_enabled);
 
   HRESULT STDMETHODCALLTYPE CreateSessionOptions(
       OrtSessionOptions** options) override;
@@ -32,6 +37,7 @@ class OnnxruntimeDmlSessionBuilder : public Microsoft::WRL::RuntimeClass<
   winrt::com_ptr<ID3D12Device> device_;
   winrt::com_ptr<ID3D12CommandQueue> queue_;
   bool metacommands_enabled_ = true;
+  bool bfc_allocator_enabled_ = true;
 };
 
 }  // namespace _winml

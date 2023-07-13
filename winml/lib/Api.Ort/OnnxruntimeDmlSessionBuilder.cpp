@@ -12,11 +12,17 @@
 
 using namespace _winml;
 
-HRESULT OnnxruntimeDmlSessionBuilder::RuntimeClassInitialize(OnnxruntimeEngineFactory* engine_factory, ID3D12Device* device, ID3D12CommandQueue* queue, bool metacommands_enabled) {
+HRESULT OnnxruntimeDmlSessionBuilder::RuntimeClassInitialize(
+  OnnxruntimeEngineFactory* engine_factory,
+  ID3D12Device* device,
+  ID3D12CommandQueue* queue,
+  bool metacommands_enabled,
+  bool bfc_allocator_enabled) {
   engine_factory_ = engine_factory;
   device_.copy_from(device);
   queue_.copy_from(queue);
   metacommands_enabled_ = metacommands_enabled;
+  bfc_allocator_enabled_ = bfc_allocator_enabled;
   return S_OK;
 }
 
@@ -43,7 +49,7 @@ OnnxruntimeDmlSessionBuilder::CreateSessionOptions(
                           ort_api);
 
   // Request the dml ep
-  RETURN_HR_IF_NOT_OK_MSG(winml_adapter_api->OrtSessionOptionsAppendExecutionProvider_DML(session_options.get(), device_.get(), queue_.get(), metacommands_enabled_),
+  RETURN_HR_IF_NOT_OK_MSG(winml_adapter_api->OrtSessionOptionsAppendExecutionProvider_DML(session_options.get(), device_.get(), queue_.get(), metacommands_enabled_, bfc_allocator_enabled_),
                           ort_api);
 
 #ifndef _WIN64

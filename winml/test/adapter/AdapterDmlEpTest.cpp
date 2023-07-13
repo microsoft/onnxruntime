@@ -71,7 +71,7 @@ UniqueOrtSession CreateDmlSession() {
   command_queue_desc.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
   WINML_EXPECT_HRESULT_SUCCEEDED(device->CreateCommandQueue(&command_queue_desc, IID_PPV_ARGS(queue.put())));
 
-  THROW_IF_NOT_OK_MSG(winml_adapter_api->OrtSessionOptionsAppendExecutionProvider_DML(session_options.get(), device.get(), queue.get(), false), ort_api);
+  THROW_IF_NOT_OK_MSG(winml_adapter_api->OrtSessionOptionsAppendExecutionProvider_DML(session_options.get(), device.get(), queue.get(), false, true), ort_api);
   return CreateUniqueOrtSession(FileHelpers::GetModulePath() + L"fns-candy.onnx", session_options);
 }
 
@@ -218,7 +218,7 @@ void DmlCopyTensor() {
   command_queue_desc.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
   WINML_EXPECT_HRESULT_SUCCEEDED(device->CreateCommandQueue(&command_queue_desc, IID_PPV_ARGS(queue.put())));
 
-  THROW_IF_NOT_OK_MSG(winml_adapter_api->OrtSessionOptionsAppendExecutionProvider_DML(session_options.get(), device.get(), queue.get(), false), ort_api);
+  THROW_IF_NOT_OK_MSG(winml_adapter_api->OrtSessionOptionsAppendExecutionProvider_DML(session_options.get(), device.get(), queue.get(), false, true), ort_api);
   auto session = CreateUniqueOrtSession(FileHelpers::GetModulePath() + L"fns-candy.onnx", session_options);
 
   OrtExecutionProvider* dml_provider;

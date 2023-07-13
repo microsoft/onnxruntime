@@ -74,7 +74,8 @@ namespace Dml
     ExecutionProvider::ExecutionProvider(
         IDMLDevice* dmlDevice,
         ID3D12CommandQueue* commandQueue,
-        bool enableMetacommands) :
+        bool enableMetacommands,
+        bool enableBfcAllocator) :
             IExecutionProvider(onnxruntime::kDmlExecutionProvider, OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, 0))
     {
         D3D12_COMMAND_LIST_TYPE queueType = commandQueue->GetDesc().Type;
@@ -87,7 +88,7 @@ namespace Dml
         ComPtr<ID3D12Device> device;
         GRAPHICS_THROW_IF_FAILED(commandQueue->GetDevice(IID_GRAPHICS_PPV_ARGS(device.GetAddressOf())));
 
-        m_impl = wil::MakeOrThrow<ExecutionProviderImpl>(dmlDevice, device.Get(), commandQueue, enableMetacommands);
+        m_impl = wil::MakeOrThrow<ExecutionProviderImpl>(dmlDevice, device.Get(), commandQueue, enableMetacommands, enableBfcAllocator);
     }
 
     std::vector<std::unique_ptr<onnxruntime::ComputeCapability>>
@@ -142,10 +143,16 @@ namespace Dml
 // Task 24384515: Update ORT AIInfra release agent pool to install 19H1 SDK on VM bootstrap
 #define D3D_FEATURE_LEVEL_1_0_CORE_PRIVATE ((D3D_FEATURE_LEVEL)0x1000)
 
-    ExecutionProviderImpl::ExecutionProviderImpl(IDMLDevice* dmlDevice, ID3D12Device* d3d12Device, ID3D12CommandQueue* queue, bool enableMetacommands)
+    ExecutionProviderImpl::ExecutionProviderImpl(
+        IDMLDevice* dmlDevice,
+        ID3D12Device* d3d12Device,
+        ID3D12CommandQueue* queue,
+        bool enableMetacommands,
+        bool enableBfcAllocator)
         : m_d3d12Device(d3d12Device),
           m_dmlDevice(dmlDevice),
           m_areMetacommandsEnabled(enableMetacommands),
+          m_bfcAllocatorEnabled(enableBfcAllocator),
           m_queue(queue)
     {
 
@@ -216,8 +223,17 @@ namespace Dml
                 D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,
                 D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 
+            if (!m_bfcAllocatorEnabled)
+            {
+                printf("*************BFC ALLOCATOR DISABLED!\n");
+            }
+
             // Wrap the BFC allocator into our own allocator
-            m_gpuAllocator = std::make_shared<DmlGpuAllocator>(m_bfcAllocator.get(), m_bucketizedAllocator.get(), subAllocator);
+            m_gpuAllocator = std::make_shared<DmlGpuAllocator>(
+                m_bfcAllocator.get(),
+                m_bucketizedAllocator.get(),
+                subAllocator,
+                m_bfcAllocatorEnabled ? ActiveAllocator::BfcAllocator : ActiveAllocator::BucketizedBufferAllocator);
             m_context->SetAllocator(m_gpuAllocator);
             // CPU Allocator used to create buffers for the MemcpyFromHost, Shape and Size operators.
             m_cpuInputAllocator = std::make_shared<DmlCpuAllocator>(OrtMemType::OrtMemTypeCPUInput);
@@ -1011,13 +1027,6 @@ namespace Dml
         return m_gpuAllocator->GetUniqueId(opaquePointer);
     }
 
-    void ExecutionProviderImpl::DisableBfcAllocator()
-    {
-        // TODO (pavignol): Remove
-        printf("*************Disabling BFC allocator!!!\n");
-        m_gpuAllocator->SetActiveAllocator(ActiveAllocator::BucketizedBufferAllocator);
-    }
-
     void ExecutionProviderImpl::GetABIExecutionInterfaceAndInvalidateState(
         bool isInternalOperator,
         IUnknown** abiExecutionObject) const
@@ -1127,9 +1136,10 @@ namespace Dml
     std::unique_ptr<onnxruntime::IExecutionProvider> CreateExecutionProvider(
         IDMLDevice* dmlDevice,
         ID3D12CommandQueue* commandQueue,
-        bool enableMetacommands)
+        bool enableMetacommands,
+        bool enableBfcAllocator)
     {
-        return std::make_unique<Dml::ExecutionProvider>(dmlDevice, commandQueue, enableMetacommands);
+        return std::make_unique<Dml::ExecutionProvider>(dmlDevice, commandQueue, enableMetacommands, enableBfcAllocator);
     }
 
     D3D12BufferRegion GetD3D12ResourceRegionFromAllocation(onnxruntime::IAllocator* allocator, void* opaquePointer, uint64_t sizeInBytes)
@@ -1154,12 +1164,6 @@ namespace Dml
     {
         ExecutionProvider* dmlexecutionprovider = static_cast<Dml::ExecutionProvider*>(provider);
         dmlexecutionprovider->ReleaseCompletedReferences();
-    }
-
-    void DisableBfcAllocator(onnxruntime::IExecutionProvider * provider)
-    {
-        ExecutionProvider* dmlexecutionprovider = static_cast<Dml::ExecutionProvider*>(provider);
-        dmlexecutionprovider->DisableBfcAllocator();
     }
 
     onnxruntime::common::Status CopyTensor(

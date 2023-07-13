@@ -42,7 +42,7 @@ ORT_API_STATUS(ModelGetMetadata, _In_ const OrtModel* model, _In_ size_t count, 
 ORT_API_STATUS(ModelEnsureNoFloat16, _In_ const OrtModel* model);
 ORT_API_STATUS(SaveModel, _In_ const OrtModel* in, _In_ const wchar_t* const file_name, _In_ size_t len);
 
-ORT_API_STATUS(OrtSessionOptionsAppendExecutionProviderEx_DML, _In_ OrtSessionOptions* options, _In_ ID3D12Device* d3d_device, _In_ ID3D12CommandQueue* cmd_queue, bool metacommands_enabled);
+ORT_API_STATUS(OrtSessionOptionsAppendExecutionProviderEx_DML, _In_ OrtSessionOptions* options, _In_ ID3D12Device* d3d_device, _In_ ID3D12CommandQueue* cmd_queue, bool metacommands_enabled, bool bfc_allocator_enabled);
 
 // OrtSession methods
 ORT_API_STATUS(CreateSessionWithoutModel, _In_ OrtEnv* env, _In_ const OrtSessionOptions* options, _In_ OrtThreadPool* inter_op_thread_pool, _In_ OrtThreadPool* intra_op_thread_pool, _Outptr_ OrtSession** session);

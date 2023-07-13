@@ -35,18 +35,19 @@ struct DMLProviderFactory : IExecutionProviderFactory {
 
   std::unique_ptr<IExecutionProvider> CreateProvider() override;
   void SetDefaultRoundingMode(AllocatorRoundingMode rounding_mode);
-
   void SetMetacommandsEnabled(bool metacommands_enabled);
+  void SetBfcAllocatorEnabled(bool bfc_allocator_enabled);
 
  private:
   ComPtr<IDMLDevice> dml_device_{};
   ComPtr<ID3D12CommandQueue> cmd_queue_{};
   AllocatorRoundingMode rounding_mode_ = AllocatorRoundingMode::Enabled;
   bool metacommands_enabled_ = true;
+  bool bfc_allocator_enabled_ = true;
 };
 
 std::unique_ptr<IExecutionProvider> DMLProviderFactory::CreateProvider() {
-  auto provider = Dml::CreateExecutionProvider(dml_device_.Get(), cmd_queue_.Get(), metacommands_enabled_);
+  auto provider = Dml::CreateExecutionProvider(dml_device_.Get(), cmd_queue_.Get(), metacommands_enabled_, bfc_allocator_enabled_);
   Dml::SetDefaultRoundingMode(provider.get(), rounding_mode_);
   return provider;
 }
@@ -57,6 +58,10 @@ void DMLProviderFactory::SetDefaultRoundingMode(AllocatorRoundingMode rounding_m
 
 void DMLProviderFactory::SetMetacommandsEnabled(bool metacommands_enabled) {
   metacommands_enabled_ = metacommands_enabled;
+}
+
+void DMLProviderFactory::SetBfcAllocatorEnabled(bool bfc_allocator_enabled) {
+  bfc_allocator_enabled_ = bfc_allocator_enabled;
 }
 
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_DML(IDMLDevice* dml_device,
@@ -90,6 +95,11 @@ void DmlConfigureProviderFactoryDefaultRoundingMode(IExecutionProviderFactory* f
 void DmlConfigureProviderFactoryMetacommandsEnabled(IExecutionProviderFactory* factory, bool metacommandsEnabled) {
   auto dml_provider_factory = static_cast<DMLProviderFactory*>(factory);
   dml_provider_factory->SetMetacommandsEnabled(metacommandsEnabled);
+}
+
+void DmlConfigureProviderFactoryBfcAllocatorEnabled(IExecutionProviderFactory* factory, bool bfc_allocator_enabled) {
+  auto dml_provider_factory = static_cast<DMLProviderFactory*>(factory);
+  dml_provider_factory->SetBfcAllocatorEnabled(bfc_allocator_enabled);
 }
 
 

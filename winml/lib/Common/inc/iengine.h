@@ -209,12 +209,15 @@ IThreading : IUnknown {
 
 };
 
-MIDL_INTERFACE("8ac0b6b9-4561-492b-b63d-a07bdd8292c6")
+MIDL_INTERFACE("edf7b6d1-f788-4057-9f99-28f9b05360e8")
 IEngineBuilder : IUnknown {
   STDMETHOD(SetD3D12Resources)
   (ID3D12Device * device, ID3D12CommandQueue * queue) PURE;
 
   STDMETHOD(SetMetacommandsEnabled)
+  (int enabled) PURE;
+
+  STDMETHOD(SetBfcAllocatorEnabled)
   (int enabled) PURE;
 
   STDMETHOD(GetD3D12Device)

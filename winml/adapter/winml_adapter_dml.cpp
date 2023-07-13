@@ -70,12 +70,13 @@ Microsoft::WRL::ComPtr<IDMLDevice> CreateDmlDevice(ID3D12Device* d3d12Device) {
 namespace onnxruntime {
 void DmlConfigureProviderFactoryDefaultRoundingMode(onnxruntime::IExecutionProviderFactory* factory, AllocatorRoundingMode rounding_mode);
 void DmlConfigureProviderFactoryMetacommandsEnabled(IExecutionProviderFactory* factory, bool metacommandsEnabled);
+void DmlConfigureProviderFactoryBfcAllocatorEnabled(IExecutionProviderFactory* factory, bool bfc_allocator_enabled);
 }
 
 #endif  // USE_DML
 
 ORT_API_STATUS_IMPL(winmla::OrtSessionOptionsAppendExecutionProviderEx_DML, _In_ OrtSessionOptions* options,
-                    _In_ ID3D12Device* d3d_device, _In_ ID3D12CommandQueue* queue, bool metacommands_enabled) {
+                    _In_ ID3D12Device* d3d_device, _In_ ID3D12CommandQueue* queue, bool metacommands_enabled, bool bfc_allocator_enabled) {
   API_IMPL_BEGIN
 #ifdef USE_DML
   auto dml_device = CreateDmlDevice(d3d_device);
@@ -91,6 +92,7 @@ ORT_API_STATUS_IMPL(winmla::OrtSessionOptionsAppendExecutionProviderEx_DML, _In_
   onnxruntime::DmlConfigureProviderFactoryDefaultRoundingMode(factory, AllocatorRoundingMode::Disabled);
 
   onnxruntime::DmlConfigureProviderFactoryMetacommandsEnabled(factory, metacommands_enabled);
+  onnxruntime::DmlConfigureProviderFactoryBfcAllocatorEnabled(factory, bfc_allocator_enabled);
 #endif  // USE_DML
   return nullptr;
   API_IMPL_END

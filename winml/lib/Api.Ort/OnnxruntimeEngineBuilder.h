@@ -17,6 +17,9 @@ class OnnxruntimeEngineBuilder : public Microsoft::WRL::RuntimeClass<
   STDMETHOD(SetMetacommandsEnabled)
   (int enabled);
 
+  STDMETHOD(SetBfcAllocatorEnabled)
+  (int enabled);
+
   STDMETHOD(GetD3D12Device)
   (_Outptr_ ID3D12Device** device);
 
@@ -47,6 +50,7 @@ class OnnxruntimeEngineBuilder : public Microsoft::WRL::RuntimeClass<
   Microsoft::WRL::ComPtr<ID3D12CommandQueue> queue_ = nullptr;
   Microsoft::WRL::ComPtr<IThreading> thread_pool_ = nullptr;
   bool metacommands_enabled_ = true;
+  bool bfc_allocator_enabled_ = true;
   std::optional<uint32_t> batch_size_override_;
   wfc::IMapView<winrt::hstring, uint32_t> named_dimension_overrides_;
   std::optional<uint32_t> intra_op_num_threads_override_;

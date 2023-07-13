@@ -40,10 +40,10 @@ namespace Dml
             IDMLDevice* dmlDevice,
             ID3D12Device* d3d12Device,
             ID3D12CommandQueue* queue,
-            bool enableMetacommands = true);
+            bool enableMetacommands,
+            bool enableBfcAllocator);
 
         void ReleaseCompletedReferences();
-        void DisableBfcAllocator();
         uint64_t GetUniqueId(void* opaquePointer);
 
     public: // implements Dml::IExecutionProvider
@@ -178,6 +178,7 @@ namespace Dml
         ComPtr<IDMLDevice> m_dmlDevice;
         bool m_isMcdmDevice = false;
         bool m_areMetacommandsEnabled = true;
+        bool m_bfcAllocatorEnabled = true;
         bool m_native16BitShaderOpsSupported = false;
         std::shared_ptr<ExecutionContext> m_context;
         std::unique_ptr<PooledUploadHeap> m_uploadHeap;
@@ -235,8 +236,8 @@ namespace Dml
         explicit ExecutionProvider(
             IDMLDevice* dmlDevice,
             ID3D12CommandQueue* commandQueue,
-            bool enableMetacommands = true
-        );
+            bool enableMetacommands,
+            bool enableBfcAllocator);
 
         std::unique_ptr<onnxruntime::IDataTransfer> GetDataTransfer() const final override
         {
@@ -291,11 +292,6 @@ namespace Dml
         void ReleaseCompletedReferences()
         {
             return m_impl->ReleaseCompletedReferences();
-        }
-
-        void DisableBfcAllocator()
-        {
-            return m_impl->DisableBfcAllocator();
         }
 
         ExecutionProviderImpl* GetImpl()

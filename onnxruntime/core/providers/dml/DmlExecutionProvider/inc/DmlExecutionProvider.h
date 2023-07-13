@@ -29,13 +29,13 @@ namespace Dml
     std::unique_ptr<onnxruntime::IExecutionProvider> CreateExecutionProvider(
         IDMLDevice* dmlDevice,
         ID3D12CommandQueue* commandQueue,
-        bool enableMetacommands = true);
+        bool enableMetacommands,
+        bool enableBfcAllocator);
 
     D3D12BufferRegion GetD3D12ResourceRegionFromAllocation(onnxruntime::IAllocator* allocator, void* opaquePointer, uint64_t size_in_bytes);
     void FlushContext(onnxruntime::IExecutionProvider* provider);
     void SetDefaultRoundingMode(onnxruntime::IExecutionProvider* provider, AllocatorRoundingMode roundingMode);
     void ReleaseCompletedReferences(onnxruntime::IExecutionProvider* provider);
-    void DisableBfcAllocator(onnxruntime::IExecutionProvider* provider);
 
     onnxruntime::common::Status CopyTensor(
         onnxruntime::IExecutionProvider* provider,

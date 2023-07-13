@@ -28,7 +28,7 @@ STDMETHODIMP OnnxruntimeEngineBuilder::CreateEngine(_Outptr_ _winml::IEngine** o
     RETURN_IF_FAILED(Microsoft::WRL::MakeAndInitialize<OnnxruntimeCpuSessionBuilder>(&onnxruntime_session_builder, engine_factory_.Get()));
   } else {
 #ifdef USE_DML
-    RETURN_IF_FAILED(Microsoft::WRL::MakeAndInitialize<OnnxruntimeDmlSessionBuilder>(&onnxruntime_session_builder, engine_factory_.Get(), device_.Get(), queue_.Get(), metacommands_enabled_));
+    RETURN_IF_FAILED(Microsoft::WRL::MakeAndInitialize<OnnxruntimeDmlSessionBuilder>(&onnxruntime_session_builder, engine_factory_.Get(), device_.Get(), queue_.Get(), metacommands_enabled_, bfc_allocator_enabled_));
 #endif
   }
 
@@ -86,6 +86,11 @@ STDMETHODIMP OnnxruntimeEngineBuilder::SetMetacommandsEnabled(int enabled) {
   return S_OK;
 }
 
+STDMETHODIMP OnnxruntimeEngineBuilder::SetBfcAllocatorEnabled(int enabled) {
+  bfc_allocator_enabled_ = static_cast<bool>(enabled);
+  return S_OK;
+}
+
 STDMETHODIMP OnnxruntimeEngineBuilder::GetID3D12CommandQueue(_Outptr_ ID3D12CommandQueue** queue) {
   *queue = queue_.Get();
   return S_OK;
@@ -100,7 +105,7 @@ STDMETHODIMP OnnxruntimeEngineBuilder::SetNamedDimensionOverrides(wfc::IMapView<
   named_dimension_overrides_ = std::move(named_dimension_overrides);
   return S_OK;
 }
-  
+
 STDMETHODIMP OnnxruntimeEngineBuilder::SetIntraOpNumThreadsOverride(uint32_t intra_op_num_threads) {
   intra_op_num_threads_override_ = intra_op_num_threads;
   return S_OK;

@@ -13,6 +13,7 @@
 #include "LearningModelSessionOptions.h"
 #include "TensorFeatureDescriptor.h"
 #include "TelemetryEvent.h"
+#include "core/providers/dml/OperatorAuthorHelper/MLOperatorAuthorPrivate.h"
 
 #include "D3DDeviceCache.h"
 
@@ -31,7 +32,7 @@ LearningModelSession::LearningModelSession(_winml::IEngine* engine) : operator_r
                                                                       model_(nullptr),
                                                                       device_(LearningModelDeviceKind::Cpu),
                                                                       session_options_(nullptr)
-{ 
+{
     engine_.copy_from(engine);
 }
 
@@ -117,6 +118,10 @@ void LearningModelSession::Initialize() {
   if (device_impl->IsCpuDevice() == false) {
     WINML_THROW_IF_FAILED(engine_builder->SetD3D12Resources(device_impl->GetD3DDevice(), device_impl->GetDeviceQueue()));
     WINML_THROW_IF_FAILED(engine_builder->SetMetacommandsEnabled(device_impl->MetacommandsEnabled()));
+
+    winrt::com_ptr<IMLOperatorRegistryPrivate> registryPrivate;
+    WINML_THROW_IF_FAILED(model_impl->GetOperatorRegistry()->QueryInterface(IID_PPV_ARGS(registryPrivate.put())));
+    WINML_THROW_IF_FAILED(engine_builder->SetBfcAllocatorEnabled(!registryPrivate->HasExternalOperators()));
   }
 
   auto num_intra_op_threads = device_impl->NumberOfIntraOpThreads();
@@ -137,7 +142,7 @@ void LearningModelSession::Initialize() {
     allow_spinning = session_options_impl->GetIntraOpThreadSpinning();
     num_intra_op_threads = session_options_impl->GetIntraOpNumThreads();
   }
-  
+
   bool create_local_thread_pool = allow_spinning != device_impl->AllowSpinning() ||
                                   num_intra_op_threads != device_impl->NumberOfIntraOpThreads();
   if (create_local_thread_pool) {

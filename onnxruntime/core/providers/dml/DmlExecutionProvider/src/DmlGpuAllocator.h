@@ -26,7 +26,8 @@ namespace Dml
         DmlGpuAllocator(
             onnxruntime::IAllocator* bfcAllocator,
             BucketizedBufferAllocator* bucketizedBufferAllocator,
-            std::shared_ptr<DmlReservedResourceSubAllocator> bfcSubAllocator);
+            std::shared_ptr<DmlReservedResourceSubAllocator> bfcSubAllocator,
+            ActiveAllocator activeAllocator);
 
         void* Alloc(size_t size_in_bytes) final;
         void Free(void* ptr) final;
@@ -34,7 +35,6 @@ namespace Dml
         AllocationInfo* GetAllocationInfo(void* opaquePointer);
         void SetDefaultRoundingMode(AllocatorRoundingMode roundingMode);
         DmlBuffer AllocateDefaultBuffer(uint64_t num_bytes);
-        void SetActiveAllocator(ActiveAllocator activeAllocator);
         uint64_t GetUniqueId(void* opaquePointer);
 
     private:
