@@ -85,8 +85,8 @@ class ONNXQuantizer:
             False if "ActivationSymmetric" not in self.extra_options else self.extra_options["ActivationSymmetric"]
         )
 
-        self.activation_qType = QuantType.to_proto(activation_qType)
-        self.weight_qType = QuantType.to_proto(weight_qType)
+        self.activation_qType = activation_qType.tensor_type
+        self.weight_qType = weight_qType.tensor_type
         """
             Dictionary specifying the min and max values for tensors. It has following format:
                 {

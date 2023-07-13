@@ -81,15 +81,15 @@ class QuantType(Enum):
         except KeyError:
             raise ValueError()  # noqa: B904
 
-    @staticmethod
-    def to_proto(qtype):
-        if qtype == QuantType.QInt8:
+    @property
+    def tensor_type(self):
+        if self == QuantType.QInt8:
             return TensorProto.INT8
-        if qtype == QuantType.QUInt8:
+        if self == QuantType.QUInt8:
             return TensorProto.UINT8
-        if qtype == QuantType.QFLOAT8E4M3FN:
+        if self == QuantType.QFLOAT8E4M3FN:
             return TensorProto.FLOAT8E4M3FN
-        raise ValueError(f"Unexpected value qtype={qtype!r}.")
+        raise ValueError(f"Unexpected value qtype={self!r}.")
 
 
 class QuantFormat(Enum):

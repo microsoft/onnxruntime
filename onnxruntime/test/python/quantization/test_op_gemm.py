@@ -9,10 +9,13 @@ import unittest
 import warnings
 
 import numpy as np
+from numpy.testing import assert_allclose
 import onnx
 from onnx import TensorProto, helper
-from op_test_utils import TestDataFeeds, check_model_correctness, check_op_type_count, check_qtype_by_node_type
+from onnx.reference import ReferenceEvaluator
+from op_test_utils import TestDataFeeds, check_model_correctness, check_op_type_count, check_qtype_by_node_type, QGemm
 
+from onnxruntime import InferenceSession
 from onnxruntime.quantization import QuantFormat, QuantType, quantize_dynamic, quantize_static
 
 
@@ -110,16 +113,6 @@ class TestOpGemm(unittest.TestCase):
         onnx.save(model, output_model_path)
 
     @staticmethod
-    def tensor_type(qtype):
-        if qtype == QuantType.QUInt8:
-            return TensorProto.UINT8
-        if qtype == QuantType.QInt8:
-            return TensorProto.INT8
-        if qtype == QuantType.QFLOAT8E4M3FN:
-            return TensorProto.FLOAT8E4M3FN
-        raise ValueError(f"Unexpected value for qtype={qtype}")
-
-    @staticmethod
     def str_type(qtype):
         if qtype == QuantType.QUInt8:
             return "u8"
@@ -137,7 +130,7 @@ class TestOpGemm(unittest.TestCase):
         weight_type,
         extra_options={},  # noqa: B006
     ):
-        activation_proto_qtype = self.tensor_type(activation_type)
+        activation_proto_qtype = activation_type.tensor_type
         activation_type_str = self.str_type(activation_type)
         weight_type_str = self.str_type(weight_type)
         model_int8_path = f"gemm_fp32.quant_{activation_type_str}{weight_type_str}.onnx"
@@ -197,7 +190,7 @@ class TestOpGemm(unittest.TestCase):
                     model_fp32_path,
                     model_int8_path,
                     data_reader.get_next(),
-                    ["CUDAExecutionProvider", "CPUExecutionProvider"],
+                    providers=["CUDAExecutionProvider", "CPUExecutionProvider"],
                 )
             except Exception as e:
                 if (
@@ -218,7 +211,7 @@ class TestOpGemm(unittest.TestCase):
         weight_type,
         extra_options={},  # noqa: B006
     ):
-        activation_proto_qtype = self.tensor_type(activation_type)
+        activation_proto_qtype = activation_type.tensor_type
         activation_type_str = self.str_type(activation_type)
         weight_type_str = self.str_type(weight_type)
         model_int8_path = f"gemm_fp32.quant_dqd_{activation_type_str}{weight_type_str}.onnx"
@@ -298,6 +291,12 @@ class TestOpGemm(unittest.TestCase):
         self.construct_model_gemm(model_fp32_path)
         data_reader = self.input_feeds(1, {"input": [5, 10]})
 
+        self.dynamic_quant_test(
+            model_fp32_path,
+            data_reader,
+            activation_type=QuantType.QUInt8,
+            weight_type=QuantType.QUInt8,
+        )
         self.static_quant_test(
             model_fp32_path,
             data_reader,
@@ -305,12 +304,6 @@ class TestOpGemm(unittest.TestCase):
             weight_type=QuantType.QUInt8,
         )
         self.static_quant_test_qdq(
-            model_fp32_path,
-            data_reader,
-            activation_type=QuantType.QUInt8,
-            weight_type=QuantType.QUInt8,
-        )
-        self.dynamic_quant_test(
             model_fp32_path,
             data_reader,
             activation_type=QuantType.QUInt8,
@@ -363,7 +356,412 @@ class TestOpGemm(unittest.TestCase):
             extra_options={"ActivationSymmetric": True},
         )
 
+    def test_qgemm_ref_uint8(self):
+        model = onnx.helper.make_model(
+            onnx.helper.make_graph(
+                [
+                    onnx.helper.make_node(
+                        "QGemm",
+                        ["A", "scaleA", "zpA", "B", "scaleB", "zpB", "C", "scale", "zp"],
+                        ["Y"],
+                        alpha=1.0,
+                        transB=1,
+                        domain="com.microsoft",
+                    )
+                ],
+                "qgemm_graph",
+                [
+                    onnx.helper.make_tensor_value_info("A", TensorProto.UINT8, [None, None]),
+                    onnx.helper.make_tensor_value_info("scaleA", TensorProto.FLOAT, [1]),
+                    onnx.helper.make_tensor_value_info("zpA", TensorProto.UINT8, [1]),
+                    onnx.helper.make_tensor_value_info("B", TensorProto.UINT8, [None, None]),
+                    onnx.helper.make_tensor_value_info("scaleB", TensorProto.FLOAT, [1]),
+                    onnx.helper.make_tensor_value_info("zpB", TensorProto.UINT8, [1]),
+                    onnx.helper.make_tensor_value_info("C", TensorProto.INT32, [None, None]),
+                    onnx.helper.make_tensor_value_info("scale", TensorProto.FLOAT, [1]),
+                    onnx.helper.make_tensor_value_info("zp", TensorProto.UINT8, [1]),
+                ],
+                [
+                    onnx.helper.make_tensor_value_info("Y", TensorProto.UINT8, [None, None]),
+                ],
+            ),
+            opset_imports=[onnx.helper.make_opsetid("", 18), onnx.helper.make_opsetid("com.microsoft", 1)],
+        )
+
+        sess = InferenceSession(model.SerializeToString(), providers=["CPUExecutionProvider"])
+        ref = ReferenceEvaluator(model, new_ops=[QGemm])
+
+        # simple case
+        A = np.array([[2, 1], [1, 0]], dtype=np.uint8)
+        scaleA = np.array([1], dtype=np.float32)
+        zpA = np.array([0], dtype=np.uint8)
+        B = np.array([[0, 1], [1, 3]], dtype=np.uint8)
+        scaleB = np.array([1], dtype=np.float32)
+        zpB = np.array([0], dtype=np.uint8)
+        C = np.array([[0, 0], [0, 0]], dtype=np.int32)
+        scale = np.array([1], dtype=np.float32)
+        zp = np.array([0], dtype=np.uint8)
+        feeds = dict(A=A, scaleA=scaleA, zpA=zpA, B=B, scaleB=scaleB, zpB=zpB, C=C, scale=scale, zp=zp)
+        expected = sess.run(None, feeds)[0]
+        got = ref.run(None, feeds)[0]
+        assert_allclose(expected, got)
+
+        # different scale for A
+        scaleA *= 2
+        expected = sess.run(None, feeds)[0]
+        got = ref.run(None, feeds)[0]
+        assert_allclose(expected, got)
+
+        # different scale for B
+        scaleB *= 20
+        expected = sess.run(None, feeds)[0]
+        got = ref.run(None, feeds)[0]
+        assert_allclose(expected, got)
+
+        # different scale for output
+        scale *= 0.5
+        expected = sess.run(None, feeds)[0]
+        got = ref.run(None, feeds)[0]
+        assert_allclose(expected, got)
+
+        # negative scaleA
+        scaleA *= -1
+        expected = sess.run(None, feeds)[0]
+        got = ref.run(None, feeds)[0]
+        assert_allclose(expected, got)
+
+        # zpA != 0
+        zpA += 5
+        expected = sess.run(None, feeds)[0]
+        got = ref.run(None, feeds)[0]
+        assert_allclose(expected, got)
+
+        # zpB != 0
+        zpB += 105
+        expected = sess.run(None, feeds)[0]
+        got = ref.run(None, feeds)[0]
+        assert_allclose(expected, got)
+
+        # zp != 0
+        zp += 77
+        expected = sess.run(None, feeds)[0]
+        got = ref.run(None, feeds)[0]
+        assert_allclose(expected, got)
+
+    def test_qgemm_ref_int8(self):
+        model = onnx.helper.make_model(
+            onnx.helper.make_graph(
+                [
+                    onnx.helper.make_node(
+                        "QGemm",
+                        ["A", "scaleA", "zpA", "B", "scaleB", "zpB", "C", "scale", "zp"],
+                        ["Y"],
+                        alpha=1.0,
+                        transB=1,
+                        domain="com.microsoft",
+                    )
+                ],
+                "qgemm_graph",
+                [
+                    onnx.helper.make_tensor_value_info("A", TensorProto.INT8, [None, None]),
+                    onnx.helper.make_tensor_value_info("scaleA", TensorProto.FLOAT, [1]),
+                    onnx.helper.make_tensor_value_info("zpA", TensorProto.INT8, [1]),
+                    onnx.helper.make_tensor_value_info("B", TensorProto.INT8, [None, None]),
+                    onnx.helper.make_tensor_value_info("scaleB", TensorProto.FLOAT, [1]),
+                    onnx.helper.make_tensor_value_info("zpB", TensorProto.INT8, [1]),
+                    onnx.helper.make_tensor_value_info("C", TensorProto.INT32, [None, None]),
+                    onnx.helper.make_tensor_value_info("scale", TensorProto.FLOAT, [1]),
+                    onnx.helper.make_tensor_value_info("zp", TensorProto.INT8, [1]),
+                ],
+                [
+                    onnx.helper.make_tensor_value_info("Y", TensorProto.INT8, [None, None]),
+                ],
+            ),
+            opset_imports=[onnx.helper.make_opsetid("", 18), onnx.helper.make_opsetid("com.microsoft", 1)],
+        )
+
+        sess = InferenceSession(model.SerializeToString(), providers=["CPUExecutionProvider"])
+        ref = ReferenceEvaluator(model, new_ops=[QGemm])
+
+        # simple case
+        A = np.array([[2, 1], [1, 0]], dtype=np.int8)
+        scaleA = np.array([1], dtype=np.float32)
+        zpA = np.array([0], dtype=np.int8)
+        B = np.array([[0, 1], [1, 3]], dtype=np.int8)
+        scaleB = np.array([1], dtype=np.float32)
+        zpB = np.array([0], dtype=np.int8)
+        C = np.array([[0, 0], [0, 0]], dtype=np.int32)
+        scale = np.array([1], dtype=np.float32)
+        zp = np.array([0], dtype=np.int8)
+        feeds = dict(A=A, scaleA=scaleA, zpA=zpA, B=B, scaleB=scaleB, zpB=zpB, C=C, scale=scale, zp=zp)
+        expected = sess.run(None, feeds)[0]
+        got = ref.run(None, feeds)[0]
+        assert_allclose(expected, got)
+
+        # different scale for A
+        scaleA *= 2
+        expected = sess.run(None, feeds)[0]
+        got = ref.run(None, feeds)[0]
+        assert_allclose(expected, got)
+
+        # different scale for B
+        scaleB *= 20
+        expected = sess.run(None, feeds)[0]
+        got = ref.run(None, feeds)[0]
+        assert_allclose(expected, got)
+
+        # different scale for output
+        scale *= 0.5
+        expected = sess.run(None, feeds)[0]
+        got = ref.run(None, feeds)[0]
+        assert_allclose(expected, got)
+
+        # negative scaleA
+        scaleA *= -1
+        expected = sess.run(None, feeds)[0]
+        got = ref.run(None, feeds)[0]
+        assert_allclose(expected, got)
+
+        # zpA != 0
+        zpA += 5
+        expected = sess.run(None, feeds)[0]
+        got = ref.run(None, feeds)[0]
+        assert_allclose(expected, got)
+
+        # zpB != 0
+        zpB += 105
+        expected = sess.run(None, feeds)[0]
+        got = ref.run(None, feeds)[0]
+        assert_allclose(expected, got)
+
+        # zp != 0
+        zp -= 77
+        expected = sess.run(None, feeds)[0]
+        got = ref.run(None, feeds)[0]
+        assert_allclose(expected, got)
+
+    def test_q_ref_uint8(self):
+        model = onnx.helper.make_model(
+            onnx.helper.make_graph(
+                [
+                    onnx.helper.make_node(
+                        "QuantizeLinear",
+                        ["A", "scaleA", "zpA"],
+                        ["Y"],
+                        axis=0,
+                    )
+                ],
+                "qgemm_graph",
+                [
+                    onnx.helper.make_tensor_value_info("A", TensorProto.FLOAT, [None, None]),
+                    onnx.helper.make_tensor_value_info("scaleA", TensorProto.FLOAT, [1]),
+                    onnx.helper.make_tensor_value_info("zpA", TensorProto.UINT8, [1]),
+                ],
+                [
+                    onnx.helper.make_tensor_value_info("Y", TensorProto.UINT8, [None, None]),
+                ],
+            ),
+            opset_imports=[onnx.helper.make_opsetid("", 18), onnx.helper.make_opsetid("com.microsoft", 1)],
+        )
+
+        sess = InferenceSession(model.SerializeToString(), providers=["CPUExecutionProvider"])
+        ref = ReferenceEvaluator(model, new_ops=[QGemm])
+
+        # simple case
+        A = np.array([[2, 1], [1, 0]], dtype=np.float32)
+        scaleA = np.array([1], dtype=np.float32)
+        zpA = np.array([0], dtype=np.uint8)
+        feeds = dict(A=A, scaleA=scaleA, zpA=zpA)
+        expected = sess.run(None, feeds)[0]
+        got = ref.run(None, feeds)[0]
+        assert_allclose(expected, got)
+
+        # different scale for A
+        scaleA *= 2
+        expected = sess.run(None, feeds)[0]
+        got = ref.run(None, feeds)[0]
+        assert_allclose(expected, got)
+
+        # negative scaleA
+        scaleA *= -1
+        expected = sess.run(None, feeds)[0]
+        got = ref.run(None, feeds)[0]
+        assert_allclose(expected, got)
+
+        # zpA != 0
+        zpA += 5
+        expected = sess.run(None, feeds)[0]
+        got = ref.run(None, feeds)[0]
+        assert_allclose(expected, got)
+
+    def test_q_ref_int8(self):
+        model = onnx.helper.make_model(
+            onnx.helper.make_graph(
+                [
+                    onnx.helper.make_node(
+                        "QuantizeLinear",
+                        ["A", "scaleA", "zpA"],
+                        ["Y"],
+                        axis=0,
+                    )
+                ],
+                "qgemm_graph",
+                [
+                    onnx.helper.make_tensor_value_info("A", TensorProto.FLOAT, [None, None]),
+                    onnx.helper.make_tensor_value_info("scaleA", TensorProto.FLOAT, [1]),
+                    onnx.helper.make_tensor_value_info("zpA", TensorProto.INT8, [1]),
+                ],
+                [
+                    onnx.helper.make_tensor_value_info("Y", TensorProto.INT8, [None, None]),
+                ],
+            ),
+            opset_imports=[onnx.helper.make_opsetid("", 18), onnx.helper.make_opsetid("com.microsoft", 1)],
+        )
+
+        sess = InferenceSession(model.SerializeToString(), providers=["CPUExecutionProvider"])
+        ref = ReferenceEvaluator(model, new_ops=[QGemm])
+
+        # simple case
+        A = np.array([[2, 1], [1, 0]], dtype=np.float32)
+        scaleA = np.array([1], dtype=np.float32)
+        zpA = np.array([0], dtype=np.int8)
+        feeds = dict(A=A, scaleA=scaleA, zpA=zpA)
+        expected = sess.run(None, feeds)[0]
+        got = ref.run(None, feeds)[0]
+        assert_allclose(expected, got)
+
+        # different scale for A
+        scaleA *= 2
+        expected = sess.run(None, feeds)[0]
+        got = ref.run(None, feeds)[0]
+        assert_allclose(expected, got)
+
+        # negative scaleA
+        scaleA *= -1
+        expected = sess.run(None, feeds)[0]
+        got = ref.run(None, feeds)[0]
+        assert_allclose(expected, got)
+
+        # zpA != 0
+        zpA += 5
+        expected = sess.run(None, feeds)[0]
+        got = ref.run(None, feeds)[0]
+        assert_allclose(expected, got)
+
+    def test_qgemm_ref_uint8_specific_example(self):
+        model = onnx.helper.make_model(
+            onnx.helper.make_graph(
+                [
+                    onnx.helper.make_node(
+                        "QGemm",
+                        ["A", "scaleA", "zpA", "B", "scaleB", "zpB", "C", "scale", "zp"],
+                        ["Y"],
+                        alpha=1.0,
+                        transB=1,
+                        domain="com.microsoft",
+                    )
+                ],
+                "qgemm_graph",
+                [
+                    onnx.helper.make_tensor_value_info("A", TensorProto.UINT8, [None, None]),
+                    onnx.helper.make_tensor_value_info("scaleA", TensorProto.FLOAT, [1]),
+                    onnx.helper.make_tensor_value_info("zpA", TensorProto.UINT8, [1]),
+                    onnx.helper.make_tensor_value_info("B", TensorProto.UINT8, [None, None]),
+                    onnx.helper.make_tensor_value_info("scaleB", TensorProto.FLOAT, [1]),
+                    onnx.helper.make_tensor_value_info("zpB", TensorProto.UINT8, [1]),
+                    onnx.helper.make_tensor_value_info("C", TensorProto.INT32, [None, None]),
+                    onnx.helper.make_tensor_value_info("scale", TensorProto.FLOAT, [1]),
+                    onnx.helper.make_tensor_value_info("zp", TensorProto.UINT8, [1]),
+                ],
+                [
+                    onnx.helper.make_tensor_value_info("Y", TensorProto.UINT8, [None, None]),
+                ],
+            ),
+            opset_imports=[onnx.helper.make_opsetid("", 18), onnx.helper.make_opsetid("com.microsoft", 1)],
+        )
+
+        sess = InferenceSession(model.SerializeToString(), providers=["CPUExecutionProvider"])
+        ref = ReferenceEvaluator(model, new_ops=[QGemm])
+
+        # simple case
+        feeds = {
+            "A": np.array([[1, 1, 128, 255, 128, 1, 255], [1, 128, 1, 1, 255, 255, 128]], dtype=np.uint8),
+            "B": np.array(
+                [[170, 89, 92, 72, 142, 27, 174], [164, 36, 99, 97, 152, 71, 105], [71, 153, 144, 129, 144, 86, 107]],
+                dtype=np.uint8,
+            ),
+            "C": np.array([[-710, -11278, 2355]], dtype=np.int32),
+            "scale": np.array([0.00784314], dtype=np.float32),
+            "scaleA": np.array([0.0062805], dtype=np.float32),
+            "scaleB": np.array([0.00274995], dtype=np.float32),
+            "zp": np.array([128], dtype=np.uint8),
+            "zpA": np.array([137], dtype=np.uint8),
+            "zpB": np.array([111], dtype=np.uint8),
+        }
+
+        expected = sess.run(None, feeds)[0]
+        got = ref.run(None, feeds)[0]
+        assert_allclose(expected, got)
+
+    def _test_dummy(self):
+        from onnx.backend.test.loader import load_model_tests
+        from onnx.reference.reference_backend import (
+            ReferenceEvaluatorBackend,
+            create_reference_backend,
+        )
+
+        kind = "qdq_tests"
+        root = "."
+        examples = load_model_tests(root, kind)
+
+        class NewRef(InferenceSession):
+            def __init__(self, model, *args, providers=None, **kwargs):
+                InferenceSession.__init__(  # pylint: disable=non-parent-init-called
+                    self,
+                    model.SerializeToString(),
+                    *args,
+                    providers=providers or ["CPUExecutionProvider"],
+                    **kwargs,
+                )
+
+            def run(self, *args, **kwargs):
+                import pprint
+
+                pprint.pprint(args)
+                return InferenceSession.run(self, *args, **kwargs)
+
+            @property
+            def input_names(self):
+                inputs = self.get_inputs()
+                return [i.name for i in inputs]
+
+            @property
+            def output_names(self):
+                outputs = self.get_outputs()
+                return [o.name for o in outputs]
+
+        new_cls = ReferenceEvaluatorBackend[NewRef]
+        self.assertEqual(new_cls.__name__, "ReferenceEvaluatorBackendNewRef")
+        self.assertTrue(issubclass(new_cls.cls_inference, NewRef))
+
+        backend = create_reference_backend(new_cls, path_to_test=root, kind=kind)
+        backend.exclude("cuda")
+        tests = backend.tests()
+        names = []
+        for m in dir(tests):
+            print("+", m)
+            if m.startswith("test_"):
+                test = getattr(tests, m)
+                try:
+                    test()
+                    names.append(m)
+                except unittest.case.SkipTest:
+                    continue
+
 
 if __name__ == "__main__":
-    TestOpGemm().test_quantize_gemm_e4m3fn()
-    unittest.main()
+    TestOpGemm().test_quantize_gemm()
+    # TestOpGemm().test_qgemm_ref_uint8_specific_example()
+    # TestOpGemm()._test_dummy()
+    # stop
+    unittest.main(verbosity=2)
