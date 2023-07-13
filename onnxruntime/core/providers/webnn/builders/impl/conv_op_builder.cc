@@ -249,7 +249,7 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
         std::vector<int64_t> input_shape;
         ORT_RETURN_IF_NOT(GetShape(*input_defs[0], input_shape, logger), "Cannot get shape");
         for (size_t i = 0; i < 2; i++) {
-          total_padding[i] = strides[i] * (input_shape[i + 1] - 1) +
+          total_padding[i] = strides[i] * (narrow<size_t>(input_shape[i + 1]) - 1) +
                              output_padding[i] + ((kernel_shape[i] - 1) * dilations[i] + 1) - output_shape[i];
         }
         pads[0] = total_padding[0] - (total_padding[0] / 2);

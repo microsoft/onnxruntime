@@ -150,6 +150,51 @@ class CKGroupNormNHWC : public IKernelExplorer {
 };
 #endif  // USE_COMPOSABLE_KERNEL
 
+#ifdef USE_TRITON_KERNEL
+template <typename T, bool WithSwish>
+class GroupNormNHWCTriton : public IKernelExplorer {
+ public:
+  GroupNormNHWCTriton(DeviceArray& output, DeviceArray& workspace, DeviceArray& input, DeviceArray& gamma, DeviceArray& beta,
+                      int batch_size, int height, int width, int num_channels, int num_groups, float epsilon, bool use_swish)
+      : params_(TuningContext(), Stream(), static_cast<T*>(output.ptr()), static_cast<float*>(workspace.ptr()),
+                static_cast<T*>(input.ptr()), static_cast<float*>(gamma.ptr()), static_cast<float*>(beta.ptr()),
+                batch_size, height, width, num_channels, num_groups, epsilon, use_swish) {
+    for (auto&& [name, op] : contrib::rocm::GetTritonGroupNormNHWCTypeStringAndOps<T, WithSwish>()) {
+      name_strings_.emplace_back(name);
+      ops_.emplace_back(std::move(op));
+    }
+  }
+
+  void Run() override {
+    ORT_THROW_IF_ERROR(ops_[selected_op_](&params_));
+  }
+
+  std::vector<std::string> ListOps() const {
+    return name_strings_;
+  }
+
+  bool SelectOp(const std::string& name) {
+    for (size_t i = 0; i < ops_.size(); i++) {
+      if (name_strings_[i] == name) {
+        selected_op_ = i;
+        Status status = ops_[i](&params_);
+        return status.IsOK();
+      }
+    }
+
+    ORT_THROW("Cannot find implementation ", name);
+  }
+
+ private:
+  using ParamsT = contrib::rocm::GroupNormNHWCParams<T>;
+  using OpT = rocm::tunable::Op<ParamsT>;
+  ParamsT params_{};
+  std::vector<OpT> ops_;
+  std::vector<std::string> name_strings_;
+  size_t selected_op_{};
+};
+#endif  // USE_TRITON_KERNEL
+
 #define REGISTER_OP(name, type, threads_per_block, vec_size)                                                   \
   py::class_<name<type, threads_per_block, vec_size>>(m, #name "_" #type "_" #threads_per_block "_" #vec_size) \
       .def(py::init<DeviceArray&, DeviceArray&, DeviceArray&, DeviceArray&, DeviceArray&,                      \
@@ -188,6 +233,9 @@ class CKGroupNormNHWC : public IKernelExplorer {
 #define REGISTER_CK(type, with_swish, swish_suffix) \
   REGISTER_COMMON("CKGroupNormNHWC" swish_suffix "_" #type, CKGroupNormNHWC, type, with_swish)
 
+#define REGISTER_TRITON(type, with_swish, swish_suffix) \
+  REGISTER_COMMON("GroupNormNHWCTriton" swish_suffix "_" #type, GroupNormNHWCTriton, type, with_swish)
+
 KE_REGISTER(m) {
   REGISTER_OP_FOR_ALL_THREADS_PER_BLOCK_ALL_VEC_SIZE(GroupNormNHWC, half);
   REGISTER_OP_FOR_ALL_THREADS_PER_BLOCK_ALL_VEC_SIZE(GroupNormNHWC, float);
@@ -204,6 +252,13 @@ KE_REGISTER(m) {
   REGISTER_CK(float, false, "Pass");
   REGISTER_CK(float, true, "Swish");
 #endif  // USE_COMPOSABLE_KERNEL
+
+#ifdef USE_TRITON_KERNEL
+  REGISTER_TRITON(half, false, "Pass");
+  REGISTER_TRITON(half, true, "Swish");
+  REGISTER_TRITON(float, false, "Pass");
+  REGISTER_TRITON(float, true, "Swish");
+#endif
 }
 
 }  // namespace onnxruntime
