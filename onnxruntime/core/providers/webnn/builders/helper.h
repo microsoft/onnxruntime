@@ -92,6 +92,7 @@ std::vector<std::vector<NodeIndex>> GetSupportedNodes(const GraphViewer& graph_v
                                                       const WebnnDeviceType device_type,
                                                       const logging::Logger& logger);
 static const InlinedHashMap<std::string, std::string> op_map = {
+    {"Abs", "abs"},
     {"ArgMax", "argMax"},
     {"ArgMin", "argMin"},
     {"Add", "add"},
@@ -104,6 +105,7 @@ static const InlinedHashMap<std::string, std::string> op_map = {
     {"Equal", "equal"},
     {"Erf", "erf"},
     {"Exp", "exp"},
+    {"Neg", "neg"},
     {"Not", "logicalNot"},
     {"Floor", "floor"},
     {"Flatten", "flattenTo2d"},
