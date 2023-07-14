@@ -119,6 +119,9 @@
 
   <!-- NOTE: The xUnit framework doesn't pickup the tests defined within the referenced Microsoft.ML.OnnxRuntime.Tests.Common project -->
   <ItemGroup>
+    <Compile Include="..\Microsoft.ML.OnnxRuntime.Tests.Common\OrtFloat16Tests.cs">
+      <Link>OrtFloat16Tests.cs</Link>
+    </Compile>
     <Compile Include="..\Microsoft.ML.OnnxRuntime.Tests.Common\OrtEnvTests.cs">
       <Link>OrtEnvTests.cs</Link>
     </Compile>

@@ -119,7 +119,7 @@ Status NormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder
   if (op_type == "LayerNormalization") {
     int64_t axis = helper.Get("axis", -1);
     axis = HandleNegativeAxis(axis, rank);
-    std::vector<int32_t> axes(rank - axis);
+    std::vector<int32_t> axes(rank - narrow<size_t>(axis));
     std::iota(axes.begin(), axes.end(), axis);
     options.set("axes", emscripten::val::array(axes));
     output = model_builder.GetBuilder().call<emscripten::val>("meanVarianceNormalization", input, options);

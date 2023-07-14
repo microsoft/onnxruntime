@@ -7,6 +7,7 @@
 import copy
 import functools
 import inspect
+import json
 import logging
 import os
 import random
@@ -423,3 +424,23 @@ def get_runtime_pytorch_version():
 
 def check_function_has_param(function: Callable, param_name: str) -> bool:
     return param_name in inspect.signature(function).parameters
+
+
+def save_tuning_results(session, is_training, tuning_results_path):
+    """Save the online Op tuning results to a json file in the specified path."""
+
+    os.makedirs(tuning_results_path, exist_ok=True)
+    suffix = "training" if is_training else "inference"
+    tuning_result_file = os.path.join(tuning_results_path, f"tuning_results_{suffix}.json")
+    with open(tuning_result_file, "w", encoding="utf-8") as f:
+        json.dump(session.get_tuning_results(), f, indent=4)
+
+
+def set_tuning_results(session, is_training, tuning_results_path):
+    """Set the offline Op tuning results from a json file in the specified path."""
+
+    suffix = "training" if is_training else "inference"
+    tuning_result_file = os.path.join(tuning_results_path, f"tuning_results_{suffix}.json")
+    if os.path.isfile(tuning_result_file):
+        with open(tuning_result_file, encoding="utf-8") as f:
+            session.set_tuning_results(json.load(f))
