@@ -170,7 +170,7 @@ public class OnnxTensorTest {
     shortBuf.rewind();
 
     try (OrtSession.SessionOptions opts = new OrtSession.SessionOptions();
-        OrtSession session = env.createSession(modelPath);
+        OrtSession session = env.createSession(modelPath, opts);
         OnnxTensor tensor =
             OnnxTensor.createTensor(env, buf, new long[] {10, 5}, OnnxJavaType.BFLOAT16);
         OrtSession.Result result = session.run(Collections.singletonMap("input", tensor))) {
@@ -203,7 +203,7 @@ public class OnnxTensorTest {
     shortBuf.rewind();
 
     try (OrtSession.SessionOptions opts = new OrtSession.SessionOptions();
-        OrtSession session = env.createSession(modelPath);
+        OrtSession session = env.createSession(modelPath, opts);
         OnnxTensor tensor =
             OnnxTensor.createTensor(env, buf, new long[] {10, 5}, OnnxJavaType.FLOAT16);
         OrtSession.Result result = session.run(Collections.singletonMap("input", tensor))) {
@@ -239,24 +239,24 @@ public class OnnxTensorTest {
     shortBuf.rewind();
 
     try (OrtSession.SessionOptions opts = new OrtSession.SessionOptions();
-        OrtSession session = env.createSession(modelPath);
+        OrtSession session = env.createSession(modelPath, opts);
         OnnxTensor tensor = OnnxTensor.createTensor(env, floatBuf, new long[] {10, 5});
         OrtSession.Result result = session.run(Collections.singletonMap("input", tensor))) {
       OnnxTensor output = (OnnxTensor) result.get(0);
 
       // Check outbound Java side cast to fp32 works
       FloatBuffer castOutput = output.getFloatBuffer();
-      float[] expectedFloatArr = new float[10*5];
+      float[] expectedFloatArr = new float[10 * 5];
       OrtUtil.convertFp16BufferToFloatBuffer(shortBuf).get(expectedFloatArr);
-      float[] actualFloatArr = new float[10*5];
+      float[] actualFloatArr = new float[10 * 5];
       castOutput.get(actualFloatArr);
       Assertions.assertArrayEquals(expectedFloatArr, actualFloatArr);
 
       // Check bits are correct
       ShortBuffer outputBuf = output.getShortBuffer();
-      short[] expectedShortArr = new short[10*5];
+      short[] expectedShortArr = new short[10 * 5];
       shortBuf.get(expectedShortArr);
-      short[] actualShortArr = new short[10*5];
+      short[] actualShortArr = new short[10 * 5];
       outputBuf.get(actualShortArr);
       Assertions.assertArrayEquals(expectedShortArr, actualShortArr);
     }
@@ -286,24 +286,24 @@ public class OnnxTensorTest {
     shortBuf.rewind();
 
     try (OrtSession.SessionOptions opts = new OrtSession.SessionOptions();
-        OrtSession session = env.createSession(modelPath);
+        OrtSession session = env.createSession(modelPath, opts);
         OnnxTensor tensor = OnnxTensor.createTensor(env, floatBuf, new long[] {10, 5});
         OrtSession.Result result = session.run(Collections.singletonMap("input", tensor))) {
       OnnxTensor output = (OnnxTensor) result.get(0);
 
       // Check outbound Java side cast to fp32 works
       FloatBuffer castOutput = output.getFloatBuffer();
-      float[] expectedFloatArr = new float[10*5];
+      float[] expectedFloatArr = new float[10 * 5];
       OrtUtil.convertBf16BufferToFloatBuffer(shortBuf).get(expectedFloatArr);
-      float[] actualFloatArr = new float[10*5];
+      float[] actualFloatArr = new float[10 * 5];
       castOutput.get(actualFloatArr);
       Assertions.assertArrayEquals(expectedFloatArr, actualFloatArr);
 
       // Check bits are correct
       ShortBuffer outputBuf = output.getShortBuffer();
-      short[] expectedShortArr = new short[10*5];
+      short[] expectedShortArr = new short[10 * 5];
       shortBuf.get(expectedShortArr);
-      short[] actualShortArr = new short[10*5];
+      short[] actualShortArr = new short[10 * 5];
       outputBuf.get(actualShortArr);
       Assertions.assertArrayEquals(expectedShortArr, actualShortArr);
     }

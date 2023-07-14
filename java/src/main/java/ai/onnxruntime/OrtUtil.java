@@ -810,13 +810,19 @@ public final class OrtUtil {
   }
 
   /**
-   * Converts a float into bf16 by truncation. May not produce correct values for subnormal floats.
+   * Converts a float into bf16. May not produce correct values for subnormal floats.
+   *
+   * <p>Rounds to nearest even.
    *
    * @param input The float input.
    * @return A bfloat16 value which is closest to the float.
    */
   public static short floatToBf16(float input) {
-    return (short) (Float.floatToIntBits(input) >> 16);
+    int bits = Float.floatToIntBits(input);
+    int lsb = (bits >> 16) & 1;
+    int roundingBias = 0x7fff + lsb;
+    bits += roundingBias;
+    return (short) (bits >> 16);
   }
 
   static final class BufferTuple {

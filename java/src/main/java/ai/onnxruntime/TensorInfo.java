@@ -339,13 +339,13 @@ public class TensorInfo implements ValueInfo {
       long elemRemaining = bufferRemaining / type.size;
       if (elementCount != elemRemaining) {
         throw new OrtException(
-                "Shape "
-                        + Arrays.toString(shape)
-                        + ", requires "
-                        + elementCount
-                        + " elements but the buffer has "
-                        + bufferRemaining
-                        + " elements.");
+            "Shape "
+                + Arrays.toString(shape)
+                + ", requires "
+                + elementCount
+                + " elements but the buffer has "
+                + bufferRemaining
+                + " elements.");
       }
     }
 
