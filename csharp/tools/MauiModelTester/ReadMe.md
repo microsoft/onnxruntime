@@ -1,7 +1,7 @@
 # MAUI Model Tester
 ## Usage
 
-Update create_test_data.py to specify
+Run create_test_data.py to specify
   - path to the model you wish to use
   - symbolic dimension values to use if needed
   - any specific input if the randomly generated input will not be good enough
@@ -13,15 +13,15 @@ Update create_test_data.py to specify
 This will copy the model to Resources\Raw\test_data\model.onnx and the test data files to
 Resources\Raw\test_data\test_data_set_0
 
-The MAUI application will read the model and test data from those location and should need no other changes to be able
+The MAUI application will read the model and test data from those locations and should need no other changes to be able
 to execute the model.
 
 NOTE: The project uses builds from the nightly feed to keep things simple.
 
 If it was part of the main ONNX Runtime C# solution we'd have to
   - add the ORT nightly feed to the top level nuget.config
-    - this potentially adds confusion about nuget packages come from in unit tests
-  - keep updating the referenced night packages so they remain valid so the complete solution builds in the CI
+    - this potentially adds confusion about where nuget packages come from in unit tests
+  - keep updating the referenced nightly packages so they remain valid so the complete solution builds in the CI
 
 ## Testing C# or native code changes
 

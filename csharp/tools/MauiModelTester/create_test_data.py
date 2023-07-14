@@ -24,7 +24,7 @@ def parse_args():
         Explicit input data or expected output data can be specified by providing .pb files with the input/output name
         and tensor. These can be created with /tools/python/onnx_test_data_utils.py.
 
-        See See https://github.com/microsoft/onnxruntime/blob/main/tools/python/PythonTools.md#creating-a-test-directory-for-a-model  # noqa
+        See https://github.com/microsoft/onnxruntime/blob/main/tools/python/PythonTools.md#creating-a-test-directory-for-a-model  # noqa
         for info on creating specific input or expected output""",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
@@ -134,8 +134,7 @@ def add_model_and_test_data_to_app(
     # create_test_dir will copy the model to the output directory.
     # rename the copied model to the generic name the app expects.
     copied_model = output_path / test_name / model_path.name
-    renamed_model = output_path / test_name / "model.onnx"
-    os.rename(str(copied_model), str(renamed_model))
+    copied_model.rename(copied_model.with_name("model.onnx"))
 
     # add a text file with the original model path just so there's some info on where it came from
     with open(test_path / "model_info.txt", "w") as model_info_file:
