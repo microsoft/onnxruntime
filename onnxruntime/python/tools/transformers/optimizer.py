@@ -21,9 +21,10 @@ import argparse
 import logging
 import os
 import tempfile
-from typing import Dict, Optional
+from typing import Dict, List, Optional
 
 import coloredlogs
+import onnx
 from fusion_options import FusionOptions
 from onnx import ModelProto, load_model
 from onnx_model_bart import BartOnnxModel
@@ -67,7 +68,7 @@ def optimize_by_onnxruntime(
     use_gpu: bool = False,
     optimized_model_path: Optional[str] = None,
     opt_level: Optional[int] = 99,
-    disabled_optimizers=[],  # noqa: B006
+    disabled_optimizers: List[str] = [],  # noqa: B006
     verbose: bool = False,
 ) -> str:
     """
@@ -129,6 +130,32 @@ def optimize_by_onnxruntime(
         assert not set(onnxruntime.get_available_providers()).isdisjoint(
             ["CUDAExecutionProvider", "ROCMExecutionProvider", "MIGraphXExecutionProvider"]
         )
+
+    # Move original external data file to temp dir if it exists
+    has_external_data_file = False
+    original_model = onnx.load(onnx_model_path, load_external_data=False)
+    for initializer in original_model.graph.initializer:
+        if initializer.HasField("data_location") and initializer.data_location == onnx.TensorProto.EXTERNAL:
+            has_external_data_file = True
+            break
+
+    if has_external_data_file:
+        temp_dir = os.path.dirname(optimized_model_path)
+        original_dir = os.path.dirname(onnx_model_path)
+        original_model_filename = os.path.basename(onnx_model_path)
+        original_model_in_temp_dir_path = os.path.join(temp_dir, original_model_filename)
+
+        onnx.external_data_helper.load_external_data_for_model(original_model, original_dir)
+        onnx.save_model(
+            original_model,
+            original_model_in_temp_dir_path,
+            save_as_external_data=True,
+            all_tensors_to_one_file=True,
+            location=f"{original_model_filename}.data",
+            size_threshold=1024,
+            convert_attribute=False,
+        )
+        os.remove(original_model_in_temp_dir_path)
 
     assert os.path.exists(optimized_model_path) and os.path.isfile(optimized_model_path)
     logger.debug("Save optimized model by onnxruntime to %s", optimized_model_path)
@@ -200,7 +227,6 @@ def optimize_model(
     use_gpu: bool = False,
     only_onnxruntime: bool = False,
     verbose: bool = False,
-    use_temp_dir: bool = False,
 ):
     """Optimize Model by OnnxRuntime and/or python fusion logic.
 
@@ -253,11 +279,10 @@ def optimize_model(
     # affect other fusions. We can update the expected model proto once the ConstantSharing optimizer logic becomes
     # stable.
     disabled_optimizers = ["ConstantSharing"]
-    temp_model_path, optimized_model_path = None, None
+    temp_model_path = None
     temp_dir = tempfile.TemporaryDirectory()
-    if use_temp_dir:
-        optimized_model_name = "model_o{}_{}.onnx".format(opt_level, "gpu" if use_gpu else "cpu")
-        optimized_model_path = os.path.join(temp_dir.name, optimized_model_name)
+    optimized_model_name = "model_o{}_{}.onnx".format(opt_level, "gpu" if use_gpu else "cpu")
+    optimized_model_path = os.path.join(temp_dir.name, optimized_model_name)
 
     if opt_level > 1:
         # Disable some optimizers that might cause failure in symbolic shape inference or attention fusion.
@@ -303,8 +328,7 @@ def optimize_model(
         optimizer = optimize_by_fusion(model, model_type, num_heads, hidden_size, optimization_options)
 
     # remove the temporary directory
-    if use_temp_dir:
-        temp_dir.cleanup()
+    temp_dir.cleanup()
 
     return optimizer
 
@@ -436,14 +460,6 @@ def _parse_arguments():
     )
     parser.set_defaults(convert_to_packing_mode=False)
 
-    parser.add_argument(
-        "--use_temp_dir",
-        required=False,
-        action="store_true",
-        help="Use temporary directory to save temporary model. Only available for models without external data.",
-    )
-    parser.set_defaults(use_temp_dir=False)
-
     args = parser.parse_args()
 
     return args
@@ -480,7 +496,6 @@ def main():
         optimization_options=optimization_options,
         use_gpu=args.use_gpu,
         only_onnxruntime=args.only_onnxruntime,
-        use_temp_dir=args.use_temp_dir,
     )
 
     if args.float16:
