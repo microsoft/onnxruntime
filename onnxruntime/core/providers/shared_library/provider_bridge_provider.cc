@@ -460,10 +460,6 @@ Status DenseTensorToSparseCoo(const DataTransferManager& data_manager, const Ten
 
 }  // namespace sparse_utils
 
-float MLFloat16::ToFloat() const {
-  return math::halfToFloat(val);
-}
-
 std::vector<std::string> GetStackTrace() { return g_host->GetStackTrace(); }
 
 void LogRuntimeError(uint32_t session_id, const common::Status& status,
