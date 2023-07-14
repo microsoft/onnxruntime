@@ -824,7 +824,7 @@ ORT_API_STATUS_IMPL(OrtApis::Run, _Inout_ OrtSession* sess, _In_opt_ const OrtRu
 
   gsl::span<const char* const> input_names_span(input_names, input_len);
   gsl::span<const OrtValue* const> input_span(input, input_len);
-  gsl::span<const char* const> output_name_span(output_names, input_len);
+  gsl::span<const char* const> output_name_span(output_names, output_names_len);
   gsl::span<OrtValue*> output_span(output, output_names_len);
 
   Status status;
@@ -857,7 +857,7 @@ ORT_API_STATUS_IMPL(OrtApis::RunAsync, _Inout_ OrtSession* sess, _In_opt_ const 
 
   gsl::span<const char* const> input_names_span(input_names, input_len);
   gsl::span<const OrtValue* const> input_span(input, input_len);
-  gsl::span<const char* const> output_name_span(output_names, input_len);
+  gsl::span<const char* const> output_name_span(output_names, output_names_len);
   gsl::span<OrtValue*> output_span(output, output_names_len);
 
   return ToOrtStatus(session->RunAsync(run_options,
