@@ -8,3 +8,6 @@ onnx==1.14.0
 protobuf==3.20.2
 sympy==1.10.1
 flatbuffers
+
+# package used by smooth quant test
+neural-compressor>=2.2
