@@ -12,7 +12,7 @@
 #include <vector>
 
 // Uncomment for debugging Compute optimizer (CO).
-// #define CO_NEED_LOG_DEBUG_INFO 1
+#define CO_NEED_LOG_DEBUG_INFO 1
 
 #ifndef LOG_DEBUG_INFO
 #ifdef CO_NEED_LOG_DEBUG_INFO

@@ -9,6 +9,7 @@
 #include "core/graph/graph_utils.h"
 #include "core/optimizer/initializer.h"
 #include "orttraining/core/optimizer/compute_optimizer/padding_elimination.h"
+#include "core/optimizer/utils.h"
 
 using namespace onnxruntime::optimizer::compute_optimizer;
 
@@ -250,11 +251,12 @@ void IterateSubgraphFromNode(Graph& graph,
           candidate_inputs.insert(cur);
         }
       } else {
-        LOG_DEBUG_INFO(logger, "PaddingElimination::Input shapes of node:" + cur->Name() + "are not compatible.");
+        LOG_DEBUG_INFO(logger, "PaddingElimination::Input shapes of node:" + cur->Name() + " are not compatible.");
         candidate_outputs.insert(cur);
         continue;
       }
-    } else if (graph_utils::IsSupportedOptypeVersionAndDomain(*cur, "LayerNormalization", {1, 17}, kOnnxDomain)) {
+    } else if (graph_utils::IsSupportedOptypeVersionAndDomain(*cur, "LayerNormalization", {1, 17}, kOnnxDomain) ||
+               graph_utils::IsSupportedOptypeVersionAndDomain(*cur, "SimplifiedLayerNormalization", {1}, kOnnxDomain)) {
       if (subgraph.find(cur->MutableInputDefs()[0]) == subgraph.end()) {
         LOG_DEBUG_INFO(logger, "PaddingElimination::First input of Normalization: " + cur->Name() +
                                    " is not in subgraph.");
@@ -315,7 +317,24 @@ void IterateSubgraphFromNode(Graph& graph,
       } else {
         candidate_outputs.insert(cur);
       }
+
+    } else if (InlinedVector<int64_t> new_shape_const_values;
+               graph_utils::IsSupportedOptypeVersionAndDomain(*cur, "Reshape", {1, 5, 13, 14, 19}) &&
+               graph_utils::IsConstantInitializer(graph, cur->InputDefs()[1]->Name()) &&
+               optimizer_utils::AppendTensorFromInitializer(graph, *cur->InputDefs()[1], new_shape_const_values, true) &&
+               new_shape_const_values.size() >= 2 &&
+               new_shape_const_values[0] == 0 && new_shape_const_values[1] == 0) {
+      subgraph.insert(cur->MutableOutputDefs()[0]);
+      PushAllOutputNode(graph, to_visit, cur, visited);
     } else {
+      LOG_DEBUG_INFO(logger, "PaddingElimination does not support op " + cur->OpType() + ", add it as output boundary.");
+      if (graph_utils::IsSupportedOptypeVersionAndDomain(*cur, "Reshape", {1, 5, 13, 14, 19})) {
+        InlinedVector<int64_t> new_shape_const_values;
+        std::cout << graph_utils::IsConstantInitializer(graph, cur->InputDefs()[1]->Name()) << ","
+                  << optimizer_utils::AppendTensorFromInitializer(graph, *cur->InputDefs()[1], new_shape_const_values, true)
+                  << "," << new_shape_const_values.size() << new_shape_const_values[0] << new_shape_const_values[1]
+                  << cur->Name() << std::endl;
+      }
       candidate_outputs.insert(cur);
     }
   }
@@ -346,6 +365,7 @@ Status PaddingElimination::ApplyImpl(Graph& graph, bool& modified, int graph_lev
   int64_t handled_input_count = 0;
   int64_t handled_output_count = 0;
 
+  NodeArg* invalid_value_node_arg = nullptr;
   // Find the valid embedding node
   for (auto node_index : node_topology_list) {
     auto& node = *graph.GetNode(node_index);
@@ -381,8 +401,35 @@ Status PaddingElimination::ApplyImpl(Graph& graph, bool& modified, int graph_lev
         for (auto output_defs : embedding_node->MutableOutputDefs()) {
           subgraph.insert(output_defs);
         }
+
+        invalid_value_node_arg = embedding_node->MutableInputDefs()[2];
         break;
       }
+    } else if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "Gather", {1, 11, 13})) {
+      if (std::find(sparse_embedding_input_names_.begin(), sparse_embedding_input_names_.end(),
+                    node.InputDefs()[1]->Name()) == sparse_embedding_input_names_.end()) {
+        LOG_DEBUG_INFO(logger, "Skip node " + node.Name() + "(" + node.OpType() +
+                                   ") due to embedding input [" + node.InputDefs()[1]->Name() +
+                                   "] is not in the sparse embedding input list.");
+        continue;
+      }
+
+      embedding_node = &node;
+      input_ids_arg = embedding_node->MutableInputDefs()[1];
+      for (auto output_defs : embedding_node->MutableOutputDefs()) {
+        subgraph.insert(output_defs);
+      }
+
+      const ONNX_NAMESPACE::TypeProto* index_input_type = input_ids_arg->TypeAsProto();
+      int elem_type = index_input_type->tensor_type().elem_type();
+      ONNX_NAMESPACE::TensorProto const_tensor;
+      const_tensor.set_name(graph.GenerateNodeArgName("0"));
+      const_tensor.set_data_type(elem_type);
+      static const InlinedVector<int64_t> dims = {};
+      InlinedVector<int64_t> values{0};  // hard code padding index to be 0
+      const_tensor.set_raw_data(values.data(), values.size() * sizeof(int64_t));
+      invalid_value_node_arg = &graph_utils::AddInitializer(graph, const_tensor);
+      break;
     }
   }
 
@@ -426,7 +473,7 @@ Status PaddingElimination::ApplyImpl(Graph& graph, bool& modified, int graph_lev
   reshape_node.SetExecutionProviderType(embedding_node->GetExecutionProviderType());
 
   NodeArg* squeeze_out_arg = InsertNodesForValidIndices(
-      graph, reshape_output_args[0], embedding_node->MutableInputDefs()[2], embedding_node->GetExecutionProviderType());
+      graph, reshape_output_args[0], invalid_value_node_arg, embedding_node->GetExecutionProviderType());
 
   // Add flatten pattern to each input node of the subgraph
   // to flattern the shape of [batch_size, seqlen, ...] to [valid_token_count, ...]
