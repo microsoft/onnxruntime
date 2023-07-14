@@ -70,11 +70,10 @@ GetQDQTestCaseFn BuildQDQBatchNormTestCase(const std::vector<int64_t>& input_sha
  * outputs for QNN and CPU match.
  *
  * \param input_shape The input's shape.
- * \param test_description Description of the test for error reporting.
  * \param expected_ep_assignment How many nodes are expected to be assigned to QNN (All, Some, or None).
  * \param num_modes_in_graph The number of expected nodes in the graph.
  */
-static void RunBatchNormQDQTest(const std::vector<int64_t>& input_shape, const char* test_description,
+static void RunBatchNormQDQTest(const std::vector<int64_t>& input_shape,
                                 ExpectedEPNodeAssignment expected_ep_assignment, int num_nodes_in_graph) {
   ProviderOptions provider_options;
 #if defined(_WIN32)
@@ -88,26 +87,25 @@ static void RunBatchNormQDQTest(const std::vector<int64_t>& input_shape, const c
                   provider_options,
                   11,
                   expected_ep_assignment,
-                  num_nodes_in_graph,
-                  test_description);
+                  num_nodes_in_graph);
 }
 
 // Check that QNN compiles DQ -> BatchNormalization -> Q as a single unit.
 // Use an input of rank 3.
 TEST_F(QnnHTPBackendTests, TestQDQBatchNorm1D) {
-  RunBatchNormQDQTest({1, 2, 3}, "TestQDQBatchNorm1D", ExpectedEPNodeAssignment::All, 1);
+  RunBatchNormQDQTest({1, 2, 3}, ExpectedEPNodeAssignment::All, 1);
 }
 
 // Check that QNN compiles DQ -> BatchNormalization -> Q as a single unit.
 // Use an input of rank 4.
 TEST_F(QnnHTPBackendTests, TestQDQBatchNorm2D) {
-  RunBatchNormQDQTest({2, 3, 4, 5}, "TestQDQBatchNorm2D", ExpectedEPNodeAssignment::All, 1);
+  RunBatchNormQDQTest({2, 3, 4, 5}, ExpectedEPNodeAssignment::All, 1);
 }
 
 // Check that QNN compiles DQ -> BatchNormalization -> Q as a single unit.
 // Use an input of rank 5. QNN BatchNormalization doesn't support 5D on HTP
 TEST_F(QnnHTPBackendTests, TestQDQBatchNorm3D) {
-  RunBatchNormQDQTest({1, 2, 3, 4, 5}, "TestQDQBatchNorm3D", ExpectedEPNodeAssignment::None, 8);
+  RunBatchNormQDQTest({1, 2, 3, 4, 5}, ExpectedEPNodeAssignment::None, 8);
 }
 
 #endif  // defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
