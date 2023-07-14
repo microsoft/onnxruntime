@@ -581,4 +581,3 @@ class OrtBackend:
 
     def __call__(self, graph_module: torch.fx.GraphModule, args) -> torch.fx.GraphModule:
         return self.compile(graph_module, args)
-        return self.compile(graph_module, args)
