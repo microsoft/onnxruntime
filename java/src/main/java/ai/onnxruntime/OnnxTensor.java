@@ -1,6 +1,5 @@
 /*
  * Copyright (c) 2019, 2023, Oracle and/or its affiliates. All rights reserved.
- * Copyright (c) Microsoft Corporation. All rights reserved.
  * Licensed under the MIT License.
  */
 package ai.onnxruntime;
@@ -73,7 +72,7 @@ public class OnnxTensor extends OnnxTensorLike {
         case STRING:
           return getString(OnnxRuntime.ortApiHandle, nativeHandle);
         case FLOAT16:
-          return OrtUtil.mlasFp16ToFloat(
+          return OrtUtil.fp16ToFloat(
               getShort(OnnxRuntime.ortApiHandle, nativeHandle, info.onnxType.value));
         case BFLOAT16:
           return OrtUtil.bf16ToFloat(
