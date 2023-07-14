@@ -30,6 +30,7 @@ namespace openvino_ep {
 
 // Ops which are supported only in models(as intermediate nodes) and not in unit tests
 std::set<std::string> ops_supported_only_in_model = {
+    "Add",
     "Cast",
     "Concat",
     "ConstantOfShape",
