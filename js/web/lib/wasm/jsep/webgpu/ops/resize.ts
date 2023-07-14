@@ -52,14 +52,14 @@ const validateInputs =
       const [roiInputIndex, scalesInputIndex, sizesInputIndex] =
           (opsetVersion > 10) ? [1, 2, 3] : [-1, (inputs.length > 1) ? 1 : -1, -1];
       const rank = inputs[0].dims.length;
-      if (roiInputIndex > 0 && inputs.length > roiInputIndex) {
+      if (roiInputIndex > 0 && inputs.length > roiInputIndex && inputs[roiInputIndex].dims.length > 0) {
         inputs[roiInputIndex].getFloat32Array().forEach((value) => roi.push(value));
 
       } else if (attributes.coordinateTransformMode === 'tf_crop_and_resize') {
         throw new Error('Resize requires RoI input to be specified when coordinateTransformMode is tfCropAndResize');
       }
 
-      if (scalesInputIndex > 0 && inputs.length > scalesInputIndex) {
+      if (scalesInputIndex > 0 && inputs.length > scalesInputIndex && inputs[scalesInputIndex].dims.length > 0) {
         inputs[scalesInputIndex].getFloat32Array().forEach((value) => scales.push(value));
         if (scales.length !== 0 &&
             (scales.length !== rank && (opsetVersion >= 18 && scales.length === attributes.axes.length))) {
