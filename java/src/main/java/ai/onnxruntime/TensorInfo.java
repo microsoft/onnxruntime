@@ -333,15 +333,20 @@ public class TensorInfo implements ValueInfo {
 
     long bufferRemaining = buffer.remaining();
 
+    // Check if size matches
     if (elementCount != bufferRemaining) {
-      throw new OrtException(
-          "Shape "
-              + Arrays.toString(shape)
-              + ", requires "
-              + elementCount
-              + " elements but the buffer has "
-              + bufferRemaining
-              + " elements.");
+      // if not it could be a ByteBuffer passed in, so check how many bytes there are
+      long elemRemaining = bufferRemaining / type.size;
+      if (elementCount != elemRemaining) {
+        throw new OrtException(
+                "Shape "
+                        + Arrays.toString(shape)
+                        + ", requires "
+                        + elementCount
+                        + " elements but the buffer has "
+                        + bufferRemaining
+                        + " elements.");
+      }
     }
 
     return new TensorInfo(

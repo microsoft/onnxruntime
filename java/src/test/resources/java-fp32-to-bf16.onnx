@@ -1,7 +1,7 @@
-"ai.onnxruntime.test2ORT fp32-to-bf16 test:…
-%
-inputoutputcast-0"Cast*
-toort-test-fp32-to-bf16Z!
+"ai.onnxruntime.test2ORT fp32-to-bf16 test:ˆ
+(
+inputoutputcast-0"Cast*	
+to ort-test-fp32-to-bf16Z!
 input
 
 

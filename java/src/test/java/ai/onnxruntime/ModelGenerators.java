@@ -212,7 +212,11 @@ public final class ModelGenerators {
     matmul.addInput("input");
     matmul.addOutput("output");
     matmul.addAttribute(
-        OnnxMl.AttributeProto.newBuilder().setName("to").setI(outputDataType.getNumber()).build());
+        OnnxMl.AttributeProto.newBuilder()
+            .setName("to")
+            .setType(OnnxMl.AttributeProto.AttributeType.INT)
+            .setI(outputDataType.getNumber())
+            .build());
     graph.addNode(matmul);
 
     // Build model
@@ -224,28 +228,26 @@ public final class ModelGenerators {
     model.setDomain("ai.onnxruntime.test");
     model.addOpsetImport(OnnxMl.OperatorSetIdProto.newBuilder().setVersion(18).build());
     try (OutputStream os =
-        Files.newOutputStream(Paths.get("..","..","..","java","src", "test", "resources", "java-" + name + ".onnx"))) {
+        Files.newOutputStream(
+            Paths.get(
+                "..", "..", "..", "java", "src", "test", "resources", "java-" + name + ".onnx"))) {
       model.build().writeTo(os);
     }
   }
 
-  @Test
   public void generateFp16Fp32Cast() throws IOException {
     genCast("fp16-to-fp32", OnnxMl.TensorProto.DataType.FLOAT16, OnnxMl.TensorProto.DataType.FLOAT);
   }
 
-  @Test
   public void generateFp32Fp16Cast() throws IOException {
     genCast("fp32-to-fp16", OnnxMl.TensorProto.DataType.FLOAT, OnnxMl.TensorProto.DataType.FLOAT16);
   }
 
-  @Test
   public void generateBf16Fp32Cast() throws IOException {
     genCast(
         "bf16-to-fp32", OnnxMl.TensorProto.DataType.BFLOAT16, OnnxMl.TensorProto.DataType.FLOAT);
   }
 
-  @Test
   public void generateFp32Bf16Cast() throws IOException {
     genCast(
         "fp32-to-bf16", OnnxMl.TensorProto.DataType.FLOAT, OnnxMl.TensorProto.DataType.BFLOAT16);

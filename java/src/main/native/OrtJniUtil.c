@@ -216,10 +216,15 @@ size_t onnxTypeSize(ONNXTensorElementDataType type) {
         case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8:   // maps to c type uint8_t
         case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8:    // maps to c type int8_t
         case ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL:
+        case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E4M3FN:
+        case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E4M3FNUZ:
+        case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E5M2:
+        case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E5M2FNUZ:
             return 1;
         case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT16:  // maps to c type uint16_t
         case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT16:   // maps to c type int16_t
         case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16:
+        case ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16:    // Non-IEEE floating-point format based on IEEE754 single-precision
             return 2;
         case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT32:  // maps to c type uint32_t
         case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32:   // maps to c type int32_t
@@ -231,7 +236,6 @@ size_t onnxTypeSize(ONNXTensorElementDataType type) {
             return 8;
         case ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING:  // maps to c++ type std::string
         case ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED:
-        case ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16:    // Non-IEEE floating-point format based on IEEE754 single-precision
         case ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX64:   // complex with float32 real and imaginary components
         case ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX128:  // complex with float64 real and imaginary components
         default:

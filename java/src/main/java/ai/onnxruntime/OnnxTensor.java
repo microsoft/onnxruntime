@@ -148,11 +148,13 @@ public class OnnxTensor extends OnnxTensorLike {
       return output;
     } else if (info.type == OnnxJavaType.FLOAT16) {
       // if it's fp16 we need to copy it out by hand.
-      ShortBuffer buffer = getBuffer().asShortBuffer();
+      ByteBuffer buf = getBuffer();
+      ShortBuffer buffer = buf.asShortBuffer();
       return OrtUtil.convertFp16BufferToFloatBuffer(buffer);
     } else if (info.type == OnnxJavaType.BFLOAT16) {
       // if it's bf16 we need to copy it out by hand.
-      ShortBuffer buffer = getBuffer().asShortBuffer();
+      ByteBuffer buf = getBuffer();
+      ShortBuffer buffer = buf.asShortBuffer();
       return OrtUtil.convertBf16BufferToFloatBuffer(buffer);
     } else {
       return null;
