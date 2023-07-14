@@ -39,16 +39,16 @@ Status ActivationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
     NodeAttrHelper helper(node);
     emscripten::val options = emscripten::val::object();
     if (op_type == "Elu") {
-      options.set("alpha", helper.Get("alpha", (float)1.0));
+      options.set("alpha", helper.Get("alpha", 1.0f));
       output = model_builder.GetBuilder().call<emscripten::val>("elu", input, options);
     } else if (op_type == "HardSigmoid") {
-      options.set("alpha", helper.Get("alpha", (float)0.2));
-      options.set("beta", helper.Get("beta", (float)0.5));
+      options.set("alpha", helper.Get("alpha", 0.2f));
+      options.set("beta", helper.Get("beta", 0.5f));
       output = model_builder.GetBuilder().call<emscripten::val>("hardSigmoid", input, options);
     } else if (op_type == "HardSwish") {
       output = model_builder.GetBuilder().call<emscripten::val>("hardSwish", input);
     } else if (op_type == "LeakyRelu") {
-      options.set("alpha", helper.Get("alpha", (float)0.0));
+      options.set("alpha", helper.Get("alpha", 0.0f));
       output = model_builder.GetBuilder().call<emscripten::val>("leakyRelu", input, options);
     } else if (op_type == "Relu") {
       output = model_builder.GetBuilder().call<emscripten::val>("relu", input);
@@ -73,7 +73,7 @@ Status ActivationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 // Operator support related.
 
 int ActivationOpBuilder::GetMinSupportedOpSet(const Node& /* node */) const {
-  // HardSwish is available since opset 14, and the reset ops opset 5-
+  // HardSwish is available since opset 14, and the rest ops opset 5-
   // uses consumed_inputs attribute which is not supported for now.
   return 6;
 }

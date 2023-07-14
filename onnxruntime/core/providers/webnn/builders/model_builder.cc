@@ -73,13 +73,13 @@ void ModelBuilder::PreprocessActivations() {
     } else if (op_type == "Elu") {
       NodeAttrHelper helper(*node);
       emscripten::val options = emscripten::val::object();
-      options.set("alpha", helper.Get("alpha", (float)1.0));
+      options.set("alpha", helper.Get("alpha", 1.0f));
       activation_nodes_.emplace(node->Index(), wnn_builder_.call<emscripten::val>("elu", options));
     } else if (op_type == "HardSigmoid") {
       NodeAttrHelper helper(*node);
       emscripten::val options = emscripten::val::object();
-      options.set("alpha", helper.Get("alpha", (float)0.2));
-      options.set("beta", helper.Get("beta", (float)0.5));
+      options.set("alpha", helper.Get("alpha", 0.2f));
+      options.set("beta", helper.Get("beta", 0.5f));
       activation_nodes_.emplace(node->Index(), wnn_builder_.call<emscripten::val>("hardSigmoid", options));
     } else if (op_type == "HardSwish") {
       activation_nodes_.emplace(node->Index(), wnn_builder_.call<emscripten::val>("hardSwish"));
@@ -88,7 +88,7 @@ void ModelBuilder::PreprocessActivations() {
     } else if (op_type == "LeakyRelu") {
       NodeAttrHelper helper(*node);
       emscripten::val options = emscripten::val::object();
-      options.set("alpha", helper.Get("alpha", (float)0.0));
+      options.set("alpha", helper.Get("alpha", 0.0f));
       activation_nodes_.emplace(node->Index(), wnn_builder_.call<emscripten::val>("leakyRelu", options));
     } else if (op_type == "Sigmoid") {
       activation_nodes_.emplace(node->Index(), wnn_builder_.call<emscripten::val>("sigmoid"));
