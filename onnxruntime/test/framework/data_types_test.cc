@@ -441,7 +441,7 @@ TEST_F(DataTypeTest, MlFloat16ConvertFloatToMLFloat16) {
     for (size_t i = 0; i < sizeof(sample) / sizeof(float); ++i) {
       const double diff = std::fabs(sample[i] - converted[i].ToFloat());
       if ((std::isnan(diff) && !std::isnan(sample[i])) || diff > FLT_EPSILON) {
-        EXPECT_TRUE(false);
+        FAIL();
       }
     }
 
@@ -451,7 +451,7 @@ TEST_F(DataTypeTest, MlFloat16ConvertFloatToMLFloat16) {
     for (size_t i = 0; i < sizeof(sample) / sizeof(float); ++i) {
       const double diff = std::fabs(sample[i] - back_converted[i]);
       if ((std::isnan(diff) && !std::isnan(sample[i])) || diff > FLT_EPSILON) {
-        EXPECT_TRUE(false);
+        FAIL();
       }
     }
   }

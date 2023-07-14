@@ -22,7 +22,7 @@ enum class endian {
   big = __ORDER_BIG_ENDIAN__,
   native = __BYTE_ORDER__,
 #else
-#error onnxruntime::endian is not implemented in this environment.
+#error onnxruntime_float16::detail::endian is not implemented in this environment.
 #endif
 };
 
@@ -43,7 +43,7 @@ struct Float16Impl {
   /// </summary>
   /// <param name="v"></param>
   /// <returns></returns>
-  static uint16_t ToUint16Impl(float v) noexcept;
+  constexpr static uint16_t ToUint16Impl(float v) noexcept;
 
   /// <summary>
   /// Converts float16 to float
@@ -245,7 +245,7 @@ union float32_bits {
 }  // namespace detail
 
 template <class Derived>
-inline uint16_t Float16Impl<Derived>::ToUint16Impl(float v) noexcept {
+inline constexpr uint16_t Float16Impl<Derived>::ToUint16Impl(float v) noexcept {
   detail::float32_bits f;
   f.f = v;
 

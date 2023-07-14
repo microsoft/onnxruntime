@@ -116,7 +116,7 @@ namespace Microsoft.ML.OnnxRuntime
         }
 
         /// <summary>
-        /// Converts bfloat16 ushort bits repreentation to single precision bits which then in turn can be
+        /// Converts bfloat16 ushort bits representation to single precision bits which then in turn can be
         /// manipulated or converted to float using UInt32BitsToSingle()
         /// </summary>
         /// <param name="bfloatBits">ushort bits representation of bfloat16</param>
@@ -155,14 +155,14 @@ namespace Microsoft.ML.OnnxRuntime
         /// <summary>
         /// Creates float from sign, exponent and significand
         /// </summary>
-        /// <param name="sign"></param>
-        /// <param name="exp"></param>
-        /// <param name="sig"></param>
+        /// <param name="sign">true if negative</param>
+        /// <param name="exponent">exponent</param>
+        /// <param name="significand">significand</param>
         /// <returns></returns>
-        internal static float CreateSingle(bool sign, byte exp, uint sig)
+        internal static float CreateSingle(bool sign, byte exponent, uint significand)
         {
             uint signInt = (sign ? 1U : 0U) << SingleSignShift;
-            uint expInt = ((uint)exp << SingleBiasedExponentShift) + sig;
+            uint expInt = ((uint)exponent << SingleBiasedExponentShift) + significand;
             uint singleBits = signInt + expInt;
 
             return UInt32BitsToSingle(singleBits);
@@ -1288,7 +1288,7 @@ namespace Microsoft.ML.OnnxRuntime
             uint singleBits = BitOpsUtils.SingleToUInt32Bits(value);
             ushort bfloatBits = BitOpsUtils.SingleBitsToBFloat16Bits(singleBits);
 
-            // Round this up to the nearest even.
+            // Round this up. Implement the same logic pytorch uses for rounding.
             // We use RoundingBase that is 0x7FFF + (1), so we carry the 1 to the next bit.
             // either the last bfloat bit is 1 or singleBits have some bits set.
             singleBits += ((uint)bfloatBits & 1) + RoundingBase;
