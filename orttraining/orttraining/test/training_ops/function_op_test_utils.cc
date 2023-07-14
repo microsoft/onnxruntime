@@ -2,30 +2,31 @@
 // Licensed under the MIT License.
 
 #include "gtest/gtest.h"
-#include "test/providers/provider_test_utils.h"
 #include "core/session/inference_session.h"
 #include "core/graph/graph.h"
-#include "orttraining/test/training_ops/function_op_test_utils.h"
+
 #include "orttraining/core/graph/graph_augmenter.h"
+#include "orttraining/test/training_ops/function_op_test_utils.h"
+
+#include "test/providers/provider_test_utils.h"
+#include "test/util/include/asserts.h"
 
 namespace onnxruntime {
 namespace test {
 
-TwoDArray OpFunctionTester::RunFunctionBodyGraphOnCPU() {
-#ifndef NDEBUG
-  run_called_ = true;
-#endif
+void OpFunctionTester::RunFunctionBodyGraphOnCPU(TwoDArray& results) {
+  SetTestFunctionCalled();
 
-  auto p_model = BuildGraph();
-  auto& graph = p_model->MainGraph();
+  auto& model = BuildModel();
+  auto& graph = model.MainGraph();
+  const auto& op = Op();
 
-  Status status = graph.Resolve();
-  ORT_ENFORCE(status.IsOK());
+  ASSERT_STATUS_OK(graph.Resolve());
 
   auto& node = *graph.Nodes().begin();
-  ORT_ENFORCE(node.OpType() == op_);
+  ASSERT_EQ(node.OpType(), op);
   // Inline function will call Resolve itself
-  ORT_THROW_IF_ERROR(graph.InlineFunction(node));
+  ASSERT_STATUS_OK(graph.InlineFunction(node));
 
   // Hookup the inputs and outputs
   std::unordered_map<std::string, OrtValue> feeds;
@@ -34,23 +35,19 @@ TwoDArray OpFunctionTester::RunFunctionBodyGraphOnCPU() {
 
   // Run the model
   SessionOptions so;
-  so.session_logid = op_;
-  so.session_log_verbosity_level = 1;
+  so.session_logid = op;
 
   InferenceSession cpu_session_object{so, GetEnvironment()};
 
   // Run the inlined graph with cpu
   std::string s1;
-  p_model->ToProto().SerializeToString(&s1);
+  model.ToProto().SerializeToString(&s1);
   std::istringstream str(s1);
-  status = cpu_session_object.Load(str);
-  EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
-
-  status = cpu_session_object.Initialize();
-  EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
+  ASSERT_STATUS_OK(cpu_session_object.Load(str));
+  ASSERT_STATUS_OK(cpu_session_object.Initialize());
 
   RunOptions run_options;
-  run_options.run_tag = op_;
+  run_options.run_tag = op;
   run_options.run_log_verbosity_level = 1;
 
 #ifdef ENABLE_TRAINING
@@ -59,23 +56,20 @@ TwoDArray OpFunctionTester::RunFunctionBodyGraphOnCPU() {
 #endif
 
   std::vector<OrtValue> cpu_fetches;
-  status = cpu_session_object.Run(run_options, feeds, output_names, &cpu_fetches);
-  EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
+  ASSERT_STATUS_OK(cpu_session_object.Run(run_options, feeds, output_names, &cpu_fetches));
 
   auto fetch_index = 0;
 
-  auto run_results = TwoDArray(cpu_fetches.size());
+  results = TwoDArray(cpu_fetches.size());
 
   for (auto& fetch : cpu_fetches) {
     const Tensor& t = fetch.Get<Tensor>();
     auto float_val = t.Data<float>();
     for (auto i = 0; i < t.Shape().Size(); ++i) {
-      run_results[fetch_index].push_back(float_val[i]);
+      results[fetch_index].push_back(float_val[i]);
     }
     fetch_index++;
   }
-
-  return run_results;
 }
 
 OpFunctionTester::~OpFunctionTester(){};
@@ -122,13 +116,14 @@ void CompareResults(const onnxruntime::training::OpDef& op_def,
                                                         CreateEmpty2DArray(output_dims), output_dims,
                                                         attributes,
                                                         opset_version);
-  auto run_results = inline_tester->RunFunctionBodyGraphOnCPU();
+  TwoDArray results;
+  ASSERT_NO_FATAL_FAILURE(inline_tester->RunFunctionBodyGraphOnCPU(results));
 
   // Use run_results got from inline testing as expected data,
   // test against all registered kernels.
   auto test = CreateOpTester<OpTester>(op_def,
                                        input_data, input_dims,
-                                       run_results, output_dims,
+                                       results, output_dims,
                                        attributes,
                                        opset_version);
   test->Run(OpTester::ExpectResult::kExpectSuccess, "", {});

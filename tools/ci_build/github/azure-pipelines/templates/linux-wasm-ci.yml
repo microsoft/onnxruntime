@@ -1,0 +1,204 @@
+parameters:
+- name: CommitOverride
+  type: boolean
+  default: false
+
+- name: BuildConfig
+  type: string
+  default: 'Debug'
+
+- name: ExtraBuildArgs
+  type: string
+  default: ''
+
+- name: PoolName
+  type: string
+  default: 'onnxruntime-Ubuntu2004-AMD-CPU'
+
+- name: SkipPublish
+  type: boolean
+  default: false
+
+- name: TimeoutInMinutes
+  default: 180
+
+- name: BuildJsep
+  type: boolean
+  default: false
+
+# In fact, it's only used on Linux for compiler cache.
+- name: BuildStaticLib
+  type: boolean
+  default: false
+
+- name: WithCache
+  type: boolean
+  default: false
+
+jobs:
+- job: build_WASM
+  pool:
+    name: ${{ parameters.PoolName }}
+  variables:
+    EnvSetupScript: setup_env.bat
+    buildArch: x64
+    CommonBuildArgs: '--parallel --config ${{ parameters.BuildConfig }} --skip_submodule_sync --build_wasm --use_xnnpack --emsdk_version releases-7c905cfc1ca6699f6ccb288ae174902cfbdcf0a2-64bit ${{ parameters.ExtraBuildArgs }}'
+    runCodesignValidationInjection: false
+    TODAY: $[format('{0:dd}{0:MM}{0:yyyy}', pipeline.startTime)]
+    ORT_CACHE_DIR: $(Agent.TempDirectory)/ort_ccache
+  timeoutInMinutes: ${{ parameters.TimeoutInMinutes }}
+  workspace:
+    clean: all
+  steps:
+  - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
+    displayName: 'Clean Agent Directories'
+    condition: always()
+  - checkout: self
+  - task: DownloadPipelineArtifact@2
+    inputs:
+      artifact: '__commit'
+      path: $(Pipeline.Workspace)
+    displayName: 'Get commit SHA'
+    condition: eq('${{ parameters.CommitOverride }}', 'true')
+  - script: |
+     export __commit__=<$(Pipeline.Workspace)/__commit.txt
+     git fetch origin +$__commit__:refs/remotes/origin/$__commit__
+     git checkout --force $__commit__
+    workingDirectory: '$(Build.SourcesDirectory)'
+    displayName: 'Read commit SHA and checkout'
+    condition: eq('${{ parameters.CommitOverride }}', 'true')
+  - script: |
+     git submodule sync --recursive
+     git submodule update --init --recursive
+    workingDirectory: '$(Build.SourcesDirectory)'
+    displayName: 'Checkout submodules'
+  - task: UsePythonVersion@0
+    inputs:
+      versionSpec: '3.8'
+      addToPath: true
+      architecture: $(buildArch)
+  - task: NodeTool@0
+    inputs:
+      versionSpec: '16.x'
+  - template: download-deps.yml
+
+  - task: PythonScript@0
+    displayName: 'Update deps.txt'
+    inputs:
+      scriptPath: $(Build.SourcesDirectory)/tools/ci_build/replace_urls_in_deps.py
+      arguments: --new_dir $(Build.BinariesDirectory)/deps
+      workingDirectory: $(Build.BinariesDirectory)
+
+  - script: |
+      set -ex
+      cd '$(Build.SourcesDirectory)/cmake/external/emsdk'
+      ./emsdk install 3.1.37 ccache-git-emscripten-64bit
+      ./emsdk activate 3.1.37 ccache-git-emscripten-64bit
+      ln -s $(Build.SourcesDirectory)/cmake/external/emsdk/ccache/git-emscripten_64bit/bin/ccache /usr/local/bin/ccache
+    displayName: 'emsdk install and activate ccache for emscripten'
+    condition: eq('${{ parameters.WithCache }}', 'true')
+
+  - template: build-linux-wasm-step.yml
+    parameters:
+      Today: $(Today)
+      ${{ if eq(parameters.BuildStaticLib, true)}}:
+        AdditionalKey: wasm | ${{ parameters.BuildConfig }} | static
+      ${{ else }}:
+        AdditionalKey: wasm | ${{ parameters.BuildConfig }}
+      CacheDir: $(ORT_CACHE_DIR)/wasm
+      Arguments: '$(CommonBuildArgs) --build_dir $(Build.BinariesDirectory)/wasm'
+      DisplayName: 'Build and test (node)'
+      WithCache: ${{ parameters.WithCache }}
+
+  - template: build-linux-wasm-step.yml
+    parameters:
+      Today: $(Today)
+      ${{ if eq(parameters.BuildStaticLib, true)}}:
+        AdditionalKey: wasm_threads | ${{ parameters.BuildConfig }} | static
+      ${{ else }}:
+        AdditionalKey: wasm_threads | ${{ parameters.BuildConfig }}
+      CacheDir: $(ORT_CACHE_DIR)/wasm_threads
+      Arguments: '$(CommonBuildArgs) --build_dir $(Build.BinariesDirectory)/wasm_threads --enable_wasm_threads'
+      DisplayName: 'Build and test (node) (threads)'
+      WithCache: ${{ parameters.WithCache }}
+
+  - template: build-linux-wasm-step.yml
+    parameters:
+      Today: $(Today)
+      ${{ if eq(parameters.BuildStaticLib, true)}}:
+        AdditionalKey: wasm_simd_threads | ${{ parameters.BuildConfig }} | static
+      ${{ else }}:
+        AdditionalKey: wasm_simd_threads | ${{ parameters.BuildConfig }}
+      CacheDir: $(ORT_CACHE_DIR)/wasm_simd_threads
+      Arguments: '$(CommonBuildArgs) --build_dir $(Build.BinariesDirectory)/wasm_simd_threads --enable_wasm_simd --enable_wasm_threads --wasm_run_tests_in_browser'
+      DisplayName: 'Build and test (node) (simd + threads)'
+      WithCache: ${{ parameters.WithCache }}
+
+  - template: build-linux-wasm-step.yml
+    parameters:
+      Today: $(Today)
+      ${{ if eq(parameters.BuildStaticLib, true)}}:
+        AdditionalKey: wasm_simd | ${{ parameters.BuildConfig }} | static
+      ${{ else }}:
+        AdditionalKey: wasm_simd | ${{ parameters.BuildConfig }}
+      CacheDir: $(ORT_CACHE_DIR)/wasm_simd
+      Arguments: '$(CommonBuildArgs) --build_dir $(Build.BinariesDirectory)/wasm_simd --enable_wasm_simd'
+      DisplayName: 'Build and test (node) (simd)'
+      WithCache: ${{ parameters.WithCache }}
+
+  - ${{ if eq(parameters.BuildJsep, true) }}:
+    - template: build-linux-wasm-step.yml
+      parameters:
+        Today: $(Today)
+        ${{ if eq(parameters.BuildStaticLib, true)}}:
+          AdditionalKey: wasm_simd_jsep | ${{ parameters.BuildConfig }} | static
+        ${{ else }}:
+          AdditionalKey: wasm_simd_jsep | ${{ parameters.BuildConfig }}
+        CacheDir: $(ORT_CACHE_DIR)/wasm_simd_jsep
+        Arguments: '$(CommonBuildArgs) --build_dir $(Build.BinariesDirectory)/wasm_simd_jsep --enable_wasm_simd --use_jsep --target onnxruntime_webassembly --skip_tests'
+        DisplayName: 'Build (simd + JSEP)'
+        WithCache: ${{ parameters.WithCache }}
+    - template: build-linux-wasm-step.yml
+      parameters:
+        Today: $(Today)
+        ${{ if eq(parameters.BuildStaticLib, true)}}:
+          AdditionalKey: wasm_simd_threads_jsep | ${{ parameters.BuildConfig }} | static
+        ${{ else }}:
+          AdditionalKey: wasm_simd_threads_jsep | ${{ parameters.BuildConfig }}
+        CacheDir: $(ORT_CACHE_DIR)/wasm_simd_threads_jsep
+        Arguments: '$(CommonBuildArgs) --build_dir $(Build.BinariesDirectory)/wasm_simd_threads_jsep --enable_wasm_simd --enable_wasm_threads --use_jsep --target onnxruntime_webassembly --skip_tests'
+        DisplayName: 'Build (simd + threads + JSEP)'
+        WithCache: ${{ parameters.WithCache }}
+
+  - ${{ if eq(parameters.SkipPublish, false) }}:
+    - script: |
+        cp $(Build.BinariesDirectory)/wasm/${{ parameters.BuildConfig }}/ort-wasm*.* $(Build.ArtifactStagingDirectory)
+        cp $(Build.BinariesDirectory)/wasm_threads/${{ parameters.BuildConfig }}/ort-wasm*.* $(Build.ArtifactStagingDirectory)
+        cp $(Build.BinariesDirectory)/wasm_simd_threads/${{ parameters.BuildConfig }}/ort-wasm*.* $(Build.ArtifactStagingDirectory)
+        cp $(Build.BinariesDirectory)/wasm_simd/${{ parameters.BuildConfig }}/ort-wasm*.* $(Build.ArtifactStagingDirectory)
+        if [ -d $(Build.BinariesDirectory)/wasm_simd_jsep ]; then
+          cp $(Build.BinariesDirectory)/wasm_simd_jsep/${{ parameters.BuildConfig }}/ort-wasm-simd.wasm $(Build.ArtifactStagingDirectory)/ort-wasm-simd.jsep.wasm
+          cp $(Build.BinariesDirectory)/wasm_simd_jsep/${{ parameters.BuildConfig }}/ort-wasm-simd.js $(Build.ArtifactStagingDirectory)/ort-wasm-simd.jsep.js
+        fi
+        if [ -d $(Build.BinariesDirectory)/wasm_simd_threads_jsep ]; then
+          cp $(Build.BinariesDirectory)/wasm_simd_threads_jsep/${{ parameters.BuildConfig }}/ort-wasm-simd-threaded.wasm $(Build.ArtifactStagingDirectory)/ort-wasm-simd-threaded.jsep.wasm
+          cp $(Build.BinariesDirectory)/wasm_simd_threads_jsep/${{ parameters.BuildConfig }}/ort-wasm-simd-threaded.js $(Build.ArtifactStagingDirectory)/ort-wasm-simd-threaded.jsep.js
+          cp $(Build.BinariesDirectory)/wasm_simd_threads_jsep/${{ parameters.BuildConfig }}/ort-wasm-simd-threaded.worker.js $(Build.ArtifactStagingDirectory)/ort-wasm-simd-threaded.jsep.worker.js
+        fi
+      displayName: 'Create Artifacts'
+  - ${{ if eq(parameters.SkipPublish, false) }}:
+    - task: PublishPipelineArtifact@0
+      displayName: 'Publish Pipeline Artifact'
+      inputs:
+        artifactName: '${{ parameters.BuildConfig }}_wasm'
+        targetPath: '$(Build.ArtifactStagingDirectory)'
+  - task: PublishTestResults@2
+    displayName: 'Publish unit test results'
+    inputs:
+      testResultsFiles: '**/*.results.xml'
+      searchFolder: '$(Build.BinariesDirectory)'
+      testRunTitle: 'Unit Test Run'
+    condition: and(succeededOrFailed(), eq('${{ parameters.BuildConfig }}', 'Debug'))
+  - template: component-governance-component-detection-steps.yml
+    parameters :
+      condition : 'succeeded'

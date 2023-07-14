@@ -112,7 +112,7 @@ if (onnxruntime_USE_NCCL)
 endif()
 
 if(APPLE)
-  set(ONNXRUNTIME_SO_LINK_FLAG "-Xlinker -exported_symbols_list ${ONNXRUNTIME_ROOT}/python/exported_symbols.lst")
+  set(ONNXRUNTIME_SO_LINK_FLAG "-Xlinker -exported_symbols_list -Xlinker ${ONNXRUNTIME_ROOT}/python/exported_symbols.lst")
 elseif(UNIX)
   if (onnxruntime_ENABLE_EXTERNAL_CUSTOM_OP_SCHEMAS)
     set(ONNXRUNTIME_SO_LINK_FLAG "-Xlinker --version-script=${ONNXRUNTIME_ROOT}/python/version_script_expose_onnx_protobuf.lds -Xlinker --gc-sections")
@@ -223,7 +223,7 @@ if (MSVC)
   # Explicitly use the release version of the python library to make the project file consistent with this.
   target_link_libraries(onnxruntime_pybind11_state PRIVATE ${Python_LIBRARY_RELEASE})
 elseif (APPLE)
-  set_target_properties(onnxruntime_pybind11_state PROPERTIES LINK_FLAGS "${ONNXRUNTIME_SO_LINK_FLAG} -undefined dynamic_lookup")
+  set_target_properties(onnxruntime_pybind11_state PROPERTIES LINK_FLAGS "${ONNXRUNTIME_SO_LINK_FLAG} -Xlinker -undefined -Xlinker dynamic_lookup")
   set_target_properties(onnxruntime_pybind11_state PROPERTIES
     INSTALL_RPATH "@loader_path"
     BUILD_WITH_INSTALL_RPATH TRUE
@@ -387,8 +387,14 @@ if (onnxruntime_ENABLE_TRAINING)
   file(GLOB onnxruntime_python_ortmodule_torch_cpp_ext_fused_ops_srcs CONFIGURE_DEPENDS
     "${ORTTRAINING_SOURCE_DIR}/python/training/ortmodule/torch_cpp_extensions/cuda/fused_ops/*"
   )
+  file(GLOB onnxruntime_python_ort_triton_srcs CONFIGURE_DEPENDS
+    "${ORTTRAINING_SOURCE_DIR}/python/training/ort_triton/*.py"
+  )
+  file(GLOB onnxruntime_python_ort_triton_kernel_srcs CONFIGURE_DEPENDS
+    "${ORTTRAINING_SOURCE_DIR}/python/training/ort_triton/kernel/*.py"
+  )
   file(GLOB onnxruntime_python_utils_data_srcs CONFIGURE_DEPENDS
-  "${ORTTRAINING_SOURCE_DIR}/python/training/utils/data/*"
+    "${ORTTRAINING_SOURCE_DIR}/python/training/utils/data/*"
   )
   file(GLOB onnxruntime_python_utils_hooks_srcs CONFIGURE_DEPENDS
   "${ORTTRAINING_SOURCE_DIR}/python/training/utils/hooks/*"
@@ -503,6 +509,12 @@ file(GLOB onnxruntime_mobile_helpers_srcs CONFIGURE_DEPENDS
 file(GLOB onnxruntime_qdq_helper_srcs CONFIGURE_DEPENDS
     ${REPO_ROOT}/tools/python/util/qdq_helpers/*.py
 )
+
+if (onnxruntime_USE_OPENVINO)
+  file(GLOB onnxruntime_python_openvino_python_srcs CONFIGURE_DEPENDS
+    ${REPO_ROOT}/tools/python/util/add_openvino_win_libs.py
+  )
+endif()
 
 set(build_output_target onnxruntime_common)
 if(NOT onnxruntime_ENABLE_STATIC_ANALYSIS)
@@ -630,6 +642,15 @@ add_custom_command(
       $<TARGET_FILE_DIR:${build_output_target}>
 )
 
+if (onnxruntime_USE_OPENVINO)
+  add_custom_command(
+    TARGET onnxruntime_pybind11_state POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy
+        ${onnxruntime_python_openvino_python_srcs}
+        $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/tools/
+  )
+endif()
+
 if (onnxruntime_ENABLE_EXTERNAL_CUSTOM_OP_SCHEMAS)
   add_custom_command(
     TARGET onnxruntime_pybind11_state POST_BUILD
@@ -710,6 +731,8 @@ if (onnxruntime_ENABLE_TRAINING)
     COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/ortmodule/torch_cpp_extensions/cpu/torch_interop_utils
     COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/ortmodule/torch_cpp_extensions/cuda/torch_gpu_allocator
     COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/ortmodule/torch_cpp_extensions/cuda/fused_ops
+    COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/ort_triton
+    COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/ort_triton/kernel
     COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/utils/data/
     COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/utils/hooks/
     COMMAND ${CMAKE_COMMAND} -E copy
@@ -761,6 +784,12 @@ if (onnxruntime_ENABLE_TRAINING)
         ${onnxruntime_python_ortmodule_torch_cpp_ext_fused_ops_srcs}
         $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/ortmodule/torch_cpp_extensions/cuda/fused_ops/
     COMMAND ${CMAKE_COMMAND} -E copy
+        ${onnxruntime_python_ort_triton_srcs}
+        $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/ort_triton/
+    COMMAND ${CMAKE_COMMAND} -E copy
+        ${onnxruntime_python_ort_triton_kernel_srcs}
+        $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/ort_triton/kernel/
+    COMMAND ${CMAKE_COMMAND} -E copy
         ${onnxruntime_python_utils_data_srcs}
         $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/utils/data/
     COMMAND ${CMAKE_COMMAND} -E copy
@@ -786,7 +815,6 @@ if (onnxruntime_ENABLE_TRAINING)
       COMMAND ${CMAKE_COMMAND} -E copy
         ${onnxruntime_python_api_srcs}
         $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/api/
-
     )
   endif()
 endif()

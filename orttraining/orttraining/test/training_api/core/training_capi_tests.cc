@@ -10,6 +10,7 @@
 #include "orttraining/training_api/checkpoint.h"
 
 #include "orttraining/test/training_api/core/data_utils.h"
+#include "test/util/include/asserts.h"
 #include "test/util/include/temp_dir.h"
 
 namespace onnxruntime::training::test {
@@ -36,6 +37,33 @@ TEST(TrainingCApiTest, SaveCheckpoint) {
   Ort::CheckpointState new_checkpoint_state = Ort::CheckpointState::LoadCheckpoint(checkpoint_path);
   Ort::TrainingSession new_training_session = Ort::TrainingSession(env, Ort::SessionOptions(),
                                                                    new_checkpoint_state, model_uri);
+}
+
+TEST(TrainingCApiTest, LoadCheckpointFromBuffer) {
+  Ort::Env env;
+  size_t num_bytes = 0;
+  PathString checkpoint_path = MODEL_FOLDER "checkpoint.ckpt";
+  ASSERT_STATUS_OK(Env::Default().GetFileLength(checkpoint_path.c_str(), num_bytes));
+  std::vector<uint8_t> checkpoint_bytes(num_bytes);
+
+  std::ifstream bytes_stream(checkpoint_path, std::ifstream::in | std::ifstream::binary);
+  bytes_stream.read(reinterpret_cast<char*>(checkpoint_bytes.data()), num_bytes);
+
+  ASSERT_TRUE(bytes_stream);
+
+  Ort::CheckpointState checkpoint_state = Ort::CheckpointState::LoadCheckpointFromBuffer(checkpoint_bytes);
+
+  auto test_dir = ORT_TSTR("save_checkpoint_dir");
+  if (Env::Default().FolderExists(test_dir)) {
+    ORT_ENFORCE(Env::Default().DeleteFolder(test_dir).IsOK());
+  }
+  onnxruntime::test::TemporaryDirectory tmp_dir{test_dir};
+  PathString new_checkpoint_path{
+      ConcatPathComponent<PathChar>(tmp_dir.Path(), ORT_TSTR("new_checkpoint.ckpt"))};
+
+  Ort::CheckpointState::SaveCheckpoint(checkpoint_state, new_checkpoint_path);
+
+  Ort::CheckpointState new_checkpoint_state = Ort::CheckpointState::LoadCheckpoint(new_checkpoint_path);
 }
 
 TEST(TrainingCApiTest, AddIntProperty) {
@@ -136,6 +164,60 @@ TEST(TrainingCApiTest, FromBuffer) {
   Ort::Value buffer(buffer_impl);
 
   training_session.FromBuffer(buffer);
+}
+
+TEST(TrainingCApiTest, RegisterCustomOps) {
+  auto model_uri = MODEL_FOLDER "custom_ops/training_model.onnx";
+
+  Ort::Env env;
+  Ort::CheckpointState checkpoint_state = Ort::CheckpointState::LoadCheckpoint(MODEL_FOLDER "custom_ops/checkpoint");
+  Ort::SessionOptions session_options;
+
+#if defined(_WIN32)
+  session_options.RegisterCustomOpsLibrary(ORT_TSTR("custom_op_library.dll"));
+#elif defined(__APPLE__)
+  session_options.RegisterCustomOpsLibrary(ORT_TSTR("libcustom_op_library.dylib"));
+#else
+  session_options.RegisterCustomOpsLibrary(ORT_TSTR("libcustom_op_library.so"));
+#endif
+
+#ifdef USE_CUDA
+  Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_CUDA(session_options, 0));
+#endif
+
+  Ort::TrainingSession training_session = Ort::TrainingSession(env, session_options, checkpoint_state, model_uri);
+
+  Ort::MemoryInfo memory_info = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
+
+  std::vector<Ort::Value> ort_inputs;
+  std::vector<int64_t> input_shape{3, 5};
+
+  std::vector<float> x{1.1f, 2.2f, 3.3f, 4.4f, 5.5f,
+                       6.6f, 7.7f, 8.8f, 9.9f, 10.0f,
+                       11.1f, 12.2f, 13.3f, 14.4f, 15.5f};
+  ort_inputs.emplace_back(Ort::Value::CreateTensor(memory_info, x.data(),
+                                                   x.size() * sizeof(float),
+                                                   input_shape.data(), input_shape.size(),
+                                                   ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT));
+
+  std::vector<float> y{15.5f, 14.4f, 13.3f, 12.2f, 11.1f,
+                       10.0f, 9.9f, 8.8f, 7.7f, 6.6f,
+                       5.5f, 4.4f, 3.3f, 2.2f, 1.1f};
+  ort_inputs.emplace_back(Ort::Value::CreateTensor(memory_info, y.data(),
+                                                   y.size() * sizeof(float),
+                                                   input_shape.data(), input_shape.size(),
+                                                   ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT));
+
+  std::vector<int64_t> labels{0, 8, 4};
+  std::vector<int64_t> labels_shape{3};
+  ort_inputs.emplace_back(Ort::Value::CreateTensor(memory_info, labels.data(),
+                                                   labels.size() * sizeof(int64_t),
+                                                   labels_shape.data(), labels_shape.size(),
+                                                   ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64));
+
+  auto loss = training_session.TrainStep(ort_inputs);
+  ASSERT_EQ(loss.size(), 1U);
+  ASSERT_TRUE(loss.front().IsTensor());
 }
 
 }  // namespace onnxruntime::training::test

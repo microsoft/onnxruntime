@@ -239,6 +239,12 @@ static void RunAttentionTest(
       tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
     }
 
+    if (enable_rocm) {
+      std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+      execution_providers.push_back(DefaultRocmExecutionProvider(/*test_tunable_op=*/true));
+      tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+    }
+
     if (enable_cpu) {
       std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
       execution_providers.push_back(DefaultCpuExecutionProvider());
@@ -1644,7 +1650,7 @@ TEST(AttentionTest, AttentionUnidirectional3DMask) {
       1, 1};
 
   std::vector<float> output_data = {
-      3.0146f, 0.1142f, 3.9834f, 5.3394f,
+      -4.09f, 0.42f, -0.11f, 0.57f,
       8.69f, -0.13f, 4.25f, 5.65f,
       8.69f, -0.13f, 4.25f, 5.65f,
       3.96967912f, 0.07314367f, 4.25f, 5.65f};
@@ -1686,7 +1692,7 @@ TEST(AttentionTest, AttentionUnidirectionalAttentionMask) {
   std::vector<int32_t> mask_index_data = {0, 1, 1, 1};
 
   std::vector<float> output_data = {
-      3.0146f, 0.1142f, 3.9834f, 5.3394f,
+      -4.09f, 0.42f, -0.11f, 0.57f,
       8.69f, -0.13f, 4.25f, 5.65f,
       8.69f, -0.13f, 4.25f, 5.65f,
       3.96967912f, 0.07314367f, 4.25f, 5.65f};
@@ -1728,7 +1734,7 @@ TEST(AttentionTest, AttentionWithNormFactor) {
   std::vector<int32_t> mask_index_data = {0, 1, 1, 1};
 
   std::vector<float> output_data = {
-      3.0146f, 0.1142f, 3.9834f, 5.3394f,
+      -4.09f, 0.42f, -0.11f, 0.57f,
       8.69f, -0.13f, 4.25f, 5.65f,
       8.69f, -0.13f, 4.25f, 5.65f,
       3.96967912f, 0.07314367f, 4.25f, 5.65f};
@@ -1751,32 +1757,16 @@ TEST(AttentionTest, AttentionWithNormFactor) {
 TEST(AttentionTest, AttentionWithNeoXRotaryEmbedding) {
   int batch_size = 2;
   int sequence_length = 2;
-  int hidden_size = 4;
-  int number_of_heads = 2;
+  int hidden_size = 64;
+  int number_of_heads = 1;
 
-  std::vector<float> input_data = {
-      0.5f, 0.2f, 0.3f, -0.6f,
-      0.8f, -0.5f, 0.0f, 1.f,
-      0.8f, -0.5f, 0.0f, 1.f,
-      0.5f, 0.2f, 0.3f, -0.6f};
+  std::vector<float> input_data = {};
+  std::vector<float> weight_data = {};
+  std::vector<float> bias_data = {};
+  std::vector<int32_t> mask_index_data = {1, 1, 1, 1};
+  std::vector<float> output_data = {};
 
-  std::vector<float> weight_data = {
-      0.1f, -0.2f, 0.3f, 1.0f, 1.1f, 0.3f, 0.5f, 0.2f, 0.3f, -0.6f, 1.5f, 2.0f,
-      0.5f, 0.1f, 0.4f, 1.6f, 1.0f, 2.0f, 0.4f, 0.8f, 0.9f, 0.1f, -1.3f, 0.7f,
-      0.3f, 0.2f, 4.0f, 2.2f, 1.6f, 1.1f, 0.7f, 0.2f, 0.4f, 1.0f, 1.2f, 0.5f,
-      0.2f, 0.1f, 0.4f, 1.6f, 2.4f, 3.3f, 2.1f, 4.2f, 8.4f, 0.0f, 2.1f, 3.2f};
-
-  std::vector<float> bias_data = {
-      -0.5f, 0.6f, 1.2f, 2.1f, 0.5f, 0.7f, 0.2f, 1.2f, 0.5f, 0.4f, 0.3f, 1.2f};
-
-  // Test mask start position > 0.
-  std::vector<int32_t> mask_index_data = {0, 1, 1, 1};
-
-  std::vector<float> output_data = {
-      3.0146f, 0.1142f, 3.9834f, 5.3394f,
-      8.69f, -0.13f, 4.25f, 5.65f,
-      8.69f, -0.13f, 4.25f, 5.65f,
-      -1.4697f, 0.3071f, 4.25f, 5.65f};
+  GetAttentionDataWithNeoXRotaryEmbedding(input_data, weight_data, bias_data, output_data);
 
   bool use_float16 = true;
   bool is_unidirectional = true;

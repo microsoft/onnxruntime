@@ -544,6 +544,7 @@ class DataTypeImpl final {
 #if !defined(DISABLE_SPARSE_TENSORS)
   bool IsSparseTensorType() const { return g_host->DataTypeImpl__IsSparseTensorType(this); }
 #endif
+
   DeleteFunc GetDeleteFunc() const { return g_host->DataTypeImpl__GetDeleteFunc(this); }
 
   static const std::vector<MLDataType>& AllFixedSizeTensorTypes() { return g_host->DataTypeImpl__AllFixedSizeTensorTypes(); }
@@ -842,9 +843,9 @@ inline const Tensor& OpKernelContext::RequiredInput(int index) const {
 struct OpKernelInfo final {
   static void operator delete(void* p) { g_host->OpKernelInfo__operator_delete(reinterpret_cast<OpKernelInfo*>(p)); }
 
-  AllocatorPtr GetAllocator(OrtMemType mem_type) const { return g_host->OpKernelInfo__GetAllocator(this, mem_type); }
-
   const IExecutionProvider* GetExecutionProvider() const noexcept { return g_host->OpKernelInfo__GetExecutionProvider(this); }
+
+  AllocatorPtr GetAllocator(OrtMemType mem_type) const { return g_host->OpKernelInfo__GetAllocator(this, mem_type); }
 
   template <typename T>
   Status GetAttr(const std::string& name, T* value) const;

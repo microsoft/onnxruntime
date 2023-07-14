@@ -204,6 +204,8 @@ if (onnxruntime_ENABLE_TRAINING_OPS AND NOT onnxruntime_ENABLE_TRAINING)
     "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/tensorboard/*.h"
     "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/torch/*.cc"
     "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/torch/*.h"
+    "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/triton/triton_op.cc"
+    "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/triton/triton_op.h"
   )
 
   list(REMOVE_ITEM onnxruntime_providers_src ${onnxruntime_cpu_full_training_only_srcs})
@@ -233,6 +235,8 @@ if (onnxruntime_ENABLE_TRAINING)
   file(GLOB_RECURSE onnxruntime_training_framework_excude_srcs CONFIGURE_DEPENDS
       "${ORTTRAINING_SOURCE_DIR}/core/framework/torch/*.h"
       "${ORTTRAINING_SOURCE_DIR}/core/framework/torch/*.cc"
+      "${ORTTRAINING_SOURCE_DIR}/core/framework/triton/*.h"
+      "${ORTTRAINING_SOURCE_DIR}/core/framework/triton/*.cc"
   )
 
   list(REMOVE_ITEM onnxruntime_cpu_training_ops_srcs ${onnxruntime_training_framework_excude_srcs})
@@ -303,7 +307,7 @@ endif()
 if (onnxruntime_ENABLE_TRAINING)
   add_dependencies(onnxruntime_providers tensorboard)
   onnxruntime_add_include_to_target(onnxruntime_providers tensorboard)
-  if (onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
+  if (onnxruntime_ENABLE_TRAINING_TORCH_INTEROP OR onnxruntime_ENABLE_TRITON)
     onnxruntime_add_include_to_target(onnxruntime_providers Python::Module)
   endif()
 
@@ -312,7 +316,7 @@ if (onnxruntime_ENABLE_TRAINING)
   endif()
 endif()
 
-install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/cpu  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core/providers)
+install(FILES ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/cpu/cpu_provider_factory.h  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/)
 set_target_properties(onnxruntime_providers PROPERTIES LINKER_LANGUAGE CXX)
 set_target_properties(onnxruntime_providers PROPERTIES FOLDER "ONNXRuntime")
 
@@ -357,7 +361,7 @@ if (NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_EXTENDED_MINIMAL_BUILD
   install(TARGETS onnxruntime_providers_shared
           ARCHIVE  DESTINATION ${CMAKE_INSTALL_LIBDIR}
           LIBRARY  DESTINATION ${CMAKE_INSTALL_LIBDIR}
-          RUNTIME  DESTINATION ${CMAKE_INSTALL_BINDIR}
+          RUNTIME  DESTINATION ${CMAKE_INSTALL_LIBDIR}
   )
 endif()
 
@@ -427,12 +431,12 @@ if (onnxruntime_USE_CUDA)
         "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/controlflow/wait.cc"
         "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/controlflow/wait.h"
         "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/controlflow/yield.cc"
-        "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/controlflow/yield.h"
         "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/gist/*.cc"
         "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/gist/*.h"
         "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/gist/*.cu"
         "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/torch/*.cc"
         "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/torch/*.h"
+        "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/triton/triton_op.cc"
       )
 
       list(REMOVE_ITEM onnxruntime_providers_cuda_src ${onnxruntime_cuda_full_training_only_srcs})
@@ -451,137 +455,148 @@ if (onnxruntime_USE_CUDA)
   if (onnxruntime_REDUCED_OPS_BUILD)
     substitute_op_reduction_srcs(onnxruntime_providers_cuda_src)
   endif()
-  onnxruntime_add_shared_library_module(onnxruntime_providers_cuda ${onnxruntime_providers_cuda_src})
-  if (onnxruntime_REDUCED_OPS_BUILD)
-    add_op_reduction_include_dirs(onnxruntime_providers_cuda)
-  endif()
-
-  #target_compile_options(onnxruntime_providers_cuda PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler \"/analyze:stacksize 131072\">")
-  if (HAS_GUARD_CF)
-    target_compile_options(onnxruntime_providers_cuda PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /guard:cf>")
-  endif()
-  if (HAS_QSPECTRE)
-    target_compile_options(onnxruntime_providers_cuda PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /Qspectre>")
-  endif()
-  foreach(ORT_FLAG ${ORT_WARNING_FLAGS})
-      target_compile_options(onnxruntime_providers_cuda PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler \"${ORT_FLAG}\">")
-  endforeach()
-  # CUDA 11.3+ supports parallel compilation
-  # https://docs.nvidia.com/cuda/cuda-compiler-driver-nvcc/index.html#options-for-guiding-compiler-driver-threads
-  if (CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 11.3)
-    target_compile_options(onnxruntime_providers_cuda PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--threads \"${onnxruntime_NVCC_THREADS}\">")
-  endif()
-  if (UNIX)
-    target_compile_options(onnxruntime_providers_cuda PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler -Wno-reorder>"
-                "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:-Wno-reorder>")
-    target_compile_options(onnxruntime_providers_cuda PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler -Wno-error=sign-compare>"
-                "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:-Wno-error=sign-compare>")
-  else()
-    #mutex.cuh(91): warning C4834: discarding return value of function with 'nodiscard' attribute
-    target_compile_options(onnxruntime_providers_cuda PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /wd4834>")
-    target_compile_options(onnxruntime_providers_cuda PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /wd4127>")
-  endif()
-
-  onnxruntime_add_include_to_target(onnxruntime_providers_cuda onnxruntime_common onnxruntime_framework onnx onnx_proto ${PROTOBUF_LIB} flatbuffers::flatbuffers)
-  if (onnxruntime_ENABLE_TRAINING_OPS)
-    onnxruntime_add_include_to_target(onnxruntime_providers_cuda onnxruntime_training)
-    if (onnxruntime_ENABLE_TRAINING)
-      target_link_libraries(onnxruntime_providers_cuda PRIVATE onnxruntime_training)
+  # cuda_provider_interface.cc is removed from the object target: onnxruntime_providers_cuda_obj and
+  # add to the lib onnxruntime_providers_cuda separatedly.
+  # onnxruntime_providers_cuda_ut can share all the object files with onnxruntime_providers_cuda except cuda_provider_interface.cc.
+  set(cuda_provider_interface_src ${ONNXRUNTIME_ROOT}/core/providers/cuda/cuda_provider_interface.cc)
+  list(REMOVE_ITEM onnxruntime_providers_cuda_src ${cuda_provider_interface_src})
+  onnxruntime_add_object_library(onnxruntime_providers_cuda_obj ${onnxruntime_providers_cuda_src})
+  onnxruntime_add_shared_library_module(onnxruntime_providers_cuda ${cuda_provider_interface_src} $<TARGET_OBJECTS:onnxruntime_providers_cuda_obj>)
+  # config_cuda_provider_shared_module can be used to config onnxruntime_providers_cuda_obj, onnxruntime_providers_cuda & onnxruntime_providers_cuda_ut.
+  # This function guarantees that all 3 targets have the same configurations.
+  function(config_cuda_provider_shared_module target)
+    if (onnxruntime_REDUCED_OPS_BUILD)
+      add_op_reduction_include_dirs(${target})
     endif()
-    if (onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
-      onnxruntime_add_include_to_target(onnxruntime_providers_cuda Python::Module)
+
+    if (HAS_GUARD_CF)
+      target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /guard:cf>")
     endif()
-  endif()
+    if (HAS_QSPECTRE)
+      target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /Qspectre>")
+    endif()
+    foreach(ORT_FLAG ${ORT_WARNING_FLAGS})
+        target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler \"${ORT_FLAG}\">")
+    endforeach()
+    # CUDA 11.3+ supports parallel compilation
+    # https://docs.nvidia.com/cuda/cuda-compiler-driver-nvcc/index.html#options-for-guiding-compiler-driver-threads
+    if (CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 11.3)
+      target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--threads \"${onnxruntime_NVCC_THREADS}\">")
+    endif()
+    if (UNIX)
+      target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler -Wno-reorder>"
+                  "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:-Wno-reorder>")
+      target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler -Wno-error=sign-compare>"
+                  "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:-Wno-error=sign-compare>")
+    else()
+      #mutex.cuh(91): warning C4834: discarding return value of function with 'nodiscard' attribute
+      target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /wd4834>")
+      target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /wd4127>")
+    endif()
 
-  add_dependencies(onnxruntime_providers_cuda onnxruntime_providers_shared ${onnxruntime_EXTERNAL_DEPENDENCIES})
-  target_link_libraries(onnxruntime_providers_cuda PRIVATE cublasLt cublas cudnn curand cufft ${ABSEIL_LIBS} ${ONNXRUNTIME_PROVIDERS_SHARED} Boost::mp11 safeint_interface)
-  if(onnxruntime_CUDNN_HOME)
-    target_include_directories(onnxruntime_providers_cuda PRIVATE ${onnxruntime_CUDNN_HOME}/include)
-    target_link_directories(onnxruntime_providers_cuda PRIVATE ${onnxruntime_CUDNN_HOME}/lib)
-  endif()
+    onnxruntime_add_include_to_target(${target} onnxruntime_common onnxruntime_framework onnx onnx_proto ${PROTOBUF_LIB} flatbuffers::flatbuffers)
+    if (onnxruntime_ENABLE_TRAINING_OPS)
+      onnxruntime_add_include_to_target(${target} onnxruntime_training)
+      if (onnxruntime_ENABLE_TRAINING)
+        target_link_libraries(${target} PRIVATE onnxruntime_training)
+      endif()
+      if (onnxruntime_ENABLE_TRAINING_TORCH_INTEROP OR onnxruntime_ENABLE_TRITON)
+        onnxruntime_add_include_to_target(${target} Python::Module)
+      endif()
+    endif()
 
-  if (onnxruntime_USE_TRITON_KERNEL)
-    # compile triton kernel, generate .a and .h files
-    include(onnxruntime_compile_triton_kernel.cmake)
-    compile_triton_kernel(triton_kernel_obj_file triton_kernel_header_dir)
-    add_dependencies(onnxruntime_providers_cuda onnxruntime_triton_kernel)
-    target_compile_definitions(onnxruntime_providers_cuda PRIVATE USE_TRITON_KERNEL)
-    target_include_directories(onnxruntime_providers_cuda PRIVATE ${triton_kernel_header_dir})
-    target_link_libraries(onnxruntime_providers_cuda PUBLIC -Wl,--whole-archive ${triton_kernel_obj_file} -Wl,--no-whole-archive)
-    # lib cuda needed by cuLaunchKernel
-    target_link_libraries(onnxruntime_providers_cuda PRIVATE cuda)
-  endif()
+    add_dependencies(${target} onnxruntime_providers_shared ${onnxruntime_EXTERNAL_DEPENDENCIES})
+    target_link_libraries(${target} PRIVATE cublasLt cublas cudnn curand cufft ${ABSEIL_LIBS} ${ONNXRUNTIME_PROVIDERS_SHARED} Boost::mp11 safeint_interface)
+    if(onnxruntime_CUDNN_HOME)
+      target_include_directories(${target} PRIVATE ${onnxruntime_CUDNN_HOME}/include)
+      target_link_directories(${target} PRIVATE ${onnxruntime_CUDNN_HOME}/lib)
+    endif()
 
-  if (onnxruntime_USE_FLASH_ATTENTION)
-    include(cutlass)
-    target_include_directories(onnxruntime_providers_cuda PRIVATE ${cutlass_SOURCE_DIR}/include ${cutlass_SOURCE_DIR}/examples)
-  endif()
+    if (onnxruntime_USE_TRITON_KERNEL)
+      # compile triton kernel, generate .a and .h files
+      include(onnxruntime_compile_triton_kernel.cmake)
+      compile_triton_kernel(triton_kernel_obj_file triton_kernel_header_dir)
+      add_dependencies(${target} onnxruntime_triton_kernel)
+      target_compile_definitions(${target} PRIVATE USE_TRITON_KERNEL)
+      target_include_directories(${target} PRIVATE ${triton_kernel_header_dir})
+      target_link_libraries(${target} PUBLIC -Wl,--whole-archive ${triton_kernel_obj_file} -Wl,--no-whole-archive)
+      # lib cuda needed by cuLaunchKernel
+      target_link_libraries(${target} PRIVATE cuda)
+    endif()
 
-  target_include_directories(onnxruntime_providers_cuda PRIVATE ${ONNXRUNTIME_ROOT} ${CMAKE_CURRENT_BINARY_DIR}  ${eigen_INCLUDE_DIRS} ${TVM_INCLUDES} PUBLIC ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
-  # ${CMAKE_CURRENT_BINARY_DIR} is so that #include "onnxruntime_config.h" inside tensor_shape.h is found
-  set_target_properties(onnxruntime_providers_cuda PROPERTIES LINKER_LANGUAGE CUDA)
-  set_target_properties(onnxruntime_providers_cuda PROPERTIES FOLDER "ONNXRuntime")
+    if (onnxruntime_USE_FLASH_ATTENTION)
+      include(cutlass)
+      target_include_directories(${target} PRIVATE ${cutlass_SOURCE_DIR}/include ${cutlass_SOURCE_DIR}/examples)
+    endif()
 
-  if (onnxruntime_ENABLE_CUDA_PROFILING) # configure cupti for cuda profiling
-    target_include_directories(onnxruntime_providers_cuda PRIVATE ${onnxruntime_CUDA_HOME}/extras/CUPTI/include)
-    target_link_directories(onnxruntime_providers_cuda PRIVATE ${onnxruntime_CUDA_HOME}/extras/CUPTI/lib64)
-    target_link_libraries(onnxruntime_providers_cuda PRIVATE cupti)
-  endif()
+    target_include_directories(${target} PRIVATE ${ONNXRUNTIME_ROOT} ${CMAKE_CURRENT_BINARY_DIR}  ${eigen_INCLUDE_DIRS} ${TVM_INCLUDES} PUBLIC ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
+    # ${CMAKE_CURRENT_BINARY_DIR} is so that #include "onnxruntime_config.h" inside tensor_shape.h is found
+    set_target_properties(${target} PROPERTIES LINKER_LANGUAGE CUDA)
+    set_target_properties(${target} PROPERTIES FOLDER "ONNXRuntime")
 
-  if (onnxruntime_ENABLE_NVTX_PROFILE)
-    target_link_libraries(onnxruntime_providers_cuda PRIVATE nvToolsExt)
-  endif()
+    if (onnxruntime_ENABLE_CUDA_PROFILING) # configure cupti for cuda profiling
+      target_include_directories(${target} PRIVATE ${onnxruntime_CUDA_HOME}/extras/CUPTI/include)
+      target_link_directories(${target} PRIVATE ${onnxruntime_CUDA_HOME}/extras/CUPTI/lib64)
+      target_link_libraries(${target} PRIVATE cupti)
+    endif()
 
-  if (onnxruntime_ENABLE_TRAINING_OPS)
-    target_include_directories(onnxruntime_providers_cuda PRIVATE ${ORTTRAINING_ROOT} ${MPI_CXX_INCLUDE_DIRS})
-  endif()
+    if (onnxruntime_ENABLE_NVTX_PROFILE)
+      target_link_libraries(${target} PRIVATE nvToolsExt)
+    endif()
 
-  if(onnxruntime_USE_MPI)
-    target_link_libraries(onnxruntime_providers_cuda PRIVATE ${MPI_LIBRARIES} ${MPI_CXX_LINK_FLAGS})
-  endif()
+    if (onnxruntime_ENABLE_TRAINING_OPS)
+      target_include_directories(${target} PRIVATE ${ORTTRAINING_ROOT} ${MPI_CXX_INCLUDE_DIRS})
+    endif()
 
-  if (onnxruntime_USE_NCCL)
-    target_include_directories(onnxruntime_providers_cuda PRIVATE ${NCCL_INCLUDE_DIRS})
-    target_link_libraries(onnxruntime_providers_cuda PRIVATE ${NCCL_LIBRARIES})
-  endif()
+    if(onnxruntime_USE_MPI)
+      target_link_libraries(${target} PRIVATE ${MPI_LIBRARIES} ${MPI_CXX_LINK_FLAGS})
+    endif()
 
-  if (WIN32)
-    # *.cu cannot use PCH
-    if (NOT onnxruntime_BUILD_CACHE)
-      target_precompile_headers(onnxruntime_providers_cuda PUBLIC
-        "${ONNXRUNTIME_ROOT}/core/providers/cuda/cuda_pch.h"
-        "${ONNXRUNTIME_ROOT}/core/providers/cuda/cuda_pch.cc"
+    if (onnxruntime_USE_NCCL)
+      target_include_directories(${target} PRIVATE ${NCCL_INCLUDE_DIRS})
+      target_link_libraries(${target} PRIVATE ${NCCL_LIBRARIES})
+    endif()
+
+    if (WIN32)
+      # *.cu cannot use PCH
+      if (NOT onnxruntime_BUILD_CACHE)
+        target_precompile_headers(${target} PUBLIC
+          "${ONNXRUNTIME_ROOT}/core/providers/cuda/cuda_pch.h"
+          "${ONNXRUNTIME_ROOT}/core/providers/cuda/cuda_pch.cc"
+        )
+      endif()
+
+      # minimize the Windows includes.
+      # this avoids an issue with CUDA 11.6 where 'small' is defined in the windows and cuda headers.
+      target_compile_definitions(${target} PRIVATE "WIN32_LEAN_AND_MEAN")
+
+      # disable a warning from the CUDA headers about unreferenced local functions
+      #target_compile_options(${target} PRIVATE /wd4505)
+      set(onnxruntime_providers_cuda_static_library_flags
+          -IGNORE:4221 # LNK4221: This object file does not define any previously undefined public symbols, so it will not be used by any link operation that consumes this library
       )
+      set_target_properties(${target} PROPERTIES
+          STATIC_LIBRARY_FLAGS "${onnxruntime_providers_cuda_static_library_flags}")
     endif()
 
-    # minimize the Windows includes.
-    # this avoids an issue with CUDA 11.6 where 'small' is defined in the windows and cuda headers.
-    target_compile_definitions(onnxruntime_providers_cuda PRIVATE "WIN32_LEAN_AND_MEAN")
+    if(APPLE)
+      set_property(TARGET ${target} APPEND_STRING PROPERTY LINK_FLAGS "-Xlinker -exported_symbols_list ${ONNXRUNTIME_ROOT}/core/providers/cuda/exported_symbols.lst")
+      target_link_libraries(${target} PRIVATE nsync::nsync_cpp)
+    elseif(UNIX)
+      set_property(TARGET ${target} APPEND_STRING PROPERTY LINK_FLAGS "-Xlinker --version-script=${ONNXRUNTIME_ROOT}/core/providers/cuda/version_script.lds -Xlinker --gc-sections")
+      target_link_libraries(${target} PRIVATE nsync::nsync_cpp)
+    elseif(WIN32)
+      set_property(TARGET ${target} APPEND_STRING PROPERTY LINK_FLAGS "-DEF:${ONNXRUNTIME_ROOT}/core/providers/cuda/symbols.def")
+    else()
+      message(FATAL_ERROR "${target} unknown platform, need to specify shared library exports for it")
+    endif()
 
-    # disable a warning from the CUDA headers about unreferenced local functions
-    #target_compile_options(onnxruntime_providers_cuda PRIVATE /wd4505)
-    set(onnxruntime_providers_cuda_static_library_flags
-        -IGNORE:4221 # LNK4221: This object file does not define any previously undefined public symbols, so it will not be used by any link operation that consumes this library
-    )
-    set_target_properties(onnxruntime_providers_cuda PROPERTIES
-        STATIC_LIBRARY_FLAGS "${onnxruntime_providers_cuda_static_library_flags}")
-  endif()
-
-  if(APPLE)
-    set_property(TARGET onnxruntime_providers_cuda APPEND_STRING PROPERTY LINK_FLAGS "-Xlinker -exported_symbols_list ${ONNXRUNTIME_ROOT}/core/providers/cuda/exported_symbols.lst")
-    target_link_libraries(onnxruntime_providers_cuda PRIVATE nsync::nsync_cpp)
-  elseif(UNIX)
-    set_property(TARGET onnxruntime_providers_cuda APPEND_STRING PROPERTY LINK_FLAGS "-Xlinker --version-script=${ONNXRUNTIME_ROOT}/core/providers/cuda/version_script.lds -Xlinker --gc-sections")
-    target_link_libraries(onnxruntime_providers_cuda PRIVATE nsync::nsync_cpp)
-  elseif(WIN32)
-    set_property(TARGET onnxruntime_providers_cuda APPEND_STRING PROPERTY LINK_FLAGS "-DEF:${ONNXRUNTIME_ROOT}/core/providers/cuda/symbols.def")
-  else()
-    message(FATAL_ERROR "onnxruntime_providers_cuda unknown platform, need to specify shared library exports for it")
-  endif()
-
-  if (onnxruntime_ENABLE_ATEN)
-    target_compile_definitions(onnxruntime_providers_cuda PRIVATE ENABLE_ATEN)
-  endif()
+    if (onnxruntime_ENABLE_ATEN)
+      target_compile_definitions(${target} PRIVATE ENABLE_ATEN)
+    endif()
+  endfunction()
+  config_cuda_provider_shared_module(onnxruntime_providers_cuda_obj)
+  config_cuda_provider_shared_module(onnxruntime_providers_cuda)
 
   install(TARGETS onnxruntime_providers_cuda
           ARCHIVE  DESTINATION ${CMAKE_INSTALL_LIBDIR}
@@ -610,7 +625,8 @@ if (onnxruntime_USE_DNNL)
   target_include_directories(onnxruntime_providers_dnnl PRIVATE ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS} ${DNNL_INCLUDE_DIR} ${DNNL_OCL_INCLUDE_DIR})
   # ${CMAKE_CURRENT_BINARY_DIR} is so that #include "onnxruntime_config.h" inside tensor_shape.h is found
   target_link_libraries(onnxruntime_providers_dnnl PRIVATE dnnl ${ONNXRUNTIME_PROVIDERS_SHARED} Boost::mp11 ${ABSEIL_LIBS} ${GSL_TARGET} safeint_interface)
-  install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/dnnl  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core/providers)
+  install(FILES ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/dnnl/dnnl_provider_options.h
+    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/)
   set_target_properties(onnxruntime_providers_dnnl PROPERTIES FOLDER "ONNXRuntime")
   set_target_properties(onnxruntime_providers_dnnl PROPERTIES LINKER_LANGUAGE CXX)
 
@@ -729,6 +745,8 @@ if (onnxruntime_USE_TENSORRT)
     "${ONNXRUNTIME_ROOT}/core/providers/shared_library/*.cc"
     "${ONNXRUNTIME_ROOT}/core/providers/cuda/cuda_stream_handle.h"
     "${ONNXRUNTIME_ROOT}/core/providers/cuda/cuda_stream_handle.cc"
+    "${ONNXRUNTIME_ROOT}/core/providers/cuda/cuda_graph.h"
+    "${ONNXRUNTIME_ROOT}/core/providers/cuda/cuda_graph.cc"
   )
 
   source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_tensorrt_cc_srcs})
@@ -746,7 +764,7 @@ if (onnxruntime_USE_TENSORRT)
   endif()
 
   # ${CMAKE_CURRENT_BINARY_DIR} is so that #include "onnxruntime_config.h" inside tensor_shape.h is found
-  install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/tensorrt  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core/providers)
+  set_target_properties(onnxruntime_providers_tensorrt PROPERTIES PUBLIC_HEADER ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/tensorrt/tensorrt_provider_factory.h)
   set_target_properties(onnxruntime_providers_tensorrt PROPERTIES LINKER_LANGUAGE CUDA)
   set_target_properties(onnxruntime_providers_tensorrt PROPERTIES FOLDER "ONNXRuntime")
   target_compile_definitions(onnxruntime_providers_tensorrt PRIVATE ONNXIFI_BUILD_LIBRARY=1)
@@ -777,9 +795,10 @@ if (onnxruntime_USE_TENSORRT)
   endif()
 
   install(TARGETS onnxruntime_providers_tensorrt
+          PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime
           ARCHIVE  DESTINATION ${CMAKE_INSTALL_LIBDIR}
           LIBRARY  DESTINATION ${CMAKE_INSTALL_LIBDIR}
-          RUNTIME  DESTINATION ${CMAKE_INSTALL_BINDIR})
+          RUNTIME  DESTINATION ${CMAKE_INSTALL_LIBDIR})
 endif()
 
 if (onnxruntime_USE_VITISAI)
@@ -873,14 +892,15 @@ if (onnxruntime_USE_OPENVINO)
   source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_openvino_cc_srcs})
   onnxruntime_add_shared_library_module(onnxruntime_providers_openvino ${onnxruntime_providers_openvino_cc_srcs} "${ONNXRUNTIME_ROOT}/core/dll/onnxruntime.rc")
   onnxruntime_add_include_to_target(onnxruntime_providers_openvino onnxruntime_common onnx)
-  install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/openvino  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core/providers)
+  install(FILES ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/openvino/openvino_provider_factory.h
+    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/)
   set_target_properties(onnxruntime_providers_openvino PROPERTIES LINKER_LANGUAGE CXX)
   set_target_properties(onnxruntime_providers_openvino PROPERTIES FOLDER "ONNXRuntime")
   if(NOT MSVC)
     target_compile_options(onnxruntime_providers_openvino PRIVATE "-Wno-parentheses")
   endif()
   add_dependencies(onnxruntime_providers_openvino onnxruntime_providers_shared ${onnxruntime_EXTERNAL_DEPENDENCIES})
-  target_include_directories(onnxruntime_providers_openvino SYSTEM PUBLIC ${ONNXRUNTIME_ROOT} ${CMAKE_CURRENT_BINARY_DIR} ${eigen_INCLUDE_DIRS} ${OpenVINO_INCLUDE_DIR} ${OPENVINO_INCLUDE_DIR_LIST} ${PYTHON_INCLUDE_DIRS} $ENV{OPENCL_INCS})
+  target_include_directories(onnxruntime_providers_openvino SYSTEM PUBLIC ${ONNXRUNTIME_ROOT} ${CMAKE_CURRENT_BINARY_DIR} ${eigen_INCLUDE_DIRS} ${OpenVINO_INCLUDE_DIR} ${OPENVINO_INCLUDE_DIR_LIST} ${PYTHON_INCLUDE_DIRS} $ENV{OPENCL_INCS} $ENV{OPENCL_INCS}/../../cl_headers/)
   target_link_libraries(onnxruntime_providers_openvino ${ONNXRUNTIME_PROVIDERS_SHARED} Boost::mp11 ${OPENVINO_LIB_LIST} ${ABSEIL_LIBS})
 
   target_compile_definitions(onnxruntime_providers_openvino PRIVATE VER_MAJOR=${VERSION_MAJOR_PART})
@@ -1144,7 +1164,7 @@ if (onnxruntime_USE_JSEP)
   onnxruntime_add_include_to_target(onnxruntime_providers_js
     onnxruntime_common onnxruntime_framework onnx onnx_proto ${PROTOBUF_LIB} flatbuffers Boost::mp11
   )
-
+  target_include_directories(onnxruntime_providers_js PRIVATE  ${eigen_INCLUDE_DIRS})
   add_dependencies(onnxruntime_providers_js ${onnxruntime_EXTERNAL_DEPENDENCIES})
 
 endif()
@@ -1313,8 +1333,8 @@ if (onnxruntime_USE_DML)
     target_compile_options(onnxruntime_providers_dml PRIVATE "/W3")
   endif()
 
-  install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/dml
-    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core/providers
+  install(FILES ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/dml/dml_provider_factory.h
+    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/
   )
 
   set_target_properties(onnxruntime_providers_dml PROPERTIES LINKER_LANGUAGE CXX)
@@ -1372,7 +1392,6 @@ if (onnxruntime_USE_MIGRAPHX)
   add_dependencies(onnxruntime_providers_migraphx onnxruntime_providers_shared ${onnxruntime_EXTERNAL_DEPENDENCIES})
   target_link_libraries(onnxruntime_providers_migraphx PRIVATE ${migraphx_libs} ${ONNXRUNTIME_PROVIDERS_SHARED} onnx flatbuffers::flatbuffers Boost::mp11 safeint_interface)
   target_include_directories(onnxruntime_providers_migraphx PRIVATE ${ONNXRUNTIME_ROOT} ${CMAKE_CURRENT_BINARY_DIR})
-  install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/migraphx  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core/providers)
   set_target_properties(onnxruntime_providers_migraphx PROPERTIES LINKER_LANGUAGE CXX)
   set_target_properties(onnxruntime_providers_migraphx PROPERTIES FOLDER "ONNXRuntime")
   target_compile_definitions(onnxruntime_providers_migraphx PRIVATE ONNXIFI_BUILD_LIBRARY=1)
@@ -1417,8 +1436,8 @@ if (onnxruntime_USE_ACL)
     PRIVATE
     ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS} ${onnxruntime_ACL_HOME} ${onnxruntime_ACL_HOME}/include
   )
-  install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/acl
-    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core/providers
+  install(FILES ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/acl/acl_provider_factory.h
+    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/
   )
   set_target_properties(onnxruntime_providers_acl PROPERTIES LINKER_LANGUAGE CXX)
 
@@ -1450,9 +1469,9 @@ if (onnxruntime_USE_ARMNN)
     ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS} ${onnxruntime_ARMNN_HOME} ${onnxruntime_ARMNN_HOME}/include
     ${onnxruntime_ACL_HOME} ${onnxruntime_ACL_HOME}/include
   )
-  install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/armnn
-    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core/providers
-  )
+  install(FILES ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/armnn/armnn_provider_factory.h
+    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/)
+
   set_target_properties(onnxruntime_providers_armnn PROPERTIES LINKER_LANGUAGE CXX)
 
   if (NOT onnxruntime_BUILD_SHARED_LIB)
@@ -1728,7 +1747,8 @@ if (onnxruntime_USE_TVM)
   endif()
   target_compile_definitions(onnxruntime_providers_tvm PUBLIC DMLC_USE_LOGGING_LIBRARY=<tvm/runtime/logging.h>)
 
-  install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/tvm  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core/providers)
+  install(FILES ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/tvm/tvm_provider_factory.h
+    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/)
 
   if (NOT onnxruntime_BUILD_SHARED_LIB)
     install(TARGETS onnxruntime_providers_tvm
@@ -1760,10 +1780,6 @@ if (onnxruntime_USE_XNNPACK)
   add_dependencies(onnxruntime_providers_xnnpack onnx ${onnxruntime_EXTERNAL_DEPENDENCIES})
   set_target_properties(onnxruntime_providers_xnnpack PROPERTIES FOLDER "ONNXRuntime")
 
-  install(DIRECTORY ${ONNXRUNTIME_INCLUDE_DIR}/core/providers/xnnpack
-    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core/providers
-  )
-
   set_target_properties(onnxruntime_providers_xnnpack PROPERTIES LINKER_LANGUAGE CXX)
 
   if (NOT onnxruntime_BUILD_SHARED_LIB)
@@ -1772,6 +1788,12 @@ if (onnxruntime_USE_XNNPACK)
             LIBRARY   DESTINATION ${CMAKE_INSTALL_LIBDIR}
             RUNTIME   DESTINATION ${CMAKE_INSTALL_BINDIR}
             FRAMEWORK DESTINATION ${CMAKE_INSTALL_BINDIR})
+  endif()
+
+  # TODO fix shorten-64-to-32 warnings
+  # there are some in builds where sizeof(size_t) != sizeof(int64_t), e.g., in 'ONNX Runtime Web CI Pipeline'
+  if (HAS_SHORTEN_64_TO_32 AND NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
+    target_compile_options(onnxruntime_providers_xnnpack PRIVATE -Wno-error=shorten-64-to-32)
   endif()
 endif()
 

@@ -118,11 +118,12 @@ class Op {
 // NOTE: onnxruntime's Status currently does not have a StatusCode::UNSUPPORTED. Currently, we do not want to extend the
 // enum. So we reuse StatusCode::INVALID_ARGUMENT for this purpose. It can be interpreted as "The input argument is not
 // valid for this specialized kernel implementation.". This semantic is crucial for the tuning mechanism.
-#define TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(condition, ...)  \
-  do {                                                             \
-    if (condition) {                                               \
-      return ORT_MAKE_STATUS(NONE, INVALID_ARGUMENT, __VA_ARGS__); \
-    }                                                              \
+#define TUNABLE_OP_UNSUPPORTED(...) ORT_MAKE_STATUS(NONE, INVALID_ARGUMENT, __VA_ARGS__)
+#define TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(condition, ...) \
+  do {                                                            \
+    if (condition) {                                              \
+      return TUNABLE_OP_UNSUPPORTED(__VA_ARGS__);                 \
+    }                                                             \
   } while (false)
 
 template <typename ParamsT, typename TimerT>

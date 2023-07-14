@@ -78,26 +78,28 @@ class JsKernel : public OpKernel {
     EM_ASM({ Module.jsepReleaseKernel($0); }, this);
   }
 
-  void* SerializeKernelContext(OpKernelContext* context, AllocatorPtr alloc) const {
+  Status SerializeKernelContext(OpKernelContext* context, AllocatorPtr alloc, void* custom_data_ptr, size_t custom_data_size, void** ptr) const {
     //
     // temp_data_format (every item is (u)int32_t):
-    //    context_prt | input_count | [input_data_0] ... [input_data_N-1]
+    //    context_ptr | input_count | custom_data_ptr | custom_data_size | [input_data_0] ... [input_data_N-1]
     //
     // input_data_format:
     //    type | data_ptr | dim_size | dim[0] ... dim[N-1]
     //
-    size_t temp_data_size = sizeof(size_t) * 2;
+    size_t temp_data_size = sizeof(size_t) * 4;
     for (int i = 0; i < context->InputCount(); i++) {
       temp_data_size += sizeof(size_t) * (3 + context->Input<Tensor>(i)->Shape().NumDimensions());
     }
     uint32_t* p_serialized_kernel_context = reinterpret_cast<uint32_t*>(alloc->Alloc(temp_data_size));
     if (p_serialized_kernel_context == nullptr) {
-      return nullptr;
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to allocate memory for serialized kernel context.");
     }
 
     p_serialized_kernel_context[0] = reinterpret_cast<uint32_t>(context);
     p_serialized_kernel_context[1] = static_cast<uint32_t>(context->InputCount());
-    size_t index = 2;
+    p_serialized_kernel_context[2] = reinterpret_cast<uint32_t>(custom_data_ptr);
+    p_serialized_kernel_context[3] = static_cast<uint32_t>(custom_data_size);
+    size_t index = 4;
     for (int i = 0; i < context->InputCount(); i++) {
       p_serialized_kernel_context[index++] = static_cast<uint32_t>(context->Input<Tensor>(i)->GetElementType());
       p_serialized_kernel_context[index++] = reinterpret_cast<uint32_t>(context->Input<Tensor>(i)->DataRaw());
@@ -117,23 +119,68 @@ class JsKernel : public OpKernel {
     LOGS_DEFAULT(VERBOSE) << os.str();
 #endif
 
-    return p_serialized_kernel_context;
+    *ptr = p_serialized_kernel_context;
+    return Status::OK();
+  }
+
+  virtual Status SerializeCustomData(OpKernelContext* context, AllocatorPtr alloc, void** ptr, size_t* size) const {
+    // default implementation: no custom data
+    //
+    // a subclass can override this method to serialize custom data. following is an example:
+    //
+    // // STEP.1 - calculate the size of the custom data
+    // size_t bytes_required = 2 * sizeof(int32_t);
+    //
+    // // STEP.2 - allocate memory for the custom data
+    // void* p_custom_data = alloc->Alloc(bytes_required);
+    //
+    // // STEP.3 - validate the memory allocation
+    // if (p_custom_data == nullptr) {
+    //   return Status(ONNXRUNTIME, FAIL, "failed to allocate memory for the custom data");
+    // }
+    //
+    // // STEP.4 - serialize the custom data
+    // int32_t* p_int32 = reinterpret_cast<int32_t*>(p_custom_data);
+    // p_int32[0] = 100;
+    // p_int32[1] = 200;
+    //
+    // // STEP.5 - assign output parameter "ptr" and "size"
+    // *ptr = p_custom_data;
+    // *size = bytes_required;
+    //
+    // return Status::OK();
+    //
+    return Status::OK();
   }
 
   virtual Status ComputeInternal(OpKernelContext* context) const {
     AllocatorPtr alloc;
     ORT_RETURN_IF_ERROR(context->GetTempSpaceCPUAllocator(&alloc));
 
-    auto p_serialized_kernel_context = SerializeKernelContext(context, alloc);
+    void* p_custom_data = nullptr;
+    size_t custom_data_size = 0;
+    ORT_RETURN_IF_ERROR(SerializeCustomData(context, alloc, &p_custom_data, &custom_data_size));
 
-    int status = EM_ASM_INT({ return Module.jsepRun($0, $1); }, this, p_serialized_kernel_context);
+    void* p_serialized_kernel_context = nullptr;
+    auto status = SerializeKernelContext(context, alloc, p_custom_data, custom_data_size, &p_serialized_kernel_context);
+    if (!status.IsOK()) {
+      if (p_custom_data != nullptr) {
+        alloc->Free(p_custom_data);
+      }
+      return status;
+    }
+
+    int status_code = EM_ASM_INT({ return Module.jsepRun($0, $1); }, this, reinterpret_cast<int32_t>(p_serialized_kernel_context));
 
     LOGS_DEFAULT(VERBOSE) << "outputs = " << context->OutputCount() << ". Y.data="
                           << (size_t)(context->Output<Tensor>(0)->DataRaw()) << ".";
 
     alloc->Free(p_serialized_kernel_context);
+    if (p_custom_data != nullptr) {
+      alloc->Free(p_custom_data);
+    }
 
-    if (status == 0) {
+    if (status_code == 0) {
       return Status::OK();
     } else {
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to run JSEP kernel");

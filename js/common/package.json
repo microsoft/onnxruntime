@@ -1,27 +1,32 @@
 {
   "license": "MIT",
-  "unpkg": "dist/ort-common.min.js",
+  "type": "module",
   "name": "onnxruntime-common",
+  "version": "1.16.0",
   "repository": {
     "url": "https://github.com/Microsoft/onnxruntime.git",
     "type": "git"
   },
   "author": "fs-eire",
-  "module": "dist/lib/index.js",
-  "version": "1.16.0",
-  "jsdelivr": "dist/ort-common.min.js",
   "scripts": {
-    "prepare": "tsc && webpack"
+    "build:cjs": "npx tsc --module commonjs --outDir ./dist/cjs",
+    "build:esm": "npx tsc",
+    "build:bundles": "webpack",
+    "build": "node ./build.js",
+    "prepare": "npm run build"
+  },
+  "devDependencies": {
+    "typedoc": "^0.23.22"
+  },
+  "main": "dist/cjs/index.js",
+  "exports": {
+      "require": "./dist/cjs/index.js",
+      "import": "./dist/esm/index.js"
   },
   "keywords": [
     "ONNX",
     "ONNXRuntime",
     "ONNX Runtime"
   ],
-  "devDependencies": {
-    "typedoc": "^0.23.22"
-  },
-  "main": "dist/ort-common.node.js",
-  "types": "dist/lib/index.d.ts",
   "description": "ONNXRuntime JavaScript API library"
 }
