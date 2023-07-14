@@ -2301,9 +2301,9 @@ Status InferenceSession::Run(const RunOptions& run_options,
 }
 
 Status InferenceSession::Run(const RunOptions& run_options,
-                             gsl::span<const char*> feed_names,
-                             gsl::span<const OrtValue*> feeds,
-                             gsl::span<const char*> fetch_names,
+                             gsl::span<const char* const> feed_names,
+                             gsl::span<const OrtValue* const> feeds,
+                             gsl::span<const char* const> fetch_names,
                              gsl::span<OrtValue*> fetches) {
   size_t num_feeds = feed_names.size();
   size_t num_fetches = fetch_names.size();
@@ -2372,9 +2372,9 @@ Status InferenceSession::Run(const RunOptions& run_options,
 }
 
 common::Status InferenceSession::RunAsync(const RunOptions* run_options,
-                                          gsl::span<const char*> feed_names,
-                                          gsl::span<const OrtValue*> feeds,
-                                          gsl::span<const char*> fetch_names,
+                                          gsl::span<const char* const> feed_names,
+                                          gsl::span<const OrtValue* const> feeds,
+                                          gsl::span<const char* const> fetch_names,
                                           gsl::span<OrtValue*> fetches,
                                           RunAsyncCallbackFn callback,
                                           void* user_data) {

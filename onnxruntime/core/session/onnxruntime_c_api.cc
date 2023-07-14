@@ -855,9 +855,9 @@ ORT_API_STATUS_IMPL(OrtApis::RunAsync, _Inout_ OrtSession* sess, _In_opt_ const 
   API_IMPL_BEGIN
   auto session = reinterpret_cast<::onnxruntime::InferenceSession*>(sess);
 
-  gsl::span<const char*> input_names_span(const_cast<const char**>(input_names), input_len);
-  gsl::span<const OrtValue*> input_span(const_cast<const OrtValue**>(input), input_len);
-  gsl::span<const char*> output_name_span(const_cast<const char**>(output_names), input_len);
+  gsl::span<const char* const> input_names_span(input_names, input_len);
+  gsl::span<const OrtValue* const> input_span(input, input_len);
+  gsl::span<const char* const> output_name_span(output_names, input_len);
   gsl::span<OrtValue*> output_span(output, output_names_len);
 
   return ToOrtStatus(session->RunAsync(run_options,
