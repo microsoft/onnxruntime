@@ -66,7 +66,7 @@ class Module:
         )
         self._state = state
 
-    def __call__(self, *user_inputs) -> tuple[np.ndarray] | np.ndarray | tuple[OrtValue] | OrtValue:
+    def __call__(self, *user_inputs) -> tuple[np.ndarray, ...] | np.ndarray | tuple[OrtValue, ...] | OrtValue:
         """Invokes either the training or the evaluation step of the model.
 
         Args:
