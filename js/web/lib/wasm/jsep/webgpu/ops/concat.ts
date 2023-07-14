@@ -3,7 +3,7 @@
 
 import {TensorView} from '../../tensor';
 import {ShapeUtil} from '../../util';
-import {AttributeWithCacheKey} from '../attribute-with-cache-key';
+import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-with-cache-key';
 import {ComputeContext, GpuDataType, ProgramInfo, ProgramInfoLoader, ProgramMetadata} from '../types';
 
 import {createIndicesHelper, IndicesHelper, ShaderHelper} from './common';
@@ -155,3 +155,6 @@ export const concat = (context: ComputeContext, attributes: ConcatAttributes): v
   validateInputs(context.inputs);
   context.compute(createConcatProgramInfoLoader(context.inputs, attributes));
 };
+
+export const parseConcatAttributes = (attributes: Record<string, unknown>): ConcatAttributes =>
+    createAttributeWithCacheKey({axis: attributes.axis as number});

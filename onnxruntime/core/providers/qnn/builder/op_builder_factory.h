@@ -56,8 +56,6 @@ void CreateConvOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_
 
 void CreatePoolOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 
-void CreateQdqOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
-
 void CreateReshapeOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 
 void CreateGemmOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);

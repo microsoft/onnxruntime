@@ -39,11 +39,11 @@ def custom_exporter_for_aten_add_Tensor(x, y):
 # exporter.
 # Use custom_exporter_for_aten_add_Tensor.to_function_proto() to investigate
 # function representing "aten::mul.Tensor".
-DEFAULT_ONNX_EXPORTER_OPTIONS.onnxfunction_dispatcher.onnx_registry.register(
-    "aten::mul.Tensor",
-    DEFAULT_ONNX_EXPORTER_OPTIONS.opset_version,
-    custom_exporter_for_aten_add_Tensor,
-    True,
+DEFAULT_ONNX_EXPORTER_OPTIONS.onnxfunction_dispatcher.onnx_registry.register_custom_op(
+    function=custom_exporter_for_aten_add_Tensor,
+    namespace="aten",
+    op_name="mul",
+    overload="Tensor",
 )
 
 
@@ -57,11 +57,10 @@ def custom_exporter_for_foo_bar_default(x):
 
 # Ask exporter to map "torch.ops.foo.bar" to
 # custom_exporter_for_foo_bar_default.
-DEFAULT_ONNX_EXPORTER_OPTIONS.onnxfunction_dispatcher.onnx_registry.register(
-    "foo::bar",
-    DEFAULT_ONNX_EXPORTER_OPTIONS.opset_version,
-    custom_exporter_for_foo_bar_default,
-    True,
+DEFAULT_ONNX_EXPORTER_OPTIONS.onnxfunction_dispatcher.onnx_registry.register_custom_op(
+    function=custom_exporter_for_foo_bar_default,
+    namespace="foo",
+    op_name="bar",
 )
 
 

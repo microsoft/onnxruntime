@@ -58,13 +58,13 @@ Status SoftmaxWarpwiseStaticSelection(const SoftmaxParams<InputT, OutputT>* para
     dim3 threads(warp_size, warps_per_block, 1);
     // Launch code would be more elegant if C++ supported FOR CONSTEXPR
     switch (log2_elements) {
-      #define LAUNCH_SOFTMAX_WARP_FORWARD(L2E)                                                                         \
-        case L2E:                                                                                                      \
-          softmax_warp_forward<InputT, OutputT, AccT, L2E>                                                             \
-              <<<dim3(blocks), dim3(threads), 0, params->stream>>>(params->output, params->input, params->batch_count, \
-                                                                  params->input_stride, params->softmax_elements,      \
-                                                                  params->is_log_softmax);                             \
-          break;
+#define LAUNCH_SOFTMAX_WARP_FORWARD(L2E)                                                                         \
+  case L2E:                                                                                                      \
+    softmax_warp_forward<InputT, OutputT, AccT, L2E>                                                             \
+        <<<dim3(blocks), dim3(threads), 0, params->stream>>>(params->output, params->input, params->batch_count, \
+                                                             params->input_stride, params->softmax_elements,     \
+                                                             params->is_log_softmax);                            \
+    break;
       LAUNCH_SOFTMAX_WARP_FORWARD(0);   // 1
       LAUNCH_SOFTMAX_WARP_FORWARD(1);   // 2
       LAUNCH_SOFTMAX_WARP_FORWARD(2);   // 4
@@ -132,7 +132,7 @@ class SoftmaxTunableOp : public tunable::TunableOp<SoftmaxParams<InputT, OutputT
 #endif  // USE_COMPOSABLE_KERNEL
 
 #ifdef USE_TRITON_KERNEL
-    for (auto && [_, op] : GetSoftmaxTritonOps<InputT, OutputT>()) {
+    for (auto&& [_, op] : GetSoftmaxTritonOps<InputT, OutputT>()) {
       ORT_UNUSED_PARAMETER(_);
       this->RegisterOp(std::move(op));
     }

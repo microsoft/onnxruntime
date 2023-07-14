@@ -70,7 +70,10 @@ class GemmFastGeluTunableOp : public TunableOp<GemmFastGeluParams<T>> {
 #endif
 
 #ifdef USE_HIPBLASLT
-    this->RegisterOp(HipBlasLtGemmFastGeluOp<T>);
+    for (auto&& [_, op] : GetHipBlasLtGemmFastGeluTypeStringAndOps<T, ALayout, BLayout>()) {
+      ORT_UNUSED_PARAMETER(_);
+      this->RegisterOp(std::move(op));
+    }
 #endif
   }
 };

@@ -27,6 +27,17 @@ static Status ValidateCudaVersion(const std::string& value) {
   return Status::OK();
 }
 
+std::string CudaTuningResultsValidator::GetOrtBuildConfig() const {
+  std::ostringstream oss;
+#ifdef ENABLE_TRITON
+  constexpr int kTriton = 1;
+#else
+  constexpr int kTriton = 0;
+#endif
+  oss << "ENABLE_TRITON=" << kTriton << "|";
+  return oss.str();
+}
+
 std::string CudaTuningResultsValidator::GetDeviceModel() const {
   return ep_->GetDeviceProp().name;
 }

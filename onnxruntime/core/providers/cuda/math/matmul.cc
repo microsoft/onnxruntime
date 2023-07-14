@@ -2,9 +2,10 @@
 // Licensed under the MIT License.
 
 #include "core/providers/cuda/math/matmul.h"
-#include "core/providers/cpu/math/matmul_helper.h"
+
 #include "core/providers/cuda/shared_inc/fpgeneric.h"
 #include "core/providers/cuda/cuda_allocator.h"
+#include "core/providers/cuda/tunable/math/matmul.h"
 
 namespace onnxruntime {
 namespace cuda {
@@ -89,6 +90,37 @@ static bool CanUseStridedBatchedGemm(const TensorShape& left_shape, const Tensor
 
 template <typename T>
 Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
+  const Tensor* left_X = ctx->Input<Tensor>(0);
+  const Tensor* right_X = ctx->Input<Tensor>(1);
+
+  // Ignore the transpose flag if rank of input being 1.
+  // Be noted: numpy.transpose on vector does not change anything.
+  bool trans_a = trans_A_;
+  bool trans_b = trans_B_;
+  if (left_X->Shape().NumDimensions() == 1) {
+    trans_a = false;
+  }
+  if (right_X->Shape().NumDimensions() == 1) {
+    trans_b = false;
+  }
+
+  MatMulComputeHelper helper;
+  ORT_RETURN_IF_ERROR(
+      helper.Compute(left_X->Shape(), right_X->Shape(), trans_a, trans_b, trans_batch_a_, trans_batch_b_, false));
+
+  Tensor* Y = ctx->Output(0, helper.OutputShape());
+  // Bail out early if the output is going to be empty
+  if (Y->Shape().Size() == 0) return Status::OK();
+
+  if (GetTuningContext()->IsTunableOpEnabled()) {
+    return tunable::TunableMatMul<T>(alpha_, trans_a, trans_b, trans_batch_a_, trans_batch_b_, helper, this, ctx);
+  }
+
+  return ComputeDefault(ctx, helper);
+}
+
+template <typename T>
+Status MatMul<T>::ComputeDefault(OpKernelContext* ctx, MatMulComputeHelper& helper) const {
   typedef typename ToCudaType<T>::MappedType CudaT;
 
   const Tensor* left_X = ctx->Input<Tensor>(0);
@@ -105,14 +137,7 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
     transb = false;
   }
 
-  MatMulComputeHelper helper;
-  ORT_RETURN_IF_ERROR(helper.Compute(left_X->Shape(), right_X->Shape(), transa, transb, trans_batch_a_, trans_batch_b_, false));
-
   Tensor* Y = ctx->Output(0, helper.OutputShape());
-
-  // Bail out early if the output is going to be empty
-  if (Y->Shape().Size() == 0)
-    return Status::OK();
 
   const CudaT alpha = ToCudaType<T>::FromFloat(alpha_);
   const CudaT zero = ToCudaType<T>::FromFloat(0.0f);
