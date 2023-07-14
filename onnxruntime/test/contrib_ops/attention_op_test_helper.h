@@ -76,6 +76,8 @@ void GetSelfAttentionData_WithPastAndPresent_HeadSize8_NoMask_NoRelPosBias_NoBia
 void GetCrossAttentionData_WithPastPassedInDirectly_NoMask(AttentionTestData& data);
 
 void GetAttentionDataCutlassRelPosBias(AttentionTestData& data);
+void GetAttentionDataWithNeoXRotaryEmbedding(std::vector<float>& input, std::vector<float>& weights, std::vector<float>& bias,
+                                             std::vector<float>& output);
 
 bool SkipAttentionKernel(AttentionTestData& data, AttentionKernelType kernel_type);
 }  // namespace test

@@ -54,7 +54,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         public ushort tolerance = 0;
         public bool Equals(Float16 x, Float16 y)
         {
-            return Math.Abs(x.value - y.value) <= (tolerance + y);
+            return Math.Abs(x.value - y.value) <= (tolerance + y.value);
         }
         public int GetHashCode(Float16 x)
         {
@@ -70,7 +70,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         public ushort tolerance = 0;
         public bool Equals(BFloat16 x, BFloat16 y)
         {
-            return Math.Abs(x.value - y.value) <= (tolerance + y);
+            return Math.Abs(x.value - y.value) <= (tolerance + y.value);
         }
         public int GetHashCode(BFloat16 x)
         {

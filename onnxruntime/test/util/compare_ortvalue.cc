@@ -495,7 +495,7 @@ float ParseValueToFloat(MLFloat16 data_value) {
 template <>
 float ParseValueToFloat(float data_value) {
   // Covert float to half and then convert back to float to simulate rounding to half
-  return ParseValueToFloat(MLFloat16(math::floatToHalf(data_value)));
+  return ParseValueToFloat(MLFloat16(data_value));
 }
 
 template <typename RealT, typename ExpectT>

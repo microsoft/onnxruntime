@@ -20,12 +20,11 @@ namespace test {
  * outputs for QNN and CPU match.
  *
  * \param opset The opset version.
- * \param test_description Description of the test for error reporting.
  * \param scalar_indices whether the incidices input is scalar or not.
  * \param expected_ep_assignment How many nodes are expected to be assigned to QNN (All, Some, or None)
  */
 template <typename QuantType, typename IndicesType>
-static void RunGatherOpQDQTest(int opset, const char* test_description, bool scalar_indices = false,
+static void RunGatherOpQDQTest(int opset, bool scalar_indices = false,
                                ExpectedEPNodeAssignment expected_ep_assignment = ExpectedEPNodeAssignment::All) {
   ProviderOptions provider_options;
 #if defined(_WIN32)
@@ -42,8 +41,7 @@ static void RunGatherOpQDQTest(int opset, const char* test_description, bool sca
                     provider_options,
                     opset,
                     expected_ep_assignment,
-                    expected_nodes_in_partition,
-                    test_description);
+                    expected_nodes_in_partition);
   } else {
     RunQnnModelTest(BuildQDQGatherOpTestCase<QuantType, IndicesType>({2, 3, 4},                    // input shape
                                                                      std::vector<IndicesType>{1},  // indices
@@ -52,8 +50,7 @@ static void RunGatherOpQDQTest(int opset, const char* test_description, bool sca
                     provider_options,
                     opset,
                     expected_ep_assignment,
-                    expected_nodes_in_partition,
-                    test_description);
+                    expected_nodes_in_partition);
   }
 }
 
@@ -62,7 +59,7 @@ static void RunGatherOpQDQTest(int opset, const char* test_description, bool sca
 //
 // - Uses uint8 as the quantization type.
 TEST_F(QnnHTPBackendTests, TestQDQGatherOpU8) {
-  RunGatherOpQDQTest<uint8_t, int64_t>(11, "TestQDQGatherOpU8");
+  RunGatherOpQDQTest<uint8_t, int64_t>(11);
 }
 
 // Test creates a DQ -> Gather -> Q -> DQ graph, and checks that all
@@ -70,7 +67,7 @@ TEST_F(QnnHTPBackendTests, TestQDQGatherOpU8) {
 //
 // - Uses int8 as the quantization type.
 TEST_F(QnnHTPBackendTests, TestQDQGatherOpI8) {
-  RunGatherOpQDQTest<int8_t, int32_t>(11, "TestQDQGatherOpI8");
+  RunGatherOpQDQTest<int8_t, int32_t>(11);
 }
 
 // Test creates a DQ -> Gather -> Q -> DQ graph, and checks that all
@@ -78,7 +75,7 @@ TEST_F(QnnHTPBackendTests, TestQDQGatherOpI8) {
 //
 // - Uses uint8 as the quantization type.
 TEST_F(QnnHTPBackendTests, TestQDQGatherOpScalarIndicesU8) {
-  RunGatherOpQDQTest<uint8_t, int64_t>(11, "TestQDQGatherOpScalarIndicesU8", true);
+  RunGatherOpQDQTest<uint8_t, int64_t>(11, true);
 }
 
 // Test creates a DQ -> Gather -> Q -> DQ graph, and checks that all
@@ -86,7 +83,7 @@ TEST_F(QnnHTPBackendTests, TestQDQGatherOpScalarIndicesU8) {
 //
 // - Uses int8 as the quantization type.
 TEST_F(QnnHTPBackendTests, TestQDQGatherOpScalarIndicesI8) {
-  RunGatherOpQDQTest<int8_t, int32_t>(11, "TestQDQGatherOpScalarIndicesI8", true);
+  RunGatherOpQDQTest<int8_t, int32_t>(11, true);
 }
 
 #endif  // defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)

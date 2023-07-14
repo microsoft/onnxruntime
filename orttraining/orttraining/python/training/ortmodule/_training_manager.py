@@ -20,6 +20,8 @@ from ._graph_execution_manager import GraphExecutionManager, _RunStateInfo
 from ._io import _FlattenedModule, _InputInfo
 from ._logger import TimeTrackerPhase, TrackTime
 from ._runtime_inspector import Phase
+from ._utils import save_tuning_results, set_tuning_results
+from .graph_transformer_registry import GraphTransformerRegistry
 from .options import DebugOptions, _SkipCheck
 
 
@@ -316,10 +318,21 @@ class TrainingManager(GraphExecutionManager):
                 self._runtime_inspector,
             )
 
-            return _io.unflatten_user_output(
+            outputs = _io.unflatten_user_output(
                 self._module_output_schema,
                 self._forward_class.apply(*prepared_input_list),
             )
+
+            if (
+                create_execution_session
+                and self._runtime_options.enable_tuning
+                and self._runtime_options.tuning_results_path
+            ):
+                save_tuning_results(
+                    self._execution_agent._inference_session, True, self._runtime_options.tuning_results_path
+                )
+
+            return outputs
         except ORTModuleFallbackException as e:
             # Exceptions subject to fallback are handled here
             self._fallback_manager.handle_exception(exception=e, log_level=self._debug_options.logging.log_level)
@@ -345,6 +358,15 @@ class TrainingManager(GraphExecutionManager):
         self._onnx_models.optimized_pre_grad_model = onnx.load_model_from_string(
             self._graph_builder.get_forward_model()
         )
+
+        # Apply registered graph transformers to the optimized model
+        device_type = self._device.type
+        if device_type == "cuda" and self.is_rocm_pytorch:
+            device_type = "rocm"
+        GraphTransformerRegistry.transform_all(
+            type(self._flattened_module._original_module).__name__, device_type, self._onnx_models.optimized_model.graph
+        )
+
         if self._debug_options.save_onnx_models.save:
             self._onnx_models.save_optimized_model(
                 self._debug_options.save_onnx_models.path,
@@ -416,6 +438,11 @@ class TrainingManager(GraphExecutionManager):
             provider_options,
             local_device_rank,
         )
+
+        if not self._runtime_options.enable_tuning and self._runtime_options.tuning_results_path:
+            set_tuning_results(
+                self._execution_agent._inference_session, True, self._runtime_options.tuning_results_path
+            )
 
     def _reinitialize_graph_builder(self, input_info: _InputInfo):
         """Return true if the module graph builder was reinitialized"""

@@ -21,11 +21,10 @@ namespace test {
  *
  * \param op_type The LeakyRelu op type (e.g., ReduceSum).
  * \param opset The opset version.
- * \param test_description Description of the test for error reporting.
  * \param expected_ep_assignment How many nodes are expected to be assigned to QNN (All, Some, or None)
  */
 template <typename QuantType>
-static void RunLeakyReluOpQDQTest(int opset, const char* test_description,
+static void RunLeakyReluOpQDQTest(int opset,
                                   ExpectedEPNodeAssignment expected_ep_assignment = ExpectedEPNodeAssignment::All) {
   ProviderOptions provider_options;
 #if defined(_WIN32)
@@ -39,8 +38,7 @@ static void RunLeakyReluOpQDQTest(int opset, const char* test_description,
                   provider_options,
                   opset,
                   expected_ep_assignment,
-                  expected_nodes_in_partition,
-                  test_description);
+                  expected_nodes_in_partition);
 }
 
 // Test creates a DQ -> Gather -> Q -> DQ graph, and checks that all
@@ -48,7 +46,7 @@ static void RunLeakyReluOpQDQTest(int opset, const char* test_description,
 //
 // - Uses uint8 as the quantization type.
 TEST_F(QnnHTPBackendTests, TestQDQLeakyReluOpSet15) {
-  RunLeakyReluOpQDQTest<uint8_t>(15, "TestQDQLeakyReluOpSet15");
+  RunLeakyReluOpQDQTest<uint8_t>(15);
 }
 
 // Test creates a DQ -> Gather -> Q -> DQ graph, and checks that all
@@ -56,7 +54,7 @@ TEST_F(QnnHTPBackendTests, TestQDQLeakyReluOpSet15) {
 //
 // - Uses uint8 as the quantization type.
 TEST_F(QnnHTPBackendTests, TestQDQLeakyReluOpSet16) {
-  RunLeakyReluOpQDQTest<uint8_t>(16, "TestQDQLeakyReluOpSet16");
+  RunLeakyReluOpQDQTest<uint8_t>(16);
 }
 
 #endif  // defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)

@@ -31,33 +31,39 @@ Status ActivationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   const auto& op_type(node.OpType());
   emscripten::val input = model_builder.GetOperand(node.InputDefs()[0]->Name());
   emscripten::val output = emscripten::val::object();
-  if (op_type == "Relu") {
-    if (Contains(model_builder.GetFusedActivations(), node.InputDefs()[0]->Name())) {
-      LOGS_DEFAULT(VERBOSE) << "Relu Node [" << node.Name() << "] fused";
-      output = input;
-    } else {
-      output = model_builder.GetBuilder().call<emscripten::val>("relu", input);
-    }
-  } else if (op_type == "LeakyRelu") {
-    if (Contains(model_builder.GetFusedActivations(), node.InputDefs()[0]->Name())) {
-      LOGS_DEFAULT(VERBOSE) << "LeakyRelu Node [" << node.Name() << "] fused";
-      output = input;
-    } else {
-      NodeAttrHelper helper(node);
-      emscripten::val options = emscripten::val::object();
-      options.set("alpha", helper.Get("alpha", (float)0.0));
-      output = model_builder.GetBuilder().call<emscripten::val>("leakyRelu", input, options);
-    }
-  } else if (op_type == "Sigmoid") {
-    if (Contains(model_builder.GetFusedActivations(), node.InputDefs()[0]->Name())) {
-      LOGS_DEFAULT(VERBOSE) << "Sigmoid Node [" << node.Name() << "] fused";
-      output = input;
-    } else {
-      output = model_builder.GetBuilder().call<emscripten::val>("sigmoid", input);
-    }
+
+  if (Contains(model_builder.GetFusedActivations(), node.InputDefs()[0]->Name())) {
+    LOGS_DEFAULT(VERBOSE) << op_type << " Node [" << node.Name() << "] fused";
+    output = input;
   } else {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "ActivationOpBuilder::AddToModelBuilderImpl, unknown op: ", op_type);
+    NodeAttrHelper helper(node);
+    emscripten::val options = emscripten::val::object();
+    if (op_type == "Elu") {
+      options.set("alpha", helper.Get("alpha", 1.0f));
+      output = model_builder.GetBuilder().call<emscripten::val>("elu", input, options);
+    } else if (op_type == "HardSigmoid") {
+      options.set("alpha", helper.Get("alpha", 0.2f));
+      options.set("beta", helper.Get("beta", 0.5f));
+      output = model_builder.GetBuilder().call<emscripten::val>("hardSigmoid", input, options);
+    } else if (op_type == "HardSwish") {
+      output = model_builder.GetBuilder().call<emscripten::val>("hardSwish", input);
+    } else if (op_type == "LeakyRelu") {
+      options.set("alpha", helper.Get("alpha", 0.0f));
+      output = model_builder.GetBuilder().call<emscripten::val>("leakyRelu", input, options);
+    } else if (op_type == "Relu") {
+      output = model_builder.GetBuilder().call<emscripten::val>("relu", input);
+    } else if (op_type == "Sigmoid") {
+      output = model_builder.GetBuilder().call<emscripten::val>("sigmoid", input);
+    } else if (op_type == "Softplus") {
+      output = model_builder.GetBuilder().call<emscripten::val>("softplus", input);
+    } else if (op_type == "Softsign") {
+      output = model_builder.GetBuilder().call<emscripten::val>("softsign", input);
+    } else if (op_type == "Tanh") {
+      output = model_builder.GetBuilder().call<emscripten::val>("tanh", input);
+    } else {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "ActivationOpBuilder::AddToModelBuilderImpl, unknown op: ", op_type);
+    }
   }
 
   model_builder.AddOperand(node.OutputDefs()[0]->Name(), std::move(output));
@@ -67,7 +73,7 @@ Status ActivationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 // Operator support related.
 
 int ActivationOpBuilder::GetMinSupportedOpSet(const Node& /* node */) const {
-  // All ops opset 5- uses consumed_inputs attribute which is not supported for now.
+  // Any operators < opset 6 used the deprecated "consumed_inputs attribute" which is unsupported.
   return 6;
 }
 
@@ -75,7 +81,18 @@ void CreateActivationOpBuilder(const std::string& op_type, OpBuilderRegistration
   if (op_registrations.op_builder_map.find(op_type) != op_registrations.op_builder_map.cend())
     return;
 
-  static std::vector<std::string> op_types = {"Relu", "LeakyRelu", "Sigmoid"};
+  static std::vector<std::string> op_types =
+      {
+          "Elu",
+          "HardSigmoid",
+          "HardSwish",
+          "LeakyRelu",
+          "Relu",
+          "Sigmoid",
+          "Softplus",
+          "Softsign",
+          "Tanh",
+      };
 
   op_registrations.builders.push_back(std::make_unique<ActivationOpBuilder>());
   for (const auto& type : op_types) {
