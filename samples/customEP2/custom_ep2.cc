@@ -16,8 +16,19 @@ void KernelTwo(const Ort::Custom::Tensor<float>& X,
   }
 }
 
+void MyRelu(const Ort::Custom::Tensor<float>& X, Ort::Custom::Tensor<float>& Y) {
+  const auto& shape = X.Shape();
+  auto X_raw = X.Data();
+  auto Y_raw = Y.Allocate(shape);
+  auto total = std::accumulate(shape.begin(), shape.end(), 1LL, std::multiplies<int64_t>());
+  for (int64_t i = 0; i < total; i++) {
+    Y_raw[i] = X_raw[i] > 0 ? X_raw[i] : 0;
+  }
+}
+
 CustomEp2::CustomEp2(const CustomEp2Info& info) : type_{"customEp2"}, info_{info} {
-    custom_ops_.push_back(Ort::Custom::CreateLiteCustomOp("CustomOpTwo", type_.c_str(), KernelTwo));  // TODO: should use smart pointer for vector custom_ops_
+    //custom_ops_.push_back(Ort::Custom::CreateLiteCustomOp("CustomOpTwo", type_.c_str(), KernelTwo));  // TODO: should use smart pointer for vector custom_ops_
+    kernel_definitions_.push_back(Ort::Custom::CreateLiteCustomOp("CustomOpTwo", type_.c_str(), MyRelu));  // TODO: should use smart pointer for vector custom_ops_
 }
 
 CustomEp2Info ProviderOption2CustomEpInfo(std::unordered_map<std::string, std::string>& provider_option) {

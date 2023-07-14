@@ -18,10 +18,10 @@ namespace onnxruntime{
 
         //std::vector<CreateCustomKernelFunc> GetRegisteredKernels();
         std::vector<OrtAllocator*>& GetAllocators() { return allocators_; }
-        std::vector<Ort::Custom::OrtLiteCustomOp*>& GetCustomOps() { return custom_ops_; }
+        std::vector<Ort::Custom::OrtLiteCustomOp*>& GetKernelDefinitions() { return kernel_definitions_; }
 
         protected:
         std::vector<OrtAllocator*> allocators_;
-        std::vector<Ort::Custom::OrtLiteCustomOp*> custom_ops_;
+        std::vector<Ort::Custom::OrtLiteCustomOp*> kernel_definitions_;
     };
 }

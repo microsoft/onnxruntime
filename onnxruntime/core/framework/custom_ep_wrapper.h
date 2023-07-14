@@ -13,9 +13,9 @@ namespace onnxruntime {
         ExternalExecutionProvider(CustomExecutionProvider* external_ep)
             : IExecutionProvider("test"), external_ep_impl_(external_ep){
                 kernel_registry_ = std::make_shared<KernelRegistry>();
-                std::vector<Ort::Custom::OrtLiteCustomOp*> custom_ops = external_ep_impl_->GetCustomOps();
-                for (auto& op : custom_ops) {
-                    OrtLiteCustomOp2KernelRegistry(op);
+                std::vector<Ort::Custom::OrtLiteCustomOp*> kernel_defn = external_ep_impl_->GetKernelDefinitions();
+                for (auto& k : kernel_defn) {
+                    OrtLiteCustomOp2KernelRegistry(k);
                 }
             }
 
@@ -37,8 +37,8 @@ namespace onnxruntime {
         std::unique_ptr<CustomExecutionProvider> external_ep_impl_;
         std::shared_ptr<KernelRegistry> kernel_registry_;
 
-        void OrtLiteCustomOp2KernelRegistry(Ort::Custom::OrtLiteCustomOp* custom_op) {
-            KernelCreateInfo kernel_create_info = CreateKernelCreateInfo("TODO:DomainName", custom_op);
+        void OrtLiteCustomOp2KernelRegistry(Ort::Custom::OrtLiteCustomOp* kernel_definition) {
+            KernelCreateInfo kernel_create_info = CreateKernelCreateInfo("TODO:DomainName", kernel_definition);
             ORT_THROW_IF_ERROR(kernel_registry_->Register(std::move(kernel_create_info)));
         }
     };
