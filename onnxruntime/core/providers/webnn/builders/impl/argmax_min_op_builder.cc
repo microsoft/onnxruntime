@@ -93,4 +93,3 @@ void CreateArgMaxMinOpBuilder(const std::string& op_type, OpBuilderRegistrations
 
 }  // namespace webnn
 }  // namespace onnxruntime
-)

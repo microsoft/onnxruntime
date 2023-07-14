@@ -73,8 +73,7 @@ Status ActivationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 // Operator support related.
 
 int ActivationOpBuilder::GetMinSupportedOpSet(const Node& /* node */) const {
-  // HardSwish is available since opset 14, and the rest ops opset 5-
-  // uses consumed_inputs attribute which is not supported for now.
+  // Any operators < opset 6 used the deprecated "consumed_inputs attribute" which is unsupported.
   return 6;
 }
 
