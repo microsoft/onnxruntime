@@ -13,12 +13,7 @@ from torch._dynamo.backends.common import aot_autograd
 from torch.library import Library
 
 import onnxruntime
-from onnxruntime.training.torchdynamo.ort_backend import (
-    _SUPPORT_DICT,
-    DEFAULT_ONNX_EXPORTER_OPTIONS,
-    DORT_DECOMPOSITION_TABLE,
-    OrtBackend,
-)
+from onnxruntime.training.torchdynamo.ort_backend import OrtBackend
 
 # Dummy operator set to map aten::mul.Tensor to test.customop::CustomOpOne
 # in ONNX model executed by DORT.
@@ -145,10 +140,12 @@ class TestTorchDynamoOrtCustomOp(unittest.TestCase):
         foo_lib.impl(bar_name, bar_impl, "CompositeExplicitAutograd")
 
         # TODO(wechi): Redesign API to expose this better.
-        _SUPPORT_DICT.add(torch.ops.foo.bar.default)
 
         session_options = TestTorchDynamoOrtCustomOp.create_onnxruntime_session_options()
         ort_backend = OrtBackend(ep="CPUExecutionProvider", session_options=session_options)
+        # Allow torch.ops.foo.bar.default to be sent to DORT.
+        # support_dict tells Dynamo which ops to sent to DORT.
+        ort_backend.support_dict.add(torch.ops.foo.bar.default)
         # Ask exporter to map "torch.ops.foo.bar" to
         # custom_exporter_for_foo_bar_default.
         ort_backend.resolved_onnx_exporter_options.onnxfunction_dispatcher.onnx_registry.register_custom_op(

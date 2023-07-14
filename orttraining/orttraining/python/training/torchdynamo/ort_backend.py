@@ -5,7 +5,7 @@
 
 import dataclasses
 import logging
-from typing import Any, Dict, Mapping, Tuple, Union, Optional
+from typing import Any, Dict, Mapping, Tuple, Union, Optional, Set
 
 import numpy as np
 import onnx
@@ -90,12 +90,13 @@ class OrtOperatorSupport(OperatorSupport):
     is used by OperatorSupport.is_node_supported.
     """
 
-    def __init__(self, extra_support_dict: Dict[str, Any]):
+    def __init__(self, support_dict: Set[Any], extra_support_dict: Dict[str, Any]):
         # Use extra_support_dict[op_name] = None to indicate
         # we support op_name with all input types. Otherwise,
         # see support_dict (type: SupportDict) in operator_support.py
         # for specifying supported types.
         super().__init__(extra_support_dict)
+        self._support_dict = support_dict
 
     def is_node_supported(self, submodules: Mapping[str, torch.nn.Module], node: torch.fx.Node) -> bool:
         # OperatorSupport.is_node_supported returns True for non-callable nodes.
@@ -104,7 +105,7 @@ class OrtOperatorSupport(OperatorSupport):
         if node.op not in CALLABLE_NODE_OPS:
             return False
         # This is the and the only place to decide if aten op is supported.
-        if node.op == "call_function" and node.target in _SUPPORT_DICT:
+        if node.op == "call_function" and node.target in self._support_dict:
             logger.info("support_dict supports node.target: %s (type: %s)", node.target, type(node.target))
             return True
         logger.info("support_dict doesn't support node.target: %s (type: %s)", node.target, type(node.target))
@@ -363,7 +364,7 @@ class OrtBackend:
             "_operator.getitem": None,
         }
 
-        self._supported_ops = OrtOperatorSupport(extra_support_dict)
+        self._supported_ops = OrtOperatorSupport(self.support_dict, extra_support_dict)
         # TODO: this is a naive implementation of cache without proper guard
         self._partitioner_cache: Dict[torch.fx.GraphModule, torch.fx.GraphModule] = {}
         # TODO: this is a naive implementation of cache without proper guard, this will only work for identical inputs
@@ -419,18 +420,18 @@ class OrtBackend:
             # Create the object to iterate through the nodes in graph one-by-one
             # and calls the corresponding ONNX exporter for each node.
             fx_interpreter = fx_onnx_interpreter.FxOnnxInterpreter(
-                diagnostic_context=DEFAULT_ONNX_EXPORTER_OPTIONS.diagnostic_context
+                diagnostic_context=self.resolved_onnx_exporter_options.diagnostic_context
             )
             # Start the per-node exporting process. It's conceptually a for loop
             # scanning through the nodes in the graph.
             exported = fx_interpreter.run(
                 fx_graph_module=graph_module,
-                onnxfunction_dispatcher=DEFAULT_ONNX_EXPORTER_OPTIONS.onnxfunction_dispatcher,
-                op_level_debug=DEFAULT_ONNX_EXPORTER_OPTIONS.op_level_debug,
+                onnxfunction_dispatcher=self.resolved_onnx_exporter_options.onnxfunction_dispatcher,
+                op_level_debug=self.resolved_onnx_exporter_options.op_level_debug,
             )
             # Convert the exported result to ONNX ModelProto.
             onnx_proto = exported.to_model_proto(
-                opset_version=DEFAULT_ONNX_EXPORTER_OPTIONS.opset_version
+                opset_version=self.resolved_onnx_exporter_options.opset_version
             ).SerializeToString()
 
             # Initialize a ORT session to execute this ONNX model.
