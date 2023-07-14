@@ -163,16 +163,13 @@ const getNearestPixelFromOriginal = (nearestMode: NearestMode): string =>
 
 const updateRoI = (roi: readonly number[], axes: readonly number[], rank: number): number[] => {
   const roiTmp = new Array(rank).fill(0).concat(new Array(rank).fill(1));
-  let roiLocal = roi.slice();
-  if (roi.length === 0) {
-    roiLocal = roiTmp;
-  }
+  const roiLocal = roi.length === 0 ? roiTmp : roi.slice();
   if (axes.length > 0) {
     axes.forEach((v, i) => {
       roiTmp[v] = roiLocal[i];
       roiTmp[i + rank] = roiLocal[axes.length + i];
     });
-    roiLocal = roiTmp;
+    return roiTmp;
   }
   return roiLocal;
 };
@@ -202,9 +199,7 @@ const initOutputShape =
         };
 
 const adjustOutputShape =
-    (inputShape: readonly number[], outputShape: readonly number[], attributes: ResizeAttributes): number[] => {
-      const scales = inputShape.map((value, index) => value === 0 ? 1.0 : outputShape[index] / value);
-      if (attributes.keepAspectRatioPolicy !== 'stretch') {
+    (inputShape: readonly number[], outputShape: readonly number[], scales: number[], attributes: ResizeAttributes): number[] => {
         const scaleInPolicy = (() => {
           switch (attributes.keepAspectRatioPolicy) {
             case 'not_larger':
@@ -223,9 +218,6 @@ const adjustOutputShape =
           attributes.axes.forEach((v) => scales[v] = scaleInPolicy);
         }
         return adjustedOutputShape;
-      } else {
-        return outputShape.slice();
-      }
     };
 
 const calculateInputIndicesFromOutputIndices =
@@ -267,13 +259,17 @@ const checkInputIndices = (inputShape: readonly number[]): string => `
 
 const createResizeProgramInfo =
     (metadata: ProgramMetadata, input: TensorView, attributes: ResizeAttributes, opsetVersion: number,
-     scales: readonly number[], sizes: readonly number[], roiInput: readonly number[]): ProgramInfo => {
+     scalesInput: readonly number[], sizes: readonly number[], roiInput: readonly number[]): ProgramInfo => {
       const inputShape = input.dims;
       const roi = updateRoI(roiInput, attributes.axes, inputShape.length);
 
-      let outputShape = initOutputShape(inputShape, scales, sizes, attributes.axes);
-      if (scales.length === 0) {
-        outputShape = adjustOutputShape(inputShape, outputShape, attributes);
+      let outputShape = initOutputShape(inputShape, scalesInput, sizes, attributes.axes);
+      var scales = scalesInput.slice();
+      if (scalesInput.length === 0) {
+        scales = inputShape.map((value, index) => value === 0 ? 1.0 : outputShape[index] / value);
+        if (attributes.keepAspectRatioPolicy !== 'stretch') {
+          outputShape = adjustOutputShape(inputShape, outputShape, scales, attributes);
+        }
       }
       const outputIndicesHelper = createIndicesHelper('output', outputShape);
       const inputIndicesHelper = createIndicesHelper('input', inputShape);
