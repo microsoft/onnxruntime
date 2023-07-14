@@ -68,7 +68,7 @@ def optimize_by_onnxruntime(
     optimized_model_path: Optional[str] = None,
     opt_level: Optional[int] = 99,
     disabled_optimizers=[],  # noqa: B006
-    verbose=False,
+    verbose: bool = False,
 ) -> str:
     """
     Use onnxruntime to optimize model.
@@ -199,7 +199,8 @@ def optimize_model(
     opt_level: Optional[int] = None,
     use_gpu: bool = False,
     only_onnxruntime: bool = False,
-    verbose=False,
+    verbose: bool = False,
+    use_temp_dir: bool = False,
 ):
     """Optimize Model by OnnxRuntime and/or python fusion logic.
 
@@ -252,10 +253,12 @@ def optimize_model(
     # affect other fusions. We can update the expected model proto once the ConstantSharing optimizer logic becomes
     # stable.
     disabled_optimizers = ["ConstantSharing"]
-    temp_model_path = None
+    temp_model_path, optimized_model_path = None, None
     temp_dir = tempfile.TemporaryDirectory()
-    optimized_model_name = "model_o{}_{}.onnx".format(opt_level, "gpu" if use_gpu else "cpu")
-    optimized_model_path = os.path.join(temp_dir.name, optimized_model_name)
+    if use_temp_dir:
+        optimized_model_name = "model_o{}_{}.onnx".format(opt_level, "gpu" if use_gpu else "cpu")
+        optimized_model_path = os.path.join(temp_dir.name, optimized_model_name)
+
     if opt_level > 1:
         # Disable some optimizers that might cause failure in symbolic shape inference or attention fusion.
         disabled_optimizers += (
@@ -272,10 +275,10 @@ def optimize_model(
         temp_model_path = optimize_by_onnxruntime(
             input,
             use_gpu=use_gpu,
+            optimized_model_path=optimized_model_path,
             opt_level=opt_level,
             disabled_optimizers=disabled_optimizers,
             verbose=verbose,
-            optimized_model_path=optimized_model_path,
         )
     elif opt_level == 1:
         # basic optimizations (like constant folding and cast elimination) are not specified to execution provider.
@@ -283,10 +286,10 @@ def optimize_model(
         temp_model_path = optimize_by_onnxruntime(
             input,
             use_gpu=False,
+            optimized_model_path=optimized_model_path,
             opt_level=1,
             disabled_optimizers=disabled_optimizers,
             verbose=verbose,
-            optimized_model_path=optimized_model_path,
         )
 
     if only_onnxruntime and not temp_model_path:
@@ -300,7 +303,8 @@ def optimize_model(
         optimizer = optimize_by_fusion(model, model_type, num_heads, hidden_size, optimization_options)
 
     # remove the temporary directory
-    temp_dir.cleanup()
+    if use_temp_dir:
+        temp_dir.cleanup()
 
     return optimizer
 
@@ -432,6 +436,14 @@ def _parse_arguments():
     )
     parser.set_defaults(convert_to_packing_mode=False)
 
+    parser.add_argument(
+        "--use_temp_dir",
+        required=False,
+        action="store_true",
+        help="Use temporary directory to save temporary model. Only available for models without external data.",
+    )
+    parser.set_defaults(use_temp_dir=False)
+
     args = parser.parse_args()
 
     return args
@@ -468,6 +480,7 @@ def main():
         optimization_options=optimization_options,
         use_gpu=args.use_gpu,
         only_onnxruntime=args.only_onnxruntime,
+        use_temp_dir=args.use_temp_dir,
     )
 
     if args.float16:
