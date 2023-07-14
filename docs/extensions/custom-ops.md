@@ -12,7 +12,7 @@ nav_order: 4
 ### BertTokenizer
 
 <details>
-<summary>BertTokenizer details</summary>
+    <summary style="display:list-item">BertTokenizer details</summary>
 
 BertTokenizer replicates `encode_plus` function of [BertTokenizer (huggingface version )](https://huggingface.co/transformers/_modules/transformers/models/bert/tokenization_bert.html#BertTokenizer).
 
@@ -124,7 +124,7 @@ expect(node, inputs=[inputs],
 ### BertTokenizerDecoder
 
 <details>
-<summary>BertTokenizerDecoder details</summary>
+    <summary style="display:list-item">BertTokenizerDecoder details</summary>
 
 BertTokenizerDecoder replicates `decode` function of [BertTokenizer (huggingface version )](https://huggingface.co/transformers/_modules/transformers/models/bert/tokenization_bert.html#BertTokenizer).
 
