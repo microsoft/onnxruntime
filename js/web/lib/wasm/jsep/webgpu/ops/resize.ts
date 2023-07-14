@@ -100,20 +100,30 @@ const getOriginalCoordinateFromResizedCoordinate = (coordinateTransferMode: Coor
         case 'asymmetric':
           return 'return f32(xResized) / xScale;';
         case 'pytorch_half_pixel':
-          return 'return lengthResized > 1 ? (f32(xResized) + 0.5) / xScale - 0.5 : 0.0;';
+          return 'if (lengthResized > 1) { \
+                    return (f32(xResized) + 0.5) / xScale - 0.5; \
+                  } else { \
+                    return 0.0; \
+                  }';
         case 'tf_half_pixel_for_nn':
-          return 'return (f32(xResized) + 0.5) / xScale';
+          return 'return (f32(xResized) + 0.5) / xScale;';
         case 'align_corners':
-          return 'return lengthResized === 1 ? 0 : xResized * (llengthOriginal - 1) / (lengthResized - 1);';
+          return 'if (lengthResized == 1) { \
+                    return 0.0; \
+                  } else { \
+                    return f32(xResized * (llengthOriginal - 1) / (lengthResized - 1)); \
+                  }';
         case 'tf_crop_and_resize':
-          return 'return lengthResized > 1 ? \
-          (xResized * (roiEnd - roiStart) / (lengthResized - 1)) / (lengthResized - 1) : \
-          0.5 * (roiStart + roiEnd) * (llengthOriginal - 1);';
+          return 'if (lengthResized > 1) { \
+                    return (f32(xResized) * (roiEnd - roiStart) / f32(lengthResized - 1)) / f32(lengthResized - 1); \
+                  } else { \
+                    return 0.5 * (roiStart + roiEnd) * f32(llengthOriginal - 1); \
+                  }';
         case 'half_pixel_symmetric':
           return [
             'const outputWidth = xScale * lengthResized;', 'const adjustment = lengthResized / outputWidth;',
             'const center = llengthOriginal / 2;', 'const offset = center * (1 - adjustment);',
-            'return offset + (f32(xResized) + 0.5) / xScale - 0.5;'
+            'return offset + (f32(xResized + 0.5) / xScale - 0.5;'
           ].join('\n');
         case 'half_pixel':
           return 'return (f32(xResized) + 0.5) / xScale - 0.5;';
@@ -127,7 +137,12 @@ const getNearestPixelFromOriginal = (nearestMode: NearestMode): string =>
     'fn getNearestPixelFromOriginal(xOriginal: f32, isDownSample: bool) -> f32 {' + (() => {
       switch (nearestMode) {
         case 'simple':
-          return 'if (isDownSample)\n {\nreturn ceil(xOriginal);\n} else {\n return xOriginal;\n}';
+          return 'if (isDownSample) \
+                  { \
+                    return ceil(xOriginal); \
+                  } else { \
+                    return xOriginal; \
+                  }';
         case 'round_prefer_ceil':
           return 'return round(xOriginal);';
         case 'floor':
@@ -135,7 +150,11 @@ const getNearestPixelFromOriginal = (nearestMode: NearestMode): string =>
         case 'ceil':
           return 'return ceil(xOriginal);';
         case 'round_prefer_floor':
-          return 'if (xOriginal == roudnd(xOriginal) + 0.5) {return floor(xOriginal);} else {return round(xOriginal);}';
+          return 'if (xOriginal == round(xOriginal) + 0.5) { \
+                     return floor(xOriginal); \
+                  } else { \
+                    return round(xOriginal); \
+                  }';
         default:
           throw new Error(`Nearest mode ${nearestMode} is not supported`);
       }
