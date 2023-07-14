@@ -10,7 +10,6 @@
 #include "core/platform/ort_mutex.h"
 #include "core/providers/cuda/cuda_graph.h"
 #include "tensorrt_execution_provider_info.h"
-#include <iostream>
 
 namespace onnxruntime {
 
