@@ -467,12 +467,9 @@ expect(node, inputs=[inputs, nbest_size, alpha, add_bos, add_eos, reverse],
 ```
 </details>
 
-
 ### BasicTokenizer
 
 <details>
-
-TODO: is this still supported?
 
 BasicTokenizer performs basic tokenization to input string tensor, based on [basic tokenizer in BertTokenizer(hugging face version)](https://huggingface.co/transformers/_modules/transformers/models/bert/tokenization_bert.html#BertTokenizer).
 
@@ -527,16 +524,6 @@ expect(node, inputs=[inputs],
        outputs=[tokens], name='test_basic_tokenizer')
 ```
 </details>
-
-
-### BlingFireSentenceBreaker
-
-TODO
-
-### BpeTokenizer
-
-TODO
-
 
 ## String operators
 
@@ -758,20 +745,6 @@ expect(node, inputs=[text, pattern, rewrite], outputs=[y],
 
 </details>
 
-
-
-### StringSplit 
-
-TODO
-
-### StringUpper  
-
-TODO
-
-### StringLower
-
-TODO
-
 ### StringLength
 
 <details>
@@ -921,11 +894,6 @@ expect(node, inputs=[text, pattern, rewrite], outputs=[y, z1, z2],
 ```
 
 </details>
-
-
-### StringECMARegexSplitWithOffsets
-
-TODO
 
 ### VectorToString
 
@@ -1209,82 +1177,4 @@ output = np.array(["a", "c"])
 expect(node, inputs=[value, mask], outputs=[output],
        name='test_masked_fill')
 ```
-</details>
-
-### StringRaggedTensorToDense
-
-TODO
-
-### StringMapping
-
-TODO
-
-## Math operators
-
-
-### Inverse
-
-TODO 
-
-### NegPos
-
-TODO
-
-### SegmentExtraction
-
-TODO
-
-### SegmentSum
-
-TODO
-
-## Tensor operators
-
-### RaggedTensorToSparse
-
-TODO
-
-### RaggedTensorToDense
-
-TODO
-
-### Template
-
-<details>
-
-Description
-
-#### Inputs
-
-***name: tensor(type)***
-
-Description
-
-#### Outputs
-
-***name: tensor(type)***
-
-Description
-
-#### Examples
-
-
-```python
-
-node = onnx.helper.make_node(
-    'StringRegexReplace',
-    inputs=['text', 'pattern', 'rewrite'],
-    outputs=['y'],
-)
-
-text = np.array([['def myfunc():'], ['def dummy():']])
-pattern = np.array([r'def\s+([a-zA-Z_][a-zA-Z_0-9]*)\s*\(\s*\):'])
-rewrite = np.array([r'static PyObject* py_\1(void) {'])
-y = [['static PyObject* py_myfunc(void) {'],
-     ['static PyObject* py_dummy(void) {']]
-
-expect(node, inputs=[text, pattern, rewrite], outputs=[y],
-       name='test_string_regex_replace')
-```
-
 </details>
