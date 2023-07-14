@@ -337,10 +337,8 @@ __global__ void cuApplyLayerNorm(
     const V* __restrict__ gamma,
     const V* __restrict__ beta,
     const T* __restrict__ skip,
-    const T* __restrict__ bias,
-    T* __restrict__ skip_input_bias_add_output,
-    const bool skip_broadcasted,
-    const int skip_size) {
+    const V* __restrict__ bias,
+    T* __restrict__ skip_input_bias_add_output) {
   // Assumptions:
   // 1) blockDim.x == GPU_WARP_SIZE
   // 2) Tensors are contiguous
@@ -366,15 +364,7 @@ __global__ void cuApplyLayerNorm(
         curr += static_cast<U>(bias[i]);
       }
 
-      if (skip_vals != NULL && skip_broadcasted) {
-        int skip_i = i % skip_size;
-        curr += static_cast<U>(skip_vals[skip_i]);  //Calculates index for the second dimension of the skip tensor
-      }else if (skip_vals != NULL){
-        curr += static_cast<U>(skip_vals[i]);
-      }
-      /*if (skip_vals != NULL){
       curr += static_cast<U>(skip_vals[i]);
-      }*/
 
       U gamma_i = (gamma != NULL) ? (U)gamma[i] : (U)1;
       U beta_i = (beta != NULL) ? (U)beta[i] : (U)0;
@@ -421,9 +411,7 @@ void HostApplyLayerNorm(
     const V* beta,
     const T* skip,
     const T* bias,
-    T* skip_input_bias_add_output,
-    const bool skip_broadcasted,
-    const int skip_size) {
+    T* skip_input_bias_add_output) {
   const int maxGridY = prop.maxGridSize[1];
   const int warp_size = prop.warpSize;
   ORT_ENFORCE(warp_size == GPU_WARP_SIZE_HOST);
@@ -455,29 +443,26 @@ void HostApplyLayerNorm(
       n1, n2,
       U(epsilon),
       gamma, beta,
-      skip, bias, skip_input_bias_add_output,
-      skip_broadcasted,
-      skip_size);
+      skip, bias, skip_input_bias_add_output);
 }
 
 #define LAYERNORM_LINEAR_IMPL(T, U, V, simplified)                                                                    \
   template void HostApplyLayerNorm<T, U, V, simplified>(const cudaDeviceProp& prop, cudaStream_t stream, V* output,   \
-                                                        U* mean, U* inv_std_dev, const T* input, int n1, int n2,      \
+                                                        U* mean, U* inv_std_dev, const V* input, int n1, int n2,      \
                                                         double epsilon, const V* gamma, const V* beta, const T* skip, \
-                                                        const T* bias, T* skip_input_bias_add_output, const bool skip_broadcasted, \
-                                                        const int skip_size);
+                                                        const V* bias, T* skip_input_bias_add_output);
 
 LAYERNORM_LINEAR_IMPL(float, float, float, true)
 LAYERNORM_LINEAR_IMPL(half, float, half, true)
 LAYERNORM_LINEAR_IMPL(double, double, double, true)
-LAYERNORM_LINEAR_IMPL(float, float, half, true)
-LAYERNORM_LINEAR_IMPL(half, float, float, true)
+/*LAYERNORM_LINEAR_IMPL(float, float, half, true)
+LAYERNORM_LINEAR_IMPL(half, float, float, true)*/
 LAYERNORM_LINEAR_IMPL(float, float, float, false)
 LAYERNORM_LINEAR_IMPL(half, float, half, false)
 LAYERNORM_LINEAR_IMPL(double, double, double, false)
 LAYERNORM_LINEAR_IMPL(double, float, double, false)
-LAYERNORM_LINEAR_IMPL(float, float, half, false)
-LAYERNORM_LINEAR_IMPL(half, float, float, false)
+/*LAYERNORM_LINEAR_IMPL(float, float, half, false)
+LAYERNORM_LINEAR_IMPL(half, float, float, false)*/
 LAYERNORM_LINEAR_IMPL(BFloat16, float, BFloat16, true)
 LAYERNORM_LINEAR_IMPL(BFloat16, float, BFloat16, false)
 

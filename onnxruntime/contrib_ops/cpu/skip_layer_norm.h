@@ -10,7 +10,7 @@
 namespace onnxruntime {
 namespace contrib {
 
-template <typename T>
+template <typename T, typename V>
 class SkipLayerNorm final : public OpKernel {
  public:
   SkipLayerNorm(const OpKernelInfo& op_kernel_info);

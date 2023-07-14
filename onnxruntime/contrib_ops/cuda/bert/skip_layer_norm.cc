@@ -10,7 +10,7 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-#define REGISTER_KERNEL_TYPED(T)                                  \
+#define REGISTER_KERNEL_TYPED(T, V)                                  \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
       SkipLayerNormalization,                                     \
       kMSDomain,                                                  \
@@ -18,8 +18,9 @@ namespace cuda {
       T,                                                          \
       kCudaExecutionProvider,                                     \
       (*KernelDefBuilder::Create())                               \
-          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
-      SkipLayerNorm<T, false>);                                   \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())  \
+          .TypeConstraint("V", DataTypeImpl::GetTensorType<T>()), \
+      SkipLayerNorm<T, V, false>);                                   \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
       SkipSimplifiedLayerNormalization,                           \
       kMSDomain,                                                  \
@@ -27,16 +28,17 @@ namespace cuda {
       T,                                                          \
       kCudaExecutionProvider,                                     \
       (*KernelDefBuilder::Create())                               \
-          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
-      SkipLayerNorm<T, true>);
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())  \
+          .TypeConstraint("V", DataTypeImpl::GetTensorType<T>()), \
+      SkipLayerNorm<T, V, true>);
 
-REGISTER_KERNEL_TYPED(float)
-REGISTER_KERNEL_TYPED(MLFloat16)
+REGISTER_KERNEL_TYPED(float, float)
+REGISTER_KERNEL_TYPED(MLFloat16, float)
 
 using namespace ONNX_NAMESPACE;
 
-template <typename T, bool Simplified>
-SkipLayerNorm<T, Simplified>::SkipLayerNorm(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info) {
+template <typename T, typename V, bool Simplified>
+SkipLayerNorm<T, V, Simplified>::SkipLayerNorm(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info) {
   ORT_ENFORCE(op_kernel_info.GetAttr<float>("epsilon", &epsilon_).IsOK());
   ORT_ENFORCE(epsilon_ >= 0);
 
@@ -45,8 +47,8 @@ SkipLayerNorm<T, Simplified>::SkipLayerNorm(const OpKernelInfo& op_kernel_info) 
   strict_ = cuda_ep->IsSkipLayerNormInStrictMode();
 }
 
-template <typename T, bool Simplified>
-Status SkipLayerNorm<T, Simplified>::ComputeInternal(OpKernelContext* ctx) const {
+template <typename T, typename V, bool Simplified>
+Status SkipLayerNorm<T, V, Simplified>::ComputeInternal(OpKernelContext* ctx) const {
   const Tensor* input = ctx->Input<Tensor>(0);
   const Tensor* skip = ctx->Input<Tensor>(1);
   const Tensor* gamma = ctx->Input<Tensor>(2);
@@ -68,6 +70,7 @@ Status SkipLayerNorm<T, Simplified>::ComputeInternal(OpKernelContext* ctx) const
   size_t input_dims_size = input_dims.size();
   const auto& skip_dims = skip->Shape().GetDims();
   size_t skip_dims_size = skip_dims.size();
+  int skip_sequence_length = static_cast<int>(skip_dims[skip_dims_size - 2]);
   if (input_dims_size != 3 && input_dims_size != 2) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "input is expected to have 3 or 2 dimensions, got ", input_dims_size);
@@ -111,29 +114,26 @@ Status SkipLayerNorm<T, Simplified>::ComputeInternal(OpKernelContext* ctx) const
     }
   }
 
-  const bool skip_broadcasted = (nullptr != skip && skip->Shape()[0] == 1) ? true : false;
-  const int skip_size = static_cast<int>(skip_dims[skip_dims_size - 1] * skip_dims[skip_dims_size - 2]);
 
   if (strict_) {
     int row_count = gsl::narrow<int>(input->Shape().SizeToDimension(input_dims_size - 1));
     typedef typename ToCudaType<T>::MappedType CudaT;
-    HostApplyLayerNorm<CudaT, float, CudaT, Simplified>(
+    typedef typename ToCudaType<V>::MappedType CudaV;
+    HostApplyLayerNorm<CudaT, float, CudaV, Simplified>(
         GetDeviceProp(),
         Stream(ctx),
-        reinterpret_cast<CudaT*>(output->MutableData<T>()),                             // Y_data
+        reinterpret_cast<CudaV*>(output->MutableData<V>()),                             // Y_data
         nullptr,                                                                        // mean_data
         nullptr,                                                                        // inv_var_data
         reinterpret_cast<const CudaT*>(input->Data<T>()),                               // X_data
         row_count,                                                                      // n1
         hidden_size,                                                                    // n2
         (double)epsilon_,                                                               // epsilon
-        reinterpret_cast<const CudaT*>(gamma->Data<T>()),                               // gamma
-        (beta != nullptr) ? reinterpret_cast<const CudaT*>(beta->Data<T>()) : nullptr,  // beta
+        reinterpret_cast<const CudaV*>(gamma->Data<V>()),                               // gamma
+        (beta != nullptr) ? reinterpret_cast<const CudaV*>(beta->Data<V>()) : nullptr,  // beta
         reinterpret_cast<const CudaT*>(skip->Data<T>()),                                // skip or residual to add
-        (bias != nullptr) ? reinterpret_cast<const CudaT*>(bias->Data<T>()) : nullptr,  // bias to add
-        skip_input_bias_add_output != nullptr ? reinterpret_cast<CudaT*>(skip_input_bias_add_output->MutableData<T>()) : nullptr,
-        skip_broadcasted,
-        skip_size);
+        (bias != nullptr) ? reinterpret_cast<const CudaV*>(bias->Data<V>()) : nullptr,  // bias to add
+        skip_input_bias_add_output != nullptr ? reinterpret_cast<CudaT*>(skip_input_bias_add_output->MutableData<T>()) : nullptr);
 
     CUDA_RETURN_IF_ERROR(cudaGetLastError());
     return Status::OK();
@@ -143,21 +143,20 @@ Status SkipLayerNorm<T, Simplified>::ComputeInternal(OpKernelContext* ctx) const
   int64_t element_count = input_dims[0] * sequence_length * hidden_size;
   size_t element_size = sizeof(T);
   typedef typename ToCudaType<T>::MappedType CudaT;
-  return LaunchSkipLayerNormKernel<CudaT, Simplified>(
+  typedef typename ToCudaType<V>::MappedType CudaV;
+  return LaunchSkipLayerNormKernel<CudaT, CudaV, Simplified>(
       Stream(ctx),
       reinterpret_cast<CudaT*>(output->MutableData<T>()),
       skip_input_bias_add_output != nullptr ? reinterpret_cast<CudaT*>(skip_input_bias_add_output->MutableData<T>()) : nullptr,
       reinterpret_cast<const CudaT*>(input->Data<T>()),
       reinterpret_cast<const CudaT*>(skip->Data<T>()),
-      reinterpret_cast<const CudaT*>(gamma->Data<T>()),
-      (beta != nullptr) ? reinterpret_cast<const CudaT*>(beta->Data<T>()) : nullptr,
-      (bias != nullptr) ? reinterpret_cast<const CudaT*>(bias->Data<T>()) : nullptr,
+      reinterpret_cast<const CudaV*>(gamma->Data<V>()),
+      (beta != nullptr) ? reinterpret_cast<const CudaV*>(beta->Data<V>()) : nullptr,
+      (bias != nullptr) ? reinterpret_cast<const CudaV*>(bias->Data<V>()) : nullptr,
       epsilon_,
       hidden_size,
       static_cast<int>(element_count),
-      element_size,
-      skip_broadcasted,
-      skip_size);
+      element_size);
 
 
   CUDA_RETURN_IF_ERROR(cudaGetLastError());

@@ -28,29 +28,20 @@ static void RunTest(
     bool simplified = false,
     bool use_token_count = false,
     bool strict = false,
-    bool batch_size_1 = false,
-    bool no_batch_size = false) {
+    bool use_float16_input_skip = false,
+    bool use_float16_gamma_beta_bias = false) {
   // Input and output shapes
   //   Input 0 - input: (batch_size, sequence_length, hidden_size) or (batch_size * sequence_length, hidden_size)
-  //   Input 1 - skip : (batch_size, sequence_length, hidden_size) or (batch_size * sequence_length, hidden_size) or (1, sequence_lemgth, hidden_size)
+  //   Input 1 - skip : (batch_size, sequence_length, hidden_size) or (batch_size * sequence_length, hidden_size) or (1, sequence_length, hidden_size)
   //   Input 2 - gamma: (hidden_size)
   //   Input 3 - beta : (hidden_size)
   //   Output         : (batch_size, sequence_length, hidden_size) or (batch_size * sequence_length, hidden_size)
   std::vector<int64_t> input_dims = {batch_size, sequence_length, hidden_size};
   std::vector<int64_t> skip_dims = input_dims;
 
-
-
   if (use_token_count) {
     input_dims = {batch_size * sequence_length, hidden_size};
-  }
-
-  if(batch_size_1 == true){
-    skip_dims = {1, sequence_length, hidden_size};
-  }
-
-  if(no_batch_size){
-    skip_dims = {sequence_length, hidden_size};
+    skip_dims = input_dims;
   }
 
   std::vector<int64_t> gamma_dims = {hidden_size};
@@ -92,6 +83,43 @@ static void RunTest(
     }
 
     test.Run();
+
+  } else if (!use_float16_input_skip){
+    OpTester test(op_type.c_str(), 1, onnxruntime::kMSDomain);
+    test.AddInput<float>("input", input_dims, input_data);
+    test.AddInput<float>("skip", skip_dims, skip_data);
+
+    test.AddOutput<float>("output", output_dims, output_data);
+
+    if (skip_input_bias_add_output_data.size() != 0) {
+      // The second and third outputs are reserved for something else
+      test.AddOptionalOutputEdge<float>();
+      test.AddOptionalOutputEdge<float>();
+
+      test.AddOutput<float>("skip_input_bias_add_output",
+                            output_dims,
+                            skip_input_bias_add_output_data);
+    }
+
+    test.Run();
+
+  } else if (!use_float16_gamma_beta_bias) {
+    OpTester test(op_type.c_str(), 1, onnxruntime::kMSDomain);
+    test.AddInput<float>("gamma", gamma_dims, gamma_data);
+    if (!simplified) {
+      if (!no_beta) {
+        test.AddInput<float>("beta", beta_dims, beta_data);
+      } else {
+        test.AddOptionalInputEdge<float>();
+      }
+    }
+    test.AddAttribute("epsilon", epsilon);
+    if (!bias_data.empty()) {
+      test.AddInput<float>("bias", bias_dims, bias_data);
+    }
+
+    test.Run();
+
   } else if (HasCudaEnvironment(530 /*min_cuda_architecture*/) ||
              dml_ep != nullptr ||
              rocm_ep != nullptr) {
@@ -733,7 +761,7 @@ TEST(SkipLayerNormTest, SkipSimplifiedLayerNormBatch1_Float16) {
           true);
 }
 
-TEST(SkipLayerNormTest, SkipLayerNormBatch2_Skip_Broadcast) {
+TEST(SkipLayerNormTest, SkipLayerNormBatch2_DiffDataTypes) {
   int batch_size = 2;
   int sequence_length = 2;
   int hidden_size = 4;
@@ -746,7 +774,9 @@ TEST(SkipLayerNormTest, SkipLayerNormBatch2_Skip_Broadcast) {
 
   std::vector<float> skip_data = {
       0.1f, -0.2f, 0.3f, 1.0f,
-      0.5f, 0.1f, 0.4f, 1.6f};
+      0.5f, 0.1f, 0.4f, 1.6f,
+      1.8f, -0.3f, 0.0f, 1.f,
+      -0.5f, 0.4f, 0.8f, -0.6f};
 
   std::vector<float> gamma_data = {
       0.3f, 0.2f, 4.0f, 2.2f};
@@ -757,8 +787,8 @@ TEST(SkipLayerNormTest, SkipLayerNormBatch2_Skip_Broadcast) {
   std::vector<float> output_data = {
       0.28433859348297119, -0.17090578377246857, -0.92897164821624756, 4.6924152374267578,
       0.46111652255058289, -0.21333980560302734, -0.29631003737449646, 3.5148544311523438,
-      0.28433859348297119, -0.17090578377246857, -0.92897164821624756, 4.6924152374267578,
-      0.46111652255058289, -0.21333980560302734, -0.29631003737449646, 3.5148544311523438};
+      0.55470430850982666, -0.15080101788043976, -2.3229825496673584, 3.255286693572998,
+      0.15631480515003204, 0.21066918969154358, 4.9432611465454102, -1.7957965135574341};
 
   RunTest(input_data,
           skip_data,
@@ -776,6 +806,9 @@ TEST(SkipLayerNormTest, SkipLayerNormBatch2_Skip_Broadcast) {
           false,
           false,
           false,
+          false,
+          false,
+          true,
           true);
 }
 

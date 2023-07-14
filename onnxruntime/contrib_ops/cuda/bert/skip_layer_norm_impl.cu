@@ -65,9 +65,9 @@ int NextSize(int x) {
   return kSizes[len - 1];
 }
 
-template <typename T, int NumUnroll>
-bool CanVectorized(T* output, T* skip_input_bias_add_output, const T* input, const T* skip, const T* gamma,
-                   const T* beta, const T* bias, const int ld, const int next_size) {
+template <typename T, typename V, int NumUnroll>
+bool CanVectorized(T* output, T* skip_input_bias_add_output, const T* input, const T* skip, const V* gamma,
+                   const V* beta, const V* bias, const int ld, const int next_size) {
   constexpr int alignment = std::alignment_of<aligned_vector<T, NumUnroll>>::value;
   return ld % NumUnroll == 0 && reinterpret_cast<uint64_t>(output) % alignment == 0 &&
          reinterpret_cast<uint64_t>(skip_input_bias_add_output) % alignment == 0 &&
@@ -78,11 +78,11 @@ bool CanVectorized(T* output, T* skip_input_bias_add_output, const T* input, con
 }
 }  // namespace
 
-template <typename T, unsigned TPB, bool Simplified>
+template <typename T, typename V, unsigned TPB, bool Simplified>
 __global__ void SkipLayerNormKernel(
     const int ld, const T* input, const T* skip,
-    const T* beta, const T* gamma, const T* bias,
-    const T epsilon, T* output, T* skip_input_bias_add_output, const bool skip_broadcasted, int skip_size) {
+    const V* beta, const V* gamma, const V* bias,
+    const T epsilon, T* output, T* skip_input_bias_add_output) {
   const T reverse_ld = T(1.f / ld);
   const int offset = blockIdx.x * ld;
 
@@ -96,9 +96,6 @@ __global__ void SkipLayerNormKernel(
 
     const T val = (bias == nullptr) ? input[idx] + skip[idx] : input[idx] + skip[idx] + bias[i];
 
-    if (skip_broadcasted){
-      const T val = (bias == nullptr) ? input[idx] + skip[offset % skip_size] : input[idx] + skip[offset % skip_size] + bias[i];
-    }
     const T rldval = reverse_ld * val;
     thread_data = pair_sum(thread_data, cub::KeyValuePair<T, T>(rldval, rldval * val));
 
@@ -116,11 +113,11 @@ __global__ void SkipLayerNormKernel(
 }
 
 // Vectorized kernel
-template <typename T, unsigned TPB, int ILP, bool Simplified>
+template <typename T, typename V, unsigned TPB, int ILP, bool Simplified>
 __global__ void SkipLayerNormKernelSmall(
-    const int ld, const T* input, const T* skip, const T* beta, const T* gamma,
-    const T* bias, const T epsilon, T* output, T* skip_input_bias_add_output,
-    bool hasBias, bool hasSkipInputBiasAdditionOutput, const bool skip_broadcasted, const int skip_size) {
+    const int ld, const T* input, const T* skip, const V* beta, const V* gamma,
+    const V* bias, const T epsilon, T* output, T* skip_input_bias_add_output,
+    bool hasBias, bool hasSkipInputBiasAdditionOutput) {
   const T rld = T(1.f / ld);
   const int idx = blockIdx.x * ld + threadIdx.x * ILP;  // grid_size = n / ld
 
@@ -132,11 +129,7 @@ __global__ void SkipLayerNormKernelSmall(
   *input_val = *reinterpret_cast<const VecT*>(&input[idx]);
 
   VecT* skip_val = reinterpret_cast<VecT*>(&skip_v);
-  if (skip_broadcasted){
-  *skip_val = *reinterpret_cast<const VecT*>(&skip[idx % skip_size]);
-  }else{
   *skip_val = *reinterpret_cast<const VecT*>(&skip[idx]);
-  }
 
   if (hasBias) {
     VecT* bias_val = reinterpret_cast<VecT*>(&bias_v);
@@ -175,11 +168,11 @@ __global__ void SkipLayerNormKernelSmall(
   LayerNormSmall<T, TPB, ILP>(input_v, thread_data, ld, idx, beta, gamma, epsilon, output);
 }
 
-template <typename T, bool Simplified>
+template <typename T, typename V, bool Simplified>
 Status LaunchSkipLayerNormKernel(
-    cudaStream_t stream, T* output, T* skip_input_bias_add_output, const T* input, const T* skip, const T* gamma,
-    const T* beta, const T* bias, float epsilon, const int ld, const int element_count,
-    size_t element_size,  const bool skip_broadcasted, const int skip_size) {
+    cudaStream_t stream, T* output, V* skip_input_bias_add_output, const T* input, const T* skip, const V* gamma,
+    const V* beta, const V* bias, float epsilon, const int ld, const int element_count,
+    size_t element_size) {
   // this must be true because n is the total size of the tensor
   assert(element_count % ld == 0);
   bool hasBias = (bias == nullptr) ? false : true;
@@ -194,12 +187,12 @@ Status LaunchSkipLayerNormKernel(
 
   switch (next_size) {
 #define LAUNCH_SKIP_LAYER_NORM_KERNEL_SMALL(num_unroll)                                                          \
-  SkipLayerNormKernelSmall<T, block_size, num_unroll, Simplified>                                                \
+  SkipLayerNormKernelSmall<T, V, block_size, num_unroll, Simplified>                                                \
       <<<grid_size, block_size, 0, stream>>>(ld, input, skip, beta, gamma, bias, maybe2half<T>(epsilon), output, \
-                                             skip_input_bias_add_output, hasBias, hasSkipInputBiasAdditionOutput, skip_broadcasted, skip_size)
+                                             skip_input_bias_add_output, hasBias, hasSkipInputBiasAdditionOutput)
 #define LAUNCH_SKIP_LAYER_NORM_KERNEL()                                                       \
-  SkipLayerNormKernel<T, kMaxBlockSize, Simplified><<<grid_size, kMaxBlockSize, 0, stream>>>( \
-      ld, input, skip, beta, gamma, bias, maybe2half<T>(epsilon), output, skip_input_bias_add_output, skip_broadcasted, skip_size)
+  SkipLayerNormKernel<T, V, kMaxBlockSize, Simplified><<<grid_size, kMaxBlockSize, 0, stream>>>( \
+      ld, input, skip, beta, gamma, bias, maybe2half<T>(epsilon), output, skip_input_bias_add_output)
 #define CASE_NEXT_SIZE(next_size_value)               \
   case next_size_value: {                             \
     if (flag_vec4) {                                  \
@@ -232,19 +225,23 @@ Status LaunchSkipLayerNormKernel(
   return CUDA_CALL(cudaGetLastError());
 }
 
-#define SKIPLAYERNORM_IMPL(T, Simplified)                                                                 \
-  template Status LaunchSkipLayerNormKernel<T, Simplified>(cudaStream_t stream, T * output,               \
+#define SKIPLAYERNORM_IMPL(T, V, Simplified)                                                                 \
+  template Status LaunchSkipLayerNormKernel<T, V, Simplified>(cudaStream_t stream, V * output,               \
                                                            T * skip_input_bias_add_output,                \
-                                                           const T* input, const T* skip, const T* gamma, \
-                                                           const T* beta, const T* bias, float epsilon,   \
+                                                           const T* input, const T* skip, const V* gamma, \
+                                                           const V* beta, const V* bias, float epsilon,   \
                                                            const int ld, const int element_count,         \
-                                                           size_t element_size,  const bool skip_broadcasted, \
-                                                           const int skip_size);
+                                                           size_t element_size);
 
-SKIPLAYERNORM_IMPL(float, true);
-SKIPLAYERNORM_IMPL(float, false);
-SKIPLAYERNORM_IMPL(half, true);
-SKIPLAYERNORM_IMPL(half, false);
+SKIPLAYERNORM_IMPL(float, float, true);
+SKIPLAYERNORM_IMPL(float, float, false);
+SKIPLAYERNORM_IMPL(float, half, false);
+SKIPLAYERNORM_IMPL(float, half, true);
+SKIPLAYERNORM_IMPL(half, float, true);
+SKIPLAYERNORM_IMPL(half, float, false);
+SKIPLAYERNORM_IMPL(half, half, false);
+SKIPLAYERNORM_IMPL(half, half, true);
+
 
 }  // namespace cuda
 }  // namespace contrib

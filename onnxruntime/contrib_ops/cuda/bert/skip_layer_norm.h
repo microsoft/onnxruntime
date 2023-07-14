@@ -11,7 +11,7 @@ namespace cuda {
 
 using namespace onnxruntime::cuda;
 
-template <typename T, bool Simplified>
+template <typename T, typename V, bool Simplified>
 class SkipLayerNorm final : public CudaKernel {
  public:
   SkipLayerNorm(const OpKernelInfo& op_kernel_info);
