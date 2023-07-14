@@ -246,7 +246,7 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   std::unordered_map<std::string, std::unordered_map<std::string, std::unordered_map<size_t, std::vector<std::vector<int64_t>>>>> input_shape_ranges_;
   std::unordered_map<std::string, std::vector<nvinfer1::IOptimizationProfile*>> profiles_;
 
-  // TRT or CUDA objects that must be maintained on a per thread basis will be put under the PerThreadContext data structure.
+  // TRT or CUDA objects that must be maintained on a per thread basis will be put under this PerThreadContext data structure.
   // For example, TensorRT execution context and CUDA graph are the ones to be put here.
   class PerThreadContext final {
    public:
@@ -263,8 +263,8 @@ class TensorrtExecutionProvider : public IExecutionProvider {
 
     bool IsTensorRTContextInMap(std::string fused_node);
     nvinfer1::IExecutionContext& GetTensorRTContext(std::string fused_node);
-    bool SetTensorRTContext(std::string fused_node, std::unique_ptr<nvinfer1::IExecutionContext> context); 
-    void ResetTensorRTContext(std::string fused_node); 
+    bool UpdateTensorRTContext(std::string fused_node, std::unique_ptr<nvinfer1::IExecutionContext> context);
+    void ResetTensorRTContext(std::string fused_node);
 
     void InitCUDAGraph();
     void SetGraphStream(cudaStream_t stream);
@@ -279,6 +279,16 @@ class TensorrtExecutionProvider : public IExecutionProvider {
     cudnnHandle_t external_cudnn_handle_ = nullptr;
     cublasHandle_t external_cublas_handle_ = nullptr;
 
+    // Maintaining execution context on a per thread basis is suggested by TRT doc.
+    // Also, for enqueueV2() in execution context, to perform inference concurrently in multiple streams, use one execution context per stream.
+    // ORT multi-streams feature uses one stream for one thread, therefore maintaining execution context on a per thread basis is necessary for TRT EP,
+    // otherwise it may result in undefined behavior or synchronization issues.
+    //
+    // See more details here:
+    // https://docs.nvidia.com/deeplearning/tensorrt/developer-guide/index.html#threading
+    // https://docs.nvidia.com/deeplearning/tensorrt/api/c_api/classnvinfer1_1_1_i_execution_context.html#a63cd95430852038ce864e17c670e0b36
+    std::unordered_map<std::string, std::unique_ptr<nvinfer1::IExecutionContext>> trt_context_map_;
+
     // Cuda graph with multi threads will be supported in the future, so cuda_graph_ is put under PerThreadContext.
     // ORT TRT only supports CUDA graph when whole model is supported by TRT, so simply maintaining a CUDAGraph pointer is enough (no need to maintain one CUDAGraph pointer per TRT subgraph)
     std::unique_ptr<CUDAGraph> cuda_graph_;
@@ -289,10 +299,6 @@ class TensorrtExecutionProvider : public IExecutionProvider {
     // Since no GPU memory allocation is allowed during graph capturing, we need at least two regular runs
     // to allocate enough memory in Arena before graph capturing.
     const int min_num_runs_before_cuda_graph_capture_ = 0;  // required min regular runs before graph capture for the necessary memory allocations.
-
-    // Maintaining one execution context on a per thread basis is suggested per TRT doc to avoid synchronization issue.
-    //std::unordered_map<std::string, std::shared_ptr<nvinfer1::IExecutionContext>> trt_context_map_;
-    std::unordered_map<std::string, std::unique_ptr<nvinfer1::IExecutionContext>> trt_context_map_;
   };
 
   using PerThreadContextMap = std::unordered_map<const TensorrtExecutionProvider*, std::weak_ptr<PerThreadContext>>;
@@ -302,15 +308,12 @@ class TensorrtExecutionProvider : public IExecutionProvider {
     ContextCacheHolder() {
       // Keep a weak pointer to the object, if the weak pointer can be locked, then the shared pointer is still around, so we can reset it
       RunOnUnload([&, weak_p_ = std::weak_ptr<PerThreadContextMap>(p)] {
-        if (auto lock = weak_p_.lock())
+        if (auto lock = weak_p_.lock()) {
           p.reset();
+        }
       });
     }
 
-    ~ContextCacheHolder() {
-      // [Debug] why this destructor not being called upon thread exits?
-      std::cout << "Thread local destructor!!!!!!!!!!!!!!!" << std::endl;
-    }
     std::shared_ptr<PerThreadContextMap> p = std::make_shared<PerThreadContextMap>();
   };
 
