@@ -183,7 +183,7 @@ struct Float16_t : onnxruntime_float16::Float16Impl<Float16_t> {
   /// </summary>
   /// <param name="v">uint16_t bit representation of bfloat16</param>
   /// <returns>new instance of Float16_t</returns>
-  constexpr static Float16_t FromBits(uint16_t x) noexcept { return Float16_t(x); }
+  constexpr static Float16_t FromBits(uint16_t v) noexcept { return Float16_t(v); }
 
   /// <summary>
   /// __ctor from float. Float is converted into float16 16-bit representation.
