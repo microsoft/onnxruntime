@@ -25,18 +25,18 @@
 		<SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'windows'">10.0.17763.0</SupportedOSPlatformVersion>
 		<TargetPlatformMinVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'windows'">10.0.17763.0</TargetPlatformMinVersion>
 		<AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+		<PackageIcon>onnxruntime_icon.png</PackageIcon>
 	</PropertyGroup>
 
 	<ItemGroup>
 		<!-- App Icon -->
-		<MauiIcon Include="Resources\AppIcon\appicon.svg" ForegroundFile="Resources\AppIcon\appiconfg.svg" Color="#512BD4" />
+		<MauiIcon Include="Resources\AppIcon\onnxruntime_icon.png" />
 
 		<!-- Splash Screen -->
-		<MauiSplashScreen Include="Resources\Splash\splash.svg" Color="#512BD4" BaseSize="128,128" />
+		<MauiSplashScreen Include="Resources\Splash\onnxruntime_logo.png" Resize="true" Color="#C76006" />
 
 		<!-- Images -->
 		<MauiImage Include="Resources\Images\*" />
-		<MauiImage Update="Resources\Images\dotnet_bot.svg" BaseSize="168,208" />
 
 		<!-- Custom Fonts -->
 		<MauiFont Include="Resources\Fonts\*" />
@@ -46,7 +46,7 @@
 	</ItemGroup>
 
 	<ItemGroup>
-		<Compile Include="..\..\test\Microsoft.ML.OnnxRuntime.Tests.Common\Tensors\TensorComparers.cs" />
+		<Compile Include="..\..\test\Microsoft.ML.OnnxRuntime.Tests.Common\EqualityComparers.cs" />
 		<Compile Include="..\Microsoft.ML.OnnxRuntime.PerfTool\OnnxMl.cs" />
 	</ItemGroup>
 

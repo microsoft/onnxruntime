@@ -3,7 +3,7 @@ import os
 import shutil
 import sys
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 import numpy as np
 
@@ -58,7 +58,11 @@ def parse_args():
     )
 
     parser.add_argument(
-        "--model_path", "-m", help="Path to ONNX model to use. Model will be copied into the test app", type=Path
+        "--model_path",
+        "-m",
+        help="Path to ONNX model to use. Model will be copied into the test app",
+        type=Path,
+        Required=True,
     )
 
     args = parser.parse_args()
@@ -95,9 +99,9 @@ def create_existing_data_map(pb_files: List[Path]):
 
 def add_model_and_test_data_to_app(
     model_path: Path,
-    symbolic_dims: Dict[str, int] = None,
-    input_map: Dict[str, np.ndarray] = None,
-    output_map: Dict[str, np.ndarray] = None,
+    symbolic_dims: Optional[Dict[str, int]] = None,
+    input_map: Optional[Dict[str, np.ndarray]] = None,
+    output_map: Optional[Dict[str, np.ndarray]] = None,
 ):
     import ort_test_dir_utils as utils
 

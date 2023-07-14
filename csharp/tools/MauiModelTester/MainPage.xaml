@@ -17,7 +17,7 @@
             <Label Grid.Row="0"
                 Text="ONNX Runtime Mobile Model Tester"
                 FontSize="Header"
-                TextColor="DeepSkyBlue"
+                TextColor="DeepSkyBlue"             
                 HorizontalOptions="Center" />
 
             <Grid Grid.Row="1" ColumnSpacing="10">
