@@ -784,7 +784,7 @@ struct SessionImpl : ConstSessionImpl<T> {
   /** \brief Run the model asynchronously in a thread owned by intra op thread pool
    *
    * Wraps OrtApi::RunAsync
-   * 
+   *
    * \param[in] run_options
    * \param[in] input_names Array of null terminated UTF8 encoded strings of the input names
    * \param[in] input_values Array of ::OrtValue%s of the input values
