@@ -5,7 +5,7 @@
 
 import dataclasses
 import logging
-from typing import Any, Dict, Mapping, Tuple, Union
+from typing import Any, Dict, Mapping, Tuple, Union, Optional
 
 import numpy as np
 import onnx
@@ -33,30 +33,6 @@ from torch.fx.passes.tools_common import CALLABLE_NODE_OPS
 
 import onnxruntime  # type: ignore
 from onnxruntime.capi import _pybind_state as ORTC
-
-# DEFAULT_ONNX_EXPORTER_OPTIONS contains shared information between exporter and DORT.
-# For example, they should use the same decomposition table to maintain the same set
-# operators when
-#  1. capturing FX graph in torch.compile
-#  2. call exporter's API to convert `torch.fx.GraphModule` to ONNX model.
-DEFAULT_ONNX_EXPORTER_OPTIONS = torch.onnx._internal.exporter.ResolvedExportOptions(
-    torch.onnx._internal.exporter.ExportOptions()
-)
-
-# TODO(wechi): This line must generate result identical to the call of
-# _create_onnx_supports_op_overload_table(...) inside
-# create_onnx_friendly_decomposition_table(...) in
-# torch/onnx/_internal/fx/decomposition_table.py.
-_SUPPORT_DICT = torch.onnx._internal.fx.decomposition_table._create_onnx_supports_op_overload_table(
-    DEFAULT_ONNX_EXPORTER_OPTIONS.onnx_registry
-)  # type: ignore
-
-_EXTRA_SUPPORT_DICT: Dict[str, Any] = {
-    "getattr": None,
-    "_operator.getitem": None,
-}
-
-DORT_DECOMPOSITION_TABLE = DEFAULT_ONNX_EXPORTER_OPTIONS.decomposition_table
 
 _NP_DTYPE = {
     torch.float16: np.float16,
@@ -114,8 +90,12 @@ class OrtOperatorSupport(OperatorSupport):
     is used by OperatorSupport.is_node_supported.
     """
 
-    def __init__(self):
-        super().__init__(_EXTRA_SUPPORT_DICT)
+    def __init__(self, extra_support_dict: Dict[str, Any]):
+        # Use extra_support_dict[op_name] = None to indicate
+        # we support op_name with all input types. Otherwise,
+        # see support_dict (type: SupportDict) in operator_support.py
+        # for specifying supported types.
+        super().__init__(extra_support_dict)
 
     def is_node_supported(self, submodules: Mapping[str, torch.nn.Module], node: torch.fx.Node) -> bool:
         # OperatorSupport.is_node_supported returns True for non-callable nodes.
@@ -346,8 +326,44 @@ class OrtBackend:
         3. Inside _ort_accelerated_call, it creates onnxruntime.InferenceSession and calls it to execute the sub-graph.
     """
 
-    def __init__(self, ep: str = "", preallocate_output: bool = False, session_options=None):
-        self._supported_ops = OrtOperatorSupport()
+    def __init__(
+        self,
+        ep: str = "",
+        preallocate_output: bool = False,
+        session_options=None,
+        onnx_exporter_options: Optional["torch.onnx._internal.exporter.ExportOptions"] = None,
+    ):
+        # DEFAULT_ONNX_EXPORTER_OPTIONS contains shared information between exporter and DORT.
+        # For example, they should use the same decomposition table to maintain the same set
+        # operators when
+        #  1. capturing FX graph in torch.compile
+        #  2. call exporter's API to convert `torch.fx.GraphModule` to ONNX model.
+        if onnx_exporter_options is None:
+            onnx_exporter_options = torch.onnx._internal.exporter.ExportOptions()
+        # Convert user-facing option to internal option used by ONNX exporter
+        # to access required information.
+        # Some useful fields:
+        # - Decomposition table for decomposing FX operators in exporter is
+        #   self.resolved_onnx_exporter_options.decomposition_table.
+        # - self.resolved_onnx_exporter_options.onnx_registry records what
+        #   aten/prim ops are supported by exporter and their exporters (type: callable).
+        self.resolved_onnx_exporter_options = torch.onnx._internal.exporter.ResolvedExportOptions(onnx_exporter_options)
+
+        # TODO(wechi): This line must generate result identical to the call of
+        # _create_onnx_supports_op_overload_table(...) inside
+        # create_onnx_friendly_decomposition_table(...) in
+        # torch/onnx/_internal/fx/decomposition_table.py.
+        self.support_dict = torch.onnx._internal.fx.decomposition_table._create_onnx_supports_op_overload_table(
+            # This is identical to self.resolved_onnx_exporter_options.onnxfunction_dispatcher.onnx_registry.
+            self.resolved_onnx_exporter_options.onnx_registry
+        )  # type: ignore
+
+        extra_support_dict: Dict[str, Any] = {
+            "getattr": None,
+            "_operator.getitem": None,
+        }
+
+        self._supported_ops = OrtOperatorSupport(extra_support_dict)
         # TODO: this is a naive implementation of cache without proper guard
         self._partitioner_cache: Dict[torch.fx.GraphModule, torch.fx.GraphModule] = {}
         # TODO: this is a naive implementation of cache without proper guard, this will only work for identical inputs

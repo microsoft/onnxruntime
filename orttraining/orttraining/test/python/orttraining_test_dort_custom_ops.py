@@ -35,33 +35,12 @@ def custom_exporter_for_aten_add_Tensor(x, y):
     return custom_opset.CustomOpOne(x, y)
 
 
-# Register custom_exporter_for_aten_add_Tensor as "aten::mul.Tensor"'s
-# exporter.
-# Use custom_exporter_for_aten_add_Tensor.to_function_proto() to investigate
-# function representing "aten::mul.Tensor".
-DEFAULT_ONNX_EXPORTER_OPTIONS.onnxfunction_dispatcher.onnx_registry.register_custom_op(
-    function=custom_exporter_for_aten_add_Tensor,
-    namespace="aten",
-    op_name="mul",
-    overload="Tensor",
-)
-
-
 # Exporter for torch.ops.foo.bar.default.
 @onnxscript.script(custom_opset)
 def custom_exporter_for_foo_bar_default(x):
     # This function represents an ONNX function. Register below
     # set this function as the FX-to-ONNX exporter of "aten::mul.Tensor".
     return custom_opset.CustomOpOne(x, x)
-
-
-# Ask exporter to map "torch.ops.foo.bar" to
-# custom_exporter_for_foo_bar_default.
-DEFAULT_ONNX_EXPORTER_OPTIONS.onnxfunction_dispatcher.onnx_registry.register_custom_op(
-    function=custom_exporter_for_foo_bar_default,
-    namespace="foo",
-    op_name="bar",
-)
 
 
 class TestTorchDynamoOrtCustomOp(unittest.TestCase):
@@ -122,10 +101,21 @@ class TestTorchDynamoOrtCustomOp(unittest.TestCase):
         session_options = TestTorchDynamoOrtCustomOp.create_onnxruntime_session_options()
 
         ort_backend = OrtBackend(ep="CPUExecutionProvider", session_options=session_options)
+        # Register custom_exporter_for_aten_add_Tensor as "aten::mul.Tensor"'s
+        # exporter.
+        # Use custom_exporter_for_aten_add_Tensor.to_function_proto() to see
+        # the sub-graph representing "aten::mul.Tensor".
+        ort_backend.resolved_onnx_exporter_options.onnxfunction_dispatcher.onnx_registry.register_custom_op(
+            function=custom_exporter_for_aten_add_Tensor,
+            namespace="aten",
+            op_name="mul",
+            overload="Tensor",
+        )
+
         aot_ort = aot_autograd(
             fw_compiler=ort_backend,
             partition_fn=min_cut_rematerialization_partition,
-            decompositions=DORT_DECOMPOSITION_TABLE,
+            decompositions=ort_backend.resolved_onnx_exporter_options.decomposition_table,
         )
 
         def one_mul(tensor_x: torch.Tensor, tensor_y: torch.Tensor):
@@ -159,10 +149,17 @@ class TestTorchDynamoOrtCustomOp(unittest.TestCase):
 
         session_options = TestTorchDynamoOrtCustomOp.create_onnxruntime_session_options()
         ort_backend = OrtBackend(ep="CPUExecutionProvider", session_options=session_options)
+        # Ask exporter to map "torch.ops.foo.bar" to
+        # custom_exporter_for_foo_bar_default.
+        ort_backend.resolved_onnx_exporter_options.onnxfunction_dispatcher.onnx_registry.register_custom_op(
+            function=custom_exporter_for_foo_bar_default,
+            namespace="foo",
+            op_name="bar",
+        )
         aot_ort = aot_autograd(
             fw_compiler=ort_backend,
             partition_fn=min_cut_rematerialization_partition,
-            decompositions=DORT_DECOMPOSITION_TABLE,
+            decompositions=ort_backend.resolved_onnx_exporter_options.decomposition_table,
         )
 
         def one_foo(tensor_x: torch.Tensor):
