@@ -3,11 +3,18 @@
 
 namespace onnxruntime {
 
+struct CustomEp2Info {
+    int int_property;
+    std::string str_property;
+};
+
 class CustomEp2 : public CustomExecutionProvider {
 public:
-    CustomEp2();
+    CustomEp2(const CustomEp2Info& info);
+    ~CustomEp2() override = default;
 private:
     std::string type_;
+    CustomEp2Info info_;
 };
 
 }
@@ -16,7 +23,7 @@ private:
 extern "C" {
 #endif
 
-ORT_API(onnxruntime::CustomEp2*, GetExternalProvider);
+ORT_API(onnxruntime::CustomEp2*, GetExternalProvider, const void* options);
 
 #ifdef __cplusplus
 }

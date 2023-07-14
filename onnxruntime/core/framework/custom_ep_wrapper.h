@@ -34,7 +34,7 @@ namespace onnxruntime {
         }
 
     private:
-        CustomExecutionProvider* external_ep_impl_;
+        std::unique_ptr<CustomExecutionProvider> external_ep_impl_;
         std::shared_ptr<KernelRegistry> kernel_registry_;
 
         void OrtLiteCustomOp2KernelRegistry(Ort::Custom::OrtLiteCustomOp* custom_op) {

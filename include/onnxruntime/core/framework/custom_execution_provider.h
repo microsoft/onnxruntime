@@ -14,6 +14,7 @@ namespace onnxruntime{
     class CustomExecutionProvider{
         public:
         CustomExecutionProvider() {};
+        virtual ~CustomExecutionProvider() = default;
 
         //std::vector<CreateCustomKernelFunc> GetRegisteredKernels();
         std::vector<OrtAllocator*>& GetAllocators() { return allocators_; }

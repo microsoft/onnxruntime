@@ -6,6 +6,6 @@ shared_lib_path = '/bert_ort/leca/code/onnxruntime2/samples/customEP2/build/libc
 
 session_options =C.get_default_session_options()
 sess = C.InferenceSession(session_options, model_path, True, True)
-sess.initialize_session(['customEp2'], [{'shared_lib_path': shared_lib_path}], set())
+sess.initialize_session(['customEp2'], [{'shared_lib_path': shared_lib_path, 'int_property':'3', 'str_property':'strval'}], set())
 
 print('Create custom EP success!')

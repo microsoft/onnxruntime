@@ -288,8 +288,6 @@ static std::unique_ptr<onnxruntime::IExecutionProvider> LoadExternalExecutionPro
     const ProviderOptions& provider_options = {},
     const std::string& entry_symbol_name = "GetExternalProvider"){
 
-  ORT_UNUSED_PARAMETER(provider_options);
-
   void* handle;
   const auto path_str = ToPathString(ep_shared_lib_path);
   auto error = Env::Default().LoadDynamicLibrary(path_str, false, &handle);
@@ -297,10 +295,10 @@ static std::unique_ptr<onnxruntime::IExecutionProvider> LoadExternalExecutionPro
     throw std::runtime_error(error.ErrorMessage());
   }
 
-  CustomExecutionProvider* (*PGetExternalProvider)();
+  CustomExecutionProvider* (*PGetExternalProvider)(const void*);
   OrtPybindThrowIfError(Env::Default().GetSymbolFromLibrary(handle, entry_symbol_name, (void**)&PGetExternalProvider));
 
-  return std::make_unique<ExternalExecutionProvider>(PGetExternalProvider());
+  return std::make_unique<ExternalExecutionProvider>(PGetExternalProvider(&provider_options));
 }
 
 #ifdef USE_CUDA
