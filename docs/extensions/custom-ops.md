@@ -225,7 +225,6 @@ expect(node, inputs=[token_ids],
 ### GPT2Tokenizer
 
 <details>
-<summary>GPT2Tokenizer details</summary>
 
 GPT2Tokenizer that performs byte-level bpe tokenization to the input tensor, based on the [hugging face version](https://huggingface.co/transformers/_modules/transformers/tokenization_gpt2.html).
 
@@ -288,8 +287,6 @@ expect(node, inputs=[x], outputs=[y],
 ### WordpieceTokenizer
 
 <details>
-<summary>WordpieceTokenizer details</summary>
-
 
 WordpieceTokenizer that performs WordPiece tokenization to the input tensor,
 based on the [hugging face version](https://huggingface.co/transformers/model_doc/bert.html#WordpieceTokenizer).
@@ -402,7 +399,6 @@ expect(model, inputs=[text], outputs=[tokens, indices, row_indices],
 ### SentencepieceTokenizer
 
 <details>
-<summary>SentencepieceTokenizer details</summary>
 
 SentencepieceTokenizer replicates [SentencepieceTokenizer](https://github.com/tensorflow/text/blob/master/docs/api_docs/python/text/SentencepieceTokenizer.md).
 
@@ -475,7 +471,6 @@ expect(node, inputs=[inputs, nbest_size, alpha, add_bos, add_eos, reverse],
 ### BasicTokenizer
 
 <details>
-<summary>BasicTokenizer details</summary>
 
 TODO: is this still supported?
 
@@ -548,7 +543,6 @@ TODO
 ### StringEqual
 
 <details>
-<summary>StringEqual details</summary>
 
 Compares two strings and returns true if they are equal and false if not.
 
@@ -574,8 +568,6 @@ String with replacements.
 ### StringHash
 
 <details>
-<summary>StringHash details</summary>
-
 
 Hashes the input string based on the number of buckets
 
@@ -601,8 +593,6 @@ The hash value of the string
 ### StringHashFast
 
 <details>
-<summary>StringHashFast details</summary>
-
 
 A faster implementation of StringHash.
 
@@ -612,8 +602,6 @@ A faster implementation of StringHash.
 ### StringJoin  
 
 <details>
-<summary>StringJoin details</summary>
-
 
 Join an array of strings
 
@@ -659,8 +647,6 @@ out = ['a;aa', 'b;bb', 'c;']
 ### StringRegexReplace
 
 <details>
-<summary>StringRegexReplace details</summary>
-
 
 String replacement based on [Re2-format](https://github.com/google/re2/wiki/Syntax) regular expressions.
 
@@ -715,7 +701,6 @@ expect(node, inputs=[text, pattern, rewrite], outputs=[y],
 ### StringECMARegexReplace
 
 <details>
-<summary>StringECMARegexReplace details</summary>
 
 String replacement based on [ECMA-format](https://en.cppreference.com/w/cpp/regex/ecmascript) regular expressions.
 
@@ -790,7 +775,6 @@ TODO
 ### StringLength
 
 <details>
-<summary>StringECMARegexReplace details</summary>
 
 Get the length of each string element in input tensor. Similar to the function `len("abcde"")` in python.
 
@@ -829,7 +813,6 @@ expect(node, inputs=[x], outputs=[y],
 ### StringConcat 
 
 <details>
-<summary>StringConcat details</summary>
 
 Concat the corresponding string in the two string tensor. Two input tensors should have the same dimension.
 
@@ -884,7 +867,6 @@ expect(node, inputs=[x, y], outputs=[result],
 ### StringRegexSplitWithOffsets
 
 <details>
-<summary>StringRegexSplitWithOffsets details</summary>
 
 Splits string based on regular expressions.
 
@@ -948,7 +930,6 @@ TODO
 ### VectorToString
 
 <details>
-<summary>VectorToString details</summary>
 
 VectorToString is the contrary operation to the `StringToVector` , they share same format of mapping table:
 
@@ -1036,7 +1017,6 @@ expect(node, inputs=[x], outputs=[y],
 ### StringToVector
 
 <details>
-<summary>StringToVector details</summary>
 
 StringToVector will map each string element in the input to the corresponding vector according to the mapping file. The mapping file is a utf-8 encoding text file in tsv format:
 
@@ -1127,7 +1107,6 @@ expect(node, inputs=[x], outputs=[y],
 ### StringSlice 
 
 <details>
-<summary>StringSlice details</summary>
 
 Do the slice operation to each string element in input tensor. Similar to string slice in python
 
@@ -1189,8 +1168,6 @@ expect(node, inputs=[x, starts, ends, axes, steps], outputs=[y],
 ### MaskedFill
 
 <details>
-<summary>MaskedFill details</summary>
-
 
 Fills elements of self tensor with value where mask is True. The operator is similar with [`Tensor.masked_fill_`](https://pytorch.org/docs/stable/generated/torch.Tensor.masked_fill_.html#torch.Tensor.masked_fill_) in pytorch.
 
@@ -1274,7 +1251,6 @@ TODO
 ### Template
 
 <details>
-<summary>Template details</summary>
 
 Description
 
