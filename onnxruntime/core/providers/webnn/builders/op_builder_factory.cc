@@ -44,9 +44,15 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
   }
 
   {  // Activations
-    CreateActivationOpBuilder("Relu", op_registrations);
+    CreateActivationOpBuilder("Elu", op_registrations);
+    CreateActivationOpBuilder("HardSigmoid", op_registrations);
+    CreateActivationOpBuilder("HardSwish", op_registrations);
     CreateActivationOpBuilder("LeakyRelu", op_registrations);
+    CreateActivationOpBuilder("Relu", op_registrations);
     CreateActivationOpBuilder("Sigmoid", op_registrations);
+    CreateActivationOpBuilder("Softplus", op_registrations);
+    CreateActivationOpBuilder("Softsign", op_registrations);
+    CreateActivationOpBuilder("Tanh", op_registrations);
   }
 
   {  // ArgMax/ArgMin
