@@ -1,7 +1,7 @@
 ---
 title: Extensions
 has_children: true
-nav_order: 9
+nav_order: 7
 ---
 
 # ONNXRuntime-Extensions
