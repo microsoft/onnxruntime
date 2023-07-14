@@ -123,7 +123,7 @@ const getOriginalCoordinateFromResizedCoordinate = (coordinateTransferMode: Coor
           return [
             'const outputWidth = xScale * lengthResized;', 'const adjustment = lengthResized / outputWidth;',
             'const center = llengthOriginal / 2;', 'const offset = center * (1 - adjustment);',
-            'return offset + (f32(xResized + 0.5) / xScale - 0.5;'
+            'return offset + (f32(xResized) + 0.5) / xScale - 0.5;'
           ].join('\n');
         case 'half_pixel':
           return 'return (f32(xResized) + 0.5) / xScale - 0.5;';
@@ -199,25 +199,28 @@ const initOutputShape =
         };
 
 const adjustOutputShape =
-    (inputShape: readonly number[], outputShape: readonly number[], scales: number[], attributes: ResizeAttributes): number[] => {
-        const scaleInPolicy = (() => {
-          switch (attributes.keepAspectRatioPolicy) {
-            case 'not_larger':
-              return Math.min(...scales);
-            case 'not_smaller':
-              return Math.max(
-                  attributes.axes.length > 0 ? Math.min(...attributes.axes.map(i => scales[i])) : Math.min(...scales));
-            default:
-              throw new Error(`Keep aspect ratio policy ${attributes.keepAspectRatioPolicy} is not supported`);
-          }
-        })();
-        scales.fill(1.0, 0, scales.length);
-        const adjustedOutputShape = inputShape.slice();
-        if (attributes.axes.length > 0) {
-          attributes.axes.forEach((v, i) => adjustedOutputShape[v] = Math.round(inputShape[v] * scales[i]));
-          attributes.axes.forEach((v) => scales[v] = scaleInPolicy);
+    (inputShape: readonly number[], outputShape: readonly number[], scales: number[],
+     attributes: ResizeAttributes): number[] => {
+      const scaleInPolicy = (() => {
+        switch (attributes.keepAspectRatioPolicy) {
+          case 'not_larger':
+            return attributes.axes.length > 0 ? Math.min(...attributes.axes.map(i => scales[i]), Number.MAX_VALUE) : Math.min(...scales, Number.MAX_VALUE);
+          case 'not_smaller':
+            return attributes.axes.length > 0 ? Math.max(...attributes.axes.map(i => scales[i]), Number.MIN_VALUE) : Math.max(...scales, Number.MIN_VALUE);
+          default:
+            throw new Error(`Keep aspect ratio policy ${attributes.keepAspectRatioPolicy} is not supported`);
         }
-        return adjustedOutputShape;
+      })();
+      scales.fill(1.0, 0, scales.length);
+      const adjustedOutputShape = inputShape.slice();
+      if (attributes.axes.length > 0) {
+        attributes.axes.forEach((v) => scales[v] = scaleInPolicy);
+        attributes.axes.forEach((v) => adjustedOutputShape[v] = Math.round(inputShape[v] * scales[v]));
+      } else {
+        scales.fill(scaleInPolicy, 0, scales.length);
+        adjustedOutputShape.forEach((v, i) => adjustedOutputShape[i] = Math.round(v * scales[i]));
+      }
+      return adjustedOutputShape;
     };
 
 const calculateInputIndicesFromOutputIndices =
@@ -241,6 +244,8 @@ const calculateInputIndicesFromOutputIndices =
               } else {
                 inputIndices[i] = u32(getNearestPixelFromOriginal(original_idx, scales[i] < 1));
               }
+            } else {
+              inputIndices[i] = inputShape[i];
             }
          }
          return inputIndices;
@@ -264,7 +269,7 @@ const createResizeProgramInfo =
       const roi = updateRoI(roiInput, attributes.axes, inputShape.length);
 
       let outputShape = initOutputShape(inputShape, scalesInput, sizes, attributes.axes);
-      var scales = scalesInput.slice();
+      let scales = scalesInput.slice();
       if (scalesInput.length === 0) {
         scales = inputShape.map((value, index) => value === 0 ? 1.0 : outputShape[index] / value);
         if (attributes.keepAspectRatioPolicy !== 'stretch') {
