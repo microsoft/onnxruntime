@@ -12,7 +12,7 @@ import {createIndicesHelper, ShaderHelper} from './common';
 type CoordinateTransformMode = 'half_pixel'|'asymmetric'|'pytorch_half_pixel'|'tf_half_pixel_for_nn'|'align_corners'|
     'tf_crop_and_resize'|'half_pixel_symmetric';
 
-type KeepAspectRatioPolicy = 'streach'|'not_smaller'|'not_larger';
+type KeepAspectRatioPolicy = 'stretch'|'not_smaller'|'not_larger';
 
 type Mode = 'nearest'|'linear'|'cubic';
 
@@ -185,7 +185,7 @@ const initOutputShape =
 const adjustOutputShape =
     (inputShape: readonly number[], outputShape: readonly number[], attributes: ResizeAttributes): number[] => {
       const scales = inputShape.map((value, index) => value === 0 ? 1.0 : outputShape[index] / value);
-      if (attributes.keepAspectRatioPolicy !== 'streach') {
+      if (attributes.keepAspectRatioPolicy !== 'stretch') {
         const scaleInPolicy = (() => {
           switch (attributes.keepAspectRatioPolicy) {
             case 'not_larger':
