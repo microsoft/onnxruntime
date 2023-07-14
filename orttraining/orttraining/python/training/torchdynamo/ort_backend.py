@@ -5,7 +5,7 @@
 
 import dataclasses
 import logging
-from typing import Any, Dict, Mapping, Tuple, Union, Optional, Set
+from typing import Any, Dict, Mapping, Optional, Set, Tuple, Union
 
 import numpy as np
 import onnx
