@@ -378,11 +378,11 @@ class OrtBackend:
         session_options=None,
         onnx_exporter_options: Optional["torch.onnx._internal.exporter.ExportOptions"] = None,
     ):
-        # DEFAULT_ONNX_EXPORTER_OPTIONS contains shared information between exporter and DORT.
-        # For example, they should use the same decomposition table to maintain the same set
-        # operators when
-        #  1. capturing FX graph in torch.compile
-        #  2. call exporter's API to convert `torch.fx.GraphModule` to ONNX model.
+        # onnx_exporter_options contains information shared between exporter and DORT.
+        # For example, they should use the same decomposition table when
+        #  1. capturing FX graph in torch.compile (see how we create aot_ort in register_backend.py)
+        #  2. call exporter's API to convert `torch.fx.GraphModule` to ONNX model
+        #     (see onnxfunction_dispatcher passed to FxOnnxInterpreter.run below).
         if onnx_exporter_options is None:
             onnx_exporter_options = torch.onnx._internal.exporter.ExportOptions()
         # Convert user-facing option to internal option used by ONNX exporter
@@ -398,7 +398,7 @@ class OrtBackend:
         # _create_onnx_supports_op_overload_table(...) inside
         # create_onnx_friendly_decomposition_table(...) in
         # torch/onnx/_internal/fx/decomposition_table.py.
-        self.support_dict = torch.onnx._internal.fx.decomposition_table._create_onnx_supports_op_overload_table(
+        support_dict = torch.onnx._internal.fx.decomposition_table._create_onnx_supports_op_overload_table(
             # This is identical to self.resolved_onnx_exporter_options.onnxfunction_dispatcher.onnx_registry.
             self.resolved_onnx_exporter_options.onnx_registry
         )  # type: ignore
@@ -408,7 +408,7 @@ class OrtBackend:
             "_operator.getitem": None,
         }
 
-        self._supported_ops = OrtOperatorSupport(self.support_dict, extra_support_dict)
+        self._supported_ops = OrtOperatorSupport(support_dict, extra_support_dict)
         # TODO: this is a naive implementation of cache without proper guard
         self._partitioner_cache: Dict[torch.fx.GraphModule, torch.fx.GraphModule] = {}
         # TODO: this is a naive implementation of cache without proper guard, this will only work for identical inputs

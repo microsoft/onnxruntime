@@ -144,8 +144,8 @@ class TestTorchDynamoOrtCustomOp(unittest.TestCase):
         session_options = TestTorchDynamoOrtCustomOp.create_onnxruntime_session_options()
         ort_backend = OrtBackend(ep="CPUExecutionProvider", session_options=session_options)
         # Allow torch.ops.foo.bar.default to be sent to DORT.
-        # support_dict tells Dynamo which ops to sent to DORT.
-        ort_backend.support_dict.add(torch.ops.foo.bar.default)
+        # _support_dict tells Dynamo which ops to sent to DORT.
+        ort_backend._supported_ops._support_dict.add(torch.ops.foo.bar.default)
         # Ask exporter to map "torch.ops.foo.bar" to
         # custom_exporter_for_foo_bar_default.
         ort_backend.resolved_onnx_exporter_options.onnxfunction_dispatcher.onnx_registry.register_custom_op(
