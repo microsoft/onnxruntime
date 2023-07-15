@@ -137,6 +137,10 @@ OpBuilderRegistrations::OpBuilderRegistrations() {
   }
 
   {
+    CreateLayerNormOpBuilder("LayerNormalization", *this);
+  }
+
+  {
     CreateLRNOpBuilder("LRN", *this);
   }
 }
