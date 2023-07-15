@@ -18,7 +18,11 @@ class Logger;
 
 namespace coreml {
 
+// Gets `node_arg`'s shape. Dynamic dimensions will have a value of -1.
 bool GetShape(const NodeArg& node_arg, std::vector<int64_t>& shape, const logging::Logger& logger);
+
+// Gets `node_arg`'s shape if it has no dynamic dimensions.
+bool GetStaticShape(const NodeArg& node_arg, std::vector<int64_t>& shape, const logging::Logger& logger);
 
 bool IsInputSupported(const NodeArg& node_arg, const std::string& parent_name, const logging::Logger& logger);
 

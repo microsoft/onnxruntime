@@ -84,7 +84,7 @@ bool CastOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputPara
   return true;
 }
 
-bool CastOpBuilder::HasSupportedInputsImpl(const Node& node, const logging::Logger& logger) const override {
+bool CastOpBuilder::HasSupportedInputsImpl(const Node& node, const logging::Logger& logger) const {
   // We only check the type of input 0
   const auto& input = *node.InputDefs()[0];
 

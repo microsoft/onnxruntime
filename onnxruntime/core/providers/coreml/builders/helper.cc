@@ -11,6 +11,7 @@
 #include <TargetConditionals.h>
 #endif
 
+#include "core/framework/tensorprotoutils.h"
 #include "core/graph/graph_viewer.h"
 #include "core/providers/common.h"
 #include "core/providers/coreml/builders/op_builder_factory.h"
@@ -19,19 +20,43 @@
 namespace onnxruntime {
 namespace coreml {
 
-bool GetShape(const NodeArg& node_arg, std::vector<int64_t>& shape, const logging::Logger& logger) {
+namespace {
+bool GetShapeImpl(const NodeArg& node_arg, std::vector<int64_t>& shape_out, const logging::Logger& logger,
+                  bool allow_dynamic_shape) {
   const auto* shape_proto = node_arg.Shape();
   if (!shape_proto) {
     LOGS(logger, WARNING) << "NodeArg [" << node_arg.Name() << "] has no shape info";
     return false;
   }
 
-  // We already checked the shape has no dynamic dimension
-  for (const auto& dim : shape_proto->dim()) {
-    shape.push_back(dim.dim_value());
+  std::vector<int64_t> shape{};
+  shape.reserve(shape_proto->dim().size());
+
+  for (int i = 0; i < shape_proto->dim().size(); ++i) {
+    const auto& dim = shape_proto->dim(i);
+    if (utils::HasDimValue(dim)) {
+      shape.push_back(dim.dim_value());
+    } else {
+      // dynamic dimension
+      if (!allow_dynamic_shape) {
+        LOGS(logger, WARNING) << "NodeArg [" << node_arg.Name() << "] has shape with dynamic dimension";
+        return false;
+      }
+      shape.push_back(-1);
+    }
   }
 
+  shape_out = std::move(shape);
   return true;
+}
+}  // namespace
+
+bool GetShape(const NodeArg& node_arg, std::vector<int64_t>& shape, const logging::Logger& logger) {
+  return GetShapeImpl(node_arg, shape, logger, /* allow_dynamic_shape */ true);
+}
+
+bool GetStaticShape(const NodeArg& node_arg, std::vector<int64_t>& shape, const logging::Logger& logger) {
+  return GetShapeImpl(node_arg, shape, logger, /* allow_dynamic_shape */ false);
 }
 
 bool IsNodeSupported(const Node& node, const GraphViewer& graph_viewer, const logging::Logger& logger) {
@@ -56,21 +81,15 @@ bool IsInputSupported(const NodeArg& input, const std::string& parent_name, cons
   // We do not support input with no shape
   if (!shape_proto) {
     LOGS(logger, VERBOSE) << "Input [" << input_name << "] of [" << parent_name
-                          << "] has not shape";
+                          << "] has no shape";
     return false;
   }
 
   for (const auto& dim : shape_proto->dim()) {
-    // For now we do not support dynamic shape
-    if (!dim.has_dim_value()) {
-      LOGS(logger, WARNING) << "Dynamic shape is not supported for now, for input:" << input_name;
-      return false;
-    }
-
     // For some undocumented reason, Apple CoreML framework will fail loading the model if the model
     // input has dimension > 16384
     // See this issue, https://github.com/apple/coremltools/issues/1003
-    if (dim.dim_value() > 16384) {
+    if (utils::HasDimValue(dim) && dim.dim_value() > 16384) {
       LOGS(logger, WARNING) << "CoreML does not support input dim > 16384, input:" << input_name
                             << ", actual dim: " << dim.dim_value();
       return false;
