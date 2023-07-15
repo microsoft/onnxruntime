@@ -13,7 +13,7 @@ nav_order: 4
 
 <details>
 
-BertTokenizer replicates `encode_plus` function of [BertTokenizer (huggingface version )](https://huggingface.co/transformers/_modules/transformers/models/bert/tokenization_bert.html#BertTokenizer).
+BertTokenizer replicates `encode_plus` function of [BertTokenizer (Hugging Face version )](https://huggingface.co/docs/transformers/model_doc/bert#transformers.BertTokenizer).
 
 #### Inputs
 
@@ -23,7 +23,7 @@ BertTokenizer replicates `encode_plus` function of [BertTokenizer (huggingface v
 
 ***vocab_file: string***
 
-The content of vocab which has same with huggingface.
+The content of vocab which has same with Hugging Face.
 
 ***do_lower_case: int64_t*** (default is 1, 1 represents True, 0 represents False)
 
@@ -124,7 +124,7 @@ expect(node, inputs=[inputs],
 
 <details>
 
-BertTokenizerDecoder replicates `decode` function of [BertTokenizer (huggingface version )](https://huggingface.co/transformers/_modules/transformers/models/bert/tokenization_bert.html#BertTokenizer).
+BertTokenizerDecoder replicates `decode` function of [BertTokenizer (Hugging Face version )](https://huggingface.co/docs/transformers/model_doc/bert#transformers.BertTokenizer).
 
 #### Inputs
 
@@ -142,7 +142,7 @@ Usually, it is used to decode the slot in the text.
 
 ***vocab_file: string***
 
-The content of vocab which has same with huggingface.
+The content of vocab which has same with Hugging Face.
 
 ***unk_token: string***
 
@@ -226,17 +226,17 @@ expect(node, inputs=[token_ids],
 
 <details>
 
-GPT2Tokenizer that performs byte-level bpe tokenization to the input tensor, based on the [hugging face version](https://huggingface.co/transformers/_modules/transformers/tokenization_gpt2.html).
+GPT2Tokenizer that performs byte-level bpe tokenization to the input tensor, based on the [Hugging Face version](https://huggingface.co/docs/transformers/model_doc/gpt2#transformers.GPT2Tokenizer).
 
 #### Attributes
 
 ***vocab***
 
-The **content** of the vocabulary file, its format is same with [hugging face](https://huggingface.co/gpt2/resolve/main/vocab.json).
+The **content** of the vocabulary file, its format is same with [Hugging Face](https://huggingface.co/gpt2/resolve/main/vocab.json).
 
 ***merges***
 
-The **content** of the merges file, its format is same with [hugging face](https://huggingface.co/gpt2/resolve/main/merges.txt).
+The **content** of the merges file, its format is same with [Hugging Face](https://huggingface.co/gpt2/resolve/main/merges.txt).
 
 ***padding_length(optional)***
 
@@ -289,7 +289,7 @@ expect(node, inputs=[x], outputs=[y],
 <details>
 
 WordpieceTokenizer that performs WordPiece tokenization to the input tensor,
-based on the [hugging face version](https://huggingface.co/transformers/model_doc/bert.html#WordpieceTokenizer).
+based on the [Hugging Face version](https://huggingface.co/transformers/model_doc/bert.html#WordpieceTokenizer).
 [WordpieceTokenizer](https://github.com/tensorflow/text/blob/master/docs/api_docs/python/text/WordpieceTokenizer.md)
 from *tensorflow_text* can be implemented by a pair of nodes
 *RegexSplitWithOffets* followed by *WordpieceTokenizer*.
@@ -300,7 +300,7 @@ it
 ***vocab***
 
 The **content** of the vocabulary file, its format is same with
-[hugging face](https://huggingface.co/gpt2/resolve/main/vocab.json).
+[Hugging Face](https://huggingface.co/gpt2/resolve/main/vocab.json).
 
 ***suffix_indicator***
 
@@ -471,7 +471,7 @@ expect(node, inputs=[inputs, nbest_size, alpha, add_bos, add_eos, reverse],
 
 <details>
 
-BasicTokenizer performs basic tokenization to input string tensor, based on [basic tokenizer in BertTokenizer(hugging face version)](https://huggingface.co/transformers/_modules/transformers/models/bert/tokenization_bert.html#BertTokenizer).
+BasicTokenizer performs basic tokenization to input string tensor, based on [basic tokenizer in BertTokenizer (Hugging Face version)](https://huggingface.co/docs/transformers/model_doc/bert#transformers.BertTokenizer).
 
 #### Inputs
 
