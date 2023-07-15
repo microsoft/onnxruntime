@@ -8,6 +8,7 @@
 import tempfile
 import unittest
 from pathlib import Path
+from importlib.util import find_spec
 
 import numpy as np
 import onnx
@@ -98,6 +99,7 @@ class TestStaticQuantization(unittest.TestCase):
         check_model_correctness(self, self._model_fp32_path, quant_model_path, data_reader.get_next())
         data_reader.rewind()
 
+    @unittest.skipIf(not find_spec('neural_compressor'), "Skip since neural-compressor is not installed.")
     def test_smooth_quant(self):
         data_reader = InputFeedsNegOneZeroOne(10, {"input": [1, self._channel_size, 1, 3]})
         quant_config = StaticQuantConfig(data_reader, extra_options={"SmoothQuant": True})
