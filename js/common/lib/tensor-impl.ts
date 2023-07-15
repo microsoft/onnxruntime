@@ -4,7 +4,7 @@
 import {tensorToDataURL, tensorToImageData} from './tensor-conversion-impl.js';
 import {TensorToDataUrlOptions, TensorToImageDataOptions} from './tensor-conversion.js';
 import {tensorFromGpuBuffer, tensorFromImage, tensorFromPinnedBuffer, tensorFromTexture} from './tensor-factory-impl.js';
-import {TensorFromGpuBufferOptions, TensorFromGpuBufferSupportedDataTypes, TensorFromImageBitmapOptions, TensorFromImageDataOptions, TensorFromImageElementOptions, TensorFromTextureOptions, TensorFromUrlOptions} from './tensor-factory.js';
+import {TensorFromGpuBufferOptions, TensorFromImageBitmapOptions, TensorFromImageDataOptions, TensorFromImageElementOptions, TensorFromTextureOptions, TensorFromUrlOptions} from './tensor-factory.js';
 import {checkBigInt, NUMERIC_TENSOR_TYPE_TO_TYPEDARRAY_MAP, NUMERIC_TENSOR_TYPEDARRAY_TO_TYPE_MAP, SupportedTypedArray, SupportedTypedArrayConstructors} from './tensor-impl-type-mapping.js';
 import {calculateSize, tensorReshape} from './tensor-utils-impl.js';
 import {Tensor as TensorInterface} from './tensor.js';
@@ -18,27 +18,10 @@ type TensorTextureType = TensorInterface.TextureType;
 type TensorGpuBufferType = TensorInterface.GpuBufferType;
 
 // type definitions for creating tensor from specific location
+type TensorFromSpecificLocationParameters = TensorInterface.CpuPinnedConstructorParameters|
+                                            TensorInterface.TextureConstructorParameters|
+                                            TensorInterface.GpuBufferConstructorParameters;
 
-export interface TensorFromCpuPinnedParameters extends Pick<TensorInterface, 'dims'> {
-  readonly location: 'cpu-pinned';
-  readonly data: Exclude<TensorDataType, string[]>;
-  readonly type: Exclude<TensorType, 'string'>;
-}
-
-export interface TensorFromTextureParameters extends Pick<TensorInterface, 'dims'> {
-  readonly location: 'texture';
-  readonly texture: TensorTextureType;
-  readonly type: 'float32';
-}
-
-export interface TensorFromGpuBufferParameters extends Pick<TensorInterface, 'dims'> {
-  readonly location: 'gpu-buffer';
-  readonly gpuBuffer: TensorGpuBufferType;
-  readonly type: TensorFromGpuBufferSupportedDataTypes;
-}
-
-export type TensorFromSpecificLocationParameters =
-    TensorFromCpuPinnedParameters|TensorFromTextureParameters|TensorFromGpuBufferParameters;
 
 /**
  * the implementation of Tensor interface.
@@ -226,7 +209,7 @@ export class Tensor implements TensorInterface {
     return tensorFromTexture(texture, options);
   }
 
-  static fromGpuBuffer<T extends TensorFromGpuBufferSupportedDataTypes>(
+  static fromGpuBuffer<T extends TensorInterface.GpuBufferDataTypes>(
       gpuBuffer: TensorGpuBufferType, options: TensorFromGpuBufferOptions<T>): TensorInterface {
     return tensorFromGpuBuffer(gpuBuffer, options);
   }

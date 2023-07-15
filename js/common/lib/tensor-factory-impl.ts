@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {OptionsDimensions, OptionsFormat, OptionsNormalizationParameters, OptionsTensorFormat, OptionsTensorLayout, TensorFromGpuBufferOptions, TensorFromGpuBufferSupportedDataTypes, TensorFromImageBitmapOptions, TensorFromImageDataOptions, TensorFromImageElementOptions, TensorFromTextureOptions, TensorFromUrlOptions} from './tensor-factory.js';
+import {OptionsDimensions, OptionsFormat, OptionsNormalizationParameters, OptionsTensorFormat, OptionsTensorLayout, TensorFromGpuBufferOptions, TensorFromImageBitmapOptions, TensorFromImageDataOptions, TensorFromImageElementOptions, TensorFromTextureOptions, TensorFromUrlOptions} from './tensor-factory.js';
 import {Tensor} from './tensor-impl.js';
 import {Tensor as TensorInterface} from './tensor.js';
 
@@ -246,7 +246,7 @@ export const tensorFromTexture = (texture: TensorInterface.TextureType, options:
 /**
  * implementation of Tensor.fromGpuBuffer().
  */
-export const tensorFromGpuBuffer = <T extends TensorFromGpuBufferSupportedDataTypes>(
+export const tensorFromGpuBuffer = <T extends TensorInterface.GpuBufferDataTypes>(
     gpuBuffer: TensorInterface.GpuBufferType, options: TensorFromGpuBufferOptions<T>): Tensor => {
   const {dataType, dims} = options;
   return new Tensor({location: 'gpu-buffer', type: dataType ?? 'float32', gpuBuffer, dims});

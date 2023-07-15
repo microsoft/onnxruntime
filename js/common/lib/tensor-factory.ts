@@ -6,8 +6,6 @@ import {Tensor, TypedTensor} from './tensor.js';
 export type ImageFormat = 'RGB'|'RGBA'|'BGR'|'RBG';
 export type ImageTensorLayout = 'NHWC'|'NCHW';
 
-export type TensorFromGpuBufferSupportedDataTypes = 'float32'|'int32';
-
 // the following session contains type definitions of each individual options.
 // the tensor factory functions use a composition of those options as the parameter type.
 
@@ -112,8 +110,7 @@ export interface TensorFromImageBitmapOptions extends OptionResizedDimensions, O
 
 export interface TensorFromTextureOptions extends Required<OptionsDimensions>, OptionsFormat /* TODO: add more */ {}
 
-export interface TensorFromGpuBufferOptions<T extends TensorFromGpuBufferSupportedDataTypes> extends
-    Pick<Tensor, 'dims'> {
+export interface TensorFromGpuBufferOptions<T extends Tensor.GpuBufferDataTypes> extends Pick<Tensor, 'dims'> {
   /**
    * Describes the data type of the tensor.
    */
@@ -200,7 +197,7 @@ export interface TensorFactory {
    *
    * @returns a tensor object
    */
-  fromGpuBuffer<T extends TensorFromGpuBufferSupportedDataTypes = 'float32'>(
+  fromGpuBuffer<T extends Tensor.GpuBufferDataTypes = 'float32'>(
       buffer: Tensor.GpuBufferType, options: TensorFromGpuBufferOptions<T>): TypedTensor<T>;
 
   /**

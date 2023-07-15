@@ -22,7 +22,7 @@ interface TypedTensorBase<T extends Tensor.Type> {
   /**
    * Get the buffer data of the tensor.
    *
-   * If the data is not on CPU (eg. it's in the form WebGLTexture), throw error.
+   * If the data is not on CPU (eg. it's in the form of WebGL texture or WebGPU buffer), throw error.
    */
   readonly data: Tensor.DataTypeMap[T];
   /**
@@ -32,13 +32,13 @@ interface TypedTensorBase<T extends Tensor.Type> {
   /**
    * Get the WebGL texture that holds the tensor data.
    *
-   * If the data is not on GPU, throw error.
+   * If the data is not on GPU as WebGL texture, throw error.
    */
   readonly texture: Tensor.TextureType;
   /**
    * Get the WebGPU buffer that holds the tensor data.
    *
-   * If the data is not on GPU, throw error.
+   * If the data is not on GPU as WebGPU buffer, throw error.
    */
   readonly gpuBuffer: Tensor.GpuBufferType;
 
@@ -121,6 +121,69 @@ export declare namespace Tensor {
    * represent the data type of a tensor
    */
   export type Type = keyof DataTypeMap;
+
+  /**
+   * supported data types for constructing a tensor from a pinned CPU buffer
+   */
+  export type CpuPinnedDataTypes = Exclude<Type, 'string'>;
+
+  export interface CpuPinnedConstructorParameters<T extends CpuPinnedDataTypes = CpuPinnedDataTypes> extends
+      Pick<Tensor, 'dims'> {
+    /**
+     * Specify the location of the data to be 'cpu-pinned'.
+     */
+    readonly location: 'cpu-pinned';
+    /**
+     * Specify the CPU pinned buffer that holds the tensor data.
+     */
+    readonly data: DataTypeMap[T];
+    /**
+     * Specify the data type of the tensor.
+     */
+    readonly type: T;
+  }
+
+  /**
+   * supported data types for constructing a tensor from a WebGL texture
+   */
+  export type TextureDataTypes = 'float32';
+
+  export interface TextureConstructorParameters<T extends TextureDataTypes = TextureDataTypes> extends
+      Pick<Tensor, 'dims'> {
+    /**
+     * Specify the location of the data to be 'texture'.
+     */
+    readonly location: 'texture';
+    /**
+     * Specify the WebGL texture that holds the tensor data.
+     */
+    readonly texture: TextureType;
+    /**
+     * Specify the data type of the tensor.
+     */
+    readonly type: T;
+  }
+
+  /**
+   * supported data types for constructing a tensor from a WebGPU buffer
+   */
+  export type GpuBufferDataTypes = 'float32'|'int32';
+
+  export interface GpuBufferConstructorParameters<T extends GpuBufferDataTypes = GpuBufferDataTypes> extends
+      Pick<Tensor, 'dims'> {
+    /**
+     * Specify the location of the data to be 'gpu-buffer'.
+     */
+    readonly location: 'gpu-buffer';
+    /**
+     * Specify the WebGPU buffer that holds the tensor data.
+     */
+    readonly gpuBuffer: GpuBufferType;
+    /**
+     * Specify the data type of the tensor.
+     */
+    readonly type: T;
+  }
 }
 
 /**
@@ -133,12 +196,42 @@ export interface TypedTensor<T extends Tensor.Type> extends TypedTensorBase<T>, 
 export interface Tensor extends TypedTensorBase<Tensor.Type>, TypedTensorUtils<Tensor.Type> {}
 
 export interface TensorConstructor {
-  // #region specify element type
+  // #region specify location
+  /**
+   * Construct a new tensor object from the pinned CPU data with the given type and dims.
+   *
+   * Tensor's location will be set to 'cpu-pinned'.
+   *
+   * @param params - Specify the parameters to construct the tensor.
+   */
+  new<T extends Tensor.CpuPinnedDataTypes>(params: Tensor.CpuPinnedConstructorParameters<T>): TypedTensor<T>;
+
+  /**
+   * Construct a new tensor object from the WebGL texture with the given type and dims.
+   *
+   * Tensor's location will be set to 'texture'.
+   *
+   * @param params - Specify the parameters to construct the tensor.
+   */
+  new<T extends Tensor.TextureDataTypes>(params: Tensor.TextureConstructorParameters<T>): TypedTensor<T>;
+
+  /**
+   * Construct a new tensor object from the WebGPU buffer with the given type and dims.
+   *
+   * Tensor's location will be set to 'gpu-buffer'.
+   *
+   * @param params - Specify the parameters to construct the tensor.
+   */
+  new<T extends Tensor.GpuBufferDataTypes>(params: Tensor.GpuBufferConstructorParameters<T>): TypedTensor<T>;
+
+  // #endregion
+
+  // #region CPU tensor - specify element type
   /**
    * Construct a new string tensor object from the given type, data and dims.
    *
    * @param type - Specify the element type.
-   * @param data - Specify the tensor data.
+   * @param data - Specify the CPU tensor data.
    * @param dims - Specify the dimension of the tensor. If omitted, a 1-D tensor is assumed.
    */
   new(type: 'string', data: Tensor.DataTypeMap['string']|readonly string[],
@@ -148,7 +241,7 @@ export interface TensorConstructor {
    * Construct a new bool tensor object from the given type, data and dims.
    *
    * @param type - Specify the element type.
-   * @param data - Specify the tensor data.
+   * @param data - Specify the CPU tensor data.
    * @param dims - Specify the dimension of the tensor. If omitted, a 1-D tensor is assumed.
    */
   new(type: 'bool', data: Tensor.DataTypeMap['bool']|readonly boolean[], dims?: readonly number[]): TypedTensor<'bool'>;
@@ -157,7 +250,7 @@ export interface TensorConstructor {
    * Construct a new 64-bit integer typed tensor object from the given type, data and dims.
    *
    * @param type - Specify the element type.
-   * @param data - Specify the tensor data.
+   * @param data - Specify the CPU tensor data.
    * @param dims - Specify the dimension of the tensor. If omitted, a 1-D tensor is assumed.
    */
   new<T extends 'uint64'|'int64'>(
@@ -168,19 +261,19 @@ export interface TensorConstructor {
    * Construct a new numeric tensor object from the given type, data and dims.
    *
    * @param type - Specify the element type.
-   * @param data - Specify the tensor data.
+   * @param data - Specify the CPU tensor data.
    * @param dims - Specify the dimension of the tensor. If omitted, a 1-D tensor is assumed.
    */
   new<T extends Exclude<Tensor.Type, 'string'|'bool'|'uint64'|'int64'>>(
       type: T, data: Tensor.DataTypeMap[T]|readonly number[], dims?: readonly number[]): TypedTensor<T>;
   // #endregion
 
-  // #region infer element types
+  // #region CPU tensor - infer element types
 
   /**
    * Construct a new float32 tensor object from the given data and dims.
    *
-   * @param data - Specify the tensor data.
+   * @param data - Specify the CPU tensor data.
    * @param dims - Specify the dimension of the tensor. If omitted, a 1-D tensor is assumed.
    */
   new(data: Float32Array, dims?: readonly number[]): TypedTensor<'float32'>;
@@ -188,7 +281,7 @@ export interface TensorConstructor {
   /**
    * Construct a new int8 tensor object from the given data and dims.
    *
-   * @param data - Specify the tensor data.
+   * @param data - Specify the CPU tensor data.
    * @param dims - Specify the dimension of the tensor. If omitted, a 1-D tensor is assumed.
    */
   new(data: Int8Array, dims?: readonly number[]): TypedTensor<'int8'>;
@@ -196,7 +289,7 @@ export interface TensorConstructor {
   /**
    * Construct a new uint8 tensor object from the given data and dims.
    *
-   * @param data - Specify the tensor data.
+   * @param data - Specify the CPU tensor data.
    * @param dims - Specify the dimension of the tensor. If omitted, a 1-D tensor is assumed.
    */
   new(data: Uint8Array, dims?: readonly number[]): TypedTensor<'uint8'>;
@@ -204,7 +297,7 @@ export interface TensorConstructor {
   /**
    * Construct a new uint16 tensor object from the given data and dims.
    *
-   * @param data - Specify the tensor data.
+   * @param data - Specify the CPU tensor data.
    * @param dims - Specify the dimension of the tensor. If omitted, a 1-D tensor is assumed.
    */
   new(data: Uint16Array, dims?: readonly number[]): TypedTensor<'uint16'>;
@@ -212,7 +305,7 @@ export interface TensorConstructor {
   /**
    * Construct a new int16 tensor object from the given data and dims.
    *
-   * @param data - Specify the tensor data.
+   * @param data - Specify the CPU tensor data.
    * @param dims - Specify the dimension of the tensor. If omitted, a 1-D tensor is assumed.
    */
   new(data: Int16Array, dims?: readonly number[]): TypedTensor<'int16'>;
@@ -220,7 +313,7 @@ export interface TensorConstructor {
   /**
    * Construct a new int32 tensor object from the given data and dims.
    *
-   * @param data - Specify the tensor data.
+   * @param data - Specify the CPU tensor data.
    * @param dims - Specify the dimension of the tensor. If omitted, a 1-D tensor is assumed.
    */
   new(data: Int32Array, dims?: readonly number[]): TypedTensor<'int32'>;
@@ -228,7 +321,7 @@ export interface TensorConstructor {
   /**
    * Construct a new int64 tensor object from the given data and dims.
    *
-   * @param data - Specify the tensor data.
+   * @param data - Specify the CPU tensor data.
    * @param dims - Specify the dimension of the tensor. If omitted, a 1-D tensor is assumed.
    */
   new(data: BigInt64Array, dims?: readonly number[]): TypedTensor<'int64'>;
@@ -236,7 +329,7 @@ export interface TensorConstructor {
   /**
    * Construct a new string tensor object from the given data and dims.
    *
-   * @param data - Specify the tensor data.
+   * @param data - Specify the CPU tensor data.
    * @param dims - Specify the dimension of the tensor. If omitted, a 1-D tensor is assumed.
    */
   new(data: readonly string[], dims?: readonly number[]): TypedTensor<'string'>;
@@ -244,7 +337,7 @@ export interface TensorConstructor {
   /**
    * Construct a new bool tensor object from the given data and dims.
    *
-   * @param data - Specify the tensor data.
+   * @param data - Specify the CPU tensor data.
    * @param dims - Specify the dimension of the tensor. If omitted, a 1-D tensor is assumed.
    */
   new(data: readonly boolean[], dims?: readonly number[]): TypedTensor<'bool'>;
@@ -252,7 +345,7 @@ export interface TensorConstructor {
   /**
    * Construct a new float64 tensor object from the given data and dims.
    *
-   * @param data - Specify the tensor data.
+   * @param data - Specify the CPU tensor data.
    * @param dims - Specify the dimension of the tensor. If omitted, a 1-D tensor is assumed.
    */
   new(data: Float64Array, dims?: readonly number[]): TypedTensor<'float64'>;
@@ -260,7 +353,7 @@ export interface TensorConstructor {
   /**
    * Construct a new uint32 tensor object from the given data and dims.
    *
-   * @param data - Specify the tensor data.
+   * @param data - Specify the CPU tensor data.
    * @param dims - Specify the dimension of the tensor. If omitted, a 1-D tensor is assumed.
    */
   new(data: Uint32Array, dims?: readonly number[]): TypedTensor<'uint32'>;
@@ -268,20 +361,20 @@ export interface TensorConstructor {
   /**
    * Construct a new uint64 tensor object from the given data and dims.
    *
-   * @param data - Specify the tensor data.
+   * @param data - Specify the CPU tensor data.
    * @param dims - Specify the dimension of the tensor. If omitted, a 1-D tensor is assumed.
    */
   new(data: BigUint64Array, dims?: readonly number[]): TypedTensor<'uint64'>;
 
   // #endregion
 
-  // #region fall back to non-generic tensor type declaration
+  // #region CPU tensor - fall back to non-generic tensor type declaration
 
   /**
    * Construct a new tensor object from the given type, data and dims.
    *
    * @param type - Specify the element type.
-   * @param data - Specify the tensor data.
+   * @param data - Specify the CPU tensor data.
    * @param dims - Specify the dimension of the tensor. If omitted, a 1-D tensor is assumed.
    */
   new(type: Tensor.Type, data: Tensor.DataType|readonly number[]|readonly string[]|readonly bigint[]|readonly boolean[],
@@ -290,7 +383,7 @@ export interface TensorConstructor {
   /**
    * Construct a new tensor object from the given data and dims.
    *
-   * @param data - Specify the tensor data.
+   * @param data - Specify the CPU tensor data.
    * @param dims - Specify the dimension of the tensor. If omitted, a 1-D tensor is assumed.
    */
   new(data: Tensor.DataType, dims?: readonly number[]): Tensor;

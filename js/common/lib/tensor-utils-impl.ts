@@ -1,7 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {Tensor, TensorFromCpuPinnedParameters, TensorFromGpuBufferParameters, TensorFromTextureParameters} from './tensor-impl.js';
+import {Tensor} from './tensor-impl.js';
+import {Tensor as TensorInterface} from './tensor.js';
 
 /**
  * calculate size from dims.
@@ -33,22 +34,22 @@ export const tensorReshape = (tensor: Tensor, dims: readonly number[]): Tensor =
     case 'cpu-pinned':
       return new Tensor({
         location: 'cpu-pinned',
-        data: tensor.data as TensorFromCpuPinnedParameters['data'],
-        type: tensor.type as TensorFromCpuPinnedParameters['type'],
+        data: tensor.data as TensorInterface.CpuPinnedConstructorParameters['data'],
+        type: tensor.type as TensorInterface.CpuPinnedConstructorParameters['type'],
         dims,
       });
     case 'texture':
       return new Tensor({
         location: 'texture',
         texture: tensor.texture,
-        type: tensor.type as TensorFromTextureParameters['type'],
+        type: tensor.type as TensorInterface.TextureConstructorParameters['type'],
         dims,
       });
     case 'gpu-buffer':
       return new Tensor({
         location: 'gpu-buffer',
         gpuBuffer: tensor.gpuBuffer,
-        type: tensor.type as TensorFromGpuBufferParameters['type'],
+        type: tensor.type as TensorInterface.GpuBufferConstructorParameters['type'],
         dims,
       });
     default:
