@@ -16,12 +16,14 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
   OpBuilderRegistrations op_registrations;
 
   {  // Unary
+    CreateUnaryOpBuilder("Abs", op_registrations);
     CreateUnaryOpBuilder("Ceil", op_registrations);
     CreateUnaryOpBuilder("Cos", op_registrations);
     CreateUnaryOpBuilder("Erf", op_registrations);
     CreateUnaryOpBuilder("Exp", op_registrations);
     CreateUnaryOpBuilder("Floor", op_registrations);
     CreateUnaryOpBuilder("Identity", op_registrations);
+    CreateUnaryOpBuilder("Neg", op_registrations);
     CreateUnaryOpBuilder("Not", op_registrations);
     CreateUnaryOpBuilder("Reciprocal", op_registrations);
     CreateUnaryOpBuilder("Sin", op_registrations);
@@ -42,9 +44,15 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
   }
 
   {  // Activations
-    CreateActivationOpBuilder("Relu", op_registrations);
+    CreateActivationOpBuilder("Elu", op_registrations);
+    CreateActivationOpBuilder("HardSigmoid", op_registrations);
+    CreateActivationOpBuilder("HardSwish", op_registrations);
     CreateActivationOpBuilder("LeakyRelu", op_registrations);
+    CreateActivationOpBuilder("Relu", op_registrations);
     CreateActivationOpBuilder("Sigmoid", op_registrations);
+    CreateActivationOpBuilder("Softplus", op_registrations);
+    CreateActivationOpBuilder("Softsign", op_registrations);
+    CreateActivationOpBuilder("Tanh", op_registrations);
   }
 
   {  // ArgMax/ArgMin
@@ -90,7 +98,9 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
     CreateLogicalOpBuilder("Equal", op_registrations);
   }
 
-  {  // LayerNormalization
+  {  // Normalization
+    CreateNormalizationOpBuilder("GroupNormalization", op_registrations);
+    CreateNormalizationOpBuilder("InstanceNormalization", op_registrations);
     CreateNormalizationOpBuilder("LayerNormalization", op_registrations);
   }
 

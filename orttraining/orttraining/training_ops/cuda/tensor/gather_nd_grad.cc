@@ -80,6 +80,13 @@ Status GatherNDGrad<TIndex>::ComputeInternal(OpKernelContext* context) const {
                                              batch_dims_, input_shape, indices_shape, indices_tensor,
                                              num_slices, slice_size, input_slice_offsets_buffer));
 
+  if (context->GetUseDeterministicCompute()) {
+    static std::once_flag log_warning;
+    std::call_once(log_warning, []() {
+      LOGS_DEFAULT(WARNING) << "GatherNDGrad has no deterministic GPU kernel, its outputs may still be nondeterministic.";
+    });
+  }
+
   const void* const kernel_input_data = update_tensor->DataRaw();
   void* const kernel_output_data = output_tensor->MutableDataRaw();
   utils::MLTypeCallDispatcher<float, MLFloat16, double, BFloat16> t_disp(update_tensor->GetElementType());

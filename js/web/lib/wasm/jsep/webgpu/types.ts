@@ -132,7 +132,12 @@ export interface ComputeContext {
   /**
    * a custom data object that can be used to store any data that is needed by the kernel
    */
-  readonly customData: {[key: string]: unknown};
+  readonly kernelCustomData: {[key: string]: unknown};
+
+  /**
+   * a buffer that can be used to access custom data created each time the kernel is executed
+   */
+  readonly customDataBuffer: Uint8Array;
 
   compute(program: ProgramInfoLoader|ProgramInfo, inputsOutputsMapping?: ComputeContextInputsOutputsMapping):
       TensorView[];

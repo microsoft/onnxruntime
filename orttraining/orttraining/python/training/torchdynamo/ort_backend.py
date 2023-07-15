@@ -30,6 +30,7 @@ from torch.fx.passes.fake_tensor_prop import FakeTensorProp
 from torch.fx.passes.infra.partitioner import CapabilityBasedPartitioner
 from torch.fx.passes.operator_support import OperatorSupport
 from torch.fx.passes.tools_common import CALLABLE_NODE_OPS
+from torch.utils import _pytree
 
 import onnxruntime  # type: ignore
 from onnxruntime.capi import _pybind_state as ORTC
@@ -199,16 +200,59 @@ def _create_onnx_model(onnx_proto):
     return onnx.ModelProto.FromString(onnx_proto)
 
 
-def _create_onnx_session(onnx_proto, ep: str, session_options):
+def _create_onnx_session(onnx_proto, eps: Tuple[str, ...], session_options):
     # TODO(wechi): Add more EPs per PyTorch device types.
     # TODO(wechi): enable external allocators.
-    return onnxruntime.InferenceSession(onnx_proto, providers=[ep], sess_options=session_options)
+    return onnxruntime.InferenceSession(onnx_proto, providers=eps, sess_options=session_options)
 
 
-def _infer_ep_from_device(device):
-    if device.type == "cuda":
-        return "CUDAExecutionProvider"
-    return "CPUExecutionProvider"
+def _infer_ep_from_device(*args) -> Tuple[str, ...]:
+    """Return the first valid device (i.e., GPU or CPU) in argument list."""
+    eps = []
+    for arg in args:
+        if hasattr(arg, "device"):
+            device = arg.device
+            if device.type == "cuda":
+                eps.append("CUDAExecutionProvider")
+            elif device.type == "cpu":
+                eps.append("CPUExecutionProvider")
+    return tuple(eps)
+
+
+def _infer_ep_from_graph_module(graph_module: torch.fx.GraphModule) -> Tuple[str, ...]:
+    """Return the first valid device (i.e., GPU or CPU) among outputs of this torch.fx.GraphModule."""
+    for node in graph_module.graph.nodes:
+        if node.op == "output":
+            # Output node is unique. Let's retrieve output values from
+            # this node's input list. And then just return.
+            flattened_output_args, _ = _pytree.tree_flatten(node.args)
+            output_args = []
+            for output_arg in flattened_output_args:
+                if hasattr(output_arg, "meta") and "val" in output_arg.meta:
+                    # Select outputs with "val" information. Without "val",
+                    # it's not possible access output_arg.meta["val"].device.
+                    output_args.append(output_arg.meta["val"])
+            return _infer_ep_from_device(*output_args)
+    graph_module_str = graph_module.print_readable(print_output=False)
+    raise ValueError(f"No output node is found in graph_module: {graph_module_str}")
+
+
+def _sort_eps(eps: Tuple[str, ...]) -> Tuple[str, ...]:
+    """Sort execution providers in eps based on pre-set priority."""
+
+    def get_execution_provider_priority(ep: str) -> int:
+        if ep == "CPUExecutionProvider":
+            # Lowest priority.
+            return 2
+        if ep == "CUDAExecutionProvider":
+            # Higher priority than CPU but lower than
+            # other specialized EPs.
+            return 1
+        # Highest priority.
+        return 0
+
+    unique_eps = set(eps)
+    return tuple(sorted(unique_eps, key=get_execution_provider_priority, reverse=True))
 
 
 def _get_onnx_devices(values: Tuple[torch.Tensor, ...]) -> Tuple[ORTC.OrtDevice, ...]:  # type: ignore
@@ -346,7 +390,7 @@ class OrtBackend:
         3. Inside _ort_accelerated_call, it creates onnxruntime.InferenceSession and calls it to execute the sub-graph.
     """
 
-    def __init__(self, ep: str = "", preallocate_output: bool = False, session_options=None):
+    def __init__(self, ep: str = "CPUExecutionProvider", preallocate_output: bool = False, session_options=None):
         self._supported_ops = OrtOperatorSupport()
         # TODO: this is a naive implementation of cache without proper guard
         self._partitioner_cache: Dict[torch.fx.GraphModule, torch.fx.GraphModule] = {}
@@ -418,11 +462,28 @@ class OrtBackend:
             ).SerializeToString()
 
             # Initialize a ORT session to execute this ONNX model.
-            # TorchDynamo assumes all inputs/outputs are on the same device,
-            # so we add execution provider only based on the first input's device.
-            ep = self.ep or _infer_ep_from_device(args[0].device)
+            # Note that TorchDynamo assumes all inputs/outputs are on the
+            # same device, but it's subject to change (very likely with
+            # dynamic shape support), so we add execution providers
+            # based on the all inputs/outputs plus a default OrtBackend.ep.
+            eps_from_args = _infer_ep_from_device(args)
+            eps_from_graph_module = _infer_ep_from_graph_module(graph_module)
+            if eps_from_args:
+                # If user feeds CUDA tensor as input argument,
+                # we want to use CUDA EP.
+                # Thus, `eps_from_args` (deduced from input arguments)
+                # has highest priority.
+                selected_eps = _sort_eps((*eps_from_args, self.ep))
+            elif eps_from_graph_module:
+                # If there is no EP in input arguments, we deduce EP from
+                # graph_module's outputs. Those outputs may come from
+                # FakeTensorProp or Dynamo's built-in symbolic shape inference.
+                selected_eps = _sort_eps((*eps_from_graph_module, self.ep))
+            else:
+                # No EP found in inputs and outputs, let's use default.
+                selected_eps = (self.ep,)
 
-            onnx_session = _create_onnx_session(onnx_proto, ep, self.session_options)
+            onnx_session = _create_onnx_session(onnx_proto, selected_eps, self.session_options)
             # Cache ORT session. It's reused for the same "graph_module".
             self._ort_execution_info.sessions[graph_module] = onnx_session
             # Generate ONNX model and extract its input and output names.

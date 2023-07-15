@@ -348,6 +348,13 @@ Status launch_lamb_reduction(
 
   // Only launch multi-tensor function if we have at least one tensor in the buckets.
   if (tensor_sizes_in_buckets.size() > 0 && buckets.size() > 0) {
+    if (ctx->GetUseDeterministicCompute()) {
+      static std::once_flag log_warning;
+      std::call_once(log_warning, []() {
+        LOGS_DEFAULT(WARNING) << "Non-deterministic Lamb GPU kernel is called, its outputs may still be nondeterministic.";
+      });
+    }
+
     typedef LambMultiTensorReductionFunctor<CudaTIn1, CudaTIn2, CudaTNorm, CudaTNorm, CudaTNorm> TReducer;
     TReducer reducer;
     launch_multi_tensor_functor<tensor_count_per_group, TReducer>(

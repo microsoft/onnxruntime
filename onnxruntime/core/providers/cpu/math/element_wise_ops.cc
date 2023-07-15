@@ -1849,7 +1849,7 @@ void BroadCastMLFloat16FMod(OpKernelContext* context) {
 
         std::transform(Y.begin(), Y.end(), output.begin(),
                        [X_fl = math::halfToFloat(X.val)](const MLFloat16& y) {
-                         return MLFloat16(math::floatToHalf(std::fmod(X_fl, math::halfToFloat(y.val))));
+                         return MLFloat16(std::fmod(X_fl, y.ToFloat()));
                        });
       },
       [](BroadcastHelper& per_iter_bh) {
@@ -1859,7 +1859,7 @@ void BroadCastMLFloat16FMod(OpKernelContext* context) {
 
         std::transform(X.begin(), X.end(), output.begin(),
                        [Y_fl = math::halfToFloat(Y.val)](const MLFloat16& x) {
-                         return MLFloat16(math::floatToHalf(std::fmod(math::halfToFloat(x.val), Y_fl)));
+                         return MLFloat16(std::fmod(x.ToFloat(), Y_fl));
                        });
       },
       [](BroadcastHelper& per_iter_bh) {
@@ -1869,9 +1869,9 @@ void BroadCastMLFloat16FMod(OpKernelContext* context) {
 
         std::transform(X.begin(), X.end(), Y.begin(), output.begin(),
                        [](const MLFloat16& x, const MLFloat16& y) {
-                         auto x_fl = math::halfToFloat(x.val);
-                         auto y_fl = math::halfToFloat(y.val);
-                         return MLFloat16(math::floatToHalf(std::fmod(x_fl, y_fl)));
+                         auto x_fl = x.ToFloat();
+                         auto y_fl = y.ToFloat();
+                         return MLFloat16(std::fmod(x_fl, y_fl));
                        });
       }};
 

@@ -6,6 +6,7 @@
 #include "core/framework/tensorprotoutils.h"
 #include "core/providers/qnn/builder/qnn_model_wrapper.h"
 #include "core/providers/qnn/builder/op_builder_factory.h"
+#include "core/providers/qnn/builder/qnn_utils.h"
 #include "core/common/safeint.h"
 #include "core/util/qmath.h"
 
@@ -47,19 +48,16 @@ class SimpleOpBuilder : public BaseOpBuilder {
 };
 
 Status SimpleOpBuilder::ExplictOpCheck(const QnnModelWrapper& qnn_model_wrapper, const NodeUnit& node_unit) const {
-  if (node_unit.OpType() == "Softmax" && node_unit.SinceVersion() < 13) {
-    int32_t default_axis = -1;
+  // QNN Softmax only supports an axis value equal to input_rank - 1 (i.e., same as -1).
+  if (node_unit.OpType() == "Softmax") {
+    int32_t axis = node_unit.SinceVersion() < 13 ? 1 : -1;  // Default axis changed from 1 to -1 in opset 13.
     Qnn_Scalar_t axis_qnn_scalar = QNN_SCALAR_INIT;
-    ORT_RETURN_IF_ERROR(ProcessAxisAttribute(qnn_model_wrapper, node_unit, axis_qnn_scalar, default_axis));
+    ORT_RETURN_IF_ERROR(ProcessAxisAttribute(qnn_model_wrapper, node_unit, axis_qnn_scalar, axis));
     std::vector<uint32_t> input_shape;
     ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(node_unit.Inputs()[0].node_arg, input_shape),
-                      "Cannot get shape");
-    // For Softmax opset < 13, it's still supported if axis=rank-1
-    if (default_axis == static_cast<int32_t>(input_shape.size() - 1)) {
-      return Status::OK();
-    }
-
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "QNN Softmax only supports opset >= 13 or axis=input_rank-1.");
+                      "QNN EP: Cannot get shape for Softmax input");
+    ORT_RETURN_IF(axis != static_cast<int32_t>(input_shape.size() - 1),
+                  "QNN Softmax only supports an `axis` attribute equal to input_rank-1 (or -1)");
   }
 
   return Status::OK();
@@ -132,7 +130,7 @@ Status SimpleOpBuilder::ProcessAlphaAttributeAsInput(QnnModelWrapper& qnn_model_
     GetQuantizationParameter(&tensor_data.alpha, num_of_elements, scale, zero_point, thread_pool);
     unpacked_data.resize(1);
     ParQuantizeLinearStd(&tensor_data.alpha, unpacked_data.data(), num_of_elements, scale, zero_point, thread_pool);
-    InitializeQuantizeParam(quantize_param, is_quantized_model, scale, static_cast<int32_t>(zero_point));
+    utils::InitializeQuantizeParam(quantize_param, is_quantized_model, scale, static_cast<int32_t>(zero_point));
     qnn_data_type = QNN_DATATYPE_UFIXED_POINT_8;
   } else {
     unpacked_data.assign(tensor_data.unpack, tensor_data.unpack + sizeof(float));
@@ -167,7 +165,7 @@ Status SimpleOpBuilder::HandleSingleTransposeNode(QnnModelWrapper& qnn_model_wra
   if (is_graph_output) {
     const auto* type_proto = output.node_arg.TypeAsProto();
     Qnn_DataType_t qnn_data_type = QNN_DATATYPE_UNDEFINED;
-    ORT_RETURN_IF_ERROR(GetQnnDataType(is_quantized_model, type_proto, qnn_data_type));
+    ORT_RETURN_IF_ERROR(utils::GetQnnDataType(is_quantized_model, type_proto, qnn_data_type));
 
     Qnn_QuantizeParams_t quantize_param = QNN_QUANTIZE_PARAMS_INIT;
     std::vector<uint32_t> output_shape;

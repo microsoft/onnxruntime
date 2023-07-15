@@ -397,7 +397,7 @@ def main(argv=None):
         ort_session = create_onnxruntime_session(
             args.beam_model_output_dir,
             use_gpu=args.use_gpu,
-            provider=["CUDAExecutionProvider", "CPUExecutionProvider"] if args.use_gpu else ["CPUExecutionProvider"],
+            provider=args.provider,
         )
         device = torch.device("cuda:0" if args.use_gpu else "cpu")
 
