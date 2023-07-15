@@ -62,7 +62,7 @@ const validateInputs =
       if (scalesInputIndex > 0 && inputs.length > scalesInputIndex && inputs[scalesInputIndex].dims.length > 0) {
         inputs[scalesInputIndex].getFloat32Array().forEach((value) => scales.push(value));
         if (scales.length !== 0 &&
-            (scales.length !== rank && (opsetVersion >= 18 && scales.length === attributes.axes.length))) {
+            (scales.length !== rank && (opsetVersion >= 18 && scales.length !== attributes.axes.length))) {
           throw new Error(
               'Resize requires scales input size to be same as input rank or axes size for opset 18 and up');
         }
@@ -93,29 +93,30 @@ const validateInputs =
     };
 
 const getOriginalCoordinateFromResizedCoordinate = (coordinateTransferMode: CoordinateTransformMode): string =>
-    'fn getOriginalCoordinateFromResizedCoordinate(xResized: u32, xScale: f32, lengthResized: u32,\
-    llengthOriginal: u32, roiStart: f32, roiEnd: f32) -> f32 { ' +
+    'fn getOriginalCoordinateFromResizedCoordinate(xResized: f32, xScale: f32, lengthResized: f32,\
+    llengthOriginal: f32, roiStart: f32, roiEnd: f32) -> f32 { ' +
     (() => {
       switch (coordinateTransferMode) {
         case 'asymmetric':
-          return 'return f32(xResized) / xScale;';
+          return 'return xResized / xScale;';
         case 'pytorch_half_pixel':
           return 'if (lengthResized > 1) { \
-                    return (f32(xResized) + 0.5) / xScale - 0.5; \
+                    return (xResized + 0.5) / xScale - 0.5; \
                   } else { \
                     return 0.0; \
                   }';
         case 'tf_half_pixel_for_nn':
-          return 'return (f32(xResized) + 0.5) / xScale;';
+          return 'return (xResized + 0.5) / xScale;';
         case 'align_corners':
           return 'if (lengthResized == 1) { \
                     return 0.0; \
                   } else { \
-                    return f32(xResized * (llengthOriginal - 1) / (lengthResized - 1)); \
+                    return xResized * (llengthOriginal - 1) / (lengthResized - 1); \
                   }';
         case 'tf_crop_and_resize':
           return 'if (lengthResized > 1) { \
-                    return (f32(xResized) * (roiEnd - roiStart) / f32(lengthResized - 1)) / f32(lengthResized - 1); \
+                    return roi_start * (lengthOriginal - 1) + \
+                          (xResized * (roiEnd - roiStart) * (lengthResized - 1)) / (lengthResized - 1); \
                   } else { \
                     return 0.5 * (roiStart + roiEnd) * f32(llengthOriginal - 1); \
                   }';
@@ -123,26 +124,19 @@ const getOriginalCoordinateFromResizedCoordinate = (coordinateTransferMode: Coor
           return [
             'const outputWidth = xScale * lengthResized;', 'const adjustment = lengthResized / outputWidth;',
             'const center = llengthOriginal / 2;', 'const offset = center * (1 - adjustment);',
-            'return offset + (f32(xResized) + 0.5) / xScale - 0.5;'
+            'return offset + ((xResized + 0.5) / xScale) - 0.5;'
           ].join('\n');
         case 'half_pixel':
-          return 'return (f32(xResized) + 0.5) / xScale - 0.5;';
+          return 'return ((xResized + 0.5) / xScale) - 0.5;';
         default:
           throw new Error(`Coordinate transform mode ${coordinateTransferMode} is not supported`);
       }
     })() +
     '}';
 
-const getNearestPixelFromOriginal = (nearestMode: NearestMode): string =>
+const getNearestPixelFromOriginal = (nearestMode: NearestMode, opsetVersion: number): string =>
     'fn getNearestPixelFromOriginal(xOriginal: f32, isDownSample: bool) -> f32 {' + (() => {
       switch (nearestMode) {
-        case 'simple':
-          return 'if (isDownSample) \
-                  { \
-                    return ceil(xOriginal); \
-                  } else { \
-                    return xOriginal; \
-                  }';
         case 'round_prefer_ceil':
           return 'return round(xOriginal);';
         case 'floor':
@@ -150,12 +144,21 @@ const getNearestPixelFromOriginal = (nearestMode: NearestMode): string =>
         case 'ceil':
           return 'return ceil(xOriginal);';
         case 'round_prefer_floor':
-          return 'if (xOriginal == round(xOriginal) + 0.5) { \
-                     return floor(xOriginal); \
+          return 'if (xOriginal == (f32(u32(xOriginal)) + 0.5)) { \
+                    return floor(xOriginal); \
                   } else { \
                     return round(xOriginal); \
                   }';
+        case 'simple':
         default:
+          if (opsetVersion < 11) {
+            return 'if (isDownSample) \
+                    { \
+                      return ceil(xOriginal); \
+                    } else { \
+                      return xOriginal; \
+                    }';
+          }
           throw new Error(`Nearest mode ${nearestMode} is not supported`);
       }
     })() +
@@ -204,9 +207,11 @@ const adjustOutputShape =
       const scaleInPolicy = (() => {
         switch (attributes.keepAspectRatioPolicy) {
           case 'not_larger':
-            return attributes.axes.length > 0 ? Math.min(...attributes.axes.map(i => scales[i]), Number.MAX_VALUE) : Math.min(...scales, Number.MAX_VALUE);
+            return attributes.axes.length > 0 ? Math.min(...attributes.axes.map(i => scales[i]), Number.MAX_VALUE) :
+                                                Math.min(...scales, Number.MAX_VALUE);
           case 'not_smaller':
-            return attributes.axes.length > 0 ? Math.max(...attributes.axes.map(i => scales[i]), Number.MIN_VALUE) : Math.max(...scales, Number.MIN_VALUE);
+            return attributes.axes.length > 0 ? Math.max(...attributes.axes.map(i => scales[i]), Number.MIN_VALUE) :
+                                                Math.max(...scales, Number.MIN_VALUE);
           default:
             throw new Error(`Keep aspect ratio policy ${attributes.keepAspectRatioPolicy} is not supported`);
         }
@@ -234,8 +239,8 @@ const calculateInputIndicesFromOutputIndices =
           const roi = array<f32, ${roi.length}>(${roi.map(i => `${i}f`).join(',')});
           var inputIndices: array<u32, ${inputShape.length}>;
           for (var i:u32 = 0; i < ${outputShape.length}; i++) {
-            var original_idx = getOriginalCoordinateFromResizedCoordinate(outputIndices[i], scales[i],
-                     outputShape[i], inputShape[i], roi[i], roi[i + ${inputShape.length}]);
+            var original_idx = getOriginalCoordinateFromResizedCoordinate(f32(outputIndices[i]), scales[i],
+                     f32(outputShape[i]), f32(inputShape[i]), roi[i], roi[i + ${inputShape.length}]);
             if (!${useExtrapolation} || (original_idx >= 0 && original_idx < f32(inputShape[i]))) {
               if (original_idx < 0) {
                 inputIndices[i] = 0;
@@ -294,7 +299,7 @@ const createResizeProgramInfo =
       `;
       const useExtrapolation = attributes.coordinateTransformMode === 'tf_crop_and_resize';
       const getShaderSource = (shaderHelper: ShaderHelper) => `
-      ${attributes.mode === 'nearest' ? getNearestPixelFromOriginal(attributes.nearestMode) : ';'};
+      ${attributes.mode === 'nearest' ? getNearestPixelFromOriginal(attributes.nearestMode, opsetVersion) : ';'};
       ${checkInputIndices(inputShape)};
       ${calculateInputIndicesFromOutputIndices(inputShape, outputShape, scales, roi, useExtrapolation)};
       ${getOriginalCoordinateFromResizedCoordinate(attributes.coordinateTransformMode)};
@@ -339,7 +344,8 @@ export const createResizeProgramInfoLoader =
       const metadata: ProgramMetadata = {
         name: 'Resize',
         inputTypes: [GpuDataType.default],
-        cacheHint: attributes.cacheKey,
+        cacheHint: attributes.cacheKey + opsetVersion.toString() + (scales.length > 0 ? '_scales' : '') +
+            (sizes.length > 0 ? '_sizes' : ''),
       };
       return {
         ...metadata,
@@ -375,7 +381,7 @@ export const parseResizeAttributes = (attributes: Record<string, unknown>): Resi
   const keepAspectRatioPolicy: KeepAspectRatioPolicy = attributes.keepAspectRatioPolicy as KeepAspectRatioPolicy;
   const mode: Mode = attributes.mode as Mode;
   // If nearestMode is not specified, use simple mode.
-  const nearestMode: NearestMode = attributes.nearestMode === '' ? 'simple' : attributes.nearestMode as NearestMode;
+  const nearestMode: NearestMode = (attributes.nearestMode === '' ? 'simple' : attributes.nearestMode) as NearestMode;
   return createAttributeWithCacheKey({
     antialias,
     axes,
