@@ -698,10 +698,10 @@ typedef OrtStatus*(ORT_API_CALL* RegisterCustomOpsFn)(OrtSessionOptions* options
 
 /** \brief Callback function for RunAsync
  *
- * \param[in] user_data User specific data that passed back to the callback.
- * \param[out] outputs On succeed, outputs host inference results.
- * \param[out] num_outputs Number of outputs.
- * \param[out] status On error, status will provide details.
+ * \param[in] user_data User specific data that passed back to the callback
+ * \param[out] outputs On succeed, outputs host inference results, on error, the value will be nullptr
+ * \param[out] num_outputs Number of outputs, on error, the value will be zero
+ * \param[out] status On error, status will provide details
  */
 typedef void (*RunAsyncCallbackFn)(void* user_data, OrtValue** outputs, size_t num_outputs, OrtStatusPtr status);
 

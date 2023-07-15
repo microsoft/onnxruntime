@@ -2383,7 +2383,6 @@ common::Status InferenceSession::RunAsync(const RunOptions* run_options,
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "intra op thread pool must have at least one thread for RunAsync");
   }
   std::function<void()> run_fn = [=]() {
-    std::string what = "unknown exception";
     ORT_TRY {
       Status status;
       if (run_options) {
@@ -2392,15 +2391,20 @@ common::Status InferenceSession::RunAsync(const RunOptions* run_options,
         RunOptions default_run_options;
         status = Run(default_run_options, feed_names, feeds, fetch_names, fetches);
       }
-      callback(user_data, fetches.data(), num_fetches, ToOrtStatus(status));
-      return;
+      if (status.IsOK()) {
+        callback(user_data, fetches.data(), num_fetches, ToOrtStatus(status));
+      } else {
+        callback(user_data, {}, 0, ToOrtStatus(status));
+      }
     }
-    ORT_CATCH(const std::exception& e) {
-      ORT_HANDLE_EXCEPTION([&]() { what = e.what(); });
+    ORT_CATCH(const std::exception& ex) {
+      ORT_HANDLE_EXCEPTION([=]() {
+        callback(user_data, {}, 0, ToOrtStatus(ORT_MAKE_STATUS(ONNXRUNTIME, RUNTIME_EXCEPTION, ex.what())));
+      });
     }
     ORT_CATCH(...) {
+      callback(user_data, {}, 0, ToOrtStatus(ORT_MAKE_STATUS(ONNXRUNTIME, RUNTIME_EXCEPTION, "unknown exception")));
     }
-    callback(user_data, fetches.data(), num_fetches, ToOrtStatus(ORT_MAKE_STATUS(ONNXRUNTIME, RUNTIME_EXCEPTION, what.c_str())));
   };  // run_fn
   concurrency::ThreadPool::Schedule(thread_pool_.get(), run_fn);
   return Status::OK();
