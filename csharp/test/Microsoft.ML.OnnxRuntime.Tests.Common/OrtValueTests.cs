@@ -242,13 +242,13 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             int[] int_data = { 1, 2, 3, 4, 5, 6, 7, 8 };
             ushort[] ushort_data = { 1, 2, 3, 4, 5, 6, 7, 8 };
             double[] dbl_data = { 1, 2, 3, 4, 5, 6, 7, 8 };
-            Float16[] fl16_data = { 1, 2, 3, 4, 5, 6, 7, 8 };
+            var fp16_data = Array.ConvertAll(ushort_data, sh => new Float16(sh));
 
             PopulateAndCheck(float_data);
             PopulateAndCheck(int_data);
             PopulateAndCheck(ushort_data);
             PopulateAndCheck(dbl_data);
-            PopulateAndCheck(fl16_data);
+            PopulateAndCheck(fp16_data);
         }
 
         private static readonly long[] ml_data_1 = { 1, 2 };

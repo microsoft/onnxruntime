@@ -370,7 +370,7 @@ Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_d
     if (v < 0 || v > max_value) {
       return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "data overflow");
     }
-    p_data[i] = MLFloat16(static_cast<uint16_t>(v));
+    p_data[i] = MLFloat16::FromBits(static_cast<uint16_t>(v));
   }
 
   return Status::OK();

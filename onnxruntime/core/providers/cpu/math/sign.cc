@@ -55,41 +55,27 @@ struct CallSignImpl {
   }
 };
 
-// The spec does not specify how NaN is
-// treated but we have to treat it somehow. We choose
-// to return 0 for NaN as TF does.
-template <class T>
-inline T FloatingImpl(T val) {
-  if (std::isnan(val) || val == T(0)) {
-    return T(0);
-  }
-  if (val > T(0)) {
-    return T(1);
-  } else {
-    return T(-1);
-  }
-}
-
 template <>
 struct CallSignImpl<MLFloat16> {
   void operator()(const Tensor* input, Tensor* output) const {
-    auto span = gsl::make_span(input->Data<MLFloat16>(), onnxruntime::narrow<size_t>(input->Shape().Size()));
-    auto output_data = output->MutableData<MLFloat16>();
-    std::transform(span.begin(), span.end(), output_data, [](const MLFloat16& val) {
-      float fl = math::halfToFloat(val.val);
-      return MLFloat16(math::floatToHalf(FloatingImpl(fl)));
-    });
+    ConstEigenVectorMap<Eigen::half> input_data(
+        reinterpret_cast<const Eigen::half*>(input->Data<MLFloat16>()),
+        narrow<ptrdiff_t>(input->Shape().Size()));
+
+    EigenVectorMap<Eigen::half>(reinterpret_cast<Eigen::half*>(output->MutableData<MLFloat16>()),
+                                narrow<ptrdiff_t>(output->Shape().Size())) = input_data.array().cwiseSign();
   }
 };
 
 template <>
 struct CallSignImpl<BFloat16> {
   void operator()(const Tensor* input, Tensor* output) const {
-    auto span = gsl::make_span(input->Data<BFloat16>(), onnxruntime::narrow<size_t>(input->Shape().Size()));
+    auto span = input->DataAsSpan<BFloat16>();
     auto output_data = output->MutableData<BFloat16>();
     std::transform(span.begin(), span.end(), output_data, [](const BFloat16& val) {
-      float fl = val.ToFloat();
-      return BFloat16(FloatingImpl(fl));
+      // Return 0 as TF does for NaN.
+      if (val.IsNaNOrZero()) return BFloat16::Zero;
+      return (val.IsNegative()) ? BFloat16::MinusOne : BFloat16::One;
     });
   }
 };

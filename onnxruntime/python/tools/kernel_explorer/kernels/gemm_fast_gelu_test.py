@@ -166,7 +166,10 @@ def profile_with_args(transa, transb, dtype, m, n, k, sort):
         profile_gemmfastgelu_func(
             getattr(ke, "GemmFastGeluTunable" + dtype_suffix + transab_suffix), dtype, m, n, k, transa, transb
         )
-        profile_gemmfastgelu_func(getattr(ke, "GemmFastGeluHipBlasLt" + dtype_suffix), dtype, m, n, k, transa, transb)
+        if ke.is_hipblaslt_available():
+            profile_gemmfastgelu_func(
+                getattr(ke, "GemmFastGeluHipBlasLt" + dtype_suffix + transab_suffix), dtype, m, n, k, transa, transb
+            )
 
 
 def profile():
