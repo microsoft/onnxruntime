@@ -286,17 +286,6 @@ const createResizeProgramInfo =
       const outputSize = ShapeUtil.size(outputShape);
       const dataType = 'f32';
       const noScale = inputShape.length === outputShape.length && inputShape.every((d, i) => d === outputShape[i]);
-      const useNearest2xOptimization = ((opsetVersion < 11) ? true :
-                                                              (attributes.mode === 'nearest' &&
-                                                               attributes.coordinateTransformMode === 'asymmetric' &&
-                                                               attributes.nearestMode === 'floor')) &&
-          scales.toString() === '1,1,2,2';
-      const useNearest2xOptimizationSnippet = `
-        inputIndices[0] = outputIndices[0]; // batch size
-        inputIndices[1] = outputIndices[1]; // channel
-        inputIndices[2] = outputIndices[2] / 2; // height
-        inputIndices[3] = outputIndices[3] / 2; // width
-      `;
       const useExtrapolation = attributes.coordinateTransformMode === 'tf_crop_and_resize';
       const getShaderSource = (shaderHelper: ShaderHelper) => `
       ${attributes.mode === 'nearest' ? getNearestPixelFromOriginal(attributes.nearestMode, opsetVersion) : ';'};
