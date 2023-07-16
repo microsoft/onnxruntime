@@ -54,6 +54,7 @@ const createGatherProgramInfo = (
         	${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes(outputSize)}
         	for (var i : i32 = 0; i < ${indexSize}; i++) {
         	 let idx = index[i];
+        	 output[i] = inputData[idx];
         	}
     }`;
 	return {
