@@ -94,7 +94,7 @@ const validateInputs =
 
 const getOriginalCoordinateFromResizedCoordinate = (coordinateTransferMode: CoordinateTransformMode): string =>
     'fn getOriginalCoordinateFromResizedCoordinate(xResized: f32, xScale: f32, lengthResized: f32,\
-    llengthOriginal: f32, roiStart: f32, roiEnd: f32) -> f32 { ' +
+    lengthOriginal: f32, roiStart: f32, roiEnd: f32) -> f32 { ' +
     (() => {
       switch (coordinateTransferMode) {
         case 'asymmetric':
@@ -111,19 +111,19 @@ const getOriginalCoordinateFromResizedCoordinate = (coordinateTransferMode: Coor
           return 'if (lengthResized == 1) { \
                     return 0.0; \
                   } else { \
-                    return xResized * (llengthOriginal - 1) / (lengthResized - 1); \
+                    return xResized * (lengthOriginal - 1) / (lengthResized - 1); \
                   }';
         case 'tf_crop_and_resize':
           return 'if (lengthResized > 1) { \
                     return roi_start * (lengthOriginal - 1) + \
                           (xResized * (roiEnd - roiStart) * (lengthResized - 1)) / (lengthResized - 1); \
                   } else { \
-                    return 0.5 * (roiStart + roiEnd) * f32(llengthOriginal - 1); \
+                    return 0.5 * (roiStart + roiEnd) * f32(lengthOriginal - 1); \
                   }';
         case 'half_pixel_symmetric':
           return [
             'const outputWidth = xScale * lengthResized;', 'const adjustment = lengthResized / outputWidth;',
-            'const center = llengthOriginal / 2;', 'const offset = center * (1 - adjustment);',
+            'const center = lengthOriginal / 2;', 'const offset = center * (1 - adjustment);',
             'return offset + ((xResized + 0.5) / xScale) - 0.5;'
           ].join('\n');
         case 'half_pixel':
@@ -202,31 +202,54 @@ const initOutputShape =
         };
 
 const adjustOutputShape =
-    (inputShape: readonly number[], outputShape: readonly number[], scales: number[],
-     attributes: ResizeAttributes): number[] => {
-      const scaleInPolicy = (() => {
-        switch (attributes.keepAspectRatioPolicy) {
-          case 'not_larger':
-            return attributes.axes.length > 0 ? Math.min(...attributes.axes.map(i => scales[i]), Number.MAX_VALUE) :
-                                                Math.min(...scales, Number.MAX_VALUE);
-          case 'not_smaller':
-            return attributes.axes.length > 0 ? Math.max(...attributes.axes.map(i => scales[i]), Number.MIN_VALUE) :
-                                                Math.max(...scales, Number.MIN_VALUE);
-          default:
-            throw new Error(`Keep aspect ratio policy ${attributes.keepAspectRatioPolicy} is not supported`);
+    (inputShape: readonly number[], outputShape: readonly number[], scales: number[], attributes: ResizeAttributes):
+        number[] => {
+          const scaleInPolicy = (() => {
+            switch (attributes.keepAspectRatioPolicy) {
+              case 'not_larger':
+                return attributes.axes.length > 0 ? Math.min(...attributes.axes.map(i => scales[i]), Number.MAX_VALUE) :
+                                                    Math.min(...scales, Number.MAX_VALUE);
+              case 'not_smaller':
+                return attributes.axes.length > 0 ? Math.max(...attributes.axes.map(i => scales[i]), Number.MIN_VALUE) :
+                                                    Math.max(...scales, Number.MIN_VALUE);
+              default:
+                throw new Error(`Keep aspect ratio policy ${attributes.keepAspectRatioPolicy} is not supported`);
+            }
+          })();
+          scales.fill(1.0, 0, scales.length);
+          const adjustedOutputShape = inputShape.slice();
+          if (attributes.axes.length > 0) {
+            attributes.axes.forEach((v) => scales[v] = scaleInPolicy);
+            attributes.axes.forEach((v) => adjustedOutputShape[v] = Math.round(inputShape[v] * scales[v]));
+          } else {
+            scales.fill(scaleInPolicy, 0, scales.length);
+            adjustedOutputShape.forEach((v, i) => adjustedOutputShape[i] = Math.round(v * scales[i]));
+          }
+          return adjustedOutputShape;
+        };
+
+const calculateOriginalIndicesFromOutputIndices =
+    (inputShape: readonly number[], outputShape: readonly number[], scales: readonly number[], roi: readonly number[]):
+        string => `
+     fn calculateOriginalIndicesFromOutputIndices(outputIndices: array<u32, ${outputShape.length}>) -> array<f32, ${
+            outputShape.length}> {
+      const inputShape = array<u32, ${inputShape.length}>(${inputShape.map(i => `${i}u`).join(',')});
+      const outputShape = array<u32, ${outputShape.length}>(${outputShape.map(i => `${i}u`).join(',')});
+      const scales = array<f32, ${scales.length}>(${scales.map(i => `${i}f`).join(',')});
+      const roi = array<f32, ${roi.length}>(${roi.map(i => `${i}f`).join(',')});
+      var originalIndices: array<f32, ${outputShape.length}>;
+      for (var i:u32 = 0; i < ${outputShape.length}; i++) {
+        var original_idx = getOriginalCoordinateFromResizedCoordinate(f32(outputIndices[i]), scales[i],
+                 f32(outputShape[i]), f32(inputShape[i]), roi[i], roi[i + ${inputShape.length}]);
+        if (original_idx < 0) {
+          original_idx = 0.0;
+        } else if (original_idx > (f32(inputShape[i]) - 1.0)) {
+          original_idx = f32(inputShape[i]) - 1.0;
         }
-      })();
-      scales.fill(1.0, 0, scales.length);
-      const adjustedOutputShape = inputShape.slice();
-      if (attributes.axes.length > 0) {
-        attributes.axes.forEach((v) => scales[v] = scaleInPolicy);
-        attributes.axes.forEach((v) => adjustedOutputShape[v] = Math.round(inputShape[v] * scales[v]));
-      } else {
-        scales.fill(scaleInPolicy, 0, scales.length);
-        adjustedOutputShape.forEach((v, i) => adjustedOutputShape[i] = Math.round(v * scales[i]));
+        originalIndices[i] = original_idx;
       }
-      return adjustedOutputShape;
-    };
+      return originalIndices;
+    }`;
 
 const calculateInputIndicesFromOutputIndices =
     (inputShape: readonly number[], outputShape: readonly number[], scales: readonly number[], roi: readonly number[],
@@ -244,16 +267,16 @@ const calculateInputIndicesFromOutputIndices =
             if (!${useExtrapolation} || (original_idx >= 0 && original_idx < f32(inputShape[i]))) {
               if (original_idx < 0) {
                 inputIndices[i] = 0;
-              } else if (original_idx >= f32(inputShape[i])) {
+              } else if (original_idx > (f32(inputShape[i]) - 1)) {
                 inputIndices[i] = inputShape[i] - 1;
               } else {
                 inputIndices[i] = u32(getNearestPixelFromOriginal(original_idx, scales[i] < 1));
               }
             } else {
-              inputIndices[i] = inputShape[i];
+              inputIndices[i] = u32(original_idx);
             }
-         }
-         return inputIndices;
+          }
+          return inputIndices;
      }`;
 
 const checkInputIndices = (inputShape: readonly number[]): string => `
@@ -266,6 +289,53 @@ const checkInputIndices = (inputShape: readonly number[]): string => `
       }
       return true;
     }`;
+
+const bilinearInterpolation =
+    (inputShape: readonly number[], outputShape: readonly number[], scales: readonly number[],
+     useExtrapolation: boolean, extrapolationValue: number): string => {
+      const outputIndicesHelper = createIndicesHelper('output', outputShape);
+      const inputIndicesHelper = createIndicesHelper('input', inputShape);
+      const [heightIdx, widthIdx] = inputShape.length === 2 ? [0, 1] : (scales[1] === 1.0) ? [2, 3] : [1, 2];
+      return `
+    fn bilinearInterpolation(outputIndices: ${outputIndicesHelper.iType}) -> f32 {
+      var inputIndicesX11: ${inputIndicesHelper.iType} = outputIndices;
+      var inputIndicesX12: ${inputIndicesHelper.iType} = outputIndices;
+      var inputIndicesX21: ${inputIndicesHelper.iType} = outputIndices;
+      var inputIndicesX22: ${inputIndicesHelper.iType} = outputIndices;
+      var originalIndices = calculateOriginalIndicesFromOutputIndices(outputIndices);
+      var row:f32 = originalIndices[${heightIdx}];
+      var col:f32 = originalIndices[${widthIdx}];
+      var row1: u32 = u32(row);
+      var col1: u32 = u32(col);
+      var row2: u32 = u32(row + 1);
+      var col2: u32 = u32(col + 1);
+      if (!${useExtrapolation}) {
+        if (row2 > ${inputShape[heightIdx]}) {
+          row2 = ${inputShape[heightIdx]} - 1;
+        }
+        if (col2 > ${inputShape[widthIdx]}) {
+          col2 = ${inputShape[widthIdx]} - 1;
+        }
+      }
+      inputIndicesX11[${heightIdx}] = row1;
+      inputIndicesX11[${widthIdx}] = col1;
+      inputIndicesX12[${heightIdx}] = row1;
+      inputIndicesX12[${widthIdx}] = col2;
+      inputIndicesX21[${heightIdx}] = row2;
+      inputIndicesX21[${widthIdx}] = col1;
+      inputIndicesX22[${heightIdx}] = row2;
+      inputIndicesX22[${widthIdx}] = col2;
+      var x11: f32 = input[${inputIndicesHelper.i2oExpression('inputIndicesX11')}];
+      var x12: f32 = input[${inputIndicesHelper.i2oExpression('inputIndicesX12')}];
+      var x21: f32 = input[${inputIndicesHelper.i2oExpression('inputIndicesX21')}];
+      var x22: f32 = input[${inputIndicesHelper.i2oExpression('inputIndicesX22')}];
+      var dx1: f32 = row - f32(row1);
+      var dx2: f32 = f32(row2 ) - row;
+      var dy1 = col - f32(col1);
+      var dy2 = f32(col2) - col;
+      return (x11 * dx2 * dy2 + x12 * dx2 * dy1 + x21 * dx1 * dy2 + x22 * dx1 * dy1);
+    }`;
+    };
 
 const createResizeProgramInfo =
     (metadata: ProgramMetadata, input: TensorView, attributes: ResizeAttributes, opsetVersion: number,
@@ -288,10 +358,26 @@ const createResizeProgramInfo =
       const noScale = inputShape.length === outputShape.length && inputShape.every((d, i) => d === outputShape[i]);
       const useExtrapolation = attributes.coordinateTransformMode === 'tf_crop_and_resize';
       const getShaderSource = (shaderHelper: ShaderHelper) => `
-      ${attributes.mode === 'nearest' ? getNearestPixelFromOriginal(attributes.nearestMode, opsetVersion) : ';'};
-      ${checkInputIndices(inputShape)};
-      ${calculateInputIndicesFromOutputIndices(inputShape, outputShape, scales, roi, useExtrapolation)};
       ${getOriginalCoordinateFromResizedCoordinate(attributes.coordinateTransformMode)};
+      ${(() => {
+        switch (attributes.mode) {
+          case 'nearest':
+            return `
+              ${checkInputIndices(inputShape)};
+              ${getNearestPixelFromOriginal(attributes.nearestMode, opsetVersion)};
+              ${calculateInputIndicesFromOutputIndices(inputShape, outputShape, scales, roi, useExtrapolation)};
+              `;
+          case 'linear':
+            return `
+              ${calculateOriginalIndicesFromOutputIndices(inputShape, outputShape, scales, roi)};
+              ${
+                bilinearInterpolation(
+                    inputShape, outputShape, scales, useExtrapolation, attributes.extrapolationValue)};
+              `;
+          default:
+            throw Error('Invalid resize mode');
+        }
+      })()};
       @group(0) @binding(0) var<storage, read> input : array<${dataType}>;
       @group(0) @binding(1) var<storage, read_write> output : array<${dataType}>;
       ${outputIndicesHelper.o2iImpl}
@@ -300,22 +386,25 @@ const createResizeProgramInfo =
         ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes(outputSize)}
         if (${noScale}) {
           output[global_idx] = input[global_idx];
-        }
-        else
-        {
+        } else {
           ${outputIndicesHelper.indicesVariableDeclaration('outputIndices')}
           ${outputIndicesHelper.o2iCall('global_idx', 'outputIndices')}
           ${inputIndicesHelper.indicesVariableDeclaration('inputIndices')}
-          if (${useNearest2xOptimization}) {
-            ${useNearest2xOptimizationSnippet}
-          } else {
-            inputIndices = calculateInputIndicesFromOutputIndices(outputIndices);
-            if (checkInputIndices(inputIndices)) {
-               output[global_idx] = input[${inputIndicesHelper.i2oExpression('inputIndices')}];
-            } else {
-              output[global_idx] = ${attributes.extrapolationValue};
-            }
-          }
+          ${(() => {
+        switch (attributes.mode) {
+          case 'nearest':
+            return `  inputIndices = calculateInputIndicesFromOutputIndices(outputIndices);
+                                    if (checkInputIndices(inputIndices)) {
+                                      output[global_idx] = input[${inputIndicesHelper.i2oExpression('inputIndices')}];
+                                    } else {
+                                      output[global_idx] = ${attributes.extrapolationValue};
+                                    }`;
+          case 'linear':
+            return 'output[global_idx] = bilinearInterpolation(outputIndices);';
+          default:
+            throw Error(`Unsupported resize mode: ${attributes.mode}`);
+        }
+      })()};
         }
       }`;
 
