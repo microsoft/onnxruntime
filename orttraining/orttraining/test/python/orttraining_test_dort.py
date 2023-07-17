@@ -4,9 +4,15 @@
 import unittest
 
 import torch
+import torch._dynamo
+import torch.onnx._internal.exporter
+from functorch.compile import min_cut_rematerialization_partition
 from torch import nn
+from torch._dynamo.backends.common import aot_autograd
 from torch.nn import functional as F
+from torch.utils import _pytree
 
+from onnxruntime.training.torchdynamo.ort_backend import OrtBackend
 from onnxruntime.training.torchdynamo.register_backend import aot_ort, ort
 
 
@@ -54,6 +60,136 @@ class TestTorchDynamoOrt(unittest.TestCase):
         # the code is correct with them.
         for _ in range(5):
             run_elementwise_model()
+
+    def test_dynamo_shape_model(self):
+        torch._dynamo.reset()
+        """Test DORT with a pure function."""
+
+        def run_elementwise_model():
+            use_dynamic_shapes = True
+
+            # A function to test DORT.
+            def elementwise_model(tensor_x: torch.Tensor):
+                tensor_y = tensor_x.sigmoid()
+                tensor_z = tensor_y + tensor_x
+                tensor_p = tensor_z * tensor_x
+                tensor_q = tensor_p.sigmoid()
+                return tensor_q
+
+            # Tell ONNX exporter not to convert dynamic shapes to static shapes.
+            onnx_exporter_options = torch.onnx._internal.exporter.ExportOptions(dynamic_shapes=use_dynamic_shapes)
+            ort_backend = OrtBackend(ep="CPUExecutionProvider", onnx_exporter_options=onnx_exporter_options)
+
+            local_aot_ort = aot_autograd(
+                fw_compiler=ort_backend,
+                partition_fn=min_cut_rematerialization_partition,
+                decompositions=ort_backend.resolved_onnx_exporter_options.decomposition_table,
+            )
+
+            # This function should only generate one graph and execute
+            # it for all inputs.
+            # With dynamic_shape=True, Dynamo sends FX graphs with dynamic
+            # shapes (e.g., batch size is a symbol "batch" instead of a fixed
+            # number) to OrtBackend.compile(...).
+            @torch._dynamo.optimize(local_aot_ort, dynamic=use_dynamic_shapes)
+            def optimized_elementwise_model(tensor_x: torch.Tensor):
+                return elementwise_model(tensor_x)
+
+            def run(fun, seed: torch.Tensor):
+                tensor_x = seed.detach().clone().requires_grad_()
+                tensor_y = fun(tensor_x)
+                tensor_y.sum().backward()
+                return tensor_x, tensor_y, tensor_x.grad
+
+            # Dimension changed.
+            for shape in [(2, 3), (3, 4)]:
+                seed = torch.rand(shape)
+                # Baseline.
+                tensor_x, tensor_y, tensor_x_grad = run(elementwise_model, seed)
+                # ORT result.
+                tensor_x_new, tensor_y_new, tensor_x_grad_new = run(optimized_elementwise_model, seed)
+
+                torch.testing.assert_close(tensor_x, tensor_x_new)
+                torch.testing.assert_close(tensor_y, tensor_y_new)
+                torch.testing.assert_close(tensor_x_grad, tensor_x_grad_new)
+
+            # Rank changed.
+            for shape in [(1,), (2,), (2, 3), (2, 3, 4)]:
+                seed = torch.rand(shape)
+                # Baseline.
+                tensor_x, tensor_y, tensor_x_grad = run(elementwise_model, seed)
+                # ORT result.
+                tensor_x_new, tensor_y_new, tensor_x_grad_new = run(optimized_elementwise_model, seed)
+
+                torch.testing.assert_close(tensor_x, tensor_x_new)
+                torch.testing.assert_close(tensor_y, tensor_y_new)
+                torch.testing.assert_close(tensor_x_grad, tensor_x_grad_new)
+
+        run_elementwise_model()
+
+    def test_elementwise_model_with_dynamic_shapes_and_complicated_output_schema(self):
+        torch._dynamo.reset()
+
+        def run_elementwise_model():
+            use_dynamic_shapes = True
+
+            # A function to test DORT.
+            def elementwise_model(tensor_x: torch.Tensor):
+                tensor_y = tensor_x.sigmoid()
+                tensor_z = tensor_y + tensor_x
+                tensor_p = tensor_z * tensor_x
+                tensor_q = tensor_p.sigmoid()
+                return (tensor_q, (tensor_y, tensor_z))
+
+            # Tell ONNX exporter not to convert dynamic shapes to static shapes.
+            onnx_exporter_options = torch.onnx._internal.exporter.ExportOptions(dynamic_shapes=use_dynamic_shapes)
+            ort_backend = OrtBackend(ep="CPUExecutionProvider", onnx_exporter_options=onnx_exporter_options)
+
+            local_aot_ort = aot_autograd(
+                fw_compiler=ort_backend,
+                partition_fn=min_cut_rematerialization_partition,
+                decompositions=ort_backend.resolved_onnx_exporter_options.decomposition_table,
+            )
+
+            # This function should only generate one graph and execute
+            # it for all inputs.
+            # With dynamic_shape=True, Dynamo sends FX graphs with dynamic
+            # shapes (e.g., batch size is a symbol "batch" instead of a fixed
+            # number) to OrtBackend.compile(...).
+            @torch._dynamo.optimize(local_aot_ort, dynamic=use_dynamic_shapes)
+            def optimized_elementwise_model(tensor_x: torch.Tensor):
+                return elementwise_model(tensor_x)
+
+            def run(fun, seed: torch.Tensor):
+                tensor_x = seed.detach().clone().requires_grad_()
+                result = fun(tensor_x)
+                forward_outputs, _ = _pytree.tree_flatten(result)
+                result[0].sum().backward()
+                return (tensor_x, *forward_outputs, tensor_x.grad)
+
+            # Dimension changed.
+            for shape in [(2, 3), (3, 4)]:
+                seed = torch.rand(shape)
+                # Baseline.
+                baseline_tensors = run(elementwise_model, seed)
+                # ORT result.
+                tensors = run(optimized_elementwise_model, seed)
+
+                for tensor, baseline_tensor in zip(tensors, baseline_tensors):
+                    torch.testing.assert_close(tensor, baseline_tensor)
+
+            # Rank changed.
+            for shape in [(1,), (2,), (2, 3), (2, 3, 4)]:
+                seed = torch.rand(shape)
+                # Baseline.
+                baseline_tensors = run(elementwise_model, seed)
+                # ORT result.
+                tensors = run(optimized_elementwise_model, seed)
+
+                for tensor, baseline_tensor in zip(tensors, baseline_tensors):
+                    torch.testing.assert_close(tensor, baseline_tensor)
+
+        run_elementwise_model()
 
     def test_elementwise_model_for_inference(self):
         torch._dynamo.reset()

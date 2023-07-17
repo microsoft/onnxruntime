@@ -198,22 +198,27 @@ def _infer_ep_from_device(*args) -> Tuple[str, ...]:
     return tuple(eps)
 
 
-def _infer_ep_from_graph_module(graph_module: torch.fx.GraphModule) -> Tuple[str, ...]:
-    """Return the first valid device (i.e., GPU or CPU) among outputs of this torch.fx.GraphModule."""
+def _extract_graph_module_outputs(graph_module: torch.fx.GraphModule) -> Any:
+    """Collect "val" fields from outputs metadata in this torch.fx.GraphModule."""
     for node in graph_module.graph.nodes:
         if node.op == "output":
             # Output node is unique. Let's retrieve output values from
             # this node's input list. And then just return.
-            flattened_output_args, _ = _pytree.tree_flatten(node.args)
-            output_args = []
-            for output_arg in flattened_output_args:
-                if hasattr(output_arg, "meta") and "val" in output_arg.meta:
-                    # Select outputs with "val" information. Without "val",
-                    # it's not possible access output_arg.meta["val"].device.
-                    output_args.append(output_arg.meta["val"])
-            return _infer_ep_from_device(*output_args)
-    graph_module_str = graph_module.print_readable(print_output=False)
-    raise ValueError(f"No output node is found in graph_module: {graph_module_str}")
+            return node.args[0]
+    raise ValueError("No output node found in this torch.fx.GraphModule.")
+
+
+def _infer_ep_from_graph_module(graph_module: torch.fx.GraphModule) -> Tuple[str, ...]:
+    """Return the first valid device (i.e., GPU or CPU) among outputs of this torch.fx.GraphModule."""
+    flattened_output_args, _ = _pytree.tree_flatten(_extract_graph_module_outputs(graph_module))
+    # Output arguments with example value (type: torch.Tensor) in the `graph_module`.
+    selected_output_args = []
+    for output_arg in flattened_output_args:
+        if hasattr(output_arg, "meta") and "val" in output_arg.meta:
+            # Select outputs with "val" information. Without "val",
+            # it's not possible access output_arg.meta["val"].device.
+            selected_output_args.append(output_arg.meta["val"])
+    return _infer_ep_from_device(*selected_output_args)
 
 
 def _sort_eps(eps: Tuple[str, ...]) -> Tuple[str, ...]:
@@ -445,16 +450,32 @@ class OrtBackend:
             #
             # WARNING: The downstream code should not change prim_outputs and
             # this backend should always produces output with schema identical to prim_outputs'.
-            try:
-                prim_outputs = FakeTensorProp(graph_module).propagate(*args, **kwargs)
-            except Exception:
-                logger.info(f"FakeTensorProb failed for {graph_module}")
-                # When FakeTensorProp fails, it is not possible to preallocate output buffers
-                # because the output shapes are not inferred.
-                self.preallocate_output = False
 
-                # rethrow FakeTensorProb failure because it is not yet currently handled.
-                raise
+            if self.resolved_onnx_exporter_options.dynamic_shapes:
+                # No pre-allocation when dynamic shape is enabled.
+                self.preallocate_output = False
+                extracted_outputs = _extract_graph_module_outputs(graph_module)
+
+                def maybe_map_to_meta_val(value):
+                    if hasattr(value, "meta") and "val" in value.meta:
+                        # Select outputs with "val" information. Without "val",
+                        # it's not possible access output_arg.meta["val"].device.
+                        return value.meta["val"]
+                    else:
+                        return value
+
+                prim_outputs = _pytree.tree_map(maybe_map_to_meta_val, extracted_outputs)
+            else:
+                try:
+                    prim_outputs = FakeTensorProp(graph_module).propagate(*args, **kwargs)
+                except Exception:
+                    logger.info(f"FakeTensorProb failed for {graph_module}")
+                    # When FakeTensorProp fails, it is not possible to preallocate output buffers
+                    # because the output shapes are not inferred.
+                    self.preallocate_output = False
+
+                    # rethrow FakeTensorProb failure because it is not yet currently handled.
+                    raise
             self._ort_execution_info.example_outputs[graph_module] = prim_outputs
 
             from torch.onnx._internal.fx import fx_onnx_interpreter
