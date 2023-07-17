@@ -53,8 +53,8 @@ const appendDefaultOptions = (options: InferenceSession.SessionOptions): void =>
 };
 
 const setExecutionProviders =
-    (sessionOptionsHandle: bigint, executionProviders: readonly InferenceSession.ExecutionProviderConfig[],
-     allocs: bigint[]): void => {
+    (sessionOptionsHandle: number, executionProviders: readonly InferenceSession.ExecutionProviderConfig[],
+     allocs: number[]): void => {
       for (const ep of executionProviders) {
         let epName = typeof ep === 'string' ? ep : ep.name;
 
@@ -71,7 +71,7 @@ const setExecutionProviders =
                 const keyDataOffset = allocWasmString('deviceType', allocs);
                 const valueDataOffset = allocWasmString(webnnOptions.deviceType, allocs);
                 if (getInstance()._OrtAddSessionConfigEntry(sessionOptionsHandle, keyDataOffset, valueDataOffset) !==
-                    BigInt(0)) {
+                    0) {
                   checkLastError(`Can't set a session config entry: 'deviceType' - ${webnnOptions.deviceType}.`);
                 }
               }
@@ -79,7 +79,7 @@ const setExecutionProviders =
                 const keyDataOffset = allocWasmString('powerPreference', allocs);
                 const valueDataOffset = allocWasmString(webnnOptions.powerPreference, allocs);
                 if (getInstance()._OrtAddSessionConfigEntry(sessionOptionsHandle, keyDataOffset, valueDataOffset) !==
-                    BigInt(0)) {
+                    0) {
                   checkLastError(
                       `Can't set a session config entry: 'powerPreference' - ${webnnOptions.powerPreference}.`);
                 }
@@ -97,17 +97,16 @@ const setExecutionProviders =
         }
 
         const epNameDataOffset = allocWasmString(epName, allocs);
-        // @ts-ignore
-        if (getInstance()._OrtAppendExecutionProvider(BigInt(sessionOptionsHandle), BigInt(epNameDataOffset)) !== 0) {
+        if (getInstance()._OrtAppendExecutionProvider(sessionOptionsHandle, epNameDataOffset) !== 0) {
           checkLastError(`Can't append execution provider: ${epName}.`);
         }
       }
     };
 
-export const setSessionOptions = (options?: InferenceSession.SessionOptions): [bigint, bigint[]] => {
+export const setSessionOptions = (options?: InferenceSession.SessionOptions): [number, number[]] => {
   const wasm = getInstance();
-  let sessionOptionsHandle = BigInt(0);
-  const allocs: bigint[] = [];
+  let sessionOptionsHandle = 0;
+  const allocs: number[] = [];
 
   const sessionOptions: InferenceSession.SessionOptions = options || {};
   appendDefaultOptions(sessionOptions);
@@ -116,7 +115,7 @@ export const setSessionOptions = (options?: InferenceSession.SessionOptions): [b
     const graphOptimizationLevel = getGraphOptimzationLevel(sessionOptions.graphOptimizationLevel ?? 'all');
     const executionMode = getExecutionMode(sessionOptions.executionMode ?? 'sequential');
     const logIdDataOffset =
-        typeof sessionOptions.logId === 'string' ? allocWasmString(sessionOptions.logId, allocs) : BigInt(0);
+        typeof sessionOptions.logId === 'string' ? allocWasmString(sessionOptions.logId, allocs) : 0;
 
     const logSeverityLevel = sessionOptions.logSeverityLevel ?? 2;  // Default to 2 - warning
     if (!Number.isInteger(logSeverityLevel) || logSeverityLevel < 0 || logSeverityLevel > 4) {
@@ -130,17 +129,13 @@ export const setSessionOptions = (options?: InferenceSession.SessionOptions): [b
 
     const optimizedModelFilePathOffset = typeof sessionOptions.optimizedModelFilePath === 'string' ?
         allocWasmString(sessionOptions.optimizedModelFilePath, allocs) :
-        BigInt(0);
+        0;
 
     sessionOptionsHandle = wasm._OrtCreateSessionOptions(
-        // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-        // @ts-ignore
-        BigInt(graphOptimizationLevel), !!sessionOptions.enableCpuMemArena, !!sessionOptions.enableMemPattern,
-        BigInt(executionMode),
-        !!sessionOptions.enableProfiling, BigInt(0), logIdDataOffset, BigInt(logSeverityLevel),
-        BigInt(logVerbosityLevel),
+        graphOptimizationLevel, !!sessionOptions.enableCpuMemArena, !!sessionOptions.enableMemPattern, executionMode,
+        !!sessionOptions.enableProfiling, 0, logIdDataOffset, logSeverityLevel, logVerbosityLevel,
         optimizedModelFilePathOffset);
-    if (sessionOptionsHandle === BigInt(0)) {
+    if (sessionOptionsHandle === 0) {
       checkLastError('Can\'t create session options.');
     }
 
@@ -153,10 +148,7 @@ export const setSessionOptions = (options?: InferenceSession.SessionOptions): [b
         const keyDataOffset = allocWasmString(key, allocs);
         const valueDataOffset = allocWasmString(value, allocs);
 
-        // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-        // @ts-ignore
-        if (wasm._OrtAddSessionConfigEntry(BigInt(sessionOptionsHandle), BigInt(keyDataOffset),
-            BigInt(valueDataOffset)) !== 0) {
+        if (wasm._OrtAddSessionConfigEntry(sessionOptionsHandle, keyDataOffset, valueDataOffset) !== 0) {
           checkLastError(`Can't set a session config entry: ${key} - ${value}.`);
         }
       });
@@ -164,8 +156,7 @@ export const setSessionOptions = (options?: InferenceSession.SessionOptions): [b
 
     return [sessionOptionsHandle, allocs];
   } catch (e) {
-    console.log('got error', e);
-    if (sessionOptionsHandle !== BigInt(0)) {
+    if (sessionOptionsHandle !== 0) {
       wasm._OrtReleaseSessionOptions(sessionOptionsHandle);
     }
     allocs.forEach(alloc => wasm._free(alloc));

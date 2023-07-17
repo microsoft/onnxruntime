@@ -238,7 +238,7 @@ else()
     target_link_libraries(onnxruntime_webassembly PRIVATE tensorboard)
   endif()
 
-  set(EXPORTED_RUNTIME_METHODS "['stackAlloc','stackRestore','stackSave','UTF8ToString','stringToUTF8','lengthBytesUTF8']")
+  set(EXPORTED_RUNTIME_METHODS "['stackAlloc','stackRestore','stackSave','UTF8ToString','stringToUTF8','lengthBytesUTF8','setValue','getValue']")
   if (onnxruntime_USE_JSEP)
     set(EXPORTED_FUNCTIONS "_malloc,_free,_JsepOutput")
   else()
@@ -251,7 +251,7 @@ else()
     "SHELL:-s INITIAL_MEMORY=8589934592"
     "SHELL:-s MAXIMUM_MEMORY=17179869184"
     "SHELL:-s EXIT_RUNTIME=0"
-#    "SHELL:-s ALLOW_MEMORY_GROWTH=1"
+    "SHELL:-s ALLOW_MEMORY_GROWTH=1"
     "SHELL:-s MODULARIZE=1"
     "SHELL:-s EXPORT_ALL=0"
     "SHELL:-s VERBOSE=0"
@@ -259,6 +259,8 @@ else()
     "SHELL:-s ${MEMORY_FLAG}"
 #    "SHELL:-s MAIN_MODULE=0"
     "SHELL:-s ERROR_ON_UNDEFINED_SYMBOLS=0"
+    "SHELL:-s SIGNATURE_CONVERSIONS=OrtRun:_pppppppp,OrtGetTensorData:_ppppp,OrtCreateTensor:p_pppp,OrtCreateSession:pppp,OrtReleaseSession:_p,OrtGetInputOutputCount:pppp,OrtCreateSessionOptions:pp__p_ppppp,OrtAddSessionConfigEntry:pppp,OrtReleaseSessionOptions:_p,OrtAppendExecutionProvider:ppp,OrtAddSessionConfigEntry:pppp,OrtGetInputName:ppp,OrtGetOutputName:ppp,OrtCreateRunOptions:ppp_p,OrtReleaseRunOptions:pp,OrtReleaseTensor:_p,OrtFree:_p,OrtGetLastError:_pp,JsepOutput:pp_p"
+    "SHELL:-s BINARYEN_EXTRA_PASSES=fast-math,traps-never-happen,precompute"
     ${WASM_API_EXCEPTION_CATCHING}
     --no-entry
   )
@@ -273,7 +275,7 @@ else()
       --pre-js "${ONNXRUNTIME_ROOT}/wasm/js_internal_api.js"
       "SHELL:-s ASYNCIFY=2"
       "SHELL:-s ASYNCIFY_STACK_SIZE=65536"
-      "SHELL:-s ASYNCIFY_EXPORTS=['OrtRun','_OrtRun']"
+      "SHELL:-s ASYNCIFY_EXPORTS=['OrtRun']"
       "SHELL:-s ${MEMORY_FLAG}"
     )
   endif()

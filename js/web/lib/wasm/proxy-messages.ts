@@ -11,12 +11,12 @@ export type SerializableTensor = [Tensor.Type, readonly number[], Tensor.DataTyp
 /**
  *  tuple elements are: InferenceSession handle; input names; output names
  */
-export type SerializableSessionMetadata = [bigint, string[], string[]];
+export type SerializableSessionMetadata = [number, string[], string[]];
 
 /**
  *  tuple elements are: modeldata.offset, modeldata.length
  */
-export type SerializableModeldata = [bigint, number];
+export type SerializableModeldata = [number, number];
 
 interface MessageError {
   err?: string;

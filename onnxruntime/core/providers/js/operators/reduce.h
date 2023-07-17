@@ -16,20 +16,20 @@ namespace js {
     using ReduceKernelBase<allow_multi_axes>::noop_with_empty_axes_;                                         \
     using ReduceKernelBase<allow_multi_axes>::keepdims_;                                                     \
     ReduceKernel(const OpKernelInfo& info) : JsKernel(info), ReduceKernelBase<allow_multi_axes>(info) {      \
-      std::vector<int32_t> axes(axes_.size());                                                               \
+      std::vector<size_t> axes(axes_.size());                                                               \
       if (axes_.size() > 0) {                                                                                \
         std::transform(axes_.begin(), axes_.end(), axes.begin(),                                             \
-                       [](int64_t axis) { return gsl::narrow_cast<int32_t>(axis); });                        \
+                       [](int64_t axis) { return gsl::narrow_cast<size_t>(axis); });                        \
       }                                                                                                      \
       JSEP_INIT_KERNEL_ATTRIBUTE(ReduceKernel, ({                                                            \
                                    "keepDims" : !!$1,                                                        \
                                    "noopWithEmptyAxes" : !!$2,                                               \
-                                   "axes" : $3 ? (Array.from(HEAP32.subarray($4, $4 + $3))) : [],            \
+                                   "axes" : $3 ? (Array.from(HEAP64.subarray(Number($4), Number($4) + Number($3)))) : [],            \
                                  }),                                                                         \
-                                 static_cast<int32_t>(keepdims_),                                            \
-                                 static_cast<int32_t>(noop_with_empty_axes_),                                \
-                                 gsl::narrow_cast<int32_t>(axes.size()),                                     \
-                                 reinterpret_cast<int32_t>((axes.size() > 0) ? axes.data() : nullptr) >> 2); \
+                                 static_cast<size_t>(keepdims_),                                            \
+                                 static_cast<size_t>(noop_with_empty_axes_),                                \
+                                 gsl::narrow_cast<size_t>(axes.size()),                                     \
+                                 reinterpret_cast<size_t>((axes.size() > 0) ? axes.data() : nullptr) / sizeof(size_t)); \
     }                                                                                                        \
   };
 

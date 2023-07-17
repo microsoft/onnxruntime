@@ -103,16 +103,13 @@ class ComputeContextImpl implements ComputeContext {
   output(index: number, dims: readonly number[]): number {
     const stack = this.module.stackSave();
     try {
-      const data = this.module.stackAlloc((1 + dims.length) * 8 /* sizeof(size_t) */);
-      let offset = data / 2**3;
-      this.module.HEAPU64[offset++] = BigInt(dims.length);
+      const ptrSize = 8;
+      const data = this.module.stackAlloc((1 + dims.length) * ptrSize /* sizeof(size_t) */);
+      this.module.setValue(data, dims.length, '*');
       for (let i = 0; i < dims.length; i++) {
-        this.module.HEAPU64[offset++] = BigInt(dims[i]);
+        this.module.setValue(data + ptrSize * (i+1), dims[i], '*');
       }
-      return Number(this.module._JsepOutput(BigInt(this.opKernelContext), BigInt(index), BigInt(data)));
-    } catch (e) {
-      console.error(e);
-      throw e;
+      return this.module._JsepOutput(this.opKernelContext, index, data);
     } finally {
       this.module.stackRestore(stack);
     }
@@ -158,7 +155,7 @@ export const init = async(module: OrtWasmModule, env: Env): Promise<void> => {
                   'verbose',
                   () => `[WebGPU] jsepCopyGpuToCpu: gpuDataId=${gpuDataId}, dataOffset=${dataOffset}, size=${size}`);
 
-              await backend.download(gpuDataId, () => module.HEAPU8.subarray(dataOffset, dataOffset + size));
+              await backend.download(gpuDataId, () => module.HEAPU8.subarray(Number(dataOffset), Number(dataOffset) + Number(size)));
             },
 
         // jsepCreateKernel
@@ -170,7 +167,7 @@ export const init = async(module: OrtWasmModule, env: Env): Promise<void> => {
         // jsepRun
         (kernel: number, contextDataOffset: number) => {
           LOG_DEBUG('verbose', () => `[WebGPU] jsepRun: kernel=${kernel}, contextDataOffset=${contextDataOffset}`);
-          const context = new ComputeContextImpl(module, backend, contextDataOffset);
+          const context = new ComputeContextImpl(module, backend, Number(contextDataOffset));
           return backend.computeKernel(kernel, context);
         });
   }

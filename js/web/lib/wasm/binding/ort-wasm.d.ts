@@ -17,6 +17,8 @@ export interface OrtWasmModule extends EmscriptenModule {
   stackSave(): number;
   stackRestore(stack: number): void;
   stackAlloc(size: number): number;
+  getValue(ptr: number, type: string): number;
+  setValue(ptr: number, value: number, type: string): void;
 
   UTF8ToString(offset: number, maxBytesToRead?: number): string;
   lengthBytesUTF8(str: string): number;
@@ -29,35 +31,35 @@ export interface OrtWasmModule extends EmscriptenModule {
   _OrtGetLastError(errorCodeOffset: number, errorMessageOffset: number): void;
 
   _OrtCreateSession(dataOffset: number, dataLength: number, sessionOptionsHandle: number): number;
-  _OrtReleaseSession(sessionHandle: bigint): void;
-  _OrtGetInputOutputCount(sessionHandle: bigint, inputCountOffset: number, outputCountOffset: number): number;
-  _OrtGetInputName(sessionHandle: bigint, index: number): number;
-  _OrtGetOutputName(sessionHandle: bigint, index: number): number;
+  _OrtReleaseSession(sessionHandle: number): void;
+  _OrtGetInputOutputCount(sessionHandle: number, inputCountOffset: number, outputCountOffset: number): number;
+  _OrtGetInputName(sessionHandle: number, index: number): number;
+  _OrtGetOutputName(sessionHandle: number, index: number): number;
 
-  _OrtFree(stringHandle: bigint): void;
+  _OrtFree(stringHandle: number): void;
 
-  _OrtCreateTensor(dataType: number, dataOffset: bigint, dataLength: bigint, dimsOffset: bigint, dimsLength: bigint):
-      bigint;
-  _OrtGetTensorData(tensorHandle: bigint, dataType: bigint, dataOffset: bigint, dimsOffset: bigint, dimsLength: bigint):
+  _OrtCreateTensor(dataType: number, dataOffset: number, dataLength: number, dimsOffset: number, dimsLength: number):
       number;
-  _OrtReleaseTensor(tensorHandle: bigint): void;
+  _OrtGetTensorData(tensorHandle: number, dataType: number, dataOffset: number, dimsOffset: number, dimsLength: number):
+      number;
+  _OrtReleaseTensor(tensorHandle: number): void;
   _OrtRun(
-      sessionHandle: bigint, inputNamesOffset: bigint, inputsOffset: bigint, inputCount: bigint,
-      outputNamesOffset: bigint, outputCount: bigint, outputsOffset: bigint, runOptionsHandle: bigint): number;
+      sessionHandle: number, inputNamesOffset: number, inputsOffset: number, inputCount: number,
+      outputNamesOffset: number, outputCount: number, outputsOffset: number, runOptionsHandle: number): number;
 
   _OrtCreateSessionOptions(
       graphOptimizationLevel: number, enableCpuMemArena: boolean, enableMemPattern: boolean, executionMode: number,
       enableProfiling: boolean, profileFilePrefix: number, logId: number, logSeverityLevel: number,
-      logVerbosityLevel: number, optimizedModelFilePath: number): bigint;
-  _OrtAppendExecutionProvider(sessionOptionsHandle: bigint, name: number): bigint;
-  _OrtAddSessionConfigEntry(sessionOptionsHandle: bigint, configKey: bigint, configValue: bigint): bigint;
-  _OrtReleaseSessionOptions(sessionOptionsHandle: bigint): void;
+      logVerbosityLevel: number, optimizedModelFilePath: number): number;
+  _OrtAppendExecutionProvider(sessionOptionsHandle: number, name: number): number;
+  _OrtAddSessionConfigEntry(sessionOptionsHandle: number, configKey: number, configValue: number): number;
+  _OrtReleaseSessionOptions(sessionOptionsHandle: number): void;
 
-  _OrtCreateRunOptions(logSeverityLevel: number, logVerbosityLevel: number, terminate: boolean, tag: number): bigint;
-  _OrtAddRunConfigEntry(runOptionsHandle: bigint, configKey: bigint, configValue: bigint): number;
-  _OrtReleaseRunOptions(runOptionsHandle: bigint): void;
+  _OrtCreateRunOptions(logSeverityLevel: number, logVerbosityLevel: number, terminate: boolean, tag: number): number;
+  _OrtAddRunConfigEntry(runOptionsHandle: number, configKey: number, configValue: number): number;
+  _OrtReleaseRunOptions(runOptionsHandle: number): void;
 
-  _OrtEndProfiling(sessionHandle: bigint): bigint;
+  _OrtEndProfiling(sessionHandle: number): number;
   // #endregion
 
   // #region config
@@ -70,7 +72,7 @@ export interface OrtWasmModule extends EmscriptenModule {
        download: JSEP.DownloadFunction, createKernel: JSEP.CreateKernelFunction,
        releaseKernel: JSEP.ReleaseKernelFunction, run: JSEP.RunFunction): void;
 
-  _JsepOutput(context: bigint, index: bigint, data: bigint): bigint;
+  _JsepOutput(context: number, index: number, data: number): number;
 
   jsepRunPromise?: Promise<number>;
   // #endregion

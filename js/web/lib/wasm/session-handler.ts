@@ -7,12 +7,11 @@ import {promisify} from 'util';
 
 import {SerializableModeldata} from './proxy-messages';
 import {createSession, createSessionAllocate, createSessionFinalize, endProfiling, initializeRuntime, releaseSession, run} from './proxy-wrapper';
-import {getInstance} from "./wasm-factory";
 
 let runtimeInitialized: boolean;
 
 export class OnnxruntimeWebAssemblySessionHandler implements SessionHandler {
-  private sessionId: bigint;
+  private sessionId: number;
 
   inputNames: string[];
   outputNames: string[];
@@ -109,9 +108,5 @@ export class OnnxruntimeWebAssemblySessionHandler implements SessionHandler {
 
   endProfiling(): void {
     void endProfiling(this.sessionId);
-  }
-
-  getWasm () {
-    return getInstance();
   }
 }

@@ -21,7 +21,7 @@ class Transpose final : public JsKernel, public TransposeBase {
       }
     }
     JSEP_INIT_KERNEL_ATTRIBUTE(Transpose, ({
-                                 "perm" : $1 ? Array.from(HEAP64.subarray($2, $2 + $1).map(x => Number(x))) : []
+                                 "perm" : $1 ? Array.from(HEAP64.subarray(Number($2), Number($2) + Number($1))) : []
                                }),
                                // $1: length of attribute "perm" (int32[])
                                gsl::narrow_cast<size_t>(perm_specified_ ? perm_.size() : 0),

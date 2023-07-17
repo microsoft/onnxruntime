@@ -39,7 +39,7 @@ namespace js {
       static_cast<size_t>(is_channels_last)
 
 #define GLOBAL_POOL_ATTRIBUTES_JS_OBJ_MAPPING ({"format" : $1 ? "NHWC" : "NCHW"})
-#define GLOBAL_POOL_ATTRIBUTES_PARAM_LIST static_cast<int32_t>(is_channels_last)
+#define GLOBAL_POOL_ATTRIBUTES_PARAM_LIST static_cast<size_t>(is_channels_last)
 
 template <typename T, typename PoolType, bool is_channels_last>
 class Pool : public JsKernel, public PoolBase {
