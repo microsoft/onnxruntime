@@ -1,6 +1,7 @@
 <script>
 	import { onMount } from 'svelte';
 	import { themeChange } from 'theme-change';
+	import { base } from '$app/paths';
 	import FaGithub from 'svelte-icons/fa/FaGithub.svelte';
 	import FaYoutube from 'svelte-icons/fa/FaYoutube.svelte';
 	import FaLinkedinIn from 'svelte-icons/fa/FaLinkedinIn.svelte';
@@ -34,12 +35,12 @@
 				tabindex="0"
 				class="menu menu-sm dropdown-content mt-3 z-[1] p-2 shadow bg-base-100 rounded-box w-52"
 			>
-				<li><a href="/blogs">Blogs</a></li>
-				<li><a href="/docs">Docs</a></li>
+				<li><a href="{base}/blogs">Blogs</a></li>
+				<li><a href="{base}/">Docs</a></li>
 				<li>
 					<p>Community</p>
 					<ul class="p-2">
-						<li><a href="/about">About ORT</a></li>
+						<li><a href="{base}/about">About ORT</a></li>
 						<li><a>Testimonials</a></li>
 						<li>
 							<a href="https://www.youtube.com/onnxruntime"
@@ -72,18 +73,18 @@
 				</li>
 			</ul>
 		</div>
-		<a href="/" class="btn btn-ghost normal-case text-xl">ONNXRuntime</a>
+		<a href="{base}/" class="btn btn-ghost normal-case text-xl">ONNXRuntime</a>
 	</div>
 	<div class="navbar-center hidden lg:flex">
 		<ul class="menu menu-horizontal px-1">
-			<li><a href="/blogs">Blogs</a></li>
-			<li><a href="/docs" >Docs</a></li>
+			<li><a href="{base}/blogs">Blogs</a></li>
+			<li><a href="{base}/" >Docs</a></li>
 			<!-- svelte-ignore a11y-no-noninteractive-tabindex -->
 			<li tabindex="0">
 				<details>
 					<summary>Community</summary>
 					<ul class="p-2">
-						<li><a href="/about" >About ORT</a></li>
+						<li><a href="{base}/about" >About ORT</a></li>
 						<li><a>Testimonials</a></li>
 						<li>
 							<a href="https://www.youtube.com/onnxruntime"
