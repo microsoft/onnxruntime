@@ -16,6 +16,7 @@ class Fusion:
     """
     Base class for Graph Fusion
     """
+
     def __init__(
         self,
         model: OnnxModel,

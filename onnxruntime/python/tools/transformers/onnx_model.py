@@ -1187,16 +1187,7 @@ class OnnxModel:
 
     def use_float16(self):
         """Check whether the model uses float16"""
-        for t in self.model.graph.input:
-            if t.type.tensor_type.elem_type == TensorProto.FLOAT16:
-                return True
-
-        for t in self.model.graph.output:
-            if t.type.tensor_type.elem_type == TensorProto.FLOAT16:
-                return True
-
-        # create a queue for BFS
-        queue = []
+        queue = []  # queue for BFS
         queue.append(self.model.graph)
         while queue:
             next_level = []
