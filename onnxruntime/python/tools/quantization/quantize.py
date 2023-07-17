@@ -387,10 +387,9 @@ def quantize_static(
             raise RuntimeError("neural-compressor is not correctly installed. Please check your environment.") from e
 
         import copy
+        import onnx
 
         from neural_compressor.adaptor.ox_utils.smooth_quant import ORTSmoothQuant
-
-        from .quant_utils import save_and_reload_model
 
         def inc_dataloader():
             data_reader = copy.deepcopy(calibration_data_reader)
@@ -405,7 +404,10 @@ def quantize_static(
             extra_options.get("SmoothQuantAlpha", 0.5), extra_options.get("SmoothQuantFolding", True)
         ).model
         nodes_to_exclude.extend([i.name for i in model.graph.node if i.name not in orig_nodes])
-        model = save_and_reload_model(model)
+        sq_path = tempfile.TemporaryDirectory(prefix="ort.quant.")
+        model_input = Path(sq_path.name).joinpath("sq_model.onnx")
+        onnx.save_model(model, model_input.as_posix(), save_as_external_data=True)
+        model = load_model_with_shape_infer(Path(model_input))  # use smooth quant model for calibration
 
     with tempfile.TemporaryDirectory(prefix="ort.quant.") as quant_tmp_dir:
         calibrator = create_calibrator(
@@ -462,6 +464,8 @@ def quantize_static(
             "/cpu/ReadMe.md "
         )
 
+    if extra_options.get("SmoothQuant", False):
+        sq_path.cleanup()
 
 def quantize_dynamic(
     model_input: Path,
