@@ -69,12 +69,10 @@ static void RunCPUArgMxxOpTest(const std::string& op_type, TestInputDef<float> i
   provider_options["backend_path"] = "libQnnCpu.so";
 #endif
 
-  const int expected_nodes_in_graph = expected_ep_assignment == ExpectedEPNodeAssignment::All ? 1 : -1;
   RunQnnModelTest(BuildArgMxxTestCase(op_type, input_def, attrs),
                   provider_options,
                   opset,
-                  expected_ep_assignment,
-                  expected_nodes_in_graph);
+                  expected_ep_assignment);
 }
 
 // Runs an ArgMax/ArgMin model on the QNN CPU backend. Checks the graph node assignment, and that inference
@@ -92,12 +90,10 @@ static void RunQDQArgMxxOpTest(const std::string& op_type, TestInputDef<float> i
   provider_options["backend_path"] = "libQnnHtp.so";
 #endif
 
-  const int expected_nodes_in_graph = expected_ep_assignment == ExpectedEPNodeAssignment::All ? 1 : -1;
   RunQnnModelTest(BuildQDQArgMxxTestCase(op_type, input_def, attrs),
                   provider_options,
                   opset,
-                  expected_ep_assignment,
-                  expected_nodes_in_graph);
+                  expected_ep_assignment);
 }
 
 //

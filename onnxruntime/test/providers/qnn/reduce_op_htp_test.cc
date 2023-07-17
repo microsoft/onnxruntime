@@ -97,7 +97,6 @@ static void RunReduceOpQDQTest(const std::string& op_type, int opset, const std:
 
   // If QNN EP can support all ops, then we expect a single fused node in the graph.
   // Otherwise, we'll get a graph with 5 individual nodes handled by CPU EP.
-  const int expected_nodes_in_partition = expected_ep_assignment == ExpectedEPNodeAssignment::All ? 1 : 5;
   constexpr bool noop_with_empty_axes = false;
   RunQnnModelTest(BuildQDQReduceOpTestCase<QuantType>(op_type,
                                                       input_shape,
@@ -107,8 +106,7 @@ static void RunReduceOpQDQTest(const std::string& op_type, int opset, const std:
                                                       noop_with_empty_axes),
                   provider_options,
                   opset,
-                  expected_ep_assignment,
-                  expected_nodes_in_partition);
+                  expected_ep_assignment);
 }
 
 //

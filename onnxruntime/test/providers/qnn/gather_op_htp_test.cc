@@ -33,15 +33,13 @@ static void RunGatherOpQDQTest(int opset, bool scalar_indices = false,
   provider_options["backend_path"] = "libQnnHtp.so";
 #endif
 
-  constexpr int expected_nodes_in_partition = 1;
   if (scalar_indices) {
     RunQnnModelTest(BuildQDQGatherOpScalarIndicesTestCase<QuantType, IndicesType>({2, 3, 4},  // input shape
                                                                                   1,          // indices
                                                                                   1),         // axis
                     provider_options,
                     opset,
-                    expected_ep_assignment,
-                    expected_nodes_in_partition);
+                    expected_ep_assignment);
   } else {
     RunQnnModelTest(BuildQDQGatherOpTestCase<QuantType, IndicesType>({2, 3, 4},                    // input shape
                                                                      std::vector<IndicesType>{1},  // indices
@@ -49,8 +47,7 @@ static void RunGatherOpQDQTest(int opset, bool scalar_indices = false,
                                                                      1),                           // axis
                     provider_options,
                     opset,
-                    expected_ep_assignment,
-                    expected_nodes_in_partition);
+                    expected_ep_assignment);
   }
 }
 

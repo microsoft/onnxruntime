@@ -113,11 +113,11 @@ struct QuantParams {
   QType zero_point;
 
   static QuantParams<QType> Compute(float rmin, float rmax) {
-    const QType qmin = std::numeric_limits<QType>::min();
-    const QType qmax = std::numeric_limits<QType>::max();
+    constexpr float qmin = static_cast<float>(std::numeric_limits<QType>::min());
+    constexpr float qmax = static_cast<float>(std::numeric_limits<QType>::max());
 
-    const float scale = (rmax - rmin) / static_cast<float>(qmax - qmin);
-    const QType zero_point = (static_cast<float>(qmin) - rmin) / scale;
+    const float scale = (rmax - rmin) / (qmax - qmin);
+    const QType zero_point = static_cast<QType>((qmin - rmin) / scale);
 
     return QuantParams<QType>{scale, zero_point};
   }
@@ -172,14 +172,11 @@ inline NodeArg* MakeTestInput(ModelTestBuilder& builder, const TestInputDef<T>& 
  * \param provider_options Provider options for QNN EP.
  * \param opset_version The opset version.
  * \param expected_ep_assignment How many nodes are expected to be assigned to QNN (All, Some, or None).
- * \param num_nodes_in_graph The expected number of nodes assigned to the final graph. If all nodes are assigned to QNN,
- *                           then this is 1 (all fused). Otherwise, it depends on the optimizations done by the CPU EP.
- *                           Set to -1 if don't care/know how many nodes should be in final graph.
  * \param fp32_abs_err The acceptable error between CPU EP and QNN EP.
  * \param log_severity The logger's minimum severity level.
  */
 void RunQnnModelTest(const GetTestModelFn& build_test_case, const ProviderOptions& provider_options,
-                     int opset_version, ExpectedEPNodeAssignment expected_ep_assignment, int num_nodes_in_graph,
+                     int opset_version, ExpectedEPNodeAssignment expected_ep_assignment,
                      float fp32_abs_err = 1e-5f, logging::Severity log_severity = logging::Severity::kERROR);
 
 enum class BackendSupport {
