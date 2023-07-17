@@ -14,8 +14,7 @@
 	<div class="navbar-start">
 		<div class="dropdown">
 			<!-- svelte-ignore a11y-no-noninteractive-tabindex -->
-			<!-- svelte-ignore a11y-label-has-associated-control -->
-			<label tabindex="0" class="btn btn-ghost lg:hidden">
+			<button tabindex="0" class="btn btn-ghost lg:hidden">
 				<svg
 					xmlns="http://www.w3.org/2000/svg"
 					class="h-5 w-5"
@@ -29,33 +28,33 @@
 						d="M4 6h16M4 12h8m-8 6h16"
 					/></svg
 				>
-			</label>
+			</button>
 			<!-- svelte-ignore a11y-no-noninteractive-tabindex -->
 			<ul
 				tabindex="0"
 				class="menu menu-sm dropdown-content mt-3 z-[1] p-2 shadow bg-base-100 rounded-box w-52"
 			>
-				<li><a>Blogs</a></li>
-				<li><a>Docs</a></li>
+				<li><a href="/blogs">Blogs</a></li>
+				<li><a href="/docs">Docs</a></li>
 				<li>
-					<a>Community</a>
+					<p>Community</p>
 					<ul class="p-2">
-						<li><a>About ORT</a></li>
+						<li><a href="/about">About ORT</a></li>
 						<li><a>Testimonials</a></li>
 						<li>
-							<a
+							<a href="https://www.youtube.com/onnxruntime"
 								><div class="icon"><FaYoutube /></div>
 								 Youtube</a
 							>
 						</li>
 						<li>
-							<a
+							<a href="https://www.linkedin.com/company/onnxruntime/"
 								><div class="icon"><FaLinkedinIn /></div>
 								 LinkedIn</a
 							>
 						</li>
 						<li>
-							<a
+							<a href="https://www.tiktok.com/@onnxruntimeai"
 								><svg xmlns="http://www.w3.org/2000/svg" height="1em" viewBox="0 0 448 512"
 									><!--! Font Awesome Free 6.4.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license (Commercial License) Copyright 2023 Fonticons, Inc. --><path
 										d="M448,209.91a210.06,210.06,0,0,1-122.77-39.25V349.38A162.55,162.55,0,1,1,185,188.31V278.2a74.62,74.62,0,1,0,52.23,71.18V0l88,0a121.18,121.18,0,0,0,1.86,22.17h0A122.18,122.18,0,0,0,381,102.39a121.43,121.43,0,0,0,67,20.14Z"
@@ -66,40 +65,40 @@
 					</ul>
 				</li>
 				<li>
-					<a
+					<a href="https://github.com/microsoft/onnxruntime"
 						><div class="icon"><FaGithub /></div>
 						 GitHub</a
 					>
 				</li>
 			</ul>
 		</div>
-		<a class="btn btn-ghost normal-case text-xl">ONNXRuntime</a>
+		<a href="/" class="btn btn-ghost normal-case text-xl">ONNXRuntime</a>
 	</div>
 	<div class="navbar-center hidden lg:flex">
 		<ul class="menu menu-horizontal px-1">
-			<li><a>Blogs</a></li>
-			<li><a>Docs</a></li>
+			<li><a href="/blogs">Blogs</a></li>
+			<li><a href="/docs" >Docs</a></li>
 			<!-- svelte-ignore a11y-no-noninteractive-tabindex -->
 			<li tabindex="0">
 				<details>
 					<summary>Community</summary>
 					<ul class="p-2">
-						<li><a>About ORT</a></li>
+						<li><a href="/about" >About ORT</a></li>
 						<li><a>Testimonials</a></li>
 						<li>
-							<a
+							<a href="https://www.youtube.com/onnxruntime"
 								><div class="icon"><FaYoutube /></div>
 								 Youtube</a
 							>
 						</li>
 						<li>
-							<a
+							<a href="https://www.linkedin.com/company/onnxruntime/"
 								><div class="icon"><FaLinkedinIn /></div>
 								 LinkedIn</a
 							>
 						</li>
 						<li>
-							<a
+							<a href="https://www.tiktok.com/@onnxruntimeai"
 								><svg xmlns="http://www.w3.org/2000/svg" height="1em" viewBox="0 0 448 512"
 									><!--! Font Awesome Free 6.4.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license (Commercial License) Copyright 2023 Fonticons, Inc. --><path
 										d="M448,209.91a210.06,210.06,0,0,1-122.77-39.25V349.38A162.55,162.55,0,1,1,185,188.31V278.2a74.62,74.62,0,1,0,52.23,71.18V0l88,0a121.18,121.18,0,0,0,1.86,22.17h0A122.18,122.18,0,0,0,381,102.39a121.43,121.43,0,0,0,67,20.14Z"
@@ -111,7 +110,7 @@
 				</details>
 			</li>
 			<li>
-				<a
+				<a href="https://github.com/microsoft/onnxruntime" 
 					><div class="icon"><FaGithub /></div>
 					GitHub</a
 				>
