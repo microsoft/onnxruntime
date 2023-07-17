@@ -11,7 +11,7 @@ Before implement a custom operator, you get the ONNX model with one or more ORT 
 
 ## 1. Quick verification with PythonOp (optional)
 
-Before you actually develop a custom operator for the work, if you want to quickly verify the ONNX model with Python, you can wrap the custom operator with **[PyOp](docs/pyop.md)**.
+Before you actually develop a custom operator for the work, if you want to quickly verify the ONNX model with Python, you can wrap the custom operator with **[PyOp](./pyop.md)**.
 
 ```python
 import numpy
