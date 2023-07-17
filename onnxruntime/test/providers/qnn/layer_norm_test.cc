@@ -44,7 +44,6 @@ static void RunLayerNormCpuTest(const std::vector<int64_t>& shape) {
                   expected_nodes_in_partition);
 }
 
-
 TEST_F(QnnCPUBackendTests, TestLayerNorm) {
   RunLayerNormCpuTest({2, 3});
 }
@@ -67,7 +66,7 @@ GetQDQTestCaseFn BuildQDQLayerNormTestCase(const std::vector<int64_t>& input_sha
                                            int64_t axis_value = 0) {
   return [input_shape, scale_shape, axis_value](ModelTestBuilder& builder) {
     const InputQType quant_zero_point = 0;
-    //const float quant_scale = 1.0f;
+    // const float quant_scale = 1.0f;
 
     auto* input = builder.MakeInput<InputQType>(input_shape, std::numeric_limits<InputQType>::min(),
                                                 std::numeric_limits<InputQType>::max());

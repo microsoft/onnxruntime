@@ -38,9 +38,9 @@ class LayerNormOpBuilder : public BaseOpBuilder {
 // The nodes from 2nd call of GetCapability get their layout transformed to NHWC.
 // Therefore, we need to check the node domain to determine if the layout has been transformed.
 Status LayerNormOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
-                                            const NodeUnit& node_unit,
-                                            const logging::Logger& logger,
-                                            bool is_quantized_model) const {
+                                         const NodeUnit& node_unit,
+                                         const logging::Logger& logger,
+                                         bool is_quantized_model) const {
   const auto float_elem_type = ONNX_NAMESPACE::Utils::DataTypeUtils::ToType("float");
 
   // Check input type is float for CPU.
@@ -58,11 +58,11 @@ Status LayerNormOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
 }
 
 Status LayerNormOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrapper,
-                                                          const NodeUnit& node_unit,
-                                                          std::vector<std::string>&& input_names,
-                                                          const logging::Logger& logger,
-                                                          bool is_quantized_model,
-                                                          bool do_op_validation) const {
+                                                       const NodeUnit& node_unit,
+                                                       std::vector<std::string>&& input_names,
+                                                       const logging::Logger& logger,
+                                                       bool is_quantized_model,
+                                                       bool do_op_validation) const {
   NodeAttrHelper node_helper(node_unit);
   std::vector<std::string> param_tensor_names;
 
