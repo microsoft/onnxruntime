@@ -84,8 +84,8 @@ struct TestInputDef {
 
     if (which_type == 0) {
       // Get min/max of raw data.
-      range.first = std::numeric_limits<T>::min();
-      range.second = std::numeric_limits<T>::max();
+      range.first = std::numeric_limits<T>::max();
+      range.second = std::numeric_limits<T>::min();
 
       for (auto val : std::get<RawData>(data_info_).data) {
         range.first = std::min(range.first, val);
