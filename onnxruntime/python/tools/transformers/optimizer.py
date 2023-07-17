@@ -91,10 +91,10 @@ def optimize_by_onnxruntime(
         return onnx_model_path
 
     model = OnnxModel(load_model(onnx_model_path, format=None, load_external_data=True))
-    if model.use_float16() and opt_level and not use_gpu:
+    if model.use_float16() and not use_gpu:
         logger.warning(
-            "This model uses float16 in the graph, use_gpu=False and opt_level > 0 might cause extra Cast nodes. "
-            "It is because most operators does not have float16 implementation in CPU, so Cast nodes are added to compute them in float32. "
+            "This model uses float16 in the graph, use_gpu=False might cause extra Cast nodes. "
+            "Most operators have no float16 implementation in CPU, so Cast nodes are added to compute them in float32. "
             "If the model is intended to use in GPU, please set use_gpu=True. Otherwise, inspect Cast nodes in the optimized model."
         )
 
