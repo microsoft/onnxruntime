@@ -243,7 +243,7 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   std::unordered_map<std::string, std::vector<std::vector<int64_t>>> profile_min_shapes_;
   std::unordered_map<std::string, std::vector<std::vector<int64_t>>> profile_max_shapes_;
   std::unordered_map<std::string, std::vector<std::vector<int64_t>>> profile_opt_shapes_;
-  std::unordered_map<std::string, ShapeRangesMap> input_shape_ranges_; // The profile shape ranges that the engine is built with
+  std::unordered_map<std::string, ShapeRangesMap> input_shape_ranges_;  // The profile shape ranges that the engine is built with
   std::unordered_map<std::string, std::vector<nvinfer1::IOptimizationProfile*>> profiles_;
 
   // TRT or CUDA objects that must be maintained on a per thread basis will be put under this PerThreadContext data structure.
@@ -265,8 +265,8 @@ class TensorrtExecutionProvider : public IExecutionProvider {
     nvinfer1::IExecutionContext& GetTensorRTContext(std::string fused_node);
     bool UpdateTensorRTContext(std::string fused_node, std::unique_ptr<nvinfer1::IExecutionContext> context);
     void ResetTensorRTContext(std::string fused_node);
-    bool CompareProfileShapes(std::string fused_node, ShapeRangesMap& shape_ranges); 
-    void UpdateProfileShapes(std::string fused_node, ShapeRangesMap& shape_ranges); 
+    bool CompareProfileShapes(std::string fused_node, ShapeRangesMap& shape_ranges);
+    void UpdateProfileShapes(std::string fused_node, ShapeRangesMap& shape_ranges);
 
     void InitCUDAGraph();
     void SetGraphStream(cudaStream_t stream);

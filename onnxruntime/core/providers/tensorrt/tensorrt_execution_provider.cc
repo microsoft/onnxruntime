@@ -678,7 +678,7 @@ bool TensorrtExecutionProvider::PerThreadContext::CompareProfileShapes(std::stri
 }
 
 void TensorrtExecutionProvider::PerThreadContext::UpdateProfileShapes(std::string fused_node, ShapeRangesMap& shape_ranges) {
-  input_shape_ranges_[fused_node] = shape_ranges; 
+  input_shape_ranges_[fused_node] = shape_ranges;
 }
 
 void TensorrtExecutionProvider::PerThreadContext::ResetTensorRTContext(std::string fused_node) {
@@ -2422,77 +2422,77 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
       {
         std::lock_guard<OrtMutex> lock(*(trt_state->tensorrt_mu_ptr));
 
-      if (trt_state->engine_cache_enable && trt_engine == nullptr) {
-        std::ifstream engine_file(engine_cache_path, std::ios::binary | std::ios::in);
-        std::ifstream profile_file(profile_cache_path, std::ios::binary | std::ios::in);
-        if (engine_file && profile_file) {
-          // Deserialize profile
-          shape_ranges = DeserializeProfileV2(profile_file);
-          LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] DeSerialized " + profile_cache_path;
+        if (trt_state->engine_cache_enable && trt_engine == nullptr) {
+          std::ifstream engine_file(engine_cache_path, std::ios::binary | std::ios::in);
+          std::ifstream profile_file(profile_cache_path, std::ios::binary | std::ios::in);
+          if (engine_file && profile_file) {
+            // Deserialize profile
+            shape_ranges = DeserializeProfileV2(profile_file);
+            LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] DeSerialized " + profile_cache_path;
 
-          // Prepare buffer
-          engine_file.seekg(0, std::ios::end);
-          size_t engine_size = engine_file.tellg();
-          engine_file.seekg(0, std::ios::beg);
-          std::unique_ptr<char[]> engine_buf{new char[engine_size]};
-          engine_file.read((char*)engine_buf.get(), engine_size);
+            // Prepare buffer
+            engine_file.seekg(0, std::ios::end);
+            size_t engine_size = engine_file.tellg();
+            engine_file.seekg(0, std::ios::beg);
+            std::unique_ptr<char[]> engine_buf{new char[engine_size]};
+            engine_file.read((char*)engine_buf.get(), engine_size);
 
-          // Deserialize engine
-          // Note: Deserializing an engine from a TensorRT runtime is thread safe per TRT doc
-          // https://docs.nvidia.com/deeplearning/tensorrt/developer-guide/index.html#threading
-          trt_state->engine->reset();
-          *(trt_state->engine) = std::unique_ptr<nvinfer1::ICudaEngine>(
-              trt_state->runtime->deserializeCudaEngine(engine_buf.get(), engine_size, nullptr));
-          if (*(trt_state->engine) == nullptr) {
-            return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "TensorRT EP Failed to Build Engine.");
-          }
-          LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] DeSerialized " + engine_cache_path;
-          trt_engine = trt_state->engine->get();
-          context_update = true;
-        } else if (trt_state->engine_decryption_enable && !engine_file && profile_file) {
-          shape_ranges = DeserializeProfileV2(profile_file);
-          LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] DeSerialized " + profile_cache_path;
-          // Decrypt engine
-          size_t engine_size = 0;
-          if (!trt_state->engine_decryption(engine_cache_path.c_str(), nullptr, &engine_size)) {
-            return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-                                   "TensorRT EP could not get engine buffer size");
-          }
-          std::unique_ptr<char[]> engine_buf{new char[engine_size]};
-          if (!trt_state->engine_decryption(engine_cache_path.c_str(), &engine_buf[0], &engine_size)) {
-            return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-                                   "TensorRT EP could not call engine decryption function decrypt");
-          }
-          // Deserialize engine
-          // Note: Deserializing an engine from a TensorRT runtime is thread safe per TRT doc
-          // https://docs.nvidia.com/deeplearning/tensorrt/developer-guide/index.html#threading
-          trt_state->engine->reset();
-          *(trt_state->engine) = std::unique_ptr<nvinfer1::ICudaEngine>(trt_state->runtime->deserializeCudaEngine(engine_buf.get(), engine_size, nullptr));
-          if (*(trt_state->engine) == nullptr) {
-            return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-                                   "TensorRT EP could not deserialize engine from encrypted cache: " + engine_cache_path);
-          }
-          LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] DeSerialized " + engine_cache_path;
-          trt_engine = trt_state->engine->get();
-          context_update = true;
-        }
-      }
-
-      // Check and update shape ranges for dynamic shape inputs.
-      for (int i = 0, end = num_inputs; i < end; ++i) {
-        auto input = trt_state->network->get()->getInput(i);
-        const std::string& input_name = input->getName();
-        input_names.insert(input_name);
-
-        // If there is any input tensor in shape_ranges, it means this input tensor has dynamic shape and its profile shape values have not yet resolved.
-        // TRT EP will help determine the min/max/opt profile values based on current input tensor value.
-        if (shape_ranges.find(input_name) != shape_ranges.end()) {
-          auto status = ApplyProfileShapesFromInputTensorValue(trt_profiles, ctx, input, shape_ranges, input_indexes, tensor_shape_values, stream, &engine_update);
-          if (status != Status::OK()) {
-            return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "TensorRT EP failed to parse input tensor and generate optimization profiles.");
+            // Deserialize engine
+            // Note: Deserializing an engine from a TensorRT runtime is thread safe per TRT doc
+            // https://docs.nvidia.com/deeplearning/tensorrt/developer-guide/index.html#threading
+            trt_state->engine->reset();
+            *(trt_state->engine) = std::unique_ptr<nvinfer1::ICudaEngine>(
+                trt_state->runtime->deserializeCudaEngine(engine_buf.get(), engine_size, nullptr));
+            if (*(trt_state->engine) == nullptr) {
+              return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "TensorRT EP Failed to Build Engine.");
+            }
+            LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] DeSerialized " + engine_cache_path;
+            trt_engine = trt_state->engine->get();
+            context_update = true;
+          } else if (trt_state->engine_decryption_enable && !engine_file && profile_file) {
+            shape_ranges = DeserializeProfileV2(profile_file);
+            LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] DeSerialized " + profile_cache_path;
+            // Decrypt engine
+            size_t engine_size = 0;
+            if (!trt_state->engine_decryption(engine_cache_path.c_str(), nullptr, &engine_size)) {
+              return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
+                                     "TensorRT EP could not get engine buffer size");
+            }
+            std::unique_ptr<char[]> engine_buf{new char[engine_size]};
+            if (!trt_state->engine_decryption(engine_cache_path.c_str(), &engine_buf[0], &engine_size)) {
+              return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
+                                     "TensorRT EP could not call engine decryption function decrypt");
+            }
+            // Deserialize engine
+            // Note: Deserializing an engine from a TensorRT runtime is thread safe per TRT doc
+            // https://docs.nvidia.com/deeplearning/tensorrt/developer-guide/index.html#threading
+            trt_state->engine->reset();
+            *(trt_state->engine) = std::unique_ptr<nvinfer1::ICudaEngine>(trt_state->runtime->deserializeCudaEngine(engine_buf.get(), engine_size, nullptr));
+            if (*(trt_state->engine) == nullptr) {
+              return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
+                                     "TensorRT EP could not deserialize engine from encrypted cache: " + engine_cache_path);
+            }
+            LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] DeSerialized " + engine_cache_path;
+            trt_engine = trt_state->engine->get();
+            context_update = true;
           }
         }
-      }
+
+        // Check and update shape ranges for dynamic shape inputs.
+        for (int i = 0, end = num_inputs; i < end; ++i) {
+          auto input = trt_state->network->get()->getInput(i);
+          const std::string& input_name = input->getName();
+          input_names.insert(input_name);
+
+          // If there is any input tensor in shape_ranges, it means this input tensor has dynamic shape and its profile shape values have not yet resolved.
+          // TRT EP will help determine the min/max/opt profile values based on current input tensor value.
+          if (shape_ranges.find(input_name) != shape_ranges.end()) {
+            auto status = ApplyProfileShapesFromInputTensorValue(trt_profiles, ctx, input, shape_ranges, input_indexes, tensor_shape_values, stream, &engine_update);
+            if (status != Status::OK()) {
+              return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "TensorRT EP failed to parse input tensor and generate optimization profiles.");
+            }
+          }
+        }
 
         // Regenerate engine
         if (engine_update) {
