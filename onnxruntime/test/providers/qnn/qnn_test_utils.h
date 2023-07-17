@@ -78,11 +78,56 @@ struct TestInputDef {
     return std::get<RawData>(data_info_).data;
   }
 
+  std::pair<T, T> GetRange() const {
+    auto which_type = data_info_.index();
+    std::pair<T, T> range;
+
+    if (which_type == 0) {
+      // Get min/max of raw data.
+      range.first = std::numeric_limits<T>::min();
+      range.second = std::numeric_limits<T>::max();
+
+      for (auto val : std::get<RawData>(data_info_).data) {
+        range.first = std::min(range.first, val);
+        range.second = std::max(range.second, val);
+      }
+    } else {
+      assert(which_type == 1);
+      RandomData rand_info = std::get<RandomData>(data_info_);
+      range.first = rand_info.min;
+      range.second = rand_info.max;
+    }
+
+    return range;
+  }
+
  private:
   std::vector<int64_t> shape_;
   std::variant<RawData, RandomData> data_info_;
   bool is_initializer_;
 };
+
+template <typename QType = uint8_t>
+struct QuantParams {
+  float scale;
+  QType zero_point;
+
+  static QuantParams<QType> Compute(float rmin, float rmax) {
+    const QType qmin = std::numeric_limits<QType>::min();
+    const QType qmax = std::numeric_limits<QType>::max();
+
+    const float scale = (rmax - rmin) / static_cast<float>(qmax - qmin);
+    const QType zero_point = (static_cast<float>(qmin) - rmin) / scale;
+
+    return QuantParams<QType>{scale, zero_point};
+  }
+};
+
+template <typename QType = uint8_t>
+inline QuantParams<QType> GetTestInputQuantParams(const TestInputDef<float>& input_def) {
+  const std::pair<float, float> frange = input_def.GetRange();
+  return QuantParams<QType>::Compute(frange.first, frange.second);
+}
 
 /**
  * Creates and returns an input in a test model graph. The input's characteristics are defined
@@ -127,12 +172,14 @@ inline NodeArg* MakeTestInput(ModelTestBuilder& builder, const TestInputDef<T>& 
  * \param provider_options Provider options for QNN EP.
  * \param opset_version The opset version.
  * \param expected_ep_assignment How many nodes are expected to be assigned to QNN (All, Some, or None).
- * \param num_modes_in_ep The expected number of nodes assigned to QNN EP's partition.
+ * \param num_nodes_in_graph The expected number of nodes assigned to the final graph. If all nodes are assigned to QNN,
+ *                           then this is 1 (all fused). Otherwise, it depends on the optimizations done by the CPU EP.
+ *                           Set to -1 if don't care/know how many nodes should be in final graph.
  * \param fp32_abs_err The acceptable error between CPU EP and QNN EP.
  * \param log_severity The logger's minimum severity level.
  */
 void RunQnnModelTest(const GetTestModelFn& build_test_case, const ProviderOptions& provider_options,
-                     int opset_version, ExpectedEPNodeAssignment expected_ep_assignment, int num_nodes_in_ep,
+                     int opset_version, ExpectedEPNodeAssignment expected_ep_assignment, int num_nodes_in_graph,
                      float fp32_abs_err = 1e-5f, logging::Severity log_severity = logging::Severity::kERROR);
 
 enum class BackendSupport {
