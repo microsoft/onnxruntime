@@ -87,7 +87,7 @@ Status LayerNormOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_mode
   std::vector<uint32_t> axes(axes_rank, 0);
   std::vector<uint32_t> axes_shape{SafeInt<uint32_t>(axes_rank)};
   axes[0] = static_cast<uint32_t>(default_axis);
-  for (int i = 1; i < axes.size(); ++i) {
+  for (size_t i = 1; i < axes.size(); ++i) {
     axes[i] = axes[i - 1] + 1;
   }
 
