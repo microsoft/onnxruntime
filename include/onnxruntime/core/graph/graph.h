@@ -181,7 +181,9 @@ class Node {
   @remarks Used during layout transformation for setting since version for layout transformed nodes with
   domain kMSNHWC.
   */
-  void SetSinceVersion(int since_version) noexcept { since_version_ = since_version; }
+  void SetSinceVersion(int since_version) noexcept {
+    since_version_ = since_version;
+  }
 
 #if !defined(ORT_MINIMAL_BUILD)
   /** Gets the Node's OpSchema.

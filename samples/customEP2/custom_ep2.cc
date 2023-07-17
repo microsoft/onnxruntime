@@ -24,11 +24,13 @@ void MyRelu(const Ort::Custom::Tensor<float>& X, Ort::Custom::Tensor<float>& Y) 
   for (int64_t i = 0; i < total; i++) {
     Y_raw[i] = X_raw[i] > 0 ? X_raw[i] : 0;
   }
+  std::cout<<"In MyRelu()\n";
 }
 
-CustomEp2::CustomEp2(const CustomEp2Info& info) : type_{"customEp2"}, info_{info} {
+CustomEp2::CustomEp2(const CustomEp2Info& info) : info_{info} {
     //custom_ops_.push_back(Ort::Custom::CreateLiteCustomOp("CustomOpTwo", type_.c_str(), KernelTwo));  // TODO: should use smart pointer for vector custom_ops_
-    kernel_definitions_.push_back(Ort::Custom::CreateLiteCustomOp("CustomOpTwo", type_.c_str(), MyRelu));  // TODO: should use smart pointer for vector custom_ops_
+    type_ = "customEp2";
+    kernel_definitions_.push_back(Ort::Custom::CreateLiteCustomOp("Relu", type_.c_str(), MyRelu));  // TODO: should use smart pointer for vector custom_ops_
 }
 
 CustomEp2Info ProviderOption2CustomEpInfo(std::unordered_map<std::string, std::string>& provider_option) {

@@ -13,7 +13,6 @@ public:
     CustomEp2(const CustomEp2Info& info);
     ~CustomEp2() override = default;
 private:
-    std::string type_;
     CustomEp2Info info_;
 };
 
