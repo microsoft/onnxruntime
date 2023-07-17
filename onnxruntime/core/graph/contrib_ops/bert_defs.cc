@@ -611,6 +611,42 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
           PackedMultiHeadAttentionTypeAndShapeInference(ctx);
         }));
 
+constexpr const char* PagedAttention_ver1_doc = R"DOC(
+PagedAttention is from https://vllm.ai/
+It consists of two types of attention.
+1. packed attention
+2. Single token attention with paged kv-cache.
+It requires a input_metadata for now from the python side, which contains the following information:
+1. batch_size
+2. sequence_length
+3. Promot length
+4. generation token length
+5. table mapping
+)DOC";
+ONNX_MS_OPERATOR_SET_SCHEMA(
+    PagedAttention, 1,
+    OpSchema()
+        .SetDomain(kMSDomain)
+        .SetDoc(PagedAttention_ver1_doc)
+        .Attr("num_heads", "Number of attention heads", AttributeProto::INT)
+        .Attr("head_size", "Hidden dimension of Q, K, V: hidden_size, hidden_size and v_hidden_size", AttributeProto::INT)
+        .Attr("scale", "Custom scale will be used if specified. Default value is 1/sqrt(head_size)", AttributeProto::FLOAT)
+        .AllowUncheckedAttributes()
+        .Input(0, "query", "The input Q-Tensor with shape(batch,seqlen,num-heads, head-size).", "T")
+        .Input(1, "key", "The input K-Tensor with shape(batch,seqlen,num-heads, head-size).", "T")
+        .Input(2, "value", "The input V-Tensor with shape(batch,seqlen,num-heads, head-size).", "T")
+        .Input(3, "key_cache", "Blocked key cache in this layer.", "T")
+        .Input(4, "value_cache", "Blocked value cache in this layer.", "T")
+        .Input(5, "input_metadata", "Block mapping for each token, and some other eseential infos in InputMetadata, This input Tensor has shape [1], the value is a pointer of struct InputMetadata. It should be converted into class and used then", "T1")
+        .Output(0, "output", "Attention output", "T")
+        .TypeConstraint("T", {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
+                        "Constrain input and output types to float tensors.")
+        .TypeConstraint("T1", {"tensor(int64)"},
+                        "Constrain input META types to pointer tensors.")
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          propagateShapeAndTypeFromFirstInput(ctx);
+        }));
+
 constexpr const char* DecoderMaskedSelfAttention_ver1_doc = R"DOC(
 Self attention that supports input sequence length of 1.
 
