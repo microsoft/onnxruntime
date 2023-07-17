@@ -183,7 +183,7 @@ struct Float16_t : onnxruntime_float16::Float16Impl<Float16_t> {
   /// </summary>
   /// <param name="v">uint16_t bit representation of bfloat16</param>
   /// <returns>new instance of Float16_t</returns>
-  constexpr static Float16_t FromBits(uint16_t x) noexcept { return Float16_t(x); }
+  constexpr static Float16_t FromBits(uint16_t v) noexcept { return Float16_t(v); }
 
   /// <summary>
   /// __ctor from float. Float is converted into float16 16-bit representation.
@@ -1066,6 +1066,24 @@ struct SessionImpl : ConstSessionImpl<T> {
            const char* const* output_names, Value* output_values, size_t output_count);
 
   void Run(const RunOptions& run_options, const IoBinding&);  ///< Wraps OrtApi::RunWithBinding
+
+  /** \brief Run the model asynchronously in a thread owned by intra op thread pool
+   *
+   * Wraps OrtApi::RunAsync
+   *
+   * \param[in] run_options
+   * \param[in] input_names Array of null terminated UTF8 encoded strings of the input names
+   * \param[in] input_values Array of ::OrtValue%s of the input values
+   * \param[in] input_count Number of elements in the input_names and inputs arrays
+   * \param[in] output_names Array of null terminated UTF8 encoded strings of the output names
+   * \param[out] output_values Array of ::OrtValue%s owned by customers, size to output_count. It could simply be an array of nullptr
+   *             The array will be passed back to the callback
+   * \param[in] output_count Number of elements in the output_names and outputs array
+   * \param[in] callback Callback function on model run completion
+   * \param[in] user_data User data that pass back to the callback
+   */
+  void RunAsync(const RunOptions& run_options, const char* const* input_names, const Value* input_values, size_t input_count,
+                const char* const* output_names, Value* output_values, size_t output_count, RunAsyncCallbackFn callback, void* user_data);
 
   /** \brief End profiling and return a copy of the profiling file name.
    *
