@@ -41,7 +41,7 @@ public:
     :   DmlOperator(kernelCreationContext)
     {
 
-        enum inputIndex : uint32_t
+        enum DmlInputIndex : uint32_t
         {
             mhaQueryIndex,
             mhaKeyIndex,
