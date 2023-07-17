@@ -123,12 +123,25 @@ export declare namespace Tensor {
   export type Type = keyof DataTypeMap;
 
   /**
+   * represent common properties of the parameter for constructing a tensor from a specific location.
+   */
+  interface CommonConstructorParameters<T> extends Pick<Tensor, 'dims'> {
+    /**
+     * Specify the data type of the tensor.
+     */
+    readonly type: T;
+  }
+
+  /**
    * supported data types for constructing a tensor from a pinned CPU buffer
    */
   export type CpuPinnedDataTypes = Exclude<Type, 'string'>;
 
+  /**
+   * represent the parameter for constructing a tensor from a pinned CPU buffer
+   */
   export interface CpuPinnedConstructorParameters<T extends CpuPinnedDataTypes = CpuPinnedDataTypes> extends
-      Pick<Tensor, 'dims'> {
+      CommonConstructorParameters<T> {
     /**
      * Specify the location of the data to be 'cpu-pinned'.
      */
@@ -137,10 +150,6 @@ export declare namespace Tensor {
      * Specify the CPU pinned buffer that holds the tensor data.
      */
     readonly data: DataTypeMap[T];
-    /**
-     * Specify the data type of the tensor.
-     */
-    readonly type: T;
   }
 
   /**
@@ -148,8 +157,11 @@ export declare namespace Tensor {
    */
   export type TextureDataTypes = 'float32';
 
+  /**
+   * represent the parameter for constructing a tensor from a WebGL texture
+   */
   export interface TextureConstructorParameters<T extends TextureDataTypes = TextureDataTypes> extends
-      Pick<Tensor, 'dims'> {
+      CommonConstructorParameters<T> {
     /**
      * Specify the location of the data to be 'texture'.
      */
@@ -158,10 +170,6 @@ export declare namespace Tensor {
      * Specify the WebGL texture that holds the tensor data.
      */
     readonly texture: TextureType;
-    /**
-     * Specify the data type of the tensor.
-     */
-    readonly type: T;
   }
 
   /**
@@ -169,8 +177,11 @@ export declare namespace Tensor {
    */
   export type GpuBufferDataTypes = 'float32'|'int32';
 
+  /**
+   * represent the parameter for constructing a tensor from a WebGPU buffer
+   */
   export interface GpuBufferConstructorParameters<T extends GpuBufferDataTypes = GpuBufferDataTypes> extends
-      Pick<Tensor, 'dims'> {
+      CommonConstructorParameters<T> {
     /**
      * Specify the location of the data to be 'gpu-buffer'.
      */
@@ -179,10 +190,6 @@ export declare namespace Tensor {
      * Specify the WebGPU buffer that holds the tensor data.
      */
     readonly gpuBuffer: GpuBufferType;
-    /**
-     * Specify the data type of the tensor.
-     */
-    readonly type: T;
   }
 }
 
