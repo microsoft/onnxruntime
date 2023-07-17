@@ -141,6 +141,8 @@ export declare namespace InferenceSession {
     /**
      * Specify string as a preferred data location for all outputs, or an object that use output names as keys and a
      * preferred data location as corresponding values.
+     *
+     * This setting is available only in ONNXRuntime Web for WebGL and WebGPU EP.
      */
     preferredOutputLocation?: OnnxValueDataLocation|{readonly [outputName: string]: OnnxValueDataLocation};
 
