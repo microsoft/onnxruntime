@@ -51,7 +51,7 @@ Status LayerNormOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
   // Also check output type is float for CPU.
   const auto& outputs = node_unit.Outputs();
   ONNX_NAMESPACE::DataType output_data_type = outputs[0].node_arg.Type();
-  ORT_RETURN_IF(!is_quantized_model && output_data_type != float_elem_type, "QNN LayerNorm data type " + *output_data_type + " is not supported in CPU backend.");
+  ORT_RETURN_IF(!is_quantized_model && output_data_type != float_elem_type, "QNN LayerNorm data type ", output_data_type->c_str(), " is not supported in CPU backend.");
   ORT_RETURN_IF(outputs.size() > 1, "QNN LayerNorm only support 1 output.");
 
   return AddToModelBuilder(qnn_model_wrapper, node_unit, logger, is_quantized_model, true);
