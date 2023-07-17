@@ -405,8 +405,8 @@ def quantize_static(
         ).model
         nodes_to_exclude.extend([i.name for i in model.graph.node if i.name not in orig_nodes])
         sq_path = tempfile.TemporaryDirectory(prefix="ort.quant.")
-        model_input = Path(sq_path.name).joinpath("sq_model.onnx")
-        onnx.save_model(model, model_input.as_posix(), save_as_external_data=True)
+        model_input = Path(sq_path.name).joinpath("sq_model.onnx").as_posix()
+        onnx.save_model(model, model_input, save_as_external_data=True)
         model = load_model_with_shape_infer(Path(model_input))  # use smooth quant model for calibration
 
     with tempfile.TemporaryDirectory(prefix="ort.quant.") as quant_tmp_dir:
