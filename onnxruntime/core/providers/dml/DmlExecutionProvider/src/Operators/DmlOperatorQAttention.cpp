@@ -41,7 +41,7 @@ public:
     :   DmlOperator(kernelCreationContext)
     {
 
-        enum DmlInputIndex : uint32_t
+        enum inputIndex : uint32_t
         {
             mhaQueryIndex,
             mhaKeyIndex,
@@ -80,11 +80,6 @@ public:
         ML_CHECK_VALID_ARGUMENT(kernelCreationContext.GetInputCount() >= 2);
         ML_CHECK_VALID_ARGUMENT(kernelCreationContext.GetOutputCount() >= 1);
 
-        const uint32_t dmlInputIndex = inputIndex;
-        const uint32_t dmlWeightsIndex = weightsIndex;
-        const uint32_t dmlBiasIndex = biasIndex;
-        const uint32_t dmlMaskIndex = maskIndex;
-
         const bool hasBias = kernelCreationContext.IsInputValid(biasIndex);
         const bool hasMask = kernelCreationContext.IsInputValid(maskIndex);
         const bool hasUnpaddedBounds = hasMask && kernelCreationContext.GetInputTensorDimensionCount(maskIndex) == 1;
@@ -94,17 +89,17 @@ public:
         const uint32_t numHeads = gsl::narrow_cast<uint32_t>(kernelCreationContext.GetAttribute<int64_t>(AttrName::NumHeads));
         ML_CHECK_VALID_ARGUMENT(numHeads > 0); // to avoid process crash because of division by zero.
 
-        auto inputTensorShape = m_inputTensorDescs[dmlInputIndex].GetSizes();
+        auto inputTensorShape = m_inputTensorDescs[inputIndex].GetSizes();
         ML_CHECK_VALID_ARGUMENT(inputTensorShape.size() == 3);
 
-        auto weightTensorShape = m_inputTensorDescs[dmlWeightsIndex].GetSizes();
+        auto weightTensorShape = m_inputTensorDescs[weightsIndex].GetSizes();
         ML_CHECK_VALID_ARGUMENT(weightTensorShape.size() == 2);
         ML_CHECK_VALID_ARGUMENT(weightTensorShape[0] == inputTensorShape[2]);
 
         const auto qkvHiddenSizes = kernelCreationContext.GetOptionalAttributeVectorInt32(AttrName::QkvHiddenSizes);
         if (hasBias)
         {
-            auto biasTensorShape = m_inputTensorDescs[dmlBiasIndex].GetSizes();
+            auto biasTensorShape = m_inputTensorDescs[biasIndex].GetSizes();
             ML_CHECK_VALID_ARGUMENT(biasTensorShape.size() == 1);
             ML_CHECK_VALID_ARGUMENT(weightTensorShape[1] == biasTensorShape[0]);
 
@@ -134,26 +129,31 @@ public:
         uint32_t desiredWeightTensorShape[3] = {batchSize, weightTensorShape[0], hiddenSize + hiddenSize + vHiddenSize};
         MLOperatorTensorDataType dataType = kernelCreationContext.GetOutputEdgeDescription(outputIndex).tensorDataType;
 
-        m_inputTensorDescs[dmlWeightsIndex] = TensorDesc::ConstructBroadcastedTensorDesc(kernelCreationContext.GetInputEdgeDescription(weightsIndex).tensorDataType,
-                                                                                        desiredWeightTensorShape,
-                                                                                        weightTensorShape);
-        m_inputTensorDescs[inputScaleIndex] = TensorDesc::ConstructBroadcastedTensorDesc(kernelCreationContext.GetInputEdgeDescription(inputScaleIndex).tensorDataType,
-                                                                                        inputTensorShape,
-                                                                                        m_inputTensorDescs[inputScaleIndex].GetSizes());
-        m_inputTensorDescs[inputZeroPointIndex] = TensorDesc::ConstructBroadcastedTensorDesc(kernelCreationContext.GetInputEdgeDescription(inputZeroPointIndex).tensorDataType,
-                                                                                            inputTensorShape,
-                                                                                            m_inputTensorDescs[inputZeroPointIndex].GetSizes());
-        m_inputTensorDescs[weightScaleIndex] = TensorDesc::ConstructBroadcastedTensorDesc(kernelCreationContext.GetInputEdgeDescription(weightScaleIndex).tensorDataType,
-                                                                                            desiredWeightTensorShape,
-                                                                                            m_inputTensorDescs[weightScaleIndex].GetSizes());
-        m_inputTensorDescs[weightZeroPointIndex] = TensorDesc::ConstructBroadcastedTensorDesc(kernelCreationContext.GetInputEdgeDescription(weightZeroPointIndex).tensorDataType,
-                                                                                            desiredWeightTensorShape,
-                                                                                            m_inputTensorDescs[weightZeroPointIndex].GetSizes());
+        m_inputTensorDescs[weightsIndex] = TensorDesc::ConstructBroadcastedTensorDesc(
+            kernelCreationContext.GetInputEdgeDescription(weightsIndex).tensorDataType,
+            desiredWeightTensorShape,
+            weightTensorShape);
+        m_inputTensorDescs[inputScaleIndex] = TensorDesc::ConstructBroadcastedTensorDesc(
+            kernelCreationContext.GetInputEdgeDescription(inputScaleIndex).tensorDataType,
+            inputTensorShape,
+            m_inputTensorDescs[inputScaleIndex].GetSizes());
+        m_inputTensorDescs[inputZeroPointIndex] = TensorDesc::ConstructBroadcastedTensorDesc(
+            kernelCreationContext.GetInputEdgeDescription(inputZeroPointIndex).tensorDataType,
+            inputTensorShape,
+            m_inputTensorDescs[inputZeroPointIndex].GetSizes());
+        m_inputTensorDescs[weightScaleIndex] = TensorDesc::ConstructBroadcastedTensorDesc(
+            kernelCreationContext.GetInputEdgeDescription(weightScaleIndex).tensorDataType,
+            desiredWeightTensorShape,
+            m_inputTensorDescs[weightScaleIndex].GetSizes());
+        m_inputTensorDescs[weightZeroPointIndex] = TensorDesc::ConstructBroadcastedTensorDesc(
+            kernelCreationContext.GetInputEdgeDescription(weightZeroPointIndex).tensorDataType,
+            desiredWeightTensorShape,
+            m_inputTensorDescs[weightZeroPointIndex].GetSizes());
         uint32_t desiredBiasTensorShape[3] = {batchSize, sequenceLength, hiddenSize + hiddenSize + vHiddenSize};
         if (hasBias)
         {
-            auto biasTensorShape = m_inputTensorDescs[dmlBiasIndex].GetSizes();
-            m_inputTensorDescs[dmlBiasIndex] = TensorDesc::ConstructBroadcastedTensorDesc(kernelCreationContext.GetInputEdgeDescription(biasIndex).tensorDataType, desiredBiasTensorShape, biasTensorShape);
+            auto biasTensorShape = m_inputTensorDescs[biasIndex].GetSizes();
+            m_inputTensorDescs[biasIndex] = TensorDesc::ConstructBroadcastedTensorDesc(kernelCreationContext.GetInputEdgeDescription(biasIndex).tensorDataType, desiredBiasTensorShape, biasTensorShape);
         }
 
         MLOperatorTensorDataType maskTensorDataType = MLOperatorTensorDataType::Undefined;
@@ -163,15 +163,15 @@ public:
         {
             if (hasUnpaddedBounds)
             {
-                auto unpaddedKeyBoundsShape = m_inputTensorDescs[dmlMaskIndex].GetSizes();
+                auto unpaddedKeyBoundsShape = m_inputTensorDescs[maskIndex].GetSizes();
                 ML_CHECK_VALID_ARGUMENT(unpaddedKeyBoundsShape.size() == 1);
 
                 const uint32_t batchGroupCount = unpaddedKeyBoundsShape[0] / batchSize;
                 ML_CHECK_VALID_ARGUMENT(batchGroupCount == 1 || batchGroupCount == 2);
 
                 uint32_t desiredShape[2] = {batchGroupCount, batchSize};
-                m_inputTensorDescs[dmlMaskIndex] = TensorDesc(
-                    m_inputTensorDescs[dmlMaskIndex].GetDmlDataType(),
+                m_inputTensorDescs[maskIndex] = TensorDesc(
+                    m_inputTensorDescs[maskIndex].GetDmlDataType(),
                     desiredShape);
 
                 maskType = batchGroupCount == 1
@@ -180,7 +180,7 @@ public:
             }
             else
             {
-                auto maskIndexTensorShape = m_inputTensorDescs[dmlMaskIndex].GetSizes();
+                auto maskIndexTensorShape = m_inputTensorDescs[maskIndex].GetSizes();
                 ML_CHECK_VALID_ARGUMENT(maskIndexTensorShape.size() > 1 && maskIndexTensorShape.size() <= 4);
 
                 maskType = DML_MULTIHEAD_ATTENTION_MASK_TYPE_BOOLEAN;
@@ -192,7 +192,7 @@ public:
                     const uint32_t maxSequenceLength = maskIndexTensorShape[2];
                     uint32_t desiredMaskIndexShape[4] {batchSize, numHeads, maxSequenceLength, maxSequenceLength};
                     maskTensorDataType = kernelCreationContext.GetInputEdgeDescription(maskIndex).tensorDataType;
-                    m_inputTensorDescs[dmlMaskIndex] = TensorDesc::ConstructBroadcastedTensorDesc(maskTensorDataType, desiredMaskIndexShape, reshapedMaskIndexTensorShape);
+                    m_inputTensorDescs[maskIndex] = TensorDesc::ConstructBroadcastedTensorDesc(maskTensorDataType, desiredMaskIndexShape, reshapedMaskIndexTensorShape);
                 }
                 else
                 {
@@ -200,19 +200,10 @@ public:
                     reshapedMaskIndexTensorShape.insert(reshapedMaskIndexTensorShape.begin() + 1, 4 - maskIndexDimensionCount, 1);
                     uint32_t desiredMaskIndexShape[4] {batchSize, numHeads, sequenceLength, sequenceLength};
                     maskTensorDataType = kernelCreationContext.GetInputEdgeDescription(maskIndex).tensorDataType;
-                    m_inputTensorDescs[dmlMaskIndex] = TensorDesc::ConstructBroadcastedTensorDesc(maskTensorDataType, desiredMaskIndexShape, reshapedMaskIndexTensorShape);
+                    m_inputTensorDescs[maskIndex] = TensorDesc::ConstructBroadcastedTensorDesc(maskTensorDataType, desiredMaskIndexShape, reshapedMaskIndexTensorShape);
                 }
             }
         }
-
-        // if (hasRelativePositionBias)
-        // {
-        //     auto relativePositionBiasTensorShape = m_inputTensorDescs[dmlRelativePositionBiasIndex].GetSizes();
-        //     ML_CHECK_VALID_ARGUMENT(relativePositionBiasTensorShape.size() == 4);
-        //     ML_CHECK_VALID_ARGUMENT(relativePositionBiasTensorShape[0] == inputTensorShape[0]);
-        //     ML_CHECK_VALID_ARGUMENT(relativePositionBiasTensorShape[1] == numHeads);
-        //     ML_CHECK_VALID_ARGUMENT(relativePositionBiasTensorShape[2] == inputTensorShape[1]);
-        // }
 
         TensorDesc firstGemmOutputTensorDesc = TensorDesc::ConstructDefaultTensorDesc(dataType, desiredBiasTensorShape);
         DML_TENSOR_DESC namedFirstGemmOutputTensorDesc = firstGemmOutputTensorDesc.GetDmlDesc();
@@ -270,8 +261,8 @@ public:
         DML_TENSOR_DESC namedValueSlicedInputTensorDesc = valueSlicedInputTensorDesc.GetDmlDesc();
 
         // Transpose slice QK from [batchSize, sequenceLength, 2, numHeads, headSize] to [batchSize, sequenceLength, numHeads, 2, headSize]
-        std::array<uint32_t, 5> queryKeyTransposedTensorShape {batchSize, sequenceLength, numHeads, 2, headSize};
-        std::array<uint32_t, 5> queryKeyTransposedStrides {
+        std::array<uint32_t, 5> queryKeyTransposedTensorShape = {batchSize, sequenceLength, numHeads, 2, headSize};
+        std::array<uint32_t, 5> queryKeyTransposedStrides = {
             sequenceLength * numHeads * 2 * headSize,
             numHeads * 2 * headSize,
             headSize,
@@ -292,7 +283,7 @@ public:
 
         // Transpose QKV from [batchSize, sequenceLength, 3, numHeads, headSize] to [batchSize, sequenceLength, numHeads, 3, headSize]
         std::array<uint32_t, 5> queryKeyValueTransposedTensorShape {batchSize, sequenceLength, numHeads, 3, headSize};
-        std::array<uint32_t, 5> queryKeyValueTransposedStrides {
+        std::array<uint32_t, 5> queryKeyValueTransposedStrides = {
             sequenceLength * numHeads * 3 * headSize,
             numHeads * 3 * headSize,
             headSize,
@@ -364,7 +355,7 @@ public:
         {
             maskSliceOutputTensorDesc = TensorDesc::ConstructDefaultTensorDesc(maskTensorDataType, maskSliceOutputShape);
             namedMaskSliceOutputTensorDesc = maskSliceOutputTensorDesc.GetDmlDesc();
-            maskSlicedOperatorDesc.InputTensor = &inputDescs[dmlMaskIndex];
+            maskSlicedOperatorDesc.InputTensor = &inputDescs[maskIndex];
             maskSlicedOperatorDesc.OutputTensor = &namedMaskSliceOutputTensorDesc;
             maskSlicedOperatorDesc.DimensionCount = gsl::narrow_cast<uint32_t>(maskSliceOutputShape.size());
             maskSlicedOperatorDesc.InputWindowOffsets = maskSliceOffsets.data();
@@ -384,7 +375,7 @@ public:
         }
         else
         {
-            mhaOperatorDesc.MaskTensor = hasMask ? &inputDescs[dmlMaskIndex] : nullptr;
+            mhaOperatorDesc.MaskTensor = hasMask ? &inputDescs[maskIndex] : nullptr;
         }
 
         // mhaOperatorDesc.RelativePositionBiasTensor = hasRelativePositionBias ? &inputDescs[dmlRelativePositionBiasIndex] : nullptr;
@@ -495,7 +486,7 @@ public:
         if (hasBias)
         {
             DML_INPUT_GRAPH_EDGE_DESC biasToGemmEdge = {};
-            biasToGemmEdge.GraphInputIndex = dmlBiasIndex;
+            biasToGemmEdge.GraphInputIndex = biasIndex;
             biasToGemmEdge.ToNodeIndex = gemmNodeIndex;
             biasToGemmEdge.ToNodeInputIndex = 2;
             inputEdges.push_back(biasToGemmEdge);
@@ -506,7 +497,7 @@ public:
             if (hasUnpaddedBounds)
             {
                 DML_INPUT_GRAPH_EDGE_DESC maskToMhaEdge = {};
-                maskToMhaEdge.GraphInputIndex = dmlMaskIndex;
+                maskToMhaEdge.GraphInputIndex = maskIndex;
                 maskToMhaEdge.ToNodeIndex = mhaNodeIndex;
                 maskToMhaEdge.ToNodeInputIndex = mhaMaskIndex;
                 inputEdges.push_back(maskToMhaEdge);
@@ -514,7 +505,7 @@ public:
             else if (hasMaxSequenceMask)
             {
                 DML_INPUT_GRAPH_EDGE_DESC maskToMaskSliceEdge = {};
-                maskToMaskSliceEdge.GraphInputIndex = dmlMaskIndex;
+                maskToMaskSliceEdge.GraphInputIndex = maskIndex;
                 maskToMaskSliceEdge.ToNodeIndex = maskSliceNodeIndex;
                 maskToMaskSliceEdge.ToNodeInputIndex = 0;
                 inputEdges.push_back(maskToMaskSliceEdge);
@@ -529,21 +520,12 @@ public:
             else
             {
                 DML_INPUT_GRAPH_EDGE_DESC maskToMhaEdge = {};
-                maskToMhaEdge.GraphInputIndex = dmlMaskIndex;
+                maskToMhaEdge.GraphInputIndex = maskIndex;
                 maskToMhaEdge.ToNodeIndex = mhaNodeIndex;
                 maskToMhaEdge.ToNodeInputIndex = mhaMaskIndex;
                 inputEdges.push_back(maskToMhaEdge);
             }
         }
-
-        // if (hasRelativePositionBias)
-        // {
-        //     DML_INPUT_GRAPH_EDGE_DESC relativePositionBiasToMhaEdge = {};
-        //     relativePositionBiasToMhaEdge.GraphInputIndex = dmlRelativePositionBiasIndex;
-        //     relativePositionBiasToMhaEdge.ToNodeIndex = mhaNodeIndex;
-        //     relativePositionBiasToMhaEdge.ToNodeInputIndex = mhaRelativePositionBiasIndex;
-        //     inputEdges.push_back(relativePositionBiasToMhaEdge);
-        // }
 
         if (hasSlicedValue)
         {

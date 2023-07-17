@@ -540,7 +540,8 @@ constexpr static std::array<SupportedTensorDataTypes, 4> supportedTypeListQAtten
     SupportedTensorDataTypes::Int8|SupportedTensorDataTypes::UInt8,
     SupportedTensorDataTypes::Int8|SupportedTensorDataTypes::UInt8,
     SupportedTensorDataTypes::Float16to32,
-    SupportedTensorDataTypes::Int32};
+    SupportedTensorDataTypes::Int32
+};
 
 constexpr static std::array<SupportedTensorDataTypes, 2> supportedTypeListAttention = {SupportedTensorDataTypes::Float16to32, SupportedTensorDataTypes::Int32};
 constexpr static std::array<SupportedTensorDataTypes, 2> supportedTypeListGroupNorm = {SupportedTensorDataTypes::Float16to32, SupportedTensorDataTypes::Float16to32};
