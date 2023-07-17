@@ -686,7 +686,7 @@ bool TensorrtExecutionProvider::PerThreadContext::CompareProfileShapes(std::stri
 
 /*
  * Updates the shape ranges maintained by the PerThreadContext.
- * As long as the execution context maintained by the PerThreadContext is updated, the associated shape ranges sould be updated as well. 
+ * As long as the execution context maintained by the PerThreadContext is updated, the associated shape ranges sould be updated as well.
  *
  */
 void TensorrtExecutionProvider::PerThreadContext::UpdateProfileShapes(std::string fused_node, ShapeRangesMap& shape_ranges) {

@@ -135,11 +135,11 @@ void RunSession(InferenceSession& session_object,
 }
 
 void RunSession2(InferenceSession& session_object,
-                RunOptions& run_options,
-                NameMLValMap& feeds,
-                std::vector<std::string> output_names,
-                std::vector<int64_t> expected_dims,
-                std::vector<int64_t> expected_values) {
+                 RunOptions& run_options,
+                 NameMLValMap& feeds,
+                 std::vector<std::string> output_names,
+                 std::vector<int64_t> expected_dims,
+                 std::vector<int64_t> expected_values) {
   std::vector<OrtValue> fetches;
   auto status = session_object.Run(run_options, feeds, output_names, &fetches);
   ASSERT_TRUE(status.IsOK());
@@ -257,7 +257,7 @@ void RunWithOneSessionMultiThreadsInference(std::string model_name, std::string 
   std::vector<int64_t> expected_dims_mul_m = {1, 3, 2};
   std::vector<float> expected_values_mul_m = {3.0f, 6.0f, 9.0f, 12.0f, 15.0f, 18.0f};
   std::vector<int64_t> expected_dims_nonzero_m = {3, 6};
-  std::vector<int64_t> expected_values_nonzero_m = { 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 2, 2, 0, 1, 0, 1, 0, 1};
+  std::vector<int64_t> expected_values_nonzero_m = {0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 2, 2, 0, 1, 0, 1, 0, 1};
 
   OrtTensorRTProviderOptionsV2 params{
       0,
