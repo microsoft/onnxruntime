@@ -60,7 +60,7 @@ Status ReshapeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   const auto size = target_shape_tensor.dims()[0];
   TensorShapeVector target_shape{raw_target_shape, raw_target_shape + size};
   std::vector<int64_t> input_shape;
-  ORT_RETURN_IF_NOT(GetShape(*input_defs[0], input_shape, logger), "Cannot get shape");
+  ORT_RETURN_IF_NOT(GetStaticShape(*input_defs[0], input_shape, logger), "Cannot get shape");
   ReshapeHelper helper(TensorShape(input_shape), target_shape);
   *layer->mutable_reshapestatic()->mutable_targetshape() = {target_shape.cbegin(), target_shape.cend()};
   *layer->mutable_input()->Add() = input_defs[0]->Name();
@@ -93,7 +93,7 @@ bool ReshapeOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputP
   }
 
   std::vector<int64_t> input_shape;
-  if (!GetShape(*input_defs[0], input_shape, logger))
+  if (!GetStaticShape(*input_defs[0], input_shape, logger))
     return false;
 
   if (input_shape.empty()) {
