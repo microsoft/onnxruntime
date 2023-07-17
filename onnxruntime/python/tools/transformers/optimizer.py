@@ -49,7 +49,7 @@ MODEL_TYPES = {
     "clip": (ClipOnnxModel, "pytorch", 1),  # Clip in Stable Diffusion
     "gpt2": (Gpt2OnnxModel, "pytorch", 1),
     "gpt2_tf": (Gpt2OnnxModel, "tf2onnx", 0),  # might add a class for GPT2OnnxModel for TF later.
-    "gpt_neox": (BertOnnxModel, "pytorch", 1),  # GPT-NeoX
+    "gpt_neox": (BertOnnxModel, "pytorch", 0),  # GPT-NeoX
     "swin": (BertOnnxModel, "pytorch", 1),
     "tnlr": (TnlrOnnxModel, "pytorch", 1),
     "t5": (T5OnnxModel, "pytorch", 2),
