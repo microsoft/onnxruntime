@@ -376,7 +376,7 @@ bool ApplyProfileShapesFromProviderOptions(std::vector<nvinfer1::IOptimizationPr
                                            std::unordered_map<std::string, std::vector<std::vector<int64_t>>>& profile_min_shapes,
                                            std::unordered_map<std::string, std::vector<std::vector<int64_t>>>& profile_max_shapes,
                                            std::unordered_map<std::string, std::vector<std::vector<int64_t>>>& profile_opt_shapes,
-                                           std::unordered_map<std::string, std::unordered_map<size_t, std::vector<std::vector<int64_t>>>>& input_explicit_shape_ranges) {
+                                           ShapeRangesMap& input_explicit_shape_ranges) {
   if (trt_profiles.size() == 0) {
     LOGS_DEFAULT(WARNING) << "[TensorRT EP] Number of optimization profiles should be greater than 0, but it's 0.";
     return false;
@@ -485,7 +485,7 @@ bool ApplyProfileShapesFromProviderOptions(std::vector<nvinfer1::IOptimizationPr
 Status ApplyProfileShapesFromInputTensorValue(std::vector<nvinfer1::IOptimizationProfile*>& trt_profiles,
                                               Ort::KernelContext ctx,
                                               nvinfer1::ITensor* input,
-                                              std::unordered_map<std::string, std::unordered_map<size_t, std::vector<std::vector<int64_t>>>>& shape_ranges,
+                                              ShapeRangesMap& shape_ranges,
                                               const std::unordered_map<std::string, size_t>& input_indexes,
                                               std::unordered_map<std::string, std::vector<int32_t>>& tensor_shape_values,
                                               cudaStream_t stream,
@@ -666,6 +666,19 @@ TensorrtExecutionProvider::PerThreadContext::~PerThreadContext() {
     ORT_IGNORE_RETURN_VALUE(CUDNN_CALL(cudnnDestroy(external_cudnn_handle_)));
   }
   trt_context_map_.clear();
+}
+
+bool TensorrtExecutionProvider::PerThreadContext::CompareProfileShapes(std::string fused_node, ShapeRangesMap& shape_ranges) {
+  if (shape_ranges.size() > 0) {
+    if (input_shape_ranges_[fused_node] != shape_ranges) {
+      return true;
+    }
+  }
+  return false;
+}
+
+void TensorrtExecutionProvider::PerThreadContext::UpdateProfileShapes(std::string fused_node, ShapeRangesMap& shape_ranges) {
+  input_shape_ranges_[fused_node] = shape_ranges; 
 }
 
 void TensorrtExecutionProvider::PerThreadContext::ResetTensorRTContext(std::string fused_node) {
@@ -1958,8 +1971,8 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
     //     dim_1: [[min_shape_2, max_shape_2, opt_shape_2], [min_shape_3, max_shape_3, opt_shape_3]]
     //   }
     // }
-    std::unordered_map<std::string, std::unordered_map<size_t, std::vector<std::vector<int64_t>>>> input_explicit_shape_ranges;
-    std::unordered_map<std::string, std::unordered_map<size_t, std::vector<std::vector<int64_t>>>> input_implicit_shape_ranges;
+    ShapeRangesMap input_explicit_shape_ranges;
+    ShapeRangesMap input_implicit_shape_ranges;
 
     if ((!profile_min_shapes_.empty()) && (!profile_max_shapes_.empty()) && (!profile_opt_shapes_.empty())) {
       has_explicit_profile = true;
@@ -2402,6 +2415,13 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
       if (timing_cache_enable_) {
         timing_cache_path = GetTimingCachePath(cache_path_, prop);
       }
+
+      // Following block is the critical section where multiple threads may update kernel function state, access one builder, create/serialize/save engine,
+      // save profile and serialize/save timing cache. Therefore, those operations should be synchronized across different threads when ORT is using multithreading.
+      // More details here, https://docs.nvidia.com/deeplearning/tensorrt/developer-guide/index.html#threading
+      {
+        std::lock_guard<OrtMutex> lock(*(trt_state->tensorrt_mu_ptr));
+
       if (trt_state->engine_cache_enable && trt_engine == nullptr) {
         std::ifstream engine_file(engine_cache_path, std::ios::binary | std::ios::in);
         std::ifstream profile_file(profile_cache_path, std::ios::binary | std::ios::in);
@@ -2467,30 +2487,19 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
         // If there is any input tensor in shape_ranges, it means this input tensor has dynamic shape and its profile shape values have not yet resolved.
         // TRT EP will help determine the min/max/opt profile values based on current input tensor value.
         if (shape_ranges.find(input_name) != shape_ranges.end()) {
-          // Following function updates the IOptimizationProfile objects as well as the tensor_shape_values map,
-          // therefore we should synchronize these operations across different threads when ORT is using multithreading.
-          {
-            std::lock_guard<OrtMutex> lock(*(trt_state->tensorrt_mu_ptr));
-            auto status = ApplyProfileShapesFromInputTensorValue(trt_profiles, ctx, input, shape_ranges, input_indexes, tensor_shape_values, stream, &engine_update);
-            if (status != Status::OK()) {
-              return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "TensorRT EP failed to parse input tensor and generate optimization profiles.");
-            }
+          auto status = ApplyProfileShapesFromInputTensorValue(trt_profiles, ctx, input, shape_ranges, input_indexes, tensor_shape_values, stream, &engine_update);
+          if (status != Status::OK()) {
+            return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "TensorRT EP failed to parse input tensor and generate optimization profiles.");
           }
         }
       }
 
-      // Regenerate engine
-      if (engine_update) {
-        // Destroy the IExecutionContext objects before destroying an engine object, otherwise it will lead to undefined behavior.
-        if (GetPerThreadContext().IsTensorRTContextInMap(fused_node_name)) {
-          GetPerThreadContext().ResetTensorRTContext(fused_node_name);
-        }
-
-        // Accessing one builder, engine creation/serialization/saving, profile saving and timing cache serialization/saving
-        // should be synchronized across different threads when ORT is using multithreading.
-        // More details here, https://docs.nvidia.com/deeplearning/tensorrt/developer-guide/index.html#threading
-        {
-          std::lock_guard<OrtMutex> lock(*(trt_state->tensorrt_mu_ptr));
+        // Regenerate engine
+        if (engine_update) {
+          // Destroy the IExecutionContext objects before destroying an engine object, otherwise it will lead to undefined behavior.
+          if (GetPerThreadContext().IsTensorRTContextInMap(fused_node_name)) {
+            GetPerThreadContext().ResetTensorRTContext(fused_node_name);
+          }
 
           trt_state->engine->reset();
           auto trt_config = std::unique_ptr<nvinfer1::IBuilderConfig>(trt_builder->createBuilderConfig());
@@ -2626,17 +2635,20 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
               LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Serialized timing cache " + timing_cache_path;
             }
           }
+          context_update = true;
         }
-        context_update = true;
       }
 
       // Build execution context if either of the following conditions is true:
-      // (1) Engine is rebuilt.
+      // (1) Engine is built by this thread.
       // (2) The first inference run for this thread where there is no IExecutionContext object yet.
+      // (3) The engine is built by another thread. (We compare the profile shapes maintained by per thread to the profile shapes maintained by TRT EP)
       //
       // Note: Creating an execution context from an engine is thread safe per TRT doc
       // https://docs.nvidia.com/deeplearning/tensorrt/developer-guide/index.html#threading
-      if (context_update || !GetPerThreadContext().IsTensorRTContextInMap(fused_node_name)) {
+      if (context_update ||
+          !GetPerThreadContext().IsTensorRTContextInMap(fused_node_name) ||
+          GetPerThreadContext().CompareProfileShapes(fused_node_name, shape_ranges)) {
         std::unique_ptr<nvinfer1::IExecutionContext> new_context;
         if (trt_state->context_memory_sharing_enable) {
           new_context.reset(trt_state->engine->get()->createExecutionContextWithoutDeviceMemory());
@@ -2647,6 +2659,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
         if (!context_status) {
           return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "TensorRT EP failed to create context.");
         }
+        GetPerThreadContext().UpdateProfileShapes(fused_node_name, shape_ranges);
       }
 
       // Get the reference to the IExecutionContext object that is maintained on a per thread basis.

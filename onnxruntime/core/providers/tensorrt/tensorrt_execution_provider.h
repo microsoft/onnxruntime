@@ -95,6 +95,8 @@ template <typename T>
 using unique_pointer = std::unique_ptr<T, TensorrtInferDeleter>;
 };  // namespace tensorrt_ptr
 
+using ShapeRangesMap = std::unordered_map<std::string, std::unordered_map<size_t, std::vector<std::vector<int64_t>>>>;
+
 // Information to construct kernel function state.
 struct TensorrtFuncState {
   AllocateFunc test_allocate_func = nullptr;
@@ -234,7 +236,6 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   // For those non thread safe operations, TRT EP uses (1) lock_guard or (2) PerThreadContext to make sure synchronization.
   std::unordered_map<std::string, tensorrt_ptr::unique_pointer<nvonnxparser::IParser>> parsers_;
   std::unordered_map<std::string, std::unique_ptr<nvinfer1::ICudaEngine>> engines_;
-  std::unordered_map<std::string, std::unique_ptr<nvinfer1::IExecutionContext>> contexts_;
   std::unordered_map<std::string, std::unique_ptr<nvinfer1::IBuilder>> builders_;
   std::unordered_map<std::string, std::unique_ptr<nvinfer1::INetworkDefinition>> networks_;
   std::unordered_map<std::string, std::vector<std::unordered_map<std::string, size_t>>> input_info_;
@@ -242,7 +243,7 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   std::unordered_map<std::string, std::vector<std::vector<int64_t>>> profile_min_shapes_;
   std::unordered_map<std::string, std::vector<std::vector<int64_t>>> profile_max_shapes_;
   std::unordered_map<std::string, std::vector<std::vector<int64_t>>> profile_opt_shapes_;
-  std::unordered_map<std::string, std::unordered_map<std::string, std::unordered_map<size_t, std::vector<std::vector<int64_t>>>>> input_shape_ranges_;
+  std::unordered_map<std::string, ShapeRangesMap> input_shape_ranges_; // The profile shape ranges that the engine is built with
   std::unordered_map<std::string, std::vector<nvinfer1::IOptimizationProfile*>> profiles_;
 
   // TRT or CUDA objects that must be maintained on a per thread basis will be put under this PerThreadContext data structure.
@@ -264,6 +265,8 @@ class TensorrtExecutionProvider : public IExecutionProvider {
     nvinfer1::IExecutionContext& GetTensorRTContext(std::string fused_node);
     bool UpdateTensorRTContext(std::string fused_node, std::unique_ptr<nvinfer1::IExecutionContext> context);
     void ResetTensorRTContext(std::string fused_node);
+    bool CompareProfileShapes(std::string fused_node, ShapeRangesMap& shape_ranges); 
+    void UpdateProfileShapes(std::string fused_node, ShapeRangesMap& shape_ranges); 
 
     void InitCUDAGraph();
     void SetGraphStream(cudaStream_t stream);
@@ -287,6 +290,10 @@ class TensorrtExecutionProvider : public IExecutionProvider {
     // https://docs.nvidia.com/deeplearning/tensorrt/developer-guide/index.html#threading
     // https://docs.nvidia.com/deeplearning/tensorrt/api/c_api/classnvinfer1_1_1_i_execution_context.html#a63cd95430852038ce864e17c670e0b36
     std::unordered_map<std::string, std::unique_ptr<nvinfer1::IExecutionContext>> trt_context_map_;
+
+    // The profile shape ranges for the engine that the execution context maintained per thread is built with.
+    // TRT EP needs this info to determine whether to rebuild the execution context.
+    std::unordered_map<std::string, ShapeRangesMap> input_shape_ranges_;
 
     // Cuda graph with multi threads will be supported in the future, so cuda_graph_ is put under PerThreadContext.
     // ORT TRT only supports CUDA graph when whole model is supported by TRT, so simply maintaining a CUDAGraph pointer is enough (no need to maintain one CUDAGraph pointer per TRT subgraph)
