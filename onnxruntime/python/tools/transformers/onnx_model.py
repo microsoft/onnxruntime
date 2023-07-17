@@ -1190,43 +1190,41 @@ class OnnxModel:
         queue = []  # queue for BFS
         queue.append(self.model.graph)
         while queue:
-            next_level = []
-            for q in queue:
-                if isinstance(q, GraphProto):
-                    for t in itertools.chain(q.input, q.output, q.value_info):
-                        if t.type.tensor_type.elem_type == TensorProto.FLOAT16:
-                            return True
-                        if t.type.HasField("sequence_type"):
-                            if t.type.sequence_type.elem_type.tensor_type.elem_type == TensorProto.FLOAT16:
-                                return True
+            sub_graphs = []
+            for graph in queue:
+                if not isinstance(graph, GraphProto):
+                    continue
 
-                    for n in q.initializer:  # TensorProto type
-                        if n.data_type == TensorProto.FLOAT16:
+                for v in itertools.chain(graph.input, graph.output, graph.value_info):
+                    if v.type.tensor_type.elem_type == TensorProto.FLOAT16:
+                        return True
+                    if v.type.HasField("sequence_type"):
+                        if v.type.sequence_type.elem_type.tensor_type.elem_type == TensorProto.FLOAT16:
                             return True
 
-                    for n in q.node:
-                        for attr in n.attribute:
-                            next_level.append(attr)
-
-                        if n.op_type == "Cast":
-                            for attr in n.attribute:
-                                if attr.name == "to" and attr.i == 10:
-                                    return True
-
-                # if q is model.graph.node.attribute, push q.g and q.graphs (GraphProto)
-                # and process node.attribute.t and node.attribute.tensors (TensorProto)
-                if isinstance(q, AttributeProto):
-                    next_level.append(q.g)
-                    for n in q.graphs:
-                        next_level.append(n)
-
-                    if isinstance(q.t, TensorProto) and q.t.data_type == TensorProto.FLOAT16:
+                for t in graph.initializer:
+                    if t.data_type == TensorProto.FLOAT16:
                         return True
 
-                    for n in q.tensors:
-                        if isinstance(n, TensorProto) and n.data_type == TensorProto.FLOAT16:
+                for node in graph.node:
+                    if node.op_type == "Cast":
+                        for attr in node.attribute:
+                            if attr.name == "to" and attr.i == TensorProto.FLOAT16:
+                                return True
+
+                    for attr in node.attribute:
+                        sub_graphs.append(attr.g)
+
+                        for g in attr.graphs:
+                            sub_graphs.append(g)
+
+                        if isinstance(attr.t, TensorProto) and attr.t.data_type == TensorProto.FLOAT16:
                             return True
 
-            queue = next_level
+                        for t in attr.tensors:
+                            if isinstance(t, TensorProto) and t.data_type == TensorProto.FLOAT16:
+                                return True
+
+            queue = sub_graphs
 
         return False
