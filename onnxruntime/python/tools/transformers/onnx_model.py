@@ -3,6 +3,7 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
+import itertools
 import logging
 import os
 import sys
@@ -1183,3 +1184,58 @@ class OnnxModel:
 
     def clean_shape_infer(self):
         self.model.graph.ClearField("value_info")
+
+    def use_float16(self):
+        """Check whether the model uses float16"""
+        for t in self.model.graph.input:
+            if t.type.tensor_type.elem_type == TensorProto.FLOAT16:
+                return True
+
+        for t in self.model.graph.output:
+            if t.type.tensor_type.elem_type == TensorProto.FLOAT16:
+                return True
+
+        # create a queue for BFS
+        queue = []
+        queue.append(self.model.graph)
+        while queue:
+            next_level = []
+            for q in queue:
+                if isinstance(q, GraphProto):
+                    for t in itertools.chain(q.input, q.output, q.value_info):
+                        if t.type.tensor_type.elem_type == TensorProto.FLOAT16:
+                            return True
+                        if t.type.HasField("sequence_type"):
+                            if t.type.sequence_type.elem_type.tensor_type.elem_type == TensorProto.FLOAT16:
+                                return True
+
+                    for n in q.initializer:  # TensorProto type
+                        if n.data_type == TensorProto.FLOAT16:
+                            return True
+
+                    for n in q.node:
+                        for attr in n.attribute:
+                            next_level.append(attr)
+
+                        if n.op_type == "Cast":
+                            for attr in n.attribute:
+                                if attr.name == "to" and attr.i == 10:
+                                    return True
+
+                # if q is model.graph.node.attribute, push q.g and q.graphs (GraphProto)
+                # and process node.attribute.t and node.attribute.tensors (TensorProto)
+                if isinstance(q, AttributeProto):
+                    next_level.append(q.g)
+                    for n in q.graphs:
+                        next_level.append(n)
+
+                    if isinstance(q.t, TensorProto) and q.t.data_type == TensorProto.FLOAT16:
+                        return True
+
+                    for n in q.tensors:
+                        if isinstance(n, TensorProto) and n.data_type == TensorProto.FLOAT16:
+                            return True
+
+            queue = next_level
+
+        return False
