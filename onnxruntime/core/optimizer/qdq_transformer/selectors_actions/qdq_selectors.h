@@ -146,15 +146,6 @@ class InstanceAndLayerNormalizationNodeGroupSelector : public NodeGroupSelector 
              const std::vector<const Node*>& q_nodes) const override;
 };
 
-// Input: DQ nodes for input, scale, and B
-// Output: Q node for output
-class LayerNormalizationNodeGroupSelector : public NodeGroupSelector {
- private:
-  bool Check(const GraphViewer& graph_viewer, const Node& node,
-             const std::vector<const Node*>& dq_nodes,
-             const std::vector<const Node*>& q_nodes) const override;
-};
-
 // DQ nodes for X, W and optionally B, not used for mean, var -> node -> Q
 class BatchNormalizationNodeGroupSelector : public NodeGroupSelector {
  public:
