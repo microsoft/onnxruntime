@@ -6,14 +6,11 @@ import unittest
 import torch
 import torch._dynamo
 import torch.onnx._internal.exporter
-from functorch.compile import min_cut_rematerialization_partition
 from torch import nn
-from torch._dynamo.backends.common import aot_autograd
 from torch.nn import functional as F
 from torch.utils import _pytree
 
-from onnxruntime.training.torchdynamo.ort_backend import OrtBackend
-from onnxruntime.training.torchdynamo.register_backend import aot_ort, ort
+from onnxruntime.training.torchdynamo.register_backend import aot_ort, dynamic_aot_ort, ort
 
 
 class TestTorchDynamoOrt(unittest.TestCase):
@@ -66,8 +63,6 @@ class TestTorchDynamoOrt(unittest.TestCase):
         """Test DORT with a pure function."""
 
         def run_elementwise_model():
-            use_dynamic_shapes = True
-
             # A function to test DORT.
             def elementwise_model(tensor_x: torch.Tensor):
                 tensor_y = tensor_x.sigmoid()
@@ -76,22 +71,12 @@ class TestTorchDynamoOrt(unittest.TestCase):
                 tensor_q = tensor_p.sigmoid()
                 return tensor_q
 
-            # Tell ONNX exporter not to convert dynamic shapes to static shapes.
-            onnx_exporter_options = torch.onnx._internal.exporter.ExportOptions(dynamic_shapes=use_dynamic_shapes)
-            ort_backend = OrtBackend(ep="CPUExecutionProvider", onnx_exporter_options=onnx_exporter_options)
-
-            local_aot_ort = aot_autograd(
-                fw_compiler=ort_backend,
-                partition_fn=min_cut_rematerialization_partition,
-                decompositions=ort_backend.resolved_onnx_exporter_options.decomposition_table,
-            )
-
             # This function should only generate one graph and execute
             # it for all inputs.
             # With dynamic_shape=True, Dynamo sends FX graphs with dynamic
             # shapes (e.g., batch size is a symbol "batch" instead of a fixed
             # number) to OrtBackend.compile(...).
-            @torch._dynamo.optimize(local_aot_ort, dynamic=use_dynamic_shapes)
+            @torch._dynamo.optimize(dynamic_aot_ort, dynamic=True)
             def optimized_elementwise_model(tensor_x: torch.Tensor):
                 return elementwise_model(tensor_x)
 
@@ -131,8 +116,6 @@ class TestTorchDynamoOrt(unittest.TestCase):
         torch._dynamo.reset()
 
         def run_elementwise_model():
-            use_dynamic_shapes = True
-
             # A function to test DORT.
             def elementwise_model(tensor_x: torch.Tensor):
                 tensor_y = tensor_x.sigmoid()
@@ -141,22 +124,12 @@ class TestTorchDynamoOrt(unittest.TestCase):
                 tensor_q = tensor_p.sigmoid()
                 return (tensor_q, (tensor_y, tensor_z))
 
-            # Tell ONNX exporter not to convert dynamic shapes to static shapes.
-            onnx_exporter_options = torch.onnx._internal.exporter.ExportOptions(dynamic_shapes=use_dynamic_shapes)
-            ort_backend = OrtBackend(ep="CPUExecutionProvider", onnx_exporter_options=onnx_exporter_options)
-
-            local_aot_ort = aot_autograd(
-                fw_compiler=ort_backend,
-                partition_fn=min_cut_rematerialization_partition,
-                decompositions=ort_backend.resolved_onnx_exporter_options.decomposition_table,
-            )
-
             # This function should only generate one graph and execute
             # it for all inputs.
             # With dynamic_shape=True, Dynamo sends FX graphs with dynamic
             # shapes (e.g., batch size is a symbol "batch" instead of a fixed
             # number) to OrtBackend.compile(...).
-            @torch._dynamo.optimize(local_aot_ort, dynamic=use_dynamic_shapes)
+            @torch._dynamo.optimize(dynamic_aot_ort, dynamic=True)
             def optimized_elementwise_model(tensor_x: torch.Tensor):
                 return elementwise_model(tensor_x)
 
