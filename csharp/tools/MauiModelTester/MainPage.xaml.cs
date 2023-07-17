@@ -78,68 +78,69 @@ public partial class MainPage : ContentPage
 
     private void ExecutionProviderOptions_SelectedIndexChanged(object sender, EventArgs e)
     {
-        UpdateExecutionProvider().ContinueWith((task) =>
-                                               {
-                                                   MainThread.BeginInvokeOnMainThread(
-                                                       () =>
-                                                       {
-                                                           if (task.IsFaulted)
-                                                           {
-                                                               DisplayAlert("Error", task.Exception.Message, "OK");
-                                                           }
-                                                       });
-                                               });
+        // update in background
+        UpdateExecutionProvider();
     }
 
     private void OnRunClicked(object sender, EventArgs e)
     {
-        RunAsync().ContinueWith(resultTask =>
-                                {
-                                    if (resultTask.IsFaulted)
-                                    {
-                                        MainThread.BeginInvokeOnMainThread(
-                                            () => DisplayAlert("Error", resultTask.Exception.Message, "OK"));
-                                    }
-                                });
+        // run in background
+        RunAsync();
     }
 
     private async Task UpdateExecutionProvider()
     {
-        await SetBusy(true);
-        await CreateInferenceSession();
-        await SetBusy(false);
+        try
+        {
+            await SetBusy(true);
+            await CreateInferenceSession();
+            await SetBusy(false);
+        }
+        catch (Exception ex)
+        {
+            await SetBusy(false);
+            MainThread.BeginInvokeOnMainThread(() => DisplayAlert("Error", ex.Message, "OK"));
+        }
     }
 
     private async Task RunAsync()
     {
-        await ClearResult();
+        try
+        {
+            await SetBusy(true);
 
-        var iterationsStr = Iterations.Text;
-        int iterations = iterationsStr == string.Empty ? 10 : int.Parse(iterationsStr);
+            await ClearResult();
 
-        await SetBusy(true);
+            var iterationsStr = Iterations.Text;
+            int iterations = iterationsStr == string.Empty ? 10 : int.Parse(iterationsStr);
 
-        // create inference session if it doesn't exist or EP has changed
-        await CreateInferenceSession();
+            // create inference session if it doesn't exist or EP has changed
+            await CreateInferenceSession();
 
-        await Task.Run(() => _inferenceSession.Run(iterations));
+            await Task.Run(() => _inferenceSession.Run(iterations));
 
-        await SetBusy(false);
+            await SetBusy(false);
 
-        ShowResults();
+            ShowResults();
+        }
+        catch (Exception ex)
+        {
+            await SetBusy(false);
+            MainThread.BeginInvokeOnMainThread(() => DisplayAlert("Error", ex.Message, "OK"));
+        }
     }
 
     private async Task SetBusy(bool busy)
     {
         await MainThread.InvokeOnMainThreadAsync(() =>
                                                  {
-                                                     BusyIndicator.IsRunning = busy;
-                                                     BusyIndicator.IsVisible = busy;
-
                                                      // disable controls that would create a new session or another
                                                      // Run call until we're done with the current Run.
                                                      ExecutionProviderOptions.IsEnabled = !busy;
                                                      RunButton.IsEnabled = !busy;
+
+                                                     BusyIndicator.IsRunning = busy;
+                                                     BusyIndicator.IsVisible = busy;
                                                  });
     }
 
