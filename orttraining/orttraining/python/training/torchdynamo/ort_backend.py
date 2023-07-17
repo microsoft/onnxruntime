@@ -14,7 +14,6 @@ import torch._C
 import torch._ops
 import torch._prims.executor
 import torch.fx
-import torch.jit
 import torch.onnx
 
 # TODO(wschin,justinchuby): Since the internal APIs are not stable, please
@@ -24,7 +23,6 @@ import torch.onnx._internal.diagnostics
 import torch.onnx._internal.exporter
 import torch.onnx._internal.fx.decomposition_table
 import torch.onnx._internal.fx.passes
-import torch.onnx._onnx_supported_ops
 from torch._subclasses.fake_tensor import FakeTensor
 from torch.fx.passes.fake_tensor_prop import FakeTensorProp
 from torch.fx.passes.infra.partitioner import CapabilityBasedPartitioner
