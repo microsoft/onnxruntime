@@ -17,8 +17,8 @@ class LRNOpBuilder : public BaseOpBuilder {
   // Add operator related
 #ifdef __APPLE__
  private:
-  [[nodiscard]] Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
-                                             const logging::Logger& logger) const override;
+  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
+                               const logging::Logger& logger) const override;
 #endif
 
   // Operator support related
