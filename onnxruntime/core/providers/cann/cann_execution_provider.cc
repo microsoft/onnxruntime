@@ -426,11 +426,15 @@ class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCannExecutionProvider, kOnnxDomain,
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCannExecutionProvider, kOnnxDomain, 14, double, Relu);
 class ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCannExecutionProvider, kOnnxDomain,
                                                       14, 14, float, BatchNormalization);
-class ONNX_OPERATOR_KERNEL_CLASS_NAME(kCannExecutionProvider, kOnnxDomain, 14, Identity);
+class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kCannExecutionProvider, kOnnxDomain,
+                                                14, 18, Identity);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kCannExecutionProvider, kOnnxDomain, 14, Reshape);
 
 // op 15
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCannExecutionProvider, kOnnxDomain, 15, float, BatchNormalization);
+
+// op 19
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kCannExecutionProvider, kOnnxDomain, 19, Identity);
 
 Status RegisterCANNKernels(KernelRegistry& kernel_registry) {
   static const BuildKernelCreateInfoFn function_table[] = {
@@ -1001,12 +1005,16 @@ Status RegisterCANNKernels(KernelRegistry& kernel_registry) {
                                                                   14, double, Relu)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCannExecutionProvider, kOnnxDomain,
                                                                             14, 14, float, BatchNormalization)>,
-      BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kCannExecutionProvider, kOnnxDomain, 14, Identity)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kCannExecutionProvider, kOnnxDomain,
+                                                                      14, 18, Identity)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kCannExecutionProvider, kOnnxDomain, 14, Reshape)>,
 
       // op 15
       BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCannExecutionProvider, kOnnxDomain,
                                                                   15, float, BatchNormalization)>,
+
+      // op 19
+      BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kCannExecutionProvider, kOnnxDomain, 19, Identity)>,
   };
 
   for (auto& function_table_entry : function_table) {
@@ -1456,71 +1464,27 @@ AllocatorPtr CANNExecutionProvider::CreateCannAllocator(OrtDevice::DeviceId devi
   return CreateAllocator(default_memory_info);
 }
 
-void CANNExecutionProvider::RegisterAllocator(AllocatorManager& allocator_manager) {
-  OrtDevice cann_device{OrtDevice::NPU, OrtDevice::MemType::DEFAULT, info_.device_id};
-  OrtDevice pinned_device{OrtDevice::CPU, OrtDevice::MemType::CANN_PINNED, DEFAULT_CPU_ALLOCATOR_DEVICE_ID};
-  OrtDevice cpu_device{OrtDevice::CPU, OrtDevice::MemType::DEFAULT, DEFAULT_CPU_ALLOCATOR_DEVICE_ID};
+std::vector<AllocatorPtr> CANNExecutionProvider::CreatePreferredAllocators() {
+  AllocatorCreationInfo pinned_memory_info(
+      [](OrtDevice::DeviceId device_id) {
+        return std::make_unique<CANNPinnedAllocator>(device_id, CANN_PINNED);
+      },
+      DEFAULT_CPU_ALLOCATOR_DEVICE_ID);
 
-  auto cann_alloc = IExecutionProvider::GetAllocator(OrtMemTypeDefault);
-  if (!cann_alloc) {
-    cann_alloc = allocator_manager.GetAllocator(OrtMemTypeDefault, cann_device);
-
-    if (!cann_alloc) {
-      cann_alloc = CreateCannAllocator(info_.device_id, info_.npu_mem_limit, info_.arena_extend_strategy,
-                                       info_.default_memory_arena_cfg);
-      allocator_manager.InsertAllocator(cann_alloc);
-    }
-
-    InsertAllocator(cann_alloc);
-  }
-
-  auto cann_pinned_alloc = IExecutionProvider::GetAllocator(OrtMemTypeCPUOutput);
-  if (!cann_pinned_alloc) {
-    cann_pinned_alloc = allocator_manager.GetAllocator(OrtMemTypeCPUOutput, pinned_device);
-
-    if (!cann_pinned_alloc) {
-      AllocatorCreationInfo pinned_memory_info(
-          [](OrtDevice::DeviceId device_id) {
-            return std::make_unique<CANNPinnedAllocator>(device_id, CANN_PINNED);
-          },
-          pinned_device.Id());
-
-      cann_pinned_alloc = CreateAllocator(pinned_memory_info);
-      allocator_manager.InsertAllocator(cann_pinned_alloc);
-    }
-
-    InsertAllocator(cann_pinned_alloc);
-  }
-
-  auto cann_cpu_alloc = IExecutionProvider::GetAllocator(OrtMemTypeCPUInput);
-  if (!cann_cpu_alloc) {
-    cann_cpu_alloc = allocator_manager.GetAllocator(OrtMemTypeCPUInput, cpu_device);
-
-    if (!cann_cpu_alloc) {
-      AllocatorCreationInfo cpu_memory_info(
-          [](int device_id) {
-            return std::make_unique<CPUAllocator>(
-                OrtMemoryInfo("CANN_CPU", OrtAllocatorType::OrtDeviceAllocator, OrtDevice(), device_id,
-                              OrtMemTypeCPUInput));
-          },
-          cpu_device.Id());
-
-      cann_cpu_alloc = CreateAllocator(cpu_memory_info);
-      allocator_manager.InsertAllocator(cann_cpu_alloc);
-    }
-
-    InsertAllocator(cann_cpu_alloc);
-  }
+  return std::vector<AllocatorPtr>{
+      CreateCannAllocator(info_.device_id, info_.npu_mem_limit, info_.arena_extend_strategy,
+                          info_.default_memory_arena_cfg),
+      CreateAllocator(pinned_memory_info),
+  };
 }
 
-void CANNExecutionProvider::RegisterStreamHandlers(IStreamCommandHandleRegistry& stream_handle_registry) const {
+void CANNExecutionProvider::RegisterStreamHandlers(IStreamCommandHandleRegistry& stream_handle_registry, AllocatorMap&) const {
   RegisterCannStreamHandles(stream_handle_registry, OrtDevice::NPU);
 }
 
 OrtDevice CANNExecutionProvider::GetOrtDeviceByMemType(OrtMemType mem_type) const {
-  if (mem_type == OrtMemTypeCPUInput || mem_type == OrtMemTypeCPUOutput) {
-    return OrtDevice(OrtDevice::CPU, OrtDevice::MemType::CANN_PINNED, 0 /*CPU device id always be 0*/);
-  }
+  if (mem_type == OrtMemTypeCPUInput) return OrtDevice();
+  if (mem_type == OrtMemTypeCPUOutput) return OrtDevice(OrtDevice::CPU, OrtDevice::MemType::CANN_PINNED, 0);
   return default_device_;
 }
 

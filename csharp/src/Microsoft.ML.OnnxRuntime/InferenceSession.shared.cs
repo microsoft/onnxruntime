@@ -1,14 +1,12 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-using System;
-using System.Runtime.InteropServices;
-using System.Collections.Generic;
-using System.IO;
-using System.Linq;
 using Microsoft.ML.OnnxRuntime.Tensors;
-using System.Buffers;
+using System;
+using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
+using System.Runtime.InteropServices;
 
 namespace Microsoft.ML.OnnxRuntime
 {
@@ -18,7 +16,7 @@ namespace Microsoft.ML.OnnxRuntime
     /// using either a explicit call to Dispose() method or
     /// a pattern of using() block. If this is a member of another
     /// class that class must also become IDisposable and it must
-    /// dispose of InferfenceSession in its Dispose() method.
+    /// dispose of InferenceSession in its Dispose() method.
     /// </summary>
     public class InferenceSession : IDisposable
     {
@@ -247,14 +245,26 @@ namespace Microsoft.ML.OnnxRuntime
             IReadOnlyCollection<string> outputNames,
             RunOptions options)
         {
-            using (var cleanupList = new DisposableList<IDisposable>())
-            {
-                var inputNamesArray = LookupUtf8Names(inputs, v => v.Name, LookupInputMetadata);
-                var inputValuesArray = GetOrtValuesHandles(inputs, LookupInputMetadata, ExtractOrtValueForInput, cleanupList);
-                var outputNamesArray = LookupUtf8Names(outputNames, n => n, LookupOutputMetadata);
+            var inputNamesArray = LookupUtf8Names(inputs, v => v.Name, LookupInputMetadata);
+            var outputNamesArray = LookupUtf8Names(outputNames, n => n, LookupOutputMetadata);
 
-                var ortValues = RunImpl(options, inputNamesArray, inputValuesArray, outputNamesArray, cleanupList);
-                return CreateDisposableResult(ortValues, outputNames);
+            var inputValuesArray = GetOrtValuesHandles(inputs, LookupInputMetadata,
+                ExtractOrtValueHandleForInput, out DisposableArray<IDisposable> inputsDisposer);
+            try
+            {
+                var outputsDisposer = RunImpl(options, inputNamesArray, inputValuesArray, outputNamesArray);
+                try
+                {
+                    return CreateDisposableResult(outputsDisposer.Span, outputNames);
+                }
+                finally
+                {
+                    outputsDisposer.Dispose();
+                }
+            }
+            finally
+            {
+                inputsDisposer.Dispose();
             }
         }
 
@@ -305,15 +315,18 @@ namespace Microsoft.ML.OnnxRuntime
                 throw new ArgumentException($"Length of {nameof(inputNames)} ({inputNames.Count}) must match that of {nameof(inputValues)} ({inputValues.Count}).");
             }
 
-            using (var cleanupList = new DisposableList<IDisposable>())
+            var inputNamesArray = LookupUtf8Names(inputNames, n => n, LookupInputMetadata);
+            IntPtr[] inputValuesArray = GetOrtValuesHandles(inputValues, true);
+            var outputNamesArray = LookupUtf8Names(outputNames, n => n, LookupOutputMetadata);
+
+            var disposableHandles = RunImpl(options, inputNamesArray, inputValuesArray, outputNamesArray);
+            try
             {
-                var inputNamesArray = LookupUtf8Names(inputNames, n => n, LookupInputMetadata);
-                IntPtr[] inputValuesArray = GetOrtValuesHandles(inputValues, true);
-                var outputNamesArray = LookupUtf8Names(outputNames, n => n, LookupOutputMetadata);
-
-
-                var ortValues = RunImpl(options, inputNamesArray, inputValuesArray, outputNamesArray, cleanupList);
-                return CreateDisposableResult(ortValues, outputNames);
+                return CreateDisposableResult(disposableHandles.Span, outputNames);
+            }
+            finally
+            {
+                disposableHandles.Dispose();
             }
         }
 
@@ -361,27 +374,24 @@ namespace Microsoft.ML.OnnxRuntime
                 throw new ArgumentException($"Length of {nameof(outputNames)} ({outputNames.Count}) must match that of {nameof(outputValues)} ({outputValues.Count}).");
             }
 
-            using (var cleanupList = new DisposableList<IDisposable>())
-            {
-                // prepare inputs
-                var inputNamesArray = LookupUtf8Names(inputNames, n => n, LookupInputMetadata);
-                IntPtr[] inputValuesArray = GetOrtValuesHandles(inputValues, true);
+            // prepare inputs
+            var inputNamesArray = LookupUtf8Names(inputNames, n => n, LookupInputMetadata);
+            IntPtr[] inputValuesArray = GetOrtValuesHandles(inputValues, true);
 
-                // prepare outputs
-                var outputNamesArray = LookupUtf8Names(outputNames, n => n, LookupOutputMetadata);
-                IntPtr[] outputValuesArray = GetOrtValuesHandles(outputValues, false);
+            // prepare outputs
+            var outputNamesArray = LookupUtf8Names(outputNames, n => n, LookupOutputMetadata);
+            IntPtr[] outputValuesArray = GetOrtValuesHandles(outputValues, false);
 
-                NativeApiStatus.VerifySuccess(NativeMethods.OrtRun(
-                                                    _nativeHandle,
-                                                    options.Handle,
-                                                    inputNamesArray,
-                                                    inputValuesArray,
-                                                    (UIntPtr)inputNames.Count,
-                                                    outputNamesArray,
-                                                    (UIntPtr)outputNames.Count,
-                                                    outputValuesArray /* pointers to Pre-allocated OrtValue instances */
-                                                    ));
-            }
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtRun(
+                                                _nativeHandle,
+                                                options.Handle,
+                                                inputNamesArray,
+                                                inputValuesArray,
+                                                (UIntPtr)inputNames.Count,
+                                                outputNamesArray,
+                                                (UIntPtr)outputNames.Count,
+                                                outputValuesArray /* pointers to Pre-allocated OrtValue instances */
+                                                ));
         }
 
         /// <summary>
@@ -412,24 +422,38 @@ namespace Microsoft.ML.OnnxRuntime
             IReadOnlyCollection<NamedOnnxValue> outputs,
             RunOptions options)
         {
-            using (var cleanupList = new DisposableList<IDisposable>())
+            var inputNamesArray = LookupUtf8Names(inputs, i => i.Name, LookupInputMetadata);
+            var outputNamesArray = LookupUtf8Names(outputs, o => o.Name, LookupOutputMetadata);
+
+            var inputValuesArray = GetOrtValuesHandles(inputs, LookupInputMetadata, ExtractOrtValueHandleForInput,
+                out DisposableArray<IDisposable> inputDisposer);
+
+            try
             {
-                var inputNamesArray = LookupUtf8Names(inputs, i => i.Name, LookupInputMetadata);
-                var inputValuesArray = GetOrtValuesHandles(inputs, LookupInputMetadata, ExtractOrtValueForInput, cleanupList);
+                var outputValuesArray = GetOrtValuesHandles(outputs, LookupOutputMetadata, ExtractOrtValueHandleForOutput,
+                    out DisposableArray<IDisposable> outputDisposer);
 
-                var outputNamesArray = LookupUtf8Names(outputs, o => o.Name, LookupOutputMetadata);
-                var outputValuesArray = GetOrtValuesHandles(outputs, LookupOutputMetadata, ExtractOrtValueForOutput, cleanupList);
-
-                NativeApiStatus.VerifySuccess(NativeMethods.OrtRun(
-                                                    _nativeHandle,
-                                                    options.Handle,
-                                                    inputNamesArray,
-                                                    inputValuesArray,
-                                                    (UIntPtr)inputs.Count,
-                                                    outputNamesArray,
-                                                    (UIntPtr)outputs.Count,
-                                                    outputValuesArray /* pointers to Pre-allocated OrtValue instances */
-                                                    ));
+                try
+                {
+                    NativeApiStatus.VerifySuccess(NativeMethods.OrtRun(
+                                                        _nativeHandle,
+                                                        options.Handle,
+                                                        inputNamesArray,
+                                                        inputValuesArray,
+                                                        (UIntPtr)inputs.Count,
+                                                        outputNamesArray,
+                                                        (UIntPtr)outputs.Count,
+                                                        outputValuesArray /* pointers to Pre-allocated OrtValue instances */
+                                                        ));
+                }
+                finally
+                {
+                    outputDisposer.Dispose();
+                }
+            }
+            finally
+            {
+                inputDisposer.Dispose();
             }
         }
 
@@ -469,16 +493,15 @@ namespace Microsoft.ML.OnnxRuntime
                 throw new ArgumentException($"Length of {nameof(outputNames)} ({outputNames.Count}) must match that of {nameof(outputValues)} ({outputValues.Count}).");
             }
 
-            using (var cleanupList = new DisposableList<IDisposable>())
+            var inputNamesArray = LookupUtf8Names(inputs, i => i.Name, LookupInputMetadata);
+            var outputNamesArray = LookupUtf8Names(outputNames, n => n, LookupOutputMetadata);
+            var outputValuesArray = GetOrtValuesHandles(outputValues, false);
+
+            var inputValuesArray = GetOrtValuesHandles(inputs, LookupInputMetadata, ExtractOrtValueHandleForInput,
+                out DisposableArray<IDisposable> inputsDisposer);
+
+            try
             {
-                // prepare inputs
-                var inputNamesArray = LookupUtf8Names(inputs, i => i.Name, LookupInputMetadata);
-                var inputValuesArray = GetOrtValuesHandles(inputs, LookupInputMetadata, ExtractOrtValueForInput, cleanupList);
-
-                // prepare outputs
-                var outputNamesArray = LookupUtf8Names(outputNames, n => n, LookupOutputMetadata);
-                var outputValuesArray = GetOrtValuesHandles(outputValues, false);
-
                 NativeApiStatus.VerifySuccess(NativeMethods.OrtRun(
                                                     _nativeHandle,
                                                     options.Handle,
@@ -489,6 +512,10 @@ namespace Microsoft.ML.OnnxRuntime
                                                     (UIntPtr)outputNames.Count,
                                                     outputValuesArray /* pointers to Pre-allocated OrtValue instances */
                                                     ));
+            }
+            finally
+            {
+                inputsDisposer.Dispose();
             }
         }
 
@@ -530,16 +557,17 @@ namespace Microsoft.ML.OnnxRuntime
                 throw new ArgumentException($"Length of {nameof(inputNames)} ({inputNames.Count}) must match that of {nameof(inputValues)} ({inputValues.Count}).");
             }
 
-            using (var cleanupList = new DisposableList<IDisposable>())
+            // prepare inputs
+            var inputNamesArray = LookupUtf8Names(inputNames, n => n, LookupInputMetadata);
+            var inputValuesArray = GetOrtValuesHandles(inputValues, true);
+
+            // prepare outputs
+            var outputNamesArray = LookupUtf8Names(outputs, o => o.Name, LookupOutputMetadata);
+            var outputValuesArray = GetOrtValuesHandles(outputs, LookupOutputMetadata, ExtractOrtValueHandleForOutput,
+                out DisposableArray<IDisposable> outputsDisposer);
+
+            try
             {
-                // prepare inputs
-                var inputNamesArray = LookupUtf8Names(inputNames, n => n, LookupInputMetadata);
-                var inputValuesArray = GetOrtValuesHandles(inputValues, true);
-
-                // prepare outputs
-                var outputNamesArray = LookupUtf8Names(outputs, o => o.Name, LookupOutputMetadata);
-                var outputValuesArray = GetOrtValuesHandles(outputs, LookupOutputMetadata, ExtractOrtValueForOutput, cleanupList);
-
                 NativeApiStatus.VerifySuccess(NativeMethods.OrtRun(
                                                     _nativeHandle,
                                                     options.Handle,
@@ -551,6 +579,155 @@ namespace Microsoft.ML.OnnxRuntime
                                                     outputValuesArray /* pointers to Pre-allocated OrtValue instances */
                                                     ));
             }
+            finally
+            {
+                outputsDisposer.Dispose();
+            }
+        }
+
+        /// <summary>
+        /// The API runs the inference taking a collection of OrtValues as input and
+        /// returning a collection of output OrtValues.
+        /// </summary>
+        /// <param name="runOptions">runOptions</param>
+        /// <param name="inputNames">A collection of input names.
+        /// To supply all names, use InputNames property</param>
+        /// <param name="inputValues">Input OrtValues. The size of the collection must match the size and the order of the inputNames</param>
+        /// <param name="outputNames">Output names requested. To supply all names, use OutputNames property.</param>
+        /// <returns>A disposable collection of disposable OrtValues</returns>
+        /// <exception cref="ArgumentException"></exception>
+        public IDisposableReadOnlyCollection<OrtValue> Run(RunOptions runOptions, IReadOnlyCollection<string> inputNames,
+            IReadOnlyCollection<OrtValue> inputValues, IReadOnlyCollection<string> outputNames)
+        {
+            if (inputNames.Count != inputValues.Count)
+            {
+                throw new ArgumentException($"Length of {nameof(inputNames)} ({inputNames.Count}) must match that of {nameof(inputValues)} ({inputValues.Count}).");
+            }
+
+            var inputNamesArray =   LookupUtf8Names(inputNames, n => n, LookupInputMetadata);
+            var inputHandlesArray = inputValues.Select(v => v.Handle).ToArray();
+
+            var outputNamesArray = LookupUtf8Names(outputNames, n => n, LookupOutputMetadata);
+
+            var disposableHandles = RunImpl(runOptions, inputNamesArray, inputHandlesArray, outputNamesArray);
+            try
+            {
+                return CreateDisposableResult(disposableHandles);
+            }
+            finally
+            {
+                disposableHandles.Dispose();
+            }
+        }
+
+        /// <summary>
+        /// This API takes inputs as a dictionary of input names paired with input OrtValues
+        /// 
+        /// It returns a disposable collection of OrtValues for outputs that were designated by outputNames
+        /// </summary>
+        /// <param name="runOptions"></param>
+        /// <param name="inputs">Dictionary of name/value pairs</param>
+        /// <param name="outputNames">requested outputs. To request all outputs, use OutputNames property of this sessions</param>
+        /// <returns>A disposable collection of outputs</returns>
+        public IDisposableReadOnlyCollection<OrtValue> Run(RunOptions runOptions, IReadOnlyDictionary<string, OrtValue> inputs,
+            IReadOnlyCollection<string> outputNames)
+        {
+            IntPtr[] inputNamesArray = new IntPtr[inputs.Count];
+            IntPtr[] inputHandlesArray = new IntPtr[inputs.Count];
+
+            int count = 0;
+            foreach(var input in inputs)
+            {
+                inputNamesArray[count] = LookupInputMetadata(input.Key).ZeroTerminatedName;
+                inputHandlesArray[count] = input.Value.Handle;
+                ++count;
+            }
+
+            var outputNamesArray = LookupUtf8Names(outputNames, n => n, LookupOutputMetadata);
+            var disposableHandles = RunImpl(runOptions, inputNamesArray, inputHandlesArray, outputNamesArray);
+            try
+            {
+                return CreateDisposableResult(disposableHandles);
+            }
+            finally
+            {
+                disposableHandles.Dispose();
+            }
+        }
+
+        private static IDisposableReadOnlyCollection<OrtValue> CreateDisposableResult(DisposableOrtValueHandleArray disposableHandles)
+        {
+            var outputValues = new DisposableList<OrtValue>(disposableHandles.Span.Length);
+            try
+            {
+                for (int i = 0; i < disposableHandles.Span.Length; i++)
+                {
+                    outputValues.Add(new OrtValue(disposableHandles.Span[i]));
+                    disposableHandles.Span[i] = IntPtr.Zero;
+                }
+                return outputValues;
+            }
+            catch (Exception)
+            {
+                outputValues.Dispose();
+                throw;
+            }
+        }
+
+        /// <summary>
+        /// The API takes collections of inputNames/inputValues and collections of outputNames/outputValues.
+        /// The sizes of the corresponding collections must match.
+        /// 
+        /// The output OrtValues are pre-allocated and the API will fill the data into the OrtValues.
+        /// These MUST be tensors. The API does not support non-tensor types for output values.
+        /// 
+        /// The API is useful when the output values are tensors and their shapes are known, and you
+        /// prefer the output to go to the pre-allocated memory. In such a case, you create
+        /// output OrtValues over those pre-allocated buffers and pass them to the API.
+        /// </summary>
+        /// <param name="runOptions">runOptions, if null the defaults are used</param>
+        /// <param name="inputNames">collection of input names.</param>
+        /// <param name="inputValues">collection of input OrtValues. Must match the order and the number of input names.</param>
+        /// <param name="outputNames">Requested output names.</param>
+        /// <param name="outputValues">Pre-allocated output values. 
+        /// The order and the number must match the specified output names. Shapes must match actual output values.</param>
+        /// <exception cref="ArgumentException"></exception>
+        public void Run(RunOptions runOptions, IReadOnlyCollection<string> inputNames, IReadOnlyCollection<OrtValue> inputValues,
+            IReadOnlyCollection<string> outputNames, IReadOnlyCollection<OrtValue> outputValues)
+        {
+            if (inputNames.Count != inputValues.Count)
+            {
+                throw new ArgumentException(
+                    $"Length of {nameof(inputNames)} ({inputNames.Count}) must match that of {nameof(inputValues)} ({inputValues.Count}).");
+            }
+
+            if (outputNames.Count != outputValues.Count)
+            {
+                throw new ArgumentException(
+                    $"Length of {nameof(outputNames)} ({outputNames.Count}) must match that of {nameof(outputValues)} ({outputValues.Count}).");
+            }
+
+            if (runOptions is null)
+            {
+                runOptions = _builtInRunOptions;
+            }
+
+            var inputNamesArray = LookupUtf8Names(inputNames, n => n, LookupInputMetadata);
+            var inputHandlesArray = inputValues.Select(v => v.Handle).ToArray();
+
+            var outputNamesArray = LookupUtf8Names(outputNames, n => n, LookupOutputMetadata);
+            var outputHandlesArray = outputValues.Select(v => v.Handle).ToArray();
+
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtRun(
+                                                _nativeHandle,
+                                                runOptions.Handle,
+                                                inputNamesArray,
+                                                inputHandlesArray,
+                                                (UIntPtr)inputNames.Count,
+                                                outputNamesArray,
+                                                (UIntPtr)outputNames.Count,
+                                                outputHandlesArray /* pointers to Pre-allocated OrtValue instances */
+                                                ));
         }
 
         /// <summary>
@@ -579,9 +756,26 @@ namespace Microsoft.ML.OnnxRuntime
         }
 
         /// <summary>
+        /// This method runs inference on the OrtIoBinding instance. It returns a collection of OrtValues.
+        /// This method is useful when it is impossible to bind outputs to pre-allocated buffers, because
+        /// the output shape is not known in advance. In this case, the OrtValues returned by this method
+        /// are allocated and owned by ORT. The caller is responsible for disposing the collection.
+        /// </summary>
+        /// <param name="runOptions">RunOptions</param>
+        /// <param name="ioBinding">Binding instance</param>
+        /// <returns>A disposable collection of OrtValues</returns>
+        public IDisposableReadOnlyCollection<OrtValue> RunWithBoundResults(RunOptions runOptions, OrtIoBinding ioBinding)
+        {
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtRunWithBinding(Handle, runOptions.Handle, ioBinding.Handle));
+            return ioBinding.GetOutputValues();
+        }
+
+        /// <summary>
         ///  This method return a collection of DisposableNamedOnnxValue as in other interfaces
         ///  Query names from OrtIoBinding object and pair then with the array of OrtValues returned
-        /// from OrtIoBinding.GetOutputValues()
+        /// from OrtIoBinding.GetOutputValues().
+        /// 
+        /// This API will be deprecated in favor of the API that returns a collection of OrtValues.
         /// 
         /// </summary>
         /// <param name="runOptions">RunOptions</param>
@@ -593,37 +787,38 @@ namespace Microsoft.ML.OnnxRuntime
         /// <returns>A disposable collection of DisposableNamedOnnxValue that encapsulate output OrtValues</returns>
         public IDisposableReadOnlyCollection<DisposableNamedOnnxValue> RunWithBindingAndNames(RunOptions runOptions, OrtIoBinding ioBinding, string[] names = null)
         {
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtRunWithBinding(Handle, runOptions.Handle, ioBinding.Handle));
-            using (var ortValues = ioBinding.GetOutputValues())
+            string[] outputNames = names;
+            if (outputNames == null || names.Length == 0)
             {
-                string[] outputNames = names;
-                if (outputNames == null)
-                {
-                    outputNames = ioBinding.GetOutputNames();
-                }
+                outputNames = ioBinding.GetOutputNames();
+            }
 
-                if (outputNames.Length != ortValues.Count)
-                {
-                    throw new OnnxRuntimeException(ErrorCode.InvalidArgument,
-                        "Number of specified names: " + names.Length + " does not match the output number: " +
-                        ortValues.Count);
-                }
-
-                var result = new DisposableList<DisposableNamedOnnxValue>(outputNames.Length);
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtRunWithBinding(Handle, runOptions.Handle, ioBinding.Handle));
+            var ortValues = ioBinding.GetOutputOrtValues();
+            var dispValues = new DisposableArray<OrtValue>(ortValues);
+            try
+            {
+                var result = new DisposableList<DisposableNamedOnnxValue>(ortValues.Length);
                 try
                 {
                     for (int i = 0; i < outputNames.Length; ++i)
                     {
-                        var ortValue = ortValues.ElementAt(i);
-                        result.Add(DisposableNamedOnnxValue.CreateFromOrtValue(outputNames[i], ortValue));
+                        result.Add(DisposableNamedOnnxValue.CreateFromOrtValue(outputNames[i], ref ortValues[i]));
                     }
+                    return result;
                 }
                 catch (Exception)
                 {
                     result.Dispose();
                     throw;
                 }
-                return result;
+            }
+            finally
+            {
+                // On success ortValues would contain nulls that will be
+                // ignored. On failure, ortValues would contain at least
+                // some valid OrtValue instances that need to be disposed.
+                dispValues.Dispose();
             }
         }
 
@@ -644,7 +839,7 @@ namespace Microsoft.ML.OnnxRuntime
         private delegate string NameExtractor<in TInput>(TInput input);
 
         // delegate to fetch input/output OrtValue
-        private delegate OrtValue OrtValueExtractor(NamedOnnxValue value, NodeMetadata metadata, out IDisposable memOwner);
+        private delegate IntPtr OrtValueHandleExtractor(NamedOnnxValue value, NodeMetadata metadata, out IDisposable memOwner);
 
         // Delegate to lookup metadata for input/initializers/output
         private delegate NodeMetadata MetadataLookup(string nodeName);
@@ -659,8 +854,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// <exception cref="OnnxRuntimeException"></exception>
         private NodeMetadata LookupInputMetadata(string nodeName)
         {
-            NodeMetadata meta;
-            if (!_inputMetadata.TryGetValue(nodeName, out meta) &&
+            if (!_inputMetadata.TryGetValue(nodeName, out NodeMetadata meta) &&
                 !_overridableInitializerMetadata.TryGetValue(nodeName, out meta))
             {
                 throw new OnnxRuntimeException(ErrorCode.InvalidArgument, $"Input name: '{nodeName}' is not in the metadata");
@@ -676,8 +870,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// <exception cref="OnnxRuntimeException"></exception>
         private NodeMetadata LookupOutputMetadata(string nodeName)
         {
-            NodeMetadata meta;
-            if (!_outputMetadata.TryGetValue(nodeName, out meta))
+            if (!_outputMetadata.TryGetValue(nodeName, out NodeMetadata meta))
             {
                 throw new OnnxRuntimeException(ErrorCode.InvalidArgument, $"Output name: '{nodeName}' is not in the metadata");
             }
@@ -691,9 +884,9 @@ namespace Microsoft.ML.OnnxRuntime
         /// <param name="metadata"></param>
         /// <param name="memOwner"></param>
         /// <returns></returns>
-        private static OrtValue ExtractOrtValueForInput(NamedOnnxValue input, NodeMetadata metadata, out IDisposable memOwner)
+        private static IntPtr ExtractOrtValueHandleForInput(NamedOnnxValue input, NodeMetadata metadata, out IDisposable memOwner)
         {
-            return input.InputToOrtValue(metadata, out memOwner);
+            return input.InputToOrtValueHandle(metadata, out memOwner);
         }
 
         /// <summary>
@@ -703,9 +896,9 @@ namespace Microsoft.ML.OnnxRuntime
         /// <param name="metadata"></param>
         /// <param name="memOwner"></param>
         /// <returns>May return null if the onnx value type does not support pre-creation of output OrtValues</returns>
-        private static OrtValue ExtractOrtValueForOutput(NamedOnnxValue output, NodeMetadata metadata, out IDisposable memOwner)
+        private static IntPtr ExtractOrtValueHandleForOutput(NamedOnnxValue output, NodeMetadata metadata, out IDisposable memOwner)
         {
-            return output.OutputToOrtValue(metadata, out memOwner);
+            return output.OutputToOrtValueHandle(metadata, out memOwner);
         }
 
         /// <summary>
@@ -714,9 +907,8 @@ namespace Microsoft.ML.OnnxRuntime
         /// <param name="values">names to convert to zero terminated utf8 and pin</param>
         /// <param name="nameExtractor">extractor functor that helps extracting names from inputs</param>
         /// <param name="metaDict">inputs/outputs metadata</param>
-        /// <param name="cleanupList">list to add pinned memory to for later disposal</param>
         /// <returns></returns>
-        private IntPtr[] LookupUtf8Names<T>(IReadOnlyCollection<T> values, NameExtractor<T> nameExtractor,
+        private static IntPtr[] LookupUtf8Names<T>(IReadOnlyCollection<T> values, NameExtractor<T> nameExtractor,
             MetadataLookup metaLookup)
         {
             var result = new IntPtr[values.Count];
@@ -738,37 +930,36 @@ namespace Microsoft.ML.OnnxRuntime
         /// </summary>
         /// <param name="values">a collection of NamedOnnxValues</param>
         /// <param name="metaLookup">Metadata lookup function (input/initializers/output)</param>
-        /// <param name="cleanupList">list to cleanup in an exception safe manner</param>
         /// <returns></returns>
-        private IntPtr[] GetOrtValuesHandles(IReadOnlyCollection<NamedOnnxValue> values, MetadataLookup metaLookup,
-            OrtValueExtractor ortValueExtractor,
-            DisposableList<IDisposable> cleanupList)
+        private static IntPtr[] GetOrtValuesHandles(IReadOnlyCollection<NamedOnnxValue> values, MetadataLookup metaLookup,
+            OrtValueHandleExtractor ortValueExtractor, out DisposableArray<IDisposable> disposer)
         {
-            cleanupList.Capacity += values.Count * 2;
-            IntPtr[] result = new IntPtr[values.Count];
-            for (int valueIndex = 0; valueIndex < values.Count; ++valueIndex)
+            IDisposable[] memHolders = new IDisposable[values.Count];
+            var disp = new DisposableArray<IDisposable>(memHolders);
+            try
             {
-                var value = values.ElementAt(valueIndex);
-                var meta = metaLookup(value.Name);
-                var ortValue = ortValueExtractor(value, meta, out IDisposable memHolder);
-                if (memHolder != null)
+                IntPtr[] result = new IntPtr[values.Count];
+                for (int valueIndex = 0; valueIndex < values.Count; ++valueIndex)
                 {
-                    cleanupList.Add(memHolder);
+                    var value = values.ElementAt(valueIndex);
+                    var meta = metaLookup(value.Name);
+                    result[valueIndex] = ortValueExtractor(value, meta, out IDisposable memHolder);
+                    if (memHolder != null)
+                    {
+                        memHolders[valueIndex] = memHolder;
+                    }
                 }
-                if (ortValue != null)
-                {
-                    cleanupList.Add(ortValue);
-                    result[valueIndex] = ortValue.Handle;
-                }
-                else
-                {
-                    result[valueIndex] = IntPtr.Zero;
-                }
+                disposer = disp;
+                return result;
             }
-            return result;
+            catch (Exception)
+            {
+                disp.Dispose();
+                throw;
+            }
         }
 
-        private IntPtr[] GetOrtValuesHandles(IReadOnlyCollection<FixedBufferOnnxValue> values, bool input)
+        private static IntPtr[] GetOrtValuesHandles(IReadOnlyCollection<FixedBufferOnnxValue> values, bool input)
         {
             var valuesArray = new IntPtr[values.Count];
             for (int index = 0; index < values.Count; ++index)
@@ -783,14 +974,8 @@ namespace Microsoft.ML.OnnxRuntime
             return valuesArray;
         }
 
-
-        private DisposableList<OrtValue> RunImpl(RunOptions options, IntPtr[] inputNames, IntPtr[] inputValues, IntPtr[] outputNames,
-           DisposableList<IDisposable> cleanupList)
+        private DisposableOrtValueHandleArray RunImpl(RunOptions options, IntPtr[] inputNames, IntPtr[] inputValues, IntPtr[] outputNames)
         {
-            cleanupList.Capacity += 1;
-            var ortValues = new DisposableList<OrtValue>(outputNames.Length + 1);
-            cleanupList.Add(ortValues);
-
             IntPtr[] outputValuesArray = new IntPtr[outputNames.Length];
             NativeApiStatus.VerifySuccess(NativeMethods.OrtRun(
                                                 _nativeHandle,
@@ -802,23 +987,21 @@ namespace Microsoft.ML.OnnxRuntime
                                                 (UIntPtr)outputNames.Length,
                                                 outputValuesArray /* Empty array is passed in to receive output OrtValue pointers */
                                                 ));
-
-            foreach (var v in outputValuesArray)
-            {
-                ortValues.Add(new OrtValue(v));
-            }
-            return ortValues;
+            return new DisposableOrtValueHandleArray(outputValuesArray);
         }
 
-        IDisposableReadOnlyCollection<DisposableNamedOnnxValue> CreateDisposableResult(List<OrtValue> ortValues,
+        private static IDisposableReadOnlyCollection<DisposableNamedOnnxValue> CreateDisposableResult(Span<IntPtr> valueHandles,
             IReadOnlyCollection<string> outputNames)
         {
-            var result = new DisposableList<DisposableNamedOnnxValue>(outputNames.Count);
+            Debug.Assert(valueHandles.Length == outputNames.Count, "Handles and names sizes must match");
+            var result = new DisposableList<DisposableNamedOnnxValue>(valueHandles.Length);
             try
             {
-                for (int i = 0; i < ortValues.Count; i++)
+                for (int i = 0; i < valueHandles.Length; i++)
                 {
-                    result.Add(DisposableNamedOnnxValue.CreateFromOrtValue(outputNames.ElementAt(i), ortValues[i]));
+                    var ortValue = new OrtValue(valueHandles[i]);
+                    result.Add(DisposableNamedOnnxValue.CreateFromOrtValue(outputNames.ElementAt(i), ref ortValue));
+                    valueHandles[i] = IntPtr.Zero; // Prevent double disposal
                 }
             }
             catch (OnnxRuntimeException)
@@ -1650,18 +1833,23 @@ namespace Microsoft.ML.OnnxRuntime
                 // The OrtAllocator will finally free the customMetadataMapKeysHandle
                 try
                 {
+                    Span<IntPtr> keysHandles;
+                    unsafe
+                    {
+                        keysHandles = new Span<IntPtr>(customMetadataMapKeysHandle.ToPointer(), (int)numKeys);
+                    }
+
                     using (var ortAllocationKeys = new DisposableList<OrtMemoryAllocation>((int)numKeys))
                     {
                         // Put all the handles to each key in the DisposableList to be disposed off in an exception-safe manner
-                        for (int i = 0; i < (int)numKeys; ++i)
+                        foreach (var keyHandle in keysHandles)
                         {
-                            ortAllocationKeys.Add(new OrtMemoryAllocation(allocator, Marshal.ReadIntPtr(customMetadataMapKeysHandle, IntPtr.Size * i), 0));
+                            ortAllocationKeys.Add(new OrtMemoryAllocation(allocator, keyHandle, 0));
                         }
 
                         // Process each key via the stored key handles
-                        foreach (var allocation in ortAllocationKeys)
+                        foreach (var keyHandle in keysHandles)
                         {
-                            IntPtr keyHandle = allocation.Pointer;
                             NativeApiStatus.VerifySuccess(NativeMethods.OrtModelMetadataLookupCustomMetadataMap(modelMetadataHandle,
                                 allocator.Pointer, keyHandle, out IntPtr valueHandle));
 
@@ -1672,7 +1860,10 @@ namespace Microsoft.ML.OnnxRuntime
                         }
                     }
                 }
-                finally { allocator.FreeMemory(customMetadataMapKeysHandle); }
+                finally
+                {
+                    allocator.FreeMemory(customMetadataMapKeysHandle);
+                }
             }
             finally
             {

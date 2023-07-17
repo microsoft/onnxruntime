@@ -23,22 +23,16 @@ import torch
 from packaging.version import Version
 
 # Import autocasting libs
+from torch import nn
 from torch.cuda import amp
 from transformers import AdamW, AutoConfig, BertForSequenceClassification, Trainer
 from transformers.modeling_outputs import SequenceClassifierOutput
 
 import onnxruntime.training.ortmodule as ortmodule_module
 from onnxruntime.training.optim import AdamWMode, FusedAdam
-from onnxruntime.training.ortmodule import (
-    DebugOptions,
-    LogLevel,
-    ORTModule,
-    _fallback,
-    _graph_execution_manager,
-    _io,
-    _utils,
-)
+from onnxruntime.training.ortmodule import DebugOptions, LogLevel, ORTModule, _fallback, _io, _utils
 from onnxruntime.training.ortmodule._custom_gradient_registry import register_gradient
+from onnxruntime.training.ortmodule.options import _SkipCheck
 
 DEFAULT_OPSET = 15
 
@@ -4453,7 +4447,7 @@ def test_ortmodule_gradient_accumulation_optimization_correctness():
 
     # model with optimization enabled
     opt_model = ORTModule(copy.deepcopy(pt_model))
-    opt_model._torch_module._execution_manager(is_training=True)._enable_grad_acc_optimization = True
+    opt_model._torch_module._execution_manager(is_training=True)._runtime_options.enable_grad_acc_optimization = True
     opt_optimizer = torch.optim.Adam(opt_model.parameters())
 
     def run_step(model, x):
@@ -4878,10 +4872,10 @@ def test_ortmodule_ortmodule_method_attribute_copy():
 @pytest.mark.parametrize(
     "policy_str, policy",
     [
-        ("SKIP_CHECK_DISABLED", _graph_execution_manager._SkipCheck.SKIP_CHECK_DISABLED),
-        ("SKIP_CHECK_DEVICE", _graph_execution_manager._SkipCheck.SKIP_CHECK_DEVICE),
-        ("SKIP_CHECK_BUILD_GRADIENT", _graph_execution_manager._SkipCheck.SKIP_CHECK_BUILD_GRADIENT),
-        ("SKIP_CHECK_EXECUTION_AGENT", _graph_execution_manager._SkipCheck.SKIP_CHECK_EXECUTION_AGENT),
+        ("SKIP_CHECK_DISABLED", _SkipCheck.SKIP_CHECK_DISABLED),
+        ("SKIP_CHECK_DEVICE", _SkipCheck.SKIP_CHECK_DEVICE),
+        ("SKIP_CHECK_BUILD_GRADIENT", _SkipCheck.SKIP_CHECK_BUILD_GRADIENT),
+        ("SKIP_CHECK_EXECUTION_AGENT", _SkipCheck.SKIP_CHECK_EXECUTION_AGENT),
     ],
 )
 def test_ortmodule_skip_check_load_from_os_env(policy_str, policy):
@@ -4892,7 +4886,7 @@ def test_ortmodule_skip_check_load_from_os_env(policy_str, policy):
     ort_model = ORTModule(model)
 
     for training_mode in [False, True]:
-        assert ort_model._torch_module._execution_manager(training_mode)._skip_check == policy
+        assert ort_model._torch_module._execution_manager(training_mode)._runtime_options.skip_check == policy
 
     del os.environ["ORTMODULE_SKIPCHECK_POLICY"]
 
@@ -5226,10 +5220,8 @@ def test_sigmoid_grad_opset13():
     N, D_in, H, D_out = 120, 15360, 500, 15360  # noqa: N806
     pt_model = NeuralNetSigmoid(D_in, H, D_out).to(device)
 
-    old_opst_cst = ortmodule_module.ONNX_OPSET_VERSION
     old_opset = os.getenv("ORTMODULE_ONNX_OPSET_VERSION", None)
     os.environ["ORTMODULE_ONNX_OPSET_VERSION"] = "13"
-    assert ortmodule_module.ONNX_OPSET_VERSION == 15
 
     ort_model = ORTModule(copy.deepcopy(pt_model))
 
@@ -5255,21 +5247,25 @@ def test_sigmoid_grad_opset13():
         del os.environ["ORTMODULE_ONNX_OPSET_VERSION"]
     else:
         os.environ["ORTMODULE_ONNX_OPSET_VERSION"] = old_opset
-    assert ortmodule_module.ONNX_OPSET_VERSION == 13
-    ortmodule_module.ONNX_OPSET_VERSION = old_opst_cst
+
+    assert ort_model._torch_module._execution_manager(True)._runtime_options.onnx_opset_version == 13
 
 
 @pytest.mark.parametrize("opset_version", [12, 13, 14, 15])
 def test_opset_version_change(opset_version):
+    original_env = None
+    if "ORTMODULE_ONNX_OPSET_VERSION" in os.environ:
+        original_env = os.environ["ORTMODULE_ONNX_OPSET_VERSION"]
+        del os.environ["ORTMODULE_ONNX_OPSET_VERSION"]
+
     device = "cuda"
 
     N, D_in, H, D_out = 64, 784, 500, 10  # noqa: N806
     x = torch.randn(N, D_in, device=device)
     model = NeuralNetSinglePositionalArgument(D_in, H, D_out).to(device)
 
-    ort_model = ORTModule(model)
-
     ortmodule_module.ONNX_OPSET_VERSION = opset_version
+    ort_model = ORTModule(model)
 
     # Make sure model runs without any exception
     prediction = ort_model(x)
@@ -5280,6 +5276,9 @@ def test_opset_version_change(opset_version):
     # Check opset version on ONNX model
     exported_model = ort_model._torch_module._execution_manager(ort_model._is_training())._onnx_models.exported_model
     assert exported_model.opset_import[0].version == opset_version
+
+    if original_env is not None:
+        os.environ["ORTMODULE_ONNX_OPSET_VERSION"] = original_env
 
 
 def test_serialize_ortmodule():
@@ -5677,6 +5676,8 @@ def test_gradient_correctness_bce_with_logits():
 @pytest.mark.parametrize("label_is_sparse", [False, True])
 @pytest.mark.parametrize("rank", [1, 2])
 def test_runtime_inspector_label_and_embed_sparsity_detection(embed_is_sparse, label_is_sparse, rank, caplog):
+    os.environ["ORTMODULE_ENABLE_EMBEDDING_SPARSE_OPTIMIZER"] = "1"
+
     class NeuralNetCrossEntropyLoss(torch.nn.Module):
         def __init__(self, num_embeddings, embedding_dim):
             super().__init__()
@@ -5741,3 +5742,322 @@ def test_runtime_inspector_label_and_embed_sparsity_detection(embed_is_sparse, l
 
     if embed_is_sparse:
         assert found_embed_is_sparse
+
+
+@pytest.mark.parametrize(
+    "test_cases",
+    [
+        ("Add", 0),
+        ("Add", 1),
+        ("Add", 2),
+        ("Sub", 0),
+        ("Sub", 1),
+        ("Sub", 2),
+        ("Mul", 0),
+        ("Mul", 1),
+        ("Mul", 2),
+        ("MatMul", 0),
+        ("MatMul", 1),
+        ("Dropout", 0),
+        ("LayerNormalization", 0),
+        ("Cast", 0),
+        ("BiasGelu", 0),
+    ],
+)
+def test_ops_for_padding_elimination(test_cases):
+    os.environ["ORTMODULE_ENABLE_EMBEDDING_SPARSE_OPTIMIZER"] = "1"
+    test_op = test_cases[0]
+    case = test_cases[1]
+    # test_op = "Sub"
+    # case = 2
+
+    class ToyModel(torch.nn.Module):
+        def __init__(self, vocab_size, hidden_size, pad_token_id):
+            super().__init__()
+            self.word_embeddings = nn.Embedding(vocab_size, hidden_size, padding_idx=pad_token_id)
+            if test_op == "LayerNormalization":
+                self.LayerNorm = nn.LayerNorm(hidden_size, eps=1e-05)
+            self.hidden_size = hidden_size
+
+        # test test_elementwise op for padding elimination
+        # in case 0, the shapes of inputs of test_op are [batch_size, seqlen, hidden_size] and [hidden_size],
+        #            the test_op should be included in padding elimination subgraph and the GatherGrad should be added to
+        #            output of test_op.
+        # in case 1, the shapes of inputs of test_op are [batch_size, seqlen, hidden_size] and [batch_size, 1, hidden_size],
+        #            this case is not support in padding elimination, so the test_op should not be included in padding
+        #            elimination subgraph and the GatherGrad should be added before test_op.
+        # in case 2, the shapes of inputs of test_op are [batch_size, seqlen, hidden_size] and [batch_size, seqlen, hidden_size],
+        #            the test_op should be included in padding elimination subgraph and the GatherGrad should be added to
+        #            output of test_op. Besides, the other input of Add should be added 'Reshape + ShrunkenGather' to
+        #            flatten and elimination padding.
+        def test_elementwise(self, input_ids):
+            input_shape = input_ids.size()
+            one_input = None
+            if case == 0:
+                one_input = torch.ones(self.hidden_size, dtype=torch.long).to(device)
+            elif case == 1:
+                one_input = torch.ones((input_shape[0], 1, self.hidden_size), dtype=torch.long).to(device)
+            elif case == 2:
+                one_input = torch.ones(input_shape, dtype=torch.long).to(device)
+                one_input = one_input.unsqueeze(-1).expand(-1, -1, self.hidden_size)
+            inputs_embeds = self.word_embeddings(input_ids)
+            if test_op == "Add":
+                output = one_input + inputs_embeds
+            elif test_op == "Sub":
+                output = one_input - inputs_embeds
+            elif test_op == "Mul":
+                output = one_input * inputs_embeds
+            else:
+                output = None
+            return output
+
+        # test MatMul op for padding elimination
+        # in case 0, the shapes of inputs of MatMul are [2, seqlen] and [batch_size, seqlen, hidden_size]
+        #            this case is not support in padding elimination, so the MatMul should not be included in padding
+        #            elimination subgraph and the GatherGrad should be added before MatMul.
+        # in case 1, the shapes of inputs of MatMul are [batch_size, seqlen, hidden_size] and [hidden_size, 128]
+        #            the MatMul should be included in padding elimination subgraph and the GatherGrad should be added to
+        #            output of MatMul.
+        def test_matmul(self, input_ids):
+            inputs_embeds = self.word_embeddings(input_ids)
+            output = None
+            if case == 0:
+                matmul_input = torch.randn((2, input_ids.size(1))).to(device)
+                output = torch.matmul(matmul_input, inputs_embeds)
+            elif case == 1:
+                matmul_input = torch.randn((self.hidden_size, 128)).to(device)
+                output = torch.matmul(inputs_embeds, matmul_input)
+            return output
+
+        # test other ops for padding elimination
+        # all these ops should be included in padding elimination subgraph and the GatherGrad should be added to
+        # output of these ops.
+        def test_other(self, input_ids):
+            inputs_embeds = self.word_embeddings(input_ids)
+            output = None
+            if test_op == "Dropout":
+                output = torch.nn.functional.dropout(inputs_embeds, p=0.5, training=True)
+            elif test_op == "LayerNormalization":
+                output = self.LayerNorm(inputs_embeds)
+            elif test_op == "Cast":
+                output = inputs_embeds.to(torch.float16)
+            elif test_op == "BiasGelu":
+                bias = torch.randn((self.hidden_size,)).to(device)
+                output = torch.nn.functional.gelu(inputs_embeds + bias)
+            return output
+
+        def forward(self, input_ids):
+            if test_op in ["Add", "Mul", "Sub"]:
+                output = self.test_elementwise(input_ids)
+            elif test_op == "MatMul":
+                output = self.test_matmul(input_ids)
+            else:
+                output = self.test_other(input_ids)
+            return output
+
+    # Generate one batch of inputs (shape:[batch_size, max_seq_length]).
+    # Each input has random length from 1 to max_seq_length*0.8 with values from 2 to vocab_size and padded with 1 at
+    # [max_seq_length - length:].
+    def generate_inputs(batch_size, max_seq_length, vocab_size):
+        batched_inputs = []
+        for _ in range(batch_size):
+            # Generate random length from 1 to max_seq_length*0.8, to ensure sparsity > 20%
+            seq_len = random.randint(1, int(max_seq_length * 0.8))
+
+            # Generate input values and padding respectively and concatenate them
+            input_id = torch.randint(2, vocab_size, (seq_len,), dtype=torch.long, device=device)
+            padding = torch.ones((max_seq_length - seq_len,), dtype=torch.long, device=device)
+            batched_inputs.append(torch.cat((input_id, padding)))
+        return torch.stack(batched_inputs)
+
+    vocab_size, hidden_size = 50265, 768
+    batch_size, max_seq_length = 8, 128
+    device = "cuda"
+    model = ORTModule(ToyModel(vocab_size, hidden_size, 1).to(device))
+    x = generate_inputs(batch_size, max_seq_length, vocab_size)
+    model(x)
+
+    training_model = model._torch_module._execution_manager(True)._onnx_models.optimized_model
+    if test_op == "Sub":
+        assert len([node.op_type for node in training_model.graph.node if node.op_type == "Sub"]) == 2
+    else:
+        assert len([node.op_type for node in training_model.graph.node if node.op_type == "Sub"]) == 1
+    assert len([node.op_type for node in training_model.graph.node if node.op_type == "NonZero"]) == 1
+    assert len([node.op_type for node in training_model.graph.node if node.op_type == "Squeeze"]) == 1
+    assert len([node.op_type for node in training_model.graph.node if node.op_type == "PadAndUnflatten"]) == 1
+    if case == 2:
+        assert len([node.op_type for node in training_model.graph.node if node.op_type == "ShrunkenGather"]) == 2
+    else:
+        assert len([node.op_type for node in training_model.graph.node if node.op_type == "ShrunkenGather"]) == 1
+    gathergrad_node = [node for node in training_model.graph.node if node.op_type == "PadAndUnflatten"][0]
+
+    def find_input_node_type(model, arg):
+        result = []
+        for node in model.graph.node:
+            if arg in node.output:
+                result.append(node)
+        return result[0].op_type if len(result) == 1 else None
+
+    gathergrad_input_optypes = [find_input_node_type(training_model, arg) for arg in gathergrad_node.input]
+    if test_op == "Add" or test_op == "Mul" or test_op == "Sub":
+        if case == 0:
+            assert test_op in gathergrad_input_optypes
+        elif case == 1:
+            assert "ATen" in gathergrad_input_optypes
+    elif test_op == "MatMul":
+        if case == 0:
+            assert "ATen" in gathergrad_input_optypes
+        elif case == 1:
+            assert "MatMul" in gathergrad_input_optypes
+    else:
+        assert test_op in gathergrad_input_optypes
+
+    del os.environ["ORTMODULE_ENABLE_EMBEDDING_SPARSE_OPTIMIZER"]
+
+
+def test_e2e_padding_elimination():
+    os.environ["ORTMODULE_ENABLE_EMBEDDING_SPARSE_OPTIMIZER"] = "1"
+    seed = 5033
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    torch.backends.cudnn.determinstic = True
+    torch.backends.cudnn.benchmark = False
+
+    class OneLayer(torch.nn.Module):
+        def __init__(self, hidden_size, num_attention_heads):
+            super().__init__()
+            self.num_attention_heads = num_attention_heads
+            self.attention_head_size = int(hidden_size / num_attention_heads)
+            self.all_head_size = num_attention_heads * self.attention_head_size
+            self.query = nn.Linear(hidden_size, self.all_head_size)
+            self.key = nn.Linear(hidden_size, self.all_head_size)
+            self.value = nn.Linear(hidden_size, self.all_head_size)
+            self.dropout1 = nn.Dropout(0.0)
+            self.dense = nn.Linear(hidden_size, hidden_size)
+            self.LayerNorm = nn.LayerNorm(hidden_size, eps=1e-05)
+            self.dropout2 = nn.Dropout(0.0)
+
+        def transpose_for_scores(self, x: torch.Tensor) -> torch.Tensor:
+            new_x_shape = x.size()[:-1] + (self.num_attention_heads, self.attention_head_size)
+            x = x.view(new_x_shape)
+            return x.permute(0, 2, 1, 3)
+
+        def forward(self, hidden_states, attention_mask):
+            query_layer = self.transpose_for_scores(self.query(hidden_states))
+            key_layer = self.transpose_for_scores(self.key(hidden_states))
+            value_layer = self.transpose_for_scores(self.value(hidden_states))
+            attention_scores = torch.matmul(query_layer, key_layer.transpose(-1, -2))
+            attention_scores = attention_scores / math.sqrt(self.attention_head_size)
+            attention_scores = attention_scores + attention_mask
+            attention_probs = nn.functional.softmax(attention_scores, dim=-1)
+            attention_probs = self.dropout1(attention_probs)
+            context_layer = torch.matmul(attention_probs, value_layer)
+            context_layer = context_layer.permute(0, 2, 1, 3).contiguous()
+            new_context_layer_shape = context_layer.size()[:-2] + (self.all_head_size,)
+            context_layer = context_layer.view(new_context_layer_shape)
+
+            output = self.dense(context_layer)
+            output = self.dropout2(output)
+            output = self.LayerNorm(output + hidden_states)
+            return output
+
+    # This toy model is written referring to HuggingFace bert-large-uncased model in run_glue.py:
+    # https://github.com/huggingface/optimum/blob/72133e595f9a054c3221ec9ea87f42e0bdaa062b/examples/onnxruntime/training/text-classification/run_glue.py
+    # This is just a simple version of it for convenient testing.
+    class ToyModel(torch.nn.Module):
+        def __init__(self, num_hidden_layers, vocab_size, hidden_size, num_attention_heads, pad_token_id, num_labels):
+            super().__init__()
+            self.word_embeddings = nn.Embedding(vocab_size, hidden_size, padding_idx=pad_token_id)
+            self.token_type_embeddings = nn.Embedding(1, hidden_size)
+            self.LayerNorm = nn.LayerNorm(hidden_size, eps=1e-05)
+            self.dropout = nn.Dropout(0.0)
+            self.layer = nn.ModuleList([OneLayer(hidden_size, num_attention_heads) for _ in range(num_hidden_layers)])
+            self.out_proj = nn.Linear(hidden_size, num_labels)
+
+        def forward(self, input_ids, attention_mask, target):
+            input_shape = input_ids.size()
+            token_type_ids = torch.zeros(input_shape, dtype=torch.long).to(device)
+            inputs_embeds = self.word_embeddings(input_ids)
+            token_type_embeddings = self.token_type_embeddings(token_type_ids)
+            embeddings = inputs_embeds + token_type_embeddings
+            embeddings = self.LayerNorm(embeddings)
+            hidden_states = self.dropout(embeddings)
+            extended_attention_mask = attention_mask[:, None, None, :]
+            extended_attention_mask = extended_attention_mask.to(dtype=torch.float32)
+            extended_attention_mask = (1.0 - extended_attention_mask) * torch.finfo(torch.float32).min
+            for _, layer_module in enumerate(self.layer):
+                hidden_states = layer_module(hidden_states, extended_attention_mask)
+            x = hidden_states[:, 0, :]
+            x = self.out_proj(x)
+            loss_fct = torch.nn.CrossEntropyLoss()
+            return loss_fct(x, target)
+
+    def run_step(model, inputs, mask, target):
+        loss = model(inputs, mask, target)
+        loss.backward()
+        return loss
+
+    def run_optim_step(optimizer):
+        optimizer.step()
+        optimizer.zero_grad()
+
+    # Generate one batch of inputs (shape:[batch_size, max_seq_length]) and masks (shape:[batch_size, max_seq_length]).
+    # Each input has random length from 1 to max_seq_length*0.8 with values from 2 to vocab_size and padded with 1 at
+    # [max_seq_length - length:]. Values of masks are 1 at [0:length] and 0 at [length:max_seq_length].
+    def generate_inputs(batch_size, max_seq_length, vocab_size):
+        batched_inputs = []
+        batched_masks = []
+        for _ in range(batch_size):
+            # Generate random length from 1 to max_seq_length*0.8, to ensure sparsity > 20%
+            seq_len = random.randint(1, int(max_seq_length * 0.8))
+
+            # Generate input values and padding respectively and concatenate them
+            input_id = torch.randint(2, vocab_size, (seq_len,), dtype=torch.long, device=device)
+            padding = torch.ones((max_seq_length - seq_len,), dtype=torch.long, device=device)
+            batched_inputs.append(torch.cat((input_id, padding)))
+
+            # Generate mask values and padding respectively and concatenate them
+            mask_ones = torch.ones((seq_len,), device=device)
+            mask_zeros = torch.zeros((max_seq_length - seq_len,), device=device)
+            batched_masks.append(torch.cat((mask_ones, mask_zeros)))
+        return torch.stack(batched_inputs), torch.stack(batched_masks)
+
+    num_layers, vocab_size, hidden_size, num_attention_heads = 12, 50265, 768, 12
+    batch_size, max_seq_length = 8, 128
+    device = "cuda"
+    pt_model = ToyModel(num_layers, vocab_size, hidden_size, num_attention_heads, 1, 3).to(device)
+    ort_model = ORTModule(copy.deepcopy(pt_model))
+    pt_optimizer = torch.optim.Adam(pt_model.parameters())
+    ort_optimizer = torch.optim.Adam(ort_model.parameters())
+
+    for _ in range(10):
+        pt_input, pt_mask = generate_inputs(batch_size, max_seq_length, vocab_size)
+        ort_input = copy.deepcopy(pt_input)
+        ort_mask = copy.deepcopy(pt_mask)
+        pt_target = torch.randint(3, (batch_size,), device=device)
+        ort_target = copy.deepcopy(pt_target)
+        # Run one step of forward and backward for torch and ort respectively
+        pt_prediction = run_step(pt_model, pt_input, pt_mask, pt_target)
+        ort_prediction = run_step(ort_model, ort_input, ort_mask, ort_target)
+
+        # Run one step of optimizer for torch and ort respectively
+        run_optim_step(pt_optimizer)
+        run_optim_step(ort_optimizer)
+
+        for pt_param, ort_param in zip(pt_model.parameters(), ort_model.parameters()):
+            if pt_param.grad is not None:
+                _test_helpers.assert_values_are_close(pt_param.grad, ort_param.grad, atol=1e-4, rtol=1e-5)
+
+        if os.getenv("ORTMODULE_ROCM_TEST", "0") == "1":
+            # For ROCm EP, the difference between ORT and PyTorch is larger than CUDA EP.
+            _test_helpers.assert_values_are_close(ort_prediction, pt_prediction, atol=2e-3, rtol=2e-4)
+        else:
+            _test_helpers.assert_values_are_close(ort_prediction, pt_prediction, atol=1e-3, rtol=1e-4)
+
+    training_model = ort_model._torch_module._execution_manager(True)._onnx_models.optimized_model
+    assert "ShrunkenGather" in [node.op_type for node in training_model.graph.node]
+    assert "PadAndUnflatten" in [node.op_type for node in training_model.graph.node]
+    del os.environ["ORTMODULE_ENABLE_EMBEDDING_SPARSE_OPTIMIZER"]

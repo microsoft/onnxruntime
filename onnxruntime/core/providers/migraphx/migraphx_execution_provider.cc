@@ -131,80 +131,16 @@ MIGraphXExecutionProvider::~MIGraphXExecutionProvider() {
   ORT_IGNORE_RETURN_VALUE(MIOPEN_CALL(miopenDestroy(external_miopen_handle_)));
 }
 
-AllocatorPtr MIGraphXExecutionProvider::GetAllocator(OrtMemType mem_type) const {
-  if (mem_type == OrtMemTypeDefault) {
-    return allocator_;
-  } else {
-    return IExecutionProvider::GetAllocator(mem_type);
-  }
-}
-
-void MIGraphXExecutionProvider::RegisterAllocator(AllocatorManager& allocator_manager) {
-  OrtDevice::DeviceId short_device_id = gsl::narrow<OrtDevice::DeviceId>(device_id_);
-  OrtDevice gpu_device{OrtDevice::GPU, OrtDevice::MemType::DEFAULT, short_device_id};
-  OrtDevice pinned_device{OrtDevice::CPU, OrtDevice::MemType::CUDA_PINNED, DEFAULT_CPU_ALLOCATOR_DEVICE_ID};
-  OrtDevice cpu_device{OrtDevice::CPU, OrtDevice::MemType::DEFAULT, DEFAULT_CPU_ALLOCATOR_DEVICE_ID};
-
-  // setup HIP allocator
-  // if EP is used in multiple inference sessions we may already have an allocator. if so use that.
-  if (!allocator_) {
-    // use shared allocator if available
-    allocator_ = allocator_manager.GetAllocator(OrtMemTypeDefault, gpu_device);
-
-    if (!allocator_) {
-      AllocatorCreationInfo default_memory_info(
-          [](OrtDevice::DeviceId device_id) { return CreateROCMAllocator(device_id, onnxruntime::CUDA); }, device_id_);
-
-      allocator_ = CreateAllocator(default_memory_info);
-      // enable sharing of our allocator
-      allocator_manager.InsertAllocator(allocator_);
-    }
-
-    InsertAllocator(allocator_);
-  }
-
-  // OrtMemTypeCPUOutput -- allocated by hipMallocHost, used to copy HIP device memory to CPU
-  // Use pinned memory instead of pageable memory make the data transfer faster
-  // Used by node MemcpyToHost only
-  auto hip_pinned_alloc = GetAllocator(OrtMemTypeCPUOutput);
-  if (!hip_pinned_alloc) {
-    hip_pinned_alloc = allocator_manager.GetAllocator(OrtMemTypeCPUOutput, pinned_device);
-
-    if (!hip_pinned_alloc) {
-      AllocatorCreationInfo pinned_allocator_info(
-          [](OrtDevice::DeviceId device_id) {
-            return CreateROCMPinnedAllocator(device_id, onnxruntime::CUDA_PINNED);
-          },
-          pinned_device.Id());
-      hip_pinned_alloc = CreateAllocator(pinned_allocator_info);
-      allocator_manager.InsertAllocator(hip_pinned_alloc);
-    }
-
-    InsertAllocator(hip_pinned_alloc);
-  }
-
-  auto hip_cpu_alloc = GetAllocator(OrtMemTypeCPUInput);
-  if (!hip_cpu_alloc) {
-    hip_cpu_alloc = allocator_manager.GetAllocator(OrtMemTypeCPUInput, cpu_device);
-
-    if (!hip_cpu_alloc) {
-      // This will be refactored/removed when allocator and execution provider are decoupled.
-      // Need to move the OrtMemoryType out of Allocator, that's one thing blocking us to share it with CPU EP
-      // CPUAllocator is OrtMemTypeDefault for CPU EP
-      AllocatorCreationInfo cpu_memory_info(
-          [](int device_id) {
-            return std::make_unique<CPUAllocator>(
-                OrtMemoryInfo("MIP_CPU", OrtAllocatorType::OrtDeviceAllocator, OrtDevice(), device_id,
-                              OrtMemTypeCPUInput));
-          },
-          cpu_device.Id());
-
-      hip_cpu_alloc = CreateAllocator(cpu_memory_info);
-      allocator_manager.InsertAllocator(hip_cpu_alloc);
-    }
-
-    InsertAllocator(hip_cpu_alloc);
-  }
+std::vector<AllocatorPtr> MIGraphXExecutionProvider::CreatePreferredAllocators() {
+  AllocatorCreationInfo default_memory_info(
+      [](OrtDevice::DeviceId device_id) { return CreateROCMAllocator(device_id, onnxruntime::CUDA); }, device_id_);
+  AllocatorCreationInfo pinned_allocator_info(
+      [](OrtDevice::DeviceId device_id) {
+        ORT_UNUSED_PARAMETER(device_id);
+        return CreateROCMPinnedAllocator(onnxruntime::CUDA_PINNED);
+      },
+      0);
+  return std::vector<AllocatorPtr>{CreateAllocator(default_memory_info), CreateAllocator(pinned_allocator_info)};
 }
 
 std::unique_ptr<onnxruntime::IDataTransfer> MIGraphXExecutionProvider::GetDataTransfer() const {
@@ -1201,8 +1137,8 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
   return Status::OK();
 }
 
-void MIGraphXExecutionProvider::RegisterStreamHandlers(IStreamCommandHandleRegistry& stream_handle_registry) const {
-  auto allocator = GetAllocator(OrtMemTypeCPU);
+void MIGraphXExecutionProvider::RegisterStreamHandlers(IStreamCommandHandleRegistry& stream_handle_registry, AllocatorMap& allocators) const {
+  auto allocator = allocators[GetOrtDeviceByMemType(OrtMemTypeCPU)];
   RegisterRocmStreamHandles(stream_handle_registry, OrtDevice::GPU, allocator, true, stream_, false /*TODO:external_stream_*/, external_miopen_handle_, external_rocblas_handle_);
 }
 

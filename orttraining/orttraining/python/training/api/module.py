@@ -9,7 +9,7 @@ import numpy as np
 
 from onnxruntime.capi import _pybind_state as C
 from onnxruntime.capi.onnxruntime_inference_collection import OrtValue, get_ort_device_type
-from onnxruntime.capi.onnxruntime_pybind11_state import OrtValueVector
+from onnxruntime.capi.onnxruntime_pybind11_state import OrtValueVector, SessionOptions
 from onnxruntime.training.api.checkpoint_state import CheckpointState
 
 
@@ -33,6 +33,7 @@ class Module:
         state: The checkpoint state object.
         eval_model_uri: The path to the evaluation model.
         device: The device to run the model on. Default is "cpu".
+        session_options: The session options to use for the model.
     """
 
     training: bool
@@ -43,11 +44,13 @@ class Module:
         state: CheckpointState,
         eval_model_uri: os.PathLike | None = None,
         device: str = "cpu",
+        session_options: SessionOptions | None = None,
     ) -> None:
         self.training = True
         options = device.split(":")
         self._device_type = options[0]
         device_id = 0 if len(options) < 2 else int(options[1])
+        self._session_options = session_options if session_options is not None else SessionOptions()
 
         self._device = C.OrtDevice(
             get_ort_device_type(self._device_type, device_id),
@@ -59,42 +62,57 @@ class Module:
             state._state,
             os.fspath(eval_model_uri) if eval_model_uri is not None else None,
             self._device,
+            self._session_options,
         )
         self._state = state
 
-    def __call__(self, *user_inputs) -> tuple[np.ndarray] | np.ndarray:
+    def __call__(self, *user_inputs) -> tuple[np.ndarray, ...] | np.ndarray | tuple[OrtValue, ...] | OrtValue:
         """Invokes either the training or the evaluation step of the model.
 
         Args:
             *user_inputs: The inputs to the model.
+                          The user inputs can be either numpy arrays or OrtValues.
         Returns:
             The outputs of the model.
         """
-        is_np_input = False
-        forward_inputs = OrtValueVector()
-        forward_inputs.reserve(len(user_inputs))
-        for tensor in user_inputs:
-            if isinstance(tensor, np.ndarray):
-                is_np_input = True
-                forward_inputs.push_back(OrtValue.ortvalue_from_numpy(tensor)._ortvalue)
-            elif isinstance(tensor, OrtValue):
-                forward_inputs.push_back(tensor._ortvalue)
+
+        def _has_np_input(user_inputs):
+            return any(isinstance(user_input, np.ndarray) for user_input in user_inputs)
+
+        def _take_generic_step(forward_inputs):
+            fetches = OrtValueVector()
+            if self.training:
+                self._model.train_step(forward_inputs, fetches)
             else:
-                raise ValueError(f"Expected input of type: numpy array or OrtValue, actual: {type(tensor)}")
-        fetches = OrtValueVector()
+                self._model.eval_step(forward_inputs, fetches)
 
-        if self.training:
-            self._model.train_step(forward_inputs, fetches)
-        else:
-            self._model.eval_step(forward_inputs, fetches)
-
-        if len(fetches) == 1:
-            if is_np_input:
+            if len(fetches) == 1:
                 return fetches[0].numpy()
 
-            return fetches[0]
+            return tuple(val.numpy() for val in fetches)
 
-        return tuple(val.numpy() for val in fetches) if is_np_input else tuple(fetches)
+        def _take_step_with_ortvalues(forward_inputs):
+            ort_values = OrtValueVector()
+            ort_values.reserve(len(forward_inputs))
+            fetches = OrtValueVector()
+
+            for tensor in forward_inputs:
+                ort_values.push_back(tensor._ortvalue)
+
+            if self.training:
+                self._model.train_step_with_ort_values(ort_values, fetches)
+            else:
+                self._model.eval_step_with_ort_values(ort_values, fetches)
+
+            if len(fetches) == 1:
+                return OrtValue(fetches[0])
+
+            return tuple(OrtValue(val) for val in fetches)
+
+        if _has_np_input(user_inputs):
+            return _take_generic_step([*user_inputs])
+
+        return _take_step_with_ortvalues(user_inputs)
 
     def train(self, mode: bool = True) -> Module:
         """Sets the Module in training mode.

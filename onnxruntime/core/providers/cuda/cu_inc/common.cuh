@@ -146,20 +146,20 @@ __device__ __forceinline__ BFloat16& operator/=(BFloat16& a, const BFloat16& b) 
 
 /// Arithmetic with floats
 
-__device__ __forceinline__ float operator+(BFloat16 a, float b) { return static_cast<float>(a) + b; }
-__device__ __forceinline__ float operator-(BFloat16 a, float b) { return static_cast<float>(a) - b; }
-__device__ __forceinline__ float operator*(BFloat16 a, float b) { return static_cast<float>(a) * b; }
-__device__ __forceinline__ float operator/(BFloat16 a, float b) { return static_cast<float>(a) / b; }
+__device__ __forceinline__ float operator+(BFloat16 a, float b) { return a + b; }
+__device__ __forceinline__ float operator-(BFloat16 a, float b) { return a - b; }
+__device__ __forceinline__ float operator*(BFloat16 a, float b) { return a * b; }
+__device__ __forceinline__ float operator/(BFloat16 a, float b) { return a / b; }
 
-__device__ __forceinline__ float operator+(float a, BFloat16 b) { return a + static_cast<float>(b); }
-__device__ __forceinline__ float operator-(float a, BFloat16 b) { return a - static_cast<float>(b); }
-__device__ __forceinline__ float operator*(float a, BFloat16 b) { return a * static_cast<float>(b); }
-__device__ __forceinline__ float operator/(float a, BFloat16 b) { return a / static_cast<float>(b); }
+__device__ __forceinline__ float operator+(float a, BFloat16 b) { return a + b; }
+__device__ __forceinline__ float operator-(float a, BFloat16 b) { return a - b; }
+__device__ __forceinline__ float operator*(float a, BFloat16 b) { return a * b; }
+__device__ __forceinline__ float operator/(float a, BFloat16 b) { return a / b; }
 
-__device__ __forceinline__ float& operator+=(float& a, const BFloat16& b) { return a += static_cast<float>(b); }
-__device__ __forceinline__ float& operator-=(float& a, const BFloat16& b) { return a -= static_cast<float>(b); }
-__device__ __forceinline__ float& operator*=(float& a, const BFloat16& b) { return a *= static_cast<float>(b); }
-__device__ __forceinline__ float& operator/=(float& a, const BFloat16& b) { return a /= static_cast<float>(b); }
+__device__ __forceinline__ float& operator+=(float& a, const BFloat16& b) { return a += b; }
+__device__ __forceinline__ float& operator-=(float& a, const BFloat16& b) { return a -= b; }
+__device__ __forceinline__ float& operator*=(float& a, const BFloat16& b) { return a *= b; }
+__device__ __forceinline__ float& operator/=(float& a, const BFloat16& b) { return a /= b; }
 
 /// Arithmetic with doubles
 
@@ -380,6 +380,14 @@ __device__ __inline__ BFloat16 _Normcdf(BFloat16 a) { return normcdff(static_cas
 template <typename T>
 __device__ __inline__ T _Gelu(T a) {
   return a * _Normcdf(a);
+}
+
+template <>
+__device__ __inline__ half _Gelu(half a) {
+  const half kHalf = half(0.5);
+  const half kOne = half(1.0);
+  const half kAlpha = half(M_SQRT1_2);
+  return a * kHalf * (kOne + _Erf(kAlpha * a));
 }
 
 template <typename T>

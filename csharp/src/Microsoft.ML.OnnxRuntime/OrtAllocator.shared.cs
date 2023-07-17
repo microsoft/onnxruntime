@@ -102,9 +102,8 @@ namespace Microsoft.ML.OnnxRuntime
 
         private static OrtMemoryInfo CreateCpuMemoryInfo()
         {
-            IntPtr memoryInfo = IntPtr.Zero;
             // Returns OrtMemoryInfo instance that needs to be disposed
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateCpuMemoryInfo(OrtAllocatorType.DeviceAllocator, OrtMemType.Cpu, out memoryInfo));
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateCpuMemoryInfo(OrtAllocatorType.DeviceAllocator, OrtMemType.Cpu, out IntPtr memoryInfo));
             return new OrtMemoryInfo(memoryInfo, true);
         }
 
@@ -226,8 +225,7 @@ namespace Microsoft.ML.OnnxRuntime
         {
             get
             {
-                int id = 0;
-                NativeApiStatus.VerifySuccess(NativeMethods.OrtMemoryInfoGetId(handle, out id));
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtMemoryInfoGetId(handle, out int id));
                 return id;
             }
         }
@@ -240,8 +238,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// <returns>OrtMemoryType for the instance</returns>
         public OrtMemType GetMemoryType()
         {
-            OrtMemType memoryType = OrtMemType.Default;
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtMemoryInfoGetMemType(handle, out memoryType));
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtMemoryInfoGetMemType(handle, out OrtMemType memoryType));
             return memoryType;
         }
 
@@ -251,8 +248,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// <returns>Returns allocator type</returns>
         public OrtAllocatorType GetAllocatorType()
         {
-            OrtAllocatorType allocatorType = OrtAllocatorType.ArenaAllocator;
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtMemoryInfoGetType(handle, out allocatorType));
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtMemoryInfoGetType(handle, out OrtAllocatorType allocatorType));
             return allocatorType;
         }
 
@@ -263,8 +259,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// <returns>true if obj is an instance of OrtMemoryInfo and is equal to this</returns>
         public override bool Equals(object obj)
         {
-            var other = obj as OrtMemoryInfo;
-            if (other == null)
+            if (!(obj is OrtMemoryInfo other))
             {
                 return false;
             }
@@ -282,8 +277,7 @@ namespace Microsoft.ML.OnnxRuntime
             {
                 return true;
             }
-            int result = -1;
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtCompareMemoryInfo(handle, other.Pointer, out result));
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtCompareMemoryInfo(handle, other.Pointer, out int result));
             return (result == 0);
         }
 
@@ -325,6 +319,7 @@ namespace Microsoft.ML.OnnxRuntime
     /// The memory is assumed to be pinned if necessary and usable immediately
     /// in the native code.
     /// </summary>
+    [Obsolete("Create OrtValue over an arbitrary piece of memory and use it where appropriate.")]
     public class OrtExternalAllocation
     {
         /// <summary>
@@ -337,22 +332,18 @@ namespace Microsoft.ML.OnnxRuntime
         /// <param name="sizeInBytes">size of the allocation in bytes</param>
         public OrtExternalAllocation(OrtMemoryInfo memInfo, long[] shape, Tensors.TensorElementType elementType, IntPtr pointer, long sizeInBytes)
         {
-            Type type;
-            int width;
-            if (!TensorElementTypeConverter.GetTypeAndWidth(elementType, out type, out width))
-            {
-                throw new OnnxRuntimeException(ErrorCode.InvalidArgument,
-                    "Unable to query type information for data type: " + elementType.ToString());
-            }
 
-            if (elementType == TensorElementType.String)
+            var typeInfo = TensorBase.GetElementTypeInfo(elementType) ?? throw new OnnxRuntimeException(ErrorCode.InvalidArgument,
+                                       $"Tensor element type: {elementType} is not supported");
+
+            if (typeInfo.IsString)
             {
                 throw new OnnxRuntimeException(ErrorCode.InvalidArgument,
                     "Strings are not supported by this API");
             }
 
             var shapeSize = ArrayUtilities.GetSizeForShape(shape);
-            var requiredBufferSize = shapeSize * width;
+            var requiredBufferSize = shapeSize * typeInfo.TypeSize;
             if (requiredBufferSize > sizeInBytes)
             {
                 var message = String.Format("Shape of {0} elements requires a buffer of at least {1} bytes. Provided: {2} bytes",
@@ -477,8 +468,7 @@ namespace Microsoft.ML.OnnxRuntime
 
         private static OrtAllocator GetDefaultCpuAllocator()
         {
-            IntPtr allocator = IntPtr.Zero;
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtGetAllocatorWithDefaultOptions(out allocator));
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtGetAllocatorWithDefaultOptions(out IntPtr allocator));
             // Instance of default cpu allocator is a native singleton
             // Do not dispose of
             return new OrtAllocator(allocator, false);
@@ -543,8 +533,7 @@ namespace Microsoft.ML.OnnxRuntime
         {
             get
             {
-                IntPtr memoryInfo = IntPtr.Zero;
-                NativeApiStatus.VerifySuccess(NativeMethods.OrtAllocatorGetInfo(handle, out memoryInfo));
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtAllocatorGetInfo(handle, out IntPtr memoryInfo));
                 // This serves as an exposure of memory_info owned by the allocator
                 return new OrtMemoryInfo(memoryInfo, false);
             }
@@ -557,8 +546,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// <returns>Instance of OrtMemoryAllocation</returns>
         public OrtMemoryAllocation Allocate(uint size)
         {
-            IntPtr allocation = IntPtr.Zero;
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtAllocatorAlloc(handle, (UIntPtr)size, out allocation));
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtAllocatorAlloc(handle, (UIntPtr)size, out IntPtr allocation));
             return new OrtMemoryAllocation(this, allocation, size);
         }
 

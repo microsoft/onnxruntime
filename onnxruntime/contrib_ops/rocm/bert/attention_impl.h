@@ -98,28 +98,6 @@ Status LaunchConcatTensorToTensor(hipStream_t stream,
                                   const half* tensor_add,
                                   half* tensor_out);
 
-Status LaunchConcatPastToPresent(hipStream_t stream,
-                                 const int all_sequence_length,
-                                 const int sequence_length,
-                                 const int batch_size,
-                                 const int head_size,
-                                 const int num_heads,
-                                 const int max_threads_per_block,
-                                 const float* past,
-                                 const float* k_v,
-                                 float* present);
-
-Status LaunchConcatPastToPresent(hipStream_t stream,
-                                 const int all_sequence_length,
-                                 const int sequence_length,
-                                 const int batch_size,
-                                 const int head_size,
-                                 const int num_heads,
-                                 const int max_threads_per_block,
-                                 const half* past,
-                                 const half* k_v,
-                                 half* present);
-
 inline rocblas_status _compat_rocblas_gemm_strided_batched_ex(rocblas_handle handle,
                                                               rocblas_operation transa,
                                                               rocblas_operation transb,
@@ -182,6 +160,12 @@ class CompatRocblasMathModeSetter {
   }
 };
 
+enum AttentionType {
+  kAttention,
+  kMultiHeadAttention,
+  kDecoderMaskedMultiHeadAttention,
+};
+
 enum AttentionMode {
   // Q,K,V,PastK,PastV,PresentK,PresentV
   QFMT_KFMT_VFMT_NONE_NONE_NONE_NONE,
@@ -191,6 +175,10 @@ enum AttentionMode {
   QFMT_KFMT_VFMT_2BNMH_NONE_2BNMH_NONE,
   BSNH_BLNH_BLNH_NONE_NONE_NONE_NONE,
   BSNH_BNLH_BNLH_NONE_NONE_NONE_NONE,
+  BSNH_BLNH_BLNH_NONE_NONE_BNTH_BNTH,
+  BSNH_BNLH_BNLH_NONE_NONE_BNTH_BNTH,
+  BSNH_BLNH_BLNH_NONE_NONE_BNMH_BNMH,
+  BSNH_BNLH_BNLH_NONE_NONE_BNMH_BNMH,
   BSNH_BLNH_BLNH_BNPH_BNPH_BNTH_BNTH,
   BSNH_BNLH_BNLH_BNPH_BNPH_BNTH_BNTH,
   BSNH_BLNH_BLNH_BNMH_BNMH_BNMH_BNMH,
@@ -203,12 +191,17 @@ struct RocmAttentionParameters : AttentionParameters {
   AttentionMode mode;
 };
 
-Status ClassifyAttentionMode(const std::string& op,
+Status ClassifyAttentionMode(AttentionType type,
                              RocmAttentionParameters* attn,
                              const std::vector<const Tensor*>& qkv,
                              const std::vector<const Tensor*>& past,
                              const std::vector<Tensor*>& present);
 
+template <typename T>
+Status LaunchStridedCopy(hipStream_t stream,
+                         const T* in, int4 in_shape, longlong4 in_strides,  // coord (b,n,s,h)
+                         T* out, longlong4 out_strides,                     // coord (b,n,s,h)
+                         int max_threads_per_block);
 }  // namespace rocm
 }  // namespace contrib
 }  // namespace onnxruntime

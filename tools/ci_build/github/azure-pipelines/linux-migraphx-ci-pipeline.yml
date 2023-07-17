@@ -1,23 +1,32 @@
 trigger: none
 
 name: 'linux_ci_$(Date:yyyyMMdd)_$(Rev:r)'
+
+# gid of video and render group on gcramdrr1-mi100-085 and -86
+variables:
+  - name: video
+    value: 44
+  - name: render
+    value: 109
+  - name: RocmVersion
+    value: 5.5
+
 jobs:
-- job: AMDMIGraphX_CI
+- job: Linux_Build
+  variables:
+    skipComponentGovernanceDetection: true
+    CCACHE_DIR: $(Pipeline.Workspace)/ccache
+    TODAY: $[format('{0:dd}{0:MM}{0:yyyy}', pipeline.startTime)]
   workspace:
     clean: all
-  pool: 'AMD-GPU'
-  timeoutInMinutes: 180
-
-  # gid of video and render group on gcramdrr1-mi100-085 and -86
-  variables:
-    - name: video
-      value: 44
-    - name: render
-      value: 109
-    - name: RocmVersion
-      value: 5.5
+  pool: onnxruntime-Ubuntu2004-AMD-CPU
+  timeoutInMinutes: 120
 
   steps:
+  - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
+    displayName: 'Clean Agent Directories'
+    condition: always()
+
   - checkout: self
     clean: true
     submodules: recursive
@@ -26,8 +35,21 @@ jobs:
     parameters:
       Dockerfile: tools/ci_build/github/linux/docker/migraphx-ci-pipeline-env.Dockerfile
       Context: tools/ci_build/github/linux/docker
-      DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )"
       Repository: onnxruntimetrainingmigraphx-cibuild-rocm$(RocmVersion)
+
+  - task: Cache@2
+    inputs:
+      key: '"$(TODAY)" | "$(Build.SourceBranch)" | "$(Build.SourceVersion)"'
+      path: $(CCACHE_DIR)
+      cacheHitVar: CACHE_RESTORED
+      restoreKeys: |
+        "$(TODAY)" | "$(Build.SourceBranch)"
+        "$(TODAY)" |
+    displayName: Cache Task
+
+  - script: mkdir -p $(CCACHE_DIR)
+    condition: ne(variables.CACHE_RESTORED, 'true')
+    displayName: Create Cache Dir
 
   - task: CmdLine@2
     inputs:
@@ -35,15 +57,17 @@ jobs:
         docker run --rm \
           --security-opt seccomp=unconfined \
           --shm-size=1024m \
-          --device=/dev/kfd \
-          --device=/dev/dri/renderD$DRIVER_RENDER \
-          --group-add $(video) \
-          --group-add $(render) \
-          --user onnxruntimedev \
+          --user $UID:$(id -g $USER) \
           --volume $(Build.SourcesDirectory):/onnxruntime_src \
           --volume $(Build.BinariesDirectory):/build \
+          --volume $(CCACHE_DIR):/cache \
+          -e CCACHE_DIR=/cache \
           --workdir /onnxruntime_src \
           onnxruntimetrainingmigraphx-cibuild-rocm$(RocmVersion) \
+          /bin/bash -c "
+            set -ex; \
+            env; \
+            ccache -s; \
             python tools/ci_build/build.py \
               --config Release \
               --cmake_extra_defines \
@@ -58,12 +82,56 @@ jobs:
               --update \
               --build_dir /build \
               --build \
-              --parallel 32 \
+              --parallel \
               --build_wheel \
               --skip_submodule_sync \
-              --skip_tests --cmake_path /usr/bin/cmake --ctest_path /usr/bin/ctest
+              --use_cache \
+              --skip_tests --cmake_path /usr/bin/cmake --ctest_path /usr/bin/ctest; \
+            ccache -sv; \
+            ccache -z"
       workingDirectory: $(Build.SourcesDirectory)
     displayName: 'Build onnxruntime'
+
+  - task: CmdLine@2
+    inputs:
+      script: |
+        cd $(Build.BinariesDirectory)/Release
+        find -executable -type f > $(Build.BinariesDirectory)/Release/perms.txt
+    displayName: 'Find Executable Files'
+
+  - task: PublishPipelineArtifact@0
+    displayName: 'Publish Pipeline Artifact'
+    inputs:
+      artifactName: 'drop-linux'
+      targetPath: '$(Build.BinariesDirectory)/Release'
+
+  - template: templates/explicitly-defined-final-tasks.yml
+
+- job: Linux_Test
+  workspace:
+    clean: all
+  pool: AMD-GPU
+  dependsOn:
+  - Linux_Build
+  timeoutInMinutes: 120
+
+  steps:
+  - task: DownloadPipelineArtifact@2
+    displayName: 'Download Pipeline Artifact'
+    inputs:
+      buildType: 'current'
+      artifactName: 'drop-linux'
+      targetPath: '$(Build.BinariesDirectory)/Release'
+
+  - checkout: self
+    clean: true
+    submodules: recursive
+
+  - template: templates/get-docker-image-steps.yml
+    parameters:
+      Dockerfile: tools/ci_build/github/linux/docker/migraphx-ci-pipeline-env.Dockerfile
+      Context: tools/ci_build/github/linux/docker
+      Repository: onnxruntimetrainingmigraphx-cibuild-rocm$(RocmVersion)
 
   - task: CmdLine@2
     inputs:
@@ -75,12 +143,15 @@ jobs:
           --device=/dev/dri/renderD$DRIVER_RENDER \
           --group-add $(video) \
           --group-add $(render) \
-          --user onnxruntimedev \
+          --user $UID:$(id -g $USER) \
           --volume $(Build.SourcesDirectory):/onnxruntime_src \
           --volume $(Build.BinariesDirectory):/build \
           --workdir /build/Release \
           onnxruntimetrainingmigraphx-cibuild-rocm$(RocmVersion) \
-            /onnxruntime_src/tools/ci_build/github/pai/migraphx_test_launcher.sh
+          /bin/bash -c "
+            set -ex; \
+            cd /build/Release && xargs -a /build/Release/perms.txt chmod a+x; \
+            bash /onnxruntime_src/tools/ci_build/github/pai/migraphx_test_launcher.sh"
       workingDirectory: $(Build.SourcesDirectory)
     displayName: 'Run onnxruntime unit tests'
 

@@ -238,6 +238,27 @@ NS_ASSUME_NONNULL_BEGIN
                                                   error:&err];
   ORTAssertNullableResultSuccessful(session, err);
 }
+
+static bool gDummyRegisterCustomOpsFnCalled = false;
+
+static OrtStatus* _Nullable DummyRegisterCustomOpsFn(OrtSessionOptions* /*session_options*/,
+                                                     const OrtApiBase* /*api*/) {
+  gDummyRegisterCustomOpsFnCalled = true;
+  return nullptr;
+}
+
+- (void)testRegisterCustomOpsUsingFunctionPointer {
+  NSError* err = nil;
+  ORTSessionOptions* sessionOptions = [ORTSessionTest makeSessionOptions];
+
+  gDummyRegisterCustomOpsFnCalled = false;
+  BOOL registerResult = [sessionOptions registerCustomOpsUsingFunctionPointer:&DummyRegisterCustomOpsFn
+                                                                        error:&err];
+  ORTAssertBoolResultSuccessful(registerResult, err);
+
+  XCTAssertEqual(gDummyRegisterCustomOpsFnCalled, true);
+}
+
 @end
 
 NS_ASSUME_NONNULL_END

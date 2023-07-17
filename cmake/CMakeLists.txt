@@ -5,8 +5,6 @@
 if(WIN32)
   # TODO: actually we need cmake 3.26+ on Windows but QNN EP's build machine doesn't have it
   cmake_minimum_required(VERSION 3.25)
-elseif(onnxruntime_USE_ROCM)
-  cmake_minimum_required(VERSION 3.24)
 else()
   cmake_minimum_required(VERSION 3.26)
 endif()
@@ -219,6 +217,9 @@ option(onnxruntime_ENABLE_CPUINFO "Enable cpuinfo" ON)
 # ATen fallback support
 option(onnxruntime_ENABLE_ATEN "Enable ATen fallback" OFF)
 
+# Triton support
+option(onnxruntime_ENABLE_TRITON "Enable Triton" OFF)
+
 # composable kernel is managed automatically, unless user want to explicitly disable it, it should not be manually set
 option(onnxruntime_USE_COMPOSABLE_KERNEL "Enable composable kernel for ROCm EP" ON)
 option(onnxruntime_USE_ROCBLAS_EXTENSION_API "Enable rocblas tuning for ROCm EP" OFF)
@@ -249,6 +250,7 @@ if (onnxruntime_ENABLE_TRAINING)
   set(onnxruntime_ENABLE_TRAINING_APIS ON)
   set(onnxruntime_ENABLE_TRAINING_TORCH_INTEROP ON)
   set(onnxruntime_ENABLE_ATEN ON)
+  set(onnxruntime_ENABLE_TRITON ON)
 endif()
 
 if (onnxruntime_ENABLE_TRAINING_APIS)
@@ -411,9 +413,27 @@ if (NOT (UNIX AND onnxruntime_ENABLE_PYTHON AND onnxruntime_ENABLE_TRAINING AND 
   set(onnxruntime_ENABLE_TRAINING_TORCH_INTEROP OFF)
 endif()
 
+if (NOT (UNIX AND onnxruntime_USE_CUDA AND onnxruntime_ENABLE_PYTHON AND onnxruntime_ENABLE_TRAINING AND (NOT onnxruntime_BUILD_SHARED_LIB)))
+  if (onnxruntime_ENABLE_TRITON)
+    message(WARNING "onnxruntime_ENABLE_TRITON is turned OFF because it's designed to support CUDA training on Linux only currently.")
+  endif()
+  set(onnxruntime_ENABLE_TRITON OFF)
+endif()
+
 set(onnxruntime_REQUIRE_PYTHON_EMBED_LIB OFF)
 if (onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
   add_compile_definitions(ENABLE_TRAINING_TORCH_INTEROP)
+
+  # Python::Python is required for building unit test executables.
+  if (onnxruntime_BUILD_UNIT_TESTS)
+    set(onnxruntime_REQUIRE_PYTHON_EMBED_LIB ON)
+  endif()
+endif()
+
+if (onnxruntime_ENABLE_TRITON)
+  # Need SetOutputMLValue.
+  set(onnxruntime_ENABLE_ATEN ON)
+  add_compile_definitions(ENABLE_TRITON)
 
   # Python::Python is required for building unit test executables.
   if (onnxruntime_BUILD_UNIT_TESTS)
@@ -552,30 +572,31 @@ if (WIN32)
     endif()
 
 else()
+  check_cxx_compiler_flag(-Wambiguous-reversed-operator HAS_AMBIGUOUS_REVERSED_OPERATOR)
+  check_cxx_compiler_flag(-Wbitwise-instead-of-logical HAS_BITWISE_INSTEAD_OF_LOGICAL)
+  check_cxx_compiler_flag(-Wcast-function-type HAS_CAST_FUNCTION_TYPE)
+  check_cxx_compiler_flag(-Wcatch-value HAS_CATCH_VALUE)
+  check_cxx_compiler_flag(-Wclass-memaccess HAS_CLASS_MEMACCESS)
+  check_cxx_compiler_flag(-Wdeprecated-anon-enum-enum-conversion HAS_DEPRECATED_ANON_ENUM_ENUM_CONVERSION)
+  check_cxx_compiler_flag(-Wdeprecated-builtins HAS_DEPRECATED_BUILTINS)
+  check_cxx_compiler_flag(-Wdeprecated-copy HAS_DEPRECATED_COPY)
+  check_cxx_compiler_flag(-Wdeprecated-declarations HAS_DEPRECATED_DECLARATIONS)
+  check_cxx_compiler_flag(-Wenum-constexpr-conversion HAS_ENUM_CONSTEXPR_CONVERSION)
+  check_cxx_compiler_flag(-Wformat-truncation HAS_FORMAT_TRUNCATION)
+  check_cxx_compiler_flag(-Wignored-attributes HAS_IGNORED_ATTRIBUTES)
+  check_cxx_compiler_flag(-Wmaybe-uninitialized HAS_MAYBE_UNINITIALIZED)
+  check_cxx_compiler_flag(-Wmissing-braces HAS_MISSING_BRACES)
+  check_cxx_compiler_flag(-Wnonnull-compare HAS_NONNULL_COMPARE)
+  check_cxx_compiler_flag(-Wparentheses HAS_PARENTHESES)
+  check_cxx_compiler_flag(-Wshorten-64-to-32 HAS_SHORTEN_64_TO_32)
+  check_cxx_compiler_flag(-Wstrict-aliasing HAS_STRICT_ALIASING)
+  check_nvcc_compiler_flag(-Wstrict-aliasing NVCC_HAS_STRICT_ALIASING)
+  check_cxx_compiler_flag(-Wtautological-pointer-compare HAS_TAUTOLOGICAL_POINTER_COMPARE)
+  check_cxx_compiler_flag(-Wundefined-var-template HAS_UNDEFINED_VAR_TEMPLATE)
   check_cxx_compiler_flag(-Wunused-but-set-parameter HAS_UNUSED_BUT_SET_PARAMETER)
   check_cxx_compiler_flag(-Wunused-but-set-variable HAS_UNUSED_BUT_SET_VARIABLE)
   check_cxx_compiler_flag(-Wunused-variable HAS_UNUSED_VARIABLE)
-  check_cxx_compiler_flag(-Wcast-function-type HAS_CAST_FUNCTION_TYPE)
-  check_cxx_compiler_flag(-Wparentheses HAS_PARENTHESES)
   check_cxx_compiler_flag(-Wuseless-cast HAS_USELESS_CAST)
-  check_cxx_compiler_flag(-Wnonnull-compare HAS_NONNULL_COMPARE)
-  check_cxx_compiler_flag(-Wtautological-pointer-compare HAS_TAUTOLOGICAL_POINTER_COMPARE)
-  check_cxx_compiler_flag(-Wcatch-value HAS_CATCH_VALUE)
-  check_cxx_compiler_flag(-Wmissing-braces HAS_MISSING_BRACES)
-  check_cxx_compiler_flag(-Wignored-attributes HAS_IGNORED_ATTRIBUTES)
-  check_cxx_compiler_flag(-Wdeprecated-copy HAS_DEPRECATED_COPY)
-  check_cxx_compiler_flag(-Wdeprecated-declarations HAS_DEPRECATED_DECLARATIONS)
-  check_cxx_compiler_flag(-Wclass-memaccess HAS_CLASS_MEMACCESS)
-  check_cxx_compiler_flag(-Wmaybe-uninitialized HAS_MAYBE_UNINITIALIZED)
-  check_cxx_compiler_flag(-Wstrict-aliasing HAS_STRICT_ALIASING)
-  check_nvcc_compiler_flag(-Wstrict-aliasing NVCC_HAS_STRICT_ALIASING)
-  check_cxx_compiler_flag(-Wambiguous-reversed-operator HAS_AMBIGUOUS_REVERSED_OPERATOR)
-  check_cxx_compiler_flag(-Wdeprecated-anon-enum-enum-conversion HAS_DEPRECATED_ANON_ENUM_ENUM_CONVERSION)
-  check_cxx_compiler_flag(-Wundefined-var-template HAS_UNDEFINED_VAR_TEMPLATE)
-  check_cxx_compiler_flag(-Wformat-truncation HAS_FORMAT_TRUNCATION)
-  check_cxx_compiler_flag(-Wbitwise-instead-of-logical HAS_BITWISE_INSTEAD_OF_LOGICAL)
-  check_cxx_compiler_flag(-Wenum-constexpr-conversion HAS_ENUM_CONSTEXPR_CONVERSION)
-  check_cxx_compiler_flag(-Wdeprecated-builtins HAS_DEPRECATED_BUILTINS)
   check_function_exists(reallocarray HAS_REALLOCARRAY)
 
   if (HAS_TAUTOLOGICAL_POINTER_COMPARE)
@@ -608,6 +629,11 @@ else()
     if (TARGET libprotobuf-lite)
       target_compile_options(libprotobuf-lite PRIVATE "-Wno-enum-constexpr-conversion")
     endif()
+  endif()
+
+  # enable warning(s) that may not be on by default
+  if (HAS_SHORTEN_64_TO_32)
+    list(APPEND ORT_WARNING_FLAGS -Wshorten-64-to-32)
   endif()
 endif()
 
@@ -786,7 +812,7 @@ function(onnxruntime_set_compile_flags target_name)
     if(UNIX)
       target_compile_definitions(${target_name} PRIVATE PLATFORM_POSIX)
     endif()
-    target_compile_definitions(${target_name} PUBLIC EIGEN_USE_THREADS)
+    target_compile_definitions(${target_name} PRIVATE EIGEN_USE_THREADS)
     if (onnxruntime_DISABLE_CONTRIB_OPS)
       target_compile_definitions(${target_name} PRIVATE DISABLE_CONTRIB_OPS)
     endif()
@@ -796,17 +822,14 @@ function(onnxruntime_set_compile_flags target_name)
     endif()
 
     if (onnxruntime_DISABLE_SPARSE_TENSORS)
-      message(STATUS "DISABLE_SPARSE_TENSORS=ON")
       target_compile_definitions(${target_name} PRIVATE DISABLE_SPARSE_TENSORS)
     endif()
 
     if (onnxruntime_DISABLE_OPTIONAL_TYPE)
-      message(STATUS "DISABLE_OPTIONAL_TYPE=ON")
       target_compile_definitions(${target_name} PRIVATE DISABLE_OPTIONAL_TYPE)
     endif()
 
     if (onnxruntime_DISABLE_FLOAT8_TYPES)
-      message(STATUS "DISABLE_FLOAT8_TYPES=ON")
       target_compile_definitions(${target_name} PRIVATE DISABLE_FLOAT8_TYPES)
     endif()
 
@@ -841,9 +864,9 @@ function(onnxruntime_set_compile_flags target_name)
           endforeach()
         endif()
       endforeach()
-      target_compile_definitions(${target_name} PUBLIC -DPLATFORM_WINDOWS -DNOGDI -DNOMINMAX -D_USE_MATH_DEFINES -D_SILENCE_ALL_CXX17_DEPRECATION_WARNINGS)
+      target_compile_definitions(${target_name} PRIVATE -DPLATFORM_WINDOWS -DNOGDI -DNOMINMAX -D_USE_MATH_DEFINES -D_SILENCE_ALL_CXX17_DEPRECATION_WARNINGS)
       if (onnxruntime_ENABLE_MEMLEAK_CHECKER)
-        target_compile_definitions(${target_name} PUBLIC -DONNXRUNTIME_ENABLE_MEMLEAK_CHECK)
+        target_compile_definitions(${target_name} PRIVATE -DONNXRUNTIME_ENABLE_MEMLEAK_CHECK)
       endif()
       target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /utf-8>" "$<$<COMPILE_LANGUAGE:CXX,C>:/utf-8>")
       target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /sdl>" "$<$<COMPILE_LANGUAGE:CXX,C>:/sdl>")
@@ -936,7 +959,7 @@ function(onnxruntime_configure_target target_name)
     set_target_properties(${target_name} PROPERTIES VS_USER_PROPS ${PROJECT_SOURCE_DIR}/EnableVisualStudioCodeAnalysis.props)
   endif()
   target_include_directories(${target_name} PRIVATE ${CMAKE_CURRENT_BINARY_DIR} ${ONNXRUNTIME_ROOT} ${abseil_cpp_SOURCE_DIR})
-  if (onnxruntime_ENABLE_TRAINING_APIS)
+  if (onnxruntime_ENABLE_TRAINING_OPS)
     target_include_directories(${target_name} PRIVATE ${ORTTRAINING_ROOT})
   endif()
   if (onnxruntime_ENABLE_LTO)
@@ -978,6 +1001,15 @@ function(onnxruntime_add_shared_library_module target_name)
     #On Windows, this target shouldn't generate an import lib, but I don't know how to disable it.
     add_library(${target_name} MODULE ${ARGN})
   endif()
+
+  onnxruntime_configure_target(${target_name})
+  if (MSVC AND onnxruntime_target_platform STREQUAL "x86")
+    target_link_options(${target_name} PRIVATE /SAFESEH)
+  endif()
+endfunction()
+
+function(onnxruntime_add_object_library target_name)
+  add_library(${target_name} OBJECT ${ARGN})
 
   onnxruntime_configure_target(${target_name})
   if (MSVC AND onnxruntime_target_platform STREQUAL "x86")
@@ -1286,7 +1318,8 @@ endif()
 string(APPEND ORT_BUILD_INFO "build type=${CMAKE_BUILD_TYPE}")
 string(APPEND ORT_BUILD_INFO ", cmake cxx flags: ${CMAKE_CXX_FLAGS}")
 configure_file(onnxruntime_config.h.in ${CMAKE_CURRENT_BINARY_DIR}/onnxruntime_config.h)
-if (WIN32)
+get_property(onnxruntime_GENERATOR_IS_MULTI_CONFIG GLOBAL PROPERTY GENERATOR_IS_MULTI_CONFIG)
+if (onnxruntime_GENERATOR_IS_MULTI_CONFIG)
   configure_file(../requirements.txt.in ${CMAKE_CURRENT_BINARY_DIR}/Debug/requirements.txt)
   configure_file(../requirements.txt.in ${CMAKE_CURRENT_BINARY_DIR}/Release/requirements.txt)
   configure_file(../requirements.txt.in ${CMAKE_CURRENT_BINARY_DIR}/RelWithDebInfo/requirements.txt)
@@ -1671,4 +1704,32 @@ if (onnxruntime_ENABLE_EXTERNAL_CUSTOM_OP_SCHEMAS)
     WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/external/protobuf/cmake
     COMMENT "Installing protobuf"
   )
+endif()
+
+if(TARGET onnxruntime)
+# Install
+  include(GNUInstallDirs)
+  include(CMakePackageConfigHelpers)
+  set(PROJECT_CONFIG_CONTENT "@PACKAGE_INIT@\n")
+  string(APPEND PROJECT_CONFIG_CONTENT
+        "include(\"\${CMAKE_CURRENT_LIST_DIR}/${PROJECT_NAME}Targets.cmake\")")
+  file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/PROJECT_CONFIG_FILE" ${PROJECT_CONFIG_CONTENT})
+  install(EXPORT ${PROJECT_NAME}Targets
+    NAMESPACE ${PROJECT_NAME}::
+    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/${PROJECT_NAME})
+# Create config for find_package()
+  configure_package_config_file(
+    "${CMAKE_CURRENT_BINARY_DIR}/PROJECT_CONFIG_FILE" ${PROJECT_NAME}Config.cmake
+    INSTALL_DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/${PROJECT_NAME}")
+
+  write_basic_package_version_file(
+    "${PROJECT_BINARY_DIR}/${PROJECT_NAME}ConfigVersion.cmake"
+    VERSION ${ORT_VERSION}
+    COMPATIBILITY SameMajorVersion)
+
+  install(
+    FILES
+    "${PROJECT_BINARY_DIR}/${PROJECT_NAME}Config.cmake"
+    "${PROJECT_BINARY_DIR}/${PROJECT_NAME}ConfigVersion.cmake"
+    DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/${PROJECT_NAME}")
 endif()

@@ -276,18 +276,9 @@ QNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer
   const auto& logger = *GetLogger();
   bool load_from_cached_context = false;
   if (context_cache_enabled_) {
-    onnxruntime::PathString context_cache_pathstring;
-    load_from_cached_context = IsContextCacheFileExists(graph_viewer.ModelPath().ToPathString(),
-                                                        context_cache_pathstring);
-
-    // Get metadata from cached context binary file
-    if (load_from_cached_context) {
-      auto rt = qnn_backend_manager_->GetMetadataFromOrtContextFile(context_cache_pathstring);
-      if (Status::OK() != rt) {
-        LOGS(logger, ERROR) << "Failed to get metadata from cached context binary file. " << rt.ErrorMessage();
-        return result;
-      }
-    }
+    load_from_cached_context = qnn_backend_manager_->IsContextCacheFileExists(context_cache_path_,
+                                                                              graph_viewer.Description(),
+                                                                              graph_viewer.ModelPath().ToPathString());
   }
 
   // Load from cached context will load the QnnSystem lib and skip the Qnn context creation
@@ -334,16 +325,6 @@ QNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer
   if (supported_nodes.empty()) {
     LOGS(logger, INFO) << "Number of partitions supported by QNN EP: 0";
     return result;
-  } else if (supported_nodes.size() == 1) {
-    const auto* node = *supported_nodes.begin();
-    if (node->OpType() == "QuantizeLinear" || node->OpType() == "DequantizeLinear") {
-      LOGS(logger, WARNING) << "It doesn't make sense just run a Q/DQ node on HTP.";
-      LOGS(logger, WARNING) << "Number of partitions supported by QNN EP: 0";
-      if (disable_cpu_ep_fallback_) {
-        LOGS(logger, ERROR) << "Unsupported nodes in QNN EP: " << get_unsupported_node_names();
-      }
-      return result;
-    }
   }
 
   const auto gen_metadef_name = [&]() {
@@ -352,17 +333,50 @@ QNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer
     return MakeString(QNN, "_", model_hash, "_", metadef_id);
   };
 
-  result = utils::CreateSupportedPartitions(graph_viewer, supported_nodes, {},
-                                            gen_metadef_name, QNN, kQnnExecutionProvider, true);
-
-  const auto num_of_partitions = result.size();
-  const auto num_of_supported_nodes = std::transform_reduce(
-      result.begin(), result.end(),
-      size_t{0}, std::plus<>{},
-      [](const auto& partition) -> size_t {
-        return partition && partition->sub_graph ? partition->sub_graph->nodes.size() : 0;
-      });
   const size_t num_nodes_in_graph = static_cast<size_t>(graph_viewer.NumberOfNodes());
+  size_t num_of_supported_nodes = 0;
+
+  // Create partitions from supported nodes.
+  {
+    std::vector<std::unique_ptr<ComputeCapability>> partitions = utils::CreateSupportedPartitions(graph_viewer,
+                                                                                                  supported_nodes, {},
+                                                                                                  gen_metadef_name, QNN,
+                                                                                                  kQnnExecutionProvider,
+                                                                                                  true);
+
+    // Filter out partitions that consist of a single QuantizeLinear or DequantizeLinear node.
+    // We also count the number of supported nodes in all valid partitions.
+    for (auto& partition : partitions) {
+      bool is_valid_partition = true;
+      size_t nodes_in_partition = 0;
+
+      if (partition && partition->sub_graph) {
+        nodes_in_partition = partition->sub_graph->nodes.size();
+
+        if (nodes_in_partition == 1) {
+          const Node* node = graph_viewer.GetNode(partition->sub_graph->nodes[0]);
+
+          if (!node) {
+            LOGS(logger, ERROR) << "QNN EP: Invalid node in partition of one node.";
+            is_valid_partition = false;
+          } else if (node->OpType() == "QuantizeLinear" || node->OpType() == "DequantizeLinear") {
+            LOGS(logger, WARNING) << "QNN EP does not support a single Quantize/Dequantize node in a partition.";
+            is_valid_partition = false;
+          }
+        }
+      } else {
+        LOGS(logger, ERROR) << "QNN EP: Invalid partition.";
+        is_valid_partition = false;
+      }
+
+      if (is_valid_partition) {
+        result.push_back(std::move(partition));
+        num_of_supported_nodes += nodes_in_partition;
+      }
+    }
+  }
+
+  const size_t num_of_partitions = result.size();
 
   if (load_from_cached_context && 1 == num_of_partitions) {
     rt = qnn_backend_manager_->ValidateWithContextFile(GetFileNameFromModelPath(graph_viewer.ModelPath()),
@@ -444,19 +458,6 @@ Status QNNExecutionProvider::CompileFromOrtGraph(const std::vector<FusedNodeAndG
   return Status::OK();
 }
 
-bool QNNExecutionProvider::IsContextCacheFileExists(const onnxruntime::PathString& model_pathstring,
-                                                    onnxruntime::PathString& context_cache_pathstring) const {
-  // Use user provided context cache file path if exist, otherwise try model_file.onnx.bin by default
-  if (context_cache_path_.empty()) {
-    context_cache_pathstring = model_pathstring + ToPathString(".bin");
-  } else {
-    context_cache_pathstring = ToPathString(context_cache_path_);
-  }
-  bool context_cache_file_exist = std::filesystem::exists(context_cache_pathstring.c_str());
-
-  return context_cache_file_exist;
-}
-
 Status QNNExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
                                      std::vector<NodeComputeInfo>& node_compute_funcs) {
   const auto& logger = *GetLogger();
@@ -466,15 +467,18 @@ Status QNNExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused
     ORT_ENFORCE(fused_nodes_and_graphs.size() == 1, "Only support singel partition for context cache feature.");
     Node& fused_node = fused_nodes_and_graphs[0].fused_node;
     const onnxruntime::GraphViewer& graph_viewer(fused_nodes_and_graphs[0].filtered_graph);
-    onnxruntime::PathString context_cache_pathstring;
-    bool load_from_cached_context = IsContextCacheFileExists(graph_viewer.ModelPath().ToPathString(),
-                                                             context_cache_pathstring);
+    // The dumy_model_description won't be used since IsContextCacheFileExists call cached the result
+    // The graph_viewer.Description here is not same with original model
+    std::string dumy_model_description = "";
+    bool load_from_cached_context = qnn_backend_manager_->IsContextCacheFileExists(context_cache_path_,
+                                                                                   dumy_model_description,
+                                                                                   graph_viewer.ModelPath().ToPathString());
     // Load and execute from cached context if exist
     if (load_from_cached_context) {
       std::unique_ptr<qnn::QnnModel> qnn_model = std::make_unique<qnn::QnnModel>(logger,
                                                                                  qnn_backend_manager_.get(),
                                                                                  is_npu_backend);
-      ORT_RETURN_IF_ERROR(qnn_backend_manager_->LoadCachedQnnContext(context_cache_pathstring, *(qnn_model.get())));
+      ORT_RETURN_IF_ERROR(qnn_backend_manager_->LoadCachedQnnContext(*(qnn_model.get())));
       ORT_RETURN_IF_ERROR(qnn_model->SetGraphInputOutputInfo(graph_viewer, fused_node));
       ORT_RETURN_IF_ERROR(qnn_model->SetupQnnInputOutput());
 
@@ -490,8 +494,7 @@ Status QNNExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused
       ORT_RETURN_IF_ERROR(CompileFromOrtGraph(fused_nodes_and_graphs, node_compute_funcs, logger));
       // graph_viewer.Name() is generated in GetCapability, e.g QNN_[hash_id]_[id]
       // dump graph_viewer.Name() as metadata in context cache binary file, so that we can validate it in GetCapability
-      ORT_RETURN_IF_ERROR(qnn_backend_manager_->DumpQnnContext(context_cache_pathstring,
-                                                               GetFileNameFromModelPath(graph_viewer.ModelPath()),
+      ORT_RETURN_IF_ERROR(qnn_backend_manager_->DumpQnnContext(GetFileNameFromModelPath(graph_viewer.ModelPath()),
                                                                graph_viewer.Name()));
     }
     return Status::OK();

@@ -46,7 +46,9 @@ class StreamExecutionContext {
       return v_.fetch_sub(1, std::memory_order_relaxed) == 1;
     }
 
-    int32_t Get() { return v_.load(std::memory_order_relaxed); }
+    int32_t Get() {
+      return gsl::narrow_cast<int32_t>(v_.load(std::memory_order_relaxed));
+    }
 
     void Inc() {
       ++v_;

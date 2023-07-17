@@ -44,7 +44,6 @@ class IGemmSoftmaxGemmPermuteKernelExplorer : public IKernelExplorer {
     // total_sequence_length == kv_sequence_length
     attn_.kv_sequence_length = total_seqlen;
     attn_.past_sequence_length = 0;
-    attn_.original_past_sequence_length = 0;  // NOTE: not used
     attn_.total_sequence_length = total_seqlen;
     attn_.max_sequence_length = 0;
     attn_.hidden_size = num_heads * head_size;
@@ -276,8 +275,11 @@ class GemmSoftmaxGemmPermuteTunable : public IGemmSoftmaxGemmPermuteKernelExplor
   }
 
   void Run() override {
-    ORT_THROW_IF_ERROR(GemmSoftmaxGemmPermuteTunableOp<T>{}(&this->params_));
+    ORT_THROW_IF_ERROR(op_(&this->params_));
   }
+
+  // NOTE: this op is expensive to construct
+  GemmSoftmaxGemmPermuteTunableOp<T> op_{};
 };
 
 #define REGISTER_COMMON(name, type, ...)                                                          \

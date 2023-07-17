@@ -3,7 +3,7 @@ jobs:
   workspace:
     clean: all
   pool:
-    vmImage: 'macOS-12'
+    vmImage: 'macOS-13'
   variables:
     MACOSX_DEPLOYMENT_TARGET: '10.14'
     TODAY: $[format('{0:dd}{0:MM}{0:yyyy}', pipeline.startTime)]
@@ -13,6 +13,8 @@ jobs:
   - script: brew install coreutils ninja
     displayName: Install coreutils and ninja
 
+  - template: templates/use-xcode-version.yml
+
   - template: templates/mac-build-step-with-cache.yml
     parameters:
       WithCache: true
@@ -21,6 +23,7 @@ jobs:
       CacheDir: $(CCACHE_DIR)
       BuildStep:
       - script: |
+          set -e
           python3 tools/ci_build/build.py \
           --build_dir build \
           --skip_submodule_sync \

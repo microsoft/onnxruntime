@@ -60,7 +60,6 @@ class RegistrationValidator(op_registration_utils.RegistrationProcessor):
         start_version: int,
         end_version: typing.Optional[int] = None,
         type: typing.Optional[str] = None,
-        type2: typing.Optional[str] = None,
     ):
         self.all_registrations.append(
             RegistrationInfo(

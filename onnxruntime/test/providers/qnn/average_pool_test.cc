@@ -111,7 +111,7 @@ static void RunAveragePoolOpTest(const std::vector<int64_t>& shape,
                                  const std::vector<int64_t>& pads,
                                  int64_t count_include_pad,
                                  const std::string& auto_pad,
-                                 ExpectedEPNodeAssignment expected_ep_assignment, const char* test_description,
+                                 ExpectedEPNodeAssignment expected_ep_assignment,
                                  int opset = 18) {
   ProviderOptions provider_options;
 #if defined(_WIN32)
@@ -125,8 +125,7 @@ static void RunAveragePoolOpTest(const std::vector<int64_t>& shape,
                   provider_options,
                   opset,
                   expected_ep_assignment,
-                  expected_nodes_in_partition,
-                  test_description);
+                  expected_nodes_in_partition);
 }
 
 // Runs a QDQ AveragePool model on the QNN HTP backend. Checks the graph node assignment, and that inference
@@ -138,7 +137,7 @@ static void RunQDQAveragePoolOpTest(const std::vector<int64_t>& shape,
                                     const std::vector<int64_t>& pads,
                                     int64_t count_include_pad,
                                     const std::string& auto_pad,
-                                    ExpectedEPNodeAssignment expected_ep_assignment, const char* test_description,
+                                    ExpectedEPNodeAssignment expected_ep_assignment,
                                     int opset = 18, float fp32_abs_err = 1e-5f) {
   ProviderOptions provider_options;
 #if defined(_WIN32)
@@ -154,7 +153,6 @@ static void RunQDQAveragePoolOpTest(const std::vector<int64_t>& shape,
                   opset,
                   expected_ep_assignment,
                   expected_nodes_in_partition,
-                  test_description,
                   fp32_abs_err);
 }
 
@@ -170,7 +168,7 @@ TEST_F(QnnCPUBackendTests, TestAveragePool_Global) {
                        {0, 0, 0, 0},  // pads
                        0,             // count_include_pad
                        "NOTSET",
-                       ExpectedEPNodeAssignment::All, "TestAveragePool_Global");
+                       ExpectedEPNodeAssignment::All);
 }
 
 // AveragePool that counts padding.
@@ -181,7 +179,7 @@ TEST_F(QnnCPUBackendTests, TestAveragePool_CountIncludePad) {
                        {0, 0, 0, 0},  // pads
                        1,             // count_include_pad
                        "NOTSET",
-                       ExpectedEPNodeAssignment::All, "TestAveragePool_CountIncludePad");
+                       ExpectedEPNodeAssignment::All);
 }
 
 // AveragePool that use auto_pad 'SAME_UPPER'.
@@ -192,7 +190,7 @@ TEST_F(QnnCPUBackendTests, TestAveragePool_AutopadSameUpper) {
                        {},            // pads
                        1,             // count_include_pad
                        "SAME_UPPER",
-                       ExpectedEPNodeAssignment::All, "TestAveragePool_CountIncludePad");
+                       ExpectedEPNodeAssignment::All);
 }
 
 // AveragePool that use auto_pad 'SAME_LOWER'.
@@ -203,7 +201,7 @@ TEST_F(QnnCPUBackendTests, TestAveragePool_AutopadSameLower) {
                        {},            // pads
                        1,             // count_include_pad
                        "SAME_LOWER",
-                       ExpectedEPNodeAssignment::All, "TestAveragePool_CountIncludePad");
+                       ExpectedEPNodeAssignment::All);
 }
 
 #if defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
@@ -219,7 +217,7 @@ TEST_F(QnnHTPBackendTests, TestAveragePool_Global_HTP_u8) {
                                    {0, 0, 0, 0},  // pads
                                    0,             // count_include_pad
                                    "NOTSET",
-                                   ExpectedEPNodeAssignment::All, "TestAveragePool_Global_HTP_u8");
+                                   ExpectedEPNodeAssignment::All);
 }
 
 // QDQ AveragePool that counts padding.
@@ -230,7 +228,7 @@ TEST_F(QnnHTPBackendTests, TestAveragePool_CountIncludePad_HTP_u8) {
                                    {0, 0, 0, 0},  // pads
                                    1,             // count_include_pad
                                    "NOTSET",
-                                   ExpectedEPNodeAssignment::All, "TestAveragePool_CountIncludePad_HTP_u8",
+                                   ExpectedEPNodeAssignment::All,
                                    18, 0.00381f);
 }
 
@@ -242,7 +240,7 @@ TEST_F(QnnHTPBackendTests, TestAveragePool_AutopadSameUpper_HTP_u8) {
                                    {},            // pads
                                    0,             // count_include_pad
                                    "SAME_UPPER",
-                                   ExpectedEPNodeAssignment::All, "TestAveragePool_AutopadSameUpper_HTP_u8",
+                                   ExpectedEPNodeAssignment::All,
                                    18, 0.00381f);
 }
 
@@ -254,7 +252,7 @@ TEST_F(QnnHTPBackendTests, TestAveragePool_AutopadSameLower_HTP_u8) {
                                    {},            // pads
                                    0,             // count_include_pad
                                    "SAME_LOWER",
-                                   ExpectedEPNodeAssignment::All, "TestAveragePool_AutopadSameLower_HTP_u8",
+                                   ExpectedEPNodeAssignment::All,
                                    18, 0.00381f);
 }
 
