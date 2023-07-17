@@ -747,11 +747,6 @@ static ORT_STATUS_PTR InitializeSession(_In_ const OrtSessionOptions* options,
       auto provider = factory->CreateProvider();
       provider_list.push_back(std::move(provider));
     }
-
-//    for (auto& ep : options->providers) {
-//      std::unique_ptr<IExecutionProvider> tmp(ep.get());
-//      provider_list.push_back(std::move(tmp));
-//    }
   }
 
   // register the providers
@@ -760,10 +755,6 @@ static ORT_STATUS_PTR InitializeSession(_In_ const OrtSessionOptions* options,
       ORT_API_RETURN_IF_STATUS_NOT_OK(sess->RegisterExecutionProvider(std::move(provider)));
     }
   }
-
-//  for (auto& provider : options->providers) {
-//    ORT_API_RETURN_IF_STATUS_NOT_OK(sess->RegisterExecutionProvider(std::move(provider)));
-//  }
 
   if (prepacked_weights_container != nullptr) {
     ORT_API_RETURN_IF_STATUS_NOT_OK(sess->AddPrePackedWeightsContainer(
@@ -2744,8 +2735,6 @@ static constexpr OrtApi ort_api_1_to_16 = {
     &OrtApis::GetROCMProviderOptionsAsString,
     &OrtApis::ReleaseROCMProviderOptions,
     &OrtApis::CreateAndRegisterAllocatorV2,
-    &OrtApis::RegisterCustomEPAndCustomOp,
-    &OrtApis::RegisterCustomEPAndCustomOp2,
 };
 
 // OrtApiBase can never change as there is no way to know what version of OrtApiBase is returned by OrtGetApiBase.

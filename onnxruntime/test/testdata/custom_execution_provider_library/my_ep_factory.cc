@@ -6,23 +6,10 @@
 #include "core/providers/shared/common.h"
 #include <iostream>
 #include "core/framework/provider_options_utils.h"
-#include "onnxruntime_lite_custom_op.h"
-#include <cmath>
 
 using namespace onnxruntime;
 
 namespace onnxruntime {
-
-void KernelTwo(const Ort::Custom::Tensor<float>& X,
-               Ort::Custom::Tensor<int32_t>& Y) {
-  const auto& shape = X.Shape();
-  auto X_raw = X.Data();
-  auto Y_raw = Y.Allocate(shape);
-  auto total = std::accumulate(shape.begin(), shape.end(), 1LL, std::multiplies<int64_t>());
-  for (int64_t i = 0; i < total; i++) {
-    Y_raw[i] = static_cast<int32_t>(round(X_raw[i]));
-  }
-}
 
 struct MyProviderFactory : IExecutionProviderFactory {
   MyProviderFactory(const MyProviderInfo& info) : info_{info} {}
@@ -78,23 +65,6 @@ struct MyEP_Provider : Provider {
 
 extern "C" {
 
-//ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_MyEP, _In_ OrtSessionOptions* options, int device_id) {
-//  ORT_UNUSED_PARAMETER(device_id);
-//  const ProviderOptions& provider_option = {};
-//  std::shared_ptr<IExecutionProviderFactory> factory = onnxruntime::g_provider.CreateExecutionProviderFactory(&provider_option);
-//  options->provider_factories.push_back(std::move(factory));
-//
-//
-//  using LiteOp = Ort::Custom::OrtLiteCustomOp;
-//  static const std::unique_ptr<LiteOp> c_CustomOpTwo{Ort::Custom::CreateLiteCustomOp("CustomOpTwo", onnxruntime::kMyProvider, KernelTwo)};
-//  Ort::CustomOpDomain domain{"test.customop"};
-//  domain.Add(c_CustomOpTwo.get());
-//
-//  Ort::UnownedSessionOptions session_options(options);
-//  session_options.Add(domain);
-//  return nullptr;
-//}
-
 ORT_API(onnxruntime::Provider*, GetProvider) {
   return &onnxruntime::g_provider;
 }
@@ -118,16 +88,5 @@ ORT_API(size_t, ProviderHashFunc, const void* provider_options) {
                               .Parse(*options));
   // use device id as hash key
   return info.device_id;
-}
-
-ORT_API_STATUS_IMPL(RegisterCustomOp, _In_ OrtSessionOptions* options) {
-  using LiteOp = Ort::Custom::OrtLiteCustomOp;
-  static const std::unique_ptr<LiteOp> c_CustomOpTwo{Ort::Custom::CreateLiteCustomOp("CustomOpTwo", onnxruntime::kMyProvider, KernelTwo)};
-  Ort::CustomOpDomain domain{"test.customop"};
-  domain.Add(c_CustomOpTwo.get());
-
-  Ort::UnownedSessionOptions session_options(options);
-  session_options.Add(domain);
-  return nullptr;
 }
 }
