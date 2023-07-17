@@ -321,6 +321,14 @@ class GraphExecutionManager(GraphExecutionInterface):
             # FlattenedModule needs _InputInfo to expand user input from *args to *args + **kwargs
             self._flattened_module._input_info = self._input_info
 
+            # Leverage cached model if available
+            cache_dir = os.getenv("ORT_CACHE_DIR", default=None)
+            if cache_dir and os.path.exists(cache_dir):
+                filename = os.path.join(cache_dir, "model.onnx")
+                if os.path.isfile(filename):
+                    exported_model = onnx.load(filename)
+                    return exported_model
+
             # Export torch.nn.Module to ONNX
             f = io.BytesIO()
 
@@ -379,6 +387,14 @@ class GraphExecutionManager(GraphExecutionInterface):
                     ),
                 )
             exported_model = onnx.load_model_from_string(f.getvalue())
+
+            # Cache model for future runs
+            if cache_dir:
+                if not os.path.exists(cache_dir):
+                    os.mkdir(cache_dir)
+                filename = os.path.join(cache_dir, "model.onnx")
+                with open(filename, "wb") as cached_model:
+                    cached_model.write(exported_model.SerializeToString())
 
             exported_model = _post_process_after_export(
                 exported_model, self._runtime_options.enable_custom_autograd_function
