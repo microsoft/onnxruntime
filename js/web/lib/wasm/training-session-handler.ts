@@ -1,10 +1,28 @@
 import {readFile} from 'fs';
-import {CheckpointHandler} from 'onnxruntime-common';
+import {TrainingHandler} from 'onnxruntime-common';
 import { promisify } from 'util';
 import * as core from './wasm-core-impl';
 
-export class OnnxruntimeWebAssemblyCheckpointHandler implements CheckpointHandler {
+export class OnnxruntimeWebAssemblyTrainingHandler implements TrainingHandler {
     handlerId: number;
+//     private sessionId: number;
+//     private checkpoint: CheckpointState;
+
+//     inputNames: string[];
+//     outputNames: string[];
+
+    disposeCheckpointState(): Promise<void> {
+        core.releaseCheckpoint(this.handlerId);
+        throw new Error('after releaseCheckpoint call');
+    }
+
+    disposeTrainingSession(): Promise<void> {
+        throw new Error('Method not implemented.');
+    }
+
+    disposeHandler(): Promise<void> {
+        throw new Error('Method not implemented.');
+    }
 
     async loadCheckpointAllocate(path: string): Promise<number> {
         const response = await fetch(path);
@@ -28,21 +46,4 @@ export class OnnxruntimeWebAssemblyCheckpointHandler implements CheckpointHandle
         }
     }
 
-    dispose(): void {
-        core.releaseCheckpoint(this.handlerId);
-    }
 }
-
-// export class OnnxruntimeWebAssemblyTrainingSessionHandler implements TrainingSessionHandler {
-//     private sessionId: number;
-//     private checkpoint: CheckpointState;
-
-//     inputNames: string[];
-//     outputNames: string[];
-
-
-//     async createTrainingSession(checkpointState: CheckpointState, trainModel: ArrayBufferLike|string, evalModel: ArrayBufferLike|string,
-//       optimizerModel: ArrayBufferLike|string, options?: Session.SessionOptions): Promise<TrainingSessionHandler> {
-
-//       }
-// }

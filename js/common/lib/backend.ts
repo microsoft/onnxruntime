@@ -31,15 +31,10 @@ export interface SessionHandler {
       options: InferenceSession.RunOptions): Promise<SessionHandler.ReturnType>;
 }
 
-export interface CheckpointHandler {
-  // save checkpoint implementation would go here
-  // need class representation of a checkpoint handler to also have the number id for handle
-  dispose(): void;
-}
-
-export interface TrainingSessionHandler {
-  dispose(): Promise<void>;
-
+export interface TrainingHandler {
+  disposeCheckpointState(): Promise<void>;
+  disposeTrainingSession(): Promise<void>;
+  disposeHandler(): Promise<void>;
 }
 
 /**
@@ -58,7 +53,7 @@ export interface Backend {
 }
 
 export interface TrainingBackend extends Backend {
-  createCheckpointHandler(pathOrBuffer: string|Uint8Array): Promise<CheckpointHandler>;
+  createCheckpoint(pathOrBuffer: string|Uint8Array): Promise<TrainingHandler>;
 
   // createTrainingSession(checkpointState: CheckpointState, trainModel: ArrayBufferLike|string, evalModel: ArrayBufferLike|string,
   //     optimizerModel: ArrayBufferLike|string, options?: Session.SessionOptions): Promise<TrainingSessionHandler>;

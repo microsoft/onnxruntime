@@ -14,6 +14,7 @@
     "eslint-plugin-prefer-arrow": "^1.2.3",
     "eslint-plugin-unicorn": "^46.0.0",
     "fs-extra": "^11.1.0",
+    "ifdef-loader": "^2.3.2",
     "jszip": "^3.10.1",
     "node-polyfill-webpack-plugin": "^2.0.1",
     "npmlog": "^7.0.1",

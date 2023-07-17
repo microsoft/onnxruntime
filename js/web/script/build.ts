@@ -29,6 +29,9 @@ const ANALYZER = !!args.a || !!args.analyzer;
 // -f; --filter=<regex>
 const FILTER = args.f || args.filter;
 
+// -t; --training
+const TRAINING = args.t || args.training;
+
 // Path variables
 const ROOT_FOLDER = path.join(__dirname, '..');
 const WASM_BINDING_FOLDER = path.join(ROOT_FOLDER, 'lib', 'wasm', 'binding');
@@ -174,6 +177,9 @@ npmlog.info('Build', 'Building bundle...');
   }
   if (FILTER) {
     webpackArgs.push('--env', `-f=${FILTER}`);
+  }
+  if (TRAINING) {
+    webpackArgs.push('--env', '-t');
   }
   npmlog.info('Build.Bundle', `CMD: npx ${webpackArgs.join(' ')}`);
   const webpack = spawnSync('npx', webpackArgs, {shell: true, stdio: 'inherit', cwd: ROOT_FOLDER});
