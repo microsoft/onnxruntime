@@ -388,6 +388,10 @@ class GraphExecutionManager(GraphExecutionInterface):
                 )
             exported_model = onnx.load_model_from_string(f.getvalue())
 
+            exported_model = _post_process_after_export(
+                exported_model, self._runtime_options.enable_custom_autograd_function
+            )
+
             # Cache model for future runs
             if cache_dir:
                 if not os.path.exists(cache_dir):
@@ -395,10 +399,6 @@ class GraphExecutionManager(GraphExecutionInterface):
                 filename = os.path.join(cache_dir, "model.onnx")
                 with open(filename, "wb") as cached_model:
                     cached_model.write(exported_model.SerializeToString())
-
-            exported_model = _post_process_after_export(
-                exported_model, self._runtime_options.enable_custom_autograd_function
-            )
 
             # If anything was captured by suppress_output during export, set the flag to
             # raise a single user warning letting users know in the log.
