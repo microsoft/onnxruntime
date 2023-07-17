@@ -108,9 +108,11 @@ export interface TensorFromUrlOptions extends OptionsDimensions, OptionResizedDi
 export interface TensorFromImageBitmapOptions extends OptionResizedDimensions, OptionsTensorFormat, OptionsTensorLayout,
                                                       OptionsTensorDataType, OptionsNormalizationParameters {}
 
-export interface TensorFromTextureOptions extends Required<OptionsDimensions>, OptionsFormat /* TODO: add more */ {}
+export interface TensorFromTextureOptions<T extends Tensor.TextureDataTypes> extends
+    Required<OptionsDimensions>, OptionsFormat, Tensor.GpuResourceConstructorParameters<T>/* TODO: add more */ {}
 
-export interface TensorFromGpuBufferOptions<T extends Tensor.GpuBufferDataTypes> extends Pick<Tensor, 'dims'> {
+export interface TensorFromGpuBufferOptions<T extends Tensor.GpuBufferDataTypes> extends
+    Pick<Tensor, 'dims'>, Tensor.GpuResourceConstructorParameters<T> {
   /**
    * Describes the data type of the tensor.
    */
@@ -185,15 +187,35 @@ export interface TensorFactory {
    * @param texture - the WebGLTexture object to create tensor from
    * @param options - An optional object representing options for creating tensor from WebGL texture.
    *
+   * The options include following properties:
+   * - `width`: the width of the texture. Required.
+   * - `height`: the height of the texture. Required.
+   * - `format`: the format of the texture. If omitted, assume 'RGBA'.
+   * - `download`: an optional function to download the tensor data from GPU to CPU. If omitted, the GPU data
+   * will not be able to download. Usually, this is provided by a GPU backend for the inference outputs. Users don't
+   * need to provide this function.
+   * - `dispose`: an optional function to dispose the tensor data on GPU. If omitted, the GPU data will not be disposed.
+   * Usually, this is provided by a GPU backend for the inference outputs. Users don't need to provide this function.
+   *
    * @returns a tensor object
    */
-  fromTexture(texture: Tensor.TextureType, options: TensorFromTextureOptions): TypedTensor<'float32'>;
+  fromTexture<T extends Tensor.TextureDataTypes = 'float32'>(
+      texture: Tensor.TextureType, options: TensorFromTextureOptions<T>): TypedTensor<'float32'>;
 
   /**
    * create a tensor from a WebGPU buffer
    *
    * @param buffer - the GPUBuffer object to create tensor from
    * @param options - An optional object representing options for creating tensor from WebGPU buffer.
+   *
+   * The options include following properties:
+   * - `dataType`: the data type of the tensor. If omitted, assume 'float32'.
+   * - `dims`: the dimension of the tensor. Required.
+   * - `download`: an optional function to download the tensor data from GPU to CPU. If omitted, the GPU data
+   * will not be able to download. Usually, this is provided by a GPU backend for the inference outputs. Users don't
+   * need to provide this function.
+   * - `dispose`: an optional function to dispose the tensor data on GPU. If omitted, the GPU data will not be disposed.
+   * Usually, this is provided by a GPU backend for the inference outputs. Users don't need to provide this function.
    *
    * @returns a tensor object
    */

@@ -51,9 +51,21 @@ interface TypedTensorBase<T extends Tensor.Type> {
    * @param releaseData - whether release the data on GPU. Ignore if data is already on CPU.
    */
   getData(releaseData?: boolean): Promise<Tensor.DataTypeMap[T]>;
+
+  /**
+   * Dispose the tensor data.
+   *
+   * If the data is on CPU, remove its internal reference to the underlying data.
+   * If the data is on GPU, release the data on GPU.
+   *
+   * After calling this function, the tensor is considered no longer valid. Its location will be set to 'none'.
+   */
+  dispose(): void;
 }
 
 export declare namespace Tensor {
+  // #region basic types
+
   interface DataTypeMap {
     float32: Float32Array;
     uint8: Uint8Array;
@@ -115,12 +127,16 @@ export declare namespace Tensor {
   /**
    * represent where the tensor data is stored
    */
-  export type DataLocation = 'cpu'|'cpu-pinned'|'texture'|'gpu-buffer';
+  export type DataLocation = 'none'|'cpu'|'cpu-pinned'|'texture'|'gpu-buffer';
 
   /**
    * represent the data type of a tensor
    */
   export type Type = keyof DataTypeMap;
+
+  // #endregion
+
+  // #region types for constructing a tensor from a specific location
 
   /**
    * represent common properties of the parameter for constructing a tensor from a specific location.
@@ -130,6 +146,25 @@ export declare namespace Tensor {
      * Specify the data type of the tensor.
      */
     readonly type: T;
+  }
+
+  /**
+   * represent the parameter for constructing a tensor from a GPU resource.
+   */
+  interface GpuResourceConstructorParameters<T extends Type> {
+    /**
+     * an optional callback function to download data from GPU to CPU.
+     *
+     * If not provided, the tensor treat the GPU data as external resource.
+     */
+    download?(): Promise<DataTypeMap[T]>;
+
+    /**
+     * an optional callback function that will be called when the tensor is disposed.
+     *
+     * If not provided, the tensor treat the GPU data as external resource.
+     */
+    dispose?(): void;
   }
 
   /**
@@ -161,7 +196,7 @@ export declare namespace Tensor {
    * represent the parameter for constructing a tensor from a WebGL texture
    */
   export interface TextureConstructorParameters<T extends TextureDataTypes = TextureDataTypes> extends
-      CommonConstructorParameters<T> {
+      CommonConstructorParameters<T>, GpuResourceConstructorParameters<T> {
     /**
      * Specify the location of the data to be 'texture'.
      */
@@ -181,7 +216,7 @@ export declare namespace Tensor {
    * represent the parameter for constructing a tensor from a WebGPU buffer
    */
   export interface GpuBufferConstructorParameters<T extends GpuBufferDataTypes = GpuBufferDataTypes> extends
-      CommonConstructorParameters<T> {
+      CommonConstructorParameters<T>, GpuResourceConstructorParameters<T> {
     /**
      * Specify the location of the data to be 'gpu-buffer'.
      */
@@ -191,6 +226,8 @@ export declare namespace Tensor {
      */
     readonly gpuBuffer: GpuBufferType;
   }
+
+  // #endregion
 }
 
 /**

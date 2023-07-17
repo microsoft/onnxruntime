@@ -66,6 +66,8 @@ export class Tensor implements TensorInterface {
             throw new TypeError(`unsupported type "${type}" to create tensor from texture`);
           }
           this.gpuTextureData = arg0.texture;
+          this.downloader = arg0.download;
+          this.disposer = arg0.dispose;
           break;
         }
         case 'gpu-buffer': {
@@ -73,6 +75,8 @@ export class Tensor implements TensorInterface {
             throw new TypeError(`unsupported type "${type}" to create tensor from gpu buffer`);
           }
           this.gpuBufferData = arg0.gpuBuffer;
+          this.downloader = arg0.download;
+          this.disposer = arg0.dispose;
           break;
         }
         default:
@@ -205,7 +209,7 @@ export class Tensor implements TensorInterface {
     return tensorFromImage(image, options);
   }
 
-  static fromTexture(texture: TensorTextureType, options: TensorFromTextureOptions): TensorInterface {
+  static fromTexture(texture: TensorTextureType, options: TensorFromTextureOptions<'float32'>): TensorInterface {
     return tensorFromTexture(texture, options);
   }
 
@@ -258,10 +262,26 @@ export class Tensor implements TensorInterface {
    * stores the underlying GPU buffer when location is 'gpu-buffer'. otherwise empty.
    */
   private gpuBufferData?: TensorGpuBufferType;
+
+  /**
+   * stores an optional downloader function to download data from GPU to CPU.
+   */
+  private downloader?(): Promise<TensorDataType>;
+
+  /**
+   * a flag indicating whether the data is being downloaded from GPU to CPU.
+   */
+  private isDownloading?: boolean;
+
+  /**
+   * stores an optional disposer function to dispose the underlying data.
+   */
+  private disposer?(): void;
   // #endregion
 
   // #region properties
   get data(): TensorDataType {
+    this.ensureValid();
     if (!this.cpuData) {
       throw new Error(
           'The data is not on CPU. Use `getData()` to download GPU data to CPU, ' +
@@ -275,6 +295,7 @@ export class Tensor implements TensorInterface {
   }
 
   get texture(): TensorTextureType {
+    this.ensureValid();
     if (!this.gpuTextureData) {
       throw new Error('The data is not stored as a WebGL texture.');
     }
@@ -282,6 +303,7 @@ export class Tensor implements TensorInterface {
   }
 
   get gpuBuffer(): TensorGpuBufferType {
+    this.ensureValid();
     if (!this.gpuBufferData) {
       throw new Error('The data is not stored as a WebGPU buffer.');
     }
@@ -291,33 +313,75 @@ export class Tensor implements TensorInterface {
 
   // #region methods
 
-  async getData(_releaseData?: boolean): Promise<TensorDataType> {
+  async getData(releaseData?: boolean): Promise<TensorDataType> {
+    this.ensureValid();
     switch (this.dataLocation) {
       case 'cpu':
       case 'cpu-pinned':
-        return this.cpuData!;
+        return this.data;
       case 'texture':
-        // TODO: implementation hint:
-        //
-        // const data = await downloadData(...);
-        // if (releaseData) {
-        //     releaseTexture(this.texture);
-        //     this.cpuData = data;
-        //     this.location = 'cpu';
-        // }
-        // return data;
-        throw new Error('Tensor.getData() not implemented for texture');
-      case 'gpu-buffer':
-        throw new Error('Tensor.getData() not implemented for gpu-buffer');
+      case 'gpu-buffer': {
+        if (!this.downloader) {
+          throw new Error('The current tensor is not created with a specified data downloader.');
+        }
+        if (this.isDownloading) {
+          throw new Error('The current tensor is being downloaded.');
+        }
+        try {
+          this.isDownloading = true;
+          const data = await this.downloader();
+          this.downloader = undefined;
+          this.dataLocation = 'cpu';
+          this.cpuData = data;
+
+          if (releaseData && this.disposer) {
+            this.disposer();
+            this.disposer = undefined;
+          }
+
+          return data;
+
+        } finally {
+          this.isDownloading = false;
+        }
+      }
       default:
         throw new Error(`cannot get data from location: ${this.dataLocation}`);
     }
   }
 
+  dispose(): void {
+    if (this.isDownloading) {
+      throw new Error('The current tensor is being downloaded.');
+    }
+
+    if (this.disposer) {
+      this.disposer();
+      this.disposer = undefined;
+    }
+    this.cpuData = undefined;
+    this.gpuTextureData = undefined;
+    this.gpuBufferData = undefined;
+    this.downloader = undefined;
+    this.isDownloading = undefined;
+
+    this.dataLocation = 'none';
+  }
+
   // #endregion
 
   // #region tensor utilities
+  private ensureValid(): void {
+    if (this.dataLocation === 'none') {
+      throw new Error('The tensor is disposed.');
+    }
+  }
+
   reshape(dims: readonly number[]): TensorInterface {
+    this.ensureValid();
+    if (this.downloader || this.disposer) {
+      throw new Error('Cannot reshape a tensor that owns GPU resource.');
+    }
     return tensorReshape(this, dims);
   }
   // #endregion

@@ -236,11 +236,12 @@ export const tensorFromImage = async(
 /**
  * implementation of Tensor.fromTexture().
  */
-export const tensorFromTexture = (texture: TensorInterface.TextureType, options: TensorFromTextureOptions): Tensor => {
-  const {width, height} = options;
+export const tensorFromTexture = <T extends TensorInterface.TextureDataTypes>(
+    texture: TensorInterface.TextureType, options: TensorFromTextureOptions<T>): Tensor => {
+  const {width, height, download, dispose} = options;
   // Always assume RGBAF32. TODO: support different texture format
   const dims = [1, height, width, 4];
-  return new Tensor({location: 'texture', type: 'float32', texture, dims});
+  return new Tensor({location: 'texture', type: 'float32', texture, dims, download, dispose});
 };
 
 /**
@@ -248,8 +249,8 @@ export const tensorFromTexture = (texture: TensorInterface.TextureType, options:
  */
 export const tensorFromGpuBuffer = <T extends TensorInterface.GpuBufferDataTypes>(
     gpuBuffer: TensorInterface.GpuBufferType, options: TensorFromGpuBufferOptions<T>): Tensor => {
-  const {dataType, dims} = options;
-  return new Tensor({location: 'gpu-buffer', type: dataType ?? 'float32', gpuBuffer, dims});
+  const {dataType, dims, download, dispose} = options;
+  return new Tensor({location: 'gpu-buffer', type: dataType ?? 'float32', gpuBuffer, dims, download, dispose});
 };
 
 /**
