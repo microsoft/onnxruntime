@@ -291,7 +291,7 @@ class TensorrtExecutionProvider : public IExecutionProvider {
     // https://docs.nvidia.com/deeplearning/tensorrt/api/c_api/classnvinfer1_1_1_i_execution_context.html#a63cd95430852038ce864e17c670e0b36
     std::unordered_map<std::string, std::unique_ptr<nvinfer1::IExecutionContext>> trt_context_map_;
 
-    // The profile shape ranges for the engine that the execution context maintained per thread is built with.
+    // The profile shape ranges for the engine that the execution context maintained by the PerThreadContext is built with.
     // TRT EP needs this info to determine whether to rebuild the execution context.
     std::unordered_map<std::string, ShapeRangesMap> input_shape_ranges_;
 

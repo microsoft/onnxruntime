@@ -668,15 +668,27 @@ TensorrtExecutionProvider::PerThreadContext::~PerThreadContext() {
   trt_context_map_.clear();
 }
 
+/*
+ * Returns true if the shape ranges maintained by the PerThreadContext is different from the shape ragnes maintained by TRT EP, meaning the
+ * engine is being updated and the execution context maintained by the PerThreadContext should be updated as well. Otherwise, returns false.
+ *
+ */
 bool TensorrtExecutionProvider::PerThreadContext::CompareProfileShapes(std::string fused_node, ShapeRangesMap& shape_ranges) {
   if (shape_ranges.size() > 0) {
     if (input_shape_ranges_[fused_node] != shape_ranges) {
+      LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] The shape ranges maintained by the PerThreadContext is different from the shape ranges maintained by TRT EP. \
+                                This means the engine is updated and will need to update the execution context as well.";
       return true;
     }
   }
   return false;
 }
 
+/*
+ * Updates the shape ranges maintained by the PerThreadContext.
+ * As long as the execution context maintained by the PerThreadContext is updated, the associated shape ranges sould be updated as well. 
+ *
+ */
 void TensorrtExecutionProvider::PerThreadContext::UpdateProfileShapes(std::string fused_node, ShapeRangesMap& shape_ranges) {
   input_shape_ranges_[fused_node] = shape_ranges;
 }
@@ -2407,7 +2419,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
       CUDA_CALL_THROW(cudaGetDeviceProperties(&prop, device_id_));
       std::string compute_capability = GetComputeCapacity(prop);
 
-      // Load serialized engine
+      // Prepare cache name
       const std::string cache_path = GetCachePath(trt_state->engine_cache_path, trt_state->trt_node_name_with_precision);
       const std::string engine_cache_path = cache_path + "_sm" + compute_capability + ".engine";
       const std::string profile_cache_path = cache_path + "_sm" + compute_capability + ".profile";
@@ -2422,6 +2434,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
       {
         std::lock_guard<OrtMutex> lock(*(trt_state->tensorrt_mu_ptr));
 
+        // Load serialized engine
         if (trt_state->engine_cache_enable && trt_engine == nullptr) {
           std::ifstream engine_file(engine_cache_path, std::ios::binary | std::ios::in);
           std::ifstream profile_file(profile_cache_path, std::ios::binary | std::ios::in);
@@ -2620,6 +2633,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
               std::ofstream file(engine_cache_path, std::ios::binary | std::ios::out);
               file.write(reinterpret_cast<char*>(serializedModel->data()), engine_size);
             }
+            LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Serialized " + engine_cache_path;
           }
 
           // serialize and save timing cache
@@ -2640,9 +2654,9 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
       }
 
       // Build execution context if either of the following conditions is true:
-      // (1) Engine is built by this thread.
+      // (1) The engine is built or updated by this thread.
       // (2) The first inference run for this thread where there is no IExecutionContext object yet.
-      // (3) The engine is built by another thread. (We compare the profile shapes maintained by per thread to the profile shapes maintained by TRT EP)
+      // (3) The engine is updated by another thread. (We compare the profile shapes maintained by the PerThreadContext to the profile shapes maintained by TRT EP)
       //
       // Note: Creating an execution context from an engine is thread safe per TRT doc
       // https://docs.nvidia.com/deeplearning/tensorrt/developer-guide/index.html#threading
