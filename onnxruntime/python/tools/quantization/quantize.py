@@ -387,8 +387,8 @@ def quantize_static(
             raise RuntimeError("neural-compressor is not correctly installed. Please check your environment.") from e
 
         import copy
+        
         import onnx
-
         from neural_compressor.adaptor.ox_utils.smooth_quant import ORTSmoothQuant
 
         def inc_dataloader():
@@ -466,6 +466,7 @@ def quantize_static(
 
     if extra_options.get("SmoothQuant", False):
         sq_path.cleanup()
+
 
 def quantize_dynamic(
     model_input: Path,
