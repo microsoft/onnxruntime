@@ -71,15 +71,12 @@ class GpuDataManagerImpl implements GpuDataManager {
   // GPU Data ID => GPU Data ( read buffer )
   downloadCache: Map<GpuDataId, DownloadCacheValue>;
 
-  // pending buffers for uploading ( data is unmapped )
-  private buffersForUploadingPending: GPUBuffer[];
   // pending buffers for computing
   private buffersPending: GPUBuffer[];
 
   constructor(private backend: WebGpuBackend /* , private reuseBuffer: boolean */) {
     this.storageCache = new Map();
     this.downloadCache = new Map();
-    this.buffersForUploadingPending = [];
     this.buffersPending = [];
   }
 
@@ -115,8 +112,6 @@ class GpuDataManagerImpl implements GpuDataManager {
     commandEncoder.copyBufferToBuffer(gpuBufferForUploading, 0, gpuDataCache.gpuData.buffer, 0, size);
 
     LOG_DEBUG('verbose', () => `[WebGPU] GpuDataManager.upload(id=${id})`);
-
-    this.buffersForUploadingPending.push(gpuBufferForUploading);
   }
 
   memcpy(sourceId: GpuDataId, destinationId: GpuDataId): void {
@@ -222,12 +217,10 @@ class GpuDataManagerImpl implements GpuDataManager {
   }
 
   refreshPendingBuffers(): void {
-    for (const buffer of this.buffersForUploadingPending) {
-      buffer.destroy();
-    }
     for (const buffer of this.buffersPending) {
       buffer.destroy();
     }
+    this.buffersPending = [];
   }
 }
 
