@@ -246,7 +246,7 @@ union float32_bits {
 
 template <class Derived>
 inline constexpr uint16_t Float16Impl<Derived>::ToUint16Impl(float v) noexcept {
-  detail::float32_bits f;
+  detail::float32_bits f{};
   f.f = v;
 
   constexpr detail::float32_bits f32infty = {255 << 23};
@@ -296,7 +296,7 @@ template <class Derived>
 inline float Float16Impl<Derived>::ToFloatImpl() const noexcept {
   constexpr detail::float32_bits magic = {113 << 23};
   constexpr unsigned int shifted_exp = 0x7c00 << 13;  // exponent mask after shift
-  detail::float32_bits o;
+  detail::float32_bits o{};
 
   o.u = (val & 0x7fff) << 13;            // exponent/mantissa bits
   unsigned int exp = shifted_exp & o.u;  // just the exponent
