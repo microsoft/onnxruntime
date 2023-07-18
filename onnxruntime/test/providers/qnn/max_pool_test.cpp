@@ -142,12 +142,10 @@ static void RunMaxPoolOpTest(const std::vector<int64_t>& shape,
   provider_options["backend_path"] = "libQnnCpu.so";
 #endif
 
-  constexpr int expected_nodes_in_partition = 1;
   RunQnnModelTest(BuildMaxPoolTestCase(shape, kernel_shape, strides, pads, dilations, ceil_mode, storage_order, auto_pad),
                   provider_options,
                   opset,
-                  expected_ep_assignment,
-                  expected_nodes_in_partition);
+                  expected_ep_assignment);
 }
 
 // Runs a QDQ MaxPool model on the QNN HTP backend. Checks the graph node assignment, and that inference
@@ -170,12 +168,10 @@ static void RunQDQMaxPoolOpTest(const std::vector<int64_t>& shape,
   provider_options["backend_path"] = "libQnnHtp.so";
 #endif
 
-  constexpr int expected_nodes_in_partition = 1;
   RunQnnModelTest(BuildMaxPoolQDQTestCase<QuantType>(shape, kernel_shape, strides, pads, dilations, ceil_mode, storage_order, auto_pad),
                   provider_options,
                   opset,
                   expected_ep_assignment,
-                  expected_nodes_in_partition,
                   fp32_abs_err);
 }
 
