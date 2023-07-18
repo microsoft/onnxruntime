@@ -94,12 +94,10 @@ static void RunCPUResizeOpTest(const std::vector<int64_t>& shape, const std::vec
   provider_options["backend_path"] = "libQnnCpu.so";
 #endif
 
-  constexpr int expected_nodes_in_partition = 1;
   RunQnnModelTest(BuildResizeTestCase(shape, sizes_data, mode, coordinate_transformation_mode, nearest_mode),
                   provider_options,
                   opset,
-                  expected_ep_assignment,
-                  expected_nodes_in_partition);
+                  expected_ep_assignment);
 }
 
 static void RunCPUResizeOpTestWithScales(const std::vector<int64_t>& shape, const std::vector<float>& scales_data,
@@ -114,12 +112,10 @@ static void RunCPUResizeOpTestWithScales(const std::vector<int64_t>& shape, cons
   provider_options["backend_path"] = "libQnnCpu.so";
 #endif
 
-  constexpr int expected_nodes_in_partition = 1;
   RunQnnModelTest(BuildResizeTestCaseWithScales(shape, scales_data, mode, coordinate_transformation_mode, nearest_mode),
                   provider_options,
                   opset,
-                  expected_ep_assignment,
-                  expected_nodes_in_partition);
+                  expected_ep_assignment);
 }
 
 template <typename QuantType>
@@ -134,13 +130,11 @@ static void RunQDQResizeOpTest(const std::vector<int64_t>& shape, const std::vec
   provider_options["backend_path"] = "libQnnHtp.so";
 #endif
 
-  constexpr int expected_nodes_in_partition = 1;
   RunQnnModelTest(BuildQDQResizeTestCase<QuantType>(shape, sizes_data, mode, coordinate_transformation_mode,
                                                     nearest_mode, true),
                   provider_options,
                   18,  // opset
                   expected_ep_assignment,
-                  expected_nodes_in_partition,
                   fp32_abs_err);
 }
 
