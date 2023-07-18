@@ -2,75 +2,75 @@
 #pragma once
 // Philox CUDA.
 
+namespace onnxruntime {
+namespace contrib {
+namespace cuda {
 namespace flash {
 
 struct ull2 {
-    unsigned long long x;
-    unsigned long long y;
+  unsigned long long x;
+  unsigned long long y;
 };
 
 inline __device__ uint2 mulhilo32(const unsigned int a, const unsigned int b) {
-    uint2 *res;
-    unsigned long long tmp;
-    asm ("mul.wide.u32 %0, %1, %2;\n\t"
-          : "=l"(tmp)
-          : "r"(a), "r"(b));
-    res = (uint2*)(&tmp);
-    return *res;
+  uint2* res;
+  unsigned long long tmp;
+  asm("mul.wide.u32 %0, %1, %2;\n\t"
+      : "=l"(tmp)
+      : "r"(a), "r"(b));
+  res = (uint2*)(&tmp);
+  return *res;
 }
 
 inline __device__ uint4 philox_single_round(const uint4 ctr, const uint2 key) {
-    constexpr unsigned long kPhiloxSA = 0xD2511F53;
-    constexpr unsigned long kPhiloxSB = 0xCD9E8D57;
-    uint2 res0 = mulhilo32(kPhiloxSA, ctr.x);
-    uint2 res1 = mulhilo32(kPhiloxSB, ctr.z);
-    uint4 ret = {res1.y ^ ctr.y ^ key.x, res1.x, res0.y ^ ctr.w ^ key.y, res0.x};
-    return ret;
+  constexpr unsigned long kPhiloxSA = 0xD2511F53;
+  constexpr unsigned long kPhiloxSB = 0xCD9E8D57;
+  uint2 res0 = mulhilo32(kPhiloxSA, ctr.x);
+  uint2 res1 = mulhilo32(kPhiloxSB, ctr.z);
+  uint4 ret = {res1.y ^ ctr.y ^ key.x, res1.x, res0.y ^ ctr.w ^ key.y, res0.x};
+  return ret;
 }
 
 inline __device__ uint4 philox(unsigned long long seed,
                                unsigned long long subsequence,
                                unsigned long long offset) {
-    constexpr unsigned long kPhilox10A = 0x9E3779B9;
-    constexpr unsigned long kPhilox10B = 0xBB67AE85;
-    uint2 key = reinterpret_cast<uint2&>(seed);
-    uint4 counter;
-    ull2 *tmp = reinterpret_cast<ull2*>(&counter);
-    tmp->x = offset;
-    tmp->y = subsequence;
-    #pragma unroll
-    for (int i = 0; i < 6; i++) {
-        counter = philox_single_round(counter, key);
-        key.x += (kPhilox10A);
-        key.y += (kPhilox10B);
-    }
-    uint4 output = philox_single_round(counter, key);
-    return output;
+  constexpr unsigned long kPhilox10A = 0x9E3779B9;
+  constexpr unsigned long kPhilox10B = 0xBB67AE85;
+  uint2 key = reinterpret_cast<uint2&>(seed);
+  uint4 counter;
+  ull2* tmp = reinterpret_cast<ull2*>(&counter);
+  tmp->x = offset;
+  tmp->y = subsequence;
+#pragma unroll
+  for (int i = 0; i < 6; i++) {
+    counter = philox_single_round(counter, key);
+    key.x += (kPhilox10A);
+    key.y += (kPhilox10B);
+  }
+  uint4 output = philox_single_round(counter, key);
+  return output;
 }
 
-} // namespace flash
+}  // namespace flash
 
 namespace {
 
 class Philox {
-public:
+ public:
   __device__ inline Philox(unsigned long long seed,
                            unsigned long long subsequence,
                            unsigned long long offset)
-      : STATE(0)
-      , seed_(seed)
-      , offset_(offset)
-      , key(reinterpret_cast<const uint2&>(seed)) {
-    //key.x = (unsigned int)seed;
-    //key.y = (unsigned int)(seed >> 32);
-    //counter = make_uint4(0, 0, 0, 0);
-    //counter.z = (unsigned int)(subsequence);
-    //counter.w = (unsigned int)(subsequence >> 32);
-    //STATE = 0;
-    //incr_n(offset / 4);
+      : STATE(0), seed_(seed), offset_(offset), key(reinterpret_cast<const uint2&>(seed)) {
+    // key.x = (unsigned int)seed;
+    // key.y = (unsigned int)(seed >> 32);
+    // counter = make_uint4(0, 0, 0, 0);
+    // counter.z = (unsigned int)(subsequence);
+    // counter.w = (unsigned int)(subsequence >> 32);
+    // STATE = 0;
+    // incr_n(offset / 4);
 
     // key = reinterpret_cast<const uint2&>(seed);
-    ull2 * tmp = reinterpret_cast<ull2*>(&counter);
+    ull2* tmp = reinterpret_cast<ull2*>(&counter);
     tmp->x = offset / 4;
     tmp->y = subsequence;
     // if ((threadIdx.x == 0) && (blockIdx.x == 0) && (blockIdx.y == 0)) {
@@ -106,14 +106,14 @@ public:
     // //}
     // // STATE = (STATE + 1) % 4;
     // return output;
-      return flash::philox(seed_, offset_, offset_);
+    return flash::philox(seed_, offset_, offset_);
   }
 
-private:
+ private:
   unsigned long long offset_, seed_;
   struct ull2 {
-      uint64_t x;
-      uint64_t y;
+    uint64_t x;
+    uint64_t y;
   };
   uint4 counter;
   // uint4 output;
@@ -133,16 +133,15 @@ private:
     ++counter.w;
   }
 
-  __device__ uint4 incr128 (uint4 ctr)
-  {
+  __device__ uint4 incr128(uint4 ctr) {
     uint4 res;
-    asm ("add.cc.u32      %0, %4, %8;\n\t"
-         "addc.cc.u32     %1, %5, %9;\n\t"
-         "addc.cc.u32     %2, %6, %10;\n\t"
-         "addc.u32        %3, %7, %11;\n\t"
-         : "=r"(res.x), "=r"(res.y), "=r"(res.z), "=r"(res.w)
-         : "r"(ctr.x), "r"(ctr.y), "r"(ctr.z), "r"(ctr.w),
-           "n"(1), "n"(0), "n"(0), "n"(0));
+    asm("add.cc.u32      %0, %4, %8;\n\t"
+        "addc.cc.u32     %1, %5, %9;\n\t"
+        "addc.cc.u32     %2, %6, %10;\n\t"
+        "addc.u32        %3, %7, %11;\n\t"
+        : "=r"(res.x), "=r"(res.y), "=r"(res.z), "=r"(res.w)
+        : "r"(ctr.x), "r"(ctr.y), "r"(ctr.z), "r"(ctr.w),
+          "n"(1), "n"(0), "n"(0), "n"(0));
     return res;
   }
 
@@ -162,4 +161,7 @@ private:
   // static const unsigned long kPhiloxSB = 0xCD9E8D57;
 };
 
-} // namespace
+}  // namespace
+}  // namespace cuda
+}  // namespace contrib
+}  // namespace onnxruntime

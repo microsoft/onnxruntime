@@ -4,6 +4,10 @@
 
 #include "flash_fwd_launch_template.h"
 
+namespace onnxruntime {
+namespace contrib {
+namespace cuda {
+
 // template<>
 // void run_mha_fwd_<cutlass::half_t, 96>(Flash_fwd_params &params, cudaStream_t stream) {
 //     using elem_type = cutlass::half_t;
@@ -18,6 +22,11 @@
 //         // run_flash_fwd<Flash_fwd_kernel_traits<96, 64, 128, 4, true, elem_type>>(params, stream);
 //     });
 // }
-template<> void run_mha_fwd_<cutlass::half_t, 96>(Flash_fwd_params &params, cudaStream_t stream) {
-    run_mha_fwd_hdim96<cutlass::half_t>(params, stream);
+template <>
+void run_mha_fwd_<cutlass::half_t, 96>(Flash_fwd_params& params, cudaStream_t stream) {
+  run_mha_fwd_hdim96<cutlass::half_t>(params, stream);
 }
+
+}  // namespace cuda
+}  // namespace contrib
+}  // namespace onnxruntime
