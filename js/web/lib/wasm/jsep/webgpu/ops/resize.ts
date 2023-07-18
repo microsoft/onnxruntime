@@ -239,14 +239,8 @@ const calculateOriginalIndicesFromOutputIndices =
       const roi = array<f32, ${roi.length}>(${roi.map(i => `${i}f`).join(',')});
       var originalIndices: array<f32, ${outputShape.length}>;
       for (var i:u32 = 0; i < ${outputShape.length}; i++) {
-        var original_idx = getOriginalCoordinateFromResizedCoordinate(f32(outputIndices[i]), scales[i],
+        originalIndices[i] = getOriginalCoordinateFromResizedCoordinate(f32(outputIndices[i]), scales[i],
                  f32(outputShape[i]), f32(inputShape[i]), roi[i], roi[i + ${inputShape.length}]);
-        if (original_idx < 0) {
-          original_idx = 0.0;
-        } else if (original_idx > (f32(inputShape[i]) - 1.0)) {
-          original_idx = f32(inputShape[i]) - 1.0;
-        }
-        originalIndices[i] = original_idx;
       }
       return originalIndices;
     }`;
@@ -295,44 +289,44 @@ const bilinearInterpolation =
      useExtrapolation: boolean, extrapolationValue: number): string => {
       const outputIndicesHelper = createIndicesHelper('output', outputShape);
       const inputIndicesHelper = createIndicesHelper('input', inputShape);
-      const [heightIdx, widthIdx] = inputShape.length === 2 ? [0, 1] : (scales[1] === 1.0) ? [2, 3] : [1, 2];
+      const [batchIdx, heightIdx, widthIdx, channelIdx] =
+          inputShape.length === 2 ? [-1, 0, 1, -1] : (scales[1] === 1.0 ? [0, 2, 3, 1] : [0, 1, 2, 3]);
       return `
+    fn getInputValue(batch: u32, channel: u32, row: u32, col: u32) -> f32 {
+      var inputIndices: ${inputIndicesHelper.iType};
+      inputIndices[${heightIdx}] = max(0, min(row, ${inputShape[heightIdx]} - 1));
+      inputIndices[${widthIdx}] = max(0, min(col, ${inputShape[widthIdx]} - 1));
+      if (${inputShape.length} > 2) {
+        inputIndices[${channelIdx}] = channel;
+        inputIndices[${batchIdx}] = batch;
+      };
+      return input[${inputIndicesHelper.i2oExpression('inputIndices')}];
+    }
+
     fn bilinearInterpolation(outputIndices: ${outputIndicesHelper.iType}) -> f32 {
-      var inputIndicesX11: ${inputIndicesHelper.iType} = outputIndices;
-      var inputIndicesX12: ${inputIndicesHelper.iType} = outputIndices;
-      var inputIndicesX21: ${inputIndicesHelper.iType} = outputIndices;
-      var inputIndicesX22: ${inputIndicesHelper.iType} = outputIndices;
       var originalIndices = calculateOriginalIndicesFromOutputIndices(outputIndices);
       var row:f32 = originalIndices[${heightIdx}];
       var col:f32 = originalIndices[${widthIdx}];
+      if (${useExtrapolation} && (row < 0 || row > (${inputShape[heightIdx]} - 1) || col < 0 || col > ${
+          inputShape[widthIdx]} - 1)) {
+        return ${extrapolationValue};
+      }
+      row = max(0, min(row, ${inputShape[heightIdx]} - 1));
+      col = max(0, min(col, ${inputShape[widthIdx]} - 1));
       var row1: u32 = u32(row);
       var col1: u32 = u32(col);
       var row2: u32 = u32(row + 1);
       var col2: u32 = u32(col + 1);
-      if (!${useExtrapolation}) {
-        if (row2 > ${inputShape[heightIdx]}) {
-          row2 = ${inputShape[heightIdx]} - 1;
-        }
-        if (col2 > ${inputShape[widthIdx]}) {
-          col2 = ${inputShape[widthIdx]} - 1;
-        }
-      } else {
-        if (row > ${inputShape[heightIdx]} - 1 || row < 0 || col > ${inputShape[widthIdx]} - 1 || col < 0) {
-          return ${extrapolationValue};
-        }
+      var channel: u32 = 0;
+      var batch: u32 = 0;
+      if (${inputShape.length > 2}) {
+        channel = u32(originalIndices[${channelIdx}]);
+        batch = u32(originalIndices[${batchIdx}]);
       }
-      inputIndicesX11[${heightIdx}] = row1;
-      inputIndicesX11[${widthIdx}] = col1;
-      inputIndicesX12[${heightIdx}] = row1;
-      inputIndicesX12[${widthIdx}] = col2;
-      inputIndicesX21[${heightIdx}] = row2;
-      inputIndicesX21[${widthIdx}] = col1;
-      inputIndicesX22[${heightIdx}] = row2;
-      inputIndicesX22[${widthIdx}] = col2;
-      var x11: f32 = input[${inputIndicesHelper.i2oExpression('inputIndicesX11')}];
-      var x12: f32 = input[${inputIndicesHelper.i2oExpression('inputIndicesX12')}];
-      var x21: f32 = input[${inputIndicesHelper.i2oExpression('inputIndicesX21')}];
-      var x22: f32 = input[${inputIndicesHelper.i2oExpression('inputIndicesX22')}];
+      var x11: f32 = getInputValue(batch, channel, row1, col1);
+      var x12: f32 = getInputValue(batch, channel, row1, col2);
+      var x21: f32 = getInputValue(batch, channel, row2, col1);
+      var x22: f32 = getInputValue(batch, channel, row2, col2);
       var dx1: f32 = row - f32(row1);
       var dx2: f32 = f32(row2 ) - row;
       var dy1 = col - f32(col1);
@@ -371,44 +365,36 @@ const bicubicInterpolation =
     var originalIndices = calculateOriginalIndicesFromOutputIndices(outputIndices);
     var originRow:f32 = originalIndices[${heightIdx}];
     var originCol:f32 = originalIndices[${widthIdx}];
-    var colCoefs = getCubicInterpolationCoefs(fract(originCol));
-    var rowCoefs = getCubicInterpolationCoefs(fract(originRow));
+    var fractOriginRow:f32 = originRow - floor(originRow);
+    var fractOriginCol:f32 = originCol - floor(originCol);
+    var colCoefs = getCubicInterpolationCoefs(fractOriginCol);
+    var rowCoefs = getCubicInterpolationCoefs(fractOriginRow);
 
     var colData: array<f32, 4> = array<f32, 4>(0.0, 0.0, 0.0, 0.0);
     for (var c: i32 = -1; c < 3; c++) {
-      var col: i32 = i32(originCol) + c;
+      var col: f32 = originCol + f32(c);
       if (col < 0 || col >= ${inputShape[widthIdx]}) {
         if (${excludeOutside}) {
           colCoefs[c + 1] = 0.0;
-          colData[c + 1] = 0.0;
           continue;
         } else if (${useExtrapolation}) {
-          colData[c + 1] = ${extrapolationValue};
+          return ${extrapolationValue};
         } else {
-          if (col < 0) {
-            col = 0;
-          } else {
-            col = ${inputShape[widthIdx]} - 1;
-          }
+          col = max(0, min(col, ${inputShape[widthIdx]} - 1));
         }
       }
       var rowData: array<f32, 4> = array<f32, 4>(0.0, 0.0, 0.0, 0.0);
       var rowCoefsCopy = rowCoefs;
       for (var r: i32 = -1; r < 3; r++) {
-        var row: i32 = i32(originRow) + r;
+        var row: f32 = originRow + f32(r);
         if (row < 0 || row >= ${inputShape[heightIdx]}) {
           if (${excludeOutside}) {
             rowCoefsCopy[r + 1] = 0.0;
-            rowData[r + 1] = 0.0;
             continue;
           } else if (${useExtrapolation}) {
-            rowData[r + 1] = ${extrapolationValue};
+            return ${extrapolationValue};
           } else {
-            if (row < 0) {
-              row = 0;
-            } else {
-              row = ${inputShape[heightIdx]} - 1;
-            }
+            row = max(0, min(row, ${inputShape[heightIdx]} - 1));
           }
         }
         var inputIndices: ${inputIndicesHelper.iType} = outputIndices;
@@ -518,8 +504,9 @@ export const createResizeProgramInfoLoader =
       const metadata: ProgramMetadata = {
         name: 'Resize',
         inputTypes: [GpuDataType.default],
-        cacheHint: attributes.cacheKey + opsetVersion.toString() + (scales.length > 0 ? '_scales' : '') +
-            (sizes.length > 0 ? '_sizes' : ''),
+        cacheHint: attributes.cacheKey + opsetVersion.toString() +
+            (scales.length > 0 ? '_scales_' + scales.toString() : '') +
+            (sizes.length > 0 ? '_sizes_' + sizes.toString() : ''),
       };
       return {
         ...metadata,
