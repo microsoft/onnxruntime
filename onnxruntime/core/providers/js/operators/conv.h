@@ -26,13 +26,13 @@ class Conv : public JsKernel {
         conv_attrs_.strides.size() == 1) {
       JSEP_INIT_KERNEL_ATTRIBUTE(Conv, ({
                                    "format" : $8 ? "NHWC" : "NCHW",
-                                   "auto_pad" : $1,
-                                   "dilations" : [$2],
-                                   "group" : $3,
-                                   "kernel_shape" : [$4],
-                                   "pads" : [ $5, $6 ],
-                                   "strides" : [$7],
-                                   "w_is_const" : () JS_ARROW(!!Number(HEAP64[$9 / 2**3]))
+                                   "auto_pad" : Number($1),
+                                   "dilations" : [Number($2)],
+                                   "group" : Number($3),
+                                   "kernel_shape" : [Number($4)],
+                                   "pads" : [ Number($5), Number($6) ],
+                                   "strides" : [Number($7)],
+                                   "w_is_const" : () JS_ARROW(!!Number(HEAP64[Number($9) / 2**3]))
                                  }),
                                  static_cast<size_t>(conv_attrs_.auto_pad),
                                  static_cast<size_t>(conv_attrs_.dilations.size() > 0 ? conv_attrs_.dilations[0] : 0),
@@ -46,13 +46,13 @@ class Conv : public JsKernel {
     } else {
       JSEP_INIT_KERNEL_ATTRIBUTE(Conv, ({
                                    "format" : $13 ? "NHWC" : "NCHW",
-                                   "auto_pad" : $1,
-                                   "dilations" : [ $2, $3 ],
-                                   "group" : $4,
-                                   "kernel_shape" : [ $5, $6 ],
-                                   "pads" : [ $7, $8, $9, $10 ],
-                                   "strides" : [ $11, $12 ],
-                                   "w_is_const" : () JS_ARROW(!!Number(HEAP64[$14 / 2**3]))
+                                   "auto_pad" : Number($1),
+                                   "dilations" : [ Number($2), Number($3) ],
+                                   "group" : Number($4),
+                                   "kernel_shape" : [ Number($5), Number($6) ],
+                                   "pads" : [ Number($7), Number($8), Number($9), Number($10) ],
+                                   "strides" : [ Number($11), Number($12) ],
+                                   "w_is_const" : () JS_ARROW(!!Number(HEAP64[Number($14) / 2**3]))
                                  }),
                                  static_cast<size_t>(conv_attrs_.auto_pad),
                                  static_cast<size_t>(conv_attrs_.dilations.size() > 0 ? conv_attrs_.dilations[0] : 0),

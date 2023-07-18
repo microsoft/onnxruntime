@@ -32,9 +32,9 @@ class ConvTranspose : public JsKernel {
                                    "kernel_shape" : [$4],
                                    "pads" : [ $5, $6 ],
                                    "strides" : [$7],
-                                   "wIsConst" : () JS_ARROW(!!HEAP8[$9]),
-                                   "outputPadding" : $10 ? Array.from(HEAP64.subarray(Number($11), Number($11) + Number($10)).map(x => Number(x))) : [],
-                                   "outputShape" : $12 ? Array.from(HEAP64.subarray(Number($12), Number($13) + Number($12)).map(x => Number(x))) : []
+                                   "wIsConst" : () JS_ARROW(!!Number(HEAP64[Number($9) / 2**3])),
+                                   "outputPadding" : $10 ? Array.from(HEAP64.subarray(Number($11), Number($11) + Number($10))) : [],
+                                   "outputShape" : $12 ? Array.from(HEAP64.subarray(Number($12), Number($13) + Number($12))) : []
                                  }),
                                  static_cast<size_t>(conv_transpose_attrs_.auto_pad),
                                  static_cast<size_t>(conv_transpose_attrs_.dilations.size() > 0 ? conv_transpose_attrs_.dilations[0] : 0),
@@ -84,14 +84,14 @@ class ConvTranspose : public JsKernel {
       JSEP_INIT_KERNEL_ATTRIBUTE(ConvTranspose, ({
                                    "format" : $7 ? "NHWC" : "NCHW",
                                    "autoPad" : $1,
-                                   "dilations" : Array.from(HEAP64.subarray(Number($2), Number($2) + /* dialations_vec_size */ 2).map(x => Number(x))),
+                                   "dilations" : Array.from(HEAP64.subarray(Number($2), Number($2) + /* dialations_vec_size */ 2)),
                                    "group" : $3,
-                                   "kernelShape" : Array.from(HEAP64.subarray(Number($4), Number($4) + /* kernel_shape_vec_size */ 2).map(x => Number(x))),
+                                   "kernelShape" : Array.from(HEAP64.subarray(Number($4), Number($4) + /* kernel_shape_vec_size */ 2)),
                                    "pads" : Array.from(HEAP64.subarray(Number($5), Number($5) + /* pads_vec_size */ 4)),
                                    "strides" : Array.from(HEAP64.subarray(Number($6), Number($6) + /* strides_vec_size */ 2)),
-                                   "wIsConst" : () JS_ARROW(!!HEAP8[Number($8)]),
-                                   "outputPadding" : ($9 > 0) ? Array.from(HEAP64.subarray(Number($10), Number($10) + Number($9)).map(x => Number(x))) : [],
-                                   "outputShape" : ($11 > 0) ? Array.from(HEAP64.subarray(Number($12), Number($12) + Number($11)).map(x => Number(x))) : []
+                                   "wIsConst" : () JS_ARROW(!!Number(HEAP64[Number($8) / 2**3])),
+                                   "outputPadding" : ($9 > 0) ? Array.from(HEAP64.subarray(Number($10), Number($10) + Number($9))) : [],
+                                   "outputShape" : ($11 > 0) ? Array.from(HEAP64.subarray(Number($12), Number($12) + Number($11))) : []
                                  }),
                                  static_cast<size_t>(conv_transpose_attrs_.auto_pad),
                                  reinterpret_cast<size_t>(local_dilations.data()) / sizeof(size_t),

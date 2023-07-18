@@ -47,7 +47,7 @@ class Split : public JsKernel, public SplitBase {
 
     JSEP_INIT_KERNEL_ATTRIBUTE(Split, ({"axis" : $1,
                                         "numOutputs" : $2,
-                                        "splitSizes" : $3 ? Array.from(HEAP64.subarray(Number($4), Number($4) + Number($3)).map(x => Number(x))) : []}),
+                                        "splitSizes" : $3 ? Array.from(HEAP64.subarray(Number($4), Number($4) + Number($3))) : []}),
                                static_cast<size_t>(axis_),
                                static_cast<size_t>(num_outputs_),
                                gsl::narrow_cast<size_t>(split_sizes.size()),
