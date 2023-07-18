@@ -4,6 +4,10 @@
 
 #include "flash_fwd_launch_template.h"
 
+namespace onnxruntime {
+namespace contrib {
+namespace cuda {
+
 // template<>
 // void run_mha_fwd_<cutlass::half_t, 160>(Flash_fwd_params &params, cudaStream_t stream) {
 //     using elem_type = cutlass::half_t;
@@ -21,7 +25,11 @@
 //         // For A100, H100, 1st is fastest.
 //     });
 // }
-template<>
-void run_mha_fwd_<cutlass::half_t, 160>(Flash_fwd_params &params, cudaStream_t stream) {
-    run_mha_fwd_hdim160<cutlass::half_t>(params, stream);
+template <>
+void run_mha_fwd_<cutlass::half_t, 160>(Flash_fwd_params& params, cudaStream_t stream) {
+  run_mha_fwd_hdim160<cutlass::half_t>(params, stream);
 }
+
+}  // namespace cuda
+}  // namespace contrib
+}  // namespace onnxruntime
