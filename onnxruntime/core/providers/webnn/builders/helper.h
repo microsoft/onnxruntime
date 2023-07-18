@@ -129,6 +129,7 @@ static const InlinedHashMap<std::string, std::string> op_map = {
     {"Neg", "neg"},
     {"Not", "logicalNot"},
     {"Pow", "pow"},
+    {"PRelu", "prelu"},
     {"Reciprocal", "reciprocal"},
     {"ReduceMax", "reduceMax"},
     {"ReduceMean", "reduceMean"},
