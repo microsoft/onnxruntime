@@ -32,7 +32,7 @@ export const initializeFlags = (): void => {
   }
 };
 
-class OnnxruntimeWebAssemblyBackend implements Backend {
+export class OnnxruntimeWebAssemblyBackend implements Backend {
   async init(): Promise<void> {
     // populate wasm flags
     initializeFlags();
