@@ -363,43 +363,6 @@ inline __device__ void copy(TiledCopy thr_copy, Tensor<Engine0, Layout0> const& 
       clear(D(_, m, _));
     }
   }
-  // TD [2023-04-13]: Strange that the code below can cause race condition.
-  // I think it's because the copies are under an if statement.
-  // if (Is_even_K) {
-  //     #pragma unroll
-  //     for (int m = 0; m < size<1>(S); ++m) {
-  //         if (Is_even_MN || get<0>(identity_MN(0, m, 0)) < max_MN) {
-  //             copy(thr_copy, S(_, m, _), D(_, m, _));
-  //         } else if (Clear_OOB_MN) {
-  //             clear(D(_, m, _));
-  //         }
-  //     }
-  // } else {  // It's slightly faster in this case if iterate over K first
-  //     #pragma unroll
-  //     for (int k = 0; k < size<2>(S); ++k) {
-  //         if (predicate_K(k)) {
-  //             #pragma unroll
-  //             for (int m = 0; m < size<1>(S); ++m) {
-  //                 if (Is_even_MN || get<0>(identity_MN(0, m, 0)) < max_MN) {
-  //                     copy(thr_copy, S(_, m, k), D(_, m, k));
-  //                 } else if (Clear_OOB_MN) {
-  //                     clear(D(_, m, k));
-  //                 }
-  //             }
-  //         } else if (Clear_OOB_K) {  // There's no case where !Clear_OOB_K && Clear_OOB_MN
-  //             if (Clear_OOB_MN || Is_even_MN) {
-  //                 clear(D(_, _, k));
-  //             } else {
-  //                 #pragma unroll
-  //                 for (int m = 0; m < size<1>(S); ++m) {
-  //                     if (!(Is_even_MN || get<0>(identity_MN(0, m, 0)) < max_MN)) {
-  //                         clear(D(_, m, k));
-  //                     }
-  //                 }
-  //             }
-  //         }
-  //     }
-  // }
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////

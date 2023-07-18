@@ -41,7 +41,7 @@ make_tiled_copy_A_warpcontiguousM(Copy_Atom<Args...> const& copy_atom,
   auto t = make_tile(Layout<Shape<Int<AtomShape_M>, Int<kNWarps>>,
                             Stride<_1, Int<MMAStride_M>>>{},
                      make_layout(size<2>(TileShape_MNK{})));
-  // if (cute::thread0()) {printf("make_tiled_copy_A_warpcontiguousM "); print(t); printf("\n");  }
+
   return make_tiled_copy_impl(copy_atom, tiled_mma.get_layoutA_TV(), t);
 }
 
@@ -145,9 +145,6 @@ inline __device__ void compute_attn_1rowblock(const Params& params, const int bi
   int n_block_max = cute::ceil_div(binfo.actual_seqlen_k, kBlockN);
   if (Is_causal) {
     n_block_max = std::min(n_block_max, cute::ceil_div((m_block + 1) * kBlockM, kBlockN));
-    // if (threadIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0) {
-    //     printf("m_block = %d, n_block_max = %d\n", m_block, n_block_max);
-    // }
   }
 
   // We iterate over the blocks in reverse order. This is because the last block is the only one
@@ -206,10 +203,7 @@ inline __device__ void compute_attn_1rowblock(const Params& params, const int bi
   //
 
   auto smem_thr_copy_Q = make_tiled_copy_A(typename Kernel_traits::SmemCopyAtom{}, tiled_mma).get_thread_slice(tidx);
-  // auto smem_thr_copy_Q = make_tiled_copy_A_warpcontiguousM<MMA_M>(typename Kernel_traits::SmemCopyAtom{}, tiled_mma).get_thread_slice(tidx);
-  // if (cute::thread0()) {smem_thr_copy_Q.print_all();}
   Tensor tSsQ = smem_thr_copy_Q.partition_S(sQ);
-  // if (cute::thread0()) {print(tSsQ.layout()); printf("\n");}
 
   auto smem_thr_copy_K = make_tiled_copy_B(typename Kernel_traits::SmemCopyAtom{}, tiled_mma).get_thread_slice(tidx);
   Tensor tSsK = smem_thr_copy_K.partition_S(sK);
@@ -225,25 +219,9 @@ inline __device__ void compute_attn_1rowblock(const Params& params, const int bi
   // PREDICATES
   //
 
-  // // Allocate predicate tensors for m and n
-  // Tensor tQpQ = make_tensor<bool>(make_shape(size<1>(tQsQ), size<2>(tQsQ)), Stride<_1,_0>{});
-  // Tensor tKVpKV = make_tensor<bool>(make_shape(size<1>(tKsK), size<2>(tKsK)), Stride<_1,_0>{});
-
   // Construct identity layout for sQ and sK
   Tensor cQ = make_identity_tensor(make_shape(size<0>(sQ), size<1>(sQ)));   // (BLK_M,BLK_K) -> (blk_m,blk_k)
   Tensor cKV = make_identity_tensor(make_shape(size<0>(sK), size<1>(sK)));  // (BLK_N,BLK_K) -> (blk_n,blk_k)
-  // Tensor tScQ = thr_mma.partition_A(cQ);                           // (MMA,MMA_M,MMA_K)
-  // if (cute::thread0()) {
-  //     print(tScQ.layout()); printf("\n");
-  //     for (int i = 0; i < size(tScQ); ++i) {
-  //         printf("%d ", get<0>(tScQ(i)));
-  //     }
-  //     printf("\n");
-  //     for (int i = 0; i < size(tScQ); ++i) {
-  //         printf("%d ", get<1>(tScQ(i)));
-  //     }
-  //     printf("\n");
-  // }
 
   // Repeat the partitioning with identity layouts
   Tensor tQcQ = gmem_thr_copy_QKV.partition_S(cQ);     // (ACPY,ACPY_M,ACPY_K) -> (blk_m,blk_k)
@@ -275,14 +253,6 @@ inline __device__ void compute_attn_1rowblock(const Params& params, const int bi
     cute::cp_async_fence();
   }
 
-  // // Copy rmem to smem
-  // // copy(tQrQ, tQsQ);
-  // flash::cp_async_wait<0>();
-  // __syncthreads();
-  // // if (cute::thread(1, 0)) { print(tQsQ); }
-  // // Tensor sQNoSwizzle = make_tensor(make_smem_ptr(reinterpret_cast<Element *>(smem_)), typename Kernel_traits::SmemLayoutQNoSwizzle{});
-  // // if (cute::thread0()) { print(sQNoSwizzle); }
-
   if (Kernel_traits::Share_Q_K_smem) {
     flash::cp_async_wait<0>();
     __syncthreads();
@@ -297,8 +267,6 @@ inline __device__ void compute_attn_1rowblock(const Params& params, const int bi
   flash::copy<Is_even_N, Is_even_K>(gmem_thr_copy_QKV, tKgK, tKsK, tKVcKV, tKVpKV,
                                     binfo.actual_seqlen_k - n_block * kBlockN);
   cute::cp_async_fence();
-  // if (threadIdx.x == 0 && blockIdx.y == 0 && blockIdx.z < 2) { print(tKgK); }
-  // __syncthreads();
 
   if (Kernel_traits::Is_Q_in_regs && !Kernel_traits::Share_Q_K_smem) {
     flash::cp_async_wait<1>();
@@ -345,7 +313,7 @@ inline __device__ void compute_attn_1rowblock(const Params& params, const int bi
 
     // Reshape acc_s from (MMA=4, MMA_M, MMA_N) to (nrow=(2, MMA_M), ncol=(2, MMA_N))
     Tensor scores = make_tensor(acc_s.data(), flash::convert_layout_acc_rowcol(acc_s.layout()));
-    // if (cute::thread0()) { print(scores); }
+
     // We don't put the masking before the matmul S = Q K^T because we don't clear sK
     // for rows outside actual_seqlen_k. So those rows could have Inf / NaN, and the matmul
     // can produce Inf / NaN.
@@ -354,23 +322,11 @@ inline __device__ void compute_attn_1rowblock(const Params& params, const int bi
         flash::apply_mask(scores, binfo.actual_seqlen_k - n_block * kBlockN);
       }
     } else {
-      // Tensor caccS = make_identity_tensor(Shape<Int<kBlockM>, Int<kBlockN>>{});    // (BLK_M,BLK_N) -> (blk_m,blk_n)
-      // Tensor taccScS = thr_mma.partition_C(caccS);                           // (MMA,MMA_M,MMA_N)
-      // static_assert(decltype(size<0>(taccScS))::value == 4);
-      // // Convert to ((2, 2), MMA_M, MMA_N) then take only the row indices.
-      // Tensor idx_row = logical_divide(taccScS, Shape<_2>{})(make_coord(0, _), _, 0);
-      // Tensor idx_rowcol = make_tensor(taccScS.data(), flash::convert_layout_acc_rowcol(taccScS.layout()));
-      // flash::apply_mask_causal_w_idx(scores, idx_rowcol, n_block * kBlockN, binfo.actual_seqlen_k,
-      //                               m_block * kBlockM);
-      // Idk why it's get<1> and not get<0> of the stride.
-      // if (cute::thread0()) { print(idx_row.layout()); print(stride<1>(idx_row)); printf("stride = %d \n", get<1>(stride<1>(idx_row))); }
       // I can't get the stride from idx_row
       flash::apply_mask_causal(scores, n_block * kBlockN, binfo.actual_seqlen_k,
                                // m_block * kBlockM + get<0>(idx_row(0)),
                                m_block * kBlockM + (tidx / 32) * 16 + (tidx % 32) / 4,
                                kNWarps * 16);
-      // m_block * kBlockM + (tidx / 32) * 16, kNWarps * 16);
-      // m_block * kBlockM + (tidx / 32) * (kBlockM / kNWarps), 16);
     }
 
     flash::cp_async_wait<0>();
@@ -409,10 +365,8 @@ inline __device__ void compute_attn_1rowblock(const Params& params, const int bi
       flash::apply_dropout(tOrP, params.p_dropout_in_uint8_t, seed, offset,
                            block_row_idx, block_col_idx, kNWarps);
     }
-    // if (cute::thread0()) { print(tOrP); }
 
     flash::gemm_A_in_regs(acc_o, tOrP, tOrVt, tOsVt, tiled_mma, smem_thr_copy_V);
-    // if (cute::thread0()) { print(scores); }
 
     // This check is at the end of the loop since we always have at least 1 iteration
     if (n_masking_steps > 1 && n_block <= 0) {
@@ -489,8 +443,6 @@ inline __device__ void compute_attn_1rowblock(const Params& params, const int bi
       acc_o_rowcol(mi, ni) *= scale;
     }
   }
-
-  // if (cute::thread0()) { print(acc_o_rowcol); }
 
   // Convert acc_o from fp32 to fp16/bf16
   Tensor rO = flash::convert_type<Element>(acc_o);
