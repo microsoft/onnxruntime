@@ -1577,6 +1577,182 @@ TEST(ComputeOptimizerTests, ShrunkenGatherElementwiseOps_PropagationOnTwoBranche
 }
 
 /*
+Test graph includes multiple equivalent subgraphs as below.
+           graph input [4, 32, 256] (float)            graph input [4, 32, 256] (float)
+                            |                                |
+                             \_____________   ______________/
+                                           \ /
+                                           Add  starts:(0)  ends: (-1)  axes: (1) steps: (1)
+                                            \       \       |          /         /
+                                               \       \     |        /       /
+                                                  \      \   |     /      /
+                                                    \     \  |   /     /
+                                                       \   \ |  /   /
+                                                            Slice
+                                                             |
+                                                          Identity
+                                                             |
+                                                graph output [4, 31, 256] (float)
+
+Add an Identity node because currently we don't allow Slice generates graph output.
+*/
+TEST(ComputeOptimizerTests, SliceElementwiseOps_PropagationOnTwoBranches) {
+  const logging::Logger* logger = &logging::LoggingManager::DefaultLogger();
+  InlinedVector<int64_t> starts_indices;
+  auto pre_graph_checker = [&starts_indices](Graph& graph) -> Status {
+    auto op_count_pre = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_count_pre.size() == 3U);
+    TEST_RETURN_IF_NOT(op_count_pre["Add"] == 1);
+    TEST_RETURN_IF_NOT(op_count_pre["Slice"] == 1);
+    TEST_RETURN_IF_NOT(op_count_pre["Identity"] == 1);
+
+    for (Node& node : graph.Nodes()) {
+      if (node.OpType() == "Slice") {
+        TEST_RETURN_IF_NOT(starts_indices.empty());
+        constexpr bool require_constant = true;
+        NodeArg* initializer_node_arg = graph.GetNodeArg(node.InputDefs()[1]->Name());
+        TEST_RETURN_IF_NOT(optimizer_utils::AppendTensorFromInitializer(graph, *initializer_node_arg, starts_indices,
+                                                                        require_constant));
+      }
+    }
+    return Status::OK();
+  };
+
+  auto post_graph_checker = [&starts_indices](Graph& graph) {
+    auto op_count_post = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_count_post.size() == 3U);
+    TEST_RETURN_IF_NOT(op_count_post["Add"] == 1);
+    TEST_RETURN_IF_NOT(op_count_post["Slice"] == 2);
+    TEST_RETURN_IF_NOT(op_count_post["Identity"] == 1);
+
+    for (Node& node : graph.Nodes()) {
+      if (node.OpType() == "Add") {
+        const auto& input_defs = node.InputDefs();
+
+        {
+          auto producer_node = graph.GetProducerNode(input_defs[0]->Name());
+          TEST_RETURN_IF_NOT(producer_node != nullptr);
+          TEST_RETURN_IF_NOT(producer_node->OpType() == "Slice");
+
+          InlinedVector<int64_t> values;
+          constexpr bool require_constant = true;
+          NodeArg* initializer_node_arg = graph.GetNodeArg(producer_node->InputDefs()[1]->Name());
+          TEST_RETURN_IF_NOT(optimizer_utils::AppendTensorFromInitializer(graph, *initializer_node_arg, values,
+                                                                          require_constant));
+          for (size_t i = 0; i < values.size(); i++) {
+            TEST_RETURN_IF_NOT(values[i] == starts_indices[i]);
+          }
+        }
+
+        {
+          auto producer_node = graph.GetProducerNode(input_defs[1]->Name());
+          TEST_RETURN_IF_NOT(producer_node != nullptr);
+          TEST_RETURN_IF_NOT(producer_node->OpType() == "Slice");
+
+          InlinedVector<int64_t> values;
+          constexpr bool require_constant = true;
+          NodeArg* initializer_node_arg = graph.GetNodeArg(producer_node->InputDefs()[1]->Name());
+          TEST_RETURN_IF_NOT(optimizer_utils::AppendTensorFromInitializer(graph, *initializer_node_arg, values, require_constant));
+          for (size_t i = 0; i < values.size(); i++) {
+            TEST_RETURN_IF_NOT(values[i] == starts_indices[i]);
+          }
+        }
+      }
+    }
+    return Status::OK();
+  };
+
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    auto* input1_arg = builder.MakeInput<int64_t>({{4, 32, 256}});
+    auto* input2_arg = builder.MakeInput<int64_t>({{4, 32, 256}});
+    auto* add_out = builder.MakeIntermediate();
+    builder.AddNode("Add", {input1_arg, input2_arg}, {add_out});
+
+    auto* starts_initializer = builder.MakeInitializer<int64_t>({1}, {0});
+    auto* ends_initializer = builder.MakeInitializer<int64_t>({1}, {-1});
+    auto* axes_initializer = builder.MakeInitializer<int64_t>({1}, {1});
+    auto* steps_initializer = builder.MakeInitializer<int64_t>({1}, {1});
+    auto* slice_out = builder.MakeIntermediate();
+    builder.AddNode("Slice", {add_out, starts_initializer, ends_initializer, axes_initializer, steps_initializer},
+                    {slice_out});
+
+    auto* identity_out = builder.MakeOutput();
+    builder.AddNode("Identity", {slice_out}, {identity_out});
+  };
+
+  std::unique_ptr<GraphTransformer> transformer = std::make_unique<UpStreamGatherGraphTransformer>();
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 14, *logger, std::move(transformer),
+                                        TransformerLevel::Level1,
+                                        1, pre_graph_checker, post_graph_checker));
+}
+
+/*
+Test graph includes multiple equivalent subgraphs as below.
+           graph input [4, 32, 256] (float)            graph input [4, 32, 256] (float)
+                            |                                |
+                             \_____________   ______________/
+                                           \ /
+                                           Add  starts:(0,0)  ends: (-1,-1)  axes: (0,1) steps: (1,1)
+                                            \       \        |              /           /
+                                               \       \     |           /          /
+                                                  \      \   |        /         /
+                                                    \     \  |     /        /
+                                                       \   \ |   /     /
+                                                            Slice
+                                                             |
+                                                          Identity
+                                                             |
+                                                graph output [3, 31, 256] (float)
+
+Add an Identity node because currently we don't allow Slice generates graph output.
+*/
+TEST(ComputeOptimizerTests, SliceElementwiseOps_NoPropagationForMutipleAxesSlice) {
+  const logging::Logger* logger = &logging::LoggingManager::DefaultLogger();
+  auto pre_graph_checker = [](Graph& graph) -> Status {
+    auto op_count_pre = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_count_pre.size() == 3U);
+    TEST_RETURN_IF_NOT(op_count_pre["Add"] == 1);
+    TEST_RETURN_IF_NOT(op_count_pre["Slice"] == 1);
+    TEST_RETURN_IF_NOT(op_count_pre["Identity"] == 1);
+
+    return Status::OK();
+  };
+
+  auto post_graph_checker = [](Graph& graph) {
+    auto op_count_post = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_count_post.size() == 3U);
+    TEST_RETURN_IF_NOT(op_count_post["Add"] == 1);
+    TEST_RETURN_IF_NOT(op_count_post["Slice"] == 1);
+    TEST_RETURN_IF_NOT(op_count_post["Identity"] == 1);
+
+    return Status::OK();
+  };
+
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    auto* input1_arg = builder.MakeInput<int64_t>({{4, 32, 256}});
+    auto* input2_arg = builder.MakeInput<int64_t>({{4, 32, 256}});
+    auto* add_out = builder.MakeIntermediate();
+    builder.AddNode("Add", {input1_arg, input2_arg}, {add_out});
+
+    auto* starts_initializer = builder.MakeInitializer<int64_t>({2}, {0, 0});
+    auto* ends_initializer = builder.MakeInitializer<int64_t>({2}, {-1, -1});
+    auto* axes_initializer = builder.MakeInitializer<int64_t>({2}, {0, 1});
+    auto* steps_initializer = builder.MakeInitializer<int64_t>({2}, {1, 1});
+    auto* slice_out = builder.MakeIntermediate();
+    builder.AddNode("Slice", {add_out, starts_initializer, ends_initializer, axes_initializer, steps_initializer},
+                    {slice_out});
+
+    auto* identity_out = builder.MakeOutput();
+    builder.AddNode("Identity", {slice_out}, {identity_out});
+  };
+
+  std::unique_ptr<GraphTransformer> transformer = std::make_unique<UpStreamGatherGraphTransformer>();
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 14, *logger, std::move(transformer),
+                                        TransformerLevel::Level1,
+                                        1, pre_graph_checker, post_graph_checker));
+}
+
+/*
 Test graph include multiple equivalent subgraphs as below.
            graph input [4, 32, 256] (int64_t)            graph input [4, 32, 256] (int64_t)
                             |                                |
@@ -1827,6 +2003,72 @@ TEST(ComputeOptimizerTests, ReshapeElementwiseOps_NoPropagation1) {
   for (auto& opset_version : opsets) {
     std::unique_ptr<GraphTransformer> transformer = std::make_unique<UpStreamReshapeGraphTransformer>();
     ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, opset_version, *logger, std::move(transformer), TransformerLevel::Level1,
+                                          1, pre_graph_checker, post_graph_checker));
+  }
+}
+
+/*
+Test graph include multiple equivalent subgraphs as below.
+          graph input [128, 4, 32] (int64_t)
+                          |
+                        Cast    initializer value: (-1, 128)
+                          |    /
+                        Reshape
+                          |
+                        Identity
+                          |
+                  graph out [128, 128] (int64_t)
+
+Add an Identity node because currently we don't allow Reshape generate graph output.
+*/
+TEST(ComputeOptimizerTests, ReshapeElementwiseOps_NoPropagation2) {
+  const logging::Logger* logger = &logging::LoggingManager::DefaultLogger();
+  auto pre_graph_checker = [](Graph& graph) -> Status {
+    auto op_count_pre = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_count_pre.size() == 3U);
+    TEST_RETURN_IF_NOT(op_count_pre["Cast"] == 1);
+    TEST_RETURN_IF_NOT(op_count_pre["Reshape"] == 1);
+    TEST_RETURN_IF_NOT(op_count_pre["Identity"] == 1);
+    return Status::OK();
+  };
+
+  auto post_graph_checker = [](Graph& graph) {
+    auto op_count_post = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_count_post.size() == 3U);
+    TEST_RETURN_IF_NOT(op_count_post["Cast"] == 1);
+    TEST_RETURN_IF_NOT(op_count_post["Reshape"] == 1);
+    TEST_RETURN_IF_NOT(op_count_post["Identity"] == 1);
+
+    for (Node& node : graph.Nodes()) {
+      if (node.OpType() == "Reshape") {
+        const auto& input_defs = node.InputDefs();
+        auto producer_node = graph.GetProducerNode(input_defs[0]->Name());
+        TEST_RETURN_IF_NOT(producer_node != nullptr);
+        TEST_RETURN_IF_NOT(producer_node->OpType() == "Cast");
+      }
+    }
+    return Status::OK();
+  };
+
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    auto* input1_arg = builder.MakeInput<int64_t>({{128, 4, 32}});
+    auto* cast_out = builder.MakeIntermediate();
+    builder.AddNode("Cast", {input1_arg}, {cast_out})
+        .AddAttribute("to", static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_INT64));
+
+    auto* shape_initializer = builder.MakeInitializer<int64_t>({2}, {-1, 128});
+    auto* reshape_out = builder.MakeIntermediate();
+    builder.AddNode("Reshape", {cast_out, shape_initializer}, {reshape_out});
+
+    auto* identity_out = builder.MakeOutput();
+    builder.AddNode("Identity", {reshape_out}, {identity_out});
+  };
+
+  const std::vector<int> opsets{12, 13, 14};
+  for (auto& opset_version : opsets) {
+    std::unique_ptr<GraphTransformer> transformer = std::make_unique<UpStreamReshapeGraphTransformer>();
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, opset_version, *logger, std::move(transformer),
+                                          TransformerLevel::Level1,
                                           1, pre_graph_checker, post_graph_checker));
   }
 }

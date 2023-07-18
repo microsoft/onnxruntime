@@ -29,7 +29,7 @@ class ReshapeOpBuilder : public BaseOpBuilder {
   // Operator support related.
  private:
   bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
-                         const logging::Logger& logger) const override;
+                         const WebnnDeviceType /* device_type */, const logging::Logger& logger) const override;
 
   // Reshape opset 4- uses attributes for new shape which we do not support for now.
   int GetMinSupportedOpSet(const Node& /* node */) const override { return 5; }
@@ -69,7 +69,9 @@ Status ReshapeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 
 // Operator support related.
 
-bool ReshapeOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
+bool ReshapeOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers,
+                                         const Node& node,
+                                         const WebnnDeviceType /* device_type */,
                                          const logging::Logger& logger) const {
   const auto& input_defs = node.InputDefs();
   const auto& perm_name = input_defs[1]->Name();

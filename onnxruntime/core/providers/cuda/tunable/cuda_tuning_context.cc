@@ -27,6 +27,17 @@ static Status ValidateCudaVersion(const std::string& value) {
   return Status::OK();
 }
 
+std::string CudaTuningResultsValidator::GetOrtBuildConfig() const {
+  std::ostringstream oss;
+#ifdef ENABLE_TRITON
+  constexpr int kTriton = 1;
+#else
+  constexpr int kTriton = 0;
+#endif
+  oss << "ENABLE_TRITON=" << kTriton << "|";
+  return oss.str();
+}
+
 std::string CudaTuningResultsValidator::GetDeviceModel() const {
   return ep_->GetDeviceProp().name;
 }
@@ -75,6 +86,14 @@ void CudaTuningContext::DisableTuning() {
 
 bool CudaTuningContext::IsTuningEnabled() const {
   return info_->tuning_enable;
+}
+
+void CudaTuningContext::SetMaxTuningDurationMs(int max_duration_ms) {
+  info_->max_tuning_duration_ms = max_duration_ms;
+}
+
+int CudaTuningContext::GetMaxTuningDurationMs() const {
+  return info_->max_tuning_duration_ms > 0 ? info_->max_tuning_duration_ms : std::numeric_limits<int>::max();
 }
 
 TuningResultsManager& CudaTuningContext::GetTuningResultsManager() {

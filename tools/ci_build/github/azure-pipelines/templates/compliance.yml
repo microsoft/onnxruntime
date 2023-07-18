@@ -4,10 +4,10 @@ parameters:
   type: string
   default: x64
 
-- name: vsVersion
-  displayName: Visual Studio Version
-  type: string
-  default: '2022'
+- name: vs2022
+  displayName: If the Visual Studio version is 2022
+  type: boolean
+  default: true
 
 steps:
 - task: CredScan@2
@@ -31,14 +31,13 @@ steps:
      **/*.obj
      **/*.pdb
      **/*.dll
-
 #Manually set msBuildCommandline so that we can also set CAExcludePath
 - task: securedevelopmentteam.vss-secure-development-tools.build-task-prefast.SDLNativeRules@2
   displayName: 'Run the PREfast SDL Native Rules for MSBuild'
   inputs:
     userProvideBuildInfo: msBuildInfo
     msBuildArchitecture: x64
-    ${{ if eq(parameters.vsVersion, '2019')}}:
+    ${{ if eq(parameters.vs2022, false)}}:
       msBuildVersion: 16.0
       msBuildCommandline: '"C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\MSBuild\Current\Bin\amd64\msbuild.exe" "$(Build.BinariesDirectory)\RelWithDebInfo\onnxruntime.sln" /p:platform="${{parameters.msbuildPlatform}}" /p:configuration="RelWithDebInfo" /p:CAExcludePath="$(Build.BinariesDirectory);$(Build.SourcesDirectory)\cmake;C:\program files (x86)" /p:VisualStudioVersion="17.0" /m /p:PreferredToolArchitecture=x64'
     ${{ else }}:
@@ -63,5 +62,5 @@ steps:
   displayName: 'TSA Upload'
   inputs:
     tsaVersion: TsaV2
-    codeBaseName: 'onnxruntime_master'
+    codeBaseName: 'onnxruntime_main'
   continueOnError: true

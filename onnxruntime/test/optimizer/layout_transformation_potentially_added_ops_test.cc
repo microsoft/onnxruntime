@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/optimizer/transpose_optimizer/layout_transformation_potentially_added_ops.h"
+#include "core/optimizer/layout_transformation/layout_transformation_potentially_added_ops.h"
 
 #include "gtest/gtest.h"
 

@@ -23,7 +23,7 @@ index 9c0b02d..2e2919c 100755
 +make -j$(nproc) install prefix=/usr/local NO_GETTEXT=1 NO_TCLTK=1 DESTDIR=/manylinux-rootfs CPPFLAGS="${MANYLINUX_CPPFLAGS}" CFLAGS="${MANYLINUX_CFLAGS}" CXXFLAGS="${MANYLINUX_CXXFLAGS}" LDFLAGS="${MANYLINUX_LDFLAGS}"
  popd
  rm -rf ${GIT_ROOT} ${GIT_ROOT}.tar.gz
-
+ 
 diff --git a/build-openssl.sh b/build-openssl.sh
 index 668deb6..5f3f5d5 100755
 --- a/build-openssl.sh
@@ -42,14 +42,14 @@ index 961e34d..55ae11b 100755
 --- a/build_utils.sh
 +++ b/build_utils.sh
 @@ -52,7 +52,7 @@ function check_sha256sum {
-
+ 
  function do_standard_install {
      ./configure "$@" CPPFLAGS="${MANYLINUX_CPPFLAGS}" CFLAGS="${MANYLINUX_CFLAGS}" "CXXFLAGS=${MANYLINUX_CXXFLAGS}" LDFLAGS="${MANYLINUX_LDFLAGS}" > /dev/null
 -    make > /dev/null
 +    make -j$(nproc) > /dev/null
      make install > /dev/null
  }
-
+ 
 diff --git a/install-entrypoint.sh b/install-entrypoint.sh
 index 9ef1e99..ec52833 100755
 --- a/install-entrypoint.sh
@@ -65,10 +65,10 @@ index 9ef1e99..ec52833 100755
 +fi
 \ No newline at end of file
 diff --git a/install-runtime-packages.sh b/install-runtime-packages.sh
-index 137d2e2..bd329f4 100755
+index 137d2e2..21b60a7 100755
 --- a/install-runtime-packages.sh
 +++ b/install-runtime-packages.sh
-@@ -73,9 +73,14 @@ if [ "${AUDITWHEEL_POLICY}" == "manylinux2014" ]; then
+@@ -73,9 +73,11 @@ if [ "${AUDITWHEEL_POLICY}" == "manylinux2014" ]; then
  	if [ "${AUDITWHEEL_ARCH}" == "x86_64" ]; then
  		# Software collection (for devtoolset-10)
  		yum -y install centos-release-scl-rh
@@ -78,11 +78,8 @@ index 137d2e2..bd329f4 100755
 +               if [[ -d /opt/rocm ]]; then
 +                 TOOLCHAIN_DEPS="devtoolset-10-binutils devtoolset-10-gcc devtoolset-10-gcc-c++ devtoolset-10-gcc-gfortran"
 +               else
-+                 # EPEL support (for yasm)
-+                 yum -y install https://dl.fedoraproject.org/pub/epel/epel-release-latest-7.noarch.rpm
 +                 TOOLCHAIN_DEPS="devtoolset-11-binutils devtoolset-11-gcc devtoolset-11-gcc-c++ devtoolset-11-gcc-gfortran"
 +               fi
-+               TOOLCHAIN_DEPS="${TOOLCHAIN_DEPS} yasm"
  	elif [ "${AUDITWHEEL_ARCH}" == "aarch64" ] || [ "${AUDITWHEEL_ARCH}" == "ppc64le" ] || [ "${AUDITWHEEL_ARCH}" == "s390x" ]; then
  		# Software collection (for devtoolset-10)
  		yum -y install centos-release-scl-rh

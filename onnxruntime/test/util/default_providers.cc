@@ -14,12 +14,7 @@ namespace onnxruntime {
 namespace test {
 
 std::unique_ptr<IExecutionProvider> DefaultCpuExecutionProvider(bool enable_arena) {
-  auto ret = CPUProviderFactoryCreator::Create(enable_arena)->CreateProvider();
-  // The factory created CPU provider doesn't create/reg allocators; something that is expected by
-  // clients of DefaultCpuExecutionProvider; hence the need to call RegisterAllocator explicitly.
-  AllocatorManager mgr;  // needed only to call RegisterAllocator
-  ret->RegisterAllocator(mgr);
-  return ret;
+  return CPUProviderFactoryCreator::Create(enable_arena)->CreateProvider();
 }
 
 std::unique_ptr<IExecutionProvider> DefaultTensorrtExecutionProvider() {
@@ -191,6 +186,7 @@ std::unique_ptr<IExecutionProvider> DefaultRocmExecutionProvider(bool test_tunab
   provider_options.do_copy_in_default_stream = true;
   provider_options.tunable_op_enable = test_tunable_op ? 1 : 0;
   provider_options.tunable_op_tuning_enable = test_tunable_op ? 1 : 0;
+  provider_options.tunable_op_max_tuning_duration_ms = 0;
   if (auto factory = RocmProviderFactoryCreator::Create(&provider_options))
     return factory->CreateProvider();
 #endif

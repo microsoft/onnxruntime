@@ -10,6 +10,7 @@
 NS_ASSUME_NONNULL_BEGIN
 
 void ORTSaveCodeAndDescriptionToError(int code, const char* description, NSError** error);
+void ORTSaveCodeAndDescriptionToError(int code, NSString* description, NSError** error);
 void ORTSaveOrtExceptionToError(const Ort::Exception& e, NSError** error);
 void ORTSaveExceptionToError(const std::exception& e, NSError** error);
 

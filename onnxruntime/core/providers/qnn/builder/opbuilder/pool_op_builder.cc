@@ -86,54 +86,41 @@ Status PoolOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
 
 Status PoolOpBuilder::SetCommonPoolParams(const NodeAttrHelper& node_helper,
                                           std::vector<uint32_t>& filter_size,
-                                          std::vector<uint32_t>& pad_amount, std::vector<uint32_t>& stride,
+                                          std::vector<uint32_t>& pad_amount, std::vector<uint32_t>& strides,
                                           int32_t& ceil_mode,
                                           std::vector<uint32_t>&& input_shape,
                                           std::vector<uint32_t>&& output_shape) const {
-  auto kernel_shape = node_helper.Get("kernel_shape", std::vector<int32_t>{1, 1});
-  ORT_RETURN_IF_NOT(kernel_shape.size() == 2, "QNN only support kernel_shape with shape[2].");
-  filter_size.clear();
-  filter_size.resize(kernel_shape.size());
-  std::transform(kernel_shape.begin(), kernel_shape.end(), filter_size.begin(),
-                 [](int32_t item) { return (uint32_t)item; });
+  filter_size = node_helper.Get("kernel_shape", std::vector<uint32_t>{1, 1});
+  ORT_RETURN_IF_NOT(filter_size.size() == 2, "QNN only support kernel_shape with shape[2].");
 
-  auto strides = node_helper.Get("strides", std::vector<int32_t>{1, 1});
+  strides = node_helper.Get("strides", std::vector<uint32_t>{1, 1});
   ORT_RETURN_IF_NOT(strides.size() == 2, "QNN only support strides with shape[2].");
-  stride.clear();
-  stride.resize(strides.size());
-  std::transform(strides.begin(), strides.end(), stride.begin(),
-                 [](int32_t item) { return (uint32_t)item; });
 
-  std::vector<int32_t> pads = {0, 0, 0, 0};
+  pad_amount = node_helper.Get("pads", std::vector<uint32_t>{0, 0, 0, 0});
   auto auto_pad = node_helper.Get("auto_pad", std::string("NOTSET"));
   ORT_RETURN_IF(auto_pad != "NOTSET" && auto_pad != "SAME_LOWER" && auto_pad != "SAME_UPPER",
                 "QNN Pool operators do not support 'auto_pad' value: ", auto_pad.c_str());
 
   if (auto_pad.compare("NOTSET") != 0) {
-    auto dilation_values = node_helper.Get("dilations", std::vector<int32_t>{1, 1});
+    std::vector<uint32_t> dilations = node_helper.Get("dilations", std::vector<uint32_t>{1, 1});
 
-    auto total_pads_0 = (output_shape[1] - 1) * stride[0] + (kernel_shape[0] - 1) * dilation_values[0] + 1 - input_shape[1];
-    auto total_pads_1 = (output_shape[2] - 1) * stride[1] + (kernel_shape[1] - 1) * dilation_values[1] + 1 - input_shape[2];
+    auto total_pads_0 = (output_shape[1] - 1) * strides[0] + (filter_size[0] - 1) * dilations[0] + 1 - input_shape[1];
+    auto total_pads_1 = (output_shape[2] - 1) * strides[1] + (filter_size[1] - 1) * dilations[1] + 1 - input_shape[2];
     if (auto_pad.compare("SAME_LOWER") != 0) {
-      pads[0] = total_pads_0 / 2;
-      pads[1] = total_pads_1 / 2;
-      pads[2] = total_pads_0 - pads[0];
-      pads[3] = total_pads_1 - pads[1];
+      pad_amount[0] = total_pads_0 / 2;
+      pad_amount[1] = total_pads_1 / 2;
+      pad_amount[2] = total_pads_0 - pad_amount[0];
+      pad_amount[3] = total_pads_1 - pad_amount[1];
     } else if (auto_pad.compare("SAME_UPPER") != 0) {
-      pads[2] = total_pads_0 / 2;
-      pads[3] = total_pads_1 / 2;
-      pads[0] = total_pads_0 - pads[2];
-      pads[1] = total_pads_1 - pads[3];
+      pad_amount[2] = total_pads_0 / 2;
+      pad_amount[3] = total_pads_1 / 2;
+      pad_amount[0] = total_pads_0 - pad_amount[2];
+      pad_amount[1] = total_pads_1 - pad_amount[3];
     }
-  } else {
-    pads = node_helper.Get("pads", pads);
   }
-  ORT_RETURN_IF_NOT(pads.size() == 4, "QNN only support pads with shape[2, 2].");
-  ReArranagePads(pads);
-  pad_amount.clear();
-  pad_amount.resize(pads.size());
-  std::transform(pads.begin(), pads.end(), pad_amount.begin(),
-                 [](int32_t item) { return (uint32_t)item; });
+  ORT_RETURN_IF_NOT(pad_amount.size() == 4, "QNN only support pads with shape[2, 2].");
+  ReArranagePads(pad_amount);
+
   ceil_mode = node_helper.Get("ceil_mode", ceil_mode);
   return Status::OK();
 }  // namespace qnn

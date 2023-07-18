@@ -517,6 +517,10 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               "The value to be filled in the attention mask. Default value is -10000.0f",
               AttributeProto::FLOAT,
               OPTIONAL_VALUE)
+        .Attr("do_rotary",
+              "Whether to use rotary position embedding. Default value is 0.",
+              AttributeProto::INT,
+              OPTIONAL_VALUE)
         .Input(0,
                "input",
                "Input tensor with shape (batch_size, 1, input_hidden_size)",
@@ -645,6 +649,8 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "past state for key with shape (batch_size, num_heads, past_sequence_length, head_size) for self attention"
                "When past_present_share_buffer is set, "
                "its shape is (batch_size, num_heads, max_sequence_length, head_size). "
+               // The re-ordering happens only for CUDA EP at the moment. We probably shall support 4 or 5D shape or
+               // attribute to distinguish whether it is re-ordered or not.
                "The keys buffer is re-ordered in such a way that its virtual sub-tensor of shape "
                "(batch_size, num_heads, max_sequence_length, head_size) which may be perceived as being of shape "
                "(batch_size, num_heads, max_sequence_length, head_size / x, x) is reordered to "
@@ -672,6 +678,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                OpSchema::Optional)
         .Input(9,
                "cache_indirection",
+               // This input is useful for CUDA EP only.
                "A buffer of shape [batch_size, beam_width, max_output_length] where an [i, j, k] entry specifies"
                "which beam the 'k' th token came from for the 'j' th beam for batch 'i' in the current iteration",
                "M",

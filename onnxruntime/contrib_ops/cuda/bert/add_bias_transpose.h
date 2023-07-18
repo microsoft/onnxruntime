@@ -33,7 +33,7 @@ void LaunchAddBiasTranspose(
     cudaStream_t stream, const int num_matrices, const int format, const int max_threads_per_block,
     const int batch_size, const int sequence_length, const int num_heads, const int qk_head_size,
     const T* input, const T* biases, T* output, bool enable_half4, const int v_head_size, T* qkv_add_bias = nullptr,
-    int total_matrix_count = -1, bool do_rotary = false, int original_past_sequence_length = 0);
+    int total_matrix_count = -1, bool do_rotary = false, int past_sequence_length = 0);
 
 // Add (bias) and Transpose for separated inputs of Q, K and V, and output Trt format.
 // For self attention:

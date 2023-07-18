@@ -55,7 +55,7 @@ MLASCPUIDInfo::MLASCPUIDInfo()
 #if defined(BUILD_MLAS_NO_ONNXRUNTIME)
 MLASCPUIDInfo::MLASCPUIDInfo()
 {
-    has_arm_neon_dot_ = ((getauxval(AT_HWCAP) & HWCAP_ASIMDDP) != 0); 
+    has_arm_neon_dot_ = ((getauxval(AT_HWCAP) & HWCAP_ASIMDDP) != 0);
 
     // raw hack! Need CPUIDInfo implementation for more precise detection
     has_fp16_ = has_arm_neon_dot_;
@@ -408,7 +408,7 @@ Return Value:
                     }
                 }
 
-#ifdef MLAS_AMX_SUPPORTED
+#ifndef __APPLE__
                 //
                 // Check if the processor supports AMX-TILE and AMX-INT8
                 // features.
@@ -419,7 +419,7 @@ Return Value:
                         this->GemmU8S8Dispatch = &MlasGemmU8S8DispatchAmx;
                     }
                 }
-#endif // MLAS_AMX_SUPPORTED
+#endif // __APPLE__
 
 #endif // ORT_MINIMAL_BUILD
 
@@ -434,7 +434,9 @@ Return Value:
 
 #if defined(MLAS_TARGET_ARM64)
 
-    this->GemmU8X8Dispatch = &MlasGemmU8X8DispatchNeon;
+    this->GemmU8U8Dispatch = &MlasGemmU8X8DispatchNeon;
+    this->GemmU8S8Dispatch = &MlasGemmX8S8DispatchNeon;
+    this->GemmS8S8Dispatch = &MlasGemmX8S8DispatchNeon;
     this->SymmQgemmDispatch = &MlasSymmQgemmS8DispatchNeon;
     this->ConvSymU8S8Dispatch = &MlasConvSymU8DispatchNeon;
     this->ConvSymS8S8Dispatch = &MlasConvSymS8DispatchNeon;
@@ -447,14 +449,16 @@ Return Value:
 
 #if defined(_WIN32)
     HasDotProductInstructions = (IsProcessorFeaturePresent(PF_ARM_V82_DP_INSTRUCTIONS_AVAILABLE) != 0);
-#elif defined(__linux__)
-    HasDotProductInstructions = MLAS_CPUIDINFO::GetCPUIDInfo().HasArmNeonDot();
 #else
-    HasDotProductInstructions = false;
+    uint64_t isar0_el1;
+    asm("mrs %[reg], ID_AA64ISAR0_EL1\n" : [reg] "=r"(isar0_el1) : :);
+    HasDotProductInstructions = ((isar0_el1 >> 44) & 0xfu) == 0x1u;
 #endif
 
     if (HasDotProductInstructions) {
-        this->GemmU8X8Dispatch = &MlasGemmU8X8DispatchUdot;
+        this->GemmU8U8Dispatch = &MlasGemmU8X8DispatchUdot;
+        this->GemmU8S8Dispatch = &MlasGemmU8X8DispatchUdot;
+        this->GemmS8S8Dispatch = &MlasGemmS8S8DispatchSdot;
         this->SymmQgemmDispatch = &MlasSymmQgemmS8DispatchSdot;
         this->ConvSymU8S8Dispatch = &MlasConvSymU8DispatchDot;
         this->ConvSymS8S8Dispatch = &MlasConvSymS8DispatchDot;

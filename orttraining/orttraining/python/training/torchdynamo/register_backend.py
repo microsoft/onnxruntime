@@ -28,7 +28,12 @@ DEFAULT_BACKEND = OrtBackend()
 #  compiled_model = torch._dynamo.optimize(aot_ort)(model)
 #  result = compiled_model(torch.rand(2, 2, dtype=torch.float)
 #  result.sum().backward()
-aot_ort = aot_autograd(fw_compiler=DEFAULT_BACKEND, partition_fn=min_cut_rematerialization_partition)
+
+aot_ort = aot_autograd(
+    fw_compiler=DEFAULT_BACKEND,
+    partition_fn=min_cut_rematerialization_partition,
+    decompositions=DEFAULT_BACKEND.resolved_onnx_exporter_options.decomposition_table,
+)
 
 # Declare ORT as a compiler in Dynamo for inference (i.e., when .backward is NOT called).
 #

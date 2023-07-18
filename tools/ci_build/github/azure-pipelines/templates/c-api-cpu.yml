@@ -57,6 +57,9 @@ stages:
   parameters:
     AllowReleasedOpsetOnly: 1
     BuildForAllArchs: true
+    SpecificArtifact: ${{ parameters.SpecificArtifact }}
+    BuildId: ${{ parameters.BuildId }}
+    DoEsrp: ${{ parameters.DoEsrp }}
 
 - stage: Android_Java_API_AAR_Packaging_Mobile
   dependsOn: []
@@ -98,7 +101,7 @@ stages:
     workspace:
       clean: all
     pool:
-      vmImage: 'macOS-12'
+      vmImage: 'macOS-13'
     timeoutInMinutes: 300
     steps:
     - template: set-version-number-variables-step.yml
@@ -203,7 +206,7 @@ stages:
 - stage: Jar_Packaging
   dependsOn:
   - Linux_C_API_Packaging_CPU
-  - MacOS_C_API_Packaging_CPU
+  - MacOS_C_API_Package_Publish
   - Windows_Packaging_CPU_x86_${{ parameters.BuildVariant }}
   - Windows_Packaging_CPU_x64_${{ parameters.BuildVariant }}
   - Windows_Packaging_CPU_arm_${{ parameters.BuildVariant }}
@@ -287,7 +290,7 @@ stages:
   dependsOn:
   - Setup
   - Linux_C_API_Packaging_CPU
-  - MacOS_C_API_Packaging_CPU
+  - MacOS_C_API_Package_Publish
   - Windows_Packaging_CPU_x86_${{ parameters.BuildVariant }}
   - Windows_Packaging_CPU_x64_${{ parameters.BuildVariant }}
   - Windows_Packaging_CPU_arm_${{ parameters.BuildVariant }}
@@ -523,10 +526,11 @@ stages:
     - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
       displayName: 'Clean Agent Directories'
       condition: always()
+
 - stage: Nodejs_Packaging_CPU
   dependsOn:
   - Linux_C_API_Packaging_CPU
-  - MacOS_C_API_Packaging_CPU
+  - MacOS_C_API_Package_Publish
   - Windows_Packaging_CPU_x64_${{ parameters.BuildVariant }}
   - Windows_Packaging_CPU_arm64_${{ parameters.BuildVariant }}
   condition: succeeded()
@@ -780,7 +784,7 @@ stages:
 
 - template: ../nuget/templates/test_linux.yml
   parameters:
-    AgentPool : aiinfra-Linux-CPU
+    AgentPool : onnxruntime-Ubuntu2004-AMD-CPU
     NugetPackageName : 'Microsoft.ML.OnnxRuntime'
     ArtifactSuffix: 'CPU'
     SpecificArtifact: ${{ parameters.SpecificArtifact }}
@@ -788,7 +792,7 @@ stages:
 
 - template: ../nuget/templates/test_macos.yml
   parameters:
-    AgentPool : macOS-12
+    AgentPool : macOS-13
     ArtifactSuffix: 'CPU'
 
 - template: ../nodejs/templates/test_win.yml
@@ -798,7 +802,7 @@ stages:
 
 - template: ../nodejs/templates/test_linux.yml
   parameters:
-    AgentPool : 'aiinfra-Linux-CPU'
+    AgentPool : 'onnxruntime-Ubuntu2004-AMD-CPU'
     StageSuffix : 'Linux_CPU_x64'
 
 - template: ../nodejs/templates/test_macos.yml
@@ -852,7 +856,7 @@ stages:
   - job:
     workspace:
       clean: all
-    pool: 'aiinfra-Linux-CPU'
+    pool: 'onnxruntime-Ubuntu2004-AMD-CPU'
     variables:
     - name: runCodesignValidationInjection
       value: false
@@ -896,7 +900,7 @@ stages:
     workspace:
       clean: all
     pool:
-      vmImage: 'macOS-12'
+      vmImage: 'macOS-13'
     variables:
     - name: runCodesignValidationInjection
       value: false
@@ -911,6 +915,8 @@ stages:
         artifactName: 'onnxruntime-java'
         targetPath: '$(Build.BinariesDirectory)/final-jar'
 
+    - template: use-xcode-version.yml
+
     - task: CmdLine@2
       inputs:
           script: |
@@ -922,7 +928,6 @@ stages:
             popd
             wget https://oss.sonatype.org/service/local/repositories/releases/content/org/junit/platform/junit-platform-console-standalone/1.6.2/junit-platform-console-standalone-1.6.2.jar -P ./
             wget https://oss.sonatype.org/service/local/repositories/releases/content/com/google/protobuf/protobuf-java/3.21.7/protobuf-java-3.21.7.jar -P ./
-            sudo xcode-select --switch /Applications/Xcode_13.1.app/Contents/Developer
             DYLD_LIBRARY_PATH=./test:${DYLD_LIBRARY_PATH}
             java -jar ./junit-platform-console-standalone-1.6.2.jar -cp .:./test:./protobuf-java-3.21.7.jar:./onnxruntime-$(OnnxRuntimeVersion).jar --scan-class-path --fail-if-no-tests --disable-banner
           workingDirectory: '$(Build.BinariesDirectory)/final-jar'

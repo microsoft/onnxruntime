@@ -81,7 +81,8 @@ elif parse_arg_remove_boolean(sys.argv, "--use_armnn"):
 elif parse_arg_remove_boolean(sys.argv, "--use_cann"):
     package_name = "onnxruntime-cann"
 elif parse_arg_remove_boolean(sys.argv, "--use_azure"):
-    package_name = "onnxruntime-azure"
+    # keep the same name since AzureEP will release with CpuEP by default.
+    package_name = "onnxruntime"
 elif parse_arg_remove_boolean(sys.argv, "--use_qnn"):
     package_name = "onnxruntime-qnn"
 
@@ -528,6 +529,8 @@ if enable_training or enable_training_apis:
                 "onnxruntime.training.ortmodule.torch_cpp_extensions.cpu.torch_interop_utils",
                 "onnxruntime.training.ortmodule.torch_cpp_extensions.cuda.torch_gpu_allocator",
                 "onnxruntime.training.ortmodule.torch_cpp_extensions.cuda.fused_ops",
+                "onnxruntime.training.ort_triton",
+                "onnxruntime.training.ort_triton.kernel",
                 "onnxruntime.training.utils.data",
                 "onnxruntime.training.utils.hooks",
             ]

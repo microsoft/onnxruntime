@@ -10,11 +10,14 @@ import ai.onnxruntime.TensorInfo;
 import android.util.Base64;
 import androidx.test.platform.app.InstrumentationRegistry;
 import com.facebook.react.bridge.Arguments;
+import com.facebook.react.bridge.CatalystInstance;
 import com.facebook.react.bridge.JavaOnlyArray;
 import com.facebook.react.bridge.JavaOnlyMap;
 import com.facebook.react.bridge.ReactApplicationContext;
 import com.facebook.react.bridge.ReadableArray;
 import com.facebook.react.bridge.ReadableMap;
+import com.facebook.react.bridge.WritableMap;
+import com.facebook.react.modules.blob.BlobModule;
 import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 import java.nio.ByteBuffer;
@@ -29,12 +32,33 @@ public class OnnxruntimeModuleTest {
   private ReactApplicationContext reactContext =
       new ReactApplicationContext(InstrumentationRegistry.getInstrumentation().getContext());
 
+  private FakeBlobModule blobModule;
+
+  private static byte[] getInputModelBuffer(InputStream modelStream) throws Exception {
+    ByteArrayOutputStream byteBuffer = new ByteArrayOutputStream();
+
+    int bufferSize = 1024;
+    byte[] buffer = new byte[bufferSize];
+
+    int len;
+    while ((len = modelStream.read(buffer)) != -1) {
+      byteBuffer.write(buffer, 0, len);
+    }
+
+    byte[] modelBuffer = byteBuffer.toByteArray();
+
+    return modelBuffer;
+  }
+
   @Before
-  public void setUp() {}
+  public void setUp() {
+    blobModule = new FakeBlobModule(reactContext);
+  }
 
   @Test
   public void getName() throws Exception {
     OnnxruntimeModule ortModule = new OnnxruntimeModule(reactContext);
+    ortModule.blobModule = blobModule;
     String name = "Onnxruntime";
     Assert.assertEquals(ortModule.getName(), name);
   }
@@ -47,37 +71,29 @@ public class OnnxruntimeModuleTest {
       when(Arguments.createArray()).thenAnswer(i -> new JavaOnlyArray());
 
       OnnxruntimeModule ortModule = new OnnxruntimeModule(reactContext);
+      ortModule.blobModule = blobModule;
       String sessionKey = "";
 
       // test loadModel()
       {
-        InputStream modelStream =
-            reactContext.getResources().openRawResource(ai.onnxruntime.reactnative.test.R.raw.test_types_float);
-        ByteArrayOutputStream byteBuffer = new ByteArrayOutputStream();
+        try (InputStream modelStream =
+                 reactContext.getResources().openRawResource(ai.onnxruntime.reactnative.test.R.raw.test_types_float);) {
+          byte[] modelBuffer = getInputModelBuffer(modelStream);
 
-        int bufferSize = 1024;
-        byte[] buffer = new byte[bufferSize];
+          JavaOnlyMap options = new JavaOnlyMap();
+          try {
+            ReadableMap resultMap = ortModule.loadModel(modelBuffer, options);
+            sessionKey = resultMap.getString("key");
+            ReadableArray inputNames = resultMap.getArray("inputNames");
+            ReadableArray outputNames = resultMap.getArray("outputNames");
 
-        int len;
-        while ((len = modelStream.read(buffer)) != -1) {
-          byteBuffer.write(buffer, 0, len);
-        }
-
-        byte[] modelBuffer = byteBuffer.toByteArray();
-
-        JavaOnlyMap options = new JavaOnlyMap();
-        try {
-          ReadableMap resultMap = ortModule.loadModel(modelBuffer, options);
-          sessionKey = resultMap.getString("key");
-          ReadableArray inputNames = resultMap.getArray("inputNames");
-          ReadableArray outputNames = resultMap.getArray("outputNames");
-
-          Assert.assertEquals(inputNames.size(), 1);
-          Assert.assertEquals(inputNames.getString(0), "input");
-          Assert.assertEquals(outputNames.size(), 1);
-          Assert.assertEquals(outputNames.getString(0), "output");
-        } catch (Exception e) {
-          Assert.fail(e.getMessage());
+            Assert.assertEquals(inputNames.size(), 1);
+            Assert.assertEquals(inputNames.getString(0), "input");
+            Assert.assertEquals(outputNames.size(), 1);
+            Assert.assertEquals(outputNames.getString(0), "output");
+          } catch (Exception e) {
+            Assert.fail(e.getMessage());
+          }
         }
       }
 
@@ -104,8 +120,7 @@ public class OnnxruntimeModuleTest {
             floatBuffer.put(value);
           }
           floatBuffer.rewind();
-          String dataEncoded = Base64.encodeToString(buffer.array(), Base64.DEFAULT);
-          inputTensorMap.putString("data", dataEncoded);
+          inputTensorMap.putMap("data", blobModule.testCreateData(buffer.array()));
 
           inputDataMap.putMap("input", inputTensorMap);
         }
@@ -124,10 +139,9 @@ public class OnnxruntimeModuleTest {
             Assert.assertEquals(outputMap.getArray("dims").getInt(i), dims[i]);
           }
           Assert.assertEquals(outputMap.getString("type"), TensorHelper.JsTensorTypeFloat);
-          String dataEncoded = outputMap.getString("data");
-          FloatBuffer buffer = ByteBuffer.wrap(Base64.decode(dataEncoded, Base64.DEFAULT))
-                                   .order(ByteOrder.nativeOrder())
-                                   .asFloatBuffer();
+          ReadableMap data = outputMap.getMap("data");
+          FloatBuffer buffer =
+              ByteBuffer.wrap(blobModule.testGetData(data)).order(ByteOrder.nativeOrder()).asFloatBuffer();
           for (int i = 0; i < 5; ++i) {
             Assert.assertEquals(buffer.get(i), inputData[i], 1e-6f);
           }
@@ -135,6 +149,53 @@ public class OnnxruntimeModuleTest {
           Assert.fail(e.getMessage());
         }
       }
+
+      // test dispose
+      ortModule.dispose(sessionKey);
+    } finally {
+      mockSession.finishMocking();
+    }
+  }
+
+  @Test
+  public void onnxruntime_module_append_nnapi() throws Exception {
+    MockitoSession mockSession = mockitoSession().mockStatic(Arguments.class).startMocking();
+    try {
+      when(Arguments.createMap()).thenAnswer(i -> new JavaOnlyMap());
+      when(Arguments.createArray()).thenAnswer(i -> new JavaOnlyArray());
+
+      OnnxruntimeModule ortModule = new OnnxruntimeModule(reactContext);
+      ortModule.blobModule = blobModule;
+      String sessionKey = "";
+
+      // test loadModel() with nnapi ep options
+
+      try (InputStream modelStream =
+               reactContext.getResources().openRawResource(ai.onnxruntime.reactnative.test.R.raw.test_types_float);) {
+
+        byte[] modelBuffer = getInputModelBuffer(modelStream);
+
+        // register with nnapi ep options
+        JavaOnlyMap options = new JavaOnlyMap();
+        JavaOnlyArray epArray = new JavaOnlyArray();
+        epArray.pushString("nnapi");
+        options.putArray("executionProviders", epArray);
+
+        try {
+          ReadableMap resultMap = ortModule.loadModel(modelBuffer, options);
+          sessionKey = resultMap.getString("key");
+          ReadableArray inputNames = resultMap.getArray("inputNames");
+          ReadableArray outputNames = resultMap.getArray("outputNames");
+
+          Assert.assertEquals(inputNames.size(), 1);
+          Assert.assertEquals(inputNames.getString(0), "input");
+          Assert.assertEquals(outputNames.size(), 1);
+          Assert.assertEquals(outputNames.getString(0), "output");
+        } catch (Exception e) {
+          Assert.fail(e.getMessage());
+        }
+      }
+      ortModule.dispose(sessionKey);
     } finally {
       mockSession.finishMocking();
     }

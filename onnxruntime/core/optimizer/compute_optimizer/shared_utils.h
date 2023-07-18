@@ -36,6 +36,8 @@ const OPSET_VERSION_LIST opset_13_9_6_1{13, 9, 6, 1};
 const OPSET_VERSION_LIST opset_14_13_5_1{14, 13, 5, 1};
 const OPSET_VERSION_LIST opset_14_13_7_6_1{14, 13, 7, 6, 1};
 const OPSET_VERSION_LIST opset_13_12_10_7_6_1{13, 12, 10, 7, 6, 1};
+const OPSET_VERSION_LIST opset_19_13_9_6_1{19, 13, 9, 6, 1};
+const OPSET_VERSION_LIST opset_19_14_13_5_1{19, 14, 13, 5, 1};
 
 /**
  * @brief Base class for all upstream operator passthrough actors.
@@ -173,6 +175,31 @@ NodeArg* CreateInitializerFromVector(Graph& graph,
                                      const InlinedVector<int64_t>& dims,
                                      const InlinedVector<int64_t>& values,
                                      const std::string& name);
+
+/**
+ * @brief Insert a pattern of 'Sub + NonZero + Squeeze' into the graph.
+ *   This pattern is used to filter out the valid indices of the input tensor which is not padding idx.
+ *   After inserting the pattern, the graph will be like:
+ *     input_to_filter                   invalid_value
+ *  (shape: [total_indices_count])
+ *                         \         /
+ *                             Sub
+ *                              |
+ *                           NonZero
+ *                              |
+ *                           Squeeze
+ *                              |
+ *                 output (shape: [valid_indices_count])
+ *
+ * @param graph The graph to insert the pattern.
+ * @param input_to_filter The input tensor to filter.
+ * @param invalid_value The invalid index value to remove.
+ * @param execution_provider_type The execution provider type of the inserted nodes.
+ */
+NodeArg* InsertNodesForValidIndices(Graph& graph,
+                                    NodeArg* input_to_filter,
+                                    NodeArg* invalid_value,
+                                    const std::string& execution_provider_type);
 
 }  // namespace onnxruntime::optimizer::compute_optimizer
 #endif

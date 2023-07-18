@@ -10,7 +10,7 @@
 namespace onnxruntime {
 namespace profiling {
 
-#if defined(USE_CUDA) && defined(ENABLE_CUDA_PROFILING) && defined(CUDA_VERSION) && CUDA_VERSION >= 11000
+#if defined(USE_CUDA) && defined(ENABLE_CUDA_PROFILING)
 
 CudaProfiler::CudaProfiler() {
   auto& manager = CUPTIManager::GetInstance();
@@ -22,7 +22,7 @@ CudaProfiler::~CudaProfiler() {
   manager.DeregisterClient(client_handle_);
 }
 
-#endif /* #if defined(USE_CUDA) && defined(ENABLE_CUDA_PROFILING) && defined(CUDA_VERSION) && CUDA_VERSION >= 11000 */
+#endif /* #if defined(USE_CUDA) && defined(ENABLE_CUDA_PROFILING) */
 
 }  // namespace profiling
 }  // namespace onnxruntime

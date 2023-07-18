@@ -6,7 +6,6 @@
 #include "core/common/common.h"
 #include "core/common/logging/logging.h"
 #include "core/common/string_utils.h"
-#include "core/framework/allocatormgr.h"
 #include "core/framework/compute_capability.h"
 #include "core/graph/graph_viewer.h"
 #include "core/platform/env.h"
@@ -54,21 +53,6 @@ NnapiExecutionProvider::NnapiExecutionProvider(uint32_t nnapi_flags,
     : IExecutionProvider{onnxruntime::kNnapiExecutionProvider, true},
       nnapi_flags_(nnapi_flags),
       partitioning_stop_ops_(GetPartitioningStopOps(partitioning_stop_ops_list)) {
-  AllocatorCreationInfo device_info(
-      [](int) {
-        return std::make_unique<CPUAllocator>(OrtMemoryInfo(NNAPI, OrtAllocatorType::OrtDeviceAllocator));
-      });
-
-  InsertAllocator(CreateAllocator(device_info));
-
-  AllocatorCreationInfo cpu_memory_info(
-      [](int) {
-        return std::make_unique<CPUAllocator>(
-            OrtMemoryInfo(NNAPI, OrtAllocatorType::OrtDeviceAllocator, OrtDevice(), 0, OrtMemTypeCPUOutput));
-      });
-
-  InsertAllocator(CreateAllocator(cpu_memory_info));
-
   nnapi_handle_ = NnApiImplementation();
   ORT_ENFORCE(nnapi_handle_ != nullptr, "Failed to get NnApiImplementation");
 
@@ -199,22 +183,24 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
   result = utils::CreateSupportedPartitions(graph_viewer, is_node_supported, on_group_closed,
                                             gen_metadef_name, NNAPI, kNnapiExecutionProvider);
 
-  // Generally, NNAPI support graph with inputs and outputs except constant initializer.
-  // So far, we have a few cases that sub-graph has zero inputs,
+  // Generally, NNAPI supports sub-graphs with at least one non-constant initializer input and one output.
+  // So far, we have a few cases that sub-graph has zero valid inputs, like `CastLike`
   // a) A sub-graph has only initializer as inputs
-  // b) A sub-graph has zero inputs
+  // b) A sub-graph has zero inputs, like a `Constant` node
   // So we just remove these sub-graph which is captured by NNAPI.
   // A existing example is CastLike, as which can't be fold in constant folding pass.
-  // CastLike Op will be inlined into Cast after Pass transform.
-  // Can we remove it if support CastLike in CF or support Pass transform after InlineNodes?
+  // CastLike Op will be inlined into Cast after constant folding optimizer.
+  // Can we remove it if support CastLike in constant folding
+  // or support doing constant folding optimizer after InlineNodes?
   std::for_each(result.begin(), result.end(), [&graph_viewer](auto& capability) {
     if (capability && capability->sub_graph && capability->sub_graph->GetMetaDef()) {
       const auto* meta_def = capability->sub_graph->GetMetaDef();
-      bool not_empty_inputs = std::any_of(meta_def->inputs.begin(), meta_def->inputs.end(), [&graph_viewer](const auto& input) {
+      bool has_any_non_constant_inputs = std::any_of(meta_def->inputs.begin(), meta_def->inputs.end(), [&graph_viewer](const auto& input) {
         return !graph_viewer.IsConstantInitializer(input, true);
       });
 
-      if (!not_empty_inputs || meta_def->outputs.empty()) {
+      // ALL inputs are constant
+      if (!has_any_non_constant_inputs) {
         capability.reset();
       }
     }
