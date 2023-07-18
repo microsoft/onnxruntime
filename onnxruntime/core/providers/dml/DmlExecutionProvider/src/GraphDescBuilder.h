@@ -21,6 +21,8 @@ namespace Dml
 
     namespace GraphDescBuilder
     {
+        const uint32_t minNodeCountToReuseCommandList = 5;
+
         // Gets a unique name for the node which survives recreation and graph manipulations between the point
         // that graph partitioning occurs and kernel creation happens
         const std::string& GetUniqueNodeName(const onnxruntime::Node& node);
@@ -31,7 +33,7 @@ namespace Dml
             std::string name;
         };
 
-        struct GraphDesc
+        struct GraphDesc : DmlSerializedGraphDesc
         {
             std::vector<NodeInfo> nodes;
             std::vector<DML_INPUT_GRAPH_EDGE_DESC> inputEdges;
@@ -40,7 +42,7 @@ namespace Dml
             bool reuseCommandList;
         };
 
-        GraphDesc BuildGraphDesc(
+        GraphDesc BuildDmlGraphDesc(
             const uint8_t* isConstGpuGraphInput,
             const size_t isConstGpuGraphInputCount,
             const std::unordered_map<std::string, std::pair<const ONNX_NAMESPACE::TensorProto*, bool>>& isInitializerTransferable,
