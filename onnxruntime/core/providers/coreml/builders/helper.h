@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include "core/common/gsl.h"
 #include "core/common/status.h"
 #include "core/graph/basic_types.h"
 
@@ -23,6 +24,9 @@ bool GetShape(const NodeArg& node_arg, std::vector<int64_t>& shape, const loggin
 
 // Gets `node_arg`'s shape if it has no dynamic dimensions.
 bool GetStaticShape(const NodeArg& node_arg, std::vector<int64_t>& shape, const logging::Logger& logger);
+
+// True iff `shape` has no dynamic dimensions.
+bool IsStaticShape(gsl::span<const int64_t> shape);
 
 bool IsInputSupported(const NodeArg& node_arg, const std::string& parent_name, const logging::Logger& logger);
 

@@ -59,6 +59,10 @@ bool GetStaticShape(const NodeArg& node_arg, std::vector<int64_t>& shape, const 
   return GetShapeImpl(node_arg, shape, logger, /* allow_dynamic_shape */ false);
 }
 
+bool IsStaticShape(gsl::span<const int64_t> shape) {
+  return std::find(shape.begin(), shape.end(), int64_t{-1}) == shape.end();
+}
+
 bool IsNodeSupported(const Node& node, const GraphViewer& graph_viewer, const logging::Logger& logger) {
   const auto& op_builders = GetOpBuilders();
   if (Contains(op_builders, node.OpType())) {
