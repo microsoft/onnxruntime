@@ -1213,7 +1213,8 @@ class OnnxModel:
                                 return True
 
                     for attr in node.attribute:
-                        sub_graphs.append(attr.g)
+                        if attr.type == AttributeProto.GRAPH:
+                            sub_graphs.append(attr.g)
 
                         for g in attr.graphs:
                             sub_graphs.append(g)
