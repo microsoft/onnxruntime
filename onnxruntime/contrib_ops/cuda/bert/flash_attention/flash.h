@@ -99,49 +99,8 @@ struct Flash_fwd_params : public Qkv_params {
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-struct Flash_bwd_params : public Flash_fwd_params {
-  // The dO and dQKV matrices.
-  void* __restrict__ do_ptr;
-  void* __restrict__ dq_ptr;
-  void* __restrict__ dk_ptr;
-  void* __restrict__ dv_ptr;
-
-  // To accumulate dQ
-  void* __restrict__ dq_accum_ptr;
-  void* __restrict__ dk_accum_ptr;
-  void* __restrict__ dv_accum_ptr;
-
-  // // To accumulate dK and dV in case we're splitting the bwd along seqlen_q
-  // dimension void *__restrict__ dk_accum_ptr; void *__restrict__
-  // dv_accum_ptr;
-
-  // The stride between rows of the dO, dQ, dK and dV matrices.
-  // TD [2022-04-16]: We're using 32-bit indexing to save registers.
-  // The code probably won't work for arrays larger than 2GB.
-  index_t do_batch_stride;
-  index_t do_row_stride;
-  index_t do_head_stride;
-  index_t dq_batch_stride;
-  index_t dk_batch_stride;
-  index_t dv_batch_stride;
-  index_t dq_row_stride;
-  index_t dk_row_stride;
-  index_t dv_row_stride;
-  index_t dq_head_stride;
-  index_t dk_head_stride;
-  index_t dv_head_stride;
-
-  // The pointer to the softmax d sum.
-  void* __restrict__ dsoftmax_sum;
-};
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-
 template <typename T, int Headdim>
 void run_mha_fwd_(Flash_fwd_params& params, cudaStream_t stream);
-
-template <typename T, int Headdim>
-void run_mha_bwd_(Flash_bwd_params& params, cudaStream_t stream, const bool configure);
 
 }  // namespace cuda
 }  // namespace contrib
