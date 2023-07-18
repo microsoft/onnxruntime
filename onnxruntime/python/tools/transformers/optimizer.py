@@ -294,6 +294,7 @@ def optimize_model(
         temp_model_path = optimize_by_onnxruntime(
             input,
             use_gpu=use_gpu,
+            optimized_model_path=optimized_model_path,
             opt_level=1,
             disabled_optimizers=disabled_optimizers,
             verbose=verbose,
