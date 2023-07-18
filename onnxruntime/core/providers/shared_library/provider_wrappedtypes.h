@@ -375,7 +375,6 @@ struct IndexedSubGraph_MetaDef final {
   NodeAttributes& attributes() { return g_host->IndexedSubGraph_MetaDef__attributes(this); }
 
   std::string& doc_string() { return g_host->IndexedSubGraph_MetaDef__doc_string(this); }
-  bool& check_ancestors() { return g_host->IndexedSubGraph_MetaDef__check_ancestors(this); }
 
   IndexedSubGraph_MetaDef() = delete;
   IndexedSubGraph_MetaDef(const IndexedSubGraph_MetaDef&) = delete;
