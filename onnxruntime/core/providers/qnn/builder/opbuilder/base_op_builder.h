@@ -60,7 +60,8 @@ class BaseOpBuilder : public IOpBuilder {
                                 std::vector<std::string>&& param_tensor_names,
                                 const logging::Logger& logger,
                                 bool is_quantized_model,
-                                bool do_op_validation) const ORT_MUST_USE_RESULT;
+                                bool do_op_validation,
+                                const std::string& qnn_op_type) const ORT_MUST_USE_RESULT;
 
   Status ProcessInput(QnnModelWrapper& qnn_model_wrapper,
                       const NodeUnitIODef& input,

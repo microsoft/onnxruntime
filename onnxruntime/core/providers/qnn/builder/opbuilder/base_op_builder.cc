@@ -165,7 +165,8 @@ Status BaseOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wra
   }
 
   ORT_RETURN_IF_ERROR(ProcessOutputs(qnn_model_wrapper, node_unit, std::move(input_names), {},
-                                     logger, is_quantized_model, do_op_validation));
+                                     logger, is_quantized_model, do_op_validation,
+                                     GetQnnOpType(node_unit.OpType())));
   return Status::OK();
 }
 
@@ -175,7 +176,8 @@ Status BaseOpBuilder::ProcessOutputs(QnnModelWrapper& qnn_model_wrapper,
                                      std::vector<std::string>&& param_tensor_names,
                                      const logging::Logger& logger,
                                      bool is_quantized_model,
-                                     bool do_op_validation) const {
+                                     bool do_op_validation,
+                                     const std::string& qnn_op_type) const {
   ORT_UNUSED_PARAMETER(logger);
   // Add output
   // Output part is common for all Ops, only difference is the Op attribute
@@ -234,7 +236,7 @@ Status BaseOpBuilder::ProcessOutputs(QnnModelWrapper& qnn_model_wrapper,
 
   ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(GetNodeName(node_unit),
                                                     qnn_def::package_name,
-                                                    GetQnnOpType(node_unit.OpType()),
+                                                    qnn_op_type,  // Typically GetQnnOpType(), but can be overridden.
                                                     std::move(input_names),
                                                     std::move(output_names),
                                                     std::move(param_tensor_names),
