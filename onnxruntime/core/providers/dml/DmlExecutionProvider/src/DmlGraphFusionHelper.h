@@ -45,16 +45,19 @@ namespace DmlGraphFusionHelper
         gsl::span<std::unique_ptr<GraphPartition>> partitions
     );
 
+    template <size_t ALLOCATER_SIZE>
     void ConvertGraphDesc(
         const Dml::GraphDescBuilder::GraphDesc& graphDesc,
         _Out_ DML_GRAPH_DESC& dmlGraphDesc,
         const uint32_t inputCount,
         const uint32_t outputCount,
-        _Inout_ std::vector<DML_OPERATOR_GRAPH_NODE_DESC>& dmlOperatorGraphNodes,
+        IDMLDevice* device,
+        StackAllocator<ALLOCATER_SIZE>& allocator,
         _Inout_ std::vector<DML_GRAPH_NODE_DESC>& dmlGraphNodes,
         _Inout_ std::vector<DML_GRAPH_EDGE_DESC>& dmlInputEdges,
         _Inout_ std::vector<DML_GRAPH_EDGE_DESC>& dmlOutputEdges,
-        _Inout_ std::vector<DML_GRAPH_EDGE_DESC>& dmlIntermediateEdges);
+        _Inout_ std::vector<DML_GRAPH_EDGE_DESC>& dmlIntermediateEdges,
+        _Inout_ std::vector<DML_GRAPH_EDGE_DESC>& dmlOperators);
 
     void CreateIDmlCompiledOperatorAndRegisterKernel(
         onnxruntime::Graph& graph,
