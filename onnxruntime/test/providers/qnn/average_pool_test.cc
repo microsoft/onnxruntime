@@ -120,12 +120,10 @@ static void RunAveragePoolOpTest(const std::vector<int64_t>& shape,
   provider_options["backend_path"] = "libQnnCpu.so";
 #endif
 
-  constexpr int expected_nodes_in_partition = 1;
   RunQnnModelTest(BuildAveragePoolTestCase(shape, kernel_shape, strides, pads, count_include_pad, auto_pad),
                   provider_options,
                   opset,
-                  expected_ep_assignment,
-                  expected_nodes_in_partition);
+                  expected_ep_assignment);
 }
 
 // Runs a QDQ AveragePool model on the QNN HTP backend. Checks the graph node assignment, and that inference
@@ -146,13 +144,11 @@ static void RunQDQAveragePoolOpTest(const std::vector<int64_t>& shape,
   provider_options["backend_path"] = "libQnnHtp.so";
 #endif
 
-  constexpr int expected_nodes_in_partition = 1;
   RunQnnModelTest(BuildAveragePoolQDQTestCase<QuantType>(shape, kernel_shape, strides, pads, count_include_pad,
                                                          auto_pad),
                   provider_options,
                   opset,
                   expected_ep_assignment,
-                  expected_nodes_in_partition,
                   fp32_abs_err);
 }
 
