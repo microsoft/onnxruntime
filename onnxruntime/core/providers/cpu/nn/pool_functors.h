@@ -406,6 +406,7 @@ struct AveragePool1DTask final {
     for (int64_t ph = 0; ph < pooled_height; ++ph) {
       int64_t hstart = ph * stride_h - pads[0];
       int64_t hend = hstart + kernel_shape[0] * dilation_h;
+      hend = std::min(hend, height + pads[1]);
       y_d[ph] = 0;
       int total_elements = 0;
       for (int64_t h = hstart; h < hend; h += dilation_h) {
@@ -461,6 +462,7 @@ struct AveragePool2DTask final {
     for (int64_t ph = 0; ph < pooled_height; ++ph) {
       int64_t hstart = ph * stride_h - pads[0];
       int64_t hend = hstart + kernel_shape[0] * dilation_h;
+      hend = std::min(hend, height + pads[1]);
       for (int64_t pw = 0; pw < pooled_width; ++pw) {
         int64_t wstart = pw * stride_w - pads[1];
         int64_t wend = wstart + kernel_shape[1] * dilation_w;
@@ -532,6 +534,7 @@ struct AveragePool3DTask {
     for (int64_t ph = 0; ph < pooled_height; ++ph) {
       int64_t hstart = ph * stride_h - pads[0];
       int64_t hend = hstart + kernel_shape[0] * dilation_h;
+      hend = std::min(hend, height + pads[1]);
       for (int64_t pw = 0; pw < pooled_width; ++pw) {
         int64_t wstart = pw * stride_w - pads[1];
         int64_t wend = wstart + kernel_shape[1] * dilation_w;

@@ -967,6 +967,31 @@ TEST(PoolTest, AveragePool_19_dilation_2d) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kAclExecutionProvider, kOpenVINOExecutionProvider});
 }
 
+TEST(PoolTest, AveragePool_19_ceil_count_include_pad_1d) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: MLOperatorAuthorImpl.cpp(2100): The parameter is incorrect.";
+  }
+
+  OpTester test("AveragePool", 19);
+
+  test.AddAttribute("auto_pad", "");
+  test.AddAttribute("strides", std::vector<int64_t>{3});
+  test.AddAttribute("pads", vector<int64_t>{3, 3});
+  test.AddAttribute("kernel_shape", vector<int64_t>{7});
+  test.AddAttribute("ceil_mode", (int64_t)1);
+  test.AddAttribute("count_include_pad", (int64_t)1);
+
+  std::vector<float> x_vals = {2.0903, 4.6493, 1.6320, -3.2051, 4.6975, 4.7296, 3.3653, -1.5815, -2.3832, 0.9628, -1.5899, -2.6820, 5.7529, 7.7346, -0.8910, -2.0151, 0.1313, -0.5374};
+  std::vector<int64_t> x_dims = {1, 2, 9};
+  std::vector<int64_t> expected_dims = {1, 2, 4};
+  std::vector<float> expected_vals = {0.73807144, 2.5655572, 0.8032287, -0.09990001, 0.34911433, 1.0389, 1.4536142, -0.40353334};
+
+  test.AddInput<float>("X", x_dims, x_vals);
+  test.AddOutput<float>("Y", expected_dims, expected_vals);
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kAclExecutionProvider, kOpenVINOExecutionProvider});
+}
+
 TEST(PoolTest, GlobalAveragePool) {
   OpTester test("GlobalAveragePool");
 
