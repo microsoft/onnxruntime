@@ -22,7 +22,6 @@ __global__ void flash_fwd_kernel(Flash_fwd_params params) {
 template <typename Kernel_traits, bool Is_dropout, bool Is_causal>
 void run_flash_fwd(Flash_fwd_params& params, cudaStream_t stream) {
   constexpr size_t smem_size = Kernel_traits::kSmemSize;
-  // printf("smem_size = %d\n", smem_size);
 
   // Work-around for gcc 7. It doesn't like nested BOOL_SWITCH.
   // https://github.com/kokkos/kokkos-kernels/issues/349
