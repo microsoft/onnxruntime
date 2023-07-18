@@ -1020,13 +1020,13 @@ class OnnxModel:
             location = Path(external_data_path).name if all_tensors_to_one_file else None
 
             if os.path.exists(output_path):
-                logger.info(f"Delete the existed onnx file: {output_path}")
+                logger.info(f"Delete the existing onnx file: {output_path}")
                 os.remove(output_path)
 
             if all_tensors_to_one_file:
                 if os.path.exists(external_data_path):
                     # Delete the external data file. Otherwise, data will be appended to existing file.
-                    logger.info(f"Delete the existed external data file: {external_data_path}")
+                    logger.info(f"Delete the existing external data file: {external_data_path}")
                     os.remove(external_data_path)
             else:
                 if os.listdir(output_dir):

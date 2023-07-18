@@ -3381,11 +3381,20 @@ ONNX_NAMESPACE::GraphProto Graph::ToGraphProto() const {
 }
 
 ONNX_NAMESPACE::GraphProto Graph::ToGraphProtoWithExternalInitializers(const std::string& external_file_name,
+                                                                       const PathString& destination_file_path,
                                                                        size_t initializer_size_threshold) const {
   GraphProto result;
   ToGraphProtoInternal(result);
 
-  std::ofstream external_stream(external_file_name, std::ofstream::out | std::ofstream::binary);
+  Path parent_path = Path::Parse(destination_file_path).ParentPath();
+  Path external_file_path = Path::Parse(ToPathString(external_file_name));
+  // Check if parent_path is relative path
+  if (parent_path.ToPathString() != "") {
+    // Save external data file in same directory as model
+    external_file_path = parent_path.Append(external_file_path);
+  }
+
+  std::ofstream external_stream(external_file_path.ToPathString(), std::ofstream::out | std::ofstream::binary);
   ORT_ENFORCE(external_stream.is_open());
   int64_t external_offset = 0;
 
@@ -3408,7 +3417,7 @@ ONNX_NAMESPACE::GraphProto Graph::ToGraphProtoWithExternalInitializers(const std
       TensorProto* output_proto = result.add_initializer();
 
       std::vector<uint8_t> raw_data;
-      ORT_THROW_IF_ERROR(utils::UnpackInitializerData(initializer, Path(), raw_data));
+      ORT_THROW_IF_ERROR(utils::UnpackInitializerData(initializer, model_path, raw_data));
       size_t tensor_bytes_size = raw_data.size();
       if (tensor_bytes_size < initializer_size_threshold) {
         *output_proto = initializer;

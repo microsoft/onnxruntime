@@ -24,7 +24,6 @@ import tempfile
 from typing import Dict, List, Optional
 
 import coloredlogs
-import onnx
 from fusion_options import FusionOptions
 from onnx import ModelProto, load_model
 from onnx_model_bart import BartOnnxModel
@@ -107,6 +106,10 @@ def optimize_by_onnxruntime(
         optimized_model_path = "{}_o{}_{}.onnx".format(path_prefix, opt_level, "gpu" if use_gpu else "cpu")
 
     sess_options.optimized_model_filepath = optimized_model_path
+    sess_options.add_session_config_entry(
+        "session.optimized_model_external_initializers_file_name", "external_initializers.bin"
+    )
+    sess_options.add_session_config_entry("session.optimized_model_external_initializers_min_size_in_bytes", "1024")
 
     if verbose:
         print("Using onnxruntime to optimize model - Debug level Set to verbose")
@@ -130,32 +133,6 @@ def optimize_by_onnxruntime(
         assert not set(onnxruntime.get_available_providers()).isdisjoint(
             ["CUDAExecutionProvider", "ROCMExecutionProvider", "MIGraphXExecutionProvider"]
         )
-
-    # Move original external data file to temp dir if it exists
-    has_external_data_file = False
-    original_model = onnx.load(onnx_model_path, load_external_data=False)
-    for initializer in original_model.graph.initializer:
-        if initializer.HasField("data_location") and initializer.data_location == onnx.TensorProto.EXTERNAL:
-            has_external_data_file = True
-            break
-
-    if has_external_data_file:
-        temp_dir = os.path.dirname(optimized_model_path)
-        original_dir = os.path.dirname(onnx_model_path)
-        original_model_filename = os.path.basename(onnx_model_path)
-        original_model_in_temp_dir_path = os.path.join(temp_dir, original_model_filename)
-
-        onnx.external_data_helper.load_external_data_for_model(original_model, original_dir)
-        onnx.save_model(
-            original_model,
-            original_model_in_temp_dir_path,
-            save_as_external_data=True,
-            all_tensors_to_one_file=True,
-            location=f"{original_model_filename}.data",
-            size_threshold=1024,
-            convert_attribute=False,
-        )
-        os.remove(original_model_in_temp_dir_path)
 
     assert os.path.exists(optimized_model_path) and os.path.isfile(optimized_model_path)
     logger.debug("Save optimized model by onnxruntime to %s", optimized_model_path)
