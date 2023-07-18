@@ -33,12 +33,12 @@ public:
         if (hasBias)
         {
             m_inputTensorDescs[OnnxInputIndex::Bias] = CreateTensorDescFromInput(
-                kernelInfo,
+                kernelCreationContext,
                 OnnxInputIndex::Bias,
                 TensorAxis::DoNotCoerce,
                 TensorAxis::W,
                 TensorAxis::RightAligned,
-                kernelInfo.GetTensorShapeDescription().GetOutputTensorShape(0)
+                kernelCreationContext.GetTensorShapeDescription().GetOutputTensorShape(0)
             );
         }
         MLOperatorTensorDataType BDatatype = kernelCreationContext.GetInputEdgeDescription(OnnxInputIndex::B).tensorDataType;
