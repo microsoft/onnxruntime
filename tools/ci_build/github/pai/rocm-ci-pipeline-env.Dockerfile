@@ -1,5 +1,7 @@
 FROM rocm/pytorch:rocm5.5_ubuntu20.04_py3.8_pytorch_1.13.1
 
+RUN apt-get update -y && apt-get upgrade -y
+
 WORKDIR /stage
 
 # from rocm/pytorch's image, work around ucx's dlopen replacement conflicting with shared provider

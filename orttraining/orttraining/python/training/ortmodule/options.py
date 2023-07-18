@@ -236,6 +236,12 @@ class _RuntimeOptions:
             _SkipCheck.SKIP_CHECK_DEVICE | _SkipCheck.SKIP_CHECK_BUILD_GRADIENT | _SkipCheck.SKIP_CHECK_EXECUTION_AGENT
         )
 
+        # Triton support.
+        self.enable_triton = False
+        self.enable_tuning = False
+        self.max_tuning_duration_ms = 0
+        self.tuning_results_path = ""
+
         # Override the feature config if it exists in os env.
         self._override_from_env_vars()
 
@@ -285,3 +291,26 @@ class _RuntimeOptions:
                 lambda x, y: x | y,
                 [_SkipCheck[name] for name in parse_os_env_skip_check_flags("ORTMODULE_SKIPCHECK_POLICY")],
             )
+
+        # Configuration for Triton.
+        # Enable Triton op executor if Triton is installed, backend has support and environment variable is set.
+        if (
+            "ORTMODULE_USE_TRITON" in os.environ
+            and int(os.getenv("ORTMODULE_USE_TRITON")) == 1
+            and C.is_triton_enabled()
+        ):
+            try:
+                import triton  # noqa: F401
+            except ImportError:
+                pass
+            else:
+                self.enable_triton = True
+
+        if "ORTMODULE_ENABLE_TUNING" in os.environ and int(os.getenv("ORTMODULE_ENABLE_TUNING")) == 1:
+            self.enable_tuning = True
+        if "ORTMODULE_MAX_TUNING_DURATION_MS" in os.environ:
+            max_tuning_duration_ms = int(os.getenv("ORTMODULE_MAX_TUNING_DURATION_MS"))
+            if max_tuning_duration_ms > 0:
+                self.max_tuning_duration_ms = max_tuning_duration_ms
+        if "ORTMODULE_TUNING_RESULTS_PATH" in os.environ:
+            self.tuning_results_path = os.getenv("ORTMODULE_TUNING_RESULTS_PATH")

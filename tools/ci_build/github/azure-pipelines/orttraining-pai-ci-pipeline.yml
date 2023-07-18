@@ -137,7 +137,7 @@ jobs:
     inputs:
       script: |-
         echo "Select agent: $(Agent.Name), GPU: $HIP_VISIBLE_DEVICES, render: $DRIVER_RENDER"
-        bash $(Build.SourcesDirectory)/tools/ci_build/github/pai/pai_get_thread.sh $(Agent.Name) $HIP_VISIBLE_DEVICES
+        bash $(Build.SourcesDirectory)/tools/ci_build/github/pai/pai_clean_device.sh $(Agent.Name) $HIP_VISIBLE_DEVICES
       workingDirectory: $(Build.SourcesDirectory)
     displayName: 'Check ROCm Environment'
 
@@ -162,7 +162,7 @@ jobs:
             /onnxruntime_src/tools/ci_build/github/pai/pai_test_launcher.sh"
       workingDirectory: $(Build.SourcesDirectory)
     displayName: 'Run onnxruntime unit tests'
-    condition: succeededOrFailed()
+    condition: succeeded()
 
   - task: CmdLine@2
     inputs:
@@ -181,6 +181,7 @@ jobs:
             /bin/bash -c "
               set -ex; \
               export KERNEL_EXPLORER_BUILD_DIR=/build/$(BuildConfig); \
+              export KERNEL_EXPLORER_BATCHED_GEMM_MAX_BATCH_SIZE=8; \
               pytest /onnxruntime_src/onnxruntime/python/tools/kernel_explorer/ -n 8 --reruns 1 --durations=100"
       workingDirectory: $(Build.SourcesDirectory)
     displayName: 'Run kernel explorer tests'
@@ -240,11 +241,21 @@ jobs:
               pip install /build/$(BuildConfig)/dist/$whlfilename; \
               python -m onnxruntime.training.ortmodule.torch_cpp_extensions.install; \
               mkdir /home/onnxruntimedev/mnist /home/onnxruntimedev/bert_data; \
+              export ORTMODULE_DISABLE_CPU_TRAINING_TEST=1; \
+              export ORTMODULE_ROCM_TEST=1; \
               python orttraining_ortmodule_tests.py \
                 --mnist /home/onnxruntimedev/mnist \
                 --bert_data /home/onnxruntimedev/bert_data/hf_data/glue_data/CoLA/original/raw"
       workingDirectory: $(Build.SourcesDirectory)
     displayName: 'Run orttraining_ortmodule_tests.py'
     condition: succeededOrFailed()
+
+  - task: CmdLine@2
+    inputs:
+      script: |-
+        bash $(Build.SourcesDirectory)/tools/ci_build/github/pai/pai_clean_device.sh $(Agent.Name) $HIP_VISIBLE_DEVICES
+      workingDirectory: $(Build.SourcesDirectory)
+    displayName: 'Clean ROCm Environment'
+    condition: always()
 
   - template: templates/clean-agent-build-directory-step.yml

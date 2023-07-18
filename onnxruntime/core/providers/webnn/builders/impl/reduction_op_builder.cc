@@ -2,6 +2,7 @@
 // Copyright (c) Intel Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/common/safeint.h"
 #include "core/providers/common.h"
 #include "core/providers/shared/utils/utils.h"
 #include "core/providers/webnn/builders/helper.h"
@@ -71,7 +72,7 @@ Status ReductionOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
       const auto axes_data_span = axes_initializer.DataAsSpan<int64_t>();
       std::transform(
           axes_data_span.begin(), axes_data_span.end(), std::back_inserter(axes_data),
-          [input_rank](int64_t axis) -> int32_t { return HandleNegativeAxis(axis, input_rank); });
+          [input_rank](int64_t axis) -> int32_t { return SafeInt<int32_t>(HandleNegativeAxis(axis, input_rank)); });
     } else {
       if (noop_with_empty_axes) {
         // When axes is empty and this attribute is set to true, input tensor will not be reduced.
@@ -85,7 +86,7 @@ Status ReductionOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
       auto axes = helper.Get("axes", std::vector<int64_t>{});
       std::transform(
           axes.begin(), axes.end(), std::back_inserter(axes_data),
-          [input_rank](int64_t axis) -> int32_t { return HandleNegativeAxis(axis, input_rank); });
+          [input_rank](int64_t axis) -> int32_t { return SafeInt<int32_t>(HandleNegativeAxis(axis, input_rank)); });
     }
   }
   if (axes_data.size() > 0) {

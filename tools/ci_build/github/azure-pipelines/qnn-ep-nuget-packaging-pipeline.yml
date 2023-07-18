@@ -29,6 +29,11 @@ parameters:
   type: boolean
   default: false
 
+- name: runTests
+  displayName: Run ONNX Runtime unit tests?
+  type: boolean
+  default: true
+
 jobs:
 
   - job: OnnxRuntime_QNNNuget_Win_x64
@@ -42,6 +47,7 @@ jobs:
       buildArch: x64
       setVcvars: true
       ALLOW_RELEASED_ONNX_OPSET_ONLY: '1'
+      commonBuildArgs: '--compile_no_warning_as_error --disable_ml_ops --build_dir $(Build.BinariesDirectory)\Windows --skip_submodule_sync --build_shared_lib --cmake_generator "Visual Studio 17 2022" --config ${{ parameters.build_config }} --use_qnn --qnn_home ${{parameters.qnn_sdk_path_win}}'
 
     steps:
       - template: templates/set-version-number-variables-step.yml
@@ -59,7 +65,14 @@ jobs:
         displayName: 'Build onnxruntime for x64'
         inputs:
           scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-          arguments: '--compile_no_warning_as_error --disable_ml_ops --build_dir $(Build.BinariesDirectory)\Windows --skip_submodule_sync --build_shared_lib --cmake_generator "Visual Studio 17 2022" --config ${{ parameters.build_config }} --use_qnn --qnn_home ${{parameters.qnn_sdk_path_win}}'
+          arguments: '--skip_tests $(commonBuildArgs)'
+
+      - task: PythonScript@0
+        displayName: 'Run unit tests'
+        condition: and(succeeded(), eq('${{ parameters.runTests}}', true))
+        inputs:
+          scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
+          arguments: '--test $(commonBuildArgs)'
 
       - template: templates/win-esrp-dll.yml
         parameters:
