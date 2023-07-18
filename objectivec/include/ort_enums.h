@@ -38,6 +38,7 @@ typedef NS_ENUM(int32_t, ORTTensorElementDataType) {
   ORTTensorElementDataTypeUInt32,
   ORTTensorElementDataTypeInt64,
   ORTTensorElementDataTypeUInt64,
+  ORTTensorElementDataTypeString,
 };
 
 /**

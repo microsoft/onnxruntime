@@ -92,6 +92,34 @@ bool SafeMultiply(size_t a, size_t b, size_t& out) {
   ORT_OBJC_API_IMPL_CATCH_RETURNING_NULLABLE(error)
 }
 
+- (nullable instancetype)initWithTensorStringData:(NSArray<NSString*>*)tensorStringData
+                                            shape:(NSArray<NSNumber*>*)shape
+                                            error:(NSError**)error {
+  try {
+    Ort::AllocatorWithDefaultOptions allocator;
+    const auto shapeVector = [shape]() {
+      std::vector<int64_t> result{};
+      result.reserve(shape.count);
+      for (NSNumber* dim in shape) {
+        result.push_back(dim.longLongValue);
+      }
+      return result;
+    }();
+    Ort::Value ortValue = Ort::Value::CreateTensor(
+        allocator, shapeVector.data(), shapeVector.size(), ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING);
+
+    size_t index = 0;
+    for (NSString *strinData in tensorStringData) {
+      ortValue.FillStringTensorElement([strinData UTF8String], index++);
+    }
+
+    return [self initWithCXXAPIOrtValue:std::move(ortValue)
+                     externalTensorData:nil
+                                  error:error];
+  }
+  ORT_OBJC_API_IMPL_CATCH_RETURNING_NULLABLE(error)
+}
+
 - (nullable ORTValueTypeInfo*)typeInfoWithError:(NSError**)error {
   try {
     return CXXAPIToPublicValueTypeInfo(*_typeInfo);
@@ -123,6 +151,29 @@ bool SafeMultiply(size_t a, size_t b, size_t& out) {
     return [NSMutableData dataWithBytesNoCopy:rawData
                                        length:rawDataLength
                                  freeWhenDone:NO];
+  }
+  ORT_OBJC_API_IMPL_CATCH_RETURNING_NULLABLE(error)
+}
+
+- (nullable NSArray<NSString*>*)tensorStringDataWithError:(NSError**)error {
+  try {
+    const auto tensorTypeAndShapeInfo = _typeInfo->GetTensorTypeAndShapeInfo();
+    const size_t elementCount = tensorTypeAndShapeInfo.GetElementCount();
+    const size_t tensorStringDataLength = _value->GetStringTensorDataLength();
+    std::string tensorStringData(tensorStringDataLength, '\0');
+    std::vector<size_t> offsets(elementCount);
+    _value->GetStringTensorContent(const_cast<char*>(tensorStringData.data()), tensorStringDataLength,
+                                   offsets.data(), offsets.size());
+
+    NSMutableArray<NSString*>* result = [NSMutableArray arrayWithCapacity:elementCount];
+    for (size_t idx = 0; idx < elementCount; ++idx) {
+      const size_t strLength = (idx == elementCount - 1) ? tensorStringDataLength - offsets[idx]
+                                                         : offsets[idx + 1] - offsets[idx];
+      result[idx] = [[NSString alloc] initWithBytes:tensorStringData.data() + offsets[idx]
+                                             length:strLength
+                                           encoding:NSUTF8StringEncoding];
+    }
+    return result;
   }
   ORT_OBJC_API_IMPL_CATCH_RETURNING_NULLABLE(error)
 }
