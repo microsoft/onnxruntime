@@ -56,6 +56,8 @@ def make_const(vi: ValueInfoProto, name: str, value: int = 0) -> Tuple[ValueInfo
     return const_vi, const_node, const_shape_tensor
 
 
+# This is a three-layer nested control flow ops model.
+# The innermost subgraphs have the outer scope values that are the inputs, x2 and x3, of the top-level graph.
 def make_opt_nested_greater_or_equal() -> ModelProto:
     """
     Creates a nested graph with (`optional(x1)`, `x2`, x3`) tensor inputs.
@@ -236,9 +238,13 @@ def test_nested_optional_greater_or_equal(use_trt: bool = False) -> None:
     return
 
 
+# ORT has a similar unit test Test3LayerNestedSubgraph where this 3-layer nested graph consumes the same initializer in different subgraphs.
+# However, this unit test is slightly different. This is also a 3-layer nested graph but consumes the outer scope values (which are the inputs
+# of the top-level graph) in different subgraphs.
 class TestNestedControlFlowOpsGraph(unittest.TestCase):
     def test3LevelControlFlowOpsGraph(self):  # noqa: N802
-        # Currently only test TRT EP
+        if "CUDAExecutionProvider" in ort.get_available_providers():
+            test_nested_optional_greater_or_equal(use_trt=False)
         if "TensorrtExecutionProvider" in ort.get_available_providers():
             test_nested_optional_greater_or_equal(use_trt=True)
 
