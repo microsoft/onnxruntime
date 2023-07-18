@@ -8,9 +8,9 @@ namespace onnxruntime {
 namespace cann {
 
 template <>
-const MLFloat16 Constants<MLFloat16>::Zero = MLFloat16(static_cast<uint16_t>(0));
+const MLFloat16 Constants<MLFloat16>::Zero = MLFloat16::FromBits(static_cast<uint16_t>(0));
 template <>
-const MLFloat16 Constants<MLFloat16>::One = MLFloat16(static_cast<uint16_t>(0x3C00));
+const MLFloat16 Constants<MLFloat16>::One = MLFloat16::FromBits(static_cast<uint16_t>(0x3C00));
 
 template <>
 const float Constants<float>::Zero = 0;
