@@ -349,7 +349,7 @@ const bicubicInterpolation =
     var onePlusAbsS: f32 = 1.0 + absS;
     coeffs[0] = ((${cubicCoeffA} * onePlusAbsS - 5 * ${cubicCoeffA}) * onePlusAbsS + 8 * ${
           cubicCoeffA}) * onePlusAbsS - 4 * ${cubicCoeffA};
-    coeffs[1] = ((${cubicCoeffA} + 2) * absS - (${cubicCoeffA} + 3)) * absS * onePlusAbsS;
+    coeffs[1] = ((${cubicCoeffA} + 2) * absS - (${cubicCoeffA} + 3)) * absS * absS + 1;
     coeffs[2] = ((${cubicCoeffA} + 2) * oneMinusAbsS - (${cubicCoeffA} + 3)) * oneMinusAbsS * oneMinusAbsS + 1;
     coeffs[3] = ((${cubicCoeffA} * twoMinusAbsS - 5 * ${cubicCoeffA}) * twoMinusAbsS + 8 * ${
           cubicCoeffA}) * twoMinusAbsS - 4 * ${cubicCoeffA};
@@ -370,6 +370,10 @@ const bicubicInterpolation =
     var colCoefs = getCubicInterpolationCoefs(fractOriginCol);
     var rowCoefs = getCubicInterpolationCoefs(fractOriginRow);
 
+    if (${useExtrapolation} && (originRow < 0 || originRow > (${
+          inputShape[heightIdx]} - 1) || originCol < 0 || originCol > ${inputShape[widthIdx]} - 1)) {
+      return ${extrapolationValue};
+    }
     var colData: array<f32, 4> = array<f32, 4>(0.0, 0.0, 0.0, 0.0);
     for (var c: i32 = -1; c < 3; c++) {
       var col: f32 = originCol + f32(c);
@@ -391,8 +395,6 @@ const bicubicInterpolation =
           if (${excludeOutside}) {
             rowCoefsCopy[r + 1] = 0.0;
             continue;
-          } else if (${useExtrapolation}) {
-            return ${extrapolationValue};
           } else {
             row = max(0, min(row, ${inputShape[heightIdx]} - 1));
           }
