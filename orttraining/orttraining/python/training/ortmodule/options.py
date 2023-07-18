@@ -242,6 +242,9 @@ class _RuntimeOptions:
         self.max_tuning_duration_ms = 0
         self.tuning_results_path = ""
 
+        # Cache execution model
+        self.ortmodule_cache_dir = ""
+
         # Override the feature config if it exists in os env.
         self._override_from_env_vars()
 
@@ -314,3 +317,7 @@ class _RuntimeOptions:
                 self.max_tuning_duration_ms = max_tuning_duration_ms
         if "ORTMODULE_TUNING_RESULTS_PATH" in os.environ:
             self.tuning_results_path = os.getenv("ORTMODULE_TUNING_RESULTS_PATH")
+
+        # Cache execution model
+        if "ORTMODULE_CACHE_DIR" in os.environ:
+            self.ortmodule_cache_dir = os.getenv("ORTMODULE_CACHE_DIR")

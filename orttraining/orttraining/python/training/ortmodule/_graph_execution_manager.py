@@ -322,7 +322,7 @@ class GraphExecutionManager(GraphExecutionInterface):
             self._flattened_module._input_info = self._input_info
 
             # Leverage cached model if available
-            cache_dir = os.getenv("ORT_CACHE_DIR", default=None)
+            cache_dir = self._runtime_options.ortmodule_cache_dir
             if cache_dir and os.path.exists(cache_dir):
                 filename = os.path.join(cache_dir, f"{hash(self._flattened_module)}.onnx")
                 if os.path.isfile(filename):
