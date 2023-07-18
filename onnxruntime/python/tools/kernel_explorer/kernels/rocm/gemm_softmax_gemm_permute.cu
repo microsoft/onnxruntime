@@ -175,6 +175,32 @@ class GemmSoftmaxGemmPermuteGeneric : public IGemmSoftmaxGemmPermuteKernelExplor
   }
 };
 
+template <typename T>
+class GemmSoftmaxGemmPermuteGenericNestedTunable : public GemmSoftmaxGemmPermuteGeneric<T> {
+ public:
+  GemmSoftmaxGemmPermuteGenericNestedTunable(
+      int64_t batch,
+      int64_t seqlen,
+      int64_t total_seqlen,
+      std::optional<int64_t> max_seqlen,
+      int64_t num_heads,
+      int64_t head_size,
+      int64_t mask_dim,
+      double scale,
+      contrib::AttentionQkvFormat qkv_format,
+      DeviceArray& Q,
+      std::optional<DeviceArray>& K,
+      std::optional<DeviceArray>& V,
+      std::optional<DeviceArray>& attn_bias,
+      std::optional<DeviceArray>& attn_mask,
+      DeviceArray& out)
+      : GemmSoftmaxGemmPermuteGeneric<T>(batch, seqlen, total_seqlen, max_seqlen,
+                                         num_heads, head_size, mask_dim, scale, qkv_format,
+                                         Q, K, V, attn_bias, attn_mask, out) {
+    this->params_.TuningContext()->EnableTunableOpAndTuning();
+  }
+};
+
 #ifdef USE_COMPOSABLE_KERNEL
 template <typename T, bool USE_BIAS, bool USE_MASK>
 class GemmSoftmaxGemmPermuteCK : public IGemmSoftmaxGemmPermuteKernelExplorer<T> {
@@ -301,6 +327,9 @@ class GemmSoftmaxGemmPermuteTunable : public IGemmSoftmaxGemmPermuteKernelExplor
 #define REGISTER_GENERIC(dtype) \
   REGISTER_COMMON("GemmSoftmaxGemmPermuteGeneric_" #dtype, GemmSoftmaxGemmPermuteGeneric, dtype)
 
+#define REGISTER_GENERIC_NESTEDTUNABLE(dtype) \
+  REGISTER_COMMON("GemmSoftmaxGemmPermuteGenericNestedTunable_" #dtype, GemmSoftmaxGemmPermuteGenericNestedTunable, dtype)
+
 #define REGISTER_CK(dtype, biased, masked, mask_bias_suffix) \
   REGISTER_COMMON(                                           \
       "GemmSoftmaxGemmPermuteCK" mask_bias_suffix "_" #dtype, GemmSoftmaxGemmPermuteCK, dtype, biased, masked)
@@ -318,6 +347,9 @@ KE_REGISTER(m) {
       .export_values();
 
   REGISTER_GENERIC(half);
+  REGISTER_GENERIC(float);
+  REGISTER_GENERIC_NESTEDTUNABLE(half);
+  REGISTER_GENERIC_NESTEDTUNABLE(float);
 
 #ifdef USE_COMPOSABLE_KERNEL
   REGISTER_CK(half, false, false, "");
