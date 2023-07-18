@@ -39,6 +39,11 @@ static const OpVersionsAndSelector::OpVersionsMap GetMiscOpVersionsMap() {
           {"Unsqueeze", {}}};
 }
 
+static const OpVersionsAndSelector::OpVersionsMap GetDropDQOpVersionsMap() {
+  return {{"ArgMax", {}},
+          {"ArgMin", {}}};
+}
+
 static const OpVersionsAndSelector::OpVersionsMap GetUnaryOpVersionsMap() {
   return {{"AveragePool", {}},
           {"GlobalAveragePool", {}},
@@ -102,6 +107,13 @@ void RegisterMiscSelectors(Selectors& qdq_selectors) {
   /* register selectors for miscellaneous ops */
   std::unique_ptr<NodeGroupSelector> selector = std::make_unique<DropQDQNodeGroupSelector>();
   qdq_selectors.RegisterSelector(GetMiscOpVersionsMap(),
+                                 std::move(selector));
+}
+
+void RegisterDropDQSelectors(Selectors& qdq_selectors) {
+  /* register selectors for ops that have a sigle DQ -> node */
+  std::unique_ptr<NodeGroupSelector> selector = std::make_unique<DropDQNodeGroupSelector>();
+  qdq_selectors.RegisterSelector(GetDropDQOpVersionsMap(),
                                  std::move(selector));
 }
 
@@ -178,6 +190,7 @@ void RegisterLogicalComparisonSelectors(Selectors& qdq_selectors) {
 
 void SelectorManager::CreateSelectors() {
   RegisterMiscSelectors(qdq_selectors_);
+  RegisterDropDQSelectors(qdq_selectors_);
   RegisterUnarySelectors(qdq_selectors_);
   RegisterBinarySelectors(qdq_selectors_);
   RegisterVariadicSelectors(qdq_selectors_);

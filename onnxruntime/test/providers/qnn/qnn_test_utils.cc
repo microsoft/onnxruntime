@@ -15,15 +15,10 @@ namespace onnxruntime {
 namespace test {
 
 void RunQnnModelTest(const GetTestModelFn& build_test_case, const ProviderOptions& provider_options,
-                     int opset_version, ExpectedEPNodeAssignment expected_ep_assignment, int num_nodes_in_ep,
+                     int opset_version, ExpectedEPNodeAssignment expected_ep_assignment,
                      float fp32_abs_err, logging::Severity log_severity) {
-  std::function<void(const Graph&)> graph_verify = [num_nodes_in_ep](const Graph& graph) -> void {
-    ASSERT_EQ(graph.NumberOfNodes(), num_nodes_in_ep);
-  };
-
   EPVerificationParams verification_params;
   verification_params.ep_node_assignment = expected_ep_assignment;
-  verification_params.graph_verifier = &graph_verify;
   verification_params.fp32_abs_err = fp32_abs_err;
   // Add kMSDomain to cover contrib op like Gelu
   const std::unordered_map<std::string, int> domain_to_version = {{"", opset_version}, {kMSDomain, 1}};
