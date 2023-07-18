@@ -228,7 +228,7 @@ class FusionGptNeoxAttentionNoPast(Fusion):
         if mask_filter_value is not None:
             attention_node.attribute.extend([helper.make_attribute("mask_filter_value", float(mask_filter_value))])
 
-        nodes_to_add = [attention_node] + merge_nodes + split_nodes
+        nodes_to_add = [attention_node, *merge_nodes, *split_nodes]
         for node in nodes_to_add:
             self.node_name_to_graph_name[node.name] = self.this_graph_name
 
