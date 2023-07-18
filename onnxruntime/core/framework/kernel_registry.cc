@@ -187,7 +187,7 @@ Status KernelRegistry::TryFindKernelImpl(const Node& node,
   const auto& expected_provider = (node_provider.empty() ? exec_provider : node_provider);
 
   std::string domain = node.Domain();
-  if (node.OpType() == "Relu") domain = "ai.onnx";
+  if (node.OpType() == "Relu") domain = "test";
   auto range = kernel_creator_fn_map_.equal_range(GetMapKey(node.OpType(), domain, expected_provider));
   if (out) *out = nullptr;
 

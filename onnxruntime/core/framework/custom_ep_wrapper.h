@@ -2,6 +2,7 @@
 #include "core/framework/custom_execution_provider.h"
 #include "core/framework/execution_provider.h"
 #include "core/framework/kernel_registry.h"
+#include "core/framework/framework_provider_common.h"
 #include "core/session/onnxruntime_lite_custom_op.h"
 #include "core/session/allocator_adapters.h"
 #include "core/session/custom_ops.h"
@@ -15,7 +16,11 @@ namespace onnxruntime {
                 kernel_registry_ = std::make_shared<KernelRegistry>();
                 std::vector<Ort::Custom::OrtLiteCustomOp*> kernel_defn = external_ep_impl_->GetKernelDefinitions();
                 for (auto& k : kernel_defn) {
-                    OrtLiteCustomOp2KernelRegistry(k);
+                //    OrtLiteCustomOp2KernelRegistry(k);
+                    std::unique_ptr<OrtCustomOpDomain> custom_op_domain = std::make_unique<OrtCustomOpDomain>();
+                    custom_op_domain->domain_ = "test";
+                    custom_op_domain->custom_ops_.push_back(k);
+                    custom_op_domain_list_.push_back(custom_op_domain.release());
                 }
             }
 
@@ -33,9 +38,14 @@ namespace onnxruntime {
             return ret;
         }
 
+        void GetCustomOpDomainList(std::vector<OrtCustomOpDomain*>& custom_op_domain_list) const override {
+            custom_op_domain_list = custom_op_domain_list_;
+        }
+
     private:
         std::unique_ptr<CustomExecutionProvider> external_ep_impl_;
         std::shared_ptr<KernelRegistry> kernel_registry_;
+        std::vector<OrtCustomOpDomain*> custom_op_domain_list_;
 
         void OrtLiteCustomOp2KernelRegistry(Ort::Custom::OrtLiteCustomOp* kernel_definition) {
             KernelCreateInfo kernel_create_info = CreateKernelCreateInfo("", kernel_definition);

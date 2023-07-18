@@ -3,6 +3,7 @@
 #include <iostream>
 #include "custom_ep2.h"
 #include "core/session/onnxruntime_lite_custom_op.h"
+#include "core/session/onnxruntime_cxx_api.h"
 
 namespace onnxruntime {
 void KernelTwo(const Ort::Custom::Tensor<float>& X,
@@ -14,6 +15,7 @@ void KernelTwo(const Ort::Custom::Tensor<float>& X,
   for (int64_t i = 0; i < total; i++) {
     Y_raw[i] = static_cast<int32_t>(round(X_raw[i]));
   }
+  std::cout<<"In KernelTwo()\n";
 }
 
 void MyRelu(const Ort::Custom::Tensor<float>& X, Ort::Custom::Tensor<float>& Y) {
@@ -27,10 +29,38 @@ void MyRelu(const Ort::Custom::Tensor<float>& X, Ort::Custom::Tensor<float>& Y) 
   std::cout<<"In MyRelu()\n";
 }
 
+struct CustomCPUAllocator : public OrtAllocator {
+  CustomCPUAllocator() {
+    OrtAllocator::version = ORT_API_VERSION;
+    OrtAllocator::Alloc = [](OrtAllocator* this_, size_t size) { return static_cast<CustomCPUAllocator*>(this_)->Alloc(size); };
+    OrtAllocator::Free = [](OrtAllocator* this_, void* p) { static_cast<CustomCPUAllocator*>(this_)->Free(p); };
+    OrtAllocator::Info = [](const OrtAllocator* this_) { return static_cast<const CustomCPUAllocator*>(this_)->Info(); };
+    Ort::ThrowOnError(Ort::GetApi().CreateCpuMemoryInfo(OrtDeviceAllocator, OrtMemTypeDefault, &cpu_mem_info));
+  }
+
+  virtual ~CustomCPUAllocator() { Ort::GetApi().ReleaseMemoryInfo(cpu_mem_info); }
+
+  void* Alloc(size_t size) {
+    void* device_address = new (std::nothrow) uint8_t[size];
+    return device_address;
+  }
+  void Free(void* p) {
+    delete[] reinterpret_cast<uint8_t*>(p);
+  }
+  const OrtMemoryInfo* Info() const {
+    return cpu_mem_info;
+  }
+
+private:
+  OrtMemoryInfo* cpu_mem_info;
+};
+
 CustomEp2::CustomEp2(const CustomEp2Info& info) : info_{info} {
-    //custom_ops_.push_back(Ort::Custom::CreateLiteCustomOp("CustomOpTwo", type_.c_str(), KernelTwo));  // TODO: should use smart pointer for vector custom_ops_
     type_ = "customEp2";
-    kernel_definitions_.push_back(Ort::Custom::CreateLiteCustomOp("Relu", type_.c_str(), MyRelu));  // TODO: should use smart pointer for vector custom_ops_
+    //kernel_definitions_.push_back(Ort::Custom::CreateLiteCustomOp("CustomOpTwo", type_.c_str(), KernelTwo));  // TODO: should use smart pointer for vector custom_ops_
+    kernel_definitions_.push_back(Ort::Custom::CreateLiteCustomOp("Relu", type_.c_str(), MyRelu));  // TODO: should we use OrtLiteCustomOp to represent standard op?
+
+    allocators_.push_back(std::make_unique<CustomCPUAllocator>().release());  // TODO: release resource
 }
 
 CustomEp2Info ProviderOption2CustomEpInfo(std::unordered_map<std::string, std::string>& provider_option) {

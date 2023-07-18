@@ -9,7 +9,7 @@ model_path = '/bert_ort/leca/models/Relu.onnx'
 shared_lib_path = '/bert_ort/leca/code/onnxruntime2/samples/customEP2/build/libcustomep2.so'
 
 session_options =C.get_default_session_options()
-sess = C.InferenceSession(session_options, model_path, True, True)
+sess = C.InferenceSession(session_options, model_path, True, True)  # custom Op doesn't work because Graph::Resolve() is invoked here but registry info is the line below
 sess.initialize_session(['customEp2'], [{'shared_lib_path': shared_lib_path, 'int_property':'3', 'str_property':'strval'}], set())
 print('Create custom EP success!')
 
