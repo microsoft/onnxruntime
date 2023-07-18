@@ -3417,7 +3417,7 @@ ONNX_NAMESPACE::GraphProto Graph::ToGraphProtoWithExternalInitializers(const std
       TensorProto* output_proto = result.add_initializer();
 
       std::vector<uint8_t> raw_data;
-      ORT_THROW_IF_ERROR(utils::UnpackInitializerData(initializer, model_path, raw_data));
+      ORT_THROW_IF_ERROR(utils::UnpackInitializerData(initializer, Path(), raw_data));
       size_t tensor_bytes_size = raw_data.size();
       if (tensor_bytes_size < initializer_size_threshold) {
         *output_proto = initializer;
