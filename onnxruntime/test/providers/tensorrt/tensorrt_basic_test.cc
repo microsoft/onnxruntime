@@ -349,9 +349,9 @@ TEST(TensorrtExecutionProviderTest, SessionCreationWithSingleThreadAndInferenceW
   CreateBaseModel(model_name, graph_name, dims);
   RunWithOneSessionMultiThreadsInference(model_name, sess_log_id);
 
-  // In addition to the test case that whole model can be run TRT, we also need to test the case where
+  // In addition to the test case that whole model can be run by TRT, we also need to test the case where
   // the model is partitioned into TRT EP and CUDA EP subgraphs.
-  // We did observe synchronization issue for TRT EP without PerContextThread implementation running on those models.
+  // We did observe synchronization issue for TRT EP without PerContextThread implementation running those models.
   CreateBaseModel(model_name, graph_name, dims, true);
   RunWithOneSessionMultiThreadsInference(model_name, sess_log_id, true);
 }

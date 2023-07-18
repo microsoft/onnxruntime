@@ -686,7 +686,7 @@ bool TensorrtExecutionProvider::PerThreadContext::CompareProfileShapes(std::stri
 
 /*
  * Updates the shape ranges maintained by the PerThreadContext.
- * As long as the execution context maintained by the PerThreadContext is updated, the associated shape ranges sould be updated as well.
+ * As long as the execution context maintained by the PerThreadContext is updated, the associated shape ranges should be updated as well.
  *
  */
 void TensorrtExecutionProvider::PerThreadContext::UpdateProfileShapes(std::string fused_node, ShapeRangesMap& shape_ranges) {
@@ -1223,9 +1223,7 @@ Status TensorrtExecutionProvider::OnRunEnd(bool sync_stream) {
   //  the next run.
   // The reason of PerThreadContextCache()->find(this) != PerThreadContextCache()->end():
   //  In extreme cases (e.g., 1-op graph and that op fallbacks to CPU),
-  //  PerThreadContext won't be created and there isbe nothing to
-  //  release. This didn't happen before because we always call
-  //  GetPerThreadContext in OnRunStart.
+  //  PerThreadContext won't be created and there is nothing to release.
   if (!IsGraphCaptureEnabled() &&
       PerThreadContextCache()->find(this) != PerThreadContextCache()->end()) {
     ReleasePerThreadContext();
