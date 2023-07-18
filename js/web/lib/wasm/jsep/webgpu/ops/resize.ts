@@ -115,8 +115,8 @@ const getOriginalCoordinateFromResizedCoordinate = (coordinateTransferMode: Coor
                   }';
         case 'tf_crop_and_resize':
           return 'if (lengthResized > 1) { \
-                    return roi_start * (lengthOriginal - 1) + \
-                          (xResized * (roiEnd - roiStart) * (lengthResized - 1)) / (lengthResized - 1); \
+                    return roiStart * (lengthOriginal - 1) + \
+                          (xResized * (roiEnd - roiStart) * (lengthOriginal - 1)) / (lengthResized - 1); \
                   } else { \
                     return 0.5 * (roiStart + roiEnd) * f32(lengthOriginal - 1); \
                   }';
@@ -144,7 +144,7 @@ const getNearestPixelFromOriginal = (nearestMode: NearestMode, opsetVersion: num
         case 'ceil':
           return 'return ceil(xOriginal);';
         case 'round_prefer_floor':
-          return 'if (xOriginal == floor(xOriginal) + 0.5)) { \
+          return 'if (xOriginal == floor(xOriginal) + 0.5) { \
                     return floor(xOriginal); \
                   } else { \
                     return round(xOriginal); \
@@ -348,7 +348,7 @@ const bicubicInterpolation =
       const [heightIdx, widthIdx] = inputShape.length === 2 ? [0, 1] : (scales[1] === 1.0) ? [2, 3] : [1, 2];
       return `
   fn getCubicInterpolationCoefs(s: f32) -> array<f32, 4> {
-    absS = abs(s);
+    var absS = abs(s);
     var coeffs: array<f32, 4> = array<f32, 4>(0.0, 0.0, 0.0, 0.0);
     var oneMinusAbsS: f32 = 1.0 - absS;
     var twoMinusAbsS: f32 = 2.0 - absS;
@@ -362,28 +362,28 @@ const bicubicInterpolation =
     return coeffs;
   }
 
-  fn cubicInterpolation1D(x: array<f32, 4>, coeffs: array<f32, 4>) -> f32 {
+  fn cubicInterpolation1D(x: array<f32, 4>, coefs: array<f32, 4>) -> f32 {
     var coefsSum: f32 = coefs[0] + coefs[1] + coefs[2] + coefs[3];
-    return dot(x, coeffs/coefsSum);
+    return (x[0] * coefs[0] + x[1] * coefs[1]+ x[2] * coefs[2]+ x[3] * coefs[3]) / coefsSum;
   }
 
   fn bicubicInterpolation(outputIndices: ${outputIndicesHelper.iType}) -> f32 {
     var originalIndices = calculateOriginalIndicesFromOutputIndices(outputIndices);
     var originRow:f32 = originalIndices[${heightIdx}];
     var originCol:f32 = originalIndices[${widthIdx}];
-    colCoefs = getCubicInterpolationCoefs(fract(originCol));
-    rowCoefs = getCubicInterpolationCoefs(fract(originRow));
+    var colCoefs = getCubicInterpolationCoefs(fract(originCol));
+    var rowCoefs = getCubicInterpolationCoefs(fract(originRow));
 
     var colData: array<f32, 4> = array<f32, 4>(0.0, 0.0, 0.0, 0.0);
     for (var c: i32 = -1; c < 3; c++) {
       var col: i32 = i32(originCol) + c;
       if (col < 0 || col >= ${inputShape[widthIdx]}) {
         if (${excludeOutside}) {
-          colCoefs[r + 1] = 0.0;
-          colData[r + 1] = 0.0;
+          colCoefs[c + 1] = 0.0;
+          colData[c + 1] = 0.0;
           continue;
         } else if (${useExtrapolation}) {
-          colData[r + 1] = ${extrapolationValue};
+          colData[c + 1] = ${extrapolationValue};
         } else {
           if (col < 0) {
             col = 0;
@@ -412,8 +412,8 @@ const bicubicInterpolation =
           }
         }
         var inputIndices: ${inputIndicesHelper.iType} = outputIndices;
-        inputIndices[${heightIdx}] = row;
-        inputIndices[${widthIdx}] = col;
+        inputIndices[${heightIdx}] = u32(row);
+        inputIndices[${widthIdx}] = u32(col);
         rowData[r + 1] = input[${inputIndicesHelper.i2oExpression('inputIndices')}];
       }
       colData[c + 1] = cubicInterpolation1D(rowData, rowCoefsCopy);
