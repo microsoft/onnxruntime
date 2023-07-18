@@ -61,6 +61,7 @@ const DEFAULT_BUILD_DEFS = {
   DISABLE_WASM: false,
   DISABLE_WASM_PROXY: false,
   DISABLE_WASM_THREAD: false,
+  ENABLE_TRAINING: false
 };
 
 // common config for release bundle

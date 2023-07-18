@@ -26,4 +26,8 @@ if (!BUILD_DEFS.DISABLE_WASM) {
   registerBackend('webnn', wasmBackend, 9);
 }
 
+if (BUILD_DEFS.ENABLE_TRAINING) {
+  // TODO: do something!
+}
+
 env.versions.web = version;

@@ -30,6 +30,10 @@ interface BuildDefinitions {
    * defines whether to disable multi-threading feature in WebAssembly backend in the build.
    */
   DISABLE_WASM_THREAD: boolean;
+  /**
+   * defines whether to use the training backend
+   */
+  ENABLE_TRAINING: boolean;
 }
 
 declare let BUILD_DEFS: BuildDefinitions;
