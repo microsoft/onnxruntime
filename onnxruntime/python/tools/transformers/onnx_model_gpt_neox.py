@@ -8,7 +8,7 @@ from typing import Optional
 import numpy as np
 from fusion_attention import AttentionMask
 from fusion_base import Fusion
-from fusion_options import AttentionMaskFormat, FusionOptions
+from fusion_options import AttentionMaskFormat
 from onnx import TensorProto, helper
 from onnx.onnx_pb import NodeProto
 from onnx_model import OnnxModel
