@@ -973,6 +973,16 @@ inline void SessionImpl<T>::Run(const RunOptions& run_options, const IoBinding& 
 }
 
 template <typename T>
+inline void SessionImpl<T>::RunAsync(const RunOptions& run_options, const char* const* input_names, const Value* input_values, size_t input_count,
+                                     const char* const* output_names, Value* output_values, size_t output_count, RunAsyncCallbackFn callback, void* user_data) {
+  auto ort_input_values = reinterpret_cast<const OrtValue* const*>(input_values);
+  auto ort_output_values = reinterpret_cast<OrtValue**>(output_values);
+  ThrowOnError(GetApi().RunAsync(this->p_, run_options, input_names,
+                                 ort_input_values, input_count, output_names, output_count,
+                                 ort_output_values, callback, user_data));
+}
+
+template <typename T>
 inline AllocatedStringPtr SessionImpl<T>::EndProfilingAllocated(OrtAllocator* allocator) {
   char* out = nullptr;
   ThrowOnError(GetApi().SessionEndProfiling(this->p_, allocator, &out));
