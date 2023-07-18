@@ -46,9 +46,11 @@ class UsageError(BaseError):
 
 
 def _check_python_version():
-    if (sys.version_info.major, sys.version_info.minor) < (3, 7):
+    required_minor_version = 7
+    if (sys.version_info.major, sys.version_info.minor) < (3, required_minor_version):
         raise UsageError(
-            f"Invalid Python version. At least Python 3.7 is required. Actual Python version: {sys.version}"
+            f"Invalid Python version. At least Python 3.{required_minor_version} is required. "
+            f"Actual Python version: {sys.version}"
         )
 
 
@@ -1740,7 +1742,6 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
             if args.build_shared_lib:
                 executables.append("onnxruntime_shared_lib_test")
                 executables.append("onnxruntime_global_thread_pools_test")
-                executables.append("onnxruntime_api_tests_without_env")
                 executables.append("onnxruntime_customopregistration_test")
             for exe in executables:
                 test_output = f"--gtest_output=xml:{cwd}/{exe}.{config}.results.xml"

@@ -1,9 +1,11 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
+from __future__ import annotations
+
 import copy
+import os
 from contextlib import contextmanager
-from typing import Optional
 
 import onnx
 
@@ -29,10 +31,11 @@ class ModelAccessor:
         return self._model
 
 
-# This variable resides in the global namespace.
+# These variable resides in the global namespace.
 # Different methods can access this global model and manipulate it.
 # Its construction and destruction is managed by the base and empty_base contextmanagers
 _GLOBAL_ACCESSOR = None
+_GLOBAL_CUSTOM_OP_LIBRARY = None
 
 
 @contextmanager
@@ -74,7 +77,7 @@ def base(model: onnx.ModelProto):
 
 
 @contextmanager
-def empty_base(opset_version: Optional[int] = None):
+def empty_base(opset_version: int | None = None):
     """Registers an empty base model to be manipulated by the onnx blocks.
 
     Example:
@@ -89,8 +92,7 @@ def empty_base(opset_version: Optional[int] = None):
     model_handle.
 
     Args:
-        opset_version (int, optional): The opset version to use for the model.
-                                       Defaults to onnx.defs.onnx_opset_version()
+        opset_version: The opset version to use for the model. Defaults to onnx.defs.onnx_opset_version()
 
     Returns:
         ModelAccessor: The model accessor that contains the modified model.
@@ -115,3 +117,35 @@ def empty_base(opset_version: Optional[int] = None):
         yield _GLOBAL_ACCESSOR
     finally:
         _GLOBAL_ACCESSOR = None
+
+
+@contextmanager
+def custom_op_library(custom_op_library_path: os.PathLike):
+    """Registers the custom op library to be used by the onnx blocks.
+
+    Example:
+    >>> with onnxblock.custom_op_library(custom_op_library_path):
+    >>>     # manipulate the model using blocks
+    >>>     ...
+
+    In this example, custom_op_library will register the given input custom op library path to be used
+    during the model manipulation (gradient graph building and optimization).
+
+    Args:
+        custom_op_library_path: The path to the custom op library.
+
+    Returns:
+        ModelAccessor: The model accessor that contains the modified model.
+    """
+    global _GLOBAL_CUSTOM_OP_LIBRARY  # pylint: disable=global-statement  # noqa: PLW0603
+    if _GLOBAL_CUSTOM_OP_LIBRARY is not None:
+        raise RuntimeError("CustomOp library already set. Cannot set multiple custom op libraries.")
+
+    if not os.path.exists(custom_op_library_path):
+        raise RuntimeError(f"Custom op library path {custom_op_library_path} does not exist.")
+
+    _GLOBAL_CUSTOM_OP_LIBRARY = copy.copy(custom_op_library_path)  # noqa: PLW0603
+    try:
+        yield _GLOBAL_CUSTOM_OP_LIBRARY
+    finally:
+        _GLOBAL_CUSTOM_OP_LIBRARY = None

@@ -118,6 +118,58 @@ class TestTorchDynamoOrt(unittest.TestCase):
 
         run_to_copy()
 
+    def test_aten_full(self):
+        torch._dynamo.reset()
+
+        def run_no_input_model():
+            # A function to test.
+            def no_input_model():
+                return torch.ops.aten.full([2, 3], 1.5)
+
+            @torch._dynamo.optimize(aot_ort)
+            def optimized_no_input_model():
+                return no_input_model()
+
+            def run(fun):
+                tensor_x = fun()
+                return tensor_x
+
+            # Baseline.
+            tensor_x = run(no_input_model)
+            # ORT result.
+            tensor_x_new = run(optimized_no_input_model)
+
+            torch.testing.assert_close(tensor_x, tensor_x_new)
+
+        for _ in range(5):
+            run_no_input_model()
+
+    def test_aten_full_with_device(self):
+        torch._dynamo.reset()
+
+        def run_no_input_model():
+            # A function to test.
+            def no_input_model():
+                return torch.ops.aten.full([2, 3], 1.5, device="cpu")
+
+            @torch._dynamo.optimize(aot_ort)
+            def optimized_no_input_model():
+                return no_input_model()
+
+            def run(fun):
+                tensor_x = fun()
+                return tensor_x
+
+            # Baseline.
+            tensor_x = run(no_input_model)
+            # ORT result.
+            tensor_x_new = run(optimized_no_input_model)
+
+            torch.testing.assert_close(tensor_x, tensor_x_new)
+
+        for _ in range(5):
+            run_no_input_model()
+
     def test_mnist_model(self):
         torch._dynamo.reset()
         """Test DORT with a simple nn.Module."""

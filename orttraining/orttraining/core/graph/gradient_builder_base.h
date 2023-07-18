@@ -262,7 +262,7 @@ class GradientBuilderBase {
   // We only support FP32, FP16 and BF16 for these constant nodes for now.
   static NodeDef ConstantScalarNode(float value, const std::string& arg_name, int elem_type) {
     if (elem_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
-      return ConstantScalarNode(MLFloat16(math::floatToHalf(value)), {1}, arg_name);
+      return ConstantScalarNode(MLFloat16(value), {1}, arg_name);
     }
 
     if (elem_type == ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16) {
@@ -294,7 +294,7 @@ class GradientBuilderBase {
 
   static ONNX_NAMESPACE::TensorProto ScalarTensorProtoByElemType(float value, int elem_type) {
     if (elem_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
-      return ScalarTensorProto(MLFloat16(math::floatToHalf(value)), {1});
+      return ScalarTensorProto(MLFloat16(value), {1});
     }
 
     if (elem_type == ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16) {

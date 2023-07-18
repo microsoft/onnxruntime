@@ -76,8 +76,7 @@ TEST_F(QnnHTPBackendTests, Test_QDQConvWithDynamicWeightsFromMul) {
                   provider_options,
                   13,
                   ExpectedEPNodeAssignment::All,
-                  expected_nodes_in_partition,
-                  "Test_ConvWithDynamicWeightsFromMul");
+                  expected_nodes_in_partition);
 }
 
 // Creates a graph with a single float32 Conv operator. Used for testing CPU backend.
@@ -125,7 +124,7 @@ static void RunCPUConvOpTest(const std::string& conv_op_type, const TestInputDef
                              const std::vector<int64_t>& pads,
                              const std::vector<int64_t>& dilations,
                              const std::string& auto_pad,
-                             ExpectedEPNodeAssignment expected_ep_assignment, const char* test_description,
+                             ExpectedEPNodeAssignment expected_ep_assignment,
                              int opset = 13,
                              float fp32_abs_err = 1e-5f) {
   ProviderOptions provider_options;
@@ -142,7 +141,6 @@ static void RunCPUConvOpTest(const std::string& conv_op_type, const TestInputDef
                   opset,
                   expected_ep_assignment,
                   expected_nodes_in_partition,
-                  test_description,
                   fp32_abs_err);
 }
 
@@ -240,7 +238,7 @@ static void RunHTPConvOpTest(const std::string& conv_op_type, const TestInputDef
                              const std::vector<int64_t>& pads,
                              const std::vector<int64_t>& dilations,
                              const std::string& auto_pad,
-                             ExpectedEPNodeAssignment expected_ep_assignment, const char* test_description,
+                             ExpectedEPNodeAssignment expected_ep_assignment,
                              int opset = 13,
                              float fp32_abs_err = 1e-5f) {
   ProviderOptions provider_options;
@@ -258,7 +256,6 @@ static void RunHTPConvOpTest(const std::string& conv_op_type, const TestInputDef
                   opset,
                   expected_ep_assignment,
                   expected_nodes_in_partition,
-                  test_description,
                   fp32_abs_err);
 }
 
@@ -274,8 +271,7 @@ TEST_F(QnnCPUBackendTests, DISABLED_TestCPUConvf32_dynamic_bias) {
                    {0, 0, 0, 0},                                           // default pads
                    {1, 1},                                                 // default dilations
                    "NOTSET",                                               // No auto-padding
-                   ExpectedEPNodeAssignment::All,
-                   "TestCPUConvf32_bias_input");
+                   ExpectedEPNodeAssignment::All);
 }
 
 // Check that QNN compiles DQ -> Conv -> Q as a single unit.
@@ -289,8 +285,7 @@ TEST_F(QnnCPUBackendTests, TestCPUConvf32_bias_initializer) {
                    {0, 0, 0, 0},                                           // default pads
                    {1, 1},                                                 // default dilations
                    "NOTSET",                                               // No auto-padding
-                   ExpectedEPNodeAssignment::All,
-                   "TestCPUConvf32_bias_initializer");
+                   ExpectedEPNodeAssignment::All);
 }
 
 // Tests Conv's auto_pad value "SAME_UPPER" (compares to CPU EP).
@@ -303,8 +298,7 @@ TEST_F(QnnCPUBackendTests, TestCPUConvf32_AutoPadUpper) {
                    {},                                                     // pads
                    {1, 1},                                                 // dilations
                    "SAME_UPPER",                                           // auto_pad
-                   ExpectedEPNodeAssignment::All,
-                   "TestCPUConvf32_AutoPadUpper");
+                   ExpectedEPNodeAssignment::All);
 }
 
 // Tests ConvTranspose's auto_pad value "SAME_UPPER" (compares to CPU EP).
@@ -317,8 +311,7 @@ TEST_F(QnnCPUBackendTests, TestCPUConvTransposef32_AutoPadUpper) {
                    {},                                                     // pads
                    {1, 1},                                                 // dilations
                    "SAME_UPPER",                                           // auto_pad
-                   ExpectedEPNodeAssignment::All,
-                   "TestCPUConvTransposef32_AutoPadUpper");
+                   ExpectedEPNodeAssignment::All);
 }
 
 // Tests Conv's auto_pad value "SAME_LOWER" (compares to CPU EP).
@@ -331,8 +324,7 @@ TEST_F(QnnCPUBackendTests, TestCPUConvf32_AutoPadLower) {
                    {},                                                     // pads
                    {1, 1},                                                 // dilations
                    "SAME_LOWER",                                           // auto_pad
-                   ExpectedEPNodeAssignment::All,
-                   "TestCPUConvf32_AutoPadLower");
+                   ExpectedEPNodeAssignment::All);
 }
 
 // Tests ConvTranspose's auto_pad value "SAME_LOWER" (compares to CPU EP).
@@ -345,8 +337,7 @@ TEST_F(QnnCPUBackendTests, TestCPUConvTransposef32_AutoPadLower) {
                    {},                                                     // pads
                    {1, 1},                                                 // dilations
                    "SAME_LOWER",                                           // auto_pad
-                   ExpectedEPNodeAssignment::All,
-                   "TestCPUConvTransposef32_AutoPadLower");
+                   ExpectedEPNodeAssignment::All);
 }
 
 // large input,output, pads
@@ -360,7 +351,6 @@ TEST_F(QnnCPUBackendTests, TestCPUConvf32_large_input1_pad_bias_initializer) {
                    {1, 1},
                    "NOTSET",
                    ExpectedEPNodeAssignment::All,
-                   "TestCPUConvf32_large_input1_pad_bias_initializer",
                    13,
                    1e-4f);
 }
@@ -383,7 +373,6 @@ TEST_F(QnnCPUBackendTests, TestCPUConvf32_large_input2_nopad_bias_initializer) {
                    {1, 1},
                    "NOTSET",
                    ExpectedEPNodeAssignment::All,
-                   "TestCPUConvf32_large_input2_nopad_bias_initializer",
                    13,  // opset
                    fp32_abs_err);
 }
@@ -398,8 +387,7 @@ TEST_F(QnnCPUBackendTests, TestCPUConv1Df32_StaticWeights_DefaultBias) {
                    {0, 0},                                                                                   // Pads
                    {1},                                                                                      // Dilations
                    "NOTSET",
-                   ExpectedEPNodeAssignment::All,
-                   "TestCPUConv1Df32_StaticWeights_DefaultBias");
+                   ExpectedEPNodeAssignment::All);
 }
 
 // Test 1D Conv with dynamic weights (implemented in QNN EP as 2D convolution with height of 1).
@@ -412,8 +400,7 @@ TEST_F(QnnCPUBackendTests, TestCPUConv1Df32_DynamicWeights_DefaultBias) {
                    {0, 0},                                                                                   // Pads
                    {1},                                                                                      // Dilations
                    "NOTSET",
-                   ExpectedEPNodeAssignment::All,
-                   "TestCPUConv1Df32_DynamicWeights_DefaultBias");
+                   ExpectedEPNodeAssignment::All);
 }
 
 // Test 1D ConvTranspose with static weights (implemented in QNN EP as 2D convolution with height of 1).
@@ -426,8 +413,7 @@ TEST_F(QnnCPUBackendTests, TestCPUConvTranspose1Df32_StaticWeights_DefaultBias) 
                    {0, 0},                                                                                   // Pads
                    {1},                                                                                      // Dilations
                    "NOTSET",
-                   ExpectedEPNodeAssignment::All,
-                   "TestCPUConvTranspose1Df32_StaticWeights_DefaultBias");
+                   ExpectedEPNodeAssignment::All);
 }
 
 // Test 1D ConvTranspose with dynamic weights (implemented in QNN EP as 2D convolution with height of 1).
@@ -440,8 +426,7 @@ TEST_F(QnnCPUBackendTests, TestCPUConvTranspose1Df32_DynamicWeights_DefaultBias)
                    {0, 0},                                                                                   // Pads
                    {1},                                                                                      // Dilations
                    "NOTSET",
-                   ExpectedEPNodeAssignment::All,
-                   "TestCPUConvTranspose1Df32_DynamicWeights_DefaultBias");
+                   ExpectedEPNodeAssignment::All);
 }
 
 #if defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
@@ -457,8 +442,7 @@ TEST_F(QnnHTPBackendTests, TestQDQConvU8S32_bias_dynamic_input) {
                             {0, 0, 0, 0},                                            // Pads
                             {1, 1},                                                  // Dilations
                             "NOTSET",
-                            ExpectedEPNodeAssignment::All,
-                            "TestQDQConvU8S32_bias_dynamic_input");
+                            ExpectedEPNodeAssignment::All);
 }
 
 // Test that dynamic weights with default bias works for Conv. This was previously not working
@@ -472,8 +456,7 @@ TEST_F(QnnHTPBackendTests, TestQDQConvU8S32_DynamicWeight_NoBias) {
                             {0, 0, 0, 0},                                             // Pads
                             {1, 1},                                                   // Dilations
                             "NOTSET",
-                            ExpectedEPNodeAssignment::All,
-                            "TestQDQConvU8S32_DynamicWeight_NoBias");
+                            ExpectedEPNodeAssignment::All);
 }
 
 // Test that dynamic weights with default bias works for ConvTranspose. This was previously not working
@@ -487,8 +470,7 @@ TEST_F(QnnHTPBackendTests, TestQDQConvTransposeU8S32_DynamicWeight_NoBias) {
                             {0, 0, 0, 0},                                              // Pads
                             {1, 1},                                                    // Dilations
                             "NOTSET",
-                            ExpectedEPNodeAssignment::All,
-                            "TestQDQConvTransposeU8S32_DynamicWeight_NoBias");
+                            ExpectedEPNodeAssignment::All);
 }
 
 // Check that QNN compiles DQ -> Conv -> Q as a single unit.
@@ -502,8 +484,7 @@ TEST_F(QnnHTPBackendTests, TestQDQConvU8U8S32_bias_initializer) {
                             {0, 0, 0, 0},                                            // Pads
                             {1, 1},                                                  // Dilations
                             "NOTSET",
-                            ExpectedEPNodeAssignment::All,
-                            "TestQDQConvU8S32_bias_initializer");
+                            ExpectedEPNodeAssignment::All);
 }
 
 // Tests 1D Conv with bias as an initializer.
@@ -516,8 +497,7 @@ TEST_F(QnnHTPBackendTests, TestQDQConv1DU8S32_bias_initializer) {
                             {0, 0},                                                                           // pads
                             {1},                                                                              // dilations
                             "NOTSET",
-                            ExpectedEPNodeAssignment::All,
-                            "TestQDQConv1DU8S32_bias_initializer");
+                            ExpectedEPNodeAssignment::All);
 }
 
 // Tests 1D ConvTranspose with bias as an initializer.
@@ -530,8 +510,7 @@ TEST_F(QnnHTPBackendTests, TestQDQConvTranspose1DU8S32_bias_initializer) {
                             {0, 0},                                                                           // pads
                             {1},                                                                              // dilations
                             "NOTSET",
-                            ExpectedEPNodeAssignment::All,
-                            "TestQDQConvTranspose1DU8S32_bias_initializer");
+                            ExpectedEPNodeAssignment::All);
 }
 
 // Tests auto_pad value "SAME_UPPER" on HTP backend (compares to CPU EP).
@@ -545,7 +524,6 @@ TEST_F(QnnHTPBackendTests, TestQDQConvU8S32_AutoPadUpper) {
                             {1, 1},                                               // dilations
                             "SAME_UPPER",                                         // auto_pad
                             ExpectedEPNodeAssignment::All,
-                            "TestConvU8S32_AutoPadUpper",
                             13,
                             1e-4f);
 }
@@ -561,7 +539,6 @@ TEST_F(QnnHTPBackendTests, TestQDQConv1DU8U8S32_AutoPadUpper) {
                             {1},                                                                              // dilations
                             "SAME_UPPER",                                                                     // auto_pad
                             ExpectedEPNodeAssignment::All,
-                            "TestConv1DU8U8S32_AutoPadUpper",
                             13,
                             1e-4f);
 }
@@ -577,7 +554,6 @@ TEST_F(QnnHTPBackendTests, TestQDQConvTranspose1DU8U8S32_AutoPadUpper) {
                             {1},                                                                              // dilations
                             "SAME_UPPER",                                                                     // auto_pad
                             ExpectedEPNodeAssignment::All,
-                            "TestConvTranspose1DU8U8S32_AutoPadUpper",
                             13,
                             1e-4f);
 }
@@ -593,7 +569,6 @@ TEST_F(QnnHTPBackendTests, TestQDQConvU8U8S32_AutoPadLower) {
                             {1, 1},                                               // dilations
                             "SAME_LOWER",                                         // auto_pad
                             ExpectedEPNodeAssignment::All,
-                            "TestConvU8U8S32_AutoPadLower",
                             13,
                             1e-4f);
 }
@@ -609,7 +584,6 @@ TEST_F(QnnHTPBackendTests, TestQDQConvTransposeU8U8S32_AutoPadLower) {
                             {1, 1},                                               // dilations
                             "SAME_LOWER",                                         // auto_pad
                             ExpectedEPNodeAssignment::All,
-                            "TestConvU8U8S32_AutoPadLower",
                             13,
                             1e-4f);
 }
@@ -625,7 +599,6 @@ TEST_F(QnnHTPBackendTests, TestQDQConv1DU8U8S32_AutoPadLower) {
                             {1},                                                                              // dilations
                             "SAME_LOWER",                                                                     // auto_pad
                             ExpectedEPNodeAssignment::All,
-                            "TestConv1DU8U8S32_AutoPadLower",
                             13,
                             1e-4f);
 }
@@ -641,7 +614,6 @@ TEST_F(QnnHTPBackendTests, TestQDQConvTranspose1DU8U8S32_AutoPadLower) {
                             {1},                                                                              // dilations
                             "SAME_LOWER",                                                                     // auto_pad
                             ExpectedEPNodeAssignment::All,
-                            "TestConvTranspose1DU8U8S32_AutoPadLower",
                             13,
                             1e-4f);
 }
@@ -656,8 +628,7 @@ TEST_F(QnnHTPBackendTests, DISABLED_TestQDQConvU8U8S32_large_input1_padding_bias
                             {1, 1, 1, 1},
                             {1, 1},
                             "NOTSET",
-                            ExpectedEPNodeAssignment::All,
-                            "TestQDQConvU8U8S32_large_input1_padding_bias_initializer");
+                            ExpectedEPNodeAssignment::All);
 }
 
 TEST_F(QnnHTPBackendTests, DISABLED_TestQDQConvU8S32_large_input2_bias_initializer) {
@@ -669,8 +640,7 @@ TEST_F(QnnHTPBackendTests, DISABLED_TestQDQConvU8S32_large_input2_bias_initializ
                             {0, 0, 0, 0},
                             {1, 1},
                             "NOTSET",
-                            ExpectedEPNodeAssignment::All,
-                            "TestQDQConvU8S32_large_input2_bias_initializer");
+                            ExpectedEPNodeAssignment::All);
 }
 
 // TODO: Certain large input sizes cause the QNN graph to fail to finalize with error 1002 (QNN_COMMON_ERROR_MEM_ALLOC).
@@ -683,8 +653,7 @@ TEST_F(QnnHTPBackendTests, DISABLED_TestQDQConvU8U8S32_LargeInput_Dilations_Pads
                             {3, 3, 3, 3},                                              // pads
                             {1, 1},                                                    // dilations
                             "NOTSET",                                                  // auto_pad
-                            ExpectedEPNodeAssignment::All,
-                            "TestQDQConvU8U8S32_large_input2_bias_initializer");
+                            ExpectedEPNodeAssignment::All);
 }
 #endif  // defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
 
