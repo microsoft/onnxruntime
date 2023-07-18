@@ -26,6 +26,7 @@ from typing import Dict, Optional
 import coloredlogs
 from fusion_options import FusionOptions
 from onnx import ModelProto, load_model
+from onnx_model import OnnxModel
 from onnx_model_bart import BartOnnxModel
 from onnx_model_bert import BertOnnxModel
 from onnx_model_bert_keras import BertOnnxModelKeras
@@ -45,20 +46,16 @@ MODEL_TYPES = {
     "bert": (BertOnnxModel, "pytorch", 1),
     "bert_tf": (BertOnnxModelTF, "tf2onnx", 0),
     "bert_keras": (BertOnnxModelKeras, "keras2onnx", 0),
+    "clip": (ClipOnnxModel, "pytorch", 1),  # Clip in Stable Diffusion
     "gpt2": (Gpt2OnnxModel, "pytorch", 1),
-    "gpt2_tf": (
-        Gpt2OnnxModel,
-        "tf2onnx",
-        0,
-    ),  # might add a class for GPT2OnnxModel for TF later.
+    "gpt2_tf": (Gpt2OnnxModel, "tf2onnx", 0),  # might add a class for GPT2OnnxModel for TF later.
+    "gpt_neox": (BertOnnxModel, "pytorch", 0),  # GPT-NeoX
+    "swin": (BertOnnxModel, "pytorch", 1),
     "tnlr": (TnlrOnnxModel, "pytorch", 1),
     "t5": (T5OnnxModel, "pytorch", 2),
-    # Stable Diffusion models
-    "unet": (UnetOnnxModel, "pytorch", 1),
-    "vae": (VaeOnnxModel, "pytorch", 1),
-    "clip": (ClipOnnxModel, "pytorch", 1),
+    "unet": (UnetOnnxModel, "pytorch", 1),  # UNet in Stable Diffusion
+    "vae": (VaeOnnxModel, "pytorch", 1),  # UAE in Stable Diffusion
     "vit": (BertOnnxModel, "pytorch", 1),
-    "swin": (BertOnnxModel, "pytorch", 1),
 }
 
 
@@ -93,6 +90,15 @@ def optimize_by_onnxruntime(
         logger.error("There is no gpu for onnxruntime to do optimization.")
         return onnx_model_path
 
+    model = OnnxModel(load_model(onnx_model_path, format=None, load_external_data=False))
+    if model.use_float16() and not use_gpu:
+        logger.warning(
+            "This model uses float16 in the graph, use_gpu=False might cause extra Cast nodes. "
+            "Most operators have no float16 implementation in CPU, so Cast nodes are added to compute them in float32. "
+            "If the model is intended to use in GPU, please set use_gpu=True. "
+            "Otherwise, consider exporting onnx in float32 and optional int8 quantization for better performance. "
+        )
+
     sess_options = onnxruntime.SessionOptions()
     if opt_level == 1:
         sess_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_BASIC
@@ -120,15 +126,13 @@ def optimize_by_onnxruntime(
     else:
         gpu_ep = []
 
-        if torch_version.cuda:
-            gpu_ep.append("CUDAExecutionProvider")
-        elif torch_version.hip:
+        if torch_version.hip:
             gpu_ep.append("MIGraphXExecutionProvider")
             gpu_ep.append("ROCMExecutionProvider")
+        else:
+            gpu_ep.append("CUDAExecutionProvider")
+
         onnxruntime.InferenceSession(onnx_model_path, sess_options, providers=gpu_ep, **kwargs)
-        assert not set(onnxruntime.get_available_providers()).isdisjoint(
-            ["CUDAExecutionProvider", "ROCMExecutionProvider", "MIGraphXExecutionProvider"]
-        )
 
     assert os.path.exists(optimized_model_path) and os.path.isfile(optimized_model_path)
     logger.debug("Save optimized model by onnxruntime to %s", optimized_model_path)
@@ -279,10 +283,12 @@ def optimize_model(
         )
     elif opt_level == 1:
         # basic optimizations (like constant folding and cast elimination) are not specified to execution provider.
-        # CPU provider is used here so that there is no extra node for GPU memory copy.
+        # Note that use_gpu=False might cause extra Cast nodes for float16 model since most operators does not support float16 in CPU.
+        # Sometime, use_gpu=True might cause extra memory copy nodes when some operators are supported only in CPU.
+        # We might need remove GPU memory copy nodes as preprocess of optimize_by_fusion if they cause no matching in fusion.
         temp_model_path = optimize_by_onnxruntime(
             input,
-            use_gpu=False,
+            use_gpu=use_gpu,
             opt_level=1,
             disabled_optimizers=disabled_optimizers,
             verbose=verbose,

@@ -3,6 +3,7 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
+import itertools
 import logging
 import os
 import sys
@@ -1183,3 +1184,48 @@ class OnnxModel:
 
     def clean_shape_infer(self):
         self.model.graph.ClearField("value_info")
+
+    def use_float16(self):
+        """Check whether the model uses float16"""
+        queue = []  # queue for BFS
+        queue.append(self.model.graph)
+        while queue:
+            sub_graphs = []
+            for graph in queue:
+                if not isinstance(graph, GraphProto):
+                    continue
+
+                for v in itertools.chain(graph.input, graph.output, graph.value_info):
+                    if v.type.tensor_type.elem_type == TensorProto.FLOAT16:
+                        return True
+                    if v.type.HasField("sequence_type"):
+                        if v.type.sequence_type.elem_type.tensor_type.elem_type == TensorProto.FLOAT16:
+                            return True
+
+                for t in graph.initializer:
+                    if t.data_type == TensorProto.FLOAT16:
+                        return True
+
+                for node in graph.node:
+                    if node.op_type == "Cast":
+                        for attr in node.attribute:
+                            if attr.name == "to" and attr.i == TensorProto.FLOAT16:
+                                return True
+
+                    for attr in node.attribute:
+                        if attr.type == AttributeProto.GRAPH:
+                            sub_graphs.append(attr.g)
+
+                        for g in attr.graphs:
+                            sub_graphs.append(g)
+
+                        if isinstance(attr.t, TensorProto) and attr.t.data_type == TensorProto.FLOAT16:
+                            return True
+
+                        for t in attr.tensors:
+                            if isinstance(t, TensorProto) and t.data_type == TensorProto.FLOAT16:
+                                return True
+
+            queue = sub_graphs
+
+        return False
