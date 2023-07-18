@@ -242,7 +242,13 @@ def test_nested_optional_greater_or_equal(use_trt: bool = False) -> None:
 # However, this unit test is slightly different. This is also a 3-layer nested graph but consumes the outer scope values (which are the inputs
 # of the top-level graph) in different subgraphs.
 class TestNestedControlFlowOpsGraph(unittest.TestCase):
-    def test3LevelControlFlowOpsGraph(self):  # noqa: N802
+    # We currently only test CUDA/TRT EP due to users only raise this issue when using CUDA/TRT EP.
+    @unittest.skipIf(
+        "TensorrtExecutionProvider" not in ort.get_available_providers()
+        and "CUDAExecutionProvider" not in ort.get_available_providers(),
+        reason="Test CUDA/TRT EP only",
+    )
+    def test_3_level_control_flow_ops_graph(self):
         if "CUDAExecutionProvider" in ort.get_available_providers():
             test_nested_optional_greater_or_equal(use_trt=False)
         if "TensorrtExecutionProvider" in ort.get_available_providers():
