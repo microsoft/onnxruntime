@@ -383,7 +383,7 @@ class BertOnnxModel(OnnxModel):
 
         self.fuse_reshape()
 
-        if (options is None) or options.enable_skip_layer_norm:
+        if (options is None) or (options.enable_skip_layer_norm and options.fuse_skip_layer_norm_before_attention):
             self.fuse_skip_layer_norm()
 
         if options is not None:
@@ -395,6 +395,13 @@ class BertOnnxModel(OnnxModel):
 
         if (options is None) or options.enable_attention:
             self.fuse_attention()
+
+        if (
+            (options is not None)
+            and options.enable_skip_layer_norm
+            and not options.fuse_skip_layer_norm_before_attention
+        ):
+            self.fuse_skip_layer_norm()
 
         # Perform the MatMul fusion after the Attention fusion as we do not
         # want to fuse the MatMuls inside the Attention subgraphs

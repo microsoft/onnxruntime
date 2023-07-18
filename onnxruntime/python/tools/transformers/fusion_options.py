@@ -61,6 +61,8 @@ class FusionOptions:
             self.enable_packed_kv = True
             self.enable_bias_add = True
 
+        self.fuse_skip_layer_norm_before_attention = model_type not in ["gpt_neox"]
+
     def use_raw_attention_mask(self, use_raw_mask=True):
         if use_raw_mask:
             self.attention_mask_format = AttentionMaskFormat.AttentionMask
