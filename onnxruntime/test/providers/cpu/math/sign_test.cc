@@ -140,7 +140,7 @@ TEST(MathOpTest, Sign_int64) {
   std::vector<int64_t> output;
   TestImpl<int64_t>(input.cbegin(), input.cend(), std::back_inserter(output));
   test.AddOutput<int64_t>("output", input_dims, output);
-  // TODO: QNN execute error, need further investigation 
+  // TODO: QNN execute error, need further investigation
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider, kQnnExecutionProvider});
 }
 
