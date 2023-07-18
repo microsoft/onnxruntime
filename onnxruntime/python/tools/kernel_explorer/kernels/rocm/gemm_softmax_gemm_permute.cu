@@ -347,7 +347,9 @@ KE_REGISTER(m) {
       .export_values();
 
   REGISTER_GENERIC(half);
+  REGISTER_GENERIC(float);
   REGISTER_GENERIC_NESTEDTUNABLE(half);
+  REGISTER_GENERIC_NESTEDTUNABLE(float);
 
 #ifdef USE_COMPOSABLE_KERNEL
   REGISTER_CK(half, false, false, "");

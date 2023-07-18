@@ -200,7 +200,7 @@ def _test_gemm_softmax_gemm_permute(
 @pytest.mark.parametrize("total_seqlen", total_seqlens)
 @pytest.mark.parametrize("seqlen", seqlens)
 @pytest.mark.parametrize("batch", [16])
-@pytest.mark.parametrize("dtype", dtypes)
+@pytest.mark.parametrize("dtype", ["float16", "float32"])
 def test_gemm_softmax_gemm_permute_generic(dtype, batch, seqlen, total_seqlen, nhead, head_size, biased, mask_dim):
     f = getattr(ke, "GemmSoftmaxGemmPermuteGeneric_" + dtype_to_suffix(dtype))
     scale = 1.0 / np.sqrt(head_size)
@@ -216,7 +216,7 @@ def test_gemm_softmax_gemm_permute_generic(dtype, batch, seqlen, total_seqlen, n
 @pytest.mark.parametrize("total_seqlen", [128])
 @pytest.mark.parametrize("seqlen", [64])
 @pytest.mark.parametrize("batch", [16])
-@pytest.mark.parametrize("dtype", ["float16"])
+@pytest.mark.parametrize("dtype", ["float16", "float32"])
 def test_gemm_softmax_gemm_permute_generic_nested_tunable(
     dtype, batch, seqlen, total_seqlen, nhead, head_size, biased, mask_dim
 ):
