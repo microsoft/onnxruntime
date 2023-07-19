@@ -227,6 +227,12 @@ class Session:
                 return self._sess.run(output_names, input_feed, run_options)
             raise
 
+    def run_async(self, output_names, input_feed, callback, run_options=None):
+        self._validate_input(list(input_feed.keys()))
+        if not output_names:
+            output_names = [output.name for output in self._outputs_meta]
+        return self._sess.run_async(output_names, input_feed, callback, run_options)
+
     def run_with_ort_values(self, output_names, input_dict_ort_values, run_options=None):
         """
         Compute the predictions.
