@@ -179,6 +179,11 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiHeadAttentio
 
   const float inv_sqrt_dh = params.scale;
 
+  if (!is_masked) {
+    // Store the Q values to shared memory.
+    *reinterpret_cast<Qk_vec_k*>(&q_smem[tidx * QK_VEC_SIZE]) = q;
+  }
+
   if (!params.is_cross_attention) {
     Qk_vec_k k;
 
@@ -241,9 +246,6 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiHeadAttentio
     }
 
     if (!is_masked) {
-      // Store the Q values to shared memory.
-      *reinterpret_cast<Qk_vec_k*>(&q_smem[tidx * QK_VEC_SIZE]) = q;
-
       // Write the K values to the global memory cache.
       // NOTE: The stores are uncoalesced as we have multiple chunks of 16B spread across the memory
       // system. We designed it this way as it allows much better memory loads (and there are many

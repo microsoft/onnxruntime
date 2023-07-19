@@ -56,6 +56,13 @@ source_group(TREE ${REPO_ROOT} FILES ${onnxruntime_framework_srcs})
 
 onnxruntime_add_static_library(onnxruntime_framework ${onnxruntime_framework_srcs})
 
+if (MSVC)
+  set(ORT_FRAMEWORK_NATVIS_FILE "onnxruntime_framework.natvis")
+  target_sources(
+      onnxruntime_framework
+      INTERFACE $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/${ORT_FRAMEWORK_NATVIS_FILE}>)
+endif()
+
 if(onnxruntime_ENABLE_INSTRUMENT)
   target_compile_definitions(onnxruntime_framework PRIVATE ONNXRUNTIME_ENABLE_INSTRUMENT)
 endif()

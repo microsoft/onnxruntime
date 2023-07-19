@@ -243,6 +243,20 @@ NS_ASSUME_NONNULL_BEGIN
 - (BOOL)registerCustomOpsUsingFunctionPointer:(ORTCAPIRegisterCustomOpsFnPtr)registerCustomOpsFn
                                         error:(NSError**)error;
 
+/**
+ * Registers ONNX Runtime Extensions custom ops that have been built in to ONNX Runtime.
+ *
+ * Available since 1.16.
+ *
+ * @note ONNX Runtime must have been built with the `--use_extensions` flag for the ONNX Runtime Extensions custom ops
+ * to be able to be registered with this method. When using a separate ONNX Runtime Extensions library, use
+ * `registerCustomOpsUsingFunctionPointer:error:` instead.
+ *
+ * @param error Optional error information set if an error occurs.
+ * @return Whether the ONNX Runtime Extensions custom ops were successfully registered.
+ */
+- (BOOL)enableOrtExtensionsCustomOpsWithError:(NSError**)error;
+
 @end
 
 /**
