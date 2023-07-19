@@ -490,12 +490,12 @@ constexpr static std::array<SupportedTensorDataTypes, 4> supportedTypeListQLinea
 
 constexpr static std::array<SupportedTensorDataTypes, 2> supportedTypeListDynamicQuantizeLinear = {
     SupportedTensorDataTypes::Float32,
-    SupportedTensorDataTypes::UInt8,
+    SupportedTensorDataTypes::Int8|SupportedTensorDataTypes::UInt8
 };
 
 constexpr static std::array<SupportedTensorDataTypes, 2> supportedTypeListDynamicQuantizeMatMul= {
     SupportedTensorDataTypes::Float32,
-    SupportedTensorDataTypes::UInt8,
+    SupportedTensorDataTypes::Int8|SupportedTensorDataTypes::UInt8,
 };
 
 template<typename... Args>

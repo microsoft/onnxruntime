@@ -103,11 +103,11 @@ public:
         matrixMultiplyIntergerToFloatOperatorDesc.AZeroPointTensor = dynamicQuantizeLinearOperatorDesc.OutputZeroPointTensor;
         matrixMultiplyIntergerToFloatOperatorDesc.BTensor = &inputDescs[OnnxInputIndex::B];
         matrixMultiplyIntergerToFloatOperatorDesc.BScaleTensor = &inputDescs[OnnxInputIndex::B_scale];
-        matrixMultiplyIntergerToFloatOperatorDesc.BZeroPointTensor = hasBZP? &inputDescs[OnnxInputIndex::B_scale] : nullptr;
+        matrixMultiplyIntergerToFloatOperatorDesc.BZeroPointTensor = hasBZP? &inputDescs[OnnxInputIndex::B_zero_point] : nullptr;
         matrixMultiplyIntergerToFloatOperatorDesc.BiasTensor = hasBias? &inputDescs[OnnxInputIndex::Bias] : nullptr;
         matrixMultiplyIntergerToFloatOperatorDesc.OutputTensor = &outputDescs[0];
 
-        const DML_OPERATOR_DESC opDesc2{DML_OPERATOR_MATRIX_MULTIPLY_INTEGER_TO_FLOAT, &matrixMultiplyIntergerToFloatOperatorDesc};
+        const DML_OPERATOR_DESC opDesc2{ (DML_OPERATOR_TYPE)DML_OPERATOR_MATRIX_MULTIPLY_INTEGER_TO_FLOAT, &matrixMultiplyIntergerToFloatOperatorDesc};
 
         MLOperatorGraphDesc operatorGraphDesc = {};
         operatorGraphDesc.nodeCount = 2;
@@ -116,7 +116,7 @@ public:
 
         // set input edges
         std::pair<uint32_t, uint32_t> nodeToNodeInputIndex[5] {{0, 0}, {1, 3}, {1, 4}, {1, 5}, {1, 6}};
-        std::vector<DML_INPUT_GRAPH_EDGE_DESC> inputEdges(OnnxInputIndex::Count);
+        std::vector<DML_INPUT_GRAPH_EDGE_DESC> inputEdges;
         for (uint32_t inputIndex = 0; inputIndex < OnnxInputIndex::Count; inputIndex++)
         {
             if (inputIndex == OnnxInputIndex::B_zero_point && !hasBZP) continue;
@@ -125,7 +125,7 @@ public:
             inputEdge.GraphInputIndex = inputIndex; // OnnxInputIndex and DmlInputIndex are identity for QLinearSigmoid
             inputEdge.ToNodeIndex = nodeToNodeInputIndex[inputIndex].first;
             inputEdge.ToNodeInputIndex = nodeToNodeInputIndex[inputIndex].second;
-            inputEdges[inputIndex] = inputEdge;
+            inputEdges.push_back(inputEdge);
         }
         operatorGraphDesc.inputEdgeCount = gsl::narrow_cast<uint32_t>(inputEdges.size());
         operatorGraphDesc.inputEdges = inputEdges.data();
