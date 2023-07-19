@@ -7,8 +7,8 @@
 
 namespace _winml {
 
-string_data::string_data(size_t size) :
-    buffer_(size) {}
+string_data::string_data(size_t size) : buffer_(size) {
+}
 
 std::shared_ptr<_winml::idata> string_data::create(size_t size) {
   return std::make_shared<string_data>(size);
@@ -45,7 +45,8 @@ void string_data::set(size_t num_elements, const std::string_view* data) {
       num_elements <= buffer_.size(),
       "Argument size (%d) exceeds the tensor size (%d).",
       static_cast<int>(num_elements),
-      static_cast<int>(buffer_.size()));
+      static_cast<int>(buffer_.size())
+  );
 
   // Copy
   std::copy(data, data + num_elements, buffer_.begin());

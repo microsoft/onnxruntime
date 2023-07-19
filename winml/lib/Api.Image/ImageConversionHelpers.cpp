@@ -32,7 +32,8 @@ static HRESULT GetVideoFrameInfo(
     _Out_ DWORD& format,
     _Out_ int& width,
     _Out_ int& height,
-    _Out_ LUID& luid) {
+    _Out_ LUID& luid
+) {
   wgdx::Direct3D11::IDirect3DSurface spInputSurface = inputVideoFrame.Direct3DSurface();
   if (spInputSurface != nullptr) {
     wgdx::Direct3D11::Direct3DSurfaceDescription description;
@@ -60,18 +61,16 @@ void _winmli::ConvertVideoFrameToVideoFrame(
     _In_ const wgi::BitmapBounds& inputBounds,
     _In_ UINT32 outputWidth,
     _In_ UINT32 outputHeight,
-    _Inout_ wm::VideoFrame& pOutputVideoFrame) {
-  wgi::BitmapBounds outputBounds = {
-      0,
-      0,
-      outputWidth,
-      outputHeight};
+    _Inout_ wm::VideoFrame& pOutputVideoFrame
+) {
+  wgi::BitmapBounds outputBounds = {0, 0, outputWidth, outputHeight};
 
   wgi::SoftwareBitmap spInputSoftwareBitmap = inputVideoFrame.SoftwareBitmap();
   wgdx::Direct3D11::IDirect3DSurface spInputDirect3DSurface = inputVideoFrame.Direct3DSurface();
 
   // only one of softwarebitmap or direct3Dsurface should be non-null
-  if ((spInputSoftwareBitmap == nullptr && spInputDirect3DSurface == nullptr) || (spInputSoftwareBitmap != nullptr && spInputDirect3DSurface != nullptr)) {
+  if ((spInputSoftwareBitmap == nullptr && spInputDirect3DSurface == nullptr) ||
+      (spInputSoftwareBitmap != nullptr && spInputDirect3DSurface != nullptr)) {
     WINML_THROW_HR(E_INVALIDARG);
   }
 
@@ -124,7 +123,8 @@ bool _winmli::NeedsVideoFrameConversion(
     _In_ LUID outputLuid,
     _In_ const wgi::BitmapBounds& inputBounds,
     _In_ UINT32 outputWidth,
-    _In_ UINT32 outputHeight) {
+    _In_ UINT32 outputHeight
+) {
   bool bNeedConversion = false;
   HRESULT hr = S_OK;
 
@@ -141,14 +141,11 @@ bool _winmli::NeedsVideoFrameConversion(
             (inputVideoFrame == nullptr))  // Check crop
   {
     bNeedConversion = true;
-  } else if (luid.HighPart != outputLuid.HighPart ||
-            luid.LowPart != outputLuid.LowPart) {
+  } else if (luid.HighPart != outputLuid.HighPart || luid.LowPart != outputLuid.LowPart) {
     bNeedConversion = true;
-  } else if (static_cast<uint32_t>(width) != outputWidth ||
-            static_cast<uint32_t>(height) != outputHeight) {
+  } else if (static_cast<uint32_t>(width) != outputWidth || static_cast<uint32_t>(height) != outputHeight) {
     bNeedConversion = true;
-  } else if (outputLuid.HighPart != 0 ||
-            outputLuid.LowPart != 0) {
+  } else if (outputLuid.HighPart != 0 || outputLuid.LowPart != 0) {
     if (format != (DWORD)wgdx::DirectXPixelFormat::B8G8R8X8UIntNormalized) {
       bNeedConversion = true;
     }
@@ -174,7 +171,8 @@ bool _winmli::NeedsVideoFrameConversion(
       TraceLoggingInt32(inputBounds.X, "rX"),
       TraceLoggingInt32(inputBounds.Y, "rY"),
       TraceLoggingInt32(inputBounds.Width, "rW"),
-      TraceLoggingInt32(inputBounds.Height, "rH"));
+      TraceLoggingInt32(inputBounds.Height, "rH")
+  );
 
   return bNeedConversion;
 }
@@ -208,7 +206,8 @@ wgi::BitmapPixelFormat _winmli::GetBitmapPixelFormatFromChannelType(_winml::Imag
 }
 
 _winml::ImageTensorChannelType _winmli::GetChannelTypeFromDirect3DSurface(
-    const wgdx::Direct3D11::IDirect3DSurface& direct3DSurface) {
+    const wgdx::Direct3D11::IDirect3DSurface& direct3DSurface
+) {
   assert(direct3DSurface != nullptr);
 
   switch (direct3DSurface.Description().Format) {
@@ -256,7 +255,8 @@ DXGI_FORMAT _winmli::GetDXGIFormatFromDirectXPixelFormat(_In_ wgdx::DirectXPixel
   WINML_THROW_HR(E_INVALIDARG);
 }
 
-wgdx::DirectXPixelFormat _winmli::GetDirectXPixelFormatFromChannelType(_In_ _winml::ImageTensorChannelType channelType) {
+wgdx::DirectXPixelFormat _winmli::GetDirectXPixelFormatFromChannelType(_In_ _winml::ImageTensorChannelType channelType
+) {
   switch (channelType) {
     case _winml::kImageTensorChannelTypeBGR8:
       return wgdx::DirectXPixelFormat::B8G8R8A8UIntNormalized;
@@ -269,7 +269,9 @@ wgdx::DirectXPixelFormat _winmli::GetDirectXPixelFormatFromChannelType(_In_ _win
   WINML_THROW_HR(E_INVALIDARG);
 }
 
-wgdx::Direct3D11::IDirect3DDevice _winmli::GetDeviceFromDirect3DSurface(const wgdx::Direct3D11::IDirect3DSurface& d3dSurface) {
+wgdx::Direct3D11::IDirect3DDevice _winmli::GetDeviceFromDirect3DSurface(
+    const wgdx::Direct3D11::IDirect3DSurface& d3dSurface
+) {
   assert(d3dSurface != nullptr);
 
   ComPtr<ID3D11Texture2D> spDx11Texture2D;
@@ -287,8 +289,8 @@ wgdx::Direct3D11::IDirect3DDevice _winmli::GetDeviceFromDirect3DSurface(const wg
 
   wgdx::Direct3D11::IDirect3DDevice d3dDevice;
   WINML_THROW_IF_FAILED(spInspectable->QueryInterface(
-      winrt::guid_of<wgdx::Direct3D11::IDirect3DDevice>(),
-      reinterpret_cast<void**>(winrt::put_abi(d3dDevice))));
+      winrt::guid_of<wgdx::Direct3D11::IDirect3DDevice>(), reinterpret_cast<void**>(winrt::put_abi(d3dDevice))
+  ));
 
   return d3dDevice;
 }

@@ -16,38 +16,29 @@ struct SequenceFeatureDescriptor : SequenceFeatureDescriptorT<
       const char* name,
       const char* description,
       bool is_required,
-      winml::ILearningModelFeatureDescriptor element_descriptor);
+      winml::ILearningModelFeatureDescriptor element_descriptor
+  );
 
-  winml::ILearningModelFeatureDescriptor
-  ElementDescriptor();
+  winml::ILearningModelFeatureDescriptor ElementDescriptor();
 
   // IFeatureDescriptor
-  hstring
-  Name();
+  hstring Name();
 
-  hstring
-  Description();
+  hstring Description();
 
-  winml::LearningModelFeatureKind
-  Kind();
+  winml::LearningModelFeatureKind Kind();
 
-  bool
-  IsRequired();
+  bool IsRequired();
 
   STDMETHOD(GetName)
-  (
-      const wchar_t** name,
-      uint32_t* cchName) override;
+  (const wchar_t** name, uint32_t* cchName) override;
 
   STDMETHOD(GetDescription)
-  (
-      const wchar_t** description,
-      uint32_t* cchDescription) override;
+  (const wchar_t** description, uint32_t* cchDescription) override;
 
   STDMETHOD(GetDescriptorInfo)
-  (
-      _winml::IEngineFactory* engine_factory,
-      _winml::IDescriptorInfo** info) override;
+  (_winml::IEngineFactory* engine_factory, _winml::IDescriptorInfo** info) override;
+
  private:
   winrt::hstring name_;
   winrt::hstring description_;

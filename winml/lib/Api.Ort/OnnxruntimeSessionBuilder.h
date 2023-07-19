@@ -9,17 +9,16 @@ namespace _winml {
 // InferenceSession, that enables the creation of the session based on a device (CPU/DML).
 MIDL_INTERFACE("2746f03a-7e08-4564-b5d0-c670fef116ee")
 IOrtSessionBuilder : IUnknown {
-  virtual HRESULT STDMETHODCALLTYPE CreateSessionOptions(
-      OrtSessionOptions * *options) = 0;
+  virtual HRESULT STDMETHODCALLTYPE CreateSessionOptions(OrtSessionOptions * *options) = 0;
 
   virtual HRESULT STDMETHODCALLTYPE CreateSession(
       OrtSessionOptions * options,
-      OrtThreadPool* inter_op_thread_pool,
-      OrtThreadPool* intra_op_thread_pool,
-      OrtSession * *session) = 0;
+      OrtThreadPool * inter_op_thread_pool,
+      OrtThreadPool * intra_op_thread_pool,
+      OrtSession * *session
+  ) = 0;
 
-  virtual HRESULT STDMETHODCALLTYPE Initialize(
-      OrtSession * session) = 0;
+  virtual HRESULT STDMETHODCALLTYPE Initialize(OrtSession * session) = 0;
 };
 
 }  // namespace _winml

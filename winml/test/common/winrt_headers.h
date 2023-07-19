@@ -23,8 +23,8 @@
 
 #define STRINGIFY(x) #x
 #define XSTRINGIFY(x) STRINGIFY(x)
-#define CPPWINRT_HEADER(root_ns) comp_generated/winrt/##root_ns##.AI.MachineLearning.h
-#define CPPWINRT_EXPERIMENTAL_HEADER(root_ns) comp_generated/winrt/##root_ns##.AI.MachineLearning.Experimental.h
+#define CPPWINRT_HEADER(root_ns) comp_generated / winrt / ##root_ns##.AI.MachineLearning.h
+#define CPPWINRT_EXPERIMENTAL_HEADER(root_ns) comp_generated / winrt / ##root_ns##.AI.MachineLearning.Experimental.h
 #define NATIVE_HEADER(root_ns) root_ns##.AI.MachineLearning.native.h
 #define NATIVE_INTERNAL_HEADER(root_ns) root_ns##.AI.MachineLearning.native.internal.h
 #define CREATE_CPPWINRT_COMPONENT_HEADER() XSTRINGIFY(CPPWINRT_HEADER(WINML_ROOT_NS))

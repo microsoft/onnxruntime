@@ -15,7 +15,8 @@ HRESULT STDMETHODCALLTYPE AbiCustomRegistryImpl::RegisterOperatorSetSchema(
     const MLOperatorSchemaDescription* const* schema,
     uint32_t schemaCount,
     _In_opt_ IMLOperatorTypeInferrer* typeInferrer,
-    _In_opt_ IMLOperatorShapeInferrer* shapeInferrer) const noexcept try {
+    _In_opt_ IMLOperatorShapeInferrer* shapeInferrer
+) const noexcept try {
 #ifdef LAYERING_DONE
   for (uint32_t i = 0; i < schemaCount; ++i) {
     telemetry_helper.RegisterOperatorSetSchema(
@@ -24,25 +25,23 @@ HRESULT STDMETHODCALLTYPE AbiCustomRegistryImpl::RegisterOperatorSetSchema(
         schema[i]->outputCount,
         schema[i]->typeConstraintCount,
         schema[i]->attributeCount,
-        schema[i]->defaultAttributeCount);
+        schema[i]->defaultAttributeCount
+    );
   }
 #endif
 
   // Delegate to base class
   return AbiCustomRegistry::RegisterOperatorSetSchema(
-      opSetId,
-      baseline_version,
-      schema,
-      schemaCount,
-      typeInferrer,
-      shapeInferrer);
+      opSetId, baseline_version, schema, schemaCount, typeInferrer, shapeInferrer
+  );
 }
 CATCH_RETURN();
 
 HRESULT STDMETHODCALLTYPE AbiCustomRegistryImpl::RegisterOperatorKernel(
     const MLOperatorKernelDescription* opKernel,
     IMLOperatorKernelFactory* operatorKernelFactory,
-    _In_opt_ IMLOperatorShapeInferrer* shapeInferrer) const noexcept {
+    _In_opt_ IMLOperatorShapeInferrer* shapeInferrer
+) const noexcept {
   return RegisterOperatorKernel(opKernel, operatorKernelFactory, shapeInferrer, nullptr, false, false, false);
 }
 
@@ -56,14 +55,14 @@ HRESULT STDMETHODCALLTYPE AbiCustomRegistryImpl::RegisterOperatorKernel(
     bool supportsGraph,
     const uint32_t* requiredInputCountForGraph,
     _In_reads_(constantCpuInputCount) const uint32_t* requiredConstantCpuInputs,
-    uint32_t constantCpuInputCount) const noexcept try {
+    uint32_t constantCpuInputCount
+) const noexcept try {
 #ifdef LAYERING_DONE
   // Log a custom op telemetry if the operator is not a built-in DML operator
   if (!isInternalOperator) {
     telemetry_helper.LogRegisterOperatorKernel(
-        opKernel->name,
-        opKernel->domain,
-        static_cast<int>(opKernel->executionType));
+        opKernel->name, opKernel->domain, static_cast<int>(opKernel->executionType)
+    );
   }
 #endif
 
@@ -78,7 +77,8 @@ HRESULT STDMETHODCALLTYPE AbiCustomRegistryImpl::RegisterOperatorKernel(
       supportsGraph,
       requiredInputCountForGraph,
       requiredConstantCpuInputs,
-      constantCpuInputCount);
+      constantCpuInputCount
+  );
 }
 CATCH_RETURN();
 

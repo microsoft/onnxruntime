@@ -5,9 +5,9 @@
 
 namespace _winml {
 
-class OnnxruntimeEngineBuilder : public Microsoft::WRL::RuntimeClass<
-                                     Microsoft::WRL::RuntimeClassFlags<Microsoft::WRL::ClassicCom>,
-                                     IEngineBuilder> {
+class OnnxruntimeEngineBuilder
+    : public Microsoft::WRL::
+          RuntimeClass<Microsoft::WRL::RuntimeClassFlags<Microsoft::WRL::ClassicCom>, IEngineBuilder> {
  public:
   HRESULT RuntimeClassInitialize(_In_ OnnxruntimeEngineFactory* engine);
 

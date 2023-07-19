@@ -5,7 +5,7 @@ namespace OrtValueHelpers {
 winml::ITensor LoadTensorFromOrtValue(Ort::Value& val);
 
 Ort::Value CreateOrtValueFromITensor(winml::ITensor winmlTensor);
-}
+}// namespace OrtValueHelpers
 
 template <ONNXTensorElementDataType T>
 struct ONNXTensorElementDataTypeToWinMLTensorKind {

@@ -16,9 +16,8 @@ IOnnxruntimeModel : IUnknown {
   virtual HRESULT STDMETHODCALLTYPE DetachOrtModel(OrtModel * *model) PURE;
 };
 
-class ModelInfo : public Microsoft::WRL::RuntimeClass<
-                      Microsoft::WRL::RuntimeClassFlags<Microsoft::WRL::ClassicCom>,
-                      IModelInfo> {
+class ModelInfo
+    : public Microsoft::WRL::RuntimeClass<Microsoft::WRL::RuntimeClassFlags<Microsoft::WRL::ClassicCom>, IModelInfo> {
  public:
   HRESULT RuntimeClassInitialize(_In_ OnnxruntimeEngineFactory* engine, _In_ OrtModel* ort_model);
 
@@ -52,10 +51,9 @@ class ModelInfo : public Microsoft::WRL::RuntimeClass<
   wfc::IVector<winml::ILearningModelFeatureDescriptor> output_features_;
 };
 
-class OnnruntimeModel : public Microsoft::WRL::RuntimeClass<
-                            Microsoft::WRL::RuntimeClassFlags<Microsoft::WRL::ClassicCom>,
-                            IModel,
-                            IOnnxruntimeModel> {
+class OnnruntimeModel
+    : public Microsoft::WRL::
+          RuntimeClass<Microsoft::WRL::RuntimeClassFlags<Microsoft::WRL::ClassicCom>, IModel, IOnnxruntimeModel> {
  public:
   OnnruntimeModel();
 
@@ -68,28 +66,42 @@ class OnnruntimeModel : public Microsoft::WRL::RuntimeClass<
   STDMETHOD(CloneModel)
   (IModel** copy);
   STDMETHOD(SaveModel)
-  (_In_ const wchar_t* const file_name,
-   _In_ unsigned size);
+  (_In_ const wchar_t* const file_name, _In_ unsigned size);
   STDMETHOD(SetName)
   (const char* name);
   STDMETHOD(DetachOrtModel)
   (OrtModel** model);
 
   STDMETHOD(AddOperator)
-  (_In_ const char* const op_type, _In_ const char* const op_name, _In_ const char* const op_domain,
-   _In_ const char* const* op_input_names, _In_ const char* const* actual_input_names, size_t num_inputs,
-   _In_ const char* const* op_output_names, _In_ const char* const* actual_output_names, size_t num_outputs,
-   _In_ const char* const* op_attribute_names, _In_ IValue** constant_value, size_t num_attributes);
-    
+  (_In_ const char* const op_type,
+   _In_ const char* const op_name,
+   _In_ const char* const op_domain,
+   _In_ const char* const* op_input_names,
+   _In_ const char* const* actual_input_names,
+   size_t num_inputs,
+   _In_ const char* const* op_output_names,
+   _In_ const char* const* actual_output_names,
+   size_t num_outputs,
+   _In_ const char* const* op_attribute_names,
+   _In_ IValue** constant_value,
+   size_t num_attributes);
+
   STDMETHOD(AddModelInput)
-  (_In_ const char* const name, _In_ IDescriptorInfoProvider* descriptor_provider, bool is_constant, IValue* default_value);
+  (_In_ const char* const name,
+   _In_ IDescriptorInfoProvider* descriptor_provider,
+   bool is_constant,
+   IValue* default_value);
 
   STDMETHOD(AddModelOutput)
   (_In_ const char* const name, _In_ IDescriptorInfoProvider* descriptor_provider);
 
   STDMETHOD(JoinModel)
-  (_In_ IModel* other_model, _In_ const char* const* output_names, _In_ const char* const* input_names,
-   size_t num_linkages, bool promote_unlinked_outputs, _In_ const char* const join_node_prefix);
+  (_In_ IModel* other_model,
+   _In_ const char* const* output_names,
+   _In_ const char* const* input_names,
+   size_t num_linkages,
+   bool promote_unlinked_outputs,
+   _In_ const char* const join_node_prefix);
 
  private:
   UniqueOrtModel ort_model_;

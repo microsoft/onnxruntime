@@ -18,9 +18,11 @@ class CpuTensorizer {
       _In_ BYTE* pBuffer,
       _In_ UINT32 bufferWidth,
       _In_ const wgi::BitmapBounds& inputBounds,
-      _Inout_ T* pCPUTensor) {
+      _Inout_ T* pCPUTensor
+  ) {
 #pragma warning(push)
-#pragma warning(disable : 26014)  // warning about possible out of bounds accesing pData, but input is checked for BGRA8 format, so uiCapacity should be in multiples of 4
+#pragma warning(disable : 26014                                                                                                             \
+)  // warning about possible out of bounds accesing pData, but input is checked for BGRA8 format, so uiCapacity should be in multiples of 4 \
     // input is BGRA8: so blue at i, green is at i + 1, red is at i + 2
 
     uint32_t bytesPerPixel = formatFrom == kImageTensorChannelTypeGRAY8 ? 1 : 4;
@@ -37,7 +39,8 @@ class CpuTensorizer {
 
     auto nominalRangeConverter = NominalRangeConverter(pixelRange);
 
-    if (formatFrom == kImageTensorChannelTypeBGR8 && formatTo == kImageTensorChannelTypeBGR8 || formatFrom == kImageTensorChannelTypeRGB8 && formatTo == kImageTensorChannelTypeRGB8) {
+    if (formatFrom == kImageTensorChannelTypeBGR8 && formatTo == kImageTensorChannelTypeBGR8 ||
+        formatFrom == kImageTensorChannelTypeRGB8 && formatTo == kImageTensorChannelTypeRGB8) {
       // Convert BGR8 -> BGR8 or RGB8 -> RGB8
       for (uint64_t y = 0; y < yElements; y++) {
         DeinterleaveRowByteToFloat(
@@ -47,7 +50,8 @@ class CpuTensorizer {
             pCPUTensor + (inputBounds.Height * inputBounds.Width) * 2 + y * inputBounds.Width,
             xElements,
             bytesPerPixel,
-            nominalRangeConverter);
+            nominalRangeConverter
+        );
       }
     } else if (formatFrom == kImageTensorChannelTypeBGR8 && formatTo == kImageTensorChannelTypeRGB8 || formatFrom == kImageTensorChannelTypeRGB8 && formatTo == kImageTensorChannelTypeBGR8) {
       // Convert RGB8 -> BGR8 or BGR8 -> RGB8
@@ -59,7 +63,8 @@ class CpuTensorizer {
             pCPUTensor + y * inputBounds.Width,
             xElements,
             bytesPerPixel,
-            nominalRangeConverter);
+            nominalRangeConverter
+        );
       }
     } else if (formatTo == kImageTensorChannelTypeGRAY8 && (formatFrom == kImageTensorChannelTypeBGR8 || formatFrom == kImageTensorChannelTypeRGB8)) {
       // Convert BGR8 -> GRAY8 or RGB8 -> GRAY8
@@ -81,8 +86,10 @@ class CpuTensorizer {
       for (UINT32 i = start; i < end; i += bufferWidth) {
         for (UINT32 j = i; j < i + bytesPerRow; j += bytesPerPixel) {
           pCPUTensor[pixelInd] = ConvertByteToFloat<T>(pBuffer[j], nominalRangeConverter);
-          pCPUTensor[(inputBounds.Height * inputBounds.Width) + pixelInd] = ConvertByteToFloat<T>(pBuffer[j], nominalRangeConverter);
-          pCPUTensor[(inputBounds.Height * inputBounds.Width * 2) + pixelInd] = ConvertByteToFloat<T>(pBuffer[j], nominalRangeConverter);
+          pCPUTensor[(inputBounds.Height * inputBounds.Width) + pixelInd] =
+              ConvertByteToFloat<T>(pBuffer[j], nominalRangeConverter);
+          pCPUTensor[(inputBounds.Height * inputBounds.Width * 2) + pixelInd] =
+              ConvertByteToFloat<T>(pBuffer[j], nominalRangeConverter);
           pixelInd++;
         }
       }
@@ -103,7 +110,6 @@ class CpuTensorizer {
   }
 
  private:
-
   template <typename T>
   static T ConvertByteToFloat(const BYTE& input, const NominalRangeConverter& nominalRangeConverter);
 
@@ -112,7 +118,9 @@ class CpuTensorizer {
     return nominalRangeConverter.Normalize(static_cast<float>(input));
   }
   template <>
-  static DirectX::PackedVector::HALF ConvertByteToFloat(const BYTE& input, const NominalRangeConverter& nominalRangeConverter) {
+  static DirectX::PackedVector::HALF ConvertByteToFloat(
+      const BYTE& input, const NominalRangeConverter& nominalRangeConverter
+  ) {
     return nominalRangeConverter.Normalize(DirectX::PackedVector::XMConvertFloatToHalf(input));
   }
 
@@ -124,7 +132,8 @@ class CpuTensorizer {
       _Inout_ T* zChannel,
       uint32_t pixelElements,
       uint32_t bytesPerPixel,
-      const NominalRangeConverter& nominalRangeConverter) {
+      const NominalRangeConverter& nominalRangeConverter
+  ) {
     UINT32 j;
 
     for (j = 0; j < (pixelElements & 0xFFFFFFFC); j += 4) {
@@ -160,7 +169,8 @@ class CpuTensorizer {
       _Inout_ float* zChannel,
       uint32_t pixelElements,
       uint32_t bytesPerPixel,
-      const NominalRangeConverter& nominalRangeConverter) {
+      const NominalRangeConverter& nominalRangeConverter
+  ) {
     assert(bytesPerPixel == 4);
 
     __m128i ZeroVector = _mm_setzero_si128();

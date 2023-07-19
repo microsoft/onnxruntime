@@ -18,42 +18,31 @@ struct MapFeatureDescriptor : MapFeatureDescriptorT<
       const char* description,
       bool is_required,
       winml::TensorKind keyKind,
-      winml::ILearningModelFeatureDescriptor valueKind);
- 
-  // IMapDescriptor
-  winml::TensorKind
-  KeyKind();
+      winml::ILearningModelFeatureDescriptor valueKind
+  );
 
-  winml::ILearningModelFeatureDescriptor
-  ValueDescriptor();
+   // IMapDescriptor
+  winml::TensorKind KeyKind();
+
+  winml::ILearningModelFeatureDescriptor ValueDescriptor();
 
   // IFeatureDescriptor
-  hstring
-  Name();
+  hstring Name();
 
-  hstring
-  Description();
+  hstring Description();
 
-  winml::LearningModelFeatureKind
-  Kind();
+  winml::LearningModelFeatureKind Kind();
 
-  bool
-  IsRequired();
+  bool IsRequired();
 
   STDMETHOD(GetName)
-  (
-      const wchar_t** name,
-      uint32_t* cchName) override;
+  (const wchar_t** name, uint32_t* cchName) override;
 
   STDMETHOD(GetDescription)
-  (
-      const wchar_t** description,
-      uint32_t* cchDescription) override;
-  
+  (const wchar_t** description, uint32_t* cchDescription) override;
+
   STDMETHOD(GetDescriptorInfo)
-  (
-      _winml::IEngineFactory* engine_factory,
-      _winml::IDescriptorInfo** info) override;
+  (_winml::IEngineFactory* engine_factory, _winml::IDescriptorInfo** info) override;
 
  private:
   winrt::hstring name_;

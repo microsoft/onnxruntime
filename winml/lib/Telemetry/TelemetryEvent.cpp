@@ -9,9 +9,7 @@ using namespace _winmlt;
 
 static uint64_t s_event_id = 0;
 
-static const char*
-EventCategoryToString(
-    EventCategory category) {
+static const char* EventCategoryToString(EventCategory category) {
   switch (category) {
     case EventCategory::kModelLoad:
       return "Model load";
@@ -26,13 +24,10 @@ EventCategoryToString(
   }
 }
 
-TelemetryEvent::TelemetryEvent(
-    EventCategory category) {
-  auto is_provider_enabled =
-      TraceLoggingProviderEnabled(
-          winml_trace_logging_provider,
-          WINEVENT_LEVEL_VERBOSE,
-          WINML_PROVIDER_KEYWORD_START_STOP);
+TelemetryEvent::TelemetryEvent(EventCategory category) {
+  auto is_provider_enabled = TraceLoggingProviderEnabled(
+      winml_trace_logging_provider, WINEVENT_LEVEL_VERBOSE, WINML_PROVIDER_KEYWORD_START_STOP
+  );
 
   if (is_provider_enabled) {
     category_ = category;
@@ -43,7 +38,8 @@ TelemetryEvent::TelemetryEvent(
         "started event",
         TraceLoggingString(EventCategoryToString(category_), "event"),
         TraceLoggingInt64(event_id_.value(), "eventId"),
-        TraceLoggingKeyword(WINML_PROVIDER_KEYWORD_START_STOP));
+        TraceLoggingKeyword(WINML_PROVIDER_KEYWORD_START_STOP)
+    );
   }
 }
 
@@ -54,6 +50,7 @@ TelemetryEvent::~TelemetryEvent() {
         "stopped event",
         TraceLoggingString(EventCategoryToString(category_), "event"),
         TraceLoggingInt64(event_id_.value(), "eventId"),
-        TraceLoggingKeyword(WINML_PROVIDER_KEYWORD_START_STOP));
+        TraceLoggingKeyword(WINML_PROVIDER_KEYWORD_START_STOP)
+    );
   }
 }
