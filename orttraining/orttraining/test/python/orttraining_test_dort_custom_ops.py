@@ -91,11 +91,20 @@ class TestTorchDynamoOrtCustomOp(unittest.TestCase):
         session_options.register_custom_ops_library(custom_op_library_path)
         return session_options
 
-    def test_DORT_custom_ops(self):
+    def test_export_aten_mul_as_onnx_custom_op_and_run_ort(self):
+        """A Custom Operator Test for DORT
+
+        In this test, aten.mul.Tensor is exported to test.customop::CustomOpOne and
+        executed by ORT.
+        """
         torch._dynamo.reset()
 
+        # Create executor of ONNX model.
+        # We will register a custom exporter for aten.mul.Tensor
+        # in the following step.
         ort_backend = OrtBackend(
             ep="CPUExecutionProvider",
+            session_options=TestTorchDynamoOrtCustomOp.create_onnxruntime_session_options(),
             onnx_exporter_options=ExportOptions(dynamic_shapes=True),
         )
         # Register custom_exporter_for_aten_add_Tensor as "aten::mul.Tensor"'s
@@ -109,6 +118,7 @@ class TestTorchDynamoOrtCustomOp(unittest.TestCase):
             overload="Tensor",
         )
 
+        # Wrap ORT executor as a Dynamo backend.
         aot_ort = aot_autograd(
             fw_compiler=ort_backend,
             partition_fn=min_cut_rematerialization_partition,
@@ -128,7 +138,15 @@ class TestTorchDynamoOrtCustomOp(unittest.TestCase):
             result_ort = opt_mul(tensor_x, tensor_y)
             torch.testing.assert_close(result_ref, result_ort)
 
-    def test_dort_with_custom_torch_op_library(self):
+    def test_export_pytorch_custom_op_to_onnx_custom_op_and_run_ort(self):
+        """A Custom Operator Test.
+
+        In this test, torch.ops.foo.bar.default is exported to
+        test.customop::CustomOpOne and executed by ORT.
+
+        See test_export_aten_mul_as_onnx_custom_op_and_run_ort for mapping
+        official PyTorch operator (e.g., aten.mul.Tensor) to ONNX custom operator.
+        """
         torch._dynamo.reset()
 
         foo_lib = Library("foo", "DEF")
@@ -141,20 +159,22 @@ class TestTorchDynamoOrtCustomOp(unittest.TestCase):
 
         foo_lib.impl(bar_name, bar_impl, "CompositeExplicitAutograd")
 
-        # TODO(wechi): Redesign API to expose this better.
-
-        session_options = TestTorchDynamoOrtCustomOp.create_onnxruntime_session_options()
-        ort_backend = OrtBackend(ep="CPUExecutionProvider", session_options=session_options)
+        # Create executor of ONNX model.
+        ort_backend = OrtBackend(
+            ep="CPUExecutionProvider", session_options=TestTorchDynamoOrtCustomOp.create_onnxruntime_session_options()
+        )
         # Allow torch.ops.foo.bar.default to be sent to DORT.
         # _support_dict tells Dynamo which ops to sent to DORT.
         ort_backend._supported_ops._support_dict.add(torch.ops.foo.bar.default)
         # Ask exporter to map "torch.ops.foo.bar" to
         # custom_exporter_for_foo_bar_default.
+        # TODO(wechi): Redesign API to expose this better.
         ort_backend.resolved_onnx_exporter_options.onnxfunction_dispatcher.onnx_registry.register_custom_op(
             function=custom_exporter_for_foo_bar_default,
             namespace="foo",
             op_name="bar",
         )
+        # Wrap ORT executor as a Dynamo backend.
         aot_ort = aot_autograd(
             fw_compiler=ort_backend,
             partition_fn=min_cut_rematerialization_partition,
