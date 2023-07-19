@@ -45,16 +45,12 @@ static void RunTest(
     input_dims = {batch_size * sequence_length, hidden_size};
     skip_dims = input_dims;
   }
-
-<<<<<<< HEAD
-  if(broadcast_skip) {
-=======
-  if(broadcast_skip){
->>>>>>> cd43605a86f5254d3b0d3651c45107662261bacb
+    
+  if (broadcast_skip) {
     skip_dims = {1, sequence_length, hidden_size};
   }
 
-  if(no_batch_size) {
+  if (no_batch_size) {
     skip_dims = {sequence_length, hidden_size};
   }
 
