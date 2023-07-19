@@ -80,7 +80,6 @@ static void RunReduceOpCpuTest(const std::string& op_type, int opset,
   provider_options["backend_path"] = "libQnnCpu.so";
 #endif
 
-  constexpr int expected_nodes_in_partition = 1;
   RunQnnModelTest(BuildReduceOpTestCase<DataType>(op_type,
                                                   {2, 2},  // input shape
                                                   ReduceOpHasAxesInput(op_type, opset),
@@ -89,8 +88,7 @@ static void RunReduceOpCpuTest(const std::string& op_type, int opset,
                                                   false),  // noop_with_empty_axes
                   provider_options,
                   opset,
-                  expected_ep_assignment,
-                  expected_nodes_in_partition);
+                  expected_ep_assignment);
 }
 
 //

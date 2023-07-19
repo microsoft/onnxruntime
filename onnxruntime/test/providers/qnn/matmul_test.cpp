@@ -94,12 +94,10 @@ static void RunMatMulOpOpTest(const std::vector<int64_t>& input1_shape,
   provider_options["backend_path"] = "libQnnCpu.so";
 #endif
 
-  constexpr int expected_nodes_in_partition = 1;
   RunQnnModelTest(BuildMatMulOpTestCase(input1_shape, input2_shape),
                   provider_options,
                   opset,
-                  expected_ep_assignment,
-                  expected_nodes_in_partition);
+                  expected_ep_assignment);
 }
 
 // Runs a QDQ AveragePool model on the QNN HTP backend. Checks the graph node assignment, and that inference
@@ -116,12 +114,10 @@ static void RunQDQMatMulOpOpTest(const std::vector<int64_t>& input1_shape,
   provider_options["backend_path"] = "libQnnHtp.so";
 #endif
 
-  constexpr int expected_nodes_in_partition = 1;
   RunQnnModelTest(BuildMatMulOpQDQTestCase<QuantType>(input1_shape, input2_shape),
                   provider_options,
                   opset,
                   expected_ep_assignment,
-                  expected_nodes_in_partition,
                   fp32_abs_err);
 }
 

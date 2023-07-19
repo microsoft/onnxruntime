@@ -33,12 +33,10 @@ static void RunLeakyReluOpQDQTest(int opset,
   provider_options["backend_path"] = "libQnnHtp.so";
 #endif
 
-  constexpr int expected_nodes_in_partition = 1;
   RunQnnModelTest(BuildQDQLeakyReluOpTestCase<QuantType>({2, 3, 4}),
                   provider_options,
                   opset,
-                  expected_ep_assignment,
-                  expected_nodes_in_partition);
+                  expected_ep_assignment);
 }
 
 // Test creates a DQ -> Gather -> Q -> DQ graph, and checks that all
