@@ -41,7 +41,7 @@ void LoadSaveAndCompareModel(const std::string& input_onnx,
   ASSERT_EQ(initializers.size(), initializers_from_external.size());
 
   // Compare the initializers of the two versions.
-  Path external_data_path;
+  Path external_data_path{};
   for (auto i : initializers) {
     const std::string kInitName = i.first;
     const ONNX_NAMESPACE::TensorProto* tensor_proto = i.second;
@@ -53,7 +53,8 @@ void LoadSaveAndCompareModel(const std::string& input_onnx,
 
     std::vector<uint8_t> from_external_tensor_proto_data;
     Path model_path = Path::Parse(ToPathString(output_onnx));
-    external_data_path = model_path.ParentPath().Append(Path::Parse(ToPathString(external_init_file)));
+    Path data_path = model_path.ParentPath().Append(Path::Parse(ToPathString(external_init_file)));
+    external_data_path = data_path;
     ORT_THROW_IF_ERROR(utils::UnpackInitializerData(*from_external_tensor_proto, model_path, from_external_tensor_proto_data));
     size_t from_external_tensor_proto_size = from_external_tensor_proto_data.size();
 
