@@ -324,7 +324,7 @@ class GraphExecutionManager(GraphExecutionInterface):
             # Leverage cached model if available
             cache_dir = self._runtime_options.ortmodule_cache_dir
             if cache_dir and os.path.exists(cache_dir):
-                filename = os.path.join(cache_dir, str(hash(str(self._flattened_module))))
+                filename = os.path.join(cache_dir, f"{hash(str(self._flattened_model))}.onnx")
                 if os.path.isfile(filename):
                     exported_model = onnx.load(filename)
                     return exported_model
@@ -396,7 +396,7 @@ class GraphExecutionManager(GraphExecutionInterface):
             if cache_dir:
                 if not os.path.exists(cache_dir):
                     os.mkdir(cache_dir)
-                filename = os.path.join(cache_dir, str(hash(str(self._flattened_module))))
+                filename = os.path.join(cache_dir, f"{hash(str(self._flattened_model))}.onnx")
                 onnx.save(exported_model, filename)
 
             # If anything was captured by suppress_output during export, set the flag to
