@@ -282,8 +282,11 @@ function buildTestRunnerConfig({
   return config;
 }
 
-module.exports = () => {
+module.exports = (env) => {
   const builds = [];
+
+  var build_defs = { ...DEFAULT_BUILD_DEFS,
+  ENABLE_TRAINING: env.t ? true : false}
 
   switch (bundleMode) {
     case 'prod':
@@ -300,21 +303,21 @@ module.exports = () => {
         // ort.wasm.min.js
         buildOrtConfig({
           suffix: '.wasm.min', build_defs: {
-            ...DEFAULT_BUILD_DEFS,
+            ...build_defs,
             DISABLE_WEBGL: true,
           }
         }),
         // ort.webgl.min.js
         buildOrtConfig({
           suffix: '.webgl.min', build_defs: {
-            ...DEFAULT_BUILD_DEFS,
+            ...build_defs,
             DISABLE_WASM: true,
           }
         }),
         // ort.wasm-core.min.js
         buildOrtConfig({
           suffix: '.wasm-core.min', build_defs: {
-            ...DEFAULT_BUILD_DEFS,
+            ...build_defs,
             DISABLE_WEBGL: true,
             DISABLE_WASM_PROXY: true,
             DISABLE_WASM_THREAD: true,
@@ -323,7 +326,7 @@ module.exports = () => {
         // ort.webgpu.min.js
         buildOrtConfig({
           suffix: '.webgpu.min', build_defs: {
-            ...DEFAULT_BUILD_DEFS,
+            ...build_defs,
             DISABLE_WEBGPU: false,
           }
         }),
@@ -347,7 +350,7 @@ module.exports = () => {
     case 'dev':
       builds.push(buildTestRunnerConfig({
         suffix: '.dev', mode: 'development', devtool: 'inline-source-map', build_defs: {
-          ...DEFAULT_BUILD_DEFS,
+          ...build_defs,
           DISABLE_WEBGPU: false,
         }
       }));
@@ -355,7 +358,7 @@ module.exports = () => {
     case 'perf':
       builds.push(buildTestRunnerConfig({
         suffix: '.perf', build_defs: {
-          ...DEFAULT_BUILD_DEFS,
+          ...build_defs,
           DISABLE_WEBGPU: false,
         }
       }));

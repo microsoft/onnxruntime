@@ -9,7 +9,7 @@
   },
   "author": "fs-eire",
   "scripts": {
-    "build:cjs": "npx tsc --module commonjs --outDir ./dist/cjs --rootDir .",
+    "build:cjs": "npx tsc --module commonjs --outDir ./dist/cjs",
     "build:esm": "npx tsc",
     "build:bundles": "webpack",
     "build": "node ./build.js",
