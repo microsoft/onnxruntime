@@ -173,29 +173,33 @@ bool QNNExecutionProvider::IsNodeSupported(qnn::QnnModelWrapper& qnn_model_wrapp
       // For Cast, need to call IsOpSupported (below) to validate input and output types.
       // For other single non-qdq nodes, immediately return not supported.
       if (node_unit.OpType() != "Cast") {
-        LOGS(logger, VERBOSE) << "Non-QDQ single node is not supported for NPU backend. Node name: " << node_unit.Name()
-                              << " Op type: " << node_unit.OpType();
+        LOGS(logger, WARNING) << "Non-QDQ " << node_unit.OpType()
+                              << " operators are not supported on HTP or DSP backends. " << node_unit.OpType()
+                              << " node `" << node_unit.Name() << " will not be assigned to QNN EP.";
         return false;
       }
     }
 
     // Non-NPU backend, quantized model not supported, but a QDQ node encountered
     if (!is_npu_backend && IsQdqNode(node_unit)) {
-      LOGS(logger, ERROR) << "There's no reason to run a QDQ model on non HTP/DSP backend!";
+      LOGS(logger, ERROR) << "QDQ models are only supported on HTP or DSP backends. "
+                          << node_unit.OpType() << " node `" << node_unit.Name() << "` will not be assigned to QNN EP.";
       return false;
     }
 
     bool supported = false;
     const auto* op_builder = qnn::GetOpBuilder(node_unit.OpType());
     if (op_builder == nullptr) {
-      LOGS(logger, VERBOSE) << "Op not implemented in QNN EP. Op type: " << node_unit.OpType();
+      LOGS(logger, WARNING) << "Operators of type `" << node_unit.OpType() << "` are not supported by QNN EP."
+                            << node_unit.OpType() << " node `" << node_unit.Name()
+                            << "` will not be assigned to QNN EP.";
     } else {
       auto status = op_builder->IsOpSupported(qnn_model_wrapper,
                                               node_unit, logger,
                                               is_npu_backend);
       if (Status::OK() != status) {
-        LOGS(logger, VERBOSE) << "Op type: " << node_unit.OpType()
-                              << ", not supported: " << status.ErrorMessage();
+        LOGS(logger, WARNING) << node_unit.OpType() << " node `" << node_unit.Name()
+                              << "` is not supported: " << status.ErrorMessage();
       }
       supported = (Status::OK() == status);
     }
