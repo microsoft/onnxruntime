@@ -17,6 +17,20 @@ struct DML_ELEMENT_WISE_QUANTIZED_LINEAR_ADD1_OPERATOR_DESC
 
 const int DML_OPERATOR_ELEMENT_WISE_QUANTIZED_LINEAR_ADD1 = 0x8000000e;
 
+struct DML_MATRIX_MULTIPLY_INTEGER_TO_FLOAT_OPERATOR_DESC
+{
+    const DML_TENSOR_DESC* ATensor;
+    const DML_TENSOR_DESC* AScaleTensor;
+    _Maybenull_ const DML_TENSOR_DESC* AZeroPointTensor;
+    const DML_TENSOR_DESC* BTensor;
+    const DML_TENSOR_DESC* BScaleTensor;
+    _Maybenull_ const DML_TENSOR_DESC* BZeroPointTensor;
+    _Maybenull_ const DML_TENSOR_DESC* BiasTensor;
+    const DML_TENSOR_DESC* OutputTensor;
+};
+
+const int DML_OPERATOR_MATRIX_MULTIPLY_INTEGER_TO_FLOAT = 0x80000011;
+
 namespace ApiTraits
 {
 template <typename T>
@@ -39,7 +53,7 @@ struct EnumTraits<DML_TENSOR_TYPE>
 template <>
 struct EnumTraits<DML_OPERATOR_TYPE>
 {
-    static constexpr auto ValueCount = 160;
+    static constexpr auto ValueCount = 161;
     static constexpr size_t ActivationFunctionCount = 24;
 };
 
@@ -874,6 +888,12 @@ template <>
 struct OperatorDescTraits<DML_QUANTIZED_LINEAR_MATRIX_MULTIPLY_OPERATOR_DESC>
 {
     static constexpr DML_OPERATOR_TYPE Type = DML_OPERATOR_QUANTIZED_LINEAR_MATRIX_MULTIPLY;
+};
+
+template <>
+struct OperatorDescTraits<DML_MATRIX_MULTIPLY_INTEGER_TO_FLOAT_OPERATOR_DESC>
+{
+    static constexpr DML_OPERATOR_TYPE Type = (DML_OPERATOR_TYPE) DML_OPERATOR_MATRIX_MULTIPLY_INTEGER_TO_FLOAT;
 };
 
 template <>
@@ -1867,6 +1887,12 @@ struct OperatorTypeTraits<(DML_OPERATOR_TYPE)DML_OPERATOR_QUANTIZED_LINEAR_MATRI
 };
 
 template <>
+struct OperatorTypeTraits<(DML_OPERATOR_TYPE)DML_OPERATOR_MATRIX_MULTIPLY_INTEGER_TO_FLOAT>
+{
+    using DescType = DML_MATRIX_MULTIPLY_INTEGER_TO_FLOAT_OPERATOR_DESC;
+};
+
+template <>
 struct OperatorTypeTraits<(DML_OPERATOR_TYPE)DML_OPERATOR_CONVOLUTION_INTEGER>
 {
     using DescType = DML_CONVOLUTION_INTEGER_OPERATOR_DESC;
@@ -2408,6 +2434,8 @@ auto OperatorTypeVisitor(DML_OPERATOR_TYPE type, Visitor&& visitor, Ts&&... args
         return std::invoke(std::forward<Visitor>(visitor), DML_MATRIX_MULTIPLY_INTEGER_OPERATOR_DESC{}, std::forward<Ts>(args)...);
     case DML_OPERATOR_QUANTIZED_LINEAR_MATRIX_MULTIPLY:
         return std::invoke(std::forward<Visitor>(visitor), DML_QUANTIZED_LINEAR_MATRIX_MULTIPLY_OPERATOR_DESC{}, std::forward<Ts>(args)...);
+    case DML_OPERATOR_MATRIX_MULTIPLY_INTEGER_TO_FLOAT:
+        return std::invoke(std::forward<Visitor>(visitor), DML_MATRIX_MULTIPLY_INTEGER_TO_FLOAT_OPERATOR_DESC{}, std::forward<Ts>(args)...);
     case DML_OPERATOR_CONVOLUTION_INTEGER:
         return std::invoke(std::forward<Visitor>(visitor), DML_CONVOLUTION_INTEGER_OPERATOR_DESC{}, std::forward<Ts>(args)...);
     case DML_OPERATOR_QUANTIZED_LINEAR_CONVOLUTION:
@@ -2662,6 +2690,7 @@ inline gsl::czstring ToString(DML_OPERATOR_TYPE value)
     case DML_OPERATOR_RESAMPLE_GRAD1: return "DML_OPERATOR_RESAMPLE_GRAD1";
     case DML_OPERATOR_DIAGONAL_MATRIX1: return "DML_OPERATOR_DIAGONAL_MATRIX1";
     case DML_OPERATOR_ELEMENT_WISE_QUANTIZED_LINEAR_ADD1: return "DML_OPERATOR_ELEMENT_WISE_QUANTIZED_LINEAR_ADD1";
+    case DML_OPERATOR_MATRIX_MULTIPLY_INTEGER_TO_FLOAT: return "DML_OPERATOR_MATRIX_MULTIPLY_INTEGER_TO_FLOAT";
     default:
         assert(false);
         return "<unknown>";
