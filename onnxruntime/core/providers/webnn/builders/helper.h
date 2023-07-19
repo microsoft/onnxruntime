@@ -84,7 +84,7 @@ bool ReadIntArrayFrom1DTensor(const onnx::TensorProto& tensor, std::vector<T>& a
   return true;
 }
 
-inline bool ReadScalarTensor(const onnx::TensorProto& tensor, emscripten::val& scalar, const logging::Logger& logger) {
+inline bool ReadScalarTensorData(const onnx::TensorProto& tensor, emscripten::val& scalar, const logging::Logger& logger) {
   std::vector<uint8_t> unpacked_tensor;
   auto status = onnxruntime::utils::UnpackInitializerData(tensor, unpacked_tensor);
   if (!status.IsOK()) {
@@ -96,7 +96,7 @@ inline bool ReadScalarTensor(const onnx::TensorProto& tensor, emscripten::val& s
       scalar = emscripten::val{*reinterpret_cast<uint8_t*>(unpacked_tensor.data())};
       break;
     case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16:
-      scalar = emscripten::val{reinterpret_cast<MLFloat16*>(unpacked_tensor.data())->ToFloat()};
+      scalar = emscripten::val{MLFloat16::FromBits(*reinterpret_cast<uint16_t*>(unpacked_tensor.data())).ToFloat()};
       break;
     case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
       scalar = emscripten::val{*reinterpret_cast<float*>(unpacked_tensor.data())};

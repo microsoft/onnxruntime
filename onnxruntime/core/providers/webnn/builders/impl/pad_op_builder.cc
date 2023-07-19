@@ -79,7 +79,7 @@ Status PadOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
     if (input_defs.size() >= 3) {
       const auto value_tensor = *initializers.at(input_defs[2]->Name());
       emscripten::val value = emscripten::val::object();
-      ORT_RETURN_IF_NOT(ReadScalarTensor(value_tensor, value, logger), "Cannot read constant value");
+      ORT_RETURN_IF_NOT(ReadScalarTensorData(value_tensor, value, logger), "Cannot read constant value");
       options.set("value", value);
     }
 
