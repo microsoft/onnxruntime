@@ -104,7 +104,6 @@ GetQDQTestCaseFn BuildQDQLayerNormTestCase(const std::vector<int64_t>& input_sha
 static void RunLayerNormQDQTest(const std::vector<int64_t>& input_shape,
                                 const std::vector<int64_t>& scale_shape,
                                 ExpectedEPNodeAssignment expected_ep_assignment,
-                                int num_nodes_in_graph,
                                 int64_t axis_value = 0) {
   ProviderOptions provider_options;
 #if defined(_WIN32)
@@ -117,20 +116,19 @@ static void RunLayerNormQDQTest(const std::vector<int64_t>& input_shape,
   RunQnnModelTest(BuildQDQLayerNormTestCase<uint8_t, uint8_t>(input_shape, scale_shape, axis_value),
                   provider_options,
                   11,
-                  expected_ep_assignment,
-                  num_nodes_in_graph);
+                  expected_ep_assignment);
 }
 
 // Check that QNN compiles DQ -> LayerNormalization -> Q as a single unit.
 // Use an input of rank 3.
 // Failed QNN op validation: QnnDsp <E> Param[0] has incorrect Value 3
 TEST_F(QnnHTPBackendTests, DISABLED_TestQDQLayerNorm1DAxis0) {
-  RunLayerNormQDQTest({1, 2, 3}, {1, 2, 3}, ExpectedEPNodeAssignment::All, 1);
+  RunLayerNormQDQTest({1, 2, 3}, {1, 2, 3}, ExpectedEPNodeAssignment::All);
 }
 
 // Failed QNN FinalizeGraphs: QnnDsp <E> Failed to finalize graph (id: 1) with err 1002
 TEST_F(QnnHTPBackendTests, DISABLED_TestQDQLayerNorm1DAxis2) {
-  RunLayerNormQDQTest({1, 2, 3}, {3}, ExpectedEPNodeAssignment::All, 1, -1);
+  RunLayerNormQDQTest({1, 2, 3}, {3}, ExpectedEPNodeAssignment::All, -1);
 }
 
 #endif  // defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)

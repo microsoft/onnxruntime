@@ -158,14 +158,14 @@ TEST_F(QnnHTPBackendTests, TestQDQAtanTest) {
 // Use an input of rank 3.
 TEST_F(QnnHTPBackendTests, TestQDQAsinTest) {
   RunQDQSingleInputOpTest(TestInputDef<uint8_t>({1, 2, 3}, false, 0, 1),  // input range 0 ~ 1
-                          "Asin", {}, 11, ExpectedEPNodeAssignment::All, 1);
+                          "Asin", {}, 11, ExpectedEPNodeAssignment::All);
 }
 
 // Check that QNN compiles DQ -> Sign -> Q as a single unit.
 // Use an input of rank 3.
 TEST_F(QnnHTPBackendTests, TestQDQSignTest) {
   RunQDQSingleInputOpTest(TestInputDef<uint8_t>({1, 2, 3}, false, UInt8Limits::min(), UInt8Limits::max()),
-                          "Sign", {}, 11, ExpectedEPNodeAssignment::All, 1);
+                          "Sign", {}, 11, ExpectedEPNodeAssignment::All);
 }
 
 // Check that QNN compiles DQ -> Softmax -> Q as a single unit.
