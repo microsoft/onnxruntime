@@ -137,7 +137,10 @@ def clip_grad_norm_fp32(
 
         else:
             for grad in grads_for_norm:
-                grad_norm = torch.norm(grad, norm_type)
+                if norm_type in {'fro', 'nuc'}:
+                    grad_norm = torch.linalg.matrix_norm(grad, norm_type)
+                else:
+                    grad_norm = torch.linalg.norm(grad, norm_type)
                 total_norm += grad_norm**norm_type
 
         if horizontal_model_parallel_grad_norm_aggregation:
