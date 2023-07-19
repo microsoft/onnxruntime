@@ -144,6 +144,16 @@ if(CMAKE_CROSSCOMPILING AND NOT ONNX_CUSTOM_PROTOC_EXECUTABLE AND NOT CMAKE_OSX_
   endif()
 endif()
 
+if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten" AND CMAKE_HOST_SYSTEM_NAME STREQUAL "Darwin")
+  FetchContent_Declare(protoc_binary URL ${DEP_URL_protoc_mac_universal} URL_HASH SHA1=${DEP_SHA1_protoc_mac_universal})
+  FetchContent_Populate(protoc_binary)
+  if(protoc_binary_SOURCE_DIR)
+    message("Use prebuilt protoc")
+    set(ONNX_CUSTOM_PROTOC_EXECUTABLE ${protoc_binary_SOURCE_DIR}/bin/protoc)
+    set(PROTOC_EXECUTABLE ${ONNX_CUSTOM_PROTOC_EXECUTABLE})
+  endif()
+endif()
+
 #Here we support two build mode:
 #1. if ONNX_CUSTOM_PROTOC_EXECUTABLE is set, build Protobuf from source, except protoc.exe. This mode is mainly
 #   for cross-compiling
