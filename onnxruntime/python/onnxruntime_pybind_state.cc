@@ -76,24 +76,22 @@ static Env& platform_env = Env::Default();
 #pragma warning(push)
 #endif
 
-using PythonCallback = std::function<void(std::vector<py::object>)>;
+using PyCallback = std::function<void(std::vector<py::object>, std::string)>;
 
 struct AsyncResource {
-  //NameMLValMap feeds;
   std::vector<OrtValue> feeds;
   std::vector<OrtValue*> feeds_raw;
 
   std::vector<std::string> feed_names;
   std::vector<const char*> feed_names_raw;
 
-  //std::vector<OrtValue> fetches;
   std::vector<OrtValue*> fetches_raw;
 
   std::vector<std::string> fetch_names;
   std::vector<const char*> fetch_names_raw;
 
   RunOptions default_run_option;
-  PythonCallback callback;
+  PyCallback callback;
 
   void ReserveFeeds(size_t sz) {
     feeds.reserve(sz);
@@ -103,18 +101,25 @@ struct AsyncResource {
   }
 
   void ReserveFetches(size_t sz) {
-    //fetches.reserve(sz);
     fetches_raw.reserve(sz);
     fetch_names.reserve(sz);
     fetch_names_raw.reserve(sz);
   }
 };
 
-void AsyncCallback(void* user_data, OrtValue** outputs, size_t num_outputs, OrtStatusPtr /*status*/) {
+void AsyncCallback(void* user_data, OrtValue** outputs, size_t num_outputs, OrtStatusPtr ort_status) {
   ORT_ENFORCE(user_data, "user data must not be NULL for callback in python");
   std::unique_ptr<AsyncResource> async_resource{reinterpret_cast<AsyncResource*>(user_data)};
 
+  Ort::Status status(ort_status);
   std::vector<py::object> rfetch;
+
+  // return on error
+  if (!status.IsOK()) {
+    async_resource->callback(rfetch, status.GetErrorMessage());
+    return;
+  }
+
   rfetch.reserve(num_outputs);
   size_t pos = 0;
   {
@@ -135,7 +140,7 @@ void AsyncCallback(void* user_data, OrtValue** outputs, size_t num_outputs, OrtS
       ++pos;
     }
   }
-  async_resource->callback(rfetch);
+  async_resource->callback(rfetch, "");
 }
 
 template <typename T>
@@ -1746,15 +1751,11 @@ including arg name, arg type (contains both type and shape).)pbdoc")
            [](PyInferenceSession* sess,
               std::vector<std::string> output_names,
               std::map<std::string, py::object> pyfeeds,
-              //py::function* callback,
-              PythonCallback callback,
+              PyCallback callback,
               RunOptions* run_options = nullptr)
                -> void {
-             //callback();
-             //(*callback)();
              std::unique_ptr<AsyncResource> async_resource = std::make_unique<AsyncResource>();
              async_resource->callback = callback;
-             //async_resource->callback->inc_ref();
 
              // prepare feeds
              async_resource->ReserveFeeds(pyfeeds.size());
@@ -1779,33 +1780,23 @@ including arg name, arg type (contains both type and shape).)pbdoc")
              for (auto& output_name : output_names) {
                async_resource->fetch_names.push_back(output_name);
                async_resource->fetch_names_raw.push_back(async_resource->fetch_names.back().c_str());
-               //async_resource->fetches.push_back({});
                async_resource->fetches_raw.push_back({});
              }
 
              {
-               // release GIL to allow multiple python threads to invoke Run() in parallel.
+               // release GIL to allow multiple python threads to allow run async in parallel.
                py::gil_scoped_release release;
-               common::Status status;
-               if (run_options) {
-                 status = sess->GetSessionHandle()->RunAsync(run_options,
-                                                             gsl::span(async_resource->feed_names_raw.data(), async_resource->feed_names_raw.size()),
-                                                             gsl::span(async_resource->feeds_raw.data(), async_resource->feeds_raw.size()),
-                                                             gsl::span(async_resource->fetch_names_raw.data(), async_resource->fetch_names_raw.size()),
-                                                             gsl::span(async_resource->fetches_raw.data(), async_resource->fetches_raw.size()),
-                                                             AsyncCallback,
-                                                             async_resource.get());
+               const RunOptions* run_async_option = run_options ? run_options : &async_resource->default_run_option;
+               common::Status status = sess->GetSessionHandle()->RunAsync(run_async_option,
+                                                                          gsl::span(async_resource->feed_names_raw.data(), async_resource->feed_names_raw.size()),
+                                                                          gsl::span(async_resource->feeds_raw.data(), async_resource->feeds_raw.size()),
+                                                                          gsl::span(async_resource->fetch_names_raw.data(), async_resource->fetch_names_raw.size()),
+                                                                          gsl::span(async_resource->fetches_raw.data(), async_resource->fetches_raw.size()),
+                                                                          AsyncCallback,
+                                                                          async_resource.get());
 
-               } else {
-                 status = sess->GetSessionHandle()->RunAsync(&async_resource->default_run_option,
-                                                             gsl::span(async_resource->feed_names_raw.data(), async_resource->feed_names_raw.size()),
-                                                             gsl::span(async_resource->feeds_raw.data(), async_resource->feeds_raw.size()),
-                                                             gsl::span(async_resource->fetch_names_raw.data(), async_resource->fetch_names_raw.size()),
-                                                             gsl::span(async_resource->fetches_raw.data(), async_resource->fetches_raw.size()),
-                                                             AsyncCallback,
-                                                             async_resource.get());
-               }
                if (status.IsOK()) {
+                 // release it later in the callback
                  async_resource.release();
                }
                OrtPybindThrowIfError(status);
