@@ -231,10 +231,21 @@ QNNExecutionProvider::GetSupportedNodes(const GraphViewer& graph_viewer,
     initializer_input_lookup.emplace(graph_ini.first);
   }
 
+  // Util function that initializes a table that maps a graph input or output name to its index.
+  auto init_input_output_index_map = [](std::unordered_map<std::string, size_t>& index_map,
+                                        const std::vector<const NodeArg*>& node_args) {
+    const size_t num_args = node_args.size();
+    for (size_t i = 0; i < num_args; i++) {
+      index_map.emplace(node_args[i]->Name(), i);
+    }
+  };
+
   std::unordered_map<std::string, size_t> model_input_index_map;
+  init_input_output_index_map(model_input_index_map, graph_viewer.GetInputs());  // GetInputs excludes initializers.
+
   std::unordered_map<std::string, size_t> model_output_index_map;
-  std::unordered_map<std::string, qnn::OnnxTensorInfo> inputs_info;
-  std::unordered_map<std::string, qnn::OnnxTensorInfo> outputs_info;
+  init_input_output_index_map(model_output_index_map, graph_viewer.GetOutputs());
+
   auto qnn_model_wrapper = qnn::QnnModelWrapper(graph_viewer, logger,
                                                 qnn_backend_manager_->GetQnnInterface(),
                                                 qnn_backend_manager_->GetQnnBackendHandle(),
