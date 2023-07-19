@@ -183,6 +183,16 @@ data sparsity based performance optimizations.
 	export ORTMODULE_ENABLE_EMBEDDING_SPARSE_OPTIMIZER=0 # Disable
 	```
 
+#### ORTMODULE_CACHE_DIR
+
+- **Feature Area**: *ORTMODULE/RuntimeOptions*
+- **Description**: By default, this is disabled. This env var can be used to cache the exported model for future runs.
+
+	```bash
+	export ORTMODULE_CACHE_DIR="/path/to/cache_dir" # Enable
+	export ORTMODULE_CACHE_DIR="" # Disable
+	```
+
 ### 2.2 Memory Optimization
 
 Q: *Want to run a bigger batch size?*

@@ -166,6 +166,13 @@ def run_lstm_training_op_tests(cwd, log):
 
     run_subprocess(command, cwd=cwd, log=log).check_returncode()
 
+def run_orttraining_test_cache_exported_model(cwd, log):
+    log.debug('Running: Dummy ortmodule tests')
+
+    command = [sys.executable, 'orttraining_test_cache_exported_model.py']
+
+    run_subprocess(command, cwd=cwd, log=log).check_returncode()
+
 
 def main():
     args = parse_arguments()
@@ -211,6 +218,8 @@ def main():
     # run_pytorch_export_contrib_ops_tests(cwd, log)
 
     run_lstm_training_op_tests(cwd, log)
+
+    run_orttraining_test_cache_exported_model(cwd, log)
 
     return 0
 
