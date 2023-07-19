@@ -3388,8 +3388,8 @@ ONNX_NAMESPACE::GraphProto Graph::ToGraphProtoWithExternalInitializers(const std
 
   Path parent_path = Path::Parse(destination_file_path).ParentPath();
   Path external_file_path = Path::Parse(ToPathString(external_file_name));
-  // Check if parent_path is relative path
-  if (parent_path.ToPathString() != "") {
+  // Check if parent_path is relative path (length = 0)
+  if (parent_path.ToPathString().length()) {
     // Save external data file in same directory as model
     external_file_path = parent_path.Append(external_file_path);
   }
