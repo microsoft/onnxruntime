@@ -495,7 +495,6 @@ class OrtBackend:
         self._supported_ops = OrtOperatorSupport(support_dict, extra_support_dict)
         # TODO: this is a naive implementation of cache without proper guard
         self._partitioner_cache: Dict[torch.fx.GraphModule, torch.fx.GraphModule] = {}
-        # TODO: this is a naive implementation of cache without proper guard, this will only work for identical inputs
         # Conceptually, this filed is a 2-layer dictionary
         #   GraphModule 0
         #     ONNX Model 0 (with ORT InferenceSession and related information. type: OrtExecutionInfoPerSession)
