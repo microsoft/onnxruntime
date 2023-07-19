@@ -426,7 +426,7 @@ class OrtExecutionInfoForAllGraphModules:
 
     def search_reusable_session_execution_info(self, graph_module: torch.fx.GraphModule, *args):
         if graph_module not in self.execution_info_per_graph_module:
-            return
+            return None
         # All execution information for ONNX models exported from the same `graph_module`
         # with different inputs.
         candidates = self.execution_info_per_graph_module[graph_module]
