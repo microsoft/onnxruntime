@@ -13,13 +13,6 @@ import subprocess
 import sys
 from pathlib import Path
 
-try:
-    from packaging.version import Version as LooseVersion
-except ImportError:
-    # This is deprecated and will be removed in Python 3.12.
-    # See https://docs.python.org/3/library/distutils.html.
-    from distutils.version import LooseVersion  # pylint: disable=W4901
-
 SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
 REPO_DIR = os.path.normpath(os.path.join(SCRIPT_DIR, "..", ".."))
 
@@ -53,13 +46,12 @@ class UsageError(BaseError):
 
 
 def _check_python_version():
-    # According to the BUILD.md, python 3.5+ is required:
-    # Python 2 is definitely not supported and it should be safer to consider
-    # it won't run with python 4:
-    if sys.version_info[0] != 3:  # noqa: YTT201
-        raise BuildError(f"Bad python major version: expecting python 3, found version '{sys.version}'")
-    if sys.version_info[1] < 6:  # noqa: YTT203
-        raise BuildError(f"Bad python minor version: expecting python 3.6+, found version '{sys.version}'")
+    required_minor_version = 7
+    if (sys.version_info.major, sys.version_info.minor) < (3, required_minor_version):
+        raise UsageError(
+            f"Invalid Python version. At least Python 3.{required_minor_version} is required. "
+            f"Actual Python version: {sys.version}"
+        )
 
 
 def _str_to_bool(s):
@@ -382,7 +374,11 @@ def parse_arguments():
         "--xcode_code_signing_identity", default="", help="The development identity used for code signing in Xcode"
     )
     parser.add_argument(
-        "--use_xcode", action="store_true", help="Use Xcode as cmake generator, this is only supported on MacOS."
+        "--use_xcode",
+        action="store_const",
+        const="Xcode",
+        dest="cmake_generator",
+        help="Use Xcode as cmake generator, this is only supported on MacOS. Equivalent to '--cmake_generator Xcode'.",
     )
     parser.add_argument(
         "--osx_arch",
@@ -551,7 +547,7 @@ def parse_arguments():
             "Xcode",
         ],
         default=None,
-        help="Specify the generator that CMake invokes. ",
+        help="Specify the generator that CMake invokes.",
     )
     parser.add_argument(
         "--enable_multi_device_test",
@@ -1183,19 +1179,6 @@ def generate_build_tree(
 
     if is_macOS() and not args.android:
         cmake_args += ["-DCMAKE_OSX_ARCHITECTURES=" + args.osx_arch]
-        if args.use_xcode:
-            cmake_ver = LooseVersion(subprocess.check_output(["cmake", "--version"]).decode("utf-8").split()[2])
-            xcode_ver = LooseVersion(
-                subprocess.check_output(["xcrun", "xcodebuild", "-version"]).decode("utf-8").split()[1]
-            )
-            # Requires Cmake 3.21.1+ for XCode 13+
-            # The legacy build system is not longer supported on XCode 13+
-            if xcode_ver >= LooseVersion("13") and cmake_ver < LooseVersion("3.21.1"):
-                raise BuildError("CMake 3.21.1+ required to use XCode 13+")
-            # Use legacy build system for old CMake [3.19, 3.21.1) which uses new build system by default
-            # CMake 3.18- use the legacy build system by default
-            if cmake_ver >= LooseVersion("3.19.0") and cmake_ver < LooseVersion("3.21.1"):
-                cmake_args += ["-T", "buildsystem=1"]
         if args.apple_deploy_target:
             cmake_args += ["-DCMAKE_OSX_DEPLOYMENT_TARGET=" + args.apple_deploy_target]
         # Code sign the binaries, if the code signing development identity and/or team id are provided
@@ -1225,13 +1208,14 @@ def generate_build_tree(
         cmake_args += ["-Donnxruntime_USE_SNPE=ON"]
 
     if args.ios:
+        if not args.cmake_generator == "Xcode":
+            raise BuildError("iOS build requires use of the Xcode CMake generator ('--cmake_generator Xcode').")
+
         needed_args = [
-            args.use_xcode,
             args.ios_sysroot,
             args.apple_deploy_target,
         ]
         arg_names = [
-            "--use_xcode            " + "<need use xcode to cross build iOS on MacOS>",  # noqa: ISC003
             "--ios_sysroot          " + "<the location or name of the macOS platform SDK>",  # noqa: ISC003
             "--apple_deploy_target  " + "<the minimum version of the target platform>",  # noqa: ISC003
         ]
@@ -1437,7 +1421,7 @@ def build_targets(args, cmake_path, build_dir, configs, num_parallel_jobs, targe
                     "/nodeReuse:False",
                     f"/p:CL_MPCount={num_parallel_jobs}",
                 ]
-            elif is_macOS() and args.use_xcode:
+            elif args.cmake_generator == "Xcode":
                 # CMake will generate correct build tool args for Xcode
                 cmd_args += ["--parallel", str(num_parallel_jobs)]
             else:
@@ -1758,7 +1742,6 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
             if args.build_shared_lib:
                 executables.append("onnxruntime_shared_lib_test")
                 executables.append("onnxruntime_global_thread_pools_test")
-                executables.append("onnxruntime_api_tests_without_env")
                 executables.append("onnxruntime_customopregistration_test")
             for exe in executables:
                 test_output = f"--gtest_output=xml:{cwd}/{exe}.{config}.results.xml"
@@ -2456,11 +2439,10 @@ def main():
                 cmake_extra_args = ["-A", target_arch, "-T", toolset, "-G", args.cmake_generator]
             if args.enable_wcos:
                 cmake_extra_defines.append("CMAKE_USER_MAKE_RULES_OVERRIDE=wcos_rules_override.cmake")
-        elif args.cmake_generator is not None and not (is_macOS() and args.use_xcode):
+        elif args.cmake_generator is not None:
             cmake_extra_args += ["-G", args.cmake_generator]
-        elif is_macOS():
-            if args.use_xcode:
-                cmake_extra_args += ["-G", "Xcode"]
+
+        if is_macOS():
             if not args.ios and not args.android and args.osx_arch == "arm64" and platform.machine() == "x86_64":
                 if args.test:
                     log.warning("Cannot test ARM64 build on X86_64. Will skip test running after build.")

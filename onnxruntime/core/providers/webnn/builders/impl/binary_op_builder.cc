@@ -18,10 +18,6 @@ class BinaryOpBuilder : public BaseOpBuilder {
  private:
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
                                const logging::Logger& logger) const override ORT_MUST_USE_RESULT;
-
-  // Operator support related.
- private:
-  int GetMinSupportedOpSet(const Node& node) const override;
 };
 
 // Add operator related.
@@ -50,13 +46,6 @@ Status BinaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
 
   model_builder.AddOperand(node.OutputDefs()[0]->Name(), std::move(output));
   return Status::OK();
-}
-
-// Operator support related.
-
-int BinaryOpBuilder::GetMinSupportedOpSet(const Node& /* node */) const {
-  // Add/Sub/Mul/Div/Pow opset 6- has broadcast attributes we do not support now.
-  return 7;
 }
 
 void CreateBinaryOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {

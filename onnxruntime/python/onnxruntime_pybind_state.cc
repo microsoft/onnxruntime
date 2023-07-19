@@ -12,6 +12,7 @@
 #include "core/common/inlined_containers.h"
 #include "core/common/logging/logging.h"
 #include "core/common/logging/severity.h"
+#include "core/common/narrow.h"
 #include "core/common/optional.h"
 #include "core/common/path_string.h"
 #include "core/framework/arena_extend_strategy.h"
@@ -95,7 +96,7 @@ void GetPyObjFromTensor(const Tensor& rtensor, py::object& obj,
   MLDataType dtype = rtensor.DataType();
   const int numpy_type = OnnxRuntimeTensorToNumpyType(dtype);
   obj = py::reinterpret_steal<py::object>(PyArray_SimpleNew(
-      shape.NumDimensions(), npy_dims.data(), numpy_type));
+      narrow<int>(shape.NumDimensions()), npy_dims.data(), numpy_type));
 
   void* out_ptr = static_cast<void*>(
       PyArray_DATA(reinterpret_cast<PyArrayObject*>(obj.ptr())));
@@ -1604,7 +1605,7 @@ including arg name, arg type (contains both type and shape).)pbdoc")
           if (is_arg_file_name) {
             OrtPybindThrowIfError(sess->GetSessionHandle()->Load(arg));
           } else {
-            OrtPybindThrowIfError(sess->GetSessionHandle()->Load(arg.data(), arg.size()));
+            OrtPybindThrowIfError(sess->GetSessionHandle()->Load(arg.data(), narrow<int>(arg.size())));
           }
         }
 

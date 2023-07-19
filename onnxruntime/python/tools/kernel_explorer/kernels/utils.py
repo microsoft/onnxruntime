@@ -3,9 +3,11 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
+import os
 from itertools import product
 
 import numpy as np
+import scipy.special
 
 
 def dtype_to_bytes(dtype):
@@ -100,3 +102,38 @@ def softmax(x, *, is_log_softmax=False, axis=-1):
     if is_log_softmax:
         return x - np.log(np.sum(np.exp(x), axis=axis, keepdims=1))
     return (np.exp(x)) / np.sum(np.exp(x), axis=axis, keepdims=1)
+
+
+def _matmul(a, b):
+    if os.getenv("KERNEL_EXPLORER_TEST_USE_CUPY", "0") == "1":
+        import cupy as cp
+
+        return (cp.asarray(a) @ cp.asarray(b)).get()
+    else:
+        return a @ b
+
+
+def matmul(a, b, transa=False, transb=False):
+    return _matmul(a.T if transa else a, b.T if transb else b)
+
+
+def fast_gelu(x, bias):
+    x = x + bias
+    y = 0.5 * x * (1 + np.tanh(0.797885 * x + 0.035677 * x * x * x))
+    return y
+
+
+def gelu(x, bias):
+    x = x + bias
+    return 0.5 * x * (1 + scipy.special.erf(x / np.sqrt(2)))
+
+
+def relu(x, bias):
+    x = x + bias
+    return np.max(x, 0, keepdims=True)
+
+
+def standardization(x, axis, epsilon):
+    mean = np.mean(x, axis=axis, keepdims=True)
+    variance = np.var(x, axis=axis, keepdims=True)
+    return (x - mean) / np.sqrt(variance + epsilon)
