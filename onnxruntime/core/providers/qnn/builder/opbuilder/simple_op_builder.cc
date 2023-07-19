@@ -48,19 +48,16 @@ class SimpleOpBuilder : public BaseOpBuilder {
 };
 
 Status SimpleOpBuilder::ExplictOpCheck(const QnnModelWrapper& qnn_model_wrapper, const NodeUnit& node_unit) const {
-  if (node_unit.OpType() == "Softmax" && node_unit.SinceVersion() < 13) {
-    int32_t default_axis = -1;
+  // QNN Softmax only supports an axis value equal to input_rank - 1 (i.e., same as -1).
+  if (node_unit.OpType() == "Softmax") {
+    int32_t axis = node_unit.SinceVersion() < 13 ? 1 : -1;  // Default axis changed from 1 to -1 in opset 13.
     Qnn_Scalar_t axis_qnn_scalar = QNN_SCALAR_INIT;
-    ORT_RETURN_IF_ERROR(ProcessAxisAttribute(qnn_model_wrapper, node_unit, axis_qnn_scalar, default_axis));
+    ORT_RETURN_IF_ERROR(ProcessAxisAttribute(qnn_model_wrapper, node_unit, axis_qnn_scalar, axis));
     std::vector<uint32_t> input_shape;
     ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(node_unit.Inputs()[0].node_arg, input_shape),
-                      "Cannot get shape");
-    // For Softmax opset < 13, it's still supported if axis=rank-1
-    if (default_axis == static_cast<int32_t>(input_shape.size() - 1)) {
-      return Status::OK();
-    }
-
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "QNN Softmax only supports opset >= 13 or axis=input_rank-1.");
+                      "QNN EP: Cannot get shape for Softmax input");
+    ORT_RETURN_IF(axis != static_cast<int32_t>(input_shape.size() - 1),
+                  "QNN Softmax only supports an `axis` attribute equal to input_rank-1 (or -1)");
   }
 
   return Status::OK();

@@ -277,6 +277,18 @@ Common settings for below test results:
 | torch       | 2.0.0+cu117             | default               | 16         | 14.8            | 32,306              | 16,520               |
 | torch       | 2.0.0+cu117             | compile               | 16         | 12.6            | 32,636              | 16,898               |
 
+#### Results of A100-PCIE-80GB (Ubuntu 20.04)
+| engine      | version                 | provider              | batch size | average latency | first run memory MB | second run memory MB |
+| ----------- | ----------------------- | --------------------- | ---------- | --------------- | ------------------- | -------------------- |
+| tensorrt    | 8.6.1                   | default               | 1          | 1.00            | 9,056               | 9,056                |
+| onnxruntime | 1.16.0 nightly          | tensorrt              | 1          | 1.09            | 11,250              | 11,250               |
+| onnxruntime | 1.16.0 nightly          | tensorrt (cuda graph) | 1          | 0.96            | 11,382              | 11,382               |
+| onnxruntime | 1.16.0 nightly          | cuda                  | 1          | 1.11            | 4,760               | 5,144                |
+| onnxruntime | 1.16.0 nightly          | cuda (cuda graph)     | 1          | 1.04            | 5,230               | 5,390                |
+| tensorrt    | 8.6.1                   | default               | 4          | 3.39            | 9,072               | 9,072                |
+| onnxruntime | 1.16.0 nightly          | tensorrt              | 4          | 3.60            | 11,266              | 11,266               |
+| onnxruntime | 1.16.0 nightly          | tensorrt (cuda graph) | 4          | 3.43            | 11,428              | 11,428               |
+
 #### Results of V100-PCIE-16GB (Ubuntu 20.04)
 
 Results from Standard_NC6s_v3 Azure virtual machine:

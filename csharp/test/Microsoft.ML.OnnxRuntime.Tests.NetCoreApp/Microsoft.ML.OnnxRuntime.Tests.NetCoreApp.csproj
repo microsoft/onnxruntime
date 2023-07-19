@@ -121,7 +121,6 @@
   <ItemGroup>
     <Compile Include="..\Microsoft.ML.OnnxRuntime.Tests.Common\**\*Test.cs" />
     <Compile Include="..\Microsoft.ML.OnnxRuntime.Tests.Common\**\*Tests.cs" />
-
   </ItemGroup>
 
   <ItemGroup>
