@@ -1,6 +1,5 @@
 import os
 import torch
-from pathlib import Path
 from onnxruntime.training.ortmodule import ORTModule
 
 os.environ["ORTMODULE_CACHE_DIR"] = "cache_dir"
@@ -10,7 +9,7 @@ class Net(torch.nn.Module):
         super().__init__()
         self.fc = torch.nn.Linear(10, 1)
 
-    def forward(self, x):    
+    def forward(self, x):
         x = x.view(x.shape[0], -1)
         x = torch.nn.functional.relu(self.fc(x))
         return x
