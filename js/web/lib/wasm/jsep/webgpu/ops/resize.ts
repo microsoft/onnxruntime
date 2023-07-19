@@ -30,11 +30,25 @@ export interface ResizeAttributes extends AttributeWithCacheKey {
   nearestMode: NearestMode;
 }
 
-const validateScales = (scales: number[]): void => {
+const validateScales = (scales: number[], attributes: ResizeAttributes): void => {
   scales.every((value) => value > 0 || (() => {
                             throw new Error('Resize requires scales input values to be positive');
                           }));
   // Check scales dims based on mode: LINEAR, CUBIC
+  if (scales.length > 0) {
+    if (attributes.mode === 'linear') {
+      if (!(scales.length === 2 || scales.length === 3 || (scales.length === 4 && scales[0] === 1 && scales[1] === 1) ||
+            (scales.length === 4 && scales[0] === 1 && scales[3] === 1) ||
+            (scales.length === 5 && scales[0] === 1 && scales[1] === 1))) {
+        throw new Error('Resize requires scales input size to be 2, 3, 4 or 5 for linear mode');
+      }
+    } else if (attributes.mode === 'cubic') {
+      if (!(scales.length === 2 || (scales.length === 4 && scales[0] === 1 && scales[1] === 1) ||
+            (scales.length === 4 && scales[0] === 1 && scales[3] === 1))) {
+        throw new Error('Resize requires scales input size to be 2 or 4 for cubic mode');
+      }
+    }
+  }
 };
 
 const updateScales = (scales: readonly number[], axes: readonly number[], rank: number): number[] => {
@@ -66,7 +80,7 @@ const validateInputs =
           throw new Error(
               'Resize requires scales input size to be same as input rank or axes size for opset 18 and up');
         }
-        validateScales(scales);
+        validateScales(scales, attributes);
         if (attributes.axes.length > 0) {
           updateScales(scales, attributes.axes, rank).forEach((value, index) => scales[index] = value);
         }
@@ -335,12 +349,54 @@ const bilinearInterpolation =
     }`;
     };
 const bicubicInterpolation =
-    (inputShape: readonly number[], outputShape: readonly number[], scales: readonly number[], cubicCoeffA: number,
-     useExtrapolation: boolean, extrapolationValue: number, excludeOutside: boolean): string => {
+    (inputShape: readonly number[], outputShape: readonly number[], scales: readonly number[], roi: readonly number[],
+     cubicCoeffA: number, useExtrapolation: boolean, extrapolationValue: number, excludeOutside: boolean): string => {
       const outputIndicesHelper = createIndicesHelper('output', outputShape);
       const inputIndicesHelper = createIndicesHelper('input', inputShape);
       const [heightIdx, widthIdx] = inputShape.length === 2 ? [0, 1] : (scales[1] === 1.0) ? [2, 3] : [1, 2];
+
+      const createCubicInterpolationFunction = (idx: number): string => {
+        const direction = idx === heightIdx ? 'row' : 'col';
+        return `
+      fn ${direction}CubicInterpolation(inputIndices: ${inputIndicesHelper.iType}, outputIndices: ${
+            outputIndicesHelper.iType}) -> f32 {
+        var originalIdx: f32 = getOriginalCoordinateFromResizedCoordinate(f32(outputIndices[${idx}]), ${scales[idx]},
+        f32(${outputShape[idx]}), f32(${inputShape[idx]}), ${roi[idx]}, ${roi[idx]} + ${inputShape.length});
+        var fractOriginalIdx: f32 = originalIdx - floor(originalIdx);
+        var coefs = getCubicInterpolationCoefs(fractOriginalIdx);
+
+        if (${useExtrapolation} && (originalIdx < 0 || originalIdx > (${inputShape[idx]} - 1))) {
+          return ${extrapolationValue};
+        }
+        var data: array<f32, 4> = array<f32, 4>(0.0, 0.0, 0.0, 0.0);
+        for (var i: i32 = -1; i < 3; i++) {
+          var ${direction}: f32 = originalIdx + f32(i);
+          if (${direction} < 0 || ${direction} >= ${inputShape[idx]}) {
+            if (${excludeOutside}) {
+              coefs[i + 1] = 0.0;
+              continue;
+            } else if (${useExtrapolation}) {
+              return ${extrapolationValue};
+            } else {
+              ${direction} = max(0, min(${direction}, ${inputShape[idx]} - 1));
+            }
+          }
+          var inputIndicesCopy: ${inputIndicesHelper.iType} = inputIndices;
+          ${
+            idx === heightIdx ? `
+          inputIndicesCopy[${heightIdx}] = u32(row);
+          data[i + 1] = input[${inputIndicesHelper.i2oExpression('inputIndicesCopy')}];` :
+                                `
+          inputIndicesCopy[${widthIdx}] = u32(col);
+          data[i + 1] = rowCubicInterpolation(inputIndicesCopy, outputIndices);`}
+        }
+        return cubicInterpolation1D(data, coefs);
+      }`;
+      };
+
       return `
+    ${createCubicInterpolationFunction(heightIdx)};
+    ${createCubicInterpolationFunction(widthIdx)};
   fn getCubicInterpolationCoefs(s: f32) -> array<f32, 4> {
     var absS = abs(s);
     var coeffs: array<f32, 4> = array<f32, 4>(0.0, 0.0, 0.0, 0.0);
@@ -362,51 +418,8 @@ const bicubicInterpolation =
   }
 
   fn bicubicInterpolation(outputIndices: ${outputIndicesHelper.iType}) -> f32 {
-    var originalIndices = calculateOriginalIndicesFromOutputIndices(outputIndices);
-    var originRow:f32 = originalIndices[${heightIdx}];
-    var originCol:f32 = originalIndices[${widthIdx}];
-    var fractOriginRow:f32 = originRow - floor(originRow);
-    var fractOriginCol:f32 = originCol - floor(originCol);
-    var colCoefs = getCubicInterpolationCoefs(fractOriginCol);
-    var rowCoefs = getCubicInterpolationCoefs(fractOriginRow);
-
-    if (${useExtrapolation} && (originRow < 0 || originRow > (${
-          inputShape[heightIdx]} - 1) || originCol < 0 || originCol > ${inputShape[widthIdx]} - 1)) {
-      return ${extrapolationValue};
-    }
-    var colData: array<f32, 4> = array<f32, 4>(0.0, 0.0, 0.0, 0.0);
-    for (var c: i32 = -1; c < 3; c++) {
-      var col: f32 = originCol + f32(c);
-      if (col < 0 || col >= ${inputShape[widthIdx]}) {
-        if (${excludeOutside}) {
-          colCoefs[c + 1] = 0.0;
-          continue;
-        } else if (${useExtrapolation}) {
-          return ${extrapolationValue};
-        } else {
-          col = max(0, min(col, ${inputShape[widthIdx]} - 1));
-        }
-      }
-      var rowData: array<f32, 4> = array<f32, 4>(0.0, 0.0, 0.0, 0.0);
-      var rowCoefsCopy = rowCoefs;
-      for (var r: i32 = -1; r < 3; r++) {
-        var row: f32 = originRow + f32(r);
-        if (row < 0 || row >= ${inputShape[heightIdx]}) {
-          if (${excludeOutside}) {
-            rowCoefsCopy[r + 1] = 0.0;
-            continue;
-          } else {
-            row = max(0, min(row, ${inputShape[heightIdx]} - 1));
-          }
-        }
-        var inputIndices: ${inputIndicesHelper.iType} = outputIndices;
-        inputIndices[${heightIdx}] = u32(row);
-        inputIndices[${widthIdx}] = u32(col);
-        rowData[r + 1] = input[${inputIndicesHelper.i2oExpression('inputIndices')}];
-      }
-      colData[c + 1] = cubicInterpolation1D(rowData, rowCoefsCopy);
-    }
-    return cubicInterpolation1D(colData, colCoefs);
+    var inputIndices: ${inputIndicesHelper.iType} = outputIndices;
+    return colCubicInterpolation(inputIndices, outputIndices);
   }
     `;
     };
@@ -450,10 +463,9 @@ const createResizeProgramInfo =
               `;
           case 'cubic':
             return `
-            ${calculateOriginalIndicesFromOutputIndices(inputShape, outputShape, scales, roi)};
             ${
                 bicubicInterpolation(
-                    inputShape, outputShape, scales, attributes.cubicCoeffA, useExtrapolation,
+                    inputShape, outputShape, scales, roi, attributes.cubicCoeffA, useExtrapolation,
                     attributes.extrapolationValue, attributes.excludeOutside)};
             `;
           default:
@@ -475,12 +487,12 @@ const createResizeProgramInfo =
           ${(() => {
         switch (attributes.mode) {
           case 'nearest':
-            return `  inputIndices = calculateInputIndicesFromOutputIndices(outputIndices);
-                      if (checkInputIndices(inputIndices)) {
-                        output[global_idx] = input[${inputIndicesHelper.i2oExpression('inputIndices')}];
-                      } else {
-                        output[global_idx] = ${attributes.extrapolationValue};
-                      }`;
+            return `inputIndices = calculateInputIndicesFromOutputIndices(outputIndices);
+                  if (checkInputIndices(inputIndices)) {
+                    output[global_idx] = input[${inputIndicesHelper.i2oExpression('inputIndices')}];
+                  } else {
+                    output[global_idx] = ${attributes.extrapolationValue};
+                  }`;
           case 'linear':
             return 'output[global_idx] = bilinearInterpolation(outputIndices);';
           case 'cubic':
