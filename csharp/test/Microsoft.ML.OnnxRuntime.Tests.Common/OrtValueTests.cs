@@ -255,25 +255,21 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         private static readonly long[] ml_data_2 = { 3, 4 };
 
         // Use this utility method to create two tensors for Map and Sequence tests
-        private static Tuple<OrtValue, OrtValue> CreateTwoTensors()
+        private static void CreateTwoTensors(out OrtValue val1, out OrtValue val2)
         {
             const int ml_data_dim = 2;
             // For map tensors they must be single dimensional
             long[] shape = { ml_data_dim };
 
-            unsafe
-            {
-                var ortValue_1 = OrtValue.CreateTensorValueFromMemory(ml_data_1, shape);
-                var ortValue_2 = OrtValue.CreateTensorValueFromMemory(ml_data_2, shape);
-                return Tuple.Create(ortValue_1, ortValue_2);
-            }
+            val1 = OrtValue.CreateTensorValueFromMemory(ml_data_1, shape);
+            val2 = OrtValue.CreateTensorValueFromMemory(ml_data_2, shape);
         }
 
         [Fact(DisplayName = "CreateMapFromValues")]
         public void CreateMapFromValues()
         {
-            var valTuple = CreateTwoTensors();
-            using var map = OrtValue.CreateMap(valTuple.Item1, valTuple.Item2);
+            CreateTwoTensors(out OrtValue keys, out OrtValue values);
+            using var map = OrtValue.CreateMap(ref keys, ref values);
             Assert.Equal(OnnxValueType.ONNX_TYPE_MAP, map.OnnxType);
             var typeInfo = map.GetTypeInfo();
             var mapInfo = typeInfo.MapTypeInfo;
@@ -319,8 +315,8 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         [Fact(DisplayName = "CreateSequence")]
         public void CreateSequence()
         {
-            var valTuple = CreateTwoTensors();
-            OrtValue[] seqVals = { valTuple.Item1, valTuple.Item2 };
+            CreateTwoTensors(out OrtValue val1, out OrtValue val2);
+            using var seqVals = new DisposableListTest<OrtValue> { val1, val2 };
             using var seq = OrtValue.CreateSequence(seqVals);
 
             Assert.Equal(OnnxValueType.ONNX_TYPE_SEQUENCE, seq.OnnxType);

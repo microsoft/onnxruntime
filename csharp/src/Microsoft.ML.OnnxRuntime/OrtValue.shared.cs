@@ -55,20 +55,45 @@ namespace Microsoft.ML.OnnxRuntime
 
         /// <summary>
         /// Constructor. The newly constructed OrtValue takes ownership of the native OrtValue instance
-        /// and disposes of it when the OrtValue instance is disposed.
         /// </summary>
-        /// <param name="handle">Pointer to a native instance of OrtValue</param>
-        /// <param name="onnxValueType">OnnxValue type if known, otherwise the constructor would interrogate
-        /// the handle</param>
-        internal OrtValue(IntPtr handle, OnnxValueType onnxValueType, DisposableList<OrtValue> compositeMembers = null)
+        /// <param name="handle"></param>
+        /// <param name="onnxValueType"></param>
+        /// <exception cref="ArgumentException">thrown when onnxValue type is not known</exception>
+        internal OrtValue(IntPtr handle, OnnxValueType onnxValueType)
         {
+            if (onnxValueType == OnnxValueType.ONNX_TYPE_UNKNOWN)
+            {
+                throw new ArgumentException("onnxValueType argument is passed as unknown");
+            }
+
             _handle = handle;
             OnnxType = onnxValueType;
-            if (OnnxType == OnnxValueType.ONNX_TYPE_UNKNOWN)
+        }
+
+        /// <summary>
+        /// Constructor. The newly constructed OrtValue takes ownership of the native OrtValue instance
+        /// and disposes of it when the OrtValue instance is disposed. The instance will take ownership and will
+        /// dispose of compositeMembers instances.
+        /// 
+        /// This constructor can only throw if OnnxType is not specified.
+        /// </summary>
+        /// <param name="handle">native ortValue handle</param>
+        /// <param name="onnxValueType">must one of the valid types</param>
+        /// <param name="compositeMembers">For composite types this contains dependent ortValues such as members of a sequence
+        /// or keys/values for the map, that may have been created on top of the managed memory and must be disposed
+        /// with the new ortValue. This container will be taken the ownership of and the argument will be set to null.</param>
+        /// <exception cref="ArgumentException">throws when onnxValueType is not specified</exception>
+        internal OrtValue(IntPtr handle, OnnxValueType onnxValueType, ref DisposableList<OrtValue> compositeMembers)
+        {
+            if (onnxValueType == OnnxValueType.ONNX_TYPE_UNKNOWN)
             {
-                InitOnnxType();
+                throw new ArgumentException("onnxValueType argument is passed as unknown");
             }
+
+            _handle = handle;
+            OnnxType = onnxValueType;
             _compositeMembers = compositeMembers;
+            compositeMembers = null;
         }
 
         /// <summary>
@@ -861,36 +886,66 @@ namespace Microsoft.ML.OnnxRuntime
         /// 
         /// The ortValues that are passed as argument are taken possession of by the newly
         /// created OrtValue. The caller should not dispose them, unless this call fails.
+        /// 
+        /// The ortValues would be empty on successful return.
         /// </summary>
-        /// <param name="ortValues">a collection of OrtValues</param>
+        /// <param name="ortValues">a collection of OrtValues. On success the ortValues contained in the list
+        /// are taken ownership of and the list is cleared.</param>
         /// <returns>A disposable instance of OrtValues</returns>
         /// <exception cref="ArgumentNullException"></exception>
-        public static OrtValue CreateSequence(IReadOnlyCollection<OrtValue> ortValues)
+        public static OrtValue CreateSequence(ICollection<OrtValue> ortValues)
         {
             if (ortValues is null)
             {
                 throw new ArgumentNullException(nameof(ortValues));
             }
 
-            var compositeMembers = new DisposableList<OrtValue>(ortValues.Count);
-            var handles = new IntPtr[ortValues.Count];
-            for (int i = 0; i < ortValues.Count; i++)
+            if (ortValues.IsReadOnly)
             {
-                var value = ortValues.ElementAt(i);
-                handles[i] = ortValues.ElementAt(i).Handle;
-                compositeMembers.Add(value);
+                throw new ArgumentException("ortValues argument can not be a readonly collection");
+            }
+
+            var compositeMembers = new DisposableList<OrtValue>(ortValues);
+            try
+            {
+                var result = CreateSequence(ref compositeMembers);
+                Debug.Assert(compositeMembers is null, "Must be null on success");
+                ortValues.Clear();
+                return result;
+            }
+            catch (Exception)
+            {
+                // The caller is responsible for disposing the ortValues
+                compositeMembers?.Clear();
+                throw;
+            }
+        }
+
+        /// <summary>
+        /// Creates a sequence from the values in compositeMembers
+        /// The argument is taken possession of and is nullified on successful return.
+        /// </summary>
+        /// <param name="compositeMembers">sequence ortValues</param>
+        /// <returns>OrtValue instance representing a Sequence</returns>
+        internal static OrtValue CreateSequence(ref DisposableList<OrtValue> compositeMembers)
+        {
+            var handles = new IntPtr[compositeMembers.Count];
+            for (int i = 0; i < compositeMembers.Count; i++)
+            {
+                handles[i] = compositeMembers[i].Handle;
             }
 
             NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateValue(handles,
-                (UIntPtr)ortValues.Count, (IntPtr)OnnxValueType.ONNX_TYPE_SEQUENCE,
-                out IntPtr sequenceHandle));
-            return new OrtValue(sequenceHandle, OnnxValueType.ONNX_TYPE_SEQUENCE, compositeMembers);
+                    (UIntPtr)handles.Length, (IntPtr)OnnxValueType.ONNX_TYPE_SEQUENCE,
+                    out IntPtr sequenceHandle));
+
+            return new OrtValue(sequenceHandle, OnnxValueType.ONNX_TYPE_SEQUENCE, ref compositeMembers);
         }
 
         /// <summary>
         /// A delegate type that is expected to process each OrtValue in a sequence.
         /// </summary>
-        /// <param name="ortValue">Ortvalue that holds sequence element</param>
+        /// <param name="ortValue">OrtValue that holds sequence element</param>
         /// <param name="index">ordinal of the value</param>
         public delegate void SequenceElementVisitor(OrtValue ortValue, int index);
 
@@ -905,7 +960,8 @@ namespace Microsoft.ML.OnnxRuntime
         {
             if (OnnxType != OnnxValueType.ONNX_TYPE_SEQUENCE)
             {
-                throw new OnnxRuntimeException(ErrorCode.InvalidArgument, "This OrtValue does not represent a sequence");
+                throw new OnnxRuntimeException(ErrorCode.InvalidArgument,
+                    $"OrtValue.OnnxType of {OnnxType} is not a sequence");
             }
 
             int count = GetValueCount();
@@ -918,22 +974,43 @@ namespace Microsoft.ML.OnnxRuntime
 
         /// <summary>
         /// Creates a map OrtValue with keys and values.
-        /// ORT supports only a subset of types for keys and values.
-        /// We are not restricting them here.
+        /// On a high level the Onnxruntime representation of the map always consists of two
+        /// OrtValues, keys and values.
+        /// 
+        /// According to ONNX standard map keys can be unmanaged types only (or strings).
+        /// Those keys are contained in a single tensor within OrtValue keys.
+        /// 
+        /// Map values, on the other hand, can be composite types. The values parameter
+        /// can either contain a single tensor with unmanaged map values with the same number of
+        /// elements as the keys, or it can be a sequence of OrtValues,
+        /// each of those can be a composite type (tensor, sequence, map). If it is a sequence,
+        /// then the number of elements must match the number of elements in keys.
+        /// 
+        /// Keys and values must be in the same order.
+        /// 
+        /// ORT supports only a subset of types for keys and values, however, this API does not
+        /// restrict it.
         /// 
         /// The ortValues that are passed as argument are taken possession of by the newly
-        /// created OrtValue. The caller should not dispose them, unless this call fails
+        /// created OrtValue. The caller should not dispose them, unless this call fails.
+        /// 
+        /// Keys and values arguments will be set to null on success.
         /// </summary>
         /// <param name="keys">Contains keys</param>
         /// <param name="values">Contains values</param>
         /// <returns>A disposable OrtValue</returns>
         /// <exception cref="ArgumentNullException"></exception>
-        public static OrtValue CreateMap(OrtValue keys, OrtValue values)
+        public static OrtValue CreateMap(ref OrtValue keys, ref OrtValue values)
         {
             if (keys is null || values is null)
             {
                 throw new ArgumentNullException("keys or/and values are null");
             }
+
+            IntPtr[] handles = { keys.Handle, values.Handle };
+            NativeApiStatus.VerifySuccess(
+                NativeMethods.OrtCreateValue(handles, (UIntPtr)handles.Length, (IntPtr)OnnxValueType.ONNX_TYPE_MAP,
+                               out IntPtr mapHandle));
 
             var compositeMembers = new DisposableList<OrtValue>
             {
@@ -941,18 +1018,19 @@ namespace Microsoft.ML.OnnxRuntime
                 values
             };
 
-            IntPtr[] handles = { keys.Handle, values.Handle };
-            NativeApiStatus.VerifySuccess(
-                NativeMethods.OrtCreateValue(handles, (UIntPtr)handles.Length, (IntPtr)OnnxValueType.ONNX_TYPE_MAP,
-                               out IntPtr mapHandle));
-            return new OrtValue(mapHandle, OnnxValueType.ONNX_TYPE_MAP, compositeMembers);
+            keys = null;
+            values = null;
+
+            // This constructor will not throw.
+            return new OrtValue(mapHandle, OnnxValueType.ONNX_TYPE_MAP, ref compositeMembers);
         }
 
         /// <summary>
-        /// Creates a map OrtValue with keys and values specified as arrays.
-        /// This helps the user not to create OrtValues for keys and values separately.
+        /// This API helps to quickly creates a map OrtValue with unmanaged (primitive) keys and values specified as arrays.
+        /// This helps the user not to create OrtValues for keys and values separately and deal only with the final result.
+        /// The map would consist of two tensors, one for keys and one for values.
         /// 
-        /// The OrtValues would be created on top of the managed memory using it directly.
+        /// The OrtValues would be created on top of the managed memory arrays and use it directly.
         /// The number of elements in keys and values must be the same and they must be in order.
         /// 
         /// The types must be unmanaged.
@@ -984,7 +1062,7 @@ namespace Microsoft.ML.OnnxRuntime
             {
                 ortValues[0] = CreateTensorValueFromMemory(keys, shape);
                 ortValues[1] = CreateTensorValueFromMemory(values, shape);
-                return CreateMap(ortValues[0], ortValues[1]);
+                return CreateMap(ref ortValues[0], ref ortValues[1]);
             }
             catch (Exception)
             {
@@ -997,8 +1075,9 @@ namespace Microsoft.ML.OnnxRuntime
         /// Creates a map OrtValue with string keys and non-string values.
         /// This helps the user not to create OrtValues for keys and values separately.
         /// The number of elements in keys and values must be the same and they must be in order.
+        /// The map would consist of two tensors, one for keys and one for values.
         /// 
-        /// string keys would be converted to UTF-8 encoding and copied to managed memory.
+        /// string keys would be converted to UTF-8 encoding and copied to an allocated native memory.
         /// The OrtValue for values would be created on top of the managed memory using it directly.
         /// 
         /// The values type must be unmanaged.
@@ -1036,7 +1115,7 @@ namespace Microsoft.ML.OnnxRuntime
                 }
 
                 ortValues[1] = CreateTensorValueFromMemory(values, shape);
-                return CreateMap(ortValues[0], ortValues[1]);
+                return CreateMap(ref ortValues[0], ref ortValues[1]);
             }
             catch (Exception)
             {
@@ -1052,7 +1131,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// The number of elements in keys and values must be the same and they must be in order.
         /// 
         /// The OrtValue for keys would be created on top of the managed memory using it directly.
-        /// string values would be converted to UTF-8 encoding and copied to managed memory.
+        /// string values would be converted to UTF-8 encoding and copied to an allocated native memory.
         /// 
         /// </summary>
         /// <typeparam name="K">unmanaged type of keys</typeparam>
@@ -1086,7 +1165,7 @@ namespace Microsoft.ML.OnnxRuntime
                 {
                     ortValues[1].FillStringTensorElement(value.AsSpan(), count++);
                 }
-                return CreateMap(ortValues[0], ortValues[1]);
+                return CreateMap(ref ortValues[0], ref ortValues[1]);
             }
             catch (Exception)
             {
@@ -1096,8 +1175,25 @@ namespace Microsoft.ML.OnnxRuntime
         }
 
         /// <summary>
-        /// A public delegate that will be invoked map keys and values.
+        /// A public delegate that will be invoked once with map keys and values.
         /// The delegate helps not to deal with the lifespan of intermediate OrtValues.
+        /// Typically, when one uses GetValue() API, it creates a copy of OrtValue
+        /// that points to the same buffer as keys or values. This API helps to deal with those
+        /// temporary instances and avoid leaks.
+        /// 
+        /// According to ONNX standard map keys can be unmanaged types only (or strings).
+        /// Those keys are contained in a single tensor within OrtValue keys. So you can query those
+        /// directly from keys argument.
+        /// 
+        /// Map values, on the other hand, can be composite types. The values parameter
+        /// can either contain a single tensor with unmanaged map values with the same number of
+        /// elements as the keys, or it can be a sequence of OrtValues,
+        /// each of those can be a composite type (tensor, sequence, map). If it is a sequence,
+        /// then the number of elements must match the number of elements in keys.
+        /// 
+        /// Depending on the structure of the values, one will either directly query a single tensor
+        /// from values, or will have to iterate over the sequence of OrtValues and visit each of those
+        /// resulting in a recursive visitation.
         /// </summary>
         /// <param name="keys">This would always represent a tensor</param>
         /// <param name="values">Can be any of the Onnx types, but they would all reduce to tensors eventually</param>

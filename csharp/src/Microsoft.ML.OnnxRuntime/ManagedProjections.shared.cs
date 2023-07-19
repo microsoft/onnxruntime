@@ -85,9 +85,9 @@ namespace Microsoft.ML.OnnxRuntime
                 capacity = collection.Count;
             }
 
-            using (DisposableList<OrtValue> sequenceOrtValues = new(capacity))
+            DisposableList<OrtValue> sequenceOrtValues = new(capacity);
+            try
             {
-                int elementIdx = 0;
                 foreach (var element in seqContainer)
                 {
                     if (elementOnnxValue != element.ValueType)
@@ -97,11 +97,13 @@ namespace Microsoft.ML.OnnxRuntime
                     }
 
                     sequenceOrtValues.Add(CreateProjection(element, elementMeta));
-                    elementIdx++;
                 }
-                var result = OrtValue.CreateSequence(sequenceOrtValues);
-                sequenceOrtValues.Clear();
-                return result;
+                return OrtValue.CreateSequence(ref sequenceOrtValues);
+            }
+            catch(Exception)
+            {
+                sequenceOrtValues?.Dispose();
+                throw;
             }
         }
 
@@ -149,7 +151,7 @@ namespace Microsoft.ML.OnnxRuntime
                 }
 
                 // Create Map OrtValue
-                return OrtValue.CreateMap(ortValues[0], ortValues[1]);
+                return OrtValue.CreateMap(ref ortValues[0], ref ortValues[1]);
             }
             catch (Exception)
             {
