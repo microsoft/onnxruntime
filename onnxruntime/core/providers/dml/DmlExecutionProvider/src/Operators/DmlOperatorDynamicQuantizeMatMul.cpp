@@ -5,8 +5,7 @@
 
 namespace Dml
 {
-// QLinearSigmoid = Dequantize + Sigmoid + Quantize
-// This kernel is the first usage of graph based implementation
+// DynamicQuantizeMatMul = MatrixMultiplyIntegerToFloat(DynamicQuantizeLinear(A), B)
 class DmlOperatorDynamicQuantizeMatMul : public DmlOperator
 {
     // This order matches the ONNX schema.
@@ -47,8 +46,7 @@ public:
         std::vector<uint32_t> ExpectedAScaleTensorShape = {1, 1, 1, 1};
         std::vector<uint32_t> ExpectedAZeroPointTensorShape = {1, 1, 1, 1};
 
-        //  1. output edge between Dequantize and Sigmoid node
-        //  2. input edge between Sigmoid and Quantize node
+        //  output edges between DynQL and MMItoFloat node
         TensorDesc intermediateQuantizedATensorDesc = TensorDesc(
                 BDatatype,
                 gsl::make_span(ATensorShape),
