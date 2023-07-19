@@ -146,9 +146,9 @@ namespace Dml::GraphDescBuilder
     uint32_t SetAndGetMainDmlGraphNodeIndex(
         const uint32_t operatorDmlGraphNodeIndex,
         const std::string& nodeNamePrefix,
+        AbstractOperatorDesc& operatorDesc,
         /*in_out*/std::unordered_map<uint32_t, uint32_t>& operatorDmlGraphNodeIndexToMainDmlGraphNodeIndexMap,
-        /*in_out*/std::vector<DmlSerializedGraphNode>& dmlGraphNodes,
-        AbstractOperatorDesc& operatorDesc)
+        /*in_out*/std::vector<DmlSerializedGraphNode>& dmlGraphNodes)
     {
         auto iter = operatorDmlGraphNodeIndexToMainDmlGraphNodeIndexMap.find(operatorDmlGraphNodeIndex);
         if (iter != operatorDmlGraphNodeIndexToMainDmlGraphNodeIndexMap.end())
@@ -175,7 +175,8 @@ namespace Dml::GraphDescBuilder
         const onnxruntime::IndexedSubGraph& indexedSubGraph,
         const std::unordered_map<std::string, GraphNodeProperties>& graphNodePropertyMap,
         IDMLDevice* device,
-        const void* executionHandle)
+        const void* executionHandle,
+        /*in_out*/std::unordered_map<uint32_t, uint32_t>& constantEdgeIdxToSubgraphInputArgIdxMap)
     {
         const gsl::span<const std::string> subGraphInputArgNames = indexedSubGraph.GetMetaDef()->inputs;
         const gsl::span<const std::string> subGraphOutputArgNames = indexedSubGraph.GetMetaDef()->outputs;
@@ -226,7 +227,7 @@ namespace Dml::GraphDescBuilder
         std::vector<DmlInputSerializedGraphEdge> dmlGraphInputEdges;
         std::vector<DmlIntermediateSerializedGraphEdge> dmlGraphIntermediateEdges;
         std::vector<DmlOutputSerializedGraphEdge> dmlGraphOutputEdges;
-
+        uint32_t totalConstantNode = 0;
         // Iterate through each node and create a corresponding node in the new graph
         // We can iterate the nodes in any order because the edge connectivity will take care of the topological order
         for (size_t sortedNodeIndex : indexedSubGraph.nodes)
@@ -324,6 +325,7 @@ namespace Dml::GraphDescBuilder
                         ConstantName constantFileName = {arg->Name()};
                         constantNode.Desc = constantFileName;
                         dmlGraphNodes.push_back(constantNode);
+                        //totalConstantNode++;
                     }
                 }
             }
@@ -339,9 +341,9 @@ namespace Dml::GraphDescBuilder
                     uint32_t mainDmlGraphNodeIndex = SetAndGetMainDmlGraphNodeIndex(
                         operatorDmlGraphInputEdge.ToNodeIndex,
                         node.Name(),
+                        *operatorDmlGraphNodeCreateInfo.nodesAsOperatorDesc[operatorDmlGraphInputEdge.ToNodeIndex],
                         operatorDmlGraphNodeIndexToMainDmlGraphNodeIndexMap,
-                        dmlGraphNodes,
-                        *operatorDmlGraphNodeCreateInfo.nodesAsOperatorDesc[operatorDmlGraphInputEdge.ToNodeIndex]);
+                        dmlGraphNodes);
 
                     if (iter != subGraphInputNameToInputIndexMap.end())
                     {
@@ -358,7 +360,7 @@ namespace Dml::GraphDescBuilder
                             std::vector<DmlBufferTensorDesc*> toNodeInputTensorDescs = abstractOperatorDesc.GetInputTensors();
                             DmlBufferTensorDesc* tensorDesc = toNodeInputTensorDescs[operatorDmlGraphInputEdge.ToNodeInputIndex];
                             tensorDesc->flags |= DML_TENSOR_FLAG_OWNED_BY_DML;
-
+                            totalConstantNode++;
                             const auto& constantNodeAndIndex = outputEdgeNameToDmlGraphNodeAndIndexMap.at(arg->Name());
 
                             DmlIntermediateSerializedGraphEdge edge = {};
@@ -366,6 +368,8 @@ namespace Dml::GraphDescBuilder
                             edge.FromNodeOutputIndex = constantNodeAndIndex.targetIndex;
                             edge.ToNodeIndex = mainDmlGraphNodeIndex;
                             edge.ToNodeInputIndex = operatorDmlGraphInputEdge.ToNodeInputIndex;
+                            edge.Name = arg->Name();
+                            constantEdgeIdxToSubgraphInputArgIdxMap[static_cast<uint32_t>(dmlGraphIntermediateEdges.size())] = mainDmlGraphInputIndex;
                             dmlGraphIntermediateEdges.push_back(edge);
                         }
                         else
@@ -374,6 +378,7 @@ namespace Dml::GraphDescBuilder
                             edge.GraphInputIndex = mainDmlGraphInputIndex;
                             edge.ToNodeIndex = mainDmlGraphNodeIndex;
                             edge.ToNodeInputIndex = operatorDmlGraphInputEdge.ToNodeInputIndex;  // ?? might need to point inputIndex
+                            edge.Name = arg->Name();
                             dmlGraphInputEdges.push_back(edge);
                         }
 
@@ -387,6 +392,7 @@ namespace Dml::GraphDescBuilder
                         edge.FromNodeOutputIndex = inputNodeAndIndex.targetIndex;
                         edge.ToNodeIndex = mainDmlGraphNodeIndex;
                         edge.ToNodeInputIndex = operatorDmlGraphInputEdge.ToNodeInputIndex;
+                        edge.Name = arg->Name();
                         dmlGraphIntermediateEdges.push_back(edge);
                     }
                 }
@@ -396,20 +402,24 @@ namespace Dml::GraphDescBuilder
             for (auto& operatorGraphIntermediateEdge : operatorDmlGraphNodeCreateInfo.intermediateEdges)
             {
                 DmlIntermediateSerializedGraphEdge edge = {};
-                edge.FromNodeIndex = SetAndGetMainDmlGraphNodeIndex(
+                uint32_t shiftedFromNodeIndex = SetAndGetMainDmlGraphNodeIndex(
                         operatorGraphIntermediateEdge.FromNodeIndex,
                         node.Name(),
+                        *operatorDmlGraphNodeCreateInfo.nodesAsOperatorDesc[operatorGraphIntermediateEdge.FromNodeIndex],
                         operatorDmlGraphNodeIndexToMainDmlGraphNodeIndexMap,
-                        dmlGraphNodes,
-                        *operatorDmlGraphNodeCreateInfo.nodesAsOperatorDesc[operatorGraphIntermediateEdge.FromNodeIndex]);
-                edge.FromNodeOutputIndex = operatorGraphIntermediateEdge.FromNodeOutputIndex;
-                edge.ToNodeIndex = SetAndGetMainDmlGraphNodeIndex(
+                        dmlGraphNodes);
+                uint32_t shiftedToNodeIndex = SetAndGetMainDmlGraphNodeIndex(
                         operatorGraphIntermediateEdge.ToNodeIndex,
                         node.Name(),
+                        *operatorDmlGraphNodeCreateInfo.nodesAsOperatorDesc[operatorGraphIntermediateEdge.ToNodeIndex],
                         operatorDmlGraphNodeIndexToMainDmlGraphNodeIndexMap,
-                        dmlGraphNodes,
-                        *operatorDmlGraphNodeCreateInfo.nodesAsOperatorDesc[operatorGraphIntermediateEdge.ToNodeIndex]);
+                        dmlGraphNodes);
+
+                edge.FromNodeIndex = shiftedFromNodeIndex;
+                edge.FromNodeOutputIndex = operatorGraphIntermediateEdge.FromNodeOutputIndex;
+                edge.ToNodeIndex = shiftedToNodeIndex;
                 edge.ToNodeInputIndex = operatorGraphIntermediateEdge.ToNodeInputIndex;
+                edge.Name = std::to_string(shiftedFromNodeIndex) + std::to_string(operatorGraphIntermediateEdge.FromNodeOutputIndex);
                 dmlGraphIntermediateEdges.push_back(edge);
             }
 
@@ -419,15 +429,13 @@ namespace Dml::GraphDescBuilder
                 const onnxruntime::NodeArg* arg = node.OutputDefs()[operatorGraphOutputEdge.GraphOutputIndex];
                 if (arg->Exists())
                 {
-                    outputEdgeNameToDmlGraphNodeAndIndexMap[arg->Name()] = NodeAndIndex {
-                        SetAndGetMainDmlGraphNodeIndex(
+                    uint32_t shiftedNodeIndex = SetAndGetMainDmlGraphNodeIndex(
                             operatorGraphOutputEdge.FromNodeIndex,
                             node.Name(),
+                            *operatorDmlGraphNodeCreateInfo.nodesAsOperatorDesc[operatorGraphOutputEdge.FromNodeIndex],
                             operatorDmlGraphNodeIndexToMainDmlGraphNodeIndexMap,
-                            dmlGraphNodes,
-                            *operatorDmlGraphNodeCreateInfo.nodesAsOperatorDesc[operatorGraphOutputEdge.FromNodeIndex]),
-                        operatorGraphOutputEdge.FromNodeOutputIndex
-                    };
+                            dmlGraphNodes);
+                    outputEdgeNameToDmlGraphNodeAndIndexMap[arg->Name()] = {shiftedNodeIndex, operatorGraphOutputEdge.FromNodeOutputIndex};
                 }
             }
 
@@ -460,13 +468,14 @@ namespace Dml::GraphDescBuilder
             edge.FromNodeIndex = outputNodeAndIndex.nodeIndex;
             edge.FromNodeOutputIndex = outputNodeAndIndex.targetIndex;
             edge.GraphOutputIndex = gsl::narrow_cast<uint32_t>(outputIndex);
+            edge.Name = graphOutput->Name();
             dmlGraphOutputEdges.push_back(edge);
         }
 
         RemoveUnconnectedNodes(dmlGraphNodes, dmlGraphInputEdges, dmlGraphIntermediateEdges, dmlGraphOutputEdges);
 
         GraphDesc graphDesc{};
-        graphDesc.InputCount = static_cast<uint32_t>(subGraphInputArgNames.size());
+        graphDesc.InputCount = static_cast<uint32_t>(dmlGraphInputEdges.size());
         graphDesc.OutputCount = static_cast<uint32_t>(subGraphOutputArgNames.size());
         graphDesc.Nodes = std::move(dmlGraphNodes);
         graphDesc.InputEdges = std::move(dmlGraphInputEdges);
@@ -476,6 +485,7 @@ namespace Dml::GraphDescBuilder
         // flushing behavior of DmlCommandRecorder.  Its current behavior is to assume that graphs contain
         // enough GPU work to be worth flushing immediately.
         graphDesc.reuseCommandList = indexedSubGraph.nodes.size() >= minNodeCountToReuseCommandList;
+        std::cout<<"number of owned by dml flag : "<<totalConstantNode<<std::endl;
         return graphDesc;
     }
 }

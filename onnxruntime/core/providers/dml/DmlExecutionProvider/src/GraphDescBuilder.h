@@ -27,18 +27,8 @@ namespace Dml
         // that graph partitioning occurs and kernel creation happens
         const std::string& GetUniqueNodeName(const onnxruntime::Node& node);
 
-        struct NodeInfo
-        {
-            Microsoft::WRL::ComPtr<IDMLOperator> op;
-            std::string name;
-        };
-
         struct GraphDesc : DmlSerializedGraphDesc
         {
-            std::vector<NodeInfo> nodes;
-            std::vector<DML_INPUT_GRAPH_EDGE_DESC> inputEdges;
-            std::vector<DML_OUTPUT_GRAPH_EDGE_DESC> outputEdges;
-            std::vector<DML_INTERMEDIATE_GRAPH_EDGE_DESC> intermediateEdges;
             bool reuseCommandList;
         };
 
@@ -50,6 +40,7 @@ namespace Dml
             const onnxruntime::IndexedSubGraph& indexedSubGraph,
             const std::unordered_map<std::string, GraphNodeProperties>& graphNodePropertyMap,
             IDMLDevice* device,
-            const void* executionHandle);
+            const void* executionHandle,
+            std::unordered_map<uint32_t, uint32_t>& constantEdgeIdxToSubgraphInputArgIdxMap);
     }
 }
