@@ -74,12 +74,10 @@ static void RunCPULogicalOpTest(const std::string& op_type, const std::vector<in
   provider_options["backend_path"] = "libQnnCpu.so";
 #endif
 
-  constexpr int expected_nodes_in_partition = 1;
   RunQnnModelTest(BuildLogicalOpTestCase(op_type, shape),
                   provider_options,
                   opset,
-                  expected_ep_assignment,
-                  expected_nodes_in_partition);
+                  expected_ep_assignment);
 }
 
 // Runs a model with a logical operator on the QNN HTP backend. Checks the graph node assignment, and that inference
@@ -95,12 +93,10 @@ static void RunQDQLogicalOpTest(const std::string& op_type, const std::vector<in
   provider_options["backend_path"] = "libQnnHtp.so";
 #endif
 
-  constexpr int expected_nodes_in_partition = 1;
   RunQnnModelTest(BuildQDQLogicalOpTestCase<QuantType>(op_type, shape),
                   provider_options,
                   opset,
-                  expected_ep_assignment,
-                  expected_nodes_in_partition);
+                  expected_ep_assignment);
 }
 
 //
