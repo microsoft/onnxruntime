@@ -466,6 +466,7 @@ struct AveragePool2DTask final {
       for (int64_t pw = 0; pw < pooled_width; ++pw) {
         int64_t wstart = pw * stride_w - pads[1];
         int64_t wend = wstart + kernel_shape[1] * dilation_w;
+        wend = std::min(wend, width + pads[3]);
         const int64_t pool_index = ph * pooled_width + pw;
         y_d[pool_index] = 0;
         int total_elements = 0;
@@ -538,9 +539,11 @@ struct AveragePool3DTask {
       for (int64_t pw = 0; pw < pooled_width; ++pw) {
         int64_t wstart = pw * stride_w - pads[1];
         int64_t wend = wstart + kernel_shape[1] * dilation_w;
+        wend = std::min(wend, width + pads[3]);
         for (int64_t pd = 0; pd < pooled_depth; ++pd) {
           int64_t dstart = pd * stride_d - pads[2];
           int64_t dend = dstart + kernel_shape[2] * dilation_d;
+          dend = std::min(dend, depth + pads[5]);
           const int64_t pool_index = ph * pooled_width * pooled_depth + pw * pooled_depth + pd;
           y_d[pool_index] = 0;
           int total_elements = 0;
