@@ -2,7 +2,7 @@
 
 // Splitting the different head dimensions to different files to speed up compilation.
 
-#include "flash_fwd_launch_template.h"
+#include "contrib_ops/cuda/bert/flash_attention/flash_fwd_launch_template.h"
 
 namespace onnxruntime {
 namespace contrib {
