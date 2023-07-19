@@ -30,7 +30,26 @@ RUN mkdir -p /tmp/ccache && \
     cp /tmp/ccache/ccache /usr/bin && \
     rm -rf /tmp/ccache
 
-RUN apt-get update && apt-get install  -y cifs-utils
+RUN apt-get update && apt-get install -y cifs-utils && rm -rf /var/lib/apt/lists/*
+
+# .Net and Mono
+RUN wget https://packages.microsoft.com/config/ubuntu/20.04/packages-microsoft-prod.deb -O packages-microsoft-prod.deb && \
+    dpkg -i packages-microsoft-prod.deb && rm packages-microsoft-prod.deb
+
+RUN echo "deb https://download.mono-project.com/repo/ubuntu stable-bionic main" > /etc/apt/sources.list.d/mono-official-stable.list && \
+    wget http://download.mono-project.com/repo/xamarin.gpg && apt-key add xamarin.gpg && rm xamarin.gpg
+
+RUN wget https://dist.nuget.org/win-x86-commandline/latest/nuget.exe -O /usr/local/bin/nuget.exe && \
+    echo 'mono /usr/local/bin/nuget.exe $@' > /usr/local/bin/nuget && \
+    chmod a+x /usr/local/bin/nuget
+
+RUN apt-get update && \
+    apt-get install -y \
+      ninja-build \
+      dotnet-sdk-6.0 \
+      mono-devel \
+      && \
+    rm -rf /var/lib/apt/lists/*
 
 # rocm-ci branch contains instrumentation needed for loss curves and perf
 RUN git clone https://github.com/microsoft/huggingface-transformers.git &&\
