@@ -125,7 +125,7 @@ class TestTorchDynamoOrt(unittest.TestCase):
                 return (tensor_q, (tensor_y, tensor_z))
 
             local_aot_ort, ort_backend = make_aot_ort(dynamic=True)
-            cached = ort_backend._all_ort_execution_info.execution_info_per_grpah_module
+            cached = ort_backend._all_ort_execution_info.execution_info_per_graph_module
             # Before compilation, no graph is generated.
             assert len(cached) == 0
 
