@@ -26,6 +26,7 @@ Please select the GPU (CUDA/TensorRT) version of OnnxRuntime: https://onnxruntim
 See [Build instructions](../build/eps.md#tensorrt).
 
 ## Requirements
+
 | ONNX Runtime | TensorRT | CUDA   |
 |:-------------|:---------|:-------|
 | 1.15-main    | 8.6      | 11.8   |
