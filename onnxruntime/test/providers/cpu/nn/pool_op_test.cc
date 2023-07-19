@@ -982,10 +982,10 @@ TEST(PoolTest, AveragePool_19_ceil_count_include_pad_1d) {
   test.AddAttribute("ceil_mode", (int64_t)1);
   test.AddAttribute("count_include_pad", (int64_t)1);
 
-  std::vector<float> x_vals = {2.0903, 4.6493, 1.6320, -3.2051, 4.6975, 4.7296, 3.3653, -1.5815, -2.3832, 0.9628, -1.5899, -2.6820, 5.7529, 7.7346, -0.8910, -2.0151, 0.1313, -0.5374};
+  std::vector<float> x_vals = {2.0903f, 4.6493f, 1.6320f, -3.2051f, 4.6975f, 4.7296f, 3.3653f, -1.5815f, -2.3832f, 0.9628f, -1.5899f, -2.6820f, 5.7529f, 7.7346f, -0.8910f, -2.0151f, 0.1313f, -0.5374f};
   std::vector<int64_t> x_dims = {1, 2, 9};
   std::vector<int64_t> expected_dims = {1, 2, 4};
-  std::vector<float> expected_vals = {0.73807144, 2.5655572, 0.8032287, -0.09990001, 0.34911433, 1.0389, 1.4536142, -0.40353334};
+  std::vector<float> expected_vals = {0.73807144f, 2.5655572f, 0.8032287f, -0.09990001f, 0.34911433f, 1.0389f, 1.4536142f, -0.40353334f};
 
   test.AddInput<float>("X", x_dims, x_vals);
   test.AddOutput<float>("Y", expected_dims, expected_vals);
