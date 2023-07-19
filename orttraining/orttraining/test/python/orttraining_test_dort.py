@@ -10,7 +10,7 @@ from torch import nn
 from torch.nn import functional as F
 from torch.utils import _pytree
 
-from onnxruntime.training.torchdynamo.register_backend import aot_ort, dynamic_aot_ort, ort
+from onnxruntime.training.torchdynamo.register_backend import aot_ort, dynamic_aot_ort, make_aot_ort, ort
 
 
 class TestTorchDynamoOrt(unittest.TestCase):
@@ -124,12 +124,17 @@ class TestTorchDynamoOrt(unittest.TestCase):
                 tensor_q = tensor_p.sigmoid()
                 return (tensor_q, (tensor_y, tensor_z))
 
+            local_aot_ort, ort_backend = make_aot_ort(dynamic=True)
+            cached = ort_backend._all_ort_execution_info.execution_info_per_grpah_module
+            # Before compilation, no graph is generated.
+            assert len(cached) == 0
+
             # This function should only generate one graph and execute
             # it for all inputs.
             # With dynamic_shape=True, Dynamo sends FX graphs with dynamic
             # shapes (e.g., batch size is a symbol "batch" instead of a fixed
             # number) to OrtBackend.compile(...).
-            @torch._dynamo.optimize(dynamic_aot_ort, dynamic=True)
+            @torch._dynamo.optimize(local_aot_ort, dynamic=True)
             def optimized_elementwise_model(tensor_x: torch.Tensor):
                 return elementwise_model(tensor_x)
 
@@ -151,6 +156,15 @@ class TestTorchDynamoOrt(unittest.TestCase):
                 for tensor, baseline_tensor in zip(tensors, baseline_tensors):
                     torch.testing.assert_close(tensor, baseline_tensor)
 
+            assert (
+                len(cached.keys()) == 2
+            ), "Should only see two GraphModules so far. One for forward and the other one for backward."
+            for value in cached.values():
+                assert len(value) == 1, (
+                    "One GraphModule should only be mapped to one ONNX model since "
+                    "dynamic shape is enabled and input tensor's rank is unchanged."
+                )
+
             # Rank changed.
             for shape in [(1,), (2,), (2, 3), (2, 3, 4)]:
                 seed = torch.rand(shape)
@@ -161,6 +175,21 @@ class TestTorchDynamoOrt(unittest.TestCase):
 
                 for tensor, baseline_tensor in zip(tensors, baseline_tensors):
                     torch.testing.assert_close(tensor, baseline_tensor)
+
+            # 4 GraphModule's respectively for
+            #  - (1,)
+            #  - (2,)
+            #  - (2, 3), (3, 4)
+            #  - (2, 3, 4)
+            # Because (1,) is treated as a special dimension in Dynamo,
+            # we can NOT merge (1,) and (2,). More specifically, their GraphModule's
+            # are hashed to different values.
+            # Another 4 GraphModule's for the corresponding backward passes.
+            assert len(cached.keys()) == 8
+            for value in cached.values():
+                # When dynamic shape is enabled, there should be only one ONNX model
+                # for inputs with the same rank.
+                assert len(value) == 1
 
         run_elementwise_model()
 
