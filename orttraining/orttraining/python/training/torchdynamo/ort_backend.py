@@ -422,14 +422,14 @@ class OrtExecutionInfoForAllGraphModules:
     def __init__(self):
         # All sessions (and their related information) created by exporting the same GraphModule
         # with different inputs.
-        self.execution_info_per_grpah_module: Dict[torch.fx.GraphModule, List[OrtExecutionInfoPerSession]] = {}
+        self.execution_info_per_graph_module: Dict[torch.fx.GraphModule, List[OrtExecutionInfoPerSession]] = {}
 
     def search_reusable_session_execution_info(self, graph_module: torch.fx.GraphModule, *args):
-        if graph_module not in self.execution_info_per_grpah_module:
+        if graph_module not in self.execution_info_per_graph_module:
             return
         # All execution information for ONNX models exported from the same `graph_module`
         # with different inputs.
-        candidates = self.execution_info_per_grpah_module[graph_module]
+        candidates = self.execution_info_per_graph_module[graph_module]
 
         for candidate in candidates:
             if candidate.is_supported(*args):
@@ -439,10 +439,10 @@ class OrtExecutionInfoForAllGraphModules:
         return None
 
     def cache_session_execution_info(self, graph_module: torch.fx.GraphModule, info: OrtExecutionInfoPerSession):
-        if graph_module not in self.execution_info_per_grpah_module:
-            self.execution_info_per_grpah_module[graph_module] = [info]
+        if graph_module not in self.execution_info_per_graph_module:
+            self.execution_info_per_graph_module[graph_module] = [info]
         else:
-            self.execution_info_per_grpah_module[graph_module].append(info)
+            self.execution_info_per_graph_module[graph_module].append(info)
 
 
 class OrtBackend:
@@ -496,8 +496,20 @@ class OrtBackend:
         # TODO: this is a naive implementation of cache without proper guard
         self._partitioner_cache: Dict[torch.fx.GraphModule, torch.fx.GraphModule] = {}
         # TODO: this is a naive implementation of cache without proper guard, this will only work for identical inputs
-        # self._ort_execution_info = OrtExecutionInfo()
-
+        # Conceptually, this filed is a 2-layer dictionary
+        #   GraphModule 0
+        #     ONNX Model 0 (with ORT InferenceSession and related information. type: OrtExecutionInfoPerSession)
+        #     ONNX Model 1
+        #     ...
+        #   GraphModule 1
+        #     ONNX Model 2 (with ORT InferenceSession and related information. type: OrtExecutionInfoPerSession)
+        #     ONNX Model 3
+        #     ...
+        #   ...
+        # , which caches all previous compilation result so that we can reuse them.
+        # ONNX Model 0 and 1 are exported from the same GraphModule 0 but with different inputs
+        # (e.g., tensors with different ranks). GraphModule 0 and GraphModule 1 are different
+        # graphs captured by Dynamo and sent to OrtBackend.compile.
         self._all_ort_execution_info = OrtExecutionInfoForAllGraphModules()
 
         self._assert_allclose_to_baseline = False
