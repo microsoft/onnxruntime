@@ -18,7 +18,7 @@ namespace Dml
 
         FusedGraphKernel(
             const onnxruntime::OpKernelInfo& kernelInfo,
-            ComPtr<IDMLCompiledOperator> compiledExecutionPlanOperator,
+            std::vector<ComPtr<IDMLCompiledOperator>>& compiledExecutionPlanOperators,
             Windows::AI::MachineLearning::Adapter::EdgeShapes& outputShapes,
             bool reuseCommandList,
             std::vector<ComPtr<ID3D12Resource>>& nonOwnedGraphInputsFromInitializers,
@@ -27,7 +27,7 @@ namespace Dml
             std::vector<uint8_t>& isInputsUploadedByDmlEP,
             std::vector<bool>& inputsUsed) :
         OpKernel(kernelInfo),
-        m_compiledExecutionPlanOperator(compiledExecutionPlanOperator),
+        m_compiledExecutionPlanOperators(std::move(compiledExecutionPlanOperators)),
         m_inputsUsed(inputsUsed),
         m_outputShapes(outputShapes),
         m_isInputsUploadedByDmlEP(isInputsUploadedByDmlEP),
@@ -59,27 +59,41 @@ namespace Dml
             bool reuseCommandList
         )
         {
-            // Allocate a persistent resource and initialize the operator
-            UINT64 persistentResourceSize = m_compiledExecutionPlanOperator->GetBindingProperties().PersistentResourceSize;
-            if (persistentResourceSize > 0)
+            m_persistentResourceBindings.resize(m_compiledExecutionPlanOperators.size());
+            m_persistentResources.resize(m_compiledExecutionPlanOperators.size());
+            m_persistentResourceAllocatorUnks.resize(m_compiledExecutionPlanOperators.size());
+
+            for (uint32_t i = 0; i < m_compiledExecutionPlanOperators.size(); ++i)
             {
-                ORT_THROW_IF_FAILED(m_provider->AllocatePooledResource(
-                    static_cast<size_t>(persistentResourceSize),
-                    AllocatorRoundingMode::Disabled,
-                    m_persistentResource.GetAddressOf(),
-                    m_persistentResourceAllocatorUnk.GetAddressOf()));
+                auto compiledExecutionPlanOperator = m_compiledExecutionPlanOperators.Get();
 
-                m_persistentResourceBinding = DML_BUFFER_BINDING { m_persistentResource.Get(), 0, persistentResourceSize };
+                // Allocate a persistent resource and initialize the operator
+                UINT64 persistentResourceSize = compiledExecutionPlanOperator->GetBindingProperties().PersistentResourceSize;
+                if (persistentResourceSize > 0)
+                {
+                    ComPtr<ID3D12Resource> persistentResource;
+                    ComPtr<ID3D12Resource> persistentResourceAllocatorUnk;
+
+                    ORT_THROW_IF_FAILED(m_provider->AllocatePooledResource(
+                        static_cast<size_t>(persistentResourceSize),
+                        AllocatorRoundingMode::Disabled,
+                        persistentResource.GetAddressOf(),
+                        persistentResourceAllocatorUnk.GetAddressOf()));
+
+                    m_persistentResourceBindings[i] = DML_BUFFER_BINDING { persistentResource.Get(), 0, persistentResourceSize };
+                    m_persistentResources[i] = std::move(persistentResource);
+                    m_persistentResourceAllocatorUnks[i] = srd::move(persistentResourceAllocatorUnk);
+                }
+
+                ORT_THROW_IF_FAILED(m_provider->InitializeOperator(
+                    compiledExecutionPlanOperator,
+                    m_persistentResourceBindings[i] ? &*m_persistentResourceBindings[i] : nullptr,
+                    gsl::make_span(initInputBindings)));
+
+                // Queue references to objects which must be kept alive until resulting GPU work completes
+                m_winmlProvider->QueueReference(compiledExecutionPlanOperator);
+                m_winmlProvider->QueueReference(m_persistentResourceAllocatorUnks[i].Get());
             }
-
-            ORT_THROW_IF_FAILED(m_provider->InitializeOperator(
-                m_compiledExecutionPlanOperator.Get(),
-                m_persistentResourceBinding ? &*m_persistentResourceBinding : nullptr,
-                gsl::make_span(initInputBindings)));
-
-            // Queue references to objects which must be kept alive until resulting GPU work completes
-            m_winmlProvider->QueueReference(m_compiledExecutionPlanOperator.Get());
-            m_winmlProvider->QueueReference(m_persistentResourceAllocatorUnk.Get());
 
             std::for_each(
                 initializeResourceRefs.begin(),
@@ -405,7 +419,10 @@ namespace Dml
             m_winmlProvider->QueueReference(m_persistentResourceAllocatorUnk.Get());
         }
 
-        ComPtr<IDMLCompiledOperator> m_compiledExecutionPlanOperator;
+        std::vector<ComPtr<IDMLCompiledOperator>> m_compiledExecutionPlanOperators;
+        std::vector<std::optional<DML_BUFFER_BINDING>> m_persistentResourceBindings;
+        std::vector<ComPtr<ID3D12Resource>> m_persistentResources;
+        std::vector<ComPtr<IUnknown>> m_persistentResourceAllocatorUnks; // Controls when the persistent resource is returned to the allocator
         std::vector<bool> m_inputsUsed;
         const void* m_executionHandle = nullptr;
         ComPtr<IWinmlExecutionProvider> m_winmlProvider;
@@ -417,9 +434,6 @@ namespace Dml
         ComPtr<ID3D12CommandAllocator> m_commandAllocator;
         ComPtr<ID3D12DescriptorHeap> m_heap;
         ComPtr<IDMLBindingTable> m_bindingTable;
-        std::optional<DML_BUFFER_BINDING> m_persistentResourceBinding;
-        ComPtr<ID3D12Resource> m_persistentResource;
-        ComPtr<IUnknown> m_persistentResourceAllocatorUnk; // Controls when the persistent resource is returned to the allocator
 
         // Bindings from previous executions of a re-used command list
         mutable std::vector<uint64_t> m_inputBindingAllocIds;
@@ -437,7 +451,7 @@ namespace Dml
 
     onnxruntime::OpKernel* CreateFusedGraphKernel(
         const onnxruntime::OpKernelInfo& info,
-        ComPtr<IDMLCompiledOperator> compiledExecutionPlanOperator,
+        std::vector<ComPtr<IDMLCompiledOperator>>& compiledExecutionPlanOperators,
         Windows::AI::MachineLearning::Adapter::EdgeShapes& outputShapes,
         bool reuseCommandList,
         std::vector<ComPtr<ID3D12Resource>>& nonOwnedGraphInputsFromInitializers,
@@ -449,7 +463,7 @@ namespace Dml
     {
         return new FusedGraphKernel(
             info,
-            compiledExecutionPlanOperator,
+            compiledExecutionPlanOperators,
             outputShapes,
             reuseCommandList,
             nonOwnedGraphInputsFromInitializers,

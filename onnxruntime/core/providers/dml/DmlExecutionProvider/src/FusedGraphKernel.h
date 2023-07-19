@@ -9,7 +9,7 @@ namespace Dml
 {
     onnxruntime::OpKernel* CreateFusedGraphKernel(
         const onnxruntime::OpKernelInfo& info,
-        ComPtr<IDMLCompiledOperator> compiledExecutionPlanOperator,
+        std::vector<ComPtr<IDMLCompiledOperator>>& compiledExecutionPlanOperators,
         Windows::AI::MachineLearning::Adapter::EdgeShapes& outputShapes,
         bool reuseCommandList,
         std::vector<ComPtr<ID3D12Resource>>& nonOwnedGraphInputsFromInitializers,

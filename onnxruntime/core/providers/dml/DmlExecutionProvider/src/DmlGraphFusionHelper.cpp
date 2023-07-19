@@ -325,6 +325,205 @@ namespace DmlGraphFusionHelper
         dmlGraphDesc.IntermediateEdges = dmlIntermediateEdges.data();
     }
 
+    struct ExecutionPlanInfo
+    {
+        ComPtr<IDMLCompiledOperator> compiledOperator;
+        uint32_t nodeCount;
+    };
+
+    std::vector<ExecutionPlanInfo> CompileExecutionPlans(
+        const ExecutionProviderImpl* providerImpl,
+        const GraphDescBuilder::GraphDesc& graphDesc,
+        uint32_t inputCount,
+        uint32_t outputCount)
+    {
+        ComPtr<IDMLDevice> device;
+        ORT_THROW_IF_FAILED(providerImpl->GetDmlDevice(device.GetAddressOf()));
+
+        // convert DML EP GraphDesc into DML_GRAPH_DESC and create IDMLCompiledOperator
+        DML_GRAPH_DESC dmlGraphDesc = {};
+        std::vector<DML_OPERATOR_GRAPH_NODE_DESC> dmlOperatorGraphNodes(graphDesc.nodes.size());
+        std::vector<DML_GRAPH_NODE_DESC> dmlGraphNodes(graphDesc.nodes.size());
+        std::vector<DML_GRAPH_EDGE_DESC> dmlInputEdges(graphDesc.inputEdges.size());
+        std::vector<DML_GRAPH_EDGE_DESC> dmlOutputEdges(graphDesc.outputEdges.size());
+        std::vector<DML_GRAPH_EDGE_DESC> dmlIntermediateEdges(graphDesc.intermediateEdges.size());
+        ConvertGraphDesc(
+            graphDesc,
+            dmlGraphDesc,
+            inputCount,
+            outputCount,
+            dmlOperatorGraphNodes,
+            dmlGraphNodes,
+            dmlInputEdges,
+            dmlOutputEdges,
+            dmlIntermediateEdges);
+
+        DML_EXECUTION_FLAGS executionFlags = DML_EXECUTION_FLAG_NONE;
+        if (graphDesc.reuseCommandList)
+        {
+            executionFlags |= DML_EXECUTION_FLAG_DESCRIPTORS_VOLATILE;
+        }
+
+        // Query DML execution provider to see if metacommands is enabled
+        if (!providerImpl->MetacommandsEnabled())
+        {
+            executionFlags |= DML_EXECUTION_FLAG_DISABLE_META_COMMANDS;
+        }
+
+        ComPtr<IDMLDevice1> device1;
+        ORT_THROW_IF_FAILED(device.As(&device1));
+        ComPtr<IDMLCompiledOperator> compiledExecutionPlanOperator;
+        ORT_THROW_IF_FAILED(device1->CompileGraph(
+            &dmlGraphDesc,
+            executionFlags,
+            IID_PPV_ARGS(&compiledExecutionPlanOperator)));
+
+        if (graphDesc.nodes.size() <= 1 || compiledExecutionPlanOperator->GetBindingProperties().PersistentResourceSize <= UINT32_MAX)
+        {
+            return {ExecutionPlanInfo{std::move(compiledExecutionPlanOperator), gsl::narrow_cast<uint32_t>(graphDesc.nodes.size())}};
+        }
+
+        const uint32_t middleNodeIndex = gsl::narrow_cast<uint32_t>(graphDesc.nodes.size()) / 2;
+
+        // Split the nodes into 2 groups that we can try creating execution plans for
+        GraphDescBuilder::GraphDesc leftGraphDesc{};
+        leftGraphDesc.nodes = std::vector<GraphDescBuilder::NodeInfo>(graphDesc.nodes.begin(), graphDesc.nodes.begin() + middleNodeIndex);
+
+        GraphDescBuilder::GraphDesc rightGraphDesc{};
+        rightGraphDesc.nodes = std::vector<GraphDescBuilder::NodeInfo>(graphDesc.nodes.begin() + middleNodeIndex, graphDesc.nodes.end());
+
+        std::unordered_set<GraphDescBuilder::NodeInfo> leftNodeSet(rightGraphDesc.nodes.begin(), rightGraphDesc.nodes.end());
+        std::unordered_set<GraphDescBuilder::NodeInfo> rightNodeSet(rightGraphDesc.nodes.begin(), rightGraphDesc.nodes.end());
+
+        uint32_t leftGraphInputIndex = 0;
+        uint32_t leftGraphOutputIndex = 0;
+        uint32_t rightGraphInputIndex = 0;
+        uint32_t rightGraphOutputIndex = 0;
+
+        std::unordered_map<uint32_t, uint32_t> globalInputIndexToLeftGraphInputIndex;
+        std::unordered_map<uint32_t, uint32_t> globalOutputIndexToLeftGraphOutputIndex;
+
+        std::unordered_map<uint32_t, uint32_t> globalInputIndexToRightGraphInputIndex;
+        std::unordered_map<uint32_t, uint32_t> globalOutputIndexToRightGraphOutputIndex;
+
+        for (DML_INPUT_GRAPH_EDGE_DESC inputEdge : graphDesc.inputEdges)
+        {
+            if (inputEdge.ToNodeIndex < middleNodeIndex)
+            {
+                auto iter = globalInputIndexToLeftGraphInputIndex.find(inputEdge.GraphInputIndex);
+                if (iter == globalInputIndexToLeftGraphInputIndex.end())
+                {
+                    iter = globalInputIndexToLeftGraphInputIndex.emplace(inputEdge.GraphInputIndex, leftGraphInputIndex++).first;
+                }
+
+                inputEdge.GraphInputIndex = iter->second;
+                leftGraphDesc.inputEdges.push_back(std::move(inputEdge));
+            }
+            else
+            {
+                auto iter = globalInputIndexToRightGraphInputIndex.find(inputEdge.GraphInputIndex);
+                if (iter == globalInputIndexToRightGraphInputIndex.end())
+                {
+                    iter = globalInputIndexToRightGraphInputIndex.emplace(inputEdge.GraphInputIndex, rightGraphInputIndex++).first;
+                }
+
+                inputEdge.GraphInputIndex = iter->second;
+                inputEdge.ToNodeIndex -= middleNodeIndex;
+                rightGraphDesc.inputEdges.push_back(std::move(inputEdge));
+            }
+        }
+
+        for (DML_OUTPUT_GRAPH_EDGE_DESC outputEdge : graphDesc.outputEdges)
+        {
+            if (outputEdge.FromNodeIndex < middleNodeIndex)
+            {
+                auto iter = globalOutputIndexToLeftGraphOutputIndex.find(outputEdge.GraphOutputIndex);
+                if (iter == globalOutputIndexToLeftGraphOutputIndex.end())
+                {
+                    iter = globalOutputIndexToLeftGraphOutputIndex.emplace(outputEdge.GraphOutputIndex, leftGraphOutputIndex++).first;
+                }
+
+                outputEdge.GraphOutputIndex = iter->second;
+                leftGraphDesc.outputEdges.push_back(std::move(outputEdge));
+            }
+            else
+            {
+                auto iter = globalOutputIndexToRightGraphOutputIndex.find(outputEdge.GraphOutputIndex);
+                if (iter == globalOutputIndexToRightGraphOutputIndex.end())
+                {
+                    iter = globalOutputIndexToRightGraphOutputIndex.emplace(outputEdge.GraphOutputIndex, rightGraphOutputIndex++).first;
+                }
+
+                outputEdge.GraphOutputIndex = iter->second;
+                outputEdge.FromNodeIndex -= middleNodeIndex;
+                rightGraphDesc.outputEdges.push_back(std::move(outputEdge));
+            }
+        }
+
+        std::unordered_map<uint32_t, uint32_t> leftGraphNodeIndexToOutputIndex;
+        std::unordered_map<uint32_t, uint32_t> rightGraphNodeIndexToInputIndex;
+
+        for (DML_INTERMEDIATE_GRAPH_EDGE_DESC intermediateEdge : graphDesc.intermediateEdges)
+        {
+            if (intermediateEdge.FromNodeIndex < middleNodeIndex && intermediateEdge.ToNodeIndex >= middleNodeIndex)
+            {
+                auto leftIter = leftGraphNodeIndexToOutputIndex.find(intermediateEdge.FromNodeIndex);
+                if (leftIter == leftGraphNodeIndexToOutputIndex.end())
+                {
+                    leftIter = leftGraphNodeIndexToOutputIndex.emplace(intermediateEdge.FromNodeIndex, leftGraphOutputIndex++).first;
+                }
+
+                // The edge spans 2 graphs, so convert it to an output and an input node
+                DML_OUTPUT_GRAPH_EDGE_DESC leftOutputEdge{};
+                leftOutputEdge.GraphOutputIndex = leftIter->second;
+                leftOutputEdge.FromNodeIndex = intermediateEdge.FromNodeIndex;
+                leftOutputEdge.FromNodeOutputIndex = intermediateEdge.FromNodeOutputIndex;
+                leftGraphDesc.outputEdges.push_back(std::move(leftOutputEdge));
+
+                auto rightIter = rightGraphNodeIndexToInputIndex.find(intermediateEdge.ToNodeIndex);
+                if (rightIter == rightGraphNodeIndexToInputIndex.end())
+                {
+                    rightIter = rightGraphNodeIndexToInputIndex.emplace(intermediateEdge.ToNodeIndex, rightGraphInputIndex++).first;
+                }
+
+                DML_INPUT_GRAPH_EDGE_DESC rightInputEdge{};
+                rightInputEdge.GraphInputIndex = rightIter->second;
+                rightInputEdge.ToNodeIndex = intermediateEdge.ToNodeIndex - middleNodeIndex;
+                rightInputEdge.ToNodeInputIndex = intermediateEdge.ToNodeInputIndex - middleNodeIndex;
+                leftGraphDesc.inputEdges.push_back(std::move(rightInputEdge));
+            }
+            else if (intermediateEdge.FromNodeIndex >= middleNodeIndex)
+            {
+                // The edge is completely in the right graph, but we need to adjust its indices
+                assert(intermediateEdge.ToNodeIndex >= middleNodeIndex);
+                intermediateEdge.FromNodeIndex -= middleNodeIndex;
+                intermediateEdge.ToNodeIndex -= middleNodeIndex;
+                rightGraphDesc.intermediateEdges.push_back(std::move(intermediateEdge));
+            }
+            else
+            {
+                // The edge is completely contained in the left graph
+                leftGraphDesc.intermediateEdges.push_back(std::move(intermediateEdge));
+            }
+        }
+
+        auto leftExecutionPlans = CompileExecutionPlans(
+            providerImpl,
+            leftGraphDesc,
+            leftGraphInputIndex,
+            leftGraphOutputIndex);
+
+        auto rightExecutionPlans = CompileExecutionPlans(
+            providerImpl,
+            rightGraphDesc,
+            rightGraphInputIndex,
+            rightGraphOutputIndex);
+
+        leftExecutionPlans.insert(leftExecutionPlans.end(), rightExecutionPlans.begin(), rightExecutionPlans.end());
+        return leftExecutionPlans;
+    }
+
+
     void CreateIDmlCompiledOperatorAndRegisterKernel(
         onnxruntime::Graph& graph,
         const onnxruntime::IndexedSubGraph& indexedSubGraph,
@@ -357,43 +556,7 @@ namespace DmlGraphFusionHelper
             device.Get(),
             providerImpl);
 
-        // convert DML EP GraphDesc into DML_GRAPH_DESC and create IDMLCompiledOperator
-        DML_GRAPH_DESC dmlGraphDesc = {};
-        std::vector<DML_OPERATOR_GRAPH_NODE_DESC> dmlOperatorGraphNodes(graphDesc.nodes.size());
-        std::vector<DML_GRAPH_NODE_DESC> dmlGraphNodes(graphDesc.nodes.size());
-        std::vector<DML_GRAPH_EDGE_DESC> dmlInputEdges(graphDesc.inputEdges.size());
-        std::vector<DML_GRAPH_EDGE_DESC> dmlOutputEdges(graphDesc.outputEdges.size());
-        std::vector<DML_GRAPH_EDGE_DESC> dmlIntermediateEdges(graphDesc.intermediateEdges.size());
-        ConvertGraphDesc(
-            graphDesc,
-            dmlGraphDesc,
-            fusedNodeInputCount,
-            fusedNodeOutputCount,
-            dmlOperatorGraphNodes,
-            dmlGraphNodes,
-            dmlInputEdges,
-            dmlOutputEdges,
-            dmlIntermediateEdges);
-
-        DML_EXECUTION_FLAGS executionFlags = DML_EXECUTION_FLAG_NONE;
-        if (graphDesc.reuseCommandList)
-        {
-            executionFlags |= DML_EXECUTION_FLAG_DESCRIPTORS_VOLATILE;
-        }
-
-        // Query DML execution provider to see if metacommands is enabled
-        if (!providerImpl->MetacommandsEnabled())
-        {
-            executionFlags |= DML_EXECUTION_FLAG_DISABLE_META_COMMANDS;
-        }
-
-        ComPtr<IDMLDevice1> device1;
-        ORT_THROW_IF_FAILED(device.As(&device1));
-        ComPtr<IDMLCompiledOperator> compiledExecutionPlanOperator;
-        ORT_THROW_IF_FAILED(device1->CompileGraph(
-            &dmlGraphDesc,
-            executionFlags,
-            IID_PPV_ARGS(&compiledExecutionPlanOperator)));
+        auto compiledExecutionPlanOperators = CompileExecutionPlans(providerImpl, graphDesc, fusedNodeInputCount, fusedNodeOutputCount);
 
         // Populate input bindings for operator initialization
         std::vector<Microsoft::WRL::ComPtr<ID3D12Resource>> initializeResourceRefs; // For lifetime control
@@ -418,7 +581,7 @@ namespace DmlGraphFusionHelper
         Windows::AI::MachineLearning::Adapter::EdgeShapes outputShapes;
         ORT_THROW_HR_IF(E_UNEXPECTED, !TryGetStaticOutputShapes(fusedNode, outputShapes));
         bool resuableCommandList = graphDesc.reuseCommandList;
-        auto fused_kernel_func = [compiledExecutionPlanOperator,
+        auto fused_kernel_func = [compiledExecutionPlanOperators,
                                   outputShapes,
                                   resuableCommandList,
                                   nonOwnedGraphInputsFromInitializers,
@@ -429,7 +592,7 @@ namespace DmlGraphFusionHelper
                     (onnxruntime::FuncManager& func_mgr, const onnxruntime::OpKernelInfo& info, std::unique_ptr<onnxruntime::OpKernel>& out) mutable ->onnxruntime::Status
         {
             out.reset(CreateFusedGraphKernel(info,
-                                             compiledExecutionPlanOperator,
+                                             compiledExecutionPlanOperators,
                                              outputShapes,
                                              resuableCommandList,
                                              nonOwnedGraphInputsFromInitializers,
