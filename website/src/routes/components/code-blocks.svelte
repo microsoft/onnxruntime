@@ -42,51 +42,54 @@
 	// let currentTheme = html!=null?html.getAttribute('data-theme'):'corporate';
 </script>
 
-<svelte:head >
+<svelte:head>
 	<!-- {#if currentTheme == 'corporate'} -->
 	{@html oneLight}
-	<!-- {:else}
-		{@html oneDark}
-	{/if} -->
+	<!-- {:else} -->
+		<!-- {@html oneDark} -->
+	<!-- {/if} -->
 </svelte:head>
-<div class="container mx-auto">
-	<div class="tabs">
-		<a
-			on:click={handleClick}
-			class="tab tab-lg tab-lifted {activeTab === 'Python' ? 'tab-active' : ''}">Python</a
-		>
-		<a on:click={handleClick} class="tab tab-lg tab-lifted {activeTab === 'C#' ? 'tab-active' : ''}"
-			>C#</a
-		>
-		<a
-			on:click={handleClick}
-			class="tab tab-lg tab-lifted {activeTab === 'JavaScript' ? 'tab-active' : ''}">JavaScript</a
-		>
-		<a
-			on:click={handleClick}
-			class="tab tab-lg tab-lifted {activeTab === 'Java' ? 'tab-active' : ''}">Java</a
-		>
-		<a
-			on:click={handleClick}
-			class="tab tab-lg tab-lifted {activeTab === 'C++' ? 'tab-active' : ''}">C++</a
-		>
-		<a
-			on:click={handleClick}
-			class="tab tab-lg tab-lifted {activeTab === 'More..' ? 'tab-active' : ''}">More..</a
-		>
-	</div>
+<div class="flex flex-row container mx-auto">
+	<div class="basis-2/3">
+		<div class="tabs">
+			<a
+				on:click={handleClick}
+				class="tab tab-lg tab-lifted {activeTab === 'Python' ? 'tab-active' : ''}">Python</a
+			>
+			<a
+				on:click={handleClick}
+				class="tab tab-lg tab-lifted {activeTab === 'C#' ? 'tab-active' : ''}">C#</a
+			>
+			<a
+				on:click={handleClick}
+				class="tab tab-lg tab-lifted {activeTab === 'JavaScript' ? 'tab-active' : ''}">JavaScript</a
+			>
+			<a
+				on:click={handleClick}
+				class="tab tab-lg tab-lifted {activeTab === 'Java' ? 'tab-active' : ''}">Java</a
+			>
+			<a
+				on:click={handleClick}
+				class="tab tab-lg tab-lifted {activeTab === 'C++' ? 'tab-active' : ''}">C++</a
+			>
+			<a
+				on:click={handleClick}
+				class="tab tab-lg tab-lifted {activeTab === 'More..' ? 'tab-active' : ''}">More..</a
+			>
+		</div>
 
-	{#if activeTab === 'Python'}
-		<Highlight language={python} code={pythonCode} />
-	{:else if activeTab === 'C#'}
-		<Highlight language={csharp} code={csharpCode} />
-	{:else if activeTab === 'JavaScript'}
-		<Highlight language={javascript} code={javascriptCode} />
-	{:else if activeTab === 'Java'}
-		<Highlight language={java} code={javaCode} />
-	{:else if activeTab === 'C++'}
-		<Highlight language={cpp} code={cppCode} />
-	{:else if activeTab === 'More..'}
-		Link to docs
-	{/if}
+		{#if activeTab === 'Python'}
+			<Highlight language={python} code={pythonCode} />
+		{:else if activeTab === 'C#'}
+			<Highlight language={csharp} code={csharpCode} />
+		{:else if activeTab === 'JavaScript'}
+			<Highlight language={javascript} code={javascriptCode} />
+		{:else if activeTab === 'Java'}
+			<Highlight language={java} code={javaCode} />
+		{:else if activeTab === 'C++'}
+			<Highlight language={cpp} code={cppCode} />
+		{:else if activeTab === 'More..'}
+			Link to docs
+		{/if}
+	</div>
 </div>

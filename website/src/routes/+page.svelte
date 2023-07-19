@@ -1,11 +1,11 @@
 <script>
-    import Hero from "./hero.svelte";
-    import Partners from "./partners.svelte";
-    import CodeBlocks from "./code-blocks.svelte";
-    import Performance from "./performance.svelte";
-    import CrossPlatform from "./cross-platform.svelte";
-    import GenerativeAi from "./generative-ai.svelte";
-    import Testimonials from "./testimonials.svelte";
+    import Hero from "./components/hero.svelte";
+    import Partners from "./components/partners.svelte";
+    import CodeBlocks from "./components/code-blocks.svelte";
+    import Performance from "./components/performance.svelte";
+    import CrossPlatform from "./components/cross-platform.svelte";
+    import GenerativeAi from "./components/generative-ai.svelte";
+    import Testimonials from "./components/testimonials.svelte";
 </script>
 <Hero/>
 <Partners/>
