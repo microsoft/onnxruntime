@@ -4,11 +4,9 @@
 
 #pragma once
 
-#include <ATen/cuda/CUDAContext.h>
-
-#include "static_switch.h"
-#include "flash.h"
-#include "flash_fwd_kernel.h"
+#include "contrib_ops/cuda/bert/flash_attention/static_switch.h"
+#include "contrib_ops/cuda/bert/flash_attention/flash.h"
+#include "contrib_ops/cuda/bert/flash_attention/flash_fwd_kernel.h"
 
 namespace onnxruntime {
 namespace contrib {

@@ -13,11 +13,11 @@
 #include <cutlass/numeric_types.h>
 #include <cutlass/numeric_conversion.h>
 
-#include "block_info.h"
-#include "kernel_traits.h"
-#include "utils.h"
-#include "softmax.h"
-#include "philox.cuh"
+#include "contrib_ops/cuda/bert/flash_attention/block_info.h"
+#include "contrib_ops/cuda/bert/flash_attention/kernel_traits.h"
+#include "contrib_ops/cuda/bert/flash_attention/utils.h"
+#include "contrib_ops/cuda/bert/flash_attention/softmax.h"
+#include "contrib_ops/cuda/bert/flash_attention/philox.cuh"
 
 namespace onnxruntime {
 namespace contrib {
