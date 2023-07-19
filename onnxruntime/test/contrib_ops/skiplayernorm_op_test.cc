@@ -46,11 +46,7 @@ static void RunTest(
     skip_dims = input_dims;
   }
 
-<<<<<<< HEAD
   if(broadcast_skip) {
-=======
-  if(broadcast_skip){
->>>>>>> cd43605a86f5254d3b0d3651c45107662261bacb
     skip_dims = {1, sequence_length, hidden_size};
   }
 

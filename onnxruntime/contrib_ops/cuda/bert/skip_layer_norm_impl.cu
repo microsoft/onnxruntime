@@ -179,6 +179,11 @@ Status LaunchSkipLayerNormKernel(
     const T* beta, const T* bias, float epsilon, const int ld, const int element_count,
     size_t element_size,  const bool skip_broadcasted, const int skip_size) {
   // this must be true because n is the total size of the tensor
+
+  if (element_count == 0) {
+    return Status::OK();
+  }
+
   assert(element_count % ld == 0);
   bool hasBias = (bias == nullptr) ? false : true;
   bool hasSkipInputBiasAdditionOutput = (skip_input_bias_add_output == nullptr) ? false : true;
@@ -226,7 +231,6 @@ Status LaunchSkipLayerNormKernel(
 #undef LAUNCH_SKIP_LAYER_NORM_KERNEL
 #undef LAUNCH_SKIP_LAYER_NORM_KERNEL_SMALL
   }
-
   return CUDA_CALL(cudaGetLastError());
 }
 
