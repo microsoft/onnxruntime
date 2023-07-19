@@ -11,6 +11,7 @@ import torch._dynamo
 from functorch.compile import min_cut_rematerialization_partition
 from torch._dynamo.backends.common import aot_autograd
 from torch.library import Library
+from torch.onnx._internal.exporter import ExportOptions
 
 import onnxruntime
 from onnxruntime.training.torchdynamo.ort_backend import OrtBackend
@@ -93,11 +94,20 @@ class TestTorchDynamoOrtCustomOp(unittest.TestCase):
     def test_DORT_custom_ops(self):
         torch._dynamo.reset()
 
-        ort_backend = OrtBackend(ep="CPUExecutionProvider", dynamic_shape=True)
+        ort_backend = OrtBackend(
+            ep="CPUExecutionProvider",
+            onnx_exporter_options=ExportOptions(dynamic_shapes=True),
+        )
         # Register custom_exporter_for_aten_add_Tensor as "aten::mul.Tensor"'s
         # exporter.
         # Use custom_exporter_for_aten_add_Tensor.to_function_proto() to see
         # the sub-graph representing "aten::mul.Tensor".
+        ort_backend.resolved_onnx_exporter_options.onnxfunction_dispatcher.onnx_registry.register_custom_op(
+            function=custom_exporter_for_aten_add_Tensor,
+            namespace="aten",
+            op_name="mul",
+            overload="Tensor",
+        )
 
         aot_ort = aot_autograd(
             fw_compiler=ort_backend,
