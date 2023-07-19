@@ -5,6 +5,7 @@
 #include "core/providers/cuda/nn/layer_norm_impl.h"
 #include "skip_layer_norm.h"
 #include "skip_layer_norm_impl.h"
+#include "contrib_ops/cpu/skip_layer_norm_helper.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -64,64 +65,20 @@ Status SkipLayerNorm<T, Simplified>::ComputeInternal(OpKernelContext* ctx) const
   size_t input_dims_size = input_dims.size();
   const auto& skip_dims = skip->Shape().GetDims();
   size_t skip_dims_size = skip_dims.size();
-  
-  if (skip_dims_size != 3 && skip_dims_size != 2) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "skip is expected to have 3 or 2 dimensions, got ", skip_dims_size);
-  }
-
-  if (input_dims_size != 3 && input_dims_size != 2) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "input is expected to have 3 or 2 dimensions, got ", input_dims_size);
-  }
-
-  if ((input->Shape() != skip->Shape()) && ((skip_dims[0] != 1 || skip_dims_size != 2) && input_dims_size != 3)) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                            "skip is expected to have same shape as input or, a batch size of 1 or no batch size when input has 3 dimensions");
-  }
-
-  if (skip_dims[skip_dims_size - 1] != input_dims[input_dims_size - 1] || skip_dims[skip_dims_size - 2] != input_dims[input_dims_size - 2]) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                            "last two dimensions of skip needs to be same as input");
-  }
 
   int hidden_size = static_cast<int>(input_dims[input_dims_size - 1]);
 
-  const auto& gamma_dims = gamma->Shape().GetDims();
-  if (gamma_dims.size() != 1) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "gamma is expected to have 1 dimension, got ", gamma_dims.size());
-  }
-  if (gamma_dims[0] != hidden_size) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Last dimension of gamma and input does not match");
-  }
+  ORT_RETURN_IF_ERROR(onnxruntime::contrib::skip_layer_norm_helper::CheckInputs<Tensor>(input,
+                                                                                        skip,
+                                                                                        gamma,
+                                                                                        beta,
+                                                                                        bias,
+                                                                                        hidden_size,
+                                                                                        input_dims_size));
 
-  if (!Simplified) {
-    if (nullptr != beta) {
-      const auto& beta_dims = beta->Shape().GetDims();
-      if (beta_dims.size() != 1) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                               "beta is expected to have 1 dimension, got ", beta_dims.size());
-      }
-      if (beta_dims[0] != hidden_size) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                               "Last dimension of beta and input does not match");
-      }
-    }
-  }
 
-  if (nullptr != bias) {
-    const auto& bias_dims = bias->Shape().GetDims();
-    if (bias_dims.size() != 1) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "bias is expected to have 1 dimension, got ", bias_dims.size());
-    }
-    if (bias_dims[0] != hidden_size) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Last dimension of bias and input does not match");
-    }
-  }
+
+
 
   const bool skip_broadcasted = (skip_dims[0] == 1 || skip_dims_size == 2) ? true : false;
   const int skip_size = static_cast<int>(skip_dims[skip_dims_size - 1] * skip_dims[skip_dims_size - 2]);

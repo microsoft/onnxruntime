@@ -43,6 +43,7 @@ static void RunTest(
 
   if (use_token_count) {
     input_dims = {batch_size * sequence_length, hidden_size};
+    skip_dims = input_dims;
   }
 
   if(batch_size_1){

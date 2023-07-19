@@ -94,7 +94,7 @@ __global__ void SkipLayerNormKernel(
   for (int i = threadIdx.x; i < ld; i += TPB) {
     const int idx = offset + i;
 
-    const T skip_data = skip_broadcasted ? skip[idx % skip_size] : skip[idx]
+    const T skip_data = skip_broadcasted ? skip[idx % skip_size] : skip[idx];
     const T val = (bias == nullptr) ? input[idx] + skip_data : input[idx] + skip_data + bias[i];
 
     const T rldval = reverse_ld * val;
