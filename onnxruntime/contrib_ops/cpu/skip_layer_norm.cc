@@ -56,8 +56,6 @@ Status SkipLayerNorm<T>::Compute(OpKernelContext* p_ctx) const {
                                                                                         hidden_size,
                                                                                         input_dims_size));
 
-
-
   int64_t task_count = input->Shape().SizeToDimension(input_dims_size - 1);
 
   const T* input_data = input->Data<T>();
@@ -79,8 +77,6 @@ Status SkipLayerNorm<T>::Compute(OpKernelContext* p_ctx) const {
       [&](ptrdiff_t task_idx) {
         auto offset = task_idx * hidden_size;
 
-
-
         const T* p_input = input_data + offset;
         const T* p_skip = skip_data + (offset % skip_size);
         T* p_output = output_data + offset;
@@ -89,9 +85,7 @@ Status SkipLayerNorm<T>::Compute(OpKernelContext* p_ctx) const {
         T mean = 0;
         T mean_square = 0;
 
-
         for (int64_t h = 0; h < hidden_size; h++) {
-
           T value = p_input[h] + p_skip[h];
 
           if (nullptr != bias_data) {

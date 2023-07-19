@@ -19,7 +19,6 @@ Status CheckInputs(const T* input,
                    const T* bias,
                    int hidden_size_check,
                    size_t input_dims_size_check) {
-
   const auto& input_dims_check = input->Shape().GetDims();
   const auto& skip_dims_check = skip->Shape().GetDims();
   size_t skip_dims_size_check = skip_dims_check.size();
@@ -31,9 +30,8 @@ Status CheckInputs(const T* input,
 
   if ((input->Shape() != skip->Shape()) && ((skip_dims_check[0] != 1 || skip_dims_size_check != 2) && input_dims_size_check != 3)) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                            "skip is expected to have same shape as input or, a batch size of 1 or no batch size when input has 3 dimensions");
+                           "skip is expected to have same shape as input or, a batch size of 1 or no batch size when input has 3 dimensions");
   }
-
 
   if (input_dims_size_check != 3 && input_dims_size_check != 2) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
@@ -42,7 +40,7 @@ Status CheckInputs(const T* input,
 
   if (skip_dims_check[skip_dims_size_check - 1] != input_dims_check[input_dims_size_check - 1] || skip_dims_check[skip_dims_size_check - 2] != input_dims_check[input_dims_size_check - 2]) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                            "last two dimensions of skip needs to be same as input");
+                           "last two dimensions of skip needs to be same as input");
   }
 
   const auto& gamma_dims = gamma->Shape().GetDims();
@@ -78,13 +76,8 @@ Status CheckInputs(const T* input,
                              "Last dimension of bias and input does not match");
     }
   }
-
-
   return Status::OK();
-
 }
-
-
 
 }  // namespace skip_layer_norm_helper
 }  // namespace contrib

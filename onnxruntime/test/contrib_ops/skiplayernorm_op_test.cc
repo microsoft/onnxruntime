@@ -28,7 +28,7 @@ static void RunTest(
     bool simplified = false,
     bool use_token_count = false,
     bool strict = false,
-    bool batch_size_1 = false,
+    bool broadcast_skip = false,
     bool no_batch_size = false) {
   // Input and output shapes
   //   Input 0 - input: (batch_size, sequence_length, hidden_size) or (batch_size * sequence_length, hidden_size)
@@ -46,11 +46,11 @@ static void RunTest(
     skip_dims = input_dims;
   }
 
-  if(batch_size_1){
+  if(broadcast_skip) {
     skip_dims = {1, sequence_length, hidden_size};
   }
 
-  if(no_batch_size){
+  if(no_batch_size) {
     skip_dims = {sequence_length, hidden_size};
   }
 
@@ -826,9 +826,6 @@ TEST(SkipLayerNormTest, SkipLayerNormBatch2_Skip_Broadcast_Batch_Size_1) {
           false,
           true);
 }
-
-
-
 #endif
 
 }  // namespace test
