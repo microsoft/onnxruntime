@@ -126,7 +126,7 @@ void RestorePaddingTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) 
 }
 
 void MultiHeadAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx,
-                                             int past_input_index,
+                                             int past_key_index,
                                              bool dmmha_packing = false) {
   // Output 0 has shape (batch_size, sequence_length, v_hidden_size)
 
@@ -204,17 +204,17 @@ void MultiHeadAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& c
   }
 
   if (ctx.getNumOutputs() > 1) {  // has present output
-    if (hasInputShape(ctx, past_input_index)) {
-      auto& past_shape = getInputShape(ctx, past_input_index);
+    if (hasInputShape(ctx, past_key_index)) {
+      auto& past_shape = getInputShape(ctx, past_key_index);
       auto& past_dims = past_shape.dim();
       if (past_dims.size() != 4) {
-        fail_shape_inference("The past input shall be 5 dimensions");
+        fail_shape_inference("The past_key input shall be 4 dimensions");
       }
 
       auto past_present_share_buffer = getAttribute(ctx, "past_present_share_buffer", 0);
       if (past_present_share_buffer) {
-        propagateElemTypeFromInputToOutput(ctx, past_input_index, 1);
-        propagateElemTypeFromInputToOutput(ctx, static_cast<size_t>(past_input_index) + 1, 2);
+        propagateElemTypeFromInputToOutput(ctx, past_key_index, 1);
+        propagateElemTypeFromInputToOutput(ctx, static_cast<size_t>(past_key_index) + 1, 2);
       } else {
         if (sequence_length > 0 && past_dims[2].has_dim_value()) {
           int64_t total_sequence_length = sequence_length + past_shape.dim(3).dim_value();
