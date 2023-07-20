@@ -987,7 +987,7 @@ struct OrtApi {
 
   /** \brief Set the optimization level to apply when loading a graph
    *
-   * Please see https://onnxruntime.ai/docs/performance/graph-optimizations.html for an in-depth explanation
+   * Please see https://onnxruntime.ai/docs/performance/model-optimizations/graph-optimizations.html for an in-depth explanation
    * \param[in,out] options The session options object
    * \param[in] graph_optimization_level The optimization level
    *
