@@ -44,6 +44,98 @@ namespace onnxruntime {
 #endif
 #endif
 
+struct AllocTracker {
+  // These are non const so that they can be changed during debugging
+  size_t break_on_count_exceeded_ = 100;  // Break if a certain sized allocation goes above this count
+  size_t dump_on_size_exceeded_ = 1'000'000;
+  size_t dump_on_size_exceeded_delta_ = 1'000'000;  // Add this amount to the dump_on_size_exceeded_ every time it gets exceeded
+  size_t dump_count_ = 10;                          // Number of top counts to dump
+
+  AllocTracker(const char* name) : name_ {name} { }
+
+  ~AllocTracker() {
+    Dump();
+  }
+
+  void Alloc(void* address, size_t size) {
+    total_allocated_ += size;
+    allocation_count_++;
+
+    address_map_.insert({address, {size}});
+
+    if (auto iter = size_map_.find(size); iter != size_map_.end()) {
+      if (iter->second.count_ >= break_on_count_exceeded_)
+        [] {}();  // Set breakpoint here
+
+      count_set_.extract(iter->second);
+      iter->second.count_++;
+      count_set_.insert(iter->second);
+    } else {
+      AllocationSize allocation_size{size, 1};
+      size_map_.insert({size, allocation_size});
+      count_set_.insert(allocation_size);
+    }
+
+    if (total_allocated_ > dump_on_size_exceeded_) {
+      dump_on_size_exceeded_ += dump_on_size_exceeded_delta_;
+      printf("Allocated size limit exceeded\r\n");
+      Dump();
+    }
+  }
+
+  void Free(void* address) {
+    auto size = address_map_.extract(address).mapped().size_;
+
+    auto iter = size_map_.find(size);
+    count_set_.extract(iter->second);
+    iter->second.count_--;
+    if (iter->second.count_)
+      count_set_.insert(iter->second);
+
+    total_allocated_ -= size;
+    allocation_count_--;
+  }
+
+  void Dump() {
+    printf("Dumping allocations for %s  Total allocation count %zu, allocated size %zu:\r\n", name_, allocation_count_, total_allocated_);
+    if (!count_set_.empty()) {
+      auto iter = count_set_.end();
+      for (size_t i = 0; i < dump_count_ && iter-- != count_set_.begin(); i++) {
+        printf("  Size: %zu  Count: %zu\r\n", iter->size_, iter->count_);
+      }
+    }
+
+    printf("Finished Dumping allocations\r\n");
+  }
+
+  struct Allocation {
+    size_t size_;
+  };
+
+  struct AllocationSize  // How many allocation of a particular size
+  {
+    size_t size_;
+    size_t count_;
+  };
+
+  struct ReverseKey {
+    bool operator()(const AllocationSize& v1, const AllocationSize& v2) const {
+      if (v1.count_ != v2.count_)
+        return v1.count_ < v2.count_;
+
+      return v1.size_ < v2.size_;
+    }
+  };
+
+  const char *name_{};
+  size_t total_allocated_{};
+  size_t allocation_count_{};
+
+  std::map<void*, Allocation> address_map_;
+  std::map<size_t, AllocationSize> size_map_;       // sorted by size
+  std::set<AllocationSize, ReverseKey> count_set_;  // sorted by count
+};
+
 class StreamAwareArena;
 // A memory allocator that implements a 'best-fit with coalescing'
 // algorithm.  This is essentially a very simple version of Doug Lea's
@@ -76,6 +168,8 @@ class BFCArena : public IAllocator {
            int64_t max_power_of_two_extend_bytes = DEFAULT_MAX_POWER_OF_TWO_EXTEND_BYTES);
 
   ~BFCArena() override;
+
+  AllocTracker tracker_{Info().name};
 
   // If size is 0, then this function returns either NULL,
   // or a unique pointer value that can later be successfully

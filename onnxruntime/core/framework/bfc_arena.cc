@@ -341,6 +341,8 @@ void* BFCArena::AllocateRawInternal(size_t num_bytes,
       if (stream)
         chunk->stream_timestamp = stream->GetCurrentTimestamp();
     }
+
+    tracker_.Alloc(chunk->ptr, num_bytes);
     return chunk->ptr;
   }
 
@@ -356,6 +358,7 @@ void* BFCArena::AllocateRawInternal(size_t num_bytes,
       if (chunk->stream == nullptr && stream) {
         chunk->stream = stream;
       }
+      tracker_.Alloc(chunk->ptr, num_bytes);
       return chunk->ptr;
     } else {
       status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
@@ -497,6 +500,9 @@ void BFCArena::Free(void* p) {
     return;
   }
   std::lock_guard<OrtMutex> lock(lock_);
+
+  tracker_.Free(p);
+
   auto it = reserved_chunks_.find(p);
   if (it != reserved_chunks_.end()) {
     device_allocator_->Free(it->first);
