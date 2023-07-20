@@ -186,7 +186,8 @@ def compute_scale_zp_float8(element_type, std):
 
     :return: zero and scale [z, s]
 
-    More details in notebook `quantization_fp8.ipynb <>`_.
+    More details in notebook `quantization_fp8.ipynb
+    <https://github.com/microsoft/onnxruntime/blob/main/docs/python/notebooks/quantization_fp8.ipynb>`_.
     """
     if element_type not in FLOAT8_DISTRIBUTIONS:
         if element_type == TensorProto.FLOAT8E4M3FN:

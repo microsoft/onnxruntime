@@ -7,7 +7,7 @@ import logging
 import tempfile
 from pathlib import Path
 
-from .calibrate import CalibrationDataReader, CalibrationMethod, create_calibrator
+from .calibrate import CalibrationDataReader, CalibrationMethod, create_calibrator, TensorData, TensorsData
 from .onnx_quantizer import ONNXQuantizer
 from .qdq_quantizer import QDQQuantizer
 from .quant_utils import (
@@ -382,6 +382,10 @@ def quantize_static(
         )
         calibrator.collect_data(calibration_data_reader)
         tensors_range = calibrator.compute_data()
+        if not isinstance(tensors_range, TensorsData):
+            raise TypeError(
+                f"Unexpected type {type(tensors_range)} for tensors_range and calibrator={type(calibrator)}."
+            )
         del calibrator
 
     check_static_quant_arguments(quant_format, activation_type, weight_type)

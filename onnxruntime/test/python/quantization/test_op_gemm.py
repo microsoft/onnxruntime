@@ -9,11 +9,11 @@ import unittest
 import warnings
 
 import numpy as np
-from numpy.testing import assert_allclose
 import onnx
+from numpy.testing import assert_allclose
 from onnx import TensorProto, helper
 from onnx.reference import ReferenceEvaluator
-from op_test_utils import TestDataFeeds, check_model_correctness, check_op_type_count, check_qtype_by_node_type, QGemm
+from op_test_utils import QGemm, TestDataFeeds, check_model_correctness, check_op_type_count, check_qtype_by_node_type
 
 from onnxruntime import InferenceSession
 from onnxruntime.quantization import CalibrationMethod, QuantFormat, QuantType, quantize_dynamic, quantize_static
@@ -734,7 +734,7 @@ class TestOpGemm(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    TestOpGemm().test_quantize_gemm_e4m3fn_same()
+    # TestOpGemm().test_quantize_gemm_e4m3fn_same()
     # TestOpGemm().test_qgemm_ref_uint8_specific_example()
     # TestOpGemm()._test_dummy()
     # stop

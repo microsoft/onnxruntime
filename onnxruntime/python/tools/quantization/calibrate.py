@@ -21,15 +21,19 @@ from .quant_utils import apply_plot, load_model_with_shape_infer, smooth_distrib
 
 
 class TensorData:
+    _allowed = {"avg", "std", "lowest", "highest", "hist", "hist_edges"}
+
     def __init__(self, **kwargs):
         for k, v in kwargs.items():
+            if k not in TensorData._allowed:
+                raise ValueError(f"Unexpected value {k!r} not in {TensorData._allowed}.")
             setattr(self, k, v)
 
     @property
     def range_value(self):
-        if not hasattr(self, "low") or not hasattr(self, "high"):
-            raise AttributeError(f"Attributes 'low' and/or 'high' missing in {dir(self)}.")
-        return (self.low, self.high)
+        if not hasattr(self, "lowest") or not hasattr(self, "highest"):
+            raise AttributeError(f"Attributes 'lowest' and/or 'highest' missing in {dir(self)}.")
+        return (self.lowest, self.highest)
 
     @property
     def avg_std(self):
@@ -60,8 +64,19 @@ class TensorsData:
     def __iter__(self):
         yield from self.data
 
+    def __contains__(self, key):
+        return key in self.data
+
     def __getitem__(self, key):
         return self.data[key]
+
+    def __setitem__(self, key, value):
+        if key not in self.data:
+            raise RuntimeError(f"Only an existing tensor can be modified, {key!r} is not.")
+        self.data[key] = value
+
+    def values(self):
+        return self.data.values()
 
 
 class CalibrationMethod(Enum):
@@ -358,13 +373,13 @@ class MinMaxCalibrater(CalibraterBase):
             else:
                 pairs.append(tuple([min_value, max_value]))
 
-        new_calibrate_tensors_range = dict(zip(calibrate_tensor_names, pairs))
+        new_calibrate_tensors_range = TensorsData(CalibrationMethod.MinMax, dict(zip(calibrate_tensor_names, pairs)))
         if self.calibrate_tensors_range:
             self.calibrate_tensors_range = self.merge_range(self.calibrate_tensors_range, new_calibrate_tensors_range)
         else:
             self.calibrate_tensors_range = new_calibrate_tensors_range
 
-        return TensorsData(CalibrationMethod.MinMax, self.calibrate_tensors_range)
+        return self.calibrate_tensors_range
 
 
 class HistogramCalibrater(CalibraterBase):
@@ -862,8 +877,6 @@ class HistogramCollector(CalibrationDataCollector):
             raise ValueError("Invalid num_bins. Must be in range 512 <= num_bins.")
 
         histogram_dict = self.histogram_dict
-        percentile = self.percentile
-
         thresholds_dict = {}  # per tensor thresholds
 
         print(f"Number of tensors : {len(histogram_dict)}")

@@ -79,9 +79,9 @@ TEST(DequantizeLinearOpTest, Scalar) {
 TEST(DequantizeLinearOpMLFloat16Test, Scalar) {
   OpTester test("DequantizeLinear", 10);
   test.AddInput<int8_t>("x", {}, {100});
-  test.AddInput<MLFloat16>("x_scale", {}, {2.0f});
+  test.AddInput<MLFloat16>("x_scale", {}, {MLFloat16(2.0f)});
   test.AddInput<int8_t>("x_zero_point", {}, {-10});
-  test.AddOutput<MLFloat16>("y", {}, {220.0f});
+  test.AddOutput<MLFloat16>("y", {}, {MLFloat16(220.0f)});
   // Disable Tensorrt EP due to error:node1_quantize_scale_node: out of bounds channel axis 1. Number of input dimensions is 0.
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
@@ -247,8 +247,8 @@ TEST(QuantizeLinearOpTest, Uint8) {
 TEST(QuantizeLinearOpMLFloat16Test, Uint8) {
   OpTester test("QuantizeLinear", 10);
   std::vector<int64_t> dims{6};
-  test.AddInput<MLFloat16>("x", dims, {0, 2, 3, 1000, -254, -1000});
-  test.AddInput<MLFloat16>("y_scale", {}, {2.0f});
+  test.AddInput<MLFloat16>("x", dims, {MLFloat16(0.0f), MLFloat16(2.0f), MLFloat16(3.0f), MLFloat16(1000.0f), MLFloat16(-254.0f), MLFloat16(-1000.0f)});
+  test.AddInput<MLFloat16>("y_scale", {}, {MLFloat16(2.0f)});
   test.AddInput<uint8_t>("y_zero_point", {}, {128});
   test.AddOutput<uint8_t>("y", dims, {128, 129, 130, 255, 1, 0});
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT doesn't support support UINT8 for quantization
@@ -527,27 +527,46 @@ TEST(QuantizeLinearOpTest, Float8) {
     QuantizeLinearOp19Test<float, Float8E5M2FNUZ>(false);
 }
 
+template <typename InT, typename OutT>
+void QuantizeLinearOp19F16Test(bool saturate) {
+  OpTester test("QuantizeLinear", 19);
+  if (!saturate) {
+    test.AddAttribute<int64_t>("saturate", 0);
+  }
+  std::vector<int64_t> dims{6};
+  std::vector<InT> x{InT(0.0f), InT(2.0f), InT(3.0f), InT(1000.0f), InT(-254.0f), InT(-1000.0f)};
+  test.AddInput<InT>("x", dims, x);
+  test.AddInput<InT>("y_scale", {}, {InT(1.0f)});
+  test.AddInput<OutT>("y_zero_point", {}, {OutT(0.0f, true)});
+  std::vector<OutT> y;
+  for (auto it : x) {
+    y.push_back(OutT(it, saturate));
+  }
+  test.AddOutput<OutT>("y", dims, y);
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+
 TEST(QuantizeLinearOpMLFloat16Test, Float8) {
   constexpr int min_cuda_architecture = 11080;
   bool enable_cuda = (nullptr != DefaultCpuExecutionProvider().get()) && HasCudaEnvironment(min_cuda_architecture);
   bool enable_cpu = (nullptr != DefaultCpuExecutionProvider().get());
 
   if (enable_cpu || enable_cuda)
-    QuantizeLinearOp19Test<MLFloat16, Float8E4M3FN>(true);
+    QuantizeLinearOp19F16Test<MLFloat16, Float8E4M3FN>(true);
   if (enable_cpu)
-    QuantizeLinearOp19Test<MLFloat16, Float8E4M3FNUZ>(true);
+    QuantizeLinearOp19F16Test<MLFloat16, Float8E4M3FNUZ>(true);
   if (enable_cpu || enable_cuda)
-    QuantizeLinearOp19Test<MLFloat16, Float8E5M2>(true);
+    QuantizeLinearOp19F16Test<MLFloat16, Float8E5M2>(true);
   if (enable_cpu)
-    QuantizeLinearOp19Test<MLFloat16, Float8E5M2FNUZ>(true);
+    QuantizeLinearOp19F16Test<MLFloat16, Float8E5M2FNUZ>(true);
   if (enable_cpu || enable_cuda)
-    QuantizeLinearOp19Test<MLFloat16, Float8E4M3FN>(false);
+    QuantizeLinearOp19F16Test<MLFloat16, Float8E4M3FN>(false);
   if (enable_cpu)
-    QuantizeLinearOp19Test<MLFloat16, Float8E4M3FNUZ>(false);
+    QuantizeLinearOp19F16Test<MLFloat16, Float8E4M3FNUZ>(false);
   if (enable_cpu || enable_cuda)
-    QuantizeLinearOp19Test<MLFloat16, Float8E5M2>(false);
+    QuantizeLinearOp19F16Test<MLFloat16, Float8E5M2>(false);
   if (enable_cpu)
-    QuantizeLinearOp19Test<MLFloat16, Float8E5M2FNUZ>(false);
+    QuantizeLinearOp19F16Test<MLFloat16, Float8E5M2FNUZ>(false);
 }
 
 #endif

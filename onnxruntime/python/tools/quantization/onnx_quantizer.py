@@ -4,6 +4,7 @@
 # license information.
 # --------------------------------------------------------------------------
 import logging
+from typing import Any, Dict
 
 import numpy as np
 import onnx
@@ -12,6 +13,7 @@ from onnx import onnx_pb as onnx_proto
 from onnx.helper import make_graph, make_model, make_node, make_tensor_value_info
 from onnx.reference import ReferenceEvaluator
 
+from .calibrate import TensorData, TensorsData
 from .onnx_model import ONNXModel
 from .quant_utils import (
     TENSOR_NAME_QUANT_SUFFIX,
@@ -35,6 +37,26 @@ from .quant_utils import (
     tensor_proto_to_array,
 )
 from .registry import CreateOpQuantizer
+
+
+class QuantizationParams:
+    def __init__(self, **data: Dict[str, Any]):
+        self.data = {}
+        for k, v in data.items():
+            if not isinstance(k, str):
+                raise TypeError(f"Keys must be strings not {type(k)}.")
+            if not isinstance(v, (int, float, str)):
+                raise TypeError(f"Values must be int, float, str not {type(v)}.")
+            self.data[k] = v
+
+    def __iter__(self):
+        yield from self.data
+
+    def __getitem__(self, key):
+        return self.data[key]
+
+    def __len__(self):
+        return len(self.data)
 
 
 class ONNXQuantizer:
@@ -99,6 +121,10 @@ class ONNXQuantizer:
                     'Conv_4:0': [np.float32(1), np.float32(3.5)]
                 }
         """
+        if tensors_range is not None and any(map(lambda t: not isinstance(t, TensorData), tensors_range.values())):
+            raise TypeError(
+                f"tensors_range contains unexpected types {set(type(v) for v in tensors_range.values())}, not TensorData."
+            )
         self.tensors_range = tensors_range
         self.nodes_to_quantize = nodes_to_quantize  # specific nodes to quantize
         self.nodes_to_exclude = nodes_to_exclude  # specific nodes to exclude
@@ -582,14 +608,16 @@ class ONNXQuantizer:
                 return False, "", "", "", ""
 
             params = self.quantization_params[param_name]
+            if not isinstance(params, QuantizationParams):
+                raise TypeError(f"Unexpected type {type(params)} for {param_name!r}.")
             if params is None or len(params) != 2:
                 raise ValueError(
                     "Quantization parameters should contain zero point and scale. "
                     "Specified values for output {}: {}".format(param_name, params)
                 )
 
-            zero_point_values = [params[0]]
-            scale_values = [params[1]]
+            zero_point_values = [params["zero_point"]]
+            scale_values = [params["scale"]]
         else:
             zero_point_values = [use_zeropoint]
             scale_values = [use_scale]
@@ -1128,22 +1156,25 @@ class ONNXQuantizer:
                 continue
             if len(self.model.input_name_to_nodes()[node.input[0]]) != 1:
                 continue
-            if node.input[0] not in self.tensors_range.keys() or node.output[0] not in self.tensors_range.keys():
+            if node.input[0] not in self.tensors_range or node.output[0] not in self.tensors_range:
                 continue
-            self.tensors_range[node.input[0]] = self.tensors_range[node.output[0]]
+            td = self.tensors_range[node.output[0]]
+            if not isinstance(td, TensorData):
+                raise TypeError(f"Unexpected type {type(td)} for {node.output[0]!r}.")
+            self.tensors_range[node.input[0]] = td
 
         quantization_params = {}
         for tensor_name in self.tensors_range:
+            td = self.tensors_range[tensor_name]
+            if not isinstance(td, TensorData):
+                raise TypeError(f"Unexpected type {type(td)} for {tensor_name!r}.")
             if self.activation_qType == onnx.TensorProto.FLOAT8E4M3FN:
-                quantization_params[tensor_name] = compute_scale_zp_float8(
-                    self.activation_qType, self.tensors_range[tensor_name].avg_std[1]
-                )
+                zero, scale = compute_scale_zp_float8(self.activation_qType, td.avg_std[1])
             else:
-                rmin, rmax = self.tensors_range[tensor_name].range_value
+                rmin, rmax = td.range_value
                 qmin, qmax = get_qmin_qmax_for_qType(self.activation_qType, symmetric=self.is_activation_symmetric)
 
-                quantization_params[tensor_name] = compute_scale_zp(
-                    rmin, rmax, qmin, qmax, self.is_activation_symmetric
-                )
+                zero, scale = compute_scale_zp(rmin, rmax, qmin, qmax, self.is_activation_symmetric)
+            quantization_params[tensor_name] = QuantizationParams(zero_point=zero, scale=scale)
 
         return quantization_params
