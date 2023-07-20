@@ -85,7 +85,7 @@ GetQDQTestCaseFn BuildMatMulOpQDQTestCase(const std::vector<int64_t>& input1_sha
 // outputs for QNN and CPU match.
 static void RunMatMulOpOpTest(const std::vector<int64_t>& input1_shape,
                               const std::vector<int64_t>& input2_shape,
-                              ExpectedEPNodeAssignment expected_ep_assignment, const char* test_description,
+                              ExpectedEPNodeAssignment expected_ep_assignment,
                               int opset = 13) {
   ProviderOptions provider_options;
 #if defined(_WIN32)
@@ -94,13 +94,10 @@ static void RunMatMulOpOpTest(const std::vector<int64_t>& input1_shape,
   provider_options["backend_path"] = "libQnnCpu.so";
 #endif
 
-  constexpr int expected_nodes_in_partition = 1;
   RunQnnModelTest(BuildMatMulOpTestCase(input1_shape, input2_shape),
                   provider_options,
                   opset,
-                  expected_ep_assignment,
-                  expected_nodes_in_partition,
-                  test_description);
+                  expected_ep_assignment);
 }
 
 // Runs a QDQ AveragePool model on the QNN HTP backend. Checks the graph node assignment, and that inference
@@ -108,7 +105,7 @@ static void RunMatMulOpOpTest(const std::vector<int64_t>& input1_shape,
 template <typename QuantType>
 static void RunQDQMatMulOpOpTest(const std::vector<int64_t>& input1_shape,
                                  const std::vector<int64_t>& input2_shape,
-                                 ExpectedEPNodeAssignment expected_ep_assignment, const char* test_description,
+                                 ExpectedEPNodeAssignment expected_ep_assignment,
                                  int opset = 18, float fp32_abs_err = 1e-5f) {
   ProviderOptions provider_options;
 #if defined(_WIN32)
@@ -117,13 +114,10 @@ static void RunQDQMatMulOpOpTest(const std::vector<int64_t>& input1_shape,
   provider_options["backend_path"] = "libQnnHtp.so";
 #endif
 
-  constexpr int expected_nodes_in_partition = 1;
   RunQnnModelTest(BuildMatMulOpQDQTestCase<QuantType>(input1_shape, input2_shape),
                   provider_options,
                   opset,
                   expected_ep_assignment,
-                  expected_nodes_in_partition,
-                  test_description,
                   fp32_abs_err);
 }
 
@@ -134,14 +128,14 @@ static void RunQDQMatMulOpOpTest(const std::vector<int64_t>& input1_shape,
 TEST_F(QnnCPUBackendTests, TestMatMulOp) {
   RunMatMulOpOpTest({2, 2} /* input_shape1 */,
                     {2, 2} /* input_shape2 */,
-                    ExpectedEPNodeAssignment::All, "TestMatMulOp", 18);
+                    ExpectedEPNodeAssignment::All, 18);
 }
 
 // QNN broadcast issue
 TEST_F(QnnCPUBackendTests, DISABLED_TestMatMulOp2) {
   RunMatMulOpOpTest({28, 1, 64} /* input_shape1 */,
                     {64, 32} /* input_shape2 */,
-                    ExpectedEPNodeAssignment::All, "TestMatMulOp2", 18);
+                    ExpectedEPNodeAssignment::All, 18);
 }
 
 #if defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
@@ -152,7 +146,7 @@ TEST_F(QnnCPUBackendTests, DISABLED_TestMatMulOp2) {
 TEST_F(QnnHTPBackendTests, TestMatMulOp_HTP_u8) {
   RunQDQMatMulOpOpTest<uint8_t>({2, 2} /* input_shape1 */,
                                 {2, 2} /* input_shape2 */,
-                                ExpectedEPNodeAssignment::All, "TestMatMulOp_HTP_u8",
+                                ExpectedEPNodeAssignment::All,
                                 18, 0.00381f);
 }
 
@@ -160,7 +154,7 @@ TEST_F(QnnHTPBackendTests, TestMatMulOp_HTP_u8) {
 TEST_F(QnnHTPBackendTests, DISABLED_TestMatMulOp2_HTP_u8) {
   RunQDQMatMulOpOpTest<uint8_t>({28, 1, 64} /* input_shape1 */,
                                 {64, 32} /* input_shape2 */,
-                                ExpectedEPNodeAssignment::All, "TestMatMulOp2_HTP_u8",
+                                ExpectedEPNodeAssignment::All,
                                 18, 0.00381f);
 }
 
@@ -168,7 +162,7 @@ TEST_F(QnnHTPBackendTests, DISABLED_TestMatMulOp2_HTP_u8) {
 TEST_F(QnnHTPBackendTests, DISABLED_TestMatMulOp3_HTP_u8) {
   RunQDQMatMulOpOpTest<uint8_t>({28, 1, 32} /* input_shape1 */,
                                 {32, 2} /* input_shape2 */,
-                                ExpectedEPNodeAssignment::All, "TestMatMulOp3_HTP_u8",
+                                ExpectedEPNodeAssignment::All,
                                 18, 0.00381f);
 }
 

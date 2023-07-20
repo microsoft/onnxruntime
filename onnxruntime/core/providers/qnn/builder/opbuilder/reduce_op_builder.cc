@@ -191,6 +191,13 @@ Status ReduceOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "QNN EP: ReduceProd operator not supported by HTP backend.");
   }
 
+  if (is_quantized_model) {
+    std::vector<uint32_t> input_shape;
+    ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(node_unit.Inputs()[0].node_arg, input_shape),
+                      "QNN EP: Cannot get input shape for");
+    ORT_RETURN_IF(input_shape.size() > 4, "QNN EP: HTP backend does not support Reduce ops with rank > 4.");
+  }
+
   return AddToModelBuilder(qnn_model_wrapper, node_unit, logger, is_quantized_model, true);
 }
 

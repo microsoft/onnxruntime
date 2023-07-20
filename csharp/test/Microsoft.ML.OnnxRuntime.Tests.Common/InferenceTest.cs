@@ -1319,12 +1319,13 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         private void TestModelInputFLOAT16()
         {
             // model takes 1x5 input of fixed type, echoes back
+            Float16[] modelInput = { new Float16(15360), new Float16(16384), new Float16(16896), new Float16(17408), new Float16(17664) };
+            int[] inputShape = { 1, 5 };
             var model = TestDataLoader.LoadModelFromEmbeddedResource("test_types_FLOAT16.onnx");
             using (var session = new InferenceSession(model))
             {
                 var container = new List<NamedOnnxValue>();
-                var tensorIn = new DenseTensor<Float16>(
-                    new Float16[] { 15360, 16384, 16896, 17408, 17664 }, new int[] { 1, 5 });
+                var tensorIn = new DenseTensor<Float16>(modelInput, inputShape);
                 var nov = NamedOnnxValue.CreateFromTensor("input", tensorIn);
                 container.Add(nov);
                 using (var res = session.Run(container))
@@ -1341,13 +1342,15 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         [Fact(DisplayName = "TestModelInputBFLOAT16")]
         private void TestModelInputBFLOAT16()
         {
+            BFloat16[] modelInput = { new BFloat16(16256), new BFloat16(16384), 
+                new BFloat16(16448), new BFloat16(16512), new BFloat16(16544) };
+            int[] inputShape = { 1, 5 };
             // model takes 1x5 input of fixed type, echoes back
             var model = TestDataLoader.LoadModelFromEmbeddedResource("test_types_BFLOAT16.onnx");
             using (var session = new InferenceSession(model))
             {
                 var container = new List<NamedOnnxValue>();
-                var tensorIn = new DenseTensor<BFloat16>(
-                    new BFloat16[] { 16256, 16384, 16448, 16512, 16544 }, new int[] { 1, 5 });
+                var tensorIn = new DenseTensor<BFloat16>(modelInput, inputShape);
                 var nov = NamedOnnxValue.CreateFromTensor("input", tensorIn);
                 container.Add(nov);
                 using (var res = session.Run(container))
@@ -1990,86 +1993,12 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 #endif
                 var session = (deviceId.HasValue)
                     ? new InferenceSession(model, option)
-                    : new InferenceSession(model);
+                                  : new InferenceSession(model);
                 float[] inputData = TestDataLoader.LoadTensorFromEmbeddedResource("bench.in");
                 float[] expectedOutput = TestDataLoader.LoadTensorFromEmbeddedResource("bench.expected_out");
                 var inputMeta = session.InputMetadata;
                 var tensor = new DenseTensor<float>(inputData, inputMeta["data_0"].Dimensions);
                 return new Tuple<InferenceSession, float[], DenseTensor<float>, float[]>(session, inputData, tensor, expectedOutput);
-            }
-        }
-
-        internal class FloatComparer : IEqualityComparer<float>
-        {
-            private float atol = 1e-3f;
-            private float rtol = 1.7e-2f;
-
-            public bool Equals(float x, float y)
-            {
-                return Math.Abs(x - y) <= (atol + rtol * Math.Abs(y));
-            }
-            public int GetHashCode(float x)
-            {
-                return x.GetHashCode();
-            }
-        }
-
-        internal class DoubleComparer : IEqualityComparer<double>
-        {
-            private double atol = 1e-3;
-            private double rtol = 1.7e-2;
-
-            public bool Equals(double x, double y)
-            {
-                return Math.Abs(x - y) <= (atol + rtol * Math.Abs(y));
-            }
-            public int GetHashCode(double x)
-            {
-                return x.GetHashCode();
-            }
-        }
-
-        class ExactComparer<T> : IEqualityComparer<T>
-        {
-            public bool Equals(T x, T y)
-            {
-                return x.Equals(y);
-            }
-            public int GetHashCode(T x)
-            {
-                return x.GetHashCode();
-            }
-        }
-
-        /// <summary>
-        /// Use it to compare Float16
-        /// </summary>
-        internal class Float16Comparer : IEqualityComparer<Float16>
-        {
-            public ushort tolerance = 0;
-            public bool Equals(Float16 x, Float16 y)
-            {
-                return Math.Abs(x.value - y.value) <= (tolerance + y);
-            }
-            public int GetHashCode(Float16 x)
-            {
-                return x.GetHashCode();
-            }
-        }
-
-        /// <summary>
-        /// Use it to compare Bloat16
-        /// </summary>
-        internal class BFloat16Comparer : IEqualityComparer<BFloat16>
-        {
-            public ushort tolerance = 0;
-            public bool Equals(BFloat16 x, BFloat16 y)
-            {
-                return Math.Abs(x.value - y.value) <= (tolerance + y);
-            }
-            public int GetHashCode(BFloat16 x)
-            {
-                return x.GetHashCode();
             }
         }
 
