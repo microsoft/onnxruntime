@@ -74,7 +74,7 @@ bool SafeMultiply(size_t a, size_t b, size_t& out) {
     if (elementType == ORTTensorElementDataTypeString) {
       ORT_CXX_API_THROW(
           "ORTTensorElementDataTypeString element type provided. "
-          "Please call initWithTensorStringData instead to create an ORTValue with string data.",
+          "Please call initWithTensorStringData:shape:error: instead to create an ORTValue with string data.",
           ORT_INVALID_ARGUMENT);
     }
     const auto memoryInfo = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU);
@@ -108,18 +108,19 @@ bool SafeMultiply(size_t a, size_t b, size_t& out) {
       std::vector<int64_t> result{};
       result.reserve(shape.count);
       for (NSNumber* dim in shape) {
-        if (!SafeMultiply(static_cast<size_t>(dim.longLongValue), tensorSize, tensorSize)) {
+        const auto dimValue = dim.longLongValue;
+        if (dimValue < 0 || !SafeMultiply(static_cast<size_t>(dimValue), tensorSize, tensorSize)) {
           ORT_CXX_API_THROW("Failed to compute the tensor size.", ORT_RUNTIME_EXCEPTION);
         }
-        result.push_back(dim.longLongValue);
+        result.push_back(dimValue);
       }
       return result;
     }();
 
     if (tensorSize != [tensorStringData count]) {
       ORT_CXX_API_THROW(
-          "Computed tensor size does not equal the length of the provided tensor string data",
-          ORT_RUNTIME_EXCEPTION);
+          "Computed tensor size does not equal the length of the provided tensor string data.",
+          ORT_INVALID_ARGUMENT);
     }
 
     Ort::Value ortValue = Ort::Value::CreateTensor(
@@ -157,7 +158,7 @@ bool SafeMultiply(size_t a, size_t b, size_t& out) {
     const auto tensorTypeAndShapeInfo = _typeInfo->GetTensorTypeAndShapeInfo();
     if (tensorTypeAndShapeInfo.GetElementType() == ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING) {
       ORT_CXX_API_THROW(
-          "This ORTValue holds string data. Please call tensorStringDataWithError "
+          "This ORTValue holds string data. Please call tensorStringDataWithError: "
           "instead to retrieve the string data from this ORTValue.",
           ORT_RUNTIME_EXCEPTION);
     }

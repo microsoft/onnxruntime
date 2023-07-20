@@ -4,6 +4,7 @@
 #import "ort_enums_internal.h"
 
 #include <algorithm>
+#include <optional>
 
 #import "cxx_api.h"
 
@@ -123,7 +124,7 @@ size_t SizeOfCAPITensorElementType(ONNXTensorElementDataType capi_type) {
       [capi_type](const auto& type_info) {
         return type_info.element_size.has_value() && type_info.capi_type == capi_type;
       },
-      [](const auto& type_info) { return type_info.element_size.value(); },
+      [](const auto& type_info) { return *type_info.element_size; },
       "unsupported tensor element type or tensor element type does not have a known size");
 }
 
