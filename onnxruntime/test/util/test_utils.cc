@@ -30,6 +30,10 @@ static void VerifyOutputs(const std::vector<std::string>& output_names,
     ASSERT_TRUE(SpanEq(ltensor.Shape().GetDims(), rtensor.Shape().GetDims()));
     auto element_type = ltensor.GetElementType();
     switch (element_type) {
+      case ONNX_NAMESPACE::TensorProto_DataType_UINT32:
+        EXPECT_TRUE(SpanEq(ltensor.DataAsSpan<uint32_t>(), rtensor.DataAsSpan<uint32_t>()))
+            << " mismatch for " << output_names[i];
+        break;
       case ONNX_NAMESPACE::TensorProto_DataType_INT32:
         EXPECT_TRUE(SpanEq(ltensor.DataAsSpan<int32_t>(), rtensor.DataAsSpan<int32_t>()))
             << " mismatch for " << output_names[i];
