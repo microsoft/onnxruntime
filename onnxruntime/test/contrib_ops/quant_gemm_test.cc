@@ -64,6 +64,11 @@ void RunQuantGemmU8X8Test(const int M,
     matrix_b_data = ToVector<WeightType>(matrix_b.data(), N * K);
   }
   WeightType b_zero_point = GetMiddle(matrix_b_data);
+  if constexpr (std::is_same<WeightType, int8_t>::value) {
+    if (B_is_initializer && !per_column) {
+      b_zero_point = 0;
+    }
+  }
   std::vector<float> b_scale({n_scale(e)});
   std::vector<WeightType> b_zp_per_column({b_zero_point});
   Eigen::MatrixXi b_zp_matrix = b_zero_point * Eigen::MatrixXi::Ones(N, K);
@@ -98,7 +103,7 @@ void RunQuantGemmU8X8Test(const int M,
   test.AddInput<ActType>("a_zero_point", {}, {a_zero_point});
   test.AddInput<WeightType>("B", is_B_trans ? std::vector<int64_t>({N, K}) : std::vector<int64_t>({K, N}), std::move(matrix_b_data), B_is_initializer);
   test.AddInput<float>("b_scale", {SafeInt<int64_t>(b_scale.size())}, b_scale);
-  test.AddInput<WeightType>("b_zero_point", {SafeInt<int64_t>(b_zp_per_column.size())}, b_zp_per_column);
+  test.AddInput<WeightType>("b_zero_point", {SafeInt<int64_t>(b_zp_per_column.size())}, b_zp_per_column, B_is_initializer);
 
   if (has_C) {
     test.AddInput<int32_t>("C", {M, N}, ToVector<int32_t>(matrix_c.data(), M * N));

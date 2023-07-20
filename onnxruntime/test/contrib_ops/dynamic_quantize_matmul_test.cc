@@ -58,7 +58,12 @@ void TestDynamicQuantizeMatMul(const std::vector<int64_t>& A_dims,
   test.AddInput<float>("b_scale", {b_scale_zp_size}, B_scale);
 
   if (has_zp) {
-    test.AddInput<T>("b_zero_point", {b_scale_zp_size}, B_zero_point);
+    if constexpr (std::is_same<T, int8_t>::value) {
+      if (is_matrix_b_constant && !per_column) {
+        B_zero_point[0] = 0;        
+      }
+    }
+    test.AddInput<T>("b_zero_point", {b_scale_zp_size}, B_zero_point, is_matrix_b_constant);
   } else {
     test.AddOptionalInputEdge<T>();
   }

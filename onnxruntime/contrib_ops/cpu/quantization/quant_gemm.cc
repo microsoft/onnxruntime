@@ -89,35 +89,51 @@ class QGemm : protected GemmBase, public MatMulIntegerBase {
     }
 
     MLAS_GEMM_QUANT_SHAPE_PARAMS gemm_shape{narrow<size_t>(M), narrow<size_t>(N), narrow<size_t>(K), a_is_signed, b_is_signed, c != nullptr};
-    MLAS_GEMM_QUANT_DATA_PARAMS gemm_param;
 
+  if (b_is_symmetrically_packed_) {
+      MLAS_SYMM_QGEMM_DATA_PARAMS symm_gemm;
+      symm_gemm.A = a_data;
+      symm_gemm.lda = gemm_shape.K;
+      symm_gemm.C = gemm_output_data;
+      symm_gemm.ldc = gemm_shape.N;
+      symm_gemm.B = packed_b_.get();
+      if (x_zero_point_ == -1) {
+        symm_gemm.ZeroPointA = gemm_shape.AIsSigned ? a_zp->Data<int8_t>()[0] : a_zp->Data<uint8_t>()[0];
+      }  // or else we knew the A zero point during packing time and the scaling is already done.
+      std::vector<float> output_scales = ComputeOutputScale(a_scale, b_scale, y_scale);
+      std::optional<MLAS_QGEMM_SCALE_BIAS_OUTPUT_PROCESSOR> scale_bias_proc_ptr;
+      std::optional<MLAS_QGEMM_REQUANT_OUTPUT_PROCESSOR> requant_proc_ptr;
+      symm_gemm.OutputProcessor = ChoosePostProcessor(y_zp, N, output_scales, y, scale_bias_proc_ptr, requant_proc_ptr);
+
+      MlasSymmQgemmBatch(gemm_shape, &symm_gemm, 1, context->GetOperatorThreadPool());
+      return Status::OK();
+    }
+
+    MLAS_GEMM_QUANT_DATA_PARAMS gemm_param;
     gemm_param.A = a_data;
     gemm_param.lda = gemm_shape.K;
     gemm_param.ZeroPointA = *(static_cast<const uint8_t*>(a_zp->DataRaw()));
-
     gemm_param.B = b_data;
     gemm_param.ldb = gemm_shape.N;
     gemm_param.BIsPacked = bool(packed_b_);
     gemm_param.ZeroPointB = static_cast<const uint8_t*>(b_zp->DataRaw());
-
     gemm_param.C = gemm_output_data;
     gemm_param.ldc = gemm_shape.N;
-
     gemm_param.PerColumnZeroPoints = !IsScalarOr1ElementVector(b_zp);
 
     std::vector<float> output_scales = ComputeOutputScale(a_scale, b_scale, y_scale);
     std::optional<MLAS_QGEMM_SCALE_BIAS_OUTPUT_PROCESSOR> scale_bias_proc_ptr;
     std::optional<MLAS_QGEMM_REQUANT_OUTPUT_PROCESSOR> requant_proc_ptr;
-    SetPostProcessor(y_zp, N, output_scales, y, gemm_param, scale_bias_proc_ptr, requant_proc_ptr);
+    gemm_param.OutputProcessor = ChoosePostProcessor(y_zp, N, output_scales, y, scale_bias_proc_ptr, requant_proc_ptr);
 
     MlasGemmBatch(gemm_shape, &gemm_param, 1, context->GetOperatorThreadPool());
     return Status::OK();
   }
 
  protected:
-  int GetBIdx() const override {
-    return IN_B;
-  }
+  int GetAZeroPointIdx() const override { return IN_A_ZERO_POINT; }
+  int GetBIdx() const override { return IN_B; }
+  int GetBZeroPointIdx() const override { return IN_B_ZERO_POINT; }
 
   virtual bool IsBTransposed() const override {
     return trans_B_ == CblasTrans;
@@ -180,13 +196,12 @@ class QGemm : protected GemmBase, public MatMulIntegerBase {
     return output_scales;
   }
 
-  static void SetPostProcessor(const Tensor* y_zp,
-                               size_t out_lda,
-                               const std::vector<float>& output_scales,
-                               Tensor* y,
-                               MLAS_GEMM_QUANT_DATA_PARAMS& gemm_param,
-                               std::optional<MLAS_QGEMM_SCALE_BIAS_OUTPUT_PROCESSOR>& scale_bias_proc_ptr,
-                               std::optional<MLAS_QGEMM_REQUANT_OUTPUT_PROCESSOR>& requant_proc_ptr) {
+  static MLAS_QGEMM_OUTPUT_PROCESSOR* ChoosePostProcessor(const Tensor* y_zp,
+                                                          size_t out_lda,
+                                                          const std::vector<float>& output_scales,
+                                                          Tensor* y,
+                                                          std::optional<MLAS_QGEMM_SCALE_BIAS_OUTPUT_PROCESSOR>& scale_bias_proc_ptr,
+                                                          std::optional<MLAS_QGEMM_REQUANT_OUTPUT_PROCESSOR>& requant_proc_ptr) {
     if (nullptr != y_zp) {
       bool is_y_signed = y->IsDataType<int8_t>();
       int32_t y_zero_point = is_y_signed ? *y_zp->Data<int8_t>() : *y_zp->Data<uint8_t>();
@@ -198,7 +213,7 @@ class QGemm : protected GemmBase, public MatMulIntegerBase {
           output_scales.size() > 1,
           y_zero_point,
           is_y_signed);
-      gemm_param.OutputProcessor = &*requant_proc_ptr;
+      return &*requant_proc_ptr;
     } else {
       scale_bias_proc_ptr.emplace(
           static_cast<float*>(y->MutableDataRaw()),
@@ -207,7 +222,7 @@ class QGemm : protected GemmBase, public MatMulIntegerBase {
           nullptr,
           MLAS_QGEMM_OUTPUT_MODE::ZeroMode,
           output_scales.size() > 1 ? MLAS_QUANTIZATION_GRANULARITY::PerColumn : MLAS_QUANTIZATION_GRANULARITY::PerMatrix);
-      gemm_param.OutputProcessor = &*scale_bias_proc_ptr;
+      return &*scale_bias_proc_ptr;
     }
   }
 };

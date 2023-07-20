@@ -127,8 +127,31 @@ Status MatMulIntegerToFloatBase::ComputeCommon(OpKernelContext* ctx,
   const size_t num_gemms = helper.OutputOffsets().size();
   std::vector<MLAS_QGEMM_SCALE_BIAS_OUTPUT_PROCESSOR> gemm_scale_procs;
   gemm_scale_procs.reserve(num_gemms);
-  std::vector<MLAS_GEMM_QUANT_DATA_PARAMS> gemm_data_vec(num_gemms);
 
+  if (b_is_symmetrically_packed_) {
+    std::vector<MLAS_SYMM_QGEMM_DATA_PARAMS> symm_gemm(num_gemms);
+    for (size_t i = 0; i < num_gemms; i++) {
+      symm_gemm[i].A = a_data + helper.LeftOffsets()[i];
+      symm_gemm[i].lda = gemm_shape.K;
+      symm_gemm[i].C = reinterpret_cast<int32_t*>(y_data + helper.OutputOffsets()[i]);
+      symm_gemm[i].ldc = gemm_shape.N;
+      symm_gemm[i].B = packed_b_.get();
+      if (x_zero_point_ == -1) {
+        symm_gemm[i].ZeroPointA = gemm_shape.AIsSigned ? (int8_t)a_zp : (uint8_t)a_zp;
+      }  // or else we knew the A zero point during packing time and the scaling is already done.
+      gemm_scale_procs.emplace_back(y_data + helper.OutputOffsets()[i],
+                                    gemm_shape.N,
+                                    b_scale_data + helper.RightScaleOffsets()[i],
+                                    bias_data,
+                                    MLAS_QGEMM_OUTPUT_MODE::ZeroMode,
+                                    is_b_scale_per_column ? MLAS_QUANTIZATION_GRANULARITY::PerColumn : MLAS_QUANTIZATION_GRANULARITY::PerMatrix);
+      symm_gemm[i].OutputProcessor = &(gemm_scale_procs[i]);
+    }
+    MlasSymmQgemmBatch(gemm_shape, symm_gemm.data(), num_gemms, ctx->GetOperatorThreadPool());
+    return Status::OK();
+  }
+
+  std::vector<MLAS_GEMM_QUANT_DATA_PARAMS> gemm_data_vec(num_gemms);
   for (size_t gemm_idx = 0; gemm_idx < num_gemms; gemm_idx++) {
     gemm_scale_procs.emplace_back(y_data + helper.OutputOffsets()[gemm_idx],
                                   gemm_shape.N,
@@ -171,6 +194,7 @@ class DynamicQuantizeMatMul final : public MatMulIntegerToFloatBase {
 
  protected:
   int GetBIdx() const override { return IN_B; }
+  int GetBZeroPointIdx() const override { return IN_B_ZERO_POINT; }
 };
 
 class MatMulIntegerToFloat final : public MatMulIntegerToFloatBase {
@@ -190,7 +214,9 @@ class MatMulIntegerToFloat final : public MatMulIntegerToFloatBase {
   };
 
  protected:
+  int GetAZeroPointIdx() const override { return IN_A_ZERO_POINT; }
   int GetBIdx() const override { return IN_B; }
+  int GetBZeroPointIdx() const override { return IN_B_ZERO_POINT; }
 
  private:
   // a scale and b scale may be switched in fusion stage because of lack of shape information.

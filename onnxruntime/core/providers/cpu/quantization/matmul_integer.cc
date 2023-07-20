@@ -25,7 +25,9 @@ class MatMulInteger final : public MatMulIntegerBase {
   enum OutputTensors : int { OUT_Y = 0 };
 
  protected:
+  int GetAZeroPointIdx() const override { return IN_A_ZERO_POINT; }
   int GetBIdx() const override { return IN_B; }
+  int GetBZeroPointIdx() const override { return IN_B_ZERO_POINT; }
 };
 
 ONNX_OPERATOR_TYPED_KERNEL_EX(
@@ -55,15 +57,6 @@ ONNX_OPERATOR_TYPED_KERNEL_EX(
 Status MatMulInteger::Compute(OpKernelContext* ctx) const {
   const auto* a = ctx->Input<Tensor>(IN_A);
   const auto* b = packed_b_ ? nullptr : ctx->Input<Tensor>(IN_B);
-
-  // validate zero points
-  uint8_t a_offset = 0;
-  const auto* a_zero_point = ctx->Input<Tensor>(IN_A_ZERO_POINT);
-  if (a_zero_point != nullptr) {
-    ORT_ENFORCE(IsScalarOr1ElementVector(a_zero_point),
-                "MatmulInteger : input1 zero point must be a scalar or 1D tensor of size 1");
-    a_offset = *(static_cast<const uint8_t*>(a_zero_point->DataRaw()));
-  }
 
   bool is_b_zp_per_column = false;
   uint8_t b_default_offset = 0;
@@ -105,8 +98,41 @@ Status MatMulInteger::Compute(OpKernelContext* ctx) const {
   gemm_shape.BIsSigned = b_is_signed;
 
   const size_t batch_size = helper.OutputOffsets().size();
-  std::vector<MLAS_GEMM_QUANT_DATA_PARAMS> gemm_data_vec(batch_size);
+  if (b_is_symmetrically_packed_) {
+    // validate zero points
+    int32_t a_offset = 0;
+    const auto* a_zero_point = ctx->Input<Tensor>(IN_A_ZERO_POINT);
+    if (a_zero_point != nullptr) {
+      ORT_ENFORCE(IsScalarOr1ElementVector(a_zero_point),
+                  "MatmulInteger : input1 zero point must be a scalar or 1D tensor of size 1");
+      a_offset = gemm_shape.AIsSigned ? *(static_cast<const int8_t*>(a_zero_point->DataRaw())) : *(static_cast<const uint8_t*>(a_zero_point->DataRaw()));
+    }
 
+    std::vector<MLAS_SYMM_QGEMM_DATA_PARAMS> symm_gemm(batch_size);
+    for (size_t i = 0; i < batch_size; i++) {
+      symm_gemm[i].A = a_data + helper.LeftOffsets()[i];
+      symm_gemm[i].lda = gemm_shape.K;
+      symm_gemm[i].C = y_data + helper.OutputOffsets()[i];
+      symm_gemm[i].ldc = gemm_shape.N;
+      symm_gemm[i].B = packed_b_.get();
+      if (x_zero_point_ == -1) {
+        symm_gemm[i].ZeroPointA = a_offset;
+      }  // or else we knew the A zero point during packing time, and the scaling is already done during packing
+    }
+    MlasSymmQgemmBatch(gemm_shape, symm_gemm.data(), batch_size, ctx->GetOperatorThreadPool());
+    return Status::OK();
+  }
+
+  // validate zero points
+  uint8_t a_offset = 0;
+  const auto* a_zero_point = ctx->Input<Tensor>(IN_A_ZERO_POINT);
+  if (a_zero_point != nullptr) {
+    ORT_ENFORCE(IsScalarOr1ElementVector(a_zero_point),
+                "MatmulInteger : input1 zero point must be a scalar or 1D tensor of size 1");
+    a_offset = *(static_cast<const uint8_t*>(a_zero_point->DataRaw()));
+  }
+
+  std::vector<MLAS_GEMM_QUANT_DATA_PARAMS> gemm_data_vec(batch_size);
   for (size_t batch = 0; batch < batch_size; batch++) {
     auto& gemm_params = gemm_data_vec[batch];
     gemm_params.lda = gemm_shape.K;

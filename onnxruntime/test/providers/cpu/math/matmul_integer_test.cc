@@ -330,6 +330,12 @@ void RunMatMulIntegerU8X8Test(const int M, const int N, const int K, bool B_is_i
 
   test.AddInput<uint8_t>("T1", {M, K}, std::move(matrix_a_data));
   test.AddInput<WeightType>("T2", {K, N}, std::move(matrix_b_data), B_is_initializer);
+  if constexpr (std::is_same<WeightType, int8_t>::value) {
+    if (B_is_initializer) {
+      test.AddInput<uint8_t>("a_zero_point", {}, {0}, true);
+      test.AddInput<WeightType>("b_zero_point", {}, {0}, true);
+    }
+  }
 
   test.AddOutput<int32_t>("T3", {M, N}, ToVector<int32_t>(matrix_c.data(), M * N));
   test.Run();

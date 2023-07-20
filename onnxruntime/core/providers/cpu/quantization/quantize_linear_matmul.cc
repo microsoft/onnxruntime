@@ -111,7 +111,6 @@ Status QLinearMatMul::Compute(OpKernelContext* ctx) const {
   BufferUniquePtr gemm_output_buffer(gemm_output_data, BufferDeleter(std::move(alloc)));
   auto* gemm_output = static_cast<int32_t*>(gemm_output_buffer.get());
 
-  std::vector<MLAS_GEMM_QUANT_DATA_PARAMS> gemm_params(num_gemms);
   std::vector<MLAS_QGEMM_REQUANT_OUTPUT_PROCESSOR> requant_procs;
   requant_procs.reserve(num_gemms);
 
@@ -119,6 +118,32 @@ Status QLinearMatMul::Compute(OpKernelContext* ctx) const {
   int32_t output_offset = is_output_signed ? *(static_cast<const int8_t*>(y_offset->DataRaw()))
                                            : *(static_cast<const uint8_t*>(y_offset->DataRaw()));
   auto b_zp_data = static_cast<const uint8_t*>(b_offset->DataRaw());
+
+  if (b_is_symmetrically_packed_) {
+    std::vector<MLAS_SYMM_QGEMM_DATA_PARAMS> symm_gemm(num_gemms);
+    for (size_t i = 0; i < num_gemms; i++) {
+      symm_gemm[i].A = static_cast<const uint8_t*>(a->DataRaw()) + helper.LeftOffsets()[i];
+      symm_gemm[i].lda = gemm_shape.K;
+      symm_gemm[i].C = gemm_output + (gemm_shape.M * gemm_shape.N * i);
+      symm_gemm[i].ldc = gemm_shape.N;
+      symm_gemm[i].B = packed_b_.get();
+      if (x_zero_point_ == -1) {
+        symm_gemm[i].ZeroPointA = gemm_shape.AIsSigned ? a_offset->Data<int8_t>()[0] : a_offset->Data<uint8_t>()[0];
+      } // or else we knew the A zero point during packing time and the scaling is already done.
+      requant_procs.emplace_back(static_cast<uint8_t*>(y->MutableDataRaw()) + helper.OutputOffsets()[i],
+                                 static_cast<size_t>(helper.N()),
+                                 nullptr,
+                                 output_scales.data() + helper.RightScaleOffsets()[i],
+                                 output_scales.size() > 1,
+                                 output_offset,
+                                 is_output_signed);
+      symm_gemm[i].OutputProcessor = &(requant_procs[i]);
+    }
+    MlasSymmQgemmBatch(gemm_shape, symm_gemm.data(), num_gemms, ctx->GetOperatorThreadPool());
+    return Status::OK();
+  }
+
+  std::vector<MLAS_GEMM_QUANT_DATA_PARAMS> gemm_params(num_gemms);
   for (size_t i = 0; i < num_gemms; i++) {
     gemm_params[i].A = static_cast<const uint8_t*>(a->DataRaw()) + helper.LeftOffsets()[i];
     gemm_params[i].lda = gemm_shape.K;

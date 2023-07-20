@@ -75,7 +75,12 @@ void TestMatMulIntegerToFloat(const std::vector<int64_t>& A_dims,
 
   if (has_zp) {
     test.AddInput<IType>("a_zero_point", {1}, A_zero_point);
-    test.AddInput<WType>("b_zero_point", {b_scale_zp_size}, B_zero_point);
+    if constexpr (std::is_same<WType, int8_t>::value) {
+      if (is_matrix_b_constant && !per_column) {
+        B_zero_point[0] = 0;
+      }
+    }
+    test.AddInput<WType>("b_zero_point", {b_scale_zp_size}, B_zero_point, is_matrix_b_constant);
   } else {
     test.AddOptionalInputEdge<WType>();
     test.AddOptionalInputEdge<WType>();

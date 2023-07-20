@@ -32,9 +32,9 @@ class QLinearMatMul : public MatMulIntegerBase {
   };
 
  protected:
-  int GetBIdx() const override {
-    return IN_B;
-  }
+  int GetAZeroPointIdx() const override { return IN_A_ZERO_POINT; }
+  int GetBIdx() const override { return IN_B; }
+  int GetBZeroPointIdx() const override { return IN_B_ZERO_POINT; }
 };
 
 }  // namespace onnxruntime
