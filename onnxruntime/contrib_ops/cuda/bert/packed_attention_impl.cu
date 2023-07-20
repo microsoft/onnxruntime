@@ -71,18 +71,6 @@ size_t GetAttentionWorkspaceSize(
   return qkv_bytes + 2 * GetAttentionScratchSize(element_size, batch_size, num_heads, sequence_length);
 }
 
-template <typename T, AttentionQkvFormat format>
-__global__ void AddBiasTransposeQKVPacked(const T* input,
-                                          const T* biases,
-                                          int32_t N,
-                                          int32_t H_QK,
-                                          int32_t H_V,
-                                          T* q,
-                                          T* k,
-                                          T* v,
-                                          const int32_t* token_offset,
-                                          int32_t token_count);
-
 // Grid: (S, B)
 // Block: 256
 // For unfused PackedAttention
