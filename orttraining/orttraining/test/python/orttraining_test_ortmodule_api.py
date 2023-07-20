@@ -14,6 +14,7 @@ import time
 import unittest.mock
 import warnings
 from collections import OrderedDict, namedtuple
+import shutil
 
 import _test_helpers
 import numpy as np
@@ -6061,3 +6062,29 @@ def test_e2e_padding_elimination():
     assert "ShrunkenGather" in [node.op_type for node in training_model.graph.node]
     assert "PadAndUnflatten" in [node.op_type for node in training_model.graph.node]
     del os.environ["ORTMODULE_ENABLE_EMBEDDING_SPARSE_OPTIMIZER"]
+
+def test_cache_exported_model():
+
+    os.environ["ORTMODULE_CACHE_DIR"] = "cache_dir"
+
+    class Net(torch.nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.fc = torch.nn.Linear(10, 1)
+
+        def forward(self, x):
+            x = x.view(x.shape[0], -1)
+            x = torch.nn.functional.relu(self.fc(x))
+            return x
+
+    model = Net()
+    model = ORTModule(model)
+
+    data = torch.randn(1, 10)
+    _ = model(data)
+
+    assert len(os.listdir("cache_dir")) == 1
+
+    _ = onnx.load(os.listdir("cache_dir")[0])
+
+    shutil.rmtree("cache_dir")
