@@ -455,7 +455,7 @@ Return Value:
     asm("mrs %[reg], ID_AA64ISAR0_EL1\n" : [reg] "=r"(isar0_el1) : :);
     HasDotProductInstructions = ((isar0_el1 >> 44) & 0xfu) == 0x1u;
 #else
-    HasDotProductInstructions = false;
+    HasDotProductInstructions = MLAS_CPUIDINFO::GetCPUIDInfo().HasArmNeonDot();
 #endif
 
     if (HasDotProductInstructions) {
