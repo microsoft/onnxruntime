@@ -187,7 +187,7 @@ def check_model_correctness(
     origin_sess = onnxruntime.InferenceSession(model_path_origin, sess_options=sess_options, providers=providers)
     origin_results = origin_sess.run([], inputs)
 
-    if True or pv.Version(onnx.__version__) >= pv.Version("1.16.0"):
+    if pv.Version(onnx.__version__) >= pv.Version("1.16.0"):
         ref = ReferenceEvaluator(model_path_to_check, new_ops=[QGemm])
         target_results = ref.run(None, inputs)
         testcase.assertEqual(len(origin_results), len(target_results), "result count are different")
