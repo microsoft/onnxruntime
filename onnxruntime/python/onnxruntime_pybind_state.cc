@@ -80,7 +80,7 @@ using PyCallback = std::function<void(std::vector<py::object>, std::string)>;
 
 struct AsyncResource {
   std::vector<OrtValue> feeds;
-  std::vector<OrtValue*> feeds_raw;
+  std::vector<const OrtValue*> feeds_raw;
 
   std::vector<std::string> feed_names;
   std::vector<const char*> feed_names_raw;
