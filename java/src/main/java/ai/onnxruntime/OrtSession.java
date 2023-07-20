@@ -474,9 +474,19 @@ public class OrtSession implements AutoCloseable {
      * in the C API.
      */
     public enum OptLevel {
+      /** Apply no optimizations to the ONNX graph. */
       NO_OPT(0),
+      /**
+       * Apply basic optimizations such as constant folding, redundant computation elimination and
+       * node fusions to the ONNX graph.
+       */
       BASIC_OPT(1),
+      /**
+       * Applies all the basic optimizations plus more complex node fusion operations to the ONNX
+       * graph.
+       */
       EXTENDED_OPT(2),
+      /** Applies all available optimizations to the ONNX graph. */
       ALL_OPT(99);
 
       private final int id;
@@ -499,7 +509,9 @@ public class OrtSession implements AutoCloseable {
      * The execution mode to use. Needs to be kept in sync with the ExecutionMode enum in the C API.
      */
     public enum ExecutionMode {
+      /** Executes all nodes sequentially. */
       SEQUENTIAL(0),
+      /** Executes some nodes in parallel. */
       PARALLEL(1);
       private final int id;
 
