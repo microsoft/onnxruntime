@@ -303,7 +303,7 @@ stages:
 
       - template: py-win-gpu.yml
         parameters:
-          MACHINE_POOL: 'onnxruntime-Win2019-GPU-dml-A10'
+          MACHINE_POOL: 'onnxruntime-Win2022-GPU-dml-A10'
           PYTHON_VERSION: '3.8'
           EP_BUILD_FLAGS: --use_dml --cmake_extra_defines CMAKE_SYSTEM_VERSION=10.0.18362.0 --enable_wcos
           ENV_SETUP_SCRIPT: setup_env.bat
@@ -311,7 +311,7 @@ stages:
 
       - template: py-win-gpu.yml
         parameters:
-          MACHINE_POOL: 'onnxruntime-Win2019-GPU-dml-A10'
+          MACHINE_POOL: 'onnxruntime-Win2022-GPU-dml-A10'
           PYTHON_VERSION: '3.9'
           EP_BUILD_FLAGS: --use_dml --cmake_extra_defines CMAKE_SYSTEM_VERSION=10.0.18362.0 --enable_wcos
           ENV_SETUP_SCRIPT: setup_env.bat
@@ -319,7 +319,7 @@ stages:
 
       - template: py-win-gpu.yml
         parameters:
-          MACHINE_POOL: 'onnxruntime-Win2019-GPU-dml-A10'
+          MACHINE_POOL: 'onnxruntime-Win2022-GPU-dml-A10'
           PYTHON_VERSION: '3.10'
           EP_BUILD_FLAGS: --use_dml --cmake_extra_defines CMAKE_SYSTEM_VERSION=10.0.18362.0 --enable_wcos
           ENV_SETUP_SCRIPT: setup_env.bat
@@ -327,7 +327,7 @@ stages:
 
       - template: py-win-gpu.yml
         parameters:
-          MACHINE_POOL: 'onnxruntime-Win2019-GPU-dml-A10'
+          MACHINE_POOL: 'onnxruntime-Win2022-GPU-dml-A10'
           PYTHON_VERSION: '3.11'
           EP_BUILD_FLAGS: --use_dml --cmake_extra_defines CMAKE_SYSTEM_VERSION=10.0.18362.0 --enable_wcos
           ENV_SETUP_SCRIPT: setup_env.bat
