@@ -37,7 +37,7 @@ void ShrunkenGatherCommon::CheckInput(const Tensor* input_tensor, const Tensor* 
   auto axis = HandleNegativeAxis(axis_in, narrow<int64_t>(input_rank));
 
   const int64_t N = indices_shape.Size();
-  const int64_t indices_max = input_shape[axis];
+  const int64_t indices_max = input_shape[gsl::narrow_cast<size_t>(axis)];
   ORT_ENFORCE(indices_max >= N, "ShrunkenGather indices elem count should <= input dim on axis: ", axis,
               ", got indices elem count:", N, " input dim: ", indices_max);
 }

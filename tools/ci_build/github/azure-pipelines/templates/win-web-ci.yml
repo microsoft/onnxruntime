@@ -30,6 +30,9 @@ jobs:
   workspace:
     clean: all
   steps:
+  - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
+    displayName: 'Clean Agent Directories'
+    condition: always()
   - checkout: self
     submodules: false
   - task: DownloadPipelineArtifact@2
@@ -123,6 +126,20 @@ jobs:
      node -e "a=require('child_process').execSync('git diff --name-only').toString();if(a)throw new Error('Following documents are not up-to-date: (did you run \"npm run build:doc\"?)\n'+a)"
     workingDirectory: '$(Build.SourcesDirectory)\js\web'
     displayName: 'Check out of dated documents'
+  - task: Cache@2
+    inputs:
+      key: onnxtestdata | $(Build.SourcesDirectory)\js\scripts\prepare-onnx-node-tests.ts
+      restoreKeys: |
+        onnxtestdata | $(Build.SourcesDirectory)\js\scripts\prepare-onnx-node-tests.ts
+      path: $(Build.SourcesDirectory)/js/test/
+      cacheHitVar: CACHE_RESTORED
+    displayName: 'Cache ONNX node test data'
+  - task: Bash@3
+    inputs:
+      targetType: 'inline'
+      script: find "$(Build.SourcesDirectory)/js/test/" -type f
+    condition: and(not(canceled()), eq(variables.CACHE_RESTORED, 'true'))
+    displayName: 'List ONNX node test data'
   - task: PowerShell@2
     inputs:
       filePath: '$(Build.SourcesDirectory)\tools\ci_build\github\js\pack-npm-packages.ps1'
@@ -171,6 +188,3 @@ jobs:
   - template: component-governance-component-detection-steps.yml
     parameters :
       condition : 'succeeded'
-  - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
-    displayName: 'Clean Agent Directories'
-    condition: always()

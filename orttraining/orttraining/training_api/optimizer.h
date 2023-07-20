@@ -100,7 +100,8 @@ struct Optimizer {
             CheckpointState* state,
             const onnxruntime::SessionOptions& session_options,
             const Environment& env,
-            const std::vector<std::shared_ptr<IExecutionProvider>>& providers);
+            const std::vector<std::shared_ptr<IExecutionProvider>>& providers,
+            gsl::span<OrtCustomOpDomain* const> op_domains = gsl::span<OrtCustomOpDomain* const>());
 
   Status Step();
 
@@ -121,9 +122,8 @@ struct Optimizer {
 
  private:
   void Initialize(const std::string& optim_path_or_bytes,
-                  const onnxruntime::SessionOptions& session_options,
-                  const Environment& env,
-                  const std::vector<std::shared_ptr<IExecutionProvider>>& providers);
+                  const std::vector<std::shared_ptr<IExecutionProvider>>& providers,
+                  gsl::span<OrtCustomOpDomain* const> op_domains);
 
   int64_t GetStep() const {
     return optimizer_state_->step;

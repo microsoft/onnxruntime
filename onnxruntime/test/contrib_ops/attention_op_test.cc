@@ -1757,32 +1757,16 @@ TEST(AttentionTest, AttentionWithNormFactor) {
 TEST(AttentionTest, AttentionWithNeoXRotaryEmbedding) {
   int batch_size = 2;
   int sequence_length = 2;
-  int hidden_size = 4;
-  int number_of_heads = 2;
+  int hidden_size = 64;
+  int number_of_heads = 1;
 
-  std::vector<float> input_data = {
-      0.5f, 0.2f, 0.3f, -0.6f,
-      0.8f, -0.5f, 0.0f, 1.f,
-      0.8f, -0.5f, 0.0f, 1.f,
-      0.5f, 0.2f, 0.3f, -0.6f};
+  std::vector<float> input_data = {};
+  std::vector<float> weight_data = {};
+  std::vector<float> bias_data = {};
+  std::vector<int32_t> mask_index_data = {1, 1, 1, 1};
+  std::vector<float> output_data = {};
 
-  std::vector<float> weight_data = {
-      0.1f, -0.2f, 0.3f, 1.0f, 1.1f, 0.3f, 0.5f, 0.2f, 0.3f, -0.6f, 1.5f, 2.0f,
-      0.5f, 0.1f, 0.4f, 1.6f, 1.0f, 2.0f, 0.4f, 0.8f, 0.9f, 0.1f, -1.3f, 0.7f,
-      0.3f, 0.2f, 4.0f, 2.2f, 1.6f, 1.1f, 0.7f, 0.2f, 0.4f, 1.0f, 1.2f, 0.5f,
-      0.2f, 0.1f, 0.4f, 1.6f, 2.4f, 3.3f, 2.1f, 4.2f, 8.4f, 0.0f, 2.1f, 3.2f};
-
-  std::vector<float> bias_data = {
-      -0.5f, 0.6f, 1.2f, 2.1f, 0.5f, 0.7f, 0.2f, 1.2f, 0.5f, 0.4f, 0.3f, 1.2f};
-
-  // Test mask start position > 0.
-  std::vector<int32_t> mask_index_data = {0, 1, 1, 1};
-
-  std::vector<float> output_data = {
-      -4.0898f, 0.4199f, -0.1096f, 0.5703f,
-      8.6875f, -0.1299f, 4.25f, 5.6484f,
-      8.6875f, -0.1299f, 4.25f, 5.6484f,
-      -1.4697f, 0.3071f, 4.25f, 5.6484f};
+  GetAttentionDataWithNeoXRotaryEmbedding(input_data, weight_data, bias_data, output_data);
 
   bool use_float16 = true;
   bool is_unidirectional = true;

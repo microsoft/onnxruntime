@@ -23,6 +23,7 @@ jobs:
         --cmake_generator "Unix Makefiles" \
         --config Debug \
         --build_shared_lib --use_coreml --build_objc \
+        --enable_training_apis \
         --cmake_extra_defines CMAKE_EXPORT_COMPILE_COMMANDS=ON \
         --update --skip_submodule_sync \
         --build --parallel --target onnx_proto

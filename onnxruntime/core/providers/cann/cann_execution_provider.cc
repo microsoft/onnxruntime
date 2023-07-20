@@ -1442,30 +1442,40 @@ Status CANNExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fuse
   return Status::OK();
 }
 
-std::vector<AllocatorPtr> CANNExecutionProvider::CreatePreferredAllocators() {
+AllocatorPtr CANNExecutionProvider::CreateCannAllocator(OrtDevice::DeviceId device_id, size_t npu_mem_limit,
+                                                        ArenaExtendStrategy arena_extend_strategy,
+                                                        OrtArenaCfg* default_memory_arena_cfg) {
   AllocatorCreationInfo default_memory_info(
       [](OrtDevice::DeviceId id) {
         return std::make_unique<CANNAllocator>(id, CANN);
       },
-      cann_device.Id(),
+      device_id,
       true,
-      {info_.default_memory_arena_cfg ? *info_.default_memory_arena_cfg
-                                      : OrtArenaCfg(info_.npu_mem_limit,
-                                                    static_cast<int>(info_.arena_extend_strategy),
-                                                    -1,
-                                                    -1,
-                                                    -1,
-                                                    -1L)},
+      {default_memory_arena_cfg ? *default_memory_arena_cfg
+                                : OrtArenaCfg(npu_mem_limit,
+                                              static_cast<int>(arena_extend_strategy),
+                                              -1,
+                                              -1,
+                                              -1,
+                                              -1L)},
       true,
       false);
 
+  return CreateAllocator(default_memory_info);
+}
+
+std::vector<AllocatorPtr> CANNExecutionProvider::CreatePreferredAllocators() {
   AllocatorCreationInfo pinned_memory_info(
       [](OrtDevice::DeviceId device_id) {
         return std::make_unique<CANNPinnedAllocator>(device_id, CANN_PINNED);
       },
-      pinned_device.Id());
+      DEFAULT_CPU_ALLOCATOR_DEVICE_ID);
 
-  return std::vector<AllocatorPtr>{CreateAllocator(default_memory_info), CreateAllocator(pinned_memory_info)};
+  return std::vector<AllocatorPtr>{
+      CreateCannAllocator(info_.device_id, info_.npu_mem_limit, info_.arena_extend_strategy,
+                          info_.default_memory_arena_cfg),
+      CreateAllocator(pinned_memory_info),
+  };
 }
 
 void CANNExecutionProvider::RegisterStreamHandlers(IStreamCommandHandleRegistry& stream_handle_registry, AllocatorMap&) const {

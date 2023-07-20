@@ -22,8 +22,8 @@ set(onnxruntime_common_src_patterns
     "${ONNXRUNTIME_ROOT}/core/platform/telemetry.cc"
     "${ONNXRUNTIME_ROOT}/core/platform/logging/make_platform_default_log_sink.h"
     "${ONNXRUNTIME_ROOT}/core/platform/logging/make_platform_default_log_sink.cc"
-    "$(ONNXRUNTIME_ROOT}/core/quantization/*.h"
-    "$(ONNXRUNTIME_ROOT}/core/quantization/*.cc"
+    "${ONNXRUNTIME_ROOT}/core/quantization/*.h"
+    "${ONNXRUNTIME_ROOT}/core/quantization/*.cc"
 )
 
 if(WIN32)
@@ -105,6 +105,15 @@ if(NOT onnxruntime_DISABLE_ABSEIL)
         onnxruntime_common
         INTERFACE $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/external/${ABSEIL_NATVIS_FILE}>)
   endif()
+endif()
+
+if (MSVC)
+    set(EIGEN_NATVIS_FILE ${eigen_SOURCE_DIR}/debug/msvc/eigen.natvis)
+    if (EXISTS ${EIGEN_NATVIS_FILE})
+      target_sources(
+          onnxruntime_common
+          INTERFACE $<BUILD_INTERFACE:${EIGEN_NATVIS_FILE}>)
+    endif()
 endif()
 
 onnxruntime_add_include_to_target(onnxruntime_common date_interface WIL::WIL)

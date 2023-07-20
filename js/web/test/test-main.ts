@@ -64,7 +64,7 @@ for (const logConfig of ORT_WEB_TEST_CONFIG.log) {
   Logger.set(logConfig.category, logConfig.config);
 }
 
-import {ModelTestContext, OpTestContext, runModelTestSet, runOpTest} from './test-runner';
+import {ModelTestContext, OpTestContext, ProtoOpTestContext, runModelTestSet, runOpTest} from './test-runner';
 import {readJsonFile} from './test-shared';
 
 // Unit test
@@ -131,22 +131,32 @@ for (const group of ORT_WEB_TEST_CONFIG.op) {
   describe(`#OpTest# - ${group.name}`, () => {
     for (const test of group.tests) {
       const describeTest = shouldSkipTest(test) ? describe.skip : describe;
-      describeTest(`[${test.backend!}]${test.operator} - ${test.name}`, () => {
-        let context: OpTestContext;
+      const backend = test.backend!;
+      const useProtoOpTest = backend !== 'webgl';
+      describeTest(`[${backend}]${test.operator} - ${test.name}`, () => {
+        let context: ProtoOpTestContext|OpTestContext;
 
         before('Initialize Context', async () => {
-          context = new OpTestContext(test);
+          context = useProtoOpTest ? new ProtoOpTestContext(test) : new OpTestContext(test);
           await context.init();
           if (ORT_WEB_TEST_CONFIG.profile) {
-            OpTestContext.profiler.start();
+            if (context instanceof ProtoOpTestContext) {
+              context.session.startProfiling();
+            } else {
+              OpTestContext.profiler.start();
+            }
           }
         });
 
-        after('Dispose Context', () => {
+        after('Dispose Context', async () => {
           if (ORT_WEB_TEST_CONFIG.profile) {
-            OpTestContext.profiler.stop();
+            if (context instanceof ProtoOpTestContext) {
+              context.session.endProfiling();
+            } else {
+              OpTestContext.profiler.stop();
+            }
           }
-          context.dispose();
+          await context.dispose();
         });
 
         for (const testCase of test.cases) {

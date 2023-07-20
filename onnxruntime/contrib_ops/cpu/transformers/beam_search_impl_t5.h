@@ -36,7 +36,8 @@ class BeamSearchT5 : public BeamSearchBase<T> {
                const GenerationDeviceHelper::UpdateDecoderFeedsFunc<T>& update_decoder_feeds_func,
                const GenerationDeviceHelper::ExpandBufferFunc<int32_t>& expand_buffer_int32_func,
                const GenerationDeviceHelper::ExpandBufferFunc<float>& expand_buffer_float_func,
-               const GenerationDeviceHelper::ExpandBufferFunc<MLFloat16>& expand_buffer_float16_func)
+               const GenerationDeviceHelper::ExpandBufferFunc<MLFloat16>& expand_buffer_float16_func,
+               const GenerationDeviceHelper::CreateBeamScorer& create_beam_scorer_func)
       : BeamSearchBase<T>(context, decoder_session_state, thread_pool,
                           ort_stream, cuda_dumper, params,
                           topk_func, process_logits_func, device_copy_func, device_copy_int32_func),
@@ -49,7 +50,8 @@ class BeamSearchT5 : public BeamSearchBase<T> {
         update_decoder_feeds_func_(update_decoder_feeds_func),
         expand_buffer_int32_func_(expand_buffer_int32_func),
         expand_buffer_float_func_(expand_buffer_float_func),
-        expand_buffer_float16_func_(expand_buffer_float16_func) {}
+        expand_buffer_float16_func_(expand_buffer_float16_func),
+        create_beam_scorer_func_(create_beam_scorer_func) {}
 
 #ifdef USE_CUDA
   Status InitializeCuda(
@@ -62,11 +64,11 @@ class BeamSearchT5 : public BeamSearchBase<T> {
     cuda_device_prop_ = cuda_device_prop;
     cuda_device_arch_ = cuda_device_arch;
     if (decoder_subgraph_.has_decoder_masked_attention_) {
-      ORT_RETURN_IF(cuda_device_arch_ >= 530,
-                    "Decoder masked multihead attention can only be used on "
-                    "GPU cards of compute capability 5.3 or higher. "
-                    "This card has compute capability ",
-                    cuda_device_arch_);
+      ORT_RETURN_IF_NOT(cuda_device_arch_ >= 530,
+                        "Decoder masked multihead attention can only be used on "
+                        "GPU cards of compute capability 5.3 or higher. "
+                        "This card has compute capability ",
+                        cuda_device_arch_);
     }
     return Status::OK();
   }
@@ -94,6 +96,7 @@ class BeamSearchT5 : public BeamSearchBase<T> {
   GenerationDeviceHelper::ExpandBufferFunc<int32_t> expand_buffer_int32_func_;
   GenerationDeviceHelper::ExpandBufferFunc<float> expand_buffer_float_func_;
   GenerationDeviceHelper::ExpandBufferFunc<MLFloat16> expand_buffer_float16_func_;
+  GenerationDeviceHelper::CreateBeamScorer create_beam_scorer_func_;
 
   const void* cuda_device_prop_ = nullptr;
   int cuda_device_arch_ = 0;
@@ -189,11 +192,6 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
   // Initialize resources
   // ------------------------------------
 
-  // Copy decoder_input_ids (in CPU) to sequence. It contains decoder_start_token_id for each beam.
-  cpu_state.SetUnexpandedSequence(decoder_input_ids.Get<Tensor>().DataAsSpan<int32_t>());
-
-  this->beam_scorer_ = std::make_unique<BeamSearchScorer>(*parameters, this->cpu_allocator_);
-
   BeamSearchState<T> beam_state{*parameters,
                                 this->temp_space_allocator_,
                                 decoder_subgraph_.has_decoder_masked_attention_,
@@ -205,11 +203,27 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
                         parameters->num_beams,
                         this->ort_stream_);
 
+  // Copy decoder_input_ids (in CPU) to sequence. It contains decoder_start_token_id for each beam.
+  cpu_state.SetUnexpandedSequence(decoder_input_ids.Get<Tensor>().DataAsSpan<int32_t>());
+
+  // beam_state.sequences_device is the GPU version of cpu_state.sequences_space,
+  // this copies it over to the GPU after setting it up on the CPU
+  if (this->IsCuda()) {
+    cpu_state.sequences.InitDevice(beam_state.sequences_device);
+    ORT_RETURN_IF_ERROR(this->device_copy_int32_func_(beam_state.sequences_device.subspan(0, beam_state.sequences_device.size() / 2),
+                                                      cpu_state.sequences_space.subspan(0, cpu_state.sequences_space.size() / 2),
+                                                      nullptr,
+                                                      DeviceCopyDirection::hostToDevice));
+  }
+
+  this->beam_scorer_ = create_beam_scorer_func_
+                           ? create_beam_scorer_func_(*parameters, this->temp_space_allocator_, this->cpu_allocator_, this->ort_stream_)
+                           : std::make_unique<BeamSearchScorer>(*parameters, this->cpu_allocator_);
+
   // ------------------------------------------------------------------------------
   // Generate next token from logits output from encoder, and initialize decoder inputs.
   // ------------------------------------------------------------------------------
   gsl::span<int32_t> beam_next_tokens;
-  gsl::span<int32_t> beam_indices;
 
   int iteration_counter = 0;
   std::vector<OrtValue> decoder_feeds;
@@ -221,7 +235,6 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
     ++iteration_counter;
     ORT_RETURN_IF_ERROR(this->GenerateNextToken(encoder_fetches[0],
                                                 beam_next_tokens,
-                                                beam_indices,
                                                 beam_state,
                                                 cpu_state,
                                                 iteration_counter));
@@ -246,7 +259,8 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
                                                              decoder_subgraph_.has_decoder_masked_attention_));
 
     if (decoder_subgraph_.past_present_share_buffer_) {
-      decoder_fetches.reserve(static_cast<int64_t>(decoder_subgraph_.GetFirstPresentOutputIndex()) + 2 * static_cast<int64_t>(decoder_subgraph_.num_layers));
+      decoder_fetches.reserve(static_cast<size_t>(decoder_subgraph_.GetFirstPresentOutputIndex()) +
+                              2 * static_cast<size_t>(decoder_subgraph_.num_layers));
       decoder_fetches.resize(decoder_subgraph_.GetFirstPresentOutputIndex(), OrtValue());
       for (int layer = 0; layer < 2 * decoder_subgraph_.num_layers; layer++) {
         int feed_idx = decoder_subgraph_.GetFirstPastInputIndex() + layer;
@@ -324,13 +338,18 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
     const OrtValue& logits = decoder_fetches[0];
     ORT_RETURN_IF_ERROR(this->GenerateNextToken(logits,
                                                 beam_next_tokens,
-                                                beam_indices,
                                                 beam_state,
                                                 cpu_state,
                                                 iteration_counter));
 
     // When all batches are finished, stop earlier to avoid wasting computation.
     if (this->beam_scorer_->IsDone()) {
+      break;
+    }
+
+    // TODO: If this is safe to do after update_decoder_feeds_func, move it later so that we can speculatively run the next steps while we wait
+    // for the done result to transfer to the CPU
+    if (this->beam_scorer_->IsDoneLater()) {
       break;
     }
 
@@ -348,9 +367,11 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
           decoder_feeds,
           num_present_outputs,
           ReinterpretAsSpan<const int32_t>(beam_next_tokens),
-          ReinterpretAsSpan<const int32_t>(beam_indices),
           decoder_subgraph_.has_decoder_masked_attention_
-              ? ReinterpretAsSpan<const int32_t>(beam_state.chosen_indices)
+              ? place_holder
+              : ReinterpretAsSpan<const int32_t>(this->beam_scorer_->GetNextIndicesCPU()),
+          decoder_subgraph_.has_decoder_masked_attention_
+              ? ReinterpretAsSpan<const int32_t>(this->beam_scorer_->GetNextIndicesGPU())
               : place_holder,
           parameters->num_beams,
           decoder_subgraph_.GetFirstPastInputIndex(),
@@ -375,21 +396,13 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
   }
 
   gsl::span<const float> final_beam_scores = beam_state.beam_scores;
-  if (this->IsCuda()) {
-    ORT_RETURN_IF_ERROR(this->device_copy_func_(cpu_state.final_beam_scores,
-                                                final_beam_scores,
-                                                nullptr,
-                                                DeviceCopyDirection::deviceToHost));
-    final_beam_scores = cpu_state.final_beam_scores;
-  }
-
   this->beam_scorer_->Finalize(cpu_state.sequences,
                                final_beam_scores,
                                output_sequences,
                                output_sequences_scores);
 
   // Output per token scores
-  if (output_scores != nullptr) {
+  if (output_scores) {
     gsl::span<float> target = output_scores->MutableDataAsSpan<float>();
     gsl::span<const float> source = beam_state.scores;
     assert(target.size() == source.size());

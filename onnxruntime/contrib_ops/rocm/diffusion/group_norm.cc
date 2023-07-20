@@ -110,7 +110,14 @@ Status GroupNorm::ComputeInternal(OpKernelContext* context) const {
 
   if (num_channels % num_groups_ != 0) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "number of channels should be divisiable by num_groups");
+                           "number of channels should be divisible by num_groups");
+  }
+
+  if (context->GetUseDeterministicCompute()) {
+    static std::once_flag log_warning;
+    std::call_once(log_warning, []() {
+      LOGS_DEFAULT(WARNING) << "GroupNorm has no deterministic GPU kernel, its outputs may still be nondeterministic.";
+    });
   }
 
   auto workspace = GetScratchBuffer<void>(GetGroupNormWorkspaceSizeInBytes(), context->GetComputeStream());

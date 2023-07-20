@@ -53,7 +53,8 @@ class BeamSearch : public IControlFlowKernel {
       const GenerationDeviceHelper::ProcessLogitsFunc<float>& process_logits_func,
       const GenerationDeviceHelper::ProcessLogitsFunc<MLFloat16>& process_logits_fp16_func,
       const GenerationDeviceHelper::InitBeamStateFunc<float>& init_beam_state_func,
-      const GenerationDeviceHelper::InitBeamStateFunc<MLFloat16>& init_beam_state_fp16_func) {
+      const GenerationDeviceHelper::InitBeamStateFunc<MLFloat16>& init_beam_state_fp16_func,
+      const GenerationDeviceHelper::CreateBeamScorer& create_beam_scorer_func) {
     add_to_feeds_func_ = add_to_feeds_func;
     topk_func_ = topk_func;
     device_copy_func_ = device_copy_func;
@@ -62,6 +63,7 @@ class BeamSearch : public IControlFlowKernel {
     process_logits_fp16_func_ = process_logits_fp16_func;
     init_beam_state_func_ = init_beam_state_func;
     init_beam_state_fp16_func_ = init_beam_state_fp16_func;
+    create_beam_scorer_func_ = create_beam_scorer_func;
   }
 
 #ifdef USE_CUDA
@@ -111,6 +113,7 @@ class BeamSearch : public IControlFlowKernel {
 
   GenerationDeviceHelper::InitBeamStateFunc<float> init_beam_state_func_;
   GenerationDeviceHelper::InitBeamStateFunc<MLFloat16> init_beam_state_fp16_func_;
+  GenerationDeviceHelper::CreateBeamScorer create_beam_scorer_func_;
 
 #ifdef USE_CUDA
   GenerationDeviceHelper::ReorderPastStateFunc reorder_past_state_func_;

@@ -5,7 +5,7 @@
 
 import dataclasses
 import logging
-from typing import Any, Callable, Dict, Mapping, Set, Tuple, Union
+from typing import Any, Dict, Mapping, Optional, Set, Tuple, Union
 
 import numpy as np
 import onnx
@@ -14,21 +14,24 @@ import torch._C
 import torch._ops
 import torch._prims.executor
 import torch.fx
-import torch.jit
 import torch.onnx
-import torch.onnx._onnx_supported_ops
-from torch._decomp import decomposition_table
+
+# TODO(wschin,justinchuby): Since the internal APIs are not stable, please
+# contact us if you hit errors.
+import torch.onnx._internal
+import torch.onnx._internal.diagnostics
+import torch.onnx._internal.exporter
+import torch.onnx._internal.fx.decomposition_table
+import torch.onnx._internal.fx.passes
 from torch._subclasses.fake_tensor import FakeTensor
 from torch.fx.passes.fake_tensor_prop import FakeTensorProp
 from torch.fx.passes.infra.partitioner import CapabilityBasedPartitioner
 from torch.fx.passes.operator_support import OperatorSupport
 from torch.fx.passes.tools_common import CALLABLE_NODE_OPS
-from torch.onnx._globals import GLOBALS as ONNX_GLOBALS
+from torch.utils import _pytree
 
 import onnxruntime  # type: ignore
 from onnxruntime.capi import _pybind_state as ORTC
-
-from . import custom_symbols
 
 _NP_DTYPE = {
     torch.float16: np.float16,
@@ -68,7 +71,7 @@ def _get_ort_device_type(device_type: str):
         return ORTC.OrtDevice.cpu()  # type: ignore
     # ort pytorch device is mapped to NPU OrtDevice type
     if device_type == "ort":
-        return ORTC.OrtDevice.npu()
+        return ORTC.OrtDevice.npu()  # type: ignore
     raise ValueError("Unsupported device type: " + device_type)
 
 
@@ -76,130 +79,6 @@ logger = logging.getLogger(__name__)
 # Uncomment the following lines to print out development info.
 # logging.basicConfig(level=logging.INFO)
 # logger.setLevel(logging.INFO)
-
-
-def _get_onnx_supported_table() -> Set[str]:
-    # TODO(wechi): this entire function should be replaced by a formal a exporter API.
-
-    onnx_supported_ops: Set[str] = set()
-    for aten_op_name, schema in torch.onnx._onnx_supported_ops.all_symbolics_schemas().items():
-        # TODO(wechi): aten_op_name could be prim::add in addition to aten::add.
-        # We should build another dictionary for storing support table for prim ops.
-        # Currently, we only consider aten ops as before.
-        if aten_op_name not in custom_symbols and not aten_op_name.startswith("aten::"):
-            logger.info(
-                "Skip %s in support table because it's not in aten domain or supported custom ops %s",
-                aten_op_name,
-                custom_symbols,
-            )
-            continue
-        short_op_name = aten_op_name.split("::")[1]
-        if aten_op_name.startswith("aten::") and not hasattr(torch.ops.aten, short_op_name):  # type: ignore
-            # Some aten ops are not in torch.ops.aten. Those are excluded until we
-            # figure out why.
-            logger.info("Skip %s in support table because it's not found in torch.ops.aten.", aten_op_name)
-            continue
-        # aten_op_name is aten symbol's name; e.g., "sum" for aten::sum.
-        # opsets_string is the ONNX opsets that can express info[0]; e.g., "15 16 17"
-        # indicates that opset 15, opset 16, and opset 17 can all express aten_op_name.
-        if ONNX_GLOBALS.export_onnx_opset_version in schema.opsets:
-            logger.info("Add %s to support table.", aten_op_name)
-            onnx_supported_ops.add(aten_op_name)
-    return onnx_supported_ops
-
-
-def _get_support_dictionaries_and_decomposition_tables() -> (
-    Tuple[
-        Dict[torch._ops.OpOverload, Any],
-        Dict[str, Any],
-        Dict[torch._ops.OpOverload, Callable],
-        Dict[torch._ops.OpOverload, Callable],
-    ]
-):
-    # The keys of this dictionary are OpOverload's which can be
-    # exported by ONNX exporter. Type of key is torch._ops.OpOverload.
-    # For example, if torch.ops.aten.add.default is a key in support_dict,
-    # all torch.fx.Node's with torch.ops.aten.add.default as target will
-    # be selected by CapabilityBasedPartitioner and sent to ORT for
-    # computation.
-    # We choose torch._ops.OpOverload as the key because
-    #  1. torch._ops.OpOverload uniquely identifies an op. We don't want
-    #     to use OpOverloadPacket because it contains overloads of the same op.
-    #     This allows us to select supported ops at the finest grain.
-    #  2. torch._ops.OpOverload is what we get from torch.fx.Node.target. Getting
-    #     qualified name using _get_qualified_name is not needed.
-    support_dictionary: Dict[torch._ops.OpOverload, Any] = {}
-    for aten_op_name in _get_onnx_supported_table():
-        if aten_op_name.startswith("aten::"):
-            short_op_name = aten_op_name.split("aten::")[1]
-            op_overload_packet = getattr(torch.ops.aten, short_op_name)  # type: ignore
-            # Due to the lack of overload name in exporting function's name, assume
-            # each exporting function (e.g., torch.onnx.symbolic_opset9.add) support
-            # all overloads (e.g., in torch.ops.aten.add).
-            # Thus, we register all torch._ops.OpOverload's for the same exporting function.
-            # Please manually exclude torch._ops.OpOverload if exporter fails.
-            for overload in op_overload_packet.overloads():
-                op_overload = getattr(op_overload_packet, overload)
-                support_dictionary[op_overload] = None
-
-        elif aten_op_name in custom_symbols:
-            op_namespace = aten_op_name.split("::")[0]
-            short_op_name = aten_op_name.split("::")[1]
-            # Get the custom ops from: torch.ops.custom_namespace
-            custom_op_namespace = getattr(torch.ops, op_namespace)
-            op_overload_packet = getattr(custom_op_namespace, short_op_name)  # type: ignore
-            for overload in op_overload_packet.overloads():
-                op_overload = getattr(op_overload_packet, overload)
-                support_dictionary[op_overload] = None
-
-    # No decomposition table. OpOverload in this table shouldn't be found
-    # in aten2aten_decomposition_table.
-    # The symbols in this set will be replaced by torch.ops.aten.to.dtype in replace_to_copy_with_to because
-    # only aten.to has ONNX exporter.
-    # If the replacement fails, ONNX exporter will fail because only aten.to has ONNX exporter.
-    # TODO(wechi): For a long-term solution, we need to ensure every op used in op decomposision has
-    # an exporter.
-    no_decomposition_table: Set[torch._ops.OpOverload] = {
-        torch.ops.aten._to_copy.default,  # type: ignore
-        torch.ops.aten._to_copy.out,  # type: ignore
-    }
-
-    # decomposition_table currently contains both aten2aten and aten2prim decompositions
-    # This is a hack to separate them, as ONNX only recognizes aten symbols.
-    aten2aten_decomposition_table: Dict[torch._ops.OpOverload, Callable] = {}
-    aten2prim_decomposition_table: Dict[torch._ops.OpOverload, Callable] = {}
-
-    for op_overload, decomp_fn in decomposition_table.items():
-        if op_overload in support_dictionary:
-            # ONNX can express this op, no need to decompose.
-            continue
-        if "torch._refs" in decomp_fn.__module__:
-            aten2prim_decomposition_table[op_overload] = decomp_fn
-        else:
-            if op_overload in no_decomposition_table:
-                continue
-            # Assume ONNX can express ops after decomposition.
-            # If no, exporter will fail and the user need to
-            # remove this decomposition rule.
-            aten2aten_decomposition_table[op_overload] = decomp_fn
-
-    # Some torch.fx.Node's are converted to ONNX-compatible ops
-    # by torch.jit.script. They don't have direct ONNX exporting
-    # functions but still runnable in ORT.
-    extra_support_dictionary: Dict[str, Any] = {
-        "getattr": None,
-        "_operator.getitem": None,
-    }
-
-    return support_dictionary, extra_support_dictionary, aten2aten_decomposition_table, aten2prim_decomposition_table
-
-
-(
-    _SUPPORT_DICT,
-    _EXTRA_SUPPORT_DICT,
-    ATEN2ATEN_DECOMP,
-    ATEN2PRIM_DECOMP,
-) = _get_support_dictionaries_and_decomposition_tables()
 
 
 class OrtOperatorSupport(OperatorSupport):
@@ -210,8 +89,13 @@ class OrtOperatorSupport(OperatorSupport):
     is used by OperatorSupport.is_node_supported.
     """
 
-    def __init__(self):
-        super().__init__(_EXTRA_SUPPORT_DICT)
+    def __init__(self, support_dict: Set[Any], extra_support_dict: Dict[str, Any]):
+        # Use extra_support_dict[op_name] = None to indicate
+        # we support op_name with all input types. Otherwise,
+        # see support_dict (type: SupportDict) in operator_support.py
+        # for specifying supported types.
+        super().__init__(extra_support_dict)
+        self._support_dict = support_dict
 
     def is_node_supported(self, submodules: Mapping[str, torch.nn.Module], node: torch.fx.Node) -> bool:
         # OperatorSupport.is_node_supported returns True for non-callable nodes.
@@ -220,7 +104,7 @@ class OrtOperatorSupport(OperatorSupport):
         if node.op not in CALLABLE_NODE_OPS:
             return False
         # This is the and the only place to decide if aten op is supported.
-        if node.op == "call_function" and node.target in _SUPPORT_DICT:
+        if node.op == "call_function" and node.target in self._support_dict:
             logger.info("support_dict supports node.target: %s (type: %s)", node.target, type(node.target))
             return True
         logger.info("support_dict doesn't support node.target: %s (type: %s)", node.target, type(node.target))
@@ -232,31 +116,6 @@ class OrtOperatorSupport(OperatorSupport):
             return True
         logger.info("extra_support_dict doesn't supports node.target: %s (type: %s)", node.target, type(node.target))
         return False
-
-
-def _jit_graph_to_onnx_model(graph, operator_export_type):
-    r"""
-    This function exports torch::jit::Graph object
-    to serialized ONNX ModelProto.
-    It only keeps the essential parts for IR graph conversions.
-    It also does not interact with actual PyTorch modules nor
-    PyTorch tensor inputs.
-    """
-    graph = torch.onnx.utils._optimize_graph(graph, operator_export_type, params_dict={})
-    proto, _, _, _ = graph._export_onnx(  # type: ignore
-        {},
-        ONNX_GLOBALS.export_onnx_opset_version,
-        {},
-        False,
-        operator_export_type,
-        False,
-        False,
-        {},
-        True,
-        "",
-        {},
-    )
-    return proto
 
 
 def _move_placeholder_to_front(graph_module: torch.fx.GraphModule) -> None:
@@ -316,56 +175,63 @@ def _replace_to_copy_with_to(fx_module: torch.fx.GraphModule) -> None:
     fx_module.recompile()
 
 
-def _fx_to_torchscript(
-    fx_module: torch.fx.GraphModule,
-) -> torch.jit.ScriptModule:
-    """Convert torch.fx.Graph to torch.jit.ScriptModule."""
-
-    for node in fx_module.graph.nodes:
-        new_kwargs = {}
-        for k, v in node.kwargs.items():
-            if isinstance(v, torch.device):
-                v = v.type  # noqa: PLW2901
-            new_kwargs[k] = v
-        node.kwargs = new_kwargs
-    for node in fx_module.graph.nodes:
-        if isinstance(node.target, torch._ops.OpOverload):
-            node.target = node.target.overloadpacket
-    fx_module.graph.lint()
-    fx_module.recompile()
-    return torch.jit.script(fx_module)  # type: ignore
-
-
-def _decorate_script_module(script_module: torch.jit.ScriptModule, expected_inputs, expected_outputs):
-    for i, input_value in enumerate(script_module.graph.inputs()):  # type: ignore
-        if input_value.debugName() == "self":
-            script_module.graph.eraseInput(i)  # type: ignore
-            break
-    for input_value, expected_input in zip(script_module.graph.inputs(), expected_inputs):  # type: ignore
-        input_value.setType(torch._C.TensorType.create_from_tensor(expected_input))
-    for output_value, expected_output in zip(script_module.graph.outputs(), expected_outputs):  # type: ignore
-        output_value.setType(torch._C.TensorType.create_from_tensor(expected_output))
-
-
-def _create_onnx_proto(script_module):
-    onnx_proto = _jit_graph_to_onnx_model(script_module.graph, torch.onnx.OperatorExportTypes.ONNX)
-    return onnx_proto
-
-
 def _create_onnx_model(onnx_proto):
     return onnx.ModelProto.FromString(onnx_proto)
 
 
-def _create_onnx_session(onnx_proto, ep: str, session_options):
+def _create_onnx_session(onnx_proto, eps: Tuple[str, ...], session_options):
     # TODO(wechi): Add more EPs per PyTorch device types.
     # TODO(wechi): enable external allocators.
-    return onnxruntime.InferenceSession(onnx_proto, providers=[ep], sess_options=session_options)
+    return onnxruntime.InferenceSession(onnx_proto, providers=eps, sess_options=session_options)
 
 
-def _infer_ep_from_device(device):
-    if device.type == "cuda":
-        return "CUDAExecutionProvider"
-    return "CPUExecutionProvider"
+def _infer_ep_from_device(*args) -> Tuple[str, ...]:
+    """Return the first valid device (i.e., GPU or CPU) in argument list."""
+    eps = []
+    for arg in args:
+        if hasattr(arg, "device"):
+            device = arg.device
+            if device.type == "cuda":
+                eps.append("CUDAExecutionProvider")
+            elif device.type == "cpu":
+                eps.append("CPUExecutionProvider")
+    return tuple(eps)
+
+
+def _infer_ep_from_graph_module(graph_module: torch.fx.GraphModule) -> Tuple[str, ...]:
+    """Return the first valid device (i.e., GPU or CPU) among outputs of this torch.fx.GraphModule."""
+    for node in graph_module.graph.nodes:
+        if node.op == "output":
+            # Output node is unique. Let's retrieve output values from
+            # this node's input list. And then just return.
+            flattened_output_args, _ = _pytree.tree_flatten(node.args)
+            output_args = []
+            for output_arg in flattened_output_args:
+                if hasattr(output_arg, "meta") and "val" in output_arg.meta:
+                    # Select outputs with "val" information. Without "val",
+                    # it's not possible access output_arg.meta["val"].device.
+                    output_args.append(output_arg.meta["val"])
+            return _infer_ep_from_device(*output_args)
+    graph_module_str = graph_module.print_readable(print_output=False)
+    raise ValueError(f"No output node is found in graph_module: {graph_module_str}")
+
+
+def _sort_eps(eps: Tuple[str, ...]) -> Tuple[str, ...]:
+    """Sort execution providers in eps based on pre-set priority."""
+
+    def get_execution_provider_priority(ep: str) -> int:
+        if ep == "CPUExecutionProvider":
+            # Lowest priority.
+            return 2
+        if ep == "CUDAExecutionProvider":
+            # Higher priority than CPU but lower than
+            # other specialized EPs.
+            return 1
+        # Highest priority.
+        return 0
+
+    unique_eps = set(eps)
+    return tuple(sorted(unique_eps, key=get_execution_provider_priority, reverse=True))
 
 
 def _get_onnx_devices(values: Tuple[torch.Tensor, ...]) -> Tuple[ORTC.OrtDevice, ...]:  # type: ignore
@@ -503,8 +369,44 @@ class OrtBackend:
         3. Inside _ort_accelerated_call, it creates onnxruntime.InferenceSession and calls it to execute the sub-graph.
     """
 
-    def __init__(self, ep: str = "", preallocate_output: bool = False, session_options=None):
-        self._supported_ops = OrtOperatorSupport()
+    def __init__(
+        self,
+        ep: str = "CPUExecutionProvider",
+        preallocate_output: bool = False,
+        session_options=None,
+        onnx_exporter_options: Optional["torch.onnx._internal.exporter.ExportOptions"] = None,
+    ):
+        # onnx_exporter_options contains information shared between exporter and DORT.
+        # For example, they should use the same decomposition table when
+        #  1. capturing FX graph in torch.compile (see how we create aot_ort in register_backend.py)
+        #  2. call exporter's API to convert `torch.fx.GraphModule` to ONNX model
+        #     (see onnxfunction_dispatcher passed to FxOnnxInterpreter.run below).
+        if onnx_exporter_options is None:
+            onnx_exporter_options = torch.onnx._internal.exporter.ExportOptions()
+        # Convert user-facing option to internal option used by ONNX exporter
+        # to access required information.
+        # Some useful fields:
+        # - Decomposition table for decomposing FX operators in exporter is
+        #   self.resolved_onnx_exporter_options.decomposition_table.
+        # - self.resolved_onnx_exporter_options.onnx_registry records what
+        #   aten/prim ops are supported by exporter and their exporters (type: callable).
+        self.resolved_onnx_exporter_options = torch.onnx._internal.exporter.ResolvedExportOptions(onnx_exporter_options)
+
+        # TODO(wechi): This line must generate result identical to the call of
+        # _create_onnx_supports_op_overload_table(...) inside
+        # create_onnx_friendly_decomposition_table(...) in
+        # torch/onnx/_internal/fx/decomposition_table.py.
+        support_dict = torch.onnx._internal.fx.decomposition_table._create_onnx_supports_op_overload_table(
+            # This is identical to self.resolved_onnx_exporter_options.onnxfunction_dispatcher.onnx_registry.
+            self.resolved_onnx_exporter_options.onnx_registry
+        )  # type: ignore
+
+        extra_support_dict: Dict[str, Any] = {
+            "getattr": None,
+            "_operator.getitem": None,
+        }
+
+        self._supported_ops = OrtOperatorSupport(support_dict, extra_support_dict)
         # TODO: this is a naive implementation of cache without proper guard
         self._partitioner_cache: Dict[torch.fx.GraphModule, torch.fx.GraphModule] = {}
         # TODO: this is a naive implementation of cache without proper guard, this will only work for identical inputs
@@ -554,24 +456,49 @@ class OrtBackend:
                 # rethrow FakeTensorProb failure because it is not yet currently handled.
                 raise
             self._ort_execution_info.example_outputs[graph_module] = prim_outputs
-            # Compile the torch.fx.GraphModule into a torch.jit.ScriptModule.
-            script_module = _fx_to_torchscript(graph_module)
-            # Post-processing step to add expected input and output type information
-            # to the graph in torch.jit.ScriptModule. Expected inputs is "args" and "kwargs"
-            # while expected outputs is "prim_outputs".
-            if isinstance(prim_outputs, tuple):
-                _decorate_script_module(script_module, args, prim_outputs)
-            else:
-                _decorate_script_module(script_module, args, (prim_outputs,))
-            # Generate ONNX ModelProto from torch._C.Graph.
-            onnx_proto = _create_onnx_proto(script_module)
+
+            from torch.onnx._internal.fx import fx_onnx_interpreter
+
+            # Create the object to iterate through the nodes in graph one-by-one
+            # and calls the corresponding ONNX exporter for each node.
+            fx_interpreter = fx_onnx_interpreter.FxOnnxInterpreter(
+                diagnostic_context=self.resolved_onnx_exporter_options.diagnostic_context
+            )
+            # Start the per-node exporting process. It's conceptually a for loop
+            # scanning through the nodes in the graph.
+            exported = fx_interpreter.run(
+                fx_graph_module=graph_module,
+                onnxfunction_dispatcher=self.resolved_onnx_exporter_options.onnxfunction_dispatcher,
+                op_level_debug=self.resolved_onnx_exporter_options.op_level_debug,
+            )
+            # Convert the exported result to ONNX ModelProto.
+            onnx_proto = exported.to_model_proto(
+                opset_version=self.resolved_onnx_exporter_options.opset_version
+            ).SerializeToString()
 
             # Initialize a ORT session to execute this ONNX model.
-            # TorchDynamo assumes all inputs/outputs are on the same device,
-            # so we add execution provider only based on the first input's device.
-            ep = self.ep or _infer_ep_from_device(args[0].device)
+            # Note that TorchDynamo assumes all inputs/outputs are on the
+            # same device, but it's subject to change (very likely with
+            # dynamic shape support), so we add execution providers
+            # based on the all inputs/outputs plus a default OrtBackend.ep.
+            eps_from_args = _infer_ep_from_device(args)
+            eps_from_graph_module = _infer_ep_from_graph_module(graph_module)
+            if eps_from_args:
+                # If user feeds CUDA tensor as input argument,
+                # we want to use CUDA EP.
+                # Thus, `eps_from_args` (deduced from input arguments)
+                # has highest priority.
+                selected_eps = _sort_eps((*eps_from_args, self.ep))
+            elif eps_from_graph_module:
+                # If there is no EP in input arguments, we deduce EP from
+                # graph_module's outputs. Those outputs may come from
+                # FakeTensorProp or Dynamo's built-in symbolic shape inference.
+                selected_eps = _sort_eps((*eps_from_graph_module, self.ep))
+            else:
+                # No EP found in inputs and outputs, let's use default.
+                selected_eps = (self.ep,)
 
-            onnx_session = _create_onnx_session(onnx_proto, ep, self.session_options)
+            onnx_session = _create_onnx_session(onnx_proto, selected_eps, self.session_options)
             # Cache ORT session. It's reused for the same "graph_module".
             self._ort_execution_info.sessions[graph_module] = onnx_session
             # Generate ONNX model and extract its input and output names.

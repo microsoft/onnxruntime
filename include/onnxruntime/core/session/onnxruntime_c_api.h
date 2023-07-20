@@ -696,6 +696,15 @@ typedef void (*OrtCustomJoinThreadFn)(OrtCustomThreadHandle ort_custom_thread_ha
 
 typedef OrtStatus*(ORT_API_CALL* RegisterCustomOpsFn)(OrtSessionOptions* options, const OrtApiBase* api);
 
+/** \brief Callback function for RunAsync
+ *
+ * \param[in] user_data User specific data that passed back to the callback
+ * \param[out] outputs On succeed, outputs host inference results, on error, the value will be nullptr
+ * \param[out] num_outputs Number of outputs, on error, the value will be zero
+ * \param[out] status On error, status will provide details
+ */
+typedef void (*RunAsyncCallbackFn)(void* user_data, OrtValue** outputs, size_t num_outputs, OrtStatusPtr status);
+
 /** \brief The C API
  *
  * All C API functions are defined inside this structure as pointers to functions.
@@ -978,7 +987,7 @@ struct OrtApi {
 
   /** \brief Set the optimization level to apply when loading a graph
    *
-   * Please see https://onnxruntime.ai/docs/performance/graph-optimizations.html for an in-depth explanation
+   * Please see https://onnxruntime.ai/docs/performance/model-optimizations/graph-optimizations.html for an in-depth explanation
    * \param[in,out] options The session options object
    * \param[in] graph_optimization_level The optimization level
    *
@@ -4220,7 +4229,7 @@ struct OrtApi {
    */
   ORT_API2_STATUS(GetResizedStringTensorElementBuffer, _Inout_ OrtValue* value, _In_ size_t index, _In_ size_t length_in_bytes, _Inout_ char** buffer);
 
-  /** \brief Get Allocator from KernelContext for a specific memoryInfo.
+  /** \brief Get Allocator from KernelContext for a specific memoryInfo. Please use C API ReleaseAllocator to release out object
    *
    * \param[in] context OrtKernelContext instance
    * \param[in] mem_info OrtMemoryInfo instance
@@ -4316,6 +4325,27 @@ struct OrtApi {
    */
   ORT_API2_STATUS(CreateAndRegisterAllocatorV2, _Inout_ OrtEnv* env, _In_ const char* provider_type, _In_ const OrtMemoryInfo* mem_info, _In_ const OrtArenaCfg* arena_cfg,
                   _In_reads_(num_keys) const char* const* provider_options_keys, _In_reads_(num_keys) const char* const* provider_options_values, _In_ size_t num_keys);
+
+  /** \brief Run the model asynchronously in a thread owned by intra op thread pool
+   *
+   * \param[in] session
+   * \param[in] run_options If nullptr, will use a default ::OrtRunOptions
+   * \param[in] input_names Array of null terminated UTF8 encoded strings of the input names
+   * \param[in] input Array of ::OrtValue%s of the input values
+   * \param[in] input_len Number of elements in the input_names and inputs arrays
+   * \param[in] output_names Array of null terminated UTF8 encoded strings of the output names
+   * \param[in] output_names_len Number of elements in the output_names and outputs array
+   * \param[out] output Array of OrtValue* owned by customers, size to output_names_len. It could simply be an array of nullptr
+   *             The array will be passed back to run_async_callback
+   * \param[in] run_async_callback Callback function on model run completion
+   * \param[in] user_data User data that pass back to run_async_callback
+   */
+  ORT_API2_STATUS(RunAsync, _Inout_ OrtSession* session, _In_opt_ const OrtRunOptions* run_options,
+                  _In_reads_(input_len) const char* const* input_names,
+                  _In_reads_(input_len) const OrtValue* const* input, size_t input_len,
+                  _In_reads_(output_names_len) const char* const* output_names, size_t output_names_len,
+                  _Inout_updates_all_(output_names_len) OrtValue** output,
+                  _In_ RunAsyncCallbackFn run_async_callback, _In_opt_ void* user_data);
 };
 
 /*
@@ -4346,7 +4376,10 @@ typedef enum OrtCustomOpInputOutputCharacteristic {
 struct OrtCustomOp {
   uint32_t version;  // Must be initialized to ORT_API_VERSION
 
-  // This callback creates the kernel, which is a user defined parameter that is passed to the Kernel* callbacks below.
+  // This callback creates the kernel, which is a user defined
+  // parameter that is passed to the Kernel* callbacks below. It is
+  // recommended to use CreateKernelV2 which allows for a safe error
+  // propagation by returning an OrtStatusPtr.
   void*(ORT_API_CALL* CreateKernel)(_In_ const struct OrtCustomOp* op, _In_ const OrtApi* api,
                                     _In_ const OrtKernelInfo* info);
 
@@ -4362,7 +4395,9 @@ struct OrtCustomOp {
   ONNXTensorElementDataType(ORT_API_CALL* GetOutputType)(_In_ const struct OrtCustomOp* op, _In_ size_t index);
   size_t(ORT_API_CALL* GetOutputTypeCount)(_In_ const struct OrtCustomOp* op);
 
-  // Op kernel callbacks
+  // Perform a computation step.  It is recommended to use
+  // KernelComputeV2 which allows for a safe error propagation by
+  // returning an OrtStatusPtr.
   void(ORT_API_CALL* KernelCompute)(_In_ void* op_kernel, _In_ OrtKernelContext* context);
   void(ORT_API_CALL* KernelDestroy)(_In_ void* op_kernel);
 
@@ -4394,6 +4429,14 @@ struct OrtCustomOp {
   // and false (zero) otherwise.
   // Applicable only for custom ops that have a variadic output.
   int(ORT_API_CALL* GetVariadicOutputHomogeneity)(_In_ const struct OrtCustomOp* op);
+
+  // Create the kernel state which is passed to each compute call.
+  OrtStatusPtr(ORT_API_CALL* CreateKernelV2)(_In_ const struct OrtCustomOp* op, _In_ const OrtApi* api,
+                                             _In_ const OrtKernelInfo* info,
+                                             _Out_ void** kernel);
+
+  // Perform the computation step.
+  OrtStatusPtr(ORT_API_CALL* KernelComputeV2)(_In_ void* op_kernel, _In_ OrtKernelContext* context);
 };
 
 /*

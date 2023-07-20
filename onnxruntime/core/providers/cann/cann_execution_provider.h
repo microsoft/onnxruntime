@@ -10,7 +10,6 @@
 #include <unordered_map>
 
 #include "core/providers/shared_library/provider_api.h"
-#include "core/framework/allocatormgr.h"
 #include "core/framework/arena_extend_strategy.h"
 #include "core/framework/execution_provider.h"
 #include "core/platform/ort_mutex.h"
@@ -64,6 +63,10 @@ class CANNExecutionProvider : public IExecutionProvider {
   ProviderOptions GetProviderOptions() const override {
     return CANNExecutionProviderInfo::ToProviderOptions(info_);
   }
+
+  static AllocatorPtr CreateCannAllocator(OrtDevice::DeviceId device_id, size_t npu_mem_limit,
+                                          ArenaExtendStrategy arena_extend_strategy,
+                                          OrtArenaCfg* default_memory_arena_cfg);
 
   void RegisterStreamHandlers(IStreamCommandHandleRegistry& stream_handle_registry, AllocatorMap&) const override;
 
