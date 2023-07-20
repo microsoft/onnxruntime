@@ -66,6 +66,9 @@ def optimize_by_onnxruntime(
     opt_level: Optional[int] = 99,
     disabled_optimizers: List[str] = [],  # noqa: B006
     verbose: bool = False,
+    save_as_external_data: bool = False,
+    external_data_filename: str = "",
+    external_data_file_threshold: int = 1024,
 ) -> str:
     """
     Use onnxruntime to optimize model.
@@ -76,6 +79,9 @@ def optimize_by_onnxruntime(
         optimized_model_path (str or None): the path of optimized model.
         opt_level (int): graph optimization level.
         disabled_optimizers (List[str]): a list of names of disabled optimizers
+        save_as_external_data (bool): whether to save external data outside of ONNX model
+        external_data_filename (str): name of external data file. If not provided, name is automatically created from ONNX model.
+        external_data_file_threshold (int): threshold to decide whether to save tensor in ONNX model or in external data file
     Returns:
         optimized_model_path (str): the path of optimized model
     """
@@ -112,10 +118,16 @@ def optimize_by_onnxruntime(
         optimized_model_path = "{}_o{}_{}.onnx".format(path_prefix, opt_level, "gpu" if use_gpu else "cpu")
 
     sess_options.optimized_model_filepath = optimized_model_path
-    sess_options.add_session_config_entry(
-        "session.optimized_model_external_initializers_file_name", "external_initializers.bin"
-    )
-    sess_options.add_session_config_entry("session.optimized_model_external_initializers_min_size_in_bytes", "1024")
+    if save_as_external_data:
+        if len(external_data_filename) == 0:
+            # Set external data filename to model_name.onnx.data
+            external_data_filename = os.path.basename(optimized_model_path) + ".data"
+        sess_options.add_session_config_entry(
+            "session.optimized_model_external_initializers_file_name", external_data_filename
+        )
+        sess_options.add_session_config_entry(
+            "session.optimized_model_external_initializers_min_size_in_bytes", str(external_data_file_threshold)
+        )
 
     if verbose:
         print("Using onnxruntime to optimize model - Debug level Set to verbose")
@@ -208,6 +220,7 @@ def optimize_model(
     use_gpu: bool = False,
     only_onnxruntime: bool = False,
     verbose: bool = False,
+    use_external_data_format: bool = False,
 ):
     """Optimize Model by OnnxRuntime and/or python fusion logic.
 
@@ -244,6 +257,8 @@ def optimize_model(
             When the level > 0, onnxruntime will be used to optimize model first.
         use_gpu (bool, optional): use gpu or not for onnxruntime. Defaults to False.
         only_onnxruntime (bool, optional): only use onnxruntime to optimize model, and no python fusion.
+            Defaults to False.
+        use_external_data_format (bool, optional): use external data format when saving optimized model.
             Defaults to False.
 
      Returns:
@@ -285,6 +300,7 @@ def optimize_model(
             opt_level=opt_level,
             disabled_optimizers=disabled_optimizers,
             verbose=verbose,
+            save_as_external_data=use_external_data_format,
         )
     elif opt_level == 1:
         # basic optimizations (like constant folding and cast elimination) are not specified to execution provider.
@@ -298,6 +314,7 @@ def optimize_model(
             opt_level=1,
             disabled_optimizers=disabled_optimizers,
             verbose=verbose,
+            save_as_external_data=use_external_data_format,
         )
 
     if only_onnxruntime and not temp_model_path:
@@ -479,6 +496,7 @@ def main():
         optimization_options=optimization_options,
         use_gpu=args.use_gpu,
         only_onnxruntime=args.only_onnxruntime,
+        use_external_data_format=args.use_external_data_format,
     )
 
     if args.float16:
