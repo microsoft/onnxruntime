@@ -17,14 +17,18 @@ public enum OnnxJavaType {
   BOOL(7, boolean.class, 1),
   STRING(8, String.class, 4),
   UINT8(9, byte.class, 1),
+  /** A IEEE 16-bit floating point value. */
   FLOAT16(10, short.class, 2),
+  /** A non-IEEE 16-bit floating point value, with 8 exponent bits and 7 mantissa bits. */
   BFLOAT16(11, short.class, 2),
   UNKNOWN(0, Object.class, 0);
 
-  private static final OnnxJavaType[] values = new OnnxJavaType[12];
+  private static final OnnxJavaType[] values;
 
   static {
-    for (OnnxJavaType ot : OnnxJavaType.values()) {
+    OnnxJavaType[] tmpValues = OnnxJavaType.values();
+    values = new OnnxJavaType[tmpValues.length];
+    for (OnnxJavaType ot : tmpValues) {
       values[ot.value] = ot;
     }
   }
