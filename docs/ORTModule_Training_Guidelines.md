@@ -190,7 +190,7 @@ data sparsity based performance optimizations.
 
 	```bash
 	export ORTMODULE_CACHE_DIR="/path/to/cache_dir" # Enable
-	export ORTMODULE_CACHE_DIR="" # Disable
+	unset ORTMODULE_CACHE_DIR # Disable
 	```
 
 ### 2.2 Memory Optimization
