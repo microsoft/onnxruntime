@@ -76,7 +76,7 @@ class RandomValueGenerator {
     std::vector<TFloat16> val(detail::SizeFromDims(dims));
     std::uniform_real_distribution<float> distribution(min, max);
     for (size_t i = 0; i < val.size(); ++i) {
-      val[i] = TFloat16(math::floatToHalf(distribution(generator_)));
+      val[i] = TFloat16(static_cast<float>(distribution(generator_)));
     }
     return val;
   }

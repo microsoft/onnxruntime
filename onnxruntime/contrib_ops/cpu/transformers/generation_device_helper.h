@@ -82,6 +82,12 @@ using InitBeamStateFunc = std::function<void(
     int num_beams,
     Stream* stream)>;
 
+using CreateBeamScorer = std::function<std::unique_ptr<transformers::IBeamScorer>(
+    const transformers::IGenerationParameters& parameters,
+    AllocatorPtr& allocator,
+    AllocatorPtr& allocator_cpu,
+    Stream* stream)>;
+
 template <typename T>
 using InitGreedyStateFunc = std::function<void(
     transformers::IGreedySearchState<T>* greedy_state,
@@ -92,7 +98,6 @@ template <typename T>
 using ProcessLogitsFunc = std::function<Status(
     const OrtValue& logits,                                 // logits output of subgraph
     transformers::IBeamSearchState<T>* beam_state,          // state
-    transformers::IBeamSearchCpuState* cpu_state,           // state in CPU
     transformers::ISequences* sequences,                    // sequences
     AllocatorPtr& allocator,                                // default allocator
     onnxruntime::concurrency::ThreadPool* thread_pool,      // thread pool (for CPU only)
@@ -235,7 +240,6 @@ void InitGreedyState(transformers::IGreedySearchState<T>* greedy_state,
 template <typename T>
 Status ProcessLogits(const OrtValue& logits,                                 // logits output of subgraph
                      transformers::IBeamSearchState<T>* beam_state,          // state
-                     transformers::IBeamSearchCpuState* cpu_state,           // state in CPU
                      transformers::ISequences* sequences,                    // sequences
                      AllocatorPtr& allocator,                                // default allocator
                      onnxruntime::concurrency::ThreadPool* thread_pool,      // thread pool (for CPU only)

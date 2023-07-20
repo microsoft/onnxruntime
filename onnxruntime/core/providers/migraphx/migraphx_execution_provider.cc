@@ -136,7 +136,8 @@ std::vector<AllocatorPtr> MIGraphXExecutionProvider::CreatePreferredAllocators()
       [](OrtDevice::DeviceId device_id) { return CreateROCMAllocator(device_id, onnxruntime::CUDA); }, device_id_);
   AllocatorCreationInfo pinned_allocator_info(
       [](OrtDevice::DeviceId device_id) {
-        return CreateROCMPinnedAllocator(device_id, onnxruntime::CUDA_PINNED);
+        ORT_UNUSED_PARAMETER(device_id);
+        return CreateROCMPinnedAllocator(onnxruntime::CUDA_PINNED);
       },
       0);
   return std::vector<AllocatorPtr>{CreateAllocator(default_memory_info), CreateAllocator(pinned_allocator_info)};

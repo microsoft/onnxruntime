@@ -95,7 +95,7 @@ SessionState::SessionState(Graph& graph,
     // The allocator registration rule:
     // Each location (OrtDevice) will only have 1 allocator used for whole session.
     // The EP which is registered first will have higher priority
-    for (auto ep : execution_providers_) {
+    for (auto& ep : execution_providers_) {
       auto allocators = ep->CreatePreferredAllocators();
       for (auto& alloc : allocators) {
         allocators_->insert({alloc->Info().device, alloc});  // DONT overwrite existing key

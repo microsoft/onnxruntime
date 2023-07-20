@@ -59,6 +59,10 @@
 
 #endif
 
+#ifdef ENABLE_TRITON
+#include "orttraining/training_ops/cpu/triton/triton_op.h"
+#endif
+
 #ifndef _Ret_notnull_
 #define _Ret_notnull_
 #endif
@@ -114,14 +118,6 @@ void CPUAllocator::Free(void* p) { g_host->CPUAllocator__Free(this, p); }
 
 AllocatorPtr CreateAllocator(const AllocatorCreationInfo& info) {
   return g_host->CreateAllocator(info);
-}
-
-void AllocatorManager::InsertAllocator(AllocatorPtr allocator) {
-  return g_host->AllocatorManager__InsertAllocator(this, allocator);
-}
-
-AllocatorPtr AllocatorManager::GetAllocator(OrtMemType mem_type, OrtDevice device) const {
-  return g_host->AllocatorManager__GetAllocator(this, mem_type, device);
 }
 
 template <>
@@ -342,8 +338,8 @@ std::unique_ptr<IAllocator> CreateCUDAAllocator(int16_t device_id, const char* n
   return g_host->CreateCUDAAllocator(device_id, name);
 }
 
-std::unique_ptr<IAllocator> CreateCUDAPinnedAllocator(int16_t device_id, const char* name) {
-  return g_host->CreateCUDAPinnedAllocator(device_id, name);
+std::unique_ptr<IAllocator> CreateCUDAPinnedAllocator(const char* name) {
+  return g_host->CreateCUDAPinnedAllocator(name);
 }
 
 std::unique_ptr<IDataTransfer> CreateGPUDataTransfer() {
@@ -356,8 +352,8 @@ std::unique_ptr<IAllocator> CreateROCMAllocator(int16_t device_id, const char* n
   return g_host->CreateROCMAllocator(device_id, name);
 }
 
-std::unique_ptr<IAllocator> CreateROCMPinnedAllocator(int16_t device_id, const char* name) {
-  return g_host->CreateROCMPinnedAllocator(device_id, name);
+std::unique_ptr<IAllocator> CreateROCMPinnedAllocator(const char* name) {
+  return g_host->CreateROCMPinnedAllocator(name);
 }
 
 std::unique_ptr<IDataTransfer> CreateGPUDataTransfer() {
@@ -463,10 +459,6 @@ Status DenseTensorToSparseCoo(const DataTransferManager& data_manager, const Ten
 #endif  // !defined(DISABLE_SPARSE_TENSORS)
 
 }  // namespace sparse_utils
-
-float MLFloat16::ToFloat() const {
-  return math::halfToFloat(val);
-}
 
 std::vector<std::string> GetStackTrace() { return g_host->GetStackTrace(); }
 
@@ -716,6 +708,15 @@ void RefCountTracker::DumpDetails(const std::string& phase_name) const {
 #endif
 
 #endif
+
+#ifdef ENABLE_TRITON
+namespace contrib {
+Status TritonOp::Compute(OpKernelContext* context) const {
+  return g_host_cpu.contrib__TritonOp__Compute(this, context);
+}
+}  // namespace contrib
+#endif
+
 #endif
 
 #if defined(USE_CANN)

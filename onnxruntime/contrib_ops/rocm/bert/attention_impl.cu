@@ -79,7 +79,7 @@ inline int3 Get2DMaskStrides(int total_sequence_length) {
 }
 
 Status ClassifyAttentionMode(
-    const std::string& op,
+    AttentionType attn_type,
     RocmAttentionParameters* attn,
     const std::vector<const Tensor*>& qkv,
     const std::vector<const Tensor*>& past,
@@ -91,7 +91,7 @@ Status ClassifyAttentionMode(
   auto hint = MakeString(num_qkv, " qkv inputs, ", num_past, " past inputs and ", num_present, " present inputs");
   LOGS_DEFAULT(VERBOSE) << hint;
 
-  if (op == "Attention") {
+  if (attn_type == kAttention) {
     ORT_ENFORCE(num_qkv == 0);
     if (num_past == 0 && num_present == 0) {
       attn->mode = QFMT_KFMT_VFMT_NONE_NONE_NONE_NONE;
@@ -113,7 +113,7 @@ Status ClassifyAttentionMode(
         return Status::OK();
       }
     }
-  } else if (op == "MultiHeadAttention") {
+  } else if (attn_type == kMultiHeadAttention || attn_type == kDecoderMaskedMultiHeadAttention) {
     if (num_qkv == 3 && num_past == 0 && num_present == 0) {
       if (attn->qkv_format == Q_K_V_BSNH) {
         attn->mode = BSNH_BLNH_BLNH_NONE_NONE_NONE_NONE;
@@ -172,7 +172,7 @@ Status ClassifyAttentionMode(
   }
   return ORT_MAKE_STATUS(
       ONNXRUNTIME, INVALID_ARGUMENT,
-      "Unsupported AttentionMode for ", op, ". Got qkv format ", attn->qkv_format,
+      "Unsupported AttentionMode for ", attn_type, ". Got qkv format ", attn->qkv_format,
       ". Got ", hint);
 }
 

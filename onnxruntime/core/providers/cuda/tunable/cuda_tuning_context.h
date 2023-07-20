@@ -20,6 +20,8 @@ class CudaTuningResultsValidator : public TuningResultsValidator {
   CudaTuningResultsValidator(CUDAExecutionProvider* ep);
 
  protected:
+  std::string GetOrtBuildConfig() const override;
+
   std::string GetDeviceModel() const;
   Status ValidateDeviceModel(const std::string& value) const;
 

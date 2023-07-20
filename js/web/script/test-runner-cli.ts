@@ -57,6 +57,7 @@ async function main() {
   const DEFAULT_OPSET_VERSIONS = fs.readdirSync(TEST_DATA_MODEL_NODE_ROOT, {withFileTypes: true})
                                      .filter(dir => dir.isDirectory() && dir.name.startsWith('opset'))
                                      .map(dir => dir.name.slice(5));
+  const MAX_OPSET_VERSION = Math.max(...DEFAULT_OPSET_VERSIONS.map(v => Number.parseInt(v, 10)));
 
   const FILE_CACHE_ENABLED = args.fileCache;         // whether to enable file cache
   const FILE_CACHE_MAX_FILE_SIZE = 1 * 1024 * 1024;  // The max size of the file that will be put into file cache
@@ -70,15 +71,20 @@ async function main() {
   if (shouldLoadSuiteTestData) {
     npmlog.verbose('TestRunnerCli.Init', 'Loading test groups for suite test...');
 
+    // collect all model test folders
+    const allNodeTestsFolders =
+        DEFAULT_OPSET_VERSIONS
+            .map(version => {
+              const suiteRootFolder = path.join(TEST_DATA_MODEL_NODE_ROOT, `opset${version}`);
+              if (!fs.existsSync(suiteRootFolder) || !fs.statSync(suiteRootFolder).isDirectory()) {
+                throw new Error(`model test root folder '${suiteRootFolder}' does not exist.`);
+              }
+              return fs.readdirSync(suiteRootFolder).map(f => `opset${version}/${f}`);
+            })
+            .flat();
+
     for (const backend of DEFAULT_BACKENDS) {
-      for (const version of DEFAULT_OPSET_VERSIONS) {
-        let nodeTest = nodeTests.get(backend);
-        if (!nodeTest) {
-          nodeTest = [];
-          nodeTests.set(backend, nodeTest);
-        }
-        nodeTest.push(loadNodeTests(backend, version));
-      }
+      nodeTests.set(backend, loadNodeTests(backend, allNodeTestsFolders));
       opTests.set(backend, loadOpTests(backend));
     }
   }
@@ -170,12 +176,11 @@ async function main() {
           const testCaseName = typeof testCase === 'string' ? testCase : testCase.name;
           let found = false;
           for (const testGroup of nodeTest) {
-            found = found ||
-                testGroup.tests.some(
-                    test => minimatch(
-                        test.modelUrl,
-                        path.join('**', testCaseName, '*.+(onnx|ort)').replace(/\\/g, '/'),
-                        ));
+            found ||= minimatch
+                          .match(
+                              testGroup.tests.map(test => test.modelUrl).filter(url => url !== ''),
+                              path.join('**', testCaseName, '*.+(onnx|ort)').replace(/\\/g, '/'), {matchBase: true})
+                          .length > 0;
           }
           if (!found) {
             throw new Error(`node model test case '${testCaseName}' in test list does not exist.`);
@@ -207,39 +212,41 @@ async function main() {
     }
   }
 
-  function loadNodeTests(backend: string, version: string): Test.ModelTestGroup {
-    return suiteFromFolder(
-        `node-opset_v${version}-${backend}`, path.join(TEST_DATA_MODEL_NODE_ROOT, `opset${version}`), backend,
-        testlist[backend].node);
-  }
+  function loadNodeTests(backend: string, allFolders: string[]): Test.ModelTestGroup[] {
+    const allTests = testlist[backend]?.node;
 
-  function suiteFromFolder(
-      name: string, suiteRootFolder: string, backend: string,
-      testlist?: readonly Test.TestList.Test[]): Test.ModelTestGroup {
-    const sessions: Test.ModelTest[] = [];
-    const tests = fs.readdirSync(suiteRootFolder);
-    for (const test of tests) {
-      let condition: Test.Condition|undefined;
-      let times: number|undefined;
-      if (testlist) {
-        const matches = testlist.filter(
-            p => minimatch(
-                path.join(suiteRootFolder, test),
-                path.join('**', typeof p === 'string' ? p : p.name).replace(/\\/g, '/')));
-        if (matches.length === 0) {
-          times = 0;
-        } else if (matches.length === 1) {
-          const match = matches[0];
-          if (typeof match !== 'string') {
-            condition = match.condition;
-          }
-        } else {
-          throw new Error(`multiple testlist rules matches test: ${path.join(suiteRootFolder, test)}`);
-        }
+    // key is folder name, value is test index array
+    const folderTestMatchCount = new Map<string, number[]>(allFolders.map(f => [f, []]));
+    // key is test category, value is a list of model test
+    const opsetTests = new Map<string, Test.ModelTest[]>();
+
+    allTests.forEach((test, i) => {
+      const testName = typeof test === 'string' ? test : test.name;
+      const matches = minimatch.match(allFolders, path.join('**', testName).replace(/\\/g, '/'));
+      matches.forEach(m => folderTestMatchCount.get(m)!.push(i));
+    });
+
+    for (const folder of allFolders) {
+      const testIds = folderTestMatchCount.get(folder);
+      const times = testIds ? testIds.length : 0;
+      if (times > 1) {
+        throw new Error(`multiple testlist rules matches test: ${path.join(TEST_DATA_MODEL_NODE_ROOT, folder)}`);
       }
-      sessions.push(modelTestFromFolder(path.resolve(suiteRootFolder, test), backend, condition, times));
+
+      const test = testIds && testIds.length > 0 ? allTests[testIds[0]] : undefined;
+      const condition = test && typeof test !== 'string' ? test.condition : undefined;
+
+      const opsetVersion = folder.split('/')[0];
+      const category = `node-${opsetVersion}-${backend}`;
+      let modelTests = opsetTests.get(category);
+      if (!modelTests) {
+        modelTests = [];
+        opsetTests.set(category, modelTests);
+      }
+      modelTests.push(modelTestFromFolder(path.resolve(TEST_DATA_MODEL_NODE_ROOT, folder), backend, condition, times));
     }
-    return {name, tests: sessions};
+
+    return Array.from(opsetTests.keys()).map(category => ({name: category, tests: opsetTests.get(category)!}));
   }
 
   function modelTestFromFolder(
@@ -378,6 +385,7 @@ async function main() {
       // field 'verbose' and 'backend' is not set
       for (const test of tests) {
         test.backend = backend;
+        test.opsets = test.opsets || [{domain: '', version: MAX_OPSET_VERSION}];
       }
       npmlog.verbose('TestRunnerCli.Init.Op', 'Finished preparing test data.');
       npmlog.verbose('TestRunnerCli.Init.Op', '===============================================================');

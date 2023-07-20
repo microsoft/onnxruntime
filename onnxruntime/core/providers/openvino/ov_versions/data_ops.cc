@@ -30,6 +30,7 @@ namespace openvino_ep {
 
 // Ops which are supported only in models(as intermediate nodes) and not in unit tests
 std::set<std::string> ops_supported_only_in_model = {
+    "Add",
     "Cast",
     "Concat",
     "ConstantOfShape",
@@ -41,6 +42,7 @@ std::set<std::string> ops_supported_only_in_model = {
     "GatherElements",
     "GatherND",
     "Identity",
+    "LayerNormalization",
     "Loop",
     "LSTM",
     "NonMaxSuppression",
@@ -162,7 +164,6 @@ std::vector<SupportedOp> supported_op_mode = {
     {"InstanceNormalization", V_2023_0, {"VPUX"}},
     {"HardSigmoid", V_2020_4, {"CPU", "GPU"}},
     {"HardMax", V_2022_1, {"CPU", "GPU"}},
-    {"LayerNormalization", V_2023_0, {"CPU", "GPU"}},
     {"LeakyRelu", V_2020_4, {"CPU", "GPU"}},
     {"LeakyRelu", V_2023_0, {"VPUX"}},
     {"Less", V_2020_4, {"CPU", "GPU"}},

@@ -75,6 +75,7 @@ OpBuilderRegistrations::OpBuilderRegistrations() {
 
   {
     CreateConvOpBuilder("Conv", *this);
+    CreateConvOpBuilder("ConvTranspose", *this);
   }
 
   {
@@ -109,10 +110,6 @@ OpBuilderRegistrations::OpBuilderRegistrations() {
 
   {
     CreateSliceOpBuilder("Slice", *this);
-  }
-
-  {
-    CreateConvOpBuilder("ConvTranspose", *this);
   }
 
   {

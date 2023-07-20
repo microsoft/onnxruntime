@@ -23,12 +23,12 @@
 
 #ifdef USE_CUDA
 namespace onnxruntime {
-std::unique_ptr<IAllocator> CreateCUDAPinnedAllocator(int16_t device_id, const char* name);
+std::unique_ptr<IAllocator> CreateCUDAPinnedAllocator(const char* name);
 }  // namespace onnxruntime
 #endif
 #ifdef USE_ROCM
 namespace onnxruntime {
-std::unique_ptr<IAllocator> CreateROCMPinnedAllocator(int16_t device_id, const char* name);
+std::unique_ptr<IAllocator> CreateROCMPinnedAllocator(const char* name);
 }  // namespace onnxruntime
 #endif
 
@@ -364,7 +364,7 @@ void setup_training_params(GPT2Parameters& params) {
     info.device_id = gsl::narrow<OrtDevice::DeviceId>(MPIContext::GetInstance().GetLocalRank());
     info.do_copy_in_default_stream = true;
     params.providers.emplace(kCudaExecutionProvider, CudaProviderFactoryCreator::Create(&info));
-    params.input_allocator = CreateCUDAPinnedAllocator(info.device_id, CUDA_PINNED);
+    params.input_allocator = CreateCUDAPinnedAllocator(CUDA_PINNED);
   }
 #endif
 
@@ -374,7 +374,7 @@ void setup_training_params(GPT2Parameters& params) {
     info.device_id = gsl::narrow<OrtDevice::DeviceId>(MPIContext::GetInstance().GetLocalRank());
     info.do_copy_in_default_stream = true;
     params.providers.emplace(kRocmExecutionProvider, RocmProviderFactoryCreator::Create(&info));
-    params.input_allocator = CreateROCMPinnedAllocator(info.device_id, CUDA_PINNED);
+    params.input_allocator = CreateROCMPinnedAllocator(HIP_PINNED);
   }
 #endif
 
