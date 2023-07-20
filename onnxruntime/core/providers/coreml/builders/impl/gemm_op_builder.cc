@@ -146,6 +146,7 @@ bool GemmOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputPara
       return false;
     }
 
+    // TODO is it ok if the shape is dynamic and empty?
     if (Product(a_shape) == 0) {
       LOGS(logger, VERBOSE) << "A must be non-empty";
       return false;

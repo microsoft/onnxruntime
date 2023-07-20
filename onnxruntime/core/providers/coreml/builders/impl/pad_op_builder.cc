@@ -141,6 +141,7 @@ bool PadOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputParam
     return false;
   }
 
+  // TODO is it ok if the shape is dynamic and empty?
   const TensorShape shape(input_shape);
   if (shape.Size() == 0) {
     LOGS(logger, VERBOSE) << "Cases that input data being empty due to a dimension with value of 0 is not supported";
