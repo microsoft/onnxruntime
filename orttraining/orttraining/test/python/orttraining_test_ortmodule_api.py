@@ -15,6 +15,7 @@ import unittest.mock
 import warnings
 from collections import OrderedDict, namedtuple
 import shutil
+from pathlib import Path
 
 import _test_helpers
 import numpy as np
@@ -6083,8 +6084,11 @@ def test_cache_exported_model():
     data = torch.randn(1, 10)
     _ = model(data)
 
-    assert len(os.listdir("cache_dir")) == 1
+    root_dir = Path(__file__).resolve().parent
+    cache_dir = root_dir / "cache_dir"
 
-    _ = onnx.load(os.listdir("cache_dir")[0])
+    assert len(os.listdir(cache_dir)) == 1
 
-    shutil.rmtree("cache_dir")
+    _ = onnx.load(str(cache_dir / os.listdir(cache_dir)[0]))
+
+    shutil.rmtree(cache_dir)
