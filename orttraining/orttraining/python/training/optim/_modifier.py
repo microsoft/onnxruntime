@@ -137,6 +137,9 @@ def clip_grad_norm_fp32(
 
         else:
             for grad in grads_for_norm:
+                # torch.norm is deprecated and moved to torch.linalg.norm
+                # with a different signature
+                # see https://pytorch.org/docs/stable/generated/torch.norm.html
                 if norm_type in {"fro", "nuc"}:
                     grad_norm = torch.linalg.matrix_norm(grad, norm_type)
                 else:
