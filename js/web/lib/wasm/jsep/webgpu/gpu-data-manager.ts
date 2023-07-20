@@ -83,7 +83,7 @@ class GpuDataManagerImpl implements GpuDataManager {
 
   private freeBuffers: Map<number, GPUBuffer[]>;
 
-  constructor(private backend: WebGpuBackend /* , private reuseBuffer: boolean */) {
+  constructor(private backend: WebGpuBackend) {
     this.storageCache = new Map();
     this.downloadCache = new Map();
     this.freeBuffers = new Map();
@@ -153,13 +153,14 @@ class GpuDataManagerImpl implements GpuDataManager {
   // eslint-disable-next-line no-bitwise
   create(size: number, usage = GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST): GpuData {
     const bufferSize = calcNormalizedBufferSize(size);
-    if (!this.freeBuffers.has(bufferSize)) {
-      this.freeBuffers.set(bufferSize, []);
-    }
 
     let gpuBuffer;
-    const buffers = this.freeBuffers.get(bufferSize);
-    if (buffers && buffers.length > 0) {
+    let buffers = this.freeBuffers.get(bufferSize);
+    if (!buffers) {
+      buffers = [];
+      this.freeBuffers.set(bufferSize, buffers);
+    }
+    if (buffers.length > 0) {
       gpuBuffer = buffers.pop() as GPUBuffer;
     } else {
       // create gpu buffer
@@ -241,7 +242,7 @@ class GpuDataManagerImpl implements GpuDataManager {
     this.buffersForUploadingPending = [];
     for (const buffer of this.buffersPending) {
       // Put the pending buffer to freeBuffers list instead of really destroying it for buffer reusing.
-      this.freeBuffers.get(buffer.size)?.push(buffer);
+      this.freeBuffers.get(buffer.size)!.push(buffer);
     }
     this.buffersPending = [];
   }
