@@ -95,7 +95,7 @@ See more information on the TensorRT Execution Provider [here](../execution-prov
 {: .no_toc }
 
 * Install [CUDA](https://developer.nvidia.com/cuda-toolkit) and [cuDNN](https://developer.nvidia.com/cudnn)
-   * The TensorRT execution provider for ONNX Runtime is built and tested up to CUDA 11.8 and cuDNN 8.9.
+   * The TensorRT execution provider for ONNX Runtime is built and tested up to CUDA 11.8 and cuDNN 8.9. Check [here](https://onnxruntime.ai/docs/execution-providers/TensorRT-ExecutionProvider.html#requirements) for more version information.
    * The path to the CUDA installation must be provided via the CUDA_PATH environment variable, or the `--cuda_home` parameter. The CUDA path should contain `bin`, `include` and `lib` directories.
    * The path to the CUDA `bin` directory must be added to the PATH environment variable so that `nvcc` is found.
    * The path to the cuDNN installation (path to cudnn bin/include/lib) must be provided via the cuDNN_PATH environment variable, or `--cudnn_home` parameter.
@@ -103,11 +103,13 @@ See more information on the TensorRT Execution Provider [here](../execution-prov
  * Install [TensorRT](https://developer.nvidia.com/tensorrt)
    * The TensorRT execution provider for ONNX Runtime is built and tested up to TensorRT 8.6.
    * The path to TensorRT installation must be provided via the `--tensorrt_home` parameter.
-   * By default, ONNX Runtime uses TensorRT built-in parser library, instead of generating the parser library from open-sourced [onnx-tensorrt](https://github.com/onnx/onnx-tensorrt/tree/main) submodule. 
-     * To update TensorRT parser version, simply linking path to new TensorRT folder when building Onnx Runtime. 
-     * To generate open-sourced parser when building ONNX Runtime, add additional `--use_tensorrt_oss_parser` parameter next to the parameter `--use_tensorrt` in build commands below.
-       * The default version of open-sourced onnx-tensorrt parser is encoded in cmake/deps.txt.
-       * To specify a different version, please update the commit link for the onnx-tensorrt repository, and run `sha1sum` command on the onnx-tensorrt zip file to acquire the SHA1 hash
+   * ONNX Runtime uses TensorRT built-in parser from `tensorrt_home` by default.
+   * To use open-sourced [onnx-tensorrt](https://github.com/onnx/onnx-tensorrt/tree/main) parser instead, add `--use_tensorrt_oss_parser` parameter in build commands below.
+       * The default version of open-sourced onnx-tensorrt parser is encoded in [cmake/deps.txt](https://github.com/microsoft/onnxruntime/blob/main/cmake/deps.txt).
+       * To specify a different version of onnx-tensorrt parser:
+         * Select the commit of [onnx-tensorrt](https://github.com/onnx/onnx-tensorrt/commits) that you preferred;
+         * Run `sha1sum` command with downloaded onnx-tensorrt zip file to acquire the SHA1 hash 
+         * Update [cmake/deps.txt](https://github.com/microsoft/onnxruntime/blob/main/cmake/deps.txt) with updated onnx-tensorrt commit and hash info.
 
 ### Build Instructions
 {: .no_toc }

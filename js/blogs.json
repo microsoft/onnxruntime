@@ -1,7 +1,13 @@
 {
     "blogs": [
   {
-            "title": "On-Device Training: Efficient training on the edge with ONNX Runtime",
+            "title": "On-Device Training with ONNX Runtime: A deep dive",
+            "date": "July 5th, 2023",
+            "blurb": "This blog presents technical details of On-Device training with ONNX Runtime. It explains how On-Device Training works and what are the different steps and artifacts involved in the training process. This information will help you train your models on edge devices.",
+            "link": "https://cloudblogs.microsoft.com/opensource/2023/07/05/on-device-training-with-onnx-runtime-a-deep-dive/"
+        },
+	{
+	    "title": "On-Device Training: Efficient training on the edge with ONNX Runtime",
             "date": "May 31st, 2023",
             "blurb": "This blog introduces On-Device Training to enable training models on edge devices with the data available on-edge. It extends ORT Inference on edge to include federated learning and personalization scenarios.",
             "link": "https://cloudblogs.microsoft.com/opensource/2023/05/31/on-device-training-efficient-training-on-the-edge-with-onnx-runtime/"
