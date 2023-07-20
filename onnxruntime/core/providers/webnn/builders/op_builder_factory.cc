@@ -104,6 +104,10 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
     CreateNormalizationOpBuilder("LayerNormalization", op_registrations);
   }
 
+  {  // Pad
+    CreatePadOpBuilder("Pad", op_registrations);
+  }
+
   {  // Pool
     CreatePoolOpBuilder("GlobalAveragePool", op_registrations);
     CreatePoolOpBuilder("GlobalMaxPool", op_registrations);
