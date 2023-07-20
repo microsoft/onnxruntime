@@ -656,7 +656,12 @@ public class InferenceTest {
         OnnxValue resultTensor = result.get(0);
         float[] resultArray = TestHelpers.flattenFloat(resultTensor.getValue());
         assertEquals(expectedOutput.length, resultArray.length);
-        assertArrayEquals(expectedOutput, resultArray, 1e-6f);
+        if (provider == OrtProvider.CORE_ML) {
+          // CoreML gives slightly different answers on a 2020 13" M1 MBP
+          assertArrayEquals(expectedOutput, resultArray, 1e-2f);
+        } else {
+          assertArrayEquals(expectedOutput, resultArray, 1e-6f);
+        }
       } catch (OrtException e) {
         throw new IllegalStateException("Failed to execute a scoring operation", e);
       }
