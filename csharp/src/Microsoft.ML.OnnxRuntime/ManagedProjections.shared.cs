@@ -25,8 +25,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// </summary>
         /// <param name="namedOnnxValue"></param>
         /// <param name="metadata"></param>
-        /// <param name="disposables"></param>
-        /// <returns></returns>
+        /// <returns>OrtValye created accoding to the metadata</returns>
         internal static OrtValue CreateProjection(NamedOnnxValue namedOnnxValue, NodeMetadata metadata)
         {
             OrtValue result;
@@ -68,8 +67,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// </summary>
         /// <param name="namedOnnxValue">NamedOnnxValue containing a IEnumerable<NameOnnValue></param>
         /// <param name="metadata">sequence metadata</param>
-        /// <param name="disposables">cleanup list</param>
-        /// <returns></returns>
+        /// <returns>OrtValue that represents a sequence</returns>
         /// <exception cref="OnnxRuntimeException"></exception>
         private static OrtValue CreateSequenceProjection(NamedOnnxValue namedOnnxValue, NodeMetadata metadata)
         {
@@ -113,7 +111,6 @@ namespace Microsoft.ML.OnnxRuntime
         /// </summary>
         /// <param name="node"></param>
         /// <param name="elementMeta"></param>
-        /// <param name="disposables"></param>
         /// <returns>OrtValue</returns>
         /// <exception cref="OnnxRuntimeException"></exception>
         private static OrtValue CreateMapProjection(NamedOnnxValue node, NodeMetadata elementMeta)
@@ -165,7 +162,6 @@ namespace Microsoft.ML.OnnxRuntime
         /// </summary>
         /// <param name="node">NodeOnnxValue containing DenseTensor</param>
         /// <param name="elementMeta"></param>
-        /// <param name="disposables">cleanup list</param>
         /// <returns></returns>
         /// <exception cref="OnnxRuntimeException"></exception>
         private static OrtValue CreateTensorProjection(NamedOnnxValue node, NodeMetadata elementMeta)
