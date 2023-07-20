@@ -159,7 +159,7 @@ static void core_impl(const Tensor* input_tensor, const Tensor* indices_tensor, 
 
 Status GatherElements::ValidateInputShapes(const TensorShape& input_data_shape,
                                            const TensorShape& indices_shape,
-                                           int64_t axis) {
+                                           int64_t /*axis*/) {
   int64_t input_data_rank = static_cast<int64_t>(input_data_shape.NumDimensions());
   int64_t indices_rank = static_cast<int64_t>(indices_shape.NumDimensions());
 
@@ -175,18 +175,20 @@ Status GatherElements::ValidateInputShapes(const TensorShape& input_data_shape,
 
   // Except for the axis of interest all other dim values of the 'indices' input must be within bounds
   // of the corresponding 'data' input dim value
-  for (int64_t i = 0; i < indices_rank; ++i) {
-    // for all axes except the axis of interest,
-    // make sure that the corresponding 'indices' shape
-    // value is within bounds of the corresponding 'data' shape
-    if (i != axis) {
-      if (indices_shape[onnxruntime::narrow<size_t>(i)] < 0 || indices_shape[onnxruntime::narrow<size_t>(i)] > input_data_shape[onnxruntime::narrow<size_t>(i)])
-        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                               "GatherElements op: 'indices' shape should have values within bounds of 'data' shape. "
-                               "Invalid value in indices shape is: ",
-                               indices_shape[onnxruntime::narrow<size_t>(i)]);
-    }
-  }
+  // for (int64_t i = 0; i < indices_rank; ++i) {
+  //   // for all axes except the axis of interest,
+  //   // make sure that the corresponding 'indices' shape
+  //   // value is within bounds of the corresponding 'data' shape
+  //   if (i != axis) {
+  //     if (indices_shape[onnxruntime::narrow<size_t>(i)] < 0 || indices_shape[onnxruntime::narrow<size_t>(i)] > input_data_shape[onnxruntime::narrow<size_t>(i)])
+  //       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+  //                              "GatherElements op: 'indices' shape should have values within bounds of 'data' shape. "
+  //                              "Invalid value in indices shape is: ",
+  //                              indices_shape[onnxruntime::narrow<size_t>(i)],
+  //                              "input_data_shape on the corresponding axis is:",
+  //                              input_data_shape[onnxruntime::narrow<size_t>(i)]);
+  //   }
+  // }
 
   return Status::OK();
 }

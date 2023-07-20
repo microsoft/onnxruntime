@@ -15,13 +15,18 @@ using namespace onnxruntime::language_interop_ops::torch;
 namespace onnxruntime {
 namespace contrib {
 
-std::vector<OrtValue> CreateOrtValueArgs(OpKernelContext* context,
-                                         const size_t begin_index,
-                                         const size_t num_arg) {
+std::vector<std::optional<OrtValue>> CreateOrtValueArgs(OpKernelContext* context,
+                                                        const size_t begin_index,
+                                                        const size_t num_arg) {
   auto* ctx_internal = reinterpret_cast<onnxruntime::OpKernelContextInternal*>(context);
-  std::vector<OrtValue> args;
+  std::vector<std::optional<OrtValue>> args;
   for (size_t i = 0; i < num_arg; ++i) {
-    args.push_back(*ctx_internal->GetInputMLValue(static_cast<int>(begin_index + i)));
+    int input_index = static_cast<int>(begin_index + i);
+    if (context->Input<Tensor>(input_index)) {
+      args.push_back(*ctx_internal->GetInputMLValue(input_index));
+    } else {
+      args.push_back(std::nullopt);
+    }
   }
   return args;
 }
@@ -99,7 +104,7 @@ void PythonOpBase::RunForward(OpKernelContext* context,
                               std::vector<OrtValue>& returned_ortvalues) const {
   // Create non-constant arguments for calling Python function.
   // Constant arguments are created in ctor.
-  std::vector<OrtValue> args = CreateOrtValueArgs(context, 0, context->InputCount());
+  std::vector<std::optional<OrtValue>> args = CreateOrtValueArgs(context, 0, context->InputCount());
   // Invoke Python calls.
   TorchProxy::GetInstance().Forward(
       OrtTorchFunctionPool::GetInstance().GetForwardCore(name_),
@@ -272,7 +277,10 @@ void PythonOpGradBase::RunBackward(OpKernelContext* context,
 
 void PythonOpGradBase::SetOutputs(OpKernelContext* context, std::vector<OrtValue>& returned_ortvalues) const {
   auto* ctx_internal = reinterpret_cast<onnxruntime::OpKernelContextInternal*>(context);
-  ORT_ENFORCE(output_convention_.size() == returned_ortvalues.size(), "backward output count mismatch.");
+  ORT_ENFORCE(output_convention_.size() == returned_ortvalues.size(),
+              "backward output count mismatch. output_convention_.size(): " +
+                  std::to_string(output_convention_.size()) +
+                  ", returned_ortvalues.size(): " + std::to_string(returned_ortvalues.size()));
   int tensor_output_index = 0;
   for (size_t i = 0; i < returned_ortvalues.size(); ++i) {
     if (output_convention_[i] == 'd') {

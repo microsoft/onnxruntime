@@ -27,11 +27,13 @@ def wrap_as_dlpack_or_not(grad_flag, tensor_flag, inplace_flag, training_mode_fl
                         under training (or inference) mode.
     arg: a DLPack tensor or a normal Python object (e.g, a tuple of ints).
     """
-    if tensor_flag:
+    if (
+        tensor_flag and arg is not None
+    ):  # If the tensor type input is not needed during backward, then it is possible we pass a None to it.
         # Got a tensor. Assume it's a DLPack tensor
         # and convert it to Pytorch tensor.
         if training_mode_flag:
-            wrapped_arg = from_dlpack(arg).detach().clone()
+            wrapped_arg = from_dlpack(arg)  # .detach().clone()
             # TODO: This clone is just a workround to fix the bug that
             # input saved for backward may be "released" by ORT.
             # we need a follow up fix to avoid the copy overhead.
@@ -69,6 +71,7 @@ def call_python_forward_function(
         inplace: indicates if args can be modified inside the custom function.
         args: inputs to "backward_function".
     """
+    print("call_python_forward_function>>>", args)
 
     def generate_non_leaf_or_not(grad_flag, tensor_flag, arg, is_training_mode, is_inplace):
         if is_training_mode and tensor_flag and grad_flag and is_inplace:
@@ -90,7 +93,7 @@ def call_python_forward_function(
             # (https://github.com/pytorch/pytorch/blob/15532595209d2daf34d35e10f8d3d3b64966aea2/torch/csrc/autograd/custom_function.cpp#L267)
             first_tensor_output = None
             for arg in result:
-                if not isinstance(arg, torch.Tensor) or not hasattr(arg, "grad_fn"):
+                if not isinstance(arg, torch.Tensor) or not hasattr(arg, "grad_fn") or arg.grad_fn is None:
                     continue
                 # Use the first context we see because all of arg's
                 # share the same one.
@@ -197,6 +200,7 @@ def call_python_backward_function(
         inplace: indicates if args can be modified inside the custom function.
         args: inputs to "backward_function".
     """
+    print("call_python_backward_function>>>", args)
     with torch.no_grad():
 
         def wrap_all_outputs(result):

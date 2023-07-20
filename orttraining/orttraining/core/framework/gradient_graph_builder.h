@@ -156,7 +156,7 @@ class GradientGraphBuilder {
       ONNX_NAMESPACE::TensorProto_DataType_DOUBLE,
       ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16,
   };
-  const std::unordered_set<size_t>* GetStopGradientEdges(const Node& node) const;
+  void GetStopGradientEdges(const Node& node, std::unordered_set<size_t>& edges) const;
 
   /**
   Performs a BFS on the graph with STOP_GRADIENT_EDGES constrain

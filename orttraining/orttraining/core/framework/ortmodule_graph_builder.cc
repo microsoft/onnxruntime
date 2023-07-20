@@ -182,6 +182,8 @@ Status OrtModuleGraphBuilder::OptimizeForwardGraph(const TrainingGraphTransforme
         graph_transformation_mgr.ApplyTransformers(forward_graph, static_cast<TransformerLevel>(i), *logger_));
   }
 
+  ORT_RETURN_IF_ERROR(Model::Save(*forward_model_, "forward_model_after_optimization.onnx"));
+
   return Status::OK();
 }
 

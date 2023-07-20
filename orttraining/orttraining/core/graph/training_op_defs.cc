@@ -4048,11 +4048,15 @@ Return true if all elements are true and false otherwise.
         // For details, see how we interpret it in PythonOpGrad implementation.
         for (auto i = 1; i < input_count; ++i) {
           const auto inferred_input_type = ctx.getInputType(i);
-          ORT_ENFORCE(inferred_input_type, "PythonOpGrad's ", i, "-th input type is missing.");
-          ORT_ENFORCE(inferred_input_type->value_case() == TypeProto::kTensorType,
-                      "PythonOpGrad's ", i, "-th input type must be a tensor.");
-          ORT_ENFORCE(inferred_input_type->tensor_type().elem_type() == input_tensor_types_proto->ints().at(i - 1),
-                      "PythonOpGrad's ", i, "-th input type must be ", input_tensor_types_proto->ints().at(i - 1));
+          if (inferred_input_type) {
+            ORT_ENFORCE(inferred_input_type, "PythonOpGrad's ", i, "-th input type is missing.");
+            ORT_ENFORCE(inferred_input_type->value_case() == TypeProto::kTensorType,
+                        "PythonOpGrad's ", i, "-th input type must be a tensor.");
+            ORT_ENFORCE(inferred_input_type->tensor_type().elem_type() == input_tensor_types_proto->ints().at(i - 1),
+                        "PythonOpGrad's ", i, "-th input type must be ", input_tensor_types_proto->ints().at(i - 1));
+          } else {
+            std::cout << "PythonOpGrad's " << i << "-th input type is missing." << std::endl;
+          }
         }
 
         // Load expected output types.

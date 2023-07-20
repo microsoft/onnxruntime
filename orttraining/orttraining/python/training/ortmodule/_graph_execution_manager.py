@@ -380,9 +380,7 @@ class GraphExecutionManager(GraphExecutionInterface):
 
             param_maps = [name for name, param in self._flattened_module.named_parameters()]
             for graph_input in exported_model.graph.input:
-                print("handling graph input: ", graph_input.name)
                 if graph_input.name in param_maps and graph_input.name in consumer_map:
-                    print("111111111111111111111111111 for ", graph_input.name)
                     consumers = consumer_map[graph_input.name]
                     preforward_trigger = None
                     for c in consumers:

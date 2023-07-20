@@ -38,7 +38,7 @@ class TorchProxy {
   void Forward(
       void* callback,
       const std::vector<int64_t>& requires_grads,
-      const std::vector<OrtValue>& tensor_args,
+      const std::vector<std::optional<OrtValue>>& tensor_args,
       const std::vector<int64_t>& tensor_indices,
       const std::vector<void*>& obj_args,
       const std::vector<int64_t>& obj_indices,
@@ -49,7 +49,7 @@ class TorchProxy {
 
   void Backward(
       void* callback,
-      const std::vector<OrtValue>& tensor_args,
+      const std::vector<std::optional<OrtValue>>& tensor_args,
       const std::vector<int64_t>& tensor_indices,
       const std::vector<void*>& obj_args,
       const std::vector<int64_t>& obj_indices,

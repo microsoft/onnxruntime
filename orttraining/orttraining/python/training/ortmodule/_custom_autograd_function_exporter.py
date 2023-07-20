@@ -149,6 +149,32 @@ def _export_pt_1_10(g, n, *args, **kwargs):
                     Exception(f"Unknown calling convention found: {i}. Only 'd' and 'c' are supported"),
                 )
 
+        if name == "ORTPreForwardwardFunction":
+            module_positional_input_count = args[4]
+            assert isinstance(module_positional_input_count, int)
+            partition_param_count = args[5]
+            assert isinstance(partition_param_count, int)
+            module_keyword_input_count = args[6]
+            assert isinstance(module_keyword_input_count, int)
+            comments = [
+                args[1].__class__.__name__,
+                str(module_positional_input_count),
+                str(partition_param_count),
+                str(module_keyword_input_count),
+            ]
+            debug_comment = ",".join(comments)
+        elif name == "ORTPostForwardwardFunction":
+            module_positional_input_count = args[3]
+            assert isinstance(module_positional_input_count, int)
+            module_output_count = args[4]
+            assert isinstance(module_output_count, int)
+            comments = [
+                args[0].__class__.__name__,
+                str(module_positional_input_count),
+                str(module_output_count),
+            ]
+            debug_comment = ",".join(comments)
+
         output_tensor_types = []
         output_tensor_ranks = []
         for arg in n.outputs():

@@ -1857,8 +1857,11 @@ class SymbolicShapeInference:
         if (
             node.input[0] in self.sympy_data_
             and [0] == axes
+            and starts is not None
             and len(starts) == 1
+            and ends is not None
             and len(ends) == 1
+            and steps is not None
             and len(steps) == 1
         ):
             input_sympy_data = self.sympy_data_[node.input[0]]
@@ -2332,7 +2335,8 @@ class SymbolicShapeInference:
         # The first output is autograd's context.
         vi = self.known_vi_[node.output[0]]
         vi.CopyFrom(helper.make_tensor_value_info(node.output[0], onnx.TensorProto.INT64, []))
-        if get_attribute(node, "name").decode() in ["_InspectActivation", "_IncrementStep"]:
+        python_op_specialized_name = get_attribute(node, "name").decode()
+        if python_op_specialized_name in ["_InspectActivation", "_IncrementStep"]:
             # PythonOp with name being "_InspectActivation" or "_IncrementStep" will behave exactly same as a normal
             # PythonOp when execution. The only difference is that
             # 1). those ops having same number of tensor inputs and tensor outputs;
@@ -2347,6 +2351,37 @@ class SymbolicShapeInference:
                 shape = self._get_shape(node, input_index)
                 output_dtype = self.known_vi_[node.input[input_index]].type.tensor_type.elem_type
                 vi.CopyFrom(helper.make_tensor_value_info(node.output[input_index + 1], output_dtype, shape))
+        elif python_op_specialized_name in ["ORTPreForwardwardFunction"]:
+            comments = get_attribute(node, "comment").decode().split(",")
+            module_class_name, module_positional_input_count, partition_parm_count, module_kwargs_count = comments
+            for input_index in range(len(node.output) - 1):
+                # Process the i-th tensor outputs.
+                vi = self.known_vi_[node.output[input_index + 1]]
+                if input_index < int(module_positional_input_count) or (
+                    input_index >= (int(module_positional_input_count) + int(partition_parm_count))
+                ):
+                    shape = self._get_shape(node, input_index)
+                    output_dtype = self.known_vi_[node.input[input_index]].type.tensor_type.elem_type
+                    vi.CopyFrom(helper.make_tensor_value_info(node.output[input_index + 1], output_dtype, shape))
+                else:
+                    sympy_shape = self._new_symbolic_shape(output_tensor_ranks[input_index], node)
+                    shape = get_shape_from_sympy_shape(sympy_shape)
+                    value_info = helper.make_tensor_value_info(
+                        node.output[input_index + 1], output_tensor_types[input_index], shape
+                    )
+                    vi.CopyFrom(value_info)
+        elif python_op_specialized_name in ["ORTPostForwardwardFunction"]:
+            comments = get_attribute(node, "comment").decode().split(",")
+            module_class_name, module_positional_input_count, module_output_count = comments
+            for input_index in range(len(node.output) - 1):
+                # Process the i-th tensor outputs.
+                vi = self.known_vi_[node.output[input_index + 1]]
+                shape = self._get_shape(node, input_index)
+                output_dtype = self.known_vi_[
+                    node.input[input_index]
+                ].type.tensor_type.elem_type
+                vi.CopyFrom(helper.make_tensor_value_info(node.output[input_index + 1], output_dtype, shape))
+
         else:
             # Outputs after autograd's context are tensors.
             # We assume their ranks are fixed for different model inputs.
