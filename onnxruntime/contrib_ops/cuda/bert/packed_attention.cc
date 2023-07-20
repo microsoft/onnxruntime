@@ -32,23 +32,69 @@ namespace cuda {
 REGISTER_KERNEL_TYPED(float)
 REGISTER_KERNEL_TYPED(MLFloat16)
 
+
 template <typename T>
-PackedAttention<T>::PackedAttention(const OpKernelInfo& info) : CudaKernel(info) {
+PackedAttentionBase<T>::PackedAttentionBase(const OpKernelInfo& info) : CudaKernel(info) {
   int64_t num_heads = 0;
   ORT_ENFORCE(info.GetAttr("num_heads", &num_heads).IsOK() && num_heads > 0);
   num_heads_ = static_cast<int32_t>(num_heads);
 
   scale_ = info.GetAttrOrDefault<float>("scale", 0.0f);
 
-  if (!info.GetAttrs<int64_t>("qkv_hidden_sizes", qkv_hidden_sizes_).IsOK()) {
-    qkv_hidden_sizes_.clear();
-  }
-
   disable_fused_runner_ = sizeof(T) != 2 ||
                           ParseEnvironmentVariableWithDefault<bool>(attention::kDisableFusedSelfAttention, false);
 
   enable_trt_flash_attention_ = sizeof(T) == 2 &&
                                 !ParseEnvironmentVariableWithDefault<bool>(attention::kDisableTrtFlashAttention, false);
+}
+
+
+template <typename T>
+MHARunner* PackedAttentionBase<T>::TryGettingFusedRunner(const PackedAttentionParameters& parameters) const {
+  MHARunner* fused_runner = nullptr;
+
+  bool use_fused_runner = !disable_fused_runner_ &&
+                          !parameters.has_relative_position_bias &&
+                          parameters.hidden_size == parameters.v_hidden_size;
+
+  if (!use_fused_runner) {
+    return fused_runner;
+  }
+
+  // Check whether we can use fused kernel
+  auto& device_prop = GetDeviceProp();
+  int sm = device_prop.major * 10 + device_prop.minor;
+  bool is_fMHA_supported = FusedMHARunnerFP16v2::is_supported(sm,
+                                                              parameters.head_size,
+                                                              parameters.sequence_length,
+                                                              enable_trt_flash_attention_,
+                                                              false);
+
+  if (!is_fMHA_supported) {
+    return fused_runner;
+  }
+
+  // Assuming that num_heads and head_size do not change.
+  if (nullptr == fused_fp16_runner_.get()) {
+    fused_fp16_runner_ = FusedMHARunnerFP16v2::Create(num_heads_, parameters.head_size, sm, false /* causal_mask*/,
+                                                      enable_trt_flash_attention_, parameters.scale);
+  }
+
+  // In case some kernel not loaded due to shared memory limit, we need to double check here.
+  const int S = fused_fp16_runner_->getSFromMaxSeqLen(parameters.sequence_length);
+  if (fused_fp16_runner_->isValid(S)) {
+    fused_runner = fused_fp16_runner_.get();
+  }
+
+  return fused_runner;
+}
+
+
+template <typename T>
+PackedAttention<T>::PackedAttention(const OpKernelInfo& info) : PackedAttentionBase<T>(info) {
+  if (!info.GetAttrs<int64_t>("qkv_hidden_sizes", qkv_hidden_sizes_).IsOK()) {
+    qkv_hidden_sizes_.clear();
+  }
 }
 
 template <typename T>
@@ -209,46 +255,6 @@ Status PackedAttention<T>::CheckInputs(const TensorShape& input_shape,
   parameters.broadcast_res_pos_bias = broadcast_res_pos_bias;
 
   return Status::OK();
-}
-
-template <typename T>
-MHARunner* PackedAttention<T>::TryGettingFusedRunner(const PackedAttentionParameters& parameters) const {
-  MHARunner* fused_runner = nullptr;
-
-  bool use_fused_runner = !disable_fused_runner_ &&
-                          !parameters.has_relative_position_bias &&
-                          parameters.hidden_size == parameters.v_hidden_size;
-
-  if (!use_fused_runner) {
-    return fused_runner;
-  }
-
-  // Check whether we can use fused kernel
-  auto& device_prop = GetDeviceProp();
-  int sm = device_prop.major * 10 + device_prop.minor;
-  bool is_fMHA_supported = FusedMHARunnerFP16v2::is_supported(sm,
-                                                              parameters.head_size,
-                                                              parameters.sequence_length,
-                                                              enable_trt_flash_attention_,
-                                                              false);
-
-  if (!is_fMHA_supported) {
-    return fused_runner;
-  }
-
-  // Assuming that num_heads and head_size do not change.
-  if (nullptr == fused_fp16_runner_.get()) {
-    fused_fp16_runner_ = FusedMHARunnerFP16v2::Create(num_heads_, parameters.head_size, sm, false /* causal_mask*/,
-                                                      enable_trt_flash_attention_, parameters.scale);
-  }
-
-  // In case some kernel not loaded due to shared memory limit, we need to double check here.
-  const int S = fused_fp16_runner_->getSFromMaxSeqLen(parameters.sequence_length);
-  if (fused_fp16_runner_->isValid(S)) {
-    fused_runner = fused_fp16_runner_.get();
-  }
-
-  return fused_runner;
 }
 
 template <typename T>

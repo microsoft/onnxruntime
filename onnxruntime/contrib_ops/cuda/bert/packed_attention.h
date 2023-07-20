@@ -17,7 +17,22 @@ namespace cuda {
 using namespace onnxruntime::cuda;
 
 template <typename T>
-class PackedAttention final : public CudaKernel {
+class PackedAttentionBase : public CudaKernel {
+ public:
+  PackedAttentionBase(const OpKernelInfo& info);
+
+ protected:
+  MHARunner* TryGettingFusedRunner(const PackedAttentionParameters& parameters) const;
+  int32_t num_heads_;                      // number of attention heads
+  std::vector<int64_t> qkv_hidden_sizes_;  // Q, K, V hidden sizes parsed from the qkv_hidden_sizes attribute.
+  float scale_;                            // the scale to be used for softmax
+  bool disable_fused_runner_;
+  bool enable_trt_flash_attention_;
+  mutable std::unique_ptr<MHARunner> fused_fp16_runner_;
+};
+
+template <typename T>
+class PackedAttention final : public PackedAttentionBase<T> {
  public:
   PackedAttention(const OpKernelInfo& info);
   Status ComputeInternal(OpKernelContext* context) const override;
@@ -31,15 +46,8 @@ class PackedAttention final : public CudaKernel {
                      const Tensor* relative_position_bias,
                      PackedAttentionParameters& parameters) const;
 
-  MHARunner* TryGettingFusedRunner(const PackedAttentionParameters& parameters) const;
-
  private:
-  int32_t num_heads_;                      // number of attention heads
   std::vector<int64_t> qkv_hidden_sizes_;  // Q, K, V hidden sizes parsed from the qkv_hidden_sizes attribute.
-  float scale_;                            // the scale to be used for softmax
-  bool disable_fused_runner_;
-  bool enable_trt_flash_attention_;
-  mutable std::unique_ptr<MHARunner> fused_fp16_runner_;
 };
 
 }  // namespace cuda
