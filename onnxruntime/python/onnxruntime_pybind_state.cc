@@ -121,9 +121,9 @@ void AsyncCallback(void* user_data, OrtValue** outputs, size_t num_outputs, OrtS
   }
 
   rfetch.reserve(num_outputs);
-  size_t pos = 0;
-  {
-    py::gil_scoped_acquire acquire;
+
+  auto fill_fetches = [&]() {
+    size_t pos = 0;
     for (size_t ith = 0; ith < num_outputs; ++ith) {
       const auto& fet = *outputs[ith];
       if (fet.IsAllocated()) {
@@ -139,6 +139,13 @@ void AsyncCallback(void* user_data, OrtValue** outputs, size_t num_outputs, OrtS
       }
       ++pos;
     }
+  };
+
+  if (PyGILState_Check()) {
+    fill_fetches();
+  } else {
+    py::gil_scoped_acquire acquire;
+    fill_fetches();
   }
   async_resource->callback(rfetch, "");
 }
