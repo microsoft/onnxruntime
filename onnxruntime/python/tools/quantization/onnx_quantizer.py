@@ -13,7 +13,7 @@ from onnx import onnx_pb as onnx_proto
 from onnx.helper import make_graph, make_model, make_node, make_tensor_value_info
 from onnx.reference import ReferenceEvaluator
 
-from .calibrate import TensorData, TensorsData
+from .calibrate import TensorData
 from .onnx_model import ONNXModel
 from .quant_utils import (
     TENSOR_NAME_QUANT_SUFFIX,

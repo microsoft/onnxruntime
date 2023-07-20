@@ -7,7 +7,7 @@ import logging
 import tempfile
 from pathlib import Path
 
-from .calibrate import CalibrationDataReader, CalibrationMethod, create_calibrator, TensorData, TensorsData
+from .calibrate import CalibrationDataReader, CalibrationMethod, TensorData, TensorsData, create_calibrator
 from .onnx_quantizer import ONNXQuantizer
 from .qdq_quantizer import QDQQuantizer
 from .quant_utils import (
