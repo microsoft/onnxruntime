@@ -50,8 +50,9 @@ struct AllocTracker {
   size_t dump_on_size_exceeded_ = 1'000'000;
   size_t dump_on_size_exceeded_delta_ = 1'000'000;  // Add this amount to the dump_on_size_exceeded_ every time it gets exceeded
   size_t dump_count_ = 10;                          // Number of top counts to dump
+  size_t notify_after_sizes_seen_count_ = 1; // 1450?
 
-  AllocTracker(const char* name) : name_ {name} { }
+  AllocTracker(const char* name) : name_{name} {}
 
   ~AllocTracker() {
     Dump();
@@ -81,6 +82,14 @@ struct AllocTracker {
       printf("Allocated size limit exceeded\r\n");
       Dump();
     }
+
+    // Check for new sizes of memory we haven't seen before
+    if (sizes_seen_.find(size) == sizes_seen_.end()) {
+      sizes_seen_.insert(size);
+      if (sizes_seen_.size() > notify_after_sizes_seen_count_) {
+        printf("Saw new allocation size of %zu\r\n", size);
+      }
+    }
   }
 
   void Free(void* address) {
@@ -98,13 +107,23 @@ struct AllocTracker {
 
   void Dump() {
     printf("Dumping allocations for %s  Total allocation count %zu, allocated size %zu:\r\n", name_, allocation_count_, total_allocated_);
+#if 0
+    // Display dump sorted by count
     if (!count_set_.empty()) {
       auto iter = count_set_.end();
       for (size_t i = 0; i < dump_count_ && iter-- != count_set_.begin(); i++) {
         printf("  Size: %zu  Count: %zu\r\n", iter->size_, iter->count_);
       }
     }
-
+#else
+    // Display dump sorted by size
+    if (!size_map_.empty()) {
+      auto iter = size_map_.end();
+      for (size_t i = 0; i < dump_count_ && iter-- != size_map_.begin(); i++) {
+        printf("  Size: %zu  Count: %zu\r\n", iter->second.size_, iter->second.count_);
+      }
+    }
+#endif
     printf("Finished Dumping allocations\r\n");
   }
 
@@ -127,13 +146,14 @@ struct AllocTracker {
     }
   };
 
-  const char *name_{};
+  const char* name_{};
   size_t total_allocated_{};
   size_t allocation_count_{};
 
   std::map<void*, Allocation> address_map_;
   std::map<size_t, AllocationSize> size_map_;       // sorted by size
   std::set<AllocationSize, ReverseKey> count_set_;  // sorted by count
+  std::set<size_t> sizes_seen_;
 };
 
 class StreamAwareArena;
