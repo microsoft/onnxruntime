@@ -205,18 +205,18 @@ public final class ModelGenerators {
     graph.addOutput(output);
 
     // Add operations
-    OnnxMl.NodeProto.Builder matmul = OnnxMl.NodeProto.newBuilder();
-    matmul.setName("cast-0");
-    matmul.setOpType("Cast");
-    matmul.addInput("input");
-    matmul.addOutput("output");
-    matmul.addAttribute(
+    OnnxMl.NodeProto.Builder cast = OnnxMl.NodeProto.newBuilder();
+    cast.setName("cast-0");
+    cast.setOpType("Cast");
+    cast.addInput("input");
+    cast.addOutput("output");
+    cast.addAttribute(
         OnnxMl.AttributeProto.newBuilder()
             .setName("to")
             .setType(OnnxMl.AttributeProto.AttributeType.INT)
             .setI(outputDataType.getNumber())
             .build());
-    graph.addNode(matmul);
+    graph.addNode(cast);
 
     // Build model
     OnnxMl.ModelProto.Builder model = OnnxMl.ModelProto.newBuilder();
