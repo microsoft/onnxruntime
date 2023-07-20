@@ -32,7 +32,6 @@ namespace cuda {
 REGISTER_KERNEL_TYPED(float)
 REGISTER_KERNEL_TYPED(MLFloat16)
 
-
 template <typename T>
 PackedAttentionBase<T>::PackedAttentionBase(const OpKernelInfo& info) : CudaKernel(info) {
   int64_t num_heads = 0;
@@ -47,7 +46,6 @@ PackedAttentionBase<T>::PackedAttentionBase(const OpKernelInfo& info) : CudaKern
   enable_trt_flash_attention_ = sizeof(T) == 2 &&
                                 !ParseEnvironmentVariableWithDefault<bool>(attention::kDisableTrtFlashAttention, false);
 }
-
 
 template <typename T>
 MHARunner* PackedAttentionBase<T>::TryGettingFusedRunner(const PackedAttentionParameters& parameters) const {
@@ -88,7 +86,6 @@ MHARunner* PackedAttentionBase<T>::TryGettingFusedRunner(const PackedAttentionPa
 
   return fused_runner;
 }
-
 
 template <typename T>
 PackedAttention<T>::PackedAttention(const OpKernelInfo& info) : PackedAttentionBase<T>(info) {

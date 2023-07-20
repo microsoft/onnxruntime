@@ -482,7 +482,6 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
           PackedAttentionTypeAndShapeInference(ctx);
         }));
 
-
 constexpr const char* PackedMultiHeadAttention_ver1_doc = R"DOC(
 This is the packed version of MultiHeadAttention.
 

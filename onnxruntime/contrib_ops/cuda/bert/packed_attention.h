@@ -23,8 +23,8 @@ class PackedAttentionBase : public CudaKernel {
 
  protected:
   MHARunner* TryGettingFusedRunner(const PackedAttentionParameters& parameters) const;
-  int32_t num_heads_;                      // number of attention heads
-  float scale_;                            // the scale to be used for softmax
+  int32_t num_heads_;  // number of attention heads
+  float scale_;        // the scale to be used for softmax
   bool disable_fused_runner_;
   bool enable_trt_flash_attention_;
   mutable std::unique_ptr<MHARunner> fused_fp16_runner_;
