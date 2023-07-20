@@ -259,7 +259,7 @@ class GpuDataManagerImpl implements GpuDataManager {
 
     this.storageCache = new Map();
     this.downloadCache = new Map();
-    this.freeBuffers =  new Map();
+    this.freeBuffers = new Map();
   }
 }
 
