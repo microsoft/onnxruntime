@@ -228,6 +228,25 @@ class Session:
             raise
 
     def run_async(self, output_names, input_feed, callback, run_options=None):
+        """
+        Compute the predictions asynchronously in a separate thread
+
+        :param output_names: name of the outputs
+        :param input_feed: dictionary ``{ input_name: input_value }``
+        :param callback: python function that accept array of results, and an status string on error
+        :param run_options: See :class:`onnxruntime.RunOptions`.
+        :return: list of results, every result is either a numpy array,
+            a sparse tensor, a list or a dictionary.
+
+        ::
+            def callback(results, err):
+              if err:
+                 print (err)
+              else:
+                # process results
+
+            sess.run_async([output_name], {input_name: x}, callback)
+        """
         self._validate_input(list(input_feed.keys()))
         if not output_names:
             output_names = [output.name for output in self._outputs_meta]
