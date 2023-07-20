@@ -1,6 +1,6 @@
 <script>
 	import onnximage from '../../images/ONNX-Icon.svg';
-	import { onMount, beforeUpdate } from 'svelte';
+	import { onMount } from 'svelte';
 	import anime from 'animejs';
 	import { text } from '@sveltejs/kit';
 	onMount(() => {
