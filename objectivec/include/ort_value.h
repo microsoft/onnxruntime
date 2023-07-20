@@ -34,7 +34,9 @@ NS_ASSUME_NONNULL_BEGIN
 
 /**
  * Creates a value that is a string tensor.
- * The tensor string data is allocated by the caller.
+ * The string data will be copied into a buffer owned by this ORTValue instance.
+ *
+ * * Available since 1.16.
  *
  * @param tensorStringData The tensor string data.
  * @param shape The tensor shape.
@@ -81,6 +83,8 @@ NS_ASSUME_NONNULL_BEGIN
  * This assumes that the value is a string tensor.
  *
  * This returns a copy of the value's underlying string data.
+ *
+ * Available since 1.16.
  *
  * @param error Optional error information set if an error occurs.
  * @return The copy of the tensor string data, or nil if an error occurs.

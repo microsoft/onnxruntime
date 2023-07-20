@@ -71,6 +71,12 @@ bool SafeMultiply(size_t a, size_t b, size_t& out) {
                                       shape:(NSArray<NSNumber*>*)shape
                                       error:(NSError**)error {
   try {
+    if (elementType == ORTTensorElementDataTypeString) {
+      ORT_CXX_API_THROW(
+          "ORTTensorElementDataTypeString element type provided. "
+          "Please call initWithTensorStringData instead to create an ORTValue with string data.",
+          ORT_INVALID_ARGUMENT);
+    }
     const auto memoryInfo = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU);
     const auto ONNXElementType = PublicToCAPITensorElementType(elementType);
     const auto shapeVector = [shape]() {
@@ -97,20 +103,31 @@ bool SafeMultiply(size_t a, size_t b, size_t& out) {
                                             error:(NSError**)error {
   try {
     Ort::AllocatorWithDefaultOptions allocator;
-    const auto shapeVector = [shape]() {
+    size_t tensorSize = 1U;
+    const auto shapeVector = [&tensorSize, shape]() {
       std::vector<int64_t> result{};
       result.reserve(shape.count);
       for (NSNumber* dim in shape) {
+        if (!SafeMultiply(static_cast<size_t>(dim.longLongValue), tensorSize, tensorSize)) {
+          ORT_CXX_API_THROW("Failed to compute the tensor size.", ORT_RUNTIME_EXCEPTION);
+        }
         result.push_back(dim.longLongValue);
       }
       return result;
     }();
+
+    if (tensorSize != [tensorStringData count]) {
+      ORT_CXX_API_THROW(
+          "Computed tensor size does not equal the length of the provided tensor string data",
+          ORT_RUNTIME_EXCEPTION);
+    }
+
     Ort::Value ortValue = Ort::Value::CreateTensor(
         allocator, shapeVector.data(), shapeVector.size(), ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING);
 
     size_t index = 0;
-    for (NSString *strinData in tensorStringData) {
-      ortValue.FillStringTensorElement([strinData UTF8String], index++);
+    for (NSString* stringData in tensorStringData) {
+      ortValue.FillStringTensorElement([stringData UTF8String], index++);
     }
 
     return [self initWithCXXAPIOrtValue:std::move(ortValue)
@@ -138,6 +155,12 @@ bool SafeMultiply(size_t a, size_t b, size_t& out) {
 - (nullable NSMutableData*)tensorDataWithError:(NSError**)error {
   try {
     const auto tensorTypeAndShapeInfo = _typeInfo->GetTensorTypeAndShapeInfo();
+    if (tensorTypeAndShapeInfo.GetElementType() == ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING) {
+      ORT_CXX_API_THROW(
+          "This ORTValue holds string data. Please call tensorStringDataWithError "
+          "instead to retrieve the string data from this ORTValue.",
+          ORT_RUNTIME_EXCEPTION);
+    }
     const size_t elementCount = tensorTypeAndShapeInfo.GetElementCount();
     const size_t elementSize = SizeOfCAPITensorElementType(tensorTypeAndShapeInfo.GetElementType());
     size_t rawDataLength;
@@ -160,18 +183,18 @@ bool SafeMultiply(size_t a, size_t b, size_t& out) {
     const auto tensorTypeAndShapeInfo = _typeInfo->GetTensorTypeAndShapeInfo();
     const size_t elementCount = tensorTypeAndShapeInfo.GetElementCount();
     const size_t tensorStringDataLength = _value->GetStringTensorDataLength();
-    std::string tensorStringData(tensorStringDataLength, '\0');
+    std::vector<char> tensorStringData(tensorStringDataLength, '\0');
     std::vector<size_t> offsets(elementCount);
-    _value->GetStringTensorContent(const_cast<char*>(tensorStringData.data()), tensorStringDataLength,
+    _value->GetStringTensorContent(tensorStringData.data(), tensorStringDataLength,
                                    offsets.data(), offsets.size());
 
     NSMutableArray<NSString*>* result = [NSMutableArray arrayWithCapacity:elementCount];
     for (size_t idx = 0; idx < elementCount; ++idx) {
       const size_t strLength = (idx == elementCount - 1) ? tensorStringDataLength - offsets[idx]
                                                          : offsets[idx + 1] - offsets[idx];
-      result[idx] = [[NSString alloc] initWithBytes:tensorStringData.data() + offsets[idx]
-                                             length:strLength
-                                           encoding:NSUTF8StringEncoding];
+      [result addObject:[[NSString alloc] initWithBytes:tensorStringData.data() + offsets[idx]
+                                                 length:strLength
+                                               encoding:NSUTF8StringEncoding]];
     }
     return result;
   }
