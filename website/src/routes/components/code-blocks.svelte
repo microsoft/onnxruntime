@@ -1,5 +1,4 @@
 <script>
-	import { base } from '$app/paths';
 	import Highlight from 'svelte-highlight';
 	import python from 'svelte-highlight/languages/python';
 	import csharp from 'svelte-highlight/languages/csharp';
