@@ -24,7 +24,6 @@ class PackedAttentionBase : public CudaKernel {
  protected:
   MHARunner* TryGettingFusedRunner(const PackedAttentionParameters& parameters) const;
   int32_t num_heads_;                      // number of attention heads
-  std::vector<int64_t> qkv_hidden_sizes_;  // Q, K, V hidden sizes parsed from the qkv_hidden_sizes attribute.
   float scale_;                            // the scale to be used for softmax
   bool disable_fused_runner_;
   bool enable_trt_flash_attention_;
