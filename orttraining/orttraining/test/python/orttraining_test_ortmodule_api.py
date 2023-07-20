@@ -6092,3 +6092,4 @@ def test_cache_exported_model():
     _ = onnx.load(str(cache_dir / os.listdir(cache_dir)[0]))
 
     shutil.rmtree(cache_dir)
+    del os.environ["ORTMODULE_CACHE_DIR"]
