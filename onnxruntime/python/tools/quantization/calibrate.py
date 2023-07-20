@@ -31,6 +31,12 @@ class TensorData:
             raise AttributeError(f"Attributes 'low' and/or 'high' missing in {dir(self)}.")
         return (self.low, self.high)
 
+    @property
+    def avg_std(self):
+        if not hasattr(self, "avg") or not hasattr(self, "std"):
+            raise AttributeError(f"Attributes 'avg' and/or 'std' missing in {dir(self)}.")
+        return (self.avg, self.std)
+
 
 class TensorsData:
     def __init__(self, calibration_method, data: Dict[str, Union[TensorData, Tuple]]):
@@ -47,7 +53,7 @@ class TensorsData:
                     self.data[k] = TensorData(lowest=v[0], highest=v[1], histogram=v[2], bins=v[3])
                     continue
                 raise TypeError(f"Unexpected tuple for {k:r}, it has {len(v)} elements: {v}.")
-            if not isinstance(k, TensorData):
+            if not isinstance(v, TensorData):
                 raise TypeError(f"Values must be TensorData not {type(v)}.")
             self.data[k] = v
 
@@ -62,6 +68,7 @@ class CalibrationMethod(Enum):
     MinMax = 0
     Entropy = 1
     Percentile = 2
+    Distribution = 3
 
 
 class CalibrationDataReader(metaclass=abc.ABCMeta):
@@ -174,7 +181,7 @@ class CalibraterBase:
         """
         abstract method: augment the input model to prepare for collecting data. It will:
             1. augment the model to be able to collect desired statistics data
-            2. save augmented model to augmented_model_path
+            2. save augmented model to augmented_model_paths
         """
         raise NotImplementedError
 
@@ -184,7 +191,7 @@ class CalibraterBase:
         """
         raise NotImplementedError
 
-    def compute_data(self, data_reader: CalibrationDataReader) -> TensorsData:
+    def compute_data(self) -> TensorsData:
         """
         abstract method: compute data based on the calibration method stored in TensorsData
         """
@@ -372,6 +379,7 @@ class HistogramCalibrater(CalibraterBase):
         num_bins=128,
         num_quantized_bins=2048,
         percentile=99.999,
+        scenario="same",
     ):
         """
         :param model_path: ONNX model to calibrate. It is a model path.
@@ -383,6 +391,7 @@ class HistogramCalibrater(CalibraterBase):
         :param num_bins: number of bins to create a new histogram for collecting tensor values.
         :param num_quantized_bins: number of quantized bins. Default 128.
         :param percentile: A float number between [0, 100]. Default 99.99.
+        :param scenario: see :class:`DistributionCalibrater`
         """
         super().__init__(
             model_path,
@@ -401,6 +410,7 @@ class HistogramCalibrater(CalibraterBase):
         self.num_quantized_bins = num_quantized_bins
         self.percentile = percentile
         self.tensors_to_calibrate = None
+        self.scenario = scenario
 
     def augment_graph(self):
         """
@@ -453,6 +463,7 @@ class HistogramCalibrater(CalibraterBase):
                 num_bins=self.num_bins,
                 num_quantized_bins=self.num_quantized_bins,
                 percentile=self.percentile,
+                scenario=self.scenario,
             )
         self.collector.collect(clean_merged_dict)
 
@@ -470,6 +481,8 @@ class HistogramCalibrater(CalibraterBase):
             cal = CalibrationMethod.Entropy
         elif isinstance(self, PercentileCalibrater):
             cal = CalibrationMethod.Percentile
+        elif isinstance(self, DistributionCalibrater):
+            cal = CalibrationMethod.Distribution
         else:
             raise TypeError(f"Unknown calibrater {type(self)}. This method must be overwritten.")
         return TensorsData(cal, self.collector.compute_collection_result())
@@ -492,7 +505,7 @@ class EntropyCalibrater(HistogramCalibrater):
         :param op_types_to_calibrate: operator types to calibrate. By default, calibrate all the float32/float16 tensors.
         :param augmented_model_path: save augmented model to this path.
         :param use_external_data_format: use external data format to store model which size is >= 2Gb
-        :param method: A string. One of ['entropy', 'percentile'].
+        :param method: A string. One of ['entropy', 'percentile', 'distribution'].
         :param symmetric: make range of tensor symmetric (central point is 0).
         :param num_bins: number of bins to create a new histogram for collecting tensor values.
         :param num_quantized_bins: number of quantized bins. Default 128.
@@ -526,7 +539,7 @@ class PercentileCalibrater(HistogramCalibrater):
         :param op_types_to_calibrate: operator types to calibrate. By default, calibrate all the float32/float16 tensors.
         :param augmented_model_path: save augmented model to this path.
         :param use_external_data_format: use external data format to store model which size is >= 2Gb
-        :param method: A string. One of ['entropy', 'percentile'].
+        :param method: A string. One of ['entropy', 'percentile', 'distribution'].
         :param symmetric: make range of tensor symmetric (central point is 0).
         :param num_quantized_bins: number of quantized bins. Default 128.
         :param percentile: A float number between [0, 100]. Default 99.99.
@@ -540,6 +553,41 @@ class PercentileCalibrater(HistogramCalibrater):
             symmetric=symmetric,
             num_bins=num_bins,
             percentile=percentile,
+        )
+
+
+class DistributionCalibrater(HistogramCalibrater):
+    def __init__(
+        self,
+        model_path: Union[str, Path],
+        op_types_to_calibrate: Optional[Sequence[str]] = None,
+        augmented_model_path="augmented_model.onnx",
+        use_external_data_format=False,
+        method="distribution",
+        num_bins=128,
+        scenario="same",
+    ):
+        """
+        :param model_path: ONNX model to calibrate. It is a model path
+        :param op_types_to_calibrate: operator types to calibrate. By default, calibrate all the float32/float16 tensors.
+        :param augmented_model_path: save augmented model to this path.
+        :param use_external_data_format: use external data format to store model which size is >= 2Gb
+        :param method: A string. One of ['entropy', 'percentile', 'distribution'].
+        :param symmetric: make range of tensor symmetric (central point is 0).
+        :param num_bins: number of bins to create a new histogram for collecting tensor values.
+        :param scenario: for float 8 only, if `scenario="same"`,
+            the algorithm weights and float 8 follow the same distribution,
+            if `scenario="p3"`, it assumes the weights follow
+            a gaussian law and float 8 ~ X^3 where X is a gaussian law
+        """
+        super().__init__(
+            model_path,
+            op_types_to_calibrate,
+            augmented_model_path,
+            use_external_data_format,
+            method=method,
+            num_bins=num_bins,
+            scenario=scenario,
         )
 
 
@@ -574,13 +622,14 @@ class HistogramCollector(CalibrationDataCollector):
                  pytorch_quantization/calib/histogram.html
     """
 
-    def __init__(self, method, symmetric, num_bins, num_quantized_bins, percentile):
+    def __init__(self, method, symmetric, num_bins, num_quantized_bins, percentile, scenario):
         self.histogram_dict = {}
         self.method = method
         self.symmetric = symmetric
         self.num_bins = num_bins
         self.num_quantized_bins = num_quantized_bins
         self.percentile = percentile
+        self.scenario = scenario
 
     def get_histogram_dict(self):
         return self.histogram_dict
@@ -590,7 +639,7 @@ class HistogramCollector(CalibrationDataCollector):
 
         # TODO: Currently we have different collect() for entropy and percentile method respectively.
         #       Need unified collect in the future.
-        if self.method == "entropy":
+        if self.method in {"distribution", "entropy"}:
             return self.collect_value(name_to_arr)
         elif self.method == "percentile":
             if self.symmetric:
@@ -598,7 +647,7 @@ class HistogramCollector(CalibrationDataCollector):
             else:
                 return self.collect_value(name_to_arr)
         else:
-            raise ValueError("Only 'entropy' or 'percentile' method are supported")
+            raise ValueError("Only 'entropy', 'percentile' or 'distribution' methods are supported")
 
     def collect_absolute_value(self, name_to_arr):
         """
@@ -710,8 +759,10 @@ class HistogramCollector(CalibrationDataCollector):
             return self.compute_entropy()
         elif self.method == "percentile":
             return self.compute_percentile()
+        elif self.method == "distribution":
+            return self.compute_distribution()
         else:
-            raise ValueError("Only 'entropy' or 'percentile' method are supported")
+            raise ValueError("Only 'entropy', 'percentile' or 'distribution' methods are supported")
 
     def compute_percentile(self):
         if self.percentile < 0 or self.percentile > 100:
@@ -781,6 +832,59 @@ class HistogramCollector(CalibrationDataCollector):
             # Plot histogram for debug only
             if False:
                 apply_plot(histogram[0], histogram[1])
+
+        return thresholds_dict
+
+    @staticmethod
+    def _avg_std(hist, hist_edges, power=1):
+        if power <= 0:
+            raise ValueError(f"power={power} <= 0 is invalid.")
+        values = (hist_edges[:-1] + hist_edges[1:]) * 0.5
+        if power == 1:
+            avg = (hist * values).sum() / hist.sum()
+            std = ((hist * values**2).sum() / hist.sum() - avg**2) ** 0.5
+            return avg, std
+        if int(power) == power and int(power) % 2 == 1:
+            avg = (hist * values**power).sum() / hist.sum()
+            std = ((hist * (values**power - avg) ** 2).sum() / hist.sum()) ** 0.5
+            return avg, std
+
+        fact = np.abs(values) / values
+        fact[np.isnan(fact)] = 1
+        fact[np.isinf(fact)] = 1
+        values = np.abs(values) ** power * fact
+        avg = (hist * values).sum() / hist.sum()
+        std = ((hist * values**2).sum() / hist.sum() - avg**2) ** 0.5
+        return avg, std
+
+    def compute_distribution(self):
+        if self.num_bins < 512:
+            raise ValueError("Invalid num_bins. Must be in range 512 <= num_bins.")
+
+        histogram_dict = self.histogram_dict
+        percentile = self.percentile
+
+        thresholds_dict = {}  # per tensor thresholds
+
+        print(f"Number of tensors : {len(histogram_dict)}")
+        print(f"Number of histogram bins : {self.num_bins}")
+        print(f"Scenario : {self.scenario!r})")
+
+        for tensor, histogram in histogram_dict.items():
+            hist = histogram[0]
+            hist_edges = histogram[1]
+
+            if self.scenario == "same":
+                avg_coef, std_coef = self._avg_std(hist, hist_edges, power=1)
+            elif self.scenario == "p3":
+                avg_coef, std_coef = self._avg_std(hist, hist_edges, power=1.0 / 3.0)
+            else:
+                raise ValueError("Invalid scenario. Must be in {'same', 'p3'}.")
+            thresholds_dict[tensor] = TensorData(avg=avg_coef, std=std_coef, hist=hist, hist_edges=hist_edges)
+
+            # Plot histogram for debug only
+            if False:
+                apply_plot(hist, hist_edges)
 
         return thresholds_dict
 
@@ -929,6 +1033,20 @@ def create_calibrator(
             symmetric=symmetric,
             num_bins=num_bins,
             percentile=percentile,
+        )
+
+    elif calibrate_method == CalibrationMethod.Distribution:
+        # default settings for percentile algorithm
+        num_bins = 2048 if "num_bins" not in extra_options else extra_options["num_bins"]
+        scenario = "same" if "scenario" not in extra_options else extra_options["scenario"]
+
+        calibrator = DistributionCalibrater(
+            model,
+            op_types_to_calibrate,
+            augmented_model_path,
+            use_external_data_format=use_external_data_format,
+            num_bins=num_bins,
+            scenario=scenario,
         )
 
     if calibrator:

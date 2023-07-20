@@ -1131,16 +1131,15 @@ class ONNXQuantizer:
             if node.input[0] not in self.tensors_range.keys() or node.output[0] not in self.tensors_range.keys():
                 continue
             self.tensors_range[node.input[0]] = self.tensors_range[node.output[0]]
+
         quantization_params = {}
         for tensor_name in self.tensors_range:
             if self.activation_qType == onnx.TensorProto.FLOAT8E4M3FN:
-                if not self.is_activation_symmetric:
-                    raise RuntimeError("Quantization to float 8 only supports symmetric activation.")
                 quantization_params[tensor_name] = compute_scale_zp_float8(
-                    self.activation_qType, self.tensors_range[tensor_name]
+                    self.activation_qType, self.tensors_range[tensor_name].avg_std[1]
                 )
             else:
-                rmin, rmax = self.tensors_range[tensor_name]
+                rmin, rmax = self.tensors_range[tensor_name].range_value
                 qmin, qmax = get_qmin_qmax_for_qType(self.activation_qType, symmetric=self.is_activation_symmetric)
 
                 quantization_params[tensor_name] = compute_scale_zp(

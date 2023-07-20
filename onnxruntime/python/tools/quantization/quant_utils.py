@@ -28,6 +28,7 @@ DEQUANT_OP_NAME = "DequantizeLinear"
 DEQUANT_OUTPUT_SUFFIX = "_DequantizeLinear_Output"
 TENSOR_NAME_QUANT_SUFFIX = "_quantized"
 
+FLOAT8_DISTRIBUTIONS = {}
 
 type_to_name = {getattr(TensorProto, k): k for k in dir(TensorProto) if isinstance(getattr(TensorProto, k), int)}
 
@@ -178,11 +179,31 @@ def compute_scale_zp(rmin, rmax, qmin, qmax, symmetric=False):
     return [zero_point, scale]
 
 
-def compute_scale_zp_float8(element_type, tensor_data):
+def compute_scale_zp_float8(element_type, std):
     """Calculate the scale s for a float8 type (E4M3FN).
+    The function assumes the coefficient distribution and the float 8
+    distribution are similar to two gaussian laws.
+
     :return: zero and scale [z, s]
+
+    More details in notebook `quantization_fp8.ipynb <>`_.
     """
-    raise NotImplementedError("compute_scale_zp_float8 not yet implemented.")
+    if element_type not in FLOAT8_DISTRIBUTIONS:
+        if element_type == TensorProto.FLOAT8E4M3FN:
+            from onnx.numpy_helper import float8e4m3_to_float32
+
+            all_values = [float8e4m3_to_float32(i) for i in range(0, 256)]
+            values = numpy.array(
+                [f for f in all_values if not numpy.isnan(f) and not numpy.isinf(f)], dtype=numpy.float32
+            )
+        else:
+            raise ValueError(f"Quantization to element_type={element_type} not implemented.")
+        FLOAT8_DISTRIBUTIONS[element_type] = values
+
+    std_f8 = numpy.std(FLOAT8_DISTRIBUTIONS[element_type])
+    zero = 0
+    scale = std_f8 / std
+    return [zero, scale]
 
 
 def quantize_data(data, qType, symmetric, reduce_range=False):
@@ -214,13 +235,21 @@ def quantize_data(data, qType, symmetric, reduce_range=False):
     if len(data):
         rmin = min(data)
         rmax = max(data)
-        qmin, qmax = get_qmin_qmax_for_qType(qType, reduce_range, symmetric=symmetric)
 
-        zero_point, scale = compute_scale_zp(rmin, rmax, qmin, qmax, symmetric)
+    if qType == TensorProto.FLOAT8E4M3FN:
+        std = numpy.std(data)
+        zero_point, scale = compute_scale_zp_float8(qType, std)
+        quantized_data = quantize_nparray(qType, numpy.asarray(data), scale, zero_point)
+        return rmin, rmax, zero_point, scale, quantized_data
 
-    quantized_data = quantize_nparray(qType, numpy.asarray(data), scale, zero_point)
+    if qType in (TensorProto.INT8, TensorProto.UINT8):
+        if len(data):
+            qmin, qmax = get_qmin_qmax_for_qType(qType, reduce_range, symmetric=symmetric)
+            zero_point, scale = compute_scale_zp(rmin, rmax, qmin, qmax, symmetric)
+        quantized_data = quantize_nparray(qType, numpy.asarray(data), scale, zero_point)
+        return rmin, rmax, zero_point, scale, quantized_data
 
-    return rmin, rmax, zero_point, scale, quantized_data
+    raise ValueError(f"Unexpected value for qType={qType}.")
 
 
 def get_qmin_qmax_for_qType(qType, reduce_range=False, symmetric=False):  # noqa: N802
@@ -237,9 +266,7 @@ def get_qmin_qmax_for_qType(qType, reduce_range=False, symmetric=False):  # noqa
         else:
             (qmin, qmax) = (-64, 64) if reduce_range else (-128, 127)
     elif qType == onnx_proto.TensorProto.FLOAT8E4M3FN:
-        if symmetric:
-            raise RuntimeError("This function should not be used for float 8 types.")
-        raise NotImplementedError("Quantization to float 8 types is symmetric.")
+        raise NotImplementedError("This function is not implemented for float 8 as not needed.")
     else:
         raise ValueError(f"Unexpected data type {qType} requested. Only INT8 and UINT8 are supported.")
     return qmin, qmax

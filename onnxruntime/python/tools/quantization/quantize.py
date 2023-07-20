@@ -338,8 +338,8 @@ def quantize_static(
                     when CalibMovingAverage is set to True.
     """
     if activation_type == QuantType.QFLOAT8E4M3FN or weight_type == QuantType.QFLOAT8E4M3FN:
-        if calibrate_method != CalibrationMethod.Percentile:
-            raise ValueError("Only Percentile calibration method is supported for float quantization.")
+        if calibrate_method != CalibrationMethod.Distribution:
+            raise ValueError("Only Distribution calibration method is supported for float quantization.")
 
     extra_options = extra_options or {}
     nodes_to_exclude = nodes_to_exclude or []

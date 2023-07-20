@@ -339,7 +339,7 @@ class TestOpGemm(unittest.TestCase):
         # self.dynamic_quant_test(model_fp32_path, data_reader, activation_type=QuantType.QInt8, weight_type=QuantType.QInt8,
         #                        extra_options={'ActivationSymmetric': True})
 
-    def test_quantize_gemm_e4m3fn(self):
+    def test_quantize_gemm_e4m3fn_same(self):
         np.random.seed(1)
         model_fp32_path = "gemm_fp32.onnx"
         self.construct_model_gemm(model_fp32_path, add_clip=False)
@@ -350,16 +350,39 @@ class TestOpGemm(unittest.TestCase):
             data_reader,
             activation_type=QuantType.QFLOAT8E4M3FN,
             weight_type=QuantType.QFLOAT8E4M3FN,
-            extra_options={"ActivationSymmetric": True},
-            calibrate_method=CalibrationMethod.Percentile,
+            extra_options={"scenario": "same"},
+            calibrate_method=CalibrationMethod.Distribution,
         )
         self.static_quant_test(
             model_fp32_path,
             data_reader,
             activation_type=QuantType.QFLOAT8E4M3FN,
             weight_type=QuantType.QFLOAT8E4M3FN,
-            extra_options={"ActivationSymmetric": True},
-            calibrate_method=CalibrationMethod.Percentile,
+            extra_options={"scenario": "same"},
+            calibrate_method=CalibrationMethod.Distribution,
+        )
+
+    def test_quantize_gemm_e4m3fn_p3(self):
+        np.random.seed(1)
+        model_fp32_path = "gemm_fp32.onnx"
+        self.construct_model_gemm(model_fp32_path, add_clip=False)
+        data_reader = self.input_feeds(1, {"input": [5, 10]})
+
+        self.static_quant_test_qdq(
+            model_fp32_path,
+            data_reader,
+            activation_type=QuantType.QFLOAT8E4M3FN,
+            weight_type=QuantType.QFLOAT8E4M3FN,
+            extra_options={"scenario": "p3"},
+            calibrate_method=CalibrationMethod.Distribution,
+        )
+        self.static_quant_test(
+            model_fp32_path,
+            data_reader,
+            activation_type=QuantType.QFLOAT8E4M3FN,
+            weight_type=QuantType.QFLOAT8E4M3FN,
+            extra_options={"scenario": "p3"},
+            calibrate_method=CalibrationMethod.Distribution,
         )
 
     def test_qgemm_ref_uint8(self):
@@ -711,8 +734,7 @@ class TestOpGemm(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    TestOpGemm().test_qgemm_ref_uint8()
-    # TestOpGemm().test_quantize_gemm_e4m3fn()
+    TestOpGemm().test_quantize_gemm_e4m3fn_same()
     # TestOpGemm().test_qgemm_ref_uint8_specific_example()
     # TestOpGemm()._test_dummy()
     # stop
