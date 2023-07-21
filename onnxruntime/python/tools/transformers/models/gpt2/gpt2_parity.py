@@ -134,7 +134,7 @@ def load_results_from_csv(csv_path):
     with open(csv_path, newline="") as csvfile:
         reader = csv.DictReader(csvfile)
         for row in reader:
-            rows.append(row)
+            rows.append(row)  # noqa: PERF402
     return rows
 
 
@@ -256,7 +256,7 @@ def run_significance_test(rows, output_csv_path):
                     utest_statistic, utest_pvalue = scipy.stats.mannwhitneyu(
                         a, b, use_continuity=True, alternative="two-sided"
                     )  # TODO: shall we use one-sided: less or greater according to "top1_match_rate"
-                except ValueError:  # ValueError: All numbers are identical in mannwhitneyu
+                except ValueError:  # ValueError: All numbers are identical in mannwhitneyu  # noqa: PERF203
                     utest_statistic = None
                     utest_pvalue = None
                 ttest_statistic, ttest_pvalue = scipy.stats.ttest_ind(a, b, axis=None, equal_var=True)

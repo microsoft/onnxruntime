@@ -390,10 +390,10 @@ def testOptimizerConfig(optim_name, lr, alpha, default_alpha):
 
     # 1:1 mapping between defaults and params's hyper parameters
     for param in params:
-        for k, _ in param.items():
+        for k in param:
             if k != "params":
                 assert k in cfg.defaults, "hyper parameter {k} not present in one of the parameter params"
-    for k, _ in cfg.defaults.items():
+    for k in cfg.defaults:
         for param in cfg.params:
             assert k in param, "hyper parameter {k} not present in one of the parameter params"
 
