@@ -2254,6 +2254,7 @@ Status Graph::InferAndVerifyTypeMatch(Node& node, const OpSchema& op, const Reso
 
       // Verify that the actual parameter's type is one of permitted types of the formal parameter
       DataType input_type = input_def->Type();
+      // NOTE(adrian): Temporarily comment out type checking to test QDQ 16bit graphs
       #if 0
       auto& permitted_types = op_formal_parameter.GetTypes();
       if (0 == permitted_types.count(input_type)) {
