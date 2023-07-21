@@ -1,6 +1,6 @@
 <script>
     import Hero from "./components/hero.svelte";
-    import Partners from "./components/partners.svelte";
+    import Customers from "./components/customers.svelte";
     import CodeBlocks from "./components/code-blocks.svelte";
     import Performance from "./components/performance.svelte";
     import CrossPlatform from "./components/cross-platform.svelte";
@@ -8,7 +8,7 @@
     import Testimonials from "./components/testimonials.svelte";
 </script>
 <Hero/>
-<Partners/>
+<Customers/>
 <CodeBlocks/>
 <Performance/>
 <CrossPlatform/>

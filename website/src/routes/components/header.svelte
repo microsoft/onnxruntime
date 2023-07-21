@@ -10,12 +10,11 @@
 		themeChange(false);
 	});
 </script>
-
 <div class="navbar bg-base-100">
 	<div class="navbar-start">
 		<div class="dropdown">
 			<!-- svelte-ignore a11y-no-noninteractive-tabindex -->
-			<button tabindex="0" class="btn btn-ghost lg:hidden">
+			<label tabindex="0" class="btn btn-ghost lg:hidden">
 				<svg
 					xmlns="http://www.w3.org/2000/svg"
 					class="h-5 w-5"
@@ -29,7 +28,7 @@
 						d="M4 6h16M4 12h8m-8 6h16"
 					/></svg
 				>
-			</button>
+			</label>
 			<!-- svelte-ignore a11y-no-noninteractive-tabindex -->
 			<ul
 				tabindex="0"
@@ -43,19 +42,19 @@
 						<li><a href="{base}/about">About ORT</a></li>
 						<li><a>Testimonials</a></li>
 						<li>
-							<a href="https://www.youtube.com/onnxruntime"
+							<a href="https://www.youtube.com/onnxruntime" target="_blank"
 								><div class="icon"><FaYoutube /></div>
 								 Youtube</a
 							>
 						</li>
 						<li>
-							<a href="https://www.linkedin.com/company/onnxruntime/"
+							<a href="https://www.linkedin.com/company/onnxruntime/" target="_blank"
 								><div class="icon"><FaLinkedinIn /></div>
 								 LinkedIn</a
 							>
 						</li>
 						<li>
-							<a href="https://www.tiktok.com/@onnxruntimeai"
+							<a href="https://www.tiktok.com/@onnxruntimeai" target="_blank"
 								><svg xmlns="http://www.w3.org/2000/svg" height="1em" viewBox="0 0 448 512"
 									><!--! Font Awesome Free 6.4.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license (Commercial License) Copyright 2023 Fonticons, Inc. --><path
 										d="M448,209.91a210.06,210.06,0,0,1-122.77-39.25V349.38A162.55,162.55,0,1,1,185,188.31V278.2a74.62,74.62,0,1,0,52.23,71.18V0l88,0a121.18,121.18,0,0,0,1.86,22.17h0A122.18,122.18,0,0,0,381,102.39a121.43,121.43,0,0,0,67,20.14Z"
@@ -66,7 +65,7 @@
 					</ul>
 				</li>
 				<li>
-					<a href="https://github.com/microsoft/onnxruntime"
+					<a href="https://github.com/microsoft/onnxruntime" target="_blank"
 						><div class="icon"><FaGithub /></div>
 						 GitHub</a
 					>
@@ -80,26 +79,26 @@
 			<li><a href="{base}/blogs">Blogs</a></li>
 			<li><a href="{base}/" >Docs</a></li>
 			<!-- svelte-ignore a11y-no-noninteractive-tabindex -->
-			<li tabindex="0">
-				<details>
+			<li tabindex="1">
+				<details class="z-[1] ">
 					<summary>Community</summary>
 					<ul class="p-2">
 						<li><a href="{base}/about" >About ORT</a></li>
 						<li><a>Testimonials</a></li>
 						<li>
-							<a href="https://www.youtube.com/onnxruntime"
+							<a href="https://www.youtube.com/onnxruntime" target="_blank"
 								><div class="icon"><FaYoutube /></div>
 								 Youtube</a
 							>
 						</li>
 						<li>
-							<a href="https://www.linkedin.com/company/onnxruntime/"
+							<a href="https://www.linkedin.com/company/onnxruntime/" target="_blank"
 								><div class="icon"><FaLinkedinIn /></div>
 								 LinkedIn</a
 							>
 						</li>
 						<li>
-							<a href="https://www.tiktok.com/@onnxruntimeai"
+							<a href="https://www.tiktok.com/@onnxruntimeai" target="_blank"
 								><svg xmlns="http://www.w3.org/2000/svg" height="1em" viewBox="0 0 448 512"
 									><!--! Font Awesome Free 6.4.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license (Commercial License) Copyright 2023 Fonticons, Inc. --><path
 										d="M448,209.91a210.06,210.06,0,0,1-122.77-39.25V349.38A162.55,162.55,0,1,1,185,188.31V278.2a74.62,74.62,0,1,0,52.23,71.18V0l88,0a121.18,121.18,0,0,0,1.86,22.17h0A122.18,122.18,0,0,0,381,102.39a121.43,121.43,0,0,0,67,20.14Z"
@@ -111,7 +110,7 @@
 				</details>
 			</li>
 			<li>
-				<a href="https://github.com/microsoft/onnxruntime" 
+				<a href="https://github.com/microsoft/onnxruntime" target="_blank"
 					><div class="icon"><FaGithub /></div>
 					GitHub</a
 				>
