@@ -24,6 +24,14 @@ using ort_run_options_handle_t = OrtRunOptions*;
 struct OrtValue;
 using ort_tensor_handle_t = OrtValue*;
 
+#ifdef ENABLE_TRAINING_API
+struct OrtTrainingSession;
+using ort_training_session_handle_t = OrtTrainingSession*;
+
+struct OrtCheckpointState;
+using ort_training_checkpoint_handle_t = OrtCheckpointState*;
+#endif
+
 extern "C" {
 
 /**
@@ -222,4 +230,67 @@ int EMSCRIPTEN_KEEPALIVE OrtRun(ort_session_handle_t session,
  * Caller must release the C style string after use by calling OrtFree().
  */
 char* EMSCRIPTEN_KEEPALIVE OrtEndProfiling(ort_session_handle_t session);
+
+#ifdef ENABLE_TRAINING_API
+/**
+ * @brief Load the checkpoint for training.
+ *
+ * @param checkpoint
+ * @param checkpoint_size
+ * @return ort_training_checkpoint_handle_t
+ */
+ort_training_checkpoint_handle_t OrtLoadCheckpointForTraining(void* checkpoint, size_t checkpoint_size);
+
+/**
+ * @brief  Create an instance of ORT training session.
+ *
+ * @param session_options a handle to session options created by OrtCreateSessionOptions
+ * @param train_model
+ * @param train_size
+ * @param eval_model
+ * @param eval_size
+ * @param optimizer_model
+ * @param optimizer_size
+ * @return ort_training_session_handle_t
+ */
+ort_training_session_handle_t EMSCRIPTEN_KEEPALIVE OrtCreateTrainingSession(const ort_session_options_handle_t session_options,
+                                                                            void* train_model,
+                                                                            size_t train_size,
+                                                                            void* eval_model,
+                                                                            size_t eval_size,
+                                                                            void* optimizer_model,
+                                                                            size_t optimizer_size);
+
+/**
+ * @brief Run a single training step.
+ *
+ * @param training_session_handle session handle of the specified session
+ * @param inputs
+ * @param inputs_count
+ * @param outputs
+ * @param outputs_count
+ * @param run_options
+ * @return int ORT error code. If not zero, call OrtGetLastError() to get detailed error message.
+ */
+int EMSCRIPTEN_KEEPALIVE OrtRunTrainStep(ort_training_session_handle_t training_session_handle,
+                                         const ort_tensor_handle_t* inputs, const size_t inputs_count,
+                                         ort_tensor_handle_t* outputs,
+                                         const size_t outputs_count,
+                                         OrtRunOptions* run_options = nullptr);
+
+/**
+ * @brief Release the specified ORT training session.
+ *
+ * @param training_session_handle
+ */
+void EMSCRIPTEN_KEEPALIVE OrtReleaseTrainingSession(ort_training_session_handle_t training_session_handle);
+
+/**
+ * @brief Release the specified ORT training checkpoint state.
+ *
+ * @param training_checkpoint_state_handle
+ */
+void EMSCRIPTEN_KEEPALIVE OrtReleaseTrainingCheckpointState(ort_training_checkpoint_handle_t training_checkpoint_state_handle);
+
+#endif
 };
