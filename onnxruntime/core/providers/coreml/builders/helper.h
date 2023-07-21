@@ -3,9 +3,9 @@
 
 #pragma once
 
-#include "core/common/gsl.h"
-#include "core/common/status.h"
 #include "core/graph/basic_types.h"
+
+#include "core/providers/coreml/shape_utils.h"  // TODO add this include as needed and remove from this file
 
 namespace onnxruntime {
 
@@ -18,15 +18,6 @@ class Logger;
 }
 
 namespace coreml {
-
-// Gets `node_arg`'s shape. Dynamic dimensions will have a value of -1.
-bool GetShape(const NodeArg& node_arg, std::vector<int64_t>& shape, const logging::Logger& logger);
-
-// Gets `node_arg`'s shape if it has no dynamic dimensions.
-bool GetStaticShape(const NodeArg& node_arg, std::vector<int64_t>& shape, const logging::Logger& logger);
-
-// True iff `shape` has no dynamic dimensions.
-bool IsStaticShape(gsl::span<const int64_t> shape);
 
 bool IsInputSupported(const NodeArg& node_arg, const std::string& parent_name, const logging::Logger& logger);
 

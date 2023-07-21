@@ -119,8 +119,9 @@ asm(".linker_option \"-framework\", \"CoreML\"");
                                                                 shape:shape
                                                              dataType:data_type
                                                               strides:strides
-                                                          deallocator:(^(void* /* bytes */){
-                                                                      })error:&error];
+                                                          deallocator:^(void* /* bytes */) {
+                                                          }
+                                                                error:&error];
     if (error != nil) {
       LOGS(*logger_, ERROR) << "Failed to create MLMultiArray for feature: " << [featureName UTF8String]
                             << ", error: " << [[error localizedDescription] UTF8String];

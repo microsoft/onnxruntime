@@ -12,6 +12,7 @@
 #include "core/providers/coreml/model/model.h"
 #include "core/providers/coreml/model/host_utils.h"
 #include "core/providers/coreml/builders/impl/builder_utils.h"
+#include "core/providers/coreml/shape_utils.h"
 
 namespace onnxruntime {
 namespace coreml {
@@ -60,12 +61,7 @@ void ModelBuilder::PreprocessInitializers() {
     // find all initializers consumed. AddInitializersToSkip will potentially decrement the usage count.
     for (const auto* input : node.InputDefs()) {
       if (input->Exists() && Contains(initializers, input->Name())) {
-        auto entry = initializer_usage_.find(input->Name());
-        if (entry == initializer_usage_.end()) {
-          initializer_usage_[input->Name()] = 1;
-        } else {
-          entry->second++;
-        }
+        initializer_usage_[input->Name()]++;
       }
     }
     if (const auto* op_builder = GetOpBuilder(node)) {
@@ -128,33 +124,37 @@ Status ModelBuilder::RegisterModelInputOutput(const NodeArg& node_arg, bool is_i
 
   input_output.set_name(name);
   auto* multi_array = input_output.mutable_type()->mutable_multiarraytype();
+
   std::vector<int64_t> shape;
+  ORT_RETURN_IF_NOT(GetShape(node_arg, shape, logger_),
+                    "Unable to get shape for ", input_output_type, ": ", name);
 
-  {  // input_output shape
-    const auto* shape_proto = node_arg.Shape();
-    ORT_RETURN_IF(shape_proto == nullptr,
-                  "shape_proto cannot be null for ", input_output_type, ": ", name);
-    const auto& dims = shape_proto->dim();
-    if (dims.empty()) {
-      // If we have an empty shape, this is a scalar input,
-      // Since all the input output of CoreML EP is MultiArray, we will make the scalar input output as a {1} MultiArray
-      shape.push_back(1);
+  if (shape.empty()) {
+    // If we have an empty shape, this is a scalar input,
+    // Since all the input output of CoreML EP is MultiArray, we will make the scalar input output as a {1} MultiArray
+    shape.push_back(1);
 
-      // we need to change the shapes of these scalar outputs back to {} when CoreML EP returns these values to ORT
-      if (!is_input) {
-        AddScalarOutput(name);
-      }
-    } else {
-      shape.reserve(dims.size());
-      for (const auto& dim : dims) {
-        ORT_RETURN_IF_NOT(dim.has_dim_value(),
-                          "Dynamic shape is not supported yet, for ", input_output_type, ": ", name);
-        shape.push_back(dim.dim_value());
-      }
+    // we need to change the shapes of these scalar outputs back to {} when CoreML EP returns these values to ORT
+    if (!is_input) {
+      AddScalarOutput(name);
     }
   }
 
-  *multi_array->mutable_shape() = {shape.cbegin(), shape.cend()};
+  if (IsStaticShape(shape)) {
+    *multi_array->mutable_shape() = {shape.cbegin(), shape.cend()};
+  } else {
+    auto& shape_range = *multi_array->mutable_shaperange();
+    for (const auto dim : shape) {
+      auto& size_range = *shape_range.mutable_sizeranges()->Add();
+      if (dim == -1) {
+        size_range.set_lowerbound(0);
+        size_range.set_upperbound(-1);  // unbounded
+      } else {
+        size_range.set_lowerbound(dim);
+        size_range.set_upperbound(dim);
+      }
+    }
+  }
 
   int32_t data_type;
   {  // type

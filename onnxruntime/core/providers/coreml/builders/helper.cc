@@ -20,49 +20,6 @@
 namespace onnxruntime {
 namespace coreml {
 
-namespace {
-bool GetShapeImpl(const NodeArg& node_arg, std::vector<int64_t>& shape_out, const logging::Logger& logger,
-                  bool allow_dynamic_shape) {
-  const auto* shape_proto = node_arg.Shape();
-  if (!shape_proto) {
-    LOGS(logger, WARNING) << "NodeArg [" << node_arg.Name() << "] has no shape info";
-    return false;
-  }
-
-  std::vector<int64_t> shape{};
-  shape.reserve(shape_proto->dim().size());
-
-  for (int i = 0; i < shape_proto->dim().size(); ++i) {
-    const auto& dim = shape_proto->dim(i);
-    if (utils::HasDimValue(dim)) {
-      shape.push_back(dim.dim_value());
-    } else {
-      // dynamic dimension
-      if (!allow_dynamic_shape) {
-        LOGS(logger, WARNING) << "NodeArg [" << node_arg.Name() << "] has shape with dynamic dimension";
-        return false;
-      }
-      shape.push_back(-1);
-    }
-  }
-
-  shape_out = std::move(shape);
-  return true;
-}
-}  // namespace
-
-bool GetShape(const NodeArg& node_arg, std::vector<int64_t>& shape, const logging::Logger& logger) {
-  return GetShapeImpl(node_arg, shape, logger, /* allow_dynamic_shape */ true);
-}
-
-bool GetStaticShape(const NodeArg& node_arg, std::vector<int64_t>& shape, const logging::Logger& logger) {
-  return GetShapeImpl(node_arg, shape, logger, /* allow_dynamic_shape */ false);
-}
-
-bool IsStaticShape(gsl::span<const int64_t> shape) {
-  return std::find(shape.begin(), shape.end(), int64_t{-1}) == shape.end();
-}
-
 bool IsNodeSupported(const Node& node, const GraphViewer& graph_viewer, const logging::Logger& logger) {
   const auto& op_builders = GetOpBuilders();
   if (Contains(op_builders, node.OpType())) {
