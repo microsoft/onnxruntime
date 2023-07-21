@@ -375,6 +375,7 @@ export const extractTransferableBuffers = (tensors: readonly SerializableTensor[
  */
 export const loadCheckpoint =
   (checkpointData: Uint8Array): number => {
+    console.log("inside wasm loadCheckpoint");
     const wasm = getInstance();
     const checkpointBuffer: SerializableModeldata = createSessionAllocate(checkpointData);
     if (wasm._OrtTrainingLoadCheckpoint) {

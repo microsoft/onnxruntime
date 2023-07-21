@@ -53,7 +53,7 @@ export interface Backend {
 }
 
 export interface TrainingBackend extends Backend {
-  createCheckpoint(pathOrBuffer: string|Uint8Array): Promise<TrainingHandler>;
+  loadCheckpoint(pathOrBuffer: string|Uint8Array): Promise<TrainingHandler>;
 
   // createTrainingSession(checkpointState: CheckpointState, trainModel: ArrayBufferLike|string, evalModel: ArrayBufferLike|string,
   //     optimizerModel: ArrayBufferLike|string, options?: Session.SessionOptions): Promise<TrainingSessionHandler>;

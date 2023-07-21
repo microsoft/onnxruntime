@@ -16,18 +16,21 @@ if (!BUILD_DEFS.DISABLE_WEBGL) {
 }
 
 if (!BUILD_DEFS.DISABLE_WASM) {
-  const wasmBackend = require('./backend-wasm').wasmBackend;
-  if (!BUILD_DEFS.DISABLE_WEBGPU && typeof navigator !== 'undefined' && navigator.gpu) {
-    registerBackend('webgpu', wasmBackend, 5);
+  if (BUILD_DEFS.ENABLE_TRAINING) {
+    const trainingWasmBackend = require('./training-backend').trainingWasmBackend;
+    registerBackend('cpu', trainingWasmBackend, 10);
+    registerBackend('wasm', trainingWasmBackend, 10);
   }
-  registerBackend('cpu', wasmBackend, 10);
-  registerBackend('wasm', wasmBackend, 10);
-  registerBackend('xnnpack', wasmBackend, 9);
-  registerBackend('webnn', wasmBackend, 9);
-}
-
-if (BUILD_DEFS.ENABLE_TRAINING) {
-  // TODO: do something!
+  else {
+    const wasmBackend = require('./backend-wasm').wasmBackend;
+    if (!BUILD_DEFS.DISABLE_WEBGPU && typeof navigator !== 'undefined' && navigator.gpu) {
+      registerBackend('webgpu', wasmBackend, 5);
+    }
+    registerBackend('cpu', wasmBackend, 10);
+    registerBackend('wasm', wasmBackend, 10);
+    registerBackend('xnnpack', wasmBackend, 9);
+    registerBackend('webnn', wasmBackend, 9);
+  }
 }
 
 env.versions.web = version;

@@ -13,7 +13,8 @@ class WebAssemblyTrainingBackend extends WebAssemblyInferenceBackend implements 
         throw new Error('Can\'t use the training backend to create an inference session');
       }
 
-  async createCheckpoint(pathOrBuffer: string|Uint8Array): Promise<TrainingHandler> {
+  async loadCheckpoint(pathOrBuffer: string|Uint8Array): Promise<TrainingHandler> {
+    console.log("inside the web training backend");
     const handler = new OnnxruntimeWebAssemblyTrainingHandler();
     await handler.loadCheckpoint(pathOrBuffer);
     return Promise.resolve(handler);

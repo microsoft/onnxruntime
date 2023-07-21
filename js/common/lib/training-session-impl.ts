@@ -3,18 +3,15 @@
 
 import {TrainingBackend} from './backend.js';
 import {CheckpointState as CheckpointStateInterface} from './training-session.js';
+// import {CheckpointState as CheckpointStateInterface, TrainingSession as TrainingSessionInterface} from './training-session.js';
 import {resolveBackend} from './backend-impl.js';
 import {TrainingHandler} from './backend.js';
 
 
 // export class TrainingSession implements TrainingSessionInterface {
-//     private handler: TrainingSessionHandler;
-//     private constructor(handler: TrainingSessionHandler) {
-//         this.handler = handler;
-//     }
-
-//     static loadCheckpoint(checkpoint: string|ArrayBufferLike): Promise<CheckpointState> {
-//         throw new Error("Method not implemented yet");
+//     private checkpointState: CheckpointState;
+//     private constructor(checkpointState: CheckpointState) {
+//         this.checkpointState = checkpointState;
 //     }
 
 //     lazyResetGrad(): void {
@@ -42,6 +39,7 @@ export class CheckpointState implements CheckpointStateInterface {
     }
 
     static async loadCheckpoint(checkpoint: string|ArrayBufferLike): Promise<CheckpointState> {
+        console.log('loading Checkpoint');
         const backendHints: string[] = [];
         const backend = await resolveBackend(backendHints);
         let fileOrArray: string|Uint8Array;
@@ -56,7 +54,7 @@ export class CheckpointState implements CheckpointStateInterface {
             throw new TypeError('unexpected argument -- loadCheckpoint must take in a file path or buffer.');
         }
 
-        const handler = await (backend as TrainingBackend).createCheckpoint(fileOrArray);
+        const handler = await (backend as TrainingBackend).loadCheckpoint(fileOrArray);
         return new CheckpointState(handler);
     }
 

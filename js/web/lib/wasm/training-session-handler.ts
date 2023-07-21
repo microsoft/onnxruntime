@@ -31,6 +31,7 @@ export class OnnxruntimeWebAssemblyTrainingHandler implements TrainingHandler {
     }
 
     async loadCheckpoint(pathOrBuffer: string|Uint8Array): Promise<number> {
+        console.log("inside lib wasm handler load checkpoint");
         if (typeof pathOrBuffer ==='string') {
             if (typeof fetch === 'undefined') {
                 // node

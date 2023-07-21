@@ -23,8 +23,6 @@ export * from './inference-session.js';
 export * from './tensor.js';
 export * from './onnx-value.js';
 
-/// #if TRAINING
 console.log('exporting from training session');
 export * from './training-session.js';
-/// #endif
 console.log('end of index.ts file in common');
