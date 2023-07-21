@@ -72,7 +72,7 @@ public class OrtException extends Exception {
     ORT_ENGINE_ERROR(5),
     /** The operation threw a runtime exception. */
     ORT_RUNTIME_EXCEPTION(6),
-    /** The requested protobuf was invalid. */
+    /** The provided protobuf was invalid. */
     ORT_INVALID_PROTOBUF(7),
     /** The model was loaded. */
     ORT_MODEL_LOADED(8),
