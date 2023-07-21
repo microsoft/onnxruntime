@@ -145,7 +145,7 @@ def _order_paths(paths, D_groups, H_groups):
     world_rank = _utils.state_dict_trainer_options_world_rank_key()
 
     for path in paths:
-        trainer_options_path_tuples.append(
+        trainer_options_path_tuples.append(  # noqa: PERF401
             (_checkpoint_storage.load(path, key=_utils.state_dict_trainer_options_key()), path)
         )
 
@@ -365,7 +365,7 @@ def _get_parallellism_groups(data_parallel_size, horizontal_parallel_size, world
     for data_group_id in range(num_data_groups):
         data_group_ranks = []
         for r in range(data_parallel_size):
-            data_group_ranks.append(data_group_id + horizontal_parallel_size * r)
+            data_group_ranks.append(data_group_id + horizontal_parallel_size * r)  # noqa: PERF401
         data_groups.append(data_group_ranks)
 
     num_horizontal_groups = world_size // horizontal_parallel_size
@@ -373,7 +373,7 @@ def _get_parallellism_groups(data_parallel_size, horizontal_parallel_size, world
     for hori_group_id in range(num_horizontal_groups):
         hori_group_ranks = []
         for r in range(horizontal_parallel_size):
-            hori_group_ranks.append(hori_group_id * horizontal_parallel_size + r)
+            hori_group_ranks.append(hori_group_id * horizontal_parallel_size + r)  # noqa: PERF401
         horizontal_groups.append(hori_group_ranks)
 
     return data_groups, horizontal_groups
@@ -665,10 +665,10 @@ class _CombineZeroCheckpoint:
         self.clean_state_dict = clean_state_dict
         self.world_size = int(self.checkpoint_files[0].split("ZeRO")[1].split(".")[2]) + 1
         assert len(self.checkpoint_files) == self.world_size, f"Could not find {self.world_size} files"
-        self.weight_shape_map = dict()
+        self.weight_shape_map = {}
         self.sharded_params = set()
 
-    def _split_name(self, name):
+    def _split_name(self, name: str):
         name_split = name.split("_view_")
         view_num = None
         if len(name_split) > 1:
@@ -684,7 +684,7 @@ class _CombineZeroCheckpoint:
         elif name_split[0].endswith("_fp16"):
             mp_suffix = "_fp16"
         param_name = name_split[0]
-        if optimizer_key != "":  # noqa: PLC1901
+        if optimizer_key:
             param_name = param_name.split(optimizer_key)[1]
         param_name = param_name.split("_fp16")[0]
         return param_name, optimizer_key, view_num, mp_suffix

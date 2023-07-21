@@ -47,7 +47,7 @@ class UnetOnnxModel(BertOnnxModel):
         nodes_to_remove = []
         for div in div_nodes:
             if self.find_constant_input(div, 1.0) == 1:
-                nodes_to_remove.append(div)
+                nodes_to_remove.append(div)  # noqa: PERF401
 
         for node in nodes_to_remove:
             self.replace_input_of_all_nodes(node.output[0], node.input[0])
