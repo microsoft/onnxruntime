@@ -136,7 +136,7 @@ def _torch_layer_norm(input, weight, bias, **kwargs):
 
 
 class TorchFuncExecutor:
-    _INFER_FUNC_MAP = {
+    _INFER_FUNC_MAP = {  # noqa: RUF012
         "Add": _torch_add,
         "Sub": _torch_sub,
         "Mul": _torch_mul,

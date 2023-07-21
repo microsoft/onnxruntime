@@ -112,7 +112,7 @@ def optimizer_parameters(model):
     no_decay_param_group = []
     for initializer in model.graph.initializer:
         if any(key in initializer.name for key in no_decay_keys):
-            no_decay_param_group.append(initializer.name)
+            no_decay_param_group.append(initializer.name)  # noqa: PERF401
     params = [
         {
             "params": no_decay_param_group,
@@ -134,7 +134,7 @@ def load_bert_onnx_model():
 
 
 class CustomLossScaler(amp.LossScaler):
-    def __init__(self, loss_scale=float(1 << 16)):  # noqa: B008
+    def __init__(self, loss_scale=float(1 << 16)):
         super().__init__(loss_scale)
         self._initial_loss_scale = loss_scale
         self.loss_scale = loss_scale
@@ -151,7 +151,7 @@ class CustomLossScaler(amp.LossScaler):
 
 
 class LegacyCustomLossScaler:
-    def __init__(self, loss_scale=float(1 << 16)):  # noqa: B008
+    def __init__(self, loss_scale=float(1 << 16)):
         self._initial_loss_scale = loss_scale
         self.loss_scale_ = loss_scale
 

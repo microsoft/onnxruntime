@@ -77,12 +77,10 @@ static void RunCPULRNOpTest(const std::vector<int64_t>& shape, int64_t size,
   fp32_abs_err = 1.5e-5f;  // On linux we need slightly larger tolerance.
 #endif
 
-  constexpr int expected_nodes_in_partition = 1;
   RunQnnModelTest(BuildLRNTestCase(shape, size, alpha, beta, bias),
                   provider_options,
                   opset,
                   expected_ep_assignment,
-                  expected_nodes_in_partition,
                   fp32_abs_err);
 }
 
@@ -100,12 +98,10 @@ static void RunQDQLRNOpTest(const std::vector<int64_t>& shape, int64_t size,
   provider_options["backend_path"] = "libQnnHtp.so";
 #endif
 
-  constexpr int expected_nodes_in_partition = 1;
   RunQnnModelTest(BuildQDQLRNTestCase<QuantType>(shape, size, alpha, beta, bias),
                   provider_options,
                   opset,
                   expected_ep_assignment,
-                  expected_nodes_in_partition,
                   fp32_abs_err + 0.0001f);
 }
 
