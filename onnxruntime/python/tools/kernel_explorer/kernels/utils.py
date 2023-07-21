@@ -7,6 +7,7 @@ import os
 from itertools import product
 
 import numpy as np
+import scipy.special
 
 
 def dtype_to_bytes(dtype):
@@ -120,6 +121,16 @@ def fast_gelu(x, bias):
     x = x + bias
     y = 0.5 * x * (1 + np.tanh(0.797885 * x + 0.035677 * x * x * x))
     return y
+
+
+def gelu(x, bias):
+    x = x + bias
+    return 0.5 * x * (1 + scipy.special.erf(x / np.sqrt(2)))
+
+
+def relu(x, bias):
+    x = x + bias
+    return np.max(x, 0, keepdims=True)
 
 
 def standardization(x, axis, epsilon):

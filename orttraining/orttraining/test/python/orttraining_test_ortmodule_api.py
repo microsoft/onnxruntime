@@ -1497,10 +1497,10 @@ def test_gradient_correctness_einsum(equation):
     rhs_op = equation[pos1 + 1 : pos2]
     lhs_shape = []
     for c in lhs_op:
-        lhs_shape.append(SIZE_MAP[c.upper()])
+        lhs_shape.append(SIZE_MAP[c.upper()])  # noqa: PERF401
     rhs_shape = []
     for c in rhs_op:
-        rhs_shape.append(SIZE_MAP[c.upper()])
+        rhs_shape.append(SIZE_MAP[c.upper()])  # noqa: PERF401
 
     pt_model = NeuralNetEinsum(lhs_shape[-1]).to(device)
     ort_model = ORTModule(copy.deepcopy(pt_model))
@@ -1577,7 +1577,7 @@ def test_gradient_correctness_einsum_2():
             random.shuffle(output_candidates)
             output_candidates = output_candidates[:8]
             for output_candidate in [list(candidate) for candidate in output_candidates]:
-                all_cases.append((lhs_candidate, rhs_candidate, output_candidate))
+                all_cases.append((lhs_candidate, rhs_candidate, output_candidate))  # noqa: PERF401
 
     for case in all_cases:
         equation = to_string(case[0]) + "," + to_string(case[1]) + "->" + to_string(case[2])
@@ -1587,10 +1587,10 @@ def test_gradient_correctness_einsum_2():
         rhs_op = equation[pos1 + 1 : pos2]
         lhs_shape = []
         for c in lhs_op:
-            lhs_shape.append(SIZE_MAP[c.upper()])
+            lhs_shape.append(SIZE_MAP[c.upper()])  # noqa: PERF401
         rhs_shape = []
         for c in rhs_op:
-            rhs_shape.append(SIZE_MAP[c.upper()])
+            rhs_shape.append(SIZE_MAP[c.upper()])  # noqa: PERF401
 
         pt_model = NeuralNetEinsum(lhs_shape[-1]).to(device)
         ort_model = ORTModule(copy.deepcopy(pt_model))
@@ -5895,7 +5895,7 @@ def test_ops_for_padding_elimination(test_cases):
         result = []
         for node in model.graph.node:
             if arg in node.output:
-                result.append(node)
+                result.append(node)  # noqa: PERF401
         return result[0].op_type if len(result) == 1 else None
 
     gathergrad_input_optypes = [find_input_node_type(training_model, arg) for arg in gathergrad_node.input]
@@ -6051,7 +6051,11 @@ def test_e2e_padding_elimination():
             if pt_param.grad is not None:
                 _test_helpers.assert_values_are_close(pt_param.grad, ort_param.grad, atol=1e-4, rtol=1e-5)
 
-        _test_helpers.assert_values_are_close(ort_prediction, pt_prediction, atol=1e-3, rtol=1e-4)
+        if os.getenv("ORTMODULE_ROCM_TEST", "0") == "1":
+            # For ROCm EP, the difference between ORT and PyTorch is larger than CUDA EP.
+            _test_helpers.assert_values_are_close(ort_prediction, pt_prediction, atol=2e-3, rtol=2e-4)
+        else:
+            _test_helpers.assert_values_are_close(ort_prediction, pt_prediction, atol=1e-3, rtol=1e-4)
 
     training_model = ort_model._torch_module._execution_manager(True)._onnx_models.optimized_model
     assert "ShrunkenGather" in [node.op_type for node in training_model.graph.node]

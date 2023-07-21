@@ -124,7 +124,7 @@ class PackingMode:
             attributes = []
             for attr in attention.attribute:
                 if attr.name in ["num_heads", "qkv_hidden_sizes", "scale"]:
-                    attributes.append(attr)
+                    attributes.append(attr)  # noqa: PERF401
 
             packed_attention.attribute.extend(attributes)
             packed_attention.domain = "com.microsoft"

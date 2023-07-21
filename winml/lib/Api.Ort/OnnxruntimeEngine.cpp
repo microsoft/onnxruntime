@@ -564,6 +564,7 @@ OnnxruntimeEngineFactory* OnnxruntimeEngine::GetEngineFactory() {
 }
 
 HRESULT OnnxruntimeEngine::CreateTensorValueFromDefaultAllocator(const int64_t* shape, size_t count, winml::TensorKind kind, _Out_ IValue** out) {
+  *out = nullptr;
   auto ort_api = engine_factory_->UseOrtApi();
 
   OrtAllocator* ort_allocator;

@@ -138,7 +138,7 @@ class _OutputIdentityOp(torch.autograd.Function):
 
 
 class _PrimitiveType:
-    _primitive_types = {int, bool, float}
+    _primitive_types = {int, bool, float}  # noqa: RUF012
 
     @staticmethod
     def is_primitive_type(value):
@@ -153,7 +153,7 @@ class _PrimitiveType:
         # If `value` is a boolean, save the value of the boolean in dtype.
         # This way, if the value changes from one forward call to the next, the schema will mismatch,
         # and the model will be re-exported.
-        return f"{str(type(value))}_{value}" if isinstance(value, bool) else str(type(value))
+        return f"{type(value)!s}_{value}" if isinstance(value, bool) else str(type(value))
 
 
 def flatten_kwargs(kwargs, device):

@@ -204,6 +204,8 @@ if (onnxruntime_ENABLE_TRAINING_OPS AND NOT onnxruntime_ENABLE_TRAINING)
     "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/tensorboard/*.h"
     "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/torch/*.cc"
     "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/torch/*.h"
+    "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/triton/triton_op.cc"
+    "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/triton/triton_op.h"
   )
 
   list(REMOVE_ITEM onnxruntime_providers_src ${onnxruntime_cpu_full_training_only_srcs})
@@ -233,6 +235,8 @@ if (onnxruntime_ENABLE_TRAINING)
   file(GLOB_RECURSE onnxruntime_training_framework_excude_srcs CONFIGURE_DEPENDS
       "${ORTTRAINING_SOURCE_DIR}/core/framework/torch/*.h"
       "${ORTTRAINING_SOURCE_DIR}/core/framework/torch/*.cc"
+      "${ORTTRAINING_SOURCE_DIR}/core/framework/triton/*.h"
+      "${ORTTRAINING_SOURCE_DIR}/core/framework/triton/*.cc"
   )
 
   list(REMOVE_ITEM onnxruntime_cpu_training_ops_srcs ${onnxruntime_training_framework_excude_srcs})
@@ -303,7 +307,7 @@ endif()
 if (onnxruntime_ENABLE_TRAINING)
   add_dependencies(onnxruntime_providers tensorboard)
   onnxruntime_add_include_to_target(onnxruntime_providers tensorboard)
-  if (onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
+  if (onnxruntime_ENABLE_TRAINING_TORCH_INTEROP OR onnxruntime_ENABLE_TRITON)
     onnxruntime_add_include_to_target(onnxruntime_providers Python::Module)
   endif()
 
@@ -427,12 +431,12 @@ if (onnxruntime_USE_CUDA)
         "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/controlflow/wait.cc"
         "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/controlflow/wait.h"
         "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/controlflow/yield.cc"
-        "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/controlflow/yield.h"
         "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/gist/*.cc"
         "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/gist/*.h"
         "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/gist/*.cu"
         "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/torch/*.cc"
         "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/torch/*.h"
+        "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/triton/triton_op.cc"
       )
 
       list(REMOVE_ITEM onnxruntime_providers_cuda_src ${onnxruntime_cuda_full_training_only_srcs})
@@ -496,7 +500,7 @@ if (onnxruntime_USE_CUDA)
       if (onnxruntime_ENABLE_TRAINING)
         target_link_libraries(${target} PRIVATE onnxruntime_training)
       endif()
-      if (onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
+      if (onnxruntime_ENABLE_TRAINING_TORCH_INTEROP OR onnxruntime_ENABLE_TRITON)
         onnxruntime_add_include_to_target(${target} Python::Module)
       endif()
     endif()

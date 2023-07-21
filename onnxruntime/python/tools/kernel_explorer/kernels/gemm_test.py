@@ -50,13 +50,15 @@ def _test_gemm(func, dtype: str, transa: bool, transb: bool, m: int, n: int, k: 
     for impl in my_gemm.ListOps():
         if not my_gemm.SelectOp(impl):
             continue
-
+        # Restore C Array
+        my_c.fill(1.0)
+        dev_c.UpdateDeviceArray()
         my_gemm.Run()
         dev_c.UpdateHostNumpyArray()
 
         try:
             np.testing.assert_allclose(my_c, ref_c, rtol=bound)
-        except Exception as err:
+        except Exception as err:  # noqa: PERF203
             header = "*" * 30 + impl + "*" * 30
             print(header)
             print(err)
@@ -177,6 +179,10 @@ def profile_with_args(dtype, transa, transb, m, n, k, sort):
         profile_gemm_func(getattr(ke, "RocBlasGemm" + dtype_suffix), dtype, transa, transb, m, n, k)
         profile_gemm_func(getattr(ke, "CKGemm" + dtype_suffix + transab_suffix), dtype, transa, transb, m, n, k)
         profile_gemm_func(getattr(ke, "GemmTunable" + dtype_suffix + transab_suffix), dtype, transa, transb, m, n, k)
+        if ke.is_hipblaslt_available():
+            profile_gemm_func(
+                getattr(ke, "GemmHipBlasLt" + dtype_suffix + transab_suffix), dtype, transa, transb, m, n, k
+            )
     print()
 
 

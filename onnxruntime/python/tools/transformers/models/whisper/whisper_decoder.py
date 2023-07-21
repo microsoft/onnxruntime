@@ -9,7 +9,7 @@ import os
 import sys
 import tempfile
 from pathlib import Path
-from typing import List, Union
+from typing import List, Optional, Union
 
 import numpy
 import onnx
@@ -36,7 +36,7 @@ class WhisperDecoderInit(torch.nn.Module):
         self,
         decoder: torch.nn.Module,
         config: WhisperConfig,
-        decoder_start_token_id: int = None,
+        decoder_start_token_id: Optional[int] = None,
     ):
         super().__init__()
         self.decoder = decoder
@@ -167,10 +167,10 @@ class WhisperDecoderInputs:
 
             past = []
             for _ in range(2 * num_layers):
-                past.append(torch.rand(self_attention_past_shape, dtype=float_type, device=device))
+                past.append(torch.rand(self_attention_past_shape, dtype=float_type, device=device))  # noqa: PERF401
 
             for _ in range(2 * num_layers):
-                past.append(torch.rand(cross_attention_past_shape, dtype=float_type, device=device))
+                past.append(torch.rand(cross_attention_past_shape, dtype=float_type, device=device))  # noqa: PERF401
         else:
             past = None
 
