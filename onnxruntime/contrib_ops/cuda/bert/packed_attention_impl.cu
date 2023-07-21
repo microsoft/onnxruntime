@@ -140,7 +140,7 @@ __global__ void AddBiasTransposeQKVPacked(
   }
 }
 
-// Grid: (S, B)
+// Grid: (T)
 // Block: 256
 // For memory efficient fMHA from CUTLASS. For future use, doesn't support fMHA from CUTLASS yet.
 //     Input: Tx3xNxH
@@ -179,7 +179,7 @@ __global__ void AddBiasTransposeQKVPackedCutlass(
   }
 }
 
-// Grid: (S, B)
+// Grid: (T)
 // Block: 256
 // For fMHA from TRT
 //     Input: Tx3xNxH
@@ -657,6 +657,17 @@ template Status QkvToContext<half>(
     PackedAttentionParameters& parameters,
     PackedAttentionData<half>& data);
 
+template Status LaunchTransposeRemovePadding<float>(
+    float* output, const float* input,
+    const int* token_offset, const int token_count,
+    const int batch_size, const int seq_len, const int number_heads, const int head_size,
+    cudaStream_t stream);
+
+template Status LaunchTransposeRemovePadding<half>(
+    half* output, const half* input,
+    const int* token_offset, const int token_count,
+    const int batch_size, const int seq_len, const int number_heads, const int head_size,
+    cudaStream_t stream);
 }  // namespace cuda
 }  // namespace contrib
 }  // namespace onnxruntime

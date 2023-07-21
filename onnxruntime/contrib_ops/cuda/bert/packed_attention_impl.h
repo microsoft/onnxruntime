@@ -51,6 +51,13 @@ Status QkvToContext(
     contrib::PackedAttentionParameters& parameters,
     PackedAttentionData<T>& data);
 
+template <typename T>
+Status LaunchTransposeRemovePadding(
+    T* output, const T* input,
+    const int* token_offset, const int token_count,
+    const int batch_size, const int seq_len, const int number_heads, const int head_size,
+    cudaStream_t stream);
+
 }  // namespace cuda
 }  // namespace contrib
 }  // namespace onnxruntime
