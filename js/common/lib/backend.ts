@@ -1,16 +1,16 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {InferenceSession} from './inference-session.js';
-import {OnnxValue} from './onnx-value.js';
+import { InferenceSession } from './inference-session.js';
+import { OnnxValue } from './onnx-value.js';
 
 /**
  * @internal
  */
 export declare namespace SessionHandler {
-  type FeedsType = {[name: string]: OnnxValue};
-  type FetchesType = {[name: string]: OnnxValue | null};
-  type ReturnType = {[name: string]: OnnxValue};
+  type FeedsType = { [name: string]: OnnxValue };
+  type FetchesType = { [name: string]: OnnxValue | null };
+  type ReturnType = { [name: string]: OnnxValue };
 }
 
 /**
@@ -28,7 +28,31 @@ export interface SessionHandler {
   endProfiling(): void;
 
   run(feeds: SessionHandler.FeedsType, fetches: SessionHandler.FetchesType,
-      options: InferenceSession.RunOptions): Promise<SessionHandler.ReturnType>;
+    options: InferenceSession.RunOptions): Promise<SessionHandler.ReturnType>;
+}
+
+export declare namespace TrainingSessionHandler {
+  type FeedsType = { [name: string]: OnnxValue };
+  type FetchesType = { [name: string]: OnnxValue | null };
+  type ReturnType = { [name: string]: OnnxValue };
+}
+
+/**
+ * Represent a handler instance of a training inference session.
+ *
+ * @internal
+ */
+export interface TrainingSessionHandler {
+  dispose(): Promise<void>;
+
+  readonly inputNames: readonly string[];
+  readonly outputNames: readonly string[];
+
+  startProfiling(): void;
+  endProfiling(): void;
+
+  runTrainStep(feeds: SessionHandler.FeedsType, fetches: SessionHandler.FetchesType,
+    options: InferenceSession.RunOptions): Promise<TrainingSessionHandler.ReturnType>;
 }
 
 /**
@@ -42,8 +66,12 @@ export interface Backend {
    */
   init(): Promise<void>;
 
-  createSessionHandler(uriOrBuffer: string|Uint8Array, options?: InferenceSession.SessionOptions):
-      Promise<SessionHandler>;
+  createSessionHandler(uriOrBuffer: string | Uint8Array, options?: InferenceSession.SessionOptions):
+    Promise<SessionHandler>;
+
+  createTrainingSessionHandler(checkpointStateUriOrBuffer: string | Uint8Array, trainModelUriOrBuffer: string | Uint8Array,
+    evalModelUriOrBuffer: string | Uint8Array | null, optimizerModelUriOrBuffer: string | Uint8Array | null, options?: InferenceSession.SessionOptions):
+    Promise<TrainingSessionHandler>;
 }
 
-export {registerBackend} from './backend-impl.js';
+export { registerBackend } from './backend-impl.js';
