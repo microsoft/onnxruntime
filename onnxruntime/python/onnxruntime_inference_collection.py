@@ -219,7 +219,7 @@ class Session:
             return self._sess.run(output_names, input_feed, run_options)
         except C.EPFail as err:
             if self._enable_fallback:
-                print(f"EP Error: {str(err)} using {self._providers}")
+                print(f"EP Error: {err!s} using {self._providers}")
                 print(f"Falling back to {self._fallback_providers} and retrying.")
                 self.set_providers(self._fallback_providers)
                 # Fallback only once.
@@ -260,7 +260,7 @@ class Session:
             return invoke(self._sess, output_names, input_dict_ort_values, run_options)
         except C.EPFail as err:
             if self._enable_fallback:
-                print(f"EP Error: {str(err)} using {self._providers}")
+                print(f"EP Error: {err!s} using {self._providers}")
                 print(f"Falling back to {self._fallback_providers} and retrying.")
                 self.set_providers(self._fallback_providers)
                 # Fallback only once.

@@ -28,7 +28,7 @@ pytorch_110 = StrictVersion(".".join(torch.__version__.split(".")[:2])) >= Stric
 
 def get_model_opset(model_onnx):
     for op in model_onnx.opset_import:
-        if op.domain == "":  # noqa: PLC1901
+        if op.domain == "":
             return op.version
     return None
 
@@ -1039,7 +1039,7 @@ def testORTTrainerInternalUseContribOps(enable_onnx_contrib_ops):
     # Training loop
     data, targets = batcher_fn(train_data, 0)
     if not enable_onnx_contrib_ops and not pytorch_110:
-        with pytest.raises(Exception):
+        with pytest.raises(Exception):  # noqa: B017
             _, _ = trainer.train_step(data, targets)
     else:
         _, _ = trainer.train_step(data, targets)

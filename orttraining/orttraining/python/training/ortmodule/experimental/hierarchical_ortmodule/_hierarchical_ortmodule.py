@@ -142,7 +142,7 @@ class HierarchicalORTModule(torch.nn.Module):
                 except Exception as e:
                     if self._log_level <= LogLevel.WARNING:
                         warnings.warn(
-                            f"Failed to export module with type {type(module).__name__}. Error message: {str(e)}",
+                            f"Failed to export module with type {type(module).__name__}. Error message: {e!s}",
                             UserWarning,
                         )
                     return False
@@ -268,7 +268,7 @@ class HierarchicalORTModule(torch.nn.Module):
             recursive_wrap(self._original_module, self._save_onnx, self._name_prefix)
         if self._log_level <= LogLevel.WARNING:
             warnings.warn(
-                f"Wrapped module: {str(self._original_module)}.",
+                f"Wrapped module: {self._original_module!s}.",
                 UserWarning,
             )
         self._initialized = True
