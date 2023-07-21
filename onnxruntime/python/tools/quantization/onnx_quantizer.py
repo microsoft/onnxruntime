@@ -13,6 +13,12 @@ from onnx import onnx_pb as onnx_proto
 from onnx.helper import make_graph, make_model, make_node, make_tensor_value_info
 from onnx.reference import ReferenceEvaluator
 
+try:
+    from onnx.reference.op_run import to_array_extended
+except ImportError:
+    # old version of onnx.
+    to_array_extended = None
+
 from .calibrate import TensorData
 from .onnx_model import ONNXModel
 from .quant_utils import (
@@ -33,6 +39,7 @@ from .quant_utils import (
     model_has_infer_metadata,
     ms_domain,
     quantize_data,
+    quantize_nparray,
     save_and_reload_model_with_shape_infer,
     tensor_proto_to_array,
 )
@@ -161,26 +168,6 @@ class ONNXQuantizer:
         self.generated_value_names = self.model.get_non_initializer_inputs()
         # to store specified scale and zeropoint instead of calculated value, tensor_name->(scale, zeropoint)
         self.used_scale_zp_map = {}
-
-        onnx_model = make_model(
-            make_graph(
-                [make_node("Cast", ["X"], ["Y"], to=self.weight_qType)],
-                "cast",
-                [make_tensor_value_info("X", onnx_proto.TensorProto.FLOAT, None)],
-                [make_tensor_value_info("Y", onnx_proto.TensorProto.FLOAT, None)],
-            )
-        )
-        self.weight_qtype_caster = ReferenceEvaluator(onnx_model)
-
-    def cast_to_weight_qtype(self, weights: np.array, name: str) -> onnx_proto.TensorProto:
-        cast = self.weight_qtype_caster.run(None, {"X": weights})[0]
-        init = onnx.helper.make_tensor(
-            name,
-            self.weight_qType,
-            list(cast.shape),
-            list(cast.ravel().astype(np.uint8)),
-        )
-        return init
 
     # routines for subgraph support
     def quantize_subgraph(self, subgraph, graph_key):
@@ -747,14 +734,43 @@ class ONNXQuantizer:
         inputscale_initializer = find_by_name(input_scale_name, self.model.initializer())
         input_scale = tensor_proto_to_array(inputscale_initializer)
 
-        # calcuate scale for bias
-        bias_scale = input_scale * weight_scale * beta
-
         # quantize bias
         if self.weight_qType == onnx_proto.TensorProto.FLOAT8E4M3FN:
-            packed_bias_initializer = onnx.helper.make_tensor(quantized_bias_name, self.weight_qType, [1], [0.0])
+            # The scale needs to be estimated, the formula used for integers does not work as the value
+            # is likely to saturate the quantization.
+
+            # The following code is taken from DistributionCalibrater.
+            # TODO: find a better place.
+            scenario = self.extra_options["scenario"]
+            if scenario == "same":
+                power = 1
+            elif scenario == "p3":
+                power = 3
+            else:
+                raise ValueError("Invalid scenario. Must be in {'same', 'p3'}.")
+
+            data = np.asarray(bias_data)
+            values = data.flatten()
+            fact = np.abs(values) / values
+            fact[np.isnan(fact)] = 1
+            fact[np.isinf(fact)] = 1
+            values = np.abs(values) ** power * fact
+            std = np.std(values)
+            _, bias_scale = compute_scale_zp_float8(self.weight_qType, std)
+
+            quantized_data = quantize_nparray(self.weight_qType, data, np.array([bias_scale]), 0)
+            packed_bias_initializer = onnx.TensorProto()
+            packed_bias_initializer.data_type = self.weight_qType
+            packed_bias_initializer.dims.extend(data.shape)
+            packed_bias_initializer.name = quantized_bias_name
+            # Do not remove .flatten(). numpy is not clear about data persistence.
+            packed_bias_initializer.raw_data = quantized_data.flatten().tobytes()
             self.model.initializer().extend([packed_bias_initializer])
         else:
+            # calculate scale for bias
+            # TODO: This formula should be explained including why the scale is not estimated for the bias as well.
+            bias_scale = input_scale * weight_scale * beta
+
             quantized_data = (np.asarray(bias_data) / bias_scale).round().astype(np.int32)
 
             # update bias initializer
@@ -994,9 +1010,22 @@ class ONNXQuantizer:
 
         if not keep_float_weight:
             if self.weight_qType == onnx_proto.TensorProto.FLOAT8E4M3FN:
-                q_weight_initializer = onnx.helper.make_tensor(
-                    q_weight_name, self.weight_qType, weight.dims, q_weight_data.tobytes(), raw=True
-                )
+                q_weight_initializer = onnx.TensorProto()
+                q_weight_initializer.data_type = self.weight_qType
+                q_weight_initializer.dims.extend(weight.dims)
+                q_weight_initializer.name = q_weight_name
+                # Do not remove .flatten(). numpy is not clear about data persistence.
+                q_weight_initializer.raw_data = q_weight_data.flatten().tobytes()
+                if to_array_extended is not None:
+                    # This test should not be needed but it helped catch some issues
+                    # with data persistence and tobytes.
+                    check = to_array_extended(q_weight_initializer)
+                    if check.shape != weight_data.shape or check.tobytes() != q_weight_data.tobytes():
+                        raise RuntimeError(
+                            f"The initializer of shape {weight_data.shape} could not be created, expecting "
+                            f"{q_weight_data.tobytes()[:10]}, got {check.tobytes()[:10]} and shape={weight.shape}"
+                            f"\nraw={str(q_weight_initializer)[:200]}."
+                        )
             else:
                 q_weight_data = np.asarray(q_weight_data, dtype=onnx.mapping.TENSOR_TYPE_TO_NP_TYPE[qType]).reshape(
                     weight.dims

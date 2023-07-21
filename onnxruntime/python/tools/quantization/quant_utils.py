@@ -117,17 +117,32 @@ ONNX_TYPE_TO_NP_TYPE = {
 
 def quantize_nparray(qType, arr, scale, zero_point, low=None, high=None):
     assert qType in ONNX_TYPE_TO_NP_TYPE, f"Unexpected data type {qType} requested. Only INT8 and UINT8 are supported."
-    if qType == onnx_proto.TensorProto.FLOAT8E4M3FN:
+    if qType in (
+        onnx_proto.TensorProto.FLOAT8E4M3FN,
+        onnx_proto.TensorProto.FLOAT8E4M3FNUZ,
+        onnx_proto.TensorProto.FLOAT8E5M2,
+        onnx_proto.TensorProto.FLOAT8E5M2FNUZ,
+    ):
+        if zero_point != 0:
+            raise NotImplementedError(f"zero_point is expected to be null for float 8 not {zero_point!r}.")
         onnx_model = make_model(
             make_graph(
-                [make_node("Cast", ["X"], ["Y"], to=qType)],
-                "cast",
-                [make_tensor_value_info("X", TensorProto.FLOAT, None)],
+                [
+                    make_node(
+                        "Constant", [], ["zero_point"], value=onnx.helper.make_tensor("zero_point", qType, [], [0])
+                    ),
+                    make_node("QuantizeLinear", ["X", "scale", "zero_point"], ["Y"]),
+                ],
+                "qu",
+                [
+                    make_tensor_value_info("X", TensorProto.FLOAT, None),
+                    make_tensor_value_info("scale", TensorProto.FLOAT, None),
+                ],
                 [make_tensor_value_info("Y", TensorProto.FLOAT, None)],
             )
         )
         ref = ReferenceEvaluator(onnx_model)
-        return ref.run(None, {"X": arr.astype(numpy.float32)})[0]
+        return ref.run(None, {"X": arr.astype(numpy.float32), "scale": scale.astype(numpy.float32)})[0]
     else:
         dtype = ONNX_TYPE_TO_NP_TYPE[qType]
         cliplow = max(0 if dtype == numpy.uint8 else -127, -127 if low is None else low)
@@ -203,7 +218,7 @@ def compute_scale_zp_float8(element_type, std):
 
     std_f8 = numpy.std(FLOAT8_DISTRIBUTIONS[element_type])
     zero = 0
-    scale = std_f8 / std
+    scale = std / std_f8
     return [zero, scale]
 
 
@@ -238,9 +253,16 @@ def quantize_data(data, qType, symmetric, reduce_range=False):
         rmax = max(data)
 
     if qType == TensorProto.FLOAT8E4M3FN:
+        if reduce_range:
+            raise RuntimeError(f"Unsupported option reduce_range=True for float 8.")
         std = numpy.std(data)
         zero_point, scale = compute_scale_zp_float8(qType, std)
         quantized_data = quantize_nparray(qType, numpy.asarray(data), scale, zero_point)
+        if any((quantized_data.ravel() & 127) == 127):
+            raise RuntimeError(
+                f"One of the quantized value is NaN data in [{data.min()}, {data.max()}], "
+                f"quantized_data in [{quantized_data.min()}, {quantized_data.max()}]."
+            )
         return rmin, rmax, zero_point, scale, quantized_data
 
     if qType in (TensorProto.INT8, TensorProto.UINT8):

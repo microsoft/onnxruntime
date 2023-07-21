@@ -7,9 +7,14 @@ import packaging.version as pv
 from onnx import TensorProto
 from onnx.helper import float32_to_float8e4m3, np_dtype_to_tensor_dtype
 from onnx.numpy_helper import float8e4m3_to_float32
-from onnx.reference import ReferenceEvaluator
+from onnx.reference import ReferenceEvaluator, ops as onnx_ops
 from onnx.reference.custom_element_types import float8e4m3fn, float8e4m3fnuz, float8e5m2, float8e5m2fnuz
 from onnx.reference.op_run import OpRun
+
+try:
+    from onnx.reference.op_run import to_array_extended
+except ImportError:
+    to_array_extended = None
 
 import onnxruntime
 from onnxruntime.quantization import CalibrationDataReader
@@ -176,6 +181,55 @@ def check_op_type_count(testcase, model_path, **kwargs):
         )
 
 
+def check_sign_f8_quantization(model_path_origin, model_path_to_check):
+    """
+    Quantization to float 8 type does not change the sign as zero_point is always null.
+    This function checks that the quantized parameters did not change.
+    """
+    with open(model_path_origin, "rb") as f:
+        model = onnx.load(f)
+    names = {init.name: init for init in model.graph.initializer}
+    with open(model_path_to_check, "rb") as f:
+        model_f8 = onnx.load(f)
+    names_f8 = {init.name: init for init in model_f8.graph.initializer}
+    for init in model_f8.graph.initializer:
+        if not init.name.endswith("_quantized"):
+            continue
+        name = init.name.replace("_quantized", "")
+        if name not in names:
+            raise AssertionError(f"Unable to find {name!r} in {set(names)}.")
+        scale_zp = [i.name for i in model_f8.graph.initializer if i.name.startswith(name)]
+        if len(scale_zp) != 3:
+            raise AssertionError(f"Need two names not {scale_zp}.")
+        scale = [name for name in scale_zp if "scale" in name]
+        zero = [name for name in scale_zp if "zero" in name]
+        if len(scale) != 1:
+            raise AssertionError(f"Need one name not {scale}.")
+        if len(zero) != 1:
+            raise AssertionError(f"Need one name not {zero}.")
+
+        expected_sign = onnx.numpy_helper.to_array(names[name]) >= 0
+
+        if init.data_type < 17:
+            raise AssertiontError(f"Initializer {init.name!r} not a float 8 type.")
+        raw = np.array([int(i) for i in init.raw_data])
+        got_sign = raw <= 128
+        try:
+            np.testing.assert_allclose(expected_sign, got_sign)
+        except AssertionError as e:
+            scale_value = onnx.numpy_helper.to_array(names_f8[scale[0]])
+            err_msg = f"Sign are different for {name!r}, scale={scale_value}."
+            if to_array_extended is not None:
+                values = onnx.numpy_helper.to_array(names[name]).flatten()
+                f8_values = to_array_extended(init)
+                zero = onnx_ops.op_cast.Cast_19.eval(np.array(0), to=init.data_type)
+                dq = onnx_ops.op_dequantize_linear.DequantizeLinear.eval(f8_values, scale_value, zero).flatten()
+                q = onnx_ops.op_quantize_linear.QuantizeLinear_19.eval(values, scale_value, zero).flatten()
+                qdq = onnx_ops.op_dequantize_linear.DequantizeLinear.eval(q, scale_value, zero).flatten()
+                err_msg = f"{err_msg}\nvalues={values[:20]}\ndq={dq[:20]}\nqdq={qdq[:20]}"
+            raise AssertionError(err_msg) from e
+
+
 def check_model_correctness(
     testcase, model_path_origin, model_path_to_check, inputs, rtol=1e-2, atol=0.05, providers=None
 ):
@@ -185,10 +239,61 @@ def check_model_correctness(
     sess_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_DISABLE_ALL
     sess_options.optimized_model_filepath = model_path_to_check + ".optimized.onnx"
     origin_sess = onnxruntime.InferenceSession(model_path_origin, sess_options=sess_options, providers=providers)
-    origin_results = origin_sess.run([], inputs)
+    origin_results = origin_sess.run(None, inputs)
 
-    if pv.Version(onnx.__version__) >= pv.Version("1.16.0"):
-        ref = ReferenceEvaluator(model_path_to_check, new_ops=[QGemm])
+    ref = ReferenceEvaluator(model_path_origin, verbose=10)
+    ref_origin_results = ref.run(None, inputs)
+    for idx, ref_output in enumerate(origin_results):
+        output = ref_origin_results[idx]
+        np.testing.assert_allclose(
+            ref_output,
+            output,
+            rtol=rtol,
+            atol=atol,
+            err_msg=f"Model {model_path_to_check!r} failed for providers={providers!r}.",
+        )
+
+    # Verifies the shapes in the quantized model.
+    expected_shapes = {}
+    with open(model_path_origin, "rb") as f:
+        model = onnx.load(f)
+        for init in model.graph.initializer:
+            expected_shapes[init.name] = tuple(init.dims)
+    checked = 0
+    f8_quantization = False
+    with open(model_path_to_check, "rb") as f:
+        model_check = onnx.load(f)
+        for init in model_check.graph.initializer:
+            if init.name.endswith("_quantized"):
+                name = init.name.replace("_quantized", "")
+                expected = expected_shapes[name]
+                shape = tuple(init.dims)
+                if expected != shape:
+                    raise AssertionError(
+                        f"Shape mismatch for initializer {init.name!r} from {init.name!r}, "
+                        f"shape={shape} != {expected} (expected)."
+                    )
+                else:
+                    checked += 1
+            if "zero_point" in init.name:
+                dt = init.data_type
+                f8_quantization = f8_quantization or dt in (
+                    TensorProto.FLOAT8E4M3FN,
+                    TensorProto.FLOAT8E4M3FNUZ,
+                    TensorProto.FLOAT8E5M2,
+                    TensorProto.FLOAT8E5M2FNUZ,
+                )
+        if checked == 0:
+            raise AssertionError(
+                f"Unable to check expected shape, expected_shapes={expected_shapes}, "
+                f"names={[init.name for init in model_check.graph.initializer]}."
+            )
+    if f8_quantization:
+        check_sign_f8_quantization(model_path_origin, model_path_to_check)
+
+    # Verifies the expected outputs.
+    if True or pv.Version(onnx.__version__) >= pv.Version("1.16.0"):
+        ref = ReferenceEvaluator(model_path_to_check, new_ops=[QGemm], verbose=10)
         target_results = ref.run(None, inputs)
         testcase.assertEqual(len(origin_results), len(target_results), "result count are different")
         for idx, ref_output in enumerate(origin_results):
