@@ -120,7 +120,6 @@ Status PackedAttention<T>::CheckInputs(const TensorShape& input_shape,
   //   token_offset            : (B, S)
   //   cu_seq_len_shape        : (B + 1)
   //   relative_position_bias  : (B, N, S, S), (1, N, S, S) or NULL
-
   const auto& input_dims = input_shape.GetDims();
   if (input_dims.size() != 2) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
@@ -167,6 +166,7 @@ Status PackedAttention<T>::CheckInputs(const TensorShape& input_shape,
                            "Input 'cumulative_sequence_length' should have 1 dimension with size equal to batch_size + 1");
   }
 
+  const int num_heads = this->GetNumHeads();
   int64_t q_hidden_size = bias_dims[0] / static_cast<int64_t>(3);
   int64_t k_hidden_size = q_hidden_size;
   int64_t v_hidden_size = k_hidden_size;
@@ -177,7 +177,7 @@ Status PackedAttention<T>::CheckInputs(const TensorShape& input_shape,
     }
 
     for (size_t i = 0; i < qkv_hidden_sizes_.size(); i++) {
-      if (qkv_hidden_sizes_[i] % num_heads_ != 0) {
+      if (qkv_hidden_sizes_[i] % num_heads != 0) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                                "hidden_size should be divisible by num_heads:", qkv_hidden_sizes_[i]);
       }
@@ -219,7 +219,7 @@ Status PackedAttention<T>::CheckInputs(const TensorShape& input_shape,
       broadcast_res_pos_bias = true;
     }
 
-    if (relative_position_bias_dims[1] != num_heads_) {
+    if (relative_position_bias_dims[1] != num_heads) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              "Input 'relative_position_bias' dimension 1 should be same as number of heads, got ",
                              relative_position_bias_dims[1]);
@@ -243,10 +243,10 @@ Status PackedAttention<T>::CheckInputs(const TensorShape& input_shape,
   parameters.input_hidden_size = static_cast<int>(input_hidden_size);
   parameters.hidden_size = static_cast<int>(q_hidden_size);
   parameters.v_hidden_size = static_cast<int>(v_hidden_size);
-  parameters.head_size = static_cast<int>(q_hidden_size) / num_heads_;
-  parameters.v_head_size = static_cast<int>(v_hidden_size) / num_heads_;
-  parameters.num_heads = num_heads_;
-  parameters.scale = scale_;
+  parameters.head_size = static_cast<int>(q_hidden_size) / num_heads;
+  parameters.v_head_size = static_cast<int>(v_hidden_size) / num_heads;
+  parameters.num_heads = num_heads;
+  parameters.scale = this->GetScale();
   parameters.token_count = static_cast<int32_t>(token_count);
   parameters.has_relative_position_bias = nullptr != relative_position_bias;
   parameters.broadcast_res_pos_bias = broadcast_res_pos_bias;
