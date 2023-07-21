@@ -76,7 +76,7 @@ static Env& platform_env = Env::Default();
 #pragma warning(push)
 #endif
 
-using PyCallback = std::function<void(std::vector<py::object>, std::string)>;
+using PyCallback = std::function<void(std::vector<py::object>, py::object user_data, std::string)>;
 
 struct AsyncResource {
   std::vector<OrtValue> feeds;
@@ -92,6 +92,7 @@ struct AsyncResource {
 
   RunOptions default_run_option;
   PyCallback callback;
+  py::object user_data;
 
   void ReserveFeeds(size_t sz) {
     feeds.reserve(sz);
@@ -116,7 +117,7 @@ void AsyncCallback(void* user_data, OrtValue** outputs, size_t num_outputs, OrtS
 
   // return on error
   if (!status.IsOK()) {
-    async_resource->callback(rfetch, status.GetErrorMessage());
+    async_resource->callback(rfetch, async_resource->user_data, status.GetErrorMessage());
     return;
   }
 
@@ -144,10 +145,12 @@ void AsyncCallback(void* user_data, OrtValue** outputs, size_t num_outputs, OrtS
   if (PyGILState_Check()) {
     fill_fetches();
   } else {
-    py::gil_scoped_acquire acquire;
+    //py::gil_scoped_acquire acquire;
+    auto state = PyGILState_Ensure();
     fill_fetches();
+    PyGILState_Release(state);
   }
-  async_resource->callback(rfetch, "");
+  async_resource->callback(rfetch, async_resource->user_data, "");
 }
 
 template <typename T>
@@ -1758,11 +1761,12 @@ including arg name, arg type (contains both type and shape).)pbdoc")
            [](PyInferenceSession* sess,
               std::vector<std::string> output_names,
               std::map<std::string, py::object> pyfeeds,
-              PyCallback callback,
+              PyCallback callback, py::object user_data = {},
               RunOptions* run_options = nullptr)
                -> void {
              std::unique_ptr<AsyncResource> async_resource = std::make_unique<AsyncResource>();
              async_resource->callback = callback;
+             async_resource->user_data = user_data; // not inc ref
 
              // prepare feeds
              async_resource->ReserveFeeds(pyfeeds.size());
@@ -1784,31 +1788,26 @@ including arg name, arg type (contains both type and shape).)pbdoc")
 
              // prepare fetches
              async_resource->ReserveFetches(output_names.size());
-             for (auto& output_name : output_names) {
-               async_resource->fetch_names.push_back(output_name);
-               async_resource->fetch_names_raw.push_back(async_resource->fetch_names.back().c_str());
-               async_resource->fetches_raw.push_back({});
-             }
+            for (auto& output_name : output_names) {
+              async_resource->fetch_names.push_back(output_name);
+              async_resource->fetch_names_raw.push_back(async_resource->fetch_names.back().c_str());
+              async_resource->fetches_raw.push_back({});
+            }
 
-             {
-               // release GIL to allow multiple python threads to allow run async in parallel.
-               py::gil_scoped_release release;
-               const RunOptions* run_async_option = run_options ? run_options : &async_resource->default_run_option;
-               common::Status status = sess->GetSessionHandle()->RunAsync(run_async_option,
-                                                                          gsl::span(async_resource->feed_names_raw.data(), async_resource->feed_names_raw.size()),
-                                                                          gsl::span(async_resource->feeds_raw.data(), async_resource->feeds_raw.size()),
-                                                                          gsl::span(async_resource->fetch_names_raw.data(), async_resource->fetch_names_raw.size()),
-                                                                          gsl::span(async_resource->fetches_raw.data(), async_resource->fetches_raw.size()),
-                                                                          AsyncCallback,
-                                                                          async_resource.get());
+            const RunOptions* run_async_option = run_options ? run_options : &async_resource->default_run_option;
+            common::Status status = sess->GetSessionHandle()->RunAsync(run_async_option,
+                                                                       gsl::span(async_resource->feed_names_raw.data(), async_resource->feed_names_raw.size()),
+                                                                       gsl::span(async_resource->feeds_raw.data(), async_resource->feeds_raw.size()),
+                                                                       gsl::span(async_resource->fetch_names_raw.data(), async_resource->fetch_names_raw.size()),
+                                                                       gsl::span(async_resource->fetches_raw.data(), async_resource->fetches_raw.size()),
+                                                                       AsyncCallback,
+                                                                       async_resource.get());
 
-               if (status.IsOK()) {
-                 // release it later in the callback
-                 async_resource.release();
-               }
-               OrtPybindThrowIfError(status);
-             }
-           })
+            if (status.IsOK()) {
+              async_resource.release();
+            }
+            OrtPybindThrowIfError(status);
+          })
       /// This method accepts a dictionary of feeds (name -> OrtValue) and the list of output_names
       /// and returns a list of python objects representing OrtValues. Each name may represent either
       /// a Tensor, SparseTensor or a TensorSequence.

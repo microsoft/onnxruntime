@@ -542,23 +542,26 @@ class TestInferenceSession(unittest.TestCase):
         event = threading.Event()
         output_expected = np.array([[1.0, 4.0], [9.0, 16.0], [25.0, 36.0]], dtype=np.float32)
 
-        def callback(res, err):
-            self.assertTrue(len(err) == 0)
-            self.assertTrue(len(res) == 1)
+        class MyData:
+            def __init__(self, id):
+                self.__id = id
+            def get_id(self):
+                return self.__id
+
+        my_data = MyData(123456)
+
+        def callback(res: np.ndarray, data: MyData, err: str) -> None:
+            self.assertEqual(len(err), 0)
+            self.assertEqual(len(res), 1)
+            self.assertEqual(data.get_id(), 123456)
             np.testing.assert_allclose(output_expected, res[0], rtol=1e-05, atol=1e-08)
             event.set()
 
         sess = onnxrt.InferenceSession(get_name("mul_1.onnx"), providers=available_providers)
+
         x = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
-        input_name = sess.get_inputs()[0].name
-        self.assertEqual(input_name, "X")
-        input_shape = sess.get_inputs()[0].shape
-        self.assertEqual(input_shape, [3, 2])
-        output_name = sess.get_outputs()[0].name
-        self.assertEqual(output_name, "Y")
-        output_shape = sess.get_outputs()[0].shape
-        self.assertEqual(output_shape, [3, 2])
-        sess.run_async([output_name], {input_name: x}, callback)
+        sess.run_async(["Y"], {"X": x}, callback, my_data)
+
         event.wait(10)  # timeout in 10 sec
         self.assertTrue(event.is_set())
 
