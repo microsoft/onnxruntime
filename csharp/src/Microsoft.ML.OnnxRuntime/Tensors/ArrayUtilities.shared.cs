@@ -11,8 +11,8 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
-using System.Diagnostics;
 using System;
+using System.Diagnostics;
 
 namespace Microsoft.ML.OnnxRuntime.Tensors
 {
@@ -20,16 +20,36 @@ namespace Microsoft.ML.OnnxRuntime.Tensors
     {
         public const int StackallocMax = 16;
 
+        /// <summary>
+        /// Returns a number of elements in the tensor from the given shape
+        /// </summary>
+        /// <param name="shape"></param>
+        /// <returns>size</returns>
+        /// <exception cref="ArgumentOutOfRangeException"></exception>
         public static long GetSizeForShape(long[] shape)
+        {
+            return GetSizeForShape(shape.AsSpan());
+        }
+
+        /// <summary>
+        /// Returns a number of elements in the tensor from the given shape
+        /// </summary>
+        /// <param name="shape"></param>
+        /// <returns>size</returns>
+        /// <exception cref="ArgumentOutOfRangeException"></exception>
+        public static long GetSizeForShape(ReadOnlySpan<long> shape)
         {
             long product = 1;
             foreach (var dim in shape)
             {
                 if (dim < 0)
                 {
-                    throw new ArgumentOutOfRangeException("Shape must not have negative elements:" + dim);
+                    throw new ArgumentOutOfRangeException($"Shape must not have negative elements: {dim}");
                 }
-                product *= dim;
+                checked
+                {
+                    product *= dim;
+                }
             }
             return product;
         }
@@ -117,6 +137,34 @@ namespace Microsoft.ML.OnnxRuntime.Tensors
             return strides;
         }
 
+        /// <summary>
+        /// Gets the set of strides that can be used to calculate the offset of n-dimensions in a 1-dimensional layout
+        /// </summary>
+        /// <param name="dimensions"></param>
+        /// <returns>an array of strides</returns>
+        public static long[] GetStrides(ReadOnlySpan<long> dimensions)
+        {
+            long[] strides = new long[dimensions.Length];
+
+            if (dimensions.Length == 0)
+            {
+                return strides;
+            }
+
+            long stride = 1;
+            for (int i = strides.Length - 1; i >= 0; i--)
+            {
+                strides[i] = stride;
+                if (dimensions[i] < 0)
+                {
+                    throw new ArgumentException($"Dimension {i} is negative");
+                }
+                stride *= dimensions[i];
+            }
+
+            return strides;
+        }
+
         public static void SplitStrides(int[] strides, int[] splitAxes, int[] newStrides, int stridesOffset, int[] splitStrides, int splitStridesOffset)
         {
             int newStrideIndex = 0;
@@ -162,7 +210,27 @@ namespace Microsoft.ML.OnnxRuntime.Tensors
         }
 
         /// <summary>
-        /// Calculates the n-d indices from the 1-d index in a layout specificed by strides
+        /// Calculates the 1-d index for n-d indices in layout specified by strides.
+        /// </summary>
+        /// <param name="strides">pre-calculated strides</param>
+        /// <param name="indices">Indices. Must have the same length as strides</param>
+        /// <param name="startFromDimension"></param>
+        /// <returns>A 1-d index into the tensor buffer</returns>
+        public static long GetIndex(ReadOnlySpan<long> strides, ReadOnlySpan<long> indices, int startFromDimension = 0)
+        {
+            Debug.Assert(strides.Length == indices.Length);
+
+            long index = 0;
+            for (int i = startFromDimension; i < indices.Length; i++)
+            {
+                index += strides[i] * indices[i];
+            }
+
+            return index;
+        }
+
+        /// <summary>
+        /// Calculates the n-d indices from the 1-d index in a layout specified by strides
         /// </summary>
         /// <param name="strides"></param>
         /// <param name="reverseStride"></param>
