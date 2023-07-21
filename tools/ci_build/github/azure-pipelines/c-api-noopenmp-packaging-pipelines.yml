@@ -217,6 +217,44 @@ stages:
     java_artifact_id: onnxruntime_gpu
     UseIncreasedTimeoutForTests: ${{ parameters.UseIncreasedTimeoutForTests }}
 
+# ROCm
+- stage: Linux_C_API_Packaging_ROCm_x64
+  dependsOn: []
+  jobs:
+  - job:
+    workspace:
+      clean: all
+    timeoutInMinutes: 120
+    pool: onnxruntime-Ubuntu2004-AMD-CPU
+    variables:
+      RocmVersion: '5.5'
+    steps:
+    - template: templates/set-version-number-variables-step.yml
+    - template: templates/get-docker-image-steps.yml
+      parameters:
+        Dockerfile: tools/ci_build/github/pai/rocm-ci-pipeline-env.Dockerfile
+        Context: tools/ci_build/github/linux/docker
+        Repository: onnxruntimetrainingrocm-cibuild-rocm$(RocmVersion)-build
+
+    - task: Bash@3
+      displayName: 'Build'
+      inputs:
+        targetType: filePath
+        filePath: tools/ci_build/github/linux/build_rocm_c_api_package.sh
+        arguments: -S $(Build.SourcesDirectory) -B $(Build.BinariesDirectory) -V $(RocmVersion)
+
+    - template: templates/c-api-artifacts-package-and-publish-steps-posix.yml
+      parameters:
+        buildConfig: 'Release'
+        artifactName: 'onnxruntime-linux-x64-rocm-$(OnnxRuntimeVersion)'
+        artifactNameNoVersionString: 'onnxruntime-linux-x64-rocm'
+        libraryName: 'libonnxruntime.so.$(OnnxRuntimeVersion)'
+
+    - template: templates/component-governance-component-detection-steps.yml
+      parameters:
+        condition: 'succeeded'
+    - template: templates/clean-agent-build-directory-step.yml
+
 - stage: Jar_Packaging_GPU
   dependsOn:
   - Linux_C_API_Packaging_GPU_x64
@@ -772,6 +810,222 @@ stages:
       displayName: 'Clean Agent Directories'
       condition: always()
 
+- stage: NuGet_Packaging_ROCm
+  dependsOn:
+  - Setup
+  - Linux_C_API_Packaging_ROCm_x64
+  condition: succeeded()
+  jobs:
+  - job:
+    workspace:
+      clean: all
+    # we need to use the 2022 pool to create the nuget package with both pre-net6+Xamarin and net6 targets.
+    # VS2019 has no support for net6 and we need to use msbuild (from the VS install) to do the packing
+    pool: 'Azure-Pipelines-EO-Windows2022-aiinfra'
+    variables:
+      breakCodesignValidationInjection: ${{ parameters.DoEsrp }}
+      ReleaseVersionSuffix: $[stageDependencies.Setup.Set_Variables.outputs['Set_Release_Version_Suffix.ReleaseVersionSuffix']]
+
+    steps:
+    - checkout: self
+      submodules: true
+      fetchDepth: 1
+
+    - template: templates/flex-downloadPipelineArtifact.yml
+      parameters:
+        StepName: 'Download Pipeline Artifact - NuGet'
+        ArtifactName: 'onnxruntime-linux-x64-rocm'
+        targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
+        SpecificArtifact: ${{ parameters.specificArtifact }}
+        BuildId: ${{ parameters.BuildId }}
+
+    - task: PowerShell@2
+      displayName: 'Reconstruct Build Directory'
+      inputs:
+        targetType: inline
+        script: |
+          Get-ChildItem $(Build.BinariesDirectory)\nuget-artifact -Filter *.tgz | % {
+            # *.tar will be created after *.tgz is extracted
+            $cmd = "7z.exe x $($_.FullName) -y -o$(Build.BinariesDirectory)\nuget-artifact"
+            Write-Output $cmd
+            Invoke-Expression -Command $cmd
+          }
+
+          Get-ChildItem $(Build.BinariesDirectory)\nuget-artifact -Filter *.tar | % {
+            $cmd = "7z.exe x $($_.FullName) -y -o$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\nuget-artifacts"
+            Write-Output $cmd
+            Invoke-Expression -Command $cmd
+          }
+
+          $ort_dirs = Get-ChildItem -Path $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\nuget-artifacts\onnxruntime-* -Directory
+          foreach ($ort_dir in $ort_dirs)
+          {
+            $dirname = Split-Path -Path $ort_dir -Leaf
+            $dirname = $dirname.SubString(0, $dirname.LastIndexOf('-'))
+            Write-Output "Renaming $ort_dir to $dirname"
+            Rename-Item -Path $ort_dir -NewName $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\nuget-artifacts\$dirname
+          }
+
+          Copy-Item -Path $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\nuget-artifacts\onnxruntime-linux-x64-rocm\lib\* -Destination $(Build.BinariesDirectory)\RelWithDebInfo
+
+    - script: |
+       tree /F
+      workingDirectory: '$(Build.BinariesDirectory)'
+      displayName: 'Inspect Build Binaries Directory'
+
+    - script: |
+       mklink /D /J models C:\local\models
+      workingDirectory: '$(Build.BinariesDirectory)'
+      displayName: 'Create models link'
+
+    - task: NuGetToolInstaller@0
+      displayName: Use Nuget 6.2.1
+      inputs:
+        versionSpec: 6.2.1
+
+    - task: PowerShell@2
+      displayName: Build .NET 6 targets using dotnet
+      inputs:
+        targetType: 'inline'
+        # we don't specify 'Any CPU' as the platform here because if we do it gets added to the output path
+        #   e.g. csharp\src\Microsoft.ML.OnnxRuntime\bin\Any CPU\RelWithDebInfo\net6.0-ios\
+        # which is inconsistent with the msbuild output path for the pre-.net6 targets
+        #   e.g. csharp\src\Microsoft.ML.OnnxRuntime\bin\RelWithDebInfo\monoandroid11.0
+        # and makes it harder to do the packing
+        #
+        # 'Any CPU' is the default (first 'mixed' platform specified in the csproj) so this should be fine.
+        script: |
+          dotnet build .\src\Microsoft.ML.OnnxRuntime\Microsoft.ML.OnnxRuntime.csproj `
+            -p:SelectedTargets=Net6 `
+            /p:Net6Targets=net6.0 `
+            -p:Configuration=RelWithDebInfo `
+            -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" `
+            -p:OrtPackageId="Microsoft.ML.OnnxRuntime.ROCm" `
+            -p:IsReleaseBuild=${{ parameters.IsReleaseBuild }} `
+            -p:ReleaseVersionSuffix=$(ReleaseVersionSuffix)
+        workingDirectory: '$(Build.SourcesDirectory)\csharp'
+
+    - task: MSBuild@1
+      displayName: 'Restore NuGet Packages and create project.assets.json for pre-.net6 targets'
+      inputs:
+        solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
+        platform: 'Any CPU'
+        configuration: RelWithDebInfo
+        msbuildArguments: '-t:restore -p:SelectedTargets=PreNet6 -p:OrtPackageId="Microsoft.ML.OnnxRuntime.ROCm"'
+        workingDirectory: '$(Build.SourcesDirectory)\csharp'
+
+    - task: MSBuild@1
+      displayName: 'Build C# for pre-.net6 targets'
+      inputs:
+        solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
+        configuration: RelWithDebInfo
+        platform: 'Any CPU'
+        msbuildArguments: >
+          -p:SelectedTargets=PreNet6
+          -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)"
+          -p:OrtPackageId="Microsoft.ML.OnnxRuntime.ROCm"
+          -p:IsReleaseBuild=${{ parameters.IsReleaseBuild }}
+          -p:ReleaseVersionSuffix=$(ReleaseVersionSuffix)
+          -p:IsLinuxBuild=true
+          -p:IsWindowsBuild=false
+          -p:IsMacOSBuild=false
+        workingDirectory: '$(Build.SourcesDirectory)\csharp'
+
+    - template: templates/win-esrp-dll.yml
+      parameters:
+        FolderPath: '$(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\bin\RelWithDebInfo'
+        DisplayName: 'ESRP - Sign C# dlls'
+        DoEsrp: ${{ parameters.DoEsrp }}
+
+    - task: MSBuild@1
+      displayName: Update projects.assets.json with combined list of all target frameworks
+      inputs:
+        solution: '$(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\Microsoft.ML.OnnxRuntime.csproj'
+        platform: 'Any CPU'
+        configuration: RelWithDebInfo
+        msbuildArguments: '-t:restore -p:SelectedTargets=All -p:OrtPackageId=Microsoft.ML.OnnxRuntime.ROCm'
+        workingDirectory: '$(Build.SourcesDirectory)\csharp'
+
+    - task: MSBuild@1
+      displayName: 'Build Nuget Packages'
+      inputs:
+        solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj'
+        configuration: RelWithDebInfo
+        platform: 'Any CPU'
+        msbuildArguments: '-t:CreatePackage -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=Microsoft.ML.OnnxRuntime.ROCm -p:IsReleaseBuild=${{ parameters.IsReleaseBuild }} -p:ReleaseVersionSuffix=$(ReleaseVersionSuffix)'
+        workingDirectory: '$(Build.SourcesDirectory)\csharp'
+
+    - task: CopyFiles@2
+      displayName: 'Copy nuget packages to: $(Build.ArtifactStagingDirectory)'
+      inputs:
+        SourceFolder: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo'
+        Contents: '*.snupkg'
+        TargetFolder: '$(Build.ArtifactStagingDirectory)'
+
+    - task: CopyFiles@2
+      displayName: 'Copy nuget packages to: $(Build.ArtifactStagingDirectory)'
+      inputs:
+        SourceFolder: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo'
+        Contents: '*.nupkg'
+        TargetFolder: '$(Build.ArtifactStagingDirectory)'
+
+    - task: CopyFiles@2
+      displayName: 'Copy nuget packages to: $(Build.ArtifactStagingDirectory)'
+      inputs:
+        SourceFolder: '$(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\bin\RelWithDebInfo'
+        Contents: '*.nupkg'
+        TargetFolder: '$(Build.ArtifactStagingDirectory)'
+
+    - template: templates/esrp_nuget.yml
+      parameters:
+        DisplayName: 'ESRP - sign NuGet package'
+        FolderPath: '$(Build.ArtifactStagingDirectory)'
+        DoEsrp: ${{ parameters.DoEsrp }}
+
+    - template: templates/validate-package.yml
+      parameters:
+        PackageType: 'nuget'
+        PackagePath: '$(Build.ArtifactStagingDirectory)'
+        PackageName: 'Microsoft.ML.OnnxRuntime.*nupkg'
+        PlatformsSupported: 'linux-x64'
+        VerifyNugetSigning: false
+
+    - task: PublishPipelineArtifact@0
+      displayName: 'Publish Pipeline NuGet Artifact'
+      inputs:
+        artifactName: 'drop-signed-nuget-ROCm'
+        targetPath: '$(Build.ArtifactStagingDirectory)'
+
+    - task: MSBuild@1
+      displayName: 'Clean C#'
+      inputs:
+        solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
+        platform: 'Any CPU'
+        configuration: RelWithDebInfo
+        msbuildArguments: '-t:Clean -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=Microsoft.ML.OnnxRuntime.ROCm'
+        workingDirectory: '$(Build.SourcesDirectory)\csharp'
+
+    - task: RoslynAnalyzers@2
+      displayName: 'Run Roslyn Analyzers'
+      inputs:
+        userProvideBuildInfo: msBuildInfo
+        msBuildCommandline: >
+          '"C:\Program Files\Microsoft Visual Studio\2022\Enterprise\MSBuild\Current\Bin\msbuild.exe"
+            $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln
+            -p:configuration="RelWithDebInfo"
+            -p:Platform="Any CPU"
+            -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)"
+            -p:OrtPackageId=Microsoft.ML.OnnxRuntime.ROCm'
+      condition: and(succeeded(), eq('${{ parameters.DoCompliance }}', true))
+
+    - template: templates/component-governance-component-detection-steps.yml
+      parameters :
+        condition : 'succeeded'
+
+    - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
+      displayName: 'Clean Agent Directories'
+      condition: always()
+
 - template: nuget/templates/test_win.yml
   parameters:
     AgentPool : 'onnxruntime-Win2022-GPU-T4'
@@ -788,6 +1042,15 @@ stages:
     NugetPackageName : 'Microsoft.ML.OnnxRuntime.Gpu'
     SpecificArtifact: ${{ parameters.specificArtifact }}
     BuildId: ${{ parameters.BuildId }}
+
+# - template: nuget/templates/test_linux.yml
+#   parameters:
+#     AgentPool: AMD-GPU
+#     ArtifactSuffix: 'ROCm'
+#     StageSuffix: 'ROCm'
+#     NugetPackageName : 'Microsoft.ML.OnnxRuntime.ROCm'
+#     SpecificArtifact: ${{ parameters.specificArtifact }}
+#     BuildId: ${{ parameters.BuildId }}
 
 - template: nuget/templates/dml-vs-2022.yml
   parameters:
