@@ -49,7 +49,7 @@ namespace Dml
         std::vector<std::shared_ptr<CompiledPartitionInfo>> compiledPartitionInfos;
         std::vector<onnxruntime::NodeIndex> additionalSplittingNodes;
 
-        while (!additionalSplittingNodes.empty() || compiledPartitionInfos.empty())
+        do
         {
             // Initializers needed by any graph partition
             std::unordered_set<std::string> requiredInitializerMap;
@@ -205,6 +205,7 @@ namespace Dml
                 }
             }
         }
+        while (!additionalSplittingNodes.empty());
 
         for (auto&& compiledPartitionInfo : compiledPartitionInfos)
         {
