@@ -517,7 +517,10 @@ public final class OrtTrainingSession implements AutoCloseable {
             outputNamesArray,
             outputNamesArray.length,
             runOptionsHandle);
-    return new OrtSession.Result(outputNamesArray, outputValues);
+    // FIXME
+    boolean[] owned = new boolean[outputValues.length];
+    Arrays.fill(owned, true);
+    return new OrtSession.Result(outputNamesArray, outputValues, owned);
   }
 
   /*
@@ -660,7 +663,10 @@ public final class OrtTrainingSession implements AutoCloseable {
             outputNamesArray,
             outputNamesArray.length,
             runOptionsHandle);
-    return new OrtSession.Result(outputNamesArray, outputValues);
+    // FIXME
+    boolean[] owned = new boolean[outputValues.length];
+    Arrays.fill(owned, true);
+    return new OrtSession.Result(outputNamesArray, outputValues, owned);
   }
 
   /*
