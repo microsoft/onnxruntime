@@ -316,12 +316,13 @@ public class OrtSession implements AutoCloseable {
         throw new OrtException(
             "Unexpected number of inputs, expected [1," + numInputs + ") found " + inputs.size());
       }
-      if (requestedOutputs.isEmpty() || (requestedOutputs.size() > numOutputs)) {
+      int totalOutputs = requestedOutputs.size() + pinnedOutputs.size();
+      if ((totalOutputs == 0) || (totalOutputs > numOutputs)) {
         throw new OrtException(
-            "Unexpected number of requestedOutputs, expected [1,"
+            "Unexpected number of requestedOutputs & pinnedOutputs, expected [1,"
                 + numOutputs
                 + ") found "
-                + requestedOutputs.size());
+                + totalOutputs);
       }
       String[] inputNamesArray = new String[inputs.size()];
       long[] inputHandles = new long[inputs.size()];

@@ -183,7 +183,6 @@ public final class ModelGenerators {
     }
   }
 
-  @Test
   public void generateThreeOutputMatmul() throws IOException {
     OnnxMl.GraphProto.Builder graph = OnnxMl.GraphProto.newBuilder();
     graph.setName("ort-test-three-matmul");
@@ -231,7 +230,7 @@ public final class ModelGenerators {
     Float[] addFloats = new Float[] {1f, 2f, 3f, 4f};
     addInit.addAllFloatData(Arrays.asList(addFloats));
     addInit.setDataType(OnnxMl.TensorProto.DataType.FLOAT.getNumber());
-    addInit.setName("tensor");
+    addInit.setName("add-init");
     graph.addInitializer(addInit);
 
     // Add operations
