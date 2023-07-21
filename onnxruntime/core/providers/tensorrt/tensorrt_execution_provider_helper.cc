@@ -131,7 +131,7 @@ void TensorrtExecutionProvider::SetGraphOuterScopeValuesAndInputs(Graph& graph_b
   }
 
   // Start from the inner most subgraph first and check whether its outer scope values are existed in the
-  // newly built graph. If not, we need to add those outer scope values as explict inputs to the top-level
+  // newly built graph. If not, we need to add those outer scope values as explicit inputs to the top-level
   // of newly built graph.
   if (graph_build.ParentNode()) {
     auto top_level_graph = &graph_build;
@@ -150,7 +150,7 @@ void TensorrtExecutionProvider::SetGraphOuterScopeValuesAndInputs(Graph& graph_b
     LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Its parent node is " << graph.ParentNode()->Name();
     LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Its parent node's implicit inputs:";
 
-    // Iterate all the implict inputs to set outer scope value for the newly built subgraph
+    // Iterate all the implicit inputs to set outer scope value for the newly built subgraph
     for (const auto& input : graph.ParentNode()->ImplicitInputDefs()) {
       LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] \t" << input->Name();
 
@@ -169,7 +169,7 @@ void TensorrtExecutionProvider::SetGraphOuterScopeValuesAndInputs(Graph& graph_b
 
         // Handle the case where this outer scope value is not existed in any outer scope levels of the
         // newly built graph (the newly built graph is the subgraph of the original graph). Need to add
-        // the outer scope value as an explict input to the top-level of newly built graph.
+        // the outer scope value as an explicit input to the top-level of newly built graph.
         if (!IsOuterScopeValue(graph_build, input->Name())) {
           const auto& name = input->Name();
           auto graph_inputs_including_initializers = top_level_graph->GetInputsIncludingInitializers();
