@@ -5,7 +5,7 @@
 import os
 from enum import IntFlag
 from functools import reduce
-from logging import Logger
+from logging import LoggerAdapter
 
 from onnxruntime.capi import _pybind_state as C
 from onnxruntime.training import ortmodule
@@ -131,6 +131,39 @@ class DebugOptions:
 
         return self._logging
 
+    @property
+    def torch_exporter_filter(self):
+        """Accessor for the filter export logs configuration."""
+        if self.log_level >= LogLevel.INFO:
+            return [
+                "WARNING: The shape inference of com.microsoft::SoftmaxCrossEntropyLossInternal type is missing, "
+                "so it may result in wrong shape inference for the exported graph. "
+                "Please consider adding it in symbolic function.",
+                "WARNING: The shape inference of org.pytorch.aten::ATen type is missing, "
+                "so it may result in wrong shape inference for the exported graph. "
+                "Please consider adding it in symbolic function.",
+                "WARNING: The shape inference of prim::Constant type is missing, "
+                "so it may result in wrong shape inference for the exported graph. "
+                "Please consider adding it in symbolic function.",
+                "Warning: Checker does not support models with experimental ops: ATen",
+                "Dropout is a training op and should not be exported in inference mode.",
+                "The shape inference of com.microsoft::PythonOp type is missing, "
+                "so it may result in wrong shape inference for the exported graph. "
+                "Please consider adding it in symbolic function",
+            ]
+
+        return None
+
+    @property
+    def onnxruntime_log_filter(self):
+        """Accessor for the filter onnxruntime logs configuration."""
+        if self.log_level >= LogLevel.INFO:
+            return [
+                "CleanUnusedInitializersAndNodeArgs] Removing initializer",
+                "ReverseBFSWithStopGradient] Skip building gradient for",
+            ]
+        return None
+
 
 class _SkipCheck(IntFlag):
     """Enumeration to specify which checks should be skipped, allowing faster execution"""
@@ -157,7 +190,7 @@ class _SkipCheck(IntFlag):
 class _RuntimeOptions:
     """Configurable runtime options for ORTModule."""
 
-    def __init__(self, logger: Logger):
+    def __init__(self, logger: LoggerAdapter):
         """Constructor for Options.
 
         Initially set all the options to their default values, then override them with the values

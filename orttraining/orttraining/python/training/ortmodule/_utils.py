@@ -214,7 +214,7 @@ def _create_iobinding(io_binding, inputs, model, device: torch.device):
 
 
 def check_for_name_collisions_and_bind_methods_to_ortmodule(
-    ortmodule: torch.nn.Module, user_module: torch.nn.Module, logger: logging.Logger
+    ortmodule: torch.nn.Module, user_module: torch.nn.Module, logger: logging.LoggerAdapter
 ):
     """Warns if there are any common attributes between the user's model and ORTModule and binds user methods to ORTModule
 
@@ -345,7 +345,7 @@ def switch_backend_to_pytorch(ortmodule, pytorch_module):
     ortmodule.forward = pytorch_module.forward
 
 
-def warn_of_constant_inputs(data, logger: logging.Logger):
+def warn_of_constant_inputs(data, logger: logging.LoggerAdapter):
     logger.info(
         f"Received input of type {type(data)} which may be treated as a constant by ORT by default."
         " Please consider moving constant arguments to the model constructor."
@@ -444,3 +444,11 @@ def set_tuning_results(session, is_training, tuning_results_path):
     if os.path.isfile(tuning_result_file):
         with open(tuning_result_file, encoding="utf-8") as f:
             session.set_tuning_results(json.load(f))
+
+
+def get_rank():
+    rank = 0
+    if torch.distributed.is_initialized():
+        rank = torch.distributed.get_rank()
+
+    return rank

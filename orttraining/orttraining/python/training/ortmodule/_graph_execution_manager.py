@@ -33,7 +33,7 @@ from ._gradient_accumulation_manager import GradientAccumulationManager
 from ._graph_execution_interface import GraphExecutionInterface
 from ._io import _FlattenedModule, _InputInfo, _ModelInputOutputSchemaType
 from ._runtime_inspector import RuntimeInspector
-from ._utils import check_function_has_param
+from ._utils import check_function_has_param, get_rank
 from .options import DebugOptions, LogLevel, _RuntimeOptions
 from .torch_cpp_extensions.cpu.aten_op_executor import load_aten_op_executor_cpp_extension
 
@@ -54,7 +54,7 @@ class GraphExecutionManager(GraphExecutionInterface):
         module: _FlattenedModule,
         debug_options: DebugOptions,
         fallback_manager: _FallbackManager,
-        logger: logging.Logger,
+        logger: logging.LoggerAdapter,
     ):
         """Manages construction and execution of ONNX graphs"""
 
@@ -104,7 +104,6 @@ class GraphExecutionManager(GraphExecutionInterface):
         # Input and output infos (including schema) for exported model.
         self._input_info: Optional[_InputInfo] = None
         self._module_output_schema: Optional[_ModelInputOutputSchemaType] = None
-        self._warning_log_detected_during_export = False
 
         # Device where the model is placed.
         self._device: Optional[torch.device] = _utils.get_device_from_module(module)
@@ -177,10 +176,12 @@ class GraphExecutionManager(GraphExecutionInterface):
         pass
 
     def _build_graph(self, config):
-        if self._runtime_options.use_static_shape:
-            self._graph_builder.build(config, self._input_info.shape)
-        else:
-            self._graph_builder.build(config)
+        print_on_exit = _logger.create_log_filter(self._logger, self._debug_options.onnxruntime_log_filter)
+        with _logger.suppress_os_stream_output(on_exit=print_on_exit):
+            if self._runtime_options.use_static_shape:
+                self._graph_builder.build(config, self._input_info.shape)
+            else:
+                self._graph_builder.build(config)
 
         self._graph_info = self._graph_builder.get_graph_info()
 
@@ -304,7 +305,14 @@ class GraphExecutionManager(GraphExecutionInterface):
 
         TODO: How to support dynamic axes? Dimensions are determined by samples
         """
-        with _logger.suppress_os_stream_output(log_level=self._debug_options.logging.log_level) as suppress_output:
+
+        # VERBOSE -> FULL export verbose log + FULL torch other logs from stdout and stderr (C++ backend)
+        # INFO -> FULL export verbose log + FILTERED torch other logs from stdout and stderr (C++ backend)
+        # WARNING/ERROR -> [Rank 0] NO export verbose log + FILTERED torch other logs from stdout and stderr (C++ backend)
+        # Be noted: rank 0 log only is controlled by logger configured in _logger.py
+        torch_exporter_verbose_log = self._debug_options.logging.log_level <= LogLevel.INFO
+        print_on_exit = _logger.create_log_filter(self._logger, self._debug_options.torch_exporter_filter)
+        with _logger.suppress_os_stream_output(on_exit=print_on_exit):
             # Setup dynamic axes for onnx model
             self._input_info = _io.parse_inputs_for_onnx_export(
                 self._module_parameters, None, input_schema, inputs, kwargs
@@ -346,7 +354,7 @@ class GraphExecutionManager(GraphExecutionInterface):
                         "do_constant_folding": False,
                         "training": self._export_mode,
                         "dynamic_axes": self._input_info.dynamic_axes,
-                        "verbose": self._debug_options.logging.log_level < LogLevel.WARNING,
+                        "verbose": torch_exporter_verbose_log,
                         "export_params": False,
                         "keep_initializers_as_inputs": True,
                     }
@@ -360,9 +368,11 @@ class GraphExecutionManager(GraphExecutionInterface):
                         ] = not self._runtime_options.enable_custom_autograd_function
 
                     invalid_args = self._export_extra_kwargs.keys() & required_export_kwargs.keys()
-                    assert (
-                        len(invalid_args) == 0
-                    ), f"The following PyTorch exporter arguments cannot be specified: '{invalid_args}'."
+
+                    if len(invalid_args) != 0:
+                        error_msg = f"The following PyTorch exporter arguments cannot be specified: '{invalid_args}'."
+                        raise RuntimeError(error_msg)
+
                     torch.onnx.export(
                         self._flattened_module,
                         sample_inputs_as_tuple,
@@ -383,11 +393,6 @@ class GraphExecutionManager(GraphExecutionInterface):
             exported_model = _post_process_after_export(
                 exported_model, self._runtime_options.enable_custom_autograd_function
             )
-
-            # If anything was captured by suppress_output during export, set the flag to
-            # raise a single user warning letting users know in the log.
-            if suppress_output.tell() > 0:
-                self._warning_log_detected_during_export = True
 
         return exported_model
 
@@ -544,11 +549,7 @@ class GraphExecutionManager(GraphExecutionInterface):
             self._runtime_inspector.enable_memory_inspector(self._original_module)
 
     def _log_feature_stats(self):
-        rank = 0
-        if torch.distributed.is_initialized():
-            rank = torch.distributed.get_rank()
-
-        if rank != 0:
+        if get_rank() != 0:
             return
 
         feature_map: List[Tuple[str, bool, str]] = [
@@ -638,11 +639,8 @@ class GraphExecutionManager(GraphExecutionInterface):
             switch_str = "ON" if feature_tuple[1] else "OFF"
             stat += f"{feature_tuple[0]:<20}:\t{switch_str:<10}:\t{feature_tuple[2]:<80}\n"
 
-        stat += f"\n{_logger.LogColor.WARNING}There were one or more warnings or errors raised while exporting the PyTorch model.\n"
-        stat += f"Please enable INFO level logging with DebugOptions to view all warnings and errors.{_logger.LogColor.ENDC}\n\n"
-
         # Collect ORTModule overheads for different phases.
-        stat += f"{self.time_tracker.to_string(self._debug_options.logging.log_level < LogLevel.WARNING)}\n"
+        stat += f"\n{self.time_tracker.to_string(self._debug_options.logging.log_level < LogLevel.WARNING)}\n"
 
         stat += f"Versions: ONNX Runtime - {onnxruntime.__version__}, ONNX - {onnx.__version__}\n\n"
         stat += f"{_logger.LogColor.HEADER}************************************************************************{_logger.LogColor.ENDC}\n\n"

@@ -3,7 +3,7 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
-from logging import Logger
+from logging import LoggerAdapter
 from typing import Tuple
 
 import onnx
@@ -26,7 +26,7 @@ class InferenceManager(GraphExecutionManager):
     InferenceManager is responsible for building and running the forward graph of the inference model
     """
 
-    def __init__(self, model, debug_options: DebugOptions, fallback_manager: _FallbackManager, logger: Logger):
+    def __init__(self, model, debug_options: DebugOptions, fallback_manager: _FallbackManager, logger: LoggerAdapter):
         super().__init__(model, debug_options, fallback_manager, logger)
         self._export_mode = torch.onnx.TrainingMode.EVAL
 

@@ -3,15 +3,18 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
-import io
 import logging
+import os
 import sys
+import tempfile
 import time
 from contextlib import contextmanager
 from enum import IntEnum
-from typing import Callable, Dict, List
+from typing import Callable, Dict, List, Optional
 
 from onnxruntime.capi._pybind_state import Severity
+
+from ._utils import get_rank
 
 
 class LogLevel(IntEnum):
@@ -23,31 +26,66 @@ class LogLevel(IntEnum):
 
 
 @contextmanager
-def suppress_os_stream_output(suppress_stdout=True, suppress_stderr=True, log_level=LogLevel.WARNING):
-    """Suppress output from being printed to stdout and stderr if log_level is WARNING or higher.
+def suppress_os_stream_output(on_exit: Callable = None):
+    """Suppress output from being printed to stdout and stderr.
 
-    If there is any output detected, a single warning is issued in the context
+    If on_exit is not None, it will be called when the context manager exits.
     """
 
     # stdout and stderr is written to a tempfile instead
-    stdout = sys.stdout
-    stderr = sys.stderr
+    _, fo_file_path = tempfile.mkstemp()
 
-    suppress_logs = log_level >= LogLevel.WARNING
+    # store orginal stdout and stderr file no.
+    old_stdout = os.dup(sys.stdout.fileno())
+    old_stderr = os.dup(sys.stderr.fileno())
 
-    fo = io.StringIO()
+    # Allow read and write the file.
+    fd = os.open(fo_file_path, os.O_RDWR | os.O_CREAT)
+    fo = os.fdopen(fd)
 
     try:
-        if suppress_stdout and suppress_logs:
-            sys.stdout = fo
-        if suppress_stderr and suppress_logs:
-            sys.stderr = fo
-        yield fo
+        # Redirect stdout and stderr (printed from Python or C++) to the file.
+        os.dup2(fo.fileno(), sys.stdout.fileno())
+        os.dup2(fo.fileno(), sys.stderr.fileno())
+        yield
     finally:
-        if suppress_stdout:
-            sys.stdout = stdout
-        if suppress_stderr:
-            sys.stderr = stderr
+        sys.stdout.flush()
+        sys.stderr.flush()
+
+        # Restore stdout and stderr.
+        os.dup2(old_stdout, sys.stdout.fileno())
+        os.dup2(old_stderr, sys.stderr.fileno())
+
+        if on_exit:
+            on_exit(fo)
+
+        fo.close()
+
+
+def create_log_filter(logger: logging.LoggerAdapter, record_filters: Optional[List[str]]):
+    def _log_with_filter(fo):
+        if fo.tell() > 0:
+            if logger.logger.disabled:
+                return
+            # Filter out the error message
+            fo.seek(0)
+            suppress_output_messages = fo.readlines()
+            if record_filters:
+                filtered_messages = []
+                for i in range(len(suppress_output_messages)):
+                    found = False
+                    for warning in record_filters:
+                        if warning in suppress_output_messages[i]:
+                            found = True
+                            break
+
+                    if not found:
+                        filtered_messages.append(suppress_output_messages[i])
+                logger.warning("".join(filtered_messages))
+            else:
+                logger.warning("".join(suppress_output_messages))
+
+    return _log_with_filter
 
 
 ORTMODULE_LOG_LEVEL_MAP: Dict[LogLevel, List[int]] = {
@@ -65,6 +103,21 @@ def ortmodule_loglevel_to_onnxruntime_c_loglevel(loglevel: LogLevel) -> int:
 
 def ortmodule_loglevel_to_python_loglevel(loglevel: LogLevel) -> int:
     return ORTMODULE_LOG_LEVEL_MAP.get(loglevel, [Severity.WARNING, logging.WARNING])[1]
+
+
+def configure_ortmodule_logger(logger: logging.Logger, log_level: LogLevel) -> logging.LoggerAdapter:
+    extra = {"rank": get_rank()}
+    syslog = logging.StreamHandler(stream=sys.stdout)
+    formatter = logging.Formatter(
+        "[RANK %(rank)s] [%(asctime)s] [%(levelname)s] [%(filename)s:%(lineno)d:%(funcName)s] %(message)s"
+    )
+    syslog.setFormatter(formatter)
+    logger.addHandler(syslog)
+    logger.propagate = False
+    # Disable the logger for non-zero ranks when level > info
+    logger.disabled = log_level > LogLevel.INFO and get_rank() != 0
+    logger.setLevel(ortmodule_loglevel_to_python_loglevel(log_level))
+    return logging.LoggerAdapter(logger, extra)
 
 
 class LogColor:

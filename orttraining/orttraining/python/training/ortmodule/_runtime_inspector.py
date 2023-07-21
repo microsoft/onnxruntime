@@ -4,7 +4,7 @@
 # --------------------------------------------------------------------------
 
 from enum import IntEnum
-from logging import Logger
+from logging import LoggerAdapter
 from typing import List, Tuple, Union
 
 import onnx
@@ -39,7 +39,7 @@ class RuntimeInspector:
     Runtime inspector for ORTModule.
     """
 
-    def __init__(self, logger: Logger):
+    def __init__(self, logger: LoggerAdapter):
         self._logger = logger
 
         self.input_density_ob: Union[InputDensityObserver, None] = None
@@ -113,8 +113,8 @@ class InputDensityObserver:
 
     """
 
-    def __init__(self, logger: Logger, log_steps=1):
-        self._logger: Logger = logger
+    def __init__(self, logger: LoggerAdapter, log_steps=1):
+        self._logger = logger
         self._embedding_graph_input_to_padding_idx_map = {}
         self._loss_label_graph_input_to_ignore_idx_map = {}
         self._stats = []
@@ -470,7 +470,7 @@ class MemoryObserver:
     NORMALIZER_FACTOR = float(1024 * 1024)
     NORMALIZER_UNIT = "MiB"
 
-    def __init__(self, m: torch.nn.Module, logger: Logger):
+    def __init__(self, m: torch.nn.Module, logger: LoggerAdapter):
         self._logger = logger
         self._current_step = 0
         self._rank = 0

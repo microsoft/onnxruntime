@@ -3,7 +3,7 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
-from logging import Logger
+from logging import LoggerAdapter
 from typing import Union
 
 from ._fallback import _FallbackManager
@@ -15,7 +15,11 @@ from .options import DebugOptions
 
 class GraphExecutionManagerFactory:
     def __init__(
-        self, module: _FlattenedModule, debug_options: DebugOptions, fallback_manager: _FallbackManager, logger: Logger
+        self,
+        module: _FlattenedModule,
+        debug_options: DebugOptions,
+        fallback_manager: _FallbackManager,
+        logger: LoggerAdapter,
     ):
         self._training_manager = TrainingManager(module, debug_options, fallback_manager, logger)
         self._inference_manager = InferenceManager(module, debug_options, fallback_manager, logger)
