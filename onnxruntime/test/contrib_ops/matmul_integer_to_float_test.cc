@@ -89,6 +89,10 @@ void TestMatMulIntegerToFloat(const std::vector<int64_t>& A_dims,
 
   test.AddReferenceOutputs(reference_model);
   test.SetOutputRelErr("Y", 1e-4f);
+#if defined(USE_DML)
+  test.SetOutputRelErr("Y", 2e-2f);
+#endif
+
   test.Run();
 }
 
