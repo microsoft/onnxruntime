@@ -153,6 +153,7 @@ class DebugOptions:
             return [
                 "CleanUnusedInitializersAndNodeArgs] Removing initializer",
                 "ReverseBFSWithStopGradient] Skip building gradient for",
+                "Serializing optimized model with Graph Optimization level greater than ORT_ENABLE_EXTENDED",
             ]
         return None
 

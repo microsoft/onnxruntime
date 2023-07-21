@@ -312,6 +312,7 @@ class GraphExecutionManager(GraphExecutionInterface):
         # Be noted: rank 0 log only is controlled by logger configured in _logger.py
         torch_exporter_verbose_log = self._debug_options.logging.log_level <= LogLevel.INFO
         print_on_exit = _logger.create_log_filter(self._logger, self._debug_options.torch_exporter_filter)
+        self._logger.info("Exporting the PyTorch model to ONNX...")
         with _logger.suppress_os_stream_output(on_exit=print_on_exit):
             # Setup dynamic axes for onnx model
             self._input_info = _io.parse_inputs_for_onnx_export(
