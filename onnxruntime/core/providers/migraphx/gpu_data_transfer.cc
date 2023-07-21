@@ -24,23 +24,23 @@ common::Status GPUDataTransfer::CopyTensor(const Tensor& src, Tensor& dst) const
       // Copy only if the two addresses are different.
       if (dst_data != src_data) {
         HIP_CALL_THROW(hipMemcpy(dst_data, src_data, bytes, hipMemcpyDeviceToDevice));
-        #ifndef MIGRAPHX_STREAM_SYNC
+#ifndef MIGRAPHX_STREAM_SYNC
         HIP_CALL_THROW(hipStreamSynchronize(nullptr));
-        #endif
+#endif
       }
     } else {
       // copy from other CPU memory to GPU, this is blocking
       HIP_CALL_THROW(hipMemcpy(dst_data, src_data, bytes, hipMemcpyHostToDevice));
-      #ifndef MIGRAPHX_STREAM_SYNC
+#ifndef MIGRAPHX_STREAM_SYNC
       HIP_CALL_THROW(hipStreamSynchronize(nullptr));  // TODO: still need stream sync? since already blocking
-      #endif
+#endif
     }
   } else if (src_device.Type() == OrtDevice::GPU) {
     // copying from GPU to CPU memory, this is blocking
     HIP_CALL_THROW(hipMemcpy(dst_data, src_data, bytes, hipMemcpyDeviceToHost));
-    #ifndef MIGRAPHX_STREAM_SYNC
+#ifndef MIGRAPHX_STREAM_SYNC
     HIP_CALL_THROW(hipStreamSynchronize(nullptr));  // TODO: still need stream sync? since already blocking
-    #endif
+#endif
   } else {
     // copying between cpu memory
     memcpy(dst_data, src_data, bytes);
@@ -69,7 +69,7 @@ common::Status GPUDataTransfer::CopyTensorAsync(const Tensor& src, Tensor& dst, 
       HIP_CALL_THROW(hipMemcpy(dst_data, src_data, bytes, hipMemcpyHostToDevice));
     }
   } else if (src_device.Type() == OrtDevice::GPU) {
-    #ifndef MIGRAPHX_STREAM_SYNC
+#ifndef MIGRAPHX_STREAM_SYNC
     if (dst_device.Type() == OrtDevice::CPU && dst_device.MemType() == OrtDevice::MemType::HIP_PINNED) {
       // copying from GPU to pinned memory, this is non-blocking
       HIP_CALL_THROW(hipMemcpyAsync(dst_data, src_data, bytes, hipMemcpyDeviceToHost, static_cast<hipStream_t>(stream.GetHandle())));
@@ -77,9 +77,9 @@ common::Status GPUDataTransfer::CopyTensorAsync(const Tensor& src, Tensor& dst, 
       // copying from GPU to CPU memory, this is blocking
       HIP_CALL_THROW(hipMemcpy(dst_data, src_data, bytes, hipMemcpyDeviceToHost));
     }
-    #else
+#else
     HIP_CALL_THROW(hipMemcpyAsync(dst_data, src_data, bytes, hipMemcpyDeviceToHost, static_cast<hipStream_t>(stream.GetHandle())));
-    #endif
+#endif
   } else {
     // copying between cpu memory
     memcpy(dst_data, src_data, bytes);
