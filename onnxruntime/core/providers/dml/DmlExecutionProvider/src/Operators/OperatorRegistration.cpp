@@ -313,6 +313,7 @@ DML_OP_EXTERN_CREATION_FUNCTION(Dropout);
 DML_OP_EXTERN_CREATION_FUNCTION(MatMul);
 DML_OP_EXTERN_CREATION_FUNCTION(FusedMatMul);
 DML_OP_EXTERN_CREATION_FUNCTION(FusedMatMulActivation);
+DML_OP_EXTERN_CREATION_FUNCTION(DynamicQuantizeMatMul);
 DML_OP_EXTERN_CREATION_FUNCTION(Cast);
 DML_OP_EXTERN_CREATION_FUNCTION(CastLike15);
 DML_OP_EXTERN_CREATION_FUNCTION(MemcpyFromHost);
@@ -489,7 +490,12 @@ constexpr static std::array<SupportedTensorDataTypes, 4> supportedTypeListQLinea
 
 constexpr static std::array<SupportedTensorDataTypes, 2> supportedTypeListDynamicQuantizeLinear = {
     SupportedTensorDataTypes::Float32,
-    SupportedTensorDataTypes::UInt8,
+    SupportedTensorDataTypes::Int8|SupportedTensorDataTypes::UInt8
+};
+
+constexpr static std::array<SupportedTensorDataTypes, 2> supportedTypeListDynamicQuantizeMatMul= {
+    SupportedTensorDataTypes::Float32,
+    SupportedTensorDataTypes::Int8|SupportedTensorDataTypes::UInt8,
 };
 
 template<typename... Args>
@@ -860,6 +866,7 @@ constexpr static OperatorRegistrationInformation operatorRegistrationInformation
     {REG_INFO_MS(   1,  Gelu,                               typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},
     {REG_INFO_MS(   1,  BiasGelu,                           typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},
     {REG_INFO_MS(   1,  FusedMatMul,                        typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},
+    {REG_INFO_MS(   1,  DynamicQuantizeMatMul,              typeNameListTwo,                supportedTypeListDynamicQuantizeLinear, DmlGraphSupport::Supported)},
     {REG_INFO_MS(   1,  FusedMatMulActivation,              typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},
     {REG_INFO_MS(   1,  QLinearSigmoid,                     typeNameListDefault,            supportedTypeListQLinearSigmoid,        DmlGraphSupport::Supported, requiredConstantCpuInputs(), std::nullopt, QueryQLinearSigmoid)},
     {REG_INFO_MS(   1,  Attention,                          typeNameListAttention,          supportedTypeListAttention,             DmlGraphSupport::Supported, requiredConstantCpuInputs(), std::nullopt, QueryAttention)},
