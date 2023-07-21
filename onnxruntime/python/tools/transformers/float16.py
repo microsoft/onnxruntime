@@ -173,6 +173,7 @@ def convert_float_to_float16(
     op_block_list=None,
     node_block_list=None,
     force_fp16_initializers=False,
+    force_fp16_inputs={},
 ):
     """Convert tensor float type in the input ONNX model to tensor float16.
 
@@ -190,6 +191,8 @@ def convert_float_to_float16(
         node_block_list (List[str], optional): List of node names to leave as float32. Defaults to None.
         force_fp16_initializers(bool): force converting all float initializers to float16.
                                        Default to false, which will convert only the one needed to avoid precision loss.
+        force_fp16_inputs(Dict[str, List[int]]): Force the conversion of the inputs of some operators to float16, even if
+                                                 this script's preference it to keep them in float32.
     Raises:
         ValueError: input type is not ModelProto.
 
@@ -327,7 +330,7 @@ def convert_float_to_float16(
                     for i, input_name in enumerate(n.input):
                         if input_name in fp32_initializers:
                             # For Resize/GroupNorm, only the first input can be float16
-                            use_fp32_weight = is_node_blocked or (n.op_type in ["Resize", "GroupNorm"] and i != 0)
+                            use_fp32_weight = is_node_blocked or (i in ALWAYS_FLOAT_INPUTS.get(n.op_type, []) and i not in force_fp16_inputs.get(n.op_type, []))
                             fp32_initializers[input_name].add_node(n, use_fp32_weight)
 
                     if is_node_blocked:
@@ -340,7 +343,7 @@ def convert_float_to_float16(
                                     break
 
                         # For Resize/GroupNorm, attribute data type cannot be changed
-                        if n.op_type not in ["Resize", "GroupNorm"]:
+                        if n.op_type not in ALWAYS_FLOAT_INPUTS or n.op_type in force_fp16_inputs:
                             for attr in n.attribute:
                                 next_level.append(attr)
                         else:
@@ -388,7 +391,7 @@ def convert_float_to_float16(
     # Some operators have data type fixed as float for some input. Add a float16 to float cast for those inputs.
     for node in mixed_float_type_node_list:
         for i, input_name in enumerate(node.input):
-            if i not in ALWAYS_FLOAT_INPUTS[node.op_type]:
+            if i not in ALWAYS_FLOAT_INPUTS[node.op_type] or i in force_fp16_inputs.get(node.op_type, []):
                 continue
             for value_info in value_info_list:
                 if input_name == value_info.name:
