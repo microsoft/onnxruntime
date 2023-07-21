@@ -5,16 +5,24 @@
 set -e
 set -x
 
-USAGE_TEXT="Usage: ${0} <path to pod archive> <path to podspec>"
+USAGE_TEXT="Usage: ${0} <pod archive path pattern (quote to prevent shell expansion)> <podspec path>"
 
 abspath() {
   local INPUT_PATH=${1:?"Expected path as the first argument."}
   echo "$(cd "$(dirname "${INPUT_PATH}")" && pwd)/$(basename "${INPUT_PATH}")"
 }
 
-POD_ARCHIVE_PATH=$(abspath "${1:?${USAGE_TEXT}}")
+POD_ARCHIVE_PATH_PATTERN=${1:?${USAGE_TEXT}}
 PODSPEC_PATH=$(abspath "${2:?${USAGE_TEXT}}")
 
+# expand pod archive path pattern to exactly one path
+POD_ARCHIVE_PATHS=( $( compgen -G "${POD_ARCHIVE_PATH_PATTERN}" ) )
+if [[ "${#POD_ARCHIVE_PATHS[@]}" -ne "1" ]]; then
+  echo "Did not find exactly one pod archive file."
+  exit 1
+fi
+
+POD_ARCHIVE_PATH=$(abspath "${POD_ARCHIVE_PATHS[0]}")
 POD_ARCHIVE_BASENAME=$(basename "${POD_ARCHIVE_PATH}")
 
 STORAGE_ACCOUNT_NAME="onnxruntimepackages"
