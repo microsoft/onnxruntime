@@ -14,7 +14,7 @@ from onnxruntime.capi import _pybind_state as C
 from . import _are_deterministic_algorithms_enabled, _io, _use_deterministic_algorithms, _utils
 from ._execution_agent import InferenceAgent
 from ._fallback import ORTModuleFallbackException, _FallbackManager, _FallbackPolicy
-from ._graph_execution_manager import GraphExecutionManager, _RunStateInfo
+from ._graph_execution_manager import GraphExecutionManager, _RunStateInfo, partitioned_param_maps
 from ._logger import TimeTrackerPhase, TrackTime
 from .options import DebugOptions, _SkipCheck
 
@@ -156,7 +156,7 @@ class InferenceManager(GraphExecutionManager):
             if self._runtime_options.skip_check.is_set(_SkipCheck.SKIP_CHECK_DEVICE) is False:
                 # Assert that the input and model device match
                 _utils._check_same_device(self._device, "Input argument to forward", *inputs)
-
+            global partitioned_param_maps
             prepared_input_list, _, _ = _io._combine_input_buffers_initializers(
                 self._graph_initializers,
                 self._graph_info.user_input_names,
@@ -166,6 +166,7 @@ class InferenceManager(GraphExecutionManager):
                 kwargs,
                 self._device,
                 self._runtime_inspector,
+                partitioned_param_maps,
             )
 
             user_outputs, _ = InferenceManager.execution_session_run_forward(

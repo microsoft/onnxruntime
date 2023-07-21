@@ -16,7 +16,7 @@ from . import _are_deterministic_algorithms_enabled, _io, _use_deterministic_alg
 from ._execution_agent import TrainingAgent
 from ._fallback import ORTModuleFallbackException, _FallbackManager, _FallbackPolicy
 from ._gradient_accumulation_manager import GradientAccumulationManager
-from ._graph_execution_manager import GraphExecutionManager, _RunStateInfo
+from ._graph_execution_manager import GraphExecutionManager, _RunStateInfo, partitioned_param_maps
 from ._io import _FlattenedModule, _InputInfo
 from ._logger import TimeTrackerPhase, TrackTime
 from ._runtime_inspector import Phase
@@ -105,6 +105,7 @@ class TrainingManager(GraphExecutionManager):
 
                 Module outputs are returned to the user
                 """
+
                 self._runtime_inspector.inspect_memory(Phase.PRE_FORWARD)
 
                 if self._runtime_options.skip_check.is_set(_SkipCheck.SKIP_CHECK_DEVICE) is False:
@@ -306,7 +307,7 @@ class TrainingManager(GraphExecutionManager):
                 self._log_feature_stats()
 
             self._gradient_accumulation_manager.maybe_update_cache_before_run()
-
+            global partitioned_param_maps
             prepared_input_list, _, _ = _io._combine_input_buffers_initializers(
                 self._graph_initializers,
                 self._graph_info.user_input_names,
@@ -316,6 +317,7 @@ class TrainingManager(GraphExecutionManager):
                 kwargs,
                 self._device,
                 self._runtime_inspector,
+                partitioned_param_maps,
             )
 
             return _io.unflatten_user_output(

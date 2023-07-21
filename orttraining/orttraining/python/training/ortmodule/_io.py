@@ -245,6 +245,7 @@ def _combine_input_buffers_initializers(
     kwargs: Mapping[str, _ModelInputOutputType],
     device: torch.device,
     rt_inspector: RuntimeInspector,
+    partitioned_param_maps=None,
 ):
     """Creates forward `*inputs` list from user input and PyTorch initializers
 
@@ -288,6 +289,8 @@ def _combine_input_buffers_initializers(
     label_sparsity_results = OrderedDict()
 
     for input_idx, name in enumerate(onnx_input_names):
+        if name == "pull_weight_trigger":
+            continue
         inp = None
         if name in flattened_kwargs_inputs and flattened_kwargs_inputs[name] is not None:
             # Only use keywords coming from user that are expected by ONNX model
@@ -330,8 +333,15 @@ def _combine_input_buffers_initializers(
                 ORTModuleONNXModelException, RuntimeError(f"Input is present in ONNX graph but not provided: {name}.")
             )
 
+    result.append(torch.zeros([1], dtype=torch.float32, device=device).requires_grad_())  # for num_heads
+
     # params is a list of all initializers known to the onnx graph
-    result.extend(params)
+    if partitioned_param_maps:
+        for p in params:
+            if p not in partitioned_param_maps.values():
+                result.append(p)
+    else:
+        result.extend(params)
 
     return result, embed_sparsity_results, label_sparsity_results
 

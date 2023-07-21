@@ -338,6 +338,8 @@ Status GradientGraphBuilder::Build(const std::unordered_set<std::string>* p_init
     }
   }
 
+  // std::cout << "1111111111111111111" << std::endl;
+
   // so far, visited are the minimum node in between
   // visited_node_args are the node_args involved
   for (int index = 0; index < 2; index += 1) {
@@ -362,11 +364,11 @@ Status GradientGraphBuilder::Build(const std::unordered_set<std::string>* p_init
           output_args_need_grad.insert(arg->Name());
         }
       }
-
+      // std::cout << "2222 " << node->OpType() << " " << node->Name() << std::endl;
       GradientDef node_defs = GetGradientForOp(gradient_graph_config_, graph_, node, output_args_need_grad,
                                                input_args_need_grad, logger_, stashed_tensors_,
                                                python_op_input_require_grad_info_);
-
+      // std::cout << "4444 " << node->OpType() << " " << node->Name() << std::endl;
       if (node_defs.empty()) {
         LOGS(logger_, WARNING) << "GetGradientForOp() did not create any nodes for node "
                                << node->Name() << " of type " << node->OpType() << ".";
@@ -385,10 +387,11 @@ Status GradientGraphBuilder::Build(const std::unordered_set<std::string>* p_init
           }
         }
       }
+      // std::cout << "6666 " << node->OpType() << " " << node->Name() << std::endl;
       gradient_graph_defs.AddNodeDefs(node_defs);
     }
   }
-
+  // std::cout << "33333 " << std::endl;
   // Accumulate Gradients
   for (auto gradient_pair : gradients_to_accumulate_) {
     gradient_graph_defs.AddNodeDefs(

@@ -3,6 +3,7 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
+from collections import OrderedDict
 import copy
 import inspect
 import io
@@ -46,6 +47,9 @@ class _RunStateInfo:
         """
         self.state = state
         self.output_info = output_info
+
+
+partitioned_param_maps = OrderedDict()
 
 
 class GraphExecutionManager(GraphExecutionInterface):
@@ -290,6 +294,27 @@ class GraphExecutionManager(GraphExecutionInterface):
 
         TODO: How to support dynamic axes? Dimensions are determined by samples
         """
+
+        class WeightRetrievalFunction(torch.autograd.Function):
+            @staticmethod
+            def forward(ctx, weight_in_trigger):
+                global partitioned_param_maps
+                param_maps = list(partitioned_param_maps.values())
+                ctx.param_maps = param_maps
+                ctx.dtype = weight_in_trigger.dtype
+                ctx.device = weight_in_trigger.device
+                ctx.shape = weight_in_trigger.shape
+                return (torch.zeros((1,), device=ctx.device, dtype=torch.float32),) * len(param_maps)
+
+            @staticmethod
+            def backward(ctx, *grad_outputs):
+                # for param, grad in zip(ctx.param_maps, grad_outputs):
+                #     if param.grad is None:
+                #         param.grad = grad.clone()
+                #     else:
+                #         param.grad += grad
+                return torch.zeros(ctx.shape, device=ctx.device, dtype=ctx.dtype)
+
         with _logger.suppress_os_stream_output(log_level=self._debug_options.logging.log_level) as suppress_output:
             # Setup dynamic axes for onnx model
             self._input_info = _io.parse_inputs_for_onnx_export(
@@ -378,7 +403,9 @@ class GraphExecutionManager(GraphExecutionInterface):
                     if node not in consumer_map[i]:
                         consumer_map[i].append(node)
 
-            param_maps = [name for name, param in self._flattened_module.named_parameters()]
+            param_maps = OrderedDict({name: param for name, param in self._flattened_module.named_parameters()})
+
+            global partitioned_param_maps
             for graph_input in exported_model.graph.input:
                 if graph_input.name in param_maps and graph_input.name in consumer_map:
                     consumers = consumer_map[graph_input.name]
@@ -386,12 +413,18 @@ class GraphExecutionManager(GraphExecutionInterface):
                     for c in consumers:
                         func_name = None
                         for attr in c.attribute:
-                            if attr.name == "name":
+                            if attr.name == "func_name":
                                 func_name = attr.s.decode("utf-8") if isinstance(attr.s, bytes) else attr.s
                                 break
                         if func_name == "ORTPreForwardwardFunction":
                             assert preforward_trigger is None, "Multiple ORTPreForwardwardFunction nodes found"
                             preforward_trigger = c
+
+                    if preforward_trigger is not None:
+                        partitioned_param_maps[graph_input.name] = param_maps[graph_input.name]
+                    else:
+                        print("warnings: found unpartitioned param: " + graph_input.name)
+                        continue
 
                     index_offset_on_python_op_input = -1
                     for i, input_name in enumerate(preforward_trigger.input):
@@ -402,6 +435,17 @@ class GraphExecutionManager(GraphExecutionInterface):
                     assert index_offset_on_python_op_input >= 0, "index_offset_on_python_op_input not valid"
                     for c in consumers:
                         if c != preforward_trigger:
+                            input_tensor_ranks = []
+                            rank_attr = None
+
+                            if c.op_type == "PythonOp":
+                                for attr in c.attribute:
+                                    if attr.name == "func_name":
+                                        func_name = attr.s.decode("utf-8") if isinstance(attr.s, bytes) else attr.s
+                                    if attr.name == "input_tensor_ranks":
+                                        input_tensor_ranks = attr.ints
+                                        rank_attr = attr
+
                             for i, input_name in enumerate(c.input):
                                 if input_name == graph_input.name:
                                     c.input[i] = preforward_trigger.output[
@@ -409,6 +453,127 @@ class GraphExecutionManager(GraphExecutionInterface):
                                         + index_offset_on_python_op_input
                                         - len(preforward_trigger.input)
                                     ]
+
+                                    if c.op_type == "PythonOp":
+                                        input_tensor_ranks[i] = len(partitioned_param_maps[input_name].ds_shape)
+
+                            if c.op_type == "PythonOp":
+                                c.attribute.remove(rank_attr)
+                                c.attribute.append(onnx.helper.make_attribute("input_tensor_ranks", input_tensor_ranks))
+
+            consumer_map = {}
+            for node in exported_model.graph.node:
+                for i in node.input:
+                    if i not in consumer_map:
+                        consumer_map[i] = []
+                    if node not in consumer_map[i]:
+                        consumer_map[i].append(node)
+
+            left_graph_input = []
+            new_input = onnx.helper.make_tensor_value_info("pull_weight_trigger", onnx.TensorProto.FLOAT, [1])
+
+            output_tensor_ranks = []
+            output_tensor_types = []
+            type_map = {
+                torch.float32: onnx.TensorProto.FLOAT,
+                torch.int64: onnx.TensorProto.INT64,
+                torch.float16: onnx.TensorProto.FLOAT16,
+            }
+            for n, p in partitioned_param_maps.items():
+                output_tensor_ranks.append(1)
+                if p.dtype in type_map:
+                    output_tensor_types.append(onnx.TensorProto.FLOAT)
+                else:
+                    raise RuntimeError("dtype not supported: " + str(p.dtype))
+
+            node_attributes = {
+                "comment": "",
+                "inplace": 0,
+                "input_convention": "d",
+                "input_tensor_ranks": [1],
+                "input_tensor_types": [onnx.TensorProto.FLOAT],
+                "output_tensor_ranks": output_tensor_ranks,
+                "output_tensor_types": output_tensor_types,
+                "training_mode": 1,
+                "func_name": "WeightRetrievalFunction",
+            }
+            node = onnx.helper.make_node(
+                "PythonOp",
+                [new_input.name],
+                [
+                    "pull_weight_trigger_ctx",
+                ]
+                + list(partitioned_param_maps.keys()),
+                "PythonOp_pull_weight_trigger",  # node name
+                "empty doc string",
+                "com.microsoft",
+                **node_attributes,
+            )
+            to_remove = []
+            for graph_input in exported_model.graph.input:
+                if graph_input.name not in partitioned_param_maps:
+                    # left_graph_input.append(graph_input)
+                    continue
+
+                to_remove.append(graph_input)
+
+                consumers = consumer_map[graph_input.name]
+                assert len(consumers) == 1, "multiple consumers found for graph input"
+                func_name = None
+                c = consumers[0]
+                input_tensor_ranks = []
+                input_tensor_dtypes = []
+                rank_attr = None
+                dtype_attr = None
+                for attr in c.attribute:
+                    if attr.name == "func_name":
+                        func_name = attr.s.decode("utf-8") if isinstance(attr.s, bytes) else attr.s
+                    if attr.name == "input_tensor_ranks":
+                        input_tensor_ranks = attr.ints
+                        rank_attr = attr
+                    if attr.name == "input_tensor_types":
+                        input_tensor_dtypes = attr.ints
+                        dtype_attr = attr
+                assert func_name == "ORTPreForwardwardFunction", "consumer is not ORTPreForwardwardFunction" + func_name
+
+                for index, c_i in enumerate(c.input):
+                    if c_i in partitioned_param_maps:
+                        input_tensor_ranks[index] = 1
+                        input_tensor_dtypes[index] = onnx.TensorProto.FLOAT
+
+                c.attribute.remove(rank_attr)
+                c.attribute.remove(dtype_attr)
+                c.attribute.append(onnx.helper.make_attribute("input_tensor_ranks", input_tensor_ranks))
+                c.attribute.append(onnx.helper.make_attribute("input_tensor_types", input_tensor_dtypes))
+                # index_offset_on_python_op_input = -1
+                # for i, input_name in enumerate(c.input):
+                #     if input_name == graph_input.name:
+                #         index_offset_on_python_op_input = i
+                #         break
+
+                # assert index_offset_on_python_op_input >= 0, "index_offset_on_python_op_input not valid"
+
+                # c.input[index_offset_on_python_op_input] = new_input.name
+
+            # left_graph_input.append(new_input)
+
+            # del exported_model.graph.input
+            for i in to_remove:
+                exported_model.graph.input.remove(i)
+
+            exported_model.graph.input.append(new_input)
+            # exported_model.graph.input.extend(left_graph_input)
+            exported_model.graph.node.insert(0, node)
+
+            for n, p in partitioned_param_maps.items():
+                exported_model.graph.value_info.append(
+                    onnx.helper.make_value_info(
+                        name=n,
+                        type_proto=onnx.helper.make_tensor_type_proto(
+                            elem_type=type_map[p.dtype], shape=list(p.ds_shape)
+                        ),
+                    )
+                )
 
             # If anything was captured by suppress_output during export, set the flag to
             # raise a single user warning letting users know in the log.
@@ -449,11 +614,15 @@ class GraphExecutionManager(GraphExecutionInterface):
         initializer_names = [
             name for name, _ in self._flattened_module.named_parameters() if name in onnx_initializer_names
         ]
+
+        # _original_module._original_model.gpt_neox.layers.0.attention.bias
         initializer_names_to_train = [
             name
             for name, param in self._flattened_module.named_parameters()
             if param.requires_grad and name in onnx_initializer_names
         ]
+
+        self._input_info.require_grad_names.append("pull_weight_trigger")
 
         # Build and optimize the full graph
         grad_builder_config = C.OrtModuleGraphBuilderConfiguration()
@@ -534,7 +703,7 @@ class GraphExecutionManager(GraphExecutionInterface):
                 detected_device = _utils.get_device_from_module(self._original_module) or _utils.get_device_from_inputs(
                     inputs, kwargs
                 )
-
+                global partitioned_param_maps
                 _, embed_sparsity_results, label_sparsity_results = _io._combine_input_buffers_initializers(
                     self._graph_initializers,
                     self._graph_builder.get_graph_info().user_input_names,
@@ -544,6 +713,7 @@ class GraphExecutionManager(GraphExecutionInterface):
                     kwargs,
                     detected_device,
                     self._runtime_inspector,
+                    partitioned_param_maps,
                 )
 
                 # Enable sparsity-based optimization when applicable.

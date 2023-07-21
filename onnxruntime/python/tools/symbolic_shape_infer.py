@@ -2335,7 +2335,7 @@ class SymbolicShapeInference:
         # The first output is autograd's context.
         vi = self.known_vi_[node.output[0]]
         vi.CopyFrom(helper.make_tensor_value_info(node.output[0], onnx.TensorProto.INT64, []))
-        python_op_specialized_name = get_attribute(node, "name").decode()
+        python_op_specialized_name = get_attribute(node, "func_name").decode()
         if python_op_specialized_name in ["_InspectActivation", "_IncrementStep"]:
             # PythonOp with name being "_InspectActivation" or "_IncrementStep" will behave exactly same as a normal
             # PythonOp when execution. The only difference is that
