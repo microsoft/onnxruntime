@@ -136,20 +136,12 @@ class DebugOptions:
         """Accessor for the filter export logs configuration."""
         if self.log_level >= LogLevel.INFO:
             return [
-                "WARNING: The shape inference of com.microsoft::SoftmaxCrossEntropyLossInternal type is missing, "
-                "so it may result in wrong shape inference for the exported graph. "
-                "Please consider adding it in symbolic function.",
-                "WARNING: The shape inference of org.pytorch.aten::ATen type is missing, "
-                "so it may result in wrong shape inference for the exported graph. "
-                "Please consider adding it in symbolic function.",
-                "WARNING: The shape inference of prim::Constant type is missing, "
-                "so it may result in wrong shape inference for the exported graph. "
-                "Please consider adding it in symbolic function.",
+                "WARNING: The shape inference of com.microsoft::SoftmaxCrossEntropyLossInternal type is missing, ",
+                "WARNING: The shape inference of org.pytorch.aten::ATen type is missing, ",
+                "WARNING: The shape inference of prim::Constant type is missing, ",
                 "Warning: Checker does not support models with experimental ops: ATen",
                 "Dropout is a training op and should not be exported in inference mode.",
-                "The shape inference of com.microsoft::PythonOp type is missing, "
-                "so it may result in wrong shape inference for the exported graph. "
-                "Please consider adding it in symbolic function",
+                "The shape inference of com.microsoft::PythonOp type is missing, ",
             ]
 
         return None

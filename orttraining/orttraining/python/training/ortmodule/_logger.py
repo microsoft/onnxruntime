@@ -35,7 +35,7 @@ def suppress_os_stream_output(on_exit: Callable = None):
     # stdout and stderr is written to a tempfile instead
     _, fo_file_path = tempfile.mkstemp()
 
-    # store orginal stdout and stderr file no.
+    # store original stdout and stderr file no.
     old_stdout = os.dup(sys.stdout.fileno())
     old_stderr = os.dup(sys.stderr.fileno())
 
