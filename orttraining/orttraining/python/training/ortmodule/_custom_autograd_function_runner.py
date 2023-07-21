@@ -71,7 +71,7 @@ def call_python_forward_function(
         inplace: indicates if args can be modified inside the custom function.
         args: inputs to "backward_function".
     """
-    print("call_python_forward_function>>>", args)
+    # print("call_python_forward_function>>>", args)
 
     def generate_non_leaf_or_not(grad_flag, tensor_flag, arg, is_training_mode, is_inplace):
         if is_training_mode and tensor_flag and grad_flag and is_inplace:
@@ -200,7 +200,7 @@ def call_python_backward_function(
         inplace: indicates if args can be modified inside the custom function.
         args: inputs to "backward_function".
     """
-    print("call_python_backward_function>>>", args)
+    # print("call_python_backward_function>>>", args)
     with torch.no_grad():
 
         def wrap_all_outputs(result):

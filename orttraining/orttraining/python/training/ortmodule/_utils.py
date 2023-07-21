@@ -74,7 +74,7 @@ def _ortvalues_to_torch_tensor(
 
     if not isinstance(ortvalues, C.OrtValueVector):
         raise TypeError("ortvalues must be an instance of OrtValueVector not %r." % type(ortvalues))
-    print("@@@@@@@@@@@@@@@@@ortvalues: ", [o for o in ortvalues])
+
     res: List[torch.Tensor] = ortvalues.to_dlpacks(_from_dlpack)
     bool_indices = ortvalues.bool_tensor_indices()
     if len(bool_indices):

@@ -119,10 +119,10 @@ IMPLEMENT_GRADIENT_BUILDER(GetTriluGradient) {
 
 IMPLEMENT_GRADIENT_BUILDER(GetSqrtGradient) {
   std::vector<NodeDef> result;
-  // NodeDef half_constant_node = HalfConstantNode(OElemType(0));
-  // ArgDef half_arg = half_constant_node.output_args[0];
-  // result.push_back(half_constant_node);
-  result.push_back(NodeDef("Div", {O(0), O(0)}, {IA("Div_O0")}));
+  NodeDef half_constant_node = HalfConstantNode(OElemType(0));
+  ArgDef half_arg = half_constant_node.output_args[0];
+  result.push_back(half_constant_node);
+  result.push_back(NodeDef("Div", {half_arg, O(0)}, {IA("Div_O0")}));
   result.push_back(NodeDef("Mul", {GO(0), IA("Div_O0")}, {GI(0)}));
   return result;
 }
@@ -1195,11 +1195,10 @@ IMPLEMENT_GRADIENT_BUILDER(GetPowGradient) {
   }
 
   std::vector<NodeDef> result;
-  std::cout << "GetPowGradient: " << IElemType(0) << "," << IElemType(1) << std::endl;
-  // NodeDef one_constant_node = OneConstantNode(IElemType(0));
-  // ArgDef one_arg = one_constant_node.output_args[0];
-  // result.push_back(one_constant_node);
-  result.push_back(NodeDef("Sub", {I(1), I(1)}, {IA("Sub_I1")}));
+  NodeDef one_constant_node = OneConstantNode(IElemType(0));
+  ArgDef one_arg = one_constant_node.output_args[0];
+  result.push_back(one_constant_node);
+  result.push_back(NodeDef("Sub", {I(1), one_arg}, {IA("Sub_I1")}));
   result.push_back(NodeDef("Pow", {I(0), IA("Sub_I1")}, {IA("Pow_I0")}));
   result.push_back(NodeDef("Mul", {IA("Pow_I0"), I(1)}, {IA("Mul_Pow_I0_I1")}));
   result.push_back(NodeDef("Mul", {IA("Mul_Pow_I0_I1"), GO(0)}, {GI(0)}));
