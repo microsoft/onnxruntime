@@ -115,7 +115,7 @@ namespace Dml
                                 // The size threshold for this should be no smaller than that used to combine initializers in the constant
                                 // sharing transform to prevent that transform from hurting performance.
                                 // If the kernel relies on this input to be initialized, it should also be small enough to copy cheaply.
-                                const uint64_t maximumElementsForDuplicationTensor = 64;
+                                constexpr uint64_t maximumElementsForDuplicationTensor = 64;
                                 static_assert(maximumElementsForDuplicationTensor >= onnxruntime::ConstantSharing::TENSOR_ELEM_COUNT_THRESHOLD);
 
                                 uint64_t totalElementCount = 1;
