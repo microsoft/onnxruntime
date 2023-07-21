@@ -6,8 +6,9 @@ package ai.onnxruntime.providers;
 
 /** Flags for the CoreML provider. */
 public enum CoreMLFlags implements OrtFlags {
-  /** Use only the CPU, disables the GPU and Apple Neural Engine. 
-      Only recommended for developer usage as it significantly impacts performance.
+  /**
+   * Use only the CPU, disables the GPU and Apple Neural Engine. Only recommended for developer
+   * usage as it significantly impacts performance.
    */
   CPU_ONLY(1), // COREML_FLAG_USE_CPU_ONLY(0x001)
   /** Enables CoreML on subgraphs. */

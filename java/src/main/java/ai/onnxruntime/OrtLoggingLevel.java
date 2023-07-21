@@ -6,7 +6,7 @@ package ai.onnxruntime;
 
 import java.util.logging.Logger;
 
-/** The logging level for messages from the environment and session. */
+/** The logging severity level. */
 public enum OrtLoggingLevel {
   /** Print all log messages. */
   ORT_LOGGING_LEVEL_VERBOSE(0),

@@ -50,7 +50,12 @@ public class TensorInfo implements ValueInfo {
     /** A 128-bit complex number, stored as 2 64-bit values. Not accessible from Java. */
     ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX128(
         15), // complex with float64 real and imaginary components
-    /** A non-IEEE 16-bit floating point value. */
+    /**
+     * A non-IEEE 16-bit floating point value with 8 exponent bits and 7 mantissa bits.
+     *
+     * <p>See <a href="https://en.wikipedia.org/wiki/Bfloat16_floating-point_format">Bfloat16 on
+     * Wikipedia</a> for more details.
+     */
     ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16(
         16), // Non-IEEE floating-point format based on IEEE754 single-precision
     ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E4M3FN(

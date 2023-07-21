@@ -472,6 +472,10 @@ public class OrtSession implements AutoCloseable {
     /**
      * The optimisation level to use. Needs to be kept in sync with the GraphOptimizationLevel enum
      * in the C API.
+     *
+     * <p>See <a
+     * href="https://onnxruntime.ai/docs/performance/model-optimizations/graph-optimizations.html">Graph
+     * Optimizations</a> for more details.
      */
     public enum OptLevel {
       /** Apply no optimizations to the ONNX graph. */
@@ -509,7 +513,12 @@ public class OrtSession implements AutoCloseable {
      * The execution mode to use. Needs to be kept in sync with the ExecutionMode enum in the C API.
      */
     public enum ExecutionMode {
-      /** Executes all nodes sequentially. */
+      /**
+       * Executes all nodes sequentially.
+       *
+       * <p>This is the default, and usually provides the most speedup as intra-op parallelism
+       * provides the most benefit.
+       */
       SEQUENTIAL(0),
       /** Executes some nodes in parallel. */
       PARALLEL(1);
