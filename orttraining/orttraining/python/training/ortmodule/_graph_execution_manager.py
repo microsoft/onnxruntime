@@ -395,7 +395,7 @@ class GraphExecutionManager(GraphExecutionInterface):
             # Cache model for future runs
             if cache_dir:
                 if not os.path.exists(cache_dir):
-                    os.mkdir(cache_dir)
+                    os.makedirs(cache_dir, exist_ok=True)
                 filename = os.path.join(cache_dir, f"{hash(str(self._flattened_module))}.onnx")
                 onnx.save(exported_model, filename)
 
