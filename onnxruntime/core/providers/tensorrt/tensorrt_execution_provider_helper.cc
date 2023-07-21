@@ -7,73 +7,69 @@
 
 namespace onnxruntime {
 
-// The newly-built graph has not yet being resolved by Graph::Resolve(), so we can't leverage ORT Graph IsInputInitializerOrOutput() API.
-// We have to do it by ourselves.
-bool TensorrtExecutionProvider::IsInputInitializerOrOutput(Graph* graph,
+// The newly-built graph has not yet being resolved by Graph::Resolve(), so we can't leverage
+// Graph::ResolveContext::IsInputInitializerOrOutput(). We have to implement this fuction again.
+bool TensorrtExecutionProvider::IsInputInitializerOrOutput(const Graph& graph,
                                                            const std::string& name,
-                                                           bool check_ancestors,
-                                                           std::unordered_map<std::string, std::unique_ptr<SubGraphContext>>& subgraph_context_map) const {
-  return IsLocalValue(graph, name, subgraph_context_map) ||
-         (check_ancestors && graph->ParentGraph() != nullptr &&
-          IsInputInitializerOrOutput(graph->MutableParentGraph(), name, check_ancestors, subgraph_context_map));
+                                                           bool check_ancestors) const {
+  const Graph* parent_graph = nullptr;
+  return IsLocalValue(graph, name) ||
+         (check_ancestors && (parent_graph = graph.ParentGraph()) != nullptr &&
+          IsInputInitializerOrOutput(*parent_graph, name, check_ancestors));
 }
 
-// The newly-built graph has not yet being resolved by Graph::Resolve(), so we can't leverage ORT Graph IsOuterScopeValues() API.
-// We have to do it by ourselves.
-bool TensorrtExecutionProvider::IsOuterScopeValue(Graph* graph,
-                                                  const std::string& name,
-                                                  std::unordered_map<std::string, std::unique_ptr<SubGraphContext>>& subgraph_context_map) const {
-  return graph->ParentGraph() != nullptr && IsInputInitializerOrOutput(graph->MutableParentGraph(), name, true, subgraph_context_map);
+// The newly-built graph has not yet being resolved by Graph::Resolve(), so we can't leverage
+// Graph::ResolveContext::IsOuterScopeValue(). We have to implement this function again.
+bool TensorrtExecutionProvider::IsOuterScopeValue(const Graph& graph,
+                                                  const std::string& name) const {
+  const Graph* parent_graph = nullptr;
+  return (parent_graph = graph.ParentGraph()) != nullptr &&
+         IsInputInitializerOrOutput(*parent_graph, name, true);
 }
 
-// The newly-built graph has not yet being resolved by Graph::Resolve(), so we can't leverage ORT Graph IsLocalValue() API.
-// We have to do it by ourselves.
-bool TensorrtExecutionProvider::IsLocalValue(Graph* graph,
-                                             const std::string& name,
-                                             std::unordered_map<std::string, std::unique_ptr<SubGraphContext>>& subgraph_context_map) const {
-  std::string subgraph_name = graph->Name();
-
-  if (subgraph_context_map.find(subgraph_name) == subgraph_context_map.end()) {
+// The newly-built graph has not yet being resolved by Graph::Resolve(), so we can't leverage
+// Graph::ResolveContext::IsLocalValue(). We have to implement this function again.
+bool TensorrtExecutionProvider::IsLocalValue(const Graph& graph,
+                                             const std::string& name) const {
+  if (subgraph_context_map_.find(graph.Name()) == subgraph_context_map_.end()) {
     return false;
   }
-  SubGraphContext* context = subgraph_context_map.at(subgraph_name).get();
+  SubGraphContext* context = subgraph_context_map_.at(graph.Name()).get();
   return context->output_args.find(name) != context->output_args.cend() ||
          context->inputs_and_initializers.find(name) != context->inputs_and_initializers.cend();
 }
 
 /**
- * Set inputs, initializers and outputs for all subgraphs during TensorrtExecutionProvider::GetSupportedList() and save those information in subgraph context data structure.
- * It's useful for building a valid graph and make Graph::Resolve() happy especially when dealing with nested control-flow op graph.
+ * Set inputs, initializers and outputs for all subgraphs during TensorrtExecutionProvider::GetSupportedList()
+ * and save those information in subgraph context data structure. It's useful for building a valid graph and
+ * make Graph::Resolve() happy especially when dealing with nested control-flow op graph.
  */
-void TensorrtExecutionProvider::BuildSubGraphContext(Graph* graph,
-                                                     std::unordered_map<std::string, std::unique_ptr<SubGraphContext>>& subgraph_context_map) const {
+void TensorrtExecutionProvider::BuildSubGraphContext(const Graph& graph) const {
   // Iterate all the nodes and recurse into inner most subgraph first
-  for (int i = 0; i < graph->MaxNodeIndex(); ++i) {
-    auto node = graph->GetNode(i);
+  for (int i = 0; i < graph.MaxNodeIndex(); ++i) {
+    auto node = graph.GetNode(i);
     if (node == nullptr) {
       continue;
     }
 
-    auto subgraph_map = node->GetAttributeNameToMutableSubgraphMap();
+    auto subgraph_map = node->GetAttributeNameToSubgraphMap();
     for (auto& entry : subgraph_map) {
-      Graph* subgraph = entry.second;
-      BuildSubGraphContext(subgraph, subgraph_context_map);
+      const Graph* subgraph = entry.second;
+      BuildSubGraphContext(*subgraph);
     }
   }
 
-  std::string subgraph_name = graph->Name();
-
   // Subgraph context has been built before, no need to do it again
-  if (subgraph_context_map.find(subgraph_name) != subgraph_context_map.end()) {
+  if (subgraph_context_map_.find(graph.Name()) != subgraph_context_map_.end()) {
     return;
   }
 
-  subgraph_context_map.emplace(subgraph_name, std::make_unique<SubGraphContext>());
-  SubGraphContext* context = subgraph_context_map.at(subgraph_name).get();
+  subgraph_context_map_.emplace(graph.Name(), std::make_unique<SubGraphContext>());
+  SubGraphContext* context = subgraph_context_map_.at(graph.Name()).get();
 
   // Collect all nodes' outputs and nodes' name
-  for (int i = 0; i < graph->MaxNodeIndex(); ++i) {
-    auto node = graph->GetNode(i);
+  for (int i = 0; i < graph.MaxNodeIndex(); ++i) {
+    auto node = graph.GetNode(i);
     if (node == nullptr) {
       continue;
     }
@@ -84,8 +80,8 @@ void TensorrtExecutionProvider::BuildSubGraphContext(Graph* graph,
   }
 
   // Go thru all node's inputs
-  for (int i = 0; i < graph->MaxNodeIndex(); ++i) {
-    auto node = graph->GetNode(i);
+  for (int i = 0; i < graph.MaxNodeIndex(); ++i) {
+    auto node = graph.GetNode(i);
     if (node == nullptr) {
       continue;
     }
@@ -101,12 +97,11 @@ void TensorrtExecutionProvider::BuildSubGraphContext(Graph* graph,
 }
 
 // Set outer scope values for subgraphs and add thoes values as top-level graph's inputs if needed.
-void TensorrtExecutionProvider::SetGraphOuterScopeValuesAndInputs(Graph* graph_build,
-                                                                  const Graph* graph,
-                                                                  std::unordered_map<std::string, std::unique_ptr<SubGraphContext>>& subgraph_context_map) const {
-  // Iterate all the nodes and recurse into inner most subgraph first
-  for (int i = 0; i < graph_build->MaxNodeIndex(); ++i) {
-    auto graph_build_node = graph_build->GetNode(i);
+void TensorrtExecutionProvider::SetGraphOuterScopeValuesAndInputs(Graph& graph_build,
+                                                                  const Graph& graph) const {
+  // Iterate all the nodes and recurse into inner most subgraph first for both newly built graph and original graph
+  for (int i = 0; i < graph_build.MaxNodeIndex(); ++i) {
+    auto graph_build_node = graph_build.GetNode(i);
     if (graph_build_node == nullptr) {
       continue;
     }
@@ -115,10 +110,10 @@ void TensorrtExecutionProvider::SetGraphOuterScopeValuesAndInputs(Graph* graph_b
     std::unordered_map<std::string, gsl::not_null<const Graph*>> subgraph_map;
     const Node* graph_node = nullptr;
 
-    // Find original graph node's subgraphs
-    for (int j = 0; j < graph->MaxNodeIndex(); ++j) {
-      if (graph->GetNode(j) && graph->GetNode(j)->Name() == graph_build_node->Name()) {
-        graph_node = graph->GetNode(j);
+    // Find corresponding original graph node's subgraphs
+    for (int j = 0; j < graph.MaxNodeIndex(); ++j) {
+      if (graph.GetNode(j) && graph.GetNode(j)->Name() == graph_build_node->Name()) {
+        graph_node = graph.GetNode(j);
         subgraph_map = graph_node->GetAttributeNameToSubgraphMap();
         break;
       }
@@ -130,50 +125,56 @@ void TensorrtExecutionProvider::SetGraphOuterScopeValuesAndInputs(Graph* graph_b
       if (subgraph_map.find(attr_name) != subgraph_map.end()) {
         // recurse into subgraph
         const Graph* subgraph = subgraph_map.at(attr_name);
-        SetGraphOuterScopeValuesAndInputs(subgraph_build, subgraph, subgraph_context_map);
+        SetGraphOuterScopeValuesAndInputs(*subgraph_build, *subgraph);
       }
     }
   }
 
-  // Start from the inner most subgraph first and check whether its outer scope values are existed in the newly built graph.
-  // If not, we need to add those outer scope values as explict inputs to the top-level of newly built graph.
-  if (graph_build->ParentNode()) {
-    auto top_level_graph = graph_build;
+  // Start from the inner most subgraph first and check whether its outer scope values are existed in the
+  // newly built graph. If not, we need to add those outer scope values as explict inputs to the top-level
+  // of newly built graph.
+  if (graph_build.ParentNode()) {
+    auto top_level_graph = &graph_build;
     while (top_level_graph->MutableParentGraph()) {
       top_level_graph = top_level_graph->MutableParentGraph();
     }
-    if (subgraph_context_map.find(top_level_graph->Name()) == subgraph_context_map.end()) {
-      LOGS_DEFAULT(ERROR) << "[TensorRT EP] Can't find top-level graph context. Please check BuildSubGraphContext() has built the graph context correctly.";
+    if (subgraph_context_map_.find(top_level_graph->Name()) == subgraph_context_map_.end()) {
+      LOGS_DEFAULT(ERROR) << "[TensorRT EP] Can't find top-level graph context. \
+                              Please check BuildSubGraphContext() has built the graph context correctly.";
       return;
     }
 
-    SubGraphContext* context = subgraph_context_map.at(top_level_graph->Name()).get();
+    SubGraphContext* context = subgraph_context_map_.at(top_level_graph->Name()).get();
 
-    LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Subgraph name is " << graph_build->Name();
-    LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Its parent node is " << graph->ParentNode()->Name();
+    LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Subgraph name is " << graph_build.Name();
+    LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Its parent node is " << graph.ParentNode()->Name();
     LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Its parent node's implicit inputs:";
 
     // Iterate all the implict inputs to set outer scope value for the newly built subgraph
-    for (const auto& input : graph->ParentNode()->ImplicitInputDefs()) {
+    for (const auto& input : graph.ParentNode()->ImplicitInputDefs()) {
       LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] \t" << input->Name();
 
-      // The node arg in parent node's implicit inputs could be used for parent node's other subgraph, for example "If" op has two subgraphs.
-      // So we need to make sure that the node arg is used in current subgraph only. (GetNodeArg searches for specific node arg in all node args in the graph)
-      if (graph_build->GetNodeArg(input->Name())) {
-        graph_build->AddOuterScopeNodeArg(input->Name());
+      // The node arg in parent node's implicit inputs could be used for parent node's other subgraph, for example
+      // "If" op has two subgraphs. So we need to make sure that the node arg is used in current subgraph only.
+      // (GetNodeArg searches for specific node arg in all node args in the graph)
+      if (graph_build.GetNodeArg(input->Name())) {
+        graph_build.AddOuterScopeNodeArg(input->Name());
         LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] \t" << input->Name() << " is used in this subgraph";
 
-        if (context && (context->manually_added_graph_inputs.find(input->Name()) != context->manually_added_graph_inputs.end())) {
+        if (context &&
+            (context->manually_added_graph_inputs.find(input->Name()) != context->manually_added_graph_inputs.end())) {
           LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] \t" << input->Name() << " is already been added as an explicit input to graph";
           continue;
         }
 
-        // Handle the case where this outer scope value is not existed in any outer scope levels of the newly built graph (the newly built graph is the subgraph of the original graph)
-        // need to add the outer scope value as an explict input to the top-level of newly built graph
-        if (!IsOuterScopeValue(graph_build, input->Name(), subgraph_context_map)) {
+        // Handle the case where this outer scope value is not existed in any outer scope levels of the
+        // newly built graph (the newly built graph is the subgraph of the original graph). Need to add
+        // the outer scope value as an explict input to the top-level of newly built graph.
+        if (!IsOuterScopeValue(graph_build, input->Name())) {
           const auto& name = input->Name();
           auto graph_inputs_including_initializers = top_level_graph->GetInputsIncludingInitializers();
-          auto added_graph_input = std::find_if(graph_inputs_including_initializers.begin(), graph_inputs_including_initializers.end(),
+          auto added_graph_input = std::find_if(graph_inputs_including_initializers.begin(),
+                                                graph_inputs_including_initializers.end(),
                                                 [&name](const NodeArg* entry) { return entry->Name() == name; });
 
           if (added_graph_input == graph_inputs_including_initializers.end()) {
@@ -191,18 +192,17 @@ void TensorrtExecutionProvider::SetGraphOuterScopeValuesAndInputs(Graph* graph_b
   }
 }
 
-// If ORT TRT manually sets graph input in TensorrtExecutionProvider::SetGraphOuterScopeValuesAndInputs(), we have to manully set all the graph inputs in order to pass Graph::Resolve()
-void TensorrtExecutionProvider::SetAllGraphInputs(Graph* graph,
-                                                  std::unordered_map<std::string, std::unique_ptr<SubGraphContext>>& subgraph_context_map) const {
-  std::string subgraph_name = graph->Name();
-
+// If ORT TRT manually sets graph input in TensorrtExecutionProvider::SetGraphOuterScopeValuesAndInputs(),
+// we have to manully set all the graph inputs in order to pass Graph::Resolve()
+void TensorrtExecutionProvider::SetAllGraphInputs(Graph& graph) const {
   // If ORT TRT doesn't manully set graph input in TensorrtExecutionProvider::SetGraphOuterScopeValuesAndInputs(),
   // Graph::Resolve() will help set graph inputs in Graph::SetGraphInputsOutputs(), so no need to set graph inputs here.
-  if (subgraph_context_map.find(subgraph_name) == subgraph_context_map.end() || subgraph_context_map[subgraph_name].get()->manually_added_graph_inputs.size() == 0) {
+  if (subgraph_context_map_.find(graph.Name()) == subgraph_context_map_.end() ||
+      subgraph_context_map_[graph.Name()].get()->manually_added_graph_inputs.size() == 0) {
     return;
   }
 
-  SubGraphContext* context = subgraph_context_map[subgraph_name].get();
+  SubGraphContext* context = subgraph_context_map_[graph.Name()].get();
   std::vector<const NodeArg*> graph_inputs_including_initializers;
   std::unordered_set<std::string> graph_inputs_including_initializers_set;
 
@@ -218,13 +218,13 @@ void TensorrtExecutionProvider::SetAllGraphInputs(Graph* graph,
     }
   }
 
-  for (const auto& node_arg : graph->GetInputsIncludingInitializers()) {
+  for (const auto& node_arg : graph.GetInputsIncludingInitializers()) {
     if (graph_inputs_including_initializers_set.find(node_arg->Name()) == graph_inputs_including_initializers_set.end()) {
       graph_inputs_including_initializers.push_back(node_arg);
       graph_inputs_including_initializers_set.insert(node_arg->Name());
     }
   }
 
-  graph->SetInputs(graph_inputs_including_initializers);
+  graph.SetInputs(graph_inputs_including_initializers);
 }
 }  // namespace onnxruntime

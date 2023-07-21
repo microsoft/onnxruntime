@@ -1259,8 +1259,7 @@ std::unique_ptr<IndexedSubGraph> TensorrtExecutionProvider::GetSubGraph(SubGraph
 }
 
 SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollection_t nodes_vector_input, int iterations, const int max_iterations,
-                                                                 const GraphViewer& graph, bool* early_termination,
-                                                                 std::unordered_map<std::string, std::unique_ptr<SubGraphContext>>& subgraph_context_map) const {
+                                                                 const GraphViewer& graph, bool* early_termination) const {
   // Return if iterations are exceeding predefined number
   SubGraphCollection_t nodes_list_output;
   if (iterations > max_iterations) {
@@ -1353,9 +1352,9 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
 
         if (has_control_flow_op) {
           LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Handle outer scope values for the subgraph " << graph_build.Name();
-          BuildSubGraphContext(&graph_build, subgraph_context_map);
-          SetGraphOuterScopeValuesAndInputs(&graph_build, &graph.GetGraph(), subgraph_context_map);
-          SetAllGraphInputs(&graph_build, subgraph_context_map);
+          BuildSubGraphContext(graph_build);
+          SetGraphOuterScopeValuesAndInputs(graph_build, graph.GetGraph());
+          SetAllGraphInputs(graph_build);
         }
 
         ORT_ENFORCE(graph_build.Resolve().IsOK());
@@ -1429,7 +1428,7 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
 
         SubGraphCollection_t next_nodes_list;
         const std::vector<NodeIndex>& subgraph_node_index = graph_viewer->GetNodesInTopologicalOrder();
-        next_nodes_list = GetSupportedList(parser_nodes_list, iterations, max_iterations, *graph_viewer, early_termination, subgraph_context_map);
+        next_nodes_list = GetSupportedList(parser_nodes_list, iterations, max_iterations, *graph_viewer, early_termination);
         for (size_t i = 0, end = next_nodes_list.size(); i < end; ++i) {
           for (size_t j = 0, end = next_nodes_list[i].first.size(); j < end; ++j) {
             next_nodes_list[i].first[j] = group.first[subgraph_node_index[next_nodes_list[i].first[j]]];
@@ -1612,9 +1611,8 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
   }
 
   SubGraphCollection_t supported_nodes_vector, parser_nodes_vector = {{filtered_nodes_vector, false}};
-  std::unordered_map<std::string, std::unique_ptr<SubGraphContext>> subgraph_context_map;
   bool early_termination = false;
-  supported_nodes_vector = GetSupportedList(parser_nodes_vector, 0, max_partition_iterations_, graph, &early_termination, subgraph_context_map);
+  supported_nodes_vector = GetSupportedList(parser_nodes_vector, 0, max_partition_iterations_, graph, &early_termination);
   if (early_termination) {
     supported_nodes_vector.clear();
   }
@@ -1685,7 +1683,7 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
           }
 
           // Another subgraph of "If" control flow has not yet been parsed by GetCapability.
-          subgraph_supported_nodes_vector = GetSupportedList(parser_subgraph_nodes_vector, 0, max_partition_iterations_, *sub_graph_veiwer, &subgraph_early_termination, subgraph_context_map);
+          subgraph_supported_nodes_vector = GetSupportedList(parser_subgraph_nodes_vector, 0, max_partition_iterations_, *sub_graph_veiwer, &subgraph_early_termination);
           all_subgraphs_are_supported = IsSubGraphFullySupported(subgraph_supported_nodes_vector, number_of_ort_subgraph_nodes);
           break;
         }
@@ -1705,6 +1703,9 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
         }
       }
       LOGS_DEFAULT(INFO) << "[TensorRT EP] Whole graph will run on TensorRT execution provider";
+
+      // The context map is only used during EP compile time, release it to save memory space.
+      subgraph_context_map_.clear();
       return result;
     }
   }
@@ -1728,6 +1729,8 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
     LOGS_DEFAULT(INFO) << "[TensorRT EP] Graph is partitioned and number of subgraphs running on TensorRT execution provider is " << number_of_subgraphs;
   }
 
+  // The context map is only used during EP compile time, release it to save memory space.
+  subgraph_context_map_.clear();
   return result;
 }
 
