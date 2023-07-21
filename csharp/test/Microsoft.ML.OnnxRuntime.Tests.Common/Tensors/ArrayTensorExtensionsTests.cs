@@ -105,25 +105,25 @@ namespace Microsoft.ML.OnnxRuntime.Tests.ArrayTensorExtensions
         [Fact]
         public void TestLongStrides()
         {
-            long[] emptyStrides = ArrayUtilities.GetStrides(Array.Empty<long>());
+            long[] emptyStrides = ShapeUtils.GetStrides(Array.Empty<long>());
             Assert.Empty(emptyStrides);
 
             long[] negativeDims = { 2, -3, 4, 5 };
-            Assert.Throws<ArgumentException>(() => ArrayUtilities.GetStrides(negativeDims));
+            Assert.Throws<ArgumentException>(() => ShapeUtils.GetStrides(negativeDims));
 
             ReadOnlySpan<long> goodDims = stackalloc long[] { 2, 3, 4, 5 };
             long[] expectedStrides = { 60, 20, 5, 1 };
-            Assert.Equal(expectedStrides, ArrayUtilities.GetStrides(goodDims));
+            Assert.Equal(expectedStrides, ShapeUtils.GetStrides(goodDims));
         }
 
         [Fact]
         public void TestLongGetIndex()
         {
             ReadOnlySpan<long> dims = stackalloc long[] { 2, 3, 4, 5 };
-            long size = ArrayUtilities.GetSizeForShape(dims);
+            long size = ShapeUtils.GetSizeForShape(dims);
             Assert.Equal(120, size);
 
-            ReadOnlySpan<long> strides = ArrayUtilities.GetStrides(dims);
+            ReadOnlySpan<long> strides = ShapeUtils.GetStrides(dims);
 
             static void IncDims(ReadOnlySpan<long> dims, Span<long> indices)
             {
@@ -139,7 +139,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests.ArrayTensorExtensions
             Span<long> indices = stackalloc long[] { 0, 0, 0, 0 };
             for (long i = 0; i < size; i++)
             {
-                long index = ArrayUtilities.GetIndex(strides, indices);
+                long index = ShapeUtils.GetIndex(strides, indices);
                 Assert.Equal(i, index);
                 IncDims(dims, indices);
             }
