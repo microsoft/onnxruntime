@@ -20,7 +20,8 @@ class TestTrainingDropout(unittest.TestCase):
 
     @unittest.skip(
         "Temporarily disable this test. The graph below will trigger ORT to "
-        "sort backward graph before forward graph which gives incorrect result."
+        "sort backward graph before forward graph which gives incorrect result. "
+        "https://github.com/microsoft/onnxruntime/issues/16801"
     )
     def test_training_and_eval_dropout(self):
         class TwoDropoutNet(nn.Module):
