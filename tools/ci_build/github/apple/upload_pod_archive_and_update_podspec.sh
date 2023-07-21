@@ -16,7 +16,8 @@ POD_ARCHIVE_PATH_PATTERN=${1:?${USAGE_TEXT}}
 PODSPEC_PATH=$(abspath "${2:?${USAGE_TEXT}}")
 
 # expand pod archive path pattern to exactly one path
-POD_ARCHIVE_PATHS=( $( compgen -G "${POD_ARCHIVE_PATH_PATTERN}" ) )
+POD_ARCHIVE_PATHS=()
+while IFS='' read -r line; do POD_ARCHIVE_PATHS+=("$line"); done < <( compgen -G "${POD_ARCHIVE_PATH_PATTERN}" )
 if [[ "${#POD_ARCHIVE_PATHS[@]}" -ne "1" ]]; then
   echo "Did not find exactly one pod archive file."
   exit 1
