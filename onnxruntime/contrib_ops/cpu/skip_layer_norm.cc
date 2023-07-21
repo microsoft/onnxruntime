@@ -48,15 +48,15 @@ Status SkipLayerNorm<T, V>::Compute(OpKernelContext* p_ctx) const {
 
   const auto& input_dims = input->Shape().GetDims();
   size_t input_dims_size = input_dims.size();
-  const auto& skip_dims = skip->Shape().GetDims();
-  size_t skip_dims_size = skip_dims.size();
+  /*const auto& skip_dims = skip->Shape().GetDims();
+    size_t skip_dims_size = skip_dims.size();*/
 
   int hidden_size = static_cast<int>(input_dims[input_dims_size - 1]);
 
-  if (input->Shape() != skip->Shape()) {
+  /*if (input->Shape() != skip->Shape()) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "skip is expected to have same shape as input or");
-  }
+  }*/
 
   if (input_dims_size != 3 && input_dims_size != 2) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,

@@ -410,7 +410,7 @@ void HostApplyLayerNorm(
     const V* gamma,
     const V* beta,
     const T* skip,
-    const T* bias,
+    const V* bias,
     T* skip_input_bias_add_output) {
   const int maxGridY = prop.maxGridSize[1];
   const int warp_size = prop.warpSize;

@@ -68,9 +68,8 @@ Status SkipLayerNorm<T, V, Simplified>::ComputeInternal(OpKernelContext* ctx) co
 
   const auto& input_dims = input->Shape().GetDims();
   size_t input_dims_size = input_dims.size();
-  const auto& skip_dims = skip->Shape().GetDims();
-  size_t skip_dims_size = skip_dims.size();
-  int skip_sequence_length = static_cast<int>(skip_dims[skip_dims_size - 2]);
+  /*const auto& skip_dims = skip->Shape().GetDims();
+  size_t skip_dims_size = skip_dims.size();*/
   if (input_dims_size != 3 && input_dims_size != 2) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "input is expected to have 3 or 2 dimensions, got ", input_dims_size);

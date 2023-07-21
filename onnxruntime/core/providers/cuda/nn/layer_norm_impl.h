@@ -42,7 +42,7 @@ void HostApplyLayerNorm(
     const V* gamma,
     const V* beta,
     const T* skip = nullptr,
-    const T* bias = nullptr,
+    const V* bias = nullptr,
     T* skip_input_bias_add_output = nullptr);
 
 }  // namespace cuda
