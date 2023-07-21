@@ -406,7 +406,7 @@ class TestInferenceSession(unittest.TestCase):
                     run_base_test2()
                     run_advanced_test()
 
-                except OSError:
+                except OSError:  # noqa: PERF203
                     continue
                 else:
                     break
