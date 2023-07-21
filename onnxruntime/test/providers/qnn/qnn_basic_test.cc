@@ -383,8 +383,8 @@ TEST(QnnDEBUGTests, CPU_EP_QDQ16bit_Add) {
 TEST(QnnDEBUGTests, CPU_EP_Mixed_16bit_8bit_Add) {
   Ort::SessionOptions so;
 
-  //so.SetGraphOptimizationLevel(ORT_ENABLE_ALL);  // Uses QLinearAdd (supported in this branch!)
-  so.SetGraphOptimizationLevel(ORT_DISABLE_ALL);  // Uses actual Quant, Dequant, Add ops.
+  so.SetGraphOptimizationLevel(ORT_ENABLE_ALL);  // Does not use QLinearAdd because node units require same quantized input types.
+                                                 // Will use the actual Quantize, Add, Dequant ops.
 
   const ORTCHAR_T* ort_model_path = ORT_MODEL_FOLDER "add.quant_mixed.onnx";
   try {
