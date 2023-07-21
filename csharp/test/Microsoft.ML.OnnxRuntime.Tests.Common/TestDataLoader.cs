@@ -588,7 +588,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             {
                 for (int i = 0; i < strings.Count; ++i)
                 {
-                    ortValue.FillStringTensorElement(strings[i].Span, i);
+                    ortValue.StringTensorSetElementAt(strings[i].Span, i);
                 }
                 return ortValue;
             }

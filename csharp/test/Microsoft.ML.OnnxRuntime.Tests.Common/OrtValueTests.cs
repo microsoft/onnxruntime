@@ -65,13 +65,13 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 for (int i = 0; i < elementsNum; ++i)
                 {
                     // First populate via ROM
-                    strTensor.FillStringTensorElement(strsRom[i].AsMemory(), i);
+                    strTensor.StringTensorSetElementAt(strsRom[i].AsMemory(), i);
                     Assert.Equal(strsRom[i], strTensor.GetStringElement(i));
                     Assert.Equal(strsRom[i], strTensor.GetStringElementAsMemory(i).ToString());
                     Assert.Equal(Encoding.UTF8.GetBytes(strsRom[i]), strTensor.GetStringElementAsSpan(i).ToArray());
 
                     // Fill via Span
-                    strTensor.FillStringTensorElement(strs[i].AsSpan(), i);
+                    strTensor.StringTensorSetElementAt(strs[i].AsSpan(), i);
                     Assert.Equal(strs[i], strTensor.GetStringElement(i));
                     Assert.Equal(strs[i], strTensor.GetStringElementAsMemory(i).ToString());
                     Assert.Equal(Encoding.UTF8.GetBytes(strs[i]), strTensor.GetStringElementAsSpan(i).ToArray());
