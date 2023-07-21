@@ -29,7 +29,7 @@ Abbreviations: B is batch_size, S is sequence_length, W is hidden_size
 
  This kernel creates a DML_GRAPH, as mentioned above.
  For reference, refer to this Doc:
- https://github.com/microsoft/onnxruntime/blob/main/docs/ContribOperators.md#com.microsoft.Attention
+ https://github.com/microsoft/onnxruntime/blob/main/docs/ContribOperators.md#commicrosoftqattention
  */
 
 namespace Dml
