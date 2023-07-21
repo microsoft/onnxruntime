@@ -144,8 +144,10 @@ void AsyncCallback(void* user_data, OrtValue** outputs, size_t num_outputs, OrtS
   if (PyGILState_Check()) {
     fill_fetches();
   } else {
-    py::gil_scoped_acquire acquire;
+    //py::gil_scoped_acquire acquire;
+    auto state = PyGILState_Ensure();
     fill_fetches();
+    PyGILState_Release(state);
   }
   async_resource->callback(rfetch, "");
 }
@@ -1784,31 +1786,26 @@ including arg name, arg type (contains both type and shape).)pbdoc")
 
              // prepare fetches
              async_resource->ReserveFetches(output_names.size());
-             for (auto& output_name : output_names) {
-               async_resource->fetch_names.push_back(output_name);
-               async_resource->fetch_names_raw.push_back(async_resource->fetch_names.back().c_str());
-               async_resource->fetches_raw.push_back({});
-             }
+            for (auto& output_name : output_names) {
+              async_resource->fetch_names.push_back(output_name);
+              async_resource->fetch_names_raw.push_back(async_resource->fetch_names.back().c_str());
+              async_resource->fetches_raw.push_back({});
+            }
 
-             {
-               // release GIL to allow multiple python threads to allow run async in parallel.
-               py::gil_scoped_release release;
-               const RunOptions* run_async_option = run_options ? run_options : &async_resource->default_run_option;
-               common::Status status = sess->GetSessionHandle()->RunAsync(run_async_option,
-                                                                          gsl::span(async_resource->feed_names_raw.data(), async_resource->feed_names_raw.size()),
-                                                                          gsl::span(async_resource->feeds_raw.data(), async_resource->feeds_raw.size()),
-                                                                          gsl::span(async_resource->fetch_names_raw.data(), async_resource->fetch_names_raw.size()),
-                                                                          gsl::span(async_resource->fetches_raw.data(), async_resource->fetches_raw.size()),
-                                                                          AsyncCallback,
-                                                                          async_resource.get());
+            const RunOptions* run_async_option = run_options ? run_options : &async_resource->default_run_option;
+            common::Status status = sess->GetSessionHandle()->RunAsync(run_async_option,
+                                                                       gsl::span(async_resource->feed_names_raw.data(), async_resource->feed_names_raw.size()),
+                                                                       gsl::span(async_resource->feeds_raw.data(), async_resource->feeds_raw.size()),
+                                                                       gsl::span(async_resource->fetch_names_raw.data(), async_resource->fetch_names_raw.size()),
+                                                                       gsl::span(async_resource->fetches_raw.data(), async_resource->fetches_raw.size()),
+                                                                       AsyncCallback,
+                                                                       async_resource.get());
 
-               if (status.IsOK()) {
-                 // release it later in the callback
-                 async_resource.release();
-               }
-               OrtPybindThrowIfError(status);
-             }
-           })
+            if (status.IsOK()) {
+              async_resource.release();
+            }
+            OrtPybindThrowIfError(status);
+          })
       /// This method accepts a dictionary of feeds (name -> OrtValue) and the list of output_names
       /// and returns a list of python objects representing OrtValues. Each name may represent either
       /// a Tensor, SparseTensor or a TensorSequence.

@@ -235,11 +235,10 @@ class Session:
         :param input_feed: dictionary ``{ input_name: input_value }``
         :param callback: python function that accept array of results, and an status string on error
         :param run_options: See :class:`onnxruntime.RunOptions`.
-        :return: list of results, every result is either a numpy array,
-            a sparse tensor, a list or a dictionary.
 
         ::
-            def callback(results, err):
+
+            def callback(results: np.ndarray, err: str) -> None:
               if err:
                  print (err)
               else:
