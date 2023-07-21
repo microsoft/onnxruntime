@@ -166,6 +166,7 @@ class TestOpGemm(unittest.TestCase):
                     ["o", 0, activation_proto_qtype],
                 ]
             }
+            qtop
 
         if activation_type_str == "f8e4m3fn" and weight_type_str == "f8e4m3fn":
             with open(model_int8_path, "rb") as f:
@@ -345,7 +346,7 @@ class TestOpGemm(unittest.TestCase):
         self.construct_model_gemm(model_fp32_path, add_clip=False)
         data_reader = self.input_feeds(1, {"input": [5, 10]})
 
-        self.static_quant_test_qdq(
+        self.static_quant_test(
             model_fp32_path,
             data_reader,
             activation_type=QuantType.QFLOAT8E4M3FN,
@@ -353,7 +354,7 @@ class TestOpGemm(unittest.TestCase):
             extra_options={"scenario": "same"},
             calibrate_method=CalibrationMethod.Distribution,
         )
-        self.static_quant_test(
+        self.static_quant_test_qdq(
             model_fp32_path,
             data_reader,
             activation_type=QuantType.QFLOAT8E4M3FN,

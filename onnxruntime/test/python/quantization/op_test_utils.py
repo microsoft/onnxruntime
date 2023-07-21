@@ -7,7 +7,8 @@ import packaging.version as pv
 from onnx import TensorProto
 from onnx.helper import float32_to_float8e4m3, np_dtype_to_tensor_dtype
 from onnx.numpy_helper import float8e4m3_to_float32
-from onnx.reference import ReferenceEvaluator, ops as onnx_ops
+from onnx.reference import ReferenceEvaluator
+from onnx.reference import ops as onnx_ops
 from onnx.reference.custom_element_types import float8e4m3fn, float8e4m3fnuz, float8e5m2, float8e5m2fnuz
 from onnx.reference.op_run import OpRun
 
@@ -200,7 +201,9 @@ def check_sign_f8_quantization(model_path_origin, model_path_to_check):
             raise AssertionError(f"Unable to find {name!r} in {set(names)}.")
         scale_zp = [i.name for i in model_f8.graph.initializer if i.name.startswith(name)]
         if len(scale_zp) != 3:
-            raise AssertionError(f"Need two names not {scale_zp}.")
+            raise AssertionError(
+                f"Need three names not {scale_zp}, all names: " f"{set(i.name for i in model_f8.graph.initializer)}."
+            )
         scale = [name for name in scale_zp if "scale" in name]
         zero = [name for name in scale_zp if "zero" in name]
         if len(scale) != 1:
@@ -211,11 +214,11 @@ def check_sign_f8_quantization(model_path_origin, model_path_to_check):
         expected_sign = onnx.numpy_helper.to_array(names[name]) >= 0
 
         if init.data_type < 17:
-            raise AssertiontError(f"Initializer {init.name!r} not a float 8 type.")
+            raise AssertionError(f"Initializer {init.name!r} not a float 8 type.")
         raw = np.array([int(i) for i in init.raw_data])
         got_sign = raw <= 128
         try:
-            np.testing.assert_allclose(expected_sign, got_sign)
+            np.testing.assert_allclose(expected_sign.ravel(), got_sign)
         except AssertionError as e:
             scale_value = onnx.numpy_helper.to_array(names_f8[scale[0]])
             err_msg = f"Sign are different for {name!r}, scale={scale_value}."
@@ -226,7 +229,10 @@ def check_sign_f8_quantization(model_path_origin, model_path_to_check):
                 dq = onnx_ops.op_dequantize_linear.DequantizeLinear.eval(f8_values, scale_value, zero).flatten()
                 q = onnx_ops.op_quantize_linear.QuantizeLinear_19.eval(values, scale_value, zero).flatten()
                 qdq = onnx_ops.op_dequantize_linear.DequantizeLinear.eval(q, scale_value, zero).flatten()
-                err_msg = f"{err_msg}\nvalues={values[:20]}\ndq={dq[:20]}\nqdq={qdq[:20]}"
+                err_msg = (
+                    f"{err_msg}\nvalues={values[:20]}\nqu={f8_values.flatten()[:20]}"
+                    f"\n{q.flatten()[:20]}\ndq={dq[:20]}\nqdq={qdq[:20]}"
+                )
             raise AssertionError(err_msg) from e
 
 

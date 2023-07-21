@@ -10,8 +10,6 @@ import numpy as np
 import onnx
 import onnx.numpy_helper
 from onnx import onnx_pb as onnx_proto
-from onnx.helper import make_graph, make_model, make_node, make_tensor_value_info
-from onnx.reference import ReferenceEvaluator
 
 try:
     from onnx.reference.op_run import to_array_extended
@@ -764,8 +762,8 @@ class ONNXQuantizer:
             packed_bias_initializer.dims.extend(data.shape)
             packed_bias_initializer.name = quantized_bias_name
             # Do not remove .flatten(). numpy is not clear about data persistence.
-            packed_bias_initializer.raw_data = quantized_data.flatten().tobytes()
-            self.model.initializer().extend([packed_bias_initializer])
+            packed_bias_initializer.raw_data = quantized_data.flatten().copy().tobytes()
+            self.model.initializer_extend([packed_bias_initializer])
         else:
             # calculate scale for bias
             # TODO: This formula should be explained including why the scale is not estimated for the bias as well.
@@ -776,7 +774,7 @@ class ONNXQuantizer:
             # update bias initializer
             bias_np_data = np.asarray(quantized_data, dtype=np.int32).reshape(bias_initializer.dims)
             packed_bias_initializer = onnx.numpy_helper.from_array(bias_np_data, quantized_bias_name)
-            self.model.initializer().extend([packed_bias_initializer])
+            self.model.initializer_extend([packed_bias_initializer])
 
         # update scale initializer
         quantized_bias_scale_name = quantized_bias_name + "_scale"
@@ -787,7 +785,7 @@ class ONNXQuantizer:
             packed_bias_scale_initializer = onnx.helper.make_tensor(
                 quantized_bias_scale_name, onnx_proto.TensorProto.FLOAT, [], bias_scale_data
             )
-        self.model.initializer().extend([packed_bias_scale_initializer])
+        self.model.initializer_extend([packed_bias_scale_initializer])
 
         # update zero initializer
         if self.weight_qType == onnx_proto.TensorProto.FLOAT8E4M3FN:
@@ -803,7 +801,7 @@ class ONNXQuantizer:
             packed_bias_zp_initializer = onnx.numpy_helper.from_array(bias_zp_data, quantized_bias_zp_name)
         else:
             packed_bias_zp_initializer = onnx.helper.make_tensor(quantized_bias_zp_name, tensor_type, [], [0])
-        self.model.initializer().extend([packed_bias_zp_initializer])
+        self.model.initializer_extend([packed_bias_zp_initializer])
 
         assert bias_name not in self.quantized_value_map
         quantized_value = QuantizedValue(
@@ -998,15 +996,17 @@ class ONNXQuantizer:
 
         # Update packed weight, zero point, and scale initializers
         weight_data = tensor_proto_to_array(weight)
+        w_data = weight_data.flatten().tolist()
         _, _, zero_point, scale, q_weight_data = quantize_data(
-            weight_data.flatten().tolist(),
+            w_data,
             qType,
             self.is_weight_symmetric,
             self.reduce_range and reduce_range,
         )
+
         scale_initializer = onnx.helper.make_tensor(scale_name, onnx_proto.TensorProto.FLOAT, [], [scale])
         zero_initializer = onnx.helper.make_tensor(zp_name, qType, [], [zero_point])
-        self.model.initializer().extend([scale_initializer, zero_initializer])
+        self.model.initializer_extend([scale_initializer, zero_initializer])
 
         if not keep_float_weight:
             if self.weight_qType == onnx_proto.TensorProto.FLOAT8E4M3FN:
@@ -1014,8 +1014,8 @@ class ONNXQuantizer:
                 q_weight_initializer.data_type = self.weight_qType
                 q_weight_initializer.dims.extend(weight.dims)
                 q_weight_initializer.name = q_weight_name
-                # Do not remove .flatten(). numpy is not clear about data persistence.
-                q_weight_initializer.raw_data = q_weight_data.flatten().tobytes()
+                # Do not remove .flatten().copy() numpy is not clear about data persistence.
+                q_weight_initializer.raw_data = q_weight_data.flatten().copy().tobytes()
                 if to_array_extended is not None:
                     # This test should not be needed but it helped catch some issues
                     # with data persistence and tobytes.
@@ -1031,7 +1031,8 @@ class ONNXQuantizer:
                     weight.dims
                 )
                 q_weight_initializer = onnx.numpy_helper.from_array(q_weight_data, q_weight_name)
-            self.model.initializer().extend([q_weight_initializer])
+            self.model.initializer_extend([q_weight_initializer])
+            check = to_array_extended(q_weight_initializer)
 
         # Log entry for this quantized weight
         quantized_value = QuantizedValue(
@@ -1043,7 +1044,6 @@ class ONNXQuantizer:
             None,
         )
         self.quantized_value_map[weight.name] = quantized_value
-
         return q_weight_name, zp_name, scale_name
 
     def quantize_weight_per_channel(
@@ -1118,7 +1118,7 @@ class ONNXQuantizer:
         )
         zero_initializer = onnx.helper.make_tensor(zp_name, weight_qType, zero_scale_shape, zero_point_list)
 
-        self.model.initializer().extend([scale_initializer, zero_initializer])
+        self.model.initializer_extend([scale_initializer, zero_initializer])
 
         if not keep_float_weight:
             quantized_weights = np.asarray(
@@ -1126,7 +1126,7 @@ class ONNXQuantizer:
                 dtype=onnx.mapping.TENSOR_TYPE_TO_NP_TYPE[weight_qType],
             ).reshape(initializer.dims)
             q_weight_initializer = onnx.numpy_helper.from_array(quantized_weights, q_weight_name)
-            self.model.initializer().extend([q_weight_initializer])
+            self.model.initializer_extend([q_weight_initializer])
 
         return q_weight_name, zp_name, scale_name
 

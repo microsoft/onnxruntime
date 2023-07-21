@@ -95,6 +95,15 @@ class ONNXModel:
     def initializer(self):
         return self.model.graph.initializer
 
+    def initializer_extend(self, inits):
+        if len(inits) == 0:
+            raise ValueError("Can add an empty list.")
+        for init in self.initializer():
+            self._check(init, "gain")
+        for init in inits:
+            self._check(init)
+            self.model.graph.initializer.append(init)
+
     def graph(self):
         return self.model.graph
 
@@ -120,6 +129,7 @@ class ONNXModel:
 
     def add_initializer(self, tensor):
         if find_by_name(tensor.name, self.model.graph.initializer) is None:
+            self._check(tensor)
             self.model.graph.initializer.extend([tensor])
 
     def get_initializer(self, name):
@@ -132,6 +142,7 @@ class ONNXModel:
         return {initializer.name for initializer in self.model.graph.initializer}
 
     def remove_initializer(self, tensor):
+        print("-", "remove", tensor.name)
         if tensor in self.model.graph.initializer:
             self.model.graph.initializer.remove(tensor)
             for input in self.model.graph.input:
@@ -287,6 +298,7 @@ class ONNXModel:
                                 if input.name == inputB:
                                     Bs_graph.input.remove(input)
                                     break
+                            self._check(B_trans)
                             Bs_graph.initializer.extend([B_trans])
                         else:
                             inputB += "_Transposed"  # noqa: N806
@@ -343,6 +355,8 @@ class ONNXModel:
                 all_tensors_to_one_file=True,
                 location=Path(output_path).name + ".data",
             )
+        for init in self.model.graph.initializer:
+            self._check(init, "end")
         onnx.save_model(self.model, output_path)
 
     @staticmethod
@@ -456,3 +470,10 @@ class ONNXModel:
 
     def clean_initializers(self):
         return _clean_initializers_helper(self.graph(), self.model)
+
+    def _check(self, init, test=None):
+        if init.data_type == onnx.TensorProto.FLOAT8E4M3FN:
+            if init.HasField("raw_data"):
+                b = list(init.raw_data)
+                if any(map(lambda i: (i & 127) == 127, b)):
+                    raise ValueError(f"Initializer {init.name!r} has nan.")
