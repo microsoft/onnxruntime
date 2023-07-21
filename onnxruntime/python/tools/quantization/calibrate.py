@@ -370,7 +370,7 @@ class HistogramCalibrater(CalibraterBase):
         self.tensors_to_calibrate, value_infos = self.select_tensors_to_calibrate(self.model)
         for tensor in self.tensors_to_calibrate:
             if tensor not in self.model_original_outputs:
-                self.model.graph.output.append(value_infos[tensor])
+                self.model.graph.output.append(value_infos[tensor])  # noqa: PERF401
 
         onnx.save(
             self.model,

@@ -205,7 +205,7 @@ class DefaultTypeUsageProcessor(TypeUsageProcessor):
         domain = _ort_constant_for_domain(self.domain)
         for i in sorted(self._input_types.keys()):
             if self._input_types[i]:
-                entries.append(
+                entries.append(  # noqa: PERF401
                     "ORT_SPECIFY_OP_KERNEL_ARG_ALLOWED_TYPES({}, {}, Input, {}, {});".format(
                         domain, self.optype, i, ", ".join(sorted(self._input_types[i]))
                     )
@@ -213,7 +213,7 @@ class DefaultTypeUsageProcessor(TypeUsageProcessor):
 
         for o in sorted(self._output_types.keys()):
             if self._output_types[o]:
-                entries.append(
+                entries.append(  # noqa: PERF401
                     "ORT_SPECIFY_OP_KERNEL_ARG_ALLOWED_TYPES({}, {}, Output, {}, {});".format(
                         domain, self.optype, o, ", ".join(sorted(self._output_types[o]))
                     )
@@ -637,7 +637,7 @@ class GloballyAllowedTypesOpTypeImplFilter(OpTypeImplFilterInterface):
     Operator implementation filter which uses globally allowed types.
     """
 
-    _valid_allowed_types = set(FbsTypeInfo.tensordatatype_to_string.values())
+    _valid_allowed_types = set(FbsTypeInfo.tensordatatype_to_string.values())  # noqa: RUF012
 
     def __init__(self, globally_allowed_types: typing.Set[str]):
         self._operator_processors = _create_operator_type_usage_processors()
