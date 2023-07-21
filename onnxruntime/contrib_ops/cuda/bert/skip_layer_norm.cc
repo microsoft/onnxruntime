@@ -124,7 +124,6 @@ Status SkipLayerNorm<T, Simplified>::ComputeInternal(OpKernelContext* ctx) const
       skip_broadcasted,
       skip_size);
 
-
   CUDA_RETURN_IF_ERROR(cudaGetLastError());
   return Status::OK();
 }

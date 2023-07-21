@@ -22,8 +22,8 @@ Status LaunchSkipLayerNormKernel(
     int hidden_size,                // hidden size, it is the leading dimension (ld)
     int element_count,              // number of elements in input tensor
     size_t element_size,
-    const bool skip_broadcasted,    //determines if broadcasting should be implemented
-    const int skip_size);           //determines size of the skip tensor
+    const bool skip_broadcasted,  // determines if broadcasting should be implemented
+    const int skip_size);         // determines size of the skip tensor
 
 }  // namespace cuda
 }  // namespace contrib

@@ -39,5 +39,6 @@
     "cpplint.filters": [
         "-build/include_subdir",
         "-runtime/references"
-    ]
+    ],
+    "cmake.sourceDirectory": "/home/t-khspear/onnxruntime/build/Linux/RelWithDebInfo/_deps/abseil_cpp-src/CMake/install_test_project"
 }

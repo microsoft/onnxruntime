@@ -29,7 +29,8 @@ static void RunTest(
     bool use_token_count = false,
     bool strict = false,
     bool broadcast_skip = false,
-    bool no_batch_size = false) {
+    bool no_batch_size = false,
+    bool disable_dnnl = false) {
   // Input and output shapes
   //   Input 0 - input: (batch_size, sequence_length, hidden_size) or (batch_size * sequence_length, hidden_size)
   //   Input 1 - skip : (batch_size, sequence_length, hidden_size) or (batch_size * sequence_length, hidden_size) or (1, sequence_length, hidden_size) or (sequence_length, hidden_size)
@@ -38,8 +39,6 @@ static void RunTest(
   //   Output         : (batch_size, sequence_length, hidden_size) or (batch_size * sequence_length, hidden_size)
   std::vector<int64_t> input_dims = {batch_size, sequence_length, hidden_size};
   std::vector<int64_t> skip_dims = input_dims;
-
-
 
   if (use_token_count) {
     input_dims = {batch_size * sequence_length, hidden_size};
@@ -63,6 +62,7 @@ static void RunTest(
 
   auto rocm_ep = DefaultRocmExecutionProvider();
   auto dml_ep = DefaultDmlExecutionProvider();
+  auto dnnl_ep = DefaultDnnlExecutionProvider();
   if (!use_float16) {
     OpTester test(op_type.c_str(), 1, onnxruntime::kMSDomain);
     test.AddInput<float>("input", input_dims, input_data);
@@ -95,7 +95,8 @@ static void RunTest(
     test.Run();
   } else if (HasCudaEnvironment(530 /*min_cuda_architecture*/) ||
              dml_ep != nullptr ||
-             rocm_ep != nullptr) {
+             rocm_ep != nullptr ||
+             dnnl_ep != nullptr) {
     OpTester test(op_type.c_str(), 1, onnxruntime::kMSDomain);
     test.AddInput<MLFloat16>("input", input_dims, ToFloat16(input_data));
     test.AddInput<MLFloat16>("skip", skip_dims, ToFloat16(skip_data));
@@ -125,6 +126,9 @@ static void RunTest(
     }
 
     std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+    if (!disable_dnnl && (dnnl_ep != nullptr)) {
+      execution_providers.push_back(DefaultDnnlExecutionProvider());
+    }
     if (dml_ep != nullptr) {
       execution_providers.push_back(DefaultDmlExecutionProvider());
     } else if (rocm_ep != nullptr) {
@@ -778,6 +782,7 @@ TEST(SkipLayerNormTest, SkipLayerNormBatch2_Skip_Broadcast_No_Batch_Size) {
           false,
           false,
           false,
+          true,
           true);
 }
 
@@ -823,6 +828,8 @@ TEST(SkipLayerNormTest, SkipLayerNormBatch2_Skip_Broadcast_Batch_Size_1) {
           false,
           false,
           false,
+          false,
+          true,
           false,
           true);
 }
