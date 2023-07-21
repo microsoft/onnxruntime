@@ -11,11 +11,11 @@
 #include <TargetConditionals.h>
 #endif
 
-#include "core/framework/tensorprotoutils.h"
 #include "core/graph/graph_viewer.h"
 #include "core/providers/common.h"
 #include "core/providers/coreml/builders/op_builder_factory.h"
 #include "core/providers/coreml/model/host_utils.h"
+#include "core/providers/coreml/shape_utils.h"
 
 namespace onnxruntime {
 namespace coreml {
@@ -38,21 +38,21 @@ bool IsInputSupported(const NodeArg& input, const std::string& parent_name, cons
   }
 
   const auto& input_name = input.Name();
-  const auto* shape_proto = input.Shape();
+  std::vector<int64_t> shape;
   // We do not support input with no shape
-  if (!shape_proto) {
+  if (!GetShape(input, shape, logger)) {
     LOGS(logger, VERBOSE) << "Input [" << input_name << "] of [" << parent_name
                           << "] has no shape";
     return false;
   }
 
-  for (const auto& dim : shape_proto->dim()) {
+  for (const auto dim : shape) {
     // For some undocumented reason, Apple CoreML framework will fail loading the model if the model
     // input has dimension > 16384
     // See this issue, https://github.com/apple/coremltools/issues/1003
-    if (utils::HasDimValue(dim) && dim.dim_value() > 16384) {
+    if (dim > 16384) {
       LOGS(logger, WARNING) << "CoreML does not support input dim > 16384, input:" << input_name
-                            << ", actual dim: " << dim.dim_value();
+                            << ", actual dim: " << dim;
       return false;
     }
   }
