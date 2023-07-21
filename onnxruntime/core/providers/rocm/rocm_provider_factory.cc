@@ -80,8 +80,8 @@ struct ProviderInfo_ROCM_Impl : ProviderInfo_ROCM {
     return std::make_unique<ROCMAllocator>(device_id, name);
   }
 
-  std::unique_ptr<IAllocator> CreateROCMPinnedAllocator(int16_t device_id, const char* name) override {
-    return std::make_unique<ROCMPinnedAllocator>(device_id, name);
+  std::unique_ptr<IAllocator> CreateROCMPinnedAllocator(const char* name) override {
+    return std::make_unique<ROCMPinnedAllocator>(name);
   }
 
   std::unique_ptr<IDataTransfer> CreateGPUDataTransfer() override {
@@ -175,8 +175,31 @@ struct ROCM_Provider : Provider {
     info.default_memory_arena_cfg = params->default_memory_arena_cfg;
     info.tunable_op.enable = params->tunable_op_enable;
     info.tunable_op.tuning_enable = params->tunable_op_tuning_enable;
+    info.tunable_op.max_tuning_duration_ms = params->tunable_op_max_tuning_duration_ms;
 
     return std::make_shared<ROCMProviderFactory>(info);
+  }
+
+  void UpdateProviderOptions(void* provider_options, const ProviderOptions& options) override {
+    auto info = onnxruntime::ROCMExecutionProviderInfo::FromProviderOptions(options);
+    auto& rocm_options = *reinterpret_cast<OrtROCMProviderOptions*>(provider_options);
+
+    rocm_options.device_id = info.device_id;
+    rocm_options.gpu_mem_limit = info.gpu_mem_limit;
+    rocm_options.arena_extend_strategy = static_cast<int>(info.arena_extend_strategy);
+    rocm_options.miopen_conv_exhaustive_search = info.miopen_conv_exhaustive_search;
+    rocm_options.do_copy_in_default_stream = info.do_copy_in_default_stream;
+    rocm_options.has_user_compute_stream = info.has_user_compute_stream;
+    rocm_options.user_compute_stream = info.user_compute_stream;
+    rocm_options.default_memory_arena_cfg = info.default_memory_arena_cfg;
+    rocm_options.tunable_op_enable = info.tunable_op.enable;
+    rocm_options.tunable_op_tuning_enable = info.tunable_op.tuning_enable;
+    rocm_options.tunable_op_max_tuning_duration_ms = info.tunable_op.max_tuning_duration_ms;
+  }
+
+  ProviderOptions GetProviderOptions(const void* provider_options) override {
+    auto& options = *reinterpret_cast<const OrtROCMProviderOptions*>(provider_options);
+    return onnxruntime::ROCMExecutionProviderInfo::ToProviderOptions(options);
   }
 
   void Initialize() override {

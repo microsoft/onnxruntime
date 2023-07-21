@@ -28,6 +28,10 @@ Status ReorderPastState(
     Tensor& past_state_staging,
     Stream* stream);
 
+Status InitCacheIndir(
+    Tensor& cache_indir,
+    Stream* stream);
+
 Status TopK(const Tensor* input, const int axis, const unsigned k, bool largest, bool sorted,
             AllocatorPtr allocator,
             Stream* stream,
@@ -35,11 +39,13 @@ Status TopK(const Tensor* input, const int axis, const unsigned k, bool largest,
             Tensor& output_values,
             Tensor& output_indices);
 
-Status AddToFeeds(const IExecutionProvider* execution_provider,
-                  Stream* ort_stream,
+Status AddToFeeds(Stream* ort_stream,
                   std::initializer_list<OrtValue> inputs,
                   std::vector<OrtValue>& feeds,
-                  IAllocatorUniquePtr<char>& buffer);
+                  IAllocatorUniquePtr<char>& buffer,
+                  AllocatorPtr device_allocator,
+                  AllocatorPtr host_allocator,
+                  const OrtMemoryInfo& location);
 
 template <typename T>
 void InitBeamState(transformers::IBeamSearchState<T>* beam_state,
@@ -47,6 +53,8 @@ void InitBeamState(transformers::IBeamSearchState<T>* beam_state,
                    int batch_size,
                    int num_beams,
                    Stream* ort_stream);
+
+std::unique_ptr<transformers::IBeamScorer> CreateBeamScorer(const transformers::IGenerationParameters& parameters, AllocatorPtr& allocator, AllocatorPtr& allocator_cpu, Stream* ort_stream);
 
 template <typename T>
 void InitGreedyState(transformers::IGreedySearchState<T>* greedy_state,
@@ -56,7 +64,6 @@ void InitGreedyState(transformers::IGreedySearchState<T>* greedy_state,
 template <typename T>
 Status ProcessLogits(const OrtValue& logits,                                 // logits output of subgraph
                      transformers::IBeamSearchState<T>* beam_state,          // state
-                     transformers::IBeamSearchCpuState* cpu_state,           // state in CPU
                      transformers::ISequences* sequences,                    // sequences
                      AllocatorPtr& allocator,                                // default allocator
                      onnxruntime::concurrency::ThreadPool* thread_pool,      // thread pool (for CPU only)

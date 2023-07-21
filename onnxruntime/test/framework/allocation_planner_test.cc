@@ -386,8 +386,6 @@ class PlannerTest : public ::testing::Test {
     onnxruntime::ProviderInfo_CUDA& ep = onnxruntime::GetProviderInfo_CUDA();
     auto epFactory = ep.CreateExecutionProviderFactory(epi);
     std::unique_ptr<IExecutionProvider> execution_provider = epFactory->CreateProvider();
-    AllocatorManager am;
-    execution_provider->RegisterAllocator(am);
     ORT_THROW_IF_ERROR(GetExecutionProviders().Add("CUDAExecutionProvider", std::move(execution_provider)));
 
     if (partitionConfigFile != nullptr) SetNodePartitionConfigFilePath(partitionConfigFile);
@@ -862,8 +860,8 @@ TEST_F(PlannerTest, LocationPlanningForPassThroughExplicitAndImplicitSubgraphInp
     OrtValueIndex abs_data_1_out_index;
     ASSERT_STATUS_OK(main_graph_ort_value_index_map.GetIdx("abs_data_1_out", abs_data_1_out_index));
 
-    EXPECT_EQ(main_graph_plan->allocation_plan[abs_data_0_out_index].location.device.Type(), OrtDevice::GPU);
-    EXPECT_EQ(main_graph_plan->allocation_plan[abs_data_1_out_index].location.device.Type(), OrtDevice::GPU);
+    EXPECT_EQ(main_graph_plan->allocation_plan[abs_data_0_out_index].location.Type(), OrtDevice::GPU);
+    EXPECT_EQ(main_graph_plan->allocation_plan[abs_data_1_out_index].location.Type(), OrtDevice::GPU);
   }
 
   // First subgraph (Loop) (L1 graph)
@@ -894,8 +892,8 @@ TEST_F(PlannerTest, LocationPlanningForPassThroughExplicitAndImplicitSubgraphInp
     // There are no explicit consumers of "abs_data_0_out" and "loop_state_var (abs_data_1_out)" in this scope.
     // There is only one implicit consumer "If". Hence, check that we are preserving the locations of these values
     // from the outer scope, thus deferring any copies till the actual nested subgraph these values are used in.
-    EXPECT_EQ(first_subgraph_plan->allocation_plan[abs_data_0_out_index].location.device.Type(), OrtDevice::GPU);
-    EXPECT_EQ(first_subgraph_plan->allocation_plan[abs_data_1_out_index].location.device.Type(), OrtDevice::GPU);
+    EXPECT_EQ(first_subgraph_plan->allocation_plan[abs_data_0_out_index].location.Type(), OrtDevice::GPU);
+    EXPECT_EQ(first_subgraph_plan->allocation_plan[abs_data_1_out_index].location.Type(), OrtDevice::GPU);
   }
 }
 
@@ -996,7 +994,7 @@ TEST_F(PlannerTest, LocationPlanningForInitializersOnlyUsedInANestedSubgraph) {
   OrtValueIndex init_data_index;
   ASSERT_STATUS_OK(main_graph_ort_value_index_map.GetIdx("init_data", init_data_index));
 
-  EXPECT_EQ(main_graph_plan->allocation_plan[init_data_index].location.device.Type(), OrtDevice::GPU);
+  EXPECT_EQ(main_graph_plan->allocation_plan[init_data_index].location.Type(), OrtDevice::GPU);
 }
 
 TEST_F(PlannerTest, LocationPlanningForInitializersUsedOnDifferentDevicesInMainGraphAndSubgraph) {
@@ -1103,7 +1101,7 @@ TEST_F(PlannerTest, LocationPlanningForInitializersUsedOnDifferentDevicesInMainG
   OrtValueIndex init_data_index;
   ASSERT_STATUS_OK(main_graph_ort_value_index_map.GetIdx("init_data", init_data_index));
 
-  EXPECT_EQ(main_graph_plan->allocation_plan[init_data_index].location.device.Type(), OrtDevice::CPU);
+  EXPECT_EQ(main_graph_plan->allocation_plan[init_data_index].location.Type(), OrtDevice::CPU);
 
   // TODO: test para exe plan on subgraph supported
   // const auto* para_graph_plan = const_cast<SessionState&>(main_graph_session_state).GetParallelExecutionPlan();
@@ -1195,7 +1193,7 @@ TEST_F(PlannerTest, LocationPlanningForImplicitInputsWithoutExplicitConsumersInM
   OrtValueIndex input_data_index;
   ASSERT_STATUS_OK(main_graph_ort_value_index_map.GetIdx("image_data_in", input_data_index));
 
-  EXPECT_EQ(main_graph_plan->allocation_plan[input_data_index].location.device.Type(), OrtDevice::GPU);
+  EXPECT_EQ(main_graph_plan->allocation_plan[input_data_index].location.Type(), OrtDevice::GPU);
 
   // TODO: test para exe plan on subgraph supported
   // const auto* para_graph_plan = const_cast<SessionState&>(main_graph_session_state).GetParallelExecutionPlan();
@@ -1223,8 +1221,6 @@ TEST_F(PlannerTest, MultiStream) {
   onnxruntime::ProviderInfo_CUDA& ep = onnxruntime::GetProviderInfo_CUDA();
   auto epFactory = ep.CreateExecutionProviderFactory(epi);
   std::unique_ptr<IExecutionProvider> execution_provider = epFactory->CreateProvider();
-  AllocatorManager am;
-  execution_provider->RegisterAllocator(am);
   ORT_THROW_IF_ERROR(GetExecutionProviders().Add("CUDAExecutionProvider", std::move(execution_provider)));
 
   CreatePlan({}, false);
@@ -1264,8 +1260,6 @@ TEST_F(PlannerTest, MultiStream1StreamWaitFor2Streams) {
   onnxruntime::ProviderInfo_CUDA& ep = onnxruntime::GetProviderInfo_CUDA();
   auto epFactory = ep.CreateExecutionProviderFactory(epi);
   std::unique_ptr<IExecutionProvider> execution_provider = epFactory->CreateProvider();
-  AllocatorManager am;
-  execution_provider->RegisterAllocator(am);
   ORT_THROW_IF_ERROR(GetExecutionProviders().Add("CUDAExecutionProvider", std::move(execution_provider)));
 
   SetNodePartitionConfigFilePath("./testdata/multi_stream_models/3_gpu_streams.json");
@@ -1328,8 +1322,6 @@ TEST_F(PlannerTest, MultiStreamMultiOutput) {
   onnxruntime::ProviderInfo_CUDA& ep = onnxruntime::GetProviderInfo_CUDA();
   auto epFactory = ep.CreateExecutionProviderFactory(epi);
   std::unique_ptr<IExecutionProvider> execution_provider = epFactory->CreateProvider();
-  AllocatorManager am;
-  execution_provider->RegisterAllocator(am);
   ORT_THROW_IF_ERROR(GetExecutionProviders().Add("CUDAExecutionProvider", std::move(execution_provider)));
 
   CreatePlan({}, false);
@@ -1368,8 +1360,6 @@ TEST_F(PlannerTest, MultiStream2NodesSameStreamConsumedBy1NodeInDifferentStream)
   onnxruntime::ProviderInfo_CUDA& ep = onnxruntime::GetProviderInfo_CUDA();
   auto epFactory = ep.CreateExecutionProviderFactory(epi);
   std::unique_ptr<IExecutionProvider> execution_provider = epFactory->CreateProvider();
-  AllocatorManager am;
-  execution_provider->RegisterAllocator(am);
   ORT_THROW_IF_ERROR(GetExecutionProviders().Add("CUDAExecutionProvider", std::move(execution_provider)));
 
   CreatePlan({}, false);
@@ -1393,7 +1383,6 @@ TEST_F(PlannerTest, MultiStream2NodesSameStreamConsumedBy1NodeInDifferentStream)
 #endif
 
 #if !defined(__wasm__) && defined(ORT_ENABLE_STREAM)
-
 TEST_F(PlannerTest, ParaPlanCreation) {
   TypeProto graph_in_type;
   graph_in_type.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
@@ -1946,8 +1935,32 @@ TEST_F(PlannerTest, TestMultiStreamMismatchDevice) {
   status = sess.Initialize();
   ASSERT_TRUE(!status.IsOK());
 }
-
 #endif
 
+#if defined(USE_CUDA) && defined(ORT_ENABLE_STREAM)
+TEST_F(PlannerTest, TestCpuIf) {
+  SessionOptions sess_opt;
+  sess_opt.graph_optimization_level = TransformerLevel::Default;
+
+  InferenceSession sess(sess_opt, GetEnvironment(), ORT_TSTR("./testdata/multi_stream_models/cpu_if.onnx"));
+  auto status = sess.RegisterExecutionProvider(DefaultCudaExecutionProvider());
+  ASSERT_TRUE(status.IsOK());
+  status = sess.Load();
+  ASSERT_TRUE(status.IsOK());
+  status = sess.Initialize();
+  ASSERT_TRUE(status.IsOK());
+
+  auto& sess_state = const_cast<onnxruntime::SessionState&>(sess.GetSessionState());
+  const auto& exe_plan = sess_state.GetExecutionPlan()->execution_plan;
+  if (exe_plan.size() == 2 &&
+      exe_plan[1]->device_.Type() == OrtDevice::CPU &&
+      exe_plan[1]->steps_.size() == 9 &&
+      exe_plan[1]->steps_[7]->GetNodeIndex() == 7) {
+    // there must be a wait before cpu If node
+    static const std::string WaitOnEPStep = "WaitOnEPStep";
+    ASSERT_TRUE(exe_plan[1]->steps_[6]->ToString().substr(0, WaitOnEPStep.size()) == WaitOnEPStep);
+  }
+}
+#endif
 }  // namespace test
 }  // namespace onnxruntime

@@ -79,7 +79,7 @@ static inline T bit_reverse(T num, unsigned significant_bits) {
 template <typename T>
 static T compute_angular_velocity(size_t number_of_samples, bool inverse) {
   // Calculate fundamental angular velocity
-  static constexpr T pi = static_cast<T>(3.14159265);
+  static constexpr T pi = static_cast<T>(M_PI);
   static constexpr T tau = 2 * pi;
   T inverse_switch = inverse ? 1.f : -1.f;
   T angular_velocity = inverse_switch * tau / number_of_samples;
@@ -185,11 +185,10 @@ template <typename T>
 T next_power_of_2(T in) {
   in--;
   T out = 1;
-  while (out < in) {
-    in |= in >> out;
+  while (out <= in) {
     out <<= 1;
   }
-  return in + 1;
+  return out;
 }
 
 template <typename T, typename U>
@@ -197,7 +196,7 @@ static Status dft_bluestein_z_chirp(
     OpKernelContext* ctx, const Tensor* X, Tensor* Y, Tensor& b_fft, Tensor& chirp, size_t X_offset, size_t X_stride, size_t Y_offset, size_t Y_stride,
     int64_t axis, size_t dft_length, const Tensor* window, bool inverse, InlinedVector<std::complex<T>>& V,
     InlinedVector<std::complex<T>>& temp_output) {
-  static constexpr T pi = static_cast<T>(3.14159265);
+  static constexpr T pi = static_cast<T>(M_PI);
 
   AllocatorPtr alloc;
   ORT_RETURN_IF_ERROR(ctx->GetTempSpaceAllocator(&alloc));

@@ -32,7 +32,7 @@ Status Einsum::DeviceCompute(OpKernelContext* context, const std::vector<const T
   ORT_RETURN_IF(!stream, "stream is null");
   auto* rocm_stream = static_cast<RocmStream*>(stream);
   rocblas_handle rocblas_handle = rocm_stream ? rocm_stream->rocblas_handle_ : nullptr;
-  EinsumOp::EinsumRocmAssets einsum_rocm_assets(rocblas_handle, rocm_ep_, stream);
+  EinsumOp::EinsumRocmAssets einsum_rocm_assets(rocblas_handle, rocm_ep_, stream, Info().GetAllocator(OrtMemType::OrtMemTypeDefault));
 
   // EinsumComputePreprocessor section -
   auto einsum_compute_preprocessor = EinsumComputePreprocessor::Create(*einsum_equation_preprocessor_, inputs, allocator,

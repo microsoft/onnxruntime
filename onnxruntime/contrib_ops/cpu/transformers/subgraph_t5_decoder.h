@@ -66,7 +66,7 @@ class T5DecoderSubgraph : public Subgraph {
     return use_sequence_as_input_ids_;
   }
 
- private:
+ protected:
   int first_past_input_index_;
   int first_present_output_index_;
   bool has_hidden_state_;

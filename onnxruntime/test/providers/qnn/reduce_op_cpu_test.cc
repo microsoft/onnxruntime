@@ -66,12 +66,11 @@ static GetTestModelFn BuildReduceOpTestCase(const std::string& reduce_op_type,
  *
  * \param op_type The ReduceOp type (e.g., ReduceSum).
  * \param opset The opset version. Some opset versions have "axes" as an attribute or input.
- * \param test_description Description of the test for error reporting.
  * \param expected_ep_assignment How many nodes are expected to be assigned to QNN (All, Some, or None)
  * \param keepdims Common attribute for all reduce operations.
  */
 template <typename DataType>
-static void RunReduceOpCpuTest(const std::string& op_type, int opset, const char* test_description,
+static void RunReduceOpCpuTest(const std::string& op_type, int opset,
                                ExpectedEPNodeAssignment expected_ep_assignment = ExpectedEPNodeAssignment::All,
                                bool keepdims = true) {
   ProviderOptions provider_options;
@@ -81,7 +80,6 @@ static void RunReduceOpCpuTest(const std::string& op_type, int opset, const char
   provider_options["backend_path"] = "libQnnCpu.so";
 #endif
 
-  constexpr int expected_nodes_in_partition = 1;
   RunQnnModelTest(BuildReduceOpTestCase<DataType>(op_type,
                                                   {2, 2},  // input shape
                                                   ReduceOpHasAxesInput(op_type, opset),
@@ -90,9 +88,7 @@ static void RunReduceOpCpuTest(const std::string& op_type, int opset, const char
                                                   false),  // noop_with_empty_axes
                   provider_options,
                   opset,
-                  expected_ep_assignment,
-                  expected_nodes_in_partition,
-                  test_description);
+                  expected_ep_assignment);
 }
 
 //
@@ -105,7 +101,7 @@ static void RunReduceOpCpuTest(const std::string& op_type, int opset, const char
 // - The input and output data type is int32.
 // - Uses opset 13, which has "axes" as an input.
 TEST_F(QnnCPUBackendTests, TestInt32ReduceSumOpset13) {
-  RunReduceOpCpuTest<int32_t>("ReduceSum", 13, "TestInt32ReduceSumOpset13");
+  RunReduceOpCpuTest<int32_t>("ReduceSum", 13);
 }
 
 // Test creates a graph with a ReduceSum node, and checks that all
@@ -114,7 +110,7 @@ TEST_F(QnnCPUBackendTests, TestInt32ReduceSumOpset13) {
 // - The input and output data type is int32.
 // - Uses opset 11, which has "axes" as an attribute.
 TEST_F(QnnCPUBackendTests, TestInt32ReduceSumOpset11) {
-  RunReduceOpCpuTest<int32_t>("ReduceSum", 11, "TestInt32ReduceSumOpset11");
+  RunReduceOpCpuTest<int32_t>("ReduceSum", 11);
 }
 
 // Test creates a graph with a ReduceSum node, and checks that all
@@ -123,7 +119,7 @@ TEST_F(QnnCPUBackendTests, TestInt32ReduceSumOpset11) {
 // - The input and output data type is float.
 // - Uses opset 13, which has "axes" as an input.
 TEST_F(QnnCPUBackendTests, TestFloatReduceSumOpset13) {
-  RunReduceOpCpuTest<float>("ReduceSum", 13, "TestFloatReduceSumOpset13");
+  RunReduceOpCpuTest<float>("ReduceSum", 13);
 }
 
 // Test creates a graph with a ReduceSum node, and checks that all
@@ -132,7 +128,7 @@ TEST_F(QnnCPUBackendTests, TestFloatReduceSumOpset13) {
 // - The input and output data type is float.
 // - Uses opset 11, which has "axes" as an attribute.
 TEST_F(QnnCPUBackendTests, TestFloatReduceSumOpset11) {
-  RunReduceOpCpuTest<float>("ReduceSum", 11, "TestFloatReduceSumOpset11");
+  RunReduceOpCpuTest<float>("ReduceSum", 11);
 }
 
 //
@@ -145,7 +141,7 @@ TEST_F(QnnCPUBackendTests, TestFloatReduceSumOpset11) {
 // - The input and output data type is float.
 // - Uses opset 18, which has "axes" as an input.
 TEST_F(QnnCPUBackendTests, TestReduceProdOpset18) {
-  RunReduceOpCpuTest<float>("ReduceProd", 18, "TestReduceProdOpset18");
+  RunReduceOpCpuTest<float>("ReduceProd", 18);
 }
 
 // Test creates a graph with a ReduceProd node, and checks that all
@@ -154,7 +150,7 @@ TEST_F(QnnCPUBackendTests, TestReduceProdOpset18) {
 // - The input and output data type is float.
 // - Uses opset 13, which has "axes" as an attribute.
 TEST_F(QnnCPUBackendTests, TestReduceProdOpset13) {
-  RunReduceOpCpuTest<float>("ReduceProd", 13, "TestReduceProdOpset13");
+  RunReduceOpCpuTest<float>("ReduceProd", 13);
 }
 
 //
@@ -167,7 +163,7 @@ TEST_F(QnnCPUBackendTests, TestReduceProdOpset13) {
 // - The input and output data type is float.
 // - Uses opset 18, which has "axes" as an input.
 TEST_F(QnnCPUBackendTests, TestReduceMaxOpset18) {
-  RunReduceOpCpuTest<float>("ReduceMax", 18, "TestReduceMaxOpset18");
+  RunReduceOpCpuTest<float>("ReduceMax", 18);
 }
 
 // Test creates a graph with a ReduceMax node, and checks that all
@@ -176,7 +172,7 @@ TEST_F(QnnCPUBackendTests, TestReduceMaxOpset18) {
 // - The input and output data type is float.
 // - Uses opset 13, which has "axes" as an attribute.
 TEST_F(QnnCPUBackendTests, TestReduceMaxOpset13) {
-  RunReduceOpCpuTest<float>("ReduceMax", 13, "TestReduceMaxOpset13");
+  RunReduceOpCpuTest<float>("ReduceMax", 13);
 }
 
 //
@@ -189,7 +185,7 @@ TEST_F(QnnCPUBackendTests, TestReduceMaxOpset13) {
 // - The input and output data type is float.
 // - Uses opset 18, which has "axes" as an input.
 TEST_F(QnnCPUBackendTests, TestReduceMinOpset18) {
-  RunReduceOpCpuTest<float>("ReduceMin", 18, "TestReduceMinOpset18");
+  RunReduceOpCpuTest<float>("ReduceMin", 18);
 }
 
 // Test creates a graph with a ReduceMin node, and checks that all
@@ -198,7 +194,7 @@ TEST_F(QnnCPUBackendTests, TestReduceMinOpset18) {
 // - The input and output data type is float.
 // - Uses opset 13, which has "axes" as an attribute.
 TEST_F(QnnCPUBackendTests, TestReduceMinOpset13) {
-  RunReduceOpCpuTest<float>("ReduceMin", 13, "TestReduceMinOpset18");
+  RunReduceOpCpuTest<float>("ReduceMin", 13);
 }
 
 //
@@ -211,7 +207,7 @@ TEST_F(QnnCPUBackendTests, TestReduceMinOpset13) {
 // - The input and output data type is float.
 // - Uses opset 18, which has "axes" as an input.
 TEST_F(QnnCPUBackendTests, TestReduceMeanOpset18) {
-  RunReduceOpCpuTest<float>("ReduceMean", 18, "TestReduceMeanOpset18");
+  RunReduceOpCpuTest<float>("ReduceMean", 18);
 }
 
 // Test creates a graph with a ReduceMean node, and checks that all
@@ -220,7 +216,7 @@ TEST_F(QnnCPUBackendTests, TestReduceMeanOpset18) {
 // - The input and output data type is float.
 // - Uses opset 13, which has "axes" as an attribute.
 TEST_F(QnnCPUBackendTests, TestReduceMeanOpset13) {
-  RunReduceOpCpuTest<float>("ReduceMean", 13, "TestReduceMeanOpset13");
+  RunReduceOpCpuTest<float>("ReduceMean", 13);
 }
 
 }  // namespace test

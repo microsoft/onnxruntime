@@ -57,6 +57,11 @@ class TestTuningContext : public ITuningContext {
   void DisableTuning() override { tuning_enabled_ = false; }
   bool IsTuningEnabled() const override { return tuning_enabled_; }
 
+  void SetMaxTuningDurationMs(int max_duration_ms) override { max_tuning_duration_ms_ = max_duration_ms; }
+  int GetMaxTuningDurationMs() const override {
+    return max_tuning_duration_ms_ > 0 ? max_tuning_duration_ms_ : std::numeric_limits<int>::max();
+  }
+
   TuningResultsManager& GetTuningResultsManager() override { return manager_; }
   const TuningResultsManager& GetTuningResultsManager() const override { return manager_; }
 
@@ -67,6 +72,7 @@ class TestTuningContext : public ITuningContext {
  private:
   bool op_enabled_{false};
   bool tuning_enabled_{false};
+  int max_tuning_duration_ms_{};
   TuningResultsManager manager_{};
   TestTuningResultsValidator validator_{};
 };
@@ -402,6 +408,13 @@ TEST(TunableOp, SelectFastIfTuning) {
   status = op(&params);
   ASSERT_TRUE(status.IsOK());
   ASSERT_EQ(last_run, "FastFull");
+
+  // Also set max_tuning_duration_ms, fast should be selected
+  params.TuningContext()->SetMaxTuningDurationMs(10);
+  status = op(&params);
+  ASSERT_TRUE(status.IsOK());
+  ASSERT_EQ(last_run, "FastFull");
+
 #endif
 }
 

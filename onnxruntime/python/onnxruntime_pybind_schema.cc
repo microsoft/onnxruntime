@@ -1,6 +1,5 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
-// This file is excluded from the build if onnxruntime_PYBIND_EXPORT_OPSCHEMA not defined
 
 #include "python/onnxruntime_pybind_state_common.h"
 #include "core/framework/kernel_registry.h"
@@ -30,21 +29,19 @@ void addGlobalSchemaFunctions(pybind11::module& m) {
             }(),
 #endif
 #ifdef USE_ROCM
-            onnxruntime::RocmProviderFactoryCreator::Create(
-                [&]() {
-                  ROCMExecutionProviderInfo info{};
-                  info.device_id = cuda_device_id;
-                  info.gpu_mem_limit = gpu_mem_limit;
-                  info.arena_extend_strategy = arena_extend_strategy;
-                  info.external_allocator_info = external_allocator_info;
-                  return info;
-                }()),
+            []() {
+              OrtROCMProviderOptions provider_options;
+              return onnxruntime::RocmProviderFactoryCreator::Create(&provider_options);
+            }(),
 #endif
 #ifdef USE_DNNL
             onnxruntime::DnnlProviderFactoryCreator::Create(1),
 #endif
 #ifdef USE_OPENVINO
-            onnxruntime::OpenVINOProviderFactoryCreator::Create(OrtOpenVINOProviderOptions()),
+            []() {
+              OrtOpenVINOProviderOptions provider_options;
+              return onnxruntime::OpenVINOProviderFactoryCreator::Create(&provider_options);
+            }(),
 #endif
 #ifdef USE_TENSORRT
             onnxruntime::TensorrtProviderFactoryCreator::Create(0),
@@ -53,7 +50,7 @@ void addGlobalSchemaFunctions(pybind11::module& m) {
             onnxruntime::MIGraphXProviderFactoryCreator::Create(0),
 #endif
 #ifdef USE_VITISAI
-            onnxruntime::VitisAIProviderFactoryCreator::Create("DPUCADX8G", 0, "", ""),
+            onnxruntime::VitisAIProviderFactoryCreator::Create(ProviderOptions{}),
 #endif
 #ifdef USE_ACL
             onnxruntime::ACLProviderFactoryCreator::Create(0),
@@ -65,7 +62,7 @@ void addGlobalSchemaFunctions(pybind11::module& m) {
             onnxruntime::DMLProviderFactoryCreator::Create(0, /*skip_software_device_check*/ true),
 #endif
 #ifdef USE_NNAPI
-            onnxruntime::NnapiProviderFactoryCreator::Create(0),
+            onnxruntime::NnapiProviderFactoryCreator::Create(0, std::optional<std::string>()),
 #endif
 #ifdef USE_RKNPU
             onnxruntime::RknpuProviderFactoryCreator::Create(),

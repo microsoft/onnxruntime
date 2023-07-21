@@ -3,12 +3,16 @@
 
 #include "core/graph/contrib_ops/shape_inference_functions.h"
 #include <onnx/defs/shape_inference.h>
+#include <iostream>
 
 namespace onnxruntime {
 namespace contrib {
 void EmbedLayerNormalizationShapeInference(::ONNX_NAMESPACE::InferenceContext& ctx) {
   propagateElemTypeFromInputToOutput(ctx, 2, 0);
-  propagateElemTypeFromInputToOutput(ctx, 0, 1);
+  auto mask_index_type = getAttribute(ctx, "mask_index_type", 1);
+  if (mask_index_type > 0) {
+    propagateElemTypeFromInputToOutput(ctx, 0, 1);
+  }
   if (!hasInputShape(ctx, 0)) {
     // TODO(kreeger): In this case update the output to (?, ?, hidden_size).
     return;
@@ -97,11 +101,13 @@ void EmbedLayerNormalizationShapeInference(::ONNX_NAMESPACE::InferenceContext& c
   updateOutputShape(ctx, 0, output_shape);
 
   // mask_index shape is (batch_size)
-  ONNX_NAMESPACE::TensorShapeProto mask_index_shape;
-  *mask_index_shape.add_dim() = input_ids_dims[0];
-  updateOutputShape(ctx, 1, mask_index_shape);
+  if (mask_index_type > 0) {
+    ONNX_NAMESPACE::TensorShapeProto mask_index_shape;
+    *mask_index_shape.add_dim() = input_ids_dims[0];
+    updateOutputShape(ctx, 1, mask_index_shape);
+  }
 
-  if (ctx.getNumOutputs() > 2) {
+  if (ctx.getNumOutputs() == 3 || (ctx.getNumOutputs() == 2 && mask_index_type == 0)) {
     updateOutputShape(ctx, 2, output_shape);
     propagateElemTypeFromInputToOutput(ctx, 0, 2);
   }

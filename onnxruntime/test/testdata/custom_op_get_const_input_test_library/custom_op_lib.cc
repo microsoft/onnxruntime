@@ -25,17 +25,21 @@ OrtStatus* ORT_API_CALL RegisterCustomOps(OrtSessionOptions* options, const OrtA
 
   OrtStatus* result = nullptr;
 
+#ifndef ORT_NO_EXCEPTIONS
   try {
+#endif
     Ort::CustomOpDomain domain{c_OpDomain};
     domain.Add(&c_CustomOp);
 
     session_options.Add(domain);
     AddOrtCustomOpDomainToContainer(std::move(domain));
 
+#ifndef ORT_NO_EXCEPTIONS
   } catch (const std::exception& e) {
     Ort::Status status{e};
     result = status.release();
   }
+#endif
 
   return result;
 }

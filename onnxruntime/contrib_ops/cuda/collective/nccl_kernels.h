@@ -67,6 +67,8 @@ class AllGather final : public NcclKernel {
 
  private:
   int64_t group_size_ = -1;
+  int64_t axis_ = -1;
+  const CUDAExecutionProvider* cuda_ep_;
 };
 
 class AllToAll final : public NcclKernel {

@@ -33,14 +33,13 @@ class WhisperEncoder(torch.nn.Module):
         self.encoder = encoder
         self.config = config
 
-    def forward(self, input_features, attention_mask):
+    def forward(self, input_features):
         return self.encoder.model.encoder(input_features)[0]
 
 
 class WhisperEncoderInputs:
-    def __init__(self, input_features, attention_mask):
+    def __init__(self, input_features):
         self.input_ids: torch.LongTensor = input_features
-        # HF Whisper model doesn't support Attention Mask functionality
 
     @staticmethod
     def create_dummy(
@@ -57,14 +56,12 @@ class WhisperEncoderInputs:
         Returns:
             WhisperEncoderInputs: dummy inputs for encoder
         """
-        dtype = torch.float32
 
         input_features = torch.randn(
             size=(batch_size, feature_size, sequence_length),
             device=device,
         )
-        attention_mask = torch.ones([batch_size, feature_size, sequence_length], dtype=dtype, device=device)
-        return WhisperEncoderInputs(input_features, attention_mask)
+        return WhisperEncoderInputs(input_features)
 
     def to_list(self) -> List:
         if self.input_features is None:
@@ -134,7 +131,6 @@ class WhisperEncoderHelper:
         """Run inference of ONNX model."""
         ort_inputs = {
             "input_ids": numpy.ascontiguousarray(inputs.input_ids.cpu().numpy()),
-            "attention_mask": numpy.ascontiguousarray(inputs.attention_mask.cpu().numpy()),
         }
 
         return ort_session.run(None, ort_inputs)

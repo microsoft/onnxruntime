@@ -25,6 +25,7 @@ namespace {
 // TODO: consolidate with frontend tooling
 const std::string ACCUMULATE_GRAD_CONTROL_INPUT_NAME{"lazy_reset_grad"};
 
+#if !defined(ORT_MINIMAL_BUILD)
 std::unordered_set<const Node*> GetReverseReachableNodes(Graph& inference_graph,
                                                          InlinedVector<const NodeArg*>& output_node_args) {
   // Perform a graph traversal from the graph outputs to collect all reachable nodes from the outputs
@@ -116,7 +117,7 @@ Status TransformModelInputsForInference(Graph& inference_graph,
 
   return Status::OK();
 }
-
+#endif
 }  // namespace
 
 Status Parameter::SetGrad(const std::string& gradient_name, const OrtValue& param_grad) {
@@ -154,11 +155,12 @@ Module::Module(const std::string& train_model_path_or_bytes,
                const onnxruntime::SessionOptions& session_options,
                const Environment& env,
                const std::vector<std::shared_ptr<IExecutionProvider>>& providers,
-               const std::optional<std::string>& eval_model_path_or_bytes)
+               const std::optional<std::string>& eval_model_path_or_bytes,
+               [[maybe_unused]] gsl::span<OrtCustomOpDomain* const> op_domains)
     : state_{state} {
   // Enforce weight prepacking is disabled
-  // If user explicitly enabled weight prepacking then return error.
-  // Default value is enabled. Therefore, explicitly disable it if the value is not set by user.
+  // If the user explicitly enabled weight prepacking then return an error.
+  // Default value is enabled. Therefore, explicitly disable it if the value is not set by the user.
   std::string disable_prepacking = "";
   if (session_options.config_options.TryGetConfigEntry(kOrtSessionOptionsConfigDisablePrepacking, disable_prepacking)) {
     ORT_ENFORCE(disable_prepacking == "1", "Prepacking is not supported for training scenarios.");
@@ -168,6 +170,12 @@ Module::Module(const std::string& train_model_path_or_bytes,
   }
 
   train_sess_ = std::make_unique<onnxruntime::InferenceSession>(session_options, env);
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
+  if (!op_domains.empty()) {
+    ORT_THROW_IF_ERROR(train_sess_->AddCustomOpDomains(op_domains));
+  }
+#endif
+
   ORT_THROW_IF_ERROR(train_sess_->Load(train_model_path_or_bytes));
   for (const auto& provider : providers) {
     ORT_THROW_IF_ERROR(train_sess_->RegisterExecutionProvider(provider));
@@ -178,12 +186,12 @@ Module::Module(const std::string& train_model_path_or_bytes,
   state_->module_checkpoint_state.train_session_data_transfer_mgr = &train_sess_->GetDataTransferManager();
 
   // Extract model input and output names
-  std::vector<std::string> train_input_names, train_output_names;
+  InlinedVector<std::string> train_input_names, train_output_names;
   utils::GetGraphInputOutputNames(train_sess_, train_input_names, train_output_names);
 
   // Reorder the extracted input names in the following order:
   // user inputs, weights, gradients, reset_grad
-  std::vector<std::string> user_input_names, param_input_names, grad_input_names, reset_grad_name;
+  InlinedVector<std::string> user_input_names, param_input_names, grad_input_names, reset_grad_name;
 
   std::unordered_map<std::string, size_t> param_name_to_grad_input_index_map;
   for (const auto& input_name : train_input_names) {
@@ -214,13 +222,13 @@ Module::Module(const std::string& train_model_path_or_bytes,
     }
   }
 
-  // Loop each parameter, allocate it's memory based on user specified device.
+  // Loop each parameter, and allocate its memory based on the user-specified device.
   auto& train_sess_state = train_sess_->GetSessionState();
   for (auto& param_name : param_input_names) {
     auto params_iter = state_->module_checkpoint_state.named_parameters.find(param_name);
     ORT_ENFORCE(params_iter != state_->module_checkpoint_state.named_parameters.end());
 
-    // Retrieve the target device for "param_name"
+    // Retrieve the target device for "param_name".
     InlinedVector<SessionState::NodeInfo> node_info_vec;
     ORT_THROW_IF_ERROR(train_sess_state.GetInputNodeInfo(param_name, node_info_vec));
     const auto& node_info = node_info_vec.front();
@@ -229,14 +237,13 @@ Module::Module(const std::string& train_model_path_or_bytes,
       ORT_ENFORCE(target_device == *(it->device), "Inconsistent device requirements found for input: ", param_name);
     }
 
-    // TODO(pengwa): consider whether we should alloc contiguous buffer for parameters or gradients.
     // Copy ortvalue buffer from CPU to target_device for this "param_name" (based on graph partitioning)
-    // Only copies data if target device is not the same as the current device the buffer is placed on
+    // Only copies data if the target device is not the same as the current device the buffer is placed on
 
     OrtValue& param_data = params_iter->second->Data();
     ORT_ENFORCE(param_data.IsTensor());
     const Tensor& param_data_tensor = param_data.Get<Tensor>();
-    // If the source device type is already same as target device skip copy
+    // If the source device type is already the same as target device skip copy
     if (param_data_tensor.Location().device.Type() != target_device.Type()) {
       // TODO: move this outside of the for loop?
       auto target_allocator = train_sess_state.GetAllocator(target_device);
@@ -257,7 +264,7 @@ Module::Module(const std::string& train_model_path_or_bytes,
     if (params_iter->second->RequiresGrad()) {
       // Create gradient accumulation buffer.
       auto it = param_name_to_grad_input_index_map.find(param_name);
-      ORT_ENFORCE(it != param_name_to_grad_input_index_map.end(), "Gradient buffer input not providered for param: ",
+      ORT_ENFORCE(it != param_name_to_grad_input_index_map.end(), "Gradient buffer input not provided for param: ",
                   param_name);
 
       const size_t grad_input_index = it->second;
@@ -265,7 +272,7 @@ Module::Module(const std::string& train_model_path_or_bytes,
       // TODO: don't pre-allocate the gradient buffer.
       // Gradient usually stays on the same device of its parameter.
       OrtValue param_grad;
-      ORT_THROW_IF_ERROR(utils::OrtValueLike(train_sess_state, param_data, param_grad));
+      ORT_THROW_IF_ERROR(utils::CreateZeroValuedOrtValueLike(train_sess_state, param_data, param_grad));
       ORT_THROW_IF_ERROR(params_iter->second->SetGrad(param_grad_name, param_grad));
       gradients_[grad_input_index] = params_iter->second->Gradient();
     }
@@ -273,6 +280,12 @@ Module::Module(const std::string& train_model_path_or_bytes,
 
   if (eval_model_path_or_bytes.has_value()) {
     eval_sess_ = std::make_unique<onnxruntime::InferenceSession>(session_options, env);
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
+    if (!op_domains.empty()) {
+      ORT_THROW_IF_ERROR(eval_sess_->AddCustomOpDomains(op_domains));
+    }
+#endif
+
     ORT_THROW_IF_ERROR(eval_sess_->Load(eval_model_path_or_bytes.value()));
     for (const auto& provider : providers) {
       ORT_THROW_IF_ERROR(eval_sess_->RegisterExecutionProvider(provider));
@@ -284,7 +297,7 @@ Module::Module(const std::string& train_model_path_or_bytes,
     // We are making certain assumptions: Like the order in which parameters occur will be same between train and eval
     // graphs, and all the weights present in both graphs match.
     // TODO: Add the checks instead of making assumptions??
-    std::vector<std::string> eval_user_input_names, eval_param_input_names;
+    InlinedVector<std::string> eval_user_input_names, eval_param_input_names;
     for (const auto& input_name : eval_input_names_) {
       if (state_->module_checkpoint_state.named_parameters.find(input_name) !=
           state_->module_checkpoint_state.named_parameters.end()) {
@@ -292,9 +305,9 @@ Module::Module(const std::string& train_model_path_or_bytes,
         eval_param_input_names.emplace_back(input_name);
         continue;
       } else {
-        // It is a user input. We handle user inputs separately in eval
-        // because eval graph might have different user inputs.
-        // Eg if loss is not a part of eval graph, it won't have
+        // It is user input. We handle user inputs separately in the eval
+        // because the eval graph might have different user inputs.
+        // Eg if loss is not a part of the eval graph, it won't have
         // certain inputs like targets
         eval_user_input_names.emplace_back(input_name);
       }
@@ -451,8 +464,7 @@ Status Module::TrainStep(const std::vector<OrtValue>& inputs, std::vector<OrtVal
   utils::WrapInOrtValue<bool>(!accumulate_gradient_, &reset_grad_input);
   feeds.push_back(reset_grad_input);
 
-  auto status = train_sess_->Run(RunOptions(), train_input_names_, feeds, train_output_names_, &outputs);
-  ORT_THROW_IF_ERROR(status);
+  ORT_THROW_IF_ERROR(train_sess_->Run(RunOptions(), train_input_names_, feeds, train_output_names_, &outputs));
 
   // Reset the flag after every step. In case the ResetGrad was called before running
   // the current step, it will have done the effective resetting during the
@@ -471,6 +483,10 @@ Status Module::EvalStep(const std::vector<OrtValue>& inputs, std::vector<OrtValu
   return Status::OK();
 }
 
+#if !defined(ORT_MINIMAL_BUILD)
+// TODO (baijumeswani): ExportModelForInferencing should work irrespective of whether
+//                      the build is minimal or not. This will require to read the ort_format eval model,
+//                      trainsform it to an inference model and save it in ort_format.
 Status Module::ExportModelForInferencing(const std::string& inference_model_path,
                                          gsl::span<const std::string> graph_output_names) const {
   ORT_RETURN_IF(!eval_sess_ || eval_model_path_.empty(),
@@ -492,11 +508,11 @@ Status Module::ExportModelForInferencing(const std::string& inference_model_path
   ORT_RETURN_IF_ERROR(TransformModelInputsForInference(inference_model->MainGraph(), state_->module_checkpoint_state.named_parameters,
                                                        eval_sess_->GetDataTransferManager()));
 
-  // Save the model at desired location.
+  // Save the model at the desired location.
   ORT_THROW_IF_ERROR(Model::Save(*inference_model, inference_model_path));
-
   return Status::OK();
 }
+#endif
 
 size_t Module::GetTrainingModelInputCount() const noexcept {
   return train_user_input_count_;
@@ -518,6 +534,14 @@ std::string Module::GetEvalModelInputName(size_t index) const {
               "Eval input name index out of range. Expected in range [0-", eval_user_input_count_, "). Actual: ",
               index);
   return eval_input_names_.at(index);
+}
+
+std::pair<common::Status, const InputDefList*> Module::GetTrainingModelInputs() const noexcept {
+  return train_sess_->GetModelInputs();
+}
+
+std::pair<common::Status, const InputDefList*> Module::GetEvalModelInputs() const noexcept {
+  return eval_sess_->GetModelInputs();
 }
 
 }  // namespace api

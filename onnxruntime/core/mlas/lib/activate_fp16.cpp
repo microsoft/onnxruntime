@@ -689,35 +689,35 @@ MlasActivationKernel(
         size_t n = CountN;
 
         while (n >= 8) {
-            MLAS_FLOAT16X8 Vector = MlasLoadFloat16x8(buffer);
             MLAS_FLOAT16X8 AVec = MlasLoadFloat16x8(addsrc);
+            MLAS_FLOAT16X8 Vector = MlasLoadFloat16x8(buffer);
             addsrc += 8;
-            Vector = ActivationFunction.Activate(Vector);
             Vector = MlasAddFloat16x8(Vector, AVec);
+            Vector = ActivationFunction.Activate(Vector);
             MlasStoreFloat16x8(buffer, Vector);
             buffer += 8;
             n -= 8;
         }
 
         if (n >= 4) {
-            MLAS_FLOAT16X4 Vector = MlasLoadFloat16x4(buffer);
             MLAS_FLOAT16X4 AVec = MlasLoadFloat16x4(addsrc);
+            MLAS_FLOAT16X4 Vector = MlasLoadFloat16x4(buffer);
             addsrc += 4;
-            Vector = ActivationFunction.Activate(Vector);
             Vector = MlasAddFloat16x4(Vector, AVec);
+            Vector = ActivationFunction.Activate(Vector);
             MlasStoreFloat16x4(buffer, Vector);
             buffer += 4;
             n -= 4;
         }
 
         if (n > 0) {
-            MLAS_FLOAT16X4 buf;
-            std::memcpy(&buf, buffer, n * sizeof(_mlas_fp16_));
             MLAS_FLOAT16X4 addbuf;
+            MLAS_FLOAT16X4 buf;
             std::memcpy(&addbuf, addsrc, n * sizeof(_mlas_fp16_));
-            MLAS_FLOAT16X4 res = ActivationFunction.Activate(buf);
-            res = MlasAddFloat16x4(res, addbuf);
-            MlasStorePartialFloat16x4(buffer, res, n);
+            std::memcpy(&buf, buffer, n * sizeof(_mlas_fp16_));
+            buf = MlasAddFloat16x4(buf, addbuf);
+            buf = ActivationFunction.Activate(buf);
+            MlasStorePartialFloat16x4(buffer, buf, n);
         }
 
         CRow += ldc;
@@ -858,8 +858,6 @@ MLAS_HALF_GEMM_ACTIVATION_PROCESSOR::Process(
     ) const
 {
     std::vector<float> buffer(CountM*CountN);
-    MLAS_HALF_GEMM_2FLOAT_PROCESSOR proc(this->Activation_, buffer.data(), CountN);
-    proc.Process(C, StartM, StartN, CountM, CountN, ldc);
 
     _mlas_fp16_* Output = reinterpret_cast<_mlas_fp16_*>(C);
     auto* CRow = buffer.data();
@@ -876,6 +874,8 @@ MLAS_HALF_GEMM_ACTIVATION_PROCESSOR::Process(
             }
             CAdd += ldc;
         }
+        MlasActivation(&this->Activation_, CRow, nullptr, 1, CountN, CountN);
+
         CvtFloat2Half(Output, CRow, CountN);
         CRow += CountN;
         Output += ldc;

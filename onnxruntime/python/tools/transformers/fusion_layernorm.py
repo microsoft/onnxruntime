@@ -80,7 +80,7 @@ class FusionLayerNormalization(Fusion):
         second_add_node = parent_nodes[1]
         i, add_weight = self.model.get_constant_input(second_add_node)
         if add_weight is None or add_weight <= 0 or add_weight > 1.0e-4:
-            logger.warning(f"epsilon value is not expeced: {add_weight}")
+            logger.debug(f"skip SkipLayerNormalization fusion since epsilon value is not expected: {add_weight}")
             return
 
         pow_node = parent_nodes[3]

@@ -59,7 +59,7 @@ void ComputePixelOffsetsAndScales(
     // Fill in all the input/output pixel offset for each axis,
     // and recompute the scale for certain modes.
 
-    for (uint32_t i = 0; i < rank; ++i)
+    for (uint64_t i = 0; i < rank; ++i)
     {
         float inputPixelOffset = 0;
         float outputPixelOffset = 0;
