@@ -575,14 +575,6 @@ common::Status InferenceSession::RegisterExecutionProvider(const std::shared_ptr
           << "It is enabled within session options which may result in lower performance.";
     }
 
-    // Default to disabling generation of QDQ for the DML EP
-    if (session_options_.config_options.GetConfigEntry(kOrtSessionOptionsDisableQuantQDQ) == std::nullopt) {
-        auto st = session_options_.config_options.AddConfigEntry(kOrtSessionOptionsDisableQuantQDQ, "1");
-        if (!st.IsOK()) {
-            return st;
-        }
-    }
-
     // Parallel execution mode does not support DML EP
     if (session_options_.execution_mode != ExecutionMode::ORT_SEQUENTIAL) {
       LOGS(*session_logger_, INFO)
