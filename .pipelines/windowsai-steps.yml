@@ -165,7 +165,7 @@ jobs:
     - ${{ if eq(parameters.BuildArch, 'arm') }}:
       - script: |
          call $(vsdevcmd)
-         msbuild $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj /p:Configuration=RelWithDebInfo /t:CreateWindowsAIPackage /p:OnnxRuntimeBuildDirectory=$(Build.BinariesDirectory) /p:OnnxRuntimeSourceDirectory=$(Build.SourcesDirectory) /p:TargetArchitecture=arm /p:ProtocDirectory=$(Build.BinariesDirectory)\host_protoc\Release
+         msbuild $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj /p:Configuration=RelWithDebInfo /t:CreateWindowsAIPackage /p:OnnxRuntimeBuildDirectory=$(Build.BinariesDirectory) /p:OnnxRuntimeSourceDirectory=$(Build.SourcesDirectory) /p:TargetArchitecture=arm /p:ProtocDirectory=$(Build.BinariesDirectory)\host_protoc\Release -d2SSAOptimizer-
          copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\*.nupkg $(Build.ArtifactStagingDirectory)
          copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\*.snupkg $(Build.ArtifactStagingDirectory)
         workingDirectory: '$(Build.SourcesDirectory)\csharp'
