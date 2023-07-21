@@ -14,7 +14,7 @@ const args = minimist(process.argv);
 // --bundle-mode=dev
 // --bundle-mode=perf
 // --bundle-mode=node
-const MODE = args['bundle-mode'] || 'dev';
+const MODE = args['bundle-mode'] || 'prod';
 if (['prod', 'dev', 'perf', 'node'].indexOf(MODE) === -1) {
   throw new Error(`unknown build mode: ${MODE}`);
 }

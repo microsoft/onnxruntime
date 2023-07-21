@@ -13,6 +13,9 @@ declare namespace JSEP {
 }
 
 export interface OrtWasmModule extends EmscriptenModule {
+  HEAP64: BigInt64Array;
+  HEAPU64: BigUint64Array;
+
   // #region emscripten functions
   stackSave(): number;
   stackRestore(stack: number): void;
