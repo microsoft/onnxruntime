@@ -143,15 +143,21 @@ Status ModelBuilder::RegisterModelInputOutput(const NodeArg& node_arg, bool is_i
   if (IsStaticShape(shape)) {
     *multi_array->mutable_shape() = {shape.cbegin(), shape.cend()};
   } else {
-    auto& shape_range = *multi_array->mutable_shaperange();
+    auto& multi_array_shape_range = *multi_array->mutable_shaperange();
+    auto& multi_array_shape = *multi_array->mutable_shape();
+
     for (const auto dim : shape) {
-      auto& size_range = *shape_range.mutable_sizeranges()->Add();
+      auto& multi_array_dim_size_range = *multi_array_shape_range.mutable_sizeranges()->Add();
       if (dim == -1) {
-        size_range.set_lowerbound(0);
-        size_range.set_upperbound(-1);  // unbounded
+        multi_array_dim_size_range.set_lowerbound(0);
+        multi_array_dim_size_range.set_upperbound(-1);  // unbounded
+
+        multi_array_shape.Add(1);  // pick 1 as an arbitrary default dynamic dimension value
       } else {
-        size_range.set_lowerbound(dim);
-        size_range.set_upperbound(dim);
+        multi_array_dim_size_range.set_lowerbound(dim);
+        multi_array_dim_size_range.set_upperbound(dim);
+
+        multi_array_shape.Add(dim);
       }
     }
   }
