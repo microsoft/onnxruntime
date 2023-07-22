@@ -30,7 +30,7 @@ from transformers.modeling_outputs import SequenceClassifierOutput
 
 import onnxruntime.training.ortmodule as ortmodule_module
 from onnxruntime.training.optim import AdamWMode, FusedAdam
-from onnxruntime.training.ortmodule import DebugOptions, LogLevel, ORTModule, _fallback, _io, _utils
+from onnxruntime.training.ortmodule import DebugOptions, LogLevel, ORTModule, _fallback, _io, _logger, _utils
 from onnxruntime.training.ortmodule._custom_gradient_registry import register_gradient
 from onnxruntime.training.ortmodule.options import _SkipCheck
 
@@ -4208,20 +4208,28 @@ def test_hf_save_pretrained():
             assert p1.data.ne(p2.data).sum() == 0
 
 
-def test_ortmodule_string_inputs_are_ignored(caplog):
+def test_ortmodule_string_inputs_are_ignored():
     pt_model = MyStrNet()
     ort_model = ORTModule(copy.deepcopy(pt_model), DebugOptions(log_level=LogLevel.INFO))
     x = torch.randn(1, 2)
 
-    out = ort_model(x, "hello")
+    def _check_on_exit(fo):
+        assert fo.tell() > 0, "No log records found"
+        # Filter out the error message
+        fo.seek(0)
+        suppress_output_messages = fo.readlines()
+        target_str = "Received input of type <class 'str'> which may be treated as a constant by ORT by default."
+        found_target_str = False
+        for msg in suppress_output_messages:
+            if target_str in msg:
+                found_target_str = True
+                break
 
-    target_str = "Received input of type <class 'str'> which may be treated as a constant by ORT by default."
-    found_target_str = False
-    for record in caplog.records:
-        if target_str in record.message:
-            found_target_str = True
+        assert found_target_str
 
-    assert found_target_str
+    with _logger.suppress_os_stream_output(on_exit=_check_on_exit):
+        out = ort_model(x, "hello")
+
     _test_helpers.assert_values_are_close(out, x + 1)
 
 
@@ -4799,7 +4807,7 @@ def test_ortmodule_setattr_signals_model_changed():
     del os.environ["ORTMODULE_SKIPCHECK_POLICY"]
 
 
-def test_ortmodule_attribute_name_collision_warning(caplog):
+def test_ortmodule_attribute_name_collision_warning():
     class UserNet(torch.nn.Module):
         def __init__(self):
             super().__init__()
@@ -4815,13 +4823,22 @@ def test_ortmodule_attribute_name_collision_warning(caplog):
     device = "cuda"
     pt_model = UserNet().to(device)
 
-    ORTModule(pt_model)
-    warning_record = [record.message for record in caplog.records if record.levelname == "WARNING"]
+    def _check_on_exit(fo):
+        assert fo.tell() > 0, "No log records found"
+        # Filter out the error message
+        fo.seek(0)
+        suppress_output_messages = fo.readlines()
+        warning_record = []
+        for msg in suppress_output_messages:
+            if "[WARNING]" in msg:
+                warning_record.append(msg)
 
-    assert len(warning_record) == 2
+        assert len(warning_record) == 2
+        assert "_torch_module collides with ORTModule's attribute name." in warning_record[-2]
+        assert "load_state_dict collides with ORTModule's attribute name." in warning_record[-1]
 
-    assert "_torch_module collides with ORTModule's attribute name." in warning_record[-2]
-    assert "load_state_dict collides with ORTModule's attribute name." in warning_record[-1]
+    with _logger.suppress_os_stream_output(on_exit=_check_on_exit):
+        ORTModule(pt_model)
 
 
 def test_ortmodule_ortmodule_method_attribute_copy():
@@ -5675,7 +5692,7 @@ def test_gradient_correctness_bce_with_logits():
 @pytest.mark.parametrize("embed_is_sparse", [False, True])
 @pytest.mark.parametrize("label_is_sparse", [False, True])
 @pytest.mark.parametrize("rank", [1, 2])
-def test_runtime_inspector_label_and_embed_sparsity_detection(embed_is_sparse, label_is_sparse, rank, caplog):
+def test_runtime_inspector_label_and_embed_sparsity_detection(embed_is_sparse, label_is_sparse, rank):
     os.environ["ORTMODULE_ENABLE_EMBEDDING_SPARSE_OPTIMIZER"] = "1"
 
     class NeuralNetCrossEntropyLoss(torch.nn.Module):
@@ -5701,47 +5718,53 @@ def test_runtime_inspector_label_and_embed_sparsity_detection(embed_is_sparse, l
     pt_model = NeuralNetCrossEntropyLoss(num_embeddings, embedding_dim).to(device)
     from onnxruntime.training.ortmodule import DebugOptions, LogLevel
 
-    ort_model = ORTModule(pt_model, DebugOptions(log_level=LogLevel.INFO))
+    def _check_on_exit(fo):
+        assert fo.tell() > 0, "No log records found"
+        # Filter out the error message
+        fo.seek(0)
+        suppress_output_messages = fo.readlines()
+        found_embed_is_sparse = False
+        found_label_is_sparse = False
+        for record in suppress_output_messages:
+            if "Label sparsity-based optimization is ON for" in record:
+                found_label_is_sparse = True
 
-    def run_step(model, input, positions):
-        with amp.autocast(True):
-            loss = model(input, positions)
-        loss.backward()
-        return loss
+            if "Embedding sparsity-based optimization is ON for" in record:
+                found_embed_is_sparse = True
 
-    # batch_size = 3
-    # sequence = 4
+        if label_is_sparse:
+            assert found_label_is_sparse
 
-    if embed_is_sparse:
-        input = torch.tensor([[0, 2, 3, 4], [2, 3, 1, 1], [1, 1, 1, 1]], device=device)
-    else:
-        input = torch.tensor([[0, 2, 3, 4], [2, 3, 5, 6], [8, 7, 7, 7]], device=device)
+        if embed_is_sparse:
+            assert found_embed_is_sparse
 
-    if label_is_sparse:
-        label = torch.tensor([[1, 2, -100, 2], [-100, -100, 2, 1], [-100, 1, 2, -100]], device=device)
-    else:
-        label = torch.tensor([[1, 2, 0, 2], [0, 0, 2, 1], [0, 1, 2, 0]], device=device)
+    with _logger.suppress_os_stream_output(on_exit=_check_on_exit):
+        ort_model = ORTModule(pt_model, DebugOptions(log_level=LogLevel.INFO))
 
-    if rank == 1:
-        input = input.view(-1)
-        label = label.view(-1)
+        def run_step(model, input, positions):
+            with amp.autocast(True):
+                loss = model(input, positions)
+            loss.backward()
+            return loss
 
-    _ = run_step(ort_model, input, label)
+        # batch_size = 3
+        # sequence = 4
 
-    found_embed_is_sparse = False
-    found_label_is_sparse = False
-    for record in caplog.records:
-        if "Label sparsity-based optimization is ON for" in record.getMessage():
-            found_label_is_sparse = True
+        if embed_is_sparse:
+            input = torch.tensor([[0, 2, 3, 4], [2, 3, 1, 1], [1, 1, 1, 1]], device=device)
+        else:
+            input = torch.tensor([[0, 2, 3, 4], [2, 3, 5, 6], [8, 7, 7, 7]], device=device)
 
-        if "Embedding sparsity-based optimization is ON for" in record.getMessage():
-            found_embed_is_sparse = True
+        if label_is_sparse:
+            label = torch.tensor([[1, 2, -100, 2], [-100, -100, 2, 1], [-100, 1, 2, -100]], device=device)
+        else:
+            label = torch.tensor([[1, 2, 0, 2], [0, 0, 2, 1], [0, 1, 2, 0]], device=device)
 
-    if label_is_sparse:
-        assert found_label_is_sparse
+        if rank == 1:
+            input = input.view(-1)
+            label = label.view(-1)
 
-    if embed_is_sparse:
-        assert found_embed_is_sparse
+        _ = run_step(ort_model, input, label)
 
 
 @pytest.mark.parametrize(
@@ -6064,7 +6087,7 @@ def test_e2e_padding_elimination():
 
 
 @pytest.mark.parametrize("log_level", [LogLevel.VERBOSE, LogLevel.INFO, LogLevel.WARNING])
-def test_ortmodule_log_level_control(log_level, caplog):
+def test_ortmodule_log_level_control(log_level):
     class NeuralNetCrossEntropyLoss(torch.nn.Module):
         def __init__(self, num_embeddings, embedding_dim):
             super().__init__()
@@ -6079,30 +6102,34 @@ def test_ortmodule_log_level_control(log_level, caplog):
     device = "cuda"
     num_embeddings, embedding_dim = 32, 128
     pt_model = NeuralNetCrossEntropyLoss(num_embeddings, embedding_dim).to(device)
-    ort_model = ORTModule(pt_model, DebugOptions(log_level=log_level))
-    use_fp16 = True
 
-    def run_step(model, input, positions):
-        with amp.autocast(use_fp16):
-            loss = model(input, positions)
-        loss.backward()
-        return loss
+    def _check_on_exit(fo):
+        assert fo.tell() > 0, "No log records found"
+        # Filter out the error message
+        fo.seek(0)
+        suppress_output_messages = fo.readlines()
+        found_missing_inference_log = False
+        for msg in suppress_output_messages:
+            if "The shape inference of com.microsoft::SoftmaxCrossEntropyLossInternal type is missing" in msg:
+                found_missing_inference_log = True
+                break
 
-    N = random.randint(16, 32)  # noqa: N806
-    input = torch.randint(high=num_embeddings, size=(N,), dtype=torch.int64, device=device)
-    positions = torch.randint(high=N, size=(embedding_dim,), dtype=torch.int64, device=device)
-    _ = run_step(ort_model, input, positions)
+        if log_level == LogLevel.VERBOSE:
+            assert found_missing_inference_log
+        else:
+            assert not found_missing_inference_log
 
-    found_missing_inference_log = False
-    for record in caplog.records:
-        if (
-            "The shape inference of com.microsoft::SoftmaxCrossEntropyLossInternal type is missing"
-            in record.getMessage()
-        ):
-            found_missing_inference_log = True
-            break
+    with _logger.suppress_os_stream_output(on_exit=_check_on_exit):
+        ort_model = ORTModule(pt_model, DebugOptions(log_level=log_level))
+        use_fp16 = True
 
-    if log_level == LogLevel.VERBOSE:
-        assert found_missing_inference_log
-    else:
-        assert not found_missing_inference_log
+        def run_step(model, input, positions):
+            with amp.autocast(use_fp16):
+                loss = model(input, positions)
+            loss.backward()
+            return loss
+
+        N = random.randint(16, 32)  # noqa: N806
+        input = torch.randint(high=num_embeddings, size=(N,), dtype=torch.int64, device=device)
+        positions = torch.randint(high=N, size=(embedding_dim,), dtype=torch.int64, device=device)
+        _ = run_step(ort_model, input, positions)

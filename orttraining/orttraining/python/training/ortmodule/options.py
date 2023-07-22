@@ -136,12 +136,20 @@ class DebugOptions:
         """Accessor for the filter export logs configuration."""
         if self.log_level >= LogLevel.INFO:
             return [
-                "The shape inference of com.microsoft::SoftmaxCrossEntropyLossInternal type is missing, ",
-                "The shape inference of org.pytorch.aten::ATen type is missing, ",
-                "The shape inference of prim::Constant type is missing, ",
-                "The shape inference of com.microsoft::PythonOp type is missing, ",
-                "Warning: Checker does not support models with experimental ops: ATen",
+                # WARNING: The shape inference of com.microsoft::SoftmaxCrossEntropyLossInternal type is missing, so it may result in wrong shape inference for the exported graph. Please consider adding it in symbolic function.
+                # WARNING: The shape inference of com.microsoft::PythonOp type is missing, so it may result in wrong shape inference for the exported graph. Please consider adding it in symbolic function.
+                # WARNING: The shape inference of org.pytorch.aten::ATen type is missing, so it may result in wrong shape inference for the exported graph. Please consider adding it in symbolic function.
+                # WARNING: The shape inference of prim::Constant type is missing, so it may result in wrong shape inference for the exported graph. Please consider adding it in symbolic function.
+                "type is missing, so it may result in wrong shape inference",
+                # Warning: Checker does not support models with experimental ops: ATen
+                "Checker does not support models with experimental ops:",
                 "Dropout is a training op and should not be exported in inference mode.",
+                # Warning: Shape inference does not support models with experimental operators: ATen
+                "Shape inference does not support models with experimental operators:",
+                # Warning: Unsupported operator Trilu. No schema registered for this operator.
+                # Warning: Unsupported operator ATen. No schema registered for this operator.
+                # Warning: Unsupported operator SoftmaxCrossEntropyLossInternal. No schema registered for this operator.
+                "No schema registered for this operator.",
             ]
 
         return None

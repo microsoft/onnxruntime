@@ -26,7 +26,7 @@ class LogLevel(IntEnum):
 
 
 @contextmanager
-def suppress_os_stream_output(on_exit: Callable = None):
+def suppress_os_stream_output(on_exit: Optional[Callable] = None):
     """Suppress output from being printed to stdout and stderr.
 
     If on_exit is not None, it will be called when the context manager exits.
@@ -35,7 +35,7 @@ def suppress_os_stream_output(on_exit: Callable = None):
     # stdout and stderr is written to a tempfile instead
     _, fo_file_path = tempfile.mkstemp()
 
-    # store original stdout and stderr file no.
+    # Store original stdout and stderr file no.
     old_stdout = os.dup(sys.stdout.fileno())
     old_stderr = os.dup(sys.stderr.fileno())
 
