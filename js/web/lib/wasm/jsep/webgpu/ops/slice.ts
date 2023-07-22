@@ -76,6 +76,32 @@ const fixStartEndValues =
           }
         };
 
+const calculateInputIndicesImpl = (inputShape: readonly number[], outputShape: readonly number[]): string => {
+  const outputIndicesHelper = createIndicesHelper('output', outputShape);
+  const inputIndicesHelper = createIndicesHelper('input', inputShape);
+
+  return `fn calculateInputIndices(outputIndices: ${outputIndicesHelper.iType}) -> ${inputIndicesHelper.iType} {
+          ${inputIndicesHelper.indicesVariableDeclaration('inputIndices', Array(inputShape.length).fill('0u'))};
+          var carry = 0u;
+          for (var i = ${inputShape.length}; i >= 0; i--) {
+            var inputIndex = 0u;
+            if (i < ${outputShape.length}) {
+              inputIndex = outputIndices[i] * steps[i] + starts[i] + carry;
+              carry = inputIndex / inputShape[i];
+              inputIndex = inputIndex % inputShape[i];
+            } else {
+              inputIndex = carry % inputShape[i];
+              carry /= inputShape[i];
+            }
+            if (signs[i] < 0) {
+              inputIndex = inputShape[i] - inputIndex - 1u + starts[i];
+            }
+            inputIndices[i] = inputIndex;
+          }
+          return inputIndices;
+      }`;
+};
+
 const createSliceProgramInfo =
     (metadata: ProgramMetadata, inputs: readonly TensorView[], attributes: SliceAttributes): ProgramInfo => {
       const inputShape = inputs[0].dims;
@@ -126,27 +152,7 @@ const createSliceProgramInfo =
       const outputIndicesHelper = createIndicesHelper('output', outputShape);
       const inputIndicesHelper = createIndicesHelper('input', inputShape);
       const outputSize = ShapeUtil.size(outputShape);
-      const calculateInputIndicesImpl = (): string => `
-        fn calculateInputIndices(outputIndices: ${outputIndicesHelper.iType}) -> ${inputIndicesHelper.iType} {
-          ${inputIndicesHelper.indicesVariableDeclaration('inputIndices', Array(inputShape.length).fill('0u'))};
-          var carry = 0u;
-          for (var i = ${inputShape.length}; i >= 0; i--) {
-            var inputIndex = 0u;
-            if (i < ${outputShape.length}) {
-              inputIndex = outputIndices[i] * steps[i] + starts[i] + carry;
-              carry = inputIndex / inputShape[i];
-              inputIndex = inputIndex % inputShape[i];
-            } else {
-              inputIndex = carry % inputShape[i];
-              carry /= inputShape[i];
-            }
-            if (signs[i] < 0) {
-              inputIndex = inputShape[i] - inputIndex - 1u + starts[i];
-            }
-            inputIndices[i] = inputIndex;
-          }
-          return inputIndices;
-      }`;
+
       const getShaderSource = (shaderHelper: ShaderHelper) => `
         @group(0) @binding(0) var<storage, read> input: array<${dataType}>;
         @group(0) @binding(1) var<storage, read_write> output: array<${dataType}>;
@@ -158,7 +164,7 @@ const createSliceProgramInfo =
 
         ${outputIndicesHelper.o2iImpl}
         ${inputIndicesHelper.i2oImpl}
-        ${calculateInputIndicesImpl()}
+        ${calculateInputIndicesImpl(inputShape, outputShape)}
         ${shaderHelper.mainStart()}
           ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes(outputSize)}
           ${outputIndicesHelper.indicesVariableDeclaration('outputIndices')}

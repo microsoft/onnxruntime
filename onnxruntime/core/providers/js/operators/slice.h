@@ -19,17 +19,7 @@ class Slice : public JsKernel, public SliceBase {
     std::vector<int32_t> axes(attr_axes.begin(), attr_axes.end());
     std::vector<int32_t> starts(attr_starts.begin(), attr_starts.end());
     std::vector<int32_t> ends(attr_ends.begin(), attr_ends.end());
-    auto print = [](std::string name, const std::vector<int32_t>& v) {
-      std::stringstream ss;
-      ss << name << ": ";
-      for (auto& i : v) {
-        ss << i << ", ";
-      }
-      LOGS_DEFAULT(VERBOSE) << ss.str();
-    };
-    print("axes", axes);
-    print("starts", starts);
-    print("ends", ends);
+
     JSEP_INIT_KERNEL_ATTRIBUTE(Slice, ({"starts" : $1 ? Array.from(HEAP32.subarray($2, $2 + $1)) : [],
                                         "ends" : $3 ? Array.from(HEAP32.subarray($4, $4 + $3)) : [],
                                         "axes" : $5 ? Array.from(HEAP32.subarray($6, $6 + $5)) : []
