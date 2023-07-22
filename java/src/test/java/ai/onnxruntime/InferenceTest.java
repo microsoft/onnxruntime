@@ -863,7 +863,7 @@ public class InferenceTest {
         try (OrtSession.Result r = session.run(inputMap, requestedOutputs, pinnedOutputs)) {
           fail("Should have thrown OrtException");
         } catch (OrtException e) {
-          assertEquals(OrtErrorCode.ORT_FAIL, e.getCode());
+          assertEquals(OrtErrorCode.ORT_RUNTIME_EXCEPTION, e.getCode());
         }
         requestedOutputs.clear();
         pinnedOutputs.clear();
@@ -873,7 +873,7 @@ public class InferenceTest {
         try (OrtSession.Result r = session.run(inputMap, requestedOutputs, pinnedOutputs)) {
           fail("Should have thrown OrtException");
         } catch (OrtException e) {
-          assertEquals(OrtErrorCode.ORT_FAIL, e.getCode());
+          assertEquals(OrtErrorCode.ORT_RUNTIME_EXCEPTION, e.getCode());
         }
         requestedOutputs.clear();
         pinnedOutputs.clear();
@@ -883,7 +883,7 @@ public class InferenceTest {
         try (OrtSession.Result r = session.run(inputMap, requestedOutputs, pinnedOutputs)) {
           fail("Should have thrown OrtException");
         } catch (OrtException e) {
-          assertEquals(OrtErrorCode.ORT_FAIL, e.getCode());
+          assertEquals(OrtErrorCode.ORT_RUNTIME_EXCEPTION, e.getCode());
         }
         requestedOutputs.clear();
         pinnedOutputs.clear();

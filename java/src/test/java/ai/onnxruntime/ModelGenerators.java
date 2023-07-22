@@ -14,7 +14,6 @@ import java.nio.FloatBuffer;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.Arrays;
-import org.junit.jupiter.api.Test;
 
 /** Methods to generate test models. */
 public final class ModelGenerators {
