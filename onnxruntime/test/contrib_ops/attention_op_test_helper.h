@@ -79,6 +79,8 @@ void GetAttentionDataCutlassRelPosBias(AttentionTestData& data);
 void GetAttentionDataWithNeoXRotaryEmbedding(std::vector<float>& input, std::vector<float>& weights, std::vector<float>& bias,
                                              std::vector<float>& output);
 
+void GetPackedMultiHeadAttentionData_Batch2_HeadSize8_Mask(AttentionTestData& data);
+
 bool SkipAttentionKernel(AttentionTestData& data, AttentionKernelType kernel_type);
 }  // namespace test
 }  // namespace onnxruntime

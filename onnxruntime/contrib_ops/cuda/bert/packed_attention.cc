@@ -275,10 +275,10 @@ Status PackedAttention<T>::ComputeInternal(OpKernelContext* context) const {
   TensorShapeVector output_shape{parameters.token_count, parameters.v_hidden_size};
   Tensor* output = context->Output(0, output_shape);
 
-  MHARunner* fused_runner = TryGettingFusedRunner(parameters);
+  MHARunner* fused_runner = this->TryGettingFusedRunner(parameters);
 
   bool use_memory_efficient_attention = false;
-  auto& device_prop = GetDeviceProp();
+  auto& device_prop = this->GetDeviceProp();
 #if USE_FLASH_ATTENTION
   if (nullptr == fused_runner) {
     int sm = device_prop.major * 10 + device_prop.minor;
@@ -299,9 +299,9 @@ Status PackedAttention<T>::ComputeInternal(OpKernelContext* context) const {
   int m = parameters.token_count;
   int n = parameters.hidden_size + parameters.hidden_size + parameters.v_hidden_size;
   int k = parameters.input_hidden_size;
-  gemm_buffer = GetScratchBuffer<T>(static_cast<size_t>(m) * n, context->GetComputeStream());
+  gemm_buffer = this->GetScratchBuffer<T>(static_cast<size_t>(m) * n, context->GetComputeStream());
 
-  cublasHandle_t cublas = GetCublasHandle(context);
+  cublasHandle_t cublas = this->GetCublasHandle(context);
 
   // Gemm, note that CUDA assumes col-major, so result(N, M) = 1 * weights x input + 1 x bias
   // The bias part is not included here since we fuse bias, transpose and output 3 matrice into one cuda kernel.
@@ -320,7 +320,7 @@ Status PackedAttention<T>::ComputeInternal(OpKernelContext* context) const {
                                                    parameters.sequence_length,
                                                    fused_runner,
                                                    use_memory_efficient_attention);
-  auto work_space = GetScratchBuffer<void>(workSpaceSize, context->GetComputeStream());
+  auto work_space = this->GetScratchBuffer<void>(workSpaceSize, context->GetComputeStream());
 
   typedef typename ToCudaType<T>::MappedType CudaT;
   PackedAttentionData<CudaT> data;

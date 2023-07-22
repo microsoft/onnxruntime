@@ -195,10 +195,10 @@ Status PackedMultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) co
   TensorShapeVector output_shape{parameters.token_count, parameters.v_hidden_size};
   Tensor* output = context->Output(0, output_shape);
 
-  MHARunner* fused_runner = TryGettingFusedRunner(parameters);
+  MHARunner* fused_runner = this->TryGettingFusedRunner(parameters);
 
   bool use_memory_efficient_attention = false;
-  auto& device_prop = GetDeviceProp();
+  auto& device_prop = this->GetDeviceProp();
 #if USE_FLASH_ATTENTION
   if (nullptr == fused_runner) {
     int sm = device_prop.major * 10 + device_prop.minor;
@@ -213,7 +213,7 @@ Status PackedMultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) co
 
   typedef typename ToCudaType<T>::MappedType CudaT;
 
-  cublasHandle_t cublas = GetCublasHandle(context);
+  cublasHandle_t cublas = this->GetCublasHandle(context);
 
   constexpr size_t element_size = sizeof(T);
   size_t workSpaceSize = GetAttentionWorkspaceSize(element_size,
@@ -224,7 +224,7 @@ Status PackedMultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) co
                                                    parameters.sequence_length,
                                                    fused_runner,
                                                    use_memory_efficient_attention);
-  auto work_space = GetScratchBuffer<void>(workSpaceSize, context->GetComputeStream());
+  auto work_space = this->GetScratchBuffer<void>(workSpaceSize, context->GetComputeStream());
 
   typedef typename ToCudaType<T>::MappedType CudaT;
   PackedMultiHeadAttentionData<CudaT> data;
