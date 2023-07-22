@@ -627,6 +627,8 @@ class OnnxModel:
                                            Default to false.
             min_positive_val (float, optional): minimal positive value. Defaults to 1e-7.
             max_finite_val (float, optional): maximal finite value. Defaults to 1e4.
+            force_fp16_inputs(Dict[str, List[int]]): Force the conversion of the inputs of some operators to float16, even if
+                                                     this script's preference it to keep them in float32.
         """
         if "keep_io_types" not in kwargs:
             kwargs["keep_io_types"] = True
@@ -677,6 +679,7 @@ class OnnxModel:
                     "op_block_list",
                     "node_block_list",
                     "force_fp16_initializers",
+                    "force_fp16_inputs",
                 ]
                 if key in kwargs
             }

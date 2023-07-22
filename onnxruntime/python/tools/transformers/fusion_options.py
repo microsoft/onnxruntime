@@ -43,7 +43,7 @@ class FusionOptions:
 
         self.enable_shape_inference = True
         self.enable_gemm_fast_gelu = False
-        self.channels_first_group_norm = False
+        self.group_norm_channels_last = True
 
         # Set default to sequence length for BERT model to use fused attention to speed up.
         # Note that embed layer normalization will convert 2D mask to 1D when mask type is MaskIndexEnd.
@@ -103,9 +103,9 @@ class FusionOptions:
         if args.no_attention_mask:
             options.disable_attention_mask()
 
-        options.channels_first_group_norm = args.channels_first_group_norm
-
         if args.model_type in ["unet", "vae", "clip"]:
+            if args.use_group_norm_channels_first:
+                options.group_norm_channels_last = False
             if args.disable_nhwc_conv:
                 options.enable_nhwc_conv = False
             if args.disable_group_norm:
@@ -285,9 +285,9 @@ class FusionOptions:
         parser.set_defaults(disable_nhwc_conv=False)
 
         parser.add_argument(
-            "--channels_first_group_norm",
+            "--use_group_norm_channels_first",
             required=False,
             action="store_true",
             help="Use channels_first (NCHW) instead of channels_last (NHWC) for GroupNorm. Only works for model_type=unet or vae",
         )
-        parser.set_defaults(channels_first_group_norm=False)
+        parser.set_defaults(use_group_norm_channels_first=False)

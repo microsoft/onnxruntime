@@ -171,6 +171,10 @@ class FusionGroupNorm(Fusion):
         new_node.attribute.extend(instance_norm.attribute)
         new_node.attribute.extend([helper.make_attribute("groups", 32)])
         new_node.attribute.extend([helper.make_attribute("activation", 1 if has_swish_activation else 0)])
+
+        if not self.channels_last:
+            new_node.attribute.extend([helper.make_attribute("channels_last", 0)])
+
         new_node.domain = "com.microsoft"
         self.nodes_to_add.append(new_node)
         self.node_name_to_graph_name[new_node.name] = self.this_graph_name

@@ -128,8 +128,7 @@ class UnetOnnxModel(BertOnnxModel):
         self.fuse_reshape()
 
         if (options is None) or options.enable_group_norm:
-            channels_last = (options is None) or not options.channels_first_group_norm
-
+            channels_last = (options is None) or options.group_norm_channels_last
             group_norm_fusion = FusionGroupNorm(self, channels_last)
             group_norm_fusion.apply()
 
