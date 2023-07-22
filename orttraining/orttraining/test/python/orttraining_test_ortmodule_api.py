@@ -9,12 +9,12 @@ import math
 import os
 import pickle
 import random
+import shutil
 import tempfile
 import time
 import unittest.mock
 import warnings
 from collections import OrderedDict, namedtuple
-import shutil
 from pathlib import Path
 
 import _test_helpers
@@ -6064,9 +6064,10 @@ def test_e2e_padding_elimination():
     assert "PadAndUnflatten" in [node.op_type for node in training_model.graph.node]
     del os.environ["ORTMODULE_ENABLE_EMBEDDING_SPARSE_OPTIMIZER"]
 
-def test_cache_exported_model():
 
+def test_cache_exported_model():
     os.environ["ORTMODULE_CACHE_DIR"] = "cache_dir"
+    os.environ["ORTMODULE_CACHE_PREFIX"] = "linear"
 
     class Net(torch.nn.Module):
         def __init__(self):
@@ -6085,7 +6086,7 @@ def test_cache_exported_model():
     _ = model(data)
 
     root_dir = Path(__file__).resolve().parent
-    cache_dir = root_dir / "cache_dir"
+    cache_dir = root_dir / os.environ["ORTMODULE_CACHE_DIR"]
 
     assert len(os.listdir(cache_dir)) == 1
 
@@ -6093,3 +6094,4 @@ def test_cache_exported_model():
 
     shutil.rmtree(cache_dir)
     del os.environ["ORTMODULE_CACHE_DIR"]
+    del os.environ["ORTMODULE_CACHE_PREFIX"]

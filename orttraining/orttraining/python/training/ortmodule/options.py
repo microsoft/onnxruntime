@@ -244,6 +244,7 @@ class _RuntimeOptions:
 
         # Cache exported model
         self.ortmodule_cache_dir = ""
+        self.ortmodule_cache_prefix = ""
 
         # Override the feature config if it exists in os env.
         self._override_from_env_vars()
@@ -321,3 +322,6 @@ class _RuntimeOptions:
         # Cache exported model
         if "ORTMODULE_CACHE_DIR" in os.environ:
             self.ortmodule_cache_dir = os.getenv("ORTMODULE_CACHE_DIR")
+
+        if "ORTMODULE_CACHE_PREFIX" in os.environ:
+            self.ortmodule_cache_prefix = os.getenv("ORTMODULE_CACHE_PREFIX")

@@ -323,8 +323,10 @@ class GraphExecutionManager(GraphExecutionInterface):
 
             # Leverage cached model if available
             cache_dir = self._runtime_options.ortmodule_cache_dir
-            if cache_dir and os.path.exists(cache_dir):
-                filename = os.path.join(cache_dir, f"{hash(str(self._flattened_module))}.onnx")
+            cache_prefix = self._runtime_options.ortmodule_cache_prefix
+            rank = os.getenv("RANK", default="0")
+            if cache_dir and cache_prefix and os.path.exists(cache_dir):
+                filename = os.path.join(cache_dir, f"{cache_prefix}_ort_cached_model_{rank}.onnx")
                 if os.path.isfile(filename):
                     exported_model = onnx.load(filename)
                     return exported_model
@@ -396,7 +398,7 @@ class GraphExecutionManager(GraphExecutionInterface):
             if cache_dir:
                 if not os.path.exists(cache_dir):
                     os.makedirs(cache_dir, exist_ok=True)
-                filename = os.path.join(cache_dir, f"{hash(str(self._flattened_module))}.onnx")
+                filename = os.path.join(cache_dir, f"{cache_prefix}_ort_cached_model_{rank}.onnx")
                 onnx.save(exported_model, filename)
 
             # If anything was captured by suppress_output during export, set the flag to
