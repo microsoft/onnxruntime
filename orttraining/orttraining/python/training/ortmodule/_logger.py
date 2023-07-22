@@ -62,7 +62,7 @@ def suppress_os_stream_output(on_exit: Optional[Callable] = None):
         fo.close()
 
 
-def create_log_filter(logger: logging.LoggerAdapter, record_filters: Optional[List[str]]):
+def create_log_filter(logger: logging.LoggerAdapter, record_filters: Optional[List[str]], name: Optional[str]):
     def _log_with_filter(fo):
         if fo.tell() > 0:
             if logger.logger.disabled:
@@ -81,9 +81,10 @@ def create_log_filter(logger: logging.LoggerAdapter, record_filters: Optional[Li
 
                     if not found:
                         filtered_messages.append(suppressed_message)
-                logger.warning("".join(filtered_messages))
+                if filtered_messages:
+                    logger.warning(f"Filtered [{name}] logs:\n\t" + "\t".join(filtered_messages))
             else:
-                logger.warning("".join(suppress_output_messages))
+                logger.warning(f"Full [{name}] logs:\n\t" + "\t".join(suppress_output_messages))
 
     return _log_with_filter
 
@@ -108,9 +109,7 @@ def ortmodule_loglevel_to_python_loglevel(loglevel: LogLevel) -> int:
 def configure_ortmodule_logger(logger: logging.Logger, log_level: LogLevel) -> logging.LoggerAdapter:
     extra = {"rank": get_rank()}
     syslog = logging.StreamHandler(stream=sys.stdout)
-    formatter = logging.Formatter(
-        "[RANK %(rank)s] [%(asctime)s] [%(levelname)s] [%(filename)s:%(lineno)d:%(funcName)s] %(message)s"
-    )
+    formatter = logging.Formatter("%(asctime)s onnxruntime.training [ORT RANK %(rank)s] [%(levelname)s] - %(message)s")
     syslog.setFormatter(formatter)
     logger.addHandler(syslog)
     logger.propagate = False

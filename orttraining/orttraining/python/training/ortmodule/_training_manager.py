@@ -432,7 +432,9 @@ class TrainingManager(GraphExecutionManager):
 
         local_device_rank = self._device.index if device_type == "ort" else _utils.get_device_index(self._device)
 
-        print_on_exit = create_log_filter(self._logger, self._debug_options.onnxruntime_log_filter)
+        print_on_exit = create_log_filter(
+            self._logger, self._debug_options.onnxruntime_log_filter, "training agent creation"
+        )
         with suppress_os_stream_output(on_exit=print_on_exit):
             self._execution_agent = TrainingAgent(
                 self._onnx_models.optimized_model.SerializeToString(),

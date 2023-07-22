@@ -176,7 +176,9 @@ class GraphExecutionManager(GraphExecutionInterface):
         pass
 
     def _build_graph(self, config):
-        print_on_exit = _logger.create_log_filter(self._logger, self._debug_options.onnxruntime_log_filter)
+        print_on_exit = _logger.create_log_filter(
+            self._logger, self._debug_options.onnxruntime_log_filter, "ORT graph build"
+        )
         with _logger.suppress_os_stream_output(on_exit=print_on_exit):
             if self._runtime_options.use_static_shape:
                 self._graph_builder.build(config, self._input_info.shape)
@@ -311,7 +313,9 @@ class GraphExecutionManager(GraphExecutionInterface):
         # WARNING/ERROR -> [Rank 0] NO export verbose log + FILTERED torch other logs from stdout and stderr (C++ backend)
         # Be noted: rank 0 log only is controlled by logger configured in _logger.py
         torch_exporter_verbose_log = self._debug_options.logging.log_level <= LogLevel.INFO
-        print_on_exit = _logger.create_log_filter(self._logger, self._debug_options.torch_exporter_filter)
+        print_on_exit = _logger.create_log_filter(
+            self._logger, self._debug_options.torch_exporter_filter, "model export to ONNX"
+        )
         self._logger.warning("Exporting the PyTorch model to ONNX...")
         with _logger.suppress_os_stream_output(on_exit=print_on_exit):
             # Setup dynamic axes for onnx model
