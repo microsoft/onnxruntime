@@ -4828,11 +4828,7 @@ def test_ortmodule_attribute_name_collision_warning():
         # Filter out the error message
         fo.seek(0)
         suppress_output_messages = fo.readlines()
-        warning_record = []
-        for msg in suppress_output_messages:
-            if "[ORT RANK" in msg and "[WARNING]" in msg:
-                warning_record.append(msg)
-
+        warning_record = [msg for msg in suppress_output_messages if "[ORT RANK" in msg and "[WARNING]" in msg]
         assert len(warning_record) == 2
         assert "_torch_module collides with ORTModule's attribute name." in warning_record[-2]
         assert "load_state_dict collides with ORTModule's attribute name." in warning_record[-1]
