@@ -42,8 +42,7 @@ class TensorViewImpl implements TensorView {
       throw new Error('Invalid data type');
     }
     const elementCount = ShapeUtil.size(this.dims);
-    return elementCount === 0 ? new Int32Array() :
-                                new Int32Array(this.module.HEAP8.buffer, this.data, elementCount);
+    return elementCount === 0 ? new Int32Array() : new Int32Array(this.module.HEAP8.buffer, this.data, elementCount);
   }
 
   reshape(newDims: readonly number[]): TensorView {
