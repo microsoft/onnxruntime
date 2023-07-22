@@ -252,10 +252,57 @@ Status SimpleOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_w
     ORT_RETURN_IF_ERROR(ProcessAlphaAttribute(qnn_model_wrapper, node_unit, param_tensor_names));
   }
 
-  ORT_RETURN_IF_ERROR(ProcessOutputs(qnn_model_wrapper, node_unit,
-                                     std::move(input_names),
-                                     std::move(param_tensor_names),
-                                     logger, is_quantized_model, do_op_validation, GetQnnOpType(op_type)));
+
+  // TODO: Refactor processing of Sigmoid/Tanh to a separate function.
+  if (!is_quantized_model || (op_type != "Sigmoid" && op_type != "Tanh")) {
+    return ProcessOutputs(qnn_model_wrapper, node_unit,
+                          std::move(input_names),
+                          std::move(param_tensor_names),
+                          logger, is_quantized_model, do_op_validation, GetQnnOpType(op_type));
+  }
+
+  // int16 Sigmoid and Tanh require offset = 0 and scale = 1/int16_max. This checks out if you do the math.
+  const auto& output = node_unit.Outputs()[0];
+  const std::string& output_name = output.node_arg.Name();
+
+  OnnxInputInfo output_info = {};
+  ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetOnnxInputInfo(output, is_quantized_model, output_info));
+
+  const bool is_16bit_quant = output_info.qnn_data_type == QNN_DATATYPE_UFIXED_POINT_16 ||
+                              output_info.qnn_data_type == QNN_DATATYPE_SFIXED_POINT_16;
+
+  if (is_16bit_quant) {
+    int32_t& offset = output_info.quant_param.scaleOffsetEncoding.offset;
+    float& scale = output_info.quant_param.scaleOffsetEncoding.scale;
+
+    if (offset != 0) {
+      LOGS(logger, WARNING) << "QNN EP requires that 16-bit " << op_type << " operators use an offset of 0. "
+                            << "Offset for " << node_unit.Name() << " will be forced to 0.";
+      offset = 0;
+    }
+
+    float expected_scale = output_info.qnn_data_type == QNN_DATATYPE_UFIXED_POINT_16 ? (1.0f / 65536.0f) : (1.0f / 32768.0f);
+
+    if (scale != expected_scale) {
+      LOGS(logger, WARNING) << "QNN EP requires that 16-bit " << op_type << " operators use an scale equal to "
+                            << expected_scale << ". The scale for " << node_unit.Name() << " will be overridden.";
+      scale = expected_scale;
+    }
+  }
+
+  Qnn_TensorType_t tensor_type = qnn_model_wrapper.IsGraphOutput(output_name) ? QNN_TENSOR_TYPE_APP_READ : QNN_TENSOR_TYPE_NATIVE;
+  QnnTensorWrapper output_tensorwrapper(output_name, tensor_type, output_info.qnn_data_type, output_info.quant_param,
+                                        std::move(output_info.shape));
+  ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(output_tensorwrapper)), "Failed to add tensor.");
+  ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(GetNodeName(node_unit),
+                                                    qnn_def::package_name,
+                                                    GetQnnOpType(op_type),
+                                                    std::move(input_names),
+                                                    {output_name},
+                                                    std::move(param_tensor_names),
+                                                    do_op_validation),
+                    "Failed to add node.");
+
   return Status::OK();
 }
 
