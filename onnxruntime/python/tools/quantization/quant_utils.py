@@ -258,7 +258,6 @@ def quantize_data(data, qType, symmetric, reduce_range=False):
         std = numpy.std(data)
         zero_point, scale = compute_scale_zp_float8(qType, std)
         quantized_data = quantize_nparray(qType, numpy.asarray(data), scale, zero_point)
-        qq = quantized_data.ravel() & 127
         if any((quantized_data.ravel() & 127) == 127):
             raise RuntimeError(
                 f"One of the quantized value is NaN data in [{data.min()}, {data.max()}], "

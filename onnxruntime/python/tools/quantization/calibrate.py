@@ -21,7 +21,7 @@ from .quant_utils import apply_plot, load_model_with_shape_infer, smooth_distrib
 
 
 class TensorData:
-    _allowed: set[str] = {"avg", "std", "lowest", "highest", "hist", "hist_edges"}
+    _allowed = frozenset(["avg", "std", "lowest", "highest", "hist", "hist_edges"])
 
     def __init__(self, **kwargs):
         for k, v in kwargs.items():
