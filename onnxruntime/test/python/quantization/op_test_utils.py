@@ -3,7 +3,6 @@ from pathlib import Path
 
 import numpy as np
 import onnx
-import packaging.version as pv
 from onnx import TensorProto
 from onnx.helper import float32_to_float8e4m3, np_dtype_to_tensor_dtype
 from onnx.numpy_helper import float8e4m3_to_float32
@@ -304,7 +303,8 @@ def check_model_correctness(
         check_sign_f8_quantization(model_path_origin, model_path_to_check)
 
     # Verifies the expected outputs.
-    if True or pv.Version(onnx.__version__) >= pv.Version("1.16.0"):
+    if to_array_extended is not None:
+        # Needs pv.Version(onnx.__version__) >= pv.Version("1.16.0")
         ref = ReferenceEvaluator(model_path_to_check, new_ops=[QGemm], verbose=10)
         target_results = ref.run(None, inputs)
         testcase.assertEqual(len(origin_results), len(target_results), "result count are different")
