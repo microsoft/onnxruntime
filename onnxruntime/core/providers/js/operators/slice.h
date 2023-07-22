@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 #pragma once
-#include <sstream>
+
 #include "core/framework/tensor.h"
 #include "core/providers/cpu/tensor/slice.h"
 #include "core/providers/js/js_kernel.h"
@@ -22,8 +22,7 @@ class Slice : public JsKernel, public SliceBase {
 
     JSEP_INIT_KERNEL_ATTRIBUTE(Slice, ({"starts" : $1 ? Array.from(HEAP32.subarray($2, $2 + $1)) : [],
                                         "ends" : $3 ? Array.from(HEAP32.subarray($4, $4 + $3)) : [],
-                                        "axes" : $5 ? Array.from(HEAP32.subarray($6, $6 + $5)) : []
-                                        }),
+                                        "axes" : $5 ? Array.from(HEAP32.subarray($6, $6 + $5)) : []}),
                                gsl::narrow_cast<int32_t>(starts.size()),
                                reinterpret_cast<int32_t>((starts.size() > 0) ? starts.data() : nullptr) >> 2,
                                gsl::narrow_cast<int32_t>(ends.size()),
@@ -33,7 +32,7 @@ class Slice : public JsKernel, public SliceBase {
   }
 };
 
-class Slice_1 final: public Slice {
+class Slice_1 final : public Slice {
  public:
   Slice_1(const OpKernelInfo& info) : Slice(info, false) {}
 };
