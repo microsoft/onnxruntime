@@ -35,8 +35,7 @@ struct SliceInfo : public UpstreamOperatorInfoBase {
 
     if (std::holds_alternative<int>(axis_name_or_index)) {
       int axis_input_index = std::get<int>(axis_name_or_index);
-      ORT_ENFORCE(axis_input_index >= 0 && axis_input_index < static_cast<int>(node_ptr->InputDefs().size()),
-                  "Axis input index is invalid");
+      ORT_ENFORCE(axis_input_index >= 0, "Axis input index is invalid");
     }
 
     ORT_ENFORCE(rank_of_axis_value == 0 || rank_of_axis_value == 1, "Rank of axis value is invalid: " +
