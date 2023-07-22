@@ -200,16 +200,22 @@ def check_sign_f8_quantization(model_path_origin, model_path_to_check):
         if name not in names:
             raise AssertionError(f"Unable to find {name!r} in {set(names)}.")
         scale_zp = [i.name for i in model_f8.graph.initializer if i.name.startswith(name)]
-        if len(scale_zp) != 3:
+        if len(scale_zp) not in (1, 3):
             raise AssertionError(
-                f"Need three names not {scale_zp}, all names: " f"{set(i.name for i in model_f8.graph.initializer)}."
+                f"Need one or three names not {scale_zp}, all names: {set(i.name for i in model_f8.graph.initializer)}."
             )
         scale = [name for name in scale_zp if "scale" in name]
         zero = [name for name in scale_zp if "zero" in name]
-        if len(scale) != 1:
-            raise AssertionError(f"Need one name not {scale}.")
-        if len(zero) != 1:
-            raise AssertionError(f"Need one name not {zero}.")
+        if len(scale_zp) == 3:
+            if len(scale) != 1:
+                raise AssertionError(f"Need one name not {scale}.")
+            if len(zero) != 1:
+                raise AssertionError(f"Need one name not {zero}.")
+        else:
+            if len(scale) != 0:
+                raise AssertionError(f"Need zero name not {scale}.")
+            if len(zero) != 0:
+                raise AssertionError(f"Need zero name not {zero}.")
 
         expected_sign = onnx.numpy_helper.to_array(names[name]) >= 0
 

@@ -142,7 +142,6 @@ class ONNXModel:
         return {initializer.name for initializer in self.model.graph.initializer}
 
     def remove_initializer(self, tensor):
-        print("-", "remove", tensor.name)
         if tensor in self.model.graph.initializer:
             self.model.graph.initializer.remove(tensor)
             for input in self.model.graph.input:

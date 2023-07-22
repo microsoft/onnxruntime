@@ -739,6 +739,7 @@ class ONNXQuantizer:
 
             # The following code is taken from DistributionCalibrater.
             # TODO: find a better place.
+            # TODO: this should be an option, cublasLtMatMul does not support quantized bias.
             scenario = self.extra_options["scenario"]
             if scenario == "same":
                 power = 1
