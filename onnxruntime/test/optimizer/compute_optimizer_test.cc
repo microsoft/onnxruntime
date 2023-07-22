@@ -18,6 +18,7 @@
 #include "core/common/span_utils.h"
 #include "core/framework/data_types.h"
 #include "core/framework/ort_value.h"
+#include "core/framework/tensorprotoutils.h"
 #include "core/graph/graph_utils.h"
 #include "core/graph/graph_viewer.h"
 #include "core/graph/model.h"
@@ -1674,6 +1675,109 @@ TEST(ComputeOptimizerTests, SliceElementwiseOps_PropagationOnTwoBranches) {
     auto* steps_initializer = builder.MakeInitializer<int64_t>({1}, {1});
     auto* slice_out = builder.MakeIntermediate();
     builder.AddNode("Slice", {add_out, starts_initializer, ends_initializer, axes_initializer, steps_initializer},
+                    {slice_out});
+
+    auto* identity_out = builder.MakeOutput();
+    builder.AddNode("Identity", {slice_out}, {identity_out});
+  };
+
+  std::unique_ptr<GraphTransformer> transformer = std::make_unique<UpStreamGatherGraphTransformer>();
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 14, *logger, std::move(transformer),
+                                        TransformerLevel::Level1,
+                                        1, pre_graph_checker, post_graph_checker));
+}
+
+/*
+Test graph includes multiple equivalent subgraphs as below.
+             graph input [2, 4, 32, 256] (float)
+                            |
+                        Transpose[perms=[0, 2, 1, 3]]
+                            |
+                      [2, 32, 4, 256]
+                            |   starts:(0)  ends: (-1)  axes: (1) steps: (1)
+                            \       \       |          /         /
+                                \       \     |        /       /
+                                  \      \   |     /      /
+                                    \     \  |   /     /
+                                        \   \ |  /   /
+                                            Slice
+                                              |
+                                          Identity
+                                              |
+                                graph output [2, 31, 4, 256] (float)
+
+Add an Identity node because currently, we don't allow Slice generates graph output.
+*/
+TEST(ComputeOptimizerTests, SliceTranspose_Propagation) {
+  const logging::Logger* logger = &logging::LoggingManager::DefaultLogger();
+  InlinedVector<int64_t> starts_indices;
+  auto pre_graph_checker = [&starts_indices](Graph& graph) -> Status {
+    auto op_count_pre = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_count_pre.size() == 3U);
+    TEST_RETURN_IF_NOT(op_count_pre["Transpose"] == 1);
+    TEST_RETURN_IF_NOT(op_count_pre["Slice"] == 1);
+    TEST_RETURN_IF_NOT(op_count_pre["Identity"] == 1);
+
+    for (Node& node : graph.Nodes()) {
+      if (node.OpType() == "Slice") {
+        TEST_RETURN_IF_NOT(starts_indices.empty());
+        constexpr bool require_constant = true;
+        NodeArg* initializer_node_arg = graph.GetNodeArg(node.InputDefs()[1]->Name());
+        TEST_RETURN_IF_NOT(optimizer_utils::AppendTensorFromInitializer(graph, *initializer_node_arg, starts_indices,
+                                                                        require_constant));
+      }
+    }
+    return Status::OK();
+  };
+
+  auto post_graph_checker = [&starts_indices](Graph& graph) {
+    auto op_count_post = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_count_post.size() == 3U);
+    TEST_RETURN_IF_NOT(op_count_post["Transpose"] == 1);
+    TEST_RETURN_IF_NOT(op_count_post["Slice"] == 1);
+    TEST_RETURN_IF_NOT(op_count_post["Identity"] == 1);
+
+    for (Node& node : graph.Nodes()) {
+      if (node.OpType() == "Transpose") {
+        const auto& input_defs = node.InputDefs();
+
+        auto producer_node = graph.GetProducerNode(input_defs[0]->Name());
+        TEST_RETURN_IF_NOT(producer_node != nullptr);
+        TEST_RETURN_IF_NOT(producer_node->OpType() == "Slice");
+
+        InlinedVector<int64_t> values;
+        constexpr bool require_constant = true;
+        NodeArg* initializer_node_arg = graph.GetNodeArg(producer_node->InputDefs()[1]->Name());
+        TEST_RETURN_IF_NOT(optimizer_utils::AppendTensorFromInitializer(graph, *initializer_node_arg, values,
+                                                                        require_constant));
+        for (size_t i = 0; i < values.size(); i++) {
+          TEST_RETURN_IF_NOT(values[i] == starts_indices[i]);
+        }
+
+        const ONNX_NAMESPACE::TensorShapeProto* slice_out_shape = producer_node->OutputDefs()[0]->Shape();
+        TEST_RETURN_IF_NOT(slice_out_shape != nullptr);
+        TEST_RETURN_IF_NOT(slice_out_shape->dim_size() == 4);
+        TEST_RETURN_IF_NOT(utils::HasDimValue(slice_out_shape->dim(0)) && slice_out_shape->dim(0).dim_value() == 2);
+        TEST_RETURN_IF_NOT(utils::HasDimValue(slice_out_shape->dim(1)) && slice_out_shape->dim(1).dim_value() == 4);
+        TEST_RETURN_IF_NOT(utils::HasDimValue(slice_out_shape->dim(2)) && slice_out_shape->dim(2).dim_value() == 31);
+        TEST_RETURN_IF_NOT(utils::HasDimValue(slice_out_shape->dim(3)) && slice_out_shape->dim(3).dim_value() == 256);
+      }
+    }
+    return Status::OK();
+  };
+
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    auto* input1_arg = builder.MakeInput<int64_t>({{2, 4, 32, 256}});
+    auto* trans_out = builder.MakeIntermediate();
+    builder.AddNode("Transpose", {input1_arg}, {trans_out})
+        .AddAttribute("perm", std::vector<int64_t>{0, 2, 1, 3});
+
+    auto* starts_initializer = builder.MakeInitializer<int64_t>({1}, {0});
+    auto* ends_initializer = builder.MakeInitializer<int64_t>({1}, {-1});
+    auto* axes_initializer = builder.MakeInitializer<int64_t>({1}, {1});
+    auto* steps_initializer = builder.MakeInitializer<int64_t>({1}, {1});
+    auto* slice_out = builder.MakeIntermediate();
+    builder.AddNode("Slice", {trans_out, starts_initializer, ends_initializer, axes_initializer, steps_initializer},
                     {slice_out});
 
     auto* identity_out = builder.MakeOutput();
