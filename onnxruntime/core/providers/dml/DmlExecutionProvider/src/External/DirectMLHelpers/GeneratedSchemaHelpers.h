@@ -1661,6 +1661,11 @@ inline std::vector<OperatorField> GetFields(const DML_ELEMENT_WISE_QUANTIZED_LIN
     };
 }
 
+
+#pragma warning(push)
+#pragma warning(disable:4702)
+#pragma warning(disable:4063)
+
 inline const DML_OPERATOR_SCHEMA& GetSchema(DML_OPERATOR_TYPE operatorType)
 {
     switch (operatorType)
@@ -1830,6 +1835,8 @@ inline const DML_OPERATOR_SCHEMA& GetSchema(DML_OPERATOR_TYPE operatorType)
     case DML_OPERATOR_ACTIVATION_SHRINK: return DML_ACTIVATION_SHRINK_OPERATOR_SCHEMA;
     case DML_OPERATOR_ACTIVATION_GELU: return DML_ACTIVATION_GELU_OPERATOR_SCHEMA;
     case DML_OPERATOR_ELEMENT_WISE_QUANTIZED_LINEAR_ADD1: return DML_ELEMENT_WISE_QUANTIZED_LINEAR_ADD1_OPERATOR_SCHEMA;
+    case DML_OPERATOR_MATRIX_MULTIPLY_INTEGER_TO_FLOAT: return DML_MATRIX_MULTIPLY_INTEGER_TO_FLOAT_OPERATOR_SCHEMA;
+
 
     default:
         ORT_THROW_HR(E_INVALIDARG);
@@ -1837,8 +1844,6 @@ inline const DML_OPERATOR_SCHEMA& GetSchema(DML_OPERATOR_TYPE operatorType)
     }
 }
 
-#pragma warning(push)
-#pragma warning(disable:4702)
 inline AbstractOperatorDesc ConvertOperatorDesc(const DML_OPERATOR_DESC& opDesc)
 {
     switch (static_cast<uint32_t>(opDesc.Type))
