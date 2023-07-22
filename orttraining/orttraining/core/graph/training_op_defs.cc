@@ -3966,7 +3966,8 @@ Return true if all elements are true and false otherwise.
       .Input(
           1,
           "inputs",
-          "The gradient inputs (as inputs of autograd.Function.backward).",
+          "The gradient inputs (as inputs of autograd.Function.backward)."
+          "Be noted: input name can be empty for cases its grad input is not needed by the autograd.Function.backward.",
           "T",
           OpSchema::Variadic,
           /*is_homogeneous*/ false,
@@ -4047,16 +4048,16 @@ Return true if all elements are true and false otherwise.
         // a Python object created by torch.autograd.Function.apply.
         // For details, see how we interpret it in PythonOpGrad implementation.
         for (auto i = 1; i < input_count; ++i) {
-          const auto inferred_input_type = ctx.getInputType(i);
-          if (inferred_input_type) {
-            ORT_ENFORCE(inferred_input_type, "PythonOpGrad's ", i, "-th input type is missing.");
-            ORT_ENFORCE(inferred_input_type->value_case() == TypeProto::kTensorType,
-                        "PythonOpGrad's ", i, "-th input type must be a tensor.");
-            ORT_ENFORCE(inferred_input_type->tensor_type().elem_type() == input_tensor_types_proto->ints().at(i - 1),
-                        "PythonOpGrad's ", i, "-th input type must be ", input_tensor_types_proto->ints().at(i - 1));
-          } else {
-            std::cout << "PythonOpGrad's " << i << "-th input type is missing." << std::endl;
+          if (!ctx.hasInput(i)) {
+            continue;
           }
+
+          const auto inferred_input_type = ctx.getInputType(i);
+          ORT_ENFORCE(inferred_input_type, "PythonOpGrad's ", i, "-th input type is missing.");
+          ORT_ENFORCE(inferred_input_type->value_case() == TypeProto::kTensorType,
+                      "PythonOpGrad's ", i, "-th input type must be a tensor.");
+          ORT_ENFORCE(inferred_input_type->tensor_type().elem_type() == input_tensor_types_proto->ints().at(i - 1),
+                      "PythonOpGrad's ", i, "-th input type must be ", input_tensor_types_proto->ints().at(i - 1));
         }
 
         // Load expected output types.
