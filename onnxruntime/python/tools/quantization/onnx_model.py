@@ -297,7 +297,7 @@ class ONNXModel:
                                 if input.name == inputB:
                                     Bs_graph.input.remove(input)
                                     break
-                            self._check(B_trans)
+                            Bs_graph._check(B_trans)
                             Bs_graph.initializer.extend([B_trans])
                         else:
                             inputB += "_Transposed"  # noqa: N806

@@ -166,7 +166,6 @@ class TestOpGemm(unittest.TestCase):
                     ["o", 0, activation_proto_qtype],
                 ]
             }
-            qtop
 
         if activation_type_str == "f8e4m3fn" and weight_type_str == "f8e4m3fn":
             with open(model_int8_path, "rb") as f:
