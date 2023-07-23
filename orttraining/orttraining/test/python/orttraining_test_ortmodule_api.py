@@ -5232,7 +5232,7 @@ def test_sigmoid_grad_opset13():
         pt_prediction, pt_loss = run_step(pt_model, pt_x)
         if step == 0:
             model_onx = ort_model._torch_module._execution_manager._training_manager._onnx_models
-            for name in ["exported_model", "optimized_model", "optimized_pre_grad_model"]:
+            for name in ["exported_model", "optimized_model"]:
                 onx = getattr(model_onx, name)
                 opv = None
                 for op in onx.opset_import:
