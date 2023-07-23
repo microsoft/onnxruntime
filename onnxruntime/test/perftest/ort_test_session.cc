@@ -133,6 +133,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
     std::string trt_profile_min_shapes = "";
     std::string trt_profile_max_shapes = "";
     std::string trt_profile_opt_shapes = "";
+    bool trt_cuda_graph_enable = false;
 
 #ifdef _MSC_VER
     std::string ov_string = ToUTF8String(performance_test_config.run_config.ep_runtime_config_string);
@@ -362,8 +363,16 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
         } else {
           ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_profile_opt_shapes' should be a non-empty string.\n");
         }
+      } else if (key == "trt_cuda_graph_enable") {
+        if (value == "true" || value == "True") {
+          trt_cuda_graph_enable = true;
+        } else if (value == "false" || value == "False") {
+          trt_cuda_graph_enable = false;
+        } else {
+          ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_cuda_graph_enable' should be a boolean i.e. true or false. Default value is false.\n");
+        }
       } else {
-        ORT_THROW("[ERROR] [TensorRT] wrong key type entered. Choose from the following runtime key options that are available for TensorRT. ['device_id', 'trt_max_partition_iterations', 'trt_min_subgraph_size', 'trt_max_workspace_size', 'trt_fp16_enable', 'trt_int8_enable', 'trt_int8_calibration_table_name', 'trt_int8_use_native_calibration_table', 'trt_dla_enable', 'trt_dla_core', 'trt_dump_subgraphs', 'trt_engine_cache_enable', 'trt_engine_cache_path', 'trt_engine_decryption_enable', 'trt_engine_decryption_lib_path', 'trt_force_sequential_engine_build', 'trt_context_memory_sharing_enable', 'trt_layer_norm_fp32_fallback', 'trt_timing_cache_enable', 'trt_force_timing_cache', 'trt_detailed_build_log', 'trt_build_heuristics_enable', 'trt_sparsity_enable', 'trt_builder_optimization_level', 'trt_auxiliary_streams', 'trt_tactic_sources', 'trt_extra_plugin_lib_paths', 'trt_profile_min_shapes', 'trt_profile_max_shapes', 'trt_profile_opt_shapes'] \n");
+        ORT_THROW("[ERROR] [TensorRT] wrong key type entered. Choose from the following runtime key options that are available for TensorRT. ['device_id', 'trt_max_partition_iterations', 'trt_min_subgraph_size', 'trt_max_workspace_size', 'trt_fp16_enable', 'trt_int8_enable', 'trt_int8_calibration_table_name', 'trt_int8_use_native_calibration_table', 'trt_dla_enable', 'trt_dla_core', 'trt_dump_subgraphs', 'trt_engine_cache_enable', 'trt_engine_cache_path', 'trt_engine_decryption_enable', 'trt_engine_decryption_lib_path', 'trt_force_sequential_engine_build', 'trt_context_memory_sharing_enable', 'trt_layer_norm_fp32_fallback', 'trt_timing_cache_enable', 'trt_force_timing_cache', 'trt_detailed_build_log', 'trt_build_heuristics_enable', 'trt_sparsity_enable', 'trt_builder_optimization_level', 'trt_auxiliary_streams', 'trt_tactic_sources', 'trt_extra_plugin_lib_paths', 'trt_profile_min_shapes', 'trt_profile_max_shapes', 'trt_profile_opt_shapes', 'trt_cuda_graph_enable'] \n");
       }
     }
     OrtTensorRTProviderOptionsV2 tensorrt_options;
@@ -399,6 +408,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
     tensorrt_options.trt_profile_min_shapes = trt_profile_min_shapes.c_str();
     tensorrt_options.trt_profile_max_shapes = trt_profile_max_shapes.c_str();
     tensorrt_options.trt_profile_opt_shapes = trt_profile_opt_shapes.c_str();
+    tensorrt_options.trt_cuda_graph_enable = trt_cuda_graph_enable;
 
     session_options.AppendExecutionProvider_TensorRT_V2(tensorrt_options);
 
@@ -894,6 +904,12 @@ static void InitializeTensorWithSeed(int32_t seed, Ort::Value& tensor) {
     CASE_FOR_TYPE(uint32_t);
     CASE_FOR_TYPE(uint64_t);
     CASE_FOR_TYPE(bool);
+#if !defined(DISABLE_FLOAT8_TYPES)
+    CASE_FOR_TYPE(Ort::Float8E4M3FN_t);
+    CASE_FOR_TYPE(Ort::Float8E4M3FNUZ_t);
+    CASE_FOR_TYPE(Ort::Float8E5M2_t);
+    CASE_FOR_TYPE(Ort::Float8E5M2FNUZ_t);
+#endif
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING:
       // string tensors are already initialized to contain empty strings
       // see onnxruntime::Tensor::Init()

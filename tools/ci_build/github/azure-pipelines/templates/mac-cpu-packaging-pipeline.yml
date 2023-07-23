@@ -22,78 +22,122 @@ parameters:
   type: boolean
   default: false
 
+- name: DoESRP
+  displayName: Do ESRP
+  type: boolean
+  default: false
+
+# these 2 parameters are used for debugging.
+- name: SpecificArtifact
+  displayName: Use Specific Artifact (Debugging only)
+  type: boolean
+  default: false
+
+- name: BuildId
+  displayName: Pipeline BuildId, you could find it in the URL
+  type: string
+  default: '0'
+
 stages:
 - stage: MacOS_C_API_Packaging_CPU
   dependsOn: []
   jobs:
-  - ${{ if eq(parameters.BuildForAllArchs, true) }}:
     - template: mac-cpu-packing-jobs.yml
       parameters:
         MacosArch: 'x86_64'
         AllowReleasedOpsetOnly: ${{ parameters.AllowReleasedOpsetOnly }}
         AdditionalBuildFlags: ${{ parameters.AdditionalBuildFlags }}
         WithCache: ${{ parameters.WithCache }}
-    - template: mac-cpu-packing-jobs.yml
-      parameters:
-        MacosArch: 'arm64'
-        AllowReleasedOpsetOnly: ${{ parameters.AllowReleasedOpsetOnly }}
-        AdditionalBuildFlags: ${{ parameters.AdditionalBuildFlags }}
-        WithCache: ${{ parameters.WithCache }}
-    - template: mac-cpu-packing-jobs.yml
-      parameters:
-        MacosArch: 'universal2'
-        AllowReleasedOpsetOnly: ${{ parameters.AllowReleasedOpsetOnly }}
-        AdditionalBuildFlags: ${{ parameters.AdditionalBuildFlags }}
-        WithCache: ${{ parameters.WithCache }}
-    - job: MacOS_C_API_Package_Publish_All
-      dependsOn:
-      - MacOS_C_API_Packaging_CPU_x86_64
-      - MacOS_C_API_Packaging_CPU_arm64
-      - MacOS_C_API_Packaging_CPU_universal2
-      pool:
-        vmImage: 'macOS-13'
-      steps:
-      - task: DownloadPipelineArtifact@2
-        inputs:
-          artifact: 'onnxruntime-osx-x86_64'
-          targetPath: '$(Build.ArtifactStagingDirectory)'
-      - task: DownloadPipelineArtifact@2
-        inputs:
-          artifact: 'onnxruntime-osx-arm64'
-          targetPath: '$(Build.ArtifactStagingDirectory)'
-      - task: DownloadPipelineArtifact@2
-        inputs:
-          artifact: 'onnxruntime-osx-universal2'
-          targetPath: '$(Build.ArtifactStagingDirectory)'
-      - task: PublishPipelineArtifact@1
-        inputs:
-          targetPath: '$(Build.ArtifactStagingDirectory)'
-          artifact: 'onnxruntime-osx'
-          condition: 'succeededOrFailed()'
-      - template: component-governance-component-detection-steps.yml
+
+    - ${{ if eq(parameters.BuildForAllArchs, true) }}:
+      - template: mac-cpu-packing-jobs.yml
         parameters:
-          condition: 'succeeded'
-  - ${{ if ne(parameters.BuildForAllArchs, true) }}:
-    - template: mac-cpu-packing-jobs.yml
-      parameters:
-        MacosArch: 'x86_64'
-        AllowReleasedOpsetOnly: ${{ parameters.AllowReleasedOpsetOnly }}
-        AdditionalBuildFlags: ${{ parameters.AdditionalBuildFlags }}
-        WithCache: ${{ parameters.WithCache }}
-    - job: MacOS_C_API_Package_Publish_x86_64
-      dependsOn: MacOS_C_API_Packaging_CPU_x86_64
+          MacosArch: 'arm64'
+          AllowReleasedOpsetOnly: ${{ parameters.AllowReleasedOpsetOnly }}
+          AdditionalBuildFlags: ${{ parameters.AdditionalBuildFlags }}
+          WithCache: ${{ parameters.WithCache }}
+      - template: mac-cpu-packing-jobs.yml
+        parameters:
+          MacosArch: 'universal2'
+          AllowReleasedOpsetOnly: ${{ parameters.AllowReleasedOpsetOnly }}
+          AdditionalBuildFlags: ${{ parameters.AdditionalBuildFlags }}
+          WithCache: ${{ parameters.WithCache }}
+
+- stage: MacOS_C_API_Package_Publish
+  dependsOn: MacOS_C_API_Packaging_CPU
+  jobs:
+    - job: MacOS_C_API_Package_Publish
       pool:
-        vmImage: 'macOS-13'
+        ${{ if eq(parameters.DoESRP, true)}}:
+          vmImage: 'macOS-12'
+        ${{ else }}:
+          vmImage: 'macOS-13'
       steps:
-      - task: DownloadPipelineArtifact@2
-        inputs:
-          artifact: 'onnxruntime-osx-x86_64'
-          targetPath: '$(Build.ArtifactStagingDirectory)'
+      - checkout: none
+      - template: flex-downloadPipelineArtifact.yml
+        parameters:
+          StepName: 'Download Pipeline onnxruntime-osx-x86_64'
+          ArtifactName: 'onnxruntime-osx-x86_64'
+          TargetPath: '$(Build.ArtifactStagingDirectory)'
+          SpecificArtifact: ${{ parameters.SpecificArtifact }}
+          BuildId: ${{ parameters.BuildId }}
+
+      - ${{ if eq(parameters.BuildForAllArchs, true) }}:
+        - template: flex-downloadPipelineArtifact.yml
+          parameters:
+            StepName: 'Download Pipeline onnxruntime-osx-arm64'
+            ArtifactName: 'onnxruntime-osx-arm64'
+            TargetPath: '$(Build.ArtifactStagingDirectory)'
+            SpecificArtifact: ${{ parameters.SpecificArtifact }}
+            BuildId: ${{ parameters.BuildId }}
+        - template: flex-downloadPipelineArtifact.yml
+          parameters:
+            StepName: 'Download Pipeline onnxruntime-osx-universal2'
+            ArtifactName: 'onnxruntime-osx-universal2'
+            TargetPath: '$(Build.ArtifactStagingDirectory)'
+            SpecificArtifact: ${{ parameters.SpecificArtifact }}
+            BuildId: ${{ parameters.BuildId }}
+
+      - ${{ if eq(parameters.DoESRP, true)}}:
+        - script: |
+            pushd '$(Build.ArtifactStagingDirectory)'
+            find . '*.tgz' -exec tar -zxvf {} \;
+            rm -f *.tgz;
+            find . -type d -name 'onnxruntime-osx-*' -exec zip -FSr --symlinks {}.zip {} \;
+            find . -type d -name 'onnxruntime-osx-*' -exec rm -rf {} \;
+            ls -l
+            popd
+          displayName: tgz to zip
+        - template: mac-esrp-dylib.yml
+          parameters:
+            FolderPath: '$(Build.ArtifactStagingDirectory)'
+            DisplayName: 'ESRP - Sign Mac'
+            DoEsrp: true
+            Pattern: '*.zip'
+        - script: |
+            pushd '$(Build.ArtifactStagingDirectory)'
+            find . '*.zip' -exec unzip {} \;
+            rm -f *.zip;
+            find . -type d -name 'onnxruntime-osx-*' -exec tar -czf {}.tgz {} \;
+            find . -type d -name 'onnxruntime-osx-*' -exec rm -rf {} \;
+            ls -l
+            popd
+          displayName: zip to tgz
+        - bash: |
+            set -ex
+            mkdir -p $(Agent.TempDirectory)/macpackage
+            find $(Build.ArtifactStagingDirectory) -name "*.tgz" -exec tar -zxvf {} -C $(Agent.TempDirectory)/macpackage \;
+            find $(Agent.TempDirectory)/macpackage -name "*.dylib" -exec codesign -dvvv {} \;
+            find $(Agent.TempDirectory)/macpackage -name "*.dylib" -exec ls -l {} \;
+            rm -rf $(Agent.TempDirectory)/macpackage
+          displayName: 'Verify code signing'
+
       - task: PublishPipelineArtifact@1
         inputs:
           targetPath: '$(Build.ArtifactStagingDirectory)'
           artifact: 'onnxruntime-osx'
           condition: 'succeededOrFailed()'
+
       - template: component-governance-component-detection-steps.yml
         parameters:
           condition: 'succeeded'

@@ -18,24 +18,26 @@ jobs:
       architecture: "x64"
 
   - script: |
-      pip install -r tools/ci_build/github/apple/objectivec/static_analysis/requirements.txt
-    displayName: Install tools
-
-  - script: |
       python tools/ci_build/build.py \
         --build_dir "$(Build.BinariesDirectory)" \
-        --cmake_generator "Ninja" \
+        --cmake_generator "Unix Makefiles" \
         --config Debug \
         --build_shared_lib --use_coreml --build_objc \
+        --enable_training_apis \
         --cmake_extra_defines CMAKE_EXPORT_COMPILE_COMMANDS=ON \
         --update --skip_submodule_sync \
         --build --parallel --target onnx_proto
     displayName: Generate compile_commands.json and ONNX protobuf files
 
   - script: |
+      set -e
+
+      CLANG_TIDY_CHECKS="-*,clang-analyzer-*"
+
       "$(brew --prefix llvm@15)/bin/clang-tidy" \
         -p="$(Build.BinariesDirectory)/Debug" \
-        --checks="-*,clang-analyzer-*" \
+        --checks="${CLANG_TIDY_CHECKS}" \
+        --warnings-as-errors="${CLANG_TIDY_CHECKS}" \
         --header-filter="objectivec/include|objectivec|onnxruntime/core" \
         ./objectivec/*.mm \
         ./onnxruntime/core/platform/apple/logging/apple_log_sink.mm \

@@ -3,6 +3,7 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
+from enum import IntEnum
 from logging import Logger
 from typing import List, Tuple, Union
 
@@ -12,21 +13,40 @@ from onnx import ModelProto, helper
 from onnx import onnx_pb as onnx_proto
 
 
+class Phase(IntEnum):
+    INVALID = -1
+    PRE_FORWARD = 0
+    POST_FORWARD = 1
+    PRE_BACKWARD = 2  # not applicable for inference
+    POST_BACKWARD = 3  # not applicable for inference
+
+
+def _convert_phase_to_string(phase: Phase) -> str:
+    if phase == Phase.PRE_FORWARD:
+        return "pre_forward"
+    elif phase == Phase.POST_FORWARD:
+        return "post_forward"
+    elif phase == Phase.PRE_BACKWARD:
+        return "pre_backward"
+    elif phase == Phase.POST_BACKWARD:
+        return "post_backward"
+    else:
+        return "invalid"
+
+
 class RuntimeInspector:
     """
     Runtime inspector for ORTModule.
-
-    Currently, it only wraps input density inspector.
     """
 
     def __init__(self, logger: Logger):
         self._logger = logger
 
         self.input_density_ob: Union[InputDensityObserver, None] = None
+        self.memory_ob: Union[MemoryObserver, None] = None
 
     def enable_input_inspector(self, model: ModelProto, user_input_names: List[str]) -> None:
-        """
-        Initialize input inspector from the given ONNX model and user input names.
+        """Initialize input inspector from the given ONNX model and user input names.
 
         Args:
             model: ONNX model.
@@ -41,8 +61,7 @@ class RuntimeInspector:
         return self.input_density_ob.initialize(model, user_input_names)
 
     def inspect_input(self, input_name, input_data) -> Tuple[bool, float, float]:
-        """
-        Inspect input data and print statistics.
+        """Inspect input data and print statistics.
 
         Args:
             input_name: User input name.
@@ -63,10 +82,29 @@ class RuntimeInspector:
         """Disable input density inspector."""
         self.input_density_ob = None
 
+    def enable_memory_inspector(self, module: torch.nn.Module):
+        """Enable memory inspector for ORTModule.
+
+        Args:
+            module: ORTModule.
+        """
+        if self.memory_ob is None:
+            self.memory_ob = MemoryObserver(module, self._logger)
+        else:
+            raise RuntimeError("Memory observer is already enabled.")
+
+    def inspect_memory(self, phase: Phase) -> None:
+        """Inspect memory usage and print statistics.
+
+        Args:
+            phase: Phase to inspect.
+        """
+        if self.memory_ob is not None:
+            self.memory_ob.inspect_memory(phase)
+
 
 class InputDensityObserver:
-    """
-    Training input data observer for ORTModule.
+    """Training input data observer for ORTModule.
 
     Data observer is used to collect data/compute sparsity information for embedding and label inputs. It needs to be
     firstly initialized with the ONNX model and user input names. Then, it can be used to inspect the input data
@@ -89,8 +127,7 @@ class InputDensityObserver:
         self._tensor_to_node_map = {}
 
     def initialize(self, model: ModelProto, user_input_names: List[str]) -> None:
-        """
-        Initialize data observer from the given ONNX model and user input names.
+        """Initialize data observer from the given ONNX model and user input names.
 
         For embedding input (e.g. ATen embedding), try to parse the padding_idx from the ONNX model, if padding_idx is
         valid, register it in _embedding_graph_input_to_padding_idx_map.
@@ -109,7 +146,7 @@ class InputDensityObserver:
             self._tensor_to_node_map.clear()
             for node in model.graph.node:
                 for output_name in node.output:
-                    if output_name != "":  # noqa: PLC1901
+                    if output_name != "":
                         self._tensor_to_node_map[output_name] = node
 
             self._initialize_embedding_padding_inspector(model, user_input_names)
@@ -283,8 +320,7 @@ class InputDensityObserver:
             )
 
     def inspect_from_input_data(self, name: str, inp) -> Tuple[bool, float, float]:
-        """
-        Inspect input data and print statistics.
+        """Inspect input data and print statistics.
 
         Args:
             name: User input name.
@@ -379,7 +415,7 @@ class InputDensityObserver:
             stat += "\t| {:<10} | {:<10} | {:<15} | {:<10} | {:<10} | {:<15} | {:<15} | {:<15} |\n".format(
                 "STEP",
                 "INPUT TYPE",
-                " INPUT NAME",
+                "INPUT NAME",
                 "PAD IDX",
                 "DENSITY",
                 "VALID TOKENS",
@@ -404,7 +440,7 @@ class InputDensityObserver:
             self._stats.clear()
 
     def _try_get_node_from_its_output(self, name):
-        if name == "" or name not in self._tensor_to_node_map:  # noqa: PLC1901
+        if name == "" or name not in self._tensor_to_node_map:
             return None
 
         return self._tensor_to_node_map[name]
@@ -422,3 +458,87 @@ class InputDensityObserver:
             return None
         value = onnx.numpy_helper.to_array(tensor)
         return value
+
+
+class MemoryObserver:
+    """Memory inspector across the training lifetime.
+
+    On different training/inference phases, `inspect_memory` is called to print out the memory usage, including
+    current/peak memory usage, current/peak inactive and non-releasable memory.
+    """
+
+    NORMALIZER_FACTOR = float(1024 * 1024)
+    NORMALIZER_UNIT = "MiB"
+
+    def __init__(self, m: torch.nn.Module, logger: Logger):
+        self._logger = logger
+        self._current_step = 0
+        self._rank = 0
+        self._world_size = 1
+        if torch.distributed.is_initialized():
+            self._rank = torch.distributed.get_rank()
+            self._world_size = torch.distributed.get_world_size()
+
+        self._rank_info = f"[{self._rank}/{self._world_size}]"
+        self._pre_phase = Phase.INVALID
+        self._last_phase = Phase.POST_BACKWARD if m.training else Phase.POST_FORWARD
+
+        self._is_first_inspect = True
+
+    def inspect_memory(self, cur_phase: Phase):
+        if not torch.cuda.is_available():
+            return
+
+        if self._is_first_inspect:
+            # Clean the memory cache and memory stats before the first time run forward pass, FOR EVERY RANK.
+            torch.cuda.empty_cache()
+            torch.cuda.reset_peak_memory_stats()
+            self._is_first_inspect = False
+
+        if self._rank != 0:
+            return
+
+        if cur_phase < Phase.PRE_FORWARD or cur_phase > self._last_phase:
+            raise RuntimeError(f"Invalid phase detected: {cur_phase}")
+
+        if (cur_phase - self._pre_phase) != 1:
+            raise RuntimeError(f"Invalid phase transition detected: {self._pre_phase} -> {cur_phase}")
+
+        cur_mem_allocated = self._normalize(torch.cuda.memory_allocated())
+        max_mem_allocated = self._normalize(torch.cuda.max_memory_allocated())
+        cur_mem_cached = self._normalize(torch.cuda.memory_reserved())
+        max_mem_cached = self._normalize(torch.cuda.max_memory_reserved())
+        torch_mem_stat = torch.cuda.memory_stats()
+        cur_mem_inactive = self._normalize(torch_mem_stat.get("inactive_split_bytes.all.current", 0))
+        max_mem_inactive = self._normalize(torch_mem_stat.get("inactive_split_bytes.all.peak", 0))
+
+        mem_stats = [
+            ["phase", _convert_phase_to_string(cur_phase)],
+            ["allocated", cur_mem_allocated],  # current memory alloeated for tensors
+            ["max allocated", max_mem_allocated],  # peak memory allocated for tensors
+            ["cached", cur_mem_cached],  # current memory cached for caching allocator
+            ["max cached", max_mem_cached],  # peak memory cached for caching allocator.
+            ["inactive", cur_mem_inactive],  # amount of inactive, non-releasable memory
+            ["max inactive", max_mem_inactive],  # peak of inactive, non-releasable memory
+        ]
+
+        summ = f"{self._rank_info} step {self._current_step} memory ({MemoryObserver.NORMALIZER_UNIT})"
+        for stat in mem_stats:
+            summ += f" | {stat[0]}: {stat[1]}"
+
+        # For the 10+ steps, only print when it is power of 2.
+        if self._current_step < 10 or (self._current_step & (self._current_step - 1) == 0):
+            self._logger.info(summ)
+
+        if cur_phase == self._last_phase:
+            self._increase_step()
+            self._pre_phase = Phase.INVALID
+            return
+
+        self._pre_phase = cur_phase
+
+    def _increase_step(self):
+        self._current_step += 1
+
+    def _normalize(self, mem_size_in_bytes: Union[float, int]) -> str:
+        return f"{float(mem_size_in_bytes) / MemoryObserver.NORMALIZER_FACTOR:.0f}"

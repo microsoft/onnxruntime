@@ -69,21 +69,6 @@ class BaseOpBuilder : public IOpBuilder {
                       bool is_quantized_model,
                       std::vector<std::string>& input_names) const ORT_MUST_USE_RESULT;
 
-  bool OnnxDataTypeToQnnDataType(const int32_t data_type, Qnn_DataType_t& qnn_data_type, bool is_quantized = false) const;
-
-  Status GetQnnDataType(const bool is_quantized_node, const ONNX_NAMESPACE::TypeProto* type_proto,
-                        Qnn_DataType_t& tensor_data_type) const {
-    if (!type_proto || !type_proto->tensor_type().has_elem_type()) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "The tensor doesn't have elem_type.");
-    }
-
-    int32_t onnx_data_type = type_proto->tensor_type().elem_type();
-    ORT_RETURN_IF_NOT(OnnxDataTypeToQnnDataType(onnx_data_type, tensor_data_type, is_quantized_node),
-                      "Failed to map Onnx data type to Qnn data type!");
-
-    return Status::OK();
-  }
-
   const std::string& GetNodeName(const NodeUnit& node_unit) const {
     const std::string& node_name(node_unit.Name());
     if (node_name.empty()) {
@@ -96,86 +81,89 @@ class BaseOpBuilder : public IOpBuilder {
   static const std::string& GetQnnOpType(const std::string& onnx_op_type) {
     // TODO: Use QNN operator names defined in "QnnOpDef.h"
     static const std::unordered_map<std::string, std::string> onnx_op_type_to_qnn_op_type = {
-        {"Add", "ElementWiseAdd"},
-        {"Mul", "ElementWiseMultiply"},
-        {"Abs", "ElementWiseAbs"},
-        {"And", "ElementWiseAnd"},
-        {"Atan", "ElementWiseAtan"},
-        {"Ceil", "ElementWiseCeil"},
-        {"Cast", "Cast"},
-        {"Clip", "ReluMinMax"},
-        {"Cos", "ElementWiseCos"},
-        {"Div", "ElementWiseDivide"},
-        {"Equal", "ElementWiseEqual"},
-        {"Exp", "ElementWiseExp"},
-        {"Floor", "ElementWiseFloor"},
-        {"Gather", "Gather"},
-        {"Greater", "ElementWiseGreater"},
-        {"GreaterOrEqual", "ElementWiseGreaterEqual"},
-        {"Less", "ElementWiseLess"},
-        {"LessOrEqual", "ElementWiseLessEqual"},
-        {"Log", "ElementWiseLog"},
-        {"Max", "ElementWiseMaximum"},
-        {"Min", "ElementWiseMinimum"},
-        {"Neg", "ElementWiseNeg"},
-        {"Not", "ElementWiseNot"},
-        {"Or", "ElementWiseOr"},
-        {"Pow", "ElementWisePower"},
-        {"PRelu", "Prelu"},
-        {"LeakyRelu", "Prelu"},
-        {"ReduceMax", "ReduceMax"},
-        {"ReduceMean", "ReduceMean"},
-        {"ReduceMin", "ReduceMin"},
-        {"ReduceProd", "ReduceProd"},
-        {"ReduceSum", "ReduceSum"},
-        {"Round", "ElementWiseRound"},
-        {"Where", "ElementWiseSelect"},
-        {"Sigmoid", "Sigmoid"},
-        {"Sin", "ElementWiseSin"},
-        {"Slice", "StridedSlice"},
-        {"Split", "Split"},
-        {"Softmax", "Softmax"},
-        {"Sqrt", "ElementWiseSquareRoot"},
-        {"Sub", "ElementWiseSubtract"},
-        {"Tanh", "Tanh"},
-        {"Transpose", "Transpose"},
+        {"Add", QNN_OP_ELEMENT_WISE_ADD},
+        {"Mul", QNN_OP_ELEMENT_WISE_MULTIPLY},
+        {"Abs", QNN_OP_ELEMENT_WISE_ABS},
+        {"And", QNN_OP_ELEMENT_WISE_AND},
+        {"Asin", QNN_OP_ELEMENT_WISE_ASIN},
+        {"Atan", QNN_OP_ELEMENT_WISE_ATAN},
+        {"Ceil", QNN_OP_ELEMENT_WISE_CEIL},
+        {"Sign", QNN_OP_ELEMENT_WISE_SIGN},
+        {"Cast", QNN_OP_CAST},
+        {"Clip", QNN_OP_RELU_MIN_MAX},
+        {"Cos", QNN_OP_ELEMENT_WISE_COS},
+        {"Div", QNN_OP_ELEMENT_WISE_DIVIDE},
+        {"Equal", QNN_OP_ELEMENT_WISE_EQUAL},
+        {"Exp", QNN_OP_ELEMENT_WISE_EXP},
+        {"Floor", QNN_OP_ELEMENT_WISE_FLOOR},
+        {"Gather", QNN_OP_GATHER},
+        {"Greater", QNN_OP_ELEMENT_WISE_GREATER},
+        {"GreaterOrEqual", QNN_OP_ELEMENT_WISE_GREATER_EQUAL},
+        {"Less", QNN_OP_ELEMENT_WISE_LESS},
+        {"LessOrEqual", QNN_OP_ELEMENT_WISE_LESS_EQUAL},
+        {"Log", QNN_OP_ELEMENT_WISE_LOG},
+        {"Max", QNN_OP_ELEMENT_WISE_MAXIMUM},
+        {"Min", QNN_OP_ELEMENT_WISE_MINIMUM},
+        {"Neg", QNN_OP_ELEMENT_WISE_NEG},
+        {"Not", QNN_OP_ELEMENT_WISE_NOT},
+        {"Or", QNN_OP_ELEMENT_WISE_OR},
+        {"Pow", QNN_OP_ELEMENT_WISE_POWER},
+        {"PRelu", QNN_OP_PRELU},
+        {"LeakyRelu", QNN_OP_PRELU},
+        {"ReduceMax", QNN_OP_REDUCE_MAX},
+        {"ReduceMean", QNN_OP_REDUCE_MEAN},
+        {"ReduceMin", QNN_OP_REDUCE_MIN},
+        {"ReduceProd", QNN_OP_REDUCE_PROD},
+        {"ReduceSum", QNN_OP_REDUCE_SUM},
+        {"Round", QNN_OP_ELEMENT_WISE_ROUND},
+        {"Where", QNN_OP_ELEMENT_WISE_SELECT},
+        {"Sigmoid", QNN_OP_SIGMOID},
+        {"Sin", QNN_OP_ELEMENT_WISE_SIN},
+        {"Slice", QNN_OP_STRIDED_SLICE},
+        {"Split", QNN_OP_SPLIT},
+        {"Softmax", QNN_OP_SOFTMAX},
+        {"Sqrt", QNN_OP_ELEMENT_WISE_SQUARE_ROOT},
+        {"Sub", QNN_OP_ELEMENT_WISE_SUBTRACT},
+        {"Tanh", QNN_OP_TANH},
+        {"Transpose", QNN_OP_TRANSPOSE},
 
-        {"DequantizeLinear", "Dequantize"},
-        {"QuantizeLinear", "Quantize"},
+        {"DequantizeLinear", QNN_OP_DEQUANTIZE},
+        {"QuantizeLinear", QNN_OP_QUANTIZE},
 
-        {"MatMul", "MatMul"},
+        {"MatMul", QNN_OP_MAT_MUL},
 
-        {"Elu", "Elu"},
-        {"Relu", "Relu"},
-        {"Gelu", "Gelu"},
-        {"Sigmoid", "Sigmoid"},
+        {"Elu", QNN_OP_ELU},
+        {"Relu", QNN_OP_RELU},
+        {"Gelu", QNN_OP_GELU},
+        {"Sigmoid", QNN_OP_SIGMOID},
 
-        {"HardSwish", "HardSwish"},
+        {"HardSwish", QNN_OP_HARD_SWISH},
 
-        {"Conv", "Conv2d"},
+        {"Conv", QNN_OP_CONV_2D},
+        {"ConvTranspose", QNN_OP_TRANSPOSE_CONV_2D},
 
-        {"GlobalAveragePool", "PoolAvg2d"},
-        {"AveragePool", "PoolAvg2d"},
-        {"MaxPool", "PoolMax2d"},
+        {"GlobalAveragePool", QNN_OP_POOL_AVG_2D},
+        {"AveragePool", QNN_OP_POOL_AVG_2D},
+        {"MaxPool", QNN_OP_POOL_MAX_2D},
 
-        {"Reshape", "Reshape"},
-        {"Resize", "Resize"},
-        {"Flatten", "Reshape"},
-        {"Squeeze", "Reshape"},
-        {"Unsqueeze", "Reshape"},
+        {"Reshape", QNN_OP_RESHAPE},
+        {"Resize", QNN_OP_RESIZE},
+        {"Flatten", QNN_OP_RESHAPE},
+        {"Squeeze", QNN_OP_RESHAPE},
+        {"Unsqueeze", QNN_OP_RESHAPE},
 
-        {"LogSoftmax", "LogSoftmax"},
-        {"Concat", "Concat"},
+        {"LogSoftmax", QNN_OP_LOG_SOFTMAX},
+        {"Concat", QNN_OP_CONCAT},
 
-        {"Gemm", "FullyConnected"},
+        {"Gemm", QNN_OP_FULLY_CONNECTED},
 
-        {"ArgMax", "Argmax"},
-        {"ArgMin", "Argmin"},
-        {"ConvTranspose", "TransposeConv2d"},
-        {"Tile", "Tile"},
-        {"TopK", "TopK"},
-        {"InstanceNormalization", "InstanceNorm"},
-        {"BatchNormalization", "Batchnorm"},
+        {"ArgMax", QNN_OP_ARGMAX},
+        {"ArgMin", QNN_OP_ARGMIN},
+        {"Tile", QNN_OP_TILE},
+        {"TopK", QNN_OP_TOP_K},
+        {"InstanceNormalization", QNN_OP_INSTANCE_NORM},
+        {"BatchNormalization", QNN_OP_BATCHNORM},
+        {"LayerNormalization", QNN_OP_LAYER_NORM},
 
         {"LRN", QNN_OP_LRN}};
     auto it = onnx_op_type_to_qnn_op_type.find(onnx_op_type);
@@ -243,18 +231,11 @@ class BaseOpBuilder : public IOpBuilder {
     return TransposeInitializer(qnn_model_wrapper, initializer, two_dim_trans_perm, transposed_data);
   }
 
-  void InitializeQuantizeParam(Qnn_QuantizeParams_t& quantize_param, bool is_quantized_model, float scale = 0.0f, int32_t offset = 0) const {
-    quantize_param.encodingDefinition = is_quantized_model ? QNN_DEFINITION_DEFINED : QNN_DEFINITION_UNDEFINED;
-    quantize_param.quantizationEncoding = is_quantized_model ? QNN_QUANTIZATION_ENCODING_SCALE_OFFSET : QNN_QUANTIZATION_ENCODING_UNDEFINED;
-    quantize_param.scaleOffsetEncoding.scale = scale;
-    quantize_param.scaleOffsetEncoding.offset = offset;
-  }
-
   // Onnx Pads is [x1_begin, x2_begin, x1_end, x2_end], QNN requires [x1_begin, x1_end, x2_begin, x2_end]
-  void ReArranagePads(std::vector<int32_t>& pads) const {
+  void ReArranagePads(std::vector<uint32_t>& pads) const {
     auto pads_size = pads.size();
     auto middle_pos = pads_size / 2;
-    std::vector<int32_t> first_half(pads.begin(), pads.begin() + middle_pos);
+    std::vector<uint32_t> first_half(pads.begin(), pads.begin() + middle_pos);
     for (size_t i = 0; i < middle_pos; ++i) {
       pads[2 * i] = first_half[i];
       pads[2 * i + 1] = pads[middle_pos + i];
@@ -284,7 +265,8 @@ class BaseOpBuilder : public IOpBuilder {
     static const std::unordered_map<std::string, std::pair<size_t, size_t>> input_output_count_qnn_required = {
         {"GlobalAveragePool", {0, 1}},
         {"MaxPool", {0, 1}},
-        {"BatchNormalization", {3, 1}}};
+        {"BatchNormalization", {3, 1}},
+        {"LayerNormalization", {0, 1}}};
 
     auto pos = input_output_count_qnn_required.find(onnx_op_type);
     if (pos == input_output_count_qnn_required.end()) {

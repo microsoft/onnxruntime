@@ -30,6 +30,7 @@ namespace openvino_ep {
 
 // Ops which are supported only in models(as intermediate nodes) and not in unit tests
 std::set<std::string> ops_supported_only_in_model = {
+    "Add",
     "Cast",
     "Concat",
     "ConstantOfShape",
@@ -41,6 +42,7 @@ std::set<std::string> ops_supported_only_in_model = {
     "GatherElements",
     "GatherND",
     "Identity",
+    "LayerNormalization",
     "Loop",
     "LSTM",
     "NonMaxSuppression",
@@ -49,6 +51,7 @@ std::set<std::string> ops_supported_only_in_model = {
     "OneHot",
     "Pad",
     "QuantizeLinear",
+    "RandomNormalLike",
     "Range",
     "ReduceMin",
     "Resize",
@@ -57,13 +60,14 @@ std::set<std::string> ops_supported_only_in_model = {
     "Slice",
     "Split",
     "Tile",
-    "TopK"};
+    "TopK",
+    "Trilu"};
 
 // Ops which are supported as functions (as composite ops)
 std::set<std::string> ops_supported_as_function = {
     "LessOrEqual",
     "GreaterOrEqual",
-};
+    "LayerNormalization"};
 
 std::vector<SupportedOp> supported_op_mode = {
     {"Abs", V_2020_4, {"CPU", "GPU"}},
@@ -205,6 +209,7 @@ std::vector<SupportedOp> supported_op_mode = {
     {"QLinearMatMul", V_2022_3, {"CPU"}},
     {"QuantizeLinear", V_2021_4, {"CPU", "GPU"}},
     {"QuantizeLinear", V_2023_0, {"VPUX"}},
+    {"RandomNormalLike", V_2023_0, {"CPU", "GPU"}},
     {"Range", V_2022_1, {"CPU", "GPU"}},
     {"Range", V_2023_0, {"VPUX"}},
     {"Reciprocal", V_2020_4, {"CPU", "GPU"}},
@@ -278,6 +283,7 @@ std::vector<SupportedOp> supported_op_mode = {
     {"Tile", V_2023_0, {"VPUX"}},
     {"Transpose", V_2020_4, {"CPU", "GPU"}},
     {"Transpose", V_2023_0, {"VPUX"}},
+    {"Trilu", V_2023_0, {"CPU", "GPU"}},
     {"TopK", V_2020_4, {"CPU", "GPU"}},
     {"TopK", V_2023_0, {"VPUX"}},
     {"Unsqueeze", V_2020_4, {"CPU", "GPU"}},
@@ -590,7 +596,7 @@ void DataOps::populate_op_mode_supported() {
     op_list_.insert({"PRelu", obj});
   }
   {
-    UnsupportedOpMode obj = {{V_2022_1, V_2022_2, V_2022_3},
+    UnsupportedOpMode obj = {{V_2022_1, V_2022_2, V_2022_3, V_2023_0},
                              [this](const Node* node, const InitializedTensorSet&) {
                                const auto& input_arg = node->InputDefs()[1];
                                auto shape = input_arg->Shape();
@@ -701,7 +707,7 @@ void DataOps::populate_op_mode_supported() {
     op_list_.insert({"Squeeze", obj});
   }
   {
-    UnsupportedOpMode obj = {{V_2022_1, V_2022_2, V_2022_3},
+    UnsupportedOpMode obj = {{V_2022_1, V_2022_2, V_2022_3, V_2023_0},
                              [this](const Node* node, const InitializedTensorSet&) {
                                // If the operator is unsqueeze
                                // If axes is an input, then we cannot produce a static graph. Conversion fails in convert_function_to_cnn_network.
@@ -715,7 +721,7 @@ void DataOps::populate_op_mode_supported() {
     op_list_.insert({"Unsqueeze", obj});
   }
   {
-    UnsupportedOpMode obj = {{V_2022_1, V_2022_2, V_2022_3},
+    UnsupportedOpMode obj = {{V_2022_1, V_2022_2, V_2022_3, V_2023_0},
                              [this](const Node* node, const InitializedTensorSet&) {
                                // check for attributes
                                auto& upsample_attr = node->GetAttributes();
@@ -732,7 +738,7 @@ void DataOps::populate_op_mode_supported() {
                                auto shape = x_arg->Shape();
                                if (shape != nullptr) {
                                  // input tensor rank cannot be of one dimension
-                                 if (shape->dim_size() == 1) {
+                                 if (shape->dim_size() == 1 || shape->dim_size() == 4) {
                                    return true;
                                  }
                                }

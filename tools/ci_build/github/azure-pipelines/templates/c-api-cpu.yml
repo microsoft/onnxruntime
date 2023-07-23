@@ -57,6 +57,9 @@ stages:
   parameters:
     AllowReleasedOpsetOnly: 1
     BuildForAllArchs: true
+    SpecificArtifact: ${{ parameters.SpecificArtifact }}
+    BuildId: ${{ parameters.BuildId }}
+    DoEsrp: ${{ parameters.DoEsrp }}
 
 - stage: Android_Java_API_AAR_Packaging_Mobile
   dependsOn: []
@@ -203,7 +206,7 @@ stages:
 - stage: Jar_Packaging
   dependsOn:
   - Linux_C_API_Packaging_CPU
-  - MacOS_C_API_Packaging_CPU
+  - MacOS_C_API_Package_Publish
   - Windows_Packaging_CPU_x86_${{ parameters.BuildVariant }}
   - Windows_Packaging_CPU_x64_${{ parameters.BuildVariant }}
   - Windows_Packaging_CPU_arm_${{ parameters.BuildVariant }}
@@ -287,7 +290,7 @@ stages:
   dependsOn:
   - Setup
   - Linux_C_API_Packaging_CPU
-  - MacOS_C_API_Packaging_CPU
+  - MacOS_C_API_Package_Publish
   - Windows_Packaging_CPU_x86_${{ parameters.BuildVariant }}
   - Windows_Packaging_CPU_x64_${{ parameters.BuildVariant }}
   - Windows_Packaging_CPU_arm_${{ parameters.BuildVariant }}
@@ -523,10 +526,11 @@ stages:
     - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
       displayName: 'Clean Agent Directories'
       condition: always()
+
 - stage: Nodejs_Packaging_CPU
   dependsOn:
   - Linux_C_API_Packaging_CPU
-  - MacOS_C_API_Packaging_CPU
+  - MacOS_C_API_Package_Publish
   - Windows_Packaging_CPU_x64_${{ parameters.BuildVariant }}
   - Windows_Packaging_CPU_arm64_${{ parameters.BuildVariant }}
   condition: succeeded()

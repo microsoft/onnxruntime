@@ -191,8 +191,8 @@ struct IdentityDML {
 };
 #endif
 
-#include <iostream>
 #ifdef USE_CUDA
+#include <iostream>
 void KernelOne(Ort::Custom::CudaContext* cuda_ctx,
                const Ort::Custom::Tensor<float>& X,
                const Ort::Custom::Tensor<float>& Y,
@@ -205,7 +205,7 @@ void KernelOne(Ort::Custom::CudaContext* cuda_ctx,
 }
 #else
 struct KernelOne {
-  void Compute(OrtKernelContext* context) {
+  OrtStatusPtr ComputeV2(OrtKernelContext* context) {
     // Setup inputs
     Ort::KernelContext ctx(context);
     auto input_X = ctx.GetInput(0);
@@ -225,13 +225,15 @@ struct KernelOne {
     for (size_t i = 0; i < size; i++) {
       out[i] = X[i] + Y[i];
     }
+    return nullptr;
   }
 };
 
-// legacy custom op registration
-struct CustomOpOne : Ort::CustomOpBase<CustomOpOne, KernelOne> {
-  void* CreateKernel(const OrtApi& /* api */, const OrtKernelInfo* /* info */) const {
-    return std::make_unique<KernelOne>().release();
+// legacy custom op registration with kernel creation and compute function that return an OrtStatusPtr
+struct CustomOpOne : Ort::CustomOpBase<CustomOpOne, KernelOne, true> {
+  OrtStatusPtr CreateKernelV2(const OrtApi& /* api */, const OrtKernelInfo* /* info */, void** op_kernel) const {
+    *op_kernel = reinterpret_cast<void*>(std::make_unique<KernelOne>().release());
+    return nullptr;
   };
 
   const char* GetName() const { return "CustomOpOne"; };
@@ -246,6 +248,38 @@ struct CustomOpOne : Ort::CustomOpBase<CustomOpOne, KernelOne> {
   size_t GetOutputTypeCount() const { return 1; };
   ONNXTensorElementDataType GetOutputType(size_t /*index*/) const { return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT; };
 };
+#endif
+
+#if !defined(DISABLE_FLOAT8_TYPES)
+
+struct KernelOneFloat8 {
+  void Compute(OrtKernelContext* context) {
+    Ort::KernelContext ctx(context);
+    auto input_X = ctx.GetInput(0);
+    const Ort::Float8E4M3FN_t* X = input_X.GetTensorData<Ort::Float8E4M3FN_t>();
+    auto dimensions = input_X.GetTensorTypeAndShapeInfo().GetShape();
+    auto output = ctx.GetOutput(0, dimensions);
+    Ort::Float8E4M3FN_t* out = output.GetTensorMutableData<Ort::Float8E4M3FN_t>();
+    const size_t size = output.GetTensorTypeAndShapeInfo().GetElementCount();
+    for (size_t i = 0; i < size; i++) {
+      out[i] = X[i];
+    }
+  }
+};
+
+// legacy custom op registration
+struct CustomOpOneFloat8 : Ort::CustomOpBase<CustomOpOneFloat8, KernelOneFloat8> {
+  void* CreateKernel(const OrtApi& /* api */, const OrtKernelInfo* /* info */) const {
+    return std::make_unique<KernelOneFloat8>().release();
+  };
+  const char* GetName() const { return "CustomOpOneFloat8"; };
+  const char* GetExecutionProviderType() const { return "CPUExecutionProvider"; };
+  size_t GetInputTypeCount() const { return 2; };
+  ONNXTensorElementDataType GetInputType(size_t /*index*/) const { return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E4M3FN; };
+  size_t GetOutputTypeCount() const { return 1; };
+  ONNXTensorElementDataType GetOutputType(size_t /*index*/) const { return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E4M3FN; };
+};
+
 #endif
 
 // lite custom op as a function
@@ -311,6 +345,28 @@ void Filter(const Ort::Custom::Tensor<float>& floats_in,
   }
 }
 
+#if !defined(DISABLE_FLOAT8_TYPES)
+
+void FilterFloat8(const Ort::Custom::Tensor<Ort::Float8E4M3FN_t>& floats_in,
+                  Ort::Custom::Tensor<Ort::Float8E4M3FN_t>& floats_out) {
+  const Ort::Float8E4M3FN_t* in = floats_in.Data();
+  auto in_len = floats_in.NumberOfElement();
+
+  std::vector<Ort::Float8E4M3FN_t> filter_floats;
+  for (int64_t i = 0; i < in_len; ++i) {
+    if (in[i] > 1.f) {
+      filter_floats.push_back(in[i]);
+    }
+  }
+
+  Ort::Float8E4M3FN_t* out = static_cast<Ort::Float8E4M3FN_t*>(floats_out.Allocate({static_cast<int64_t>(filter_floats.size())}));
+  for (size_t j = 0; j < filter_floats.size(); ++j) {
+    out[j] = filter_floats[j];
+  }
+}
+
+#endif
+
 void Box(const Ort::Custom::Tensor<float>* float_in_1,
          const Ort::Custom::Tensor<float>* float_in_2,
          std::optional<const Ort::Custom::Tensor<float>*> float_in_3,
@@ -350,6 +406,9 @@ static void AddOrtCustomOpDomainToContainer(Ort::CustomOpDomain&& domain) {
 OrtStatus* ORT_API_CALL RegisterCustomOps(OrtSessionOptions* options, const OrtApiBase* api) {
   Ort::Global<void>::api_ = api->GetApi(ORT_API_VERSION);
 
+#if !defined(DISABLE_FLOAT8_TYPES)
+  static const CustomOpOneFloat8 c_CustomOpOneFloat8;
+#endif
   using LiteOp = Ort::Custom::OrtLiteCustomOp;
 
 #ifdef USE_CUDA
@@ -364,6 +423,9 @@ OrtStatus* ORT_API_CALL RegisterCustomOps(OrtSessionOptions* options, const OrtA
   static const std::unique_ptr<LiteOp> fus_op_ptr{Ort::Custom::CreateLiteCustomOp("Fuse", "CPUExecutionProvider", Fuse)};
   static const std::unique_ptr<LiteOp> sel_op_ptr{Ort::Custom::CreateLiteCustomOp("Select", "CPUExecutionProvider", Select)};
   static const std::unique_ptr<LiteOp> fil_op_ptr{Ort::Custom::CreateLiteCustomOp("Filter", "CPUExecutionProvider", Filter)};
+#if !defined(DISABLE_FLOAT8_TYPES)
+  static const std::unique_ptr<LiteOp> fil8_op_ptr{Ort::Custom::CreateLiteCustomOp("FilterFloat8", "CPUExecutionProvider", FilterFloat8)};
+#endif
   static const std::unique_ptr<LiteOp> box_op_ptr{Ort::Custom::CreateLiteCustomOp("Box", "CPUExecutionProvider", Box)};
 
 #ifdef USE_DML
@@ -379,6 +441,10 @@ OrtStatus* ORT_API_CALL RegisterCustomOps(OrtSessionOptions* options, const OrtA
 #else
     domain.Add(&c_CustomOpOne);
 #endif
+
+#if !defined(DISABLE_FLOAT8_TYPES)
+    domain.Add(&c_CustomOpOneFloat8);
+#endif
     domain.Add(c_CustomOpTwo.get());
 #ifdef USE_DML
     domain.Add(identity_dml_op_ptr.get());
@@ -390,6 +456,9 @@ OrtStatus* ORT_API_CALL RegisterCustomOps(OrtSessionOptions* options, const OrtA
     domain_v2.Add(fus_op_ptr.get());
     domain_v2.Add(sel_op_ptr.get());
     domain_v2.Add(fil_op_ptr.get());
+#if !defined(DISABLE_FLOAT8_TYPES)
+    domain_v2.Add(fil8_op_ptr.get());
+#endif
     domain_v2.Add(box_op_ptr.get());
 
     Ort::UnownedSessionOptions session_options(options);

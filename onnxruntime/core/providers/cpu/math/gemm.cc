@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <onnxruntime_config.h>
 #include "core/providers/cpu/math/gemm.h"
 #include "core/common/narrow.h"
 #include "core/common/safeint.h"
@@ -25,6 +26,13 @@ ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(
     double,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<double>()),
     Gemm<double>);
+ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(
+    Gemm,
+    7,
+    8,
+    MLFloat16,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<MLFloat16>()),
+    Gemm<MLFloat16>);
 
 // opset 9 added support for additional types (int32, uint32, int64, uint64), however we haven't enabled those yet.
 ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(
@@ -41,6 +49,13 @@ ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(
     double,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<double>()),
     Gemm<double>);
+ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(
+    Gemm,
+    9,
+    10,
+    MLFloat16,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<MLFloat16>()),
+    Gemm<MLFloat16>);
 
 // opset 11 made bias input 'C' optional
 ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(
@@ -57,6 +72,13 @@ ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(
     double,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<double>()),
     Gemm<double>);
+ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(
+    Gemm,
+    11,
+    12,
+    MLFloat16,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<MLFloat16>()),
+    Gemm<MLFloat16>);
 
 // opset 13 Adds BFloat16 support but we are not supporting it yet
 ONNX_CPU_OPERATOR_TYPED_KERNEL(
@@ -71,6 +93,12 @@ ONNX_CPU_OPERATOR_TYPED_KERNEL(
     double,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<double>()),
     Gemm<double>);
+ONNX_CPU_OPERATOR_TYPED_KERNEL(
+    Gemm,
+    13,
+    MLFloat16,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<MLFloat16>()),
+    Gemm<MLFloat16>);
 
 bool GemmPackBFp32(AllocatorPtr& alloc,
                    const Tensor& tensor_b,
@@ -112,10 +140,10 @@ bool GemmPackBFp32(AllocatorPtr& alloc,
 
 template <typename T>
 void Gemm<T>::ComputeGemm(CBLAS_TRANSPOSE trans_a, CBLAS_TRANSPOSE trans_b,
-                          int64_t M, int64_t N, int64_t K,
-                          float alpha,
+                          ptrdiff_t M, ptrdiff_t N, ptrdiff_t K,
+                          T alpha,
                           const T* a_data, const T* b_data,
-                          float beta,
+                          T beta,
                           const T* c_data, const TensorShape* c_shape,
                           T* y_data,
                           concurrency::ThreadPool* thread_pool) {
@@ -127,7 +155,7 @@ void Gemm<T>::ComputeGemm(CBLAS_TRANSPOSE trans_a, CBLAS_TRANSPOSE trans_b,
   GemmBroadcastBias(M, N, beta, c_data, c_shape, y_data);
 
   math::Gemm<T>(trans_a, trans_b,
-                narrow<ptrdiff_t>(M), narrow<ptrdiff_t>(N), narrow<ptrdiff_t>(K),
+                M, N, K,
                 alpha,
                 a_data,
                 b_data,
@@ -138,8 +166,69 @@ void Gemm<T>::ComputeGemm(CBLAS_TRANSPOSE trans_a, CBLAS_TRANSPOSE trans_b,
                 thread_pool);
 }
 
+template <>
+void Gemm<MLFloat16>::ComputeGemm(CBLAS_TRANSPOSE trans_a, CBLAS_TRANSPOSE trans_b,
+                                  ptrdiff_t M, ptrdiff_t N, ptrdiff_t K,
+                                  MLFloat16 alpha,
+                                  const MLFloat16* a_data, const MLFloat16* b_data,
+                                  MLFloat16 beta,
+                                  const MLFloat16* c_data, const TensorShape* c_shape,
+                                  MLFloat16* y_data,
+                                  concurrency::ThreadPool* thread_pool) {
+  // if input is empty tensor, return directly as nothing need to be calculated.
+  if (M == 0 || N == 0)
+    return;
+
+#if defined(__GNUC__) && defined(HAS_CLASS_MEMACCESS)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wclass-memaccess"
+#endif
+  // MLFloat16's constructor is explicit, so here we need to use memset
+  if (c_data == nullptr)
+    memset(&beta, 0, sizeof(MLFloat16));
+#if defined(__GNUC__) && defined(HAS_CLASS_MEMACCESS)
+#pragma GCC diagnostic pop
+#endif
+#ifdef MLAS_F16VEC_INTRINSICS_SUPPORTED
+  bool support_mlas = false;
+  if (c_shape == nullptr) {
+    support_mlas = true;
+  } else if (c_shape->NumDimensions() == 1 && (*c_shape)[0] == N) {
+    support_mlas = true;
+  } else if (c_shape->NumDimensions() == 2 && (((*c_shape)[0] == 1 && (*c_shape)[1] == N) || ((*c_shape)[0] == N && (*c_shape)[1] == 1))) {
+    support_mlas = true;
+  }
+  if (trans_a == CblasNoTrans && trans_b == CblasNoTrans && support_mlas && alpha.ToFloat() == 1.0 && beta.ToFloat() == 1.0) {
+    MLAS_HALF_GEMM_DATA_PARAMS data;
+    data.A = a_data;
+    data.lda = K;
+    data.B = b_data;
+    data.ldb = N;
+    data.C = y_data;
+    data.ldc = N;
+    if (c_shape != nullptr) {
+      data.Bias = c_data;
+    }
+    MlasHalfGemmBatch(M, N, K, 1, &data, thread_pool);
+    return;
+  }
+#endif
+  // Fallback to Eigen
+  // Broadcast the bias as needed if bias is given
+  GemmBroadcastBias(M, N, beta, c_data, c_shape, y_data);
+#if defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wstrict-aliasing"
+#endif
+  math::Gemm<Eigen::half>(trans_a, trans_b, M, N, K, *reinterpret_cast<Eigen::half*>(&alpha),
+                          reinterpret_cast<const Eigen::half*>(a_data), reinterpret_cast<const Eigen::half*>(b_data), *reinterpret_cast<Eigen::half*>(&beta), reinterpret_cast<Eigen::half*>(y_data), thread_pool);
+#if defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
+}
+
 template void Gemm<float>::ComputeGemm(CBLAS_TRANSPOSE trans_a, CBLAS_TRANSPOSE trans_b,
-                                       int64_t M, int64_t N, int64_t K,
+                                       ptrdiff_t M, ptrdiff_t N, ptrdiff_t K,
                                        float alpha,
                                        const float* a_data, const float* b_data,
                                        float beta,
@@ -196,16 +285,15 @@ Status Gemm<float>::UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prep
 }
 
 template <typename T>
-void Gemm<T>::ComputeActivation(T* y_data, size_t y_size, concurrency::ThreadPool* thread_pool) const {
+void Gemm<T>::ComputeActivation(_Inout_updates_(y_size) T* y_data, ptrdiff_t y_size, _Inout_opt_ concurrency::ThreadPool* thread_pool) const {
   if (activation_) {
     std::unique_ptr<functors::ElementWiseRangedTransform<T>> f(activation_->Copy());
     f->input = y_data;
     f->output = y_data;
-    std::ptrdiff_t total_len = static_cast<std::ptrdiff_t>(y_size);
     double cost = f->Cost();
     functors::ElementWiseRangedTransform<T>* c(f.get());
     concurrency::ThreadPool::TryParallelFor(
-        thread_pool, total_len,
+        thread_pool, y_size,
         {static_cast<float>(sizeof(T)), static_cast<float>(sizeof(T)), cost},
         [c](std::ptrdiff_t first, std::ptrdiff_t last) { (*c)(first, last); });
   }
@@ -226,9 +314,9 @@ Status Gemm<T>::Compute(OpKernelContext* context) const {
   if (!helper.State().IsOK())
     return helper.State();
 
-  int64_t M = helper.M();
-  int64_t N = helper.N();
-  int64_t K = helper.K();
+  ptrdiff_t M = helper.M();
+  ptrdiff_t N = helper.N();
+  ptrdiff_t K = helper.K();
 
   auto Y = context->Output(0, {M, N});
 
@@ -242,6 +330,48 @@ Status Gemm<T>::Compute(OpKernelContext* context) const {
 
   ComputeGemm(trans_A_, trans_B_, M, N, K, alpha_, A->Data<T>(), B->Data<T>(), beta_,
               c_data, c_shape, y_data, thread_pool);
+
+  ComputeActivation(y_data, SafeInt<ptrdiff_t>(M) * N, thread_pool);
+
+  return Status::OK();
+}
+
+template <>
+Status Gemm<MLFloat16>::Compute(OpKernelContext* context) const {
+  concurrency::ThreadPool* thread_pool = context->GetOperatorThreadPool();
+
+  const auto* A = context->Input<Tensor>(0);
+  const auto* B = packed_b_ ? nullptr : context->Input<Tensor>(1);
+  const auto* C = context->Input<Tensor>(2);
+
+  // Bias could be missing. Treat as scalar 0 if that is the case.
+  GemmHelper helper(A->Shape(), trans_A_ != CblasNoTrans, B ? B->Shape() : b_shape_, trans_B_ != CblasNoTrans,
+                    C != nullptr ? C->Shape() : TensorShape({}));
+
+  if (!helper.State().IsOK())
+    return helper.State();
+
+  ptrdiff_t M = helper.M();
+  ptrdiff_t N = helper.N();
+  ptrdiff_t K = helper.K();
+
+  auto Y = context->Output(0, {M, N});
+
+  // if input is empty tensor, return as nothing need to be calculated and we've set the shape for the output
+  if (M == 0 || N == 0)
+    return Status::OK();
+
+  MLFloat16* y_data = Y->MutableData<MLFloat16>();
+
+  const MLFloat16* c_data = C != nullptr ? C->Data<MLFloat16>() : nullptr;
+  const TensorShape* c_shape = C != nullptr ? &C->Shape() : nullptr;
+
+  if (B) {
+    ComputeGemm(trans_A_, trans_B_, M, N, K, static_cast<MLFloat16>(alpha_), A->Data<MLFloat16>(), B->Data<MLFloat16>(), static_cast<MLFloat16>(beta_),
+                c_data, c_shape, y_data, thread_pool);
+  } else {
+    ORT_NOT_IMPLEMENTED("Prepacking of B is supported by MLAS half gemm API, but not implemented by this kernel yet");
+  }
 
   ComputeActivation(y_data, SafeInt<size_t>(M) * N, thread_pool);
 
@@ -263,9 +393,9 @@ Status Gemm<float>::Compute(OpKernelContext* context) const {
   if (!helper.State().IsOK())
     return helper.State();
 
-  int64_t M = helper.M();
-  int64_t N = helper.N();
-  int64_t K = helper.K();
+  ptrdiff_t M = helper.M();
+  ptrdiff_t N = helper.N();
+  ptrdiff_t K = helper.K();
 
   auto Y = context->Output(0, {M, N});
 

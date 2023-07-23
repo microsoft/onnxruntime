@@ -133,7 +133,7 @@ static void RunMaxPoolOpTest(const std::vector<int64_t>& shape,
                              int64_t ceil_mode,
                              int64_t storage_order,
                              const std::string& auto_pad,
-                             ExpectedEPNodeAssignment expected_ep_assignment, const char* test_description,
+                             ExpectedEPNodeAssignment expected_ep_assignment,
                              int opset = 18) {
   ProviderOptions provider_options;
 #if defined(_WIN32)
@@ -142,13 +142,10 @@ static void RunMaxPoolOpTest(const std::vector<int64_t>& shape,
   provider_options["backend_path"] = "libQnnCpu.so";
 #endif
 
-  constexpr int expected_nodes_in_partition = 1;
   RunQnnModelTest(BuildMaxPoolTestCase(shape, kernel_shape, strides, pads, dilations, ceil_mode, storage_order, auto_pad),
                   provider_options,
                   opset,
-                  expected_ep_assignment,
-                  expected_nodes_in_partition,
-                  test_description);
+                  expected_ep_assignment);
 }
 
 // Runs a QDQ MaxPool model on the QNN HTP backend. Checks the graph node assignment, and that inference
@@ -162,7 +159,7 @@ static void RunQDQMaxPoolOpTest(const std::vector<int64_t>& shape,
                                 int64_t ceil_mode,
                                 int64_t storage_order,
                                 const std::string& auto_pad,
-                                ExpectedEPNodeAssignment expected_ep_assignment, const char* test_description,
+                                ExpectedEPNodeAssignment expected_ep_assignment,
                                 int opset = 18, float fp32_abs_err = 1e-5f) {
   ProviderOptions provider_options;
 #if defined(_WIN32)
@@ -171,13 +168,10 @@ static void RunQDQMaxPoolOpTest(const std::vector<int64_t>& shape,
   provider_options["backend_path"] = "libQnnHtp.so";
 #endif
 
-  constexpr int expected_nodes_in_partition = 1;
   RunQnnModelTest(BuildMaxPoolQDQTestCase<QuantType>(shape, kernel_shape, strides, pads, dilations, ceil_mode, storage_order, auto_pad),
                   provider_options,
                   opset,
                   expected_ep_assignment,
-                  expected_nodes_in_partition,
-                  test_description,
                   fp32_abs_err);
 }
 
@@ -195,7 +189,7 @@ TEST_F(QnnCPUBackendTests, TestMaxPool_Global) {
                    0,             // ceil_mode
                    0,             // storage_order
                    "NOTSET",      // auto_pad
-                   ExpectedEPNodeAssignment::All, "TestMaxPool_Global");
+                   ExpectedEPNodeAssignment::All);
 }
 
 TEST_F(QnnCPUBackendTests, TestMaxPool_Large_Input) {
@@ -207,7 +201,7 @@ TEST_F(QnnCPUBackendTests, TestMaxPool_Large_Input) {
                    0,                // ceil_mode
                    0,                // storage_order
                    "NOTSET",         // auto_pad
-                   ExpectedEPNodeAssignment::All, "TestMaxPool_Large_Input");
+                   ExpectedEPNodeAssignment::All);
 }
 
 TEST_F(QnnCPUBackendTests, TestMaxPool_Large_Input2) {
@@ -219,9 +213,10 @@ TEST_F(QnnCPUBackendTests, TestMaxPool_Large_Input2) {
                    0,                  // ceil_mode
                    0,                  // storage_order
                    "NOTSET",           // auto_pad
-                   ExpectedEPNodeAssignment::All, "TestMaxPool_Large_Input2");
+                   ExpectedEPNodeAssignment::All);
 }
 
+// TODO: Certain large input sizes cause the QNN graph to fail to finalize with error 1002 (QNN_COMMON_ERROR_MEM_ALLOC).
 TEST_F(QnnCPUBackendTests, DISABLED_TestMaxPool_Ceil) {
   RunMaxPoolOpTest({1, 2, 3, 3},  // shape
                    {3, 3},        // kernel_shape
@@ -231,9 +226,10 @@ TEST_F(QnnCPUBackendTests, DISABLED_TestMaxPool_Ceil) {
                    1,             // ceil_mode
                    0,             // storage_order
                    "NOTSET",      // auto_pad
-                   ExpectedEPNodeAssignment::All, "TestMaxPool_Ceil");
+                   ExpectedEPNodeAssignment::All);
 }
 
+// TODO: Certain large input sizes cause the QNN graph to fail to finalize with error 1002 (QNN_COMMON_ERROR_MEM_ALLOC).
 TEST_F(QnnCPUBackendTests, DISABLED_TestMaxPool_Large_Input2_Ceil) {
   RunMaxPoolOpTest({1, 128, 16, 113},  // shape
                    {2, 2},             // kernel_shape
@@ -243,7 +239,7 @@ TEST_F(QnnCPUBackendTests, DISABLED_TestMaxPool_Large_Input2_Ceil) {
                    1,                  // ceil_mode
                    0,                  // storage_order
                    "NOTSET",           // auto_pad
-                   ExpectedEPNodeAssignment::All, "TestMaxPool_Large_Input2_Ceil");
+                   ExpectedEPNodeAssignment::All);
 }
 
 #if defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
@@ -260,9 +256,10 @@ TEST_F(QnnHTPBackendTests, TestMaxPool_Global_HTP_u8) {
                                0,             // ceil_mode
                                0,             // storage_order
                                "NOTSET",      // auto_pad
-                               ExpectedEPNodeAssignment::All, "TestMaxPool_Global_HTP_u8");
+                               ExpectedEPNodeAssignment::All);
 }
 
+// TODO: Certain large input sizes cause the QNN graph to fail to finalize with error 1002 (QNN_COMMON_ERROR_MEM_ALLOC).
 TEST_F(QnnHTPBackendTests, DISABLED_TestMaxPool_Large_Input_HTP_u8) {
   RunQDQMaxPoolOpTest<uint8_t>({1, 125, 8, 56},  // shape
                                {2, 2},           // kernel_shape
@@ -272,9 +269,10 @@ TEST_F(QnnHTPBackendTests, DISABLED_TestMaxPool_Large_Input_HTP_u8) {
                                0,                // ceil_mode
                                0,                // storage_order
                                "NOTSET",         // auto_pad
-                               ExpectedEPNodeAssignment::All, "TestMaxPool_Large_Input_HTP_u8");
+                               ExpectedEPNodeAssignment::All);
 }
 
+// TODO: Certain large input sizes cause the QNN graph to fail to finalize with error 1002 (QNN_COMMON_ERROR_MEM_ALLOC).
 TEST_F(QnnHTPBackendTests, DISABLED_TestMaxPool_Large_Input2_HTP_u8) {
   RunQDQMaxPoolOpTest<uint8_t>({1, 128, 16, 113},  // shape
                                {2, 2},             // kernel_shape
@@ -284,7 +282,7 @@ TEST_F(QnnHTPBackendTests, DISABLED_TestMaxPool_Large_Input2_HTP_u8) {
                                0,                  // ceil_mode
                                0,                  // storage_order
                                "NOTSET",           // auto_pad
-                               ExpectedEPNodeAssignment::All, "TestMaxPool_Large_Input2_HTP_u8");
+                               ExpectedEPNodeAssignment::All);
 }
 
 TEST_F(QnnHTPBackendTests, TestMaxPool_Ceil_HTP_u8) {
@@ -296,9 +294,10 @@ TEST_F(QnnHTPBackendTests, TestMaxPool_Ceil_HTP_u8) {
                                1,             // ceil_mode
                                0,             // storage_order
                                "NOTSET",      // auto_pad
-                               ExpectedEPNodeAssignment::All, "TestMaxPool_Ceil_HTP_u8");
+                               ExpectedEPNodeAssignment::All);
 }
 
+// TODO: Certain large input sizes cause the QNN graph to fail to finalize with error 1002 (QNN_COMMON_ERROR_MEM_ALLOC).
 TEST_F(QnnHTPBackendTests, DISABLED_TestMaxPool_Large_Input2_Ceil_HTP_u8) {
   RunQDQMaxPoolOpTest<uint8_t>({1, 128, 16, 113},  // shape
                                {2, 2},             // kernel_shape
@@ -308,7 +307,20 @@ TEST_F(QnnHTPBackendTests, DISABLED_TestMaxPool_Large_Input2_Ceil_HTP_u8) {
                                1,                  // ceil_mode
                                0,                  // storage_order
                                "NOTSET",           // auto_pad
-                               ExpectedEPNodeAssignment::All, "TestMaxPool_Large_Input2_Ceil_HTP_u8");
+                               ExpectedEPNodeAssignment::All);
+}
+
+// TODO: Certain large input sizes cause the QNN graph to fail to finalize with error 1002 (QNN_COMMON_ERROR_MEM_ALLOC).
+TEST_F(QnnHTPBackendTests, DISABLED_TestMaxPool_LargeInput_1Pads) {
+  RunQDQMaxPoolOpTest<uint8_t>({1, 64, 384, 576},  // shape
+                               {3, 3},             // kernel_shape
+                               {2, 2},             // strides
+                               {1, 1, 1, 1},       // pads
+                               {1, 1},             // dialations
+                               0,                  // ceil_mode
+                               0,                  // storage_order
+                               "NOTSET",           // auto_pad
+                               ExpectedEPNodeAssignment::All);
 }
 
 #endif  // defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
