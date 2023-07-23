@@ -3,7 +3,7 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
-from logging import LoggerAdapter
+from logging import Logger
 from typing import Tuple
 
 import onnx
@@ -36,7 +36,7 @@ class TrainingManager(GraphExecutionManager):
         model: _FlattenedModule,
         debug_options: DebugOptions,
         fallback_manager: _FallbackManager,
-        logger: LoggerAdapter,
+        logger: Logger,
     ):
         super().__init__(model, debug_options, fallback_manager, logger)
 

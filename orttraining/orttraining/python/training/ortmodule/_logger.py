@@ -62,10 +62,10 @@ def suppress_os_stream_output(on_exit: Optional[Callable] = None):
         fo.close()
 
 
-def create_log_filter(logger: logging.LoggerAdapter, record_filters: Optional[List[str]], name: Optional[str]):
+def create_log_filter(logger: logging.Logger, record_filters: Optional[List[str]], name: Optional[str]):
     def _log_with_filter(fo):
         if fo.tell() > 0:
-            if logger.logger.disabled:
+            if logger.disabled:
                 return
             # Filter out the error message
             fo.seek(0)
@@ -106,17 +106,17 @@ def ortmodule_loglevel_to_python_loglevel(loglevel: LogLevel) -> int:
     return ORTMODULE_LOG_LEVEL_MAP.get(loglevel, [Severity.WARNING, logging.WARNING])[1]
 
 
-def configure_ortmodule_logger(logger: logging.Logger, log_level: LogLevel) -> logging.LoggerAdapter:
-    extra = {"rank": get_rank()}
-    syslog = logging.StreamHandler(stream=sys.stdout)
-    formatter = logging.Formatter("%(asctime)s onnxruntime.training [ORT RANK %(rank)s] [%(levelname)s] - %(message)s")
-    syslog.setFormatter(formatter)
-    logger.addHandler(syslog)
-    logger.propagate = False
+def configure_ortmodule_logger(log_level: LogLevel) -> logging.Logger:
+    # Try to create a logger with a unique name (timestamp) for each ORTModule instance.
+    # BUT this still cannot guarantee each ORTModule instance has a unique logger name
+    # if those instances are created in the same second.
+    logger = logging.getLogger(f"orttraining.rank-{get_rank()}")
     # Disable the logger for non-zero ranks when level > info
     logger.disabled = log_level > LogLevel.INFO and get_rank() != 0
     logger.setLevel(ortmodule_loglevel_to_python_loglevel(log_level))
-    return logging.LoggerAdapter(logger, extra)
+
+
+    return logger
 
 
 class LogColor:

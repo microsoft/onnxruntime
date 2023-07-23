@@ -3,8 +3,8 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 # isort: skip_file
-# Import ordering is important in this module to aviod circular dependencies
-import logging
+# Import ordering is important in this module to avoid circular dependencies
+
 from ._torch_module_factory import TorchModuleFactory
 from ._torch_module_ort import TorchModuleORT
 from ._custom_op_symbolic_registry import CustomOpSymbolicRegistry
@@ -53,7 +53,7 @@ class ORTModule(torch.nn.Module):
         if not debug_options:
             debug_options = DebugOptions()
 
-        self._logger = configure_ortmodule_logger(logging.getLogger(__name__), debug_options.logging.log_level)
+        self._logger = configure_ortmodule_logger(debug_options.logging.log_level)
 
         # Fallback settings
         self._fallback_manager = _FallbackManager(

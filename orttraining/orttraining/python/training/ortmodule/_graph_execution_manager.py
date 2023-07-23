@@ -54,7 +54,7 @@ class GraphExecutionManager(GraphExecutionInterface):
         module: _FlattenedModule,
         debug_options: DebugOptions,
         fallback_manager: _FallbackManager,
-        logger: logging.LoggerAdapter,
+        logger: logging.Logger,
     ):
         """Manages construction and execution of ONNX graphs"""
 

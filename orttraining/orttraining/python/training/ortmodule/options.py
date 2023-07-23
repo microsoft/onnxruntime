@@ -5,7 +5,7 @@
 import os
 from enum import IntFlag
 from functools import reduce
-from logging import LoggerAdapter
+from logging import Logger
 
 from onnxruntime.capi import _pybind_state as C
 from onnxruntime.training import ortmodule
@@ -190,7 +190,7 @@ class _SkipCheck(IntFlag):
 class _RuntimeOptions:
     """Configurable runtime options for ORTModule."""
 
-    def __init__(self, logger: LoggerAdapter):
+    def __init__(self, logger: Logger):
         """Constructor for Options.
 
         Initially set all the options to their default values, then override them with the values

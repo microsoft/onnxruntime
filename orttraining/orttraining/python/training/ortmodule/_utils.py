@@ -214,7 +214,7 @@ def _create_iobinding(io_binding, inputs, model, device: torch.device):
 
 
 def check_for_name_collisions_and_bind_methods_to_ortmodule(
-    ortmodule: torch.nn.Module, user_module: torch.nn.Module, logger: logging.LoggerAdapter
+    ortmodule: torch.nn.Module, user_module: torch.nn.Module, logger: logging.Logger
 ):
     """Warns if there are any common attributes between the user's model and ORTModule and binds user methods to ORTModule
 
@@ -345,7 +345,7 @@ def switch_backend_to_pytorch(ortmodule, pytorch_module):
     ortmodule.forward = pytorch_module.forward
 
 
-def warn_of_constant_inputs(data, logger: logging.LoggerAdapter):
+def warn_of_constant_inputs(data, logger: logging.Logger):
     logger.info(
         f"Received input of type {type(data)} which may be treated as a constant by ORT by default."
         " Please consider moving constant arguments to the model constructor."

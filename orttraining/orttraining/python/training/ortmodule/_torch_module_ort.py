@@ -3,7 +3,7 @@
 # _torch_module_ort.py
 
 from collections import OrderedDict
-from logging import LoggerAdapter
+from logging import Logger
 from typing import Callable, Iterator, Optional, Tuple, TypeVar
 
 import torch
@@ -23,7 +23,7 @@ class TorchModuleORT(TorchModuleInterface):
         module: torch.nn.Module,
         debug_options: DebugOptions,
         fallback_manager: _FallbackManager,
-        logger: LoggerAdapter,
+        logger: Logger,
     ):
         super().__init__(module)
         self._flattened_module = _io._FlattenedModule(module)

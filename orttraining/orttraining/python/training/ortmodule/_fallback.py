@@ -5,7 +5,7 @@
 
 import os
 from enum import IntFlag
-from logging import LoggerAdapter
+from logging import Logger
 from typing import Optional
 
 import torch
@@ -67,7 +67,7 @@ class _FallbackManager:
     be raised to the user, terminating execution
     """
 
-    def __init__(self, pytorch_module: torch.nn.Module, policy: _FallbackPolicy, retry: bool, logger: LoggerAdapter):
+    def __init__(self, pytorch_module: torch.nn.Module, policy: _FallbackPolicy, retry: bool, logger: Logger):
         self._original_module = pytorch_module
 
         # Read policy from environment variable for testing purposes

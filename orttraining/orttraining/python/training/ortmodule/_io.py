@@ -7,7 +7,7 @@ import copy
 import gc
 import inspect
 from collections import OrderedDict, abc
-from logging import LoggerAdapter
+from logging import Logger
 from typing import Dict, Iterator, List, Mapping, Optional, Sequence, Tuple, Union
 
 import onnx
@@ -404,7 +404,7 @@ def unflatten_user_output(output_schema: Optional[_ModelInputOutputSchemaType], 
     return user_output
 
 
-def _extract_schema(data: _ModelInputOutputType, logger: LoggerAdapter) -> _ModelInputOutputSchemaType:
+def _extract_schema(data: _ModelInputOutputType, logger: Logger) -> _ModelInputOutputSchemaType:
     """Extract the data schema by replacing every torch.Tensor value with _TensorStub.
 
     Depth first traversal to iterate over the data:
@@ -712,7 +712,7 @@ def parse_inputs_for_onnx_export(
 
 
 def parse_outputs_for_onnx_export_and_extract_schema(
-    module, args: Sequence[_ModelInputOutputType], kwargs: Mapping[str, _ModelInputOutputType], logger: LoggerAdapter
+    module, args: Sequence[_ModelInputOutputType], kwargs: Mapping[str, _ModelInputOutputType], logger: Logger
 ):
     # Perform a forward call to grab outputs
     output_names = None
