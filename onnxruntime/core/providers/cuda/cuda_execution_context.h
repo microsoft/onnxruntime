@@ -3,17 +3,25 @@
 
 #ifndef ORT_CUDA_CTX
 #define ORT_CUDA_CTX
+#define ORT_CUDA_RESOUCE_VERSION 1
 
-#include "onnxruntime_ep_resource.h"
-#include <cuda_runtime.h>
-#include <cublas.h>
-//#include <cudnn.h>
+enum CudaResource : int {
+  cuda_stream_t = 0,
+  cudnn_handle_t,
+  cublas_handle_t
+};
 
 namespace Ort {
 
 namespace Custom {
 
-struct OrtCudaContext {
+#ifdef ENALBE_CUDA_CONTEXT
+#include <core/session/onnxruntime_cxx_api.h>
+#include <cuda_runtime.h>
+#include <cublas_v2.h>
+// #include <cudnn.h>
+
+struct CudaContext {
   void* raw_stream = {};
 
   cudaStream_t cuda_stream = {};
@@ -22,7 +30,7 @@ struct OrtCudaContext {
 
   void Init(const OrtKernelContext& kernel_ctx) {
     void* stream = {};
-    const auto& ort_api = GetApi();
+    const auto& ort_api = Ort::GetApi();
     void* resource = {};
     OrtStatus* status = nullptr;
 
@@ -47,6 +55,7 @@ struct OrtCudaContext {
     cublas_handle = reinterpret_cast<cublasHandle_t>(resource);
   }
 };
+#endif
 
 }  // namespace Custom
 }  // namespace Ort

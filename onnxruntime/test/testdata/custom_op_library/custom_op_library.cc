@@ -21,11 +21,12 @@ void cuda_add(int64_t, T3*, const T1*, const T2*, cudaStream_t compute_stream);
 #endif
 
 #ifdef USE_CUDA
-#include "onnxruntime_cuda_context.h"
+#define ENALBE_CUDA_CONTEXT
+#include "core/providers/cuda/cuda_execution_context.h"
 #endif
 
 #ifdef USE_DML
-#include "onnxruntime_dml_context.h"
+#include "core/providers/dml/dml_execution_context.h"
 #endif
 
 #include "onnxruntime_lite_custom_op.h"
@@ -67,7 +68,7 @@ struct IdentityDML {
     dml_op_desc.Desc = &dml_identity_op_desc;
   }
 
-  void Compute(OrtKernelContext* ctx, Ort::Custom::OrtDmlContext* dml_ctx,
+  void Compute(OrtKernelContext* ctx, Ort::Custom::DmlContext* dml_ctx,
                const Ort::Custom::Tensor<float>& input,
                Ort::Custom::Tensor<float>& output) {
     // step 1: get resources from dml context
@@ -192,7 +193,7 @@ struct IdentityDML {
 
 #include <iostream>
 #ifdef USE_CUDA
-void KernelOne(Ort::Custom::OrtCudaContext* cuda_ctx,
+void KernelOne(Ort::Custom::CudaContext* cuda_ctx,
                const Ort::Custom::Tensor<float>& X,
                const Ort::Custom::Tensor<float>& Y,
                Ort::Custom::Tensor<float>& Z) {

@@ -5,7 +5,7 @@
 
 #include "GraphTransformer.h"
 #include "core/providers/dml/DmlExecutionProvider/inc/IWinmlExecutionProvider.h"
-#include "core/session/onnxruntime_ep_resource.h"
+#include "core/providers/dml/dml_execution_context.h"
 
 #include <wrl/client.h>
 #include <wrl/implements.h>
