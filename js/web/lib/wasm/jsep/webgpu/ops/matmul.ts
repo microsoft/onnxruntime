@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {DataType} from '../../../wasm-common';
+import {DataType, tensorTypeToWsglType} from '../../../wasm-common';
 import {TensorView} from '../../tensor';
 import {BroadcastUtil, ShapeUtil} from '../../util';
 import {ComputeContext, GpuDataType, ProgramInfo, ProgramInfoLoader, ProgramMetadata} from '../types';
@@ -28,8 +28,8 @@ const createMatmulProgramInfo =
           }
           const outputSize = ShapeUtil.size(outputShape);
           // TODO: support broadcasting
-
-          const dataType = 'f32';  // TODO: support other data type
+          console.log('running matmul', inputs);
+          const dataType = tensorTypeToWsglType(inputs[0].dataType);  // TODO: support other data type
           const {activationFunction, applyActivation} = getActicationSnippet(activationAttributes);
 
           const M = outputShape[outputShape.length - 2];
@@ -87,8 +87,9 @@ const validateInputs = (inputs: readonly TensorView[]): void => {
     throw new Error('shared dimension does not match.');
   }
 
-  if (inputs[0].dataType !== DataType.float || inputs[1].dataType !== DataType.float) {
-    throw new Error('inputs should be float type');
+  const supportedInputs = [DataType.float, DataType.float16];
+  if (!supportedInputs.includes(inputs[0].dataType) || !supportedInputs.includes(inputs[1].dataType)) {
+    throw new Error('Unsupported input type');
   }
 };
 

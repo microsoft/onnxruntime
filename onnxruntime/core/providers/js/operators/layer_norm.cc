@@ -8,7 +8,7 @@
 namespace onnxruntime {
 namespace js {
 
-#define REGISTER_KERNEL_TYPED(T, U)                                                           \
+#define REGISTER_KERNEL_TYPED(T)                                                           \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                                           \
       LayerNormalization,                                                                  \
       kOnnxDomain,                                                                         \
@@ -17,10 +17,12 @@ namespace js {
       kJsExecutionProvider,                                                                \
       (*KernelDefBuilder::Create())                                                        \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())                           \
-          .TypeConstraint("U", DataTypeImpl::GetTensorType<U>()),                      \
-      LayerNorm<T, U>);
+          .TypeConstraint("U", DataTypeImpl::GetTensorType<float>()),                      \
+      LayerNorm<T, float>);
 
-REGISTER_KERNEL_TYPED(float, float)
+REGISTER_KERNEL_TYPED(float)
+REGISTER_KERNEL_TYPED(double)
+REGISTER_KERNEL_TYPED(MLFloat16)
 
 }  // namespace js
 }  // namespace onnxruntime

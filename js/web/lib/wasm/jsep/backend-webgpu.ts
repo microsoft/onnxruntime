@@ -110,7 +110,15 @@ export class WebGpuBackend {
         maxComputeWorkgroupStorageSize: adapter.limits.maxComputeWorkgroupStorageSize,
         maxComputeWorkgroupsPerDimension: adapter.limits.maxComputeWorkgroupsPerDimension,
         maxStorageBufferBindingSize: adapter.limits.maxStorageBufferBindingSize,
-      }
+        maxBufferSize: adapter.limits.maxBufferSize,
+        maxComputeInvocationsPerWorkgroup: adapter.limits.maxComputeInvocationsPerWorkgroup,
+        maxComputeWorkgroupSizeX: adapter.limits.maxComputeWorkgroupSizeX,
+        maxComputeWorkgroupSizeY: adapter.limits.maxComputeWorkgroupSizeY,
+        maxComputeWorkgroupSizeZ: adapter.limits.maxComputeWorkgroupSizeZ,
+      },
+      // requiredFeatures: [
+      //     'shader-f16'
+      // ]
     };
     // WebGPU Spec: Timestamp Queries Inside Passes
     // https://github.com/gpuweb/gpuweb/blob/main/proposals/timestamp-query-inside-passes.md
@@ -347,6 +355,7 @@ export class WebGpuBackend {
       return 0;  // ORT_OK
     } catch (e) {
       LOG_DEBUG('warning', `[WebGPU] Kernel "${name}" failed. Error: ${e}`);
+      console.error(e)
       return 1;  // ORT_FAIL
     } finally {
       for (const data of this.temporaryData) {

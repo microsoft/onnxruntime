@@ -12,9 +12,19 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(MatMul, kOnnxDomain, 1, 12, kJsExecutionProvid
                                   KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
                                   MatMul);
 
-ONNX_OPERATOR_KERNEL_EX(MatMul, kOnnxDomain, 13, kJsExecutionProvider,
-                        KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
-                        MatMul);
+#define REGISTER_KERNEL_TYPED(T)                                                           \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                           \
+      MatMul,                                                                              \
+      kOnnxDomain,                                                                         \
+      13,                                                                                  \
+      T,                                                                                   \
+      kJsExecutionProvider,                                                                \
+      (*KernelDefBuilder::Create())                                                        \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()),                          \
+      MatMul);
+
+REGISTER_KERNEL_TYPED(float)
+REGISTER_KERNEL_TYPED(MLFloat16)
 
 }  // namespace js
 }  // namespace onnxruntime

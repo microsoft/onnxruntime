@@ -5,14 +5,13 @@ import {ShapeUtil} from "../../util";
 import {ShaderHelper} from "./common";
 import {AttributeWithCacheKey, createAttributeWithCacheKey} from "../attribute-with-cache-key";
 
-export interface LayerNormAttributes extends AttributeWithCacheKey {
-    axis: number;
+export interface InstanceNormAttributes extends AttributeWithCacheKey {
     epsilon: number;
 }
 
 const validateInputs = (inputs: readonly TensorView[]): void => {
     if (!inputs || inputs.length !== 3) {
-        throw new Error('layerNorm requires 3 inputs.');
+        throw new Error('instanceNorm requires 3 inputs.');
     }
 
     if (inputs[0].dataType !== DataType.float || inputs[1].dataType !== DataType.float) {
@@ -20,8 +19,8 @@ const validateInputs = (inputs: readonly TensorView[]): void => {
     }
 };
 
-const createLayerNormProgramInfo =
-    (metadata: ProgramMetadata, inputs: readonly TensorView[], attributes: LayerNormAttributes):
+const createInstanceNormProgramInfo =
+    (metadata: ProgramMetadata, inputs: readonly TensorView[], attributes: InstanceNormAttributes):
         ProgramInfo => {
         const xShape = inputs[0].dims;
         const scale = inputs[1];
@@ -29,9 +28,10 @@ const createLayerNormProgramInfo =
 
         const outputShape = xShape;
         const outputSize = ShapeUtil.size(outputShape);
-        const axis = ShapeUtil.normalizeAxis(attributes.axis, xShape.length);
+        const axis = 2;
         const normCount = ShapeUtil.sizeToDimension(xShape, axis);
         const normSize = ShapeUtil.sizeFromDimension(xShape, axis);
+        const C = xShape[1];
 
         const scaleSize = ShapeUtil.size(scale.dims);
         const biasSize = bias ? ShapeUtil.size(bias.dims) : 0;
@@ -41,26 +41,12 @@ const createLayerNormProgramInfo =
              Got scale size of ${scaleSize} and bias size of ${biasSize}`);
         }
 
-        const meanInvStdDevDim = [];
-        for (let i = 0; i < xShape.length; ++i) {
-            if (i < axis) {
-                meanInvStdDevDim.push(xShape[i]);
-            } else {
-                meanInvStdDevDim.push(1);
-            }
-        }
-
-        console.log('layer norm!', inputs, normCount, normSize, axis, attributes)
+        console.log('instance norm!', inputs, normCount, normSize, axis, attributes);
         const dataType = tensorTypeToWsglType(inputs[0].dataType);
-        // TODO: add meanData/invStd outputs
-        // right now it throws an error: Binding size (16) is smaller than the minimum binding size (308).
 
-        // maximum number of workgroup invocations is between 256 to 1024
-        // in order to fit into the limit, we will batch multiple computations in one workgroup
-        // const maxInvocations = 1024;
-        // const batchSize = Math.ceil(normCount / maxInvocations);
         const workgroupSize = normCount > 128 ? 256 : 64;
         const getShaderSource = (shaderHelper: ShaderHelper) => `
+  const C: u32 = ${C};
   const normSize: u32 = ${normSize};
   const normSizeTyped: ${dataType} = ${normSize};
   const epsilon: f32 = ${attributes.epsilon};
@@ -69,8 +55,6 @@ const createLayerNormProgramInfo =
   @group(0) @binding(1) var<storage, read> scale : array<${dataType}>;
   @group(0) @binding(2) var<storage, read> bias : array<${dataType}>;
   @group(0) @binding(3) var<storage, read_write> output : array<${dataType}>;
-  //@group(0) @binding(4) var<storage, read_write> meanDataOutput : array<${dataType}>;
-  //@group(0) @binding(5) var<storage, read_write> invStdOutput : array<${dataType}>;
 
   ${shaderHelper.mainStart(workgroupSize)}
     let offset = global_idx * normSize;
@@ -84,9 +68,17 @@ const createLayerNormProgramInfo =
     }
     mean = mean / normSizeTyped;
     meanSquare = sqrt(meanSquare / normSizeTyped - mean * mean + epsilon);
+    var squaredNorm: ${dataType} = 0;
 
+    for (var h: u32 = 0u; h < normSize; h++) {
+        let deviation: f32 = x[h + offset] - mean;
+        squaredNorm = squaredNorm + deviation * deviation;
+    }
+    let invStdDev = 1 / sqrt(squaredNorm / normSizeTyped + epsilon);
+    let channelScale = invStdDev * scale[global_idx % C];
+    let channelShift = bias[global_idx % C] - mean * channelScale;
     for (var j: u32 = 0; j < normSize; j++) {
-        output[j + offset] = (x[j + offset] - mean) / meanSquare * scale[j] + bias[j];
+        output[j + offset] = x[j + offset] * channelScale + channelShift;
     }
 
     //meanDataOutput[global_idx] = mean;
@@ -104,17 +96,17 @@ const createLayerNormProgramInfo =
         };
     };
 
-export const parseLayerNormAttributes = (attributes: Record<string, unknown>): LayerNormAttributes =>
-    createAttributeWithCacheKey(attributes as Omit<LayerNormAttributes, keyof AttributeWithCacheKey>);
+export const parseInstanceNormAttributes = (attributes: Record<string, unknown>): InstanceNormAttributes =>
+    createAttributeWithCacheKey(attributes as Omit<InstanceNormAttributes, keyof AttributeWithCacheKey>);
 
-export const layerNorm = (context: ComputeContext, attributes: LayerNormAttributes): void => {
+export const instanceNorm = (context: ComputeContext, attributes: InstanceNormAttributes): void => {
     validateInputs(context.inputs);
 
     const metadata = {
-        name: 'LayerNorm',
+        name: 'InstanceNormalization',
         inputTypes: [GpuDataType.default, GpuDataType.default, GpuDataType.default],
         cacheHint: attributes.cacheKey,
     };
 
-    context.compute(createLayerNormProgramInfo(metadata, context.inputs, attributes));
+    context.compute(createInstanceNormProgramInfo(metadata, context.inputs, attributes));
 };

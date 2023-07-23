@@ -14,7 +14,7 @@ namespace js {
 class Concat final : public JsKernel, public ConcatBase {
  public:
   Concat(const OpKernelInfo& info) : JsKernel(info), ConcatBase(info) {
-    JSEP_INIT_KERNEL_ATTRIBUTE(Concat, ({"axis" : $1}), static_cast<size_t>(axis_));
+    JSEP_INIT_KERNEL_ATTRIBUTE(Concat, ({"axis" : Number($1)}), static_cast<size_t>(axis_));
   }
 };
 

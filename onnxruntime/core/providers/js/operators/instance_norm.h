@@ -8,22 +8,17 @@
 namespace onnxruntime {
 namespace js {
 
-template <typename T, typename U>
-class LayerNorm : public JsKernel {
+class InstanceNorm : public JsKernel {
  public:
-  LayerNorm(const OpKernelInfo& info) : JsKernel(info) {
-    ORT_ENFORCE(info.GetAttr("axis", &axis_).IsOK());
+  InstanceNorm(const OpKernelInfo& info) : JsKernel(info) {
     ORT_ENFORCE(info.GetAttr<float>("epsilon", &epsilon_).IsOK());
 
-    JSEP_INIT_KERNEL_ATTRIBUTE(LayerNormalization, ({
-                                 "axis" : Number($1),
-                                 "epsilon" : Number($2),
+    JSEP_INIT_KERNEL_ATTRIBUTE(InstanceNormalization, ({
+                                 "epsilon" : $1,
                                }),
-                               static_cast<size_t>(axis_),
                                static_cast<float>(epsilon_));
   }
  private:
-  int64_t axis_;
   float epsilon_;
 };
 

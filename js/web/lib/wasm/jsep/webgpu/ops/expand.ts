@@ -61,14 +61,17 @@ const createExpandProgramInfo = (metadata: ProgramMetadata, inputs: readonly Ten
   const outputIndicesHelper = createIndicesHelper('output', outputShape);
   const dataType = 'f32';
 
+  const calculateInputIndexImplParameter = outputShape.length < 2 ? 'u32' : `array<u32,${outputShape.length}>`;
+  const calculateInputIndexImplResult = inputShape.length < 2 ? 'u32' : `array<u32,${inputShape.length}>`;
   const calculateInputIndexImpl = (): string => `
-  fn calculateInputIndex(outputIndices: array<u32, ${outputShape.length}>) -> array<u32,${inputShape.length}> {
+  fn calculateInputIndex(outputIndices: ${calculateInputIndexImplParameter}) -> ${calculateInputIndexImplResult} {
     ${inputIndicesHelper.indicesVariableDeclaration('inputIndices')}
     for (var i = 0; i < ${inputShape.length}; i++) {
         if (inputShape[i] == 1) {
-            inputIndices[i] = 0;
+            inputIndices${inputShape.length >= 2 ? '[i]' : ''} = 0;
         } else {
-            inputIndices[i] = outputIndices[i + ${outputShape.length - inputShape.length}];
+            inputIndices${inputShape.length >= 2 ? '[i]' : ''} = 
+              ${outputShape.length > 1 ? `outputIndices[i + ${outputShape.length - inputShape.length}]` : 'outputIndices'};
         }
     }
     return inputIndices;

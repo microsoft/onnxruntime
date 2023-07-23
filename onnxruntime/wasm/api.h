@@ -104,6 +104,15 @@ ort_session_handle_t EMSCRIPTEN_KEEPALIVE OrtCreateSession(void* data,
                                                            ort_session_options_handle_t session_options);
 
 /**
+ * create an instance of ORT session.
+ * @param data a pointer to a buffer that contains the ONNX or ORT format model.
+ * @param data_length the size of the buffer in bytes.
+ * @returns an ORT session handle. Caller must release it after use by calling OrtReleaseSession().
+ */
+ort_session_handle_t EMSCRIPTEN_KEEPALIVE OrtCreateSessionFromFile(char* path,
+                                                           ort_session_options_handle_t session_options);
+
+/**
  * release the specified ORT session.
  */
 void EMSCRIPTEN_KEEPALIVE OrtReleaseSession(ort_session_handle_t session);

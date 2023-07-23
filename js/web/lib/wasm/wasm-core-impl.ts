@@ -116,7 +116,16 @@ export const createSessionFinalize =
       try {
         [sessionOptionsHandle, allocs] = setSessionOptions(options);
 
-        sessionHandle = wasm._OrtCreateSession(modelData[0], modelData[1], sessionOptionsHandle);
+        if (typeof modelData === 'string') {
+          // @ts-ignore
+          const str = allocWasmString(modelData, allocs);
+          // @ts-ignore
+          sessionHandle = wasm._OrtCreateSessionFromFile(BigInt(str), BigInt(sessionOptionsHandle));
+          // @ts-ignore
+          // wasm.FS.unlink(modelData);
+        } else {
+          sessionHandle = wasm._OrtCreateSession(modelData[0], modelData[1], sessionOptionsHandle);
+        }
         if (sessionHandle === 0) {
           checkLastError('Can\'t create a session.');
         }
@@ -153,7 +162,9 @@ export const createSessionFinalize =
         }
         throw e;
       } finally {
-        wasm._free(modelData[0]);
+        if (typeof modelData !== 'string') {
+          wasm._free(modelData[0]);
+        }
         if (sessionOptionsHandle !== 0) {
           wasm._OrtReleaseSessionOptions(sessionOptionsHandle);
         }

@@ -238,7 +238,7 @@ else()
     target_link_libraries(onnxruntime_webassembly PRIVATE tensorboard)
   endif()
 
-  set(EXPORTED_RUNTIME_METHODS "['stackAlloc','stackRestore','stackSave','UTF8ToString','stringToUTF8','lengthBytesUTF8','setValue','getValue']")
+  set(EXPORTED_RUNTIME_METHODS "['stackAlloc','stackRestore','stackSave','UTF8ToString','stringToUTF8','lengthBytesUTF8','setValue','getValue','FS']")
   if (onnxruntime_USE_JSEP)
     set(EXPORTED_FUNCTIONS "_malloc,_free,_JsepOutput")
   else()
@@ -248,14 +248,14 @@ else()
   target_link_options(onnxruntime_webassembly PRIVATE
     "SHELL:-s EXPORTED_RUNTIME_METHODS=${EXPORTED_RUNTIME_METHODS}"
     "SHELL:-s EXPORTED_FUNCTIONS=${EXPORTED_FUNCTIONS}"
-    "SHELL:-s INITIAL_MEMORY=8589934592"
+    "SHELL:-s INITIAL_MEMORY=11811160064"
     "SHELL:-s MAXIMUM_MEMORY=17179869184"
     "SHELL:-s EXIT_RUNTIME=0"
     "SHELL:-s ALLOW_MEMORY_GROWTH=1"
     "SHELL:-s MODULARIZE=1"
     "SHELL:-s EXPORT_ALL=0"
     "SHELL:-s VERBOSE=0"
-    "SHELL:-s FILESYSTEM=0"
+    "SHELL:-s FILESYSTEM=1"
     "SHELL:-s ${MEMORY_FLAG}"
 #    "SHELL:-s MAIN_MODULE=0"
     "SHELL:-s ERROR_ON_UNDEFINED_SYMBOLS=0"
