@@ -774,7 +774,10 @@ TEST(GroupNormTest, GroupNorm_128) {
       if (enable_dml) {
         execution_providers.push_back(DefaultDmlExecutionProvider());
       }
-      test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+
+      if (!execution_providers.empty()) {
+        test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+      }
     }
 
     // Test float32, with activation
@@ -817,10 +820,12 @@ TEST(GroupNormTest, GroupNorm_128) {
       if (enable_dml) {
         execution_providers.push_back(DefaultDmlExecutionProvider());
       }
-      test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+
+      if (!execution_providers.empty()) {
+        test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+      }
     }
   }
-
 }
 
 }  // namespace test

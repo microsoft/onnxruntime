@@ -332,7 +332,10 @@ def convert_float_to_float16(
                     for i, input_name in enumerate(n.input):
                         if input_name in fp32_initializers:
                             # For Resize/GroupNorm, only the first input can be float16
-                            use_fp32_weight = is_node_blocked or (i in ALWAYS_FLOAT_INPUTS.get(n.op_type, []) and i not in force_fp16_inputs_dict.get(n.op_type, []))
+                            use_fp32_weight = is_node_blocked or (
+                                i in ALWAYS_FLOAT_INPUTS.get(n.op_type, [])
+                                and i not in force_fp16_inputs_dict.get(n.op_type, [])
+                            )
                             fp32_initializers[input_name].add_node(n, use_fp32_weight)
 
                     if is_node_blocked:
