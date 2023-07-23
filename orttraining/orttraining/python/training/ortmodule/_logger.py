@@ -115,7 +115,6 @@ def configure_ortmodule_logger(log_level: LogLevel) -> logging.Logger:
     logger.disabled = log_level > LogLevel.INFO and get_rank() != 0
     logger.setLevel(ortmodule_loglevel_to_python_loglevel(log_level))
 
-
     return logger
 
 
