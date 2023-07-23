@@ -1863,7 +1863,7 @@ TEST(ComputeOptimizerTests, SliceTranspose_Propagation) {
       return Status::OK();
     };
 
-    auto build_test_case = [has_axes, has_steps, expected_to_propagate](ModelTestBuilder& builder) {
+    auto build_test_case = [has_axes, has_steps](ModelTestBuilder& builder) {
       auto* input1_arg = builder.MakeInput<int64_t>({{2, 4, 32, 256}});
       auto* trans_out = builder.MakeIntermediate();
       builder.AddNode("Transpose", {input1_arg}, {trans_out})
