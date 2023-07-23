@@ -176,7 +176,7 @@ class ONNXModel:
         for output in node.output:
             if output in input_name_to_nodes:
                 for node in input_name_to_nodes[output]:
-                    children.append(node)
+                    children.append(node)  # noqa: PERF402
         return children
 
     def get_parents(self, node, output_name_to_node=None):
@@ -186,7 +186,7 @@ class ONNXModel:
         parents = []
         for input in node.input:
             if input in output_name_to_node:
-                parents.append(output_name_to_node[input])
+                parents.append(output_name_to_node[input])  # noqa: PERF401
         return parents
 
     def get_parent(self, node, idx, output_name_to_node=None):
@@ -222,7 +222,7 @@ class ONNXModel:
         for node in graph.node:
             for node_input in node.input:
                 if node_input == initializer.name:
-                    nodes.append(node)
+                    nodes.append(node)  # noqa: PERF401
         return nodes
 
     @staticmethod
@@ -379,7 +379,7 @@ class ONNXModel:
                 and not self.is_graph_output(node.output[0])
                 and node.output[0] not in input_name_to_nodes
             ):
-                unused_nodes.append(node)
+                unused_nodes.append(node)  # noqa: PERF401
 
         self.remove_nodes(unused_nodes)
 

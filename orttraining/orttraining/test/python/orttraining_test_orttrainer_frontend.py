@@ -28,7 +28,7 @@ pytorch_110 = StrictVersion(".".join(torch.__version__.split(".")[:2])) >= Stric
 
 def get_model_opset(model_onnx):
     for op in model_onnx.opset_import:
-        if op.domain == "":  # noqa: PLC1901
+        if op.domain == "":
             return op.version
     return None
 
@@ -390,10 +390,10 @@ def testOptimizerConfig(optim_name, lr, alpha, default_alpha):
 
     # 1:1 mapping between defaults and params's hyper parameters
     for param in params:
-        for k, _ in param.items():
+        for k in param:
             if k != "params":
                 assert k in cfg.defaults, "hyper parameter {k} not present in one of the parameter params"
-    for k, _ in cfg.defaults.items():
+    for k in cfg.defaults:
         for param in cfg.params:
             assert k in param, "hyper parameter {k} not present in one of the parameter params"
 
@@ -1039,7 +1039,7 @@ def testORTTrainerInternalUseContribOps(enable_onnx_contrib_ops):
     # Training loop
     data, targets = batcher_fn(train_data, 0)
     if not enable_onnx_contrib_ops and not pytorch_110:
-        with pytest.raises(Exception):
+        with pytest.raises(Exception):  # noqa: B017
             _, _ = trainer.train_step(data, targets)
     else:
         _, _ = trainer.train_step(data, targets)

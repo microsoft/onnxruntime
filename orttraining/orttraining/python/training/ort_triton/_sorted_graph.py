@@ -86,7 +86,7 @@ class SortedGraph:
         name_map = {}
         for idx, input in enumerate(self._graph.input):
             shape_str = str(self._input_shapes[idx]).replace(" ", "")
-            graph_inputs.append(f"({str(input.type.tensor_type.elem_type)},{shape_str})")
+            graph_inputs.append(f"({input.type.tensor_type.elem_type!s},{shape_str})")
             name_map[input.name] = f"i{idx}"
         graph_inputs_str = ",".join(graph_inputs)
 
@@ -110,7 +110,7 @@ class SortedGraph:
         for node_idx, node in enumerate(self._sorted_nodes):
             inputs = []
             for input in node.input:
-                inputs.append(name_map.get(input, input))
+                inputs.append(name_map.get(input, input))  # noqa: PERF401
             inputs_str = ",".join(inputs)
             outputs = []
             for idx, output in enumerate(node.output):
@@ -127,7 +127,7 @@ class SortedGraph:
             attributes_str = ",".join(attributes)
             nodes.append(f"{node.op_type}[{attributes_str}]({inputs_str})->({outputs_str})")
         nodes_str = ",".join(nodes)
-        return f"{graph_inputs_str}|{str(len(self._graph.output))}|{constants_str}|{nodes_str}"
+        return f"{graph_inputs_str}|{len(self._graph.output)!s}|{constants_str}|{nodes_str}"
 
     def __hash__(self):
         return hash(str(self))
@@ -180,7 +180,7 @@ class SortedGraph:
             else:
                 input_infos = []
                 for input in node.input:
-                    input_infos.append(self._node_arg_infos[input])
+                    input_infos.append(self._node_arg_infos[input])  # noqa: PERF401
                 output_infos = TypeAndShapeInfer.infer(node, input_infos, self._graph)
                 for idx, output in enumerate(node.output):
                     self._node_arg_infos[output] = output_infos[idx]
