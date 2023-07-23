@@ -69,7 +69,7 @@ GroupNorm::GroupNorm(const OpKernelInfo& op_info) : RocmKernel(op_info) {
   ORT_ENFORCE(activation == 0 || activation == 1);  // 0 is None, 1 is Swish
   use_swish_activation_ = (activation == 1);
 
-  channels_last_ = (info.GetAttrOrDefault<int64_t>("channels_last", static_cast<int64_t>(1)) != 0);
+  channels_last_ = (op_info.GetAttrOrDefault<int64_t>("channels_last", static_cast<int64_t>(1)) != 0);
 }
 
 Status GroupNorm::ComputeInternal(OpKernelContext* context) const {
