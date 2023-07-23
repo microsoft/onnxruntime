@@ -311,7 +311,7 @@ class TestModelOptimization(unittest.TestCase):
 
 @unittest.skipUnless(is_tf_available(), "skip TestBertOptimizationTF since tensorflow is not available")
 class TestTensorflowModelOptimization(unittest.TestCase):
-    def Setup(self):  # noqa: N802
+    def setUp(self):
         try:
             import tf2onnx  # noqa: F401
         except ImportError:

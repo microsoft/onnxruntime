@@ -156,7 +156,7 @@ Module::Module(const std::string& train_model_path_or_bytes,
                const Environment& env,
                const std::vector<std::shared_ptr<IExecutionProvider>>& providers,
                const std::optional<std::string>& eval_model_path_or_bytes,
-               gsl::span<OrtCustomOpDomain* const> op_domains)
+               [[maybe_unused]] gsl::span<OrtCustomOpDomain* const> op_domains)
     : state_{state} {
   // Enforce weight prepacking is disabled
   // If the user explicitly enabled weight prepacking then return an error.
@@ -170,9 +170,11 @@ Module::Module(const std::string& train_model_path_or_bytes,
   }
 
   train_sess_ = std::make_unique<onnxruntime::InferenceSession>(session_options, env);
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
   if (!op_domains.empty()) {
     ORT_THROW_IF_ERROR(train_sess_->AddCustomOpDomains(op_domains));
   }
+#endif
 
   ORT_THROW_IF_ERROR(train_sess_->Load(train_model_path_or_bytes));
   for (const auto& provider : providers) {
@@ -278,9 +280,11 @@ Module::Module(const std::string& train_model_path_or_bytes,
 
   if (eval_model_path_or_bytes.has_value()) {
     eval_sess_ = std::make_unique<onnxruntime::InferenceSession>(session_options, env);
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
     if (!op_domains.empty()) {
       ORT_THROW_IF_ERROR(eval_sess_->AddCustomOpDomains(op_domains));
     }
+#endif
 
     ORT_THROW_IF_ERROR(eval_sess_->Load(eval_model_path_or_bytes.value()));
     for (const auto& provider : providers) {

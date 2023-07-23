@@ -3,6 +3,7 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
+import itertools
 import logging
 import os
 import sys
@@ -78,7 +79,7 @@ class OnnxModel:
         all_nodes = []
         for graph in self.graphs():
             for node in graph.node:
-                all_nodes.append(node)
+                all_nodes.append(node)  # noqa: PERF402
         return all_nodes
 
     def graph(self):
@@ -107,14 +108,14 @@ class OnnxModel:
         input_names = []
         for graph in self.graphs():
             for input in graph.input:
-                input_names.append(input.name)
+                input_names.append(input.name)  # noqa: PERF401
         return input_names
 
     def get_graphs_output_names(self):
         output_names = []
         for graph in self.graphs():
             for output in graph.output:
-                output_names.append(output.name)
+                output_names.append(output.name)  # noqa: PERF401
         return output_names
 
     def get_graph_by_node(self, node):
@@ -216,7 +217,7 @@ class OnnxModel:
         nodes = []
         for node in self.nodes():
             if node.op_type == op_type:
-                nodes.append(node)
+                nodes.append(node)  # noqa: PERF401
         return nodes
 
     def get_children(self, node, input_name_to_nodes=None):
@@ -227,7 +228,7 @@ class OnnxModel:
         for output in node.output:
             if output in input_name_to_nodes:
                 for node in input_name_to_nodes[output]:
-                    children.append(node)
+                    children.append(node)  # noqa: PERF402
         return children
 
     def get_parents(self, node, output_name_to_node=None):
@@ -237,7 +238,7 @@ class OnnxModel:
         parents = []
         for input in node.input:
             if input in output_name_to_node:
-                parents.append(output_name_to_node[input])
+                parents.append(output_name_to_node[input])  # noqa: PERF401
         return parents
 
     def get_parent(self, node, i, output_name_to_node=None):
@@ -658,8 +659,8 @@ class OnnxModel:
                     for vi in model.graph.value_info:
                         if vi.name in name_vi:
                             del name_vi[vi.name]
-                    for _, vi in name_vi.items():
-                        model.graph.value_info.append(vi)
+                    for vi in name_vi.values():
+                        model.graph.value_info.append(vi)  # noqa: PERF402
             except Exception:
                 logger.warning(
                     "Failed to run symbolic shape inference. Please file an issue in https://github.com/microsoft/onnxruntime."
@@ -791,7 +792,7 @@ class OnnxModel:
         nodes = self.nodes()
         for node in nodes:
             if node.op_type == "Constant" and node.output[0] not in input_name_to_nodes:
-                unused_nodes.append(node)
+                unused_nodes.append(node)  # noqa: PERF401
 
         self.remove_nodes(unused_nodes)
 
@@ -828,10 +829,7 @@ class OnnxModel:
                 all_nodes.append(last_node)
                 all_nodes.extend(nodes)
 
-        nodes_to_remove = []
-        for node in self.model.graph.node:
-            if node not in all_nodes:
-                nodes_to_remove.append(node)
+        nodes_to_remove = [node for node in self.model.graph.node if node not in all_nodes]
 
         self.remove_nodes(nodes_to_remove)
 
@@ -839,7 +837,7 @@ class OnnxModel:
         output_to_remove = []
         for output in self.model.graph.output:
             if output.name not in outputs:
-                output_to_remove.append(output)
+                output_to_remove.append(output)  # noqa: PERF401
         for output in output_to_remove:
             self.model.graph.output.remove(output)
 
@@ -847,9 +845,7 @@ class OnnxModel:
         input_to_remove = []
         if allow_remove_graph_inputs:
             input_name_to_nodes = self.input_name_to_nodes()
-            for input in self.model.graph.input:
-                if input.name not in input_name_to_nodes:
-                    input_to_remove.append(input)
+            input_to_remove = [input for input in self.model.graph.input if input.name not in input_name_to_nodes]
             for input in input_to_remove:
                 self.model.graph.input.remove(input)
 
@@ -886,7 +882,7 @@ class OnnxModel:
         if allow_remove_graph_inputs:
             for input in graph.input:
                 if input.name not in remaining_input_names:
-                    inputs_to_remove.append(input)
+                    inputs_to_remove.append(input)  # noqa: PERF401
             for input in inputs_to_remove:
                 graph.input.remove(input)
 
@@ -1020,13 +1016,13 @@ class OnnxModel:
             location = Path(external_data_path).name if all_tensors_to_one_file else None
 
             if os.path.exists(output_path):
-                logger.info(f"Delete the existed onnx file: {output_path}")
+                logger.info(f"Delete the existing onnx file: {output_path}")
                 os.remove(output_path)
 
             if all_tensors_to_one_file:
                 if os.path.exists(external_data_path):
                     # Delete the external data file. Otherwise, data will be appended to existing file.
-                    logger.info(f"Delete the existed external data file: {external_data_path}")
+                    logger.info(f"Delete the existing external data file: {external_data_path}")
                     os.remove(external_data_path)
             else:
                 if os.listdir(output_dir):
@@ -1062,7 +1058,7 @@ class OnnxModel:
         graph_inputs = []
         for input in self.model.graph.input:
             if self.get_initializer(input.name) is None:
-                graph_inputs.append(input)
+                graph_inputs.append(input)  # noqa: PERF401
         return graph_inputs
 
     def get_opset_version(self):
@@ -1183,3 +1179,48 @@ class OnnxModel:
 
     def clean_shape_infer(self):
         self.model.graph.ClearField("value_info")
+
+    def use_float16(self):
+        """Check whether the model uses float16"""
+        queue = []  # queue for BFS
+        queue.append(self.model.graph)
+        while queue:
+            sub_graphs = []
+            for graph in queue:
+                if not isinstance(graph, GraphProto):
+                    continue
+
+                for v in itertools.chain(graph.input, graph.output, graph.value_info):
+                    if v.type.tensor_type.elem_type == TensorProto.FLOAT16:
+                        return True
+                    if v.type.HasField("sequence_type"):
+                        if v.type.sequence_type.elem_type.tensor_type.elem_type == TensorProto.FLOAT16:
+                            return True
+
+                for t in graph.initializer:
+                    if t.data_type == TensorProto.FLOAT16:
+                        return True
+
+                for node in graph.node:
+                    if node.op_type == "Cast":
+                        for attr in node.attribute:
+                            if attr.name == "to" and attr.i == TensorProto.FLOAT16:
+                                return True
+
+                    for attr in node.attribute:
+                        if attr.type == AttributeProto.GRAPH:
+                            sub_graphs.append(attr.g)
+
+                        for g in attr.graphs:
+                            sub_graphs.append(g)  # noqa: PERF402
+
+                        if isinstance(attr.t, TensorProto) and attr.t.data_type == TensorProto.FLOAT16:
+                            return True
+
+                        for t in attr.tensors:
+                            if isinstance(t, TensorProto) and t.data_type == TensorProto.FLOAT16:
+                                return True
+
+            queue = sub_graphs
+
+        return False
