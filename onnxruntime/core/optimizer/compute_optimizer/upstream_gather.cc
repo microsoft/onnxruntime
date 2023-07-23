@@ -155,7 +155,8 @@ SliceInfo UpStreamGatherGraphTransformer::PropagateSlicingForInput(
 
   // The first slice op's data input should be current_node's current_node_input_index-th input.
   // For some cases when rank changes, slice op's slice input should also be adapted.
-  for (int i = 0; i < static_cast<int>(slice_node.InputDefs().size()); ++i) {
+  int i = 0;
+  for (; i < static_cast<int>(slice_node.InputDefs().size()); ++i) {
     if (i == info.GetDataInputIndex()) {
       input_args[i] = current_node.MutableInputDefs()[current_node_input_index];
     } else if (axis_input_index != -1 && i == axis_input_index) {
@@ -170,9 +171,14 @@ SliceInfo UpStreamGatherGraphTransformer::PropagateSlicingForInput(
   }
 
   // It is possible axes input is null.
-  if (axis_input_index != -1 && axis_input_index >= static_cast<int>(slice_node.InputDefs().size())) {
-    if (info.non_negative_axis != new_axis) {
-      input_args.push_back(create_axes_input());
+  if (axis_input_index != -1 && info.non_negative_axis != new_axis) {
+    for (; i <= axis_input_index; ++i) {
+      if (i == axis_input_index) {
+        input_args.push_back(create_axes_input());
+      } else {
+        NodeArg& empty_input = graph.GetOrCreateNodeArg("", nullptr);
+        input_args.push_back(&empty_input);
+      }
     }
   }
 
