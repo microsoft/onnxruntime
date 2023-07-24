@@ -124,7 +124,8 @@ module.exports = {
   }, {
     files: ['common/test/**/*.ts'],
     rules: {
-      'import/no-extraneous-dependencies': 'off'
+      '@typescript-eslint/naming-convention': 'off',
+      'import/no-extraneous-dependencies': 'off',
     }
   }, {
     files: ['node/script/**/*.ts', 'node/test/**/*.ts', 'web/script/**/*.ts', 'web/test/**/*.ts'], rules: {

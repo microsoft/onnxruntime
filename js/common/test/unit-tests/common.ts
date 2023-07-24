@@ -58,5 +58,4 @@ export const assertIsArrayOf = (value: unknown, type: 'string'|'number'|'boolean
  *
  * This allows to write test code to pass invalid parameters to Tensor constructor and check the behavior.
  */
-// eslint-disable-next-line @typescript-eslint/naming-convention
 export const TensorAny = Tensor as unknown as {new (...args: unknown[]): Tensor};
