@@ -249,7 +249,13 @@ class TestOpGemm(unittest.TestCase):
         else:
             raise AssertionError(f"Test not implemented for activation_type={activation_type}.")
 
-        quant_nodes = {"Gemm": 2, "QuantizeLinear": q_count, "DequantizeLinear": dq_count, "Clip": clip_count, "Cast": cast_count}
+        quant_nodes = {
+            "Gemm": 2,
+            "QuantizeLinear": q_count,
+            "DequantizeLinear": dq_count,
+            "Clip": clip_count,
+            "Cast": cast_count,
+        }
         check_op_type_count(self, model_int8_path, **quant_nodes)
         qnode_io_qtypes = {
             "QuantizeLinear": [

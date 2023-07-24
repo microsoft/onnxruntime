@@ -64,10 +64,7 @@ class QGemm(OpRun):
         a_type = self.get_tensor_type(a_zero_point)
         b_type = self.get_tensor_type(b_zero_point)
         y_type = self.get_tensor_type(y_zero_point)
-        if (
-            a_type == TensorProto.FLOAT8E4M3FN
-            and b_type == TensorProto.FLOAT8E4M3FN
-        ):
+        if a_type == TensorProto.FLOAT8E4M3FN and b_type == TensorProto.FLOAT8E4M3FN:
             a_scaled = (float8e4m3_to_float32(A).astype(float) - float8e4m3_to_float32(a_zero_point)) * np.float32(
                 a_scale
             )

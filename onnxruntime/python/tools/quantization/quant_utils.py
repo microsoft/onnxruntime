@@ -132,14 +132,15 @@ def quantize_nparray(qType, arr, scale, zero_point, low=None, high=None):
                     make_node(
                         "Constant", [], ["zero_point"], value=onnx.helper.make_tensor("zero_point", qType, [], [0])
                     ),
-                    make_node("QuantizeLinear", ["X", "scale", "zero_point"], ["Y"]),
+                    make_node("QuantizeLinear", ["X", "scale", "zero_point"], ["Y32"]),
+                    make_node("Cast", ["Y32"], ["Y"], to=onnx.TensorProto.FLOAT16),
                 ],
                 "qu",
                 [
                     make_tensor_value_info("X", TensorProto.FLOAT, None),
                     make_tensor_value_info("scale", TensorProto.FLOAT, None),
                 ],
-                [make_tensor_value_info("Y", TensorProto.FLOAT, None)],
+                [make_tensor_value_info("Y", TensorProto.FLOAT16, None)],
             )
         )
         ref = ReferenceEvaluator(onnx_model)
@@ -640,7 +641,7 @@ def save_and_reload_model_with_shape_infer(model: ModelProto) -> ModelProto:
 
 
 def tensor_proto_to_array(initializer: TensorProto) -> numpy.ndarray:
-    if initializer.data_type == onnx_proto.TensorProto.FLOAT:
+    if initializer.data_type in (onnx_proto.TensorProto.FLOAT, onnx_proto.TensorProto.FLOAT16):
         return onnx.numpy_helper.to_array(initializer)
 
     raise ValueError(

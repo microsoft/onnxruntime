@@ -37,7 +37,6 @@ from .quant_utils import (
     model_has_infer_metadata,
     ms_domain,
     quantize_data,
-    quantize_nparray,
     save_and_reload_model_with_shape_infer,
     tensor_proto_to_array,
 )
@@ -616,7 +615,16 @@ class ONNXQuantizer:
         # Add initializers
         init_zp = onnx.helper.make_tensor(zero_point_name, zero_point_type, zero_point_shape, zero_point_values)
         self.model.add_initializer(init_zp)
-        init_scale = onnx.helper.make_tensor(scale_name, onnx_proto.TensorProto.FLOAT, scale_shape, scale_values)
+        if zero_point_type in {
+            onnx_proto.TensorProto.FLOAT8E4M3FN,
+            onnx_proto.TensorProto.FLOAT8E4M3FNUZ,
+            onnx_proto.TensorProto.FLOAT8E5M2,
+            onnx_proto.TensorProto.FLOAT8E5M2FNUZ,
+        }:
+            scale_type = onnx_proto.TensorProto.FLOAT16
+        else:
+            scale_type = onnx_proto.TensorProto.FLOAT
+        init_scale = onnx.helper.make_tensor(scale_name, scale_type, scale_shape, scale_values)
         self.model.add_initializer(init_scale)
 
         return True, scale_name, zero_point_name, scale_shape, zero_point_shape
@@ -739,7 +747,8 @@ class ONNXQuantizer:
 
             data = np.asarray(bias_data)
             quantized_data = data.astype(np.float16)
-            bias_scale_data = np.array([1], dtype=np.float16).reshape(-1)
+            bias_scale = np.array([1], dtype=np.float16)
+            bias_scale_data = bias_scale.reshape(-1)
             packed_bias_initializer = onnx.numpy_helper.from_array(quantized_data, quantized_bias_name)
             self.model.initializer_extend([packed_bias_initializer])
             node_type = "Cast"
@@ -757,7 +766,7 @@ class ONNXQuantizer:
             self.model.initializer_extend([packed_bias_initializer])
             bias_scale_data = np.asarray(bias_scale, dtype=np.float32).reshape(-1)
             node_type = "DequantizeLinear"
-            ndoe_qtype = self.weight_qType
+            node_qtype = self.weight_qType
 
         # update scale initializer
         quantized_bias_scale_name = quantized_bias_name + "_scale"

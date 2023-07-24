@@ -122,13 +122,11 @@ class ONNXModel:
             self.remove_node(node)
 
     def add_node(self, node):
-        node = self._check_node(node)
-        self.model.graph.node.extend([node])
+        self.model.graph.node.extend([self._check_node(node)])
 
     def add_nodes(self, nodes_to_add):
         for node in nodes_to_add:
-            node = self._check_node(node)
-            self.model.graph.node.append(node)
+            self.add_node(node)
 
     def add_initializer(self, tensor):
         if find_by_name(tensor.name, self.model.graph.initializer) is None:
@@ -339,8 +337,7 @@ class ONNXModel:
 
         graph.ClearField("node")
         for node in new_nodes:
-            node = self._check_node(node)
-            graph.node.append(node)
+            graph.node.append(self._check_node(node))
         graph_path.pop()
         return graph
 
