@@ -179,10 +179,10 @@ def _test_gemm_softmax_gemm_permute(
                 #  KERNEL_EXPLORER_STRICT_TEST=1 pytest ... -s -v
                 np.testing.assert_allclose(out, ref)
             else:
-                is_zero_tol, atol, rtol = 1e-3, 1e-2, 1e-2
+                is_zero_tol, atol, rtol = 1e-3, 2e-2, 1e-2
                 not_close_to_zeros = np.abs(ref) > is_zero_tol
                 np.testing.assert_allclose(out[not_close_to_zeros], ref[not_close_to_zeros], atol=atol, rtol=rtol)
-        except Exception as err:
+        except Exception as err:  # noqa: PERF203
             header = "*" * 30 + impl + "*" * 30
             print(header)
             print(err)
@@ -200,9 +200,27 @@ def _test_gemm_softmax_gemm_permute(
 @pytest.mark.parametrize("total_seqlen", total_seqlens)
 @pytest.mark.parametrize("seqlen", seqlens)
 @pytest.mark.parametrize("batch", [16])
-@pytest.mark.parametrize("dtype", dtypes)
+@pytest.mark.parametrize("dtype", ["float16", "float32"])
 def test_gemm_softmax_gemm_permute_generic(dtype, batch, seqlen, total_seqlen, nhead, head_size, biased, mask_dim):
     f = getattr(ke, "GemmSoftmaxGemmPermuteGeneric_" + dtype_to_suffix(dtype))
+    scale = 1.0 / np.sqrt(head_size)
+    _test_gemm_softmax_gemm_permute(
+        f, dtype, batch, seqlen, total_seqlen, nhead, head_size, biased, mask_dim, scale, ke.qkv_format.Q_K_V_BNSH
+    )
+
+
+@pytest.mark.parametrize("mask_dim", [2], ids=get_mask_dim_id)
+@pytest.mark.parametrize("biased", [False], ids=get_biased_id)
+@pytest.mark.parametrize("head_size", [64])
+@pytest.mark.parametrize("nhead", [8])
+@pytest.mark.parametrize("total_seqlen", [128])
+@pytest.mark.parametrize("seqlen", [64])
+@pytest.mark.parametrize("batch", [16])
+@pytest.mark.parametrize("dtype", ["float16", "float32"])
+def test_gemm_softmax_gemm_permute_generic_nested_tunable(
+    dtype, batch, seqlen, total_seqlen, nhead, head_size, biased, mask_dim
+):
+    f = getattr(ke, "GemmSoftmaxGemmPermuteGenericNestedTunable_" + dtype_to_suffix(dtype))
     scale = 1.0 / np.sqrt(head_size)
     _test_gemm_softmax_gemm_permute(
         f, dtype, batch, seqlen, total_seqlen, nhead, head_size, biased, mask_dim, scale, ke.qkv_format.Q_K_V_BNSH

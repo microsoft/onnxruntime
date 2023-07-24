@@ -310,7 +310,16 @@ inline float Float16Impl<Derived>::ToFloatImpl() const noexcept {
     o.f -= magic.f;           // re-normalize
   }
 
-  o.u |= (val & 0x8000) << 16;  // sign bit
+  // Attempt to workaround the Internal Compiler Error on ARM64
+  // for bitwise | operator, including std::bitset
+#if (defined _MSC_VER) && (defined _M_ARM || defined _M_ARM64 || defined _M_ARM64EC)
+  if (IsNegative()) {
+    return -o.f;
+  }
+#else
+  // original code:
+  o.u |= (val & 0x8000U) << 16U;  // sign bit
+#endif
   return o.f;
 }
 

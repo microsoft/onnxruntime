@@ -21,11 +21,12 @@ import argparse
 import logging
 import os
 import tempfile
-from typing import Dict, Optional
+from typing import Dict, List, Optional
 
 import coloredlogs
 from fusion_options import FusionOptions
 from onnx import ModelProto, load_model
+from onnx_model import OnnxModel
 from onnx_model_bart import BartOnnxModel
 from onnx_model_bert import BertOnnxModel
 from onnx_model_bert_keras import BertOnnxModelKeras
@@ -45,20 +46,16 @@ MODEL_TYPES = {
     "bert": (BertOnnxModel, "pytorch", 1),
     "bert_tf": (BertOnnxModelTF, "tf2onnx", 0),
     "bert_keras": (BertOnnxModelKeras, "keras2onnx", 0),
+    "clip": (ClipOnnxModel, "pytorch", 1),  # Clip in Stable Diffusion
     "gpt2": (Gpt2OnnxModel, "pytorch", 1),
-    "gpt2_tf": (
-        Gpt2OnnxModel,
-        "tf2onnx",
-        0,
-    ),  # might add a class for GPT2OnnxModel for TF later.
+    "gpt2_tf": (Gpt2OnnxModel, "tf2onnx", 0),  # might add a class for GPT2OnnxModel for TF later.
+    "gpt_neox": (BertOnnxModel, "pytorch", 0),  # GPT-NeoX
+    "swin": (BertOnnxModel, "pytorch", 1),
     "tnlr": (TnlrOnnxModel, "pytorch", 1),
     "t5": (T5OnnxModel, "pytorch", 2),
-    # Stable Diffusion models
-    "unet": (UnetOnnxModel, "pytorch", 1),
-    "vae": (VaeOnnxModel, "pytorch", 1),
-    "clip": (ClipOnnxModel, "pytorch", 1),
+    "unet": (UnetOnnxModel, "pytorch", 1),  # UNet in Stable Diffusion
+    "vae": (VaeOnnxModel, "pytorch", 1),  # UAE in Stable Diffusion
     "vit": (BertOnnxModel, "pytorch", 1),
-    "swin": (BertOnnxModel, "pytorch", 1),
 }
 
 
@@ -67,8 +64,11 @@ def optimize_by_onnxruntime(
     use_gpu: bool = False,
     optimized_model_path: Optional[str] = None,
     opt_level: Optional[int] = 99,
-    disabled_optimizers=[],  # noqa: B006
-    verbose=False,
+    disabled_optimizers: List[str] = [],  # noqa: B006
+    verbose: bool = False,
+    save_as_external_data: bool = False,
+    external_data_filename: str = "",
+    external_data_file_threshold: int = 1024,
 ) -> str:
     """
     Use onnxruntime to optimize model.
@@ -79,6 +79,9 @@ def optimize_by_onnxruntime(
         optimized_model_path (str or None): the path of optimized model.
         opt_level (int): graph optimization level.
         disabled_optimizers (List[str]): a list of names of disabled optimizers
+        save_as_external_data (bool): whether to save external data outside of ONNX model
+        external_data_filename (str): name of external data file. If not provided, name is automatically created from ONNX model.
+        external_data_file_threshold (int): threshold to decide whether to save tensor in ONNX model or in external data file
     Returns:
         optimized_model_path (str): the path of optimized model
     """
@@ -93,6 +96,15 @@ def optimize_by_onnxruntime(
         logger.error("There is no gpu for onnxruntime to do optimization.")
         return onnx_model_path
 
+    model = OnnxModel(load_model(onnx_model_path, format=None, load_external_data=False))
+    if model.use_float16() and not use_gpu:
+        logger.warning(
+            "This model uses float16 in the graph, use_gpu=False might cause extra Cast nodes. "
+            "Most operators have no float16 implementation in CPU, so Cast nodes are added to compute them in float32. "
+            "If the model is intended to use in GPU, please set use_gpu=True. "
+            "Otherwise, consider exporting onnx in float32 and optional int8 quantization for better performance. "
+        )
+
     sess_options = onnxruntime.SessionOptions()
     if opt_level == 1:
         sess_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_BASIC
@@ -106,6 +118,16 @@ def optimize_by_onnxruntime(
         optimized_model_path = "{}_o{}_{}.onnx".format(path_prefix, opt_level, "gpu" if use_gpu else "cpu")
 
     sess_options.optimized_model_filepath = optimized_model_path
+    if save_as_external_data:
+        if len(external_data_filename) == 0:
+            # Set external data filename to model_name.onnx.data
+            external_data_filename = os.path.basename(optimized_model_path) + ".data"
+        sess_options.add_session_config_entry(
+            "session.optimized_model_external_initializers_file_name", external_data_filename
+        )
+        sess_options.add_session_config_entry(
+            "session.optimized_model_external_initializers_min_size_in_bytes", str(external_data_file_threshold)
+        )
 
     if verbose:
         print("Using onnxruntime to optimize model - Debug level Set to verbose")
@@ -120,15 +142,13 @@ def optimize_by_onnxruntime(
     else:
         gpu_ep = []
 
-        if torch_version.cuda:
-            gpu_ep.append("CUDAExecutionProvider")
-        elif torch_version.hip:
+        if torch_version.hip:
             gpu_ep.append("MIGraphXExecutionProvider")
             gpu_ep.append("ROCMExecutionProvider")
+        else:
+            gpu_ep.append("CUDAExecutionProvider")
+
         onnxruntime.InferenceSession(onnx_model_path, sess_options, providers=gpu_ep, **kwargs)
-        assert not set(onnxruntime.get_available_providers()).isdisjoint(
-            ["CUDAExecutionProvider", "ROCMExecutionProvider", "MIGraphXExecutionProvider"]
-        )
 
     assert os.path.exists(optimized_model_path) and os.path.isfile(optimized_model_path)
     logger.debug("Save optimized model by onnxruntime to %s", optimized_model_path)
@@ -199,11 +219,12 @@ def optimize_model(
     opt_level: Optional[int] = None,
     use_gpu: bool = False,
     only_onnxruntime: bool = False,
-    verbose=False,
+    verbose: bool = False,
+    use_external_data_format: bool = False,
 ):
     """Optimize Model by OnnxRuntime and/or python fusion logic.
 
-    ONNX Runtime has graph optimizations (https://onnxruntime.ai/docs/performance/graph-optimizations.html).
+    ONNX Runtime has graph optimizations (https://onnxruntime.ai/docs/performance/model-optimizations/graph-optimizations.html).
     However, the coverage is limited. We also have graph fusions that implemented in Python to improve the coverage.
     They can combined: ONNX Runtime will run first when opt_level > 0, then graph fusions in Python will be applied.
 
@@ -237,6 +258,8 @@ def optimize_model(
         use_gpu (bool, optional): use gpu or not for onnxruntime. Defaults to False.
         only_onnxruntime (bool, optional): only use onnxruntime to optimize model, and no python fusion.
             Defaults to False.
+        use_external_data_format (bool, optional): use external data format when saving optimized model.
+            Defaults to False.
 
      Returns:
         object of an optimizer class.
@@ -256,6 +279,7 @@ def optimize_model(
     temp_dir = tempfile.TemporaryDirectory()
     optimized_model_name = "model_o{}_{}.onnx".format(opt_level, "gpu" if use_gpu else "cpu")
     optimized_model_path = os.path.join(temp_dir.name, optimized_model_name)
+
     if opt_level > 1:
         # Disable some optimizers that might cause failure in symbolic shape inference or attention fusion.
         disabled_optimizers += (
@@ -272,21 +296,25 @@ def optimize_model(
         temp_model_path = optimize_by_onnxruntime(
             input,
             use_gpu=use_gpu,
+            optimized_model_path=optimized_model_path,
             opt_level=opt_level,
             disabled_optimizers=disabled_optimizers,
             verbose=verbose,
-            optimized_model_path=optimized_model_path,
+            save_as_external_data=use_external_data_format,
         )
     elif opt_level == 1:
         # basic optimizations (like constant folding and cast elimination) are not specified to execution provider.
-        # CPU provider is used here so that there is no extra node for GPU memory copy.
+        # Note that use_gpu=False might cause extra Cast nodes for float16 model since most operators does not support float16 in CPU.
+        # Sometime, use_gpu=True might cause extra memory copy nodes when some operators are supported only in CPU.
+        # We might need remove GPU memory copy nodes as preprocess of optimize_by_fusion if they cause no matching in fusion.
         temp_model_path = optimize_by_onnxruntime(
             input,
-            use_gpu=False,
+            use_gpu=use_gpu,
+            optimized_model_path=optimized_model_path,
             opt_level=1,
             disabled_optimizers=disabled_optimizers,
             verbose=verbose,
-            optimized_model_path=optimized_model_path,
+            save_as_external_data=use_external_data_format,
         )
 
     if only_onnxruntime and not temp_model_path:
@@ -468,6 +496,7 @@ def main():
         optimization_options=optimization_options,
         use_gpu=args.use_gpu,
         only_onnxruntime=args.only_onnxruntime,
+        use_external_data_format=args.use_external_data_format,
     )
 
     if args.float16:
