@@ -359,7 +359,7 @@ class ONNXQuantizer:
 
         if tensor_name in self.value_infos:
             vi = self.value_infos[tensor_name]
-            if vi.type.HasField("tensor_type") and vi.type.tensor_type.elem_type in (onnx_proto.TensorProto.FLOAT):
+            if vi.type.HasField("tensor_type") and vi.type.tensor_type.elem_type in (onnx_proto.TensorProto.FLOAT,):
                 return True
         elif self.enable_subgraph_quantization and self.parent:
             return self.parent.is_float_tensor(tensor_name)

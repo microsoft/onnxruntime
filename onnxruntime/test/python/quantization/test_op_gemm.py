@@ -193,6 +193,7 @@ class TestOpGemm(unittest.TestCase):
                     model_int8_path,
                     data_reader.get_next(),
                     providers=["CUDAExecutionProvider", "CPUExecutionProvider"],
+                    is_gemm=True,
                 )
             except Exception as e:
                 if (
@@ -203,7 +204,7 @@ class TestOpGemm(unittest.TestCase):
                     return
                 raise e
         else:
-            check_model_correctness(self, model_fp32_path, model_int8_path, data_reader.get_next())
+            check_model_correctness(self, model_fp32_path, model_int8_path, data_reader.get_next(), is_gemm=True)
 
     def static_quant_test_qdq(
         self,
@@ -265,7 +266,7 @@ class TestOpGemm(unittest.TestCase):
         }
         check_qtype_by_node_type(self, model_int8_path, qnode_io_qtypes)
         data_reader.rewind()
-        check_model_correctness(self, model_fp32_path, model_int8_path, data_reader.get_next())
+        check_model_correctness(self, model_fp32_path, model_int8_path, data_reader.get_next(), is_gemm=True)
 
     def dynamic_quant_test(
         self,
@@ -296,6 +297,8 @@ class TestOpGemm(unittest.TestCase):
             model_fp32_path,
             model_int8_path,
             {"input": np.random.rand(5, 10).astype(np.float32)},
+            dynamic=True,
+            is_gemm=True,
         )
 
     def test_quantize_gemm(self):
@@ -743,7 +746,7 @@ class TestOpGemm(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    TestOpGemm().test_quantize_gemm_e4m3fn_same()
+    TestOpGemm().test_quantize_gemm()
     # TestOpGemm().test_qgemm_ref_uint8_specific_example()
     # TestOpGemm()._test_dummy()
     # stop

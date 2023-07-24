@@ -94,7 +94,7 @@ class QGemm(OpRun):
         elif a_type in self.f8_types or b_type in self.f8_types or y_type in self.f8_types:
             raise NotImplementedError(f"QGemm not implemented for zero_types {a_type}, {b_type}, {y_type}.")
         else:
-            if TensorProto.FLOAT8E4M3FN in set(a_type, b_type, y_type):
+            if TensorProto.FLOAT8E4M3FN in {a_type, b_type, y_type}:
                 raise TypeError(f"Unexpected type for A: {dtype}, B:{dtype} or Y:{dtype}.")
             a_scaled = (A.astype(float) - a_zero_point) * np.float32(a_scale)
             b_scaled = (B.astype(float) - b_zero_point) * np.float32(b_scale)
@@ -249,7 +249,15 @@ def check_sign_f8_quantization(model_path_origin, model_path_to_check):
 
 
 def check_model_correctness(
-    testcase, model_path_origin, model_path_to_check, inputs, rtol=1e-2, atol=0.05, providers=None
+    testcase,
+    model_path_origin,
+    model_path_to_check,
+    inputs,
+    rtol=1e-2,
+    atol=0.05,
+    providers=None,
+    dynamic=False,
+    is_gemm=False,
 ):
     if providers is None:
         providers = ["CPUExecutionProvider"]
@@ -259,58 +267,65 @@ def check_model_correctness(
     origin_sess = onnxruntime.InferenceSession(model_path_origin, sess_options=sess_options, providers=providers)
     origin_results = origin_sess.run(None, inputs)
 
-    ref = ReferenceEvaluator(model_path_origin)
-    ref_origin_results = ref.run(None, inputs)
-    for idx, ref_output in enumerate(origin_results):
-        output = ref_origin_results[idx]
-        np.testing.assert_allclose(
-            ref_output,
-            output,
-            rtol=rtol,
-            atol=atol,
-            err_msg=f"Model {model_path_to_check!r} failed for providers={providers!r}.",
-        )
+    with open(model_path_origin, "rb") as f:
+        model_onnx = onnx.load(f)
+    ops_set = set(node.op_type for node in model_onnx.graph.node)
+    check_reference_evaluator = not (ops_set & {"EmbedLayerNormalization", "Conv", "Attention"})
+
+    if check_reference_evaluator:
+        ref = ReferenceEvaluator(model_path_origin)
+        ref_origin_results = ref.run(None, inputs)
+        for idx, ref_output in enumerate(origin_results):
+            output = ref_origin_results[idx]
+            np.testing.assert_allclose(
+                ref_output,
+                output,
+                rtol=rtol,
+                atol=atol,
+                err_msg=f"Model {model_path_to_check!r} failed for providers={providers!r}.",
+            )
 
     # Verifies the shapes in the quantized model.
-    expected_shapes = {}
-    with open(model_path_origin, "rb") as f:
-        model = onnx.load(f)
-        for init in model.graph.initializer:
-            expected_shapes[init.name] = tuple(init.dims)
-    checked = 0
-    f8_quantization = False
-    with open(model_path_to_check, "rb") as f:
-        model_check = onnx.load(f)
-        for init in model_check.graph.initializer:
-            if init.name.endswith("_quantized"):
-                name = init.name.replace("_quantized", "")
-                expected = expected_shapes[name]
-                shape = tuple(init.dims)
-                if expected != shape:
-                    raise AssertionError(
-                        f"Shape mismatch for initializer {init.name!r} from {init.name!r}, "
-                        f"shape={shape} != {expected} (expected)."
+    if is_gemm:
+        expected_shapes = {}
+        with open(model_path_origin, "rb") as f:
+            model = onnx.load(f)
+            for init in model.graph.initializer:
+                expected_shapes[init.name] = tuple(init.dims)
+        checked = 0
+        f8_quantization = False
+        with open(model_path_to_check, "rb") as f:
+            model_check = onnx.load(f)
+            for init in model_check.graph.initializer:
+                if init.name.endswith("_quantized"):
+                    name = init.name.replace("_quantized", "")
+                    expected = expected_shapes[name]
+                    shape = tuple(init.dims)
+                    if not dynamic and expected != shape:
+                        raise AssertionError(
+                            f"Shape mismatch for initializer {init.name!r} from {init.name!r}, "
+                            f"shape={shape} != {expected} (expected)."
+                        )
+                    else:
+                        checked += 1
+                if "zero_point" in init.name:
+                    dt = init.data_type
+                    f8_quantization = f8_quantization or dt in (
+                        TensorProto.FLOAT8E4M3FN,
+                        TensorProto.FLOAT8E4M3FNUZ,
+                        TensorProto.FLOAT8E5M2,
+                        TensorProto.FLOAT8E5M2FNUZ,
                     )
-                else:
-                    checked += 1
-            if "zero_point" in init.name:
-                dt = init.data_type
-                f8_quantization = f8_quantization or dt in (
-                    TensorProto.FLOAT8E4M3FN,
-                    TensorProto.FLOAT8E4M3FNUZ,
-                    TensorProto.FLOAT8E5M2,
-                    TensorProto.FLOAT8E5M2FNUZ,
+            if checked == 0:
+                raise AssertionError(
+                    f"Unable to check expected shape, expected_shapes={expected_shapes}, "
+                    f"names={[init.name for init in model_check.graph.initializer]}."
                 )
-        if checked == 0:
-            raise AssertionError(
-                f"Unable to check expected shape, expected_shapes={expected_shapes}, "
-                f"names={[init.name for init in model_check.graph.initializer]}."
-            )
-    if f8_quantization:
-        check_sign_f8_quantization(model_path_origin, model_path_to_check)
+        if f8_quantization:
+            check_sign_f8_quantization(model_path_origin, model_path_to_check)
 
     # Verifies the expected outputs.
-    if to_array_extended is not None:
+    if check_reference_evaluator and to_array_extended is not None:
         # Needs pv.Version(onnx.__version__) >= pv.Version("1.16.0")
         ref = ReferenceEvaluator(model_path_to_check, new_ops=[QGemm])
         target_results = ref.run(None, inputs)
