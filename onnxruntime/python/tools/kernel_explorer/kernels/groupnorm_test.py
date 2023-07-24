@@ -11,7 +11,7 @@ from itertools import product
 import kernel_explorer as ke
 import numpy as np
 import pytest
-from utils import dtype_to_bytes, dtype_to_suffix
+from utils import dtype_to_bytes, dtype_to_suffix, standardization
 
 
 def get_sd_sizes():
@@ -40,9 +40,7 @@ def group_norm(input_x, gamma, beta, num_groups, epsilon, with_swish):
     input_x = input_x.transpose([0, 3, 1, 2])
     assert c % num_groups == 0
     x = input_x.reshape((n, num_groups, -1))
-    mean = np.mean(x, axis=-1, keepdims=True)
-    var = np.var(x, axis=-1, keepdims=True)
-    x = (x - mean) / np.sqrt(var + epsilon)
+    x = standardization(x, -1, epsilon)
     x = x.reshape((n, c, h, w))
     x = x.transpose([0, 2, 3, 1])
     x = x * gamma + beta

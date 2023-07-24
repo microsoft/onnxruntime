@@ -96,7 +96,7 @@ elif [ $BUILD_DEVICE = "gpu" ]; then
             --docker-build-args="--build-arg BASEIMAGE=nvcr.io/nvidia/cuda:11.8.0-cudnn8-devel-${BUILD_OS} --build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=${PYTHON_VER} --build-arg INSTALL_DEPS_EXTRA_ARGS=\"${INSTALL_DEPS_EXTRA_ARGS}\" --build-arg USE_CONDA=${USE_CONDA} --network=host" \
             --dockerfile Dockerfile.ubuntu_gpu_training --context .
 elif [[ $BUILD_DEVICE = "tensorrt"* ]]; then
-        IMAGE="$BUILD_OS-cuda11.8-cudnn8.7-tensorrt8.6"
+        IMAGE="$BUILD_OS-cuda11.8-cudnn8.7-tensorrt8.5"
         DOCKER_FILE=Dockerfile.ubuntu_tensorrt
 
         $GET_DOCKER_IMAGE_CMD --repository "onnxruntime-$IMAGE" \

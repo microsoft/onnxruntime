@@ -13,9 +13,14 @@ namespace cuda {
 struct DecoderMaskedMultiHeadAttentionParams : AttentionParameters {
   int beam_width = 1;
 
+  // Only NeoX style rotary embedding is supported
+  int rotary_embedding_dim = 0;
+  int t_step = 0;
+
   // Weather to use multihead attention(excludes matmul and bias)
   bool is_mha = false;
   bool is_cross_attention = false;
+  bool is_packed_qkv = false;
 
   void* q = nullptr;
   void* q_bias = nullptr;

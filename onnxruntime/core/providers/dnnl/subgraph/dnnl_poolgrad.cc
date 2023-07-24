@@ -92,8 +92,8 @@ void DnnlPoolGrad::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
     }
   }
 
-  // Dilatation of 1
-  auto dilatation = dnnl::memory::dims(kernel_shape.size(), 1);
+  // Default dilatation to 0
+  auto dilatation = dnnl::memory::dims(kernel_shape.size(), 0);
 
   dnnl::pooling_forward::primitive_desc pool_forward_pd(dnnl_engine, dnnl::prop_kind::forward, algo, fwd_dx_md, dy_md,
                                                         strides, kernel_shape, dilatation, padding_left, padding_right);

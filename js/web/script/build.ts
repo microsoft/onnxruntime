@@ -34,8 +34,11 @@ const ROOT_FOLDER = path.join(__dirname, '..');
 const WASM_BINDING_FOLDER = path.join(ROOT_FOLDER, 'lib', 'wasm', 'binding');
 const WASM_BINDING_JS_PATH = path.join(WASM_BINDING_FOLDER, 'ort-wasm.js');
 const WASM_BINDING_THREADED_JS_PATH = path.join(WASM_BINDING_FOLDER, 'ort-wasm-threaded.js');
+const WASM_BINDING_SIMD_THREADED_JSEP_JS_PATH = path.join(WASM_BINDING_FOLDER, 'ort-wasm-simd-threaded.jsep.js');
 const WASM_BINDING_THREADED_WORKER_JS_PATH = path.join(WASM_BINDING_FOLDER, 'ort-wasm-threaded.worker.js');
 const WASM_BINDING_THREADED_MIN_JS_PATH = path.join(WASM_BINDING_FOLDER, 'ort-wasm-threaded.min.js');
+const WASM_BINDING_SIMD_THREADED_JSEP_MIN_JS_PATH =
+    path.join(WASM_BINDING_FOLDER, 'ort-wasm-simd-threaded.jsep.min.js');
 const WASM_BINDING_THREADED_MIN_WORKER_JS_PATH = path.join(WASM_BINDING_FOLDER, 'ort-wasm-threaded.min.worker.js');
 
 const WASM_DIST_FOLDER = path.join(ROOT_FOLDER, 'dist');
@@ -43,8 +46,11 @@ const WASM_WASM_PATH = path.join(WASM_DIST_FOLDER, 'ort-wasm.wasm');
 const WASM_THREADED_WASM_PATH = path.join(WASM_DIST_FOLDER, 'ort-wasm-threaded.wasm');
 const WASM_SIMD_WASM_PATH = path.join(WASM_DIST_FOLDER, 'ort-wasm-simd.wasm');
 const WASM_SIMD_THREADED_WASM_PATH = path.join(WASM_DIST_FOLDER, 'ort-wasm-simd-threaded.wasm');
+const WASM_SIMD_JSEP_WASM_PATH = path.join(WASM_DIST_FOLDER, 'ort-wasm-simd.jsep.wasm');
+const WASM_SIMD_THREADED_JSEP_WASM_PATH = path.join(WASM_DIST_FOLDER, 'ort-wasm-simd-threaded.jsep.wasm');
 const WASM_THREADED_WORKER_JS_PATH = path.join(WASM_DIST_FOLDER, 'ort-wasm-threaded.worker.js');
 const WASM_THREADED_JS_PATH = path.join(WASM_DIST_FOLDER, 'ort-wasm-threaded.js');
+const WASM_SIMD_THREADED_JSEP_JS_PATH = path.join(WASM_DIST_FOLDER, 'ort-wasm-simd-threaded.jsep.js');
 
 function validateFile(path: string): void {
   npmlog.info('Build', `Ensure file: ${path}`);
@@ -61,11 +67,14 @@ if (WASM) {
   try {
     validateFile(WASM_BINDING_JS_PATH);
     validateFile(WASM_BINDING_THREADED_JS_PATH);
+    validateFile(WASM_BINDING_SIMD_THREADED_JSEP_JS_PATH);
     validateFile(WASM_BINDING_THREADED_WORKER_JS_PATH);
     validateFile(WASM_WASM_PATH);
     validateFile(WASM_THREADED_WASM_PATH);
     validateFile(WASM_SIMD_WASM_PATH);
     validateFile(WASM_SIMD_THREADED_WASM_PATH);
+    validateFile(WASM_SIMD_JSEP_WASM_PATH);
+    validateFile(WASM_SIMD_THREADED_JSEP_WASM_PATH);
   } catch (e) {
     npmlog.error('Build', `WebAssembly files are not ready. build WASM first. ERR: ${e}`);
     throw e;
@@ -86,7 +95,7 @@ if (WASM) {
         'npx',
         [
           'terser', WASM_BINDING_THREADED_JS_PATH, '--compress', 'passes=2', '--format', 'comments=false', '--mangle',
-          'reserved=[_scriptDir]', '--module'
+          'reserved=[_scriptDir,startWorker]', '--module'
         ],
         {shell: true, encoding: 'utf-8', cwd: ROOT_FOLDER});
     if (terser.status !== 0) {
@@ -105,13 +114,38 @@ if (WASM) {
   }
   npmlog.info('Build', 'Minimizing file "ort-wasm-threaded.js"... DONE');
 
+  npmlog.info('Build', 'Minimizing file "ort-wasm-simd-threaded.jsep.js"...');
+  try {
+    const terser = spawnSync(
+        'npx',
+        [
+          'terser', WASM_BINDING_SIMD_THREADED_JSEP_JS_PATH, '--compress', 'passes=2', '--format', 'comments=false',
+          '--mangle', 'reserved=[_scriptDir,startWorker]', '--module'
+        ],
+        {shell: true, encoding: 'utf-8', cwd: ROOT_FOLDER});
+    if (terser.status !== 0) {
+      console.error(terser.error);
+      process.exit(terser.status === null ? undefined : terser.status);
+    }
+
+    fs.writeFileSync(WASM_BINDING_SIMD_THREADED_JSEP_MIN_JS_PATH, terser.stdout);
+    fs.writeFileSync(WASM_SIMD_THREADED_JSEP_JS_PATH, `${COPYRIGHT_BANNER}${terser.stdout}`);
+
+    validateFile(WASM_BINDING_SIMD_THREADED_JSEP_MIN_JS_PATH);
+    validateFile(WASM_SIMD_THREADED_JSEP_JS_PATH);
+  } catch (e) {
+    npmlog.error('Build', `Failed to run terser on ort-wasm-threaded.js. ERR: ${e}`);
+    throw e;
+  }
+  npmlog.info('Build', 'Minimizing file "ort-wasm-simd-threaded.jsep.js"... DONE');
+
   npmlog.info('Build', 'Minimizing file "ort-wasm-threaded.worker.js"...');
   try {
     const terser = spawnSync(
         'npx',
         [
           'terser', WASM_BINDING_THREADED_WORKER_JS_PATH, '--compress', 'passes=2', '--format', 'comments=false',
-          '--mangle', 'reserved=[_scriptDir]', '--toplevel'
+          '--mangle', 'reserved=[_scriptDir,startWorker]', '--toplevel'
         ],
         {shell: true, encoding: 'utf-8'});
     if (terser.status !== 0) {

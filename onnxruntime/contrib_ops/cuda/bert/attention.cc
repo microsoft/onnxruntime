@@ -164,6 +164,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
                                         has_memory_efficient_attention(sm, sizeof(T) == 2);
 #else
   constexpr bool use_memory_efficient_attention = false;
+  ORT_UNUSED_PARAMETER(is_mask_1d_key_seq_len_start);
 #endif
 
   cublasHandle_t cublas = GetCublasHandle(context);

@@ -33,7 +33,7 @@ class OrtFormatModelDumper:
             tensor = graph.Initializers(idx)
             dims = []
             for dim in range(0, tensor.DimsLength()):
-                dims.append(tensor.Dims(dim))
+                dims.append(tensor.Dims(dim))  # noqa: PERF401
 
             print(f"{tensor.Name().decode()} data_type={tensor.DataType()} dims={dims}")
         print("--------")

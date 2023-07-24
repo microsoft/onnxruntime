@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#ifdef ENABLE_TRAINING_CORE
+#ifdef ENABLE_TRAINING
 
 #include <onnx/defs/attr_proto_util.h>
 #include "core/graph/graph_utils.h"
@@ -34,7 +34,7 @@ UpStreamGatherGraphTransformer::UpStreamGatherGraphTransformer(
 
       {GetFullQualifiedOpName("Cast", kOnnxDomain),
        OpPassThroughConfig<UpStreamGatherOperatorActorBase>(std::make_shared<SimplePointwiseGatherActor<true>>(),
-                                                            opset_13_9_6_1)},
+                                                            opset_19_13_9_6_1)},
       {GetFullQualifiedOpName("Div", kOnnxDomain),
        OpPassThroughConfig<UpStreamGatherOperatorActorBase>(std::make_shared<SimplePointwiseGatherActor<true>>(),
                                                             opset_14_13_7_6_1)},
@@ -53,7 +53,7 @@ UpStreamGatherGraphTransformer::UpStreamGatherGraphTransformer(
                                                             opset_13_9_1)},
       {GetFullQualifiedOpName("Reshape", kOnnxDomain),
        OpPassThroughConfig<UpStreamGatherOperatorActorBase>(std::make_shared<ReshapeGatherActor>(),
-                                                            opset_14_13_5_1)},
+                                                            opset_19_14_13_5_1)},
       {GetFullQualifiedOpName("Softmax", kOnnxDomain),
        OpPassThroughConfig<UpStreamGatherOperatorActorBase>(std::make_shared<SoftmaxGatherActor>(),
                                                             opset_13_11_1)},
@@ -345,6 +345,65 @@ std::optional<SliceInfo> IsSupportedShrunkenGather(Graph& graph, Node& node,
   return SliceInfo(graph, &node, false /*is_slice_scalar*/, "axis", axis, true);
 }
 
+/**
+ * @brief Check if the Slice node can be up-streamed to the previous node.
+ *
+ * If "Slice" node is operating on one single axis, then it is supported.
+ * @return std::optional<SliceInfo>
+ */
+std::optional<SliceInfo> IsSupportedSlice(Graph& graph, Node& node,
+                                          const InlinedHashSet<std::string_view>&
+                                              compatible_execution_providers,
+                                          const logging::Logger& logger) {
+  if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "Slice", {10, 11, 13}) ||
+      !graph_utils::IsSupportedProvider(node, compatible_execution_providers)) {
+    return std::nullopt;
+  }
+
+  const NodeArg* data_input = node.InputDefs()[0];
+  const NodeArg* starts_input = node.InputDefs()[1];
+  const NodeArg* ends_input = node.InputDefs()[2];
+  const NodeArg* axes_input = node.InputDefs().size() > 3 ? node.InputDefs()[3] : nullptr;
+
+  if (data_input->Shape() == nullptr || starts_input->Shape() == nullptr || ends_input->Shape() == nullptr ||
+      (axes_input && axes_input->Shape() == nullptr)) {
+    LOG_DEBUG_INFO(logger, "Skip Slice node " + node.Name() + " due to undefined shape.");
+    return std::nullopt;
+  }
+
+  // Make sure starts/ends/axes/steps are all 1D tensors, since we only support single-dimension slicing.
+  if (starts_input->Shape()->dim_size() != 1 || ends_input->Shape()->dim_size() != 1 ||
+      (axes_input && axes_input->Shape()->dim_size() != 1)) {
+    LOG_DEBUG_INFO(logger, "Skip Slice node " + node.Name() + " due to unsupported dim size: " +
+                               std::to_string(starts_input->Shape()->dim_size()) + ", " +
+                               std::to_string(ends_input->Shape()->dim_size()) + ", " +
+                               std::to_string(axes_input ? axes_input->Shape()->dim_size() : 0));
+    return std::nullopt;
+  }
+
+  // Try to parse the 'axes' value.
+  int axis = 0;
+  if (axes_input) {
+    InlinedVector<int64_t> axes_values;
+    if (!graph_utils::IsConstantInitializer(graph, axes_input->Name()) ||
+        !optimizer_utils::AppendTensorFromInitializer(graph, *axes_input, axes_values, true) ||
+        axes_values.size() != 1) {
+      return std::nullopt;
+    }
+    axis = static_cast<int>(axes_values[0]);
+  } else {
+    // If 'axes' is not specified, then it is [0, .., r-1], so we force data rank to be 1.
+    if (data_input->Shape()->dim_size() != 1) {
+      return std::nullopt;
+    }
+  }
+
+  if (axis < 0)
+    axis += data_input->Shape()->dim_size();
+
+  return SliceInfo(graph, &node, false /*is_slice_scalar*/, "axis", axis, true);
+}
+
 }  // namespace
 
 std::optional<SliceInfo> UpStreamGatherGraphTransformer::IsSupportedForUpstream(
@@ -357,6 +416,9 @@ std::optional<SliceInfo> UpStreamGatherGraphTransformer::IsSupportedForUpstream(
   }
   if (!gather_info.has_value()) {
     gather_info = IsSupportedShrunkenGather(graph, node, GetCompatibleExecutionProviders(), logger);
+  }
+  if (!gather_info.has_value()) {
+    gather_info = IsSupportedSlice(graph, node, GetCompatibleExecutionProviders(), logger);
   }
   return gather_info;
 }

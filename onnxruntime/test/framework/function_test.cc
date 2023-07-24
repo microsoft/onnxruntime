@@ -52,7 +52,7 @@ static void Check(const char* source,
 
   std::unique_ptr<CPUExecutionProvider> provider = std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
   OrtValue ort_value;
-  CreateMLValue<float>(provider->GetAllocator(OrtMemTypeDefault), {int64_t(input_values.size())}, input_values, &ort_value);
+  CreateMLValue<float>(provider->CreatePreferredAllocators()[0], {int64_t(input_values.size())}, input_values, &ort_value);
 
   feeds.insert(std::make_pair(std::string(input_name), ort_value));
 
@@ -344,6 +344,74 @@ TEST(FunctionTest, AttrWithDefault) {
   Check(code, "x", {1.0, 2.0, 3.0}, "y", {5.0, 7.0, 9.0});
 }
 
+#if !defined(DISABLE_FLOAT8_TYPES)
+
+// Attribute 'saturate' was introduced in opset 19, ir_version=9.
+// The test checks the parser gets it right and returns the expected results.
+TEST(FunctionTest, AttrSaturate) {
+  const char* code = R"(
+        <
+        ir_version: 9,
+        opset_import: [ "" : 19, "local" : 1 ]
+        >
+        agraph (float[N] x) => (float[N] y)
+        {
+            y0 = local.myfun <a = 2.0> (x)
+            y1 = local.myfun (x)
+            y = Add (y0, y1)
+        }
+
+        <
+        opset_import: [ "" : 19 ],
+        domain: "local"
+        >
+        myfun <a: float=1.0> (x) => (y) {
+            x2 = Constant <value_float: float=@a>()
+            x2_ = Cast<to=17>(x2)
+            x3 = CastLike<saturate=0>(x2, x2_)
+            x3_ = Cast<to=1>(x3)
+            y = Add (x, x3_)
+        }
+        )";
+
+  Check(code, "x", {1.0, 2.0, 1e6}, "y", {5.0, 7.0, 2000003.0});
+}
+
+// Attribute 'saturate' was introduced in opset 19, ir_version=9.
+// The test checks the model does not saturate a value out of float 8 boundary.
+// TODO: change the expected value when this PR is merged in onnx:
+// https://github.com/onnx/onnx/pull/5246
+TEST(FunctionTest, AttrSaturateNan) {
+  const char* code = R"(
+        <
+        ir_version: 9,
+        opset_import: [ "" : 19, "local" : 1 ]
+        >
+        agraph (float[N] x) => (float[N] y)
+        {
+            y0 = local.myfun <a = 1e6> (x)
+            y1 = local.myfun (x)
+            y = Add (y0, y1)
+        }
+
+        <
+        opset_import: [ "" : 19 ],
+        domain: "local"
+        >
+        myfun <a: float=1.0> (x) => (y) {
+            x2 = Constant <value_float: float=@a>()
+            x2_ = Cast<to=18>(x2)
+            x3 = CastLike<saturate=0>(x2, x2_)
+            x3_ = Cast<to=1>(x3)
+            y = Add (x, x3_)
+        }
+        )";
+
+  Check(code, "x", {1.0, 2.0, 1e6}, "y", {243.0, 245.0, 2000241});  // std::numeric_limits<float>::quiet_NaN()});
+}
+
+#endif
+
 // Test use of constants inside sub-graphs, which are promoted to initializers by ORT.
 TEST(FunctionTest, NestedConstant) {
   const char* code = R"(
@@ -436,6 +504,30 @@ TEST(FunctionTest, UnusedFunctionInputs) {
   )";
 
   Check(code, "x", {1.0, 2.0, 3.0}, "y", {1.0, 4.0, 9.0});
+}
+
+// Test constant-folding inside a sub-graph is handled correctly
+// for functions that are inlined.
+TEST(FunctionTest, ConstantFoldingInSubGraph) {
+  const char* code = R"(
+    <ir_version: 8, opset_import: [ "" : 17 ]>
+    agraph (float[N] X) => (float[M] Y)  {
+        seq1 = SequenceConstruct(X, X, X)
+        seq2 = SequenceMap (seq1) <body =
+            add1 (float[K] Z) => (float[K] W) {
+                C1 = Constant <value = float {1.0}> ()
+                C2 = Constant <value = float {1.0}> ()
+                # C is a constant, which will be constant-folded into an initializer out of the sub-graph.
+                C = Add (C1, C2)
+                # After optimization, only following Add will be left in this sub-graph.
+                W = Add (Z, C)
+            }
+        >
+        Y = ConcatFromSequence <axis=0> (seq2)
+    }
+  )";
+
+  Check(code, "X", {1.0, 2.0, 3.0}, "Y", {3.0, 4.0, 5.0, 3.0, 4.0, 5.0, 3.0, 4.0, 5.0});
 }
 
 }  // namespace test

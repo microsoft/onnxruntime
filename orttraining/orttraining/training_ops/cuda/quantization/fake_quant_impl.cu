@@ -98,8 +98,8 @@ template <typename T>
 void FakeQuantGradImpl(cudaStream_t stream, const int64_t num_elements, const T* dY_data,
                        const bool* gradient_mask_data, T* dX_data) {
   FakeQuantGradFunctor<T> fake_quant_grad_functor(dY_data, gradient_mask_data);
-  LaunchElementwiseKernel<T, decltype(fake_quant_grad_functor)>(
-      stream, dX_data, fake_quant_grad_functor, num_elements);
+  LaunchElementwiseKernel<T, decltype(fake_quant_grad_functor), CUDA_LONG>(
+      stream, dX_data, fake_quant_grad_functor, static_cast<CUDA_LONG>(num_elements));
 }
 
 #define SPECIALIZED_FAKEQUANTGRAD_IMPL(T)                                             \

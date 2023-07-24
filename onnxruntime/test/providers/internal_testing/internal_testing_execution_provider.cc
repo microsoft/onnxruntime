@@ -3,7 +3,7 @@
 
 #include "internal_testing_execution_provider.h"
 
-#include "core/framework/allocatormgr.h"
+#include "core/framework/allocator_utils.h"
 #include "core/framework/compute_capability.h"
 #include "core/framework/feeds_fetches_manager.h"
 #include "core/framework/op_kernel_context_internal.h"
@@ -13,7 +13,7 @@
 #include "core/graph/model.h"
 #include "core/providers/partitioning_utils.h"
 #include "core/session/onnxruntime_cxx_api.h"
-#include "core/optimizer/transpose_optimizer/optimizer_utils.h"
+#include "core/optimizer/layout_transformation/layout_transformation.h"
 
 #include <queue>
 
@@ -93,42 +93,13 @@ InternalTestingExecutionProvider::InternalTestingExecutionProvider(const std::un
       kernel_registry_{RegisterKernels()} {
 }
 
-AllocatorPtr InternalTestingExecutionProvider::GetAllocator(OrtMemType mem_type) const {
-  // replicate setup that some EPs have with a local allocator
-  if (mem_type == OrtMemTypeDefault) {
-    return local_allocator_;
-  } else {
-    return IExecutionProvider::GetAllocator(mem_type);
-  }
-}
-
-// implement RegisterAllocator to test/validate sharing the CPU EP's allocator
-void InternalTestingExecutionProvider::RegisterAllocator(AllocatorManager& allocator_manager) {
-  OrtDevice cpu_device{OrtDevice::CPU, OrtDevice::MemType::DEFAULT, DEFAULT_CPU_ALLOCATOR_DEVICE_ID};
-
-  // if EP is used in multiple inference sessions we may already have an allocator. if so use that.
-  auto cpu_alloc = GetAllocator(OrtMemTypeDefault);
-  if (!cpu_alloc) {
-    // use shared allocator if available
-    cpu_alloc = allocator_manager.GetAllocator(OrtMemTypeDefault, cpu_device);
-
-    if (!cpu_alloc) {
-      // create our allocator
-      AllocatorCreationInfo allocator_info(
-          [](int) {
-            return std::make_unique<CPUAllocator>(OrtMemoryInfo(INTERNAL_TESTING_EP,
-                                                                OrtAllocatorType::OrtDeviceAllocator));
-          });
-
-      cpu_alloc = CreateAllocator(allocator_info);
-
-      // enable sharing of our allocator
-      allocator_manager.InsertAllocator(cpu_alloc);
-    }
-
-    local_allocator_ = cpu_alloc;
-    InsertAllocator(cpu_alloc);
-  }
+std::vector<AllocatorPtr> InternalTestingExecutionProvider::CreatePreferredAllocators() {
+  AllocatorCreationInfo allocator_info(
+      [](int) {
+        return std::make_unique<CPUAllocator>(OrtMemoryInfo(INTERNAL_TESTING_EP,
+                                                            OrtAllocatorType::OrtDeviceAllocator));
+      });
+  return std::vector<AllocatorPtr>{CreateAllocator(allocator_info)};
 }
 
 InternalTestingExecutionProvider::~InternalTestingExecutionProvider() {}
@@ -268,7 +239,7 @@ common::Status InternalTestingExecutionProvider::Compile(const std::vector<Fused
 
     if (preferred_layout_ == DataLayout::NHWC) {
       const GraphViewer& graph_viewer = node_and_viewer.filtered_graph;
-      auto layout_sensitive_ops = layout_transformer::GetORTLayoutSensitiveOps();
+      auto layout_sensitive_ops = layout_transformation::GetORTLayoutSensitiveOps();
       for (const auto& unfused_node : graph_viewer.Nodes()) {
         if (layout_sensitive_ops.count(unfused_node.OpType()) && unfused_node.Domain() != kMSInternalNHWCDomain) {
           return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,

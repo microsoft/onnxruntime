@@ -7,6 +7,7 @@
 #include <unordered_map>
 #include <functional>
 #include <random>
+#include "core/mlas/inc/mlas.h"
 #include "core/graph/constants.h"
 #include "test/providers/provider_test_utils.h"
 
@@ -36,22 +37,6 @@ inline void TestActivationOp(const char* szOp, const std::vector<std::vector<T>>
     if (!is_tensorrt_supported) {
       excluded_providers.insert(kTensorrtExecutionProvider);
     }
-
-// Disabled because of accuracy issues for MYRIAD FP16 and VAD_M
-#if defined(OPENVINO_CONFIG_MYRIAD) || defined(OPENVINO_CONFIG_VAD_M)
-    int relu = strcmp(szOp, "Relu");
-    int leaky = strcmp(szOp, "LeakyRelu");
-    int elu = strcmp(szOp, "Elu");
-    int sigmoid = strcmp(szOp, "Sigmoid");
-    int tanh = strcmp(szOp, "Tanh");
-    if (relu == 0 || leaky == 0) {
-      excluded_providers.insert(kOpenVINOExecutionProvider);
-    }
-    if (elu == 0)
-      excluded_providers.insert(kOpenVINOExecutionProvider);
-    if (sigmoid == 0 || tanh == 0)
-      excluded_providers.insert(kOpenVINOExecutionProvider);
-#endif
 
 // Disabled because of accuracy issues for GPU
 #if defined(OPENVINO_CONFIG_GPU_FP16) || defined(OPENVINO_CONFIG_GPU_FP32)
@@ -96,6 +81,17 @@ class ActivationOpTest : public ::testing::Test {
                                                         DBL_MAX, -DBL_MAX, std::numeric_limits<double>::infinity()}};            // max, -max, inf
   std::vector<std::vector<int8_t>> input_values_int8{{-1, -5, 0, 1, 5, 100, -100,                                                // normal input values for activation
                                                       std::numeric_limits<int8_t>::min(), std::numeric_limits<int8_t>::max()}};  // min, max
+#ifdef MLAS_F16VEC_INTRINSICS_SUPPORTED
+  std::vector<std::vector<MLFloat16>> input_values_fp16{{MLFloat16(-1.0f),
+                                                         MLFloat16(-5.f),
+                                                         MLFloat16(),
+                                                         MLFloat16(1.f),
+                                                         MLFloat16(5.f),
+                                                         MLFloat16(100.f),
+                                                         MLFloat16(-100.f),
+                                                         MLFloat16(65504.f),
+                                                         MLFloat16(-65504.f)}};
+#endif  // MLAS_F16VEC_INTRINSICS_SUPPORTED
 
   void SetUp() override {
     float low = -1.0f, high = 1.0f;

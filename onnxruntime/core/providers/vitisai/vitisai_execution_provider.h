@@ -1,20 +1,34 @@
-// Copyright (c) Xilinx Inc. All rights reserved.
+// Copyright (c) 2023 Advanced Micro Devices, Inc. All rights reserved.
 // Licensed under the MIT License.
 
 #pragma once
 
 #include <ctime>
-#include "core/framework/execution_provider.h"
-#include "core/platform/ort_mutex.h"
 
+#include "core/framework/execution_provider.h"
+#include "core/framework/customregistry.h"
+#include "core/session/onnxruntime_c_api.h"
+
+// we cannot include vaip/vaip.hpp here because header file referred by
+// onnxruntime_pybind_state_common.cc
+namespace vaip_core {
+template <typename T>
+class DllSafe;
+class ExecutionProvider;
+}  // namespace vaip_core
 namespace onnxruntime {
 
 // Information needed to construct execution providers.
 struct VitisAIExecutionProviderInfo {
-  int device_id{0};
-  std::string backend_type;
-  std::string export_runtime_module;
-  std::string load_runtime_module;
+  VitisAIExecutionProviderInfo(const ProviderOptions& provider_options);
+
+  const char* get_json_config_str() const {
+    return json_config_.c_str();
+  }
+
+ private:
+  ProviderOptions provider_options_;
+  const std::string json_config_;
 };
 
 // Logical device representation.
@@ -27,22 +41,23 @@ class VitisAIExecutionProvider : public IExecutionProvider {
   GetCapability(const onnxruntime::GraphViewer& graph,
                 const IKernelLookup& /*kernel_lookup*/) const override;
 
-  int GetDeviceId() const { return device_id_; }
+  int GetDeviceId() const { return 0; }
 
-  common::Status Compile(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
-                         std::vector<NodeComputeInfo>& node_compute_funcs) override;
+  common::Status Compile(
+      const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
+      std::vector<NodeComputeInfo>& node_compute_funcs) override;
+  std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;
 
  private:
-  // The Vitis AI DPU target
-  std::string backend_type_;
-  // Device ID (Unused for now)
-  int device_id_;
-  // If not empty, the path to the file where the PyXIR runtime module
-  //	should be exported to (used for cross compilation)
-  std::string export_runtime_module_;
-  // If not empty, the path to the file where the PyXIR runtime module
-  //	should be loaded from
-  std::string load_runtime_module_;
+  void CreateKernelRegistry();
+  using my_ep_t = vaip_core::DllSafe<std::vector<std::unique_ptr<vaip_core::ExecutionProvider>>>;
+  using my_ep_uptr_t = std::shared_ptr<my_ep_t>;
+  // we have to hide the implementation by forward declaration.
+  mutable my_ep_uptr_t execution_providers_;
+  VitisAIExecutionProviderInfo info_;
+  std::vector<OrtCustomOpDomain*> custom_op_domains_;
+  std::shared_ptr<KernelRegistry> registry_;
+  std::set<std::string> vitisai_optypes_;
 };
 
 }  // namespace onnxruntime

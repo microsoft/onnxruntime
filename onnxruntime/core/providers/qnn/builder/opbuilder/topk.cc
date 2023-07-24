@@ -2,7 +2,6 @@
 // Licensed under the MIT License.
 #include "core/providers/qnn/builder/opbuilder/base_op_builder.h"
 #include "core/framework/utils.h"
-#include "core/framework/tensorprotoutils.h"
 #include "core/providers/qnn/builder/op_builder_factory.h"
 namespace onnxruntime {
 namespace qnn {
@@ -100,7 +99,7 @@ Status TopKOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wra
   if (is_initializer_input) {
     std::vector<uint8_t> unpacked_tensor;
     const auto& input_tensor = qnn_model_wrapper.GetInitializerTensors().at(input_name);
-    ORT_RETURN_IF_ERROR(onnxruntime::utils::UnpackInitializerData(*input_tensor, unpacked_tensor));
+    ORT_RETURN_IF_ERROR(qnn_model_wrapper.UnpackInitializerData(*input_tensor, unpacked_tensor));
     const int64_t* tensor_data = reinterpret_cast<const int64_t*>(unpacked_tensor.data());
     k = static_cast<uint32_t>(*tensor_data);
   } else {
@@ -113,8 +112,9 @@ Status TopKOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wra
   std::string k_param_name = k_param.GetParamTensorName();
   qnn_model_wrapper.AddParamWrapper(std::move(k_param));
   std::vector<std::string> param_tensor_names{k_param_name};
-  ORT_RETURN_IF_ERROR(ProcessOutputs(qnn_model_wrapper, node_unit, std::move(input_names), std::move(param_tensor_names),
-                                     logger, is_quantized_model, do_op_validation));
+  ORT_RETURN_IF_ERROR(ProcessOutputs(qnn_model_wrapper, node_unit, std::move(input_names),
+                                     std::move(param_tensor_names), logger, is_quantized_model, do_op_validation,
+                                     GetQnnOpType(node_unit.OpType())));
   return Status::OK();
 }
 

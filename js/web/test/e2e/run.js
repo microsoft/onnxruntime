@@ -57,7 +57,7 @@ async function main() {
   // we start here:
 
   // install dev dependencies
-  await runInShell(`npm install"`);
+  await runInShell(`npm install`);
 
   // npm install with "--cache" to install packed packages with an empty cache folder
   await runInShell(`npm install --cache "${NPM_CACHE_FOLDER}" ${PACKAGES_TO_INSTALL.map(i => `"${i}"`).join(' ')}`);

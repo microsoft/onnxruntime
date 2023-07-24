@@ -6,7 +6,7 @@ import ort_flatbuffers_py.fbs as fbs
 
 class FbsTypeInfo:
     "Class to provide conversion between ORT flatbuffers schema values and C++ types"
-    tensordatatype_to_string = {
+    tensordatatype_to_string = {  # noqa: RUF012
         fbs.TensorDataType.TensorDataType.FLOAT: "float",
         fbs.TensorDataType.TensorDataType.UINT8: "uint8_t",
         fbs.TensorDataType.TensorDataType.INT8: "int8_t",
@@ -23,6 +23,10 @@ class FbsTypeInfo:
         # fbs.TensorDataType.TensorDataType.COMPLEX64: 'complex64 is not supported',
         # fbs.TensorDataType.TensorDataType.COMPLEX128: 'complex128 is not supported',
         fbs.TensorDataType.TensorDataType.BFLOAT16: "BFloat16",
+        fbs.TensorDataType.TensorDataType.FLOAT8E4M3FN: "Float8E4M3FN",
+        fbs.TensorDataType.TensorDataType.FLOAT8E4M3FNUZ: "Float8E4M3FNUZ",
+        fbs.TensorDataType.TensorDataType.FLOAT8E5M2: "Float8E5M2",
+        fbs.TensorDataType.TensorDataType.FLOAT8E5M2FNUZ: "Float8E5M2FNUZ",
     }
 
     @staticmethod
