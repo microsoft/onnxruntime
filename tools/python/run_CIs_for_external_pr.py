@@ -64,6 +64,10 @@ def main():
     print("Adding azp run commands")
 
     # Current pipelines. These change semi-frequently and may need updating.
+    #
+    # Note: there is no easy way to get the list for azp "required" pipelines before they starts.
+    #       we need to maintain this list manually.
+    #
     pipelines = [
         # windows
         "Windows ARM64 QNN CI Pipeline",
