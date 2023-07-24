@@ -49,7 +49,7 @@ def split_graph(model, split_edge_groups):
                             element_types.append(1)
             for info in model.graph.value_info:
                 if info.name == id:
-                    output_shapes.append(info.type)
+                    output_shapes.append(info.type)  # noqa: PERF401
 
         send_input_signal_name = "send_input_signal" + str(cut_index)
         send_signal = model.graph.input.add()
@@ -279,14 +279,14 @@ def generate_subgraph(model, start_nodes, identity_node_list):
     # remove added identity node before copy to subgraph
     identity_node_index = []
     for n in identity_node_list:
-        identity_node_index.append(get_identity_index_for_deleting(main_graph.graph.node, n))
+        identity_node_index.append(get_identity_index_for_deleting(main_graph.graph.node, n))  # noqa: PERF401
     identity_node_index.sort(reverse=True)
 
     for i in reversed(range(len(main_graph.graph.node))):
         try:
             if i in identity_node_index:
                 del main_graph.graph.node[i]
-        except Exception:
+        except Exception:  # noqa: PERF203
             print("error deleting identity node", i)
 
     all_visited_nodes = []
@@ -316,19 +316,19 @@ def generate_subgraph(model, start_nodes, identity_node_list):
         # gather visited nodes
         visited_nodes = []
         for n in visited0:
-            visited_nodes.append(get_index(main_graph.graph.node, n))
+            visited_nodes.append(get_index(main_graph.graph.node, n))  # noqa: PERF401
         visited_nodes.sort(reverse=True)
 
         # gather visited inputs
         visited_inputs = []
         for n in inputs0:
-            visited_inputs.append(get_index(main_graph.graph.input, n))
+            visited_inputs.append(get_index(main_graph.graph.input, n))  # noqa: PERF401
         visited_inputs.sort(reverse=True)
 
         # gather visited outputs
         visited_outputs = []
         for n in outputs0:
-            visited_outputs.append(get_index(main_graph.graph.output, n))
+            visited_outputs.append(get_index(main_graph.graph.output, n))  # noqa: PERF401
         visited_outputs.sort(reverse=True)
 
         for i in reversed(range(len(main_graph.graph.node))):
@@ -337,7 +337,7 @@ def generate_subgraph(model, start_nodes, identity_node_list):
                     del subgraph.graph.node[i]
                 else:
                     del main_graph.graph.node[i]
-            except Exception:
+            except Exception:  # noqa: PERF203
                 print("error deleting node", i)
 
         for i in reversed(range(len(main_graph.graph.input))):
@@ -346,7 +346,7 @@ def generate_subgraph(model, start_nodes, identity_node_list):
                     del subgraph.graph.input[i]
                 else:
                     del main_graph.graph.input[i]
-            except Exception:
+            except Exception:  # noqa: PERF203
                 print("error deleting inputs", i)
 
         for i in reversed(range(len(main_graph.graph.output))):
@@ -355,7 +355,7 @@ def generate_subgraph(model, start_nodes, identity_node_list):
                     del subgraph.graph.output[i]
                 else:
                     del main_graph.graph.output[i]
-            except Exception:
+            except Exception:  # noqa: PERF203
                 print("error deleting outputs ", i)
 
         print("model", str(model_count), " length ", len(subgraph.graph.node))

@@ -71,12 +71,10 @@ TEST_F(QnnHTPBackendTests, Test_QDQConvWithDynamicWeightsFromMul) {
     builder.AddDequantizeLinearNode<uint8_t>(q_output, .039f, 0, dq_output);
   };
 
-  constexpr int expected_nodes_in_partition = 1;
   RunQnnModelTest(BuildConvMulGraph,
                   provider_options,
                   13,
-                  ExpectedEPNodeAssignment::All,
-                  expected_nodes_in_partition);
+                  ExpectedEPNodeAssignment::All);
 }
 
 // Creates a graph with a single float32 Conv operator. Used for testing CPU backend.
@@ -135,12 +133,10 @@ static void RunCPUConvOpTest(const std::string& conv_op_type, const TestInputDef
   provider_options["backend_path"] = "libQnnCpu.so";
 #endif
 
-  constexpr int expected_nodes_in_partition = 1;
   RunQnnModelTest(BuildF32ConvTestCase(conv_op_type, input_def, weights_def, bias_def, strides, pads, dilations, auto_pad),
                   provider_options,
                   opset,
                   expected_ep_assignment,
-                  expected_nodes_in_partition,
                   fp32_abs_err);
 }
 
@@ -249,13 +245,11 @@ static void RunHTPConvOpTest(const std::string& conv_op_type, const TestInputDef
   provider_options["backend_path"] = "libQnnHtp.so";
 #endif
 
-  constexpr int expected_nodes_in_partition = 1;
   RunQnnModelTest(BuildQDQConvTestCase<InputQType>(conv_op_type, input_def, weights_def, bias_def,
                                                    strides, pads, dilations, auto_pad),
                   provider_options,
                   opset,
                   expected_ep_assignment,
-                  expected_nodes_in_partition,
                   fp32_abs_err);
 }
 

@@ -26,7 +26,7 @@ def find_input_node(model, arg):
     for node in model.graph.node:
         for output in node.output:
             if output == arg:
-                result.append(node)
+                result.append(node)  # noqa: PERF401
     return result[0] if len(result) == 1 else None
 
 
@@ -35,7 +35,7 @@ def find_output_node(model, arg):
     for node in model.graph.node:
         for input in node.input:
             if input == arg:
-                result.append(node)
+                result.append(node)  # noqa: PERF401
     return result[0] if len(result) == 1 else None
 
 
@@ -94,7 +94,7 @@ def process_concat(model):
         if node.op_type == "Concat":
             input_nodes = []
             for input in node.input:
-                input_nodes.append(find_input_node(model, input))
+                input_nodes.append(find_input_node(model, input))  # noqa: PERF401
             # figure out target shape
             shape = []
             for input_node in input_nodes:
@@ -116,7 +116,7 @@ def process_concat(model):
             assert reshape_node.op_type == "Reshape"
             new_nodes[get_node_index(model, reshape_node)] = shape
             for n in fuse_nodes:
-                delete_nodes.append(get_node_index(model, n))
+                delete_nodes.append(get_node_index(model, n))  # noqa: PERF401
     # insert new shape to reshape
     index = 0
     for reshape_node_index in new_nodes:
@@ -218,7 +218,7 @@ def fix_transpose(model):
                 for n in model.graph.node:
                     for input in n.input:
                         if input == weight.name:
-                            result.append(n)
+                            result.append(n)  # noqa: PERF401
                 if len(result) > 1:
                     continue
                 perm = node.attribute[0]
@@ -242,7 +242,7 @@ def fix_transpose(model):
     old_ws = []
     for t in transpose:
         if find_output_node(model, t[1].name) is None:
-            old_ws.append(find_weight_index(model, t[1].name))
+            old_ws.append(find_weight_index(model, t[1].name))  # noqa: PERF401
     old_ws.sort(reverse=True)
     for w_i in old_ws:
         del model.graph.initializer[w_i]
