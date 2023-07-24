@@ -697,5 +697,4 @@ class TestQDQRemovableActivation(TestQDQFormat):
 
 
 if __name__ == "__main__":
-    TestQDQExtraOptions().test_qdq_extra_options_2()
     unittest.main()

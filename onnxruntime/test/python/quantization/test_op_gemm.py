@@ -746,8 +746,4 @@ class TestOpGemm(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    TestOpGemm().test_quantize_gemm()
-    # TestOpGemm().test_qgemm_ref_uint8_specific_example()
-    # TestOpGemm()._test_dummy()
-    # stop
     unittest.main(verbosity=2)

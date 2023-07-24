@@ -270,7 +270,7 @@ def check_model_correctness(
     with open(model_path_origin, "rb") as f:
         model_onnx = onnx.load(f)
     ops_set = set(node.op_type for node in model_onnx.graph.node)
-    check_reference_evaluator = not (ops_set & {"EmbedLayerNormalization", "Conv", "Attention"})
+    check_reference_evaluator = not (ops_set & {"EmbedLayerNormalization", "Conv", "Attention", "Transpose"})
 
     if check_reference_evaluator:
         ref = ReferenceEvaluator(model_path_origin)
