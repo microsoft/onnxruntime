@@ -36,7 +36,7 @@ export declare namespace TrainingSessionHandler {
   type FetchesType = { [name: string]: OnnxValue | null };
   // shall we change this to just error code. Right now this will return loss, but it is not
   // as important and too much cost to read the loss just for printing purpose.
-  type ReturnType = { [name: string]: OnnxValue };
+  type ReturnType = { [name: string]: OnnxValue | number };
 }
 
 /**
