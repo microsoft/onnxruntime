@@ -6063,6 +6063,10 @@ def test_e2e_padding_elimination():
     del os.environ["ORTMODULE_ENABLE_EMBEDDING_SPARSE_OPTIMIZER"]
 
 
+@pytest.mark.skipif(
+    Version(torch.__version__) < Version("1.13.0"),
+    reason="PyTorch since 1.13 don't output expected warning messages any more",
+)
 @pytest.mark.parametrize("log_level", [LogLevel.VERBOSE, LogLevel.INFO, LogLevel.WARNING])
 def test_ortmodule_log_level_control(log_level, caplog):
     class NeuralNetCrossEntropyLoss(torch.nn.Module):
@@ -6097,6 +6101,7 @@ def test_ortmodule_log_level_control(log_level, caplog):
     found_missing_inference_log = False
     for record in caplog.records:
         msg = record.getMessage()
+        print(msg)
         if "The shape inference of com.microsoft::SoftmaxCrossEntropyLossInternal type is missing" in msg:
             found_missing_inference_log = True
             break
