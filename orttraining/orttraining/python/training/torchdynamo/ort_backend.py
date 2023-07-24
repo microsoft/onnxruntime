@@ -210,7 +210,7 @@ def _infer_ep_from_graph_module(graph_module: torch.fx.GraphModule) -> Tuple[str
                 if hasattr(output_arg, "meta") and "val" in output_arg.meta:
                     # Select outputs with "val" information. Without "val",
                     # it's not possible access output_arg.meta["val"].device.
-                    output_args.append(output_arg.meta["val"])  # noqa: PERF401
+                    output_args.append(output_arg.meta["val"])
             return _infer_ep_from_device(*output_args)
     graph_module_str = graph_module.print_readable(print_output=False)
     raise ValueError(f"No output node is found in graph_module: {graph_module_str}")
