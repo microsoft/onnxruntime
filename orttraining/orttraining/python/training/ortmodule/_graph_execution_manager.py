@@ -9,6 +9,7 @@ import io
 import logging
 import os
 from abc import ABC, abstractmethod  # noqa: F401
+from hashlib import md5 as hash_fn
 from typing import Dict, List, Optional, Tuple
 
 import onnx
@@ -323,10 +324,9 @@ class GraphExecutionManager(GraphExecutionInterface):
 
             # Leverage cached model if available
             cache_dir = self._runtime_options.ortmodule_cache_dir
-            cache_prefix = self._runtime_options.ortmodule_cache_prefix
             rank = torch.distributed.get_rank() if torch.distributed.is_initialized() else 0
-            if cache_dir and cache_prefix and os.path.exists(cache_dir):
-                filename = os.path.join(cache_dir, f"{cache_prefix}_ort_cached_model_{rank}.onnx")
+            if cache_dir and os.path.exists(cache_dir):
+                filename = os.path.join(cache_dir, f"{hash_fn(str(self._flattened_module).encode()).hexdigest()}_{rank}.onnx")
                 if os.path.isfile(filename):
                     exported_model = onnx.load(filename)
                     return exported_model
@@ -398,7 +398,7 @@ class GraphExecutionManager(GraphExecutionInterface):
             if cache_dir:
                 if not os.path.exists(cache_dir):
                     os.makedirs(cache_dir, exist_ok=True)
-                filename = os.path.join(cache_dir, f"{cache_prefix}_ort_cached_model_{rank}.onnx")
+                filename = os.path.join(cache_dir, f"{hash_fn(str(self._flattened_module).encode()).hexdigest()}_{rank}.onnx")
                 onnx.save(exported_model, filename)
 
             # If anything was captured by suppress_output during export, set the flag to

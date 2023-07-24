@@ -186,15 +186,11 @@ data sparsity based performance optimizations.
 #### ORTMODULE_CACHE_DIR
 
 - **Feature Area**: *ORTMODULE/RuntimeOptions*
-- **Description**: By default, this is disabled. These env vars can be used to cache the exported model for future runs. 
-Cached model files are saved under ${ORTMODULE_CACHE_DIR}/${ORTMODULE_CACHE_PREFIX}_ort_cached_model_${RANK}.onnx
+- **Description**: By default, this is disabled. This env vars can be used to cache the exported model for future runs.
 
 	```bash
 	export ORTMODULE_CACHE_DIR="/path/to/cache_dir" # Enable
 	unset ORTMODULE_CACHE_DIR # Disable
-
-	export ORTMODULE_CACHE_PREFIX="prefix" # Enable
-	unset ORTMODULE_CACHE_PREFIX # Disable
 	```
 
 ### 2.2 Memory Optimization

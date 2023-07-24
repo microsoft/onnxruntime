@@ -76,7 +76,6 @@ def run_distributed_cache_test(cwd, log):
     log.debug("Running: ORTModule Cache Test")
 
     cache_dir = "cache_dir"
-    prefix = "linear"
 
     command = [
         "torchrun",
@@ -85,8 +84,6 @@ def run_distributed_cache_test(cwd, log):
         "orttraining_test_ortmodule_cache.py",
         "--ortmodule_cache_dir",
         cache_dir,
-        "--ortmodule_cache_prefix",
-        prefix,
     ]
 
     run_subprocess(command, cwd=cwd, log=log).check_returncode()
