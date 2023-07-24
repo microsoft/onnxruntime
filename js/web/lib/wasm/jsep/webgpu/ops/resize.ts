@@ -152,13 +152,17 @@ const getNearestPixelFromOriginal = (nearestMode: NearestMode, opsetVersion: num
     'fn getNearestPixelFromOriginal(xOriginal: f32, isDownSample: bool) -> f32 {' + (() => {
       switch (nearestMode) {
         case 'round_prefer_ceil':
-          return 'return round(xOriginal);';
+          return 'if (fract(xOriginal) == 0.5) { \
+            return ceil(xOriginal); \
+          } else { \
+            return round(xOriginal); \
+          }';
         case 'floor':
           return 'return floor(xOriginal);';
         case 'ceil':
           return 'return ceil(xOriginal);';
         case 'round_prefer_floor':
-          return 'if (xOriginal == floor(xOriginal) + 0.5) { \
+          return 'if (fract(xOriginal) == 0.5) { \
                     return floor(xOriginal); \
                   } else { \
                     return round(xOriginal); \
@@ -253,8 +257,12 @@ const calculateOriginalIndicesFromOutputIndices =
       const roi = array<f32, ${roi.length}>(${roi.map(i => `${i}f`).join(',')});
       var originalIndices: array<f32, ${outputShape.length}>;
       for (var i:u32 = 0; i < ${outputShape.length}; i++) {
-        originalIndices[i] = getOriginalCoordinateFromResizedCoordinate(f32(outputIndices[i]), scales[i],
+        if (scales[i] == 1.0) {
+          originalIndices[i] = f32(outputIndices[i]);
+        } else {
+          originalIndices[i] = getOriginalCoordinateFromResizedCoordinate(f32(outputIndices[i]), scales[i],
                  f32(outputShape[i]), f32(inputShape[i]), roi[i], roi[i + ${inputShape.length}]);
+        }
       }
       return originalIndices;
     }`;
@@ -270,6 +278,10 @@ const calculateInputIndicesFromOutputIndices =
           const roi = array<f32, ${roi.length}>(${roi.map(i => `${i}f`).join(',')});
           var inputIndices: array<u32, ${inputShape.length}>;
           for (var i:u32 = 0; i < ${outputShape.length}; i++) {
+            if (scales[i] == 1.0) {
+              inputIndices[i] = outputIndices[i];
+              continue;
+            }
             var original_idx = getOriginalCoordinateFromResizedCoordinate(f32(outputIndices[i]), scales[i],
                      f32(outputShape[i]), f32(inputShape[i]), roi[i], roi[i + ${inputShape.length}]);
             if (!${useExtrapolation} || (original_idx >= 0 && original_idx < f32(inputShape[i]))) {
