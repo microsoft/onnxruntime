@@ -76,7 +76,7 @@ class QGemm(OpRun):
                 dtype = self.get_tensor_type(C)
                 if dtype not in (TensorProto.FLOAT, TensorProto.FLOAT16):
                     raise TypeError(f"C.dtype must be float16 or float 32 not {dtype}.")
-                y += C.astype(np.float32) * np.float32(a_scale) * np.float32(b_scale)
+                y += C.astype(np.float32)
             if y_scale is not None:
                 y /= y_scale
             if y_zero_point is not None:
@@ -88,6 +88,8 @@ class QGemm(OpRun):
                     el = float32_to_float8e4m3(ry[i])  # type: ignore[assignment]
                     fy[i] = el
                 y = fy.reshape(y.shape)
+            else:
+                raise NotImplementedError("y_zero_point is not empty. QGemm is not implemented in that case.")
             return (y,)
         elif a_type in self.f8_types or b_type in self.f8_types or y_type in self.f8_types:
             raise NotImplementedError(f"QGemm not implemented for zero_types {a_type}, {b_type}, {y_type}.")
@@ -257,7 +259,7 @@ def check_model_correctness(
     origin_sess = onnxruntime.InferenceSession(model_path_origin, sess_options=sess_options, providers=providers)
     origin_results = origin_sess.run(None, inputs)
 
-    ref = ReferenceEvaluator(model_path_origin, verbose=10)
+    ref = ReferenceEvaluator(model_path_origin)
     ref_origin_results = ref.run(None, inputs)
     for idx, ref_output in enumerate(origin_results):
         output = ref_origin_results[idx]
@@ -310,7 +312,7 @@ def check_model_correctness(
     # Verifies the expected outputs.
     if to_array_extended is not None:
         # Needs pv.Version(onnx.__version__) >= pv.Version("1.16.0")
-        ref = ReferenceEvaluator(model_path_to_check, new_ops=[QGemm], verbose=10)
+        ref = ReferenceEvaluator(model_path_to_check, new_ops=[QGemm])
         target_results = ref.run(None, inputs)
         testcase.assertEqual(len(origin_results), len(target_results), "result count are different")
         for idx, ref_output in enumerate(origin_results):

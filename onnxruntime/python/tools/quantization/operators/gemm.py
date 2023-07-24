@@ -61,7 +61,7 @@ class QLinearGemm(QOpMatMul):
             ) = self.quantizer.quantize_activation(node, [0])
             quant_weight_tuple = self.quantizer.quantize_weight_per_channel(
                 node.input[1],
-                onnx_proto.TensorProto.INT8,
+                self.weight_qType,
                 0 if is_B_transposed(node) else 1,
             )
             quantized_input_names.append(quant_weight_tuple[0])

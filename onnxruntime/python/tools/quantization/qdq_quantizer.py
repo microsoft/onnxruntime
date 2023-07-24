@@ -125,14 +125,11 @@ class QDQQuantizer(ONNXQuantizer):
         """
         weight = find_by_name(tensor_name, self.model.initializer())
         if weight is not None:
-            if weight.data_type in (onnx_proto.TensorProto.FLOAT, onnx_proto.TensorProto.FLOAT16):
+            if weight.data_type == onnx_proto.TensorProto.FLOAT:
                 return True
         elif tensor_name in self.value_infos:
             vi = self.value_infos[tensor_name]
-            if vi.type.HasField("tensor_type") and vi.type.tensor_type.elem_type in (
-                TensorProto.FLOAT,
-                TensorProto.FLOAT16,
-            ):
+            if vi.type.HasField("tensor_type") and vi.type.tensor_type.elem_type == TensorProto.FLOAT:
                 return True
         else:
             logging.warning(
@@ -184,7 +181,7 @@ class QDQQuantizer(ONNXQuantizer):
     def quantize_weight_tensor_per_channel(self, tensor_name, axis):
         weight = find_by_name(tensor_name, self.model.initializer())
         if weight:
-            if weight.data_type in (onnx_proto.TensorProto.FLOAT, onnx_proto.TensorProto.FLOAT16):
+            if weight.data_type == onnx_proto.TensorProto.FLOAT:
                 self.tensors_to_quantize[tensor_name] = QDQTensorQuantInfo(
                     tensor_type=QDQQuantTensorType.WEIGHT, axis=axis
                 )
@@ -194,7 +191,7 @@ class QDQQuantizer(ONNXQuantizer):
     def quantize_bias_tensor(self, bias_name, input_name, weight_name, beta=1.0):
         weight = find_by_name(bias_name, self.model.initializer())
         if weight is not None:
-            if weight.data_type in (onnx_proto.TensorProto.FLOAT, onnx_proto.TensorProto.FLOAT16):
+            if weight.data_type == onnx_proto.TensorProto.FLOAT:
                 self.bias_to_quantize.append((bias_name, input_name, weight_name, beta))
         else:
             logging.warning(f"Expected {bias_name} to be a weight")
@@ -268,7 +265,10 @@ class QDQQuantizer(ONNXQuantizer):
             if self.opset_version < 13:
                 raise ValueError("Per-Channel support with QDQ format requires onnx opset version 13 or above.")
             q_weight_name, zp_name, scale_name = self.quantize_weight_per_channel(
-                weight_name, onnx_proto.TensorProto.INT8, axis, keep_float_weight=self.add_qdq_pair_to_weight
+                weight_name,
+                self.weight_qType if tensor_type is QDQQuantTensorType.WEIGHT else self.activation_qType,
+                axis,
+                keep_float_weight=self.add_qdq_pair_to_weight,
             )
         else:
             q_weight_name, zp_name, scale_name = self.quantize_initializer(
@@ -425,7 +425,7 @@ class QDQQuantizer(ONNXQuantizer):
                     [quant_value.q_name],
                     [bias_name],
                     name=node_name,
-                    to=onnx.TensorProto.FLOAT16,
+                    to=onnx.TensorProto.FLOAT,
                 )
             elif quant_value.node_type in (None, "DequantizeLinear"):
                 if quant_value.node_qtype in {

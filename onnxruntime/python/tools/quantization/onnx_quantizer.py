@@ -359,7 +359,7 @@ class ONNXQuantizer:
 
         if tensor_name in self.value_infos:
             vi = self.value_infos[tensor_name]
-            if vi.type.HasField("tensor_type") and vi.type.tensor_type.elem_type == onnx_proto.TensorProto.FLOAT:
+            if vi.type.HasField("tensor_type") and vi.type.tensor_type.elem_type in (onnx_proto.TensorProto.FLOAT):
                 return True
         elif self.enable_subgraph_quantization and self.parent:
             return self.parent.is_float_tensor(tensor_name)
@@ -621,7 +621,8 @@ class ONNXQuantizer:
             onnx_proto.TensorProto.FLOAT8E5M2,
             onnx_proto.TensorProto.FLOAT8E5M2FNUZ,
         }:
-            scale_type = onnx_proto.TensorProto.FLOAT16
+            # TODO: enable FLOAT16 support
+            scale_type = onnx_proto.TensorProto.FLOAT
         else:
             scale_type = onnx_proto.TensorProto.FLOAT
         init_scale = onnx.helper.make_tensor(scale_name, scale_type, scale_shape, scale_values)
@@ -746,13 +747,14 @@ class ONNXQuantizer:
             # cublasLtMatMul only supports (b)float16 or float32 bias.
 
             data = np.asarray(bias_data)
-            quantized_data = data.astype(np.float16)
-            bias_scale = np.array([1], dtype=np.float16)
+            quantized_data = data.astype(np.float32)
+            bias_scale = np.array([1], dtype=quantized_data.dtype)
             bias_scale_data = bias_scale.reshape(-1)
             packed_bias_initializer = onnx.numpy_helper.from_array(quantized_data, quantized_bias_name)
             self.model.initializer_extend([packed_bias_initializer])
             node_type = "Cast"
-            node_qtype = onnx.TensorProto.FLOAT16
+            # TODO: enable FLOAT16 support
+            node_qtype = onnx.TensorProto.FLOAT
         else:
             # calculate scale for bias
             # TODO: This formula should be explained including why the scale is not estimated for the bias as well.
@@ -997,7 +999,17 @@ class ONNXQuantizer:
             self.reduce_range and reduce_range,
         )
 
-        scale_initializer = onnx.helper.make_tensor(scale_name, onnx_proto.TensorProto.FLOAT, [], [scale])
+        if qType in {
+            onnx.TensorProto.FLOAT8E4M3FN,
+            onnx.TensorProto.FLOAT8E4M3FNUZ,
+            onnx.TensorProto.FLOAT8E5M2,
+            onnx.TensorProto.FLOAT8E5M2FNUZ,
+        }:
+            # TODO: enable FLOAT16 support
+            scale_dtype = onnx_proto.TensorProto.FLOAT
+        else:
+            scale_dtype = onnx_proto.TensorProto.FLOAT
+        scale_initializer = onnx.helper.make_tensor(scale_name, scale_dtype, [], [scale])
         zero_initializer = onnx.helper.make_tensor(zp_name, qType, [], [zero_point])
         self.model.initializer_extend([scale_initializer, zero_initializer])
 

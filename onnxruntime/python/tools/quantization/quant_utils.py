@@ -132,15 +132,14 @@ def quantize_nparray(qType, arr, scale, zero_point, low=None, high=None):
                     make_node(
                         "Constant", [], ["zero_point"], value=onnx.helper.make_tensor("zero_point", qType, [], [0])
                     ),
-                    make_node("QuantizeLinear", ["X", "scale", "zero_point"], ["Y32"]),
-                    make_node("Cast", ["Y32"], ["Y"], to=onnx.TensorProto.FLOAT16),
+                    make_node("QuantizeLinear", ["X", "scale", "zero_point"], ["Y"]),
                 ],
                 "qu",
                 [
                     make_tensor_value_info("X", TensorProto.FLOAT, None),
                     make_tensor_value_info("scale", TensorProto.FLOAT, None),
                 ],
-                [make_tensor_value_info("Y", TensorProto.FLOAT16, None)],
+                [make_tensor_value_info("Y", qType, None)],
             )
         )
         ref = ReferenceEvaluator(onnx_model)
@@ -260,9 +259,10 @@ def quantize_data(data, qType, symmetric, reduce_range=False):
         std = numpy.std(data)
         zero_point, scale = compute_scale_zp_float8(qType, std)
         quantized_data = quantize_nparray(qType, numpy.asarray(data), scale, zero_point)
-        if any((quantized_data.ravel() & 127) == 127):
+        if any((quantized_data.astype(numpy.uint8).ravel() & 127) == 127):
+            np_data = numpy.asarray(data)
             raise RuntimeError(
-                f"One of the quantized value is NaN data in [{data.min()}, {data.max()}], "
+                f"One of the quantized value is NaN data in [{np_data.min()}, {np_data.max()}], "
                 f"quantized_data in [{quantized_data.min()}, {quantized_data.max()}]."
             )
         return rmin, rmax, zero_point, scale, quantized_data
@@ -641,7 +641,7 @@ def save_and_reload_model_with_shape_infer(model: ModelProto) -> ModelProto:
 
 
 def tensor_proto_to_array(initializer: TensorProto) -> numpy.ndarray:
-    if initializer.data_type in (onnx_proto.TensorProto.FLOAT, onnx_proto.TensorProto.FLOAT16):
+    if initializer.data_type == onnx_proto.TensorProto.FLOAT:
         return onnx.numpy_helper.to_array(initializer)
 
     raise ValueError(
