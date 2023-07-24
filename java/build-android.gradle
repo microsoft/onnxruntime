@@ -98,7 +98,9 @@ android {
 	sourceSets {
 		main {
 			jniLibs.srcDirs = [jniLibsDir]
-			exclude 'main/java/ai/onnxruntime/platform/*'
+		java {
+			exclude 'ai/onnxruntime/platform/*'
+		}
 		}
 	}
 
