@@ -16,6 +16,7 @@ import * as unaryOps from './ops/unary-op';
 import {ComputeContext} from './types';
 import {layerNorm, parseLayerNormAttributes} from "./ops/layer-norm";
 import {instanceNorm, parseInstanceNormAttributes} from "./ops/instance-norm";
+import {gather} from "./ops/gather";
 
 export type RunFunction = (context: ComputeContext, attribute?: unknown) => void;
 export type ParseAttributeFunction = (attributeRaw: unknown) => unknown;
@@ -46,6 +47,7 @@ export const WEBGPU_OP_RESOLVE_RULES: Map<string, OperatorImplementation> = new 
   ['Exp', [unaryOps.exp]],
   ['Expand', [expand]],
   ['Floor', [unaryOps.floor]],
+  ['Gather', [gather]],
   ['Gemm', [gemm, parseGemmAttributes]],
   ['GlobalAveragePool', [pool.globalAveragePool, pool.parseGlobalAveragePoolAttributes]],
   ['GlobalMaxPool', [pool.globalMaxPool, pool.parseGlobalMaxPoolAttributes]],
