@@ -1,11 +1,11 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {Backend, env, InferenceSession, SessionHandler} from 'onnxruntime-common';
-import {cpus} from 'os';
+import { Backend, env, InferenceSession, SessionHandler } from 'onnxruntime-common';
+import { cpus } from 'os';
 
-import {initializeWebAssemblyInstance} from './wasm/proxy-wrapper';
-import {OnnxruntimeWebAssemblySessionHandler} from './wasm/session-handler';
+import { initializeWebAssemblyInstance } from './wasm/proxy-wrapper';
+import { OnnxruntimeWebAssemblySessionHandler } from './wasm/session-handler';
 
 /**
  * This function initializes all flags for WebAssembly.
@@ -32,7 +32,7 @@ export const initializeFlags = (): void => {
   }
 };
 
-class OnnxruntimeWebAssemblyBackend implements Backend {
+export class OnnxruntimeWebAssemblyBackend implements Backend {
   async init(): Promise<void> {
     // populate wasm flags
     initializeFlags();
@@ -42,8 +42,8 @@ class OnnxruntimeWebAssemblyBackend implements Backend {
   }
   createSessionHandler(path: string, options?: InferenceSession.SessionOptions): Promise<SessionHandler>;
   createSessionHandler(buffer: Uint8Array, options?: InferenceSession.SessionOptions): Promise<SessionHandler>;
-  async createSessionHandler(pathOrBuffer: string|Uint8Array, options?: InferenceSession.SessionOptions):
-      Promise<SessionHandler> {
+  async createSessionHandler(pathOrBuffer: string | Uint8Array, options?: InferenceSession.SessionOptions):
+    Promise<SessionHandler> {
     const handler = new OnnxruntimeWebAssemblySessionHandler();
     await handler.loadModel(pathOrBuffer, options);
     return Promise.resolve(handler);
