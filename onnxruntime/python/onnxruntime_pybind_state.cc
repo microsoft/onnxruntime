@@ -385,6 +385,7 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
             nullptr,
             nullptr,
             nullptr,
+            nullptr,
             0};
         for (auto option : it->second) {
           if (option.first == "device_id") {
