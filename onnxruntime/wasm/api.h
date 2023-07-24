@@ -24,12 +24,6 @@ using ort_run_options_handle_t = OrtRunOptions*;
 struct OrtValue;
 using ort_tensor_handle_t = OrtValue*;
 
-namespace OrtGlobals {
-OrtEnv* g_env;
-OrtErrorCode g_last_error_code;
-std::string g_last_error_message;
-};  // namespace OrtGlobals
-
 #ifdef ENABLE_TRAINING_APIS
 struct OrtTrainingSession;
 using ort_training_session_handle_t = OrtTrainingSession*;

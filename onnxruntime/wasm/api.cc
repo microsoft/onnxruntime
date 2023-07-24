@@ -8,20 +8,26 @@
 #include <iostream>
 #include <vector>
 
+namespace OrtGlobals {
+OrtEnv* g_env;
+OrtErrorCode g_last_error_code;
+std::string g_last_error_message;
+};  // namespace OrtGlobals
+
 static_assert(sizeof(const char*) == sizeof(size_t), "size of a pointer and a size_t value should be the same.");
 static_assert(sizeof(size_t) == 4, "size of size_t should be 4 in this build (wasm32).");
 
 OrtErrorCode CheckStatus(OrtStatusPtr status) {
   if (status) {
     std::string error_message = Ort::GetApi().GetErrorMessage(status);
-    OrtGlobals::g_last_error_code = Ort::GetApi().GetErrorCode(status);
-    OrtGlobals::g_last_error_message = Ort::Exception(std::move(error_message), OrtGlobals::g_last_error_code).what();
+    g_last_error_code = Ort::GetApi().GetErrorCode(status);
+    g_last_error_message = Ort::Exception(std::move(error_message), g_last_error_code).what();
     Ort::GetApi().ReleaseStatus(status);
   } else {
-    OrtGlobals::g_last_error_code = ORT_OK;
-    OrtGlobals::g_last_error_message.clear();
+    g_last_error_code = ORT_OK;
+    g_last_error_message.clear();
   }
-  return OrtGlobals::g_last_error_code;
+  return g_last_error_code;
 }
 
 #define CHECK_STATUS(ORT_API_NAME, ...) \
@@ -69,15 +75,15 @@ int OrtInit(int num_threads, int logging_level) {
                       static_cast<OrtLoggingLevel>(logging_level),
                       "Default",
                       tp_options,
-                      &OrtGlobals::g_env);
+                      &g_env);
 #else
-  return CHECK_STATUS(CreateEnv, static_cast<OrtLoggingLevel>(logging_level), "Default", &OrtGlobals::g_env);
+  return CHECK_STATUS(CreateEnv, static_cast<OrtLoggingLevel>(logging_level), "Default", &g_env);
 #endif
 }
 
 void OrtGetLastError(int* error_code, const char** error_message) {
-  *error_code = OrtGlobals::g_last_error_code;
-  *error_message = OrtGlobals::g_last_error_message.empty() ? nullptr : OrtGlobals::g_last_error_message.c_str();
+  *error_code = g_last_error_code;
+  *error_message = g_last_error_message.empty() ? nullptr : OrtGlobals::g_last_error_message.c_str();
 }
 
 OrtSessionOptions* OrtCreateSessionOptions(size_t graph_optimization_level,
@@ -171,7 +177,7 @@ OrtSession* OrtCreateSession(void* data, size_t data_length, OrtSessionOptions* 
 #endif
 
   OrtSession* session = nullptr;
-  return (CHECK_STATUS(CreateSessionFromArray, OrtGlobals::g_env, data, data_length, session_options, &session) == ORT_OK)
+  return (CHECK_STATUS(CreateSessionFromArray, g_env, data, data_length, session_options, &session) == ORT_OK)
              ? session
              : nullptr;
 }
@@ -400,19 +406,18 @@ OrtCheckpointState* OrtLoadCheckpointForTraining(void* checkpoint, size_t checkp
              : nullptr;
 }
 
-
 void EMSCRIPTEN_KEEPALIVE OrtReleaseTrainingCheckpointCheckpointState(ort_training_checkpoint_handle_t training_checkpoint_state_handle) {
   Ort::GetTrainingApi().ReleaseCheckpointState(training_checkpoint_state_handle);
 }
 
 OrtTrainingSession* EMSCRIPTEN_KEEPALIVE OrtCreateTrainingSession(const ort_session_options_handle_t options,
                                                                   const ort_training_checkpoint_handle_t training_checkpoint_state_handle,
-                                                                          void* train_model,
-                                                                          size_t train_size,
-                                                                          void* eval_model,
-                                                                          size_t eval_size,
-                                                                          void* optimizer_model,
-                                                                          size_t optimizer_size) {
+                                                                  void* train_model,
+                                                                  size_t train_size,
+                                                                  void* eval_model,
+                                                                  size_t eval_size,
+                                                                  void* optimizer_model,
+                                                                  size_t optimizer_size) {
   OrtTrainingSession* training_session = nullptr;
   return (CHECK_TRAINING_STATUS(CreateTrainingSessionFromArray, OrtGlobals::g_env, options,
                                 training_checkpoint_state_handle, train_model, train_size,
@@ -427,11 +432,11 @@ int EMSCRIPTEN_KEEPALIVE OrtTrainingLazyResetGrad(ort_training_session_handle_t 
 }
 
 OrtValue* EMSCRIPTEN_KEEPALIVE OrtRunTrainStep(ort_training_session_handle_t training_handle,
-                                                               const ort_run_options_handle_t options,
-                                                               const size_t inputs_len,
-                                                               const ort_tensor_handle_t* inputs,
-                                                               const size_t outputs_len,
-                                                               ort_tensor_handle_t* outputs) {
+                                               const ort_run_options_handle_t options,
+                                               const size_t inputs_len,
+                                               const ort_tensor_handle_t* inputs,
+                                               const size_t outputs_len,
+                                               ort_tensor_handle_t* outputs) {
   return (CHECK_TRAINING_STATUS(TrainStep, training_handle,
                                 options, inputs_len, inputs, outputs_len, outputs) == ORT_OK)
              ? *outputs
