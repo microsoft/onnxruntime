@@ -3,10 +3,10 @@
 
 import {flatbuffers} from 'flatbuffers';
 import Long from 'long';
-import {onnx} from 'onnx-proto';
 
 import {Graph} from './graph';
-import {onnxruntime} from './ort-schema/ort-generated';
+import {onnxruntime} from './ort-schema/flatbuffers/ort-generated';
+import {onnx} from './ort-schema/protobuf/onnx';
 import {Tensor} from './tensor';
 
 // check the inputs shape before running an OP.

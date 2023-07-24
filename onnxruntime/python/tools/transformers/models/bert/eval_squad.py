@@ -150,7 +150,7 @@ def output_summary(results: List[Dict[str, Any]], csv_filename: str, metric_name
         key_names = []
         for sequence_length in sequence_lengths:
             for batch_size in batch_sizes:
-                key_names.append(f"b{batch_size}_s{sequence_length}")
+                key_names.append(f"b{batch_size}_s{sequence_length}")  # noqa: PERF401
 
         csv_writer = csv.DictWriter(csv_file, fieldnames=header_names + key_names)
         csv_writer.writeheader()

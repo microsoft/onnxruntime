@@ -342,7 +342,7 @@ def generate_test_data(
         path = os.path.join(output_path, "test_data_set_" + str(test_case))
         try:
             os.mkdir(path)
-        except OSError:
+        except OSError:  # noqa: PERF203
             print("Creation of the directory %s failed" % path)
         else:
             print("Successfully created the directory %s " % path)

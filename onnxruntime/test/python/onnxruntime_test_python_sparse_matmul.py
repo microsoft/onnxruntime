@@ -14,7 +14,7 @@ from onnxruntime.capi.onnxruntime_pybind11_state import OrtValueVector, RunOptio
 
 
 class TestSparseToDenseMatmul(unittest.TestCase):
-    def testRunSparseOutputOrtValueVector(self):  # noqa: N802
+    def test_run_sparse_output_ort_value_vector(self):
         """
         Try running models using the new run_with_ort_values
         sparse_initializer_as_output.onnx - requires no inputs, but only one output
@@ -28,7 +28,7 @@ class TestSparseToDenseMatmul(unittest.TestCase):
         res = sess._sess.run_with_ort_values({}, ["values"], RunOptions())
         self.assertIsInstance(res, OrtValueVector)
 
-    def testRunSparseOutputOnly(self):  # noqa: N802
+    def test_run_sparse_output_only(self):
         """
         Try running models using the new run_with_ort_values
         sparse_initializer_as_output.onnx - requires no inputs, but only one output
@@ -52,7 +52,7 @@ class TestSparseToDenseMatmul(unittest.TestCase):
         self.assertTrue(np.array_equal(values, sparse_output.values()))
         self.assertTrue(np.array_equal(indices, sparse_output.as_coo_view().indices()))
 
-    def testRunContribSparseMatMul(self):  # noqa: N802
+    def test_run_contrib_sparse_mat_mul(self):
         """
         Mutliple sparse COO tensor to dense
         """
