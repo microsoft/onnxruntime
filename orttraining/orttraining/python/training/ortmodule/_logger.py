@@ -111,14 +111,10 @@ def ortmodule_loglevel_to_python_loglevel(loglevel: LogLevel) -> int:
 
 
 def configure_ortmodule_logger(log_level: LogLevel) -> logging.Logger:
-    # Try to create a logger with a unique name (timestamp) for each ORTModule instance.
-    # BUT this still cannot guarantee each ORTModule instance has a unique logger name
-    # if those instances are created in the same second.
     logger = logging.getLogger(f"orttraining.rank-{get_rank()}")
     # Disable the logger for non-zero ranks when level > info
     logger.disabled = log_level > LogLevel.INFO and get_rank() != 0
     logger.setLevel(ortmodule_loglevel_to_python_loglevel(log_level))
-
     return logger
 
 
