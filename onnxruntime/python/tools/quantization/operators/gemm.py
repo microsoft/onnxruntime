@@ -2,7 +2,6 @@ import logging
 
 import numpy as np  # noqa: F401
 import onnx
-from onnx import onnx_pb as onnx_proto
 
 from ..quant_utils import find_by_name  # noqa: F401
 from ..quant_utils import get_mul_node  # noqa: F401

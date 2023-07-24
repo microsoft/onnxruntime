@@ -337,7 +337,7 @@ class ONNXModel:
 
         graph.ClearField("node")
         for node in new_nodes:
-            graph.node.append(self._check_node(node))
+            graph.node.append(node)
         graph_path.pop()
         return graph
 
