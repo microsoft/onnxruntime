@@ -72,17 +72,21 @@ def create_log_filter(logger: logging.Logger, record_filters: Optional[List[str]
             suppress_output_messages = fo.readlines()
             if record_filters:
                 filtered_messages = []
+                is_filtered = False
                 for suppressed_message in suppress_output_messages:
                     found = False
                     for warning in record_filters:
                         if warning in suppressed_message:
                             found = True
+                            is_filtered = True
                             break
 
                     if not found:
                         filtered_messages.append(suppressed_message)
                 if filtered_messages:
-                    logger.warning(f"Filtered [{name}] logs:\n\t" + "\t".join(filtered_messages))
+                    logger.warning(
+                        f"{'Filtered' if is_filtered else 'Full'} [{name}] logs:\n\t" + "\t".join(filtered_messages)
+                    )
             else:
                 logger.warning(f"Full [{name}] logs:\n\t" + "\t".join(suppress_output_messages))
 
