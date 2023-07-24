@@ -2,10 +2,15 @@
 
 # Note: This script is intended to be called from the iOS CocoaPods package release pipeline or a similar context.
 
-set -e
 set -x
 
-USAGE_TEXT="Usage: ${0} <pod archive path pattern (quote to prevent shell expansion)> <podspec path>"
+IFS='' read -d '' -r USAGE_TEXT <<USAGE
+Usage: ${0} <pod archive path glob pattern> <podspec path>
+  Example pod archive path glob pattern: "./pod-archive-*.zip"
+  Quote the pattern to avoid shell expansion.
+USAGE
+
+set -e
 
 abspath() {
   local INPUT_PATH=${1:?"Expected path as the first argument."}
