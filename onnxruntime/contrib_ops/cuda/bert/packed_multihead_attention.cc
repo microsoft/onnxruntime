@@ -119,6 +119,7 @@ Status PackedMultiHeadAttention<T>::CheckInputs(const TensorShape& query_shape,
                            "Input 'cumulative_sequence_length' should have 1 dimension with size equal to batch_size + 1");
   }
 
+  // TODO(tianleiwu): move relative postion bias shape checker to a helper function. It is shared by mutliple operators.
   const int num_heads = this->GetNumHeads();
   bool broadcast_res_pos_bias = false;
   if (relative_position_bias != nullptr) {

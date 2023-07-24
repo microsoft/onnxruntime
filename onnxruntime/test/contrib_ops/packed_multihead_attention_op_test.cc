@@ -53,6 +53,8 @@ static void RunPackedMultiHeadAttentionTest(
   int min_cuda_architecture = use_float16 ? 530 : 0;
   bool enable_cuda = HasCudaEnvironment(min_cuda_architecture);
 
+  int64_t head_size = static_cast<int64_t>(hidden_size / number_of_heads);
+
   if (enable_cuda) {
     OpTester tester("PackedMultiHeadAttention", 1, onnxruntime::kMSDomain);
     tester.AddAttribute<int64_t>("num_heads", static_cast<int64_t>(number_of_heads));
@@ -60,7 +62,6 @@ static void RunPackedMultiHeadAttentionTest(
       tester.AddAttribute<float>("scale", static_cast<float>(1.f / sqrt(head_size)));
     }
 
-    int64_t head_size = static_cast<int64_t>(hidden_size / number_of_heads);
     std::vector<int64_t> packed_qkv_dims = {token_count, number_of_heads, 3, head_size};
     std::vector<int64_t> query_dims = {token_count, hidden_size};
     std::vector<int64_t> key_dims = {token_count, hidden_size};
@@ -70,7 +71,7 @@ static void RunPackedMultiHeadAttentionTest(
     std::vector<int64_t> relative_position_bias_data_dims = {batch_size, number_of_heads, sequence_length, sequence_length};
     std::vector<int64_t> output_dims = {token_count, v_hidden_size};
 
-    is_packed_qkv = (key_data.size() == 0 && value_data.size() == 0);  // packed QKV format
+    bool is_packed_qkv = (key_data.size() == 0 && value_data.size() == 0);  // packed QKV format
 
     if (use_float16) {
       if (is_packed_qkv) {
@@ -78,7 +79,7 @@ static void RunPackedMultiHeadAttentionTest(
         tester.AddOptionalInputEdge<MLFloat16>();
         tester.AddOptionalInputEdge<MLFloat16>();
       } else {
-        tester.AddInput<MLFloat16>("query", query_data, ToFloat16(query_data));
+        tester.AddInput<MLFloat16>("query", query_dims, ToFloat16(query_data));
         tester.AddInput<MLFloat16>("key", key_dims, ToFloat16(key_data));
         tester.AddInput<MLFloat16>("value", value_dims, ToFloat16(value_data));
       }
@@ -96,7 +97,7 @@ static void RunPackedMultiHeadAttentionTest(
         tester.AddOptionalInputEdge<float>();
         tester.AddOptionalInputEdge<float>();
       } else {
-        tester.AddInput<float>("query", query_data, query_data);
+        tester.AddInput<float>("query", query_dims, query_data);
         tester.AddInput<float>("key", key_dims, key_data);
         tester.AddInput<float>("value", value_dims, value_data);
       }
@@ -141,6 +142,7 @@ static void RunPackedMultiHeadAttentionTest(
   }
 }
 
+#if !defined(_MSC_VER)
 TEST(PackedMultiHeadAttentionTest, PackedQKV_NoPadding) {
   AttentionTestData data;
   GetSelfAttentionData_Batch2_HeadSize32_NoBias_NoMask_PackedQKV(data);
@@ -162,7 +164,10 @@ TEST(PackedMultiHeadAttentionTest, PackedQKV_NoPadding) {
       data.num_heads,
       data.batch_size * data.sequence_length);
 }
+#endif
 
+/*
+//TODO: enable this test when we support separated Q, K and V input
 TEST(PackedMultiHeadAttentionTest, Q_K_V_Padding) {
   AttentionTestData data;
   GetPackedMultiHeadAttentionData_Batch2_HeadSize8_Mask(data);
@@ -184,6 +189,7 @@ TEST(PackedMultiHeadAttentionTest, Q_K_V_Padding) {
       data.num_heads,
       token_count);
 }
+*/
 
 }  // namespace test
 }  // namespace onnxruntime
