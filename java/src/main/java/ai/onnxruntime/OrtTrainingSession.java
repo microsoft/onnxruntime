@@ -454,8 +454,8 @@ public final class OrtTrainingSession implements AutoCloseable {
    *
    * <p>The outputs are sorted based on the supplied map traversal order.
    *
-   * <p>Note: pinned outputs are not owned by the {@link OrtSession.Result} object, and are <b>not</b> closed
-   * when the result object is closed.
+   * <p>Note: pinned outputs are not owned by the {@link OrtSession.Result} object, and are
+   * <b>not</b> closed when the result object is closed.
    *
    * @param inputs The inputs (must include both the features and the target).
    * @param pinnedOutputs The requested outputs which the user has allocated.
@@ -475,8 +475,8 @@ public final class OrtTrainingSession implements AutoCloseable {
    * then requested outputs. An {@link IllegalArgumentException} is thrown if the same output name
    * appears in both the requested outputs and the pinned outputs.
    *
-   * <p>Note: pinned outputs are not owned by the {@link OrtSession.Result} object, and are <b>not</b> closed
-   * when the result object is closed.
+   * <p>Note: pinned outputs are not owned by the {@link OrtSession.Result} object, and are
+   * <b>not</b> closed when the result object is closed.
    *
    * @param inputs The inputs (must include both the features and the target).
    * @param requestedOutputs The requested outputs which ORT will allocate.
@@ -654,8 +654,8 @@ public final class OrtTrainingSession implements AutoCloseable {
    *
    * <p>The outputs are sorted based on the supplied map traversal order.
    *
-   * <p>Note: pinned outputs are not owned by the {@link OrtSession.Result} object, and are <b>not</b> closed
-   * when the result object is closed.
+   * <p>Note: pinned outputs are not owned by the {@link OrtSession.Result} object, and are
+   * <b>not</b> closed when the result object is closed.
    *
    * @param inputs The inputs to score.
    * @param pinnedOutputs The requested outputs which the user has allocated.
@@ -675,8 +675,8 @@ public final class OrtTrainingSession implements AutoCloseable {
    * then requested outputs. An {@link IllegalArgumentException} is thrown if the same output name
    * appears in both the requested outputs and the pinned outputs.
    *
-   * <p>Note: pinned outputs are not owned by the {@link OrtSession.Result} object, and are <b>not</b> closed
-   * when the result object is closed.
+   * <p>Note: pinned outputs are not owned by the {@link OrtSession.Result} object, and are
+   * <b>not</b> closed when the result object is closed.
    *
    * @param inputs The inputs to score.
    * @param requestedOutputs The requested outputs which ORT will allocate.
