@@ -6078,18 +6078,30 @@ def test_cache_exported_model():
             x = torch.nn.functional.relu(self.fc(x))
             return x
 
-    model = Net()
-    model = ORTModule(model)
-
     data = torch.randn(1, 10)
-    _ = model(data)
+
+    # first time seeing the model, architecture should be cached under ORTMODULE_CACHE_DIR
+    model_pre_cache = Net()
+    model_pre_cache = ORTModule(model_pre_cache, DebugOptions(log_level=LogLevel.INFO))
+
+    pre_cache_start = time.time()
+    _ = model_pre_cache(data)
+    pre_cache_duration = time.time() - pre_cache_start
 
     root_dir = Path(__file__).resolve().parent
     cache_dir = root_dir / os.environ["ORTMODULE_CACHE_DIR"]
 
     assert len(os.listdir(cache_dir)) == 1
 
-    _ = onnx.load(str(cache_dir / os.listdir(cache_dir)[0]))
+    # second time seeing the model, architecture should be loaded from ORTMODULE_CACHE_DIR
+    model_post_cache = Net()
+    model_post_cache = ORTModule(model_post_cache, DebugOptions(log_level=LogLevel.INFO))
+
+    post_cache_start = time.time()
+    _ = model_post_cache(data)
+    post_cache_duration = time.time() - post_cache_start
+
+    assert post_cache_duration < pre_cache_duration
 
     shutil.rmtree(cache_dir)
     del os.environ["ORTMODULE_CACHE_DIR"]

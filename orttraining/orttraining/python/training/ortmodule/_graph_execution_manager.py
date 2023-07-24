@@ -326,8 +326,10 @@ class GraphExecutionManager(GraphExecutionInterface):
             cache_dir = self._runtime_options.ortmodule_cache_dir
             rank = torch.distributed.get_rank() if torch.distributed.is_initialized() else 0
             if cache_dir:
-                self._logger.info(f"ORTModule cache optimization is ON.")
-                filename = os.path.join(cache_dir, f"{hash_fn(str(self._flattened_module).encode()).hexdigest()}_{rank}.onnx")
+                self._logger.info("ORTModule cache optimization is ON.")
+                filename = os.path.join(
+                    cache_dir, f"{hash_fn(str(self._flattened_module).encode()).hexdigest()}_{rank}.onnx"
+                )
                 if os.path.exists(cache_dir) and os.path.isfile(filename):
                     self._logger.info(f"Cached model detected! DELETE {filename} to re-export model.")
                     exported_model = onnx.load(filename)
@@ -398,11 +400,13 @@ class GraphExecutionManager(GraphExecutionInterface):
 
             # Cache model for future runs
             if cache_dir:
-                self._logger.info(f"ORTModule cache optimization is ON.")
+                self._logger.info("ORTModule cache optimization is ON.")
                 if not os.path.exists(cache_dir):
                     os.makedirs(cache_dir, exist_ok=True)
-                filename = os.path.join(cache_dir, f"{hash_fn(str(self._flattened_module).encode()).hexdigest()}_{rank}.onnx")
-                self._logger.info(f"Caching model for future runs to {filename}.") 
+                filename = os.path.join(
+                    cache_dir, f"{hash_fn(str(self._flattened_module).encode()).hexdigest()}_{rank}.onnx"
+                )
+                self._logger.info(f"Caching model for future runs to {filename}.")
                 onnx.save(exported_model, filename)
 
             # If anything was captured by suppress_output during export, set the flag to

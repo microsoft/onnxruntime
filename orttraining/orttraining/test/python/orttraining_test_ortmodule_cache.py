@@ -1,11 +1,11 @@
 import argparse
 import os
+import time
 from pathlib import Path
 
-import onnx
 import torch
 
-from onnxruntime.training.ortmodule import ORTModule
+from onnxruntime.training.ortmodule import DebugOptions, LogLevel, ORTModule
 
 torch.distributed.init_process_group(backend="nccl")
 
@@ -34,11 +34,15 @@ class Net(torch.nn.Module):
         return x
 
 
-model = Net()
-model = ORTModule(model)
-
 data = torch.randn(1, 10)
-_ = model(data)
+
+# first time seeing the model, architecture should be cached under ORTMODULE_CACHE_DIR
+model_pre_cache = Net()
+model_pre_cache = ORTModule(model_pre_cache, DebugOptions(log_level=LogLevel.INFO))
+
+pre_cache_start = time.time()
+_ = model_pre_cache(data)
+pre_cache_duration = time.time() - pre_cache_start
 
 root_dir = Path(__file__).resolve().parent
 cache_dir = root_dir / os.environ["ORTMODULE_CACHE_DIR"]
@@ -46,8 +50,14 @@ cache_dir = root_dir / os.environ["ORTMODULE_CACHE_DIR"]
 cached_files = sorted(os.listdir(cache_dir))
 assert len(cached_files) == 2
 
-rank = torch.distributed.get_rank()
+# second time seeing the model, architecture should be loaded from ORTMODULE_CACHE_DIR
+model_post_cache = Net()
+model_post_cache = ORTModule(model_post_cache, DebugOptions(log_level=LogLevel.INFO))
 
-_ = onnx.load(str(cache_dir / os.listdir(cache_dir)[rank]))
+post_cache_start = time.time()
+_ = model_post_cache(data)
+post_cache_duration = time.time() - post_cache_start
+
+assert post_cache_duration < pre_cache_duration
 
 del os.environ["ORTMODULE_CACHE_DIR"]
