@@ -98,11 +98,11 @@ android {
 	sourceSets {
 		main {
 			jniLibs.srcDirs = [jniLibsDir]
-            exclude 'main/java/ai/onnxruntime/platform/*'
+			exclude 'main/java/ai/onnxruntime/platform/*'
 		}
 	}
 
-    sourceSets.main.java.srcDirs += ['src/main/android']
+	sourceSets.main.java.srcDirs += ['src/main/android']
 
 	namespace 'ai.onnxruntime'
 }

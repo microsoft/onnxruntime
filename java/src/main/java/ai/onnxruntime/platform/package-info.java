@@ -4,7 +4,8 @@
  */
 
 /**
- * A package of platform specific code, used to swap out Java implementations which don't run on Android.
+ * A package of platform specific code, used to swap out Java implementations which don't run on
+ * Android.
  *
  * <p>Classes in this package should always have the same public methods.
  *

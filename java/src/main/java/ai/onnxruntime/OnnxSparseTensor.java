@@ -5,7 +5,6 @@
 package ai.onnxruntime;
 
 import ai.onnxruntime.platform.Fp16Conversions;
-
 import java.nio.Buffer;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;

@@ -4,8 +4,6 @@
  */
 package ai.onnxruntime.platform;
 
-import ai.onnxruntime.OrtUtil;
-
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodType;
@@ -16,9 +14,7 @@ import java.nio.ShortBuffer;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
-/**
- * Conversions between fp16, bfloat16 and fp32.
- */
+/** Conversions between fp16, bfloat16 and fp32. */
 public final class Fp16Conversions {
   private static final Logger logger = Logger.getLogger(Fp16Conversions.class.getName());
   private static final MethodHandle fp16ToFp32;
@@ -41,10 +37,14 @@ public final class Fp16Conversions {
       try {
         tmp16 =
             lookup.findStatic(
-                Fp16Conversions.class, "mlasFp16ToFloat", MethodType.methodType(float.class, short.class));
+                Fp16Conversions.class,
+                "mlasFp16ToFloat",
+                MethodType.methodType(float.class, short.class));
         tmp32 =
             lookup.findStatic(
-                Fp16Conversions.class, "mlasFloatToFp16", MethodType.methodType(short.class, float.class));
+                Fp16Conversions.class,
+                "mlasFloatToFp16",
+                MethodType.methodType(short.class, float.class));
       } catch (IllegalAccessException | NoSuchMethodException ex) {
         // Should not happen
         logger.log(Level.SEVERE, "Failed to find fp16 conversion methods on OnnxTensor", e);

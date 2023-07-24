@@ -4,14 +4,13 @@
  */
 package ai.onnxruntime;
 
+import ai.onnxruntime.platform.Fp16Conversions;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.FloatBuffer;
 import java.nio.ShortBuffer;
 import java.util.Collections;
 import java.util.SplittableRandom;
-
-import ai.onnxruntime.platform.Fp16Conversions;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 
