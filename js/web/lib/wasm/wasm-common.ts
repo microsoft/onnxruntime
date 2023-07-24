@@ -169,8 +169,9 @@ export const tensorTypeToWsglType = (type: DataType) => {
   switch (type) {
     case DataType.float:
       return 'f32';
-    case DataType.float16:
-      return 'f16';
+    // TODO: enable after "shader-f16" WSGL extension release
+    // case DataType.float16:
+    //   return 'f16';
     case DataType.int32:
       return 'i32';
     case DataType.uint32:

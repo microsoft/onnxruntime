@@ -1,9 +1,12 @@
-import {ComputeContext, GpuDataType, ProgramInfo, ProgramMetadata} from "../types";
-import {TensorView} from "../../tensor";
-import {DataType, tensorTypeToWsglType} from "../../../wasm-common";
-import {ShapeUtil} from "../../util";
-import {ShaderHelper} from "./common";
-import {AttributeWithCacheKey, createAttributeWithCacheKey} from "../attribute-with-cache-key";
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+import {ComputeContext, GpuDataType, ProgramInfo, ProgramMetadata} from '../types';
+import {TensorView} from '../../tensor';
+import {DataType, tensorTypeToWsglType} from '../../../wasm-common';
+import {ShapeUtil} from '../../util';
+import {ShaderHelper} from './common';
+import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-with-cache-key';
 
 export interface LayerNormAttributes extends AttributeWithCacheKey {
     axis: number;
@@ -50,15 +53,10 @@ const createLayerNormProgramInfo =
             }
         }
 
-        console.log('layer norm!', inputs, normCount, normSize, axis, attributes)
         const dataType = tensorTypeToWsglType(inputs[0].dataType);
         // TODO: add meanData/invStd outputs
         // right now it throws an error: Binding size (16) is smaller than the minimum binding size (308).
 
-        // maximum number of workgroup invocations is between 256 to 1024
-        // in order to fit into the limit, we will batch multiple computations in one workgroup
-        // const maxInvocations = 1024;
-        // const batchSize = Math.ceil(normCount / maxInvocations);
         const workgroupSize = normCount > 128 ? 256 : 64;
         const getShaderSource = (shaderHelper: ShaderHelper) => `
   const normSize: u32 = ${normSize};

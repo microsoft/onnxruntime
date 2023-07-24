@@ -1,9 +1,12 @@
-import {ComputeContext, GpuDataType, ProgramInfo, ProgramMetadata} from "../types";
-import {TensorView} from "../../tensor";
-import {DataType, tensorTypeToWsglType} from "../../../wasm-common";
-import {ShapeUtil} from "../../util";
-import {ShaderHelper} from "./common";
-import {AttributeWithCacheKey, createAttributeWithCacheKey} from "../attribute-with-cache-key";
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+import {ComputeContext, GpuDataType, ProgramInfo, ProgramMetadata} from '../types';
+import {TensorView} from '../../tensor';
+import {DataType, tensorTypeToWsglType} from '../../../wasm-common';
+import {ShapeUtil} from '../../util';
+import {ShaderHelper} from './common';
+import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-with-cache-key';
 
 export interface InstanceNormAttributes extends AttributeWithCacheKey {
     epsilon: number;
@@ -41,10 +44,8 @@ const createInstanceNormProgramInfo =
              Got scale size of ${scaleSize} and bias size of ${biasSize}`);
         }
 
-        console.log('instance norm!', inputs, normCount, normSize, axis, attributes);
         const dataType = tensorTypeToWsglType(inputs[0].dataType);
 
-        const workgroupSize = normCount > 128 ? 256 : 64;
         const getShaderSource = (shaderHelper: ShaderHelper) => `
   const C: u32 = ${C};
   const normSize: u32 = ${normSize};
@@ -56,20 +57,17 @@ const createInstanceNormProgramInfo =
   @group(0) @binding(2) var<storage, read> bias : array<${dataType}>;
   @group(0) @binding(3) var<storage, read_write> output : array<${dataType}>;
 
-  ${shaderHelper.mainStart(workgroupSize)}
+  ${shaderHelper.mainStart()}
     let offset = global_idx * normSize;
     if (offset + normSize >= ${outputSize}) { return; }
     var mean: ${dataType} = 0;
-    var meanSquare: ${dataType} = 0;
 
     for (var h: u32 = 0u; h < normSize; h++) {
         mean = mean + x[h + offset];
-        meanSquare = meanSquare + x[h + offset] * x[h + offset];
     }
     mean = mean / normSizeTyped;
-    meanSquare = sqrt(meanSquare / normSizeTyped - mean * mean + epsilon);
-    var squaredNorm: ${dataType} = 0;
 
+    var squaredNorm: ${dataType} = 0;
     for (var h: u32 = 0u; h < normSize; h++) {
         let deviation: f32 = x[h + offset] - mean;
         squaredNorm = squaredNorm + deviation * deviation;
@@ -80,19 +78,14 @@ const createInstanceNormProgramInfo =
     for (var j: u32 = 0; j < normSize; j++) {
         output[j + offset] = x[j + offset] * channelScale + channelShift;
     }
-
-    //meanDataOutput[global_idx] = mean;
-    //invStdOutput[global_idx] = 1 / meanSquare;
   }`;
         return {
             ...metadata,
             outputs: [
                 {dims: outputShape, dataType: inputs[0].dataType, gpuDataType: GpuDataType.default},
-                // {dims: meanInvStdDevDim, dataType: inputs[0].dataType, gpuDataType: GpuDataType.default},
-                // {dims: meanInvStdDevDim, dataType: inputs[0].dataType, gpuDataType: GpuDataType.default},
             ],
             getShaderSource,
-            dispatchGroup: () => ({x: Math.ceil(normCount / workgroupSize /* workgroup size */)})
+            dispatchGroup: () => ({x: Math.ceil(normCount / 64 /* workgroup size */)})
         };
     };
 
