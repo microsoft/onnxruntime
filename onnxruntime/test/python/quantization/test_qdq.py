@@ -20,8 +20,8 @@ from op_test_utils import (
     create_clip_node,
 )
 
-from onnxruntime.quantization.calibrate import TensorData
 from onnxruntime.quantization import QDQQuantizer, QuantFormat, QuantizationMode, QuantType, quantize_static
+from onnxruntime.quantization.calibrate import TensorData
 
 
 class TestQDQFormat(unittest.TestCase):
