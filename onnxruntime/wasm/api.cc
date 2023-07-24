@@ -8,11 +8,11 @@
 #include <iostream>
 #include <vector>
 
-namespace OrtGlobals {
+namespace {
 OrtEnv* g_env;
 OrtErrorCode g_last_error_code;
 std::string g_last_error_message;
-};  // namespace OrtGlobals
+};  // namespace
 
 static_assert(sizeof(const char*) == sizeof(size_t), "size of a pointer and a size_t value should be the same.");
 static_assert(sizeof(size_t) == 4, "size of size_t should be 4 in this build (wasm32).");
@@ -83,7 +83,7 @@ int OrtInit(int num_threads, int logging_level) {
 
 void OrtGetLastError(int* error_code, const char** error_message) {
   *error_code = g_last_error_code;
-  *error_message = g_last_error_message.empty() ? nullptr : OrtGlobals::g_last_error_message.c_str();
+  *error_message = g_last_error_message.empty() ? nullptr : g_last_error_message.c_str();
 }
 
 OrtSessionOptions* OrtCreateSessionOptions(size_t graph_optimization_level,
