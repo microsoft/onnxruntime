@@ -6,6 +6,7 @@
 # --------------------------------------------------------------------------
 import abc
 import itertools
+import os
 import uuid
 from enum import Enum
 from pathlib import Path
@@ -820,7 +821,7 @@ class HistogramCollector(CalibrationDataCollector):
                 thresholds_dict[tensor] = (thresholds_dict[tensor][0], max_value)
             thresholds_dict[tensor] = (*thresholds_dict[tensor], *hist[:2])
             # Plot histogram for debug only
-            if False:
+            if os.environ.get("QUANTIZATION_DEBUG", 0) in (1, "1"):
                 apply_plot(hist, hist_edges)
 
         return thresholds_dict
@@ -845,7 +846,7 @@ class HistogramCollector(CalibrationDataCollector):
             thresholds_dict[tensor] = (*optimal_threshold, *histogram[:2])
 
             # Plot histogram for debug only
-            if False:
+            if os.environ.get("QUANTIZATION_DEBUG", 0) in (1, "1"):
                 apply_plot(histogram[0], histogram[1])
 
         return thresholds_dict
@@ -896,7 +897,7 @@ class HistogramCollector(CalibrationDataCollector):
             thresholds_dict[tensor] = TensorData(avg=avg_coef, std=std_coef, hist=hist, hist_edges=hist_edges)
 
             # Plot histogram for debug only
-            if False:
+            if os.environ.get("QUANTIZATION_DEBUG", 0) in (1, "1"):
                 apply_plot(hist, hist_edges)
 
         return thresholds_dict

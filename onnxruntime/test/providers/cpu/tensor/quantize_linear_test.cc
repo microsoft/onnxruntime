@@ -77,7 +77,7 @@ TEST(DequantizeLinearOpTest, Scalar) {
 
 // dequantize with scalar data
 TEST(DequantizeLinearOpMLFloat16Test, Scalar) {
-  OpTester test("DequantizeLinear", 10);
+  OpTester test("DequantizeLinear", 19);
   test.AddInput<int8_t>("x", {}, {100});
   test.AddInput<MLFloat16>("x_scale", {}, {MLFloat16(2.0f)});
   test.AddInput<int8_t>("x_zero_point", {}, {-10});
@@ -245,7 +245,7 @@ TEST(QuantizeLinearOpTest, Uint8) {
 }
 
 TEST(QuantizeLinearOpMLFloat16Test, Uint8) {
-  OpTester test("QuantizeLinear", 10);
+  OpTester test("QuantizeLinear", 19);
   std::vector<int64_t> dims{6};
   test.AddInput<MLFloat16>("x", dims, {MLFloat16(0.0f), MLFloat16(2.0f), MLFloat16(3.0f), MLFloat16(1000.0f), MLFloat16(-254.0f), MLFloat16(-1000.0f)});
   test.AddInput<MLFloat16>("y_scale", {}, {MLFloat16(2.0f)});

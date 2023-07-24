@@ -734,37 +734,16 @@ class ONNXQuantizer:
 
         # quantize bias
         if self.weight_qType == onnx_proto.TensorProto.FLOAT8E4M3FN:
-            # The scale needs to be estimated, the formula used for integers does not work as the value
-            # is likely to saturate the quantization.
-
-            # The following code is taken from DistributionCalibrater.
-            # TODO: find a better place.
-            # TODO: this should be an option, cublasLtMatMul does not support quantized bias.
-            scenario = self.extra_options["scenario"]
-            if scenario == "same":
-                power = 1
-            elif scenario == "p3":
-                power = 3
-            else:
-                raise ValueError("Invalid scenario. Must be in {'same', 'p3'}.")
+            # Note: if the quantized type is float 8, the bias is converted into float 16.
+            # cublasLtMatMul only supports (b)float16 or float32 bias.
 
             data = np.asarray(bias_data)
-            values = data.flatten()
-            fact = np.abs(values) / values
-            fact[np.isnan(fact)] = 1
-            fact[np.isinf(fact)] = 1
-            values = np.abs(values) ** power * fact
-            std = np.std(values)
-            _, bias_scale = compute_scale_zp_float8(self.weight_qType, std)
-
-            quantized_data = quantize_nparray(self.weight_qType, data, np.array([bias_scale]), 0)
-            packed_bias_initializer = onnx.TensorProto()
-            packed_bias_initializer.data_type = self.weight_qType
-            packed_bias_initializer.dims.extend(data.shape)
-            packed_bias_initializer.name = quantized_bias_name
-            # Do not remove .flatten(). numpy is not clear about data persistence.
-            packed_bias_initializer.raw_data = quantized_data.flatten().copy().tobytes()
+            quantized_data = data.astype(np.float16)
+            bias_scale_data = np.array([1], dtype=np.float16).reshape(-1)
+            packed_bias_initializer = onnx.numpy_helper.from_array(quantized_data, quantized_bias_name)
             self.model.initializer_extend([packed_bias_initializer])
+            node_type = "Cast"
+            node_qtype = onnx.TensorProto.FLOAT16
         else:
             # calculate scale for bias
             # TODO: This formula should be explained including why the scale is not estimated for the bias as well.
@@ -776,10 +755,12 @@ class ONNXQuantizer:
             bias_np_data = np.asarray(quantized_data, dtype=np.int32).reshape(bias_initializer.dims)
             packed_bias_initializer = onnx.numpy_helper.from_array(bias_np_data, quantized_bias_name)
             self.model.initializer_extend([packed_bias_initializer])
+            bias_scale_data = np.asarray(bias_scale, dtype=np.float32).reshape(-1)
+            node_type = "DequantizeLinear"
+            ndoe_qtype = self.weight_qType
 
         # update scale initializer
         quantized_bias_scale_name = quantized_bias_name + "_scale"
-        bias_scale_data = np.asarray(bias_scale, dtype=np.float32).reshape(-1)
         if self.is_per_channel():
             packed_bias_scale_initializer = onnx.numpy_helper.from_array(bias_scale_data, quantized_bias_scale_name)
         else:
@@ -812,6 +793,8 @@ class ONNXQuantizer:
             quantized_bias_zp_name,
             QuantizedValueType.Initializer,
             0 if bias_scale_data.size > 1 else None,
+            node_type=node_type,
+            node_qtype=node_qtype,
         )
         self.quantized_value_map[bias_name] = quantized_value
 
@@ -1033,7 +1016,6 @@ class ONNXQuantizer:
                 )
                 q_weight_initializer = onnx.numpy_helper.from_array(q_weight_data, q_weight_name)
             self.model.initializer_extend([q_weight_initializer])
-            check = to_array_extended(q_weight_initializer)
 
         # Log entry for this quantized weight
         quantized_value = QuantizedValue(

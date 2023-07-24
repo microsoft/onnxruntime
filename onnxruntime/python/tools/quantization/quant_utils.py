@@ -1,4 +1,5 @@
 import logging
+import os
 import tempfile
 from enum import Enum
 from pathlib import Path
@@ -349,6 +350,8 @@ class QuantizedValue:
         zero_point_name,
         quantized_value_type,
         axis=None,
+        node_type=None,
+        node_qtype=None,
     ):
         self.original_name = name
         self.q_name = new_quantized_name
@@ -356,6 +359,8 @@ class QuantizedValue:
         self.zp_name = zero_point_name
         self.value_type = quantized_value_type
         self.axis = axis
+        self.node_type = node_type
+        self.node_qtype = node_qtype
 
 
 class BiasToQuantize:
@@ -514,7 +519,7 @@ def write_calibration_table(calibration_cache):
         file.write(buf)
 
     # Deserialize data (for validation)
-    if False:
+    if os.environ.get("QUANTIZATION_DEBUG", 0) in (1, "1"):
         cal_table = TrtTable.TrtTable.GetRootAsTrtTable(buf, 0)
         dict_len = cal_table.DictLength()
         for i in range(dict_len):

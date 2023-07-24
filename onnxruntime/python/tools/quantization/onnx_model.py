@@ -99,9 +99,9 @@ class ONNXModel:
         if len(inits) == 0:
             raise ValueError("Can add an empty list.")
         for init in self.initializer():
-            self._check(init, "gain")
+            self._check_init(init, "gain")
         for init in inits:
-            self._check(init)
+            self._check_init(init)
             self.model.graph.initializer.append(init)
 
     def graph(self):
@@ -122,14 +122,17 @@ class ONNXModel:
             self.remove_node(node)
 
     def add_node(self, node):
+        node = self._check_node(node)
         self.model.graph.node.extend([node])
 
     def add_nodes(self, nodes_to_add):
-        self.model.graph.node.extend(nodes_to_add)
+        for node in nodes_to_add:
+            node = self._check_node(node)
+            self.model.graph.node.append(node)
 
     def add_initializer(self, tensor):
         if find_by_name(tensor.name, self.model.graph.initializer) is None:
-            self._check(tensor)
+            self._check_init(tensor)
             self.model.graph.initializer.extend([tensor])
 
     def get_initializer(self, name):
@@ -297,7 +300,7 @@ class ONNXModel:
                                 if input.name == inputB:
                                     Bs_graph.input.remove(input)
                                     break
-                            Bs_graph._check(B_trans)
+                            Bs_graph._check_init(B_trans)
                             Bs_graph.initializer.extend([B_trans])
                         else:
                             inputB += "_Transposed"  # noqa: N806
@@ -335,7 +338,9 @@ class ONNXModel:
                 new_nodes.append(node)
 
         graph.ClearField("node")
-        graph.node.extend(new_nodes)
+        for node in new_nodes:
+            node = self._check_node(node)
+            graph.node.append(node)
         graph_path.pop()
         return graph
 
@@ -355,7 +360,7 @@ class ONNXModel:
                 location=Path(output_path).name + ".data",
             )
         for init in self.model.graph.initializer:
-            self._check(init, "end")
+            self._check_init(init, "end")
         onnx.save_model(self.model, output_path)
 
     @staticmethod
@@ -470,9 +475,29 @@ class ONNXModel:
     def clean_initializers(self):
         return _clean_initializers_helper(self.graph(), self.model)
 
-    def _check(self, init, test=None):
+    def _check_init(self, init, test=None):
         if init.data_type == onnx.TensorProto.FLOAT8E4M3FN:
             if init.HasField("raw_data"):
                 b = list(init.raw_data)
                 if any(map(lambda i: (i & 127) == 127, b)):
                     raise ValueError(f"Initializer {init.name!r} has nan.")
+        return init
+
+    def _check_node(self, node):
+        """
+        A quantization to float 8 does not use quantized bias but float 16 bias.
+        This function checks that DequantizeLinear is not used to
+        dequantize from float 16.
+        """
+        if node.op_type == "DequantizeLinear":
+            zero_point = node.input[2]
+            init = self.get_initializer(zero_point)
+            dtype = init.data_type
+            if dtype in {
+                onnx.TensorProto.FLOAT16,
+                onnx.TensorProto.FLOAT,
+                onnx.TensorProto.DOUBLE,
+                onnx.TensorProto.BFLOAT16,
+            }:
+                raise RuntimeError(f"Unsupported DequantizeLinear operator, dequantization from {dtype}.")
+        return node

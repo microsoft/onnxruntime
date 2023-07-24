@@ -173,7 +173,7 @@ class TestOpGemm(unittest.TestCase):
 
             nf8 = 0
             for init in onx.graph.initializer:
-                if init.data_type not in (TensorProto.FLOAT, TensorProto.FLOAT8E4M3FN):
+                if init.data_type not in (TensorProto.FLOAT, TensorProto.FLOAT16, TensorProto.FLOAT8E4M3FN):
                     raise AssertionError(f"Unexpected data_type={init.data_type} for initializer {init.name!r}.")
                 if init.data_type == TensorProto.FLOAT8E4M3FN:
                     nf8 += 1
@@ -235,18 +235,21 @@ class TestOpGemm(unittest.TestCase):
             clip_count = 0
             q_count = 3
             dq_count = 7
+            cast_count = 0
         elif activation_type == QuantType.QInt8:
             clip_count = 1
             q_count = 4
             dq_count = 8
+            cast_count = 0
         elif activation_type == QuantType.QFLOAT8E4M3FN:
             clip_count = 0
             q_count = 4
-            dq_count = 8
+            dq_count = 6
+            cast_count = 2
         else:
             raise AssertionError(f"Test not implemented for activation_type={activation_type}.")
 
-        quant_nodes = {"Gemm": 2, "QuantizeLinear": q_count, "DequantizeLinear": dq_count, "Clip": clip_count}
+        quant_nodes = {"Gemm": 2, "QuantizeLinear": q_count, "DequantizeLinear": dq_count, "Clip": clip_count, "Cast": cast_count}
         check_op_type_count(self, model_int8_path, **quant_nodes)
         qnode_io_qtypes = {
             "QuantizeLinear": [
@@ -345,7 +348,7 @@ class TestOpGemm(unittest.TestCase):
         self.construct_model_gemm(model_fp32_path, add_clip=False)
         data_reader = self.input_feeds(1, {"input": [5, 10]})
 
-        self.static_quant_test(
+        self.static_quant_test_qdq(
             model_fp32_path,
             data_reader,
             activation_type=QuantType.QFLOAT8E4M3FN,
@@ -353,7 +356,7 @@ class TestOpGemm(unittest.TestCase):
             extra_options={"scenario": "same"},
             calibrate_method=CalibrationMethod.Distribution,
         )
-        self.static_quant_test_qdq(
+        self.static_quant_test(
             model_fp32_path,
             data_reader,
             activation_type=QuantType.QFLOAT8E4M3FN,

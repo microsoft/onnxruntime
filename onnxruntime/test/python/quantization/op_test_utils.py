@@ -30,16 +30,16 @@ class QGemm(OpRun):
         TensorProto.FLOAT8E5M2FNUZ,
     }
 
-    def get_zero_point_type(self, zero_point: np.ndarray) -> int:
-        if zero_point.dtype == float8e4m3fn and zero_point.dtype.descr[0][0] == "e4m3fn":
+    def get_tensor_type(self, tensor: np.ndarray) -> int:
+        if tensor.dtype == float8e4m3fn and tensor.dtype.descr[0][0] == "e4m3fn":
             return TensorProto.FLOAT8E4M3FN
-        if zero_point.dtype == float8e4m3fnuz and zero_point.dtype.descr[0][0] == "e4m3fnuz":
+        if tensor.dtype == float8e4m3fnuz and tensor.dtype.descr[0][0] == "e4m3fnuz":
             return TensorProto.FLOAT8E4M3FNUZ
-        if zero_point.dtype == float8e5m2 and zero_point.dtype.descr[0][0] == "e5m2":
+        if tensor.dtype == float8e5m2 and tensor.dtype.descr[0][0] == "e5m2":
             return TensorProto.FLOAT8E5M2
-        if zero_point.dtype == float8e5m2fnuz and zero_point.dtype.descr[0][0] == "e5m2fnuz":
+        if tensor.dtype == float8e5m2fnuz and tensor.dtype.descr[0][0] == "e5m2fnuz":
             return TensorProto.FLOAT8E5M2FNUZ
-        return np_dtype_to_tensor_dtype(zero_point.dtype)
+        return np_dtype_to_tensor_dtype(tensor.dtype)
 
     def _run(
         self,
@@ -61,13 +61,12 @@ class QGemm(OpRun):
         if transB:
             B = B.T
 
-        a_type = self.get_zero_point_type(a_zero_point)
-        b_type = self.get_zero_point_type(b_zero_point)
-        y_type = self.get_zero_point_type(y_zero_point)
+        a_type = self.get_tensor_type(a_zero_point)
+        b_type = self.get_tensor_type(b_zero_point)
+        y_type = self.get_tensor_type(y_zero_point)
         if (
             a_type == TensorProto.FLOAT8E4M3FN
             and b_type == TensorProto.FLOAT8E4M3FN
-            and y_type == TensorProto.FLOAT8E4M3FN
         ):
             a_scaled = (float8e4m3_to_float32(A).astype(float) - float8e4m3_to_float32(a_zero_point)) * np.float32(
                 a_scale
@@ -77,7 +76,10 @@ class QGemm(OpRun):
             )
             y = a_scaled @ b_scaled * np.float32(alpha)
             if C is not None:
-                y += C * np.float32(a_scale) * np.float32(b_scale)
+                dtype = self.get_tensor_type(C)
+                if dtype not in (TensorProto.FLOAT, TensorProto.FLOAT16):
+                    raise TypeError(f"C.dtype must be float16 or float 32 not {dtype}.")
+                y += C.astype(np.float32) * np.float32(a_scale) * np.float32(b_scale)
             if y_scale is not None:
                 y /= y_scale
             if y_zero_point is not None:
@@ -93,6 +95,8 @@ class QGemm(OpRun):
         elif a_type in self.f8_types or b_type in self.f8_types or y_type in self.f8_types:
             raise NotImplementedError(f"QGemm not implemented for zero_types {a_type}, {b_type}, {y_type}.")
         else:
+            if TensorProto.FLOAT8E4M3FN in set(a_type, b_type, y_type):
+                raise TypeError(f"Unexpected type for A: {dtype}, B:{dtype} or Y:{dtype}.")
             a_scaled = (A.astype(float) - a_zero_point) * np.float32(a_scale)
             b_scaled = (B.astype(float) - b_zero_point) * np.float32(b_scale)
             y = a_scaled @ b_scaled * np.float32(alpha)
@@ -212,12 +216,16 @@ def check_sign_f8_quantization(model_path_origin, model_path_to_check):
                 raise AssertionError(f"Need one name not {zero}.")
         else:
             if len(scale) != 0:
-                raise AssertionError(f"Need zero name not {scale}.")
+                raise AssertionError(f"No scale is expected but has {scale}.")
             if len(zero) != 0:
-                raise AssertionError(f"Need zero name not {zero}.")
+                raise AssertionError(f"No zero is expected but has {zero}.")
 
         expected_sign = onnx.numpy_helper.to_array(names[name]) >= 0
 
+        if "bias" in init.name:
+            if init.data_type >= 17:
+                raise AssertionError(f"bias {init.name!r} should be float 16 not {init.data_type}.")
+            continue
         if init.data_type < 17:
             raise AssertionError(f"Initializer {init.name!r} not a float 8 type.")
         raw = np.array([int(i) for i in init.raw_data])

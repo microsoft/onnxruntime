@@ -95,6 +95,8 @@ class QLinearGemm(QOpMatMul):
             if not self.quantizer.is_input_a_initializer(node.input[2]):
                 return super().quantize()
 
+            # Note: if the quantized type is float 8, the bias is converted into float 16.
+            # cublasLtMatMul only supports (b)float16 or float32 bias.
             quantized_bias_name = self.quantizer.quantize_bias_static(
                 node.input[2], node.input[0], node.input[1], get_beta(self.node)
             )
@@ -125,6 +127,8 @@ class QLinearGemm(QOpMatMul):
             output_scale_name,
             output_zp_name,
             QuantizedValueType.Input,
+            node_type=node.op_type,
+            node_qtype=self.weight_qType,
         )
         self.quantizer.quantized_value_map[node.output[0]] = q_output
 
