@@ -6,7 +6,7 @@
 namespace onnxruntime {
 namespace js {
 
-#define INSTANCE_NORM_KERNEL(op_name, domain, data_type, since_version)     \
+#define INSTANCE_NORM_KERNEL(op_name, domain, data_type, since_version)                            \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                                                   \
       op_name,                                                                                     \
       domain,                                                                                      \

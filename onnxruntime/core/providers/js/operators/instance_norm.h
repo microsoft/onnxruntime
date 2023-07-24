@@ -18,6 +18,7 @@ class InstanceNorm : public JsKernel {
                                }),
                                static_cast<float>(epsilon_));
   }
+
  private:
   float epsilon_;
 };

@@ -22,6 +22,7 @@ class LayerNorm : public JsKernel {
                                static_cast<uint32_t>(axis_),
                                static_cast<float>(epsilon_));
   }
+
  private:
   int64_t axis_;
   float epsilon_;
