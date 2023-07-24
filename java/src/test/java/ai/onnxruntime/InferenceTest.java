@@ -795,6 +795,9 @@ public class InferenceTest {
           assertSame(outputA, r.get(0));
           assertSame(outputB, r.get(1));
           assertSame(outputC, r.get(2));
+          assertFalse(r.isResultOwner(0));
+          assertFalse(r.isResultOwner(1));
+          assertFalse(r.isResultOwner(2));
           // More tests
         }
         TestHelpers.zeroBuffer(outputABuf);
@@ -809,6 +812,7 @@ public class InferenceTest {
           assertEquals(1, r.size());
           assertSame(outputB, r.get(0));
           assertSame(outputB, r.get("output-1").get());
+          assertFalse(r.isResultOwner(0));
           // More tests
         }
         TestHelpers.zeroBuffer(outputABuf);
@@ -829,6 +833,10 @@ public class InferenceTest {
           // requested outputs are different
           assertNotSame(outputA, r.get("output-0").get());
           assertNotSame(outputC, r.get("output-2").get());
+          // check ownership.
+          assertFalse(r.isResultOwner(0));
+          assertTrue(r.isResultOwner(1));
+          assertTrue(r.isResultOwner(2));
           // More tests
         }
         TestHelpers.zeroBuffer(outputABuf);

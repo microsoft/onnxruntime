@@ -263,6 +263,26 @@ public class OrtSession implements AutoCloseable {
   }
 
   /**
+   * Scores an input feed dict, returning the map of pinned outputs.
+   *
+   * <p>The outputs are sorted based on the supplied map traversal order.
+   *
+   * <p>Note: pinned outputs are not owned by the {@link Result} object, and are <b>not</b> closed
+   * when the result object is closed.
+   *
+   * @param inputs The inputs to score.
+   * @param pinnedOutputs The requested outputs which the user has allocated.
+   * @return The inferred outputs.
+   * @throws OrtException If there was an error in native code, the input or output names are
+   *     invalid, or if there are zero or too many inputs or outputs.
+   */
+  public Result run(
+      Map<String, ? extends OnnxTensorLike> inputs, Map<String, ? extends OnnxValue> pinnedOutputs)
+      throws OrtException {
+    return run(inputs, Collections.emptySet(), pinnedOutputs, null);
+  }
+
+  /**
    * Scores an input feed dict, returning the map of requested and pinned outputs.
    *
    * <p>The outputs are sorted based on the supplied set traversal order with pinned outputs first,
@@ -396,7 +416,7 @@ public class OrtSession implements AutoCloseable {
    * @param v The OnnxValue.
    * @return The native handle.
    */
-  private static long getHandle(OnnxValue v) {
+  static long getHandle(OnnxValue v) {
     /*
      * Note this method exists as interface methods are all public, but we do not want users to be
      * able to access the native pointer via a public API so can't add a method to OnnxValue which
