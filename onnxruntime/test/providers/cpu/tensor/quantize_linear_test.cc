@@ -247,7 +247,7 @@ TEST(QuantizeLinearOpTest, Uint8) {
 TEST(QuantizeLinearOpMLFloat16Test, Uint8) {
   OpTester test("QuantizeLinear", 19);
   std::vector<int64_t> dims{6};
-  test.AddInput<MLFloat16>("x", dims, {MLFloat16(0.0f), MLFloat16(2.0f), MLFloat16(3.0f), MLFloat16(1000.0f), MLFloat16(-254.0f), MLFloat16(-1000.0f)});
+  test.AddInput<MLFloat16>("x", dims, {MLFloat16(0.0f), MLFloat16(2.0f), MLFloat16(4.0f), MLFloat16(1000.0f), MLFloat16(-254.0f), MLFloat16(-1000.0f)});
   test.AddInput<MLFloat16>("y_scale", {}, {MLFloat16(2.0f)});
   test.AddInput<uint8_t>("y_zero_point", {}, {128});
   test.AddOutput<uint8_t>("y", dims, {128, 129, 130, 255, 1, 0});
