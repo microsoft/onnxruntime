@@ -173,10 +173,10 @@ def layer_norm_transform(model_proto):
     all_nodes = []
     for node in graph_proto.node:
         if node not in removed_nodes:
-            all_nodes.append(node)
+            all_nodes.append(node)  # noqa: PERF401
 
     for node in layer_norm_nodes:
-        all_nodes.append(node)
+        all_nodes.append(node)  # noqa: PERF402
 
     graph_proto.ClearField("node")
     graph_proto.node.extend(all_nodes)

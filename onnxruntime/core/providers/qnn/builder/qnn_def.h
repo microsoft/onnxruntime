@@ -439,6 +439,7 @@ typedef struct GraphConfigInfo {
 
 namespace qnn_def {
 const std::string package_name = "qti.aisw";
+// TODO: remove these parameter name, re-use from QnnOpDef.h
 const std::string dilation = "dilation";
 const std::string pad_amount = "pad_amount";
 const std::string stride = "stride";

@@ -86,7 +86,7 @@ for x in [
     try:
         r = sess.run([output_name], {input_name: x})
         print(f"Shape={x.shape} and predicted labels={r}")
-    except (RuntimeError, InvalidArgument) as e:
+    except (RuntimeError, InvalidArgument) as e:  # noqa: PERF203
         print(f"ERROR with Shape={x.shape} - {e}")
 
 for x in [
@@ -99,7 +99,7 @@ for x in [
     try:
         r = sess.run(None, {input_name: x})
         print(f"Shape={x.shape} and predicted probabilities={r[1]}")
-    except (RuntimeError, InvalidArgument) as e:
+    except (RuntimeError, InvalidArgument) as e:  # noqa: PERF203
         print(f"ERROR with Shape={x.shape} - {e}")
 
 #########################
@@ -114,5 +114,5 @@ for x in [
     try:
         r = sess.run([output_name], {input_name: x})
         print(f"Shape={x.shape} and predicted labels={r}")
-    except (RuntimeError, InvalidArgument) as e:
+    except (RuntimeError, InvalidArgument) as e:  # noqa: PERF203
         print(f"ERROR with Shape={x.shape} - {e}")
