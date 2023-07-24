@@ -1,12 +1,14 @@
 import argparse
 import os
-import torch
-import shutil
-import onnx
 from pathlib import Path
+
+import onnx
+import torch
+
 from onnxruntime.training.ortmodule import ORTModule
 
 torch.distributed.init_process_group(backend="nccl")
+
 
 def get_args():
     parser = argparse.ArgumentParser()
@@ -16,10 +18,12 @@ def get_args():
     args = parser.parse_args()
     return args
 
+
 args = get_args()
 
 os.environ["ORTMODULE_CACHE_DIR"] = args.ortmodule_cache_dir
 os.environ["ORTMODULE_CACHE_PREFIX"] = args.ortmodule_cache_prefix
+
 
 class Net(torch.nn.Module):
     def __init__(self):
@@ -30,6 +34,7 @@ class Net(torch.nn.Module):
         x = x.view(x.shape[0], -1)
         x = torch.nn.functional.relu(self.fc(x))
         return x
+
 
 model = Net()
 model = ORTModule(model)

@@ -4,9 +4,9 @@
 
 import argparse
 import logging
+import shutil
 import sys
 from pathlib import Path
-import shutil
 
 from _test_commons import run_subprocess
 
@@ -78,8 +78,16 @@ def run_distributed_cache_test(cwd, log):
     cache_dir = "cache_dir"
     prefix = "linear"
 
-    command = ["torchrun", "--nproc_per_node", "2", "orttraining_test_ortmodule_cache.py", 
-               "--ortmodule_cache_dir", cache_dir, "--ortmodule_cache_prefix", prefix]
+    command = [
+        "torchrun",
+        "--nproc_per_node",
+        "2",
+        "orttraining_test_ortmodule_cache.py",
+        "--ortmodule_cache_dir",
+        cache_dir,
+        "--ortmodule_cache_prefix",
+        prefix,
+    ]
 
     run_subprocess(command, cwd=cwd, log=log).check_returncode()
 
