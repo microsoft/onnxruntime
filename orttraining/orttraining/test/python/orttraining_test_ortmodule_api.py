@@ -6064,7 +6064,7 @@ def test_e2e_padding_elimination():
 
 
 @pytest.mark.skipif(
-    Version(torch.__version__) < Version("1.13.0"),
+    Version(torch.__version__) >= Version("1.13.0"),
     reason="PyTorch since 1.13 don't output expected warning messages any more",
 )
 @pytest.mark.parametrize("log_level", [LogLevel.VERBOSE, LogLevel.INFO, LogLevel.WARNING])
