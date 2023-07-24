@@ -1,17 +1,12 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "onnxruntime_training_cxx_api.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "api.h"
 
 #include <iostream>
 #include <vector>
-
-namespace OrtGlobals {
-OrtEnv* g_env;
-OrtErrorCode g_last_error_code;
-std::string g_last_error_message;
-};  // namespace OrtGlobals
 
 static_assert(sizeof(const char*) == sizeof(size_t), "size of a pointer and a size_t value should be the same.");
 static_assert(sizeof(size_t) == 4, "size of size_t should be 4 in this build (wasm32).");
@@ -391,3 +386,110 @@ char* OrtEndProfiling(ort_session_handle_t session) {
              ? file_name
              : nullptr;
 }
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+#ifdef ENABLE_TRAINING_APIS
+#define CHECK_TRAINING_STATUS(ORT_API_NAME, ...) \
+  CheckStatus(Ort::GetTrainingApi().ORT_API_NAME(__VA_ARGS__))
+
+OrtCheckpointState* OrtLoadCheckpointForTraining(void* checkpoint, size_t checkpoint_size) {
+  OrtCheckpointState* checkpoint_state = nullptr;
+  return (CHECK_TRAINING_STATUS(LoadCheckpointFromBuffer, checkpoint, checkpoint_size, &checkpoint_state) == ORT_OK)
+             ? checkpoint_state
+             : nullptr;
+}
+
+
+void EMSCRIPTEN_KEEPALIVE OrtReleaseTrainingCheckpointCheckpointState(ort_training_checkpoint_handle_t training_checkpoint_state_handle) {
+  Ort::GetTrainingApi().ReleaseCheckpointState(training_checkpoint_state_handle);
+}
+
+OrtTrainingSession* EMSCRIPTEN_KEEPALIVE OrtCreateTrainingSession(const ort_session_options_handle_t options,
+                                                                  const ort_training_checkpoint_handle_t training_checkpoint_state_handle,
+                                                                          void* train_model,
+                                                                          size_t train_size,
+                                                                          void* eval_model,
+                                                                          size_t eval_size,
+                                                                          void* optimizer_model,
+                                                                          size_t optimizer_size) {
+  OrtTrainingSession* training_session = nullptr;
+  return (CHECK_TRAINING_STATUS(CreateTrainingSessionFromArray, OrtGlobals::g_env, options,
+                                training_checkpoint_state_handle, train_model, train_size,
+                                eval_model, eval_size, optimizer_model, optimizer_size,
+                                &training_session) == ORT_OK)
+             ? training_session
+             : nullptr;
+}
+
+int EMSCRIPTEN_KEEPALIVE OrtTrainingLazyResetGrad(ort_training_session_handle_t training_handle) {
+  return CHECK_TRAINING_STATUS(LazyResetGrad, training_handle);
+}
+
+OrtValue* EMSCRIPTEN_KEEPALIVE OrtRunTrainStep(ort_training_session_handle_t training_handle,
+                                                               const ort_run_options_handle_t options,
+                                                               const size_t inputs_len,
+                                                               const ort_tensor_handle_t* inputs,
+                                                               const size_t outputs_len,
+                                                               ort_tensor_handle_t* outputs) {
+  return (CHECK_TRAINING_STATUS(TrainStep, training_handle,
+                                options, inputs_len, inputs, outputs_len, outputs) == ORT_OK)
+             ? *outputs
+             : nullptr;
+}
+
+int EMSCRIPTEN_KEEPALIVE OrtTrainingOptimizerStep(ort_training_session_handle_t training_handle,
+                                                  const ort_run_options_handle_t run_options) {
+  return CHECK_TRAINING_STATUS(OptimizerStep, training_handle, run_options);
+}
+
+ort_tensor_handle_t EMSCRIPTEN_KEEPALIVE OrtTrainingEvalStep(ort_training_session_handle_t training_handle,
+                                                             const ort_run_options_handle_t options,
+                                                             size_t inputs_len,
+                                                             const ort_tensor_handle_t* inputs,
+                                                             size_t outputs_len,
+                                                             ort_tensor_handle_t* outputs) {
+  return (CHECK_TRAINING_STATUS(EvalStep, training_handle,
+                                options, inputs_len, inputs, outputs_len, outputs) == ORT_OK)
+             ? *outputs
+             : nullptr;
+}
+
+// void EMSCRIPTEN_KEEPALIVE OrtTrainingExportModelForInferencing(orttraining_session_handle_t session,
+//                                                                const ORTCHAR_T* inference_model_path,
+//                                                                size_t graph_outputs_len,
+//                                                                const char* const* graph_output_names) {
+//   Ort::GetTrainingApi().ExportModelForInferencing(session, inference_model_path, graph_outputs_len, graph_output_names);
+// }
+
+size_t* EMSCRIPTEN_KEEPALIVE OrtTrainingGetParametersSize(ort_training_session_handle_t training_handle,
+                                                          bool trainable_only) {
+  size_t* param_size = nullptr;
+  return (CHECK_TRAINING_STATUS(GetParametersSize, training_handle, param_size, trainable_only) == ORT_OK)
+             ? param_size
+             : nullptr;
+}
+
+ort_tensor_handle_t EMSCRIPTEN_KEEPALIVE OrtTrainingCopyParametersToBuffer(ort_training_session_handle_t training_handle,
+                                                                           ort_tensor_handle_t parameters_buffer,
+                                                                           bool trainable_only) {
+  return (CHECK_TRAINING_STATUS(CopyParametersToBuffer, training_handle,
+                                parameters_buffer, trainable_only) == ORT_OK)
+             ? parameters_buffer
+             : nullptr;
+}
+
+ort_tensor_handle_t EMSCRIPTEN_KEEPALIVE OrtTrainingCopyBufferToParameters(ort_training_session_handle_t training_handle,
+                                                                           ort_tensor_handle_t parameters_buffer,
+                                                                           bool trainable_only) {
+  return (CHECK_TRAINING_STATUS(CopyBufferToParameters, training_handle,
+                                parameters_buffer, trainable_only) == ORT_OK)
+             ? parameters_buffer
+             : nullptr;
+}
+
+void EMSCRIPTEN_KEEPALIVE OrtTrainingReleaseSession(ort_training_session_handle_t training_handle) {
+  Ort::GetTrainingApi().ReleaseTrainingSession(training_handle);
+}
+
+#endif
