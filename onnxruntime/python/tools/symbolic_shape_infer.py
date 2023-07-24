@@ -747,7 +747,7 @@ class SymbolicShapeInference:
         else:
             lhs_reduce_dim = -1
             rhs_reduce_dim = -2
-            new_shape = [*self._broadcast_shapes(lhs_shape[:-2], rhs_shape[:-2]), lhs_shape[-2]] + [rhs_shape[-1]]
+            new_shape = [*self._broadcast_shapes(lhs_shape[:-2], rhs_shape[:-2]), lhs_shape[-2], rhs_shape[-1]]
         # merge reduce dim
         self._check_merged_dims(
             [lhs_shape[lhs_reduce_dim], rhs_shape[rhs_reduce_dim]],
@@ -1008,13 +1008,13 @@ class SymbolicShapeInference:
             right_ellipsis_index = right_equation.find(b"...")
             if right_ellipsis_index != -1:
                 for i in range(num_ellipsis_indices):
-                    new_sympy_shape.append(shape[i])
+                    new_sympy_shape.append(shape[i])  # noqa: PERF401
             for c in right_equation:
                 if c != 46:  # c != b'.'
-                    new_sympy_shape.append(letter_to_dim[c])
+                    new_sympy_shape.append(letter_to_dim[c])  # noqa: PERF401
         else:
             for i in range(num_ellipsis_indices):
-                new_sympy_shape.append(shape[i])
+                new_sympy_shape.append(shape[i])  # noqa: PERF401
             for c in left_equation:
                 if c != 44 and c != 46:  # c != b',' and c != b'.':
                     if c in num_letter_occurrences:

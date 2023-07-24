@@ -45,20 +45,22 @@ reportMissingImports = false
 # NOTE: Do not create an exclude list. Edit .lintrunner.toml instead
 target-version = "py38"
 select = [
+    "B", # flake8-bugbear
     "E", # pycodestyle
     "F", # Pyflakes
-    "W", # pycodestyle
-    "B", # flake8-bugbear
-    "N", # pep8-naming
     "ISC", # flake8-implicit-str-concat
-    "YTT", # flake8-2020
-    "RUF", # Ruff-specific rules
-    "SIM", # flake8-simplify
-    "UP", # pyupgrade
+    "N", # pep8-naming
+    "NPY", # numpy
+    "PERF", # Perflint
+    "PLC", # pylint conventions
     "PLE", # pylint errors
     "PLW", # pylint warnings
-    "PLC", # pylint conventions
-    "NPY", # numpy
+    "RUF", # Ruff-specific rules
+    "SIM", # flake8-simplify
+    "T10", # flake8-debugger
+    "UP", # pyupgrade
+    "W", # pycodestyle
+    "YTT", # flake8-2020
 ]
 # NOTE: Refrain from growing the ignore list unless for exceptional cases.
 # Always include a comment to explain why.

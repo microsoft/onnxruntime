@@ -364,7 +364,7 @@ def main(args):
                                 # Results of IO binding might be in GPU. Copy outputs to CPU for comparison.
                                 copy_outputs = []
                                 for output in ort_outputs:
-                                    copy_outputs.append(output.cpu().numpy())
+                                    copy_outputs.append(output.cpu().numpy())  # noqa: PERF401
 
                             if gpt2helper.compare_outputs(
                                 outputs,
@@ -404,7 +404,7 @@ def main(args):
                             "onnxruntime_latency": f"{ort_latency:.2f}",
                         }
                         csv_writer.writerow(row)
-                    except Exception:
+                    except Exception:  # noqa: PERF203
                         logger.error("Exception", exc_info=True)
                         return None
 

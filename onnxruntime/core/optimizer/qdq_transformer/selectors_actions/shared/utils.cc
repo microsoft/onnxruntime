@@ -62,6 +62,9 @@ static const OpVersionsAndSelector::OpVersionsMap GetUnaryOpVersionsMap() {
           {"Softmax", {}},
           {"Sqrt", {}},
           {"Atan", {}},
+          {"Asin", {}},
+          {"Sin", {}},
+          {"Sign", {}},
           {"Tanh", {}},
           {"Exp", {}},
           {"LRN", {}}};
@@ -88,8 +91,9 @@ static const OpVersionsAndSelector::OpVersionsMap GetMatMulOpVersionsMap() {
 static const OpVersionsAndSelector::OpVersionsMap GetGemmOpVersionsMap() {
   return {{"Gemm", {}}};
 }
-static const OpVersionsAndSelector::OpVersionsMap GetInstanceNormalizationOpVersionsMap() {
-  return {{"InstanceNormalization", {}}};
+static const OpVersionsAndSelector::OpVersionsMap GetInstanceAndLayerNormalizationOpVersionsMap() {
+  return {{"InstanceNormalization", {}},
+          {"LayerNormalization", {}}};
 }
 static const OpVersionsAndSelector::OpVersionsMap GetBatchNormalizationOpVersionsMap() {
   return {{"BatchNormalization", {}}};
@@ -167,10 +171,10 @@ void RegisterGemmSelector(Selectors& qdq_selectors) {
                                  std::move(selector));
 }
 
-void RegisterInstanceNormalizationSelector(Selectors& qdq_selectors) {
+void RegisterInstanceAndLayerNormalizationSelector(Selectors& qdq_selectors) {
   /* register selector for InstanceNormalization op */
-  std::unique_ptr<NodeGroupSelector> selector = std::make_unique<InstanceNormalizationNodeGroupSelector>();
-  qdq_selectors.RegisterSelector(GetInstanceNormalizationOpVersionsMap(),
+  std::unique_ptr<NodeGroupSelector> selector = std::make_unique<InstanceAndLayerNormalizationNodeGroupSelector>();
+  qdq_selectors.RegisterSelector(GetInstanceAndLayerNormalizationOpVersionsMap(),
                                  std::move(selector));
 }
 
@@ -198,7 +202,7 @@ void SelectorManager::CreateSelectors() {
   RegisterConvTransposeSelector(qdq_selectors_);
   RegisterMatMulSelector(qdq_selectors_);
   RegisterGemmSelector(qdq_selectors_);
-  RegisterInstanceNormalizationSelector(qdq_selectors_);
+  RegisterInstanceAndLayerNormalizationSelector(qdq_selectors_);
   RegisterBatchNormalizationSelector(qdq_selectors_);
   RegisterLogicalComparisonSelectors(qdq_selectors_);
 }

@@ -1121,6 +1121,7 @@ class Graph {
   @returns GraphProto serialization of the graph.
   */
   ONNX_NAMESPACE::GraphProto ToGraphProtoWithExternalInitializers(const std::string& external_file_name,
+                                                                  const PathString& file_path,
                                                                   size_t initializer_size_threshold) const;
 
   /** Gets the ISchemaRegistry instances being used with this Graph. */
