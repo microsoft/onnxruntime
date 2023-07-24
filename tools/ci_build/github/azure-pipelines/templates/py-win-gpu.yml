@@ -28,7 +28,7 @@ jobs:
     clean: all
   pool: ${{ parameters.MACHINE_POOL }}
   variables:
-  VSGenerator: 'Visual Studio 17 2022'
+    VSGenerator: 'Visual Studio 17 2022'
   steps:
       - checkout: self
         clean: true
