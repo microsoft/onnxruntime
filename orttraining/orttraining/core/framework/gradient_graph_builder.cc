@@ -221,7 +221,10 @@ void GradientGraphBuilder::GetStopGradientEdges(const Node& node, std::unordered
 
   if (op_type == "ATen") {
     const auto& key = GetGradientDefinitionKeyByNode(node);
-    stop_edges = *GradientDefinitionRegistry::Instance().GetStopGradientEdgesForNode(key);
+    auto edges_pointer = GradientDefinitionRegistry::Instance().GetStopGradientEdgesForNode(key);
+    if (edges_pointer != nullptr) {
+      stop_edges = *edges_pointer;
+    }
   } else if (op_type == "Cast") {
     // Stop gradient edge for Cast if the cast is to non-differentiable type
     const auto& attrs = node.GetAttributes();
