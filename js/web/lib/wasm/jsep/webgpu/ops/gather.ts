@@ -41,7 +41,7 @@ const createGatherProgramInfo =
         }
 
         for (let i = axis + 1; i < inputRank; ++i) {
-            outputShape.push(i);
+            outputShape.push(inputShape[i]);
         }
         const inputDataType = inputs[0].dataType;
         const block = ShapeUtil.sizeFromDimension(inputShape, axis + 1);
@@ -60,7 +60,6 @@ const createGatherProgramInfo =
         const totalGathers = M * N;
         console.log('gather!', inputs, outputShape, axis, attributes, totalGathers);
         const dataType = 'i32'; // lets treat everything as i32
-
         // we treat int64 indices as little endian i32 as you cannot create more than 2gb buffer anyway
         const getShaderSource = (shaderHelper: ShaderHelper) => `
   const N: u32 = ${N};
@@ -69,7 +68,7 @@ const createGatherProgramInfo =
 
   @group(0) @binding(0) var<storage, read> input : array<${dataType}>;
   @group(0) @binding(1) var<storage, read> inputIndices : array<${dataType}>;
-  @group(0) @binding(2) var<storage, read_write> output : array<${dataType}>;
+  @group(0) @binding(2) var<storage, read_write> output: array<${dataType}>;
 
   ${shaderHelper.mainStart()}
     let batch = i32(global_idx / N);

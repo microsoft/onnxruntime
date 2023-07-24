@@ -74,6 +74,7 @@ export const WEBGPU_OP_RESOLVE_RULES: Map<string, OperatorImplementation> = new 
   ['Relu', [unaryOps.relu]],
   ['Sigmoid', [unaryOps.sigmoid]],
   ['Sin', [unaryOps.sin]],
+
   ['Sinh', [unaryOps.sinh]],
   ['Split', [split, parseSplitAttributes]],
   ['Sqrt', [unaryOps.sqrt]],

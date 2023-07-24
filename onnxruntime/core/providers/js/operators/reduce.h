@@ -19,7 +19,7 @@ namespace js {
       std::vector<size_t> axes(axes_.size());                                                               \
       if (axes_.size() > 0) {                                                                                \
         std::transform(axes_.begin(), axes_.end(), axes.begin(),                                             \
-                       [](int64_t axis) { return gsl::narrow_cast<size_t>(axis); });                        \
+                       [](int64_t axis) { return gsl::narrow_cast<int64_t>(axis); });                        \
       }                                                                                                      \
       JSEP_INIT_KERNEL_ATTRIBUTE(ReduceKernel, ({                                                            \
                                    "keepDims" : !!$1,                                                        \

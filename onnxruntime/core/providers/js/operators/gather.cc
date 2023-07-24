@@ -16,7 +16,7 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     kJsExecutionProvider,
     (*KernelDefBuilder::Create())
         .TypeConstraint("T", DataTypeImpl::AllTensorTypes())
-        .TypeConstraint("Tind", BuildKernelDefConstraintsFromTypeList<TypeList<int32_t, int64_t>>()),
+        .TypeConstraint("Tind", BuildKernelDefConstraintsFromTypeList<TypeList<int32_t>>()),
     Gather);
 
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(
@@ -27,7 +27,7 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     kJsExecutionProvider,
     (*KernelDefBuilder::Create())
         .TypeConstraint("T", DataTypeImpl::AllTensorTypes())
-        .TypeConstraint("Tind", BuildKernelDefConstraintsFromTypeList<TypeList<int32_t, int64_t>>()),
+        .TypeConstraint("Tind", BuildKernelDefConstraintsFromTypeList<TypeList<int32_t>>()),
     Gather);
 
 ONNX_OPERATOR_KERNEL_EX(
@@ -36,8 +36,8 @@ ONNX_OPERATOR_KERNEL_EX(
     13,
     kJsExecutionProvider,
     (*KernelDefBuilder::Create())
-        .TypeConstraint("T", DataTypeImpl::AllTensorTypes())
-        .TypeConstraint("Tind", BuildKernelDefConstraintsFromTypeList<TypeList<int32_t, int64_t>>()),
+        .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())
+        .TypeConstraint("Tind", BuildKernelDefConstraintsFromTypeList<TypeList<int32_t>>()),
     Gather);
 
 }  // namespace js
