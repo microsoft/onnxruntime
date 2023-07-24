@@ -24,6 +24,8 @@ def get_ort_device_type(device_type: str, device_index) -> C.OrtDevice:
         return C.OrtDevice.cann()
     elif device_type == "cpu":
         return C.OrtDevice.cpu()
+    elif device_type == "dml":
+        return C.OrtDevice.dml()
     elif device_type == "ort":
         return C.get_ort_device(device_index).device_type()
     else:
@@ -593,6 +595,10 @@ class IOBinding:
     def copy_outputs_to_cpu(self):
         """Copy output contents to CPU (if on another device). No-op if already on the CPU."""
         return self._iobinding.copy_outputs_to_cpu()
+
+    def copy_output_to_cpu(self, index):
+        """Copy output content to CPU (if on another device). No-op if already on the CPU."""
+        return self._iobinding.copy_output_to_cpu(index)
 
     def clear_binding_inputs(self):
         self._iobinding.clear_binding_inputs()
