@@ -324,9 +324,7 @@ class GraphExecutionManager(GraphExecutionInterface):
             # Leverage cached model if available
             cache_dir = self._runtime_options.ortmodule_cache_dir
             cache_prefix = self._runtime_options.ortmodule_cache_prefix
-            rank = 0
-            if torch.distributed.is_initialized():
-                rank = torch.distributed.get_rank()
+            rank = torch.distributed.get_rank() if torch.distributed.is_initialized() else 0
             if cache_dir and cache_prefix and os.path.exists(cache_dir):
                 filename = os.path.join(cache_dir, f"{cache_prefix}_ort_cached_model_{rank}.onnx")
                 if os.path.isfile(filename):
