@@ -29,14 +29,10 @@ std::shared_ptr<OVNetwork> OVCore::ReadModel(const std::string& model) const {
   }
 }
 
-OVExeNetwork OVCore::LoadNetwork(std::shared_ptr<OVNetwork>& ie_cnn_network, std::string& hw_target, OVConfig& config, ov::AnyMap& device_config, std::string name) {
+OVExeNetwork OVCore::LoadNetwork(std::shared_ptr<OVNetwork>& ie_cnn_network, std::string& hw_target, ov::AnyMap& device_config, std::string name) {
   ov::CompiledModel obj;
   try {
-    if (hw_target.find("MYRIAD") == std::string::npos || hw_target.find("VAD-M_FP16") == std::string::npos) {
-      obj = oe.compile_model(ie_cnn_network, hw_target, device_config);
-    } else {
-      obj = oe.compile_model(ie_cnn_network, hw_target, config);
-    }
+    obj = oe.compile_model(ie_cnn_network, hw_target, device_config);
     OVExeNetwork exe(obj);
     return exe;
   } catch (const Exception& e) {
@@ -45,6 +41,21 @@ OVExeNetwork OVCore::LoadNetwork(std::shared_ptr<OVNetwork>& ie_cnn_network, std
     throw std::string(log_tag + " Exception while Loading Network for graph " + name);
   }
 }
+
+#if defined(OPENVINO_2023_0)
+OVExeNetwork OVCore::LoadNetwork(const std::string& model, std::string& hw_target, ov::AnyMap& device_config, std::string name) {
+  ov::CompiledModel obj;
+  try {
+    obj = oe.compile_model(model, ov::Tensor(), hw_target, device_config);
+    OVExeNetwork exe(obj);
+    return exe;
+  } catch (const Exception& e) {
+    ORT_THROW(log_tag + " Exception while Loading Network for graph: " + name + e.what());
+  } catch (...) {
+    ORT_THROW(log_tag + " Exception while Loading Network for graph " + name);
+  }
+}
+#endif
 
 void OVCore::SetCache(std::string cache_dir_path) {
   oe.set_property(ov::cache_dir(cache_dir_path));
@@ -105,6 +116,16 @@ void OVInferRequest::SetTensor(const std::string& name, OVTensorPtr& blob) {
 void OVInferRequest::StartAsync() {
   try {
     ovInfReq.start_async();
+  } catch (const Exception& e) {
+    throw std::string(log_tag + " Couldn't start Inference: " + e.what());
+  } catch (...) {
+    throw std::string(log_tag + " In Error Couldn't start Inference");
+  }
+}
+
+void OVInferRequest::Infer() {
+  try {
+    ovInfReq.infer();
   } catch (const Exception& e) {
     throw std::string(log_tag + " Couldn't start Inference: " + e.what());
   } catch (...) {

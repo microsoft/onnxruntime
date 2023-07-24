@@ -446,7 +446,7 @@ void VideoFrameToTensorConverter::ConvertDX12TextureToGPUTensor(
     command_list_->SetComputeRootDescriptorTable(2, uavHandle);
 
     UINT64 dispatchWidth = (inputDesc.Width - 1) / 16 + 1;
-    UINT64 dispatchHeight = (inputDesc.Height - 1) / 4 + 1;
+    UINT64 dispatchHeight = (static_cast<UINT64>(inputDesc.Height) - 1) / 4 + 1;
     command_list_->Dispatch(static_cast<uint32_t>(dispatchWidth), static_cast<uint32_t>(dispatchHeight), 1);
 
     WINML_THROW_IF_FAILED(command_list_->Close());

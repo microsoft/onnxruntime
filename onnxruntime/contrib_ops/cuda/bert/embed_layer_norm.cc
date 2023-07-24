@@ -66,7 +66,7 @@ Status EmbedLayerNorm<T>::ComputeInternal(OpKernelContext* context) const {
   return LaunchEmbedLayerNormKernel(
       Stream(context),
       output->MutableData<T>(),
-      mask_index->MutableData<int32_t>(),
+      nullptr == mask_index ? nullptr : mask_index->MutableData<int32_t>(),
       input_ids->Data<int32_t>(),
       nullptr == segment_ids ? nullptr : segment_ids->Data<int32_t>(),
       nullptr == mask ? nullptr : mask->Data<int32_t>(),

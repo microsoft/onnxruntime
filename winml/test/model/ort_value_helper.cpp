@@ -14,7 +14,7 @@ winml::ITensor CreateTensorFromShape(std::vector<int64_t>& shape)
   return tensor;
 }
 
-static int64_t ShapeSize(const int64_t* shape, size_t count) {
+static uint64_t ShapeSize(const int64_t* shape, size_t count) {
   // for each dim
   int64_t size = 1;
   for (size_t i = 0; i < count; i++) {
@@ -46,7 +46,7 @@ winml::ITensor CreateStringTensor(Ort::Value& val) {
   WINML_EXPECT_NO_THROW(val.GetStringTensorContent(buffer.get(), bufferLength, offsets.data(), offsets.size()));
 
    // now go build all the strings
-  for (auto i = 0; i < length; ++i) {
+  for (size_t i = 0; i < length; ++i) {
     size_t strLength = 0;
     // are we on the last one?
     if (i == (length - 1)) {

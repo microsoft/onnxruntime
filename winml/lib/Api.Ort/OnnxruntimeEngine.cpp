@@ -110,7 +110,7 @@ HRESULT OnnxruntimeValue::IsCpu(bool* out) {
   return S_OK;
 }
 
-static int64_t ShapeSize(const int64_t* shape, size_t count) {
+static uint64_t ShapeSize(const int64_t* shape, size_t count) {
   // for each dim
   int64_t size = 1;
   for (size_t i = 0; i < count; i++) {
@@ -151,7 +151,7 @@ static auto GetStrings(const OrtApi* ort_api, const OrtValue* ort_value,
                       ort_api);
 
   // now go build all the strings
-  for (auto i = 0; i < length; ++i) {
+  for (size_t i = 0; i < length; ++i) {
     size_t str_len = 0;
     // are we on the last one?
     if (i == (length - 1)) {
@@ -428,6 +428,17 @@ HRESULT OnnxruntimeEngine::RuntimeClassInitialize(OnnxruntimeEngineFactory* engi
   return S_OK;
 }
 
+OnnxruntimeEngine::~OnnxruntimeEngine() {
+  for (auto& handle : custom_op_library_handles_) {
+    FreeLibrary(reinterpret_cast<HMODULE>(handle));
+  }
+}
+
+HRESULT OnnxruntimeEngine::RegisterCustomOpLibraryHandles(const gsl::span<void*> handles) {
+  custom_op_library_handles_.insert(custom_op_library_handles_.end(), handles.begin(), handles.end());
+  return S_OK;
+}
+
 HRESULT OnnxruntimeEngine::LoadModel(_In_ IModel* model) {
   Microsoft::WRL::ComPtr<IOnnxruntimeModel> onnxruntime_model;
   RETURN_IF_FAILED(model->QueryInterface(IID_PPV_ARGS(&onnxruntime_model)));
@@ -553,6 +564,7 @@ OnnxruntimeEngineFactory* OnnxruntimeEngine::GetEngineFactory() {
 }
 
 HRESULT OnnxruntimeEngine::CreateTensorValueFromDefaultAllocator(const int64_t* shape, size_t count, winml::TensorKind kind, _Out_ IValue** out) {
+  *out = nullptr;
   auto ort_api = engine_factory_->UseOrtApi();
 
   OrtAllocator* ort_allocator;
@@ -583,7 +595,7 @@ HRESULT OnnxruntimeEngine::CreateTensorValue(const int64_t* shape, size_t count,
                           engine_factory_->UseOrtApi());
 
   OrtAllocator* ort_allocator;
-  RETURN_HR_IF_NOT_OK_MSG(winml_adapter_api->GetProviderAllocator(ort_provider, &ort_allocator),
+  RETURN_HR_IF_NOT_OK_MSG(winml_adapter_api->GetProviderAllocator(session_.get(), ort_provider, &ort_allocator),
                           engine_factory_->UseOrtApi());
 
   auto unique_allocator = UniqueOrtAllocator(

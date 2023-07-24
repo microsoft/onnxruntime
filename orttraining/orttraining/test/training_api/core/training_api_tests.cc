@@ -19,6 +19,7 @@
 #include "default_providers.h"
 
 using json = nlohmann::json;
+using namespace onnxruntime::training::api;
 
 namespace onnxruntime {
 namespace training {
@@ -27,6 +28,43 @@ namespace test {
 namespace {
 
 #define MODEL_FOLDER ORT_TSTR("testdata/training_api/")
+
+constexpr int64_t TOTAL_STEP_COUNT = 100;
+constexpr float INITIAL_LR = 1e-3f;
+
+/**
+ * @brief Create a Fake Optimizer Checkpoint State On CPU.
+ *
+ * @param named_parameters Parameter list
+ * @param momentum_keys Optimizer momentum keys.
+ * @param optimizer_checkpoint_state Used as output to store the state containing faked data.
+ * @return Status
+ */
+Status CreateFakeOptimizerCheckpointStateOnCPU(
+    const std::unordered_map<std::string, std::shared_ptr<Parameter>>& named_parameters,
+    const InlinedVector<std::string>& momentum_keys,
+    OptimizerCheckpointState& optimizer_checkpoint_state) {
+  auto& grouped_optimizer_states = optimizer_checkpoint_state.group_named_optimizer_states;
+  grouped_optimizer_states.insert({"group0", std::make_shared<GroupOptimizerState>()});
+  GroupOptimizerState& group_optimizer_state = *(grouped_optimizer_states["group0"]);
+
+  auto& param_named_optimizer_states = group_optimizer_state.param_named_optimizer_states;
+  for (auto& pair : named_parameters) {
+    if (pair.second->RequiresGrad()) {
+      param_named_optimizer_states.insert({pair.first, ParameterOptimizerState()});
+      ParameterOptimizerState& cur_param_optimizer_states = param_named_optimizer_states[pair.first];
+      for (auto& state_name : momentum_keys) {
+        OrtValue param_moment_state;
+        OrtValue param = pair.second->Data();
+        const auto& param_tensor = param.template Get<Tensor>();
+        GenerateRandomInput(param_tensor.Shape().GetDims(), param_moment_state);
+        cur_param_optimizer_states.insert({state_name, std::move(param_moment_state)});
+      }
+    }
+  }
+
+  return Status::OK();
+}
 
 void TestModuleExport(const std::vector<std::shared_ptr<IExecutionProvider>>& providers) {
   auto training_model_uri = MODEL_FOLDER "training_model.onnx";
@@ -91,88 +129,6 @@ void TestModuleExport(const std::vector<std::shared_ptr<IExecutionProvider>>& pr
   ASSERT_EQ(outputs.size(), 1U);
 }
 
-#if defined(USE_CUDA)
-
-constexpr int64_t total_step_count = 100;
-constexpr float initial_lr = 1e-3f;
-constexpr int64_t resume_step = total_step_count / 2;
-
-void CompareValue(float expected, float output, float rtol = 1e-4, float atol = 1e-5) {
-  ASSERT_NEAR(expected, output, atol);
-  ASSERT_NEAR(expected, output, rtol * std::abs(expected));
-}
-
-void TestLRSchduler(const std::basic_string<ORTCHAR_T>& test_file_name, float initial_lr, int64_t total_step_count,
-                    int64_t warmup_step_count) {
-  /// Load model and optimizer graph, create Module, Optimizer and LRScheduler instances.
-  auto model_uri = MODEL_FOLDER "training_model.onnx";
-  auto optim_uri = MODEL_FOLDER "adamw.onnx";
-
-  onnxruntime::training::api::CheckpointState state;
-  auto checkpoint_to_load_path = MODEL_FOLDER "checkpoint.ckpt";
-  ASSERT_STATUS_OK(LoadCheckpoint(checkpoint_to_load_path, state));
-
-  onnxruntime::SessionOptions session_option;
-  std::unique_ptr<Environment> env;
-  ASSERT_STATUS_OK(Environment::Create(nullptr, env));
-  const std::vector<std::shared_ptr<IExecutionProvider>> providers{onnxruntime::test::DefaultCudaExecutionProvider()};
-  auto model = std::make_unique<onnxruntime::training::api::Module>(
-      ToUTF8String(model_uri), &state,
-      session_option, *env, providers);
-  auto optim = std::make_shared<onnxruntime::training::api::Optimizer>(
-      ToUTF8String(optim_uri), &state, session_option,
-      *env, providers);
-
-  OrtValue input, target;
-  GenerateRandomInput(std::array<int64_t, 2>{2, 784}, input);
-  onnxruntime::test::CreateInputOrtValueOnCPU<int32_t>(
-      std::array<int64_t, 1>{2}, std::vector<int32_t>(2, 1), &target);
-
-  /// Load test data for learning rate schedulers.
-  auto data_uri = ORT_TSTR("testdata/test_data_generation/lr_scheduler/" + test_file_name);
-  std::ifstream in{data_uri};
-  // Element of vector represent a pair of <step_count, list of learning rates>>
-  typedef std::vector<std::pair<int64_t, std::vector<float>>> TestDataDictType;
-  TestDataDictType test_data;
-  const json j = json::parse(in);
-  j.get_to<TestDataDictType>(test_data);
-
-  int64_t resume_step = (*test_data.begin()).first;
-  ASSERT_EQ(total_step_count, static_cast<int64_t>(test_data.size()) + resume_step);
-
-  if (resume_step != 0) {
-    /// Reset optimizer states to match the initial state we want to test.
-    onnxruntime::training::api::OptimizerCheckpointState optimizer_checkpoint_states;
-    auto group_opt_state =
-        optimizer_checkpoint_states.group_named_optimizer_states["group0"] =
-            std::make_shared<onnxruntime::training::api::GroupOptimizerState>();
-    group_opt_state->step = resume_step;
-    group_opt_state->initial_lr = initial_lr;
-    ASSERT_STATUS_OK(optim->LoadStateDict(optimizer_checkpoint_states));
-  }
-
-  // KNOWN ISSUE: LinearLRScheduler by default use optim's states to calculate the first step's learning rate.
-  // If we restored it after creation, it will only affect the learning rate from the second step.
-  auto scheduler = std::make_unique<onnxruntime::training::api::LinearLRScheduler>(
-      optim, warmup_step_count, total_step_count);
-
-  for (auto it = test_data.begin(); it != test_data.end(); ++it) {
-    onnxruntime::training::api::OptimizerCheckpointState optimizer_states;
-    ASSERT_STATUS_OK(optim->GetStateDict(optimizer_states));
-    auto group_optimizer_state = optimizer_states.group_named_optimizer_states["group0"];
-    CompareValue(it->second[0], group_optimizer_state->learning_rate);
-    ASSERT_EQ(it->first, group_optimizer_state->step);
-
-    std::vector<OrtValue> inputs{input, target};
-    std::vector<OrtValue> fetches;
-    ASSERT_STATUS_OK(model->TrainStep(inputs, fetches));
-    ASSERT_STATUS_OK(optim->Step());
-    ASSERT_STATUS_OK(scheduler->Step());
-  }
-}
-
-#endif
-
 }  // namespace
 
 TEST(TrainingApiTest, ModuleParametersSize) {
@@ -219,13 +175,13 @@ TEST(TrainingApiTest, ModuleCopyBufferToParameters) {
   Tensor::InitOrtValue(DataTypeImpl::GetType<float>(),
                        {params_size},
                        reinterpret_cast<void*>(expected_param_buffer.data()),
-                       onnxruntime::test::TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault)->Info(),
+                       onnxruntime::test::TestCPUExecutionProvider()->CreatePreferredAllocators()[0]->Info(),
                        input_params, 0);
   ASSERT_STATUS_OK(model->CopyBufferToParameters(input_params));
 
   OrtValue output_params;
   Tensor::InitOrtValue(DataTypeImpl::GetType<float>(), {params_size},
-                       onnxruntime::test::TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault),
+                       onnxruntime::test::TestCPUExecutionProvider()->CreatePreferredAllocators()[0],
                        output_params);
   ASSERT_STATUS_OK(model->CopyParametersToBuffer(output_params));
 
@@ -271,12 +227,12 @@ TEST(TrainingApiTest, ModuleTrainStep) {
     bias_grad = bias_param->Gradient();
 
     if (step > 1) {
-      OrtValueToVec(bias_grad, current_bias_grad_vec);
+      CpuOrtValueToVec(bias_grad, current_bias_grad_vec);
       for (size_t i = 0; i < current_bias_grad_vec.size(); i++) {
         ASSERT_EQ(current_bias_grad_vec[i], single_bias_grad_vec[i] * step);
       }
     } else {
-      OrtValueToVec(bias_grad, single_bias_grad_vec);
+      CpuOrtValueToVec(bias_grad, single_bias_grad_vec);
     }
   }
   // reset grad
@@ -286,10 +242,180 @@ TEST(TrainingApiTest, ModuleTrainStep) {
   std::vector<OrtValue>& inputs = *data_loader.begin();
   std::vector<OrtValue> fetches;
   ASSERT_STATUS_OK(model->TrainStep(inputs, fetches));
-  OrtValueToVec(bias_grad, current_bias_grad_vec);
+  CpuOrtValueToVec(bias_grad, current_bias_grad_vec);
   for (size_t i = 0; i < current_bias_grad_vec.size(); i++) {
     ASSERT_EQ(current_bias_grad_vec[i], single_bias_grad_vec[i]);
   }
+}
+
+TEST(TrainingApiTest, OptimizerCreatedWithOptimizerCheckpointState) {
+  std::vector<bool> run_cuda_list{false};
+  // #ifdef USE_CUDA
+  //   run_cuda_list.push_back(true);
+  // #endif
+
+  for (auto run_cuda : run_cuda_list) {
+    std::vector<std::shared_ptr<IExecutionProvider>> providers;
+    if (run_cuda) {
+      providers = {onnxruntime::test::DefaultCudaExecutionProvider()};
+    } else {
+      providers = {onnxruntime::test::DefaultCpuExecutionProvider()};
+    }
+
+    auto model_uri = MODEL_FOLDER "training_model.onnx";
+    auto optim_uri = MODEL_FOLDER "adamw.onnx";
+
+    CheckpointState state;
+    auto checkpoint_to_load_path = MODEL_FOLDER "checkpoint.ckpt";
+    ASSERT_STATUS_OK(onnxruntime::training::api::LoadCheckpoint(checkpoint_to_load_path, state));
+
+    onnxruntime::SessionOptions session_option;
+    std::unique_ptr<Environment> env;
+
+    ASSERT_STATUS_OK(Environment::Create(nullptr, env));
+
+    std::shared_ptr<Module> model = std::make_shared<Module>(
+        ToUTF8String(model_uri), &state, session_option,
+        *env, providers);
+
+    // Load state dict from faked optimizer checkpoint state.
+    CheckpointState new_state = state;
+    OptimizerCheckpointState& external_optimizer_checkpoint_state = new_state.optimizer_checkpoint_state;
+    ASSERT_STATUS_OK(CreateFakeOptimizerCheckpointStateOnCPU(model->NamedParameters(),
+                                                             {"momentum0", "momentum1"},
+                                                             external_optimizer_checkpoint_state));
+    std::shared_ptr<Optimizer> optim = std::make_shared<Optimizer>(
+        ToUTF8String(optim_uri), &new_state, session_option, *env, providers);
+
+    ASSERT_TRUE(optim.get() != nullptr);
+  }
+}
+
+void TestLRSchduler(const std::basic_string<ORTCHAR_T>& test_file_name,
+                    float initial_lr,
+                    int64_t total_step_count,
+                    int64_t warmup_step_count) {
+  std::vector<bool> run_cuda_list{false};
+#ifdef USE_CUDA
+  run_cuda_list.push_back(true);
+#endif
+
+  for (auto run_cuda : run_cuda_list) {
+    std::vector<std::shared_ptr<IExecutionProvider>> providers;
+    if (run_cuda) {
+      providers = {onnxruntime::test::DefaultCudaExecutionProvider()};
+    } else {
+      providers = {onnxruntime::test::DefaultCpuExecutionProvider()};
+    }
+
+    auto model_uri = MODEL_FOLDER "training_model.onnx";
+    auto optim_uri = MODEL_FOLDER "adamw.onnx";
+
+    CheckpointState state;
+    auto checkpoint_to_load_path = MODEL_FOLDER "checkpoint.ckpt";
+    ASSERT_STATUS_OK(onnxruntime::training::api::LoadCheckpoint(checkpoint_to_load_path, state));
+
+    onnxruntime::SessionOptions session_option;
+    std::unique_ptr<Environment> env;
+
+    ASSERT_STATUS_OK(Environment::Create(nullptr, env));
+
+    std::shared_ptr<Module> model = std::make_shared<Module>(
+        ToUTF8String(model_uri), &state, session_option,
+        *env, providers);
+
+    OrtValue input, target;
+    GenerateRandomInput(std::array<int64_t, 2>{2, 784}, input);
+    onnxruntime::test::CreateInputOrtValueOnCPU<int32_t>(
+        std::array<int64_t, 1>{2}, std::vector<int32_t>(2, 1), &target);
+
+    /// Load test data for learning rate schedulers.
+    auto data_uri = ORT_TSTR("testdata/test_data_generation/lr_scheduler/" + test_file_name);
+    std::ifstream in{data_uri};
+    // Element of vector represent a pair of <step_count, list of learning rates>>
+    typedef std::vector<std::pair<int64_t, std::vector<float>>> TestDataDictType;
+    TestDataDictType test_data;
+    const json j = json::parse(in);
+    j.get_to<TestDataDictType>(test_data);
+
+    int64_t resume_step = (*test_data.begin()).first;
+    ASSERT_EQ(total_step_count, static_cast<int64_t>(test_data.size()) + resume_step);
+
+    if (resume_step != 0) {
+      state.optimizer_checkpoint_state.group_named_optimizer_states.insert(
+          {"group0", std::make_shared<GroupOptimizerState>()});
+      auto& group_opt_state = state.optimizer_checkpoint_state.group_named_optimizer_states["group0"];
+      /// Reset optimizer states to match the initial state we want to test.
+      group_opt_state->step = resume_step;
+      group_opt_state->initial_lr = initial_lr;
+    }
+
+    std::shared_ptr<Optimizer> optim = std::make_shared<Optimizer>(
+        ToUTF8String(optim_uri), &state, session_option,
+        *env, providers);
+
+    // KNOWN ISSUE: LinearLRScheduler by default use optim's states to calculate the first step's learning rate.
+    // If we restored it after creation, it will only affect the learning rate from the second step.
+    auto scheduler = std::make_unique<LinearLRScheduler>(
+        optim, warmup_step_count, total_step_count);
+
+    for (auto it = test_data.begin(); it != test_data.end(); ++it) {
+      OptimizerCheckpointState& optimizer_states = state.optimizer_checkpoint_state;
+      auto group_optimizer_state = optimizer_states.group_named_optimizer_states["group0"];
+
+      constexpr const float rtol = 1e-4f, atol = 1e-5f;
+      ASSERT_NEAR(it->second[0], group_optimizer_state->learning_rate, atol);
+      ASSERT_NEAR(it->second[0], group_optimizer_state->learning_rate, rtol * std::abs(it->second[0]));
+
+      ASSERT_EQ(it->first, group_optimizer_state->step);
+
+      std::vector<OrtValue> inputs{input, target};
+      std::vector<OrtValue> fetches;
+      ASSERT_STATUS_OK(model->TrainStep(inputs, fetches));
+      ASSERT_STATUS_OK(optim->Step());
+      ASSERT_STATUS_OK(scheduler->Step());
+    }
+  }
+}
+
+TEST(TrainingApiTest, LinearLRScheduler_NoWarmUp_Test) {
+  // No warm up.
+  TestLRSchduler(ORT_TSTR("warmup_linear_scheduler_warmupstep-0.json"), INITIAL_LR, TOTAL_STEP_COUNT, 0);
+}
+
+TEST(TrainingApiTest, LinearLRScheduler_NoWarmUp_ResumeFromCheckpoint_Test) {
+  // No warm up.
+  TestLRSchduler(ORT_TSTR("warmup_linear_scheduler_warmupstep-0_restored.json"), INITIAL_LR, TOTAL_STEP_COUNT, 0);
+}
+
+TEST(TrainingApiTest, LinearLRScheduler_WarmUp30Step_Test) {
+  // Warmp up completed before saving checkpoint.
+  TestLRSchduler(ORT_TSTR("warmup_linear_scheduler_warmupstep-30.json"), INITIAL_LR, TOTAL_STEP_COUNT, 30);
+}
+
+TEST(TrainingApiTest, LinearLRScheduler_WarmUp30Step_ResumeFromCheckpoint_Test) {
+  // Warmp up completed before saving checkpoint.
+  TestLRSchduler(ORT_TSTR("warmup_linear_scheduler_warmupstep-30_restored.json"), INITIAL_LR, TOTAL_STEP_COUNT, 30);
+}
+
+TEST(TrainingApiTest, LinearLRScheduler_WarmUp70Step_Test) {
+  // Warmp up completed after saving checkpoint.
+  TestLRSchduler(ORT_TSTR("warmup_linear_scheduler_warmupstep-70.json"), INITIAL_LR, TOTAL_STEP_COUNT, 70);
+}
+
+TEST(TrainingApiTest, LinearLRScheduler_WarmUp70Step_ResumeFromCheckpoint_Test) {
+  // Warmp up completed after saving checkpoint.
+  TestLRSchduler(ORT_TSTR("warmup_linear_scheduler_warmupstep-70_restored.json"), INITIAL_LR, TOTAL_STEP_COUNT, 70);
+}
+
+TEST(TrainingApiTest, LinearLRScheduler_WarmUp200Step_Test) {
+  // All steps are in warm-up phase.
+  TestLRSchduler(ORT_TSTR("warmup_linear_scheduler_warmupstep-200.json"), INITIAL_LR, TOTAL_STEP_COUNT, 200);
+}
+
+TEST(TrainingApiTest, LinearLRScheduler_WarmUp200Step_ResumeFromCheckpoint_Test) {
+  // All steps are in warm-up phase.
+  TestLRSchduler(ORT_TSTR("warmup_linear_scheduler_warmupstep-200_restored.json"), INITIAL_LR, TOTAL_STEP_COUNT, 200);
 }
 
 TEST(TrainingApiTest, ModuleExportModelForInferencingCPU) {
@@ -316,7 +442,6 @@ TEST(TrainingApiTest, OptimStep) {
   std::unique_ptr<Environment> env;
   std::vector<std::shared_ptr<IExecutionProvider>> providers{onnxruntime::test::DefaultCudaExecutionProvider()};
   std::shared_ptr<IExecutionProvider> cuda_provider = providers.front();
-  std::shared_ptr<IExecutionProvider> cpu_provider = onnxruntime::test::DefaultCpuExecutionProvider();
   ASSERT_STATUS_OK(Environment::Create(nullptr, env));
   auto model = std::make_unique<onnxruntime::training::api::Module>(
       ToUTF8String(model_uri), &state, session_option,
@@ -335,17 +460,15 @@ TEST(TrainingApiTest, OptimStep) {
   std::string param_name = "fc2.weight";
 
   // before training, check if optim state is initialized to 0
-  onnxruntime::training::api::OptimizerCheckpointState optimizer_states;
-  ASSERT_STATUS_OK(optim->GetStateDict(optimizer_states));
+  onnxruntime::training::api::OptimizerCheckpointState& optimizer_states = state.optimizer_checkpoint_state;
   onnxruntime::training::api::ParameterOptimizerState& param_state =
       optimizer_states.group_named_optimizer_states["group0"]->param_named_optimizer_states.at(param_name);
-  OrtValue& moment_1 = param_state.momentum_named_states.at("momentum0");
+  OrtValue& moment_1 = param_state.at("momentum0");
 
   std::vector<float> param_vec_before_optimizer_step;
-  CudaOrtValueToCpuVec(model->NamedParameters().at(param_name)->Data(), param_vec_before_optimizer_step,
-                       cuda_provider, cpu_provider);
+  CudaOrtValueToCpuVec(model->NamedParameters().at(param_name)->Data(), param_vec_before_optimizer_step);
   std::vector<float> moment_1_vec;
-  CudaOrtValueToCpuVec(moment_1, moment_1_vec, cuda_provider, cpu_provider);
+  CudaOrtValueToCpuVec(moment_1, moment_1_vec);
   for (size_t i = 0; i < moment_1_vec.size(); i++) {
     ASSERT_EQ(moment_1_vec[i], 0.0f);
   }
@@ -356,12 +479,11 @@ TEST(TrainingApiTest, OptimStep) {
     std::vector<OrtValue> fetches;
     ASSERT_STATUS_OK(model->TrainStep(inputs, fetches));
     std::vector<float> grads;
-    CudaOrtValueToCpuVec(model->NamedParameters().at(param_name)->Gradient(), grads,
-                         cuda_provider, cpu_provider);
+    CudaOrtValueToCpuVec(model->NamedParameters().at(param_name)->Gradient(), grads);
     ASSERT_STATUS_OK(optim->Step());
 
     // get optim state and check if it is updated
-    CudaOrtValueToCpuVec(moment_1, moment_1_vec, cuda_provider, cpu_provider);
+    CudaOrtValueToCpuVec(moment_1, moment_1_vec);
     for (size_t i = 0; i < moment_1_vec.size(); i++) {
       if (grads[i] != 0.0f) {
         ASSERT_NE(moment_1_vec[i], 0.0f);
@@ -369,54 +491,13 @@ TEST(TrainingApiTest, OptimStep) {
     }
 
     std::vector<float> param_vec_after_optimizer_step;
-    CudaOrtValueToCpuVec(model->NamedParameters().at(param_name)->Data(), param_vec_after_optimizer_step,
-                         cuda_provider, cpu_provider);
+    CudaOrtValueToCpuVec(model->NamedParameters().at(param_name)->Data(), param_vec_after_optimizer_step);
     for (size_t i = 0; i < param_vec_after_optimizer_step.size(); ++i) {
       if (grads[i] != 0.0f && moment_1_vec[i] != 0.0f) {
         ASSERT_NE(param_vec_after_optimizer_step[i], param_vec_before_optimizer_step[i]);
       }
     }
   }
-}
-
-TEST(TrainingApiTest, LinearLRScheduler_NoWarmUp_Test) {
-  // No warm up.
-  TestLRSchduler(ORT_TSTR("warmup_linear_scheduler_warmupstep-0.json"), initial_lr, total_step_count, 0);
-}
-
-TEST(TrainingApiTest, LinearLRScheduler_NoWarmUp_ResumeFromCheckpoint_Test) {
-  // No warm up.
-  TestLRSchduler(ORT_TSTR("warmup_linear_scheduler_warmupstep-0_restored.json"), initial_lr, total_step_count, 0);
-}
-
-TEST(TrainingApiTest, LinearLRScheduler_WarmUp30Step_Test) {
-  // Warmp up completed before saving checkpoint.
-  TestLRSchduler(ORT_TSTR("warmup_linear_scheduler_warmupstep-30.json"), initial_lr, total_step_count, 30);
-}
-
-TEST(TrainingApiTest, LinearLRScheduler_WarmUp30Step_ResumeFromCheckpoint_Test) {
-  // Warmp up completed before saving checkpoint.
-  TestLRSchduler(ORT_TSTR("warmup_linear_scheduler_warmupstep-30_restored.json"), initial_lr, total_step_count, 30);
-}
-
-TEST(TrainingApiTest, LinearLRScheduler_WarmUp70Step_Test) {
-  // Warmp up completed after saving checkpoint.
-  TestLRSchduler(ORT_TSTR("warmup_linear_scheduler_warmupstep-70.json"), initial_lr, total_step_count, 70);
-}
-
-TEST(TrainingApiTest, LinearLRScheduler_WarmUp70Step_ResumeFromCheckpoint_Test) {
-  // Warmp up completed after saving checkpoint.
-  TestLRSchduler(ORT_TSTR("warmup_linear_scheduler_warmupstep-70_restored.json"), initial_lr, total_step_count, 70);
-}
-
-TEST(TrainingApiTest, LinearLRScheduler_WarmUp200Step_Test) {
-  // All steps are in warm-up phase.
-  TestLRSchduler(ORT_TSTR("warmup_linear_scheduler_warmupstep-200.json"), initial_lr, total_step_count, 200);
-}
-
-TEST(TrainingApiTest, LinearLRScheduler_WarmUp200Step_ResumeFromCheckpoint_Test) {
-  // All steps are in warm-up phase.
-  TestLRSchduler(ORT_TSTR("warmup_linear_scheduler_warmupstep-200_restored.json"), initial_lr, total_step_count, 200);
 }
 
 #endif

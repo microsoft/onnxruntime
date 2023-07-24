@@ -16,6 +16,7 @@ CMake creates a target to this project
     <NugetExe Condition= " '$(NugetExe)' == '' ">nuget</NugetExe>
     <TargetArchitecture Condition=" '$(TargetArchitecture)' == '' ">x64</TargetArchitecture>
     <IsReleaseBuild Condition=" '$(IsReleaseBuild)' == '' ">false</IsReleaseBuild>
+    <ReleaseVersionSuffix></ReleaseVersionSuffix>
     <IsLinuxBuild Condition=" '$(IsLinuxBuild)' == '' ">false</IsLinuxBuild>
     <ExecutionProvider Condition=" '$(ExecutionProvider)' == '' ">None</ExecutionProvider>
 
@@ -77,6 +78,7 @@ CMake creates a target to this project
       <CurrentDate>$([System.DateTime]::UtcNow.ToString(yyyyMMdd))</CurrentDate>
       <CurrentTime>$([System.DateTime]::UtcNow.ToString(hhmm))</CurrentTime>
       <PackageVersion>@(MajorVersionNumber)</PackageVersion>
+      <PackageVersion>$(PackageVersion)$(ReleaseVersionSuffix)</PackageVersion>
       <Version>$(PackageVersion)</Version>
       <PackageVersion Condition="'$(IsReleaseBuild)'!='True'">$(PackageVersion)-dev-$(CurrentDate)-$(CurrentTime)-$(GitCommitHashShort)</PackageVersion>
     </PropertyGroup>

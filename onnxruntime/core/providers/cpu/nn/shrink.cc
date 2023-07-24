@@ -55,18 +55,18 @@ Status ShrinkImpl(const Tensor* input, Tensor* output, float bias, float lambd) 
 
 template <>
 Status ShrinkImpl<MLFloat16>(const Tensor* input, Tensor* output, float bias, float lambd) {
-  const auto& span = gsl::make_span(input->Data<MLFloat16>(), onnxruntime::narrow<size_t>(input->Shape().Size()));
+  const auto span = input->DataAsSpan<MLFloat16>();
   auto* output_data = output->MutableData<MLFloat16>();
   std::transform(span.begin(), span.end(), output_data, [bias, lambd](const MLFloat16& val) {
-    float fl = math::halfToFloat(val.val);
-    return MLFloat16(math::floatToHalf(ShrinkCore<float>(fl, bias, lambd)));
+    float fl = val.ToFloat();
+    return MLFloat16(ShrinkCore<float>(fl, bias, lambd));
   });
   return Status::OK();
 }
 
 template <>
 Status ShrinkImpl<BFloat16>(const Tensor* input, Tensor* output, float bias, float lambd) {
-  const auto& span = gsl::make_span(input->Data<BFloat16>(), onnxruntime::narrow<size_t>(input->Shape().Size()));
+  const auto span = input->DataAsSpan<BFloat16>();
   auto* output_data = output->MutableData<BFloat16>();
   std::transform(span.begin(), span.end(), output_data, [bias, lambd](const BFloat16& val) {
     float fl = val.ToFloat();

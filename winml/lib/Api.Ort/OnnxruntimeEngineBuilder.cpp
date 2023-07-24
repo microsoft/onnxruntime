@@ -20,6 +20,7 @@ HRESULT OnnxruntimeEngineBuilder::RuntimeClassInitialize(_In_ OnnxruntimeEngineF
 }
 
 STDMETHODIMP OnnxruntimeEngineBuilder::CreateEngine(_Outptr_ _winml::IEngine** out) {
+  *out = nullptr;
   auto ort_api = engine_factory_->UseOrtApi();
 
   Microsoft::WRL::ComPtr<IOrtSessionBuilder> onnxruntime_session_builder;
@@ -53,7 +54,16 @@ STDMETHODIMP OnnxruntimeEngineBuilder::CreateEngine(_Outptr_ _winml::IEngine** o
   }
 
   if (!allow_thread_spinning_) {
-    ort_api->AddSessionConfigEntry(session_options.get(), "session.intra_op.allow_spinning", "0");
+    RETURN_HR_IF_NOT_OK_MSG(ort_api->AddSessionConfigEntry(session_options.get(), "session.intra_op.allow_spinning", "0"),
+                            ort_api);
+  }
+
+  std::vector<void*> handles;
+  for (const auto& path : custom_ops_lib_paths_) {
+    void* handle = nullptr;
+    RETURN_HR_IF_NOT_OK_MSG(ort_api->RegisterCustomOpsLibrary(session_options.get(), path.c_str(), &handle),
+                            ort_api);
+    handles.push_back(handle);
   }
 
   OrtThreadPool* inter_op_ort_pool = thread_pool_ ? static_cast<OnnxruntimeThreading*>(thread_pool_.Get())->UseInterOpThreadPool() : nullptr;
@@ -66,6 +76,7 @@ STDMETHODIMP OnnxruntimeEngineBuilder::CreateEngine(_Outptr_ _winml::IEngine** o
   Microsoft::WRL::ComPtr<OnnxruntimeEngine> onnxruntime_engine;
   RETURN_IF_FAILED(Microsoft::WRL::MakeAndInitialize<OnnxruntimeEngine>(&onnxruntime_engine,
                                                                         engine_factory_.Get(), std::move(session), onnxruntime_session_builder.Get()));
+  RETURN_IF_FAILED(onnxruntime_engine->RegisterCustomOpLibraryHandles(handles));
   RETURN_IF_FAILED(onnxruntime_engine.CopyTo(out));
   return S_OK;
 }
@@ -100,9 +111,14 @@ STDMETHODIMP OnnxruntimeEngineBuilder::SetNamedDimensionOverrides(wfc::IMapView<
   named_dimension_overrides_ = std::move(named_dimension_overrides);
   return S_OK;
 }
-  
+
 STDMETHODIMP OnnxruntimeEngineBuilder::SetIntraOpNumThreadsOverride(uint32_t intra_op_num_threads) {
   intra_op_num_threads_override_ = intra_op_num_threads;
+  return S_OK;
+}
+
+STDMETHODIMP OnnxruntimeEngineBuilder::RegisterCustomOpsLibrary(const char* path) {
+  custom_ops_lib_paths_.push_back(path);
   return S_OK;
 }
 

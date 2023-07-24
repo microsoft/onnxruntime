@@ -13,7 +13,7 @@ import numpy
 import onnx
 from onnx import TensorProto, helper, numpy_helper
 
-from onnxruntime.quantization.quant_utils import compute_scale_zp, load_model, model_has_infer_metadata
+from onnxruntime.quantization.quant_utils import compute_scale_zp, load_model_with_shape_infer, model_has_infer_metadata
 
 
 class TestQuantUtil(unittest.TestCase):
@@ -61,7 +61,7 @@ class TestQuantUtil(unittest.TestCase):
             self.assertFalse(model_has_infer_metadata(model))
             model_file_path = temp_dir + "/test_load_external_model.onnx"
             onnx.save(model, model_file_path, save_as_external_data=True)
-            model_reloaded = load_model(Path(model_file_path), False)
+            model_reloaded = load_model_with_shape_infer(Path(model_file_path))
             self.assertTrue(model_has_infer_metadata(model_reloaded))
 
 

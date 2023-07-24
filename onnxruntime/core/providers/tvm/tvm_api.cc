@@ -17,6 +17,7 @@
 
 #include "core/common/common.h"
 #include "core/common/path.h"
+#include "core/common/gsl.h"
 
 #include "tvm_api.h"
 
@@ -225,7 +226,7 @@ void TVM_VM_SetInputs(TvmModule& mod,
 
   TvmPackedFunc set_input = mod.GetFunction("set_input", false);
   ::tvm::runtime::TVMRetValue rv;
-  set_input.CallPacked(::tvm::runtime::TVMArgs(tvm_values.data(), tvm_type_codes.data(), int(num_total_args)), &rv);
+  set_input.CallPacked(::tvm::runtime::TVMArgs(tvm_values.data(), tvm_type_codes.data(), gsl::narrow_cast<int>(num_total_args)), &rv);
 }
 
 void TVMSetOutputsZeroCopy(TvmModule& mod,
@@ -250,7 +251,7 @@ void TVM_VM_SetOutputsZeroCopy(TvmModule& mod,
 
   TvmPackedFunc set_output = mod.GetFunction("set_outputs", false);
   tvm_rt::TVMRetValue rv;
-  set_output.CallPacked(tvm_rt::TVMArgs(tvm_values.data(), tvm_type_codes.data(), num_total_args), &rv);
+  set_output.CallPacked(tvm_rt::TVMArgs(tvm_values.data(), tvm_type_codes.data(), gsl::narrow_cast<int>(num_total_args)), &rv);
 }
 
 void TVMGetOutputs(TvmModule& mod,

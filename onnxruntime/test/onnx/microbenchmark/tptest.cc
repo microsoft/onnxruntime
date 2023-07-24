@@ -30,7 +30,7 @@ BENCHMARK(BM_CreateThreadPool)
 // On Xeon W-2123 CPU, it takes about 2ns for each iteration
 #ifdef _WIN32
 #pragma optimize("", off)
-#else
+#elif defined(__GNUC__) && !defined(__clang__)
 #pragma GCC push_options
 #pragma GCC optimize("O0")
 #endif
@@ -42,7 +42,7 @@ void SimpleForLoop(ptrdiff_t first, ptrdiff_t last) {
 }
 #ifdef _WIN32
 #pragma optimize("", on)
-#else
+#elif defined(__GNUC__) && !defined(__clang__)
 #pragma GCC pop_options
 #endif
 

@@ -6,7 +6,7 @@ ARG LD_LIBRARY_PATH_ARG=
 ARG PREPEND_PATH=
 
 FROM $BASEIMAGE AS base_image
-ARG ROCM_VERSION=5.3.2
+ARG ROCM_VERSION=5.5
 
 # Enable epel-release repositories
 RUN yum --enablerepo=extras install -y epel-release
@@ -15,11 +15,7 @@ RUN yum --enablerepo=extras install -y epel-release
 RUN yum clean all
 RUN echo -e "[ROCm]\nname=ROCm\nbaseurl=https://repo.radeon.com/rocm/yum/$ROCM_VERSION/main\nenabled=1\ngpgcheck=0" >> /etc/yum.repos.d/rocm.repo
 
-# After ROCm5.2.3, amdgpu_version use the same version as rocm_version
-RUN if [ "$ROCM_VERSION" = "5.2.3" ] ; \
-         then echo -e "[amdgpu]\nname=amdgpu\nbaseurl=https://repo.radeon.com/amdgpu/22.20.3/rhel/7.9/main/x86_64\nenabled=1\ngpgcheck=0" >> /etc/yum.repos.d/amdgpu.repo; \
-         else echo -e "[amdgpu]\nname=amdgpu\nbaseurl=https://repo.radeon.com/amdgpu/$ROCM_VERSION/rhel/7.9/main/x86_64\nenabled=1\ngpgcheck=0" >> /etc/yum.repos.d/amdgpu.repo; \
-    fi
+RUN echo -e "[amdgpu]\nname=amdgpu\nbaseurl=https://repo.radeon.com/amdgpu/$ROCM_VERSION/rhel/7.9/main/x86_64\nenabled=1\ngpgcheck=0" >> /etc/yum.repos.d/amdgpu.repo
 
 RUN yum install -y rocm-dev
 
@@ -41,7 +37,7 @@ RUN yum install -y hipify-clang
 
 # CMake
 RUN yum -y install wget
-ENV CMAKE_VERSION=3.24.3
+ENV CMAKE_VERSION=3.26.3
 RUN cd /usr/local && \
     wget -q -O - https://github.com/Kitware/CMake/releases/download/v${CMAKE_VERSION}/cmake-${CMAKE_VERSION}-Linux-x86_64.tar.gz | tar zxf -
 ENV PATH=/usr/local/cmake-${CMAKE_VERSION}-linux-x86_64/bin:${PATH}

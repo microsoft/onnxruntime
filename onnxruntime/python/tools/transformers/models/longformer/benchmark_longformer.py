@@ -645,7 +645,7 @@ def run_tests(
 
                         args = parse_arguments(f"{arguments} -t {test_times}".split(" "))
                         latency_results = launch_test(args)
-                    except KeyboardInterrupt as exc:
+                    except KeyboardInterrupt as exc:  # noqa: PERF203
                         raise RuntimeError("Keyboard Interrupted") from exc
                     except Exception:
                         traceback.print_exc()
@@ -687,7 +687,7 @@ def output_summary(results, csv_filename, data_field="average_latency_ms"):
         data_names = []
         for sequence_length in sequence_lengths:
             for batch_size in batch_sizes:
-                data_names.append(f"b{batch_size}_s{sequence_length}")
+                data_names.append(f"b{batch_size}_s{sequence_length}")  # noqa: PERF401
 
         csv_writer = csv.DictWriter(csv_file, fieldnames=header_names + data_names)
         csv_writer.writeheader()

@@ -4,6 +4,7 @@
 #pragma once
 
 #include <sstream>
+#include "core/common/hash_combine.h"
 
 // Struct to represent a physical device.
 struct OrtDevice {
@@ -54,15 +55,33 @@ struct OrtDevice {
     return ostr.str();
   }
 
+  // This is to make OrtDevice a valid key in hash tables
+  size_t Hash() const {
+    auto h = std::hash<int>()(device_type);
+    onnxruntime::HashCombine(memory_type, h);
+    onnxruntime::HashCombine(device_id, h);
+    return h;
+  }
+
+  // To make OrtDevice become a valid key in std map
+  bool operator<(const OrtDevice& other) const {
+    if (device_type != other.device_type)
+      return device_type < other.device_type;
+    if (memory_type != other.memory_type)
+      return memory_type < other.memory_type;
+
+    return device_id < other.device_id;
+  }
+
  private:
   // Device type.
-  DeviceType device_type;
+  int32_t device_type : 8;
 
   // Memory type.
-  MemoryType memory_type;
+  int32_t memory_type : 8;
 
   // Device index.
-  DeviceId device_id;
+  int32_t device_id : 16;
 };
 
 inline bool operator==(const OrtDevice& left, const OrtDevice& other) {
@@ -72,3 +91,12 @@ inline bool operator==(const OrtDevice& left, const OrtDevice& other) {
 inline bool operator!=(const OrtDevice& left, const OrtDevice& other) {
   return !(left == other);
 }
+
+namespace std {
+template <>
+struct hash<OrtDevice> {
+  size_t operator()(const OrtDevice& i) const {
+    return i.Hash();
+  }
+};
+}  // namespace std

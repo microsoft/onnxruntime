@@ -5,7 +5,7 @@
 
 module.exports = {
   root: true,
-  ignorePatterns: ['**/*.js', 'node_modules/', 'types/', 'dist/'],
+  ignorePatterns: ['**/*.js', 'ort-schema/', 'node_modules/', 'types/', 'dist/'],
   env: { 'es6': true },
   parser: '@typescript-eslint/parser',
   parserOptions: { 'project': 'tsconfig.json', 'sourceType': 'module' },
@@ -181,6 +181,12 @@ module.exports = {
     files: ['scripts/**/*.ts'], rules: {
       'import/no-extraneous-dependencies': 'off',
       'no-console': 'off'
+    }
+  }, {
+    files: ['web/lib/**/3rd-party/**/*.ts'], rules: {
+      'header/header': 'off',
+      'unicorn/filename-case': 'off',
+      '@typescript-eslint/explicit-module-boundary-types': 'off',
     }
   }],
   extends: [

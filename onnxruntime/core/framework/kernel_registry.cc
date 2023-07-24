@@ -116,35 +116,41 @@ bool MatchKernelDefTypes(const std::unordered_map<std::string, std::vector<MLDat
 }
 }  // namespace
 
-bool KernelRegistry::VerifyKernelDef(const Node& node,
-                                     const KernelDef& kernel_def,
-                                     const IKernelTypeStrResolver* kernel_type_str_resolver,
-                                     const TypeConstraintMap* type_constraint_values,
-                                     std::string& error_str) {
+static bool VerifyVersion(int since_ver, const KernelDef& kernel_def, std::string& error_str) {
   // check if version matches
-  int node_version = node.SinceVersion();
   int kernel_start_version;
   int kernel_end_version;
   kernel_def.SinceVersion(&kernel_start_version, &kernel_end_version);
 
   bool valid_version =
       // exact match. typical usage.
-      kernel_start_version == node_version ||
+      kernel_start_version == since_ver ||
       // allow match if the kernel def has an end version. if it does not, all we know is that the kernel supported
       // the start version when it was created, and not whether a new version of the operator was added since then
       // that the kernel doesn't support.
       (kernel_end_version != INT_MAX &&
-       kernel_start_version <= node_version && kernel_end_version >= node_version);
+       kernel_start_version <= since_ver && kernel_end_version >= since_ver);
 
   if (!valid_version) {
     std::ostringstream ostr;
-    ostr << "Op with name (" << node.Name() << ")"
-         << " and type (" << node.OpType() << ")"
-         << " Version mismatch."
-         << " node_version: " << node_version
+    ostr << " Version mismatch."
+         << " node_version: " << since_ver
          << " kernel start version: " << kernel_start_version
          << " kernel_end_version: " << kernel_end_version;
     error_str = ostr.str();
+  }
+  return valid_version;
+}
+
+bool KernelRegistry::VerifyKernelDef(const Node& node,
+                                     const KernelDef& kernel_def,
+                                     const IKernelTypeStrResolver* kernel_type_str_resolver,
+                                     const TypeConstraintMap* type_constraint_values,
+                                     std::string& error_str) {
+  // check if version matches
+  bool valid_version = VerifyVersion(node.SinceVersion(), kernel_def, error_str);
+
+  if (!valid_version) {
     return false;
   }
 
@@ -157,12 +163,9 @@ bool KernelRegistry::VerifyKernelDef(const Node& node,
 
   if (!matched) {
     std::ostringstream ostr;
-    ostr << "Found kernel for Op with name (" << node.Name() << ")"
-         << " and type (" << node.OpType() << ")"
+    ostr << "Kernel found kernel"
          << " in the supported version range"
-         << " (node_version: " << node_version
-         << " kernel start version: " << kernel_start_version
-         << " kernel_end_version: " << kernel_end_version << ")."
+         << " (node_version: " << node.SinceVersion() << ")."
          << " However the types are incompatible. " << mismatch_reason;
     error_str = ostr.str();
   }
@@ -203,6 +206,7 @@ Status KernelRegistry::TryFindKernelImpl(const Node& node,
   if (!verify_kernel_def_error_strs.empty()) {
     std::ostringstream oss;
     oss << "Op with name (" << node.Name() << ")"
+        << " domain (" << node.Domain() << ")"
         << " and type (" << node.OpType() << ")"
         << " kernel is not supported in " << expected_provider << "."
         << " Encountered following errors: (";
@@ -227,6 +231,68 @@ Status KernelRegistry::TryFindKernel(const Node& node, ProviderType exec_provide
                                      const TypeConstraintMap& type_constraints,
                                      const KernelCreateInfo** out) const {
   return TryFindKernelImpl(node, exec_provider, nullptr, &type_constraints, out);
+}
+
+static bool KernelDefCompatible(int version, const KernelDef& kernel_def,
+                                const KernelRegistry::TypeConstraintMap& type_constraint_values,
+                                std::string& error_str) {
+  if (!VerifyVersion(version, kernel_def, error_str)) {
+    return false;
+  }
+
+  const auto& kernel_type_constraints = kernel_def.TypeConstraints();
+  bool matched = MatchKernelDefTypes(kernel_type_constraints, type_constraint_values);
+
+  if (!matched) {
+    std::ostringstream ostr;
+    ostr << "Kernel found kernel"
+         << " in the supported version range"
+         << " (node_version: " << version << ")."
+         << " However the types are incompatible.";
+    error_str = ostr.str();
+  }
+
+  return matched;
+}
+
+Status KernelRegistry::TryFindKernel(ProviderType exec_provider,
+                                     std::string_view op_type,
+                                     std::string_view domain,
+                                     int version,
+                                     const KernelRegistry::TypeConstraintMap& type_constraints,
+                                     const KernelCreateInfo** out) const {
+  auto range = kernel_creator_fn_map_.equal_range(GetMapKey(op_type, domain, exec_provider));
+  if (out) *out = nullptr;
+
+  std::vector<std::string> verify_kernel_def_error_strs;
+
+  for (auto i = range.first; i != range.second; ++i) {
+    std::string error_str;
+    if (KernelDefCompatible(version, *i->second.kernel_def, type_constraints, error_str)) {
+      if (out) {
+        *out = &i->second;
+      }
+      return Status::OK();
+    }
+
+    verify_kernel_def_error_strs.push_back(error_str);
+  }
+
+  if (!verify_kernel_def_error_strs.empty()) {
+    std::ostringstream oss;
+    oss << "Op type (" << op_type << ")"
+        << " domain (" << domain << ")"
+        << " kernel is not supported in " << exec_provider << "."
+        << " Encountered following errors: (";
+    std::copy(verify_kernel_def_error_strs.begin(), verify_kernel_def_error_strs.end(),
+              std::ostream_iterator<std::string>(oss, "\n"));
+    oss << ")";
+
+    VLOGS_DEFAULT(2) << "TryFindKernel failed, Reason: " << oss.str();
+    return Status(common::ONNXRUNTIME, common::FAIL, oss.str());
+  }
+
+  return Status(common::ONNXRUNTIME, common::FAIL, "Kernel not found");
 }
 
 Status KernelRegistry::Register(KernelDefBuilder& kernel_builder,

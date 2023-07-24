@@ -3,7 +3,7 @@
 
 // The optimization here ideally applies to both training and inference,
 // while so far we mainly validate training during cooking the optimization.
-#ifdef ENABLE_TRAINING_CORE
+#ifdef ENABLE_TRAINING
 #pragma once
 
 #include "core/optimizer/compute_optimizer/shared_utils.h"

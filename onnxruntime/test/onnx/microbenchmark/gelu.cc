@@ -137,10 +137,9 @@ static void BM_ScaledTanhParallelFor(benchmark::State& state) {
   std::unique_ptr<concurrency::ThreadPool> tp(
       concurrency::CreateThreadPool(&onnxruntime::Env::Default(), tpo, concurrency::ThreadPoolType::INTRA_OP));
   const float alpha_ = 0.3f;
-  const float beta_ = 0.6f;
   for (auto _ : state) {
     ThreadPool::TryParallelFor(tp.get(), batch_size, cost,
-                               [alpha_, beta_, data, output](ptrdiff_t first, ptrdiff_t last) {
+                               [alpha_, data, output](ptrdiff_t first, ptrdiff_t last) {
                                  ptrdiff_t len = last - first;
                                  float* output_ptr = output + first;
                                  onnxruntime::ConstEigenVectorArrayMap<float> xm(data + first, len);

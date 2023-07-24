@@ -40,7 +40,7 @@ public:
             {
                 const uint32_t onnxDimCount = gsl::narrow_cast<uint32_t>(kernelCreationContext.GetTensorShapeDescription().GetInputTensorShape(0).size());
                 int axis = HandleNegativeAxis(kernelCreationContext.GetOptionalAttribute<int>(AttrName::Axis, 1), onnxDimCount);
-                std::vector<int32_t> onnxAxes(onnxDimCount - axis);
+                std::vector<int32_t> onnxAxes(static_cast<uint64_t>(onnxDimCount) - axis);
                 std::iota(onnxAxes.begin(), onnxAxes.end(), static_cast<int32_t>(axis));
 
                 dmlAxes.resize(onnxDimCount - axis);

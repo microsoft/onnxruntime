@@ -47,7 +47,7 @@ file(GLOB onnxruntime4j_native_src
     "${JAVA_ROOT}/src/main/native/*.c"
     "${JAVA_ROOT}/src/main/native/*.h"
     "${REPO_ROOT}/include/onnxruntime/core/session/*.h"
-    "${REPO_ROOT}/orttraining/orttraining/training_api/include/onnxruntime_training_c_api.h"
+    "${REPO_ROOT}/orttraining/orttraining/training_api/include/*.h"
     )
 # Build the JNI library
 onnxruntime_add_shared_library_module(onnxruntime4j_jni ${onnxruntime4j_native_src})
@@ -193,7 +193,7 @@ endif()
 # Append relevant native build flags to gradle command
 set(GRADLE_ARGS ${GRADLE_ARGS} ${ORT_PROVIDER_FLAGS})
 if (onnxruntime_ENABLE_TRAINING_APIS)
-    set(GRADLE_ARGS ${GRADLE_ARGS} "-DENABLE_TRAINING=1")
+    set(GRADLE_ARGS ${GRADLE_ARGS} "-DENABLE_TRAINING_APIS=1")
 endif()
 
 message(STATUS "GRADLE_ARGS: ${GRADLE_ARGS}")
@@ -208,6 +208,7 @@ if (CMAKE_SYSTEM_NAME STREQUAL "Android")
   # Copy onnxruntime.so and onnxruntime4j_jni.so for building Android AAR package
   add_custom_command(TARGET onnxruntime4j_jni POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:onnxruntime> ${ANDROID_PACKAGE_ABI_DIR}/$<TARGET_LINKER_FILE_NAME:onnxruntime>)
   add_custom_command(TARGET onnxruntime4j_jni POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:onnxruntime4j_jni> ${ANDROID_PACKAGE_ABI_DIR}/$<TARGET_LINKER_FILE_NAME:onnxruntime4j_jni>)
+
   # Generate the Android AAR package
   add_custom_command(TARGET onnxruntime4j_jni
     POST_BUILD
@@ -217,6 +218,7 @@ if (CMAKE_SYSTEM_NAME STREQUAL "Android")
       -b build-android.gradle -c settings-android.gradle
       -DjniLibsDir=${ANDROID_PACKAGE_JNILIBS_DIR} -DbuildDir=${ANDROID_PACKAGE_OUTPUT_DIR}
       -DminSdkVer=${ANDROID_MIN_SDK} -DheadersDir=${ANDROID_HEADERS_DIR}
+      $<$<BOOL:${onnxruntime_ENABLE_TRAINING_APIS}>:-DENABLE_TRAINING_APIS=1>
       --stacktrace
     WORKING_DIRECTORY ${JAVA_ROOT})
 
