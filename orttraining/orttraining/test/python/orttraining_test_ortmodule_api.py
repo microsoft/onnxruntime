@@ -6089,9 +6089,11 @@ def test_cache_exported_model():
     cache_dir = root_dir / os.environ["ORTMODULE_CACHE_DIR"]
 
     assert len(os.listdir(cache_dir)) == 1
+    assert os.listdir(cache_dir)[0] == f"{os.environ['ORTMODULE_CACHE_PREFIX']}_ort_cached_model_0.onnx"
 
     _ = onnx.load(str(cache_dir / os.listdir(cache_dir)[0]))
 
     shutil.rmtree(cache_dir)
     del os.environ["ORTMODULE_CACHE_DIR"]
     del os.environ["ORTMODULE_CACHE_PREFIX"]
+    
