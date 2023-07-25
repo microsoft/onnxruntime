@@ -67,7 +67,7 @@ const createGatherProgramInfo =
   @group(0) @binding(1) var<storage, read> inputIndices : array<i32>;
   @group(0) @binding(2) var<storage, read_write> output: array<u32>;
 
-  ${shaderHelper.mainStart(totalGathers * 10)}
+  ${shaderHelper.mainStart()}
     let batch: u32 = global_idx / N;
     let i: u32 = global_idx % N;
 
@@ -96,7 +96,7 @@ const createGatherProgramInfo =
                 {dims: outputShape, dataType: inputs[0].dataType, gpuDataType: GpuDataType.default},
             ],
             getShaderSource,
-            dispatchGroup: () => ({x: Math.ceil( 1 /* workgroup size */)})
+            dispatchGroup: () => ({x: Math.ceil( totalGathers / 64 /* workgroup size */)})
         };
     };
 
