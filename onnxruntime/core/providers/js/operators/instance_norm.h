@@ -8,19 +8,20 @@
 namespace onnxruntime {
 namespace js {
 
+template <bool is_channels_last>
 class InstanceNorm : public JsKernel {
  public:
   InstanceNorm(const OpKernelInfo& info) : JsKernel(info) {
-    ORT_ENFORCE(info.GetAttr<float>("epsilon", &epsilon_).IsOK());
+    float epsilon_ = info.GetAttrOrDefault<float>("epsilon", 1e-05);
+    int64_t channels_last = is_channels_last ? 1 : info.GetAttrOrDefault<int64_t>("channels_last", 0);
 
     JSEP_INIT_KERNEL_ATTRIBUTE(InstanceNormalization, ({
                                  "epsilon" : $1,
+                                 "format" : $2 ? "NHWC" : "NCHW",
                                }),
-                               static_cast<float>(epsilon_));
+                               static_cast<float>(epsilon_),
+                               static_cast<int32_t>(channels_last));
   }
-
- private:
-  float epsilon_;
 };
 
 }  // namespace js
