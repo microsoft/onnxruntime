@@ -145,56 +145,50 @@ bool QNNExecutionProvider::IsNodeSupported(qnn::QnnModelWrapper& qnn_model_wrapp
   if (it != node_unit_supported_result.cend()) {
     return it->second;
   } else {
-    // quantized required, filter out the non-quantized nodes, filter in the QDQ nodes
-    auto IsQdqNode = [](const NodeUnit& node_unit) {
-      if ("QuantizeLinear" == node_unit.OpType() || "DequantizeLinear" == node_unit.OpType()) {
-        return true;
-      } else {
-        return false;
-      }
-    };
+    const std::string& op_type = node_unit.OpType();
+    const bool is_qdq_node = op_type == "QuantizeLinear" || op_type == "DequantizeLinear";
 
     // Is NPU backend, is single node, case by case
     // Q/DQ nodes -- supported
     // Transpose nodes -- supported
     // Cast nodes -- need to call CastOpBuilder::IsOpSupported
     if (is_npu_backend && NodeUnit::Type::SingleNode == node_unit.UnitType()) {
-      if (IsQdqNode(node_unit)) {  // Qnn has Quantize & Dequantize Op
+      if (is_qdq_node) {  // Qnn has Quantize & Dequantize Op
         LOGS(logger, VERBOSE) << "Single Q/DQ node is supported for NPU backend. Node name: " << node_unit.Name();
         return true;
       }
 
       // Tranpose only changes the data layout. NPU still supports it.
-      if ("Transpose" == node_unit.OpType()) {
+      if ("Transpose" == op_type) {
         LOGS(logger, VERBOSE) << "Single Transpose node is supported for NPU backend. Node name: " << node_unit.Name();
         return true;
       }
 
-      // For Cast, need to call IsOpSupported (below) to validate input and output types.
+      // For Cast, And, and Or, we need to call IsOpSupported (below) to validate input and output types.
       // For other single non-qdq nodes, immediately return not supported.
-      if (node_unit.OpType() != "Cast") {
+      if (op_type != "Cast" && op_type != "And" && op_type != "Or") {
         LOGS(logger, VERBOSE) << "Non-QDQ single node is not supported for NPU backend. Node name: " << node_unit.Name()
-                              << " Op type: " << node_unit.OpType();
+                              << " Op type: " << op_type;
         return false;
       }
     }
 
     // Non-NPU backend, quantized model not supported, but a QDQ node encountered
-    if (!is_npu_backend && IsQdqNode(node_unit)) {
+    if (!is_npu_backend && is_qdq_node) {
       LOGS(logger, ERROR) << "There's no reason to run a QDQ model on non HTP/DSP backend!";
       return false;
     }
 
     bool supported = false;
-    const auto* op_builder = qnn::GetOpBuilder(node_unit.OpType());
+    const auto* op_builder = qnn::GetOpBuilder(op_type);
     if (op_builder == nullptr) {
-      LOGS(logger, VERBOSE) << "Op not implemented in QNN EP. Op type: " << node_unit.OpType();
+      LOGS(logger, VERBOSE) << "Op not implemented in QNN EP. Op type: " << op_type;
     } else {
       auto status = op_builder->IsOpSupported(qnn_model_wrapper,
                                               node_unit, logger,
                                               is_npu_backend);
       if (Status::OK() != status) {
-        LOGS(logger, VERBOSE) << "Op type: " << node_unit.OpType()
+        LOGS(logger, VERBOSE) << "Op type: " << op_type
                               << ", not supported: " << status.ErrorMessage();
       }
       supported = (Status::OK() == status);

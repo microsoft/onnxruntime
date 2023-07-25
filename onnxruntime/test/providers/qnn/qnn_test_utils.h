@@ -164,6 +164,31 @@ inline NodeArg* MakeTestInput(ModelTestBuilder& builder, const TestInputDef<T>& 
   return input;
 }
 
+template <>
+inline NodeArg* MakeTestInput(ModelTestBuilder& builder, const TestInputDef<bool>& input_def) {
+  NodeArg* input = nullptr;
+  const auto& shape = input_def.GetShape();
+  const bool is_initializer = input_def.IsInitializer();
+
+  if (input_def.IsRawData()) {  // Raw data.
+    const std::vector<bool>& raw_data = input_def.GetRawData();
+
+    if (is_initializer) {
+      input = builder.MakeInitializerBool(shape, raw_data);
+    } else {
+      input = builder.MakeInput<bool>(shape, raw_data);
+    }
+  } else {  // Random data
+    if (is_initializer) {
+      input = builder.MakeRandInitializerBool(shape);
+    } else {
+      input = builder.MakeInputBool(shape);
+    }
+  }
+
+  return input;
+}
+
 /**
  * Runs a test model on the QNN EP. Checks the graph node assignment, and that inference
  * outputs for QNN and CPU match.
