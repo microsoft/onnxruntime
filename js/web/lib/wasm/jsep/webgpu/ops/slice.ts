@@ -196,6 +196,5 @@ export const parseSliceAttributes = (attributes: Record<string, unknown>): Slice
   const starts = attributes.starts as number[];
   const ends = attributes.ends as number[];
   const axes = attributes.axes as number[];
-  const steps: number[] = [];
-  return createAttributeWithCacheKey({starts, ends, axes, steps});
+  return createAttributeWithCacheKey({starts, ends, axes});
 };
