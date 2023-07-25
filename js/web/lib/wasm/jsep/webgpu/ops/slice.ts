@@ -81,22 +81,17 @@ const calculateInputIndicesImpl = (inputShape: readonly number[], outputShape: r
   const inputIndicesHelper = createIndicesHelper('input', inputShape);
 
   return `fn calculateInputIndices(outputIndices: ${outputIndicesHelper.iType}) -> ${inputIndicesHelper.iType} {
-          ${inputIndicesHelper.indicesVariableDeclaration('inputIndices', Array(inputShape.length).fill('0u'))};
+          ${inputIndicesHelper.indicesVariableDeclaration('inputIndices')};
           var carry = 0u;
           for (var i = ${inputShape.length}; i >= 0; i--) {
-            var inputIndex = 0u;
-            if (i < ${outputShape.length}) {
-              inputIndex = outputIndices[i] * steps[i] + starts[i] + carry;
-              carry = inputIndex / inputShape[i];
-              inputIndex = inputIndex % inputShape[i];
-            } else {
-              inputIndex = carry % inputShape[i];
-              carry /= inputShape[i];
-            }
+            var outputIndex = ${outputShape.length === 1 ? 'outputIndices' : 'outputIndices[i]'};
+            var inputIndex = outputIndex * steps[i] + starts[i] + carry;
+            carry = inputIndex / inputShape[i];
+            inputIndex = inputIndex % inputShape[i];
             if (signs[i] < 0) {
               inputIndex = inputShape[i] - inputIndex - 1u + starts[i];
             }
-            inputIndices[i] = inputIndex;
+            ${inputShape.length === 1 ? 'inputIndices' : 'inputIndices[i]'} = inputIndex;
           }
           return inputIndices;
       }`;
