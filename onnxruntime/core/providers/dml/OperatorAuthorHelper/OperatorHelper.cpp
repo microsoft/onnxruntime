@@ -1906,11 +1906,12 @@ namespace OperatorHelper
         m_inputShape = shapeInformation.GetInputTensorShape(0);
 
         auto blockShapeProduct = std::accumulate(m_blockShape.begin(), m_blockShape.end(), 1, std::multiplies<uint32_t>());
-        m_outputShape = std::vector<uint32_t>{
-            m_inputShape[0],                     // N
-            m_inputShape[1] / blockShapeProduct, // C
-            m_imageShape[0],                     // H
-            m_imageShape[1],                     // W
+        m_outputShape = std::vector<uint32_t>(2 + m_imageShape.size());
+        m_outputShape[0] = m_inputShape[0];                     // N
+        m_outputShape[1] = m_inputShape[1] / blockShapeProduct; // C
+        for (int i = 2; i < m_outputShape.size(); i++)
+        {
+            m_outputShape[i] = m_imageShape[i-2];
         };
     }
 

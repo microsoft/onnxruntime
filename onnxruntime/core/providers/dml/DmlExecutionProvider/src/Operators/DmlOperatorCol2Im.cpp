@@ -44,9 +44,8 @@ public:
         DML_FOLD_OPERATOR_DESC operatorDesc = {};
         operatorDesc.InputTensor = inputDescs.data();
         operatorDesc.OutputTensor = outputDescs.data();
-        operatorDesc.Direction = DML_FOLD_DIRECTION::DML_FOLD_DIRECTION_FORWARD;
         operatorDesc.DimensionCount = gsl::narrow_cast<uint32_t>(m_blockShape.size());
-        operatorDesc.KernelSizes = m_blockShape.data();
+        operatorDesc.WindowSizes = m_blockShape.data();
         operatorDesc.Dilations = m_dilations.data();
         operatorDesc.StartPadding = m_pads.data();
         operatorDesc.EndPadding = m_pads.data();
