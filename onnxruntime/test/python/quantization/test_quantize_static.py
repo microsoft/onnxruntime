@@ -101,7 +101,7 @@ class TestStaticQuantization(unittest.TestCase):
 
     @unittest.skipIf(not find_spec("neural_compressor"), "Skip since neural-compressor is not installed.")
     def test_smooth_quant(self):
-        data_reader = InputFeedsNegOneZeroOne(10, {"input": [1, self._channel_size, 1, 3]})
+        data_reader = input_feeds_neg_one_zero_one(10, {"input": [1, self._channel_size, 1, 3]})
         quant_config = StaticQuantConfig(data_reader, extra_options={"SmoothQuant": True})
         quant_model_path = str(Path(self._tmp_model_dir.name) / "quant.config.onnx")
         quantize(self._model_fp32_path, quant_model_path, quant_config)
