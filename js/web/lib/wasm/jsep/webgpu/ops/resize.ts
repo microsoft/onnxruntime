@@ -37,10 +37,9 @@ const validateScales = (scales: number[], attributes: ResizeAttributes): void =>
   // Check scales dims based on mode: LINEAR, CUBIC
   if (scales.length > 0) {
     if (attributes.mode === 'linear') {
-      if (!(scales.length === 2 || scales.length === 3 || (scales.length === 4 && scales[0] === 1 && scales[1] === 1) ||
-            (scales.length === 4 && scales[0] === 1 && scales[3] === 1) ||
-            (scales.length === 5 && scales[0] === 1 && scales[1] === 1))) {
-        throw new Error('Resize requires scales input size to be 2, 3, 4 or 5 for linear mode');
+      if (!(scales.length === 2 || (scales.length === 4 && scales[0] === 1 && scales[1] === 1) ||
+            (scales.length === 4 && scales[0] === 1 && scales[3] === 1))) {
+        throw new Error('Resize requires scales input size to be 2 or 4 for linear mode');
       }
     } else if (attributes.mode === 'cubic') {
       if (!(scales.length === 2 || (scales.length === 4 && scales[0] === 1 && scales[1] === 1) ||
