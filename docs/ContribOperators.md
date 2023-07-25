@@ -2243,7 +2243,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 #### Version
 
 This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
-This function computes the inverse of the one-dimensional n-point computed 'com.microsoft.rfft'.
+This function computes the inverse of the one-dimensional n-point RFFT computed in 'com.microsoft.rfft'.
 
 #### Attributes
 
