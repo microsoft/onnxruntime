@@ -11,12 +11,12 @@ namespace js {
 class Gather : public JsKernel {
  public:
   Gather(const OpKernelInfo& info) : JsKernel(info) {
-    int64_t axis = info.GetAttrOrDefault("axis", 0).IsOK());
+    int64_t axis = info.GetAttrOrDefault("axis", 0);
 
     JSEP_INIT_KERNEL_ATTRIBUTE(Gather, ({
                                  "axis" : Number($1),
                                }),
-                               static_cast<int32_t>(axis_));
+                               static_cast<int32_t>(axis));
   }
 };
 
