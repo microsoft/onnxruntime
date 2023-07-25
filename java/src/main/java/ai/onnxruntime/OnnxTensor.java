@@ -4,6 +4,7 @@
  */
 package ai.onnxruntime;
 
+import ai.onnxruntime.platform.Fp16Conversions;
 import java.nio.Buffer;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
@@ -72,10 +73,10 @@ public class OnnxTensor extends OnnxTensorLike {
         case STRING:
           return getString(OnnxRuntime.ortApiHandle, nativeHandle);
         case FLOAT16:
-          return OrtUtil.fp16ToFloat(
+          return Fp16Conversions.fp16ToFloat(
               getShort(OnnxRuntime.ortApiHandle, nativeHandle, info.onnxType.value));
         case BFLOAT16:
-          return OrtUtil.bf16ToFloat(
+          return Fp16Conversions.bf16ToFloat(
               getShort(OnnxRuntime.ortApiHandle, nativeHandle, info.onnxType.value));
         case UNKNOWN:
         default:
@@ -149,12 +150,12 @@ public class OnnxTensor extends OnnxTensorLike {
       // if it's fp16 we need to copy it out by hand.
       ByteBuffer buf = getBuffer();
       ShortBuffer buffer = buf.asShortBuffer();
-      return OrtUtil.convertFp16BufferToFloatBuffer(buffer);
+      return Fp16Conversions.convertFp16BufferToFloatBuffer(buffer);
     } else if (info.type == OnnxJavaType.BFLOAT16) {
       // if it's bf16 we need to copy it out by hand.
       ByteBuffer buf = getBuffer();
       ShortBuffer buffer = buf.asShortBuffer();
-      return OrtUtil.convertBf16BufferToFloatBuffer(buffer);
+      return Fp16Conversions.convertBf16BufferToFloatBuffer(buffer);
     } else {
       return null;
     }

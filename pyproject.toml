@@ -71,6 +71,8 @@ ignore = [
     "N812", # Allow import torch.nn.functional as F
     "N999", # Module names
     "NPY002", # np.random.Generator may not always fit our use cases
+    "PERF203", # "try-except-in-loop" only affects Python <3.11, and the improvement is minor; can have false positives
+    "PERF401", # List comprehensions are not always readable
     "SIM102", # We don't perfer always combining if branches
     "SIM108", # We don't encourage ternary operators
     "SIM114", # Don't combine if branches for debugability
