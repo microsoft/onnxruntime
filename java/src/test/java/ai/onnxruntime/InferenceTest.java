@@ -857,11 +857,11 @@ public class InferenceTest {
         pinnedOutputs.clear();
 
         // Test that a tensor of the wrong type causes an error
-        pinnedOutputs.put("output-1", wrongType);
+        pinnedOutputs.put("output-0", wrongType);
         try (OrtSession.Result r = session.run(inputMap, requestedOutputs, pinnedOutputs)) {
           fail("Should have thrown OrtException");
         } catch (OrtException e) {
-          assertEquals(OrtErrorCode.ORT_FAIL, e.getCode());
+          assertEquals(OrtErrorCode.ORT_RUNTIME_EXCEPTION, e.getCode());
         }
         requestedOutputs.clear();
         pinnedOutputs.clear();
