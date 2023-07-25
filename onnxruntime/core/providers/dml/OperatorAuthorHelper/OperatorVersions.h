@@ -434,6 +434,7 @@ namespace OperatorHelper
         static const int sc_sinceVer_FusedMatMul = 1;
         static const int sc_sinceVer_FusedMatMulActivation = 1;
         static const int sc_sinceVer_QLinearSigmoid = 1;
+        static const int sc_sinceVer_QAttention = 1;
         static const int sc_sinceVer_Attention = 1;
         static const int sc_sinceVer_MatMulIntegerToFloat = 1;
         static const int sc_sinceVer_MultiHeadAttention = 1;
