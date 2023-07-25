@@ -62,8 +62,8 @@ stages:
         RunStaticCodeAnalysis: false
         ORT_EP_NAME: CUDA
         WITH_CACHE: true
-        # Some unit tests crash on A10 GPUs. So this job still needs to use T4.
-        MachinePool: onnxruntime-Win2022-GPU-T4
+        # Some unit tests crash on A10 GPUs. So this job still needs to use .
+        MachinePool: onnxruntime-Win2022-GPU-A10
         isTraining: true
 
 - stage: dml
