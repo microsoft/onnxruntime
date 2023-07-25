@@ -87,9 +87,7 @@ def generate_file_list_for_ep(nuget_artifacts_dir, ep, files_list, include_pdbs,
         if child.name == "onnxruntime-android" or child.name == "onnxruntime-training-android":
             for child_file in child.iterdir():
                 if child_file.suffix in [".aar"]:
-                    files_list.append(  # noqa: PERF401
-                        '<file src="' + str(child_file) + '" target="runtimes/android/native"/>'
-                    )
+                    files_list.append('<file src="' + str(child_file) + '" target="runtimes/android/native"/>')
 
         if child.name == "onnxruntime-ios-xcframework":
             files_list.append('<file src="' + str(child) + "\\**" '" target="runtimes/ios/native"/>')  # noqa: ISC001
@@ -722,7 +720,7 @@ def generate_files(line_list, args):
                 ngraph_list_path = os.path.join(openvino_path, "deployment_tools\\ngraph\\lib\\")
                 for ngraph_element in os.listdir(ngraph_list_path):
                     if ngraph_element.endswith("dll"):
-                        files_list.append(  # noqa: PERF401
+                        files_list.append(
                             "<file src="
                             + '"'
                             + os.path.join(ngraph_list_path, ngraph_element)
@@ -732,7 +730,7 @@ def generate_files(line_list, args):
                         )
             for dll_element in os.listdir(dll_list_path):
                 if dll_element.endswith("dll"):
-                    files_list.append(  # noqa: PERF401
+                    files_list.append(
                         "<file src="
                         + '"'
                         + os.path.join(dll_list_path, dll_element)
@@ -762,7 +760,7 @@ def generate_files(line_list, args):
                 )
             for tbb_element in os.listdir(tbb_list_path):
                 if tbb_element.endswith("dll"):
-                    files_list.append(  # noqa: PERF401
+                    files_list.append(
                         "<file src="
                         + '"'
                         + os.path.join(tbb_list_path, tbb_element)

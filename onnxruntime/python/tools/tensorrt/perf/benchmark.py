@@ -138,7 +138,7 @@ def run_trt_standalone(trtexec, model_name, model_path, test_data_dir, all_input
         logger.info(loaded_input)
         shape = []
         for j in all_inputs_shape[i]:
-            shape.append(str(j))  # noqa: PERF401
+            shape.append(str(j))
         shape = "x".join(shape)
         shape = name + ":" + shape
         input_shape.append(shape)
@@ -266,7 +266,7 @@ def get_ort_session_inputs_and_outputs(name, session, ort_input):
         for i in range(len(session.get_inputs())):
             sess_inputs[session.get_inputs()[i].name] = ort_input[i]
         for i in range(len(session.get_outputs())):
-            sess_outputs.append(session.get_outputs()[i].name)  # noqa: PERF401
+            sess_outputs.append(session.get_outputs()[i].name)
     return (sess_inputs, sess_outputs)
 
 
@@ -406,7 +406,7 @@ def inference_ort(
                 runtime = runtime[1:]  # remove warmup
             runtimes += runtime
 
-        except Exception as e:  # noqa: PERF203
+        except Exception as e:
             logger.error(e)
             if track_memory:
                 end_memory_tracking(p, success)
@@ -605,7 +605,7 @@ def validate(all_ref_outputs, all_outputs, rtol, atol, percent_mismatch):
                 # abs(desired-actual) < rtol * abs(desired) + atol
                 try:
                     np.testing.assert_allclose(ref_o, o, rtol, atol)
-                except Exception as e:  # noqa: PERF203
+                except Exception as e:
                     if percentage_in_allowed_threshold(e, percent_mismatch):
                         continue
                     logger.error(e)
@@ -2051,7 +2051,7 @@ class ParseDictArgAction(argparse.Action):
         for kv in values.split(","):
             try:
                 k, v = kv.split("=")
-            except ValueError:  # noqa: PERF203
+            except ValueError:
                 parser.error(f"argument {option_string}: Expected '=' between key and value")
 
             if k in dict_arg:
