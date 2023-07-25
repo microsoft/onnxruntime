@@ -133,12 +133,11 @@ jobs:
       DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )"
       Repository: onnxruntimetrainingrocm-cibuild-rocm$(RocmVersion)-test
 
-  - task: CmdLine@2
+  - task: Bash@3
     inputs:
-      script: |-
-        echo "Select agent: $(Agent.Name), GPU: $HIP_VISIBLE_DEVICES, render: $DRIVER_RENDER"
-        bash $(Build.SourcesDirectory)/tools/ci_build/github/pai/pai_clean_device.sh $(Agent.Name) $HIP_VISIBLE_DEVICES
-      workingDirectory: $(Build.SourcesDirectory)
+      targetType: filePath
+      filePath: $(Build.SourcesDirectory)/tools/ci_build/github/pai/pai_clean_device.sh
+      arguments: -n $(Agent.Name) -d $HIP_VISIBLE_DEVICES -r $DRIVER_RENDER
     displayName: 'Check ROCm Environment'
 
   - task: CmdLine@2
@@ -182,6 +181,7 @@ jobs:
               set -ex; \
               export KERNEL_EXPLORER_BUILD_DIR=/build/$(BuildConfig); \
               export KERNEL_EXPLORER_BATCHED_GEMM_MAX_BATCH_SIZE=8; \
+              export KERNEL_EXPLORER_TEST_USE_CUPY=1; \
               pytest /onnxruntime_src/onnxruntime/python/tools/kernel_explorer/ -n 8 --reruns 1 --durations=100"
       workingDirectory: $(Build.SourcesDirectory)
     displayName: 'Run kernel explorer tests'
@@ -206,7 +206,7 @@ jobs:
               set -ex; \
               export PYTHONPATH=/build/$(BuildConfig); \
               python -m onnxruntime.training.ortmodule.torch_cpp_extensions.install; \
-              bash /onnxruntime_src/tools/ci_build/github/pai/pai_huggingface_bert_large_test.sh $(RocmVersion)"
+              bash /onnxruntime_src/tools/ci_build/github/pai/pai_huggingface_bert_large_test.sh -v $(RocmVersion)"
       workingDirectory: $(Build.SourcesDirectory)
     displayName: 'Run Python Hugging-Face BERT-L test'
     condition: succeededOrFailed()
@@ -250,11 +250,12 @@ jobs:
     displayName: 'Run orttraining_ortmodule_tests.py'
     condition: succeededOrFailed()
 
-  - task: CmdLine@2
+
+  - task: Bash@3
     inputs:
-      script: |-
-        bash $(Build.SourcesDirectory)/tools/ci_build/github/pai/pai_clean_device.sh $(Agent.Name) $HIP_VISIBLE_DEVICES
-      workingDirectory: $(Build.SourcesDirectory)
+      targetType: filePath
+      filePath: $(Build.SourcesDirectory)/tools/ci_build/github/pai/pai_clean_device.sh
+      arguments: -n $(Agent.Name) -d $HIP_VISIBLE_DEVICES -r $DRIVER_RENDER
     displayName: 'Clean ROCm Environment'
     condition: always()
 

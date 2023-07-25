@@ -64,7 +64,7 @@ class Test_PostPasses(unittest.TestCase):  # noqa: N801
         nodes = []
         for node in model.graph.node:
             if node.op_type == node_type:
-                nodes.append(node)
+                nodes.append(node)  # noqa: PERF401
         return nodes
 
     def get_name(self, name):
