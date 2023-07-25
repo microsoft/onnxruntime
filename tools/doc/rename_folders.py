@@ -16,7 +16,7 @@ def rename_folder(root):
     for r, dirs, _files in os.walk(root):
         for name in dirs:
             if name.startswith("_"):
-                found.append((r, name))  # noqa: PERF401
+                found.append((r, name))
     renamed = []
     for r, name in found:
         into = name.lstrip("_")
