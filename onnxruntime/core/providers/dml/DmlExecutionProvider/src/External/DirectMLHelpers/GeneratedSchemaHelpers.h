@@ -1832,7 +1832,8 @@ inline const DML_OPERATOR_SCHEMA& GetSchema(DML_OPERATOR_TYPE operatorType)
     case DML_OPERATOR_ACTIVATION_THRESHOLDED_RELU: return DML_ACTIVATION_THRESHOLDED_RELU_OPERATOR_SCHEMA;
     case DML_OPERATOR_ACTIVATION_SHRINK: return DML_ACTIVATION_SHRINK_OPERATOR_SCHEMA;
     case DML_OPERATOR_ACTIVATION_GELU: return DML_ACTIVATION_GELU_OPERATOR_SCHEMA;
-
+    case DML_OPERATOR_MATRIX_MULTIPLY_INTEGER_TO_FLOAT: return DML_MATRIX_MULTIPLY_INTEGER_TO_FLOAT_OPERATOR_SCHEMA;
+#pragma warning(pop)
     default:
         ORT_THROW_HR(E_INVALIDARG);
         return DML_ACTIVATION_RELU_OPERATOR_SCHEMA;
@@ -2509,6 +2510,18 @@ inline AbstractOperatorDesc ConvertOperatorDesc(const DML_OPERATOR_DESC& opDesc)
         return AbstractOperatorDesc(
             &DML_ACTIVATION_GELU_OPERATOR_SCHEMA,
             GetFields(*static_cast<const DML_ACTIVATION_GELU_OPERATOR_DESC*>(opDesc.Desc)));
+#pragma warning(push)
+#pragma warning(disable: 4063)
+    case DML_OPERATOR_MATRIX_MULTIPLY_INTEGER_TO_FLOAT:
+        return AbstractOperatorDesc(
+            &DML_MATRIX_MULTIPLY_INTEGER_TO_FLOAT_OPERATOR_SCHEMA,
+            GetFields(*static_cast<const DML_MATRIX_MULTIPLY_INTEGER_TO_FLOAT_OPERATOR_DESC*>(opDesc.Desc)));
+    case DML_OPERATOR_ELEMENT_WISE_QUANTIZED_LINEAR_ADD1:
+        return AbstractOperatorDesc(
+            &DML_ELEMENT_WISE_QUANTIZED_LINEAR_ADD1_OPERATOR_SCHEMA,
+            GetFields(*static_cast<const DML_ELEMENT_WISE_QUANTIZED_LINEAR_ADD1_OPERATOR_DESC*>(opDesc.Desc)));
+#pragma warning(pop)
+
     default:
         ORT_THROW_HR(E_INVALIDARG);
         return AbstractOperatorDesc(
