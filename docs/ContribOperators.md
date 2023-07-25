@@ -2243,6 +2243,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 #### Version
 
 This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+This function computes the inverse of the one-dimensional n-point computed 'com.microsoft.rfft'.
 
 #### Attributes
 
@@ -2259,14 +2260,14 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 <dl>
 <dt><tt>X</tt> : T</dt>
-<dd>input tensor</dd>
+<dd>input tensor with size (n//2 + 1) in the signal dim and 2 in the last dimension for the real and complex parts</dd>
 </dl>
 
 #### Outputs
 
 <dl>
 <dt><tt>Y</tt> : T</dt>
-<dd>output tensor</dd>
+<dd>output tensor with size n in the signal dim</dd>
 </dl>
 
 #### Type Constraints
@@ -4395,6 +4396,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 #### Version
 
 This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+This function computes the n-point one dimensional Fourier transform for a real-valued input where n is an even number.
 
 #### Attributes
 
@@ -4411,14 +4413,14 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 <dl>
 <dt><tt>X</tt> : T</dt>
-<dd>input tensor</dd>
+<dd>input tensor of size n in the signal dim</dd>
 </dl>
 
 #### Outputs
 
 <dl>
 <dt><tt>Y</tt> : T</dt>
-<dd>output tensor</dd>
+<dd>output tensor of size (n//2 + 1) in the signal dim and 2 in the last dimension for the real and complex parts</dd>
 </dl>
 
 #### Type Constraints
