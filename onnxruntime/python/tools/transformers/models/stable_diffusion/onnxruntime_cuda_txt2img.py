@@ -27,8 +27,7 @@ Modifications: (1) Create ONNX Runtime session (2) Use I/O Binding of ONNX Runti
 Installation instructions
 pip install torch==1.13.1+cu117 --extra-index-url https://download.pytorch.org/whl/cu117
 pip install --upgrade transformers diffusers>=0.16.0
-pip install --upgrade tensorrt>=8.6.1
-pip install --upgrade polygraphy>=0.47.0 onnx-graphsurgeon --extra-index-url https://pypi.ngc.nvidia.com
+pip install numpy>=1.24.1 onnx>=1.13.0 coloredlogs protobuf==3.20.3 psutil sympy
 pip install onnxruntime-gpu
 """
 
@@ -646,7 +645,7 @@ class OnnxruntimeCudaStableDiffusionPipeline(StableDiffusionPipeline):
     @torch.no_grad()
     def __call__(
         self,
-        prompt: Union[str, List[str]] = None,
+        prompt: Optional[Union[str, List[str]]] = None,
         num_inference_steps: int = 50,
         guidance_scale: float = 7.5,
         negative_prompt: Optional[Union[str, List[str]]] = None,

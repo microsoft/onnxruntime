@@ -644,6 +644,7 @@ class OnnxruntimeTensorRTStableDiffusionPipeline(StableDiffusionPipeline):
 
         self.models["unet"] = UNet(
             self.unet,
+            fp16=True,
             device=self.torch_device,
             max_batch_size=self.max_batch_size,
             embedding_dim=self.embedding_dim,
@@ -797,7 +798,7 @@ class OnnxruntimeTensorRTStableDiffusionPipeline(StableDiffusionPipeline):
     @torch.no_grad()
     def __call__(
         self,
-        prompt: Union[str, List[str]] = None,
+        prompt: Optional[Union[str, List[str]]] = None,
         num_inference_steps: int = 50,
         guidance_scale: float = 7.5,
         negative_prompt: Optional[Union[str, List[str]]] = None,

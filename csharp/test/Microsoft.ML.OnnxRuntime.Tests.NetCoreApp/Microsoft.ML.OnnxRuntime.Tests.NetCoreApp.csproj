@@ -11,7 +11,7 @@
     <IsMacOSBuild Condition="'$([System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform($([System.Runtime.InteropServices.OSPlatform]::OSX)))' == 'true'">true</IsMacOSBuild>
     <ProtoSrc>$(OnnxSourceDirectory)\onnx</ProtoSrc>
     <!-- following attributes were necessary for the migrated Tensor tests -->
-    <LangVersion>7.2</LangVersion>
+    <LangVersion>default</LangVersion>
     <AllowUnsafeBlocks>True</AllowUnsafeBlocks>
     <SignAssembly>true</SignAssembly> <!-- need signing for friend access to the internals of the Tensors assembly -->
     <AssemblyOriginatorKeyFile>..\..\OnnxRuntime.snk</AssemblyOriginatorKeyFile>
@@ -119,27 +119,8 @@
 
   <!-- NOTE: The xUnit framework doesn't pickup the tests defined within the referenced Microsoft.ML.OnnxRuntime.Tests.Common project -->
   <ItemGroup>
-    <Compile Include="..\Microsoft.ML.OnnxRuntime.Tests.Common\OrtEnvTests.cs">
-      <Link>OrtEnvTests.cs</Link>
-    </Compile>
-    <Compile Include="..\Microsoft.ML.OnnxRuntime.Tests.Common\InferenceTest.cs">
-      <Link>InferenceTest.cs</Link>
-    </Compile>
-    <Compile Include="..\Microsoft.ML.OnnxRuntime.Tests.Common\OrtIoBindingAllocationTest.cs">
-      <Link>OrtIoBindingAllocationTest.cs</Link>
-    </Compile>
-    <Compile Include="..\Microsoft.ML.OnnxRuntime.Tests.Common\Tensors\TensorTests.cs">
-      <Link>TensorTests.cs</Link>
-    </Compile>
-    <Compile Include="..\Microsoft.ML.OnnxRuntime.Tests.Common\OrtValueTests.cs">
-      <Link>OrtValueTests.cs</Link>
-    </Compile>
-    <Compile Include="..\Microsoft.ML.OnnxRuntime.Tests.Common\Tensors\ArrayTensorExtensionsTests.cs">
-      <Link>ArrayTensorExtensionsTests.cs</Link>
-    </Compile>
-    <Compile Include="..\Microsoft.ML.OnnxRuntime.Tests.Common\TrainingTest.cs">
-      <Link>TrainingTest.cs</Link>
-    </Compile>
+    <Compile Include="..\Microsoft.ML.OnnxRuntime.Tests.Common\**\*Test.cs" />
+    <Compile Include="..\Microsoft.ML.OnnxRuntime.Tests.Common\**\*Tests.cs" />
   </ItemGroup>
 
   <ItemGroup>

@@ -1,10 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {onnx} from 'onnx-proto';
-
 import {Attribute} from './attribute';
-import {onnxruntime} from './ort-schema/ort-generated';
+import {onnxruntime} from './ort-schema/flatbuffers/ort-generated';
+import {onnx} from './ort-schema/protobuf/onnx';
 import {Tensor} from './tensor';
 import {LongUtil, MAX_CLIP, MIN_CLIP, ProtoUtil} from './util';
 
