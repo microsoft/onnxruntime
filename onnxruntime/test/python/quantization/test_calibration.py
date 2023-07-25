@@ -35,7 +35,7 @@ class TestDataReader(CalibrationDataReader):
         self.count = 4
         self.input_data_list = []
         for _ in range(self.count):
-            self.input_data_list.append(np.random.normal(0, 0.33, [1, 3, 1, 3]).astype(np.float32))  # noqa: PERF401
+            self.input_data_list.append(np.random.normal(0, 0.33, [1, 3, 1, 3]).astype(np.float32))
 
     def get_next(self):
         if self.preprocess_flag:

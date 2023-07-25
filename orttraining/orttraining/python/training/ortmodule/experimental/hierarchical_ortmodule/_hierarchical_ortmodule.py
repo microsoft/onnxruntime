@@ -36,7 +36,7 @@ class _IteratedORTModule(torch.nn.Module):
         self._it = count - 1
         self._ortmodules = []
         for idx in range(count):
-            self._ortmodules.append(  # noqa: PERF401
+            self._ortmodules.append(
                 ORTModule(
                     module,
                     debug_options=DebugOptions(

@@ -3878,13 +3878,17 @@ Node& Graph::CreateFusedSubGraphNode(const IndexedSubGraph& sub_graph, const std
 
   int cur_idx = 0;
   for (const auto& arg_name : func_meta_def->inputs) {
-    input_args.push_back(GetNodeArg(arg_name));
+    // In some cases, it needs to get the NodeArgs from ancestors.
+    // For example, if the subgraph we are going to build is the subgraph of the original graph
+    // and the NodeArgs of the outer scope values are defined in the top-level original graph.
+    input_args.push_back(GetNodeArgIncludingParentGraphs(arg_name));
     input_indexes[arg_name] = cur_idx++;
   }
 
   cur_idx = 0;
   for (const auto& arg_name : func_meta_def->outputs) {
-    output_args.push_back(GetNodeArg(arg_name));
+    // In some cases, it needs to get the NodeArgs from ancestors.
+    output_args.push_back(GetNodeArgIncludingParentGraphs(arg_name));
     output_indexes[arg_name] = cur_idx++;
   }
 
