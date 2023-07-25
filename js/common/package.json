@@ -9,11 +9,12 @@
   },
   "author": "fs-eire",
   "scripts": {
-    "build:cjs": "npx tsc --module commonjs --outDir ./dist/cjs",
-    "build:esm": "npx tsc",
+    "build:cjs": "tsc --module commonjs --outDir ./dist/cjs",
+    "build:esm": "tsc",
     "build:bundles": "webpack",
     "build": "node ./build.js",
-    "prepare": "npm run build"
+    "prepare": "npm run build && tsc -p test",
+    "test": "mocha ./test/**/*.js"
   },
   "devDependencies": {
     "typedoc": "^0.23.22"
