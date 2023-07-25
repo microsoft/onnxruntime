@@ -10,7 +10,7 @@ from onnx import TensorProto, GraphProto, helper
 from onnx_model import OnnxModel
 from onnx_model_bert import BertOnnxModel
 from fusion_base import Fusion
-from fusion_utils import FusionUtils
+from fusion_utils import FusionUtils, NumpyHelper
 import numpy as np
 
 logger = logging.getLogger(__name__)
@@ -36,9 +36,42 @@ class FusionTNLGV4Attention(Fusion):
         present,
     ):
         attention_node_name = self.model.create_node_name("TNLGV4Attention")
+
+        weight = self.model.get_initializer(fc_weight)
+        bias = self.model.get_initializer(fc_bias)
+
+        weight_array = NumpyHelper.to_array(weight)
+        bias_array = NumpyHelper.to_array(bias)
+
+        weight_shape = weight_array.shape
+        bias_shape = bias_array.shape
+
+        hidden_size = weight_shape[0]
+
+        #weight_array = weight_array.transpose(0, 1).reshape(3, hidden_size, -1).transpose(0, 2, 1)
+        #bias_array = bias_array.reshape(3, -1).transpose(0, 1)
+        weight_array_2 = np.transpose(np.transpose(np.transpose(weight_array).reshape(self.num_heads, 3, -1), (1, 0, 2)).reshape(3 * hidden_size, -1))
+        bias_array_2 = np.transpose(bias_array.reshape(self.num_heads, 3, -1), (1, 0, 2))
+
+        t_weight = helper.make_tensor(
+            name=fc_weight + "_transposed",
+            data_type=TensorProto.FLOAT16,
+            dims=weight_shape,
+            vals=weight_array_2.flatten().tolist(),
+        )
+        self.model.add_initializer(t_weight, self.this_graph_name)
+
+        t_bias = helper.make_tensor(
+            name=fc_bias + "_transposed",
+            data_type=TensorProto.FLOAT16,
+            dims=bias_shape,
+            vals=bias_array_2.flatten().tolist(),
+        )
+        self.model.add_initializer(t_bias, self.this_graph_name)
+
         attention_node = helper.make_node(
             "Attention",
-            inputs=[input, fc_weight, fc_bias, mask, past],
+            inputs=[input, t_weight.name, t_bias.name, mask, past],
             outputs=[output, present],
             name=attention_node_name,
         )
