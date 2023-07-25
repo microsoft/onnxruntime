@@ -12,9 +12,13 @@ from onnx.reference.custom_element_types import float8e4m3fn, float8e4m3fnuz, fl
 from onnx.reference.op_run import OpRun
 
 try:
-    from onnx.reference.op_run import to_array_extended
+    from onnx.reference.op_run import to_array_extended, OpRun
+    # Test with ReferenceEvaluator requires PR https://github.com/onnx/onnx/pull/5408/.
+    # https://github.com/onnx/onnx/pull/5408
+    onnx_recent_enough = hasattr(OpRun, "infer_name")
 except ImportError:
     to_array_extended = None
+    onnx_recent_enough = False
 
 import onnxruntime
 from onnxruntime.quantization import CalibrationDataReader
@@ -272,7 +276,7 @@ def check_model_correctness(
     ops_set = set(node.op_type for node in model_onnx.graph.node)
     check_reference_evaluator = not (ops_set & {"EmbedLayerNormalization", "Conv", "Attention", "Transpose"})
 
-    if check_reference_evaluator:
+    if check_reference_evaluator and onnx_recent_enough:
         ref = ReferenceEvaluator(model_path_origin)
         ref_origin_results = ref.run(None, inputs)
         for idx, ref_output in enumerate(origin_results):
@@ -325,7 +329,7 @@ def check_model_correctness(
             check_sign_f8_quantization(model_path_origin, model_path_to_check)
 
     # Verifies the expected outputs.
-    if check_reference_evaluator and to_array_extended is not None:
+    if check_reference_evaluator and onnx_recent_enough:
         # Needs pv.Version(onnx.__version__) >= pv.Version("1.16.0")
         ref = ReferenceEvaluator(model_path_to_check, new_ops=[QGemm])
         target_results = ref.run(None, inputs)
