@@ -12,7 +12,8 @@ from onnx.reference.custom_element_types import float8e4m3fn, float8e4m3fnuz, fl
 from onnx.reference.op_run import OpRun
 
 try:
-    from onnx.reference.op_run import to_array_extended, OpRun
+    from onnx.reference.op_run import OpRun, to_array_extended
+
     # Test with ReferenceEvaluator requires PR https://github.com/onnx/onnx/pull/5408/.
     # https://github.com/onnx/onnx/pull/5408
     onnx_recent_enough = hasattr(OpRun, "infer_name")

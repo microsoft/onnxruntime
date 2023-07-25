@@ -13,7 +13,14 @@ import onnx
 from numpy.testing import assert_allclose
 from onnx import TensorProto, helper
 from onnx.reference import ReferenceEvaluator
-from op_test_utils import QGemm, TestDataFeeds, check_model_correctness, check_op_type_count, check_qtype_by_node_type
+from op_test_utils import (
+    QGemm,
+    TestDataFeeds,
+    check_model_correctness,
+    check_op_type_count,
+    check_qtype_by_node_type,
+    onnx_recent_enough,
+)
 
 from onnxruntime import InferenceSession
 from onnxruntime.quantization import CalibrationMethod, QuantFormat, QuantType, quantize_dynamic, quantize_static
@@ -621,19 +628,31 @@ class TestOpGemm(unittest.TestCase):
         scaleA *= 2
         expected = sess.run(None, feeds)[0]
         got = ref.run(None, feeds)[0]
-        assert_allclose(expected, got)
+        if onnx_recent_enough:
+            # Test with ReferenceEvaluator requires PR https://github.com/onnx/onnx/pull/5408/.
+            assert_allclose(expected, got)
+        else:
+            self.assertEqual(expected.shape, got.shape)
 
         # negative scaleA
         scaleA *= -1
         expected = sess.run(None, feeds)[0]
         got = ref.run(None, feeds)[0]
-        assert_allclose(expected, got)
+        if onnx_recent_enough:
+            # Test with ReferenceEvaluator requires PR https://github.com/onnx/onnx/pull/5408/.
+            assert_allclose(expected, got)
+        else:
+            self.assertEqual(expected.shape, got.shape)
 
         # zpA != 0
         zpA += 5
         expected = sess.run(None, feeds)[0]
         got = ref.run(None, feeds)[0]
-        assert_allclose(expected, got)
+        if onnx_recent_enough:
+            # Test with ReferenceEvaluator requires PR https://github.com/onnx/onnx/pull/5408/.
+            assert_allclose(expected, got)
+        else:
+            self.assertEqual(expected.shape, got.shape)
 
     def test_q_ref_int8(self):
         model = onnx.helper.make_model(
@@ -675,19 +694,31 @@ class TestOpGemm(unittest.TestCase):
         scaleA *= 2
         expected = sess.run(None, feeds)[0]
         got = ref.run(None, feeds)[0]
-        assert_allclose(expected, got)
+        if onnx_recent_enough:
+            # Test with ReferenceEvaluator requires PR https://github.com/onnx/onnx/pull/5408/.
+            assert_allclose(expected, got)
+        else:
+            self.assertEqual(expected.shape, got.shape)
 
         # negative scaleA
         scaleA *= -1
         expected = sess.run(None, feeds)[0]
         got = ref.run(None, feeds)[0]
-        assert_allclose(expected, got)
+        if onnx_recent_enough:
+            # Test with ReferenceEvaluator requires PR https://github.com/onnx/onnx/pull/5408/.
+            assert_allclose(expected, got)
+        else:
+            self.assertEqual(expected.shape, got.shape)
 
         # zpA != 0
         zpA += 5
         expected = sess.run(None, feeds)[0]
         got = ref.run(None, feeds)[0]
-        assert_allclose(expected, got)
+        if onnx_recent_enough:
+            # Test with ReferenceEvaluator requires PR https://github.com/onnx/onnx/pull/5408/.
+            assert_allclose(expected, got)
+        else:
+            self.assertEqual(expected.shape, got.shape)
 
     def test_qgemm_ref_uint8_specific_example(self):
         model = onnx.helper.make_model(
