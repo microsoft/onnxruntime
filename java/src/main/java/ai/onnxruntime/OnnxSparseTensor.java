@@ -4,6 +4,7 @@
  */
 package ai.onnxruntime;
 
+import ai.onnxruntime.platform.Fp16Conversions;
 import java.nio.Buffer;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
@@ -323,12 +324,12 @@ public final class OnnxSparseTensor extends OnnxTensorLike {
       case FLOAT16:
         {
           ShortBuffer shortBuffer = buffer.asShortBuffer();
-          return OrtUtil.convertFp16BufferToFloatBuffer(shortBuffer);
+          return Fp16Conversions.convertFp16BufferToFloatBuffer(shortBuffer);
         }
       case BFLOAT16:
         {
           ShortBuffer shortBuffer = buffer.asShortBuffer();
-          return OrtUtil.convertBf16BufferToFloatBuffer(shortBuffer);
+          return Fp16Conversions.convertBf16BufferToFloatBuffer(shortBuffer);
         }
       case DOUBLE:
         {
