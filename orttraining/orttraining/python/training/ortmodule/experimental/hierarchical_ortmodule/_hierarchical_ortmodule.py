@@ -36,7 +36,7 @@ class _IteratedORTModule(torch.nn.Module):
         self._it = count - 1
         self._ortmodules = []
         for idx in range(count):
-            self._ortmodules.append(
+            self._ortmodules.append(  # noqa: PERF401
                 ORTModule(
                     module,
                     debug_options=DebugOptions(
@@ -113,9 +113,9 @@ class HierarchicalORTModule(torch.nn.Module):
             # We cannot skip module in allowlist because it's possible that a module is called multiple times
             # so that we still need to know the number of different input sets and use _IteratedORTModule to handle it.
             handle_pool.append(module.register_forward_pre_hook(record_args))
-            for _, sub_module in module._modules.items():
+            for sub_module in module._modules.values():
                 if isinstance(sub_module, torch.nn.ModuleList):
-                    for _, sub_module_item in sub_module._modules.items():
+                    for sub_module_item in sub_module._modules.values():
                         recursive_hook(sub_module_item)
                 else:
                     recursive_hook(sub_module)
@@ -142,7 +142,7 @@ class HierarchicalORTModule(torch.nn.Module):
                 except Exception as e:
                     if self._log_level <= LogLevel.WARNING:
                         warnings.warn(
-                            f"Failed to export module with type {type(module).__name__}. Error message: {str(e)}",
+                            f"Failed to export module with type {type(module).__name__}. Error message: {e!s}",
                             UserWarning,
                         )
                     return False
@@ -176,9 +176,9 @@ class HierarchicalORTModule(torch.nn.Module):
                 # No sub-module exists, so this module is a leaf
                 return
 
-            for _, sub_module in sub_module_dict.items():
+            for sub_module in sub_module_dict.values():
                 if isinstance(sub_module, torch.nn.ModuleList):
-                    for _, sub_module_item in sub_module._modules.items():
+                    for sub_module_item in sub_module._modules.values():
                         check_exportable(sub_module_item)
                 else:
                     check_exportable(sub_module)
@@ -268,7 +268,7 @@ class HierarchicalORTModule(torch.nn.Module):
             recursive_wrap(self._original_module, self._save_onnx, self._name_prefix)
         if self._log_level <= LogLevel.WARNING:
             warnings.warn(
-                f"Wrapped module: {str(self._original_module)}.",
+                f"Wrapped module: {self._original_module!s}.",
                 UserWarning,
             )
         self._initialized = True
