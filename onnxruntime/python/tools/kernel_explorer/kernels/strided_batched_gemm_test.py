@@ -82,7 +82,7 @@ def _test_strided_batched_gemm(
         for i in range(batch):
             try:
                 np.testing.assert_allclose(my_c[i], ref_c[i], rtol=bounds[i])
-            except Exception as err:  # noqa: PERF203
+            except Exception as err:
                 header = "*" * 30 + impl + "*" * 30
                 print(header, bounds[i])
                 print(err)
