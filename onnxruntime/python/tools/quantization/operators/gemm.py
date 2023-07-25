@@ -60,7 +60,7 @@ class QLinearGemm(QOpMatMul):
             ) = self.quantizer.quantize_activation(node, [0])
             quant_weight_tuple = self.quantizer.quantize_weight_per_channel(
                 node.input[1],
-                self.weight_qType,
+                self.quantizer.weight_qType,
                 0 if is_B_transposed(node) else 1,
             )
             quantized_input_names.append(quant_weight_tuple[0])
@@ -127,7 +127,7 @@ class QLinearGemm(QOpMatMul):
             output_zp_name,
             QuantizedValueType.Input,
             node_type=node.op_type,
-            node_qtype=self.weight_qType,
+            node_qtype=self.quantizer.weight_qType,
         )
         self.quantizer.quantized_value_map[node.output[0]] = q_output
 
