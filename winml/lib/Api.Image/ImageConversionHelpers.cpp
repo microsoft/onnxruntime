@@ -28,11 +28,11 @@ static LUID GetLUIDFromDirect3DSurface(const wgdx::Direct3D11::IDirect3DSurface&
 }
 
 static HRESULT GetVideoFrameInfo(
-    _In_ const wm::IVideoFrame& inputVideoFrame,
-    _Out_ DWORD& format,
-    _Out_ int& width,
-    _Out_ int& height,
-    _Out_ LUID& luid
+  _In_ const wm::IVideoFrame& inputVideoFrame,
+  _Out_ DWORD& format,
+  _Out_ int& width,
+  _Out_ int& height,
+  _Out_ LUID& luid
 ) {
   wgdx::Direct3D11::IDirect3DSurface spInputSurface = inputVideoFrame.Direct3DSurface();
   if (spInputSurface != nullptr) {
@@ -57,11 +57,11 @@ static HRESULT GetVideoFrameInfo(
 }
 
 void _winmli::ConvertVideoFrameToVideoFrame(
-    _In_ const wm::IVideoFrame& inputVideoFrame,
-    _In_ const wgi::BitmapBounds& inputBounds,
-    _In_ UINT32 outputWidth,
-    _In_ UINT32 outputHeight,
-    _Inout_ wm::VideoFrame& pOutputVideoFrame
+  _In_ const wm::IVideoFrame& inputVideoFrame,
+  _In_ const wgi::BitmapBounds& inputBounds,
+  _In_ UINT32 outputWidth,
+  _In_ UINT32 outputHeight,
+  _Inout_ wm::VideoFrame& pOutputVideoFrame
 ) {
   wgi::BitmapBounds outputBounds = {0, 0, outputWidth, outputHeight};
 
@@ -69,8 +69,7 @@ void _winmli::ConvertVideoFrameToVideoFrame(
   wgdx::Direct3D11::IDirect3DSurface spInputDirect3DSurface = inputVideoFrame.Direct3DSurface();
 
   // only one of softwarebitmap or direct3Dsurface should be non-null
-  if ((spInputSoftwareBitmap == nullptr && spInputDirect3DSurface == nullptr) ||
-      (spInputSoftwareBitmap != nullptr && spInputDirect3DSurface != nullptr)) {
+  if ((spInputSoftwareBitmap == nullptr && spInputDirect3DSurface == nullptr) || (spInputSoftwareBitmap != nullptr && spInputDirect3DSurface != nullptr)) {
     WINML_THROW_HR(E_INVALIDARG);
   }
 
@@ -119,11 +118,11 @@ bool _winmli::FormatSupportedForUAV(_In_ ID3D12Device1* device, _In_ DXGI_FORMAT
 // 3. (mapping softwarebitmap to softwarebitmap) OR (mapping from d3dsurface to d3dsurface AND the two surfaces are on the same device)
 // 4. the input is already in the desired format (BGRA8/B8G8R8X8UIntNormalized)
 bool _winmli::NeedsVideoFrameConversion(
-    _In_ const wm::IVideoFrame& inputVideoFrame,
-    _In_ LUID outputLuid,
-    _In_ const wgi::BitmapBounds& inputBounds,
-    _In_ UINT32 outputWidth,
-    _In_ UINT32 outputHeight
+  _In_ const wm::IVideoFrame& inputVideoFrame,
+  _In_ LUID outputLuid,
+  _In_ const wgi::BitmapBounds& inputBounds,
+  _In_ UINT32 outputWidth,
+  _In_ UINT32 outputHeight
 ) {
   bool bNeedConversion = false;
   HRESULT hr = S_OK;
@@ -156,22 +155,22 @@ bool _winmli::NeedsVideoFrameConversion(
   }
 
   TraceLoggingWrite(
-      winml_trace_logging_provider,
-      "InputVideoFrame",
-      TraceLoggingKeyword(WINML_PROVIDER_KEYWORD_DEFAULT),
-      TraceLoggingBool(bNeedConversion, "Convert"),
-      TraceLoggingHexInt32(hr, "HRESULT"),
-      TraceLoggingInt32(width, "iWidth"),
-      TraceLoggingInt32(outputWidth, "oWidth"),
-      TraceLoggingInt32(height, "iHeight"),
-      TraceLoggingInt32(outputWidth, "oHeight"),
-      TraceLoggingHexInt64(*((ULONGLONG*)&luid), "iLuid"),
-      TraceLoggingHexInt64(*((ULONGLONG*)&outputLuid), "oLuid"),
-      TraceLoggingHexInt32(format, "iFormat"),
-      TraceLoggingInt32(inputBounds.X, "rX"),
-      TraceLoggingInt32(inputBounds.Y, "rY"),
-      TraceLoggingInt32(inputBounds.Width, "rW"),
-      TraceLoggingInt32(inputBounds.Height, "rH")
+    winml_trace_logging_provider,
+    "InputVideoFrame",
+    TraceLoggingKeyword(WINML_PROVIDER_KEYWORD_DEFAULT),
+    TraceLoggingBool(bNeedConversion, "Convert"),
+    TraceLoggingHexInt32(hr, "HRESULT"),
+    TraceLoggingInt32(width, "iWidth"),
+    TraceLoggingInt32(outputWidth, "oWidth"),
+    TraceLoggingInt32(height, "iHeight"),
+    TraceLoggingInt32(outputWidth, "oHeight"),
+    TraceLoggingHexInt64(*((ULONGLONG*)&luid), "iLuid"),
+    TraceLoggingHexInt64(*((ULONGLONG*)&outputLuid), "oLuid"),
+    TraceLoggingHexInt32(format, "iFormat"),
+    TraceLoggingInt32(inputBounds.X, "rX"),
+    TraceLoggingInt32(inputBounds.Y, "rY"),
+    TraceLoggingInt32(inputBounds.Width, "rW"),
+    TraceLoggingInt32(inputBounds.Height, "rH")
   );
 
   return bNeedConversion;
@@ -206,7 +205,7 @@ wgi::BitmapPixelFormat _winmli::GetBitmapPixelFormatFromChannelType(_winml::Imag
 }
 
 _winml::ImageTensorChannelType _winmli::GetChannelTypeFromDirect3DSurface(
-    const wgdx::Direct3D11::IDirect3DSurface& direct3DSurface
+  const wgdx::Direct3D11::IDirect3DSurface& direct3DSurface
 ) {
   assert(direct3DSurface != nullptr);
 
@@ -270,7 +269,7 @@ wgdx::DirectXPixelFormat _winmli::GetDirectXPixelFormatFromChannelType(_In_ _win
 }
 
 wgdx::Direct3D11::IDirect3DDevice _winmli::GetDeviceFromDirect3DSurface(
-    const wgdx::Direct3D11::IDirect3DSurface& d3dSurface
+  const wgdx::Direct3D11::IDirect3DSurface& d3dSurface
 ) {
   assert(d3dSurface != nullptr);
 
@@ -289,7 +288,7 @@ wgdx::Direct3D11::IDirect3DDevice _winmli::GetDeviceFromDirect3DSurface(
 
   wgdx::Direct3D11::IDirect3DDevice d3dDevice;
   WINML_THROW_IF_FAILED(spInspectable->QueryInterface(
-      winrt::guid_of<wgdx::Direct3D11::IDirect3DDevice>(), reinterpret_cast<void**>(winrt::put_abi(d3dDevice))
+    winrt::guid_of<wgdx::Direct3D11::IDirect3DDevice>(), reinterpret_cast<void**>(winrt::put_abi(d3dDevice))
   ));
 
   return d3dDevice;

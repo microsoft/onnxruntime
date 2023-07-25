@@ -185,21 +185,21 @@ Ort::Value CreateOrtValueFromITensor(winml::ITensor winmlTensor) {
     uint32_t actualSizeInBytes;
     WINML_EXPECT_HRESULT_SUCCEEDED(winmlTensorNative->GetBuffer(&actualData, &actualSizeInBytes));
     WINML_EXPECT_NO_THROW(
-        ortValueCreated = Ort::Value::CreateTensor(
-            memoryInfo,
-            actualData,
-            actualSizeInBytes,
-            shape.data(),
-            shape.size(),
-            OnnxTensorTypeFromWinMLType(winmlTensor.TensorKind())
-        )
+      ortValueCreated = Ort::Value::CreateTensor(
+        memoryInfo,
+        actualData,
+        actualSizeInBytes,
+        shape.data(),
+        shape.size(),
+        OnnxTensorTypeFromWinMLType(winmlTensor.TensorKind())
+      )
     );
   } else {
     Ort::AllocatorWithDefaultOptions allocator;
     WINML_EXPECT_NO_THROW(
-        ortValueCreated = Ort::Value::CreateTensor(
-            allocator, shape.data(), shape.size(), ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING
-        )
+      ortValueCreated = Ort::Value::CreateTensor(
+        allocator, shape.data(), shape.size(), ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING
+      )
     );
     std::vector<const char*> strData;
     std::vector<std::string> utf8Strs;

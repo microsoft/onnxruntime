@@ -89,9 +89,9 @@ struct LearningModelDevice : LearningModelDeviceT<LearningModelDevice, IMetacomm
 
 namespace WINML::factory_implementation {
 struct LearningModelDevice : LearningModelDeviceT<
-                                 LearningModelDevice,
-                                 implementation::LearningModelDevice,
-                                 ILearningModelDeviceFactoryNative> {
+                               LearningModelDevice,
+                               implementation::LearningModelDevice,
+                               ILearningModelDeviceFactoryNative> {
   HRESULT __stdcall CreateFromD3D12CommandQueue(ID3D12CommandQueue* queue, IUnknown** device) noexcept final;
 };
 }  // namespace WINML::factory_implementation

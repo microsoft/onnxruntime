@@ -23,7 +23,7 @@ namespace WinML::Engine::Test {
 #define MAX_PROFILING_LOOP 100
 
 static void BindImage(
-    LearningModelBinding binding, const wchar_t* name, const wchar_t* fullImagePath, bool bindAsInspectable = false
+  LearningModelBinding binding, const wchar_t* name, const wchar_t* fullImagePath, bool bindAsInspectable = false
 ) {
   auto imagefile = StorageFile::GetFileFromPathAsync(fullImagePath).get();
   auto stream = imagefile.OpenAsync(FileAccessMode::Read).get();
@@ -40,7 +40,7 @@ static void BindImage(
 }
 
 static void BindTensor(
-    LearningModelBinding binding, const wchar_t* name, ITensor inputTensor, bool bindAsInspectable = false
+  LearningModelBinding binding, const wchar_t* name, ITensor inputTensor, bool bindAsInspectable = false
 ) {
   if (inputTensor == nullptr) {
     throw winrt::hresult_invalid_argument(L"input tensor provided to squeezenet is null.");
@@ -55,10 +55,10 @@ static void BindTensor(
 
 template <typename T>
 ITensor BindOutput(
-    OutputBindingStrategy strategy,
-    LearningModelBinding binding,
-    const wchar_t* name,
-    const IVectorView<int64_t> shape = nullptr
+  OutputBindingStrategy strategy,
+  LearningModelBinding binding,
+  const wchar_t* name,
+  const IVectorView<int64_t> shape = nullptr
 ) {
   ITensor outputTensor = nullptr;
   switch (strategy) {
@@ -97,11 +97,11 @@ ImageFeatureValue BindImageOutput(OutputBindingStrategy strategy, LearningModelB
 }
 
 void ModelValidator::FnsCandy16(
-    const std::string& instance,
-    LearningModelDeviceKind deviceKind,
-    OutputBindingStrategy outputBindingStrategy,
-    bool bindInputsAsIInspectable,
-    float dataTolerance
+  const std::string& instance,
+  LearningModelDeviceKind deviceKind,
+  OutputBindingStrategy outputBindingStrategy,
+  bool bindInputsAsIInspectable,
+  float dataTolerance
 ) {
   ORT_UNUSED_PARAMETER(dataTolerance);
     // file name strings
@@ -164,12 +164,12 @@ void ModelValidator::FnsCandy16(
 }
 
 void ModelValidator::SqueezeNet(
-    const std::string& instance,
-    LearningModelDeviceKind deviceKind,
-    float dataTolerance,
-    bool bindAsImage,
-    OutputBindingStrategy outputBindingStrategy,
-    bool bindInputsAsIInspectable
+  const std::string& instance,
+  LearningModelDeviceKind deviceKind,
+  float dataTolerance,
+  bool bindAsImage,
+  OutputBindingStrategy outputBindingStrategy,
+  bool bindInputsAsIInspectable
 ) {
     // file name strings
   static wchar_t* modelFileName = L"model.onnx";
@@ -213,9 +213,8 @@ void ModelValidator::SqueezeNet(
     throw winrt::hresult_invalid_argument(L"Expected output feature kind of model to be Tensor");
   }
 
-  auto outputTensor = BindOutput<TensorFloat>(
-      outputBindingStrategy, modelBinding, outputDataBindingName, expectedResultsTensor.Shape()
-  );
+  auto outputTensor =
+    BindOutput<TensorFloat>(outputBindingStrategy, modelBinding, outputDataBindingName, expectedResultsTensor.Shape());
 
     // Evaluate the model
   std::cout << "Calling EvaluateSync on instance " << instance << "\n";
@@ -230,7 +229,7 @@ void ModelValidator::SqueezeNet(
   } else {
     if (result.Outputs().Lookup(outputDataBindingName) != outputTensor) {
       throw winrt::hresult_error(
-          E_UNEXPECTED, L"Evaluation Results lookup don't match LearningModelBinding output tensor."
+        E_UNEXPECTED, L"Evaluation Results lookup don't match LearningModelBinding output tensor."
       );
     }
   }

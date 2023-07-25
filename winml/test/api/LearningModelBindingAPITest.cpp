@@ -26,41 +26,41 @@ static void LearningModelBindingAPITestsClassSetup() {
 static void CpuSqueezeNet() {
   std::string cpuInstance("CPU");
   WINML_EXPECT_NO_THROW(WinML::Engine::Test::ModelValidator::SqueezeNet(
-      cpuInstance, LearningModelDeviceKind::Cpu, /*dataTolerance*/ 0.00001f, false
+    cpuInstance, LearningModelDeviceKind::Cpu, /*dataTolerance*/ 0.00001f, false
   ));
 }
 
 static void CpuSqueezeNetEmptyOutputs() {
   std::string cpuInstance("CPU");
   WINML_EXPECT_NO_THROW(WinML::Engine::Test::ModelValidator::SqueezeNet(
-                            cpuInstance,
-                            LearningModelDeviceKind::Cpu,
-                            /*dataTolerance*/ 0.00001f,
-                            false,
-                            OutputBindingStrategy::Empty
+                          cpuInstance,
+                          LearningModelDeviceKind::Cpu,
+                          /*dataTolerance*/ 0.00001f,
+                          false,
+                          OutputBindingStrategy::Empty
   ););
 }
 
 static void CpuSqueezeNetUnboundOutputs() {
   std::string cpuInstance("CPU");
   WINML_EXPECT_NO_THROW(WinML::Engine::Test::ModelValidator::SqueezeNet(
-                            cpuInstance,
-                            LearningModelDeviceKind::Cpu,
-                            /*dataTolerance*/ 0.00001f,
-                            false,
-                            OutputBindingStrategy::Unbound
+                          cpuInstance,
+                          LearningModelDeviceKind::Cpu,
+                          /*dataTolerance*/ 0.00001f,
+                          false,
+                          OutputBindingStrategy::Unbound
   ););
 }
 
 static void CpuSqueezeNetBindInputTensorAsInspectable() {
   std::string cpuInstance("CPU");
   WINML_EXPECT_NO_THROW(WinML::Engine::Test::ModelValidator::SqueezeNet(
-                            cpuInstance,
-                            LearningModelDeviceKind::Cpu,
-                            /*dataTolerance*/ 0.00001f,
-                            false,
-                            OutputBindingStrategy::Bound /* empty outputs */,
-                            true /* bind inputs as inspectables */
+                          cpuInstance,
+                          LearningModelDeviceKind::Cpu,
+                          /*dataTolerance*/ 0.00001f,
+                          false,
+                          OutputBindingStrategy::Bound /* empty outputs */,
+                          true /* bind inputs as inspectables */
   ););
 }
 
@@ -247,9 +247,9 @@ static void ZipMapString() {
   std::vector<int64_t> shape = {1, 3};
   std::vector<winrt::hstring> labels = {L"cat", L"dog", L"lion"};
   std::map<winrt::hstring, float> mapData = {
-      { L"cat", 0.0f},
-      { L"dog", 0.0f},
-      {L"lion", 0.0f}
+    { L"cat", 0.0f},
+    { L"dog", 0.0f},
+    {L"lion", 0.0f}
   };
   typedef IMap<winrt::hstring, float> ABIMap;
   ABIMap abiMap = winrt::single_threaded_map<winrt::hstring, float>(std::move(mapData));
@@ -285,31 +285,31 @@ static void ZipMapString() {
 static void GpuSqueezeNet() {
   std::string gpuInstance("GPU");
   WINML_EXPECT_NO_THROW(WinML::Engine::Test::ModelValidator::SqueezeNet(
-                            gpuInstance,
-                            LearningModelDeviceKind::DirectX,
-                            /*dataTolerance*/ 0.00001f
+                          gpuInstance,
+                          LearningModelDeviceKind::DirectX,
+                          /*dataTolerance*/ 0.00001f
   ););
 }
 
 static void GpuSqueezeNetEmptyOutputs() {
   std::string gpuInstance("GPU");
   WINML_EXPECT_NO_THROW(WinML::Engine::Test::ModelValidator::SqueezeNet(
-                            gpuInstance,
-                            LearningModelDeviceKind::DirectX,
-                            /*dataTolerance*/ 0.00001f,
-                            false,
-                            OutputBindingStrategy::Empty
+                          gpuInstance,
+                          LearningModelDeviceKind::DirectX,
+                          /*dataTolerance*/ 0.00001f,
+                          false,
+                          OutputBindingStrategy::Empty
   ););
 }
 
 static void GpuSqueezeNetUnboundOutputs() {
   std::string gpuInstance("GPU");
   WINML_EXPECT_NO_THROW(WinML::Engine::Test::ModelValidator::SqueezeNet(
-                            gpuInstance,
-                            LearningModelDeviceKind::DirectX,
-                            /*dataTolerance*/ 0.00001f,
-                            false,
-                            OutputBindingStrategy::Unbound
+                          gpuInstance,
+                          LearningModelDeviceKind::DirectX,
+                          /*dataTolerance*/ 0.00001f,
+                          false,
+                          OutputBindingStrategy::Unbound
   ););
 }
 
@@ -455,7 +455,7 @@ static void VerifyInvalidBindExceptions() {
 
   // Bind invalid tensor type as image input
   WINML_EXPECT_THROW_SPECIFIC(
-      mapBinding.Bind(inputName, tensorBoolean), winrt::hresult_error, ensureWinmlInvalidBinding
+    mapBinding.Bind(inputName, tensorBoolean), winrt::hresult_error, ensureWinmlInvalidBinding
   );
 }
 
@@ -489,9 +489,9 @@ static void BindInvalidInputName() {
 
   // Bind inputTensor to an invalid input name
   WINML_EXPECT_THROW_SPECIFIC(
-      learningModelBinding.Bind(testInvalidName, inputTensor),
-      winrt::hresult_error,
-      [](const winrt::hresult_error& e) -> bool { return e.code() == WINML_ERR_INVALID_BINDING; }
+    learningModelBinding.Bind(testInvalidName, inputTensor),
+    winrt::hresult_error,
+    [](const winrt::hresult_error& e) -> bool { return e.code() == WINML_ERR_INVALID_BINDING; }
   );
 }
 
@@ -510,11 +510,11 @@ static void VerifyOutputAfterEvaluateAsyncCalledTwice() {
   auto inputShape = std::vector<int64_t>{5};
   auto inputData1 = std::vector<float>{-50.f, -25.f, 0.f, 25.f, 50.f};
   auto inputValue1 =
-      TensorFloat::CreateFromIterable(inputShape, single_threaded_vector<float>(std::move(inputData1)).GetView());
+    TensorFloat::CreateFromIterable(inputShape, single_threaded_vector<float>(std::move(inputData1)).GetView());
 
   auto inputData2 = std::vector<float>{50.f, 25.f, 0.f, -25.f, -50.f};
   auto inputValue2 =
-      TensorFloat::CreateFromIterable(inputShape, single_threaded_vector<float>(std::move(inputData2)).GetView());
+    TensorFloat::CreateFromIterable(inputShape, single_threaded_vector<float>(std::move(inputData2)).GetView());
 
   WINML_EXPECT_NO_THROW(learningModelBinding.Bind(L"X", inputValue1));
 
@@ -560,7 +560,7 @@ static void VerifyOutputAfterImageBindCalledTwice() {
   WINML_EXPECT_NO_THROW(model = LearningModel::LoadFromFilePath(fullModelPath));
   LearningModelSession modelSession = nullptr;
   WINML_EXPECT_NO_THROW(
-      modelSession = LearningModelSession(model, LearningModelDevice(LearningModelDeviceKind::Default))
+    modelSession = LearningModelSession(model, LearningModelDevice(LearningModelDeviceKind::Default))
   );
   LearningModelBinding modelBinding(modelSession);
 
@@ -616,7 +616,7 @@ static void SequenceLengthTensorFloat() {
   for (int i = 0; i < 3; i++) {
     std::vector<int64_t> shape = {5, 3 * i + 1};
     std::vector<float> data(
-        static_cast<size_t>(std::accumulate(shape.begin(), shape.end(), static_cast<int64_t>(1), std::multiplies()))
+      static_cast<size_t>(std::accumulate(shape.begin(), shape.end(), static_cast<int64_t>(1), std::multiplies()))
     );
     input.Append(TensorFloat::CreateFromShapeArrayAndDataArray(shape, data));
   }
@@ -641,12 +641,12 @@ static void SequenceConstructTensorString() {
 
   std::vector<int64_t> shape1 = {2, 3};
   std::vector<int64_t> data1(
-      static_cast<size_t>(std::accumulate(shape1.begin(), shape1.end(), static_cast<int64_t>(1), std::multiplies()))
+    static_cast<size_t>(std::accumulate(shape1.begin(), shape1.end(), static_cast<int64_t>(1), std::multiplies()))
   );
   auto input1 = TensorInt64Bit::CreateFromShapeArrayAndDataArray(shape1, data1);
   std::vector<int64_t> shape2 = {2, 3};
   std::vector<int64_t> data2(
-      static_cast<size_t>(std::accumulate(shape2.begin(), shape2.end(), static_cast<int64_t>(1), std::multiplies()))
+    static_cast<size_t>(std::accumulate(shape2.begin(), shape2.end(), static_cast<int64_t>(1), std::multiplies()))
   );
   auto input2 = TensorInt64Bit::CreateFromShapeArrayAndDataArray(shape2, data2);
 
@@ -673,27 +673,27 @@ static void SequenceConstructTensorString() {
 
 const LearningModelBindingAPITestsApi& getapi() {
   static LearningModelBindingAPITestsApi api = {
-      LearningModelBindingAPITestsClassSetup,
-      CpuSqueezeNet,
-      CpuSqueezeNetEmptyOutputs,
-      CpuSqueezeNetUnboundOutputs,
-      CpuSqueezeNetBindInputTensorAsInspectable,
-      CastMapInt64,
-      DictionaryVectorizerMapInt64,
-      DictionaryVectorizerMapString,
-      ZipMapInt64,
-      ZipMapInt64Unbound,
-      ZipMapString,
-      GpuSqueezeNet,
-      GpuSqueezeNetEmptyOutputs,
-      GpuSqueezeNetUnboundOutputs,
-      ImageBindingDimensions,
-      VerifyInvalidBindExceptions,
-      BindInvalidInputName,
-      VerifyOutputAfterEvaluateAsyncCalledTwice,
-      VerifyOutputAfterImageBindCalledTwice,
-      SequenceLengthTensorFloat,
-      SequenceConstructTensorString};
+    LearningModelBindingAPITestsClassSetup,
+    CpuSqueezeNet,
+    CpuSqueezeNetEmptyOutputs,
+    CpuSqueezeNetUnboundOutputs,
+    CpuSqueezeNetBindInputTensorAsInspectable,
+    CastMapInt64,
+    DictionaryVectorizerMapInt64,
+    DictionaryVectorizerMapString,
+    ZipMapInt64,
+    ZipMapInt64Unbound,
+    ZipMapString,
+    GpuSqueezeNet,
+    GpuSqueezeNetEmptyOutputs,
+    GpuSqueezeNetUnboundOutputs,
+    ImageBindingDimensions,
+    VerifyInvalidBindExceptions,
+    BindInvalidInputName,
+    VerifyOutputAfterEvaluateAsyncCalledTwice,
+    VerifyOutputAfterImageBindCalledTwice,
+    SequenceLengthTensorFloat,
+    SequenceConstructTensorString};
 
   if (SkipGpuTests()) {
     api.GpuSqueezeNet = SkipTest;

@@ -8,9 +8,9 @@
 #include <winnt.h>
 
 struct CustomOperatorProvider : winrt::implements<
-                                    CustomOperatorProvider,
-                                    winml::ILearningModelOperatorProvider,
-                                    ILearningModelOperatorProviderNative> {
+                                  CustomOperatorProvider,
+                                  winml::ILearningModelOperatorProvider,
+                                  ILearningModelOperatorProviderNative> {
   HMODULE m_library;
   winrt::com_ptr<IMLOperatorRegistry> m_registry;
 
@@ -28,7 +28,7 @@ struct CustomOperatorProvider : winrt::implements<
 
     using create_registry_delegate = HRESULT WINAPI(_COM_Outptr_ IMLOperatorRegistry * *registry);
     auto create_registry =
-        reinterpret_cast<create_registry_delegate*>(GetProcAddress(m_library, "MLCreateOperatorRegistry"));
+      reinterpret_cast<create_registry_delegate*>(GetProcAddress(m_library, "MLCreateOperatorRegistry"));
     if (FAILED(create_registry(m_registry.put()))) {
       __fastfail(0);
     }

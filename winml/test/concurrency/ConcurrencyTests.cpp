@@ -141,7 +141,7 @@ void EvalAsyncDifferentBindings() {
   std::vector<EvaluationUnit> evaluation_units(num_units, EvaluationUnit());
 
   std::vector<ImageFeatureValue> ifvs = {
-      FileHelpers::LoadImageFeatureValue(L"kitten_224.png"), FileHelpers::LoadImageFeatureValue(L"fish.png")};
+    FileHelpers::LoadImageFeatureValue(L"kitten_224.png"), FileHelpers::LoadImageFeatureValue(L"fish.png")};
 
     // same session, different binding
   auto model = LearningModel::LoadFromFilePath(FileHelpers::GetModulePath() + L"model.onnx");
@@ -158,11 +158,11 @@ void EvalAsyncDifferentBindings() {
 }
 
 winml::ILearningModelFeatureDescriptor UnusedCreateFeatureDescriptor(
-    std::shared_ptr<onnxruntime::Model> model,
-    const std::wstring& name,
-    const std::wstring& description,
-    bool is_required,
-    const ::onnx::TypeProto* type_proto
+  std::shared_ptr<onnxruntime::Model> model,
+  const std::wstring& name,
+  const std::wstring& description,
+  bool is_required,
+  const ::onnx::TypeProto* type_proto
 );
 
 // Get random number in interval [1,max_number]
@@ -191,10 +191,10 @@ void MultiThreadMultiSessionOnDevice(const LearningModelDevice& device) {
   auto path = FileHelpers::GetModulePath() + L"model.onnx";
   auto model = LearningModel::LoadFromFilePath(path);
   std::vector<ImageFeatureValue> ivfs = {
-      FileHelpers::LoadImageFeatureValue(L"kitten_224.png"), FileHelpers::LoadImageFeatureValue(L"fish.png")};
+    FileHelpers::LoadImageFeatureValue(L"kitten_224.png"), FileHelpers::LoadImageFeatureValue(L"fish.png")};
   std::vector<int> max_indices = {
-      281, // tabby, tabby cat
-      0 // tench, Tinca tinca
+    281, // tabby, tabby cat
+    0 // tench, Tinca tinca
   };
   std::vector<float> max_values = {0.9314f, 0.7385f};
   float tolerance = 0.001f;
@@ -257,10 +257,10 @@ void MultiThreadSingleSessionOnDevice(const LearningModelDevice& device) {
   LearningModelSession model_session = nullptr;
   WINML_EXPECT_NO_THROW(model_session = LearningModelSession(model, device));
   std::vector<ImageFeatureValue> ivfs = {
-      FileHelpers::LoadImageFeatureValue(L"kitten_224.png"), FileHelpers::LoadImageFeatureValue(L"fish.png")};
+    FileHelpers::LoadImageFeatureValue(L"kitten_224.png"), FileHelpers::LoadImageFeatureValue(L"fish.png")};
   std::vector<int> max_indices = {
-      281, // tabby, tabby cat
-      0 // tench, Tinca tinca
+    281, // tabby, tabby cat
+    0 // tench, Tinca tinca
   };
   std::vector<float> max_values = {0.9314f, 0.7385f};
   float tolerance = 0.001f;
@@ -313,16 +313,16 @@ void MultiThreadSingleSessionGpu() {
 
 const ConcurrencyTestsApi& getapi() {
   static ConcurrencyTestsApi api = {
-      ConcurrencyTestsClassSetup,
-      LoadBindEvalSqueezenetRealDataWithValidationConcurrently,
-      MultiThreadLoadModel,
-      MultiThreadMultiSession,
-      MultiThreadMultiSessionGpu,
-      MultiThreadSingleSession,
-      MultiThreadSingleSessionGpu,
-      EvalAsyncDifferentModels,
-      EvalAsyncDifferentSessions,
-      EvalAsyncDifferentBindings};
+    ConcurrencyTestsClassSetup,
+    LoadBindEvalSqueezenetRealDataWithValidationConcurrently,
+    MultiThreadLoadModel,
+    MultiThreadMultiSession,
+    MultiThreadMultiSessionGpu,
+    MultiThreadSingleSession,
+    MultiThreadSingleSessionGpu,
+    EvalAsyncDifferentModels,
+    EvalAsyncDifferentSessions,
+    EvalAsyncDifferentBindings};
 
   if (SkipGpuTests()) {
     api.MultiThreadMultiSessionGpu = SkipTest;

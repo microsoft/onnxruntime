@@ -63,11 +63,11 @@ inline std::string UTF8FromUnicode(const wchar_t* input, size_t input_length) {
     return {};
   } else if (input_length <= (std::numeric_limits<size_t>::max)()) {
     int output_length =
-        WideCharToMultiByte(CP_UTF8, 0, input, static_cast<int>(input_length), nullptr, 0, nullptr, nullptr);
+      WideCharToMultiByte(CP_UTF8, 0, input, static_cast<int>(input_length), nullptr, 0, nullptr, nullptr);
     if (output_length > 0) {
       std::string output(output_length, 0);
       WideCharToMultiByte(
-          CP_UTF8, 0, input, static_cast<int>(input_length), &output[0], output_length, nullptr, nullptr
+        CP_UTF8, 0, input, static_cast<int>(input_length), &output[0], output_length, nullptr, nullptr
       );
       return output;
     } else {

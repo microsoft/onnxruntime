@@ -27,12 +27,12 @@ STDMETHODIMP OnnxruntimeEngineBuilder::CreateEngine(_Outptr_ _winml::IEngine** o
 
   if (device_ == nullptr) {
     RETURN_IF_FAILED(Microsoft::WRL::MakeAndInitialize<OnnxruntimeCpuSessionBuilder>(
-        &onnxruntime_session_builder, engine_factory_.Get()
+      &onnxruntime_session_builder, engine_factory_.Get()
     ));
   } else {
 #ifdef USE_DML
     RETURN_IF_FAILED(Microsoft::WRL::MakeAndInitialize<OnnxruntimeDmlSessionBuilder>(
-        &onnxruntime_session_builder, engine_factory_.Get(), device_.Get(), queue_.Get(), metacommands_enabled_
+      &onnxruntime_session_builder, engine_factory_.Get(), device_.Get(), queue_.Get(), metacommands_enabled_
     ));
 #endif
   }
@@ -44,7 +44,7 @@ STDMETHODIMP OnnxruntimeEngineBuilder::CreateEngine(_Outptr_ _winml::IEngine** o
   if (batch_size_override_.has_value()) {
     constexpr const char* DATA_BATCH = "DATA_BATCH";
     RETURN_HR_IF_NOT_OK_MSG(
-        ort_api->AddFreeDimensionOverride(session_options.get(), DATA_BATCH, batch_size_override_.value()), ort_api
+      ort_api->AddFreeDimensionOverride(session_options.get(), DATA_BATCH, batch_size_override_.value()), ort_api
     );
   }
   if (named_dimension_overrides_) {
@@ -56,13 +56,13 @@ STDMETHODIMP OnnxruntimeEngineBuilder::CreateEngine(_Outptr_ _winml::IEngine** o
 
   if (intra_op_num_threads_override_.has_value()) {
     RETURN_HR_IF_NOT_OK_MSG(
-        ort_api->SetIntraOpNumThreads(session_options.get(), intra_op_num_threads_override_.value()), ort_api
+      ort_api->SetIntraOpNumThreads(session_options.get(), intra_op_num_threads_override_.value()), ort_api
     );
   }
 
   if (!allow_thread_spinning_) {
     RETURN_HR_IF_NOT_OK_MSG(
-        ort_api->AddSessionConfigEntry(session_options.get(), "session.intra_op.allow_spinning", "0"), ort_api
+      ort_api->AddSessionConfigEntry(session_options.get(), "session.intra_op.allow_spinning", "0"), ort_api
     );
   }
 
@@ -74,9 +74,9 @@ STDMETHODIMP OnnxruntimeEngineBuilder::CreateEngine(_Outptr_ _winml::IEngine** o
   }
 
   OrtThreadPool* inter_op_ort_pool =
-      thread_pool_ ? static_cast<OnnxruntimeThreading*>(thread_pool_.Get())->UseInterOpThreadPool() : nullptr;
+    thread_pool_ ? static_cast<OnnxruntimeThreading*>(thread_pool_.Get())->UseInterOpThreadPool() : nullptr;
   OrtThreadPool* intra_op_ort_pool =
-      thread_pool_ ? static_cast<OnnxruntimeThreading*>(thread_pool_.Get())->UseIntraOpThreadPool() : nullptr;
+    thread_pool_ ? static_cast<OnnxruntimeThreading*>(thread_pool_.Get())->UseIntraOpThreadPool() : nullptr;
 
   OrtSession* ort_session = nullptr;
   onnxruntime_session_builder->CreateSession(session_options.get(), inter_op_ort_pool, intra_op_ort_pool, &ort_session);
@@ -84,7 +84,7 @@ STDMETHODIMP OnnxruntimeEngineBuilder::CreateEngine(_Outptr_ _winml::IEngine** o
 
   Microsoft::WRL::ComPtr<OnnxruntimeEngine> onnxruntime_engine;
   RETURN_IF_FAILED(Microsoft::WRL::MakeAndInitialize<OnnxruntimeEngine>(
-      &onnxruntime_engine, engine_factory_.Get(), std::move(session), onnxruntime_session_builder.Get()
+    &onnxruntime_engine, engine_factory_.Get(), std::move(session), onnxruntime_session_builder.Get()
   ));
   RETURN_IF_FAILED(onnxruntime_engine->RegisterCustomOpLibraryHandles(handles));
   RETURN_IF_FAILED(onnxruntime_engine.CopyTo(out));
@@ -118,7 +118,7 @@ STDMETHODIMP OnnxruntimeEngineBuilder::SetBatchSizeOverride(uint32_t batch_size_
 }
 
 STDMETHODIMP OnnxruntimeEngineBuilder::SetNamedDimensionOverrides(
-    wfc::IMapView<winrt::hstring, uint32_t> named_dimension_overrides
+  wfc::IMapView<winrt::hstring, uint32_t> named_dimension_overrides
 ) {
   named_dimension_overrides_ = std::move(named_dimension_overrides);
   return S_OK;

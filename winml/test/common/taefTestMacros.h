@@ -47,12 +47,11 @@ using namespace WEX::TestExecution;
     getapi().test_name();                 \
   }
 
-#define WINML_SKIP_TEST(message)                                                                                     \
-  WINML_SUPRESS_UNREACHABLE_BELOW(Log::Result(                                                                       \
-                                      TestResults::Skipped,                                                          \
-                                      std::wstring_convert<std::codecvt_utf8<wchar_t>>().from_bytes(message).c_str() \
-  );                                                                                                                 \
-                                  return;)
+#define WINML_SKIP_TEST(message)                                                                                       \
+  WINML_SUPRESS_UNREACHABLE_BELOW(                                                                                     \
+    Log::Result(TestResults::Skipped, std::wstring_convert<std::codecvt_utf8<wchar_t>>().from_bytes(message).c_str()); \
+    return;                                                                                                            \
+  )
 
 #define WINML_EXPECT_NO_THROW(statement) VERIFY_NO_THROW(statement)
 #define WINML_EXPECT_TRUE(statement) VERIFY_IS_TRUE(statement)

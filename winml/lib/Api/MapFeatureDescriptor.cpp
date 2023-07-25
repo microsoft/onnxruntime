@@ -7,11 +7,11 @@
 
 namespace WINMLP {
 MapFeatureDescriptor::MapFeatureDescriptor(
-    const char* name,
-    const char* description,
-    bool is_required,
-    winml::TensorKind key_kind,
-    winml::ILearningModelFeatureDescriptor value_kind
+  const char* name,
+  const char* description,
+  bool is_required,
+  winml::TensorKind key_kind,
+  winml::ILearningModelFeatureDescriptor value_kind
 )
     : name_(_winml::Strings::HStringFromUTF8(name)),
       description_(_winml::Strings::HStringFromUTF8(description)),

@@ -15,7 +15,7 @@ namespace _winml {
 
 inline size_t compute_size_of_shape(const std::vector<int64_t>& shape) {
   auto size_of_shape = static_cast<size_t>(
-      std::accumulate(std::begin(shape), std::end(shape), static_cast<int64_t>(1), std::multiplies<int64_t>())
+    std::accumulate(std::begin(shape), std::end(shape), static_cast<int64_t>(1), std::multiplies<int64_t>())
   );
   return size_of_shape;
 }

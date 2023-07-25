@@ -107,7 +107,7 @@ std::vector<DataType> GetTensorDataFromTensorProto(onnx::TensorProto tensorProto
 }
 
 static std::vector<winrt::hstring> GetTensorStringDataFromTensorProto(
-    onnx::TensorProto tensorProto, uint64_t elementCount
+  onnx::TensorProto tensorProto, uint64_t elementCount
 ) {
   if (tensorProto.string_data_size() != elementCount) {
     throw winrt::hresult_invalid_argument(L"Number of elements in TensorProto does not match expected element count.");
@@ -127,40 +127,40 @@ ITensor ProtobufHelpers::LoadTensorFromProtobufFile(const std::wstring& filePath
     std::vector<int64_t> tensorShape = std::vector<int64_t>(tensorProto.dims().begin(), tensorProto.dims().end());
     int64_t initialValue = 1;
     int64_t elementCount =
-        std::accumulate(tensorShape.begin(), tensorShape.end(), initialValue, std::multiplies<int64_t>());
+      std::accumulate(tensorShape.begin(), tensorShape.end(), initialValue, std::multiplies<int64_t>());
 
     if (!tensorProto.has_data_type()) {
       std::cerr << "WARNING: Loading unknown TensorProto datatype.\n";
     }
     if (isFp16) {
       return TensorFloat16Bit::CreateFromIterable(
-          tensorShape, GetTensorDataFromTensorProto<float>(tensorProto, elementCount)
+        tensorShape, GetTensorDataFromTensorProto<float>(tensorProto, elementCount)
       );
     }
     switch (tensorProto.data_type()) {
       case (onnx::TensorProto::DataType::TensorProto_DataType_FLOAT):
         return TensorFloat::CreateFromIterable(
-            tensorShape, GetTensorDataFromTensorProto<float>(tensorProto, elementCount)
+          tensorShape, GetTensorDataFromTensorProto<float>(tensorProto, elementCount)
         );
       case (onnx::TensorProto::DataType::TensorProto_DataType_INT32):
         return TensorInt32Bit::CreateFromIterable(
-            tensorShape, GetTensorDataFromTensorProto<int32_t>(tensorProto, elementCount)
+          tensorShape, GetTensorDataFromTensorProto<int32_t>(tensorProto, elementCount)
         );
       case (onnx::TensorProto::DataType::TensorProto_DataType_INT64):
         return TensorInt64Bit::CreateFromIterable(
-            tensorShape, GetTensorDataFromTensorProto<int64_t>(tensorProto, elementCount)
+          tensorShape, GetTensorDataFromTensorProto<int64_t>(tensorProto, elementCount)
         );
       case (onnx::TensorProto::DataType::TensorProto_DataType_STRING):
         return TensorString::CreateFromIterable(
-            tensorShape, GetTensorStringDataFromTensorProto(tensorProto, elementCount)
+          tensorShape, GetTensorStringDataFromTensorProto(tensorProto, elementCount)
         );
       case (onnx::TensorProto::DataType::TensorProto_DataType_UINT8):
         return TensorUInt8Bit::CreateFromIterable(
-            tensorShape, GetTensorDataFromTensorProto<uint8_t>(tensorProto, elementCount)
+          tensorShape, GetTensorDataFromTensorProto<uint8_t>(tensorProto, elementCount)
         );
       case (onnx::TensorProto::DataType::TensorProto_DataType_DOUBLE):
         return TensorDouble::CreateFromIterable(
-            tensorShape, GetTensorDataFromTensorProto<double>(tensorProto, elementCount)
+          tensorShape, GetTensorDataFromTensorProto<double>(tensorProto, elementCount)
         );
       default:
         throw winrt::hresult_invalid_argument(L"Tensor type for creating tensor from protobuf file not supported.");
@@ -182,9 +182,9 @@ TensorFloat16Bit ProtobufHelpers::LoadTensorFloat16FromProtobufFile(const std::w
       std::cerr << "Loading unknown TensorProto datatype as TensorFloat16Bit.\n";
     }
 
-    auto shape = winrt::single_threaded_vector<int64_t>(
-        std::vector<int64_t>(tensorProto.dims().begin(), tensorProto.dims().end())
-    );
+    auto shape =
+      winrt::single_threaded_vector<int64_t>(std::vector<int64_t>(tensorProto.dims().begin(), tensorProto.dims().end())
+      );
     TensorFloat16Bit singleTensorValue = TensorFloat16Bit::Create(shape.GetView());
 
     uint16_t* data;
@@ -208,7 +208,7 @@ TensorFloat16Bit ProtobufHelpers::LoadTensorFloat16FromProtobufFile(const std::w
 }
 
 winml::LearningModel ProtobufHelpers::CreateModel(
-    winml::TensorKind kind, const std::vector<int64_t>& shape, uint32_t num_elements
+  winml::TensorKind kind, const std::vector<int64_t>& shape, uint32_t num_elements
 ) {
   onnx::ModelProto model;
   model.set_ir_version(onnx::Version::IR_VERSION);

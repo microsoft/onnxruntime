@@ -47,14 +47,14 @@ wgi::SoftwareBitmap GetSoftwareBitmapFromFile(const std::wstring& filePath) {
   IBitmapFrameWithSoftwareBitmap bitmapFrameWithSoftwareBitmap;
   decoder.as(bitmapFrameWithSoftwareBitmap);
   auto softwareBitmap = bitmapFrameWithSoftwareBitmap
-                            .GetSoftwareBitmapAsync(
-                                BitmapPixelFormat::Bgra8,
-                                BitmapAlphaMode::Ignore,
-                                BitmapTransform::BitmapTransform(),
-                                ExifOrientationMode::IgnoreExifOrientation,
-                                ColorManagementMode::DoNotColorManage
-                            )
-                            .get();
+                          .GetSoftwareBitmapAsync(
+                            BitmapPixelFormat::Bgra8,
+                            BitmapAlphaMode::Ignore,
+                            BitmapTransform::BitmapTransform(),
+                            ExifOrientationMode::IgnoreExifOrientation,
+                            ColorManagementMode::DoNotColorManage
+                          )
+                          .get();
   return softwareBitmap;
 }
 

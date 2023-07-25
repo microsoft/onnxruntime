@@ -32,17 +32,17 @@
 #define CREATE_TENSOR(type, element_type, element_view_type)                                       \
   namespace WINMLP {                                                                               \
   struct type : public _winml::TensorBase<                                                         \
-                    element_type,                                                                  \
-                    element_view_type,                                                             \
-                    type,                                                                          \
-                    I##type,                                                                       \
-                    type##T<type, ITensorNative, _winml::ILotusValueProviderPrivate>> {            \
+                  element_type,                                                                    \
+                  element_view_type,                                                               \
+                  type,                                                                            \
+                  I##type,                                                                         \
+                  type##T<type, ITensorNative, _winml::ILotusValueProviderPrivate>> {              \
     using Base = TensorBase<                                                                       \
-        element_type,                                                                              \
-        element_view_type,                                                                         \
-        type,                                                                                      \
-        I##type,                                                                                   \
-        type##T<type, ITensorNative, _winml::ILotusValueProviderPrivate>>;                         \
+      element_type,                                                                                \
+      element_view_type,                                                                           \
+      type,                                                                                        \
+      I##type,                                                                                     \
+      type##T<type, ITensorNative, _winml::ILotusValueProviderPrivate>>;                           \
                                                                                                    \
     type() = default;                                                                              \
                                                                                                    \
@@ -133,9 +133,9 @@ namespace _winml {
 
 template <typename TValueType, typename TDataType>
 inline winml::ILearningModelFeatureValue CreateTensorValueFromInspectable(
-    _winml::BindingType bindingType,
-    const wf::IInspectable& inspectable,
-    const winml::ITensorFeatureDescriptor& descriptor
+  _winml::BindingType bindingType,
+  const wf::IInspectable& inspectable,
+  const winml::ITensorFeatureDescriptor& descriptor
 ) {
   if (descriptor.TensorKind() == _winml::TensorKindFrom<TDataType>::Type) {
     if (auto vector = inspectable.try_as<wfc::IVector<TDataType>>()) {
@@ -154,9 +154,9 @@ inline winml::ILearningModelFeatureValue CreateTensorValueFromInspectable(
 
 template <>
 inline winml::ILearningModelFeatureValue CreateTensorValueFromInspectable<winmlp::TensorInt8Bit, uint8_t>(
-    _winml::BindingType bindingType,
-    const wf::IInspectable& inspectable,
-    const winml::ITensorFeatureDescriptor& descriptor
+  _winml::BindingType bindingType,
+  const wf::IInspectable& inspectable,
+  const winml::ITensorFeatureDescriptor& descriptor
 ) {
   if (descriptor.TensorKind() == winml::TensorKind::Int8) {
     if (auto vector = inspectable.try_as<wfc::IVector<uint8_t>>()) {
@@ -175,9 +175,9 @@ inline winml::ILearningModelFeatureValue CreateTensorValueFromInspectable<winmlp
 
 template <>
 inline winml::ILearningModelFeatureValue CreateTensorValueFromInspectable<winmlp::TensorFloat16Bit, float>(
-    _winml::BindingType bindingType,
-    const wf::IInspectable& inspectable,
-    const winml::ITensorFeatureDescriptor& descriptor
+  _winml::BindingType bindingType,
+  const wf::IInspectable& inspectable,
+  const winml::ITensorFeatureDescriptor& descriptor
 ) {
   if (descriptor.TensorKind() == winml::TensorKind::Float16) {
     if (auto vector = inspectable.try_as<wfc::IVector<float>>()) {
@@ -195,9 +195,9 @@ inline winml::ILearningModelFeatureValue CreateTensorValueFromInspectable<winmlp
 }
 
 inline winml::ILearningModelFeatureValue CreateFeatureValueFromInspectable(
-    _winml::BindingType bindingType,
-    const wf::IInspectable& inspectable,
-    const winml::ILearningModelFeatureDescriptor& descriptor
+  _winml::BindingType bindingType,
+  const wf::IInspectable& inspectable,
+  const winml::ILearningModelFeatureDescriptor& descriptor
 ) {
   // Tensor and ImageFeatureValue types are passed in directly as feature values
   if (auto featureValue = inspectable.try_as<winml::ILearningModelFeatureValue>()) {
@@ -417,24 +417,24 @@ inline winml::ILearningModelFeatureValue CreateFeatureValueFromInspectable(
     }
 
     using TensorCreator = winml::ILearningModelFeatureValue (*)(
-        BindingType, const wf::IInspectable& inspectable, const winml::ITensorFeatureDescriptor& descriptor
+      BindingType, const wf::IInspectable& inspectable, const winml::ITensorFeatureDescriptor& descriptor
     );
     constexpr std::array<TensorCreator, 13> creators = {
             // Vector and VectorViews of float16 and int8 collide with float and uint8 respectively.
             // They are omitted because of this ambiguity and are not constructible via raw winrt collections.
-        CreateTensorValueFromInspectable<winmlp::TensorBoolean, bool>,
-        CreateTensorValueFromInspectable<winmlp::TensorFloat, float>,
-        CreateTensorValueFromInspectable<winmlp::TensorDouble, double>,
-        CreateTensorValueFromInspectable<winmlp::TensorUInt8Bit, uint8_t>,
-        CreateTensorValueFromInspectable<winmlp::TensorInt8Bit, uint8_t>,
-        CreateTensorValueFromInspectable<winmlp::TensorUInt16Bit, uint16_t>,
-        CreateTensorValueFromInspectable<winmlp::TensorInt16Bit, int16_t>,
-        CreateTensorValueFromInspectable<winmlp::TensorUInt32Bit, uint32_t>,
-        CreateTensorValueFromInspectable<winmlp::TensorInt32Bit, int32_t>,
-        CreateTensorValueFromInspectable<winmlp::TensorUInt64Bit, uint64_t>,
-        CreateTensorValueFromInspectable<winmlp::TensorInt64Bit, int64_t>,
-        CreateTensorValueFromInspectable<winmlp::TensorFloat16Bit, float>,
-        CreateTensorValueFromInspectable<winmlp::TensorString, winrt::hstring>};
+      CreateTensorValueFromInspectable<winmlp::TensorBoolean, bool>,
+      CreateTensorValueFromInspectable<winmlp::TensorFloat, float>,
+      CreateTensorValueFromInspectable<winmlp::TensorDouble, double>,
+      CreateTensorValueFromInspectable<winmlp::TensorUInt8Bit, uint8_t>,
+      CreateTensorValueFromInspectable<winmlp::TensorInt8Bit, uint8_t>,
+      CreateTensorValueFromInspectable<winmlp::TensorUInt16Bit, uint16_t>,
+      CreateTensorValueFromInspectable<winmlp::TensorInt16Bit, int16_t>,
+      CreateTensorValueFromInspectable<winmlp::TensorUInt32Bit, uint32_t>,
+      CreateTensorValueFromInspectable<winmlp::TensorInt32Bit, int32_t>,
+      CreateTensorValueFromInspectable<winmlp::TensorUInt64Bit, uint64_t>,
+      CreateTensorValueFromInspectable<winmlp::TensorInt64Bit, int64_t>,
+      CreateTensorValueFromInspectable<winmlp::TensorFloat16Bit, float>,
+      CreateTensorValueFromInspectable<winmlp::TensorString, winrt::hstring>};
 
     for (const auto& tensorCreator : creators) {
       if (auto createdTensor = tensorCreator(bindingType, inspectable, tensorDescriptor)) {

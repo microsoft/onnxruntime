@@ -51,12 +51,12 @@ struct NullOperatorFactory : winrt::implements<NullOperatorFactory, IMLOperatorK
   }
 
   static void RegisterKernel(
-      const char* name,
-      const char* domain,
-      int versionSince,
-      winrt::com_ptr<IMLOperatorRegistry> registry,
-      winrt::com_ptr<IMLOperatorShapeInferrer> shapeInferrer,
-      std::atomic<uint32_t>* callCount
+    const char* name,
+    const char* domain,
+    int versionSince,
+    winrt::com_ptr<IMLOperatorRegistry> registry,
+    winrt::com_ptr<IMLOperatorShapeInferrer> shapeInferrer,
+    std::atomic<uint32_t>* callCount
   ) {
     MLOperatorKernelDescription kernelDescription;
     kernelDescription.domain = domain;
@@ -67,9 +67,9 @@ struct NullOperatorFactory : winrt::implements<NullOperatorFactory, IMLOperatorK
     MLOperatorEdgeTypeConstrant typeConstraint;
     typeConstraint.typeLabel = "T";
     std::vector<MLOperatorEdgeDescription> allowedEdges{
-        CreateEdgeDescriptor(MLOperatorEdgeType::Tensor, MLOperatorTensorDataType::Double),
-        CreateEdgeDescriptor(MLOperatorEdgeType::Tensor, MLOperatorTensorDataType::Float),
-        CreateEdgeDescriptor(MLOperatorEdgeType::Tensor, MLOperatorTensorDataType::Float16)};
+      CreateEdgeDescriptor(MLOperatorEdgeType::Tensor, MLOperatorTensorDataType::Double),
+      CreateEdgeDescriptor(MLOperatorEdgeType::Tensor, MLOperatorTensorDataType::Float),
+      CreateEdgeDescriptor(MLOperatorEdgeType::Tensor, MLOperatorTensorDataType::Float16)};
     typeConstraint.allowedTypes = allowedEdges.data();
     typeConstraint.allowedTypeCount = static_cast<uint32_t>(allowedEdges.size());
 
@@ -85,7 +85,7 @@ struct NullOperatorFactory : winrt::implements<NullOperatorFactory, IMLOperatorK
     auto factory = winrt::make<NullOperatorFactory>(callCount);
 
     WINML_EXPECT_HRESULT_SUCCEEDED(
-        registry->RegisterOperatorKernel(&kernelDescription, factory.get(), shapeInferrer.get())
+      registry->RegisterOperatorKernel(&kernelDescription, factory.get(), shapeInferrer.get())
     );
   }
 

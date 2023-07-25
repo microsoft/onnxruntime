@@ -52,7 +52,7 @@ LearningModelDevice::~LearningModelDevice() {
 }
 
 winml::LearningModelDevice LearningModelDevice::CreateFromDirect3D11Device(
-    wgdx::Direct3D11::IDirect3DDevice const& device
+  wgdx::Direct3D11::IDirect3DDevice const& device
 ) try {
   return make<LearningModelDevice>(device);
 }
@@ -156,7 +156,7 @@ namespace WINML::factory_implementation {
 // copied from cppwinrt magic to create abi wrappers.   Need to do it this way
 // since peeps underneath (like the constructor) will throw
 HRESULT __stdcall LearningModelDevice::CreateFromD3D12CommandQueue(
-    ID3D12CommandQueue* queue, IUnknown** device
+  ID3D12CommandQueue* queue, IUnknown** device
 ) noexcept {
   try {
     WINML_THROW_HR_IF_NULL_MSG(E_INVALIDARG, queue, "Failed to create LearningModelDevice. Invalid argument queue.");

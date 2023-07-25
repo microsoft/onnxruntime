@@ -37,7 +37,7 @@ struct LearningModelBinding : LearningModelBindingT<LearningModelBinding, ILearn
   void Split(wfc::IMapView<hstring, wf::IInspectable>& first, wfc::IMapView<hstring, wf::IInspectable>& second);
 
   std::tuple<std::string, winrt::com_ptr<_winml::IValue>, _winml::BindingType> CreateBinding(
-      const std::string& name, const wf::IInspectable& value, wfc::IPropertySet const& properties
+    const std::string& name, const wf::IInspectable& value, wfc::IPropertySet const& properties
   );
 
   std::unordered_map<std::string, wf::IInspectable> UpdateProviders();
@@ -57,7 +57,7 @@ struct LearningModelBinding : LearningModelBindingT<LearningModelBinding, ILearn
   void CacheProvider(std::string name, ProviderInfo& spProvider);
   wf::IInspectable CreateUnboundOutput(const std::string& name, winrt::com_ptr<_winml::IValue> value);
   ILearningModelFeatureValue CreateUnboundOuputFeatureValue(
-      const winrt::com_ptr<_winml::IValue> value, ILearningModelFeatureDescriptor& descriptor
+    const winrt::com_ptr<_winml::IValue> value, ILearningModelFeatureDescriptor& descriptor
   );
   HRESULT BindInput(const std::string& name, winrt::com_ptr<_winml::IValue> value);
 

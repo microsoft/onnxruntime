@@ -18,7 +18,7 @@ struct LearningModelSessionExperimental : LearningModelSessionExperimentalT<Lear
 namespace WINML_EXPERIMENTAL::factory_implementation {
 
 struct LearningModelSessionExperimental : LearningModelSessionExperimentalT<
-                                              LearningModelSessionExperimental,
-                                              implementation::LearningModelSessionExperimental> {};
+                                            LearningModelSessionExperimental,
+                                            implementation::LearningModelSessionExperimental> {};
 
 }  // namespace WINML_EXPERIMENTAL::factory_implementation

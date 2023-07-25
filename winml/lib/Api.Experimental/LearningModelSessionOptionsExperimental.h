@@ -22,7 +22,7 @@ struct LearningModelSessionOptionsExperimental
 namespace WINML_EXPERIMENTAL::factory_implementation {
 
 struct LearningModelSessionOptionsExperimental : LearningModelSessionOptionsExperimentalT<
-                                                     LearningModelSessionOptionsExperimental,
-                                                     implementation::LearningModelSessionOptionsExperimental> {};
+                                                   LearningModelSessionOptionsExperimental,
+                                                   implementation::LearningModelSessionOptionsExperimental> {};
 
 }// namespace WINML_EXPERIMENTAL::factory_implementation

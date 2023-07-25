@@ -43,15 +43,14 @@ void ImageConverter::SyncD3D12ToD3D11(_In_ D3DDeviceCache& device_cache, _In_ ID
 }
 
 ComPtr<ID3D11Fence> ImageConverter::FetchOrCreateFenceOnDevice(
-    _In_ D3DDeviceCache& device_cache, _In_ ID3D11Device* pD3D11Device
+  _In_ D3DDeviceCache& device_cache, _In_ ID3D11Device* pD3D11Device
 ) {
   assert(pD3D11Device != nullptr);
 
   ComPtr<ID3D11Fence> fence;
   UINT comPtrSize = static_cast<UINT>(sizeof(fence.GetAddressOf()));
 
-  if (FAILED(pD3D11Device->GetPrivateData(device_cache.GetFenceGuid(), &comPtrSize, fence.GetAddressOf())) ||
-      fence.Get() == nullptr) {
+  if (FAILED(pD3D11Device->GetPrivateData(device_cache.GetFenceGuid(), &comPtrSize, fence.GetAddressOf())) || fence.Get() == nullptr) {
     // There's no fence on the device, so create a new one
     ComPtr<ID3D11Device5> spD3D11Device5;
     WINML_THROW_IF_FAILED(pD3D11Device->QueryInterface(IID_PPV_ARGS(&spD3D11Device5)));
@@ -70,15 +69,15 @@ void ImageConverter::ResetCommandList(_In_ D3DDeviceCache& device_cache) {
     assert(command_allocator_ == nullptr);
 
     WINML_THROW_IF_FAILED(device_cache.GetD3D12Device()->CreateCommandAllocator(
-        device_cache.GetCommandQueue()->GetDesc().Type, IID_PPV_ARGS(command_allocator_.ReleaseAndGetAddressOf())
+      device_cache.GetCommandQueue()->GetDesc().Type, IID_PPV_ARGS(command_allocator_.ReleaseAndGetAddressOf())
     ));
 
     WINML_THROW_IF_FAILED(device_cache.GetD3D12Device()->CreateCommandList(
-        0,
-        device_cache.GetCommandQueue()->GetDesc().Type,
-        command_allocator_.Get(),
-        pipeline_state_.Get(),
-        IID_PPV_ARGS(command_list_.ReleaseAndGetAddressOf())
+      0,
+      device_cache.GetCommandQueue()->GetDesc().Type,
+      command_allocator_.Get(),
+      pipeline_state_.Get(),
+      IID_PPV_ARGS(command_list_.ReleaseAndGetAddressOf())
     ));
   } else {
     command_list_->Reset(command_allocator_.Get(), pipeline_state_.Get());
@@ -90,10 +89,10 @@ void ImageConverter::ResetAllocator() {
 }
 
 ComPtr<ID3D11Texture2D> ImageConverter::CreateTextureFromUnsupportedColorFormat(
-    const wm::IVideoFrame& videoFrame,
-    const wgi::BitmapBounds& inputBounds,
-    const wgi::BitmapBounds& outputBounds,
-    wgdx::DirectXPixelFormat newFormat
+  const wm::IVideoFrame& videoFrame,
+  const wgi::BitmapBounds& inputBounds,
+  const wgi::BitmapBounds& outputBounds,
+  wgdx::DirectXPixelFormat newFormat
 ) {
   assert(videoFrame != nullptr);
 
@@ -102,7 +101,7 @@ ComPtr<ID3D11Texture2D> ImageConverter::CreateTextureFromUnsupportedColorFormat(
   auto device = _winmli::GetDeviceFromDirect3DSurface(videoFrame.Direct3DSurface());
 
   auto spNewVideoFrame =
-      wm::VideoFrame::CreateAsDirect3D11SurfaceBacked(newFormat, outputBounds.Width, outputBounds.Height, device);
+    wm::VideoFrame::CreateAsDirect3D11SurfaceBacked(newFormat, outputBounds.Width, outputBounds.Height, device);
   videoFrame.as<wm::IVideoFrame2>().CopyToAsync(spNewVideoFrame, inputBounds, outputBounds).get();
 
   using namespace Windows::Graphics::DirectX::Direct3D11;
@@ -115,7 +114,7 @@ ComPtr<ID3D11Texture2D> ImageConverter::CreateTextureFromUnsupportedColorFormat(
 }
 
 void ImageConverter::CopyTextureIntoTexture(
-    _In_ ID3D11Texture2D* pTextureFrom, _In_ const wgi::BitmapBounds& inputBounds, _Inout_ ID3D11Texture2D* pTextureTo
+  _In_ ID3D11Texture2D* pTextureFrom, _In_ const wgi::BitmapBounds& inputBounds, _Inout_ ID3D11Texture2D* pTextureTo
 ) {
   assert(pTextureFrom != nullptr);
   assert(pTextureTo != nullptr);
@@ -139,7 +138,7 @@ void ImageConverter::CopyTextureIntoTexture(
   if (textureFromDesc.Width != textureToDesc.Width || textureFromDesc.Height != textureToDesc.Height) {
     // We can't copy the whole resource, so we have to use the slower CopySubresource() function
     D3D11_BOX cropBox = CD3D11_BOX(
-        inputBounds.X, inputBounds.Y, 0, inputBounds.X + inputBounds.Width, inputBounds.Y + inputBounds.Height, 1
+      inputBounds.X, inputBounds.Y, 0, inputBounds.X + inputBounds.Width, inputBounds.Y + inputBounds.Height, 1
     );
     spDeviceContext->CopySubresourceRegion(pTextureTo, 0, 0, 0, 0, pTextureFrom, 0, &cropBox);
   } else {

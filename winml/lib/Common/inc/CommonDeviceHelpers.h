@@ -46,8 +46,8 @@ HRESULT RunDelayLoadedApi(TFunc& tfunc, TArgs&&... args) {
   __try {
     return tfunc(std::forward<TArgs>(args)...);
   } __except (
-      GetExceptionCode() == VcppException(ERROR_SEVERITY_ERROR, ERROR_MOD_NOT_FOUND) ? EXCEPTION_EXECUTE_HANDLER
-                                                                                     : EXCEPTION_CONTINUE_SEARCH
+    GetExceptionCode() == VcppException(ERROR_SEVERITY_ERROR, ERROR_MOD_NOT_FOUND) ? EXCEPTION_EXECUTE_HANDLER
+                                                                                   : EXCEPTION_CONTINUE_SEARCH
   ) {
     // this could be ok, just let people know that it failed to load
     return HRESULT_FROM_WIN32(ERROR_MOD_NOT_FOUND);

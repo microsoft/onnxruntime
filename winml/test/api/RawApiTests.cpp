@@ -95,13 +95,13 @@ static void EvaluateFromModelFromBuffer() {
 
 const RawApiTestsApi& getapi() {
   static constexpr RawApiTestsApi api = {
-      RawApiTestsApiTestsClassSetup,
-      CreateModelFromFilePath,
-      CreateCpuDevice,
-      Evaluate,
-      EvaluateNoInputCopy,
-      EvaluateManyBuffers,
-      EvaluateFromModelFromBuffer,
+    RawApiTestsApiTestsClassSetup,
+    CreateModelFromFilePath,
+    CreateCpuDevice,
+    Evaluate,
+    EvaluateNoInputCopy,
+    EvaluateManyBuffers,
+    EvaluateFromModelFromBuffer,
   };
   return api;
 }

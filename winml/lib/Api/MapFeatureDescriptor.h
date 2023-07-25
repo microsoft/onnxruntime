@@ -8,17 +8,17 @@
 
 namespace WINMLP {
 struct MapFeatureDescriptor : MapFeatureDescriptorT<
-                                  MapFeatureDescriptor,
-                                  ILearningModelFeatureDescriptorNative,
-                                  _winml::IDescriptorInfoProvider> {
+                                MapFeatureDescriptor,
+                                ILearningModelFeatureDescriptorNative,
+                                _winml::IDescriptorInfoProvider> {
   MapFeatureDescriptor() = delete;
 
   MapFeatureDescriptor(
-      const char* name,
-      const char* description,
-      bool is_required,
-      winml::TensorKind keyKind,
-      winml::ILearningModelFeatureDescriptor valueKind
+    const char* name,
+    const char* description,
+    bool is_required,
+    winml::TensorKind keyKind,
+    winml::ILearningModelFeatureDescriptor valueKind
   );
 
    // IMapDescriptor

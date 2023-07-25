@@ -173,7 +173,7 @@ IEngine : IUnknown {
 
   STDMETHOD(CreateTensorValueFromExternalBuffer)
   (void* data, size_t size_in_bytes, const int64_t* shape, size_t count, winml::TensorKind kind, _Out_ IValue** out)
-      PURE;
+    PURE;
 
   STDMETHOD(CreateStringTensorValueFromDataWithCopy)
   (const char* const* data, size_t num_elements, const int64_t* shape, size_t count, _Out_ IValue** out) PURE;

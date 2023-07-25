@@ -20,13 +20,13 @@ struct LearningModel : LearningModelT<LearningModel> {
   LearningModel(const hstring& path, const winml::ILearningModelOperatorProvider operator_provider);
 
   LearningModel(
-      const wss::IRandomAccessStreamReference stream, const winml::ILearningModelOperatorProvider operator_provider
+    const wss::IRandomAccessStreamReference stream, const winml::ILearningModelOperatorProvider operator_provider
   );
 
   LearningModel(
-      _winml::IEngineFactory* engine_factory,
-      _winml::IModel* model,
-      const winml::ILearningModelOperatorProvider operator_provider
+    _winml::IEngineFactory* engine_factory,
+    _winml::IModel* model,
+    const winml::ILearningModelOperatorProvider operator_provider
   );
 
   /* LearningModel properties (MachineLearningContract 1). */
@@ -55,25 +55,25 @@ struct LearningModel : LearningModelT<LearningModel> {
   static wf::IAsyncOperation<winml::LearningModel> LoadFromStorageFileAsync(ws::IStorageFile const model_file);
 
   static wf::IAsyncOperation<winml::LearningModel> LoadFromStorageFileAsync(
-      ws::IStorageFile const model_file, winml::ILearningModelOperatorProvider const operator_provider
+    ws::IStorageFile const model_file, winml::ILearningModelOperatorProvider const operator_provider
   );
 
   static wf::IAsyncOperation<winml::LearningModel> LoadFromStreamAsync(wss::IRandomAccessStreamReference const stream);
 
   static wf::IAsyncOperation<winml::LearningModel> LoadFromStreamAsync(
-      wss::IRandomAccessStreamReference const stream, winml::ILearningModelOperatorProvider const operator_provider
+    wss::IRandomAccessStreamReference const stream, winml::ILearningModelOperatorProvider const operator_provider
   );
 
   static winml::LearningModel LoadFromFilePath(hstring const& path);
 
   static winml::LearningModel LoadFromFilePath(
-      hstring const& path, winml::ILearningModelOperatorProvider const operator_provider
+    hstring const& path, winml::ILearningModelOperatorProvider const operator_provider
   );
 
   static winml::LearningModel LoadFromStream(wss::IRandomAccessStreamReference const stream);
 
   static winml::LearningModel LoadFromStream(
-      wss::IRandomAccessStreamReference const stream, winml::ILearningModelOperatorProvider const operator_provider
+    wss::IRandomAccessStreamReference const stream, winml::ILearningModelOperatorProvider const operator_provider
   );
 
  public:
@@ -85,11 +85,11 @@ struct LearningModel : LearningModelT<LearningModel> {
   _winml::IEngineFactory* GetEngineFactory();
   void SaveToFile(const hstring& file_name);
   void JoinModel(
-      winml::LearningModel other,
-      const std::unordered_map<std::string, std::string>& linkages,
-      bool promote_unlinked_outputs,
-      bool close_model_on_join,
-      const winrt::hstring& join_node_prefix
+    winml::LearningModel other,
+    const std::unordered_map<std::string, std::string>& linkages,
+    bool promote_unlinked_outputs,
+    bool close_model_on_join,
+    const winrt::hstring& join_node_prefix
   );
 
  private:

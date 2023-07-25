@@ -69,9 +69,9 @@ class ModelTest : public testing::TestWithParam<std::tuple<ITestCase*, winml::Le
   }
 
   void CompareEvaluationResults(
-      LearningModelEvaluationResult& results,
-      std::unordered_map<std::string, Ort::Value>& expectedOutputFeeds,
-      const IVectorView<ILearningModelFeatureDescriptor>& outputFeatureDescriptors
+    LearningModelEvaluationResult& results,
+    std::unordered_map<std::string, Ort::Value>& expectedOutputFeeds,
+    const IVectorView<ILearningModelFeatureDescriptor>& outputFeatureDescriptors
   ) {
     for (const auto& [name, value] : expectedOutputFeeds) {
       // Extract the output buffer from the evaluation output
@@ -94,15 +94,15 @@ class ModelTest : public testing::TestWithParam<std::tuple<ITestCase*, winml::Le
         Ort::Value actualOutput = OrtValueHelpers::CreateOrtValueFromITensor(actualOutputTensorValue);
         // Use the expected and actual OrtValues to compare
         std::pair<COMPARE_RESULT, std::string> ret = CompareOrtValue(
-            *actualOutput, *value, m_absolutePerSampleTolerance, m_relativePerSampleTolerance, m_postProcessing
+          *actualOutput, *value, m_absolutePerSampleTolerance, m_relativePerSampleTolerance, m_postProcessing
         );
         WINML_EXPECT_EQUAL(COMPARE_RESULT::SUCCESS, ret.first) << ret.second;
       } else if (outputDescriptor.Kind() == LearningModelFeatureKind::Sequence) {
         auto sequenceOfMapsStringToFloat =
-            results.Outputs().Lookup(outputName).try_as<IVectorView<IMap<winrt::hstring, float>>>();
+          results.Outputs().Lookup(outputName).try_as<IVectorView<IMap<winrt::hstring, float>>>();
         if (sequenceOfMapsStringToFloat != nullptr) {
           WINML_EXPECT_TRUE(CompareFeatureValuesHelper::CompareSequenceOfMapsStringToFloat(
-              sequenceOfMapsStringToFloat, value, m_absolutePerSampleTolerance, m_relativePerSampleTolerance
+            sequenceOfMapsStringToFloat, value, m_absolutePerSampleTolerance, m_relativePerSampleTolerance
           ));
         } else {
           throw winrt::hresult_not_implemented(L"This particular type of sequence output hasn't been handled yet.");
@@ -148,9 +148,8 @@ TEST_P(ModelTest, Run) {
 std::string GetTestDataPath() {
   std::string testDataPath(MAX_PATH, '\0');
   auto environmentVariableFetchSuceeded =
-      GetEnvironmentVariableA("WINML_TEST_DATA_PATH", testDataPath.data(), MAX_PATH);
-  if (environmentVariableFetchSuceeded == 0 && GetLastError() == ERROR_ENVVAR_NOT_FOUND ||
-      environmentVariableFetchSuceeded > MAX_PATH) {
+    GetEnvironmentVariableA("WINML_TEST_DATA_PATH", testDataPath.data(), MAX_PATH);
+  if (environmentVariableFetchSuceeded == 0 && GetLastError() == ERROR_ENVVAR_NOT_FOUND || environmentVariableFetchSuceeded > MAX_PATH) {
     // if the WINML_TEST_DATA_PATH environment variable cannot be found, attempt to find the hardcoded models folder
     std::wstring modulePath = FileHelpers::GetModulePath();
     std::filesystem::path currPath = modulePath.substr(0, modulePath.find_last_of(L"\\"));
@@ -160,7 +159,7 @@ std::string GetTestDataPath() {
       return hardcodedModelPath;
     } else {
       std::string errorStr =
-          "WINML_TEST_DATA_PATH environment variable path not found and \"models\" folder not found in same directory as test exe.\n";
+        "WINML_TEST_DATA_PATH environment variable path not found and \"models\" folder not found in same directory as test exe.\n";
       std::cerr << errorStr;
       throw std::exception(errorStr.c_str());
     }
@@ -170,8 +169,8 @@ std::string GetTestDataPath() {
     testDataPath.replace(environmentVariableFetchSuceeded, testDataPathFolderName.length(), testDataPathFolderName);
   } else {
     throw std::exception(
-        "WINML_TEST_DATA_PATH environment variable path needs to be shorter to accomodate the maximum path size of %d\n",
-        MAX_PATH
+      "WINML_TEST_DATA_PATH environment variable path needs to be shorter to accomodate the maximum path size of %d\n",
+      MAX_PATH
     );
   }
   return testDataPath;
@@ -197,56 +196,56 @@ static std::vector<ITestCase*> GetAllTestCases() {
   // Should match "x86_disabled_tests" in onnxruntime/test/providers/cpu/model_tests.cc
   // However there are more tests skipped. TODO: bugs must be filed for difference in models.
   static const ORTCHAR_T* x86DisabledTests[] = {
-      ORT_TSTR("BERT_Squad"),
-      ORT_TSTR("bvlc_reference_rcnn_ilsvrc13"),
-      ORT_TSTR("bvlc_reference_caffenet"),
-      ORT_TSTR("bvlc_alexnet"),
-      ORT_TSTR("coreml_AgeNet_ImageNet"),
-      ORT_TSTR("coreml_Resnet50"),
-      ORT_TSTR("coreml_VGG16_ImageNet"),
-      ORT_TSTR("faster_rcnn"),
-      ORT_TSTR("fp16_test_tiny_yolov2"),
-      ORT_TSTR("GPT2"),
-      ORT_TSTR("GPT2_LM_HEAD"),
-      ORT_TSTR("keras_lotus_resnet3D"),
-      ORT_TSTR("keras2coreml_Dense_ImageNet"),
-      ORT_TSTR("mask_rcnn_keras"),
-      ORT_TSTR("mask_rcnn"),
-      ORT_TSTR("mlperf_ssd_resnet34_1200"),
-      ORT_TSTR("resnet50"),
-      ORT_TSTR("resnet50v2"),
-      ORT_TSTR("resnet152v2"),
-      ORT_TSTR("resnet101v2"),
-      ORT_TSTR("resnet34v2"),
-      ORT_TSTR("roberta_sequence_classification"),
-      ORT_TSTR("ssd"),
-      ORT_TSTR("tf_inception_resnet_v2"),
-      ORT_TSTR("tf_inception_v4"),
-      ORT_TSTR("tf_nasnet_large"),
-      ORT_TSTR("tf_pnasnet_large"),
-      ORT_TSTR("tf_resnet_v1_50"),
-      ORT_TSTR("tf_resnet_v1_101"),
-      ORT_TSTR("tf_resnet_v1_152"),
-      ORT_TSTR("tf_resnet_v2_50"),
-      ORT_TSTR("tf_resnet_v2_101"),
-      ORT_TSTR("tf_resnet_v2_152"),
-      ORT_TSTR("vgg19"),
-      ORT_TSTR("yolov3"),
-      ORT_TSTR("zfnet512")};
+    ORT_TSTR("BERT_Squad"),
+    ORT_TSTR("bvlc_reference_rcnn_ilsvrc13"),
+    ORT_TSTR("bvlc_reference_caffenet"),
+    ORT_TSTR("bvlc_alexnet"),
+    ORT_TSTR("coreml_AgeNet_ImageNet"),
+    ORT_TSTR("coreml_Resnet50"),
+    ORT_TSTR("coreml_VGG16_ImageNet"),
+    ORT_TSTR("faster_rcnn"),
+    ORT_TSTR("fp16_test_tiny_yolov2"),
+    ORT_TSTR("GPT2"),
+    ORT_TSTR("GPT2_LM_HEAD"),
+    ORT_TSTR("keras_lotus_resnet3D"),
+    ORT_TSTR("keras2coreml_Dense_ImageNet"),
+    ORT_TSTR("mask_rcnn_keras"),
+    ORT_TSTR("mask_rcnn"),
+    ORT_TSTR("mlperf_ssd_resnet34_1200"),
+    ORT_TSTR("resnet50"),
+    ORT_TSTR("resnet50v2"),
+    ORT_TSTR("resnet152v2"),
+    ORT_TSTR("resnet101v2"),
+    ORT_TSTR("resnet34v2"),
+    ORT_TSTR("roberta_sequence_classification"),
+    ORT_TSTR("ssd"),
+    ORT_TSTR("tf_inception_resnet_v2"),
+    ORT_TSTR("tf_inception_v4"),
+    ORT_TSTR("tf_nasnet_large"),
+    ORT_TSTR("tf_pnasnet_large"),
+    ORT_TSTR("tf_resnet_v1_50"),
+    ORT_TSTR("tf_resnet_v1_101"),
+    ORT_TSTR("tf_resnet_v1_152"),
+    ORT_TSTR("tf_resnet_v2_50"),
+    ORT_TSTR("tf_resnet_v2_101"),
+    ORT_TSTR("tf_resnet_v2_152"),
+    ORT_TSTR("vgg19"),
+    ORT_TSTR("yolov3"),
+    ORT_TSTR("zfnet512")};
   allDisabledTests.insert(std::begin(x86DisabledTests), std::end(x86DisabledTests));
 #endif
   // Bad onnx test output caused by previously wrong SAME_UPPER/SAME_LOWER for ConvTranspose
   allDisabledTests.insert(ORT_TSTR("cntk_simple_seg"));
 
   WINML_EXPECT_NO_THROW(LoadTests(
-      dataDirs,
-      whitelistedTestCases,
-      TestTolerances(1e-3, 1e-3, {}, {}),
-      allDisabledTests,
-      [&tests](std::unique_ptr<ITestCase> l) {
-        tests.push_back(l.get());
-        ownedTests.push_back(std::move(l));
-      }
+    dataDirs,
+    whitelistedTestCases,
+    TestTolerances(1e-3, 1e-3, {}, {}),
+    allDisabledTests,
+    [&tests](std::unique_ptr<ITestCase> l) {
+      tests.push_back(l.get());
+      ownedTests.push_back(std::move(l));
+    }
   ));
   return tests;
 }
@@ -273,8 +272,8 @@ bool ShouldSkipTestOnGpuAdapterDxgi(std::string& testName) {
       std::string regex = disabledGpuAdapterTests[testName].first;
       std::wstring adapterDescription = pDesc.Description;
       return std::regex_search(
-          _winml::Strings::UTF8FromUnicode(adapterDescription.c_str(), adapterDescription.length()),
-          std::regex(regex, std::regex_constants::icase | std::regex_constants::nosubs)
+        _winml::Strings::UTF8FromUnicode(adapterDescription.c_str(), adapterDescription.length()),
+        std::regex(regex, std::regex_constants::icase | std::regex_constants::nosubs)
       );
     }
     spAdapter = nullptr;
@@ -307,10 +306,10 @@ bool ShouldSkipTestOnGpuAdapterDxcore(std::string& testName) {
       std::string regex = disabledGpuAdapterTests[testName].first;
       std::string adapterDescription;
       WINML_EXPECT_HRESULT_SUCCEEDED(
-          spCurrAdapter->GetProperty(DXCoreAdapterProperty::DriverDescription, &adapterDescription)
+        spCurrAdapter->GetProperty(DXCoreAdapterProperty::DriverDescription, &adapterDescription)
       );
       return std::regex_search(
-          adapterDescription, std::regex(regex, std::regex_constants::icase | std::regex_constants::nosubs)
+        adapterDescription, std::regex(regex, std::regex_constants::icase | std::regex_constants::nosubs)
       );
     }
   }
@@ -388,7 +387,7 @@ std::string GetFullNameOfTest(ITestCase* testCase, winml::LearningModelDeviceKin
   }
 
   std::replace_if(
-      name.begin(), name.end(), [](char c) { return !google::protobuf::ascii_isalnum(c); }, '_'
+    name.begin(), name.end(), [](char c) { return !google::protobuf::ascii_isalnum(c); }, '_'
   );
 
   // Determine if test should be skipped, using the generic name (no CPU or GPU suffix yet).
@@ -414,12 +413,12 @@ static std::string GetNameOfTestFromTestParam(const testing::TestParamInfo<Model
 }
 
 INSTANTIATE_TEST_SUITE_P(
-    ModelTests,
-    ModelTest,
-    testing::Combine(
-        testing::ValuesIn(GetAllTestCases()),
-        testing::Values(winml::LearningModelDeviceKind::Cpu, winml::LearningModelDeviceKind::DirectX)
-    ),
-    GetNameOfTestFromTestParam
+  ModelTests,
+  ModelTest,
+  testing::Combine(
+    testing::ValuesIn(GetAllTestCases()),
+    testing::Values(winml::LearningModelDeviceKind::Cpu, winml::LearningModelDeviceKind::DirectX)
+  ),
+  GetNameOfTestFromTestParam
 );
 }  // namespace WinML

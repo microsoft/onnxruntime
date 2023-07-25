@@ -26,7 +26,7 @@ static const char* EventCategoryToString(EventCategory category) {
 
 TelemetryEvent::TelemetryEvent(EventCategory category) {
   auto is_provider_enabled = TraceLoggingProviderEnabled(
-      winml_trace_logging_provider, WINEVENT_LEVEL_VERBOSE, WINML_PROVIDER_KEYWORD_START_STOP
+    winml_trace_logging_provider, WINEVENT_LEVEL_VERBOSE, WINML_PROVIDER_KEYWORD_START_STOP
   );
 
   if (is_provider_enabled) {
@@ -34,11 +34,11 @@ TelemetryEvent::TelemetryEvent(EventCategory category) {
     event_id_ = InterlockedIncrement(&s_event_id);
 
     WinMLTraceLoggingWrite(
-        winml_trace_logging_provider,
-        "started event",
-        TraceLoggingString(EventCategoryToString(category_), "event"),
-        TraceLoggingInt64(event_id_.value(), "eventId"),
-        TraceLoggingKeyword(WINML_PROVIDER_KEYWORD_START_STOP)
+      winml_trace_logging_provider,
+      "started event",
+      TraceLoggingString(EventCategoryToString(category_), "event"),
+      TraceLoggingInt64(event_id_.value(), "eventId"),
+      TraceLoggingKeyword(WINML_PROVIDER_KEYWORD_START_STOP)
     );
   }
 }
@@ -46,11 +46,11 @@ TelemetryEvent::TelemetryEvent(EventCategory category) {
 TelemetryEvent::~TelemetryEvent() {
   if (event_id_.has_value()) {
     WinMLTraceLoggingWrite(
-        winml_trace_logging_provider,
-        "stopped event",
-        TraceLoggingString(EventCategoryToString(category_), "event"),
-        TraceLoggingInt64(event_id_.value(), "eventId"),
-        TraceLoggingKeyword(WINML_PROVIDER_KEYWORD_START_STOP)
+      winml_trace_logging_provider,
+      "stopped event",
+      TraceLoggingString(EventCategoryToString(category_), "event"),
+      TraceLoggingInt64(event_id_.value(), "eventId"),
+      TraceLoggingKeyword(WINML_PROVIDER_KEYWORD_START_STOP)
     );
   }
 }

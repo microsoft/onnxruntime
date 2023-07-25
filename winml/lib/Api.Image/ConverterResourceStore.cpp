@@ -81,9 +81,9 @@ void ConverterResourceStore::Store(std::shared_ptr<ConverterResources> object) {
 
 void ConverterResourceStore::EvictOldestPoolObject() {
   auto oldestIt =
-      std::min_element(std::begin(m_objects), std::end(m_objects), [&](const auto& left, const auto& right) {
-        return left.StoreId < right.StoreId;
-      });
+    std::min_element(std::begin(m_objects), std::end(m_objects), [&](const auto& left, const auto& right) {
+      return left.StoreId < right.StoreId;
+    });
 
   // Remove the oldest item from the cache
   m_objects.erase(oldestIt);

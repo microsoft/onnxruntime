@@ -43,7 +43,7 @@ class STLVectorBackedBuffer
   void Length(uint32_t value) try {
     // Set the use buffer length in bytes
     WINML_THROW_HR_IF_TRUE_MSG(
-        E_INVALIDARG, value > Capacity(), "Parameter 'value' cannot be greater than the buffer's capacity."
+      E_INVALIDARG, value > Capacity(), "Parameter 'value' cannot be greater than the buffer's capacity."
     );
     length_ = value;
   }
@@ -74,32 +74,32 @@ LearningModel::LearningModel(const hstring& path, const winml::ILearningModelOpe
 #endif
 
   WINML_THROW_HR_IF_TRUE_MSG(
-      __HRESULT_FROM_WIN32(GetLastError()), file_handle.get() == INVALID_HANDLE_VALUE, "Model load failed!"
+    __HRESULT_FROM_WIN32(GetLastError()), file_handle.get() == INVALID_HANDLE_VALUE, "Model load failed!"
   );
 
   auto file_mapping = wil::unique_handle(CreateFileMappingW(
-      file_handle.get(),  // current file handle
-      NULL,               // default security
-      PAGE_READONLY,      // read/write permission
-      0,                  // size of mapping object, high
-      0,                  // size of mapping object, low
-      NULL
+    file_handle.get(),  // current file handle
+    NULL,               // default security
+    PAGE_READONLY,      // read/write permission
+    0,                  // size of mapping object, high
+    0,                  // size of mapping object, low
+    NULL
   ));             // name of mapping object
 
   WINML_THROW_HR_IF_TRUE_MSG(__HRESULT_FROM_WIN32(GetLastError()), file_mapping == nullptr, "Model load failed!");
 
   auto buffer = MapViewOfFile(
-      file_mapping.get(), // handle to mapping object
-      FILE_MAP_READ,      // read/write
-      0,                  // high-order 32 bits of file offset
-      0,                  // low-order 32 bits of file offset
-      0
+    file_mapping.get(), // handle to mapping object
+    FILE_MAP_READ,      // read/write
+    0,                  // high-order 32 bits of file offset
+    0,                  // low-order 32 bits of file offset
+    0
   );                 // number of bytes to map. 0 means read whole file.
 
   WINML_THROW_HR_IF_TRUE_MSG(__HRESULT_FROM_WIN32(GetLastError()), buffer == nullptr, "Model load failed!");
   LARGE_INTEGER file_size;
   WINML_THROW_HR_IF_FALSE_MSG(
-      __HRESULT_FROM_WIN32(GetLastError()), GetFileSizeEx(file_handle.get(), &file_size), "GetFileSizeEx"
+    __HRESULT_FROM_WIN32(GetLastError()), GetFileSizeEx(file_handle.get(), &file_size), "GetFileSizeEx"
   );
   WINML_THROW_IF_FAILED(engine_factory_->CreateModel(buffer, static_cast<size_t>(file_size.QuadPart), model_.put()));
   WINML_THROW_HR_IF_TRUE_MSG(E_UNEXPECTED, UnmapViewOfFile(buffer) == 0, "Could not unmap model file.");
@@ -108,9 +108,9 @@ LearningModel::LearningModel(const hstring& path, const winml::ILearningModelOpe
 WINML_CATCH_ALL
 
 LearningModel::LearningModel(
-    _winml::IEngineFactory* engine_factory,
-    _winml::IModel* model,
-    const winml::ILearningModelOperatorProvider operator_provider
+  _winml::IEngineFactory* engine_factory,
+  _winml::IModel* model,
+  const winml::ILearningModelOperatorProvider operator_provider
 ) try
     : operator_provider_(operator_provider) {
   engine_factory_.copy_from(engine_factory);
@@ -120,7 +120,7 @@ LearningModel::LearningModel(
 WINML_CATCH_ALL
 
 static HRESULT CreateModelFromStream(
-    _winml::IEngineFactory* engine_factory, const wss::IRandomAccessStreamReference stream, _winml::IModel** model
+  _winml::IEngineFactory* engine_factory, const wss::IRandomAccessStreamReference stream, _winml::IModel** model
 ) {
   auto content = stream.OpenReadAsync().get();
 
@@ -132,7 +132,7 @@ static HRESULT CreateModelFromStream(
 
   void* data;
   WINML_THROW_IF_FAILED_MSG(
-      bytes->Buffer(reinterpret_cast<byte**>(&data)), "Failed to acquire buffer from model stream."
+    bytes->Buffer(reinterpret_cast<byte**>(&data)), "Failed to acquire buffer from model stream."
   );
 
   size_t len = static_cast<size_t>(content.Size());
@@ -144,7 +144,7 @@ static HRESULT CreateModelFromStream(
 }
 
 LearningModel::LearningModel(
-    const wss::IRandomAccessStreamReference stream, const winml::ILearningModelOperatorProvider operator_provider
+  const wss::IRandomAccessStreamReference stream, const winml::ILearningModelOperatorProvider operator_provider
 ) try
     : operator_provider_(operator_provider) {
   _winmlt::TelemetryEvent loadModel_event(_winmlt::EventCategory::kModelLoad);
@@ -257,20 +257,20 @@ wf::IAsyncOperation<winml::LearningModel> LearningModel::LoadFromStorageFileAsyn
 }
 
 wf::IAsyncOperation<winml::LearningModel> LearningModel::LoadFromStorageFileAsync(
-    ws::IStorageFile const modelFile, winml::ILearningModelOperatorProvider const provider
+  ws::IStorageFile const modelFile, winml::ILearningModelOperatorProvider const provider
 ) {
   co_await resume_background();
   return make<LearningModel>(modelFile, provider);
 }
 
 wf::IAsyncOperation<winml::LearningModel> LearningModel::LoadFromStreamAsync(
-    wss::IRandomAccessStreamReference const model_stream
+  wss::IRandomAccessStreamReference const model_stream
 ) {
   return LoadFromStreamAsync(model_stream, nullptr);
 }
 
 wf::IAsyncOperation<winml::LearningModel> LearningModel::LoadFromStreamAsync(
-    wss::IRandomAccessStreamReference const model_stream, winml::ILearningModelOperatorProvider const provider
+  wss::IRandomAccessStreamReference const model_stream, winml::ILearningModelOperatorProvider const provider
 ) {
   co_await resume_background();
   return make<LearningModel>(model_stream, provider);
@@ -282,7 +282,7 @@ winml::LearningModel LearningModel::LoadFromFilePath(hstring const& path) try {
 WINML_CATCH_ALL
 
 winml::LearningModel LearningModel::LoadFromFilePath(
-    hstring const& path, winml::ILearningModelOperatorProvider const provider
+  hstring const& path, winml::ILearningModelOperatorProvider const provider
 ) try {
   return make<LearningModel>(path, provider);
 }
@@ -294,7 +294,7 @@ winml::LearningModel LearningModel::LoadFromStream(wss::IRandomAccessStreamRefer
 WINML_CATCH_ALL
 
 winml::LearningModel LearningModel::LoadFromStream(
-    wss::IRandomAccessStreamReference const model_stream, winml::ILearningModelOperatorProvider const provider
+  wss::IRandomAccessStreamReference const model_stream, winml::ILearningModelOperatorProvider const provider
 ) try {
   return make<LearningModel>(model_stream, provider);
 }
@@ -331,11 +331,11 @@ void LearningModel::SaveToFile(const hstring& file_name) {
 }
 
 void LearningModel::JoinModel(
-    winml::LearningModel other,
-    const std::unordered_map<std::string, std::string>& linkages,
-    bool promote_unlinked_outputs,
-    bool close_model_on_join,
-    const winrt::hstring& join_node_prefix
+  winml::LearningModel other,
+  const std::unordered_map<std::string, std::string>& linkages,
+  bool promote_unlinked_outputs,
+  bool close_model_on_join,
+  const winrt::hstring& join_node_prefix
 ) {
   auto otherp = other.as<winmlp::LearningModel>();
   winrt::com_ptr<_winml::IModel> other_model;
@@ -356,12 +356,7 @@ void LearningModel::JoinModel(
 
   auto prefix = winrt::to_string(join_node_prefix);
   WINML_THROW_IF_FAILED(model_->JoinModel(
-      other_model.get(),
-      raw_outputs.data(),
-      raw_inputs.data(),
-      linkages.size(),
-      promote_unlinked_outputs,
-      prefix.c_str()
+    other_model.get(), raw_outputs.data(), raw_inputs.data(), linkages.size(), promote_unlinked_outputs, prefix.c_str()
   ));
 
   model_info_ = nullptr;
@@ -377,13 +372,13 @@ HRESULT
 __stdcall LearningModel::Load(const wchar_t* p_model_path, uint32_t model_path_size, IUnknown** pp_model_unk) {
   try {
     WINML_THROW_HR_IF_NULL_MSG(
-        E_INVALIDARG, p_model_path, "Failed to create LearningModel. Ivalid argument p_model_path."
+      E_INVALIDARG, p_model_path, "Failed to create LearningModel. Ivalid argument p_model_path."
     );
     WINML_THROW_HR_IF_FALSE_MSG(
-        E_INVALIDARG, model_path_size > 0, "Failed to create LearningModel. Ivalid argument model_path_size."
+      E_INVALIDARG, model_path_size > 0, "Failed to create LearningModel. Ivalid argument model_path_size."
     );
     WINML_THROW_HR_IF_NULL_MSG(
-        E_INVALIDARG, pp_model_unk, "Failed to create LearningModel. Ivalid argument pp_model_unk."
+      E_INVALIDARG, pp_model_unk, "Failed to create LearningModel. Ivalid argument pp_model_unk."
     );
 
     winrt::hstring path(p_model_path, model_path_size);

@@ -127,12 +127,12 @@ template <typename T>
 struct TensorFeatureDescriptorFrom {
   static winml::ILearningModelFeatureDescriptor CreateAnonymous(std::vector<int64_t> shape) {
     return winrt::make<winmlp::TensorFeatureDescriptor>(
-        nullptr /* set to null as values are name-less */,
-        nullptr /* set to null as values are description-less */,
-        TensorKindFrom<T>::Type,
-        shape,
-        false /* set to false as values dont have required annotations */,
-        false /* set to false as this is not a tensor of unsupported metadata */
+      nullptr /* set to null as values are name-less */,
+      nullptr /* set to null as values are description-less */,
+      TensorKindFrom<T>::Type,
+      shape,
+      false /* set to false as values dont have required annotations */,
+      false /* set to false as this is not a tensor of unsupported metadata */
     );
   }
 };

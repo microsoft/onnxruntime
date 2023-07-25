@@ -41,15 +41,15 @@ LearningModelSession::LearningModelSession(winml::LearningModel const& model) tr
 WINML_CATCH_ALL
 
 LearningModelSession::LearningModelSession(
-    winml::LearningModel const& model, winml::LearningModelDevice const& deviceToRunOn
+  winml::LearningModel const& model, winml::LearningModelDevice const& deviceToRunOn
 ) try
     : LearningModelSession(model, deviceToRunOn, nullptr) {}
 WINML_CATCH_ALL
 
 LearningModelSession::LearningModelSession(
-    winml::LearningModel const& model,
-    winml::LearningModelDevice const& deviceToRunOn,
-    winml::LearningModelSessionOptions const& learningModelSessionOptions
+  winml::LearningModel const& model,
+  winml::LearningModelDevice const& deviceToRunOn,
+  winml::LearningModelSessionOptions const& learningModelSessionOptions
 ) try
     : operator_registry_(nullptr, nullptr),
       model_(model),
@@ -121,7 +121,7 @@ void LearningModelSession::Initialize() {
     }
 
     com_ptr<winmlp::LearningModelSessionOptions> session_options_impl =
-        session_options_.as<winmlp::LearningModelSessionOptions>();
+      session_options_.as<winmlp::LearningModelSessionOptions>();
 
     // Make onnxruntime apply named dimension overrides, if any
     if (session_options_impl && session_options_impl->NamedDimensionOverrides().Size() > 0) {
@@ -140,7 +140,7 @@ void LearningModelSession::Initialize() {
   }
 
   bool create_local_thread_pool =
-      allow_spinning != device_impl->AllowSpinning() || num_intra_op_threads != device_impl->NumberOfIntraOpThreads();
+    allow_spinning != device_impl->AllowSpinning() || num_intra_op_threads != device_impl->NumberOfIntraOpThreads();
   if (create_local_thread_pool) {
     WINML_THROW_IF_FAILED(engine_builder->SetIntraOpThreadSpinning(allow_spinning));
     WINML_THROW_IF_FAILED(engine_builder->SetIntraOpNumThreadsOverride(num_intra_op_threads));
@@ -159,7 +159,7 @@ void LearningModelSession::Initialize() {
 
   // Register the custom operator registry
   operator_registry_ =
-      MLOperatorRegistry(model_impl->GetOperatorRegistry(), [](auto registry) { registry->Release(); });
+    MLOperatorRegistry(model_impl->GetOperatorRegistry(), [](auto registry) { registry->Release(); });
   WINML_THROW_IF_FAILED(engine->RegisterCustomRegistry(operator_registry_.get()));
 
   // Register transformers - this should probably not be exposed on IEngine, but an internal call as this configuration step is ort specific.
@@ -205,7 +205,7 @@ auto CreateBinding(LearningModelSession& session, wfc::IMap<hstring, wf::IInspec
 }
 
 winml::LearningModelEvaluationResult LearningModelSession::EvaluateFeatures(
-    wfc::IMap<hstring, wf::IInspectable> const features, hstring const correlation_id
+  wfc::IMap<hstring, wf::IInspectable> const features, hstring const correlation_id
 ) try {
   auto binding = CreateBinding(*this, features);
   return Evaluate(binding, correlation_id);
@@ -213,7 +213,7 @@ winml::LearningModelEvaluationResult LearningModelSession::EvaluateFeatures(
 WINML_CATCH_ALL
 
 wf::IAsyncOperation<winml::LearningModelEvaluationResult> LearningModelSession::EvaluateFeaturesAsync(
-    wfc::IMap<hstring, wf::IInspectable> const features, hstring const correlation_id
+  wfc::IMap<hstring, wf::IInspectable> const features, hstring const correlation_id
 ) {
   auto binding = CreateBinding(*this, features);
   return EvaluateAsync(binding, correlation_id);
@@ -244,10 +244,10 @@ uint64_t LearningModelSession::Run(winrt::com_ptr<winmlp::LearningModelBinding> 
   auto& output_names = binding_impl->GetOutputNames();
   std::vector<const char*> output_names_raw;
   std::transform(
-      std::begin(output_names),
-      std::end(output_names),
-      std::back_inserter(output_names_raw),
-      [&](auto& name) { return name.c_str(); }
+    std::begin(output_names),
+    std::end(output_names),
+    std::back_inserter(output_names_raw),
+    [&](auto& name) { return name.c_str(); }
   );
 
   auto outputs = binding_impl->GetOutputs();
@@ -257,12 +257,12 @@ uint64_t LearningModelSession::Run(winrt::com_ptr<winmlp::LearningModelBinding> 
   });
 
   WINML_THROW_IF_FAILED(engine_->Run(
-      input_names_raw.data(),
-      inputs_raw.data(),
-      input_names_raw.size(),
-      output_names_raw.data(),
-      outputs_raw.data(),
-      output_names_raw.size()
+    input_names_raw.data(),
+    inputs_raw.data(),
+    input_names_raw.size(),
+    output_names_raw.data(),
+    outputs_raw.data(),
+    output_names_raw.size()
   ));
 
   if (!device->IsCpuDevice()) {
@@ -277,9 +277,9 @@ uint64_t LearningModelSession::Run(winrt::com_ptr<winmlp::LearningModelBinding> 
 }
 
 winml::LearningModelEvaluationResult LearningModelSession::GetResults(
-    winrt::com_ptr<winmlp::LearningModelBinding> binding_impl,
-    hstring const& correlation_id,
-    uint64_t evaluation_complete_fence
+  winrt::com_ptr<winmlp::LearningModelBinding> binding_impl,
+  hstring const& correlation_id,
+  uint64_t evaluation_complete_fence
 ) {
   // First wait on the fence value for the expected frame. This is passed in so that
   // the fence value is added to the queue in a thread safe manor.
@@ -319,7 +319,7 @@ winml::LearningModelEvaluationResult LearningModelSession::GetResults(
 }
 
 wf::IAsyncOperation<winml::LearningModelEvaluationResult> LearningModelSession::EvaluateAsync(
-    winml::LearningModelBinding binding, hstring const correlation_id
+  winml::LearningModelBinding binding, hstring const correlation_id
 ) {
   _winmlt::TelemetryEvent kEvaluateModel_event(_winmlt::EventCategory::kEvaluation);
   auto device = device_.as<LearningModelDevice>();
@@ -365,7 +365,7 @@ wf::IAsyncOperation<winml::LearningModelEvaluationResult> LearningModelSession::
 }
 
 winml::LearningModelEvaluationResult LearningModelSession::Evaluate(
-    winml::LearningModelBinding binding, hstring const& correlation_id
+  winml::LearningModelBinding binding, hstring const& correlation_id
 ) try {
   ToggleProfiler();
   _winmlt::TelemetryEvent kEvaluateModel_event(_winmlt::EventCategory::kEvaluation);
@@ -413,7 +413,7 @@ WINML_CATCH_ALL
 void LearningModelSession::ToggleProfiler() {
   CheckClosed();
   auto is_provider_enabled = TraceLoggingProviderEnabled(
-      ::winml_trace_logging_provider, WINEVENT_LEVEL_VERBOSE, WINML_PROVIDER_KEYWORD_LOTUS_PROFILING
+    ::winml_trace_logging_provider, WINEVENT_LEVEL_VERBOSE, WINML_PROVIDER_KEYWORD_LOTUS_PROFILING
   );
 
   if (is_provider_enabled) {

@@ -35,22 +35,22 @@ class InferenceSessionProtectedLoadAccessor : public onnxruntime::InferenceSessi
 };
 
 ORT_API_STATUS_IMPL(
-    winmla::CreateSessionWithoutModel,
-    _In_ OrtEnv* env,
-    _In_ const OrtSessionOptions* options,
-    _In_ OrtThreadPool* inter_op_thread_pool,
-    _In_ OrtThreadPool* intra_op_thread_pool,
-    _Outptr_ OrtSession** session
+  winmla::CreateSessionWithoutModel,
+  _In_ OrtEnv* env,
+  _In_ const OrtSessionOptions* options,
+  _In_ OrtThreadPool* inter_op_thread_pool,
+  _In_ OrtThreadPool* intra_op_thread_pool,
+  _Outptr_ OrtSession** session
 ) {
   API_IMPL_BEGIN
   std::unique_ptr<onnxruntime::InferenceSession> inference_session;
   try {
     // Create the inference session
     inference_session = std::make_unique<onnxruntime::InferenceSession>(
-        options->value,
-        env->GetEnvironment(),
-        reinterpret_cast<onnxruntime::concurrency::ThreadPool*>(intra_op_thread_pool),
-        reinterpret_cast<onnxruntime::concurrency::ThreadPool*>(inter_op_thread_pool)
+      options->value,
+      env->GetEnvironment(),
+      reinterpret_cast<onnxruntime::concurrency::ThreadPool*>(intra_op_thread_pool),
+      reinterpret_cast<onnxruntime::concurrency::ThreadPool*>(inter_op_thread_pool)
     );
   } catch (const std::exception& e) {
     return OrtApis::CreateStatus(ORT_FAIL, e.what());
@@ -67,12 +67,12 @@ ORT_API_STATUS_IMPL(
           // TODO Instead of returning an error, should we set mem pattern to false here and log a warning saying so?
           // Doing so would be inconsistent with the Python API that doesn't go through this code path.
           return OrtApis::CreateStatus(
-              ORT_INVALID_ARGUMENT, "Mem pattern should be disabled when using DML execution provider."
+            ORT_INVALID_ARGUMENT, "Mem pattern should be disabled when using DML execution provider."
           );
         }
         if (options->value.execution_mode != ExecutionMode::ORT_SEQUENTIAL) {
           return OrtApis::CreateStatus(
-              ORT_INVALID_ARGUMENT, "Sequential execution should be enabled when using DML execution provider."
+            ORT_INVALID_ARGUMENT, "Sequential execution should be enabled when using DML execution provider."
           );
         }
       }
@@ -103,10 +103,10 @@ ORT_API_STATUS_IMPL(
 }
 
 ORT_API_STATUS_IMPL(
-    winmla::SessionGetExecutionProvider,
-    _In_ OrtSession* session,
-    _In_ size_t index,
-    _Out_ OrtExecutionProvider** ort_provider
+  winmla::SessionGetExecutionProvider,
+  _In_ OrtSession* session,
+  _In_ size_t index,
+  _Out_ OrtExecutionProvider** ort_provider
 ) {
   API_IMPL_BEGIN
   auto inference_session = reinterpret_cast<::onnxruntime::InferenceSession*>(session);
@@ -191,7 +191,7 @@ inline std::list<std::shared_ptr<onnxruntime::CustomRegistry>> GetLotusCustomReg
 }
 
 ORT_API_STATUS_IMPL(
-    winmla::SessionRegisterCustomRegistry, _In_ OrtSession* session, _In_ IMLOperatorRegistry* registry
+  winmla::SessionRegisterCustomRegistry, _In_ OrtSession* session, _In_ IMLOperatorRegistry* registry
 ) {
   API_IMPL_BEGIN
   auto inference_session = reinterpret_cast<::onnxruntime::InferenceSession*>(session);
@@ -230,10 +230,10 @@ static OrtDevice GetSessionGetInputDevice(_In_ OrtSession* session, _In_ const c
 }
 
 ORT_API_STATUS_IMPL(
-    winmla::SessionGetInputRequiredDeviceId,
-    _In_ OrtSession* session,
-    _In_ const char* const input_name,
-    _Out_ int16_t* device_id
+  winmla::SessionGetInputRequiredDeviceId,
+  _In_ OrtSession* session,
+  _In_ const char* const input_name,
+  _Out_ int16_t* device_id
 ) {
   API_IMPL_BEGIN
   auto device = GetSessionGetInputDevice(session, input_name);
@@ -251,11 +251,11 @@ ORT_API_STATUS_IMPL(winmla::ValueGetDeviceId, _In_ OrtValue* ort_value, _Out_ in
 }
 
 ORT_API_STATUS_IMPL(
-    winmla::SessionCopyOneInputAcrossDevices,
-    _In_ OrtSession* session,
-    _In_ const char* const input_name,
-    _In_ OrtValue* orig_value,
-    _Outptr_ OrtValue** new_value
+  winmla::SessionCopyOneInputAcrossDevices,
+  _In_ OrtSession* session,
+  _In_ const char* const input_name,
+  _In_ OrtValue* orig_value,
+  _Outptr_ OrtValue** new_value
 ) {
   API_IMPL_BEGIN
   auto inference_session = reinterpret_cast<::onnxruntime::InferenceSession*>(session);
@@ -300,19 +300,19 @@ ORT_API_STATUS_IMPL(winmla::SessionGetIntraOpThreadSpinning, _In_ OrtSession* se
 }
 
 ORT_API_STATUS_IMPL(
-    winmla::SessionGetNamedDimensionsOverrides,
-    _In_ OrtSession* session,
-    _Out_ winrt::Windows::Foundation::Collections::IMapView<winrt::hstring, uint32_t>& named_dimension_overrides
+  winmla::SessionGetNamedDimensionsOverrides,
+  _In_ OrtSession* session,
+  _Out_ winrt::Windows::Foundation::Collections::IMapView<winrt::hstring, uint32_t>& named_dimension_overrides
 ) {
   API_IMPL_BEGIN
   auto inference_session = reinterpret_cast<::onnxruntime::InferenceSession*>(session);
   auto session_options = inference_session->GetSessionOptions();
   winrt::Windows::Foundation::Collections::IMap<winrt::hstring, uint32_t> override_map =
-      winrt::single_threaded_map<winrt::hstring, uint32_t>();
+    winrt::single_threaded_map<winrt::hstring, uint32_t>();
   for (auto freeDimOverride : session_options.free_dimension_overrides) {
     if (freeDimOverride.dim_identifer_type == onnxruntime::FreeDimensionOverrideType::Name) {
       override_map.Insert(
-          winrt::to_hstring(freeDimOverride.dim_identifier), static_cast<uint32_t>(freeDimOverride.dim_value)
+        winrt::to_hstring(freeDimOverride.dim_identifier), static_cast<uint32_t>(freeDimOverride.dim_value)
       );
     }
   }

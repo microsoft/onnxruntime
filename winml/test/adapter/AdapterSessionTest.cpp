@@ -57,14 +57,14 @@ UniqueOrtSessionOptions CreateUniqueOrtSessionOptions() {
 void AppendExecutionProvider_CPU() {
   const auto session_options = CreateUniqueOrtSessionOptions();
   THROW_IF_NOT_OK_MSG(
-      winml_adapter_api->OrtSessionOptionsAppendExecutionProvider_CPU(session_options.get(), true), ort_api
+    winml_adapter_api->OrtSessionOptionsAppendExecutionProvider_CPU(session_options.get(), true), ort_api
   );
 }
 
 winrt::com_ptr<ID3D12Device> CreateD3DDevice() {
   winrt::com_ptr<ID3D12Device> device;
   WINML_EXPECT_NO_THROW(
-      D3D12CreateDevice(nullptr, D3D_FEATURE_LEVEL::D3D_FEATURE_LEVEL_11_0, IID_PPV_ARGS(device.put()))
+    D3D12CreateDevice(nullptr, D3D_FEATURE_LEVEL::D3D_FEATURE_LEVEL_11_0, IID_PPV_ARGS(device.put()))
   );
   return device;
 }
@@ -80,19 +80,19 @@ winrt::com_ptr<ID3D12CommandQueue> CreateD3DQueue(ID3D12Device* device) {
 UniqueOrtSession CreateUniqueOrtSession(const UniqueOrtSessionOptions& session_options) {
   OrtSession* session;
   THROW_IF_NOT_OK_MSG(
-      winml_adapter_api->CreateSessionWithoutModel(ort_env, session_options.get(), nullptr, nullptr, &session), ort_api
+    winml_adapter_api->CreateSessionWithoutModel(ort_env, session_options.get(), nullptr, nullptr, &session), ort_api
   );
   return UniqueOrtSession(session, ort_api->ReleaseSession);
 }
 
 UniqueOrtSession CreateUniqueOrtSession(
-    const std::wstring& model_path, const UniqueOrtSessionOptions& session_options
+  const std::wstring& model_path, const UniqueOrtSessionOptions& session_options
 ) {
   OrtSession* session;
   ort_api->SetIntraOpNumThreads(session_options.get(), 1);
   ort_api->SetSessionGraphOptimizationLevel(session_options.get(), ORT_ENABLE_BASIC);
   THROW_IF_NOT_OK_MSG(
-      winml_adapter_api->OrtSessionOptionsAppendExecutionProvider_CPU(session_options.get(), true), ort_api
+    winml_adapter_api->OrtSessionOptionsAppendExecutionProvider_CPU(session_options.get(), true), ort_api
   );
   THROW_IF_NOT_OK_MSG(ort_api->CreateSession(ort_env, model_path.c_str(), session_options.get(), &session), ort_api);
   return UniqueOrtSession(session, ort_api->ReleaseSession);
@@ -104,10 +104,10 @@ void AppendExecutionProvider_DML() {
   const auto device = CreateD3DDevice();
   const auto queue = CreateD3DQueue(device.get());
   THROW_IF_NOT_OK_MSG(
-      winml_adapter_api->OrtSessionOptionsAppendExecutionProvider_DML(
-          session_options.get(), device.get(), queue.get(), true
-      ),
-      ort_api
+    winml_adapter_api->OrtSessionOptionsAppendExecutionProvider_DML(
+      session_options.get(), device.get(), queue.get(), true
+    ),
+    ort_api
   );
 }
 
@@ -131,10 +131,10 @@ void GetExecutionProvider_DML() {
   const auto device = CreateD3DDevice();
   const auto queue = CreateD3DQueue(device.get());
   THROW_IF_NOT_OK_MSG(
-      winml_adapter_api->OrtSessionOptionsAppendExecutionProvider_DML(
-          session_options.get(), device.get(), queue.get(), true
-      ),
-      ort_api
+    winml_adapter_api->OrtSessionOptionsAppendExecutionProvider_DML(
+      session_options.get(), device.get(), queue.get(), true
+    ),
+    ort_api
   );
 
   const auto model_path = FileHelpers::GetModulePath() + L"fns-candy.onnx";
@@ -219,16 +219,16 @@ void Profiling() {
   const auto profile_callback = [](const OrtProfilerEventRecord*) { profile_called = true; };
 
   THROW_IF_NOT_OK_MSG(
-      winml_adapter_api->EnvConfigureCustomLoggerAndProfiler(
-          ort_env,
-          logging_callback,
-          profile_callback,
-          nullptr,
-          OrtLoggingLevel::ORT_LOGGING_LEVEL_VERBOSE,
-          "Default",
-          &ort_env
-      ),
-      ort_api
+    winml_adapter_api->EnvConfigureCustomLoggerAndProfiler(
+      ort_env,
+      logging_callback,
+      profile_callback,
+      nullptr,
+      OrtLoggingLevel::ORT_LOGGING_LEVEL_VERBOSE,
+      "Default",
+      &ort_env
+    ),
+    ort_api
   );
 
   const auto session_options = CreateUniqueOrtSessionOptions();
@@ -258,16 +258,16 @@ void CopyInputAcrossDevices() {
   std::vector<float> input_tensor_values(input_tensor_size);
   OrtValue* input_tensor;
   THROW_IF_NOT_OK_MSG(
-      ort_api->CreateTensorWithDataAsOrtValue(
-          memory_info,
-          input_tensor_values.data(),
-          input_tensor_size * sizeof(float),
-          dimensions.data(),
-          4,
-          ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT,
-          &input_tensor
-      ),
-      ort_api
+    ort_api->CreateTensorWithDataAsOrtValue(
+      memory_info,
+      input_tensor_values.data(),
+      input_tensor_size * sizeof(float),
+      dimensions.data(),
+      4,
+      ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT,
+      &input_tensor
+    ),
+    ort_api
   );
 
   int is_tensor;
@@ -276,8 +276,8 @@ void CopyInputAcrossDevices() {
 
   OrtValue* dest_ort_value;
   THROW_IF_NOT_OK_MSG(
-      winml_adapter_api->SessionCopyOneInputAcrossDevices(session.get(), "inputImage", input_tensor, &dest_ort_value),
-      ort_api
+    winml_adapter_api->SessionCopyOneInputAcrossDevices(session.get(), "inputImage", input_tensor, &dest_ort_value),
+    ort_api
   );
 
   ort_api->ReleaseValue(input_tensor);
@@ -291,10 +291,10 @@ void CopyInputAcrossDevices_DML() {
   const auto device = CreateD3DDevice();
   const auto queue = CreateD3DQueue(device.get());
   THROW_IF_NOT_OK_MSG(
-      winml_adapter_api->OrtSessionOptionsAppendExecutionProvider_DML(
-          session_options.get(), device.get(), queue.get(), true
-      ),
-      ort_api
+    winml_adapter_api->OrtSessionOptionsAppendExecutionProvider_DML(
+      session_options.get(), device.get(), queue.get(), true
+    ),
+    ort_api
   );
   auto session = CreateUniqueOrtSession(session_options);
 
@@ -313,16 +313,16 @@ void CopyInputAcrossDevices_DML() {
   std::vector<float> input_tensor_values(input_tensor_size);
   OrtValue* input_tensor;
   THROW_IF_NOT_OK_MSG(
-      ort_api->CreateTensorWithDataAsOrtValue(
-          memory_info,
-          input_tensor_values.data(),
-          input_tensor_size * sizeof(float),
-          dimensions.data(),
-          4,
-          ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT,
-          &input_tensor
-      ),
-      ort_api
+    ort_api->CreateTensorWithDataAsOrtValue(
+      memory_info,
+      input_tensor_values.data(),
+      input_tensor_size * sizeof(float),
+      dimensions.data(),
+      4,
+      ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT,
+      &input_tensor
+    ),
+    ort_api
   );
 
   int is_tensor;
@@ -331,8 +331,8 @@ void CopyInputAcrossDevices_DML() {
 
   OrtValue* dest_ort_value = nullptr;
   THROW_IF_NOT_OK_MSG(
-      winml_adapter_api->SessionCopyOneInputAcrossDevices(session.get(), "inputImage", input_tensor, &dest_ort_value),
-      ort_api
+    winml_adapter_api->SessionCopyOneInputAcrossDevices(session.get(), "inputImage", input_tensor, &dest_ort_value),
+    ort_api
   );
 
   ort_api->ReleaseValue(input_tensor);
@@ -352,23 +352,23 @@ void GetNumberOfIntraOpThreads() {
 
 const AdapterSessionTestAPI& getapi() {
   static AdapterSessionTestAPI api = {
-      AdapterSessionTestSetup,
-      AdapterSessionTestTeardown,
-      AppendExecutionProvider_CPU,
-      AppendExecutionProvider_DML,
-      CreateWithoutModel,
-      GetExecutionProvider,
-      GetExecutionProvider_DML,
-      Initialize,
-      RegisterGraphTransformers,
-      RegisterGraphTransformers_DML,
-      RegisterCustomRegistry,
-      RegisterCustomRegistry_DML,
-      LoadAndPurloinModel,
-      Profiling,
-      CopyInputAcrossDevices,
-      CopyInputAcrossDevices_DML,
-      GetNumberOfIntraOpThreads};
+    AdapterSessionTestSetup,
+    AdapterSessionTestTeardown,
+    AppendExecutionProvider_CPU,
+    AppendExecutionProvider_DML,
+    CreateWithoutModel,
+    GetExecutionProvider,
+    GetExecutionProvider_DML,
+    Initialize,
+    RegisterGraphTransformers,
+    RegisterGraphTransformers_DML,
+    RegisterCustomRegistry,
+    RegisterCustomRegistry_DML,
+    LoadAndPurloinModel,
+    Profiling,
+    CopyInputAcrossDevices,
+    CopyInputAcrossDevices_DML,
+    GetNumberOfIntraOpThreads};
 
   if (SkipGpuTests()) {
     api.AppendExecutionProvider_DML = SkipTest;

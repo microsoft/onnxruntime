@@ -8,8 +8,8 @@ struct LearningModelExperimental : LearningModelExperimentalT<LearningModelExper
 
   LearningModelExperimental(Microsoft::AI::MachineLearning::LearningModel const& model);
   Microsoft::AI::MachineLearning::LearningModel JoinModel(
-      Microsoft::AI::MachineLearning::LearningModel const& other,
-      Microsoft::AI::MachineLearning::Experimental::LearningModelJoinOptions const& options
+    Microsoft::AI::MachineLearning::LearningModel const& other,
+    Microsoft::AI::MachineLearning::Experimental::LearningModelJoinOptions const& options
   );
 
   void Save(hstring const& file_name);

@@ -53,7 +53,7 @@ class ModelInfo
 
 class OnnruntimeModel
     : public Microsoft::WRL::
-          RuntimeClass<Microsoft::WRL::RuntimeClassFlags<Microsoft::WRL::ClassicCom>, IModel, IOnnxruntimeModel> {
+        RuntimeClass<Microsoft::WRL::RuntimeClassFlags<Microsoft::WRL::ClassicCom>, IModel, IOnnxruntimeModel> {
  public:
   OnnruntimeModel();
 

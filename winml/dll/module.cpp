@@ -117,8 +117,7 @@ STDAPI DllGetExperimentalActivationFactory(void* classId, void** factory) noexce
                                               << ".AI.MachineLearning.Experimental.LearningModelSessionExperimental";
     if (requal(name, learning_model_session_experimental_class.str())) {
       *factory =
-          winrt::detach_abi(winrt::make<WINML_EXPERIMENTAL::factory_implementation::LearningModelSessionExperimental>()
-          );
+        winrt::detach_abi(winrt::make<WINML_EXPERIMENTAL::factory_implementation::LearningModelSessionExperimental>());
       return 0;
     }
 
@@ -127,7 +126,7 @@ STDAPI DllGetExperimentalActivationFactory(void* classId, void** factory) noexce
                                       << ".AI.MachineLearning.Experimental.LearningModelExperimental";
     if (requal(name, learning_model_experimental_class.str())) {
       *factory =
-          winrt::detach_abi(winrt::make<WINML_EXPERIMENTAL::factory_implementation::LearningModelExperimental>());
+        winrt::detach_abi(winrt::make<WINML_EXPERIMENTAL::factory_implementation::LearningModelExperimental>());
       return 0;
     }
 
@@ -141,10 +140,10 @@ STDAPI DllGetExperimentalActivationFactory(void* classId, void** factory) noexce
 
     std::wostringstream learning_model_session_options_experimental_class;
     learning_model_session_options_experimental_class
-        << XSTRINGIFY(WINML_ROOT_NS) << ".AI.MachineLearning.Experimental.LearningModelSessionOptionsExperimental";
+      << XSTRINGIFY(WINML_ROOT_NS) << ".AI.MachineLearning.Experimental.LearningModelSessionOptionsExperimental";
     if (requal(name, learning_model_session_options_experimental_class.str())) {
       *factory = winrt::detach_abi(
-          winrt::make<WINML_EXPERIMENTAL::factory_implementation::LearningModelSessionOptionsExperimental>()
+        winrt::make<WINML_EXPERIMENTAL::factory_implementation::LearningModelSessionOptionsExperimental>()
       );
       return 0;
     }

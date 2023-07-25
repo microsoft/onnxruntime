@@ -80,7 +80,7 @@ TensorFloat LoadInputImageFromGPU(SoftwareBitmap softwareBitmap, const std::wstr
   BitmapBuffer spBitmapBuffer(softwareBitmap.LockBuffer(wgi::BitmapBufferAccessMode::Read));
   wf::IMemoryBufferReference reference = spBitmapBuffer.CreateReference();
   com_ptr<::Windows::Foundation::IMemoryBufferByteAccess> spByteAccess =
-      reference.as<::Windows::Foundation::IMemoryBufferByteAccess>();
+    reference.as<::Windows::Foundation::IMemoryBufferByteAccess>();
   spByteAccess->GetBuffer(&pData, &size);
 
   std::vector<int64_t> shape = {1, 3, softwareBitmap.PixelHeight(), softwareBitmap.PixelWidth()};
@@ -119,10 +119,7 @@ TensorFloat LoadInputImageFromGPU(SoftwareBitmap softwareBitmap, const std::wstr
         // create the d3d device.
   com_ptr<ID3D12Device> pD3D12Device = nullptr;
   WINML_EXPECT_NO_THROW(D3D12CreateDevice(
-      nullptr,
-      D3D_FEATURE_LEVEL::D3D_FEATURE_LEVEL_11_0,
-      __uuidof(ID3D12Device),
-      reinterpret_cast<void**>(&pD3D12Device)
+    nullptr, D3D_FEATURE_LEVEL::D3D_FEATURE_LEVEL_11_0, __uuidof(ID3D12Device), reinterpret_cast<void**>(&pD3D12Device)
   ));
 
         // create the command queue.
@@ -131,7 +128,7 @@ TensorFloat LoadInputImageFromGPU(SoftwareBitmap softwareBitmap, const std::wstr
   commandQueueDesc.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
   pD3D12Device->CreateCommandQueue(&commandQueueDesc, __uuidof(ID3D12CommandQueue), reinterpret_cast<void**>(&dxQueue));
   com_ptr<ILearningModelDeviceFactoryNative> devicefactory =
-      get_activation_factory<LearningModelDevice, ILearningModelDeviceFactoryNative>();
+    get_activation_factory<LearningModelDevice, ILearningModelDeviceFactoryNative>();
   com_ptr<ITensorStaticsNative> tensorfactory = get_activation_factory<TensorFloat, ITensorStaticsNative>();
   com_ptr<::IUnknown> spUnk;
   devicefactory->CreateFromD3D12CommandQueue(dxQueue.get(), spUnk.put());
@@ -144,50 +141,50 @@ TensorFloat LoadInputImageFromGPU(SoftwareBitmap softwareBitmap, const std::wstr
   pD3D12Device->CreateCommandAllocator(queuetype, winrt::guid_of<ID3D12CommandAllocator>(), alloctor.put_void());
 
   pD3D12Device->CreateCommandList(
-      0, queuetype, alloctor.get(), nullptr, winrt::guid_of<ID3D12CommandList>(), cmdList.put_void()
+    0, queuetype, alloctor.get(), nullptr, winrt::guid_of<ID3D12CommandList>(), cmdList.put_void()
   );
 
         // Create Committed Resource
         // 3 is number of channels we use. R G B without alpha.
   UINT64 bufferbytesize = 3 * sizeof(float) * softwareBitmap.PixelWidth() * softwareBitmap.PixelHeight();
   D3D12_HEAP_PROPERTIES heapProperties = {
-      D3D12_HEAP_TYPE_DEFAULT, D3D12_CPU_PAGE_PROPERTY_UNKNOWN, D3D12_MEMORY_POOL_UNKNOWN, 0, 0};
+    D3D12_HEAP_TYPE_DEFAULT, D3D12_CPU_PAGE_PROPERTY_UNKNOWN, D3D12_MEMORY_POOL_UNKNOWN, 0, 0};
   D3D12_RESOURCE_DESC resourceDesc = {
-      D3D12_RESOURCE_DIMENSION_BUFFER,
-      0,
-      bufferbytesize,
-      1,
-      1,
-      1,
-      DXGI_FORMAT_UNKNOWN,
-      {1, 0},
-      D3D12_TEXTURE_LAYOUT_ROW_MAJOR,
-      D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS
+    D3D12_RESOURCE_DIMENSION_BUFFER,
+    0,
+    bufferbytesize,
+    1,
+    1,
+    1,
+    DXGI_FORMAT_UNKNOWN,
+    {1, 0},
+    D3D12_TEXTURE_LAYOUT_ROW_MAJOR,
+    D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS
   };
 
   com_ptr<ID3D12Resource> pGPUResource = nullptr;
   com_ptr<ID3D12Resource> imageUploadHeap;
   pD3D12Device->CreateCommittedResource(
-      &heapProperties,
-      D3D12_HEAP_FLAG_NONE,
-      &resourceDesc,
-      D3D12_RESOURCE_STATE_COMMON,
-      nullptr,
-      __uuidof(ID3D12Resource),
-      pGPUResource.put_void()
+    &heapProperties,
+    D3D12_HEAP_FLAG_NONE,
+    &resourceDesc,
+    D3D12_RESOURCE_STATE_COMMON,
+    nullptr,
+    __uuidof(ID3D12Resource),
+    pGPUResource.put_void()
   );
 
         // Create the GPU upload buffer.
   auto heap_properties = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
   auto buffer_desc = CD3DX12_RESOURCE_DESC::Buffer(bufferbytesize);
   WINML_EXPECT_NO_THROW(pD3D12Device->CreateCommittedResource(
-      &heap_properties,
-      D3D12_HEAP_FLAG_NONE,
-      &buffer_desc,
-      D3D12_RESOURCE_STATE_GENERIC_READ,
-      nullptr,
-      __uuidof(ID3D12Resource),
-      imageUploadHeap.put_void()
+    &heap_properties,
+    D3D12_HEAP_FLAG_NONE,
+    &buffer_desc,
+    D3D12_RESOURCE_STATE_GENERIC_READ,
+    nullptr,
+    __uuidof(ID3D12Resource),
+    imageUploadHeap.put_void()
   ));
 
         // Copy from Cpu to GPU
@@ -209,7 +206,7 @@ TensorFloat LoadInputImageFromGPU(SoftwareBitmap softwareBitmap, const std::wstr
         //Create Fence
   ::Microsoft::WRL::ComPtr<ID3D12Fence> spDirectFence = nullptr;
   WINML_EXPECT_HRESULT_SUCCEEDED(
-      pD3D12Device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(spDirectFence.ReleaseAndGetAddressOf()))
+    pD3D12Device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(spDirectFence.ReleaseAndGetAddressOf()))
   );
         //Adds fence to queue
   WINML_EXPECT_HRESULT_SUCCEEDED(dxQueue->Signal(spDirectFence.Get(), FENCE_SIGNAL_VALUE));

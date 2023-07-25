@@ -41,7 +41,7 @@ LearningModelEvaluationResult::Outputs() try {
 WINML_CATCH_ALL
 
 void LearningModelEvaluationResult::Outputs(
-    Windows::Foundation::Collections::IMapView<hstring, Windows::Foundation::IInspectable> outputs
+  Windows::Foundation::Collections::IMapView<hstring, Windows::Foundation::IInspectable> outputs
 ) {
   m_outputs.clear();
 
@@ -69,7 +69,7 @@ HRESULT LearningModelEvaluationResult::GetOutput(const wchar_t* name, UINT32 cch
 }
 
 HRESULT LearningModelEvaluationResult::SetOutputs(
-    std::unordered_map<std::string, Windows::Foundation::IInspectable>&& outputs
+  std::unordered_map<std::string, Windows::Foundation::IInspectable>&& outputs
 ) {
   m_outputs = std::move(outputs);
   return S_OK;

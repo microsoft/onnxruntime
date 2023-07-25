@@ -30,7 +30,7 @@ winml_experimental::LearningModelOperator LearningModelOperator::SetName(hstring
 }
 
 winml_experimental::LearningModelOperator LearningModelOperator::SetInput(
-    hstring const& operator_input_name, hstring const& input_name
+  hstring const& operator_input_name, hstring const& input_name
 ) {
   // TODO Validate against allowed operator input NAMES. The types are not deduced.
   input_mapping_.Insert(operator_input_name, input_name);
@@ -38,7 +38,7 @@ winml_experimental::LearningModelOperator LearningModelOperator::SetInput(
 }
 
 winml_experimental::LearningModelOperator LearningModelOperator::SetConstant(
-    hstring const& operator_input_name, wf::IInspectable const& value
+  hstring const& operator_input_name, wf::IInspectable const& value
 ) {
   // TODO Validate against allowed operator input NAMES. The types are not deduced.
   auto constant_name = name_ + L"." + operator_input_name;
@@ -48,7 +48,7 @@ winml_experimental::LearningModelOperator LearningModelOperator::SetConstant(
 }
 
 winml_experimental::LearningModelOperator LearningModelOperator::SetOutput(
-    hstring const& operator_output_name, hstring const& output_name
+  hstring const& operator_output_name, hstring const& output_name
 ) {
   // TODO Validate against allowed operator output NAMES. The types are not deduced.
   output_mapping_.Insert(operator_output_name, output_name);
@@ -56,7 +56,7 @@ winml_experimental::LearningModelOperator LearningModelOperator::SetOutput(
 }
 
 winml_experimental::LearningModelOperator LearningModelOperator::SetAttribute(
-    hstring const& name, Windows::Foundation::IInspectable const& value
+  hstring const& name, Windows::Foundation::IInspectable const& value
 ) {
   attribute_values_.Insert(name, value);
   return *this;

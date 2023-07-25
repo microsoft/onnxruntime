@@ -11,13 +11,13 @@
 namespace _winml {
 
 std::shared_ptr<_winml::idata> numeric_data::create(
-    size_t num_elements, size_t element_size_in_bytes, wfc::IIterable<wss::IBuffer> const& buffers
+  size_t num_elements, size_t element_size_in_bytes, wfc::IIterable<wss::IBuffer> const& buffers
 ) {
   return std::make_shared<numeric_data>(num_elements, element_size_in_bytes, buffers);
 }
 
 numeric_data::numeric_data(
-    size_t num_elements, size_t element_size_in_bytes, wfc::IIterable<wss::IBuffer> const& buffers
+  size_t num_elements, size_t element_size_in_bytes, wfc::IIterable<wss::IBuffer> const& buffers
 )
     : combined_buffer_(nullptr),
       buffers_(),
@@ -69,7 +69,7 @@ gsl::span<byte> numeric_data::buffer(bool should_sync_buffer) {
   auto span = combined_buffer();
   if (should_sync_buffer) {
     _winml::LoadSpanFromDisjointBuffers(
-        buffers_.size(), [this](size_t i) { return buffer_at(i); }, span
+      buffers_.size(), [this](size_t i) { return buffer_at(i); }, span
     );
   }
 
@@ -81,7 +81,7 @@ bool numeric_data::flush() {
   if (should_flush) {
     auto span = combined_buffer();
     _winml::StoreSpanIntoDisjointBuffers(
-        buffers_.size(), [this](size_t i) { return buffer_at(i); }, span
+      buffers_.size(), [this](size_t i) { return buffer_at(i); }, span
     );
   }
   return should_flush;
@@ -89,16 +89,16 @@ bool numeric_data::flush() {
 
 void numeric_data::set(size_t data_size, const byte* data) {
   WINML_THROW_HR_IF_FALSE_MSG(
-      E_INVALIDARG,
-      data_size <= (num_elements_ * element_size_in_bytes_),
-      "Argument size (%llu) exceeds the tensor size (%llu).",
-      static_cast<uint64_t>(data_size),
-      static_cast<uint64_t>(num_elements_ * element_size_in_bytes_)
+    E_INVALIDARG,
+    data_size <= (num_elements_ * element_size_in_bytes_),
+    "Argument size (%llu) exceeds the tensor size (%llu).",
+    static_cast<uint64_t>(data_size),
+    static_cast<uint64_t>(num_elements_ * element_size_in_bytes_)
   );
 
   gsl::span<byte> span(const_cast<byte*>(data), data_size);
   _winml::StoreSpanIntoDisjointBuffers(
-      buffers_.size(), [this](size_t i) { return buffer_at(i); }, span
+    buffers_.size(), [this](size_t i) { return buffer_at(i); }, span
   );
 }
 

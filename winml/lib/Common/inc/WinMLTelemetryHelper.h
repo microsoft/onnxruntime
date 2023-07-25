@@ -87,12 +87,12 @@ class WinMLTelemetryHelper {
   void LogRuntimeError(HRESULT hr, PCSTR message, PCSTR file, PCSTR function, int line);
   void LogRegisterOperatorKernel(const char* name, const char* domain, int execution_type);
   void RegisterOperatorSetSchema(
-      const char* name,
-      uint32_t input_count,
-      uint32_t output_count,
-      uint32_t type_constraint_count,
-      uint32_t attribute_count,
-      uint32_t default_attribute_count
+    const char* name,
+    uint32_t input_count,
+    uint32_t output_count,
+    uint32_t type_constraint_count,
+    uint32_t attribute_count,
+    uint32_t default_attribute_count
   );
   void SetIntraOpNumThreadsOverride(uint32_t num_threads);
   void SetIntraOpThreadSpinning(bool allow_spinning);

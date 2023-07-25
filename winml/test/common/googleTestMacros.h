@@ -52,11 +52,11 @@
 
 #define EXPECT_THROW_SPECIFIC(statement, exception, condition) \
   EXPECT_THROW(                                                \
-      try { statement; } catch (const exception& e) {          \
-        EXPECT_TRUE(condition(e));                             \
-        throw;                                                 \
-      },                                                       \
-      exception                                                \
+    try { statement; } catch (const exception& e) {            \
+      EXPECT_TRUE(condition(e));                               \
+      throw;                                                   \
+    },                                                         \
+    exception                                                  \
   );
 
 #ifndef INSTANTIATE_TEST_SUITE_P

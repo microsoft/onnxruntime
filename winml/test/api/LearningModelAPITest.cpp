@@ -35,9 +35,9 @@ static void CreateModelFileNotFound() {
   LearningModel learningModel = nullptr;
 
   WINML_EXPECT_THROW_SPECIFIC(
-      APITest::LoadModel(L"missing_model.onnx", learningModel),
-      winrt::hresult_error,
-      [](const winrt::hresult_error& e) -> bool { return e.code() == __HRESULT_FROM_WIN32(ERROR_FILE_NOT_FOUND); }
+    APITest::LoadModel(L"missing_model.onnx", learningModel),
+    winrt::hresult_error,
+    [](const winrt::hresult_error& e) -> bool { return e.code() == __HRESULT_FROM_WIN32(ERROR_FILE_NOT_FOUND); }
   );
 }
 
@@ -45,9 +45,9 @@ static void CreateCorruptModel() {
   LearningModel learningModel = nullptr;
 
   WINML_EXPECT_THROW_SPECIFIC(
-      APITest::LoadModel(L"corrupt-model.onnx", learningModel),
-      winrt::hresult_error,
-      [](const winrt::hresult_error& e) -> bool { return e.code() == __HRESULT_FROM_WIN32(ERROR_FILE_CORRUPT); }
+    APITest::LoadModel(L"corrupt-model.onnx", learningModel),
+    winrt::hresult_error,
+    [](const winrt::hresult_error& e) -> bool { return e.code() == __HRESULT_FROM_WIN32(ERROR_FILE_CORRUPT); }
   );
 }
 
@@ -249,7 +249,7 @@ static void CheckLearningModelPixelRange() {
       // Normalized_1_1 and image output
                                           L"Add_ImageNet1920WithImageMetadataBgr8_SRGB_1_1.onnx"};
   std::vector<LearningModelPixelRange> pixelRanges = {
-      LearningModelPixelRange::ZeroTo255, LearningModelPixelRange::ZeroToOne, LearningModelPixelRange::MinusOneToOne};
+    LearningModelPixelRange::ZeroTo255, LearningModelPixelRange::ZeroToOne, LearningModelPixelRange::MinusOneToOne};
   for (uint32_t model_i = 0; model_i < modelPaths.size(); model_i++) {
     LearningModel learningModel = nullptr;
     WINML_EXPECT_NO_THROW(APITest::LoadModel(modelPaths[model_i], learningModel));
@@ -294,9 +294,9 @@ static void CloseModelNoNewSessions() {
   WINML_EXPECT_NO_THROW(learningModel.Close());
   LearningModelSession session = nullptr;
   WINML_EXPECT_THROW_SPECIFIC(
-      session = LearningModelSession(learningModel),
-      winrt::hresult_error,
-      [](const winrt::hresult_error& e) -> bool { return e.code() == E_INVALIDARG; }
+    session = LearningModelSession(learningModel),
+    winrt::hresult_error,
+    [](const winrt::hresult_error& e) -> bool { return e.code() == E_INVALIDARG; }
   );
 }
 
@@ -310,26 +310,26 @@ static void CheckMetadataCaseInsensitive() {
 
 const LearningModelApiTestsApi& getapi() {
   static LearningModelApiTestsApi api = {
-      LearningModelAPITestsClassSetup,
-      CreateModelFromFilePath,
-      CreateModelFromUnicodeFilePath,
-      CreateModelFileNotFound,
-      CreateModelFromIStorage,
-      CreateModelFromIStorageOutsideCwd,
-      CreateModelFromIStream,
-      ModelGetAuthor,
-      ModelGetName,
-      ModelGetDomain,
-      ModelGetDescription,
-      ModelGetVersion,
-      EnumerateInputs,
-      EnumerateOutputs,
-      CloseModelCheckMetadata,
-      CheckLearningModelPixelRange,
-      CloseModelCheckEval,
-      CloseModelNoNewSessions,
-      CheckMetadataCaseInsensitive,
-      CreateCorruptModel};
+    LearningModelAPITestsClassSetup,
+    CreateModelFromFilePath,
+    CreateModelFromUnicodeFilePath,
+    CreateModelFileNotFound,
+    CreateModelFromIStorage,
+    CreateModelFromIStorageOutsideCwd,
+    CreateModelFromIStream,
+    ModelGetAuthor,
+    ModelGetName,
+    ModelGetDomain,
+    ModelGetDescription,
+    ModelGetVersion,
+    EnumerateInputs,
+    EnumerateOutputs,
+    CloseModelCheckMetadata,
+    CheckLearningModelPixelRange,
+    CloseModelCheckEval,
+    CloseModelNoNewSessions,
+    CheckMetadataCaseInsensitive,
+    CreateCorruptModel};
 
   if (RuntimeParameterExists(L"noVideoFrameTests")) {
     api.CloseModelCheckEval = SkipTest;

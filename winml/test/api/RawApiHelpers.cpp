@@ -25,42 +25,32 @@ void RunOnDevice(ml::learning_model& model, ml::learning_model_device& device, I
 
   if (strategy == InputStrategy::CopyInputs) {
     WINML_EXPECT_HRESULT_SUCCEEDED(binding->bind<float>(
-        input_name,
-        _countof(input_name) - 1,
-        input_shape.data(),
-        input_shape.size(),
-        input_data.data(),
-        input_data.size()
+      input_name, _countof(input_name) - 1, input_shape.data(), input_shape.size(), input_data.data(), input_data.size()
     ));
   } else if (strategy == InputStrategy::BindAsReference) {
     WINML_EXPECT_HRESULT_SUCCEEDED(binding->bind_as_reference<float>(
-        input_name,
-        _countof(input_name) - 1,
-        input_shape.data(),
-        input_shape.size(),
-        input_data.data(),
-        input_data.size()
+      input_name, _countof(input_name) - 1, input_shape.data(), input_shape.size(), input_data.data(), input_data.size()
     ));
   } else if (strategy == InputStrategy::BindWithMultipleReferences) {
     size_t channel_size = 224 * 224;
     auto channel_buffers_sizes = std::vector<size_t>{channel_size, channel_size, channel_size};
 
     auto channel_buffers_pointers = std::vector<float*>{
-        &input_data.at(0),
-        &input_data.at(0) + channel_buffers_sizes[0],
-        &input_data.at(0) + channel_buffers_sizes[0] + +channel_buffers_sizes[1]};
+      &input_data.at(0),
+      &input_data.at(0) + channel_buffers_sizes[0],
+      &input_data.at(0) + channel_buffers_sizes[0] + +channel_buffers_sizes[1]};
 
     WINML_EXPECT_HRESULT_SUCCEEDED(binding->bind_as_references<float>(
-        input_name,
-        _countof(input_name) - 1,
-        channel_buffers_pointers.data(),
-        channel_buffers_sizes.data(),
-        channel_buffers_sizes.size()
+      input_name,
+      _countof(input_name) - 1,
+      channel_buffers_pointers.data(),
+      channel_buffers_sizes.data(),
+      channel_buffers_sizes.size()
     ));
   }
 
   WINML_EXPECT_HRESULT_SUCCEEDED(
-      binding->bind<float>(output_name, _countof(output_name) - 1, output_shape.data(), output_shape.size())
+    binding->bind<float>(output_name, _countof(output_name) - 1, output_shape.data(), output_shape.size())
   );
 
   ml::learning_model_results results = session->evaluate(*binding.get());
@@ -68,6 +58,6 @@ void RunOnDevice(ml::learning_model& model, ml::learning_model_device& device, I
   float* p_buffer = nullptr;
   size_t buffer_size = 0;
   WINML_EXPECT_HRESULT_SUCCEEDED(
-      0 == results.get_output(output_name, _countof(output_name) - 1, reinterpret_cast<void**>(&p_buffer), &buffer_size)
+    0 == results.get_output(output_name, _countof(output_name) - 1, reinterpret_cast<void**>(&p_buffer), &buffer_size)
   );
 }

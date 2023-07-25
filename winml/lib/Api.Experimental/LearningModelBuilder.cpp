@@ -62,13 +62,13 @@ winml_experimental::LearningModelBuilder LearningModelBuilder::Create(int32_t op
 }
 
 winml::TensorFeatureDescriptor LearningModelBuilder::CreateTensorFeatureDescriptor(
-    hstring const& name, winml::TensorKind const& kind, array_view<int64_t const> shape
+  hstring const& name, winml::TensorKind const& kind, array_view<int64_t const> shape
 ) {
   return winrt::make<winmlp::TensorFeatureDescriptor>(name, L"", kind, shape);
 }
 
 winml::TensorFeatureDescriptor LearningModelBuilder::CreateTensorFeatureDescriptor(
-    hstring const& name, hstring const& description, winml::TensorKind const& kind, array_view<int64_t const> shape
+  hstring const& name, hstring const& description, winml::TensorKind const& kind, array_view<int64_t const> shape
 ) {
   return winrt::make<winmlp::TensorFeatureDescriptor>(name, description, kind, shape);
 }

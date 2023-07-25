@@ -21,7 +21,7 @@ namespace winmla = Windows::AI::MachineLearning::Adapter;
 class WinmlAdapterLoggingWrapper : public LoggingWrapper {
  public:
   WinmlAdapterLoggingWrapper(
-      OrtLoggingFunction logging_function, OrtProfilingFunction profiling_function, void* logger_param
+    OrtLoggingFunction logging_function, OrtProfilingFunction profiling_function, void* logger_param
   )
       : LoggingWrapper(logging_function, logger_param), profiling_function_(profiling_function) {}
 
@@ -33,11 +33,11 @@ class WinmlAdapterLoggingWrapper : public LoggingWrapper {
       ort_event_record.duration_ = event_record.dur;
       ort_event_record.event_name_ = event_record.name.c_str();
       ort_event_record.execution_provider_ = (event_record.cat == onnxruntime::profiling::EventCategory::NODE_EVENT)
-          ? event_record.args["provider"].c_str()
-          : nullptr;
+        ? event_record.args["provider"].c_str()
+        : nullptr;
       ort_event_record.op_name_ = (event_record.cat == onnxruntime::profiling::EventCategory::NODE_EVENT)
-          ? event_record.args["op_name"].c_str()
-          : nullptr;
+        ? event_record.args["op_name"].c_str()
+        : nullptr;
       ort_event_record.process_id_ = event_record.pid;
       ort_event_record.thread_id_ = event_record.tid;
       ort_event_record.time_span_ = event_record.ts;
@@ -51,29 +51,29 @@ class WinmlAdapterLoggingWrapper : public LoggingWrapper {
 };
 
 ORT_API_STATUS_IMPL(
-    winmla::EnvConfigureCustomLoggerAndProfiler,
-    _In_ OrtEnv* env,
-    OrtLoggingFunction logging_function,
-    OrtProfilingFunction profiling_function,
-    _In_opt_ void* logger_param,
-    OrtLoggingLevel default_warning_level,
-    _In_ const char* logid,
-    _Outptr_ OrtEnv** out
+  winmla::EnvConfigureCustomLoggerAndProfiler,
+  _In_ OrtEnv* env,
+  OrtLoggingFunction logging_function,
+  OrtProfilingFunction profiling_function,
+  _In_opt_ void* logger_param,
+  OrtLoggingLevel default_warning_level,
+  _In_ const char* logid,
+  _Outptr_ OrtEnv** out
 ) {
   API_IMPL_BEGIN
   std::string name = logid;
   std::unique_ptr<onnxruntime::logging::ISink> logger =
-      std::make_unique<WinmlAdapterLoggingWrapper>(logging_function, profiling_function, logger_param);
+    std::make_unique<WinmlAdapterLoggingWrapper>(logging_function, profiling_function, logger_param);
 
   // Clear the logging manager, since only one default instance of logging manager can exist at a time.
   env->SetLoggingManager(nullptr);
 
   auto winml_logging_manager = std::make_unique<onnxruntime::logging::LoggingManager>(
-      std::move(logger),
-      static_cast<onnxruntime::logging::Severity>(default_warning_level),
-      false,
-      onnxruntime::logging::LoggingManager::InstanceType::Default,
-      &name
+    std::move(logger),
+    static_cast<onnxruntime::logging::Severity>(default_warning_level),
+    false,
+    onnxruntime::logging::LoggingManager::InstanceType::Default,
+    &name
   );
 
   // Set a new default logging manager

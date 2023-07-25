@@ -16,6 +16,6 @@ using UniqueOrtValue = std::unique_ptr<OrtValue, decltype(OrtApi::ReleaseValue)>
 using UniqueOrtMemoryInfo = std::unique_ptr<OrtMemoryInfo, decltype(OrtApi::ReleaseMemoryInfo)>;
 using UniqueOrtTypeInfo = std::unique_ptr<OrtTypeInfo, decltype(OrtApi::ReleaseTypeInfo)>;
 using UniqueOrtTensorTypeAndShapeInfo =
-    std::unique_ptr<OrtTensorTypeAndShapeInfo, decltype(OrtApi::ReleaseTensorTypeAndShapeInfo)>;
+  std::unique_ptr<OrtTensorTypeAndShapeInfo, decltype(OrtApi::ReleaseTensorTypeAndShapeInfo)>;
 using UniqueOrtRunOptions = std::unique_ptr<OrtRunOptions, decltype(OrtApi::ReleaseRunOptions)>;
 using UniqueOrtEnv = std::unique_ptr<OrtEnv, decltype(OrtApi::ReleaseEnv)>;

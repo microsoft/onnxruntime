@@ -28,7 +28,7 @@ struct ImageFeatureValue::ImageResourceMetadata {
 };
 
 winml::ImageFeatureValue ImageFeatureValue::Create(
-    uint32_t batchSize, wgi::BitmapPixelFormat format, uint32_t width, uint32_t height
+  uint32_t batchSize, wgi::BitmapPixelFormat format, uint32_t width, uint32_t height
 ) {
   std::vector<wm::VideoFrame> videoFrames = {};
   for (uint32_t i = 0; i < batchSize; ++i) {
@@ -85,10 +85,10 @@ static std::optional<wgi::BitmapPixelFormat> GetBitmapPixelFormatFromMetadata(co
       auto pixelFormatValue = pixelFormatInspectable.as<wf::IPropertyValue>();
       auto pixelFormat = static_cast<wgi::BitmapPixelFormat>(pixelFormatValue.GetInt32());
       WINML_THROW_HR_IF_FALSE_MSG(
-          WINML_ERR_INVALID_BINDING,
-          pixelFormat == wgi::BitmapPixelFormat::Rgba8 || pixelFormat == wgi::BitmapPixelFormat::Bgra8 ||
-              pixelFormat == wgi::BitmapPixelFormat::Gray8,
-          "BitmapPixelFormat must be either Rgba8, Bgra8, or Gray8"
+        WINML_ERR_INVALID_BINDING,
+        pixelFormat == wgi::BitmapPixelFormat::Rgba8 || pixelFormat == wgi::BitmapPixelFormat::Bgra8 ||
+          pixelFormat == wgi::BitmapPixelFormat::Gray8,
+        "BitmapPixelFormat must be either Rgba8, Bgra8, or Gray8"
       );
 
       return pixelFormat;
@@ -103,17 +103,17 @@ static std::optional<wgi::BitmapBounds> GetBoundsFromMetadata(const wfc::IProper
     if (auto boundsInspectable = properties.Lookup(L"BitmapBounds")) {
       auto boundsPropertyValue = boundsInspectable.as<wf::IPropertyValue>();
       WINML_THROW_HR_IF_FALSE_MSG(
-          WINML_ERR_INVALID_BINDING,
-          boundsPropertyValue.Type() == wf::PropertyType::UInt32Array,
-          "BitmapBounds must reference a property value with type UInt32Array with 4 elements."
+        WINML_ERR_INVALID_BINDING,
+        boundsPropertyValue.Type() == wf::PropertyType::UInt32Array,
+        "BitmapBounds must reference a property value with type UInt32Array with 4 elements."
       );
 
       com_array<uint32_t> bounds;
       boundsPropertyValue.GetUInt32Array(bounds);
       WINML_THROW_HR_IF_FALSE_MSG(
-          WINML_ERR_INVALID_BINDING,
-          bounds.size() == 4,
-          "BitmapBounds must reference a property value with type UInt32Array with 4 elements."
+        WINML_ERR_INVALID_BINDING,
+        bounds.size() == 4,
+        "BitmapBounds must reference a property value with type UInt32Array with 4 elements."
       );
 
       return wgi::BitmapBounds{bounds[0], bounds[1], bounds[2], bounds[3]};
@@ -130,11 +130,11 @@ static std::optional<winml::LearningModelPixelRange> GetBitmapPixelRangeFromMeta
       auto pixelRangeValue = pixelRangeInspectable.as<wf::IPropertyValue>();
       auto pixelRange = static_cast<winml::LearningModelPixelRange>(pixelRangeValue.GetInt32());
       WINML_THROW_HR_IF_FALSE_MSG(
-          WINML_ERR_INVALID_BINDING,
-          pixelRange == winml::LearningModelPixelRange::ZeroTo255 ||
-              pixelRange == winml::LearningModelPixelRange::ZeroToOne ||
-              pixelRange == winml::LearningModelPixelRange::MinusOneToOne,
-          "LearningModelPixelRange must be either ZeroTo255, ZeroToOne, or MinusOneToOne"
+        WINML_ERR_INVALID_BINDING,
+        pixelRange == winml::LearningModelPixelRange::ZeroTo255 ||
+          pixelRange == winml::LearningModelPixelRange::ZeroToOne ||
+          pixelRange == winml::LearningModelPixelRange::MinusOneToOne,
+        "LearningModelPixelRange must be either ZeroTo255, ZeroToOne, or MinusOneToOne"
       );
 
       return pixelRange;
@@ -174,7 +174,7 @@ static _winml::ImageTensorDataType GetTensorDataTypeFromTensorKind(winml::Tensor
       return _winml::ImageTensorDataType::kImageTensorDataTypeFloat16;
     default:
       WINML_THROW_HR_IF_FALSE_MSG(
-          WINML_ERR_INVALID_BINDING, false, "Model image inputs must have tensor type of Float or Float16."
+        WINML_ERR_INVALID_BINDING, false, "Model image inputs must have tensor type of Float or Float16."
       );
   }
 
@@ -189,7 +189,7 @@ static unsigned GetSizeFromTensorDataType(_winml::ImageTensorDataType type) {
       return sizeof(uint16_t);
     default:
       WINML_THROW_HR_IF_FALSE_MSG(
-          WINML_ERR_INVALID_BINDING, false, "Model image inputs must have tensor type of Float or Float16."
+        WINML_ERR_INVALID_BINDING, false, "Model image inputs must have tensor type of Float or Float16."
       );
   }
 
@@ -197,12 +197,12 @@ static unsigned GetSizeFromTensorDataType(_winml::ImageTensorDataType type) {
 }
 
 static _winml::ImageTensorDescription CreateImageTensorDescriptor(
-    winml::TensorKind tensorKind,
-    wgi::BitmapPixelFormat pixelFormat,
-    winml::LearningModelPixelRange pixelRange,
-    uint32_t batchSize,
-    uint32_t width,
-    uint32_t height
+  winml::TensorKind tensorKind,
+  wgi::BitmapPixelFormat pixelFormat,
+  winml::LearningModelPixelRange pixelRange,
+  uint32_t batchSize,
+  uint32_t width,
+  uint32_t height
 ) {
   _winml::ImageTensorDescription tensorDescription = {};
   tensorDescription.dataType = GetTensorDataTypeFromTensorKind(tensorKind);
@@ -221,9 +221,7 @@ static _winml::ImageTensorDescription CreateImageTensorDescriptor(
     THROW_HR(E_NOTIMPL);
   }
 
-  if (pixelRange != winml::LearningModelPixelRange::ZeroTo255 &&
-      pixelRange != winml::LearningModelPixelRange::ZeroToOne &&
-      pixelRange != winml::LearningModelPixelRange::MinusOneToOne) {
+  if (pixelRange != winml::LearningModelPixelRange::ZeroTo255 && pixelRange != winml::LearningModelPixelRange::ZeroToOne && pixelRange != winml::LearningModelPixelRange::MinusOneToOne) {
     THROW_HR(E_NOTIMPL);
   }
 
@@ -235,11 +233,11 @@ static _winml::ImageTensorDescription CreateImageTensorDescriptor(
 }
 
 static void CPUTensorize(
-    wm::IVideoFrame videoFrame,
-    wgi::BitmapBounds bounds,
-    _winml::ImageTensorDescription tensorDescriptor,
-    com_ptr<LearningModelSession> spSession,
-    void* pResource
+  wm::IVideoFrame videoFrame,
+  wgi::BitmapBounds bounds,
+  _winml::ImageTensorDescription tensorDescriptor,
+  com_ptr<LearningModelSession> spSession,
+  void* pResource
 ) {
   auto spDevice = spSession->Device().as<LearningModelDevice>();
 
@@ -253,7 +251,7 @@ static void CPUTensorize(
 
   //apply tensorization
   pooledConverter->Get()->Tensorizer->VideoFrameToSoftwareTensor(
-      videoFrame, bounds, tensorDescriptor, reinterpret_cast<BYTE*>(pResource)
+    videoFrame, bounds, tensorDescriptor, reinterpret_cast<BYTE*>(pResource)
   );
 
   // Software tensorization doesnt need to hold onto any resources beyond its scope, so we can
@@ -262,12 +260,12 @@ static void CPUTensorize(
 }
 
 static void CPUTensorize(
-    wfc::IVector<wm::VideoFrame> videoFrames,
-    std::vector<wgi::BitmapBounds> bounds,
-    _winml::ImageTensorDescription tensorDescriptor,
-    com_ptr<LearningModelSession> spSession,
-    BYTE* resource,
-    unsigned int singleFrameBufferSize
+  wfc::IVector<wm::VideoFrame> videoFrames,
+  std::vector<wgi::BitmapBounds> bounds,
+  _winml::ImageTensorDescription tensorDescriptor,
+  com_ptr<LearningModelSession> spSession,
+  BYTE* resource,
+  unsigned int singleFrameBufferSize
 ) {
   // Tensorize video frames one by one without extra copy.
   for (uint32_t batchIdx = 0; batchIdx < videoFrames.Size(); ++batchIdx) {
@@ -277,12 +275,12 @@ static void CPUTensorize(
 }
 
 static void GPUTensorize(
-    wfc::IVector<wm::VideoFrame> videoFrames,
-    std::vector<wgi::BitmapBounds> bounds,
-    _winml::ImageTensorDescription tensorDescriptor,
-    com_ptr<LearningModelSession> spSession,
-    ID3D12Resource* d3dResource,
-    _winml::BindingContext& context
+  wfc::IVector<wm::VideoFrame> videoFrames,
+  std::vector<wgi::BitmapBounds> bounds,
+  _winml::ImageTensorDescription tensorDescriptor,
+  com_ptr<LearningModelSession> spSession,
+  ID3D12Resource* d3dResource,
+  _winml::BindingContext& context
 ) {
   auto spDevice = spSession->Device().as<LearningModelDevice>();
 
@@ -299,7 +297,7 @@ static void GPUTensorize(
       // Apply tensorization
       auto session = spSession.as<winml::LearningModelSession>();
       pooledConverter->Get()->Tensorizer->VideoFrameToDX12Tensor(
-          batchIdx, session, videoFrames.GetAt(batchIdx), bounds[batchIdx], tensorDescriptor, d3dResource
+        batchIdx, session, videoFrames.GetAt(batchIdx), bounds[batchIdx], tensorDescriptor, d3dResource
       );
 
       // Tensorization to a GPU tensor will run asynchronously and associated resources
@@ -316,7 +314,7 @@ static void GPUTensorize(
 }
 
 std::optional<ImageFeatureValue::ImageResourceMetadata> ImageFeatureValue::GetInputMetadata(
-    const _winml::BindingContext& context
+  const _winml::BindingContext& context
 ) {
   uint32_t descriptorWidth;
   uint32_t descriptorHeight;
@@ -426,7 +424,7 @@ std::optional<ImageFeatureValue::ImageResourceMetadata> ImageFeatureValue::GetIn
 
     //NCHW layout
   auto imageTensorDescriptor = CreateImageTensorDescriptor(
-      tensorKind, pixelFormat.value(), pixelRange.value(), m_batchSize, descriptorWidth, descriptorHeight
+    tensorKind, pixelFormat.value(), pixelRange.value(), m_batchSize, descriptorWidth, descriptorHeight
   );
 
   return ImageResourceMetadata{bounds, imageTensorDescriptor};
@@ -449,12 +447,12 @@ HRESULT ImageFeatureValue::GetValue(_winml::BindingContext& context, _winml::IVa
   // create the OrtValue
   winrt::com_ptr<_winml::IValue> value;
   RETURN_IF_FAILED(engine->CreateTensorValue(
-      resourceMetadata.TensorDescriptor.sizes,
-      sizeof(resourceMetadata.TensorDescriptor.sizes) / sizeof(resourceMetadata.TensorDescriptor.sizes[0]),
-      resourceMetadata.TensorDescriptor.dataType == _winml::ImageTensorDataType::kImageTensorDataTypeFloat32
-          ? winml::TensorKind::Float
-          : winml::TensorKind::Float16,
-      value.put()
+    resourceMetadata.TensorDescriptor.sizes,
+    sizeof(resourceMetadata.TensorDescriptor.sizes) / sizeof(resourceMetadata.TensorDescriptor.sizes[0]),
+    resourceMetadata.TensorDescriptor.dataType == _winml::ImageTensorDataType::kImageTensorDataTypeFloat32
+      ? winml::TensorKind::Float
+      : winml::TensorKind::Float16,
+    value.put()
   ));
 
   // Get the tensor raw data
@@ -464,27 +462,27 @@ HRESULT ImageFeatureValue::GetValue(_winml::BindingContext& context, _winml::IVa
   if (context.type == _winml::BindingType::kInput) {
     // Only tensorize inputs
     auto bufferSize = std::accumulate(
-        std::begin(resourceMetadata.TensorDescriptor.sizes),
-        std::end(resourceMetadata.TensorDescriptor.sizes),
-        static_cast<int64_t>(1),
-        std::multiplies<int64_t>()
+      std::begin(resourceMetadata.TensorDescriptor.sizes),
+      std::end(resourceMetadata.TensorDescriptor.sizes),
+      static_cast<int64_t>(1),
+      std::multiplies<int64_t>()
     );
     auto bufferByteSize = GetSizeFromTensorDataType(resourceMetadata.TensorDescriptor.dataType) * bufferSize;
     auto singleFrameBufferSize = bufferByteSize / m_batchSize;
     if (spDevice->IsCpuDevice()) {
       auto resource = reinterpret_cast<BYTE*>(void_resource.get());
       CPUTensorize(
-          m_videoFrames,
-          resourceMetadata.Bounds,
-          resourceMetadata.TensorDescriptor,
-          spSession,
-          resource,
-          static_cast<unsigned int>(singleFrameBufferSize)
+        m_videoFrames,
+        resourceMetadata.Bounds,
+        resourceMetadata.TensorDescriptor,
+        spSession,
+        resource,
+        static_cast<unsigned int>(singleFrameBufferSize)
       );
     } else {
       auto resource = reinterpret_cast<ID3D12Resource*>(void_resource.get());
       GPUTensorize(
-          m_videoFrames, resourceMetadata.Bounds, resourceMetadata.TensorDescriptor, spSession, resource, context
+        m_videoFrames, resourceMetadata.Bounds, resourceMetadata.TensorDescriptor, spSession, resource, context
       );
     }
   }
@@ -525,20 +523,20 @@ HRESULT ImageFeatureValue::UpdateSourceResourceData(_winml::BindingContext& cont
     auto pooledConverter = _winml::PoolObjectWrapper::Create(spDevice->DetensorizerStore()->Fetch(descriptor));
 
     auto bufferSize = std::accumulate(
-        std::begin(resourceMetadata.TensorDescriptor.sizes),
-        std::end(resourceMetadata.TensorDescriptor.sizes),
-        static_cast<int64_t>(1),
-        std::multiplies<int64_t>()
+      std::begin(resourceMetadata.TensorDescriptor.sizes),
+      std::end(resourceMetadata.TensorDescriptor.sizes),
+      static_cast<int64_t>(1),
+      std::multiplies<int64_t>()
     );
     auto bufferByteSize =
-        GetSizeFromTensorDataType(resourceMetadata.TensorDescriptor.dataType) * bufferSize / m_batchSize;
+      GetSizeFromTensorDataType(resourceMetadata.TensorDescriptor.dataType) * bufferSize / m_batchSize;
 
     BYTE* resource = reinterpret_cast<BYTE*>(void_resource.get());
     for (uint32_t batchIdx = 0; batchIdx < m_batchSize; ++batchIdx) {
       // Convert Software Tensor to VideoFrame one by one based on the buffer size.
       auto videoFrame = m_videoFrames.GetAt(batchIdx);
       pooledConverter->Get()->Detensorizer->SoftwareTensorToVideoFrame(
-          context.session, resource, resourceMetadata.TensorDescriptor, videoFrame
+        context.session, resource, resourceMetadata.TensorDescriptor, videoFrame
       );
       resource += bufferByteSize;
     }
@@ -553,7 +551,7 @@ HRESULT ImageFeatureValue::UpdateSourceResourceData(_winml::BindingContext& cont
     for (uint32_t batchIdx = 0; batchIdx < m_batchSize; ++batchIdx) {
       auto videoFrame = m_videoFrames.GetAt(batchIdx);
       pooledConverter->Get()->Detensorizer->DX12TensorToVideoFrame(
-          batchIdx, context.session, d3dResource, resourceMetadata.TensorDescriptor, videoFrame
+        batchIdx, context.session, d3dResource, resourceMetadata.TensorDescriptor, videoFrame
       );
 
       // Reset the Allocator before return to the Cache. Must Sync this background thread to that completion before we do.
@@ -574,7 +572,7 @@ HRESULT ImageFeatureValue::AbiRepresentation(wf::IInspectable& abiRepresentation
   } else {
     winml::ImageFeatureValue to = nullptr;
     RETURN_IF_FAILED(
-        this->QueryInterface(winrt::guid_of<winml::ImageFeatureValue>(), reinterpret_cast<void**>(winrt::put_abi(to)))
+      this->QueryInterface(winrt::guid_of<winml::ImageFeatureValue>(), reinterpret_cast<void**>(winrt::put_abi(to)))
     );
 
     to.as(abiRepresentation);

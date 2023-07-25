@@ -18,7 +18,7 @@ struct TensorResources {
     RETURN_HR_IF_NULL(E_POINTER, capacity);
 
     RETURN_HR_IF_MSG(
-        ERROR_INVALID_FUNCTION, (std::is_same_v<T, std::string>), "TensorString objects cannot return byte buffers!"
+      ERROR_INVALID_FUNCTION, (std::is_same_v<T, std::string>), "TensorString objects cannot return byte buffers!"
     );
 
     try {
@@ -55,10 +55,10 @@ struct TensorResources {
 // The template parameter <T> is used to determine the type type of the underlying cpu resource (float, int, etc...).
 template <typename T>
 class TensorMemoryBufferReference : public winrt::implements<
-                                        TensorMemoryBufferReference<T>,
-                                        wf::IMemoryBufferReference,
-                                        wf::IClosable,
-                                        Windows::Foundation::IMemoryBufferByteAccess> {
+                                      TensorMemoryBufferReference<T>,
+                                      wf::IMemoryBufferReference,
+                                      wf::IClosable,
+                                      Windows::Foundation::IMemoryBufferByteAccess> {
   using ClosedDelegate = wf::TypedEventHandler<wf::IMemoryBufferReference, wf::IInspectable>;
 
  public:
@@ -133,7 +133,7 @@ class TensorMemoryBufferReference : public winrt::implements<
   void FireClosed() {
     wf::IMemoryBufferReference memoryBufferReference = nullptr;
     WINML_THROW_IF_FAILED(this->QueryInterface(
-        winrt::guid_of<wf::IMemoryBufferReference>(), reinterpret_cast<void**>(winrt::put_abi(memoryBufferReference))
+      winrt::guid_of<wf::IMemoryBufferReference>(), reinterpret_cast<void**>(winrt::put_abi(memoryBufferReference))
     ));
 
     for (auto handler : m_handlers) {

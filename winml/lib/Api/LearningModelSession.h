@@ -24,9 +24,9 @@ struct LearningModelSession
 
   /* LearningModelSession constructors (MachineLearningContract 2). */
   LearningModelSession(
-      winml::LearningModel const& model,
-      winml::LearningModelDevice const& deviceToRunOn,
-      winml::LearningModelSessionOptions const& sessionOptions
+    winml::LearningModel const& model,
+    winml::LearningModelDevice const& deviceToRunOn,
+    winml::LearningModelSessionOptions const& sessionOptions
   );
 
   /* IClosable methods. */
@@ -43,15 +43,15 @@ struct LearningModelSession
   winml::LearningModelEvaluationResult Evaluate(winml::LearningModelBinding binding, hstring const& correlationId);
 
   wf::IAsyncOperation<winml::LearningModelEvaluationResult> EvaluateAsync(
-      winml::LearningModelBinding binding, hstring const correlationId
+    winml::LearningModelBinding binding, hstring const correlationId
   );
 
   winml::LearningModelEvaluationResult EvaluateFeatures(
-      wfc::IMap<hstring, wf::IInspectable> const features, hstring const correlationId
+    wfc::IMap<hstring, wf::IInspectable> const features, hstring const correlationId
   );
 
   wf::IAsyncOperation<winml::LearningModelEvaluationResult> EvaluateFeaturesAsync(
-      wfc::IMap<hstring, wf::IInspectable> const features, hstring const correlationId
+    wfc::IMap<hstring, wf::IInspectable> const features, hstring const correlationId
   );
 
   STDMETHOD(GetIntraOpNumThreads)
@@ -84,7 +84,7 @@ struct LearningModelSession
   uint64_t Run(winrt::com_ptr<winmlp::LearningModelBinding> bindingImpl);
 
   winml::LearningModelEvaluationResult GetResults(
-      winrt::com_ptr<winmlp::LearningModelBinding> bindingImpl, hstring const& correlationId, uint64_t fenceValueForDML
+    winrt::com_ptr<winmlp::LearningModelBinding> bindingImpl, hstring const& correlationId, uint64_t fenceValueForDML
   );
 
   void ApplyEvaluationProperties();

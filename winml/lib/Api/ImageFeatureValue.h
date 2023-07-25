@@ -24,7 +24,7 @@ struct ImageFeatureValue : ImageFeatureValueT<ImageFeatureValue, _winml::ILotusV
   winml::LearningModelFeatureKind Kind();
 
   static winml::ImageFeatureValue ImageFeatureValue::Create(
-      uint32_t batchSize, Windows::Graphics::Imaging::BitmapPixelFormat format, uint32_t width, uint32_t height
+    uint32_t batchSize, Windows::Graphics::Imaging::BitmapPixelFormat format, uint32_t width, uint32_t height
   );
   static winml::ImageFeatureValue CreateFromVideoFrame(Windows::Media::VideoFrame const& image);
 

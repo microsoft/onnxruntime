@@ -41,11 +41,11 @@ gsl::span<byte> string_data::buffer(bool /*should_sync_buffer*/) {
 
 void string_data::set(size_t num_elements, const std::string_view* data) {
   WINML_THROW_HR_IF_FALSE_MSG(
-      E_INVALIDARG,
-      num_elements <= buffer_.size(),
-      "Argument size (%d) exceeds the tensor size (%d).",
-      static_cast<int>(num_elements),
-      static_cast<int>(buffer_.size())
+    E_INVALIDARG,
+    num_elements <= buffer_.size(),
+    "Argument size (%d) exceeds the tensor size (%d).",
+    static_cast<int>(num_elements),
+    static_cast<int>(buffer_.size())
   );
 
   // Copy

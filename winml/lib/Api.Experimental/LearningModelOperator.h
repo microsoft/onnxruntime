@@ -16,7 +16,7 @@ struct LearningModelOperator : LearningModelOperatorT<LearningModelOperator> {
   winml_experimental::LearningModelOperator SetName(hstring const& name);
   winml_experimental::LearningModelOperator SetInput(hstring const& operator_input_name, hstring const& input_name);
   winml_experimental::LearningModelOperator SetConstant(
-      hstring const& operator_input_name, wf::IInspectable const& value
+    hstring const& operator_input_name, wf::IInspectable const& value
   );
   winml_experimental::LearningModelOperator SetOutput(hstring const& operator_output_name, hstring const& output_name);
   winml_experimental::LearningModelOperator SetAttribute(hstring const& name, wf::IInspectable const& value);

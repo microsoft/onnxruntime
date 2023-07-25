@@ -9,12 +9,12 @@
 
 namespace WINMLP {
 TensorFeatureDescriptor::TensorFeatureDescriptor(
-    const char* name,
-    const char* description,
-    winml::TensorKind tensor_kind,
-    const std::vector<int64_t>& shape,
-    bool is_required,
-    bool has_unsupported_image_metadata
+  const char* name,
+  const char* description,
+  winml::TensorKind tensor_kind,
+  const std::vector<int64_t>& shape,
+  bool is_required,
+  bool has_unsupported_image_metadata
 )
     : name_(_winml::Strings::HStringFromUTF8(name)),
       description_(_winml::Strings::HStringFromUTF8(description)),
@@ -25,7 +25,7 @@ TensorFeatureDescriptor::TensorFeatureDescriptor(
 }
 
 TensorFeatureDescriptor::TensorFeatureDescriptor(
-    hstring const& name, hstring const& description, winml::TensorKind const& kind, array_view<int64_t const> shape
+  hstring const& name, hstring const& description, winml::TensorKind const& kind, array_view<int64_t const> shape
 )
     : name_(name),
       description_(description),
@@ -73,7 +73,7 @@ TensorFeatureDescriptor::GetDescription(const wchar_t** description, uint32_t* c
 }
 
 HRESULT TensorFeatureDescriptor::GetDescriptorInfo(
-    _winml::IEngineFactory* engine_factory, _winml::IDescriptorInfo** info
+  _winml::IEngineFactory* engine_factory, _winml::IDescriptorInfo** info
 ) {
   engine_factory->CreateTensorDescriptorInfo(tensor_kind_, shape_.data(), shape_.size(), info);
   return S_OK;

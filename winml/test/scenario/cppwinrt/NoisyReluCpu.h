@@ -65,8 +65,7 @@ struct NoisyReluOperator : winrt::implements<NoisyReluOperator, IMLOperatorKerne
       }
 
             // If the tensor types are both float type
-      if (outputTensor->GetTensorDataType() == MLOperatorTensorDataType::Float &&
-          inputTensor->GetTensorDataType() == MLOperatorTensorDataType::Float) {
+      if (outputTensor->GetTensorDataType() == MLOperatorTensorDataType::Float && inputTensor->GetTensorDataType() == MLOperatorTensorDataType::Float) {
                 // For cpu data
         if (outputTensor->IsCpuData() && inputTensor->IsCpuData()) {
           ComputeInternal<float>(inputTensor.get(), outputTensor.get(), inputDataSize);
@@ -107,7 +106,7 @@ struct NoisyReluOperatorFactory : winrt::implements<NoisyReluOperatorFactory, IM
       context->GetAttribute("mean", MLOperatorAttributeType::Float, 1, sizeof(float), reinterpret_cast<void*>(&mean));
       float variance;
       context->GetAttribute(
-          "variance", MLOperatorAttributeType::Float, 1, sizeof(float), reinterpret_cast<void*>(&variance)
+        "variance", MLOperatorAttributeType::Float, 1, sizeof(float), reinterpret_cast<void*>(&variance)
       );
 
       auto noisyReluOperator = winrt::make<NoisyReluOperator>(mean, variance);
@@ -156,9 +155,9 @@ struct NoisyReluOperatorFactory : winrt::implements<NoisyReluOperatorFactory, IM
     MLOperatorEdgeTypeConstrant typeConstraint;
     typeConstraint.typeLabel = "T";
     std::vector<MLOperatorEdgeDescription> allowedEdges{
-        CreateEdgeDescriptor(MLOperatorEdgeType::Tensor, MLOperatorTensorDataType::Double),
-        CreateEdgeDescriptor(MLOperatorEdgeType::Tensor, MLOperatorTensorDataType::Float),
-        CreateEdgeDescriptor(MLOperatorEdgeType::Tensor, MLOperatorTensorDataType::Float16)};
+      CreateEdgeDescriptor(MLOperatorEdgeType::Tensor, MLOperatorTensorDataType::Double),
+      CreateEdgeDescriptor(MLOperatorEdgeType::Tensor, MLOperatorTensorDataType::Float),
+      CreateEdgeDescriptor(MLOperatorEdgeType::Tensor, MLOperatorTensorDataType::Float16)};
     typeConstraint.allowedTypes = allowedEdges.data();
     typeConstraint.allowedTypeCount = static_cast<uint32_t>(allowedEdges.size());
 
@@ -195,18 +194,13 @@ struct NoisyReluOperatorFactory : winrt::implements<NoisyReluOperatorFactory, IM
     noisyReluVarianceAttributeValue.floats = defaultVariance;
 
     std::vector<MLOperatorAttributeNameValue> attributeDefaultValues{
-        noisyReluMeanAttributeValue, noisyReluVarianceAttributeValue};
+      noisyReluMeanAttributeValue, noisyReluVarianceAttributeValue};
     noisyReluSchema.defaultAttributes = attributeDefaultValues.data();
     noisyReluSchema.defaultAttributeCount = static_cast<uint32_t>(attributeDefaultValues.size());
 
     std::vector<const MLOperatorSchemaDescription*> schemas{&noisyReluSchema};
     registry->RegisterOperatorSetSchema(
-        &operatorSetId,
-        6 /* baseline version */,
-        schemas.data(),
-        static_cast<uint32_t>(schemas.size()),
-        nullptr,
-        nullptr
+      &operatorSetId, 6 /* baseline version */, schemas.data(), static_cast<uint32_t>(schemas.size()), nullptr, nullptr
     );
   }
 
@@ -220,9 +214,9 @@ struct NoisyReluOperatorFactory : winrt::implements<NoisyReluOperatorFactory, IM
     MLOperatorEdgeTypeConstrant typeConstraint;
     typeConstraint.typeLabel = "T";
     std::vector<MLOperatorEdgeDescription> allowedEdges{
-        CreateEdgeDescriptor(MLOperatorEdgeType::Tensor, MLOperatorTensorDataType::Double),
-        CreateEdgeDescriptor(MLOperatorEdgeType::Tensor, MLOperatorTensorDataType::Float),
-        CreateEdgeDescriptor(MLOperatorEdgeType::Tensor, MLOperatorTensorDataType::Float16)};
+      CreateEdgeDescriptor(MLOperatorEdgeType::Tensor, MLOperatorTensorDataType::Double),
+      CreateEdgeDescriptor(MLOperatorEdgeType::Tensor, MLOperatorTensorDataType::Float),
+      CreateEdgeDescriptor(MLOperatorEdgeType::Tensor, MLOperatorTensorDataType::Float16)};
     typeConstraint.allowedTypes = allowedEdges.data();
     typeConstraint.allowedTypeCount = static_cast<uint32_t>(allowedEdges.size());
 
@@ -245,7 +239,7 @@ struct NoisyReluOperatorFactory : winrt::implements<NoisyReluOperatorFactory, IM
     noisyReluVarianceAttributeValue.floats = defaultVariance;
 
     std::vector<MLOperatorAttributeNameValue> attributeDefaultValues{
-        noisyReluMeanAttributeValue, noisyReluVarianceAttributeValue};
+      noisyReluMeanAttributeValue, noisyReluVarianceAttributeValue};
     kernelDescription.defaultAttributes = attributeDefaultValues.data();
     kernelDescription.defaultAttributeCount = static_cast<uint32_t>(attributeDefaultValues.size());
     kernelDescription.options = MLOperatorKernelOptions::None;

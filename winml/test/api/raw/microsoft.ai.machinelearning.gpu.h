@@ -39,7 +39,7 @@ struct directx_device : public learning_model_device {
   }
 
   static Details::learning_model_device create_device(
-      ABI::Windows::Graphics::DirectX::Direct3D11::IDirect3DDevice* d3dDevice
+    ABI::Windows::Graphics::DirectX::Direct3D11::IDirect3DDevice* d3dDevice
   ) {
     return Details::learning_model_device::create_directx_device(d3dDevice);
   }

@@ -8,15 +8,15 @@
 
 namespace WINMLP {
 struct SequenceFeatureDescriptor : SequenceFeatureDescriptorT<
-                                       SequenceFeatureDescriptor,
-                                       ILearningModelFeatureDescriptorNative,
-                                       _winml::IDescriptorInfoProvider> {
+                                     SequenceFeatureDescriptor,
+                                     ILearningModelFeatureDescriptorNative,
+                                     _winml::IDescriptorInfoProvider> {
   SequenceFeatureDescriptor() = delete;
   SequenceFeatureDescriptor(
-      const char* name,
-      const char* description,
-      bool is_required,
-      winml::ILearningModelFeatureDescriptor element_descriptor
+    const char* name,
+    const char* description,
+    bool is_required,
+    winml::ILearningModelFeatureDescriptor element_descriptor
   );
 
   winml::ILearningModelFeatureDescriptor ElementDescriptor();

@@ -9,17 +9,17 @@
 
 namespace WINMLP {
 ImageFeatureDescriptor::ImageFeatureDescriptor(
-    const char* name,
-    const char* description,
-    winml::TensorKind tensor_kind,
-    const std::vector<int64_t>& shape,
-    bool is_required,
-    wgi::BitmapPixelFormat pixel_format,
-    wgi::BitmapAlphaMode alpha_mode,
-    uint32_t width,
-    uint32_t height,
-    winml::LearningModelPixelRange pixel_range,
-    ImageColorSpaceGamma color_space_gamma
+  const char* name,
+  const char* description,
+  winml::TensorKind tensor_kind,
+  const std::vector<int64_t>& shape,
+  bool is_required,
+  wgi::BitmapPixelFormat pixel_format,
+  wgi::BitmapAlphaMode alpha_mode,
+  uint32_t width,
+  uint32_t height,
+  winml::LearningModelPixelRange pixel_range,
+  ImageColorSpaceGamma color_space_gamma
 )
     : name_(_winml::Strings::HStringFromUTF8(name)),
       description_(_winml::Strings::HStringFromUTF8(description)),

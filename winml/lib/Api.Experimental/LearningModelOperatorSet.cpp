@@ -11,7 +11,7 @@ LearningModelOperatorSet::LearningModelOperatorSet(winml_experimental::LearningM
 }
 
 winml_experimental::LearningModelBuilder LearningModelOperatorSet::Add(
-    winml_experimental::LearningModelOperator const& op
+  winml_experimental::LearningModelOperator const& op
 ) {
   auto operator_private = op.as<winml_experimentalp::LearningModelOperator>();
   auto constant_input_map = operator_private->ConstantInputMapping();
@@ -51,11 +51,11 @@ winml_experimental::LearningModelBuilder LearningModelOperatorSet::Add(
 
   // Create the Binding Context to pass to the feature value
   _winml::BindingContext context{
-      _winml::BindingType::kInput,
-      builder_.as<winml_experimentalp::LearningModelBuilder>()->InertSession(),
-      nullptr,
-      nullptr,
-      {}  // SubresourceId is set by callee
+    _winml::BindingType::kInput,
+    builder_.as<winml_experimentalp::LearningModelBuilder>()->InertSession(),
+    nullptr,
+    nullptr,
+    {}  // SubresourceId is set by callee
   };
 
   std::vector<std::string> attribute_names(attribute_map.Size());
@@ -75,18 +75,18 @@ winml_experimental::LearningModelBuilder LearningModelOperatorSet::Add(
 
   auto builder = builder_.as<winml_experimentalp::LearningModelBuilder>();
   WINML_THROW_IF_FAILED(builder->UseModel()->AddOperator(
-      operator_type.c_str(),
-      operator_name.c_str(),
-      operator_domain.c_str(),
-      raw_operator_input_names.data(),
-      raw_actual_input_names.data(),
-      input_map.Size(),
-      raw_operator_output_names.data(),
-      raw_actual_output_names.data(),
-      output_map.Size(),
-      raw_attribute_names.data(),
-      raw_attribute_values.data(),
-      attribute_map.Size()
+    operator_type.c_str(),
+    operator_name.c_str(),
+    operator_domain.c_str(),
+    raw_operator_input_names.data(),
+    raw_actual_input_names.data(),
+    input_map.Size(),
+    raw_operator_output_names.data(),
+    raw_actual_output_names.data(),
+    output_map.Size(),
+    raw_attribute_names.data(),
+    raw_attribute_values.data(),
+    attribute_map.Size()
   ));
 
   // Add constants

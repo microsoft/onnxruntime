@@ -55,9 +55,9 @@ static void CustomOperatorFusion() {
   constexpr const uint32_t c_expectedConcatOps = 8;
 
   struct CallbackOperatorProvider : winrt::implements<
-                                        CallbackOperatorProvider,
-                                        winml::ILearningModelOperatorProvider,
-                                        ILearningModelOperatorProviderNative> {
+                                      CallbackOperatorProvider,
+                                      winml::ILearningModelOperatorProvider,
+                                      ILearningModelOperatorProviderNative> {
     struct CallCounts {
       std::atomic<uint32_t> conv = 0;
       std::atomic<uint32_t> relu = 0;
@@ -86,38 +86,38 @@ static void CustomOperatorFusion() {
 #endif
       using create_registry_delegate = HRESULT WINAPI(_COM_Outptr_ IMLOperatorRegistry * *registry);
       auto create_registry =
-          reinterpret_cast<create_registry_delegate*>(GetProcAddress(m_library, "MLCreateOperatorRegistry"));
+        reinterpret_cast<create_registry_delegate*>(GetProcAddress(m_library, "MLCreateOperatorRegistry"));
       WINML_EXPECT_HRESULT_SUCCEEDED(create_registry(m_registry.put()));
 
 #pragma push_macro("REGISTER_KERNEL")
 #define REGISTER_KERNEL(_name, _domain, _opSet, _shapeInferrer, _callCount) \
   NullOperatorFactory::RegisterKernel(                                      \
-      #_name,                                                               \
-      (_domain),                                                            \
-      _opSet::sc_sinceVer_##_name,                                          \
-      m_registry,                                                           \
-      winrt::make<NullShapeInferrer<_shapeInferrer>>(),                     \
-      (_callCount)                                                          \
+    #_name,                                                                 \
+    (_domain),                                                              \
+    _opSet::sc_sinceVer_##_name,                                            \
+    m_registry,                                                             \
+    winrt::make<NullShapeInferrer<_shapeInferrer>>(),                       \
+    (_callCount)                                                            \
   );
 
       REGISTER_KERNEL(Conv, onnxruntime::kOnnxDomain, OnnxOperatorSet7, ConvHelper, &m_callCounts.conv);
       REGISTER_KERNEL(
-          Relu, onnxruntime::kOnnxDomain, OnnxOperatorSet7, GetOutputShapeAsInputShapeHelper, &m_callCounts.relu
+        Relu, onnxruntime::kOnnxDomain, OnnxOperatorSet7, GetOutputShapeAsInputShapeHelper, &m_callCounts.relu
       );
       REGISTER_KERNEL(DmlFusedConv, onnxruntime::kMSDmlDomain, MsftOperatorSet1, ConvHelper, &m_callCounts.fusedConv);
 
       REGISTER_KERNEL(Gemm, onnxruntime::kOnnxDomain, OnnxOperatorSet7, GemmHelper, &m_callCounts.gemm);
       REGISTER_KERNEL(
-          Sigmoid, onnxruntime::kOnnxDomain, OnnxOperatorSet7, GetOutputShapeAsInputShapeHelper, &m_callCounts.sigmoid
+        Sigmoid, onnxruntime::kOnnxDomain, OnnxOperatorSet7, GetOutputShapeAsInputShapeHelper, &m_callCounts.sigmoid
       );
       REGISTER_KERNEL(DmlFusedGemm, onnxruntime::kMSDmlDomain, MsftOperatorSet1, GemmHelper, &m_callCounts.fusedGemm);
 
       REGISTER_KERNEL(
-          BatchNormalization,
-          onnxruntime::kOnnxDomain,
-          OnnxOperatorSet7,
-          GetOutputShapeAsInputShapeHelper,
-          &m_callCounts.batchNorm
+        BatchNormalization,
+        onnxruntime::kOnnxDomain,
+        OnnxOperatorSet7,
+        GetOutputShapeAsInputShapeHelper,
+        &m_callCounts.batchNorm
       );
       REGISTER_KERNEL(MaxPool, onnxruntime::kOnnxDomain, OnnxOperatorSet7, PoolingHelper, &m_callCounts.maxPool);
       REGISTER_KERNEL(Concat, onnxruntime::kOnnxDomain, OnnxOperatorSet7, ConcatHelper, &m_callCounts.concat);
@@ -172,9 +172,9 @@ static void CustomOperatorFusion() {
 }
 
 struct LocalCustomOperatorProvider : winrt::implements<
-                                         LocalCustomOperatorProvider,
-                                         winml::ILearningModelOperatorProvider,
-                                         ILearningModelOperatorProviderNative> {
+                                       LocalCustomOperatorProvider,
+                                       winml::ILearningModelOperatorProvider,
+                                       ILearningModelOperatorProviderNative> {
   LocalCustomOperatorProvider() {
     std::wostringstream dll;
     dll << BINARY_NAME;
@@ -187,7 +187,7 @@ struct LocalCustomOperatorProvider : winrt::implements<
 #endif
     using create_registry_delegate = HRESULT WINAPI(_COM_Outptr_ IMLOperatorRegistry * *registry);
     auto create_registry =
-        reinterpret_cast<create_registry_delegate*>(GetProcAddress(m_library, "MLCreateOperatorRegistry"));
+      reinterpret_cast<create_registry_delegate*>(GetProcAddress(m_library, "MLCreateOperatorRegistry"));
     WINML_EXPECT_HRESULT_SUCCEEDED(create_registry(m_registry.put()));
   }
 
@@ -223,7 +223,7 @@ void VerifyTestAttributes(const MLOperatorAttributes& attrs) {
 
   WINML_EXPECT_EQUAL(std::vector<int64_t>({1, 2}), attrs.GetAttributeVector<int64_t>("DefaultedNonRequiredIntArray"));
   WINML_EXPECT_EQUAL(
-      std::vector<float>({1.0f, 2.0f}), attrs.GetAttributeVector<float>("DefaultedNonRequiredFloatArray")
+    std::vector<float>({1.0f, 2.0f}), attrs.GetAttributeVector<float>("DefaultedNonRequiredFloatArray")
   );
 }
 
@@ -305,23 +305,23 @@ static void CustomKernelWithBuiltInSchema() {
 
   // Register the kernel
   MLOperatorEdgeDescription floatTensorType = {
-      MLOperatorEdgeType::Tensor, static_cast<uint64_t>(MLOperatorTensorDataType::Float)};
+    MLOperatorEdgeType::Tensor, static_cast<uint64_t>(MLOperatorTensorDataType::Float)};
 
   MLOperatorEdgeTypeConstrant constraint = {"T", &floatTensorType, 1};
 
   MLOperatorKernelDescription kernelDesc = {
-      "",
-      "Mul",
-      7,
-      MLOperatorExecutionType::Cpu,
-      &constraint,
-      1,
-      nullptr,
-      0,
-      MLOperatorKernelOptions::AllowDynamicInputShapes};
+    "",
+    "Mul",
+    7,
+    MLOperatorExecutionType::Cpu,
+    &constraint,
+    1,
+    nullptr,
+    0,
+    MLOperatorKernelOptions::AllowDynamicInputShapes};
 
   Microsoft::WRL::ComPtr<MLOperatorKernelFactory> factory =
-      wil::MakeOrThrow<MLOperatorKernelFactory>(CreateABIFooKernel<false>);
+    wil::MakeOrThrow<MLOperatorKernelFactory>(CreateABIFooKernel<false>);
   WINML_EXPECT_HRESULT_SUCCEEDED(registry->RegisterOperatorKernel(&kernelDesc, factory.Get(), nullptr));
 
   // Prepare inputs
@@ -370,7 +370,7 @@ static void CustomKernelWithBuiltInSchema() {
 // Similar to MLOperatorShapeInferrer, but using an std::function
 class MLOperatorShapeInferrerFromFunc
     : public Microsoft::WRL::
-          RuntimeClass<Microsoft::WRL::RuntimeClassFlags<Microsoft::WRL::ClassicCom>, IMLOperatorShapeInferrer> {
+        RuntimeClass<Microsoft::WRL::RuntimeClassFlags<Microsoft::WRL::ClassicCom>, IMLOperatorShapeInferrer> {
  public:
   MLOperatorShapeInferrerFromFunc(std::function<void(IMLOperatorShapeInferenceContext*)> shapeInferenceFn)
       : m_func(shapeInferenceFn) {}
@@ -408,11 +408,11 @@ static void CustomKernelWithCustomSchema() {
     // Whether attribute defaults are provided in the schema, instead of the kernel
     bool attributeDefaultsInSchema;
   } testCases[] = {
-      {false,  true, false, false, false, false},
-      {false, false, false, false, false, false},
-      {false,  true,  true, false, false,  true},
-      { true, false, false, false,  true, false},
-      { true,  true,  true,  true,  true,  true},
+    {false,  true, false, false, false, false},
+    {false, false, false, false, false, false},
+    {false,  true,  true, false, false,  true},
+    { true, false, false, false,  true, false},
+    { true,  true,  true,  true,  true,  true},
   };
 
   for (size_t caseIndex = 0; caseIndex < std::size(testCases); ++caseIndex) {
@@ -453,42 +453,42 @@ static void CustomKernelWithCustomSchema() {
     MLOperatorSchemaEdgeDescription inputs[] = {inputParam, inputParam};
 
     MLOperatorEdgeDescription edgeTypes[6] = {
-        {MLOperatorEdgeType::Tensor, static_cast<uint64_t>(MLOperatorTensorDataType::UInt32)},
-        {MLOperatorEdgeType::Tensor, static_cast<uint64_t>(MLOperatorTensorDataType::UInt64)},
-        {MLOperatorEdgeType::Tensor,  static_cast<uint64_t>(MLOperatorTensorDataType::Int32)},
-        {MLOperatorEdgeType::Tensor,  static_cast<uint64_t>(MLOperatorTensorDataType::Int64)},
-        {MLOperatorEdgeType::Tensor,  static_cast<uint64_t>(MLOperatorTensorDataType::Float)},
-        {MLOperatorEdgeType::Tensor, static_cast<uint64_t>(MLOperatorTensorDataType::Double)}
+      {MLOperatorEdgeType::Tensor, static_cast<uint64_t>(MLOperatorTensorDataType::UInt32)},
+      {MLOperatorEdgeType::Tensor, static_cast<uint64_t>(MLOperatorTensorDataType::UInt64)},
+      {MLOperatorEdgeType::Tensor,  static_cast<uint64_t>(MLOperatorTensorDataType::Int32)},
+      {MLOperatorEdgeType::Tensor,  static_cast<uint64_t>(MLOperatorTensorDataType::Int64)},
+      {MLOperatorEdgeType::Tensor,  static_cast<uint64_t>(MLOperatorTensorDataType::Float)},
+      {MLOperatorEdgeType::Tensor, static_cast<uint64_t>(MLOperatorTensorDataType::Double)}
     };
 
     // Type constraints.  Only the first is used unless type inference is provided and
     // the kernel emits a different output type as "T2"
     MLOperatorEdgeTypeConstrant constraints[] = {
-        {"T1", edgeTypes, static_cast<uint32_t>(std::size(edgeTypes))},
-        {"T2", edgeTypes, static_cast<uint32_t>(std::size(edgeTypes))}
+      {"T1", edgeTypes, static_cast<uint32_t>(std::size(edgeTypes))},
+      {"T2", edgeTypes, static_cast<uint32_t>(std::size(edgeTypes))}
     };
 
     // Test attributes
     MLOperatorAttribute attributes[] = {
-        {           "DefaultedNonRequiredInt",         MLOperatorAttributeType::Int, false},
-        {         "DefaultedNonRequiredFloat",       MLOperatorAttributeType::Float, false},
-        {        "DefaultedNonRequiredString",      MLOperatorAttributeType::String, false},
-        {      "DefaultedNonRequiredIntArray",    MLOperatorAttributeType::IntArray, false},
-        {    "DefaultedNonRequiredFloatArray",  MLOperatorAttributeType::FloatArray, false},
-        {   "DefaultedNonRequiredStringArray", MLOperatorAttributeType::StringArray, false},
+      {           "DefaultedNonRequiredInt",         MLOperatorAttributeType::Int, false},
+      {         "DefaultedNonRequiredFloat",       MLOperatorAttributeType::Float, false},
+      {        "DefaultedNonRequiredString",      MLOperatorAttributeType::String, false},
+      {      "DefaultedNonRequiredIntArray",    MLOperatorAttributeType::IntArray, false},
+      {    "DefaultedNonRequiredFloatArray",  MLOperatorAttributeType::FloatArray, false},
+      {   "DefaultedNonRequiredStringArray", MLOperatorAttributeType::StringArray, false},
 
-        {"NonDefaultedNonRequiredStringArray", MLOperatorAttributeType::StringArray, false},
+      {"NonDefaultedNonRequiredStringArray", MLOperatorAttributeType::StringArray, false},
     };
 
     // Defaults.  These are queried back during kernel creation, type and shape inference
     // and tested against the same values
     MLOperatorAttributeNameValue defaultAttributes[] = {
-        {        "DefaultedNonRequiredInt",         MLOperatorAttributeType::Int, 1},
-        {      "DefaultedNonRequiredFloat",       MLOperatorAttributeType::Float, 1},
-        {     "DefaultedNonRequiredString",      MLOperatorAttributeType::String, 1},
-        {   "DefaultedNonRequiredIntArray",    MLOperatorAttributeType::IntArray, 2},
-        { "DefaultedNonRequiredFloatArray",  MLOperatorAttributeType::FloatArray, 2},
-        {"DefaultedNonRequiredStringArray", MLOperatorAttributeType::StringArray, 2},
+      {        "DefaultedNonRequiredInt",         MLOperatorAttributeType::Int, 1},
+      {      "DefaultedNonRequiredFloat",       MLOperatorAttributeType::Float, 1},
+      {     "DefaultedNonRequiredString",      MLOperatorAttributeType::String, 1},
+      {   "DefaultedNonRequiredIntArray",    MLOperatorAttributeType::IntArray, 2},
+      { "DefaultedNonRequiredFloatArray",  MLOperatorAttributeType::FloatArray, 2},
+      {"DefaultedNonRequiredStringArray", MLOperatorAttributeType::StringArray, 2},
     };
 
     int64_t defaultInts[] = {1, 2};
@@ -544,11 +544,11 @@ static void CustomKernelWithCustomSchema() {
     bool truncateOutput = testCases[caseIndex].truncateOutput;
     if (truncateOutput) {
       shapeInferrer = wil::MakeOrThrow<MLOperatorShapeInferrerFromFunc>(
-          [&shapeInferenceContext](IMLOperatorShapeInferenceContext* ctx) -> void {
-            VerifyTestAttributes(MLShapeInferenceContext(ctx));
-            MLShapeInferenceContext(ctx).SetOutputTensorShape(0, {2, 2});
-            shapeInferenceContext = ctx;
-          }
+        [&shapeInferenceContext](IMLOperatorShapeInferenceContext* ctx) -> void {
+          VerifyTestAttributes(MLShapeInferenceContext(ctx));
+          MLShapeInferenceContext(ctx).SetOutputTensorShape(0, {2, 2});
+          shapeInferenceContext = ctx;
+        }
       );
     }
 
@@ -556,15 +556,15 @@ static void CustomKernelWithCustomSchema() {
     MLOperatorSetId opsetId = {"", 7};
     MLOperatorSchemaDescription* opSchemaDescs = &schemaDesc;
     WINML_EXPECT_EQUAL(
-        S_OK,
-        registry->RegisterOperatorSetSchema(
-            &opsetId,
-            1,
-            &opSchemaDescs,
-            1,
-            typeInferrer.Get(),
-            testCases[caseIndex].useShapeInferenceInSchema ? shapeInferrer.Get() : nullptr
-        )
+      S_OK,
+      registry->RegisterOperatorSetSchema(
+        &opsetId,
+        1,
+        &opSchemaDescs,
+        1,
+        typeInferrer.Get(),
+        testCases[caseIndex].useShapeInferenceInSchema ? shapeInferrer.Get() : nullptr
+      )
     );
 
     {
@@ -576,15 +576,15 @@ static void CustomKernelWithCustomSchema() {
       MLOperatorSetId id = {"", 9};
       MLOperatorSchemaDescription* schemaDescs = &futureSchemaDesc;
       WINML_EXPECT_EQUAL(
-          S_OK,
-          registry->RegisterOperatorSetSchema(
-              &id,
-              7,
-              &schemaDescs,
-              1,
-              typeInferrer.Get(),
-              testCases[caseIndex].useShapeInferenceInSchema ? shapeInferrer.Get() : nullptr
-          )
+        S_OK,
+        registry->RegisterOperatorSetSchema(
+          &id,
+          7,
+          &schemaDescs,
+          1,
+          typeInferrer.Get(),
+          testCases[caseIndex].useShapeInferenceInSchema ? shapeInferrer.Get() : nullptr
+        )
       );
     }
     {
@@ -595,15 +595,15 @@ static void CustomKernelWithCustomSchema() {
       MLOperatorSetId id = {"otherDomain", 7};
       MLOperatorSchemaDescription* schemaDescs = &otherSchemaDesc;
       WINML_EXPECT_EQUAL(
-          S_OK,
-          registry->RegisterOperatorSetSchema(
-              &id,
-              1,
-              &schemaDescs,
-              1,
-              typeInferrer.Get(),
-              testCases[caseIndex].useShapeInferenceInSchema ? shapeInferrer.Get() : nullptr
-          )
+        S_OK,
+        registry->RegisterOperatorSetSchema(
+          &id,
+          1,
+          &schemaDescs,
+          1,
+          typeInferrer.Get(),
+          testCases[caseIndex].useShapeInferenceInSchema ? shapeInferrer.Get() : nullptr
+        )
       );
     }
     // Register the Foo kernel
@@ -614,7 +614,7 @@ static void CustomKernelWithCustomSchema() {
     MLOperatorEdgeTypeConstrant kernelConstraint = {"T1", &floatTensorEdgeDesc, 1};
 
     MLOperatorKernelDescription kernelDesc = {
-        "", "Foo", 7, MLOperatorExecutionType::Cpu, &kernelConstraint, testCases[caseIndex].useTypeLabel ? 1u : 0u};
+      "", "Foo", 7, MLOperatorExecutionType::Cpu, &kernelConstraint, testCases[caseIndex].useTypeLabel ? 1u : 0u};
 
     if (!testCases[caseIndex].attributeDefaultsInSchema) {
       kernelDesc.defaultAttributes = defaultAttributes;
@@ -624,17 +624,17 @@ static void CustomKernelWithCustomSchema() {
     if (!truncateOutput) {
       kernelDesc.options = MLOperatorKernelOptions::AllowDynamicInputShapes;
       Microsoft::WRL::ComPtr<MLOperatorKernelFactory> factory =
-          wil::MakeOrThrow<MLOperatorKernelFactory>(CreateABIFooKernel<true>);
+        wil::MakeOrThrow<MLOperatorKernelFactory>(CreateABIFooKernel<true>);
 
       WINML_EXPECT_EQUAL(S_OK, registry->RegisterOperatorKernel(&kernelDesc, factory.Get(), nullptr));
     } else {
       Microsoft::WRL::ComPtr<MLOperatorKernelFactory> factory =
-          wil::MakeOrThrow<MLOperatorKernelFactory>(CreateTruncatedABIFooKernel);
+        wil::MakeOrThrow<MLOperatorKernelFactory>(CreateTruncatedABIFooKernel);
       WINML_EXPECT_EQUAL(
-          S_OK,
-          registry->RegisterOperatorKernel(
-              &kernelDesc, factory.Get(), testCases[caseIndex].useShapeInferenceInKernel ? shapeInferrer.Get() : nullptr
-          )
+        S_OK,
+        registry->RegisterOperatorKernel(
+          &kernelDesc, factory.Get(), testCases[caseIndex].useShapeInferenceInKernel ? shapeInferrer.Get() : nullptr
+        )
       );
     }
 
@@ -693,10 +693,10 @@ static void CustomKernelWithCustomSchema() {
 
 const CustomOpsTestsApi& getapi() {
   static CustomOpsTestsApi api = {
-      CustomOpsScenarioTestsClassSetup,
-      CustomOperatorFusion,
-      CustomKernelWithBuiltInSchema,
-      CustomKernelWithCustomSchema};
+    CustomOpsScenarioTestsClassSetup,
+    CustomOperatorFusion,
+    CustomKernelWithBuiltInSchema,
+    CustomKernelWithCustomSchema};
 
   if (SkipGpuTests()) {
     api.CustomOperatorFusion = SkipTest;

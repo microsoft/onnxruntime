@@ -4,10 +4,10 @@
 namespace _winml {
 
 static void LoadOrStoreDisjointBuffers(
-    bool should_load_buffer,
-    size_t num_buffers,
-    std::function<gsl::span<byte>(size_t)> get_buffer,
-    gsl::span<byte>& buffer_span
+  bool should_load_buffer,
+  size_t num_buffers,
+  std::function<gsl::span<byte>(size_t)> get_buffer,
+  gsl::span<byte>& buffer_span
 ) {
   auto size_in_bytes = buffer_span.size_bytes();
   auto buffer = buffer_span.data();
@@ -33,13 +33,13 @@ static void LoadOrStoreDisjointBuffers(
 }
 
 void LoadSpanFromDisjointBuffers(
-    size_t num_buffers, std::function<gsl::span<byte>(size_t)> get_buffer, gsl::span<byte>& buffer_span
+  size_t num_buffers, std::function<gsl::span<byte>(size_t)> get_buffer, gsl::span<byte>& buffer_span
 ) {
   LoadOrStoreDisjointBuffers(true /*load into the span*/, num_buffers, get_buffer, buffer_span);
 }
 
 void StoreSpanIntoDisjointBuffers(
-    size_t num_buffers, std::function<gsl::span<byte>(size_t)> get_buffer, gsl::span<byte>& buffer_span
+  size_t num_buffers, std::function<gsl::span<byte>(size_t)> get_buffer, gsl::span<byte>& buffer_span
 ) {
   LoadOrStoreDisjointBuffers(false /*store into buffers*/, num_buffers, get_buffer, buffer_span);
 }

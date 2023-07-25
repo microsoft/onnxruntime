@@ -7,13 +7,13 @@
 
 namespace WINML_EXPERIMENTALP {
 LearningModelSessionOptionsExperimental::LearningModelSessionOptionsExperimental(
-    const winml::LearningModelSessionOptions& options
+  const winml::LearningModelSessionOptions& options
 )
     : options_(options) {
 }
 
 LearningModelSessionOptionsExperimental::LearningModelSessionOptionsExperimental(
-    const winml::LearningModelSession& session
+  const winml::LearningModelSession& session
 )
     : options_(nullptr) {
   com_ptr<WINMLP::LearningModelSession> session_impl = session.as<WINMLP::LearningModelSession>();

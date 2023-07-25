@@ -10,7 +10,7 @@ LearningModelExperimental::LearningModelExperimental(Microsoft::AI::MachineLearn
 }
 
 winml::LearningModel LearningModelExperimental::JoinModel(
-    winml::LearningModel const& other, winml_experimental::LearningModelJoinOptions const& options
+  winml::LearningModel const& other, winml_experimental::LearningModelJoinOptions const& options
 ) {
   telemetry_helper.LogApiUsage("LearningModelExperimental::JoinModel");
 
@@ -18,11 +18,11 @@ winml::LearningModel LearningModelExperimental::JoinModel(
   auto optionsp = options.as<winml_experimentalp::LearningModelJoinOptions>();
 
   modelp->JoinModel(
-      other,
-      optionsp->GetLinkages(),
-      optionsp->PromoteUnlinkedOutputsToFusedOutputs(),
-      optionsp->CloseModelOnJoin(),
-      optionsp->JoinedNodePrefix()
+    other,
+    optionsp->GetLinkages(),
+    optionsp->PromoteUnlinkedOutputsToFusedOutputs(),
+    optionsp->CloseModelOnJoin(),
+    optionsp->JoinedNodePrefix()
   );
 
   return model_;

@@ -144,23 +144,23 @@ struct TensorRuntimeClassID<double> {
 __declspec(selectany
 ) const wchar_t* TensorRuntimeClassID<float>::RuntimeClass_ID = RuntimeClass_Windows_AI_MachineLearning_TensorFloat;
 __declspec(selectany) const wchar_t* TensorRuntimeClassID<float16>::RuntimeClass_ID =
-    RuntimeClass_Windows_AI_MachineLearning_TensorFloat16Bit;
+  RuntimeClass_Windows_AI_MachineLearning_TensorFloat16Bit;
 __declspec(selectany
 ) const wchar_t* TensorRuntimeClassID<int8_t>::RuntimeClass_ID = RuntimeClass_Windows_AI_MachineLearning_TensorInt8Bit;
 __declspec(selectany) const wchar_t* TensorRuntimeClassID<uint8_t>::RuntimeClass_ID =
-    RuntimeClass_Windows_AI_MachineLearning_TensorUInt8Bit;
+  RuntimeClass_Windows_AI_MachineLearning_TensorUInt8Bit;
 __declspec(selectany) const wchar_t* TensorRuntimeClassID<uint16_t>::RuntimeClass_ID =
-    RuntimeClass_Windows_AI_MachineLearning_TensorUInt16Bit;
+  RuntimeClass_Windows_AI_MachineLearning_TensorUInt16Bit;
 __declspec(selectany) const wchar_t* TensorRuntimeClassID<int16_t>::RuntimeClass_ID =
-    RuntimeClass_Windows_AI_MachineLearning_TensorInt16Bit;
+  RuntimeClass_Windows_AI_MachineLearning_TensorInt16Bit;
 __declspec(selectany) const wchar_t* TensorRuntimeClassID<uint32_t>::RuntimeClass_ID =
-    RuntimeClass_Windows_AI_MachineLearning_TensorUInt32Bit;
+  RuntimeClass_Windows_AI_MachineLearning_TensorUInt32Bit;
 __declspec(selectany) const wchar_t* TensorRuntimeClassID<int32_t>::RuntimeClass_ID =
-    RuntimeClass_Windows_AI_MachineLearning_TensorInt32Bit;
+  RuntimeClass_Windows_AI_MachineLearning_TensorInt32Bit;
 __declspec(selectany) const wchar_t* TensorRuntimeClassID<uint64_t>::RuntimeClass_ID =
-    RuntimeClass_Windows_AI_MachineLearning_TensorUInt64Bit;
+  RuntimeClass_Windows_AI_MachineLearning_TensorUInt64Bit;
 __declspec(selectany) const wchar_t* TensorRuntimeClassID<int64_t>::RuntimeClass_ID =
-    RuntimeClass_Windows_AI_MachineLearning_TensorInt64Bit;
+  RuntimeClass_Windows_AI_MachineLearning_TensorInt64Bit;
 __declspec(selectany
 ) const wchar_t* TensorRuntimeClassID<bool>::RuntimeClass_ID = RuntimeClass_Windows_AI_MachineLearning_TensorBoolean;
 __declspec(selectany
@@ -434,8 +434,8 @@ inline HRESULT GetActivationFactory(const wchar_t* p_class_id, const IID& iid, v
 
   Microsoft::WRL::ComPtr<IActivationFactory> activation_factory;
   auto hr = call(
-      Microsoft::WRL::Wrappers::HStringReference(p_class_id, static_cast<unsigned int>(wcslen(p_class_id))).Get(),
-      reinterpret_cast<void**>(activation_factory.GetAddressOf())
+    Microsoft::WRL::Wrappers::HStringReference(p_class_id, static_cast<unsigned int>(wcslen(p_class_id))).Get(),
+    reinterpret_cast<void**>(activation_factory.GetAddressOf())
   );
 
   if (FAILED(hr)) {
@@ -460,21 +460,21 @@ class WinMLLearningModel {
   int32_t Initialize(const wchar_t* model_path, size_t size) {
     Microsoft::WRL::ComPtr<ABI::Windows::AI::MachineLearning::ILearningModelStatics> learningModel;
     RETURN_HR_IF_FAILED(GetActivationFactory(
-        RuntimeClass_Windows_AI_MachineLearning_LearningModel,
-        ABI::Windows::AI::MachineLearning::IID_ILearningModelStatics,
-        &learningModel
+      RuntimeClass_Windows_AI_MachineLearning_LearningModel,
+      ABI::Windows::AI::MachineLearning::IID_ILearningModelStatics,
+      &learningModel
     ));
 
     RETURN_HR_IF_FAILED(learningModel->LoadFromFilePath(
-        Microsoft::WRL::Wrappers::HStringReference(model_path, static_cast<unsigned int>(size)).Get(),
-        m_learning_model.GetAddressOf()
+      Microsoft::WRL::Wrappers::HStringReference(model_path, static_cast<unsigned int>(size)).Get(),
+      m_learning_model.GetAddressOf()
     ));
     return 0;
   }
 
   struct StoreCompleted : Microsoft::WRL::RuntimeClass<
-                              Microsoft::WRL::RuntimeClassFlags<Microsoft::WRL::ClassicCom>,
-                              ABI::Windows::Foundation::IAsyncOperationCompletedHandler<uint32_t>> {
+                            Microsoft::WRL::RuntimeClassFlags<Microsoft::WRL::ClassicCom>,
+                            ABI::Windows::Foundation::IAsyncOperationCompletedHandler<uint32_t>> {
     HANDLE completed_event_;
 
     StoreCompleted() : completed_event_(CreateEvent(nullptr, true, false, nullptr)) {}
@@ -482,7 +482,7 @@ class WinMLLearningModel {
     ~StoreCompleted() { CloseHandle(completed_event_); }
 
     HRESULT STDMETHODCALLTYPE Invoke(
-        ABI::Windows::Foundation::IAsyncOperation<uint32_t>* asyncInfo, ABI::Windows::Foundation::AsyncStatus status
+      ABI::Windows::Foundation::IAsyncOperation<uint32_t>* asyncInfo, ABI::Windows::Foundation::AsyncStatus status
     ) {
       SetEvent(completed_event_);
       return S_OK;
@@ -502,9 +502,9 @@ class WinMLLearningModel {
             // Create in memory stream
       Microsoft::WRL::ComPtr<IInspectable> in_memory_random_access_stream_insp;
       RETURN_HR_IF_FAILED(RoActivateInstance(
-          Microsoft::WRL::Wrappers::HStringReference(RuntimeClass_Windows_Storage_Streams_InMemoryRandomAccessStream)
-              .Get(),
-          in_memory_random_access_stream_insp.GetAddressOf()
+        Microsoft::WRL::Wrappers::HStringReference(RuntimeClass_Windows_Storage_Streams_InMemoryRandomAccessStream)
+          .Get(),
+        in_memory_random_access_stream_insp.GetAddressOf()
       ));
 
             // QI memory stream to output stream
@@ -514,8 +514,8 @@ class WinMLLearningModel {
             // Create data writer factory
       Microsoft::WRL::ComPtr<ABI::Windows::Storage::Streams::IDataWriterFactory> activation_factory;
       RETURN_HR_IF_FAILED(RoGetActivationFactory(
-          Microsoft::WRL::Wrappers::HStringReference(RuntimeClass_Windows_Storage_Streams_DataWriter).Get(),
-          IID_PPV_ARGS(activation_factory.GetAddressOf())
+        Microsoft::WRL::Wrappers::HStringReference(RuntimeClass_Windows_Storage_Streams_DataWriter).Get(),
+        IID_PPV_ARGS(activation_factory.GetAddressOf())
       ));
 
             // Create data writer object based on the in memory stream
@@ -524,7 +524,7 @@ class WinMLLearningModel {
 
             // Write the model to the data writer and thus to the stream
       RETURN_HR_IF_FAILED(
-          data_writer->WriteBytes(static_cast<uint32_t>(size), reinterpret_cast<BYTE*>(const_cast<char*>(bytes)))
+        data_writer->WriteBytes(static_cast<uint32_t>(size), reinterpret_cast<BYTE*>(const_cast<char*>(bytes)))
       );
 
             // QI the in memory stream to a random access stream
@@ -533,33 +533,33 @@ class WinMLLearningModel {
 
             // Create a random access stream reference factory
       Microsoft::WRL::ComPtr<ABI::Windows::Storage::Streams::IRandomAccessStreamReferenceStatics>
-          random_access_stream_ref_statics;
+        random_access_stream_ref_statics;
       RETURN_HR_IF_FAILED(RoGetActivationFactory(
-          Microsoft::WRL::Wrappers::HStringReference(RuntimeClass_Windows_Storage_Streams_RandomAccessStreamReference)
-              .Get(),
-          IID_PPV_ARGS(random_access_stream_ref_statics.GetAddressOf())
+        Microsoft::WRL::Wrappers::HStringReference(RuntimeClass_Windows_Storage_Streams_RandomAccessStreamReference)
+          .Get(),
+        IID_PPV_ARGS(random_access_stream_ref_statics.GetAddressOf())
       ));
 
             // Create a random access stream reference from the random access stream view on top of
             // the in memory stream
       RETURN_HR_IF_FAILED(random_access_stream_ref_statics->CreateFromStream(
-          random_access_stream.Get(), random_access_stream_ref.GetAddressOf()
+        random_access_stream.Get(), random_access_stream_ref.GetAddressOf()
       ));
     } else {
       Microsoft::WRL::ComPtr<WinMLTest::WeakBuffer<BYTE>> buffer;
       RETURN_HR_IF_FAILED(Microsoft::WRL::MakeAndInitialize<WinMLTest::WeakBuffer<BYTE>>(&buffer, bytes, bytes + size));
 
       RETURN_HR_IF_FAILED(Microsoft::WRL::MakeAndInitialize<WinMLTest::BufferBackedRandomAccessStreamReference>(
-          &random_access_stream_ref, buffer.Get()
+        &random_access_stream_ref, buffer.Get()
       ));
     }
 
         // Create a learning model factory
     Microsoft::WRL::ComPtr<ABI::Windows::AI::MachineLearning::ILearningModelStatics> learning_model;
     RETURN_HR_IF_FAILED(GetActivationFactory(
-        RuntimeClass_Windows_AI_MachineLearning_LearningModel,
-        ABI::Windows::AI::MachineLearning::IID_ILearningModelStatics,
-        &learning_model
+      RuntimeClass_Windows_AI_MachineLearning_LearningModel,
+      ABI::Windows::AI::MachineLearning::IID_ILearningModelStatics,
+      &learning_model
     ));
 
     Microsoft::WRL::ComPtr<ABI::Windows::Foundation::IAsyncOperation<uint32_t>> async_operation;
@@ -590,8 +590,8 @@ class WinMLLearningModelResults {
 
     Microsoft::WRL::ComPtr<IInspectable> inspectable;
     RETURN_HR_IF_FAILED(output_map->Lookup(
-        Microsoft::WRL::Wrappers::HStringReference(feature_name, static_cast<unsigned int>(feature_name_size)).Get(),
-        inspectable.GetAddressOf()
+      Microsoft::WRL::Wrappers::HStringReference(feature_name, static_cast<unsigned int>(feature_name_size)).Get(),
+      inspectable.GetAddressOf()
     ));
 
     Microsoft::WRL::ComPtr<ABI::Windows::AI::MachineLearning::ILearningModelFeatureValue> output_feature_value;
@@ -624,66 +624,63 @@ class WinMLLearningModelBinding {
 
   template <typename T = float>
   int32_t bind(
-      const wchar_t* feature_name,
-      size_t feature_name_size,
-      tensor_shape_type* p_shape,
-      size_t shape_size,
-      T* p_data,
-      size_t data_size
+    const wchar_t* feature_name,
+    size_t feature_name_size,
+    tensor_shape_type* p_shape,
+    size_t shape_size,
+    T* p_data,
+    size_t data_size
   ) {
     using ITensor = typename Tensor<T>::Type;
     using ITensorFactory = typename TensorFactory<T>::Factory;
 
     Microsoft::WRL::ComPtr<ITensorFactory> tensor_factory;
     RETURN_HR_IF_FAILED(
-        GetActivationFactory(TensorRuntimeClassID<T>::RuntimeClass_ID, TensorFactoryIID<T>::IID, &tensor_factory)
+      GetActivationFactory(TensorRuntimeClassID<T>::RuntimeClass_ID, TensorFactoryIID<T>::IID, &tensor_factory)
     );
 
     Microsoft::WRL::ComPtr<weak_single_threaded_iterable<int64_t>> input_shape_iterable;
     RETURN_HR_IF_FAILED(Microsoft::WRL::MakeAndInitialize<weak_single_threaded_iterable<int64_t>>(
-        &input_shape_iterable, p_shape, p_shape + shape_size
+      &input_shape_iterable, p_shape, p_shape + shape_size
     ));
 
     Microsoft::WRL::ComPtr<ITensor> tensor;
     RETURN_HR_IF_FAILED(tensor_factory->CreateFromArray(
-        input_shape_iterable.Get(), static_cast<uint32_t>(data_size), p_data, tensor.GetAddressOf()
+      input_shape_iterable.Get(), static_cast<uint32_t>(data_size), p_data, tensor.GetAddressOf()
     ));
 
     Microsoft::WRL::ComPtr<IInspectable> inspectable_tensor;
     RETURN_HR_IF_FAILED(tensor.As(&inspectable_tensor));
 
     RETURN_HR_IF_FAILED(m_learning_model_binding->Bind(
-        Microsoft::WRL::Wrappers::HStringReference(feature_name, static_cast<unsigned int>(feature_name_size)).Get(),
-        inspectable_tensor.Get()
+      Microsoft::WRL::Wrappers::HStringReference(feature_name, static_cast<unsigned int>(feature_name_size)).Get(),
+      inspectable_tensor.Get()
     ));
     return 0;
   }
 
   template <typename T = float>
   int32_t bind(
-      const wchar_t* /*feature_name*/,
-      size_t /*feature_name_size*/,
-      tensor_shape_type* /*p_shape*/,
-      size_t /*shape_size*/
+    const wchar_t* /*feature_name*/, size_t /*feature_name_size*/, tensor_shape_type* /*p_shape*/, size_t /*shape_size*/
   ) {
     return 0;
   }
 
   template <typename T = float>
   int32_t bind_as_reference(
-      const wchar_t* feature_name,
-      size_t feature_name_size,
-      tensor_shape_type* p_shape,
-      size_t shape_size,
-      T* p_data,
-      size_t data_size
+    const wchar_t* feature_name,
+    size_t feature_name_size,
+    tensor_shape_type* p_shape,
+    size_t shape_size,
+    T* p_data,
+    size_t data_size
   ) {
     using ITensor = typename Tensor<T>::Type;
     using ITensorFactory = typename TensorFactory2<T>::Factory;
 
     Microsoft::WRL::ComPtr<ITensorFactory> tensor_factory;
     RETURN_HR_IF_FAILED(
-        GetActivationFactory(TensorRuntimeClassID<T>::RuntimeClass_ID, TensorFactory2IID<T>::IID, &tensor_factory)
+      GetActivationFactory(TensorRuntimeClassID<T>::RuntimeClass_ID, TensorFactory2IID<T>::IID, &tensor_factory)
     );
 
     Microsoft::WRL::ComPtr<WinMLTest::WeakBuffer<T>> buffer;
@@ -691,23 +688,23 @@ class WinMLLearningModelBinding {
     );
 
     Microsoft::WRL::ComPtr<ITensor> tensor;
-    RETURN_HR_IF_FAILED(tensor_factory->CreateFromBuffer(
-        static_cast<uint32_t>(shape_size), p_shape, buffer.Get(), tensor.GetAddressOf()
-    ));
+    RETURN_HR_IF_FAILED(
+      tensor_factory->CreateFromBuffer(static_cast<uint32_t>(shape_size), p_shape, buffer.Get(), tensor.GetAddressOf())
+    );
 
     Microsoft::WRL::ComPtr<IInspectable> inspectable_tensor;
     RETURN_HR_IF_FAILED(tensor.As(&inspectable_tensor));
 
     RETURN_HR_IF_FAILED(m_learning_model_binding->Bind(
-        Microsoft::WRL::Wrappers::HStringReference(feature_name, static_cast<unsigned int>(feature_name_size)).Get(),
-        inspectable_tensor.Get()
+      Microsoft::WRL::Wrappers::HStringReference(feature_name, static_cast<unsigned int>(feature_name_size)).Get(),
+      inspectable_tensor.Get()
     ));
     return 0;
   }
 
   template <typename T = float>
   int32_t bind_as_references(
-      const wchar_t* feature_name, size_t feature_name_size, T** p_data, size_t* data_sizes, size_t num_buffers
+    const wchar_t* feature_name, size_t feature_name_size, T** p_data, size_t* data_sizes, size_t num_buffers
   ) {
     using ITensor = typename Tensor<T>::Type;
     using ITensorFactory = typename TensorFactory2<T>::Factory;
@@ -715,7 +712,7 @@ class WinMLLearningModelBinding {
     std::vector<Microsoft::WRL::ComPtr<ABI::Windows::Storage::Streams::IBuffer>> vec_buffers(num_buffers);
     for (size_t i = 0; i < num_buffers; i++) {
       RETURN_HR_IF_FAILED(Microsoft::WRL::MakeAndInitialize<WinMLTest::WeakBuffer<T>>(
-          &vec_buffers.at(i), p_data[i], p_data[i] + data_sizes[i]
+        &vec_buffers.at(i), p_data[i], p_data[i] + data_sizes[i]
       ));
     }
 
@@ -726,17 +723,17 @@ class WinMLLearningModelBinding {
 
     Microsoft::WRL::ComPtr<weak_single_threaded_iterable<ABI::Windows::Storage::Streams::IBuffer*>> buffers;
     RETURN_HR_IF_FAILED(
-        Microsoft::WRL::MakeAndInitialize<weak_single_threaded_iterable<ABI::Windows::Storage::Streams::IBuffer*>>(
-            &buffers, raw_buffers, raw_buffers + num_buffers
-        )
+      Microsoft::WRL::MakeAndInitialize<weak_single_threaded_iterable<ABI::Windows::Storage::Streams::IBuffer*>>(
+        &buffers, raw_buffers, raw_buffers + num_buffers
+      )
     );
 
     Microsoft::WRL::ComPtr<IInspectable> inspectable_tensor;
     RETURN_HR_IF_FAILED(buffers.As(&inspectable_tensor));
 
     RETURN_HR_IF_FAILED(m_learning_model_binding->Bind(
-        Microsoft::WRL::Wrappers::HStringReference(feature_name, static_cast<unsigned int>(feature_name_size)).Get(),
-        inspectable_tensor.Get()
+      Microsoft::WRL::Wrappers::HStringReference(feature_name, static_cast<unsigned int>(feature_name_size)).Get(),
+      inspectable_tensor.Get()
     ));
     return 0;
   }
@@ -790,7 +787,7 @@ class WinMLLearningModelDevice {
   }
 
   static WinMLLearningModelDevice create_directx_device(
-      ABI::Windows::Graphics::DirectX::Direct3D11::IDirect3DDevice* d3dDevice
+    ABI::Windows::Graphics::DirectX::Direct3D11::IDirect3DDevice* d3dDevice
   ) {
     return WinMLLearningModelDevice(d3dDevice);
   }
@@ -802,11 +799,11 @@ class WinMLLearningModelDevice {
  private:
   int32_t Initialize(ABI::Windows::AI::MachineLearning::LearningModelDeviceKind kind) {
     Microsoft::WRL::ComPtr<ABI::Windows::AI::MachineLearning::ILearningModelDeviceFactory>
-        learning_model_device_factory;
+      learning_model_device_factory;
     RETURN_HR_IF_FAILED(GetActivationFactory(
-        RuntimeClass_Windows_AI_MachineLearning_LearningModelDevice,
-        ABI::Windows::AI::MachineLearning::IID_ILearningModelDeviceFactory,
-        &learning_model_device_factory
+      RuntimeClass_Windows_AI_MachineLearning_LearningModelDevice,
+      ABI::Windows::AI::MachineLearning::IID_ILearningModelDeviceFactory,
+      &learning_model_device_factory
     ));
 
     RETURN_HR_IF_FAILED(learning_model_device_factory->Create(kind, &m_learning_model_device));
@@ -816,11 +813,11 @@ class WinMLLearningModelDevice {
 
   int32_t Initialize(ABI::Windows::Graphics::DirectX::Direct3D11::IDirect3DDevice* d3dDevice) {
     Microsoft::WRL::ComPtr<ABI::Windows::AI::MachineLearning::ILearningModelDeviceStatics>
-        learning_model_device_factory;
+      learning_model_device_factory;
     RETURN_HR_IF_FAILED(GetActivationFactory(
-        RuntimeClass_Windows_AI_MachineLearning_LearningModelDevice,
-        ABI::Windows::AI::MachineLearning::IID_ILearningModelDeviceStatics,
-        &learning_model_device_factory
+      RuntimeClass_Windows_AI_MachineLearning_LearningModelDevice,
+      ABI::Windows::AI::MachineLearning::IID_ILearningModelDeviceStatics,
+      &learning_model_device_factory
     ));
 
     RETURN_HR_IF_FAILED(learning_model_device_factory->CreateFromDirect3D11Device(d3dDevice, &m_learning_model_device));
@@ -831,9 +828,9 @@ class WinMLLearningModelDevice {
   int32_t Initialize(ID3D12CommandQueue* queue) {
     Microsoft::WRL::ComPtr<ILearningModelDeviceFactoryNative> learning_model_device_factory;
     RETURN_HR_IF_FAILED(GetActivationFactory(
-        RuntimeClass_Windows_AI_MachineLearning_LearningModelDevice,
-        __uuidof(ILearningModelDeviceFactoryNative),
-        &learning_model_device_factory
+      RuntimeClass_Windows_AI_MachineLearning_LearningModelDevice,
+      __uuidof(ILearningModelDeviceFactoryNative),
+      &learning_model_device_factory
     ));
 
     RETURN_HR_IF_FAILED(learning_model_device_factory->CreateFromD3D12CommandQueue(queue, &m_learning_model_device));
@@ -861,10 +858,10 @@ class WinMLLearningModelSession {
 
   WinMLLearningModelResults evaluate(WinMLLearningModelBinding& binding) {
     Microsoft::WRL::ComPtr<ABI::Windows::AI::MachineLearning::ILearningModelEvaluationResult>
-        m_learning_model_evaluation_result;
+      m_learning_model_evaluation_result;
 
     FAIL_FAST_IF_HR_FAILED(m_learning_model_session->Evaluate(
-        binding.m_learning_model_binding.Get(), nullptr, m_learning_model_evaluation_result.GetAddressOf()
+      binding.m_learning_model_binding.Get(), nullptr, m_learning_model_evaluation_result.GetAddressOf()
     ));
 
     return WinMLLearningModelResults(m_learning_model_evaluation_result.Get());
@@ -872,21 +869,21 @@ class WinMLLearningModelSession {
 
  private:
   int32_t Initialize(const Model& model, const Device& device) {
-        // {0f6b881d-1c9b-47b6-bfe0-f1cf62a67579}
+    // {0f6b881d-1c9b-47b6-bfe0-f1cf62a67579}
     static const GUID IID_ILearningModelSessionFactory = {
-        0x0f6b881d, 0x1c9b, 0x47b6, {0xbf, 0xe0, 0xf1, 0xcf, 0x62, 0xa6, 0x75, 0x79}
+      0x0f6b881d, 0x1c9b, 0x47b6, {0xbf, 0xe0, 0xf1, 0xcf, 0x62, 0xa6, 0x75, 0x79}
     };
 
     Microsoft::WRL::ComPtr<ABI::Windows::AI::MachineLearning::ILearningModelSessionFactory>
-        m_learning_model_session_factory;
+      m_learning_model_session_factory;
     RETURN_HR_IF_FAILED(GetActivationFactory(
-        RuntimeClass_Windows_AI_MachineLearning_LearningModelSession,
-        IID_ILearningModelSessionFactory,
-        &m_learning_model_session_factory
+      RuntimeClass_Windows_AI_MachineLearning_LearningModelSession,
+      IID_ILearningModelSessionFactory,
+      &m_learning_model_session_factory
     ));
 
     RETURN_HR_IF_FAILED(m_learning_model_session_factory->CreateFromModelOnDevice(
-        model.m_learning_model.Get(), device.m_learning_model_device.Get(), m_learning_model_session.GetAddressOf()
+      model.m_learning_model.Get(), device.m_learning_model_device.Get(), m_learning_model_session.GetAddressOf()
     ));
 
     return 0;
@@ -897,30 +894,30 @@ class WinMLLearningModelSession {
 };
 
 inline int32_t WinMLLearningModelBinding::Initialize(const WinMLLearningModelSession& session) {
-    // {c95f7a7a-e788-475e-8917-23aa381faf0b}
+  // {c95f7a7a-e788-475e-8917-23aa381faf0b}
   static const GUID IID_ILearningModelBindingFactory = {
-      0xc95f7a7a, 0xe788, 0x475e, {0x89, 0x17, 0x23, 0xaa, 0x38, 0x1f, 0xaf, 0x0b}
+    0xc95f7a7a, 0xe788, 0x475e, {0x89, 0x17, 0x23, 0xaa, 0x38, 0x1f, 0xaf, 0x0b}
   };
 
   Microsoft::WRL::ComPtr<ABI::Windows::AI::MachineLearning::ILearningModelBindingFactory>
-      learning_model_binding_factory;
+    learning_model_binding_factory;
 
   RETURN_HR_IF_FAILED(GetActivationFactory(
-      RuntimeClass_Windows_AI_MachineLearning_LearningModelBinding,
-      IID_ILearningModelBindingFactory,
-      &learning_model_binding_factory
+    RuntimeClass_Windows_AI_MachineLearning_LearningModelBinding,
+    IID_ILearningModelBindingFactory,
+    &learning_model_binding_factory
   ));
 
   RETURN_HR_IF_FAILED(learning_model_binding_factory->CreateFromSession(
-      session.m_learning_model_session.Get(), m_learning_model_binding.GetAddressOf()
+    session.m_learning_model_session.Get(), m_learning_model_binding.GetAddressOf()
   ));
 
   return 0;
 }
 
-}// namespace Details
-}// namespace MachineLearning
-}// namespace AI
-} // namespace Microsoft
+}  // namespace Details
+}  // namespace MachineLearning
+}  // namespace AI
+}  // namespace Microsoft
 
-#endif // WINML_H_
+#endif  // WINML_H_

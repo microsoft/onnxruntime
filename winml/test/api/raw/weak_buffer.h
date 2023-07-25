@@ -13,14 +13,14 @@
 namespace WinMLTest {
 
 template <typename T>
-struct WeakBuffer : public Microsoft::WRL::RuntimeClass<
-                        Microsoft::WRL::RuntimeClassFlags<
-                            Microsoft::WRL::WinRtClassicComMix | Microsoft::WRL::InhibitRoOriginateError>,
-                        ABI::Windows::Storage::Streams::IBuffer,
-                        Windows::Storage::Streams::IBufferByteAccess> {
+struct WeakBuffer
+    : public Microsoft::WRL::RuntimeClass<
+        Microsoft::WRL::RuntimeClassFlags<Microsoft::WRL::WinRtClassicComMix | Microsoft::WRL::InhibitRoOriginateError>,
+        ABI::Windows::Storage::Streams::IBuffer,
+        Windows::Storage::Streams::IBufferByteAccess> {
   InspectableClass(L"WinMLTest.WeakBuffer", BaseTrust)
 
-      private : const T* m_p_begin;
+    private : const T* m_p_begin;
   const T* m_p_end;
 
  public:

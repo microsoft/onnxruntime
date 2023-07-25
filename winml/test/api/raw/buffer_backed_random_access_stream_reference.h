@@ -16,41 +16,40 @@ namespace WinMLTest {
 
 struct BufferBackedRandomAccessStreamReadAsync
     : public Microsoft::WRL::RuntimeClass<
-          Microsoft::WRL::RuntimeClassFlags<
-              Microsoft::WRL::WinRtClassicComMix | Microsoft::WRL::InhibitRoOriginateError>,
-          __FIAsyncOperationWithProgress_2_Windows__CStorage__CStreams__CIBuffer_UINT32,
-          ABI::Windows::Foundation::IAsyncInfo> {
+        Microsoft::WRL::RuntimeClassFlags<Microsoft::WRL::WinRtClassicComMix | Microsoft::WRL::InhibitRoOriginateError>,
+        __FIAsyncOperationWithProgress_2_Windows__CStorage__CStreams__CIBuffer_UINT32,
+        ABI::Windows::Foundation::IAsyncInfo> {
   InspectableClass(L"WinMLTest.BufferBackedRandomAccessStreamReadAsync", BaseTrust)
 
-      Microsoft::WRL::ComPtr<ABI::Windows::Storage::Streams::IBuffer> buffer_;
+    Microsoft::WRL::ComPtr<ABI::Windows::Storage::Streams::IBuffer> buffer_;
 
   Microsoft::WRL::ComPtr<ABI::Windows::Foundation::IAsyncOperationWithProgressCompletedHandler<
-      ABI::Windows::Storage::Streams::IBuffer*,
-      UINT32>>
-      completed_handler_;
+    ABI::Windows::Storage::Streams::IBuffer*,
+    UINT32>>
+    completed_handler_;
   Microsoft::WRL::ComPtr<
-      ABI::Windows::Foundation::IAsyncOperationProgressHandler<ABI::Windows::Storage::Streams::IBuffer*, UINT32>>
-      progress_handler_;
+    ABI::Windows::Foundation::IAsyncOperationProgressHandler<ABI::Windows::Storage::Streams::IBuffer*, UINT32>>
+    progress_handler_;
 
   AsyncStatus status_ = AsyncStatus::Started;
 
  public:
   virtual /* [propget] */ HRESULT STDMETHODCALLTYPE get_Id(
-      /* [retval][out] */ __RPC__out unsigned __int32* id
+    /* [retval][out] */ __RPC__out unsigned __int32* id
   ) override {
     *id = 0; // Do we need to implement this?
     return S_OK;
   }
 
   virtual /* [propget] */ HRESULT STDMETHODCALLTYPE get_Status(
-      /* [retval][out] */ __RPC__out AsyncStatus* status
+    /* [retval][out] */ __RPC__out AsyncStatus* status
   ) override {
     *status = status_;
     return S_OK;
   }
 
   virtual /* [propget] */ HRESULT STDMETHODCALLTYPE get_ErrorCode(
-      /* [retval][out] */ __RPC__out HRESULT* /*errorCode*/
+    /* [retval][out] */ __RPC__out HRESULT* /*errorCode*/
   ) override {
     return E_NOTIMPL;
   }
@@ -71,16 +70,14 @@ struct BufferBackedRandomAccessStreamReadAsync
   }
 
   virtual HRESULT STDMETHODCALLTYPE put_Progress(
-      ABI::Windows::Foundation::IAsyncOperationProgressHandler<ABI::Windows::Storage::Streams::IBuffer*, UINT32>*
-          handler
+    ABI::Windows::Foundation::IAsyncOperationProgressHandler<ABI::Windows::Storage::Streams::IBuffer*, UINT32>* handler
   ) override {
     progress_handler_ = handler;
     return S_OK;
   }
 
   virtual HRESULT STDMETHODCALLTYPE get_Progress(
-      ABI::Windows::Foundation::IAsyncOperationProgressHandler<ABI::Windows::Storage::Streams::IBuffer*, UINT32>**
-          handler
+    ABI::Windows::Foundation::IAsyncOperationProgressHandler<ABI::Windows::Storage::Streams::IBuffer*, UINT32>** handler
   ) override {
     progress_handler_.CopyTo(handler);
     return S_OK;
@@ -110,18 +107,18 @@ struct BufferBackedRandomAccessStreamReadAsync
   }
 };
 
-struct RandomAccessStream : public Microsoft::WRL::RuntimeClass<
-                                Microsoft::WRL::RuntimeClassFlags<
-                                    Microsoft::WRL::WinRtClassicComMix | Microsoft::WRL::InhibitRoOriginateError>,
-                                ABI::Windows::Storage::Streams::IRandomAccessStreamWithContentType,
-                                ABI::Windows::Storage::Streams::IContentTypeProvider,
-                                ABI::Windows::Storage::Streams::IRandomAccessStream,
-                                ABI::Windows::Storage::Streams::IInputStream,
-                                ABI::Windows::Storage::Streams::IOutputStream,
-                                ABI::Windows::Foundation::IClosable> {
+struct RandomAccessStream
+    : public Microsoft::WRL::RuntimeClass<
+        Microsoft::WRL::RuntimeClassFlags<Microsoft::WRL::WinRtClassicComMix | Microsoft::WRL::InhibitRoOriginateError>,
+        ABI::Windows::Storage::Streams::IRandomAccessStreamWithContentType,
+        ABI::Windows::Storage::Streams::IContentTypeProvider,
+        ABI::Windows::Storage::Streams::IRandomAccessStream,
+        ABI::Windows::Storage::Streams::IInputStream,
+        ABI::Windows::Storage::Streams::IOutputStream,
+        ABI::Windows::Foundation::IClosable> {
   InspectableClass(L"WinMLTest.RandomAccessStream", BaseTrust)
 
-      private : Microsoft::WRL::ComPtr<ABI::Windows::Storage::Streams::IBuffer> buffer_ = nullptr;
+    private : Microsoft::WRL::ComPtr<ABI::Windows::Storage::Streams::IBuffer> buffer_ = nullptr;
   UINT64 position_ = 0;
 
  public:
@@ -140,7 +137,7 @@ struct RandomAccessStream : public Microsoft::WRL::RuntimeClass<
     // Content Provider
 
   /* [propget] */ virtual HRESULT STDMETHODCALLTYPE get_ContentType(
-      /* [retval, out] */ __RPC__deref_out_opt HSTRING* value
+    /* [retval, out] */ __RPC__deref_out_opt HSTRING* value
   ) override {
     return WindowsCreateString(nullptr, 0, value);
   }
@@ -148,7 +145,7 @@ struct RandomAccessStream : public Microsoft::WRL::RuntimeClass<
     // IRandomAccessStream
 
   /* [propget] */ virtual HRESULT STDMETHODCALLTYPE get_Size(
-      /* [retval, out] */ __RPC__out UINT64* value
+    /* [retval, out] */ __RPC__out UINT64* value
   ) override {
     *value = 0;
     uint32_t length;
@@ -158,47 +155,47 @@ struct RandomAccessStream : public Microsoft::WRL::RuntimeClass<
   }
 
   /* [propput] */ virtual HRESULT STDMETHODCALLTYPE put_Size(
-      /* [in] */ UINT64 /*value*/
+    /* [in] */ UINT64 /*value*/
   ) override {
     return E_NOTIMPL;
   }
 
   virtual HRESULT STDMETHODCALLTYPE GetInputStreamAt(
-      /* [in] */ UINT64 position,
-      /* [retval, out] */ __RPC__deref_out_opt ABI::Windows::Storage::Streams::IInputStream** stream
+    /* [in] */ UINT64 position,
+    /* [retval, out] */ __RPC__deref_out_opt ABI::Windows::Storage::Streams::IInputStream** stream
   ) override {
     return Microsoft::WRL::MakeAndInitialize<RandomAccessStream>(stream, buffer_.Get(), position);
   }
 
   virtual HRESULT STDMETHODCALLTYPE GetOutputStreamAt(
-      /* [in] */ UINT64 /*position*/,
-      /* [retval, out] */ __RPC__deref_out_opt ABI::Windows::Storage::Streams::IOutputStream** /*stream*/
+    /* [in] */ UINT64 /*position*/,
+    /* [retval, out] */ __RPC__deref_out_opt ABI::Windows::Storage::Streams::IOutputStream** /*stream*/
   ) override {
     return E_NOTIMPL;
   }
 
   /* [propget] */ virtual HRESULT STDMETHODCALLTYPE get_Position(
-      /* [retval, out] */ __RPC__out UINT64* value
+    /* [retval, out] */ __RPC__out UINT64* value
   ) override {
     *value = position_;
     return S_OK;
   }
 
   virtual HRESULT STDMETHODCALLTYPE Seek(
-      /* [in] */ UINT64 position
+    /* [in] */ UINT64 position
   ) override {
     position_ = position;
     return S_OK;
   }
 
   virtual HRESULT STDMETHODCALLTYPE CloneStream(
-      /* [retval, out] */ __RPC__deref_out_opt ABI::Windows::Storage::Streams::IRandomAccessStream** stream
+    /* [retval, out] */ __RPC__deref_out_opt ABI::Windows::Storage::Streams::IRandomAccessStream** stream
   ) override {
     return Microsoft::WRL::MakeAndInitialize<RandomAccessStream>(stream, buffer_.Get(), 0);
   }
 
   /* [propget] */ virtual HRESULT STDMETHODCALLTYPE get_CanRead(
-      /* [retval, out] */ __RPC__out::boolean* value
+    /* [retval, out] */ __RPC__out::boolean* value
   ) override {
     UINT32 length;
     buffer_->get_Length(&length);
@@ -207,7 +204,7 @@ struct RandomAccessStream : public Microsoft::WRL::RuntimeClass<
   }
 
   /* [propget] */ virtual HRESULT STDMETHODCALLTYPE get_CanWrite(
-      /* [retval, out] */ __RPC__out::boolean* value
+    /* [retval, out] */ __RPC__out::boolean* value
   ) override {
     *value = false;
     return S_OK;
@@ -215,11 +212,11 @@ struct RandomAccessStream : public Microsoft::WRL::RuntimeClass<
 
     // IInputStream
   virtual HRESULT STDMETHODCALLTYPE ReadAsync(
-      /* [in] */ __RPC__in_opt ABI::Windows::Storage::Streams::IBuffer* buffer,
-      /* [in] */ UINT32 count,
-      /* [in] */ ABI::Windows::Storage::Streams::InputStreamOptions /*options*/,
+    /* [in] */ __RPC__in_opt ABI::Windows::Storage::Streams::IBuffer* buffer,
+    /* [in] */ UINT32 count,
+    /* [in] */ ABI::Windows::Storage::Streams::InputStreamOptions /*options*/,
         /* [retval, out] */
-      __RPC__deref_out_opt __FIAsyncOperationWithProgress_2_Windows__CStorage__CStreams__CIBuffer_UINT32** operation
+    __RPC__deref_out_opt __FIAsyncOperationWithProgress_2_Windows__CStorage__CStreams__CIBuffer_UINT32** operation
   ) override {
     auto read_async = Microsoft::WRL::Make<BufferBackedRandomAccessStreamReadAsync>();
     read_async.CopyTo(operation);
@@ -245,14 +242,14 @@ struct RandomAccessStream : public Microsoft::WRL::RuntimeClass<
 
     // IOutputStream
   virtual HRESULT STDMETHODCALLTYPE WriteAsync(
-      /* [in] */ __RPC__in_opt ABI::Windows::Storage::Streams::IBuffer* /*buffer*/,
-      /* [retval, out] */ __RPC__deref_out_opt __FIAsyncOperationWithProgress_2_UINT32_UINT32** /*operation*/
+    /* [in] */ __RPC__in_opt ABI::Windows::Storage::Streams::IBuffer* /*buffer*/,
+    /* [retval, out] */ __RPC__deref_out_opt __FIAsyncOperationWithProgress_2_UINT32_UINT32** /*operation*/
   ) override {
     return E_NOTIMPL;
   }
 
   virtual HRESULT STDMETHODCALLTYPE FlushAsync(
-      /* [retval, out] */ __RPC__deref_out_opt __FIAsyncOperation_1_boolean** /*operation*/
+    /* [retval, out] */ __RPC__deref_out_opt __FIAsyncOperation_1_boolean** /*operation*/
   ) override {
     return E_NOTIMPL;
   }
@@ -266,15 +263,14 @@ struct RandomAccessStream : public Microsoft::WRL::RuntimeClass<
 
 struct BufferBackedRandomAccessStreamReferenceOpenReadAsync
     : public Microsoft::WRL::RuntimeClass<
-          Microsoft::WRL::RuntimeClassFlags<
-              Microsoft::WRL::WinRtClassicComMix | Microsoft::WRL::InhibitRoOriginateError>,
-          __FIAsyncOperation_1_Windows__CStorage__CStreams__CIRandomAccessStreamWithContentType,
-          ABI::Windows::Foundation::IAsyncInfo> {
+        Microsoft::WRL::RuntimeClassFlags<Microsoft::WRL::WinRtClassicComMix | Microsoft::WRL::InhibitRoOriginateError>,
+        __FIAsyncOperation_1_Windows__CStorage__CStreams__CIRandomAccessStreamWithContentType,
+        ABI::Windows::Foundation::IAsyncInfo> {
   InspectableClass(L"WinMLTest.BufferBackedRandomAccessStreamReferenceOpenReadAsync", BaseTrust) public
       : Microsoft::WRL::ComPtr<ABI::Windows::Storage::Streams::IRandomAccessStreamWithContentType> ras_;
   Microsoft::WRL::ComPtr<ABI::Windows::Foundation::IAsyncOperationCompletedHandler<
-      ABI::Windows::Storage::Streams::IRandomAccessStreamWithContentType*>>
-      completed_handler_;
+    ABI::Windows::Storage::Streams::IRandomAccessStreamWithContentType*>>
+    completed_handler_;
   AsyncStatus status_ = AsyncStatus::Started;
 
   HRESULT SetRandomAccessStream(ABI::Windows::Storage::Streams::IRandomAccessStreamWithContentType* ras) {
@@ -289,21 +285,21 @@ struct BufferBackedRandomAccessStreamReferenceOpenReadAsync
   }
 
   virtual /* [propget] */ HRESULT STDMETHODCALLTYPE get_Id(
-      /* [retval][out] */ __RPC__out unsigned __int32* id
+    /* [retval][out] */ __RPC__out unsigned __int32* id
   ) override {
     *id = 0; // Do we need to implement this?
     return S_OK;
   }
 
   virtual /* [propget] */ HRESULT STDMETHODCALLTYPE get_Status(
-      /* [retval][out] */ __RPC__out AsyncStatus* status
+    /* [retval][out] */ __RPC__out AsyncStatus* status
   ) override {
     *status = status_;
     return S_OK;
   }
 
   virtual /* [propget] */ HRESULT STDMETHODCALLTYPE get_ErrorCode(
-      /* [retval][out] */ __RPC__out HRESULT* /*errorCode*/
+    /* [retval][out] */ __RPC__out HRESULT* /*errorCode*/
   ) override {
     return E_NOTIMPL;
   }
@@ -338,12 +334,11 @@ struct BufferBackedRandomAccessStreamReferenceOpenReadAsync
 
 struct BufferBackedRandomAccessStreamReference
     : public Microsoft::WRL::RuntimeClass<
-          Microsoft::WRL::RuntimeClassFlags<
-              Microsoft::WRL::WinRtClassicComMix | Microsoft::WRL::InhibitRoOriginateError>,
-          ABI::Windows::Storage::Streams::IRandomAccessStreamReference> {
+        Microsoft::WRL::RuntimeClassFlags<Microsoft::WRL::WinRtClassicComMix | Microsoft::WRL::InhibitRoOriginateError>,
+        ABI::Windows::Storage::Streams::IRandomAccessStreamReference> {
   InspectableClass(L"WinMLTest.BufferBackedRandomAccessStreamReference", BaseTrust)
 
-      Microsoft::WRL::ComPtr<ABI::Windows::Storage::Streams::IBuffer> buffer_ = nullptr;
+    Microsoft::WRL::ComPtr<ABI::Windows::Storage::Streams::IBuffer> buffer_ = nullptr;
 
  public:
   HRESULT RuntimeClassInitialize(ABI::Windows::Storage::Streams::IBuffer* buffer) {
@@ -352,8 +347,8 @@ struct BufferBackedRandomAccessStreamReference
   }
 
   virtual HRESULT STDMETHODCALLTYPE OpenReadAsync(
-      /* [retval, out] */ __RPC__deref_out_opt
-          __FIAsyncOperation_1_Windows__CStorage__CStreams__CIRandomAccessStreamWithContentType** operation
+    /* [retval, out] */ __RPC__deref_out_opt
+      __FIAsyncOperation_1_Windows__CStorage__CStreams__CIRandomAccessStreamWithContentType** operation
   ) override {
     auto open_read_async = Microsoft::WRL::Make<BufferBackedRandomAccessStreamReferenceOpenReadAsync>();
     open_read_async.CopyTo(operation);

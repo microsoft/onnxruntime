@@ -21,7 +21,7 @@ LearningModelBinding::LearningModelBinding(winml::LearningModelSession const& se
 WINML_CATCH_ALL
 
 static winml::ILearningModelFeatureDescriptor FindValidBinding(
-    wfc::IIterable<ILearningModelFeatureDescriptor> descriptors, const std::wstring& name
+  wfc::IIterable<ILearningModelFeatureDescriptor> descriptors, const std::wstring& name
 ) {
   for (auto descriptor : descriptors) {
     auto descriptor_native = descriptor.as<ILearningModelFeatureDescriptorNative>();
@@ -55,14 +55,14 @@ void LearningModelBinding::CacheProvider(std::string name, ProviderInfo& provide
 }
 
 std::tuple<std::string, winrt::com_ptr<_winml::IValue>, _winml::BindingType> LearningModelBinding::CreateBinding(
-    const std::string& name, const wf::IInspectable& inspectable, wfc::IPropertySet const& properties
+  const std::string& name, const wf::IInspectable& inspectable, wfc::IPropertySet const& properties
 ) {
   // Given a known type, validate against the model
   auto model = m_session.Model();
   auto bindingPort = FindValidBinding(model, _winml::Strings::WStringFromString(name));
 
   WINML_THROW_HR_IF_FALSE_MSG(
-      WINML_ERR_INVALID_BINDING, bindingPort.has_value(), "The model has no variable with name %s.", name.c_str()
+    WINML_ERR_INVALID_BINDING, bindingPort.has_value(), "The model has no variable with name %s.", name.c_str()
   );
 
   // Retrieve the descriptor and binding type
@@ -72,10 +72,10 @@ std::tuple<std::string, winrt::com_ptr<_winml::IValue>, _winml::BindingType> Lea
   // Create a feature value from the iinspectable input
   auto featureValue = _winml::CreateFeatureValueFromInspectable(bindingType, inspectable, descriptor);
   WINML_THROW_HR_IF_NULL_MSG(
-      WINML_ERR_INVALID_BINDING,
-      featureValue,
-      "The model variable %s cannot be bound with the provided type.",
-      name.c_str()
+    WINML_ERR_INVALID_BINDING,
+    featureValue,
+    "The model variable %s cannot be bound with the provided type.",
+    name.c_str()
   );
 
   // Validate that the feature value is compatible with the descriptor
@@ -83,7 +83,7 @@ std::tuple<std::string, winrt::com_ptr<_winml::IValue>, _winml::BindingType> Lea
 
   // Create the Binding Context to pass to the feature value
   _winml::BindingContext context{
-      bindingType, m_session, descriptor, properties, {}  // SubresourceId is set by callee
+    bindingType, m_session, descriptor, properties, {}  // SubresourceId is set by callee
   };
 
   // Get the bound tensor
@@ -110,16 +110,14 @@ std::tuple<std::string, winrt::com_ptr<_winml::IValue>, _winml::BindingType> Lea
   if (!isPlaceHolder || shouldAlwaysTensorize) {
     // If not a placeholder, attempt to get the underlying resource
     WINML_THROW_IF_FAILED_MSG(
-        spLotusValueProvider->GetValue(context, value.put()),
-        "The model variable %s failed tensorization.",
-        name.c_str()
+      spLotusValueProvider->GetValue(context, value.put()), "The model variable %s failed tensorization.", name.c_str()
     );
   } else {
     WINML_THROW_HR_IF_TRUE_MSG(
-        WINML_ERR_INVALID_BINDING,
-        isPlaceHolder && bindingType == _winml::BindingType::kInput,
-        "The model variable %s is an input, but has no associated resources to bind.",
-        name.c_str()
+      WINML_ERR_INVALID_BINDING,
+      isPlaceHolder && bindingType == _winml::BindingType::kInput,
+      "The model variable %s is an input, but has no associated resources to bind.",
+      name.c_str()
     );
 
     WINML_THROW_IF_FAILED(spSession->GetEngine()->CreateNullValue(value.put()));
@@ -138,7 +136,7 @@ void LearningModelBinding::Bind(hstring const& name, wf::IInspectable const& val
 WINML_CATCH_ALL
 
 void LearningModelBinding::Bind(
-    hstring const& name, wf::IInspectable const& value, wfc::IPropertySet const& properties
+  hstring const& name, wf::IInspectable const& value, wfc::IPropertySet const& properties
 ) try {
   // if this is being called on the GPU, grab the DML lock
   // the DML EP is not thread safe.
@@ -197,10 +195,10 @@ wf::IInspectable LearningModelBinding::Lookup(hstring const& key) {
 
   auto foundIt = m_providers.find(utf8_name);
   WINML_THROW_HR_IF_FALSE_MSG(
-      E_BOUNDS,
-      foundIt != std::end(m_providers),
-      "The binding collection does not contain a variable with name %s.",
-      utf8_name.c_str()
+    E_BOUNDS,
+    foundIt != std::end(m_providers),
+    "The binding collection does not contain a variable with name %s.",
+    utf8_name.c_str()
   );
 
   auto providerInfo = foundIt->second;
@@ -217,7 +215,7 @@ bool LearningModelBinding::HasKey(hstring const& key) {
 }
 
 void LearningModelBinding::Split(
-    wfc::IMapView<hstring, wf::IInspectable>& first, wfc::IMapView<hstring, wf::IInspectable>& second
+  wfc::IMapView<hstring, wf::IInspectable>& first, wfc::IMapView<hstring, wf::IInspectable>& second
 ) {
   // the winrt api guide states:
   // If the IMapView instance cannot be split, then both the first and second parameters are null when the method returns.
@@ -226,7 +224,7 @@ void LearningModelBinding::Split(
 }
 
 ILearningModelFeatureValue LearningModelBinding::CreateUnboundOuputFeatureValue(
-    const winrt::com_ptr<_winml::IValue> value, ILearningModelFeatureDescriptor& descriptor
+  const winrt::com_ptr<_winml::IValue> value, ILearningModelFeatureDescriptor& descriptor
 ) {
   bool out;
   if (SUCCEEDED(value->IsTensor(&out)) && out) {
@@ -356,45 +354,45 @@ ILearningModelFeatureValue LearningModelBinding::CreateUnboundOuputFeatureValue(
 
   auto utf8_name = _winml::Strings::UTF8FromHString(descriptor.Name());
   WINML_THROW_HR_IF_TRUE_MSG(
-      E_UNEXPECTED,
-      true,
-      "The engine produced an unexpected evaluation output for unbound output variable %s.",
-      utf8_name.c_str()
+    E_UNEXPECTED,
+    true,
+    "The engine produced an unexpected evaluation output for unbound output variable %s.",
+    utf8_name.c_str()
   );
 
   return nullptr;
 }
 
 wf::IInspectable LearningModelBinding::CreateUnboundOutput(
-    const std::string& name, winrt::com_ptr<_winml::IValue> value
+  const std::string& name, winrt::com_ptr<_winml::IValue> value
 ) {
   // Find valid binding port
   auto bindingPort = FindValidBinding(m_session.Model(), _winml::Strings::WStringFromString(name));
 
   WINML_THROW_HR_IF_FALSE_MSG(
-      E_UNEXPECTED,
-      bindingPort.has_value(),
-      "The engine produced an unexpected evaluation output %s, that is not a model variable.",
-      name.c_str()
+    E_UNEXPECTED,
+    bindingPort.has_value(),
+    "The engine produced an unexpected evaluation output %s, that is not a model variable.",
+    name.c_str()
   );
 
   // Retrieve the descriptor and binding type
   auto descriptor = bindingPort->first;
   auto bindingType = bindingPort->second;
   WINML_THROW_HR_IF_FALSE_MSG(
-      E_UNEXPECTED,
-      bindingType == _winml::BindingType::kOutput,
-      "The engine produced an unexpected evaluation output %s, that is not a model variable output.",
-      name.c_str()
+    E_UNEXPECTED,
+    bindingType == _winml::BindingType::kOutput,
+    "The engine produced an unexpected evaluation output %s, that is not a model variable output.",
+    name.c_str()
   );
 
   // Create a binding context
   _winml::BindingContext context{
-      bindingType,
-      m_session,
-      descriptor,
-      nullptr /* no binding properties for unbound outputs */,
-      {}  // SubresourceId is set by callee
+    bindingType,
+    m_session,
+    descriptor,
+    nullptr /* no binding properties for unbound outputs */,
+    {}  // SubresourceId is set by callee
   };
 
   // Create empty feature value
@@ -403,17 +401,17 @@ wf::IInspectable LearningModelBinding::CreateUnboundOutput(
   // Update feature value
   auto spLotusValueProvider = featureValue.as<_winml::ILotusValueProviderPrivate>();
   WINML_THROW_IF_FAILED_MSG(
-      spLotusValueProvider->UpdateSourceResourceData(context, value.get()),
-      "Failed to update bound object for model variable output %s",
-      name.c_str()
+    spLotusValueProvider->UpdateSourceResourceData(context, value.get()),
+    "Failed to update bound object for model variable output %s",
+    name.c_str()
   );
 
   // Get abi representation
   wf::IInspectable inspectable;
   WINML_THROW_IF_FAILED_MSG(
-      spLotusValueProvider->AbiRepresentation(inspectable),
-      "Failed to return bound object for model variable output %s",
-      name.c_str()
+    spLotusValueProvider->AbiRepresentation(inspectable),
+    "Failed to return bound object for model variable output %s",
+    name.c_str()
   );
 
   return inspectable;
@@ -425,7 +423,7 @@ std::unordered_map<std::string, wf::IInspectable> LearningModelBinding::UpdatePr
   auto& output_names = GetOutputNames();
   auto& output_values = GetOutputs();
   WINML_THROW_HR_IF_FALSE_MSG(
-      E_UNEXPECTED, output_names.size() == output_values.size(), "Evaluation produced unexpected output variables."
+    E_UNEXPECTED, output_names.size() == output_values.size(), "Evaluation produced unexpected output variables."
   );
 
   for (unsigned i = 0; i < output_names.size(); i++) {
@@ -437,9 +435,9 @@ std::unordered_map<std::string, wf::IInspectable> LearningModelBinding::UpdatePr
       auto provider = providerInfo.Provider;
       auto context = providerInfo.Context;
       WINML_THROW_IF_FAILED_MSG(
-          provider->UpdateSourceResourceData(context, value.get()),
-          "Failed to update bound object for model variable output %s",
-          utf8_name.c_str()
+        provider->UpdateSourceResourceData(context, value.get()),
+        "Failed to update bound object for model variable output %s",
+        utf8_name.c_str()
       );
 
       outputs[utf8_name] = providerInfo.CallerSpecifiedFeatureValue;
@@ -475,7 +473,7 @@ STDMETHODIMP LearningModelBinding::Bind(const wchar_t* name, UINT32 cchName, IUn
 
     wf::IInspectable to;
     RETURN_IF_FAILED(
-        value->QueryInterface(winrt::guid_of<wf::IInspectable>(), reinterpret_cast<void**>(winrt::put_abi(to)))
+      value->QueryInterface(winrt::guid_of<wf::IInspectable>(), reinterpret_cast<void**>(winrt::put_abi(to)))
     );
 
     auto featureName = _winml::Strings::UTF8FromUnicode(name, cchName);
@@ -567,27 +565,27 @@ void LearningModelBinding::BindUnboundOutputs() {
   // Convert all output features to their feature names
   std::vector<std::string> output_feature_names;
   std::transform(
-      std::begin(output_descriptors),
-      std::end(output_descriptors),
-      std::back_inserter(output_feature_names),
-      [&](auto& descriptor) {
-        auto descriptor_native = descriptor.as<ILearningModelFeatureDescriptorNative>();
-        const wchar_t* p_name;
-        uint32_t size;
-        WINML_THROW_IF_FAILED(descriptor_native->GetName(&p_name, &size));
-        return _winml::Strings::UTF8FromUnicode(p_name, size);
-      }
+    std::begin(output_descriptors),
+    std::end(output_descriptors),
+    std::back_inserter(output_feature_names),
+    [&](auto& descriptor) {
+      auto descriptor_native = descriptor.as<ILearningModelFeatureDescriptorNative>();
+      const wchar_t* p_name;
+      uint32_t size;
+      WINML_THROW_IF_FAILED(descriptor_native->GetName(&p_name, &size));
+      return _winml::Strings::UTF8FromUnicode(p_name, size);
+    }
   );
 
   // Find the set difference to determine if there are any unbound output features
   std::vector<std::string> unbound_output_names;
   std::copy_if(
-      std::begin(output_feature_names),
-      std::end(output_feature_names),
-      std::inserter(unbound_output_names, std::begin(unbound_output_names)),
-      [&](const auto& outputFeatureName) {
-        return bound_output_names_set.find(outputFeatureName) == bound_output_names_set.end();
-      }
+    std::begin(output_feature_names),
+    std::end(output_feature_names),
+    std::inserter(unbound_output_names, std::begin(unbound_output_names)),
+    [&](const auto& outputFeatureName) {
+      return bound_output_names_set.find(outputFeatureName) == bound_output_names_set.end();
+    }
   );
 
   // Add all unbound outputs to binding collection

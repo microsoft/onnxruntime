@@ -27,7 +27,7 @@ OnnxruntimeCpuSessionBuilder::CreateSessionOptions(OrtSessionOptions** options) 
 
   // set the graph optimization level to all (used to be called level 3)
   RETURN_HR_IF_NOT_OK_MSG(
-      ort_api->SetSessionGraphOptimizationLevel(session_options.get(), GraphOptimizationLevel::ORT_ENABLE_ALL), ort_api
+    ort_api->SetSessionGraphOptimizationLevel(session_options.get(), GraphOptimizationLevel::ORT_ENABLE_ALL), ort_api
   );
 
 #ifndef _WIN64
@@ -36,7 +36,7 @@ OnnxruntimeCpuSessionBuilder::CreateSessionOptions(OrtSessionOptions** options) 
   auto use_arena = true;
 #endif
   RETURN_HR_IF_NOT_OK_MSG(
-      winml_adapter_api->OrtSessionOptionsAppendExecutionProvider_CPU(session_options.get(), use_arena), ort_api
+    winml_adapter_api->OrtSessionOptionsAppendExecutionProvider_CPU(session_options.get(), use_arena), ort_api
   );
 
   // call release() so the underlying OrtSessionOptions object isn't freed
@@ -47,10 +47,10 @@ OnnxruntimeCpuSessionBuilder::CreateSessionOptions(OrtSessionOptions** options) 
 
 HRESULT
 OnnxruntimeCpuSessionBuilder::CreateSession(
-    OrtSessionOptions* options,
-    OrtThreadPool* inter_op_thread_pool,
-    OrtThreadPool* intra_op_thread_pool,
-    OrtSession** session
+  OrtSessionOptions* options,
+  OrtThreadPool* inter_op_thread_pool,
+  OrtThreadPool* intra_op_thread_pool,
+  OrtSession** session
 ) {
   RETURN_HR_IF_NULL(E_POINTER, session);
 
@@ -62,10 +62,10 @@ OnnxruntimeCpuSessionBuilder::CreateSession(
 
   OrtSession* ort_session_raw;
   RETURN_HR_IF_NOT_OK_MSG(
-      winml_adapter_api->CreateSessionWithoutModel(
-          ort_env, options, inter_op_thread_pool, intra_op_thread_pool, &ort_session_raw
-      ),
-      engine_factory_->UseOrtApi()
+    winml_adapter_api->CreateSessionWithoutModel(
+      ort_env, options, inter_op_thread_pool, intra_op_thread_pool, &ort_session_raw
+    ),
+    engine_factory_->UseOrtApi()
   );
 
   auto ort_session = UniqueOrtSession(ort_session_raw, ort_api->ReleaseSession);

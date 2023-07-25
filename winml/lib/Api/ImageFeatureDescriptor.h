@@ -14,22 +14,22 @@ enum class ImageColorSpaceGamma {
 };
 
 struct ImageFeatureDescriptor : ImageFeatureDescriptorT<
-                                    ImageFeatureDescriptor,
-                                    ILearningModelFeatureDescriptorNative,
-                                    _winml::IDescriptorInfoProvider> {
+                                  ImageFeatureDescriptor,
+                                  ILearningModelFeatureDescriptorNative,
+                                  _winml::IDescriptorInfoProvider> {
   ImageFeatureDescriptor() = delete;
   ImageFeatureDescriptor(
-      const char* name,
-      const char* description,
-      winml::TensorKind tensor_kind,
-      const std::vector<int64_t>& shape,
-      bool is_required,
-      wgi::BitmapPixelFormat pixelformat,
-      wgi::BitmapAlphaMode alphamode,
-      uint32_t width,
-      uint32_t height,
-      winml::LearningModelPixelRange pixelRange,
-      ImageColorSpaceGamma colorSpaceGamma
+    const char* name,
+    const char* description,
+    winml::TensorKind tensor_kind,
+    const std::vector<int64_t>& shape,
+    bool is_required,
+    wgi::BitmapPixelFormat pixelformat,
+    wgi::BitmapAlphaMode alphamode,
+    uint32_t width,
+    uint32_t height,
+    winml::LearningModelPixelRange pixelRange,
+    ImageColorSpaceGamma colorSpaceGamma
   );
 
   wgi::BitmapPixelFormat BitmapPixelFormat();

@@ -18,23 +18,22 @@ namespace _winml {
 //
 template <typename TDerived, typename T, typename TRaw>
 struct SequenceBase : public winrt::implements<
-                          SequenceBase<TDerived, T, TRaw>,
-                          winml::ILearningModelFeatureValue,
-                          _winml::ISequenceFeatureValue,
-                          _winml::ILotusValueProviderPrivate> {
+                        SequenceBase<TDerived, T, TRaw>,
+                        winml::ILearningModelFeatureValue,
+                        _winml::ISequenceFeatureValue,
+                        _winml::ILotusValueProviderPrivate> {
   using ABISequence = wfc::IIterable<T>;
   using AbiMapStringToFloat = wfc::IMap<winrt::hstring, float>;
   using AbiMapInt64BitToFloat = wfc::IMap<int64_t, float>;
 
   static_assert(
-      std::is_same<T, AbiMapStringToFloat>::value || std::is_same<T, AbiMapInt64BitToFloat>::value ||
-          std::is_same<TRaw, bool>::value || std::is_same<TRaw, float>::value || std::is_same<TRaw, double>::value ||
-          std::is_same<TRaw, int8_t>::value || std::is_same<TRaw, uint8_t>::value ||
-          std::is_same<TRaw, uint16_t>::value || std::is_same<TRaw, int16_t>::value ||
-          std::is_same<TRaw, uint32_t>::value || std::is_same<TRaw, int32_t>::value ||
-          std::is_same<TRaw, uint64_t>::value || std::is_same<TRaw, int64_t>::value ||
-          std::is_same<TRaw, _winml::Half>::value || std::is_same<TRaw, std::string>::value,
-      "Only sequences of of map<string, float>, map<int64, float> and tensor<T> are supported."
+    std::is_same<T, AbiMapStringToFloat>::value || std::is_same<T, AbiMapInt64BitToFloat>::value ||
+      std::is_same<TRaw, bool>::value || std::is_same<TRaw, float>::value || std::is_same<TRaw, double>::value ||
+      std::is_same<TRaw, int8_t>::value || std::is_same<TRaw, uint8_t>::value || std::is_same<TRaw, uint16_t>::value ||
+      std::is_same<TRaw, int16_t>::value || std::is_same<TRaw, uint32_t>::value || std::is_same<TRaw, int32_t>::value ||
+      std::is_same<TRaw, uint64_t>::value || std::is_same<TRaw, int64_t>::value ||
+      std::is_same<TRaw, _winml::Half>::value || std::is_same<TRaw, std::string>::value,
+    "Only sequences of of map<string, float>, map<int64, float> and tensor<T> are supported."
   );
 
   template <typename T>
@@ -63,11 +62,11 @@ struct SequenceBase : public winrt::implements<
     // zero dimensional tensor has empty shape
     auto value_descriptor = _winml::TensorFeatureDescriptorFrom<float>::CreateAnonymous(std::vector<int64_t>{});
     *result = winrt::make<winmlp::MapFeatureDescriptor>(
-        nullptr /* set to null as values are name-less */,
-        nullptr /* set to null as values are description-less */,
-        false /* set to false as values dont have required annotations */,
-        winml::TensorKind::String /* key kind */,
-        value_descriptor /* value kind */
+      nullptr /* set to null as values are name-less */,
+      nullptr /* set to null as values are description-less */,
+      false /* set to false as values dont have required annotations */,
+      winml::TensorKind::String /* key kind */,
+      value_descriptor /* value kind */
     );
   }
 
@@ -76,11 +75,11 @@ struct SequenceBase : public winrt::implements<
     // zero dimensional tensor has empty shape
     auto value_descriptor = _winml::TensorFeatureDescriptorFrom<float>::CreateAnonymous(std::vector<int64_t>{});
     *result = winrt::make<winmlp::MapFeatureDescriptor>(
-        nullptr /* set to null as values are name-less */,
-        nullptr /* set to null as values are description-less */,
-        false /* set to false as values dont have required annotations */,
-        winml::TensorKind::Int64 /* key kind */,
-        value_descriptor /* value kind */
+      nullptr /* set to null as values are name-less */,
+      nullptr /* set to null as values are description-less */,
+      false /* set to false as values dont have required annotations */,
+      winml::TensorKind::Int64 /* key kind */,
+      value_descriptor /* value kind */
     );
   }
 
@@ -115,10 +114,10 @@ struct SequenceBase : public winrt::implements<
       if (descriptor.Kind() == winml::LearningModelFeatureKind::Map) {
         // In opset 10 and earlier only seq<map<,>> were supported
         RETURN_IF_FAILED(engine->CreateSequenceOfMapsValue(
-            reinterpret_cast<::IInspectable*>(winrt::get_abi(data_)),
-            SequenceAbiTypeInfo<T>::Key,
-            SequenceAbiTypeInfo<T>::Value,
-            out
+          reinterpret_cast<::IInspectable*>(winrt::get_abi(data_)),
+          SequenceAbiTypeInfo<T>::Key,
+          SequenceAbiTypeInfo<T>::Value,
+          out
         ));
       } else if (descriptor.Kind() == winml::LearningModelFeatureKind::Tensor) {
         // In opset 11, operators that require seq<tensor<t>> were added.
@@ -242,10 +241,10 @@ struct SequenceBase : public winrt::implements<
     if (descriptor.Kind() == winml::LearningModelFeatureKind::Map) {
       // In opset 10 and earlier only seq<map<,>> were supported
       RETURN_IF_FAILED(engine->FillSequenceOfMapsValue(
-          reinterpret_cast<::IInspectable*>(winrt::get_abi(data_)),
-          SequenceAbiTypeInfo<T>::Key,
-          SequenceAbiTypeInfo<T>::Value,
-          out
+        reinterpret_cast<::IInspectable*>(winrt::get_abi(data_)),
+        SequenceAbiTypeInfo<T>::Key,
+        SequenceAbiTypeInfo<T>::Value,
+        out
       ));
     } else if (descriptor.Kind() == winml::LearningModelFeatureKind::Tensor) {
       // In opset 11, operators that require seq<tensor<t>> were added.

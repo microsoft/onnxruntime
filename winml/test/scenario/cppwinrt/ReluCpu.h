@@ -60,8 +60,7 @@ struct ReluOperator : winrt::implements<ReluOperator, IMLOperatorKernel> {
     }
 
         // If the tensor types are both float type
-    if (outputTensor->GetTensorDataType() == MLOperatorTensorDataType::Float &&
-        inputTensor->GetTensorDataType() == MLOperatorTensorDataType::Float) {
+    if (outputTensor->GetTensorDataType() == MLOperatorTensorDataType::Float && inputTensor->GetTensorDataType() == MLOperatorTensorDataType::Float) {
             // For cpu data
       if (outputTensor->IsCpuData() && inputTensor->IsCpuData()) {
         ComputeInternal<float>(inputTensor.get(), outputTensor.get(), inputDataSize);
@@ -113,9 +112,9 @@ struct ReluOperatorFactory : winrt::implements<ReluOperatorFactory, IMLOperatorK
     MLOperatorEdgeTypeConstrant typeConstraint;
     typeConstraint.typeLabel = "T";
     std::vector<MLOperatorEdgeDescription> allowedEdges{
-        CreateEdgeDescriptor(MLOperatorEdgeType::Tensor, MLOperatorTensorDataType::Double),
-        CreateEdgeDescriptor(MLOperatorEdgeType::Tensor, MLOperatorTensorDataType::Float),
-        CreateEdgeDescriptor(MLOperatorEdgeType::Tensor, MLOperatorTensorDataType::Float16)};
+      CreateEdgeDescriptor(MLOperatorEdgeType::Tensor, MLOperatorTensorDataType::Double),
+      CreateEdgeDescriptor(MLOperatorEdgeType::Tensor, MLOperatorTensorDataType::Float),
+      CreateEdgeDescriptor(MLOperatorEdgeType::Tensor, MLOperatorTensorDataType::Float16)};
     typeConstraint.allowedTypes = allowedEdges.data();
     typeConstraint.allowedTypeCount = static_cast<uint32_t>(allowedEdges.size());
 

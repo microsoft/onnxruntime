@@ -14,7 +14,7 @@ enum class InputStrategy {
 };
 
 void RunOnDevice(
-    Microsoft::AI::MachineLearning::learning_model& model,
-    Microsoft::AI::MachineLearning::learning_model_device& device,
-    InputStrategy strategy
+  Microsoft::AI::MachineLearning::learning_model& model,
+  Microsoft::AI::MachineLearning::learning_model_device& device,
+  InputStrategy strategy
 );
