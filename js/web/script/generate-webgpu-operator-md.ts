@@ -15,7 +15,7 @@ const COMMENTS: Record<string, string> = {
   'Transpose': 'need perf optimization',
   'Reshape': 'no GPU kernel',
   'Shape': 'no GPU kernel; an ORT warning is generated - need to fix',
-  'Resize': 'CoordinateTransformMode align_corners is not supported',
+  'Resize': 'CoordinateTransformMode align_corners is not supported with downsampling',
 };
 
 /* eslint-disable max-len */
