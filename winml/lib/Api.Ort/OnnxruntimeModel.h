@@ -21,7 +21,7 @@ IOnnxruntimeModel : IUnknown {
 // clang-format on
 
 class ModelInfo
-    : public Microsoft::WRL::RuntimeClass<Microsoft::WRL::RuntimeClassFlags<Microsoft::WRL::ClassicCom>, IModelInfo> {
+  : public Microsoft::WRL::RuntimeClass<Microsoft::WRL::RuntimeClassFlags<Microsoft::WRL::ClassicCom>, IModelInfo> {
  public:
   HRESULT RuntimeClassInitialize(_In_ OnnxruntimeEngineFactory* engine, _In_ OrtModel* ort_model);
 
@@ -56,8 +56,8 @@ class ModelInfo
 };
 
 class OnnruntimeModel
-    : public Microsoft::WRL::
-        RuntimeClass<Microsoft::WRL::RuntimeClassFlags<Microsoft::WRL::ClassicCom>, IModel, IOnnxruntimeModel> {
+  : public Microsoft::WRL::
+      RuntimeClass<Microsoft::WRL::RuntimeClassFlags<Microsoft::WRL::ClassicCom>, IModel, IOnnxruntimeModel> {
  public:
   OnnruntimeModel();
 

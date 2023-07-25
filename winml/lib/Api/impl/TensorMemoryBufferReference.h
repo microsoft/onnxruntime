@@ -18,7 +18,9 @@ struct TensorResources {
     RETURN_HR_IF_NULL(E_POINTER, capacity);
 
     RETURN_HR_IF_MSG(
-      ERROR_INVALID_FUNCTION, (std::is_same_v<T, std::string>), "TensorString objects cannot return byte buffers!"
+      ERROR_INVALID_FUNCTION,
+      (std::is_same_v<T, std::string>),
+      "TensorString objects cannot return byte buffers!"
     );
 
     try {
@@ -72,7 +74,9 @@ class TensorMemoryBufferReference : public winrt::implements<
   //                  When the source IMemoryBuffer is closed, the IMemoryBuffer spec requires the
   //                  successful creation of IMemoryBufferReferences in the closed state.
   TensorMemoryBufferReference(std::vector<int64_t> shape, std::shared_ptr<TensorResources<T>> tensorResources)
-      : m_shape(shape), m_tensorResources(tensorResources), m_handlers() {}
+    : m_shape(shape),
+      m_tensorResources(tensorResources),
+      m_handlers() {}
 
   uint32_t Capacity() const try {
     uint32_t uCapacity = 0;
@@ -133,7 +137,8 @@ class TensorMemoryBufferReference : public winrt::implements<
   void FireClosed() {
     wf::IMemoryBufferReference memoryBufferReference = nullptr;
     WINML_THROW_IF_FAILED(this->QueryInterface(
-      winrt::guid_of<wf::IMemoryBufferReference>(), reinterpret_cast<void**>(winrt::put_abi(memoryBufferReference))
+      winrt::guid_of<wf::IMemoryBufferReference>(),
+      reinterpret_cast<void**>(winrt::put_abi(memoryBufferReference))
     ));
 
     for (auto handler : m_handlers) {

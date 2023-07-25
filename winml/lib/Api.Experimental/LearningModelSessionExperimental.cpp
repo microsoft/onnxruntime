@@ -6,7 +6,7 @@
 namespace WINML_EXPERIMENTALP {
 
 LearningModelSessionExperimental::LearningModelSessionExperimental(const winml::LearningModelSession& session)
-    : _session(session) {
+  : _session(session) {
 }
 
 WINML_EXPERIMENTAL::LearningModelSessionOptionsExperimental LearningModelSessionExperimental::Options() {

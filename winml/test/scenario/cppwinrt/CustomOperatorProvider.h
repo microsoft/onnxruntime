@@ -7,10 +7,9 @@
 #include "ReluCpu.h"
 #include <winnt.h>
 
-struct CustomOperatorProvider : winrt::implements<
-                                  CustomOperatorProvider,
-                                  winml::ILearningModelOperatorProvider,
-                                  ILearningModelOperatorProviderNative> {
+struct CustomOperatorProvider
+  : winrt::
+      implements<CustomOperatorProvider, winml::ILearningModelOperatorProvider, ILearningModelOperatorProviderNative> {
   HMODULE m_library;
   winrt::com_ptr<IMLOperatorRegistry> m_registry;
 

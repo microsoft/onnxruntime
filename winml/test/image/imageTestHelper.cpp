@@ -119,7 +119,10 @@ TensorFloat LoadInputImageFromGPU(SoftwareBitmap softwareBitmap, const std::wstr
         // create the d3d device.
   com_ptr<ID3D12Device> pD3D12Device = nullptr;
   WINML_EXPECT_NO_THROW(D3D12CreateDevice(
-    nullptr, D3D_FEATURE_LEVEL::D3D_FEATURE_LEVEL_11_0, __uuidof(ID3D12Device), reinterpret_cast<void**>(&pD3D12Device)
+    nullptr,
+    D3D_FEATURE_LEVEL::D3D_FEATURE_LEVEL_11_0,
+    __uuidof(ID3D12Device),
+    reinterpret_cast<void**>(&pD3D12Device)
   ));
 
         // create the command queue.
@@ -140,15 +143,14 @@ TensorFloat LoadInputImageFromGPU(SoftwareBitmap softwareBitmap, const std::wstr
 
   pD3D12Device->CreateCommandAllocator(queuetype, winrt::guid_of<ID3D12CommandAllocator>(), alloctor.put_void());
 
-  pD3D12Device->CreateCommandList(
-    0, queuetype, alloctor.get(), nullptr, winrt::guid_of<ID3D12CommandList>(), cmdList.put_void()
-  );
+  pD3D12Device
+    ->CreateCommandList(0, queuetype, alloctor.get(), nullptr, winrt::guid_of<ID3D12CommandList>(), cmdList.put_void());
 
         // Create Committed Resource
         // 3 is number of channels we use. R G B without alpha.
   UINT64 bufferbytesize = 3 * sizeof(float) * softwareBitmap.PixelWidth() * softwareBitmap.PixelHeight();
-  D3D12_HEAP_PROPERTIES heapProperties = {
-    D3D12_HEAP_TYPE_DEFAULT, D3D12_CPU_PAGE_PROPERTY_UNKNOWN, D3D12_MEMORY_POOL_UNKNOWN, 0, 0};
+  D3D12_HEAP_PROPERTIES heapProperties =
+    {D3D12_HEAP_TYPE_DEFAULT, D3D12_CPU_PAGE_PROPERTY_UNKNOWN, D3D12_MEMORY_POOL_UNKNOWN, 0, 0};
   D3D12_RESOURCE_DESC resourceDesc = {
     D3D12_RESOURCE_DIMENSION_BUFFER,
     0,

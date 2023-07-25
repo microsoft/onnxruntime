@@ -14,9 +14,9 @@ namespace Details {
 
 template <typename T>
 struct weak_single_threaded_iterable
-    : public Microsoft::WRL::RuntimeClass<
-        Microsoft::WRL::RuntimeClassFlags<Microsoft::WRL::WinRt | Microsoft::WRL::InhibitRoOriginateError>,
-        ABI::Windows::Foundation::Collections::IIterable<T>> {
+  : public Microsoft::WRL::RuntimeClass<
+      Microsoft::WRL::RuntimeClassFlags<Microsoft::WRL::WinRt | Microsoft::WRL::InhibitRoOriginateError>,
+      ABI::Windows::Foundation::Collections::IIterable<T>> {
  private:
   const T* m_p_begin;
   const T* m_p_end;
@@ -78,9 +78,9 @@ struct weak_single_threaded_iterable
   }
 
   struct weak_single_threaded_iterator
-      : public Microsoft::WRL::RuntimeClass<
-          Microsoft::WRL::RuntimeClassFlags<Microsoft::WRL::WinRt | Microsoft::WRL::InhibitRoOriginateError>,
-          ABI::Windows::Foundation::Collections::IIterator<T>> {
+    : public Microsoft::WRL::RuntimeClass<
+        Microsoft::WRL::RuntimeClassFlags<Microsoft::WRL::WinRt | Microsoft::WRL::InhibitRoOriginateError>,
+        ABI::Windows::Foundation::Collections::IIterator<T>> {
    private:
     Microsoft::WRL::ComPtr<weak_single_threaded_iterable> m_weak_single_threaded_iterable;
     unsigned m_current = 0;

@@ -7,7 +7,7 @@
 
 namespace WINMLP {
 struct LearningModelEvaluationResult
-    : LearningModelEvaluationResultT<LearningModelEvaluationResult, ILearningModelEvaluationResultNative> {
+  : LearningModelEvaluationResultT<LearningModelEvaluationResult, ILearningModelEvaluationResultNative> {
   LearningModelEvaluationResult() = default;
 
   hstring CorrelationId();

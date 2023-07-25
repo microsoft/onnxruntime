@@ -13,11 +13,11 @@ MapFeatureDescriptor::MapFeatureDescriptor(
   winml::TensorKind key_kind,
   winml::ILearningModelFeatureDescriptor value_kind
 )
-    : name_(_winml::Strings::HStringFromUTF8(name)),
-      description_(_winml::Strings::HStringFromUTF8(description)),
-      is_required_(is_required),
-      key_kind_(key_kind),
-      value_kind_(value_kind) {
+  : name_(_winml::Strings::HStringFromUTF8(name)),
+    description_(_winml::Strings::HStringFromUTF8(description)),
+    is_required_(is_required),
+    key_kind_(key_kind),
+    value_kind_(value_kind) {
 }
 
 winml::TensorKind MapFeatureDescriptor::KeyKind() try { return key_kind_; }

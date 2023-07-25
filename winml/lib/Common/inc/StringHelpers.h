@@ -67,7 +67,14 @@ inline std::string UTF8FromUnicode(const wchar_t* input, size_t input_length) {
     if (output_length > 0) {
       std::string output(output_length, 0);
       WideCharToMultiByte(
-        CP_UTF8, 0, input, static_cast<int>(input_length), &output[0], output_length, nullptr, nullptr
+        CP_UTF8,
+        0,
+        input,
+        static_cast<int>(input_length),
+        &output[0],
+        output_length,
+        nullptr,
+        nullptr
       );
       return output;
     } else {

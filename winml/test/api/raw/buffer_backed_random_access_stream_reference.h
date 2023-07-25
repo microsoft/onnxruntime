@@ -15,10 +15,10 @@
 namespace WinMLTest {
 
 struct BufferBackedRandomAccessStreamReadAsync
-    : public Microsoft::WRL::RuntimeClass<
-        Microsoft::WRL::RuntimeClassFlags<Microsoft::WRL::WinRtClassicComMix | Microsoft::WRL::InhibitRoOriginateError>,
-        __FIAsyncOperationWithProgress_2_Windows__CStorage__CStreams__CIBuffer_UINT32,
-        ABI::Windows::Foundation::IAsyncInfo> {
+  : public Microsoft::WRL::RuntimeClass<
+      Microsoft::WRL::RuntimeClassFlags<Microsoft::WRL::WinRtClassicComMix | Microsoft::WRL::InhibitRoOriginateError>,
+      __FIAsyncOperationWithProgress_2_Windows__CStorage__CStreams__CIBuffer_UINT32,
+      ABI::Windows::Foundation::IAsyncInfo> {
   InspectableClass(L"WinMLTest.BufferBackedRandomAccessStreamReadAsync", BaseTrust)
 
     Microsoft::WRL::ComPtr<ABI::Windows::Storage::Streams::IBuffer> buffer_;
@@ -108,14 +108,14 @@ struct BufferBackedRandomAccessStreamReadAsync
 };
 
 struct RandomAccessStream
-    : public Microsoft::WRL::RuntimeClass<
-        Microsoft::WRL::RuntimeClassFlags<Microsoft::WRL::WinRtClassicComMix | Microsoft::WRL::InhibitRoOriginateError>,
-        ABI::Windows::Storage::Streams::IRandomAccessStreamWithContentType,
-        ABI::Windows::Storage::Streams::IContentTypeProvider,
-        ABI::Windows::Storage::Streams::IRandomAccessStream,
-        ABI::Windows::Storage::Streams::IInputStream,
-        ABI::Windows::Storage::Streams::IOutputStream,
-        ABI::Windows::Foundation::IClosable> {
+  : public Microsoft::WRL::RuntimeClass<
+      Microsoft::WRL::RuntimeClassFlags<Microsoft::WRL::WinRtClassicComMix | Microsoft::WRL::InhibitRoOriginateError>,
+      ABI::Windows::Storage::Streams::IRandomAccessStreamWithContentType,
+      ABI::Windows::Storage::Streams::IContentTypeProvider,
+      ABI::Windows::Storage::Streams::IRandomAccessStream,
+      ABI::Windows::Storage::Streams::IInputStream,
+      ABI::Windows::Storage::Streams::IOutputStream,
+      ABI::Windows::Foundation::IClosable> {
   InspectableClass(L"WinMLTest.RandomAccessStream", BaseTrust)
 
     private : Microsoft::WRL::ComPtr<ABI::Windows::Storage::Streams::IBuffer> buffer_ = nullptr;
@@ -262,12 +262,12 @@ struct RandomAccessStream
 };
 
 struct BufferBackedRandomAccessStreamReferenceOpenReadAsync
-    : public Microsoft::WRL::RuntimeClass<
-        Microsoft::WRL::RuntimeClassFlags<Microsoft::WRL::WinRtClassicComMix | Microsoft::WRL::InhibitRoOriginateError>,
-        __FIAsyncOperation_1_Windows__CStorage__CStreams__CIRandomAccessStreamWithContentType,
-        ABI::Windows::Foundation::IAsyncInfo> {
+  : public Microsoft::WRL::RuntimeClass<
+      Microsoft::WRL::RuntimeClassFlags<Microsoft::WRL::WinRtClassicComMix | Microsoft::WRL::InhibitRoOriginateError>,
+      __FIAsyncOperation_1_Windows__CStorage__CStreams__CIRandomAccessStreamWithContentType,
+      ABI::Windows::Foundation::IAsyncInfo> {
   InspectableClass(L"WinMLTest.BufferBackedRandomAccessStreamReferenceOpenReadAsync", BaseTrust) public
-      : Microsoft::WRL::ComPtr<ABI::Windows::Storage::Streams::IRandomAccessStreamWithContentType> ras_;
+    : Microsoft::WRL::ComPtr<ABI::Windows::Storage::Streams::IRandomAccessStreamWithContentType> ras_;
   Microsoft::WRL::ComPtr<ABI::Windows::Foundation::IAsyncOperationCompletedHandler<
     ABI::Windows::Storage::Streams::IRandomAccessStreamWithContentType*>>
     completed_handler_;
@@ -333,9 +333,9 @@ struct BufferBackedRandomAccessStreamReferenceOpenReadAsync
 };
 
 struct BufferBackedRandomAccessStreamReference
-    : public Microsoft::WRL::RuntimeClass<
-        Microsoft::WRL::RuntimeClassFlags<Microsoft::WRL::WinRtClassicComMix | Microsoft::WRL::InhibitRoOriginateError>,
-        ABI::Windows::Storage::Streams::IRandomAccessStreamReference> {
+  : public Microsoft::WRL::RuntimeClass<
+      Microsoft::WRL::RuntimeClassFlags<Microsoft::WRL::WinRtClassicComMix | Microsoft::WRL::InhibitRoOriginateError>,
+      ABI::Windows::Storage::Streams::IRandomAccessStreamReference> {
   InspectableClass(L"WinMLTest.BufferBackedRandomAccessStreamReference", BaseTrust)
 
     Microsoft::WRL::ComPtr<ABI::Windows::Storage::Streams::IBuffer> buffer_ = nullptr;

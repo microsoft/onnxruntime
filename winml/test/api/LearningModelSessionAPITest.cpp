@@ -125,9 +125,10 @@ static void AdapterIdAndDevice() {
 
   learningModelDevice = LearningModelDevice(LearningModelDeviceKind::DirectXHighPerformance);
   adapter = nullptr;
-  WINML_EXPECT_HRESULT_SUCCEEDED(factory->EnumAdapterByGpuPreference(
-    0, DXGI_GPU_PREFERENCE_HIGH_PERFORMANCE, __uuidof(IDXGIAdapter), adapter.put_void()
-  ));
+  WINML_EXPECT_HRESULT_SUCCEEDED(
+    factory
+      ->EnumAdapterByGpuPreference(0, DXGI_GPU_PREFERENCE_HIGH_PERFORMANCE, __uuidof(IDXGIAdapter), adapter.put_void())
+  );
   WINML_EXPECT_HRESULT_SUCCEEDED(adapter->GetDesc(&desc));
   id.QuadPart = APITest::GetAdapterIdQuadPart(learningModelDevice);
   WINML_EXPECT_EQUAL(desc.AdapterLuid.LowPart, id.LowPart);
@@ -136,9 +137,10 @@ static void AdapterIdAndDevice() {
 
   adapter = nullptr;
   learningModelDevice = LearningModelDevice(LearningModelDeviceKind::DirectXMinPower);
-  WINML_EXPECT_HRESULT_SUCCEEDED(factory->EnumAdapterByGpuPreference(
-    0, DXGI_GPU_PREFERENCE_MINIMUM_POWER, __uuidof(IDXGIAdapter), adapter.put_void()
-  ));
+  WINML_EXPECT_HRESULT_SUCCEEDED(
+    factory
+      ->EnumAdapterByGpuPreference(0, DXGI_GPU_PREFERENCE_MINIMUM_POWER, __uuidof(IDXGIAdapter), adapter.put_void())
+  );
   WINML_EXPECT_HRESULT_SUCCEEDED(adapter->GetDesc(&desc));
   id.QuadPart = APITest::GetAdapterIdQuadPart(learningModelDevice);
   WINML_EXPECT_EQUAL(desc.AdapterLuid.LowPart, id.LowPart);
@@ -161,7 +163,8 @@ static void EvaluateFeatures() {
   // create from vector view
   auto dataCopy = data;
   tensor = TensorString::CreateFromIterable(
-    shape, winrt::single_threaded_vector<winrt::hstring>(std::move(dataCopy)).GetView()
+    shape,
+    winrt::single_threaded_vector<winrt::hstring>(std::move(dataCopy)).GetView()
   );
   WINML_EXPECT_EQUAL(tensor.GetAsVectorView().Size(), data.size());
   WINML_EXPECT_TRUE(std::equal(data.cbegin(), data.cend(), begin(tensor.GetAsVectorView())));
@@ -195,7 +198,8 @@ static void EvaluateFeaturesAsync() {
   // create from vector view
   auto dataCopy = data;
   tensor = TensorString::CreateFromIterable(
-    shape, winrt::single_threaded_vector<winrt::hstring>(std::move(dataCopy)).GetView()
+    shape,
+    winrt::single_threaded_vector<winrt::hstring>(std::move(dataCopy)).GetView()
   );
   WINML_EXPECT_EQUAL(tensor.GetAsVectorView().Size(), data.size());
   WINML_EXPECT_TRUE(std::equal(data.cbegin(), data.cend(), begin(tensor.GetAsVectorView())));
@@ -483,7 +487,8 @@ static void SaveSoftwareBitmap(const wchar_t* filename, winrt::Windows::Graphics
     file.OpenAsync(winrt::Windows::Storage::FileAccessMode::ReadWrite).get();
   winrt::Windows::Graphics::Imaging::BitmapEncoder encoder =
     winrt::Windows::Graphics::Imaging::BitmapEncoder::CreateAsync(
-      winrt::Windows::Graphics::Imaging::BitmapEncoder::JpegEncoderId(), write_stream
+      winrt::Windows::Graphics::Imaging::BitmapEncoder::JpegEncoderId(),
+      write_stream
     )
       .get();
   encoder.SetSoftwareBitmap(bitmap);
@@ -504,7 +509,9 @@ static void DiscreteFourierTransform_2D(LearningModelDeviceKind kind) {
   VideoFrame frame = VideoFrame::CreateWithSoftwareBitmap(softwareBitmap);
 
   auto corrected_image = winrt::Windows::Media::VideoFrame(
-    winrt::Windows::Graphics::Imaging::BitmapPixelFormat::Bgra8, INT32(256), INT32(256)
+    winrt::Windows::Graphics::Imaging::BitmapPixelFormat::Bgra8,
+    INT32(256),
+    INT32(256)
   );
 
   frame.CopyToAsync(corrected_image).get();
@@ -543,7 +550,8 @@ static void DiscreteFourierTransform_2D(LearningModelDeviceKind kind) {
       .Add(Operator(L"Reshape")
              .SetInput(L"data", L"Input.Signal")
              .SetConstant(
-               L"shape", TensorInt64Bit::CreateFromArray({4}, {INT64(1), INT64(height), INT64(width), INT64(1)})
+               L"shape",
+               TensorInt64Bit::CreateFromArray({4}, {INT64(1), INT64(height), INT64(width), INT64(1)})
              )
              .SetOutput(L"reshaped", L"reshaped_output"))
       .Operators()
@@ -588,14 +596,16 @@ static void DiscreteFourierTransform_2D(LearningModelDeviceKind kind) {
       .Add(Operator(L"Reshape")
              .SetInput(L"data", L"sqrt_magnitude")
              .SetConstant(
-               L"shape", TensorInt64Bit::CreateFromArray({4}, {INT64(1), INT64(1), INT64(height), INT64(width)})
+               L"shape",
+               TensorInt64Bit::CreateFromArray({4}, {INT64(1), INT64(1), INT64(height), INT64(width)})
              )
              .SetOutput(L"reshaped", L"Output.Spectra"))
       .Operators()
       .Add(Operator(L"Reshape")
              .SetInput(L"data", L"sqrt_magnitude2")
              .SetConstant(
-               L"shape", TensorInt64Bit::CreateFromArray({4}, {INT64(1), INT64(1), INT64(height), INT64(width)})
+               L"shape",
+               TensorInt64Bit::CreateFromArray({4}, {INT64(1), INT64(1), INT64(height), INT64(width)})
              )
              .SetOutput(L"reshaped", L"Output.Inverse"))
       .Operators()
@@ -793,7 +803,10 @@ static void STFT(
   auto n_dfts = static_cast<size_t>(1 + floor((signal_size - dft_size) / hop_size));
   auto input_shape = std::vector<int64_t>{1, INT64(signal_size)};
   auto output_shape = std::vector<int64_t>{
-    INT64(batch_size), INT64(n_dfts), is_onesided ? ((INT64(dft_size) >> 1) + 1) : INT64(dft_size), 2};
+    INT64(batch_size),
+    INT64(n_dfts),
+    is_onesided ? ((INT64(dft_size) >> 1) + 1) : INT64(dft_size),
+    2};
   auto dft_length = TensorInt64Bit::CreateFromArray({}, {INT64(dft_size)});
 
   auto model =
@@ -866,19 +879,20 @@ static void STFT(
 static void ModelBuilding_MelWeightMatrix() {
 #if !defined(BUILD_INBOX)
   std::vector<int64_t> output_shape = {INT64(9), INT64(8)};
-  auto builder = LearningModelBuilder::Create(17)
-                   .Outputs()
-                   .Add(LearningModelBuilder::CreateTensorFeatureDescriptor(
-                     L"Output.MelWeightMatrix", TensorKind::Float, output_shape
-                   ))
-                   .Operators()
-                   .Add(Operator(L"MelWeightMatrix")
-                          .SetConstant(L"num_mel_bins", TensorInt64Bit::CreateFromArray({}, {INT64(8)}))
-                          .SetConstant(L"dft_length", TensorInt64Bit::CreateFromArray({}, {INT64(16)}))
-                          .SetConstant(L"sample_rate", TensorInt64Bit::CreateFromArray({}, {INT64(8192)}))
-                          .SetConstant(L"lower_edge_hertz", TensorFloat::CreateFromArray({}, {0}))
-                          .SetConstant(L"upper_edge_hertz", TensorFloat::CreateFromArray({}, {8192 / 2.f}))
-                          .SetOutput(L"output", L"Output.MelWeightMatrix"));
+  auto builder =
+    LearningModelBuilder::Create(17)
+      .Outputs()
+      .Add(
+        LearningModelBuilder::CreateTensorFeatureDescriptor(L"Output.MelWeightMatrix", TensorKind::Float, output_shape)
+      )
+      .Operators()
+      .Add(Operator(L"MelWeightMatrix")
+             .SetConstant(L"num_mel_bins", TensorInt64Bit::CreateFromArray({}, {INT64(8)}))
+             .SetConstant(L"dft_length", TensorInt64Bit::CreateFromArray({}, {INT64(16)}))
+             .SetConstant(L"sample_rate", TensorInt64Bit::CreateFromArray({}, {INT64(8192)}))
+             .SetConstant(L"lower_edge_hertz", TensorFloat::CreateFromArray({}, {0}))
+             .SetConstant(L"upper_edge_hertz", TensorFloat::CreateFromArray({}, {8192 / 2.f}))
+             .SetOutput(L"output", L"Output.MelWeightMatrix"));
   auto model = builder.CreateModel();
 
   LearningModelSession session(model);
@@ -923,7 +937,9 @@ static void MelSpectrogramOnThreeToneSignal(
       .Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Input.TimeSignal", TensorKind::Float, signal_shape))
       .Outputs()
       .Add(LearningModelBuilder::CreateTensorFeatureDescriptor(
-        L"Output.MelSpectrogram", TensorKind::Float, mel_spectrogram_shape
+        L"Output.MelSpectrogram",
+        TensorKind::Float,
+        mel_spectrogram_shape
       ))
       .Operators()
       .Add(Operator(L"HannWindow")
@@ -960,7 +976,8 @@ static void MelSpectrogramOnThreeToneSignal(
       .Add(Operator(L"Reshape")
              .SetInput(L"data", L"power_frames")
              .SetConstant(
-               L"shape", TensorInt64Bit::CreateFromArray({2}, {INT64(batch_size * n_dfts), INT64(onesided_dft_size)})
+               L"shape",
+               TensorInt64Bit::CreateFromArray({2}, {INT64(batch_size * n_dfts), INT64(onesided_dft_size)})
              )
              .SetOutput(L"reshaped", L"reshaped_output"))
       .Operators()
@@ -984,7 +1001,9 @@ static void MelSpectrogramOnThreeToneSignal(
 
   // Bind output
   auto output_image = winrt::Windows::Media::VideoFrame(
-    winrt::Windows::Graphics::Imaging::BitmapPixelFormat::Bgra8, INT32(n_mel_bins), INT32(n_dfts)
+    winrt::Windows::Graphics::Imaging::BitmapPixelFormat::Bgra8,
+    INT32(n_mel_bins),
+    INT32(n_dfts)
   );
   binding.Bind(L"Output.MelSpectrogram", output_image);
 
@@ -1008,7 +1027,8 @@ static void MelSpectrogramOnThreeToneSignal(
     file.OpenAsync(winrt::Windows::Storage::FileAccessMode::ReadWrite).get();
   winrt::Windows::Graphics::Imaging::BitmapEncoder encoder =
     winrt::Windows::Graphics::Imaging::BitmapEncoder::CreateAsync(
-      winrt::Windows::Graphics::Imaging::BitmapEncoder::JpegEncoderId(), write_stream
+      winrt::Windows::Graphics::Imaging::BitmapEncoder::JpegEncoderId(),
+      write_stream
     )
       .get();
   encoder.SetSoftwareBitmap(output_image.SoftwareBitmap());
@@ -1027,20 +1047,24 @@ static void ModelBuilding_StandardDeviationNormalization() {
   int64_t channels = 3;
   std::vector<int64_t> input_shape = {1, height, width, channels};
   std::vector<int64_t> output_shape = {1, channels, height, width};
-  auto sub_model = LearningModelBuilder::Create(13)
-                     .Inputs()
-                     .Add(LearningModelBuilder::CreateTensorFeatureDescriptor(
-                       L"Input", L"The NHWC image", TensorKind::Float, input_shape
-                     ))
-                     .Inputs()
-                     .Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Means", TensorKind::Float, {channels}))
-                     .Outputs()
-                     .Add(LearningModelBuilder::CreateTensorFeatureDescriptor(
-                       L"Output", L"The NCHW image normalized with mean and stddev.", TensorKind::Float, input_shape
-                     ))
-                     .Operators()
-                     .Add(Operator(L"Sub").SetInput(L"A", L"Input").SetInput(L"B", L"Means").SetOutput(L"C", L"Output"))
-                     .CreateModel();
+  auto sub_model =
+    LearningModelBuilder::Create(13)
+      .Inputs()
+      .Add(
+        LearningModelBuilder::CreateTensorFeatureDescriptor(L"Input", L"The NHWC image", TensorKind::Float, input_shape)
+      )
+      .Inputs()
+      .Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Means", TensorKind::Float, {channels}))
+      .Outputs()
+      .Add(LearningModelBuilder::CreateTensorFeatureDescriptor(
+        L"Output",
+        L"The NCHW image normalized with mean and stddev.",
+        TensorKind::Float,
+        input_shape
+      ))
+      .Operators()
+      .Add(Operator(L"Sub").SetInput(L"A", L"Input").SetInput(L"B", L"Means").SetOutput(L"C", L"Output"))
+      .CreateModel();
   auto div_model =
     LearningModelBuilder::Create(13)
       .Inputs()
@@ -1051,7 +1075,10 @@ static void ModelBuilding_StandardDeviationNormalization() {
       .Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"StdDevs", TensorKind::Float, {channels}))
       .Outputs()
       .Add(LearningModelBuilder::CreateTensorFeatureDescriptor(
-        L"Output", L"The NCHW image normalized with mean and stddev.", TensorKind::Float, input_shape
+        L"Output",
+        L"The NCHW image normalized with mean and stddev.",
+        TensorKind::Float,
+        input_shape
       ))
       .Operators()
       .Add(Operator(L"Div").SetInput(L"A", L"Input").SetInput(L"B", L"StdDevs").SetOutput(L"C", L"Output"))
@@ -1064,7 +1091,10 @@ static void ModelBuilding_StandardDeviationNormalization() {
       )
       .Outputs()
       .Add(LearningModelBuilder::CreateTensorFeatureDescriptor(
-        L"Output", L"The NCHW image normalized with mean and stddev.", TensorKind::Float, output_shape
+        L"Output",
+        L"The NCHW image normalized with mean and stddev.",
+        TensorKind::Float,
+        output_shape
       ))
       .Operators()
       .Add(Operator(L"Transpose")
@@ -1082,7 +1112,8 @@ static void ModelBuilding_StandardDeviationNormalization() {
   auto joined_model_experimental = winml_experimental::LearningModelExperimental(joined_model);
   winml_experimental::LearningModelJoinOptions transpose_join_options;
   transpose_join_options.Link(
-    joined_model.OutputFeatures().GetAt(0).Name(), transpose_model.InputFeatures().GetAt(0).Name()
+    joined_model.OutputFeatures().GetAt(0).Name(),
+    transpose_model.InputFeatures().GetAt(0).Name()
   );
   transpose_join_options.JoinedNodePrefix(L"TransposeModel.");
   auto final_model = joined_model_experimental.JoinModel(transpose_model, transpose_join_options);
@@ -1182,7 +1213,8 @@ static void ModelBuilding_ConstantMatmul() {
       .Add(Operator(L"MatMul")
              .SetInput(L"A", L"InputA")
              .SetConstant(
-               L"B", TensorFloat::CreateFromArray(b_shape, std::vector<float>(SIZET(b_shape[0] * b_shape[1]), 1))
+               L"B",
+               TensorFloat::CreateFromArray(b_shape, std::vector<float>(SIZET(b_shape[0] * b_shape[1]), 1))
              )
              .SetOutput(L"Y", L"Output"))
       .CreateModel();
@@ -1247,7 +1279,8 @@ static void GridSample(
              .SetAttribute(L"align_corners", TensorInt64Bit::CreateFromArray({}, {INT64(align_corners)}))
              .SetAttribute(L"mode", TensorString::CreateFromArray({}, {modes[static_cast<uint32_t>(mode)]}))
              .SetAttribute(
-               L"padding_mode", TensorString::CreateFromArray({}, {padding_modes[static_cast<uint32_t>(padding_mode)]})
+               L"padding_mode",
+               TensorString::CreateFromArray({}, {padding_modes[static_cast<uint32_t>(padding_mode)]})
              )
              .SetOutput(L"Y", L"Output"))
       .CreateModel();
@@ -1712,7 +1745,13 @@ static void ModelBuilding_DiscreteFourierTransform_Internal(LearningModelDeviceK
     { 0.000f,  0.000f},
   };
   DiscreteFourierTransform(
-    kind, input, {2, 5, 8, 2}, expected_axis_0_two_sided_small_dft_length, 1, 4, false /*onesided*/
+    kind,
+    input,
+    {2, 5, 8, 2},
+    expected_axis_0_two_sided_small_dft_length,
+    1,
+    4,
+    false /*onesided*/
   );
 
   std::vector<std::complex<float>> expected_axis_0_two_sided_bigger_dft_length = {
@@ -1816,7 +1855,13 @@ static void ModelBuilding_DiscreteFourierTransform_Internal(LearningModelDeviceK
   };
 
   DiscreteFourierTransform(
-    kind, input, {2, 5, 8, 2}, expected_axis_0_two_sided_bigger_dft_length, 1, 6, false /*onesided*/
+    kind,
+    input,
+    {2, 5, 8, 2},
+    expected_axis_0_two_sided_bigger_dft_length,
+    1,
+    6,
+    false /*onesided*/
   );
 
   std::vector<std::complex<float>> expected_axis_0_one_sided = {

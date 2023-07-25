@@ -489,7 +489,10 @@ static void Scenario9LoadBindEvalInputTensorGPU() {
 
   winrt::com_ptr<ID3D12Device> pD3D12Device;
   WINML_EXPECT_NO_THROW(D3D12CreateDevice(
-    nullptr, D3D_FEATURE_LEVEL::D3D_FEATURE_LEVEL_11_0, __uuidof(ID3D12Device), pD3D12Device.put_void()
+    nullptr,
+    D3D_FEATURE_LEVEL::D3D_FEATURE_LEVEL_11_0,
+    __uuidof(ID3D12Device),
+    pD3D12Device.put_void()
   ));
   winrt::com_ptr<ID3D12CommandQueue> dxQueue;
   D3D12_COMMAND_QUEUE_DESC commandQueueDesc = {};
@@ -509,8 +512,8 @@ static void Scenario9LoadBindEvalInputTensorGPU() {
   LearningModelBinding modelBinding(dmlSessionCustom);
 
   UINT64 bufferbytesize = 720 * 720 * 3 * sizeof(float);
-  D3D12_HEAP_PROPERTIES heapProperties = {
-    D3D12_HEAP_TYPE_DEFAULT, D3D12_CPU_PAGE_PROPERTY_UNKNOWN, D3D12_MEMORY_POOL_UNKNOWN, 0, 0};
+  D3D12_HEAP_PROPERTIES heapProperties =
+    {D3D12_HEAP_TYPE_DEFAULT, D3D12_CPU_PAGE_PROPERTY_UNKNOWN, D3D12_MEMORY_POOL_UNKNOWN, 0, 0};
   D3D12_RESOURCE_DESC resourceDesc = {
     D3D12_RESOURCE_DIMENSION_BUFFER,
     0,
@@ -946,7 +949,10 @@ static void Scenario22ImageBindingAsGPUTensor() {
   // create the d3d device.
   winrt::com_ptr<ID3D12Device> pD3D12Device = nullptr;
   WINML_EXPECT_NO_THROW(D3D12CreateDevice(
-    nullptr, D3D_FEATURE_LEVEL::D3D_FEATURE_LEVEL_11_0, __uuidof(ID3D12Device), reinterpret_cast<void**>(&pD3D12Device)
+    nullptr,
+    D3D_FEATURE_LEVEL::D3D_FEATURE_LEVEL_11_0,
+    __uuidof(ID3D12Device),
+    reinterpret_cast<void**>(&pD3D12Device)
   ));
 
   // create the command queue.
@@ -975,15 +981,14 @@ static void Scenario22ImageBindingAsGPUTensor() {
 
   pD3D12Device->CreateCommandAllocator(queuetype, winrt::guid_of<ID3D12CommandAllocator>(), alloctor.put_void());
 
-  pD3D12Device->CreateCommandList(
-    0, queuetype, alloctor.get(), nullptr, winrt::guid_of<ID3D12CommandList>(), cmdList.put_void()
-  );
+  pD3D12Device
+    ->CreateCommandList(0, queuetype, alloctor.get(), nullptr, winrt::guid_of<ID3D12CommandList>(), cmdList.put_void());
 
   // Create Committed Resource
   // 3 is number of channels we use. R G B without alpha.
   UINT64 bufferbytesize = 3 * sizeof(float) * softwareBitmap.PixelWidth() * softwareBitmap.PixelHeight();
-  D3D12_HEAP_PROPERTIES heapProperties = {
-    D3D12_HEAP_TYPE_DEFAULT, D3D12_CPU_PAGE_PROPERTY_UNKNOWN, D3D12_MEMORY_POOL_UNKNOWN, 0, 0};
+  D3D12_HEAP_PROPERTIES heapProperties =
+    {D3D12_HEAP_TYPE_DEFAULT, D3D12_CPU_PAGE_PROPERTY_UNKNOWN, D3D12_MEMORY_POOL_UNKNOWN, 0, 0};
   D3D12_RESOURCE_DESC resourceDesc = {
     D3D12_RESOURCE_DIMENSION_BUFFER,
     0,
@@ -1485,7 +1490,10 @@ static void D2DInterop() {
   LearningModelSession session(model, learningDevice);
   // now lets try and do some XAML/d2d on that same device, first prealloc a VideoFrame
   VideoFrame frame = VideoFrame::CreateAsDirect3D11SurfaceBacked(
-    DirectXPixelFormat::B8G8R8A8UIntNormalized, 224, 224, session.Device().Direct3D11Device()
+    DirectXPixelFormat::B8G8R8A8UIntNormalized,
+    224,
+    224,
+    session.Device().Direct3D11Device()
   );
   // create a D2D factory
   D2D1_FACTORY_OPTIONS options = {};
@@ -1581,10 +1589,14 @@ static void BindMultipleCPUBuffersAsInputs(LearningModelDeviceKind kind) {
   auto output_descriptor = model.OutputFeatures().First().Current().as<ITensorFeatureDescriptor>();
   auto output_shape = output_descriptor.Shape();
   VideoFrame outputimage1(
-    BitmapPixelFormat::Bgra8, static_cast<int32_t>(output_shape.GetAt(3)), static_cast<int32_t>(output_shape.GetAt(2))
+    BitmapPixelFormat::Bgra8,
+    static_cast<int32_t>(output_shape.GetAt(3)),
+    static_cast<int32_t>(output_shape.GetAt(2))
   );
   VideoFrame outputimage2(
-    BitmapPixelFormat::Bgra8, static_cast<int32_t>(output_shape.GetAt(3)), static_cast<int32_t>(output_shape.GetAt(2))
+    BitmapPixelFormat::Bgra8,
+    static_cast<int32_t>(output_shape.GetAt(3)),
+    static_cast<int32_t>(output_shape.GetAt(2))
   );
 
   auto output_frames = winrt::single_threaded_vector<wm::VideoFrame>();

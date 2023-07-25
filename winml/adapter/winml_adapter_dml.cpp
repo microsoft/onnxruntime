@@ -110,7 +110,8 @@ ORT_API_STATUS_IMPL(
 #ifdef USE_DML
   auto dml_provider_internal = reinterpret_cast<::onnxruntime::IExecutionProvider*>(dml_provider);
   Dml::SetDefaultRoundingMode(
-    dml_provider_internal, is_enabled ? AllocatorRoundingMode::Enabled : AllocatorRoundingMode::Disabled
+    dml_provider_internal,
+    is_enabled ? AllocatorRoundingMode::Enabled : AllocatorRoundingMode::Disabled
   );
 #endif
   return nullptr;
@@ -144,7 +145,9 @@ ORT_API_STATUS_IMPL(
 #ifdef USE_DML
   auto dml_provider_internal = reinterpret_cast<::onnxruntime::IExecutionProvider*>(dml_provider);
   auto status = Dml::CopyTensor(
-    dml_provider_internal, *(src->GetMutable<onnxruntime::Tensor>()), *(dst->GetMutable<onnxruntime::Tensor>())
+    dml_provider_internal,
+    *(src->GetMutable<onnxruntime::Tensor>()),
+    *(dst->GetMutable<onnxruntime::Tensor>())
   );
   if (!status.IsOK()) {
     return onnxruntime::ToOrtStatus(status);

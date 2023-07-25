@@ -31,6 +31,6 @@ struct LearningModelJoinOptions : LearningModelJoinOptionsT<LearningModelJoinOpt
 namespace WINML_EXPERIMENTAL::factory_implementation {
 
 struct LearningModelJoinOptions
-    : LearningModelJoinOptionsT<LearningModelJoinOptions, implementation::LearningModelJoinOptions> {};
+  : LearningModelJoinOptionsT<LearningModelJoinOptions, implementation::LearningModelJoinOptions> {};
 
 }// namespace WINML_EXPERIMENTAL::factory_implementation

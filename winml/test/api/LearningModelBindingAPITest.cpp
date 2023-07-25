@@ -26,7 +26,10 @@ static void LearningModelBindingAPITestsClassSetup() {
 static void CpuSqueezeNet() {
   std::string cpuInstance("CPU");
   WINML_EXPECT_NO_THROW(WinML::Engine::Test::ModelValidator::SqueezeNet(
-    cpuInstance, LearningModelDeviceKind::Cpu, /*dataTolerance*/ 0.00001f, false
+    cpuInstance,
+    LearningModelDeviceKind::Cpu,
+    /*dataTolerance*/ 0.00001f,
+    false
   ));
 }
 
@@ -455,7 +458,9 @@ static void VerifyInvalidBindExceptions() {
 
   // Bind invalid tensor type as image input
   WINML_EXPECT_THROW_SPECIFIC(
-    mapBinding.Bind(inputName, tensorBoolean), winrt::hresult_error, ensureWinmlInvalidBinding
+    mapBinding.Bind(inputName, tensorBoolean),
+    winrt::hresult_error,
+    ensureWinmlInvalidBinding
   );
 }
 

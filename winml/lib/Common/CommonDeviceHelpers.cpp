@@ -35,9 +35,8 @@ void ParseDriverVersion(LARGE_INTEGER& version, uint32_t& majorVersion, uint32_t
   minorVersion = LOWORD(version.LowPart);
 }
 
-HRESULT GetDXGIAdapterMetadata(
-  ID3D12Device& device, uint32_t& vendorId, uint32_t& majorVersion, uint32_t& minorVersion
-) {
+HRESULT
+GetDXGIAdapterMetadata(ID3D12Device& device, uint32_t& vendorId, uint32_t& majorVersion, uint32_t& minorVersion) {
   winrt::com_ptr<IDXGIFactory4> spFactory;
   RETURN_IF_FAILED(CreateDXGIFactory1(IID_PPV_ARGS(spFactory.put())));
 
@@ -170,7 +169,11 @@ bool IsFloat16Supported(ID3D12Device* device) {
   DML_FEATURE_DATA_TENSOR_DATA_TYPE_SUPPORT float16Data = {};
 
   winrt::check_hresult(dmlDevice->CheckFeatureSupport(
-    DML_FEATURE_TENSOR_DATA_TYPE_SUPPORT, sizeof(float16Query), &float16Query, sizeof(float16Data), &float16Data
+    DML_FEATURE_TENSOR_DATA_TYPE_SUPPORT,
+    sizeof(float16Query),
+    &float16Query,
+    sizeof(float16Data),
+    &float16Data
   ));
   return float16Data.IsSupported;
 #endif

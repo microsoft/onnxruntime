@@ -11,7 +11,10 @@
 namespace WINML_EXPERIMENTALP {
 
 LearningModelBuilder::LearningModelBuilder(int64_t opset)
-    : inert_session_(nullptr), inputs_(nullptr), outputs_(nullptr), operators_(nullptr) {
+  : inert_session_(nullptr),
+    inputs_(nullptr),
+    outputs_(nullptr),
+    operators_(nullptr) {
   telemetry_helper.LogApiUsage("LearningModelBuilder::LearningModelBuilder");
 
   WINML_THROW_IF_FAILED(CreateOnnxruntimeEngineFactory(engine_factory_.put()));
@@ -28,7 +31,10 @@ LearningModelBuilder::LearningModelBuilder(int64_t opset)
 }
 
 LearningModelBuilder::LearningModelBuilder(LearningModelBuilder& builder)
-    : inert_session_(nullptr), inputs_(builder.inputs_), outputs_(builder.outputs_), operators_(builder.operators_) {
+  : inert_session_(nullptr),
+    inputs_(builder.inputs_),
+    outputs_(builder.outputs_),
+    operators_(builder.operators_) {
 }
 
 winml_experimental::LearningModelInputs LearningModelBuilder::Inputs() {

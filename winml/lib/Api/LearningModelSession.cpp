@@ -29,21 +29,21 @@ static const GUID WINML_PIX_EVAL_CAPTURABLE_WORK_GUID = __uuidof(guid_details::W
 namespace WINMLP {
 
 LearningModelSession::LearningModelSession(_winml::IEngine* engine)
-    : operator_registry_(nullptr, nullptr),
-      model_(nullptr),
-      device_(LearningModelDeviceKind::Cpu),
-      session_options_(nullptr) {
+  : operator_registry_(nullptr, nullptr),
+    model_(nullptr),
+    device_(LearningModelDeviceKind::Cpu),
+    session_options_(nullptr) {
   engine_.copy_from(engine);
 }
 
 LearningModelSession::LearningModelSession(winml::LearningModel const& model) try
-    : LearningModelSession(model, make<LearningModelDevice>(LearningModelDeviceKind::Default)) {}
+  : LearningModelSession(model, make<LearningModelDevice>(LearningModelDeviceKind::Default)) {}
 WINML_CATCH_ALL
 
 LearningModelSession::LearningModelSession(
   winml::LearningModel const& model, winml::LearningModelDevice const& deviceToRunOn
 ) try
-    : LearningModelSession(model, deviceToRunOn, nullptr) {}
+  : LearningModelSession(model, deviceToRunOn, nullptr) {}
 WINML_CATCH_ALL
 
 LearningModelSession::LearningModelSession(
@@ -51,10 +51,10 @@ LearningModelSession::LearningModelSession(
   winml::LearningModelDevice const& deviceToRunOn,
   winml::LearningModelSessionOptions const& learningModelSessionOptions
 ) try
-    : operator_registry_(nullptr, nullptr),
-      model_(model),
-      device_(deviceToRunOn),
-      session_options_(learningModelSessionOptions) {
+  : operator_registry_(nullptr, nullptr),
+    model_(model),
+    device_(deviceToRunOn),
+    session_options_(learningModelSessionOptions) {
   Initialize();
 }
 WINML_CATCH_ALL
@@ -413,7 +413,9 @@ WINML_CATCH_ALL
 void LearningModelSession::ToggleProfiler() {
   CheckClosed();
   auto is_provider_enabled = TraceLoggingProviderEnabled(
-    ::winml_trace_logging_provider, WINEVENT_LEVEL_VERBOSE, WINML_PROVIDER_KEYWORD_LOTUS_PROFILING
+    ::winml_trace_logging_provider,
+    WINEVENT_LEVEL_VERBOSE,
+    WINML_PROVIDER_KEYWORD_LOTUS_PROFILING
   );
 
   if (is_provider_enabled) {

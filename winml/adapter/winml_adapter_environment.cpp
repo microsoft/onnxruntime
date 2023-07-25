@@ -23,7 +23,8 @@ class WinmlAdapterLoggingWrapper : public LoggingWrapper {
   WinmlAdapterLoggingWrapper(
     OrtLoggingFunction logging_function, OrtProfilingFunction profiling_function, void* logger_param
   )
-      : LoggingWrapper(logging_function, logger_param), profiling_function_(profiling_function) {}
+    : LoggingWrapper(logging_function, logger_param),
+      profiling_function_(profiling_function) {}
 
   void SendProfileEvent(onnxruntime::profiling::EventRecord& event_record) const override {
     if (profiling_function_) {

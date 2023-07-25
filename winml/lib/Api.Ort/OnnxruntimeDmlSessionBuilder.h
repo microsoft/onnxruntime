@@ -10,8 +10,8 @@ namespace _winml {
 class OnnxruntimeEngineFactory;
 
 class OnnxruntimeDmlSessionBuilder
-    : public Microsoft::WRL::
-        RuntimeClass<Microsoft::WRL::RuntimeClassFlags<Microsoft::WRL::ClassicCom>, IOrtSessionBuilder> {
+  : public Microsoft::WRL::
+      RuntimeClass<Microsoft::WRL::RuntimeClassFlags<Microsoft::WRL::ClassicCom>, IOrtSessionBuilder> {
  public:
   HRESULT RuntimeClassInitialize(
     OnnxruntimeEngineFactory* engine_factory,

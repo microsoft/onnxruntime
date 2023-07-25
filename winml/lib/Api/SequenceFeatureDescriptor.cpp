@@ -9,10 +9,10 @@ namespace WINMLP {
 SequenceFeatureDescriptor::SequenceFeatureDescriptor(
   const char* name, const char* description, bool is_required, winml::ILearningModelFeatureDescriptor descriptor
 )
-    : name_(_winml::Strings::HStringFromUTF8(name)),
-      description_(_winml::Strings::HStringFromUTF8(description)),
-      is_required_(is_required),
-      element_descriptor_(descriptor) {
+  : name_(_winml::Strings::HStringFromUTF8(name)),
+    description_(_winml::Strings::HStringFromUTF8(description)),
+    is_required_(is_required),
+    element_descriptor_(descriptor) {
 }
 
 winml::ILearningModelFeatureDescriptor SequenceFeatureDescriptor::ElementDescriptor() try {

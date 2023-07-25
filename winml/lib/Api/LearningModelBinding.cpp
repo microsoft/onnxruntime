@@ -62,7 +62,10 @@ std::tuple<std::string, winrt::com_ptr<_winml::IValue>, _winml::BindingType> Lea
   auto bindingPort = FindValidBinding(model, _winml::Strings::WStringFromString(name));
 
   WINML_THROW_HR_IF_FALSE_MSG(
-    WINML_ERR_INVALID_BINDING, bindingPort.has_value(), "The model has no variable with name %s.", name.c_str()
+    WINML_ERR_INVALID_BINDING,
+    bindingPort.has_value(),
+    "The model has no variable with name %s.",
+    name.c_str()
   );
 
   // Retrieve the descriptor and binding type
@@ -83,7 +86,11 @@ std::tuple<std::string, winrt::com_ptr<_winml::IValue>, _winml::BindingType> Lea
 
   // Create the Binding Context to pass to the feature value
   _winml::BindingContext context{
-    bindingType, m_session, descriptor, properties, {}  // SubresourceId is set by callee
+    bindingType,
+    m_session,
+    descriptor,
+    properties,
+    {}  // SubresourceId is set by callee
   };
 
   // Get the bound tensor
@@ -110,7 +117,9 @@ std::tuple<std::string, winrt::com_ptr<_winml::IValue>, _winml::BindingType> Lea
   if (!isPlaceHolder || shouldAlwaysTensorize) {
     // If not a placeholder, attempt to get the underlying resource
     WINML_THROW_IF_FAILED_MSG(
-      spLotusValueProvider->GetValue(context, value.put()), "The model variable %s failed tensorization.", name.c_str()
+      spLotusValueProvider->GetValue(context, value.put()),
+      "The model variable %s failed tensorization.",
+      name.c_str()
     );
   } else {
     WINML_THROW_HR_IF_TRUE_MSG(
@@ -423,7 +432,9 @@ std::unordered_map<std::string, wf::IInspectable> LearningModelBinding::UpdatePr
   auto& output_names = GetOutputNames();
   auto& output_values = GetOutputs();
   WINML_THROW_HR_IF_FALSE_MSG(
-    E_UNEXPECTED, output_names.size() == output_values.size(), "Evaluation produced unexpected output variables."
+    E_UNEXPECTED,
+    output_names.size() == output_values.size(),
+    "Evaluation produced unexpected output variables."
   );
 
   for (unsigned i = 0; i < output_names.size(); i++) {

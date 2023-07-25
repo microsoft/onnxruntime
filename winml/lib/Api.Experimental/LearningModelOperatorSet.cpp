@@ -7,7 +7,8 @@
 namespace WINML_EXPERIMENTALP {
 
 LearningModelOperatorSet::LearningModelOperatorSet(winml_experimental::LearningModelBuilder builder)
-    : builder_(builder), operators_(winrt::single_threaded_vector<winml_experimental::LearningModelOperator>()) {
+  : builder_(builder),
+    operators_(winrt::single_threaded_vector<winml_experimental::LearningModelOperator>()) {
 }
 
 winml_experimental::LearningModelBuilder LearningModelOperatorSet::Add(

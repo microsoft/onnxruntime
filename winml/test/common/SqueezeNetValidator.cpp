@@ -229,7 +229,8 @@ void ModelValidator::SqueezeNet(
   } else {
     if (result.Outputs().Lookup(outputDataBindingName) != outputTensor) {
       throw winrt::hresult_error(
-        E_UNEXPECTED, L"Evaluation Results lookup don't match LearningModelBinding output tensor."
+        E_UNEXPECTED,
+        L"Evaluation Results lookup don't match LearningModelBinding output tensor."
       );
     }
   }

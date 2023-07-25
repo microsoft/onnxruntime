@@ -10,11 +10,11 @@
 namespace WINML_EXPERIMENTALP {
 
 LearningModelInputs::LearningModelInputs(winml_experimental::LearningModelBuilder builder)
-    : input_descriptors_(winrt::single_threaded_vector<winml::ILearningModelFeatureDescriptor>()),
-      input_default_values_(winrt::single_threaded_vector<wf::IInspectable>()),
-      constant_descriptors_(winrt::single_threaded_vector<winml::ILearningModelFeatureDescriptor>()),
-      constant_values_(winrt::single_threaded_vector<wf::IInspectable>()),
-      builder_(builder) {
+  : input_descriptors_(winrt::single_threaded_vector<winml::ILearningModelFeatureDescriptor>()),
+    input_default_values_(winrt::single_threaded_vector<wf::IInspectable>()),
+    constant_descriptors_(winrt::single_threaded_vector<winml::ILearningModelFeatureDescriptor>()),
+    constant_values_(winrt::single_threaded_vector<wf::IInspectable>()),
+    builder_(builder) {
 }
 
 winml_experimental::LearningModelBuilder LearningModelInputs::AddInput(
@@ -71,7 +71,10 @@ winml_experimental::LearningModelBuilder LearningModelInputs::AddConstant(
     auto shape = tensor.Shape();
     std::vector<int64_t> shape_vector(begin(shape), end(shape));
     auto descriptor = winrt::make<winmlp::TensorFeatureDescriptor>(
-      input_name, no_description_for_constants, tensor.TensorKind(), shape_vector
+      input_name,
+      no_description_for_constants,
+      tensor.TensorKind(),
+      shape_vector
     );
     return AddInput(descriptor, value, true);
   }

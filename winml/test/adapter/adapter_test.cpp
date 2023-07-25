@@ -223,17 +223,15 @@ static void ModelGetMetadata() {
   const char* metadata_value;
   size_t metadata_value_len;
 
-  winml_adapter_api->ModelGetMetadata(
-    metadata_model, 0, &metadata_key, &metadata_key_len, &metadata_value, &metadata_value_len
-  );
+  winml_adapter_api
+    ->ModelGetMetadata(metadata_model, 0, &metadata_key, &metadata_key_len, &metadata_value, &metadata_value_len);
   WINML_EXPECT_EQUAL(std::string(metadata_key), "thisisalongkey");
   WINML_EXPECT_EQUAL(metadata_key_len, 14u);
   WINML_EXPECT_EQUAL(std::string(metadata_value), "thisisalongvalue");
   WINML_EXPECT_EQUAL(metadata_value_len, 16u);
 
-  winml_adapter_api->ModelGetMetadata(
-    metadata_model, 1, &metadata_key, &metadata_key_len, &metadata_value, &metadata_value_len
-  );
+  winml_adapter_api
+    ->ModelGetMetadata(metadata_model, 1, &metadata_key, &metadata_key_len, &metadata_value, &metadata_value_len);
   WINML_EXPECT_EQUAL(std::string(metadata_key), "key2");
   WINML_EXPECT_EQUAL(metadata_key_len, 4u);
   WINML_EXPECT_EQUAL(std::string(metadata_value), "val2");

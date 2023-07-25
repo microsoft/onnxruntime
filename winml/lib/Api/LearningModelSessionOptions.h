@@ -83,5 +83,5 @@ struct LearningModelSessionOptions : LearningModelSessionOptionsT<
 
 namespace WINML::factory_implementation {
 struct LearningModelSessionOptions
-    : LearningModelSessionOptionsT<LearningModelSessionOptions, implementation::LearningModelSessionOptions> {};
+  : LearningModelSessionOptionsT<LearningModelSessionOptions, implementation::LearningModelSessionOptions> {};
 }  // namespace WINML::factory_implementation

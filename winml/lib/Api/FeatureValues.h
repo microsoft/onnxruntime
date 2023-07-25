@@ -417,7 +417,9 @@ inline winml::ILearningModelFeatureValue CreateFeatureValueFromInspectable(
     }
 
     using TensorCreator = winml::ILearningModelFeatureValue (*)(
-      BindingType, const wf::IInspectable& inspectable, const winml::ITensorFeatureDescriptor& descriptor
+      BindingType,
+      const wf::IInspectable& inspectable,
+      const winml::ITensorFeatureDescriptor& descriptor
     );
     constexpr std::array<TensorCreator, 13> creators = {
             // Vector and VectorViews of float16 and int8 collide with float and uint8 respectively.

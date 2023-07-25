@@ -14,7 +14,7 @@
 namespace WINMLP {
 
 struct LearningModelSession
-    : LearningModelSessionT<LearningModelSession, ILearningModelSessionNative, ILearningModelSessionNative1> {
+  : LearningModelSessionT<LearningModelSession, ILearningModelSessionNative, ILearningModelSessionNative1> {
   /* LearningModelSession constructors (MachineLearningContract 1). */
   LearningModelSession(_winml::IEngine* engine);
 

@@ -32,7 +32,8 @@ HRESULT CreateFeatureDescriptors(
   for (size_t i = 0; i < count; i++) {
     OnnxruntimeValueInfoWrapper descriptor;
     RETURN_HR_IF_NOT_OK_MSG(
-      feature_helpers->GetName(ort_model, i, &descriptor.name_, &descriptor.name_length_), engine_factory->UseOrtApi()
+      feature_helpers->GetName(ort_model, i, &descriptor.name_, &descriptor.name_length_),
+      engine_factory->UseOrtApi()
     );
     RETURN_HR_IF_NOT_OK_MSG(
       feature_helpers->GetDescription(ort_model, i, &descriptor.description_, &descriptor.description_length_),
@@ -64,14 +65,14 @@ HRESULT ModelInfo::RuntimeClassInitialize(_In_ OnnxruntimeEngineFactory* engine_
   size_t metadata_value_len;
   for (size_t i = 0; i < count; i++) {
     RETURN_HR_IF_NOT_OK_MSG(
-      winml_adapter_api->ModelGetMetadata(
-        ort_model, i, &metadata_key, &metadata_key_len, &metadata_value, &metadata_value_len
-      ),
+      winml_adapter_api
+        ->ModelGetMetadata(ort_model, i, &metadata_key, &metadata_key_len, &metadata_value, &metadata_value_len),
       engine_factory->UseOrtApi()
     );
 
     model_metadata_.insert_or_assign(
-      std::string(metadata_key, metadata_key_len), std::string(metadata_value, metadata_value_len)
+      std::string(metadata_key, metadata_key_len),
+      std::string(metadata_value, metadata_value_len)
     );
   }
 
@@ -234,7 +235,8 @@ STDMETHODIMP OnnruntimeModel::CloneModel(IModel** copy) {
 
   OrtModel* ort_model_copy;
   RETURN_HR_IF_NOT_OK_MSG(
-    winml_adapter_api->CloneModel(ort_model_.get(), &ort_model_copy), engine_factory_->UseOrtApi()
+    winml_adapter_api->CloneModel(ort_model_.get(), &ort_model_copy),
+    engine_factory_->UseOrtApi()
   );
 
   auto model = UniqueOrtModel(ort_model_copy, winml_adapter_api->ReleaseModel);
@@ -247,7 +249,8 @@ STDMETHODIMP OnnruntimeModel::SaveModel(_In_ const wchar_t* const file_name, _In
   auto winml_adapter_api = engine_factory_->UseWinmlAdapterApi();
 
   RETURN_HR_IF_NOT_OK_MSG(
-    winml_adapter_api->SaveModel(ort_model_.get(), file_name, size), engine_factory_->UseOrtApi()
+    winml_adapter_api->SaveModel(ort_model_.get(), file_name, size),
+    engine_factory_->UseOrtApi()
   );
   return S_OK;
 }
@@ -299,23 +302,27 @@ STDMETHODIMP OnnruntimeModel::AddOperator(
 
   int32_t onnx_opset_version;
   RETURN_HR_IF_NOT_OK_MSG(
-    winml_adapter_api->ModelGetOpsetVersion(ort_model_.get(), op_domain, &onnx_opset_version), ort_api
+    winml_adapter_api->ModelGetOpsetVersion(ort_model_.get(), op_domain, &onnx_opset_version),
+    ort_api
   );
   size_t input_count;
   RETURN_HR_IF_NOT_OK_MSG(
-    winml_adapter_api->OperatorGetNumInputs(op_type, onnx_opset_version, op_domain, &input_count), ort_api
+    winml_adapter_api->OperatorGetNumInputs(op_type, onnx_opset_version, op_domain, &input_count),
+    ort_api
   );
 
   size_t output_count;
   RETURN_HR_IF_NOT_OK_MSG(
-    winml_adapter_api->OperatorGetNumOutputs(op_type, onnx_opset_version, op_domain, &output_count), ort_api
+    winml_adapter_api->OperatorGetNumOutputs(op_type, onnx_opset_version, op_domain, &output_count),
+    ort_api
   );
 
   std::vector<const char*> input_names(input_count);
   for (size_t i = 0; i < input_count; i++) {
     const char* name;
     RETURN_HR_IF_NOT_OK_MSG(
-      winml_adapter_api->OperatorGetInputName(op_type, onnx_opset_version, op_domain, i, &name), ort_api
+      winml_adapter_api->OperatorGetInputName(op_type, onnx_opset_version, op_domain, i, &name),
+      ort_api
     );
 
     const char* actual_name;
@@ -328,7 +335,8 @@ STDMETHODIMP OnnruntimeModel::AddOperator(
   for (size_t i = 0; i < output_count; i++) {
     const char* name;
     RETURN_HR_IF_NOT_OK_MSG(
-      winml_adapter_api->OperatorGetOutputName(op_type, onnx_opset_version, op_domain, i, &name), ort_api
+      winml_adapter_api->OperatorGetOutputName(op_type, onnx_opset_version, op_domain, i, &name),
+      ort_api
     );
     const char* actual_name = nullptr;
     if (S_OK == GetValue(name, op_output_names, actual_output_names, num_outputs, &actual_name)) {
@@ -380,7 +388,10 @@ STDMETHODIMP OnnruntimeModel::AddModelInput(
   if (is_constant) {
     RETURN_HR_IF_NOT_OK_MSG(
       winml_adapter_api->ModelAddConstantInput(
-        ort_model_.get(), name, type_info, static_cast<OnnxruntimeValue*>(constant_value)->UseOrtValue()
+        ort_model_.get(),
+        name,
+        type_info,
+        static_cast<OnnxruntimeValue*>(constant_value)->UseOrtValue()
       ),
       ort_api
     );
@@ -391,9 +402,8 @@ STDMETHODIMP OnnruntimeModel::AddModelInput(
   return S_OK;
 }
 
-STDMETHODIMP OnnruntimeModel::AddModelOutput(
-  _In_ const char* const name, _In_ IDescriptorInfoProvider* descriptor_provider
-) {
+STDMETHODIMP
+OnnruntimeModel::AddModelOutput(_In_ const char* const name, _In_ IDescriptorInfoProvider* descriptor_provider) {
   auto winml_adapter_api = engine_factory_->UseWinmlAdapterApi();
   auto ort_api = engine_factory_->UseOrtApi();
 

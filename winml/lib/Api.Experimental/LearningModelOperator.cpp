@@ -9,7 +9,8 @@ LearningModelOperator::LearningModelOperator(hstring const& type) : LearningMode
 }
 
 LearningModelOperator::LearningModelOperator(hstring const& type, hstring const& domain)
-    : domain_(domain), type_(type) {
+  : domain_(domain),
+    type_(type) {
   constant_input_mapping_ = winrt::single_threaded_map<winrt::hstring, wf::IInspectable>();
   input_mapping_ = winrt::single_threaded_map<winrt::hstring, winrt::hstring>();
   output_mapping_ = winrt::single_threaded_map<winrt::hstring, winrt::hstring>();

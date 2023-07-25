@@ -25,9 +25,8 @@ HRESULT IsWarpAdapter(IDXGIAdapter1* pAdapter, bool* isWarpAdapter) {
   return S_OK;
 }
 
-HRESULT _winml::GetDXGIHardwareAdapterWithPreference(
-  DXGI_GPU_PREFERENCE preference, _COM_Outptr_ IDXGIAdapter1** ppAdapter
-) {
+HRESULT
+_winml::GetDXGIHardwareAdapterWithPreference(DXGI_GPU_PREFERENCE preference, _COM_Outptr_ IDXGIAdapter1** ppAdapter) {
   winrt::com_ptr<IDXGIAdapter1> spAdapter;
   UINT i = 0;
   // Avoids using EnumAdapterByGpuPreference for standard GPU path to enable downlevel to RS3

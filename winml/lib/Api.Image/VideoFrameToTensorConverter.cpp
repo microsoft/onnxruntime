@@ -153,7 +153,11 @@ void VideoFrameToTensorConverter::VideoFrameToSoftwareTensor(
 
     // Resize the input VideoFrame to converted_video_frame_
     _winmli::ConvertVideoFrameToVideoFrame(
-      inputVideoFrame, inputBounds, tensorWidth, tensorHeight, converted_video_frame_
+      inputVideoFrame,
+      inputBounds,
+      tensorWidth,
+      tensorHeight,
+      converted_video_frame_
     );
 
     ConvertSoftwareBitmapToCPUTensor(
@@ -356,10 +360,14 @@ void VideoFrameToTensorConverter::ConvertDX12TextureToGPUTensor(
   );
 
   WINML_THROW_HR_IF_FALSE_MSG(
-    E_INVALIDARG, inputDesc.Width != 0, "Invalid input image height provided. Width is set to zero."
+    E_INVALIDARG,
+    inputDesc.Width != 0,
+    "Invalid input image height provided. Width is set to zero."
   );
   WINML_THROW_HR_IF_FALSE_MSG(
-    E_INVALIDARG, inputDesc.Height != 0, "Invalid input image height provided. Height is set to zero."
+    E_INVALIDARG,
+    inputDesc.Height != 0,
+    "Invalid input image height provided. Height is set to zero."
   );
 
   // Validate Tensor description
@@ -462,13 +470,17 @@ void VideoFrameToTensorConverter::ConvertDX12TextureToGPUTensor(
     srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
     srvDesc.Texture2D.MipLevels = 1;
     CD3DX12_CPU_DESCRIPTOR_HANDLE srvHandle(
-      descriptor_heap_->GetCPUDescriptorHandleForHeapStart(), SrvBufferIdx, srvUavDescriptorSize
+      descriptor_heap_->GetCPUDescriptorHandleForHeapStart(),
+      SrvBufferIdx,
+      srvUavDescriptorSize
     );
     spDx12Device->CreateShaderResourceView(pInputResource, &srvDesc, srvHandle);
 
     D3D12_UNORDERED_ACCESS_VIEW_DESC uavDesc = CreateUAVDescription(batchIdx, outputDesc, tensorDesc);
     CD3DX12_CPU_DESCRIPTOR_HANDLE uavHandle(
-      descriptor_heap_->GetCPUDescriptorHandleForHeapStart(), UavBufferIdx, srvUavDescriptorSize
+      descriptor_heap_->GetCPUDescriptorHandleForHeapStart(),
+      UavBufferIdx,
+      srvUavDescriptorSize
     );
     spDx12Device->CreateUnorderedAccessView(pOutputResource, nullptr, &uavDesc, uavHandle);
   }
@@ -516,10 +528,14 @@ void VideoFrameToTensorConverter::ConvertDX12TextureToGPUTensor(
     }
 
     CD3DX12_GPU_DESCRIPTOR_HANDLE srvHandle(
-      descriptor_heap_->GetGPUDescriptorHandleForHeapStart(), SrvBufferIdx, srvUavDescriptorSize
+      descriptor_heap_->GetGPUDescriptorHandleForHeapStart(),
+      SrvBufferIdx,
+      srvUavDescriptorSize
     );
     CD3DX12_GPU_DESCRIPTOR_HANDLE uavHandle(
-      descriptor_heap_->GetGPUDescriptorHandleForHeapStart(), UavBufferIdx, srvUavDescriptorSize
+      descriptor_heap_->GetGPUDescriptorHandleForHeapStart(),
+      UavBufferIdx,
+      srvUavDescriptorSize
     );
     {
       ConstantBufferCS constantBufferCS = {};
@@ -574,7 +590,9 @@ void VideoFrameToTensorConverter::ConvertSoftwareBitmapToGPUTensor(
       : _winmli::GetBitmapPixelFormatFromChannelType(tensorDesc.channelType);
 
     convertedSoftwareBitmap = wgi::SoftwareBitmap(
-      newPixelFormat, static_cast<int32_t>(tensorDesc.sizes[3]), static_cast<int32_t>(tensorDesc.sizes[2])
+      newPixelFormat,
+      static_cast<int32_t>(tensorDesc.sizes[3]),
+      static_cast<int32_t>(tensorDesc.sizes[2])
     );
     wm::VideoFrame convertedVideoFrame = wm::VideoFrame::CreateWithSoftwareBitmap(convertedSoftwareBitmap);
     videoFrame.as<wm::IVideoFrame2>().CopyToAsync(convertedVideoFrame, inputBounds, scaledBounds).get();
@@ -582,7 +600,8 @@ void VideoFrameToTensorConverter::ConvertSoftwareBitmapToGPUTensor(
     convertedSoftwareBitmap = convertedVideoFrame.SoftwareBitmap();
   } else if (!_winmli::SoftwareBitmapFormatSupported(videoFrame.SoftwareBitmap())) {
     convertedSoftwareBitmap = wgi::SoftwareBitmap::Convert(
-      videoFrame.SoftwareBitmap(), _winmli::GetBitmapPixelFormatFromChannelType(tensorDesc.channelType)
+      videoFrame.SoftwareBitmap(),
+      _winmli::GetBitmapPixelFormatFromChannelType(tensorDesc.channelType)
     );
   } else {
     // We don't need a conversion
@@ -622,7 +641,9 @@ void VideoFrameToTensorConverter::ConvertSoftwareBitmapToGPUTensor(
   ResetCommandList(device_cache);
 
   auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(
-    pOutputResource, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COPY_DEST
+    pOutputResource,
+    D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
+    D3D12_RESOURCE_STATE_COPY_DEST
   );
   command_list_->ResourceBarrier(1, &barrier);
 
@@ -675,7 +696,9 @@ void VideoFrameToTensorConverter::ConvertBuffersToBatchedGPUTensor(
   command_list_->ResourceBarrier(1, &barrier1);
   command_list_->CopyBufferRegion(output_resource, 0, upload_heap_.Get(), 0, buffer_size_in_bytes);
   auto barrier2 = CD3DX12_RESOURCE_BARRIER::Transition(
-    output_resource, D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_UNORDERED_ACCESS
+    output_resource,
+    D3D12_RESOURCE_STATE_COPY_DEST,
+    D3D12_RESOURCE_STATE_UNORDERED_ACCESS
   );
   command_list_->ResourceBarrier(1, &barrier2);
   WINML_THROW_IF_FAILED(command_list_->Close());

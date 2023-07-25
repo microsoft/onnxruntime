@@ -27,7 +27,8 @@ void AdapterDmlEpTestSetup() {
   winrt::init_apartment();
   ort_api = OrtGetApiBase()->GetApi(ORT_API_VERSION);
   THROW_IF_NOT_OK_MSG(
-    ort_api->GetExecutionProviderApi("DML", ORT_API_VERSION, reinterpret_cast<const void**>(&ort_dml_api)), ort_api
+    ort_api->GetExecutionProviderApi("DML", ORT_API_VERSION, reinterpret_cast<const void**>(&ort_dml_api)),
+    ort_api
   );
   winml_adapter_api = OrtGetWinMLAdapter(ORT_API_VERSION);
   THROW_IF_NOT_OK_MSG(ort_api->CreateEnv(OrtLoggingLevel::ORT_LOGGING_LEVEL_VERBOSE, "Default", &ort_env), ort_api);
@@ -50,7 +51,8 @@ UniqueOrtSessionOptions CreateUniqueOrtSessionOptions() {
 UniqueOrtSession CreateUniqueOrtSession(const UniqueOrtSessionOptions& session_options) {
   OrtSession* session;
   THROW_IF_NOT_OK_MSG(
-    winml_adapter_api->CreateSessionWithoutModel(ort_env, session_options.get(), nullptr, nullptr, &session), ort_api
+    winml_adapter_api->CreateSessionWithoutModel(ort_env, session_options.get(), nullptr, nullptr, &session),
+    ort_api
   );
   return UniqueOrtSession(session, ort_api->ReleaseSession);
 }
@@ -80,9 +82,8 @@ UniqueOrtSession CreateDmlSession() {
   WINML_EXPECT_HRESULT_SUCCEEDED(device->CreateCommandQueue(&command_queue_desc, IID_PPV_ARGS(queue.put())));
 
   THROW_IF_NOT_OK_MSG(
-    winml_adapter_api->OrtSessionOptionsAppendExecutionProvider_DML(
-      session_options.get(), device.get(), queue.get(), false
-    ),
+    winml_adapter_api
+      ->OrtSessionOptionsAppendExecutionProvider_DML(session_options.get(), device.get(), queue.get(), false),
     ort_api
   );
   return CreateUniqueOrtSession(FileHelpers::GetModulePath() + L"fns-candy.onnx", session_options);
@@ -123,8 +124,8 @@ std::array<float, tensor_size> tensor_values = {};
 
 winrt::com_ptr<ID3D12Resource> CreateD3D12Resource(ID3D12Device& device) {
   constexpr uint64_t buffer_size = tensor_size * sizeof(float);
-  constexpr D3D12_HEAP_PROPERTIES heap_properties = {
-    D3D12_HEAP_TYPE_DEFAULT, D3D12_CPU_PAGE_PROPERTY_UNKNOWN, D3D12_MEMORY_POOL_UNKNOWN, 0, 0};
+  constexpr D3D12_HEAP_PROPERTIES heap_properties =
+    {D3D12_HEAP_TYPE_DEFAULT, D3D12_CPU_PAGE_PROPERTY_UNKNOWN, D3D12_MEMORY_POOL_UNKNOWN, 0, 0};
   constexpr D3D12_RESOURCE_DESC resource_desc = {
     D3D12_RESOURCE_DIMENSION_BUFFER,
     0,
@@ -159,7 +160,8 @@ void DmlCreateAndFreeGPUAllocationFromD3DResource() {
   auto d3d12_resource = CreateD3D12Resource(*device);
   void* dml_allocator_resource;
   THROW_IF_NOT_OK_MSG(
-    ort_dml_api->CreateGPUAllocationFromD3DResource(d3d12_resource.get(), &dml_allocator_resource), ort_api
+    ort_dml_api->CreateGPUAllocationFromD3DResource(d3d12_resource.get(), &dml_allocator_resource),
+    ort_api
   );
   THROW_IF_NOT_OK_MSG(ort_dml_api->FreeGPUAllocation(dml_allocator_resource), ort_api);
 }
@@ -180,7 +182,11 @@ void DmlGetD3D12ResourceFromAllocation() {
   OrtMemoryInfo* ort_memory_info;
   THROW_IF_NOT_OK_MSG(
     ort_api->CreateMemoryInfo(
-      "DML", OrtAllocatorType::OrtDeviceAllocator, 0, OrtMemType::OrtMemTypeDefault, &ort_memory_info
+      "DML",
+      OrtAllocatorType::OrtDeviceAllocator,
+      0,
+      OrtMemType::OrtMemTypeDefault,
+      &ort_memory_info
     ),
     ort_api
   );
@@ -224,7 +230,11 @@ void GetTensorMemoryInfo() {
   OrtMemoryInfo* ort_memory_info;
   THROW_IF_NOT_OK_MSG(
     ort_api->CreateMemoryInfo(
-      "DML", OrtAllocatorType::OrtDeviceAllocator, 0, OrtMemType::OrtMemTypeDefault, &ort_memory_info
+      "DML",
+      OrtAllocatorType::OrtDeviceAllocator,
+      0,
+      OrtMemType::OrtMemTypeDefault,
+      &ort_memory_info
     ),
     ort_api
   );
@@ -259,9 +269,8 @@ void DmlCopyTensor() {
   WINML_EXPECT_HRESULT_SUCCEEDED(device->CreateCommandQueue(&command_queue_desc, IID_PPV_ARGS(queue.put())));
 
   THROW_IF_NOT_OK_MSG(
-    winml_adapter_api->OrtSessionOptionsAppendExecutionProvider_DML(
-      session_options.get(), device.get(), queue.get(), false
-    ),
+    winml_adapter_api
+      ->OrtSessionOptionsAppendExecutionProvider_DML(session_options.get(), device.get(), queue.get(), false),
     ort_api
   );
   auto session = CreateUniqueOrtSession(FileHelpers::GetModulePath() + L"fns-candy.onnx", session_options);
@@ -275,14 +284,19 @@ void DmlCopyTensor() {
   auto cpu_tensor = CreateTensorFromMemoryInfo(cpu_memory_info);
   auto dst_cpu_tensor = CreateTensorFromMemoryInfo(cpu_memory_info);
   WINML_EXPECT_NOT_EQUAL(
-    nullptr, winml_adapter_api->DmlCopyTensor(dml_provider, cpu_tensor.get(), dst_cpu_tensor.get())
+    nullptr,
+    winml_adapter_api->DmlCopyTensor(dml_provider, cpu_tensor.get(), dst_cpu_tensor.get())
   );
 
   // GPU to CPU
   OrtMemoryInfo* ort_memory_info;
   THROW_IF_NOT_OK_MSG(
     ort_api->CreateMemoryInfo(
-      "DML", OrtAllocatorType::OrtDeviceAllocator, 0, OrtMemType::OrtMemTypeDefault, &ort_memory_info
+      "DML",
+      OrtAllocatorType::OrtDeviceAllocator,
+      0,
+      OrtMemType::OrtMemTypeDefault,
+      &ort_memory_info
     ),
     ort_api
   );
@@ -290,7 +304,8 @@ void DmlCopyTensor() {
   auto resource = CreateD3D12Resource(*device);
   void* dml_allocator_resource;
   THROW_IF_NOT_OK_MSG(
-    ort_dml_api->CreateGPUAllocationFromD3DResource(resource.get(), &dml_allocator_resource), ort_api
+    ort_dml_api->CreateGPUAllocationFromD3DResource(resource.get(), &dml_allocator_resource),
+    ort_api
   );
 
   std::array<int64_t, 3> shape = {720, 720, 3};
@@ -327,7 +342,11 @@ void ValueGetDeviceId() {
   OrtMemoryInfo* ort_memory_info;
   THROW_IF_NOT_OK_MSG(
     ort_api->CreateMemoryInfo(
-      "DML", OrtAllocatorType::OrtDeviceAllocator, 0, OrtMemType::OrtMemTypeDefault, &ort_memory_info
+      "DML",
+      OrtAllocatorType::OrtDeviceAllocator,
+      0,
+      OrtMemType::OrtMemTypeDefault,
+      &ort_memory_info
     ),
     ort_api
   );
@@ -349,12 +368,14 @@ void SessionGetInputRequiredDeviceId() {
   auto session = CreateDmlSession();
   int16_t device_id;
   THROW_IF_NOT_OK_MSG(
-    winml_adapter_api->SessionGetInputRequiredDeviceId(session.get(), "inputImage", &device_id), ort_api
+    winml_adapter_api->SessionGetInputRequiredDeviceId(session.get(), "inputImage", &device_id),
+    ort_api
   );
 
   auto cpu_session = CreateCpuSession();
   THROW_IF_NOT_OK_MSG(
-    winml_adapter_api->SessionGetInputRequiredDeviceId(cpu_session.get(), "inputImage", &device_id), ort_api
+    winml_adapter_api->SessionGetInputRequiredDeviceId(cpu_session.get(), "inputImage", &device_id),
+    ort_api
   );
   WINML_EXPECT_EQUAL(0, device_id);
 }

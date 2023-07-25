@@ -24,7 +24,7 @@ wg::DisplayAdapterId LearningModelDevice::AdapterId() try {
 WINML_CATCH_ALL
 
 LearningModelDevice::LearningModelDevice(winml::LearningModelDeviceKind const& deviceKind) try
-    : m_deviceCache(std::make_unique<_winml::D3DDeviceCache>(deviceKind)) {
+  : m_deviceCache(std::make_unique<_winml::D3DDeviceCache>(deviceKind)) {
   m_deviceKind = deviceKind;
   telemetry_helper.SetLearningModelDeviceKind(static_cast<int>(deviceKind));
   m_isCpuDevice = m_deviceKind == LearningModelDeviceKind::Cpu || m_deviceKind == LearningModelDeviceKind::Default;
@@ -35,14 +35,15 @@ LearningModelDevice::LearningModelDevice(winml::LearningModelDeviceKind const& d
 WINML_CATCH_ALL
 
 LearningModelDevice::LearningModelDevice(wgdx::Direct3D11::IDirect3DDevice const& device) try
-    : m_deviceCache(std::make_unique<_winml::D3DDeviceCache>(device)) {
+  : m_deviceCache(std::make_unique<_winml::D3DDeviceCache>(device)) {
   m_deviceKind = LearningModelDeviceKind::DirectX;
   m_isCpuDevice = false;
 }
 WINML_CATCH_ALL
 
 LearningModelDevice::LearningModelDevice(ID3D12CommandQueue* queue) try
-    : m_deviceKind(LearningModelDeviceKind::DirectX), m_deviceCache(std::make_unique<_winml::D3DDeviceCache>(queue)) {
+  : m_deviceKind(LearningModelDeviceKind::DirectX),
+    m_deviceCache(std::make_unique<_winml::D3DDeviceCache>(queue)) {
   m_isCpuDevice = false;
 }
 WINML_CATCH_ALL

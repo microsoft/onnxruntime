@@ -134,33 +134,40 @@ ITensor ProtobufHelpers::LoadTensorFromProtobufFile(const std::wstring& filePath
     }
     if (isFp16) {
       return TensorFloat16Bit::CreateFromIterable(
-        tensorShape, GetTensorDataFromTensorProto<float>(tensorProto, elementCount)
+        tensorShape,
+        GetTensorDataFromTensorProto<float>(tensorProto, elementCount)
       );
     }
     switch (tensorProto.data_type()) {
       case (onnx::TensorProto::DataType::TensorProto_DataType_FLOAT):
         return TensorFloat::CreateFromIterable(
-          tensorShape, GetTensorDataFromTensorProto<float>(tensorProto, elementCount)
+          tensorShape,
+          GetTensorDataFromTensorProto<float>(tensorProto, elementCount)
         );
       case (onnx::TensorProto::DataType::TensorProto_DataType_INT32):
         return TensorInt32Bit::CreateFromIterable(
-          tensorShape, GetTensorDataFromTensorProto<int32_t>(tensorProto, elementCount)
+          tensorShape,
+          GetTensorDataFromTensorProto<int32_t>(tensorProto, elementCount)
         );
       case (onnx::TensorProto::DataType::TensorProto_DataType_INT64):
         return TensorInt64Bit::CreateFromIterable(
-          tensorShape, GetTensorDataFromTensorProto<int64_t>(tensorProto, elementCount)
+          tensorShape,
+          GetTensorDataFromTensorProto<int64_t>(tensorProto, elementCount)
         );
       case (onnx::TensorProto::DataType::TensorProto_DataType_STRING):
         return TensorString::CreateFromIterable(
-          tensorShape, GetTensorStringDataFromTensorProto(tensorProto, elementCount)
+          tensorShape,
+          GetTensorStringDataFromTensorProto(tensorProto, elementCount)
         );
       case (onnx::TensorProto::DataType::TensorProto_DataType_UINT8):
         return TensorUInt8Bit::CreateFromIterable(
-          tensorShape, GetTensorDataFromTensorProto<uint8_t>(tensorProto, elementCount)
+          tensorShape,
+          GetTensorDataFromTensorProto<uint8_t>(tensorProto, elementCount)
         );
       case (onnx::TensorProto::DataType::TensorProto_DataType_DOUBLE):
         return TensorDouble::CreateFromIterable(
-          tensorShape, GetTensorDataFromTensorProto<double>(tensorProto, elementCount)
+          tensorShape,
+          GetTensorDataFromTensorProto<double>(tensorProto, elementCount)
         );
       default:
         throw winrt::hresult_invalid_argument(L"Tensor type for creating tensor from protobuf file not supported.");

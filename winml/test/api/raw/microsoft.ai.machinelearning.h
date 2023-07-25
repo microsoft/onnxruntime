@@ -77,7 +77,7 @@ struct learning_model_device {
 
  protected:
   learning_model_device(Details::learning_model_device&& learning_model_device)
-      : m_device(std::move(learning_model_device)) {}
+    : m_device(std::move(learning_model_device)) {}
 
  private:
   Details::learning_model_device m_device;
@@ -89,7 +89,7 @@ struct learning_model_session {
   learning_model_session(const learning_model& model) : m_session(model.m_model) {}
 
   learning_model_session(const learning_model& model, const learning_model_device& device)
-      : m_session(model.m_model, device.m_device) {}
+    : m_session(model.m_model, device.m_device) {}
 
   inline learning_model_results evaluate(learning_model_binding& binding);
 

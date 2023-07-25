@@ -36,7 +36,8 @@ OnnxruntimeDmlSessionBuilder::CreateSessionOptions(OrtSessionOptions** options) 
 
   // set the graph optimization level to all (used to be called level 3)
   RETURN_HR_IF_NOT_OK_MSG(
-    ort_api->SetSessionGraphOptimizationLevel(session_options.get(), GraphOptimizationLevel::ORT_ENABLE_ALL), ort_api
+    ort_api->SetSessionGraphOptimizationLevel(session_options.get(), GraphOptimizationLevel::ORT_ENABLE_ALL),
+    ort_api
   );
 
   // Disable the mem pattern session option for DML. It will cause problems with how memory is allocated.
@@ -45,7 +46,10 @@ OnnxruntimeDmlSessionBuilder::CreateSessionOptions(OrtSessionOptions** options) 
   // Request the dml ep
   RETURN_HR_IF_NOT_OK_MSG(
     winml_adapter_api->OrtSessionOptionsAppendExecutionProvider_DML(
-      session_options.get(), device_.get(), queue_.get(), metacommands_enabled_
+      session_options.get(),
+      device_.get(),
+      queue_.get(),
+      metacommands_enabled_
     ),
     ort_api
   );
@@ -56,7 +60,8 @@ OnnxruntimeDmlSessionBuilder::CreateSessionOptions(OrtSessionOptions** options) 
   auto use_arena = true;
 #endif
   RETURN_HR_IF_NOT_OK_MSG(
-    winml_adapter_api->OrtSessionOptionsAppendExecutionProvider_CPU(session_options.get(), use_arena), ort_api
+    winml_adapter_api->OrtSessionOptionsAppendExecutionProvider_CPU(session_options.get(), use_arena),
+    ort_api
   );
 
   // call release() so the underlying OrtSessionOptions object isn't freed
@@ -81,9 +86,8 @@ HRESULT OnnxruntimeDmlSessionBuilder::CreateSession(
 
   OrtSession* ort_session_raw;
   RETURN_HR_IF_NOT_OK_MSG(
-    winml_adapter_api->CreateSessionWithoutModel(
-      ort_env, options, inter_op_thread_pool, intra_op_thread_pool, &ort_session_raw
-    ),
+    winml_adapter_api
+      ->CreateSessionWithoutModel(ort_env, options, inter_op_thread_pool, intra_op_thread_pool, &ort_session_raw),
     engine_factory_->UseOrtApi()
   );
   auto ort_session = UniqueOrtSession(ort_session_raw, ort_api->ReleaseSession);
@@ -101,16 +105,19 @@ HRESULT OnnxruntimeDmlSessionBuilder::Initialize(OrtSession* session) {
 
   OrtExecutionProvider* ort_provider;
   RETURN_HR_IF_NOT_OK_MSG(
-    winml_adapter_api->SessionGetExecutionProvider(session, 0, &ort_provider), engine_factory_->UseOrtApi()
+    winml_adapter_api->SessionGetExecutionProvider(session, 0, &ort_provider),
+    engine_factory_->UseOrtApi()
   );
 
   RETURN_HR_IF_NOT_OK_MSG(
-    winml_adapter_api->DmlExecutionProviderSetDefaultRoundingMode(ort_provider, true), engine_factory_->UseOrtApi()
+    winml_adapter_api->DmlExecutionProviderSetDefaultRoundingMode(ort_provider, true),
+    engine_factory_->UseOrtApi()
   );
 
   // Flush the D3D12 work from the DML execution provider
   RETURN_HR_IF_NOT_OK_MSG(
-    winml_adapter_api->DmlExecutionProviderFlushContext(ort_provider), engine_factory_->UseOrtApi()
+    winml_adapter_api->DmlExecutionProviderFlushContext(ort_provider),
+    engine_factory_->UseOrtApi()
   );
 
   return S_OK;

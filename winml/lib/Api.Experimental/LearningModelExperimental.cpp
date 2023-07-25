@@ -6,7 +6,7 @@
 namespace WINML_EXPERIMENTALP {
 
 LearningModelExperimental::LearningModelExperimental(Microsoft::AI::MachineLearning::LearningModel const& model)
-    : model_(model) {
+  : model_(model) {
 }
 
 winml::LearningModel LearningModelExperimental::JoinModel(

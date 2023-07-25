@@ -67,12 +67,14 @@ ORT_API_STATUS_IMPL(
           // TODO Instead of returning an error, should we set mem pattern to false here and log a warning saying so?
           // Doing so would be inconsistent with the Python API that doesn't go through this code path.
           return OrtApis::CreateStatus(
-            ORT_INVALID_ARGUMENT, "Mem pattern should be disabled when using DML execution provider."
+            ORT_INVALID_ARGUMENT,
+            "Mem pattern should be disabled when using DML execution provider."
           );
         }
         if (options->value.execution_mode != ExecutionMode::ORT_SEQUENTIAL) {
           return OrtApis::CreateStatus(
-            ORT_INVALID_ARGUMENT, "Sequential execution should be enabled when using DML execution provider."
+            ORT_INVALID_ARGUMENT,
+            "Sequential execution should be enabled when using DML execution provider."
           );
         }
       }
@@ -312,7 +314,8 @@ ORT_API_STATUS_IMPL(
   for (auto freeDimOverride : session_options.free_dimension_overrides) {
     if (freeDimOverride.dim_identifer_type == onnxruntime::FreeDimensionOverrideType::Name) {
       override_map.Insert(
-        winrt::to_hstring(freeDimOverride.dim_identifier), static_cast<uint32_t>(freeDimOverride.dim_value)
+        winrt::to_hstring(freeDimOverride.dim_identifier),
+        static_cast<uint32_t>(freeDimOverride.dim_value)
       );
     }
   }

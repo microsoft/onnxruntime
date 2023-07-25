@@ -25,6 +25,6 @@ struct LearningModelExperimental : LearningModelExperimentalT<LearningModelExper
 namespace WINML_EXPERIMENTAL::factory_implementation {
 
 struct LearningModelExperimental
-    : LearningModelExperimentalT<LearningModelExperimental, implementation::LearningModelExperimental> {};
+  : LearningModelExperimentalT<LearningModelExperimental, implementation::LearningModelExperimental> {};
 
 }// namespace WINML_EXPERIMENTAL::factory_implementation

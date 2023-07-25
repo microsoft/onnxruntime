@@ -21,17 +21,17 @@ ImageFeatureDescriptor::ImageFeatureDescriptor(
   winml::LearningModelPixelRange pixel_range,
   ImageColorSpaceGamma color_space_gamma
 )
-    : name_(_winml::Strings::HStringFromUTF8(name)),
-      description_(_winml::Strings::HStringFromUTF8(description)),
-      tensor_kind_(tensor_kind),
-      shape_(shape),
-      is_required_(is_required),
-      pixel_format_(pixel_format),
-      alpha_mode_(alpha_mode),
-      width_(width),
-      height_(height),
-      pixel_range_(pixel_range),
-      color_space_gamma_(color_space_gamma) {
+  : name_(_winml::Strings::HStringFromUTF8(name)),
+    description_(_winml::Strings::HStringFromUTF8(description)),
+    tensor_kind_(tensor_kind),
+    shape_(shape),
+    is_required_(is_required),
+    pixel_format_(pixel_format),
+    alpha_mode_(alpha_mode),
+    width_(width),
+    height_(height),
+    pixel_range_(pixel_range),
+    color_space_gamma_(color_space_gamma) {
 }
 
 wgi::BitmapPixelFormat ImageFeatureDescriptor::BitmapPixelFormat() try { return pixel_format_; }

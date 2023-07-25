@@ -115,7 +115,8 @@ class ModelInfo {
 };
 
 OrtModel::OrtModel(std::unique_ptr<ONNX_NAMESPACE::ModelProto> model_proto)
-    : model_proto_(std::move(model_proto)), model_info_(std::make_unique<ModelInfo>(model_proto_.get())) {
+  : model_proto_(std::move(model_proto)),
+    model_info_(std::make_unique<ModelInfo>(model_proto_.get())) {
 }
 
 // factory methods for creating an ort model from a path
@@ -127,7 +128,11 @@ static OrtStatus* CreateModelProto(const char* path, std::unique_ptr<ONNX_NAMESP
 
   _set_errno(0);  // clear errno
   _wsopen_s(
-    &file_descriptor, wide_path.c_str(), O_RDONLY | _O_SEQUENTIAL | _O_BINARY, _SH_DENYWR, _S_IREAD | _S_IWRITE
+    &file_descriptor,
+    wide_path.c_str(),
+    O_RDONLY | _O_SEQUENTIAL | _O_BINARY,
+    _SH_DENYWR,
+    _S_IREAD | _S_IWRITE
   );
 
   errno_t err = 0;
@@ -899,7 +904,9 @@ ORT_API_STATUS_IMPL(
   params.set_denormal_as_zero = options->set_denormal_as_zero;
 
   auto unique_tp = onnxruntime::concurrency::CreateThreadPool(
-    &onnxruntime::Env::Default(), params, (onnxruntime::concurrency::ThreadPoolType)type
+    &onnxruntime::Env::Default(),
+    params,
+    (onnxruntime::concurrency::ThreadPoolType)type
   );
   *out = reinterpret_cast<OrtThreadPool*>(unique_tp.release());
   return nullptr;

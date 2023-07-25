@@ -198,7 +198,10 @@ Ort::Value CreateOrtValueFromITensor(winml::ITensor winmlTensor) {
     Ort::AllocatorWithDefaultOptions allocator;
     WINML_EXPECT_NO_THROW(
       ortValueCreated = Ort::Value::CreateTensor(
-        allocator, shape.data(), shape.size(), ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING
+        allocator,
+        shape.data(),
+        shape.size(),
+        ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING
       )
     );
     std::vector<const char*> strData;

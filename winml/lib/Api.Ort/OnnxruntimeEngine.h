@@ -19,7 +19,7 @@ class OnnxruntimeThreading;
 struct IOrtSessionBuilder;
 
 class OnnxruntimeValue
-    : public Microsoft::WRL::RuntimeClass<Microsoft::WRL::RuntimeClassFlags<Microsoft::WRL::ClassicCom>, IValue> {
+  : public Microsoft::WRL::RuntimeClass<Microsoft::WRL::RuntimeClassFlags<Microsoft::WRL::ClassicCom>, IValue> {
  public:
   OnnxruntimeValue();
   ~OnnxruntimeValue();
@@ -58,7 +58,7 @@ class OnnxruntimeValue
 };
 
 class OnnxruntimeEngine
-    : public Microsoft::WRL::RuntimeClass<Microsoft::WRL::RuntimeClassFlags<Microsoft::WRL::ClassicCom>, IEngine> {
+  : public Microsoft::WRL::RuntimeClass<Microsoft::WRL::RuntimeClassFlags<Microsoft::WRL::ClassicCom>, IEngine> {
  public:
   OnnxruntimeEngine();
   ~OnnxruntimeEngine();
@@ -134,9 +134,8 @@ class OnnxruntimeEngine
   OrtSession* UseOrtSession();
   const OrtApi* UseOrtApi();
   OnnxruntimeEngineFactory* GetEngineFactory();
-  HRESULT CreateTensorValueFromDefaultAllocator(
-    const int64_t* shape, size_t count, winml::TensorKind kind, _Out_ IValue** out
-  );
+  HRESULT
+  CreateTensorValueFromDefaultAllocator(const int64_t* shape, size_t count, winml::TensorKind kind, _Out_ IValue** out);
 
   HRESULT RegisterCustomOpLibraryHandles(const gsl::span<void*> handles);
 
@@ -148,8 +147,7 @@ class OnnxruntimeEngine
 };
 
 class OnnxruntimeEngineFactory
-    : public Microsoft::WRL::
-        RuntimeClass<Microsoft::WRL::RuntimeClassFlags<Microsoft::WRL::ClassicCom>, IEngineFactory> {
+  : public Microsoft::WRL::RuntimeClass<Microsoft::WRL::RuntimeClassFlags<Microsoft::WRL::ClassicCom>, IEngineFactory> {
  public:
   HRESULT RuntimeClassInitialize();
   STDMETHOD(CreateModel)
@@ -190,7 +188,7 @@ class OnnxruntimeEngineFactory
 };
 
 class OnnxruntimeThreading
-    : public Microsoft::WRL::RuntimeClass<Microsoft::WRL::RuntimeClassFlags<Microsoft::WRL::ClassicCom>, IThreading> {
+  : public Microsoft::WRL::RuntimeClass<Microsoft::WRL::RuntimeClassFlags<Microsoft::WRL::ClassicCom>, IThreading> {
  public:
   OnnxruntimeThreading();
   ~OnnxruntimeThreading();

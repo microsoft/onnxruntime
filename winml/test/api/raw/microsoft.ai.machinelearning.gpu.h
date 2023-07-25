@@ -20,7 +20,7 @@ struct directx_device : public learning_model_device {
   directx_device(directx_device_kind kind) : learning_model_device(create_device(kind)) {}
 
   directx_device(ABI::Windows::Graphics::DirectX::Direct3D11::IDirect3DDevice* d3dDevice)
-      : learning_model_device(create_device(d3dDevice)) {}
+    : learning_model_device(create_device(d3dDevice)) {}
 
   directx_device(ID3D12CommandQueue* queue) : learning_model_device(create_device(queue)) {}
 

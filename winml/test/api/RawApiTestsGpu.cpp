@@ -82,7 +82,9 @@ ml::learning_model_device CreateDevice(DeviceType deviceType) {
       D3D12_COMMAND_QUEUE_DESC commandQueueDesc = {};
       commandQueueDesc.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
       d3d12Device->CreateCommandQueue(
-        &commandQueueDesc, __uuidof(ID3D12CommandQueue), reinterpret_cast<void**>(queue.GetAddressOf())
+        &commandQueueDesc,
+        __uuidof(ID3D12CommandQueue),
+        reinterpret_cast<void**>(queue.GetAddressOf())
       );
 
       return ml::gpu::directx_device(queue.Get());
