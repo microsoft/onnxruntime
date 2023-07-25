@@ -25,21 +25,11 @@ void RunOnDevice(ml::learning_model& model, ml::learning_model_device& device, I
 
   if (strategy == InputStrategy::CopyInputs) {
     WINML_EXPECT_HRESULT_SUCCEEDED(binding->bind<float>(
-      input_name,
-      _countof(input_name) - 1,
-      input_shape.data(),
-      input_shape.size(),
-      input_data.data(),
-      input_data.size()
+      input_name, _countof(input_name) - 1, input_shape.data(), input_shape.size(), input_data.data(), input_data.size()
     ));
   } else if (strategy == InputStrategy::BindAsReference) {
     WINML_EXPECT_HRESULT_SUCCEEDED(binding->bind_as_reference<float>(
-      input_name,
-      _countof(input_name) - 1,
-      input_shape.data(),
-      input_shape.size(),
-      input_data.data(),
-      input_data.size()
+      input_name, _countof(input_name) - 1, input_shape.data(), input_shape.size(), input_data.data(), input_data.size()
     ));
   } else if (strategy == InputStrategy::BindWithMultipleReferences) {
     size_t channel_size = 224 * 224;

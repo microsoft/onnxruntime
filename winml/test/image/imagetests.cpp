@@ -403,9 +403,7 @@ TEST_P(ImageTest, ImageTest) {
     return;
 
   VideoFrame output_video_frame = BindImageOutput(
-    param.model_input_output_type,
-    param.output_binding_strategy,
-    std::wstring(param.model_pixel_format)
+    param.model_input_output_type, param.output_binding_strategy, std::wstring(param.model_pixel_format)
   );
 
   EvaluateTest(param.evaluation_strategy);
@@ -488,9 +486,9 @@ TEST_P(BatchTest, BatchSupport) {
     return;
   }
   if (LearningModelDeviceKind::Cpu != param.device_kind ||
-      VideoFrameSource::FromDirect3DSurface == param.video_frame_source ||
-      VideoFrameSource::FromDirect3DSurface == param.output_video_frame_source ||
-      VideoFrameSource::FromUnsupportedD3DSurface == param.output_video_frame_source) {
+        VideoFrameSource::FromDirect3DSurface == param.video_frame_source ||
+        VideoFrameSource::FromDirect3DSurface == param.output_video_frame_source ||
+        VideoFrameSource::FromUnsupportedD3DSurface == param.output_video_frame_source) {
     GPUTEST;
   }
 
@@ -558,7 +556,7 @@ TEST_P(BatchTest, BatchSupport) {
     for (int i = 0; i < param.batch_size; ++i) {
       std::wstring bm_image_path = FileHelpers::GetModulePath() + L"batchGroundTruth\\" + param.input_images[i];
       if (VideoFrameSource::FromSoftwareBitmap != param.output_video_frame_source &&
-          OutputBindingStrategy::Unbound != param.output_binding_strategy) {
+                OutputBindingStrategy::Unbound != param.output_binding_strategy) {
         VideoFrame D3D_video_frame = output_video_frames.GetAt(i);
         VideoFrame SB_video_frame(BitmapPixelFormat::Bgra8, 720, 720);
         D3D_video_frame.as<IVideoFrame>().CopyToAsync(SB_video_frame).get();
@@ -633,8 +631,7 @@ TEST_F(ImageTests, LoadBindModelWithoutImageMetadata) {
 
   // Should work on tensors
   auto tensor = TensorFloat::CreateFromIterable(
-    {1, 3, 227, 227},
-    winrt::single_threaded_vector<float>(std::vector<float>(3 * 227 * 227))
+    {1, 3, 227, 227}, winrt::single_threaded_vector<float>(std::vector<float>(3 * 227 * 227))
   );
   model_binding.Bind(L"data", tensor);
 }
@@ -653,8 +650,7 @@ TEST_F(ImageTests, LoadInvalidBindModelWithoutImageMetadata) {
 
   // expect fail if tensor is of wrong type
   auto tensor_uint8 = TensorUInt8Bit::CreateFromIterable(
-    {1, 3, 227, 227},
-    winrt::single_threaded_vector<uint8_t>(std::vector<uint8_t>(3 * 227 * 227))
+    {1, 3, 227, 227}, winrt::single_threaded_vector<uint8_t>(std::vector<uint8_t>(3 * 227 * 227))
   );
   WINML_EXPECT_THROW_SPECIFIC(
     model_binding.Bind(L"data", tensor_uint8),
@@ -664,8 +660,7 @@ TEST_F(ImageTests, LoadInvalidBindModelWithoutImageMetadata) {
 
   // Should fail if tensor has smaller dimensions/type
   auto tensor = TensorFloat::CreateFromIterable(
-    {1, 3, 22, 22},
-    winrt::single_threaded_vector<float>(std::vector<float>(3 * 22 * 22))
+    {1, 3, 22, 22}, winrt::single_threaded_vector<float>(std::vector<float>(3 * 22 * 22))
   );
   WINML_EXPECT_THROW_SPECIFIC(
     model_binding.Bind(L"data", tensor),
@@ -914,16 +909,14 @@ TEST_F(ImageTests, ImageBindingAsGPUTensor) {
 
   ID3D12Device* D3D12_device = nullptr;
   WINML_EXPECT_NO_THROW(D3D12CreateDevice(
-    nullptr,
-    D3D_FEATURE_LEVEL::D3D_FEATURE_LEVEL_11_0,
-    __uuidof(ID3D12Device),
-    reinterpret_cast<void**>(&D3D12_device)
+    nullptr, D3D_FEATURE_LEVEL::D3D_FEATURE_LEVEL_11_0, __uuidof(ID3D12Device), reinterpret_cast<void**>(&D3D12_device)
   ));
   ID3D12CommandQueue* dx_queue = nullptr;
   D3D12_COMMAND_QUEUE_DESC command_queue_desc = {};
   command_queue_desc.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
-  D3D12_device
-    ->CreateCommandQueue(&command_queue_desc, __uuidof(ID3D12CommandQueue), reinterpret_cast<void**>(&dx_queue));
+  D3D12_device->CreateCommandQueue(
+    &command_queue_desc, __uuidof(ID3D12CommandQueue), reinterpret_cast<void**>(&dx_queue)
+  );
   auto device_factory = get_activation_factory<LearningModelDevice, ILearningModelDeviceFactoryNative>();
   auto tensor_factory = get_activation_factory<TensorFloat, ITensorStaticsNative>();
 
@@ -945,8 +938,8 @@ TEST_F(ImageTests, ImageBindingAsGPUTensor) {
 
   UINT64 buffer_byte_size =
     static_cast<uint64_t>(software_bitmap.PixelWidth()) * software_bitmap.PixelHeight() * 3 * sizeof(float);
-  D3D12_HEAP_PROPERTIES heap_properties =
-    {D3D12_HEAP_TYPE_DEFAULT, D3D12_CPU_PAGE_PROPERTY_UNKNOWN, D3D12_MEMORY_POOL_UNKNOWN, 0, 0};
+  D3D12_HEAP_PROPERTIES heap_properties = {
+    D3D12_HEAP_TYPE_DEFAULT, D3D12_CPU_PAGE_PROPERTY_UNKNOWN, D3D12_MEMORY_POOL_UNKNOWN, 0, 0};
   D3D12_RESOURCE_DESC resource_desc = {
     D3D12_RESOURCE_DIMENSION_BUFFER,
     0,
@@ -1038,10 +1031,7 @@ static void BindInputToSession(
   } else {
     DirectXPixelFormat format = DirectXPixelFormat::B8G8R8X8UIntNormalized;
     VideoFrame gpu_video_frame = VideoFrame::CreateAsDirect3D11SurfaceBacked(
-      format,
-      software_bitmap.PixelWidth(),
-      software_bitmap.PixelHeight(),
-      session.Device().Direct3D11Device()
+      format, software_bitmap.PixelWidth(), software_bitmap.PixelHeight(), session.Device().Direct3D11Device()
     );
     cpu_video_frame.CopyToAsync(gpu_video_frame).get();
     ImageFeatureValue input_image_feature_value = ImageFeatureValue::CreateFromVideoFrame(gpu_video_frame);

@@ -69,8 +69,7 @@ void ImageConverter::ResetCommandList(_In_ D3DDeviceCache& device_cache) {
     assert(command_allocator_ == nullptr);
 
     WINML_THROW_IF_FAILED(device_cache.GetD3D12Device()->CreateCommandAllocator(
-      device_cache.GetCommandQueue()->GetDesc().Type,
-      IID_PPV_ARGS(command_allocator_.ReleaseAndGetAddressOf())
+      device_cache.GetCommandQueue()->GetDesc().Type, IID_PPV_ARGS(command_allocator_.ReleaseAndGetAddressOf())
     ));
 
     WINML_THROW_IF_FAILED(device_cache.GetD3D12Device()->CreateCommandList(
@@ -139,12 +138,7 @@ void ImageConverter::CopyTextureIntoTexture(
   if (textureFromDesc.Width != textureToDesc.Width || textureFromDesc.Height != textureToDesc.Height) {
     // We can't copy the whole resource, so we have to use the slower CopySubresource() function
     D3D11_BOX cropBox = CD3D11_BOX(
-      inputBounds.X,
-      inputBounds.Y,
-      0,
-      inputBounds.X + inputBounds.Width,
-      inputBounds.Y + inputBounds.Height,
-      1
+      inputBounds.X, inputBounds.Y, 0, inputBounds.X + inputBounds.Width, inputBounds.Y + inputBounds.Height, 1
     );
     spDeviceContext->CopySubresourceRegion(pTextureTo, 0, 0, 0, 0, pTextureFrom, 0, &cropBox);
   } else {

@@ -106,11 +106,7 @@ struct NoisyReluOperatorFactory : winrt::implements<NoisyReluOperatorFactory, IM
       context->GetAttribute("mean", MLOperatorAttributeType::Float, 1, sizeof(float), reinterpret_cast<void*>(&mean));
       float variance;
       context->GetAttribute(
-        "variance",
-        MLOperatorAttributeType::Float,
-        1,
-        sizeof(float),
-        reinterpret_cast<void*>(&variance)
+        "variance", MLOperatorAttributeType::Float, 1, sizeof(float), reinterpret_cast<void*>(&variance)
       );
 
       auto noisyReluOperator = winrt::make<NoisyReluOperator>(mean, variance);
@@ -198,19 +194,13 @@ struct NoisyReluOperatorFactory : winrt::implements<NoisyReluOperatorFactory, IM
     noisyReluVarianceAttributeValue.floats = defaultVariance;
 
     std::vector<MLOperatorAttributeNameValue> attributeDefaultValues{
-      noisyReluMeanAttributeValue,
-      noisyReluVarianceAttributeValue};
+      noisyReluMeanAttributeValue, noisyReluVarianceAttributeValue};
     noisyReluSchema.defaultAttributes = attributeDefaultValues.data();
     noisyReluSchema.defaultAttributeCount = static_cast<uint32_t>(attributeDefaultValues.size());
 
     std::vector<const MLOperatorSchemaDescription*> schemas{&noisyReluSchema};
     registry->RegisterOperatorSetSchema(
-      &operatorSetId,
-      6 /* baseline version */,
-      schemas.data(),
-      static_cast<uint32_t>(schemas.size()),
-      nullptr,
-      nullptr
+      &operatorSetId, 6 /* baseline version */, schemas.data(), static_cast<uint32_t>(schemas.size()), nullptr, nullptr
     );
   }
 
@@ -249,8 +239,7 @@ struct NoisyReluOperatorFactory : winrt::implements<NoisyReluOperatorFactory, IM
     noisyReluVarianceAttributeValue.floats = defaultVariance;
 
     std::vector<MLOperatorAttributeNameValue> attributeDefaultValues{
-      noisyReluMeanAttributeValue,
-      noisyReluVarianceAttributeValue};
+      noisyReluMeanAttributeValue, noisyReluVarianceAttributeValue};
     kernelDescription.defaultAttributes = attributeDefaultValues.data();
     kernelDescription.defaultAttributeCount = static_cast<uint32_t>(attributeDefaultValues.size());
     kernelDescription.options = MLOperatorKernelOptions::None;

@@ -288,8 +288,7 @@ wgdx::Direct3D11::IDirect3DDevice _winmli::GetDeviceFromDirect3DSurface(
 
   wgdx::Direct3D11::IDirect3DDevice d3dDevice;
   WINML_THROW_IF_FAILED(spInspectable->QueryInterface(
-    winrt::guid_of<wgdx::Direct3D11::IDirect3DDevice>(),
-    reinterpret_cast<void**>(winrt::put_abi(d3dDevice))
+    winrt::guid_of<wgdx::Direct3D11::IDirect3DDevice>(), reinterpret_cast<void**>(winrt::put_abi(d3dDevice))
   ));
 
   return d3dDevice;

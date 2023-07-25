@@ -113,9 +113,7 @@ struct TensorBase : TBase {
     auto session = context.session.as<winmlp::LearningModelSession>();
     auto device = session->Device().as<winmlp::LearningModelDevice>();
     WINML_THROW_HR_IF_TRUE_MSG(
-      WINML_ERR_INVALID_BINDING,
-      device->IsCpuDevice(),
-      "Cannot create GPU tensor on CPU device"
+      WINML_ERR_INVALID_BINDING, device->IsCpuDevice(), "Cannot create GPU tensor on CPU device"
     );
 
     auto engine = session->GetEngine();
@@ -179,10 +177,7 @@ struct TensorBase : TBase {
 
           context.converter = _winml::PoolObjectWrapper::Create(device->TensorizerStore()->Fetch(descriptor));
           context.converter->Get()->Tensorizer->ConvertBuffersToBatchedGPUTensor(
-            CpuTensor()->buffers(),
-            CpuTensor()->size_in_bytes(),
-            *device->GetD3DDeviceCache(),
-            GpuTensor().get()
+            CpuTensor()->buffers(), CpuTensor()->size_in_bytes(), *device->GetD3DDeviceCache(), GpuTensor().get()
           );
 
           return CreateGPUMLValue(GpuTensor().get(), context, out);
@@ -221,8 +216,8 @@ struct TensorBase : TBase {
       bufferByteSize += 4 - (bufferByteSize % 4);
     }
 
-    D3D12_HEAP_PROPERTIES heapProperties =
-      {D3D12_HEAP_TYPE_DEFAULT, D3D12_CPU_PAGE_PROPERTY_UNKNOWN, D3D12_MEMORY_POOL_UNKNOWN, 0, 0};
+    D3D12_HEAP_PROPERTIES heapProperties = {
+      D3D12_HEAP_TYPE_DEFAULT, D3D12_CPU_PAGE_PROPERTY_UNKNOWN, D3D12_MEMORY_POOL_UNKNOWN, 0, 0};
     D3D12_RESOURCE_DESC resourceDesc = {
       D3D12_RESOURCE_DIMENSION_BUFFER,
       0,
@@ -268,9 +263,7 @@ struct TensorBase : TBase {
   STDMETHOD(GetValue)
   (_winml::BindingContext& context, IValue** out) {
     RETURN_HR_IF_NULL_MSG(
-      WINML_ERR_INVALID_BINDING,
-      resources_,
-      "The tensor has been closed and its resources have been detached!"
+      WINML_ERR_INVALID_BINDING, resources_, "The tensor has been closed and its resources have been detached!"
     );
 
     EnsureBufferNotInUse();
@@ -354,11 +347,7 @@ struct TensorBase : TBase {
 
     RETURN_IF_FAILED_MSG(
       engine->CreateStringTensorValueFromDataWithCopy(
-        raw_values.data(),
-        raw_values.size(),
-        CpuTensor()->shape().data(),
-        CpuTensor()->shape().size(),
-        value
+        raw_values.data(), raw_values.size(), CpuTensor()->shape().data(), CpuTensor()->shape().size(), value
       ),
       "Failed to prepare buffer for copy back from device resource."
     );
@@ -442,10 +431,7 @@ struct TensorBase : TBase {
         auto pooled_converter = _winml::PoolObjectWrapper::Create(device->DetensorizerStore()->Fetch(descriptor));
         auto d3dResource = reinterpret_cast<ID3D12Resource*>(updated_resource.get());
         pooled_converter->Get()->Detensorizer->ConvertBatchedDX12TensorToBuffers(
-          d3dResource,
-          buffer_size_in_bytes,
-          *device->GetD3DDeviceCache(),
-          CpuTensor()->buffers()
+          d3dResource, buffer_size_in_bytes, *device->GetD3DDeviceCache(), CpuTensor()->buffers()
         );
 
         // Reset the Allocator before return to the Cache. Must Sync this background thread to that completion before we do.
@@ -690,15 +676,11 @@ struct TensorBase : TBase {
   (BYTE** value, UINT32* capacity) {
     // This Api is not supported for TensorString
     RETURN_HR_IF_MSG(
-      ERROR_INVALID_FUNCTION,
-      (std::is_same_v<T, std::string>),
-      "TensorString objects cannot return byte buffers!"
+      ERROR_INVALID_FUNCTION, (std::is_same_v<T, std::string>), "TensorString objects cannot return byte buffers!"
     );
 
     RETURN_HR_IF_NULL_MSG(
-      E_ILLEGAL_METHOD_CALL,
-      resources_,
-      "The tensor has been closed and its resources have been detached!"
+      E_ILLEGAL_METHOD_CALL, resources_, "The tensor has been closed and its resources have been detached!"
     );
 
     return resources_->GetBuffer(shape_, value, capacity);
@@ -711,9 +693,7 @@ struct TensorBase : TBase {
       // This Api is not supported for TensorString
       RETURN_HR_IF(ERROR_INVALID_FUNCTION, (std::is_same<T, std::string>::value));
       RETURN_HR_IF_NULL_MSG(
-        E_ILLEGAL_METHOD_CALL,
-        resources_,
-        "The tensor has been closed and its resources have been detached!"
+        E_ILLEGAL_METHOD_CALL, resources_, "The tensor has been closed and its resources have been detached!"
       );
 
       GpuTensor().copy_to(ppResource);
@@ -842,9 +822,7 @@ struct TensorBase : TBase {
   (bool* pIsPlaceHolder) {
     RETURN_HR_IF_NULL(E_POINTER, pIsPlaceHolder);
     RETURN_HR_IF_NULL_MSG(
-      E_ILLEGAL_METHOD_CALL,
-      resources_,
-      "The tensor has been closed and its resources have been detached!"
+      E_ILLEGAL_METHOD_CALL, resources_, "The tensor has been closed and its resources have been detached!"
     );
 
     *pIsPlaceHolder = CpuTensor() == nullptr && GpuTensor() == nullptr;
@@ -1072,9 +1050,7 @@ struct TensorBase : TBase {
 
   std::shared_ptr<_winml::Tensor<T>>& CpuTensor() {
     WINML_THROW_HR_IF_NULL_MSG(
-      E_ILLEGAL_METHOD_CALL,
-      resources_,
-      "The tensor has been closed and its resources are detached!"
+      E_ILLEGAL_METHOD_CALL, resources_, "The tensor has been closed and its resources are detached!"
     );
 
     return resources_->cpu_resource_;
@@ -1082,9 +1058,7 @@ struct TensorBase : TBase {
 
   winrt::com_ptr<ID3D12Resource>& GpuTensor() {
     WINML_THROW_HR_IF_NULL_MSG(
-      E_ILLEGAL_METHOD_CALL,
-      resources_,
-      "The tensor has been closed and its resources are detached!"
+      E_ILLEGAL_METHOD_CALL, resources_, "The tensor has been closed and its resources are detached!"
     );
 
     return resources_->gpu_resource_;

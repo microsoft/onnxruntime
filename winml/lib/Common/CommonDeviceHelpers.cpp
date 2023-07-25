@@ -65,8 +65,8 @@ HRESULT GetDXCoreAdapterMetadata(
   RETURN_IF_FAILED(spFactory->GetAdapterByLuid(device.GetAdapterLuid(), IID_PPV_ARGS(spAdapter.put())));
 
   if (spAdapter->IsAttributeSupported(DXCORE_ADAPTER_ATTRIBUTE_D3D12_CORE_COMPUTE) &&
-      (!(spAdapter->IsAttributeSupported(DXCORE_ADAPTER_ATTRIBUTE_D3D12_GRAPHICS) ||
-         spAdapter->IsAttributeSupported(DXCORE_ADAPTER_ATTRIBUTE_D3D11_GRAPHICS)))) {
+        (!(spAdapter->IsAttributeSupported(DXCORE_ADAPTER_ATTRIBUTE_D3D12_GRAPHICS) ||
+           spAdapter->IsAttributeSupported(DXCORE_ADAPTER_ATTRIBUTE_D3D11_GRAPHICS)))) {
     isMcdmAdapter = true;
   } else {
     isMcdmAdapter = false;
@@ -169,11 +169,7 @@ bool IsFloat16Supported(ID3D12Device* device) {
   DML_FEATURE_DATA_TENSOR_DATA_TYPE_SUPPORT float16Data = {};
 
   winrt::check_hresult(dmlDevice->CheckFeatureSupport(
-    DML_FEATURE_TENSOR_DATA_TYPE_SUPPORT,
-    sizeof(float16Query),
-    &float16Query,
-    sizeof(float16Data),
-    &float16Data
+    DML_FEATURE_TENSOR_DATA_TYPE_SUPPORT, sizeof(float16Query), &float16Query, sizeof(float16Data), &float16Data
   ));
   return float16Data.IsSupported;
 #endif

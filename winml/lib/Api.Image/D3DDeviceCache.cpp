@@ -213,8 +213,7 @@ void D3DDeviceCache::EnsureD3D11FromD3D12() {
   // Convert to Winrt wrapper. This doesn't actually make a new device.
   WINML_THROW_IF_FAILED(CreateDirect3D11DeviceFromDXGIDevice(spDXGIDevice.get(), spInspectable.put()));
   WINML_THROW_IF_FAILED(spInspectable->QueryInterface(
-    winrt::guid_of<wgdx::Direct3D11::IDirect3DDevice>(),
-    reinterpret_cast<void**>(winrt::put_abi(winrt_device_))
+    winrt::guid_of<wgdx::Direct3D11::IDirect3DDevice>(), reinterpret_cast<void**>(winrt::put_abi(winrt_device_))
   ));
 }
 
@@ -342,16 +341,10 @@ ID3D12RootSignature* D3DDeviceCache::GetTensorizeRootSignature() {
       winrt::com_ptr<ID3DBlob> signature;
       winrt::com_ptr<ID3DBlob> error;
       WINML_THROW_IF_FAILED(D3DX12SerializeVersionedRootSignature(
-        &computeRootSignatureDesc,
-        featureData.HighestVersion,
-        signature.put(),
-        error.put()
+        &computeRootSignatureDesc, featureData.HighestVersion, signature.put(), error.put()
       ));
       WINML_THROW_IF_FAILED(device_->CreateRootSignature(
-        0,
-        signature->GetBufferPointer(),
-        signature->GetBufferSize(),
-        IID_PPV_ARGS(newRootSignature.put())
+        0, signature->GetBufferPointer(), signature->GetBufferSize(), IID_PPV_ARGS(newRootSignature.put())
       ));
       newRootSignature->SetName(L"Tensorize Rootsignature");
     }
@@ -400,16 +393,10 @@ ID3D12RootSignature* D3DDeviceCache::GetDetensorizeRootSignature() {
       winrt::com_ptr<ID3DBlob> signature;
       winrt::com_ptr<ID3DBlob> error;
       WINML_THROW_IF_FAILED(D3DX12SerializeVersionedRootSignature(
-        &rootSignatureDesc,
-        featureData.HighestVersion,
-        signature.put(),
-        error.put()
+        &rootSignatureDesc, featureData.HighestVersion, signature.put(), error.put()
       ));
       WINML_THROW_IF_FAILED(device_->CreateRootSignature(
-        0,
-        signature->GetBufferPointer(),
-        signature->GetBufferSize(),
-        IID_PPV_ARGS(newRootSignature.put())
+        0, signature->GetBufferPointer(), signature->GetBufferSize(), IID_PPV_ARGS(newRootSignature.put())
       ));
       newRootSignature->SetName(L"Detensorize Rootsignature");
     }
@@ -438,12 +425,12 @@ ID3D12PipelineState* D3DDeviceCache::GetCachedPipelineState(
     }
 
     if (InterlockedCompareExchangePointer(
-            cached_pipeline_state[static_cast<int>(type)][static_cast<int>(formatFrom)][static_cast<int>(formatTo)]
-                                 [static_cast<int>(operation)]
-                                     .put_void(),
-            newPSO.get(),
-            nullptr
-        ) == nullptr) {
+                cached_pipeline_state[static_cast<int>(type)][static_cast<int>(formatFrom)][static_cast<int>(formatTo)]
+                                     [static_cast<int>(operation)]
+                                         .put_void(),
+                newPSO.get(),
+                nullptr
+            ) == nullptr) {
       // This thread won the race and just cached the PSO
       newPSO.detach();
     }
@@ -680,9 +667,7 @@ HANDLE D3DDeviceCache::GetConverterFenceHandle() {
   // Lazily create the fence since we may never need to use it
   if (!converter_fence_) {
     WINML_THROW_IF_FAILED(device_->CreateFence(
-      0,
-      D3D12_FENCE_FLAG_SHARED | D3D12_FENCE_FLAG_SHARED_CROSS_ADAPTER,
-      IID_PPV_ARGS(converter_fence_.put())
+      0, D3D12_FENCE_FLAG_SHARED | D3D12_FENCE_FLAG_SHARED_CROSS_ADAPTER, IID_PPV_ARGS(converter_fence_.put())
     ));
 
     HANDLE hSharedFence;

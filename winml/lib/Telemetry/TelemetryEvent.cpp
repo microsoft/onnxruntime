@@ -26,9 +26,7 @@ static const char* EventCategoryToString(EventCategory category) {
 
 TelemetryEvent::TelemetryEvent(EventCategory category) {
   auto is_provider_enabled = TraceLoggingProviderEnabled(
-    winml_trace_logging_provider,
-    WINEVENT_LEVEL_VERBOSE,
-    WINML_PROVIDER_KEYWORD_START_STOP
+    winml_trace_logging_provider, WINEVENT_LEVEL_VERBOSE, WINML_PROVIDER_KEYWORD_START_STOP
   );
 
   if (is_provider_enabled) {

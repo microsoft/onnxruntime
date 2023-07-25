@@ -69,9 +69,7 @@ gsl::span<byte> numeric_data::buffer(bool should_sync_buffer) {
   auto span = combined_buffer();
   if (should_sync_buffer) {
     _winml::LoadSpanFromDisjointBuffers(
-      buffers_.size(),
-      [this](size_t i) { return buffer_at(i); },
-      span
+      buffers_.size(), [this](size_t i) { return buffer_at(i); }, span
     );
   }
 
@@ -83,9 +81,7 @@ bool numeric_data::flush() {
   if (should_flush) {
     auto span = combined_buffer();
     _winml::StoreSpanIntoDisjointBuffers(
-      buffers_.size(),
-      [this](size_t i) { return buffer_at(i); },
-      span
+      buffers_.size(), [this](size_t i) { return buffer_at(i); }, span
     );
   }
   return should_flush;
@@ -102,9 +98,7 @@ void numeric_data::set(size_t data_size, const byte* data) {
 
   gsl::span<byte> span(const_cast<byte*>(data), data_size);
   _winml::StoreSpanIntoDisjointBuffers(
-    buffers_.size(),
-    [this](size_t i) { return buffer_at(i); },
-    span
+    buffers_.size(), [this](size_t i) { return buffer_at(i); }, span
   );
 }
 

@@ -102,21 +102,13 @@ static void CustomOperatorFusion() {
 
       REGISTER_KERNEL(Conv, onnxruntime::kOnnxDomain, OnnxOperatorSet7, ConvHelper, &m_callCounts.conv);
       REGISTER_KERNEL(
-        Relu,
-        onnxruntime::kOnnxDomain,
-        OnnxOperatorSet7,
-        GetOutputShapeAsInputShapeHelper,
-        &m_callCounts.relu
+        Relu, onnxruntime::kOnnxDomain, OnnxOperatorSet7, GetOutputShapeAsInputShapeHelper, &m_callCounts.relu
       );
       REGISTER_KERNEL(DmlFusedConv, onnxruntime::kMSDmlDomain, MsftOperatorSet1, ConvHelper, &m_callCounts.fusedConv);
 
       REGISTER_KERNEL(Gemm, onnxruntime::kOnnxDomain, OnnxOperatorSet7, GemmHelper, &m_callCounts.gemm);
       REGISTER_KERNEL(
-        Sigmoid,
-        onnxruntime::kOnnxDomain,
-        OnnxOperatorSet7,
-        GetOutputShapeAsInputShapeHelper,
-        &m_callCounts.sigmoid
+        Sigmoid, onnxruntime::kOnnxDomain, OnnxOperatorSet7, GetOutputShapeAsInputShapeHelper, &m_callCounts.sigmoid
       );
       REGISTER_KERNEL(DmlFusedGemm, onnxruntime::kMSDmlDomain, MsftOperatorSet1, GemmHelper, &m_callCounts.fusedGemm);
 
@@ -231,8 +223,7 @@ void VerifyTestAttributes(const MLOperatorAttributes& attrs) {
 
   WINML_EXPECT_EQUAL(std::vector<int64_t>({1, 2}), attrs.GetAttributeVector<int64_t>("DefaultedNonRequiredIntArray"));
   WINML_EXPECT_EQUAL(
-    std::vector<float>({1.0f, 2.0f}),
-    attrs.GetAttributeVector<float>("DefaultedNonRequiredFloatArray")
+    std::vector<float>({1.0f, 2.0f}), attrs.GetAttributeVector<float>("DefaultedNonRequiredFloatArray")
   );
 }
 
@@ -314,8 +305,7 @@ static void CustomKernelWithBuiltInSchema() {
 
   // Register the kernel
   MLOperatorEdgeDescription floatTensorType = {
-    MLOperatorEdgeType::Tensor,
-    static_cast<uint64_t>(MLOperatorTensorDataType::Float)};
+    MLOperatorEdgeType::Tensor, static_cast<uint64_t>(MLOperatorTensorDataType::Float)};
 
   MLOperatorEdgeTypeConstrant constraint = {"T", &floatTensorType, 1};
 
@@ -623,8 +613,8 @@ static void CustomKernelWithCustomSchema() {
 
     MLOperatorEdgeTypeConstrant kernelConstraint = {"T1", &floatTensorEdgeDesc, 1};
 
-    MLOperatorKernelDescription kernelDesc =
-      {"", "Foo", 7, MLOperatorExecutionType::Cpu, &kernelConstraint, testCases[caseIndex].useTypeLabel ? 1u : 0u};
+    MLOperatorKernelDescription kernelDesc = {
+      "", "Foo", 7, MLOperatorExecutionType::Cpu, &kernelConstraint, testCases[caseIndex].useTypeLabel ? 1u : 0u};
 
     if (!testCases[caseIndex].attributeDefaultsInSchema) {
       kernelDesc.defaultAttributes = defaultAttributes;
@@ -643,9 +633,7 @@ static void CustomKernelWithCustomSchema() {
       WINML_EXPECT_EQUAL(
         S_OK,
         registry->RegisterOperatorKernel(
-          &kernelDesc,
-          factory.Get(),
-          testCases[caseIndex].useShapeInferenceInKernel ? shapeInferrer.Get() : nullptr
+          &kernelDesc, factory.Get(), testCases[caseIndex].useShapeInferenceInKernel ? shapeInferrer.Get() : nullptr
         )
       );
     }

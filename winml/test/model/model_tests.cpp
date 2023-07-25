@@ -94,11 +94,7 @@ class ModelTest : public testing::TestWithParam<std::tuple<ITestCase*, winml::Le
         Ort::Value actualOutput = OrtValueHelpers::CreateOrtValueFromITensor(actualOutputTensorValue);
         // Use the expected and actual OrtValues to compare
         std::pair<COMPARE_RESULT, std::string> ret = CompareOrtValue(
-          *actualOutput,
-          *value,
-          m_absolutePerSampleTolerance,
-          m_relativePerSampleTolerance,
-          m_postProcessing
+          *actualOutput, *value, m_absolutePerSampleTolerance, m_relativePerSampleTolerance, m_postProcessing
         );
         WINML_EXPECT_EQUAL(COMPARE_RESULT::SUCCESS, ret.first) << ret.second;
       } else if (outputDescriptor.Kind() == LearningModelFeatureKind::Sequence) {
@@ -106,10 +102,7 @@ class ModelTest : public testing::TestWithParam<std::tuple<ITestCase*, winml::Le
           results.Outputs().Lookup(outputName).try_as<IVectorView<IMap<winrt::hstring, float>>>();
         if (sequenceOfMapsStringToFloat != nullptr) {
           WINML_EXPECT_TRUE(CompareFeatureValuesHelper::CompareSequenceOfMapsStringToFloat(
-            sequenceOfMapsStringToFloat,
-            value,
-            m_absolutePerSampleTolerance,
-            m_relativePerSampleTolerance
+            sequenceOfMapsStringToFloat, value, m_absolutePerSampleTolerance, m_relativePerSampleTolerance
           ));
         } else {
           throw winrt::hresult_not_implemented(L"This particular type of sequence output hasn't been handled yet.");
@@ -316,8 +309,7 @@ bool ShouldSkipTestOnGpuAdapterDxcore(std::string& testName) {
         spCurrAdapter->GetProperty(DXCoreAdapterProperty::DriverDescription, &adapterDescription)
       );
       return std::regex_search(
-        adapterDescription,
-        std::regex(regex, std::regex_constants::icase | std::regex_constants::nosubs)
+        adapterDescription, std::regex(regex, std::regex_constants::icase | std::regex_constants::nosubs)
       );
     }
   }
@@ -395,10 +387,7 @@ std::string GetFullNameOfTest(ITestCase* testCase, winml::LearningModelDeviceKin
   }
 
   std::replace_if(
-    name.begin(),
-    name.end(),
-    [](char c) { return !google::protobuf::ascii_isalnum(c); },
-    '_'
+    name.begin(), name.end(), [](char c) { return !google::protobuf::ascii_isalnum(c); }, '_'
   );
 
   // Determine if test should be skipped, using the generic name (no CPU or GPU suffix yet).

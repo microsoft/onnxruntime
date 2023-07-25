@@ -32,12 +32,7 @@ HRESULT STDMETHODCALLTYPE AbiCustomRegistryImpl::RegisterOperatorSetSchema(
 
   // Delegate to base class
   return AbiCustomRegistry::RegisterOperatorSetSchema(
-    opSetId,
-    baseline_version,
-    schema,
-    schemaCount,
-    typeInferrer,
-    shapeInferrer
+    opSetId, baseline_version, schema, schemaCount, typeInferrer, shapeInferrer
   );
 }
 CATCH_RETURN();
@@ -65,8 +60,9 @@ HRESULT STDMETHODCALLTYPE AbiCustomRegistryImpl::RegisterOperatorKernel(
 #ifdef LAYERING_DONE
   // Log a custom op telemetry if the operator is not a built-in DML operator
   if (!isInternalOperator) {
-    telemetry_helper
-      .LogRegisterOperatorKernel(opKernel->name, opKernel->domain, static_cast<int>(opKernel->executionType));
+    telemetry_helper.LogRegisterOperatorKernel(
+      opKernel->name, opKernel->domain, static_cast<int>(opKernel->executionType)
+    );
   }
 #endif
 

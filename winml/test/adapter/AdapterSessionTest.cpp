@@ -57,8 +57,7 @@ UniqueOrtSessionOptions CreateUniqueOrtSessionOptions() {
 void AppendExecutionProvider_CPU() {
   const auto session_options = CreateUniqueOrtSessionOptions();
   THROW_IF_NOT_OK_MSG(
-    winml_adapter_api->OrtSessionOptionsAppendExecutionProvider_CPU(session_options.get(), true),
-    ort_api
+    winml_adapter_api->OrtSessionOptionsAppendExecutionProvider_CPU(session_options.get(), true), ort_api
   );
 }
 
@@ -81,8 +80,7 @@ winrt::com_ptr<ID3D12CommandQueue> CreateD3DQueue(ID3D12Device* device) {
 UniqueOrtSession CreateUniqueOrtSession(const UniqueOrtSessionOptions& session_options) {
   OrtSession* session;
   THROW_IF_NOT_OK_MSG(
-    winml_adapter_api->CreateSessionWithoutModel(ort_env, session_options.get(), nullptr, nullptr, &session),
-    ort_api
+    winml_adapter_api->CreateSessionWithoutModel(ort_env, session_options.get(), nullptr, nullptr, &session), ort_api
   );
   return UniqueOrtSession(session, ort_api->ReleaseSession);
 }
@@ -94,8 +92,7 @@ UniqueOrtSession CreateUniqueOrtSession(
   ort_api->SetIntraOpNumThreads(session_options.get(), 1);
   ort_api->SetSessionGraphOptimizationLevel(session_options.get(), ORT_ENABLE_BASIC);
   THROW_IF_NOT_OK_MSG(
-    winml_adapter_api->OrtSessionOptionsAppendExecutionProvider_CPU(session_options.get(), true),
-    ort_api
+    winml_adapter_api->OrtSessionOptionsAppendExecutionProvider_CPU(session_options.get(), true), ort_api
   );
   THROW_IF_NOT_OK_MSG(ort_api->CreateSession(ort_env, model_path.c_str(), session_options.get(), &session), ort_api);
   return UniqueOrtSession(session, ort_api->ReleaseSession);
@@ -107,8 +104,9 @@ void AppendExecutionProvider_DML() {
   const auto device = CreateD3DDevice();
   const auto queue = CreateD3DQueue(device.get());
   THROW_IF_NOT_OK_MSG(
-    winml_adapter_api
-      ->OrtSessionOptionsAppendExecutionProvider_DML(session_options.get(), device.get(), queue.get(), true),
+    winml_adapter_api->OrtSessionOptionsAppendExecutionProvider_DML(
+      session_options.get(), device.get(), queue.get(), true
+    ),
     ort_api
   );
 }
@@ -133,8 +131,9 @@ void GetExecutionProvider_DML() {
   const auto device = CreateD3DDevice();
   const auto queue = CreateD3DQueue(device.get());
   THROW_IF_NOT_OK_MSG(
-    winml_adapter_api
-      ->OrtSessionOptionsAppendExecutionProvider_DML(session_options.get(), device.get(), queue.get(), true),
+    winml_adapter_api->OrtSessionOptionsAppendExecutionProvider_DML(
+      session_options.get(), device.get(), queue.get(), true
+    ),
     ort_api
   );
 
@@ -292,8 +291,9 @@ void CopyInputAcrossDevices_DML() {
   const auto device = CreateD3DDevice();
   const auto queue = CreateD3DQueue(device.get());
   THROW_IF_NOT_OK_MSG(
-    winml_adapter_api
-      ->OrtSessionOptionsAppendExecutionProvider_DML(session_options.get(), device.get(), queue.get(), true),
+    winml_adapter_api->OrtSessionOptionsAppendExecutionProvider_DML(
+      session_options.get(), device.get(), queue.get(), true
+    ),
     ort_api
   );
   auto session = CreateUniqueOrtSession(session_options);

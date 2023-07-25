@@ -43,9 +43,7 @@ class STLVectorBackedBuffer
   void Length(uint32_t value) try {
     // Set the use buffer length in bytes
     WINML_THROW_HR_IF_TRUE_MSG(
-      E_INVALIDARG,
-      value > Capacity(),
-      "Parameter 'value' cannot be greater than the buffer's capacity."
+      E_INVALIDARG, value > Capacity(), "Parameter 'value' cannot be greater than the buffer's capacity."
     );
     length_ = value;
   }
@@ -76,9 +74,7 @@ LearningModel::LearningModel(const hstring& path, const winml::ILearningModelOpe
 #endif
 
   WINML_THROW_HR_IF_TRUE_MSG(
-    __HRESULT_FROM_WIN32(GetLastError()),
-    file_handle.get() == INVALID_HANDLE_VALUE,
-    "Model load failed!"
+    __HRESULT_FROM_WIN32(GetLastError()), file_handle.get() == INVALID_HANDLE_VALUE, "Model load failed!"
   );
 
   auto file_mapping = wil::unique_handle(CreateFileMappingW(
@@ -103,9 +99,7 @@ LearningModel::LearningModel(const hstring& path, const winml::ILearningModelOpe
   WINML_THROW_HR_IF_TRUE_MSG(__HRESULT_FROM_WIN32(GetLastError()), buffer == nullptr, "Model load failed!");
   LARGE_INTEGER file_size;
   WINML_THROW_HR_IF_FALSE_MSG(
-    __HRESULT_FROM_WIN32(GetLastError()),
-    GetFileSizeEx(file_handle.get(), &file_size),
-    "GetFileSizeEx"
+    __HRESULT_FROM_WIN32(GetLastError()), GetFileSizeEx(file_handle.get(), &file_size), "GetFileSizeEx"
   );
   WINML_THROW_IF_FAILED(engine_factory_->CreateModel(buffer, static_cast<size_t>(file_size.QuadPart), model_.put()));
   WINML_THROW_HR_IF_TRUE_MSG(E_UNEXPECTED, UnmapViewOfFile(buffer) == 0, "Could not unmap model file.");
@@ -138,8 +132,7 @@ static HRESULT CreateModelFromStream(
 
   void* data;
   WINML_THROW_IF_FAILED_MSG(
-    bytes->Buffer(reinterpret_cast<byte**>(&data)),
-    "Failed to acquire buffer from model stream."
+    bytes->Buffer(reinterpret_cast<byte**>(&data)), "Failed to acquire buffer from model stream."
   );
 
   size_t len = static_cast<size_t>(content.Size());
@@ -363,12 +356,7 @@ void LearningModel::JoinModel(
 
   auto prefix = winrt::to_string(join_node_prefix);
   WINML_THROW_IF_FAILED(model_->JoinModel(
-    other_model.get(),
-    raw_outputs.data(),
-    raw_inputs.data(),
-    linkages.size(),
-    promote_unlinked_outputs,
-    prefix.c_str()
+    other_model.get(), raw_outputs.data(), raw_inputs.data(), linkages.size(), promote_unlinked_outputs, prefix.c_str()
   ));
 
   model_info_ = nullptr;
@@ -384,19 +372,13 @@ HRESULT
 __stdcall LearningModel::Load(const wchar_t* p_model_path, uint32_t model_path_size, IUnknown** pp_model_unk) {
   try {
     WINML_THROW_HR_IF_NULL_MSG(
-      E_INVALIDARG,
-      p_model_path,
-      "Failed to create LearningModel. Ivalid argument p_model_path."
+      E_INVALIDARG, p_model_path, "Failed to create LearningModel. Ivalid argument p_model_path."
     );
     WINML_THROW_HR_IF_FALSE_MSG(
-      E_INVALIDARG,
-      model_path_size > 0,
-      "Failed to create LearningModel. Ivalid argument model_path_size."
+      E_INVALIDARG, model_path_size > 0, "Failed to create LearningModel. Ivalid argument model_path_size."
     );
     WINML_THROW_HR_IF_NULL_MSG(
-      E_INVALIDARG,
-      pp_model_unk,
-      "Failed to create LearningModel. Ivalid argument pp_model_unk."
+      E_INVALIDARG, pp_model_unk, "Failed to create LearningModel. Ivalid argument pp_model_unk."
     );
 
     winrt::hstring path(p_model_path, model_path_size);

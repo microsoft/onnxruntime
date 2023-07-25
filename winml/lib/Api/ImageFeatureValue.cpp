@@ -174,9 +174,7 @@ static _winml::ImageTensorDataType GetTensorDataTypeFromTensorKind(winml::Tensor
       return _winml::ImageTensorDataType::kImageTensorDataTypeFloat16;
     default:
       WINML_THROW_HR_IF_FALSE_MSG(
-        WINML_ERR_INVALID_BINDING,
-        false,
-        "Model image inputs must have tensor type of Float or Float16."
+        WINML_ERR_INVALID_BINDING, false, "Model image inputs must have tensor type of Float or Float16."
       );
   }
 
@@ -191,9 +189,7 @@ static unsigned GetSizeFromTensorDataType(_winml::ImageTensorDataType type) {
       return sizeof(uint16_t);
     default:
       WINML_THROW_HR_IF_FALSE_MSG(
-        WINML_ERR_INVALID_BINDING,
-        false,
-        "Model image inputs must have tensor type of Float or Float16."
+        WINML_ERR_INVALID_BINDING, false, "Model image inputs must have tensor type of Float or Float16."
       );
   }
 
@@ -254,8 +250,9 @@ static void CPUTensorize(
   auto pooledConverter = _winml::PoolObjectWrapper::Create(spDevice->TensorizerStore()->Fetch(descriptor));
 
   //apply tensorization
-  pooledConverter->Get()
-    ->Tensorizer->VideoFrameToSoftwareTensor(videoFrame, bounds, tensorDescriptor, reinterpret_cast<BYTE*>(pResource));
+  pooledConverter->Get()->Tensorizer->VideoFrameToSoftwareTensor(
+    videoFrame, bounds, tensorDescriptor, reinterpret_cast<BYTE*>(pResource)
+  );
 
   // Software tensorization doesnt need to hold onto any resources beyond its scope, so we can
   // return the converter to the pool on tensorization completion.
@@ -300,12 +297,7 @@ static void GPUTensorize(
       // Apply tensorization
       auto session = spSession.as<winml::LearningModelSession>();
       pooledConverter->Get()->Tensorizer->VideoFrameToDX12Tensor(
-        batchIdx,
-        session,
-        videoFrames.GetAt(batchIdx),
-        bounds[batchIdx],
-        tensorDescriptor,
-        d3dResource
+        batchIdx, session, videoFrames.GetAt(batchIdx), bounds[batchIdx], tensorDescriptor, d3dResource
       );
 
       // Tensorization to a GPU tensor will run asynchronously and associated resources
@@ -339,11 +331,12 @@ std::optional<ImageFeatureValue::ImageResourceMetadata> ImageFeatureValue::GetIn
     // The the widths and heights of input data must be the same. Or the
     // tensorDescriptor cannot describ the shape of the inputs.
     if (spImageDescriptor->Width() == MAXUINT32 &&
-        !(std::adjacent_find(m_widths.begin(), m_widths.end(), std::not_equal_to<uint32_t>()) == m_widths.end())) {
+            !(std::adjacent_find(m_widths.begin(), m_widths.end(), std::not_equal_to<uint32_t>()) == m_widths.end())) {
       THROW_HR(E_INVALIDARG);
     }
     if (spImageDescriptor->Height() == MAXUINT32 &&
-        !(std::adjacent_find(m_heights.begin(), m_heights.end(), std::not_equal_to<uint32_t>()) == m_heights.end())) {
+            !(std::adjacent_find(m_heights.begin(), m_heights.end(), std::not_equal_to<uint32_t>()) == m_heights.end()
+            )) {
       THROW_HR(E_INVALIDARG);
     }
     descriptorWidth = (spImageDescriptor->Width() == MAXUINT32) ? m_widths[0] : spImageDescriptor->Width();
@@ -361,11 +354,12 @@ std::optional<ImageFeatureValue::ImageResourceMetadata> ImageFeatureValue::GetIn
       return {};
     }
     if (-1 == shape.GetAt(3) &&
-        !(std::adjacent_find(m_widths.begin(), m_widths.end(), std::not_equal_to<uint32_t>()) == m_widths.end())) {
+            !(std::adjacent_find(m_widths.begin(), m_widths.end(), std::not_equal_to<uint32_t>()) == m_widths.end())) {
       THROW_HR(E_INVALIDARG);
     }
     if (-1 == shape.GetAt(2) &&
-        !(std::adjacent_find(m_heights.begin(), m_heights.end(), std::not_equal_to<uint32_t>()) == m_heights.end())) {
+            !(std::adjacent_find(m_heights.begin(), m_heights.end(), std::not_equal_to<uint32_t>()) == m_heights.end()
+            )) {
       THROW_HR(E_INVALIDARG);
     }
     descriptorWidth = (-1 == shape.GetAt(3)) ? m_widths[0] : static_cast<uint32_t>(shape.GetAt(3));
@@ -432,12 +426,7 @@ std::optional<ImageFeatureValue::ImageResourceMetadata> ImageFeatureValue::GetIn
 
     //NCHW layout
   auto imageTensorDescriptor = CreateImageTensorDescriptor(
-    tensorKind,
-    pixelFormat.value(),
-    pixelRange.value(),
-    m_batchSize,
-    descriptorWidth,
-    descriptorHeight
+    tensorKind, pixelFormat.value(), pixelRange.value(), m_batchSize, descriptorWidth, descriptorHeight
   );
 
   return ImageResourceMetadata{bounds, imageTensorDescriptor};
@@ -495,12 +484,7 @@ HRESULT ImageFeatureValue::GetValue(_winml::BindingContext& context, _winml::IVa
     } else {
       auto resource = reinterpret_cast<ID3D12Resource*>(void_resource.get());
       GPUTensorize(
-        m_videoFrames,
-        resourceMetadata.Bounds,
-        resourceMetadata.TensorDescriptor,
-        spSession,
-        resource,
-        context
+        m_videoFrames, resourceMetadata.Bounds, resourceMetadata.TensorDescriptor, spSession, resource, context
       );
     }
   }
@@ -554,10 +538,7 @@ HRESULT ImageFeatureValue::UpdateSourceResourceData(_winml::BindingContext& cont
       // Convert Software Tensor to VideoFrame one by one based on the buffer size.
       auto videoFrame = m_videoFrames.GetAt(batchIdx);
       pooledConverter->Get()->Detensorizer->SoftwareTensorToVideoFrame(
-        context.session,
-        resource,
-        resourceMetadata.TensorDescriptor,
-        videoFrame
+        context.session, resource, resourceMetadata.TensorDescriptor, videoFrame
       );
       resource += bufferByteSize;
     }
@@ -572,11 +553,7 @@ HRESULT ImageFeatureValue::UpdateSourceResourceData(_winml::BindingContext& cont
     for (uint32_t batchIdx = 0; batchIdx < m_batchSize; ++batchIdx) {
       auto videoFrame = m_videoFrames.GetAt(batchIdx);
       pooledConverter->Get()->Detensorizer->DX12TensorToVideoFrame(
-        batchIdx,
-        context.session,
-        d3dResource,
-        resourceMetadata.TensorDescriptor,
-        videoFrame
+        batchIdx, context.session, d3dResource, resourceMetadata.TensorDescriptor, videoFrame
       );
 
       // Reset the Allocator before return to the Cache. Must Sync this background thread to that completion before we do.

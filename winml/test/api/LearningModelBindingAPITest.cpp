@@ -458,9 +458,7 @@ static void VerifyInvalidBindExceptions() {
 
   // Bind invalid tensor type as image input
   WINML_EXPECT_THROW_SPECIFIC(
-    mapBinding.Bind(inputName, tensorBoolean),
-    winrt::hresult_error,
-    ensureWinmlInvalidBinding
+    mapBinding.Bind(inputName, tensorBoolean), winrt::hresult_error, ensureWinmlInvalidBinding
   );
 }
 

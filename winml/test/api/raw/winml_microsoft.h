@@ -551,8 +551,9 @@ class WinMLLearningModel {
 
         // Create a random access stream reference from the random access stream view on top of
         // the in memory stream
-      RETURN_HR_IF_FAILED(random_access_stream_ref_statics
-                            ->CreateFromStream(random_access_stream.Get(), random_access_stream_ref.GetAddressOf()));
+      RETURN_HR_IF_FAILED(random_access_stream_ref_statics->CreateFromStream(
+        random_access_stream.Get(), random_access_stream_ref.GetAddressOf()
+      ));
 
       Microsoft::WRL::ComPtr<ABI::Windows::Foundation::IAsyncOperation<uint32_t>> async_operation;
       RETURN_HR_IF_FAILED(data_writer->StoreAsync(&async_operation));
@@ -565,8 +566,7 @@ class WinMLLearningModel {
       RETURN_HR_IF_FAILED(Microsoft::WRL::MakeAndInitialize<WinMLTest::WeakBuffer<char>>(&buffer, bytes, bytes + size));
 
       RETURN_HR_IF_FAILED(Microsoft::WRL::MakeAndInitialize<WinMLTest::BufferBackedRandomAccessStreamReference>(
-        &random_access_stream_ref,
-        buffer.Get()
+        &random_access_stream_ref, buffer.Get()
       ));
     }
 
@@ -651,16 +651,13 @@ class WinMLLearningModelBinding {
 
     Microsoft::WRL::ComPtr<weak_single_threaded_iterable<int64_t>> input_shape_iterable;
     RETURN_HR_IF_FAILED(Microsoft::WRL::MakeAndInitialize<weak_single_threaded_iterable<int64_t>>(
-      &input_shape_iterable,
-      p_shape,
-      p_shape + shape_size
+      &input_shape_iterable, p_shape, p_shape + shape_size
     ));
 
     Microsoft::WRL::ComPtr<ITensor> tensor;
-    RETURN_HR_IF_FAILED(
-      tensor_factory
-        ->CreateFromArray(input_shape_iterable.Get(), static_cast<uint32_t>(data_size), p_data, tensor.GetAddressOf())
-    );
+    RETURN_HR_IF_FAILED(tensor_factory->CreateFromArray(
+      input_shape_iterable.Get(), static_cast<uint32_t>(data_size), p_data, tensor.GetAddressOf()
+    ));
 
     Microsoft::WRL::ComPtr<IInspectable> inspectable_tensor;
     RETURN_HR_IF_FAILED(tensor.As(&inspectable_tensor));
@@ -725,9 +722,7 @@ class WinMLLearningModelBinding {
     std::vector<Microsoft::WRL::ComPtr<ABI::Windows::Storage::Streams::IBuffer>> vec_buffers(num_buffers);
     for (size_t i = 0; i < num_buffers; i++) {
       RETURN_HR_IF_FAILED(Microsoft::WRL::MakeAndInitialize<WinMLTest::WeakBuffer<T>>(
-        &vec_buffers.at(i),
-        p_data[i],
-        p_data[i] + data_sizes[i]
+        &vec_buffers.at(i), p_data[i], p_data[i] + data_sizes[i]
       ));
     }
 
@@ -739,9 +734,7 @@ class WinMLLearningModelBinding {
     Microsoft::WRL::ComPtr<weak_single_threaded_iterable<ABI::Windows::Storage::Streams::IBuffer*>> buffers;
     RETURN_HR_IF_FAILED(
       Microsoft::WRL::MakeAndInitialize<weak_single_threaded_iterable<ABI::Windows::Storage::Streams::IBuffer*>>(
-        &buffers,
-        raw_buffers.data(),
-        raw_buffers.data() + num_buffers
+        &buffers, raw_buffers.data(), raw_buffers.data() + num_buffers
       )
     );
 
@@ -879,9 +872,7 @@ class WinMLLearningModelSession {
       m_learning_model_evaluation_result;
 
     FAIL_FAST_IF_HR_FAILED(m_learning_model_session->Evaluate(
-      binding.m_learning_model_binding.Get(),
-      nullptr,
-      m_learning_model_evaluation_result.GetAddressOf()
+      binding.m_learning_model_binding.Get(), nullptr, m_learning_model_evaluation_result.GetAddressOf()
     ));
 
     return WinMLLearningModelResults(m_learning_model_evaluation_result.Get());
@@ -891,10 +882,7 @@ class WinMLLearningModelSession {
   int32_t Initialize(const Model& model, const Device& device) {
     // {d7d86c54-d03d-5ae3-a958-fe952b640620}
     static const GUID IID_ILearningModelSessionFactory = {
-      0xd7d86c54,
-      0xd03d,
-      0x5ae3,
-      {0xa9, 0x58, 0xfe, 0x95, 0x2b, 0x64, 0x06, 0x20}
+      0xd7d86c54, 0xd03d, 0x5ae3, {0xa9, 0x58, 0xfe, 0x95, 0x2b, 0x64, 0x06, 0x20}
     };
 
     Microsoft::WRL::ComPtr<ABI::Microsoft::AI::MachineLearning::ILearningModelSessionFactory>
@@ -906,9 +894,7 @@ class WinMLLearningModelSession {
     ));
 
     RETURN_HR_IF_FAILED(m_learning_model_session_factory->CreateFromModelOnDevice(
-      model.m_learning_model.Get(),
-      device.m_learning_model_device.Get(),
-      m_learning_model_session.GetAddressOf()
+      model.m_learning_model.Get(), device.m_learning_model_device.Get(), m_learning_model_session.GetAddressOf()
     ));
 
     return 0;
@@ -921,10 +907,7 @@ class WinMLLearningModelSession {
 inline int32_t WinMLLearningModelBinding::Initialize(const WinMLLearningModelSession& session) {
   // {ae2f1c97-2fd5-55b9-a05f-53b9dbb4f9e2}
   static const GUID IID_ILearningModelBindingFactory = {
-    0xae2f1c97,
-    0x2fd5,
-    0x55b9,
-    {0xa0, 0x5f, 0x53, 0xb9, 0xdb, 0xb4, 0xf9, 0xe2}
+    0xae2f1c97, 0x2fd5, 0x55b9, {0xa0, 0x5f, 0x53, 0xb9, 0xdb, 0xb4, 0xf9, 0xe2}
   };
 
   Microsoft::WRL::ComPtr<ABI::Microsoft::AI::MachineLearning::ILearningModelBindingFactory>
@@ -937,8 +920,7 @@ inline int32_t WinMLLearningModelBinding::Initialize(const WinMLLearningModelSes
   ));
 
   RETURN_HR_IF_FAILED(learning_model_binding_factory->CreateFromSession(
-    session.m_learning_model_session.Get(),
-    m_learning_model_binding.GetAddressOf()
+    session.m_learning_model_session.Get(), m_learning_model_binding.GetAddressOf()
   ));
 
   return 0;

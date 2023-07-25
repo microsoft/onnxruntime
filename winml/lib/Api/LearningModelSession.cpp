@@ -413,9 +413,7 @@ WINML_CATCH_ALL
 void LearningModelSession::ToggleProfiler() {
   CheckClosed();
   auto is_provider_enabled = TraceLoggingProviderEnabled(
-    ::winml_trace_logging_provider,
-    WINEVENT_LEVEL_VERBOSE,
-    WINML_PROVIDER_KEYWORD_LOTUS_PROFILING
+    ::winml_trace_logging_provider, WINEVENT_LEVEL_VERBOSE, WINML_PROVIDER_KEYWORD_LOTUS_PROFILING
   );
 
   if (is_provider_enabled) {
