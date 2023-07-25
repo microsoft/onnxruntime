@@ -4,11 +4,6 @@ parameters:
   type: string
   default: x64
 
-- name: vs2022
-  displayName: If the Visual Studio version is 2022
-  type: boolean
-  default: true
-
 steps:
 - task: CredScan@2
   displayName: 'Run CredScan'
