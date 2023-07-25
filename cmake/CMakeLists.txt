@@ -923,11 +923,11 @@ function(onnxruntime_set_compile_flags target_name)
       # flags are detected with CXX language mode, some flags are not supported with hipclang
       # because we may mix gcc and hipclang
       set(ORT_HIP_WARNING_FLAGS ${ORT_WARNING_FLAGS})
-      list(APPEND ORT_HIP_WARNING_FLAGS -Wno-deprecated-copy)
+      list(REMOVE_ITEM ORT_HIP_WARNING_FLAGS -Wno-nonnull-compare)
 
       # float16.h:90:12: error: ‘tmp’ is used uninitialized
       list(APPEND ORT_HIP_WARNING_FLAGS -Wno-uninitialized)
-      list(APPEND ORT_HIP_WARNING_FLAGS -Wno-uninitialized)
+      list(APPEND ORT_HIP_WARNING_FLAGS -Wno-deprecated-copy)
 
       # some #pragma unroll will fail, do not treat them as error
       # #warning must not be treated as error
