@@ -10,19 +10,20 @@ from onnx.reference import ReferenceEvaluator
 from onnx.reference import ops as onnx_ops
 from onnx.reference.custom_element_types import float8e4m3fn, float8e4m3fnuz, float8e5m2, float8e5m2fnuz
 from onnx.reference.op_run import OpRun
-
-try:
-    from onnx.reference.op_run import OpRun, to_array_extended
-
-    # Test with ReferenceEvaluator requires PR https://github.com/onnx/onnx/pull/5408/.
-    # https://github.com/onnx/onnx/pull/5408
-    onnx_recent_enough = hasattr(OpRun, "infer_name")
-except ImportError:
-    to_array_extended = None
-    onnx_recent_enough = False
-
 import onnxruntime
 from onnxruntime.quantization import CalibrationDataReader
+
+onnx_recent_enough = hasattr(OpRun, "infer_name")
+
+if onnx_recent_enough:
+    # Test with ReferenceEvaluator requires PR https://github.com/onnx/onnx/pull/5408/.
+    # https://github.com/onnx/onnx/pull/5408
+    try:
+        from onnx.reference.op_run import to_array_extended
+
+    except ImportError:
+        to_array_extended = None
+        onnx_recent_enough = False
 
 
 class QGemm(OpRun):
