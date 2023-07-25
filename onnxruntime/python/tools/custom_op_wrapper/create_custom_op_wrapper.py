@@ -49,6 +49,10 @@ TENSOR_TYPE_MAP = {
     "COMPLEX64": TensorProto.COMPLEX64,
     "COMPLEX128": TensorProto.COMPLEX128,
     "BFLOAT16": TensorProto.BFLOAT16,
+    "FLOAT8E4M3FN": TensorProto.FLOAT8E4M3FN,
+    "FLOAT8E4M3FNUZ": TensorProto.FLOAT8E4M3FNUZ,
+    "FLOAT8E5M2": TensorProto.FLOAT8E5M2,
+    "FLOAT8E5M2FNUZ": TensorProto.FLOAT8E5M2FNUZ,
 }
 
 
@@ -92,7 +96,7 @@ class ParseIOInfoAction(argparse.Action):
 
             try:
                 comp_strs = io_str.split(";")
-            except ValueError:
+            except ValueError:  # noqa: PERF203
                 parser.error(f"{opt_str}: {io_meta_name} info must be separated by ';'")
 
             if len(comp_strs) != 3:

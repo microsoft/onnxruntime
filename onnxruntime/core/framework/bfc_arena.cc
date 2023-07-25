@@ -11,7 +11,8 @@ BFCArena::BFCArena(std::unique_ptr<IAllocator> resource_allocator,
                    ArenaExtendStrategy arena_extend_strategy,
                    int initial_chunk_size_bytes,
                    int max_dead_bytes_per_chunk,
-                   int initial_growth_chunk_size_bytes)
+                   int initial_growth_chunk_size_bytes,
+                   int64_t max_power_of_two_extend_bytes)
     : IAllocator(OrtMemoryInfo(resource_allocator->Info().name,
                                OrtAllocatorType::OrtArenaAllocator,
                                resource_allocator->Info().device,
@@ -23,11 +24,13 @@ BFCArena::BFCArena(std::unique_ptr<IAllocator> resource_allocator,
       next_allocation_id_(1),
       initial_chunk_size_bytes_(initial_chunk_size_bytes),
       max_dead_bytes_per_chunk_(max_dead_bytes_per_chunk),
-      initial_growth_chunk_size_bytes_(initial_growth_chunk_size_bytes) {
+      initial_growth_chunk_size_bytes_(initial_growth_chunk_size_bytes),
+      max_power_of_two_extend_bytes_(max_power_of_two_extend_bytes) {
   LOGS_DEFAULT(INFO) << "Creating BFCArena for " << device_allocator_->Info().name
                      << " with following configs: initial_chunk_size_bytes: " << initial_chunk_size_bytes_
                      << " max_dead_bytes_per_chunk: " << max_dead_bytes_per_chunk_
                      << " initial_growth_chunk_size_bytes: " << initial_growth_chunk_size_bytes_
+                     << " max_power_of_two_extend_bytes: " << max_power_of_two_extend_bytes_
                      << " memory limit: " << total_memory
                      << " arena_extend_strategy: " << static_cast<int32_t>(arena_extend_strategy);
 
@@ -144,7 +147,12 @@ Status BFCArena::Extend(size_t rounded_bytes) {
       // we allocated the same number of bytes as the current region
       // the 2x is to double the minimum size of the next amount we'll allocate
       if (!increased_allocation) {
-        curr_region_allocation_bytes_ *= 2;
+        if (arena_extend_strategy_ == ArenaExtendStrategy::kNextPowerOfTwo &&
+            curr_region_allocation_bytes_ * 2 < max_power_of_two_extend_bytes_) {
+          curr_region_allocation_bytes_ *= 2;
+        } else {
+          curr_region_allocation_bytes_ = max_power_of_two_extend_bytes_;
+        }
       }
     } else if (arena_extend_strategy_ == ArenaExtendStrategy::kSameAsRequested) {
       // BFC Arena could cause internal and external fragmentation. But, running training with
@@ -847,13 +855,15 @@ StreamAwareArena::StreamAwareArena(std::unique_ptr<IAllocator> resource_allocato
                                    ArenaExtendStrategy arena_extend_strategy,
                                    int initial_chunk_size_bytes,
                                    int max_dead_bytes_per_chunk,
-                                   int initial_growth_chunk_size_bytes) : BFCArena(std::move(resource_allocator),
-                                                                                   total_memory,
-                                                                                   arena_extend_strategy,
-                                                                                   initial_chunk_size_bytes,
-                                                                                   max_dead_bytes_per_chunk,
-                                                                                   initial_growth_chunk_size_bytes),
-                                                                          enable_cross_stream_reusing_(enable_cross_stream_sharing) {
+                                   int initial_growth_chunk_size_bytes,
+                                   int64_t max_power_of_two_extend_bytes) : BFCArena(std::move(resource_allocator),
+                                                                                     total_memory,
+                                                                                     arena_extend_strategy,
+                                                                                     initial_chunk_size_bytes,
+                                                                                     max_dead_bytes_per_chunk,
+                                                                                     initial_growth_chunk_size_bytes,
+                                                                                     max_power_of_two_extend_bytes),
+                                                                            enable_cross_stream_reusing_(enable_cross_stream_sharing) {
   arena_type_ = ArenaType::StreamAwareArena;
 }
 

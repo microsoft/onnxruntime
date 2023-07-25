@@ -45,6 +45,7 @@ bool IsOpSupportedOnlyInModel(std::string name) {
       "Exp",
       "GatherND",
       "Identity",
+      "LayerNormalization",
       "NonMaxSuppression",
       "NonZero",
       "Not",

@@ -40,7 +40,7 @@ class MatMul<float> final : public OpKernel {
 
  private:
   TensorShape b_shape_;
-  BufferUniquePtr packed_b_;
+  IAllocatorUniquePtr<void> packed_b_;
 
   // For FusedMatMul contrib ops
   float alpha_attr_;

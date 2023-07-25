@@ -5,6 +5,7 @@
 
 #include "core/framework/op_kernel.h"
 #include "orttraining/training_ops/cpu/loss/reduction_type.h"
+#include "core/util/math_cpuonly.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -24,7 +25,7 @@ class LossBase : public OpKernel {
 template <typename T>
 void ComputeShareSoftmaxCrossEntropyCPU(const int n,
                                         const int d,
-                                        const int nd,
+                                        const Eigen::Index nd,
                                         const T* logit_data,
                                         T* shifted_logit,
                                         T* log_prob_data);

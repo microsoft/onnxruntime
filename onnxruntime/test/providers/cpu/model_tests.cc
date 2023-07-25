@@ -108,13 +108,13 @@ TEST_P(ModelTest, Run) {
   }
 
   std::unique_ptr<OnnxModelInfo> model_info = std::make_unique<OnnxModelInfo>(model_path.c_str());
-  if (model_info->GetONNXOpSetVersion() != 14 && model_info->GetONNXOpSetVersion() != 15 &&
+  if ((model_info->GetONNXOpSetVersion() < 14 || model_info->GetONNXOpSetVersion() > 17) &&
       provider_name == "tensorrt") {
     // TensorRT can run most of the model tests, but only part of
     // them is enabled here to save CI build time.
     // Besides saving CI build time, TRT isn’t able to support full ONNX ops spec and therefore some testcases will
     // fail. That's one of reasons we skip those testcases and only test latest ONNX opsets.
-    SkipTest(" tensorrt only support opset 14 or 15");
+    SkipTest(" tensorrt: only enable opset 14 to 17 of onnx tests");
     return;
   }
 
@@ -268,6 +268,8 @@ TEST_P(ModelTest, Run) {
 #ifdef _WIN32
     broken_tests.insert({"LSTM_Seq_lens_unpacked", "this test fails with new image since Aug 25."});
     broken_tests.insert({"bidaf", "this test fails with new image since Aug 25."});
+#else
+    broken_tests.insert({"bidaf", "this test should be recovered when multi-gpu pipeline deprecates NV12", {"opset9"}});
 #endif
   }
 
@@ -451,6 +453,22 @@ TEST_P(ModelTest, Run) {
 
     broken_tests.insert({"conv_with_autopad_same",
                          "Internal Error (node_of_y: Cannot set more than one input unless network has Q/DQ layers.)"});
+
+    // unsupported tests since opset16
+    broken_tests.insert({"sequence_map_add_2_sequences", "not supported by TensorRT EP"});
+    broken_tests.insert({"sequence_map_extract_shapes", "not supported by TensorRT EP."});
+    broken_tests.insert({"sequence_map_add_1_sequence_1_tensor", "not supported by TensorRT EP."});
+    broken_tests.insert({"sequence_map_identity_1_sequence", "not supported by TensorRT EP."});
+    broken_tests.insert({"sequence_map_identity_2_sequences", "not supported by TensorRT EP."});
+    broken_tests.insert({"sequence_map_identity_1_sequence_1_tensor", "not supported by TensorRT EP."});
+    broken_tests.insert({"leakyrelu_expanded", "not supported by TensorRT EP."});
+    broken_tests.insert({"leakyrelu_default_expanded", "not supported by TensorRT EP."});
+    broken_tests.insert({"leakyrelu_example_expanded", "not supported by TensorRT EP."});
+    broken_tests.insert({"prelu_broadcast_expanded", "not supported by TensorRT EP."});
+    broken_tests.insert({"prelu_example_expanded", "not supported by TensorRT EP."});
+    broken_tests_keyword_set.insert({"scatternd_add"});
+    broken_tests_keyword_set.insert({"scatternd_multiply"});
+    broken_tests_keyword_set.insert({"scatter_elements_with_duplicate_indices"});
 
     // sce op is not supported
     broken_tests_keyword_set.insert({"sce"});
@@ -666,6 +684,12 @@ TEST_P(ModelTest, Run) {
         ASSERT_ORT_STATUS_OK(OrtApis::CreateCUDAProviderOptions(&cuda_options));
         std::unique_ptr<OrtCUDAProviderOptionsV2, decltype(&OrtApis::ReleaseCUDAProviderOptions)> rel_cuda_options(
             cuda_options, &OrtApis::ReleaseCUDAProviderOptions);
+        std::vector<const char*> keys{"device_id"};
+
+        std::vector<const char*> values;
+        std::string device_id = Env::Default().GetEnvironmentVar("ONNXRUNTIME_TEST_GPU_DEVICE_ID");
+        values.push_back(device_id.empty() ? "0" : device_id.c_str());
+        ASSERT_ORT_STATUS_OK(OrtApis::UpdateCUDAProviderOptions(cuda_options, keys.data(), values.data(), 1));
         ortso.AppendExecutionProvider_CUDA_V2(*cuda_options);
       } else if (provider_name == "rocm") {
         OrtROCMProviderOptions ep_options;
@@ -686,7 +710,8 @@ TEST_P(ModelTest, Run) {
           OrtTensorRTProviderOptionsV2 params{0, 0, nullptr, 1000, 1, 1 << 30,
                                               1,  // enable fp16
                                               0, nullptr, 0, 0, 0, 0, 0, nullptr, 0, nullptr, 0, 0, 0, 0, 0, 0, 0, 0,
-                                              2, -1, nullptr, nullptr};
+                                              3, -1, nullptr, nullptr, nullptr, nullptr, nullptr, 0};
+
           ortso.AppendExecutionProvider_TensorRT_V2(params);
         } else {
           OrtTensorRTProviderOptionsV2* ep_option = nullptr;
@@ -1017,6 +1042,7 @@ TEST_P(ModelTest, Run) {
                                                    ORT_TSTR("batchnorm_example_training_mode"),
                                                    ORT_TSTR("batchnorm_epsilon_training_mode"),
                                                    ORT_TSTR("mobilenetv2-1.0"),
+                                                   ORT_TSTR("shufflenet"),
                                                    ORT_TSTR("candy"),
                                                    ORT_TSTR("range_float_type_positive_delta_expanded"),
                                                    ORT_TSTR("range_int32_type_negative_delta_expanded"),
@@ -1105,7 +1131,10 @@ TEST_P(ModelTest, Run) {
                                                     ORT_TSTR("SSD")};
     all_disabled_tests.insert(std::begin(x86_disabled_tests), std::end(x86_disabled_tests));
 #endif
-
+    // fp16 models have different outputs with different kinds of hardware. We need to disable all fp16 models
+    all_disabled_tests.insert(ORT_TSTR("fp16_shufflenet"));
+    all_disabled_tests.insert(ORT_TSTR("fp16_inception_v1"));
+    all_disabled_tests.insert(ORT_TSTR("fp16_tiny_yolov2"));
     std::vector<std::basic_string<ORTCHAR_T>> paths;
 #if defined(NDEBUG) || defined(RUN_MODELTEST_IN_DEBUG_MODE)
 #ifdef _WIN32

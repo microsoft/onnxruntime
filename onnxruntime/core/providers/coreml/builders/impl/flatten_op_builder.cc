@@ -41,7 +41,7 @@ Status FlattenOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   auto* coreml_flatten = layer->mutable_flattento2d();
 
   NodeAttrHelper helper(node);
-  const int64_t axis = helper.Get("axis ", 1);
+  const int64_t axis = helper.Get("axis", 1);
   coreml_flatten->set_axis(axis);
 
   *layer->mutable_input()->Add() = node.InputDefs()[0]->Name();

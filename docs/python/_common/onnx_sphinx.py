@@ -683,7 +683,7 @@ def get_onnx_example(op_name):
         try:
             mod = importlib.import_module(m)
             module = m
-        except ImportError:
+        except ImportError:  # noqa: PERF203
             continue
     if module is None:
         # Unable to find an example for 'op_name'.
@@ -882,7 +882,7 @@ def _generate_op_doc(app):
 def setup(app):
     """
     Sphinx extension `onnx_sphinx` displays documentation
-    on ONN Operators.
+    of all ONNX Operators.
     """
     import sphinx
 

@@ -49,7 +49,7 @@ def _test_softmax(batch_count, softmax_elements, is_log_softmax, dtype, func):
         softmax_op.Run()
         y_d.UpdateHostNumpyArray()
 
-        np.testing.assert_allclose(y_ref, y, rtol=1e-02)
+        np.testing.assert_allclose(y_ref, y, rtol=1e-02, err_msg=func)
 
 
 dtypes = ["float16", "float32"]

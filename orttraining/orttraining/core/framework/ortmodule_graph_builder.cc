@@ -66,7 +66,8 @@ Status OrtModuleGraphBuilder::Initialize(std::istream& model_istream,
 // shape info to constants, the optimized graph (before gradient graph building) can not be shared.
 // So each time we need to start from the beginning, i.e., 1) replace input shapes, 2) apply graph optimizers,
 // 3) build gradient graph, and finally 4) adjust the graph inputs and outputs.
-Status OrtModuleGraphBuilder::Build(const std::vector<std::vector<int64_t>>* input_shapes_ptr) {
+Status OrtModuleGraphBuilder::Build(const TrainingGraphTransformerConfiguration& pre_grad_graph_transformer_config,
+                                    const std::vector<std::vector<int64_t>>* input_shapes_ptr) {
   // Make a copy of the original model.
   auto original_model_proto = original_model_->ToProto();
   ORT_RETURN_IF_ERROR(Model::Load(original_model_proto, forward_model_, nullptr, *logger_));
@@ -82,9 +83,9 @@ Status OrtModuleGraphBuilder::Build(const std::vector<std::vector<int64_t>>* inp
     return Status::OK();
   }
 
-  // Optimize the inference graph and build the gradient graph.
+  // Optimize the forward graph and then build the gradient graph.
   std::unordered_set<std::string> x_node_arg_names;
-  ORT_RETURN_IF_ERROR(OptimizeForwardGraph(x_node_arg_names));
+  ORT_RETURN_IF_ERROR(OptimizeForwardGraph(pre_grad_graph_transformer_config, x_node_arg_names));
   ORT_RETURN_IF_ERROR(BuildGradientGraph(x_node_arg_names));
 
   if (config_.enable_caching) {
@@ -147,7 +148,8 @@ Status OrtModuleGraphBuilder::SetConcreteInputShapes(const std::vector<std::vect
   return forward_graph.Resolve();
 }
 
-Status OrtModuleGraphBuilder::OptimizeForwardGraph(std::unordered_set<std::string>& x_node_arg_names) {
+Status OrtModuleGraphBuilder::OptimizeForwardGraph(const TrainingGraphTransformerConfiguration& config,
+                                                   std::unordered_set<std::string>& x_node_arg_names) {
   // Resolve original graph, register and apply transformers for pre-training.
   Graph& forward_graph = forward_model_->MainGraph();
   ORT_RETURN_IF_ERROR(forward_graph.Resolve());
@@ -161,7 +163,7 @@ Status OrtModuleGraphBuilder::OptimizeForwardGraph(std::unordered_set<std::strin
                  std::inserter(x_node_arg_names, x_node_arg_names.begin()));
   auto add_transformers = [&](TransformerLevel level) {
     auto transformers_to_register = transformer_utils::GeneratePreTrainingTransformers(
-        level, x_node_arg_names, config_.graph_transformer_config, *cpu_execution_provider);
+        level, x_node_arg_names, config, *cpu_execution_provider);
     for (auto& entry : transformers_to_register) {
       ORT_RETURN_IF_ERROR(graph_transformation_mgr.Register(std::move(entry), level));
     }

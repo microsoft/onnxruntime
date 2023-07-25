@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "gtest/gtest.h"
+#include "core/session/onnxruntime_cxx_api.h"
 #include "test/common/tensor_op_test_utils.h"
 #include "test/common/cuda_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
@@ -25,7 +26,8 @@ static void RunTest(
     bool use_float16 = false,
     bool no_beta = false,
     bool simplified = false,
-    bool use_token_count = false) {
+    bool use_token_count = false,
+    bool strict = false) {
   // Input and output shapes
   //   Input 0 - input: (batch_size, sequence_length, hidden_size) or (batch_size * sequence_length, hidden_size)
   //   Input 1 - skip : (batch_size, sequence_length, hidden_size) or (batch_size * sequence_length, hidden_size)
@@ -113,7 +115,19 @@ static void RunTest(
     } else if (rocm_ep != nullptr) {
       execution_providers.push_back(DefaultRocmExecutionProvider());
     } else {
-      execution_providers.push_back(DefaultCudaExecutionProvider());
+      if (strict) {
+        const auto& api = Ort::GetApi();
+        OrtCUDAProviderOptionsV2* cuda_options = nullptr;
+        ASSERT_TRUE(api.CreateCUDAProviderOptions(&cuda_options) == nullptr);
+        std::unique_ptr<OrtCUDAProviderOptionsV2, decltype(api.ReleaseCUDAProviderOptions)>
+            rel_cuda_options(cuda_options, api.ReleaseCUDAProviderOptions);
+        std::vector<const char*> keys{"enable_skip_layer_norm_strict_mode"};
+        std::vector<const char*> values{"1"};
+        ASSERT_TRUE(api.UpdateCUDAProviderOptions(rel_cuda_options.get(), keys.data(), values.data(), 1) == nullptr);
+        execution_providers.push_back(CudaExecutionProviderWithOptions(std::move(rel_cuda_options.get())));
+      } else {
+        execution_providers.push_back(DefaultCudaExecutionProvider());
+      }
     }
 
     test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
@@ -325,7 +339,11 @@ TEST(SkipLayerNormTest, SkipLayerNormBatch1_Float16_vec) {
           batch_size,
           sequence_length,
           hidden_size,
-          true);
+          true /*use_float16*/,
+          false /*no_beta*/,
+          false /*simplified*/,
+          false /*use_token_count*/,
+          true /*strict*/);
 }
 
 TEST(SkipLayerNormTest, SkipLayerNormBatch1_NoBeta) {
@@ -610,10 +628,11 @@ TEST(SkipLayerNormTest, SkipLayerNormBatch1_Float16_vec_token_count) {
           batch_size,
           sequence_length,
           hidden_size,
-          true,
-          false,
-          false,
-          true);
+          true /*use_float16*/,
+          false /*no_beta*/,
+          false /*simplified*/,
+          true /*use_token_count*/,
+          true /*strict*/);
 }
 
 TEST(SkipLayerNormTest, SkipLayerNormBatch2_TokenCount) {

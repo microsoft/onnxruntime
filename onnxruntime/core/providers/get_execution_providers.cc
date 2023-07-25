@@ -101,6 +101,14 @@ constexpr ProviderInfo kProvidersInPriorityOrder[] =
 #endif
         },
         {
+            kJsExecutionProvider,
+#ifdef USE_JSEP
+            true,
+#else
+            false,
+#endif
+        },
+        {
             kCoreMLExecutionProvider,
 #ifdef USE_COREML
             true,
@@ -135,6 +143,14 @@ constexpr ProviderInfo kProvidersInPriorityOrder[] =
         {
             kRknpuExecutionProvider,
 #ifdef USE_RKNPU
+            true,
+#else
+            false,
+#endif
+        },
+        {
+            kWebNNExecutionProvider,
+#ifdef USE_WEBNN
             true,
 #else
             false,

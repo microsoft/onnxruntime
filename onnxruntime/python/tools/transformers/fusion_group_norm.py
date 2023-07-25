@@ -103,7 +103,7 @@ class FusionGroupNorm(Fusion):
 
         group_norm_name = self.model.create_node_name("GroupNorm", name_prefix="GroupNorm")
 
-        if weight_elements not in [320, 640, 960, 1280, 1920, 2560] + [128, 256, 512]:
+        if weight_elements not in [320, 640, 960, 1280, 1920, 2560, 128, 256, 512]:
             logger.info("GroupNorm channels=%d", weight_elements)
 
         gamma = helper.make_tensor(
