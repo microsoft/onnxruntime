@@ -4,7 +4,7 @@
 import {tensorToDataURL, tensorToImageData} from './tensor-conversion-impl.js';
 import {TensorToDataUrlOptions, TensorToImageDataOptions} from './tensor-conversion.js';
 import {tensorFromGpuBuffer, tensorFromImage, tensorFromPinnedBuffer, tensorFromTexture} from './tensor-factory-impl.js';
-import {TensorFromGpuBufferOptions, TensorFromImageBitmapOptions, TensorFromImageDataOptions, TensorFromImageElementOptions, TensorFromTextureOptions, TensorFromUrlOptions} from './tensor-factory.js';
+import {CpuPinnedConstructorParameters, CpuPinnedDataTypes, GpuBufferConstructorParameters, GpuBufferDataTypes, TensorFromGpuBufferOptions, TensorFromImageBitmapOptions, TensorFromImageDataOptions, TensorFromImageElementOptions, TensorFromTextureOptions, TensorFromUrlOptions, TextureConstructorParameters} from './tensor-factory.js';
 import {checkBigInt, NUMERIC_TENSOR_TYPE_TO_TYPEDARRAY_MAP, NUMERIC_TENSOR_TYPEDARRAY_TO_TYPE_MAP, SupportedTypedArray, SupportedTypedArrayConstructors} from './tensor-impl-type-mapping.js';
 import {calculateSize, tensorReshape} from './tensor-utils-impl.js';
 import {Tensor as TensorInterface} from './tensor.js';
@@ -17,12 +17,6 @@ type TensorDataLocation = TensorInterface.DataLocation;
 type TensorTextureType = TensorInterface.TextureType;
 type TensorGpuBufferType = TensorInterface.GpuBufferType;
 
-// type definitions for creating tensor from specific location
-type TensorFromSpecificLocationParameters = TensorInterface.CpuPinnedConstructorParameters|
-                                            TensorInterface.TextureConstructorParameters|
-                                            TensorInterface.GpuBufferConstructorParameters;
-
-
 /**
  * the implementation of Tensor interface.
  *
@@ -30,11 +24,46 @@ type TensorFromSpecificLocationParameters = TensorInterface.CpuPinnedConstructor
  */
 export class Tensor implements TensorInterface {
   // #region constructors
+
+  /**
+   * Construct a new CPU tensor object from the given type, data and dims.
+   */
   constructor(type: TensorType, data: TensorDataType|readonly number[]|readonly boolean[], dims?: readonly number[]);
+  /**
+   * Construct a new CPU tensor object from the given data and dims. Type is inferred from data.
+   */
   constructor(data: TensorDataType|readonly boolean[], dims?: readonly number[]);
-  constructor(params: TensorFromSpecificLocationParameters);
+  /**
+   * Construct a new tensor object from the pinned CPU data with the given type and dims.
+   *
+   * Tensor's location will be set to 'cpu-pinned'.
+   *
+   * @param params - Specify the parameters to construct the tensor.
+   */
+  constructor(params: CpuPinnedConstructorParameters);
+  /**
+   * Construct a new tensor object from the WebGL texture with the given type and dims.
+   *
+   * Tensor's location will be set to 'texture'.
+   *
+   * @param params - Specify the parameters to construct the tensor.
+   */
+  constructor(params: TextureConstructorParameters);
+  /**
+   * Construct a new tensor object from the WebGPU buffer with the given type and dims.
+   *
+   * Tensor's location will be set to 'gpu-buffer'.
+   *
+   * @param params - Specify the parameters to construct the tensor.
+   */
+  constructor(params: GpuBufferConstructorParameters);
+
+  /**
+   * implementation.
+   */
   constructor(
-      arg0: TensorType|TensorDataType|readonly boolean[]|TensorFromSpecificLocationParameters,
+      arg0: TensorType|TensorDataType|readonly boolean[]|CpuPinnedConstructorParameters|TextureConstructorParameters|
+      GpuBufferConstructorParameters,
       arg1?: TensorDataType|readonly number[]|readonly boolean[], arg2?: readonly number[]) {
     // perform one-time check for BigInt support
     checkBigInt();
@@ -213,12 +242,12 @@ export class Tensor implements TensorInterface {
     return tensorFromTexture(texture, options);
   }
 
-  static fromGpuBuffer<T extends TensorInterface.GpuBufferDataTypes>(
+  static fromGpuBuffer<T extends GpuBufferDataTypes>(
       gpuBuffer: TensorGpuBufferType, options: TensorFromGpuBufferOptions<T>): TensorInterface {
     return tensorFromGpuBuffer(gpuBuffer, options);
   }
 
-  static fromPinnedBuffer<T extends Exclude<TensorInterface.Type, 'string'>>(
+  static fromPinnedBuffer<T extends CpuPinnedDataTypes>(
       type: T, buffer: TensorInterface.DataTypeMap[T], dims?: readonly number[]): Tensor {
     return tensorFromPinnedBuffer(type, buffer, dims);
   }

@@ -64,8 +64,6 @@ interface TypedTensorBase<T extends Tensor.Type> {
 }
 
 export declare namespace Tensor {
-  // #region basic types
-
   interface DataTypeMap {
     float32: Float32Array;
     uint8: Uint8Array;
@@ -133,101 +131,6 @@ export declare namespace Tensor {
    * represent the data type of a tensor
    */
   export type Type = keyof DataTypeMap;
-
-  // #endregion
-
-  // #region types for constructing a tensor from a specific location
-
-  /**
-   * represent common properties of the parameter for constructing a tensor from a specific location.
-   */
-  interface CommonConstructorParameters<T> extends Pick<Tensor, 'dims'> {
-    /**
-     * Specify the data type of the tensor.
-     */
-    readonly type: T;
-  }
-
-  /**
-   * represent the parameter for constructing a tensor from a GPU resource.
-   */
-  interface GpuResourceConstructorParameters<T extends Type> {
-    /**
-     * an optional callback function to download data from GPU to CPU.
-     *
-     * If not provided, the tensor treat the GPU data as external resource.
-     */
-    download?(): Promise<DataTypeMap[T]>;
-
-    /**
-     * an optional callback function that will be called when the tensor is disposed.
-     *
-     * If not provided, the tensor treat the GPU data as external resource.
-     */
-    dispose?(): void;
-  }
-
-  /**
-   * supported data types for constructing a tensor from a pinned CPU buffer
-   */
-  export type CpuPinnedDataTypes = Exclude<Type, 'string'>;
-
-  /**
-   * represent the parameter for constructing a tensor from a pinned CPU buffer
-   */
-  export interface CpuPinnedConstructorParameters<T extends CpuPinnedDataTypes = CpuPinnedDataTypes> extends
-      CommonConstructorParameters<T> {
-    /**
-     * Specify the location of the data to be 'cpu-pinned'.
-     */
-    readonly location: 'cpu-pinned';
-    /**
-     * Specify the CPU pinned buffer that holds the tensor data.
-     */
-    readonly data: DataTypeMap[T];
-  }
-
-  /**
-   * supported data types for constructing a tensor from a WebGL texture
-   */
-  export type TextureDataTypes = 'float32';
-
-  /**
-   * represent the parameter for constructing a tensor from a WebGL texture
-   */
-  export interface TextureConstructorParameters<T extends TextureDataTypes = TextureDataTypes> extends
-      CommonConstructorParameters<T>, GpuResourceConstructorParameters<T> {
-    /**
-     * Specify the location of the data to be 'texture'.
-     */
-    readonly location: 'texture';
-    /**
-     * Specify the WebGL texture that holds the tensor data.
-     */
-    readonly texture: TextureType;
-  }
-
-  /**
-   * supported data types for constructing a tensor from a WebGPU buffer
-   */
-  export type GpuBufferDataTypes = 'float32'|'int32';
-
-  /**
-   * represent the parameter for constructing a tensor from a WebGPU buffer
-   */
-  export interface GpuBufferConstructorParameters<T extends GpuBufferDataTypes = GpuBufferDataTypes> extends
-      CommonConstructorParameters<T>, GpuResourceConstructorParameters<T> {
-    /**
-     * Specify the location of the data to be 'gpu-buffer'.
-     */
-    readonly location: 'gpu-buffer';
-    /**
-     * Specify the WebGPU buffer that holds the tensor data.
-     */
-    readonly gpuBuffer: GpuBufferType;
-  }
-
-  // #endregion
 }
 
 /**
@@ -239,37 +142,10 @@ export interface TypedTensor<T extends Tensor.Type> extends TypedTensorBase<T>, 
  */
 export interface Tensor extends TypedTensorBase<Tensor.Type>, TypedTensorUtils<Tensor.Type> {}
 
+/**
+ * type TensorConstructor defines the constructors of 'Tensor' to create CPU tensor instances.
+ */
 export interface TensorConstructor {
-  // #region specify location
-  /**
-   * Construct a new tensor object from the pinned CPU data with the given type and dims.
-   *
-   * Tensor's location will be set to 'cpu-pinned'.
-   *
-   * @param params - Specify the parameters to construct the tensor.
-   */
-  new<T extends Tensor.CpuPinnedDataTypes>(params: Tensor.CpuPinnedConstructorParameters<T>): TypedTensor<T>;
-
-  /**
-   * Construct a new tensor object from the WebGL texture with the given type and dims.
-   *
-   * Tensor's location will be set to 'texture'.
-   *
-   * @param params - Specify the parameters to construct the tensor.
-   */
-  new<T extends Tensor.TextureDataTypes>(params: Tensor.TextureConstructorParameters<T>): TypedTensor<T>;
-
-  /**
-   * Construct a new tensor object from the WebGPU buffer with the given type and dims.
-   *
-   * Tensor's location will be set to 'gpu-buffer'.
-   *
-   * @param params - Specify the parameters to construct the tensor.
-   */
-  new<T extends Tensor.GpuBufferDataTypes>(params: Tensor.GpuBufferConstructorParameters<T>): TypedTensor<T>;
-
-  // #endregion
-
   // #region CPU tensor - specify element type
   /**
    * Construct a new string tensor object from the given type, data and dims.

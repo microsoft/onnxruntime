@@ -6,7 +6,102 @@ import {Tensor, TypedTensor} from './tensor.js';
 export type ImageFormat = 'RGB'|'RGBA'|'BGR'|'RBG';
 export type ImageTensorLayout = 'NHWC'|'NCHW';
 
-// the following session contains type definitions of each individual options.
+// the following region contains type definitions for constructing tensor from a specific location.
+
+// #region types for constructing a tensor from a specific location
+
+/**
+ * represent common properties of the parameter for constructing a tensor from a specific location.
+ */
+interface CommonConstructorParameters<T> extends Pick<Tensor, 'dims'> {
+  /**
+   * Specify the data type of the tensor.
+   */
+  readonly type: T;
+}
+
+/**
+ * represent the parameter for constructing a tensor from a GPU resource.
+ */
+interface GpuResourceConstructorParameters<T extends Tensor.Type> {
+  /**
+   * an optional callback function to download data from GPU to CPU.
+   *
+   * If not provided, the tensor treat the GPU data as external resource.
+   */
+  download?(): Promise<Tensor.DataTypeMap[T]>;
+
+  /**
+   * an optional callback function that will be called when the tensor is disposed.
+   *
+   * If not provided, the tensor treat the GPU data as external resource.
+   */
+  dispose?(): void;
+}
+
+/**
+ * supported data types for constructing a tensor from a pinned CPU buffer
+ */
+export type CpuPinnedDataTypes = Exclude<Tensor.Type, 'string'>;
+
+/**
+ * represent the parameter for constructing a tensor from a pinned CPU buffer
+ */
+export interface CpuPinnedConstructorParameters<T extends CpuPinnedDataTypes = CpuPinnedDataTypes> extends
+    CommonConstructorParameters<T> {
+  /**
+   * Specify the location of the data to be 'cpu-pinned'.
+   */
+  readonly location: 'cpu-pinned';
+  /**
+   * Specify the CPU pinned buffer that holds the tensor data.
+   */
+  readonly data: Tensor.DataTypeMap[T];
+}
+
+/**
+ * supported data types for constructing a tensor from a WebGL texture
+ */
+export type TextureDataTypes = 'float32';
+
+/**
+ * represent the parameter for constructing a tensor from a WebGL texture
+ */
+export interface TextureConstructorParameters<T extends TextureDataTypes = TextureDataTypes> extends
+    CommonConstructorParameters<T>, GpuResourceConstructorParameters<T> {
+  /**
+   * Specify the location of the data to be 'texture'.
+   */
+  readonly location: 'texture';
+  /**
+   * Specify the WebGL texture that holds the tensor data.
+   */
+  readonly texture: Tensor.TextureType;
+}
+
+/**
+ * supported data types for constructing a tensor from a WebGPU buffer
+ */
+export type GpuBufferDataTypes = 'float32'|'int32';
+
+/**
+ * represent the parameter for constructing a tensor from a WebGPU buffer
+ */
+export interface GpuBufferConstructorParameters<T extends GpuBufferDataTypes = GpuBufferDataTypes> extends
+    CommonConstructorParameters<T>, GpuResourceConstructorParameters<T> {
+  /**
+   * Specify the location of the data to be 'gpu-buffer'.
+   */
+  readonly location: 'gpu-buffer';
+  /**
+   * Specify the WebGPU buffer that holds the tensor data.
+   */
+  readonly gpuBuffer: Tensor.GpuBufferType;
+}
+
+// #endregion
+
+// the following region contains type definitions of each individual options.
 // the tensor factory functions use a composition of those options as the parameter type.
 
 // #region Options fields
@@ -108,11 +203,11 @@ export interface TensorFromUrlOptions extends OptionsDimensions, OptionResizedDi
 export interface TensorFromImageBitmapOptions extends OptionResizedDimensions, OptionsTensorFormat, OptionsTensorLayout,
                                                       OptionsTensorDataType, OptionsNormalizationParameters {}
 
-export interface TensorFromTextureOptions<T extends Tensor.TextureDataTypes> extends
-    Required<OptionsDimensions>, OptionsFormat, Tensor.GpuResourceConstructorParameters<T>/* TODO: add more */ {}
+export interface TensorFromTextureOptions<T extends TextureDataTypes> extends
+    Required<OptionsDimensions>, OptionsFormat, GpuResourceConstructorParameters<T>/* TODO: add more */ {}
 
-export interface TensorFromGpuBufferOptions<T extends Tensor.GpuBufferDataTypes> extends
-    Pick<Tensor, 'dims'>, Tensor.GpuResourceConstructorParameters<T> {
+export interface TensorFromGpuBufferOptions<T extends GpuBufferDataTypes> extends Pick<Tensor, 'dims'>,
+                                                                                  GpuResourceConstructorParameters<T> {
   /**
    * Describes the data type of the tensor.
    */
@@ -121,6 +216,10 @@ export interface TensorFromGpuBufferOptions<T extends Tensor.GpuBufferDataTypes>
 
 // #endregion
 
+/**
+ * type TensorFactory defines the factory functions of 'Tensor' to create tensor instances from existing data or
+ * resources.
+ */
 export interface TensorFactory {
   /**
    * create a tensor from an ImageData object
@@ -199,7 +298,7 @@ export interface TensorFactory {
    *
    * @returns a tensor object
    */
-  fromTexture<T extends Tensor.TextureDataTypes = 'float32'>(
+  fromTexture<T extends TextureDataTypes = 'float32'>(
       texture: Tensor.TextureType, options: TensorFromTextureOptions<T>): TypedTensor<'float32'>;
 
   /**
@@ -219,7 +318,7 @@ export interface TensorFactory {
    *
    * @returns a tensor object
    */
-  fromGpuBuffer<T extends Tensor.GpuBufferDataTypes = 'float32'>(
+  fromGpuBuffer<T extends GpuBufferDataTypes = 'float32'>(
       buffer: Tensor.GpuBufferType, options: TensorFromGpuBufferOptions<T>): TypedTensor<T>;
 
   /**
