@@ -7,7 +7,7 @@
 	import cpp from 'svelte-highlight/languages/cpp';
 	import typescript from 'svelte-highlight/languages/typescript';
 	import oneLight from 'svelte-highlight/styles/one-light';
-	import oneDark from 'svelte-highlight/styles/onedark';
+	import { blur, fade } from 'svelte/transition';
 
 	let pythonCode =
 		'import onnxruntime as ort\n# Load the model and create InferenceSession\nmodel_path = "path/to/your/onnx/model"\nsession = ort.InferenceSession(model_path)\n# Load and preprocess the input image inputTensor\n...\n# Run inference\noutputs = session.run(None {"input": inputTensor})\nprint(outputs)';
@@ -22,9 +22,10 @@
 	// a svelte function to conditionally render different "Highlight" components based on what tab was clicked
 	let activeTab = 'Python'; // set the initial active tab to Python
 
-	let handleClick = (e) => {
+	// @ts-ignore
+	let handleClick = (event) => {
 		// get the text content of the clicked tab
-		const tabText = e.target.textContent.trim();
+		const tabText = event.target.textContent.trim();
 		// if tabtext === 'c++' {
 		//     tabtext = 'cpp';
 		// }
@@ -34,61 +35,88 @@
 		}
 		activeTab = tabText;
 		activeTab = activeTab;
-		console.log(activeTab);
 	};
 	// get data theme from html tag
-	// let html = document.querySelector('html');
-	// let currentTheme = html!=null?html.getAttribute('data-theme'):'corporate';
 </script>
 
 <svelte:head>
-	<!-- {#if currentTheme == 'corporate'} -->
 	{@html oneLight}
-	<!-- {:else} -->
-		<!-- {@html oneDark} -->
-	<!-- {/if} -->
 </svelte:head>
-<div class="flex flex-row container mx-auto">
-	<div class="basis-2/3">
-		<div class="tabs">
-			<a
-				on:click={handleClick}
-				class="tab tab-lg tab-lifted {activeTab === 'Python' ? 'tab-active' : ''}">Python</a
-			>
-			<a
-				on:click={handleClick}
-				class="tab tab-lg tab-lifted {activeTab === 'C#' ? 'tab-active' : ''}">C#</a
-			>
-			<a
-				on:click={handleClick}
-				class="tab tab-lg tab-lifted {activeTab === 'JavaScript' ? 'tab-active' : ''}">JavaScript</a
-			>
-			<a
-				on:click={handleClick}
-				class="tab tab-lg tab-lifted {activeTab === 'Java' ? 'tab-active' : ''}">Java</a
-			>
-			<a
-				on:click={handleClick}
-				class="tab tab-lg tab-lifted {activeTab === 'C++' ? 'tab-active' : ''}">C++</a
-			>
-			<a
-				on:click={handleClick}
-				class="tab tab-lg tab-lifted {activeTab === 'More..' ? 'tab-active' : ''}">More..</a
-			>
+<div class="container mx-auto">
+	<div class="grid-cols-3 gap-10 hidden md:grid">
+		<div class="col-span-1 mx-auto">
+			<h1 class="text-xl">Use ONNX Runtime with your favorite language</h1>
+			
 		</div>
+		<div class="col-span-2 mx-auto tab-container ">
+			<div class="tabs">
+				<p
+					on:mouseenter={handleClick}
+					class="tab tab-lg tab-bordered {activeTab === 'Python' ? 'tab-active' : ''}"
+				>
+					Python
+				</p>
+				<p
+					on:mouseenter={handleClick}
+					class="tab tab-lg tab-bordered {activeTab === 'C#' ? 'tab-active' : ''}"
+				>
+					C#
+				</p>
+				<p
+					on:mouseenter={handleClick}
+					class="tab tab-lg tab-bordered {activeTab === 'JavaScript' ? 'tab-active' : ''}"
+				>
+					JavaScript
+				</p>
+				<p
+					on:mouseenter={handleClick}
+					class="tab tab-lg tab-bordered {activeTab === 'Java' ? 'tab-active' : ''}"
+				>
+					Java
+				</p>
+				<p
+					on:mouseenter={handleClick}
+					class="tab tab-lg tab-bordered {activeTab === 'C++' ? 'tab-active' : ''}"
+				>
+					C++
+				</p>
+				<button
+					on:click={handleClick}
+					class="tab tab-lg tab-bordered {activeTab === 'More..' ? 'tab-active' : ''}"
+					>More..</button
+				>
+			</div>
 
-		{#if activeTab === 'Python'}
-			<Highlight language={python} code={pythonCode} />
-		{:else if activeTab === 'C#'}
-			<Highlight language={csharp} code={csharpCode} />
-		{:else if activeTab === 'JavaScript'}
-			<Highlight language={javascript} code={javascriptCode} />
-		{:else if activeTab === 'Java'}
-			<Highlight language={java} code={javaCode} />
-		{:else if activeTab === 'C++'}
-			<Highlight language={cpp} code={cppCode} />
-		{:else if activeTab === 'More..'}
-			Link to docs
-		{/if}
+			{#if activeTab === 'Python'}
+				<div class="div" in:fade={{ duration: 500 }}>
+					<Highlight language={python} code={pythonCode} />
+				</div>
+			{:else if activeTab === 'C#'}
+				<div class="div" in:fade={{ duration: 500 }}>
+					<Highlight language={csharp} code={csharpCode} />
+				</div>
+			{:else if activeTab === 'JavaScript'}
+				<div class="div" in:fade={{ duration: 500 }}>
+					<Highlight language={javascript} code={javascriptCode} />
+				</div>
+			{:else if activeTab === 'Java'}
+				<div class="div" in:fade={{ duration: 500 }}>
+					<Highlight language={java} code={javaCode} />
+				</div>
+			{:else if activeTab === 'C++'}
+				<div class="div" in:fade={{ duration: 500 }}>
+					<Highlight language={cpp} code={cppCode} />
+				</div>
+			{:else if activeTab === 'More..'}
+				Link to docs
+			{/if}
+		</div>
 	</div>
 </div>
+
+<style>
+	.tab-container {
+		min-width: 675px;
+		min-height: 525px;
+	}
+</style>

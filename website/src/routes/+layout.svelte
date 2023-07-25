@@ -33,7 +33,7 @@
 <div class="toast">
 	<div class="alert alert-primary">
 		<span
-			>Please help us improve ONNX Runtime by participating in our <a
+			>Please help us improve ONNX Runtime <br class="md:hidden"/>by participating in our <a
 				class="underline"
 				href="https://ncv.microsoft.com/UySXuzobM9">customer survey</a
 			>.</span

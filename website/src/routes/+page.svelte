@@ -7,7 +7,7 @@
     import GenerativeAi from "./components/generative-ai.svelte";
     import Testimonials from "./components/testimonials.svelte";
 </script>
-<Hero/>
+<Hero/> 
 <Customers/>
 <CodeBlocks/>
 <Performance/>

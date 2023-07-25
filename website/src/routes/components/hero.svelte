@@ -17,8 +17,8 @@
 
 <div class="hero bg-primary">
 	<div class="hero-content my-20">
-		<div class="flex">
-			<div class="basis-2/3 self-center mr-20">
+		<div class="grid grid-cols-3 gap-4">
+			<div class="col-span-2 self-center mr-20">
 				<h1 class="text-5xl ">Cross-platform accelerated <br/>machine learning</h1>
 				<p class="py-6">
 					Built-in optimizations speed up training and inferencing with your existing technology
