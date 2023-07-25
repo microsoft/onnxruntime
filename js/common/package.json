@@ -14,7 +14,7 @@
     "build:bundles": "webpack",
     "build": "node ./build.js",
     "prepare": "npm run build",
-    "pretest": "tsc -p test",
+    "pretest": "tsc --build ./test",
     "test": "mocha ./test/**/*.js --timeout 30000"
   },
   "devDependencies": {
