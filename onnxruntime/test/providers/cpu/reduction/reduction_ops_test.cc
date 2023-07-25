@@ -2412,7 +2412,7 @@ TEST(ReductionOpTest, ReduceSum_do_not_keepdims_axes_input_not_initializer) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
 }
 
-TEST(ReductionOpTest, ReduceSum_13_noop_axes_input_initializer) {
+TEST(ReductionOpTest, ReduceSum_noop_axes_input_initializer_opset_13) {
   OpTester test("ReduceSum", 13, onnxruntime::kOnnxDomain);
   test.AddAttribute("keepdims", (int64_t)0);
   test.AddAttribute("noop_with_empty_axes", (int64_t)1);
@@ -2425,7 +2425,7 @@ TEST(ReductionOpTest, ReduceSum_13_noop_axes_input_initializer) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
 }
 
-TEST(ReductionOpTest, ReduceSum_13_empty_axes_input_initializer) {
+TEST(ReductionOpTest, ReduceSum_empty_axes_input_initializer_opset_13) {
   OpTester test("ReduceSum", 13, onnxruntime::kOnnxDomain);
   test.AddAttribute("keepdims", (int64_t)0);
   test.AddAttribute("noop_with_empty_axes", (int64_t)0);  // Not NoOP, use default axes.
@@ -3338,7 +3338,7 @@ TEST(ReductionOpTest, ReduceSum_ReduceDimWithZero3) {
 }
 
 // test if noop_with_empty_axes behaves correctly
-TEST(ReductionOpTest, ReduceL1_noop_axes_input_initializer) {
+TEST(ReductionOpTest, ReduceL1_noop_axes_input_initializer_opset_18) {
   OpTester test("ReduceL1", 18);
   test.AddAttribute("keepdims", (int64_t)0);
   test.AddAttribute("noop_with_empty_axes", (int64_t)1);
@@ -3350,7 +3350,7 @@ TEST(ReductionOpTest, ReduceL1_noop_axes_input_initializer) {
   test.Run();
 }
 
-TEST(ReductionOpTest, ReduceL1_empty_axes_input_initializer) {
+TEST(ReductionOpTest, ReduceL1_empty_axes_input_initializer_opset_18) {
   OpTester test("ReduceL1", 18);
   test.AddAttribute("keepdims", (int64_t)0);
   test.AddAttribute("noop_with_empty_axes", (int64_t)0);  // Not NoOP, use default axes.
@@ -3362,7 +3362,7 @@ TEST(ReductionOpTest, ReduceL1_empty_axes_input_initializer) {
   test.Run();
 }
 
-TEST(ReductionOpTest, ReduceL2_noop_axes_input_initializer) {
+TEST(ReductionOpTest, ReduceL2_noop_axes_input_initializer_opset_18) {
   OpTester test("ReduceL2", 18);
   test.AddAttribute("keepdims", (int64_t)0);
   test.AddAttribute("noop_with_empty_axes", (int64_t)1);
@@ -3374,7 +3374,7 @@ TEST(ReductionOpTest, ReduceL2_noop_axes_input_initializer) {
   test.Run();
 }
 
-TEST(ReductionOpTest, ReduceL2_empty_axes_input_initializer) {
+TEST(ReductionOpTest, ReduceL2_empty_axes_input_initializer_opset_18) {
   OpTester test("ReduceL2", 18);
   test.AddAttribute("keepdims", (int64_t)0);
   test.AddAttribute("noop_with_empty_axes", (int64_t)0);  // Not NoOP, use default axes.
@@ -3386,7 +3386,7 @@ TEST(ReductionOpTest, ReduceL2_empty_axes_input_initializer) {
   test.Run();
 }
 
-TEST(ReductionOpTest, ReduceMax_noop_axes_input_initializer) {
+TEST(ReductionOpTest, ReduceMax_noop_axes_input_initializer_opset_18) {
   OpTester test("ReduceMax", 18);
   test.AddAttribute("keepdims", (int64_t)0);
   test.AddAttribute("noop_with_empty_axes", (int64_t)1);
@@ -3398,7 +3398,7 @@ TEST(ReductionOpTest, ReduceMax_noop_axes_input_initializer) {
   test.Run();
 }
 
-TEST(ReductionOpTest, ReduceMax_empty_axes_input_initializer) {
+TEST(ReductionOpTest, ReduceMax_empty_axes_input_initializer_opset_18) {
   OpTester test("ReduceMax", 18);
   test.AddAttribute("keepdims", (int64_t)0);
   test.AddAttribute("noop_with_empty_axes", (int64_t)0);  // Not NoOP, use default axes.
@@ -3410,7 +3410,7 @@ TEST(ReductionOpTest, ReduceMax_empty_axes_input_initializer) {
   test.Run();
 }
 
-TEST(ReductionOpTest, ReduceMean_noop_axes_input_initializer) {
+TEST(ReductionOpTest, ReduceMean_noop_axes_input_initializer_opset_18) {
   OpTester test("ReduceMean", 18);
   test.AddAttribute("keepdims", (int64_t)0);
   test.AddAttribute("noop_with_empty_axes", (int64_t)1);
@@ -3422,7 +3422,7 @@ TEST(ReductionOpTest, ReduceMean_noop_axes_input_initializer) {
   test.Run();
 }
 
-TEST(ReductionOpTest, ReduceMean_empty_axes_input_initializer) {
+TEST(ReductionOpTest, ReduceMean_empty_axes_input_initializer_opset_18) {
   OpTester test("ReduceMean", 18);
   test.AddAttribute("keepdims", (int64_t)0);
   test.AddAttribute("noop_with_empty_axes", (int64_t)0);  // Not NoOP, use default axes.
@@ -3434,7 +3434,7 @@ TEST(ReductionOpTest, ReduceMean_empty_axes_input_initializer) {
   test.Run();
 }
 
-TEST(ReductionOpTest, ReduceMin_noop_axes_input_initializer) {
+TEST(ReductionOpTest, ReduceMin_noop_axes_input_initializer_opset_18) {
   OpTester test("ReduceMin", 18);
   test.AddAttribute("keepdims", (int64_t)0);
   test.AddAttribute("noop_with_empty_axes", (int64_t)1);
@@ -3446,7 +3446,7 @@ TEST(ReductionOpTest, ReduceMin_noop_axes_input_initializer) {
   test.Run();
 }
 
-TEST(ReductionOpTest, ReduceMin_empty_axes_input_initializer) {
+TEST(ReductionOpTest, ReduceMin_empty_axes_input_initializer_opset_18) {
   OpTester test("ReduceMin", 18);
   test.AddAttribute("keepdims", (int64_t)0);
   test.AddAttribute("noop_with_empty_axes", (int64_t)0);  // Not NoOP, use default axes.
@@ -3458,7 +3458,7 @@ TEST(ReductionOpTest, ReduceMin_empty_axes_input_initializer) {
   test.Run();
 }
 
-TEST(ReductionOpTest, ReduceProd_noop_axes_input_initializer) {
+TEST(ReductionOpTest, ReduceProd_noop_axes_input_initializer_opset_18) {
   OpTester test("ReduceProd", 18);
   test.AddAttribute("keepdims", (int64_t)0);
   test.AddAttribute("noop_with_empty_axes", (int64_t)1);
@@ -3470,7 +3470,7 @@ TEST(ReductionOpTest, ReduceProd_noop_axes_input_initializer) {
   test.Run();
 }
 
-TEST(ReductionOpTest, ReduceProd_empty_axes_input_initializer) {
+TEST(ReductionOpTest, ReduceProd_empty_axes_input_initializer_opset_18) {
   OpTester test("ReduceProd", 18);
   test.AddAttribute("keepdims", (int64_t)0);
   test.AddAttribute("noop_with_empty_axes", (int64_t)0);  // Not NoOP, use default axes.
@@ -3482,7 +3482,7 @@ TEST(ReductionOpTest, ReduceProd_empty_axes_input_initializer) {
   test.Run();
 }
 
-TEST(ReductionOpTest, ReduceSum_noop_axes_input_initializer) {
+TEST(ReductionOpTest, ReduceSum_noop_axes_input_initializer_opset_18) {
   OpTester test("ReduceSum", 18);
   test.AddAttribute("keepdims", (int64_t)0);
   test.AddAttribute("noop_with_empty_axes", (int64_t)1);
@@ -3494,7 +3494,7 @@ TEST(ReductionOpTest, ReduceSum_noop_axes_input_initializer) {
   test.Run();
 }
 
-TEST(ReductionOpTest, ReduceSum_empty_axes_input_initializer) {
+TEST(ReductionOpTest, ReduceSum_empty_axes_input_initializer_opset_18) {
   OpTester test("ReduceSum", 18);
   test.AddAttribute("keepdims", (int64_t)0);
   test.AddAttribute("noop_with_empty_axes", (int64_t)0);  // Not NoOP, use default axes.
@@ -3506,7 +3506,7 @@ TEST(ReductionOpTest, ReduceSum_empty_axes_input_initializer) {
   test.Run();
 }
 
-TEST(ReductionOpTest, ReduceSumSquare_noop_axes_input_initializer) {
+TEST(ReductionOpTest, ReduceSumSquare_noop_axes_input_initializer_opset_18) {
   OpTester test("ReduceSumSquare", 18);
   test.AddAttribute("keepdims", (int64_t)0);
   test.AddAttribute("noop_with_empty_axes", (int64_t)1);
@@ -3518,7 +3518,7 @@ TEST(ReductionOpTest, ReduceSumSquare_noop_axes_input_initializer) {
   test.Run();
 }
 
-TEST(ReductionOpTest, ReduceSumSquare_empty_axes_input_initializer) {
+TEST(ReductionOpTest, ReduceSumSquare_empty_axes_input_initializer_opset_18) {
   OpTester test("ReduceSumSquare", 18);
   test.AddAttribute("keepdims", (int64_t)0);
   test.AddAttribute("noop_with_empty_axes", (int64_t)0);  // Not NoOP, use default axes.
