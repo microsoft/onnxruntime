@@ -9,12 +9,16 @@ namespace _winml {
 
 class OnnxruntimeEngineFactory;
 
+// clang-format off
+
 // The IOrtSessionBuilder offers an abstraction over the creation of
 // InferenceSession, that enables the creation of the session based on a device (CPU/DML).
 MIDL_INTERFACE("92679cbf-7a9d-48bb-b97f-ef9fb447ce8e")
 IOnnxruntimeModel : IUnknown {
-  virtual HRESULT STDMETHODCALLTYPE DetachOrtModel(OrtModel * *model) PURE;
+  virtual HRESULT STDMETHODCALLTYPE DetachOrtModel(OrtModel** model) PURE;
 };
+
+// clang-format on
 
 class ModelInfo
     : public Microsoft::WRL::RuntimeClass<Microsoft::WRL::RuntimeClassFlags<Microsoft::WRL::ClassicCom>, IModelInfo> {
