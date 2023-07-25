@@ -7,6 +7,7 @@ import logging
 import os
 import sys
 import tempfile
+import textwrap
 import time
 from contextlib import contextmanager
 from enum import IntEnum
@@ -210,26 +211,28 @@ def _log_with_filter(logger: logging.Logger, record_filters: Optional[List[str]]
         suppress_output_messages = fo.readlines()
         if record_filters:
             filtered_messages = []
-            is_filtered = False
+            filtered_lines = 0
             for suppressed_message in suppress_output_messages:
                 msg = suppressed_message.decode("utf-8")
                 found = False
                 for warning in record_filters:
                     if warning in msg:
                         found = True
-                        is_filtered = True
+                        filtered_lines += 1
                         break
 
                 if not found:
-                    filtered_messages.append(msg)
+                    filtered_messages.extend(textwrap.wrap(msg, 180))
             if filtered_messages:
-                logger.warning(
-                    f"{'Filtered' if is_filtered else 'Full'} [{name}] logs:\n\t" + "\t".join(filtered_messages)
-                )
+                filtered_messages.insert(0, f"[{name}] Filtered logs ({filtered_lines} records suppressed):")
+                logger.warning("\n    ".join(filtered_messages))
         else:
-            logger.warning(
-                f"Full [{name}] logs:\n\t" + "\t".join([m.decode("utf-8") for m in suppress_output_messages])
-            )
+            out_messages = []
+            for suppressed_message in suppress_output_messages:
+                out_messages.extend(textwrap.wrap(suppressed_message.decode("utf-8"), 180))
+            if out_messages:
+                out_messages.insert(0, f"[{name}] Full logs:")
+                logger.warning("\n    ".join(out_messages))
 
 
 class SuppressLogs:
@@ -248,6 +251,7 @@ class SuppressLogs:
                 raise RuntimeError("The class of the function to be tracked must have a '_debug_options' attribute.")
 
             with _suppress_os_stream_output(
+                enable=graph_execution_manager._debug_options.log_level >= LogLevel.INFO,
                 on_exit=partial(
                     _log_with_filter,
                     graph_execution_manager._logger,
@@ -255,7 +259,7 @@ class SuppressLogs:
                     if self.is_ort_filter
                     else graph_execution_manager._debug_options.torch_exporter_filter,
                     self.phase.to_string(),
-                )
+                ),
             ):
                 result = func(graph_execution_manager, *args, **kwargs)
             return result
