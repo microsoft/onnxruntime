@@ -166,9 +166,7 @@ TEST(PackedMultiHeadAttentionTest, PackedQKV_NoPadding) {
 }
 #endif
 
-/*
-//TODO: enable this test when we support separated Q, K and V input
-TEST(PackedMultiHeadAttentionTest, Q_K_V_Padding) {
+TEST(PackedMultiHeadAttentionTest, PackedQKV_Padding) {
   AttentionTestData data;
   GetPackedMultiHeadAttentionData_Batch2_HeadSize8_Mask(data);
   std::vector<float> empty_data = {};
@@ -176,9 +174,9 @@ TEST(PackedMultiHeadAttentionTest, Q_K_V_Padding) {
   std::vector<int32_t> token_offset{0, 2, 3, 1};
   std::vector<int32_t> cum_seq_len{0, 1, 3};
   RunPackedMultiHeadAttentionTest(
-      data.query_data,
-      data.key_data,
-      data.value_data,
+      data.qkv_data,
+      empty_data,
+      empty_data,
       token_offset,
       cum_seq_len,
       data.fp16_output_data,
@@ -189,7 +187,6 @@ TEST(PackedMultiHeadAttentionTest, Q_K_V_Padding) {
       data.num_heads,
       token_count);
 }
-*/
 
 }  // namespace test
 }  // namespace onnxruntime

@@ -217,6 +217,7 @@ Status PackedMultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) co
   cublasHandle_t cublas = this->GetCublasHandle(context);
 
   constexpr size_t element_size = sizeof(T);
+  const bool no_qkv_workspace = (fused_runner != nullptr and key == nullptr) || (use_memory_efficient_attention && value != nullptr);
   size_t workSpaceSize = GetAttentionWorkspaceSize(element_size,
                                                    parameters.batch_size,
                                                    parameters.num_heads,
@@ -224,7 +225,8 @@ Status PackedMultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) co
                                                    parameters.v_head_size,
                                                    parameters.sequence_length,
                                                    fused_runner,
-                                                   use_memory_efficient_attention);
+                                                   use_memory_efficient_attention,
+                                                   no_qkv_workspace);
   auto work_space = this->GetScratchBuffer<void>(workSpaceSize, context->GetComputeStream());
 
   typedef typename ToCudaType<T>::MappedType CudaT;
@@ -239,6 +241,8 @@ Status PackedMultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) co
   data.output = reinterpret_cast<CudaT*>(output->MutableData<T>());
   data.fused_runner = reinterpret_cast<void*>(fused_runner);
   data.use_memory_efficient_attention = use_memory_efficient_attention;
+  data.no_qkv_workspace = no_qkv_workspace;
+  data.source_qkv_format = (key == nullptr) ? AttentionQkvFormat::Q_K_V_BSNH : AttentionQkvFormat::QKV_BSN3H;
 
   return QkvToContext<CudaT>(device_prop, cublas, Stream(context), parameters, data);
 }

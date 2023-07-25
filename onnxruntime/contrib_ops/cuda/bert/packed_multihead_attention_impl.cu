@@ -41,7 +41,7 @@ static constexpr int32_t kMAX_THREADS_PER_BLOCK = 256;
 // N is num_heads
 // H is head_size
 template <typename T>
-__global__ void TransposeQKVPacked(
+__global__ void TransposeQKV_TN3H_3BNSH(
     const T* input,  // packed qkv
     int32_t N,
     int32_t H_QK,
@@ -105,7 +105,7 @@ __global__ void TransposeQKVPacked(
 
 // Grid: (T)
 // Block: 256
-// For memory efficient fMHA from CUTLASS. For future use, doesn't support fMHA from CUTLASS yet.
+// For memory efficient fMHA from CUTLASS.
 //     Input: TxNx3xH
 //     Output: 3xTxNxH
 // T is token_count
@@ -114,7 +114,7 @@ __global__ void TransposeQKVPacked(
 // N is num_heads
 // H is head_size
 template <typename T>
-__global__ void TransposeQKVPackedCutlass(
+__global__ void TransposeQKV_TN3H_3TNH(
     const T* input,
     int32_t N,
     int32_t H_QK,
@@ -154,7 +154,6 @@ void InvokeTranspose(
     AttentionQkvFormat source_format, AttentionQkvFormat target_format,
     const int32_t* token_offset, int32_t token_count,
     cudaStream_t stream) {
-
   if (key != nullptr || value != nullptr) {
     ORT_ENFORCE(source_format == AttentionQkvFormat::Q_K_V_BSNH);
     ORT_NOT_IMPLEMENTED("Only support packed QKV.");
@@ -162,7 +161,7 @@ void InvokeTranspose(
     ORT_ENFORCE(source_format == AttentionQkvFormat::QKV_BSN3H);
     if (target_format == AttentionQkvFormat::Q_K_V_BNSH) {
       const dim3 grid(sequence_length, batch_size);
-      TransposeQKVPacked<T><<<grid, kMAX_THREADS_PER_BLOCK, 0, stream>>>(
+      TransposeQKV_TN3H_3BNSH<T><<<grid, kMAX_THREADS_PER_BLOCK, 0, stream>>>(
           query,
           num_heads,
           qk_head_size,
@@ -174,7 +173,7 @@ void InvokeTranspose(
           token_count);
     } else if (target_format == AttentionQkvFormat::Q_K_V_BSNH) {
       const dim3 grid(token_count);
-      TransposeQKVPackedCutlass<T><<<grid, kMAX_THREADS_PER_BLOCK, 0, stream>>>(
+      TransposeQKV_TN3H_3TNH<T><<<grid, kMAX_THREADS_PER_BLOCK, 0, stream>>>(
           query,
           num_heads,
           qk_head_size,
@@ -262,7 +261,7 @@ void LaunchTranspose(
 }
 
 template <typename T>
-Status FusedScaledDotProductAttention(
+Status FusedAttentionTrt(
     const cudaDeviceProp& device_prop,
     cudaStream_t stream,
     PackedAttentionParameters& parameters,
@@ -276,27 +275,27 @@ Status FusedScaledDotProductAttention(
   ORT_RETURN_IF_NOT(nullptr != fused_runner, "fused_runner cannot be NULL");
 
   // When packed QKV is used, we can directly pass it to fused runner. Otherwise, we need transpose to BSN3H format.
-  const T* fused_runner_input = data.query;
-  if (data.key != nullptr) {
+  const T* qkv = data.query;
+  if (!data.no_qkv_workspace) {
     LaunchTranspose(data.query, data.key, data.value, data.workspace,
                     batch_size, sequence_length,
                     num_heads, qk_head_size, v_head_size,
-                    AttentionQkvFormat::QKV_BSNH, AttentionQkvFormat::QKV_BSN3H, data.token_offset,
-                    parameters.token_count, stream);
-    fused_runner_input = data.workspace;
+                    data.source_qkv_format, AttentionQkvFormat::QKV_BSN3H,
+                    data.token_offset, parameters.token_count, stream);
+    qkv = data.workspace;
   }
 
   FusedMHARunnerFP16v2* fused_fp16_runner = reinterpret_cast<FusedMHARunnerFP16v2*>(fused_runner);
   const int S = fused_fp16_runner->getSFromMaxSeqLen(sequence_length);
   fused_fp16_runner->setup(S, batch_size);
 
-  fused_fp16_runner->run(fused_runner_input, data.cumulative_sequence_length, data.output, stream);
+  fused_fp16_runner->run(qkv, data.cumulative_sequence_length, data.output, stream);
   return Status::OK();
 }
 
 #if USE_FLASH_ATTENTION
 template <typename T>
-Status FusedScaledDotProductAttentionCutlass(
+Status FusedAttentionCutlass(
     const cudaDeviceProp& device_prop,
     cudaStream_t stream,
     PackedAttentionParameters& parameters,
@@ -306,24 +305,23 @@ Status FusedScaledDotProductAttentionCutlass(
   const int num_heads = parameters.num_heads;
   const int qk_head_size = parameters.head_size;
   const int v_head_size = parameters.v_head_size;
-  LaunchTranspose(data.query, data.key, data.value, data.workspace,
-                  batch_size, sequence_length,
-                  num_heads, qk_head_size, v_head_size,
-                  AttentionQkvFormat::Q_K_V_BSNH, data.token_offset,
-                  parameters.token_count, stream);
-  DUMP_TENSOR_INIT();
 
   // Q, K and V pointers
   const int model_dimension_qk = num_heads * qk_head_size;
   const int model_dimension_v = num_heads * v_head_size;
   const size_t elements_qk = static_cast<size_t>(parameters.token_count) * static_cast<size_t>(model_dimension_qk);
   const size_t elements_v = static_cast<size_t>(parameters.token_count) * static_cast<size_t>(model_dimension_v);
-  T* qkv = data.workspace;
-  T* query = qkv;
-  T* key = query + elements_qk;
-  T* value = key + elements_qk;
-  T* accum_workspace = value + elements_v;
 
+  // When separated Q, K, V is used, we can directly use them in Cutlass FMHA. Otherwise, transpose BSN3H to 3BSNH
+  if (!data.no_qkv_workspace) {
+    LaunchTranspose(data.query, data.key, data.value, data.workspace,
+                    batch_size, sequence_length,
+                    num_heads, qk_head_size, v_head_size,
+                    data.source_qkv_format, AttentionQkvFormat::Q_K_V_BSNH,
+                    data.token_offset, parameters.token_count, stream);
+  }
+
+  DUMP_TENSOR_INIT();
   DUMP_TENSOR_D("PackedMHA cutlass q(BSNH)", query, parameters.token_count, num_heads * qk_head_size);
   DUMP_TENSOR_D("PackedMHA cutlass k(BSNH)", key, parameters.token_count, num_heads * qk_head_size);
   DUMP_TENSOR_D("PackedMHA cutlass v(BSNH)", value, parameters.token_count, num_heads * v_head_size);
@@ -344,13 +342,15 @@ Status FusedScaledDotProductAttentionCutlass(
   p.seqlen_k_ptr = nullptr;
   p.seqstart_q_ptr = const_cast<int32_t*>(data.cumulative_sequence_length);
   p.seqstart_k_ptr = const_cast<int32_t*>(data.cumulative_sequence_length);
-  p.query = query;
-  p.key = key;
-  p.value = value;
+  p.query = data.no_qkv_workspace ? data.query : data.workspace;
+  p.key = data.no_qkv_workspace ? data.key : (data.workspace + elements_qk);
+  p.value = data.no_qkv_workspace ? data.value : (data.workspace + elements_qk + elements_qk);
   p.attn_bias = data.relative_position_bias;
   p.is_attn_bias_batched = !parameters.broadcast_res_pos_bias;
   p.output = data.output;
-  p.workspace = MemoryEfficientAttentionParams::need_workspace(v_head_size, sizeof(T) == sizeof(float)) ? accum_workspace : nullptr;
+  p.workspace = MemoryEfficientAttentionParams::need_workspace(v_head_size, sizeof(T) == sizeof(float))
+                    ? (data.workspace + (data.no_qkv_workspace ? 0 : (elements_qk + elements_qk + elements_v)))
+                    : nullptr;
   p.stream = stream;
   run_memory_efficient_attention(p);
 
@@ -360,7 +360,7 @@ Status FusedScaledDotProductAttentionCutlass(
 #endif
 
 template <typename T>
-Status UnfusedScaledDotProductAttention(
+Status UnfusedAttention(
     const cudaDeviceProp& device_prop,
     cublasHandle_t& cublas,
     cudaStream_t stream,
@@ -390,8 +390,8 @@ Status UnfusedScaledDotProductAttention(
   LaunchTranspose(data.query, data.key, data.value, data.workspace,
                   batch_size, sequence_length,
                   num_heads, qk_head_size, v_head_size,
-                  AttentionQkvFormat::Q_K_V_BNSH, data.token_offset,
-                  parameters.token_count, stream);
+                  data.source_qkv_format, AttentionQkvFormat::Q_K_V_BNSH,
+                  data.token_offset, parameters.token_count, stream);
 
   T* scaled_qk = qkv + elements_q + elements_k + elements_v;
 
@@ -467,16 +467,16 @@ Status QkvToContext(
     PackedMultiHeadAttentionData<T>& data) {
   void* fused_runner = data.fused_runner;
   if (nullptr != fused_runner) {
-    return FusedScaledDotProductAttention<T>(device_prop, stream, parameters, data);
+    return FusedAttentionTrt<T>(device_prop, stream, parameters, data);
   }
 
 #if USE_FLASH_ATTENTION
   if (data.use_memory_efficient_attention) {
-    return FusedScaledDotProductAttentionCutlass(device_prop, stream, parameters, data);
+    return FusedAttentionCutlass(device_prop, stream, parameters, data);
   }
 #endif
 
-  return UnfusedScaledDotProductAttention<T>(device_prop, cublas, stream, parameters, data);
+  return UnfusedAttention<T>(device_prop, cublas, stream, parameters, data);
 }
 
 template Status QkvToContext<float>(

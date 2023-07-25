@@ -20,6 +20,9 @@ struct PackedMultiHeadAttentionData {
   const int32_t* token_offset;
   const int32_t* cumulative_sequence_length;
 
+  AttentionQkvFormat source_qkv_format;
+
+  bool no_qkv_workspace;
   T* workspace;
   T* output;
 

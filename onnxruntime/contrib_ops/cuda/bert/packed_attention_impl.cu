@@ -47,9 +47,10 @@ size_t GetAttentionWorkspaceSize(
     size_t v_head_size,
     size_t sequence_length,
     void* fused_runner,
-    bool use_memory_efficient_attention) {
+    bool use_memory_efficient_attention,
+    bool no_qkv_workspace) {
   // Note that q, k and v might need alignment for fused attention kernels.
-  const size_t qkv_bytes = element_size * batch_size * num_heads * sequence_length * (qk_head_size + qk_head_size + v_head_size);
+  const size_t qkv_bytes = no_qkv_workspace ? 0 : (element_size * batch_size * num_heads * sequence_length * (qk_head_size + qk_head_size + v_head_size));
 
   if (fused_runner != nullptr) {
     return qkv_bytes;

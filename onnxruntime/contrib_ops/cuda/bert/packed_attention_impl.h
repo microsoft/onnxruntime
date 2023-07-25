@@ -25,7 +25,8 @@ size_t GetAttentionWorkspaceSize(
     size_t v_head_size,
     size_t sequence_length,
     void* fused_runner,
-    bool use_memory_efficient_attention);
+    bool use_memory_efficient_attention,
+    bool no_qkv_workspace);
 
 template <typename T>
 struct PackedAttentionData {

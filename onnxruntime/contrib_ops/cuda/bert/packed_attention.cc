@@ -312,6 +312,7 @@ Status PackedAttention<T>::ComputeInternal(OpKernelContext* context) const {
       &zero, reinterpret_cast<CudaT*>(gemm_buffer.get()), n, device_prop));
 
   constexpr size_t element_size = sizeof(T);
+  constexpr bool no_qkv_workspace = false;  // need workspace to add bias
   size_t workSpaceSize = GetAttentionWorkspaceSize(element_size,
                                                    parameters.batch_size,
                                                    parameters.num_heads,
@@ -319,7 +320,8 @@ Status PackedAttention<T>::ComputeInternal(OpKernelContext* context) const {
                                                    parameters.v_head_size,
                                                    parameters.sequence_length,
                                                    fused_runner,
-                                                   use_memory_efficient_attention);
+                                                   use_memory_efficient_attention,
+                                                   no_qkv_workspace);
   auto work_space = this->GetScratchBuffer<void>(workSpaceSize, context->GetComputeStream());
 
   typedef typename ToCudaType<T>::MappedType CudaT;
