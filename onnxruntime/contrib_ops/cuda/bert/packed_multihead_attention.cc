@@ -119,7 +119,7 @@ Status PackedMultiHeadAttention<T>::CheckInputs(const TensorShape& query_shape,
                            "Input 'cumulative_sequence_length' should have 1 dimension with size equal to batch_size + 1");
   }
 
-  // TODO(tianleiwu): move relative postion bias shape checker to a helper function. It is shared by mutliple operators.
+  // TODO(tianleiwu): move relative position bias shape checker to a helper function. It is shared by multiple operators.
   const int num_heads = this->GetNumHeads();
   bool broadcast_res_pos_bias = false;
   if (relative_position_bias != nullptr) {
@@ -244,7 +244,7 @@ Status PackedMultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) co
   data.no_qkv_workspace = no_qkv_workspace;
   data.source_qkv_format = (key == nullptr) ? AttentionQkvFormat::Q_K_V_BSNH : AttentionQkvFormat::QKV_BSN3H;
 
-  return QkvToContext<CudaT>(device_prop, cublas, Stream(context), parameters, data);
+  return QkvToContext<CudaT>(device_prop, cublas, this->Stream(context), parameters, data);
 }
 
 }  // namespace cuda
