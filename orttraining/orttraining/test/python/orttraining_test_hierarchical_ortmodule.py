@@ -213,7 +213,7 @@ def test_hierarchical_ortmodule():
         call_backward(y_ref)
         g_ref = []
         for param in m.parameters():
-            g_ref.append(param.grad.detach())
+            g_ref.append(param.grad.detach())  # noqa: PERF401
 
         m.zero_grad()
 
@@ -224,7 +224,7 @@ def test_hierarchical_ortmodule():
         call_backward(y)
         g = []
         for param in m.parameters():
-            g.append(param.grad.detach())
+            g.append(param.grad.detach())  # noqa: PERF401
 
         # Some sub-modules become ORTModule.
         assert expected_num_ortmodule == count_ortmodule(m)

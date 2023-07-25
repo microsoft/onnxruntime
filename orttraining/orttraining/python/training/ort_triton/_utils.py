@@ -52,7 +52,7 @@ def topological_sort(inputs: List[str], nodes: List[NodeProto]) -> List[NodeProt
                 continue
             for consumer in non_const_nodes:
                 if output in consumer.input:
-                    output_consumers[node.name].append(consumer)
+                    output_consumers[node.name].append(consumer)  # noqa: PERF401
 
     # Topological sort.
     visited = set()

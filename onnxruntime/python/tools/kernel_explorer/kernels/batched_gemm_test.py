@@ -78,7 +78,7 @@ def _test_batched_gemm(
         for i in range(batch):
             try:
                 np.testing.assert_allclose(my_cs[i], ref_cs[i], rtol=bounds[i])
-            except Exception as err:
+            except Exception as err:  # noqa: PERF203
                 header = "*" * 30 + impl + "*" * 30
                 print(header, bounds[i])
                 print(err)

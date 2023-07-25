@@ -20,7 +20,7 @@ def _list_extensions(path):
     for root, _, files in os.walk(path):
         for name in files:
             if name.lower() == "setup.py":
-                extensions.append(os.path.join(root, name))
+                extensions.append(os.path.join(root, name))  # noqa: PERF401
     return extensions
 
 

@@ -82,8 +82,7 @@ template <typename InputType = float, typename InputQType = uint8_t>
 static void RunQDQBinaryOpTest(const std::string& op_type, const TestInputDef<InputType>& input0_def,
                                const TestInputDef<InputType>& input1_def,
                                int opset_version,
-                               ExpectedEPNodeAssignment expected_ep_assignment,
-                               int num_nodes_in_graph) {
+                               ExpectedEPNodeAssignment expected_ep_assignment) {
   ProviderOptions provider_options;
 #if defined(_WIN32)
   provider_options["backend_path"] = "QnnHtp.dll";
@@ -95,8 +94,7 @@ static void RunQDQBinaryOpTest(const std::string& op_type, const TestInputDef<In
   RunQnnModelTest(BuildQDQBinaryOpTestCase<InputType, InputQType>(op_type, input0_def, input1_def),
                   provider_options,
                   opset_version,
-                  expected_ep_assignment,
-                  num_nodes_in_graph);
+                  expected_ep_assignment);
 }
 
 /**
@@ -113,7 +111,6 @@ static void RunQDQSingleInputOpTest(const TestInputDef<InputQType>& input_def, c
                                     const std::vector<ONNX_NAMESPACE::AttributeProto>& attrs,
                                     int opset_version,
                                     ExpectedEPNodeAssignment expected_ep_assignment,
-                                    int num_nodes_in_graph,
                                     const std::string& domain = kOnnxDomain) {
   ProviderOptions provider_options;
 #if defined(_WIN32)
@@ -126,36 +123,56 @@ static void RunQDQSingleInputOpTest(const TestInputDef<InputQType>& input_def, c
   RunQnnModelTest(BuildQDQSingleInputOpTestCase<InputQType>(input_def, op_type, attrs, domain),
                   provider_options,
                   opset_version,
-                  expected_ep_assignment,
-                  num_nodes_in_graph);
+                  expected_ep_assignment);
 }
 
 // Check that QNN compiles DQ -> Gelu -> Q as a single unit.
 // Use an input of rank 3.
 TEST_F(QnnHTPBackendTests, TestQDQGeluTest) {
   RunQDQSingleInputOpTest(TestInputDef<uint8_t>({1, 2, 3}, false, UInt8Limits::min(), UInt8Limits::max()),
-                          "Gelu", {}, 11, ExpectedEPNodeAssignment::All, 1, kMSDomain);
+                          "Gelu", {}, 11, ExpectedEPNodeAssignment::All, kMSDomain);
 }
 
 // Check that QNN compiles DQ -> Elu -> Q as a single unit.
 // Use an input of rank 3.
 TEST_F(QnnHTPBackendTests, TestQDQEluTest) {
   RunQDQSingleInputOpTest(TestInputDef<uint8_t>({1, 2, 3}, false, UInt8Limits::min(), UInt8Limits::max()),
-                          "Elu", {}, 11, ExpectedEPNodeAssignment::All, 1);
+                          "Elu", {}, 11, ExpectedEPNodeAssignment::All);
 }
 
 // Check that QNN compiles DQ -> HardSwish -> Q as a single unit.
 // Use an input of rank 3.
 TEST_F(QnnHTPBackendTests, TestQDQHardSwishTest) {
   RunQDQSingleInputOpTest(TestInputDef<uint8_t>({1, 2, 3}, false, UInt8Limits::min(), UInt8Limits::max()),
-                          "HardSwish", {}, 14, ExpectedEPNodeAssignment::All, 1);
+                          "HardSwish", {}, 14, ExpectedEPNodeAssignment::All);
 }
 
 // Check that QNN compiles DQ -> Atan -> Q as a single unit.
 // Use an input of rank 3.
 TEST_F(QnnHTPBackendTests, TestQDQAtanTest) {
   RunQDQSingleInputOpTest(TestInputDef<uint8_t>({1, 2, 3}, false, UInt8Limits::min(), UInt8Limits::max()),
-                          "Atan", {}, 11, ExpectedEPNodeAssignment::All, 1);
+                          "Atan", {}, 11, ExpectedEPNodeAssignment::All);
+}
+
+// Check that QNN compiles DQ -> Asin -> Q as a single unit.
+// Use an input of rank 3.
+TEST_F(QnnHTPBackendTests, TestQDQAsinTest) {
+  RunQDQSingleInputOpTest(TestInputDef<uint8_t>({1, 2, 3}, false, 0, 1),  // input range 0 ~ 1
+                          "Asin", {}, 11, ExpectedEPNodeAssignment::All);
+}
+
+// Check that QNN compiles DQ -> Sign -> Q as a single unit.
+// Use an input of rank 3.
+TEST_F(QnnHTPBackendTests, TestQDQSignTest) {
+  RunQDQSingleInputOpTest(TestInputDef<uint8_t>({1, 2, 3}, false, UInt8Limits::min(), UInt8Limits::max()),
+                          "Sign", {}, 11, ExpectedEPNodeAssignment::All);
+}
+
+// Check that QNN compiles DQ -> Sign -> Q as a single unit.
+// Use an input of rank 3.
+TEST_F(QnnHTPBackendTests, TestQDQSinTest) {
+  RunQDQSingleInputOpTest(TestInputDef<uint8_t>({1, 2, 3}, false, UInt8Limits::min(), UInt8Limits::max()),
+                          "Sin", {}, 11, ExpectedEPNodeAssignment::All);
 }
 
 // Check that QNN compiles DQ -> Softmax -> Q as a single unit.
@@ -164,7 +181,7 @@ TEST_F(QnnHTPBackendTests, TestQDQSoftmax13_DefaultAxis) {
   RunQDQSingleInputOpTest(TestInputDef<uint8_t>({1, 2, 3}, false, UInt8Limits::min(), UInt8Limits::max()),
                           "Softmax",
                           {},  // Uses default axis of -1 for opset 13
-                          13, ExpectedEPNodeAssignment::All, 1);
+                          13, ExpectedEPNodeAssignment::All);
 }
 
 // Check that QNN compiles DQ -> Softmax -> Q as a single unit.
@@ -173,7 +190,7 @@ TEST_F(QnnHTPBackendTests, TestQDQSoftmax13_UnsupportedAxis) {
   RunQDQSingleInputOpTest(TestInputDef<uint8_t>({1, 2, 3}, false, UInt8Limits::min(), UInt8Limits::max()),
                           "Softmax",
                           {utils::MakeAttribute("axis", static_cast<int64_t>(1))},
-                          13, ExpectedEPNodeAssignment::None, 1);
+                          13, ExpectedEPNodeAssignment::None);
 }
 
 // Check that QNN compiles DQ -> Softmax -> Q as a single unit.
@@ -182,7 +199,7 @@ TEST_F(QnnHTPBackendTests, TestQDQSoftmax11_DefaultAxisFails) {
   RunQDQSingleInputOpTest(TestInputDef<uint8_t>({1, 2, 3}, false, UInt8Limits::min(), UInt8Limits::max()),
                           "Softmax",
                           {},  // Uses default axis of 1 for opset < 13.
-                          11, ExpectedEPNodeAssignment::None, 1);
+                          11, ExpectedEPNodeAssignment::None);
 }
 
 // Check that QNN compiles DQ -> Softmax -> Q as a single unit.
@@ -191,7 +208,7 @@ TEST_F(QnnHTPBackendTests, TestQDQSoftmax11_SetValidAxis) {
   RunQDQSingleInputOpTest(TestInputDef<uint8_t>({1, 2, 3}, false, UInt8Limits::min(), UInt8Limits::max()),
                           "Softmax",
                           {utils::MakeAttribute("axis", static_cast<int64_t>(-1))},
-                          11, ExpectedEPNodeAssignment::All, 1);
+                          11, ExpectedEPNodeAssignment::All);
 }
 
 // Run QDQ model on HTP twice
@@ -215,8 +232,7 @@ TEST_F(QnnHTPBackendTests, ContextBinaryCacheTest) {
   RunQnnModelTest(BuildQDQSingleInputOpTestCase<uint8_t>(input_def, "Atan"),
                   provider_options,
                   11,
-                  ExpectedEPNodeAssignment::All,
-                  1);
+                  ExpectedEPNodeAssignment::All);
 
   // Make sure the Qnn context cache binary file is generated
   EXPECT_TRUE(std::filesystem::exists(context_binary_file.c_str()));
@@ -225,14 +241,13 @@ TEST_F(QnnHTPBackendTests, ContextBinaryCacheTest) {
   RunQnnModelTest(BuildQDQSingleInputOpTestCase<uint8_t>(input_def, "Atan"),
                   provider_options,
                   11,
-                  ExpectedEPNodeAssignment::All,
-                  1);
+                  ExpectedEPNodeAssignment::All);
 }
 
 TEST_F(QnnHTPBackendTests, TestSub4D_SmallInputs) {
   RunQDQBinaryOpTest<float, uint8_t>("Sub", TestInputDef<float>({1, 3, 8, 8}, false, -1.0f, 1.0f),
                                      TestInputDef<float>({1, 3, 8, 8}, false, -1.0f, 1.0f),
-                                     17, ExpectedEPNodeAssignment::All, 1);
+                                     17, ExpectedEPNodeAssignment::All);
 }
 
 // TODO: Certain large input sizes cause the QNN graph to fail to finalize with error 1002 (QNN_COMMON_ERROR_MEM_ALLOC).
@@ -240,7 +255,7 @@ TEST_F(QnnHTPBackendTests, TestSub4D_SmallInputs) {
 TEST_F(QnnHTPBackendTests, DISABLED_TestSub4D_LargeInputs) {
   RunQDQBinaryOpTest<float, uint8_t>("Sub", TestInputDef<float>({1, 3, 768, 1152}, false, -1.0f, 1.0f),
                                      TestInputDef<float>({1, 3, 768, 1152}, false, -1.0f, 1.0f),
-                                     17, ExpectedEPNodeAssignment::All, 1);
+                                     17, ExpectedEPNodeAssignment::All);
 }
 
 // TODO: Certain large input sizes cause the QNN graph to fail to finalize with error 1002 (QNN_COMMON_ERROR_MEM_ALLOC).
@@ -248,13 +263,13 @@ TEST_F(QnnHTPBackendTests, DISABLED_TestSub4D_LargeInputs) {
 TEST_F(QnnHTPBackendTests, DISABLED_TestSub4D_Broadcast) {
   RunQDQBinaryOpTest<float, uint8_t>("Sub", TestInputDef<float>({1, 3, 768, 1152}, false, -1.0f, 1.0f),
                                      TestInputDef<float>({3, 1, 1}, true, {1.0f, 0.5f, -0.3f}),
-                                     17, ExpectedEPNodeAssignment::All, 1);
+                                     17, ExpectedEPNodeAssignment::All);
 }
 
 TEST_F(QnnHTPBackendTests, TestDiv4D_SmallInputs) {
   RunQDQBinaryOpTest<float, uint8_t>("Div", TestInputDef<float>({1, 3, 8, 8}, false, -1.0f, 1.0f),
                                      TestInputDef<float>({1, 3, 8, 8}, false, -1.0f, 1.0f),
-                                     17, ExpectedEPNodeAssignment::All, 1);
+                                     17, ExpectedEPNodeAssignment::All);
 }
 
 // TODO: Certain large input sizes cause the QNN graph to fail to finalize with error 1002 (QNN_COMMON_ERROR_MEM_ALLOC).
@@ -262,7 +277,7 @@ TEST_F(QnnHTPBackendTests, TestDiv4D_SmallInputs) {
 TEST_F(QnnHTPBackendTests, DISABLED_TestDiv4D_LargeInputs) {
   RunQDQBinaryOpTest<float, uint8_t>("Div", TestInputDef<float>({1, 3, 768, 1152}, false, -1.0f, 1.0f),
                                      TestInputDef<float>({1, 3, 768, 1152}, false, -1.0f, 1.0f),
-                                     17, ExpectedEPNodeAssignment::All, 1);
+                                     17, ExpectedEPNodeAssignment::All);
 }
 
 // TODO: Certain large input sizes cause the QNN graph to fail to finalize with error 1002 (QNN_COMMON_ERROR_MEM_ALLOC).
@@ -271,7 +286,7 @@ TEST_F(QnnHTPBackendTests, DISABLED_TestDiv4D_LargeInputs) {
 TEST_F(QnnHTPBackendTests, DISABLED_TestDiv4D_Broadcast) {
   RunQDQBinaryOpTest<float, uint8_t>("Div", TestInputDef<float>({1, 3, 768, 1152}, false, -1.0f, 1.0f),
                                      TestInputDef<float>({3, 1, 1}, true, {1.0f, 0.5f, -0.3f}),
-                                     17, ExpectedEPNodeAssignment::All, 1);
+                                     17, ExpectedEPNodeAssignment::All);
 }
 
 #endif  // defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
