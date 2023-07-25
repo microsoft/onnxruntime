@@ -61,7 +61,6 @@ static void RunTest(
 
   auto rocm_ep = DefaultRocmExecutionProvider();
   auto dml_ep = DefaultDmlExecutionProvider();
-  auto dnnl_ep = DefaultDnnlExecutionProvider();
   if (!use_float16) {
     OpTester test(op_type.c_str(), 1, onnxruntime::kMSDomain);
     test.AddInput<float>("input", input_dims, input_data);
