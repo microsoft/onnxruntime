@@ -903,7 +903,8 @@ function(onnxruntime_set_compile_flags target_name)
     foreach(ORT_FLAG ${ORT_PROVIDER_FLAGS})
       target_compile_definitions(${target_name} PRIVATE ${ORT_FLAG})
     endforeach()
-    if (HAS_DEPRECATED_COPY)
+	#ROCM uses gcc for compiling C/C++ code but use clang for HIP. Therefore the check_cxx_compiler_flag above doesn't work properly
+    if (HAS_DEPRECATED_COPY OR onnxruntime_USE_ROCM)
       #too many such errors in eigen
       target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options -Wno-deprecated-copy>" "$<$<COMPILE_LANGUAGE:CXX>:-Wno-deprecated-copy>")
     endif()
