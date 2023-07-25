@@ -321,12 +321,6 @@ Status FusedAttentionCutlass(
                     data.token_offset, parameters.token_count, stream);
   }
 
-  DUMP_TENSOR_INIT();
-  DUMP_TENSOR_D("PackedMHA cutlass q(BSNH)", query, parameters.token_count, num_heads * qk_head_size);
-  DUMP_TENSOR_D("PackedMHA cutlass k(BSNH)", key, parameters.token_count, num_heads * qk_head_size);
-  DUMP_TENSOR_D("PackedMHA cutlass v(BSNH)", value, parameters.token_count, num_heads * v_head_size);
-  DUMP_TENSOR_D("PackedMHA cutlass cumulative_sequence_length", data.cumulative_sequence_length, 1, batch_size + 1);
-
   MemoryEfficientAttentionParams p;
   p.sm = device_prop.major * 10 + device_prop.minor;
   p.is_half = sizeof(T) == 2;
@@ -354,7 +348,13 @@ Status FusedAttentionCutlass(
   p.stream = stream;
   run_memory_efficient_attention(p);
 
+  DUMP_TENSOR_INIT();
+  DUMP_TENSOR_D("PackedMHA cutlass q(BSNH)", p.query, parameters.token_count, num_heads * qk_head_size);
+  DUMP_TENSOR_D("PackedMHA cutlass k(BSNH)", p.key, parameters.token_count, num_heads * qk_head_size);
+  DUMP_TENSOR_D("PackedMHA cutlass v(BSNH)", p.value, parameters.token_count, num_heads * v_head_size);
+  DUMP_TENSOR_D("PackedMHA cutlass cumulative_sequence_length", data.cumulative_sequence_length, 1, batch_size + 1);
   DUMP_TENSOR("PackedMHA cutlass output", data.output, parameters.token_count, num_heads, v_head_size);
+
   return Status::OK();
 }
 #endif
