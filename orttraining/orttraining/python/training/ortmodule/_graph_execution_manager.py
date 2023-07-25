@@ -252,8 +252,8 @@ class GraphExecutionManager(GraphExecutionInterface):
 
         return session_options, providers, provider_options
 
-    @_logger.TrackTime(_logger.TimeTrackerPhase.EXPORT)
-    @_logger.SuppressLogs(_logger.TimeTrackerPhase.EXPORT, is_ort_filter=False)
+    @_logger.TrackTime(_logger.ORTModuleInitPhase.EXPORT)
+    @_logger.SuppressLogs(_logger.ORTModuleInitPhase.EXPORT, is_ort_filter=False)
     def _export_model(self, *inputs, **kwargs) -> bool:
         # 1. Set the self._device from the user module
         # 2. Verify input schema matches the schema used on the previous model export
@@ -409,8 +409,8 @@ class GraphExecutionManager(GraphExecutionInterface):
         graph_transformer_config.enable_compute_optimizer = self._runtime_options.enable_compute_optimizer
         return graph_transformer_config
 
-    @_logger.TrackTime(_logger.TimeTrackerPhase.GRAPH_BUILDER_INIT)
-    @_logger.SuppressLogs(_logger.TimeTrackerPhase.GRAPH_BUILDER_INIT)
+    @_logger.TrackTime(_logger.ORTModuleInitPhase.GRAPH_BUILDER_INIT)
+    @_logger.SuppressLogs(_logger.ORTModuleInitPhase.GRAPH_BUILDER_INIT)
     def _initialize_graph_builder(self):
         """Creates a new OrtModuleGraphBuilder, initializes it and saves it to self._graph_builder"""
 
@@ -482,7 +482,7 @@ class GraphExecutionManager(GraphExecutionInterface):
 
         _utils.reinitialize_graph_execution_manager(self)
 
-    @_logger.TrackTime(_logger.TimeTrackerPhase.DETECTION)
+    @_logger.TrackTime(_logger.ORTModuleInitPhase.DETECTION)
     def _enable_conditional_optimizations(
         self, graph_transformer_config: C.TrainingGraphTransformerConfiguration, inputs: Tuple, kwargs: Dict
     ):
