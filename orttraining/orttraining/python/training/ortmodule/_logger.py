@@ -10,11 +10,12 @@ import tempfile
 import time
 from contextlib import contextmanager
 from enum import IntEnum
+from functools import partial
 from typing import Callable, Dict, List, Optional
 
 from onnxruntime.capi._pybind_state import Severity
 
-from ._utils import get_rank
+from ._utils import get_rank, get_world_size
 
 
 class LogLevel(IntEnum):
@@ -26,71 +27,74 @@ class LogLevel(IntEnum):
 
 
 @contextmanager
-def suppress_os_stream_output(on_exit: Optional[Callable] = None):
+def _suppress_os_stream_output(enable=True, on_exit: Optional[Callable] = None):
     """Suppress output from being printed to stdout and stderr.
 
     If on_exit is not None, it will be called when the context manager exits.
     """
+    if enable:
+        # stdout and stderr is written to a tempfile instead
+        with tempfile.TemporaryFile() as fp:
+            try:
+                # Store original stdout and stderr file no.
+                old_stdout = os.dup(sys.stdout.fileno())
+                old_stderr = os.dup(sys.stderr.fileno())
 
-    # stdout and stderr is written to a tempfile instead
-    _, fo_file_path = tempfile.mkstemp()
+                # Redirect stdout and stderr (printed from Python or C++) to the file.
+                os.dup2(fp.fileno(), sys.stdout.fileno())
+                os.dup2(fp.fileno(), sys.stderr.fileno())
+                yield
+            finally:
+                sys.stdout.flush()
+                sys.stderr.flush()
 
-    # Store original stdout and stderr file no.
-    old_stdout = os.dup(sys.stdout.fileno())
-    old_stderr = os.dup(sys.stderr.fileno())
+                # Restore stdout and stderr.
+                os.dup2(old_stdout, sys.stdout.fileno())
+                os.dup2(old_stderr, sys.stderr.fileno())
 
-    # Allow read and write the file.
-    fd = os.open(fo_file_path, os.O_RDWR | os.O_CREAT)
-    fo = os.fdopen(fd)
-
-    try:
-        # Redirect stdout and stderr (printed from Python or C++) to the file.
-        os.dup2(fo.fileno(), sys.stdout.fileno())
-        os.dup2(fo.fileno(), sys.stderr.fileno())
+                if on_exit:
+                    on_exit(fp)
+    else:
         yield
-    finally:
-        sys.stdout.flush()
-        sys.stderr.flush()
-
-        # Restore stdout and stderr.
-        os.dup2(old_stdout, sys.stdout.fileno())
-        os.dup2(old_stderr, sys.stderr.fileno())
-
-        if on_exit:
-            on_exit(fo)
-
-        fo.close()
 
 
-def create_log_filter(logger: logging.Logger, record_filters: Optional[List[str]], name: Optional[str]):
-    def _log_with_filter(fo):
-        if fo.tell() > 0:
-            if logger.disabled:
-                return
-            # Filter out the error message
-            fo.seek(0)
-            suppress_output_messages = fo.readlines()
-            if record_filters:
-                filtered_messages = []
-                is_filtered = False
-                for suppressed_message in suppress_output_messages:
-                    found = False
-                    for warning in record_filters:
-                        if warning in suppressed_message:
-                            found = True
-                            is_filtered = True
-                            break
+def _log_with_filter(logger: logging.Logger, record_filters: Optional[List[str]], name: Optional[str], fo):
+    """Log the content by filtering with list of string patterns.
+    Args:
+        logger: The logger to log the content.
+        record_filters: The list of string patterns to filter the content.
+            If record_filters is None, the full content will be logged.
+        name: The name of log filter.
+        fo: The file object to read the content.
+    """
+    if fo.tell() > 0:
+        if logger.disabled:
+            return
 
-                    if not found:
-                        filtered_messages.append(suppressed_message)
-                if filtered_messages:
-                    logger.warning(
-                        f"{'Filtered' if is_filtered else 'Full'} [{name}] logs:\n\t" + "\t".join(filtered_messages)
-                    )
-            else:
-                logger.warning(f"Full [{name}] logs:\n\t" + "\t".join(suppress_output_messages))
+        fo.seek(0)
+        suppress_output_messages = fo.readlines()
+        if record_filters:
+            filtered_messages = []
+            is_filtered = False
+            for suppressed_message in suppress_output_messages:
+                msg = suppressed_message.decode("utf-8")
+                found = False
+                for warning in record_filters:
+                    if warning in msg:
+                        found = True
+                        is_filtered = True
+                        break
 
-    return _log_with_filter
+                if not found:
+                    filtered_messages.append(msg)
+            if filtered_messages:
+                logger.warning(
+                    f"{'Filtered' if is_filtered else 'Full'} [{name}] logs:\n\t" + "\t".join(filtered_messages)
+                )
+        else:
+            logger.warning(
+                f"Full [{name}] logs:\n\t" + "\t".join([m.decode("utf-8") for m in suppress_output_messages])
+            )
 
 
 ORTMODULE_LOG_LEVEL_MAP: Dict[LogLevel, List[int]] = {
@@ -111,7 +115,14 @@ def ortmodule_loglevel_to_python_loglevel(loglevel: LogLevel) -> int:
 
 
 def configure_ortmodule_logger(log_level: LogLevel) -> logging.Logger:
-    logger = logging.getLogger(f"orttraining.rank-{get_rank()}")
+    """Configure the logger for ortmodule according to following rules.
+    1. If multiple processes are used, the rank will be appended
+       to the logger name.
+    2. If the log level is greater than info, the logger will be
+       disabled for non-zero ranks.
+    """
+    rank_info = f".rank-{get_rank()}" if get_world_size() > 1 else ""
+    logger = logging.getLogger(f"orttraining{rank_info}")
     # Disable the logger for non-zero ranks when level > info
     logger.disabled = log_level > LogLevel.INFO and get_rank() != 0
     logger.setLevel(ortmodule_loglevel_to_python_loglevel(log_level))
@@ -216,6 +227,37 @@ class TrackTime:
             graph_execution_manager.time_tracker.start(self.phase)
             result = func(graph_execution_manager, *args, **kwargs)
             graph_execution_manager.time_tracker.end(self.phase)
+            return result
+
+        return wrapper
+
+
+class SuppressLogs:
+    """A function decorator to suppress in different phases of ORT backend first-time initialization."""
+
+    def __init__(self, phase: TimeTrackerPhase, is_ort_filter=True):
+        self.phase = phase
+        self.is_ort_filter = is_ort_filter
+
+    def __call__(self, func: Callable):
+        def wrapper(graph_execution_manager, *args, **kwargs):
+            if not hasattr(graph_execution_manager, "_logger"):
+                raise RuntimeError("The class of the function to be tracked must have a '_logger' attribute.")
+
+            if not hasattr(graph_execution_manager, "_debug_options"):
+                raise RuntimeError("The class of the function to be tracked must have a '_debug_options' attribute.")
+
+            with _suppress_os_stream_output(
+                on_exit=partial(
+                    _log_with_filter,
+                    graph_execution_manager._logger,
+                    graph_execution_manager._debug_options.onnxruntime_log_filter
+                    if self.is_ort_filter
+                    else graph_execution_manager._debug_options.torch_exporter_filter,
+                    self.phase.to_string(),
+                )
+            ):
+                result = func(graph_execution_manager, *args, **kwargs)
             return result
 
         return wrapper

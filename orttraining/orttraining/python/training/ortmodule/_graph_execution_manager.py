@@ -176,14 +176,10 @@ class GraphExecutionManager(GraphExecutionInterface):
         pass
 
     def _build_graph(self, config):
-        print_on_exit = _logger.create_log_filter(
-            self._logger, self._debug_options.onnxruntime_log_filter, "ORT graph build"
-        )
-        with _logger.suppress_os_stream_output(on_exit=print_on_exit):
-            if self._runtime_options.use_static_shape:
-                self._graph_builder.build(config, self._input_info.shape)
-            else:
-                self._graph_builder.build(config)
+        if self._runtime_options.use_static_shape:
+            self._graph_builder.build(config, self._input_info.shape)
+        else:
+            self._graph_builder.build(config)
 
         self._graph_info = self._graph_builder.get_graph_info()
 
@@ -257,6 +253,7 @@ class GraphExecutionManager(GraphExecutionInterface):
         return session_options, providers, provider_options
 
     @_logger.TrackTime(_logger.TimeTrackerPhase.EXPORT)
+    @_logger.SuppressLogs(_logger.TimeTrackerPhase.EXPORT, is_ort_filter=False)
     def _export_model(self, *inputs, **kwargs) -> bool:
         # 1. Set the self._device from the user module
         # 2. Verify input schema matches the schema used on the previous model export
@@ -313,91 +310,82 @@ class GraphExecutionManager(GraphExecutionInterface):
         # WARNING/ERROR -> [Rank 0] NO export verbose log + FILTERED torch other logs from stdout and stderr (C++ backend)
         # Be noted: rank 0 log only is controlled by logger configured in _logger.py
         torch_exporter_verbose_log = self._debug_options.logging.log_level <= LogLevel.INFO
-        print_on_exit = _logger.create_log_filter(
-            self._logger, self._debug_options.torch_exporter_filter, "model export to ONNX"
-        )
-        self._logger.warning("Exporting the PyTorch model to ONNX...")
-        with _logger.suppress_os_stream_output(on_exit=print_on_exit):
-            # Setup dynamic axes for onnx model
-            self._input_info = _io.parse_inputs_for_onnx_export(
-                self._module_parameters, None, input_schema, inputs, kwargs
-            )
-            (
-                output_names,
-                output_dynamic_axes,
-                self._module_output_schema,
-            ) = _io.parse_outputs_for_onnx_export_and_extract_schema(
-                self._original_module, inputs, kwargs, self._logger
-            )
-            self._input_info.dynamic_axes.update(output_dynamic_axes)
+        self._logger.info("Exporting the PyTorch model to ONNX...")
 
-            # FlattenedModule needs _InputInfo to expand user input from *args to *args + **kwargs
-            self._flattened_module._input_info = self._input_info
+        # Setup dynamic axes for onnx model
+        self._input_info = _io.parse_inputs_for_onnx_export(self._module_parameters, None, input_schema, inputs, kwargs)
+        (
+            output_names,
+            output_dynamic_axes,
+            self._module_output_schema,
+        ) = _io.parse_outputs_for_onnx_export_and_extract_schema(self._original_module, inputs, kwargs, self._logger)
+        self._input_info.dynamic_axes.update(output_dynamic_axes)
 
-            # Export torch.nn.Module to ONNX
-            f = io.BytesIO()
+        # FlattenedModule needs _InputInfo to expand user input from *args to *args + **kwargs
+        self._flattened_module._input_info = self._input_info
 
-            # Deepcopy inputs, since input values may change after model run.
-            # NOTE: Inputs may contain tensors that have attributes preventing their deepcopy (example grad_fn).
-            # Therefore, deepcopy only the data component of the input tensors for export.
-            sample_inputs_copy, sample_kwargs_copy = _io.deepcopy_model_input(*inputs, **kwargs)
-            # NOTE: Flattening the input will change the 'input schema', resulting in a re-export
-            sample_inputs_as_tuple = tuple(
-                self._input_info.flatten(sample_inputs_copy, sample_kwargs_copy, self._device)
-            )
-            # Ops behaving differently under train/eval mode need to be exported with the
-            # correct training flag to reflect the expected behavior.
-            # For example, the Dropout node in a model is dropped under eval mode.
-            assert self._export_mode is not None, "Please use a concrete instance of ExecutionManager"
+        # Export torch.nn.Module to ONNX
+        f = io.BytesIO()
 
-            try:
-                with torch.no_grad():
-                    required_export_kwargs = {
-                        "input_names": self._input_info.names,
-                        "output_names": output_names,
-                        "opset_version": self._runtime_options.onnx_opset_version,
-                        "do_constant_folding": False,
-                        "training": self._export_mode,
-                        "dynamic_axes": self._input_info.dynamic_axes,
-                        "verbose": torch_exporter_verbose_log,
-                        "export_params": False,
-                        "keep_initializers_as_inputs": True,
-                    }
+        # Deepcopy inputs, since input values may change after model run.
+        # NOTE: Inputs may contain tensors that have attributes preventing their deepcopy (example grad_fn).
+        # Therefore, deepcopy only the data component of the input tensors for export.
+        sample_inputs_copy, sample_kwargs_copy = _io.deepcopy_model_input(*inputs, **kwargs)
+        # NOTE: Flattening the input will change the 'input schema', resulting in a re-export
+        sample_inputs_as_tuple = tuple(self._input_info.flatten(sample_inputs_copy, sample_kwargs_copy, self._device))
+        # Ops behaving differently under train/eval mode need to be exported with the
+        # correct training flag to reflect the expected behavior.
+        # For example, the Dropout node in a model is dropped under eval mode.
+        assert self._export_mode is not None, "Please use a concrete instance of ExecutionManager"
 
-                    if check_function_has_param(torch.onnx.export, "autograd_inlining"):
-                        # From some PyTorch version, autograd_inlining is a valid argument.
-                        # We allow it to be True if custom autograd function is disabled (where autograd.Function
-                        # anyway is not supported in ONNX until it can be inlined).
-                        required_export_kwargs[
-                            "autograd_inlining"
-                        ] = not self._runtime_options.enable_custom_autograd_function
+        try:
+            with torch.no_grad():
+                required_export_kwargs = {
+                    "input_names": self._input_info.names,
+                    "output_names": output_names,
+                    "opset_version": self._runtime_options.onnx_opset_version,
+                    "do_constant_folding": False,
+                    "training": self._export_mode,
+                    "dynamic_axes": self._input_info.dynamic_axes,
+                    "verbose": torch_exporter_verbose_log,
+                    "export_params": False,
+                    "keep_initializers_as_inputs": True,
+                }
 
-                    invalid_args = self._export_extra_kwargs.keys() & required_export_kwargs.keys()
+                if check_function_has_param(torch.onnx.export, "autograd_inlining"):
+                    # From some PyTorch version, autograd_inlining is a valid argument.
+                    # We allow it to be True if custom autograd function is disabled (where autograd.Function
+                    # anyway is not supported in ONNX until it can be inlined).
+                    required_export_kwargs[
+                        "autograd_inlining"
+                    ] = not self._runtime_options.enable_custom_autograd_function
 
-                    if len(invalid_args) != 0:
-                        error_msg = f"The following PyTorch exporter arguments cannot be specified: '{invalid_args}'."
-                        raise RuntimeError(error_msg)
+                invalid_args = self._export_extra_kwargs.keys() & required_export_kwargs.keys()
 
-                    torch.onnx.export(
-                        self._flattened_module,
-                        sample_inputs_as_tuple,
-                        f,
-                        **required_export_kwargs,
-                        **self._export_extra_kwargs,
-                    )
-            except Exception as e:
-                raise wrap_exception(  # noqa: B904
-                    ORTModuleONNXModelException,
-                    RuntimeError(
-                        f"There was an error while exporting the PyTorch model to ONNX: "
-                        f"\n\n{_utils.get_exception_as_string(e)}"
-                    ),
+                if len(invalid_args) != 0:
+                    error_msg = f"The following PyTorch exporter arguments cannot be specified: '{invalid_args}'."
+                    raise RuntimeError(error_msg)
+
+                torch.onnx.export(
+                    self._flattened_module,
+                    sample_inputs_as_tuple,
+                    f,
+                    **required_export_kwargs,
+                    **self._export_extra_kwargs,
                 )
-            exported_model = onnx.load_model_from_string(f.getvalue())
-
-            exported_model = _post_process_after_export(
-                exported_model, self._runtime_options.enable_custom_autograd_function
+        except Exception as e:
+            raise wrap_exception(  # noqa: B904
+                ORTModuleONNXModelException,
+                RuntimeError(
+                    f"There was an error while exporting the PyTorch model to ONNX: "
+                    f"\n\n{_utils.get_exception_as_string(e)}"
+                ),
             )
+        exported_model = onnx.load_model_from_string(f.getvalue())
+
+        exported_model = _post_process_after_export(
+            exported_model, self._runtime_options.enable_custom_autograd_function
+        )
 
         return exported_model
 
@@ -422,6 +410,7 @@ class GraphExecutionManager(GraphExecutionInterface):
         return graph_transformer_config
 
     @_logger.TrackTime(_logger.TimeTrackerPhase.GRAPH_BUILDER_INIT)
+    @_logger.SuppressLogs(_logger.TimeTrackerPhase.GRAPH_BUILDER_INIT)
     def _initialize_graph_builder(self):
         """Creates a new OrtModuleGraphBuilder, initializes it and saves it to self._graph_builder"""
 

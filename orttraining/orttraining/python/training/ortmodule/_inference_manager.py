@@ -15,7 +15,7 @@ from . import _are_deterministic_algorithms_enabled, _io, _use_deterministic_alg
 from ._execution_agent import InferenceAgent
 from ._fallback import ORTModuleFallbackException, _FallbackManager, _FallbackPolicy
 from ._graph_execution_manager import GraphExecutionManager, _RunStateInfo
-from ._logger import TimeTrackerPhase, TrackTime
+from ._logger import SuppressLogs, TimeTrackerPhase, TrackTime
 from ._utils import save_tuning_results, set_tuning_results
 from .options import DebugOptions, _SkipCheck
 
@@ -202,6 +202,7 @@ class InferenceManager(GraphExecutionManager):
             return self._fallback_manager.fallback(self._debug_options.logging.log_level, *inputs, **kwargs)
 
     @TrackTime(TimeTrackerPhase.BUILD_GRAPH)
+    @SuppressLogs(TimeTrackerPhase.BUILD_GRAPH)
     def _build_graph(self, graph_transformer_config):
         """Build an inference graph using the module_graph_builder"""
 
@@ -215,6 +216,7 @@ class InferenceManager(GraphExecutionManager):
             )
 
     @TrackTime(TimeTrackerPhase.CREATE_SESSION)
+    @SuppressLogs(TimeTrackerPhase.CREATE_SESSION)
     def _create_execution_agent(self):
         """Creates an InferenceAgent that can run forward graph on an inference model"""
 

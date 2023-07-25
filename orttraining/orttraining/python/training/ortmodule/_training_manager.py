@@ -18,7 +18,7 @@ from ._fallback import ORTModuleFallbackException, _FallbackManager, _FallbackPo
 from ._gradient_accumulation_manager import GradientAccumulationManager
 from ._graph_execution_manager import GraphExecutionManager, _RunStateInfo
 from ._io import _FlattenedModule, _InputInfo
-from ._logger import TimeTrackerPhase, TrackTime, create_log_filter, suppress_os_stream_output
+from ._logger import SuppressLogs, TimeTrackerPhase, TrackTime
 from ._runtime_inspector import Phase
 from ._utils import save_tuning_results, set_tuning_results
 from .graph_transformer_registry import GraphTransformerRegistry
@@ -354,6 +354,7 @@ class TrainingManager(GraphExecutionManager):
             return self._fallback_manager.fallback(self._debug_options.logging.log_level, *inputs, **kwargs)
 
     @TrackTime(TimeTrackerPhase.BUILD_GRAPH)
+    @SuppressLogs(TimeTrackerPhase.BUILD_GRAPH)
     def _build_graph(self, graph_transformer_config):
         """Build an optimized gradient graph using the module_graph_builder"""
 
@@ -399,6 +400,7 @@ class TrainingManager(GraphExecutionManager):
                 self._gradient_map.append(-1)
 
     @TrackTime(TimeTrackerPhase.CREATE_SESSION)
+    @SuppressLogs(TimeTrackerPhase.CREATE_SESSION)
     def _create_execution_agent(self):
         """Creates a TrainingAgent that can run the forward and backward graph on the training model"""
 
@@ -432,21 +434,17 @@ class TrainingManager(GraphExecutionManager):
 
         local_device_rank = self._device.index if device_type == "ort" else _utils.get_device_index(self._device)
 
-        print_on_exit = create_log_filter(
-            self._logger, self._debug_options.onnxruntime_log_filter, "training agent creation"
+        self._execution_agent = TrainingAgent(
+            self._onnx_models.optimized_model.SerializeToString(),
+            fw_feed_names,
+            fw_outputs_device_info,
+            bw_fetches_names,
+            bw_outputs_device_info,
+            session_options,
+            providers,
+            provider_options,
+            local_device_rank,
         )
-        with suppress_os_stream_output(on_exit=print_on_exit):
-            self._execution_agent = TrainingAgent(
-                self._onnx_models.optimized_model.SerializeToString(),
-                fw_feed_names,
-                fw_outputs_device_info,
-                bw_fetches_names,
-                bw_outputs_device_info,
-                session_options,
-                providers,
-                provider_options,
-                local_device_rank,
-            )
 
         if not self._runtime_options.enable_tuning and self._runtime_options.tuning_results_path:
             set_tuning_results(

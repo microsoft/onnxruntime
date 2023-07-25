@@ -446,9 +446,17 @@ def set_tuning_results(session, is_training, tuning_results_path):
             session.set_tuning_results(json.load(f))
 
 
-def get_rank():
-    rank = 0
+def get_rank() -> int:
+    """Returns the rank of the current process. If distributed training is not initialized, returns 0."""
     if torch.distributed.is_initialized():
-        rank = torch.distributed.get_rank()
+        return torch.distributed.get_rank()
 
-    return rank
+    return 0
+
+
+def get_world_size() -> int:
+    """Returns the world size of the current process. If distributed training is not initialized, returns 1."""
+    if torch.distributed.is_initialized():
+        return torch.distributed.get_world_size()
+
+    return 1
