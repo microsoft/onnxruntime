@@ -45,22 +45,23 @@ const createGatherProgramInfo =
         }
         const inputDataType = inputs[0].dataType;
         const block = ShapeUtil.sizeFromDimension(inputShape, axis + 1);
-        const elementSize = [DataType.int64, DataType.uint64].includes(inputDataType) ? 2 : 1;
-        const indicesElementSize = [DataType.int64, DataType.uint64].includes(inputs[1].dataType) ? 2 : 1;
-        const blockSize = elementSize * block; // TODO: i64
+        const elementSize = [DataType.int64, DataType.uint64, DataType.double].includes(inputDataType) ? 2 : 1;
+        const indicesElementSize = inputs[1].dataType === DataType.int64 ? 2 : 1;
+        const blockSize = elementSize * block;
         const M = ShapeUtil.sizeToDimension(inputShape, axis);
         const N = indicesShape.length;
         const dataBatchElements = ShapeUtil.sizeFromDimension(inputShape, axis) * elementSize;
         const gatheredBatchElements = N * block * elementSize;
         const axisDimLimit = inputShape[axis];
 
-        const inputSize = ShapeUtil.size(inputShape);
-        const outputSize = ShapeUtil.size(outputShape) || elementSize;
+        const inputSize = ShapeUtil.size(inputShape) * elementSize;
+        const outputSize = ShapeUtil.size(outputShape) * elementSize;
 
         const totalGathers = M * N;
         console.log('gather!', inputs, outputShape, axis, attributes, totalGathers);
-        const dataType = 'i32'; // lets treat everything as i32
-        // we treat int64 indices as little endian i32 as you cannot create more than 2gb buffer anyway
+        const dataType = 'i32'; // let's treat input as u32 or two u32 elements in case of i64
+        // int64 indices would be treated as little endian i32
+        // as it's not possible to create more than 2gb buffer for input tensor
         const getShaderSource = (shaderHelper: ShaderHelper) => `
   const N: u32 = ${N};
   const elementSize: i32 = ${elementSize};

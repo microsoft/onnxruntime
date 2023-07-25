@@ -13,21 +13,21 @@ namespace js {
 class Split : public JsKernel, public SplitBase {
  public:
   Split(const OpKernelInfo& info, uint32_t opset) : JsKernel(info), SplitBase(info, opset) {
-    std::vector<size_t> split_sizes;
+    std::vector<int64_t> split_sizes;
     if (split_sizes_.size() > 0) {
       ORT_ENFORCE(split_sizes_.size() == info.node().OutputDefs().size(),
                   "Number of outputs (", info.node().OutputDefs().size(), ") does not match split_sizes (",
                   split_sizes_.size(), ")");
       split_sizes.resize(split_sizes_.size());
       for (size_t i = 0; i < split_sizes_.size(); ++i) {
-        split_sizes[i] = gsl::narrow_cast<size_t>(split_sizes_[i]);
+        split_sizes[i] = gsl::narrow_cast<int64_t>(split_sizes_[i]);
       }
       if (num_outputs_ < 0) {
         num_outputs_ = split_sizes.size();
       }
     } else if (split_sizes_.size() == 0) {
       // Compute split_sizes from input shape and num_outputs
-      auto total_split_size = info.node().InputDefs()[0]->Shape()->dim(gsl::narrow_cast<size_t>(axis_)).dim_value();
+      auto total_split_size = info.node().InputDefs()[0]->Shape()->dim(gsl::narrow_cast<int64_t>(axis_)).dim_value();
       int64_t split_size_sum = 0;
       if (num_outputs_ < 0) {
         num_outputs_ = info.node().OutputDefs().size();
@@ -37,21 +37,21 @@ class Split : public JsKernel, public SplitBase {
                     num_outputs_, ")");
       }
       for (auto output : info.node().OutputDefs()) {
-        auto split_size = output->Shape()->dim(gsl::narrow_cast<size_t>(axis_)).dim_value();
-        split_sizes.push_back(gsl::narrow_cast<size_t>(split_size));
+        auto split_size = output->Shape()->dim(gsl::narrow_cast<int64_t>(axis_)).dim_value();
+        split_sizes.push_back(gsl::narrow_cast<int64_t>(split_size));
         split_size_sum += split_size;
       }
       ORT_ENFORCE(split_size_sum == total_split_size,
                   "Sum of split sizes (", split_size_sum, ") does not match input size (", total_split_size, ")");
     }
 
-    JSEP_INIT_KERNEL_ATTRIBUTE(Split, ({"axis" : $1,
-                                        "numOutputs" : $2,
-                                        "splitSizes" : $3 ? Array.from(HEAP64.subarray(Number($4), Number($4) + Number($3))) : []}),
+    JSEP_INIT_KERNEL_ATTRIBUTE(Split, ({"axis" : Number($1),
+                                        "numOutputs" : Number($2),
+                                        "splitSizes" : $3 ? Array.from(HEAP64.subarray(Number($4), Number($4) + Number($3))).map(n => Number(n)) : []}),
                                static_cast<int64_t>(axis_),
-                               static_cast<size_t>(num_outputs_),
-                               gsl::narrow_cast<size_t>(split_sizes.size()),
-                               reinterpret_cast<size_t>((!split_sizes.empty() > 0) ? split_sizes.data() : nullptr) / sizeof(size_t));
+                               static_cast<int64_t>(num_outputs_),
+                               gsl::narrow_cast<int64_t>(split_sizes.size()),
+                               reinterpret_cast<int64_t>((!split_sizes.empty() > 0) ? split_sizes.data() : nullptr) / sizeof(size_t));
   }
 };
 

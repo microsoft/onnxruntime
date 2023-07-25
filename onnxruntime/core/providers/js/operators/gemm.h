@@ -21,13 +21,13 @@ class Gemm : public JsKernel {
     JSEP_INIT_KERNEL_ATTRIBUTE(Gemm, ({
                                  "alpha" : $1,
                                  "beta" : $2,
-                                 "transA" : $3,
-                                 "transB" : $4
+                                 "transA" : Number($3),
+                                 "transB" : Number($4),
                                }),
-                               static_cast<double>(alpha),
-                               static_cast<double>(beta),
-                               static_cast<size_t>(transA),
-                               static_cast<size_t>(transB));
+                               static_cast<float>(alpha),
+                               static_cast<float>(beta),
+                               static_cast<int64_t>(transA),
+                               static_cast<int64_t>(transB));
   }
 };
 

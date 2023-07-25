@@ -92,22 +92,26 @@ module.exports = function (config) {
     customLaunchers: {
       ChromeTest: {
         base: 'Chrome',
-        flags: ['--enable-features=SharedArrayBuffer']
+        flags: ['--enable-experimental-web-platform-features', '--js-flags=--experimental-wasm-type-reflection --experimental-wasm-stack-switching --experimental-wasm-memory64'],
+        chromeFlags: ['--experimental-wasm-memory64', '--experimental-webassembly-stack-switching', '--experimental-wasm-type-reflection', '--js-flags=--experimental-wasm-type-reflection --experimental-wasm-stack-switching --experimental-wasm-memory64'],
       },
       ChromeTestHeadless: {
         base: 'ChromeHeadless',
-        flags: ['--enable-features=SharedArrayBuffer']
+        flags: ['--enable-experimental-web-platform-features', '--js-flags=--experimental-wasm-type-reflection --experimental-wasm-stack-switching --experimental-wasm-memory64'],
+        chromeFlags: ['--experimental-wasm-memory64', '--experimental-webassembly-stack-switching', '--experimental-wasm-type-reflection', '--js-flags=--experimental-wasm-type-reflection --experimental-wasm-stack-switching --experimental-wasm-memory64'],
       },
       ChromeDebug: {
+        base: 'Chrome',
         debug: true,
-        base: 'Chrome', flags: ['--remote-debugging-port=9333', '--enable-features=SharedArrayBuffer']
+        flags: ['--enable-experimental-web-platform-features', '--js-flags=--experimental-wasm-type-reflection --experimental-wasm-stack-switching --experimental-wasm-memory64'],
+        chromeFlags: ['--experimental-wasm-memory64', '--experimental-webassembly-stack-switching', '--experimental-wasm-type-reflection', '--js-flags=--experimental-wasm-type-reflection --experimental-wasm-stack-switching --experimental-wasm-memory64'],
       },
       ChromeCanaryTest: {
         base: 'ChromeCanary',
         flags: [
-          '--enable-features=SharedArrayBuffer',
           '--enable-experimental-web-platform-features'
-        ]
+        ],
+        chromeFlags: ['--experimental-wasm-memory64', '--experimental-wasm-stack-switching', '--experimental-wasm-type-reflection', '--js-flags=--experimental-wasm-type-reflection --experimental-wasm-stack-switching --experimental-wasm-memory64'],
       },
       ChromeCanaryDebug: {
         debug: true,

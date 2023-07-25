@@ -260,7 +260,7 @@ else()
 #    "SHELL:-s MAIN_MODULE=0"
     "SHELL:-s ERROR_ON_UNDEFINED_SYMBOLS=0"
     "SHELL:-s SIGNATURE_CONVERSIONS=OrtRun:_pppppppp,OrtGetTensorData:_ppppp,OrtCreateTensor:p_pppp,OrtCreateSession:pppp,OrtReleaseSession:_p,OrtGetInputOutputCount:pppp,OrtCreateSessionOptions:pp__p_ppppp,OrtAddSessionConfigEntry:pppp,OrtReleaseSessionOptions:_p,OrtAppendExecutionProvider:ppp,OrtAddSessionConfigEntry:pppp,OrtGetInputName:ppp,OrtGetOutputName:ppp,OrtCreateRunOptions:ppp_p,OrtReleaseRunOptions:pp,OrtReleaseTensor:_p,OrtFree:_p,OrtGetLastError:_pp,JsepOutput:pp_p"
-    "SHELL:-s BINARYEN_EXTRA_PASSES=fast-math,traps-never-happen,precompute"
+#    "SHELL:-s BINARYEN_EXTRA_PASSES=traps-never-happen,precompute"
     ${WASM_API_EXCEPTION_CATCHING}
     --no-entry
   )
