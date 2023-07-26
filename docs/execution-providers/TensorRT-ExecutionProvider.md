@@ -55,55 +55,21 @@ Ort::Session session(env, model_path, sf);
 
 The C API details are [here](../get-started/with-c.md).
 
-### Shape Inference for TensorRT Subgraphs
-If some operators in the model are not supported by TensorRT, ONNX Runtime will partition the graph and only send supported subgraphs to TensorRT execution provider. Because TensorRT requires that all inputs of the subgraphs have shape specified, ONNX Runtime will throw error if there is no input shape info. In this case please run shape inference for the entire model first by running script [here](https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/python/tools/symbolic_shape_infer.py) (Check below for sample).
-
-### TensorRT Plugins Support
-ORT TRT can leverage the TRT plugins which come with TRT plugin library in official release. To use TRT plugins, firstly users need to create the custom node (a one-to-one mapping to TRT plugin) with a registered plugin name and `trt.plugins` domain in the ONNX model. So, ORT TRT can recognize this custom node and pass the node together with the subgraph to TRT. Please see following python example to create a new custom node in the ONNX model:
-
-```python
-from onnx import TensorProto, helper
-
-def generate_model(model_name):
-    nodes = [
-        helper.make_node(
-            "DisentangledAttention_TRT", # The registered name is from https://github.com/NVIDIA/TensorRT/blob/main/plugin/disentangledAttentionPlugin/disentangledAttentionPlugin.cpp#L36
-            ["input1", "input2", "input3"],
-            ["output"],
-            "DisentangledAttention_TRT",
-            domain="trt.plugins", # The domain has to be "trt.plugins"
-            factor=0.123,
-            span=128,
-        ),
-    ]
-
-    graph = helper.make_graph(
-        nodes,
-        "trt_plugin_custom_op",
-        [  # input
-            helper.make_tensor_value_info("input1", TensorProto.FLOAT, [12, 256, 256]),
-            helper.make_tensor_value_info("input2", TensorProto.FLOAT, [12, 256, 256]),
-            helper.make_tensor_value_info("input3", TensorProto.FLOAT, [12, 256, 256]),
-        ],
-        [  # output
-            helper.make_tensor_value_info("output", TensorProto.FLOAT, [12, 256, 256]),
-        ],
-    )
-
-    model = helper.make_model(graph)
-    onnx.save(model, model_name)
-```
-Note: If users want to use TRT plugins that are not in the TRT plugin library in official release, please see the ORT TRT provider option `trt_extra_plugin_lib_paths` for more details.
-
 ### Python
 To use TensorRT execution provider, you must explicitly register TensorRT execution provider when instantiating the `InferenceSession`.
 Note that it is recommended you also register `CUDAExecutionProvider` to allow Onnx Runtime to assign nodes to CUDA execution provider that TensorRT does not support.
+
+Click below for Python API example:
+
+<details>
 
 ```python
 import onnxruntime as ort
 # set providers to ['TensorrtExecutionProvider', 'CUDAExecutionProvider'] with TensorrtExecutionProvider having the higher priority.
 sess = ort.InferenceSession('model.onnx', providers=['TensorrtExecutionProvider', 'CUDAExecutionProvider'])
 ```
+
+</details>
 
 ## Configurations
 There are two ways to configure TensorRT settings, either by **TensorRT Execution Provider Session Options(recommended)** or **Environment Variables(deprecated)** shown as below:
@@ -235,7 +201,9 @@ TensorRT configurations can be set by execution provider options. It's useful wh
 
 Besides, `device_id` can also be set by execution provider option.
 
-#### C++ API EXAMPLE
+#### Click below for C++ API example:
+
+<details>
 
 ```c++
 
@@ -256,7 +224,11 @@ trt_options.trt_dump_subgraphs = 1;
 session_options.AppendExecutionProvider_TensorRT(trt_options);
 ```
 
-#### PYTHON API EXAMPLE
+</details>
+
+#### Click below for Python API example:
+
+<details>
 
 ```python
 import onnxruntime as ort
@@ -283,16 +255,15 @@ sess_opt = ort.SessionOptions()
 sess = ort.InferenceSession(model_path, sess_options=sess_opt, providers=providers)
 ```
 
-### Environment Variables(deprecated)
-
-<details>
-  <summary>Click to expand!</summary>
-
-  <!--Environment Variables(deprecated)-->
-  
 </details>
 
-Following environment variables can be set for TensorRT execution provider.
+### Environment Variables(deprecated)
+
+Following environment variables can be set for TensorRT execution provider. Click below for more details.
+
+<details>
+    
+    Click to expand
 
 * `ORT_TENSORRT_MAX_WORKSPACE_SIZE`: maximum workspace size for TensorRT engine. Default value: 1073741824 (1GB).
 
@@ -386,10 +357,59 @@ export ORT_TENSORRT_DUMP_SUBGRAPHS=1
 export ORT_TENSORRT_CONTEXT_MEMORY_SHARING_ENABLE=1
 ```
 
+</details>
+
 ## Performance Tuning
 For performance tuning, please see guidance on this page: [ONNX Runtime Perf Tuning](./../performance/tune-performance/index.md)
 
 When/if using [onnxruntime_perf_test](https://github.com/microsoft/onnxruntime/tree/main/onnxruntime/test/perftest#onnxruntime-performance-test), use the flag `-e tensorrt`. Check below for sample.
+
+### Shape Inference for TensorRT Subgraphs
+If some operators in the model are not supported by TensorRT, ONNX Runtime will partition the graph and only send supported subgraphs to TensorRT execution provider. Because TensorRT requires that all inputs of the subgraphs have shape specified, ONNX Runtime will throw error if there is no input shape info. In this case please run shape inference for the entire model first by running script [here](https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/python/tools/symbolic_shape_infer.py) (Check below for sample).
+
+### TensorRT Plugins Support
+ORT TRT can leverage the TRT plugins which come with TRT plugin library in official release. To use TRT plugins, firstly users need to create the custom node (a one-to-one mapping to TRT plugin) with a registered plugin name and `trt.plugins` domain in the ONNX model. So, ORT TRT can recognize this custom node and pass the node together with the subgraph to TRT. Please see following python example to create a new custom node in the ONNX model:
+ 
+Click below for Python API example:
+
+<details>
+
+```python
+from onnx import TensorProto, helper
+
+def generate_model(model_name):
+    nodes = [
+        helper.make_node(
+            "DisentangledAttention_TRT", # The registered name is from https://github.com/NVIDIA/TensorRT/blob/main/plugin/disentangledAttentionPlugin/disentangledAttentionPlugin.cpp#L36
+            ["input1", "input2", "input3"],
+            ["output"],
+            "DisentangledAttention_TRT",
+            domain="trt.plugins", # The domain has to be "trt.plugins"
+            factor=0.123,
+            span=128,
+        ),
+    ]
+
+    graph = helper.make_graph(
+        nodes,
+        "trt_plugin_custom_op",
+        [  # input
+            helper.make_tensor_value_info("input1", TensorProto.FLOAT, [12, 256, 256]),
+            helper.make_tensor_value_info("input2", TensorProto.FLOAT, [12, 256, 256]),
+            helper.make_tensor_value_info("input3", TensorProto.FLOAT, [12, 256, 256]),
+        ],
+        [  # output
+            helper.make_tensor_value_info("output", TensorProto.FLOAT, [12, 256, 256]),
+        ],
+    )
+
+    model = helper.make_model(graph)
+    onnx.save(model, model_name)
+```
+
+</details>
+
+Note: If users want to use TRT plugins that are not in the TRT plugin library in official release, please see the ORT TRT provider option `trt_extra_plugin_lib_paths` for more details.
 
 ### Timing cache
 Enabling `trt_timing_cache_enable` will enable ORT TRT to use TensorRT timing cache to accelerate engine build time on a device with the same compute capability. This will work across models as it simply stores kernel latencies for specific configurations. Those files are usually very small (only a few KB or MB) which makes them very easy to ship with an application to accelerate the build time on the user end.
@@ -401,7 +421,9 @@ The following examples shows build time reduction with timing cache:
 |efficientnet-lite4-11 | 34.6 s | 7.7 s|
 |yolov4 | 108.62 s | 9.4 s|
 
-Here is a python example:
+Click below for Python example:
+
+<details>
 
 ```python
 import onnxruntime as ort
@@ -429,10 +451,9 @@ sess.run(
     None,
     {"input_ids": np.zeros((1, 77), dtype=np.int32)}
 )
-
-
-
 ```
+
+</details>
 
 ### Explicit shape range for dynamic shape input 
 
@@ -442,7 +463,9 @@ and model has dynamic shape input, ORT TRT will determine the min/max/opt shapes
 To use the engine cache built with optimization profiles specified by explicit shape ranges, user still needs to provide those three provider options as well as engine cache enable flag.
 ORT TRT will firstly compare the shape ranges of those three provider options with the shape ranges saved in the .profile file, and then rebuild the engine if the shape ranges don't match.
 
-Here is a python example:
+Click below for Python example:
+
+<details>
 
 ```python
 import onnxruntime as ort
@@ -488,6 +511,8 @@ sess.run(None, args)
 # TensorrtExecutionProvider_TRTKernel_graph_torch_jit_1843998305741310361_0_0_fp16.engine and TensorrtExecutionProvider_TRTKernel_graph_torch_jit_1843998305741310361_0_0_fp16.profile.
 
 ```
+
+</details>
 
 Please note that there is a constraint of using this explicit shape range feature, i.e., all the dynamic shape inputs should be provided with corresponding min/max/opt shapes.
 
