@@ -72,10 +72,10 @@ sess = ort.InferenceSession('model.onnx', providers=['TensorrtExecutionProvider'
 </details>
 
 ## Configurations
-There are two ways to configure TensorRT settings, either by **TensorRT Execution Provider Session Options(recommended)** or **Environment Variables(deprecated)** shown as below:
+There are two ways to configure TensorRT settings, either by **TensorRT Execution Provider Session Options** or **Environment Variables(deprecated)** shown as below:
 
 
-| TensorRT EP Session Options           | Environment Variables                          | Type   |
+| TensorRT EP Session Options           | Environment Variables(deprecated)              | Type   |
 |:--------------------------------------|:-----------------------------------------------|:-------|
 | trt_max_workspace_size                | ORT_TENSORRT_MAX_WORKSPACE_SIZE                | int    |
 | trt_max_partition_iterations          | ORT_TENSORRT_MAX_PARTITION_ITERATIONS          | int    |
@@ -195,7 +195,8 @@ TensorRT configurations can be set by execution provider options. It's useful wh
     * for example, FasterTransformer has many TRT plugin implementations for different models, user can specify like this `ORT_TENSORRT_EXTRA_PLUGIN_LIB_PATHS=libvit_plugin.so;libvit_int8_plugin.so`.  
 
 * `trt_profile_min_shapes`, `trt_profile_max_shapes` and `trt_profile_opt_shapes` : Build with dynamic shapes using a profile with the min/max/opt shapes provided. 
-  * The format of the profile shapes is "input_tensor_1:dim_1xdim_2x...,input_tensor_2:dim_3xdim_4x...,..." and these three flags should all be provided in order to enable explicit profile shapes feature. 
+  * The format of the profile shapes is `input_tensor_1:dim_1xdim_2x...,input_tensor_2:dim_3xdim_4x...,...` 
+    * These three flags should all be provided in order to enable explicit profile shapes feature. 
   * Check [Explicit shape range for dynamic shape input](#explicit-shape-range-for-dynamic-shape-input) and TRT doc [optimization profiles](https://docs.nvidia.com/deeplearning/tensorrt/developer-guide/index.html#opt_profiles) for more details.
 
 
@@ -206,7 +207,6 @@ Besides, `device_id` can also be set by execution provider option.
 <details>
 
 ```c++
-
 Ort::SessionOptions session_options;
 OrtTensorRTProviderOptions trt_options{};
 
