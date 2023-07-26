@@ -195,23 +195,23 @@ public:
         std::vector<DML_TENSOR_DESC> inputDescs = GetDmlInputDescs();
         std::vector<DML_TENSOR_DESC> outputDescs = GetDmlOutputDescs();
 
-        DML_MATRIX_MULTIPLY_INTEGER_TO_FLOAT_OPERATOR_DESC matrixMultiplyIntergerToFloatOperatorDesc = {};
-        matrixMultiplyIntergerToFloatOperatorDesc.ATensor = &inputDescs[InputIndex::inputIndex];
-        matrixMultiplyIntergerToFloatOperatorDesc.AScaleTensor = &inputDescs[InputIndex::inputScaleIndex];
-        matrixMultiplyIntergerToFloatOperatorDesc.AZeroPointTensor = &inputDescs[InputIndex::inputZeroPointIndex];
-        matrixMultiplyIntergerToFloatOperatorDesc.BTensor = &inputDescs[InputIndex::weightsIndex];
-        matrixMultiplyIntergerToFloatOperatorDesc.BScaleTensor = &inputDescs[InputIndex::weightScaleIndex];
-        matrixMultiplyIntergerToFloatOperatorDesc.BZeroPointTensor = &inputDescs[InputIndex::weightZeroPointIndex];
-        matrixMultiplyIntergerToFloatOperatorDesc.BiasTensor = hasBias? &inputDescs[InputIndex::biasIndex] : nullptr;
-        matrixMultiplyIntergerToFloatOperatorDesc.OutputTensor = &namedMatMulIntToFloatOutputTensorDesc;
+        DML_MATRIX_MULTIPLY_INTEGER_TO_FLOAT_OPERATOR_DESC matMulIntToFloatOperatorDesc = {};
+        matMulIntToFloatOperatorDesc.ATensor = &inputDescs[InputIndex::inputIndex];
+        matMulIntToFloatOperatorDesc.AScaleTensor = &inputDescs[InputIndex::inputScaleIndex];
+        matMulIntToFloatOperatorDesc.AZeroPointTensor = &inputDescs[InputIndex::inputZeroPointIndex];
+        matMulIntToFloatOperatorDesc.BTensor = &inputDescs[InputIndex::weightsIndex];
+        matMulIntToFloatOperatorDesc.BScaleTensor = &inputDescs[InputIndex::weightScaleIndex];
+        matMulIntToFloatOperatorDesc.BZeroPointTensor = &inputDescs[InputIndex::weightZeroPointIndex];
+        matMulIntToFloatOperatorDesc.BiasTensor = hasBias ? &inputDescs[InputIndex::biasIndex] : nullptr;
+        matMulIntToFloatOperatorDesc.OutputTensor = &namedMatMulIntToFloatOutputTensorDesc;
 
-        const DML_OPERATOR_DESC matrixMultiplyIntergerToFloatDesc {(DML_OPERATOR_TYPE)DML_OPERATOR_MATRIX_MULTIPLY_INTEGER_TO_FLOAT, &matrixMultiplyIntergerToFloatOperatorDesc};
+        const DML_OPERATOR_DESC matMulIntToFloatDesc = { static_cast<DML_OPERATOR_TYPE>(DML_OPERATOR_MATRIX_MULTIPLY_INTEGER_TO_FLOAT), &matMulIntToFloatOperatorDesc};
 
-        std::array<uint32_t, 3> queryKeySlicedTensorShape {batchSize, sequenceLength, hiddenSize + hiddenSize};
+        std::array<uint32_t, 3> queryKeySlicedTensorShape = {batchSize, sequenceLength, hiddenSize + hiddenSize};
         TensorDesc queryKeySlicedInputTensorDesc = TensorDesc::ConstructDefaultTensorDesc(dataType, queryKeySlicedTensorShape);
         DML_TENSOR_DESC namedQueryKeySlicedInputTensorDesc = queryKeySlicedInputTensorDesc.GetDmlDesc();
 
-        std::array<uint32_t, 3> valueSlicedTensorShape {batchSize, sequenceLength, vHiddenSize};
+        std::array<uint32_t, 3> valueSlicedTensorShape = {batchSize, sequenceLength, vHiddenSize};
         TensorDesc valueSlicedInputTensorDesc = TensorDesc::ConstructDefaultTensorDesc(dataType, valueSlicedTensorShape);
         DML_TENSOR_DESC namedValueSlicedInputTensorDesc = valueSlicedInputTensorDesc.GetDmlDesc();
 
@@ -237,7 +237,7 @@ public:
         DML_TENSOR_DESC namedQueryKeyTransposedOutputTensorDesc = queryKeyTransposedOutputTensorDesc.GetDmlDesc();
 
         // Transpose QKV from [batchSize, sequenceLength, 3, numHeads, headSize] to [batchSize, sequenceLength, numHeads, 3, headSize]
-        std::array<uint32_t, 5> queryKeyValueTransposedTensorShape {batchSize, sequenceLength, numHeads, 3, headSize};
+        std::array<uint32_t, 5> queryKeyValueTransposedTensorShape = {batchSize, sequenceLength, numHeads, 3, headSize};
         std::array<uint32_t, 5> queryKeyValueTransposedStrides = {
             sequenceLength * numHeads * 3 * headSize,
             numHeads * 3 * headSize,
@@ -347,12 +347,12 @@ public:
         std::vector<DML_OUTPUT_GRAPH_EDGE_DESC> outputEdges;
 
         std::vector<const DML_OPERATOR_DESC*> opDescs = {
-            &matrixMultiplyIntergerToFloatDesc,
+            &matMulIntToFloatDesc,
             &mhaDesc,
         };
 
         uint32_t currentNodeIndex = 0;
-        const uint32_t matrixMultiplyIntergerToFloatNodeIndex = currentNodeIndex++;
+        const uint32_t matMulIntToFloatNodeIndex = currentNodeIndex++;
         const uint32_t mhaNodeIndex = currentNodeIndex++;
 
         uint32_t valueSliceNodeIndex = 0;
@@ -383,49 +383,49 @@ public:
             maskSliceNodeIndex = currentNodeIndex++;
         }
 
-        DML_INPUT_GRAPH_EDGE_DESC inputToMMItoFloatEdge = {};
-        inputToMMItoFloatEdge.GraphInputIndex = InputIndex::inputIndex;
-        inputToMMItoFloatEdge.ToNodeIndex = matrixMultiplyIntergerToFloatNodeIndex;
-        inputToMMItoFloatEdge.ToNodeInputIndex = 0;
-        inputEdges.push_back(inputToMMItoFloatEdge);
+        DML_INPUT_GRAPH_EDGE_DESC inputToMatMulIntToFloatEdge = {};
+        inputToMatMulIntToFloatEdge.GraphInputIndex = InputIndex::inputIndex;
+        inputToMatMulIntToFloatEdge.ToNodeIndex = matMulIntToFloatNodeIndex;
+        inputToMatMulIntToFloatEdge.ToNodeInputIndex = 0;
+        inputEdges.push_back(inputToMatMulIntToFloatEdge);
 
-        DML_INPUT_GRAPH_EDGE_DESC inputScaleToMMItoFloatEdge = {};
-        inputScaleToMMItoFloatEdge.GraphInputIndex = InputIndex::inputScaleIndex;
-        inputScaleToMMItoFloatEdge.ToNodeIndex = matrixMultiplyIntergerToFloatNodeIndex;
-        inputScaleToMMItoFloatEdge.ToNodeInputIndex = 1;
-        inputEdges.push_back(inputScaleToMMItoFloatEdge);
+        DML_INPUT_GRAPH_EDGE_DESC inputScaleToMatMulIntToFloatEdge = {};
+        inputScaleToMatMulIntToFloatEdge.GraphInputIndex = InputIndex::inputScaleIndex;
+        inputScaleToMatMulIntToFloatEdge.ToNodeIndex = matMulIntToFloatNodeIndex;
+        inputScaleToMatMulIntToFloatEdge.ToNodeInputIndex = 1;
+        inputEdges.push_back(inputScaleToMatMulIntToFloatEdge);
 
-        DML_INPUT_GRAPH_EDGE_DESC inputZeroPointToMMItoFloatEdge = {};
-        inputZeroPointToMMItoFloatEdge.GraphInputIndex = InputIndex::inputZeroPointIndex;
-        inputZeroPointToMMItoFloatEdge.ToNodeIndex = matrixMultiplyIntergerToFloatNodeIndex;
-        inputZeroPointToMMItoFloatEdge.ToNodeInputIndex = 2;
-        inputEdges.push_back(inputZeroPointToMMItoFloatEdge);
+        DML_INPUT_GRAPH_EDGE_DESC inputZeroPointToMatMulIntToFloatEdge = {};
+        inputZeroPointToMatMulIntToFloatEdge.GraphInputIndex = InputIndex::inputZeroPointIndex;
+        inputZeroPointToMatMulIntToFloatEdge.ToNodeIndex = matMulIntToFloatNodeIndex;
+        inputZeroPointToMatMulIntToFloatEdge.ToNodeInputIndex = 2;
+        inputEdges.push_back(inputZeroPointToMatMulIntToFloatEdge);
 
-        DML_INPUT_GRAPH_EDGE_DESC weightToMMItoFloatEdge = {};
-        weightToMMItoFloatEdge.GraphInputIndex = InputIndex::weightsIndex;
-        weightToMMItoFloatEdge.ToNodeIndex = matrixMultiplyIntergerToFloatNodeIndex;
-        weightToMMItoFloatEdge.ToNodeInputIndex = 3;
-        inputEdges.push_back(weightToMMItoFloatEdge);
+        DML_INPUT_GRAPH_EDGE_DESC weightToMatMulIntToFloatEdge = {};
+        weightToMatMulIntToFloatEdge.GraphInputIndex = InputIndex::weightsIndex;
+        weightToMatMulIntToFloatEdge.ToNodeIndex = matMulIntToFloatNodeIndex;
+        weightToMatMulIntToFloatEdge.ToNodeInputIndex = 3;
+        inputEdges.push_back(weightToMatMulIntToFloatEdge);
 
-        DML_INPUT_GRAPH_EDGE_DESC weightScaleToMMItoFloatEdge = {};
-        weightScaleToMMItoFloatEdge.GraphInputIndex = InputIndex::weightScaleIndex;
-        weightScaleToMMItoFloatEdge.ToNodeIndex = matrixMultiplyIntergerToFloatNodeIndex;
-        weightScaleToMMItoFloatEdge.ToNodeInputIndex = 4;
-        inputEdges.push_back(weightScaleToMMItoFloatEdge);
+        DML_INPUT_GRAPH_EDGE_DESC weightScaleToMatMulIntToFloatEdge = {};
+        weightScaleToMatMulIntToFloatEdge.GraphInputIndex = InputIndex::weightScaleIndex;
+        weightScaleToMatMulIntToFloatEdge.ToNodeIndex = matMulIntToFloatNodeIndex;
+        weightScaleToMatMulIntToFloatEdge.ToNodeInputIndex = 4;
+        inputEdges.push_back(weightScaleToMatMulIntToFloatEdge);
 
-        DML_INPUT_GRAPH_EDGE_DESC weightZeroPointToMMItoFloatEdge = {};
-        weightZeroPointToMMItoFloatEdge.GraphInputIndex = InputIndex::weightZeroPointIndex;
-        weightZeroPointToMMItoFloatEdge.ToNodeIndex = matrixMultiplyIntergerToFloatNodeIndex;
-        weightZeroPointToMMItoFloatEdge.ToNodeInputIndex = 5;
-        inputEdges.push_back(weightZeroPointToMMItoFloatEdge);
+        DML_INPUT_GRAPH_EDGE_DESC weightZeroPointToMatMulIntToFloatEdge = {};
+        weightZeroPointToMatMulIntToFloatEdge.GraphInputIndex = InputIndex::weightZeroPointIndex;
+        weightZeroPointToMatMulIntToFloatEdge.ToNodeIndex = matMulIntToFloatNodeIndex;
+        weightZeroPointToMatMulIntToFloatEdge.ToNodeInputIndex = 5;
+        inputEdges.push_back(weightZeroPointToMatMulIntToFloatEdge);
 
         if (hasBias)
         {
-            DML_INPUT_GRAPH_EDGE_DESC biasToMMItoFloatEdge = {};
-            biasToMMItoFloatEdge.GraphInputIndex = InputIndex::biasIndex;
-            biasToMMItoFloatEdge.ToNodeIndex = matrixMultiplyIntergerToFloatNodeIndex;
-            biasToMMItoFloatEdge.ToNodeInputIndex = 6;
-            inputEdges.push_back(biasToMMItoFloatEdge);
+            DML_INPUT_GRAPH_EDGE_DESC biasToMatMulIntToFloatEdge = {};
+            biasToMatMulIntToFloatEdge.GraphInputIndex = InputIndex::biasIndex;
+            biasToMatMulIntToFloatEdge.ToNodeIndex = matMulIntToFloatNodeIndex;
+            biasToMatMulIntToFloatEdge.ToNodeInputIndex = 6;
+            inputEdges.push_back(biasToMatMulIntToFloatEdge);
         }
 
         if (hasMask)
@@ -466,12 +466,12 @@ public:
         if (hasSlicedValue)
         {
             // We need to slice QK and V, and transpose QK
-            DML_INTERMEDIATE_GRAPH_EDGE_DESC mMItoFloatToQueryKeySliceEdge = {};
-            mMItoFloatToQueryKeySliceEdge.FromNodeIndex = matrixMultiplyIntergerToFloatNodeIndex;
-            mMItoFloatToQueryKeySliceEdge.FromNodeOutputIndex = 0;
-            mMItoFloatToQueryKeySliceEdge.ToNodeIndex = queryKeySliceNodeIndex;
-            mMItoFloatToQueryKeySliceEdge.ToNodeInputIndex = 0;
-            intermediateEdges.push_back(mMItoFloatToQueryKeySliceEdge);
+            DML_INTERMEDIATE_GRAPH_EDGE_DESC matMulIntToFloatToQueryKeySliceEdge = {};
+            matMulIntToFloatToQueryKeySliceEdge.FromNodeIndex = matMulIntToFloatNodeIndex;
+            matMulIntToFloatToQueryKeySliceEdge.FromNodeOutputIndex = 0;
+            matMulIntToFloatToQueryKeySliceEdge.ToNodeIndex = queryKeySliceNodeIndex;
+            matMulIntToFloatToQueryKeySliceEdge.ToNodeInputIndex = 0;
+            intermediateEdges.push_back(matMulIntToFloatToQueryKeySliceEdge);
 
             DML_INTERMEDIATE_GRAPH_EDGE_DESC queryKeySliceToTransposeEdge = {};
             queryKeySliceToTransposeEdge.FromNodeIndex = queryKeySliceNodeIndex;
@@ -487,12 +487,12 @@ public:
             queryKeyTransposedToMhaEdge.ToNodeInputIndex = mhaStackedQueryKeyIndex;
             intermediateEdges.push_back(queryKeyTransposedToMhaEdge);
 
-            DML_INTERMEDIATE_GRAPH_EDGE_DESC mMItoFloatToValueSliceEdge = {};
-            mMItoFloatToValueSliceEdge.FromNodeIndex = matrixMultiplyIntergerToFloatNodeIndex;
-            mMItoFloatToValueSliceEdge.FromNodeOutputIndex = 0;
-            mMItoFloatToValueSliceEdge.ToNodeIndex = valueSliceNodeIndex;
-            mMItoFloatToValueSliceEdge.ToNodeInputIndex = 0;
-            intermediateEdges.push_back(mMItoFloatToValueSliceEdge);
+            DML_INTERMEDIATE_GRAPH_EDGE_DESC matMulIntToFloatToValueSliceEdge = {};
+            matMulIntToFloatToValueSliceEdge.FromNodeIndex = matMulIntToFloatNodeIndex;
+            matMulIntToFloatToValueSliceEdge.FromNodeOutputIndex = 0;
+            matMulIntToFloatToValueSliceEdge.ToNodeIndex = valueSliceNodeIndex;
+            matMulIntToFloatToValueSliceEdge.ToNodeInputIndex = 0;
+            intermediateEdges.push_back(matMulIntToFloatToValueSliceEdge);
 
             DML_INTERMEDIATE_GRAPH_EDGE_DESC valueSliceToMhaEdge = {};
             valueSliceToMhaEdge.FromNodeIndex = valueSliceNodeIndex;
@@ -503,12 +503,12 @@ public:
         }
         else
         {
-            DML_INTERMEDIATE_GRAPH_EDGE_DESC mMItoFloatToQueryKeyValueTransposeEdge = {};
-            mMItoFloatToQueryKeyValueTransposeEdge.FromNodeIndex = matrixMultiplyIntergerToFloatNodeIndex;
-            mMItoFloatToQueryKeyValueTransposeEdge.FromNodeOutputIndex = 0;
-            mMItoFloatToQueryKeyValueTransposeEdge.ToNodeIndex = queryKeyValueTransposedNodeIndex;
-            mMItoFloatToQueryKeyValueTransposeEdge.ToNodeInputIndex = 0;
-            intermediateEdges.push_back(mMItoFloatToQueryKeyValueTransposeEdge);
+            DML_INTERMEDIATE_GRAPH_EDGE_DESC matMulIntToFloatToQueryKeyValueTransposeEdge = {};
+            matMulIntToFloatToQueryKeyValueTransposeEdge.FromNodeIndex = matMulIntToFloatNodeIndex;
+            matMulIntToFloatToQueryKeyValueTransposeEdge.FromNodeOutputIndex = 0;
+            matMulIntToFloatToQueryKeyValueTransposeEdge.ToNodeIndex = queryKeyValueTransposedNodeIndex;
+            matMulIntToFloatToQueryKeyValueTransposeEdge.ToNodeInputIndex = 0;
+            intermediateEdges.push_back(matMulIntToFloatToQueryKeyValueTransposeEdge);
 
             // All we need to do here is transpose the stacked QKV tensor into something DML supports
             DML_INTERMEDIATE_GRAPH_EDGE_DESC queryKeyValueTransposedToMhaEdge = {};
