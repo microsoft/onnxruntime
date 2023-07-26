@@ -63,7 +63,7 @@ Status LayerNormOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
     int32_t default_axis = -1;
     Qnn_Scalar_t axis_qnn_scalar = QNN_SCALAR_INIT;
     ORT_RETURN_IF_ERROR(ProcessAxisAttribute(qnn_model_wrapper, node_unit, axis_qnn_scalar, default_axis));
-    ORT_RETURN_IF(default_axis != input_rank - 1, "QNN LayerNorm for HTP only support axis with last input dimension");
+    ORT_RETURN_IF(static_cast<size_t>(default_axis) != input_rank - 1, "QNN LayerNorm for HTP only support axis with last input dimension");
   }
 
   return AddToModelBuilder(qnn_model_wrapper, node_unit, logger, is_quantized_model, true);
