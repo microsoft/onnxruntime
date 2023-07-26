@@ -106,7 +106,7 @@ sess = ort.InferenceSession('model.onnx', providers=['TensorrtExecutionProvider'
 ```
 
 ## Configurations
-There are two ways to configure TensorRT settings, either by **TensorRT Execution Provider Session Options(recommended)** or **Environment Variables** shown as below:
+There are two ways to configure TensorRT settings, either by **TensorRT Execution Provider Session Options(recommended)** or **Environment Variables(deprecated)** shown as below:
 
 
 | TensorRT EP Session Options           | Environment Variables                          | Type   |
@@ -283,7 +283,11 @@ sess_opt = ort.SessionOptions()
 sess = ort.InferenceSession(model_path, sess_options=sess_opt, providers=providers)
 ```
 
-### Environment Variables
+### Environment Variables(deprecated)
+
+<details>
+<summary>Click to expand:</summary>
+
 Following environment variables can be set for TensorRT execution provider.
 
 * `ORT_TENSORRT_MAX_WORKSPACE_SIZE`: maximum workspace size for TensorRT engine. Default value: 1073741824 (1GB).
@@ -377,6 +381,8 @@ export ORT_TENSORRT_DUMP_SUBGRAPHS=1
 # Enable context memory sharing between TensorRT subgraphs. Default 0 = false, nonzero = true
 export ORT_TENSORRT_CONTEXT_MEMORY_SHARING_ENABLE=1
 ```
+
+</details>
 
 ## Performance Tuning
 For performance tuning, please see guidance on this page: [ONNX Runtime Perf Tuning](./../performance/tune-performance/index.md)
