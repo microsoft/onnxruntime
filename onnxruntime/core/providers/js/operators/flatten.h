@@ -10,7 +10,7 @@
 namespace onnxruntime {
 namespace js {
 
-class Flatten: public JsKernel {
+class Flatten : public JsKernel {
  public:
   Flatten(const OpKernelInfo& info) : JsKernel(info) {
     ORT_ENFORCE(info.GetAttr<int64_t>("axis", &axis_).IsOK());
