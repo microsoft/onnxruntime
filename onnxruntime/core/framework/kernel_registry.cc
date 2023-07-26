@@ -195,14 +195,12 @@ Status KernelRegistry::TryFindKernelImpl(const Node& node,
 
   for (auto i = range.first; i != range.second; ++i) {
     std::string error_str;
-    ORT_UNUSED_PARAMETER(kernel_type_str_resolver);
-    ORT_UNUSED_PARAMETER(type_constraints);
-    //if (VerifyKernelDef(node, *i->second.kernel_def, kernel_type_str_resolver, type_constraints, error_str)) {
+    if (VerifyKernelDef(node, *i->second.kernel_def, kernel_type_str_resolver, type_constraints, error_str)) {
       if (out) {
         *out = &i->second;
       }
       return Status::OK();
-    //}
+    }
 
     verify_kernel_def_error_strs.push_back(error_str);
   }

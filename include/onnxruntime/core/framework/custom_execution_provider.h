@@ -7,6 +7,7 @@
 
 #include "core/session/onnxruntime_lite_custom_op.h"
 #include "core/session/onnxruntime_c_api.h"
+#include "core/framework/ortdevice.h"
 
 namespace onnxruntime{
     class CustomExecutionProvider{
@@ -22,6 +23,9 @@ namespace onnxruntime{
             return kernel_definitions_[index].get();
         }
         std::string& GetType() { return type_; }
+
+        virtual bool CanCopy(const OrtDevice&, const OrtDevice&) { return false; }
+        virtual void MemoryCpy(void*, const void*, size_t) {}
 
         protected:
         std::vector<OrtAllocator*> allocators_;

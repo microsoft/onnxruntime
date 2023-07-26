@@ -426,14 +426,13 @@ Status CustomOpKernel::Compute(OpKernelContext* ctx) const {
 }
 
 #if !defined(ORT_MINIMAL_BUILD)
-KernelCreateInfo CreateKernelCreateInfo(const std::string& domain, const OrtCustomOp* op) {
+KernelCreateInfo CreateKernelCreateInfo(const std::string& domain, const OrtCustomOp* op, int version_start, int version_end) {
   const size_t input_count = op->GetInputTypeCount(op);
   const size_t output_count = op->GetOutputTypeCount(op);
 
   KernelDefBuilder def_builder;
   def_builder.SetName(op->GetName(op))
-      .SetDomain(domain)
-      .SinceVersion(1);
+      .SetDomain(domain).SinceVersion(version_start, version_end);
 
   // GetInputMemoryType was introduced in ver 13. This check allows custom ops compiled using older versions
   // to work with newer versions (> 12) of the ORT binary.

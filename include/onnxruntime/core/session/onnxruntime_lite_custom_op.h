@@ -692,7 +692,7 @@ OrtLiteCustomOp* CreateLiteCustomOp(const char* op_name,
 
 template <typename... Args>
 ExternalKernelDef* CreateExternalKernelDef(const char* op_name, const char* execution_provider, void (*custom_compute_fn)(Args...),
-                                          const char* domain, int op_since_version_start, int op_since_version_end) {
+                                          const char* domain, int op_since_version_start, int op_since_version_end = INT_MAX) {
   OrtLiteCustomOp* op = CreateLiteCustomOp(op_name, execution_provider, custom_compute_fn);
   return std::make_unique<ExternalKernelDef>(op, domain, op_since_version_start, op_since_version_end).release();
 }

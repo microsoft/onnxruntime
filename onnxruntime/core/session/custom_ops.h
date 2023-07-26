@@ -34,7 +34,7 @@ common::Status CreateCustomRegistry(gsl::span<OrtCustomOpDomain* const> op_domai
 #if !defined(ORT_MINIMAL_BUILD)
 class Graph;
 class KernelTypeStrResolver;
-KernelCreateInfo CreateKernelCreateInfo(const std::string& domain, const OrtCustomOp* op);
+KernelCreateInfo CreateKernelCreateInfo(const std::string& domain, const OrtCustomOp* op, int version_from = 1, int version_to = INT_MAX);
 
 namespace standalone {
 // Register the schemas from any custom ops using the standalone invoker to call ORT kernels via OrtApi CreateOp.

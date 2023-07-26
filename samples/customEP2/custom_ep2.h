@@ -12,6 +12,8 @@ class CustomEp2 : public CustomExecutionProvider {
 public:
     CustomEp2(const CustomEp2Info& info);
     ~CustomEp2() override = default;
+    bool CanCopy(const OrtDevice& src, const OrtDevice& dest) override;
+    void MemoryCpy(void* dst, const void* src, size_t bytes_count) override;
 private:
     CustomEp2Info info_;
 };
