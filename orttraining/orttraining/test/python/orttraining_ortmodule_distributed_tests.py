@@ -4,9 +4,7 @@
 
 import argparse
 import logging
-import shutil
 import sys
-from pathlib import Path
 
 from _test_commons import run_subprocess
 
@@ -74,7 +72,6 @@ def run_ortmodule_fairscale_sharded_optimizer_tests(cwd, log, data_dir):
 
 def run_distributed_cache_test(cwd, log):
     log.debug("Running: ORTModule Cache Test")
-
 
     command = [
         "torchrun",

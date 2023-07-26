@@ -9,13 +9,11 @@ import math
 import os
 import pickle
 import random
-import shutil
 import tempfile
 import time
 import unittest.mock
 import warnings
 from collections import OrderedDict, namedtuple
-from pathlib import Path
 
 import _test_helpers
 import numpy as np
@@ -6112,6 +6110,7 @@ def test_ortmodule_log_level_control(log_level, caplog):
         assert found_missing_inference_log
     else:
         assert not found_missing_inference_log
+
 
 def test_cache_exported_model():
     class Net(torch.nn.Module):
