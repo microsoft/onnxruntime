@@ -156,10 +156,6 @@ else()
     "${ONNXRUNTIME_ROOT}/wasm/api.cc"
   )
 
-  if (onnxruntime_ENABLE_TRAINING_APIS)
-    list(APPEND onnxruntime_webassembly_src "${ONNXRUNTIME_ROOT}/wasm/training_api.cc")
-  endif()
-
   source_group(TREE ${REPO_ROOT} FILES ${onnxruntime_webassembly_src})
 
   add_executable(onnxruntime_webassembly
@@ -172,11 +168,6 @@ else()
       "${ONNXRUNTIME_ROOT}/wasm/api.cc"
       "${ONNXRUNTIME_ROOT}/core/session/onnxruntime_c_api.cc"
     )
-    if (onnxruntime_ENABLE_TRAINING_APIS)
-      list(APPEND onnxruntime_webassembly_src_exc
-      "${ONNXRUNTIME_ROOT}/wasm/training_api.cc"
-      "${ORTTRAINING_SOURCE_DIR}/orttraining/training_api/onnxruntime_training_c_api.cc")
-    endif()
     set (WASM_API_EXCEPTION_CATCHING "-s DISABLE_EXCEPTION_CATCHING=0")
     message(STATUS "onnxruntime_ENABLE_WEBASSEMBLY_EXCEPTION_CATCHING_ON_API set")
     set_source_files_properties(${onnxruntime_webassembly_src_exc} PROPERTIES COMPILE_FLAGS ${WASM_API_EXCEPTION_CATCHING})

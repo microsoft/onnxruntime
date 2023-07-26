@@ -44,7 +44,7 @@ const WASM_BINDING_SIMD_THREADED_JSEP_MIN_JS_PATH =
     path.join(WASM_BINDING_FOLDER, 'ort-wasm-simd-threaded.jsep.min.js');
 const WASM_BINDING_THREADED_MIN_WORKER_JS_PATH = path.join(WASM_BINDING_FOLDER, 'ort-wasm-threaded.min.worker.js');
 
-const WASM_DIST_FOLDER = path.join(ROOT_FOLDER, 'dist');
+const WASM_DIST_FOLDER = TRAINING ? path.join(ROOT_FOLDER, 'training/dist') : path.join(ROOT_FOLDER, 'dist');
 const WASM_WASM_PATH = path.join(WASM_DIST_FOLDER, 'ort-wasm.wasm');
 const WASM_THREADED_WASM_PATH = path.join(WASM_DIST_FOLDER, 'ort-wasm-threaded.wasm');
 const WASM_SIMD_WASM_PATH = path.join(WASM_DIST_FOLDER, 'ort-wasm-simd.wasm');
