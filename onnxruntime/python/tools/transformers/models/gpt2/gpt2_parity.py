@@ -256,7 +256,7 @@ def run_significance_test(rows, output_csv_path):
                     utest_statistic, utest_pvalue = scipy.stats.mannwhitneyu(
                         a, b, use_continuity=True, alternative="two-sided"
                     )  # TODO: shall we use one-sided: less or greater according to "top1_match_rate"
-                except ValueError:  # ValueError: All numbers are identical in mannwhitneyu  # noqa: PERF203
+                except ValueError:  # ValueError: All numbers are identical in mannwhitneyu
                     utest_statistic = None
                     utest_pvalue = None
                 ttest_statistic, ttest_pvalue = scipy.stats.ttest_ind(a, b, axis=None, equal_var=True)
