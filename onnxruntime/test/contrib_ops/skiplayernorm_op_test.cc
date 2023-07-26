@@ -61,6 +61,8 @@ static void RunTest(
 
   auto rocm_ep = DefaultRocmExecutionProvider();
   auto dml_ep = DefaultDmlExecutionProvider();
+  auto cpu_ep = DefaultCpuExecutionProvider();
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
   if (!use_float16) {
     OpTester test(op_type.c_str(), 1, onnxruntime::kMSDomain);
     test.AddInput<float>("input", input_dims, input_data);
@@ -90,7 +92,10 @@ static void RunTest(
                             skip_input_bias_add_output_data);
     }
 
-    test.Run();
+    if (cpu_ep != nullptr) {
+      execution_providers.push_back(DefaultCpuExecutionProvider());
+    }
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
   } else if (HasCudaEnvironment(530 /*min_cuda_architecture*/) ||
              dml_ep != nullptr ||
              rocm_ep != nullptr) {
@@ -122,7 +127,6 @@ static void RunTest(
                                 ToFloat16(skip_input_bias_add_output_data));
     }
 
-    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
     if (dml_ep != nullptr) {
       execution_providers.push_back(DefaultDmlExecutionProvider());
     } else if (rocm_ep != nullptr) {
