@@ -2181,7 +2181,11 @@ struct CustomOpBase : OrtCustomOp {
     OrtCustomOp::GetVariadicInputHomogeneity = [](const OrtCustomOp* this_) { return static_cast<int>(static_cast<const TOp*>(this_)->GetVariadicInputHomogeneity()); };
     OrtCustomOp::GetVariadicOutputMinArity = [](const OrtCustomOp* this_) { return static_cast<const TOp*>(this_)->GetVariadicOutputMinArity(); };
     OrtCustomOp::GetVariadicOutputHomogeneity = [](const OrtCustomOp* this_) { return static_cast<int>(static_cast<const TOp*>(this_)->GetVariadicOutputHomogeneity()); };
+#ifdef __cpp_if_constexpr
     if constexpr (WithStatus) {
+#else
+    if (WithStatus) {
+#endif
       OrtCustomOp::CreateKernelV2 = [](const OrtCustomOp* this_, const OrtApi* api, const OrtKernelInfo* info, void** op_kernel) -> OrtStatusPtr {
         return static_cast<const TOp*>(this_)->CreateKernelV2(*api, info, op_kernel);
       };
