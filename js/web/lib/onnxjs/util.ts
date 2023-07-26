@@ -195,7 +195,7 @@ export class BroadcastUtil {
    * @returns The result tensor, or undefined if input not broadcastable.
    */
   static calc(
-      a: Tensor, b: Tensor, op: (a: string|number, b: string|number) => (string | number), inplace: boolean,
+      a: Tensor, b: Tensor, op: (a: any, b: any) => (string | number), inplace: boolean,
       resultType?: Tensor.DataType): Tensor|undefined {
     const outputShape = BroadcastUtil.calcShape(a.dims, b.dims);
 
@@ -218,8 +218,8 @@ export class BroadcastUtil {
         const outputIndices = new Array<number>(outputShape.length);
         const originalIndicesA = new Array(a.dims.length);
         const originalIndicesB = new Array(b.dims.length);
-        let valA: string|number = 0;
-        let valB: string|number = 0;
+        let valA: any = 0;
+        let valB: any = 0;
         let isAScalar = false;
         let isBScalar = false;
         if (a.dims.length === 0) {
