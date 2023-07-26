@@ -64,7 +64,7 @@ struct DmlSerializedGraphDesc
     uint32_t OutputCount;
     // nodes must be present in topological order for deserialization to work
     // because while creating a intermediate edge during deserialization, node (from
-    // which given intermediate edge is outputting) must be visted before than the node
+    // which given intermediate edge is outputting) must be visited before than the node
     // (to which given intermediate edge is inputting)
     std::vector<DmlSerializedGraphNode> Nodes;
     std::vector<DmlInputSerializedGraphEdge> InputEdges;

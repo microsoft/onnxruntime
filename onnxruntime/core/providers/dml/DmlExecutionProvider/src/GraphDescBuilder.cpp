@@ -419,7 +419,7 @@ namespace Dml::GraphDescBuilder
                 edge.FromNodeOutputIndex = operatorGraphIntermediateEdge.FromNodeOutputIndex;
                 edge.ToNodeIndex = shiftedToNodeIndex;
                 edge.ToNodeInputIndex = operatorGraphIntermediateEdge.ToNodeInputIndex;
-                edge.Name = std::to_string(shiftedFromNodeIndex) + std::to_string(operatorGraphIntermediateEdge.FromNodeOutputIndex);
+                edge.Name = "nodeIdx:" + std::to_string(shiftedFromNodeIndex) + "-outputIdx:" + std::to_string(operatorGraphIntermediateEdge.FromNodeOutputIndex);
                 dmlGraphIntermediateEdges.push_back(edge);
             }
 
