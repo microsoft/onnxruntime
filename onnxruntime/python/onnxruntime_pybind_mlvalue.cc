@@ -196,7 +196,6 @@ AllocatorPtr GetDmlAllocator(OrtDevice::DeviceId id) {
 
   auto hit = id_to_allocator_map->find(id);
   if (hit == id_to_allocator_map->end()) {
-    // TODO: Expose knobs so that users can set fields associated with OrtArenaCfg so that we can pass it to the following method
     auto dml_allocator = std::make_shared<Dml::DmlExternalBufferAllocator>(id);
     hit = id_to_allocator_map->emplace(id, std::move(dml_allocator)).first;
   }
