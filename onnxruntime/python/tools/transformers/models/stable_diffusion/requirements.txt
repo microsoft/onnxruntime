@@ -1,4 +1,4 @@
-diffusers>=0.15.1
+diffusers>=0.18.0
 transformers>=4.26.0
 numpy>=1.24.1
 accelerate
@@ -8,3 +8,6 @@ packaging
 protobuf==3.20.3
 psutil
 sympy
+# The following are for SDXL
+safetensors
+invisible_watermark
