@@ -57,8 +57,8 @@ private:
 
 CustomEp2::CustomEp2(const CustomEp2Info& info) : info_{info} {
     type_ = "customEp2";
-    //kernel_definitions_.push_back(Ort::Custom::CreateLiteCustomOp("CustomOpTwo", type_.c_str(), KernelTwo));  // TODO: should use smart pointer for vector custom_ops_
-    kernel_definitions_.push_back(Ort::Custom::CreateLiteCustomOp("Relu", type_.c_str(), MyRelu));  // TODO: should we use OrtLiteCustomOp to represent standard op?
+    std::unique_ptr<Ort::Custom::ExternalKernelDef> p(Ort::Custom::CreateExternalKernelDef("Relu", type_.c_str(), MyRelu, "test", 2, 8));
+    kernel_definitions_.push_back(std::move(p));
 
     allocators_.push_back(std::make_unique<CustomCPUAllocator>().release());  // TODO: release resource
 }

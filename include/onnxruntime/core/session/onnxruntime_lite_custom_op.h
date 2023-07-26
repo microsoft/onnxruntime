@@ -19,6 +19,7 @@
 #include <optional>
 #include <numeric>
 #include <unordered_set>
+#include <climits>
 
 namespace Ort {
 namespace Custom {
@@ -659,6 +660,19 @@ struct OrtLiteCustomStruct : public OrtLiteCustomOp {
   }
 };  // struct OrtLiteCustomStruct
 
+struct ExternalKernelDef {
+  std::unique_ptr<OrtLiteCustomOp> custom_op_;
+  std::string domain_;
+  int op_since_version_start_ = 1;
+  int op_since_version_end_ = INT_MAX;
+  ExternalKernelDef(OrtLiteCustomOp* op, std::string domain, int op_version_start, int op_version_end) {
+    custom_op_ = std::unique_ptr<OrtLiteCustomOp>(op);
+    domain_ = domain;
+    op_since_version_start_ = op_version_start;
+    op_since_version_end_ = op_version_end;
+  }
+};
+
 /////////////////////////// CreateLiteCustomOp ////////////////////////////
 
 template <typename... Args>
@@ -674,6 +688,13 @@ OrtLiteCustomOp* CreateLiteCustomOp(const char* op_name,
                                     const char* execution_provider) {
   using LiteOp = OrtLiteCustomStruct<CustomOp>;
   return std::make_unique<LiteOp>(op_name, execution_provider).release();
+}
+
+template <typename... Args>
+ExternalKernelDef* CreateExternalKernelDef(const char* op_name, const char* execution_provider, void (*custom_compute_fn)(Args...),
+                                          const char* domain, int op_since_version_start, int op_since_version_end) {
+  OrtLiteCustomOp* op = CreateLiteCustomOp(op_name, execution_provider, custom_compute_fn);
+  return std::make_unique<ExternalKernelDef>(op, domain, op_since_version_start, op_since_version_end).release();
 }
 
 }  // namespace Custom

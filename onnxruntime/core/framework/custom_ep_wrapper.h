@@ -14,13 +14,9 @@ namespace onnxruntime {
         ExternalExecutionProvider(CustomExecutionProvider* external_ep)
             : IExecutionProvider(external_ep->GetType()), external_ep_impl_(external_ep){
                 kernel_registry_ = std::make_shared<KernelRegistry>();
-                std::vector<Ort::Custom::OrtLiteCustomOp*> kernel_defn = external_ep_impl_->GetKernelDefinitions();
-                for (auto& k : kernel_defn) {
-                //    OrtLiteCustomOp2KernelRegistry(k);
-                    std::unique_ptr<OrtCustomOpDomain> custom_op_domain = std::make_unique<OrtCustomOpDomain>();
-                    custom_op_domain->domain_ = "test";
-                    custom_op_domain->custom_ops_.push_back(k);
-                    custom_op_domain_list_.push_back(custom_op_domain.release());
+                size_t kernelsCount = external_ep_impl_->GetKernelDefinitionCount();
+                for (size_t i = 0; i < kernelsCount; i++) {
+                    OrtLiteCustomOp2KernelRegistry(external_ep_impl_->GetKernelDefinition(i));
                 }
             }
 
@@ -38,17 +34,12 @@ namespace onnxruntime {
             return ret;
         }
 
-        void GetCustomOpDomainList(std::vector<OrtCustomOpDomain*>& custom_op_domain_list) const override {
-            custom_op_domain_list = custom_op_domain_list_;
-        }
-
     private:
         std::unique_ptr<CustomExecutionProvider> external_ep_impl_;
         std::shared_ptr<KernelRegistry> kernel_registry_;
-        std::vector<OrtCustomOpDomain*> custom_op_domain_list_;
 
-        void OrtLiteCustomOp2KernelRegistry(Ort::Custom::OrtLiteCustomOp* kernel_definition) {
-            KernelCreateInfo kernel_create_info = CreateKernelCreateInfo("", kernel_definition);
+        void OrtLiteCustomOp2KernelRegistry(Ort::Custom::ExternalKernelDef* kernel_definition) {
+            KernelCreateInfo kernel_create_info = CreateKernelCreateInfo(kernel_definition->domain_, kernel_definition->custom_op_.get());
             ORT_THROW_IF_ERROR(kernel_registry_->Register(std::move(kernel_create_info)));
         }
     };

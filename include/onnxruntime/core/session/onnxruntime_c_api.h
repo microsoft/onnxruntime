@@ -4407,6 +4407,10 @@ struct OrtCustomOp {
 
   // Perform the computation step.
   OrtStatusPtr(ORT_API_CALL* KernelComputeV2)(_In_ void* op_kernel, _In_ OrtKernelContext* context);
+
+  void(ORT_API_CALL* SetOpsetVersionFrom)(_In_ uint32_t version_from);
+  void(ORT_API_CALL* SetOpsetVersionTo)(_In_ uint32_t version_to);
+
 };
 
 /*
