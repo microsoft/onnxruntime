@@ -277,7 +277,7 @@ const calculateInputIndicesFromOutputIndices =
       const inputIndicesHelper = createIndicesHelper('input', inputShape);
       return `
     fn calculateInputIndicesFromOutputIndices(outputIndices: ${outputIndicesHelper.iType}) -> array<u32, ${
-        inputShape.length}> {
+          inputShape.length}> {
         const inputShape = array<u32, ${inputShape.length}>(${inputShape.map(i => `${i}u`).join(',')});
         const outputShape = array<u32, ${outputShape.length}>(${outputShape.map(i => `${i}u`).join(',')});
         const scales = array<f32, ${scales.length}>(${scales.map(i => `${i}f`).join(',')});
