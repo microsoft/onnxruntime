@@ -1,10 +1,10 @@
 ---
-title: PyOp
+title: Python Operators
 description: Instructions to create a custom operator using Python functions and ORT inference integration.
 parent: Extensions
-nav_order: 2
+nav_order: 4
 ---
-# PyOp
+# Creating custom operators using Python functions
 
 Custom operators are a powerful feature in ONNX Runtime that allows users to extend the functionality of the runtime by implementing their own operators to perform specific operations not available in the standard ONNX operator set.
 
