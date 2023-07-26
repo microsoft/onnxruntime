@@ -75,22 +75,15 @@ def run_ortmodule_fairscale_sharded_optimizer_tests(cwd, log, data_dir):
 def run_distributed_cache_test(cwd, log):
     log.debug("Running: ORTModule Cache Test")
 
-    cache_dir = "cache_dir"
 
     command = [
         "torchrun",
         "--nproc_per_node",
         "2",
         "orttraining_test_ortmodule_cache.py",
-        "--ortmodule_cache_dir",
-        cache_dir,
     ]
 
     run_subprocess(command, cwd=cwd, log=log).check_returncode()
-
-    root_dir = Path(__file__).resolve().parent
-    cache_dir = root_dir / cache_dir
-    shutil.rmtree(cache_dir)
 
 
 def main():

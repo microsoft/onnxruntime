@@ -6066,8 +6066,6 @@ def test_e2e_padding_elimination():
 
 
 def test_cache_exported_model():
-    os.environ["ORTMODULE_CACHE_DIR"] = "cache_dir"
-
     class Net(torch.nn.Module):
         def __init__(self):
             super().__init__()
@@ -6080,28 +6078,25 @@ def test_cache_exported_model():
 
     data = torch.randn(1, 10)
 
-    # first time seeing the model, architecture should be cached under ORTMODULE_CACHE_DIR
-    model_pre_cache = Net()
-    model_pre_cache = ORTModule(model_pre_cache, DebugOptions(log_level=LogLevel.INFO))
+    with tempfile.TemporaryDirectory() as temporary_dir:
+        os.environ["ORTMODULE_CACHE_DIR"] = temporary_dir
 
-    pre_cache_start = time.time()
-    _ = model_pre_cache(data)
-    pre_cache_duration = time.time() - pre_cache_start
+        # first time seeing the model, architecture should be cached under ORTMODULE_CACHE_DIR
+        model_pre_cache = Net()
+        model_pre_cache = ORTModule(model_pre_cache, DebugOptions(log_level=LogLevel.INFO))
 
-    root_dir = Path(__file__).resolve().parent
-    cache_dir = root_dir / os.environ["ORTMODULE_CACHE_DIR"]
+        torch.onnx.export = unittest.mock.MagicMock(side_effect=torch.onnx.export)
+        _ = model_pre_cache(data)
+        torch.onnx.export.assert_called()
+        torch.onnx.export.reset_mock()
 
-    assert len(os.listdir(cache_dir)) == 1
+        # second time seeing the model, architecture should be loaded from ORTMODULE_CACHE_DIR
+        model_post_cache = Net()
+        model_post_cache = ORTModule(model_post_cache, DebugOptions(log_level=LogLevel.INFO))
 
-    # second time seeing the model, architecture should be loaded from ORTMODULE_CACHE_DIR
-    model_post_cache = Net()
-    model_post_cache = ORTModule(model_post_cache, DebugOptions(log_level=LogLevel.INFO))
+        torch.onnx.export = unittest.mock.MagicMock(side_effect=torch.onnx.export)
+        _ = model_post_cache(data)
+        torch.onnx.export.assert_not_called()
+        torch.onnx.export.reset_mock()
 
-    post_cache_start = time.time()
-    _ = model_post_cache(data)
-    post_cache_duration = time.time() - post_cache_start
-
-    assert post_cache_duration < pre_cache_duration
-
-    shutil.rmtree(cache_dir)
-    del os.environ["ORTMODULE_CACHE_DIR"]
+        del os.environ["ORTMODULE_CACHE_DIR"]
