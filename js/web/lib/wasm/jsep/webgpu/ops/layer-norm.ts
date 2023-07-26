@@ -5,7 +5,7 @@ import {ComputeContext, GpuDataType, ProgramInfo, ProgramMetadata} from '../type
 import {TensorView} from '../../tensor';
 import {DataType, tensorTypeToWsglType} from '../../../wasm-common';
 import {ShapeUtil} from '../../util';
-import {ShaderHelper} from './common';
+import {getMaxWorkgroupLimits, ShaderHelper} from './common';
 import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-with-cache-key';
 
 export interface LayerNormAttributes extends AttributeWithCacheKey {
@@ -54,6 +54,7 @@ const createLayerNormProgramInfo =
         }
 
         const dataType = tensorTypeToWsglType(inputs[0].dataType);
+        const [dispatchGroup, workgroupLimits] = getMaxWorkgroupLimits(normCount);
 
         const getShaderSource = (shaderHelper: ShaderHelper) => `
   const normSize: u32 = ${normSize};
@@ -65,9 +66,9 @@ const createLayerNormProgramInfo =
   @group(0) @binding(2) var<storage, read> bias : array<${dataType}>;
   @group(0) @binding(3) var<storage, read_write> output : array<${dataType}>;
   @group(0) @binding(4) var<storage, read_write> meanDataOutput : array<${dataType}>;
-  @group(0) @binding(5) var<storage, read_write> invStdOutput : array<${dataType}>;
+  // @group(0) @binding(5) var<storage, read_write> invStdOutput : array<${dataType}>;
 
-  ${shaderHelper.mainStart()}
+  ${shaderHelper.mainStart(workgroupLimits)}
     let offset = global_idx * normSize;
     if (offset >= ${outputSize}) { return; }
     var mean: ${dataType} = 0;
@@ -85,22 +86,22 @@ const createLayerNormProgramInfo =
     }
 
     meanDataOutput[global_idx] = mean;
-    invStdOutput[global_idx] = 1 / meanSquare;
+    //invStdOutput[global_idx] = 1 / meanSquare;
   }`;
         return {
             ...metadata,
             outputs: [
                 {dims: outputShape, dataType: inputs[0].dataType, gpuDataType: GpuDataType.default},
                 {dims: meanInvStdDevDim, dataType: inputs[0].dataType, gpuDataType: GpuDataType.default},
-                {dims: meanInvStdDevDim, dataType: inputs[0].dataType, gpuDataType: GpuDataType.default},
+                // {dims: meanInvStdDevDim, dataType: inputs[0].dataType, gpuDataType: GpuDataType.default},
             ],
             getShaderSource,
-            dispatchGroup: () => ({x: Math.ceil(normCount / 64 /* workgroup size */)})
+            dispatchGroup: () => (dispatchGroup)
         };
     };
 
-export const parseLayerNormAttributes = (attributes: Record<string, unknown>): LayerNormAttributes =>
-    createAttributeWithCacheKey(attributes as Omit<LayerNormAttributes, keyof AttributeWithCacheKey>);
+export const parseLayerNormAttributes = (attributes: LayerNormAttributes): LayerNormAttributes =>
+    createAttributeWithCacheKey({ axis: attributes.axis, epsilon: attributes.epsilon });
 
 export const layerNorm = (context: ComputeContext, attributes: LayerNormAttributes): void => {
     validateInputs(context.inputs);

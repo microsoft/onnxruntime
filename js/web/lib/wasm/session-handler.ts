@@ -7,7 +7,7 @@ import {promisify} from 'util';
 
 import {SerializableModeldata} from './proxy-messages';
 import {createSession, createSessionAllocate, createSessionFinalize, endProfiling, initializeRuntime, releaseSession, run} from './proxy-wrapper';
-// import {getInstance} from "./wasm-factory";
+import {getInstance} from "./wasm-factory";
 
 let runtimeInitialized: boolean;
 
@@ -18,80 +18,80 @@ export class OnnxruntimeWebAssemblySessionHandler implements SessionHandler {
   outputNames: string[];
 
   async createSessionAllocate(path: string): Promise<SerializableModeldata> {
-    const response = await fetch(path);
-    const arrayBuffer = await response.arrayBuffer();
-    return createSessionAllocate(new Uint8Array(arrayBuffer));
+    // const response = await fetch(path);
+    // const arrayBuffer = await response.arrayBuffer();
+    // return createSessionAllocate(new Uint8Array(arrayBuffer));
     // fetch model from url and move to wasm heap. The arraybufffer that held the http
     // response is freed once we return
     // lets see if there is weights.pb file
-    // const wasm = getInstance();
-    // try {
-    //   const pathParts = path.split('/')
-    //   pathParts.pop();
-    //   pathParts.push('weights.pb');
-    //   const head = await fetch(pathParts.join('/'), {method: 'HEAD'});
-    //   if (head && parseInt(head.headers.get('Content-Length') || '0') > 100000 && head.status === 200) {
-    //     const weightsSize = parseInt(head.headers.get('Content-Length') || '0');
-    //     const weightsResponse = await fetch(pathParts.join('/'));
-    //     const reader = weightsResponse.body!.getReader();
-    //
-    //     let offset = 0;
-    //     const weightsOffset = wasm._malloc(weightsSize);
-    //     while (true) {
-    //       const { done, value } = await reader.read();
-    //       if (done) {
-    //         break;
-    //       }
-    //       const memory = new Uint8Array(wasm.HEAPU8.buffer, Number(weightsOffset) + offset, value.byteLength);
-    //       memory.set(new Uint8Array(value.buffer));
-    //       offset += value.byteLength;
-    //     }
-    //     // @ts-ignore
-    //     const file = wasm.FS.create('/home/web_user/weights.pb');
-    //
-    //     // @ts-ignore
-    //     file.contents = new Uint8Array(wasm.HEAPU8.buffer, weightsOffset, weightsSize);
-    //     // @ts-ignore
-    //     file.usedBytes = weightsSize;
-    //
-    //     // @ts-ignore
-    //     wasm.FS.chdir('/home/web_user');
-    //
-    //     // @ts-ignore
-    //     // wasm.FS.createDataFile('/home/web_user', 'weights.pb', weights, true, true, true);
-    //     console.log('created pb')
-    //     // const response = await fetch(path);
-    //     // const model = await response.arrayBuffer();
-    //     // // @ts-ignore
-    //     // wasm.FS.createDataFile('/home/web_user', 'model.onnx', model, true, true, true);
-    //     //
-    //     // // @ts-ignore
-    //     // wasm.FS.chdir('/home/web_user');
-    //     // // @ts-ignore
-    //     // return '/home/web_user/model.onnx';
-    //   }
-    // } catch (e) {
-    //   // error
-    //   console.error(e)
-    //   throw e;
-    // }
-    //
-    // const head = await fetch(path, { method: 'HEAD' });
-    // const size = head.headers.get('Content-Length');
-    //
-    // if (size === null) {
-    //   throw new Error('Error getting model size');
-    // }
+    const wasm = getInstance();
+    try {
+      const pathParts = path.split('/')
+      pathParts.pop();
+      pathParts.push('weights.pb');
+      const head = await fetch(pathParts.join('/'), {method: 'HEAD'});
+      if (head && parseInt(head.headers.get('Content-Length') || '0') > 100000 && head.status === 200) {
+        const weightsSize = parseInt(head.headers.get('Content-Length') || '0');
+        const weightsResponse = await fetch(pathParts.join('/'));
+        const reader = weightsResponse.body!.getReader();
+
+        let offset = 0;
+        const weightsOffset = wasm._malloc(weightsSize);
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) {
+            break;
+          }
+          const memory = new Uint8Array(wasm.HEAPU8.buffer, Number(weightsOffset) + offset, value.byteLength);
+          memory.set(new Uint8Array(value.buffer));
+          offset += value.byteLength;
+        }
+        // @ts-ignore
+        const file = wasm.FS.create('/home/web_user/weights.pb');
+
+        // @ts-ignore
+        file.contents = new Uint8Array(wasm.HEAPU8.buffer, weightsOffset, weightsSize);
+        // @ts-ignore
+        file.usedBytes = weightsSize;
+
+        // @ts-ignore
+        wasm.FS.chdir('/home/web_user');
+
+        // @ts-ignore
+        // wasm.FS.createDataFile('/home/web_user', 'weights.pb', weights, true, true, true);
+        console.log('created pb')
+        // const response = await fetch(path);
+        // const model = await response.arrayBuffer();
+        // // @ts-ignore
+        // wasm.FS.createDataFile('/home/web_user', 'model.onnx', model, true, true, true);
+        //
+        // // @ts-ignore
+        // wasm.FS.chdir('/home/web_user');
+        // // @ts-ignore
+        // return '/home/web_user/model.onnx';
+      }
+    } catch (e) {
+      // error
+      console.error(e)
+      throw e;
+    }
+
+    const head = await fetch(path, { method: 'HEAD' });
+    const size = head.headers.get('Content-Length');
+
+    if (size === null) {
+      throw new Error('Error getting model size');
+    }
+    const response = await fetch(path);
+    if (response.body === null) {
+      throw new Error('Error getting model size');
+    }
+    const reader = response.body.getReader();
+    return createSessionAllocate({ reader, size: parseInt(size, 10) });
+
     // const response = await fetch(path);
-    // if (response.body === null) {
-    //   throw new Error('Error getting model size');
-    // }
-    // const reader = response.body.getReader();
-    // return createSessionAllocate({ reader, size: parseInt(size, 10) });
-    //
-    // // const response = await fetch(path);
-    // // const arrayBuffer = await response.arrayBuffer();
-    // // return createSessionAllocate(new Uint8Array(arrayBuffer));
+    // const arrayBuffer = await response.arrayBuffer();
+    // return createSessionAllocate(new Uint8Array(arrayBuffer));
   }
 
   async loadModel(pathOrBuffer: string|Uint8Array, options?: InferenceSession.SessionOptions): Promise<void> {

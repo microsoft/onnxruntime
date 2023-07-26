@@ -2,7 +2,7 @@ import {ComputeContext, GpuDataType, ProgramInfo, ProgramMetadata} from "../type
 import {TensorView} from "../../tensor";
 import {DataType} from "../../../wasm-common";
 import {ShapeUtil} from "../../util";
-import {ShaderHelper} from "./common";
+import {getMaxWorkgroupLimits, ShaderHelper} from "./common";
 import {AttributeWithCacheKey, createAttributeWithCacheKey} from "../attribute-with-cache-key";
 
 export interface GatherAttributes extends AttributeWithCacheKey {
@@ -58,6 +58,8 @@ const createGatherProgramInfo =
         // int64 indices would be treated as little endian i32 with assumption they fall in i32 limits
         // That assumption is safe as it's not possible to allocate >2gb buffer for input tensor
         // Input data will be treated as u32 or two u32 for 8-byte tensors
+
+        const [dispatchGroup, workgroupLimits] = getMaxWorkgroupLimits(totalGathers);
         const getShaderSource = (shaderHelper: ShaderHelper) => `
   const N: u32 = ${N};
   const elementSize: u32 = ${elementSize};
@@ -67,7 +69,7 @@ const createGatherProgramInfo =
   @group(0) @binding(1) var<storage, read> inputIndices : array<i32>;
   @group(0) @binding(2) var<storage, read_write> output: array<u32>;
 
-  ${shaderHelper.mainStart()}
+  ${shaderHelper.mainStart(workgroupLimits)}
     let batch: u32 = global_idx / N;
     let i: u32 = global_idx % N;
 
@@ -96,7 +98,7 @@ const createGatherProgramInfo =
                 {dims: outputShape, dataType: inputs[0].dataType, gpuDataType: GpuDataType.default},
             ],
             getShaderSource,
-            dispatchGroup: () => ({x: Math.ceil( totalGathers / 64 /* workgroup size */)})
+            dispatchGroup: () => (dispatchGroup)
         };
     };
 

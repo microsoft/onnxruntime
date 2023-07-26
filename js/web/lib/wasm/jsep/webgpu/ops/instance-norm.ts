@@ -5,7 +5,7 @@ import {ComputeContext, GpuDataType, ProgramInfo, ProgramMetadata} from '../type
 import {TensorView} from '../../tensor';
 import {DataType, tensorTypeToWsglType} from '../../../wasm-common';
 import {ShapeUtil} from '../../util';
-import {ShaderHelper} from './common';
+import {getMaxWorkgroupLimits, ShaderHelper} from './common';
 import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-with-cache-key';
 
 export interface InstanceNormAttributes extends AttributeWithCacheKey {
@@ -96,18 +96,21 @@ const createInstanceNormNHWCProgramInfo =
         const xShape = inputs[0].dims;
         const outputShape = xShape;
         const outputSize = ShapeUtil.size(outputShape);
-        const [N, H, W, C] = xShape;
+        const N = xShape[0];
+        const C = xShape[xShape.length - 1];
+        const H = ShapeUtil.sizeFromDimension(xShape, 1) / C;
+        // const [N, H, W, C] = xShape;
 
         const dataType = tensorTypeToWsglType(inputs[0].dataType);
 
         const normCount = C * N;
+        const [dispatchGroup, workgroupLimits] = getMaxWorkgroupLimits(normCount);
         const getShaderSource = (shaderHelper: ShaderHelper) => `
   const N: u32 = ${N};
   const H: u32 = ${H};
-  const W: u32 = ${W};
   const C: u32 = ${C};
-  const normSizeTyped: ${dataType} = ${W * H};
-  const imageSize: u32 = ${H * W * C};
+  const normSizeTyped: ${dataType} = ${H};
+  const imageSize: u32 = ${H * C};
   const epsilon: f32 = ${attributes.epsilon};
 
   @group(0) @binding(0) var<storage, read> x : array<${dataType}>;
@@ -115,7 +118,7 @@ const createInstanceNormNHWCProgramInfo =
   @group(0) @binding(2) var<storage, read> bias : array<${dataType}>;
   @group(0) @binding(3) var<storage, read_write> output : array<${dataType}>;
 
-  ${shaderHelper.mainStart()}
+  ${shaderHelper.mainStart(workgroupLimits)}
     let currentImageNumber = global_idx / C;
     let currentChannelNumber = global_idx % C;
     
@@ -124,20 +127,20 @@ const createInstanceNormNHWCProgramInfo =
     if (offset >= ${outputSize}) { return; }
     var mean: ${dataType} = 0;
 
-    for (var i: u32 = 0u; i < W * H; i++) {
+    for (var i: u32 = 0u; i < H; i++) {
         mean = mean + x[offset + i * C + currentChannelNumber];
     }
     mean = mean / normSizeTyped;
 
     var squaredNorm: ${dataType} = 0;
-    for (var i: u32 = 0u; i < W * H; i++) {
+    for (var i: u32 = 0u; i < H; i++) {
         let deviation: f32 = x[offset + i * C + currentChannelNumber] - mean;
         squaredNorm = squaredNorm + deviation * deviation;
     }
     let invStdDev = 1 / sqrt(squaredNorm / normSizeTyped + epsilon);
     let channelScale = invStdDev * scale[currentChannelNumber];
     let channelShift = bias[currentChannelNumber] - mean * channelScale;
-    for (var i: u32 = 0u; i < W * H; i++) {
+    for (var i: u32 = 0u; i < H; i++) {
         let currentOffset = offset + i * C + currentChannelNumber;
         output[currentOffset] = x[currentOffset] * channelScale + channelShift;
     }
@@ -148,7 +151,7 @@ const createInstanceNormNHWCProgramInfo =
                 {dims: outputShape, dataType: inputs[0].dataType, gpuDataType: GpuDataType.default},
             ],
             getShaderSource,
-            dispatchGroup: () => ({x: Math.ceil(normCount / 64 /* workgroup size */)})
+            dispatchGroup: () => (dispatchGroup)
         };
     };
 

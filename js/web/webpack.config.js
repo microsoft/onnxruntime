@@ -292,9 +292,9 @@ module.exports = () => {
         // ort.js
         buildOrtConfig({ mode: 'development', devtool: 'inline-source-map' }),
         // ort.es6.min.js
-        buildOrtConfig({ suffix: '.es6.min', target: 'es6' }),
+        // buildOrtConfig({ suffix: '.es6.min', target: 'es6' }),
         // ort.es5.min.js
-        buildOrtConfig({ suffix: '.es5.min', target: 'es5' }),
+        // buildOrtConfig({ suffix: '.es5.min', target: 'es5' }),
 
         // ort.wasm.min.js
         buildOrtConfig({
@@ -304,21 +304,21 @@ module.exports = () => {
           }
         }),
         // ort.webgl.min.js
-        buildOrtConfig({
-          suffix: '.webgl.min', build_defs: {
-            ...DEFAULT_BUILD_DEFS,
-            DISABLE_WASM: true,
-          }
-        }),
-        // ort.wasm-core.min.js
-        buildOrtConfig({
-          suffix: '.wasm-core.min', build_defs: {
-            ...DEFAULT_BUILD_DEFS,
-            DISABLE_WEBGL: true,
-            DISABLE_WASM_PROXY: true,
-            DISABLE_WASM_THREAD: true,
-          }
-        }),
+        // buildOrtConfig({
+        //   suffix: '.webgl.min', build_defs: {
+        //     ...DEFAULT_BUILD_DEFS,
+        //     DISABLE_WASM: true,
+        //   }
+        // }),
+        // // ort.wasm-core.min.js
+        // buildOrtConfig({
+        //   suffix: '.wasm-core.min', build_defs: {
+        //     ...DEFAULT_BUILD_DEFS,
+        //     DISABLE_WEBGL: true,
+        //     DISABLE_WASM_PROXY: true,
+        //     DISABLE_WASM_THREAD: true,
+        //   }
+        // }),
         // ort.webgpu.min.js
         buildOrtConfig({
           suffix: '.webgpu.min', build_defs: {
@@ -332,9 +332,9 @@ module.exports = () => {
         // ort-web.js
         buildOrtWebConfig({ mode: 'development', devtool: 'inline-source-map' }),
         // ort-web.es6.min.js
-        buildOrtWebConfig({ suffix: '.es6.min', target: 'es6' }),
+        // buildOrtWebConfig({ suffix: '.es6.min', target: 'es6' }),
         // ort-web.es5.min.js
-        buildOrtWebConfig({ suffix: '.es5.min', target: 'es5' }),
+        // buildOrtWebConfig({ suffix: '.es5.min', target: 'es5' }),
       );
 
     case 'node':

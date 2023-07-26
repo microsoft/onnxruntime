@@ -19,7 +19,7 @@ class LayerNorm : public JsKernel {
                                  "axis" : Number($1),
                                  "epsilon" : Number($2),
                                }),
-                               static_cast<int32_t>(axis_),
+                               static_cast<int64_t>(axis_),
                                static_cast<float>(epsilon_));
   }
 

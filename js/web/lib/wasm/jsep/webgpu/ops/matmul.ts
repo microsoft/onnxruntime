@@ -6,7 +6,7 @@ import {TensorView} from '../../tensor';
 import {BroadcastUtil, ShapeUtil} from '../../util';
 import {ComputeContext, GpuDataType, ProgramInfo, ProgramInfoLoader, ProgramMetadata} from '../types';
 
-import {ShaderHelper} from './common';
+import {getMaxWorkgroupLimits, ShaderHelper} from './common';
 import {getActicationSnippet, InternalActivationAttributes} from './fuse-utils';
 
 
@@ -28,13 +28,14 @@ const createMatmulProgramInfo =
           }
           const outputSize = ShapeUtil.size(outputShape);
           // TODO: support broadcasting
-          console.log('running matmul', inputs);
           const dataType = tensorTypeToWsglType(inputs[0].dataType);  // TODO: support other data type
           const {activationFunction, applyActivation} = getActicationSnippet(activationAttributes);
 
           const M = outputShape[outputShape.length - 2];
           const K = aShape[aShape.length - 1];
           const N = outputShape[outputShape.length - 1];
+
+          const [dispatchGroup, workgroupLimits] = getMaxWorkgroupLimits(outputSize);
           const getShaderSource = (shaderHelper: ShaderHelper) => `
   const M: u32 = ${M}u;
   const N: u32 = ${N}u;
@@ -46,7 +47,7 @@ const createMatmulProgramInfo =
 
   ${activationFunction}
 
-  ${shaderHelper.mainStart()}
+  ${shaderHelper.mainStart(workgroupLimits)}
     ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes(outputSize)}
 
     let stack = global_idx / (M * N);
@@ -68,7 +69,7 @@ const createMatmulProgramInfo =
             ...metadata,
             outputs: [{dims: outputShape, dataType: inputs[0].dataType, gpuDataType: GpuDataType.default}],
             getShaderSource,
-            dispatchGroup: () => ({x: Math.ceil(outputSize / 64 /* workgroup size */)})
+            dispatchGroup: () => (dispatchGroup)
           };
         };
 
