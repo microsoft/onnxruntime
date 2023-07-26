@@ -2,7 +2,7 @@
 title: Development
 description: Instructions for building and developing ORT Extensions.
 parent: Extensions
-nav_order: 1
+nav_order: 2
 ---
 # Build and Development
 
@@ -18,7 +18,7 @@ Test:
 - 'pip install -r requirements-dev.txt' to install pip packages for development.
 - run `pytest test` in the project root directory.
 
-For a complete list of verified build configurations see [here](./dependencies.md)
+For a complete list of verified build configurations see [here](./development.md#dependencies)
 
 ## Java package
 `bash ./build.sh -DOCOS_BUILD_JAVA=ON` to build jar package in out/<OS>/Release folder
@@ -43,3 +43,11 @@ If you want to build the binary with VC Runtime static linkage, please add a par
 
 ## Copyright guidance
 check this link https://docs.opensource.microsoft.com/releasing/general-guidance/copyright-headers/ for source file copyright header.
+
+## Dependencies
+
+The matrix below lists the versions of individual dependencies of onnxruntime-extensions. These are the configurations that are routinely and extensively verified by our CI.
+
+Python | 3.8 | 3.9 | 3.10 | 3.11 |
+---|---|---|---|---
+Onnxruntime |1.12.1 (Aug 4, 2022) |1.13.1(Oct 24, 2022)  |1.14.1 (Mar 2, 2023) |1.15.0 (May 24, 2023) |

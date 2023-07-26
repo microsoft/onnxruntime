@@ -1,8 +1,8 @@
 ---
 title: Custom Build
 description: Instructions for building ONNX Runtime with onnxruntime-extensions for Java package.
-parent: Extensions
-nav_order: 3
+parent: Development
+nav_order: 2
 ---
 # Build ONNX Runtime with onnxruntime-extensions for Java package
 
