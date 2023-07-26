@@ -30,7 +30,7 @@
 	});
 </script>
 
-<div class="toast">
+<div class="toast z-[2]">
 	<div class="alert alert-primary">
 		<span
 			>Please help us improve ONNX Runtime <br class="md:hidden"/>by participating in our <a

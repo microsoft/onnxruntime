@@ -24,6 +24,21 @@
 			}
 		});
 	});
+
+	let handleEnter = (e) => {
+		anime({
+			targets: e.target,
+			scale: 1.1,
+			duration: 1500,
+		})
+	}
+	let handleLeave = (e) => {
+		anime({
+			targets: e.target,
+			scale: 1,
+			duration: 1500,
+		})
+	}
 </script>
 
 <div class="container mx-auto my-20">
@@ -32,31 +47,31 @@
 	<div
 		class="grid lg:grid-cols-8 md:grid-cols-4 grid-cols-2 gap-2 mx-auto justify-items-center pt-10"
 	>
-		<div class="partner">
+		<button on:mouseenter={handleEnter} on:mouseleave={handleLeave} class="partner">
 			<img src="https://onnxruntime.ai/images/logos/amd-logo.png" alt="AMD" />
-		</div>
-		<div class="partner">
+		</button>
+		<button on:mouseenter={handleEnter} on:mouseleave={handleLeave} class="partner">
 			<img src="https://onnxruntime.ai/images/logos/huggingface-logo.png" alt="HuggingFace" />
-		</div>
-		<div class="partner">
+		</button>
+		<button on:mouseenter={handleEnter} on:mouseleave={handleLeave} class="partner">
 			<img src="https://onnxruntime.ai/images/logos/intel-logo.png" alt="Intel" />
-		</div>
-		<div class="partner">
+		</button>
+		<button on:mouseenter={handleEnter} on:mouseleave={handleLeave} class="partner">
 			<img src="https://onnxruntime.ai/images/logos/nvidia.png" alt="Nvidia" />
-		</div>
-		<div class="partner">
+		</button>
+		<button on:mouseenter={handleEnter} on:mouseleave={handleLeave} class="partner">
 			<img src="https://onnxruntime.ai/images/logos/adobe-logo.png" alt="Adobe" />
-		</div>
-		<div class="partner">
+		</button>
+		<button on:mouseenter={handleEnter} on:mouseleave={handleLeave} class="partner">
 			<img src="https://onnxruntime.ai/images/logos/visual-studio-logo.png" alt="Microsoft" />
-		</div>
-		<div class="partner">
+		</button>
+		<button on:mouseenter={handleEnter} on:mouseleave={handleLeave} class="partner">
 			<img src="https://onnxruntime.ai/images/logos/oracle-logo.png" alt="Oracle" />
-		</div>
-		<div class="partner">
+		</button>
+		<button class="partner">
 			<!-- <img src="https://onnxruntime.ai/images/logos/redis-logo.png" alt="Redis" />-->
-			<a href="/testimonials"><p class="underline pt-12 text-center">...and many more</p></a>
-		</div>
+			<a href="/testimonials"><p class="underline text-center">...and many more</p></a>
+		</button>
 	</div>
 </div>
 

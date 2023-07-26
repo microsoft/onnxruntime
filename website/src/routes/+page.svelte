@@ -6,11 +6,13 @@
     import CrossPlatform from "./components/cross-platform.svelte";
     import GenerativeAi from "./components/generative-ai.svelte";
     import Testimonials from "./components/testimonials.svelte";
+    import Table from "./components/table.svelte"
 </script>
 <Hero/> 
 <Customers/>
 <CodeBlocks/>
-<Performance/>
+<Table/>
+<!-- <Performance/>
 <CrossPlatform/>
 <GenerativeAi/>
-<Testimonials/>
+<Testimonials/> -->

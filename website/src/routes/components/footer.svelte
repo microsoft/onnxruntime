@@ -9,7 +9,7 @@
         height: 32px;
     }
 </style>
-<footer class="footer p-10 bg-base-200 text-base-content">
+<footer class="footer p-10 mt-10 bg-base-200 text-base-content">
 	<div>
 		
 		<p>ONNX Runtime<br />Copyright © Microsoft. All rights reserved.</p>
