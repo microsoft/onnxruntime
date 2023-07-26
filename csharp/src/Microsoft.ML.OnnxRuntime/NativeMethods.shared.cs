@@ -292,6 +292,7 @@ namespace Microsoft.ML.OnnxRuntime
         public IntPtr UpdateROCMProviderOptions;
         public IntPtr GetROCMProviderOptionsAsString;
         public IntPtr ReleaseROCMProviderOptions;
+        public IntPtr RunAsync;
     }
 
     internal static class NativeMethods
@@ -510,6 +511,7 @@ namespace Microsoft.ML.OnnxRuntime
             OrtUpdateROCMProviderOptions = (DOrtUpdateROCMProviderOptions)Marshal.GetDelegateForFunctionPointer(api_.UpdateROCMProviderOptions, typeof(DOrtUpdateROCMProviderOptions));
             OrtGetROCMProviderOptionsAsString = (DOrtGetROCMProviderOptionsAsString)Marshal.GetDelegateForFunctionPointer(api_.GetROCMProviderOptionsAsString, typeof(DOrtGetROCMProviderOptionsAsString));
             OrtReleaseROCMProviderOptions = (DOrtReleaseROCMProviderOptions)Marshal.GetDelegateForFunctionPointer(api_.ReleaseROCMProviderOptions, typeof(DOrtReleaseROCMProviderOptions));
+            OrtRunAsync = (DOrtRunAsync)Marshal.GetDelegateForFunctionPointer(api_.RunAsync, typeof(DOrtRunAsync));
         }
 
         internal class NativeLib
@@ -915,6 +917,21 @@ namespace Microsoft.ML.OnnxRuntime
                                                 IntPtr /*(const OrtSession*)*/ session,
                                                 out UIntPtr /*(ulong* out)*/ startTime);
         public static DOrtSessionGetProfilingStartTimeNs OrtSessionGetProfilingStartTimeNs;
+
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate IntPtr /*(ONNStatus*)*/ DOrtRunAsync(
+                                IntPtr /*(OrtSession*)*/ session,
+                                IntPtr /*(OrtSessionRunOptions*)*/ runOptions,  // can be null to use the default options
+                                IntPtr[] inputNames,
+                                IntPtr[] /* (OrtValue*[])*/ inputValues,
+                                UIntPtr inputCount,
+                                IntPtr[] outputNames,
+                                UIntPtr outputCount,
+                                IntPtr[] outputValues, /* An array of output value pointers. Array must be allocated by the caller */
+                                IntPtr callback,
+                                IntPtr user_data
+                                );
+        public static DOrtRunAsync OrtRunAsync;
 
         #endregion InferenceSession API
 

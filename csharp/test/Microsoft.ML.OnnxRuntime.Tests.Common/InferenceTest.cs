@@ -495,6 +495,63 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             }
         }
 
+        [Fact(DisplayName = "RunInferenceUsingPreAllocatedOutputsAndDictionaryAsync")]
+        public void RunInferenceUsingPreAllocatedOutputsAndDictionaryAsync()
+        {
+            var model = TestDataLoader.LoadModelFromEmbeddedResource("squeezenet.onnx");
+            using (var cleanUp = new DisposableListTest<IDisposable>())
+            {
+                var runOptions = new RunOptions();
+                cleanUp.Add(runOptions);
+                var session = new InferenceSession(model);
+                cleanUp.Add(session);
+
+                var inputMeta = session.InputMetadata;
+                Assert.Single(inputMeta.Keys);
+                var inputNames = inputMeta.Keys.ToList().AsReadOnly();
+                Assert.Equal(TensorElementType.Float, inputMeta[inputNames[0]].ElementDataType);
+                Assert.True(inputMeta[inputNames[0]].IsTensor);
+                var inputShape = Array.ConvertAll<int, long>(inputMeta[inputNames[0]].Dimensions, Convert.ToInt64);
+
+
+                var outputMeta = session.OutputMetadata;
+                var expectedOutputNames = new List<string> { "softmaxout_1" }.AsReadOnly();
+                Assert.Contains(expectedOutputNames[0], outputMeta.Keys);
+                long[] expectedShape = { 1, 1000, 1, 1 };  // hardcoded for the test data
+
+                // this is the data for only one input tensor for this model
+                float[] inputData = TestDataLoader.LoadTensorFromEmbeddedResource("bench.in");
+                float[] expectedOutput = TestDataLoader.LoadTensorFromEmbeddedResource("bench.expected_out");
+
+                // Allocate input OrtValue on top of the inputData
+                // Input should stay pinned for the entire duration of the inference
+                var inputOrtValue = OrtValue.CreateTensorValueFromMemory<float>(inputData, inputShape);
+                cleanUp.Add(inputOrtValue);
+
+                // Create OrtValue and pre-allocate output buffer using the expected output shape
+                using (var outputOrtValue = OrtValue.CreateAllocatedTensorValue(OrtAllocator.DefaultInstance,
+                    TensorElementType.Float, expectedShape))
+                {
+                    // Run inference
+                    var inputValues = new List<OrtValue> { inputOrtValue }.AsReadOnly();
+                    var outputValues = new List<OrtValue> { outputOrtValue }.AsReadOnly();
+                    session.Run(runOptions, inputNames, inputValues,
+                        expectedOutputNames, outputValues);
+                    ValidateRunResult(outputOrtValue, expectedOutput, expectedShape);
+                }
+
+                //Let's run this again with an interface that takes a Dictionary of name/OrtValue
+                var inputDict = new Dictionary<string, OrtValue>();
+                inputDict.Add(inputNames[0], inputOrtValue);
+                using (var results = session.Run(runOptions, inputDict, expectedOutputNames))
+                {
+                    Assert.Single(results);
+                    var outputOrtValue = results[0];
+                    ValidateRunResult(outputOrtValue, expectedOutput, expectedShape);
+                }
+            }
+        }
+
         [Fact(DisplayName = "InferenceSessionDisposed")]
         public void InferenceSessionDisposed()
         {

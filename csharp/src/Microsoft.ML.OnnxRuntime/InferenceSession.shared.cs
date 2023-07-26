@@ -604,7 +604,7 @@ namespace Microsoft.ML.OnnxRuntime
                 throw new ArgumentException($"Length of {nameof(inputNames)} ({inputNames.Count}) must match that of {nameof(inputValues)} ({inputValues.Count}).");
             }
 
-            var inputNamesArray =   LookupUtf8Names(inputNames, n => n, LookupInputMetadata);
+            var inputNamesArray = LookupUtf8Names(inputNames, n => n, LookupInputMetadata);
             var inputHandlesArray = inputValues.Select(v => v.Handle).ToArray();
 
             var outputNamesArray = LookupUtf8Names(outputNames, n => n, LookupOutputMetadata);
@@ -636,7 +636,7 @@ namespace Microsoft.ML.OnnxRuntime
             IntPtr[] inputHandlesArray = new IntPtr[inputs.Count];
 
             int count = 0;
-            foreach(var input in inputs)
+            foreach (var input in inputs)
             {
                 inputNamesArray[count] = LookupInputMetadata(input.Key).ZeroTerminatedName;
                 inputHandlesArray[count] = input.Value.Handle;
@@ -1042,6 +1042,56 @@ namespace Microsoft.ML.OnnxRuntime
             {
                 return _profilingStartTimeNs;
             }
+        }
+
+        public static void CallbackWrapper(IntPtr user_data, IntPtr[] outputs, uint num_outputs, IntPtr status)
+        {
+            Console.WriteLine("RunAsyncCallback triggerred");
+        }
+
+        public delegate void CallbackDelegate(IDisposableReadOnlyCollection<OrtValue> outputs);
+
+        class CallbackResource {
+
+            public IntPtr[] inputNames;
+            public IntPtr[] inputValues;
+
+            public IntPtr[] outputNames;
+            public IntPtr[] outputValues;
+
+            public CallbackDelegate userCallback;
+            public IntPtr userData;
+        };
+
+        public void RunAsync(
+            IReadOnlyCollection<NamedOnnxValue> inputs,
+            IReadOnlyCollection<NamedOnnxValue> outputs,
+            RunOptions options,
+            CallbackDelegate callback,
+            IntPtr userData)
+        {
+            CallbackResource resource = new CallbackResource();
+            resource.inputValues = LookupUtf8Names(inputs, i => i.Name, LookupInputMetadata);
+            resource.outputNames = LookupUtf8Names(outputs, o => o.Name, LookupOutputMetadata);
+            resource.inputValues = GetOrtValuesHandles(inputs, LookupInputMetadata, ExtractOrtValueHandleForInput,
+                out DisposableArray<IDisposable> inputDisposer);
+            resource.outputValues = GetOrtValuesHandles(outputs, LookupOutputMetadata, ExtractOrtValueHandleForOutput,
+                out DisposableArray<IDisposable> outputDisposer);
+            resource.userCallback = callback;
+            resource.userData = userData;
+
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtRunAsync(
+                                                _nativeHandle,
+                                                options.Handle,
+                                                resource.inputNames,
+                                                resource.inputValues,
+                                                (UIntPtr)resource.inputNames.Length,
+                                                resource.outputNames,
+                                                (UIntPtr)resource.outputNames.Length,
+                                                resource.outputValues,
+                                                Marshal.GetFunctionPointerForDelegate(CallbackWrapper), /* pointers to Pre-allocated OrtValue instances */
+                                                GCHandle.ToIntPtr(GCHandle.Alloc(resource))
+                                                ));
         }
 
         #endregion
