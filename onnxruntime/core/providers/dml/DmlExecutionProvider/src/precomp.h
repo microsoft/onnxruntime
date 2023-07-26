@@ -56,6 +56,7 @@
 #include "External/DirectMLHelpers/DmlSerializedGraphDesc.h"
 #include "flatbuffers/flatbuffers.h"
 #include "External/DirectMLHelpers/DmlGraphSerialization.h"
+#include "External/DirectMLHelpers/DmlGraphDeserialization.h"
 
 using Microsoft::WRL::ComPtr;
 

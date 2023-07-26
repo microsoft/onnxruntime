@@ -401,7 +401,15 @@ namespace DmlGraphFusionHelper
         ComPtr<IDMLDevice> device;
         ORT_THROW_IF_FAILED(providerImpl->GetDmlDevice(device.GetAddressOf()));
         const DmlSerializedGraphDesc foo = {};
-        //SerializeDmlGraph(foo);
+        // This map will be used to transfer the initializer to D3D12 system heap memory.
+        // 'serializedDmlGraphDesc' will have constant input as intermediate edges, that's why
+        // we need a mapping between intermediateEdgeIndex and indexedSubGraph's (a given partition)
+        // input arg index.
+        //   For ex: Let's say intermediate edge index = idx, then
+        //           indexedSubGraphInputArgIdx = constantEdgeIdxToSubgraphInputArgIdxMap[idx];
+        //           corresponding constant tensor = initializerNameToInitializerMap[indexedSubGraph.GetMetaDef()->inputs[indexedSubGraphInputArgIdx]]
+        // We are using intermediate edge index as a key because same constant tensor can be used by
+        // multiple nodes.
         std::unordered_map<uint32_t, uint32_t> constantEdgeIdxToSubgraphInputArgIdxMap;
         GraphDescBuilder::GraphDesc serializedDmlGraphDesc = GraphDescBuilder::BuildDmlGraphDesc(
             isInputsUploadedByDmlEP.data(),
@@ -413,6 +421,9 @@ namespace DmlGraphFusionHelper
             device.Get(),
             providerImpl,
             constantEdgeIdxToSubgraphInputArgIdxMap);
+
+        auto buffer = SerializeDmlGraph(serializedDmlGraphDesc);
+        //auto deserializedDmlGraphDesc = DeserializeDmlGraph(buffer.data());
 
         // convert DML EP GraphDesc into DML_GRAPH_DESC and create IDMLCompiledOperator
         StackAllocator<1024> allocator; // Used for converting DmlSerializedGraphDesc to DML_GRAPH_DESC
