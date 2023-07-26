@@ -8,50 +8,51 @@ namespace Dml
 
 class DmlOperatorMatMulIntegerToFloat : public DmlOperator
 {
-    enum InputTensors : uint32_t { 
-        IN_A,
-        IN_B,
-        IN_A_SCALE,
-        IN_B_SCALE,
-        IN_A_ZERO_POINT, 
-        IN_B_ZERO_POINT,
-        IN_BIAS,
-        IN_COUNT
+    enum ortInputTensors : uint32_t
+    {
+        ortA,
+        ortB,
+        ortAScale,
+        ortBScale,
+        ortAZeroPoint,
+        ortBZeroPoint,
+        ortBias,
+        ortInputCount
     };
     
     enum DmlInputIndex : uint32_t
-        {
-            dmlA,
-            dmlAScale,
-            dmlAZeroPoint,
-            dmlB,
-            dmlBScale,
-            dmlBZeroPoint,
-            dmlBias,
-            dmlInputCount,
-        };
+    {
+        dmlA,
+        dmlAScale,
+        dmlAZeroPoint,
+        dmlB,
+        dmlBScale,
+        dmlBZeroPoint,
+        dmlBias,
+        dmlInputCount,
+    };
 
 public:
     DmlOperatorMatMulIntegerToFloat(const MLOperatorKernelCreationContext& kernelInfo)
         :   DmlOperator(kernelInfo)
     {
-        std::vector<std::optional<uint32_t>> inputIndices = { InputTensors::IN_A, InputTensors::IN_A_SCALE, InputTensors::IN_A_ZERO_POINT, InputTensors::IN_B, InputTensors::IN_B_SCALE, InputTensors::IN_B_ZERO_POINT, InputTensors::IN_BIAS };
+        std::vector<std::optional<uint32_t>> inputIndices = { ortInputTensors::ortA, ortInputTensors::ortAScale, ortInputTensors::ortAZeroPoint, ortInputTensors::ortB, ortInputTensors::ortBScale, ortInputTensors::ortBZeroPoint, ortInputTensors::ortBias };
         DmlOperator::Initialize(kernelInfo, inputIndices);
 
-        std::vector<DimensionType> inputShape0 = kernelInfo.GetTensorShapeDescription().GetInputTensorShape(InputTensors::IN_A);
-        std::vector<DimensionType> inputShape1 = kernelInfo.GetTensorShapeDescription().GetInputTensorShape(InputTensors::IN_B);
+        std::vector<DimensionType> inputShape0 = kernelInfo.GetTensorShapeDescription().GetInputTensorShape(ortInputTensors::ortA);
+        std::vector<DimensionType> inputShape1 = kernelInfo.GetTensorShapeDescription().GetInputTensorShape(ortInputTensors::ortB);
         std::vector<DimensionType> outputShape = kernelInfo.GetTensorShapeDescription().GetOutputTensorShape(0);
 
         OperatorHelper::MatMulShapeMapping(inputShape0, inputShape1, outputShape);
 
         // Initialize the input descriptions with broadcasting
-        m_inputTensorDescs[DmlInputIndex::dmlA] = CreateTensorDescFromInput(kernelInfo, InputTensors::IN_A, TensorAxis::DoNotCoerce, TensorAxis::W, TensorAxis::RightAligned, inputShape0);
-        m_inputTensorDescs[DmlInputIndex::dmlB] = CreateTensorDescFromInput(kernelInfo, InputTensors::IN_B, TensorAxis::DoNotCoerce, TensorAxis::W, TensorAxis::RightAligned, inputShape1);
+        m_inputTensorDescs[DmlInputIndex::dmlA] = CreateTensorDescFromInput(kernelInfo, ortInputTensors::ortA, TensorAxis::DoNotCoerce, TensorAxis::W, TensorAxis::RightAligned, inputShape0);
+        m_inputTensorDescs[DmlInputIndex::dmlB] = CreateTensorDescFromInput(kernelInfo, ortInputTensors::ortB, TensorAxis::DoNotCoerce, TensorAxis::W, TensorAxis::RightAligned, inputShape1);
 
         // Broadcast Bias tensor to the shape of the output tensor.
-        if(kernelInfo.IsInputValid(InputTensors::IN_BIAS)) {
+        if(kernelInfo.IsInputValid(ortInputTensors::ortBias)) {
             
-            m_inputTensorDescs[DmlInputIndex::dmlBias] = CreateTensorDescFromInput(kernelInfo, InputTensors::IN_BIAS, TensorAxis::DoNotCoerce, 
+            m_inputTensorDescs[DmlInputIndex::dmlBias] = CreateTensorDescFromInput(kernelInfo, ortInputTensors::ortBias, TensorAxis::DoNotCoerce,
                 TensorAxis::W, TensorAxis::RightAligned, outputShape);
         }
 
@@ -60,7 +61,7 @@ public:
         // The 1D tensor needs to be moved to the H channel.
         m_inputTensorDescs[DmlInputIndex::dmlAScale] = CreateTensorDescFromInput(
             kernelInfo, 
-            InputTensors::IN_A_SCALE, 
+            ortInputTensors::ortAScale,
             TensorAxis::DoNotCoerce, 
             TensorAxis::H,
             TensorAxis::LeftAligned,
@@ -70,11 +71,12 @@ public:
 
         // Resize the A ZeroPoint to be the same dimension as the input tensor.
         // The 1D tensor needs to be moved to the H channel.
-        if(kernelInfo.IsInputValid(InputTensors::IN_A_ZERO_POINT)) {
+        if (kernelInfo.IsInputValid(ortInputTensors::ortAZeroPoint))
+        {
 
             m_inputTensorDescs[DmlInputIndex::dmlAZeroPoint] = CreateTensorDescFromInput(
                 kernelInfo, 
-                InputTensors::IN_A_ZERO_POINT, 
+                ortInputTensors::ortAZeroPoint,
                 TensorAxis::DoNotCoerce, 
                 TensorAxis::H,
                 TensorAxis::LeftAligned,

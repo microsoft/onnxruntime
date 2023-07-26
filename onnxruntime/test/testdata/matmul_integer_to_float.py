@@ -4,7 +4,7 @@ import onnx
 from onnx import TensorProto, helper
 
 
-def GenerateModel(model_name, sign_i, sign_w, has_zp=True, bias=False):  # noqa: N802
+def GenerateModel(model_name, sign_i, sign_w, output_type_fp16, has_zp=True, bias=False):  # noqa: N802
     nodes = [  # subgraph
         helper.make_node(
             "MatMulInteger",
@@ -13,7 +13,7 @@ def GenerateModel(model_name, sign_i, sign_w, has_zp=True, bias=False):  # noqa:
             "MatMulInteger",
         ),
         helper.make_node("Mul", ["a_scale", "b_scale"], ["multiplier"], "mul_right"),
-        helper.make_node("Cast", ["matmul_output_int32"], ["matmul_output_float"], "cast", to=1),
+        helper.make_node("Cast", ["matmul_output_int32"], ["matmul_output_float"], "cast", to=TensorProto.FLOAT16 if output_type_fp16 else TensorProto.FLOAT),
         helper.make_node(
             "Mul",
             ["matmul_output_float", "multiplier"],
@@ -25,8 +25,8 @@ def GenerateModel(model_name, sign_i, sign_w, has_zp=True, bias=False):  # noqa:
     inputs = [  # inputs
         helper.make_tensor_value_info("A", TensorProto.INT8 if sign_i else TensorProto.UINT8, ["M", "K"]),
         helper.make_tensor_value_info("B", TensorProto.INT8 if sign_w else TensorProto.UINT8, ["K", "N"]),
-        helper.make_tensor_value_info("a_scale", TensorProto.FLOAT, [1]),
-        helper.make_tensor_value_info("b_scale", TensorProto.FLOAT, ["C"]),
+        helper.make_tensor_value_info("a_scale", TensorProto.FLOAT16 if output_type_fp16 else TensorProto.FLOAT, [1]),
+        helper.make_tensor_value_info("b_scale", TensorProto.FLOAT16 if output_type_fp16 else TensorProto.FLOAT, ["C"]),
     ]
 
     if has_zp:
@@ -48,14 +48,14 @@ def GenerateModel(model_name, sign_i, sign_w, has_zp=True, bias=False):  # noqa:
     if bias:
         nodes.extend([helper.make_node("Add", ["mul_bottom_output", "bias"], ["Y"], "add")])
 
-        inputs.extend([helper.make_tensor_value_info("bias", TensorProto.FLOAT, ["N"])])
+        inputs.extend([helper.make_tensor_value_info("bias", TensorProto.FLOAT16 if output_type_fp16 else TensorProto.FLOAT, ["N"])])
 
     graph = helper.make_graph(
         nodes,
         "DynamicQuantizeMatMul_fusion",  # name
         inputs,
         [  # outputs
-            helper.make_tensor_value_info("Y", TensorProto.FLOAT, ["M", "N"]),
+            helper.make_tensor_value_info("Y", TensorProto.FLOAT16 if output_type_fp16 else TensorProto.FLOAT, ["M", "N"]),
         ],
     )
 
@@ -64,10 +64,18 @@ def GenerateModel(model_name, sign_i, sign_w, has_zp=True, bias=False):  # noqa:
 
 
 if __name__ == "__main__":
-    GenerateModel("matmul_integer_to_float_int8.onnx", False, True)
-    GenerateModel("matmul_integer_to_float_uint8.onnx", False, False)
-    GenerateModel("matmul_integer_to_float_int8_bias.onnx", False, True, False, True)
-    GenerateModel("matmul_integer_to_float_uint8_bias.onnx", False, False, False, True)
+    GenerateModel("matmul_integer_to_float16_int8.onnx", False, True, True)
+    GenerateModel("matmul_integer_to_float16_uint8.onnx", False, False, True)
+    GenerateModel("matmul_integer_to_float16_int8_bias.onnx", False, True, True, False, True)
+    GenerateModel("matmul_integer_to_float16_uint8_bias.onnx", False, False, True, False, True)
 
-    GenerateModel("matmul_integer_to_float_int8_int8.onnx", True, True)
-    GenerateModel("matmul_integer_to_float_int8_int8_bias.onnx", True, True, False, True)
+    GenerateModel("matmul_integer_to_float16_int8_int8.onnx", True, True, True)
+    GenerateModel("matmul_integer_to_float16_int8_int8_bias.onnx", True, True, True, False, True)
+
+    GenerateModel("matmul_integer_to_float_int8.onnx", False, True, False)
+    GenerateModel("matmul_integer_to_float_uint8.onnx", False, False, False)
+    GenerateModel("matmul_integer_to_float_int8_bias.onnx", False, True, False, False, True)
+    GenerateModel("matmul_integer_to_float_uint8_bias.onnx", False, False, False, False, True)
+
+    GenerateModel("matmul_integer_to_float_int8_int8.onnx", True, True, False)
+    GenerateModel("matmul_integer_to_float_int8_int8_bias.onnx", True, True, False, False, True)
