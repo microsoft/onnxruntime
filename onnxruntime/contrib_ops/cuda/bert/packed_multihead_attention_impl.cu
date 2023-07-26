@@ -75,14 +75,12 @@ __global__ void TransposeQKV_TN3H_3BNSH(
       int n = i / Hx3;
       int h = i % Hx3;
 
-      if (h < H_QK) {
+      if (h < k_offset) {
         q[n * S * H_QK + h] = input[i];
-      } else if (h < H_QK + H_QK) {
-        h -= H_QK;
-        k[n * S * H_QK + h] = input[i + k_offset];
+      } else if (h < v_offset) {
+        k[n * S * H_QK + (h - k_offset)] = input[i];
       } else {
-        h -= H_QK + H_QK;
-        v[n * S * H_V + h] = input[i + v_offset];
+        v[n * S * H_V + (h - v_offset)] = input[i];
       }
     }
   } else {
@@ -90,14 +88,12 @@ __global__ void TransposeQKV_TN3H_3BNSH(
       int n = i / Hx3;
       int h = i % Hx3;
 
-      if (h < H_QK) {
-        q[n * S * H_QK + h] = T{};  // TODO: use cudaMemsetAsync to fill zeros
-      } else if (h < H_QK + H_QK) {
-        h -= H_QK;
-        k[n * S * H_QK + h] = T{};
+      if (h < k_offset) {
+        q[n * S * H_QK + h] = T{};
+      } else if (h < v_offset) {
+        k[n * S * H_QK + (h - k_offset)] = T{};
       } else {
-        h -= H_QK + H_QK;
-        v[n * S * H_V + h] = T{};
+        v[n * S * H_V + (h - v_offset)] = T{};
       }
     }
   }
@@ -155,10 +151,10 @@ void InvokeTranspose(
     const int32_t* token_offset, int32_t token_count,
     cudaStream_t stream) {
   if (key != nullptr || value != nullptr) {
-    ORT_ENFORCE(source_format == AttentionQkvFormat::Q_K_V_BSNH);
+    ORT_ENFORCE(source_format == AttentionQkvFormat::Q_K_V_TNH);
     ORT_NOT_IMPLEMENTED("Only support packed QKV.");
   } else {
-    ORT_ENFORCE(source_format == AttentionQkvFormat::QKV_BSN3H);
+    ORT_ENFORCE(source_format == AttentionQkvFormat::QKV_TN3H);
     if (target_format == AttentionQkvFormat::Q_K_V_BNSH) {
       const dim3 grid(sequence_length, batch_size);
       TransposeQKV_TN3H_3BNSH<T><<<grid, kMAX_THREADS_PER_BLOCK, 0, stream>>>(
@@ -171,7 +167,7 @@ void InvokeTranspose(
           output + 2 * batch_size * sequence_length * num_heads * qk_head_size,
           token_offset,
           token_count);
-    } else if (target_format == AttentionQkvFormat::Q_K_V_BSNH) {
+    } else if (target_format == AttentionQkvFormat::Q_K_V_TNH) {
       const dim3 grid(token_count);
       TransposeQKV_TN3H_3TNH<T><<<grid, kMAX_THREADS_PER_BLOCK, 0, stream>>>(
           query,
@@ -183,7 +179,7 @@ void InvokeTranspose(
           output + 2 * token_count * num_heads * qk_head_size,
           token_count);
     } else {
-      ORT_ENFORCE(target_format == AttentionQkvFormat::QKV_BSN3H);
+      ORT_ENFORCE(target_format == AttentionQkvFormat::QKV_TN3H);
     }
   }
 }
@@ -280,7 +276,7 @@ Status FusedAttentionTrt(
     LaunchTranspose(data.query, data.key, data.value, data.workspace,
                     batch_size, sequence_length,
                     num_heads, qk_head_size, v_head_size,
-                    data.source_qkv_format, AttentionQkvFormat::QKV_BSN3H,
+                    data.source_qkv_format, AttentionQkvFormat::QKV_TN3H,
                     data.token_offset, parameters.token_count, stream);
     qkv = data.workspace;
   }
@@ -317,7 +313,7 @@ Status FusedAttentionCutlass(
     LaunchTranspose(data.query, data.key, data.value, data.workspace,
                     batch_size, sequence_length,
                     num_heads, qk_head_size, v_head_size,
-                    data.source_qkv_format, AttentionQkvFormat::Q_K_V_BSNH,
+                    data.source_qkv_format, AttentionQkvFormat::Q_K_V_TNH,
                     data.token_offset, parameters.token_count, stream);
   }
 
@@ -349,9 +345,9 @@ Status FusedAttentionCutlass(
   run_memory_efficient_attention(p);
 
   DUMP_TENSOR_INIT();
-  DUMP_TENSOR_D("PackedMHA cutlass q(BSNH)", p.query, parameters.token_count, num_heads * qk_head_size);
-  DUMP_TENSOR_D("PackedMHA cutlass k(BSNH)", p.key, parameters.token_count, num_heads * qk_head_size);
-  DUMP_TENSOR_D("PackedMHA cutlass v(BSNH)", p.value, parameters.token_count, num_heads * v_head_size);
+  DUMP_TENSOR_D("PackedMHA cutlass q(BSNH)", reinterpret_cast<const T*>(p.query), parameters.token_count, num_heads * qk_head_size);
+  DUMP_TENSOR_D("PackedMHA cutlass k(BSNH)", reinterpret_cast<const T*>(p.key), parameters.token_count, num_heads * qk_head_size);
+  DUMP_TENSOR_D("PackedMHA cutlass v(BSNH)", reinterpret_cast<const T*>(p.value), parameters.token_count, num_heads * v_head_size);
   DUMP_TENSOR_D("PackedMHA cutlass cumulative_sequence_length", data.cumulative_sequence_length, 1, batch_size + 1);
   DUMP_TENSOR("PackedMHA cutlass output", data.output, parameters.token_count, num_heads, v_head_size);
 
@@ -382,23 +378,17 @@ Status UnfusedAttention(
   const size_t elements_v = static_cast<size_t>(batches) * static_cast<size_t>(size_per_batch_v);
 
   // Q, K and V pointers when fused attention is not used
-  T* qkv = data.workspace;
-  T* q = qkv;
-  T* k = q + elements_q;
-  T* v = k + elements_k;
-
   LaunchTranspose(data.query, data.key, data.value, data.workspace,
                   batch_size, sequence_length,
                   num_heads, qk_head_size, v_head_size,
                   data.source_qkv_format, AttentionQkvFormat::Q_K_V_BNSH,
                   data.token_offset, parameters.token_count, stream);
 
+  T* qkv = data.workspace;
+  T* q = qkv;
+  T* k = q + elements_q;
+  T* v = k + elements_k;
   T* scaled_qk = qkv + elements_q + elements_k + elements_v;
-
-  // Q, K and V are ready now
-  DUMP_TENSOR_INIT();
-
-  DUMP_TENSOR_D("PackedMHA unfused data.workspace", data.workspace, 3 * batch_size, num_heads, sequence_length, qk_head_size);
 
   // Compute Q*K' (as K'*Q), scaled by 1/sqrt(H) and store in scaled_qk: BxNxSxT
   // Q: BxNxSxH, K: BxNxSxH, Q*K': BxNxSxS
@@ -419,6 +409,11 @@ Status UnfusedAttention(
       scaled_qk, sequence_length, sequence_length * sequence_length,
       batches, device_prop));
 
+  // Q, K and V are ready now
+  DUMP_TENSOR_INIT();
+  DUMP_TENSOR_D("PackedMHA unfused q (BNSH)", q, batch_size, num_heads, sequence_length, qk_head_size);
+  DUMP_TENSOR_D("PackedMHA unfused k (BNSH)", k, batch_size, num_heads, sequence_length, qk_head_size);
+  DUMP_TENSOR_D("PackedMHA unfused v (BNSH)", v, batch_size, num_heads, sequence_length, v_head_size);
   DUMP_TENSOR_D("PackedMHA unfused QK", scaled_qk, batch_size * num_heads, sequence_length, sequence_length);
 
   const size_t bytes = GetAttentionScratchSize(element_size, batch_size, num_heads,
@@ -447,7 +442,7 @@ Status UnfusedAttention(
       attention_score, sequence_length, sequence_length * sequence_length,
       &zero, temp_output, v_head_size, sequence_length * v_head_size, batches, device_prop));
 
-  // Temp_output is BxNxSxH_v, transpose and remove padding to output token_countxNxH_v
+  // Temp_output is BxNxSxH_v, transpose and remove padding to output TxNxH_v
   Status result = LaunchTransposeRemovePadding(
       data.output, temp_output,
       data.token_offset, parameters.token_count,

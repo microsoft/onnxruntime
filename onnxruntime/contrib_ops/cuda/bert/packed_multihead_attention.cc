@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "contrib_ops/cuda/bert/packed_multihead_attention.h"
+#include "core/platform/env_var_utils.h"
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/shared_inc/fpgeneric.h"
 #include "contrib_ops/cuda/bert/packed_attention_impl.h"
@@ -32,7 +33,20 @@ REGISTER_KERNEL_TYPED(float)
 REGISTER_KERNEL_TYPED(MLFloat16)
 
 template <typename T>
-PackedMultiHeadAttention<T>::PackedMultiHeadAttention(const OpKernelInfo& info) : PackedAttentionBase<T>(info) {
+PackedMultiHeadAttention<T>::PackedMultiHeadAttention(const OpKernelInfo& info)
+    : TrtFusedAttention<T>(), CudaKernel(info) {
+  int64_t num_heads = 0;
+  ORT_ENFORCE(info.GetAttr("num_heads", &num_heads).IsOK() && num_heads > 0);
+  num_heads_ = static_cast<int32_t>(num_heads);
+
+  scale_ = info.GetAttrOrDefault<float>("scale", 0.0f);
+
+#if USE_FLASH_ATTENTION
+  disable_memory_efficient_attention_ = onnxruntime::ParseEnvironmentVariableWithDefault<bool>(
+      attention::kDisableMemoryEfficientAttention, false);
+#else
+  disable_memory_efficient_attention_ = true;
+#endif
 }
 
 template <typename T>
@@ -196,16 +210,17 @@ Status PackedMultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) co
   TensorShapeVector output_shape{parameters.token_count, parameters.v_hidden_size};
   Tensor* output = context->Output(0, output_shape);
 
-  MHARunner* fused_runner = this->TryGettingFusedRunner(parameters);
+  auto& device_prop = this->GetDeviceProp();
+  MHARunner* fused_runner = this->GetFusedRunner(device_prop, parameters);
 
   bool use_memory_efficient_attention = false;
-  auto& device_prop = this->GetDeviceProp();
+
 #if USE_FLASH_ATTENTION
-  if (nullptr == fused_runner) {
+  if (nullptr == fused_runner && !disable_memory_efficient_attention_) {
     int sm = device_prop.major * 10 + device_prop.minor;
     bool is_good_for_rpb = !parameters.has_relative_position_bias || parameters.sequence_length % (4 * sizeof(T)) == 0;
     use_memory_efficient_attention = is_good_for_rpb &&
-                                     sizeof(T) == 2 &&  // only enable for fp16
+                                     (sizeof(T) == 2 || parameters.sequence_length >= attention::kMinSequenceLengthForMemoryEfficientAttentionFp32) &&
                                      (parameters.head_size & 7) == 0 &&
                                      (parameters.v_head_size & 7) == 0 &&
                                      has_memory_efficient_attention(sm, sizeof(T) == 2);
@@ -242,7 +257,7 @@ Status PackedMultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) co
   data.fused_runner = reinterpret_cast<void*>(fused_runner);
   data.use_memory_efficient_attention = use_memory_efficient_attention;
   data.no_qkv_workspace = no_qkv_workspace;
-  data.source_qkv_format = (key == nullptr) ? AttentionQkvFormat::Q_K_V_BSNH : AttentionQkvFormat::QKV_BSN3H;
+  data.source_qkv_format = (key == nullptr) ? AttentionQkvFormat::QKV_TN3H : AttentionQkvFormat::Q_K_V_TNH;
 
   return QkvToContext<CudaT>(device_prop, cublas, this->Stream(context), parameters, data);
 }

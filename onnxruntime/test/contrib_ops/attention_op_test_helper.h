@@ -57,6 +57,7 @@ void GetCrossAttentionData_Batch1_HeadSize32_LeftSidePadding_NoBias(AttentionTes
 
 void GetCrossAttentionData_Batch2_HeadSize32_NoBias_NoMask_PackedKV(AttentionTestData& data);
 void GetSelfAttentionData_Batch2_HeadSize32_NoBias_NoMask_PackedQKV(AttentionTestData& data);
+void GetPackedMultiHeadAttentionData_Batch2_HeadSize32_NoBias_NoMask_PackedQKV(AttentionTestData& data);
 #endif
 
 void GetCrossAttentionData_HeadSize16_8(AttentionTestData& data);

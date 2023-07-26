@@ -33,13 +33,7 @@ REGISTER_KERNEL_TYPED(float)
 REGISTER_KERNEL_TYPED(MLFloat16)
 
 template <typename T>
-PackedAttentionBase<T>::PackedAttentionBase(const OpKernelInfo& info) : CudaKernel(info) {
-  int64_t num_heads = 0;
-  ORT_ENFORCE(info.GetAttr("num_heads", &num_heads).IsOK() && num_heads > 0);
-  num_heads_ = static_cast<int32_t>(num_heads);
-
-  scale_ = info.GetAttrOrDefault<float>("scale", 0.0f);
-
+TrtFusedAttention<T>::TrtFusedAttention() {
   disable_fused_runner_ = sizeof(T) != 2 ||
                           ParseEnvironmentVariableWithDefault<bool>(attention::kDisableFusedSelfAttention, false);
 
@@ -48,7 +42,8 @@ PackedAttentionBase<T>::PackedAttentionBase(const OpKernelInfo& info) : CudaKern
 }
 
 template <typename T>
-MHARunner* PackedAttentionBase<T>::TryGettingFusedRunner(const PackedAttentionParameters& parameters) const {
+MHARunner* TrtFusedAttention<T>::GetFusedRunner(const cudaDeviceProp& device_prop,
+                                                const PackedAttentionParameters& parameters) const {
   MHARunner* fused_runner = nullptr;
 
   bool use_fused_runner = !disable_fused_runner_ &&
@@ -60,13 +55,12 @@ MHARunner* PackedAttentionBase<T>::TryGettingFusedRunner(const PackedAttentionPa
   }
 
   // Check whether we can use fused kernel
-  auto& device_prop = GetDeviceProp();
   int sm = device_prop.major * 10 + device_prop.minor;
   bool is_fMHA_supported = FusedMHARunnerFP16v2::is_supported(sm,
                                                               parameters.head_size,
                                                               parameters.sequence_length,
                                                               enable_trt_flash_attention_,
-                                                              false);
+                                                              false /*causal*/);
 
   if (!is_fMHA_supported) {
     return fused_runner;
@@ -74,7 +68,7 @@ MHARunner* PackedAttentionBase<T>::TryGettingFusedRunner(const PackedAttentionPa
 
   // Assuming that num_heads and head_size do not change.
   if (nullptr == fused_fp16_runner_.get()) {
-    fused_fp16_runner_ = FusedMHARunnerFP16v2::Create(num_heads_, parameters.head_size, sm, false /* causal_mask*/,
+    fused_fp16_runner_ = FusedMHARunnerFP16v2::Create(parameters.num_heads, parameters.head_size, sm, false /*causal*/,
                                                       enable_trt_flash_attention_, parameters.scale);
   }
 
@@ -88,7 +82,13 @@ MHARunner* PackedAttentionBase<T>::TryGettingFusedRunner(const PackedAttentionPa
 }
 
 template <typename T>
-PackedAttention<T>::PackedAttention(const OpKernelInfo& info) : PackedAttentionBase<T>(info) {
+PackedAttention<T>::PackedAttention(const OpKernelInfo& info) : TrtFusedAttention<T>(), CudaKernel(info) {
+  int64_t num_heads = 0;
+  ORT_ENFORCE(info.GetAttr("num_heads", &num_heads).IsOK() && num_heads > 0);
+  num_heads_ = static_cast<int32_t>(num_heads);
+
+  scale_ = info.GetAttrOrDefault<float>("scale", 0.0f);
+
   if (!info.GetAttrs<int64_t>("qkv_hidden_sizes", qkv_hidden_sizes_).IsOK()) {
     qkv_hidden_sizes_.clear();
   }
@@ -275,10 +275,10 @@ Status PackedAttention<T>::ComputeInternal(OpKernelContext* context) const {
   TensorShapeVector output_shape{parameters.token_count, parameters.v_hidden_size};
   Tensor* output = context->Output(0, output_shape);
 
-  MHARunner* fused_runner = this->TryGettingFusedRunner(parameters);
+  auto& device_prop = this->GetDeviceProp();
+  MHARunner* fused_runner = this->GetFusedRunner(device_prop, parameters);
 
   bool use_memory_efficient_attention = false;
-  auto& device_prop = this->GetDeviceProp();
 #if USE_FLASH_ATTENTION
   if (nullptr == fused_runner) {
     int sm = device_prop.major * 10 + device_prop.minor;
