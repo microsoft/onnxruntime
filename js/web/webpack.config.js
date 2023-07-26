@@ -15,6 +15,7 @@ const args = minimist(process.argv);
 const bundleMode = args['bundle-mode'] || 'prod';  // 'prod'|'dev'|'perf'|'node'|undefined;
 const useAnalyzer = !!args.a || !!args['use-analyzer'];  // -a, --use-analyzer
 const filter = args.f || args.filter;
+const training = args.t || args.training;
 
 const VERSION = require(path.join(__dirname, 'package.json')).version;
 const COPYRIGHT_BANNER = `/*!
@@ -61,16 +62,17 @@ const DEFAULT_BUILD_DEFS = {
   DISABLE_WASM: false,
   DISABLE_WASM_PROXY: false,
   DISABLE_WASM_THREAD: false,
-  ENABLE_TRAINING: false
+  ENABLE_TRAINING: training
 };
 
 // common config for release bundle
 function buildConfig({ filename, format, target, mode, devtool, build_defs }) {
+  const distPathSuffix = training ? 'training/dist' : 'dist';
   const config = {
     target: [format === 'commonjs' ? 'node' : 'web', target],
     entry: path.resolve(__dirname, 'lib/index.ts'),
     output: {
-      path: path.resolve(__dirname, 'dist'),
+      path: path.resolve(__dirname, distPathSuffix),
       filename,
       library: {
         type: format
@@ -285,9 +287,13 @@ function buildTestRunnerConfig({
 module.exports = (env) => {
   const builds = [];
 
-  var build_defs = { ...DEFAULT_BUILD_DEFS,
-  ENABLE_TRAINING: env.t ? true : false}
+  console.log(" ");
+  console.log(" ");
+  console.log(training);
+  console.log(DEFAULT_BUILD_DEFS);
 
+  console.log(" ");
+  console.log(" ");
   switch (bundleMode) {
     case 'prod':
       builds.push(
@@ -303,21 +309,21 @@ module.exports = (env) => {
         // ort.wasm.min.js
         buildOrtConfig({
           suffix: '.wasm.min', build_defs: {
-            ...build_defs,
+            ...DEFAULT_BUILD_DEFS,
             DISABLE_WEBGL: true,
           }
         }),
         // ort.webgl.min.js
         buildOrtConfig({
           suffix: '.webgl.min', build_defs: {
-            ...build_defs,
+            ...DEFAULT_BUILD_DEFS,
             DISABLE_WASM: true,
           }
         }),
         // ort.wasm-core.min.js
         buildOrtConfig({
           suffix: '.wasm-core.min', build_defs: {
-            ...build_defs,
+            ...DEFAULT_BUILD_DEFS,
             DISABLE_WEBGL: true,
             DISABLE_WASM_PROXY: true,
             DISABLE_WASM_THREAD: true,
@@ -326,7 +332,7 @@ module.exports = (env) => {
         // ort.webgpu.min.js
         buildOrtConfig({
           suffix: '.webgpu.min', build_defs: {
-            ...build_defs,
+            ...DEFAULT_BUILD_DEFS,
             DISABLE_WEBGPU: false,
           }
         }),
@@ -350,7 +356,7 @@ module.exports = (env) => {
     case 'dev':
       builds.push(buildTestRunnerConfig({
         suffix: '.dev', mode: 'development', devtool: 'inline-source-map', build_defs: {
-          ...build_defs,
+          ...DEFAULT_BUILD_DEFS,
           DISABLE_WEBGPU: false,
         }
       }));
@@ -358,7 +364,7 @@ module.exports = (env) => {
     case 'perf':
       builds.push(buildTestRunnerConfig({
         suffix: '.perf', build_defs: {
-          ...build_defs,
+          ...DEFAULT_BUILD_DEFS,
           DISABLE_WEBGPU: false,
         }
       }));
