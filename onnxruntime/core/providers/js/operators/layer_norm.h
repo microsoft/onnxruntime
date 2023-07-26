@@ -12,16 +12,17 @@ template <typename T, typename U>
 class LayerNorm : public JsKernel {
  public:
   LayerNorm(const OpKernelInfo& info) : JsKernel(info) {
-    ORT_ENFORCE(info.GetAttr("axis", &axis_).IsOK());
-    ORT_ENFORCE(info.GetAttr<float>("epsilon", &epsilon_).IsOK());
+    info.GetAttrOrDefault<int64_t>("axis", &axis_, -1);
+    info.GetAttrOrDefault<float>("epsilon", &epsilon_, 1e-05);
 
     JSEP_INIT_KERNEL_ATTRIBUTE(LayerNormalization, ({
                                  "axis" : Number($1),
                                  "epsilon" : Number($2),
                                }),
-                               static_cast<int64_t>(axis_),
+                               static_cast<int32_t>(axis_),
                                static_cast<float>(epsilon_));
   }
+
  private:
   int64_t axis_;
   float epsilon_;

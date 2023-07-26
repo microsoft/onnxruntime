@@ -10,6 +10,7 @@ import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-w
 
 export interface InstanceNormAttributes extends AttributeWithCacheKey {
     epsilon: number;
+    format: 'NHWC'|'NCHW';
 }
 
 const validateInputs = (inputs: readonly TensorView[]): void => {
@@ -89,6 +90,68 @@ const createInstanceNormProgramInfo =
         };
     };
 
+const createInstanceNormNHWCProgramInfo =
+    (metadata: ProgramMetadata, inputs: readonly TensorView[], attributes: InstanceNormAttributes):
+        ProgramInfo => {
+        const xShape = inputs[0].dims;
+        const outputShape = xShape;
+        const outputSize = ShapeUtil.size(outputShape);
+        const [N, H, W, C] = xShape;
+
+        const dataType = tensorTypeToWsglType(inputs[0].dataType);
+
+        const normCount = C * N;
+        const getShaderSource = (shaderHelper: ShaderHelper) => `
+  const N: u32 = ${N};
+  const H: u32 = ${H};
+  const W: u32 = ${W};
+  const C: u32 = ${C};
+  const normSizeTyped: ${dataType} = ${W * H};
+  const imageSize: u32 = ${H * W * C};
+  const epsilon: f32 = ${attributes.epsilon};
+
+  @group(0) @binding(0) var<storage, read> x : array<${dataType}>;
+  @group(0) @binding(1) var<storage, read> scale : array<${dataType}>;
+  @group(0) @binding(2) var<storage, read> bias : array<${dataType}>;
+  @group(0) @binding(3) var<storage, read_write> output : array<${dataType}>;
+
+  ${shaderHelper.mainStart()}
+    let currentImageNumber = global_idx / C;
+    let currentChannelNumber = global_idx % C;
+    
+    // offset is channel num * N
+    let offset = currentImageNumber * imageSize;
+    if (offset >= ${outputSize}) { return; }
+    var mean: ${dataType} = 0;
+
+    for (var i: u32 = 0u; i < W * H; i++) {
+        mean = mean + x[offset + i * C + currentChannelNumber];
+    }
+    mean = mean / normSizeTyped;
+
+    var squaredNorm: ${dataType} = 0;
+    for (var i: u32 = 0u; i < W * H; i++) {
+        let deviation: f32 = x[offset + i * C + currentChannelNumber] - mean;
+        squaredNorm = squaredNorm + deviation * deviation;
+    }
+    let invStdDev = 1 / sqrt(squaredNorm / normSizeTyped + epsilon);
+    let channelScale = invStdDev * scale[currentChannelNumber];
+    let channelShift = bias[currentChannelNumber] - mean * channelScale;
+    for (var i: u32 = 0u; i < W * H; i++) {
+        let currentOffset = offset + i * C + currentChannelNumber;
+        output[currentOffset] = x[currentOffset] * channelScale + channelShift;
+    }
+  }`;
+        return {
+            ...metadata,
+            outputs: [
+                {dims: outputShape, dataType: inputs[0].dataType, gpuDataType: GpuDataType.default},
+            ],
+            getShaderSource,
+            dispatchGroup: () => ({x: Math.ceil(normCount / 64 /* workgroup size */)})
+        };
+    };
+
 export const parseInstanceNormAttributes = (attributes: Record<string, unknown>): InstanceNormAttributes =>
     createAttributeWithCacheKey(attributes as Omit<InstanceNormAttributes, keyof AttributeWithCacheKey>);
 
@@ -101,5 +164,9 @@ export const instanceNorm = (context: ComputeContext, attributes: InstanceNormAt
         cacheHint: attributes.cacheKey,
     };
 
-    context.compute(createInstanceNormProgramInfo(metadata, context.inputs, attributes));
+    if (attributes.format === 'NHWC') {
+        context.compute(createInstanceNormNHWCProgramInfo(metadata, context.inputs, attributes));
+    } else {
+        context.compute(createInstanceNormProgramInfo(metadata, context.inputs, attributes));
+    }
 };

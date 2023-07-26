@@ -54,10 +54,7 @@ const createLayerNormProgramInfo =
         }
 
         const dataType = tensorTypeToWsglType(inputs[0].dataType);
-        // TODO: add meanData/invStd outputs
-        // right now it throws an error: Binding size (16) is smaller than the minimum binding size (308).
 
-        const workgroupSize = normCount > 128 ? 256 : 64;
         const getShaderSource = (shaderHelper: ShaderHelper) => `
   const normSize: u32 = ${normSize};
   const normSizeTyped: ${dataType} = ${normSize};
@@ -67,12 +64,12 @@ const createLayerNormProgramInfo =
   @group(0) @binding(1) var<storage, read> scale : array<${dataType}>;
   @group(0) @binding(2) var<storage, read> bias : array<${dataType}>;
   @group(0) @binding(3) var<storage, read_write> output : array<${dataType}>;
-  //@group(0) @binding(4) var<storage, read_write> meanDataOutput : array<${dataType}>;
-  //@group(0) @binding(5) var<storage, read_write> invStdOutput : array<${dataType}>;
+  @group(0) @binding(4) var<storage, read_write> meanDataOutput : array<${dataType}>;
+  @group(0) @binding(5) var<storage, read_write> invStdOutput : array<${dataType}>;
 
-  ${shaderHelper.mainStart(workgroupSize)}
+  ${shaderHelper.mainStart()}
     let offset = global_idx * normSize;
-    if (offset + normSize >= ${outputSize}) { return; }
+    if (offset >= ${outputSize}) { return; }
     var mean: ${dataType} = 0;
     var meanSquare: ${dataType} = 0;
 
@@ -87,18 +84,18 @@ const createLayerNormProgramInfo =
         output[j + offset] = (x[j + offset] - mean) / meanSquare * scale[j] + bias[j];
     }
 
-    //meanDataOutput[global_idx] = mean;
-    //invStdOutput[global_idx] = 1 / meanSquare;
+    meanDataOutput[global_idx] = mean;
+    invStdOutput[global_idx] = 1 / meanSquare;
   }`;
         return {
             ...metadata,
             outputs: [
                 {dims: outputShape, dataType: inputs[0].dataType, gpuDataType: GpuDataType.default},
-                // {dims: meanInvStdDevDim, dataType: inputs[0].dataType, gpuDataType: GpuDataType.default},
-                // {dims: meanInvStdDevDim, dataType: inputs[0].dataType, gpuDataType: GpuDataType.default},
+                {dims: meanInvStdDevDim, dataType: inputs[0].dataType, gpuDataType: GpuDataType.default},
+                {dims: meanInvStdDevDim, dataType: inputs[0].dataType, gpuDataType: GpuDataType.default},
             ],
             getShaderSource,
-            dispatchGroup: () => ({x: Math.ceil(normCount / workgroupSize /* workgroup size */)})
+            dispatchGroup: () => ({x: Math.ceil(normCount / 64 /* workgroup size */)})
         };
     };
 

@@ -8,21 +8,21 @@
 namespace onnxruntime {
 namespace js {
 
-#define REGISTER_KERNEL_TYPED(T)                                                           \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                           \
-      LayerNormalization,                                                                  \
-      kOnnxDomain,                                                                         \
-      17,                                                                                  \
-      T,                                                                                   \
-      kJsExecutionProvider,                                                                \
-      (*KernelDefBuilder::Create())                                                        \
-          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())                           \
-          .TypeConstraint("U", DataTypeImpl::GetTensorType<float>()),                      \
+#define REGISTER_KERNEL_TYPED(T)                                      \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                      \
+      LayerNormalization,                                             \
+      kOnnxDomain,                                                    \
+      17,                                                             \
+      T,                                                              \
+      kJsExecutionProvider,                                           \
+      (*KernelDefBuilder::Create())                                   \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())      \
+          .TypeConstraint("U", DataTypeImpl::GetTensorType<float>()), \
       LayerNorm<T, float>);
 
 REGISTER_KERNEL_TYPED(float)
-REGISTER_KERNEL_TYPED(double)
-REGISTER_KERNEL_TYPED(MLFloat16)
+// REGISTER_KERNEL_TYPED(double)
+// REGISTER_KERNEL_TYPED(MLFloat16)
 
 }  // namespace js
 }  // namespace onnxruntime
