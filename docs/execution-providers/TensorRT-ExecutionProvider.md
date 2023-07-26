@@ -286,6 +286,11 @@ sess = ort.InferenceSession(model_path, sess_options=sess_opt, providers=provide
 ### Environment Variables(deprecated)
 
 <details>
+  <summary>Click to expand!</summary>
+
+  <!--Environment Variables(deprecated)-->
+  
+</details>
 
 Following environment variables can be set for TensorRT execution provider.
 
@@ -380,8 +385,6 @@ export ORT_TENSORRT_DUMP_SUBGRAPHS=1
 # Enable context memory sharing between TensorRT subgraphs. Default 0 = false, nonzero = true
 export ORT_TENSORRT_CONTEXT_MEMORY_SHARING_ENABLE=1
 ```
-
-</details>
 
 ## Performance Tuning
 For performance tuning, please see guidance on this page: [ONNX Runtime Perf Tuning](./../performance/tune-performance/index.md)
