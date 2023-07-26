@@ -97,17 +97,6 @@ namespace Microsoft.ML.OnnxRuntime.Tensors
     {
         public const int StackallocMax = 16;
 
-        /// <summary>
-        /// Returns a number of elements in the tensor from the given shape
-        /// </summary>
-        /// <param name="shape"></param>
-        /// <returns>size</returns>
-        /// <exception cref="ArgumentOutOfRangeException"></exception>
-        public static long GetSizeForShape(long[] shape)
-        {
-            return ShapeUtils.GetSizeForShape(shape.AsSpan());
-        }
-
         public static long GetProduct(ReadOnlySpan<int> dimensions, int startIndex = 0)
         {
             long product = 1;

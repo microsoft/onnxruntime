@@ -542,7 +542,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             Assert.NotNull(typeInfo);
 
             // ArrayUtilities not accessible in all builds
-            var shapeSize = shape.Aggregate(1L, (a, v) => a * v);
+            var shapeSize = ShapeUtils.GetSizeForShape(shape);
             var inferredSize = rawData.Length / typeInfo.TypeSize;
             Assert.Equal(shapeSize, inferredSize);
             Assert.Equal(0, rawData.Length % typeInfo.TypeSize);

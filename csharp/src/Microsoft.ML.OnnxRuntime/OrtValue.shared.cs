@@ -5,9 +5,7 @@ using Microsoft.ML.OnnxRuntime.Tensors;
 using System;
 using System.Buffers;
 using System.Collections.Generic;
-using System.Collections.ObjectModel;
 using System.Diagnostics;
-using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text;
 
@@ -506,7 +504,7 @@ namespace Microsoft.ML.OnnxRuntime
                     "Cannot map managed strings buffer to native OrtValue. Use string specific interfaces");
             }
 
-            var shapeSize = ArrayUtilities.GetSizeForShape(shape);
+            var shapeSize = ShapeUtils.GetSizeForShape(shape);
             var requiredBufferSizeInBytes = shapeSize * typeInfo.TypeSize;
 
             // We allow creating a tensor over part of the buffer
@@ -552,7 +550,7 @@ namespace Microsoft.ML.OnnxRuntime
                     "Cannot map managed strings buffer to native OrtValue. Use string specific interfaces.");
             }
 
-            var shapeSize = ArrayUtilities.GetSizeForShape(shape);
+            var shapeSize = ShapeUtils.GetSizeForShape(shape);
             // We allow creating a tensor over part of the buffer
             if (shapeSize > memory.Length)
             {
