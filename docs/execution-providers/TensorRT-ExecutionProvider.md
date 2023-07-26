@@ -286,7 +286,6 @@ sess = ort.InferenceSession(model_path, sess_options=sess_opt, providers=provide
 ### Environment Variables(deprecated)
 
 <details>
-<summary>Click to expand:</summary>
 
 Following environment variables can be set for TensorRT execution provider.
 
