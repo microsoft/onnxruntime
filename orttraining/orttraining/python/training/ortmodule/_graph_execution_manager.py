@@ -327,11 +327,9 @@ class GraphExecutionManager(GraphExecutionInterface):
 
         # Leverage cached model if available
         cache_dir = self._runtime_options.ortmodule_cache_dir
-        rank = torch.distributed.get_rank() if torch.distributed.is_initialized() else 0
         if cache_dir:
-            self._logger.info("ORTModule cache optimization is ON.")
             filename = os.path.join(
-                cache_dir, f"{hash_fn(str(self._flattened_module).encode()).hexdigest()}_{rank}.onnx"
+                cache_dir, f"{hash_fn(str(self._flattened_module).encode()).hexdigest()}_{get_rank()}.onnx"
             )
             if os.path.exists(cache_dir) and os.path.isfile(filename):
                 self._logger.info(
@@ -405,11 +403,10 @@ class GraphExecutionManager(GraphExecutionInterface):
 
         # Cache model for future runs
         if cache_dir:
-            self._logger.info("ORTModule cache optimization is ON.")
             if not os.path.exists(cache_dir):
                 os.makedirs(cache_dir, exist_ok=True)
             filename = os.path.join(
-                cache_dir, f"{hash_fn(str(self._flattened_module).encode()).hexdigest()}_{rank}.onnx"
+                cache_dir, f"{hash_fn(str(self._flattened_module).encode()).hexdigest()}_{get_rank()}.onnx"
             )
             self._logger.info(f"Caching model for future runs to {filename}.")
             onnx.save(exported_model, filename)
