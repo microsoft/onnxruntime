@@ -199,7 +199,8 @@ export class WebGpuBackend {
       createKernelOutput: (index: number, dataType: number, dims: readonly number[]) => TensorView,
       createIntermediateOutput: (dataType: number, dims: readonly number[]) => TensorView): TensorView[] {
     if (inputs.length !== program.inputTypes.length) {
-      throw new Error(`Input size must be equal to ${program.inputTypes.length}.`);
+
+      throw new Error(`Input size must be equal to ${program.inputTypes.length}. Actual input size(${inputs.length})`);
     }
 
     // create info for inputs
@@ -207,7 +208,10 @@ export class WebGpuBackend {
     for (let i = 0; i < inputs.length; ++i) {
       const gpuData = this.gpuDataManager.get(inputs[i].data);
       if (!gpuData) {
-        throw new Error(`no GPU data for input: ${inputs[i].data}`);
+        // eslint-disable-next-line no-console
+        console.log('dataType: ',inputs[i -1].dataType,'dataDims', inputs[i-1].dims, 'data',inputs[i-1].data );
+        console.log(inputs[i].dataType, inputs[i].dims, inputs[i].data , inputs[i].getBigInt64Array()[0], inputs[i].getBigInt64Array()[1], inputs[i].getBigInt64Array()[2]);
+        throw new Error(`no GPU data for input ${i}: ${inputs[i].data}`);
       }
       inputDatas[i] = gpuData;
     }
