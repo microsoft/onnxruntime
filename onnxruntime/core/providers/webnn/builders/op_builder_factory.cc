@@ -97,6 +97,8 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
 
   {  // Logical
     CreateLogicalOpBuilder("Equal", op_registrations);
+    CreateLogicalOpBuilder("Greater", op_registrations);
+    CreateLogicalOpBuilder("Less", op_registrations);
   }
 
   {  // Normalization
@@ -117,8 +119,16 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
   }
 
   {  // Reduction
+    CreateReductionOpBuilder("ReduceL1", op_registrations);
+    CreateReductionOpBuilder("ReduceL2", op_registrations);
+    CreateReductionOpBuilder("ReduceLogSum", op_registrations);
+    CreateReductionOpBuilder("ReduceLogSumExp", op_registrations);
     CreateReductionOpBuilder("ReduceMax", op_registrations);
     CreateReductionOpBuilder("ReduceMean", op_registrations);
+    CreateReductionOpBuilder("ReduceMin", op_registrations);
+    CreateReductionOpBuilder("ReduceProd", op_registrations);
+    CreateReductionOpBuilder("ReduceSum", op_registrations);
+    CreateReductionOpBuilder("ReduceSumSquare", op_registrations);
   }
 
   {  // Reshape
