@@ -262,9 +262,7 @@ sess = ort.InferenceSession(model_path, sess_options=sess_opt, providers=provide
 Following environment variables can be set for TensorRT execution provider. Click below for more details.
 
 <details>
-    
-    Click to expand
-
+  
 * `ORT_TENSORRT_MAX_WORKSPACE_SIZE`: maximum workspace size for TensorRT engine. Default value: 1073741824 (1GB).
 
 * `ORT_TENSORRT_MAX_PARTITION_ITERATIONS`: maximum number of iterations allowed in model partitioning for TensorRT. If target model can't be successfully partitioned when the maximum number of iterations is reached, the whole model will fall back to other execution providers such as CUDA or CPU. Default value: 1000.
