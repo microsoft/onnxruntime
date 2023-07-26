@@ -25,7 +25,7 @@ export interface SoftmaxAttributes extends AttributeWithCacheKey {
   readonly axis: number;
 }
 
-export const SoftmaxProgramMetadata = {
+export const softmaxProgramMetadata = {
   name: 'Softmax',
   inputTypes: [GpuDataType.default]
 };
@@ -36,7 +36,7 @@ const createSoftmaxProgramInfo = (input: TensorView, attributes: SoftmaxAttribut
   const shape = input.dims;
   const outputSize = ShapeUtil.size(shape);
   const WG = 64;
-  var axis = attributes.axis;
+  let axis = attributes.axis;
   if (axis < 0) {
     axis = shape.length + axis;
   }
@@ -47,7 +47,7 @@ const createSoftmaxProgramInfo = (input: TensorView, attributes: SoftmaxAttribut
   const cols = shape[axis];
   const rows = outputSize / cols;
 
-  const getShaderSource = (shaderHelper: ShaderHelper) => `
+  const getShaderSource = (_shaderHelper: ShaderHelper) => `
       var<workgroup> rowMaxShared : ${dataType};
       var<workgroup> rowSumShared : ${dataType};
       var<workgroup> threadShared : array<${dataType}, ${WG}>;
@@ -125,7 +125,7 @@ const createSoftmaxProgramInfo = (input: TensorView, attributes: SoftmaxAttribut
         }
       }`;
   return {
-    ...SoftmaxProgramMetadata,
+    ...softmaxProgramMetadata,
     outputs: [{ dims: shape, dataType: input.dataType, gpuDataType: GpuDataType.default }],
     getShaderSource,
     dispatchGroup: () => ({ x: rows })
@@ -136,7 +136,7 @@ const createSoftmaxProgramInfo = (input: TensorView, attributes: SoftmaxAttribut
 export const softmax = (context: ComputeContext, attributes: SoftmaxAttributes): void => {
   validateInputs(context.inputs);
   context.compute({
-    ...SoftmaxProgramMetadata,
+    ...softmaxProgramMetadata,
     cacheHint: attributes.cacheKey,
     get: () => createSoftmaxProgramInfo(context.inputs[0], attributes)
   });

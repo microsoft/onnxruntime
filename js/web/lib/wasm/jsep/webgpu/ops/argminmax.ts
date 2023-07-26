@@ -148,6 +148,7 @@ export const argMin = (context: ComputeContext, attributes: ArgMinMaxAttributes)
       `${idxZero.join('\n')}`,
       'var value = _A[inputIdx];\nvar bestIndex : i32 = 0;',
       'if (_A[inputIdx] < value) {value = _A[inputIdx]; bestIndex = i32(lastIndex);} ',
+      ''
     ];
   };
   context.compute(createReduceProgramInfoLoader(context.inputs, 'ArgMin', attributes, argMinMaxOp), {inputs: [0]});
