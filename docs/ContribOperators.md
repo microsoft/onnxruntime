@@ -2249,11 +2249,11 @@ This function computes the inverse of the one-dimensional n-point RFFT computed 
 
 <dl>
 <dt><tt>normalized</tt> : int</dt>
-<dd></dd>
+<dd>must be 0, normalization currently not supported</dd>
 <dt><tt>onesided</tt> : int</dt>
-<dd></dd>
+<dd>must be 1, only one sided FFTs supported</dd>
 <dt><tt>signal_ndim</tt> : int (required)</dt>
-<dd></dd>
+<dd>number of dimensions comprising the signal</dd>
 </dl>
 
 #### Inputs
@@ -4402,11 +4402,11 @@ This function computes the n-point one dimensional Fourier transform for a real-
 
 <dl>
 <dt><tt>normalized</tt> : int</dt>
-<dd></dd>
+<dd>must be 0, normalization currently not supported</dd>
 <dt><tt>onesided</tt> : int</dt>
-<dd></dd>
+<dd>must be 1, only one sided FFTs supported</dd>
 <dt><tt>signal_ndim</tt> : int</dt>
-<dd></dd>
+<dd>number of dimensions comprising the signal, collected in reverse order (e.g. 2 = last two dimensions are the signal)</dd>
 </dl>
 
 #### Inputs
