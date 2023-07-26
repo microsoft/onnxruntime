@@ -27,8 +27,8 @@ class MaxMinOpBuilder : public BaseOpBuilder {
 // Add operator related.
 
 Status MaxMinOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
-                                                 const Node& node,
-                                                 const logging::Logger& logger) const {
+                                              const Node& node,
+                                              const logging::Logger& logger) const {
   const auto& input_defs = node.InputDefs();
   const auto& op_type = node.OpType();
 
@@ -38,13 +38,15 @@ Status MaxMinOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 
   const size_t input_count = input_defs.size();
   ORT_RETURN_IF(input_count < 1, op_type, "has no inputs");
+  ORT_RETURN_IF_NOT(op_type == "Max" || op_type == "Min", "MaxMinOpBuilder, unknown op: ", op_type);
 
   emscripten::val output = emscripten::val::object();
 
   if (input_count == 1) {
-    output = input0;
+    // For 1 input, just concat the single input as workaround.
+    // TODO: use identity instead once it's available in WebNN.
+    output = model_builder.GetBuilder().call<emscripten::val>("concat", input0, 0);
   } else {
-    ORT_RETURN_IF_NOT(op_type == "Max" || op_type == "Min", "MaxMinOpBuilder, unknown op: ", op_type);
     std::string webnn_op_name = op_type == "Max" ? "max" : "min";
 
     emscripten::val input1 = model_builder.GetOperand(input_defs[1]->Name());
@@ -62,9 +64,9 @@ Status MaxMinOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 
 // Operator support related.
 bool MaxMinOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& /* initializers */,
-                                           const Node& node,
-                                           WebnnDeviceType /* device_type */,
-                                           const logging::Logger& logger) const {
+                                        const Node& node,
+                                        WebnnDeviceType /* device_type */,
+                                        const logging::Logger& logger) const {
   const auto& input_defs = node.InputDefs();
   const auto& op_type = node.OpType();
 
@@ -81,7 +83,7 @@ bool MaxMinOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& /* initializ
 }
 
 void CreateMaxMinOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {
-  if (op_registrations.op_builder_map.find(op_type) != op_registrations.op_builder_map.cend())
+  if (op_registrations.op_builder_map.count(op_type) > 0)
     return;
 
   static std::vector<std::string> op_types =
