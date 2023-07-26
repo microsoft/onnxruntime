@@ -11,11 +11,12 @@ TEST(ContribOpTest, Rfft) {
   if (DefaultCudaExecutionProvider() == nullptr) return;
 
   OpTester test("Rfft", 1, onnxruntime::kMSDomain);
-  test.AddAttribute("signal_ndim", static_cast<int64_t>(2));
+  test.AddAttribute("signal_ndim", static_cast<int64_t>(1));
   test.AddAttribute("onesided", static_cast<int64_t>(1));
   test.AddAttribute("normalized", static_cast<int64_t>(0));
-  test.AddInput<float>("X", {4, 4}, std::vector<float>{0.81289f, 1.31077f, -0.87902f, -1.20465f, 0.16614f, -0.98306f, 0.58791f, 0.49175f, 1.25058f, 0.72441f, -2.62604f, -1.12684f, -1.68846f, 1.04393f, -0.25949f, 1.87801f});
-  test.AddOutput<float>("Y", {4, 3, 2}, std::vector<float>{0.03999f, 0.00000f, 1.69191f, -2.51542f, -0.17225f, 0.00000f, 0.26275f, 0.00000f, -0.42177f, 1.47481f, 1.24536f, 0.00000f, -1.77790f, 0.00000f, 3.87662f, -1.85126f, -0.97304f, 0.00000f, 0.97399f, 0.00000f, -1.42898f, 0.83408f, -4.86989f, 0.00000f});
+  // Target values conputed using PyTorch torch.fft.rfft(X, dim=-1, norm="backward")
+  test.AddInput<float>("X", {4, 4}, {0.8129f, 1.3108f, -0.8790f, -1.2046f, 0.1661f, -0.9831f, 0.5879f, 0.4918f, 1.2506f, 0.7244f, -2.6260f, -1.1268f, -1.6885f, 1.0439f, -0.2595f, 1.8780f});
+  test.AddOutput<float>("Y", {4, 3, 2}, {0.0400f, 0.0000f, 1.6919f, -2.5154f, -0.1722f, 0.0000f, 0.2627f, 0.0000f, -0.4218f, 1.4748f, 1.2454f, 0.0000f, -1.7779f, 0.0000f, 3.8766f, -1.8512f, -0.9730f, 0.0000f, 0.9740f, 0.0000f, -1.4290f, 0.8341f, -4.8699f, 0.0000f});
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
   execution_providers.push_back(DefaultCudaExecutionProvider());
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
@@ -25,11 +26,11 @@ TEST(ContribOpTest, Irfft) {
   if (DefaultCudaExecutionProvider() == nullptr) return;
 
   OpTester test("Irfft", 1, onnxruntime::kMSDomain);
-  test.AddAttribute("signal_ndim", static_cast<int64_t>(2));
+  test.AddAttribute("signal_ndim", static_cast<int64_t>(1));
   test.AddAttribute("onesided", static_cast<int64_t>(1));
   test.AddAttribute("normalized", static_cast<int64_t>(0));
-  test.AddInput<float>("X", {4, 3, 2}, std::vector<float>{0.03999f, 0.00000f, 1.69191f, -2.51542f, -0.17225f, 0.00000f, 0.26275f, 0.00000f, -0.42177f, 1.47481f, 1.24536f, 0.00000f, -1.77790f, 0.00000f, 3.87662f, -1.85126f, -0.97304f, 0.00000f, 0.97399f, 0.00000f, -1.42898f, 0.83408f, -4.86989f, 0.00000f});
-  test.AddOutput<float>("Y", {4, 4}, std::vector<float>{0.81289f, 1.31077f, -0.87902f, -1.20465f, 0.16614f, -0.98306f, 0.58791f, 0.49175f, 1.25058f, 0.72441f, -2.62604f, -1.12684f, -1.68846f, 1.04393f, -0.25949f, 1.87801f});
+  test.AddInput<float>("X", {4, 3, 2}, {0.0400f, 0.0000f, 1.6919f, -2.5154f, -0.1722f, 0.0000f, 0.2627f, 0.0000f, -0.4218f, 1.4748f, 1.2454f, 0.0000f, -1.7779f, 0.0000f, 3.8766f, -1.8512f, -0.9730f, 0.0000f, 0.9740f, 0.0000f, -1.4290f, 0.8341f, -4.8699f, 0.0000f});
+  test.AddOutput<float>("Y", {4, 4}, {0.8129f, 1.3108f, -0.8790f, -1.2046f, 0.1661f, -0.9831f, 0.5879f, 0.4918f, 1.2506f, 0.7244f, -2.6260f, -1.1268f, -1.6885f, 1.0439f, -0.2595f, 1.8780f});
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
   execution_providers.push_back(DefaultCudaExecutionProvider());
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
