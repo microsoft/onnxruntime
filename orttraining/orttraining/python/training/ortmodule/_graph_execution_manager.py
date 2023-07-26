@@ -334,7 +334,9 @@ class GraphExecutionManager(GraphExecutionInterface):
                 cache_dir, f"{hash_fn(str(self._flattened_module).encode()).hexdigest()}_{rank}.onnx"
             )
             if os.path.exists(cache_dir) and os.path.isfile(filename):
-                self._logger.info(f"Cached model detected! DELETE {filename} to re-export model.")
+                self._logger.info(
+                    f"Cached model detected! Cached model will be used to save export and initialization time. If you want the model to be re-exported then DELETE {filename}."
+                )
                 exported_model = onnx.load(filename)
                 return exported_model
 
