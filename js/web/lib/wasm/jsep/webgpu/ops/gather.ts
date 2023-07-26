@@ -23,12 +23,9 @@ const createGatherProgramInfo =
     (metadata: ProgramMetadata, inputs: readonly TensorView[], attributes: GatherAttributes):
         ProgramInfo => {
         const inputShape = inputs[0].dims;
-        let indicesShape = inputs[1].dims;
-        if (indicesShape.length === 0) {
-            indicesShape = [1];
-        }
+        const indicesShape = inputs[1].dims;
 
-        const inputRank = indicesShape.length;
+        const inputRank = inputShape.length;
         const axis = ShapeUtil.normalizeAxis(attributes.axis, inputRank);
 
         const outputShape = [];
@@ -49,7 +46,7 @@ const createGatherProgramInfo =
         const indicesElementSize = inputs[1].dataType === DataType.int64 ? 2 : 1;
         const blockSize = elementSize * block;
         const M = ShapeUtil.sizeToDimension(inputShape, axis);
-        const N = indicesShape.length;
+        const N = ShapeUtil.size(indicesShape);
         const dataBatchElements = ShapeUtil.sizeFromDimension(inputShape, axis) * elementSize;
         const gatheredBatchElements = N * block * elementSize;
         const axisDimLimit = inputShape[axis];
@@ -58,30 +55,30 @@ const createGatherProgramInfo =
         const outputSize = ShapeUtil.size(outputShape) * elementSize;
 
         const totalGathers = M * N;
-        console.log('gather!', inputs, outputShape, axis, attributes, totalGathers);
-        const dataType = 'i32'; // let's treat input as u32 or two u32 elements in case of i64
-        // int64 indices would be treated as little endian i32
-        // as it's not possible to create more than 2gb buffer for input tensor
+        // int64 indices would be treated as little endian i32 with assumption they fall in i32 limits
+        // That assumption is safe as it's not possible to allocate >2gb buffer for input tensor
+        // Input data will be treated as u32 or two u32 for 8-byte tensors
         const getShaderSource = (shaderHelper: ShaderHelper) => `
   const N: u32 = ${N};
-  const elementSize: i32 = ${elementSize};
-  const indicesElementSize: i32 = ${indicesElementSize};
+  const elementSize: u32 = ${elementSize};
+  const indicesElementSize: u32 = ${indicesElementSize};
 
-  @group(0) @binding(0) var<storage, read> input : array<${dataType}>;
-  @group(0) @binding(1) var<storage, read> inputIndices : array<${dataType}>;
-  @group(0) @binding(2) var<storage, read_write> output: array<${dataType}>;
+  @group(0) @binding(0) var<storage, read> input : array<u32>;
+  @group(0) @binding(1) var<storage, read> inputIndices : array<i32>;
+  @group(0) @binding(2) var<storage, read_write> output: array<u32>;
 
   ${shaderHelper.mainStart()}
-    let batch = i32(global_idx / N);
-    let i = i32(global_idx % N);
+    let batch: u32 = global_idx / N;
+    let i: u32 = global_idx % N;
 
-    let srcOffsetBatch: i32 = batch * ${dataBatchElements};
-    let dstOffsetBatch: i32 = batch * ${gatheredBatchElements};
+    let srcOffsetBatch: u32 = batch * ${dataBatchElements};
+    let dstOffsetBatch: u32 = batch * ${gatheredBatchElements};
     var idx = inputIndices[i * indicesElementSize];
     if (idx < 0) {
         idx = idx + ${axisDimLimit};
     }
-    let srcOffset = srcOffsetBatch + idx * ${blockSize};
+
+    let srcOffset = srcOffsetBatch + u32(idx) * ${blockSize};
     let dstOffset = dstOffsetBatch + i * ${blockSize};
     if (srcOffset >= ${inputSize}) {
         return;
@@ -89,25 +86,22 @@ const createGatherProgramInfo =
     if (dstOffset >= ${outputSize}) {
         return;
     }
-    output[dstOffset] = input[srcOffset];
-    if (elementSize > 1) {
-        output[dstOffset + 1] = input[srcOffset + 1];
+    for (var j: u32 = 0; j < ${blockSize}; j++) {
+        output[dstOffset + j] = input[srcOffset + j];
     }
   }`;
         return {
             ...metadata,
             outputs: [
                 {dims: outputShape, dataType: inputs[0].dataType, gpuDataType: GpuDataType.default},
-                // {dims: meanInvStdDevDim, dataType: inputs[0].dataType, gpuDataType: GpuDataType.default},
-                // {dims: meanInvStdDevDim, dataType: inputs[0].dataType, gpuDataType: GpuDataType.default},
             ],
             getShaderSource,
-            dispatchGroup: () => ({x: Math.ceil( totalGathers / 64 /* workgroup size */) || 1})
+            dispatchGroup: () => ({x: Math.ceil( totalGathers / 64 /* workgroup size */)})
         };
     };
 
 export const parseGatherAttributes = (attributes: Record<string, unknown>): GatherAttributes =>
-    createAttributeWithCacheKey(attributes as Omit<GatherAttributes, keyof AttributeWithCacheKey>);
+    createAttributeWithCacheKey({ axis: attributes.axis as number });
 
 export const gather = (context: ComputeContext, attributes: GatherAttributes): void => {
     validateInputs(context.inputs);

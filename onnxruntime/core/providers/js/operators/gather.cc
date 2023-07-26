@@ -8,6 +8,15 @@
 namespace onnxruntime {
 namespace js {
 
+using AllSupportedSize =
+    TypeList<
+        float,
+        double,
+        int64_t,
+        uint64_t,
+        int32_t,
+        uint32_t>;
+
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     Gather,
     kOnnxDomain,
@@ -15,7 +24,7 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     10,
     kJsExecutionProvider,
     (*KernelDefBuilder::Create())
-        .TypeConstraint("T", DataTypeImpl::AllTensorTypes())
+        .TypeConstraint("T", BuildKernelDefConstraintsFromTypeList<AllSupportedSize>())
         .TypeConstraint("Tind", BuildKernelDefConstraintsFromTypeList<TypeList<int32_t, int64_t>>()),
     Gather);
 
@@ -26,7 +35,7 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     12,
     kJsExecutionProvider,
     (*KernelDefBuilder::Create())
-        .TypeConstraint("T", DataTypeImpl::AllTensorTypes())
+        .TypeConstraint("T", BuildKernelDefConstraintsFromTypeList<AllSupportedSize>())
         .TypeConstraint("Tind", BuildKernelDefConstraintsFromTypeList<TypeList<int32_t, int64_t>>()),
     Gather);
 
@@ -36,7 +45,7 @@ ONNX_OPERATOR_KERNEL_EX(
     13,
     kJsExecutionProvider,
     (*KernelDefBuilder::Create())
-        .TypeConstraint("T", DataTypeImpl::AllTensorTypes())
+        .TypeConstraint("T", BuildKernelDefConstraintsFromTypeList<AllSupportedSize>())
         .TypeConstraint("Tind", BuildKernelDefConstraintsFromTypeList<TypeList<int32_t, int64_t>>()),
     Gather);
 

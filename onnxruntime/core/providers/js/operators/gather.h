@@ -11,15 +11,13 @@ namespace js {
 class Gather : public JsKernel {
  public:
   Gather(const OpKernelInfo& info) : JsKernel(info) {
-    ORT_ENFORCE(info.GetAttr("axis", &axis_).IsOK());
+    int64_t axis = info.GetAttrOrDefault("axis", 0);
 
     JSEP_INIT_KERNEL_ATTRIBUTE(Gather, ({
                                  "axis" : Number($1),
                                }),
-                               static_cast<int64_t>(axis_));
+                               static_cast<int32_t>(axis));
   }
- private:
-  int64_t axis_;
 };
 
 }  // namespace js
