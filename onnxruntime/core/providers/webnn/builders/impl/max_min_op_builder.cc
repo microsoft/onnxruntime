@@ -45,7 +45,9 @@ Status MaxMinOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   if (input_count == 1) {
     // For 1 input, just concat the single input as workaround.
     // TODO: use identity instead once it's available in WebNN.
-    output = model_builder.GetBuilder().call<emscripten::val>("concat", input0, 0);
+    emscripten::val inputs = emscripten::val::array();
+    inputs.call<void>("push", input0);
+    output = model_builder.GetBuilder().call<emscripten::val>("concat", inputs, 0);
   } else {
     std::string webnn_op_name = op_type == "Max" ? "max" : "min";
 
