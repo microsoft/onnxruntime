@@ -35,12 +35,20 @@ public class TensorInfo implements ValueInfo {
     ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX128(
         15), // complex with float64 real and imaginary components
     ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16(
-        16); // Non-IEEE floating-point format based on IEEE754 single-precision
+        16), // Non-IEEE floating-point format based on IEEE754 single-precision
+    ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E4M3FN(
+        17), // Non-IEEE floating-point format based on IEEE754 single-precision
+    ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E4M3FNUZ(
+        18), // Non-IEEE floating-point format based on IEEE754 single-precision
+    ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E5M2(
+        19), // Non-IEEE floating-point format based on IEEE754 single-precision
+    ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E5M2FNUZ(
+        20); // Non-IEEE floating-point format based on IEEE754 single-precisio
 
     /** The int id on the native side. */
     public final int value;
 
-    private static final OnnxTensorType[] values = new OnnxTensorType[17];
+    private static final OnnxTensorType[] values = new OnnxTensorType[21];
 
     static {
       for (OnnxTensorType ot : OnnxTensorType.values()) {
@@ -92,6 +100,10 @@ public class TensorInfo implements ValueInfo {
           return OnnxTensorType.ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL;
         case STRING:
           return OnnxTensorType.ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING;
+        case FLOAT16:
+          return OnnxTensorType.ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16;
+        case BFLOAT16:
+          return OnnxTensorType.ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16;
         case UNKNOWN:
         default:
           return OnnxTensorType.ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
@@ -321,15 +333,20 @@ public class TensorInfo implements ValueInfo {
 
     long bufferRemaining = buffer.remaining();
 
+    // Check if size matches
     if (elementCount != bufferRemaining) {
-      throw new OrtException(
-          "Shape "
-              + Arrays.toString(shape)
-              + ", requires "
-              + elementCount
-              + " elements but the buffer has "
-              + bufferRemaining
-              + " elements.");
+      // if not it could be a ByteBuffer passed in, so check how many bytes there are
+      long elemRemaining = bufferRemaining / type.size;
+      if (elementCount != elemRemaining) {
+        throw new OrtException(
+            "Shape "
+                + Arrays.toString(shape)
+                + ", requires "
+                + elementCount
+                + " elements but the buffer has "
+                + bufferRemaining
+                + " elements.");
+      }
     }
 
     return new TensorInfo(

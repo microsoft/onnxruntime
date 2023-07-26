@@ -7,12 +7,14 @@ from enum import IntFlag
 from functools import reduce
 from logging import Logger
 
+from packaging import version
+
 from onnxruntime.capi import _pybind_state as C
 from onnxruntime.training import ortmodule
 
 from ._fallback import _FallbackPolicy
 from ._logger import LogLevel
-from ._utils import parse_os_env_skip_check_flags
+from ._utils import get_runtime_pytorch_version, parse_os_env_skip_check_flags
 
 
 class _SaveOnnxOptions:
@@ -130,6 +132,39 @@ class DebugOptions:
         """Accessor for the logging configuration."""
 
         return self._logging
+
+    @property
+    def torch_exporter_filter(self):
+        """Accessor for the filter export logs configuration."""
+        if self.log_level >= LogLevel.INFO and get_runtime_pytorch_version() < version.parse("2.0"):
+            return [
+                # WARNING: The shape inference of com.microsoft::SoftmaxCrossEntropyLossInternal type is missing, so it may result in wrong shape inference for the exported graph. Please consider adding it in symbolic function.
+                # WARNING: The shape inference of com.microsoft::PythonOp type is missing, so it may result in wrong shape inference for the exported graph. Please consider adding it in symbolic function.
+                # WARNING: The shape inference of org.pytorch.aten::ATen type is missing, so it may result in wrong shape inference for the exported graph. Please consider adding it in symbolic function.
+                # WARNING: The shape inference of prim::Constant type is missing, so it may result in wrong shape inference for the exported graph. Please consider adding it in symbolic function.
+                "type is missing, so it may result in wrong shape inference",
+                # Warning: Checker does not support models with experimental ops: ATen
+                "Checker does not support models with experimental ops:",
+                "Dropout is a training op and should not be exported in inference mode.",
+                # Warning: Shape inference does not support models with experimental operators: ATen
+                "Shape inference does not support models with experimental operators:",
+                # Warning: Unsupported operator Trilu. No schema registered for this operator.
+                # Warning: Unsupported operator ATen. No schema registered for this operator.
+                # Warning: Unsupported operator SoftmaxCrossEntropyLossInternal. No schema registered for this operator.
+                "No schema registered for this operator.",
+            ]
+
+        return None
+
+    @property
+    def onnxruntime_log_filter(self):
+        """Accessor for the filter onnxruntime logs configuration."""
+        if self.log_level >= LogLevel.INFO:
+            return [
+                "CleanUnusedInitializersAndNodeArgs] Removing initializer",
+                "Serializing optimized model with Graph Optimization level greater than ORT_ENABLE_EXTENDED",
+            ]
+        return None
 
 
 class _SkipCheck(IntFlag):
