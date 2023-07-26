@@ -250,7 +250,7 @@ class TritonCodegen(NodeVisitor):
             elif isinstance(ir_node, ReduceForLoopEnd):
                 indent -= 4
 
-    _COMPUTE_CODE_TEMPLATES = {
+    _COMPUTE_CODE_TEMPLATES = {  # noqa: RUF012
         "Add": "{indent}{o0} = {i0} + {i1}\n",
         "Sub": "{indent}{o0} = {i0} - {i1}\n",
         "Mul": "{indent}{o0} = {i0} * {i1}\n",

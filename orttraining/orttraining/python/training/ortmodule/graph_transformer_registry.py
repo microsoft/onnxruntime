@@ -9,7 +9,7 @@ from onnx.onnx_ml_pb2 import GraphProto
 
 
 class GraphTransformerRegistry:
-    _TRANSFORMER_FUNCS = {}
+    _TRANSFORMER_FUNCS = {}  # noqa: RUF012
 
     @classmethod
     def register(cls, target_modules: str, devices: str, priority: int, fn: Callable[[GraphProto], None]):

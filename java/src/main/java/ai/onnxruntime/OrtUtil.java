@@ -1,5 +1,6 @@
 /*
  * Copyright (c) 2019, 2023, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) Microsoft Corporation. All rights reserved.
  * Licensed under the MIT License.
  */
 package ai.onnxruntime;
@@ -15,9 +16,11 @@ import java.nio.LongBuffer;
 import java.nio.ShortBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.logging.Logger;
 
 /** Util code for interacting with Java arrays. */
 public final class OrtUtil {
+  private static final Logger logger = Logger.getLogger(OrtUtil.class.getName());
 
   /** Private constructor for static util class. */
   private OrtUtil() {}
@@ -532,6 +535,8 @@ public final class OrtUtil {
           tmp = buffer.put((ByteBuffer) data);
           break;
         case INT16:
+        case FLOAT16:
+        case BFLOAT16:
           tmp = buffer.asShortBuffer().put((ShortBuffer) data);
           break;
         case INT32:

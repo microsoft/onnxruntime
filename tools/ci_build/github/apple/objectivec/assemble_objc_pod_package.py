@@ -47,7 +47,10 @@ all_objc_files = {
     ],
     "test_resource_files": [
         "objectivec/test/testdata/*.ort",
-        "onnxruntime/test/testdata/training_api/*",
+        "onnxruntime/test/testdata/training_api/*.onnx",
+        "onnxruntime/test/testdata/training_api/*.ckpt",
+        "onnxruntime/test/testdata/training_api/*.in",
+        "onnxruntime/test/testdata/training_api/*.out",
     ],
 }
 
@@ -72,7 +75,10 @@ training_only_objc_files = {
         "objectivec/test/ort_training_utils_test.mm",
     ],
     "test_resource_files": [
-        "onnxruntime/test/testdata/training_api/*",
+        "onnxruntime/test/testdata/training_api/*.onnx",
+        "onnxruntime/test/testdata/training_api/*.ckpt",
+        "onnxruntime/test/testdata/training_api/*.in",
+        "onnxruntime/test/testdata/training_api/*.out",
     ],
 }
 

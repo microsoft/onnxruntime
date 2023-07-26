@@ -37,6 +37,7 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
     CreateBinaryOpBuilder("Mul", op_registrations);
     CreateBinaryOpBuilder("Div", op_registrations);
     CreateBinaryOpBuilder("Pow", op_registrations);
+    CreateBinaryOpBuilder("PRelu", op_registrations);
   }
 
   {  // Ternary
@@ -96,12 +97,18 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
 
   {  // Logical
     CreateLogicalOpBuilder("Equal", op_registrations);
+    CreateLogicalOpBuilder("Greater", op_registrations);
+    CreateLogicalOpBuilder("Less", op_registrations);
   }
 
   {  // Normalization
     CreateNormalizationOpBuilder("GroupNormalization", op_registrations);
     CreateNormalizationOpBuilder("InstanceNormalization", op_registrations);
     CreateNormalizationOpBuilder("LayerNormalization", op_registrations);
+  }
+
+  {  // Pad
+    CreatePadOpBuilder("Pad", op_registrations);
   }
 
   {  // Pool
@@ -112,8 +119,16 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
   }
 
   {  // Reduction
+    CreateReductionOpBuilder("ReduceL1", op_registrations);
+    CreateReductionOpBuilder("ReduceL2", op_registrations);
+    CreateReductionOpBuilder("ReduceLogSum", op_registrations);
+    CreateReductionOpBuilder("ReduceLogSumExp", op_registrations);
     CreateReductionOpBuilder("ReduceMax", op_registrations);
     CreateReductionOpBuilder("ReduceMean", op_registrations);
+    CreateReductionOpBuilder("ReduceMin", op_registrations);
+    CreateReductionOpBuilder("ReduceProd", op_registrations);
+    CreateReductionOpBuilder("ReduceSum", op_registrations);
+    CreateReductionOpBuilder("ReduceSumSquare", op_registrations);
   }
 
   {  // Reshape
