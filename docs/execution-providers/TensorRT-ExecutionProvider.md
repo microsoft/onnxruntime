@@ -106,9 +106,8 @@ sess = ort.InferenceSession('model.onnx', providers=['TensorrtExecutionProvider'
 ```
 
 ## Configurations
-There are two ways to configure TensorRT settings, either by TensorRT execution provider options(recommended) or environment variables.
+There are two ways to configure TensorRT settings, either by **TensorRT Execution Provider Session Options(recommended)** or **Environment Variables** shown as below:
 
-There are one-to-one mappings between **TensorRT Execution Provider Session Options** and **Environment Variables** shown as below:
 
 | TensorRT EP Session Options           | Environment Variables                          | Type   |
 |:--------------------------------------|:-----------------------------------------------|:-------|
@@ -236,8 +235,7 @@ TensorRT configurations can be set by execution provider options. It's useful wh
 
 Besides, `device_id` can also be set by execution provider option.
 
-<details>
-  <summary> Click to expand C++ API example</summary>
+#### C++ API EXAMPLE
 
 ```c++
 
@@ -258,10 +256,7 @@ trt_options.trt_dump_subgraphs = 1;
 session_options.AppendExecutionProvider_TensorRT(trt_options);
 ```
 
-</details>
-
-<details>
-  <summary> Click to expand Python API example</summary>
+#### PYTHON API EXAMPLE
 
 ```python
 import onnxruntime as ort
@@ -287,8 +282,6 @@ providers = [
 sess_opt = ort.SessionOptions()
 sess = ort.InferenceSession(model_path, sess_options=sess_opt, providers=providers)
 ```
-
-</details>
 
 ### Environment Variables
 Following environment variables can be set for TensorRT execution provider.
@@ -349,44 +342,41 @@ Following environment variables can be set for TensorRT execution provider.
 
 * `ORT_TENSORRT_PROFILE_MIN_SHAPES`, `ORT_TENSORRT_PROFILE_MAX_SHAPES` and `ORT_TENSORRT_PROFILE_OPT_SHAPES` : Build with dynamic shapes using a profile with the min/max/opt shapes provided. The format of the profile shapes is "input_tensor_1:dim_1xdim_2x...,input_tensor_2:dim_3xdim_4x...,..." and these three flags should all be provided in order to enable explicit profile shapes feature. Check [Explicit shape range for dynamic shape input](#explicit-shape-range-for-dynamic-shape-input) and TRT doc [optimization profiles](https://docs.nvidia.com/deeplearning/tensorrt/developer-guide/index.html#opt_profiles) for more details.
 
-One can override default values by setting environment variables.
-<details>
-  <summary> Click to expand examples on Linux:</summary>
+One can override default values by setting environment variables. e.g. on Linux:
 
-    # Override default max workspace size to 2GB
-    export ORT_TENSORRT_MAX_WORKSPACE_SIZE=2147483648
+```bash
+# Override default max workspace size to 2GB
+export ORT_TENSORRT_MAX_WORKSPACE_SIZE=2147483648
 
-    # Override default maximum number of iterations to 10 
-    export ORT_TENSORRT_MAX_PARTITION_ITERATIONS=10
+# Override default maximum number of iterations to 10 
+export ORT_TENSORRT_MAX_PARTITION_ITERATIONS=10
 
-    # Override default minimum subgraph node size to 5
-    export ORT_TENSORRT_MIN_SUBGRAPH_SIZE=5
+# Override default minimum subgraph node size to 5
+export ORT_TENSORRT_MIN_SUBGRAPH_SIZE=5
 
-    # Enable FP16 mode in TensorRT
-    export ORT_TENSORRT_FP16_ENABLE=1
+# Enable FP16 mode in TensorRT
+export ORT_TENSORRT_FP16_ENABLE=1
 
-    # Enable INT8 mode in TensorRT
-    export ORT_TENSORRT_INT8_ENABLE=1
+# Enable INT8 mode in TensorRT
+export ORT_TENSORRT_INT8_ENABLE=1
 
-    # Use native TensorRT calibration table
-    export ORT_TENSORRT_INT8_USE_NATIVE_CALIBRATION_TABLE=1
+# Use native TensorRT calibration table
+export ORT_TENSORRT_INT8_USE_NATIVE_CALIBRATION_TABLE=1
 
-    # Enable TensorRT engine caching
-    export ORT_TENSORRT_ENGINE_CACHE_ENABLE=1
-    # Please Note warning above. This feature is experimental. 
-    # Engine cache files must be invalidated if there are any changes to the model, ORT version, TensorRT version or if the underlying hardware changes. Engine files are not portable across devices.
+# Enable TensorRT engine caching
+export ORT_TENSORRT_ENGINE_CACHE_ENABLE=1
+# Please Note warning above. This feature is experimental. 
+# Engine cache files must be invalidated if there are any changes to the model, ORT version, TensorRT version or if the underlying hardware changes. Engine files are not portable across devices.
 
-    # Specify TensorRT cache path
-    export ORT_TENSORRT_CACHE_PATH="/path/to/cache"
+# Specify TensorRT cache path
+export ORT_TENSORRT_CACHE_PATH="/path/to/cache"
 
-    # Dump out subgraphs to run on TensorRT
-    export ORT_TENSORRT_DUMP_SUBGRAPHS=1
+# Dump out subgraphs to run on TensorRT
+export ORT_TENSORRT_DUMP_SUBGRAPHS=1
 
-    # Enable context memory sharing between TensorRT subgraphs. Default 0 = false, nonzero = true
-    export ORT_TENSORRT_CONTEXT_MEMORY_SHARING_ENABLE=1
-
-</details>
-
+# Enable context memory sharing between TensorRT subgraphs. Default 0 = false, nonzero = true
+export ORT_TENSORRT_CONTEXT_MEMORY_SHARING_ENABLE=1
+```
 
 ## Performance Tuning
 For performance tuning, please see guidance on this page: [ONNX Runtime Perf Tuning](./../performance/tune-performance/index.md)
