@@ -180,25 +180,6 @@ void addIoBindingMethods(pybind11::module& m) {
           ++pos;
         }
         return rfetch;
-      })
-      .def("copy_output_to_cpu", [](const SessionIOBinding* io_binding, int index) -> py::object {
-        const std::vector<OrtValue>& outputs = io_binding->Get()->GetOutputs();
-        if (index < 0 || index >= outputs.size()) {
-          throw std::runtime_error("Index out of bounds");
-        }
-
-        size_t pos = 0;
-        const auto& dtm = io_binding->GetInferenceSession()->GetDataTransferManager();
-        const auto& ort_value = outputs[index];
-        if (ort_value.IsTensor()) {
-          return AddTensorAsPyObj(ort_value, &dtm, nullptr);
-        }
-
-        if (ort_value.IsSparseTensor()) {
-          return GetPyObjectFromSparseTensor(pos, ort_value, &dtm);
-        }
-
-        return AddNonTensorAsPyObj(ort_value, &dtm, nullptr);
       });
 }
 
