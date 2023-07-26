@@ -2243,31 +2243,30 @@ This version of the operator has been available since version 1 of the 'com.micr
 #### Version
 
 This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
-This function computes the inverse of the one-dimensional n-point RFFT computed in 'com.microsoft.rfft'.
 
 #### Attributes
 
 <dl>
 <dt><tt>normalized</tt> : int</dt>
-<dd>must be 0, normalization currently not supported</dd>
+<dd></dd>
 <dt><tt>onesided</tt> : int</dt>
-<dd>must be 1, only one sided FFTs supported</dd>
+<dd></dd>
 <dt><tt>signal_ndim</tt> : int (required)</dt>
-<dd>number of dimensions comprising the signal</dd>
+<dd></dd>
 </dl>
 
 #### Inputs
 
 <dl>
 <dt><tt>X</tt> : T</dt>
-<dd>input tensor with size (n//2 + 1) in the signal dim and 2 in the last dimension for the real and complex parts</dd>
+<dd>input tensor</dd>
 </dl>
 
 #### Outputs
 
 <dl>
 <dt><tt>Y</tt> : T</dt>
-<dd>output tensor with size n in the signal dim</dd>
+<dd>output tensor</dd>
 </dl>
 
 #### Type Constraints
@@ -4396,31 +4395,30 @@ This version of the operator has been available since version 1 of the 'com.micr
 #### Version
 
 This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
-This function computes the n-point one dimensional Fourier transform for a real-valued input where n is an even number.
 
 #### Attributes
 
 <dl>
 <dt><tt>normalized</tt> : int</dt>
-<dd>must be 0, normalization currently not supported</dd>
+<dd></dd>
 <dt><tt>onesided</tt> : int</dt>
-<dd>must be 1, only one sided FFTs supported</dd>
+<dd></dd>
 <dt><tt>signal_ndim</tt> : int</dt>
-<dd>number of dimensions comprising the signal, collected in reverse order (e.g. 1 = last dimension is the signal)</dd>
+<dd></dd>
 </dl>
 
 #### Inputs
 
 <dl>
 <dt><tt>X</tt> : T</dt>
-<dd>input tensor of size n in the signal dim</dd>
+<dd>input tensor</dd>
 </dl>
 
 #### Outputs
 
 <dl>
 <dt><tt>Y</tt> : T</dt>
-<dd>output tensor of size (n//2 + 1) in the signal dim and 2 in the last dimension for the real and complex parts</dd>
+<dd>output tensor</dd>
 </dl>
 
 #### Type Constraints
