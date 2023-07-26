@@ -185,7 +185,6 @@ ONNX_OPERATOR_KERNEL_EX(If,
                             .TypeConstraint("V", DataTypeImpl::AllFixedSizeTensorTypes()),
                         If);
 
-// opset-13 supports sequence type for If's subgraph outputs
 ONNX_OPERATOR_KERNEL_EX(If,
                         kOnnxDomain,
                         13,
@@ -193,10 +192,9 @@ ONNX_OPERATOR_KERNEL_EX(If,
                         (*KernelDefBuilder::Create())
                             .InputMemoryType(OrtMemTypeCPUInput, 0)  // 'cond' needs to be on CPU
                             .TypeConstraint("B", DataTypeImpl::GetTensorType<bool>())
-                            .TypeConstraint("V", DataTypeImpl::AllTensorAndSequenceTensorTypes()),
+                            .TypeConstraint("V", DataTypeImpl::AllTensorTypes()),
                         If);
 
-// opset-19 supports float8
 ONNX_OPERATOR_KERNEL_EX(If,
                         kOnnxDomain,
                         19,
@@ -204,7 +202,7 @@ ONNX_OPERATOR_KERNEL_EX(If,
                         (*KernelDefBuilder::Create())
                             .InputMemoryType(OrtMemTypeCPUInput, 0)  // 'cond' needs to be on CPU
                             .TypeConstraint("B", DataTypeImpl::GetTensorType<bool>())
-                            .TypeConstraint("V", DataTypeImpl::AllTensorAndSequenceTensorTypesIRv9()),
+                            .TypeConstraint("V", DataTypeImpl::AllTensorTypesIRv9()),
                         If);
 }
 
