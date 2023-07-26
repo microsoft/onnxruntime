@@ -4406,7 +4406,7 @@ This function computes the n-point one dimensional Fourier transform for a real-
 <dt><tt>onesided</tt> : int</dt>
 <dd>must be 1, only one sided FFTs supported</dd>
 <dt><tt>signal_ndim</tt> : int</dt>
-<dd>number of dimensions comprising the signal, collected in reverse order (e.g. 2 = last two dimensions are the signal)</dd>
+<dd>number of dimensions comprising the signal, collected in reverse order (e.g. 1 = last dimension is the signal)</dd>
 </dl>
 
 #### Inputs
