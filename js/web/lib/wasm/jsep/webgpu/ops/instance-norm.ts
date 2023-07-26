@@ -96,7 +96,9 @@ const createInstanceNormNHWCProgramInfo =
         const xShape = inputs[0].dims;
         const outputShape = xShape;
         const outputSize = ShapeUtil.size(outputShape);
-        const [N, H, W, C] = xShape;
+        const N = xShape[0];
+        const C = xShape[xShape.length - 1];
+        const H = ShapeUtil.sizeFromDimension(xShape, 1) / C;
 
         const dataType = tensorTypeToWsglType(inputs[0].dataType);
 
@@ -104,10 +106,9 @@ const createInstanceNormNHWCProgramInfo =
         const getShaderSource = (shaderHelper: ShaderHelper) => `
   const N: u32 = ${N};
   const H: u32 = ${H};
-  const W: u32 = ${W};
   const C: u32 = ${C};
-  const normSizeTyped: ${dataType} = ${W * H};
-  const imageSize: u32 = ${H * W * C};
+  const normSizeTyped: ${dataType} = ${H};
+  const imageSize: u32 = ${H * C};
   const epsilon: f32 = ${attributes.epsilon};
 
   @group(0) @binding(0) var<storage, read> x : array<${dataType}>;
@@ -124,20 +125,20 @@ const createInstanceNormNHWCProgramInfo =
     if (offset >= ${outputSize}) { return; }
     var mean: ${dataType} = 0;
 
-    for (var i: u32 = 0u; i < W * H; i++) {
+    for (var i: u32 = 0u; i < H; i++) {
         mean = mean + x[offset + i * C + currentChannelNumber];
     }
     mean = mean / normSizeTyped;
 
     var squaredNorm: ${dataType} = 0;
-    for (var i: u32 = 0u; i < W * H; i++) {
+    for (var i: u32 = 0u; i < H; i++) {
         let deviation: f32 = x[offset + i * C + currentChannelNumber] - mean;
         squaredNorm = squaredNorm + deviation * deviation;
     }
     let invStdDev = 1 / sqrt(squaredNorm / normSizeTyped + epsilon);
     let channelScale = invStdDev * scale[currentChannelNumber];
     let channelShift = bias[currentChannelNumber] - mean * channelScale;
-    for (var i: u32 = 0u; i < W * H; i++) {
+    for (var i: u32 = 0u; i < H; i++) {
         let currentOffset = offset + i * C + currentChannelNumber;
         output[currentOffset] = x[currentOffset] * channelScale + channelShift;
     }
