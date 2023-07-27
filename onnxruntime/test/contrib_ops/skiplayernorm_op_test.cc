@@ -807,8 +807,6 @@ TEST(SkipLayerNormTest, SkipLayerNormBatch2_DiffDataTypes) {
           false,
           false,
           false,
-          false,
-          true,
           true);
 }
 
