@@ -17,16 +17,16 @@ namespace js {
           .TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),                       \
       ArgMinMaxOp<float>);
 
-#define REGISTER_ARGMAX_ELEMENTWISE_KERNEL(ArgMinMaxOp, sinceVersion)   \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                        \
-      ArgMinMaxOp,                                                      \
-      kOnnxDomain,                                                      \
-      sinceVersion,                                                     \
-      float,                                                            \
-      kJsExecutionProvider,                                             \
-      (*KernelDefBuilder::Create())                                     \
-          .TypeConstraint("T", DataTypeImpl::GetTensorType<float>())    \
-          .InputMemoryType(OrtMemTypeCPU, 1),                           \
+#define REGISTER_ARGMAX_ELEMENTWISE_KERNEL(ArgMinMaxOp, sinceVersion) \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                      \
+      ArgMinMaxOp,                                                    \
+      kOnnxDomain,                                                    \
+      sinceVersion,                                                   \
+      float,                                                          \
+      kJsExecutionProvider,                                           \
+      (*KernelDefBuilder::Create())                                   \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<float>())  \
+          .InputMemoryType(OrtMemTypeCPU, 1),                         \
       ArgMinMaxOp<float>);
 
 REGISTER_ARGMAX_ELEMENTWISE_VERSIONED_KERNEL(ArgMax, 1, 10);
