@@ -315,7 +315,6 @@ TEST_F(QnnHTPBackendTests, UnaryOp_Ceil) {
 // Run QDQ model on HTP twice
 // 1st run will generate the Qnn context cache binary file
 // 2nd run will load and run from Qnn context cache binary file
-#if 0
 TEST_F(QnnHTPBackendTests, ContextBinaryCacheTest) {
   ProviderOptions provider_options;
 #if defined(_WIN32)
@@ -328,27 +327,28 @@ TEST_F(QnnHTPBackendTests, ContextBinaryCacheTest) {
   provider_options["qnn_context_cache_path"] = context_binary_file;
 
   const TestInputDef<float> input_def({1, 2, 3}, false, -10.0f, 10.0f);
-  constexpr float atan_min = -1.48f;
-  constexpr float atan_max = 1.48f;
-  const QuantParams<uint8_t> output_qparams = QuantParams<uint8_t>::Compute(atan_min, atan_max);
+  const std::string op_type = "Atan";
 
   // Runs model with DQ-> Atan-> Q and compares the outputs of the CPU and QNN EPs.
   // 1st run will generate the Qnn context cache binary file
-  RunQnnModelTest(BuildQDQSingleInputOpTestCase<uint8_t>(input_def, "Atan", {}, output_qparams),
-                  provider_options,
-                  14,
-                  ExpectedEPNodeAssignment::All);
+  TestQDQModelAccuracy(BuildUnaryOpTestCase<float>(op_type, input_def, {}),
+                       BuildQDQUnaryOpTestCase<uint8_t>(input_def, op_type, {}),
+                       provider_options,
+                       14,
+                       ExpectedEPNodeAssignment::All,
+                       1e-5f);
 
   // Make sure the Qnn context cache binary file is generated
   EXPECT_TRUE(std::filesystem::exists(context_binary_file.c_str()));
 
   // 2nd run will load and run from Qnn context cache binary file
-  RunQnnModelTest(BuildQDQSingleInputOpTestCase<uint8_t>(input_def, "Atan", {}, output_qparams),
-                  provider_options,
-                  14,
-                  ExpectedEPNodeAssignment::All);
+  TestQDQModelAccuracy(BuildUnaryOpTestCase<float>(op_type, input_def, {}),
+                       BuildQDQUnaryOpTestCase<uint8_t>(input_def, op_type, {}),
+                       provider_options,
+                       14,
+                       ExpectedEPNodeAssignment::All,
+                       1e-5f);
 }
-#endif
 
 TEST_F(QnnHTPBackendTests, QuantAccuracyTest) {
   ProviderOptions provider_options;
