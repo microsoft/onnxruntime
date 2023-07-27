@@ -216,7 +216,7 @@ Status GradientGraphBuilder::CheckNodeArgsReachable() const {
   return Status::OK();
 }
 
-void GradientGraphBuilder::GetStopGradientEdges(const Node& node, std::unordered_set<size_t>& stop_edges) const {
+void GradientGraphBuilder::GetStopGradientEdges(const Node& node, std::unordered_set<size_t>& stop_edges) {
   const auto& op_type = node.OpType();
 
   if (op_type == "ATen") {
