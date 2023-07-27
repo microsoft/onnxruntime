@@ -62,17 +62,6 @@ void RunAndVerifyOutputsWithEP(const std::string& model_data,
                                const NameMLValMap& feeds,
                                const EPVerificationParams& params = EPVerificationParams());
 
-// Runs a model with CPU EP to get the expected output, then runs a potentially different model with the
-// EP under test. The outputs are compared. Requires that at least one node is assigned to the EP under test.
-// This can be used to compare a quantized (Q/DQ model) with a float32 model (as an example).
-void RunAndVerifyOutputsWithEP(const std::string& cpu_ep_model_data,
-                               const std::string& ep_model_data,
-                               const char* log_id,
-                               std::unique_ptr<IExecutionProvider> execution_provider,
-                               const NameMLValMap& cpu_ep_feeds,
-                               const NameMLValMap& ep_feeds,
-                               const EPVerificationParams& params = EPVerificationParams());
-
 // Check equality of two shapes. Can successfully complete only if rank are equal and all dimensions are equal.
 // The way we define dimension equality is that:
 // 1. if both dimensions are symbolic, they are equal if their names are equal.

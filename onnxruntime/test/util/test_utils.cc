@@ -98,22 +98,12 @@ void RunAndVerifyOutputsWithEP(const ORTCHAR_T* model_path, const char* log_id,
   // read raw data from model provided by the model_path
   std::ifstream stream(model_path, std::ios::in | std::ios::binary);
   std::string model_data((std::istreambuf_iterator<char>(stream)), std::istreambuf_iterator<char>());
-  RunAndVerifyOutputsWithEP(model_data, model_data, log_id, std::move(execution_provider), feeds, feeds, params);
+  RunAndVerifyOutputsWithEP(model_data, log_id, std::move(execution_provider), feeds, params);
 }
 
 void RunAndVerifyOutputsWithEP(const std::string& model_data, const char* log_id,
                                std::unique_ptr<IExecutionProvider> execution_provider,
                                const NameMLValMap& feeds,
-                               const EPVerificationParams& params) {
-  RunAndVerifyOutputsWithEP(model_data, model_data, log_id, std::move(execution_provider), feeds, feeds, params);
-}
-
-void RunAndVerifyOutputsWithEP(const std::string& cpu_ep_model_data,
-                               const std::string& ep_model_data,
-                               const char* log_id,
-                               std::unique_ptr<IExecutionProvider> execution_provider,
-                               const NameMLValMap& cpu_ep_feeds,
-                               const NameMLValMap& ep_feeds,
                                const EPVerificationParams& params) {
   SessionOptions so;
   so.session_logid = log_id;
@@ -124,7 +114,7 @@ void RunAndVerifyOutputsWithEP(const std::string& cpu_ep_model_data,
   // get expected output from CPU EP
   //
   InferenceSessionWrapper session_object{so, GetEnvironment()};
-  ASSERT_STATUS_OK(session_object.Load(cpu_ep_model_data.data(), static_cast<int>(cpu_ep_model_data.size())));
+  ASSERT_STATUS_OK(session_object.Load(model_data.data(), static_cast<int>(model_data.size())));
   ASSERT_STATUS_OK(session_object.Initialize());
 
   const auto& graph = session_object.GetGraph();
@@ -140,7 +130,7 @@ void RunAndVerifyOutputsWithEP(const std::string& cpu_ep_model_data,
   }
 
   std::vector<OrtValue> expected_fetches;
-  ASSERT_STATUS_OK(session_object.Run(run_options, cpu_ep_feeds, output_names, &expected_fetches));
+  ASSERT_STATUS_OK(session_object.Run(run_options, feeds, output_names, &expected_fetches));
 
   auto provider_type = execution_provider->Type();  // copy string so the std::move doesn't affect us
 
@@ -149,7 +139,7 @@ void RunAndVerifyOutputsWithEP(const std::string& cpu_ep_model_data,
   //
   InferenceSessionWrapper session_object2{so, GetEnvironment()};
   ASSERT_STATUS_OK(session_object2.RegisterExecutionProvider(std::move(execution_provider)));
-  ASSERT_STATUS_OK(session_object2.Load(ep_model_data.data(), static_cast<int>(ep_model_data.size())));
+  ASSERT_STATUS_OK(session_object2.Load(model_data.data(), static_cast<int>(model_data.size())));
   ASSERT_STATUS_OK(session_object2.Initialize());
 
   // make sure that some nodes are assigned to the EP, otherwise this test is pointless...
@@ -167,7 +157,7 @@ void RunAndVerifyOutputsWithEP(const std::string& cpu_ep_model_data,
 
   // Run with EP and verify the result
   std::vector<OrtValue> fetches;
-  ASSERT_STATUS_OK(session_object2.Run(run_options, ep_feeds, output_names, &fetches));
+  ASSERT_STATUS_OK(session_object2.Run(run_options, feeds, output_names, &fetches));
   VerifyOutputs(output_names, expected_fetches, fetches, params);
 
   if (params.graph_verifier) {

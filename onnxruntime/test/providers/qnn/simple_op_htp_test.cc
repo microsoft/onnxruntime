@@ -145,7 +145,6 @@ static void RunQDQBinaryOpTest(const std::string& op_type, const TestInputDef<fl
   provider_options["backend_path"] = "libQnnHtp.so";
 #endif
 
-  // Runs model with a Q/DQ binary op and compares the outputs of the CPU and QNN EPs.
   TestQDQModelAccuracy(BuildBinaryOpTestCase<float>(op_type, input0_def, input1_def),
                        BuildQDQBinaryOpTestCase<InputQType>(op_type, input0_def, input1_def),
                        provider_options,

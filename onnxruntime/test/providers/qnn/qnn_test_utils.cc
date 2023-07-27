@@ -43,14 +43,6 @@ void RunQnnModelTest(const GetTestModelFn& build_test_case, const ProviderOption
                             helper.feeds_, verification_params);
 }
 
-static void CreateSerializedModel(onnxruntime::Model& model, const GetTestModelFn& model_fn,
-                                  ModelTestBuilder& helper, std::string& model_data) {
-  model_fn(helper);
-  helper.SetGraphOutputs();
-  ASSERT_STATUS_OK(model.MainGraph().Resolve());
-  model.ToProto().SerializeToString(&model_data);
-}
-
 void InferenceModel(const std::string& model_data, const char* log_id,
                     std::unique_ptr<IExecutionProvider> execution_provider,
                     ExpectedEPNodeAssignment expected_ep_assignment, const NameMLValMap& feeds,
@@ -95,40 +87,6 @@ void InferenceModel(const std::string& model_data, const char* log_id,
   }
 
   ASSERT_STATUS_OK(session_object.Run(run_options, feeds, output_names, &output_vals));
-}
-
-void RunQnnQDQModelTest(const GetTestModelFn& cpu_model_fn, const GetTestModelFn& qnn_model_fn,
-                        const ProviderOptions& provider_options,
-                        int opset_version, ExpectedEPNodeAssignment expected_ep_assignment,
-                        float fp32_abs_err, logging::Severity log_severity) {
-  EPVerificationParams verification_params;
-  verification_params.ep_node_assignment = expected_ep_assignment;
-  verification_params.fp32_abs_err = fp32_abs_err;
-  // Add kMSDomain to cover contrib op like Gelu
-  const std::unordered_map<std::string, int> domain_to_version = {{"", opset_version}, {kMSDomain, 1}};
-
-  auto& logging_manager = DefaultLoggingManager();
-  logging_manager.SetDefaultLoggerSeverity(log_severity);
-
-  // Create CPU EP model and serialize it to a string.
-  onnxruntime::Model cpu_model("CPU_EP_TestModel", false, ModelMetaData(), PathString(),
-                               IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {},
-                               logging_manager.DefaultLogger());
-  ModelTestBuilder cpu_helper(cpu_model.MainGraph());
-  std::string cpu_model_data;
-  CreateSerializedModel(cpu_model, cpu_model_fn, cpu_helper, cpu_model_data);
-
-  // Create QNN QDQ EP model and serialize it to a string.
-  onnxruntime::Model qnn_model("QNN_EP_TestModel", false, ModelMetaData(), PathString(),
-                               IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {},
-                               logging_manager.DefaultLogger());
-  ModelTestBuilder qnn_helper(qnn_model.MainGraph());
-  std::string qnn_model_data;
-  CreateSerializedModel(qnn_model, qnn_model_fn, qnn_helper, qnn_model_data);
-
-  RunAndVerifyOutputsWithEP(cpu_model_data, qnn_model_data, "QNN_EP_TestLogID",
-                            QnnExecutionProviderWithOptions(provider_options),
-                            cpu_helper.feeds_, qnn_helper.feeds_, verification_params);
 }
 
 // Mock IKernelLookup class passed to QNN EP's GetCapability() function in order to

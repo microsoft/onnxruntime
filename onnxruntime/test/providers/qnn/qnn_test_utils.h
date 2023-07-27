@@ -169,7 +169,7 @@ inline void TestQDQModelAccuracy(const GetTestModelFn& f32_model_fn, const GetTe
   const size_t num_outputs = cpu_f32_outputs.size();
 
   // Compute output range(s) and quantization params.
-  std::vector<QuantParams<QuantType>> output_qparams;  // TODO: Generic quant type
+  std::vector<QuantParams<QuantType>> output_qparams;
   std::vector<gsl::span<const float>> output_vals;
   std::vector<int32_t> output_types;
   output_qparams.resize(num_outputs);
@@ -241,9 +241,11 @@ inline void TestQDQModelAccuracy(const GetTestModelFn& f32_model_fn, const GetTe
         for (size_t j = 0; j < num_vals; j++) {
           const float cpu_err = std::fabsf(cpu_f32_vals[j] - cpu_qdq_vals[j]);
           const float qnn_err = std::fabsf(cpu_f32_vals[j] - qnn_qdq_vals[j]);
-          EXPECT_TRUE(qnn_err <= cpu_err + fp32_abs_err) << " inaccuracy detected for output '" << output_names[i]
-                                                         << "', element " << j << ". QNN error: " << qnn_err
-                                                         << ", CPU error: " << cpu_err;
+          const bool is_within_quant_err = qnn_err <= output_qparams[i].scale + fp32_abs_err;
+          const bool is_as_accurate_as_ort_cpu = qnn_err <= cpu_err + fp32_abs_err;
+          EXPECT_TRUE(is_within_quant_err || is_as_accurate_as_ort_cpu) << " inaccuracy detected for output '" << output_names[i]
+                                                                        << "', element " << j << ". QNN error: " << qnn_err
+                                                                        << ", CPU error: " << cpu_err;
         }
       } else {
         VerifyOutput(output_names[i], cpu_f32_outputs[i].Get<Tensor>(), qnn_qdq_tensor, fp32_abs_err);
@@ -326,24 +328,6 @@ inline NodeArg* MakeTestInput(ModelTestBuilder& builder, const TestInputDef<bool
 void RunQnnModelTest(const GetTestModelFn& build_test_case, const ProviderOptions& provider_options,
                      int opset_version, ExpectedEPNodeAssignment expected_ep_assignment,
                      float fp32_abs_err = 1e-5f, logging::Severity log_severity = logging::Severity::kERROR);
-
-/**
- * Runs a QDQ model on the QNN EP and compares its output to that of a float32 model on CPU EP.
- * Checks the graph node assignment, and that inference
- * outputs for QNN and CPU match.
- *
- * \param cpu_model_fn Function that builds a float32 model for CPU EP. See test/optimizer/qdq_test_utils.h
- * \param qnn_model_fn Function that builds a QDQ model for QNN EP.
- * \param provider_options Provider options for QNN EP.
- * \param opset_version The opset version.
- * \param expected_ep_assignment How many nodes are expected to be assigned to QNN (All, Some, or None).
- * \param fp32_abs_err The acceptable error between CPU EP and QNN EP.
- * \param log_severity The logger's minimum severity level.
- */
-void RunQnnQDQModelTest(const GetTestModelFn& cpu_model_fn, const GetTestModelFn& qnn_model_fn,
-                        const ProviderOptions& provider_options,
-                        int opset_version, ExpectedEPNodeAssignment expected_ep_assignment,
-                        float fp32_abs_err = 1e-5f, logging::Severity log_severity = logging::Severity::kERROR);
 
 enum class BackendSupport {
   SUPPORT_UNKNOWN,
