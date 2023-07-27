@@ -11,6 +11,7 @@ import torch
 
 from onnxruntime.capi import _pybind_state as C
 from onnxruntime.capi.onnxruntime_inference_collection import get_ort_device_type
+from onnxruntime.training.utils.torch_io_helper import unflatten_from_data_and_schema
 
 from . import _are_deterministic_algorithms_enabled, _io, _use_deterministic_algorithms, _utils
 from ._execution_agent import TrainingAgent
@@ -322,9 +323,9 @@ class TrainingManager(GraphExecutionManager):
                 self._runtime_inspector,
             )
 
-            outputs = _io.unflatten_user_output(
-                self._module_output_schema,
+            outputs = unflatten_from_data_and_schema(
                 self._forward_class.apply(*prepared_input_list),
+                self._module_output_schema,
             )
 
             if (

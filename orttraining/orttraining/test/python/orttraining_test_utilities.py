@@ -1,8 +1,9 @@
+from collections import abc
+
 import pytest
 import torch
 
-from collections import abc
-from onnxruntime.training.utils.io import flatten_data_with_schema, unflatten_from_data_and_schema, _TensorStub
+from onnxruntime.training.utils.io import _TensorStub, flatten_data_with_schema, unflatten_from_data_and_schema
 
 
 @pytest.mark.parametrize(

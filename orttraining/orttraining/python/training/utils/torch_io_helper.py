@@ -4,12 +4,11 @@
 # --------------------------------------------------------------------------
 
 import copy
+import warnings
 from collections import abc
-from logging import Logger
-from typing import Dict, Iterator, List, Mapping, Optional, Sequence, Tuple, Union
+from typing import List, Mapping, Optional, Sequence, Tuple, Union
 
 import torch
-import warnings
 
 
 def warn_of_constant_inputs(data):
@@ -19,12 +18,12 @@ def warn_of_constant_inputs(data):
     )
 
 
-class _PrimitiveType:
+class PrimitiveType:
     _primitive_types = {int, bool, float}  # noqa: RUF012
 
     @staticmethod
     def is_primitive_type(value):
-        return type(value) in _PrimitiveType._primitive_types
+        return type(value) in PrimitiveType._primitive_types
 
     @staticmethod
     def get_tensor(value, device) -> torch.Tensor:
@@ -72,19 +71,19 @@ class _TensorStub:
     def __repr__(self) -> str:
         result = "_TensorStub("
 
-        l = []
+        list_of_str = []
         if self.tensor_idx is not None:
-            l.append(f"tensor_idx={self.tensor_idx}")
+            list_of_str.append(f"tensor_idx={self.tensor_idx}")
         if self.name is not None:
-            l.append(f"name={self.name}")
+            list_of_str.append(f"name={self.name}")
         if self.dtype is not None:
-            l.append(f"dtype={self.dtype}")
+            list_of_str.append(f"dtype={self.dtype}")
         if self.shape is not None:
-            l.append(f"shape={self.shape}")
+            list_of_str.append(f"shape={self.shape}")
         if self.shape_dims is not None:
-            l.append(f"shape_dims={self.shape_dims}")
+            list_of_str.append(f"shape_dims={self.shape_dims}")
 
-        result += ",".join(l) + ")"
+        result += ",".join(list_of_str) + ")"
         return result
 
     def __str__(self) -> str:
@@ -115,6 +114,11 @@ ORTModelInputOutputSchemaType = Union[
     Sequence["ORTModelInputOutputSchemaType"],
     Mapping[str, "ORTModelInputOutputSchemaType"],
 ]
+
+
+def get_schema_for_flatten_data(data, constant_as_tensor=False) -> ORTModelInputOutputSchemaType:
+    schema, _ = flatten_data_with_schema(data, constant_as_tensor=constant_as_tensor, device=torch.device("cpu"))
+    return schema
 
 
 def flatten_data_with_schema(
@@ -171,13 +175,13 @@ def flatten_data_with_schema(
         elif isinstance(data, str):
             warn_of_constant_inputs(data)
             return data
-        elif _PrimitiveType.is_primitive_type(data):
+        elif PrimitiveType.is_primitive_type(data):
             warn_of_constant_inputs(data)
             if constant_as_tensor:
                 tensor_idx[0] += 1
-                flatten_tensor_data.append(_PrimitiveType.get_tensor(data, device))
+                flatten_tensor_data.append(PrimitiveType.get_tensor(data, device))
                 return _TensorStub(
-                    tensor_idx[0], dtype=_PrimitiveType.get_primitive_dtype(data), shape_dims=0, name=prefix_name
+                    tensor_idx[0], dtype=PrimitiveType.get_primitive_dtype(data), shape_dims=0, name=prefix_name
                 )
             return data
         # Depth first traversal to iterate over the data to replace every tensor with a stub
@@ -231,7 +235,7 @@ def unflatten_from_data_and_schema(data: List[torch.Tensor], schema: ORTModelInp
             return None
         elif isinstance(data_schema, str):
             return data_schema
-        elif _PrimitiveType.is_primitive_type(data_schema):
+        elif PrimitiveType.is_primitive_type(data_schema):
             return data_schema
         elif isinstance(data_schema, _TensorStub):
             return data[data_schema.tensor_idx]
