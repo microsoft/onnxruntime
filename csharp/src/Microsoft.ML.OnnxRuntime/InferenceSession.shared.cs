@@ -1049,12 +1049,12 @@ namespace Microsoft.ML.OnnxRuntime
         public static void CallbackWrapper(IntPtr userData, IntPtr[] outputs, uint numOutputs, IntPtr status)
         {
             Console.WriteLine("RunAsyncCallback triggerred");
-            var resourceHdl = GCHandle.Alloc(userData);
-            CallbackResource resource = resourceHdl.Target as CallbackResource;
+            var resourceHdl = (GCHandle)userData;
+            CallbackResource resource = (resourceHdl.Target as CallbackResource);
 
-            var outputValues = new DisposableList<OrtValue>();
+            var outputValues = new DisposableList<OrtValue>((int)numOutputs);
             for (uint ith = 0; ith < numOutputs; ++ith) {
-                outputValues.Add(new OrtValue(outputs[numOutputs]));
+                outputValues.Add(new OrtValue(outputs[ith]));
             }
 
             resource.userCallback(resource.userData, outputValues);
@@ -1107,7 +1107,19 @@ namespace Microsoft.ML.OnnxRuntime
                                                 Marshal.GetFunctionPointerForDelegate(callbackWrapper),
                                                 GCHandle.ToIntPtr(resource_hdl)
                                                 ));
-            resource_hdl.Free();
+
+            //NativeApiStatus.VerifySuccess(NativeMethods.OrtRun(
+            //                                    _nativeHandle,
+            //                                    options.Handle,
+            //                                    resource.inputNames,
+            //                                    resource.inputValues,
+            //                                    (UIntPtr)resource.inputNames.Length,
+            //                                    resource.outputNames,
+            //                                    (UIntPtr)resource.outputNames.Length,
+            //                                    resource.outputValues
+            //                                    ));
+
+            //resource_hdl.Free();
         }
 
         #endregion

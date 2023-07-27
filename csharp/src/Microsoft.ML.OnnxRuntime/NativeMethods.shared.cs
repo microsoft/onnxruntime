@@ -292,6 +292,7 @@ namespace Microsoft.ML.OnnxRuntime
         public IntPtr UpdateROCMProviderOptions;
         public IntPtr GetROCMProviderOptionsAsString;
         public IntPtr ReleaseROCMProviderOptions;
+        public IntPtr CreateAndRegisterAllocatorV2;
         public IntPtr RunAsync;
     }
 
@@ -511,6 +512,7 @@ namespace Microsoft.ML.OnnxRuntime
             OrtUpdateROCMProviderOptions = (DOrtUpdateROCMProviderOptions)Marshal.GetDelegateForFunctionPointer(api_.UpdateROCMProviderOptions, typeof(DOrtUpdateROCMProviderOptions));
             OrtGetROCMProviderOptionsAsString = (DOrtGetROCMProviderOptionsAsString)Marshal.GetDelegateForFunctionPointer(api_.GetROCMProviderOptionsAsString, typeof(DOrtGetROCMProviderOptionsAsString));
             OrtReleaseROCMProviderOptions = (DOrtReleaseROCMProviderOptions)Marshal.GetDelegateForFunctionPointer(api_.ReleaseROCMProviderOptions, typeof(DOrtReleaseROCMProviderOptions));
+            OrtCreateAndRegisterAllocatorV2g = (DCreateAndRegisterAllocatorV2g)Marshal.GetDelegateForFunctionPointer(api_.CreateAndRegisterAllocatorV2, typeof(DCreateAndRegisterAllocatorV2g));
             OrtRunAsync = (DOrtRunAsync)Marshal.GetDelegateForFunctionPointer(api_.RunAsync, typeof(DOrtRunAsync));
         }
 
@@ -917,6 +919,17 @@ namespace Microsoft.ML.OnnxRuntime
                                                 IntPtr /*(const OrtSession*)*/ session,
                                                 out UIntPtr /*(ulong* out)*/ startTime);
         public static DOrtSessionGetProfilingStartTimeNs OrtSessionGetProfilingStartTimeNs;
+
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate IntPtr DCreateAndRegisterAllocatorV2g(
+                                                IntPtr environment,
+                                                IntPtr provider_type,
+                                                IntPtr mem_info,
+                                                IntPtr arena_cfg,
+                                                IntPtr provider_options_keys,
+                                                IntPtr provider_options_values,
+                                                UIntPtr num_keys);
+        public static DCreateAndRegisterAllocatorV2g OrtCreateAndRegisterAllocatorV2g;
 
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
         public delegate IntPtr /*(ONNStatus*)*/ DOrtRunAsync(

@@ -2032,7 +2032,6 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             var evt = evtHdl.Target as ManualResetEvent;
             var valueOut = outputs[0];
             Assert.Equal(OnnxValueType.ONNX_TYPE_TENSOR, valueOut.GetTypeInfo().OnnxType);
-            Assert.Equal(Tensors.TensorElementType.Float16, valueOut.GetTypeInfo().MapTypeInfo.KeyType);
             var floatsOut = valueOut.Value.GetTensorDataAsSpan<Float16>();
             Assert.Equal(floatsOut[2], new Float16(16896));
             evt.Set();
