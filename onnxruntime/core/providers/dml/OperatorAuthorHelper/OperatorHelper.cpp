@@ -616,10 +616,7 @@ namespace OperatorHelper
         );
     }
 
-    std::pair<std::vector<uint32_t>, std::vector<uint32_t>> GetFusedMatMulSizesAndStrides(
-        gsl::span<const uint32_t> sizes,
-        int32_t transBatch,
-        int32_t transpose)
+    std::pair<std::vector<uint32_t>, std::vector<uint32_t>> GetFusedMatMulSizesAndStrides(gsl::span<const uint32_t> sizes, int32_t transBatch)
     {
         const uint32_t dimensionCount = gsl::narrow_cast<uint32_t>(sizes.size());
         std::vector<uint32_t> newStrides(dimensionCount);
@@ -633,9 +630,6 @@ namespace OperatorHelper
             stride *= sizes[i];
         }
 
-        // According to contrib ops shape inference
-        // https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/core/graph/contrib_ops/contrib_defs.cc#L215
-        // `transBatch` needs to be applied first and then `transpose`.
         if (transBatch)
         {
             ML_CHECK_VALID_ARGUMENT(dimensionCount > 2,
@@ -643,12 +637,6 @@ namespace OperatorHelper
 
             std::rotate(newSizes.begin(), newSizes.begin() + 1, newSizes.end() - 1);
             std::rotate(newStrides.begin(), newStrides.begin() + 1, newStrides.end() - 1);
-        }
-
-        if (transpose && dimensionCount > 1)
-        {
-            std::swap(newStrides[dimensionCount - 2], newStrides[dimensionCount - 1]);
-            std::swap(newSizes[dimensionCount - 2], newSizes[dimensionCount - 1]);
         }
 
         return std::make_pair(newSizes, newStrides);

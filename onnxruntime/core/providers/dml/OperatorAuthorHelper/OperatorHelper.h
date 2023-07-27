@@ -235,10 +235,7 @@ void FusedMatMulShapeMapping(
     std::vector<DimensionType>& inputStride1,
     std::vector<DimensionType>& outputShape);
 
-std::pair<std::vector<uint32_t>, std::vector<uint32_t>> GetFusedMatMulSizesAndStrides(
-    gsl::span<const uint32_t> sizes,
-    int32_t transBatch = 0,
-    int32_t transpose = 0);
+std::pair<std::vector<uint32_t>, std::vector<uint32_t>> GetFusedMatMulSizesAndStrides(gsl::span<const uint32_t> sizes, int32_t transBatch);
 
 class GetOutputShapeAsInputShapeHelper
 {
