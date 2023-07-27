@@ -17,9 +17,6 @@ const validateInputs = (inputs: readonly TensorView[]): void => {
   if (!inputs || inputs.length === 0 || inputs.length > 2) {
     throw new Error('ArgMinMaxOp op requires 1 or 2 inputs.');
   }
-  if (inputs.length === 2 && inputs[1].dims.length !== 1) {
-    throw new Error('Invalid axes input dims.');
-  }
   if (inputs[0].dataType !== DataType.float) {
     throw new Error('Invalid input type.');
   }
@@ -27,13 +24,11 @@ const validateInputs = (inputs: readonly TensorView[]): void => {
 
 export interface ArgMinMaxAttributes extends AttributeWithCacheKey {
   keepDims: boolean;
-  noopWithEmptyAxes: boolean;
-  axes: number[];
+  axes: number;
+  selectLastIndex: number;
 }
 
 type ArgMinMaxOp = (inputs: readonly TensorView[], axes: number[]) => string[];
-
-const noOp: ArgMinMaxOp = (): string[] => ['', '', 'value = _A[inputIdx];', ''];
 
 const createReduceProgramInfo =
     (metadata: ProgramMetadata, inputs: readonly TensorView[], attributes: ArgMinMaxAttributes,
@@ -43,7 +38,7 @@ const createReduceProgramInfo =
 
       const idxCopy: string[] = [];  // copy output indexes to input indexes
 
-      const axes = ShapeUtil.normalizeAxes(attributes.axes, inputs[0].dims.length);
+      const axes = ShapeUtil.normalizeAxes([attributes.axes], inputs[0].dims.length);
       const outputDimsLength = inputs[0].dims.length - (attributes.keepDims ? 0 : axes.length);
       const ops = argMinMaxOp(inputs, axes);
       const inputIndicesHelper = createIndicesHelper('input', inputShape);
@@ -51,14 +46,12 @@ const createReduceProgramInfo =
       let reduceOps = `
           let inputIdx = ${inputIndicesHelper.i2oExpression('inputIndices')};
           ${ops[2]};`;
-      const reduceOnAllAxes = !attributes.noopWithEmptyAxes && attributes.axes.length === 0;
       for (let k = 0; k < inputs[0].dims.length; k++) {
         // if this axis is reduced
-        if (reduceOnAllAxes || axes.indexOf(k) >= 0) {
+        if (axes.indexOf(k) >= 0) {
           if (attributes.keepDims) {
             outputShape.push(1);
-          }  // else { remove the axis from outputShape; }
-
+          }
           // loop over the d-th axis
           reduceOps = `for(var j${k}: u32 = 0; j${k} < ${inputs[0].dims[k]}; j${k}++) {
                             let lastIndex = j${k};
@@ -110,14 +103,9 @@ const createReduceProgramInfo =
     };
 
 const createArgMinMaxAttributesFromInputs =
-    (inputs: readonly TensorView[], attributes: ArgMinMaxAttributes): ArgMinMaxAttributes => {
-      const axes: number[] = [];
-      if (inputs[1].dims[0] > 0) {
-        inputs[1].getBigInt64Array().forEach(v => axes.push(Number(v)));
-      }
-      return createAttributeWithCacheKey(
-          {axes, keepDims: attributes.keepDims, noopWithEmptyAxes: attributes.noopWithEmptyAxes});
-    };
+    (inputs: readonly TensorView[], attributes: ArgMinMaxAttributes): ArgMinMaxAttributes =>
+        createAttributeWithCacheKey(
+            {axes: attributes.axes, keepDims: attributes.keepDims, selectLastIndex: attributes.selectLastIndex});
 
 const createReduceProgramInfoLoader =
     (inputs: readonly TensorView[], name: string, attributes: ArgMinMaxAttributes, reduceOp: ArgMinMaxOp):
@@ -126,12 +114,7 @@ const createReduceProgramInfoLoader =
               inputs.length === 1 ? attributes : createArgMinMaxAttributesFromInputs(inputs, attributes);
           const metadata:
               ProgramMetadata = {name, inputTypes: [GpuDataType.default], cacheHint: updatedAttributes.cacheKey};
-          return {
-            ...metadata,
-            get: () => createReduceProgramInfo(
-                metadata, [inputs[0]], updatedAttributes,
-                updatedAttributes.noopWithEmptyAxes && updatedAttributes.axes.length === 0 ? noOp : reduceOp)
-          };
+          return {...metadata, get: () => createReduceProgramInfo(metadata, [inputs[0]], updatedAttributes, reduceOp)};
         };
 
 
@@ -145,10 +128,8 @@ export const argMin = (context: ComputeContext, attributes: ArgMinMaxAttributes)
       }
     }
     return [
-      `${idxZero.join('\n')}`,
-      'var value = _A[inputIdx];\nvar bestIndex : i32 = 0;',
-      'if (_A[inputIdx] < value) {value = _A[inputIdx]; bestIndex = i32(lastIndex);} ',
-      ''
+      `${idxZero.join('\n')}`, 'var value = _A[inputIdx];\nvar bestIndex : i32 = 0;',
+      'if (_A[inputIdx] < value) {value = _A[inputIdx]; bestIndex = i32(lastIndex);} ', ''
     ];
   };
   context.compute(createReduceProgramInfoLoader(context.inputs, 'ArgMin', attributes, argMinMaxOp), {inputs: [0]});
@@ -164,10 +145,8 @@ export const argMax = (context: ComputeContext, attributes: ArgMinMaxAttributes)
       }
     }
     return [
-      `${idxZero.join('\n')}`,
-      'var value = _A[inputIdx];\nvar bestIndex : i32 = 0;',
-      'if (_A[inputIdx] > value) {value = _A[inputIdx]; bestIndex = i32(lastIndex);} ',
-      ''
+      `${idxZero.join('\n')}`, 'var value = _A[inputIdx];\nvar bestIndex : i32 = 0;',
+      'if (_A[inputIdx] > value) {value = _A[inputIdx]; bestIndex = i32(lastIndex);} ', ''
     ];
   };
   context.compute(createReduceProgramInfoLoader(context.inputs, 'argMax', attributes, argMinMaxOp), {inputs: [0]});
