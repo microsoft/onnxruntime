@@ -133,41 +133,41 @@ static void RunPackedMultiHeadAttentionTest(
     int token_count,
     AttentionKernelType kernel_type,
     const std::vector<float>& relative_position_bias_data = {}) {
-    if (kernel_type == AttentionKernelType::AttentionKernel_TrtFusedAttention){
-      ScopedEnvironmentVariables scoped_env_vars{
-      EnvVarMap{
-          {onnxruntime::contrib::attention::kDisableTrtFlashAttention, "0"},
-          {onnxruntime::contrib::attention::kDisableFusedSelfAttention, "0"},
-          {onnxruntime::contrib::attention::kDisableFusedCrossAttention, "1"},
-          {onnxruntime::contrib::attention::kDisableMemoryEfficientAttention, "1"}}};
+  if (kernel_type == AttentionKernelType::AttentionKernel_TrtFusedAttention) {
+    ScopedEnvironmentVariables scoped_env_vars{
+        EnvVarMap{
+            {onnxruntime::contrib::attention::kDisableTrtFlashAttention, "0"},
+            {onnxruntime::contrib::attention::kDisableFusedSelfAttention, "0"},
+            {onnxruntime::contrib::attention::kDisableFusedCrossAttention, "1"},
+            {onnxruntime::contrib::attention::kDisableMemoryEfficientAttention, "1"}}};
 
-      InvokePackedMultiHeadAttentionTest(true, true);
-      //InvokePackedMultiHeadAttentionTest(true, false);
-    }
+    InvokePackedMultiHeadAttentionTest(true, true);
+    InvokePackedMultiHeadAttentionTest(true, false);
+  }
 
 #if USE_FLASH_ATTENTION
-    if (kernel_type == AttentionKernelType::AttentionKernel_CutlassMemoryEfficientAttention){
-      ScopedEnvironmentVariables scoped_env_vars{
-      EnvVarMap{
-          {onnxruntime::contrib::attention::kDisableTrtFlashAttention, "1"},
-          {onnxruntime::contrib::attention::kDisableFusedSelfAttention, "1"},
-          {onnxruntime::contrib::attention::kDisableFusedCrossAttention, "1"},
-          {onnxruntime::contrib::attention::kDisableMemoryEfficientAttention, "0"}}};
-      InvokePackedMultiHeadAttentionTest(true, true);
-      //InvokePackedMultiHeadAttentionTest(false, false);
-    }
+  if (kernel_type == AttentionKernelType::AttentionKernel_CutlassMemoryEfficientAttention) {
+    ScopedEnvironmentVariables scoped_env_vars{
+        EnvVarMap{
+            {onnxruntime::contrib::attention::kDisableTrtFlashAttention, "1"},
+            {onnxruntime::contrib::attention::kDisableFusedSelfAttention, "1"},
+            {onnxruntime::contrib::attention::kDisableFusedCrossAttention, "1"},
+            {onnxruntime::contrib::attention::kDisableMemoryEfficientAttention, "0"}}};
+    InvokePackedMultiHeadAttentionTest(true, true);
+    InvokePackedMultiHeadAttentionTest(false, false);
+  }
 #endif
 
-    if (kernel_type == AttentionKernelType::AttentionKernel_Unfused){
-      ScopedEnvironmentVariables scoped_env_vars{
-      EnvVarMap{
-          {onnxruntime::contrib::attention::kDisableTrtFlashAttention, "1"},
-          {onnxruntime::contrib::attention::kDisableFusedSelfAttention, "1"},
-          {onnxruntime::contrib::attention::kDisableFusedCrossAttention, "1"},
-          {onnxruntime::contrib::attention::kDisableMemoryEfficientAttention, "1"}}};
-      InvokePackedMultiHeadAttentionTest(true, true);
-      //InvokePackedMultiHeadAttentionTest(false, false);
-    }
+  if (kernel_type == AttentionKernelType::AttentionKernel_Unfused) {
+    ScopedEnvironmentVariables scoped_env_vars{
+        EnvVarMap{
+            {onnxruntime::contrib::attention::kDisableTrtFlashAttention, "1"},
+            {onnxruntime::contrib::attention::kDisableFusedSelfAttention, "1"},
+            {onnxruntime::contrib::attention::kDisableFusedCrossAttention, "1"},
+            {onnxruntime::contrib::attention::kDisableMemoryEfficientAttention, "1"}}};
+    InvokePackedMultiHeadAttentionTest(true, true);
+    InvokePackedMultiHeadAttentionTest(false, false);
+  }
 }
 
 #if !defined(_MSC_VER)

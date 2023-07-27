@@ -46,7 +46,7 @@ class PackedAttention final : public TrtFusedAttention<T>, public CudaKernel {
                      PackedAttentionParameters& parameters) const;
 
   int GetNumHeads() const { return num_heads_; }
-  float GetScale() const {return scale_; }
+  float GetScale() const { return scale_; }
 
  private:
   int num_heads_;                          // number of attention heads
