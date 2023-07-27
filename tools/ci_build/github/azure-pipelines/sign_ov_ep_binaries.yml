@@ -3,8 +3,8 @@ jobs:
   workspace:
     clean: all
   timeoutInMinutes: 15
-  pool: 'onnxruntime-gpu-winbuild-t4'
-  
+  pool: 'onnxruntime-Win2022-GPU-T4'
+
   steps:
     - task: DownloadSecureFile@1
       name: onnxruntimeDlls # The name with which to reference the secure file's path on the agent, like $(mySecureFile.secureFilePath)
@@ -24,10 +24,10 @@ jobs:
         FolderPath: '$(Build.SourcesDirectory)\Artifact'
         DoEsrp: 'true'
         Pattern: 'onnxruntime*.dll'
-    
+
     - task: PublishBuildArtifacts@1
       inputs:
         pathtoPublish: '$(Build.SourcesDirectory)\Artifact'
         artifactName: 'Signed Dlls'
-        
+
     - template: templates/clean-agent-build-directory-step.yml

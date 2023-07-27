@@ -190,7 +190,7 @@ stages:
 #CUDA without tensorrt
 - template: templates/win-ci.yml
   parameters:
-    ort_build_pool_name: 'onnxruntime-gpu-winbuild-T4'
+    ort_build_pool_name: 'onnxruntime-Win2022-GPU-T4'
     DoCompliance: ${{ parameters.DoCompliance }}
     DoEsrp: ${{ parameters.DoEsrp }}
     stage_name_suffix: gpu
@@ -206,7 +206,7 @@ stages:
 # CUDA with Tensorrt
 - template: templates/win-ci.yml
   parameters:
-    ort_build_pool_name: 'onnxruntime-gpu-tensorrt8-winbuild-t4'
+    ort_build_pool_name: 'onnxruntime-Win2022-GPU-T4'
     DoCompliance: ${{ parameters.DoCompliance }}
     DoEsrp: ${{ parameters.DoEsrp }}
     stage_name_suffix: tensorrt
@@ -299,7 +299,7 @@ stages:
   - job:
     workspace:
       clean: all
-    pool: 'onnxruntime-gpu-winbuild-t4'
+    pool: 'onnxruntime-Win2022-GPU-T4'
     timeoutInMinutes: 60
     variables:
     - name: runCodesignValidationInjection
@@ -777,7 +777,7 @@ stages:
 
 - template: nuget/templates/test_win.yml
   parameters:
-    AgentPool : 'onnxruntime-gpu-tensorrt8-winbuild-t4'
+    AgentPool : 'onnxruntime-Win2022-GPU-T4'
     NugetPackageName : 'Microsoft.ML.OnnxRuntime.Gpu'
     ArtifactSuffix: 'GPU'
     StageSuffix: 'GPU'
@@ -895,7 +895,7 @@ stages:
   - job:
     workspace:
       clean: all
-    pool: 'onnxruntime-gpu-winbuild-t4'
+    pool: 'onnxruntime-Win2022-GPU-T4'
 
     steps:
 
