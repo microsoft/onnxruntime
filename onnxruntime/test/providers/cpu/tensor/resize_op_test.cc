@@ -1900,6 +1900,7 @@ TEST(ResizeOpTest, Antialias_Bilinear_No_ExcludeOutside) {
   TestAntialiasing({{"mode", "linear"}, {"exclude_outside", "0"}}, {1, 1, 4, 4}, X, {1, 1, 3, 3}, Y);
 }
 
+
 // match pillow
 TEST(ResizeOpTest, Antialias_Bilinear_ExcludeOutside) {
   std::vector<float> X(16);
@@ -1908,6 +1909,71 @@ TEST(ResizeOpTest, Antialias_Bilinear_ExcludeOutside) {
                           7.3f, 8.5f, 9.7f,
                           12.1f, 13.3f, 14.5f};
   TestAntialiasing({{"mode", "linear"}, {"exclude_outside", "1"}}, {1, 1, 4, 4}, X, {1, 1, 3, 3}, Y);
+}
+
+TEST(ResizeOpTest, Anitalias_Large_Bilinear_NOANTI) {
+  std::vector<float> X{1.f, 4.f, 3.f, 4.f, 2.f, 6.f};
+  std::iota(X.begin(), X.end(), 1.f);
+  std::vector<float> Y = {2.666666667f, 4.f};
+
+  std::vector<float> roi{};
+  std::vector<float> scales{};
+  std::vector<int64_t> sizes{1, 1, 2, 1};
+
+  OpTester test("Resize", 18);
+
+  test.AddInput<float>("X", {1,1,6,1}, X);
+  test.AddOutput<float>("Y", {1,1,2,1}, Y);
+  test.AddAttribute("mode", "linear");
+  test.AddAttribute("coordinate_transformation_mode", "half_pixel");
+  //test.AddAttribute("exclude_outside", static_cast<int64_t>(1));
+  //test.AddAttribute("antialias", static_cast<int64_t>(1));
+  test.AddInput<float>("roi", {int64_t(roi.size())}, roi);
+  test.AddInput<float>("", {0}, scales);  // opset13 requires either 'sizes' or 'scales' must be provided, but not both of them
+  test.AddInput<int64_t>("sizes", {int64_t(sizes.size())}, sizes, true);
+
+  // TensorRT 8.5 supports operators up to Opset 17. Temporarily exclude TensorRT EP due to accurarcy issue.
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kQnnExecutionProvider});
+}
+
+TEST(ResizeOpTest, Antialias_Large_half_pixel) {
+  std::vector<float> X{1.f, 4.f, 3.f, 4.f, 2.f, 6.f};
+  std::iota(X.begin(), X.end(), 1.f);
+  std::vector<float> Y = {2.666666667f, 4.f};
+ 
+  TestAntialiasing({{"mode", "linear"}, {"exclude_outside", "0"}, {"coordinate_transformation_mode", "half_pixel"}}, {1, 1, 6, 1}, X, {1, 1, 2, 1}, Y);
+}
+
+TEST(ResizeOpTest, Antialias_Large_align_corners) {
+  std::vector<float> X{4.f, 1.f, 5.f, 3.f, 2.f, 6.f};
+  std::iota(X.begin(), X.end(), 1.f);
+  std::vector<float> Y = {3.33f, 3.67f};
+
+  TestAntialiasing({{"mode", "linear"}, {"exclude_outside", "0"}, {"coordinate_transformation_mode", "align_corners"}}, {1, 1, 6, 1}, X, {1, 1, 2, 1}, Y);
+}
+
+TEST(ResizeOpTest, Antialias_Large_pytorch) {
+  std::vector<float> X{4.f, 1.f, 5.f, 3.f, 2.f, 6.f};
+  std::iota(X.begin(), X.end(), 1.f);
+  std::vector<float> Y = {3.33f, 3.67f};
+
+  TestAntialiasing({{"mode", "linear"}, {"exclude_outside", "0"}, {"coordinate_transformation_mode", "pytorch_half_pixel"}}, {1, 1, 6, 1}, X, {1, 1, 2, 1}, Y);
+}
+
+TEST(ResizeOpTest, Antialias_Large_tf_crop) {
+  std::vector<float> X{4.f, 1.f, 5.f, 3.f, 2.f, 6.f};
+  std::iota(X.begin(), X.end(), 1.f);
+  std::vector<float> Y = {3.33f, 3.67f};
+
+  TestAntialiasing({{"mode", "linear"}, {"exclude_outside", "0"}, {"coordinate_transformation_mode", "tf_crop_and_resize"}}, {1, 1, 6, 1}, X, {1, 1, 2, 1}, Y);
+}
+
+TEST(ResizeOpTest, Antialias_Large_asym) {
+  std::vector<float> X{4.f, 1.f, 5.f, 3.f, 2.f, 6.f};
+  std::iota(X.begin(), X.end(), 1.f);
+  std::vector<float> Y = {3.33f, 3.67f};
+
+  TestAntialiasing({{"mode", "linear"}, {"exclude_outside", "0"}, {"coordinate_transformation_mode", "asymmetric"}}, {1, 1, 6, 1}, X, {1, 1, 2, 1}, Y);
 }
 
 TEST(ResizeOpTest, Antialias_Bilinear_Scale_Is_All_1) {
