@@ -63,13 +63,12 @@ const createExpandProgramInfo = (metadata: ProgramMetadata, inputs: readonly Ten
 
   const isl = inputShape.length;
   const osl = outputShape.length;
-  const calculateInputIndexImplParameter = osl < 2 ? 'u32' : `array<u32,${osl}>`;
-  const calculateInputIndexImplResult = isl < 2 ? 'u32' : `array<u32,${isl}>`;
   const calculateInputIndexImpl = (): string => `
-  fn calculateInputIndex(outputIndices: ${calculateInputIndexImplParameter}) -> ${calculateInputIndexImplResult} {
+  fn calculateInputIndex(outputIndices: ${outputIndicesHelper.iType}) -> ${inputIndicesHelper.iType} {
     ${inputIndicesHelper.indicesVariableDeclaration('inputIndices')}
     for (var i = 0; i < ${isl}; i++) {
         if (inputShape[i] == 1) {
+            // TODO: IndicesHelper should offer uniform way to get/set indices for all ranks
             inputIndices${isl >= 2 ? '[i]' : ''} = 0;
         } else {
             inputIndices${isl >= 2 ? '[i]' : ''} = ${osl > 1 ? `outputIndices[i + ${osl - isl}]` : 'outputIndices'};
