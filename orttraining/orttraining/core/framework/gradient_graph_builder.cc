@@ -242,7 +242,7 @@ void GradientGraphBuilder::GetStopGradientEdges(const Node& node, std::unordered
     for (size_t i = 0; i < node.InputDefs().size(); ++i) {
       const NodeArg* node_arg = node.InputDefs()[i];
       if (node_arg->Exists()) {
-        const auto* type_proto = node_arg->TypeAsProto();
+        const auto& type_proto = node_arg->TypeAsProto();
         if (nullptr != type_proto && type_proto->value_case() == ONNX_NAMESPACE::TypeProto::kTensorType) {
           const int32_t type = type_proto->tensor_type().elem_type();
           if (GRAD_ALLOWED_TYPES.find(type) == GRAD_ALLOWED_TYPES.end()) {
