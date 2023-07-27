@@ -32,6 +32,7 @@ Do not modify directly.*
 | Exp | ai.onnx(6-12,13+) |  |
 | Expand | ai.onnx(8-12,13+) |  |
 | Floor | ai.onnx(6-12,13+) |  |
+| Gather | ai.onnx(1-10,11-12,13+) |  |
 | Gemm | ai.onnx(7-8,9-10,11+) |  |
 | GlobalAveragePool | ai.onnx(1+); com.ms.internal.nhwc(1+) |  |
 | GlobalMaxPool | ai.onnx(1+); com.ms.internal.nhwc(1+) |  |
