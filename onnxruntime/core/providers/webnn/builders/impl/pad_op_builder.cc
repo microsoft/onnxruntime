@@ -47,6 +47,11 @@ void PadOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Node
   }
 }
 
+template <typename T>
+bool hasNegativeValue(std::vector<T>& padding) {
+  return std::any_of(padding.begin(), padding.end(), [](T& pad) { return pad < 0; });
+}
+
 Status PadOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
                                            const Node& node,
                                            const logging::Logger& logger) const {
@@ -116,11 +121,42 @@ Status PadOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
     options.set("value", value);
   }
 
-  emscripten::val output = model_builder.GetBuilder().call<emscripten::val>("pad", input,
-                                                                            emscripten::val::array(start_padding),
-                                                                            emscripten::val::array(end_padding),
-                                                                            options);
+  // Padding of WebNN cannot be negative.
+  std::vector<int32_t> webnn_start_padding;
+  std::vector<int32_t> webnn_end_padding;
+  bool neg_padding = false;
+  if (hasNegativeValue(start_padding)) {
+    neg_padding = true;
+    std::transform(start_padding.begin(), start_padding.end(), std::back_inserter(webnn_start_padding),
+                   [](auto x) { return std::max(x, 0); });
+  } else {
+    webnn_start_padding = start_padding;
+  }
 
+  if (hasNegativeValue(end_padding)) {
+    neg_padding = true;
+    std::transform(end_padding.begin(), end_padding.end(), std::back_inserter(webnn_end_padding),
+                   [](auto x) { return std::max(x, 0); });
+  } else {
+    webnn_end_padding = end_padding;
+  }
+
+  emscripten::val output = model_builder.GetBuilder().call<emscripten::val>("pad", input,
+                                                                            emscripten::val::array(webnn_start_padding),
+                                                                            emscripten::val::array(webnn_end_padding),
+                                                                            options);
+  // Handle the negative padding with slice.
+  if (neg_padding) {
+    std::vector<int32_t> start;
+    std::vector<int32_t> size;
+    for (size_t i = 0; i < start_padding.size(); i++) {
+      start.push_back(start_padding[i] >= 0 ? 0 : -start_padding[i]);
+      size.push_back(SafeInt<int32_t>(input_shape[i] + start_padding[i] + end_padding[i]));
+    }
+    output = model_builder.GetBuilder().call<emscripten::val>("slice", output,
+                                                              emscripten::val::array(start),
+                                                              emscripten::val::array(size));
+  }
   model_builder.AddOperand(node.OutputDefs()[0]->Name(), std::move(output));
   return Status::OK();
 }
