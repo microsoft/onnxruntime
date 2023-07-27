@@ -125,6 +125,10 @@ function(setup_mlas_source_for_windows)
     target_sources(onnxruntime_mlas PRIVATE
       ${MLAS_SRC_DIR}/arm/sgemmc.cpp
     )
+    # it should be removed after Visual Stuio is upgraded to 17.7
+    if (MSVC)
+      add_compile_options("-d2SSAOptimizer-")
+    endif()
   elseif(onnxruntime_target_platform STREQUAL "x64")
 
     file(GLOB_RECURSE mlas_platform_srcs_avx CONFIGURE_DEPENDS

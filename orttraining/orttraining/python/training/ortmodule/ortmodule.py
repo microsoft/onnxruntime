@@ -3,8 +3,8 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 # isort: skip_file
-# Import ordering is important in this module to aviod circular dependencies
-import logging
+# Import ordering is important in this module to avoid circular dependencies
+
 from ._torch_module_factory import TorchModuleFactory
 from ._torch_module_ort import TorchModuleORT
 from ._custom_op_symbolic_registry import CustomOpSymbolicRegistry
@@ -12,7 +12,7 @@ from ._custom_gradient_registry import CustomGradientRegistry
 from . import _utils
 from .options import DebugOptions
 from ._fallback import _FallbackManager, _FallbackPolicy, ORTModuleFallbackException
-from ._logger import ortmodule_loglevel_to_python_loglevel
+from ._logger import configure_ortmodule_logger
 from onnxruntime.training import ortmodule
 
 from onnxruntime.tools import pytorch_export_contrib_ops
@@ -53,8 +53,7 @@ class ORTModule(torch.nn.Module):
         if not debug_options:
             debug_options = DebugOptions()
 
-        self._logger = logging.getLogger(__name__)
-        self._logger.setLevel(ortmodule_loglevel_to_python_loglevel(debug_options.logging.log_level))
+        self._logger = configure_ortmodule_logger(debug_options.logging.log_level)
 
         # Fallback settings
         self._fallback_manager = _FallbackManager(
