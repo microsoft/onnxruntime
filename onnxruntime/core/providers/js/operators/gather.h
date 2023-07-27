@@ -16,7 +16,7 @@ class Gather : public JsKernel {
     JSEP_INIT_KERNEL_ATTRIBUTE(Gather, ({
                                  "axis" : Number($1),
                                }),
-                               static_cast<int64_t>(axis));
+                               static_cast<int32_t>(axis));
   }
 };
 

@@ -86,7 +86,7 @@ const createLayerNormProgramInfo =
     }
 
     meanDataOutput[global_idx] = mean;
-    //invStdOutput[global_idx] = 1 / meanSquare;
+    // invStdOutput[global_idx] = 1 / meanSquare;
   }`;
         return {
             ...metadata,

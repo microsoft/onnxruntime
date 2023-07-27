@@ -111,6 +111,7 @@ export class WebGpuBackend {
         maxComputeWorkgroupsPerDimension: adapter.limits.maxComputeWorkgroupsPerDimension,
         maxStorageBufferBindingSize: adapter.limits.maxStorageBufferBindingSize,
         maxBufferSize: adapter.limits.maxBufferSize,
+        maxStorageBuffersPerShaderStage: adapter.limits.maxStorageBuffersPerShaderStage,
         maxComputeInvocationsPerWorkgroup: adapter.limits.maxComputeInvocationsPerWorkgroup,
         maxComputeWorkgroupSizeX: adapter.limits.maxComputeWorkgroupSizeX,
         maxComputeWorkgroupSizeY: adapter.limits.maxComputeWorkgroupSizeY,

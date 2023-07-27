@@ -20,7 +20,7 @@ class InstanceNorm : public JsKernel {
                                  "format" : $2 ? "NHWC" : "NCHW",
                                }),
                                static_cast<float>(epsilon_),
-                               static_cast<int64_t>(channels_last));
+                               static_cast<int32_t>(channels_last));
   }
 };
 

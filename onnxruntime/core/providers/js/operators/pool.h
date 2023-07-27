@@ -22,24 +22,24 @@ namespace js {
 })
 
 #define POOL_ATTRIBUTES_PARAM_LIST                                                                 \
-  static_cast<size_t>(pool_attrs_.auto_pad),                                                      \
-      static_cast<size_t>(pool_attrs_.ceil_mode),                                                 \
-      static_cast<size_t>(pool_attrs_.count_include_pad),                                         \
-      static_cast<size_t>(pool_attrs_.storage_order),                                             \
-      static_cast<size_t>(pool_attrs_.dilations.size() > 0 ? pool_attrs_.dilations[0] : 0),       \
-      static_cast<size_t>(pool_attrs_.dilations.size() > 1 ? pool_attrs_.dilations[1] : 0),       \
-      static_cast<size_t>(pool_attrs_.kernel_shape.size() > 0 ? pool_attrs_.kernel_shape[0] : 0), \
-      static_cast<size_t>(pool_attrs_.kernel_shape.size() > 1 ? pool_attrs_.kernel_shape[1] : 0), \
-      static_cast<size_t>(pool_attrs_.pads.size() > 0 ? pool_attrs_.pads[0] : 0),                 \
-      static_cast<size_t>(pool_attrs_.pads.size() > 1 ? pool_attrs_.pads[1] : 0),                 \
-      static_cast<size_t>(pool_attrs_.pads.size() > 2 ? pool_attrs_.pads[2] : 0),                 \
-      static_cast<size_t>(pool_attrs_.pads.size() > 3 ? pool_attrs_.pads[3] : 0),                 \
-      static_cast<size_t>(pool_attrs_.strides.size() > 0 ? pool_attrs_.strides[0] : 0),           \
-      static_cast<size_t>(pool_attrs_.strides.size() > 1 ? pool_attrs_.strides[1] : 0),           \
-      static_cast<size_t>(is_channels_last)
+  static_cast<int32_t>(pool_attrs_.auto_pad),                                                      \
+      static_cast<int32_t>(pool_attrs_.ceil_mode),                                                 \
+      static_cast<int32_t>(pool_attrs_.count_include_pad),                                         \
+      static_cast<int32_t>(pool_attrs_.storage_order),                                             \
+      static_cast<int32_t>(pool_attrs_.dilations.size() > 0 ? pool_attrs_.dilations[0] : 0),       \
+      static_cast<int32_t>(pool_attrs_.dilations.size() > 1 ? pool_attrs_.dilations[1] : 0),       \
+      static_cast<int32_t>(pool_attrs_.kernel_shape.size() > 0 ? pool_attrs_.kernel_shape[0] : 0), \
+      static_cast<int32_t>(pool_attrs_.kernel_shape.size() > 1 ? pool_attrs_.kernel_shape[1] : 0), \
+      static_cast<int32_t>(pool_attrs_.pads.size() > 0 ? pool_attrs_.pads[0] : 0),                 \
+      static_cast<int32_t>(pool_attrs_.pads.size() > 1 ? pool_attrs_.pads[1] : 0),                 \
+      static_cast<int32_t>(pool_attrs_.pads.size() > 2 ? pool_attrs_.pads[2] : 0),                 \
+      static_cast<int32_t>(pool_attrs_.pads.size() > 3 ? pool_attrs_.pads[3] : 0),                 \
+      static_cast<int32_t>(pool_attrs_.strides.size() > 0 ? pool_attrs_.strides[0] : 0),           \
+      static_cast<int32_t>(pool_attrs_.strides.size() > 1 ? pool_attrs_.strides[1] : 0),           \
+      static_cast<int32_t>(is_channels_last)
 
 #define GLOBAL_POOL_ATTRIBUTES_JS_OBJ_MAPPING ({"format" : $1 ? "NHWC" : "NCHW"})
-#define GLOBAL_POOL_ATTRIBUTES_PARAM_LIST static_cast<size_t>(is_channels_last)
+#define GLOBAL_POOL_ATTRIBUTES_PARAM_LIST static_cast<int32_t>(is_channels_last)
 
 template <typename T, typename PoolType, bool is_channels_last>
 class Pool : public JsKernel, public PoolBase {

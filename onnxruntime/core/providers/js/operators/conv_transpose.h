@@ -32,38 +32,38 @@ class ConvTranspose : public JsKernel {
                                    "kernel_shape" : [$4],
                                    "pads" : [ $5, $6 ],
                                    "strides" : [$7],
-                                   "wIsConst" : () JS_ARROW(!!Number(HEAP64[Number($9) / 2**3])),
-                                   "outputPadding" : $10 ? Array.from(HEAP64.subarray(Number($11), Number($11) + Number($10))) : [],
-                                   "outputShape" : $12 ? Array.from(HEAP64.subarray(Number($12), Number($13) + Number($12))) : []
+                                   "wIsConst" : () JS_ARROW(!!HEAP8[Number($9)]),
+                                   "outputPadding" : $10 ? Array.from(HEAP32.subarray(Number($11), Number($11) + $10)) : [],
+                                   "outputShape" : $12 ? Array.from(HEAP32.subarray(Number(Number($13)), Number($13) + $12)) : []
                                  }),
-                                 static_cast<size_t>(conv_transpose_attrs_.auto_pad),
-                                 static_cast<size_t>(conv_transpose_attrs_.dilations.size() > 0 ? conv_transpose_attrs_.dilations[0] : 0),
-                                 static_cast<size_t>(conv_transpose_attrs_.group),
-                                 static_cast<size_t>(conv_transpose_attrs_.kernel_shape_specified && kernel_shape.size() > 0) ? kernel_shape[0] : 0,
-                                 static_cast<size_t>(conv_transpose_attrs_.pads.size()),
-                                 static_cast<size_t>(conv_transpose_attrs_.pads.size() > 1) ? conv_transpose_attrs_.pads[1] : 0,
-                                 static_cast<size_t>(conv_transpose_attrs_.strides.size() > 0) ? conv_transpose_attrs_.strides[0] : 0,
-                                 static_cast<size_t>(channels_last),
-                                 reinterpret_cast<size_t>(&w_is_const_),
-                                 gsl::narrow_cast<size_t>(conv_transpose_attrs_.output_shape.size()),
-                                 reinterpret_cast<size_t>(conv_transpose_attrs_.output_padding.size() > 0 ? conv_transpose_attrs_.output_padding.data() : nullptr) / sizeof(size_t),
-                                 gsl::narrow_cast<size_t>(conv_transpose_attrs_.output_shape.size()),
-                                 reinterpret_cast<size_t>(conv_transpose_attrs_.output_shape.size() > 0 ? conv_transpose_attrs_.output_shape.data() : nullptr) / sizeof(size_t));
+                                 static_cast<int32_t>(conv_transpose_attrs_.auto_pad),
+                                 static_cast<int32_t>(conv_transpose_attrs_.dilations.size() > 0 ? conv_transpose_attrs_.dilations[0] : 0),
+                                 static_cast<int32_t>(conv_transpose_attrs_.group),
+                                 static_cast<int32_t>(conv_transpose_attrs_.kernel_shape_specified && kernel_shape.size() > 0) ? kernel_shape[0] : 0,
+                                 static_cast<int32_t>(conv_transpose_attrs_.pads.size()),
+                                 static_cast<int32_t>(conv_transpose_attrs_.pads.size() > 1) ? conv_transpose_attrs_.pads[1] : 0,
+                                 static_cast<int32_t>(conv_transpose_attrs_.strides.size() > 0) ? conv_transpose_attrs_.strides[0] : 0,
+                                 static_cast<int32_t>(channels_last),
+                                 reinterpret_cast<uintptr_t>(&w_is_const_),
+                                 gsl::narrow_cast<int32_t>(conv_transpose_attrs_.output_shape.size()),
+                                 reinterpret_cast<uintptr_t>(conv_transpose_attrs_.output_padding.size() > 0 ? conv_transpose_attrs_.output_padding.data() : nullptr) >> 2,
+                                 gsl::narrow_cast<int32_t>(conv_transpose_attrs_.output_shape.size()),
+                                 reinterpret_cast<uintptr_t>(conv_transpose_attrs_.output_shape.size() > 0 ? conv_transpose_attrs_.output_shape.data() : nullptr) >> 2);
     } else {
       constexpr size_t pads_vec_size = 4;
       constexpr size_t strides_vec_size = 2;
       constexpr size_t dialations_vec_size = 2;
       constexpr size_t kernel_shape_vec_size = 2;
       // First set default values for pads, strides and dialations
-      std::vector<size_t> local_pads(pads_vec_size, 0);
-      std::vector<size_t> local_strides(strides_vec_size, 0);
-      std::vector<size_t> local_dilations(dialations_vec_size, 0);
-      std::vector<size_t> local_kernel_shape;
-      std::vector<size_t> local_output_shape(conv_transpose_attrs_.output_shape.begin(), conv_transpose_attrs_.output_shape.end());
-      std::vector<size_t> local_output_padding(conv_transpose_attrs_.output_padding.begin(), conv_transpose_attrs_.output_padding.end());
+      std::vector<int32_t> local_pads(pads_vec_size, 0);
+      std::vector<int32_t> local_strides(strides_vec_size, 0);
+      std::vector<int32_t> local_dilations(dialations_vec_size, 0);
+      std::vector<int32_t> local_kernel_shape;
+      std::vector<int32_t> local_output_shape(conv_transpose_attrs_.output_shape.begin(), conv_transpose_attrs_.output_shape.end());
+      std::vector<int32_t> local_output_padding(conv_transpose_attrs_.output_padding.begin(), conv_transpose_attrs_.output_padding.end());
       if (conv_transpose_attrs_.kernel_shape_specified) {
         for (size_t i = 0; i < kernel_shape.size() && i < kernel_shape_vec_size; ++i) {
-          local_kernel_shape.push_back(gsl::narrow_cast<size_t>(kernel_shape[i]));
+          local_kernel_shape.push_back(gsl::narrow_cast<int32_t>(kernel_shape[i]));
         }
       } else {
         for (size_t i = 0; i < kernel_shape_vec_size; ++i) {
@@ -71,40 +71,40 @@ class ConvTranspose : public JsKernel {
         }
       }
       for (size_t i = 0; i < conv_transpose_attrs_.pads.size() && i < pads_vec_size; ++i) {
-        local_pads[i] = gsl::narrow_cast<size_t>(conv_transpose_attrs_.pads[i]);
+        local_pads[i] = gsl::narrow_cast<int32_t>(conv_transpose_attrs_.pads[i]);
       }
       for (size_t i = 0; i < conv_transpose_attrs_.dilations.size() && i < dialations_vec_size; ++i) {
-        local_dilations[i] = gsl::narrow_cast<size_t>(conv_transpose_attrs_.dilations[i]);
+        local_dilations[i] = gsl::narrow_cast<int32_t>(conv_transpose_attrs_.dilations[i]);
       }
       for (size_t i = 0; i < conv_transpose_attrs_.strides.size() && i < strides_vec_size; ++i) {
-        local_strides[i] = gsl::narrow_cast<size_t>(conv_transpose_attrs_.strides[i]);
+        local_strides[i] = gsl::narrow_cast<int32_t>(conv_transpose_attrs_.strides[i]);
       }
       LOGS_DEFAULT(VERBOSE) << "output_shape = " << conv_transpose_attrs_.output_shape << std::endl;
       LOGS_DEFAULT(VERBOSE) << "output_padding = " << conv_transpose_attrs_.output_padding << std::endl;
       JSEP_INIT_KERNEL_ATTRIBUTE(ConvTranspose, ({
                                    "format" : $7 ? "NHWC" : "NCHW",
                                    "autoPad" : $1,
-                                   "dilations" : Array.from(HEAP64.subarray(Number($2), Number($2) + /* dialations_vec_size */ 2)),
+                                   "dilations" : Array.from(HEAP32.subarray(Number($2), Number($2) + /* dialations_vec_size */ 2)),
                                    "group" : $3,
-                                   "kernelShape" : Array.from(HEAP64.subarray(Number($4), Number($4) + /* kernel_shape_vec_size */ 2)),
-                                   "pads" : Array.from(HEAP64.subarray(Number($5), Number($5) + /* pads_vec_size */ 4)),
-                                   "strides" : Array.from(HEAP64.subarray(Number($6), Number($6) + /* strides_vec_size */ 2)),
-                                   "wIsConst" : () JS_ARROW(!!Number(HEAP64[Number($8) / 2**3])),
-                                   "outputPadding" : ($9 > 0) ? Array.from(HEAP64.subarray(Number($10), Number($10) + Number($9))) : [],
-                                   "outputShape" : ($11 > 0) ? Array.from(HEAP64.subarray(Number($12), Number($12) + Number($11))) : []
+                                   "kernelShape" : Array.from(HEAP32.subarray(Number($4), Number($4) + /* kernel_shape_vec_size */ 2)),
+                                   "pads" : Array.from(HEAP32.subarray(Number($5), Number($5) + /* pads_vec_size */ 4)),
+                                   "strides" : Array.from(HEAP32.subarray(Number($6), Number($6) + /* strides_vec_size */ 2)),
+                                   "wIsConst" : () JS_ARROW(!!HEAP8[Number($8)]),
+                                   "outputPadding" : ($9 > 0) ? Array.from(HEAP32.subarray(Number($10), Number($10) + $9)) : [],
+                                   "outputShape" : ($11 > 0) ? Array.from(HEAP32.subarray(Number($12), Number($12) + $11)) : []
                                  }),
-                                 static_cast<size_t>(conv_transpose_attrs_.auto_pad),
-                                 reinterpret_cast<size_t>(local_dilations.data()) / sizeof(size_t),
-                                 static_cast<size_t>(conv_transpose_attrs_.group),
-                                 reinterpret_cast<size_t>(local_kernel_shape.data()) / sizeof(size_t),
-                                 reinterpret_cast<size_t>(local_pads.data()) / sizeof(size_t),
-                                 reinterpret_cast<size_t>(local_strides.data()) / sizeof(size_t),
-                                 static_cast<size_t>(channels_last),
-                                 reinterpret_cast<size_t>(&w_is_const_),
-                                 gsl::narrow_cast<size_t>(local_output_padding.size()),
-                                 reinterpret_cast<size_t>(local_output_padding.size() > 0 ? local_output_padding.data() : nullptr) / sizeof(size_t),
-                                 gsl::narrow_cast<size_t>(local_output_shape.size()),
-                                 reinterpret_cast<size_t>(local_output_shape.size() > 0 ? local_output_shape.data() : nullptr) / sizeof(size_t));
+                                 static_cast<int32_t>(conv_transpose_attrs_.auto_pad),
+                                 reinterpret_cast<uintptr_t>(local_dilations.data()) >> 2,
+                                 static_cast<int32_t>(conv_transpose_attrs_.group),
+                                 reinterpret_cast<uintptr_t>(local_kernel_shape.data()) >> 2,
+                                 reinterpret_cast<uintptr_t>(local_pads.data()) >> 2,
+                                 reinterpret_cast<uintptr_t>(local_strides.data()) >> 2,
+                                 static_cast<int32_t>(channels_last),
+                                 reinterpret_cast<uintptr_t>(&w_is_const_),
+                                 gsl::narrow_cast<int32_t>(local_output_padding.size()),
+                                 reinterpret_cast<uintptr_t>(local_output_padding.size() > 0 ? local_output_padding.data() : nullptr) >> 2,
+                                 gsl::narrow_cast<int32_t>(local_output_shape.size()),
+                                 reinterpret_cast<uintptr_t>(local_output_shape.size() > 0 ? local_output_shape.data() : nullptr) >> 2);
     }
   }
 
