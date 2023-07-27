@@ -27,6 +27,18 @@ def _parse_args():
           Login:`az login`
           Configure ORT repo as default:
             `az devops configure --defaults organization=https://dev.azure.com/onnxruntime project=onnxruntime`
+            
+        Example usage:
+          List all CIs
+            `python run_CIs_for_branch.py --dry-run my/BranchName`
+          Run all CIs
+            `python run_CIs_for_branch.py my/BranchName`
+          Run only Linux CIs
+            `python run_CIs_for_branch.py --include linux my/BranchName`
+          Exclude training CIs
+            `python run_CIs_for_branch.py --exclude training my/BranchName`
+          Run non-training Linux CIs
+            `python run_CIs_for_branch.py --include linux --exclude training my/BranchName`
         """,
     )
 
