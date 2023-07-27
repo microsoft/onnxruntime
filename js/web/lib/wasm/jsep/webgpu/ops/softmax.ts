@@ -5,12 +5,13 @@
 // performance limitations when the reduced axis is long. Need to add
 // a optimized codepath for this.
 
-import { DataType } from '../../../wasm-common';
-import { ShapeUtil } from '../../util';
-import { TensorView } from '../../tensor';
-import { AttributeWithCacheKey, createAttributeWithCacheKey } from '../attribute-with-cache-key';
-import { ComputeContext, GpuDataType, ProgramInfo } from '../types';
-import { ShaderHelper } from './common';
+import {DataType} from '../../../wasm-common';
+import {TensorView} from '../../tensor';
+import {ShapeUtil} from '../../util';
+import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-with-cache-key';
+import {ComputeContext, GpuDataType, ProgramInfo} from '../types';
+
+import {ShaderHelper} from './common';
 
 const validateInputs = (inputs: readonly TensorView[]): void => {
   if (!inputs || inputs.length !== 1) {
@@ -126,9 +127,9 @@ const createSoftmaxProgramInfo = (input: TensorView, attributes: SoftmaxAttribut
       }`;
   return {
     ...softmaxProgramMetadata,
-    outputs: [{ dims: shape, dataType: input.dataType, gpuDataType: GpuDataType.default }],
+    outputs: [{dims: shape, dataType: input.dataType, gpuDataType: GpuDataType.default}],
     getShaderSource,
-    dispatchGroup: () => ({ x: rows })
+    dispatchGroup: () => ({x: rows})
   };
 };
 
@@ -143,4 +144,4 @@ export const softmax = (context: ComputeContext, attributes: SoftmaxAttributes):
 };
 
 export const parseSoftmaxAttributes = (attributes: Record<string, unknown>): SoftmaxAttributes =>
-  createAttributeWithCacheKey({ axis: attributes.axis as number });
+    createAttributeWithCacheKey({axis: attributes.axis as number});

@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+import {argMax, argMin, parseArgMinMaxAttributes} from './ops/argminmax';
 import * as binaryOps from './ops/binary-op';
 import {concat, parseConcatAttributes} from './ops/concat';
 import {conv, parseConvAttributes} from './ops/conv';
@@ -9,12 +10,11 @@ import {expand} from './ops/expand';
 import {gemm, parseGemmAttributes} from './ops/gemm';
 import {matMul} from './ops/matmul';
 import * as pool from './ops/pool';
-import {argMax, argMin, parseArgMinMaxAttributes} from './ops/argminmax';
 import {parseReduceAttributes, reduceL1, reduceL2, reduceLogSum, reduceLogSumExp, reduceMax, reduceMean, reduceMin, reduceProd, reduceSum, reduceSumSquare} from './ops/reduce';
 import {parseSliceAttributes, slice} from './ops/slice';
+import {parseSoftmaxAttributes, softmax} from './ops/softmax';
 import {parseSplitAttributes, split} from './ops/split';
 import {parseTransposeAttributes, transpose} from './ops/transpose';
-import {softmax, parseSoftmaxAttributes} from './ops/softmax';
 import * as unaryOps from './ops/unary-op';
 import {ComputeContext} from './types';
 
