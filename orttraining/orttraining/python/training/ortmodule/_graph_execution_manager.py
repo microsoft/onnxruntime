@@ -9,6 +9,7 @@ import io
 import logging
 import os
 from abc import ABC, abstractmethod  # noqa: F401
+from hashlib import md5 as hash_fn
 from typing import Dict, List, Optional, Tuple
 
 import onnx
@@ -324,6 +325,19 @@ class GraphExecutionManager(GraphExecutionInterface):
         # FlattenedModule needs _InputInfo to expand user input from *args to *args + **kwargs
         self._flattened_module._input_info = self._input_info
 
+        # Leverage cached model if available
+        cache_dir = self._runtime_options.ortmodule_cache_dir
+        if cache_dir:
+            filename = os.path.join(
+                cache_dir, f"{hash_fn(str(self._flattened_module).encode()).hexdigest()}_{get_rank()}.onnx"
+            )
+            if os.path.exists(cache_dir) and os.path.isfile(filename):
+                self._logger.info(
+                    f"Cached model detected! Cached model will be used to save export and initialization time. If you want the model to be re-exported then DELETE {filename}."
+                )
+                exported_model = onnx.load(filename)
+                return exported_model
+
         # Export torch.nn.Module to ONNX
         f = io.BytesIO()
 
@@ -386,6 +400,16 @@ class GraphExecutionManager(GraphExecutionInterface):
         exported_model = _post_process_after_export(
             exported_model, self._runtime_options.enable_custom_autograd_function
         )
+
+        # Cache model for future runs
+        if cache_dir:
+            if not os.path.exists(cache_dir):
+                os.makedirs(cache_dir, exist_ok=True)
+            filename = os.path.join(
+                cache_dir, f"{hash_fn(str(self._flattened_module).encode()).hexdigest()}_{get_rank()}.onnx"
+            )
+            self._logger.info(f"Caching model for future runs to {filename}.")
+            onnx.save(exported_model, filename)
 
         return exported_model
 
