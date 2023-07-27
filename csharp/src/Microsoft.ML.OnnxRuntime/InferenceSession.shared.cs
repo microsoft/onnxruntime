@@ -1044,12 +1044,22 @@ namespace Microsoft.ML.OnnxRuntime
             }
         }
 
-        public static void CallbackWrapper(IntPtr user_data, IntPtr[] outputs, uint num_outputs, IntPtr status)
+        public static void CallbackWrapper(IntPtr userData, IntPtr[] outputs, uint numOutputs, IntPtr status)
         {
             Console.WriteLine("RunAsyncCallback triggerred");
+            var resourceHdl = GCHandle.Alloc(userData);
+            CallbackResource resource = resourceHdl.Target as CallbackResource;
+
+            var outputValues = new DisposableList<OrtValue>();
+            for (uint ith = 0; ith < numOutputs; ++ith) {
+                outputValues.Add(new OrtValue(outputs[numOutputs]));
+            }
+
+            resource.userCallback(resource.userData, outputValues);
+            resourceHdl.Free();
         }
 
-        public delegate void CallbackDelegate(IDisposableReadOnlyCollection<OrtValue> outputs);
+        public delegate void CallbackDelegate(IntPtr userData, IDisposableReadOnlyCollection<OrtValue> outputs);
 
         class CallbackResource {
 
@@ -1079,6 +1089,7 @@ namespace Microsoft.ML.OnnxRuntime
                 out DisposableArray<IDisposable> outputDisposer);
             resource.userCallback = callback;
             resource.userData = userData;
+            var resource_hdl = GCHandle.Alloc(resource);
 
             NativeApiStatus.VerifySuccess(NativeMethods.OrtRunAsync(
                                                 _nativeHandle,
@@ -1090,8 +1101,9 @@ namespace Microsoft.ML.OnnxRuntime
                                                 (UIntPtr)resource.outputNames.Length,
                                                 resource.outputValues,
                                                 Marshal.GetFunctionPointerForDelegate(CallbackWrapper), /* pointers to Pre-allocated OrtValue instances */
-                                                GCHandle.ToIntPtr(GCHandle.Alloc(resource))
+                                                GCHandle.ToIntPtr(resource_hdl)
                                                 ));
+            resource_hdl.Free();
         }
 
         #endregion
