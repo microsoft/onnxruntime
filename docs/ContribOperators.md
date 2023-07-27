@@ -2176,6 +2176,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dl>
 <dt><tt>activation</tt> : int (required)</dt>
 <dd>Activation after group normalization: 0 for None, 1 for Swish</dd>
+<dt><tt>channels_last</tt> : int</dt>
+<dd>1 if the input and output are in the NHWC layout, 0 if it is in the NCHW layout. Defaults to 1.</dd>
 <dt><tt>epsilon</tt> : float</dt>
 <dd>The epsilon value to use to avoid division by zero</dd>
 <dt><tt>groups</tt> : int (required)</dt>
@@ -2186,7 +2188,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 <dl>
 <dt><tt>X</tt> : T</dt>
-<dd>Input data tensor. Dimensions are (N x H x W x C), where N is the batch size, C is the number of channels, and H and W are the height and width of the data</dd>
+<dd>Input data tensor. Dimensions are (N x H x W x C) when channels_last is 1 or (N x C x H x W) otherwise, where N is the batch size, C is the number of channels, and H and W are the height and width of the data</dd>
 <dt><tt>gamma</tt> : M</dt>
 <dd>1D gamma tensor for normalization with shape (C), where C is number of channels</dd>
 <dt><tt>beta</tt> : M</dt>
@@ -2205,7 +2207,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dl>
 <dt><tt>T</tt> : tensor(float16), tensor(float)</dt>
 <dd>Constrain input X and output Y types to float tensors.</dd>
-<dt><tt>M</tt> : tensor(float)</dt>
+<dt><tt>M</tt> : tensor(float16), tensor(float)</dt>
 <dd>Constrain gamma and beta to float tensors.</dd>
 </dl>
 

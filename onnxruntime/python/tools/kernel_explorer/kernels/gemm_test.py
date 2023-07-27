@@ -58,7 +58,7 @@ def _test_gemm(func, dtype: str, transa: bool, transb: bool, m: int, n: int, k: 
 
         try:
             np.testing.assert_allclose(my_c, ref_c, rtol=bound)
-        except Exception as err:  # noqa: PERF203
+        except Exception as err:
             header = "*" * 30 + impl + "*" * 30
             print(header)
             print(err)

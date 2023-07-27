@@ -47,7 +47,7 @@ class UnetOnnxModel(BertOnnxModel):
         nodes_to_remove = []
         for div in div_nodes:
             if self.find_constant_input(div, 1.0) == 1:
-                nodes_to_remove.append(div)  # noqa: PERF401
+                nodes_to_remove.append(div)
 
         for node in nodes_to_remove:
             self.replace_input_of_all_nodes(node.output[0], node.input[0])
@@ -128,7 +128,8 @@ class UnetOnnxModel(BertOnnxModel):
         self.fuse_reshape()
 
         if (options is None) or options.enable_group_norm:
-            group_norm_fusion = FusionGroupNorm(self)
+            channels_last = (options is None) or options.group_norm_channels_last
+            group_norm_fusion = FusionGroupNorm(self, channels_last)
             group_norm_fusion.apply()
 
             insert_transpose_fusion = FusionInsertTranspose(self)

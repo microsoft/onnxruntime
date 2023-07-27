@@ -1497,10 +1497,10 @@ def test_gradient_correctness_einsum(equation):
     rhs_op = equation[pos1 + 1 : pos2]
     lhs_shape = []
     for c in lhs_op:
-        lhs_shape.append(SIZE_MAP[c.upper()])  # noqa: PERF401
+        lhs_shape.append(SIZE_MAP[c.upper()])
     rhs_shape = []
     for c in rhs_op:
-        rhs_shape.append(SIZE_MAP[c.upper()])  # noqa: PERF401
+        rhs_shape.append(SIZE_MAP[c.upper()])
 
     pt_model = NeuralNetEinsum(lhs_shape[-1]).to(device)
     ort_model = ORTModule(copy.deepcopy(pt_model))
@@ -1577,7 +1577,7 @@ def test_gradient_correctness_einsum_2():
             random.shuffle(output_candidates)
             output_candidates = output_candidates[:8]
             for output_candidate in [list(candidate) for candidate in output_candidates]:
-                all_cases.append((lhs_candidate, rhs_candidate, output_candidate))  # noqa: PERF401
+                all_cases.append((lhs_candidate, rhs_candidate, output_candidate))
 
     for case in all_cases:
         equation = to_string(case[0]) + "," + to_string(case[1]) + "->" + to_string(case[2])
@@ -1587,10 +1587,10 @@ def test_gradient_correctness_einsum_2():
         rhs_op = equation[pos1 + 1 : pos2]
         lhs_shape = []
         for c in lhs_op:
-            lhs_shape.append(SIZE_MAP[c.upper()])  # noqa: PERF401
+            lhs_shape.append(SIZE_MAP[c.upper()])
         rhs_shape = []
         for c in rhs_op:
-            rhs_shape.append(SIZE_MAP[c.upper()])  # noqa: PERF401
+            rhs_shape.append(SIZE_MAP[c.upper()])
 
         pt_model = NeuralNetEinsum(lhs_shape[-1]).to(device)
         ort_model = ORTModule(copy.deepcopy(pt_model))
@@ -5895,7 +5895,7 @@ def test_ops_for_padding_elimination(test_cases):
         result = []
         for node in model.graph.node:
             if arg in node.output:
-                result.append(node)  # noqa: PERF401
+                result.append(node)
         return result[0].op_type if len(result) == 1 else None
 
     gathergrad_input_optypes = [find_input_node_type(training_model, arg) for arg in gathergrad_node.input]
@@ -6061,3 +6061,52 @@ def test_e2e_padding_elimination():
     assert "ShrunkenGather" in [node.op_type for node in training_model.graph.node]
     assert "PadAndUnflatten" in [node.op_type for node in training_model.graph.node]
     del os.environ["ORTMODULE_ENABLE_EMBEDDING_SPARSE_OPTIMIZER"]
+
+
+@pytest.mark.skipif(
+    Version(torch.__version__) >= Version("1.13.0"),
+    reason="PyTorch since 1.13 don't output expected warning messages any more",
+)
+@pytest.mark.parametrize("log_level", [LogLevel.VERBOSE, LogLevel.INFO, LogLevel.WARNING])
+def test_ortmodule_log_level_control(log_level, caplog):
+    class NeuralNetCrossEntropyLoss(torch.nn.Module):
+        def __init__(self, num_embeddings, embedding_dim):
+            super().__init__()
+            self.embedding = torch.nn.Embedding(num_embeddings, embedding_dim, padding_idx=1)
+
+        def forward(self, input, positions):
+            output = torch.transpose(self.embedding(input), 0, 1)
+            ignored_index = output.size(1)
+            loss_fct = torch.nn.CrossEntropyLoss(ignore_index=ignored_index)
+            return loss_fct(output, positions)
+
+    device = "cuda"
+    num_embeddings, embedding_dim = 32, 128
+    pt_model = NeuralNetCrossEntropyLoss(num_embeddings, embedding_dim).to(device)
+
+    ort_model = ORTModule(pt_model, DebugOptions(log_level=log_level))
+    use_fp16 = True
+
+    def run_step(model, input, positions):
+        with amp.autocast(use_fp16):
+            loss = model(input, positions)
+        loss.backward()
+        return loss
+
+    N = random.randint(16, 32)  # noqa: N806
+    input = torch.randint(high=num_embeddings, size=(N,), dtype=torch.int64, device=device)
+    positions = torch.randint(high=N, size=(embedding_dim,), dtype=torch.int64, device=device)
+    _ = run_step(ort_model, input, positions)
+
+    found_missing_inference_log = False
+    for record in caplog.records:
+        msg = record.getMessage()
+        print(msg)
+        if "The shape inference of com.microsoft::SoftmaxCrossEntropyLossInternal type is missing" in msg:
+            found_missing_inference_log = True
+            break
+
+    if log_level == LogLevel.VERBOSE:
+        assert found_missing_inference_log
+    else:
+        assert not found_missing_inference_log
