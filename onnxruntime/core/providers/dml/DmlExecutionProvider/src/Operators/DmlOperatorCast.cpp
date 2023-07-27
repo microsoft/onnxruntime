@@ -29,7 +29,7 @@ public:
         castDesc.OutputTensor = outputDescs.data();
 
         DML_OPERATOR_DESC opDesc = { DML_OPERATOR_CAST, &castDesc };
-        
+
         SetDmlOperatorDesc(opDesc, kernelInfo);
     }
 
@@ -49,5 +49,6 @@ public:
 
 DML_OP_DEFINE_CREATION_FUNCTION(Cast, DmlOperatorCast);
 DML_OP_DEFINE_CREATION_FUNCTION(CastLike15, DmlOperatorCast);
+DML_OP_DEFINE_CREATION_FUNCTION(CastLike19, DmlOperatorCast);
 
 } // namespace Dml
