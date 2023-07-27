@@ -66,7 +66,7 @@ class OnnxRuntimeBackend(Backend):
                             " Got Domain '{}' version '{}'.".format(domain, opset.version)
                         )
                         return False, error_message
-                except AttributeError:  # noqa: PERF203
+                except AttributeError:
                     # for some CI pipelines accessing helper.OP_SET_ID_VERSION_MAP
                     # is generating attribute error. TODO investigate the pipelines to
                     # fix this error. Falling back to a simple version check when this error is encountered
