@@ -19,6 +19,13 @@
 //
 // modified to fit the needs of the project
 
+import {TensorView} from '../../../tensor';
+import {ShapeUtil} from '../../../util';
+import {GpuDataType, ProgramInfo, ProgramMetadata} from '../../types';
+import {getActicationSnippet, InternalActivationAttributes} from '../fuse-utils';
+
+import {biasActivationSnippet, typeSnippet} from './activation_util';
+
 const writeDataToSubAVec4Snippet = (transpose: boolean) => {
   if (transpose) {
     return `
@@ -324,4 +331,116 @@ fn main(@builtin(local_invocation_id) localId : vec3<u32>,
     ${matmulSnippet}
   }
 `;
+    };
+
+// TODO: support activation
+const matMulReadWriteFnSource = (component: number, hasBias: boolean, transposeB = false): string => {
+  const source = `
+    fn getIndexFromCoords3D(coords : vec3<i32>, shape : vec3<i32>) -> i32 {
+      return dot(coords, vec3<i32>(shape.y * shape.z, shape.z, 1));
+    }
+
+    fn mm_readA(batch: i32, row: i32, colIn: i32) -> ${typeSnippet(component)} {
+      var value = ${typeSnippet(component)}(0.0);
+      let col = colIn * ${component};
+      if(row < dimAOuter && col < dimInner)
+      {
+        let coords = vec3<i32>(batch, row, col);
+        let aIndex = getIndexFromCoords3D(coords, aShape) / ${component};
+        value = a[aIndex];
+      }
+      return value;
+    }
+
+    fn mm_readB(batch: i32, row: i32, colIn: i32) -> ${typeSnippet(component)} {
+      var value = ${typeSnippet(component)}(0.0);
+      let col = colIn * ${component};
+      if(row < dimInner && col < dimBOuter)
+      {
+        let coords = ${transposeB ? 'vec3<i32>(batch, col, row)' : 'vec3<i32>(batch, row, col)'};
+        let bIndex = getIndexFromCoords3D(coords, bShape) / ${component};
+        value = b[bIndex];
+      }
+      return value;
+    }
+
+    fn mm_write(batch: i32, row: i32, colIn: i32, valueIn: ${typeSnippet(component)}) {
+      let col = colIn * ${component};
+      if (row < dimAOuter && col < dimBOuter) {
+        var value = valueIn;
+        let coords = vec3<i32>(batch, row, col);
+        ${biasActivationSnippet(hasBias)}
+        let outIndex = getIndexFromCoords3D(coords, outShape) / ${component};
+        output[outIndex] = value;
+      }
+    }
+    `;
+  return source;
+};
+
+export const createMatmulProgramInfo =
+    (metadata: ProgramMetadata, inputs: readonly TensorView[], activationAttributes: InternalActivationAttributes,
+     outputShape: readonly number[], transposeB = false): ProgramInfo => {
+      const aShape = inputs[0].dims;
+      const bShape = inputs[1].dims;
+
+      const outerDimsA = aShape.slice(0, -2);
+      const outerDimsB = bShape.slice(0, -2);
+      const outerDims = outputShape.slice(0, -2);
+      const batchSize = ShapeUtil.size(outerDims);
+      const batchSizeA = ShapeUtil.size(outerDimsA);
+      const batchSizeB = ShapeUtil.size(outerDimsB);
+      // TODO: support broadcasting
+
+      const dimAOuter = outputShape[outputShape.length - 2];
+      const dimInner = aShape[aShape.length - 1];
+      const dimBOuter = outputShape[outputShape.length - 1];
+      const b3DShape = transposeB ? [batchSizeB, dimBOuter, dimInner] : [batchSizeB, dimInner, dimBOuter];
+      const isVec4 = dimInner % 4 === 0 && dimBOuter % 4 === 0;
+      const dataType = isVec4 ? 'vec4<f32>' : 'f32';  // TODO: support other data type
+      const component = isVec4 ? 4 : 1;
+      const {activationFunction} = getActicationSnippet(activationAttributes);
+
+      // TODO: fine tune size
+      const elementsPerThread = [4, 4, 1];
+      const workgroupSize: [number, number, number] = [8, 8, 1];
+      const dispatch = [
+        Math.ceil(dimBOuter / workgroupSize[0] / elementsPerThread[0]),
+        Math.ceil(dimAOuter / workgroupSize[1] / elementsPerThread[1]),
+        Math.ceil(batchSize / workgroupSize[2] / elementsPerThread[2])
+      ];
+
+      const declareInputs = [
+        `@group(0) @binding(0) var<storage, read> a: array<${dataType}>;`,
+        `@group(0) @binding(1) var<storage, read> b: array<${dataType}>;`
+      ];
+      const hasBias = inputs.length > 2;
+      let declareFunctions = matMulReadWriteFnSource(component, hasBias, transposeB);
+      if (hasBias) {
+        declareInputs.push(`@group(0) @binding(2) var<storage, read> bias: array<${dataType}>;`);
+        declareFunctions += `
+            fn getBiasByOutputCoords(coords : vec3<i32>) -> ${dataType} {
+              return bias[coords.z / ${component}];
+            }`;
+      }
+      const getShaderSource = () => `
+  const dimAOuter: i32 = ${dimAOuter};
+  const dimBOuter: i32 = ${dimBOuter};
+  const dimInner: i32 = ${dimInner};
+  const aShape : vec3<i32> = vec3<i32>(${batchSizeA}, ${dimAOuter}, ${dimInner});
+  const bShape : vec3<i32> = vec3<i32>(${b3DShape.join(',')});
+  const outShape : vec3<i32> = vec3<i32>(${batchSize}, ${dimAOuter}, ${dimBOuter});
+  ${declareInputs.join('')}
+  @group(0) @binding(${declareInputs.length}) var<storage, read_write> output : array<${dataType}>;
+  ${declareFunctions}
+  ${activationFunction}
+  ${
+          isVec4 ? makeMatMulPackedVec4Source(elementsPerThread, workgroupSize) :
+                   makeMatMulPackedSource(elementsPerThread, workgroupSize)}`;
+      return {
+        ...metadata,
+        outputs: [{dims: outputShape, dataType: inputs[0].dataType, gpuDataType: GpuDataType.default}],
+        getShaderSource,
+        dispatchGroup: () => ({x: dispatch[0], y: dispatch[1], z: dispatch[2]})
+      };
     };

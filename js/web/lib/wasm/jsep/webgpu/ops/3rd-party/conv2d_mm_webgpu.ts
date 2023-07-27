@@ -174,7 +174,7 @@ export const createConv2DMatMulProgramInfo =
       const dispatch = [
         Math.ceil(dispatchX / workGroupSize[0] / elementsPerThread[0]),
         Math.ceil(dispatchY / workGroupSize[1] / elementsPerThread[1]),
-        Math.ceil(batchSize / workGroupSize[2] / elementsPerThread[1])
+        Math.ceil(batchSize / workGroupSize[2] / elementsPerThread[2])
       ];
 
       LOG_DEBUG('verbose', () => `[conv2d_mm_webgpu] dispatch = ${dispatch}`);

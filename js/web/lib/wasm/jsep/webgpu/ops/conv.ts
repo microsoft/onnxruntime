@@ -10,6 +10,7 @@ import {ComputeContext} from '../types';
 import {createGroupedConvProgramInfoLoader} from './conv-grouped';
 import {createConv2DMatMulProgramInfoLoader} from './conv2d-mm';
 import {InternalActivationAttributes, parseInternalActivationAttributes} from './fuse-utils';
+import {createMatmulProgramInfoLoader} from './matmul';
 import {createTransposeProgramInfo, TransposeAttributes, transposeProgramMetadata} from './transpose';
 
 export const calculateOutputShape =
@@ -160,16 +161,28 @@ const conv2d = (context: ComputeContext, inputs: readonly TensorView[], attribut
   const outHeight = outputShape[isChannelsLast ? 1 : 2];
   const outWidth = outputShape[isChannelsLast ? 2 : 3];
   const outChannels = outputShape[isChannelsLast ? 3 : 1];
+  const batch = outputShape[0];
 
   const sameSize =
       isChannelsLast && weightHeight === inputHeight && weightWidth === inputWidth && attributes.autoPad === 'VALID';
   if (sameSize ||
       (weightHeight === 1 && weightWidth === 1 && attributes.dilations[0] === 1 && attributes.dilations[1] === 1 &&
        attributes.strides[0] === 1 && attributes.strides[1] === 1 &&
-       (attributes.autoPad === 'SAME_UPPER' || attributes.autoPad === 'SAME_LOWER' ||
-        attributes.autoPad === 'VALID'))) {
-    // TODO: implement conv2dByMatMul()
-    context.compute(createGroupedConvProgramInfoLoader(inputs, adjustedAttributes));
+       (attributes.autoPad === 'SAME_UPPER' || attributes.autoPad === 'SAME_LOWER' || attributes.autoPad === 'VALID' ||
+        attributes.autoPad === 'NOTSET'))) {
+    if (isChannelsLast && attributes.group === 1) {
+      // conv2dByMatMul
+      const matmulInputs = [];
+      matmulInputs.push(inputs[0].reshape([batch, inputHeight * inputWidth, inputChannels]));
+      matmulInputs.push(inputs[1].reshape([1, outChannels, inputChannels]));
+      if (hasBias) {
+        matmulInputs.push(inputs[2]);
+      }
+      context.compute(
+          createMatmulProgramInfoLoader(matmulInputs, adjustedAttributes, outputShape, true), {inputs: matmulInputs});
+    } else {
+      context.compute(createGroupedConvProgramInfoLoader(inputs, adjustedAttributes));
+    }
     return;
   }
 
