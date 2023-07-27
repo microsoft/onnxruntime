@@ -8,7 +8,7 @@ namespace Dml
 
 class DmlOperatorMatMulIntegerToFloat : public DmlOperator
 {
-    enum ortInputTensors : uint32_t
+    enum OrtInputTensors : uint32_t
     {
         ortA,
         ortB,
@@ -36,23 +36,23 @@ public:
     DmlOperatorMatMulIntegerToFloat(const MLOperatorKernelCreationContext& kernelInfo)
         :   DmlOperator(kernelInfo)
     {
-        std::vector<std::optional<uint32_t>> inputIndices = { ortInputTensors::ortA, ortInputTensors::ortAScale, ortInputTensors::ortAZeroPoint, ortInputTensors::ortB, ortInputTensors::ortBScale, ortInputTensors::ortBZeroPoint, ortInputTensors::ortBias };
+        std::vector<std::optional<uint32_t>> inputIndices = { OrtInputTensors::ortA, OrtInputTensors::ortAScale, OrtInputTensors::ortAZeroPoint, OrtInputTensors::ortB, OrtInputTensors::ortBScale, OrtInputTensors::ortBZeroPoint, OrtInputTensors::ortBias };
         DmlOperator::Initialize(kernelInfo, inputIndices);
 
-        std::vector<DimensionType> inputShape0 = kernelInfo.GetTensorShapeDescription().GetInputTensorShape(ortInputTensors::ortA);
-        std::vector<DimensionType> inputShape1 = kernelInfo.GetTensorShapeDescription().GetInputTensorShape(ortInputTensors::ortB);
+        std::vector<DimensionType> inputShape0 = kernelInfo.GetTensorShapeDescription().GetInputTensorShape(OrtInputTensors::ortA);
+        std::vector<DimensionType> inputShape1 = kernelInfo.GetTensorShapeDescription().GetInputTensorShape(OrtInputTensors::ortB);
         std::vector<DimensionType> outputShape = kernelInfo.GetTensorShapeDescription().GetOutputTensorShape(0);
 
         OperatorHelper::MatMulShapeMapping(inputShape0, inputShape1, outputShape);
 
         // Initialize the input descriptions with broadcasting
-        m_inputTensorDescs[DmlInputIndex::dmlA] = CreateTensorDescFromInput(kernelInfo, ortInputTensors::ortA, TensorAxis::DoNotCoerce, TensorAxis::W, TensorAxis::RightAligned, inputShape0);
-        m_inputTensorDescs[DmlInputIndex::dmlB] = CreateTensorDescFromInput(kernelInfo, ortInputTensors::ortB, TensorAxis::DoNotCoerce, TensorAxis::W, TensorAxis::RightAligned, inputShape1);
+        m_inputTensorDescs[DmlInputIndex::dmlA] = CreateTensorDescFromInput(kernelInfo, OrtInputTensors::ortA, TensorAxis::DoNotCoerce, TensorAxis::W, TensorAxis::RightAligned, inputShape0);
+        m_inputTensorDescs[DmlInputIndex::dmlB] = CreateTensorDescFromInput(kernelInfo, OrtInputTensors::ortB, TensorAxis::DoNotCoerce, TensorAxis::W, TensorAxis::RightAligned, inputShape1);
 
         // Broadcast Bias tensor to the shape of the output tensor.
-        if(kernelInfo.IsInputValid(ortInputTensors::ortBias)) {
+        if(kernelInfo.IsInputValid(OrtInputTensors::ortBias)) {
             
-            m_inputTensorDescs[DmlInputIndex::dmlBias] = CreateTensorDescFromInput(kernelInfo, ortInputTensors::ortBias, TensorAxis::DoNotCoerce,
+            m_inputTensorDescs[DmlInputIndex::dmlBias] = CreateTensorDescFromInput(kernelInfo, OrtInputTensors::ortBias, TensorAxis::DoNotCoerce,
                 TensorAxis::W, TensorAxis::RightAligned, outputShape);
         }
 
@@ -61,7 +61,7 @@ public:
         // The 1D tensor needs to be moved to the H channel.
         m_inputTensorDescs[DmlInputIndex::dmlAScale] = CreateTensorDescFromInput(
             kernelInfo, 
-            ortInputTensors::ortAScale,
+            OrtInputTensors::ortAScale,
             TensorAxis::DoNotCoerce, 
             TensorAxis::H,
             TensorAxis::LeftAligned,
@@ -71,12 +71,12 @@ public:
 
         // Resize the A ZeroPoint to be the same dimension as the input tensor.
         // The 1D tensor needs to be moved to the H channel.
-        if (kernelInfo.IsInputValid(ortInputTensors::ortAZeroPoint))
+        if (kernelInfo.IsInputValid(OrtInputTensors::ortAZeroPoint))
         {
 
             m_inputTensorDescs[DmlInputIndex::dmlAZeroPoint] = CreateTensorDescFromInput(
                 kernelInfo, 
-                ortInputTensors::ortAZeroPoint,
+                OrtInputTensors::ortAZeroPoint,
                 TensorAxis::DoNotCoerce, 
                 TensorAxis::H,
                 TensorAxis::LeftAligned,
