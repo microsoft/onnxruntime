@@ -20,6 +20,7 @@ class GroupNorm final : public CudaKernel {
   bool use_swish_activation_;
   float epsilon_;
   int num_groups_;
+  bool channels_last_;
 };
 
 }  // namespace cuda

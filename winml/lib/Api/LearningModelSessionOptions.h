@@ -7,7 +7,10 @@
 #include <thread>
 namespace WINMLP {
 
-struct LearningModelSessionOptions : LearningModelSessionOptionsT<LearningModelSessionOptions, ILearningModelSessionOptionsNative, ILearningModelSessionOptionsNative1> {
+struct LearningModelSessionOptions : LearningModelSessionOptionsT<
+                                       LearningModelSessionOptions,
+                                       ILearningModelSessionOptionsNative,
+                                       ILearningModelSessionOptionsNative1> {
   LearningModelSessionOptions() = default;
 
   LearningModelSessionOptions(const LearningModelSessionOptions& options);
@@ -31,13 +34,9 @@ struct LearningModelSessionOptions : LearningModelSessionOptionsT<LearningModelS
 
   bool GetIntraOpThreadSpinning();
 
-  const gsl::span<const winrt::hstring>
-  GetCustomOpLibraryPaths() noexcept;
+  const gsl::span<const winrt::hstring> GetCustomOpLibraryPaths() noexcept;
 
-  void
-  RegisterCustomOpsLibrary(
-    const winrt::hstring& path
-  ) noexcept;
+  void RegisterCustomOpsLibrary(const winrt::hstring& path) noexcept;
 
  private:
   // The batch size override property is used to inform the engine when the developer
@@ -83,6 +82,6 @@ struct LearningModelSessionOptions : LearningModelSessionOptionsT<LearningModelS
 }  // namespace WINMLP
 
 namespace WINML::factory_implementation {
-struct LearningModelSessionOptions : LearningModelSessionOptionsT<LearningModelSessionOptions, implementation::LearningModelSessionOptions> {
-};
+struct LearningModelSessionOptions
+  : LearningModelSessionOptionsT<LearningModelSessionOptions, implementation::LearningModelSessionOptions> {};
 }  // namespace WINML::factory_implementation
