@@ -14,8 +14,8 @@ Do not modify directly.*
 | Acos | ai.onnx(7+) |  |
 | Acosh | ai.onnx(9+) |  |
 | Add | ai.onnx(7-12,13,14+) |  |
-| ArgMax | ai.onnx(6+) |  |
-| ArgMin | ai.onnx(6+) |  |
+| ArgMax | ai.onnx(1-10,11-12,13+) |  |
+| ArgMin | ai.onnx(1-10,11-12,13+) |  |
 | Asin | ai.onnx(7+) |  |
 | Asinh | ai.onnx(9+) |  |
 | Atan | ai.onnx(7+) |  |
@@ -62,8 +62,8 @@ Do not modify directly.*
 | Sigmoid | ai.onnx(6-12,13+) |  |
 | Sin | ai.onnx(7+) |  |
 | Sinh | ai.onnx(9+) |  |
-| Softmax | ai.onnx(6+) |  |
 | Slice | ai.onnx(1-9,10,11-12,13+) |  |
+| Softmax | ai.onnx(1-10,11-12,13+) |  |
 | Split | ai.onnx(1,2-10,11-12,13-17,18+) |  |
 | Sqrt | ai.onnx(6-12,13+) |  |
 | Squeeze | ai.onnx(1-10,11-12,13+) |  |
