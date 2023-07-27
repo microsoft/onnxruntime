@@ -50,10 +50,7 @@ stages:
     - task: BatchScript@1
       displayName: 'Setup Visual Studio env vars'
       inputs:
-        ${{ if eq(parameters.AgentPool, 'onnxruntime-gpu-tensorrt8-winbuild-t4') }}:
-          filename: 'C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\VC\Auxiliary\Build\vcvarsall.bat'
-        ${{ else }}:
-          filename: 'C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvarsall.bat'
+        filename: 'C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvarsall.bat'
         arguments: 'amd64'
         modifyEnvironment: true
 
