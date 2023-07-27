@@ -98,6 +98,21 @@ public:
                 SetOpDesc(desc);
                 break;
             }
+            case DML_OPERATOR_AVERAGE_POOLING1:
+            {
+                if (hasDilations) {
+                    DML_AVERAGE_POOLING1_OPERATOR_DESC desc = {};
+                    desc.IncludePadding = kernelInfo.GetOptionalAttribute<bool>(AttrName::CountIncludePad, false);
+                    desc.Dilations = m_kernel.dilations;
+                    SetOpDesc(desc);
+                }
+                else {
+                    DML_AVERAGE_POOLING_OPERATOR_DESC desc = {};
+                    desc.IncludePadding = kernelInfo.GetOptionalAttribute<bool>(AttrName::CountIncludePad, false);
+                    SetOpDesc(desc);
+                }
+                break;
+            }
             case DML_OPERATOR_LP_POOLING:
             {
                 DML_LP_POOLING_OPERATOR_DESC desc = {};
@@ -121,7 +136,6 @@ public:
                     ML_CHECK_VALID_ARGUMENT(desc.P > 0);
                     SetOpDesc(desc);
                 }
-
                 break;
             }
             case DML_OPERATOR_MAX_POOLING:
@@ -182,7 +196,7 @@ void CALLBACK QueryMaxPool(IMLOperatorSupportQueryContextPrivate* context, bool*
     *isSupported = true;
 }
 
-DML_OP_DEFINE_CREATION_FUNCTION(AveragePool,           DmlOperatorPoolingTemplate<DML_OPERATOR_AVERAGE_POOLING, false>);
+DML_OP_DEFINE_CREATION_FUNCTION(AveragePool,           DmlOperatorPoolingTemplate<DML_OPERATOR_AVERAGE_POOLING1, false>);
 DML_OP_DEFINE_CREATION_FUNCTION(GlobalAveragePool,     DmlOperatorPoolingTemplate<DML_OPERATOR_AVERAGE_POOLING, true>);
 DML_OP_DEFINE_CREATION_FUNCTION(MaxPool,               DmlOperatorPoolingTemplate<DML_OPERATOR_MAX_POOLING2, false>);
 DML_OP_DEFINE_CREATION_FUNCTION(GlobalMaxPool,         DmlOperatorPoolingTemplate<DML_OPERATOR_MAX_POOLING, true>);

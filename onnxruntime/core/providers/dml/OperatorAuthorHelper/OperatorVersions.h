@@ -409,6 +409,11 @@ namespace OperatorHelper
         static const int sc_sinceVer_LpPool = 18;
     }
 
+    namespace OnnxOperatorSet19
+    {
+        static const int sc_sinceVer_AveragePool = 19;
+    }
+
     namespace MsftOperatorSet1
     {
         static const int sc_sinceVer_DmlFusedConv = 1;
