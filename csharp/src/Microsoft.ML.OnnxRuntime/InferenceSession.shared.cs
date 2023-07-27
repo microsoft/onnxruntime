@@ -1044,6 +1044,8 @@ namespace Microsoft.ML.OnnxRuntime
             }
         }
 
+        public delegate void CallbackWrapperDelegate(IntPtr userData, IntPtr[] outputs, uint numOutputs, IntPtr status);
+
         public static void CallbackWrapper(IntPtr userData, IntPtr[] outputs, uint numOutputs, IntPtr status)
         {
             Console.WriteLine("RunAsyncCallback triggerred");
@@ -1058,6 +1060,8 @@ namespace Microsoft.ML.OnnxRuntime
             resource.userCallback(resource.userData, outputValues);
             resourceHdl.Free();
         }
+
+        public static CallbackWrapperDelegate callbackWrapper = new CallbackWrapperDelegate(CallbackWrapper);
 
         public delegate void CallbackDelegate(IntPtr userData, IDisposableReadOnlyCollection<OrtValue> outputs);
 
@@ -1081,7 +1085,7 @@ namespace Microsoft.ML.OnnxRuntime
             IntPtr userData)
         {
             CallbackResource resource = new CallbackResource();
-            resource.inputValues = LookupUtf8Names(inputs, i => i.Name, LookupInputMetadata);
+            resource.inputNames = LookupUtf8Names(inputs, i => i.Name, LookupInputMetadata);
             resource.outputNames = LookupUtf8Names(outputs, o => o.Name, LookupOutputMetadata);
             resource.inputValues = GetOrtValuesHandles(inputs, LookupInputMetadata, ExtractOrtValueHandleForInput,
                 out DisposableArray<IDisposable> inputDisposer);
@@ -1100,7 +1104,7 @@ namespace Microsoft.ML.OnnxRuntime
                                                 resource.outputNames,
                                                 (UIntPtr)resource.outputNames.Length,
                                                 resource.outputValues,
-                                                Marshal.GetFunctionPointerForDelegate(CallbackWrapper), /* pointers to Pre-allocated OrtValue instances */
+                                                Marshal.GetFunctionPointerForDelegate(callbackWrapper),
                                                 GCHandle.ToIntPtr(resource_hdl)
                                                 ));
             resource_hdl.Free();

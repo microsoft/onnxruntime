@@ -2057,7 +2057,8 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 ManualResetEvent evt = new ManualResetEvent(false);
 
                 var evtHdl = GCHandle.Alloc(evt);
-                session.RunAsync(inputs, outputs, null, AsyncCallback, (IntPtr)evtHdl);
+                RunOptions option = new RunOptions();
+                session.RunAsync(inputs, outputs, option, AsyncCallback, (IntPtr)evtHdl);
                 evt.WaitOne();
                 evtHdl.Free();
             }
