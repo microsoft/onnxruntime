@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019, 2022, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2019, 2023, Oracle and/or its affiliates. All rights reserved.
  * Licensed under the MIT License.
  */
 package ai.onnxruntime;
@@ -12,8 +12,8 @@ import java.util.Map;
 /**
  * A container for a map returned by {@link OrtSession#run(Map)}.
  *
- * <p>Supported types are those mentioned in "onnxruntime_c_api.h", keys: String and Long, values:
- * String, Long, Float, Double.
+ * <p>Supported types are those mentioned in {@code onnxruntime_c_api.h}, keys: String and Long,
+ * values: String, Long, Float, Double.
  */
 public class OnnxMap implements OnnxValue {
 
@@ -27,11 +27,17 @@ public class OnnxMap implements OnnxValue {
 
   /** An enum representing the Java type of the values stored in an {@link OnnxMap}. */
   public enum OnnxMapValueType {
+    /** An invalid Map value type. */
     INVALID(0),
+    /** A String value. */
     STRING(1),
+    /** A 64-bit signed integer value. */
     LONG(2),
+    /** A 32-bit floating point value. */
     FLOAT(3),
+    /** A 64-bit floating point value. */
     DOUBLE(4);
+    /** The native enum value. */
     final int value;
 
     OnnxMapValueType(int value) {
@@ -89,8 +95,10 @@ public class OnnxMap implements OnnxValue {
     }
   }
 
+  /** The native pointer. */
   final long nativeHandle;
 
+  /** The pointer to the allocator used by this {@code OnnxMap}. */
   final long allocatorHandle;
 
   private final MapInfo info;
