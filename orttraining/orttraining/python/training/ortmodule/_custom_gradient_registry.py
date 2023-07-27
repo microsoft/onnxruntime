@@ -208,7 +208,6 @@ def adaptive_avg_pool2d_gradient():
     ]
 
 
-CustomGradientRegistry.register_custom_stop_gradient_edges([1], "org.pytorch.aten", "ATen", "embedding", "")
 CustomGradientRegistry.register_custom_stop_gradient_edges([0], "org.pytorch.aten", "ATen", "argmax", "")
 CustomGradientRegistry.register_custom_stop_gradient_edges([0], "org.pytorch.aten", "ATen", "multinomial", "")
 
