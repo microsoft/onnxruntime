@@ -3,16 +3,19 @@
 
 #include "core/providers/coreml/coreml_execution_provider.h"
 
+#include <algorithm>
+
 #include "core/framework/compute_capability.h"
 #include "core/graph/graph_viewer.h"
+#include "core/providers/coreml/builders/helper.h"
 #include "core/providers/partitioning_utils.h"
 #include "core/session/onnxruntime_cxx_api.h"
-#include "core/providers/coreml/builders/helper.h"
 
 #ifdef __APPLE__
 #include "core/providers/coreml/builders/model_builder.h"
 #include "core/providers/coreml/model/host_utils.h"
 #include "core/providers/coreml/model/model.h"
+#include "core/providers/coreml/shape_utils.h"
 #endif
 
 namespace onnxruntime {
@@ -125,6 +128,8 @@ common::Status CoreMLExecutionProvider::Compile(const std::vector<FusedNodeAndGr
     };
 
     compute_info.compute_func = [](FunctionState state, const OrtApi* /* api */, OrtKernelContext* context) {
+      // TODO error out if any input shapes are empty
+
       Ort::KernelContext ctx(context);
 
       const size_t num_inputs = ctx.GetInputCount();
@@ -165,8 +170,35 @@ common::Status CoreMLExecutionProvider::Compile(const std::vector<FusedNodeAndGr
       // TODO, investigate concurrent runs for different executions from the same model
       {
         std::unique_lock<OrtMutex> lock(model->GetMutex());
-        std::unordered_map<std::string, coreml::OnnxTensorData> outputs;
+        std::unordered_map<std::string, coreml::OnnxTensorInfo> outputs;
         outputs.reserve(model_outputs.size());
+
+        GetOutputTensorMutableRawDataFn get_output_tensor_mutable_raw_data_fn =
+            [&ctx, &model_outputs](
+                const std::string& name,
+                const OnnxTensorInfo& tensor_info,
+                gsl::span<const int64_t> static_shape) -> void* {
+            const auto model_output_it = std::find(model_outputs.begin(), model_outputs.end(), name);
+            ORT_ENFORCE(model_output_it != model_outputs.end(), "Failed to find CoreML model output name:", name);
+            const auto output_idx = gsl::narrow_cast<size_t>(std::distance(model_outputs.begin(), model_output_it));
+
+            // verify static_shape and tensor_info.shape are compatible
+            {
+              const auto& compiled_shape = tensor_info.shape;
+              const bool has_compatible_shape =
+                  std::equal(compiled_shape.begin(), compiled_shape.end(), static_shape.begin(), static_shape.end(),
+                             [](int64_t dim, int64_t static_dim) -> bool {
+                               return dim == -1 || dim == static_dim;
+                             });
+              ORT_ENFORCE(has_compatible_shape,
+                          "Static runtime shape (", Shape2String(static_shape),
+                          ") is incompatible with compile-time shape (", Shape2String(compiled_shape), ").");
+            }
+
+            auto output_tensor = ctx.GetOutput(output_idx, static_shape.data(), static_shape.size());
+            return output_tensor.GetTensorMutableRawData();
+        };
+
         for (size_t i = 0; i < model_outputs.size(); i++) {
           const auto& output_name = model_outputs[i];
           const auto& output_info = model->GetInputOutputInfo(output_name);
@@ -183,34 +215,30 @@ common::Status CoreMLExecutionProvider::Compile(const std::vector<FusedNodeAndGr
           if (model->IsInt64Output(output_name))
             output_type = ONNX_NAMESPACE::TensorProto_DataType_INT64;
 
-          auto output_tensor =
-              ctx.GetOutput(i, output_shape.data(), output_shape.size());
+          // auto output_tensor =
+          //     ctx.GetOutput(i, output_shape.data(), output_shape.size());
 
-          void* output_buffer;
-          switch (output_type) {
-            case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
-              output_buffer = output_tensor.GetTensorMutableData<float>();
-              break;
-            case ONNX_NAMESPACE::TensorProto_DataType_INT32:
-              output_buffer = output_tensor.GetTensorMutableData<int32_t>();
-              break;
-            case ONNX_NAMESPACE::TensorProto_DataType_INT64:
-              output_buffer = output_tensor.GetTensorMutableData<int64_t>();
-              break;
-            default:
-              return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                                     "Unsupported type: ", output_type, " for output: ", output_name);
-              break;
-          }
+          // void* output_buffer;
+          // switch (output_type) {
+          //   case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
+          //     output_buffer = output_tensor.GetTensorMutableData<float>();
+          //     break;
+          //   case ONNX_NAMESPACE::TensorProto_DataType_INT32:
+          //     output_buffer = output_tensor.GetTensorMutableData<int32_t>();
+          //     break;
+          //   case ONNX_NAMESPACE::TensorProto_DataType_INT64:
+          //     output_buffer = output_tensor.GetTensorMutableData<int64_t>();
+          //     break;
+          //   default:
+          //     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+          //                            "Unsupported type: ", output_type, " for output: ", output_name);
+          //     break;
+          // }
 
-          outputs.emplace(output_name,
-                          coreml::OnnxTensorData{
-                              coreml::OnnxTensorInfo{output_type, output_shape},
-                              output_buffer,
-                          });
+          outputs.emplace(output_name, coreml::OnnxTensorInfo{output_type, output_shape});
         }
 
-        return model->Predict(inputs, outputs);
+        return model->Predict(inputs, outputs, get_output_tensor_mutable_raw_data_fn);
       }
     };
 

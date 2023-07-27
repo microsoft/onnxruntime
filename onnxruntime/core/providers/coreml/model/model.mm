@@ -55,7 +55,8 @@ asm(".linker_option \"-framework\", \"CoreML\"");
 - (onnxruntime::common::Status)loadModel API_AVAILABLE_OS_VERSIONS;
 - (onnxruntime::common::Status)
     predict:(const std::unordered_map<std::string, onnxruntime::coreml::OnnxTensorData>&)inputs
-    outputs:(const std::unordered_map<std::string, onnxruntime::coreml::OnnxTensorData>&)outputs
+    outputs:(const std::unordered_map<std::string, onnxruntime::coreml::OnnxTensorInfo>&)outputs
+    getOutputTensorDataFn:(const GetOutputTensorMutableRawDataFn&)get_output_tensor_mutable_raw_data_fn
     API_AVAILABLE_OS_VERSIONS;
 
 @property MLModel* model API_AVAILABLE_OS_VERSIONS;
@@ -206,7 +207,8 @@ asm(".linker_option \"-framework\", \"CoreML\"");
 
 - (onnxruntime::common::Status)
     predict:(const std::unordered_map<std::string, onnxruntime::coreml::OnnxTensorData>&)inputs
-    outputs:(const std::unordered_map<std::string, onnxruntime::coreml::OnnxTensorData>&)outputs {
+    outputs:(const std::unordered_map<std::string, onnxruntime::coreml::OnnxTensorData>&)outputs
+    getOutputTensorDataFn:(const GetOutputTensorMutableRawDataFn&)get_output_tensor_mutable_raw_data_fn {
   if (_model == nil) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "model is not loaded");
   }
@@ -229,8 +231,8 @@ asm(".linker_option \"-framework\", \"CoreML\"");
                            [[error localizedDescription] cStringUsingEncoding:NSUTF8StringEncoding]);
   }
 
-  for (auto& output : outputs) {
-    NSString* output_name = [NSString stringWithCString:output.first.c_str()
+  for (const auto& [name, tensor_info] : outputs) {
+    NSString* output_name = [NSString stringWithCString:name.c_str()
                                                encoding:[NSString defaultCStringEncoding]];
     NSAssert(output_name != nil, @"output_name must not be nil");
     MLFeatureValue* output_value =
@@ -250,14 +252,14 @@ asm(".linker_option \"-framework\", \"CoreML\"");
 
     auto model_output_type = data.dataType;
 
-    auto& output_tensor = output.second;
+    // TODO get static shape from `data`
     size_t num_elements =
-        accumulate(output_tensor.tensor_info.shape.begin(),
-                   output_tensor.tensor_info.shape.end(),
+        accumulate(tensor_info.shape.begin(),
+                   tensor_info.shape.end(),
                    1,
                    std::multiplies<int64_t>());
 
-    const auto type = output_tensor.tensor_info.data_type;
+    const auto type = tensor_info.data_type;
     switch (type) {
       case ONNX_NAMESPACE::TensorProto_DataType_FLOAT: {
         const auto output_data_byte_size = num_elements * sizeof(float);
@@ -307,7 +309,8 @@ class Execution {
 
   Status LoadModel();
   Status Predict(const std::unordered_map<std::string, OnnxTensorData>& inputs,
-                 const std::unordered_map<std::string, OnnxTensorData>& outputs);
+                 const std::unordered_map<std::string, OnnxTensorInfo>& outputs,
+                 const GetOutputTensorMutableRawDataFn& get_output_tensor_mutable_raw_data_fn);
 
  private:
   bool model_loaded{false};
@@ -340,12 +343,15 @@ Status Execution::LoadModel() {
 }
 
 Status Execution::Predict(const std::unordered_map<std::string, OnnxTensorData>& inputs,
-                          const std::unordered_map<std::string, OnnxTensorData>& outputs) {
+                          const std::unordered_map<std::string, OnnxTensorInfo>& outputs,
+                          const GetOutputTensorMutableRawDataFn& get_output_tensor_mutable_raw_data_fn) {
   ORT_RETURN_IF_NOT(model_loaded, "Execution::Predict requires Execution::LoadModel");
 
   if (HAS_VALID_BASE_OS_VERSION) {
     @autoreleasepool {
-      return [execution_ predict:inputs outputs:outputs];
+      return [execution_ predict:inputs
+                         outputs:outputs
+           getOutputTensorDataFn:get_output_tensor_mutable_raw_data_fn];
     }
   }
 
@@ -363,7 +369,8 @@ Status Model::LoadModel() {
 }
 
 Status Model::Predict(const std::unordered_map<std::string, OnnxTensorData>& inputs,
-                      const std::unordered_map<std::string, OnnxTensorData>& outputs) {
+                      const std::unordered_map<std::string, OnnxTensorInfo>& outputs,
+                      const GetOutputTensorMutableRawDataFn& get_output_tensor_mutable_raw_data_fn) {
   return execution_->Predict(inputs, outputs);
 }
 

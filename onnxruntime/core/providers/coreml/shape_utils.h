@@ -4,6 +4,7 @@
 #pragma once
 
 #include <cstdint>
+#include <string>
 #include <vector>
 
 #include "core/common/gsl.h"
@@ -21,4 +22,5 @@ bool GetStaticShape(const NodeArg& node_arg, std::vector<int64_t>& shape, const 
 // True iff `shape` has no dynamic dimensions.
 bool IsStaticShape(gsl::span<const int64_t> shape);
 
+std::string Shape2String(gsl::span<const int64_t> shape);
 }  // namespace onnxruntime::coreml

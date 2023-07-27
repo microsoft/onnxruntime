@@ -3,6 +3,8 @@
 
 #include "core/providers/coreml/shape_utils.h"
 
+#include <sstream>
+
 #include "core/framework/tensorprotoutils.h"
 
 namespace onnxruntime::coreml {
@@ -50,6 +52,16 @@ bool GetStaticShape(const NodeArg& node_arg, std::vector<int64_t>& shape, const 
 
 bool IsStaticShape(gsl::span<const int64_t> shape) {
   return std::find(shape.begin(), shape.end(), int64_t{-1}) == shape.end();
+}
+
+std::string Shape2String(gsl::span<const int64_t> shape) {
+  std::ostringstream os;
+  os << "[ ";
+  for (const auto dim : shape) {
+    os << dim << " ";
+  }
+  os << "]";
+  return os.str();
 }
 
 }  // namespace onnxruntime::coreml

@@ -3,6 +3,10 @@
 
 #pragma once
 
+#include <cstddef>
+#include <functional>
+
+#include "core/common/gsl.h"
 #include "core/common/status.h"
 #include "core/platform/ort_mutex.h"
 
@@ -21,6 +25,10 @@ struct OnnxTensorData {
   void* buffer{nullptr};
 };
 
+using GetOutputTensorMutableRawDataFn = std::function<void*(const std::string& name,
+                                                            const OnnxTensorInfo& tensor_info,
+                                                            gsl::span<const int64_t> static_shape)>;
+
 class Model {
   friend class ModelBuilder;
 
@@ -28,8 +36,9 @@ class Model {
   ~Model();
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Model);
 
-  onnxruntime::common::Status Predict(const std::unordered_map<std::string, OnnxTensorData>& inputs,
-                                      const std::unordered_map<std::string, OnnxTensorData>& outputs);
+  Status Predict(const std::unordered_map<std::string, OnnxTensorData>& inputs,
+                 const std::unordered_map<std::string, OnnxTensorInfo>& outputs,
+                 const GetOutputTensorMutableRawDataFn& get_output_tensor_mutable_raw_data_fn);
 
   bool IsScalarOutput(const std::string& output_name) const;
 
@@ -60,7 +69,7 @@ class Model {
   OrtMutex mutex_;
 
   Model(const std::string& path, const logging::Logger& logger, uint32_t coreml_flags);
-  onnxruntime::common::Status LoadModel();
+  Status LoadModel();
 
   void SetInputOutputInfo(std::unordered_map<std::string, OnnxTensorInfo>&& input_output_info) {
     input_output_info_ = std::move(input_output_info);
