@@ -10,6 +10,8 @@
 
 #include "test/optimizer/qdq_test_utils.h"
 #include "test/util/include/test_utils.h"
+#include "test/util/include/test/test_environment.h"
+#include "test/util/include/default_providers.h"
 
 #include "gtest/gtest.h"
 
@@ -129,6 +131,127 @@ inline QuantParams<QType> GetTestInputQuantParams(const TestInputDef<float>& inp
   return QuantParams<QType>::Compute(frange.first, frange.second);
 }
 
+template <typename QuantType>
+using GetTestQDQModelFn = std::function<void(ModelTestBuilder& builder, const std::vector<QuantParams<QuantType>>& output_qparams)>;
+
+void InferenceModel(const std::string& model_data, const char* log_id,
+                    std::unique_ptr<IExecutionProvider> execution_provider,
+                    ExpectedEPNodeAssignment expected_ep_assignment, const NameMLValMap& feeds,
+                    std::vector<std::string>& output_names, std::vector<OrtValue>& output_vals);
+
+template <typename QuantType = uint8_t>
+inline void TestQDQModelAccuracy(const GetTestModelFn& f32_model_fn, const GetTestQDQModelFn<QuantType>& qdq_model_fn,
+                                 const ProviderOptions& qnn_options, int opset_version,
+                                 ExpectedEPNodeAssignment expected_ep_assignment, float fp32_abs_err,
+                                 logging::Severity log_severity = logging::Severity::kERROR) {
+  // Add kMSDomain to cover contrib op like Gelu
+  const std::unordered_map<std::string, int> domain_to_version = {{"", opset_version}, {kMSDomain, 1}};
+
+  auto& logging_manager = DefaultLoggingManager();
+  logging_manager.SetDefaultLoggerSeverity(log_severity);
+
+  // Create float model and serialize it to a string.
+  onnxruntime::Model f32_model("f32_model", false, ModelMetaData(), PathString(),
+                               IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {},
+                               logging_manager.DefaultLogger());
+  ModelTestBuilder f32_helper(f32_model.MainGraph());
+  std::string f32_model_data;
+  f32_model_fn(f32_helper);
+  f32_helper.SetGraphOutputs();
+  ASSERT_STATUS_OK(f32_model.MainGraph().Resolve());
+  f32_model.ToProto().SerializeToString(&f32_model_data);
+
+  // Run f32 model on CPU EP and collect outputs.
+  std::vector<OrtValue> cpu_f32_outputs;
+  std::vector<std::string> output_names;
+  InferenceModel(f32_model_data, "f32_model_logger", nullptr, ExpectedEPNodeAssignment::All,
+                 f32_helper.feeds_, output_names, cpu_f32_outputs);
+  const size_t num_outputs = cpu_f32_outputs.size();
+
+  // Compute output range(s) and quantization params.
+  std::vector<QuantParams<QuantType>> output_qparams;  // TODO: Generic quant type
+  std::vector<gsl::span<const float>> output_vals;
+  std::vector<int32_t> output_types;
+  output_qparams.resize(num_outputs);
+  output_vals.resize(num_outputs);
+  output_types.resize(num_outputs);
+
+  for (size_t i = 0; i < num_outputs; i++) {
+    auto& tensor = cpu_f32_outputs[i].Get<Tensor>();
+    int32_t elem_type = tensor.GetElementType();
+
+    if (elem_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
+      output_vals[i] = tensor.DataAsSpan<float>();
+      float min_val = std::numeric_limits<float>::max();
+      float max_val = std::numeric_limits<float>::min();
+
+      for (auto val : output_vals[i]) {
+        min_val = std::min(min_val, val);
+        max_val = std::max(max_val, val);
+      }
+
+      output_qparams[i] = QuantParams<QuantType>::Compute(min_val, max_val);
+    }
+
+    output_types[i] = elem_type;
+  }
+
+  // Create QDQ model and serialize it to a string.
+  onnxruntime::Model qdq_model("qdq_model", false, ModelMetaData(), PathString(),
+                               IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {},
+                               logging_manager.DefaultLogger());
+  ModelTestBuilder qdq_helper(qdq_model.MainGraph());
+  std::string qdq_model_data;
+  qdq_model_fn(qdq_helper, output_qparams);
+  qdq_helper.SetGraphOutputs();
+  ASSERT_STATUS_OK(qdq_model.MainGraph().Resolve());
+  qdq_model.ToProto().SerializeToString(&qdq_model_data);
+
+  // Run QDQ model on QNN EP and collect outputs.
+  std::vector<OrtValue> qnn_qdq_outputs;
+  InferenceModel(qdq_model_data, "qdq_model_logger", QnnExecutionProviderWithOptions(qnn_options),
+                 expected_ep_assignment, qdq_helper.feeds_, output_names, qnn_qdq_outputs);
+
+  if (expected_ep_assignment != ExpectedEPNodeAssignment::None) {
+    // Run QDQ model on CPU EP and collect outputs.
+    std::vector<OrtValue> cpu_qdq_outputs;
+    InferenceModel(qdq_model_data, "qdq_model_logger", nullptr, ExpectedEPNodeAssignment::All,
+                   qdq_helper.feeds_, output_names, cpu_qdq_outputs);
+    ASSERT_EQ(cpu_qdq_outputs.size(), num_outputs);
+    ASSERT_EQ(qnn_qdq_outputs.size(), num_outputs);
+
+    // Compare accuracy of QDQ results with float model.
+    // QNN EP must be at least as accurate as CPU EP when running the QDQ model.
+    for (size_t i = 0; i < num_outputs; i++) {
+      auto& cpu_qdq_tensor = cpu_qdq_outputs[i].Get<Tensor>();
+      auto& qnn_qdq_tensor = qnn_qdq_outputs[i].Get<Tensor>();
+
+      ASSERT_EQ(cpu_qdq_tensor.GetElementType(), output_types[i]);
+      ASSERT_EQ(qnn_qdq_tensor.GetElementType(), output_types[i]);
+
+      if (output_types[i] == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
+        const size_t num_vals = output_vals[i].size();
+        gsl::span<const float> cpu_f32_vals = output_vals[i];
+        gsl::span<const float> cpu_qdq_vals = cpu_qdq_tensor.DataAsSpan<float>();
+        gsl::span<const float> qnn_qdq_vals = qnn_qdq_tensor.DataAsSpan<float>();
+
+        ASSERT_EQ(num_vals, cpu_qdq_vals.size());
+        ASSERT_EQ(num_vals, qnn_qdq_vals.size());
+
+        for (size_t j = 0; j < num_vals; j++) {
+          const float cpu_err = std::fabsf(cpu_f32_vals[j] - cpu_qdq_vals[j]);
+          const float qnn_err = std::fabsf(cpu_f32_vals[j] - qnn_qdq_vals[j]);
+          EXPECT_TRUE(qnn_err <= cpu_err + fp32_abs_err) << " inaccuracy detected for output '" << output_names[i]
+                                                         << "', element " << j << ". QNN error: " << qnn_err
+                                                         << ", CPU error: " << cpu_err;
+        }
+      } else {
+        VerifyOutput(output_names[i], cpu_f32_outputs[i].Get<Tensor>(), qnn_qdq_tensor, fp32_abs_err);
+      }
+    }
+  }
+}
+
 /**
  * Creates and returns an input in a test model graph. The input's characteristics are defined
  * by the provided input definition.
@@ -203,6 +326,24 @@ inline NodeArg* MakeTestInput(ModelTestBuilder& builder, const TestInputDef<bool
 void RunQnnModelTest(const GetTestModelFn& build_test_case, const ProviderOptions& provider_options,
                      int opset_version, ExpectedEPNodeAssignment expected_ep_assignment,
                      float fp32_abs_err = 1e-5f, logging::Severity log_severity = logging::Severity::kERROR);
+
+/**
+ * Runs a QDQ model on the QNN EP and compares its output to that of a float32 model on CPU EP.
+ * Checks the graph node assignment, and that inference
+ * outputs for QNN and CPU match.
+ *
+ * \param cpu_model_fn Function that builds a float32 model for CPU EP. See test/optimizer/qdq_test_utils.h
+ * \param qnn_model_fn Function that builds a QDQ model for QNN EP.
+ * \param provider_options Provider options for QNN EP.
+ * \param opset_version The opset version.
+ * \param expected_ep_assignment How many nodes are expected to be assigned to QNN (All, Some, or None).
+ * \param fp32_abs_err The acceptable error between CPU EP and QNN EP.
+ * \param log_severity The logger's minimum severity level.
+ */
+void RunQnnQDQModelTest(const GetTestModelFn& cpu_model_fn, const GetTestModelFn& qnn_model_fn,
+                        const ProviderOptions& provider_options,
+                        int opset_version, ExpectedEPNodeAssignment expected_ep_assignment,
+                        float fp32_abs_err = 1e-5f, logging::Severity log_severity = logging::Severity::kERROR);
 
 enum class BackendSupport {
   SUPPORT_UNKNOWN,

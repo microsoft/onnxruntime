@@ -38,6 +38,12 @@ struct EPVerificationParams {
   const std::function<void(const Graph&)>* graph_verifier{nullptr};
 };
 
+// Verify equality of two output tensors.
+void VerifyOutput(const std::string& output_name,
+                  const Tensor& expected_tensor,
+                  const Tensor& tensor,
+                  float fp32_abs_err);
+
 // Return number of nodes in the Graph and any subgraphs that are assigned to the specified execution provider
 int CountAssignedNodes(const Graph& current_graph, const std::string& ep_type);
 
@@ -54,6 +60,17 @@ void RunAndVerifyOutputsWithEP(const std::string& model_data,
                                const char* log_id,
                                std::unique_ptr<IExecutionProvider> execution_provider,
                                const NameMLValMap& feeds,
+                               const EPVerificationParams& params = EPVerificationParams());
+
+// Runs a model with CPU EP to get the expected output, then runs a potentially different model with the
+// EP under test. The outputs are compared. Requires that at least one node is assigned to the EP under test.
+// This can be used to compare a quantized (Q/DQ model) with a float32 model (as an example).
+void RunAndVerifyOutputsWithEP(const std::string& cpu_ep_model_data,
+                               const std::string& ep_model_data,
+                               const char* log_id,
+                               std::unique_ptr<IExecutionProvider> execution_provider,
+                               const NameMLValMap& cpu_ep_feeds,
+                               const NameMLValMap& ep_feeds,
                                const EPVerificationParams& params = EPVerificationParams());
 
 // Check equality of two shapes. Can successfully complete only if rank are equal and all dimensions are equal.

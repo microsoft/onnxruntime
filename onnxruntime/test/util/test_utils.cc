@@ -18,6 +18,48 @@
 
 namespace onnxruntime {
 namespace test {
+void VerifyOutput(const std::string& output_name,
+                  const Tensor& expected_tensor,
+                  const Tensor& tensor,
+                  float fp32_abs_err) {
+  ASSERT_TRUE(SpanEq(expected_tensor.Shape().GetDims(), tensor.Shape().GetDims()));
+  ASSERT_EQ(expected_tensor.GetElementType(), tensor.GetElementType());
+  auto element_type = expected_tensor.GetElementType();
+  switch (element_type) {
+    case ONNX_NAMESPACE::TensorProto_DataType_UINT32:
+      EXPECT_TRUE(SpanEq(expected_tensor.DataAsSpan<uint32_t>(), tensor.DataAsSpan<uint32_t>()))
+          << " mismatch for " << output_name;
+      break;
+    case ONNX_NAMESPACE::TensorProto_DataType_INT32:
+      EXPECT_TRUE(SpanEq(expected_tensor.DataAsSpan<int32_t>(), tensor.DataAsSpan<int32_t>()))
+          << " mismatch for " << output_name;
+      break;
+    case ONNX_NAMESPACE::TensorProto_DataType_INT64:
+      EXPECT_TRUE(SpanEq(expected_tensor.DataAsSpan<int64_t>(), tensor.DataAsSpan<int64_t>()))
+          << " mismatch for " << output_name;
+      break;
+    case ONNX_NAMESPACE::TensorProto_DataType_UINT8:
+      EXPECT_TRUE(SpanEq(expected_tensor.DataAsSpan<uint8_t>(), tensor.DataAsSpan<uint8_t>()))
+          << " mismatch for " << output_name;
+      break;
+    case ONNX_NAMESPACE::TensorProto_DataType_INT8:
+      EXPECT_TRUE(SpanEq(expected_tensor.DataAsSpan<int8_t>(), tensor.DataAsSpan<int8_t>()))
+          << " mismatch for " << output_name;
+      break;
+    case ONNX_NAMESPACE::TensorProto_DataType_BOOL:
+      EXPECT_TRUE(SpanEq(expected_tensor.DataAsSpan<bool>(), tensor.DataAsSpan<bool>()))
+          << " mismatch for " << output_name;
+      break;
+    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT: {
+      EXPECT_THAT(expected_tensor.DataAsSpan<float>(),
+                  ::testing::Pointwise(::testing::FloatNear(fp32_abs_err), tensor.DataAsSpan<float>()));
+      break;
+    }
+    default:
+      ORT_THROW("Unhandled data type. Please add 'case' statement for ", element_type);
+  }
+}
+
 static void VerifyOutputs(const std::vector<std::string>& output_names,
                           const std::vector<OrtValue>& expected_fetches,
                           const std::vector<OrtValue>& fetches,
@@ -27,41 +69,7 @@ static void VerifyOutputs(const std::vector<std::string>& output_names,
   for (size_t i = 0, end = expected_fetches.size(); i < end; ++i) {
     auto& ltensor = expected_fetches[i].Get<Tensor>();
     auto& rtensor = fetches[i].Get<Tensor>();
-    ASSERT_TRUE(SpanEq(ltensor.Shape().GetDims(), rtensor.Shape().GetDims()));
-    auto element_type = ltensor.GetElementType();
-    switch (element_type) {
-      case ONNX_NAMESPACE::TensorProto_DataType_UINT32:
-        EXPECT_TRUE(SpanEq(ltensor.DataAsSpan<uint32_t>(), rtensor.DataAsSpan<uint32_t>()))
-            << " mismatch for " << output_names[i];
-        break;
-      case ONNX_NAMESPACE::TensorProto_DataType_INT32:
-        EXPECT_TRUE(SpanEq(ltensor.DataAsSpan<int32_t>(), rtensor.DataAsSpan<int32_t>()))
-            << " mismatch for " << output_names[i];
-        break;
-      case ONNX_NAMESPACE::TensorProto_DataType_INT64:
-        EXPECT_TRUE(SpanEq(ltensor.DataAsSpan<int64_t>(), rtensor.DataAsSpan<int64_t>()))
-            << " mismatch for " << output_names[i];
-        break;
-      case ONNX_NAMESPACE::TensorProto_DataType_UINT8:
-        EXPECT_TRUE(SpanEq(ltensor.DataAsSpan<uint8_t>(), rtensor.DataAsSpan<uint8_t>()))
-            << " mismatch for " << output_names[i];
-        break;
-      case ONNX_NAMESPACE::TensorProto_DataType_INT8:
-        EXPECT_TRUE(SpanEq(ltensor.DataAsSpan<int8_t>(), rtensor.DataAsSpan<int8_t>()))
-            << " mismatch for " << output_names[i];
-        break;
-      case ONNX_NAMESPACE::TensorProto_DataType_BOOL:
-        EXPECT_TRUE(SpanEq(ltensor.DataAsSpan<bool>(), rtensor.DataAsSpan<bool>()))
-            << " mismatch for " << output_names[i];
-        break;
-      case ONNX_NAMESPACE::TensorProto_DataType_FLOAT: {
-        EXPECT_THAT(ltensor.DataAsSpan<float>(),
-                    ::testing::Pointwise(::testing::FloatNear(params.fp32_abs_err), rtensor.DataAsSpan<float>()));
-        break;
-      }
-      default:
-        ORT_THROW("Unhandled data type. Please add 'case' statement for ", element_type);
-    }
+    VerifyOutput(output_names[i], ltensor, rtensor, params.fp32_abs_err);
   }
 }
 
@@ -90,12 +98,22 @@ void RunAndVerifyOutputsWithEP(const ORTCHAR_T* model_path, const char* log_id,
   // read raw data from model provided by the model_path
   std::ifstream stream(model_path, std::ios::in | std::ios::binary);
   std::string model_data((std::istreambuf_iterator<char>(stream)), std::istreambuf_iterator<char>());
-  RunAndVerifyOutputsWithEP(model_data, log_id, std::move(execution_provider), feeds, params);
+  RunAndVerifyOutputsWithEP(model_data, model_data, log_id, std::move(execution_provider), feeds, feeds, params);
 }
 
 void RunAndVerifyOutputsWithEP(const std::string& model_data, const char* log_id,
                                std::unique_ptr<IExecutionProvider> execution_provider,
                                const NameMLValMap& feeds,
+                               const EPVerificationParams& params) {
+  RunAndVerifyOutputsWithEP(model_data, model_data, log_id, std::move(execution_provider), feeds, feeds, params);
+}
+
+void RunAndVerifyOutputsWithEP(const std::string& cpu_ep_model_data,
+                               const std::string& ep_model_data,
+                               const char* log_id,
+                               std::unique_ptr<IExecutionProvider> execution_provider,
+                               const NameMLValMap& cpu_ep_feeds,
+                               const NameMLValMap& ep_feeds,
                                const EPVerificationParams& params) {
   SessionOptions so;
   so.session_logid = log_id;
@@ -106,7 +124,7 @@ void RunAndVerifyOutputsWithEP(const std::string& model_data, const char* log_id
   // get expected output from CPU EP
   //
   InferenceSessionWrapper session_object{so, GetEnvironment()};
-  ASSERT_STATUS_OK(session_object.Load(model_data.data(), static_cast<int>(model_data.size())));
+  ASSERT_STATUS_OK(session_object.Load(cpu_ep_model_data.data(), static_cast<int>(cpu_ep_model_data.size())));
   ASSERT_STATUS_OK(session_object.Initialize());
 
   const auto& graph = session_object.GetGraph();
@@ -122,7 +140,7 @@ void RunAndVerifyOutputsWithEP(const std::string& model_data, const char* log_id
   }
 
   std::vector<OrtValue> expected_fetches;
-  ASSERT_STATUS_OK(session_object.Run(run_options, feeds, output_names, &expected_fetches));
+  ASSERT_STATUS_OK(session_object.Run(run_options, cpu_ep_feeds, output_names, &expected_fetches));
 
   auto provider_type = execution_provider->Type();  // copy string so the std::move doesn't affect us
 
@@ -131,7 +149,7 @@ void RunAndVerifyOutputsWithEP(const std::string& model_data, const char* log_id
   //
   InferenceSessionWrapper session_object2{so, GetEnvironment()};
   ASSERT_STATUS_OK(session_object2.RegisterExecutionProvider(std::move(execution_provider)));
-  ASSERT_STATUS_OK(session_object2.Load(model_data.data(), static_cast<int>(model_data.size())));
+  ASSERT_STATUS_OK(session_object2.Load(ep_model_data.data(), static_cast<int>(ep_model_data.size())));
   ASSERT_STATUS_OK(session_object2.Initialize());
 
   // make sure that some nodes are assigned to the EP, otherwise this test is pointless...
@@ -149,7 +167,7 @@ void RunAndVerifyOutputsWithEP(const std::string& model_data, const char* log_id
 
   // Run with EP and verify the result
   std::vector<OrtValue> fetches;
-  ASSERT_STATUS_OK(session_object2.Run(run_options, feeds, output_names, &fetches));
+  ASSERT_STATUS_OK(session_object2.Run(run_options, ep_feeds, output_names, &fetches));
   VerifyOutputs(output_names, expected_fetches, fetches, params);
 
   if (params.graph_verifier) {
