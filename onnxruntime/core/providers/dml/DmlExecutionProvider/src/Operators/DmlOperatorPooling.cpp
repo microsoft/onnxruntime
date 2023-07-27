@@ -108,11 +108,20 @@ public:
             }
             case DML_OPERATOR_LP_POOLING1:
             {
-                DML_LP_POOLING1_OPERATOR_DESC desc = {};
-                desc.P = kernelInfo.GetOptionalAttribute<int>(AttrName::P, 2);
-                ML_CHECK_VALID_ARGUMENT(desc.P > 0);
-                desc.Dilations = m_kernel.dilations;
-                SetOpDesc(desc);
+                if (hasDilations) {
+                    DML_LP_POOLING1_OPERATOR_DESC desc = {};
+                    desc.P = kernelInfo.GetOptionalAttribute<int>(AttrName::P, 2);
+                    ML_CHECK_VALID_ARGUMENT(desc.P > 0);
+                    desc.Dilations = m_kernel.dilations;
+                    SetOpDesc(desc);
+                }
+                else {
+                    DML_LP_POOLING_OPERATOR_DESC desc = {};
+                    desc.P = kernelInfo.GetOptionalAttribute<int>(AttrName::P, 2);
+                    ML_CHECK_VALID_ARGUMENT(desc.P > 0);
+                    SetOpDesc(desc);
+                }
+
                 break;
             }
             case DML_OPERATOR_MAX_POOLING:
