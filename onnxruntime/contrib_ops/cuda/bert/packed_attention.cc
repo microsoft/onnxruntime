@@ -81,6 +81,10 @@ MHARunner* TrtFusedAttention<T>::GetFusedRunner(const cudaDeviceProp& device_pro
   return fused_runner;
 }
 
+// template class instantiation
+template class TrtFusedAttention<float>;
+template class TrtFusedAttention<MLFloat16>;
+
 template <typename T>
 PackedAttention<T>::PackedAttention(const OpKernelInfo& info) : TrtFusedAttention<T>(), CudaKernel(info) {
   int64_t num_heads = 0;
