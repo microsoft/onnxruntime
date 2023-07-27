@@ -513,28 +513,6 @@ def run_self_past_present_headsize_8_nomask_norelposbias():
     )
 
 
-def run_self_headsize_8_mask():
-    hidden_dim = 16
-    q_head_size = 8
-    v_head_size = 8
-    num_heads = 2
-    batch_size = 2
-    sequence_length = 2
-    key_padding_mask = torch.tensor([[1, 0], [1, 1]], dtype=torch.int32).cuda()
-    has_bias = False
-    run_self_attention(
-        hidden_dim,
-        q_head_size,
-        v_head_size,
-        num_heads,
-        batch_size,
-        sequence_length,
-        key_padding_mask,
-        has_bias,
-        is_decoder=False,
-    )
-
-
 def create_test_data():
     """
     Create test data used in attention_op_test_helper.cc and multihead_attention_op_test.cc
@@ -565,10 +543,6 @@ def create_test_data():
 
     print("CrossAttention_DiffSequenceLengths_HeadSize8")
     run_cross_diff_seqlen_headsize_8()
-
-    # Test data used in packed_multihead_attention_op_test.cc
-    print("PackedMultiHeadAttentionData_Batch2_HeadSize8_Mask")
-    run_self_headsize_8_mask()
 
 
 with torch.no_grad():
