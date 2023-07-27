@@ -27,9 +27,8 @@ enum AttentionQkvFormat {
   QKV_BSN3H,             // for TRT fused attention, qkv are packed
   Q_K_V_BNSH_QKV_BS3NH,  // for TRT fused causal attention, data has two formats (qkv is 3BNSH, gemm_buffer is BS3NH)
   Q_KV_BSNH_BSN2H,       // for TRT fused cross attention, kv are packed
-  // The following format has padding removed. Used in PackedAttention or PackedMultiheadAttention.
-  Q_K_V_TNH,  // For memory efficient attention, qkv are not packed, but paddings are removed.
-  QKV_TN3H,   // for TRT fused attention, qkv are packed and paddings are removed
+  Q_K_V_TNH,             // for memory efficient attention, qkv are not packed, and paddings are removed.
+  QKV_TN3H,              // for TRT fused attention, qkv are packed and paddings are removed
 };
 
 enum AttentionKernelType {
