@@ -3,12 +3,11 @@
 
 #include "gtest/gtest.h"
 
-#include <algorithm>
+#include <memory>
 #include <vector>
 
 #include "core/providers/coreml/coreml_execution_provider.h"
 #include "test/common/random_generator.h"
-#include "test/framework/test_utils.h"
 #include "test/util/include/test_utils.h"
 
 namespace onnxruntime::test {
@@ -23,17 +22,15 @@ TEST(CoreMLExecutionProviderDynamicInputShapeTest, MatMul) {
 
     const auto ep_verification_params = EPVerificationParams{
         ExpectedEPNodeAssignment::All,
-        2e-3f
+        2e-3f,
     };
 
-    constexpr size_t K = 2;
-
     RandomValueGenerator gen{1234};
-    const auto A_shape = std::vector<int64_t>{static_cast<int64_t>(M), K};
-    const auto A_data = gen.Uniform<float>(AsSpan(A_shape), 0.0f, 1.0f);
+    const auto A_shape = std::vector<int64_t>{static_cast<int64_t>(M), 2};
+    const auto A_data = gen.Uniform<float>(A_shape, 0.0f, 1.0f);
 
     OrtValue A;
-    CreateMLValue<float>(std::make_shared<CPUAllocator>(), A_shape, A_data, &A);
+    CreateInputOrtValueOnCPU(A_shape, A_data, &A);
 
     RunAndVerifyOutputsWithEP(model_path, "CoreMLEPDynamicInputShape.MatMul",
                               std::move(coreml_ep),
@@ -41,13 +38,13 @@ TEST(CoreMLExecutionProviderDynamicInputShapeTest, MatMul) {
                               ep_verification_params);
   };
 
-  test(1);
-  test(3);
-  test(5);
+  for (size_t i = 1; i <= 5; ++i) {
+    test(i);
+  }
 }
 
-TEST(CoreMLExecutionProviderDynamicInputShapeTest, MobileNet) {
-  constexpr auto model_path = ORT_TSTR("testdata/mobilenet_v3_small.onnx");
+TEST(CoreMLExecutionProviderDynamicInputShapeTest, MobileNetExcerpt) {
+  constexpr auto model_path = ORT_TSTR("testdata/mobilenet_v3_small_excerpt.onnx");
 
   auto test = [&](const size_t batch_size) {
     SCOPED_TRACE(MakeString("batch_size=", batch_size));
@@ -56,27 +53,25 @@ TEST(CoreMLExecutionProviderDynamicInputShapeTest, MobileNet) {
 
     const auto ep_verification_params = EPVerificationParams{
         ExpectedEPNodeAssignment::Some,
-        0.5f,
+        5e-2f,
     };
 
     RandomValueGenerator gen{1234};
-    const auto A_shape = std::vector<int64_t>{static_cast<int64_t>(batch_size), 3, 224, 224};
-    const auto A_data = gen.Uniform<float>(AsSpan(A_shape), 0.0f, 1.0f);
+    const auto input_shape = std::vector<int64_t>{static_cast<int64_t>(batch_size), 3, 224, 224};
+    const auto input_data = gen.Uniform<float>(input_shape, 0.0f, 1.0f);
 
-    OrtValue A;
-    CreateMLValue<float>(std::make_shared<CPUAllocator>(), A_shape, A_data, &A);
+    OrtValue input;
+    CreateInputOrtValueOnCPU(input_shape, input_data, &input);
 
     RunAndVerifyOutputsWithEP(model_path, "CoreMLEPDynamicInputShape.MobileNet",
                               std::move(coreml_ep),
-                              {{"input", A}},
+                              {{"input", input}},
                               ep_verification_params);
   };
 
-  test(1);
-  test(3);
-  test(5);
+  for (size_t i = 1; i <= 5; ++i) {
+    test(i);
+  }
 }
-
-
 
 }  // namespace onnxruntime::test
