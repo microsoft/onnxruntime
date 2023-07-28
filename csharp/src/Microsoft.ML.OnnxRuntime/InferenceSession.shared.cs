@@ -1044,9 +1044,7 @@ namespace Microsoft.ML.OnnxRuntime
             }
         }
 
-        public delegate void CallbackWrapperDelegate(IntPtr userData, IntPtr[] outputs, uint numOutputs, IntPtr status);
-
-        public static void CallbackWrapper(IntPtr userData, IntPtr[] outputs, uint numOutputs, IntPtr status)
+        private static void CallbackWrapper(IntPtr userData, IntPtr[] outputs, uint numOutputs, IntPtr status)
         {
             var resourceHdl = (GCHandle)userData;
             CallbackResource resource = (resourceHdl.Target as CallbackResource);
@@ -1070,13 +1068,17 @@ namespace Microsoft.ML.OnnxRuntime
             }
         }
 
-        public static CallbackWrapperDelegate callbackWrapper = new CallbackWrapperDelegate(CallbackWrapper);
+        private delegate void CallbackWrapperDelegate(IntPtr userData, IntPtr[] outputs, uint numOutputs, IntPtr status);
 
-        public delegate void CallbackDelegate(IntPtr userData, IDisposableReadOnlyCollection<OrtValue> outputs);
+        private static CallbackWrapperDelegate callbackWrapper = new CallbackWrapperDelegate(CallbackWrapper);
 
         /// <summary>
-        /// Host resources to be used in the callback wrapper
+        /// function delegate for the callback
         /// </summary>
+        /// <param name="userData">any arbitrary data that passed to RunAsync</param>
+        /// <param name="outputs">output tensors</param>
+        public delegate void CallbackDelegate(IntPtr userData, IDisposableReadOnlyCollection<OrtValue> outputs);
+
         private class CallbackResource
         {
             public IntPtr[] inputNames { get; set; }
@@ -1095,6 +1097,14 @@ namespace Microsoft.ML.OnnxRuntime
             }
         };
 
+        /// <summary>
+        /// Run inference asynchronous in a thread of intra-op thread pool
+        /// </summary>
+        /// <param name="inputs">input tensors</param>
+        /// <param name="outputs">output tensors</param>
+        /// <param name="options">run option, can be null</param>
+        /// <param name="callback">callback function of delegate type CallbackDelegate</param>
+        /// <param name="userData">arbitrary user data to be passed back to the callback</param>
         public void RunAsync(
             IReadOnlyCollection<NamedOnnxValue> inputs,
             IReadOnlyCollection<NamedOnnxValue> outputs,
