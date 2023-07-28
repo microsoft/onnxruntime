@@ -110,20 +110,19 @@ struct AsyncResource {
 
 void AsyncCallback(void* user_data, OrtValue** outputs, size_t num_outputs, OrtStatusPtr ort_status) {
   ORT_ENFORCE(user_data, "user data must not be NULL for callback in python");
-  std::unique_ptr<AsyncResource> async_resource{reinterpret_cast<AsyncResource*>(user_data)};
 
-  Ort::Status status(ort_status);
-  std::vector<py::object> rfetch;
+  auto invoke_callback = [&]() {
+    std::unique_ptr<AsyncResource> async_resource{reinterpret_cast<AsyncResource*>(user_data)};
+    Ort::Status status(ort_status);
 
-  // return on error
-  if (!status.IsOK()) {
-    async_resource->callback(rfetch, async_resource->user_data, status.GetErrorMessage());
-    return;
-  }
+    // return on error
+    if (!status.IsOK()) {
+      async_resource->callback({}, async_resource->user_data, status.GetErrorMessage());
+      return;
+    }
 
-  rfetch.reserve(num_outputs);
-
-  auto fill_fetches = [&]() {
+    std::vector<py::object> rfetch;
+    rfetch.reserve(num_outputs);
     size_t pos = 0;
     for (size_t ith = 0; ith < num_outputs; ++ith) {
       const auto& fet = *outputs[ith];
@@ -140,17 +139,15 @@ void AsyncCallback(void* user_data, OrtValue** outputs, size_t num_outputs, OrtS
       }
       ++pos;
     }
+    async_resource->callback(rfetch, async_resource->user_data, "");
   };
 
   if (PyGILState_Check()) {
-    fill_fetches();
+    invoke_callback();
   } else {
-    //py::gil_scoped_acquire acquire;
-    auto state = PyGILState_Ensure();
-    fill_fetches();
-    PyGILState_Release(state);
+    py::gil_scoped_acquire acquire;
+    invoke_callback();
   }
-  async_resource->callback(rfetch, async_resource->user_data, "");
 }
 
 template <typename T>
