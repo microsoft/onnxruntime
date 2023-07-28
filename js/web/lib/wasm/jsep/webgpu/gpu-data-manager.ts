@@ -81,6 +81,7 @@ class GpuDataManagerImpl implements GpuDataManager {
   // pending buffers for computing
   private buffersPending: GPUBuffer[];
 
+  // The reusable storage buffers for computing.
   private freeBuffers: Map<number, GPUBuffer[]>;
 
   constructor(private backend: WebGpuBackend) {
@@ -155,13 +156,19 @@ class GpuDataManagerImpl implements GpuDataManager {
     const bufferSize = calcNormalizedBufferSize(size);
 
     let gpuBuffer;
-    let buffers = this.freeBuffers.get(bufferSize);
-    if (!buffers) {
-      buffers = [];
-      this.freeBuffers.set(bufferSize, buffers);
-    }
-    if (buffers.length > 0) {
-      gpuBuffer = buffers.pop() as GPUBuffer;
+    // Currently, only storage buffers are reused.
+    if ((usage & GPUBufferUsage.STORAGE) === GPUBufferUsage.STORAGE) {
+      let buffers = this.freeBuffers.get(bufferSize);
+      if (!buffers) {
+        buffers = [];
+        this.freeBuffers.set(bufferSize, buffers);
+      }
+      if (buffers.length > 0) {
+        gpuBuffer = buffers.pop() as GPUBuffer;
+      } else {
+        // create gpu buffer
+        gpuBuffer = this.backend.device.createBuffer({size: bufferSize, usage});
+      }
     } else {
       // create gpu buffer
       gpuBuffer = this.backend.device.createBuffer({size: bufferSize, usage});
@@ -241,8 +248,12 @@ class GpuDataManagerImpl implements GpuDataManager {
     }
     this.buffersForUploadingPending = [];
     for (const buffer of this.buffersPending) {
-      // Put the pending buffer to freeBuffers list instead of really destroying it for buffer reusing.
-      this.freeBuffers.get(buffer.size)!.push(buffer);
+      if ((buffer.usage & GPUBufferUsage.STORAGE) === GPUBufferUsage.STORAGE) {
+        // Put the pending buffer to freeBuffers list instead of really destroying it for buffer reusing.
+        this.freeBuffers.get(buffer.size)!.push(buffer);
+      } else {
+        buffer.destroy();
+      }
     }
     this.buffersPending = [];
   }
