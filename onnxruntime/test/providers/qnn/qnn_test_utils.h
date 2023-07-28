@@ -119,7 +119,7 @@ struct QuantParams {
     constexpr float qmax = static_cast<float>(std::numeric_limits<QType>::max());
 
     const float scale = (rmax - rmin) / (qmax - qmin);
-    const QType zero_point = static_cast<QType>((qmin - rmin) / scale);
+    const QType zero_point = static_cast<QType>(std::roundf((qmin - rmin) / scale));
 
     return QuantParams<QType>{scale, zero_point};
   }

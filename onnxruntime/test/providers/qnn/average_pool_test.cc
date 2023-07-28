@@ -193,50 +193,61 @@ TEST_F(QnnCPUBackendTests, AveragePool_AutopadSameLower) {
 //
 
 // QDQ AveragePool with kernel size equal to the spatial dimension of input tensor.
-TEST_F(QnnHTPBackendTests, AveragePool_Global_HTP_u8) {
-  RunQDQAveragePoolOpTest<uint8_t>(TestInputDef<float>({1, 2, 3, 3}, false, -100.0f, 100.0f),  // random input
-                                   {3, 3},                                                     // kernel_shape
-                                   {3, 3},                                                     // strides
-                                   {0, 0, 0, 0},                                               // pads
-                                   0,                                                          // count_include_pad
+TEST_F(QnnHTPBackendTests, AveragePool_Global_HTP) {
+  std::vector<float> input = {32.1289f, -59.981f, -17.2799f, 62.7263f, 33.6205f, -19.3515f, -54.0113f, 37.5648f, 61.5357f,
+                              -52.5769f, 27.3637f, -9.01382f, -65.5612f, 19.9497f, -47.9228f, 26.9813f, 83.064f, 0.362503f};
+  RunQDQAveragePoolOpTest<uint8_t>(TestInputDef<float>({1, 2, 3, 3}, false, input),
+                                   {3, 3},        // kernel_shape
+                                   {3, 3},        // strides
+                                   {0, 0, 0, 0},  // pads
+                                   0,             // count_include_pad
                                    "NOTSET",
                                    ExpectedEPNodeAssignment::All);
 }
 
 // QDQ AveragePool that counts padding.
 TEST_F(QnnHTPBackendTests, AveragePool_CountIncludePad_HTP_u8) {
-  RunQDQAveragePoolOpTest<uint8_t>(TestInputDef<float>({1, 2, 3, 3}, false, -10.0f, 10.0f),  // random input
-                                   {1, 1},                                                   // kernel_shape
-                                   {1, 1},                                                   // strides
-                                   {0, 0, 0, 0},                                             // pads
-                                   1,                                                        // count_include_pad
+  std::vector<float> input = {-9.0f, -7.33f, -6.0f, -5.0f, -4.0f, -3.0f, -2.0f, -1.0f, 0.0f,
+                              1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f};
+
+  RunQDQAveragePoolOpTest<uint8_t>(TestInputDef<float>({1, 2, 3, 3}, false, input),
+                                   {1, 1},        // kernel_shape
+                                   {1, 1},        // strides
+                                   {0, 0, 0, 0},  // pads
+                                   1,             // count_include_pad
                                    "NOTSET",
                                    ExpectedEPNodeAssignment::All,
-                                   18, 0.00381f);
+                                   18);
 }
 
 // QDQ AveragePool that use auto_pad 'SAME_UPPER'.
 TEST_F(QnnHTPBackendTests, AveragePool_AutopadSameUpper_HTP_u8) {
-  RunQDQAveragePoolOpTest<uint8_t>(TestInputDef<float>({1, 2, 3, 3}, false, -10.0f, 10.0f),  // random input
-                                   {1, 1},                                                   // kernel_shape
-                                   {1, 1},                                                   // strides
-                                   {},                                                       // pads
-                                   0,                                                        // count_include_pad
+  std::vector<float> input = {-9.0f, -7.33f, -6.0f, -5.0f, -4.0f, -3.0f, -2.0f, -1.0f, 0.0f,
+                              1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f};
+
+  RunQDQAveragePoolOpTest<uint8_t>(TestInputDef<float>({1, 2, 3, 3}, false, input),
+                                   {1, 1},  // kernel_shape
+                                   {1, 1},  // strides
+                                   {},      // pads
+                                   0,       // count_include_pad
                                    "SAME_UPPER",
                                    ExpectedEPNodeAssignment::All,
-                                   18, 0.00381f);
+                                   18);
 }
 
 // QDQ AveragePool that use auto_pad 'SAME_LOWER'.
 TEST_F(QnnHTPBackendTests, AveragePool_AutopadSameLower_HTP_u8) {
-  RunQDQAveragePoolOpTest<uint8_t>(TestInputDef<float>({1, 2, 3, 3}, false, -10.0f, 10.0f),  // random input
-                                   {1, 1},                                                   // kernel_shape
-                                   {1, 1},                                                   // strides
-                                   {},                                                       // pads
-                                   0,                                                        // count_include_pad
+  std::vector<float> input = {-9.0f, -7.33f, -6.0f, -5.0f, -4.0f, -3.0f, -2.0f, -1.0f, 0.0f,
+                              1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f};
+
+  RunQDQAveragePoolOpTest<uint8_t>(TestInputDef<float>({1, 2, 3, 3}, false, input),
+                                   {1, 1},  // kernel_shape
+                                   {1, 1},  // strides
+                                   {},      // pads
+                                   0,       // count_include_pad
                                    "SAME_LOWER",
                                    ExpectedEPNodeAssignment::All,
-                                   18, 0.00381f);
+                                   18);
 }
 
 #endif  // defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
