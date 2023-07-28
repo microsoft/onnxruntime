@@ -188,6 +188,13 @@ KernelCreateInfo BuildKernelCreateInfo();
 }  // namespace contrib
 
 namespace contrib {
+namespace js {
+template <typename T>
+  KernelCreateInfo BuildKernelCreateInfo();
+}  // namespace js
+}  // namespace contrib
+
+namespace contrib {
 namespace rocm {
 template <typename T>
 KernelCreateInfo BuildKernelCreateInfo();

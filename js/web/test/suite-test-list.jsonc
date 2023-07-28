@@ -279,7 +279,8 @@
       "sub.jsonc",
       "tan.jsonc",
       "transpose.jsonc",
-      "xor.jsonc"
+      "xor.jsonc",
+      "gelu.jsonc"
     ]
   },
   "webgpu": {
@@ -1347,6 +1348,7 @@
       "leaky-relu.jsonc",
       "reduce-min.jsonc",
       "relu.jsonc",
+      "gelu.jsonc",
       //"pad.jsonc",
       //"pad-big.jsonc",
       "pow.jsonc",
