@@ -102,6 +102,7 @@ if [ "$is_mem_leaked" = "true" ]; then
     if [ -s ort_trt_memleak_detail.log ]; then
         mv ort_trt_memleak_detail.log result
 	    echo $(date +"%Y-%m-%d %H:%M:%S") '[valgrind] ORT-TRT memleak detail log parsed in CI artifact: ort_trt_memleak_detail.log'
+        exit 1
     else
 	    rm ort_trt_memleak_detail.log
     fi
