@@ -24,7 +24,7 @@ parameters:
 - name: MemTest
   displayName: Run Memory Test
   type: boolean
-  default: false
+  default: true
 
 - name: TrtEPOptions
   displayName: TensorRT EP options

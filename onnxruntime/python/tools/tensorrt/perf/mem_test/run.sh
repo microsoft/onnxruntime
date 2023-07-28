@@ -61,6 +61,7 @@ echo $(date +"%Y-%m-%d %H:%M:%S") '[valgrind] Analyzing valgrind log'
 
 found_leak_summary=false
 is_mem_leaked=false
+
 while IFS= read -r line
 do
   if echo $line | grep -q 'LEAK SUMMARY:'; then
@@ -71,33 +72,39 @@ do
     echo "Bytes lost: $bytes_lost"
     echo "Blocks lost: $blocks_lost"
     if [ "$blocks_lost" != "0 blocks" ]; then
-      echo $(date +"%Y-%m-%d %H:%M:%S") '[valgrind] Memory leak happened when testing squeezenet model!'
+      echo $(date +"%Y-%m-%d %H:%M:%S") '[valgrind] Memory leak happened when testing squeezenet model! Checking if it is ORT-TRT related'
       is_mem_leaked=true
     fi
     found_leak_summary=false
   fi
 done < "valgrind.log"
 
-# Export detailed memleak log if available
+# Export ORT-TRT memleak detail log if available
 if [ "$is_mem_leaked" = "true" ]; then
     awk '
-    BEGIN {buffer=""; isDefinitelyLost=0; hasOnnxruntime=0}
+    BEGIN {buffer=""; isDefinitelyLost=0; isOrtTrtRelated=0}
 
     # substitute "==xxxxx==" with ""
     {sub(/==[0-9]+== /, "")}
     
     # Start caching lines when isDefinitelyLost
-    /blocks are definitely lost in loss/ {isDefinitelyLost = 1; buffer=""; hasOnnxruntime=0}
+    /blocks are definitely lost in loss/ {isDefinitelyLost = 1; buffer=""; isOrtTrtRelated=0}
     
     # Cache this line when isDefinitelyLost and line!=""
-    # hasOnnxruntime=1 when "onnxruntime" is found
-    isDefinitelyLost && $0 != "" {buffer = buffer "\n" $0; if($0 ~ /onnxruntime/) {hasOnnxruntime=1}}
+    # isOrtTrtRelated=1 when "TensorrtExecutionProvider" is found
+    isDefinitelyLost && $0 != "" {buffer = buffer "\n" $0; if($0 ~ /TensorrtExecutionProvider/) {isOrtTrtRelated=1}}
     
-    # Stop caching and export buffer when isDefinitelyLost, line=="" and hasOnnxruntime
-    isDefinitelyLost && $0 == "" {isDefinitelyLost = 0; if(hasOnnxruntime==1) {print buffer}}
-    ' valgrind.log > memleak_detail.log
-    echo $(date +"%Y-%m-%d %H:%M:%S") '[valgrind] Detailed memleak log saved in artifact memleak_detail.log'
-    mv memleak_detail.log result
+    # Stop caching and export buffer when isDefinitelyLost, line=="" and isOrtTrtRelated
+    isDefinitelyLost && $0 == "" {isDefinitelyLost = 0; if(isOrtTrtRelated==1) {print buffer}}
+    ' valgrind.log > ort_trt_memleak_detail.log
+
+    # Check if any ORT-TRT related memleak info has been parsed
+    if [ -s ort_trt_memleak_detail.log ]; then
+        mv ort_trt_memleak_detail.log result
+	    echo $(date +"%Y-%m-%d %H:%M:%S") '[valgrind] ORT-TRT memleak detail log parsed in CI artifact: ort_trt_memleak_detail.log'
+    else
+	    rm ort_trt_memleak_detail.log
+    fi
 fi
 
 mv valgrind.log result
