@@ -179,6 +179,9 @@ class GpuDataManagerImpl implements GpuDataManager {
   }
 
   release(id: GpuDataId): number {
+    if (typeof id === 'bigint') {
+      id = Number(id);
+    }
     const cachedData = this.storageCache.get(id);
     if (!cachedData) {
       throw new Error('releasing data does not exist');
@@ -245,7 +248,8 @@ class GpuDataManagerImpl implements GpuDataManager {
     this.buffersForUploadingPending = [];
     for (const buffer of this.buffersPending) {
       // Put the pending buffer to freeBuffers list instead of really destroying it for buffer reusing.
-      this.freeBuffers.get(buffer.size)!.push(buffer);
+      // this.freeBuffers.get(buffer.size)!.push(buffer);
+      buffer.destroy();
     }
     this.buffersPending = [];
   }

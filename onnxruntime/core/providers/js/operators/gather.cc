@@ -11,9 +11,9 @@ namespace js {
 using AllSupportedSize =
     TypeList<
         float,
-//        double,
-//        int64_t,
-//        uint64_t,
+        double,
+        int64_t,
+        uint64_t,
         int32_t,
         uint32_t>;
 

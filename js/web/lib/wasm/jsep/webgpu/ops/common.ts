@@ -106,7 +106,7 @@ export interface ShaderHelper {
 
 export const getMaxWorkgroupLimits = (unitsOfWork: number): [{ x: number }, [number, number, number]] => {
   if (unitsOfWork < 256) {
-    return [{ x: 1 }, [unitsOfWork, 1, 1]];
+    return [{ x: 1 }, [Math.ceil(unitsOfWork), 1, 1]];
   }
   if (unitsOfWork < 1024) {
     return [{ x: 1} , [256, Math.ceil(unitsOfWork / 256), 1]];

@@ -42,7 +42,7 @@ const createGatherProgramInfo =
         }
         const inputDataType = inputs[0].dataType;
         const block = ShapeUtil.sizeFromDimension(inputShape, axis + 1);
-        const elementSize = [DataType.int64, DataType.uint64, DataType.double].includes(inputDataType) ? 2 : 1;
+        const elementSize = [DataType.int64, DataType.uint64, DataType.double, DataType.uint64, DataType.complex64].includes(inputDataType) ? 2 : 1;
         const indicesElementSize = inputs[1].dataType === DataType.int64 ? 2 : 1;
         const blockSize = elementSize * block;
         const M = ShapeUtil.sizeToDimension(inputShape, axis);
@@ -51,18 +51,18 @@ const createGatherProgramInfo =
         const gatheredBatchElements = N * block * elementSize;
         const axisDimLimit = inputShape[axis];
 
-        const inputSize = ShapeUtil.size(inputShape) * elementSize;
-        const outputSize = ShapeUtil.size(outputShape) * elementSize;
+        const inputSize = (ShapeUtil.size(inputShape) * elementSize) || elementSize;
+        const outputSize = (ShapeUtil.size(outputShape) * elementSize) || elementSize;
 
         const totalGathers = M * N;
         // int64 indices would be treated as little endian i32 with assumption they fall in i32 limits
         // That assumption is safe as it's not possible to allocate >2gb buffer for input tensor
         // Input data will be treated as u32 or two u32 for 8-byte tensors
+        console.log('gather', { blockSize, M, N, totalGathers, inputShape, outputShape, elementSize, outputSize, indicesShape })
 
         const [dispatchGroup, workgroupLimits] = getMaxWorkgroupLimits(totalGathers);
         const getShaderSource = (shaderHelper: ShaderHelper) => `
   const N: u32 = ${N};
-  const elementSize: u32 = ${elementSize};
   const indicesElementSize: u32 = ${indicesElementSize};
 
   @group(0) @binding(0) var<storage, read> input : array<u32>;

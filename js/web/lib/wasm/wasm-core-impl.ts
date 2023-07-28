@@ -286,8 +286,6 @@ export const run = async(
         wasm.HEAPU64[outputNamesIndex++] = BigInt(outputNamesUTF8Encoded[outputIndices[i]]);
       }
 
-      console.log('RUNNING', sessionHandle, inputNamesOffset, inputValuesOffset, inputCount, outputNamesOffset,
-        outputCount, outputValuesOffset, runOptionsHandle);
       // support RunOptions
       let errorCode = wasm._OrtRun(
           sessionHandle, inputNamesOffset, inputValuesOffset, inputCount, outputNamesOffset, outputCount,

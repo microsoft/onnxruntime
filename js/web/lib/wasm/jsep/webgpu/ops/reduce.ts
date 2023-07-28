@@ -43,9 +43,12 @@ const createReduceProgramInfo =
       const outputDimsLength = inputs[0].dims.length - (attributes.keepDims ? 0 : axes.length);
       const ops = reduceOp(inputs, axes);
       const inputIndicesHelper = createIndicesHelper('input', inputShape);
-      const initInputIdx = (ops[1] === '') ? '' : `let inputIdx = ${inputIndicesHelper.i2oExpression('inputIndices')};`;
+
+      const inputIdxDeclaration = `let inputIdx = ${inputIndicesHelper.i2oExpression('inputIndices')};`;
+      const initInputIdx = (ops[1] === '') ? '' : inputIdxDeclaration;
+
       let reduceOps = `
-          let inputIdx = ${inputIndicesHelper.i2oExpression('inputIndices')};
+          ${ops[1] === '' ? inputIdxDeclaration : ''}
           ${ops[2]};`;
       const reduceOnAllAxes = !attributes.noopWithEmptyAxes && attributes.axes.length === 0;
       for (let k = 0; k < inputs[0].dims.length; k++) {

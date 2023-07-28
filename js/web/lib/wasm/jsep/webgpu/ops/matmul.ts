@@ -1,12 +1,12 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {DataType, tensorTypeToWsglType} from '../../../wasm-common';
+import {DataType} from '../../../wasm-common';
 import {TensorView} from '../../tensor';
 import {BroadcastUtil, ShapeUtil} from '../../util';
 import {ComputeContext, GpuDataType, ProgramInfo, ProgramInfoLoader, ProgramMetadata} from '../types';
 
-import {getMaxWorkgroupLimits, ShaderHelper} from './common';
+import {ShaderHelper} from './common';
 import {getActicationSnippet, InternalActivationAttributes} from './fuse-utils';
 
 
@@ -28,14 +28,13 @@ const createMatmulProgramInfo =
           }
           const outputSize = ShapeUtil.size(outputShape);
           // TODO: support broadcasting
-          const dataType = tensorTypeToWsglType(inputs[0].dataType);  // TODO: support other data type
+
+          const dataType = 'f32';  // TODO: support other data type
           const {activationFunction, applyActivation} = getActicationSnippet(activationAttributes);
 
           const M = outputShape[outputShape.length - 2];
           const K = aShape[aShape.length - 1];
           const N = outputShape[outputShape.length - 1];
-
-          const [dispatchGroup, workgroupLimits] = getMaxWorkgroupLimits(outputSize);
           const getShaderSource = (shaderHelper: ShaderHelper) => `
   const M: u32 = ${M}u;
   const N: u32 = ${N}u;
@@ -47,7 +46,7 @@ const createMatmulProgramInfo =
 
   ${activationFunction}
 
-  ${shaderHelper.mainStart(workgroupLimits)}
+  ${shaderHelper.mainStart()}
     ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes(outputSize)}
 
     let stack = global_idx / (M * N);
@@ -69,7 +68,7 @@ const createMatmulProgramInfo =
             ...metadata,
             outputs: [{dims: outputShape, dataType: inputs[0].dataType, gpuDataType: GpuDataType.default}],
             getShaderSource,
-            dispatchGroup: () => (dispatchGroup)
+            dispatchGroup: () => ({x: Math.ceil(outputSize / 64 /* workgroup size */)})
           };
         };
 
@@ -88,9 +87,8 @@ const validateInputs = (inputs: readonly TensorView[]): void => {
     throw new Error('shared dimension does not match.');
   }
 
-  const supportedInputs = [DataType.float, DataType.float16];
-  if (!supportedInputs.includes(inputs[0].dataType) || !supportedInputs.includes(inputs[1].dataType)) {
-    throw new Error('Unsupported input type');
+  if (inputs[0].dataType !== DataType.float || inputs[1].dataType !== DataType.float) {
+    throw new Error('inputs should be float type');
   }
 };
 

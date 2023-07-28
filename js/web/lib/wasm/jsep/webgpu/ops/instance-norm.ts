@@ -155,8 +155,8 @@ const createInstanceNormNHWCProgramInfo =
         };
     };
 
-export const parseInstanceNormAttributes = (attributes: Record<string, unknown>): InstanceNormAttributes =>
-    createAttributeWithCacheKey(attributes as Omit<InstanceNormAttributes, keyof AttributeWithCacheKey>);
+export const parseInstanceNormAttributes = (attributes: InstanceNormAttributes): InstanceNormAttributes =>
+    createAttributeWithCacheKey({ epsilon: attributes.epsilon, format: attributes.format });
 
 export const instanceNorm = (context: ComputeContext, attributes: InstanceNormAttributes): void => {
     validateInputs(context.inputs);

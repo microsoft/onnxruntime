@@ -24,7 +24,7 @@ const validateInputs = (inputs: readonly TensorView[]): void => {
 };
 
 const createLayerNormProgramInfo =
-    (metadata: ProgramMetadata, inputs: readonly TensorView[], attributes: LayerNormAttributes):
+    (metadata: ProgramMetadata, inputs: readonly TensorView[], attributes: LayerNormAttributes, outputCount: number):
         ProgramInfo => {
         const xShape = inputs[0].dims;
         const scale = inputs[1];
@@ -56,6 +56,8 @@ const createLayerNormProgramInfo =
         const dataType = tensorTypeToWsglType(inputs[0].dataType);
         const [dispatchGroup, workgroupLimits] = getMaxWorkgroupLimits(normCount);
 
+        const hasMeanDataOutput = outputCount > 1;
+        const hasInvStdOutput = outputCount > 2;
         const getShaderSource = (shaderHelper: ShaderHelper) => `
   const normSize: u32 = ${normSize};
   const normSizeTyped: ${dataType} = ${normSize};
@@ -65,8 +67,8 @@ const createLayerNormProgramInfo =
   @group(0) @binding(1) var<storage, read> scale : array<${dataType}>;
   @group(0) @binding(2) var<storage, read> bias : array<${dataType}>;
   @group(0) @binding(3) var<storage, read_write> output : array<${dataType}>;
-  @group(0) @binding(4) var<storage, read_write> meanDataOutput : array<${dataType}>;
-  // @group(0) @binding(5) var<storage, read_write> invStdOutput : array<${dataType}>;
+  ${hasMeanDataOutput ? `@group(0) @binding(4) var<storage, read_write> meanDataOutput : array<${dataType}>` : ''};
+  ${hasInvStdOutput ? `@group(0) @binding(5) var<storage, read_write> invStdOutput : array<${dataType}>` : ''};
 
   ${shaderHelper.mainStart(workgroupLimits)}
     let offset = global_idx * normSize;
@@ -85,16 +87,26 @@ const createLayerNormProgramInfo =
         output[j + offset] = (x[j + offset] - mean) / meanSquare * scale[j] + bias[j];
     }
 
-    meanDataOutput[global_idx] = mean;
-    // invStdOutput[global_idx] = 1 / meanSquare;
+    ${hasMeanDataOutput ? 'meanDataOutput[global_idx] = mean' : ''};
+    ${hasInvStdOutput ? 'invStdOutput[global_idx] = 1 / meanSquare' : ''};
   }`;
+        const outputs = [
+            {dims: outputShape, dataType: inputs[0].dataType, gpuDataType: GpuDataType.default}
+        ];
+        if (hasMeanDataOutput) {
+            outputs.push(
+                {dims: meanInvStdDevDim, dataType: inputs[0].dataType, gpuDataType: GpuDataType.default},
+            );
+        }
+        if (hasInvStdOutput) {
+            outputs.push(
+                {dims: meanInvStdDevDim, dataType: inputs[0].dataType, gpuDataType: GpuDataType.default},
+            );
+        }
+
         return {
             ...metadata,
-            outputs: [
-                {dims: outputShape, dataType: inputs[0].dataType, gpuDataType: GpuDataType.default},
-                {dims: meanInvStdDevDim, dataType: inputs[0].dataType, gpuDataType: GpuDataType.default},
-                // {dims: meanInvStdDevDim, dataType: inputs[0].dataType, gpuDataType: GpuDataType.default},
-            ],
+            outputs,
             getShaderSource,
             dispatchGroup: () => (dispatchGroup)
         };
@@ -109,8 +121,10 @@ export const layerNorm = (context: ComputeContext, attributes: LayerNormAttribut
     const metadata = {
         name: 'LayerNorm',
         inputTypes: [GpuDataType.default, GpuDataType.default, GpuDataType.default],
-        cacheHint: attributes.cacheKey,
+        cacheHint: attributes.cacheKey + context.outputCount.toString(10),
     };
 
-    context.compute(createLayerNormProgramInfo(metadata, context.inputs, attributes));
+    // console.log('LAYER NORM', context);
+
+    context.compute(createLayerNormProgramInfo(metadata, context.inputs, attributes, context.outputCount));
 };

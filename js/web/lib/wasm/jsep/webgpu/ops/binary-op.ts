@@ -5,7 +5,7 @@ import {TensorView} from '../../tensor';
 import {BroadcastUtil, ShapeUtil} from '../../util';
 import {ComputeContext, GpuDataType, ProgramInfo, ProgramInfoLoader, ProgramMetadata} from '../types';
 
-import {createIndicesHelper, getMaxWorkgroupLimits, ShaderHelper} from './common';
+import {createIndicesHelper, ShaderHelper} from './common';
 
 type BuiltinFunctionName = string;
 type BinaryCustomExpression = (expressionA: string, expressionB: string) => string;
@@ -31,7 +31,7 @@ const createBinaryOpProgramShader =
         expressionScalar = funcCall.scalar;
         expressionVector = funcCall.vector;
       }
-      const limits = getMaxWorkgroupLimits(outputSize / (vectorize ? 4 : 1));
+
       let broadcastImpl = '';
       const outputIndicesHelper = createIndicesHelper('output', dimsOutput);
       if (doBroadcast) {
@@ -106,7 +106,7 @@ const createBinaryOpProgramShader =
   ${additionalImplementation ?? ''}
   ${broadcastImpl}
 
-  ${shaderHelper.mainStart(limits[1])}
+  ${shaderHelper.mainStart()}
     ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes(vecSize)}
     ${assignment}
   }`;
@@ -152,14 +152,13 @@ const createBinaryOpProgramInfo =
         vectorize = true;
       }
 
-      const limits = getMaxWorkgroupLimits(outputSize / (vectorize ? 4 : 1));
       return {
         ...metadata,
         getShaderSource: (shaderHelper) => createBinaryOpProgramShader(
             shaderHelper, a.dims, b.dims, outputShape, vectorize, isBroadcast, funcCall, additionalImplementation),
         outputs: [{dims: outputShape, dataType: outputDataType, gpuDataType: GpuDataType.default}],
         dispatchGroup: () =>
-            (limits[0])
+            ({x: Math.ceil(outputSize / 64 /* workgroup size */ / (vectorize ? 4 : 1) /* vec size */)})
       };
     };
 
