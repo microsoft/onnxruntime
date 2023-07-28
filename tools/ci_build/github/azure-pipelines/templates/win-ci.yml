@@ -67,10 +67,7 @@ stages:
 - stage: Windows_Packaging_${{ parameters.stage_name_suffix }}
   dependsOn: []
   variables:
-    ${{if or(eq(parameters.ort_build_pool_name, 'onnxruntime-gpu-winbuild-T4'), eq(parameters.ort_build_pool_name, 'onnxruntime-gpu-tensorrt8-winbuild-t4'))}}:
-      VSGenerator: 'Visual Studio 16 2019'
-    ${{else}}:
-      VSGenerator: 'Visual Studio 17 2022'
+    VSGenerator: 'Visual Studio 17 2022'
   jobs:
   - job:
     workspace:

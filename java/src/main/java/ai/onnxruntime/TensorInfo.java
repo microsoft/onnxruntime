@@ -16,24 +16,46 @@ public class TensorInfo implements ValueInfo {
 
   /** The native element types supported by the ONNX runtime. */
   public enum OnnxTensorType {
+    /** An undefined element type. */
     ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED(0),
+    /** An 8-bit unsigned integer. */
     ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8(1), // maps to c type uint8_t
+    /** An 8-bit signed integer. */
     ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8(2), // maps to c type int8_t
+    /** A 16-bit unsigned integer. */
     ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT16(3), // maps to c type uint16_t
+    /** A 16-bit signed integer. */
     ONNX_TENSOR_ELEMENT_DATA_TYPE_INT16(4), // maps to c type int16_t
+    /** A 32-bit unsigned integer. */
     ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT32(5), // maps to c type uint32_t
+    /** A 32-bit signed integer. */
     ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32(6), // maps to c type int32_t
+    /** A 64-bit unsigned integer. */
     ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT64(7), // maps to c type uint64_t
+    /** A 64-bit signed integer. */
     ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64(8), // maps to c type int64_t
+    /** An IEEE 16-bit floating point number. */
     ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16(9), // stored as a uint16_t
+    /** An IEEE 32-bit floating point number. */
     ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT(10), // maps to c type float
+    /** An IEEE 64-bit floating point number. */
     ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE(11), // maps to c type double
+    /** A UTF-8 string. */
     ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING(12), // maps to c++ type std::string
+    /** A boolean value stored in a byte. */
     ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL(13),
+    /** A 64-bit complex number, stored as 2 32-bit values. Not accessible from Java. */
     ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX64(
         14), // complex with float32 real and imaginary components
+    /** A 128-bit complex number, stored as 2 64-bit values. Not accessible from Java. */
     ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX128(
         15), // complex with float64 real and imaginary components
+    /**
+     * A non-IEEE 16-bit floating point value with 8 exponent bits and 7 mantissa bits.
+     *
+     * <p>See <a href="https://en.wikipedia.org/wiki/Bfloat16_floating-point_format">Bfloat16 on
+     * Wikipedia</a> for more details.
+     */
     ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16(
         16), // Non-IEEE floating-point format based on IEEE754 single-precision
     ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E4M3FN(
@@ -43,7 +65,7 @@ public class TensorInfo implements ValueInfo {
     ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E5M2(
         19), // Non-IEEE floating-point format based on IEEE754 single-precision
     ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E5M2FNUZ(
-        20); // Non-IEEE floating-point format based on IEEE754 single-precisio
+        20); // Non-IEEE floating-point format based on IEEE754 single-precision
 
     /** The int id on the native side. */
     public final int value;
@@ -111,6 +133,7 @@ public class TensorInfo implements ValueInfo {
     }
   }
 
+  /** The shape of the tensor. */
   final long[] shape;
 
   /** The Java type of this tensor. */
