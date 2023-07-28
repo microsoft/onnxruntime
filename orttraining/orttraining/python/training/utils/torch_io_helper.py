@@ -11,13 +11,6 @@ from typing import List, Mapping, Optional, Sequence, Tuple, Union
 import torch
 
 
-def warn_of_constant_inputs(data):
-    warnings.warn(
-        f"Received input of type {type(data)} which may be treated as a constant by ORT by default."
-        " Please consider moving constant arguments to the model constructor."
-    )
-
-
 class PrimitiveType:
     _primitive_types = {int, bool, float}  # noqa: RUF012
 
@@ -47,6 +40,13 @@ ORTModelInputOutputType = Union[
     Sequence["ORTModelInputOutputType"],
     Mapping[str, "ORTModelInputOutputType"],
 ]
+
+
+def _warn_of_constant_inputs(data):
+    warnings.warn(
+        f"Received input of type {type(data)} which may be treated as a constant by ORT by default."
+        " Please consider moving constant arguments to the model constructor."
+    )
 
 
 class _TensorStub:
@@ -173,10 +173,10 @@ def flatten_data_with_schema(
         if data is None:
             return data
         elif isinstance(data, str):
-            warn_of_constant_inputs(data)
+            _warn_of_constant_inputs(data)
             return data
         elif PrimitiveType.is_primitive_type(data):
-            warn_of_constant_inputs(data)
+            _warn_of_constant_inputs(data)
             if constant_as_tensor:
                 tensor_idx[0] += 1
                 flatten_tensor_data.append(PrimitiveType.get_tensor(data, device))

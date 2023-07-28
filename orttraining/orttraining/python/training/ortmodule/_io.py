@@ -17,7 +17,7 @@ from onnxruntime.training.utils.torch_io_helper import (
     ORTModelInputOutputSchemaType,
     ORTModelInputOutputType,
     PrimitiveType,
-    flatten_data_with_schema,
+    get_schema_for_flatten_data,
 )
 
 from ._fallback import ORTModuleIOError, ORTModuleONNXModelException, wrap_exception
@@ -536,7 +536,7 @@ def parse_outputs_for_onnx_export_and_extract_schema(
         # Parse the output and extract the output_names and output_dynamic_axes to be used for onnx export
         output_names, output_dynamic_axes = _parse_outputs_and_extract_names_and_dynamic_axes(sample_outputs)
 
-    output_schema = flatten_data_with_schema(sample_outputs, constant_as_tensor=True)
+    output_schema = get_schema_for_flatten_data(sample_outputs, constant_as_tensor=True)
     if is_deepcopy:
         del model_copy
         gc.collect()
