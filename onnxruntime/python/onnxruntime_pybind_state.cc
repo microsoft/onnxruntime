@@ -110,47 +110,53 @@ struct AsyncResource {
 
 void AsyncCallback(void* user_data, OrtValue** outputs, size_t num_outputs, OrtStatusPtr ort_status) {
   ORT_ENFORCE(user_data, "user data must not be NULL for callback in python");
-  std::unique_ptr<AsyncResource> async_resource{reinterpret_cast<AsyncResource*>(user_data)};
+  PyGILState_STATE gstate{};
+  bool ensure_called = false;
+  {
+    std::unique_ptr<AsyncResource> async_resource{reinterpret_cast<AsyncResource*>(user_data)};
 
-  Ort::Status status(ort_status);
-  std::vector<py::object> rfetch;
+    Ort::Status status(ort_status);
+    std::vector<py::object> rfetch;
 
-  // return on error
-  if (!status.IsOK()) {
-    async_resource->callback(rfetch, async_resource->user_data, status.GetErrorMessage());
-    return;
-  }
-
-  rfetch.reserve(num_outputs);
-
-  auto fill_fetches = [&]() {
-    size_t pos = 0;
-    for (size_t ith = 0; ith < num_outputs; ++ith) {
-      const auto& fet = *outputs[ith];
-      if (fet.IsAllocated()) {
-        if (fet.IsTensor()) {
-          rfetch.push_back(AddTensorAsPyObj(fet, nullptr, nullptr));
-        } else if (fet.IsSparseTensor()) {
-          rfetch.push_back(GetPyObjectFromSparseTensor(pos, fet, nullptr));
-        } else {
-          rfetch.push_back(AddNonTensorAsPyObj(fet, nullptr, nullptr));
-        }
-      } else {
-        rfetch.push_back(py::none());
-      }
-      ++pos;
+    // return on error
+    if (!status.IsOK()) {
+      async_resource->callback(rfetch, async_resource->user_data, status.GetErrorMessage());
+      return;
     }
-  };
 
-  if (PyGILState_Check()) {
-    fill_fetches();
-  } else {
-    //py::gil_scoped_acquire acquire;
-    auto state = PyGILState_Ensure();
-    fill_fetches();
-    PyGILState_Release(state);
+    rfetch.reserve(num_outputs);
+
+    auto fill_fetches = [&]() {
+      size_t pos = 0;
+      for (size_t ith = 0; ith < num_outputs; ++ith) {
+        const auto& fet = *outputs[ith];
+        if (fet.IsAllocated()) {
+          if (fet.IsTensor()) {
+            rfetch.push_back(AddTensorAsPyObj(fet, nullptr, nullptr));
+          } else if (fet.IsSparseTensor()) {
+            rfetch.push_back(GetPyObjectFromSparseTensor(pos, fet, nullptr));
+          } else {
+            rfetch.push_back(AddNonTensorAsPyObj(fet, nullptr, nullptr));
+          }
+        } else {
+          rfetch.push_back(py::none());
+        }
+        ++pos;
+      }
+    };
+
+    if (PyGILState_Check()) {
+      fill_fetches();
+      async_resource->callback(rfetch, async_resource->user_data, "");
+    } else {
+      // py::gil_scoped_acquire acquire;
+      gstate = PyGILState_Ensure();
+      ensure_called = true;
+      fill_fetches();
+      async_resource->callback(rfetch, async_resource->user_data, "");
+    }
   }
-  async_resource->callback(rfetch, async_resource->user_data, "");
+  if (ensure_called) PyGILState_Release(gstate);
 }
 
 template <typename T>
@@ -1766,7 +1772,7 @@ including arg name, arg type (contains both type and shape).)pbdoc")
                -> void {
              std::unique_ptr<AsyncResource> async_resource = std::make_unique<AsyncResource>();
              async_resource->callback = callback;
-             async_resource->user_data = user_data; // not inc ref
+             async_resource->user_data = user_data;  // not inc ref
 
              // prepare feeds
              async_resource->ReserveFeeds(pyfeeds.size());
@@ -1788,26 +1794,26 @@ including arg name, arg type (contains both type and shape).)pbdoc")
 
              // prepare fetches
              async_resource->ReserveFetches(output_names.size());
-            for (auto& output_name : output_names) {
-              async_resource->fetch_names.push_back(output_name);
-              async_resource->fetch_names_raw.push_back(async_resource->fetch_names.back().c_str());
-              async_resource->fetches_raw.push_back({});
-            }
+             for (auto& output_name : output_names) {
+               async_resource->fetch_names.push_back(output_name);
+               async_resource->fetch_names_raw.push_back(async_resource->fetch_names.back().c_str());
+               async_resource->fetches_raw.push_back({});
+             }
 
-            const RunOptions* run_async_option = run_options ? run_options : &async_resource->default_run_option;
-            common::Status status = sess->GetSessionHandle()->RunAsync(run_async_option,
-                                                                       gsl::span(async_resource->feed_names_raw.data(), async_resource->feed_names_raw.size()),
-                                                                       gsl::span(async_resource->feeds_raw.data(), async_resource->feeds_raw.size()),
-                                                                       gsl::span(async_resource->fetch_names_raw.data(), async_resource->fetch_names_raw.size()),
-                                                                       gsl::span(async_resource->fetches_raw.data(), async_resource->fetches_raw.size()),
-                                                                       AsyncCallback,
-                                                                       async_resource.get());
+             const RunOptions* run_async_option = run_options ? run_options : &async_resource->default_run_option;
+             common::Status status = sess->GetSessionHandle()->RunAsync(run_async_option,
+                                                                        gsl::span(async_resource->feed_names_raw.data(), async_resource->feed_names_raw.size()),
+                                                                        gsl::span(async_resource->feeds_raw.data(), async_resource->feeds_raw.size()),
+                                                                        gsl::span(async_resource->fetch_names_raw.data(), async_resource->fetch_names_raw.size()),
+                                                                        gsl::span(async_resource->fetches_raw.data(), async_resource->fetches_raw.size()),
+                                                                        AsyncCallback,
+                                                                        async_resource.get());
 
-            if (status.IsOK()) {
-              async_resource.release();
-            }
-            OrtPybindThrowIfError(status);
-          })
+             if (status.IsOK()) {
+               async_resource.release();
+             }
+             OrtPybindThrowIfError(status);
+           })
       /// This method accepts a dictionary of feeds (name -> OrtValue) and the list of output_names
       /// and returns a list of python objects representing OrtValues. Each name may represent either
       /// a Tensor, SparseTensor or a TensorSequence.
