@@ -105,4 +105,4 @@ def GenerateModel(model_name, output_type_fp16=False):  # noqa: N802
 
 if __name__ == "__main__":
     GenerateModel("matmul_integer_to_float.onnx")
-    GenerateModel("matmul_integer_to_float16.onnx", True)
+    GenerateModel("matmul_integer_to_float16.onnx", output_type_fp16=True)

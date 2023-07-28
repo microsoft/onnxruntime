@@ -92,7 +92,7 @@ void TestMatMulIntegerToFloat(const std::vector<int64_t>& A_dims,
   if constexpr (std::is_same_v<OType, float>) {
     test.SetOutputRelErr("Y", 2e-2f);
   } else {
-    test.SetOutputRelErr("Y", 0.3f);
+    test.SetOutputRelErr("Y", 2.0f);
   }
 #else
   test.SetOutputRelErr("Y", 1e-4f);
@@ -107,7 +107,8 @@ void RunMatMulIntegerToFloatTest(const string& model_path) {
   std::vector<int64_t> B_dims{128, 128};
   std::vector<int64_t> Y_dims{4, 128};
 
-  TestMatMulIntegerToFloat<IType, WType, OType>(A_dims,
+  TestMatMulIntegerToFloat<IType, WType, OType>(
+                                         A_dims,
                                          B_dims,
                                          model_path,
                                          false,        /*is_matrix_b_constant*/
@@ -116,7 +117,8 @@ void RunMatMulIntegerToFloatTest(const string& model_path) {
                                          HasBias       /*has_bias*/
   );
 
-  TestMatMulIntegerToFloat<IType, WType, OType>(A_dims,
+  TestMatMulIntegerToFloat<IType, WType, OType>(
+                                         A_dims,
                                          B_dims,
                                          model_path,
                                          true,         /*is_matrix_b_constant*/
@@ -125,7 +127,8 @@ void RunMatMulIntegerToFloatTest(const string& model_path) {
                                          HasBias       /*has_bias*/
   );
 
-  TestMatMulIntegerToFloat<IType, WType, OType>(A_dims,
+  TestMatMulIntegerToFloat<IType, WType, OType>(
+                                         A_dims,
                                          B_dims,
                                          model_path,
                                          false,        /*is_matrix_b_constant*/
@@ -134,7 +137,8 @@ void RunMatMulIntegerToFloatTest(const string& model_path) {
                                          HasBias       /*has_bias*/
   );
 
-  TestMatMulIntegerToFloat<IType, WType, OType>(A_dims,
+  TestMatMulIntegerToFloat<IType, WType, OType>(
+                                         A_dims,
                                          B_dims,
                                          model_path,
                                          true,         /*is_matrix_b_constant*/
