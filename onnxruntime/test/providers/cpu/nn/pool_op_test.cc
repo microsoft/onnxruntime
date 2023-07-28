@@ -777,11 +777,6 @@ TEST(PoolTest, GlobalMaxPool3D) {
 }
 
 TEST(PoolTest, AveragePool) {
-  // TODO: Unskip when fixed #41968513
-  if (DefaultDmlExecutionProvider().get() != nullptr) {
-    GTEST_SKIP() << "Skipping because of the following error: MLOperatorAuthorImpl.cpp(2100): The parameter is incorrect.";
-  }
-
   OpTester test("AveragePool");
 
   test.AddAttribute("auto_pad", "");
@@ -863,11 +858,6 @@ TEST(PoolTest, AveragePool) {
 }
 
 TEST(PoolTest, AveragePool_IncludePadPixel) {
-  // TODO: Unskip when fixed #41968513
-  if (DefaultDmlExecutionProvider().get() != nullptr) {
-    GTEST_SKIP() << "Skipping because of the following error: MLOperatorAuthorImpl.cpp(2100): The parameter is incorrect.";
-  }
-
   OpTester test("AveragePool");
 
   test.AddAttribute("auto_pad", "");
@@ -911,11 +901,6 @@ TEST(PoolTest, AveragePool_DefaultStrides) {
 }
 
 TEST(PoolTest, AveragePool_10_ceil1_2d) {
-  // TODO: Unskip when fixed #41968513
-  if (DefaultDmlExecutionProvider().get() != nullptr) {
-    GTEST_SKIP() << "Skipping because of the following error: MLOperatorAuthorImpl.cpp(2100): The parameter is incorrect.";
-  }
-
   OpTester test("AveragePool", 10);
 
   test.AddAttribute("auto_pad", "");
@@ -939,11 +924,6 @@ TEST(PoolTest, AveragePool_10_ceil1_2d) {
 }
 
 TEST(PoolTest, AveragePool_19_dilation_2d) {
-  // TODO: Unskip when fixed #41968513
-  if (DefaultDmlExecutionProvider().get() != nullptr) {
-    GTEST_SKIP() << "Skipping because of the following error: MLOperatorAuthorImpl.cpp(2100): The parameter is incorrect.";
-  }
-
   OpTester test("AveragePool", 19);
 
   test.AddAttribute("auto_pad", "");
@@ -1070,11 +1050,6 @@ TEST(PoolTest, GlobalAveragePool_Large_256) {
 }
 
 TEST(PoolTest, LpPool) {
-  // TODO: Unskip when fixed #41968513
-  if (DefaultDmlExecutionProvider().get() != nullptr) {
-    GTEST_SKIP() << "Skipping because of the following error: MLOperatorAuthorImpl.cpp(2100): The parameter is incorrect.";
-  }
-
   OpTester test("LpPool");
 
   test.AddAttribute("auto_pad", "");
