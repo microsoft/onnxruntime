@@ -1073,7 +1073,7 @@ namespace Microsoft.ML.OnnxRuntime
         private static CallbackWrapperDelegate callbackWrapper = new CallbackWrapperDelegate(CallbackWrapper);
 
         /// <summary>
-        /// function delegate for the callback
+        /// Function delegate for the callback
         /// </summary>
         /// <param name="userData">any arbitrary data that passed to RunAsync</param>
         /// <param name="outputs">output tensors</param>

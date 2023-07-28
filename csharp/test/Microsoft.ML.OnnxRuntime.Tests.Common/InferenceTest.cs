@@ -2060,7 +2060,8 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                     outputs.Add(NamedOnnxValue.CreateFromTensor("output", tensorOut));
 
                     session.RunAsync(inputs, outputs, null, AsyncCallback, (IntPtr)evtHdl);
-                    evt.WaitOne(10000);  // timeout in 10 sec
+                    Assert.True(evt.WaitOne(10000));  // timeout in 10 sec
+                    Assert.True(false);
                 }
                 finally
                 {
