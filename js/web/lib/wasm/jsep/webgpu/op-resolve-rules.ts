@@ -54,6 +54,7 @@ export const WEBGPU_OP_RESOLVE_RULES: Map<string, OperatorImplementation> = new 
   ['MaxPool', [pool.maxPool, pool.parseMaxPoolAttributes]],
   ['Mul', [binaryOps.mul]],
   ['Neg', [unaryOps.neg]],
+  ['Not', [unaryOps.not]],
   ['Pow', [binaryOps.pow]],
   ['Reciprocal', [unaryOps.reciprocal]],
   ['ReduceMin', [reduceMin, parseReduceAttributes]],

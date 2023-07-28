@@ -18,8 +18,12 @@ const createElementwiseProgramShader =
       const vecSize = Math.ceil(datasize / 4);
 
       let expression = '';
-      if (typeof funcCall === 'string') {
-        expression = `${funcCall}(a)`;
+       if (typeof funcCall === 'string') {
+         if (funcCall === 'not') {
+           expression = '!a';
+         } else {
+           expression = `${funcCall}(a)`;
+         }
       } else {
         expression = funcCall('a');
       }
@@ -83,6 +87,10 @@ export const atan = (context: ComputeContext): void => {
 };
 export const atanh = (context: ComputeContext): void => {
   context.compute(createElementwiseProgramInfoLoader(context.inputs[0], 'Atanh', 'atanh'));
+};
+
+export const not = (context: ComputeContext): void => {
+  context.compute(createElementwiseProgramInfoLoader(context.inputs[0], 'Not', 'not'));
 };
 
 export interface ClipAttributes extends AttributeWithCacheKey {

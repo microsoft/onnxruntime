@@ -89,6 +89,9 @@ JSEP_ELEMENTWISE_KERNEL(Acosh, 9, float, Acosh)
 JSEP_KERNEL_IMPL(Atanh, Atanh)
 JSEP_ELEMENTWISE_KERNEL(Atanh, 9, float, Atanh)
 
+JSEP_KERNEL_IMPL(Not, Not)
+JSEP_ELEMENTWISE_KERNEL(Not, 7, bool, Not)
+
 // activation
 
 JSEP_CLASS_IMPL_ATTRIBUTE_FLOAT_2_DEFAULT(ClipV10, ClipV10, min, 3.402823e+38f, max, -3.402823e+38f)
