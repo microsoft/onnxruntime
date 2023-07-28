@@ -81,17 +81,20 @@ done < "valgrind.log"
 # Export detailed memleak log if available
 if [ "$is_mem_leaked" = "true" ]; then
     awk '
+    BEGIN {buffer=""; isDefinitelyLost=0; hasOnnxruntime=0}
+
     # substitute "==xxxxx==" with ""
     {sub(/==[0-9]+== /, "")}
-
-    # found=1 when keyword is found
-    /blocks are definitely lost in loss/ {found = 1}
-
-    # export this line when found and line!=""
-    found && $0 != "" {print}
-
-    # stop exporting when found and line=""
-    found && $0 == "" {found = 0; print ""}
+    
+    # Start caching lines when isDefinitelyLost
+    /blocks are definitely lost in loss/ {isDefinitelyLost = 1; buffer=""; hasOnnxruntime=0}
+    
+    # Cache this line when isDefinitelyLost and line!=""
+    # hasOnnxruntime=1 when "onnxruntime" is found
+    isDefinitelyLost && $0 != "" {buffer = buffer "\n" $0; if($0 ~ /onnxruntime/) {hasOnnxruntime=1}}
+    
+    # Stop caching and export buffer when isDefinitelyLost, line=="" and hasOnnxruntime
+    isDefinitelyLost && $0 == "" {isDefinitelyLost = 0; if(hasOnnxruntime==1) {print buffer}}
     ' valgrind.log > memleak_detail.log
     echo $(date +"%Y-%m-%d %H:%M:%S") '[valgrind] Detailed memleak log saved in artifact memleak_detail.log'
     mv memleak_detail.log result
