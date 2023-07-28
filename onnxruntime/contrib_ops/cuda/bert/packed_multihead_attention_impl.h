@@ -11,31 +11,18 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-size_t GetAttentionScratchSize(
-    size_t element_size,
-    size_t batch_size,
-    size_t num_heads,
-    size_t sequence_length);
-
-size_t GetAttentionWorkspaceSize(
-    size_t element_size,
-    size_t batch_size,
-    size_t num_heads,
-    size_t qk_head_size,
-    size_t v_head_size,
-    size_t sequence_length,
-    void* fused_runner,
-    bool use_memory_efficient_attention,
-    bool no_qkv_workspace);
-
 template <typename T>
-struct PackedAttentionData {
-  T* gemm_buffer;
-  const T* bias;
+struct PackedMultiHeadAttentionData {
+  const T* query;
+  const T* key;
+  const T* value;
   const T* relative_position_bias;
   const int32_t* token_offset;
   const int32_t* cumulative_sequence_length;
 
+  AttentionQkvFormat source_qkv_format;
+
+  bool no_qkv_workspace;
   T* workspace;
   T* output;
 
@@ -50,14 +37,7 @@ Status QkvToContext(
     cublasHandle_t& cublas,
     cudaStream_t stream,
     contrib::PackedAttentionParameters& parameters,
-    PackedAttentionData<T>& data);
-
-template <typename T>
-Status LaunchTransposeRemovePadding(
-    T* output, const T* input,
-    const int* token_offset, const int token_count,
-    const int batch_size, const int seq_len, const int number_heads, const int head_size,
-    cudaStream_t stream);
+    PackedMultiHeadAttentionData<T>& data);
 
 }  // namespace cuda
 }  // namespace contrib
