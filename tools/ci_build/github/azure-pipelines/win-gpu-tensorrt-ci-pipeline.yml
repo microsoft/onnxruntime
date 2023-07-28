@@ -36,9 +36,10 @@ jobs:
       arguments: --new_dir $(Build.BinariesDirectory)/deps
       workingDirectory: $(Build.BinariesDirectory)
 
-  - template: jobs/set-wincuda.yml
+  - template: jobs/set-winenv.yml
     parameters:
       EnvSetupScript: $(EnvSetupScript)
+      DownloadCUDA: true
 
   - task: PowerShell@2
     displayName: 'Install ONNX'

@@ -96,6 +96,12 @@ stages:
         inputs:
           versionSpec: '16.x'
 
+      - template: set-winenv.yml
+        inputs:
+          EnvSetupScript: ${{ parameters.EnvSetupScript }}
+          ${{ if contains(parameters.additionalBuildFlags, 'use_cuda') }}:
+            DownloadCUDA: true
+
       - template: download-deps.yml
 
       - task: PythonScript@0
@@ -113,12 +119,6 @@ stages:
           arguments: -cpu_arch ${{ parameters.buildArch }} -install_prefix $(Build.BinariesDirectory)\RelWithDebInfo\installed -build_config RelWithDebInfo
 
       - template: set-version-number-variables-step.yml
-
-      - ${{ if contains(parameters.buildparameter, 'use_cuda') }}:
-        - template: jobs/set-wincuda.yml
-          parameters:
-            EnvSetupScript: ${{ parameters.EnvSetupScript }}
-
 
       - task: PythonScript@0
         displayName: 'Generate cmake config'

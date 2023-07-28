@@ -108,6 +108,7 @@ jobs:
       versionSpec: '16.x'
       force32bit: ${{ parameters.isX86 }}
 
+
   # Our build machine doesn't have java x86
   - ${{ if eq(parameters.buildArch, 'x64') }}:
       - task: JavaToolInstaller@0
@@ -115,6 +116,12 @@ jobs:
           versionSpec: '11'
           jdkArchitectureOption: ${{ parameters.buildArch }}
           jdkSourceOption: 'PreInstalled'
+
+  - template: set-winenv.yml
+    inputs:
+      EnvSetupScript: ${{ parameters.EnvSetupScript }}
+      ${{ if contains(parameters.additionalBuildFlags, 'use_cuda') }}:
+        DownloadCUDA: true
 
   - script: |
      set ORT_DOXY_SRC=$(Build.SourcesDirectory)
@@ -129,11 +136,6 @@ jobs:
      python -m pip install -q setuptools wheel numpy
     workingDirectory: '$(Build.BinariesDirectory)'
     displayName: 'Install python modules'
-
-  - ${{ if contains(parameters.additionalBuildFlags, 'use_cuda') }}:
-    - template: set-wincuda.yml
-      inputs:
-        EnvSetupScript: ${{ parameters.EnvSetupScript }}
 
   - ${{ if eq(parameters.WITH_CACHE, true) }}:
     - powershell: |

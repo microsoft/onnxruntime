@@ -31,10 +31,10 @@ jobs:
     workingDirectory: '$(Build.BinariesDirectory)'
     displayName: 'Install python modules'
 
-  - template: template/jobs/set-wincuda.yml
+  - template: template/jobs/set-winenv.yml
     parameters:
       EnvSetupScript: $(EnvSetupScript)
-
+      DownloadCUDA: true
 
   - task: PowerShell@2
     displayName: 'Install ONNX'

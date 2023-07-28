@@ -61,9 +61,10 @@ jobs:
 
       - template: download-deps.yml
 
-      - template: template/jobs/set-wincuda.yml
+      - template: template/jobs/set-winenv.yml
         parameters:
           EnvSetupScript: ${{ parameters.ENV_SETUP_SCRIPT }}
+          DownloadCUDA: true
 
       - task: PythonScript@0
         displayName: 'Update deps.txt'
