@@ -1,3 +1,6 @@
+# Copyright (c) Microsoft Corporation. All rights reserved.
+# Licensed under the MIT License.
+
 from collections import abc
 
 import pytest
@@ -11,10 +14,10 @@ from onnxruntime.training.utils.io import _TensorStub, flatten_data_with_schema,
     # list
     [
         [
-            [True, False, 1, 2.0, "abc", None],
-            [],
-            [True, False, 1, 2.0, "abc", None],
-            # for constant_as_tensor=True test
+            [True, False, 1, 2.0, "abc", None],  # input
+            [],  # flatten tensor list
+            [True, False, 1, 2.0, "abc", None],  # extracted schema
+            # flatten tensor lis when constant_as_tensor=True
             [torch.tensor(True), torch.tensor(False), torch.tensor(1), torch.tensor(2.0)],
         ],
         [
@@ -175,9 +178,7 @@ from onnxruntime.training.utils.io import _TensorStub, flatten_data_with_schema,
 )
 @pytest.mark.parametrize(
     "flag",
-    [
-        0,
-    ],
+    [0, 1, 2],
 )  # 0: flatten, 1: unflatten, 2: flatten and unflatten
 def test_data_flatten_and_unflatten(input_output_map, flag: int):
     raw_data = input_output_map[0]

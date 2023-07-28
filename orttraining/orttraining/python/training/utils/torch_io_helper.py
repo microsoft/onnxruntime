@@ -255,7 +255,7 @@ def unflatten_from_data_and_schema(data: List[torch.Tensor], schema: ORTModelInp
 
             return data_schema
 
-        raise RuntimeError(f"ORTModule does not support the following model output type {type(data_schema)}.")
+        raise RuntimeError(f"ORT does not support the following model output type {type(data_schema)}.")
 
     user_output = _replace_stub_with_tensor_value(schema, data)
     return user_output
