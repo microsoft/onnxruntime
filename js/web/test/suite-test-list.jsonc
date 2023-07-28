@@ -279,8 +279,7 @@
       "sub.jsonc",
       "tan.jsonc",
       "transpose.jsonc",
-      "xor.jsonc",
-      "gelu.jsonc"
+      "xor.jsonc"
     ]
   },
   "webgpu": {
