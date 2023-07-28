@@ -613,9 +613,9 @@ constexpr static std::array<SupportedTensorDataTypes, 3> supportedTypeListQLinea
 };
 
 constexpr static std::array<SupportedTensorDataTypes, 3> supportedTypeListMatMulIntegerToFloat = {
-    SupportedTensorDataTypes::Int8|SupportedTensorDataTypes::UInt8,
-    SupportedTensorDataTypes::Int8|SupportedTensorDataTypes::UInt8,
-    SupportedTensorDataTypes::Float32
+    SupportedTensorDataTypes::Ints8Bit,
+    SupportedTensorDataTypes::Ints8Bit,
+    SupportedTensorDataTypes::Float16to32
 };
 
 constexpr static std::array<SupportedTensorDataTypes, 4> supportedTypeListQLinearConv = {

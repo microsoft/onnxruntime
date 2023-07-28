@@ -23,7 +23,7 @@ using namespace std;
 namespace onnxruntime {
 namespace test {
 
-template <typename IType, typename WType>
+template <typename IType, typename WType, typename OType>
 void TestMatMulIntegerToFloat(const std::vector<int64_t>& A_dims,
                               std::vector<int64_t> B_dims,
                               const std::string& reference_model,
@@ -50,11 +50,11 @@ void TestMatMulIntegerToFloat(const std::vector<int64_t>& A_dims,
     return static_cast<WType>(v);
   });
 
-  std::vector<float> A_scale = random.Uniform<float>(AsSpan<int64_t>({1}), -0.1f, 0.1f);
+  std::vector<OType> A_scale = random.Uniform<OType>(AsSpan<int64_t>({1}), -0.1f, 0.1f);
   std::vector<IType> A_zero_point{(std::numeric_limits<IType>::lowest() + std::numeric_limits<IType>::max() + IType(2)) / 2};
 
   int64_t b_scale_zp_size = per_column ? B_dims.back() : 1;
-  std::vector<float> B_scale = random.Uniform<float>(AsSpan({b_scale_zp_size}), -0.1f, 0.1f);
+  std::vector<OType> B_scale = random.Uniform<OType>(AsSpan({b_scale_zp_size}), -0.1f, 0.1f);
 
   std::vector<WType> B_zero_point(b_scale_zp_size);
   std::for_each(B_zero_point.begin(),
@@ -65,13 +65,13 @@ void TestMatMulIntegerToFloat(const std::vector<int64_t>& A_dims,
                                                                   std::numeric_limits<WType>::max())[0]);
                 });
 
-  std::vector<float> Bias = random.Uniform<float>(AsSpan({B_dims.back()}), -0.1f, 0.1f);
+  std::vector<OType> Bias = random.Uniform<OType>(AsSpan({B_dims.back()}), -0.1f, 0.1f);
 
   OpTester test("MatMulIntegerToFloat", 1, onnxruntime::kMSDomain);
   test.AddInput<IType>("A", A_dims, A_data);
   test.AddInput<WType>("B", B_dims, B_data, is_matrix_b_constant);
-  test.AddInput<float>("a_scale", {1}, A_scale);
-  test.AddInput<float>("b_scale", {b_scale_zp_size}, B_scale);
+  test.AddInput<OType>("a_scale", {1}, A_scale);
+  test.AddInput<OType>("b_scale", {b_scale_zp_size}, B_scale);
 
   if (has_zp) {
     test.AddInput<IType>("a_zero_point", {1}, A_zero_point);
@@ -82,14 +82,18 @@ void TestMatMulIntegerToFloat(const std::vector<int64_t>& A_dims,
   }
 
   if (has_bias) {
-    test.AddInput<float>("bias", {B_dims.back()}, Bias);
+    test.AddInput<OType>("bias", {B_dims.back()}, Bias);
   } else {
-    test.AddOptionalInputEdge<float>();
+    test.AddOptionalInputEdge<OType>();
   }
 
   test.AddReferenceOutputs(reference_model);
 #if defined(USE_DML)
-  test.SetOutputRelErr("Y", 2e-2f);
+  if constexpr (std::is_same_v<OType, float>) {
+    test.SetOutputRelErr("Y", 2e-2f);
+  } else {
+    test.SetOutputRelErr("Y", 2.0f);
+  }
 #else
   test.SetOutputRelErr("Y", 1e-4f);
 #endif
@@ -97,13 +101,14 @@ void TestMatMulIntegerToFloat(const std::vector<int64_t>& A_dims,
   test.Run();
 }
 
-template <typename IType, typename WType, bool HasZeroPoint, bool HasBias>
+template <typename IType, typename WType, typename OType, bool HasZeroPoint, bool HasBias>
 void RunMatMulIntegerToFloatTest(const string& model_path) {
   std::vector<int64_t> A_dims{4, 128};
   std::vector<int64_t> B_dims{128, 128};
   std::vector<int64_t> Y_dims{4, 128};
 
-  TestMatMulIntegerToFloat<IType, WType>(A_dims,
+  TestMatMulIntegerToFloat<IType, WType, OType>(
+                                         A_dims,
                                          B_dims,
                                          model_path,
                                          false,        /*is_matrix_b_constant*/
@@ -112,7 +117,8 @@ void RunMatMulIntegerToFloatTest(const string& model_path) {
                                          HasBias       /*has_bias*/
   );
 
-  TestMatMulIntegerToFloat<IType, WType>(A_dims,
+  TestMatMulIntegerToFloat<IType, WType, OType>(
+                                         A_dims,
                                          B_dims,
                                          model_path,
                                          true,         /*is_matrix_b_constant*/
@@ -121,7 +127,8 @@ void RunMatMulIntegerToFloatTest(const string& model_path) {
                                          HasBias       /*has_bias*/
   );
 
-  TestMatMulIntegerToFloat<IType, WType>(A_dims,
+  TestMatMulIntegerToFloat<IType, WType, OType>(
+                                         A_dims,
                                          B_dims,
                                          model_path,
                                          false,        /*is_matrix_b_constant*/
@@ -130,7 +137,8 @@ void RunMatMulIntegerToFloatTest(const string& model_path) {
                                          HasBias       /*has_bias*/
   );
 
-  TestMatMulIntegerToFloat<IType, WType>(A_dims,
+  TestMatMulIntegerToFloat<IType, WType, OType>(
+                                         A_dims,
                                          B_dims,
                                          model_path,
                                          true,         /*is_matrix_b_constant*/
@@ -138,24 +146,42 @@ void RunMatMulIntegerToFloatTest(const string& model_path) {
                                          HasZeroPoint, /*has_zp*/
                                          HasBias       /*has_bias*/
   );
+}
+
+TEST(MatMulIntegerToFloat, HasZeroPoint_NoBias_test_U8X8_FP16) {
+  RunMatMulIntegerToFloatTest<uint8_t, int8_t, MLFloat16, true, false>("testdata/matmul_integer_to_float16_int8.onnx");
+  RunMatMulIntegerToFloatTest<uint8_t, uint8_t, MLFloat16, true, false>("testdata/matmul_integer_to_float16_uint8.onnx");
+}
+
+TEST(MatMulIntegerToFloat, NoZeroPoint_HasBias_test_U8X8_FP16) {
+  RunMatMulIntegerToFloatTest<uint8_t, int8_t, MLFloat16, false, true>("testdata/matmul_integer_to_float16_int8_bias.onnx");
+  RunMatMulIntegerToFloatTest<uint8_t, uint8_t, MLFloat16, false, true>("testdata/matmul_integer_to_float16_uint8_bias.onnx");
+}
+
+TEST(MatMulIntegerToFloat, HasZeroPoint_NoBias_test_S8S8_FP16) {
+  RunMatMulIntegerToFloatTest<int8_t, int8_t, MLFloat16, true, false>("testdata/matmul_integer_to_float16_int8_int8.onnx");
+}
+
+TEST(MatMulIntegerToFloat, NoZeroPoint_HasBias_test_S8S8_FP16) {
+  RunMatMulIntegerToFloatTest<int8_t, int8_t, MLFloat16, false, true>("testdata/matmul_integer_to_float16_int8_int8_bias.onnx");
 }
 
 TEST(MatMulIntegerToFloat, HasZeroPoint_NoBias_test_U8X8) {
-  RunMatMulIntegerToFloatTest<uint8_t, int8_t, true, false>("testdata/matmul_integer_to_float_int8.onnx");
-  RunMatMulIntegerToFloatTest<uint8_t, uint8_t, true, false>("testdata/matmul_integer_to_float_uint8.onnx");
+  RunMatMulIntegerToFloatTest<uint8_t, int8_t, float, true, false>("testdata/matmul_integer_to_float_int8.onnx");
+  RunMatMulIntegerToFloatTest<uint8_t, uint8_t, float, true, false>("testdata/matmul_integer_to_float_uint8.onnx");
 }
 
 TEST(MatMulIntegerToFloat, NoZeroPoint_HasBias_test_U8X8) {
-  RunMatMulIntegerToFloatTest<uint8_t, int8_t, false, true>("testdata/matmul_integer_to_float_int8_bias.onnx");
-  RunMatMulIntegerToFloatTest<uint8_t, uint8_t, false, true>("testdata/matmul_integer_to_float_uint8_bias.onnx");
+  RunMatMulIntegerToFloatTest<uint8_t, int8_t, float, false, true>("testdata/matmul_integer_to_float_int8_bias.onnx");
+  RunMatMulIntegerToFloatTest<uint8_t, uint8_t, float, false, true>("testdata/matmul_integer_to_float_uint8_bias.onnx");
 }
 
 TEST(MatMulIntegerToFloat, HasZeroPoint_NoBias_test_S8S8) {
-  RunMatMulIntegerToFloatTest<int8_t, int8_t, true, false>("testdata/matmul_integer_to_float_int8_int8.onnx");
+  RunMatMulIntegerToFloatTest<int8_t, int8_t, float, true, false>("testdata/matmul_integer_to_float_int8_int8.onnx");
 }
 
 TEST(MatMulIntegerToFloat, NoZeroPoint_HasBias_test_S8S8) {
-  RunMatMulIntegerToFloatTest<int8_t, int8_t, false, true>("testdata/matmul_integer_to_float_int8_int8_bias.onnx");
+  RunMatMulIntegerToFloatTest<int8_t, int8_t, float, false, true>("testdata/matmul_integer_to_float_int8_int8_bias.onnx");
 }
 
 TEST(MatMulIntegerToFloat, MatMulInteger_With_ZeroPoint) {
@@ -189,6 +215,69 @@ TEST(MatMulIntegerToFloat, MatMulInteger_With_ZeroPoint) {
       // add Mul1
       auto* A_scale_arg = builder.MakeInput<float>({1}, -0.1f, 0.f);
       auto* B_scale_arg = builder.MakeInput<float>(b_scale_zp_shape, -0.1f, 0.f);
+      auto* mul1_output = builder.MakeIntermediate();
+      builder.AddNode("Mul", {A_scale_arg, B_scale_arg}, {mul1_output});
+
+      // add Mul2
+      builder.AddNode("Mul", {mul1_output, cast_output}, {output_arg});
+    };
+
+    auto check_mp_reshape_graph = [&](InferenceSessionWrapper& session) {
+      auto op_to_count = CountOpsInGraph(session.GetGraph());
+      EXPECT_EQ(op_to_count["com.microsoft.MatMulIntegerToFloat"], 1);
+    };
+
+    TransformerTester(build_test_case,
+                      check_mp_reshape_graph,
+                      TransformerLevel::Level1,
+                      TransformerLevel::Level2,
+                      12 /*opset_version*/,
+                      1e-5 /*per_sample_tolerance*/,
+                      1e-5 /*relative_per_sample_tolerance*/);
+  };
+
+  // Scale Scalar
+  test_case({5, 4, 3}, {3, 4}, {1});
+
+  // 2D B per-column
+  test_case({5, 4, 3}, {3, 4}, {4});
+  test_case({5, 4, 3}, {3, 4}, {1, 4});
+
+  // ND B per-column
+  test_case({15, 14, 13}, {15, 13, 27}, {15, 1, 27});
+}
+
+TEST(MatMulIntegerToFloat, MatMulInteger_With_ZeroPoint_FP16) {
+  auto test_case = [&](const std::vector<int64_t>& input_shape,
+                       const std::vector<int64_t>& weights_shape,
+                       const std::vector<int64_t>& b_scale_zp_shape) {
+    auto build_test_case = [&](ModelTestBuilder& builder) {
+      auto* input_arg = builder.MakeInput<uint8_t>(input_shape,
+                                                   std::numeric_limits<uint8_t>::min(),
+                                                   std::numeric_limits<uint8_t>::max());
+      auto* output_arg = builder.MakeOutput();
+      auto* weight = builder.MakeInitializer<int8_t>(weights_shape,
+                                                     std::numeric_limits<int8_t>::min() / 2,
+                                                     std::numeric_limits<int8_t>::max() / 2);
+
+      // add MatMulInteger
+      auto* matmul_integer_output = builder.MakeIntermediate();
+      auto* A_zp_arg = builder.MakeInput<uint8_t>({1},
+                                                  std::numeric_limits<uint8_t>::min(),
+                                                  std::numeric_limits<uint8_t>::max());
+      auto* B_zp_arg = builder.MakeInput<int8_t>(b_scale_zp_shape,
+                                                 std::numeric_limits<int8_t>::min() / 2,
+                                                 std::numeric_limits<int8_t>::max() / 2);
+      builder.AddNode("MatMulInteger", {input_arg, weight, A_zp_arg, B_zp_arg}, {matmul_integer_output});
+
+      // add Cast
+      auto* cast_output = builder.MakeIntermediate();
+      Node& cast_node = builder.AddNode("Cast", {matmul_integer_output}, {cast_output});
+      cast_node.AddAttribute("to", static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16));
+
+      // add Mul1
+      auto* A_scale_arg = builder.MakeInput<MLFloat16>({1}, MLFloat16(-0.1f), MLFloat16(0.0f));
+      auto* B_scale_arg = builder.MakeInput<MLFloat16>(b_scale_zp_shape, MLFloat16(-0.1f), MLFloat16(0.0f));
       auto* mul1_output = builder.MakeIntermediate();
       builder.AddNode("Mul", {A_scale_arg, B_scale_arg}, {mul1_output});
 
