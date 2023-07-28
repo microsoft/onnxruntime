@@ -29,6 +29,20 @@ export const enum DataType {
 }
 
 /**
+ * Map data type to WGSL type.
+ */
+export const tensorDataTypeToWgslType = (typeProto: DataType): string => {
+  switch (typeProto) {
+    case DataType.int32:
+      return 'i32';
+    case DataType.float:
+      return 'f32';
+    default:
+      throw new Error(`unsupported data type: ${typeProto}`);
+  }
+};
+
+/**
  * Map string tensor data to enum value
  */
 export const tensorDataTypeStringToEnum = (type: string): DataType => {

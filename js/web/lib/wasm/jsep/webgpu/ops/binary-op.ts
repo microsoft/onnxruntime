@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+import {DataType, tensorDataTypeToWgslType} from '../../../wasm-common';
 import {TensorView} from '../../tensor';
 import {BroadcastUtil, ShapeUtil} from '../../util';
 import {ComputeContext, GpuDataType, ProgramInfo, ProgramInfoLoader, ProgramMetadata} from '../types';
@@ -12,6 +13,16 @@ type BinaryCustomExpression = (expressionA: string, expressionB: string) => stri
 type BinaryFunctionCall = BuiltinFunctionName|BinaryCustomExpression|{
   scalar: BinaryCustomExpression;
   vector: BinaryCustomExpression;
+};
+
+const validateInputs = (inputs: readonly TensorView[]): void => {
+  if (!inputs || inputs.length !== 2) {
+    throw new Error('Binary op requires 2 inputs.');
+  }
+
+  if (inputs[0].dataType !== DataType.float && inputs[0].dataType !== DataType.int32) {
+    throw new Error('Invalid input type.');
+  }
 };
 
 const createBinaryOpProgramShader =
@@ -152,10 +163,15 @@ const createBinaryOpProgramInfo =
         vectorize = true;
       }
 
+      const typeA = tensorDataTypeToWgslType(a.dataType);
+      const typeB = tensorDataTypeToWgslType(b.dataType);
+      const typeOutput = tensorDataTypeToWgslType(outputDataType);
+
       return {
         ...metadata,
         getShaderSource: (shaderHelper) => createBinaryOpProgramShader(
-            shaderHelper, a.dims, b.dims, outputShape, vectorize, isBroadcast, funcCall, additionalImplementation),
+            shaderHelper, a.dims, b.dims, outputShape, vectorize, isBroadcast, funcCall, additionalImplementation,
+            typeA, typeB, typeOutput),
         outputs: [{dims: outputShape, dataType: outputDataType, gpuDataType: GpuDataType.default}],
         dispatchGroup: () =>
             ({x: Math.ceil(outputSize / 64 /* workgroup size */ / (vectorize ? 4 : 1) /* vec size */)})
@@ -165,8 +181,10 @@ const createBinaryOpProgramInfo =
 const createBinaryOpProgramInfoLoader =
     (inputs: readonly TensorView[], name: string, funcCall: BinaryFunctionCall, additionalImplementation?: string,
      cacheKey?: string): ProgramInfoLoader => {
+      validateInputs(inputs);
+      const cacheKeyWithType = cacheKey === undefined ? `${inputs[0].dataType}` : cacheKey + `_${inputs[0].dataType}`;
       const metadata:
-          ProgramMetadata = {name, inputTypes: [GpuDataType.default, GpuDataType.default], cacheHint: cacheKey};
+          ProgramMetadata = {name, inputTypes: [GpuDataType.default, GpuDataType.default], cacheHint: cacheKeyWithType};
       return {
         ...metadata,
         get: () => createBinaryOpProgramInfo(metadata, inputs[0], inputs[1], funcCall, additionalImplementation)
@@ -186,19 +204,23 @@ export const mul = (context: ComputeContext): void => {
 };
 
 export const pow = (context: ComputeContext): void => {
+  const type = tensorDataTypeToWgslType(context.inputs[0].dataType);
   context.compute(createBinaryOpProgramInfoLoader(
-      context.inputs, 'Pow', ({scalar: (a, b) => `pow_f32(${a},${b})`, vector: (a, b) => `pow_vf32(${a},${b})`}), `
-    fn pow_f32(a : f32, b : f32) -> f32 {
-      if (b == 0.0) {
-        return 1.0;
-      } else if (a < 0.0 && b != floor(b)) {
-        return pow(a, b); // NaN
+      context.inputs, 'Pow',
+      ({scalar: (a, b) => `pow_custom(${a},${b})`, vector: (a, b) => `pow_vector_custom(${a},${b})`}),
+      `
+    fn pow_custom(a : ${type}, b : ${type}) -> ${type} {
+      if (b == ${type}(0.0)) {
+        return ${type}(1.0);
+      } else if (a < ${type}(0.0) && f32(b) != floor(f32(b))) {
+        return ${type}(pow(f32(a), f32(b))); // NaN
       }
-      return select(sign(a), 1.0, round(abs(b) % 2.0) != 1.0) * pow(abs(a), b);
+      return select(sign(a), ${type}(1.0), round(f32(abs(b) % ${type}(2.0))) != 1.0) * ${
+          type}(pow(f32(abs(a)), f32(b)));
     }
-    fn pow_vf32(a : vec4<f32>, b : vec4<f32>) -> vec4<f32> {
+    fn pow_vector_custom(a : vec4<${type}>, b : vec4<${type}>) -> vec4<${type}> {
       // TODO: implement vectorized pow
-      return vec4<f32>(pow_f32(a.x, b.x), pow_f32(a.y, b.y), pow_f32(a.z, b.z), pow_f32(a.w, b.w));
+      return vec4<${type}>(pow_custom(a.x, b.x), pow_custom(a.y, b.y), pow_custom(a.z, b.z), pow_custom(a.w, b.w));
     }
       `));
 };
