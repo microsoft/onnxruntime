@@ -18,12 +18,12 @@ const createElementwiseProgramShader =
       const vecSize = Math.ceil(datasize / 4);
 
       let expression = '';
-       if (typeof funcCall === 'string') {
-         if (funcCall === 'not') {
-           expression = '!a';
-         } else {
-           expression = `${funcCall}(a)`;
-         }
+      if (typeof funcCall === 'string') {
+        if (funcCall === 'not') {
+          expression = '!a';
+        } else {
+          expression = `${funcCall}(a)`;
+        }
       } else {
         expression = funcCall('a');
       }
