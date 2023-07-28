@@ -72,9 +72,7 @@ def main():
             "--update",
             "--build",
             "--parallel",
-            "--test",
-            "--path_to_protoc_exe",
-            str(pathlib.Path(args.build_dir) / "installed" / "bin" / "protoc"),
+            "--test"
         ]
     )
 
