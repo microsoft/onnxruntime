@@ -36,7 +36,7 @@ TEST(DequantizeLinearOpTest, Int8) {
 TEST(DequantizeLinearOpTest, Int32) {
   // TODO: Unskip when fixed #41968513
   if (DefaultDmlExecutionProvider().get() != nullptr) {
-    GTEST_SKIP() << "Skipping because of the following error: AbiCustomRegistry.cpp(507): The parameter is incorrect";
+    //GTEST_SKIP() << "Skipping because of the following error: AbiCustomRegistry.cpp(507): The parameter is incorrect";
   }
 
   OpTester test("DequantizeLinear", 10);
