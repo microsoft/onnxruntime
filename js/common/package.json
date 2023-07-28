@@ -21,8 +21,8 @@
   },
   "main": "dist/cjs/index.js",
   "exports": {
-      "require": "./dist/cjs/index.js",
-      "import": "./dist/esm/index.js"
+    "require": "./dist/cjs/index.js",
+    "import": "./dist/esm/index.js"
   },
   "keywords": [
     "ONNX",
