@@ -101,6 +101,11 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
     CreateLogicalOpBuilder("Less", op_registrations);
   }
 
+  {  // Max/Min
+    CreateMaxMinOpBuilder("Max", op_registrations);
+    CreateMaxMinOpBuilder("Min", op_registrations);
+  }
+
   {  // Normalization
     CreateNormalizationOpBuilder("GroupNormalization", op_registrations);
     CreateNormalizationOpBuilder("InstanceNormalization", op_registrations);
