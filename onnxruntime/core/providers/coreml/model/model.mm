@@ -1,37 +1,93 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/providers/coreml/model/model.h"
+
+#import <CoreML/CoreML.h>
+#import <Foundation/Foundation.h>
+
+#include <algorithm>
 #include <cstdint>
 #include <unordered_map>
 #include <vector>
 
 #include "core/common/common.h"
+#include "core/common/gsl.h"
+#include "core/common/inlined_containers.h"
 #include "core/common/logging/logging.h"
 #include "core/graph/onnx_protobuf.h"
 #include "core/providers/common.h"
 #include "core/providers/coreml/builders/helper.h"
 #include "core/providers/coreml/coreml_provider_factory.h"
-#include "host_utils.h"
-#include "model.h"
-
-#import <CoreML/CoreML.h>
-#import <Foundation/Foundation.h>
+#include "core/providers/coreml/model/host_utils.h"
+#include "core/providers/coreml/shape_utils.h"
 
 // force the linker to create a dependency on the CoreML framework so that in MAUI usage we don't need
 // to manually do this
 asm(".linker_option \"-framework\", \"CoreML\"");
 
+using namespace onnxruntime;
+using namespace onnxruntime::coreml;
+
+namespace {
+Status GetStaticOutputShape(gsl::span<const int64_t> inferred_shape,
+                            gsl::span<const int64_t> coreml_static_shape,
+                            const logging::Logger& logger,
+                            InlinedVector<int64_t>& result) {
+  ORT_RETURN_IF_NOT(std::none_of(coreml_static_shape.begin(), coreml_static_shape.end(),
+                                 [](int64_t dim) { return dim < 0; }),
+                    "CoreML static output shape (", Shape2String(coreml_static_shape),
+                    ") has a negative dimension value.");
+
+  ORT_RETURN_IF_NOT(inferred_shape.size() <= coreml_static_shape.size(),
+                    "CoreML static output shape (", Shape2String(coreml_static_shape),
+                    ") has fewer elements than the inferred shape (", Shape2String(inferred_shape), ").");
+
+  // if coreml_static_shape has more elements, we expect them to be leading ones
+  const size_t num_leading_dimensions = coreml_static_shape.size() - inferred_shape.size();
+  const auto coreml_static_shape_common_begin = coreml_static_shape.begin() + num_leading_dimensions;
+
+  if (num_leading_dimensions > 0) {
+    const bool has_only_leading_ones =
+        std::all_of(coreml_static_shape.begin(), coreml_static_shape_common_begin,
+                    [](int64_t dim) { return dim == 1; });
+    ORT_RETURN_IF_NOT(has_only_leading_ones, "CoreML static output shape (", Shape2String(coreml_static_shape),
+                      ") has leading dimensions with value other than 1.");
+  }
+
+  // check that remaining dimensions are compatible
+  const bool is_compatible =
+      std::equal(inferred_shape.begin(), inferred_shape.end(),
+                 coreml_static_shape_common_begin,
+                 [](int64_t inferred_dim, int64_t coreml_static_dim) {
+                   return inferred_dim == -1 || inferred_dim == coreml_static_dim;
+                 });
+
+  ORT_RETURN_IF_NOT(is_compatible, "CoreML static output shape (", Shape2String(coreml_static_shape),
+                    ") is not compatible with the inferred shape (", Shape2String(inferred_shape), ").");
+
+  result = InlinedVector<int64_t>(coreml_static_shape_common_begin, coreml_static_shape.end());
+  // TODO change to VERBOSE log level
+  LOGS(logger, WARNING) << "CoreML static output shape: " << Shape2String(coreml_static_shape)
+                        << ", inferred shape: " << Shape2String(inferred_shape)
+                        << ", resulting static output shape: " << Shape2String(result);
+  return Status::OK();
+}
+}  // namespace
+
+NS_ASSUME_NONNULL_BEGIN
+
 // Model input for a CoreML model
 // All the input onnx tensors values will be converted to MLMultiArray(s)
 @interface OnnxTensorFeatureProvider : NSObject <MLFeatureProvider> {
-  const std::unordered_map<std::string, onnxruntime::coreml::OnnxTensorData>* inputs_;
+  const std::unordered_map<std::string, OnnxTensorData>* inputs_;
   NSSet* featureNames_;
-  const onnxruntime::logging::Logger* logger_;
+  const logging::Logger* logger_;
 }
 
-- (instancetype)initWithInputs:(const std::unordered_map<std::string, onnxruntime::coreml::OnnxTensorData>&)inputs
-                        logger:(const onnxruntime::logging::Logger*)logger;
-- (MLFeatureValue*)featureValueForName:(NSString*)featureName API_AVAILABLE_OS_VERSIONS;
+- (instancetype)initWithInputs:(const std::unordered_map<std::string, OnnxTensorData>&)inputs
+                        logger:(const logging::Logger&)logger;
+- (nullable MLFeatureValue*)featureValueForName:(NSString*)featureName API_AVAILABLE_OS_VERSIONS;
 - (NSSet<NSString*>*)featureNames;
 
 @end
@@ -43,20 +99,20 @@ asm(".linker_option \"-framework\", \"CoreML\"");
 @interface CoreMLExecution : NSObject {
   NSString* coreml_model_path_;
   NSString* compiled_model_path_;
-  const onnxruntime::logging::Logger* logger_;
+  const logging::Logger* logger_;
   uint32_t coreml_flags_;
 }
 
 - (instancetype)initWithPath:(const std::string&)path
-                      logger:(const onnxruntime::logging::Logger&)logger
+                      logger:(const logging::Logger&)logger
                 coreml_flags:(uint32_t)coreml_flags;
 - (void)cleanup;
 - (void)dealloc;
-- (onnxruntime::common::Status)loadModel API_AVAILABLE_OS_VERSIONS;
-- (onnxruntime::common::Status)
-    predict:(const std::unordered_map<std::string, onnxruntime::coreml::OnnxTensorData>&)inputs
-    outputs:(const std::unordered_map<std::string, onnxruntime::coreml::OnnxTensorInfo>&)outputs
-    getOutputTensorDataFn:(const GetOutputTensorMutableRawDataFn&)get_output_tensor_mutable_raw_data_fn
+- (Status)loadModel API_AVAILABLE_OS_VERSIONS;
+- (Status)predict:(const std::unordered_map<std::string, OnnxTensorData>&)inputs
+                  outputs:(const std::unordered_map<std::string, OnnxTensorInfo>&)outputs
+    getOutputTensorDataFn:(const GetOutputTensorMutableRawDataFn&)
+                              get_output_tensor_mutable_raw_data_fn
     API_AVAILABLE_OS_VERSIONS;
 
 @property MLModel* model API_AVAILABLE_OS_VERSIONS;
@@ -65,16 +121,16 @@ asm(".linker_option \"-framework\", \"CoreML\"");
 
 @implementation OnnxTensorFeatureProvider
 
-- (instancetype)initWithInputs:(const std::unordered_map<std::string, onnxruntime::coreml::OnnxTensorData>&)inputs
-                        logger:(const onnxruntime::logging::Logger*)logger {
+- (instancetype)initWithInputs:(const std::unordered_map<std::string, OnnxTensorData>&)inputs
+                        logger:(const logging::Logger&)logger {
   if (self = [super init]) {
     inputs_ = &inputs;
-    logger_ = logger;
+    logger_ = &logger;
   }
   return self;
 }
 
-- (nonnull NSSet<NSString*>*)featureNames {
+- (NSSet<NSString*>*)featureNames {
   if (featureNames_ == nil) {
     NSMutableArray* names = [[NSMutableArray alloc] init];
     for (const auto& input : *inputs_) {
@@ -90,7 +146,7 @@ asm(".linker_option \"-framework\", \"CoreML\"");
   return featureNames_;
 }
 
-- (nullable MLFeatureValue*)featureValueForName:(nonnull NSString*)featureName {
+- (nullable MLFeatureValue*)featureValueForName:(NSString*)featureName {
   auto it = inputs_->find([featureName cStringUsingEncoding:NSUTF8StringEncoding]);
   if (it != inputs_->end()) {
     auto& input = it->second;
@@ -142,7 +198,7 @@ asm(".linker_option \"-framework\", \"CoreML\"");
 @implementation CoreMLExecution
 
 - (instancetype)initWithPath:(const std::string&)path
-                      logger:(const onnxruntime::logging::Logger&)logger
+                      logger:(const logging::Logger&)logger
                 coreml_flags:(uint32_t)coreml_flags {
   if (self = [super init]) {
     coreml_model_path_ = [NSString stringWithUTF8String:path.c_str()];
@@ -178,7 +234,7 @@ asm(".linker_option \"-framework\", \"CoreML\"");
   [self cleanup];
 }
 
-- (onnxruntime::common::Status)loadModel {
+- (Status)loadModel {
   NSError* error = nil;
   NSURL* modelUrl = [NSURL URLWithString:coreml_model_path_];
   NSAssert(modelUrl != nil, @"modelUrl must not be nil");
@@ -202,100 +258,119 @@ asm(".linker_option \"-framework\", \"CoreML\"");
                            [[error localizedDescription] cStringUsingEncoding:NSUTF8StringEncoding]);
   }
 
-  return onnxruntime::common::Status::OK();
+  return Status::OK();
 }
 
-- (onnxruntime::common::Status)
-    predict:(const std::unordered_map<std::string, onnxruntime::coreml::OnnxTensorData>&)inputs
-    outputs:(const std::unordered_map<std::string, onnxruntime::coreml::OnnxTensorData>&)outputs
+- (Status)predict:(const std::unordered_map<std::string, OnnxTensorData>&)inputs
+                  outputs:(const std::unordered_map<std::string, OnnxTensorInfo>&)outputs
     getOutputTensorDataFn:(const GetOutputTensorMutableRawDataFn&)get_output_tensor_mutable_raw_data_fn {
-  if (_model == nil) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "model is not loaded");
-  }
-
-  OnnxTensorFeatureProvider* input_feature = [[OnnxTensorFeatureProvider alloc] initWithInputs:inputs
-                                                                                        logger:logger_];
-
-  if (input_feature == nil) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "inputFeature is not initialized");
-  }
-
-  MLPredictionOptions* options = [[MLPredictionOptions alloc] init];
-  NSError* error = nil;
-  id<MLFeatureProvider> output_feature = [_model predictionFromFeatures:input_feature
-                                                                options:options
-                                                                  error:&error];
-
-  if (error != nil) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Error executing model: ",
-                           [[error localizedDescription] cStringUsingEncoding:NSUTF8StringEncoding]);
-  }
-
-  for (const auto& [name, tensor_info] : outputs) {
-    NSString* output_name = [NSString stringWithCString:name.c_str()
-                                               encoding:[NSString defaultCStringEncoding]];
-    NSAssert(output_name != nil, @"output_name must not be nil");
-    MLFeatureValue* output_value =
-        [output_feature featureValueForName:output_name];
-
-    if (output_value == nil) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "output_feature has no value for ",
-                             [output_name cStringUsingEncoding:NSUTF8StringEncoding]);
+  Status status = Status::OK();
+  ORT_TRY {
+    if (_model == nil) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "model is not loaded");
     }
 
-    auto* data = [output_value multiArrayValue];
-    auto* model_output_data = data.dataPointer;
-    if (model_output_data == nullptr) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "model_output_data has no data for ",
-                             [output_name cStringUsingEncoding:NSUTF8StringEncoding]);
+    OnnxTensorFeatureProvider* input_feature = [[OnnxTensorFeatureProvider alloc] initWithInputs:inputs
+                                                                                          logger:*logger_];
+
+    if (input_feature == nil) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "inputFeature is not initialized");
     }
 
-    auto model_output_type = data.dataType;
+    MLPredictionOptions* options = [[MLPredictionOptions alloc] init];
+    NSError* error = nil;
+    id<MLFeatureProvider> output_feature = [_model predictionFromFeatures:input_feature
+                                                                  options:options
+                                                                    error:&error];
 
-    // TODO get static shape from `data`
-    size_t num_elements =
-        accumulate(tensor_info.shape.begin(),
-                   tensor_info.shape.end(),
-                   1,
-                   std::multiplies<int64_t>());
+    if (error != nil) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Error executing model: ",
+                             [[error localizedDescription] cStringUsingEncoding:NSUTF8StringEncoding]);
+    }
 
-    const auto type = tensor_info.data_type;
-    switch (type) {
-      case ONNX_NAMESPACE::TensorProto_DataType_FLOAT: {
-        const auto output_data_byte_size = num_elements * sizeof(float);
-        memcpy(output_tensor.buffer, model_output_data, output_data_byte_size);
-        break;
+    for (const auto& [name, tensor_info] : outputs) {
+      NSString* output_name = [NSString stringWithCString:name.c_str()
+                                                 encoding:[NSString defaultCStringEncoding]];
+      NSAssert(output_name != nil, @"output_name must not be nil");
+
+      MLFeatureValue* output_value =
+          [output_feature featureValueForName:output_name];
+
+      if (output_value == nil) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "output_feature has no value for ",
+                               [output_name cStringUsingEncoding:NSUTF8StringEncoding]);
       }
-      case ONNX_NAMESPACE::TensorProto_DataType_INT32: {
-        const auto output_data_byte_size = num_elements * sizeof(int32_t);
-        memcpy(output_tensor.buffer, model_output_data, output_data_byte_size);
-        break;
+
+      auto* data = [output_value multiArrayValue];
+
+      const void* model_output_data = data.dataPointer;
+
+      if (model_output_data == nullptr) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "model_output_data has no data for ",
+                               [output_name cStringUsingEncoding:NSUTF8StringEncoding]);
       }
-      // For this case, since Coreml Spec only uses int32 for model output while onnx provides
-      // int64 for model output data type. We are doing a type casting (int32 -> int64) here
-      // when copying the model to ORT
-      case ONNX_NAMESPACE::TensorProto_DataType_INT64:
-        if (model_output_type == MLMultiArrayDataTypeInt32) {
-          int32_t* model_output_data_prime = static_cast<int32_t*>(model_output_data);
-          int64_t* output_tensor_buffer_prime = static_cast<int64_t*>(output_tensor.buffer);
-          for (size_t i = 0; i < num_elements; i++) {
-            output_tensor_buffer_prime[i] = model_output_data_prime[i];
-          }
+
+      const auto coreml_static_output_shape = [&]() -> onnxruntime::InlinedVector<int64_t> {
+        InlinedVector<int64_t> result;
+        result.reserve(data.shape.count);
+        for (NSNumber* dim in data.shape) {
+          const auto dim_value = dim.longLongValue;
+          result.push_back(dim_value);
         }
-        ORT_RETURN_IF_NOT(model_output_type == MLMultiArrayDataTypeInt32,
-                          "Coreml model_output_type is not MLMultiArrayDataTypeInt32 for the case");
-        break;
-      default:
-        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                               "Output data type is not supported, actual type: ",
-                               type);
+        return result;
+      }();
+
+      InlinedVector<int64_t> static_output_shape;
+      ORT_RETURN_IF_ERROR(GetStaticOutputShape(tensor_info.shape, coreml_static_output_shape, *logger_,
+                                               static_output_shape));
+
+      void* output_buffer = get_output_tensor_mutable_raw_data_fn(name, tensor_info.data_type, static_output_shape);
+
+      const size_t num_elements = data.count;
+      const auto onnx_data_type = tensor_info.data_type;
+      switch (onnx_data_type) {
+        case ONNX_NAMESPACE::TensorProto_DataType_FLOAT: {
+          const auto output_data_byte_size = num_elements * sizeof(float);
+          memcpy(output_buffer, model_output_data, output_data_byte_size);
+          break;
+        }
+        case ONNX_NAMESPACE::TensorProto_DataType_INT32: {
+          const auto output_data_byte_size = num_elements * sizeof(int32_t);
+          memcpy(output_buffer, model_output_data, output_data_byte_size);
+          break;
+        }
+        // For this case, since Coreml Spec only uses int32 for model output while onnx provides
+        // int64 for model output data type. We are doing a type casting (int32 -> int64) here
+        // when copying the model to ORT
+        case ONNX_NAMESPACE::TensorProto_DataType_INT64: {
+          ORT_RETURN_IF_NOT(data.dataType == MLMultiArrayDataTypeInt32,
+                            "CoreML output data type is not MLMultiArrayDataTypeInt32");
+
+          const int32_t* model_output_data_i32 = static_cast<const int32_t*>(model_output_data);
+          int64_t* output_tensor_buffer_i64 = static_cast<int64_t*>(output_buffer);
+          for (size_t i = 0; i < num_elements; i++) {
+            output_tensor_buffer_i64[i] = model_output_data_i32[i];
+          }
+          break;
+        }
+        default:
+          return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                                 "Output data type is not supported, actual type: ", onnx_data_type);
+      }
     }
   }
+  ORT_CATCH(const std::exception& e) {
+    ORT_HANDLE_EXCEPTION([&]() {
+      status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Exception: ", e.what());
+    });
+  }
 
-  return onnxruntime::common::Status::OK();
+  return status;
 }
 
 @end
+
+NS_ASSUME_NONNULL_END
 
 namespace onnxruntime {
 namespace coreml {
@@ -371,7 +446,7 @@ Status Model::LoadModel() {
 Status Model::Predict(const std::unordered_map<std::string, OnnxTensorData>& inputs,
                       const std::unordered_map<std::string, OnnxTensorInfo>& outputs,
                       const GetOutputTensorMutableRawDataFn& get_output_tensor_mutable_raw_data_fn) {
-  return execution_->Predict(inputs, outputs);
+  return execution_->Predict(inputs, outputs, get_output_tensor_mutable_raw_data_fn);
 }
 
 bool Model::IsScalarOutput(const std::string& output_name) const {

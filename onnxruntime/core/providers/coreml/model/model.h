@@ -5,8 +5,11 @@
 
 #include <cstddef>
 #include <functional>
+#include <unordered_set>
 
+#include "core/common/common.h"
 #include "core/common/gsl.h"
+#include "core/common/logging/logging.h"
 #include "core/common/status.h"
 #include "core/platform/ort_mutex.h"
 
@@ -26,7 +29,7 @@ struct OnnxTensorData {
 };
 
 using GetOutputTensorMutableRawDataFn = std::function<void*(const std::string& name,
-                                                            const OnnxTensorInfo& tensor_info,
+                                                            int32_t requested_onnx_tensor_element_type,
                                                             gsl::span<const int64_t> static_shape)>;
 
 class Model {
