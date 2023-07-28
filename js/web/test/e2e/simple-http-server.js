@@ -31,7 +31,7 @@ const validRequests = {
 
 module.exports = function(dir) {
   http.createServer(function(request, response) {
-        console.log('request ', request.url);
+        console.log(`request ${request.url.replace(/\n|\r/g, '')}`);
 
         const requestData = validRequests[request.url];
         if (!request) {
