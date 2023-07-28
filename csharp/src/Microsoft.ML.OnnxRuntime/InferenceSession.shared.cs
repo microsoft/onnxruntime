@@ -1074,7 +1074,10 @@ namespace Microsoft.ML.OnnxRuntime
 
         public delegate void CallbackDelegate(IntPtr userData, IDisposableReadOnlyCollection<OrtValue> outputs);
 
-        public class CallbackResource
+        /// <summary>
+        /// Host resources to be used in the callback wrapper
+        /// </summary>
+        private class CallbackResource
         {
             public IntPtr[] inputNames { get; set; }
             public IntPtr[] inputValues { get; set; }
