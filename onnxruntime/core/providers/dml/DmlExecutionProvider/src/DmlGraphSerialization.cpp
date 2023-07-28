@@ -292,18 +292,15 @@ void PopulateEdgeIndexToNameMap(
         {
             index = edge.GraphOutputIndex;
         }
-        if (edgeIndexToNameMap.find(index) == edgeIndexToNameMap.end()
-            && !edge.Name.empty())
+        if (edge.Name.empty())
+        {
+            THROW_HR_MSG(E_INVALIDARG, "Some input/output edges don't have name.");
+        }
+        if (edgeIndexToNameMap.find(index) == edgeIndexToNameMap.end())
         {
             edgeIndexToNameMap[index] = builder.CreateString(edge.Name);
         }
     }
-    /*std::for_each(edgeIndexToNameMap.begin(), edgeIndexToNameMap.end(), [&builder, &prefix, idx = 0](auto& name) mutable {
-        if (name.IsNull())
-        {
-            name = builder.CreateString(prefix + std::to_string(idx++));
-        }
-    });*/
 }
 
 template <typename Edge>
@@ -361,8 +358,11 @@ void PopulateNodeInputOutputNames(
         }
         else
         {
-            edgeName = !edge.Name.empty() ? builder.CreateString(edge.Name.c_str()) : 
-                                            builder.CreateString("IntermediateEdge" + std::to_string(edgeIdx));
+            if (edge.Name.empty())
+            {
+                THROW_HR_MSG(E_INVALIDARG, "Some intermediate edges don't have name");
+            }
+            edgeName = builder.CreateString(edge.Name.c_str());
             intermediateEdgeNames[edge.FromNodeIndex][edge.FromNodeOutputIndex] = edgeName;
         }
         nodeToInputNames[edge.ToNodeIndex][edge.ToNodeInputIndex] = intermediateEdgeNames[edge.FromNodeIndex][edge.FromNodeOutputIndex];
@@ -433,11 +433,6 @@ flatbuffers::DetachedBuffer SerializeDmlGraph(const DmlSerializedGraphDesc& grap
         &nodes,
         &graphInputNames,
         &graphOutputNames);
-    /*dml::ir::DmlGraphDescBuilder dmlGraphDescBuilder(builder);
-    dmlGraphDescBuilder.add_graphInputNames(builder.CreateVector(graphInputIndexToNameMap));
-    dmlGraphDescBuilder.add_graphOutputNames(builder.CreateVector(graphOutputIndexToNameMap));
-    dmlGraphDescBuilder.add_nodes(builder.CreateVector(nodes));
-    dmlGraphDescBuilder.Finish();*/
     builder.Finish(dmlGraphDescOffset);
     return builder.Release();
 }

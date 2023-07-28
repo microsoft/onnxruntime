@@ -322,7 +322,7 @@ namespace Dml::GraphDescBuilder
                         outputEdgeNameToDmlGraphNodeAndIndexMap[arg->Name()] = {static_cast<uint32_t>(dmlGraphNodes.size()), 0};
                         DmlSerializedGraphNode constantNode = {};
                         constantNode.Name = arg->Name();
-                        ConstantName constantFileName = {arg->Name()};
+                        ConstantName constantFileName = {GetSanitizedFileName(arg->Name())};
                         constantNode.Desc = constantFileName;
                         dmlGraphNodes.push_back(constantNode);
                         //totalConstantNode++;

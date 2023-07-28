@@ -202,6 +202,7 @@ namespace DmlGraphFusionHelper
 
                 // Tensor sizes in DML must be a multiple of 4 bytes large.
                 tensorByteSize = AlignToPow2<size_t>(tensorByteSize, 4);
+                WriteToFile(iter->first + ".bin", reinterpret_cast<uint8_t*>(tensorPtr), tensorByteSize);
 
                 if (inputRawData)
                 {
@@ -352,7 +353,7 @@ namespace DmlGraphFusionHelper
                 // todo: handle ConstantData
             }
             else
-            {   
+            {
                 DML_INTERMEDIATE_GRAPH_EDGE_DESC* edge = allocator.Allocate<DML_INTERMEDIATE_GRAPH_EDGE_DESC>();
                 edge->FromNodeIndex = oldNodeIdxToNewNodeIdxMap[graphDesc.IntermediateEdges[i].FromNodeIndex];
                 edge->FromNodeOutputIndex = graphDesc.IntermediateEdges[i].FromNodeOutputIndex;
@@ -376,6 +377,7 @@ namespace DmlGraphFusionHelper
     }
 
     void CreateIDmlCompiledOperatorAndRegisterKernel(
+        const uint32_t partitionIndex,
         onnxruntime::Graph& graph,
         const onnxruntime::IndexedSubGraph& indexedSubGraph,
         const onnxruntime::Node& fusedNode,
@@ -423,7 +425,7 @@ namespace DmlGraphFusionHelper
             constantEdgeIdxToSubgraphInputArgIdxMap);
 
         auto buffer = SerializeDmlGraph(serializedDmlGraphDesc);
-        //auto deserializedDmlGraphDesc = DeserializeDmlGraph(buffer.data());
+        WriteToFile("Partition_" + std::to_string(partitionIndex) + ".bin", buffer.data(), buffer.size());
 
         // convert DML EP GraphDesc into DML_GRAPH_DESC and create IDMLCompiledOperator
         StackAllocator<1024> allocator; // Used for converting DmlSerializedGraphDesc to DML_GRAPH_DESC
@@ -566,6 +568,7 @@ namespace DmlGraphFusionHelper
         printf("\n");
 #endif
         CreateIDmlCompiledOperatorAndRegisterKernel(
+            partitionIndex,
             graph,
             indexedSubGraph,
             fusedNode,
@@ -573,6 +576,7 @@ namespace DmlGraphFusionHelper
             initializerNameToInitializerMap,
             providerImpl,
             registryForPartitionKernels);
+
         graph.FinalizeFuseSubGraph(indexedSubGraph, fusedNode);
     }
 }

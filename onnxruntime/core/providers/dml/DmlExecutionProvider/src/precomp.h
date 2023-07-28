@@ -17,6 +17,7 @@
 #include <chrono>
 #include <variant>
 #include <cassert>
+#include <fstream>
 
 #include <wrl/client.h>
 #include <wrl/implements.h>
@@ -71,3 +72,4 @@ using Microsoft::WRL::ComPtr;
 #include "TensorDesc.h"
 #include "DescriptorPool.h"
 #include "IExecutionProvider.h"
+#include "Utility.h"
