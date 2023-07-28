@@ -10,7 +10,7 @@ import onnx
 import torch
 
 from onnxruntime.capi import _pybind_state as C
-from onnxruntime.training.utils.torch_io_helper import unflatten_from_data_and_schema
+from onnxruntime.training.utils import unflatten_from_data_and_schema
 
 from . import _are_deterministic_algorithms_enabled, _io, _use_deterministic_algorithms, _utils
 from ._execution_agent import InferenceAgent

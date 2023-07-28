@@ -18,7 +18,7 @@ from torch.utils.cpp_extension import ROCM_HOME
 import onnxruntime
 from onnxruntime.capi import _pybind_state as C
 from onnxruntime.tools.symbolic_shape_infer import SymbolicShapeInference
-from onnxruntime.training.utils.torch_io_helper import ORTModelInputOutputSchemaType, get_schema_for_flatten_data
+from onnxruntime.training.utils import ORTModelInputOutputSchemaType, get_schema_for_flatten_data
 
 from . import _are_deterministic_algorithms_enabled, _io, _logger, _onnx_models, _utils
 from ._custom_autograd_function_exporter import _post_process_after_export

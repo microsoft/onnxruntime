@@ -13,7 +13,7 @@ from typing import Dict, Iterator, List, Mapping, Optional, Sequence, Tuple
 import onnx
 import torch
 
-from onnxruntime.training.utils.torch_io_helper import (
+from onnxruntime.training.utils import (
     ORTModelInputOutputSchemaType,
     ORTModelInputOutputType,
     PrimitiveType,
