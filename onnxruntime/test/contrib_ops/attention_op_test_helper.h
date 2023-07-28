@@ -93,7 +93,7 @@ void GetAttentionDataWithNeoXRotaryEmbedding(std::vector<float>& input, std::vec
 
 void GetPackedMultiHeadAttentionData_Batch2_HeadSize8_RelPosBias(PackedAttentionTestData& data);
 
-void GetPackedMultiHeadAttentionData_Batch2_HeadSize8_BroadCastRelPosBias(PackedAttentionTestData& data);
+void GetPackedMultiHeadAttentionData_Batch2_HeadSize8_BroadcastRelPosBias(PackedAttentionTestData& data);
 
 bool SkipAttentionKernel(AttentionTestData& data, AttentionKernelType kernel_type);
 }  // namespace test
