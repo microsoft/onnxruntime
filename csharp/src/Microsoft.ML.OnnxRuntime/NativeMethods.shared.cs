@@ -921,28 +921,28 @@ namespace Microsoft.ML.OnnxRuntime
         public static DOrtSessionGetProfilingStartTimeNs OrtSessionGetProfilingStartTimeNs;
 
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
-        public delegate IntPtr DCreateAndRegisterAllocatorV2g(
-                                                IntPtr environment,
-                                                IntPtr provider_type,
-                                                IntPtr mem_info,
-                                                IntPtr arena_cfg,
-                                                IntPtr provider_options_keys,
-                                                IntPtr provider_options_values,
-                                                UIntPtr num_keys);
+        public delegate IntPtr /*(ONNStatus*)*/ DCreateAndRegisterAllocatorV2g(
+                                                IntPtr /* (OrtEnv*) */ environment,
+                                                IntPtr /*(char*)*/ provider_type,
+                                                IntPtr /*(OrtMemoryInfo*)*/ mem_info,
+                                                IntPtr /*(OrtArenaCfg*)*/ arena_cfg,
+                                                IntPtr /*(char**)*/ provider_options_keys,
+                                                IntPtr /*(char**)*/ provider_options_values,
+                                                UIntPtr /*(size_t)*/num_keys);
         public static DCreateAndRegisterAllocatorV2g OrtCreateAndRegisterAllocatorV2g;
 
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
         public delegate IntPtr /*(ONNStatus*)*/ DOrtRunAsync(
                                 IntPtr /*(OrtSession*)*/ session,
                                 IntPtr /*(OrtSessionRunOptions*)*/ runOptions,  // can be null to use the default options
-                                IntPtr[] inputNames,
-                                IntPtr[] /* (OrtValue*[])*/ inputValues,
-                                UIntPtr inputCount,
-                                IntPtr[] outputNames,
-                                UIntPtr outputCount,
-                                IntPtr[] outputValues, /* An array of output value pointers. Array must be allocated by the caller */
-                                IntPtr callback,
-                                IntPtr user_data
+                                IntPtr[] /*(char**)*/ inputNames,
+                                IntPtr[] /*(OrtValue*[])*/ inputValues,
+                                UIntPtr /*(size_t)*/ inputCount,
+                                IntPtr[] /*(char**)*/ outputNames,
+                                UIntPtr /*(size_t)*/ outputCount,
+                                IntPtr[] /*(OrtValue*[])*/ outputValues,
+                                IntPtr /*(void (*RunAsyncCallbackFn)(void* user_data, OrtValue** outputs, size_t num_outputs, OrtStatusPtr status))*/ callback,  // callback function
+                                IntPtr /*(void*)*/ user_data
                                 );
         public static DOrtRunAsync OrtRunAsync;
 

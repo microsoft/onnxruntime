@@ -1048,33 +1048,48 @@ namespace Microsoft.ML.OnnxRuntime
 
         public static void CallbackWrapper(IntPtr userData, IntPtr[] outputs, uint numOutputs, IntPtr status)
         {
-            Console.WriteLine("RunAsyncCallback triggerred");
             var resourceHdl = (GCHandle)userData;
             CallbackResource resource = (resourceHdl.Target as CallbackResource);
 
-            var outputValues = new DisposableList<OrtValue>((int)numOutputs);
-            for (uint ith = 0; ith < numOutputs; ++ith) {
-                outputValues.Add(new OrtValue(outputs[ith]));
-            }
+            try
+            {
+                // throw on error
+                NativeApiStatus.VerifySuccess(status);
 
-            resource.userCallback(resource.userData, outputValues);
-            resourceHdl.Free();
+                var outputValues = new DisposableList<OrtValue>((int)numOutputs);
+                for (uint ith = 0; ith < numOutputs; ++ith)
+                {
+                    outputValues.Add(new OrtValue(outputs[ith]));
+                }
+
+                resource.userCallback(resource.userData, outputValues);
+            }
+            finally
+            {
+                resourceHdl.Free();
+            }
         }
 
         public static CallbackWrapperDelegate callbackWrapper = new CallbackWrapperDelegate(CallbackWrapper);
 
         public delegate void CallbackDelegate(IntPtr userData, IDisposableReadOnlyCollection<OrtValue> outputs);
 
-        class CallbackResource {
+        public class CallbackResource
+        {
+            public IntPtr[] inputNames { get; set; }
+            public IntPtr[] inputValues { get; set; }
 
-            public IntPtr[] inputNames;
-            public IntPtr[] inputValues;
+            public IntPtr[] outputNames { get; set; }
+            public IntPtr[] outputValues { get; set; }
 
-            public IntPtr[] outputNames;
-            public IntPtr[] outputValues;
+            public CallbackDelegate userCallback { get; }
+            public IntPtr userData { get; }
 
-            public CallbackDelegate userCallback;
-            public IntPtr userData;
+            internal CallbackResource(CallbackDelegate callback, IntPtr data)
+            {
+                userCallback = callback;
+                userData = data;
+            }
         };
 
         public void RunAsync(
@@ -1084,42 +1099,36 @@ namespace Microsoft.ML.OnnxRuntime
             CallbackDelegate callback,
             IntPtr userData)
         {
-            CallbackResource resource = new CallbackResource();
-            resource.inputNames = LookupUtf8Names(inputs, i => i.Name, LookupInputMetadata);
-            resource.outputNames = LookupUtf8Names(outputs, o => o.Name, LookupOutputMetadata);
-            resource.inputValues = GetOrtValuesHandles(inputs, LookupInputMetadata, ExtractOrtValueHandleForInput,
-                out DisposableArray<IDisposable> inputDisposer);
-            resource.outputValues = GetOrtValuesHandles(outputs, LookupOutputMetadata, ExtractOrtValueHandleForOutput,
-                out DisposableArray<IDisposable> outputDisposer);
-            resource.userCallback = callback;
-            resource.userData = userData;
+            CallbackResource resource = new CallbackResource(callback, userData);
             var resource_hdl = GCHandle.Alloc(resource);
 
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtRunAsync(
-                                                _nativeHandle,
-                                                options.Handle,
-                                                resource.inputNames,
-                                                resource.inputValues,
-                                                (UIntPtr)resource.inputNames.Length,
-                                                resource.outputNames,
-                                                (UIntPtr)resource.outputNames.Length,
-                                                resource.outputValues,
-                                                Marshal.GetFunctionPointerForDelegate(callbackWrapper),
-                                                GCHandle.ToIntPtr(resource_hdl)
-                                                ));
+            try
+            {
+                resource.inputNames = LookupUtf8Names(inputs, i => i.Name, LookupInputMetadata);
+                resource.outputNames = LookupUtf8Names(outputs, o => o.Name, LookupOutputMetadata);
+                resource.inputValues = GetOrtValuesHandles(inputs, LookupInputMetadata, ExtractOrtValueHandleForInput,
+                    out DisposableArray<IDisposable> inputDisposer);
+                resource.outputValues = GetOrtValuesHandles(outputs, LookupOutputMetadata, ExtractOrtValueHandleForOutput,
+                    out DisposableArray<IDisposable> outputDisposer);
 
-            //NativeApiStatus.VerifySuccess(NativeMethods.OrtRun(
-            //                                    _nativeHandle,
-            //                                    options.Handle,
-            //                                    resource.inputNames,
-            //                                    resource.inputValues,
-            //                                    (UIntPtr)resource.inputNames.Length,
-            //                                    resource.outputNames,
-            //                                    (UIntPtr)resource.outputNames.Length,
-            //                                    resource.outputValues
-            //                                    ));
-
-            //resource_hdl.Free();
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtRunAsync(
+                                                    _nativeHandle,
+                                                    options == null? (IntPtr)null : options.Handle,
+                                                    resource.inputNames,
+                                                    resource.inputValues,
+                                                    (UIntPtr)resource.inputNames.Length,
+                                                    resource.outputNames,
+                                                    (UIntPtr)resource.outputNames.Length,
+                                                    resource.outputValues,
+                                                    Marshal.GetFunctionPointerForDelegate(callbackWrapper),
+                                                    GCHandle.ToIntPtr(resource_hdl)
+                                                    ));
+            }
+            catch (OnnxRuntimeException)
+            {
+                resource_hdl.Free();
+                throw;
+            }
         }
 
         #endregion

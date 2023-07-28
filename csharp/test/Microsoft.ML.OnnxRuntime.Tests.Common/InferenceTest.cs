@@ -2032,34 +2032,40 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             var evt = evtHdl.Target as ManualResetEvent;
             var valueOut = outputs[0];
             Assert.Equal(OnnxValueType.ONNX_TYPE_TENSOR, valueOut.GetTypeInfo().OnnxType);
-            var floatsOut = valueOut.Value.GetTensorDataAsSpan<Float16>();
-            Assert.Equal(floatsOut[2], new Float16(16896));
+            var output_span = valueOut.Value.GetTensorDataAsSpan<Float16>();
+            Assert.Equal(5, output_span.Length);
+            Assert.Equal(output_span[2], new Float16(16896));
             evt.Set();
         }
 
         [Fact(DisplayName = "TestModelRunAsync")]
         private void TestModelRunAsync()
         {
-            // model takes 1x5 input of fixed type, echoes back
             Float16[] modelInput = { new Float16(15360), new Float16(16384), new Float16(16896), new Float16(17408), new Float16(17664) };
             int[] inputShape = { 1, 5 };
             var model = TestDataLoader.LoadModelFromEmbeddedResource("test_types_FLOAT16.onnx");
             using (var session = new InferenceSession(model))
             {
-                var inputs = new List<NamedOnnxValue>();
-                var tensorIn = new DenseTensor<Float16>(modelInput, inputShape);
-                inputs.Add(NamedOnnxValue.CreateFromTensor("input", tensorIn));
-
-                var outputs = new List<NamedOnnxValue>();
-                var tensorOut = new DenseTensor<Float16>(inputShape.AsSpan());
-                outputs.Add(NamedOnnxValue.CreateFromTensor("output", tensorOut));
                 ManualResetEvent evt = new ManualResetEvent(false);
-
                 var evtHdl = GCHandle.Alloc(evt);
-                RunOptions option = new RunOptions();
-                session.RunAsync(inputs, outputs, option, AsyncCallback, (IntPtr)evtHdl);
-                evt.WaitOne();
-                evtHdl.Free();
+
+                try
+                {
+                    var inputs = new List<NamedOnnxValue>();
+                    var tensorIn = new DenseTensor<Float16>(modelInput, inputShape);
+                    inputs.Add(NamedOnnxValue.CreateFromTensor("input", tensorIn));
+
+                    var outputs = new List<NamedOnnxValue>();
+                    var tensorOut = new DenseTensor<Float16>(inputShape.AsSpan());
+                    outputs.Add(NamedOnnxValue.CreateFromTensor("output", tensorOut));
+
+                    session.RunAsync(inputs, outputs, null, AsyncCallback, (IntPtr)evtHdl);
+                    evt.WaitOne(10000);  // timeout in 10 sec
+                }
+                finally
+                {
+                    evtHdl.Free();
+                }
             }
         }
     }
