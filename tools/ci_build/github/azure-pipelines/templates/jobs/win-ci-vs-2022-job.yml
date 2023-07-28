@@ -58,7 +58,7 @@ parameters:
 - name: OnnxruntimeTestGpuDeviceId
   type: number
   default: 0
-  
+
 
 jobs:
 - job: build_${{ parameters.job_name_suffix }}
@@ -116,13 +116,6 @@ jobs:
           jdkArchitectureOption: ${{ parameters.buildArch }}
           jdkSourceOption: 'PreInstalled'
 
-  - task: BatchScript@1
-    displayName: 'setup env'
-    inputs:
-      filename: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\${{ parameters.EnvSetupScript }}'
-      modifyEnvironment: true
-      workingFolder: '$(Build.BinariesDirectory)'
-
   - script: |
      set ORT_DOXY_SRC=$(Build.SourcesDirectory)
      set ORT_DOXY_OUT=$(Build.BinariesDirectory)\${{ parameters.BuildConfig }}\${{ parameters.BuildConfig }}
@@ -138,8 +131,9 @@ jobs:
     displayName: 'Install python modules'
 
   - ${{ if contains(parameters.additionalBuildFlags, 'use_cuda') }}:
-    - powershell: |
-       azcopy.exe cp --recursive "https://lotusscus.blob.core.windows.net/models/cuda_sdk/v11.8" $(Agent.TempDirectory)
+    - template: set-cuda.yml
+      inputs:
+        EnvSetupScript: ${{ parameters.EnvSetupScript }}
 
   - ${{ if eq(parameters.WITH_CACHE, true) }}:
     - powershell: |
