@@ -340,8 +340,8 @@ namespace SchemaHelpers
             const auto& value = field.AsScaleBias();
             if (value)
             {
-            scaleBias = allocator->template Allocate<DML_SCALE_BIAS>();
-            *scaleBias = *value;
+                scaleBias = allocator->template Allocate<DML_SCALE_BIAS>();
+                *scaleBias = *value;
             }
 
             dst->Write(scaleBias);

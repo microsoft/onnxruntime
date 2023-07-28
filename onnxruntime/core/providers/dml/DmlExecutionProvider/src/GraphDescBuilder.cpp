@@ -227,7 +227,6 @@ namespace Dml::GraphDescBuilder
         std::vector<DmlInputSerializedGraphEdge> dmlGraphInputEdges;
         std::vector<DmlIntermediateSerializedGraphEdge> dmlGraphIntermediateEdges;
         std::vector<DmlOutputSerializedGraphEdge> dmlGraphOutputEdges;
-        uint32_t totalConstantNode = 0;
         // Iterate through each node and create a corresponding node in the new graph
         // We can iterate the nodes in any order because the edge connectivity will take care of the topological order
         for (size_t sortedNodeIndex : indexedSubGraph.nodes)
@@ -272,31 +271,7 @@ namespace Dml::GraphDescBuilder
 
             // Create a map between operatorDmlGraphNodeIndex to mainDmlGraphNodeIndex.
             std::unordered_map<uint32_t, uint32_t> operatorDmlGraphNodeIndexToMainDmlGraphNodeIndexMap;
-            //uint32_t graphNodeCount = gsl::narrow_cast<uint32_t>(dmlGraphNodes.size());
             const bool isNodeAsOpDesc = operatorDmlGraphNodeCreateInfo.nodesAsOperatorDesc.size() > 0;
-
-            /*if (isNodeAsOpDesc)
-            {
-                // REVISIT: create mapping while processing node, because now we have to create constant node also.
-                // Can't populate graphNodes vector at this point, because operatorDesc may get modified later.
-                for (uint32_t nodeIndex = 0; nodeIndex < operatorDmlGraphNodeCreateInfo.nodeCount; nodeIndex++)
-                {
-                    ORT_THROW_HR_IF(E_UNEXPECTED, !operatorDmlGraphNodeCreateInfo.nodesAsOperatorDesc[nodeIndex]);
-                    operatorDmlGraphNodeIndexToMainDmlGraphNodeIndexMap.emplace(nodeIndex, graphNodeCount++);
-                }
-            }
-            else
-            {
-                // REVISIT: nobody creates nodeAsIDMLOperator. I think that field entirely.
-                for (uint32_t nodeIndex = 0; nodeIndex < operatorDmlGraphNodeCreateInfo.nodeCount; nodeIndex++)
-                {
-                    ORT_THROW_HR_IF(E_UNEXPECTED, !operatorDmlGraphNodeCreateInfo.nodesAsIDMLOperator[nodeIndex].Get());
-                    operatorGraphNodeIndexToMainGraphNodeIndexMap.emplace(nodeIndex, graphNodeCount++);
-                    NodeInfo nodeInfo = {};
-                    nodeInfo.op = std::move(operatorDmlGraphNodeCreateInfo.nodesAsIDMLOperator[nodeIndex]);
-                    graphNodes.push_back(std::move(nodeInfo));
-                }
-            }*/
 
             /*
             * Algorithm:
@@ -325,7 +300,6 @@ namespace Dml::GraphDescBuilder
                         ConstantName constantFileName = {GetSanitizedFileName(arg->Name())};
                         constantNode.Desc = constantFileName;
                         dmlGraphNodes.push_back(constantNode);
-                        //totalConstantNode++;
                     }
                 }
             }
@@ -360,7 +334,6 @@ namespace Dml::GraphDescBuilder
                             std::vector<DmlBufferTensorDesc*> toNodeInputTensorDescs = abstractOperatorDesc.GetInputTensors();
                             DmlBufferTensorDesc* tensorDesc = toNodeInputTensorDescs[operatorDmlGraphInputEdge.ToNodeInputIndex];
                             tensorDesc->flags |= DML_TENSOR_FLAG_OWNED_BY_DML;
-                            totalConstantNode++;
                             const auto& constantNodeAndIndex = outputEdgeNameToDmlGraphNodeAndIndexMap.at(arg->Name());
 
                             DmlIntermediateSerializedGraphEdge edge = {};
@@ -438,22 +411,6 @@ namespace Dml::GraphDescBuilder
                     outputEdgeNameToDmlGraphNodeAndIndexMap[arg->Name()] = {shiftedNodeIndex, operatorGraphOutputEdge.FromNodeOutputIndex};
                 }
             }
-
-            /*if (isNodeAsOpDesc)
-            {
-                for (auto& opDesc : operatorDmlGraphNodeCreateInfo.nodesAsOperatorDesc)
-                {
-                    DML_OPERATOR_DESC dmlDesc = SchemaHelpers::ConvertOperatorDesc(*opDesc, &allocator);
-                    ComPtr<IDMLOperator> op;
-                    ORT_THROW_IF_FAILED(device->CreateOperator(&dmlDesc, IID_PPV_ARGS(&op)));
-                    allocator.Reset();
-
-                    NodeInfo nodeInfo = {};
-                    nodeInfo.op = std::move(op);
-                    nodeInfo.name = node.Name();
-                    dmlGraphNodes.push_back(std::move(nodeInfo));
-                }
-            }*/
         }
 
         // Add graph output nodes, which might be in a different order from the encapsulating node
@@ -485,7 +442,6 @@ namespace Dml::GraphDescBuilder
         // flushing behavior of DmlCommandRecorder.  Its current behavior is to assume that graphs contain
         // enough GPU work to be worth flushing immediately.
         graphDesc.reuseCommandList = indexedSubGraph.nodes.size() >= minNodeCountToReuseCommandList;
-        std::cout<<"number of owned by dml flag : "<<totalConstantNode<<std::endl;
         return graphDesc;
     }
 }
