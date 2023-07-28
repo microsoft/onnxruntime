@@ -926,6 +926,7 @@ function(onnxruntime_set_compile_flags target_name)
 
       # float16.h:90:12: error: ‘tmp’ is used uninitialized
       list(APPEND ORT_HIP_WARNING_FLAGS -Wno-uninitialized)
+      list(APPEND ORT_HIP_WARNING_FLAGS -Wno-deprecated-copy)
 
       # some #pragma unroll will fail, do not treat them as error
       # #warning must not be treated as error

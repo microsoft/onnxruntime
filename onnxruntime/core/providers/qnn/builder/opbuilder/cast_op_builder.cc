@@ -118,7 +118,7 @@ Status CastOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wra
                     "Failed to add output tensor for QNN Cast node.");
 
   ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(GetNodeName(node_unit),
-                                                    qnn_def::package_name,
+                                                    QNN_OP_PACKAGE_NAME_QTI_AISW,
                                                     GetQnnOpType(node_unit.OpType()),
                                                     std::move(input_names),
                                                     {output_name},

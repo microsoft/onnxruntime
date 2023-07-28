@@ -28,10 +28,7 @@ jobs:
     clean: all
   pool: ${{ parameters.MACHINE_POOL }}
   variables:
-    ${{if or(eq(parameters.MACHINE_POOL, 'onnxruntime-gpu-winbuild-T4'), eq(parameters.MACHINE_POOL, 'onnxruntime-Win2019-GPU-dml-A10'))}}:
-      VSGenerator: 'Visual Studio 16 2019'
-    ${{else}}:
-      VSGenerator: 'Visual Studio 17 2022'
+    VSGenerator: 'Visual Studio 17 2022'
   steps:
       - checkout: self
         clean: true
