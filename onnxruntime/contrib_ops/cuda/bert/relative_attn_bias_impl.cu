@@ -156,7 +156,7 @@ struct TypeMapper : public V_vec_m_<T, size> {};
 // The following operator overriding is not common so we put it in anonymous namespace
 #if defined(__CUDA_ARCH__) && __CUDA_ARCH__ > 530
 inline __device__ half2 operator*(const float a, const half2 b) {
-  return __hmul2_rn(__float2half2_rn(a), b);
+  return __hmul2(__float2half2_rn(a), b);
 }
 #else
 inline __device__ half2 operator*(const float a, const half2 b) {
@@ -247,11 +247,11 @@ Status LaunchGatedRelativePositionBiasKernel(
     const T* qw,  // query * weight
     const T* bias,
     const T* eco_a,
-    const int batch_size,
-    const int num_heads,
-    const int seq_len,
-    const int D,
-    const int ldqw) {
+    int batch_size,
+    int num_heads,
+    int seq_len,
+    int D,
+    int ldqw) {
   ORT_ENFORCE(D <= 32 && D > 0 && (D % 2 == 0));
   ORT_ENFORCE(ldqw == seq_len || ldqw == D);
 
@@ -279,7 +279,7 @@ Status LaunchGatedRelativePositionBiasKernel(
         reinterpret_cast<vec_type*>(output),
         reinterpret_cast<const vec_type*>(rel_pos),
         qw, bias, eco_a, D, ldqw, equiv_seq_len);
-  } else if (seq_len & 1 == 0) {
+  } else if ((seq_len & 1) == 0) {
     using vec_type = typename TypeMapper<T, 2>::Type;
     GatedRelativePositionBiasKernelSmallD<<<grid, block, sizeof(float), stream>>>(
         reinterpret_cast<vec_type*>(output),

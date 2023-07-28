@@ -125,7 +125,9 @@ void RestorePaddingTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) 
   }
 }
 
-void MultiHeadAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx, int past_input_index) {
+void MultiHeadAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx,
+                                             int past_input_index,
+                                             bool dmmha_packing = false) {
   // Output 0 has shape (batch_size, sequence_length, v_hidden_size)
 
   // Q, K and V without packing:
@@ -144,7 +146,9 @@ void MultiHeadAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& c
   //   Input 2  nullptr
 
   // Packed QKV:
-  //   Input 0 (batch_size, sequence_length, num_heads, 3, head_size)
+  //   Input 0 (batch_size, sequence_length, num_heads, 3, head_size) or
+  //           (batch_size, sequence_length, 3 * hidden_size))
+  //           for DecoderMaskedMultiHeadAttention.
   //   Input 1  nullptr
   //   Input 2  nullptr
 
@@ -184,7 +188,9 @@ void MultiHeadAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& c
       ONNX_NAMESPACE::TensorShapeProto output_shape;
       *output_shape.add_dim() = query_dims[0];
       *output_shape.add_dim() = query_dims[1];
-      *output_shape.add_dim() = value_dims.size() == 3 ? value_dims[2] : value_dims[1] * value_dims[3];
+      *output_shape.add_dim() = value_dims.size() == 3
+                                    ? (dmmha_packing ? value_dims[2] / 3 : value_dims[2])
+                                    : value_dims[1] * value_dims[3];
       updateOutputShape(ctx, 0, output_shape);
       return;
     }
@@ -511,6 +517,10 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               "The value to be filled in the attention mask. Default value is -10000.0f",
               AttributeProto::FLOAT,
               OPTIONAL_VALUE)
+        .Attr("do_rotary",
+              "Whether to use rotary position embedding. Default value is 0.",
+              AttributeProto::INT,
+              OPTIONAL_VALUE)
         .Input(0,
                "input",
                "Input tensor with shape (batch_size, 1, input_hidden_size)",
@@ -609,18 +619,21 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               OPTIONAL_VALUE)
         .Input(0,
                "query",
-               "Query with shape (batch_size, 1, hidden_size)",
+               "Query with shape (batch_size, 1, hidden_size) or packed QKV with shape "
+               "(batch_size, 1, 2 * hidden_size + v_hidden_size)",
                "T")
         .Input(1,
                "key",
                "Key with shape (batch_size, 1, hidden_size) for self attention "
                "or past_key with shape (batch_size, num_heads, kv_sequence_length, head_size) for cross attention",
-               "T")
+               "T",
+               OpSchema::Optional)
         .Input(2,
                "value",
                "Value with shape (batch_size, 1, v_hidden_size) for self attention "
                "or past_value with shape (batch_size, num_heads, kv_sequence_length, head_size) for cross attention",
-               "T")
+               "T",
+               OpSchema::Optional)
         .Input(3,
                "mask_index",
                "Mask values of shape (batch_size, total_sequence_length) or (batch_size, kv_sequence_length)",
@@ -636,6 +649,8 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "past state for key with shape (batch_size, num_heads, past_sequence_length, head_size) for self attention"
                "When past_present_share_buffer is set, "
                "its shape is (batch_size, num_heads, max_sequence_length, head_size). "
+               // The re-ordering happens only for CUDA EP at the moment. We probably shall support 4 or 5D shape or
+               // attribute to distinguish whether it is re-ordered or not.
                "The keys buffer is re-ordered in such a way that its virtual sub-tensor of shape "
                "(batch_size, num_heads, max_sequence_length, head_size) which may be perceived as being of shape "
                "(batch_size, num_heads, max_sequence_length, head_size / x, x) is reordered to "
@@ -663,9 +678,15 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                OpSchema::Optional)
         .Input(9,
                "cache_indirection",
+               // This input is useful for CUDA EP only.
                "A buffer of shape [batch_size, beam_width, max_output_length] where an [i, j, k] entry specifies"
                "which beam the 'k' th token came from for the 'j' th beam for batch 'i' in the current iteration",
                "M",
+               OpSchema::Optional)
+        .Input(10,
+               "bias",
+               "Bias tensor with shape (hidden_size + hidden_size + v_hidden_size) from input projection",
+               "T",
                OpSchema::Optional)
         .Output(0,
                 "output",
@@ -694,7 +715,8 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                         {"tensor(int32)"},
                         "Constrain mask index to integer types")
         .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-          MultiHeadAttentionTypeAndShapeInference(ctx, 5);
+          bool is_dmmha_packing = !hasInputShape(ctx, 1) && !hasInputShape(ctx, 2);
+          MultiHeadAttentionTypeAndShapeInference(ctx, 5, is_dmmha_packing);
         }));
 
 constexpr const char* MultiHeadAttention_ver1_doc = R"DOC(

@@ -25,7 +25,8 @@ Status CheckInputs(const T* query,
                    int num_heads,
                    float mask_filter_value,
                    float scale,
-                   bool past_present_share_buffer) {
+                   bool past_present_share_buffer,
+                   bool dmmha_packing) {
   //     key_padding_mask (K/V)     : (B) or (2*B + 1) or (B, L) or None
   //     relative_position_bias     : (B, 1, S, L)
   //     past_key                   : (B, N, S*, H)
@@ -41,7 +42,7 @@ Status CheckInputs(const T* query,
   //     value            (V)       : None
   //     bias             (Q/K/V)   : None
   // When packed qkv is used:
-  //     query            (Q)       : (B, L, N, 3, H)
+  //     query            (Q)       : (B, L, N, 3, H) or (B, S, 3*D)
   //     key              (K)       : None
   //     value            (V)       : None
   //     bias             (Q/K/V)   : None or (D + D + D_v)
@@ -56,7 +57,9 @@ Status CheckInputs(const T* query,
 
   int batch_size = static_cast<int>(query_dims[0]);
   int sequence_length = static_cast<int>(query_dims[1]);
-  int hidden_size = query_dims.size() == 3 ? static_cast<int>(query_dims[2]) : (num_heads * static_cast<int>(query_dims[4]));
+  int hidden_size = (query_dims.size() == 3)
+                        ? (dmmha_packing ? (static_cast<int>(query_dims[2]) / 3) : static_cast<int>(query_dims[2]))
+                        : (num_heads * static_cast<int>(query_dims[4]));
   int head_size = static_cast<int>(hidden_size) / num_heads;
   int kv_sequence_length = sequence_length;
 
@@ -331,13 +334,15 @@ Status CheckInputs(const T* query,
                    float mask_filter_value,
                    float scale,
                    bool past_present_share_buffer,
+                   bool dmmha_packing,
                    int max_threads_per_block) {
   if (max_threads_per_block > 0 && num_heads > max_threads_per_block) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "num_heads should be no larger than ", max_threads_per_block);
   }
 
   return CheckInputs(query, key, value, bias, key_padding_mask, relative_position_bias, past_key, past_value,
-                     past_seq_len, parameters, num_heads, mask_filter_value, scale, past_present_share_buffer);
+                     past_seq_len, parameters, num_heads, mask_filter_value, scale, past_present_share_buffer,
+                     dmmha_packing);
 }
 
 }  // namespace multihead_attention_helper

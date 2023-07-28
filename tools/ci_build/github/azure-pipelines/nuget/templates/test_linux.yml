@@ -1,14 +1,16 @@
 parameters:
-  AgentPool: 'aiinfra-Linux-CPU'
+  AgentPool: 'onnxruntime-Ubuntu2004-AMD-CPU'
   ArtifactSuffix: ''
   NugetPackageName : ''
+  StageSuffix: 'CPU'
+  NativePackagePrefix: 'onnxruntime'
+  SpecificArtifact: false
+  BuildId: '0'
 
 stages:
-- stage: NuGet_Test_Linux_${{ parameters.ArtifactSuffix }}
+- stage: NuGet_Test_Linux_${{ parameters.StageSuffix }}
   dependsOn:
-  - NuGet_Packaging_${{ parameters.ArtifactSuffix }}
-  # For downloading Linux CustomOp TestData
-  - Linux_C_API_Packaging_CPU
+  - NuGet_Packaging_${{ parameters.StageSuffix }}
   condition: succeeded()
   jobs:
   - job:
@@ -24,15 +26,19 @@ stages:
     steps:
     - template: ../../templates/flex-downloadPipelineArtifact.yml
       parameters:
-        stepName: 'Download Signed NuGet'
-        artifactName: drop-signed-nuget-${{ parameters.ArtifactSuffix }}
-        targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
+        StepName: 'Download Signed NuGet'
+        ArtifactName: drop-signed-nuget-${{ parameters.ArtifactSuffix }}
+        TargetPath: '$(Build.BinariesDirectory)/nuget-artifact'
+        SpecificArtifact: ${{ parameters.SpecificArtifact }}
+        BuildId: ${{ parameters.BuildId }}
 
     - template: ../../templates/flex-downloadPipelineArtifact.yml
       parameters:
-        stepName: 'Download Linux CustomOp TestData'
-        artifactName: 'onnxruntime-linux-x64'
-        targetPath: '$(Build.BinariesDirectory)/testdata'
+        StepName: 'Download Linux CustomOp TestData'
+        ArtifactName: 'onnxruntime-linux-x64'
+        TargetPath: '$(Build.BinariesDirectory)/testdata'
+        SpecificArtifact: ${{ parameters.specificArtifact }}
+        BuildId: ${{ parameters.BuildId }}
 
     - template: get-nuget-package-version-as-variable.yml
       parameters:

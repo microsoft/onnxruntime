@@ -5,7 +5,7 @@ import shutil
 import numpy as np
 import onnx
 import onnx_test_data_utils
-from onnx import numpy_helper
+from onnx import TensorProto, numpy_helper
 
 import onnxruntime as ort
 
@@ -49,7 +49,7 @@ def _create_missing_input_data(model_inputs, name_input_map, symbolic_dim_values
                 dims.append(dim.dim_value)
             elif dim_type == "dim_param":
                 if dim.dim_param not in symbolic_dim_values_map:
-                    raise ValueError(f"Value for symbolic dim {dim.dim_param} was not provided.")
+                    raise ValueError(f"Value for symbolic dim '{dim.dim_param}' was not provided.")
 
                 dims.append(symbolic_dim_values_map[dim.dim_param])
             else:
@@ -57,9 +57,16 @@ def _create_missing_input_data(model_inputs, name_input_map, symbolic_dim_values
                 # shape for the input name instead.
                 raise ValueError("Unsupported model. Unknown dim with no value or symbolic name.")
 
-        np_type = onnx.mapping.TENSOR_TYPE_TO_NP_TYPE[input.type.tensor_type.elem_type]
-        # create random data. give it range -10 to 10 so if we convert to an integer type it's not all 0s and 1s
-        data = (np.random.standard_normal(dims) * 10).astype(np_type)
+        onnx_type = input.type.tensor_type.elem_type
+        # create random data.
+        data = np.random.random_sample(dims)
+        # use range of [0, 1) for floating point data
+        # use range of [0, 256) for other data types
+        if onnx_type not in [TensorProto.FLOAT, TensorProto.BFLOAT16, TensorProto.DOUBLE, TensorProto.FLOAT16]:
+            data *= 256
+
+        np_type = onnx.mapping.TENSOR_TYPE_TO_NP_TYPE[onnx_type]
+        data = data.astype(np_type)
 
         name_input_map[input.name] = data
 
@@ -139,7 +146,20 @@ def create_test_dir(
     # save expected output data if provided. run model to create if not.
     if not name_output_map:
         output_names = [o.name for o in model_outputs]
-        sess = ort.InferenceSession(test_model_filename)
+        so = ort.SessionOptions()
+
+        # try and enable onnxruntime-extensions if present
+        try:
+            import onnxruntime_extensions
+
+            so.register_custom_ops_library(onnxruntime_extensions.get_library_path())
+
+        except ImportError:
+            # ignore if onnxruntime_extensions is not available.
+            # if the model uses custom ops from there it will fail to load.
+            pass
+
+        sess = ort.InferenceSession(test_model_filename, so)
         outputs = sess.run(output_names, name_input_map)
         name_output_map = {}
         for name, data in zip(output_names, outputs):
@@ -219,7 +239,7 @@ def run_test_dir(model_or_dir):
             output_names = list(expected_outputs.keys())
             # handle case where there's a single expected output file but no name in it (empty string for name)
             # e.g. ONNX test models 20190729\opset8\tf_mobilenet_v2_1.4_224
-            if len(output_names) == 1 and output_names[0] == "":  # noqa: PLC1901
+            if len(output_names) == 1 and output_names[0] == "":
                 output_names = [o.name for o in sess.get_outputs()]
                 assert len(output_names) == 1, "There should be single output_name."
                 expected_outputs[output_names[0]] = expected_outputs[""]

@@ -16,6 +16,8 @@
 namespace onnxruntime {
 namespace training {
 
+#if !defined(ORT_MINIMAL_BUILD)
+
 /**
  * @brief Open file descriptor and call use_fn
  *
@@ -44,6 +46,8 @@ common::Status WithOpenFile(const PathString& path, bool readonly, TUseFileFn us
   Status close_status = Env::Default().FileClose(fd);
   return !use_fn_status.IsOK() ? use_fn_status : close_status;
 }
+
+#endif
 
 /**
  * @brief Create OrtValues From TensorProto objects

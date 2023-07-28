@@ -116,7 +116,7 @@ static void TestDFTInvertible(bool complex) {
     for (int64_t signal_dim1 = 2; signal_dim1 <= 5; signal_dim1 += 1) {
       for (int64_t signal_dim2 = 2; signal_dim2 <= 5; signal_dim2 += 1) {
         DFTInvertibleTester test(axis);
-        vector<int64_t> input_shape{num_batches, signal_dim1, signal_dim2, 1 + complex};
+        vector<int64_t> input_shape{num_batches, signal_dim1, signal_dim2, 1 + (complex ? 1 : 0)};
         vector<float> input_data = random.Uniform<float>(input_shape, -100.f, 100.f);
         test.AddInput("input", input_shape, input_data);
 

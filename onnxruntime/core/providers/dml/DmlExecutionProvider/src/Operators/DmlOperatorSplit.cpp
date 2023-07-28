@@ -44,5 +44,6 @@ public:
 DML_OP_DEFINE_CREATION_FUNCTION(Split7, VersionedKernel<DmlOperatorSplit, 7>);
 DML_OP_DEFINE_CREATION_FUNCTION(Split11, VersionedKernel<DmlOperatorSplit, 11>);
 DML_OP_DEFINE_CREATION_FUNCTION(Split13, VersionedKernel<DmlOperatorSplit, 13>);
+DML_OP_DEFINE_CREATION_FUNCTION(Split18, VersionedKernel<DmlOperatorSplit, 18>);
 
 } // namespace Dml

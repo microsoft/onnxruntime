@@ -113,7 +113,7 @@ function(AddTest)
   set(TEST_ARGS ${_UT_TEST_ARGS})
   if (onnxruntime_GENERATE_TEST_REPORTS)
     # generate a report file next to the test program
-    if (onnxruntime_BUILD_WEBASSEMBLY)
+    if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
       # WebAssembly use a memory file system, so we do not use full path
       list(APPEND TEST_ARGS
         "--gtest_output=xml:$<TARGET_FILE_NAME:${_UT_TARGET}>.$<CONFIG>.results.xml")
@@ -162,7 +162,7 @@ function(AddTest)
 
     xctest_add_test(xctest.${_UT_TARGET} ${_UT_TARGET}_xc)
   else()
-    if (onnxruntime_BUILD_WEBASSEMBLY)
+    if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
       # We might have already executed the following "find_program" code when we build ORT nodejs binding.
       # Then the program is found the result is stored in the variable and the search will not be repeated.
       find_program(NPM_CLI
@@ -280,22 +280,33 @@ if((NOT onnxruntime_MINIMAL_BUILD OR onnxruntime_EXTENDED_MINIMAL_BUILD)
 endif()
 
 file(GLOB onnxruntime_test_training_src
+  "${ORTTRAINING_SOURCE_DIR}/test/model/*.h"
   "${ORTTRAINING_SOURCE_DIR}/test/model/*.cc"
+  "${ORTTRAINING_SOURCE_DIR}/test/gradient/*.h"
   "${ORTTRAINING_SOURCE_DIR}/test/gradient/*.cc"
+  "${ORTTRAINING_SOURCE_DIR}/test/graph/*.h"
   "${ORTTRAINING_SOURCE_DIR}/test/graph/*.cc"
+  "${ORTTRAINING_SOURCE_DIR}/test/session/*.h"
   "${ORTTRAINING_SOURCE_DIR}/test/session/*.cc"
+  "${ORTTRAINING_SOURCE_DIR}/test/optimizer/*.h"
   "${ORTTRAINING_SOURCE_DIR}/test/optimizer/*.cc"
   "${ORTTRAINING_SOURCE_DIR}/test/framework/*.cc"
+  "${ORTTRAINING_SOURCE_DIR}/test/distributed/*.h"
   "${ORTTRAINING_SOURCE_DIR}/test/distributed/*.cc"
   )
 
-if (onnxruntime_ENABLE_TRAINING_APIS)
-  file(GLOB onnxruntime_test_training_api_src
-    "${ORTTRAINING_SOURCE_DIR}/test/training_api/common/*.cc"
-    "${ORTTRAINING_SOURCE_DIR}/test/training_api/common/*.h"
-    "${ORTTRAINING_SOURCE_DIR}/test/training_api/core/*.cc"
-    "${ORTTRAINING_SOURCE_DIR}/test/training_api/core/*.h"
-    )
+# TODO (baijumeswani): Remove the minimal build check here.
+#                      The training api tests should be runnable even on a minimal build.
+#                      This requires converting all the *.onnx files to ort format.
+if (NOT onnxruntime_MINIMAL_BUILD)
+  if (onnxruntime_ENABLE_TRAINING_APIS)
+    file(GLOB onnxruntime_test_training_api_src
+      "${ORTTRAINING_SOURCE_DIR}/test/training_api/common/*.cc"
+      "${ORTTRAINING_SOURCE_DIR}/test/training_api/common/*.h"
+      "${ORTTRAINING_SOURCE_DIR}/test/training_api/core/*.cc"
+      "${ORTTRAINING_SOURCE_DIR}/test/training_api/core/*.h"
+      )
+  endif()
 endif()
 
 if(WIN32)
@@ -351,7 +362,7 @@ endif()
 list(APPEND onnxruntime_test_providers_src ${onnxruntime_test_providers_cpu_src})
 
 if (onnxruntime_USE_CUDA AND NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_REDUCED_OPS_BUILD)
-  file(GLOB_RECURSE onnxruntime_test_providers_cuda_src CONFIGURE_DEPENDS
+  file(GLOB onnxruntime_test_providers_cuda_src CONFIGURE_DEPENDS
     "${TEST_SRC_DIR}/providers/cuda/*"
     )
   list(APPEND onnxruntime_test_providers_src ${onnxruntime_test_providers_cuda_src})
@@ -364,26 +375,29 @@ if (onnxruntime_USE_CANN)
   list(APPEND onnxruntime_test_providers_src ${onnxruntime_test_providers_cann_src})
 endif()
 
-if (onnxruntime_ENABLE_TRAINING_APIS)
-  file(GLOB_RECURSE orttraining_test_trainingops_cpu_src CONFIGURE_DEPENDS
-    "${ORTTRAINING_SOURCE_DIR}/test/training_ops/compare_provider_test_utils.cc"
-    "${ORTTRAINING_SOURCE_DIR}/test/training_ops/function_op_test_utils.cc"
-    "${ORTTRAINING_SOURCE_DIR}/test/training_ops/cpu/*"
-    )
-
-  if (NOT onnxruntime_ENABLE_TRAINING)
-    list(REMOVE_ITEM orttraining_test_trainingops_cpu_src
-      "${ORTTRAINING_SOURCE_DIR}/test/training_ops/cpu/tensorboard/summary_op_test.cc"
+# Disable training ops test for minimal build as a lot of these depend on loading an onnx model.
+if (NOT onnxruntime_MINIMAL_BUILD)
+  if (onnxruntime_ENABLE_TRAINING_OPS)
+    file(GLOB_RECURSE orttraining_test_trainingops_cpu_src CONFIGURE_DEPENDS
+      "${ORTTRAINING_SOURCE_DIR}/test/training_ops/compare_provider_test_utils.cc"
+      "${ORTTRAINING_SOURCE_DIR}/test/training_ops/function_op_test_utils.cc"
+      "${ORTTRAINING_SOURCE_DIR}/test/training_ops/cpu/*"
       )
-  endif()
 
-  list(APPEND onnxruntime_test_providers_src ${orttraining_test_trainingops_cpu_src})
+    if (NOT onnxruntime_ENABLE_TRAINING)
+      list(REMOVE_ITEM orttraining_test_trainingops_cpu_src
+        "${ORTTRAINING_SOURCE_DIR}/test/training_ops/cpu/tensorboard/summary_op_test.cc"
+        )
+    endif()
 
-  if (onnxruntime_USE_CUDA OR onnxruntime_USE_ROCM)
-    file(GLOB_RECURSE orttraining_test_trainingops_cuda_src CONFIGURE_DEPENDS
-      "${ORTTRAINING_SOURCE_DIR}/test/training_ops/cuda/*"
-      )
-    list(APPEND onnxruntime_test_providers_src ${orttraining_test_trainingops_cuda_src})
+    list(APPEND onnxruntime_test_providers_src ${orttraining_test_trainingops_cpu_src})
+
+    if (onnxruntime_USE_CUDA OR onnxruntime_USE_ROCM)
+      file(GLOB_RECURSE orttraining_test_trainingops_cuda_src CONFIGURE_DEPENDS
+        "${ORTTRAINING_SOURCE_DIR}/test/training_ops/cuda/*"
+        )
+      list(APPEND onnxruntime_test_providers_src ${orttraining_test_trainingops_cuda_src})
+    endif()
   endif()
 endif()
 
@@ -417,7 +431,6 @@ endif()
 
 set (ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR "${TEST_SRC_DIR}/shared_lib")
 set (ONNXRUNTIME_GLOBAL_THREAD_POOLS_TEST_SRC_DIR "${TEST_SRC_DIR}/global_thread_pools")
-set (ONNXRUNTIME_API_TESTS_WITHOUT_ENV_SRC_DIR "${TEST_SRC_DIR}/api_tests_without_env")
 set (ONNXRUNTIME_CUSTOM_OP_REGISTRATION_TEST_SRC_DIR "${TEST_SRC_DIR}/custom_op_registration")
 set (ONNXRUNTIME_LOGGING_APIS_TEST_SRC_DIR "${TEST_SRC_DIR}/logging_apis")
 
@@ -446,9 +459,6 @@ set (onnxruntime_global_thread_pools_test_SRC
           ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_fixture.h
           ${ONNXRUNTIME_GLOBAL_THREAD_POOLS_TEST_SRC_DIR}/test_main.cc
           ${ONNXRUNTIME_GLOBAL_THREAD_POOLS_TEST_SRC_DIR}/test_inference.cc)
-
-set (onnxruntime_api_tests_without_env_SRC
-          ${ONNXRUNTIME_API_TESTS_WITHOUT_ENV_SRC_DIR}/test_apis_without_env.cc)
 
 # tests from lowest level library up.
 # the order of libraries should be maintained, with higher libraries being added first in the list
@@ -556,6 +566,7 @@ set(ONNXRUNTIME_TEST_LIBS
     # CUDA, ROCM, TENSORRT, MIGRAPHX, DNNL, and OpenVINO are dynamically loaded at runtime
     ${PROVIDERS_NNAPI}
     ${PROVIDERS_JS}
+    ${PROVIDERS_VITISAI}
     ${PROVIDERS_QNN}
     ${PROVIDERS_SNPE}
     ${PROVIDERS_RKNPU}
@@ -705,6 +716,7 @@ add_dependencies(onnxruntime_test_utils ${onnxruntime_EXTERNAL_DEPENDENCIES})
 target_include_directories(onnxruntime_test_utils PUBLIC "${TEST_SRC_DIR}/util/include" PRIVATE
         ${eigen_INCLUDE_DIRS} ${ONNXRUNTIME_ROOT})
 set_target_properties(onnxruntime_test_utils PROPERTIES FOLDER "ONNXRuntimeTest")
+source_group(TREE ${TEST_SRC_DIR} FILES ${onnxruntime_test_utils_src})
 
 set(onnx_test_runner_src_dir ${TEST_SRC_DIR}/onnx)
 file(GLOB onnx_test_runner_common_srcs CONFIGURE_DEPENDS
@@ -737,13 +749,22 @@ set_target_properties(onnx_test_runner_common PROPERTIES FOLDER "ONNXRuntimeTest
 
 set(all_tests ${onnxruntime_test_common_src} ${onnxruntime_test_ir_src} ${onnxruntime_test_optimizer_src}
         ${onnxruntime_test_framework_src} ${onnxruntime_test_providers_src} ${onnxruntime_test_quantiztion_src})
-if(NOT TARGET onnxruntime AND NOT onnxruntime_BUILD_WEBASSEMBLY)
+if(NOT TARGET onnxruntime AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
   list(APPEND all_tests ${onnxruntime_shared_lib_test_SRC})
 endif()
 
 if (onnxruntime_USE_CUDA)
   onnxruntime_add_static_library(onnxruntime_test_cuda_ops_lib ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/cuda_ops.cu)
   list(APPEND onnxruntime_test_common_libs onnxruntime_test_cuda_ops_lib)
+  file(GLOB onnxruntime_test_providers_cuda_ut_src CONFIGURE_DEPENDS
+    "${TEST_SRC_DIR}/providers/cuda/test_cases/*"
+  )
+  # onnxruntime_providers_cuda_ut is only for unittests.
+  onnxruntime_add_shared_library_module(onnxruntime_providers_cuda_ut ${onnxruntime_test_providers_cuda_ut_src} $<TARGET_OBJECTS:onnxruntime_providers_cuda_obj>)
+  config_cuda_provider_shared_module(onnxruntime_providers_cuda_ut)
+  onnxruntime_add_include_to_target(onnxruntime_providers_cuda_ut GTest::gtest GTest::gmock)
+  target_link_libraries(onnxruntime_providers_cuda_ut PRIVATE GTest::gtest GTest::gmock)
+  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_cuda_ut)
 endif()
 
 set(all_dependencies ${onnxruntime_test_providers_dependencies} )
@@ -771,7 +792,7 @@ if(WIN32)
   list(APPEND onnxruntime_test_providers_libs Advapi32)
 endif()
 
-if (onnxruntime_BUILD_WEBASSEMBLY)
+if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
   if (NOT onnxruntime_ENABLE_WEBASSEMBLY_THREADS)
     list(REMOVE_ITEM all_tests
       "${TEST_SRC_DIR}/framework/execution_frame_test.cc"
@@ -814,6 +835,16 @@ else()
   target_compile_options(onnxruntime_test_all PRIVATE "-Wno-parentheses")
 endif()
 
+# TODO fix shorten-64-to-32 warnings
+# there are some in builds where sizeof(size_t) != sizeof(int64_t), e.g., in 'ONNX Runtime Web CI Pipeline'
+if (HAS_SHORTEN_64_TO_32 AND NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
+  target_compile_options(onnxruntime_test_all PRIVATE -Wno-error=shorten-64-to-32)
+endif()
+
+if (UNIX AND onnxruntime_USE_TENSORRT)
+    set_property(TARGET onnxruntime_test_all APPEND_STRING PROPERTY COMPILE_FLAGS "-Wno-deprecated-declarations")
+endif()
+
 if (MSVC AND onnxruntime_ENABLE_STATIC_ANALYSIS)
 # attention_op_test.cc: Function uses '49152' bytes of stack:  exceeds /analyze:stacksize '16384'..
 target_compile_options(onnxruntime_test_all PRIVATE  "/analyze:stacksize 131072")
@@ -845,15 +876,22 @@ endif()
 if (onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
   target_link_libraries(onnxruntime_test_all PRIVATE Python::Python)
 endif()
-if (onnxruntime_BUILD_WEBASSEMBLY)
+if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
   set_target_properties(onnxruntime_test_all PROPERTIES LINK_DEPENDS ${TEST_SRC_DIR}/wasm/onnxruntime_test_all_adapter.js)
-  set_target_properties(onnxruntime_test_all PROPERTIES LINK_FLAGS "-s STACK_SIZE=1048576 -s ALLOW_MEMORY_GROWTH=1 --pre-js \"${TEST_SRC_DIR}/wasm/onnxruntime_test_all_adapter.js\" -s \"EXPORTED_RUNTIME_METHODS=['FS']\" --preload-file ${CMAKE_CURRENT_BINARY_DIR}/testdata@/testdata -s EXIT_RUNTIME=1")
+  set_target_properties(onnxruntime_test_all PROPERTIES LINK_FLAGS "-s STACK_SIZE=5242880 -s ALLOW_MEMORY_GROWTH=1 --pre-js \"${TEST_SRC_DIR}/wasm/onnxruntime_test_all_adapter.js\" -s \"EXPORTED_RUNTIME_METHODS=['FS']\" --preload-file ${CMAKE_CURRENT_BINARY_DIR}/testdata@/testdata -s EXIT_RUNTIME=1 -s DEMANGLE_SUPPORT=1")
   if (onnxruntime_ENABLE_WEBASSEMBLY_THREADS)
-    set_property(TARGET onnxruntime_test_all APPEND_STRING PROPERTY LINK_FLAGS " -s USE_PTHREADS=1 -s PROXY_TO_PTHREAD=1")
+    set_property(TARGET onnxruntime_test_all APPEND_STRING PROPERTY LINK_FLAGS " -s DEFAULT_PTHREAD_STACK_SIZE=131072 -s PROXY_TO_PTHREAD=1")
   endif()
   if (onnxruntime_USE_JSEP)
     set_property(TARGET onnxruntime_test_all APPEND_STRING PROPERTY LINK_FLAGS " --pre-js \"${ONNXRUNTIME_ROOT}/wasm/js_internal_api.js\"")
   endif()
+
+  ###
+  ### if you want to investigate or debug a test failure in onnxruntime_test_all, replace the following line.
+  ### those flags slow down the CI test significantly, so we don't use them by default.
+  ###
+  #   set_property(TARGET onnxruntime_test_all APPEND_STRING PROPERTY LINK_FLAGS " -s ASSERTIONS=2 -s SAFE_HEAP=1 -s STACK_OVERFLOW_CHECK=2")
+  set_property(TARGET onnxruntime_test_all APPEND_STRING PROPERTY LINK_FLAGS " -s ASSERTIONS=0 -s SAFE_HEAP=0 -s STACK_OVERFLOW_CHECK=1")
 endif()
 
 if (onnxruntime_ENABLE_ATEN)
@@ -866,12 +904,6 @@ onnxruntime_add_static_library(onnx_test_data_proto ${TEST_SRC_DIR}/proto/tml.pr
 add_dependencies(onnx_test_data_proto onnx_proto ${onnxruntime_EXTERNAL_DEPENDENCIES})
 #onnx_proto target should mark this definition as public, instead of private
 target_compile_definitions(onnx_test_data_proto PRIVATE "-DONNX_API=")
-if(WIN32)
-  target_compile_options(onnx_test_data_proto PRIVATE "/wd4100" "/wd4125" "/wd4127" "/wd4267" "/wd4456" "/wd4800" "/wd6011" "/wd6387" "/wd28182")
-else()
-  #Once we upgrade protobuf to 3.17.3+, we can remove this
-  target_compile_options(onnx_test_data_proto PRIVATE "-Wno-unused-parameter")
-endif()
 onnxruntime_add_include_to_target(onnx_test_data_proto onnx_proto)
 target_include_directories(onnx_test_data_proto PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
 set_target_properties(onnx_test_data_proto PROPERTIES FOLDER "ONNXRuntimeTest")
@@ -1002,9 +1034,9 @@ if(${CMAKE_SYSTEM_NAME} STREQUAL "iOS")
     XCODE_ATTRIBUTE_CODE_SIGNING_ALLOWED "NO"
   )
 endif()
-if (onnxruntime_BUILD_WEBASSEMBLY)
+if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
   if (onnxruntime_ENABLE_WEBASSEMBLY_THREADS)
-    set_target_properties(onnx_test_runner PROPERTIES LINK_FLAGS "-s NODERAWFS=1 -s ALLOW_MEMORY_GROWTH=1 -s USE_PTHREADS=1 -s PROXY_TO_PTHREAD=1 -s EXIT_RUNTIME=1")
+    set_target_properties(onnx_test_runner PROPERTIES LINK_FLAGS "-s NODERAWFS=1 -s ALLOW_MEMORY_GROWTH=1 -s PROXY_TO_PTHREAD=1 -s EXIT_RUNTIME=1")
   else()
     set_target_properties(onnx_test_runner PROPERTIES LINK_FLAGS "-s NODERAWFS=1 -s ALLOW_MEMORY_GROWTH=1")
   endif()
@@ -1087,7 +1119,7 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
     else()
       target_link_libraries(onnxruntime_mlas_benchmark PRIVATE nsync::nsync_cpp ${CMAKE_DL_LIBS})
     endif()
-    if (CPUINFO_SUPPORTED AND NOT onnxruntime_BUILD_WEBASSEMBLY)
+    if (CPUINFO_SUPPORTED AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
       target_link_libraries(onnxruntime_mlas_benchmark PRIVATE cpuinfo)
     endif()
     set_target_properties(onnxruntime_mlas_benchmark PROPERTIES FOLDER "ONNXRuntimeTest")
@@ -1097,7 +1129,7 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
     target_compile_options(onnx_test_runner_common PRIVATE -D_CRT_SECURE_NO_WARNINGS)
   endif()
 
-  if (NOT onnxruntime_REDUCED_OPS_BUILD AND NOT onnxruntime_BUILD_WEBASSEMBLY)
+  if (NOT onnxruntime_REDUCED_OPS_BUILD AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
     add_test(NAME onnx_test_pytorch_converted
       COMMAND onnx_test_runner ${onnx_SOURCE_DIR}/onnx/backend/test/data/pytorch-converted)
     add_test(NAME onnx_test_pytorch_operator
@@ -1253,16 +1285,6 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
               DEPENDS ${all_dependencies}
       )
     endif()
-
-  # A separate test is needed to test the APIs that don't rely on the env being created first.
-    if (NOT CMAKE_SYSTEM_NAME MATCHES "Android|iOS")
-      AddTest(DYN
-              TARGET onnxruntime_api_tests_without_env
-              SOURCES ${onnxruntime_api_tests_without_env_SRC}
-              LIBS ${onnxruntime_shared_lib_test_LIBS}
-              DEPENDS ${all_dependencies}
-      )
-    endif()
   endif()
 
   # the debug node IO functionality uses static variables, so it is best tested
@@ -1274,7 +1296,14 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
         "${TEST_SRC_DIR}/debug_node_inputs_outputs/debug_node_inputs_outputs_utils_test.cc"
         "${TEST_SRC_DIR}/framework/TestAllocatorManager.cc"
         "${TEST_SRC_DIR}/framework/test_utils.cc"
-        "${TEST_SRC_DIR}/providers/provider_test_utils.cc"
+        "${TEST_SRC_DIR}/providers/base_tester.h"
+        "${TEST_SRC_DIR}/providers/base_tester.cc"
+        "${TEST_SRC_DIR}/providers/checkers.h"
+        "${TEST_SRC_DIR}/providers/checkers.cc"
+        "${TEST_SRC_DIR}/providers/op_tester.h"
+        "${TEST_SRC_DIR}/providers/op_tester.cc"
+        "${TEST_SRC_DIR}/providers/provider_test_utils.h"
+        "${TEST_SRC_DIR}/providers/tester_types.h"
         ${onnxruntime_unittest_main_src}
       LIBS ${onnxruntime_test_providers_libs} ${onnxruntime_test_common_libs}
       DEPENDS ${all_dependencies}
@@ -1327,7 +1356,7 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
   target_include_directories(onnxruntime_mlas_test PRIVATE ${ONNXRUNTIME_ROOT}/core/mlas/inc ${ONNXRUNTIME_ROOT}
           ${CMAKE_CURRENT_BINARY_DIR})
   target_link_libraries(onnxruntime_mlas_test PRIVATE GTest::gtest GTest::gmock ${ONNXRUNTIME_MLAS_LIBS} onnxruntime_common)
-  if (CPUINFO_SUPPORTED AND NOT onnxruntime_BUILD_WEBASSEMBLY)
+  if (CPUINFO_SUPPORTED AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
     target_link_libraries(onnxruntime_mlas_test PRIVATE cpuinfo)
   endif()
   if(NOT WIN32)
@@ -1346,16 +1375,21 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
   target_link_libraries(onnxruntime_mlas_test PRIVATE Threads::Threads)
 
   set_target_properties(onnxruntime_mlas_test PROPERTIES FOLDER "ONNXRuntimeTest")
-  if (onnxruntime_BUILD_WEBASSEMBLY)
+  if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
     if (onnxruntime_ENABLE_WEBASSEMBLY_THREADS)
-      set_target_properties(onnxruntime_mlas_test PROPERTIES LINK_FLAGS "-s ALLOW_MEMORY_GROWTH=1 -s USE_PTHREADS=1 -s PROXY_TO_PTHREAD=1 -s EXIT_RUNTIME=1")
+      set_target_properties(onnxruntime_mlas_test PROPERTIES LINK_FLAGS "-s ALLOW_MEMORY_GROWTH=1 -s PROXY_TO_PTHREAD=1 -s EXIT_RUNTIME=1")
     else()
       set_target_properties(onnxruntime_mlas_test PROPERTIES LINK_FLAGS "-s ALLOW_MEMORY_GROWTH=1")
     endif()
   endif()
 
   # Training API Tests
-  if (onnxruntime_ENABLE_TRAINING_APIS)
+  # Disabling training_api_test_trainer. CXXOPT generates a ton of warnings because of which nuget pipeline is failing.
+  # TODO(askhade): Fix the warnings.
+  # This has no impact on the release as the release package and the pipeline, both do not use this.
+  # This is used by devs for testing training apis.
+  #if (onnxruntime_ENABLE_TRAINING_APIS)
+  if (0)
     # Only files in the trainer and common folder will be compiled into test trainer.
     file(GLOB training_api_test_trainer_src
       "${ORTTRAINING_SOURCE_DIR}/test/training_api/common/*.cc"
@@ -1407,7 +1441,7 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
   endif()
 endif()
 
-if (NOT onnxruntime_BUILD_WEBASSEMBLY)
+if (NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
   if (onnxruntime_USE_CUDA)
     onnxruntime_add_shared_library(custom_op_library ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/cuda_ops.cu
                                                      ${TEST_SRC_DIR}/testdata/custom_op_library/custom_op_library.cc)
@@ -1501,7 +1535,7 @@ if (NOT onnxruntime_BUILD_WEBASSEMBLY)
 endif()
 
 # Build custom op library that returns an error OrtStatus when the exported RegisterCustomOps function is called.
-if (NOT onnxruntime_BUILD_WEBASSEMBLY AND (NOT onnxruntime_MINIMAL_BUILD OR onnxruntime_MINIMAL_BUILD_CUSTOM_OPS))
+if (NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten" AND (NOT onnxruntime_MINIMAL_BUILD OR onnxruntime_MINIMAL_BUILD_CUSTOM_OPS))
   onnxruntime_add_shared_library_module(custom_op_invalid_library
                                         ${TEST_SRC_DIR}/testdata/custom_op_invalid_library/custom_op_library.h
                                         ${TEST_SRC_DIR}/testdata/custom_op_invalid_library/custom_op_library.cc)
@@ -1524,7 +1558,7 @@ if (NOT onnxruntime_BUILD_WEBASSEMBLY AND (NOT onnxruntime_MINIMAL_BUILD OR onnx
                ${ONNXRUNTIME_CUSTOM_OP_INVALID_LIB_LINK_FLAG})
 endif()
 
-if (NOT onnxruntime_BUILD_WEBASSEMBLY AND (NOT onnxruntime_MINIMAL_BUILD OR onnxruntime_MINIMAL_BUILD_CUSTOM_OPS))
+if (NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten" AND (NOT onnxruntime_MINIMAL_BUILD OR onnxruntime_MINIMAL_BUILD_CUSTOM_OPS))
 
   file(GLOB_RECURSE custom_op_get_const_input_test_library_src
         "${TEST_SRC_DIR}/testdata/custom_op_get_const_input_test_library/custom_op_lib.cc"
@@ -1555,7 +1589,7 @@ if (NOT onnxruntime_BUILD_WEBASSEMBLY AND (NOT onnxruntime_MINIMAL_BUILD OR onnx
                ${ONNXRUNTIME_CUSTOM_OP_GET_CONST_INPUT_TEST_LIB_LINK_FLAG})
 endif()
 
-if (onnxruntime_BUILD_SHARED_LIB AND NOT onnxruntime_BUILD_WEBASSEMBLY AND NOT onnxruntime_MINIMAL_BUILD)
+if (onnxruntime_BUILD_SHARED_LIB AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten" AND NOT onnxruntime_MINIMAL_BUILD)
   set (onnxruntime_logging_apis_test_SRC
        ${ONNXRUNTIME_LOGGING_APIS_TEST_SRC_DIR}/test_logging_apis.cc)
 
@@ -1573,7 +1607,7 @@ if (onnxruntime_BUILD_SHARED_LIB AND NOT onnxruntime_BUILD_WEBASSEMBLY AND NOT o
   )
 endif()
 
-if (NOT onnxruntime_BUILD_WEBASSEMBLY AND onnxruntime_USE_OPENVINO AND (NOT onnxruntime_MINIMAL_BUILD OR
+if (NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten" AND onnxruntime_USE_OPENVINO AND (NOT onnxruntime_MINIMAL_BUILD OR
                                                                         onnxruntime_MINIMAL_BUILD_CUSTOM_OPS))
   onnxruntime_add_shared_library_module(custom_op_openvino_wrapper_library
                                         ${TEST_SRC_DIR}/testdata/custom_op_openvino_wrapper_library/custom_op_lib.cc
@@ -1601,8 +1635,8 @@ endif()
 # limit to only test on windows first, due to a runtime path issue on linux
 if (NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_EXTENDED_MINIMAL_BUILD
                                   AND NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin|iOS"
-                                  AND NOT (CMAKE_SYSTEM_NAME STREQUAL "Android")
-                                  AND NOT onnxruntime_BUILD_WEBASSEMBLY
+                                  AND NOT CMAKE_SYSTEM_NAME STREQUAL "Android"
+                                  AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten"
                                   AND NOT onnxruntime_USE_ROCM)
   file(GLOB_RECURSE test_execution_provider_srcs
     "${REPO_ROOT}/onnxruntime/test/testdata/custom_execution_provider_library/*.h"

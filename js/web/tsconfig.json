@@ -3,8 +3,9 @@
   "compilerOptions": {
     "module": "CommonJS",
     "downlevelIteration": true,
+    "declaration": true,
     "declarationDir": "./types",
-    "typeRoots": ["./node_modules/@webgpu/types", "./node_modules/@types"]
+    "typeRoots": ["./node_modules/@webgpu/types", "./node_modules/@types", "../node_modules/@types"]
   },
   "include": ["lib", "script", "test"],
   "exclude": ["lib/wasm/proxy-worker"]

@@ -20,10 +20,6 @@ file(GLOB onnxruntime_pybind_srcs CONFIGURE_DEPENDS
   ${onnxruntime_pybind_srcs_pattern}
   )
 
-if(NOT onnxruntime_PYBIND_EXPORT_OPSCHEMA)
-  list(REMOVE_ITEM onnxruntime_pybind_srcs  ${ONNXRUNTIME_ROOT}/python/onnxruntime_pybind_schema.cc)
-endif()
-
 if(onnxruntime_ENABLE_TRAINING)
   list(REMOVE_ITEM onnxruntime_pybind_srcs  ${ONNXRUNTIME_ROOT}/python/onnxruntime_pybind_module.cc)
 endif()
@@ -116,7 +112,7 @@ if (onnxruntime_USE_NCCL)
 endif()
 
 if(APPLE)
-  set(ONNXRUNTIME_SO_LINK_FLAG "-Xlinker -exported_symbols_list ${ONNXRUNTIME_ROOT}/python/exported_symbols.lst")
+  set(ONNXRUNTIME_SO_LINK_FLAG "-Xlinker -exported_symbols_list -Xlinker ${ONNXRUNTIME_ROOT}/python/exported_symbols.lst")
 elseif(UNIX)
   if (onnxruntime_ENABLE_EXTERNAL_CUSTOM_OP_SCHEMAS)
     set(ONNXRUNTIME_SO_LINK_FLAG "-Xlinker --version-script=${ONNXRUNTIME_ROOT}/python/version_script_expose_onnx_protobuf.lds -Xlinker --gc-sections")
@@ -227,7 +223,7 @@ if (MSVC)
   # Explicitly use the release version of the python library to make the project file consistent with this.
   target_link_libraries(onnxruntime_pybind11_state PRIVATE ${Python_LIBRARY_RELEASE})
 elseif (APPLE)
-  set_target_properties(onnxruntime_pybind11_state PROPERTIES LINK_FLAGS "${ONNXRUNTIME_SO_LINK_FLAG} -undefined dynamic_lookup")
+  set_target_properties(onnxruntime_pybind11_state PROPERTIES LINK_FLAGS "${ONNXRUNTIME_SO_LINK_FLAG} -Xlinker -undefined -Xlinker dynamic_lookup")
   set_target_properties(onnxruntime_pybind11_state PROPERTIES
     INSTALL_RPATH "@loader_path"
     BUILD_WITH_INSTALL_RPATH TRUE
@@ -286,7 +282,13 @@ if (WIN32)
     endif()
     get_filename_component(CUDNN_DLL_NAME ${CUDNN_DLL_PATH} NAME_WE)
     string(REPLACE "cudnn64_" "" CUDNN_VERSION "${CUDNN_DLL_NAME}")
-
+    if(NOT onnxruntime_CUDA_VERSION)
+      message("Reading json file ${onnxruntime_CUDA_HOME}/version.json")
+      set(CUDA_SDK_JSON_FILE_PATH "${onnxruntime_CUDA_HOME}/version.json")
+      file(READ ${CUDA_SDK_JSON_FILE_PATH} CUDA_SDK_JSON_CONTENT)
+      string(JSON onnxruntime_CUDA_VERSION GET ${CUDA_SDK_JSON_CONTENT} "cuda" "version")
+      message("onnxruntime_CUDA_VERSION=${onnxruntime_CUDA_VERSION}")
+    endif()
     file(APPEND "${VERSION_INFO_FILE}"
       "cuda_version = \"${onnxruntime_CUDA_VERSION}\"\n"
       "cudnn_version = \"${CUDNN_VERSION}\"\n"
@@ -385,8 +387,14 @@ if (onnxruntime_ENABLE_TRAINING)
   file(GLOB onnxruntime_python_ortmodule_torch_cpp_ext_fused_ops_srcs CONFIGURE_DEPENDS
     "${ORTTRAINING_SOURCE_DIR}/python/training/ortmodule/torch_cpp_extensions/cuda/fused_ops/*"
   )
+  file(GLOB onnxruntime_python_ort_triton_srcs CONFIGURE_DEPENDS
+    "${ORTTRAINING_SOURCE_DIR}/python/training/ort_triton/*.py"
+  )
+  file(GLOB onnxruntime_python_ort_triton_kernel_srcs CONFIGURE_DEPENDS
+    "${ORTTRAINING_SOURCE_DIR}/python/training/ort_triton/kernel/*.py"
+  )
   file(GLOB onnxruntime_python_utils_data_srcs CONFIGURE_DEPENDS
-  "${ORTTRAINING_SOURCE_DIR}/python/training/utils/data/*"
+    "${ORTTRAINING_SOURCE_DIR}/python/training/utils/data/*"
   )
   file(GLOB onnxruntime_python_utils_hooks_srcs CONFIGURE_DEPENDS
   "${ORTTRAINING_SOURCE_DIR}/python/training/utils/hooks/*"
@@ -501,6 +509,12 @@ file(GLOB onnxruntime_mobile_helpers_srcs CONFIGURE_DEPENDS
 file(GLOB onnxruntime_qdq_helper_srcs CONFIGURE_DEPENDS
     ${REPO_ROOT}/tools/python/util/qdq_helpers/*.py
 )
+
+if (onnxruntime_USE_OPENVINO)
+  file(GLOB onnxruntime_python_openvino_python_srcs CONFIGURE_DEPENDS
+    ${REPO_ROOT}/tools/python/util/add_openvino_win_libs.py
+  )
+endif()
 
 set(build_output_target onnxruntime_common)
 if(NOT onnxruntime_ENABLE_STATIC_ANALYSIS)
@@ -628,6 +642,15 @@ add_custom_command(
       $<TARGET_FILE_DIR:${build_output_target}>
 )
 
+if (onnxruntime_USE_OPENVINO)
+  add_custom_command(
+    TARGET onnxruntime_pybind11_state POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy
+        ${onnxruntime_python_openvino_python_srcs}
+        $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/tools/
+  )
+endif()
+
 if (onnxruntime_ENABLE_EXTERNAL_CUSTOM_OP_SCHEMAS)
   add_custom_command(
     TARGET onnxruntime_pybind11_state POST_BUILD
@@ -646,9 +669,9 @@ endif()
 
 if (NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_EXTENDED_MINIMAL_BUILD
                                   AND NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin|iOS"
-                                  AND NOT (CMAKE_SYSTEM_NAME STREQUAL "Android")
+                                  AND NOT CMAKE_SYSTEM_NAME STREQUAL "Android"
                                   AND NOT onnxruntime_USE_ROCM
-				  AND NOT onnxruntime_BUILD_WEBASSEMBLY)
+                                  AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
   add_custom_command(
     TARGET onnxruntime_pybind11_state POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy
@@ -708,6 +731,8 @@ if (onnxruntime_ENABLE_TRAINING)
     COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/ortmodule/torch_cpp_extensions/cpu/torch_interop_utils
     COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/ortmodule/torch_cpp_extensions/cuda/torch_gpu_allocator
     COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/ortmodule/torch_cpp_extensions/cuda/fused_ops
+    COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/ort_triton
+    COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/ort_triton/kernel
     COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/utils/data/
     COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/utils/hooks/
     COMMAND ${CMAKE_COMMAND} -E copy
@@ -759,6 +784,12 @@ if (onnxruntime_ENABLE_TRAINING)
         ${onnxruntime_python_ortmodule_torch_cpp_ext_fused_ops_srcs}
         $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/ortmodule/torch_cpp_extensions/cuda/fused_ops/
     COMMAND ${CMAKE_COMMAND} -E copy
+        ${onnxruntime_python_ort_triton_srcs}
+        $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/ort_triton/
+    COMMAND ${CMAKE_COMMAND} -E copy
+        ${onnxruntime_python_ort_triton_kernel_srcs}
+        $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/ort_triton/kernel/
+    COMMAND ${CMAKE_COMMAND} -E copy
         ${onnxruntime_python_utils_data_srcs}
         $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/utils/data/
     COMMAND ${CMAKE_COMMAND} -E copy
@@ -784,7 +815,6 @@ if (onnxruntime_ENABLE_TRAINING)
       COMMAND ${CMAKE_COMMAND} -E copy
         ${onnxruntime_python_api_srcs}
         $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/api/
-
     )
   endif()
 endif()
@@ -904,10 +934,15 @@ if (onnxruntime_USE_TVM)
 endif()
 
 if (onnxruntime_USE_DML)
+  if (NOT onnxruntime_USE_CUSTOM_DIRECTML)
+    set(dml_shared_lib_path ${DML_PACKAGE_DIR}/bin/${onnxruntime_target_platform}-win/${DML_SHARED_LIB})
+  else()
+    set(dml_shared_lib_path ${DML_PACKAGE_DIR}/bin/${DML_SHARED_LIB})
+  endif()
   add_custom_command(
     TARGET onnxruntime_pybind11_state POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy
-        ${DML_PACKAGE_DIR}/bin/${onnxruntime_target_platform}-win/${DML_SHARED_LIB}
+        ${dml_shared_lib_path}
         $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/
   )
 endif()

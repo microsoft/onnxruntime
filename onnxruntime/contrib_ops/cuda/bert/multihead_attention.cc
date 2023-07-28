@@ -94,6 +94,7 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
                                                                       mask_filter_value_,
                                                                       scale_,
                                                                       false,  // past_present_share_buffer
+                                                                      false,  // dmmha_packing
                                                                       device_prop.maxThreadsPerBlock));
   int sequence_length = parameters.sequence_length;
 
@@ -181,6 +182,7 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
                                         has_memory_efficient_attention(sm, sizeof(T) == 2);
 #else
   constexpr bool use_memory_efficient_attention = false;
+  ORT_UNUSED_PARAMETER(is_mask_1d_key_seq_len_start);
 #endif
 
   // When packed kv or packed qkv is used, there is no needed for add bias transpose thus no qkv workspace.

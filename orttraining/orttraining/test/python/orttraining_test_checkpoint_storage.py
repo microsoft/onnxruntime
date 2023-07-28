@@ -159,7 +159,7 @@ def test_checkpoint_storage_saved_dict_matches_loaded(checkpoint_storage_test_pa
 )
 def test_checkpoint_storage_saving_non_supported_types_fails(checkpoint_storage_test_parameterized_setup):
     to_save = checkpoint_storage_test_parameterized_setup
-    with pytest.raises(Exception):
+    with pytest.raises(Exception):  # noqa: B017
         _checkpoint_storage.save(to_save, pytest.checkpoint_path)
 
 
@@ -233,7 +233,7 @@ def test_checkpoint_storage_saving_and_loading_empty_dictionaries_succeeds(check
 
 
 def test_checkpoint_storage_load_file_that_does_not_exist_fails(checkpoint_storage_test_setup):
-    with pytest.raises(Exception):
+    with pytest.raises(Exception):  # noqa: B017
         _checkpoint_storage.load(pytest.checkpoint_path)
 
 

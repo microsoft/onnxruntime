@@ -1,9 +1,5 @@
 /*
-<<<<<<< HEAD
  * Copyright (c) 2019, 2023, Oracle and/or its affiliates. All rights reserved.
-=======
- * Copyright (c) 2019, 2022, Oracle and/or its affiliates. All rights reserved.
->>>>>>> 98b8e2e31 (More fixes, tests now pass.)
  * Licensed under the MIT License.
  */
 package ai.onnxruntime;
@@ -438,7 +434,7 @@ final class OnnxRuntime {
    *
    * <p>Throws IllegalArgumentException if a provider isn't recognised (note this exception should
    * only happen during development of ONNX Runtime, if it happens at any other point, file an issue
-   * on Github).
+   * on <a href="https://github.com/microsoft/onnxruntime">GitHub</a>).
    *
    * @param ortApiHandle The API Handle.
    * @return The enum set.

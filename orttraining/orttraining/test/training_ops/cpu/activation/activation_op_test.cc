@@ -298,12 +298,14 @@ TEST(BiasGeluGradDxTest, BroadcastBias) {
   TestBiasGeluGradBroadcastBias("BiasGeluGrad_dX", 1, kMSDomain, {2, 3, 4, 5}, GeluGrad);
   TestBiasGeluGradBroadcastBias("BiasGeluGrad_dX", 1, kMSDomain, {2, 4, 3072}, GeluGrad);
   TestBiasGeluGradBroadcastBias("BiasGeluGrad_dX", 1, kMSDomain, {2, 16384}, GeluGrad);
+  TestBiasGeluGradBroadcastBias("BiasGeluGrad_dX", 1, kMSDomain, {2, 2333}, GeluGrad);
 }
 
 TEST(BiasFastGeluGradDxTest, BroadcastBias) {
   TestBiasGeluGradBroadcastBias("BiasFastGeluGrad_dX", 1, kMSDomain, {2, 3, 4, 5}, GeluApproximationGrad);
   TestBiasGeluGradBroadcastBias("BiasFastGeluGrad_dX", 1, kMSDomain, {2, 4, 3072}, GeluApproximationGrad);
   TestBiasGeluGradBroadcastBias("BiasFastGeluGrad_dX", 1, kMSDomain, {2, 16384}, GeluApproximationGrad);
+  TestBiasGeluGradBroadcastBias("BiasFastGeluGrad_dX", 1, kMSDomain, {2, 2333}, GeluApproximationGrad);
 }
 
 }  // namespace test

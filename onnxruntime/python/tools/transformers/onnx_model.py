@@ -3,6 +3,7 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
+import itertools
 import logging
 import os
 import sys
@@ -11,7 +12,17 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 from float16 import convert_float_to_float16
-from onnx import AttributeProto, GraphProto, ModelProto, NodeProto, TensorProto, helper, numpy_helper, save_model
+from onnx import (
+    AttributeProto,
+    GraphProto,
+    ModelProto,
+    NodeProto,
+    TensorProto,
+    ValueInfoProto,
+    helper,
+    numpy_helper,
+    save_model,
+)
 from shape_infer_helper import SymbolicShapeInferenceHelper
 
 logger = logging.getLogger(__name__)
@@ -68,7 +79,7 @@ class OnnxModel:
         all_nodes = []
         for graph in self.graphs():
             for node in graph.node:
-                all_nodes.append(node)
+                all_nodes.append(node)  # noqa: PERF402
         return all_nodes
 
     def graph(self):
@@ -217,7 +228,7 @@ class OnnxModel:
         for output in node.output:
             if output in input_name_to_nodes:
                 for node in input_name_to_nodes[output]:
-                    children.append(node)
+                    children.append(node)  # noqa: PERF402
         return children
 
     def get_parents(self, node, output_name_to_node=None):
@@ -590,11 +601,18 @@ class OnnxModel:
            To use mixed precision, user need specify which graph inputs, outputs, operator type
            or list of nodes shall keep in float32.
 
-           By default, we use symbolic shape inference to get shape and type information.
-           If not, ONNX shape inference will be used.
+           Note that the conversion might not proceed without type information for the whole graph.
 
-           Note that symbolic/ONNX shape inference might fail, and the conversion might not proceed
-           without shape and type information.
+           By default, we use symbolic shape inference to get type information. The benefit of symbolic shape inference
+           is that it could handle fused operators in com.microsoft domain. Those operators cannot be handled in onnx shape
+           inference so symbolic shape inference is recommended for optimized model.
+
+           When symbolic shape inference is used (even if it failed), ONNX shape inference will be disabled.
+
+           Note that onnx shape inference will fail for model larger than 2GB. For large model, you have to eanble
+           symbolic shape inference. If your model is not optimized, you can also use model path to call
+           convert_float_to_float16 in float16.py (see https://github.com/microsoft/onnxruntime/pull/15067) to
+           avoid the 2GB limit.
 
         Args:
             use_symbolic_shape_infer (bool, optional): use symbolic shape inference instead of onnx shape inference.
@@ -609,6 +627,8 @@ class OnnxModel:
                                            Default to false.
             min_positive_val (float, optional): minimal positive value. Defaults to 1e-7.
             max_finite_val (float, optional): maximal finite value. Defaults to 1e4.
+            force_fp16_inputs(Dict[str, List[int]]): Force the conversion of the inputs of some operators to float16, even if
+                                                     this script's preference it to keep them in float32.
         """
         if "keep_io_types" not in kwargs:
             kwargs["keep_io_types"] = True
@@ -617,8 +637,36 @@ class OnnxModel:
         if use_symbolic_shape_infer:
             # Use symbolic shape inference since custom operators (like Gelu, SkipLayerNormalization etc)
             # are not recognized by onnx shape inference.
-            shape_infer_helper = SymbolicShapeInferenceHelper(model, verbose=0)
-            model = shape_infer_helper.infer_shapes(model, auto_merge=True, guess_output_rank=False)
+            shape_infer_helper = SymbolicShapeInferenceHelper(model)
+            try:
+                model_with_shape = shape_infer_helper.infer_shapes(model, auto_merge=True, guess_output_rank=False)
+
+                # auto_merge might cause issue (see https://github.com/microsoft/onnxruntime/issues/15521)
+                # we only merge tensor data type but not shape information back to the original onnx model.
+                # Note that float16 conversion need data type but not shape information.
+                if model_with_shape is not None:
+                    name_vi = {}
+                    for vi in model_with_shape.graph.value_info:
+                        if (
+                            hasattr(vi.type, "tensor_type")
+                            and hasattr(vi.type.tensor_type, "elem_type")
+                            and vi.type.tensor_type.elem_type != TensorProto.UNDEFINED
+                            and vi.name
+                        ):
+                            vi_copy = ValueInfoProto()
+                            vi_copy.CopyFrom(vi)
+                            if hasattr(vi_copy.type.tensor_type, "shape"):
+                                vi_copy.type.tensor_type.ClearField("shape")
+                            name_vi[vi.name] = vi_copy
+                    for vi in model.graph.value_info:
+                        if vi.name in name_vi:
+                            del name_vi[vi.name]
+                    for vi in name_vi.values():
+                        model.graph.value_info.append(vi)  # noqa: PERF402
+            except Exception:
+                logger.warning(
+                    "Failed to run symbolic shape inference. Please file an issue in https://github.com/microsoft/onnxruntime."
+                )
 
         parameters = {"disable_shape_infer": use_symbolic_shape_infer}
         parameters.update(
@@ -631,6 +679,7 @@ class OnnxModel:
                     "op_block_list",
                     "node_block_list",
                     "force_fp16_initializers",
+                    "force_fp16_inputs",
                 ]
                 if key in kwargs
             }
@@ -783,10 +832,7 @@ class OnnxModel:
                 all_nodes.append(last_node)
                 all_nodes.extend(nodes)
 
-        nodes_to_remove = []
-        for node in self.model.graph.node:
-            if node not in all_nodes:
-                nodes_to_remove.append(node)
+        nodes_to_remove = [node for node in self.model.graph.node if node not in all_nodes]
 
         self.remove_nodes(nodes_to_remove)
 
@@ -802,9 +848,7 @@ class OnnxModel:
         input_to_remove = []
         if allow_remove_graph_inputs:
             input_name_to_nodes = self.input_name_to_nodes()
-            for input in self.model.graph.input:
-                if input.name not in input_name_to_nodes:
-                    input_to_remove.append(input)
+            input_to_remove = [input for input in self.model.graph.input if input.name not in input_name_to_nodes]
             for input in input_to_remove:
                 self.model.graph.input.remove(input)
 
@@ -901,6 +945,7 @@ class OnnxModel:
 
         sorted_node_set_len = -1
         graph_nodes = graph.node if not is_deterministic else sorted(graph.node, key=lambda x: x.name)
+
         last_node_name = None
         while len(sorted_node_set) != len(graph_nodes):
             if len(sorted_node_set) == sorted_node_set_len:
@@ -914,7 +959,8 @@ class OnnxModel:
                     sorted_nodes.append(node)
                     sorted_node_set.add(node_idx)
                     for output in node.output:
-                        deps_set.add(output)
+                        if output:
+                            deps_set.add(output)
                     continue
                 failed = False
                 for input_name in node.input:
@@ -925,7 +971,8 @@ class OnnxModel:
                     sorted_nodes.append(node)
                     sorted_node_set.add(node_idx)
                     for output in node.output:
-                        deps_set.add(output)
+                        if output:
+                            deps_set.add(output)
                 else:
                     continue
 
@@ -972,13 +1019,13 @@ class OnnxModel:
             location = Path(external_data_path).name if all_tensors_to_one_file else None
 
             if os.path.exists(output_path):
-                logger.info(f"Delete the existed onnx file: {output_path}")
+                logger.info(f"Delete the existing onnx file: {output_path}")
                 os.remove(output_path)
 
             if all_tensors_to_one_file:
                 if os.path.exists(external_data_path):
                     # Delete the external data file. Otherwise, data will be appended to existing file.
-                    logger.info(f"Delete the existed external data file: {external_data_path}")
+                    logger.info(f"Delete the existing external data file: {external_data_path}")
                     os.remove(external_data_path)
             else:
                 if os.listdir(output_dir):
@@ -1044,13 +1091,15 @@ class OnnxModel:
         return op_count
 
     @staticmethod
-    def has_same_value(tensor1: TensorProto, tensor2: TensorProto) -> bool:
+    def has_same_value(tensor1: TensorProto, tensor2: TensorProto, require_raw_data: bool = False) -> bool:
         """Returns True when two tensors have same value.
            Note that name can be different.
 
         Args:
             tensor1 (TensorProto): initializer 1
             tensor2 (TensorProto): initializer 2
+            require_raw_data (bool): ignore tensors without raw_data
+                Note: Flag can speed up runtime significantly
 
         Returns:
             bool: True when two intializers has same value.
@@ -1059,11 +1108,15 @@ class OnnxModel:
             return False
         if tensor1.HasField("raw_data") and tensor2.HasField("raw_data"):
             return tensor1.raw_data == tensor2.raw_data
+        if require_raw_data:
+            return False
+
         return (numpy_helper.to_array(tensor1) == numpy_helper.to_array(tensor2)).all()
 
-    def remove_duplicated_initializer(self):
+    def remove_duplicated_initializer(self, require_raw_data: bool = False):
         """Remove initializers with duplicated values, and only keep the first one.
         It could help reduce size of models (like ALBert) with shared weights.
+        If require_raw_data passed, method will only compare raw_data initializers to speed runtime
         Note: this function does not process subgraph.
         """
         if len(self.graphs()) > 1:
@@ -1076,7 +1129,9 @@ class OnnxModel:
             if same[i] >= 0:
                 continue
             for j in range(i + 1, initializer_count):
-                if OnnxModel.has_same_value(self.model.graph.initializer[i], self.model.graph.initializer[j]):
+                if OnnxModel.has_same_value(
+                    self.model.graph.initializer[i], self.model.graph.initializer[j], require_raw_data
+                ):
                     same[j] = i
 
         count = 0
@@ -1127,3 +1182,48 @@ class OnnxModel:
 
     def clean_shape_infer(self):
         self.model.graph.ClearField("value_info")
+
+    def use_float16(self):
+        """Check whether the model uses float16"""
+        queue = []  # queue for BFS
+        queue.append(self.model.graph)
+        while queue:
+            sub_graphs = []
+            for graph in queue:
+                if not isinstance(graph, GraphProto):
+                    continue
+
+                for v in itertools.chain(graph.input, graph.output, graph.value_info):
+                    if v.type.tensor_type.elem_type == TensorProto.FLOAT16:
+                        return True
+                    if v.type.HasField("sequence_type"):
+                        if v.type.sequence_type.elem_type.tensor_type.elem_type == TensorProto.FLOAT16:
+                            return True
+
+                for t in graph.initializer:
+                    if t.data_type == TensorProto.FLOAT16:
+                        return True
+
+                for node in graph.node:
+                    if node.op_type == "Cast":
+                        for attr in node.attribute:
+                            if attr.name == "to" and attr.i == TensorProto.FLOAT16:
+                                return True
+
+                    for attr in node.attribute:
+                        if attr.type == AttributeProto.GRAPH:
+                            sub_graphs.append(attr.g)
+
+                        for g in attr.graphs:
+                            sub_graphs.append(g)  # noqa: PERF402
+
+                        if isinstance(attr.t, TensorProto) and attr.t.data_type == TensorProto.FLOAT16:
+                            return True
+
+                        for t in attr.tensors:
+                            if isinstance(t, TensorProto) and t.data_type == TensorProto.FLOAT16:
+                                return True
+
+            queue = sub_graphs
+
+        return False

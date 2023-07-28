@@ -61,7 +61,8 @@ ONNX_CPU_OPERATOR_KERNEL(OptionalGetElement,
 
 static void CopySequenceTensor(AllocatorPtr alloc,
                                const TensorSeq* src,
-                               TensorSeq* tgt) {
+                               TensorSeq* tgt,
+                               const DataTransferManager& data_transfer_mgr) {
   // The static allocation planner has deemed that the input can be re-used as the output
   // Analogy: Checking if data pointers for the input and output Tensors are the same
   // before proceeding to make the copy.
@@ -76,13 +77,16 @@ static void CopySequenceTensor(AllocatorPtr alloc,
   for (; in_tensor != src->end(); ++in_tensor) {
     auto& tensor = in_tensor->Get<Tensor>();
     Tensor tmp(tensor.DataType(), tensor.Shape(), alloc);
-    CopyCpuTensor(&tensor, &tmp);
+    // Using DataTransferManager here allows other non-CPU EPs to use this implementation of the sequence ops
+    (void)data_transfer_mgr.CopyTensor(tensor, tmp);
+
     tgt->Add(std::move(tmp));
   }
 }
 
 static Status PropagateInputOrtValueToFirstOutput(const OrtValue* input_ort_value,
-                                                  OpKernelContext* ctx) {
+                                                  OpKernelContext* ctx,
+                                                  const DataTransferManager& data_transfer_mgr) {
   if (input_ort_value->IsTensor()) {
     const auto* input_tensor = &input_ort_value->Get<Tensor>();
     auto* output_tensor = ctx->Output(0, input_tensor->Shape());
@@ -90,10 +94,9 @@ static Status PropagateInputOrtValueToFirstOutput(const OrtValue* input_ort_valu
     // If the allocation planner had deemed that we re-use the input OrtValue
     // as the output OrtValue, the data pointers in the input_tensor and the
     // output_tensor will be the same and the copy is a no-op.
-    // CopyCpuTensor() already has such copy optimizations - so
+    // DataTransferManager.CopyTensor() already has such copy optimizations - so
     // just re-use it.
-    CopyCpuTensor(input_tensor, output_tensor);
-
+    ORT_RETURN_IF_ERROR(data_transfer_mgr.CopyTensor(*input_tensor, *output_tensor));
   } else if (input_ort_value->IsTensorSequence()) {
     const auto* input_tensor_sequence = &input_ort_value->Get<TensorSeq>();
     auto* output_tensor_sequence = ctx->Output<TensorSeq>(0);
@@ -105,7 +108,7 @@ static Status PropagateInputOrtValueToFirstOutput(const OrtValue* input_ort_valu
     // as the output OrtValue, the pointers of the source TensorSeq and the
     // target TensorSeq will be the same and the copy is a no-op.
     // CopySequenceTensor() already has such copy optimizations
-    CopySequenceTensor(alloc, input_tensor_sequence, output_tensor_sequence);
+    CopySequenceTensor(alloc, input_tensor_sequence, output_tensor_sequence, data_transfer_mgr);
 
   } else {
     // Will not reach here
@@ -132,7 +135,8 @@ Status Optional::Compute(OpKernelContext* ctx) const {
 
   if (input_ort_value != nullptr) {
     // An input was provided by the user - so just propagate it to the output
-    ORT_RETURN_IF_ERROR(PropagateInputOrtValueToFirstOutput(input_ort_value, ctx));
+    const DataTransferManager& data_transfer_mgr = Info().GetDataTransferManager();
+    ORT_RETURN_IF_ERROR(PropagateInputOrtValueToFirstOutput(input_ort_value, ctx, data_transfer_mgr));
 
   } else {  // No input was provided - we use the type proto to construct the output OrtValue
 
@@ -176,7 +180,8 @@ Status OptionalGetElement::Compute(OpKernelContext* ctx) const {
   }
 
   // Propagate input to the output
-  ORT_RETURN_IF_ERROR(PropagateInputOrtValueToFirstOutput(input_ort_value, ctx));
+  const DataTransferManager& data_transfer_mgr = Info().GetDataTransferManager();
+  ORT_RETURN_IF_ERROR(PropagateInputOrtValueToFirstOutput(input_ort_value, ctx, data_transfer_mgr));
 
   return Status::OK();
 }

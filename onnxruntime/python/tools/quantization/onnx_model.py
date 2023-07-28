@@ -176,7 +176,7 @@ class ONNXModel:
         for output in node.output:
             if output in input_name_to_nodes:
                 for node in input_name_to_nodes[output]:
-                    children.append(node)
+                    children.append(node)  # noqa: PERF402
         return children
 
     def get_parents(self, node, output_name_to_node=None):
@@ -414,6 +414,8 @@ class ONNXModel:
                 continue
 
             for input_name in node.input:
+                if not input_name:
+                    continue
                 if input_name not in deps_to_nodes:
                     deps_to_nodes[input_name] = [node_idx]
                 else:

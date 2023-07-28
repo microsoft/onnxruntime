@@ -11,26 +11,6 @@
 
 namespace onnxruntime {
 
-namespace {
-// It assumes max(OrtMemType) <= 1, min(OrtMemType) = -2
-inline int MakeKey(int id, OrtMemType mem_type) {
-  return id << 2 | (mem_type + 2);
-}
-}  // namespace
-
-AllocatorPtr IExecutionProvider::GetAllocator(OrtMemType mem_type) const {
-  // if mem_type is OrtMemType::OrtMemTypeDefault, it will allocate memory from the current device
-  // otherwise (mem_type is OrtMemTypeCpu...) it will allocate memory from Cpu as input/output, thus set the device_id
-  // to 0 as there is only 1 CPU in each machine.
-  int device_id = GetDeviceId();
-  if (mem_type != OrtMemType::OrtMemTypeDefault) device_id = 0;
-  auto iter = allocators_.find(MakeKey(device_id, mem_type));
-  if (iter != allocators_.end()) {
-    return iter->second;
-  }
-  return nullptr;
-}
-
 std::vector<std::unique_ptr<ComputeCapability>>
 IExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
                                   const IKernelLookup& kernel_lookup) const {
@@ -45,54 +25,6 @@ IExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
   }
 
   return result;
-}
-
-// Update allocator in the provider if already present; ignore if not.
-// We match using the device id, OrtMemType and OrtDevice info.
-// We ignore the allocator name, and OrtAllocatorType (whether internally an arena is used or not).
-// TODO: We should remove OrtAllocatorType from OrtMemoryInfo as it's an implementation detail of the allocator.
-void IExecutionProvider::ReplaceAllocator(AllocatorPtr allocator) {
-  const auto& info = allocator->Info();
-
-  // TODO: This only works on allocators that are stored in this class. If a derived class overrides GetAllocator
-  // (e.g. the CUDA EP) and stores AllocatorPtr instances in the derived class we know nothing about them.
-  // In theory we could call GetAllocator instead of allocators_.find, however the CUDA EP does things this way to
-  // return a per-thread allocator from the GetAllocator override, and it's not clear if that could/should be replaced.
-  auto iter = allocators_.find(MakeKey(info.id, info.mem_type));
-  if (iter != allocators_.end()) {
-    // check device as mem_type is relative to the device
-    // e.g. OrtMemTypeDefault is CPU for a CPU EP and GPU for a CUDA EP. An individual EP will only have one
-    // allocator for an OrtMemType value, so this check is to ensure we don't replace with an incompatible allocator.
-    if (iter->second->Info().device == info.device) {
-      IAllocator* existing_alloc = iter->second.get();
-      for (auto& entry : allocator_list_) {
-        if (entry.get() == existing_alloc) {
-          entry = allocator;
-          break;
-        }
-      }
-
-      iter->second = allocator;
-    }
-  }
-}
-
-void IExecutionProvider::InsertAllocator(AllocatorPtr allocator) {
-  const OrtMemoryInfo& info = allocator->Info();
-  const int key = MakeKey(info.id, info.mem_type);
-
-  auto iter = allocators_.find(key);
-  if (iter != allocators_.end()) {
-    ORT_THROW("Duplicate allocator for OrtMemType:", info.mem_type, " device:", info.device.ToString(),
-              " Existing allocator: ", iter->second->Info().name,
-              " New allocator: ", allocator->Info().name);
-  } else {
-    allocators_.insert({key, allocator});
-    allocator_list_.push_back(allocator);
-  }
-}
-
-void IExecutionProvider::RegisterAllocator(AllocatorManager&) {
 }
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019, 2022, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2019, 2023, Oracle and/or its affiliates. All rights reserved.
  * Licensed under the MIT License.
  */
 package ai.onnxruntime;
@@ -33,6 +33,7 @@ public class OnnxSequence implements OnnxValue {
     }
   }
 
+  /** The native pointer. */
   final long nativeHandle;
 
   private final long allocatorHandle;

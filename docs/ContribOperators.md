@@ -428,11 +428,11 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Size of the vocabulary. If not provided, it will be inferred from the decoder subgraph's output shape</dd>
 </dl>
 
-#### Inputs (5 - 10)
+#### Inputs (5 - 12)
 
 <dl>
 <dt><tt>input_ids</tt> : F</dt>
-<dd>The sequence used as a prompt for the generation. Shape is (batch_size, sequence_length)</dd>
+<dd>The sequence used as a prompt for the generation in the encoder subgraph. Shape is (batch_size, sequence_length)</dd>
 <dt><tt>max_length</tt> : I</dt>
 <dd>The maximum length of the sequence to be generated. Shape is (1)</dd>
 <dt><tt>min_length</tt> (optional) : I</dt>
@@ -451,6 +451,10 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Mask of vocabulary for first step. Words that masked with 0 are not allowed to be generated, and 1 is allowed. Shape is (batch_size, vocab_size)</dd>
 <dt><tt>attention_mask</tt> (optional) : I</dt>
 <dd>Custom attention mask. Shape is (batch_size, sequence_length)</dd>
+<dt><tt>decoder_input_ids</tt> (optional) : I</dt>
+<dd>The forced input id sequence for the decoder subgraph. Shape is (batch_size, initial_sequence_length)</dd>
+<dt><tt>logits_processor</tt> (optional) : I</dt>
+<dd>Specific logits processor for different types of beamsearch models. Default value 0 means no specific logit processor. Accepts value >= 0. Shape is (1)</dd>
 </dl>
 
 #### Outputs (1 - 3)
@@ -1130,14 +1134,14 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Custom scale will be used if specified. Default value is 1/sqrt(head_size)</dd>
 </dl>
 
-#### Inputs (3 - 10)
+#### Inputs (1 - 11)
 
 <dl>
 <dt><tt>query</tt> : T</dt>
-<dd>Query with shape (batch_size, 1, hidden_size)</dd>
-<dt><tt>key</tt> : T</dt>
+<dd>Query with shape (batch_size, 1, hidden_size) or packed QKV with shape (batch_size, 1, 2 * hidden_size + v_hidden_size)</dd>
+<dt><tt>key</tt> (optional) : T</dt>
 <dd>Key with shape (batch_size, 1, hidden_size) for self attention or past_key with shape (batch_size, num_heads, kv_sequence_length, head_size) for cross attention</dd>
-<dt><tt>value</tt> : T</dt>
+<dt><tt>value</tt> (optional) : T</dt>
 <dd>Value with shape (batch_size, 1, v_hidden_size) for self attention or past_value with shape (batch_size, num_heads, kv_sequence_length, head_size) for cross attention</dd>
 <dt><tt>mask_index</tt> (optional) : M</dt>
 <dd>Mask values of shape (batch_size, total_sequence_length) or (batch_size, kv_sequence_length)</dd>
@@ -1153,6 +1157,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>The beam width that is being used while decoding.If not provided, the beam width will be assumed to be 1.</dd>
 <dt><tt>cache_indirection</tt> (optional) : M</dt>
 <dd>A buffer of shape [batch_size, beam_width, max_output_length] where an [i, j, k] entry specifieswhich beam the 'k' th token came from for the 'j' th beam for batch 'i' in the current iteration</dd>
+<dt><tt>bias</tt> (optional) : T</dt>
+<dd>Bias tensor with shape (hidden_size + hidden_size + v_hidden_size) from input projection</dd>
 </dl>
 
 #### Outputs (1 - 3)
@@ -1200,6 +1206,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 #### Attributes
 
 <dl>
+<dt><tt>do_rotary</tt> : int</dt>
+<dd>Whether to use rotary position embedding. Default value is 0.</dd>
 <dt><tt>mask_filter_value</tt> : float</dt>
 <dd>The value to be filled in the attention mask. Default value is -10000.0f</dd>
 <dt><tt>num_heads</tt> : int (required)</dt>
@@ -2168,6 +2176,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dl>
 <dt><tt>activation</tt> : int (required)</dt>
 <dd>Activation after group normalization: 0 for None, 1 for Swish</dd>
+<dt><tt>channels_last</tt> : int</dt>
+<dd>1 if the input and output are in the NHWC layout, 0 if it is in the NCHW layout. Defaults to 1.</dd>
 <dt><tt>epsilon</tt> : float</dt>
 <dd>The epsilon value to use to avoid division by zero</dd>
 <dt><tt>groups</tt> : int (required)</dt>
@@ -2178,7 +2188,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 <dl>
 <dt><tt>X</tt> : T</dt>
-<dd>Input data tensor. Dimensions are (N x H x W x C), where N is the batch size, C is the number of channels, and H and W are the height and width of the data</dd>
+<dd>Input data tensor. Dimensions are (N x H x W x C) when channels_last is 1 or (N x C x H x W) otherwise, where N is the batch size, C is the number of channels, and H and W are the height and width of the data</dd>
 <dt><tt>gamma</tt> : M</dt>
 <dd>1D gamma tensor for normalization with shape (C), where C is number of channels</dd>
 <dt><tt>beta</tt> : M</dt>
@@ -2197,7 +2207,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dl>
 <dt><tt>T</tt> : tensor(float16), tensor(float)</dt>
 <dd>Constrain input X and output Y types to float tensors.</dd>
-<dt><tt>M</tt> : tensor(float)</dt>
+<dt><tt>M</tt> : tensor(float16), tensor(float)</dt>
 <dd>Constrain gamma and beta to float tensors.</dd>
 </dl>
 

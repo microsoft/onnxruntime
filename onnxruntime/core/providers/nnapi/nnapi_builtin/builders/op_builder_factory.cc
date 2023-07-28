@@ -23,6 +23,7 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
     CreateFlattenOpBuilder("Flatten", op_registrations);
     CreateGatherOpBuilder("Gather", op_registrations);
     CreateIdentityOpBuilder("Identity", op_registrations);
+    CreateLeakyReluOpBuilder("LeakyRelu", op_registrations);
     CreateLRNOpBuilder("LRN", op_registrations);
     CreatePadOpBuilder("Pad", op_registrations);
     CreateQuantizeLinearOpBuilder("QuantizeLinear", op_registrations);
@@ -83,6 +84,10 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
   {
     CreateMinMaxOpBuilder("Max", op_registrations);
     CreateMinMaxOpBuilder("Min", op_registrations);
+  }
+
+  {
+    CreateReductionOpBuilder("ReduceMean", op_registrations);
   }
 
   return op_registrations;

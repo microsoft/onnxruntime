@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {EnvImpl} from './env-impl';
+import {env as envImpl} from './env-impl.js';
 
 export declare namespace Env {
   export type WasmPrefixOrFilePaths = string|{
@@ -107,6 +107,17 @@ export interface Env {
   debug?: boolean;
 
   /**
+   * Get version of the current package.
+   */
+  readonly versions: {
+    common: string;
+    web?: string;
+    node?: string;
+    // eslint-disable-next-line @typescript-eslint/naming-convention
+    'react-native'?: string;
+  };
+
+  /**
    * Represent a set of flags for WebAssembly
    */
   wasm: Env.WebAssemblyFlags;
@@ -127,4 +138,4 @@ export interface Env {
 /**
  * Represent a set of flags as a global singleton.
  */
-export const env: Env = new EnvImpl();
+export const env: Env = envImpl;

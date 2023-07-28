@@ -1,6 +1,7 @@
 {
   "devDependencies": {
     "@types/fs-extra": "^11.0.1",
+    "@types/mocha": "^10.0.1",
     "@types/node": "^18.14.6",
     "@types/npmlog": "^4.1.4",
     "@typescript-eslint/eslint-plugin": "^5.54.1",
@@ -15,6 +16,7 @@
     "eslint-plugin-unicorn": "^46.0.0",
     "fs-extra": "^11.1.0",
     "jszip": "^3.10.1",
+    "mocha": "^10.2.0",
     "node-polyfill-webpack-plugin": "^2.0.1",
     "npmlog": "^7.0.1",
     "terser": "^5.16.5",
@@ -26,9 +28,11 @@
     "worker-loader": "^3.0.8"
   },
   "scripts": {
+    "prepare": "tsc --build scripts",
     "lint": "eslint . --ext .ts --ext .tsx",
     "format": "clang-format --glob=\"{scripts/**/*.ts,common/lib/**/*.ts,node/{lib,script,test}/**/*.ts,node/src/**/*.{cc,h},web/{lib,script,test}/**/*.ts,react_native/{android,example,ios,lib}/**/*.{ts,mm,java}}\" --style=file -i",
-    "prepare-node-tests": "tsc --build scripts && node ./scripts/prepare-onnx-node-tests"
+    "prepare-node-tests": "node ./scripts/prepare-onnx-node-tests",
+    "update-version": "node ./scripts/update-version"
   },
   "license": "MIT"
 }
