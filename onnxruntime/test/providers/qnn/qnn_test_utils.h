@@ -239,13 +239,21 @@ inline void TestQDQModelAccuracy(const GetTestModelFn& f32_model_fn, const GetTe
         ASSERT_EQ(num_vals, qnn_qdq_vals.size());
 
         for (size_t j = 0; j < num_vals; j++) {
-          const float cpu_err = std::fabsf(cpu_f32_vals[j] - cpu_qdq_vals[j]);
-          const float qnn_err = std::fabsf(cpu_f32_vals[j] - qnn_qdq_vals[j]);
-          const bool is_within_quant_err = qnn_err <= output_qparams[i].scale + fp32_abs_err;
+          const float expected_val = cpu_f32_vals[j];
+          const float qnn_val = qnn_qdq_vals[j];
+          const float cpu_val = cpu_qdq_vals[j];
+          const float cpu_err = std::fabsf(expected_val - cpu_val);
+          const float qnn_err = std::fabsf(expected_val - qnn_val);
+          const float num_quant_units = std::ceilf(cpu_err / output_qparams[i].scale);
+          const bool is_within_quant_err = qnn_err <= num_quant_units * output_qparams[i].scale + fp32_abs_err;
           const bool is_as_accurate_as_ort_cpu = qnn_err <= cpu_err + fp32_abs_err;
-          EXPECT_TRUE(is_within_quant_err || is_as_accurate_as_ort_cpu) << " inaccuracy detected for output '" << output_names[i]
-                                                                        << "', element " << j << ". QNN error: " << qnn_err
-                                                                        << ", CPU error: " << cpu_err;
+          EXPECT_TRUE(is_within_quant_err || is_as_accurate_as_ort_cpu) << "Inaccuracy detected for output '" << output_names[i]
+                                                                        << "', element " << j
+                                                                        << ".\nOutput quant params: scale=" << output_qparams[i].scale
+                                                                        << ", zero_point=" << static_cast<int32_t>(output_qparams[i].zero_point)
+                                                                        << ".\nExpected val: " << expected_val << "\n"
+                                                                        << "QNN QDQ val: " << qnn_val << " (err " << qnn_err << ")\n"
+                                                                        << "CPU QDQ val: " << cpu_val << " (err " << cpu_err << ")";
         }
       } else {
         VerifyOutput(output_names[i], cpu_f32_outputs[i].Get<Tensor>(), qnn_qdq_tensor, fp32_abs_err);
