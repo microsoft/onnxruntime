@@ -131,7 +131,7 @@ jobs:
     displayName: 'Install python modules'
 
   - ${{ if contains(parameters.additionalBuildFlags, 'use_cuda') }}:
-    - template: set-cuda.yml
+    - template: set-wincuda.yml
       inputs:
         EnvSetupScript: ${{ parameters.EnvSetupScript }}
 

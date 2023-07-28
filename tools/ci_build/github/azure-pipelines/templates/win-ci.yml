@@ -115,7 +115,7 @@ stages:
       - template: set-version-number-variables-step.yml
 
       - ${{ if contains(parameters.buildparameter, 'use_cuda') }}:
-        - template: jobs/set-cuda.yml
+        - template: jobs/set-wincuda.yml
           parameters:
             EnvSetupScript: ${{ parameters.EnvSetupScript }}
 
