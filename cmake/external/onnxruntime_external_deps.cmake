@@ -46,8 +46,8 @@ if (onnxruntime_BUILD_UNIT_TESTS)
   FetchContent_Declare(
     googletest
     URL ${DEP_URL_googletest}
-    FIND_PACKAGE_ARGS NAMES GTest
     URL_HASH SHA1=${DEP_SHA1_googletest}
+    OVERRIDE_FIND_PACKAGE
   )
 endif()
 
@@ -107,7 +107,7 @@ FetchContent_Declare(
 )
 
 # Download a protoc binary from Internet if needed
-if(CMAKE_CROSSCOMPILING AND NOT ONNX_CUSTOM_PROTOC_EXECUTABLE AND NOT CMAKE_OSX_ARCHITECTURES)
+if(CMAKE_CROSSCOMPILING AND NOT ONNX_CUSTOM_PROTOC_EXECUTABLE)
   # This part of code is only for users' convenience. The code couldn't handle all cases. Users always can manually
   # download protoc from Protobuf's Github release page and pass the local path to the ONNX_CUSTOM_PROTOC_EXECUTABLE
   # variable.
@@ -140,6 +140,14 @@ if(CMAKE_CROSSCOMPILING AND NOT ONNX_CUSTOM_PROTOC_EXECUTABLE AND NOT CMAKE_OSX_
       message("Use prebuilt protoc")
       set(ONNX_CUSTOM_PROTOC_EXECUTABLE ${protoc_binary_SOURCE_DIR}/bin/protoc)
 	  set(PROTOC_EXECUTABLE ${ONNX_CUSTOM_PROTOC_EXECUTABLE})
+    endif()
+  elseif (CMAKE_SYSTEM_NAME STREQUAL "Emscripten" AND CMAKE_HOST_SYSTEM_NAME STREQUAL "Darwin")
+    FetchContent_Declare(protoc_binary URL ${DEP_URL_protoc_mac_universal} URL_HASH SHA1=${DEP_SHA1_protoc_mac_universal})
+    FetchContent_Populate(protoc_binary)
+    if(protoc_binary_SOURCE_DIR)
+      message("Use prebuilt protoc")
+      set(ONNX_CUSTOM_PROTOC_EXECUTABLE ${protoc_binary_SOURCE_DIR}/bin/protoc)
+      set(PROTOC_EXECUTABLE ${ONNX_CUSTOM_PROTOC_EXECUTABLE})
     endif()
   endif()
 endif()

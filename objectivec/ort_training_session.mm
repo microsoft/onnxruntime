@@ -1,7 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#ifdef ENABLE_TRAINING_APIS
 #import "ort_training_session_internal.h"
 
 #import <vector>
@@ -198,9 +197,9 @@ NS_ASSUME_NONNULL_BEGIN
                                       error:(NSError**)error {
   try {
     Ort::Value val = [self CXXAPIOrtTrainingSession].ToBuffer(onlyTrainable);
-    return [[ORTValue alloc] initWithCAPIOrtValue:val.release()
-                               externalTensorData:nil
-                                            error:error];
+    return [[ORTValue alloc] initWithCXXAPIOrtValue:std::move(val)
+                                 externalTensorData:nil
+                                              error:error];
   }
   ORT_OBJC_API_IMPL_CATCH_RETURNING_NULLABLE(error)
 }
@@ -223,5 +222,3 @@ void ORTSetSeed(int64_t seed) {
 }
 
 NS_ASSUME_NONNULL_END
-
-#endif  // ENABLE_TRAINING_APIS

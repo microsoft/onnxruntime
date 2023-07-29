@@ -5,9 +5,8 @@
 
 namespace _winml {
 
-class OnnxruntimeEngineBuilder : public Microsoft::WRL::RuntimeClass<
-                                     Microsoft::WRL::RuntimeClassFlags<Microsoft::WRL::ClassicCom>,
-                                     IEngineBuilder> {
+class OnnxruntimeEngineBuilder
+  : public Microsoft::WRL::RuntimeClass<Microsoft::WRL::RuntimeClassFlags<Microsoft::WRL::ClassicCom>, IEngineBuilder> {
  public:
   HRESULT RuntimeClassInitialize(_In_ OnnxruntimeEngineFactory* engine);
 
@@ -41,6 +40,9 @@ class OnnxruntimeEngineBuilder : public Microsoft::WRL::RuntimeClass<
   STDMETHOD(SetThreadPool)
   (IThreading* thread_pool);
 
+  STDMETHOD(RegisterCustomOpsLibrary)
+  (const char* path);
+
   STDMETHOD(CreateEngine)
   (_Outptr_ IEngine** out);
 
@@ -55,6 +57,7 @@ class OnnxruntimeEngineBuilder : public Microsoft::WRL::RuntimeClass<
   wfc::IMapView<winrt::hstring, uint32_t> named_dimension_overrides_;
   std::optional<uint32_t> intra_op_num_threads_override_;
   bool allow_thread_spinning_ = true;
+  std::vector<std::string> custom_ops_lib_paths_;
 };
 
 }  // namespace _winml

@@ -35,7 +35,7 @@ LinearClassifier::LinearClassifier(const OpKernelInfo& info)
     ORT_ENFORCE(!coefficients_.empty());
 
   using_strings_ = !classlabels_strings_.empty();
-  class_count_ = static_cast<int64_t>(intercepts_.size());
+  class_count_ = static_cast<ptrdiff_t>(intercepts_.size());
 }
 
 // Use GEMM for the calculations, with broadcasting of intercepts

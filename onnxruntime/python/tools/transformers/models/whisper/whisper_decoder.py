@@ -9,7 +9,7 @@ import os
 import sys
 import tempfile
 from pathlib import Path
-from typing import List, Union
+from typing import List, Optional, Union
 
 import numpy
 import onnx
@@ -36,7 +36,7 @@ class WhisperDecoderInit(torch.nn.Module):
         self,
         decoder: torch.nn.Module,
         config: WhisperConfig,
-        decoder_start_token_id: int = None,
+        decoder_start_token_id: Optional[int] = None,
     ):
         super().__init__()
         self.decoder = decoder

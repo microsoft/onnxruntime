@@ -120,7 +120,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             }
         }
         static void VerifyTensorCreateWithData<T>(OrtValue tensor, TensorElementType dataType, long[] shape,
-            ReadOnlySpan<T> originalData) where T : struct
+            ReadOnlySpan<T> originalData) where T : unmanaged
         {
             // Verify invocation
             var dataTypeInfo = TensorBase.GetTypeInfo(typeof(T));
@@ -172,7 +172,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             // The tensor will be created on top of the managed memory. No copy is made.
             // The memory should stay pinned until the OrtValue instance is disposed. This means
             // stayed pinned until the end of Run() method when you are actually running inference.
-            using(var tensor = OrtValue.CreateTensorValueFromMemory(data, shape))
+            using (var tensor = OrtValue.CreateTensorValueFromMemory(data, shape))
             {
                 VerifyTensorCreateWithData<int>(tensor, TensorElementType.Int32, shape, data);
             }
@@ -215,7 +215,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             }
         }
 
-        private static void PopulateAndCheck<T>(T[] data) where T : struct
+        private static void PopulateAndCheck<T>(T[] data) where T : unmanaged
         {
             var typeInfo = TensorBase.GetTypeInfo(typeof(T));
             Assert.NotNull(typeInfo);
@@ -242,93 +242,105 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             int[] int_data = { 1, 2, 3, 4, 5, 6, 7, 8 };
             ushort[] ushort_data = { 1, 2, 3, 4, 5, 6, 7, 8 };
             double[] dbl_data = { 1, 2, 3, 4, 5, 6, 7, 8 };
-            Float16[] fl16_data = { 1, 2, 3, 4, 5, 6, 7, 8 };
+            var fp16_data = Array.ConvertAll(ushort_data, sh => new Float16(sh));
 
             PopulateAndCheck(float_data);
             PopulateAndCheck(int_data);
             PopulateAndCheck(ushort_data);
             PopulateAndCheck(dbl_data);
-            PopulateAndCheck(fl16_data);
+            PopulateAndCheck(fp16_data);
         }
 
         private static readonly long[] ml_data_1 = { 1, 2 };
         private static readonly long[] ml_data_2 = { 3, 4 };
 
         // Use this utility method to create two tensors for Map and Sequence tests
-        private static Tuple<OrtValue, OrtValue> CreateTwoTensors(IList<IDisposable> cleanup)
+        private static void CreateTwoTensors(out OrtValue val1, out OrtValue val2)
         {
             const int ml_data_dim = 2;
             // For map tensors they must be single dimensional
             long[] shape = { ml_data_dim };
 
-            unsafe
-            {
-                var ortValue_1 = OrtValue.CreateTensorValueFromMemory(ml_data_1, shape);
-                cleanup.Add(ortValue_1);
-                var ortValue_2 = OrtValue.CreateTensorValueFromMemory(ml_data_2, shape);
-                cleanup.Add(ortValue_2);
-                return Tuple.Create(ortValue_1, ortValue_2);
-            }
+            val1 = OrtValue.CreateTensorValueFromMemory(ml_data_1, shape);
+            val2 = OrtValue.CreateTensorValueFromMemory(ml_data_2, shape);
         }
 
-        [Fact(DisplayName = "CreateMap")]
-        public void CreateMap()
+        [Fact(DisplayName = "CreateMapFromValues")]
+        public void CreateMapFromValues()
         {
-            using (var cleanUp = new DisposableListTest<IDisposable>())
-            {
-                var valTuple = CreateTwoTensors(cleanUp);
-                using (var map = OrtValue.CreateMap(valTuple.Item1, valTuple.Item2))
-                {
-                    Assert.Equal(OnnxValueType.ONNX_TYPE_MAP, map.OnnxType);
-                    var typeInfo = map.GetTypeInfo();
-                    var mapInfo = typeInfo.MapTypeInfo;
-                    Assert.Equal(TensorElementType.Int64, mapInfo.KeyType);
-                    Assert.Equal(OnnxValueType.ONNX_TYPE_TENSOR, mapInfo.ValueType.OnnxType);
+            CreateTwoTensors(out OrtValue keys, out OrtValue values);
+            using var map = OrtValue.CreateMap(ref keys, ref values);
+            Assert.Equal(OnnxValueType.ONNX_TYPE_MAP, map.OnnxType);
+            var typeInfo = map.GetTypeInfo();
+            var mapInfo = typeInfo.MapTypeInfo;
+            Assert.Equal(TensorElementType.Int64, mapInfo.KeyType);
+            Assert.Equal(OnnxValueType.ONNX_TYPE_TENSOR, mapInfo.ValueType.OnnxType);
 
-                    // Must return always 2 for map since we have two ort values
-                    Assert.Equal(2, map.GetValueCount());
+            // Must return always 2 for map since we have two ort values
+            Assert.Equal(2, map.GetValueCount());
 
-                    var keys = map.GetValue(0, OrtAllocator.DefaultInstance);
-                    cleanUp.Add(keys);
-                    Assert.Equal(OnnxValueType.ONNX_TYPE_TENSOR, keys.OnnxType);
-                    Assert.Equal(ml_data_1, keys.GetTensorDataAsSpan<long>().ToArray());
+            map.ProcessMap((keys, values) => {
+                Assert.Equal(OnnxValueType.ONNX_TYPE_TENSOR, keys.OnnxType);
+                Assert.Equal(OnnxValueType.ONNX_TYPE_TENSOR, values.OnnxType);
+                Assert.Equal(ml_data_1, keys.GetTensorDataAsSpan<long>().ToArray());
+                Assert.Equal(ml_data_2, values.GetTensorDataAsSpan<long>().ToArray());
 
-                    var vals = map.GetValue(1, OrtAllocator.DefaultInstance);
-                    cleanUp.Add(vals);
-                    Assert.Equal(OnnxValueType.ONNX_TYPE_TENSOR, vals.OnnxType);
-                    Assert.Equal(ml_data_2, vals.GetTensorDataAsSpan<long>().ToArray());
-                }
-            }
+            }, OrtAllocator.DefaultInstance);
+        }
+
+        [Fact(DisplayName = "CreateMapFromArraysUnmanaged")]
+        public void CreateMapFromArraysUnmanaged()
+        {
+            long[] keys = { 1, 2, 3 };
+            float[] vals = { 1, 2, 3 };
+            using var map = OrtValue.CreateMap(keys, vals);
+        }
+
+        [Fact(DisplayName = "CreateMapWithStringKeys")]
+        public void CreateMapWithStringKeys()
+        {
+            string[] keys = { "one", "two", "three" };
+            float[] vals = { 1, 2, 3 };
+            using var map = OrtValue.CreateMapWithStringKeys(keys, vals);
+        }
+
+        [Fact(DisplayName = "CreateMapWithStringValues")]
+        public void CreateMapWithStringValues()
+        {
+            long[] keys = { 1, 2, 3 };
+            string[] values = { "one", "two", "three" };
+            using var map = OrtValue.CreateMapWithStringValues(keys, values);
         }
 
         [Fact(DisplayName = "CreateSequence")]
         public void CreateSequence()
         {
-            using (var cleanUp = new DisposableListTest<IDisposable>())
+            CreateTwoTensors(out OrtValue val1, out OrtValue val2);
+            using var seqVals = new DisposableListTest<OrtValue> { val1, val2 };
+            using var seq = OrtValue.CreateSequence(seqVals);
+
+            Assert.Equal(OnnxValueType.ONNX_TYPE_SEQUENCE, seq.OnnxType);
+            var typeInfo = seq.GetTypeInfo();
+            var seqInfo = typeInfo.SequenceTypeInfo;
+            Assert.Equal(OnnxValueType.ONNX_TYPE_TENSOR, seqInfo.ElementType.OnnxType);
+
+            // Will return 2 because we put 2 values in the sequence
+            Assert.Equal(2, seq.GetValueCount());
+
+            // Visit each element in the sequence
+            seq.ProcessSequence((ortValue, index) =>
             {
-                var valTuple = CreateTwoTensors(cleanUp);
-                OrtValue[] seqVals = { valTuple.Item1, valTuple.Item2 };
-                using (var seq = OrtValue.CreateSequence(seqVals))
+                // We know both elements are tensors of long
+                Assert.Equal(OnnxValueType.ONNX_TYPE_TENSOR, ortValue.OnnxType);
+                if (index == 0)
                 {
-                    Assert.Equal(OnnxValueType.ONNX_TYPE_SEQUENCE, seq.OnnxType);
-                    var typeInfo = seq.GetTypeInfo();
-                    var seqInfo = typeInfo.SequenceTypeInfo;
-                    Assert.Equal(OnnxValueType.ONNX_TYPE_TENSOR, seqInfo.ElementType.OnnxType);
-
-                    // Will return 2 because we put 2 values in the sequence
-                    Assert.Equal(2, seq.GetValueCount());
-
-                    var item_0 = seq.GetValue(0, OrtAllocator.DefaultInstance);
-                    cleanUp.Add(item_0);
-                    Assert.Equal(OnnxValueType.ONNX_TYPE_TENSOR, item_0.OnnxType);
-                    Assert.Equal(ml_data_1, item_0.GetTensorDataAsSpan<long>().ToArray());
-
-                    var item_1 = seq.GetValue(1, OrtAllocator.DefaultInstance);
-                    cleanUp.Add(item_1);
-                    Assert.Equal(OnnxValueType.ONNX_TYPE_TENSOR, item_1.OnnxType);
-                    Assert.Equal(ml_data_2, item_1.GetTensorDataAsSpan<long>().ToArray());
+                    Assert.Equal(ml_data_1, ortValue.GetTensorDataAsSpan<long>().ToArray());
                 }
-            }
+                else
+                {
+                    Assert.Equal(ml_data_2, ortValue.GetTensorDataAsSpan<long>().ToArray());
+                }
+            }, OrtAllocator.DefaultInstance);
         }
     }
 }

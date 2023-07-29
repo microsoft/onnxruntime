@@ -3,6 +3,7 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
+import os
 import sys
 from dataclasses import dataclass
 from itertools import product
@@ -10,7 +11,9 @@ from itertools import product
 import kernel_explorer as ke
 import numpy as np
 import pytest
-from utils import get_gemm_basic_sizes, get_gemm_bert_sizes, get_gemm_bound, transab_to_suffix
+from utils import get_gemm_basic_sizes, get_gemm_bert_sizes, get_gemm_bound, matmul, transab_to_suffix
+
+max_batch_size = int(os.environ.get("KERNEL_EXPLORER_BATCHED_GEMM_MAX_BATCH_SIZE", 64))
 
 
 def dtype_to_suffix(dtype):
@@ -31,7 +34,7 @@ def _test_batched_gemm(
     np.random.seed(0)
     as_ = [(np.random.rand(*a_shape) + 0.5).astype(dtype).astype("float64") for i in range(batch)]
     bs = [(np.random.rand(*b_shape) + 0.5).astype(dtype).astype("float64") for i in range(batch)]
-    intermediate_cs = [(as_[i].T if transa else as_[i]) @ (bs[i].T if transb else bs[i]) for i in range(batch)]
+    intermediate_cs = [matmul(as_[i], bs[i], transa, transb) for i in range(batch)]
     if alpha == 1.0 and beta == 0.0:  # fast path
         ref_cs = intermediate_cs
     else:
@@ -63,6 +66,11 @@ def _test_batched_gemm(
         if not my_gemm.SelectOp(impl):
             continue
 
+        # Restore C Arrays
+        for my_c in my_cs:
+            my_c.fill(1.0)
+        for dev_c in dev_cs:
+            dev_c.UpdateDeviceArray()
         my_gemm.Run()
         for dev_c in dev_cs:
             dev_c.UpdateHostNumpyArray()
@@ -85,7 +93,7 @@ dtypes = ["float32", "float16"]
 all_transabs = list(product([True, False], repeat=2))
 
 
-@pytest.mark.parametrize("batch", [1, 64])
+@pytest.mark.parametrize("batch", [1, max_batch_size])
 @pytest.mark.parametrize("m, n, k", get_gemm_basic_sizes(full=False) + get_gemm_bert_sizes(full=False))
 @pytest.mark.parametrize("transa, transb", all_transabs)
 @pytest.mark.parametrize("dtype", dtypes)
@@ -95,7 +103,7 @@ def test_rocblas_gemm_all_cases(dtype, transa, transb, m, n, k, batch):
 
 
 # Tunable is basically wrapped around of rocblas and ck gemm, so no need for full tests
-@pytest.mark.parametrize("batch", [1, 64])
+@pytest.mark.parametrize("batch", [1, max_batch_size])
 @pytest.mark.parametrize("m, n, k", get_gemm_bert_sizes(full=False))
 @pytest.mark.parametrize("transa, transb", all_transabs)
 @pytest.mark.parametrize("dtype", dtypes)

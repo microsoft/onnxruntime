@@ -1,0 +1,14 @@
+"ai.onnxruntime.test2ORT bf16-to-fp32 test:ˆ
+(
+inputoutputcast-0"Cast*	
+to ort-test-bf16-to-fp32Z!
+input
+
+
+batch_size
+b"
+output
+
+
+batch_size
+B

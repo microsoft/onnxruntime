@@ -1,5 +1,5 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
-// Licensed under the MIT License.
+ // Licensed under the MIT License.
 
 #pragma once
 
@@ -9,28 +9,28 @@ namespace _winml {
 
 class OnnxruntimeEngineFactory;
 
-class OnnxruntimeDmlSessionBuilder : public Microsoft::WRL::RuntimeClass<
-                                         Microsoft::WRL::RuntimeClassFlags<Microsoft::WRL::ClassicCom>,
-                                         IOrtSessionBuilder> {
+class OnnxruntimeDmlSessionBuilder
+  : public Microsoft::WRL::
+      RuntimeClass<Microsoft::WRL::RuntimeClassFlags<Microsoft::WRL::ClassicCom>, IOrtSessionBuilder> {
  public:
   HRESULT RuntimeClassInitialize(
     OnnxruntimeEngineFactory* engine_factory,
     ID3D12Device* device,
     ID3D12CommandQueue* queue,
     bool metacommands_enabled,
-    bool bfc_allocator_enabled);
+    bool bfc_allocator_enabled
+  );
 
-  HRESULT STDMETHODCALLTYPE CreateSessionOptions(
-      OrtSessionOptions** options) override;
+  HRESULT STDMETHODCALLTYPE CreateSessionOptions(OrtSessionOptions** options) override;
 
   HRESULT STDMETHODCALLTYPE CreateSession(
-      OrtSessionOptions* options,
-      OrtThreadPool* inter_op_thread_pool,
-      OrtThreadPool* intra_op_thread_pool,
-      OrtSession** session) override;
+    OrtSessionOptions* options,
+    OrtThreadPool* inter_op_thread_pool,
+    OrtThreadPool* intra_op_thread_pool,
+    OrtSession** session
+  ) override;
 
-  HRESULT STDMETHODCALLTYPE Initialize(
-      OrtSession* session) override;
+  HRESULT STDMETHODCALLTYPE Initialize(OrtSession* session) override;
 
  private:
   Microsoft::WRL::ComPtr<OnnxruntimeEngineFactory> engine_factory_;

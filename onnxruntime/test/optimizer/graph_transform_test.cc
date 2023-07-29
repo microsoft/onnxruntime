@@ -902,7 +902,7 @@ TEST_F(GraphTransformationTests, ConstantFoldingAShapeNodeDeepInTheGraph) {
   // removes all its ancestors and the Identity node consuming this Shape's
   // output is subsequently constant folded to leave the graph with no
   // nodes.
-  ASSERT_TRUE(op_to_count.size() == 0);
+  ASSERT_TRUE(op_to_count.size() == 0U);
 }
 
 // Check transformations in the case of a subgraph with constant inputs.
@@ -2348,7 +2348,7 @@ TEST_F(GraphTransformationTests, FuseConvBnAddMulFloat16) {
   run_options.run_tag = "one session/one tag";
   OrtValue ml_value_x;
 
-  auto x_f = MLFloat16(math::floatToHalf(1.0));
+  auto x_f = MLFloat16(1.0f);
   std::vector<int64_t> dims_x = {1, 1, 3, 3};
   std::vector<MLFloat16> values_x;
   for (int i = 0; i < 9; ++i) {
@@ -2364,7 +2364,7 @@ TEST_F(GraphTransformationTests, FuseConvBnAddMulFloat16) {
 
   ASSERT_STATUS_OK(session_object.Run(run_options, feeds, output_names, &fetches));
 
-  auto prod_f = MLFloat16(math::floatToHalf(6.0));
+  auto prod_f = MLFloat16(6.0f);
   std::vector<int64_t> expected_dims_prod = {1, 1, 2, 2};
   std::vector<MLFloat16> expected_values_prod;
   for (int i = 0; i < 4; ++i) {
@@ -2621,7 +2621,7 @@ TEST_F(GraphTransformationTests, ReshapeFusionTest) {
 
       auto initializer = std::make_unique<Initializer>(*tensor_proto, graph.ModelPath());
       EXPECT_EQ(tensor_proto->data_type(), ONNX_NAMESPACE::TensorProto_DataType_INT64);
-      EXPECT_EQ(initializer->size(), 4);
+      EXPECT_EQ(initializer->size(), 4U);
 
       const int64_t* val = initializer->data<int64_t>();
       EXPECT_EQ(val[0], 0);
@@ -2657,7 +2657,7 @@ TEST_F(GraphTransformationTests, ReshapeFusionOneConstTest) {
 
       auto initializer = std::make_unique<Initializer>(*tensor_proto, graph.ModelPath());
       EXPECT_EQ(tensor_proto->data_type(), ONNX_NAMESPACE::TensorProto_DataType_INT64);
-      EXPECT_EQ(initializer->size(), 3);
+      EXPECT_EQ(initializer->size(), 3U);
 
       const int64_t* val = initializer->data<int64_t>();
       EXPECT_EQ(val[0], 0);
@@ -2692,7 +2692,7 @@ TEST_F(GraphTransformationTests, ReshapeFusionInternalNodeIsOutput) {
 
       auto initializer = std::make_unique<Initializer>(*tensor_proto, graph.ModelPath());
       EXPECT_EQ(tensor_proto->data_type(), ONNX_NAMESPACE::TensorProto_DataType_INT64);
-      EXPECT_EQ(initializer->size(), 3);
+      EXPECT_EQ(initializer->size(), 3U);
 
       const int64_t* val = initializer->data<int64_t>();
       EXPECT_EQ(val[0], 0);
@@ -2728,7 +2728,7 @@ TEST_F(GraphTransformationTests, ReshapeFusionInternalReuseTest) {
 
       auto initializer = std::make_unique<Initializer>(*tensor_proto, graph.ModelPath());
       EXPECT_EQ(tensor_proto->data_type(), ONNX_NAMESPACE::TensorProto_DataType_INT64);
-      EXPECT_EQ(initializer->size(), 5);
+      EXPECT_EQ(initializer->size(), 5U);
 
       const int64_t* val = initializer->data<int64_t>();
       EXPECT_EQ(val[0], 0);
@@ -2787,7 +2787,7 @@ TEST_F(GraphTransformationTests, ReshapeFusionMultipleValuesInInitializerSubgrap
 
       auto initializer = std::make_unique<Initializer>(*tensor_proto, graph.ModelPath());
       EXPECT_EQ(tensor_proto->data_type(), ONNX_NAMESPACE::TensorProto_DataType_INT64);
-      EXPECT_EQ(initializer->size(), 3);
+      EXPECT_EQ(initializer->size(), 3U);
 
       const int64_t* val = initializer->data<int64_t>();
       EXPECT_EQ(val[0], 1);
@@ -2820,7 +2820,7 @@ TEST_F(GraphTransformationTests, ReshapeFusionMultipleValuesInInitializerApplies
 
       auto initializer = std::make_unique<Initializer>(*tensor_proto, graph.ModelPath());
       EXPECT_EQ(tensor_proto->data_type(), ONNX_NAMESPACE::TensorProto_DataType_INT64);
-      EXPECT_EQ(initializer->size(), 3);
+      EXPECT_EQ(initializer->size(), 3U);
 
       const int64_t* val = initializer->data<int64_t>();
       EXPECT_EQ(val[0], 1);
@@ -2890,7 +2890,7 @@ TEST_F(GraphTransformationTests, ReshapeFusionConcatSubgraphMultipleOutputs) {
 
       auto initializer = std::make_unique<Initializer>(*tensor_proto, graph.ModelPath());
       EXPECT_EQ(tensor_proto->data_type(), ONNX_NAMESPACE::TensorProto_DataType_INT64);
-      EXPECT_EQ(initializer->size(), 3);
+      EXPECT_EQ(initializer->size(), 3U);
 
       const int64_t* val = initializer->data<int64_t>();
       EXPECT_EQ(val[0], 0);
@@ -2924,7 +2924,7 @@ TEST_F(GraphTransformationTests, ReshapeFusionConcatSubgraph) {
 
       auto initializer = std::make_unique<Initializer>(*tensor_proto, graph.ModelPath());
       EXPECT_EQ(tensor_proto->data_type(), ONNX_NAMESPACE::TensorProto_DataType_INT64);
-      EXPECT_EQ(initializer->size(), 3);
+      EXPECT_EQ(initializer->size(), 3U);
 
       const int64_t* val = initializer->data<int64_t>();
       EXPECT_EQ(val[0], 0);
@@ -2958,7 +2958,7 @@ TEST_F(GraphTransformationTests, ReshapeFusionWithSlice1) {
 
       auto initializer = std::make_unique<Initializer>(*tensor_proto, graph.ModelPath());
       EXPECT_EQ(tensor_proto->data_type(), ONNX_NAMESPACE::TensorProto_DataType_INT64);
-      EXPECT_EQ(initializer->size(), 3);
+      EXPECT_EQ(initializer->size(), 3U);
 
       const int64_t* val = initializer->data<int64_t>();
       EXPECT_EQ(val[0], 0);
@@ -3028,7 +3028,7 @@ TEST_F(GraphTransformationTests, ReshapeFusionConcatSubgraphWithDiv) {
 
       auto initializer = std::make_unique<Initializer>(*tensor_proto, graph.ModelPath());
       EXPECT_EQ(tensor_proto->data_type(), ONNX_NAMESPACE::TensorProto_DataType_INT64);
-      EXPECT_EQ(initializer->size(), 3);
+      EXPECT_EQ(initializer->size(), 3U);
 
       const int64_t* val = initializer->data<int64_t>();
       EXPECT_EQ(val[0], 0);
@@ -3064,7 +3064,7 @@ TEST_F(GraphTransformationTests, ReshapeFusionConcatSubgraphWithMul) {
 
       auto initializer = std::make_unique<Initializer>(*tensor_proto, graph.ModelPath());
       EXPECT_EQ(tensor_proto->data_type(), ONNX_NAMESPACE::TensorProto_DataType_INT64);
-      EXPECT_EQ(initializer->size(), 3);
+      EXPECT_EQ(initializer->size(), 3U);
 
       const int64_t* val = initializer->data<int64_t>();
       EXPECT_EQ(val[0], 0);
@@ -3098,7 +3098,7 @@ TEST_F(GraphTransformationTests, ReshapeFusionDistilBertTest) {
 
       auto initializer = std::make_unique<Initializer>(*tensor_proto, graph.ModelPath());
       EXPECT_EQ(tensor_proto->data_type(), ONNX_NAMESPACE::TensorProto_DataType_INT64);
-      EXPECT_EQ(initializer->size(), 4);
+      EXPECT_EQ(initializer->size(), 4U);
 
       const int64_t* val = initializer->data<int64_t>();
       EXPECT_EQ(val[0], 0);
@@ -3238,7 +3238,7 @@ static void ValidateAttention(Graph& graph) {
       EXPECT_EQ(tensor_proto->data_type(), ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
 
       auto initializer = std::make_unique<Initializer>(*tensor_proto, graph.ModelPath());
-      EXPECT_EQ(initializer->size(), 192);
+      EXPECT_EQ(initializer->size(), 192U);
 
       // Validate two rows (2x24 items) for sanity check.
       std::vector<double> expected_value = {
@@ -3302,7 +3302,7 @@ static void ValidateAttention(Graph& graph) {
       EXPECT_EQ(tensor_proto->data_type(), ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
 
       auto initializer2 = std::make_unique<Initializer>(*tensor_proto, graph.ModelPath());
-      EXPECT_EQ(initializer2->size(), 24);
+      EXPECT_EQ(initializer2->size(), 24U);
 
       std::vector<double> expected_value2 = {
           -0.23681640625,
@@ -5477,7 +5477,7 @@ void BuildConstantSharingDivMulGraph(ModelTestBuilder& builder) {
   for (size_t i = 0; i < 12; ++i) {
     NodeArg* mul_initializer = nullptr;
     if (std::is_same<T, MLFloat16>::value) {
-      mul_initializer = builder.MakeScalarInitializer<MLFloat16>(MLFloat16(math::floatToHalf(1.0f)));
+      mul_initializer = builder.MakeScalarInitializer<MLFloat16>(MLFloat16(1.0f));
     } else if (std::is_same<T, float>::value) {
       mul_initializer = builder.MakeScalarInitializer<float>(1.0f);
     } else {
@@ -5534,7 +5534,7 @@ TEST_F(GraphTransformationTests, ConstantSharing_ShareFloatOrHalfTypedInitialize
         const ONNX_NAMESPACE::TensorProto* tensor_proto = entry.second;
         int32_t data_type = tensor_proto->data_type();
         onnxruntime::Initializer float_const{*tensor_proto, graph.ModelPath()};
-        TEST_RETURN_IF_NOT(float_const.size() == 1);
+        TEST_RETURN_IF_NOT(float_const.size() == 1U);
         float float_const_value;
         if (data_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
           float_const_value = math::halfToFloat(float_const.data<MLFloat16>()->val);
@@ -5593,7 +5593,7 @@ void BuildConstantSharingDivMulGraphFor2DInitializer(ModelTestBuilder& builder) 
   values_float16.reserve(values.size());
   if (std::is_same<T, MLFloat16>::value) {
     for (auto v : values) {
-      values_float16.push_back(MLFloat16(math::floatToHalf(v)));
+      values_float16.push_back(MLFloat16(v));
     }
   }
 
@@ -5657,7 +5657,7 @@ TEST_F(GraphTransformationTests, ConstantSharing_Share2DFloatOrHalfTypedInitiali
         const ONNX_NAMESPACE::TensorProto* tensor_proto = entry.second;
         int32_t data_type = tensor_proto->data_type();
         onnxruntime::Initializer float_const{*tensor_proto, graph.ModelPath()};
-        TEST_RETURN_IF_NOT(float_const.size() == 8);
+        TEST_RETURN_IF_NOT(float_const.size() == 8U);
         for (int i = 0; i < 8; ++i) {
           float float_const_value;
           if (data_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
@@ -5764,12 +5764,12 @@ TEST_F(GraphTransformationTests, ConstantSharing_ShareFloatAndHalfTypedInitializ
       int32_t data_type = tensor_proto->data_type();
       onnxruntime::Initializer float_const{*tensor_proto, graph.ModelPath()};
       if (entry.first.compare(mul_initializer->Name()) == 0) {
-        TEST_RETURN_IF_NOT(float_const.size() == 1);
+        TEST_RETURN_IF_NOT(float_const.size() == 1U);
         TEST_RETURN_IF_NOT(data_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
         float float_const_value = *(float_const.data<float>());
         TEST_RETURN_IF_NOT(float_const_value == 1.0f);
       } else if (entry.first.compare(add_initializer->Name()) == 0) {
-        TEST_RETURN_IF_NOT(float_const.size() == 1);
+        TEST_RETURN_IF_NOT(float_const.size() == 1U);
         TEST_RETURN_IF_NOT(data_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16);
         float float_const_value = math::halfToFloat(float_const.data<MLFloat16>()->val);
         TEST_RETURN_IF_NOT(float_const_value == 1.0f);
@@ -5804,7 +5804,7 @@ TEST_F(GraphTransformationTests, ConstantSharing_ShareFloatAndHalfTypedInitializ
     builder.AddNode("Cast", {div_out}, {cast_out})
         .AddAttribute("to", static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16));
     for (size_t i = 0; i < 3; ++i) {
-      NodeArg* add_initializer = builder.MakeScalarInitializer<MLFloat16>(MLFloat16(math::floatToHalf(1.0f)));
+      NodeArg* add_initializer = builder.MakeScalarInitializer<MLFloat16>(MLFloat16(1.0f));
       auto* add_out = builder.MakeOutput();
       builder.AddNode("Add", {cast_out, add_initializer}, {add_out});
     }
@@ -5892,7 +5892,7 @@ TEST_F(GraphTransformationTests, ConstantSharing_Share2DFloatAndHalfTypedInitial
       const ONNX_NAMESPACE::TensorProto* tensor_proto = entry.second;
       int32_t data_type = tensor_proto->data_type();
       onnxruntime::Initializer float_const{*tensor_proto, graph.ModelPath()};
-      TEST_RETURN_IF_NOT(float_const.size() == 8);
+      TEST_RETURN_IF_NOT(float_const.size() == 8U);
       if (entry.first.compare(mul_initializer->Name()) == 0) {
         TEST_RETURN_IF_NOT(data_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
         for (int i = 0; i < 8; ++i) {
@@ -5930,7 +5930,7 @@ TEST_F(GraphTransformationTests, ConstantSharing_Share2DFloatAndHalfTypedInitial
   std::vector<MLFloat16> values_float16;
   values_float16.reserve(values.size());
   for (auto v : values) {
-    values_float16.push_back(MLFloat16(math::floatToHalf(v)));
+    values_float16.push_back(MLFloat16(v));
   }
 
   auto build_test_case_float = [&values, &values_float16](ModelTestBuilder& builder) {
@@ -6030,13 +6030,13 @@ TEST_F(GraphTransformationTests, ConstantSharing_ShareIntMaxOrFloatInfinityIniti
       if (entry.first.compare(mul_initializer->Name()) == 0) {
         const ONNX_NAMESPACE::TensorProto* tensor_proto = entry.second;
         onnxruntime::Initializer int64_const{*tensor_proto, graph.ModelPath()};
-        TEST_RETURN_IF_NOT(int64_const.size() == 1);
+        TEST_RETURN_IF_NOT(int64_const.size() == 1U);
         int64_t int64_const_value = *(int64_const.data<int64_t>());
         TEST_RETURN_IF_NOT(int64_const_value == std::numeric_limits<int64_t>::max());
       } else if (entry.first.compare(sub_initializer->Name()) == 0) {
         const ONNX_NAMESPACE::TensorProto* tensor_proto = entry.second;
         onnxruntime::Initializer float_const{*tensor_proto, graph.ModelPath()};
-        TEST_RETURN_IF_NOT(float_const.size() == 1);
+        TEST_RETURN_IF_NOT(float_const.size() == 1U);
         float float_const_value = *(float_const.data<float>());
         TEST_RETURN_IF_NOT(float_const_value == std::numeric_limits<float>::infinity());
       }
@@ -6129,13 +6129,13 @@ TEST_F(GraphTransformationTests, ConstantSharing_ShouldNotShareForGraphOutput) {
       if (entry.first.compare("y_scale") == 0) {
         const ONNX_NAMESPACE::TensorProto* tensor_proto = entry.second;
         onnxruntime::Initializer int64_const{*tensor_proto, graph.ModelPath()};
-        ASSERT_TRUE(int64_const.size() == 1);
+        ASSERT_TRUE(int64_const.size() == 1U);
         float float_const_value = *(int64_const.data<float>());
         ASSERT_TRUE(float_const_value == 1);
       } else {
         const ONNX_NAMESPACE::TensorProto* tensor_proto = entry.second;
         onnxruntime::Initializer uint8_const{*tensor_proto, graph.ModelPath()};
-        ASSERT_TRUE(uint8_const.size() == 1);
+        ASSERT_TRUE(uint8_const.size() == 1U);
         uint8_t uint8_const_value = *(uint8_const.data<uint8_t>());
         ASSERT_TRUE(uint8_const_value == static_cast<uint8_t>(1));
       }

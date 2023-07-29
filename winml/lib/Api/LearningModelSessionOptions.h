@@ -7,7 +7,10 @@
 #include <thread>
 namespace WINMLP {
 
-struct LearningModelSessionOptions : LearningModelSessionOptionsT<LearningModelSessionOptions, ILearningModelSessionOptionsNative, ILearningModelSessionOptionsNative1> {
+struct LearningModelSessionOptions : LearningModelSessionOptionsT<
+                                       LearningModelSessionOptions,
+                                       ILearningModelSessionOptionsNative,
+                                       ILearningModelSessionOptionsNative1> {
   LearningModelSessionOptions() = default;
 
   LearningModelSessionOptions(const LearningModelSessionOptions& options);
@@ -17,7 +20,7 @@ struct LearningModelSessionOptions : LearningModelSessionOptionsT<LearningModelS
 
   bool CloseModelOnSessionCreation();
   void CloseModelOnSessionCreation(bool value);
-  
+
   wfc::IMapView<winrt::hstring, uint32_t> NamedDimensionOverrides();
   void OverrideNamedDimension(winrt::hstring name, uint32_t value);
 
@@ -30,6 +33,10 @@ struct LearningModelSessionOptions : LearningModelSessionOptionsT<LearningModelS
   (boolean allowSpinning);
 
   bool GetIntraOpThreadSpinning();
+
+  const gsl::span<const winrt::hstring> GetCustomOpLibraryPaths() noexcept;
+
+  void RegisterCustomOpsLibrary(const winrt::hstring& path) noexcept;
 
  private:
   // The batch size override property is used to inform the engine when the developer
@@ -55,7 +62,7 @@ struct LearningModelSessionOptions : LearningModelSessionOptionsT<LearningModelS
   // The default value here is False so that models are not automatically closed on session creation.
   bool close_model_on_session_creation_ = false;
 
-  // Map of named input dimensions to concrete values. 
+  // Map of named input dimensions to concrete values.
   // This informs the engine when the developer wants to explictily set a named dimension to a fixed value.
 
   // 0    : the dimension present in the model should be honored.
@@ -68,11 +75,13 @@ struct LearningModelSessionOptions : LearningModelSessionOptionsT<LearningModelS
   uint32_t intra_op_num_threads_override_ = std::thread::hardware_concurrency();
 
   bool allow_thread_spinning_ = true;
+
+  std::vector<winrt::hstring> custom_ops_lib_paths_;
 };
 
 }  // namespace WINMLP
 
 namespace WINML::factory_implementation {
-struct LearningModelSessionOptions : LearningModelSessionOptionsT<LearningModelSessionOptions, implementation::LearningModelSessionOptions> {
-};
+struct LearningModelSessionOptions
+  : LearningModelSessionOptionsT<LearningModelSessionOptions, implementation::LearningModelSessionOptions> {};
 }  // namespace WINML::factory_implementation

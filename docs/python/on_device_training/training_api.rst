@@ -32,7 +32,7 @@ Sample usage:
         module.train()
         training_loss = module(...)
         optimizer.step()
-        module.lazy_reset_grad
+        module.lazy_reset_grad()
 
     # Eval
     module.eval()

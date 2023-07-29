@@ -3,7 +3,7 @@
  * File built with Microsoft(R) MIDLRT Compiler Engine Version 10.00.0228 
  */
 
-#pragma warning( disable: 4049 )  /* more than 64k source lines */
+#pragma warning(disable : 4049)  /* more than 64k source lines */
 
 /* verify that the <rpcndr.h> version is high enough to compile this file*/
 #ifndef __REQUIRED_RPCNDR_H_VERSION__
@@ -31,13 +31,11 @@
 #ifndef __dualapipartitionattribute_p_h__
 #define __dualapipartitionattribute_p_h__
 
-
 #pragma once
 
 #pragma push_macro("MIDL_CONST_ID")
 #undef MIDL_CONST_ID
 #define MIDL_CONST_ID const __declspec(selectany)
-
 
 //  API Contract Inclusion Definitions
 #if !defined(SPECIFIC_API_CONTRACT_DEFINITIONS)
@@ -71,30 +69,26 @@
 
 #endif // defined(SPECIFIC_API_CONTRACT_DEFINITIONS)
 
-
 // Header files for imported files
 #include "Windows.Foundation.h"
 
 #if defined(__cplusplus) && !defined(CINTERFACE)
 /* Forward Declarations */
 
-
-#pragma warning (push)
-#pragma warning (disable:4668) 
-#pragma warning (disable:4001) 
-#pragma once 
-#pragma warning (pop)
-
+#pragma warning(push)
+#pragma warning(disable : 4668)
+#pragma warning(disable : 4001)
+#pragma once
+#pragma warning(pop)
 
 #else // !defined(__cplusplus)
 /* Forward Declarations */
 
-#pragma warning (push)
-#pragma warning (disable:4668) 
-#pragma warning (disable:4001) 
-#pragma once 
-#pragma warning (pop)
-
+#pragma warning(push)
+#pragma warning(disable : 4668)
+#pragma warning(disable : 4001)
+#pragma once
+#pragma warning(pop)
 
 #endif // defined(__cplusplus)
 #pragma pop_macro("MIDL_CONST_ID")

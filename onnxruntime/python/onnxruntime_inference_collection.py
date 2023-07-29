@@ -31,7 +31,7 @@ def get_ort_device_type(device_type: str, device_index) -> C.OrtDevice:
 
 
 def check_and_normalize_provider_args(
-    providers: Sequence[str, tuple[str, dict[Any, Any]]] | None,
+    providers: Sequence[str | tuple[str, dict[Any, Any]]] | None,
     provider_options: Sequence[dict[Any, Any]] | None,
     available_provider_names: Sequence[str],
 ):
@@ -188,7 +188,6 @@ class Session:
         self._enable_fallback = True
 
     def _validate_input(self, feed_input_names):
-        # import pdb; pdb.set_trace()
         missing_input_names = []
         for input in self._inputs_meta:
             if input.name not in feed_input_names and not input.type.startswith("optional"):
@@ -219,7 +218,7 @@ class Session:
             return self._sess.run(output_names, input_feed, run_options)
         except C.EPFail as err:
             if self._enable_fallback:
-                print(f"EP Error: {str(err)} using {self._providers}")
+                print(f"EP Error: {err!s} using {self._providers}")
                 print(f"Falling back to {self._fallback_providers} and retrying.")
                 self.set_providers(self._fallback_providers)
                 # Fallback only once.
@@ -260,7 +259,7 @@ class Session:
             return invoke(self._sess, output_names, input_dict_ort_values, run_options)
         except C.EPFail as err:
             if self._enable_fallback:
-                print(f"EP Error: {str(err)} using {self._providers}")
+                print(f"EP Error: {err!s} using {self._providers}")
                 print(f"Falling back to {self._fallback_providers} and retrying.")
                 self.set_providers(self._fallback_providers)
                 # Fallback only once.
@@ -328,7 +327,7 @@ class InferenceSession(Session):
         self,
         path_or_bytes: str | bytes | os.PathLike,
         sess_options: Sequence[onnxruntime.SessionOptions] | None = None,
-        providers: Sequence[str, tuple[str, dict[Any, Any]]] | None = None,
+        providers: Sequence[str | tuple[str, dict[Any, Any]]] | None = None,
         provider_options: Sequence[dict[Any, Any]] | None = None,
         **kwargs,
     ) -> None:
