@@ -499,7 +499,7 @@ An input as above will be packed into 3 tensors like below:
  - token_offset: 0, 4, 5, 8, 9, 10, 11,  1*, 2*, 3*, 6*, 7*
  - cumulative_sequence_length: 0, 1, 1+2, 1+2+4
 
-The query, key and value tensors contains result of hidden embedding of real tokens after input projections.
+The query, key and value tensors contain result of hidden embedding of real tokens after input projections.
 Token_offset records the offset of token in the unpacked input.
 cumulative_sequence_length records cumulated length of each sequnces length.
 
@@ -515,6 +515,7 @@ The operator only supports BERT like model with padding on right now.
 //   Input 'query':                      (token_count, num_heads, 3, head_size)
 //   Input 'key':                        None
 //   Input 'value':                      None
+// Input 'bias':                         (hidden_size + hidden_size + v_hidden_size)
 // Input 'token_offset':                 (batch_size, sequence_length)
 // Input 'cumulative_sequence_length':   (batch_size + 1)
 // Input 'relative_position_bias':       (batch_size or 1, num_heads, sequence_length, sequence_length) or None
@@ -582,14 +583,19 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "T",
                OpSchema::Optional)
         .Input(3,
+               "bias",
+               "Bias tensor with shape (hidden_size + hidden_size + v_hidden_size) from input projection",
+               "T",
+               OpSchema::Optional)
+        .Input(4,
                "token_offset",
                "Offset of each token before packing, with shape (batch_size, sequence_length).",
                "M")
-        .Input(4,
+        .Input(5,
                "cumulative_sequence_length",
                "A tensor with shape (batch_size + 1). It specifies the cumulative sequence length.",
                "M")
-        .Input(5,
+        .Input(6,
                "relative_position_bias",
                "It specifies the additional bias to QxK'. The shape is (batch_size, num_heads, sequence_length, sequence_length)"
                " or (1, num_heads, sequence_length, sequence_length)",
