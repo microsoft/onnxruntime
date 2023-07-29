@@ -99,7 +99,7 @@ stages:
       - template: jobs/set-winenv.yml
         parameters:
           EnvSetupScript: ${{ parameters.EnvSetupScript }}
-          ${{ if contains(parameters.additionalBuildFlags, 'use_cuda') }}:
+          ${{ if contains(parameters.buildparameter, 'use_cuda') }}:
             DownloadCUDA: true
 
       - template: download-deps.yml
