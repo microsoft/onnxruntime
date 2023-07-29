@@ -15,7 +15,7 @@ namespace onnxruntime {
 namespace test {
 #if defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
 
-// Computes the mean and variance of inputs with a channel.
+// Computes the mean and variance of inputs within a channel.
 // Requires an input with rank >= 3
 static void ComputeChannelMeanAndVar(const std::vector<float>& input_data, const std::vector<int64_t>& input_shape,
                                      std::vector<float>& mean_vals, std::vector<float>& var_vals) {
@@ -68,7 +68,7 @@ static void ComputeChannelMeanAndVar(const std::vector<float>& input_data, const
       }
     }
 
-    // Divide sums by the number of elements in a channel to get the mean.
+    // Divide sums by the number of elements in a channel to get the variance.
     for (size_t c = 0; c < num_channels; c++) {
       var_vals[c] /= static_cast<float>(num_batches * channel_stride);
     }

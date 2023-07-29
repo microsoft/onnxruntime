@@ -258,16 +258,20 @@ inline void TestQDQModelAccuracy(const GetTestModelFn& f32_model_fn, const GetTe
           const float cpu_val = cpu_qdq_vals[j];
           const float cpu_err = std::fabsf(expected_val - cpu_val);
           const float qnn_err = std::fabsf(expected_val - qnn_val);
-          const float num_quant_units = std::ceilf(cpu_err / output_qparams[i].scale);
-          const bool is_within_quant_err = qnn_err <= num_quant_units * output_qparams[i].scale + fp32_abs_err;
-          const bool is_as_accurate_as_ort_cpu = qnn_err <= cpu_err + fp32_abs_err;
-          EXPECT_TRUE(is_within_quant_err || is_as_accurate_as_ort_cpu) << "Inaccuracy detected for output '" << output_names[i]
-                                                                        << "', element " << j
-                                                                        << ".\nOutput quant params: scale=" << output_qparams[i].scale
-                                                                        << ", zero_point=" << static_cast<int32_t>(output_qparams[i].zero_point)
-                                                                        << ".\nExpected val: " << expected_val << "\n"
-                                                                        << "QNN QDQ val: " << qnn_val << " (err " << qnn_err << ")\n"
-                                                                        << "CPU QDQ val: " << cpu_val << " (err " << cpu_err << ")";
+          const float qnn_cpu_qdq_err = std::fabsf(cpu_val - qnn_val);
+          const float cpu_qdq_quant_dist = std::ceilf(cpu_err / output_qparams[i].scale);
+          const bool is_same_quant_dist_from_actual = qnn_err <= cpu_qdq_quant_dist * output_qparams[i].scale + fp32_abs_err;
+          const bool is_1_quant_unit_from_cpu_qdq = qnn_cpu_qdq_err <= output_qparams[i].scale + fp32_abs_err;
+          const bool is_as_accurate_as_cpu_qdq = qnn_err <= cpu_err + fp32_abs_err;
+          EXPECT_TRUE(is_same_quant_dist_from_actual || is_1_quant_unit_from_cpu_qdq || is_as_accurate_as_cpu_qdq)
+              << "Inaccuracy detected for output '"
+              << output_names[i]
+              << "', element " << j
+              << ".\nOutput quant params: scale=" << output_qparams[i].scale
+              << ", zero_point=" << static_cast<int32_t>(output_qparams[i].zero_point)
+              << ".\nExpected val: " << expected_val << "\n"
+              << "QNN QDQ val: " << qnn_val << " (err " << qnn_err << ")\n"
+              << "CPU QDQ val: " << cpu_val << " (err " << cpu_err << ")";
         }
       } else {
         VerifyOutput(output_names[i], cpu_f32_outputs[i].Get<Tensor>(), qnn_qdq_tensor, fp32_abs_err);
