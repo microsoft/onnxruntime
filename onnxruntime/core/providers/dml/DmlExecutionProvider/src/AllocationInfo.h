@@ -62,6 +62,7 @@ namespace Dml
         }
 
     private:
+        // The bucketized buffer allocator must outlive the allocation info
         BucketizedBufferAllocator* m_owner;
         size_t m_allocationId; // For debugging purposes
         uint64_t m_pooledResourceId = 0;

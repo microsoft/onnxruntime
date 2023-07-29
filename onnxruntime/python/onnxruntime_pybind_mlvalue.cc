@@ -188,9 +188,9 @@ std::unique_ptr<IDataTransfer> GetGPUDataTransfer() {
 #ifdef USE_DML
 AllocatorPtr GetDmlAllocator(OrtDevice::DeviceId id) {
   // Current approach is not thread-safe, but there are some bigger infra pieces to put together in order to make
-  // multi-threaded DML allocation work we need to maintain a per-thread DML allocator
+  // multi-threaded DML allocation work, including maintaining a per-thread DML allocator.
 
-  // We are leaking this map so we do not accidentally destroy DML Allocator instance
+  // We are leaking this map so we do not accidentally destroy the DML Allocator instance
   // after we unloaded DML provider library. Appeasing static analysis warning and using make_unique.
   static auto* id_to_allocator_map = std::make_unique<std::unordered_map<OrtDevice::DeviceId, AllocatorPtr>>().release();
 
