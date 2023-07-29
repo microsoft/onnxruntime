@@ -108,19 +108,19 @@ void TransposeSingleAxisOutwards(gsl::span<const size_t> permutations, const Ten
 
       TensorShapeVector src_strides(dims);
       for (uint64_t dim = 0, elements = input_shape.Size(); dim < dims; ++dim) {
-        elements /= input_dims[dim];
-        src_strides[dim] = elements;
+        elements /= input_dims[static_cast<size_t>(dim)];
+        src_strides[static_cast<size_t>(dim)] = elements;
       }
 
       // stride to access the dst tensor as if it were contiguous
       std::vector<int64_t> contig_dst_strides(dims);
       for (uint64_t dim = 0, elements = input_shape.Size(); dim < dims; ++dim) {
-        elements /= output_dims[dim];
-        contig_dst_strides[dim] = elements;
+        elements /= output_dims[static_cast<size_t>(dim)];
+        contig_dst_strides[static_cast<size_t>(dim)] = elements;
       }
 
       TensorShapeVector dst_strides(dims);
-      for (uint64_t dim = 0; dim < dims; ++dim) {
+      for (size_t dim = 0; dim < dims; ++dim) {
         dst_strides[permutations[dim]] = contig_dst_strides[dim];
       }
 
