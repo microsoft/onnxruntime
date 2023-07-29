@@ -187,12 +187,18 @@ def change_io_shape(graph: GraphProto):
                 elem_type=TensorProto.INT32,
                 shape=["batch_size", "seq_len"],
             )
-        # if vi.name == "attention_mask":
-        #     vi = helper.make_tensor_value_info(
-        #         vi.name,
-        #         elem_type=TensorProto.INT32,
-        #         shape=["batch_size", "seq_len"],
-        #     )
+            vi_pid = helper.make_tensor_value_info(
+                "position_ids",
+                elem_type=TensorProto.INT32,
+                shape=["batch_size", "seq_len"],
+            )
+            new_inputs.extend([vi_pid])
+        if vi.name == "input_ids":
+            vi = helper.make_tensor_value_info(
+                vi.name,
+                elem_type=TensorProto.INT32,
+                shape=shape_of(vi),
+            )
         if "past" in vi.name:
             shape = shape_of(vi)
             vi = helper.make_tensor_value_info(
@@ -277,9 +283,9 @@ class Tnlgv4OnnxModel(BertOnnxModel):
         self.utils.remove_useless_cast_nodes_in_fp16_model()
 
     def postprocess(self):
-        #self.bias_fusion.apply()
-        #self.transpose_remover.apply()
-        #self.fuse_skip_layer_norm()
+        self.bias_fusion.apply()
+        self.transpose_remover.apply()
+        self.fuse_skip_layer_norm()
         self.clean_graph()
         self.prune_graph()
         change_io_shape(self.model.graph)
