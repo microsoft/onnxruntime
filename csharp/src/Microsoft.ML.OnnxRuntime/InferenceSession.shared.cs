@@ -1054,13 +1054,18 @@ namespace Microsoft.ML.OnnxRuntime
                 // throw on error
                 NativeApiStatus.VerifySuccess(status);
 
-                var outputValues = new DisposableList<OrtValue>((int)numOutputs);
-                for (uint ith = 0; ith < numOutputs; ++ith)
-                {
-                    outputValues.Add(new OrtValue(outputs[ith]));
+                if (numOutputs != resource.namedOutputValues.Count()) {
+                    throw new OnnxRuntimeException(ErrorCode.Fail, "number of output mismatch");
                 }
 
-                resource.userCallback(resource.userData, outputValues);
+                for (uint ith = 0; ith < numOutputs; ith++)
+                {
+                    if (null == outputs[ith]) { 
+                        throw new OnnxRuntimeException(ErrorCode.Fail, $"output '{ith}' is null");
+                    }
+                }
+
+                resource.userCallback(resource.userData, resource.namedOutputValues);
             }
             finally
             {
@@ -1077,21 +1082,41 @@ namespace Microsoft.ML.OnnxRuntime
         /// </summary>
         /// <param name="userData">any arbitrary data that passed to RunAsync</param>
         /// <param name="outputs">output tensors</param>
-        public delegate void CallbackDelegate(IntPtr userData, IDisposableReadOnlyCollection<OrtValue> outputs);
+        //public delegate void CallbackDelegate(IntPtr userData, IDisposableReadOnlyCollection<OrtValue> outputs);
+        public delegate void CallbackDelegate(IntPtr userData, IReadOnlyCollection<NamedOnnxValue> outputs);
 
         private class CallbackResource
         {
-            public IntPtr[] inputNames { get; set; }
-            public IntPtr[] inputValues { get; set; }
+            public InferenceSession calling_session;
+            public IntPtr[] inputNames { get; }
+            public IntPtr[] inputValues { get; }
 
-            public IntPtr[] outputNames { get; set; }
-            public IntPtr[] outputValues { get; set; }
+            public IReadOnlyCollection<NamedOnnxValue> namedInputValues { get; }
+            public IntPtr[] outputNames { get; }
+            public IntPtr[] outputValues { get; }
+            public IReadOnlyCollection<NamedOnnxValue> namedOutputValues { get; }
 
             public CallbackDelegate userCallback { get; }
             public IntPtr userData { get; }
 
-            internal CallbackResource(CallbackDelegate callback, IntPtr data)
+            internal CallbackResource(InferenceSession session,
+                                      IReadOnlyCollection<NamedOnnxValue> namedInput,
+                                      IReadOnlyCollection<NamedOnnxValue> namedOutput,
+                                      CallbackDelegate callback,
+                                      IntPtr data)
             {
+                calling_session = session;
+
+                namedInputValues = namedInput;
+                inputNames = LookupUtf8Names(namedInput, i => i.Name, calling_session.LookupInputMetadata);
+                inputValues = GetOrtValuesHandles(namedInput, calling_session.LookupInputMetadata, ExtractOrtValueHandleForInput,
+                    out DisposableArray<IDisposable> inputDisposer);
+
+                namedOutputValues = namedOutput;
+                outputNames = LookupUtf8Names(namedOutput, o => o.Name, calling_session.LookupOutputMetadata);
+                outputValues = GetOrtValuesHandles(namedOutput, calling_session.LookupOutputMetadata, ExtractOrtValueHandleForOutput,
+                    out DisposableArray<IDisposable> outputDisposer);
+
                 userCallback = callback;
                 userData = data;
             }
@@ -1112,18 +1137,11 @@ namespace Microsoft.ML.OnnxRuntime
             CallbackDelegate callback,
             IntPtr userData)
         {
-            CallbackResource resource = new CallbackResource(callback, userData);
+            CallbackResource resource = new CallbackResource(this, inputs, outputs, callback, userData);
             var resource_hdl = GCHandle.Alloc(resource, GCHandleType.Normal);
 
             try
             {
-                resource.inputNames = LookupUtf8Names(inputs, i => i.Name, LookupInputMetadata);
-                resource.outputNames = LookupUtf8Names(outputs, o => o.Name, LookupOutputMetadata);
-                resource.inputValues = GetOrtValuesHandles(inputs, LookupInputMetadata, ExtractOrtValueHandleForInput,
-                    out DisposableArray<IDisposable> inputDisposer);
-                resource.outputValues = GetOrtValuesHandles(outputs, LookupOutputMetadata, ExtractOrtValueHandleForOutput,
-                    out DisposableArray<IDisposable> outputDisposer);
-
                 NativeApiStatus.VerifySuccess(NativeMethods.OrtRunAsync(
                                                     _nativeHandle,
                                                     options == null? (IntPtr)null : options.Handle,
