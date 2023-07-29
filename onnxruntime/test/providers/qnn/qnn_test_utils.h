@@ -148,11 +148,40 @@ inline QuantParams<QType> GetTestInputQuantParams(const TestInputDef<float>& inp
 template <typename QuantType>
 using GetTestQDQModelFn = std::function<void(ModelTestBuilder& builder, const std::vector<QuantParams<QuantType>>& output_qparams)>;
 
+/**
+ * Inferences a given serialized model. Returns output values via an out-param.
+ *
+ * \param model_data The serialized ONNX model to inference.
+ * \param log_id The logger ID.
+ * \param execution_provider The EP on which to run the model. Set to nullptr for CPU EP.
+ * \param expected_ep_assignment Describes "which nodes" should be assigned to the EP.
+ * \param feeds The input feeds.
+ * \param output_names If empty, the function will write the output names.
+ * \param output_vals Initialized to the inference results.
+ */
 void InferenceModel(const std::string& model_data, const char* log_id,
                     std::unique_ptr<IExecutionProvider> execution_provider,
                     ExpectedEPNodeAssignment expected_ep_assignment, const NameMLValMap& feeds,
                     std::vector<std::string>& output_names, std::vector<OrtValue>& output_vals);
 
+/**
+ * Tests the accuracy of a QDQ model on QNN EP by runnning 3 inferences:
+ *
+ * 1. float model on CPU EP (baseline)
+ * 2. QDQ model on CPU EP
+ * 3. QDQ model on QNN EP
+ *
+ * This function checks that running the QDQ model on QNN EP (#3) is at least as accurate (+- small tolerance)
+ * as running the QDQ model on CPU EP (#2). We primarily measure accuracy by comparing to the baseline (#1).
+ *
+ * \param f32_model_fn Function that builds the float model (baseline for comparison).
+ * \param qdq_model_fn Function that builds the QDQ model (run by CPU EP and QNN EP).
+ * \param qnn_options QNN EP provider options.
+ * \param opset_version The opset version.
+ * \param expected_ep_assignment Describes "which nodes" should be assigned to the EP.
+ * \param fp32_abs_err Small tolerance used for floating-point comparisons.
+ * \param log_severity The logger's severity setting.
+ */
 template <typename QuantType = uint8_t>
 inline void TestQDQModelAccuracy(const GetTestModelFn& f32_model_fn, const GetTestQDQModelFn<QuantType>& qdq_model_fn,
                                  const ProviderOptions& qnn_options, int opset_version,
@@ -253,16 +282,24 @@ inline void TestQDQModelAccuracy(const GetTestModelFn& f32_model_fn, const GetTe
         ASSERT_EQ(num_vals, qnn_qdq_vals.size());
 
         for (size_t j = 0; j < num_vals; j++) {
-          const float expected_val = cpu_f32_vals[j];
+          const float expected_val = cpu_f32_vals[j];  // "ground-truth"
           const float qnn_val = qnn_qdq_vals[j];
           const float cpu_val = cpu_qdq_vals[j];
           const float cpu_err = std::fabsf(expected_val - cpu_val);
           const float qnn_err = std::fabsf(expected_val - qnn_val);
           const float qnn_cpu_qdq_err = std::fabsf(cpu_val - qnn_val);
           const float cpu_qdq_quant_dist = std::ceilf(cpu_err / output_qparams[i].scale);
+
+          // The QDQ results from CPU EP and QNN EP are "some" quantized distance away from the ground-truth.
+          // Are those quantized distances at most the same?
           const bool is_same_quant_dist_from_actual = qnn_err <= cpu_qdq_quant_dist * output_qparams[i].scale + fp32_abs_err;
+
+          // Is the result from QNN EP 1 quantized unit away from the QDQ model on CPU EP?
           const bool is_1_quant_unit_from_cpu_qdq = qnn_cpu_qdq_err <= output_qparams[i].scale + fp32_abs_err;
+
+          // Is the raw result from QNN EP closer (or same dist) to the ground-truth?
           const bool is_as_accurate_as_cpu_qdq = qnn_err <= cpu_err + fp32_abs_err;
+
           EXPECT_TRUE(is_same_quant_dist_from_actual || is_1_quant_unit_from_cpu_qdq || is_as_accurate_as_cpu_qdq)
               << "Inaccuracy detected for output '"
               << output_names[i]
