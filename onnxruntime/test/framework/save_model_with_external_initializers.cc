@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/common/path_string.h"
 #include "core/framework/data_types.h"
 #include "core/graph/model.h"
 #include "core/framework/tensorprotoutils.h"
@@ -41,6 +42,7 @@ void LoadSaveAndCompareModel(const std::string& input_onnx,
   ASSERT_EQ(initializers.size(), initializers_from_external.size());
 
   // Compare the initializers of the two versions.
+  Path external_data_path{};
   for (auto i : initializers) {
     const std::string kInitName = i.first;
     const ONNX_NAMESPACE::TensorProto* tensor_proto = i.second;
@@ -51,7 +53,9 @@ void LoadSaveAndCompareModel(const std::string& input_onnx,
     size_t tensor_proto_size = tensor_proto_data.size();
 
     std::vector<uint8_t> from_external_tensor_proto_data;
-    ORT_THROW_IF_ERROR(utils::UnpackInitializerData(*from_external_tensor_proto, Path(), from_external_tensor_proto_data));
+    Path model_path = Path::Parse(ToPathString(output_onnx));
+    external_data_path = model_path.ParentPath().Append(Path::Parse(ToPathString(external_init_file)));
+    ORT_THROW_IF_ERROR(utils::UnpackInitializerData(*from_external_tensor_proto, model_path, from_external_tensor_proto_data));
     size_t from_external_tensor_proto_size = from_external_tensor_proto_data.size();
 
     if (from_external_tensor_proto_size < initializer_size_threshold) {
@@ -67,7 +71,7 @@ void LoadSaveAndCompareModel(const std::string& input_onnx,
   }
   // Cleanup.
   ASSERT_EQ(std::remove(output_onnx.c_str()), 0);
-  ASSERT_EQ(std::remove(external_init_file.c_str()), 0);
+  ASSERT_EQ(std::remove(PathToUTF8String(external_data_path.ToPathString()).c_str()), 0);
 }
 
 TEST(SaveWithExternalInitializers, Mnist) {

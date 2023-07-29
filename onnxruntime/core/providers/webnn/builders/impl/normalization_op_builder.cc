@@ -119,7 +119,7 @@ Status NormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder
   if (op_type == "LayerNormalization") {
     int64_t axis = helper.Get("axis", -1);
     axis = HandleNegativeAxis(axis, rank);
-    std::vector<int32_t> axes(rank - axis);
+    std::vector<int32_t> axes(rank - narrow<size_t>(axis));
     std::iota(axes.begin(), axes.end(), axis);
     options.set("axes", emscripten::val::array(axes));
     output = model_builder.GetBuilder().call<emscripten::val>("meanVarianceNormalization", input, options);
@@ -187,7 +187,7 @@ bool NormalizationOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initi
 }
 
 void CreateNormalizationOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {
-  if (op_registrations.op_builder_map.find(op_type) != op_registrations.op_builder_map.cend())
+  if (op_registrations.op_builder_map.count(op_type) > 0)
     return;
 
   constexpr static std::string_view op_types[] =

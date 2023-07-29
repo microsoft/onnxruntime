@@ -2022,46 +2022,91 @@ TEST(CApiTest, create_tensor_with_data_float16) {
   // Example with C++. However, what we are feeding underneath is really
   // a continuous buffer of uint16_t
   // Use 3rd party libraries such as Eigen to convert floats and doubles to float16 types.
-  Ort::Float16_t values[] = {15360, 16384, 16896, 17408, 17664};  // 1.f, 2.f, 3.f, 4.f, 5.f
-  constexpr size_t values_length = sizeof(values) / sizeof(values[0]);
+  constexpr float values[] = {1.f, 2.f, 3.f, 4.f, 5.f};
+  constexpr size_t values_length = std::size(values);
+  constexpr uint16_t expected_values[values_length] = {15360, 16384, 16896, 17408, 17664};
 
-  std::vector<int64_t> dims = {static_cast<int64_t>(values_length)};
+  std::vector<Ort::Float16_t> fp16_values;
+  fp16_values.reserve(values_length);
+  std::transform(std::begin(values), std::end(values), std::back_inserter(fp16_values),
+                 [](float fl) { return Ort::Float16_t(fl); });
+
+  for (size_t i = 0; i < values_length; ++i) {
+    ASSERT_EQ(expected_values[i], fp16_values[i].val);
+  }
+
+  constexpr int64_t dims = static_cast<int64_t>(values_length);
   Ort::MemoryInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
 
-  Ort::Value tensor = Ort::Value::CreateTensor<Ort::Float16_t>(info, values, values_length, dims.data(), dims.size());
+  Ort::Value tensor = Ort::Value::CreateTensor<Ort::Float16_t>(info, fp16_values.data(), values_length, &dims, 1u);
   const auto* new_pointer = tensor.GetTensorData<Ort::Float16_t>();
-  ASSERT_EQ(new_pointer, values);
+
+  ASSERT_EQ(new_pointer, fp16_values.data());
   auto type_info = tensor.GetTypeInfo();
   auto tensor_info = type_info.GetTensorTypeAndShapeInfo();
+  const auto element_count = tensor_info.GetElementCount();
+  ASSERT_EQ(values_length, element_count);
   ASSERT_NE(tensor_info, nullptr);
   ASSERT_EQ(1u, tensor_info.GetDimensionsCount());
   ASSERT_EQ(tensor_info.GetElementType(), ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16);
 
-  Ort::Float16_t value_at_1 = tensor.At<Ort::Float16_t>({1});
-  ASSERT_EQ(values[1], value_at_1);
+  const Ort::Float16_t& value_at_1 = tensor.At<Ort::Float16_t>({1});
+  ASSERT_EQ(expected_values[1], value_at_1.val);
+
+  std::vector<float> output_values;
+  output_values.reserve(values_length);
+  const auto data_span = gsl::make_span(tensor.GetTensorData<Ort::Float16_t>(), element_count);
+  std::transform(data_span.begin(), data_span.end(), std::back_inserter(output_values),
+                 [](const Ort::Float16_t& fp16) { return static_cast<float>(fp16); });
+
+  for (size_t i = 0; i < values_length; ++i) {
+    ASSERT_NEAR(values[i], output_values[i], 1e-3);
+  }
 }
 
 TEST(CApiTest, create_tensor_with_data_bfloat16) {
   // Example with C++. However, what we are feeding underneath is really
   // a continuous buffer of uint16_t
   // Conversion from float to bfloat16 is simple. Strip off half of the bytes from float.
-  Ort::BFloat16_t values[] = {16256, 16384, 16448, 16512, 16544};  // 1.f, 2.f, 3.f, 4.f, 5.f
-  constexpr size_t values_length = sizeof(values) / sizeof(values[0]);
-  std::vector<int64_t> dims = {static_cast<int64_t>(values_length)};
+  constexpr float values[] = {1.f, 2.f, 3.f, 4.f, 5.f};
+  constexpr size_t values_length = std::size(values);
+  constexpr uint16_t expected_values[] = {16256, 16384, 16448, 16512, 16544};  // 1.f, 2.f, 3.f, 4.f, 5.f
+
+  constexpr int64_t dims = static_cast<int64_t>(values_length);
+
+  std::vector<Ort::BFloat16_t> b16_values;
+  b16_values.reserve(values_length);
+  std::transform(std::begin(values), std::end(values), std::back_inserter(b16_values),
+                 [](float fl) { return Ort::BFloat16_t(fl); });
+
+  for (size_t i = 0; i < values_length; ++i) {
+    ASSERT_EQ(expected_values[i], b16_values[i].val);
+  }
 
   Ort::MemoryInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
 
-  Ort::Value tensor = Ort::Value::CreateTensor<Ort::BFloat16_t>(info, values, values_length, dims.data(), dims.size());
+  Ort::Value tensor = Ort::Value::CreateTensor<Ort::BFloat16_t>(info, b16_values.data(), values_length, &dims, 1u);
   const auto* new_pointer = tensor.GetTensorData<Ort::BFloat16_t>();
-  ASSERT_EQ(new_pointer, values);
+  ASSERT_EQ(new_pointer, b16_values.data());
   auto type_info = tensor.GetTypeInfo();
-  auto tensor_info = type_info.GetTensorTypeAndShapeInfo();
+  const auto tensor_info = type_info.GetTensorTypeAndShapeInfo();
+  const auto element_count = tensor_info.GetElementCount();
   ASSERT_NE(tensor_info, nullptr);
   ASSERT_EQ(1u, tensor_info.GetDimensionsCount());
   ASSERT_EQ(tensor_info.GetElementType(), ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16);
 
-  Ort::BFloat16_t value_at_1 = tensor.At<Ort::BFloat16_t>({1});
-  ASSERT_EQ(values[1], value_at_1);
+  const Ort::BFloat16_t& value_at_1 = tensor.At<Ort::BFloat16_t>({1});
+  ASSERT_EQ(expected_values[1], value_at_1.val);
+
+  std::vector<float> output_values;
+  output_values.reserve(values_length);
+  const auto data_span = gsl::make_span(tensor.GetTensorData<Ort::BFloat16_t>(), element_count);
+  std::transform(data_span.begin(), data_span.end(), std::back_inserter(output_values),
+                 [](const Ort::BFloat16_t& b16) { return static_cast<float>(b16); });
+
+  for (size_t i = 0; i < values_length; ++i) {
+    ASSERT_NEAR(values[i], output_values[i], 1e-3);
+  }
 }
 
 #if !defined(DISABLE_FLOAT8_TYPES)
@@ -2336,7 +2381,6 @@ TEST(CApiTest, get_version_string_cpp) {
 TEST(CApiTest, get_build_info_string) {
   auto build_info_string = Ort::GetBuildInfoString();
   ASSERT_FALSE(build_info_string.empty());
-  ASSERT_EQ(build_info_string, std::string(ORT_BUILD_INFO));
 }
 
 TEST(CApiTest, TestSharedAllocators) {
@@ -3223,8 +3267,8 @@ TEST(MultiKernelSingleSchemaTest, valid) {
       Ort::Value::CreateTensor<float>(memory_info, x_value, 10, x_dim, 1),
   };
 
-  Ort::RunOptions run_optoins;
-  auto output_tensors = session.Run(run_optoins, input_names, input_tensors, 1, output_names, 2);
+  Ort::RunOptions run_options;
+  auto output_tensors = session.Run(run_options, input_names, input_tensors, 1, output_names, 2);
   ASSERT_TRUE(*output_tensors[1].GetTensorData<int32_t>() == 72);
 }
 
@@ -3302,3 +3346,80 @@ TEST(MultiKernelSingleSchemaTest, DuplicateKernel) {
 }
 
 #endif
+
+static std::thread::id caller_tid = std::this_thread::get_id();
+static std::atomic_bool atomic_wait{false};
+
+void CallbackSucceed(void* user_data, OrtValue** outputs, size_t num_outputs, OrtStatusPtr status_ptr) {
+  auto callee_tid = std::this_thread::get_id();
+  EXPECT_NE(*(reinterpret_cast<std::thread::id*>(user_data)), callee_tid);
+  Ort::Status status(status_ptr);
+  EXPECT_TRUE(status.IsOK());
+  EXPECT_EQ(num_outputs, 1UL);
+  Ort::Value output_value(outputs[0]);
+  EXPECT_EQ(output_value.At<float>({1, 0}), 9.f);
+  output_value.release();
+  atomic_wait.store(true);
+}
+
+TEST(CApiTest, RunAsync) {
+  Ort::SessionOptions session_options;
+  session_options.SetIntraOpNumThreads(2);
+  Ort::Session session(*ort_env, MODEL_URI, session_options);
+
+  const char* input_names[] = {"X"};
+  float x_value[] = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+  int64_t x_dim[] = {3, 2};
+  auto memory_info = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
+
+  Ort::Value input_tensors[1] = {
+      Ort::Value::CreateTensor<float>(memory_info, x_value, 6, x_dim, 2),
+  };
+
+  const char* output_names[] = {"Y"};
+  Ort::RunOptions run_options;
+  Ort::Value output_values[1] = {Ort::Value{nullptr}};
+
+  EXPECT_NO_THROW(session.RunAsync(run_options,
+                                   input_names,
+                                   input_tensors,
+                                   1,
+                                   output_names,
+                                   output_values,
+                                   1,
+                                   CallbackSucceed,
+                                   &caller_tid));
+
+  std::chrono::duration<double, std::milli> dur{100};
+  // timeout in about 10 secs
+  for (int i = 0; i < 100 && !atomic_wait.load(); ++i) {
+    std::this_thread::sleep_for(dur);
+  }
+
+  EXPECT_EQ(atomic_wait.load(), true);
+}
+
+void CallbackFail(void*, OrtValue**, size_t, OrtStatusPtr) {
+  EXPECT_TRUE(false);  // the callback is not supposed to be invoked
+}
+
+TEST(CApiTest, RunAsyncFail) {
+  Ort::SessionOptions session_options;
+  session_options.SetIntraOpNumThreads(1);  // This will cause RunAsync fail
+  Ort::Session session(*ort_env, MODEL_URI, session_options);
+
+  const char* input_names[] = {"X"};
+  float x_value[] = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+  int64_t x_dim[] = {3, 2};
+
+  auto memory_info = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
+
+  Ort::Value input_tensors[1] = {
+      Ort::Value::CreateTensor<float>(memory_info, x_value, 6, x_dim, 2),
+  };
+  Ort::Value output_values[1] = {Ort::Value{nullptr}};
+  const char* output_names[] = {"Y"};
+
+  Ort::RunOptions run_options;
+  EXPECT_THROW(session.RunAsync(run_options, input_names, input_tensors, 1, output_names, output_values, 1, CallbackFail, nullptr), std::exception);
+}

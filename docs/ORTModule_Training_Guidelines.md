@@ -183,6 +183,16 @@ data sparsity based performance optimizations.
 	export ORTMODULE_ENABLE_EMBEDDING_SPARSE_OPTIMIZER=0 # Disable
 	```
 
+#### ORTMODULE_CACHE_DIR
+
+- **Feature Area**: *ORTMODULE/RuntimeOptions*
+- **Description**: By default, this is disabled. This env vars can be used to cache the exported model for future runs. This optimization is intended to reduce experimentation time by re-using the PyTorch->ONNX exported model architecture when available.
+
+	```bash
+	export ORTMODULE_CACHE_DIR="/path/to/cache_dir" # Enable
+	unset ORTMODULE_CACHE_DIR # Disable
+	```
+
 ### 2.2 Memory Optimization
 
 Q: *Want to run a bigger batch size?*
@@ -268,7 +278,60 @@ Check [FP16_Optimizer implementation](../orttraining/orttraining/python/training
 
 ```
 
-## 6. One More Thing - `LoadBalancingDistributedBatchSampler`
+
+## 6. Use OpenAI Triton to Compute ONNX Sub-graph
+
+`ORTModule` provides a way to switch to OpenAI Triton for executing some Ops to further accelerate training.
+
+### 6.1 Environment Variables
+
+#### ORTMODULE_USE_TRITON
+
+- **Feature Area**: *ORTMODULE/TritonOp*
+- **Description**: By default, this is disabled. This env var can be used for enabling Triton optimization.
+
+    ```bash
+    export ORTMODULE_USE_TRITON=1
+    ```
+
+#### ORTMODULE_ENABLE_TUNING
+
+- **Feature Area**: *ORTMODULE/TritonOp*
+- **Description**: By default, this is disabled. This env var can be used for enabling online Op tuning for those Ops that have multiple implementations on target EP.
+
+    ```bash
+    export ORTMODULE_ENABLE_TUNING=1
+    ```
+
+#### ORTMODULE_MAX_TUNING_DURATION_MS
+
+- **Feature Area**: *ORTMODULE/TritonOp*
+- **Description**: When `ORTMODULE_ENABLE_TUNING` is enabled, this env var can be used to set max tuning duration in ms to avoid long tuning time.
+
+    ```bash
+    export ORTMODULE_MAX_TUNING_DURATION_MS=9999
+    ```
+
+#### ORTMODULE_TUNING_RESULTS_PATH
+
+- **Feature Area**: *ORTMODULE/TritonOp*
+- **Description**: When `ORTMODULE_ENABLE_TUNING` is enabled, this env var can be used to specify where the online Op tuning results be saved for later use. By default the results will not be saved. When `ORTMODULE_ENABLE_TUNING` is NOT enabled, this env var can be used to specify where Op tuning results can be fetched as offline tuning results.
+
+    ```bash
+    export ORTMODULE_TUNING_RESULTS_PATH=/tmp/tuning_results
+    ```
+
+#### ORTMODULE_TRITON_DEBUG
+
+- **Feature Area**: *ORTMODULE/TritonOp*
+- **Description**: By default, this is disabled. This env var can be used for enabling Triton debug mode. All original and processed sub-graphs and corresponding generated Triton codes will be saved into a triton_debug folder under working directory.
+
+    ```bash
+    export ORTMODULE_TRITON_DEBUG=1
+    ```
+
+
+## 7. One More Thing - `LoadBalancingDistributedBatchSampler`
 
 `LoadBalancingDistributedBatchSampler` balances the data load across workers based on the sample's complexity.
 This is useful in scenarios like speech and NLP, where each batch has variable length and distributed training suffers from **straggler problem**. In such scenarios, the complexity function could be defined to return the length of the input sample sequence. The usage is similar to `torch.utils.data.DistributedSampler`, where each process loads a subset of the original dataset that is exclusive to it.

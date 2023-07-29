@@ -189,7 +189,7 @@ void UnpackTensor(const onnx::TensorProto& tensor, const void* raw_data, size_t 
       ORT_CXX_API_THROW(
           "data overflow", OrtErrorCode::ORT_FAIL);
     }
-    p_data[i] = MLFloat16(static_cast<uint16_t>(v));
+    p_data[i] = MLFloat16::FromBits(static_cast<uint16_t>(v));
   }
 
   return;

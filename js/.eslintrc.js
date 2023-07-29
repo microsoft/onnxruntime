@@ -5,7 +5,7 @@
 
 module.exports = {
   root: true,
-  ignorePatterns: ['**/*.js', 'node_modules/', 'types/', 'dist/'],
+  ignorePatterns: ['**/*.js', 'ort-schema/', 'common/test/type-tests/', 'node_modules/', 'types/', 'dist/'],
   env: { 'es6': true },
   parser: '@typescript-eslint/parser',
   parserOptions: { 'project': 'tsconfig.json', 'sourceType': 'module' },
@@ -120,6 +120,12 @@ module.exports = {
       'jsdoc/check-alignment': 'error',
       'jsdoc/check-indentation': 'error',
       'jsdoc/newline-after-description': 'error',
+    }
+  }, {
+    files: ['common/test/**/*.ts'],
+    rules: {
+      '@typescript-eslint/naming-convention': 'off',
+      'import/no-extraneous-dependencies': 'off',
     }
   }, {
     files: ['node/script/**/*.ts', 'node/test/**/*.ts', 'web/script/**/*.ts', 'web/test/**/*.ts'], rules: {

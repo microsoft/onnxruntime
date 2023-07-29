@@ -585,7 +585,7 @@ bool Node::TryGetFunctionProto(ONNX_NAMESPACE::FunctionProto& onnx_function_prot
     // Check if this node has a schema defined function proto.
     if (op_->HasContextDependentFunction()) {
       NodeProto node_proto;
-      ToProto(node_proto);
+      ToProto(node_proto, true);
       std::vector<TypeProto> input_types;
       for (size_t i = 0, n = InputDefs().size(); i < n; i++) {
         auto p_node_arg = InputDefs().at(i);
@@ -3381,11 +3381,20 @@ ONNX_NAMESPACE::GraphProto Graph::ToGraphProto() const {
 }
 
 ONNX_NAMESPACE::GraphProto Graph::ToGraphProtoWithExternalInitializers(const std::string& external_file_name,
+                                                                       const PathString& destination_file_path,
                                                                        size_t initializer_size_threshold) const {
   GraphProto result;
   ToGraphProtoInternal(result);
 
-  std::ofstream external_stream(external_file_name, std::ofstream::out | std::ofstream::binary);
+  Path parent_path = Path::Parse(destination_file_path).ParentPath();
+  Path external_file_path = Path::Parse(ToPathString(external_file_name));
+  // Check if parent_path is relative path (length = 0)
+  if (parent_path.ToPathString().length()) {
+    // Save external data file in same directory as model
+    external_file_path = parent_path.Append(external_file_path);
+  }
+
+  std::ofstream external_stream(external_file_path.ToPathString(), std::ofstream::out | std::ofstream::binary);
   ORT_ENFORCE(external_stream.is_open());
   int64_t external_offset = 0;
 
@@ -3869,13 +3878,17 @@ Node& Graph::CreateFusedSubGraphNode(const IndexedSubGraph& sub_graph, const std
 
   int cur_idx = 0;
   for (const auto& arg_name : func_meta_def->inputs) {
-    input_args.push_back(GetNodeArg(arg_name));
+    // In some cases, it needs to get the NodeArgs from ancestors.
+    // For example, if the subgraph we are going to build is the subgraph of the original graph
+    // and the NodeArgs of the outer scope values are defined in the top-level original graph.
+    input_args.push_back(GetNodeArgIncludingParentGraphs(arg_name));
     input_indexes[arg_name] = cur_idx++;
   }
 
   cur_idx = 0;
   for (const auto& arg_name : func_meta_def->outputs) {
-    output_args.push_back(GetNodeArg(arg_name));
+    // In some cases, it needs to get the NodeArgs from ancestors.
+    output_args.push_back(GetNodeArgIncludingParentGraphs(arg_name));
     output_indexes[arg_name] = cur_idx++;
   }
 

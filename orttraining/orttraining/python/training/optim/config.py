@@ -55,7 +55,7 @@ class _OptimizerConfig:
                 "Each dict inside 'params' must contain a {'params' : [model parameter names]} entry"
                 " and additional entries for custom hyper parameter values"
             )
-            for k, _ in group.items():
+            for k in group:
                 if k != "params":
                     assert (
                         k in defaults or k.replace("_coef", "") in defaults

@@ -53,7 +53,8 @@ ORT_API_STATUS_IMPL(OrtTrainingApis::CreateTrainingSession, _In_ const OrtEnv* e
             eval_model_path ? std::optional<std::string>(onnxruntime::ToUTF8String(eval_model_path))
                             : std::nullopt,
             optimizer_model_path ? std::optional<std::string>(onnxruntime::ToUTF8String(optimizer_model_path))
-                                 : std::nullopt));
+                                 : std::nullopt),
+        options == nullptr ? gsl::span<OrtCustomOpDomain* const>() : options->custom_op_domains_);
 
     *out = reinterpret_cast<OrtTrainingSession*>(train_sess.release());
   }

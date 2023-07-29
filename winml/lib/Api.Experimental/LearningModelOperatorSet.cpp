@@ -6,14 +6,14 @@
 
 namespace WINML_EXPERIMENTALP {
 
-LearningModelOperatorSet::LearningModelOperatorSet(winml_experimental::LearningModelBuilder builder) :
-    builder_(builder),
-    operators_(winrt::single_threaded_vector<winml_experimental::LearningModelOperator>())
-{
+LearningModelOperatorSet::LearningModelOperatorSet(winml_experimental::LearningModelBuilder builder)
+  : builder_(builder),
+    operators_(winrt::single_threaded_vector<winml_experimental::LearningModelOperator>()) {
 }
 
-winml_experimental::LearningModelBuilder LearningModelOperatorSet::Add(winml_experimental::LearningModelOperator const& op)
-{
+winml_experimental::LearningModelBuilder LearningModelOperatorSet::Add(
+  winml_experimental::LearningModelOperator const& op
+) {
   auto operator_private = op.as<winml_experimentalp::LearningModelOperator>();
   auto constant_input_map = operator_private->ConstantInputMapping();
   auto input_map = operator_private->InputMapping();
@@ -52,11 +52,11 @@ winml_experimental::LearningModelBuilder LearningModelOperatorSet::Add(winml_exp
 
   // Create the Binding Context to pass to the feature value
   _winml::BindingContext context{
-      _winml::BindingType::kInput,
-      builder_.as<winml_experimentalp::LearningModelBuilder>()->InertSession(),
-      nullptr,
-      nullptr,
-      {}  // SubresourceId is set by callee
+    _winml::BindingType::kInput,
+    builder_.as<winml_experimentalp::LearningModelBuilder>()->InertSession(),
+    nullptr,
+    nullptr,
+    {}  // SubresourceId is set by callee
   };
 
   std::vector<std::string> attribute_names(attribute_map.Size());
@@ -76,12 +76,19 @@ winml_experimental::LearningModelBuilder LearningModelOperatorSet::Add(winml_exp
 
   auto builder = builder_.as<winml_experimentalp::LearningModelBuilder>();
   WINML_THROW_IF_FAILED(builder->UseModel()->AddOperator(
-      operator_type.c_str(),
-      operator_name.c_str(),
-      operator_domain.c_str(),
-      raw_operator_input_names.data(), raw_actual_input_names.data(), input_map.Size(),
-      raw_operator_output_names.data(), raw_actual_output_names.data(), output_map.Size(),
-      raw_attribute_names.data(), raw_attribute_values.data(), attribute_map.Size()));
+    operator_type.c_str(),
+    operator_name.c_str(),
+    operator_domain.c_str(),
+    raw_operator_input_names.data(),
+    raw_actual_input_names.data(),
+    input_map.Size(),
+    raw_operator_output_names.data(),
+    raw_actual_output_names.data(),
+    output_map.Size(),
+    raw_attribute_names.data(),
+    raw_attribute_values.data(),
+    attribute_map.Size()
+  ));
 
   // Add constants
   for (auto kvp : constant_input_map) {
@@ -91,4 +98,4 @@ winml_experimental::LearningModelBuilder LearningModelOperatorSet::Add(winml_exp
   return builder_;
 }
 
-}
+}// namespace WINML_EXPERIMENTALP
