@@ -42,7 +42,7 @@ class DoubleQDQPairsRemover : public GraphTransformer {
       const Node& node2,
       float& new_scale,
       T& new_zero_point,
-      bool& skip_reset = false);
+      bool& skip_reset);
 
   template <typename T>
   static void ApplyNewInputValue(

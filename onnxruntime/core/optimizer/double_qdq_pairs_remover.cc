@@ -119,12 +119,14 @@ bool DoubleQDQPairsRemover::IsNodeRemovable(
 }
 
 template <typename T>
-bool DoubleQDQPairsRemover::FindNewZeroPointAndScale(const Graph& graph, const Node& node1, const Node& node2, float& new_scale, T& new_zero_point, bool& skip_reset) {
+bool DoubleQDQPairsRemover::FindNewZeroPointAndScale(const Graph& graph, const Node& node1, const Node& node2,
+                                                     float& new_scale, T& new_zero_point, bool& skip_reset) {
   // scale & zero point share same initializer, no need to reset the value
   const std::string& node1_scale_name = node1.InputDefs()[InputIndex::SCALE_ID]->Name();
   const std::string& node2_scale_name = node2.InputDefs()[InputIndex::SCALE_ID]->Name();
   const std::string& node1_zp_name = node1.InputDefs()[InputIndex::ZERO_POINT_ID]->Name();
   const std::string& node2_zp_name = node2.InputDefs()[InputIndex::ZERO_POINT_ID]->Name();
+  skip_reset = false;
   if (node1_scale_name == node2_scale_name && node1_zp_name == node2_zp_name) {
     skip_reset = true;
     return true;
