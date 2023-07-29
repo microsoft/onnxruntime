@@ -448,15 +448,15 @@ TEST_F(QnnHTPBackendTests, BinaryOp_Mul4D) {
 }
 // Test QDQ And
 TEST_F(QnnHTPBackendTests, BinaryOp_And4D) {
-  RunBinaryOpTest<bool>("And", TestInputDef<bool>({1, 2, 2, 2}, false, {false, false, true, true}),
-                        TestInputDef<bool>({1, 2, 2, 2}, false, {false, true, false, true}),
+  RunBinaryOpTest<bool>("And", TestInputDef<bool>({1, 4}, false, {false, false, true, true}),
+                        TestInputDef<bool>({1, 4}, false, {false, true, false, true}),
                         17, ExpectedEPNodeAssignment::All);
 }
 
 // Test that Or is not yet supported on HTP backend.
 TEST_F(QnnHTPBackendTests, BinaryOp_HTP_Or_Unsupported) {
-  RunBinaryOpTest<bool>("Or", TestInputDef<bool>({1, 2, 2, 2}, false, {false, false, true, true}),
-                        TestInputDef<bool>({1, 2, 2, 2}, false, {false, true, false, true}),
+  RunBinaryOpTest<bool>("Or", TestInputDef<bool>({1, 4}, false, {false, false, true, true}),
+                        TestInputDef<bool>({1, 4}, false, {false, true, false, true}),
                         17, ExpectedEPNodeAssignment::None);
 }
 
