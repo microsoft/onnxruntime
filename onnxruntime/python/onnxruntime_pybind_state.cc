@@ -1755,52 +1755,52 @@ including arg name, arg type (contains both type and shape).)pbdoc")
              return rfetch;
            })
       .def("run_async",
-        [](PyInferenceSession* sess,
-           std::vector<std::string> output_names,
-           std::map<std::string, py::object> pyfeeds,
-           PyCallback callback, py::object user_data = {},
-           RunOptions* run_options = nullptr)
-            -> void {
-          std::unique_ptr<AsyncResource> async_resource = std::make_unique<AsyncResource>();
-          async_resource->callback = callback;
-          async_resource->user_data = user_data;
-          // prepare feeds
-          async_resource->ReserveFeeds(pyfeeds.size());
-          for (auto feed : pyfeeds) {
-            if (!feed.second.is(py::none())) {
-              OrtValue ml_value;
-              auto px = sess->GetSessionHandle()->GetModelInputs();
-              if (!px.first.IsOK() || !px.second) {
-                throw std::runtime_error("Either failed to get model inputs from the session object or the input def list was null");
-              }
-              CreateGenericMLValue(px.second, GetAllocator(), feed.first, feed.second, &ml_value);
-              ThrowIfPyErrOccured();
-              async_resource->feeds.push_back(ml_value);
-              async_resource->feeds_raw.push_back(&async_resource->feeds.back());
-              async_resource->feed_names.push_back(feed.first);
-              async_resource->feed_names_raw.push_back(async_resource->feed_names.back().c_str());
-            }
-          }
-          // prepare fetches
-          async_resource->ReserveFetches(output_names.size());
-          for (auto& output_name : output_names) {
-            async_resource->fetch_names.push_back(output_name);
-            async_resource->fetch_names_raw.push_back(async_resource->fetch_names.back().c_str());
-            async_resource->fetches_raw.push_back({});
-          }
-          const RunOptions* run_async_option = run_options ? run_options : &async_resource->default_run_option;
-          common::Status status = sess->GetSessionHandle()->RunAsync(run_async_option,
-                                                                     gsl::span(async_resource->feed_names_raw.data(), async_resource->feed_names_raw.size()),
-                                                                     gsl::span(async_resource->feeds_raw.data(), async_resource->feeds_raw.size()),
-                                                                     gsl::span(async_resource->fetch_names_raw.data(), async_resource->fetch_names_raw.size()),
-                                                                     gsl::span(async_resource->fetches_raw.data(), async_resource->fetches_raw.size()),
-                                                                     AsyncCallback,
-                                                                     async_resource.get());
-          if (status.IsOK()) {
-            async_resource.release();
-          }
-          OrtPybindThrowIfError(status);
-        })
+           [](PyInferenceSession* sess,
+              std::vector<std::string> output_names,
+              std::map<std::string, py::object> pyfeeds,
+              PyCallback callback, py::object user_data = {},
+              RunOptions* run_options = nullptr)
+               -> void {
+             std::unique_ptr<AsyncResource> async_resource = std::make_unique<AsyncResource>();
+             async_resource->callback = callback;
+             async_resource->user_data = user_data;
+             // prepare feeds
+             async_resource->ReserveFeeds(pyfeeds.size());
+             for (auto feed : pyfeeds) {
+               if (!feed.second.is(py::none())) {
+                 OrtValue ml_value;
+                 auto px = sess->GetSessionHandle()->GetModelInputs();
+                 if (!px.first.IsOK() || !px.second) {
+                   throw std::runtime_error("Either failed to get model inputs from the session object or the input def list was null");
+                 }
+                 CreateGenericMLValue(px.second, GetAllocator(), feed.first, feed.second, &ml_value);
+                 ThrowIfPyErrOccured();
+                 async_resource->feeds.push_back(ml_value);
+                 async_resource->feeds_raw.push_back(&async_resource->feeds.back());
+                 async_resource->feed_names.push_back(feed.first);
+                 async_resource->feed_names_raw.push_back(async_resource->feed_names.back().c_str());
+               }
+             }
+             // prepare fetches
+             async_resource->ReserveFetches(output_names.size());
+             for (auto& output_name : output_names) {
+               async_resource->fetch_names.push_back(output_name);
+               async_resource->fetch_names_raw.push_back(async_resource->fetch_names.back().c_str());
+               async_resource->fetches_raw.push_back({});
+             }
+             const RunOptions* run_async_option = run_options ? run_options : &async_resource->default_run_option;
+             common::Status status = sess->GetSessionHandle()->RunAsync(run_async_option,
+                                                                        gsl::span(async_resource->feed_names_raw.data(), async_resource->feed_names_raw.size()),
+                                                                        gsl::span(async_resource->feeds_raw.data(), async_resource->feeds_raw.size()),
+                                                                        gsl::span(async_resource->fetch_names_raw.data(), async_resource->fetch_names_raw.size()),
+                                                                        gsl::span(async_resource->fetches_raw.data(), async_resource->fetches_raw.size()),
+                                                                        AsyncCallback,
+                                                                        async_resource.get());
+             if (status.IsOK()) {
+               async_resource.release();
+             }
+             OrtPybindThrowIfError(status);
+           })
       /// This method accepts a dictionary of feeds (name -> OrtValue) and the list of output_names
       /// and returns a list of python objects representing OrtValues. Each name may represent either
       /// a Tensor, SparseTensor or a TensorSequence.
