@@ -5,6 +5,7 @@
 
 #if !defined(ORT_MINIMAL_BUILD)
 #include <string>
+#include <cmath>
 #include <unordered_map>
 #include "core/framework/provider_options.h"
 

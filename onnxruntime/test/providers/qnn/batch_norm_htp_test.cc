@@ -19,59 +19,59 @@ namespace test {
 // Requires an input with rank >= 3
 static void ComputeChannelMeanAndVar(const std::vector<float>& input_data, const std::vector<int64_t>& input_shape,
                                      std::vector<float>& mean_vals, std::vector<float>& var_vals) {
-    const size_t input_rank = input_shape.size();
-    const size_t num_batches = input_shape[0];
-    const size_t num_channels = input_shape[1];
+  const size_t input_rank = input_shape.size();
+  const size_t num_batches = input_shape[0];
+  const size_t num_channels = input_shape[1];
 
-    size_t batch_stride = 1;
-    for (size_t i = 1; i < input_rank; i++) {
-      batch_stride *= input_shape[i];
-    }
-    const size_t channel_stride = batch_stride / num_channels;
+  size_t batch_stride = 1;
+  for (size_t i = 1; i < input_rank; i++) {
+    batch_stride *= input_shape[i];
+  }
+  const size_t channel_stride = batch_stride / num_channels;
 
-    assert(mean_vals.size() == num_channels);
-    assert(var_vals.size() == num_channels);
-    for (size_t i = 0; i < num_channels; i++) {
-      mean_vals[i] = 0.0f;
-      var_vals[i] = 0.0f;
-    }
+  assert(mean_vals.size() == num_channels);
+  assert(var_vals.size() == num_channels);
+  for (size_t i = 0; i < num_channels; i++) {
+    mean_vals[i] = 0.0f;
+    var_vals[i] = 0.0f;
+  }
 
-    // Compute running sum of elements within each channel. The running sum is stored in the mean_vals array directly.
-    for (size_t b = 0; b < num_batches; b++) {
-      const size_t batch_start = b * batch_stride;
+  // Compute running sum of elements within each channel. The running sum is stored in the mean_vals array directly.
+  for (size_t b = 0; b < num_batches; b++) {
+    const size_t batch_start = b * batch_stride;
 
-      for (size_t c = 0; c < num_channels; c++) {
-        const size_t chan_start = batch_start + (c * channel_stride);
+    for (size_t c = 0; c < num_channels; c++) {
+      const size_t chan_start = batch_start + (c * channel_stride);
 
-        for (size_t i = chan_start; i < chan_start + channel_stride; i++) {
-          mean_vals[c] += input_data[i];
-        }
+      for (size_t i = chan_start; i < chan_start + channel_stride; i++) {
+        mean_vals[c] += input_data[i];
       }
     }
+  }
 
-    // Divide sums by the number of elements in a channel to get the mean.
+  // Divide sums by the number of elements in a channel to get the mean.
+  for (size_t c = 0; c < num_channels; c++) {
+    mean_vals[c] /= static_cast<float>(num_batches * channel_stride);
+  }
+
+  // Compute running sum of deviations from mean within each channel. The running sum is stored in the var_vals array directly.
+  for (size_t b = 0; b < num_batches; b++) {
+    const size_t batch_start = b * batch_stride;
+
     for (size_t c = 0; c < num_channels; c++) {
-      mean_vals[c] /= static_cast<float>(num_batches * channel_stride);
-    }
+      const size_t chan_start = batch_start + (c * channel_stride);
 
-    // Compute running sum of deviations from mean within each channel. The running sum is stored in the var_vals array directly.
-    for (size_t b = 0; b < num_batches; b++) {
-      const size_t batch_start = b * batch_stride;
-
-      for (size_t c = 0; c < num_channels; c++) {
-        const size_t chan_start = batch_start + (c * channel_stride);
-
-        for (size_t i = chan_start; i < chan_start + channel_stride; i++) {
-          const float deviation = input_data[i] - mean_vals[c];
-          var_vals[c] += (deviation * deviation);
-        }
+      for (size_t i = chan_start; i < chan_start + channel_stride; i++) {
+        const float deviation = input_data[i] - mean_vals[c];
+        var_vals[c] += (deviation * deviation);
       }
     }
+  }
 
-    // Divide sums by the number of elements in a channel to get the variance.
-    for (size_t c = 0; c < num_channels; c++) {
-      var_vals[c] /= static_cast<float>(num_batches * channel_stride);
-    }
+  // Divide sums by the number of elements in a channel to get the variance.
+  for (size_t c = 0; c < num_channels; c++) {
+    var_vals[c] /= static_cast<float>(num_batches * channel_stride);
+  }
 }
 
 static GetTestModelFn BuildBatchNormTestCase(const TestInputDef<float>& input_def,
@@ -179,8 +179,8 @@ TEST_F(QnnHTPBackendTests, DISABLED_BatchNorm1D) {
   constexpr int64_t num_channels = 2;
 
   RunBatchNormQDQTest(TestInputDef<float>({1, num_channels, 3}, false, {-5.0f, -4.0f, -3.0f, 0.0f, 2.0f, 5.0f}),  // Input data
-                      TestInputDef<float>({num_channels}, true, {1.0f, 2.0f}),  // Scale initializer
-                      TestInputDef<float>({num_channels}, true, {1.1f, 2.1f}),  // Bias initializer
+                      TestInputDef<float>({num_channels}, true, {1.0f, 2.0f}),                                    // Scale initializer
+                      TestInputDef<float>({num_channels}, true, {1.1f, 2.1f}),                                    // Bias initializer
                       ExpectedEPNodeAssignment::All);
 }
 
@@ -190,13 +190,27 @@ TEST_F(QnnHTPBackendTests, DISABLED_BatchNorm1D) {
 TEST_F(QnnHTPBackendTests, DISABLED_BatchNorm2D) {
   constexpr int64_t num_channels = 2;
   std::vector<float> input_data = {
-      -8.0f, -6.0f, -4.0f, -2.0f, 0.0f, 1.1f, 3.3f, 8.0f,
-      -7.0f, -5.0f, -3.0f, -1.0f, 0.0f, 2.1f, 4.3f, 7.0f,
+      -8.0f,
+      -6.0f,
+      -4.0f,
+      -2.0f,
+      0.0f,
+      1.1f,
+      3.3f,
+      8.0f,
+      -7.0f,
+      -5.0f,
+      -3.0f,
+      -1.0f,
+      0.0f,
+      2.1f,
+      4.3f,
+      7.0f,
   };
 
   RunBatchNormQDQTest(TestInputDef<float>({2, num_channels, 2, 2}, false, input_data),  // Input data
-                      TestInputDef<float>({num_channels}, true, {1.0f, 2.0f}),  // Scale initializer
-                      TestInputDef<float>({num_channels}, true, {1.1f, 2.1f}),  // Bias initializer
+                      TestInputDef<float>({num_channels}, true, {1.0f, 2.0f}),          // Scale initializer
+                      TestInputDef<float>({num_channels}, true, {1.1f, 2.1f}),          // Bias initializer
                       ExpectedEPNodeAssignment::All);
 }
 
@@ -206,8 +220,8 @@ TEST_F(QnnHTPBackendTests, BatchNorm3D) {
   constexpr int64_t num_channels = 2;
   constexpr int64_t num_elems = 1 * num_channels * 3 * 4 * 5;
   RunBatchNormQDQTest(TestInputDef<float>({1, num_channels, 3, 4, 5}, false, std::vector<float>(num_elems)),  // Input data (all zeros)
-                      TestInputDef<float>({num_channels}, true, {1.0f, 2.0f}),  // Scale initializer
-                      TestInputDef<float>({num_channels}, true, {1.1f, 2.1f}),  // Bias initializer
+                      TestInputDef<float>({num_channels}, true, {1.0f, 2.0f}),                                // Scale initializer
+                      TestInputDef<float>({num_channels}, true, {1.1f, 2.1f}),                                // Bias initializer
                       ExpectedEPNodeAssignment::None);
 }
 
