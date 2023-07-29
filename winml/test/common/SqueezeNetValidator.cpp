@@ -190,13 +190,6 @@ void ModelValidator::SqueezeNet(
   LearningModelSession modelSession = nullptr;
   modelSession = LearningModelSession(model, LearningModelDevice(deviceKind));
 
-  // WinML model creation
-  LearningModel model = nullptr;
-  model = LearningModel::LoadFromFilePath(fullModelPath);
-
-  LearningModelSession modelSession = nullptr;
-  modelSession = LearningModelSession(model, LearningModelDevice(deviceKind));
-
   LearningModelBinding modelBinding(modelSession);
 
   if (bindAsImage) {
