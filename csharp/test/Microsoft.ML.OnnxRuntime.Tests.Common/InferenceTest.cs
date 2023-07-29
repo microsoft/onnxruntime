@@ -2044,6 +2044,15 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         {
             Float16[] modelInput = { new Float16(15360), new Float16(16384), new Float16(16896), new Float16(17408), new Float16(17664) };
             int[] inputShape = { 1, 5 };
+            
+            var inputs = new List<NamedOnnxValue>();
+            var tensorIn = new DenseTensor<Float16>(modelInput, inputShape);
+            inputs.Add(NamedOnnxValue.CreateFromTensor("input", tensorIn));
+
+            var outputs = new List<NamedOnnxValue>();
+            var tensorOut = new DenseTensor<Float16>(inputShape.AsSpan());
+            outputs.Add(NamedOnnxValue.CreateFromTensor("output", tensorOut));
+
             var model = TestDataLoader.LoadModelFromEmbeddedResource("test_types_FLOAT16.onnx");
             using (SessionOptions opt = new SessionOptions())
             {
@@ -2056,14 +2065,6 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 
                     try
                     {
-                        var inputs = new List<NamedOnnxValue>();
-                        var tensorIn = new DenseTensor<Float16>(modelInput, inputShape);
-                        inputs.Add(NamedOnnxValue.CreateFromTensor("input", tensorIn));
-
-                        var outputs = new List<NamedOnnxValue>();
-                        var tensorOut = new DenseTensor<Float16>(inputShape.AsSpan());
-                        outputs.Add(NamedOnnxValue.CreateFromTensor("output", tensorOut));
-
                         session.RunAsync(inputs, outputs, null, AsyncCallback, (IntPtr)evtHdl);
                         Assert.True(evt.WaitOne(10000));  // timeout in 10 sec
                     }
@@ -2085,7 +2086,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 
             using (SessionOptions opt = new SessionOptions())
             {
-                opt.IntraOpNumThreads = 1;  // this will make RunAsync fail
+                opt.IntraOpNumThreads = 1;  // this will make RunAsync throw
 
                 using (var session = new InferenceSession(model, opt))
                 {
@@ -2104,7 +2105,8 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 
                         session.RunAsync(inputs, outputs, null, AsyncCallback, (IntPtr)evtHdl);
                     }
-                    catch (OnnxRuntimeException ex) {
+                    catch (OnnxRuntimeException ex)
+                    {
                         err = ex.Message;
                     }
                     finally
