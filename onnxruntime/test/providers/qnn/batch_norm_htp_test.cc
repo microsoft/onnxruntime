@@ -189,24 +189,8 @@ TEST_F(QnnHTPBackendTests, DISABLED_BatchNorm1D) {
 // Use an input of rank 4.
 TEST_F(QnnHTPBackendTests, DISABLED_BatchNorm2D) {
   constexpr int64_t num_channels = 2;
-  std::vector<float> input_data = {
-      -8.0f,
-      -6.0f,
-      -4.0f,
-      -2.0f,
-      0.0f,
-      1.1f,
-      3.3f,
-      8.0f,
-      -7.0f,
-      -5.0f,
-      -3.0f,
-      -1.0f,
-      0.0f,
-      2.1f,
-      4.3f,
-      7.0f,
-  };
+  std::vector<float> input_data = {-8.0f, -6.0f, -4.0f, -2.0f, 0.0f, 1.1f, 3.3f, 8.0f,
+                                   -7.0f, -5.0f, -3.0f, -1.0f, 0.0f, 2.1f, 4.3f, 7.0f};
 
   RunBatchNormQDQTest(TestInputDef<float>({2, num_channels, 2, 2}, false, input_data),  // Input data
                       TestInputDef<float>({num_channels}, true, {1.0f, 2.0f}),          // Scale initializer

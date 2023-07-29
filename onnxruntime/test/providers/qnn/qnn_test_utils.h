@@ -286,10 +286,10 @@ inline void TestQDQModelAccuracy(const GetTestModelFn& f32_model_fn, const GetTe
           const float expected_val = cpu_f32_vals[j];  // "ground-truth"
           const float qnn_val = qnn_qdq_vals[j];
           const float cpu_val = cpu_qdq_vals[j];
-          const float cpu_err = std::fabsf(expected_val - cpu_val);
-          const float qnn_err = std::fabsf(expected_val - qnn_val);
-          const float qnn_cpu_qdq_err = std::fabsf(cpu_val - qnn_val);
-          const float cpu_qdq_quant_dist = std::ceilf(cpu_err / output_qparams[i].scale);
+          const float cpu_err = std::fabs(expected_val - cpu_val);
+          const float qnn_err = std::fabs(expected_val - qnn_val);
+          const float qnn_cpu_qdq_err = std::fabs(cpu_val - qnn_val);
+          const float cpu_qdq_quant_dist = std::ceil(cpu_err / output_qparams[i].scale);
 
           // The QDQ results from CPU EP and QNN EP are "some" quantized distance away from the ground-truth.
           // Are those quantized distances at most the same?
