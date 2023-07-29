@@ -147,12 +147,18 @@ common::Status CoreMLExecutionProvider::Compile(const std::vector<FusedNodeAndGr
         const auto& input_name = model_inputs[i];
         auto input_tensor = ctx.GetInput(i);
         auto tensor_info = input_tensor.GetTensorTypeAndShapeInfo();
+        auto shape = tensor_info.GetShape();
 
-        if (tensor_info.GetElementCount() == 0) {
-          ORT_NOT_IMPLEMENTED("Empty inputs are not supported yet.");
+        // Disallow inputs with dynamic shape which actually have zero elements.
+        // CoreML doesn't consistently handle this well (e.g., there may be runtime errors).
+        if (const auto* model_input_info = model->TryGetInputOutputInfo(input_name); model_input_info != nullptr) {
+          const auto& inferred_shape = model_input_info->shape;
+          ORT_RETURN_IF(!coreml::IsStaticShape(inferred_shape) && coreml::DoesShapeSpecifyZeroElements(shape),
+                        "Input (", input_name, ") has a dynamic shape (", coreml::Shape2String(inferred_shape),
+                        ") but the runtime shape (", coreml::Shape2String(shape),
+                        ") has zero elements. This is not supported by the CoreML EP.");
         }
 
-        auto shape = tensor_info.GetShape();
         // If we have an empty shape, this is a scalar input,
         // Since all the input output of CoreML EP is MultiArray, we will make the scalar input as a {1} MultiArray
         if (shape.empty())

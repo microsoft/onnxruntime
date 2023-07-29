@@ -30,18 +30,24 @@ using namespace onnxruntime;
 using namespace onnxruntime::coreml;
 
 namespace {
-Status GetStaticOutputShape(gsl::span<const int64_t> inferred_shape,
-                            gsl::span<const int64_t> coreml_static_shape,
-                            const logging::Logger& logger,
-                            InlinedVector<int64_t>& result) {
-  ORT_RETURN_IF_NOT(std::none_of(coreml_static_shape.begin(), coreml_static_shape.end(),
-                                 [](int64_t dim) { return dim < 0; }),
-                    "CoreML static output shape (", Shape2String(coreml_static_shape),
-                    ") has a negative dimension value.");
+/**
+ * Computes the static output shape used to allocate the output tensor.
+ * `inferred_shape` is the inferred shape known at model compile time. It may contain dynamic dimensions (-1).
+ * `coreml_static_shape` is the static output shape of the CoreML MLMultiArray output. It must NOT contain dynamic
+ * dimensions.
+ */
+InlinedVector<int64_t> GetStaticOutputShape(gsl::span<const int64_t> inferred_shape,
+                                            gsl::span<const int64_t> coreml_static_shape,
+                                            const logging::Logger& logger) {
+  ORT_ENFORCE(IsStaticShape(coreml_static_shape),
+              "CoreML output shape (", Shape2String(coreml_static_shape), ") is not static.");
 
-  ORT_RETURN_IF_NOT(inferred_shape.size() <= coreml_static_shape.size(),
-                    "CoreML static output shape (", Shape2String(coreml_static_shape),
-                    ") has fewer elements than the inferred shape (", Shape2String(inferred_shape), ").");
+  // Special CoreML behavior notes:
+  // - Sometimes the CoreML output shape has extra leading ones.
+
+  ORT_ENFORCE(inferred_shape.size() <= coreml_static_shape.size(),
+              "CoreML static output shape (", Shape2String(coreml_static_shape),
+              ") has fewer elements than the inferred shape (", Shape2String(inferred_shape), ").");
 
   // if coreml_static_shape has more elements, we expect them to be leading ones
   const size_t num_leading_dimensions = coreml_static_shape.size() - inferred_shape.size();
@@ -51,27 +57,32 @@ Status GetStaticOutputShape(gsl::span<const int64_t> inferred_shape,
     const bool has_only_leading_ones =
         std::all_of(coreml_static_shape.begin(), coreml_static_shape_common_begin,
                     [](int64_t dim) { return dim == 1; });
-    ORT_RETURN_IF_NOT(has_only_leading_ones, "CoreML static output shape (", Shape2String(coreml_static_shape),
-                      ") has leading dimensions with value other than 1.");
+    ORT_ENFORCE(has_only_leading_ones, "CoreML static output shape (", Shape2String(coreml_static_shape),
+                ") has leading dimensions with value other than 1.");
   }
 
-  // check that remaining dimensions are compatible
-  const bool is_compatible =
-      std::equal(inferred_shape.begin(), inferred_shape.end(),
+  InlinedVector<int64_t> static_shape{};
+  static_shape.reserve(inferred_shape.size());
+  std::transform(inferred_shape.begin(), inferred_shape.end(),
                  coreml_static_shape_common_begin,
-                 [](int64_t inferred_dim, int64_t coreml_static_dim) {
-                   return inferred_dim == -1 || inferred_dim == coreml_static_dim;
+                 std::back_inserter(static_shape),
+                 [&](int64_t inferred_dim, int64_t coreml_static_dim) {
+                   ORT_ENFORCE(inferred_dim == -1 || inferred_dim == coreml_static_dim,
+                               "CoreML static output shape (", Shape2String(coreml_static_shape),
+                               ") and inferred shape (", Shape2String(inferred_shape),
+                               ") have an inconsistent static dimensions (", coreml_static_dim, " vs. ",
+                               inferred_dim, ").");
+
+                   return inferred_dim != -1 ? inferred_dim : coreml_static_dim;
                  });
 
-  ORT_RETURN_IF_NOT(is_compatible, "CoreML static output shape (", Shape2String(coreml_static_shape),
-                    ") is not compatible with the inferred shape (", Shape2String(inferred_shape), ").");
-
-  result = InlinedVector<int64_t>(coreml_static_shape_common_begin, coreml_static_shape.end());
   // TODO change to VERBOSE log level
+  // Ideally, the CoreML static shape would match the inferred shape exactly, apart from the former providing values
+  // for -1's in the latter. For now, this is not the case so it is probably worth logging them.
   LOGS(logger, WARNING) << "CoreML static output shape: " << Shape2String(coreml_static_shape)
                         << ", inferred shape: " << Shape2String(inferred_shape)
-                        << ", resulting static output shape: " << Shape2String(result);
-  return Status::OK();
+                        << ", resulting static output shape: " << Shape2String(static_shape);
+  return static_shape;
 }
 }  // namespace
 
@@ -288,29 +299,17 @@ NS_ASSUME_NONNULL_BEGIN
                              [[error localizedDescription] cStringUsingEncoding:NSUTF8StringEncoding]);
     }
 
-    for (const auto& [name, tensor_info] : outputs) {
-      NSString* output_name = [NSString stringWithCString:name.c_str()
-                                                 encoding:[NSString defaultCStringEncoding]];
-      NSAssert(output_name != nil, @"output_name must not be nil");
-
+    for (const auto& [output_name, output_tensor_info] : outputs) {
       MLFeatureValue* output_value =
-          [output_feature featureValueForName:output_name];
+          [output_feature featureValueForName:[NSString stringWithUTF8String:output_name.c_str()]];
 
       if (output_value == nil) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "output_feature has no value for ",
-                               [output_name cStringUsingEncoding:NSUTF8StringEncoding]);
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "output_feature has no value for ", output_name);
       }
 
       auto* data = [output_value multiArrayValue];
 
-      const void* model_output_data = data.dataPointer;
-
-      if (model_output_data == nullptr) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "model_output_data has no data for ",
-                               [output_name cStringUsingEncoding:NSUTF8StringEncoding]);
-      }
-
-      const auto coreml_static_output_shape = [&]() -> onnxruntime::InlinedVector<int64_t> {
+      const auto coreml_static_output_shape = [&]() {
         InlinedVector<int64_t> result;
         result.reserve(data.shape.count);
         for (NSNumber* dim in data.shape) {
@@ -320,42 +319,49 @@ NS_ASSUME_NONNULL_BEGIN
         return result;
       }();
 
-      InlinedVector<int64_t> static_output_shape;
-      ORT_RETURN_IF_ERROR(GetStaticOutputShape(tensor_info.shape, coreml_static_output_shape, *logger_,
-                                               static_output_shape));
+      const auto static_output_shape = GetStaticOutputShape(output_tensor_info.shape, coreml_static_output_shape,
+                                                            *logger_);
 
-      void* output_buffer = get_output_tensor_mutable_raw_data_fn(name, tensor_info.data_type, static_output_shape);
+      void* output_buffer = get_output_tensor_mutable_raw_data_fn(output_name, output_tensor_info.data_type,
+                                                                  static_output_shape);
 
-      const size_t num_elements = data.count;
-      const auto onnx_data_type = tensor_info.data_type;
-      switch (onnx_data_type) {
-        case ONNX_NAMESPACE::TensorProto_DataType_FLOAT: {
-          const auto output_data_byte_size = num_elements * sizeof(float);
-          memcpy(output_buffer, model_output_data, output_data_byte_size);
-          break;
+      if (const size_t num_elements = data.count; num_elements > 0) {
+        const void* model_output_data = data.dataPointer;
+
+        if (model_output_data == nullptr) {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "model_output_data has no data for ", output_name);
         }
-        case ONNX_NAMESPACE::TensorProto_DataType_INT32: {
-          const auto output_data_byte_size = num_elements * sizeof(int32_t);
-          memcpy(output_buffer, model_output_data, output_data_byte_size);
-          break;
-        }
-        // For this case, since Coreml Spec only uses int32 for model output while onnx provides
-        // int64 for model output data type. We are doing a type casting (int32 -> int64) here
-        // when copying the model to ORT
-        case ONNX_NAMESPACE::TensorProto_DataType_INT64: {
-          ORT_RETURN_IF_NOT(data.dataType == MLMultiArrayDataTypeInt32,
-                            "CoreML output data type is not MLMultiArrayDataTypeInt32");
 
-          const int32_t* model_output_data_i32 = static_cast<const int32_t*>(model_output_data);
-          int64_t* output_tensor_buffer_i64 = static_cast<int64_t*>(output_buffer);
-          for (size_t i = 0; i < num_elements; i++) {
-            output_tensor_buffer_i64[i] = model_output_data_i32[i];
+        const auto onnx_data_type = output_tensor_info.data_type;
+        switch (onnx_data_type) {
+          case ONNX_NAMESPACE::TensorProto_DataType_FLOAT: {
+            const auto output_data_byte_size = num_elements * sizeof(float);
+            memcpy(output_buffer, model_output_data, output_data_byte_size);
+            break;
           }
-          break;
+          case ONNX_NAMESPACE::TensorProto_DataType_INT32: {
+            const auto output_data_byte_size = num_elements * sizeof(int32_t);
+            memcpy(output_buffer, model_output_data, output_data_byte_size);
+            break;
+          }
+          // For this case, since Coreml Spec only uses int32 for model output while onnx provides
+          // int64 for model output data type. We are doing a type casting (int32 -> int64) here
+          // when copying the model to ORT
+          case ONNX_NAMESPACE::TensorProto_DataType_INT64: {
+            ORT_RETURN_IF_NOT(data.dataType == MLMultiArrayDataTypeInt32,
+                              "CoreML output data type is not MLMultiArrayDataTypeInt32");
+
+            const int32_t* model_output_data_i32 = static_cast<const int32_t*>(model_output_data);
+            int64_t* output_tensor_buffer_i64 = static_cast<int64_t*>(output_buffer);
+            for (size_t i = 0; i < num_elements; i++) {
+              output_tensor_buffer_i64[i] = model_output_data_i32[i];
+            }
+            break;
+          }
+          default:
+            return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                                   "Output data type is not supported, actual type: ", onnx_data_type);
         }
-        default:
-          return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                                 "Output data type is not supported, actual type: ", onnx_data_type);
       }
     }
   }
@@ -457,8 +463,15 @@ bool Model::IsInt64Output(const std::string& output_name) const {
   return Contains(int64_outputs_, output_name);
 }
 
+const OnnxTensorInfo* Model::TryGetInputOutputInfo(const std::string& name) const {
+  const auto info_it = input_output_info_.find(name);
+  return info_it != input_output_info_.end() ? &info_it->second : nullptr;
+}
+
 const OnnxTensorInfo& Model::GetInputOutputInfo(const std::string& name) const {
-  return input_output_info_.at(name);
+  const auto* info = TryGetInputOutputInfo(name);
+  ORT_ENFORCE(info != nullptr, "Failed to get info for input/output: ", name);
+  return *info;
 }
 
 }  // namespace coreml

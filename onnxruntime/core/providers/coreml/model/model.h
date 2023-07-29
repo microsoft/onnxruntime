@@ -57,6 +57,7 @@ class Model {
   const std::vector<std::string>& GetOutputs() const { return outputs_; }
   void SetOutputs(std::vector<std::string>&& outputs) { outputs_ = std::move(outputs); }
 
+  const OnnxTensorInfo* TryGetInputOutputInfo(const std::string& name) const;
   const OnnxTensorInfo& GetInputOutputInfo(const std::string& name) const;
 
  private:

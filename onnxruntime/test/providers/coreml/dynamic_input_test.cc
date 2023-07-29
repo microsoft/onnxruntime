@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "core/providers/coreml/coreml_execution_provider.h"
+#include "test/providers/model_tester.h"
 #include "test/common/random_generator.h"
 #include "test/util/include/test_utils.h"
 
@@ -72,6 +73,24 @@ TEST(CoreMLExecutionProviderDynamicInputShapeTest, MobileNetExcerpt) {
   for (size_t i = 1; i <= 5; ++i) {
     test(i);
   }
+}
+
+TEST(CoreMLExecutionProviderDynamicInputShapeTest, EmptyInputFails) {
+  constexpr auto model_path = ORT_TSTR("testdata/matmul_with_dynamic_input_shape.onnx");
+
+  ModelTester tester("CoreMLEPDynamicInputShape.EmptyInputFails", model_path);
+
+  tester.AddInput<float>("A", {0, 2}, {});
+  tester.AddOutput<float>("Y", {0, 4}, {});
+
+  auto eps = std::vector<std::unique_ptr<IExecutionProvider>>{};
+  eps.emplace_back(std::make_unique<CoreMLExecutionProvider>(0));
+
+  tester
+      .Config(ModelTester::ExpectResult::kExpectFailure,
+              "the runtime shape ([ 0 2 ]) has zero elements. This is not supported by the CoreML EP.")
+      .ConfigEps(std::move(eps))
+      .RunWithConfig();
 }
 
 }  // namespace onnxruntime::test

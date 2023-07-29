@@ -54,6 +54,10 @@ bool IsStaticShape(gsl::span<const int64_t> shape) {
   return std::find(shape.begin(), shape.end(), int64_t{-1}) == shape.end();
 }
 
+bool DoesShapeSpecifyZeroElements(gsl::span<const int64_t> shape) {
+  return std::find(shape.begin(), shape.end(), int64_t{0}) != shape.end();
+}
+
 std::string Shape2String(gsl::span<const int64_t> shape) {
   std::ostringstream os;
   os << "[ ";
