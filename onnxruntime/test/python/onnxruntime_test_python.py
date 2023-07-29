@@ -572,7 +572,10 @@ class TestInferenceSession(unittest.TestCase):
             np.testing.assert_allclose(output_expected, res[0], rtol=1e-05, atol=1e-08)
             event.set()
 
-        sess = onnxrt.InferenceSession(get_name("mul_1.onnx"), providers=available_providers)
+        so = onnxrt.SessionOptions()
+        so.intra_op_num_threads = 2
+
+        sess = onnxrt.InferenceSession(get_name("mul_1.onnx"), so, providers=available_providers)
 
         x = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
         sess.run_async(["Y"], {"X": x}, callback, my_data)
