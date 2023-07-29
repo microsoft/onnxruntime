@@ -118,7 +118,7 @@ jobs:
           jdkSourceOption: 'PreInstalled'
 
   - template: set-winenv.yml
-    inputs:
+    parameters:
       EnvSetupScript: ${{ parameters.EnvSetupScript }}
       ${{ if contains(parameters.additionalBuildFlags, 'use_cuda') }}:
         DownloadCUDA: true

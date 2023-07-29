@@ -97,7 +97,7 @@ stages:
           versionSpec: '16.x'
 
       - template: set-winenv.yml
-        inputs:
+        parameters:
           EnvSetupScript: ${{ parameters.EnvSetupScript }}
           ${{ if contains(parameters.additionalBuildFlags, 'use_cuda') }}:
             DownloadCUDA: true
