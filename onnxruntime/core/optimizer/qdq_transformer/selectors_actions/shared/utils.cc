@@ -71,7 +71,7 @@ static const OpVersionsAndSelector::OpVersionsMap GetUnaryOpVersionsMap() {
           {"LRN", {}},
           {"Ceil", {}},
           {"Abs", {}}};
-  }
+}
 static const OpVersionsAndSelector::OpVersionsMap GetBinaryOpVersionsMap() {
   return {{"Add", {}},
           {"Div", {}},
