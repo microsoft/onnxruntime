@@ -20,6 +20,36 @@ namespace test {
 
 using GetTestModelFn = std::function<void(ModelTestBuilder& builder)>;
 
+template <typename QType = uint8_t>
+struct QuantParams {
+  float scale;
+  QType zero_point;
+
+  static QuantParams<QType> Compute(float rmin, float rmax) {
+    constexpr float qmin = static_cast<float>(std::numeric_limits<QType>::min());
+    constexpr float qmax = static_cast<float>(std::numeric_limits<QType>::max());
+
+    const float scale = (rmax - rmin) / (qmax - qmin);
+    const QType zero_point = static_cast<QType>(std::roundf((qmin - rmin) / scale));
+
+    return QuantParams<QType>{scale, zero_point};
+  }
+};
+
+template <typename QType = uint8_t>
+inline QuantParams<QType> GetDataQuantParams(const std::vector<float>& data) {
+  // Get min/max of raw data.
+  float min_val = std::numeric_limits<float>::max();
+  float max_val = std::numeric_limits<float>::min();
+
+  for (auto val : data) {
+    min_val = std::min(min_val, val);
+    max_val = std::max(max_val, val);
+  }
+
+  return QuantParams<QType>::Compute(min_val, max_val);
+}
+
 // Class that defines an input that can be created with ModelTestBuilder.
 // Defines whether the input is an initializer and if the data should be randomized or if
 // set to an explicit value.
@@ -107,22 +137,6 @@ struct TestInputDef {
   std::vector<int64_t> shape_;
   std::variant<RawData, RandomData> data_info_;
   bool is_initializer_;
-};
-
-template <typename QType = uint8_t>
-struct QuantParams {
-  float scale;
-  QType zero_point;
-
-  static QuantParams<QType> Compute(float rmin, float rmax) {
-    constexpr float qmin = static_cast<float>(std::numeric_limits<QType>::min());
-    constexpr float qmax = static_cast<float>(std::numeric_limits<QType>::max());
-
-    const float scale = (rmax - rmin) / (qmax - qmin);
-    const QType zero_point = static_cast<QType>(std::roundf((qmin - rmin) / scale));
-
-    return QuantParams<QType>{scale, zero_point};
-  }
 };
 
 template <typename QType = uint8_t>
