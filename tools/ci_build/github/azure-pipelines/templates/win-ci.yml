@@ -96,7 +96,7 @@ stages:
         inputs:
           versionSpec: '16.x'
 
-      - template: set-winenv.yml
+      - template: jobs/set-winenv.yml
         parameters:
           EnvSetupScript: ${{ parameters.EnvSetupScript }}
           ${{ if contains(parameters.additionalBuildFlags, 'use_cuda') }}:

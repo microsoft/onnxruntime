@@ -36,7 +36,7 @@ jobs:
       arguments: --new_dir $(Build.BinariesDirectory)/deps
       workingDirectory: $(Build.BinariesDirectory)
 
-  - template: jobs/set-winenv.yml
+  - template: templates/jobs/set-winenv.yml
     parameters:
       EnvSetupScript: $(EnvSetupScript)
       DownloadCUDA: true

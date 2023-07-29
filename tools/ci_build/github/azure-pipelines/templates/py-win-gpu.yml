@@ -61,7 +61,7 @@ jobs:
 
       - template: download-deps.yml
 
-      - template: template/jobs/set-winenv.yml
+      - template: jobs/set-winenv.yml
         parameters:
           EnvSetupScript: ${{ parameters.ENV_SETUP_SCRIPT }}
           DownloadCUDA: true
