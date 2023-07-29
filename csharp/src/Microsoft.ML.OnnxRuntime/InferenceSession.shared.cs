@@ -1046,8 +1046,8 @@ namespace Microsoft.ML.OnnxRuntime
 
         private static void CallbackWrapper(IntPtr userData, IntPtr[] outputs, uint numOutputs, IntPtr status)
         {
-            var resourceHdl = (GCHandle)userData;
-            CallbackResource resource = (resourceHdl.Target as CallbackResource);
+            var resourceHdl = GCHandle.FromIntPtr(userData);
+            CallbackResource resource = (CallbackResource)resourceHdl.Target;
 
             try
             {
@@ -1113,7 +1113,7 @@ namespace Microsoft.ML.OnnxRuntime
             IntPtr userData)
         {
             CallbackResource resource = new CallbackResource(callback, userData);
-            var resource_hdl = GCHandle.Alloc(resource);
+            var resource_hdl = GCHandle.Alloc(resource, GCHandleType.Normal);
 
             try
             {
