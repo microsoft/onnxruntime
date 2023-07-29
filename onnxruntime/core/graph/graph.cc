@@ -3399,8 +3399,8 @@ ONNX_NAMESPACE::GraphProto Graph::ToGraphProtoWithExternalInitializers(const std
   int64_t external_offset = 0;
 
   // Add the initializers to the result graph.
-#if !defined(DISABLE_SPARSE_TENSORS)
   const auto& model_path = ModelPath();
+#if !defined(DISABLE_SPARSE_TENSORS)
   const auto sparse_end = sparse_tensor_names_.end();
 #endif
 
