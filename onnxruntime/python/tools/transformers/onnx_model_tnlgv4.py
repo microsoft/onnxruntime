@@ -48,8 +48,6 @@ class FusionTNLGV4Attention(Fusion):
 
         hidden_size = weight_shape[0]
 
-        #weight_array = weight_array.transpose(0, 1).reshape(3, hidden_size, -1).transpose(0, 2, 1)
-        #bias_array = bias_array.reshape(3, -1).transpose(0, 1)
         weight_array_2 = np.transpose(np.transpose(np.transpose(weight_array).reshape(self.num_heads, 3, -1), (1, 0, 2)).reshape(3 * hidden_size, -1))
         bias_array_2 = np.transpose(bias_array.reshape(self.num_heads, 3, -1), (1, 0, 2))
 
@@ -57,7 +55,8 @@ class FusionTNLGV4Attention(Fusion):
             name=fc_weight + "_transposed",
             data_type=TensorProto.FLOAT16,
             dims=weight_shape,
-            vals=weight_array_2.flatten().tolist(),
+            vals=weight_array_2.flatten().tobytes(),
+            raw=True,
         )
         self.model.add_initializer(t_weight, self.this_graph_name)
 
@@ -65,13 +64,15 @@ class FusionTNLGV4Attention(Fusion):
             name=fc_bias + "_transposed",
             data_type=TensorProto.FLOAT16,
             dims=bias_shape,
-            vals=bias_array_2.flatten().tolist(),
+            vals=bias_array_2.flatten().tobytes(),
+            raw=True,
         )
         self.model.add_initializer(t_bias, self.this_graph_name)
 
         attention_node = helper.make_node(
             "Attention",
             inputs=[input, t_weight.name, t_bias.name, mask, past],
+            #inputs=[input, fc_weight, fc_bias, mask, past],
             outputs=[output, present],
             name=attention_node_name,
         )
@@ -186,6 +187,12 @@ def change_io_shape(graph: GraphProto):
                 elem_type=TensorProto.INT32,
                 shape=["batch_size", "seq_len"],
             )
+        # if vi.name == "attention_mask":
+        #     vi = helper.make_tensor_value_info(
+        #         vi.name,
+        #         elem_type=TensorProto.INT32,
+        #         shape=["batch_size", "seq_len"],
+        #     )
         if "past" in vi.name:
             shape = shape_of(vi)
             vi = helper.make_tensor_value_info(
@@ -270,9 +277,9 @@ class Tnlgv4OnnxModel(BertOnnxModel):
         self.utils.remove_useless_cast_nodes_in_fp16_model()
 
     def postprocess(self):
-        self.bias_fusion.apply()
-        self.transpose_remover.apply()
-        self.fuse_skip_layer_norm()
+        #self.bias_fusion.apply()
+        #self.transpose_remover.apply()
+        #self.fuse_skip_layer_norm()
         self.clean_graph()
         self.prune_graph()
         change_io_shape(self.model.graph)
