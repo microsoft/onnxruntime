@@ -73,7 +73,7 @@ void DmlConfigureProviderFactoryDefaultRoundingMode(
 );
 void DmlConfigureProviderFactoryMetacommandsEnabled(IExecutionProviderFactory* factory, bool metacommandsEnabled);
 void DmlConfigureProviderFactoryBfcAllocatorEnabled(IExecutionProviderFactory* factory, bool bfc_allocator_enabled);
-}
+} // namespace onnxruntime
 
 #endif  // USE_DML
 

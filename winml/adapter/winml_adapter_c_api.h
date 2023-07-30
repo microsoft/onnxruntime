@@ -294,7 +294,11 @@ struct WinmlAdapterApi {
 	 * This api is used to add the DML EP to OrtSessionOptions.
     */
   OrtStatus*(ORT_API_CALL* OrtSessionOptionsAppendExecutionProvider_DML)(
-    _In_ OrtSessionOptions* options, ID3D12Device* device, ID3D12CommandQueue* queue, bool metacommands_enabled, bool bfc_allocator_enabled
+    _In_ OrtSessionOptions* options,
+    ID3D12Device* device,
+    ID3D12CommandQueue* queue,
+    bool metacommands_enabled,
+    bool bfc_allocator_enabled
   )NO_EXCEPTION;
 
   // OrtSession methods

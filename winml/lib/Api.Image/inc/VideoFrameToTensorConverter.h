@@ -86,9 +86,7 @@ class VideoFrameToTensorConverter : public ImageConverter {
   );
 
   static D3D12_UNORDERED_ACCESS_VIEW_DESC CreateUAVDescription(
-    uint64_t offset,
-    const UINT32 batch_index,
-    const ImageTensorDescription& description
+    uint64_t offset, const UINT32 batch_index, const ImageTensorDescription& description
   );
 
   static void VideoFrameToTensorConverter::ConvertSoftwareBitmapToCPUTensor(
