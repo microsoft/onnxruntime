@@ -91,35 +91,6 @@ GetQDQTestCaseFn BuildQDQConvTransposeTestCase(const std::vector<int64_t>& input
   };
 }
 
-// Creates the following graph:
-//                                _______________________
-//                               |                       |
-//    input (f32) -> Q -> DQ ->  |       LeakyRelu       | -> Q -> DQ -> output (f32)
-//                               |_______________________|
-//
-template <typename QuantType>
-GetQDQTestCaseFn BuildQDQLeakyReluOpTestCase(const std::vector<int64_t>& input_shape) {
-  return [input_shape](ModelTestBuilder& builder) {
-    auto* input_data = builder.MakeInput<float>(input_shape, -1.0f, 1.0f);
-    auto* final_output = builder.MakeOutput();
-
-    // input_data -> Q/DQ ->
-    auto* input_qdq_output = AddQDQNodePair<QuantType>(builder, input_data, 0.0473f, 137);
-
-    auto* leakyrelu_output = builder.MakeIntermediate();
-    Node& leakyrelu_node = builder.AddNode("LeakyRelu", {input_qdq_output}, {leakyrelu_output});
-    leakyrelu_node.AddAttribute("alpha", 0.2f);
-
-    // -> Q/DQ -> final_output
-    auto* q_output = builder.MakeIntermediate();
-    builder.AddQuantizeLinearNode<QuantType>(leakyrelu_output, 0.02696f, 48,
-                                             q_output);
-
-    builder.AddDequantizeLinearNode<QuantType>(q_output, 0.02696f, 48,
-                                               final_output);
-  };
-}
-
 template <typename InputType, typename WeightType, typename BiasType, typename OutputType>
 GetQDQTestCaseFn BuildQDQConvTestCase(const std::vector<int64_t>& input_shape, const std::vector<int64_t>& weights_shape) {
   return [input_shape, weights_shape](ModelTestBuilder& builder) {
